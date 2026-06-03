@@ -12,6 +12,14 @@ from thesistester.data.loader import (
 from thesistester.data.resample import SUPPORTED_TIMEFRAMES, resample_ohlcv
 from thesistester.data.sessions import tag_session
 
+
+@st.cache_data(show_spinner=False)
+def cached_resample_and_tag(raw_df, instrument: str, timeframe: str):
+    """Cache and return session-tagged resampled OHLCV data for preview."""
+    out = resample_ohlcv(raw_df, timeframe)
+    return tag_session(out, instrument)
+
+
 st.title("\U0001F4E5 Data")
 
 inst = st.selectbox("Instrument", list(INSTRUMENTS.keys()))
@@ -68,8 +76,7 @@ if file is not None:
 
         resampled_data = {}
         for timeframe in selected_timeframes:
-            out = resample_ohlcv(raw_df, timeframe)
-            out = tag_session(out, inst)
+            out = cached_resample_and_tag(raw_df, inst, timeframe)
             resampled_data[timeframe] = out
             with st.expander(f"{timeframe} preview ({len(out):,} rows)"):
                 st.dataframe(out.head(50), use_container_width=True)

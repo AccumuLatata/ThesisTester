@@ -6,6 +6,11 @@ from dataclasses import dataclass
 import pandas as pd
 
 from ..config import REQUIRED_COLUMNS
+# Flag gaps larger than 3x the inferred base interval as significant missing-bar regions.
+GAP_THRESHOLD_MULTIPLIER = 3
+SECONDS_PER_MINUTE = 60
+SECONDS_PER_HOUR = 60 * SECONDS_PER_MINUTE
+SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
 
 
 class DataValidationError(Exception):
@@ -36,15 +41,16 @@ class ValidationReport:
         return [issue.message for issue in self.issues]
 
 
-SUPPORTED_INTERVALS = ["1min", "5min", "15min", "30min", "1h", "4h", "1D"]
-
-
 def infer_base_interval(timestamps: pd.Series) -> pd.Timedelta | None:
-    """Infer the most common positive interval from a timestamp series."""
+    """Infer the base bar interval as the most frequent positive timestamp gap.
+
+    Irregular outlier gaps are ignored by taking the mode of positive diffs only.
+    Returns None when fewer than two valid timestamps are available.
+    """
     if len(timestamps) < 2:
         return None
 
-    ts = pd.Series(pd.to_datetime(timestamps, errors="coerce")).dropna().sort_values()
+    ts = pd.to_datetime(timestamps, errors="coerce").dropna().sort_values()
     if len(ts) < 2:
         return None
 
@@ -54,23 +60,23 @@ def infer_base_interval(timestamps: pd.Series) -> pd.Timedelta | None:
         return None
 
     counts = diffs.value_counts()
-    return counts.sort_values(ascending=False).index[0]
+    return counts.idxmax()
 
 
 def format_interval(interval: pd.Timedelta | None) -> str:
-    """Format a timedelta into a compact bar string (e.g. 1min, 4h)."""
+    """Format an interval into a compact bar label, or 'unknown' for None."""
     if interval is None:
         return "unknown"
 
     total_seconds = int(interval.total_seconds())
-    if total_seconds % 86400 == 0:
-        days = total_seconds // 86400
+    if total_seconds % SECONDS_PER_DAY == 0:
+        days = total_seconds // SECONDS_PER_DAY
         return f"{days}D"
-    if total_seconds % 3600 == 0:
-        hours = total_seconds // 3600
+    if total_seconds % SECONDS_PER_HOUR == 0:
+        hours = total_seconds // SECONDS_PER_HOUR
         return f"{hours}h"
-    if total_seconds % 60 == 0:
-        minutes = total_seconds // 60
+    if total_seconds % SECONDS_PER_MINUTE == 0:
+        minutes = total_seconds // SECONDS_PER_MINUTE
         return f"{minutes}min"
     return str(interval)
 
@@ -121,7 +127,10 @@ def validate_ohlcv(df: pd.DataFrame) -> ValidationReport:
             )
         )
 
-    if not bool(df.attrs.get("was_monotonic_before_sort", True)):
+    was_monotonic_before_sort = df.attrs.get("was_monotonic_before_sort")
+    if was_monotonic_before_sort is None:
+        was_monotonic_before_sort = df["timestamp"].is_monotonic_increasing
+    if not bool(was_monotonic_before_sort):
         issues.append(
             ValidationIssue(
                 code="non_monotonic_before_sort",
@@ -173,8 +182,8 @@ def validate_ohlcv(df: pd.DataFrame) -> ValidationReport:
 
     inferred_interval = infer_base_interval(df["timestamp"])
     if inferred_interval is not None:
-        diffs = df["timestamp"].sort_values().diff().dropna()
-        gap_threshold = inferred_interval * 3
+        diffs = df["timestamp"].diff().dropna()
+        gap_threshold = inferred_interval * GAP_THRESHOLD_MULTIPLIER
         large_gaps = int((diffs > gap_threshold).sum())
         if large_gaps:
             issues.append(
