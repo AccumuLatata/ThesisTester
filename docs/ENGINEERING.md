@@ -433,6 +433,25 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
 
 ---
 
+## Phase 4 Implementation Notes
+
+- **Phase 4 signals are candidates only.** No trade simulation, SL/TP, exits, P&L,
+  equity curves, MAE/MFE, or drawdown analysis are implemented in Phase 4. These begin
+  in Phase 5.
+- **Naked-level logic is an MVP approximation.** Formation is detected when a level
+  column value first becomes non-NaN or changes from the prior bar. Testing can only
+  occur on subsequent bars (the formation bar itself is never counted as tested). Later
+  versions may require formation timestamps specific to each level family (e.g.
+  `OR_High` is only finalized after the opening-range window closes).
+- **Candidate signals** are stored in `st.session_state["signals"]` via the Signals
+  page (`pages/6_Signals.py`) for consumption by Phase 5 backtesting.
+- **`confirm_3bar` implementation:** uses separate `arrival_tolerance_ticks` (bar 1
+  zone arrival tolerance) and `retrace_entry_ticks` (bar 3 limit entry pullback) as
+  independently configurable parameters. Setups where bar 3 does not fill are included
+  with `status="void"` to preserve research value.
+
+---
+
 ## 13. Key Assumptions & Decisions (confirmed)
 
 1. **Primary instruments:** ES and NQ futures.
