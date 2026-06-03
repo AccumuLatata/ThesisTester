@@ -1,0 +1,227 @@
+"""Phase 5 — Backtest page.
+
+Converts Phase 4 candidate signals into simulated trades using a single
+fixed SL/TP configuration and displays KPIs, equity curve, and trade table.
+"""
+from __future__ import annotations
+
+import plotly.graph_objects as go
+import streamlit as st
+
+from thesistester.analytics import equity_curve, summarize_trades
+from thesistester.config import INSTRUMENTS
+from thesistester.engine.backtest import simulate_trades
+
+st.title("📊 Backtest")
+
+# ── Require signals ───────────────────────────────────────────────────────────
+if "signals" not in st.session_state:
+    st.warning(
+        "No signals found. Please load data on the **Data** page, compute "
+        "levels on the **Levels** page, and generate signals on the **Signals** page first."
+    )
+    st.stop()
+
+signals = st.session_state["signals"]
+if signals is None or signals.empty:
+    st.warning("Signal table is empty. Please generate signals on the **Signals** page first.")
+    st.stop()
+
+# ── Prefer levels df for full timeline; fall back to data ─────────────────────
+if "levels" in st.session_state:
+    ohlcv_df = st.session_state["levels"]
+elif "data" in st.session_state:
+    ohlcv_df = st.session_state["data"]
+else:
+    st.error("No OHLCV data available. Please load data on the **Data** page.")
+    st.stop()
+
+instrument = st.session_state.get("instrument", "ES")
+inst = INSTRUMENTS.get(instrument)
+tick_size = inst.tick_size if inst else 0.25
+point_value = inst.point_value if inst else 50.0
+
+# ── Sidebar controls ──────────────────────────────────────────────────────────
+with st.sidebar:
+    st.header("Backtest settings")
+    st.caption(f"Instrument: **{instrument}** · tick={tick_size} · point_value=${point_value:,.0f}")
+
+    sl_ticks = st.number_input(
+        "Stop loss (ticks)",
+        min_value=1.0,
+        max_value=500.0,
+        value=8.0,
+        step=1.0,
+        help="Fixed stop-loss distance from entry in ticks.",
+    )
+
+    tp_ticks = st.number_input(
+        "Take profit (ticks)",
+        min_value=1.0,
+        max_value=1000.0,
+        value=16.0,
+        step=1.0,
+        help="Fixed take-profit distance from entry in ticks.",
+    )
+
+    use_max_bars = st.toggle("Limit holding bars", value=False)
+    max_bars: int | None = None
+    if use_max_bars:
+        max_bars = int(
+            st.number_input(
+                "Max holding bars",
+                min_value=1,
+                max_value=500,
+                value=20,
+                step=1,
+            )
+        )
+
+    allow_same_bar = st.toggle(
+        "Allow same-bar exit",
+        value=True,
+        help=(
+            "If enabled, SL/TP checks begin on the entry bar (recommended for "
+            "confirm_3bar filled entries). Uses SL-first pessimistic rule when "
+            "both are reachable in the same bar."
+        ),
+    )
+
+    run_btn = st.button("▶ Run backtest", type="primary", use_container_width=True)
+
+# ── Run ───────────────────────────────────────────────────────────────────────
+if run_btn:
+    with st.spinner("Simulating trades…"):
+        try:
+            trades = simulate_trades(
+                df=ohlcv_df,
+                signals=signals,
+                tick_size=tick_size,
+                point_value=point_value,
+                stop_loss_ticks=sl_ticks,
+                take_profit_ticks=tp_ticks,
+                max_holding_bars=max_bars,
+                allow_same_bar_exit=allow_same_bar,
+            )
+        except ValueError as e:
+            st.error(f"Backtest error: {e}")
+            st.stop()
+
+        summary = summarize_trades(trades)
+        curve = equity_curve(trades)
+
+        st.session_state["trades"] = trades
+        st.session_state["trade_summary"] = summary
+        st.session_state["equity_curve"] = curve
+
+# ── Display ───────────────────────────────────────────────────────────────────
+trades = st.session_state.get("trades")
+summary = st.session_state.get("trade_summary")
+curve = st.session_state.get("equity_curve")
+
+if trades is None:
+    st.info("Configure settings in the sidebar and click **▶ Run backtest**.")
+    st.stop()
+
+# KPI cards
+st.subheader("Performance summary")
+
+def _fmt(v, fmt=".2f", fallback="—"):
+    if v is None:
+        return fallback
+    try:
+        return format(float(v), fmt)
+    except (TypeError, ValueError):
+        return fallback
+
+
+col1, col2, col3, col4, col5, col6 = st.columns(6)
+col1.metric("Trades", summary.get("trade_count", 0))
+col2.metric("Win rate", f"{_fmt(summary.get('win_rate'), '.1%')}" if summary.get("win_rate") is not None else "—")
+col3.metric("Avg R", _fmt(summary.get("avg_r")))
+col4.metric("Total R", _fmt(summary.get("total_r")))
+col5.metric("Profit factor", _fmt(summary.get("profit_factor")))
+col6.metric("Max DD (R)", _fmt(summary.get("max_drawdown_r")))
+
+if trades.empty:
+    st.info("No trades were generated with the current signals and SL/TP settings.")
+    st.stop()
+
+# Equity curve
+st.subheader("Equity curve (cumulative R)")
+if curve is not None and not curve.empty:
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=curve["exit_timestamp"],
+            y=curve["cum_r"],
+            mode="lines+markers",
+            name="Cum R",
+            line=dict(color="steelblue", width=2),
+            marker=dict(size=4),
+        )
+    )
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1)
+    fig.update_layout(
+        height=320,
+        margin=dict(l=10, r=10, t=30, b=10),
+        yaxis_title="Cumulative R",
+        xaxis_title="",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+# Breakdown tabs
+st.subheader("Breakdown")
+tab_trigger, tab_dir, tab_reason = st.tabs(["By trigger", "By direction", "By exit reason"])
+
+with tab_trigger:
+    if "trigger" in trades.columns:
+        st.dataframe(
+            trades.groupby("trigger").agg(
+                count=("trade_id", "count"),
+                win_rate=("r_multiple", lambda x: (x > 0).mean()),
+                avg_r=("r_multiple", "mean"),
+                total_r=("r_multiple", "sum"),
+            ).reset_index(),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+with tab_dir:
+    if "direction" in trades.columns:
+        st.dataframe(
+            trades.groupby("direction").agg(
+                count=("trade_id", "count"),
+                win_rate=("r_multiple", lambda x: (x > 0).mean()),
+                avg_r=("r_multiple", "mean"),
+                total_r=("r_multiple", "sum"),
+            ).reset_index(),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+with tab_reason:
+    if "exit_reason" in trades.columns:
+        st.dataframe(
+            trades.groupby("exit_reason").agg(
+                count=("trade_id", "count"),
+                avg_r=("r_multiple", "mean"),
+                total_r=("r_multiple", "sum"),
+            ).reset_index(),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+# Full trade table
+st.subheader("Trade table")
+display_cols = [c for c in [
+    "trade_id", "signal_id", "trigger", "direction",
+    "entry_timestamp", "entry_price", "entry_model",
+    "exit_timestamp", "exit_price", "exit_reason",
+    "stop_price", "target_price",
+    "stop_loss_ticks", "take_profit_ticks",
+    "pnl_points", "pnl_currency", "r_multiple", "bars_held",
+    "zone_low", "zone_high", "level_count", "level_names",
+    "mae_points", "mfe_points",
+] if c in trades.columns]
+st.dataframe(trades[display_cols], use_container_width=True, hide_index=True)

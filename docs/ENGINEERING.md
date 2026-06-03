@@ -452,6 +452,23 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
 
 ---
 
+## Phase 5 Implementation Notes
+
+- **Phase 5 implements single SL/TP trade simulation.** `thesistester/engine/backtest.py`
+  converts Phase 4 candidate signals into simulated trades using one fixed tick-based
+  SL/TP configuration per run.
+- **Simple triggers** (touch / reject / break / reclaim) enter at next-bar open to preserve
+  no-look-ahead integrity.
+- **`confirm_3bar` filled signals** enter on their signal bar at `entry_reference_price`
+  because Phase 4 only emits `status="filled"` after bar 3 has already traded through
+  the limit.  `status="void"` rows are skipped.
+- **Intrabar ambiguity uses SL-first** (pessimistic rule): when both SL and TP are reachable
+  within the same OHLC bar the engine exits at SL, since intrabar event order is unknowable.
+- **Phase 6** will implement SL/TP grid search, time-of-day breakdown, and walk-forward
+  validation.  These are intentionally absent from Phase 5.
+
+---
+
 ## 13. Key Assumptions & Decisions (confirmed)
 
 1. **Primary instruments:** ES and NQ futures.
