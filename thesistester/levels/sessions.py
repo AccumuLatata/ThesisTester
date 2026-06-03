@@ -1,0 +1,229 @@
+"""Session/structural level engine for canonical OHLCV data."""
+from __future__ import annotations
+
+from datetime import timedelta
+
+import numpy as np
+import pandas as pd
+
+from ..config import INSTRUMENTS
+
+
+def _require_tz_aware_timestamp(df: pd.DataFrame) -> None:
+    if "timestamp" not in df.columns:
+        raise ValueError("Input must include a 'timestamp' column.")
+    if df["timestamp"].dt.tz is None:
+        raise ValueError("Input 'timestamp' must be timezone-aware.")
+
+
+def _period_levels(
+    df: pd.DataFrame,
+    key: pd.Series,
+    open_name: str,
+    high_name: str,
+    low_name: str,
+    eq_name: str,
+) -> pd.DataFrame:
+    grouped = df.groupby(key, sort=True).agg(open=("open", "first"), high=("high", "max"), low=("low", "min"))
+    prev = grouped.shift(1)
+    return pd.DataFrame(
+        {
+            open_name: key.map(prev["open"]),
+            high_name: key.map(prev["high"]),
+            low_name: key.map(prev["low"]),
+            eq_name: key.map((prev["high"] + prev["low"]) / 2.0),
+        },
+        index=df.index,
+    )
+
+
+def _current_opens(df: pd.DataFrame, date_key: pd.Series, week_key: pd.Series, month_key: pd.Series) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "dOpen": df.groupby(date_key, sort=False)["open"].transform("first"),
+            "wOpen": df.groupby(week_key, sort=False)["open"].transform("first"),
+            "mOpen": df.groupby(month_key, sort=False)["open"].transform("first"),
+        },
+        index=df.index,
+    )
+
+
+def _rth_open(df: pd.DataFrame, date_key: pd.Series) -> pd.Series:
+    out = pd.Series(np.nan, index=df.index, dtype="float64")
+    if "session" not in df.columns:
+        return out
+
+    rth = df["session"].eq("RTH")
+    first_open = df.loc[rth].groupby(date_key[rth], sort=True)["open"].first()
+    return date_key.map(first_open).astype("float64")
+
+
+def _overnight_high_low(
+    df: pd.DataFrame,
+    date_key: pd.Series,
+    local_ts: pd.Series,
+    rth_start: pd.Timestamp,
+    rth_end: pd.Timestamp,
+) -> pd.DataFrame:
+    out = pd.DataFrame({"ONH": pd.Series(np.nan, index=df.index, dtype="float64"), "ONL": pd.Series(np.nan, index=df.index, dtype="float64")})
+    if "session" not in df.columns:
+        return out
+
+    t = local_ts.dt.time
+    mask_eth = df["session"].eq("ETH")
+    is_overnight = mask_eth & ((t >= rth_end.time()) | (t < rth_start.time()))
+    if not is_overnight.any():
+        return out
+
+    overnight_date = pd.Series(date_key.values, index=df.index)
+    overnight_date = overnight_date.where(~(mask_eth & (t >= rth_end.time())), overnight_date + timedelta(days=1))
+
+    overnight = df.loc[is_overnight].groupby(overnight_date[is_overnight], sort=True).agg(ONH=("high", "max"), ONL=("low", "min"))
+    out["ONH"] = date_key.map(overnight["ONH"]).astype("float64")
+    out["ONL"] = date_key.map(overnight["ONL"]).astype("float64")
+    return out
+
+
+def _opening_range(
+    df: pd.DataFrame,
+    date_key: pd.Series,
+    local_ts: pd.Series,
+    rth_start: pd.Timestamp,
+    opening_range_minutes: int,
+) -> pd.DataFrame:
+    out = pd.DataFrame(
+        {
+            "OR_High": pd.Series(np.nan, index=df.index, dtype="float64"),
+            "OR_Low": pd.Series(np.nan, index=df.index, dtype="float64"),
+        }
+    )
+    if "session" not in df.columns:
+        return out
+
+    if opening_range_minutes not in {5, 15, 30}:
+        raise ValueError("opening_range_minutes must be one of: 5, 15, 30")
+
+    rth = df["session"].eq("RTH")
+    minute_of_day = local_ts.dt.hour * 60 + local_ts.dt.minute
+    start_minute = rth_start.hour * 60 + rth_start.minute
+    end_minute = start_minute + opening_range_minutes
+
+    in_or_window = rth & (minute_of_day >= start_minute) & (minute_of_day < end_minute)
+    if not in_or_window.any():
+        return out
+
+    or_levels = df.loc[in_or_window].groupby(date_key[in_or_window], sort=True).agg(OR_High=("high", "max"), OR_Low=("low", "min"))
+
+    day_start = local_ts.dt.normalize()
+    available_after = day_start + pd.to_timedelta(start_minute + opening_range_minutes, unit="minute")
+    available_mask = local_ts >= available_after
+
+    out["OR_High"] = date_key.map(or_levels["OR_High"]).where(available_mask).astype("float64")
+    out["OR_Low"] = date_key.map(or_levels["OR_Low"]).where(available_mask).astype("float64")
+    return out
+
+
+def _prev_settlement(df: pd.DataFrame, date_key: pd.Series) -> pd.Series:
+    if "settlement" in df.columns:
+        settlements = pd.to_numeric(df["settlement"], errors="coerce")
+        daily_settlement = settlements.groupby(date_key, sort=True).last()
+    else:
+        daily_settlement = df.groupby(date_key, sort=True)["close"].last()
+
+    return date_key.map(daily_settlement.shift(1)).astype("float64")
+
+
+def compute_session_levels(
+    df: pd.DataFrame,
+    instrument: str = "ES",
+    opening_range_minutes: int = 30,
+) -> pd.DataFrame:
+    """Compute session/structural levels aligned to each bar timestamp.
+
+    Notes
+    -----
+    - Input must be canonical OHLCV with a timezone-aware ``timestamp`` column.
+    - ``session`` is optional; when absent, session-dependent levels return NaN.
+    - ``prevSettlement`` uses prior-day settlement when a ``settlement`` column exists;
+      otherwise it conservatively falls back to prior-day final close.
+    """
+    _require_tz_aware_timestamp(df)
+    if instrument not in INSTRUMENTS:
+        raise ValueError(f"Unsupported instrument: {instrument}")
+
+    inst = INSTRUMENTS[instrument]
+    out = df.sort_values("timestamp").reset_index(drop=True).copy()
+    local_ts = out["timestamp"].dt.tz_convert(inst.exchange_tz)
+    date_key = local_ts.dt.date
+    naive_local = local_ts.dt.tz_localize(None)
+    week_key = naive_local.dt.to_period("W-SUN")
+    month_key = naive_local.dt.to_period("M")
+
+    levels = _current_opens(out, date_key, week_key, month_key)
+    levels = levels.join(
+        _period_levels(
+            out,
+            date_key,
+            open_name="pdOpen",
+            high_name="pdHigh",
+            low_name="pdLow",
+            eq_name="pdEQ",
+        )
+    )
+    levels = levels.join(
+        _period_levels(
+            out,
+            week_key,
+            open_name="pwOpen",
+            high_name="pwHigh",
+            low_name="pwLow",
+            eq_name="pwEQ",
+        )
+    )
+    levels = levels.join(
+        _period_levels(
+            out,
+            month_key,
+            open_name="pmOpen",
+            high_name="pmHigh",
+            low_name="pmLow",
+            eq_name="pmEQ",
+        )
+    )
+
+    rth_start = pd.to_datetime(inst.rth_start)
+    rth_end = pd.to_datetime(inst.rth_end)
+
+    levels["RTH_Open"] = _rth_open(out, date_key)
+    levels = levels.join(_overnight_high_low(out, date_key, local_ts, rth_start, rth_end))
+    levels = levels.join(_opening_range(out, date_key, local_ts, rth_start, opening_range_minutes))
+    levels["prevSettlement"] = _prev_settlement(out, date_key)
+
+    ordered = [
+        "ONH",
+        "ONL",
+        "OR_High",
+        "OR_Low",
+        "RTH_Open",
+        "prevSettlement",
+        "dOpen",
+        "wOpen",
+        "mOpen",
+        "pdOpen",
+        "pwOpen",
+        "pmOpen",
+        "pdHigh",
+        "pdLow",
+        "pwHigh",
+        "pwLow",
+        "pmHigh",
+        "pmLow",
+        "pdEQ",
+        "pwEQ",
+        "pmEQ",
+    ]
+    for col in ordered:
+        if col not in levels.columns:
+            levels[col] = pd.Series(np.nan, index=levels.index, dtype="float64")
+
+    return out.join(levels[ordered])
