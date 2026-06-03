@@ -38,4 +38,10 @@ pytest -q
   (win rate, expectancy, profit factor, max drawdown R, equity curve) are computed in
   `thesistester/analytics/metrics.py` and displayed on a new **Backtest** page
   (`pages/7_Backtest.py`).  Trades are stored in `st.session_state["trades"]`.
-  SL/TP grid search belongs to Phase 6.
+- **Phase 6 (SL/TP grid search, expectancy heatmaps):** sweeps all stop-loss × take-profit
+  combinations over the Phase 5 backtest engine (`thesistester/analytics/grid.py`).
+  `run_sl_tp_grid()` returns one summary row per cell; `best_grid_result()` picks the
+  top-ranked cell by any metric.  A new **Grid Search** page (`pages/8_Grid_Search.py`)
+  lets users configure SL/TP ranges and displays four Plotly heatmaps (expectancy R,
+  total R, win rate, max drawdown R).  Best result and full grid are stored in
+  `st.session_state["best_grid_result"]` and `st.session_state["grid_results"]`.
