@@ -1,0 +1,2 @@
+# ThesisTester
+Testing intraday stradegies
