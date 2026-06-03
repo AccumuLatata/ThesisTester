@@ -58,7 +58,7 @@ def summarize_trades(trades: pd.DataFrame) -> dict:
     total_r = float(r.sum())
 
     gross_win = float(wins.sum()) if len(wins) > 0 else 0.0
-    gross_loss = float(losses.sum().item()) if len(losses) > 0 else 0.0
+    gross_loss = float(losses.sum()) if len(losses) > 0 else 0.0
     if gross_loss < 0:
         profit_factor = gross_win / abs(gross_loss)
     elif gross_win > 0:
