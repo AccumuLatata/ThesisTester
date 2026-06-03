@@ -128,3 +128,26 @@ def test_equity_curve_always_non_negative_drawdown():
     t = _trades(1.0, -0.5, 2.0, -1.5, 0.5)
     curve = equity_curve(t)
     assert (curve["drawdown_r"] >= 0).all()
+
+
+def test_equity_curve_drawdown_from_initial_zero():
+    """A single losing trade must show drawdown from 0R initial equity."""
+    t = _trades(-1.0)
+    curve = equity_curve(t)
+    assert list(curve["cum_r"]) == pytest.approx([-1.0])
+    assert list(curve["drawdown_r"]) == pytest.approx([1.0])
+
+
+def test_summary_max_drawdown_from_initial_zero():
+    """summarize_trades max_drawdown_r must be 1.0 for a single -1R trade."""
+    t = _trades(-1.0)
+    s = summarize_trades(t)
+    assert s["max_drawdown_r"] == pytest.approx(1.0)
+
+
+def test_equity_curve_drawdown_after_positive_peak():
+    """Drawdown after gains and then a loss is measured from the peak."""
+    t = _trades(1.0, 2.0, -1.0)
+    curve = equity_curve(t)
+    assert list(curve["cum_r"]) == pytest.approx([1.0, 3.0, 2.0])
+    assert list(curve["drawdown_r"]) == pytest.approx([0.0, 0.0, 1.0])

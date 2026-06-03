@@ -75,9 +75,12 @@ def summarize_trades(trades: pd.DataFrame) -> dict:
     else:
         expectancy_r = avg_r
 
-    # Max drawdown on cumulative R curve
-    cum_r = r.cumsum().values
-    running_max = np.maximum.accumulate(cum_r)
+    # Max drawdown on cumulative R curve.
+    # clip(lower=0.0) anchors the running peak at 0R so that a strategy that
+    # starts with a loss correctly reports a drawdown from the initial zero
+    # equity point rather than from the first (negative) cumulative value.
+    cum_r = r.cumsum()
+    running_max = cum_r.cummax().clip(lower=0.0)
     drawdowns = running_max - cum_r
     max_drawdown_r = float(drawdowns.max()) if len(drawdowns) > 0 else 0.0
 
@@ -122,7 +125,9 @@ def equity_curve(trades: pd.DataFrame) -> pd.DataFrame:
 
     t["cum_r"] = t["r_multiple"].cumsum()
 
-    running_max = t["cum_r"].cummax()
+    # clip(lower=0.0) anchors the running peak at 0R (initial equity) so that
+    # a strategy starting with a loss correctly reports drawdown from zero.
+    running_max = t["cum_r"].cummax().clip(lower=0.0)
     t["drawdown_r"] = running_max - t["cum_r"]
 
     return t[cols]
