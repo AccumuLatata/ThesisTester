@@ -23,3 +23,6 @@ pytest -q
 - **Phase 2 (session/structural levels):** session level engine for opens, prior O/H/L/EQ,
   overnight and opening-range levels, RTH open, and previous settlement preview via the
   new Streamlit **Levels** page.
+- **Phase 3 (indicator/profile levels):** SMA/EMA and rolling VWAP levels, rolling POC
+  windows, and prior day/week/month profile levels (`VAH/VAL/POC`) with 70% value area
+  and tick-bucketed ES/NQ volume bins.
