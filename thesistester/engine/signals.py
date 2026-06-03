@@ -131,11 +131,9 @@ def _check_reject(
     touch = bar["low"] <= zone["zone_high"] and bar["high"] >= zone["zone_low"]
     if not touch:
         return None
-    if direction == "long" and bar["close"] > zone["zone_high"]:
-        pass
-    elif direction == "short" and bar["close"] < zone["zone_low"]:
-        pass
-    else:
+    if direction == "long" and bar["close"] <= zone["zone_high"]:
+        return None
+    if direction == "short" and bar["close"] >= zone["zone_low"]:
         return None
     return _make_signal(
         signal_id=signal_id,
@@ -261,10 +259,12 @@ def _check_confirm_3bar(
 
     for d in directions:
         # Bar 2 — reversal
+        b2_close = float(bar2["close"])
+        b1_close = float(bar1["close"])
         if d == "long":
-            rev_ok = (float(bar2["close"]) >= float(bar1["close"])) if allow_equal else (float(bar2["close"]) > float(bar1["close"]))
+            rev_ok = (b2_close >= b1_close) if allow_equal else (b2_close > b1_close)
         else:
-            rev_ok = (float(bar2["close"]) <= float(bar1["close"])) if allow_equal else (float(bar2["close"]) < float(bar1["close"]))
+            rev_ok = (b2_close <= b1_close) if allow_equal else (b2_close < b1_close)
 
         if not rev_ok:
             continue

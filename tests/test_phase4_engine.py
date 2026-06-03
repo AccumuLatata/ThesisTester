@@ -199,7 +199,7 @@ class TestNakedLevels:
     def test_level_naked_when_first_appears(self):
         df = _df_with_level([100.0], bar_highs=[101.0], bar_lows=[99.0])
         result = flag_naked_levels(df, level_columns=["level_A"], tick_size=TICK)
-        assert result["level_A_naked"].iloc[0] is True or result["level_A_naked"].iloc[0] == True  # noqa: E712
+        assert result["level_A_naked"].iloc[0]
 
     def test_level_remains_naked_until_touched(self):
         # 4 bars: level at 100 on bar0, bars 1-2 trade above (99-101 is just outside the
