@@ -87,6 +87,7 @@ A **setup** is defined by:
   - `reject` (touch + close back out → mean-reversion / fade)
   - `break` (close through → continuation/breakout)
   - `reclaim` (break then close back → trap)
+  - `confirm_3bar` (three-bar level interaction + reversal + bar-3 retracement limit entry)
 - **Direction** — long / short / both.
 - **Risk model** — SL and TP definitions (§7).
 - **Session filter** — time-of-day window (§8) and date range.
@@ -175,8 +176,145 @@ Value Area grown outward from POC until 70% volume captured (TPO-style optional 
 3. Emit a candidate signal when the configured **trigger** fires against a zone.
 4. Apply filters: direction, naked-only, session/time window, max trades per zone.
 
+#### 7.1.1 Trigger spec: `confirm_3bar`
+`confirm_3bar` is a three-bar level-interaction plus micro-market-structure confirmation trigger.
+The setup is valid only when all three bars occur in sequence:
+
+1. **Bar 1 (arrival candle):** interacts with the confluence zone.
+2. **Bar 2 (reversal candle):** confirms local reversal vs bar 1 close.
+3. **Bar 3 (retracement candle):** retraces against intended direction and fills a conditional limit entry.
+
+**Parameters**
+
+| Parameter | Meaning |
+|---|---|
+| `arrival_tolerance_ticks` | Number of ticks around the confluence zone within which bar 1 must trade to count as "arrived" at the level. |
+| `retrace_entry_ticks` | Number of ticks bar 3 must retrace against intended trade direction from bar 3 open before the limit entry is filled. |
+| `direction` | `long`, `short`, or `both`. |
+| `entry_fill_model` | Default: limit fill at `bar3_open ± retrace_entry_ticks * tick_size` depending on direction. |
+| `max_wait_bars` | Default `1` for this pattern; retracement must occur during bar 3 only. |
+| `allow_equal_close` | Optional boolean; default `false`. If `false`, reversal close must be strictly above/below arrival close. |
+
+> `arrival_tolerance_ticks` and `retrace_entry_ticks` are separate settings and must remain independently configurable.
+
+**Long setup**
+
+- **Bar 1 — Arrival candle (zone interaction):**
+
+  ```text
+  bar1_low <= zone_high + arrival_tolerance_ticks * tick_size
+  AND
+  bar1_high >= zone_low - arrival_tolerance_ticks * tick_size
+  ```
+
+  If confluence is represented by a single level:
+
+  ```text
+  abs(nearest_trade_price_to_level - level_price) <= arrival_tolerance_ticks * tick_size
+  ```
+
+- **Bar 2 — Reversal candle / micro-structure shift:**
+
+  ```text
+  bar2_close > bar1_close
+  ```
+
+  If `allow_equal_close = true`:
+
+  ```text
+  bar2_close >= bar1_close
+  ```
+
+- **Bar 3 — Retracement and limit entry:**
+  Long entry limit:
+
+  ```text
+  long_entry_price = bar3_open - retrace_entry_ticks * tick_size
+  ```
+
+  Fill condition:
+
+  ```text
+  bar3_low <= long_entry_price
+  ```
+
+  If retracement does not occur during bar 3, setup is void and no trade opens.
+
+**Short setup**
+
+- **Bar 1 — Arrival candle (same zone interaction/tolerance logic as long):**
+
+  ```text
+  bar1_low <= zone_high + arrival_tolerance_ticks * tick_size
+  AND
+  bar1_high >= zone_low - arrival_tolerance_ticks * tick_size
+  ```
+
+- **Bar 2 — Reversal candle / micro-structure shift:**
+
+  ```text
+  bar2_close < bar1_close
+  ```
+
+  If `allow_equal_close = true`:
+
+  ```text
+  bar2_close <= bar1_close
+  ```
+
+- **Bar 3 — Retracement and limit entry:**
+  Short entry limit:
+
+  ```text
+  short_entry_price = bar3_open + retrace_entry_ticks * tick_size
+  ```
+
+  Fill condition:
+
+  ```text
+  bar3_high >= short_entry_price
+  ```
+
+  If retracement does not occur during bar 3, setup is void and no trade opens.
+
+**Implementation notes**
+
+1. **Conditional limit entry**
+   - Unlike simple triggers that default to next-bar open, `confirm_3bar` enters only if the configured bar-3 retracement limit price trades.
+   - Fill price is the configured limit:
+     - Long: `bar3_open - retrace_entry_ticks * tick_size`
+     - Short: `bar3_open + retrace_entry_ticks * tick_size`
+2. **No retracement = no trade**
+   - If required retracement does not occur during bar 3, discard the signal.
+   - Do not enter at bar 3 close.
+   - Do not carry the order into bar 4 in v1 (`max_wait_bars = 1`).
+3. **Separate tick settings**
+   - `arrival_tolerance_ticks` controls bar-1 level arrival tolerance.
+   - `retrace_entry_ticks` controls required bar-3 pullback before entry.
+4. **Intrabar ambiguity**
+   - With 1-minute OHLCV, intrabar sequence is unknown.
+   - If entry, SL, and/or TP are all reachable in bar 3, use the conservative app-wide rule: SL-first / pessimistic.
+   - Finer intrabar data improves event-sequence accuracy.
+5. **Research hypothesis**
+   - Bar-3 retracement/wick against intended direction may indicate absorption/accumulation before continuation.
+   - A clean three-bar sequence with no retracement/wick may indicate imbalance and higher revisit probability.
+   - Treat this as a testable hypothesis, not a built-in assumption.
+6. **Logging for later research**
+   - Engine logging target fields for this trigger:
+     - `arrival_tolerance_ticks`
+     - `retrace_entry_ticks`
+     - `bar1_close`
+     - `bar2_close`
+     - `bar3_open`
+     - `entry_price`
+     - retracement-filled flag
+     - bar-3 wick size
+     - wick ratio
+     - no-retracement-void flag
+
 ### 7.2 Trade simulation (bar-by-bar, conservative fills)
 - **Entry:** at trigger bar close (or next-bar open — configurable; default next-bar open to avoid look-ahead).
+  Exception: `confirm_3bar` uses a conditional limit entry during bar 3 and only fills if retracement trades.
 - **SL / TP definitions** (each independently selectable):
   - Fixed: ticks / points / %.
   - **ATR-multiple** (volatility-normalised) — recommended default.
@@ -231,6 +369,12 @@ Multi-page app (`st.navigation` / `pages/`):
 
 1. **📥 Data** — upload/select instrument, tz, session model, validate & preview.
 2. **🧩 Setup Builder** — pick 1–5 confluences, tolerance, trigger, direction, naked toggle.
+   - When `confirm_3bar` is selected, expose:
+     - Direction: long / short / both
+     - Arrival tolerance (ticks)
+     - Bar-3 retracement entry ticks
+     - Strict vs non-strict reversal close (`allow_equal_close`)
+     - Optional overlay of qualifying 3-bar patterns on chart
 3. **🛡️ Risk** — SL/TP definitions and grid ranges.
 4. **▶️ Run** — execute backtest (cached); progress + config summary.
 5. **📊 Results** — equity curve, trade table, KPIs, MAE/MFE, drawdown.
@@ -276,8 +420,8 @@ ThesisTester/
 | **1** | Data layer + session tagging (RTH/ETH) + resampling | Validated bars on screen |
 | **2** | Level engine: session levels (opens, prior O/H/L, EQ, ON, OR, settlement) | Levels plotted |
 | **3** | Indicator levels (SMA/EMA/VWAP/rolling POC) + volume profile (VAH/VAL/POC) | Full level set |
-| **4** | Confluence detection (k≤3) + naked logic + triggers | Signals on chart |
-| **5** | Backtest engine + single SL/TP + KPIs + equity curve | First end-to-end edge test |
+| **4** | Confluence detection (k≤3) + naked logic + triggers (including `confirm_3bar`) | Signals on chart |
+| **5** | Backtest engine + single SL/TP + KPIs + equity curve + trigger-bar conditional limit entries (`confirm_3bar`) | First end-to-end edge test |
 | **6** | SL/TP grid heatmap | Best risk model per setup |
 | **7** | Time-of-day breakdown | When it works |
 | **8** | Extend k to 5; statistical validation suite (§9) | Trustworthy results |
@@ -287,14 +431,15 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
 
 ---
 
-## 13. Key Assumptions & Decisions (to confirm)
+## 13. Key Assumptions & Decisions (confirmed)
 
-1. **Primary instrument/asset class?** (drives session model — futures assumed: ES/NQ.)
-2. **Data source** for MVP — CSV/Parquet upload? What timezone & bar size will you provide?
-3. **Default cluster tolerance unit** — ticks, points, % or ATR? (ATR recommended.)
-4. **Intrabar fill assumption** — SL-first pessimistic is the default; OK?
-5. **Entry timing** — next-bar open (no look-ahead) default; OK?
-6. **Value-area %** — 70% standard; configurable.
+1. **Primary instruments:** ES and NQ futures.
+2. **Data source for MVP:** CSV upload.
+3. **Default cluster tolerance unit:** ticks.
+4. **Intrabar fill assumption:** SL-first / pessimistic when both SL and TP are reachable in one candle.
+5. **Default entry timing:** next-bar open for simple triggers to avoid look-ahead bias.
+6. **Value-area percentage:** 70% default.
+7. **Trigger-specific exception:** `confirm_3bar` does not use default next-bar-open entry; it uses a conditional limit fill during bar 3 and is void if retracement does not trade.
 
 ---
 
