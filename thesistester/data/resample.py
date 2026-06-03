@@ -1,0 +1,42 @@
+"""OHLCV resampling helpers for supported ThesisTester timeframes."""
+from __future__ import annotations
+
+import pandas as pd
+
+from .loader import infer_base_interval
+
+SUPPORTED_TIMEFRAMES = ("1min", "5min", "15min", "30min", "1h", "4h", "1D")
+
+
+def _parse_timeframe(value: str) -> pd.Timedelta:
+    return pd.to_timedelta(value)
+
+
+def resample_ohlcv(df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
+    """Resample tz-aware OHLCV bars using financial aggregation rules."""
+    if timeframe not in SUPPORTED_TIMEFRAMES:
+        raise ValueError(f"Unsupported timeframe: {timeframe}")
+
+    base_interval = infer_base_interval(df["timestamp"])
+    target_interval = _parse_timeframe(timeframe)
+    if base_interval is None:
+        return df.copy()
+
+    # Do not upsample: return original data when target frame is <= base frame.
+    if target_interval <= base_interval:
+        return df.copy()
+
+    indexed = df.set_index("timestamp")
+    resampled = indexed.resample(timeframe).agg(
+        {
+            "open": "first",
+            "high": "max",
+            "low": "min",
+            "close": "last",
+            # Keep empty buckets as NaN volume so bars with all-NaN OHLCV can be dropped.
+            "volume": lambda s: s.sum(min_count=1),
+        }
+    )
+
+    resampled = resampled.dropna(how="all").reset_index()
+    return resampled
