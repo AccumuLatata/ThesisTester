@@ -158,13 +158,15 @@ resample to needed frames → cache`.
 One module per level family, each exposing `compute(df, params) -> Series/DataFrame` that
 returns the level price aligned to the base timeline.
 
-- `indicators.py` — SMA, EMA, rolling VWAP, rolling POC.
+- `indicators.py` — SMA, EMA, rolling VWAP.
 - `sessions.py` — d/w/m opens, prior O/H/L, EQ, ON H/L, OR, RTH_Open, settlement.
-- `profile.py` — market/volume profile → POC, VAH, VAL (day/week/month).
+- `profile.py` — market/volume profile → rolling POC + prior POC/VAH/VAL (day/week/month).
 - `naked.py` — given a level series + price path, flag whether each level is still untested.
 
 **Volume profile method:** bin traded volume by price (tick-bucketed), POC = max-volume bin,
 Value Area grown outward from POC until 70% volume captured (TPO-style optional later).
+Current MVP allocates each bar's full volume to one price bin (typical price), until true
+tick/volume-at-price data is available.
 
 ---
 
