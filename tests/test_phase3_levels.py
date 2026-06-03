@@ -9,6 +9,17 @@ TZ = "America/New_York"
 
 
 def _base_df(start: str, periods: int, freq: str = "1min") -> pd.DataFrame:
+    """Build deterministic OHLCV test data.
+
+    Parameters
+    ----------
+    start : str
+        Start timestamp for the generated index.
+    periods : int
+        Number of bars to generate.
+    freq : str, default "1min"
+        Pandas frequency string for the bar spacing.
+    """
     ts = pd.date_range(start=start, periods=periods, freq=freq, tz=TZ)
     vals = np.arange(periods, dtype=float) + 100.0
     return pd.DataFrame(

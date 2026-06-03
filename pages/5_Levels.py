@@ -5,7 +5,8 @@ from thesistester.data.sessions import tag_session
 from thesistester.levels import compute_all_levels, compute_session_levels
 
 
-def _parse_lengths(raw: str) -> list[int]:
+def _parse_lengths(raw: str, label: str) -> list[int]:
+    """Parse comma-separated length values for indicator controls."""
     lengths: list[int] = []
     for token in raw.split(","):
         token = token.strip()
@@ -13,10 +14,10 @@ def _parse_lengths(raw: str) -> list[int]:
             continue
         value = int(token)
         if value <= 0:
-            raise ValueError("Lengths must be positive integers.")
+            raise ValueError(f"{label} lengths must be positive integers, got: {value}")
         lengths.append(value)
     if not lengths:
-        raise ValueError("Please provide at least one length.")
+        raise ValueError(f"Please provide at least one {label} length.")
     return sorted(set(lengths))
 
 st.title("📏 Levels")
@@ -46,8 +47,8 @@ if "session" not in base_df.columns:
     base_df = tag_session(base_df, instrument)
 
 try:
-    sma_lengths = _parse_lengths(sma_lengths_raw)
-    ema_lengths = _parse_lengths(ema_lengths_raw)
+    sma_lengths = _parse_lengths(sma_lengths_raw, "SMA")
+    ema_lengths = _parse_lengths(ema_lengths_raw, "EMA")
 except ValueError as exc:
     st.error(str(exc))
     st.stop()

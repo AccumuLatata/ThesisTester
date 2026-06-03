@@ -7,24 +7,9 @@ import numpy as np
 import pandas as pd
 
 from ..config import INSTRUMENTS
+from .common import normalized_window_label, require_tz_aware_timestamp
 
 DEFAULT_ROLLING_POC_WINDOWS: tuple[str, ...] = ("30min", "1h", "4h")
-
-
-def _require_tz_aware_timestamp(df: pd.DataFrame) -> None:
-    if "timestamp" not in df.columns:
-        raise ValueError("Input must include a 'timestamp' column.")
-    if df["timestamp"].dt.tz is None:
-        raise ValueError("Input 'timestamp' must be timezone-aware.")
-
-
-def _normalized_window_label(window: str | pd.Timedelta) -> str:
-    if isinstance(window, str):
-        return window.strip().lower().replace(" ", "")
-    td = pd.to_timedelta(window)
-    if td % pd.Timedelta(hours=1) == pd.Timedelta(0):
-        return f"{int(td / pd.Timedelta(hours=1))}h"
-    return f"{int(td / pd.Timedelta(minutes=1))}min"
 
 
 def _bucket_prices(prices: pd.Series, tick_size: float) -> pd.Series:
@@ -58,7 +43,7 @@ def _compute_profile(
         return (np.nan, np.nan, poc)
 
     target = total_volume * value_area_pct
-    selected = {poc_idx}
+    selected_indices = {poc_idx}
     cumulative = float(volumes_sorted[poc_idx])
     left = poc_idx - 1
     right = poc_idx + 1
@@ -67,20 +52,20 @@ def _compute_profile(
         right_vol = volumes_sorted[right] if right < len(prices_sorted) else -1.0
 
         if right_vol > left_vol:
-            selected.add(right)
+            selected_indices.add(right)
             cumulative += float(right_vol)
             right += 1
         else:
             if left >= 0:
-                selected.add(left)
+                selected_indices.add(left)
                 cumulative += float(left_vol)
                 left -= 1
             elif right < len(prices_sorted):
-                selected.add(right)
+                selected_indices.add(right)
                 cumulative += float(right_vol)
                 right += 1
 
-    selected_prices = prices_sorted[sorted(selected)]
+    selected_prices = prices_sorted[sorted(selected_indices)]
     return (float(selected_prices.max()), float(selected_prices.min()), poc)
 
 
@@ -90,15 +75,16 @@ def _rolling_poc(
     volumes: pd.Series,
     tick_size: float,
     window: str | pd.Timedelta,
+    value_area_pct: float,
 ) -> pd.Series:
-    # MVP-friendly readable implementation; can be vectorized/Numba-accelerated later.
+    # Readable MVP implementation; can be vectorized/Numba-accelerated later.
     timestamps = out["timestamp"]
     window_td = pd.to_timedelta(window)
     out_series = pd.Series(np.nan, index=out.index, dtype="float64")
     for i, now in enumerate(timestamps):
         start = now - window_td
         in_window = (timestamps > start) & (timestamps <= now)
-        _, _, poc = _compute_profile(prices[in_window], volumes[in_window], tick_size=tick_size, value_area_pct=0.70)
+        _, _, poc = _compute_profile(prices[in_window], volumes[in_window], tick_size=tick_size, value_area_pct=value_area_pct)
         out_series.iat[i] = poc
     return out_series
 
@@ -146,9 +132,11 @@ def compute_profile_levels(
     -----
     MVP approximation: each bar allocates its full bar volume to a single price bin
     using bar typical price ``(high + low + close) / 3``. This avoids look-ahead and
-    keeps behavior deterministic until true volume-at-price data is available.
+    keeps behavior deterministic with CSV OHLCV-only input. When true volume-at-price
+    data is added later, this function can replace bar-level allocation with intrabar
+    bin allocation while keeping the same output column contract.
     """
-    _require_tz_aware_timestamp(df)
+    require_tz_aware_timestamp(df)
     if instrument not in INSTRUMENTS:
         raise ValueError(f"Unsupported instrument: {instrument}")
     if not 0 < value_area_pct <= 1:
@@ -167,8 +155,15 @@ def compute_profile_levels(
     ) / 3.0
 
     for window in rolling_windows:
-        label = _normalized_window_label(window)
-        levels[f"POC_rolling_{label}"] = _rolling_poc(out, prices, volumes, tick_size=inst.tick_size, window=window)
+        label = normalized_window_label(window)
+        levels[f"POC_rolling_{label}"] = _rolling_poc(
+            out,
+            prices,
+            volumes,
+            tick_size=inst.tick_size,
+            window=window,
+            value_area_pct=value_area_pct,
+        )
 
     local_ts = out["timestamp"].dt.tz_convert(inst.exchange_tz)
     day_key = local_ts.dt.date
