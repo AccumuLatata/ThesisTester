@@ -129,6 +129,9 @@ if calculate_levels:
         st.session_state["levels"] = levels_df
         st.session_state["levels_settings"] = current_settings
         st.session_state["levels_data_fingerprint"] = current_data_fingerprint
+        previous_settings = current_settings
+        previous_data_fingerprint = current_data_fingerprint
+        has_calculated_levels = True
 
 levels_df = st.session_state.get("levels")
 if levels_df is None:
