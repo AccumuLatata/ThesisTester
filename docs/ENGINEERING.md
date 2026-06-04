@@ -151,6 +151,16 @@ works for any instrument with sessions.
 `load → validate (gaps, dupes, monotonic ts) → localise tz → tag session (ETH/RTH) →
 resample to needed frames → cache`.
 
+## Source Timezone Import Note
+
+- Imported OHLCV data is canonicalized to the instrument exchange timezone before
+  session tagging, level generation, signal generation, backtesting, and time analysis.
+- For timezone-naive CSV timestamps, the Data page source timezone selector determines
+  how timestamps are localized before conversion.
+- For timezone-aware CSV timestamps, the embedded timestamp timezone is trusted and the
+  selector is ignored.
+- ES/NQ exchange timezone remains `America/New_York`.
+
 ---
 
 ## 6. Level Engine

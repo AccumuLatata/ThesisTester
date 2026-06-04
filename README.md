@@ -20,6 +20,10 @@ pytest -q
 - **Phase 1 (data layer):** CSV OHLCV ingestion, timezone normalization, validation,
   base-interval inference, RTH/ETH session tagging, and OHLCV resampling (1min, 5min,
   15min, 30min, 1h, 4h, 1D).
+- **Timezone handling:** the Data page includes a source timestamp timezone selector.
+  Timezone-naive CSV timestamps are localized to the selected source timezone and
+  converted to the instrument exchange timezone (`America/New_York` for ES/NQ).
+  Timezone-aware timestamps are converted from their embedded timezone automatically.
 - **Phase 2 (session/structural levels):** session level engine for opens, prior O/H/L/EQ,
   overnight and opening-range levels, RTH open, and previous settlement preview via the
   new Streamlit **Levels** page.

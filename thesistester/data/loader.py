@@ -81,12 +81,21 @@ def format_interval(interval: pd.Timedelta | None) -> str:
     return str(interval)
 
 
-def load_ohlcv(file, tz: str = "America/New_York") -> pd.DataFrame:
+def load_ohlcv(
+    file,
+    tz: str = "America/New_York",
+    source_tz: str | None = None,
+    target_tz: str | None = None,
+) -> pd.DataFrame:
     """Load an OHLCV CSV into the canonical, tz-aware, sorted contract.
 
     `file` may be a path or a file-like object (e.g. Streamlit upload).
-    Timezone-naive timestamps are localized to `tz`; aware ones are converted.
+    Timezone-naive timestamps are localized to `source_tz` (or the canonical target);
+    aware ones are converted using their embedded timezone.
     """
+    target = target_tz or tz
+    source = source_tz or target
+
     df = pd.read_csv(file)
     df.columns = [str(c).strip().lower() for c in df.columns]
 
@@ -100,9 +109,9 @@ def load_ohlcv(file, tz: str = "America/New_York") -> pd.DataFrame:
 
     was_monotonic = df["timestamp"].is_monotonic_increasing
     if df["timestamp"].dt.tz is None:
-        df["timestamp"] = df["timestamp"].dt.tz_localize(tz)
+        df["timestamp"] = df["timestamp"].dt.tz_localize(source).dt.tz_convert(target)
     else:
-        df["timestamp"] = df["timestamp"].dt.tz_convert(tz)
+        df["timestamp"] = df["timestamp"].dt.tz_convert(target)
 
     for col in ("open", "high", "low", "close", "volume"):
         df[col] = pd.to_numeric(df[col], errors="coerce")
