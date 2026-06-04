@@ -198,8 +198,8 @@ def _no_zones_message(confluence_mode: str) -> str:
         "No confluence zones found with the current settings. "
         "Try increasing tolerance or selecting more levels."
     )
- 
- 
+
+
 def _selected_anchor_levels(anchor_level: str | None, confluence_rules: list[dict], available_columns: list[str]) -> list[str]:
     selected_levels: list[str] = []
     if anchor_level:
@@ -455,7 +455,7 @@ if generate_btn:
             naked_flags=naked_flags if naked_only else None,
             naked_requirement=naked_requirement,
         )
-        if use_saved_setup and saved_setup is not None:
+        if use_saved_setup and saved_setup:
             signals = signals.copy()
             signals["setup_name"] = saved_setup.get("name", "Untitled setup")
             st.session_state["last_signal_setup"] = saved_setup
