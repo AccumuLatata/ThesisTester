@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 
 import streamlit as st
@@ -21,7 +22,10 @@ CONFLUENCE_MODE_DISPLAY = {value: key for key, value in CONFLUENCE_MODE_LABELS.i
 
 
 def _anchor_rule_key(prefix: str, level: str) -> str:
-    sanitized_level = re.sub(r"[^0-9A-Za-z_]+", "_", level).strip("_") or "level"
+    sanitized_level = re.sub(r"[^0-9A-Za-z_]+", "_", level).strip("_")
+    if not sanitized_level:
+        level_hash = hashlib.md5(level.encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
+        sanitized_level = f"level_{level_hash}"
     return f"{prefix}_{sanitized_level}"
 
 
@@ -147,7 +151,7 @@ else:
     else:
         st.info("Select at least one confluence level.")
 
-    selected_levels = list(dict.fromkeys([anchor_level, *selected_confluence_levels]))
+    selected_levels = list(dict.fromkeys(level for level in [anchor_level, *selected_confluence_levels] if level))
 
 naked_only = st.toggle("Naked only", value=False)
 naked_requirement = st.radio("Naked requirement", options=["any", "all"], index=0, horizontal=True)
