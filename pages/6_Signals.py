@@ -9,7 +9,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from thesistester.config import INSTRUMENTS
-from thesistester.engine import detect_confluence_zones, flag_naked_levels, generate_signals
+from thesistester.engine import (
+    detect_anchor_confluence_zones,
+    detect_confluence_zones,
+    flag_naked_levels,
+    generate_signals,
+)
 from thesistester.setup import (
     VALID_DIRECTIONS,
     VALID_TRIGGERS,
@@ -18,6 +23,18 @@ from thesistester.setup import (
 )
 
 st.title("🎯 Signals")
+
+
+ANCHOR_DIAGNOSTIC_COLUMNS = [
+    "timestamp",
+    "bar_index",
+    "anchor_level",
+    "anchor_price",
+    "valid_confluence_count",
+    "level_names",
+    "level_prices",
+    "rule_results",
+]
 
 
 def _normalize_confirm_3bar_params(params: dict | None) -> dict:
@@ -32,6 +49,42 @@ def _normalize_confirm_3bar_params(params: dict | None) -> dict:
         "entry_offset_ticks": float(trigger_params.get("entry_offset_ticks", 0.0)),
         "allow_equal_close": bool(trigger_params.get("allow_equal_close", False)),
     }
+
+
+def _saved_setup_caption(config: dict) -> str:
+    confluence_mode = str(config.get("confluence_mode", "global_cluster"))
+    if confluence_mode == "anchor_rules":
+        return (
+            f"Mode=anchor_rules • Anchor={config.get('anchor_level') or '-'} • "
+            f"Rules={len(config.get('confluence_rules', []))} • "
+            f"Min valid={int(config.get('min_valid_confluences', 1))}"
+        )
+    return (
+        f"Trigger={config.get('trigger')} • Direction={config.get('direction')} • "
+        f"Confluences={config.get('min_confluences')}–{config.get('max_confluences')}"
+    )
+
+
+def _selected_anchor_levels(anchor_level: str | None, confluence_rules: list[dict], available_columns: list[str]) -> list[str]:
+    selected_levels: list[str] = []
+    if anchor_level:
+        selected_levels.append(anchor_level)
+    for rule in confluence_rules:
+        level = str(rule.get("level", "")).strip()
+        if level and level not in selected_levels:
+            selected_levels.append(level)
+    return [level for level in selected_levels if level in available_columns]
+
+
+def _missing_anchor_columns(levels_df, anchor_level: str | None, confluence_rules: list[dict]) -> list[str]:
+    missing_columns: list[str] = []
+    if anchor_level and anchor_level not in levels_df.columns:
+        missing_columns.append(anchor_level)
+    for rule in confluence_rules:
+        level = str(rule.get("level", "")).strip()
+        if level and level not in levels_df.columns:
+            missing_columns.append(level)
+    return sorted(set(missing_columns))
 
 # ── Require levels ────────────────────────────────────────────────────────────
 if "levels" not in st.session_state:
@@ -51,10 +104,7 @@ if not all_level_columns:
 saved_setup = st.session_state.get("setup_config")
 if saved_setup is not None:
     st.info(f"Using setup: {saved_setup.get('name', 'Untitled setup')}")
-    st.caption(
-        f"Trigger={saved_setup.get('trigger')} • Direction={saved_setup.get('direction')} • "
-        f"Confluences={saved_setup.get('min_confluences')}–{saved_setup.get('max_confluences')}"
-    )
+    st.caption(_saved_setup_caption(saved_setup))
 
 # ── Sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:
@@ -67,8 +117,18 @@ with st.sidebar:
         st.info("No saved setup found. Configure manually here or create one in Setup Builder.")
 
     if use_saved_setup and saved_setup is not None:
+        confluence_mode = str(saved_setup.get("confluence_mode", "global_cluster"))
         configured_levels = saved_setup.get("selected_levels", [])
-        selected_levels = [col for col in configured_levels if col in all_level_columns]
+        anchor_level = saved_setup.get("anchor_level")
+        confluence_rules = list(saved_setup.get("confluence_rules", []))
+        min_valid_confluences = int(saved_setup.get("min_valid_confluences", 1))
+        if confluence_mode == "anchor_rules":
+            selected_levels = _selected_anchor_levels(anchor_level, confluence_rules, all_level_columns)
+        else:
+            selected_levels = [col for col in configured_levels if col in all_level_columns]
+            anchor_level = None
+            confluence_rules = []
+            min_valid_confluences = 1
         tolerance_ticks = float(saved_setup.get("tolerance_ticks", 4.0))
         min_conf = int(saved_setup.get("min_confluences", 2))
         max_conf = int(saved_setup.get("max_confluences", 5))
@@ -98,6 +158,10 @@ with st.sidebar:
             )
             st.stop()
     else:
+        confluence_mode = "global_cluster"
+        anchor_level = None
+        confluence_rules = []
+        min_valid_confluences = 1
         st.header("Confluence settings")
 
         selected_levels = st.multiselect(
@@ -189,25 +253,54 @@ with st.sidebar:
 
 # ── Generate ──────────────────────────────────────────────────────────────────
 if generate_btn:
-    if not selected_levels:
+    levels_for_naked_flags = selected_levels
+
+    if confluence_mode == "anchor_rules":
+        if not anchor_level:
+            st.error("Saved anchor setup is missing an anchor level.")
+            st.stop()
+        if not confluence_rules:
+            st.error("Saved anchor setup has no confluence rules.")
+            st.stop()
+        missing_columns = _missing_anchor_columns(levels_df, anchor_level, confluence_rules)
+        if missing_columns:
+            st.error(
+                "Saved anchor setup references level columns that are not available in the current levels DataFrame: "
+                + ", ".join(missing_columns)
+            )
+            st.stop()
+        levels_for_naked_flags = _selected_anchor_levels(anchor_level, confluence_rules, list(levels_df.columns))
+    elif not selected_levels:
         st.error("Please select at least one level column.")
         st.stop()
 
     with st.spinner("Detecting confluence zones…"):
-        zones = detect_confluence_zones(
-            levels_df,
-            level_columns=selected_levels,
-            tick_size=tick_size,
-            tolerance_ticks=tolerance_ticks,
-            min_confluences=min_conf,
-            max_confluences=max_conf,
-        )
+        if confluence_mode == "global_cluster":
+            zones = detect_confluence_zones(
+                levels_df,
+                level_columns=selected_levels,
+                tick_size=tick_size,
+                tolerance_ticks=tolerance_ticks,
+                min_confluences=min_conf,
+                max_confluences=max_conf,
+            )
+        elif confluence_mode == "anchor_rules":
+            zones = detect_anchor_confluence_zones(
+                levels_df,
+                anchor_level=anchor_level,
+                confluence_rules=confluence_rules,
+                tick_size=tick_size,
+                min_valid_confluences=min_valid_confluences,
+            )
+        else:
+            st.error(f"Unsupported confluence mode: {confluence_mode}")
+            st.stop()
         st.session_state["confluence_zones"] = zones
 
     with st.spinner("Flagging naked levels…"):
         naked_flags = flag_naked_levels(
             levels_df,
-            level_columns=selected_levels,
+            level_columns=levels_for_naked_flags,
             tick_size=tick_size,
             touch_tolerance_ticks=0,
         )
@@ -246,6 +339,14 @@ col2.metric("Signals generated", len(signals) if signals is not None else 0)
 if zones.empty:
     st.warning("No confluence zones found with the current settings. Try increasing tolerance or selecting more levels.")
     st.stop()
+
+if all(col in zones.columns for col in ["anchor_level", "valid_confluence_count", "rule_results"]):
+    st.subheader("Anchor confluence diagnostics")
+    st.dataframe(
+        zones[[col for col in ANCHOR_DIAGNOSTIC_COLUMNS if col in zones.columns]].head(500),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 # Signal breakdown
 if signals is not None and not signals.empty:
