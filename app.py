@@ -3,28 +3,38 @@ import streamlit as st
 st.set_page_config(page_title="ThesisTester", page_icon="\U0001F4C8", layout="wide")
 
 st.title("\U0001F4C8 ThesisTester")
-st.caption("Intraday confluence-setup backtesting & research \u2014 Phase 0 scaffold")
+st.caption("Intraday confluence-setup research and backtesting workbench for ES/NQ futures.")
 
 st.markdown(
     """
-Welcome. This is the **Phase 0** skeleton of ThesisTester.
+ThesisTester is a multipage research workflow for intraday confluence setups.
 
-**What works now**
-- App boots as a multipage Streamlit app (see the sidebar).
-- **Data** page: upload an OHLCV CSV (or use the bundled sample), validate it, tag RTH/ETH sessions, and preview.
+**Recommended workflow**
+1. Load and validate OHLCV data.
+2. Configure a setup.
+3. Compute levels.
+4. Generate confluence-based signals.
+5. Backtest fixed SL/TP assumptions.
+6. Run SL/TP grid search.
+7. Analyze time/session performance.
+8. Run statistical validation diagnostics.
+9. Export research artifacts.
 
-**Coming next (see `docs/ENGINEERING.md`)**
-- Level engine (SMA/EMA/VWAP/POC, session & profile levels)
-- Confluence detection (1\u20135 levels) + triggers (incl. the 3-bar confirmation trigger)
-- Backtest engine, SL/TP grid, time-of-day breakdown, statistical validation
+**Implemented now**
+- **Data**: CSV OHLCV ingestion and validation with ES/NQ session handling.
+- **Setup Builder**: save and reuse setup configuration.
+- **Levels**: session, structural, indicator, and profile level computation.
+- **Signals**: confluence zone detection and trigger generation.
+- **Backtest**: fixed SL/TP simulation (core execution page).
+- **Grid Search**: SL/TP sweep and ranking (core execution page).
+- **Time Analysis**: time-of-day/session-window diagnostics.
+- **Validation**: bootstrap/permutation and overfit-oriented diagnostics.
+- **Report / Export**: research artifact and report export for reproducibility.
 
-**Confirmed configuration**
-- Instruments: ES / NQ (futures session model)
-- Data source: CSV upload
-- Cluster tolerance unit: ticks
-- Intrabar fill: SL-first (pessimistic)
-- Entry timing: next-bar open (no look-ahead)
-- Value area: 70%
+**Research assumptions / caveats**
+- Outputs are research diagnostics only, not trading advice.
+- Validation diagnostics do not prove a durable trading edge.
+- Backtests use assumptions including next-bar entries and pessimistic SL-first handling when SL and TP are both reachable intrabar.
 """
 )
 
