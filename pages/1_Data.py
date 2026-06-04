@@ -1,6 +1,11 @@
 from pathlib import Path
+import sys
 
 import streamlit as st
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from thesistester.config import INSTRUMENTS
 from thesistester.data.loader import (
@@ -37,7 +42,7 @@ if source == "Upload CSV":
         "OHLCV CSV with columns: timestamp,open,high,low,close,volume", type=["csv"]
     )
 else:
-    sample = Path(__file__).resolve().parents[1] / "sample_data" / "ES_sample_1m.csv"
+    sample = REPO_ROOT / "sample_data" / "ES_sample_1m.csv"
     file = sample if sample.exists() else None
     if file is None:
         st.error("Sample data not found.")
