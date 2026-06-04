@@ -20,6 +20,21 @@ def _parse_lengths(raw: str, label: str) -> list[int]:
         raise ValueError(f"Please provide at least one {label} length.")
     return sorted(set(lengths))
 
+
+def _normalize_levels_settings(settings: dict | None) -> dict | None:
+    """Return a stable settings shape for stale-result comparisons."""
+    if not isinstance(settings, dict):
+        return None
+    out = dict(settings)
+    for key in ("vwap_windows", "poc_windows"):
+        value = out.get(key)
+        if isinstance(value, list):
+            out[key] = sorted(value)
+        elif isinstance(value, tuple):
+            out[key] = sorted(list(value))
+    return out
+
+
 st.title("📏 Levels")
 
 if "data" not in st.session_state:
@@ -49,16 +64,18 @@ except ValueError as exc:
     st.error(str(exc))
     st.stop()
 
-current_settings = {
+current_settings = _normalize_levels_settings(
+    {
     "instrument": instrument,
     "opening_range_minutes": opening_range_minutes,
     "sma_lengths": sma_lengths,
     "ema_lengths": ema_lengths,
-    "vwap_windows": sorted(vwap_windows),
-    "poc_windows": sorted(poc_windows),
+    "vwap_windows": vwap_windows,
+    "poc_windows": poc_windows,
     "value_area_pct": value_area_pct,
-}
-previous_settings = st.session_state.get("levels_settings")
+    }
+)
+previous_settings = _normalize_levels_settings(st.session_state.get("levels_settings"))
 has_calculated_levels = "levels" in st.session_state and "session_levels" in st.session_state
 
 button_label = "Recalculate levels" if has_calculated_levels else "Calculate levels"
