@@ -110,6 +110,49 @@ def test_quantower_headers_load_and_normalize(tmp_path):
     assert df["timestamp"].dt.tz is not None
 
 
+def test_quantower_datetime_header_loads_and_normalizes(tmp_path):
+    path = tmp_path / "quantower_datetime.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "DateTime,Open,High,Low,Close,Volume(from bar)",
+                "1.6.26 10:36:00,30465.5,30471.25,30461.5,30461.5,584",
+                "1.6.26 10:37:00,30462,30462.75,30455.5,30461.75,581",
+            ]
+        )
+    )
+    df = load_ohlcv(
+        path,
+        source_tz="America/New_York",
+        target_tz="America/New_York",
+    )
+    assert list(df.columns) == ["timestamp", "open", "high", "low", "close", "volume"]
+    assert len(df) == 2
+    assert df["volume"].tolist() == [584, 581]
+    assert df["timestamp"].dt.tz is not None
+    assert str(df["timestamp"].iloc[0].date()) == "2026-06-01"
+
+
+def test_quantower_volume_nbsp_header_normalizes(tmp_path):
+    path = tmp_path / "quantower_volume_nbsp.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "DateTime,Open,High,Low,Close,Volume\xa0(from bar)",
+                "2026-06-02 09:30:00,1,2,0.5,1.5,10",
+                "2026-06-02 09:31:00,1.5,2.5,1,2,20",
+            ]
+        )
+    )
+    df = load_ohlcv(
+        path,
+        source_tz="America/New_York",
+        target_tz="America/New_York",
+    )
+    assert list(df.columns) == ["timestamp", "open", "high", "low", "close", "volume"]
+    assert df["volume"].tolist() == [10, 20]
+
+
 def test_duplicate_alias_collision_raises_data_validation_error(tmp_path):
     path = tmp_path / "duplicate_alias.csv"
     path.write_text(
@@ -123,6 +166,36 @@ def test_duplicate_alias_collision_raises_data_validation_error(tmp_path):
     with pytest.raises(
         DataValidationError, match="Duplicate columns after alias normalization"
     ):
+        load_ohlcv(path, source_tz="America/New_York", target_tz="America/New_York")
+
+
+def test_duplicate_alias_collision_datetime_variant_raises_data_validation_error(tmp_path):
+    path = tmp_path / "duplicate_alias_datetime.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "timestamp,DateTime,open,high,low,close,volume",
+                "2026-06-02 09:30:00,2026-06-02 09:30:00,1,2,0.5,1.5,10",
+            ]
+        )
+    )
+    with pytest.raises(
+        DataValidationError, match="Duplicate columns after alias normalization"
+    ):
+        load_ohlcv(path, source_tz="America/New_York", target_tz="America/New_York")
+
+
+def test_missing_required_columns_reports_detected_columns(tmp_path):
+    path = tmp_path / "missing_required.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "DateTime,Open,High,Low,Close,Vol",
+                "2026-06-02 09:30:00,1,2,0.5,1.5,10",
+            ]
+        )
+    )
+    with pytest.raises(DataValidationError, match="Detected columns after normalization"):
         load_ohlcv(path, source_tz="America/New_York", target_tz="America/New_York")
 
 
