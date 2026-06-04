@@ -1,6 +1,7 @@
 """Phase 9 tests: reporting/export helpers and artifact rendering."""
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 import numpy as np
@@ -130,6 +131,11 @@ def test_to_jsonable_handles_supported_types():
     assert result["nested"][2] == [1, 2]
 
 
+def test_to_jsonable_handles_pandas_missing_scalars():
+    assert to_jsonable(pd.NA) is None
+    assert to_jsonable(pd.NaT) is None
+
+
 def test_dataframe_to_csv_bytes_returns_bytes_with_header():
     df = pd.DataFrame({"col1": [1, 2], "col2": ["a", "b"]})
     csv_bytes = dataframe_to_csv_bytes(df)
@@ -192,6 +198,21 @@ def test_build_research_artifact_excludes_raw_data_and_levels_tables():
     assert "levels" not in artifact["tables"]
     assert "data" not in artifact
     assert "levels" not in artifact
+
+
+def test_research_artifact_is_strict_json_serializable_with_missing_values():
+    state = _sample_session_state()
+    state["signals"] = pd.DataFrame(
+        {
+            "signal_id": [1],
+            "timestamp": [pd.NaT],
+            "notes": [pd.NA],
+        }
+    )
+
+    artifact = build_research_artifact(state)
+
+    json.dumps(artifact, allow_nan=False)
 
 
 def test_build_markdown_report_returns_string_and_required_sections():

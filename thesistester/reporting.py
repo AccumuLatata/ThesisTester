@@ -29,6 +29,17 @@ def to_jsonable(obj: Any) -> Any:
     if obj is None:
         return None
 
+    if obj is pd.NA or obj is pd.NaT:
+        return None
+
+    try:
+        if not isinstance(
+            obj, (list, tuple, set, Mapping, pd.DataFrame, pd.Series, np.ndarray)
+        ) and pd.isna(obj):
+            return None
+    except (TypeError, ValueError):
+        pass
+
     if isinstance(obj, (pd.Timestamp, datetime, date, time)):
         return obj.isoformat()
 
