@@ -16,6 +16,16 @@ from thesistester.data.loader import (
 )
 from thesistester.data.resample import SUPPORTED_TIMEFRAMES, resample_ohlcv
 from thesistester.data.sessions import tag_session
+from thesistester.persistence import (
+    compute_dataset_id,
+    delete_dataset,
+    list_datasets,
+    load_dataset,
+    save_dataset,
+)
+
+FLASH_MESSAGE_KEY = "_data_local_store_message"
+ACTIVE_SAVED_DATASET_KEY = "_active_saved_dataset_id"
 
 
 @st.cache_data(show_spinner=False)
@@ -25,9 +35,117 @@ def cached_resample_and_tag(raw_df, instrument: str, timeframe: str):
     return tag_session(out, instrument)
 
 
+def _default_dataset_name(df, instrument: str) -> str:
+    if df is None or df.empty or "timestamp" not in df.columns:
+        return f"{instrument} dataset"
+    start = df["timestamp"].min()
+    end = df["timestamp"].max()
+    return f"{instrument} {start.date()} to {end.date()}"
+
+
+def _saved_dataset_label(meta: dict) -> str:
+    rows = f"{int(meta.get('rows', 0)):,} rows"
+    date_range = "unknown range"
+    if meta.get("timestamp_min") and meta.get("timestamp_max"):
+        start = meta["timestamp_min"][:10]
+        end = meta["timestamp_max"][:10]
+        date_range = f"{start} → {end}"
+    saved_at = meta.get("created_at", "")[:10] or "unknown date"
+    return f"{meta.get('name', meta['dataset_id'])} · {meta.get('instrument', '—')} · {rows} · {date_range} · saved {saved_at}"
+
+
+def _set_active_dataset_state(
+    df,
+    *,
+    instrument: str,
+    base_interval: str | None,
+    source_timezone: str | None,
+    exchange_timezone: str | None,
+    resampled_data: dict | None,
+    saved_dataset_id: str | None,
+):
+    dataset_id = saved_dataset_id or compute_dataset_id(
+        df,
+        instrument=instrument,
+        base_interval=base_interval,
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
+    )
+    st.session_state["data"] = df
+    st.session_state["resampled_data"] = resampled_data or {}
+    st.session_state["instrument"] = instrument
+    st.session_state["base_interval"] = base_interval
+    st.session_state["source_timezone"] = source_timezone
+    st.session_state["exchange_timezone"] = exchange_timezone
+    st.session_state["dataset_id"] = dataset_id
+    st.session_state["data_instrument_selector"] = instrument
+    if source_timezone is not None:
+        st.session_state["data_source_timezone_selector"] = source_timezone
+    if saved_dataset_id is None:
+        st.session_state.pop(ACTIVE_SAVED_DATASET_KEY, None)
+    else:
+        st.session_state[ACTIVE_SAVED_DATASET_KEY] = saved_dataset_id
+
+
+def _render_dataset_summary(
+    df,
+    *,
+    instrument: str,
+    base_interval: str | None,
+    source_timezone: str | None,
+    exchange_timezone: str | None,
+    report=None,
+    resampled_data: dict | None = None,
+    saved_dataset_loaded: bool = False,
+):
+    st.success(f"Loaded {len(df):,} bars.")
+    st.caption(f"{df['timestamp'].min()} → {df['timestamp'].max()}")
+    st.caption(
+        f"Source timezone: {source_timezone} → canonical exchange timezone: {exchange_timezone}"
+    )
+
+    summary_cols = st.columns(4)
+    summary_cols[0].metric("Rows", f"{len(df):,}")
+    summary_cols[1].metric("Inferred base interval", base_interval or "unknown")
+    summary_cols[2].metric("RTH bars", int((df["session"] == "RTH").sum()))
+    summary_cols[3].metric("ETH bars", int((df["session"] == "ETH").sum()))
+
+    if report is not None:
+        detail_cols = st.columns(2)
+        detail_cols[0].metric("Validation issues", len(report.issues))
+        detail_cols[1].metric("Instrument", instrument)
+        if report.is_clean:
+            st.info("Validation passed ✓")
+        else:
+            st.warning("Validation issues detected:")
+            for issue in report.messages():
+                st.write(f"- {issue}")
+    elif saved_dataset_loaded:
+        st.info("Loaded canonical dataset from local store.")
+    else:
+        st.info("Using dataset from current session.")
+
+    for timeframe, out in (resampled_data or {}).items():
+        with st.expander(f"{timeframe} preview ({len(out):,} rows)"):
+            st.dataframe(out.head(50), use_container_width=True)
+
+    st.subheader("Base timeframe preview")
+    st.dataframe(df.head(50), use_container_width=True)
+
+
 st.title("\U0001F4E5 Data")
 
-inst = st.selectbox("Instrument", list(INSTRUMENTS.keys()))
+flash_message = st.session_state.pop(FLASH_MESSAGE_KEY, None)
+if flash_message:
+    st.success(flash_message)
+
+available_instruments = list(INSTRUMENTS.keys())
+if "data_instrument_selector" not in st.session_state:
+    st.session_state["data_instrument_selector"] = st.session_state.get(
+        "instrument",
+        available_instruments[0],
+    )
+inst = st.selectbox("Instrument", available_instruments, key="data_instrument_selector")
 meta = INSTRUMENTS[inst]
 st.caption(
     f"{meta.name} \u00b7 tick size {meta.tick_size} \u00b7 point value ${meta.point_value:,.0f} "
@@ -36,10 +154,13 @@ st.caption(
 
 source = st.radio("Source", ["Sample data", "Upload CSV"], horizontal=True)
 default_source_tz = "America/New_York" if source == "Sample data" else meta.exchange_tz
+if "data_source_timezone_selector" not in st.session_state:
+    st.session_state["data_source_timezone_selector"] = default_source_tz
 source_tz = st.selectbox(
     "Source timestamp timezone",
     TIMEZONE_OPTIONS,
-    index=TIMEZONE_OPTIONS.index(default_source_tz),
+    index=TIMEZONE_OPTIONS.index(st.session_state["data_source_timezone_selector"]),
+    key="data_source_timezone_selector",
     help=(
         "Use this for timezone-naive CSV timestamps. Timezone-aware timestamps are "
         "converted from their embedded timezone automatically."
@@ -57,34 +178,16 @@ else:
     if file is None:
         st.error("Sample data not found.")
 
-if file is not None:
+use_source_dataset = file is not None and (
+    source == "Upload CSV" or ACTIVE_SAVED_DATASET_KEY not in st.session_state
+)
+
+if use_source_dataset:
     try:
         raw_df = load_ohlcv(file, source_tz=source_tz, target_tz=meta.exchange_tz)
         report = validate_ohlcv(raw_df)
         base_interval = format_interval(report.inferred_interval)
         df = tag_session(raw_df, inst)
-
-        st.success(f"Loaded {len(df):,} bars.")
-        st.caption(f"{df['timestamp'].min()} \u2192 {df['timestamp'].max()}")
-        st.caption(
-            f"Source timezone: {source_tz} \u2192 canonical exchange timezone: {meta.exchange_tz}"
-        )
-
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Rows", f"{len(df):,}")
-        c2.metric("Inferred base interval", base_interval)
-        c3.metric("Validation issues", len(report.issues))
-
-        if report.is_clean:
-            st.info("Validation passed \u2713")
-        else:
-            st.warning("Validation issues detected:")
-            for issue in report.messages():
-                st.write(f"- {issue}")
-
-        c1, c2 = st.columns(2)
-        c1.metric("RTH bars", int((df["session"] == "RTH").sum()))
-        c2.metric("ETH bars", int((df["session"] == "ETH").sum()))
 
         selected_timeframes = st.multiselect(
             "Preview resampled timeframes",
@@ -96,17 +199,94 @@ if file is not None:
         for timeframe in selected_timeframes:
             out = cached_resample_and_tag(raw_df, inst, timeframe)
             resampled_data[timeframe] = out
-            with st.expander(f"{timeframe} preview ({len(out):,} rows)"):
-                st.dataframe(out.head(50), use_container_width=True)
-
-        st.subheader("Base timeframe preview")
-        st.dataframe(df.head(50), use_container_width=True)
-
-        st.session_state["data"] = df
-        st.session_state["resampled_data"] = resampled_data
-        st.session_state["instrument"] = inst
-        st.session_state["base_interval"] = base_interval
-        st.session_state["source_timezone"] = source_tz
-        st.session_state["exchange_timezone"] = meta.exchange_tz
+        _set_active_dataset_state(
+            df,
+            instrument=inst,
+            base_interval=base_interval,
+            source_timezone=source_tz,
+            exchange_timezone=meta.exchange_tz,
+            resampled_data=resampled_data,
+            saved_dataset_id=None,
+        )
+        _render_dataset_summary(
+            df,
+            instrument=inst,
+            base_interval=base_interval,
+            source_timezone=source_tz,
+            exchange_timezone=meta.exchange_tz,
+            report=report,
+            resampled_data=resampled_data,
+        )
     except DataValidationError as exc:
         st.error(str(exc))
+elif "data" in st.session_state:
+    _render_dataset_summary(
+        st.session_state["data"],
+        instrument=st.session_state.get("instrument", inst),
+        base_interval=st.session_state.get("base_interval"),
+        source_timezone=st.session_state.get("source_timezone"),
+        exchange_timezone=st.session_state.get("exchange_timezone"),
+        resampled_data=st.session_state.get("resampled_data"),
+        saved_dataset_loaded=ACTIVE_SAVED_DATASET_KEY in st.session_state,
+    )
+
+st.divider()
+st.subheader("Local saved datasets")
+saved_datasets = list_datasets()
+saved_dataset_options = {item["dataset_id"]: item for item in saved_datasets}
+
+if saved_datasets:
+    selected_saved_dataset_id = st.selectbox(
+        "Saved datasets",
+        options=list(saved_dataset_options),
+        format_func=lambda dataset_id: _saved_dataset_label(saved_dataset_options[dataset_id]),
+    )
+    selected_saved_dataset = saved_dataset_options[selected_saved_dataset_id]
+
+    action_cols = st.columns(2)
+    if action_cols[0].button("Load saved dataset", use_container_width=True):
+        loaded_df, loaded_meta = load_dataset(selected_saved_dataset_id)
+        _set_active_dataset_state(
+            loaded_df,
+            instrument=loaded_meta["instrument"],
+            base_interval=loaded_meta.get("base_interval"),
+            source_timezone=loaded_meta.get("source_timezone"),
+            exchange_timezone=loaded_meta.get("exchange_timezone"),
+            resampled_data={},
+            saved_dataset_id=loaded_meta["dataset_id"],
+        )
+        st.session_state[FLASH_MESSAGE_KEY] = (
+            f"Loaded saved dataset '{loaded_meta['name']}' ({loaded_meta['dataset_id'][:12]}...)."
+        )
+        st.rerun()
+
+    if action_cols[1].button("Delete saved dataset", use_container_width=True):
+        delete_dataset(selected_saved_dataset_id)
+        if st.session_state.get(ACTIVE_SAVED_DATASET_KEY) == selected_saved_dataset_id:
+            st.session_state.pop(ACTIVE_SAVED_DATASET_KEY, None)
+        st.session_state[FLASH_MESSAGE_KEY] = (
+            f"Deleted saved dataset '{selected_saved_dataset.get('name', selected_saved_dataset_id)}'."
+        )
+        st.rerun()
+else:
+    st.caption("No saved datasets yet.")
+
+current_df = st.session_state.get("data")
+if current_df is not None:
+    current_instrument = st.session_state.get("instrument", inst)
+    default_name = _default_dataset_name(current_df, current_instrument)
+    dataset_name = st.text_input("Local dataset name", value=default_name)
+    if st.button("Save dataset locally"):
+        saved_meta = save_dataset(
+            current_df,
+            name=dataset_name.strip() or default_name,
+            instrument=current_instrument,
+            base_interval=st.session_state.get("base_interval"),
+            source_timezone=st.session_state.get("source_timezone"),
+            exchange_timezone=st.session_state.get("exchange_timezone"),
+        )
+        st.session_state["dataset_id"] = saved_meta["dataset_id"]
+        st.session_state[FLASH_MESSAGE_KEY] = (
+            f"Saved dataset '{saved_meta['name']}' locally ({saved_meta['dataset_id'][:12]}...)."
+        )
+        st.rerun()
