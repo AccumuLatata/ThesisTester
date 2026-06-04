@@ -173,7 +173,8 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
             if max_conf > 5:
                 errors.append("Maximum confluences must be <= 5.")
     elif confluence_mode == "anchor_rules":
-        anchor_level = str(config.get("anchor_level", "")).strip()
+        raw_anchor_level = config.get("anchor_level")
+        anchor_level = raw_anchor_level.strip() if isinstance(raw_anchor_level, str) else ""
         if not anchor_level:
             errors.append("Anchor level must be a non-empty string.")
 
