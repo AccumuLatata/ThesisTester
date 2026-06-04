@@ -187,6 +187,19 @@ def _saved_setup_caption(config: dict) -> str:
     )
 
 
+def _no_zones_message(confluence_mode: str) -> str:
+    if confluence_mode == "anchor_rules":
+        return (
+            "No confluence zones found with the current settings. "
+            "For anchor setups, review the anchor level, confluence rules, "
+            "and per-rule tolerances."
+        )
+    return (
+        "No confluence zones found with the current settings. "
+        "Try increasing tolerance or selecting more levels."
+    )
+ 
+ 
 def _selected_anchor_levels(anchor_level: str | None, confluence_rules: list[dict], available_columns: list[str]) -> list[str]:
     selected_levels: list[str] = []
     if anchor_level:
@@ -440,10 +453,22 @@ if generate_btn:
             naked_flags=naked_flags if naked_only else None,
             naked_requirement=naked_requirement,
         )
-        if use_saved_setup and not signals.empty:
+        if use_saved_setup and saved_setup is not None:
             signals = signals.copy()
             signals["setup_name"] = saved_setup.get("name", "Untitled setup")
             st.session_state["last_signal_setup"] = saved_setup
+            st.session_state["signal_context"] = {
+                "setup_name": saved_setup.get("name", "Untitled setup"),
+                "confluence_mode": confluence_mode,
+                "setup_caption": _saved_setup_caption(saved_setup),
+            }
+        else:
+            st.session_state.pop("last_signal_setup", None)
+            st.session_state["signal_context"] = {
+                "setup_name": None,
+                "confluence_mode": confluence_mode,
+                "setup_caption": None,
+            }
         st.session_state["signals"] = signals
 
 # ── Display results ───────────────────────────────────────────────────────────
@@ -459,7 +484,7 @@ col1.metric("Confluence zones detected", len(zones))
 col2.metric("Signals generated", len(signals) if signals is not None else 0)
 
 if zones.empty:
-    st.warning("No confluence zones found with the current settings. Try increasing tolerance or selecting more levels.")
+    st.warning(_no_zones_message(confluence_mode))
     st.stop()
 
 if all(col in zones.columns for col in ["anchor_level", "valid_confluence_count", "rule_results"]):

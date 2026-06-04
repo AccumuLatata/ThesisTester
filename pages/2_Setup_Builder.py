@@ -63,7 +63,7 @@ def _render_setup_summary(config: dict) -> None:
 
 
 st.title("🧩 Setup Builder")
-st.caption("Configure and save reusable setup parameters for the Signals page.")
+st.caption("Configure and save reusable setup parameters for the Signals → Backtest workflow.")
 
 if "levels" not in st.session_state:
     st.warning("No levels computed. Please load data on the Data page and compute levels on the Levels page first.")

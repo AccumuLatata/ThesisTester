@@ -14,6 +14,28 @@ from thesistester.engine.backtest import simulate_trades
 
 st.title("📊 Backtest")
 
+
+def _signal_setup_context(signals, signal_context: dict | None) -> str | None:
+    setup_names: list[str] = []
+    if "setup_name" in signals.columns:
+        setup_names = [
+            str(name).strip()
+            for name in signals["setup_name"].dropna().unique().tolist()
+            if str(name).strip()
+        ]
+
+    context = signal_context or {}
+    setup_name = setup_names[0] if len(setup_names) == 1 else context.get("setup_name")
+    setup_caption = context.get("setup_caption")
+
+    if setup_name and setup_caption:
+        return f"Backtesting signals from saved setup: {setup_name} • {setup_caption}"
+    if setup_name:
+        return f"Backtesting signals from saved setup: {setup_name}"
+    if setup_caption:
+        return f"Backtesting generated signals • {setup_caption}"
+    return None
+
 # ── Require signals ───────────────────────────────────────────────────────────
 if "signals" not in st.session_state:
     st.warning(
@@ -23,6 +45,7 @@ if "signals" not in st.session_state:
     st.stop()
 
 signals = st.session_state["signals"]
+signal_context = st.session_state.get("signal_context")
 if signals is None or signals.empty:
     st.warning("Signal table is empty. Please generate signals on the **Signals** page first.")
     st.stop()
@@ -40,6 +63,10 @@ instrument = st.session_state.get("instrument", "ES")
 inst = INSTRUMENTS.get(instrument)
 tick_size = inst.tick_size if inst else 0.25
 point_value = inst.point_value if inst else 50.0
+
+setup_context_caption = _signal_setup_context(signals, signal_context)
+if setup_context_caption:
+    st.caption(setup_context_caption)
 
 # ── Sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:
@@ -221,7 +248,7 @@ display_cols = [c for c in [
     "stop_price", "target_price",
     "stop_loss_ticks", "take_profit_ticks",
     "pnl_points", "pnl_currency", "r_multiple", "bars_held",
-    "zone_low", "zone_high", "level_count", "level_names",
+    "zone_low", "zone_high", "level_count", "level_names", "setup_name",
     "mae_points", "mfe_points",
 ] if c in trades.columns]
 st.dataframe(trades[display_cols], use_container_width=True, hide_index=True)
