@@ -541,7 +541,7 @@ class TestConfirm3Bar:
         )
         assert len(sigs) == 1
         assert sigs.iloc[0]["reversal_type"] == "standard_reversal"
-        assert sigs.iloc[0]["is_sfp_reversal"] is False
+        assert sigs.iloc[0]["is_sfp_reversal"] == False  # noqa: E712
 
     def test_long_sfp_reversal_marking(self):
         b1 = {"open": 101.00, "high": 101.10, "low": 99.90, "close": 100.30}
@@ -557,7 +557,7 @@ class TestConfirm3Bar:
         )
         assert len(sigs) == 1
         assert sigs.iloc[0]["reversal_type"] == "sfp_reversal"
-        assert sigs.iloc[0]["is_sfp_reversal"] is True
+        assert sigs.iloc[0]["is_sfp_reversal"] == True  # noqa: E712
 
     def test_short_sfp_reversal_marking(self):
         b1 = {"open": 99.00, "high": 100.10, "low": 98.80, "close": 99.80}
@@ -573,7 +573,7 @@ class TestConfirm3Bar:
         )
         assert len(sigs) == 1
         assert sigs.iloc[0]["reversal_type"] == "sfp_reversal"
-        assert sigs.iloc[0]["is_sfp_reversal"] is True
+        assert sigs.iloc[0]["is_sfp_reversal"] == True  # noqa: E712
 
     def test_long_bar3_activation_and_entry_filled(self):
         b1 = {"open": 101.00, "high": 101.20, "low": 99.90, "close": 100.30}
