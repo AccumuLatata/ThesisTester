@@ -211,7 +211,7 @@ def test_anchor_rules_duplicate_rule_levels_invalid():
             ]
         )
     )
-    assert any("Duplicate confluence rule levels" in message for message in errors)
+    assert any("Duplicate confluence rule level" in message for message in errors)
 
 
 def test_anchor_rules_anchor_level_cannot_be_reused_in_confluence_rules():
