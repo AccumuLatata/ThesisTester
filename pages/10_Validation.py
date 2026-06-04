@@ -181,7 +181,7 @@ col4.metric(
     _fmt(bs.get("ci_upper")),
 )
 col5.metric(
-    "P(avg R > 0)",
+    "P(mean R > 0)",
     _fmt(bs.get("probability_positive"), ".1%") if bs.get("probability_positive") is not None else "—",
 )
 

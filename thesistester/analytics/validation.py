@@ -328,7 +328,9 @@ def grid_overfit_diagnostics(
             "Validate on independent data before trusting this result."
         )
     elif valid_cell_count >= 10:
-        # Assess whether the delta is material relative to spread
+        # Assess whether the delta is material relative to spread.
+        # Fall back to 1.0 as the scale reference when median is zero so the
+        # comparison threshold is meaningful (avoids division by zero).
         median_abs = abs(median_metric) if median_metric != 0 else 1.0
         if best_vs_median_delta > 0.5 * median_abs:
             risk_level = "medium"
