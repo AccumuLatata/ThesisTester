@@ -1,8 +1,10 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from thesistester.data.loader import (
+    DataValidationError,
     format_interval,
     infer_base_interval,
     load_ohlcv,
@@ -84,6 +86,44 @@ def test_timezone_aware_timestamps_ignore_source_timezone(tmp_path):
     )
     assert str(df["timestamp"].dt.tz) == "America/New_York"
     assert str(df["timestamp"].iloc[0]) == "2026-06-02 09:30:00-04:00"
+
+
+def test_quantower_headers_load_and_normalize(tmp_path):
+    path = tmp_path / "quantower.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "Date Time,Open,High,Low,Close,Volume(from bar)",
+                "2026-06-02 09:30:00,1,2,0.5,1.5,10",
+                "2026-06-02 09:31:00,1.5,2.5,1,2,20",
+            ]
+        )
+    )
+    df = load_ohlcv(
+        path,
+        source_tz="America/New_York",
+        target_tz="America/New_York",
+    )
+    assert list(df.columns) == ["timestamp", "open", "high", "low", "close", "volume"]
+    assert len(df) == 2
+    assert df["volume"].tolist() == [10, 20]
+    assert df["timestamp"].dt.tz is not None
+
+
+def test_duplicate_alias_collision_raises_data_validation_error(tmp_path):
+    path = tmp_path / "duplicate_alias.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "timestamp,Date Time,open,high,low,close,volume",
+                "2026-06-02 09:30:00,2026-06-02 09:30:00,1,2,0.5,1.5,10",
+            ]
+        )
+    )
+    with pytest.raises(
+        DataValidationError, match=r"Duplicate columns after alias normalization: \['timestamp'\]"
+    ):
+        load_ohlcv(path, source_tz="America/New_York", target_tz="America/New_York")
 
 
 def test_infer_interval_from_irregular_series():

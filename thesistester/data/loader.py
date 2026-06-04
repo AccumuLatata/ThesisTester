@@ -11,6 +11,11 @@ GAP_THRESHOLD_MULTIPLIER = 3
 SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 60 * SECONDS_PER_MINUTE
 SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
+COLUMN_ALIASES = {
+    "date time": "timestamp",
+    "volume(from bar)": "volume",
+    "volume (from bar)": "volume",
+}
 
 
 class DataValidationError(Exception):
@@ -97,7 +102,16 @@ def load_ohlcv(
     source = source_tz or target
 
     df = pd.read_csv(file)
-    df.columns = [str(c).strip().lower() for c in df.columns]
+    raw_columns = [str(c).strip().lower() for c in df.columns]
+    normalized_columns = [COLUMN_ALIASES.get(col, col) for col in raw_columns]
+
+    duplicate_columns = sorted({col for col in normalized_columns if normalized_columns.count(col) > 1})
+    if duplicate_columns:
+        raise DataValidationError(
+            f"Duplicate columns after alias normalization: {duplicate_columns}"
+        )
+
+    df.columns = normalized_columns
 
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing:
