@@ -102,14 +102,40 @@ def test_confirm_3bar_config_includes_expected_trigger_params():
         direction="both",
         trigger_params={
             "arrival_tolerance_ticks": 1.0,
-            "retrace_entry_ticks": 3.0,
+            "activation_retrace_ticks": 3.0,
+            "entry_offset_ticks": 1.0,
             "allow_equal_close": True,
         },
     )
 
     assert config["trigger_params"] == {
         "arrival_tolerance_ticks": 1.0,
-        "retrace_entry_ticks": 3.0,
+        "activation_retrace_ticks": 3.0,
+        "entry_offset_ticks": 1.0,
         "allow_equal_close": True,
     }
+    assert validate_setup_config(config) == []
+
+
+def test_confirm_3bar_legacy_retrace_entry_ticks_is_mapped():
+    config = build_setup_config(
+        name="3bar legacy",
+        description="",
+        instrument="ES",
+        selected_levels=["ONH"],
+        tolerance_ticks=4.0,
+        min_confluences=2,
+        max_confluences=5,
+        naked_only=False,
+        naked_requirement="any",
+        trigger="confirm_3bar",
+        direction="both",
+        trigger_params={
+            "arrival_tolerance_ticks": 1.0,
+            "retrace_entry_ticks": 5.0,
+            "allow_equal_close": False,
+        },
+    )
+    assert config["trigger_params"]["activation_retrace_ticks"] == 5.0
+    assert config["trigger_params"]["entry_offset_ticks"] == 0.0
     assert validate_setup_config(config) == []

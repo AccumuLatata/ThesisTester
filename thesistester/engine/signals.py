@@ -12,7 +12,8 @@ VALID_DIRECTIONS = frozenset({"long", "short", "both"})
 
 _DEFAULT_3BAR_PARAMS: dict = {
     "arrival_tolerance_ticks": 0,
-    "retrace_entry_ticks": 4,
+    "activation_retrace_ticks": 4,
+    "entry_offset_ticks": 0,
     "allow_equal_close": False,
 }
 
@@ -27,6 +28,17 @@ _SIGNAL_COLUMNS: list[str] = [
     "zone_mid",
     "level_count",
     "level_names",
+    "tested_level_name",
+    "tested_level_price",
+    "arrival_bar_index",
+    "reversal_bar_index",
+    "confirmation_bar_index",
+    "reversal_type",
+    "is_sfp_reversal",
+    "activation_price",
+    "entry_price",
+    "activation_retrace_ticks",
+    "entry_offset_ticks",
     "entry_reference_price",
     "entry_model",
     "status",
@@ -65,6 +77,17 @@ def _make_signal(
     naked_count: int,
     naked_req: str,
     notes: str = "",
+    tested_level_name: str | None = None,
+    tested_level_price: float | None = None,
+    arrival_bar_index: int | None = None,
+    reversal_bar_index: int | None = None,
+    confirmation_bar_index: int | None = None,
+    reversal_type: str | None = None,
+    is_sfp_reversal: bool | None = None,
+    activation_price: float | None = None,
+    entry_price: float | None = None,
+    activation_retrace_ticks: float | None = None,
+    entry_offset_ticks: float | None = None,
 ) -> dict:
     return {
         "signal_id": signal_id,
@@ -77,6 +100,17 @@ def _make_signal(
         "zone_mid": zone["zone_mid"],
         "level_count": zone["level_count"],
         "level_names": zone["level_names"],
+        "tested_level_name": tested_level_name,
+        "tested_level_price": tested_level_price,
+        "arrival_bar_index": arrival_bar_index,
+        "reversal_bar_index": reversal_bar_index,
+        "confirmation_bar_index": confirmation_bar_index,
+        "reversal_type": reversal_type,
+        "is_sfp_reversal": is_sfp_reversal,
+        "activation_price": activation_price,
+        "entry_price": entry_price,
+        "activation_retrace_ticks": activation_retrace_ticks,
+        "entry_offset_ticks": entry_offset_ticks,
         "entry_reference_price": entry_ref,
         "entry_model": entry_model,
         "status": status,
@@ -89,6 +123,97 @@ def _make_signal(
 # ---------------------------------------------------------------------------
 # Per-trigger helpers
 # ---------------------------------------------------------------------------
+
+
+def _normalize_confirm_3bar_params(trigger_params: dict | None) -> dict:
+    params = trigger_params or {}
+    activation_retrace_ticks = params.get(
+        "activation_retrace_ticks",
+        params.get("retrace_entry_ticks", _DEFAULT_3BAR_PARAMS["activation_retrace_ticks"]),
+    )
+    return {
+        "arrival_tolerance_ticks": params.get(
+            "arrival_tolerance_ticks",
+            _DEFAULT_3BAR_PARAMS["arrival_tolerance_ticks"],
+        ),
+        "activation_retrace_ticks": activation_retrace_ticks,
+        "entry_offset_ticks": params.get(
+            "entry_offset_ticks",
+            _DEFAULT_3BAR_PARAMS["entry_offset_ticks"],
+        ),
+        "allow_equal_close": params.get(
+            "allow_equal_close",
+            _DEFAULT_3BAR_PARAMS["allow_equal_close"],
+        ),
+    }
+
+
+def _parse_zone_levels(zone: pd.Series) -> list[tuple[str, float]]:
+    names_raw = zone.get("level_names", "")
+    prices_raw = zone.get("level_prices", "")
+    names = str(names_raw).split("|") if pd.notna(names_raw) else []
+    prices = str(prices_raw).split("|") if pd.notna(prices_raw) else []
+
+    pairs: list[tuple[str, float]] = []
+    for name, price_raw in zip(names, prices):
+        try:
+            price = float(price_raw)
+        except (TypeError, ValueError):
+            continue
+        if not np.isfinite(price):
+            continue
+        pairs.append((str(name).strip(), price))
+    return pairs
+
+
+def _find_tested_level_for_arrival(
+    *,
+    df: pd.DataFrame,
+    zone: pd.Series,
+    bar1_idx: int,
+    direction: str,
+    tick_size: float,
+    arrival_tolerance_ticks: float,
+) -> tuple[str, float] | None:
+    levels = _parse_zone_levels(zone)
+    if not levels:
+        return None
+
+    bar1 = df.iloc[bar1_idx]
+    bar1_open = float(bar1["open"])
+    bar1_low = float(bar1["low"])
+    bar1_high = float(bar1["high"])
+    bar1_close = float(bar1["close"])
+    tol = float(arrival_tolerance_ticks) * float(tick_size)
+    previous_close = float(df.iloc[bar1_idx - 1]["close"]) if bar1_idx > 0 else None
+
+    candidates: list[tuple[str, float]] = []
+    for level_name, level_price in levels:
+        if direction == "long":
+            level_hit = bar1_low <= level_price + tol
+            close_reclaimed = bar1_close > level_price
+            approach_from_above = (
+                bar1_open > level_price
+                or (previous_close is not None and previous_close > level_price)
+            )
+            qualifies = level_hit and close_reclaimed and approach_from_above
+        else:
+            level_hit = bar1_high >= level_price - tol
+            close_reclaimed = bar1_close < level_price
+            approach_from_below = (
+                bar1_open < level_price
+                or (previous_close is not None and previous_close < level_price)
+            )
+            qualifies = level_hit and close_reclaimed and approach_from_below
+
+        if qualifies:
+            candidates.append((level_name, level_price))
+
+    if not candidates:
+        return None
+    if direction == "long":
+        return max(candidates, key=lambda item: item[1])
+    return min(candidates, key=lambda item: item[1])
 
 
 def _check_touch(
@@ -237,49 +362,70 @@ def _check_confirm_3bar(
     if bar3_idx >= n:
         return []
 
-    arrival_tol = float(params.get("arrival_tolerance_ticks", 0)) * tick_size
-    retrace_ticks = float(params.get("retrace_entry_ticks", 4)) * tick_size
+    arrival_tolerance_ticks = float(params.get("arrival_tolerance_ticks", 0))
+    activation_retrace_ticks = float(
+        params.get("activation_retrace_ticks", params.get("retrace_entry_ticks", 4))
+    )
+    entry_offset_ticks = float(params.get("entry_offset_ticks", 0))
     allow_equal = bool(params.get("allow_equal_close", False))
+    activation_retrace = activation_retrace_ticks * tick_size
+    entry_offset = entry_offset_ticks * tick_size
 
     bar1 = df.iloc[bar1_idx]
     bar2 = df.iloc[bar2_idx]
     bar3 = df.iloc[bar3_idx]
-
-    # Bar 1 — arrival condition (same for long and short)
-    arrival_ok = (
-        float(bar1["low"]) <= zone["zone_high"] + arrival_tol
-        and float(bar1["high"]) >= zone["zone_low"] - arrival_tol
-    )
-    if not arrival_ok:
-        return []
 
     directions = ["long", "short"] if direction == "both" else [direction]
     results: list[dict] = []
     sid = signal_id_start
 
     for d in directions:
+        tested_level = _find_tested_level_for_arrival(
+            df=df,
+            zone=zone,
+            bar1_idx=bar1_idx,
+            direction=d,
+            tick_size=tick_size,
+            arrival_tolerance_ticks=arrival_tolerance_ticks,
+        )
+        if tested_level is None:
+            continue
+        tested_level_name, tested_level_price = tested_level
+
         # Bar 2 — reversal
         b2_close = float(bar2["close"])
         b1_close = float(bar1["close"])
         if d == "long":
             rev_ok = (b2_close >= b1_close) if allow_equal else (b2_close > b1_close)
+            is_sfp_reversal = float(bar2["low"]) < float(bar1["low"]) and rev_ok
         else:
             rev_ok = (b2_close <= b1_close) if allow_equal else (b2_close < b1_close)
+            is_sfp_reversal = float(bar2["high"]) > float(bar1["high"]) and rev_ok
 
         if not rev_ok:
             continue
 
-        # Bar 3 — retracement and limit fill
-        if d == "long":
-            entry_price = float(bar3["open"]) - retrace_ticks
-            filled = float(bar3["low"]) <= entry_price
-        else:
-            entry_price = float(bar3["open"]) + retrace_ticks
-            filled = float(bar3["high"]) >= entry_price
+        reversal_type = "sfp_reversal" if is_sfp_reversal else "standard_reversal"
 
+        # Bar 3 — activation + stop-limit-style entry
+        if d == "long":
+            activation_price = float(bar3["open"]) - activation_retrace
+            entry_price = float(bar3["open"]) + entry_offset
+            activation_hit = float(bar3["low"]) <= activation_price
+            entry_hit = float(bar3["high"]) >= entry_price
+        else:
+            activation_price = float(bar3["open"]) + activation_retrace
+            entry_price = float(bar3["open"]) - entry_offset
+            activation_hit = float(bar3["high"]) >= activation_price
+            entry_hit = float(bar3["low"]) <= entry_price
+
+        filled = activation_hit and entry_hit
         status = "filled" if filled else "void"
-        entry_model = "bar3_limit_fill" if filled else "bar3_limit_void"
-        entry_ref = entry_price if filled else float(bar3["close"])
+        entry_model = "bar3_stop_limit_fill" if filled else "bar3_stop_limit_void"
+        entry_ref = entry_price
+        notes_parts = [f"bar1={bar1_idx}", f"bar2={bar2_idx}", f"bar3={bar3_idx}"]
+        if filled:
+            notes_parts.append("bar3_sequence_assumed_from_ohlc")
 
         results.append(
             _make_signal(
@@ -294,7 +440,18 @@ def _check_confirm_3bar(
                 status=status,
                 naked_count=naked_count,
                 naked_req=naked_req,
-                notes=f"bar1={bar1_idx},bar2={bar2_idx},bar3={bar3_idx}",
+                notes=",".join(notes_parts),
+                tested_level_name=tested_level_name,
+                tested_level_price=tested_level_price,
+                arrival_bar_index=bar1_idx,
+                reversal_bar_index=bar2_idx,
+                confirmation_bar_index=bar3_idx,
+                reversal_type=reversal_type,
+                is_sfp_reversal=is_sfp_reversal,
+                activation_price=activation_price,
+                entry_price=entry_price,
+                activation_retrace_ticks=activation_retrace_ticks,
+                entry_offset_ticks=entry_offset_ticks,
             )
         )
         sid += 1
@@ -336,8 +493,10 @@ def generate_signals(
     trigger_params:
         Optional dict of trigger-specific parameters.  For ``confirm_3bar``
         the supported keys are ``arrival_tolerance_ticks`` (default 0),
-        ``retrace_entry_ticks`` (default 4), and ``allow_equal_close``
-        (default ``False``).
+        ``activation_retrace_ticks`` (default 4), ``entry_offset_ticks``
+        (default 0), and ``allow_equal_close`` (default ``False``).
+        Legacy ``retrace_entry_ticks`` is still accepted and mapped to
+        ``activation_retrace_ticks``.
     naked_only:
         When ``True`` only zones where at least one level (or all levels,
         depending on *naked_requirement*) is naked are processed.
@@ -377,7 +536,7 @@ def generate_signals(
     if zones is None or zones.empty:
         return _empty_signals_df()
 
-    params = {**_DEFAULT_3BAR_PARAMS, **(trigger_params or {})}
+    params = _normalize_confirm_3bar_params(trigger_params) if trigger == "confirm_3bar" else {}
     naked_req = naked_requirement.lower()
     if naked_req not in {"any", "all"}:
         naked_req = "any"

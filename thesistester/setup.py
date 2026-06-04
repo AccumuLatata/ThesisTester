@@ -34,9 +34,30 @@ SUGGESTED_DEFAULT_LEVELS = [
 
 DEFAULT_CONFIRM_3BAR_PARAMS: dict[str, Any] = {
     "arrival_tolerance_ticks": 0.0,
-    "retrace_entry_ticks": 4.0,
+    "activation_retrace_ticks": 4.0,
+    "entry_offset_ticks": 0.0,
     "allow_equal_close": False,
 }
+
+
+def _normalize_confirm_3bar_params(params: dict[str, Any] | None) -> dict[str, Any]:
+    trigger_params = params or {}
+    activation_retrace_ticks = trigger_params.get(
+        "activation_retrace_ticks",
+        trigger_params.get("retrace_entry_ticks", DEFAULT_CONFIRM_3BAR_PARAMS["activation_retrace_ticks"]),
+    )
+    return {
+        "arrival_tolerance_ticks": float(
+            trigger_params.get("arrival_tolerance_ticks", DEFAULT_CONFIRM_3BAR_PARAMS["arrival_tolerance_ticks"])
+        ),
+        "activation_retrace_ticks": float(activation_retrace_ticks),
+        "entry_offset_ticks": float(
+            trigger_params.get("entry_offset_ticks", DEFAULT_CONFIRM_3BAR_PARAMS["entry_offset_ticks"])
+        ),
+        "allow_equal_close": bool(
+            trigger_params.get("allow_equal_close", DEFAULT_CONFIRM_3BAR_PARAMS["allow_equal_close"])
+        ),
+    }
 
 
 def available_level_columns(df: pd.DataFrame) -> list[str]:
@@ -70,7 +91,7 @@ def build_setup_config(
     """Build a normalized setup configuration dictionary."""
     normalized_params = {}
     if trigger == "confirm_3bar":
-        normalized_params = {**DEFAULT_CONFIRM_3BAR_PARAMS, **(trigger_params or {})}
+        normalized_params = _normalize_confirm_3bar_params(trigger_params)
 
     return {
         "name": name.strip(),
@@ -143,14 +164,30 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
         if not isinstance(trigger_params, dict):
             errors.append("trigger_params must be a dictionary for confirm_3bar.")
         else:
-            for key in ("arrival_tolerance_ticks", "retrace_entry_ticks"):
+            activation_retrace_ticks = trigger_params.get(
+                "activation_retrace_ticks",
+                trigger_params.get("retrace_entry_ticks", 0.0),
+            )
+            numeric_fields = {
+                "arrival_tolerance_ticks": trigger_params.get("arrival_tolerance_ticks", 0.0),
+                "activation_retrace_ticks": activation_retrace_ticks,
+                "entry_offset_ticks": trigger_params.get("entry_offset_ticks", 0.0),
+            }
+            for key, raw_value in numeric_fields.items():
                 try:
-                    value = float(trigger_params.get(key, 0.0))
+                    value = float(raw_value)
                     if value < 0:
                         errors.append(f"{key} must be >= 0.")
                 except (TypeError, ValueError):
                     errors.append(f"{key} must be a number.")
             if "allow_equal_close" not in trigger_params:
                 errors.append("allow_equal_close must be provided for confirm_3bar.")
+            else:
+                allow_equal_raw = trigger_params.get("allow_equal_close")
+                bool_compatible = isinstance(allow_equal_raw, (bool, int))
+                if not bool_compatible and isinstance(allow_equal_raw, str):
+                    bool_compatible = allow_equal_raw.strip().lower() in {"true", "false", "1", "0"}
+                if not bool_compatible:
+                    errors.append("allow_equal_close must be boolean-compatible.")
 
     return errors

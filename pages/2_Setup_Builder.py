@@ -23,10 +23,15 @@ def _render_setup_summary(config: dict) -> None:
     st.markdown(f"**Direction:** {config['direction']}")
     if config["trigger"] == "confirm_3bar":
         params = config.get("trigger_params", {})
+        activation_retrace_ticks = params.get(
+            "activation_retrace_ticks",
+            params.get("retrace_entry_ticks", 4.0),
+        )
         st.markdown("**Trigger params:**")
         st.markdown(
             f"- Arrival tolerance ticks: {params.get('arrival_tolerance_ticks', 0.0)}\n"
-            f"- Retrace entry ticks: {params.get('retrace_entry_ticks', 4.0)}\n"
+            f"- Activation retrace ticks: {activation_retrace_ticks}\n"
+            f"- Entry offset ticks: {params.get('entry_offset_ticks', 0.0)}\n"
             f"- Allow equal close: {params.get('allow_equal_close', False)}"
         )
 
@@ -72,11 +77,13 @@ direction = st.selectbox("Direction", options=["long", "short", "both"], index=2
 trigger_params = {}
 if trigger == "confirm_3bar":
     arrival_tolerance_ticks = st.number_input("Arrival tolerance ticks", min_value=0.0, value=0.0, step=0.5)
-    retrace_entry_ticks = st.number_input("Retrace entry ticks", min_value=0.0, value=4.0, step=0.5)
+    activation_retrace_ticks = st.number_input("Activation retrace ticks", min_value=0.0, value=4.0, step=0.5)
+    entry_offset_ticks = st.number_input("Entry offset ticks", min_value=0.0, value=0.0, step=0.5)
     allow_equal_close = st.toggle("Allow equal close", value=False)
     trigger_params = {
         "arrival_tolerance_ticks": arrival_tolerance_ticks,
-        "retrace_entry_ticks": retrace_entry_ticks,
+        "activation_retrace_ticks": activation_retrace_ticks,
+        "entry_offset_ticks": entry_offset_ticks,
         "allow_equal_close": allow_equal_close,
     }
 

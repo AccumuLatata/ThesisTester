@@ -434,134 +434,229 @@ class TestConfirm3Bar:
     def _three_bar_df(self, b1, b2, b3) -> pd.DataFrame:
         return _df_bars([b1, b2, b3])
 
-    def test_long_filled_case(self):
-        # Zone at bar 0 (bar 1): low=100, high=100.5
-        # Bar 1 (bar 2): close=100.8 > bar1_close=100.3 → reversal OK
-        # Bar 3: open=101.0, retrace=4 ticks=1.0, entry=100.0, low=99.8 <= 100.0 → filled
-        b1 = {"open": 100.0, "high": 100.8, "low": 99.8, "close": 100.3}
-        b2 = {"open": 100.5, "high": 101.0, "low": 100.3, "close": 100.8}
-        b3 = {"open": 101.0, "high": 101.2, "low": 99.8, "close": 100.5}
-        df = self._three_bar_df(b1, b2, b3)
-        zones = _zone_df(0, low=100.0, high=100.5)
-        params = {"arrival_tolerance_ticks": 0, "retrace_entry_ticks": 4, "allow_equal_close": False}
-        sigs = generate_signals(df, zones, trigger="confirm_3bar", direction="long",
-                                tick_size=TICK, trigger_params=params)
-        # Should produce at least one signal
-        assert len(sigs) >= 1
-        filled = sigs[sigs["status"] == "filled"]
-        assert len(filled) == 1
-        assert filled.iloc[0]["direction"] == "long"
-        assert filled.iloc[0]["bar_index"] == 2  # bar 3 (0-indexed)
-        # entry_reference_price = bar3_open - 4 ticks = 101.0 - 1.0 = 100.0
-        assert abs(filled.iloc[0]["entry_reference_price"] - 100.0) < 1e-9
+    def _zone_with_levels(self, *, prices: list[float], names: list[str] | None = None, bar_idx: int = 0) -> pd.DataFrame:
+        level_names = names or [f"L{i + 1}" for i in range(len(prices))]
+        return pd.DataFrame(
+            [
+                {
+                    "timestamp": pd.Timestamp(f"2026-06-02 09:3{bar_idx}:00", tz=TZ),
+                    "bar_index": bar_idx,
+                    "zone_low": min(prices),
+                    "zone_high": max(prices),
+                    "zone_mid": (min(prices) + max(prices)) / 2.0,
+                    "level_count": len(prices),
+                    "level_names": "|".join(level_names),
+                    "level_prices": "|".join(str(price) for price in prices),
+                }
+            ]
+        )
 
-    def test_short_filled_case(self):
-        # Zone at bar 0 (bar 1): low=100, high=100.5
-        # Bar 2 (reversal): close=99.8 < bar1_close=100.2 → reversal OK for short
-        # Bar 3: open=99.5, retrace=4 ticks=1.0, entry=100.5, high=100.6 >= 100.5 → filled
-        b1 = {"open": 100.2, "high": 100.8, "low": 100.0, "close": 100.2}
-        b2 = {"open": 100.0, "high": 100.2, "low": 99.5, "close": 99.8}
-        b3 = {"open": 99.5, "high": 100.6, "low": 99.3, "close": 99.6}
-        df = self._three_bar_df(b1, b2, b3)
-        zones = _zone_df(0, low=100.0, high=100.5)
-        params = {"arrival_tolerance_ticks": 0, "retrace_entry_ticks": 4, "allow_equal_close": False}
-        sigs = generate_signals(df, zones, trigger="confirm_3bar", direction="short",
-                                tick_size=TICK, trigger_params=params)
-        filled = sigs[sigs["status"] == "filled"]
-        assert len(filled) == 1
-        assert filled.iloc[0]["direction"] == "short"
-        # entry = bar3_open + 4 * 0.25 = 99.5 + 1.0 = 100.5
-        assert abs(filled.iloc[0]["entry_reference_price"] - 100.5) < 1e-9
+    def test_long_arrival_hits_actual_level_and_selects_highest_touched(self):
+        b1 = {"open": 101.00, "high": 101.20, "low": 100.00, "close": 100.50}
+        b2 = {"open": 100.60, "high": 101.00, "low": 100.20, "close": 100.80}
+        b3 = {"open": 101.00, "high": 101.40, "low": 99.90, "close": 101.10}
+        sigs = generate_signals(
+            self._three_bar_df(b1, b2, b3),
+            self._zone_with_levels(prices=[100.00, 100.25], names=["level_A", "level_B"]),
+            trigger="confirm_3bar",
+            direction="long",
+            tick_size=TICK,
+            trigger_params={"arrival_tolerance_ticks": 0, "activation_retrace_ticks": 4, "entry_offset_ticks": 1},
+        )
+        assert len(sigs) == 1
+        sig = sigs.iloc[0]
+        assert sig["tested_level_price"] == pytest.approx(100.25)
+        assert sig["tested_level_name"] == "level_B"
 
-    def test_void_when_bar3_does_not_retrace(self):
-        # Bar 3 open=101.0, entry=100.0, but bar3_low=100.5 > 100.0 → not filled
-        b1 = {"open": 100.0, "high": 100.8, "low": 99.8, "close": 100.3}
-        b2 = {"open": 100.5, "high": 101.0, "low": 100.3, "close": 100.8}
-        b3 = {"open": 101.0, "high": 101.5, "low": 100.5, "close": 101.2}
-        df = self._three_bar_df(b1, b2, b3)
-        zones = _zone_df(0, low=100.0, high=100.5)
-        params = {"arrival_tolerance_ticks": 0, "retrace_entry_ticks": 4, "allow_equal_close": False}
-        sigs = generate_signals(df, zones, trigger="confirm_3bar", direction="long",
-                                tick_size=TICK, trigger_params=params)
-        # Should produce a void signal (setup present but not filled)
-        assert len(sigs) >= 1
-        void_sigs = sigs[sigs["status"] == "void"]
-        assert len(void_sigs) == 1
-
-    def test_no_signal_when_bar2_reversal_fails(self):
-        # Bar 2 close < bar 1 close for a long setup → reversal fails
-        b1 = {"open": 100.0, "high": 100.8, "low": 99.8, "close": 100.5}
-        b2 = {"open": 100.3, "high": 100.4, "low": 99.9, "close": 100.1}  # close < bar1_close
-        b3 = {"open": 101.0, "high": 101.2, "low": 99.8, "close": 100.5}
-        df = self._three_bar_df(b1, b2, b3)
-        zones = _zone_df(0, low=100.0, high=100.5)
-        params = {"arrival_tolerance_ticks": 0, "retrace_entry_ticks": 4, "allow_equal_close": False}
-        sigs = generate_signals(df, zones, trigger="confirm_3bar", direction="long",
-                                tick_size=TICK, trigger_params=params)
+    def test_long_arrival_cannot_front_run_level_without_tolerance(self):
+        b1 = {"open": 101.00, "high": 101.20, "low": 100.10, "close": 100.50}
+        b2 = {"open": 100.60, "high": 101.00, "low": 100.20, "close": 100.80}
+        b3 = {"open": 101.00, "high": 101.40, "low": 99.90, "close": 101.10}
+        sigs = generate_signals(
+            self._three_bar_df(b1, b2, b3),
+            self._zone_with_levels(prices=[100.00], names=["level_A"]),
+            trigger="confirm_3bar",
+            direction="long",
+            tick_size=TICK,
+            trigger_params={"arrival_tolerance_ticks": 0, "activation_retrace_ticks": 4, "entry_offset_ticks": 1},
+        )
         assert sigs.empty
 
-    def test_arrival_tolerance_and_retrace_ticks_are_independent(self):
-        """Verify changing arrival_tolerance vs retrace_ticks has distinct effects."""
-        # Zone [100.0, 100.5]; bar 1 range [100.6, 100.8] — misses zone without tolerance
-        b1 = {"open": 100.6, "high": 100.8, "low": 100.6, "close": 100.7}
-        b2 = {"open": 101.0, "high": 101.2, "low": 100.8, "close": 101.0}
-        b3 = {"open": 101.0, "high": 101.2, "low": 99.0, "close": 100.5}
-        df = self._three_bar_df(b1, b2, b3)
-        zones = _zone_df(0, low=100.0, high=100.5)
+    def test_long_arrival_fails_when_close_is_below_tested_level(self):
+        b1 = {"open": 101.00, "high": 101.20, "low": 99.75, "close": 99.90}
+        b2 = {"open": 100.00, "high": 100.20, "low": 99.80, "close": 100.10}
+        b3 = {"open": 100.20, "high": 100.40, "low": 99.70, "close": 100.00}
+        sigs = generate_signals(
+            self._three_bar_df(b1, b2, b3),
+            self._zone_with_levels(prices=[100.00], names=["level_A"]),
+            trigger="confirm_3bar",
+            direction="long",
+            tick_size=TICK,
+            trigger_params={"arrival_tolerance_ticks": 0, "activation_retrace_ticks": 4, "entry_offset_ticks": 1},
+        )
+        assert sigs.empty
 
-        # Without arrival tolerance: bar 1 low=100.6 > zone_high=100.5 → no arrival
-        sigs_no_tol = generate_signals(
-            df, zones, trigger="confirm_3bar", direction="long", tick_size=TICK,
-            trigger_params={"arrival_tolerance_ticks": 0, "retrace_entry_ticks": 4},
+    def test_short_arrival_hits_actual_level_and_selects_lowest_touched(self):
+        b1 = {"open": 99.00, "high": 100.30, "low": 98.80, "close": 99.80}
+        b2 = {"open": 99.90, "high": 100.00, "low": 99.00, "close": 99.40}
+        b3 = {"open": 99.00, "high": 100.20, "low": 98.70, "close": 98.90}
+        sigs = generate_signals(
+            self._three_bar_df(b1, b2, b3),
+            self._zone_with_levels(prices=[100.00, 100.25], names=["level_A", "level_B"]),
+            trigger="confirm_3bar",
+            direction="short",
+            tick_size=TICK,
+            trigger_params={"arrival_tolerance_ticks": 0, "activation_retrace_ticks": 4, "entry_offset_ticks": 1},
         )
-        # With arrival tolerance=1 tick (0.25): zone_high + 0.25 = 100.75 >= 100.6 → arrival ok
-        sigs_with_tol = generate_signals(
-            df, zones, trigger="confirm_3bar", direction="long", tick_size=TICK,
-            trigger_params={"arrival_tolerance_ticks": 1, "retrace_entry_ticks": 4},
-        )
-        assert sigs_no_tol.empty  # no arrival without tolerance
-        assert not sigs_with_tol.empty  # arrival with tolerance
+        assert len(sigs) == 1
+        sig = sigs.iloc[0]
+        assert sig["tested_level_price"] == pytest.approx(100.00)
+        assert sig["tested_level_name"] == "level_A"
 
-    def test_retrace_entry_ticks_determines_fill(self):
-        """Larger retrace_entry_ticks → easier fill (entry price further from open)."""
-        b1 = {"open": 100.0, "high": 100.8, "low": 99.8, "close": 100.3}
-        b2 = {"open": 100.5, "high": 101.0, "low": 100.3, "close": 100.8}
-        # Bar 3: open=101.0, low=100.6
-        # 1-tick entry: 101.0 - 0.25 = 100.75 → bar3_low=100.6 <= 100.75 → filled
-        # 20-tick entry: 101.0 - 5.0  = 96.0  → bar3_low=100.6 > 96.0  → NOT filled
-        b3 = {"open": 101.0, "high": 101.2, "low": 100.6, "close": 100.8}
-        df = self._three_bar_df(b1, b2, b3)
-        zones = _zone_df(0, low=100.0, high=100.5)
+    def test_short_arrival_fails_when_close_is_above_tested_level(self):
+        b1 = {"open": 99.00, "high": 100.40, "low": 98.80, "close": 100.10}
+        b2 = {"open": 100.00, "high": 100.20, "low": 99.40, "close": 99.60}
+        b3 = {"open": 99.20, "high": 100.10, "low": 98.70, "close": 99.00}
+        sigs = generate_signals(
+            self._three_bar_df(b1, b2, b3),
+            self._zone_with_levels(prices=[100.00], names=["level_A"]),
+            trigger="confirm_3bar",
+            direction="short",
+            tick_size=TICK,
+            trigger_params={"arrival_tolerance_ticks": 0, "activation_retrace_ticks": 4, "entry_offset_ticks": 1},
+        )
+        assert sigs.empty
 
-        sigs_1t = generate_signals(
-            df, zones, trigger="confirm_3bar", direction="long", tick_size=TICK,
-            trigger_params={"arrival_tolerance_ticks": 0, "retrace_entry_ticks": 1},
+    def test_long_standard_reversal_marking(self):
+        b1 = {"open": 101.00, "high": 101.10, "low": 99.90, "close": 100.30}
+        b2 = {"open": 100.40, "high": 100.90, "low": 99.90, "close": 100.70}
+        b3 = {"open": 101.00, "high": 101.30, "low": 99.90, "close": 101.10}
+        sigs = generate_signals(
+            self._three_bar_df(b1, b2, b3),
+            self._zone_with_levels(prices=[100.00], names=["level_A"]),
+            trigger="confirm_3bar",
+            direction="long",
+            tick_size=TICK,
+            trigger_params={"activation_retrace_ticks": 4, "entry_offset_ticks": 1},
         )
-        sigs_20t = generate_signals(
-            df, zones, trigger="confirm_3bar", direction="long", tick_size=TICK,
-            trigger_params={"arrival_tolerance_ticks": 0, "retrace_entry_ticks": 20},
-        )
-        assert sigs_1t[sigs_1t["status"] == "filled"].shape[0] == 1
-        assert sigs_20t[sigs_20t["status"] == "void"].shape[0] == 1
+        assert len(sigs) == 1
+        assert sigs.iloc[0]["reversal_type"] == "standard_reversal"
+        assert sigs.iloc[0]["is_sfp_reversal"] == False  # noqa: E712
 
-    def test_allow_equal_close_true_accepts_equal_bar2_close(self):
-        # bar2_close == bar1_close: strict mode rejects, allow_equal=True accepts
-        b1 = {"open": 100.0, "high": 100.8, "low": 99.8, "close": 100.3}
-        b2 = {"open": 100.3, "high": 100.8, "low": 100.1, "close": 100.3}  # equal
-        b3 = {"open": 101.0, "high": 101.2, "low": 99.8, "close": 100.5}
-        df = self._three_bar_df(b1, b2, b3)
-        zones = _zone_df(0, low=100.0, high=100.5)
+    def test_long_sfp_reversal_marking(self):
+        b1 = {"open": 101.00, "high": 101.10, "low": 99.90, "close": 100.30}
+        b2 = {"open": 100.20, "high": 100.90, "low": 99.70, "close": 100.70}
+        b3 = {"open": 101.00, "high": 101.30, "low": 99.90, "close": 101.10}
+        sigs = generate_signals(
+            self._three_bar_df(b1, b2, b3),
+            self._zone_with_levels(prices=[100.00], names=["level_A"]),
+            trigger="confirm_3bar",
+            direction="long",
+            tick_size=TICK,
+            trigger_params={"activation_retrace_ticks": 4, "entry_offset_ticks": 1},
+        )
+        assert len(sigs) == 1
+        assert sigs.iloc[0]["reversal_type"] == "sfp_reversal"
+        assert sigs.iloc[0]["is_sfp_reversal"] == True  # noqa: E712
 
-        sigs_strict = generate_signals(
-            df, zones, trigger="confirm_3bar", direction="long", tick_size=TICK,
-            trigger_params={"arrival_tolerance_ticks": 0, "retrace_entry_ticks": 4, "allow_equal_close": False},
+    def test_short_sfp_reversal_marking(self):
+        b1 = {"open": 99.00, "high": 100.10, "low": 98.80, "close": 99.80}
+        b2 = {"open": 99.90, "high": 100.30, "low": 99.10, "close": 99.30}
+        b3 = {"open": 99.00, "high": 100.20, "low": 98.70, "close": 98.90}
+        sigs = generate_signals(
+            self._three_bar_df(b1, b2, b3),
+            self._zone_with_levels(prices=[100.00], names=["level_A"]),
+            trigger="confirm_3bar",
+            direction="short",
+            tick_size=TICK,
+            trigger_params={"activation_retrace_ticks": 4, "entry_offset_ticks": 1},
         )
-        sigs_equal = generate_signals(
-            df, zones, trigger="confirm_3bar", direction="long", tick_size=TICK,
-            trigger_params={"arrival_tolerance_ticks": 0, "retrace_entry_ticks": 4, "allow_equal_close": True},
+        assert len(sigs) == 1
+        assert sigs.iloc[0]["reversal_type"] == "sfp_reversal"
+        assert sigs.iloc[0]["is_sfp_reversal"] == True  # noqa: E712
+
+    def test_long_bar3_activation_and_entry_filled(self):
+        b1 = {"open": 101.00, "high": 101.20, "low": 99.90, "close": 100.30}
+        b2 = {"open": 100.40, "high": 100.90, "low": 99.90, "close": 100.70}
+        b3 = {"open": 101.00, "high": 101.30, "low": 100.00, "close": 101.10}
+        sigs = generate_signals(
+            self._three_bar_df(b1, b2, b3),
+            self._zone_with_levels(prices=[100.00], names=["level_A"]),
+            trigger="confirm_3bar",
+            direction="long",
+            tick_size=TICK,
+            trigger_params={"activation_retrace_ticks": 4, "entry_offset_ticks": 1},
         )
-        assert sigs_strict.empty
-        assert not sigs_equal.empty
+        sig = sigs.iloc[0]
+        assert sig["activation_price"] == pytest.approx(100.00)
+        assert sig["entry_price"] == pytest.approx(101.25)
+        assert sig["status"] == "filled"
+        assert sig["entry_reference_price"] == pytest.approx(101.25)
+        assert sig["entry_model"] == "bar3_stop_limit_fill"
+
+    def test_long_bar3_activation_hit_but_entry_not_hit_is_void(self):
+        b1 = {"open": 101.00, "high": 101.20, "low": 99.90, "close": 100.30}
+        b2 = {"open": 100.40, "high": 100.90, "low": 99.90, "close": 100.70}
+        b3 = {"open": 101.00, "high": 101.20, "low": 100.00, "close": 100.80}
+        sigs = generate_signals(
+            self._three_bar_df(b1, b2, b3),
+            self._zone_with_levels(prices=[100.00], names=["level_A"]),
+            trigger="confirm_3bar",
+            direction="long",
+            tick_size=TICK,
+            trigger_params={"activation_retrace_ticks": 4, "entry_offset_ticks": 1},
+        )
+        sig = sigs.iloc[0]
+        assert sig["status"] == "void"
+        assert sig["entry_model"] == "bar3_stop_limit_void"
+        assert sig["entry_reference_price"] == pytest.approx(sig["entry_price"])
+
+    def test_long_bar3_entry_hit_but_activation_not_hit_is_void(self):
+        b1 = {"open": 101.00, "high": 101.20, "low": 99.90, "close": 100.30}
+        b2 = {"open": 100.40, "high": 100.90, "low": 99.90, "close": 100.70}
+        b3 = {"open": 101.00, "high": 101.30, "low": 100.10, "close": 101.20}
+        sigs = generate_signals(
+            self._three_bar_df(b1, b2, b3),
+            self._zone_with_levels(prices=[100.00], names=["level_A"]),
+            trigger="confirm_3bar",
+            direction="long",
+            tick_size=TICK,
+            trigger_params={"activation_retrace_ticks": 4, "entry_offset_ticks": 1},
+        )
+        assert sigs.iloc[0]["status"] == "void"
+
+    def test_short_bar3_activation_and_entry_filled(self):
+        b1 = {"open": 99.00, "high": 100.10, "low": 98.80, "close": 99.80}
+        b2 = {"open": 99.70, "high": 99.90, "low": 99.00, "close": 99.30}
+        b3 = {"open": 99.00, "high": 100.00, "low": 98.70, "close": 98.80}
+        sigs = generate_signals(
+            self._three_bar_df(b1, b2, b3),
+            self._zone_with_levels(prices=[100.00], names=["level_A"]),
+            trigger="confirm_3bar",
+            direction="short",
+            tick_size=TICK,
+            trigger_params={"activation_retrace_ticks": 4, "entry_offset_ticks": 1},
+        )
+        sig = sigs.iloc[0]
+        assert sig["activation_price"] == pytest.approx(100.00)
+        assert sig["entry_price"] == pytest.approx(98.75)
+        assert sig["status"] == "filled"
+        assert sig["entry_reference_price"] == pytest.approx(98.75)
+
+    def test_legacy_retrace_entry_ticks_maps_to_activation_retrace_ticks(self):
+        b1 = {"open": 101.00, "high": 101.20, "low": 99.90, "close": 100.30}
+        b2 = {"open": 100.40, "high": 100.90, "low": 99.90, "close": 100.70}
+        b3 = {"open": 101.00, "high": 101.30, "low": 100.00, "close": 101.10}
+        sigs = generate_signals(
+            self._three_bar_df(b1, b2, b3),
+            self._zone_with_levels(prices=[100.00], names=["level_A"]),
+            trigger="confirm_3bar",
+            direction="long",
+            tick_size=TICK,
+            trigger_params={"retrace_entry_ticks": 4, "entry_offset_ticks": 0},
+        )
+        assert len(sigs) == 1
+        assert sigs.iloc[0]["activation_retrace_ticks"] == pytest.approx(4.0)
 
 
 class TestNakedFilter:
