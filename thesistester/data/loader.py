@@ -1,6 +1,7 @@
 """CSV ingestion + validation for intraday OHLCV data."""
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 
 import pandas as pd
@@ -105,7 +106,9 @@ def load_ohlcv(
     raw_columns = [str(c).strip().lower() for c in df.columns]
     normalized_columns = [COLUMN_ALIASES.get(col, col) for col in raw_columns]
 
-    duplicate_columns = sorted({col for col in normalized_columns if normalized_columns.count(col) > 1})
+    duplicate_columns = sorted(
+        [col for col, count in Counter(normalized_columns).items() if count > 1]
+    )
     if duplicate_columns:
         raise DataValidationError(
             f"Duplicate columns after alias normalization: {duplicate_columns}"

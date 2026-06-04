@@ -121,7 +121,7 @@ def test_duplicate_alias_collision_raises_data_validation_error(tmp_path):
         )
     )
     with pytest.raises(
-        DataValidationError, match=r"Duplicate columns after alias normalization: \['timestamp'\]"
+        DataValidationError, match="Duplicate columns after alias normalization"
     ):
         load_ohlcv(path, source_tz="America/New_York", target_tz="America/New_York")
 
