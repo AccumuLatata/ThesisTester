@@ -15,6 +15,37 @@ streamlit run app.py
 pytest -q
 ```
 
+## Anchor confluence workflow
+
+ThesisTester supports two confluence modes:
+
+- **Global cluster:** detects clusters among selected levels using one shared tolerance.
+- **Anchor-based rules:** evaluates configured confluence levels around one anchor level using per-rule tolerances.
+
+### Workflow
+
+```text
+Data -> Levels -> Setup Builder -> Signals -> Backtest
+```
+
+Anchor-based rules are configured in **Setup Builder** and then used on the **Signals** page through **Use saved setup** mode.
+
+### Diagnostics
+
+Anchor-generated zones include diagnostics such as:
+
+- anchor level
+- anchor price
+- valid confluence count
+- per-rule distance in ticks
+- per-rule tolerance
+- required/optional status
+- valid/invalid reason
+
+### Current limitation
+
+Manual controls on the Signals page remain global-cluster only. To use anchor-based rules, create and save a setup in Setup Builder first.
+
 ## Phase status
 
 - **Phase 1 (data layer):** CSV OHLCV ingestion, timezone normalization, validation,
