@@ -134,12 +134,13 @@ def load_ohlcv(
 
     timestamp_strings = df["timestamp"].astype("string").str.strip()
     dot_date_mask = timestamp_strings.str.match(
-        r"^\d{1,2}\.\d{1,2}\.\d{2}\s+\d{1,2}:\d{2}:\d{2}$", na=False
+        r"^\d{1,2}\.\d{1,2}\.\d{2}\s\d{1,2}:\d{2}:\d{2}$", na=False
     )
     parsed_timestamps = pd.to_datetime(df["timestamp"], errors="coerce", format="mixed")
     if dot_date_mask.any():
+        dot_date_values = df.loc[dot_date_mask, "timestamp"]
         parsed_timestamps.loc[dot_date_mask] = pd.to_datetime(
-            df.loc[dot_date_mask, "timestamp"],
+            dot_date_values,
             errors="coerce",
             dayfirst=True,
             format="%d.%m.%y %H:%M:%S",
