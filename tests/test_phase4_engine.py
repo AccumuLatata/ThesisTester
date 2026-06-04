@@ -12,6 +12,16 @@ from thesistester.engine.signals import generate_signals
 
 TZ = "America/New_York"
 TICK = 0.25  # ES/NQ tick size
+ZONE_COLUMNS = [
+    "timestamp",
+    "bar_index",
+    "zone_low",
+    "zone_high",
+    "zone_mid",
+    "level_count",
+    "level_names",
+    "level_prices",
+]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -96,10 +106,18 @@ class TestConfluenceDetection:
         df = self._df_levels(levelA=100.0, levelB=100.25)
         result = detect_confluence_zones(df, level_columns=[], tick_size=TICK, tolerance_ticks=4)
         assert result.empty
-        assert list(result.columns) == [
-            "timestamp", "bar_index", "zone_low", "zone_high",
-            "zone_mid", "level_count", "level_names", "level_prices",
-        ]
+        assert list(result.columns) == ZONE_COLUMNS
+
+    def test_missing_selected_columns_returns_empty_with_schema(self):
+        df = self._df_levels(levelA=100.0, levelB=100.25)
+        result = detect_confluence_zones(
+            df,
+            level_columns=["missingA", "missingB"],
+            tick_size=TICK,
+            tolerance_ticks=4,
+        )
+        assert result.empty
+        assert list(result.columns) == ZONE_COLUMNS
 
     def test_two_levels_within_tolerance_form_zone(self):
         # 100.0 and 100.25 — one tick apart
@@ -138,6 +156,25 @@ class TestConfluenceDetection:
         assert len(result) == 1
         assert result.iloc[0]["level_count"] == 3
 
+    def test_levels_within_tolerance_emit_sorted_zone_metadata(self):
+        df = self._df_levels(L1=4500.00, L2=4500.50, L3=4501.00)
+        result = detect_confluence_zones(
+            df,
+            level_columns=["L1", "L2", "L3"],
+            tick_size=TICK,
+            tolerance_ticks=4,
+            min_confluences=2,
+            max_confluences=5,
+        )
+        assert len(result) == 1
+        row = result.iloc[0]
+        assert row["zone_low"] == pytest.approx(4500.00)
+        assert row["zone_high"] == pytest.approx(4501.00)
+        assert row["zone_mid"] == pytest.approx(4500.50)
+        assert row["level_count"] == 3
+        assert row["level_names"] == "L1|L2|L3"
+        assert row["level_prices"] == "4500.0|4500.5|4501.0"
+
     def test_nan_levels_are_ignored(self):
         # levelB is NaN — only levelA and levelC are valid, but they're far apart
         df = self._df_levels(levelA=100.0, levelB=np.nan, levelC=102.0)
@@ -156,6 +193,22 @@ class TestConfluenceDetection:
         assert len(result) == 1
         assert result.iloc[0]["level_count"] == 2
 
+    def test_duplicate_prices_count_as_independent_levels(self):
+        df = self._df_levels(L1=4500.00, L2=4500.00)
+        result = detect_confluence_zones(
+            df,
+            level_columns=["L1", "L2"],
+            tick_size=TICK,
+            tolerance_ticks=0,
+            min_confluences=2,
+            max_confluences=5,
+        )
+        assert len(result) == 1
+        row = result.iloc[0]
+        assert row["level_count"] == 2
+        assert row["level_names"] == "L1|L2"
+        assert row["level_prices"] == "4500.0|4500.0"
+
     def test_max_confluences_caps_at_5(self):
         # 6 levels all at same price
         kwargs = {f"level{i}": 100.0 for i in range(6)}
@@ -168,6 +221,44 @@ class TestConfluenceDetection:
         assert not result.empty
         assert result.iloc[0]["level_count"] <= 5
 
+    def test_max_confluences_truncates_to_first_five_sorted_levels(self):
+        df = self._df_levels(
+            L1=4500.00,
+            L2=4500.25,
+            L3=4500.50,
+            L4=4500.75,
+            L5=4501.00,
+            L6=4501.25,
+        )
+        result = detect_confluence_zones(
+            df,
+            level_columns=["L1", "L2", "L3", "L4", "L5", "L6"],
+            tick_size=TICK,
+            tolerance_ticks=10,
+            min_confluences=2,
+            max_confluences=5,
+        )
+        assert len(result) == 1
+        row = result.iloc[0]
+        assert row["level_count"] == 5
+        assert row["level_names"] == "L1|L2|L3|L4|L5"
+        assert row["level_prices"] == "4500.0|4500.25|4500.5|4500.75|4501.0"
+        assert "L6" not in row["level_names"]
+
+    def test_max_confluences_is_hard_capped_at_five_even_when_larger_requested(self):
+        kwargs = {f"level{i}": 100.0 + (i * TICK) for i in range(6)}
+        df = self._df_levels(**kwargs)
+        result = detect_confluence_zones(
+            df,
+            level_columns=list(kwargs.keys()),
+            tick_size=TICK,
+            tolerance_ticks=10,
+            min_confluences=2,
+            max_confluences=10,
+        )
+        assert len(result) == 1
+        assert result.iloc[0]["level_count"] == 5
+
     def test_non_overlapping_clusters_emitted_separately(self):
         # Levels at 100.0 and 100.25 form one cluster, 102.0 and 102.25 form another
         df = self._df_levels(lA=100.0, lB=100.25, lC=102.0, lD=102.25)
@@ -176,6 +267,19 @@ class TestConfluenceDetection:
             tick_size=TICK, tolerance_ticks=2, min_confluences=2,
         )
         assert len(result) == 2
+
+    def test_greedy_overlapping_cluster_emits_first_window_only(self):
+        df = self._df_levels(L1=100.00, L2=100.50, L3=101.00, L4=101.50)
+        result = detect_confluence_zones(
+            df,
+            level_columns=["L1", "L2", "L3", "L4"],
+            tick_size=TICK,
+            tolerance_ticks=4,
+            min_confluences=2,
+            max_confluences=5,
+        )
+        assert len(result) == 1
+        assert result.iloc[0]["level_names"] == "L1|L2|L3"
 
     def test_bar_index_aligned_to_row_position(self):
         rows = [
@@ -188,6 +292,34 @@ class TestConfluenceDetection:
         )
         assert len(result) == 1
         assert result.iloc[0]["bar_index"] == 1
+
+    def test_multiple_bars_are_processed_independently(self):
+        timestamps = pd.to_datetime(
+            ["2024-01-01 09:30", "2024-01-01 09:31", "2024-01-01 09:32"]
+        ).tz_localize(TZ)
+        df = pd.DataFrame(
+            {
+                "timestamp": timestamps,
+                "open": [100.0, 100.0, 100.0],
+                "high": [101.0, 101.0, 101.0],
+                "low": [99.0, 99.0, 99.0],
+                "close": [100.0, 100.0, 100.0],
+                "volume": [100.0, 100.0, 100.0],
+                "L1": [4500.00, 4500.00, 4501.00],
+                "L2": [4500.50, 4501.00, np.nan],
+                "L3": [np.nan, np.nan, 4501.25],
+            }
+        )
+        result = detect_confluence_zones(
+            df,
+            level_columns=["L1", "L2", "L3"],
+            tick_size=TICK,
+            tolerance_ticks=4,
+            min_confluences=2,
+            max_confluences=5,
+        )
+        assert list(result["bar_index"]) == [0, 2]
+        assert list(result["timestamp"]) == [timestamps[0], timestamps[2]]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
