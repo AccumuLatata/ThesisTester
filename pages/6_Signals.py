@@ -19,6 +19,20 @@ from thesistester.setup import (
 
 st.title("🎯 Signals")
 
+
+def _normalize_confirm_3bar_params(params: dict | None) -> dict:
+    trigger_params = params or {}
+    activation_retrace_ticks = trigger_params.get(
+        "activation_retrace_ticks",
+        trigger_params.get("retrace_entry_ticks", 4.0),
+    )
+    return {
+        "arrival_tolerance_ticks": float(trigger_params.get("arrival_tolerance_ticks", 0.0)),
+        "activation_retrace_ticks": float(activation_retrace_ticks),
+        "entry_offset_ticks": float(trigger_params.get("entry_offset_ticks", 0.0)),
+        "allow_equal_close": bool(trigger_params.get("allow_equal_close", False)),
+    }
+
 # ── Require levels ────────────────────────────────────────────────────────────
 if "levels" not in st.session_state:
     st.warning("No levels computed. Please load data on the **Data** page and compute levels on the **Levels** page first.")
@@ -63,6 +77,8 @@ with st.sidebar:
         trigger = str(saved_setup.get("trigger", "touch"))
         direction = str(saved_setup.get("direction", "both"))
         trigger_params = dict(saved_setup.get("trigger_params", {}))
+        if trigger == "confirm_3bar":
+            trigger_params = _normalize_confirm_3bar_params(trigger_params)
 
         st.success(f"Using saved setup: {saved_setup.get('name', 'Untitled setup')}")
         st.caption(f"Levels: {', '.join(selected_levels) if selected_levels else '(none)'}")
@@ -132,20 +148,28 @@ with st.sidebar:
         if trigger == "confirm_3bar":
             st.subheader("confirm_3bar parameters")
             arrival_tol = st.number_input(
-                "Arrival tolerance (ticks)",
+                "Arrival tolerance ticks",
                 min_value=0.0,
                 max_value=20.0,
                 value=0.0,
                 step=0.5,
-                help="Ticks around the zone within which bar 1 must trade to qualify as arrival.",
+                help="Small rounding/data tolerance for bar-1 level hit checks.",
             )
-            retrace_entry = st.number_input(
-                "Retrace entry (ticks)",
+            activation_retrace = st.number_input(
+                "Activation retrace ticks",
                 min_value=0.0,
                 max_value=50.0,
                 value=4.0,
                 step=0.5,
-                help="Ticks bar 3 must retrace from bar 3 open before limit entry fills.",
+                help="Ticks bar 3 must retrace against direction from bar 3 open to activate setup.",
+            )
+            entry_offset = st.number_input(
+                "Entry offset ticks",
+                min_value=0.0,
+                max_value=50.0,
+                value=0.0,
+                step=0.5,
+                help="Ticks from bar 3 open to stop-limit-style entry price.",
             )
             allow_equal_close = st.toggle(
                 "Allow equal close (bar 2 reversal)",
@@ -154,7 +178,8 @@ with st.sidebar:
             )
             trigger_params = {
                 "arrival_tolerance_ticks": arrival_tol,
-                "retrace_entry_ticks": retrace_entry,
+                "activation_retrace_ticks": activation_retrace,
+                "entry_offset_ticks": entry_offset,
                 "allow_equal_close": allow_equal_close,
             }
         else:

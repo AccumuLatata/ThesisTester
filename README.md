@@ -54,6 +54,10 @@ pytest -q
   `st.session_state["setup_config"]` (and `st.session_state["setup_configs"]` for session
   history).  **Signals** (`pages/6_Signals.py`) can consume the saved setup via
   a `Use saved setup` toggle while still supporting manual configuration.
+- **`confirm_3bar` correction:** arrival is now evaluated against the actual tested level
+  inside a confluence zone (not the zone boundary), bar 2 marks SFP reversals when it
+  sweeps the arrival-bar extreme while closing in reversal direction, and bar 3 uses
+  separate activation retrace ticks plus entry offset ticks.
 - **Phase 7 (time-of-day/session-window analysis):** completed trades can now be grouped by
   RTH segment, hourly and 30-minute buckets, trigger, direction, setup name, and exit reason.
   The new **Time Analysis** page (`pages/9_Time_Analysis.py`) displays grouped KPIs,

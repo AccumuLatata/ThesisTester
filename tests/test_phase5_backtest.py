@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from thesistester.engine.backtest import simulate_trades
+from thesistester.engine.signals import generate_signals
 
 
 TZ = "America/New_York"
@@ -108,7 +109,7 @@ def test_confirm_3bar_filled_enters_on_signal_bar():
     assert len(trades) == 1
     assert trades.iloc[0]["entry_price"] == 99.0
     assert trades.iloc[0]["entry_bar_index"] == 2
-    assert trades.iloc[0]["entry_model"] == "bar3_limit_fill"
+    assert trades.iloc[0]["entry_model"] == "bar3_stop_limit_fill"
 
 
 def test_confirm_3bar_void_is_skipped():
@@ -124,6 +125,49 @@ def test_confirm_3bar_void_is_skipped():
     )
     trades = simulate_trades(df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8)
     assert trades.empty
+
+
+def test_confirm_3bar_generated_filled_signal_enters_and_void_skips():
+    df = _df(
+        _bar("2026-01-02 09:30", 101.0, 101.2, 99.9, 100.3),
+        _bar("2026-01-02 09:31", 100.4, 100.9, 99.9, 100.7),
+        _bar("2026-01-02 09:32", 101.0, 101.3, 100.0, 101.1),
+        _bar("2026-01-02 09:33", 101.1, 102.5, 100.9, 102.0),
+    )
+    zones = pd.DataFrame(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
+                "bar_index": 0,
+                "zone_low": 100.0,
+                "zone_high": 100.0,
+                "zone_mid": 100.0,
+                "level_count": 1,
+                "level_names": "A",
+                "level_prices": "100.0",
+            }
+        ]
+    )
+    signals = generate_signals(
+        df,
+        zones,
+        trigger="confirm_3bar",
+        direction="long",
+        tick_size=TICK,
+        trigger_params={"activation_retrace_ticks": 4, "entry_offset_ticks": 1},
+    )
+    assert len(signals) == 1
+    sig = signals.iloc[0]
+    assert sig["status"] == "filled"
+
+    trades = simulate_trades(df, signals, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8)
+    assert len(trades) == 1
+    assert trades.iloc[0]["entry_price"] == pytest.approx(sig["entry_reference_price"])
+
+    void_signals = signals.copy()
+    void_signals.loc[:, "status"] = "void"
+    void_trades = simulate_trades(df, void_signals, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8)
+    assert void_trades.empty
 
 
 # ---------------------------------------------------------------------------

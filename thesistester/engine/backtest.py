@@ -144,7 +144,7 @@ def simulate_trades(
                 continue
             entry_bar_index = bar_idx
             entry_price = float(sig["entry_reference_price"])
-            entry_model = "bar3_limit_fill"
+            entry_model = "bar3_stop_limit_fill"
         else:
             # Simple triggers enter at next-bar open (no look-ahead).
             entry_bar_index = bar_idx + 1
