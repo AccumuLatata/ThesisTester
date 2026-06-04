@@ -68,10 +68,18 @@ with st.sidebar:
         st.caption(f"Levels: {', '.join(selected_levels) if selected_levels else '(none)'}")
 
         if trigger not in VALID_TRIGGERS:
-            st.error("Saved setup trigger is invalid. Disable saved setup mode and configure manually.")
+            st.error(
+                f"Saved setup trigger '{trigger}' is invalid. "
+                f"Valid options are: {sorted(VALID_TRIGGERS)}. "
+                "Disable saved setup mode and configure manually."
+            )
             st.stop()
         if direction not in VALID_DIRECTIONS:
-            st.error("Saved setup direction is invalid. Disable saved setup mode and configure manually.")
+            st.error(
+                f"Saved setup direction '{direction}' is invalid. "
+                f"Valid options are: {sorted(VALID_DIRECTIONS)}. "
+                "Disable saved setup mode and configure manually."
+            )
             st.stop()
     else:
         st.header("Confluence settings")
@@ -192,7 +200,7 @@ if generate_btn:
             naked_flags=naked_flags if naked_only else None,
             naked_requirement=naked_requirement,
         )
-        if use_saved_setup and saved_setup is not None and not signals.empty:
+        if use_saved_setup and not signals.empty:
             signals = signals.copy()
             signals["setup_name"] = saved_setup.get("name", "Untitled setup")
             st.session_state["last_signal_setup"] = saved_setup

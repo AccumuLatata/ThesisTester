@@ -103,10 +103,14 @@ if st.button("Save setup", type="primary"):
     else:
         st.session_state["setup_config"] = config
         existing = st.session_state.get("setup_configs", [])
+        replaced = any(item.get("name") == config["name"] for item in existing)
         updated = [item for item in existing if item.get("name") != config["name"]]
         updated.append(config)
         st.session_state["setup_configs"] = updated
-        st.success("Setup saved and active.")
+        if replaced:
+            st.success("Setup updated and active.")
+        else:
+            st.success("Setup saved and active.")
 
 active_setup = st.session_state.get("setup_config")
 if active_setup:

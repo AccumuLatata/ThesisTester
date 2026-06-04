@@ -112,7 +112,7 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
         if min_conf < 1:
             errors.append("Minimum confluences must be >= 1.")
     except (TypeError, ValueError):
-        min_conf = 0
+        min_conf = 1
         errors.append("Minimum confluences must be an integer.")
 
     try:
@@ -145,7 +145,7 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
         else:
             for key in ("arrival_tolerance_ticks", "retrace_entry_ticks"):
                 try:
-                    value = float(trigger_params.get(key))
+                    value = float(trigger_params.get(key, 0.0))
                     if value < 0:
                         errors.append(f"{key} must be >= 0.")
                 except (TypeError, ValueError):
