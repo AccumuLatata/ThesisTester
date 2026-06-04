@@ -14,6 +14,7 @@ SECONDS_PER_HOUR = 60 * SECONDS_PER_MINUTE
 SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
 COLUMN_ALIASES = {
     "date time": "timestamp",
+    "datetime": "timestamp",
     "volume(from bar)": "volume",
     "volume (from bar)": "volume",
 }
@@ -45,6 +46,14 @@ class ValidationReport:
 
     def messages(self) -> list[str]:
         return [issue.message for issue in self.issues]
+
+
+def normalize_column_name(column: object) -> str:
+    """Normalize a CSV header value before alias resolution."""
+    name = str(column).replace("\ufeff", "").replace("\xa0", " ")
+    name = " ".join(name.strip().lower().split())
+    name = name.replace(" (", "(").replace("( ", "(").replace(" )", ")")
+    return name
 
 
 def infer_base_interval(timestamps: pd.Series) -> pd.Timedelta | None:
@@ -103,7 +112,7 @@ def load_ohlcv(
     source = source_tz or target
 
     df = pd.read_csv(file)
-    raw_columns = [str(c).strip().lower() for c in df.columns]
+    raw_columns = [normalize_column_name(c) for c in df.columns]
     normalized_columns = [COLUMN_ALIASES.get(col, col) for col in raw_columns]
 
     duplicate_columns = sorted(
@@ -118,9 +127,25 @@ def load_ohlcv(
 
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
     if missing:
-        raise DataValidationError(f"Missing required columns: {missing}")
+        raise DataValidationError(
+            f"Missing required columns: {missing}. "
+            f"Detected columns after normalization: {list(df.columns)}"
+        )
 
-    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+    timestamp_strings = df["timestamp"].astype("string").str.strip()
+    dot_date_mask = timestamp_strings.str.match(
+        r"^\d{1,2}\.\d{1,2}\.\d{2,4}\s\d{1,2}:\d{2}:\d{2}$", na=False
+    )
+    parsed_timestamps = pd.to_datetime(df["timestamp"], errors="coerce", format="mixed")
+    if dot_date_mask.any():
+        dot_date_values = df.loc[dot_date_mask, "timestamp"]
+        parsed_timestamps.loc[dot_date_mask] = pd.to_datetime(
+            dot_date_values,
+            errors="coerce",
+            dayfirst=True,
+            format="mixed",
+        )
+    df["timestamp"] = parsed_timestamps
     if df["timestamp"].isna().any():
         raise DataValidationError("Unparseable values in 'timestamp' column.")
 
