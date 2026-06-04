@@ -212,7 +212,8 @@ def test_research_artifact_is_strict_json_serializable_with_missing_values():
 
     artifact = build_research_artifact(state)
 
-    json.dumps(artifact, allow_nan=False)
+    payload = json.dumps(artifact, allow_nan=False)
+    assert isinstance(payload, str)
 
 
 def test_build_markdown_report_returns_string_and_required_sections():

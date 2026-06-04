@@ -32,10 +32,9 @@ def to_jsonable(obj: Any) -> Any:
     if obj is pd.NA or obj is pd.NaT:
         return None
 
+    non_scalar_types = (list, tuple, set, Mapping, pd.DataFrame, pd.Series, np.ndarray)
     try:
-        if not isinstance(
-            obj, (list, tuple, set, Mapping, pd.DataFrame, pd.Series, np.ndarray)
-        ) and pd.isna(obj):
+        if not isinstance(obj, non_scalar_types) and pd.isna(obj):
             return None
     except (TypeError, ValueError):
         pass
