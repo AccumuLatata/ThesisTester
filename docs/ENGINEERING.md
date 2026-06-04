@@ -483,6 +483,15 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
   in `st.session_state["grid_results"]` and `st.session_state["best_grid_result"]`.
   Four heatmaps (expectancy, total R, win rate, max drawdown R) are displayed via Plotly.
 
+## Phase 6.5 Implementation Notes
+
+- **Setup Builder is functional.** `pages/2_Setup_Builder.py` now builds and validates reusable
+  setup dictionaries and stores the active setup in `st.session_state["setup_config"]`.
+- **Session-only setup persistence.** Optional in-session history is kept in
+  `st.session_state["setup_configs"]`; there is no disk/database persistence in this phase.
+- **Signals can consume saved setup configs.** `pages/6_Signals.py` supports `Use saved setup`
+  mode from Setup Builder while retaining full manual controls as fallback.
+
 ---
 
 ## 13. Key Assumptions & Decisions (confirmed)

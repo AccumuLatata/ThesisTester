@@ -45,3 +45,8 @@ pytest -q
   lets users configure SL/TP ranges and displays four Plotly heatmaps (expectancy R,
   total R, win rate, max drawdown R).  Best result and full grid are stored in
   `st.session_state["best_grid_result"]` and `st.session_state["grid_results"]`.
+- **Phase 6.5 (workflow cleanup):** **Setup Builder** (`pages/2_Setup_Builder.py`) is now
+  functional and saves reusable setup configs in-session via
+  `st.session_state["setup_config"]` (and `st.session_state["setup_configs"]` for session
+  history).  **Signals** (`pages/6_Signals.py`) can consume the saved setup via
+  a `Use saved setup` toggle while still supporting manual configuration.

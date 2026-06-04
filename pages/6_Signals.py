@@ -10,6 +10,12 @@ import streamlit as st
 
 from thesistester.config import INSTRUMENTS
 from thesistester.engine import detect_confluence_zones, flag_naked_levels, generate_signals
+from thesistester.setup import (
+    VALID_DIRECTIONS,
+    VALID_TRIGGERS,
+    available_level_columns,
+    default_selected_levels,
+)
 
 st.title("🎯 Signals")
 
@@ -22,93 +28,137 @@ levels_df = st.session_state["levels"]
 instrument = st.session_state.get("instrument", "ES")
 tick_size = INSTRUMENTS[instrument].tick_size if instrument in INSTRUMENTS else 0.25
 
-# Determine level columns (exclude canonical OHLCV and session columns)
-_BASE_COLS = {"timestamp", "open", "high", "low", "close", "volume", "session", "settlement"}
-all_level_columns = [c for c in levels_df.columns if c not in _BASE_COLS]
+all_level_columns = available_level_columns(levels_df)
 
 if not all_level_columns:
     st.warning("No level columns found. Please compute levels on the Levels page first.")
     st.stop()
 
+saved_setup = st.session_state.get("setup_config")
+if saved_setup is not None:
+    st.info(f"Using setup: {saved_setup.get('name', 'Untitled setup')}")
+    st.caption(
+        f"Trigger={saved_setup.get('trigger')} • Direction={saved_setup.get('direction')} • "
+        f"Confluences={saved_setup.get('min_confluences')}–{saved_setup.get('max_confluences')}"
+    )
+
 # ── Sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:
-    st.header("Confluence settings")
+    st.header("Signal generation")
 
-    selected_levels = st.multiselect(
-        "Level columns",
-        options=all_level_columns,
-        default=[c for c in ["ONH", "ONL", "OR_High", "OR_Low", "pdHigh", "pdLow"] if c in all_level_columns] or all_level_columns[:4],
-        help="Level columns to include in confluence detection.",
-    )
+    use_saved_default = saved_setup is not None
+    use_saved_setup = st.toggle("Use saved setup", value=use_saved_default)
 
-    tolerance_ticks = st.number_input(
-        "Tolerance (ticks)",
-        min_value=0.0,
-        max_value=100.0,
-        value=4.0,
-        step=0.5,
-        help=f"Cluster tolerance in ticks. 1 tick = {tick_size} price units.",
-    )
+    if saved_setup is None:
+        st.info("No saved setup found. Configure manually here or create one in Setup Builder.")
 
-    min_conf = st.slider("Min confluences", min_value=1, max_value=5, value=2)
-    max_conf = st.slider("Max confluences", min_value=1, max_value=5, value=5)
-    if max_conf < min_conf:
-        max_conf = min_conf
+    if use_saved_setup and saved_setup is not None:
+        configured_levels = saved_setup.get("selected_levels", [])
+        selected_levels = [col for col in configured_levels if col in all_level_columns]
+        tolerance_ticks = float(saved_setup.get("tolerance_ticks", 4.0))
+        min_conf = int(saved_setup.get("min_confluences", 2))
+        max_conf = int(saved_setup.get("max_confluences", 5))
+        naked_only = bool(saved_setup.get("naked_only", False))
+        naked_requirement = str(saved_setup.get("naked_requirement", "any"))
+        trigger = str(saved_setup.get("trigger", "touch"))
+        direction = str(saved_setup.get("direction", "both"))
+        trigger_params = dict(saved_setup.get("trigger_params", {}))
 
-    st.header("Signal settings")
+        st.success(f"Using saved setup: {saved_setup.get('name', 'Untitled setup')}")
+        st.caption(f"Levels: {', '.join(selected_levels) if selected_levels else '(none)'}")
 
-    trigger = st.selectbox(
-        "Trigger",
-        options=["touch", "reject", "break", "reclaim", "confirm_3bar"],
-        index=0,
-    )
+        if trigger not in VALID_TRIGGERS:
+            st.error(
+                f"Saved setup trigger '{trigger}' is invalid. "
+                f"Valid options are: {sorted(VALID_TRIGGERS)}. "
+                "Disable saved setup mode and configure manually."
+            )
+            st.stop()
+        if direction not in VALID_DIRECTIONS:
+            st.error(
+                f"Saved setup direction '{direction}' is invalid. "
+                f"Valid options are: {sorted(VALID_DIRECTIONS)}. "
+                "Disable saved setup mode and configure manually."
+            )
+            st.stop()
+    else:
+        st.header("Confluence settings")
 
-    direction = st.selectbox(
-        "Direction",
-        options=["long", "short", "both"],
-        index=2,
-    )
-
-    naked_only = st.toggle("Naked / untested levels only", value=False)
-    naked_requirement = "any"
-    if naked_only:
-        naked_requirement = st.radio(
-            "Naked requirement",
-            options=["any", "all"],
-            horizontal=True,
-            help="'any': at least one level in the zone must be naked. 'all': every level must be naked.",
+        selected_levels = st.multiselect(
+            "Level columns",
+            options=all_level_columns,
+            default=default_selected_levels(all_level_columns),
+            help="Level columns to include in confluence detection.",
         )
 
-    if trigger == "confirm_3bar":
-        st.subheader("confirm_3bar parameters")
-        arrival_tol = st.number_input(
-            "Arrival tolerance (ticks)",
+        tolerance_ticks = st.number_input(
+            "Tolerance (ticks)",
             min_value=0.0,
-            max_value=20.0,
-            value=0.0,
-            step=0.5,
-            help="Ticks around the zone within which bar 1 must trade to qualify as arrival.",
-        )
-        retrace_entry = st.number_input(
-            "Retrace entry (ticks)",
-            min_value=0.0,
-            max_value=50.0,
+            max_value=100.0,
             value=4.0,
             step=0.5,
-            help="Ticks bar 3 must retrace from bar 3 open before limit entry fills.",
+            help=f"Cluster tolerance in ticks. 1 tick = {tick_size} price units.",
         )
-        allow_equal_close = st.toggle(
-            "Allow equal close (bar 2 reversal)",
-            value=False,
-            help="If enabled, bar 2 close >= bar 1 close is sufficient for long (and <= for short).",
+
+        min_conf = st.slider("Min confluences", min_value=1, max_value=5, value=2)
+        max_conf = st.slider("Max confluences", min_value=1, max_value=5, value=5)
+        if max_conf < min_conf:
+            max_conf = min_conf
+
+        st.header("Signal settings")
+
+        trigger = st.selectbox(
+            "Trigger",
+            options=["touch", "reject", "break", "reclaim", "confirm_3bar"],
+            index=0,
         )
-        trigger_params: dict = {
-            "arrival_tolerance_ticks": arrival_tol,
-            "retrace_entry_ticks": retrace_entry,
-            "allow_equal_close": allow_equal_close,
-        }
-    else:
-        trigger_params = {}
+
+        direction = st.selectbox(
+            "Direction",
+            options=["long", "short", "both"],
+            index=2,
+        )
+
+        naked_only = st.toggle("Naked / untested levels only", value=False)
+        naked_requirement = "any"
+        if naked_only:
+            naked_requirement = st.radio(
+                "Naked requirement",
+                options=["any", "all"],
+                horizontal=True,
+                help="'any': at least one level in the zone must be naked. 'all': every level must be naked.",
+            )
+
+        if trigger == "confirm_3bar":
+            st.subheader("confirm_3bar parameters")
+            arrival_tol = st.number_input(
+                "Arrival tolerance (ticks)",
+                min_value=0.0,
+                max_value=20.0,
+                value=0.0,
+                step=0.5,
+                help="Ticks around the zone within which bar 1 must trade to qualify as arrival.",
+            )
+            retrace_entry = st.number_input(
+                "Retrace entry (ticks)",
+                min_value=0.0,
+                max_value=50.0,
+                value=4.0,
+                step=0.5,
+                help="Ticks bar 3 must retrace from bar 3 open before limit entry fills.",
+            )
+            allow_equal_close = st.toggle(
+                "Allow equal close (bar 2 reversal)",
+                value=False,
+                help="If enabled, bar 2 close >= bar 1 close is sufficient for long (and <= for short).",
+            )
+            trigger_params = {
+                "arrival_tolerance_ticks": arrival_tol,
+                "retrace_entry_ticks": retrace_entry,
+                "allow_equal_close": allow_equal_close,
+            }
+        else:
+            trigger_params = {}
 
     generate_btn = st.button("Generate signals", type="primary", use_container_width=True)
 
@@ -150,6 +200,10 @@ if generate_btn:
             naked_flags=naked_flags if naked_only else None,
             naked_requirement=naked_requirement,
         )
+        if use_saved_setup and not signals.empty:
+            signals = signals.copy()
+            signals["setup_name"] = saved_setup.get("name", "Untitled setup")
+            st.session_state["last_signal_setup"] = saved_setup
         st.session_state["signals"] = signals
 
 # ── Display results ───────────────────────────────────────────────────────────
@@ -180,10 +234,24 @@ if signals is not None and not signals.empty:
         )
 
     st.subheader("Signal table")
-    display_cols = [c for c in ["signal_id", "timestamp", "bar_index", "trigger", "direction",
-                                 "zone_low", "zone_high", "zone_mid", "level_count", "level_names",
-                                 "entry_reference_price", "entry_model", "status",
-                                 "naked_level_count", "notes"] if c in signals.columns]
+    display_cols = [c for c in [
+        "signal_id",
+        "timestamp",
+        "bar_index",
+        "trigger",
+        "direction",
+        "zone_low",
+        "zone_high",
+        "zone_mid",
+        "level_count",
+        "level_names",
+        "entry_reference_price",
+        "entry_model",
+        "status",
+        "setup_name",
+        "naked_level_count",
+        "notes",
+    ] if c in signals.columns]
     st.dataframe(signals[display_cols], use_container_width=True, hide_index=True)
 else:
     st.info("No signals generated with the current settings.")
