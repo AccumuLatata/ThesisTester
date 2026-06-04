@@ -55,3 +55,13 @@ pytest -q
   The new **Time Analysis** page (`pages/9_Time_Analysis.py`) displays grouped KPIs,
   low-sample warnings, bar charts, heatmaps, and raw bucketed trades. Outputs are stored in
   `st.session_state["time_bucketed_trades"]` and `st.session_state["time_grouped_summary"]`.
+- **Phase 8 (statistical validation):** robustness diagnostics for completed backtest results.
+  Implements a bootstrap expectancy confidence interval (`bootstrap_expectancy_ci`), a
+  sign-flip permutation test for positive expectancy (`permutation_test_expectancy`),
+  trade-count adequacy assessment (`trade_count_diagnostics`), and a heuristic grid-search
+  overfit warning (`grid_overfit_diagnostics`).  All diagnostics are combined by
+  `validation_summary` in `thesistester/analytics/validation.py`.  The new **Validation**
+  page (`pages/10_Validation.py`) requires completed trades, optionally uses grid results,
+  displays bootstrap and permutation histograms, and stores results in
+  `st.session_state["validation_summary"]`.  ⚠️ All outputs are diagnostic only — not proof
+  of edge.

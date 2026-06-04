@@ -530,3 +530,27 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
 - **Grouped summaries include trade count and low-sample warnings** so users do not overinterpret
   small samples.
 - **Statistical validation is deferred to Phase 8.**
+
+---
+
+## Phase 8 Implementation Notes
+
+- **Diagnostic only, not proof of edge.** All Phase 8 outputs provide evidence and
+  warnings to support research decisions. They do not prove a trading edge or constitute
+  statistical significance in the formal hypothesis-testing sense.
+- **Bootstrap (`bootstrap_expectancy_ci`) assumes the observed sample represents the
+  trade distribution.** Results are unreliable for very small samples (< 30 trades).
+  The percentile bootstrap is simple and appropriate for exploratory research; BCa or
+  other corrections are left for future work.
+- **Sign-flip permutation test (`permutation_test_expectancy`) assumes sign symmetry
+  around zero and ignores serial dependence between trades.** The null hypothesis is that
+  trade outcomes are symmetric around zero expectancy. Clustered or autocorrelated trades
+  will produce anti-conservative p-values. This is a simplified diagnostic, not a
+  definitive proof.
+- **Grid-search overfit warning (`grid_overfit_diagnostics`) is heuristic and
+  deterministic.** The risk level is based on the number of valid grid cells and the gap
+  between best and median metric values. No formal multiple-comparison correction (e.g.
+  Bonferroni, Holm, FDR) is applied; that belongs to future research.
+- **Stronger validation (walk-forward, out-of-sample, Bayesian inference, serial-
+  dependence modelling, formal multiple-hypothesis correction) belongs to future
+  research phases** and is explicitly out of scope for Phase 8.
