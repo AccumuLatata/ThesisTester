@@ -61,7 +61,7 @@ def _make_streamlit_stub() -> types.ModuleType:
 
 
 def _import_page_helpers():
-    """Return (_parse_anchor_rule_results, _render_anchor_diagnostics) from the page."""
+    """Return selected pure helpers from the page module."""
     stub = _make_streamlit_stub()
     sys.modules.setdefault("streamlit", stub)
 
@@ -81,10 +81,20 @@ def _import_page_helpers():
     except Exception:
         pass  # page-level errors are acceptable; we only need the helpers
 
-    return mod._parse_anchor_rule_results, mod._render_anchor_diagnostics
+    return (
+        mod._parse_anchor_rule_results,
+        mod._render_anchor_diagnostics,
+        mod._saved_setup_caption,
+        mod._no_zones_message,
+    )
 
 
-_parse_anchor_rule_results, _render_anchor_diagnostics = _import_page_helpers()
+(
+    _parse_anchor_rule_results,
+    _render_anchor_diagnostics,
+    _saved_setup_caption,
+    _no_zones_message,
+) = _import_page_helpers()
 
 
 # ---------------------------------------------------------------------------
@@ -211,3 +221,42 @@ def test_parse_result_columns():
         "required", "valid", "reason",
     }
     assert expected.issubset(set(result.columns))
+
+
+def test_saved_setup_caption_global_mode():
+    caption = _saved_setup_caption(
+        {
+            "trigger": "touch",
+            "direction": "both",
+            "min_confluences": 2,
+            "max_confluences": 5,
+        }
+    )
+    assert caption == "Trigger=touch • Direction=both • Confluences=2–5"
+
+
+def test_saved_setup_caption_anchor_mode():
+    caption = _saved_setup_caption(
+        {
+            "confluence_mode": "anchor_rules",
+            "anchor_level": "pdHigh",
+            "confluence_rules": [{"level": "VWAP"}, {"level": "ONH"}],
+            "min_valid_confluences": 2,
+        }
+    )
+    assert caption == "Mode=anchor_rules • Anchor=pdHigh • Rules=2 • Min valid=2"
+
+
+def test_no_zones_message_global_mode():
+    assert _no_zones_message("global_cluster") == (
+        "No confluence zones found with the current settings. "
+        "Try increasing tolerance or selecting more levels."
+    )
+
+
+def test_no_zones_message_anchor_mode():
+    assert _no_zones_message("anchor_rules") == (
+        "No confluence zones found with the current settings. "
+        "For anchor setups, review the anchor level, confluence rules, "
+        "and per-rule tolerances."
+    )
