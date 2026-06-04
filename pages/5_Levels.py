@@ -48,7 +48,7 @@ def _levels_data_fingerprint(df, instrument: str) -> dict:
         "rows": len(df),
         "timestamp_min": timestamp_min,
         "timestamp_max": timestamp_max,
-        "columns": tuple(df.columns),
+        "columns": tuple(sorted(df.columns)),
         "base_interval": st.session_state.get("base_interval"),
         "source_timezone": st.session_state.get("source_timezone"),
         "exchange_timezone": st.session_state.get("exchange_timezone"),
@@ -135,7 +135,11 @@ if levels_df is None:
     st.info("Configure the settings above, then click **Calculate levels** to generate levels.")
     st.stop()
 
-if has_calculated_levels and previous_data_fingerprint != current_data_fingerprint:
+if (
+    has_calculated_levels
+    and previous_data_fingerprint is not None
+    and previous_data_fingerprint != current_data_fingerprint
+):
     st.warning("Loaded data has changed. Click **Recalculate levels** to update results.")
     st.stop()
 
