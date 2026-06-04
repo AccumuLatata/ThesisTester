@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import streamlit as st
 
 from thesistester.setup import (
@@ -10,13 +12,33 @@ from thesistester.setup import (
 )
 
 
+CONFLUENCE_MODE_LABELS = {
+    "Global cluster": "global_cluster",
+    "Anchor-based rules": "anchor_rules",
+}
+
+CONFLUENCE_MODE_DISPLAY = {value: key for key, value in CONFLUENCE_MODE_LABELS.items()}
+
+
+def _anchor_rule_key(prefix: str, level: str) -> str:
+    sanitized_level = re.sub(r"[^0-9A-Za-z_]+", "_", level).strip("_") or "level"
+    return f"{prefix}_{sanitized_level}"
+
+
 def _render_setup_summary(config: dict) -> None:
+    confluence_mode = config.get("confluence_mode", "global_cluster")
     st.markdown(f"**Name:** {config['name']}")
     st.markdown(f"**Instrument:** {config['instrument']}")
     st.markdown(f"**Description:** {config.get('description', '') or '-'}")
+    st.markdown(f"**Mode:** {CONFLUENCE_MODE_DISPLAY.get(confluence_mode, confluence_mode)}")
     st.markdown(f"**Selected levels ({len(config['selected_levels'])}):** {', '.join(config['selected_levels'])}")
-    st.markdown(f"**Tolerance ticks:** {config['tolerance_ticks']}")
-    st.markdown(f"**Confluences:** {config['min_confluences']} to {config['max_confluences']}")
+    if confluence_mode == "anchor_rules":
+        st.markdown(f"**Anchor:** {config.get('anchor_level') or '-'}")
+        st.markdown(f"**Rules:** {len(config.get('confluence_rules', []))}")
+        st.markdown(f"**Minimum valid confluences:** {config.get('min_valid_confluences', 1)}")
+    else:
+        st.markdown(f"**Tolerance ticks:** {config['tolerance_ticks']}")
+        st.markdown(f"**Confluences:** {config['min_confluences']} to {config['max_confluences']}")
     st.markdown(f"**Naked only:** {config['naked_only']}")
     st.markdown(f"**Naked requirement:** {config['naked_requirement']}")
     st.markdown(f"**Trigger:** {config['trigger']}")
@@ -58,14 +80,75 @@ setup_name = st.text_input("Setup name", value="Untitled setup")
 description = st.text_area("Description / notes", value="", height=90)
 
 st.subheader("Level and confluence settings")
-selected_levels = st.multiselect(
-    "Selected level columns",
-    options=all_level_columns,
-    default=defaults,
+selected_mode_label = st.selectbox(
+    "Confluence mode",
+    options=list(CONFLUENCE_MODE_LABELS.keys()),
+    index=0,
 )
-tolerance_ticks = st.number_input("Tolerance ticks", min_value=0.0, value=4.0, step=0.5)
-min_conf = st.slider("Minimum confluences", min_value=1, max_value=5, value=2)
-max_conf = st.slider("Maximum confluences", min_value=1, max_value=5, value=5)
+confluence_mode = CONFLUENCE_MODE_LABELS[selected_mode_label]
+
+selected_levels: list[str] = []
+tolerance_ticks = 4.0
+min_conf = 2
+max_conf = 5
+anchor_level: str | None = None
+confluence_rules: list[dict] = []
+min_valid_confluences = 1
+
+if confluence_mode == "global_cluster":
+    selected_levels = st.multiselect(
+        "Selected level columns",
+        options=all_level_columns,
+        default=defaults,
+    )
+    tolerance_ticks = st.number_input("Tolerance ticks", min_value=0.0, value=4.0, step=0.5)
+    min_conf = st.slider("Minimum confluences", min_value=1, max_value=5, value=2)
+    max_conf = st.slider("Maximum confluences", min_value=1, max_value=5, value=5)
+else:
+    anchor_level = st.selectbox("Anchor level", options=all_level_columns, index=0)
+    confluence_level_options = [level for level in all_level_columns if level != anchor_level]
+    selected_confluence_levels = st.multiselect(
+        "Confluence levels",
+        options=confluence_level_options,
+        default=[],
+    )
+    for level in selected_confluence_levels:
+        st.markdown(f"**{level}**")
+        rule_tolerance = st.number_input(
+            f"Tolerance ticks — {level}",
+            min_value=0.0,
+            value=4.0,
+            step=0.5,
+            key=_anchor_rule_key("anchor_rule_tol", level),
+        )
+        rule_required = st.checkbox(
+            f"Required — {level}",
+            value=False,
+            key=_anchor_rule_key("anchor_rule_required", level),
+        )
+        confluence_rules.append(
+            {
+                "level": level,
+                "tolerance_ticks": float(rule_tolerance),
+                "required": bool(rule_required),
+            }
+        )
+
+    if selected_confluence_levels:
+        min_valid_confluences = int(
+            st.number_input(
+                "Minimum valid confluences",
+                min_value=1,
+                max_value=len(selected_confluence_levels),
+                value=1,
+                step=1,
+            )
+        )
+    else:
+        st.info("Select at least one confluence level.")
+
+    selected_levels = list(dict.fromkeys([anchor_level, *selected_confluence_levels]))
+
 naked_only = st.toggle("Naked only", value=False)
 naked_requirement = st.radio("Naked requirement", options=["any", "all"], index=0, horizontal=True)
 
@@ -100,6 +183,10 @@ if st.button("Save setup", type="primary"):
         naked_requirement=naked_requirement,
         trigger=trigger,
         direction=direction,
+        confluence_mode=confluence_mode,
+        anchor_level=anchor_level,
+        confluence_rules=confluence_rules,
+        min_valid_confluences=min_valid_confluences,
         trigger_params=trigger_params,
     )
 
