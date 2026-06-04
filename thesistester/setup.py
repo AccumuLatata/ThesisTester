@@ -197,6 +197,7 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
             min_valid_confluences = int(config.get("min_valid_confluences", 0))
             if min_valid_confluences < 1:
                 errors.append("Minimum valid confluences must be >= 1.")
+                min_valid_confluences = None
         except (TypeError, ValueError):
             min_valid_confluences = None
             errors.append("Minimum valid confluences must be an integer.")
