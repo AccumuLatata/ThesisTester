@@ -5,6 +5,9 @@ entry signals from the levels computed on the Levels page.
 """
 from __future__ import annotations
 
+import json
+
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -35,6 +38,125 @@ ANCHOR_DIAGNOSTIC_COLUMNS = [
     "level_prices",
     "rule_results",
 ]
+
+_RULE_AUDIT_COLUMNS = [
+    "zone_row",
+    "timestamp",
+    "bar_index",
+    "anchor_level",
+    "anchor_price",
+    "rule_level",
+    "rule_price",
+    "distance_ticks",
+    "tolerance_ticks",
+    "required",
+    "valid",
+    "reason",
+]
+
+
+def _parse_anchor_rule_results(zones: pd.DataFrame) -> pd.DataFrame:
+    """Parse ``rule_results`` JSON column into a flat per-rule DataFrame."""
+    if zones.empty or "rule_results" not in zones.columns:
+        return pd.DataFrame(columns=_RULE_AUDIT_COLUMNS)
+
+    rows: list[dict] = []
+    for i, zone_row in zones.iterrows():
+        raw = zone_row.get("rule_results")
+        try:
+            parsed = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(parsed, list):
+            continue
+        for result in parsed:
+            if not isinstance(result, dict):
+                continue
+            rows.append(
+                {
+                    "zone_row": i,
+                    "timestamp": zone_row.get("timestamp"),
+                    "bar_index": zone_row.get("bar_index"),
+                    "anchor_level": zone_row.get("anchor_level"),
+                    "anchor_price": zone_row.get("anchor_price"),
+                    "rule_level": result.get("level"),
+                    "rule_price": result.get("price"),
+                    "distance_ticks": result.get("distance_ticks"),
+                    "tolerance_ticks": result.get("tolerance_ticks"),
+                    "required": result.get("required"),
+                    "valid": result.get("valid"),
+                    "reason": result.get("reason"),
+                }
+            )
+
+    if not rows:
+        return pd.DataFrame(columns=_RULE_AUDIT_COLUMNS)
+    return pd.DataFrame(rows)[_RULE_AUDIT_COLUMNS]
+
+
+def _render_anchor_diagnostics(zones: pd.DataFrame) -> None:
+    """Render anchor-zone summary metrics and per-rule audit table."""
+    required_cols = {"anchor_level", "anchor_price", "valid_confluence_count", "rule_results"}
+    if zones.empty or not required_cols.issubset(zones.columns):
+        return
+
+    st.subheader("Anchor confluence diagnostics")
+
+    # ── Summary metrics ───────────────────────────────────────────────────────
+    required_valid_count: int | None = None
+    if "required_valid" in zones.columns:
+        required_valid_count = int(zones["required_valid"].sum())
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Anchor zones", len(zones))
+    col2.metric("Avg valid confluences", f"{zones['valid_confluence_count'].mean():.2f}")
+    if required_valid_count is not None:
+        col3.metric("Required-valid zones", f"{required_valid_count}/{len(zones)}")
+
+    # ── Zone summary table ────────────────────────────────────────────────────
+    summary_cols = [
+        "timestamp",
+        "bar_index",
+        "anchor_level",
+        "anchor_price",
+        "valid_confluence_count",
+        "level_count",
+        "zone_low",
+        "zone_high",
+        "zone_mid",
+        "level_names",
+    ]
+    st.subheader("Anchor zone summary")
+    st.dataframe(
+        zones[[c for c in summary_cols if c in zones.columns]].head(500),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # ── Per-rule audit table ──────────────────────────────────────────────────
+    rule_audit = _parse_anchor_rule_results(zones)
+    if not rule_audit.empty:
+        st.subheader("Per-rule confluence audit")
+        show_invalid_only = st.checkbox("Show invalid rules only", value=False)
+        if show_invalid_only:
+            rule_audit = rule_audit[rule_audit["valid"] == False]  # noqa: E712
+        display_audit_cols = [
+            "timestamp",
+            "bar_index",
+            "anchor_level",
+            "rule_level",
+            "rule_price",
+            "distance_ticks",
+            "tolerance_ticks",
+            "required",
+            "valid",
+            "reason",
+        ]
+        st.dataframe(
+            rule_audit[[c for c in display_audit_cols if c in rule_audit.columns]].head(1000),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 def _normalize_confirm_3bar_params(params: dict | None) -> dict:
@@ -341,12 +463,7 @@ if zones.empty:
     st.stop()
 
 if all(col in zones.columns for col in ["anchor_level", "valid_confluence_count", "rule_results"]):
-    st.subheader("Anchor confluence diagnostics")
-    st.dataframe(
-        zones[[col for col in ANCHOR_DIAGNOSTIC_COLUMNS if col in zones.columns]].head(500),
-        use_container_width=True,
-        hide_index=True,
-    )
+    _render_anchor_diagnostics(zones)
 
 # Signal breakdown
 if signals is not None and not signals.empty:
