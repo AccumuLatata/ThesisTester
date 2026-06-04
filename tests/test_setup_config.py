@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from thesistester.setup import (
     BASE_COLUMNS,
@@ -10,8 +11,8 @@ from thesistester.setup import (
 )
 
 
-def _base_config() -> dict:
-    return build_setup_config(
+def _base_config(**overrides) -> dict:
+    config = build_setup_config(
         name="OR + ON setup",
         description="test",
         instrument="ES",
@@ -25,6 +26,23 @@ def _base_config() -> dict:
         direction="both",
         trigger_params={},
     )
+    config.update(overrides)
+    return config
+
+
+def _anchor_config(**overrides) -> dict:
+    config = _base_config(
+        selected_levels=[],
+        confluence_mode="anchor_rules",
+        anchor_level="pdHigh",
+        confluence_rules=[
+            {"level": "VWAP_rolling_1h", "tolerance_ticks": 4.0, "required": True},
+            {"level": "pdPOC", "tolerance_ticks": 6.0, "required": False},
+        ],
+        min_valid_confluences=1,
+    )
+    config.update(overrides)
+    return config
 
 
 def test_available_level_columns_excludes_base_columns():
@@ -35,6 +53,23 @@ def test_available_level_columns_excludes_base_columns():
 def test_validate_setup_config_valid_returns_no_errors():
     config = _base_config()
     assert validate_setup_config(config) == []
+
+
+def test_old_global_config_without_confluence_mode_remains_valid():
+    config = _base_config()
+    config.pop("confluence_mode")
+    config.pop("anchor_level")
+    config.pop("confluence_rules")
+    config.pop("min_valid_confluences")
+    assert validate_setup_config(config) == []
+
+
+def test_build_setup_config_defaults_to_global_cluster():
+    config = _base_config()
+    assert config["confluence_mode"] == "global_cluster"
+    assert config["anchor_level"] is None
+    assert config["confluence_rules"] == []
+    assert config["min_valid_confluences"] == 1
 
 
 def test_empty_setup_name_invalid():
@@ -139,3 +174,86 @@ def test_confirm_3bar_legacy_retrace_entry_ticks_is_mapped():
     assert config["trigger_params"]["activation_retrace_ticks"] == 5.0
     assert config["trigger_params"]["entry_offset_ticks"] == 0.0
     assert validate_setup_config(config) == []
+
+
+def test_valid_anchor_rules_config_returns_no_errors():
+    assert validate_setup_config(_anchor_config()) == []
+
+
+@pytest.mark.parametrize("anchor_level", [None, ""])
+def test_anchor_rules_missing_anchor_level_invalid(anchor_level):
+    errors = validate_setup_config(_anchor_config(anchor_level=anchor_level))
+    assert any("Anchor level" in message for message in errors)
+
+
+def test_anchor_rules_empty_confluence_rules_invalid():
+    errors = validate_setup_config(_anchor_config(confluence_rules=[]))
+    assert any("Confluence rules" in message for message in errors)
+
+
+def test_anchor_rules_negative_rule_tolerance_invalid():
+    errors = validate_setup_config(
+        _anchor_config(
+            confluence_rules=[
+                {"level": "VWAP_rolling_1h", "tolerance_ticks": -1, "required": True},
+            ]
+        )
+    )
+    assert any("tolerance_ticks must be >= 0" in message for message in errors)
+
+
+def test_anchor_rules_duplicate_rule_levels_invalid():
+    errors = validate_setup_config(
+        _anchor_config(
+            confluence_rules=[
+                {"level": "pdPOC", "tolerance_ticks": 4.0, "required": True},
+                {"level": "pdPOC", "tolerance_ticks": 6.0, "required": False},
+            ]
+        )
+    )
+    assert any("Duplicate confluence rule levels" in message for message in errors)
+
+
+def test_anchor_rules_anchor_level_cannot_be_reused_in_confluence_rules():
+    errors = validate_setup_config(
+        _anchor_config(
+            confluence_rules=[
+                {"level": "pdHigh", "tolerance_ticks": 4.0, "required": True},
+            ]
+        )
+    )
+    assert any("must not equal anchor_level" in message for message in errors)
+
+
+def test_anchor_rules_min_valid_confluences_cannot_exceed_rule_count():
+    errors = validate_setup_config(_anchor_config(min_valid_confluences=3))
+    assert any("Minimum valid confluences must be <= number of confluence rules" in message for message in errors)
+
+
+def test_invalid_confluence_mode_invalid():
+    errors = validate_setup_config(_base_config(confluence_mode="unknown"))
+    assert any("Confluence mode must be one of" in message for message in errors)
+
+
+def test_anchor_rules_required_must_be_boolean_compatible():
+    errors = validate_setup_config(
+        _anchor_config(
+            confluence_rules=[
+                {"level": "VWAP_rolling_1h", "tolerance_ticks": 4.0, "required": "maybe"},
+            ]
+        )
+    )
+    assert any("required must be boolean-compatible" in message for message in errors)
+
+
+@pytest.mark.parametrize("required_value", [True, False, 1, 0, "true", "false", "1", "0"])
+def test_anchor_rules_required_accepts_boolean_compatible_values(required_value):
+    errors = validate_setup_config(
+        _anchor_config(
+            confluence_rules=[
+                {"level": "VWAP_rolling_1h", "tolerance_ticks": 4.0, "required": required_value},
+                {"level": "pdPOC", "tolerance_ticks": 6.0, "required": False},
+            ]
+        )
+    )
+    assert errors == []
