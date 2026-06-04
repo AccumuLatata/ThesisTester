@@ -30,7 +30,43 @@ def test_timestamps_are_tz_aware_and_sorted():
     assert df["timestamp"].is_monotonic_increasing
 
 
-def test_timezone_conversion_for_aware_timestamps(tmp_path):
+def test_load_ohlcv_tz_backward_compatible(tmp_path):
+    path = tmp_path / "naive.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "timestamp,open,high,low,close,volume",
+                "2026-06-02 09:30:00,1,2,0.5,1.5,10",
+                "2026-06-02 09:31:00,1.5,2.5,1,2,20",
+            ]
+        )
+    )
+    df = load_ohlcv(path, tz="America/New_York")
+    assert str(df["timestamp"].dt.tz) == "America/New_York"
+    assert str(df["timestamp"].iloc[0]) == "2026-06-02 09:30:00-04:00"
+
+
+def test_naive_source_timezone_converts_to_target_timezone(tmp_path):
+    path = tmp_path / "berlin.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "timestamp,open,high,low,close,volume",
+                "2026-06-02 15:30:00,1,2,0.5,1.5,10",
+                "2026-06-02 15:31:00,1.5,2.5,1,2,20",
+            ]
+        )
+    )
+    df = load_ohlcv(
+        path,
+        source_tz="Europe/Berlin",
+        target_tz="America/New_York",
+    )
+    assert str(df["timestamp"].dt.tz) == "America/New_York"
+    assert str(df["timestamp"].iloc[0]) == "2026-06-02 09:30:00-04:00"
+
+
+def test_timezone_aware_timestamps_ignore_source_timezone(tmp_path):
     path = tmp_path / "aware.csv"
     path.write_text(
         "\n".join(
@@ -41,7 +77,11 @@ def test_timezone_conversion_for_aware_timestamps(tmp_path):
             ]
         )
     )
-    df = load_ohlcv(path, tz="America/New_York")
+    df = load_ohlcv(
+        path,
+        source_tz="Europe/Berlin",
+        target_tz="America/New_York",
+    )
     assert str(df["timestamp"].dt.tz) == "America/New_York"
     assert str(df["timestamp"].iloc[0]) == "2026-06-02 09:30:00-04:00"
 
@@ -99,3 +139,11 @@ def test_validation_catches_duplicates_and_bad_high_low():
     codes = {issue.code for issue in report.issues}
     assert "duplicate_timestamps" in codes
     assert "high_below_low" in codes
+
+
+def test_default_load_behavior_remains_clean_and_new_york():
+    df = load_ohlcv(SAMPLE)
+    report = validate_ohlcv(df)
+    assert df["timestamp"].dt.tz is not None
+    assert str(df["timestamp"].dt.tz) == "America/New_York"
+    assert report.is_clean

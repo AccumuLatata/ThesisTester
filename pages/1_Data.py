@@ -7,7 +7,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from thesistester.config import INSTRUMENTS
+from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.data.loader import (
     DataValidationError,
     format_interval,
@@ -35,6 +35,16 @@ st.caption(
 )
 
 source = st.radio("Source", ["Sample data", "Upload CSV"], horizontal=True)
+default_source_tz = "America/New_York" if source == "Sample data" else meta.exchange_tz
+source_tz = st.selectbox(
+    "Source timestamp timezone",
+    TIMEZONE_OPTIONS,
+    index=TIMEZONE_OPTIONS.index(default_source_tz),
+    help=(
+        "Use this for timezone-naive CSV timestamps. Timezone-aware timestamps are "
+        "converted from their embedded timezone automatically."
+    ),
+)
 
 file = None
 if source == "Upload CSV":
@@ -49,13 +59,16 @@ else:
 
 if file is not None:
     try:
-        raw_df = load_ohlcv(file, tz=meta.exchange_tz)
+        raw_df = load_ohlcv(file, source_tz=source_tz, target_tz=meta.exchange_tz)
         report = validate_ohlcv(raw_df)
         base_interval = format_interval(report.inferred_interval)
         df = tag_session(raw_df, inst)
 
         st.success(f"Loaded {len(df):,} bars.")
         st.caption(f"{df['timestamp'].min()} \u2192 {df['timestamp'].max()}")
+        st.caption(
+            f"Source timezone: {source_tz} \u2192 canonical exchange timezone: {meta.exchange_tz}"
+        )
 
         c1, c2, c3 = st.columns(3)
         c1.metric("Rows", f"{len(df):,}")
@@ -93,5 +106,7 @@ if file is not None:
         st.session_state["resampled_data"] = resampled_data
         st.session_state["instrument"] = inst
         st.session_state["base_interval"] = base_interval
+        st.session_state["source_timezone"] = source_tz
+        st.session_state["exchange_timezone"] = meta.exchange_tz
     except DataValidationError as exc:
         st.error(str(exc))

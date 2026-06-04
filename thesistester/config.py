@@ -21,5 +21,13 @@ INSTRUMENTS: dict[str, Instrument] = {
     "NQ": Instrument("NQ", "E-mini Nasdaq-100", tick_size=0.25, point_value=20.0),
 }
 
+TIMEZONE_OPTIONS: list[str] = [
+    "America/New_York",
+    "UTC",
+    "Europe/Berlin",
+    "Europe/London",
+    "America/Chicago",
+]
+
 # Canonical OHLCV contract (lower-cased on load).
 REQUIRED_COLUMNS: list[str] = ["timestamp", "open", "high", "low", "close", "volume"]
