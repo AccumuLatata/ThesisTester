@@ -489,6 +489,82 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
 
 ---
 
+## Anchor Confluence Workflow (Implemented through Phase 8)
+
+### 1. Setup config fields
+
+Saved setup configs support both global and anchor confluence modes:
+
+```python
+{
+    "confluence_mode": "global_cluster" | "anchor_rules",
+    "anchor_level": str | None,
+    "confluence_rules": list[dict],
+    "min_valid_confluences": int,
+}
+```
+
+Anchor rule schema:
+
+```python
+{
+    "level": str,
+    "tolerance_ticks": float,
+    "required": bool,
+}
+```
+
+### 2. Engine routing
+
+Signals page routing for saved setups:
+
+```text
+global_cluster -> detect_confluence_zones()
+anchor_rules -> detect_anchor_confluence_zones()
+```
+
+Manual Signals-page controls remain the global-cluster flow.
+
+### 3. Output schema compatibility
+
+The anchor engine emits the same core zone columns used downstream:
+
+```text
+timestamp
+bar_index
+zone_low
+zone_high
+zone_mid
+level_count
+level_names
+level_prices
+```
+
+It also adds diagnostics:
+
+```text
+confluence_mode
+anchor_level
+anchor_price
+valid_confluence_count
+required_valid
+rule_results
+```
+
+### 4. Backward compatibility
+
+- Old configs without `confluence_mode` default to `global_cluster`.
+- Existing global-confluence behavior remains preserved.
+- Manual Signals flow remains global-cluster only.
+
+### 5. Diagnostics
+
+- `rule_results` is JSON emitted by `detect_anchor_confluence_zones()`.
+- Signals parses `rule_results` into a per-rule audit table for display.
+- Invalid optional confluences are included in diagnostics but excluded from zone boundaries (`zone_low`, `zone_high`, `zone_mid`) and included-level fields.
+
+---
+
 ## 13. Key Assumptions & Decisions (confirmed)
 
 1. **Primary instruments:** ES and NQ futures.

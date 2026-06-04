@@ -1,5 +1,24 @@
 # Regression-Safe Implementation Plan: Anchor-Based Per-Confluence Model
 
+## Implementation Status
+
+As of Phase 8, the anchor-confluence rollout described in this document has been implemented through the Setup Builder -> Signals -> Backtest workflow.
+
+Completed:
+
+- Phase 1: Global confluence regression tests
+- Phase 2: Setup config extension
+- Phase 3: Anchor confluence engine
+- Phase 4: Engine export
+- Phase 5: Setup Builder UI
+- Phase 6: Signals page routing
+- Phase 7: Anchor diagnostics display
+- Phase 8: UX/downstream messaging cleanup
+
+This document remains the historical rollout plan and design reference.
+
+Future extensions listed later in this document remain future work.
+
 ## 1. Purpose
 
 This document defines a regression-safe implementation plan for adding an **anchor-based per-confluence model** to ThesisTester.
