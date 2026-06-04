@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from thesistester.engine import detect_anchor_confluence_zones as exported_detect_anchor_confluence_zones
 from thesistester.engine.anchor_confluence import ANCHOR_ZONE_COLUMNS, detect_anchor_confluence_zones
 
 
@@ -15,6 +16,10 @@ TICK = 0.25
 
 def _df(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(rows)
+
+
+def test_anchor_confluence_engine_is_exported():
+    assert callable(exported_detect_anchor_confluence_zones)
 
 
 def test_empty_rules_returns_empty_schema():

@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from .backtest import simulate_trades
+from .anchor_confluence import detect_anchor_confluence_zones
 from .confluence import detect_confluence_zones
 from .naked import flag_naked_levels
 from .signals import generate_signals
 
 __all__ = [
+    "detect_anchor_confluence_zones",
     "detect_confluence_zones",
     "flag_naked_levels",
     "generate_signals",
