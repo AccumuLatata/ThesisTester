@@ -236,12 +236,11 @@ if not all_level_columns:
     st.warning("No level columns found. Please compute levels on the Levels page first.")
     st.stop()
 
-saved_setup = st.session_state.get("setup_config")
-if isinstance(saved_setup, dict) and saved_setup:
+raw_saved_setup = st.session_state.get("setup_config")
+saved_setup = raw_saved_setup if isinstance(raw_saved_setup, dict) and raw_saved_setup else None
+if saved_setup:
     st.info(f"Using setup: {saved_setup.get('name', 'Untitled setup')}")
     st.caption(_saved_setup_caption(saved_setup))
-else:
-    saved_setup = None
 
 # ── Sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:
@@ -455,7 +454,7 @@ if generate_btn:
             naked_flags=naked_flags if naked_only else None,
             naked_requirement=naked_requirement,
         )
-        if use_saved_setup and saved_setup:
+        if use_saved_setup and saved_setup is not None:
             signals = signals.copy()
             signals["setup_name"] = saved_setup.get("name", "Untitled setup")
             st.session_state["last_signal_setup"] = saved_setup
