@@ -25,6 +25,9 @@ def _signal_setup_context(signals, signal_context: dict | None) -> str | None:
         ]
 
     context = signal_context or {}
+    if len(setup_names) > 1:
+        return f"Backtesting signals from multiple saved setups: {', '.join(setup_names)}"
+
     setup_name = setup_names[0] if len(setup_names) == 1 else context.get("setup_name")
     setup_caption = context.get("setup_caption")
 

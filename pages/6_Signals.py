@@ -237,9 +237,11 @@ if not all_level_columns:
     st.stop()
 
 saved_setup = st.session_state.get("setup_config")
-if saved_setup is not None:
+if isinstance(saved_setup, dict) and saved_setup:
     st.info(f"Using setup: {saved_setup.get('name', 'Untitled setup')}")
     st.caption(_saved_setup_caption(saved_setup))
+else:
+    saved_setup = None
 
 # ── Sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:
