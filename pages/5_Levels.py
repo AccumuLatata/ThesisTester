@@ -20,6 +20,41 @@ def _parse_lengths(raw: str, label: str) -> list[int]:
         raise ValueError(f"Please provide at least one {label} length.")
     return sorted(set(lengths))
 
+
+def _normalize_levels_settings(settings: dict | None) -> dict | None:
+    """Return a stable settings shape for stale-result comparisons."""
+    if not isinstance(settings, dict):
+        return None
+    out = dict(settings)
+    for key in ("vwap_windows", "poc_windows"):
+        value = out.get(key)
+        if isinstance(value, list):
+            out[key] = sorted(value)
+        elif isinstance(value, tuple):
+            out[key] = sorted(list(value))
+    return out
+
+
+def _levels_data_fingerprint(df, instrument: str) -> dict:
+    """Return a lightweight fingerprint of the current loaded input data context."""
+    timestamp_min = None
+    timestamp_max = None
+    if not df.empty and "timestamp" in df.columns:
+        timestamp_min = str(df["timestamp"].min())
+        timestamp_max = str(df["timestamp"].max())
+
+    return {
+        "instrument": instrument,
+        "rows": len(df),
+        "timestamp_min": timestamp_min,
+        "timestamp_max": timestamp_max,
+        "columns": tuple(sorted(df.columns)),
+        "base_interval": st.session_state.get("base_interval"),
+        "source_timezone": st.session_state.get("source_timezone"),
+        "exchange_timezone": st.session_state.get("exchange_timezone"),
+    }
+
+
 st.title("📏 Levels")
 
 if "data" not in st.session_state:
@@ -42,10 +77,6 @@ poc_windows = st.multiselect(
 )
 value_area_pct = st.slider("Value area (%)", min_value=50, max_value=95, value=70, step=1) / 100.0
 
-base_df = st.session_state["data"]
-if "session" not in base_df.columns:
-    base_df = tag_session(base_df, instrument)
-
 try:
     sma_lengths = _parse_lengths(sma_lengths_raw, "SMA")
     ema_lengths = _parse_lengths(ema_lengths_raw, "EMA")
@@ -53,24 +84,70 @@ except ValueError as exc:
     st.error(str(exc))
     st.stop()
 
-levels_df = compute_all_levels(
-    base_df,
-    instrument=instrument,
-    opening_range_minutes=opening_range_minutes,
-    sma_lengths=sma_lengths,
-    ema_lengths=ema_lengths,
-    vwap_windows=vwap_windows,
-    poc_windows=poc_windows,
-    value_area_pct=value_area_pct,
+current_settings = _normalize_levels_settings(
+    {
+        "instrument": instrument,
+        "opening_range_minutes": opening_range_minutes,
+        "sma_lengths": sma_lengths,
+        "ema_lengths": ema_lengths,
+        "vwap_windows": vwap_windows,
+        "poc_windows": poc_windows,
+        "value_area_pct": value_area_pct,
+    }
 )
+current_data_fingerprint = _levels_data_fingerprint(st.session_state["data"], instrument)
+previous_settings = _normalize_levels_settings(st.session_state.get("levels_settings"))
+previous_data_fingerprint = st.session_state.get("levels_data_fingerprint")
+has_calculated_levels = "levels" in st.session_state and "session_levels" in st.session_state
 
-session_levels = compute_session_levels(
-    base_df,
-    instrument=instrument,
-    opening_range_minutes=opening_range_minutes,
-)
-st.session_state["session_levels"] = session_levels
-st.session_state["levels"] = levels_df
+button_label = "Recalculate levels" if has_calculated_levels else "Calculate levels"
+calculate_levels = st.button(button_label, type="primary")
+
+if calculate_levels:
+    with st.spinner("Calculating levels..."):
+        base_df = st.session_state["data"]
+        if "session" not in base_df.columns:
+            base_df = tag_session(base_df, instrument)
+
+        levels_df = compute_all_levels(
+            base_df,
+            instrument=instrument,
+            opening_range_minutes=opening_range_minutes,
+            sma_lengths=sma_lengths,
+            ema_lengths=ema_lengths,
+            vwap_windows=vwap_windows,
+            poc_windows=poc_windows,
+            value_area_pct=value_area_pct,
+        )
+
+        session_levels = compute_session_levels(
+            base_df,
+            instrument=instrument,
+            opening_range_minutes=opening_range_minutes,
+        )
+        st.session_state["session_levels"] = session_levels
+        st.session_state["levels"] = levels_df
+        st.session_state["levels_settings"] = current_settings
+        st.session_state["levels_data_fingerprint"] = current_data_fingerprint
+        previous_settings = current_settings
+        previous_data_fingerprint = current_data_fingerprint
+        has_calculated_levels = True
+
+levels_df = st.session_state.get("levels")
+if levels_df is None:
+    st.info("Configure the settings above, then click **Calculate levels** to generate levels.")
+    st.stop()
+
+if (
+    has_calculated_levels
+    and previous_data_fingerprint is not None
+    and previous_data_fingerprint != current_data_fingerprint
+):
+    st.warning("Loaded data has changed. Click **Recalculate levels** to update results.")
+    st.stop()
+
+if previous_settings is not None and previous_settings != current_settings:
+    st.info("Settings have changed. Click **Recalculate levels** to update results.")
 
 base_columns = {"timestamp", "open", "high", "low", "close", "volume", "session", "settlement"}
 level_columns = [col for col in levels_df.columns if col not in base_columns]
