@@ -518,3 +518,15 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
 ---
 
 *End of document — feedback welcome before we scaffold Phase 0.*
+
+---
+
+## Phase 7 Implementation Notes
+
+- **Descriptive diagnostics only.** Phase 7 analyzes completed Phase 5 trades and does not
+  resimulate trades or change execution logic.
+- **Time buckets and RTH segments** are derived from entry or exit timestamps converted to the
+  instrument exchange timezone.
+- **Grouped summaries include trade count and low-sample warnings** so users do not overinterpret
+  small samples.
+- **Statistical validation is deferred to Phase 8.**
