@@ -25,6 +25,18 @@ from thesistester.setup import (
 st.title("🎯 Signals")
 
 
+ANCHOR_DIAGNOSTIC_COLUMNS = [
+    "timestamp",
+    "bar_index",
+    "anchor_level",
+    "anchor_price",
+    "valid_confluence_count",
+    "level_names",
+    "level_prices",
+    "rule_results",
+]
+
+
 def _normalize_confirm_3bar_params(params: dict | None) -> dict:
     trigger_params = params or {}
     activation_retrace_ticks = trigger_params.get(
@@ -241,6 +253,8 @@ with st.sidebar:
 
 # ── Generate ──────────────────────────────────────────────────────────────────
 if generate_btn:
+    levels_for_naked_flags = selected_levels
+
     if confluence_mode == "anchor_rules":
         if not anchor_level:
             st.error("Saved anchor setup is missing an anchor level.")
@@ -255,7 +269,7 @@ if generate_btn:
                 + ", ".join(missing_columns)
             )
             st.stop()
-        selected_levels = _selected_anchor_levels(anchor_level, confluence_rules, list(levels_df.columns))
+        levels_for_naked_flags = _selected_anchor_levels(anchor_level, confluence_rules, list(levels_df.columns))
     elif not selected_levels:
         st.error("Please select at least one level column.")
         st.stop()
@@ -286,7 +300,7 @@ if generate_btn:
     with st.spinner("Flagging naked levels…"):
         naked_flags = flag_naked_levels(
             levels_df,
-            level_columns=selected_levels,
+            level_columns=levels_for_naked_flags,
             tick_size=tick_size,
             touch_tolerance_ticks=0,
         )
@@ -328,18 +342,8 @@ if zones.empty:
 
 if all(col in zones.columns for col in ["anchor_level", "valid_confluence_count", "rule_results"]):
     st.subheader("Anchor confluence diagnostics")
-    anchor_diag_cols = [
-        "timestamp",
-        "bar_index",
-        "anchor_level",
-        "anchor_price",
-        "valid_confluence_count",
-        "level_names",
-        "level_prices",
-        "rule_results",
-    ]
     st.dataframe(
-        zones[[col for col in anchor_diag_cols if col in zones.columns]].head(500),
+        zones[[col for col in ANCHOR_DIAGNOSTIC_COLUMNS if col in zones.columns]].head(500),
         use_container_width=True,
         hide_index=True,
     )
