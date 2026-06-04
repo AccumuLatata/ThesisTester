@@ -90,6 +90,7 @@ trades = add_time_buckets(
     timestamp_col=timestamp_basis,
     exchange_tz=exchange_tz,
 )
+st.session_state["time_bucketed_trades"] = trades
 
 # ── Determine available grouping columns ─────────────────────────────────────
 _PRIMARY_OPTIONS = [
@@ -168,6 +169,7 @@ group_cols = (
 )
 
 grouped = summarize_by_group(trades, group_cols=group_cols, min_trades=min_trades_warn)
+st.session_state["time_grouped_summary"] = grouped
 
 st.subheader("Grouped performance table")
 

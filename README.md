@@ -50,3 +50,8 @@ pytest -q
   `st.session_state["setup_config"]` (and `st.session_state["setup_configs"]` for session
   history).  **Signals** (`pages/6_Signals.py`) can consume the saved setup via
   a `Use saved setup` toggle while still supporting manual configuration.
+- **Phase 7 (time-of-day/session-window analysis):** completed trades can now be grouped by
+  RTH segment, hourly and 30-minute buckets, trigger, direction, setup name, and exit reason.
+  The new **Time Analysis** page (`pages/9_Time_Analysis.py`) displays grouped KPIs,
+  low-sample warnings, bar charts, heatmaps, and raw bucketed trades. Outputs are stored in
+  `st.session_state["time_bucketed_trades"]` and `st.session_state["time_grouped_summary"]`.
