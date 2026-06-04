@@ -61,6 +61,16 @@ def _normalize_confirm_3bar_params(params: dict[str, Any] | None) -> dict[str, A
     }
 
 
+def _is_boolean_compatible(value: Any) -> bool:
+    if isinstance(value, bool):
+        return True
+    if value in {0, 1}:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "false", "1", "0"}
+    return False
+
+
 def available_level_columns(df: pd.DataFrame) -> list[str]:
     """Return setup-eligible level columns from *df*."""
     return [column for column in df.columns if column not in BASE_COLUMNS]
@@ -217,11 +227,7 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
             except (TypeError, ValueError):
                 errors.append(f"Confluence rule {index} tolerance_ticks must be a number.")
 
-            required_raw = rule.get("required")
-            bool_compatible = isinstance(required_raw, bool) or required_raw in {0, 1}
-            if not bool_compatible and isinstance(required_raw, str):
-                bool_compatible = required_raw.strip().lower() in {"true", "false", "1", "0"}
-            if not bool_compatible:
+            if not _is_boolean_compatible(rule.get("required")):
                 errors.append(f"Confluence rule {index} required must be boolean-compatible.")
 
     if trigger == "confirm_3bar":
