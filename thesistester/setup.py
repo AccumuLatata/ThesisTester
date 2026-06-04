@@ -198,10 +198,10 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
             if min_valid_confluences < 1:
                 errors.append("Minimum valid confluences must be >= 1.")
         except (TypeError, ValueError):
-            min_valid_confluences = 0
+            min_valid_confluences = None
             errors.append("Minimum valid confluences must be an integer.")
 
-        if isinstance(confluence_rules, list) and min_valid_confluences > len(confluence_rules):
+        if min_valid_confluences is not None and min_valid_confluences > len(confluence_rules):
             errors.append("Minimum valid confluences must be <= number of confluence rules.")
 
         seen_levels: set[str] = set()
@@ -217,7 +217,7 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
                 if rule_level == anchor_level:
                     errors.append(f"Confluence rule {index} level must not equal anchor_level.")
                 if rule_level in seen_levels:
-                    errors.append("Duplicate confluence rule levels are not allowed.")
+                    errors.append(f"Duplicate confluence rule level '{rule_level}' is not allowed.")
                 seen_levels.add(rule_level)
 
             try:
