@@ -35,6 +35,26 @@ def _normalize_levels_settings(settings: dict | None) -> dict | None:
     return out
 
 
+def _levels_data_fingerprint(df, instrument: str) -> dict:
+    """Return a lightweight fingerprint of the current loaded input data context."""
+    timestamp_min = None
+    timestamp_max = None
+    if not df.empty and "timestamp" in df.columns:
+        timestamp_min = str(df["timestamp"].min())
+        timestamp_max = str(df["timestamp"].max())
+
+    return {
+        "instrument": instrument,
+        "rows": len(df),
+        "timestamp_min": timestamp_min,
+        "timestamp_max": timestamp_max,
+        "columns": tuple(df.columns),
+        "base_interval": st.session_state.get("base_interval"),
+        "source_timezone": st.session_state.get("source_timezone"),
+        "exchange_timezone": st.session_state.get("exchange_timezone"),
+    }
+
+
 st.title("📏 Levels")
 
 if "data" not in st.session_state:
@@ -66,16 +86,18 @@ except ValueError as exc:
 
 current_settings = _normalize_levels_settings(
     {
-    "instrument": instrument,
-    "opening_range_minutes": opening_range_minutes,
-    "sma_lengths": sma_lengths,
-    "ema_lengths": ema_lengths,
-    "vwap_windows": vwap_windows,
-    "poc_windows": poc_windows,
-    "value_area_pct": value_area_pct,
+        "instrument": instrument,
+        "opening_range_minutes": opening_range_minutes,
+        "sma_lengths": sma_lengths,
+        "ema_lengths": ema_lengths,
+        "vwap_windows": vwap_windows,
+        "poc_windows": poc_windows,
+        "value_area_pct": value_area_pct,
     }
 )
+current_data_fingerprint = _levels_data_fingerprint(st.session_state["data"], instrument)
 previous_settings = _normalize_levels_settings(st.session_state.get("levels_settings"))
+previous_data_fingerprint = st.session_state.get("levels_data_fingerprint")
 has_calculated_levels = "levels" in st.session_state and "session_levels" in st.session_state
 
 button_label = "Recalculate levels" if has_calculated_levels else "Calculate levels"
@@ -106,10 +128,15 @@ if calculate_levels:
         st.session_state["session_levels"] = session_levels
         st.session_state["levels"] = levels_df
         st.session_state["levels_settings"] = current_settings
+        st.session_state["levels_data_fingerprint"] = current_data_fingerprint
 
 levels_df = st.session_state.get("levels")
 if levels_df is None:
     st.info("Configure the settings above, then click **Calculate levels** to generate levels.")
+    st.stop()
+
+if has_calculated_levels and previous_data_fingerprint != current_data_fingerprint:
+    st.warning("Loaded data has changed. Click **Recalculate levels** to update results.")
     st.stop()
 
 if previous_settings is not None and previous_settings != current_settings:
