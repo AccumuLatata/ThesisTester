@@ -464,8 +464,24 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
   the limit.  `status="void"` rows are skipped.
 - **Intrabar ambiguity uses SL-first** (pessimistic rule): when both SL and TP are reachable
   within the same OHLC bar the engine exits at SL, since intrabar event order is unknowable.
-- **Phase 6** will implement SL/TP grid search, time-of-day breakdown, and walk-forward
-  validation.  These are intentionally absent from Phase 5.
+- **Phase 6** implements SL/TP grid search (see Phase 6 notes below).
+
+## Phase 6 Implementation Notes
+
+- **Grid search reuses the Phase 5 engine.** `thesistester/analytics/grid.py` sweeps every
+  `(stop_loss_ticks, take_profit_ticks)` pair by calling `simulate_trades()` and
+  `summarize_trades()` for each cell — no trade-simulation logic is duplicated.
+- **`run_sl_tp_grid()`** returns one tidy summary row per cell including expectancy, total R,
+  win rate, profit factor, max drawdown R, and optional ratio / point columns.
+- **`best_grid_result()`** filters by a minimum trade count and returns the row with the
+  highest value of the chosen metric (default `expectancy_r`).
+- **No walk-forward or statistical validation** is implemented in Phase 6.  Grid search is
+  purely descriptive: sweeping many SL/TP combinations on the same dataset can overfit.
+  Out-of-sample validation belongs to a later phase.
+- **Grid Search page** (`pages/8_Grid_Search.py`) exposes SL/TP ranges, optional max-holding
+  bars, allow-same-bar-exit, ranking metric, and min-trade-count controls.  Results are stored
+  in `st.session_state["grid_results"]` and `st.session_state["best_grid_result"]`.
+  Four heatmaps (expectancy, total R, win rate, max drawdown R) are displayed via Plotly.
 
 ---
 
