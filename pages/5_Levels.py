@@ -130,7 +130,11 @@ settings_are_stale = previous_settings is not None and previous_settings != curr
 if matching_saved_levels is not None and (not has_calculated_levels or levels_are_stale or settings_are_stale):
     st.info("Matching saved levels found for this dataset/settings.")
     saved_level_actions = st.columns(2)
-    if saved_level_actions[0].button("Load saved levels", use_container_width=True):
+    if saved_level_actions[0].button(
+        "Load saved levels",
+        key="load_matching_saved_levels",
+        use_container_width=True,
+    ):
         levels_df, session_levels, loaded_meta = load_levels(
             dataset_id,
             matching_saved_levels["settings_hash"],
@@ -145,7 +149,11 @@ if matching_saved_levels is not None and (not has_calculated_levels or levels_ar
         levels_are_stale = False
         settings_are_stale = False
         st.success("Loaded saved levels without recalculating.")
-    if saved_level_actions[1].button("Delete saved levels", use_container_width=True):
+    if saved_level_actions[1].button(
+        "Delete saved levels",
+        key="delete_matching_saved_levels_prompt",
+        use_container_width=True,
+    ):
         delete_levels(dataset_id, matching_saved_levels["settings_hash"])
         matching_saved_levels = None
         st.success("Deleted matching saved levels.")
@@ -210,7 +218,11 @@ levels_current = (
 if levels_current:
     st.divider()
     persistence_actions = st.columns(2)
-    if persistence_actions[0].button("Save levels locally", use_container_width=True):
+    if persistence_actions[0].button(
+        "Save levels locally",
+        key="save_current_levels_locally",
+        use_container_width=True,
+    ):
         saved_levels_meta = save_levels(
             dataset_id=dataset_id,
             levels=st.session_state["levels"],
@@ -224,6 +236,7 @@ if levels_current:
         )
     if matching_saved_levels is not None and persistence_actions[1].button(
         "Delete saved levels",
+        key="delete_current_saved_levels",
         use_container_width=True,
     ):
         delete_levels(dataset_id, matching_saved_levels["settings_hash"])

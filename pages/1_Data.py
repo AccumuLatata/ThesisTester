@@ -26,6 +26,8 @@ from thesistester.persistence import (
 
 FLASH_MESSAGE_KEY = "_data_local_store_message"
 ACTIVE_SAVED_DATASET_KEY = "_active_saved_dataset_id"
+PENDING_INSTRUMENT_SELECTOR_KEY = "_pending_data_instrument_selector"
+PENDING_SOURCE_TZ_SELECTOR_KEY = "_pending_data_source_timezone_selector"
 
 
 @st.cache_data(show_spinner=False)
@@ -54,6 +56,29 @@ def _saved_dataset_label(meta: dict) -> str:
     return f"{meta.get('name', meta['dataset_id'])} · {meta.get('instrument', '—')} · {rows} · {date_range} · saved {saved_at}"
 
 
+def _clear_dataset_dependent_state() -> None:
+    for key in [
+        "levels",
+        "session_levels",
+        "levels_settings",
+        "levels_data_fingerprint",
+        "confluence_zones",
+        "naked_flags",
+        "last_signal_setup",
+        "signal_context",
+        "signals",
+        "trades",
+        "trade_summary",
+        "equity_curve",
+        "grid_results",
+        "best_grid_result",
+        "time_bucketed_trades",
+        "time_grouped_summary",
+        "validation_summary",
+    ]:
+        st.session_state.pop(key, None)
+
+
 def _set_active_dataset_state(
     df,
     *,
@@ -71,6 +96,9 @@ def _set_active_dataset_state(
         source_timezone=source_timezone,
         exchange_timezone=exchange_timezone,
     )
+    previous_dataset_id = st.session_state.get("dataset_id")
+    if previous_dataset_id is not None and previous_dataset_id != dataset_id:
+        _clear_dataset_dependent_state()
     st.session_state["data"] = df
     st.session_state["resampled_data"] = resampled_data or {}
     st.session_state["instrument"] = instrument
@@ -78,9 +106,6 @@ def _set_active_dataset_state(
     st.session_state["source_timezone"] = source_timezone
     st.session_state["exchange_timezone"] = exchange_timezone
     st.session_state["dataset_id"] = dataset_id
-    st.session_state["data_instrument_selector"] = instrument
-    if source_timezone is not None:
-        st.session_state["data_source_timezone_selector"] = source_timezone
     if saved_dataset_id is None:
         st.session_state.pop(ACTIVE_SAVED_DATASET_KEY, None)
     else:
@@ -140,6 +165,10 @@ if flash_message:
     st.success(flash_message)
 
 available_instruments = list(INSTRUMENTS.keys())
+if PENDING_INSTRUMENT_SELECTOR_KEY in st.session_state:
+    st.session_state["data_instrument_selector"] = st.session_state.pop(
+        PENDING_INSTRUMENT_SELECTOR_KEY
+    )
 if "data_instrument_selector" not in st.session_state:
     st.session_state["data_instrument_selector"] = st.session_state.get(
         "instrument",
@@ -154,6 +183,10 @@ st.caption(
 
 source = st.radio("Source", ["Sample data", "Upload CSV"], horizontal=True)
 default_source_tz = "America/New_York" if source == "Sample data" else meta.exchange_tz
+if PENDING_SOURCE_TZ_SELECTOR_KEY in st.session_state:
+    st.session_state["data_source_timezone_selector"] = st.session_state.pop(
+        PENDING_SOURCE_TZ_SELECTOR_KEY
+    )
 if "data_source_timezone_selector" not in st.session_state:
     st.session_state["data_source_timezone_selector"] = default_source_tz
 source_tz = st.selectbox(
@@ -258,6 +291,11 @@ if saved_datasets:
         st.session_state[FLASH_MESSAGE_KEY] = (
             f"Loaded saved dataset '{loaded_meta['name']}' ({loaded_meta['dataset_id'][:12]}...)."
         )
+        st.session_state[PENDING_INSTRUMENT_SELECTOR_KEY] = loaded_meta["instrument"]
+        if loaded_meta.get("source_timezone") is not None:
+            st.session_state[PENDING_SOURCE_TZ_SELECTOR_KEY] = loaded_meta[
+                "source_timezone"
+            ]
         st.rerun()
 
     if action_cols[1].button("Delete saved dataset", use_container_width=True):
