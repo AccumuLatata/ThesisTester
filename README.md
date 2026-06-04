@@ -65,3 +65,10 @@ pytest -q
   displays bootstrap and permutation histograms, and stores results in
   `st.session_state["validation_summary"]`.  ⚠️ All outputs are diagnostic only — not proof
   of edge.
+- **Phase 9 (report/export + reproducibility):** adds a new **Report / Export** page
+  (`pages/11_Report_Export.py`) backed by `thesistester/reporting.py`. Users can export a
+  consolidated `research_artifact.json`, a readable `research_report.md`, and CSV downloads
+  for key result tables (`signals`, `trades`, `equity_curve`, `grid_results`,
+  `time_grouped_summary`). Artifacts are built directly from current `st.session_state`
+  without recomputing backtests, exclude full raw `data`/`levels` by default to avoid huge
+  files, and include reproducibility caveats emphasizing research-only usage.

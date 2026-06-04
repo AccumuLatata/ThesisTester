@@ -554,3 +554,19 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
 - **Stronger validation (walk-forward, out-of-sample, Bayesian inference, serial-
   dependence modelling, formal multiple-hypothesis correction) belongs to future
   research phases** and is explicitly out of scope for Phase 8.
+
+---
+
+## Phase 9 Implementation Notes
+
+- **Session-state export only.** Phase 9 serializes current in-memory research outputs
+  into export artifacts and does not recompute backtests or mutate prior analysis.
+- **No persistence layer is added.** There is no database storage, user account model,
+  cloud sync, or automatic job scheduling in this phase.
+- **Large raw tables are excluded by default.** Full `data` and `levels` tables are not
+  included in the consolidated artifact to keep export size practical.
+- **Dual-format reporting.** Exports include a machine-readable JSON artifact and a human-
+  readable Markdown report, plus CSV downloads for key result tables.
+- **Research-only caveats are embedded in outputs.** Artifacts explicitly reiterate
+  historical-data limitations, intrabar ambiguity assumptions, overfit risk, and that
+  outputs are not trading advice.
