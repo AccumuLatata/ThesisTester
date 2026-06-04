@@ -19,6 +19,7 @@ BASE_COLUMNS = {
 
 VALID_TRIGGERS = frozenset({"touch", "reject", "break", "reclaim", "confirm_3bar"})
 VALID_DIRECTIONS = frozenset({"long", "short", "both"})
+VALID_CONFLUENCE_MODES = frozenset({"global_cluster", "anchor_rules"})
 
 SUGGESTED_DEFAULT_LEVELS = [
     "ONH",
@@ -60,6 +61,16 @@ def _normalize_confirm_3bar_params(params: dict[str, Any] | None) -> dict[str, A
     }
 
 
+def _is_boolean_compatible(value: Any) -> bool:
+    if isinstance(value, bool):
+        return True
+    if value in {0, 1}:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "false", "1", "0"}
+    return False
+
+
 def available_level_columns(df: pd.DataFrame) -> list[str]:
     """Return setup-eligible level columns from *df*."""
     return [column for column in df.columns if column not in BASE_COLUMNS]
@@ -86,6 +97,10 @@ def build_setup_config(
     naked_requirement: str,
     trigger: str,
     direction: str,
+    confluence_mode: str = "global_cluster",
+    anchor_level: str | None = None,
+    confluence_rules: list[dict[str, Any]] | None = None,
+    min_valid_confluences: int = 1,
     trigger_params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a normalized setup configuration dictionary."""
@@ -105,6 +120,10 @@ def build_setup_config(
         "naked_requirement": str(naked_requirement).lower(),
         "trigger": str(trigger),
         "direction": str(direction),
+        "confluence_mode": str(confluence_mode or "global_cluster"),
+        "anchor_level": anchor_level,
+        "confluence_rules": list(confluence_rules or []),
+        "min_valid_confluences": int(min_valid_confluences),
         "trigger_params": normalized_params,
     }
 
@@ -117,35 +136,9 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
     if not name:
         errors.append("Setup name must not be empty.")
 
-    selected_levels = config.get("selected_levels", [])
-    if not isinstance(selected_levels, list) or not selected_levels:
-        errors.append("Select at least one level column.")
-
-    try:
-        tolerance_ticks = float(config.get("tolerance_ticks", 0.0))
-        if tolerance_ticks < 0:
-            errors.append("Tolerance ticks must be >= 0.")
-    except (TypeError, ValueError):
-        errors.append("Tolerance ticks must be a number.")
-
-    try:
-        min_conf = int(config.get("min_confluences", 0))
-        if min_conf < 1:
-            errors.append("Minimum confluences must be >= 1.")
-    except (TypeError, ValueError):
-        min_conf = 1
-        errors.append("Minimum confluences must be an integer.")
-
-    try:
-        max_conf = int(config.get("max_confluences", 0))
-    except (TypeError, ValueError):
-        max_conf = 0
-        errors.append("Maximum confluences must be an integer.")
-    else:
-        if max_conf < min_conf:
-            errors.append("Maximum confluences must be >= minimum confluences.")
-        if max_conf > 5:
-            errors.append("Maximum confluences must be <= 5.")
+    confluence_mode = str(config.get("confluence_mode") or "global_cluster")
+    if confluence_mode not in VALID_CONFLUENCE_MODES:
+        errors.append(f"Confluence mode must be one of {sorted(VALID_CONFLUENCE_MODES)}.")
 
     naked_requirement = str(config.get("naked_requirement", "any")).lower()
     if naked_requirement not in {"any", "all"}:
@@ -158,6 +151,85 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
     direction = str(config.get("direction", ""))
     if direction not in VALID_DIRECTIONS:
         errors.append(f"Direction must be one of {sorted(VALID_DIRECTIONS)}.")
+
+    if confluence_mode == "global_cluster":
+        selected_levels = config.get("selected_levels", [])
+        if not isinstance(selected_levels, list) or not selected_levels:
+            errors.append("Select at least one level column.")
+
+        try:
+            tolerance_ticks = float(config.get("tolerance_ticks", 0.0))
+            if tolerance_ticks < 0:
+                errors.append("Tolerance ticks must be >= 0.")
+        except (TypeError, ValueError):
+            errors.append("Tolerance ticks must be a number.")
+
+        try:
+            min_conf = int(config.get("min_confluences", 0))
+            if min_conf < 1:
+                errors.append("Minimum confluences must be >= 1.")
+        except (TypeError, ValueError):
+            min_conf = 1
+            errors.append("Minimum confluences must be an integer.")
+
+        try:
+            max_conf = int(config.get("max_confluences", 0))
+        except (TypeError, ValueError):
+            max_conf = 0
+            errors.append("Maximum confluences must be an integer.")
+        else:
+            if max_conf < min_conf:
+                errors.append("Maximum confluences must be >= minimum confluences.")
+            if max_conf > 5:
+                errors.append("Maximum confluences must be <= 5.")
+    elif confluence_mode == "anchor_rules":
+        raw_anchor_level = config.get("anchor_level")
+        anchor_level = raw_anchor_level.strip() if isinstance(raw_anchor_level, str) else ""
+        if not anchor_level:
+            errors.append("Anchor level must be a non-empty string.")
+
+        confluence_rules = config.get("confluence_rules", [])
+        if not isinstance(confluence_rules, list) or not confluence_rules:
+            errors.append("Confluence rules must be a non-empty list.")
+            confluence_rules = []
+
+        try:
+            min_valid_confluences = int(config.get("min_valid_confluences", 0))
+            if min_valid_confluences < 1:
+                errors.append("Minimum valid confluences must be >= 1.")
+                min_valid_confluences = None
+        except (TypeError, ValueError):
+            min_valid_confluences = None
+            errors.append("Minimum valid confluences must be an integer.")
+
+        if min_valid_confluences is not None and min_valid_confluences > len(confluence_rules):
+            errors.append("Minimum valid confluences must be <= number of confluence rules.")
+
+        seen_levels: set[str] = set()
+        for index, rule in enumerate(confluence_rules, start=1):
+            if not isinstance(rule, dict):
+                errors.append(f"Confluence rule {index} must be a dictionary.")
+                continue
+
+            rule_level = str(rule.get("level", "")).strip()
+            if not rule_level:
+                errors.append(f"Confluence rule {index} level must be a non-empty string.")
+            else:
+                if rule_level == anchor_level:
+                    errors.append(f"Confluence rule {index} level must not equal anchor_level.")
+                if rule_level in seen_levels:
+                    errors.append(f"Duplicate confluence rule level '{rule_level}' is not allowed.")
+                seen_levels.add(rule_level)
+
+            try:
+                rule_tolerance = float(rule.get("tolerance_ticks", 0.0))
+                if rule_tolerance < 0:
+                    errors.append(f"Confluence rule {index} tolerance_ticks must be >= 0.")
+            except (TypeError, ValueError):
+                errors.append(f"Confluence rule {index} tolerance_ticks must be a number.")
+
+            if not _is_boolean_compatible(rule.get("required")):
+                errors.append(f"Confluence rule {index} required must be boolean-compatible.")
 
     if trigger == "confirm_3bar":
         trigger_params = config.get("trigger_params", {}) or {}
