@@ -22,11 +22,11 @@ CONFLUENCE_MODE_DISPLAY = {value: key for key, value in CONFLUENCE_MODE_LABELS.i
 
 
 def _anchor_rule_key(prefix: str, level: str) -> str:
+    """Build a stable Streamlit widget key for an anchor-rule control."""
     sanitized_level = re.sub(r"[^0-9A-Za-z_]+", "_", level).strip("_")
-    if not sanitized_level:
-        level_hash = hashlib.md5(level.encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
-        sanitized_level = f"level_{level_hash}"
-    return f"{prefix}_{sanitized_level}"
+    level_hash = hashlib.sha256(level.encode("utf-8")).hexdigest()[:8]
+    key_level = f"{sanitized_level}_{level_hash}" if sanitized_level else f"level_{level_hash}"
+    return f"{prefix}_{key_level}"
 
 
 def _render_setup_summary(config: dict) -> None:
@@ -109,6 +109,9 @@ if confluence_mode == "global_cluster":
     min_conf = st.slider("Minimum confluences", min_value=1, max_value=5, value=2)
     max_conf = st.slider("Maximum confluences", min_value=1, max_value=5, value=5)
 else:
+    if not all_level_columns:
+        st.warning("No level columns found. Please compute levels on the Levels page first.")
+        st.stop()
     anchor_level = st.selectbox("Anchor level", options=all_level_columns, index=0)
     confluence_level_options = [level for level in all_level_columns if level != anchor_level]
     selected_confluence_levels = st.multiselect(
@@ -151,7 +154,7 @@ else:
     else:
         st.info("Select at least one confluence level.")
 
-    selected_levels = list(dict.fromkeys(level for level in [anchor_level, *selected_confluence_levels] if level))
+    selected_levels = [anchor_level, *selected_confluence_levels] if anchor_level else list(selected_confluence_levels)
 
 naked_only = st.toggle("Naked only", value=False)
 naked_requirement = st.radio("Naked requirement", options=["any", "all"], index=0, horizontal=True)
