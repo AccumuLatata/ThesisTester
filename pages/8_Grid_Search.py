@@ -6,6 +6,7 @@ signals and displays expectancy heatmaps plus a full results table.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -172,7 +173,7 @@ if best is not None:
     c2.metric("TP (ticks)", _fmt(best.get("take_profit_ticks"), ".4g"))
     c3.metric(f"Best {ranking_metric}", _fmt(best.get(ranking_metric)))
     c4.metric("Trades", int(best.get("trade_count", 0)))
-    c5.metric("Win rate", f"{_fmt(best.get('win_rate'), '.1%')}" if best.get("win_rate") is not None else "—")
+    c5.metric("Win rate", _fmt(best.get("win_rate"), ".1%") if best.get("win_rate") is not None else "—")
     c6.metric("Max DD (R)", _fmt(best.get("max_drawdown_r")))
 
     col_pf, col_tot = st.columns(2)
@@ -189,7 +190,7 @@ else:
 # Heatmap helper
 # ---------------------------------------------------------------------------
 
-def _heatmap(grid: "pd.DataFrame", metric: str, title: str) -> go.Figure:  # type: ignore[name-defined]
+def _heatmap(grid: pd.DataFrame, metric: str, title: str) -> go.Figure:
     pivot = grid.pivot(
         index="stop_loss_ticks",
         columns="take_profit_ticks",
