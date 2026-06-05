@@ -39,6 +39,11 @@ ANCHOR_DIAGNOSTIC_COLUMNS = [
     "rule_results",
 ]
 
+CONFLUENCE_MODE_OPTIONS = {
+    "Global Cluster": "global_cluster",
+    "Anchor Rules / User Anchor": "anchor_rules",
+}
+
 _RULE_AUDIT_COLUMNS = [
     "zone_row",
     "timestamp",
@@ -290,32 +295,86 @@ with st.sidebar:
             )
             st.stop()
     else:
-        confluence_mode = "global_cluster"
+        selected_mode_label = st.selectbox(
+            "Confluence mode",
+            options=list(CONFLUENCE_MODE_OPTIONS.keys()),
+            index=0,
+            help="Choose whether to detect global level clusters or anchor-based confluence rules.",
+        )
+        confluence_mode = CONFLUENCE_MODE_OPTIONS[selected_mode_label]
         anchor_level = None
         confluence_rules = []
         min_valid_confluences = 1
         st.header("Confluence settings")
 
-        selected_levels = st.multiselect(
-            "Level columns",
-            options=all_level_columns,
-            default=default_selected_levels(all_level_columns),
-            help="Level columns to include in confluence detection.",
-        )
+        if confluence_mode == "global_cluster":
+            selected_levels = st.multiselect(
+                "Level columns",
+                options=all_level_columns,
+                default=default_selected_levels(all_level_columns),
+                help="Level columns to include in confluence detection.",
+            )
 
-        tolerance_ticks = st.number_input(
-            "Tolerance (ticks)",
-            min_value=0.0,
-            max_value=100.0,
-            value=4.0,
-            step=0.5,
-            help=f"Cluster tolerance in ticks. 1 tick = {tick_size} price units.",
-        )
+            tolerance_ticks = st.number_input(
+                "Tolerance (ticks)",
+                min_value=0.0,
+                max_value=100.0,
+                value=4.0,
+                step=0.5,
+                help=f"Cluster tolerance in ticks. 1 tick = {tick_size} price units.",
+            )
 
-        min_conf = st.slider("Min confluences", min_value=1, max_value=5, value=2)
-        max_conf = st.slider("Max confluences", min_value=1, max_value=5, value=5)
-        if max_conf < min_conf:
-            max_conf = min_conf
+            min_conf = st.slider("Min confluences", min_value=1, max_value=5, value=2)
+            max_conf = st.slider("Max confluences", min_value=1, max_value=5, value=5)
+            if max_conf < min_conf:
+                max_conf = min_conf
+        else:
+            anchor_level = st.selectbox(
+                "Anchor level",
+                options=all_level_columns,
+                index=0,
+                help="Primary level around which anchor confluence is evaluated.",
+            )
+            confluence_level_options = [level for level in all_level_columns if level != anchor_level]
+            selected_confluence_levels = st.multiselect(
+                "Confluence levels",
+                options=confluence_level_options,
+                default=[],
+                help="Levels evaluated against the anchor with per-rule tolerance and required flags.",
+            )
+            for level in selected_confluence_levels:
+                st.markdown(f"**{level}**")
+                rule_tolerance = st.number_input(
+                    f"Tolerance ticks — {level}",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=4.0,
+                    step=0.5,
+                )
+                rule_required = st.checkbox(
+                    f"Required — {level}",
+                    value=False,
+                )
+                confluence_rules.append(
+                    {
+                        "level": level,
+                        "tolerance_ticks": float(rule_tolerance),
+                        "required": bool(rule_required),
+                    }
+                )
+            if selected_confluence_levels:
+                min_valid_confluences = int(
+                    st.number_input(
+                        "Minimum valid confluences",
+                        min_value=1,
+                        max_value=len(selected_confluence_levels),
+                        value=1,
+                        step=1,
+                    )
+                )
+            else:
+                st.info("Select at least one confluence level.")
+            selected_levels = [anchor_level, *selected_confluence_levels] if anchor_level else selected_confluence_levels
 
         st.header("Signal settings")
 
@@ -343,14 +402,7 @@ with st.sidebar:
 
         if trigger == "3c":
             st.subheader("3c parameters")
-            arrival_tol = st.number_input(
-                "Arrival tolerance ticks",
-                min_value=0.0,
-                max_value=20.0,
-                value=0.0,
-                step=0.5,
-                help="Small rounding/data tolerance for bar-1 level hit checks.",
-            )
+            arrival_tol = 0.0
             entry_retrace = st.number_input(
                 "Entry retrace ticks",
                 min_value=0.0,
@@ -367,6 +419,15 @@ with st.sidebar:
                 step=1,
                 help="Number of bars to wait for retracement after reversal.",
             )
+            with st.expander("Advanced"):
+                arrival_tol = st.number_input(
+                    "Arrival tolerance ticks",
+                    min_value=0.0,
+                    max_value=20.0,
+                    value=0.0,
+                    step=0.5,
+                    help="Technical data-quality tolerance for arrival-bar level touch checks.",
+                )
             trigger_params = {
                 "arrival_tolerance_ticks": arrival_tol,
                 "entry_retrace_ticks": entry_retrace,
@@ -383,10 +444,10 @@ if generate_btn:
 
     if confluence_mode == "anchor_rules":
         if not anchor_level:
-            st.error("Saved anchor setup is missing an anchor level.")
+            st.error("Anchor mode requires an anchor level.")
             st.stop()
         if not confluence_rules:
-            st.error("Saved anchor setup has no confluence rules.")
+            st.error("Anchor mode requires at least one confluence rule.")
             st.stop()
         missing_columns = _missing_anchor_columns(levels_df, anchor_level, confluence_rules)
         if missing_columns:
