@@ -12,6 +12,7 @@ from thesistester.analytics import equity_curve, summarize_trades
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
 from thesistester.config import INSTRUMENTS
 from thesistester.engine.backtest import simulate_trades
+from thesistester.visualization import build_backtest_candlestick_chart
 
 st.title("📊 Backtest")
 
@@ -176,15 +177,17 @@ col6.metric("Max DD (R)", _fmt(summary.get("max_drawdown_r")))
 
 if trades.empty:
     st.info("No trades were generated with the current signals and SL/TP settings.")
-    st.stop()
 
-group_cols = [c for c in ["trigger_variant", "level_source_mode", "direction"] if c in trades.columns]
-if group_cols and "trigger" in trades.columns:
-    trades_3c = trades[trades["trigger"] == "3c"]
-    grouped = summarize_trade_groups(trades_3c, group_cols)
-    if not grouped.empty:
-        st.subheader("3c outcome summary by variant/source")
-        st.dataframe(grouped, use_container_width=True, hide_index=True)
+has_trades = not trades.empty
+
+if has_trades:
+    group_cols = [c for c in ["trigger_variant", "level_source_mode", "direction"] if c in trades.columns]
+    if group_cols and "trigger" in trades.columns:
+        trades_3c = trades[trades["trigger"] == "3c"]
+        grouped = summarize_trade_groups(trades_3c, group_cols)
+        if not grouped.empty:
+            st.subheader("3c outcome summary by variant/source")
+            st.dataframe(grouped, use_container_width=True, hide_index=True)
 
 # Equity curve
 st.subheader("Equity curve (cumulative R)")
@@ -210,57 +213,82 @@ if curve is not None and not curve.empty:
     st.plotly_chart(fig, use_container_width=True)
 
 # Breakdown tabs
-st.subheader("Breakdown")
-tab_trigger, tab_dir, tab_reason = st.tabs(["By trigger", "By direction", "By exit reason"])
+if has_trades:
+    st.subheader("Breakdown")
+    tab_trigger, tab_dir, tab_reason = st.tabs(["By trigger", "By direction", "By exit reason"])
 
-with tab_trigger:
-    if "trigger" in trades.columns:
-        st.dataframe(
-            trades.groupby("trigger").agg(
-                count=("trade_id", "count"),
-                win_rate=("r_multiple", lambda x: (x > 0).mean()),
-                avg_r=("r_multiple", "mean"),
-                total_r=("r_multiple", "sum"),
-            ).reset_index(),
-            use_container_width=True,
-            hide_index=True,
-        )
+    with tab_trigger:
+        if "trigger" in trades.columns:
+            st.dataframe(
+                trades.groupby("trigger").agg(
+                    count=("trade_id", "count"),
+                    win_rate=("r_multiple", lambda x: (x > 0).mean()),
+                    avg_r=("r_multiple", "mean"),
+                    total_r=("r_multiple", "sum"),
+                ).reset_index(),
+                use_container_width=True,
+                hide_index=True,
+            )
 
-with tab_dir:
-    if "direction" in trades.columns:
-        st.dataframe(
-            trades.groupby("direction").agg(
-                count=("trade_id", "count"),
-                win_rate=("r_multiple", lambda x: (x > 0).mean()),
-                avg_r=("r_multiple", "mean"),
-                total_r=("r_multiple", "sum"),
-            ).reset_index(),
-            use_container_width=True,
-            hide_index=True,
-        )
+    with tab_dir:
+        if "direction" in trades.columns:
+            st.dataframe(
+                trades.groupby("direction").agg(
+                    count=("trade_id", "count"),
+                    win_rate=("r_multiple", lambda x: (x > 0).mean()),
+                    avg_r=("r_multiple", "mean"),
+                    total_r=("r_multiple", "sum"),
+                ).reset_index(),
+                use_container_width=True,
+                hide_index=True,
+            )
 
-with tab_reason:
-    if "exit_reason" in trades.columns:
-        st.dataframe(
-            trades.groupby("exit_reason").agg(
-                count=("trade_id", "count"),
-                avg_r=("r_multiple", "mean"),
-                total_r=("r_multiple", "sum"),
-            ).reset_index(),
-            use_container_width=True,
-            hide_index=True,
-        )
+    with tab_reason:
+        if "exit_reason" in trades.columns:
+            st.dataframe(
+                trades.groupby("exit_reason").agg(
+                    count=("trade_id", "count"),
+                    avg_r=("r_multiple", "mean"),
+                    total_r=("r_multiple", "sum"),
+                ).reset_index(),
+                use_container_width=True,
+                hide_index=True,
+            )
 
 # Full trade table
-st.subheader("Trade table")
-display_cols = [c for c in [
-    "trade_id", "signal_id", "trigger", "direction",
-    "entry_timestamp", "entry_price", "entry_model",
-    "exit_timestamp", "exit_price", "exit_reason",
-    "stop_price", "target_price",
-    "stop_loss_ticks", "take_profit_ticks",
-    "pnl_points", "pnl_currency", "r_multiple", "bars_held",
-    "zone_low", "zone_high", "level_count", "level_names", "setup_name",
-    "mae_points", "mfe_points",
-] if c in trades.columns]
-st.dataframe(trades[display_cols], use_container_width=True, hide_index=True)
+if has_trades:
+    st.subheader("Trade table")
+    display_cols = [c for c in [
+        "trade_id", "signal_id", "trigger", "direction",
+        "entry_timestamp", "entry_price", "entry_model",
+        "exit_timestamp", "exit_price", "exit_reason",
+        "stop_price", "target_price",
+        "stop_loss_ticks", "take_profit_ticks",
+        "pnl_points", "pnl_currency", "r_multiple", "bars_held",
+        "zone_low", "zone_high", "level_count", "level_names", "setup_name",
+        "mae_points", "mfe_points",
+    ] if c in trades.columns]
+    st.dataframe(trades[display_cols], use_container_width=True, hide_index=True)
+
+# Optional execution chart
+st.subheader("Backtest execution visualizer")
+show_chart = st.toggle("Show candlestick trade visualizer", value=False)
+if show_chart:
+    if ohlcv_df is None or ohlcv_df.empty:
+        st.info("No OHLCV data available to render the candlestick chart.")
+    else:
+        levels_df = st.session_state.get("levels")
+        confluence_zones = st.session_state.get("confluence_zones")
+        chart = build_backtest_candlestick_chart(
+            ohlcv_df=ohlcv_df,
+            trades=trades,
+            levels=levels_df,
+            confluence_zones=confluence_zones,
+            show_sessions=True,
+        )
+        st.plotly_chart(chart, use_container_width=True)
+        st.caption("Session context: ETH regions are shaded and RTH starts are marked with dotted vertical lines.")
+        st.info(
+            "Execution visualization is based on OHLC bars. If SL and TP are both touched within one bar, "
+            "engine assumptions determine the recorded outcome; the true intrabar path is unknown without tick data."
+        )
