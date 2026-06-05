@@ -39,8 +39,9 @@ def _signal(
     zone_low: float = 99.5,
     zone_high: float = 100.5,
     signal_id: int = 0,
+    **extra,
 ) -> pd.DataFrame:
-    return pd.DataFrame([{
+    row = {
         "signal_id": signal_id,
         "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
         "bar_index": bar_index,
@@ -57,7 +58,9 @@ def _signal(
         "naked_level_count": 0,
         "naked_requirement": "any",
         "notes": "",
-    }])
+    }
+    row.update(extra)
+    return pd.DataFrame([row])
 
 
 # ---------------------------------------------------------------------------
@@ -93,8 +96,8 @@ def test_simple_short_enters_next_bar_open():
     assert trades.iloc[0]["direction"] == "short"
 
 
-def test_confirm_3bar_filled_enters_on_signal_bar():
-    """confirm_3bar filled signal enters on signal bar at entry_reference_price."""
+def test_3c_filled_enters_on_entry_bar():
+    """3c filled signal enters on entry_bar_index at retrace_entry_price."""
     df = _df(
         _bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0),
         _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.0),
@@ -102,36 +105,36 @@ def test_confirm_3bar_filled_enters_on_signal_bar():
         _bar("2026-01-02 09:33", 100.0, 110.0, 99.0, 109.0),  # TP bar
     )
     sigs = _signal(
-        bar_index=2, trigger="confirm_3bar", direction="long",
-        status="filled", entry_ref=99.0,
+        bar_index=2, trigger="3c", direction="long",
+        status="filled", entry_ref=99.0, entry_bar_index=2, retrace_entry_price=99.0,
     )
     trades = simulate_trades(df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8)
     assert len(trades) == 1
     assert trades.iloc[0]["entry_price"] == 99.0
     assert trades.iloc[0]["entry_bar_index"] == 2
-    assert trades.iloc[0]["entry_model"] == "bar3_stop_limit_fill"
+    assert trades.iloc[0]["entry_model"] == "3c_retrace_market"
 
 
-def test_confirm_3bar_void_is_skipped():
-    """confirm_3bar void signals must be skipped — no trade produced."""
+def test_3c_void_is_skipped():
+    """3c void signals must be skipped — no trade produced."""
     df = _df(
         _bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0),
         _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.0),
         _bar("2026-01-02 09:32", 100.0, 101.0, 99.0, 100.0),
     )
     sigs = _signal(
-        bar_index=2, trigger="confirm_3bar", direction="long",
-        status="void", entry_ref=99.0,
+        bar_index=2, trigger="3c", direction="long",
+        status="void", entry_ref=99.0, entry_bar_index=None, retrace_entry_price=None,
     )
     trades = simulate_trades(df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8)
     assert trades.empty
 
 
-def test_confirm_3bar_generated_filled_signal_enters_and_void_skips():
+def test_3c_generated_filled_signal_enters_and_void_skips():
     df = _df(
         _bar("2026-01-02 09:30", 101.0, 101.2, 99.9, 100.3),
-        _bar("2026-01-02 09:31", 100.4, 100.9, 99.9, 100.7),
-        _bar("2026-01-02 09:32", 101.0, 101.3, 100.0, 101.1),
+        _bar("2026-01-02 09:31", 100.4, 101.4, 100.0, 101.3),
+        _bar("2026-01-02 09:32", 101.2, 101.4, 100.8, 101.0),
         _bar("2026-01-02 09:33", 101.1, 102.5, 100.9, 102.0),
     )
     zones = pd.DataFrame(
@@ -151,10 +154,10 @@ def test_confirm_3bar_generated_filled_signal_enters_and_void_skips():
     signals = generate_signals(
         df,
         zones,
-        trigger="confirm_3bar",
+        trigger="3c",
         direction="long",
         tick_size=TICK,
-        trigger_params={"activation_retrace_ticks": 4, "entry_offset_ticks": 1},
+        trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3},
     )
     assert len(signals) == 1
     sig = signals.iloc[0]
@@ -162,7 +165,7 @@ def test_confirm_3bar_generated_filled_signal_enters_and_void_skips():
 
     trades = simulate_trades(df, signals, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8)
     assert len(trades) == 1
-    assert trades.iloc[0]["entry_price"] == pytest.approx(sig["entry_reference_price"])
+    assert trades.iloc[0]["entry_price"] == pytest.approx(sig["retrace_entry_price"])
 
     void_signals = signals.copy()
     void_signals.loc[:, "status"] = "void"

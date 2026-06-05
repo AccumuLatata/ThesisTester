@@ -47,18 +47,13 @@ def _render_setup_summary(config: dict) -> None:
     st.markdown(f"**Naked requirement:** {config['naked_requirement']}")
     st.markdown(f"**Trigger:** {config['trigger']}")
     st.markdown(f"**Direction:** {config['direction']}")
-    if config["trigger"] == "confirm_3bar":
+    if config["trigger"] == "3c":
         params = config.get("trigger_params", {})
-        activation_retrace_ticks = params.get(
-            "activation_retrace_ticks",
-            params.get("retrace_entry_ticks", 4.0),
-        )
         st.markdown("**Trigger params:**")
         st.markdown(
             f"- Arrival tolerance ticks: {params.get('arrival_tolerance_ticks', 0.0)}\n"
-            f"- Activation retrace ticks: {activation_retrace_ticks}\n"
-            f"- Entry offset ticks: {params.get('entry_offset_ticks', 0.0)}\n"
-            f"- Allow equal close: {params.get('allow_equal_close', False)}"
+            f"- Entry retrace ticks: {params.get('entry_retrace_ticks', 4.0)}\n"
+            f"- Max entry wait bars after reversal: {params.get('max_entry_wait_bars_after_reversal', 5)}"
         )
 
 
@@ -160,21 +155,24 @@ naked_only = st.toggle("Naked only", value=False)
 naked_requirement = st.radio("Naked requirement", options=["any", "all"], index=0, horizontal=True)
 
 st.subheader("Trigger settings")
-trigger_options = ["touch", "reject", "break", "reclaim", "confirm_3bar"]
+trigger_options = ["touch", "reject", "break", "reclaim", "3c"]
 trigger = st.selectbox("Trigger", options=trigger_options, index=0)
 direction = st.selectbox("Direction", options=["long", "short", "both"], index=2)
 
 trigger_params = {}
-if trigger == "confirm_3bar":
+if trigger == "3c":
     arrival_tolerance_ticks = st.number_input("Arrival tolerance ticks", min_value=0.0, value=0.0, step=0.5)
-    activation_retrace_ticks = st.number_input("Activation retrace ticks", min_value=0.0, value=4.0, step=0.5)
-    entry_offset_ticks = st.number_input("Entry offset ticks", min_value=0.0, value=0.0, step=0.5)
-    allow_equal_close = st.toggle("Allow equal close", value=False)
+    entry_retrace_ticks = st.number_input("Entry retrace ticks", min_value=0.0, value=4.0, step=0.5)
+    max_entry_wait_bars = st.number_input(
+        "Max entry wait bars after reversal",
+        min_value=0,
+        value=5,
+        step=1,
+    )
     trigger_params = {
         "arrival_tolerance_ticks": arrival_tolerance_ticks,
-        "activation_retrace_ticks": activation_retrace_ticks,
-        "entry_offset_ticks": entry_offset_ticks,
-        "allow_equal_close": allow_equal_close,
+        "entry_retrace_ticks": entry_retrace_ticks,
+        "max_entry_wait_bars_after_reversal": int(max_entry_wait_bars),
     }
 
 if st.button("Save setup", type="primary"):

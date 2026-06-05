@@ -6,8 +6,11 @@ import warnings
 import numpy as np
 import pandas as pd
 
+from .candidate_level import CandidateLevel, from_anchor_zones, from_global_cluster_zones, with_metadata
+from .signals_3c import detect_3c_setups
 
-VALID_TRIGGERS = frozenset({"touch", "reject", "break", "reclaim", "confirm_3bar"})
+
+VALID_TRIGGERS = frozenset({"touch", "reject", "break", "reclaim", "3c"})
 VALID_DIRECTIONS = frozenset({"long", "short", "both"})
 
 _DEFAULT_3BAR_PARAMS: dict = {
@@ -15,6 +18,12 @@ _DEFAULT_3BAR_PARAMS: dict = {
     "activation_retrace_ticks": 4,
     "entry_offset_ticks": 0,
     "allow_equal_close": False,
+}
+
+_DEFAULT_3C_PARAMS: dict = {
+    "arrival_tolerance_ticks": 0.0,
+    "entry_retrace_ticks": 4.0,
+    "max_entry_wait_bars_after_reversal": 5,
 }
 
 _SIGNAL_COLUMNS: list[str] = [
@@ -42,6 +51,25 @@ _SIGNAL_COLUMNS: list[str] = [
     "entry_reference_price",
     "entry_model",
     "status",
+    "trigger_variant",
+    "is_muted",
+    "is_sfp",
+    "inside_candle_count",
+    "level_source_mode",
+    "level_source_label",
+    "zone_id",
+    "level_id",
+    "arrival_level_price",
+    "entry_bar_index",
+    "entry_trigger_price",
+    "retrace_entry_price",
+    "retrace_ticks_required",
+    "source_labels",
+    "source_count",
+    "zone_ids",
+    "level_ids",
+    "level_test_state_at_arrival",
+    "was_naked_before_arrival",
     "naked_level_count",
     "naked_requirement",
     "notes",
@@ -88,6 +116,25 @@ def _make_signal(
     entry_price: float | None = None,
     activation_retrace_ticks: float | None = None,
     entry_offset_ticks: float | None = None,
+    trigger_variant: str | None = None,
+    is_muted: bool | None = None,
+    is_sfp: bool | None = None,
+    inside_candle_count: int | None = None,
+    level_source_mode: str | None = None,
+    level_source_label: str | None = None,
+    zone_id: str | None = None,
+    level_id: str | None = None,
+    arrival_level_price: float | None = None,
+    entry_bar_index: int | None = None,
+    entry_trigger_price: float | None = None,
+    retrace_entry_price: float | None = None,
+    retrace_ticks_required: float | None = None,
+    source_labels: str | None = None,
+    source_count: int | None = None,
+    zone_ids: str | None = None,
+    level_ids: str | None = None,
+    level_test_state_at_arrival: str | None = None,
+    was_naked_before_arrival: bool | None = None,
 ) -> dict:
     return {
         "signal_id": signal_id,
@@ -114,6 +161,25 @@ def _make_signal(
         "entry_reference_price": entry_ref,
         "entry_model": entry_model,
         "status": status,
+        "trigger_variant": trigger_variant,
+        "is_muted": is_muted,
+        "is_sfp": is_sfp,
+        "inside_candle_count": inside_candle_count,
+        "level_source_mode": level_source_mode,
+        "level_source_label": level_source_label,
+        "zone_id": zone_id,
+        "level_id": level_id,
+        "arrival_level_price": arrival_level_price,
+        "entry_bar_index": entry_bar_index,
+        "entry_trigger_price": entry_trigger_price,
+        "retrace_entry_price": retrace_entry_price,
+        "retrace_ticks_required": retrace_ticks_required,
+        "source_labels": source_labels,
+        "source_count": source_count,
+        "zone_ids": zone_ids,
+        "level_ids": level_ids,
+        "level_test_state_at_arrival": level_test_state_at_arrival,
+        "was_naked_before_arrival": was_naked_before_arrival,
         "naked_level_count": naked_count,
         "naked_requirement": naked_req,
         "notes": notes,
@@ -145,6 +211,25 @@ def _normalize_confirm_3bar_params(trigger_params: dict | None) -> dict:
             "allow_equal_close",
             _DEFAULT_3BAR_PARAMS["allow_equal_close"],
         ),
+    }
+
+
+def _normalize_3c_params(trigger_params: dict | None) -> dict:
+    params = trigger_params or {}
+    return {
+        "arrival_tolerance_ticks": float(
+            params.get("arrival_tolerance_ticks", _DEFAULT_3C_PARAMS["arrival_tolerance_ticks"])
+        ),
+        "entry_retrace_ticks": float(
+            params.get("entry_retrace_ticks", _DEFAULT_3C_PARAMS["entry_retrace_ticks"])
+        ),
+        "max_entry_wait_bars_after_reversal": int(
+            params.get(
+                "max_entry_wait_bars_after_reversal",
+                _DEFAULT_3C_PARAMS["max_entry_wait_bars_after_reversal"],
+            )
+        ),
+        "_source_mode": str(params.get("_source_mode", "global_cluster")),
     }
 
 
@@ -485,18 +570,13 @@ def generate_signals(
     zones:
         Output of :func:`~thesistester.engine.confluence.detect_confluence_zones`.
     trigger:
-        One of ``touch``, ``reject``, ``break``, ``reclaim``, ``confirm_3bar``.
+        One of ``touch``, ``reject``, ``break``, ``reclaim``, ``3c``.
     direction:
         ``long``, ``short``, or ``both``.
     tick_size:
         Instrument tick size.
     trigger_params:
-        Optional dict of trigger-specific parameters.  For ``confirm_3bar``
-        the supported keys are ``arrival_tolerance_ticks`` (default 0),
-        ``activation_retrace_ticks`` (default 4), ``entry_offset_ticks``
-        (default 0), and ``allow_equal_close`` (default ``False``).
-        Legacy ``retrace_entry_ticks`` is still accepted and mapped to
-        ``activation_retrace_ticks``.
+        Optional dict of trigger-specific parameters.
     naked_only:
         When ``True`` only zones where at least one level (or all levels,
         depending on *naked_requirement*) is naked are processed.
@@ -521,11 +601,7 @@ def generate_signals(
       fills, P&L) is deferred to Phase 5.
     - For simple triggers (touch / reject / break / reclaim) the signal
       timestamp and bar_index correspond to the trigger bar.
-    - For ``confirm_3bar`` the timestamp and bar_index correspond to bar 3
-      (the retracement bar), because that is when the entry condition is
-      evaluated.
-    - ``confirm_3bar`` emits a row with ``status="void"`` when bar 3 does
-      not fill the limit entry, to preserve the setup for later research.
+    - For ``3c`` one resolved setup row is emitted (``filled``/``void``).
     """
     if trigger not in VALID_TRIGGERS:
         raise ValueError(f"trigger must be one of {sorted(VALID_TRIGGERS)}, got {trigger!r}")
@@ -536,16 +612,15 @@ def generate_signals(
     if zones is None or zones.empty:
         return _empty_signals_df()
 
-    params = _normalize_confirm_3bar_params(trigger_params) if trigger == "confirm_3bar" else {}
+    params = _normalize_3c_params(trigger_params) if trigger == "3c" else {}
     naked_req = naked_requirement.lower()
     if naked_req not in {"any", "all"}:
         naked_req = "any"
 
     df_reset = df.reset_index(drop=True)
-    directions = ["long", "short"] if direction == "both" else [direction]
-
     signals: list[dict] = []
     signal_id = 0
+    filtered_zones: list[tuple[pd.Series, int]] = []
 
     for _, zone in zones.iterrows():
         bar_idx = int(zone["bar_index"])
@@ -566,19 +641,137 @@ def generate_signals(
                 if naked_flags is not None
                 else 0
             )
+        filtered_zones.append((zone, ncount))
 
-        if trigger == "confirm_3bar":
-            new_sigs = _check_confirm_3bar(
-                df_reset, zone, bar_idx, direction,
-                signal_id_start=signal_id,
-                naked_count=ncount,
-                naked_req=naked_req,
-                tick_size=tick_size,
-                params=params,
-            )
-            signals.extend(new_sigs)
-            signal_id += len(new_sigs)
+    if trigger == "3c":
+        zones_for_candidates = pd.DataFrame([zone for zone, _ in filtered_zones])
+        source_mode = str(params.get("_source_mode", "global_cluster"))
+        if source_mode == "anchor_rules":
+            candidates = from_anchor_zones(zones_for_candidates, direction)
         else:
+            candidates = from_global_cluster_zones(zones_for_candidates, direction)
+
+        if naked_flags is not None:
+            enriched: list[CandidateLevel] = []
+            for candidate in candidates:
+                state = None
+                is_naked = None
+                if candidate.level_id:
+                    naked_col = candidate.level_id + "_naked"
+                    if naked_col in naked_flags.columns and 0 <= int(candidate.bar_index) < len(naked_flags):
+                        is_naked = bool(naked_flags[naked_col].iloc[int(candidate.bar_index)])
+                        state = "naked" if is_naked else "tested"
+                enriched.append(
+                    with_metadata(
+                        candidate,
+                        was_naked_before_arrival=is_naked,
+                        level_test_state_at_arrival=state,
+                    )
+                )
+            candidates = enriched
+
+        setup_rows = detect_3c_setups(
+            df=df_reset,
+            candidates=candidates,
+            tick_size=tick_size,
+            trigger_params=params,
+        )
+        zone_by_id = {candidate.zone_id: candidate for candidate in candidates if candidate.zone_id}
+        for setup in setup_rows:
+            zone = None
+            zone_id = setup.get("zone_id")
+            if zone_id in zone_by_id:
+                candidate = zone_by_id[zone_id]
+                zone = pd.Series(
+                    {
+                        "zone_low": candidate.zone_low,
+                        "zone_high": candidate.zone_high,
+                        "zone_mid": (
+                            (candidate.zone_low + candidate.zone_high) / 2.0
+                            if candidate.zone_low is not None and candidate.zone_high is not None
+                            else None
+                        ),
+                        "level_count": candidate.metadata.get("level_count", 1),
+                        "level_names": "|".join(setup.get("level_ids", []))
+                        if setup.get("level_ids")
+                        else (candidate.level_id or candidate.source_label or ""),
+                    }
+                )
+                ncount = _naked_count(str(zone["level_names"]), int(setup["arrival_bar_index"]), naked_flags) if naked_flags is not None else 0
+            else:
+                zone = pd.Series(
+                    {
+                        "zone_low": np.nan,
+                        "zone_high": np.nan,
+                        "zone_mid": np.nan,
+                        "level_count": 0,
+                        "level_names": "",
+                    }
+                )
+                ncount = 0
+
+            filled = str(setup["status"]) == "filled"
+            is_sfp = bool(setup["is_sfp"])
+            source_labels = "|".join(setup.get("source_labels", [])) if setup.get("source_labels") else None
+            zone_ids = "|".join(setup.get("zone_ids", [])) if setup.get("zone_ids") else None
+            level_ids = "|".join(setup.get("level_ids", [])) if setup.get("level_ids") else None
+            tested_level_name = setup.get("level_id") or setup.get("level_source_label")
+            tested_level_price = setup.get("arrival_level_price")
+            entry_trigger_raw = setup.get("entry_trigger_price", setup.get("retrace_entry_price"))
+            if entry_trigger_raw is None:
+                entry_trigger_raw = setup.get("arrival_level_price")
+            entry_trigger_price = float(entry_trigger_raw)
+            retrace_entry_price = entry_trigger_price if filled else None
+            entry_bar_index = setup.get("entry_bar_index")
+            signals.append(
+                _make_signal(
+                    signal_id=signal_id,
+                    ts=setup["timestamp"],
+                    bar_idx=int(setup["bar_index"]),
+                    trigger="3c",
+                    direction=str(setup["direction"]),
+                    zone=zone,
+                    entry_ref=entry_trigger_price,
+                    entry_model="3c_retrace_market" if filled else "3c_retrace_void",
+                    status=str(setup["status"]),
+                    naked_count=ncount,
+                    naked_req=naked_req,
+                    tested_level_name=tested_level_name,
+                    tested_level_price=tested_level_price,
+                    arrival_bar_index=int(setup["arrival_bar_index"]),
+                    reversal_bar_index=int(setup["reversal_bar_index"]),
+                    confirmation_bar_index=int(entry_bar_index) if entry_bar_index is not None else None,
+                    reversal_type="sfp_reversal" if is_sfp else "standard_reversal",
+                    is_sfp_reversal=is_sfp,
+                    activation_price=entry_trigger_price if filled else None,
+                    entry_price=entry_trigger_price if filled else None,
+                    activation_retrace_ticks=float(setup["entry_retrace_ticks"]),
+                    trigger_variant=str(setup["trigger_variant"]),
+                    is_muted=bool(setup["is_muted"]),
+                    is_sfp=is_sfp,
+                    inside_candle_count=int(setup["inside_candle_count"]),
+                    level_source_mode=str(setup["level_source_mode"]),
+                    level_source_label=setup.get("level_source_label"),
+                    zone_id=setup.get("zone_id"),
+                    level_id=setup.get("level_id"),
+                    arrival_level_price=float(setup["arrival_level_price"]),
+                    entry_bar_index=int(entry_bar_index) if entry_bar_index is not None else None,
+                    entry_trigger_price=entry_trigger_price,
+                    retrace_entry_price=retrace_entry_price,
+                    retrace_ticks_required=float(setup["entry_retrace_ticks"]),
+                    source_labels=source_labels,
+                    source_count=int(setup.get("source_count", 1)),
+                    zone_ids=zone_ids,
+                    level_ids=level_ids,
+                    level_test_state_at_arrival=setup.get("level_test_state_at_arrival"),
+                    was_naked_before_arrival=setup.get("was_naked_before_arrival"),
+                )
+            )
+            signal_id += 1
+    else:
+        directions = ["long", "short"] if direction == "both" else [direction]
+        for zone, ncount in filtered_zones:
+            bar_idx = int(zone["bar_index"])
             for d in directions:
                 if trigger == "touch":
                     sig = _check_touch(df_reset, zone, bar_idx, d, signal_id, ncount, naked_req)

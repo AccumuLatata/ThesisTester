@@ -17,7 +17,7 @@ BASE_COLUMNS = {
     "settlement",
 }
 
-VALID_TRIGGERS = frozenset({"touch", "reject", "break", "reclaim", "confirm_3bar"})
+VALID_TRIGGERS = frozenset({"touch", "reject", "break", "reclaim", "3c"})
 VALID_DIRECTIONS = frozenset({"long", "short", "both"})
 VALID_CONFLUENCE_MODES = frozenset({"global_cluster", "anchor_rules"})
 
@@ -33,30 +33,27 @@ SUGGESTED_DEFAULT_LEVELS = [
     "VWAP_rolling_1h",
 ]
 
-DEFAULT_CONFIRM_3BAR_PARAMS: dict[str, Any] = {
+DEFAULT_3C_PARAMS: dict[str, Any] = {
     "arrival_tolerance_ticks": 0.0,
-    "activation_retrace_ticks": 4.0,
-    "entry_offset_ticks": 0.0,
-    "allow_equal_close": False,
+    "entry_retrace_ticks": 4.0,
+    "max_entry_wait_bars_after_reversal": 5,
 }
 
 
-def _normalize_confirm_3bar_params(params: dict[str, Any] | None) -> dict[str, Any]:
+def _normalize_3c_params(params: dict[str, Any] | None) -> dict[str, Any]:
     trigger_params = params or {}
-    activation_retrace_ticks = trigger_params.get(
-        "activation_retrace_ticks",
-        trigger_params.get("retrace_entry_ticks", DEFAULT_CONFIRM_3BAR_PARAMS["activation_retrace_ticks"]),
-    )
     return {
         "arrival_tolerance_ticks": float(
-            trigger_params.get("arrival_tolerance_ticks", DEFAULT_CONFIRM_3BAR_PARAMS["arrival_tolerance_ticks"])
+            trigger_params.get("arrival_tolerance_ticks", DEFAULT_3C_PARAMS["arrival_tolerance_ticks"])
         ),
-        "activation_retrace_ticks": float(activation_retrace_ticks),
-        "entry_offset_ticks": float(
-            trigger_params.get("entry_offset_ticks", DEFAULT_CONFIRM_3BAR_PARAMS["entry_offset_ticks"])
+        "entry_retrace_ticks": float(
+            trigger_params.get("entry_retrace_ticks", DEFAULT_3C_PARAMS["entry_retrace_ticks"])
         ),
-        "allow_equal_close": bool(
-            trigger_params.get("allow_equal_close", DEFAULT_CONFIRM_3BAR_PARAMS["allow_equal_close"])
+        "max_entry_wait_bars_after_reversal": int(
+            trigger_params.get(
+                "max_entry_wait_bars_after_reversal",
+                DEFAULT_3C_PARAMS["max_entry_wait_bars_after_reversal"],
+            )
         ),
     }
 
@@ -105,8 +102,8 @@ def build_setup_config(
 ) -> dict[str, Any]:
     """Build a normalized setup configuration dictionary."""
     normalized_params = {}
-    if trigger == "confirm_3bar":
-        normalized_params = _normalize_confirm_3bar_params(trigger_params)
+    if trigger == "3c":
+        normalized_params = _normalize_3c_params(trigger_params)
 
     return {
         "name": name.strip(),
@@ -231,35 +228,22 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
             if not _is_boolean_compatible(rule.get("required")):
                 errors.append(f"Confluence rule {index} required must be boolean-compatible.")
 
-    if trigger == "confirm_3bar":
+    if trigger == "3c":
         trigger_params = config.get("trigger_params", {}) or {}
         if not isinstance(trigger_params, dict):
-            errors.append("trigger_params must be a dictionary for confirm_3bar.")
+            errors.append("trigger_params must be a dictionary for 3c.")
         else:
-            activation_retrace_ticks = trigger_params.get(
-                "activation_retrace_ticks",
-                trigger_params.get("retrace_entry_ticks", 0.0),
-            )
             numeric_fields = {
                 "arrival_tolerance_ticks": trigger_params.get("arrival_tolerance_ticks", 0.0),
-                "activation_retrace_ticks": activation_retrace_ticks,
-                "entry_offset_ticks": trigger_params.get("entry_offset_ticks", 0.0),
+                "entry_retrace_ticks": trigger_params.get("entry_retrace_ticks", 0.0),
+                "max_entry_wait_bars_after_reversal": trigger_params.get("max_entry_wait_bars_after_reversal", 0),
             }
             for key, raw_value in numeric_fields.items():
                 try:
-                    value = float(raw_value)
+                    value = float(raw_value) if key != "max_entry_wait_bars_after_reversal" else int(raw_value)
                     if value < 0:
                         errors.append(f"{key} must be >= 0.")
                 except (TypeError, ValueError):
                     errors.append(f"{key} must be a number.")
-            if "allow_equal_close" not in trigger_params:
-                errors.append("allow_equal_close must be provided for confirm_3bar.")
-            else:
-                allow_equal_raw = trigger_params.get("allow_equal_close")
-                bool_compatible = isinstance(allow_equal_raw, (bool, int))
-                if not bool_compatible and isinstance(allow_equal_raw, str):
-                    bool_compatible = allow_equal_raw.strip().lower() in {"true", "false", "1", "0"}
-                if not bool_compatible:
-                    errors.append("allow_equal_close must be boolean-compatible.")
 
     return errors
