@@ -178,7 +178,7 @@ if saved_datasets:
     )
     selected_saved_dataset = saved_dataset_options[selected_saved_dataset_id]
 
-    action_cols = st.columns([1, 1, 1])
+    action_cols = st.columns(3)
     if action_cols[0].button("Load saved dataset", use_container_width=True):
         loaded_df, loaded_meta = load_dataset(selected_saved_dataset_id)
         _set_active_dataset_state(

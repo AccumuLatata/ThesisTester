@@ -283,17 +283,11 @@ def test_list_rescans_when_manifest_missing(tmp_path, monkeypatch):
     assert datasets[0]["name"] == "no-manifest"
 
 
-def test_default_store_root_stable():
+def test_default_store_root_stable(monkeypatch):
     """get_store_root() without env override is absolute and repo-root-relative."""
-    import os
+    monkeypatch.delenv("THESISTESTER_STORE_DIR", raising=False)
 
-    # Temporarily clear env var if set by autouse fixture or environment.
-    original = os.environ.pop("THESISTESTER_STORE_DIR", None)
-    try:
-        root = get_store_root()
-    finally:
-        if original is not None:
-            os.environ["THESISTESTER_STORE_DIR"] = original
+    root = get_store_root()
 
     assert root.is_absolute()
     assert root.name == ".thesistester_store"
