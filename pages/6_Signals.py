@@ -159,17 +159,13 @@ def _render_anchor_diagnostics(zones: pd.DataFrame) -> None:
         )
 
 
-def _normalize_confirm_3bar_params(params: dict | None) -> dict:
+def _normalize_3c_params(params: dict | None) -> dict:
     trigger_params = params or {}
-    activation_retrace_ticks = trigger_params.get(
-        "activation_retrace_ticks",
-        trigger_params.get("retrace_entry_ticks", 4.0),
-    )
     return {
         "arrival_tolerance_ticks": float(trigger_params.get("arrival_tolerance_ticks", 0.0)),
-        "activation_retrace_ticks": float(activation_retrace_ticks),
-        "entry_offset_ticks": float(trigger_params.get("entry_offset_ticks", 0.0)),
-        "allow_equal_close": bool(trigger_params.get("allow_equal_close", False)),
+        "entry_retrace_ticks": float(trigger_params.get("entry_retrace_ticks", 4.0)),
+        "max_entry_wait_bars_after_reversal": int(trigger_params.get("max_entry_wait_bars_after_reversal", 5)),
+        "_source_mode": str(trigger_params.get("_source_mode", "global_cluster")),
     }
 
 
@@ -273,8 +269,8 @@ with st.sidebar:
         trigger = str(saved_setup.get("trigger", "touch"))
         direction = str(saved_setup.get("direction", "both"))
         trigger_params = dict(saved_setup.get("trigger_params", {}))
-        if trigger == "confirm_3bar":
-            trigger_params = _normalize_confirm_3bar_params(trigger_params)
+        if trigger == "3c":
+            trigger_params = _normalize_3c_params(trigger_params)
 
         st.success(f"Using saved setup: {saved_setup.get('name', 'Untitled setup')}")
         st.caption(f"Levels: {', '.join(selected_levels) if selected_levels else '(none)'}")
@@ -325,7 +321,7 @@ with st.sidebar:
 
         trigger = st.selectbox(
             "Trigger",
-            options=["touch", "reject", "break", "reclaim", "confirm_3bar"],
+            options=["touch", "reject", "break", "reclaim", "3c"],
             index=0,
         )
 
@@ -345,8 +341,8 @@ with st.sidebar:
                 help="'any': at least one level in the zone must be naked. 'all': every level must be naked.",
             )
 
-        if trigger == "confirm_3bar":
-            st.subheader("confirm_3bar parameters")
+        if trigger == "3c":
+            st.subheader("3c parameters")
             arrival_tol = st.number_input(
                 "Arrival tolerance ticks",
                 min_value=0.0,
@@ -355,32 +351,26 @@ with st.sidebar:
                 step=0.5,
                 help="Small rounding/data tolerance for bar-1 level hit checks.",
             )
-            activation_retrace = st.number_input(
-                "Activation retrace ticks",
+            entry_retrace = st.number_input(
+                "Entry retrace ticks",
                 min_value=0.0,
                 max_value=50.0,
                 value=4.0,
                 step=0.5,
-                help="Ticks bar 3 must retrace against direction from bar 3 open to activate setup.",
+                help="Ticks price must retrace after reversal close before 3c entry triggers.",
             )
-            entry_offset = st.number_input(
-                "Entry offset ticks",
-                min_value=0.0,
-                max_value=50.0,
-                value=0.0,
-                step=0.5,
-                help="Ticks from bar 3 open to stop-limit-style entry price.",
-            )
-            allow_equal_close = st.toggle(
-                "Allow equal close (bar 2 reversal)",
-                value=False,
-                help="If enabled, bar 2 close >= bar 1 close is sufficient for long (and <= for short).",
+            max_wait_bars = st.number_input(
+                "Max entry wait bars after reversal",
+                min_value=0,
+                max_value=200,
+                value=5,
+                step=1,
+                help="Number of bars to wait for retracement after reversal.",
             )
             trigger_params = {
                 "arrival_tolerance_ticks": arrival_tol,
-                "activation_retrace_ticks": activation_retrace,
-                "entry_offset_ticks": entry_offset,
-                "allow_equal_close": allow_equal_close,
+                "entry_retrace_ticks": entry_retrace,
+                "max_entry_wait_bars_after_reversal": int(max_wait_bars),
             }
         else:
             trigger_params = {}
@@ -443,6 +433,9 @@ if generate_btn:
         st.session_state["naked_flags"] = naked_flags
 
     with st.spinner("Generating signals…"):
+        if trigger == "3c":
+            trigger_params = dict(trigger_params or {})
+            trigger_params["_source_mode"] = confluence_mode
         signals = generate_signals(
             levels_df,
             zones=zones,
@@ -495,6 +488,8 @@ if all(col in zones.columns for col in ["anchor_level", "valid_confluence_count"
 if signals is not None and not signals.empty:
     st.subheader("Signal breakdown")
     breakdown_cols = [c for c in ["trigger", "direction", "status"] if c in signals.columns]
+    if "trigger_variant" in signals.columns:
+        breakdown_cols.append("trigger_variant")
     if breakdown_cols:
         st.dataframe(
             signals.groupby(breakdown_cols).size().reset_index(name="count"),
@@ -517,6 +512,8 @@ if signals is not None and not signals.empty:
         "entry_reference_price",
         "entry_model",
         "status",
+        "trigger_variant",
+        "level_source_mode",
         "setup_name",
         "naked_level_count",
         "notes",

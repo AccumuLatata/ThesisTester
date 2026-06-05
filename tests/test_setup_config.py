@@ -122,7 +122,7 @@ def test_invalid_direction_invalid():
     assert any("Direction must be one of" in message for message in errors)
 
 
-def test_confirm_3bar_config_includes_expected_trigger_params():
+def test_3c_config_includes_expected_trigger_params():
     config = build_setup_config(
         name="3bar",
         description="",
@@ -133,28 +133,26 @@ def test_confirm_3bar_config_includes_expected_trigger_params():
         max_confluences=5,
         naked_only=False,
         naked_requirement="any",
-        trigger="confirm_3bar",
+        trigger="3c",
         direction="both",
         trigger_params={
             "arrival_tolerance_ticks": 1.0,
-            "activation_retrace_ticks": 3.0,
-            "entry_offset_ticks": 1.0,
-            "allow_equal_close": True,
+            "entry_retrace_ticks": 3.0,
+            "max_entry_wait_bars_after_reversal": 7,
         },
     )
 
     assert config["trigger_params"] == {
         "arrival_tolerance_ticks": 1.0,
-        "activation_retrace_ticks": 3.0,
-        "entry_offset_ticks": 1.0,
-        "allow_equal_close": True,
+        "entry_retrace_ticks": 3.0,
+        "max_entry_wait_bars_after_reversal": 7,
     }
     assert validate_setup_config(config) == []
 
 
-def test_confirm_3bar_legacy_retrace_entry_ticks_is_mapped():
+def test_3c_missing_params_are_defaulted():
     config = build_setup_config(
-        name="3bar legacy",
+        name="3c defaults",
         description="",
         instrument="ES",
         selected_levels=["ONH"],
@@ -163,16 +161,14 @@ def test_confirm_3bar_legacy_retrace_entry_ticks_is_mapped():
         max_confluences=5,
         naked_only=False,
         naked_requirement="any",
-        trigger="confirm_3bar",
+        trigger="3c",
         direction="both",
         trigger_params={
-            "arrival_tolerance_ticks": 1.0,
-            "retrace_entry_ticks": 5.0,
-            "allow_equal_close": False,
+            "arrival_tolerance_ticks": 1.0
         },
     )
-    assert config["trigger_params"]["activation_retrace_ticks"] == 5.0
-    assert config["trigger_params"]["entry_offset_ticks"] == 0.0
+    assert config["trigger_params"]["entry_retrace_ticks"] == 4.0
+    assert config["trigger_params"]["max_entry_wait_bars_after_reversal"] == 5
     assert validate_setup_config(config) == []
 
 

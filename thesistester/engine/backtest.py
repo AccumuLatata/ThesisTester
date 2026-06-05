@@ -7,9 +7,8 @@ Design notes
 ------------
 - Simple triggers (touch / reject / break / reclaim) enter at next-bar open
   to avoid look-ahead bias.
-- ``confirm_3bar`` signals with ``status="filled"`` enter on the signal bar
-  at ``entry_reference_price``; Phase 4 only emits filled rows once bar 3 has
-  already traded through the limit.
+- ``3c`` signals with ``status="filled"`` enter at ``retrace_entry_price`` on
+  ``entry_bar_index``. ``status="void"`` rows are skipped.
 - When both SL and TP are reachable within the same OHLC bar the engine
   exits at SL (SL-first / pessimistic rule), because intrabar event order
   is unknowable from OHLC data alone.
@@ -51,6 +50,11 @@ _TRADE_COLUMNS: list[str] = [
     "zone_mid",
     "level_count",
     "level_names",
+    "trigger_variant",
+    "is_muted",
+    "is_sfp",
+    "inside_candle_count",
+    "level_source_mode",
     "mae_points",
     "mfe_points",
     "status",
@@ -138,9 +142,17 @@ def simulate_trades(
         # ------------------------------------------------------------------
         # Determine entry bar and price
         # ------------------------------------------------------------------
-        if trigger == "confirm_3bar":
+        if trigger == "3c":
             if str(sig.get("status", "")) != "filled":
-                # Void confirm_3bar signals are skipped.
+                # Void 3c signals are skipped.
+                continue
+            entry_bar_index = int(sig["entry_bar_index"])
+            if entry_bar_index >= n_bars:
+                continue
+            entry_price = float(sig["retrace_entry_price"])
+            entry_model = "3c_retrace_market"
+        elif trigger == "confirm_3bar":
+            if str(sig.get("status", "")) != "filled":
                 continue
             entry_bar_index = bar_idx
             entry_price = float(sig["entry_reference_price"])
@@ -276,6 +288,11 @@ def simulate_trades(
                 "zone_mid": sig.get("zone_mid"),
                 "level_count": sig.get("level_count"),
                 "level_names": sig.get("level_names"),
+                "trigger_variant": sig.get("trigger_variant"),
+                "is_muted": sig.get("is_muted"),
+                "is_sfp": sig.get("is_sfp"),
+                "inside_candle_count": sig.get("inside_candle_count"),
+                "level_source_mode": sig.get("level_source_mode"),
                 "mae_points": mae_pts,
                 "mfe_points": mfe_pts,
                 "status": "closed",
