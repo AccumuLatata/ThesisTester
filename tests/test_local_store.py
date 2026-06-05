@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -6,6 +9,7 @@ from thesistester.persistence.local_store import (
     delete_dataset,
     delete_levels,
     find_matching_levels,
+    get_store_root,
     list_datasets,
     list_saved_levels,
     load_dataset,
@@ -209,3 +213,92 @@ def test_delete_behavior():
     assert list_datasets() == []
     with pytest.raises(FileNotFoundError):
         load_dataset(dataset["dataset_id"])
+
+
+def test_env_override_stable(tmp_path, monkeypatch):
+    """THESISTESTER_STORE_DIR override is respected and datasets are found."""
+    custom_store = tmp_path / "custom_store"
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(custom_store))
+
+    save_dataset(
+        _base_dataset(),
+        name="env-override",
+        instrument="ES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+    )
+    datasets = list_datasets()
+
+    assert len(datasets) == 1
+    assert datasets[0]["name"] == "env-override"
+    assert str(get_store_root()).startswith(str(custom_store))
+
+
+def test_list_rescans_from_disk(tmp_path, monkeypatch):
+    """list_datasets() finds saved datasets even when manifest is stale or empty."""
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+
+    save_dataset(
+        _base_dataset(),
+        name="rescan-test",
+        instrument="ES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+    )
+
+    # Overwrite manifest with an empty datasets list to simulate stale state.
+    from thesistester.persistence.local_store import _dataset_manifest_path
+
+    manifest_path = _dataset_manifest_path()
+    manifest_path.write_text('{"datasets": []}', encoding="utf-8")
+
+    datasets = list_datasets()
+
+    assert len(datasets) == 1
+    assert datasets[0]["name"] == "rescan-test"
+
+
+def test_list_rescans_when_manifest_missing(tmp_path, monkeypatch):
+    """list_datasets() scans dataset folders when manifest.json does not exist."""
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+
+    save_dataset(
+        _base_dataset(),
+        name="no-manifest",
+        instrument="NQ",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+    )
+
+    from thesistester.persistence.local_store import _dataset_manifest_path
+
+    _dataset_manifest_path().unlink()
+
+    datasets = list_datasets()
+
+    assert len(datasets) == 1
+    assert datasets[0]["name"] == "no-manifest"
+
+
+def test_default_store_root_stable():
+    """get_store_root() without env override is absolute and repo-root-relative."""
+    import os
+
+    # Temporarily clear env var if set by autouse fixture or environment.
+    original = os.environ.pop("THESISTESTER_STORE_DIR", None)
+    try:
+        root = get_store_root()
+    finally:
+        if original is not None:
+            os.environ["THESISTESTER_STORE_DIR"] = original
+
+    assert root.is_absolute()
+    assert root.name == ".thesistester_store"
+    # Must not be inside the thesistester/persistence package directory.
+    from thesistester.persistence import local_store
+
+    persistence_dir = Path(local_store.__file__).resolve().parent
+    assert not str(root).startswith(str(persistence_dir))

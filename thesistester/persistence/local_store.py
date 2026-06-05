@@ -16,13 +16,19 @@ from thesistester import __version__
 PERSISTENCE_SCHEMA_VERSION = 1
 LEVEL_ENGINE_VERSION = 1
 STORE_ENV_VAR = "THESISTESTER_STORE_DIR"
-DEFAULT_STORE_DIR = ".thesistester_store"
+DEFAULT_STORE_DIR_NAME = ".thesistester_store"
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
 
 
 def get_store_root() -> Path:
     """Return the local persistence root directory."""
-    raw_path = os.environ.get(STORE_ENV_VAR, DEFAULT_STORE_DIR)
-    return Path(raw_path).expanduser().resolve()
+    raw_path = os.environ.get(STORE_ENV_VAR)
+    if raw_path:
+        return Path(raw_path).expanduser().resolve()
+    return (_repo_root() / DEFAULT_STORE_DIR_NAME).resolve()
 
 
 def _datasets_root() -> Path:
@@ -258,15 +264,6 @@ def save_dataset(
 
 def list_datasets() -> list[dict[str, Any]]:
     """Return saved dataset metadata sorted newest-first."""
-    manifest_path = _dataset_manifest_path()
-    if manifest_path.exists():
-        try:
-            manifest = _read_json(manifest_path)
-            datasets = manifest.get("datasets")
-            if isinstance(datasets, list):
-                return datasets
-        except (json.JSONDecodeError, OSError):
-            pass
     return _refresh_dataset_manifest()
 
 
