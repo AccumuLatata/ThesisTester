@@ -374,7 +374,7 @@ with st.sidebar:
                 )
             else:
                 st.info("Select at least one confluence level.")
-            selected_levels = [anchor_level, *selected_confluence_levels] if anchor_level else selected_confluence_levels
+            selected_levels = [anchor_level, *selected_confluence_levels]
 
         st.header("Signal settings")
 
@@ -402,7 +402,6 @@ with st.sidebar:
 
         if trigger == "3c":
             st.subheader("3c parameters")
-            arrival_tol = 0.0
             entry_retrace = st.number_input(
                 "Entry retrace ticks",
                 min_value=0.0,
