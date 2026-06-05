@@ -143,14 +143,16 @@ def summarize_by_group(trades: pd.DataFrame, group_cols: list[str]) -> pd.DataFr
             n = len(r)
             wins = r[r > 0]
             losses = r[r < 0]
-            row["win_rate"] = float(len(wins) / n) if n > 0 else None
+            win_rate = float(len(wins) / n) if n > 0 else None
+            loss_rate = float(len(losses) / n) if n > 0 else None
+            row["win_rate"] = win_rate
             row["avg_r"] = float(r.mean()) if n > 0 else None
             avg_win_r = float(wins.mean()) if len(wins) > 0 else None
             avg_loss_r = float(losses.mean()) if len(losses) > 0 else None
             if n == 0:
                 row["expectancy_r"] = None
             elif avg_win_r is not None and avg_loss_r is not None:
-                row["expectancy_r"] = row["win_rate"] * avg_win_r + (1.0 - row["win_rate"]) * avg_loss_r
+                row["expectancy_r"] = win_rate * avg_win_r + loss_rate * avg_loss_r
             else:
                 # For all-win or all-loss groups, avg_r already equals expectancy.
                 row["expectancy_r"] = row["avg_r"]
