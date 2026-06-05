@@ -599,6 +599,32 @@ class TestStrict3cTrigger:
         assert sigs.iloc[0]["status"] == "filled"
         assert sigs.iloc[0]["trigger_variant"] == "3c_long"
         assert sigs.iloc[0]["confirmation_bar_index"] == sigs.iloc[0]["entry_bar_index"]
+        assert sigs.iloc[0]["entry_reference_price"] == pytest.approx(sigs.iloc[0]["entry_trigger_price"])
+        assert sigs.iloc[0]["retrace_entry_price"] == pytest.approx(sigs.iloc[0]["entry_trigger_price"])
+        assert sigs.iloc[0]["activation_price"] == pytest.approx(sigs.iloc[0]["entry_trigger_price"])
+
+    def test_3c_void_uses_theoretical_entry_trigger_as_reference(self):
+        df = _df_bars([
+            {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},  # arrival
+            {"open": 100.6, "high": 101.3, "low": 100.2, "close": 101.1},  # reversal
+            {"open": 101.1, "high": 101.4, "low": 100.8, "close": 101.2},  # no retrace hit
+            {"open": 101.2, "high": 101.5, "low": 100.7, "close": 101.3},  # no retrace hit
+        ])
+        sigs = generate_signals(
+            df,
+            self._zone(),
+            trigger="3c",
+            direction="long",
+            tick_size=TICK,
+            trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 2},
+        )
+        assert len(sigs) == 1
+        sig = sigs.iloc[0]
+        assert sig["status"] == "void"
+        assert sig["entry_trigger_price"] is not None
+        assert sig["entry_reference_price"] == pytest.approx(sig["entry_trigger_price"])
+        assert pd.isna(sig["retrace_entry_price"])
+        assert pd.isna(sig["activation_price"])
 
 
 class TestNakedFilter:

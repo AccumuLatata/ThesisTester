@@ -61,6 +61,7 @@ _SIGNAL_COLUMNS: list[str] = [
     "level_id",
     "arrival_level_price",
     "entry_bar_index",
+    "entry_trigger_price",
     "retrace_entry_price",
     "retrace_ticks_required",
     "source_labels",
@@ -125,6 +126,7 @@ def _make_signal(
     level_id: str | None = None,
     arrival_level_price: float | None = None,
     entry_bar_index: int | None = None,
+    entry_trigger_price: float | None = None,
     retrace_entry_price: float | None = None,
     retrace_ticks_required: float | None = None,
     source_labels: str | None = None,
@@ -169,6 +171,7 @@ def _make_signal(
         "level_id": level_id,
         "arrival_level_price": arrival_level_price,
         "entry_bar_index": entry_bar_index,
+        "entry_trigger_price": entry_trigger_price,
         "retrace_entry_price": retrace_entry_price,
         "retrace_ticks_required": retrace_ticks_required,
         "source_labels": source_labels,
@@ -714,7 +717,11 @@ def generate_signals(
             level_ids = "|".join(setup.get("level_ids", [])) if setup.get("level_ids") else None
             tested_level_name = setup.get("level_id") or setup.get("level_source_label")
             tested_level_price = setup.get("arrival_level_price")
-            retrace_entry_price = setup.get("retrace_entry_price")
+            entry_trigger_raw = setup.get("entry_trigger_price", setup.get("retrace_entry_price"))
+            if entry_trigger_raw is None:
+                entry_trigger_raw = setup.get("arrival_level_price")
+            entry_trigger_price = float(entry_trigger_raw)
+            retrace_entry_price = entry_trigger_price if filled else None
             entry_bar_index = setup.get("entry_bar_index")
             signals.append(
                 _make_signal(
@@ -724,7 +731,7 @@ def generate_signals(
                     trigger="3c",
                     direction=str(setup["direction"]),
                     zone=zone,
-                    entry_ref=float(retrace_entry_price) if retrace_entry_price is not None else float(setup["arrival_level_price"]),
+                    entry_ref=entry_trigger_price,
                     entry_model="3c_retrace_market" if filled else "3c_retrace_void",
                     status=str(setup["status"]),
                     naked_count=ncount,
@@ -736,8 +743,8 @@ def generate_signals(
                     confirmation_bar_index=int(entry_bar_index) if entry_bar_index is not None else None,
                     reversal_type="sfp_reversal" if is_sfp else "standard_reversal",
                     is_sfp_reversal=is_sfp,
-                    activation_price=float(retrace_entry_price) if retrace_entry_price is not None else None,
-                    entry_price=float(retrace_entry_price) if retrace_entry_price is not None else None,
+                    activation_price=entry_trigger_price if filled else None,
+                    entry_price=entry_trigger_price if filled else None,
                     activation_retrace_ticks=float(setup["entry_retrace_ticks"]),
                     trigger_variant=str(setup["trigger_variant"]),
                     is_muted=bool(setup["is_muted"]),
@@ -749,7 +756,8 @@ def generate_signals(
                     level_id=setup.get("level_id"),
                     arrival_level_price=float(setup["arrival_level_price"]),
                     entry_bar_index=int(entry_bar_index) if entry_bar_index is not None else None,
-                    retrace_entry_price=float(retrace_entry_price) if retrace_entry_price is not None else None,
+                    entry_trigger_price=entry_trigger_price,
+                    retrace_entry_price=retrace_entry_price,
                     retrace_ticks_required=float(setup["entry_retrace_ticks"]),
                     source_labels=source_labels,
                     source_count=int(setup.get("source_count", 1)),

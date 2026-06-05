@@ -27,7 +27,12 @@ def _df(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
-def _candidate(direction: str = "long", price: float = 100.0, source_mode: str = "global_cluster") -> CandidateLevel:
+def _candidate(
+    direction: str = "long",
+    price: float = 100.0,
+    source_mode: str = "global_cluster",
+    bar_index: int = 0,
+) -> CandidateLevel:
     return CandidateLevel(
         source_mode=source_mode,
         zone_id="zone_0",
@@ -37,8 +42,8 @@ def _candidate(direction: str = "long", price: float = 100.0, source_mode: str =
         zone_high=price,
         direction=direction,
         source_label="L1",
-        bar_index=0,
-        timestamp=pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
+        bar_index=bar_index,
+        timestamp=pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=bar_index),
         metadata={},
     )
 
@@ -187,7 +192,9 @@ def test_invalid_cases_and_void_and_dedupe():
     )
     assert len(void_setup) == 1
     assert void_setup[0]["status"] == "void"
+    assert void_setup[0]["entry_trigger_price"] == 100.6
     assert void_setup[0]["entry_bar_index"] is None
+    assert void_setup[0]["retrace_entry_price"] is None
 
     # Dedup same effective setup while keeping source metadata count.
     dups = detect_3c_setups(
@@ -224,3 +231,66 @@ def test_no_lookahead_pragmatic():
     )
     assert len(setups) == 1
     assert setups[0]["status"] == "void"
+
+
+def test_overlapping_same_level_direction_source_mode_is_suppressed():
+    rows = [
+        {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},  # bar 0 arrival candidate
+        {"open": 100.8, "high": 101.3, "low": 100.4, "close": 101.1},  # bar 1 reversal for first setup
+        {"open": 101.0, "high": 101.2, "low": 100.7, "close": 100.9},  # bar 2 still in watch window
+        {"open": 100.9, "high": 101.5, "low": 100.8, "close": 101.3},  # bar 3 could reverse second arrival
+        {"open": 101.4, "high": 101.6, "low": 100.9, "close": 101.5},  # bar 4
+        {"open": 101.6, "high": 101.8, "low": 101.0, "close": 101.7},  # bar 5
+    ]
+    setups = detect_3c_setups(
+        _df(rows),
+        [
+            _candidate(direction="long", source_mode="global_cluster", bar_index=0),
+            _candidate(direction="long", source_mode="global_cluster", bar_index=2),
+        ],
+        tick_size=TICK,
+        trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3},
+    )
+    assert len(setups) == 1
+    assert setups[0]["arrival_bar_index"] == 0
+
+
+def test_same_level_different_source_modes_are_not_suppressed():
+    rows = [
+        {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},
+        {"open": 100.8, "high": 101.3, "low": 100.4, "close": 101.1},
+        {"open": 101.0, "high": 101.2, "low": 100.7, "close": 100.9},
+    ]
+    setups = detect_3c_setups(
+        _df(rows),
+        [
+            _candidate(direction="long", source_mode="global_cluster", bar_index=0),
+            _candidate(direction="long", source_mode="user_anchor", bar_index=0),
+        ],
+        tick_size=TICK,
+        trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3},
+    )
+    assert len(setups) == 2
+    assert {s["level_source_mode"] for s in setups} == {"global_cluster", "user_anchor"}
+
+
+def test_same_level_different_directions_are_independent():
+    rows = [
+        {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},  # long arrival
+        {"open": 100.8, "high": 101.3, "low": 100.4, "close": 101.1},  # long reversal
+        {"open": 101.0, "high": 101.2, "low": 100.5, "close": 100.9},  # long fill
+        {"open": 99.6, "high": 100.0, "low": 99.0, "close": 99.5},     # short arrival
+        {"open": 99.4, "high": 99.7, "low": 98.6, "close": 98.8},      # short reversal
+        {"open": 98.9, "high": 99.4, "low": 98.7, "close": 99.1},      # short fill
+    ]
+    setups = detect_3c_setups(
+        _df(rows),
+        [
+            _candidate(direction="long", source_mode="global_cluster", bar_index=0),
+            _candidate(direction="short", source_mode="global_cluster", bar_index=3),
+        ],
+        tick_size=TICK,
+        trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3},
+    )
+    assert len(setups) == 2
+    assert {s["direction"] for s in setups} == {"long", "short"}

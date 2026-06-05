@@ -66,15 +66,23 @@ def detect_3c_setups(
         return []
 
     params = _normalize_3c_params(trigger_params)
-    arrival_tol = float(params["arrival_tolerance_ticks"]) * float(tick_size)
-    retrace_dist = float(params["entry_retrace_ticks"]) * float(tick_size)
+    tick_size_f = float(tick_size)
+    arrival_tol = float(params["arrival_tolerance_ticks"]) * tick_size_f
+    retrace_dist = float(params["entry_retrace_ticks"]) * tick_size_f
     max_wait = max(int(params["max_entry_wait_bars_after_reversal"]), 0)
 
     df_reset = df.reset_index(drop=True)
     n = len(df_reset)
     raw: list[dict[str, Any]] = []
+    active_until_by_key: dict[tuple[float, str, str], int] = {}
+    active_arrival_by_key: dict[tuple[float, str, str], int] = {}
 
-    for candidate in candidates:
+    ordered_candidates = sorted(
+        candidates,
+        key=lambda c: (int(c.bar_index), str(c.source_mode), _rounded_price(float(c.level_price), tick_size_f)),
+    )
+
+    for candidate in ordered_candidates:
         directions = ["long", "short"] if candidate.direction == "both" else [candidate.direction]
         bar1_idx = int(candidate.bar_index)
         if bar1_idx < 0 or bar1_idx >= n:
@@ -87,6 +95,16 @@ def detect_3c_setups(
         level_price = float(candidate.level_price)
 
         for direction in directions:
+            effective_key = (
+                _rounded_price(level_price, tick_size_f),
+                direction,
+                str(candidate.source_mode),
+            )
+            active_until = active_until_by_key.get(effective_key)
+            active_arrival = active_arrival_by_key.get(effective_key)
+            if active_until is not None and bar1_idx <= active_until and bar1_idx != active_arrival:
+                continue
+
             if direction == "long":
                 arrival_ok = bar1_low <= level_price + arrival_tol and bar1_close > level_price
             else:
@@ -143,6 +161,7 @@ def detect_3c_setups(
                     break
 
             status = "filled" if entry_idx is not None else "void"
+            resolved_through_bar = int(entry_idx) if entry_idx is not None else int(watch_end)
             is_muted = inside_count > 0
             raw.append(
                 {
@@ -156,6 +175,7 @@ def detect_3c_setups(
                     "arrival_bar_index": bar1_idx,
                     "reversal_bar_index": reversal_idx,
                     "entry_bar_index": entry_idx,
+                    "entry_trigger_price": entry_trigger_price,
                     "retrace_entry_price": entry_trigger_price if entry_idx is not None else None,
                     "status": status,
                     "arrival_level_price": level_price,
@@ -172,6 +192,10 @@ def detect_3c_setups(
                     "was_naked_before_arrival": candidate.metadata.get("was_naked_before_arrival"),
                 }
             )
+            existing_active_until = active_until_by_key.get(effective_key)
+            if existing_active_until is None or resolved_through_bar >= int(existing_active_until):
+                active_until_by_key[effective_key] = resolved_through_bar
+                active_arrival_by_key[effective_key] = bar1_idx
 
     # Deduplicate by effective setup key while preserving merged metadata.
     merged: dict[tuple[float, str, int, str], dict[str, Any]] = {}

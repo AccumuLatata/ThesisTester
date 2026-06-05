@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from thesistester.analytics import equity_curve, summarize_trades
+from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
 from thesistester.config import INSTRUMENTS
 from thesistester.engine.backtest import simulate_trades
 
@@ -176,6 +177,14 @@ col6.metric("Max DD (R)", _fmt(summary.get("max_drawdown_r")))
 if trades.empty:
     st.info("No trades were generated with the current signals and SL/TP settings.")
     st.stop()
+
+group_cols = [c for c in ["trigger_variant", "level_source_mode", "direction"] if c in trades.columns]
+if group_cols and "trigger" in trades.columns:
+    trades_3c = trades[trades["trigger"] == "3c"]
+    grouped = summarize_trade_groups(trades_3c, group_cols)
+    if not grouped.empty:
+        st.subheader("3c outcome summary by variant/source")
+        st.dataframe(grouped, use_container_width=True, hide_index=True)
 
 # Equity curve
 st.subheader("Equity curve (cumulative R)")

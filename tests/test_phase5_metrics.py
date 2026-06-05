@@ -4,7 +4,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from thesistester.analytics.metrics import equity_curve, summarize_trades
+from thesistester.analytics.metrics import equity_curve, summarize_by_group, summarize_trades
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +95,35 @@ def test_expectancy():
     t = _trades(2.0, -1.0)   # 50% win, avg_win=2, avg_loss=-1 → 0.5*2 + 0.5*(-1) = 0.5
     s = summarize_trades(t)
     assert s["expectancy_r"] == pytest.approx(0.5)
+
+
+def test_grouped_summary_empty_is_safe():
+    grouped = summarize_by_group(pd.DataFrame(), ["trigger_variant", "level_source_mode", "direction"])
+    assert grouped.empty
+
+
+def test_grouped_summary_ignores_missing_columns():
+    t = _trades(1.0, -1.0)
+    t["direction"] = ["long", "short"]
+    grouped = summarize_by_group(t, ["trigger_variant", "level_source_mode", "direction"])
+    assert list(grouped.columns)[0] == "direction"
+    assert len(grouped) == 2
+
+
+def test_grouped_summary_returns_one_row_per_group_combo():
+    t = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -1.0, 2.0, -0.5],
+            "pnl_currency": [50.0, -50.0, 100.0, -25.0],
+            "bars_held": [3, 4, 2, 5],
+            "trigger_variant": ["3c_long", "3c_long", "3c_short", "3c_short"],
+            "level_source_mode": ["global_cluster", "global_cluster", "user_anchor", "user_anchor"],
+            "direction": ["long", "long", "short", "short"],
+        }
+    )
+    grouped = summarize_by_group(t, ["trigger_variant", "level_source_mode", "direction"])
+    assert len(grouped) == 2
+    assert set(grouped["trigger_variant"]) == {"3c_long", "3c_short"}
 
 
 # ---------------------------------------------------------------------------
