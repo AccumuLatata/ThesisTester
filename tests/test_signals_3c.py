@@ -255,6 +255,25 @@ def test_overlapping_same_level_direction_source_mode_is_suppressed():
     assert setups[0]["arrival_bar_index"] == 0
 
 
+def test_overlapping_arrival_suppressed_when_invalidated_before_reversal():
+    rows = [
+        {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},  # bar 0 arrival
+        {"open": 100.4, "high": 100.8, "low": 100.1, "close": 100.3},  # bar 1 inside + possible overlapping arrival
+        {"open": 100.4, "high": 101.2, "low": 100.2, "close": 100.9},  # bar 2 invalidates bar 0; could reverse bar 1
+        {"open": 100.9, "high": 101.0, "low": 100.3, "close": 100.6},  # bar 3 would fill bar 1 if not suppressed
+    ]
+    setups = detect_3c_setups(
+        _df(rows),
+        [
+            _candidate(direction="long", source_mode="global_cluster", bar_index=0),
+            _candidate(direction="long", source_mode="global_cluster", bar_index=1),
+        ],
+        tick_size=TICK,
+        trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3},
+    )
+    assert setups == []
+
+
 def test_same_level_different_source_modes_are_not_suppressed():
     rows = [
         {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},

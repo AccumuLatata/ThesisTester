@@ -115,6 +115,7 @@ def detect_3c_setups(
             inside_count = 0
             reversal_idx: int | None = None
             reversal_close: float | None = None
+            invalidated_at: int | None = None
             is_sfp = False
 
             for idx in range(bar1_idx + 1, n):
@@ -138,9 +139,16 @@ def detect_3c_setups(
                     reversal_idx = idx
                     reversal_close = close
                     is_sfp = sfp
+                else:
+                    invalidated_at = idx
                 break
 
             if reversal_idx is None or reversal_close is None:
+                if invalidated_at is not None:
+                    existing_active_until = active_until_by_key.get(effective_key)
+                    if existing_active_until is None or invalidated_at >= int(existing_active_until):
+                        active_until_by_key[effective_key] = int(invalidated_at)
+                        active_arrival_by_key[effective_key] = bar1_idx
                 continue
 
             if direction == "long":
