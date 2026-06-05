@@ -61,6 +61,7 @@ _RULE_AUDIT_COLUMNS = [
 
 
 def _widget_key_part(value: object) -> str:
+    """Sanitize a value for widget keys by replacing non-alphanumerics with underscores."""
     return "".join(ch if ch.isalnum() else "_" for ch in str(value))
 
 
