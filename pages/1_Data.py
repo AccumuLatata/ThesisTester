@@ -19,6 +19,7 @@ from thesistester.data.sessions import tag_session
 from thesistester.persistence import (
     compute_dataset_id,
     delete_dataset,
+    get_store_root,
     list_datasets,
     load_dataset,
     save_dataset,
@@ -164,6 +165,59 @@ flash_message = st.session_state.pop(FLASH_MESSAGE_KEY, None)
 if flash_message:
     st.success(flash_message)
 
+st.subheader("Local saved datasets")
+st.caption(f"Local store: `{get_store_root()}`")
+saved_datasets = list_datasets()
+saved_dataset_options = {item["dataset_id"]: item for item in saved_datasets}
+
+if saved_datasets:
+    selected_saved_dataset_id = st.selectbox(
+        "Saved datasets",
+        options=list(saved_dataset_options),
+        format_func=lambda dataset_id: _saved_dataset_label(saved_dataset_options[dataset_id]),
+    )
+    selected_saved_dataset = saved_dataset_options[selected_saved_dataset_id]
+
+    action_cols = st.columns(3)
+    if action_cols[0].button("Load saved dataset", use_container_width=True):
+        loaded_df, loaded_meta = load_dataset(selected_saved_dataset_id)
+        _set_active_dataset_state(
+            loaded_df,
+            instrument=loaded_meta["instrument"],
+            base_interval=loaded_meta.get("base_interval"),
+            source_timezone=loaded_meta.get("source_timezone"),
+            exchange_timezone=loaded_meta.get("exchange_timezone"),
+            resampled_data={},
+            saved_dataset_id=loaded_meta["dataset_id"],
+        )
+        st.session_state[FLASH_MESSAGE_KEY] = (
+            f"Loaded saved dataset '{loaded_meta['name']}' ({loaded_meta['dataset_id'][:12]}...)."
+        )
+        st.session_state[PENDING_INSTRUMENT_SELECTOR_KEY] = loaded_meta["instrument"]
+        if loaded_meta.get("source_timezone") is not None:
+            st.session_state[PENDING_SOURCE_TZ_SELECTOR_KEY] = loaded_meta[
+                "source_timezone"
+            ]
+        st.rerun()
+
+    if action_cols[1].button("Delete saved dataset", use_container_width=True):
+        delete_dataset(selected_saved_dataset_id)
+        if st.session_state.get(ACTIVE_SAVED_DATASET_KEY) == selected_saved_dataset_id:
+            st.session_state.pop(ACTIVE_SAVED_DATASET_KEY, None)
+        st.session_state[FLASH_MESSAGE_KEY] = (
+            f"Deleted saved dataset '{selected_saved_dataset.get('name', selected_saved_dataset_id)}'."
+        )
+        st.rerun()
+
+    if action_cols[2].button("Refresh saved datasets", use_container_width=True):
+        st.rerun()
+else:
+    st.caption(f"No saved datasets found in `{get_store_root()}`.")
+    if st.button("Refresh saved datasets"):
+        st.rerun()
+
+st.divider()
+
 available_instruments = list(INSTRUMENTS.keys())
 if PENDING_INSTRUMENT_SELECTOR_KEY in st.session_state:
     st.session_state["data_instrument_selector"] = st.session_state.pop(
@@ -264,50 +318,6 @@ elif "data" in st.session_state:
     )
 
 st.divider()
-st.subheader("Local saved datasets")
-saved_datasets = list_datasets()
-saved_dataset_options = {item["dataset_id"]: item for item in saved_datasets}
-
-if saved_datasets:
-    selected_saved_dataset_id = st.selectbox(
-        "Saved datasets",
-        options=list(saved_dataset_options),
-        format_func=lambda dataset_id: _saved_dataset_label(saved_dataset_options[dataset_id]),
-    )
-    selected_saved_dataset = saved_dataset_options[selected_saved_dataset_id]
-
-    action_cols = st.columns(2)
-    if action_cols[0].button("Load saved dataset", use_container_width=True):
-        loaded_df, loaded_meta = load_dataset(selected_saved_dataset_id)
-        _set_active_dataset_state(
-            loaded_df,
-            instrument=loaded_meta["instrument"],
-            base_interval=loaded_meta.get("base_interval"),
-            source_timezone=loaded_meta.get("source_timezone"),
-            exchange_timezone=loaded_meta.get("exchange_timezone"),
-            resampled_data={},
-            saved_dataset_id=loaded_meta["dataset_id"],
-        )
-        st.session_state[FLASH_MESSAGE_KEY] = (
-            f"Loaded saved dataset '{loaded_meta['name']}' ({loaded_meta['dataset_id'][:12]}...)."
-        )
-        st.session_state[PENDING_INSTRUMENT_SELECTOR_KEY] = loaded_meta["instrument"]
-        if loaded_meta.get("source_timezone") is not None:
-            st.session_state[PENDING_SOURCE_TZ_SELECTOR_KEY] = loaded_meta[
-                "source_timezone"
-            ]
-        st.rerun()
-
-    if action_cols[1].button("Delete saved dataset", use_container_width=True):
-        delete_dataset(selected_saved_dataset_id)
-        if st.session_state.get(ACTIVE_SAVED_DATASET_KEY) == selected_saved_dataset_id:
-            st.session_state.pop(ACTIVE_SAVED_DATASET_KEY, None)
-        st.session_state[FLASH_MESSAGE_KEY] = (
-            f"Deleted saved dataset '{selected_saved_dataset.get('name', selected_saved_dataset_id)}'."
-        )
-        st.rerun()
-else:
-    st.caption("No saved datasets yet.")
 
 current_df = st.session_state.get("data")
 if current_df is not None:
