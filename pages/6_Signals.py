@@ -60,6 +60,10 @@ _RULE_AUDIT_COLUMNS = [
 ]
 
 
+def _widget_key_part(value: object) -> str:
+    return "".join(ch if ch.isalnum() else "_" for ch in str(value))
+
+
 def _parse_anchor_rule_results(zones: pd.DataFrame) -> pd.DataFrame:
     """Parse ``rule_results`` JSON column into a flat per-rule DataFrame."""
     if zones.empty or "rule_results" not in zones.columns:
@@ -342,7 +346,9 @@ with st.sidebar:
                 default=[],
                 help="Levels evaluated against the anchor with per-rule tolerance and required flags.",
             )
-            for level in selected_confluence_levels:
+            for idx, level in enumerate(selected_confluence_levels):
+                level_key = _widget_key_part(level)
+                key_base = f"manual_anchor_rule_{idx}_{level_key}"
                 st.markdown(f"**{level}**")
                 rule_tolerance = st.number_input(
                     f"Tolerance ticks — {level}",
@@ -350,10 +356,12 @@ with st.sidebar:
                     max_value=100.0,
                     value=4.0,
                     step=0.5,
+                    key=f"{key_base}_tolerance",
                 )
                 rule_required = st.checkbox(
                     f"Required — {level}",
                     value=False,
+                    key=f"{key_base}_required",
                 )
                 confluence_rules.append(
                     {
@@ -451,7 +459,7 @@ if generate_btn:
         missing_columns = _missing_anchor_columns(levels_df, anchor_level, confluence_rules)
         if missing_columns:
             st.error(
-                "Saved anchor setup references level columns that are not available in the current levels DataFrame: "
+                "Anchor mode references level columns that are not available in the current levels DataFrame: "
                 + ", ".join(missing_columns)
             )
             st.stop()
