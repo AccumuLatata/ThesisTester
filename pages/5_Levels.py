@@ -3,6 +3,13 @@ import streamlit as st
 
 from thesistester.data.sessions import tag_session
 from thesistester.levels import compute_all_levels, compute_session_levels
+from thesistester.persistence import (
+    compute_dataset_id,
+    delete_levels,
+    find_matching_levels,
+    load_levels,
+    save_levels,
+)
 
 
 def _parse_lengths(raw: str, label: str) -> list[int]:
@@ -48,7 +55,7 @@ def _levels_data_fingerprint(df, instrument: str) -> dict:
         "rows": len(df),
         "timestamp_min": timestamp_min,
         "timestamp_max": timestamp_max,
-        "columns": tuple(sorted(df.columns)),
+        "columns": sorted(df.columns),
         "base_interval": st.session_state.get("base_interval"),
         "source_timezone": st.session_state.get("source_timezone"),
         "exchange_timezone": st.session_state.get("exchange_timezone"),
@@ -62,6 +69,14 @@ if "data" not in st.session_state:
     st.stop()
 
 instrument = st.session_state.get("instrument", "ES")
+dataset_id = compute_dataset_id(
+    st.session_state["data"],
+    instrument=instrument,
+    base_interval=st.session_state.get("base_interval"),
+    source_timezone=st.session_state.get("source_timezone"),
+    exchange_timezone=st.session_state.get("exchange_timezone"),
+)
+st.session_state["dataset_id"] = dataset_id
 opening_range_minutes = st.selectbox("Opening range duration (minutes)", [5, 15, 30], index=2)
 sma_lengths_raw = st.text_input("SMA lengths (comma-separated)", value="20,50,200")
 ema_lengths_raw = st.text_input("EMA lengths (comma-separated)", value="20,50,200")
@@ -99,6 +114,49 @@ current_data_fingerprint = _levels_data_fingerprint(st.session_state["data"], in
 previous_settings = _normalize_levels_settings(st.session_state.get("levels_settings"))
 previous_data_fingerprint = st.session_state.get("levels_data_fingerprint")
 has_calculated_levels = "levels" in st.session_state and "session_levels" in st.session_state
+levels_df = st.session_state.get("levels")
+
+matching_saved_levels = find_matching_levels(
+    dataset_id=dataset_id,
+    levels_settings=current_settings,
+)
+levels_are_stale = (
+    has_calculated_levels
+    and previous_data_fingerprint is not None
+    and previous_data_fingerprint != current_data_fingerprint
+)
+settings_are_stale = previous_settings is not None and previous_settings != current_settings
+
+if matching_saved_levels is not None and (not has_calculated_levels or levels_are_stale or settings_are_stale):
+    st.info("Matching saved levels found for this dataset/settings.")
+    saved_level_actions = st.columns(2)
+    if saved_level_actions[0].button(
+        "Load saved levels",
+        key="load_matching_saved_levels",
+        use_container_width=True,
+    ):
+        levels_df, session_levels, loaded_meta = load_levels(
+            dataset_id,
+            matching_saved_levels["settings_hash"],
+        )
+        st.session_state["levels"] = levels_df
+        st.session_state["session_levels"] = session_levels
+        st.session_state["levels_settings"] = loaded_meta["levels_settings"]
+        st.session_state["levels_data_fingerprint"] = loaded_meta["levels_data_fingerprint"]
+        previous_settings = _normalize_levels_settings(loaded_meta["levels_settings"])
+        previous_data_fingerprint = loaded_meta["levels_data_fingerprint"]
+        has_calculated_levels = True
+        levels_are_stale = False
+        settings_are_stale = False
+        st.success("Loaded saved levels without recalculating.")
+    if saved_level_actions[1].button(
+        "Delete saved levels",
+        key="delete_matching_saved_levels_prompt",
+        use_container_width=True,
+    ):
+        delete_levels(dataset_id, matching_saved_levels["settings_hash"])
+        matching_saved_levels = None
+        st.success("Deleted matching saved levels.")
 
 button_label = "Recalculate levels" if has_calculated_levels else "Calculate levels"
 calculate_levels = st.button(button_label, type="primary")
@@ -148,6 +206,42 @@ if (
 
 if previous_settings is not None and previous_settings != current_settings:
     st.info("Settings have changed. Click **Recalculate levels** to update results.")
+
+levels_current = (
+    has_calculated_levels
+    and previous_data_fingerprint is not None
+    and previous_data_fingerprint == current_data_fingerprint
+    and previous_settings is not None
+    and previous_settings == current_settings
+)
+
+if levels_current:
+    st.divider()
+    persistence_actions = st.columns(2)
+    if persistence_actions[0].button(
+        "Save levels locally",
+        key="save_current_levels_locally",
+        use_container_width=True,
+    ):
+        saved_levels_meta = save_levels(
+            dataset_id=dataset_id,
+            levels=st.session_state["levels"],
+            session_levels=st.session_state["session_levels"],
+            levels_settings=st.session_state["levels_settings"],
+            levels_data_fingerprint=st.session_state["levels_data_fingerprint"],
+        )
+        matching_saved_levels = saved_levels_meta
+        st.success(
+            f"Saved levels locally ({saved_levels_meta['settings_hash'][:12]}...)."
+        )
+    if matching_saved_levels is not None and persistence_actions[1].button(
+        "Delete saved levels",
+        key="delete_current_saved_levels",
+        use_container_width=True,
+    ):
+        delete_levels(dataset_id, matching_saved_levels["settings_hash"])
+        matching_saved_levels = None
+        st.success("Deleted matching saved levels.")
 
 base_columns = {"timestamp", "open", "high", "low", "close", "volume", "session", "settlement"}
 level_columns = [col for col in levels_df.columns if col not in base_columns]
