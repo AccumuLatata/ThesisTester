@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 _BASE_COLUMNS = {"timestamp", "open", "high", "low", "close", "volume", "session", "settlement"}
 _DEFAULT_LEVEL_COUNT = 4
 _MAX_PLOTTED_LEVELS = 8
+_MAX_PLOTTED_ZONES = 24
 _LEVEL_LINE_STYLE = dict(width=1, dash="dot")
 _ZONE_LINE_STYLE = dict(color="mediumpurple", width=3)
 _STOP_LINE_STYLE = dict(color="crimson", width=1.2, dash="dot")
@@ -67,6 +68,28 @@ def _add_session_context(fig: go.Figure, ohlcv: pd.DataFrame) -> None:
             line_dash="dot",
             line_color="rgba(70, 130, 180, 0.8)",
         )
+
+
+def _select_confluence_zones(zones: pd.DataFrame, trades: pd.DataFrame | None) -> pd.DataFrame:
+    if trades is None or trades.empty:
+        return zones.head(_MAX_PLOTTED_ZONES)
+
+    link_columns = ["zone_low", "zone_high"]
+    if "level_names" in zones.columns and "level_names" in trades.columns:
+        link_columns.append("level_names")
+
+    if not {"zone_low", "zone_high"}.issubset(trades.columns):
+        return zones.head(_MAX_PLOTTED_ZONES)
+
+    trade_keys = trades[link_columns].dropna(subset=["zone_low", "zone_high"]).drop_duplicates()
+    if trade_keys.empty:
+        return zones.head(_MAX_PLOTTED_ZONES)
+
+    related_zones = zones.merge(trade_keys, on=link_columns, how="inner").drop_duplicates()
+    if not related_zones.empty:
+        return related_zones
+
+    return zones.head(_MAX_PLOTTED_ZONES)
 
 
 def build_backtest_candlestick_chart(
@@ -131,6 +154,8 @@ def build_backtest_candlestick_chart(
             zones = confluence_zones.copy()
             zones["timestamp"] = pd.to_datetime(zones["timestamp"], errors="coerce")
             zones = zones.dropna(subset=["timestamp", "zone_low", "zone_high"])
+            zones = zones.sort_values("timestamp")
+            zones = _select_confluence_zones(zones, trades)
             if not zones.empty:
                 zone_x_coords: list[object] = []
                 zone_y_coords: list[float | None] = []
