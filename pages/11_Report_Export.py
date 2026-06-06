@@ -7,14 +7,30 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from thesistester.config import TIMEZONE_OPTIONS
 from thesistester.reporting import (
     build_markdown_report,
     build_research_artifact,
     dataframe_to_csv_bytes,
 )
+from thesistester.timezone_display import (
+    convert_dataframe_timestamps_for_display,
+    ensure_display_timezone,
+    timezone_contract_caption,
+)
 
 st.title("🧾 Report / Export")
 st.caption("Export reproducible research artifacts from current session state.")
+exchange_tz = st.session_state.get("exchange_timezone") or "America/New_York"
+ensure_display_timezone(st.session_state, exchange_timezone=exchange_tz)
+st.selectbox(
+    "Display/export timezone",
+    options=TIMEZONE_OPTIONS,
+    key="display_timezone",
+    help="Controls timezone conversion for exported CSV/JSON timestamps.",
+)
+st.caption(timezone_contract_caption(st.session_state))
+display_tz = st.session_state.get("display_timezone", exchange_tz)
 
 
 REQUIRED_ITEMS = [
@@ -110,13 +126,20 @@ csv_exports = [
 for key, filename in csv_exports:
     value = st.session_state.get(key)
     if isinstance(value, pd.DataFrame):
+        converted_df, conversion_warnings = convert_dataframe_timestamps_for_display(
+            value,
+            display_timezone=display_tz,
+            canonical_timezone=exchange_tz,
+        )
         st.download_button(
             f"⬇️ Download {filename}",
-            data=dataframe_to_csv_bytes(value),
+            data=dataframe_to_csv_bytes(converted_df),
             file_name=filename,
             mime="text/csv",
             key=f"download_{key}",
         )
+        for warning in conversion_warnings:
+            st.warning(warning)
 
 st.subheader("Report preview")
 st.markdown(report_markdown)

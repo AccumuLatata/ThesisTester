@@ -150,13 +150,13 @@ def add_time_buckets(
     result["entry_minute"] = ts.dt.minute
 
     # Hour bucket: "09:00", "10:00", …
-    result["entry_hour_bucket"] = ts.dt.strftime("%H:00")
+    result["entry_hour_bucket"] = ts.dt.strftime("%H:00").astype(str)
 
     # 30-minute bucket: "09:30", "10:00", …
     half_hour = (ts.dt.minute // 30) * 30
     result["entry_30min_bucket"] = (
         ts.dt.strftime("%H:") + half_hour.astype(str).str.zfill(2)
-    )
+    ).astype(str)
 
     # RTH segment
     mod = _minute_of_day(ts)

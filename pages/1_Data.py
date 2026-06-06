@@ -32,6 +32,10 @@ from thesistester.persistence import (
     save_dataset,
     set_active_dataset_id,
 )
+from thesistester.timezone_display import (
+    ensure_display_timezone,
+    timezone_contract_caption,
+)
 
 FLASH_MESSAGE_KEY = "_data_local_store_message"
 PENDING_INSTRUMENT_SELECTOR_KEY = "_pending_data_instrument_selector"
@@ -113,6 +117,10 @@ def _set_active_dataset_state(
     st.session_state["base_interval"] = base_interval
     st.session_state["source_timezone"] = source_timezone
     st.session_state["exchange_timezone"] = exchange_timezone
+    ensure_display_timezone(
+        st.session_state,
+        exchange_timezone=exchange_timezone,
+    )
     st.session_state["dataset_id"] = dataset_id
     if saved_dataset_id is None:
         clear_active_dataset_id()
@@ -135,9 +143,7 @@ def _render_dataset_summary(
 ):
     st.success(f"Loaded {len(df):,} bars.")
     st.caption(f"{df['timestamp'].min()} → {df['timestamp'].max()}")
-    st.caption(
-        f"Source timezone: {source_timezone} → canonical exchange timezone: {exchange_timezone}"
-    )
+    st.caption(timezone_contract_caption(st.session_state))
 
     summary_cols = st.columns(4)
     summary_cols[0].metric("Rows", f"{len(df):,}")
