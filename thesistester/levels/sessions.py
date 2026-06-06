@@ -146,6 +146,13 @@ def _prev_settlement(df: pd.DataFrame, session_date: pd.Series) -> pd.Series:
     if "settlement" in df.columns:
         settlements = pd.to_numeric(df["settlement"], errors="coerce")
         daily_settlement = settlements.groupby(session_date, sort=True).last()
+    elif "session" in df.columns and df["session"].eq("RTH").any():
+        rth_mask = df["session"].eq("RTH")
+        rth_close = df.loc[rth_mask].groupby(session_date[rth_mask], sort=True)["close"].last()
+        # Reindex to all session-dates so that sessions containing only ETH bars
+        # (e.g., a new session that just opened) are included in the shift window.
+        all_dates = pd.Index(sorted(session_date.unique()))
+        daily_settlement = rth_close.reindex(all_dates)
     else:
         daily_settlement = df.groupby(session_date, sort=True)["close"].last()
 

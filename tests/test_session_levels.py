@@ -193,19 +193,26 @@ def test_overnight_levels_exclude_post_rth_contamination_and_stay_hidden_pre_rth
     assert first_rth["ONL"] == 95.0
 
 
-def test_prev_settlement_fallback_uses_prior_trading_session_close():
+def test_prev_settlement_fallback_uses_prior_rth_close_not_post_rth():
+    # Previous session has RTH close at 15:59 (close=111.0) and a post-RTH/pre-ETH bar
+    # at 16:59 (close=999.0). The new session starts at 18:00.
+    # prevSettlement on the new session must be 111.0 (last RTH close), not 999.0.
     df = _build_df(
         [
             ("2026-06-01 18:00:00", 100.0, 101.0, 99.0, 100.0),
-            ("2026-06-02 09:30:00", 110.0, 112.0, 109.0, 111.0),
-            ("2026-06-02 16:59:00", 120.0, 125.0, 119.0, 123.0),
+            ("2026-06-02 15:59:00", 110.0, 112.0, 109.0, 111.0),
+            ("2026-06-02 16:59:00", 120.0, 125.0, 119.0, 999.0),
             ("2026-06-02 18:00:00", 200.0, 201.0, 198.0, 199.0),
         ]
     )
     levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
     new_session_bar = levels[levels["timestamp"] == pd.Timestamp("2026-06-02 18:00:00", tz=TZ)].iloc[0]
-    assert new_session_bar["prevSettlement"] == 123.0
+    assert new_session_bar["prevSettlement"] == 111.0, (
+        f"prevSettlement should be last RTH close (111.0), not post-RTH bar (999.0), got {new_session_bar['prevSettlement']}"
+    )
 
+    # When an explicit settlement value exists for the completed prior trading session,
+    # use it instead of the RTH close.
     with_settlement = tag_session(df.copy(), "ES")
     with_settlement["settlement"] = [np.nan, np.nan, 124.5, np.nan]
     levels_with_settlement = compute_session_levels(with_settlement, instrument="ES")
