@@ -414,6 +414,13 @@ def test_compute_levels_settings_hash_changes_when_indicator_timeframes_change()
     assert compute_levels_settings_hash(base) != compute_levels_settings_hash(changed)
 
 
+def test_compute_levels_settings_hash_handles_none_indicator_timeframes():
+    with_none = _levels_settings(sma_timeframes=None, ema_timeframes=None)
+    with_default = _levels_settings(sma_timeframes=["1min"], ema_timeframes=["1min"])
+
+    assert compute_levels_settings_hash(with_none) != compute_levels_settings_hash(with_default)
+
+
 def test_compute_signal_settings_hash_ignores_selected_levels_order():
     settings_one = _signal_settings(selected_levels=["OR_High", "OR_Low", "RTH_Open"])
     settings_two = _signal_settings(selected_levels=["RTH_Open", "OR_High", "OR_Low"])
