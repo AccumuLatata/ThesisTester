@@ -1,14 +1,19 @@
 import plotly.graph_objects as go
 import streamlit as st
 
+from thesistester.app_state import bootstrap_active_saved_dataset
 from thesistester.data.sessions import tag_session
 from thesistester.levels import compute_all_levels, compute_session_levels
 from thesistester.persistence import (
+    clear_active_levels_hash,
     compute_dataset_id,
     delete_levels,
     find_matching_levels,
+    get_active_levels_hash,
+    list_saved_levels,
     load_levels,
     save_levels,
+    set_active_levels_hash,
 )
 
 
@@ -62,20 +67,58 @@ def _levels_data_fingerprint(df, instrument: str) -> dict:
     }
 
 
+def _saved_levels_label(meta: dict) -> str:
+    settings = meta.get("levels_settings")
+    if not isinstance(settings, dict):
+        settings = {}
+    opening_range = settings.get("opening_range_minutes", "—")
+    value_area_pct = settings.get("value_area_pct")
+    if isinstance(value_area_pct, (int, float)):
+        value_area_label = f"{int(value_area_pct * 100)}%"
+    else:
+        value_area_label = "—"
+    created_at = str(meta.get("created_at", ""))[:10] or "unknown date"
+    return (
+        f"{str(meta.get('settings_hash', 'unknown'))[:12]}… · OR {opening_range}m · "
+        f"VA {value_area_label} · saved {created_at}"
+    )
+
+
+def _load_saved_levels_into_session(dataset_id: str, settings_hash: str) -> bool:
+    try:
+        levels_df, session_levels, loaded_meta = load_levels(dataset_id, settings_hash)
+    except (FileNotFoundError, ValueError, OSError) as exc:
+        if get_active_levels_hash(dataset_id) == settings_hash:
+            clear_active_levels_hash(dataset_id)
+        st.error(f"Unable to load saved levels ({settings_hash[:12]}...): {exc}")
+        return False
+
+    st.session_state["levels"] = levels_df
+    st.session_state["session_levels"] = session_levels
+    st.session_state["levels_settings"] = loaded_meta.get("levels_settings")
+    st.session_state["levels_data_fingerprint"] = loaded_meta.get("levels_data_fingerprint")
+    set_active_levels_hash(dataset_id, settings_hash)
+    return True
+
+
 st.title("📏 Levels")
+
+bootstrap_active_saved_dataset()
 
 if "data" not in st.session_state:
     st.warning("No data loaded. Please load data from the Data page first.")
     st.stop()
 
 instrument = st.session_state.get("instrument", "ES")
-dataset_id = compute_dataset_id(
-    st.session_state["data"],
-    instrument=instrument,
-    base_interval=st.session_state.get("base_interval"),
-    source_timezone=st.session_state.get("source_timezone"),
-    exchange_timezone=st.session_state.get("exchange_timezone"),
-)
+dataset_id = st.session_state.get("dataset_id")
+if not isinstance(dataset_id, str) or not dataset_id:
+    dataset_id = compute_dataset_id(
+        st.session_state["data"],
+        instrument=instrument,
+        base_interval=st.session_state.get("base_interval"),
+        source_timezone=st.session_state.get("source_timezone"),
+        exchange_timezone=st.session_state.get("exchange_timezone"),
+    )
 st.session_state["dataset_id"] = dataset_id
 opening_range_minutes = st.selectbox("Opening range duration (minutes)", [5, 15, 30], index=2)
 sma_lengths_raw = st.text_input("SMA lengths (comma-separated)", value="20,50,200")
@@ -135,28 +178,78 @@ if matching_saved_levels is not None and (not has_calculated_levels or levels_ar
         key="load_matching_saved_levels",
         use_container_width=True,
     ):
-        levels_df, session_levels, loaded_meta = load_levels(
-            dataset_id,
-            matching_saved_levels["settings_hash"],
-        )
-        st.session_state["levels"] = levels_df
-        st.session_state["session_levels"] = session_levels
-        st.session_state["levels_settings"] = loaded_meta["levels_settings"]
-        st.session_state["levels_data_fingerprint"] = loaded_meta["levels_data_fingerprint"]
-        previous_settings = _normalize_levels_settings(loaded_meta["levels_settings"])
-        previous_data_fingerprint = loaded_meta["levels_data_fingerprint"]
-        has_calculated_levels = True
-        levels_are_stale = False
-        settings_are_stale = False
-        st.success("Loaded saved levels without recalculating.")
+        if _load_saved_levels_into_session(dataset_id, matching_saved_levels["settings_hash"]):
+            levels_df = st.session_state.get("levels")
+            previous_settings = _normalize_levels_settings(st.session_state.get("levels_settings"))
+            previous_data_fingerprint = st.session_state.get("levels_data_fingerprint")
+            has_calculated_levels = True
+            levels_are_stale = False
+            settings_are_stale = False
+            st.success("Loaded saved levels without recalculating.")
     if saved_level_actions[1].button(
         "Delete saved levels",
         key="delete_matching_saved_levels_prompt",
         use_container_width=True,
     ):
         delete_levels(dataset_id, matching_saved_levels["settings_hash"])
+        if get_active_levels_hash(dataset_id) == matching_saved_levels["settings_hash"]:
+            clear_active_levels_hash(dataset_id)
         matching_saved_levels = None
         st.success("Deleted matching saved levels.")
+
+saved_level_snapshots = [
+    item
+    for item in list_saved_levels(dataset_id)
+    if isinstance(item.get("settings_hash"), str) and item["settings_hash"]
+]
+if saved_level_snapshots:
+    st.divider()
+    st.subheader("Saved level snapshots")
+    snapshot_options = {item["settings_hash"]: item for item in saved_level_snapshots}
+    snapshot_ids = list(snapshot_options)
+    active_snapshot_hash = get_active_levels_hash(dataset_id)
+    default_index = snapshot_ids.index(active_snapshot_hash) if active_snapshot_hash in snapshot_ids else 0
+    selected_settings_hash = st.selectbox(
+        "Saved snapshots",
+        options=snapshot_ids,
+        index=default_index,
+        format_func=lambda settings_hash: _saved_levels_label(snapshot_options[settings_hash]),
+        key="saved_levels_snapshot_selector",
+    )
+    selected_snapshot_meta = snapshot_options[selected_settings_hash]
+    selected_snapshot_settings = _normalize_levels_settings(
+        selected_snapshot_meta.get("levels_settings")
+    )
+    if selected_snapshot_settings is not None and selected_snapshot_settings != current_settings:
+        st.caption("Selected snapshot settings differ from current controls.")
+    snapshot_actions = st.columns(2)
+    if snapshot_actions[0].button(
+        "Load selected saved levels",
+        key="load_selected_saved_levels",
+        use_container_width=True,
+    ):
+        if _load_saved_levels_into_session(dataset_id, selected_settings_hash):
+            levels_df = st.session_state.get("levels")
+            previous_settings = _normalize_levels_settings(st.session_state.get("levels_settings"))
+            previous_data_fingerprint = st.session_state.get("levels_data_fingerprint")
+            has_calculated_levels = True
+            levels_are_stale = False
+            settings_are_stale = False
+            st.success("Loaded selected saved levels.")
+    if snapshot_actions[1].button(
+        "Delete selected saved levels",
+        key="delete_selected_saved_levels",
+        use_container_width=True,
+    ):
+        delete_levels(dataset_id, selected_settings_hash)
+        if get_active_levels_hash(dataset_id) == selected_settings_hash:
+            clear_active_levels_hash(dataset_id)
+        if (
+            matching_saved_levels is not None
+            and matching_saved_levels.get("settings_hash") == selected_settings_hash
+        ):
+            matching_saved_levels = None
+        st.success("Deleted selected saved levels.")
 
 button_label = "Recalculate levels" if has_calculated_levels else "Calculate levels"
 calculate_levels = st.button(button_label, type="primary")
@@ -230,6 +323,7 @@ if levels_current:
             levels_settings=st.session_state["levels_settings"],
             levels_data_fingerprint=st.session_state["levels_data_fingerprint"],
         )
+        set_active_levels_hash(dataset_id, saved_levels_meta["settings_hash"])
         matching_saved_levels = saved_levels_meta
         st.success(
             f"Saved levels locally ({saved_levels_meta['settings_hash'][:12]}...)."
@@ -240,6 +334,8 @@ if levels_current:
         use_container_width=True,
     ):
         delete_levels(dataset_id, matching_saved_levels["settings_hash"])
+        if get_active_levels_hash(dataset_id) == matching_saved_levels["settings_hash"]:
+            clear_active_levels_hash(dataset_id)
         matching_saved_levels = None
         st.success("Deleted matching saved levels.")
 

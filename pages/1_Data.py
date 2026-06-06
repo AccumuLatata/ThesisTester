@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+import os
 
 import streamlit as st
 
@@ -16,17 +17,23 @@ from thesistester.data.loader import (
 )
 from thesistester.data.resample import SUPPORTED_TIMEFRAMES, resample_ohlcv
 from thesistester.data.sessions import tag_session
+from thesistester.app_state import (
+    ACTIVE_SAVED_DATASET_KEY,
+    BOOTSTRAP_MESSAGE_KEY,
+    bootstrap_active_saved_dataset,
+)
 from thesistester.persistence import (
+    clear_active_dataset_id,
     compute_dataset_id,
     delete_dataset,
     get_store_root,
     list_datasets,
     load_dataset,
     save_dataset,
+    set_active_dataset_id,
 )
 
 FLASH_MESSAGE_KEY = "_data_local_store_message"
-ACTIVE_SAVED_DATASET_KEY = "_active_saved_dataset_id"
 PENDING_INSTRUMENT_SELECTOR_KEY = "_pending_data_instrument_selector"
 PENDING_SOURCE_TZ_SELECTOR_KEY = "_pending_data_source_timezone_selector"
 
@@ -108,8 +115,10 @@ def _set_active_dataset_state(
     st.session_state["exchange_timezone"] = exchange_timezone
     st.session_state["dataset_id"] = dataset_id
     if saved_dataset_id is None:
+        clear_active_dataset_id()
         st.session_state.pop(ACTIVE_SAVED_DATASET_KEY, None)
     else:
+        set_active_dataset_id(saved_dataset_id)
         st.session_state[ACTIVE_SAVED_DATASET_KEY] = saved_dataset_id
 
 
@@ -161,12 +170,22 @@ def _render_dataset_summary(
 
 st.title("\U0001F4E5 Data")
 
+bootstrap_active_saved_dataset()
+
 flash_message = st.session_state.pop(FLASH_MESSAGE_KEY, None)
 if flash_message:
     st.success(flash_message)
+bootstrap_message = st.session_state.pop(BOOTSTRAP_MESSAGE_KEY, None)
+if bootstrap_message:
+    st.success(bootstrap_message)
 
 st.subheader("Local saved datasets")
 st.caption(f"Local store: `{get_store_root()}`")
+if not os.environ.get("THESISTESTER_STORE_DIR"):
+    st.warning(
+        "THESISTESTER_STORE_DIR is not set. Saved datasets are stored in a local repo folder "
+        "and may not persist across environments."
+    )
 saved_datasets = list_datasets()
 saved_dataset_options = {item["dataset_id"]: item for item in saved_datasets}
 
@@ -334,6 +353,8 @@ if current_df is not None:
             exchange_timezone=st.session_state.get("exchange_timezone"),
         )
         st.session_state["dataset_id"] = saved_meta["dataset_id"]
+        set_active_dataset_id(saved_meta["dataset_id"])
+        st.session_state[ACTIVE_SAVED_DATASET_KEY] = saved_meta["dataset_id"]
         st.session_state[FLASH_MESSAGE_KEY] = (
             f"Saved dataset '{saved_meta['name']}' locally ({saved_meta['dataset_id'][:12]}...)."
         )

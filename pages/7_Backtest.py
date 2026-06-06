@@ -8,6 +8,7 @@ from __future__ import annotations
 import plotly.graph_objects as go
 import streamlit as st
 
+from thesistester.app_state import bootstrap_active_saved_dataset
 from thesistester.analytics import equity_curve, summarize_trades
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
 from thesistester.config import INSTRUMENTS
@@ -15,6 +16,7 @@ from thesistester.engine.backtest import simulate_trades
 from thesistester.visualization import build_backtest_candlestick_chart
 
 st.title("📊 Backtest")
+bootstrap_active_saved_dataset()
 
 
 def _signal_setup_context(signals, signal_context: dict | None) -> str | None:

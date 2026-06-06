@@ -10,10 +10,12 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from thesistester.app_state import bootstrap_active_saved_dataset
 from thesistester.analytics import best_grid_result, run_sl_tp_grid
 from thesistester.config import INSTRUMENTS
 
 st.title("🔲 SL/TP Grid Search")
+bootstrap_active_saved_dataset()
 
 # ── Require signals ──────────────────────────────────────────────────────────
 if "signals" not in st.session_state:

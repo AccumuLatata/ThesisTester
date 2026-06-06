@@ -9,6 +9,8 @@ from thesistester.persistence.local_store import (
     delete_dataset,
     delete_levels,
     find_matching_levels,
+    get_active_dataset_id,
+    get_active_levels_hash,
     get_store_root,
     list_datasets,
     list_saved_levels,
@@ -16,6 +18,8 @@ from thesistester.persistence.local_store import (
     load_levels,
     save_dataset,
     save_levels,
+    set_active_dataset_id,
+    set_active_levels_hash,
 )
 
 
@@ -213,6 +217,24 @@ def test_delete_behavior():
     assert list_datasets() == []
     with pytest.raises(FileNotFoundError):
         load_dataset(dataset["dataset_id"])
+
+
+def test_delete_dataset_clears_active_pointers():
+    dataset = save_dataset(
+        _base_dataset(),
+        name="Pointer cleanup",
+        instrument="ES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+    )
+    set_active_dataset_id(dataset["dataset_id"])
+    set_active_levels_hash(dataset["dataset_id"], "hash-123")
+
+    delete_dataset(dataset["dataset_id"])
+
+    assert get_active_dataset_id() is None
+    assert get_active_levels_hash(dataset["dataset_id"]) is None
 
 
 def test_env_override_stable(tmp_path, monkeypatch):

@@ -43,6 +43,10 @@ def _dataset_manifest_path() -> Path:
     return _datasets_root() / "manifest.json"
 
 
+def _ui_state_path() -> Path:
+    return get_store_root() / "ui_state.json"
+
+
 def _dataset_dir(dataset_id: str) -> Path:
     return _datasets_root() / dataset_id
 
@@ -69,6 +73,21 @@ def _write_json(path: Path, payload: Any) -> None:
 
 def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _load_ui_state() -> dict[str, Any]:
+    path = _ui_state_path()
+    if not path.exists():
+        return {}
+    try:
+        payload = _read_json(path)
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _write_ui_state(payload: dict[str, Any]) -> None:
+    _write_json(_ui_state_path(), payload)
 
 
 def _normalize_json_value(value: Any) -> Any:
@@ -294,7 +313,62 @@ def delete_dataset(dataset_id: str) -> None:
     if related_levels_dir.exists():
         shutil.rmtree(related_levels_dir)
 
+    if get_active_dataset_id() == dataset_id:
+        clear_active_dataset_id()
+    clear_active_levels_hash(dataset_id)
     _refresh_dataset_manifest()
+
+
+def get_active_dataset_id() -> str | None:
+    """Return the persisted active dataset id from UI state."""
+    active_dataset_id = _load_ui_state().get("active_dataset_id")
+    return active_dataset_id if isinstance(active_dataset_id, str) and active_dataset_id else None
+
+
+def set_active_dataset_id(dataset_id: str) -> None:
+    """Persist the active dataset id in UI state."""
+    payload = _load_ui_state()
+    payload["active_dataset_id"] = dataset_id
+    _write_ui_state(payload)
+
+
+def clear_active_dataset_id() -> None:
+    """Clear the persisted active dataset id in UI state."""
+    payload = _load_ui_state()
+    payload.pop("active_dataset_id", None)
+    _write_ui_state(payload)
+
+
+def get_active_levels_hash(dataset_id: str) -> str | None:
+    """Return persisted active levels hash for a dataset id."""
+    payload = _load_ui_state()
+    active_levels = payload.get("active_levels_hash_by_dataset")
+    if not isinstance(active_levels, dict):
+        return None
+    settings_hash = active_levels.get(dataset_id)
+    return settings_hash if isinstance(settings_hash, str) and settings_hash else None
+
+
+def set_active_levels_hash(dataset_id: str, settings_hash: str) -> None:
+    """Persist active levels hash for a dataset id."""
+    payload = _load_ui_state()
+    active_levels = payload.get("active_levels_hash_by_dataset")
+    if not isinstance(active_levels, dict):
+        active_levels = {}
+    active_levels[dataset_id] = settings_hash
+    payload["active_levels_hash_by_dataset"] = active_levels
+    _write_ui_state(payload)
+
+
+def clear_active_levels_hash(dataset_id: str) -> None:
+    """Clear persisted active levels hash for a dataset id."""
+    payload = _load_ui_state()
+    active_levels = payload.get("active_levels_hash_by_dataset")
+    if not isinstance(active_levels, dict):
+        return
+    active_levels.pop(dataset_id, None)
+    payload["active_levels_hash_by_dataset"] = active_levels
+    _write_ui_state(payload)
 
 
 def save_levels(
