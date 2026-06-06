@@ -173,8 +173,9 @@ def _bootstrap_active_saved_dataset() -> None:
     try:
         loaded_df, loaded_meta = load_dataset(active_dataset_id)
     except (FileNotFoundError, ValueError, OSError):
+        stale_dataset_id = active_dataset_id
         set_active_dataset_id(None)
-        set_active_levels_hash(active_dataset_id, None)
+        set_active_levels_hash(stale_dataset_id, None)
         st.session_state.pop(ACTIVE_SAVED_DATASET_KEY, None)
         return
 

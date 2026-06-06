@@ -20,6 +20,9 @@ EMA_LENGTHS_KEY = "levels_ema_lengths_raw"
 VWAP_WINDOWS_KEY = "levels_vwap_windows"
 POC_WINDOWS_KEY = "levels_poc_windows"
 VALUE_AREA_PCT_KEY = "levels_value_area_pct"
+OPENING_RANGE_OPTIONS = [5, 15, 30]
+VWAP_WINDOW_OPTIONS = ["15min", "30min", "1h", "4h"]
+POC_WINDOW_OPTIONS = ["30min", "1h", "4h"]
 
 
 def _parse_lengths(raw: str, label: str) -> list[int]:
@@ -99,7 +102,9 @@ def _apply_loaded_levels_state(loaded_meta: dict) -> None:
     st.session_state["levels_data_fingerprint"] = loaded_meta["levels_data_fingerprint"]
     settings = loaded_meta["levels_settings"] or {}
     opening_range = int(settings.get("opening_range_minutes", 30))
-    st.session_state[OPENING_RANGE_KEY] = opening_range if opening_range in (5, 15, 30) else 30
+    st.session_state[OPENING_RANGE_KEY] = (
+        opening_range if opening_range in OPENING_RANGE_OPTIONS else 30
+    )
     st.session_state[SMA_LENGTHS_KEY] = ",".join(
         str(value) for value in settings.get("sma_lengths", [20, 50, 200])
     )
@@ -109,10 +114,10 @@ def _apply_loaded_levels_state(loaded_meta: dict) -> None:
     st.session_state[VWAP_WINDOWS_KEY] = [
         window
         for window in settings.get("vwap_windows", ["15min", "30min", "1h", "4h"])
-        if window in {"15min", "30min", "1h", "4h"}
+        if window in set(VWAP_WINDOW_OPTIONS)
     ]
     st.session_state[POC_WINDOWS_KEY] = [
-        window for window in settings.get("poc_windows", ["30min", "1h", "4h"]) if window in {"30min", "1h", "4h"}
+        window for window in settings.get("poc_windows", POC_WINDOW_OPTIONS) if window in set(POC_WINDOW_OPTIONS)
     ]
     value_area_pct = settings.get("value_area_pct", 0.7)
     value_area_value = int(round(float(value_area_pct) * 100.0))
@@ -149,19 +154,19 @@ if VALUE_AREA_PCT_KEY not in st.session_state:
 
 opening_range_minutes = st.selectbox(
     "Opening range duration (minutes)",
-    [5, 15, 30],
+    OPENING_RANGE_OPTIONS,
     key=OPENING_RANGE_KEY,
 )
 sma_lengths_raw = st.text_input("SMA lengths (comma-separated)", key=SMA_LENGTHS_KEY)
 ema_lengths_raw = st.text_input("EMA lengths (comma-separated)", key=EMA_LENGTHS_KEY)
 vwap_windows = st.multiselect(
     "Rolling VWAP windows",
-    options=["15min", "30min", "1h", "4h"],
+    options=VWAP_WINDOW_OPTIONS,
     key=VWAP_WINDOWS_KEY,
 )
 poc_windows = st.multiselect(
     "Rolling POC windows",
-    options=["30min", "1h", "4h"],
+    options=POC_WINDOW_OPTIONS,
     key=POC_WINDOWS_KEY,
 )
 value_area_pct = (
