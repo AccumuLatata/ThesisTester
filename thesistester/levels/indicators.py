@@ -47,10 +47,11 @@ def _resolve_indicator_source(
             for option in SUPPORTED_INDICATOR_TIMEFRAMES
             if pd.to_timedelta(option) >= base_interval
         ]
-        choice_hint = "/".join(valid_choices) if valid_choices else base_label
+        choice_hint = "/".join(valid_choices)
+        hint = f"Load {timeframe} data." if not valid_choices else f"Load {timeframe} data or choose {choice_hint}."
         raise ValueError(
             f"Cannot compute {timeframe} {indicator_name} from {base_label} source data. "
-            f"Load {timeframe} data or choose {choice_hint}."
+            f"{hint}"
         )
 
     source_df = resample_ohlcv(out, timeframe)
