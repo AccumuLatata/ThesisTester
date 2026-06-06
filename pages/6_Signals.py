@@ -19,6 +19,14 @@ from thesistester.engine import (
     flag_naked_levels,
     generate_signals,
 )
+from thesistester.persistence import (
+    compute_levels_settings_hash,
+    delete_signal_run,
+    find_matching_signal_run,
+    list_saved_signal_runs,
+    load_signal_run,
+    save_signal_run,
+)
 from thesistester.setup import (
     VALID_DIRECTIONS,
     VALID_TRIGGERS,
@@ -228,6 +236,113 @@ def _missing_anchor_columns(levels_df, anchor_level: str | None, confluence_rule
         if level and level not in levels_df.columns:
             missing_columns.append(level)
     return sorted(set(missing_columns))
+
+
+def _normalize_signal_settings_for_hash(settings: dict) -> dict:
+    normalized = dict(settings)
+    selected_levels = normalized.get("selected_levels")
+    if isinstance(selected_levels, list):
+        normalized["selected_levels"] = sorted(str(level) for level in selected_levels)
+    rules = normalized.get("confluence_rules")
+    if isinstance(rules, list):
+        normalized_rules = []
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            normalized_rules.append(
+                {
+                    "level": str(rule.get("level", "")),
+                    "tolerance_ticks": float(rule.get("tolerance_ticks", 0.0)),
+                    "required": bool(rule.get("required", False)),
+                }
+            )
+        normalized["confluence_rules"] = sorted(
+            normalized_rules,
+            key=lambda item: (item["level"], item["tolerance_ticks"], item["required"]),
+        )
+    trigger_params = normalized.get("trigger_params")
+    if isinstance(trigger_params, dict):
+        normalized["trigger_params"] = dict(trigger_params)
+    setup_snapshot = normalized.get("setup_snapshot")
+    if isinstance(setup_snapshot, dict):
+        normalized["setup_snapshot"] = dict(setup_snapshot)
+    return normalized
+
+
+def _build_signal_settings(
+    *,
+    confluence_mode: str,
+    selected_levels: list[str],
+    anchor_level: str | None,
+    confluence_rules: list[dict],
+    min_valid_confluences: int,
+    tolerance_ticks: float,
+    min_confluences: int,
+    max_confluences: int,
+    naked_only: bool,
+    naked_requirement: str,
+    trigger: str,
+    direction: str,
+    trigger_params: dict,
+    use_saved_setup: bool,
+    setup_snapshot: dict | None,
+) -> dict:
+    return _normalize_signal_settings_for_hash(
+        {
+            "confluence_mode": confluence_mode,
+            "selected_levels": selected_levels,
+            "anchor_level": anchor_level,
+            "confluence_rules": confluence_rules,
+            "min_valid_confluences": min_valid_confluences,
+            "tolerance_ticks": tolerance_ticks,
+            "min_confluences": min_confluences,
+            "max_confluences": max_confluences,
+            "naked_only": naked_only,
+            "naked_requirement": naked_requirement,
+            "trigger": trigger,
+            "direction": direction,
+            "trigger_params": trigger_params,
+            "use_saved_setup": use_saved_setup,
+            "setup_snapshot": setup_snapshot if use_saved_setup else None,
+        }
+    )
+
+
+def _saved_signal_run_label(meta: dict) -> str:
+    settings = meta.get("signal_settings")
+    if not isinstance(settings, dict):
+        settings = {}
+    rows = meta.get("rows")
+    row_count = rows.get("signals") if isinstance(rows, dict) else "—"
+    created_at_raw = meta.get("created_at")
+    created = str(created_at_raw)[:10] if created_at_raw else "unknown date"
+    selected_levels = settings.get("selected_levels")
+    selected_count = len(selected_levels) if isinstance(selected_levels, list) else 0
+    return (
+        f"{created} · {str(meta.get('signal_settings_hash', 'unknown'))[:12]}… · "
+        f"trigger={settings.get('trigger', '—')} · direction={settings.get('direction', '—')} · "
+        f"mode={settings.get('confluence_mode', '—')} · levels={selected_count} · rows={row_count}"
+    )
+
+
+def _can_save_signal_artifacts(
+    signals_df: object,
+    zones_df: object,
+    naked_flags_df: object,
+) -> bool:
+    return (
+        isinstance(signals_df, pd.DataFrame)
+        and isinstance(zones_df, pd.DataFrame)
+        and isinstance(naked_flags_df, pd.DataFrame)
+    )
+
+
+def _get_current_signal_artifacts() -> tuple[object, object, object]:
+    return (
+        st.session_state.get("signals"),
+        st.session_state.get("confluence_zones"),
+        st.session_state.get("naked_flags"),
+    )
 
 # ── Require levels ────────────────────────────────────────────────────────────
 if "levels" not in st.session_state:
@@ -448,6 +563,37 @@ with st.sidebar:
 
     generate_btn = st.button("Generate signals", type="primary", use_container_width=True)
 
+signal_settings = _build_signal_settings(
+    confluence_mode=confluence_mode,
+    selected_levels=selected_levels,
+    anchor_level=anchor_level,
+    confluence_rules=confluence_rules,
+    min_valid_confluences=min_valid_confluences,
+    tolerance_ticks=tolerance_ticks,
+    min_confluences=min_conf,
+    max_confluences=max_conf,
+    naked_only=naked_only,
+    naked_requirement=naked_requirement,
+    trigger=trigger,
+    direction=direction,
+    trigger_params=trigger_params,
+    use_saved_setup=use_saved_setup,
+    setup_snapshot=saved_setup if use_saved_setup else None,
+)
+
+dataset_id = st.session_state.get("dataset_id")
+levels_settings = st.session_state.get("levels_settings")
+levels_settings_hash: str | None = None
+if not isinstance(dataset_id, str) or not dataset_id:
+    st.warning("Signal persistence is unavailable because dataset context is missing. Load or save a dataset first.")
+elif not isinstance(levels_settings, dict) or not levels_settings:
+    st.warning(
+        "Signal persistence is unavailable because levels settings are missing. "
+        "Load saved levels or recalculate levels first."
+    )
+else:
+    levels_settings_hash = compute_levels_settings_hash(levels_settings)
+
 # ── Generate ──────────────────────────────────────────────────────────────────
 if generate_btn:
     levels_for_naked_flags = selected_levels
@@ -535,6 +681,122 @@ if generate_btn:
                 "setup_caption": None,
             }
         st.session_state["signals"] = signals
+
+saved_signal_runs: list[dict] = []
+matching_saved_signal_run: dict | None = None
+
+if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_hash, str):
+    saved_signal_runs = [
+        item
+        for item in list_saved_signal_runs(dataset_id=dataset_id, levels_settings_hash=levels_settings_hash)
+        if isinstance(item.get("signal_settings_hash"), str) and item["signal_settings_hash"]
+    ]
+    matching_saved_signal_run = find_matching_signal_run(
+        dataset_id=dataset_id,
+        levels_settings_hash=levels_settings_hash,
+        signal_settings=signal_settings,
+    )
+
+    if matching_saved_signal_run is not None:
+        st.info("Matching saved signals found.")
+
+    if saved_signal_runs:
+        st.divider()
+        st.subheader("Saved signal runs")
+        run_options = {item["signal_settings_hash"]: item for item in saved_signal_runs}
+        run_ids = list(run_options)
+        default_selected_run = (
+            matching_saved_signal_run["signal_settings_hash"]
+            if matching_saved_signal_run is not None
+            and matching_saved_signal_run.get("signal_settings_hash") in run_options
+            else run_ids[0]
+        )
+        selected_run_hash = st.selectbox(
+            "Saved signal runs",
+            options=run_ids,
+            index=run_ids.index(default_selected_run),
+            format_func=lambda signal_hash: _saved_signal_run_label(run_options[signal_hash]),
+            key="saved_signal_runs_selector",
+        )
+        selected_run_meta = run_options[selected_run_hash]
+        selected_settings = selected_run_meta.get("signal_settings")
+        if (
+            isinstance(selected_settings, dict)
+            and _normalize_signal_settings_for_hash(selected_settings) != signal_settings
+        ):
+            st.caption("Selected saved signal settings differ from current controls.")
+
+        signal_actions = st.columns(3)
+        if signal_actions[0].button(
+            "Load selected saved signals",
+            key="load_selected_saved_signals",
+            use_container_width=True,
+        ):
+            try:
+                loaded_signals, loaded_zones, loaded_naked_flags, loaded_meta = load_signal_run(
+                    dataset_id,
+                    levels_settings_hash,
+                    selected_run_hash,
+                )
+            except (FileNotFoundError, ValueError, OSError) as exc:
+                st.error(f"Unable to load saved signals ({selected_run_hash[:12]}...): {exc}")
+            else:
+                st.session_state["signals"] = loaded_signals
+                st.session_state["confluence_zones"] = loaded_zones
+                st.session_state["naked_flags"] = loaded_naked_flags
+                st.session_state["signal_context"] = loaded_meta.get("signal_context", {})
+                st.session_state["last_signal_setup"] = loaded_meta.get("last_signal_setup", {})
+                st.success(f"Loaded saved signals ({selected_run_hash[:12]}...).")
+                st.rerun()
+        if signal_actions[1].button(
+            "Save current signals",
+            key="save_current_signals_locally",
+            use_container_width=True,
+        ):
+            current_signals, current_zones, current_naked_flags = _get_current_signal_artifacts()
+            if not _can_save_signal_artifacts(current_signals, current_zones, current_naked_flags):
+                st.warning("Generate or load signals first, then save.")
+            else:
+                saved_meta = save_signal_run(
+                    dataset_id=dataset_id,
+                    levels_settings_hash=levels_settings_hash,
+                    signal_settings=signal_settings,
+                    signals=current_signals,
+                    confluence_zones=current_zones,
+                    naked_flags=current_naked_flags,
+                    signal_context=st.session_state.get("signal_context"),
+                    last_signal_setup=st.session_state.get("last_signal_setup"),
+                )
+                st.success(f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...).")
+        if signal_actions[2].button(
+            "Delete selected saved signals",
+            key="delete_selected_saved_signals",
+            use_container_width=True,
+        ):
+            delete_signal_run(dataset_id, levels_settings_hash, selected_run_hash)
+            st.success("Deleted selected saved signals.")
+            st.rerun()
+    else:
+        st.divider()
+        st.subheader("Saved signal runs")
+        st.caption("No saved signal runs for this dataset and levels snapshot.")
+        if st.button("Save current signals", key="save_current_signals_empty", use_container_width=True):
+            current_signals, current_zones, current_naked_flags = _get_current_signal_artifacts()
+            if not _can_save_signal_artifacts(current_signals, current_zones, current_naked_flags):
+                st.warning("Generate or load signals first, then save.")
+            else:
+                saved_meta = save_signal_run(
+                    dataset_id=dataset_id,
+                    levels_settings_hash=levels_settings_hash,
+                    signal_settings=signal_settings,
+                    signals=current_signals,
+                    confluence_zones=current_zones,
+                    naked_flags=current_naked_flags,
+                    signal_context=st.session_state.get("signal_context"),
+                    last_signal_setup=st.session_state.get("last_signal_setup"),
+                )
+                st.success(f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...).")
+                st.rerun()
 
 # ── Display results ───────────────────────────────────────────────────────────
 zones = st.session_state.get("confluence_zones")
