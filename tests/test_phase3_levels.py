@@ -271,6 +271,87 @@ def test_prior_day_profile_levels_use_completed_prior_day_only():
     assert np.allclose(second_day["pdPOC"].to_numpy(), [100.25, 100.25])
 
 
+def test_prior_day_profile_levels_use_trading_session_boundary():
+    df = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(
+                [
+                    "2026-06-01 18:00:00",
+                    "2026-06-02 09:30:00",
+                    "2026-06-02 10:30:00",
+                    "2026-06-02 18:00:00",
+                    "2026-06-03 09:30:00",
+                ]
+            ).tz_localize(TZ),
+            "open": [100.0, 101.0, 102.0, 200.0, 201.0],
+            "high": [100.0, 101.0, 102.0, 200.0, 201.0],
+            "low": [100.0, 101.0, 102.0, 200.0, 201.0],
+            "close": [100.0, 101.0, 102.0, 200.0, 201.0],
+            "volume": [10.0, 30.0, 5.0, 50.0, 10.0],
+        }
+    )
+    out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
+    session2 = out[out["timestamp"] >= pd.Timestamp("2026-06-02 18:00:00", tz=TZ)]
+
+    assert np.allclose(session2["pdPOC"].to_numpy(), [101.0, 101.0])
+    assert np.allclose(session2["pdVAH"].to_numpy(), [101.0, 101.0])
+    assert np.allclose(session2["pdVAL"].to_numpy(), [100.0, 100.0])
+
+
+def test_prior_week_profile_levels_use_trading_session_week_boundary():
+    df = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(
+                [
+                    "2026-06-05 09:30:00",
+                    "2026-06-05 10:30:00",
+                    "2026-06-05 11:30:00",
+                    "2026-06-07 18:00:00",
+                    "2026-06-08 09:30:00",
+                ]
+            ).tz_localize(TZ),
+            "open": [100.0, 101.0, 102.0, 200.0, 201.0],
+            "high": [100.0, 101.0, 102.0, 200.0, 201.0],
+            "low": [100.0, 101.0, 102.0, 200.0, 201.0],
+            "close": [100.0, 101.0, 102.0, 200.0, 201.0],
+            "volume": [10.0, 30.0, 5.0, 50.0, 10.0],
+        }
+    )
+    out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
+    new_week = out[out["timestamp"] >= pd.Timestamp("2026-06-07 18:00:00", tz=TZ)]
+
+    assert np.allclose(new_week["pwPOC"].to_numpy(), [101.0, 101.0])
+    assert np.allclose(new_week["pwVAH"].to_numpy(), [101.0, 101.0])
+    assert np.allclose(new_week["pwVAL"].to_numpy(), [100.0, 100.0])
+
+
+def test_prior_month_profile_levels_use_trading_session_month_boundary():
+    df = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(
+                [
+                    "2026-06-30 09:30:00",
+                    "2026-06-30 10:30:00",
+                    "2026-06-30 11:30:00",
+                    "2026-06-30 18:00:00",
+                    "2026-07-01 09:30:00",
+                ]
+            ).tz_localize(TZ),
+            "open": [100.0, 101.0, 102.0, 200.0, 201.0],
+            "high": [100.0, 101.0, 102.0, 200.0, 201.0],
+            "low": [100.0, 101.0, 102.0, 200.0, 201.0],
+            "close": [100.0, 101.0, 102.0, 200.0, 201.0],
+            "volume": [10.0, 30.0, 5.0, 50.0, 10.0],
+        }
+    )
+    out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"])
+    new_month = out[out["timestamp"] >= pd.Timestamp("2026-06-30 18:00:00", tz=TZ)]
+
+    assert np.allclose(new_month["pmPOC"].to_numpy(), [101.0, 101.0])
+    assert np.allclose(new_month["pmVAH"].to_numpy(), [101.0, 101.0])
+    assert np.allclose(new_month["pmVAL"].to_numpy(), [100.0, 100.0])
+
+
 def test_value_area_returns_sensible_bounds_around_poc():
     day1 = pd.DataFrame(
         {
