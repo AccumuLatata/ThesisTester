@@ -177,7 +177,8 @@ def test_grouped_summary_bucket_timezone_changes_labels_not_trade_count():
         ),
         "entry_30min_bucket",
     )
-    assert set(grouped_ny["entry_30min_bucket"]) != set(grouped_utc["entry_30min_bucket"])
+    assert list(grouped_ny["entry_30min_bucket"]) == ["09:30", "10:00", "15:30"]
+    assert list(grouped_utc["entry_30min_bucket"]) == ["13:30", "14:00", "19:30"]
     assert grouped_ny["trade_count"].sum() == grouped_utc["trade_count"].sum() == len(trades)
 
 
