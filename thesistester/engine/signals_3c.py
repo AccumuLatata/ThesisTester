@@ -14,6 +14,8 @@ from .candidate_level import CandidateLevel
 
 
 _DEFAULT_3C_PARAMS: dict[str, float | int] = {
+    # arrival_tolerance_ticks is deprecated and no longer user-configurable.
+    # It is kept in defaults only for backward-compatible config parsing.
     "arrival_tolerance_ticks": 0.0,
     "entry_retrace_ticks": 4.0,
     "max_entry_wait_bars_after_reversal": 5,
@@ -23,7 +25,9 @@ _DEFAULT_3C_PARAMS: dict[str, float | int] = {
 def _normalize_3c_params(params: dict | None) -> dict[str, float | int]:
     p = params or {}
     return {
-        "arrival_tolerance_ticks": float(p.get("arrival_tolerance_ticks", _DEFAULT_3C_PARAMS["arrival_tolerance_ticks"])),
+        # arrival_tolerance_ticks is parsed for backward compat but always forced to 0
+        # in execution — arrival must actually touch the key level.
+        "arrival_tolerance_ticks": 0.0,
         "entry_retrace_ticks": float(p.get("entry_retrace_ticks", _DEFAULT_3C_PARAMS["entry_retrace_ticks"])),
         "max_entry_wait_bars_after_reversal": int(
             p.get("max_entry_wait_bars_after_reversal", _DEFAULT_3C_PARAMS["max_entry_wait_bars_after_reversal"])

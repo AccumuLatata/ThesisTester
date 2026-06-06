@@ -123,6 +123,8 @@ def test_invalid_direction_invalid():
 
 
 def test_3c_config_includes_expected_trigger_params():
+    # arrival_tolerance_ticks is deprecated; it is accepted in input for backward
+    # compat but normalized to 0.0 in the stored config.
     config = build_setup_config(
         name="3bar",
         description="",
@@ -136,14 +138,14 @@ def test_3c_config_includes_expected_trigger_params():
         trigger="3c",
         direction="both",
         trigger_params={
-            "arrival_tolerance_ticks": 1.0,
+            "arrival_tolerance_ticks": 1.0,  # legacy — must be ignored and stored as 0.0
             "entry_retrace_ticks": 3.0,
             "max_entry_wait_bars_after_reversal": 7,
         },
     )
 
     assert config["trigger_params"] == {
-        "arrival_tolerance_ticks": 1.0,
+        "arrival_tolerance_ticks": 0.0,  # always forced to 0 regardless of input
         "entry_retrace_ticks": 3.0,
         "max_entry_wait_bars_after_reversal": 7,
     }
@@ -164,9 +166,10 @@ def test_3c_missing_params_are_defaulted():
         trigger="3c",
         direction="both",
         trigger_params={
-            "arrival_tolerance_ticks": 1.0
+            "arrival_tolerance_ticks": 1.0  # deprecated; always stored as 0.0
         },
     )
+    assert config["trigger_params"]["arrival_tolerance_ticks"] == 0.0  # forced to 0
     assert config["trigger_params"]["entry_retrace_ticks"] == 4.0
     assert config["trigger_params"]["max_entry_wait_bars_after_reversal"] == 5
     assert validate_setup_config(config) == []

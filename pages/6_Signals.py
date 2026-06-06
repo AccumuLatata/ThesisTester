@@ -183,7 +183,8 @@ def _render_anchor_diagnostics(zones: pd.DataFrame) -> None:
 def _normalize_3c_params(params: dict | None) -> dict:
     trigger_params = params or {}
     return {
-        "arrival_tolerance_ticks": float(trigger_params.get("arrival_tolerance_ticks", 0.0)),
+        # arrival_tolerance_ticks is deprecated; always forced to 0 in execution.
+        "arrival_tolerance_ticks": 0.0,
         "entry_retrace_ticks": float(trigger_params.get("entry_retrace_ticks", 4.0)),
         "max_entry_wait_bars_after_reversal": int(trigger_params.get("max_entry_wait_bars_after_reversal", 5)),
         "_source_mode": str(trigger_params.get("_source_mode", "global_cluster")),
@@ -566,17 +567,7 @@ with st.sidebar:
                 step=1,
                 help="Number of bars to wait for retracement after reversal.",
             )
-            with st.expander("Advanced"):
-                arrival_tol = st.number_input(
-                    "Arrival tolerance ticks",
-                    min_value=0.0,
-                    max_value=20.0,
-                    value=0.0,
-                    step=0.5,
-                    help="Technical data-quality tolerance for arrival-bar level touch checks.",
-                )
             trigger_params = {
-                "arrival_tolerance_ticks": arrival_tol,
                 "entry_retrace_ticks": entry_retrace,
                 "max_entry_wait_bars_after_reversal": int(max_wait_bars),
             }
