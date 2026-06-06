@@ -27,6 +27,7 @@ def _make_streamlit_stub() -> types.ModuleType:
 
 def _import_levels_helpers():
     stub = _make_streamlit_stub()
+    previous_streamlit = sys.modules.get("streamlit")
     sys.modules["streamlit"] = stub
 
     page_path = pathlib.Path(__file__).parent.parent / "pages" / "5_Levels.py"
@@ -34,9 +35,15 @@ def _import_levels_helpers():
     mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
 
     try:
-        spec.loader.exec_module(mod)  # type: ignore[union-attr]
-    except SystemExit:
-        pass
+        try:
+            spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        except SystemExit:
+            pass
+    finally:
+        if previous_streamlit is None:
+            sys.modules.pop("streamlit", None)
+        else:
+            sys.modules["streamlit"] = previous_streamlit
 
     return (
         stub,
