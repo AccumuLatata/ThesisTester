@@ -98,6 +98,66 @@ def test_higher_timeframe_indicator_alignment_has_no_lookahead():
     assert value_at_close == pytest.approx(df.loc[df["timestamp"] == pd.Timestamp("2026-06-02 09:59:00", tz=TZ), "close"].iloc[0])
 
 
+def test_sma_5min_no_lookahead_from_non_boundary_start():
+    df = _base_df("2026-06-02 09:31:00", periods=12, freq="1min")
+    out = compute_indicator_levels(
+        df,
+        sma_lengths=[1],
+        ema_lengths=[],
+        sma_timeframes=["5min"],
+        vwap_windows=[],
+    )
+
+    pre_completion = out[out["timestamp"] < pd.Timestamp("2026-06-02 09:35:00", tz=TZ)]
+    assert pre_completion["SMA_1_5min"].isna().all()
+
+    first_non_null = out.loc[out["SMA_1_5min"].notna(), ["timestamp", "SMA_1_5min"]].iloc[0]
+    assert first_non_null["timestamp"] == pd.Timestamp("2026-06-02 09:35:00", tz=TZ)
+    assert first_non_null["SMA_1_5min"] == pytest.approx(
+        df.loc[df["timestamp"] == pd.Timestamp("2026-06-02 09:34:00", tz=TZ), "close"].iloc[0]
+    )
+
+
+def test_sma_30min_no_lookahead_from_non_boundary_start():
+    df = _base_df("2026-06-02 09:31:00", periods=40, freq="1min")
+    out = compute_indicator_levels(
+        df,
+        sma_lengths=[1],
+        ema_lengths=[],
+        sma_timeframes=["30min"],
+        vwap_windows=[],
+    )
+
+    pre_completion = out[out["timestamp"] < pd.Timestamp("2026-06-02 10:00:00", tz=TZ)]
+    assert pre_completion["SMA_1_30min"].isna().all()
+
+    first_non_null = out.loc[out["SMA_1_30min"].notna(), ["timestamp", "SMA_1_30min"]].iloc[0]
+    assert first_non_null["timestamp"] == pd.Timestamp("2026-06-02 10:00:00", tz=TZ)
+    assert first_non_null["SMA_1_30min"] == pytest.approx(
+        df.loc[df["timestamp"] == pd.Timestamp("2026-06-02 09:59:00", tz=TZ), "close"].iloc[0]
+    )
+
+
+def test_ema_5min_no_lookahead_from_non_boundary_start():
+    df = _base_df("2026-06-02 09:31:00", periods=12, freq="1min")
+    out = compute_indicator_levels(
+        df,
+        sma_lengths=[],
+        ema_lengths=[1],
+        ema_timeframes=["5min"],
+        vwap_windows=[],
+    )
+
+    pre_completion = out[out["timestamp"] < pd.Timestamp("2026-06-02 09:35:00", tz=TZ)]
+    assert pre_completion["EMA_1_5min"].isna().all()
+
+    first_non_null = out.loc[out["EMA_1_5min"].notna(), ["timestamp", "EMA_1_5min"]].iloc[0]
+    assert first_non_null["timestamp"] == pd.Timestamp("2026-06-02 09:35:00", tz=TZ)
+    assert first_non_null["EMA_1_5min"] == pytest.approx(
+        df.loc[df["timestamp"] == pd.Timestamp("2026-06-02 09:34:00", tz=TZ), "close"].iloc[0]
+    )
+
+
 def test_indicator_levels_raise_on_unsupported_upsampling_request():
     df = _base_df("2026-06-02 09:30:00", periods=20, freq="5min")
     with pytest.raises(ValueError, match="Cannot compute 1min SMA from 5min source data"):
