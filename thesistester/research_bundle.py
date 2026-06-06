@@ -32,6 +32,33 @@ _SIGNALS_META_KEYS = (
 _BACKTEST_META_KEYS = ("trade_summary",)
 _GRID_META_KEYS = ("best_grid_result",)
 _VALIDATION_META_KEYS = ("validation_summary",)
+_MANAGED_RESEARCH_KEYS = {
+    "data",
+    "dataset_id",
+    "instrument",
+    "base_interval",
+    "source_timezone",
+    "exchange_timezone",
+    "levels",
+    "session_levels",
+    "levels_settings",
+    "levels_data_fingerprint",
+    "signals",
+    "confluence_zones",
+    "naked_flags",
+    "signal_context",
+    "last_signal_setup",
+    "signal_settings",
+    "signal_settings_hash",
+    "trades",
+    "trade_summary",
+    "equity_curve",
+    "grid_results",
+    "best_grid_result",
+    "time_bucketed_trades",
+    "time_grouped_summary",
+    "validation_summary",
+}
 
 _KNOWN_FILES = {
     MANIFEST_FILENAME,
@@ -316,9 +343,20 @@ def apply_research_bundle_to_session(bundle: Mapping[str, Any], session_state: A
     if not isinstance(session_values, dict):
         raise ValueError("Bundle payload is missing session values.")
 
+    cleared_keys: list[str] = []
+    for key in _MANAGED_RESEARCH_KEYS:
+        if key in session_state:
+            cleared_keys.append(key)
+        session_state.pop(key, None)
+
     restored_keys: list[str] = []
     for key, value in session_values.items():
         session_state[key] = value
         restored_keys.append(key)
 
-    return {"restored_keys": restored_keys, "restored_count": len(restored_keys)}
+    return {
+        "cleared_keys": sorted(cleared_keys),
+        "cleared_count": len(cleared_keys),
+        "restored_keys": restored_keys,
+        "restored_count": len(restored_keys),
+    }

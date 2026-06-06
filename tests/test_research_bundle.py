@@ -88,6 +88,39 @@ def test_dataset_only_roundtrip_restores_data_and_metadata():
     assert restored_state["exchange_timezone"] == "America/New_York"
 
 
+def test_dataset_only_import_clears_stale_downstream_artifacts():
+    bundle_bytes = build_research_bundle(
+        {
+            "data": _dataset_df(),
+            "dataset_id": "dataset-2",
+            "instrument": "NQ",
+            "base_interval": "1min",
+            "source_timezone": "America/New_York",
+            "exchange_timezone": "America/New_York",
+        }
+    )
+    loaded = load_research_bundle(bundle_bytes)
+    existing_state: dict = {
+        "levels": pd.DataFrame({"level": [1.0]}),
+        "signals": pd.DataFrame({"signal_id": [1]}),
+        "trades": pd.DataFrame({"trade_id": [1]}),
+        "grid_results": pd.DataFrame({"expectancy_r": [0.1]}),
+        "validation_summary": {"trade_count": {"status": "limited"}},
+    }
+
+    apply_research_bundle_to_session(loaded, existing_state)
+
+    assert "data" in existing_state
+    assert existing_state["dataset_id"] == "dataset-2"
+    assert existing_state["instrument"] == "NQ"
+    assert existing_state["base_interval"] == "1min"
+    assert existing_state["source_timezone"] == "America/New_York"
+    assert existing_state["exchange_timezone"] == "America/New_York"
+
+    for key in ("levels", "signals", "trades", "grid_results", "validation_summary"):
+        assert key not in existing_state
+
+
 def test_full_bundle_roundtrip_restores_all_supported_artifacts():
     base = _dataset_df()
     source_state = {
