@@ -207,3 +207,54 @@ def test_invalid_bundle_schema_raises_clear_error():
 
     with pytest.raises(ValueError, match="schema version"):
         load_research_bundle(broken_bundle)
+
+
+def test_bundle_export_handles_best_grid_result_series():
+    source_state = {
+        "grid_results": pd.DataFrame({
+            "stop_loss_ticks": [4.0],
+            "take_profit_ticks": [8.0],
+            "expectancy_r": [0.25],
+        }),
+        "best_grid_result": pd.Series({
+            "stop_loss_ticks": 4.0,
+            "take_profit_ticks": 8.0,
+            "expectancy_r": 0.25,
+        }),
+    }
+
+    bundle_bytes = build_research_bundle(source_state)
+    loaded = load_research_bundle(bundle_bytes)
+    restored_state = {}
+    apply_research_bundle_to_session(loaded, restored_state)
+
+    assert restored_state["best_grid_result"] == {
+        "stop_loss_ticks": 4.0,
+        "take_profit_ticks": 8.0,
+        "expectancy_r": 0.25,
+    }
+
+
+def test_bundle_best_grid_result_series_nan_normalizes_to_none():
+    source_state = {
+        "grid_results": pd.DataFrame({
+            "stop_loss_ticks": [4.0],
+            "take_profit_ticks": [float("nan")],
+            "expectancy_r": [0.25],
+        }),
+        "best_grid_result": pd.Series({
+            "stop_loss_ticks": 4.0,
+            "take_profit_ticks": float("nan"),
+            "expectancy_r": pd.NA,
+        }),
+    }
+
+    bundle_bytes = build_research_bundle(source_state)
+    loaded = load_research_bundle(bundle_bytes)
+    restored_state = {}
+    apply_research_bundle_to_session(loaded, restored_state)
+
+    result = restored_state["best_grid_result"]
+    assert result["stop_loss_ticks"] == 4.0
+    assert result["take_profit_ticks"] is None
+    assert result["expectancy_r"] is None
