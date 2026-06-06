@@ -268,7 +268,7 @@ def test_load_ohlcv_reports_ambiguous_dst_timestamps(tmp_path):
         "\n".join(
             [
                 "timestamp,open,high,low,close,volume",
-                "2026-11-01 02:30:00,1,2,0.5,1.5,10",
+                "2026-10-25 02:30:00,1,2,0.5,1.5,10",
             ]
         )
     )
@@ -297,8 +297,9 @@ def test_validate_ohlcv_flags_large_gaps_around_dst_transition():
             "2026-03-08 01:56:00-05:00",
             "2026-03-08 03:30:00-04:00",
             "2026-03-08 03:31:00-04:00",
-        ]
-    )
+        ],
+        utc=True,
+    ).tz_convert("America/New_York")
     df = pd.DataFrame(
         {
             "timestamp": timestamps,
