@@ -1,6 +1,6 @@
 from pathlib import Path
 import sys
-import os
+from os import getenv
 
 import streamlit as st
 
@@ -209,7 +209,7 @@ if bootstrap_message:
 
 st.subheader("Local saved datasets")
 st.caption(f"Local store: `{get_store_root()}`")
-if not os.environ.get("THESISTESTER_STORE_DIR"):
+if not getenv("THESISTESTER_STORE_DIR"):
     st.warning(
         "Local store is using the default repo-local `.thesistester_store`. "
         "For durable deployments, set `THESISTESTER_STORE_DIR` to persistent storage."

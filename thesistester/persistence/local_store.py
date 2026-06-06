@@ -154,7 +154,11 @@ def set_active_levels_hash(dataset_id: str, settings_hash: str | None) -> None:
     active_levels = state.get("active_levels_by_dataset")
     if not isinstance(active_levels, dict):
         active_levels = {}
-    active_levels = {str(key): str(value) for key, value in active_levels.items()}
+    active_levels = {
+        key: value
+        for key, value in active_levels.items()
+        if isinstance(key, str) and isinstance(value, str)
+    }
     if isinstance(settings_hash, str):
         active_levels[dataset_id] = settings_hash
     else:
