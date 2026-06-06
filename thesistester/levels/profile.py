@@ -8,6 +8,7 @@ import pandas as pd
 
 from ..config import INSTRUMENTS
 from .common import normalized_window_label, require_tz_aware_timestamp
+from .session_date import trading_session_date
 
 DEFAULT_ROLLING_POC_WINDOWS: tuple[str, ...] = ("30min", "1h", "4h")
 
@@ -192,10 +193,10 @@ def compute_profile_levels(
         )
 
     local_ts = out["timestamp"].dt.tz_convert(inst.exchange_tz)
-    day_key = local_ts.dt.date
-    naive_local = local_ts.dt.tz_localize(None)
-    week_key = naive_local.dt.to_period("W-SUN")
-    month_key = naive_local.dt.to_period("M")
+    day_key = trading_session_date(local_ts, inst.eth_start)
+    day_key_ts = pd.to_datetime(day_key)
+    week_key = day_key_ts.dt.to_period("W-SUN")
+    month_key = day_key_ts.dt.to_period("M")
 
     levels = levels.join(
         _map_prior_profile_levels(
