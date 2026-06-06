@@ -14,6 +14,8 @@ def compute_all_levels(
     opening_range_minutes: int = 30,
     sma_lengths: list[int] | tuple[int, ...] | None = None,
     ema_lengths: list[int] | tuple[int, ...] | None = None,
+    sma_timeframes: list[str] | tuple[str, ...] | None = None,
+    ema_timeframes: list[str] | tuple[str, ...] | None = None,
     vwap_windows: list[str] | tuple[str, ...] | None = None,
     poc_windows: list[str] | tuple[str, ...] | None = None,
     value_area_pct: float = 0.70,
@@ -24,6 +26,8 @@ def compute_all_levels(
         df,
         sma_lengths=sma_lengths,
         ema_lengths=ema_lengths,
+        sma_timeframes=sma_timeframes,
+        ema_timeframes=ema_timeframes,
         vwap_windows=vwap_windows,
     )
     profile_df = compute_profile_levels(

@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from thesistester.data.sessions import tag_session
 from thesistester.levels import compute_all_levels, compute_indicator_levels, compute_profile_levels
@@ -42,6 +43,71 @@ def test_indicator_columns_exist_and_align():
     assert "SMA_2" in out.columns
     assert "EMA_3" in out.columns
     assert "VWAP_rolling_15min" in out.columns
+
+
+def test_indicator_levels_preserve_backward_compatible_names_without_timeframes():
+    df = _base_df("2026-06-02 09:30:00", periods=8)
+    out = compute_indicator_levels(df, sma_lengths=[2], ema_lengths=[3], vwap_windows=[])
+
+    assert "SMA_2" in out.columns
+    assert "EMA_3" in out.columns
+    assert "SMA_2_1min" not in out.columns
+    assert "EMA_3_1min" not in out.columns
+
+
+def test_indicator_levels_create_sma_columns_for_selected_timeframes():
+    df = _base_df("2026-06-02 09:30:00", periods=80)
+    out = compute_indicator_levels(
+        df,
+        sma_lengths=[20],
+        ema_lengths=[],
+        sma_timeframes=["1min", "5min", "30min"],
+        vwap_windows=[],
+    )
+
+    for col in ["SMA_20_1min", "SMA_20_5min", "SMA_20_30min"]:
+        assert col in out.columns
+
+
+def test_indicator_levels_create_ema_columns_for_selected_timeframes():
+    df = _base_df("2026-06-02 09:30:00", periods=80)
+    out = compute_indicator_levels(
+        df,
+        sma_lengths=[],
+        ema_lengths=[20],
+        ema_timeframes=["1min", "5min", "30min"],
+        vwap_windows=[],
+    )
+
+    for col in ["EMA_20_1min", "EMA_20_5min", "EMA_20_30min"]:
+        assert col in out.columns
+
+
+def test_higher_timeframe_indicator_alignment_has_no_lookahead():
+    df = _base_df("2026-06-02 09:30:00", periods=31, freq="1min")
+    out = compute_indicator_levels(
+        df,
+        sma_lengths=[1],
+        ema_lengths=[],
+        sma_timeframes=["30min"],
+        vwap_windows=[],
+    )
+
+    assert pd.isna(out.loc[out["timestamp"] == pd.Timestamp("2026-06-02 09:59:00", tz=TZ), "SMA_1_30min"]).all()
+    value_at_close = out.loc[out["timestamp"] == pd.Timestamp("2026-06-02 10:00:00", tz=TZ), "SMA_1_30min"].iloc[0]
+    assert value_at_close == pytest.approx(df.loc[df["timestamp"] == pd.Timestamp("2026-06-02 09:59:00", tz=TZ), "close"].iloc[0])
+
+
+def test_indicator_levels_raise_on_unsupported_upsampling_request():
+    df = _base_df("2026-06-02 09:30:00", periods=20, freq="5min")
+    with pytest.raises(ValueError, match="Cannot compute 1min SMA from 5min source data"):
+        compute_indicator_levels(
+            df,
+            sma_lengths=[2],
+            ema_lengths=[],
+            sma_timeframes=["1min"],
+            vwap_windows=[],
+        )
 
 
 def test_rolling_vwap_correctness_on_small_dataset():

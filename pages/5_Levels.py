@@ -20,10 +20,13 @@ from thesistester.persistence import (
 _OPENING_RANGE_KEY = "levels_opening_range_minutes"
 _SMA_LENGTHS_KEY = "levels_sma_lengths_raw"
 _EMA_LENGTHS_KEY = "levels_ema_lengths_raw"
+_SMA_TIMEFRAMES_KEY = "levels_sma_timeframes"
+_EMA_TIMEFRAMES_KEY = "levels_ema_timeframes"
 _VWAP_WINDOWS_KEY = "levels_vwap_windows"
 _POC_WINDOWS_KEY = "levels_poc_windows"
 _VALUE_AREA_PCT_KEY = "levels_value_area_pct"
 _PENDING_WIDGET_SYNC_KEY = "_pending_levels_widget_sync_settings"
+_INDICATOR_TIMEFRAME_OPTIONS = ["1min", "5min", "30min"]
 _VWAP_WINDOW_OPTIONS = ["15min", "30min", "1h", "4h"]
 _POC_WINDOW_OPTIONS = ["30min", "1h", "4h"]
 
@@ -49,7 +52,7 @@ def _normalize_levels_settings(settings: dict | None) -> dict | None:
     if not isinstance(settings, dict):
         return None
     out = dict(settings)
-    for key in ("vwap_windows", "poc_windows"):
+    for key in ("sma_timeframes", "ema_timeframes", "vwap_windows", "poc_windows"):
         value = out.get(key)
         if isinstance(value, list):
             out[key] = sorted(value)
@@ -115,6 +118,18 @@ def _sync_levels_widget_state(settings: dict) -> None:
     ema_lengths = settings.get("ema_lengths")
     if isinstance(ema_lengths, list) and ema_lengths:
         st.session_state[_EMA_LENGTHS_KEY] = ",".join(str(length) for length in ema_lengths)
+
+    sma_timeframes = settings.get("sma_timeframes")
+    if isinstance(sma_timeframes, list):
+        st.session_state[_SMA_TIMEFRAMES_KEY] = [
+            timeframe for timeframe in _INDICATOR_TIMEFRAME_OPTIONS if timeframe in sma_timeframes
+        ]
+
+    ema_timeframes = settings.get("ema_timeframes")
+    if isinstance(ema_timeframes, list):
+        st.session_state[_EMA_TIMEFRAMES_KEY] = [
+            timeframe for timeframe in _INDICATOR_TIMEFRAME_OPTIONS if timeframe in ema_timeframes
+        ]
 
     vwap_windows = settings.get("vwap_windows")
     if isinstance(vwap_windows, list):
@@ -195,6 +210,18 @@ ema_lengths_raw = st.text_input(
     value="20,50,200",
     key=_EMA_LENGTHS_KEY,
 )
+sma_timeframes = st.multiselect(
+    "SMA timeframes",
+    options=_INDICATOR_TIMEFRAME_OPTIONS,
+    default=["1min"],
+    key=_SMA_TIMEFRAMES_KEY,
+)
+ema_timeframes = st.multiselect(
+    "EMA timeframes",
+    options=_INDICATOR_TIMEFRAME_OPTIONS,
+    default=["1min"],
+    key=_EMA_TIMEFRAMES_KEY,
+)
 vwap_windows = st.multiselect(
     "Rolling VWAP windows",
     options=_VWAP_WINDOW_OPTIONS,
@@ -232,6 +259,8 @@ current_settings = _normalize_levels_settings(
         "opening_range_minutes": opening_range_minutes,
         "sma_lengths": sma_lengths,
         "ema_lengths": ema_lengths,
+        "sma_timeframes": sma_timeframes,
+        "ema_timeframes": ema_timeframes,
         "vwap_windows": vwap_windows,
         "poc_windows": poc_windows,
         "value_area_pct": value_area_pct,
@@ -344,16 +373,22 @@ if calculate_levels:
         if "session" not in base_df.columns:
             base_df = tag_session(base_df, instrument)
 
-        levels_df = compute_all_levels(
-            base_df,
-            instrument=instrument,
-            opening_range_minutes=opening_range_minutes,
-            sma_lengths=sma_lengths,
-            ema_lengths=ema_lengths,
-            vwap_windows=vwap_windows,
-            poc_windows=poc_windows,
-            value_area_pct=value_area_pct,
-        )
+        try:
+            levels_df = compute_all_levels(
+                base_df,
+                instrument=instrument,
+                opening_range_minutes=opening_range_minutes,
+                sma_lengths=sma_lengths,
+                ema_lengths=ema_lengths,
+                sma_timeframes=sma_timeframes,
+                ema_timeframes=ema_timeframes,
+                vwap_windows=vwap_windows,
+                poc_windows=poc_windows,
+                value_area_pct=value_area_pct,
+            )
+        except ValueError as exc:
+            st.error(str(exc))
+            st.stop()
 
         session_levels = compute_session_levels(
             base_df,
