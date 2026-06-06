@@ -151,7 +151,21 @@ def load_ohlcv(
 
     was_monotonic = df["timestamp"].is_monotonic_increasing
     if df["timestamp"].dt.tz is None:
-        df["timestamp"] = df["timestamp"].dt.tz_localize(source).dt.tz_convert(target)
+        try:
+            df["timestamp"] = df["timestamp"].dt.tz_localize(source).dt.tz_convert(target)
+        except Exception as exc:
+            text = str(exc).lower()
+            if "ambiguous" in text or "dst" in text:
+                raise DataValidationError(
+                    f"Ambiguous local timestamps detected for source timezone {source}. "
+                    "Review timestamps around fall-back DST transition and retry."
+                ) from exc
+            if "nonexistent" in text:
+                raise DataValidationError(
+                    f"Nonexistent local timestamps detected for source timezone {source}. "
+                    "Review timestamps around spring-forward DST transition and retry."
+                ) from exc
+            raise
     else:
         df["timestamp"] = df["timestamp"].dt.tz_convert(target)
 
@@ -247,5 +261,31 @@ def validate_ohlcv(df: pd.DataFrame) -> ValidationReport:
                     count=large_gaps,
                 )
             )
+
+        offset_change = (
+            df["timestamp"].map(
+                lambda ts: ts.utcoffset().total_seconds() if pd.notna(ts) else None
+            ).diff()
+        )
+        offset_change = offset_change.fillna(0)
+        if (offset_change != 0).any():
+            transition_idx = offset_change[offset_change != 0].index
+            dst_gap_count = 0
+            for idx in transition_idx:
+                start = max(1, idx - 3)
+                end = min(len(df) - 1, idx + 3)
+                around = df["timestamp"].iloc[start : end + 1].diff().dropna()
+                dst_gap_count += int((around > gap_threshold).sum())
+            if dst_gap_count:
+                issues.append(
+                    ValidationIssue(
+                        code="dst_transition_gaps",
+                        message=(
+                            f"{dst_gap_count} large gaps detected around DST transition boundaries "
+                            f"(> {format_interval(gap_threshold)})."
+                        ),
+                        count=dst_gap_count,
+                    )
+                )
 
     return ValidationReport(issues=issues, inferred_interval=inferred_interval)

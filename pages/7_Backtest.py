@@ -11,8 +11,9 @@ import streamlit as st
 from thesistester.app_state import bootstrap_active_saved_dataset
 from thesistester.analytics import equity_curve, summarize_trades
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
-from thesistester.config import INSTRUMENTS
+from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.engine.backtest import simulate_trades
+from thesistester.timezone_display import ensure_display_timezone, timezone_contract_caption
 from thesistester.visualization import build_backtest_candlestick_chart
 
 st.title("📊 Backtest")
@@ -70,6 +71,8 @@ instrument = st.session_state.get("instrument", "ES")
 inst = INSTRUMENTS.get(instrument)
 tick_size = inst.tick_size if inst else 0.25
 point_value = inst.point_value if inst else 50.0
+exchange_tz = st.session_state.get("exchange_timezone") or (inst.exchange_tz if inst else "America/New_York")
+ensure_display_timezone(st.session_state, exchange_timezone=exchange_tz)
 
 setup_context_caption = _signal_setup_context(signals, signal_context)
 if setup_context_caption:
@@ -79,6 +82,12 @@ if setup_context_caption:
 with st.sidebar:
     st.header("Backtest settings")
     st.caption(f"Instrument: **{instrument}** · tick={tick_size} · point_value=${point_value:,.0f}")
+    st.selectbox(
+        "Display/export timezone",
+        options=TIMEZONE_OPTIONS,
+        key="display_timezone",
+        help="Affects user-facing timestamp display/export only. Backtest engine remains in exchange/session time.",
+    )
 
     sl_ticks = st.number_input(
         "Stop loss (ticks)",
@@ -156,6 +165,8 @@ curve = st.session_state.get("equity_curve")
 if trades is None:
     st.info("Configure settings in the sidebar and click **▶ Run backtest**.")
     st.stop()
+
+st.caption(timezone_contract_caption(st.session_state))
 
 # KPI cards
 st.subheader("Performance summary")

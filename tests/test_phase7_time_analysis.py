@@ -96,6 +96,18 @@ def test_timezone_naive_timestamps_localize_to_exchange_timezone():
     assert row["entry_rth_segment"] == "rth_morning"
 
 
+def test_bucket_labels_are_string_clock_format():
+    trades = _make_trades(
+        ["2026-06-02 09:05", "2026-06-02 09:35", "2026-06-02 10:00"],
+        [1.0, -1.0, 0.5],
+    )
+    result = add_time_buckets(trades)
+    assert result["entry_hour_bucket"].map(type).eq(str).all()
+    assert result["entry_30min_bucket"].map(type).eq(str).all()
+    assert set(result["entry_30min_bucket"]) == {"09:00", "09:30", "10:00"}
+    assert result["entry_30min_bucket"].str.match(r"^\d{2}:\d{2}$").all()
+
+
 def test_rth_segment_boundaries():
     """Each boundary timestamp maps to the expected RTH segment."""
     times = [

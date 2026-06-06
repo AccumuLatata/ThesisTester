@@ -9,6 +9,7 @@ from thesistester.persistence import (
     get_active_dataset_id,
     load_dataset,
 )
+from thesistester.timezone_display import ensure_display_timezone
 
 ACTIVE_SAVED_DATASET_KEY = "_active_saved_dataset_id"
 BOOTSTRAP_MESSAGE_KEY = "_data_bootstrap_message"
@@ -46,6 +47,10 @@ def bootstrap_active_saved_dataset() -> bool:
     st.session_state["base_interval"] = loaded_meta.get("base_interval")
     st.session_state["source_timezone"] = loaded_meta.get("source_timezone")
     st.session_state["exchange_timezone"] = loaded_meta.get("exchange_timezone")
+    ensure_display_timezone(
+        st.session_state,
+        exchange_timezone=loaded_meta.get("exchange_timezone"),
+    )
     st.session_state["dataset_id"] = dataset_id
     st.session_state[ACTIVE_SAVED_DATASET_KEY] = dataset_id
     st.session_state[BOOTSTRAP_MESSAGE_KEY] = (

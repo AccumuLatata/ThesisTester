@@ -7,6 +7,7 @@ from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
+from .timezone_display import convert_dataframe_timestamps_for_display, timezone_contract
 
 
 _CAVEATS = [
@@ -90,10 +91,21 @@ def dataframe_to_json_records(df: pd.DataFrame | None) -> list[dict[str, Any]]:
     return [to_jsonable(record) for record in records]
 
 
-def _table_records(session_state: Mapping[str, Any], key: str) -> list[dict[str, Any]]:
+def _table_records(
+    session_state: Mapping[str, Any],
+    key: str,
+    *,
+    display_timezone: str,
+    canonical_timezone: str,
+) -> list[dict[str, Any]]:
     value = session_state.get(key)
     if isinstance(value, pd.DataFrame):
-        return dataframe_to_json_records(value)
+        converted, _ = convert_dataframe_timestamps_for_display(
+            value,
+            display_timezone=display_timezone,
+            canonical_timezone=canonical_timezone,
+        )
+        return dataframe_to_json_records(converted)
     return []
 
 
@@ -111,12 +123,23 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
     if instrument is None and isinstance(setup_config, Mapping):
         instrument = setup_config.get("instrument")
 
+    contract = timezone_contract(dict(session_state))
+    canonical_timezone = (
+        contract.get("canonical_engine_timezone")
+        or "America/New_York"
+    )
+    display_timezone = (
+        contract.get("display_export_timezone")
+        or canonical_timezone
+    )
+
     artifact = {
         "metadata": {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "app": "ThesisTester",
             "schema_version": "1.0",
         },
+        "timezone_contract": contract,
         "configuration": {
             "instrument": to_jsonable(instrument),
             "setup_config": to_jsonable(setup_config),
@@ -130,11 +153,36 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "validation_summary": to_jsonable(session_state.get("validation_summary")),
         },
         "tables": {
-            "signals": _table_records(session_state, "signals"),
-            "trades": _table_records(session_state, "trades"),
-            "equity_curve": _table_records(session_state, "equity_curve"),
-            "grid_results": _table_records(session_state, "grid_results"),
-            "time_grouped_summary": _table_records(session_state, "time_grouped_summary"),
+            "signals": _table_records(
+                session_state,
+                "signals",
+                display_timezone=display_timezone,
+                canonical_timezone=canonical_timezone,
+            ),
+            "trades": _table_records(
+                session_state,
+                "trades",
+                display_timezone=display_timezone,
+                canonical_timezone=canonical_timezone,
+            ),
+            "equity_curve": _table_records(
+                session_state,
+                "equity_curve",
+                display_timezone=display_timezone,
+                canonical_timezone=canonical_timezone,
+            ),
+            "grid_results": _table_records(
+                session_state,
+                "grid_results",
+                display_timezone=display_timezone,
+                canonical_timezone=canonical_timezone,
+            ),
+            "time_grouped_summary": _table_records(
+                session_state,
+                "time_grouped_summary",
+                display_timezone=display_timezone,
+                canonical_timezone=canonical_timezone,
+            ),
         },
         "caveats": list(_CAVEATS),
     }

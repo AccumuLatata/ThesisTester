@@ -260,3 +260,56 @@ def test_default_load_behavior_remains_clean_and_new_york():
     assert df["timestamp"].dt.tz is not None
     assert str(df["timestamp"].dt.tz) == "America/New_York"
     assert report.is_clean
+
+
+def test_load_ohlcv_reports_ambiguous_dst_timestamps(tmp_path):
+    path = tmp_path / "ambiguous_dst.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "timestamp,open,high,low,close,volume",
+                "2026-11-01 02:30:00,1,2,0.5,1.5,10",
+            ]
+        )
+    )
+    with pytest.raises(DataValidationError, match="Ambiguous local timestamps"):
+        load_ohlcv(path, source_tz="Europe/Berlin", target_tz="America/New_York")
+
+
+def test_load_ohlcv_reports_nonexistent_dst_timestamps(tmp_path):
+    path = tmp_path / "nonexistent_dst.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "timestamp,open,high,low,close,volume",
+                "2026-03-29 02:30:00,1,2,0.5,1.5,10",
+            ]
+        )
+    )
+    with pytest.raises(DataValidationError, match="Nonexistent local timestamps"):
+        load_ohlcv(path, source_tz="Europe/Berlin", target_tz="America/New_York")
+
+
+def test_validate_ohlcv_flags_large_gaps_around_dst_transition():
+    timestamps = pd.to_datetime(
+        [
+            "2026-03-08 01:55:00-05:00",
+            "2026-03-08 01:56:00-05:00",
+            "2026-03-08 03:30:00-04:00",
+            "2026-03-08 03:31:00-04:00",
+        ]
+    )
+    df = pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "open": [1.0, 1.0, 1.0, 1.0],
+            "high": [2.0, 2.0, 2.0, 2.0],
+            "low": [0.5, 0.5, 0.5, 0.5],
+            "close": [1.5, 1.5, 1.5, 1.5],
+            "volume": [10, 10, 10, 10],
+        }
+    )
+    report = validate_ohlcv(df)
+    codes = {issue.code for issue in report.issues}
+    assert "significant_gaps" in codes
+    assert "dst_transition_gaps" in codes

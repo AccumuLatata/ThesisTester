@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
+from thesistester.data.loader import load_ohlcv
 from thesistester.reporting import (
     build_markdown_report,
     build_research_artifact,
@@ -14,6 +15,7 @@ from thesistester.reporting import (
     dataframe_to_json_records,
     to_jsonable,
 )
+from thesistester.timezone_display import convert_dataframe_timestamps_for_display
 
 
 def _sample_session_state() -> dict:
@@ -169,7 +171,7 @@ def test_dataframe_helpers_handle_empty_dataframe_safely():
 def test_build_research_artifact_has_required_top_level_keys():
     artifact = build_research_artifact(_sample_session_state())
 
-    for key in ("metadata", "configuration", "results", "tables", "caveats"):
+    for key in ("metadata", "timezone_contract", "configuration", "results", "tables", "caveats"):
         assert key in artifact
 
 
@@ -241,3 +243,91 @@ def test_build_markdown_report_handles_missing_sections_gracefully():
 
     assert isinstance(markdown, str)
     assert "# ThesisTester Research Report" in markdown
+
+
+def test_artifact_export_uses_display_timezone_for_timestamp_columns():
+    trades = pd.DataFrame(
+        {
+            "trade_id": [1],
+            "entry_timestamp": [pd.Timestamp("2026-06-02 09:30:00", tz="America/New_York")],
+            "exit_timestamp": [pd.Timestamp("2026-06-02 09:45:00", tz="America/New_York")],
+            "r_multiple": [1.0],
+        }
+    )
+    state = {
+        "exchange_timezone": "America/New_York",
+        "source_timezone": "Europe/Berlin",
+        "display_timezone": "Europe/Berlin",
+        "trades": trades,
+    }
+    artifact = build_research_artifact(state)
+    exported_entry = artifact["tables"]["trades"][0]["entry_timestamp"]
+    exported_exit = artifact["tables"]["trades"][0]["exit_timestamp"]
+    assert exported_entry.endswith("+02:00")
+    assert exported_exit.endswith("+02:00")
+
+
+def test_artifact_export_defaults_to_exchange_timezone_when_display_missing():
+    trades = pd.DataFrame(
+        {
+            "trade_id": [1],
+            "entry_timestamp": [pd.Timestamp("2026-06-02 09:30:00", tz="America/New_York")],
+            "r_multiple": [1.0],
+        }
+    )
+    artifact = build_research_artifact(
+        {
+            "exchange_timezone": "America/New_York",
+            "source_timezone": "Europe/Berlin",
+            "trades": trades,
+        }
+    )
+    exported_entry = artifact["tables"]["trades"][0]["entry_timestamp"]
+    assert exported_entry.endswith("-04:00")
+
+
+def test_export_conversion_does_not_mutate_original_dataframe():
+    original = pd.DataFrame(
+        {
+            "entry_timestamp": [pd.Timestamp("2026-06-02 09:30:00", tz="America/New_York")],
+            "r_multiple": [1.0],
+        }
+    )
+    before = original.copy(deep=True)
+    converted, _ = convert_dataframe_timestamps_for_display(
+        original,
+        display_timezone="Europe/Berlin",
+        canonical_timezone="America/New_York",
+    )
+    assert str(original["entry_timestamp"].iloc[0]) == str(before["entry_timestamp"].iloc[0])
+    assert str(converted["entry_timestamp"].iloc[0]).endswith("+02:00")
+
+
+def test_round_trip_timezone_semantics_for_naive_berlin_csv(tmp_path):
+    path = tmp_path / "berlin_naive.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "timestamp,open,high,low,close,volume",
+                "2026-06-02 15:30:00,1,2,0.5,1.5,10",
+                "2026-06-02 15:31:00,1.5,2.5,1,2,20",
+            ]
+        )
+    )
+    canonical = load_ohlcv(
+        path,
+        source_tz="Europe/Berlin",
+        target_tz="America/New_York",
+    )
+    round_trip, _ = convert_dataframe_timestamps_for_display(
+        canonical,
+        display_timezone="Europe/Berlin",
+        canonical_timezone="America/New_York",
+    )
+    expected = pd.to_datetime(
+        ["2026-06-02 15:30:00", "2026-06-02 15:31:00"]
+    ).tz_localize("Europe/Berlin")
+    pd.testing.assert_series_equal(
+        round_trip["timestamp"].reset_index(drop=True),
+        pd.Series(expected, name="timestamp"),
+    )

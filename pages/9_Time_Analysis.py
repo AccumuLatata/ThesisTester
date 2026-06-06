@@ -15,7 +15,8 @@ from thesistester.analytics.time_analysis import (
     pivot_time_metric,
     summarize_by_group,
 )
-from thesistester.config import INSTRUMENTS
+from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
+from thesistester.timezone_display import ensure_display_timezone, timezone_contract_caption
 
 st.title("🕐 Time Analysis")
 
@@ -29,6 +30,15 @@ if trades_raw is None or trades_raw.empty:
 instrument = st.session_state.get("instrument", "ES")
 inst = INSTRUMENTS.get(instrument)
 exchange_tz = inst.exchange_tz if inst else "America/New_York"
+ensure_display_timezone(st.session_state, exchange_timezone=exchange_tz)
+display_tz = st.session_state.get("display_timezone")
+st.caption(f"Time Analysis timezone: {exchange_tz} (exchange/session time)")
+if display_tz and display_tz != exchange_tz:
+    st.caption(
+        f"Display/export timezone is set to {display_tz}; "
+        "time buckets on this page use exchange/session timezone."
+    )
+st.caption(timezone_contract_caption(st.session_state))
 
 # ── KPI summary (full trade set) ──────────────────────────────────────────────
 st.subheader("Overall performance summary")
@@ -61,7 +71,13 @@ st.divider()
 # ── Sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Time Analysis settings")
-    st.caption(f"Instrument: **{instrument}** · tz: {exchange_tz}")
+    st.caption(f"Instrument: **{instrument}** · exchange/session tz: {exchange_tz}")
+    st.selectbox(
+        "Display/export timezone",
+        options=TIMEZONE_OPTIONS,
+        key="display_timezone",
+        help="Affects display/export only. Time bucket calculations remain in exchange/session time.",
+    )
 
     timestamp_basis = st.selectbox(
         "Timestamp basis",
