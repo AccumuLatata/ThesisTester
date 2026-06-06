@@ -83,3 +83,5 @@ def test_sync_levels_widget_state_restores_indicator_timeframe_selections():
 
     assert _st_stub.session_state[_SMA_TIMEFRAMES_KEY] == ["1min", "5min", "30min"]
     assert _st_stub.session_state[_EMA_TIMEFRAMES_KEY] == ["5min"]
+    assert "unsupported" not in _st_stub.session_state[_SMA_TIMEFRAMES_KEY]
+    assert "unsupported" not in _st_stub.session_state[_EMA_TIMEFRAMES_KEY]

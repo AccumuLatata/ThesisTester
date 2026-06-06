@@ -93,6 +93,8 @@ def _append_timeframe_levels(
                 ).mean()
 
         if uses_higher_timeframe:
+            # Timestamp labels represent bar-open time; shift to bar-close time so merge_asof
+            # only exposes a higher-timeframe value after the full candle has completed.
             timeframe_levels["align_timestamp"] = timeframe_levels["timestamp"] + pd.to_timedelta(timeframe)
         else:
             timeframe_levels["align_timestamp"] = timeframe_levels["timestamp"]
