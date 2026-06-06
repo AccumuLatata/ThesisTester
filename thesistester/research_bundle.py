@@ -94,23 +94,45 @@ def _utcnow_iso() -> str:
 
 
 def _normalize_json_value(value: Any) -> Any:
+    if isinstance(value, pd.DataFrame):
+        return [
+            {str(k): _normalize_json_value(v) for k, v in row.items()}
+            for row in value.to_dict(orient="records")
+        ]
+
+    if isinstance(value, pd.Series):
+        return {str(k): _normalize_json_value(v) for k, v in value.to_dict().items()}
+
+    if isinstance(value, pd.Index):
+        return [_normalize_json_value(item) for item in value.tolist()]
+
     if hasattr(value, "item") and not isinstance(value, (str, bytes, bytearray)):
         try:
             value = value.item()
         except (AttributeError, ValueError, TypeError):
             pass
+
     if isinstance(value, pd.Timestamp):
         return value.isoformat()
+
     if isinstance(value, dict):
         return {str(k): _normalize_json_value(v) for k, v in value.items()}
+
     if isinstance(value, (list, tuple, set)):
         return [_normalize_json_value(item) for item in value]
+
     if value is None or isinstance(value, (str, int, bool)):
         return value
+
     if isinstance(value, float):
         return None if pd.isna(value) else value
-    if pd.isna(value):
-        return None
+
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+
     return str(value)
 
 
