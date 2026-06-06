@@ -156,15 +156,16 @@ def load_ohlcv(
             df["timestamp"] = df["timestamp"].dt.tz_localize(source).dt.tz_convert(target)
         except Exception as exc:
             text = str(exc).lower()
-            if "ambiguous" in text or "dst" in text:
-                raise DataValidationError(
-                    f"Ambiguous local timestamps detected for source timezone {source}. "
-                    "Review timestamps around fall-back DST transition and retry."
-                ) from exc
-            if "nonexistent" in text:
+            class_name = exc.__class__.__name__.lower()
+            if "nonexistent" in class_name or "nonexistent" in text:
                 raise DataValidationError(
                     f"Nonexistent local timestamps detected for source timezone {source}. "
                     "Review timestamps around spring-forward DST transition and retry."
+                ) from exc
+            if "ambiguous" in class_name or "ambiguous" in text:
+                raise DataValidationError(
+                    f"Ambiguous local timestamps detected for source timezone {source}. "
+                    "Review timestamps around fall-back DST transition and retry."
                 ) from exc
             raise
     else:

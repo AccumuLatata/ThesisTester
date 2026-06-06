@@ -331,3 +331,35 @@ def test_round_trip_timezone_semantics_for_naive_berlin_csv(tmp_path):
         round_trip["timestamp"].reset_index(drop=True),
         pd.Series(expected, name="timestamp"),
     )
+
+
+def test_export_conversion_warns_and_keeps_ambiguous_naive_timestamps():
+    df = pd.DataFrame(
+        {
+            "entry_timestamp": pd.to_datetime(["2026-10-25 02:30:00"]),
+            "r_multiple": [1.0],
+        }
+    )
+    converted, warnings = convert_dataframe_timestamps_for_display(
+        df,
+        display_timezone="America/New_York",
+        canonical_timezone="Europe/Berlin",
+    )
+    assert any("ambiguous naive timestamps" in warning for warning in warnings)
+    pd.testing.assert_series_equal(converted["entry_timestamp"], df["entry_timestamp"])
+
+
+def test_export_conversion_warns_and_keeps_nonexistent_naive_timestamps():
+    df = pd.DataFrame(
+        {
+            "entry_timestamp": pd.to_datetime(["2026-03-29 02:30:00"]),
+            "r_multiple": [1.0],
+        }
+    )
+    converted, warnings = convert_dataframe_timestamps_for_display(
+        df,
+        display_timezone="America/New_York",
+        canonical_timezone="Europe/Berlin",
+    )
+    assert any("nonexistent naive timestamps" in warning for warning in warnings)
+    pd.testing.assert_series_equal(converted["entry_timestamp"], df["entry_timestamp"])

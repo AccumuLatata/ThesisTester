@@ -79,15 +79,16 @@ def convert_dataframe_timestamps_for_display(
                 localized = series.dt.tz_localize(canonical_timezone)
             except Exception as exc:
                 text = str(exc).lower()
-                if "ambiguous" in text or "dst" in text:
+                class_name = exc.__class__.__name__.lower()
+                if "nonexistent" in class_name or "nonexistent" in text:
                     warnings.append(
-                        f"Column '{col}' has ambiguous naive timestamps for {canonical_timezone}; "
+                        f"Column '{col}' has nonexistent naive timestamps for {canonical_timezone}; "
                         "left unchanged during export conversion."
                     )
                     continue
-                if "nonexistent" in text:
+                if "ambiguous" in class_name or "ambiguous" in text:
                     warnings.append(
-                        f"Column '{col}' has nonexistent naive timestamps for {canonical_timezone}; "
+                        f"Column '{col}' has ambiguous naive timestamps for {canonical_timezone}; "
                         "left unchanged during export conversion."
                     )
                     continue
