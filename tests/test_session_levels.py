@@ -293,3 +293,71 @@ def test_batch_vs_incremental_causality_matches_with_eth_session_boundaries():
                 assert pd.isna(row_incremental[col]), f"{col} mismatch at row {i}"
             else:
                 assert row_incremental[col] == row_batch[col], f"{col} mismatch at row {i}"
+
+
+def test_trading_session_date_and_dopen_across_spring_dst_start():
+    # US spring DST starts 2026-03-08 (clocks spring forward at 02:00).
+    # After the switch, "18:00 ET" = EDT (UTC-4) instead of EST (UTC-5).
+    # Session boundaries must still be evaluated as 18:00 America/New_York local time.
+    local_ts = pd.Series(
+        pd.to_datetime(
+            [
+                "2026-03-06 09:30:00",  # Friday — pre-DST EST session
+                "2026-03-08 18:00:00",  # Sunday — ETH session open (now EDT)
+                "2026-03-09 00:00:00",  # Monday midnight (EDT)
+                "2026-03-09 09:30:00",  # Monday RTH open (EDT)
+            ]
+        ).tz_localize(TZ)
+    )
+    session_dates = trading_session_date(local_ts, "18:00")
+    assert session_dates.iloc[0] == _date("2026-03-06"), "Friday bar should be 2026-03-06"
+    assert session_dates.iloc[1] == _date("2026-03-09"), "18:00 Sunday (post-DST) should map to 2026-03-09"
+    assert session_dates.iloc[2] == _date("2026-03-09"), "Monday midnight should map to 2026-03-09"
+    assert session_dates.iloc[3] == _date("2026-03-09"), "Monday RTH open should map to 2026-03-09"
+
+    # dOpen for the Monday session should equal the 18:00 Sunday open.
+    df = _build_df(
+        [
+            ("2026-03-06 09:30:00", 90.0, 91.0, 89.0, 90.5),
+            ("2026-03-08 18:00:00", 100.0, 101.0, 99.0, 100.5),
+            ("2026-03-09 00:00:00", 101.0, 102.0, 100.0, 101.5),
+            ("2026-03-09 09:30:00", 102.0, 103.0, 101.0, 102.5),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+    session_rows = levels[levels["timestamp"] >= pd.Timestamp("2026-03-08 18:00:00", tz=TZ)]
+    assert np.allclose(session_rows["dOpen"].to_numpy(), [100.0, 100.0, 100.0])
+
+
+def test_trading_session_date_and_dopen_across_fall_dst_end():
+    # US fall DST ends 2026-11-01 (clocks fall back at 02:00).
+    # After the switch, "18:00 ET" = EST (UTC-5) instead of EDT (UTC-4).
+    # Session boundaries must still be evaluated as 18:00 America/New_York local time.
+    local_ts = pd.Series(
+        pd.to_datetime(
+            [
+                "2026-10-30 09:30:00",  # Friday — pre-DST EDT session
+                "2026-11-01 18:00:00",  # Sunday — ETH session open (now EST)
+                "2026-11-02 00:00:00",  # Monday midnight (EST)
+                "2026-11-02 09:30:00",  # Monday RTH open (EST)
+            ]
+        ).tz_localize(TZ)
+    )
+    session_dates = trading_session_date(local_ts, "18:00")
+    assert session_dates.iloc[0] == _date("2026-10-30"), "Friday bar should be 2026-10-30"
+    assert session_dates.iloc[1] == _date("2026-11-02"), "18:00 Sunday (post-DST) should map to 2026-11-02"
+    assert session_dates.iloc[2] == _date("2026-11-02"), "Monday midnight should map to 2026-11-02"
+    assert session_dates.iloc[3] == _date("2026-11-02"), "Monday RTH open should map to 2026-11-02"
+
+    # dOpen for the Monday session should equal the 18:00 Sunday open.
+    df = _build_df(
+        [
+            ("2026-10-30 09:30:00", 90.0, 91.0, 89.0, 90.5),
+            ("2026-11-01 18:00:00", 200.0, 201.0, 199.0, 200.5),
+            ("2026-11-02 00:00:00", 201.0, 202.0, 200.0, 201.5),
+            ("2026-11-02 09:30:00", 202.0, 203.0, 201.0, 202.5),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+    session_rows = levels[levels["timestamp"] >= pd.Timestamp("2026-11-01 18:00:00", tz=TZ)]
+    assert np.allclose(session_rows["dOpen"].to_numpy(), [200.0, 200.0, 200.0])
