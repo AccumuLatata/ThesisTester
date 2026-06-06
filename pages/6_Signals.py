@@ -11,6 +11,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from thesistester.app_state import bootstrap_active_saved_dataset
 from thesistester.config import INSTRUMENTS
 from thesistester.engine import (
     detect_anchor_confluence_zones,
@@ -26,6 +27,7 @@ from thesistester.setup import (
 )
 
 st.title("🎯 Signals")
+bootstrap_active_saved_dataset()
 
 
 ANCHOR_DIAGNOSTIC_COLUMNS = [
