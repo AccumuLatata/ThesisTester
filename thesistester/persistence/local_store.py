@@ -15,8 +15,12 @@ from thesistester import __version__
 
 PERSISTENCE_SCHEMA_VERSION = 1
 LEVEL_ENGINE_VERSION = 1
+SIGNAL_RUN_SCHEMA_VERSION = 1
 STORE_ENV_VAR = "THESISTESTER_STORE_DIR"
 DEFAULT_STORE_DIR_NAME = ".thesistester_store"
+SIGNALS_PARQUET_NAME = "signals.parquet"
+CONFLUENCE_ZONES_PARQUET_NAME = "confluence_zones.parquet"
+NAKED_FLAGS_PARQUET_NAME = "naked_flags.parquet"
 
 
 def _repo_root() -> Path:
@@ -39,6 +43,10 @@ def _levels_root() -> Path:
     return get_store_root() / "levels"
 
 
+def _signals_root() -> Path:
+    return get_store_root() / "signals"
+
+
 def _dataset_manifest_path() -> Path:
     return _datasets_root() / "manifest.json"
 
@@ -53,6 +61,22 @@ def _dataset_dir(dataset_id: str) -> Path:
 
 def _levels_dir(dataset_id: str, settings_hash: str) -> Path:
     return _levels_root() / dataset_id / settings_hash
+
+
+def _signal_run_dir(
+    dataset_id: str,
+    levels_settings_hash: str,
+    signal_settings_hash: str,
+) -> Path:
+    return _signals_root() / dataset_id / levels_settings_hash / signal_settings_hash
+
+
+def _signal_run_files_exist(signal_run_dir: Path) -> bool:
+    return (
+        (signal_run_dir / SIGNALS_PARQUET_NAME).exists()
+        and (signal_run_dir / CONFLUENCE_ZONES_PARQUET_NAME).exists()
+        and (signal_run_dir / NAKED_FLAGS_PARQUET_NAME).exists()
+    )
 
 
 def _utcnow_iso() -> str:
@@ -172,6 +196,53 @@ def compute_dataset_id(
 def compute_levels_settings_hash(settings: dict) -> str:
     """Return a deterministic hash for level settings."""
     return hashlib.sha256(_stable_json_bytes(settings)).hexdigest()
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return default
+    return default if pd.isna(result) else result
+
+
+def _normalize_signal_settings_for_hash(settings: dict) -> dict:
+    normalized = dict(settings)
+    selected_levels = normalized.get("selected_levels")
+    if isinstance(selected_levels, list):
+        normalized["selected_levels"] = sorted(str(level) for level in selected_levels)
+    rules = normalized.get("confluence_rules")
+    if isinstance(rules, list):
+        normalized_rules = []
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            normalized_rules.append(
+                {
+                    "level": str(rule.get("level", "")),
+                    "tolerance_ticks": _safe_float(rule.get("tolerance_ticks", 0.0), default=0.0),
+                    "required": bool(rule.get("required", False)),
+                }
+            )
+        normalized["confluence_rules"] = sorted(
+            normalized_rules,
+            key=lambda item: (item["level"], item["tolerance_ticks"], item["required"]),
+        )
+    trigger_params = normalized.get("trigger_params")
+    if isinstance(trigger_params, dict):
+        normalized["trigger_params"] = dict(trigger_params)
+    setup_snapshot = normalized.get("setup_snapshot")
+    if isinstance(setup_snapshot, dict):
+        normalized["setup_snapshot"] = dict(setup_snapshot)
+    return normalized
+
+
+def compute_signal_settings_hash(settings: dict) -> str:
+    """Return a deterministic hash for signal settings."""
+    normalized = _normalize_signal_settings_for_hash(settings)
+    return hashlib.sha256(_stable_json_bytes(normalized)).hexdigest()
 
 
 def _dataset_metadata(
@@ -304,7 +375,7 @@ def load_dataset(dataset_id: str) -> tuple[pd.DataFrame, dict[str, Any]]:
 
 
 def delete_dataset(dataset_id: str) -> None:
-    """Delete a saved dataset and any saved levels linked to it."""
+    """Delete a saved dataset, linked levels, and linked signal runs."""
     dataset_dir = _dataset_dir(dataset_id)
     if dataset_dir.exists():
         shutil.rmtree(dataset_dir)
@@ -312,6 +383,10 @@ def delete_dataset(dataset_id: str) -> None:
     related_levels_dir = _levels_root() / dataset_id
     if related_levels_dir.exists():
         shutil.rmtree(related_levels_dir)
+
+    related_signals_dir = _signals_root() / dataset_id
+    if related_signals_dir.exists():
+        shutil.rmtree(related_signals_dir)
 
     if get_active_dataset_id() == dataset_id:
         clear_active_dataset_id()
@@ -484,6 +559,165 @@ def delete_levels(dataset_id: str, settings_hash: str) -> None:
     levels_dir = _levels_dir(dataset_id, settings_hash)
     if levels_dir.exists():
         shutil.rmtree(levels_dir)
+
+    dataset_dir = levels_dir.parent
+    if dataset_dir.exists() and not any(dataset_dir.iterdir()):
+        dataset_dir.rmdir()
+
+
+def save_signal_run(
+    *,
+    dataset_id: str,
+    levels_settings_hash: str,
+    signal_settings: dict,
+    signals: pd.DataFrame,
+    confluence_zones: pd.DataFrame,
+    naked_flags: pd.DataFrame,
+    signal_context: dict | None,
+    last_signal_setup: dict | None,
+) -> dict[str, Any]:
+    """Persist generated signals for a dataset/levels/settings combination."""
+    signal_settings_hash = compute_signal_settings_hash(signal_settings)
+    signal_run_dir = _signal_run_dir(dataset_id, levels_settings_hash, signal_settings_hash)
+    signal_run_dir.mkdir(parents=True, exist_ok=True)
+
+    metadata = {
+        "schema_version": SIGNAL_RUN_SCHEMA_VERSION,
+        "kind": "signal_run",
+        "dataset_id": dataset_id,
+        "levels_settings_hash": levels_settings_hash,
+        "signal_settings_hash": signal_settings_hash,
+        "signal_settings": _normalize_json_value(signal_settings),
+        "signal_context": _normalize_json_value(signal_context or {}),
+        "last_signal_setup": _normalize_json_value(last_signal_setup or {}),
+        "rows": {
+            "signals": int(len(signals)),
+            "confluence_zones": int(len(confluence_zones)),
+            "naked_flags": int(len(naked_flags)),
+        },
+        "columns": {
+            "signals": [str(column) for column in signals.columns],
+            "confluence_zones": [str(column) for column in confluence_zones.columns],
+            "naked_flags": [str(column) for column in naked_flags.columns],
+        },
+        "created_at": _utcnow_iso(),
+        "app_version": __version__,
+    }
+    _canonicalize_dataframe(signals).to_parquet(signal_run_dir / SIGNALS_PARQUET_NAME, index=False)
+    _canonicalize_dataframe(confluence_zones).to_parquet(
+        signal_run_dir / CONFLUENCE_ZONES_PARQUET_NAME,
+        index=False,
+    )
+    _canonicalize_dataframe(naked_flags).to_parquet(
+        signal_run_dir / NAKED_FLAGS_PARQUET_NAME,
+        index=False,
+    )
+    _write_json(signal_run_dir / "meta.json", metadata)
+    metadata["path"] = str(signal_run_dir)
+    return metadata
+
+
+def list_saved_signal_runs(
+    dataset_id: str | None = None,
+    levels_settings_hash: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return metadata for saved signal runs."""
+    signals_root = _signals_root()
+    if dataset_id is not None:
+        dataset_dirs = [signals_root / dataset_id]
+    else:
+        dataset_dirs = [path for path in signals_root.iterdir()] if signals_root.exists() else []
+
+    items: list[dict[str, Any]] = []
+    for dataset_dir in dataset_dirs:
+        if not dataset_dir.exists() or not dataset_dir.is_dir():
+            continue
+        if levels_settings_hash is not None:
+            levels_dirs = [dataset_dir / levels_settings_hash]
+        else:
+            levels_dirs = [path for path in dataset_dir.iterdir() if path.is_dir()]
+        for levels_dir in levels_dirs:
+            if not levels_dir.exists() or not levels_dir.is_dir():
+                continue
+            for meta_path in sorted(levels_dir.glob("*/meta.json")):
+                try:
+                    meta = _read_json(meta_path)
+                except (json.JSONDecodeError, OSError):
+                    continue
+                signal_run_dir = meta_path.parent
+                if not _signal_run_files_exist(signal_run_dir):
+                    continue
+                meta["path"] = str(signal_run_dir)
+                items.append(meta)
+
+    items.sort(key=lambda item: item.get("created_at") or "", reverse=True)
+    return items
+
+
+def find_matching_signal_run(
+    *,
+    dataset_id: str,
+    levels_settings_hash: str,
+    signal_settings: dict,
+) -> dict[str, Any] | None:
+    """Return saved signal-run metadata with an exact settings hash match."""
+    signal_settings_hash = compute_signal_settings_hash(signal_settings)
+    meta_path = _signal_run_dir(dataset_id, levels_settings_hash, signal_settings_hash) / "meta.json"
+    if not meta_path.exists():
+        return None
+
+    try:
+        metadata = _read_json(meta_path)
+    except (json.JSONDecodeError, OSError):
+        return None
+    if metadata.get("schema_version") != SIGNAL_RUN_SCHEMA_VERSION:
+        return None
+    if metadata.get("kind") != "signal_run":
+        return None
+    metadata["path"] = str(meta_path.parent)
+    return metadata
+
+
+def load_signal_run(
+    dataset_id: str,
+    levels_settings_hash: str,
+    signal_settings_hash: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    """Load a saved signal run and metadata."""
+    signal_run_dir = _signal_run_dir(dataset_id, levels_settings_hash, signal_settings_hash)
+    meta_path = signal_run_dir / "meta.json"
+    signals_path = signal_run_dir / SIGNALS_PARQUET_NAME
+    confluence_path = signal_run_dir / CONFLUENCE_ZONES_PARQUET_NAME
+    naked_path = signal_run_dir / NAKED_FLAGS_PARQUET_NAME
+    if not meta_path.exists() or not _signal_run_files_exist(signal_run_dir):
+        raise FileNotFoundError(
+            "Saved signal run not found for "
+            f"dataset_id={dataset_id} levels_settings_hash={levels_settings_hash} "
+            f"signal_settings_hash={signal_settings_hash}"
+        )
+
+    metadata = _read_json(meta_path)
+    if metadata.get("schema_version") != SIGNAL_RUN_SCHEMA_VERSION:
+        raise ValueError(f"Unsupported signal-run schema version: {metadata.get('schema_version')}")
+    if metadata.get("kind") != "signal_run":
+        raise ValueError(f"Unsupported persisted artifact kind: {metadata.get('kind')}")
+
+    signals_df = pd.read_parquet(signals_path)
+    confluence_df = pd.read_parquet(confluence_path)
+    naked_df = pd.read_parquet(naked_path)
+    metadata["path"] = str(signal_run_dir)
+    return signals_df, confluence_df, naked_df, metadata
+
+
+def delete_signal_run(dataset_id: str, levels_settings_hash: str, signal_settings_hash: str) -> None:
+    """Delete a saved signal run."""
+    signal_run_dir = _signal_run_dir(dataset_id, levels_settings_hash, signal_settings_hash)
+    if signal_run_dir.exists():
+        shutil.rmtree(signal_run_dir)
+
+    levels_dir = signal_run_dir.parent
+    if levels_dir.exists() and not any(levels_dir.iterdir()):
+        levels_dir.rmdir()
 
     dataset_dir = levels_dir.parent
     if dataset_dir.exists() and not any(dataset_dir.iterdir()):

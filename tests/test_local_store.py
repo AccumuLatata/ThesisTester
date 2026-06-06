@@ -5,19 +5,25 @@ import pandas as pd
 import pytest
 
 from thesistester.persistence.local_store import (
+    compute_signal_settings_hash,
     compute_dataset_id,
     delete_dataset,
     delete_levels,
+    delete_signal_run,
     find_matching_levels,
+    find_matching_signal_run,
     get_active_dataset_id,
     get_active_levels_hash,
     get_store_root,
     list_datasets,
     list_saved_levels,
+    list_saved_signal_runs,
     load_dataset,
     load_levels,
+    load_signal_run,
     save_dataset,
     save_levels,
+    save_signal_run,
     set_active_dataset_id,
     set_active_levels_hash,
 )
@@ -80,6 +86,64 @@ def _levels_fingerprint() -> dict:
         "source_timezone": TZ,
         "exchange_timezone": TZ,
     }
+
+
+def _signal_settings(**overrides) -> dict:
+    settings = {
+        "confluence_mode": "global_cluster",
+        "selected_levels": ["OR_High", "OR_Low", "RTH_Open"],
+        "anchor_level": None,
+        "confluence_rules": [],
+        "min_valid_confluences": 1,
+        "tolerance_ticks": 4.0,
+        "min_confluences": 2,
+        "max_confluences": 5,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "touch",
+        "direction": "both",
+        "trigger_params": {},
+        "use_saved_setup": False,
+        "setup_snapshot": None,
+    }
+    settings.update(overrides)
+    return settings
+
+
+def _signals_frame() -> pd.DataFrame:
+    df = _base_dataset()[["timestamp", "close"]].copy()
+    df["signal_id"] = [1, 2, 3]
+    df["bar_index"] = [0, 1, 2]
+    df["trigger"] = ["touch", "touch", "touch"]
+    df["direction"] = ["long", "short", "long"]
+    df["zone_low"] = [100.0, 101.0, 102.0]
+    df["zone_high"] = [100.5, 101.5, 102.5]
+    df["zone_mid"] = [100.25, 101.25, 102.25]
+    df["level_count"] = [2, 2, 3]
+    df["level_names"] = ["OR_High,OR_Low", "OR_High,RTH_Open", "OR_High,OR_Low,RTH_Open"]
+    df["entry_reference_price"] = df["close"]
+    df["entry_model"] = "next_open"
+    df["status"] = ["candidate", "candidate", "void"]
+    return df
+
+
+def _confluence_zones_frame() -> pd.DataFrame:
+    df = _base_dataset()[["timestamp"]].copy()
+    df["bar_index"] = [0, 1, 2]
+    df["zone_low"] = [100.0, 101.0, 102.0]
+    df["zone_high"] = [100.5, 101.5, 102.5]
+    df["zone_mid"] = [100.25, 101.25, 102.25]
+    df["level_count"] = [2, 2, 3]
+    df["level_names"] = ["OR_High,OR_Low", "OR_High,RTH_Open", "OR_High,OR_Low,RTH_Open"]
+    return df
+
+
+def _naked_flags_frame() -> pd.DataFrame:
+    df = _base_dataset()[["timestamp"]].copy()
+    df["OR_High"] = [True, False, True]
+    df["OR_Low"] = [False, False, True]
+    df["RTH_Open"] = [True, True, True]
+    return df
 
 
 @pytest.fixture(autouse=True)
@@ -207,6 +271,16 @@ def test_delete_behavior():
 
     assert list_datasets()
     assert list_saved_levels(dataset["dataset_id"])
+    signal_run = save_signal_run(
+        dataset_id=dataset["dataset_id"],
+        levels_settings_hash=levels["settings_hash"],
+        signal_settings=_signal_settings(),
+        signals=_signals_frame(),
+        confluence_zones=_confluence_zones_frame(),
+        naked_flags=_naked_flags_frame(),
+        signal_context={},
+        last_signal_setup={},
+    )
 
     delete_levels(dataset["dataset_id"], levels["settings_hash"])
     assert list_saved_levels(dataset["dataset_id"]) == []
@@ -217,6 +291,8 @@ def test_delete_behavior():
     assert list_datasets() == []
     with pytest.raises(FileNotFoundError):
         load_dataset(dataset["dataset_id"])
+    with pytest.raises(FileNotFoundError):
+        load_signal_run(dataset["dataset_id"], levels["settings_hash"], signal_run["signal_settings_hash"])
 
 
 def test_delete_dataset_clears_active_pointers():
@@ -303,6 +379,238 @@ def test_list_rescans_when_manifest_missing(tmp_path, monkeypatch):
 
     assert len(datasets) == 1
     assert datasets[0]["name"] == "no-manifest"
+
+
+def test_compute_signal_settings_hash_is_deterministic():
+    settings_one = _signal_settings()
+    settings_two = {
+        "direction": "both",
+        "trigger": "touch",
+        "selected_levels": ["OR_High", "OR_Low", "RTH_Open"],
+        "confluence_mode": "global_cluster",
+        "anchor_level": None,
+        "confluence_rules": [],
+        "min_valid_confluences": 1,
+        "tolerance_ticks": 4.0,
+        "min_confluences": 2,
+        "max_confluences": 5,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger_params": {},
+        "use_saved_setup": False,
+        "setup_snapshot": None,
+    }
+
+    assert compute_signal_settings_hash(settings_one) == compute_signal_settings_hash(settings_two)
+
+
+def test_compute_signal_settings_hash_ignores_selected_levels_order():
+    settings_one = _signal_settings(selected_levels=["OR_High", "OR_Low", "RTH_Open"])
+    settings_two = _signal_settings(selected_levels=["RTH_Open", "OR_High", "OR_Low"])
+
+    assert compute_signal_settings_hash(settings_one) == compute_signal_settings_hash(settings_two)
+
+
+def test_compute_signal_settings_hash_ignores_confluence_rules_order():
+    rules_one = [
+        {"level": "OR_High", "tolerance_ticks": 1.0, "required": True},
+        {"level": "RTH_Open", "tolerance_ticks": 2.0, "required": False},
+    ]
+    rules_two = [rules_one[1], rules_one[0]]
+    settings_one = _signal_settings(
+        confluence_mode="anchor_rules",
+        anchor_level="OR_Low",
+        confluence_rules=rules_one,
+    )
+    settings_two = _signal_settings(
+        confluence_mode="anchor_rules",
+        anchor_level="OR_Low",
+        confluence_rules=rules_two,
+    )
+
+    assert compute_signal_settings_hash(settings_one) == compute_signal_settings_hash(settings_two)
+
+
+def test_compute_signal_settings_hash_changes_when_settings_change():
+    base = _signal_settings()
+    changed = _signal_settings(trigger="reject")
+
+    assert compute_signal_settings_hash(base) != compute_signal_settings_hash(changed)
+
+
+def test_compute_signal_settings_hash_changes_when_rule_value_changes():
+    base = _signal_settings(
+        confluence_mode="anchor_rules",
+        anchor_level="OR_High",
+        confluence_rules=[{"level": "OR_Low", "tolerance_ticks": 1.0, "required": True}],
+    )
+    changed = _signal_settings(
+        confluence_mode="anchor_rules",
+        anchor_level="OR_High",
+        confluence_rules=[{"level": "OR_Low", "tolerance_ticks": 2.0, "required": True}],
+    )
+
+    assert compute_signal_settings_hash(base) != compute_signal_settings_hash(changed)
+
+
+def test_compute_signal_settings_hash_handles_malformed_rule_tolerance():
+    malformed = _signal_settings(
+        confluence_mode="anchor_rules",
+        anchor_level="OR_High",
+        confluence_rules=[{"level": "OR_Low", "tolerance_ticks": "not-a-number", "required": True}],
+    )
+    normalized = _signal_settings(
+        confluence_mode="anchor_rules",
+        anchor_level="OR_High",
+        confluence_rules=[{"level": "OR_Low", "tolerance_ticks": 0.0, "required": True}],
+    )
+
+    assert compute_signal_settings_hash(malformed) == compute_signal_settings_hash(normalized)
+
+
+def test_signal_run_roundtrip():
+    saved_meta = save_signal_run(
+        dataset_id="dataset-123",
+        levels_settings_hash="levels-hash-1",
+        signal_settings=_signal_settings(),
+        signals=_signals_frame(),
+        confluence_zones=_confluence_zones_frame(),
+        naked_flags=_naked_flags_frame(),
+        signal_context={"setup_name": None, "confluence_mode": "global_cluster", "setup_caption": None},
+        last_signal_setup={},
+    )
+
+    signals, zones, naked_flags, loaded_meta = load_signal_run(
+        "dataset-123",
+        "levels-hash-1",
+        saved_meta["signal_settings_hash"],
+    )
+
+    pd.testing.assert_frame_equal(signals, _signals_frame().reset_index(drop=True))
+    pd.testing.assert_frame_equal(zones, _confluence_zones_frame().reset_index(drop=True))
+    pd.testing.assert_frame_equal(naked_flags, _naked_flags_frame().reset_index(drop=True))
+    assert loaded_meta["dataset_id"] == "dataset-123"
+    assert loaded_meta["levels_settings_hash"] == "levels-hash-1"
+    assert loaded_meta["signal_settings"] == _signal_settings()
+
+
+def test_list_saved_signal_runs_filters_by_dataset_and_levels_hash():
+    save_signal_run(
+        dataset_id="dataset-a",
+        levels_settings_hash="levels-hash-1",
+        signal_settings=_signal_settings(trigger="touch"),
+        signals=_signals_frame(),
+        confluence_zones=_confluence_zones_frame(),
+        naked_flags=_naked_flags_frame(),
+        signal_context={},
+        last_signal_setup={},
+    )
+    save_signal_run(
+        dataset_id="dataset-a",
+        levels_settings_hash="levels-hash-2",
+        signal_settings=_signal_settings(trigger="reject"),
+        signals=_signals_frame(),
+        confluence_zones=_confluence_zones_frame(),
+        naked_flags=_naked_flags_frame(),
+        signal_context={},
+        last_signal_setup={},
+    )
+    save_signal_run(
+        dataset_id="dataset-b",
+        levels_settings_hash="levels-hash-1",
+        signal_settings=_signal_settings(trigger="break"),
+        signals=_signals_frame(),
+        confluence_zones=_confluence_zones_frame(),
+        naked_flags=_naked_flags_frame(),
+        signal_context={},
+        last_signal_setup={},
+    )
+
+    filtered = list_saved_signal_runs(dataset_id="dataset-a", levels_settings_hash="levels-hash-1")
+
+    assert len(filtered) == 1
+    assert filtered[0]["dataset_id"] == "dataset-a"
+    assert filtered[0]["levels_settings_hash"] == "levels-hash-1"
+
+
+def test_find_matching_signal_run_finds_exact_settings():
+    settings = _signal_settings()
+    save_signal_run(
+        dataset_id="dataset-123",
+        levels_settings_hash="levels-hash-1",
+        signal_settings=settings,
+        signals=_signals_frame(),
+        confluence_zones=_confluence_zones_frame(),
+        naked_flags=_naked_flags_frame(),
+        signal_context={},
+        last_signal_setup={},
+    )
+
+    matched = find_matching_signal_run(
+        dataset_id="dataset-123",
+        levels_settings_hash="levels-hash-1",
+        signal_settings=settings,
+    )
+    missing = find_matching_signal_run(
+        dataset_id="dataset-123",
+        levels_settings_hash="levels-hash-1",
+        signal_settings=_signal_settings(direction="long"),
+    )
+
+    assert matched is not None
+    assert matched["dataset_id"] == "dataset-123"
+    assert missing is None
+
+
+def test_delete_signal_run_removes_only_selected_run():
+    saved_touch = save_signal_run(
+        dataset_id="dataset-123",
+        levels_settings_hash="levels-hash-1",
+        signal_settings=_signal_settings(trigger="touch"),
+        signals=_signals_frame(),
+        confluence_zones=_confluence_zones_frame(),
+        naked_flags=_naked_flags_frame(),
+        signal_context={},
+        last_signal_setup={},
+    )
+    saved_reject = save_signal_run(
+        dataset_id="dataset-123",
+        levels_settings_hash="levels-hash-1",
+        signal_settings=_signal_settings(trigger="reject"),
+        signals=_signals_frame(),
+        confluence_zones=_confluence_zones_frame(),
+        naked_flags=_naked_flags_frame(),
+        signal_context={},
+        last_signal_setup={},
+    )
+
+    delete_signal_run("dataset-123", "levels-hash-1", saved_touch["signal_settings_hash"])
+
+    with pytest.raises(FileNotFoundError):
+        load_signal_run("dataset-123", "levels-hash-1", saved_touch["signal_settings_hash"])
+    remaining = load_signal_run("dataset-123", "levels-hash-1", saved_reject["signal_settings_hash"])
+    assert len(remaining[0]) == len(_signals_frame())
+
+
+def test_list_saved_signal_runs_ignores_missing_or_corrupt_entries():
+    saved = save_signal_run(
+        dataset_id="dataset-123",
+        levels_settings_hash="levels-hash-1",
+        signal_settings=_signal_settings(),
+        signals=_signals_frame(),
+        confluence_zones=_confluence_zones_frame(),
+        naked_flags=_naked_flags_frame(),
+        signal_context={},
+        last_signal_setup={},
+    )
+    run_root = Path(saved["path"])
+    (run_root / "signals.parquet").unlink()
+
+    corrupt_root = run_root.parent / "corrupt-run"
+    corrupt_root.mkdir(parents=True, exist_ok=True)
+    (corrupt_root / "meta.json").write_text("{not json", encoding="utf-8")
+
+    assert list_saved_signal_runs(dataset_id="dataset-123", levels_settings_hash="levels-hash-1") == []
 
 
 def test_default_store_root_stable(monkeypatch):
