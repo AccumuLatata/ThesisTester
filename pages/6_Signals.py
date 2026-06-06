@@ -21,6 +21,7 @@ from thesistester.engine import (
 )
 from thesistester.persistence import (
     compute_levels_settings_hash,
+    compute_signal_settings_hash,
     delete_signal_run,
     find_matching_signal_run,
     list_saved_signal_runs,
@@ -343,6 +344,18 @@ def _get_current_signal_artifacts() -> tuple[object, object, object]:
         st.session_state.get("confluence_zones"),
         st.session_state.get("naked_flags"),
     )
+
+
+def _get_stored_signal_settings() -> tuple[dict | None, str | None]:
+    settings = st.session_state.get("signal_settings")
+    if not isinstance(settings, dict):
+        return None, None
+
+    normalized_settings = _normalize_signal_settings_for_hash(settings)
+    settings_hash = st.session_state.get("signal_settings_hash")
+    if not isinstance(settings_hash, str) or not settings_hash:
+        settings_hash = compute_signal_settings_hash(normalized_settings)
+    return normalized_settings, settings_hash
 
 # ── Require levels ────────────────────────────────────────────────────────────
 if "levels" not in st.session_state:
@@ -681,6 +694,8 @@ if generate_btn:
                 "setup_caption": None,
             }
         st.session_state["signals"] = signals
+        st.session_state["signal_settings"] = signal_settings
+        st.session_state["signal_settings_hash"] = compute_signal_settings_hash(signal_settings)
 
 saved_signal_runs: list[dict] = []
 matching_saved_signal_run: dict | None = None
@@ -746,6 +761,17 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
                 st.session_state["naked_flags"] = loaded_naked_flags
                 st.session_state["signal_context"] = loaded_meta.get("signal_context", {})
                 st.session_state["last_signal_setup"] = loaded_meta.get("last_signal_setup", {})
+                loaded_settings = loaded_meta.get("signal_settings")
+                if isinstance(loaded_settings, dict):
+                    normalized_loaded_settings = _normalize_signal_settings_for_hash(loaded_settings)
+                    st.session_state["signal_settings"] = normalized_loaded_settings
+                    loaded_hash = loaded_meta.get("signal_settings_hash")
+                    if isinstance(loaded_hash, str) and loaded_hash:
+                        st.session_state["signal_settings_hash"] = loaded_hash
+                    else:
+                        st.session_state["signal_settings_hash"] = compute_signal_settings_hash(
+                            normalized_loaded_settings
+                        )
                 st.success(f"Loaded saved signals ({selected_run_hash[:12]}...).")
                 st.rerun()
         if signal_actions[1].button(
@@ -757,17 +783,27 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
             if not _can_save_signal_artifacts(current_signals, current_zones, current_naked_flags):
                 st.warning("Generate or load signals first, then save.")
             else:
-                saved_meta = save_signal_run(
-                    dataset_id=dataset_id,
-                    levels_settings_hash=levels_settings_hash,
-                    signal_settings=signal_settings,
-                    signals=current_signals,
-                    confluence_zones=current_zones,
-                    naked_flags=current_naked_flags,
-                    signal_context=st.session_state.get("signal_context"),
-                    last_signal_setup=st.session_state.get("last_signal_setup"),
-                )
-                st.success(f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...).")
+                generated_signal_settings, generated_signal_settings_hash = _get_stored_signal_settings()
+                current_signal_settings_hash = compute_signal_settings_hash(signal_settings)
+                if generated_signal_settings is None:
+                    st.warning("Signal settings for current artifacts are unavailable. Please regenerate signals before saving.")
+                elif generated_signal_settings_hash != current_signal_settings_hash:
+                    st.warning(
+                        "Signal controls changed after these signals were generated. "
+                        "Please regenerate signals before saving."
+                    )
+                else:
+                    saved_meta = save_signal_run(
+                        dataset_id=dataset_id,
+                        levels_settings_hash=levels_settings_hash,
+                        signal_settings=generated_signal_settings,
+                        signals=current_signals,
+                        confluence_zones=current_zones,
+                        naked_flags=current_naked_flags,
+                        signal_context=st.session_state.get("signal_context"),
+                        last_signal_setup=st.session_state.get("last_signal_setup"),
+                    )
+                    st.success(f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...).")
         if signal_actions[2].button(
             "Delete selected saved signals",
             key="delete_selected_saved_signals",
@@ -785,18 +821,28 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
             if not _can_save_signal_artifacts(current_signals, current_zones, current_naked_flags):
                 st.warning("Generate or load signals first, then save.")
             else:
-                saved_meta = save_signal_run(
-                    dataset_id=dataset_id,
-                    levels_settings_hash=levels_settings_hash,
-                    signal_settings=signal_settings,
-                    signals=current_signals,
-                    confluence_zones=current_zones,
-                    naked_flags=current_naked_flags,
-                    signal_context=st.session_state.get("signal_context"),
-                    last_signal_setup=st.session_state.get("last_signal_setup"),
-                )
-                st.success(f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...).")
-                st.rerun()
+                generated_signal_settings, generated_signal_settings_hash = _get_stored_signal_settings()
+                current_signal_settings_hash = compute_signal_settings_hash(signal_settings)
+                if generated_signal_settings is None:
+                    st.warning("Signal settings for current artifacts are unavailable. Please regenerate signals before saving.")
+                elif generated_signal_settings_hash != current_signal_settings_hash:
+                    st.warning(
+                        "Signal controls changed after these signals were generated. "
+                        "Please regenerate signals before saving."
+                    )
+                else:
+                    saved_meta = save_signal_run(
+                        dataset_id=dataset_id,
+                        levels_settings_hash=levels_settings_hash,
+                        signal_settings=generated_signal_settings,
+                        signals=current_signals,
+                        confluence_zones=current_zones,
+                        naked_flags=current_naked_flags,
+                        signal_context=st.session_state.get("signal_context"),
+                        last_signal_setup=st.session_state.get("last_signal_setup"),
+                    )
+                    st.success(f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...).")
+                    st.rerun()
 
 # ── Display results ───────────────────────────────────────────────────────────
 zones = st.session_state.get("confluence_zones")

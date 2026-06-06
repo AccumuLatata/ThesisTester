@@ -271,6 +271,16 @@ def test_delete_behavior():
 
     assert list_datasets()
     assert list_saved_levels(dataset["dataset_id"])
+    signal_run = save_signal_run(
+        dataset_id=dataset["dataset_id"],
+        levels_settings_hash=levels["settings_hash"],
+        signal_settings=_signal_settings(),
+        signals=_signals_frame(),
+        confluence_zones=_confluence_zones_frame(),
+        naked_flags=_naked_flags_frame(),
+        signal_context={},
+        last_signal_setup={},
+    )
 
     delete_levels(dataset["dataset_id"], levels["settings_hash"])
     assert list_saved_levels(dataset["dataset_id"]) == []
@@ -281,6 +291,8 @@ def test_delete_behavior():
     assert list_datasets() == []
     with pytest.raises(FileNotFoundError):
         load_dataset(dataset["dataset_id"])
+    with pytest.raises(FileNotFoundError):
+        load_signal_run(dataset["dataset_id"], levels["settings_hash"], signal_run["signal_settings_hash"])
 
 
 def test_delete_dataset_clears_active_pointers():

@@ -333,7 +333,7 @@ def load_dataset(dataset_id: str) -> tuple[pd.DataFrame, dict[str, Any]]:
 
 
 def delete_dataset(dataset_id: str) -> None:
-    """Delete a saved dataset and any saved levels linked to it."""
+    """Delete a saved dataset, linked levels, and linked signal runs."""
     dataset_dir = _dataset_dir(dataset_id)
     if dataset_dir.exists():
         shutil.rmtree(dataset_dir)
@@ -341,6 +341,10 @@ def delete_dataset(dataset_id: str) -> None:
     related_levels_dir = _levels_root() / dataset_id
     if related_levels_dir.exists():
         shutil.rmtree(related_levels_dir)
+
+    related_signals_dir = _signals_root() / dataset_id
+    if related_signals_dir.exists():
+        shutil.rmtree(related_signals_dir)
 
     if get_active_dataset_id() == dataset_id:
         clear_active_dataset_id()
