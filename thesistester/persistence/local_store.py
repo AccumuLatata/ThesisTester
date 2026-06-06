@@ -198,9 +198,51 @@ def compute_levels_settings_hash(settings: dict) -> str:
     return hashlib.sha256(_stable_json_bytes(settings)).hexdigest()
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return default
+    return default if pd.isna(result) else result
+
+
+def _normalize_signal_settings_for_hash(settings: dict) -> dict:
+    normalized = dict(settings)
+    selected_levels = normalized.get("selected_levels")
+    if isinstance(selected_levels, list):
+        normalized["selected_levels"] = sorted(str(level) for level in selected_levels)
+    rules = normalized.get("confluence_rules")
+    if isinstance(rules, list):
+        normalized_rules = []
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            normalized_rules.append(
+                {
+                    "level": str(rule.get("level", "")),
+                    "tolerance_ticks": _safe_float(rule.get("tolerance_ticks", 0.0), default=0.0),
+                    "required": bool(rule.get("required", False)),
+                }
+            )
+        normalized["confluence_rules"] = sorted(
+            normalized_rules,
+            key=lambda item: (item["level"], item["tolerance_ticks"], item["required"]),
+        )
+    trigger_params = normalized.get("trigger_params")
+    if isinstance(trigger_params, dict):
+        normalized["trigger_params"] = dict(trigger_params)
+    setup_snapshot = normalized.get("setup_snapshot")
+    if isinstance(setup_snapshot, dict):
+        normalized["setup_snapshot"] = dict(setup_snapshot)
+    return normalized
+
+
 def compute_signal_settings_hash(settings: dict) -> str:
     """Return a deterministic hash for signal settings."""
-    return hashlib.sha256(_stable_json_bytes(settings)).hexdigest()
+    normalized = _normalize_signal_settings_for_hash(settings)
+    return hashlib.sha256(_stable_json_bytes(normalized)).hexdigest()
 
 
 def _dataset_metadata(

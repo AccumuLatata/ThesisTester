@@ -240,6 +240,15 @@ def _missing_anchor_columns(levels_df, anchor_level: str | None, confluence_rule
 
 
 def _normalize_signal_settings_for_hash(settings: dict) -> dict:
+    def _safe_float(value: object, default: float = 0.0) -> float:
+        if value is None:
+            return default
+        try:
+            result = float(value)
+        except (TypeError, ValueError):
+            return default
+        return default if pd.isna(result) else result
+
     normalized = dict(settings)
     selected_levels = normalized.get("selected_levels")
     if isinstance(selected_levels, list):
@@ -253,7 +262,7 @@ def _normalize_signal_settings_for_hash(settings: dict) -> dict:
             normalized_rules.append(
                 {
                     "level": str(rule.get("level", "")),
-                    "tolerance_ticks": float(rule.get("tolerance_ticks", 0.0)),
+                    "tolerance_ticks": _safe_float(rule.get("tolerance_ticks", 0.0), default=0.0),
                     "required": bool(rule.get("required", False)),
                 }
             )

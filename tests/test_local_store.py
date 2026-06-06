@@ -404,11 +404,68 @@ def test_compute_signal_settings_hash_is_deterministic():
     assert compute_signal_settings_hash(settings_one) == compute_signal_settings_hash(settings_two)
 
 
+def test_compute_signal_settings_hash_ignores_selected_levels_order():
+    settings_one = _signal_settings(selected_levels=["OR_High", "OR_Low", "RTH_Open"])
+    settings_two = _signal_settings(selected_levels=["RTH_Open", "OR_High", "OR_Low"])
+
+    assert compute_signal_settings_hash(settings_one) == compute_signal_settings_hash(settings_two)
+
+
+def test_compute_signal_settings_hash_ignores_confluence_rules_order():
+    rules_one = [
+        {"level": "OR_High", "tolerance_ticks": 1.0, "required": True},
+        {"level": "RTH_Open", "tolerance_ticks": 2.0, "required": False},
+    ]
+    rules_two = [rules_one[1], rules_one[0]]
+    settings_one = _signal_settings(
+        confluence_mode="anchor_rules",
+        anchor_level="OR_Low",
+        confluence_rules=rules_one,
+    )
+    settings_two = _signal_settings(
+        confluence_mode="anchor_rules",
+        anchor_level="OR_Low",
+        confluence_rules=rules_two,
+    )
+
+    assert compute_signal_settings_hash(settings_one) == compute_signal_settings_hash(settings_two)
+
+
 def test_compute_signal_settings_hash_changes_when_settings_change():
     base = _signal_settings()
     changed = _signal_settings(trigger="reject")
 
     assert compute_signal_settings_hash(base) != compute_signal_settings_hash(changed)
+
+
+def test_compute_signal_settings_hash_changes_when_rule_value_changes():
+    base = _signal_settings(
+        confluence_mode="anchor_rules",
+        anchor_level="OR_High",
+        confluence_rules=[{"level": "OR_Low", "tolerance_ticks": 1.0, "required": True}],
+    )
+    changed = _signal_settings(
+        confluence_mode="anchor_rules",
+        anchor_level="OR_High",
+        confluence_rules=[{"level": "OR_Low", "tolerance_ticks": 2.0, "required": True}],
+    )
+
+    assert compute_signal_settings_hash(base) != compute_signal_settings_hash(changed)
+
+
+def test_compute_signal_settings_hash_handles_malformed_rule_tolerance():
+    malformed = _signal_settings(
+        confluence_mode="anchor_rules",
+        anchor_level="OR_High",
+        confluence_rules=[{"level": "OR_Low", "tolerance_ticks": "not-a-number", "required": True}],
+    )
+    normalized = _signal_settings(
+        confluence_mode="anchor_rules",
+        anchor_level="OR_High",
+        confluence_rules=[{"level": "OR_Low", "tolerance_ticks": 0.0, "required": True}],
+    )
+
+    assert compute_signal_settings_hash(malformed) == compute_signal_settings_hash(normalized)
 
 
 def test_signal_run_roundtrip():
