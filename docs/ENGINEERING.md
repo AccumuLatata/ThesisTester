@@ -271,6 +271,8 @@ always ignored — effective tolerance is forced to zero.
 
 > Backward compatibility: legacy `retrace_entry_ticks` is mapped to `activation_retrace_ticks`.
 
+**Historical setup flow (removed `confirm_3bar`, reference only)**
+
 **Long setup**
 
 - **Bar 1 — Arrival candle (level-specific):**
@@ -295,7 +297,7 @@ always ignored — effective tolerance is forced to zero.
   bar2_close >= bar1_close
   ```
 
-- **Bar 3 — Retracement and limit entry:**
+- **Bar 3 — Retracement and activation checks:**
   Long activation and entry:
 
   ```text
@@ -337,7 +339,7 @@ always ignored — effective tolerance is forced to zero.
   bar2_close <= bar1_close
   ```
 
-- **Bar 3 — Retracement and limit entry:**
+- **Bar 3 — Retracement and activation checks:**
   Short activation and entry:
 
   ```text
@@ -475,7 +477,7 @@ ThesisTester/
 | **2** | Level engine: session levels (opens, prior O/H/L, EQ, ON, OR, settlement) | Levels plotted |
 | **3** | Indicator levels (SMA/EMA/VWAP/rolling POC) + volume profile (VAH/VAL/POC) | Full level set |
 | **4** | Confluence detection (k≤3) + naked logic + triggers (including `3c`) | Signals on chart |
-| **5** | Backtest engine + single SL/TP + KPIs + equity curve + trigger-bar conditional limit entries (`3c`) | First end-to-end edge test |
+| **5** | Backtest engine + single SL/TP + KPIs + equity curve + entry-bar retracement-trigger entries (`3c`) | First end-to-end edge test |
 | **6** | SL/TP grid heatmap | Best risk model per setup |
 | **7** | Time-of-day breakdown | When it works |
 | **8** | Extend k to 5; statistical validation suite (§9) | Trustworthy results |

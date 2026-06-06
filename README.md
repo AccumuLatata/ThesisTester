@@ -68,8 +68,8 @@ Manual controls on the Signals page remain global-cluster only. To use anchor-ba
   Candidate signals are stored in `st.session_state["signals"]` for Phase 5 backtesting.
 - **Phase 5 (backtest engine, KPIs, results):** bar-by-bar trade simulation with a
   single fixed SL/TP tick configuration (`thesistester/engine/backtest.py`).  Simple
-  triggers enter at next-bar open; filled `3c` signals enter at their entry-bar limit
-  price.  Intrabar ambiguity uses SL-first pessimistic rule.  Trade metrics
+  triggers enter at next-bar open; filled `3c` signals enter at their retracement
+  trigger price.  Intrabar ambiguity uses SL-first pessimistic rule.  Trade metrics
   (win rate, expectancy, profit factor, max drawdown R, equity curve) are computed in
   `thesistester/analytics/metrics.py` and displayed on a new **Backtest** page
   (`pages/7_Backtest.py`).  Trades are stored in `st.session_state["trades"]`.
