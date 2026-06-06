@@ -152,6 +152,24 @@ def test_add_time_buckets_exchange_tz_call_is_backward_compatible():
     )
 
 
+def test_add_time_buckets_empty_bucket_tz_raises_value_error():
+    trades = _make_trades(["2026-06-02 09:30"], [1.0])
+    with pytest.raises(ValueError, match="bucket_tz must be a non-empty IANA timezone string\\."):
+        add_time_buckets(trades, bucket_tz="")
+
+
+def test_add_time_buckets_empty_session_tz_raises_value_error():
+    trades = _make_trades(["2026-06-02 09:30"], [1.0])
+    with pytest.raises(ValueError, match="session_tz must be a non-empty IANA timezone string\\."):
+        add_time_buckets(trades, session_tz="")
+
+
+def test_add_time_buckets_empty_exchange_tz_raises_value_error():
+    trades = _make_trades(["2026-06-02 09:30"], [1.0])
+    with pytest.raises(ValueError, match="exchange_tz must be a non-empty IANA timezone string\\."):
+        add_time_buckets(trades, exchange_tz="")
+
+
 def test_grouped_summary_bucket_timezone_changes_labels_not_trade_count():
     trades = _make_trades(
         [

@@ -86,6 +86,12 @@ def _rth_segment(minute: int) -> str:
     return "post_rth"
 
 
+def _validate_timezone_string(name: str, value: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must be a non-empty IANA timezone string.")
+    return value
+
+
 def _group_max_drawdown(r: pd.Series) -> float:
     """Max drawdown of cumulative R within a group, anchored at 0R."""
     if r.empty:
@@ -142,8 +148,11 @@ def add_time_buckets(
         empty.
     """
     result = trades.copy()
-    bucket_tz = bucket_tz or exchange_tz
-    session_tz = session_tz or exchange_tz
+    exchange_tz = _validate_timezone_string("exchange_tz", exchange_tz)
+    bucket_tz = exchange_tz if bucket_tz is None else bucket_tz
+    session_tz = exchange_tz if session_tz is None else session_tz
+    bucket_tz = _validate_timezone_string("bucket_tz", bucket_tz)
+    session_tz = _validate_timezone_string("session_tz", session_tz)
 
     if result.empty or timestamp_col not in result.columns:
         for col in _TIME_BUCKET_COLS:
