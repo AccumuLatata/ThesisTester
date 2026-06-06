@@ -34,6 +34,8 @@ SUGGESTED_DEFAULT_LEVELS = [
 ]
 
 DEFAULT_3C_PARAMS: dict[str, Any] = {
+    # arrival_tolerance_ticks is deprecated and no longer user-configurable.
+    # Kept here only for backward-compatible parsing of old saved configs.
     "arrival_tolerance_ticks": 0.0,
     "entry_retrace_ticks": 4.0,
     "max_entry_wait_bars_after_reversal": 5,
@@ -43,9 +45,9 @@ DEFAULT_3C_PARAMS: dict[str, Any] = {
 def _normalize_3c_params(params: dict[str, Any] | None) -> dict[str, Any]:
     trigger_params = params or {}
     return {
-        "arrival_tolerance_ticks": float(
-            trigger_params.get("arrival_tolerance_ticks", DEFAULT_3C_PARAMS["arrival_tolerance_ticks"])
-        ),
+        # arrival_tolerance_ticks may appear in legacy configs, but its value is
+        # intentionally ignored and normalized to 0.0.
+        "arrival_tolerance_ticks": 0.0,
         "entry_retrace_ticks": float(
             trigger_params.get("entry_retrace_ticks", DEFAULT_3C_PARAMS["entry_retrace_ticks"])
         ),
@@ -233,8 +235,8 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
         if not isinstance(trigger_params, dict):
             errors.append("trigger_params must be a dictionary for 3c.")
         else:
+            # arrival_tolerance_ticks is deprecated; no longer validated as an active parameter.
             numeric_fields = {
-                "arrival_tolerance_ticks": trigger_params.get("arrival_tolerance_ticks", 0.0),
                 "entry_retrace_ticks": trigger_params.get("entry_retrace_ticks", 0.0),
                 "max_entry_wait_bars_after_reversal": trigger_params.get("max_entry_wait_bars_after_reversal", 0),
             }

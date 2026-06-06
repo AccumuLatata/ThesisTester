@@ -51,7 +51,6 @@ def _render_setup_summary(config: dict) -> None:
         params = config.get("trigger_params", {})
         st.markdown("**Trigger params:**")
         st.markdown(
-            f"- Arrival tolerance ticks: {params.get('arrival_tolerance_ticks', 0.0)}\n"
             f"- Entry retrace ticks: {params.get('entry_retrace_ticks', 4.0)}\n"
             f"- Max entry wait bars after reversal: {params.get('max_entry_wait_bars_after_reversal', 5)}"
         )
@@ -161,7 +160,6 @@ direction = st.selectbox("Direction", options=["long", "short", "both"], index=2
 
 trigger_params = {}
 if trigger == "3c":
-    arrival_tolerance_ticks = st.number_input("Arrival tolerance ticks", min_value=0.0, value=0.0, step=0.5)
     entry_retrace_ticks = st.number_input("Entry retrace ticks", min_value=0.0, value=4.0, step=0.5)
     max_entry_wait_bars = st.number_input(
         "Max entry wait bars after reversal",
@@ -170,7 +168,6 @@ if trigger == "3c":
         step=1,
     )
     trigger_params = {
-        "arrival_tolerance_ticks": arrival_tolerance_ticks,
         "entry_retrace_ticks": entry_retrace_ticks,
         "max_entry_wait_bars_after_reversal": int(max_entry_wait_bars),
     }

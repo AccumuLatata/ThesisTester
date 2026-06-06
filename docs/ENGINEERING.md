@@ -91,7 +91,7 @@ A **setup** is defined by:
   - `reject` (touch + close back out → mean-reversion / fade)
   - `break` (close through → continuation/breakout)
   - `reclaim` (break then close back → trap)
-  - `confirm_3bar` (three-bar level interaction + reversal + bar-3 retracement limit entry)
+  - `3c` (three-candle level interaction + reversal + retracement entry)
 - **Direction** — long / short / both.
 - **Risk model** — SL and TP definitions (§7).
 - **Session filter** — time-of-day window (§8) and date range.
@@ -192,19 +192,76 @@ tick/volume-at-price data is available.
 3. Emit a candidate signal when the configured **trigger** fires against a zone.
 4. Apply filters: direction, naked-only, session/time window, max trades per zone.
 
-#### 7.1.1 Trigger spec: `confirm_3bar`
-`confirm_3bar` is a three-bar level-interaction plus micro-market-structure confirmation trigger.
-The setup is valid only when all three bars occur in sequence:
+#### 7.1.1 Trigger spec: `3c`
 
-1. **Bar 1 (arrival candle):** tests a specific level inside the confluence zone.
-2. **Bar 2 (reversal candle):** confirms local reversal vs bar 1 close.
-3. **Bar 3 (confirmation candle):** trades through both an activation retrace price and a stop-limit-style entry price.
+The `3c` trigger is a 3-candle level-interaction entry with 4 core rules and 8 named
+variants.
 
-**Parameters**
+**8 variants**
+
+| Variant | Notes |
+|---|---|
+| `3c_long` | Standard long |
+| `3c_short` | Standard short |
+| `3c_long_muted` | Long with inside candle(s) between arrival and reversal |
+| `3c_short_muted` | Short with inside candle(s) between arrival and reversal |
+| `3c_sfp_long` | Long SFP reversal |
+| `3c_sfp_short` | Short SFP reversal |
+| `3c_sfp_long_muted` | Muted + SFP long |
+| `3c_sfp_short_muted` | Muted + SFP short |
+
+**4 rules — Long**
+
+1. **Arrival candle** must touch or pass through the key level (`bar_low <= level_price`).
+2. **Arrival candle** must close above the key level (`bar_close > level_price`).
+3. **Reversal candle** must close above the arrival candle high (`reversal_close > arrival_high`).
+4. **Entry candle** must retrace at least `entry_retrace_ticks` below the reversal close;
+   once retraced, trigger market long.
+
+**4 rules — Short** (mirror image)
+
+1. Arrival candle must touch or pass through the key level (`bar_high >= level_price`).
+2. Arrival candle must close below the key level (`bar_close < level_price`).
+3. Reversal candle must close below the arrival candle low (`reversal_close < arrival_low`).
+4. Entry candle must retrace at least `entry_retrace_ticks` above the reversal close;
+   once retraced, trigger market short.
+
+**Muted variant**
+
+If the candle immediately after the arrival candle is an inside candle relative to the
+arrival candle range (high ≤ arrival high and low ≥ arrival low), it is skipped.  All
+consecutive inside candles are skipped.  The first candle that breaks the arrival range
+and closes beyond the relevant extreme becomes the reversal candle.  The setup is tagged
+as `is_muted = True` and the `inside_candle_count` field records how many were skipped.
+
+**SFP variant**
+
+- Long SFP: reversal candle low takes out the arrival candle low (`reversal_low < arrival_low`).
+- Short SFP: reversal candle high takes out the arrival candle high (`reversal_high > arrival_high`).
+
+**User-configurable parameters**
 
 | Parameter | Meaning |
 |---|---|
-| `arrival_tolerance_ticks` | Small rounding/data tolerance for bar-1 level-hit checks. Default `0`. |
+| `entry_retrace_ticks` | Ticks price must retrace after reversal close before entry triggers. Default `4`. |
+| `max_entry_wait_bars_after_reversal` | Bars to wait for retracement. Default `5`. |
+
+**`arrival_tolerance_ticks` — deprecated**
+
+`arrival_tolerance_ticks` is **not user-configurable**.  Arrival must actually touch the
+key level; a near miss does not qualify.  The parameter is still accepted in
+`trigger_params` for backward compatibility with old saved configs, but its value is
+always ignored — effective tolerance is forced to zero.
+
+**Historical note (removed trigger: `confirm_3bar`)**
+
+> `confirm_3bar` is not supported in the current app. The supported triggers are:
+> `touch`, `reject`, `break`, `reclaim`, and `3c`.
+
+**Historical parameters table (reference only)**
+
+| Parameter | Meaning |
+|---|---|
 | `activation_retrace_ticks` | Number of ticks bar 3 must retrace against intended direction from bar 3 open before activation. |
 | `entry_offset_ticks` | Entry offset in ticks from bar 3 open (separate from activation retrace). |
 | `direction` | `long`, `short`, or `both`. |
@@ -213,6 +270,8 @@ The setup is valid only when all three bars occur in sequence:
 | `allow_equal_close` | Optional boolean; default `false`. If `false`, reversal close must be strictly above/below arrival close. |
 
 > Backward compatibility: legacy `retrace_entry_ticks` is mapped to `activation_retrace_ticks`.
+
+**Historical setup flow (removed `confirm_3bar`, reference only)**
 
 **Long setup**
 
@@ -238,7 +297,7 @@ The setup is valid only when all three bars occur in sequence:
   bar2_close >= bar1_close
   ```
 
-- **Bar 3 — Retracement and limit entry:**
+- **Bar 3 — Retracement and activation checks:**
   Long activation and entry:
 
   ```text
@@ -280,7 +339,7 @@ The setup is valid only when all three bars occur in sequence:
   bar2_close <= bar1_close
   ```
 
-- **Bar 3 — Retracement and limit entry:**
+- **Bar 3 — Retracement and activation checks:**
   Short activation and entry:
 
   ```text
@@ -312,7 +371,7 @@ The setup is valid only when all three bars occur in sequence:
 
 ### 7.2 Trade simulation (bar-by-bar, conservative fills)
 - **Entry:** at trigger bar close (or next-bar open — configurable; default next-bar open to avoid look-ahead).
-  Exception: `confirm_3bar` uses a conditional limit entry during bar 3 and only fills if retracement trades.
+  Exception: `3c` filled signals use an entry-bar retracement trigger/price.
 - **SL / TP definitions** (each independently selectable):
   - Fixed: ticks / points / %.
   - **ATR-multiple** (volatility-normalised) — recommended default.
@@ -367,13 +426,11 @@ Multi-page app (`st.navigation` / `pages/`):
 
 1. **📥 Data** — upload/select instrument, tz, session model, validate & preview.
 2. **🧩 Setup Builder** — pick 1–5 confluences, tolerance, trigger, direction, naked toggle.
-   - When `confirm_3bar` is selected, expose:
+   - When `3c` is selected, expose:
      - Direction: long / short / both
-     - Arrival tolerance (ticks)
-     - Activation retrace ticks
-     - Entry offset ticks
-     - Strict vs non-strict reversal close (`allow_equal_close`)
-     - Optional overlay of qualifying 3-bar patterns on chart
+     - Entry retrace ticks
+     - Max entry wait bars after reversal
+     - Note: arrival tolerance is not user-configurable (arrival must strictly touch key level)
 3. **🛡️ Risk** — SL/TP definitions and grid ranges.
 4. **▶️ Run** — execute backtest (cached); progress + config summary.
 5. **📊 Results** — equity curve, trade table, KPIs, MAE/MFE, drawdown.
@@ -419,8 +476,8 @@ ThesisTester/
 | **1** | Data layer + session tagging (RTH/ETH) + resampling | Validated bars on screen |
 | **2** | Level engine: session levels (opens, prior O/H/L, EQ, ON, OR, settlement) | Levels plotted |
 | **3** | Indicator levels (SMA/EMA/VWAP/rolling POC) + volume profile (VAH/VAL/POC) | Full level set |
-| **4** | Confluence detection (k≤3) + naked logic + triggers (including `confirm_3bar`) | Signals on chart |
-| **5** | Backtest engine + single SL/TP + KPIs + equity curve + trigger-bar conditional limit entries (`confirm_3bar`) | First end-to-end edge test |
+| **4** | Confluence detection (k≤3) + naked logic + triggers (including `3c`) | Signals on chart |
+| **5** | Backtest engine + single SL/TP + KPIs + equity curve + entry-bar retracement-trigger entries (`3c`) | First end-to-end edge test |
 | **6** | SL/TP grid heatmap | Best risk model per setup |
 | **7** | Time-of-day breakdown | When it works |
 | **8** | Extend k to 5; statistical validation suite (§9) | Trustworthy results |
@@ -442,12 +499,11 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
   `OR_High` is only finalized after the opening-range window closes).
 - **Candidate signals** are stored in `st.session_state["signals"]` via the Signals
   page (`pages/6_Signals.py`) for consumption by Phase 5 backtesting.
-- **`confirm_3bar` implementation:** uses separate `arrival_tolerance_ticks` (bar 1
-  level-hit tolerance), `activation_retrace_ticks` (bar 3 activation retrace), and
-  `entry_offset_ticks` (bar 3 stop-limit entry offset) as independently configurable
-  parameters. Legacy `retrace_entry_ticks` is mapped to
-  `activation_retrace_ticks`. Setups where bar 3 does not fill are included with
-  `status="void"` to preserve research value.
+- **`3c` trigger implementation:** uses `entry_retrace_ticks` (entry retrace after reversal
+  close) and `max_entry_wait_bars_after_reversal` as independently configurable parameters.
+  `arrival_tolerance_ticks` is deprecated — arrival must strictly touch the key level; any
+  nonzero value in old configs is silently ignored.  Setups where the entry retrace is not
+  hit within the watch window are included with `status="void"` to preserve research value.
 
 ---
 
@@ -458,9 +514,9 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
   SL/TP configuration per run.
 - **Simple triggers** (touch / reject / break / reclaim) enter at next-bar open to preserve
   no-look-ahead integrity.
-- **`confirm_3bar` filled signals** enter on their signal bar at `entry_reference_price`
-  because Phase 4 only emits `status="filled"` after bar 3 has already traded through
-  the limit.  `status="void"` rows are skipped.
+- **`3c` filled signals** enter on their signal bar at `entry_reference_price`
+  because Phase 4 only emits `status="filled"` after the entry retrace has already
+  been hit.  `status="void"` rows are skipped.
 - **Intrabar ambiguity uses SL-first** (pessimistic rule): when both SL and TP are reachable
   within the same OHLC bar the engine exits at SL, since intrabar event order is unknowable.
 - **Phase 6** implements SL/TP grid search (see Phase 6 notes below).
@@ -577,7 +633,7 @@ rule_results
 4. **Intrabar fill assumption:** SL-first / pessimistic when both SL and TP are reachable in one candle.
 5. **Default entry timing:** next-bar open for simple triggers to avoid look-ahead bias.
 6. **Value-area percentage:** 70% default.
-7. **Trigger-specific exception:** `confirm_3bar` does not use default next-bar-open entry; it uses a bar-3 activation + stop-limit-style fill model and is void if either requirement is not traded.
+7. **Trigger-specific exception:** `3c` filled signals do not use default next-bar-open entry; they use the entry-bar retracement trigger/price model.
 
 ---
 

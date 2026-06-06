@@ -64,12 +64,12 @@ Manual controls on the Signals page remain global-cluster only. To use anchor-ba
 - **Phase 4 (confluence detection, naked levels, signal generation):** tick-based
   confluence zone detection (`detect_confluence_zones`), naked/untested level flags
   (`flag_naked_levels`), and five trigger types — `touch`, `reject`, `break`, `reclaim`,
-  `confirm_3bar` — exposed via a new **Signals** page (`pages/6_Signals.py`).
+  `3c` — exposed via a new **Signals** page (`pages/6_Signals.py`).
   Candidate signals are stored in `st.session_state["signals"]` for Phase 5 backtesting.
 - **Phase 5 (backtest engine, KPIs, results):** bar-by-bar trade simulation with a
   single fixed SL/TP tick configuration (`thesistester/engine/backtest.py`).  Simple
-  triggers enter at next-bar open; filled `confirm_3bar` signals enter at their bar-3
-  limit price.  Intrabar ambiguity uses SL-first pessimistic rule.  Trade metrics
+  triggers enter at next-bar open; filled `3c` signals enter at their retracement
+  trigger price.  Intrabar ambiguity uses SL-first pessimistic rule.  Trade metrics
   (win rate, expectancy, profit factor, max drawdown R, equity curve) are computed in
   `thesistester/analytics/metrics.py` and displayed on a new **Backtest** page
   (`pages/7_Backtest.py`).  Trades are stored in `st.session_state["trades"]`.
@@ -85,10 +85,37 @@ Manual controls on the Signals page remain global-cluster only. To use anchor-ba
   `st.session_state["setup_config"]` (and `st.session_state["setup_configs"]` for session
   history).  **Signals** (`pages/6_Signals.py`) can consume the saved setup via
   a `Use saved setup` toggle while still supporting manual configuration.
-- **`confirm_3bar` correction:** arrival is now evaluated against the actual tested level
-  inside a confluence zone (not the zone boundary), bar 2 marks SFP reversals when it
-  sweeps the arrival-bar extreme while closing in reversal direction, and bar 3 uses
-  separate activation retrace ticks plus entry offset ticks.
+- **3c trigger — authoritative 4-rule / 8-variant model:**
+
+  The `3c` trigger implements a 3-candle entry sequence with 8 named variants:
+  `3c_long`, `3c_short`, `3c_long_muted`, `3c_short_muted`, `3c_sfp_long`,
+  `3c_sfp_short`, `3c_sfp_long_muted`, `3c_sfp_short_muted`.
+
+  **4 rules (long):**
+  1. Arrival candle must touch or pass through the key level.
+  2. Arrival candle must close above the key level.
+  3. Reversal candle must close above the arrival candle high.
+  4. Entry candle must retrace at least `entry_retrace_ticks`; once retraced, trigger
+     market long.
+
+  **Short rules** are the mirror image (touch from above, close below, reversal close
+  below arrival low, retrace up).
+
+  **Muted variant:** if the candle immediately after the arrival candle is an inside
+  candle (relative to the arrival candle range), it is skipped; the following candle
+  that breaks out and closes beyond the relevant arrival extreme becomes the reversal
+  candle.  Multiple consecutive inside candles are all skipped.
+
+  **SFP variant:** long SFP — reversal candle low takes out the arrival candle low;
+  short SFP — reversal candle high takes out the arrival candle high.
+
+  **User-configurable parameters:** `entry_retrace_ticks` (default 4),
+  `max_entry_wait_bars_after_reversal` (default 5).
+
+  **`arrival_tolerance_ticks` is deprecated** and is no longer user-configurable.
+  Arrival must actually touch the key level (strict, zero tolerance).  Old saved
+  configs that contain `arrival_tolerance_ticks` are still loaded without error, but
+  the value is ignored — effective tolerance is always zero.
 - **Phase 7 (time-of-day/session-window analysis):** completed trades can now be grouped by
   RTH segment, hourly and 30-minute buckets, trigger, direction, setup name, and exit reason.
   The new **Time Analysis** page (`pages/9_Time_Analysis.py`) displays grouped KPIs,

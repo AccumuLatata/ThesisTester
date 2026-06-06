@@ -217,9 +217,9 @@ def _normalize_confirm_3bar_params(trigger_params: dict | None) -> dict:
 def _normalize_3c_params(trigger_params: dict | None) -> dict:
     params = trigger_params or {}
     return {
-        "arrival_tolerance_ticks": float(
-            params.get("arrival_tolerance_ticks", _DEFAULT_3C_PARAMS["arrival_tolerance_ticks"])
-        ),
+        # arrival_tolerance_ticks may appear in legacy configs, but its value is
+        # intentionally ignored and normalized to 0.0.
+        "arrival_tolerance_ticks": 0.0,
         "entry_retrace_ticks": float(
             params.get("entry_retrace_ticks", _DEFAULT_3C_PARAMS["entry_retrace_ticks"])
         ),
@@ -269,7 +269,9 @@ def _find_tested_level_for_arrival(
     bar1_low = float(bar1["low"])
     bar1_high = float(bar1["high"])
     bar1_close = float(bar1["close"])
-    tol = float(arrival_tolerance_ticks) * float(tick_size)
+    # arrival_tolerance_ticks is deprecated; effective tolerance is always 0.
+    # The parameter is kept in the signature for backward-compatible callers.
+    tol = 0.0
     previous_close = float(df.iloc[bar1_idx - 1]["close"]) if bar1_idx > 0 else None
 
     candidates: list[tuple[str, float]] = []
