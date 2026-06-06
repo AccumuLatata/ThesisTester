@@ -19,6 +19,9 @@ def compute_all_levels(
     vwap_windows: list[str] | tuple[str, ...] | None = None,
     poc_windows: list[str] | tuple[str, ...] | None = None,
     value_area_pct: float = 0.70,
+    prior_day_aggregation_ticks: int = 1,
+    prior_week_aggregation_ticks: int = 1,
+    prior_month_aggregation_ticks: int = 1,
 ) -> pd.DataFrame:
     """Compute Phase 2 + Phase 3 levels in one timeline-aligned DataFrame."""
     session_df = compute_session_levels(df, instrument=instrument, opening_range_minutes=opening_range_minutes)
@@ -35,6 +38,9 @@ def compute_all_levels(
         instrument=instrument,
         rolling_windows=poc_windows,
         value_area_pct=value_area_pct,
+        prior_day_aggregation_ticks=prior_day_aggregation_ticks,
+        prior_week_aggregation_ticks=prior_week_aggregation_ticks,
+        prior_month_aggregation_ticks=prior_month_aggregation_ticks,
     )
 
     base_columns = set(df.columns)

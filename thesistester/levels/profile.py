@@ -16,6 +16,14 @@ def _bucket_prices(prices: pd.Series, tick_size: float) -> pd.Series:
     return (np.round(prices / tick_size) * tick_size).round(10)
 
 
+def _validate_aggregation_ticks(name: str, value: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+        raise ValueError(f"{name} must be a positive integer.")
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer.")
+    return int(value)
+
+
 def _compute_profile(
     prices: Sequence[float],
     volumes: Sequence[float],
@@ -125,6 +133,9 @@ def compute_profile_levels(
     instrument: str = "ES",
     rolling_windows: list[str] | tuple[str, ...] | None = None,
     value_area_pct: float = 0.70,
+    prior_day_aggregation_ticks: int = 1,
+    prior_week_aggregation_ticks: int = 1,
+    prior_month_aggregation_ticks: int = 1,
 ) -> pd.DataFrame:
     """Compute rolling POC and prior day/week/month profile levels.
 
@@ -135,12 +146,27 @@ def compute_profile_levels(
     keeps behavior deterministic with CSV OHLCV-only input. When true volume-at-price
     data is added later, this function can replace bar-level allocation with intrabar
     bin allocation while keeping the same output column contract.
+
+    Prior-profile aggregation values are tick multiples. The effective prior-profile
+    bin size is ``instrument_tick_size * aggregation_ticks`` for the ``pd*``, ``pw*``,
+    and ``pm*`` value-area columns, while rolling POC windows remain on the raw
+    instrument tick size.
     """
     require_tz_aware_timestamp(df)
     if instrument not in INSTRUMENTS:
         raise ValueError(f"Unsupported instrument: {instrument}")
     if not 0 < value_area_pct <= 1:
         raise ValueError("value_area_pct must be in (0, 1].")
+
+    prior_day_aggregation_ticks = _validate_aggregation_ticks(
+        "prior_day_aggregation_ticks", prior_day_aggregation_ticks
+    )
+    prior_week_aggregation_ticks = _validate_aggregation_ticks(
+        "prior_week_aggregation_ticks", prior_week_aggregation_ticks
+    )
+    prior_month_aggregation_ticks = _validate_aggregation_ticks(
+        "prior_month_aggregation_ticks", prior_month_aggregation_ticks
+    )
 
     inst = INSTRUMENTS[instrument]
     rolling_windows = DEFAULT_ROLLING_POC_WINDOWS if rolling_windows is None else tuple(rolling_windows)
@@ -177,7 +203,7 @@ def compute_profile_levels(
             period_key=day_key,
             prices=prices,
             volumes=volumes,
-            tick_size=inst.tick_size,
+            tick_size=inst.tick_size * prior_day_aggregation_ticks,
             value_area_pct=value_area_pct,
             prefix="pd",
         )
@@ -188,7 +214,7 @@ def compute_profile_levels(
             period_key=week_key,
             prices=prices,
             volumes=volumes,
-            tick_size=inst.tick_size,
+            tick_size=inst.tick_size * prior_week_aggregation_ticks,
             value_area_pct=value_area_pct,
             prefix="pw",
         )
@@ -199,7 +225,7 @@ def compute_profile_levels(
             period_key=month_key,
             prices=prices,
             volumes=volumes,
-            tick_size=inst.tick_size,
+            tick_size=inst.tick_size * prior_month_aggregation_ticks,
             value_area_pct=value_area_pct,
             prefix="pm",
         )

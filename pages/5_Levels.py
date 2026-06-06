@@ -25,6 +25,9 @@ _EMA_TIMEFRAMES_KEY = "levels_ema_timeframes"
 _VWAP_WINDOWS_KEY = "levels_vwap_windows"
 _POC_WINDOWS_KEY = "levels_poc_windows"
 _VALUE_AREA_PCT_KEY = "levels_value_area_pct"
+_PRIOR_DAY_AGG_TICKS_KEY = "levels_prior_day_profile_aggregation_ticks"
+_PRIOR_WEEK_AGG_TICKS_KEY = "levels_prior_week_profile_aggregation_ticks"
+_PRIOR_MONTH_AGG_TICKS_KEY = "levels_prior_month_profile_aggregation_ticks"
 _PENDING_WIDGET_SYNC_KEY = "_pending_levels_widget_sync_settings"
 _INDICATOR_TIMEFRAME_OPTIONS = ["1min", "5min", "30min"]
 _VWAP_WINDOW_OPTIONS = ["15min", "30min", "1h", "4h"]
@@ -52,6 +55,9 @@ def _normalize_levels_settings(settings: dict | None) -> dict | None:
     if not isinstance(settings, dict):
         return None
     out = dict(settings)
+    out.setdefault("prior_day_profile_aggregation_ticks", 1)
+    out.setdefault("prior_week_profile_aggregation_ticks", 1)
+    out.setdefault("prior_month_profile_aggregation_ticks", 1)
     for key in ("sma_timeframes", "ema_timeframes", "vwap_windows", "poc_windows"):
         value = out.get(key)
         if isinstance(value, list):
@@ -91,11 +97,14 @@ def _saved_levels_label(meta: dict) -> str:
         value_area_label = f"{int(value_area_pct * 100)}%"
     else:
         value_area_label = "—"
+    daily_agg = settings.get("prior_day_profile_aggregation_ticks", 1)
+    weekly_agg = settings.get("prior_week_profile_aggregation_ticks", 1)
+    monthly_agg = settings.get("prior_month_profile_aggregation_ticks", 1)
     created_at_raw = meta.get("created_at")
     created_at = str(created_at_raw)[:10] if created_at_raw else "unknown date"
     return (
         f"{str(meta.get('settings_hash', 'unknown'))[:12]}… · OR {opening_range}m · "
-        f"VA {value_area_label} · saved {created_at}"
+        f"VA {value_area_label} · Day/Week/Month agg {daily_agg}/{weekly_agg}/{monthly_agg} · saved {created_at}"
     )
 
 
@@ -148,6 +157,18 @@ def _sync_levels_widget_state(settings: dict) -> None:
         value_area_pct_int = round(value_area_pct * 100)
         if 50 <= value_area_pct_int <= 95:
             st.session_state[_VALUE_AREA_PCT_KEY] = value_area_pct_int
+
+    prior_day_aggregation_ticks = settings.get("prior_day_profile_aggregation_ticks", 1)
+    if isinstance(prior_day_aggregation_ticks, int) and prior_day_aggregation_ticks > 0:
+        st.session_state[_PRIOR_DAY_AGG_TICKS_KEY] = prior_day_aggregation_ticks
+
+    prior_week_aggregation_ticks = settings.get("prior_week_profile_aggregation_ticks", 1)
+    if isinstance(prior_week_aggregation_ticks, int) and prior_week_aggregation_ticks > 0:
+        st.session_state[_PRIOR_WEEK_AGG_TICKS_KEY] = prior_week_aggregation_ticks
+
+    prior_month_aggregation_ticks = settings.get("prior_month_profile_aggregation_ticks", 1)
+    if isinstance(prior_month_aggregation_ticks, int) and prior_month_aggregation_ticks > 0:
+        st.session_state[_PRIOR_MONTH_AGG_TICKS_KEY] = prior_month_aggregation_ticks
 
 
 def _load_saved_levels_into_session(dataset_id: str, settings_hash: str) -> bool:
@@ -245,6 +266,35 @@ value_area_pct = (
     )
     / 100.0
 )
+aggregation_help = (
+    "Affects only prior day pdVAH/pdVAL/pdPOC, prior week pwVAH/pwVAL/pwPOC, "
+    "and prior month pmVAH/pmVAL/pmPOC profile binning. "
+    "Does not change instrument tick size or rolling POC windows."
+)
+prior_day_aggregation_ticks = st.number_input(
+    "Prior day VA profile aggregation (ticks)",
+    min_value=1,
+    value=1,
+    step=1,
+    key=_PRIOR_DAY_AGG_TICKS_KEY,
+    help=aggregation_help,
+)
+prior_week_aggregation_ticks = st.number_input(
+    "Prior week VA profile aggregation (ticks)",
+    min_value=1,
+    value=1,
+    step=1,
+    key=_PRIOR_WEEK_AGG_TICKS_KEY,
+    help=aggregation_help,
+)
+prior_month_aggregation_ticks = st.number_input(
+    "Prior month VA profile aggregation (ticks)",
+    min_value=1,
+    value=1,
+    step=1,
+    key=_PRIOR_MONTH_AGG_TICKS_KEY,
+    help=aggregation_help,
+)
 
 try:
     sma_lengths = _parse_lengths(sma_lengths_raw, "SMA")
@@ -264,6 +314,9 @@ current_settings = _normalize_levels_settings(
         "vwap_windows": vwap_windows,
         "poc_windows": poc_windows,
         "value_area_pct": value_area_pct,
+        "prior_day_profile_aggregation_ticks": int(prior_day_aggregation_ticks),
+        "prior_week_profile_aggregation_ticks": int(prior_week_aggregation_ticks),
+        "prior_month_profile_aggregation_ticks": int(prior_month_aggregation_ticks),
     }
 )
 current_data_fingerprint = _levels_data_fingerprint(st.session_state["data"], instrument)
@@ -385,6 +438,9 @@ if calculate_levels:
                 vwap_windows=vwap_windows,
                 poc_windows=poc_windows,
                 value_area_pct=value_area_pct,
+                prior_day_aggregation_ticks=int(prior_day_aggregation_ticks),
+                prior_week_aggregation_ticks=int(prior_week_aggregation_ticks),
+                prior_month_aggregation_ticks=int(prior_month_aggregation_ticks),
             )
         except ValueError as exc:
             st.error(str(exc))

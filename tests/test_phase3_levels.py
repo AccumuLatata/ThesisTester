@@ -35,6 +35,32 @@ def _base_df(start: str, periods: int, freq: str = "1min") -> pd.DataFrame:
     )
 
 
+def _profile_period_df(day: str, prices: list[float], volumes: list[float]) -> pd.DataFrame:
+    timestamps = pd.date_range(f"{day} 09:30:00", periods=len(prices), freq="1h", tz=TZ)
+    return pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "open": prices,
+            "high": prices,
+            "low": prices,
+            "close": prices,
+            "volume": volumes,
+        }
+    )
+
+
+def _multi_period_profile_df() -> pd.DataFrame:
+    return pd.concat(
+        [
+            _profile_period_df("2026-06-29", [100.0, 100.25, 100.75], [10.0, 30.0, 5.0]),
+            _profile_period_df("2026-07-01", [101.0, 101.25, 101.75], [8.0, 25.0, 4.0]),
+            _profile_period_df("2026-07-06", [102.0, 102.25, 102.75], [7.0, 20.0, 6.0]),
+            _profile_period_df("2026-07-07", [103.0, 103.25], [9.0, 11.0]),
+        ],
+        ignore_index=True,
+    )
+
+
 def test_indicator_columns_exist_and_align():
     df = _base_df("2026-06-02 09:30:00", periods=6)
     out = compute_indicator_levels(df, sma_lengths=[2], ema_lengths=[3], vwap_windows=["15min"])
@@ -266,6 +292,134 @@ def test_value_area_returns_sensible_bounds_around_poc():
     assert np.allclose(second_day["pdVAH"].to_numpy(), [100.25, 100.25])
 
 
+def test_prior_profile_aggregation_defaults_preserve_existing_behavior():
+    df = _multi_period_profile_df()
+
+    baseline = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70)
+    explicit_defaults = compute_profile_levels(
+        df,
+        instrument="ES",
+        rolling_windows=["30min"],
+        value_area_pct=0.70,
+        prior_day_aggregation_ticks=1,
+        prior_week_aggregation_ticks=1,
+        prior_month_aggregation_ticks=1,
+    )
+
+    profile_columns = [
+        "POC_rolling_30min",
+        "pdVAH",
+        "pdVAL",
+        "pdPOC",
+        "pwVAH",
+        "pwVAL",
+        "pwPOC",
+        "pmVAH",
+        "pmVAL",
+        "pmPOC",
+    ]
+    pd.testing.assert_frame_equal(baseline[profile_columns], explicit_defaults[profile_columns])
+
+
+def test_prior_day_aggregation_changes_only_prior_day_profile_levels():
+    df = _multi_period_profile_df()
+
+    baseline = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70)
+    changed = compute_profile_levels(
+        df,
+        instrument="ES",
+        rolling_windows=["30min"],
+        value_area_pct=0.70,
+        prior_day_aggregation_ticks=4,
+    )
+
+    july_7_mask = changed["timestamp"].dt.date == pd.Timestamp("2026-07-07").date()
+    assert not np.allclose(
+        baseline.loc[july_7_mask, ["pdVAH", "pdVAL", "pdPOC"]].to_numpy(),
+        changed.loc[july_7_mask, ["pdVAH", "pdVAL", "pdPOC"]].to_numpy(),
+        equal_nan=True,
+    )
+    pd.testing.assert_frame_equal(
+        baseline[["pwVAH", "pwVAL", "pwPOC", "pmVAH", "pmVAL", "pmPOC"]],
+        changed[["pwVAH", "pwVAL", "pwPOC", "pmVAH", "pmVAL", "pmPOC"]],
+    )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "changed_prefix", "unchanged_columns"),
+    [
+        (
+            {"prior_day_aggregation_ticks": 4},
+            "pd",
+            ["pwVAH", "pwVAL", "pwPOC", "pmVAH", "pmVAL", "pmPOC"],
+        ),
+        (
+            {"prior_week_aggregation_ticks": 4},
+            "pw",
+            ["pdVAH", "pdVAL", "pdPOC", "pmVAH", "pmVAL", "pmPOC"],
+        ),
+        (
+            {"prior_month_aggregation_ticks": 4},
+            "pm",
+            ["pdVAH", "pdVAL", "pdPOC", "pwVAH", "pwVAL", "pwPOC"],
+        ),
+    ],
+)
+def test_prior_profile_aggregation_settings_are_independent(kwargs, changed_prefix, unchanged_columns):
+    df = _multi_period_profile_df()
+
+    baseline = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70)
+    changed = compute_profile_levels(
+        df,
+        instrument="ES",
+        rolling_windows=["30min"],
+        value_area_pct=0.70,
+        **kwargs,
+    )
+
+    changed_columns = [f"{changed_prefix}VAH", f"{changed_prefix}VAL", f"{changed_prefix}POC"]
+    changed_mask = baseline[changed_columns].notna().all(axis=1)
+    assert changed_mask.any()
+    assert not np.allclose(
+        baseline.loc[changed_mask, changed_columns].to_numpy(),
+        changed.loc[changed_mask, changed_columns].to_numpy(),
+        equal_nan=True,
+    )
+    pd.testing.assert_frame_equal(baseline[unchanged_columns], changed[unchanged_columns])
+
+
+def test_rolling_poc_is_unaffected_by_prior_profile_aggregation_settings():
+    df = _multi_period_profile_df()
+
+    baseline = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70)
+    changed = compute_profile_levels(
+        df,
+        instrument="ES",
+        rolling_windows=["30min"],
+        value_area_pct=0.70,
+        prior_day_aggregation_ticks=4,
+        prior_week_aggregation_ticks=10,
+        prior_month_aggregation_ticks=10,
+    )
+
+    pd.testing.assert_series_equal(baseline["POC_rolling_30min"], changed["POC_rolling_30min"])
+
+
+@pytest.mark.parametrize(
+    ("arg_name", "value"),
+    [
+        ("prior_day_aggregation_ticks", 0),
+        ("prior_week_aggregation_ticks", -1),
+        ("prior_month_aggregation_ticks", 1.5),
+    ],
+)
+def test_prior_profile_aggregation_ticks_validate_positive_integers(arg_name, value):
+    df = _base_df("2026-06-02 09:30:00", periods=4)
+
+    with pytest.raises(ValueError, match="must be a positive integer"):
+        compute_profile_levels(df, instrument="ES", **{arg_name: value})
+
+
 def test_compute_all_levels_includes_session_indicator_and_profile_columns():
     df = tag_session(_base_df("2026-06-02 09:30:00", periods=20), "ES")
     out = compute_all_levels(
@@ -281,3 +435,27 @@ def test_compute_all_levels_includes_session_indicator_and_profile_columns():
 
     for col in ["RTH_Open", "SMA_2", "EMA_2", "VWAP_rolling_15min", "POC_rolling_30min", "pdVAH", "pdPOC"]:
         assert col in out.columns
+
+
+def test_compute_all_levels_passes_prior_profile_aggregation_settings_through():
+    df = tag_session(_multi_period_profile_df(), "ES")
+
+    baseline = compute_all_levels(df, instrument="ES", poc_windows=["30min"], sma_lengths=[], ema_lengths=[], vwap_windows=[])
+    changed = compute_all_levels(
+        df,
+        instrument="ES",
+        poc_windows=["30min"],
+        sma_lengths=[],
+        ema_lengths=[],
+        vwap_windows=[],
+        prior_day_aggregation_ticks=4,
+        prior_week_aggregation_ticks=4,
+        prior_month_aggregation_ticks=4,
+    )
+
+    assert not np.allclose(
+        baseline[["pdPOC", "pwPOC", "pmPOC"]].to_numpy(),
+        changed[["pdPOC", "pwPOC", "pmPOC"]].to_numpy(),
+        equal_nan=True,
+    )
+    pd.testing.assert_series_equal(baseline["POC_rolling_30min"], changed["POC_rolling_30min"])

@@ -72,6 +72,9 @@ def _levels_settings(**overrides) -> dict:
         "vwap_windows": ["15min", "1h"],
         "poc_windows": ["30min", "4h"],
         "value_area_pct": 0.7,
+        "prior_day_profile_aggregation_ticks": 1,
+        "prior_week_profile_aggregation_ticks": 1,
+        "prior_month_profile_aggregation_ticks": 1,
     }
     settings.update(overrides)
     return settings
@@ -419,6 +422,13 @@ def test_compute_levels_settings_hash_handles_none_indicator_timeframes():
     with_default = _levels_settings(sma_timeframes=["1min"], ema_timeframes=["1min"])
 
     assert compute_levels_settings_hash(with_none) != compute_levels_settings_hash(with_default)
+
+
+def test_compute_levels_settings_hash_changes_when_prior_profile_aggregation_ticks_change():
+    base = _levels_settings()
+    changed = _levels_settings(prior_day_profile_aggregation_ticks=4)
+
+    assert compute_levels_settings_hash(base) != compute_levels_settings_hash(changed)
 
 
 def test_compute_signal_settings_hash_ignores_selected_levels_order():
