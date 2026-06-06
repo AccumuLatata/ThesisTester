@@ -40,6 +40,6 @@ def bootstrap_active_saved_dataset() -> bool:
     st.session_state["dataset_id"] = loaded_meta["dataset_id"]
     st.session_state[ACTIVE_SAVED_DATASET_KEY] = loaded_meta["dataset_id"]
     st.session_state[BOOTSTRAP_MESSAGE_KEY] = (
-        f"Restored saved dataset '{loaded_meta.get('name', loaded_meta['dataset_id'])}'."
+        f"Restored saved dataset '{loaded_meta.get('name') or 'Unnamed dataset'}'."
     )
     return True

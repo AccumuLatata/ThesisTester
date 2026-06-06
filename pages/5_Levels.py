@@ -77,7 +77,8 @@ def _saved_levels_label(meta: dict) -> str:
         value_area_label = f"{int(value_area_pct * 100)}%"
     else:
         value_area_label = "—"
-    created_at = str(meta.get("created_at", ""))[:10] or "unknown date"
+    created_at_raw = meta.get("created_at")
+    created_at = str(created_at_raw)[:10] if created_at_raw else "unknown date"
     return (
         f"{str(meta.get('settings_hash', 'unknown'))[:12]}… · OR {opening_range}m · "
         f"VA {value_area_label} · saved {created_at}"
@@ -90,7 +91,10 @@ def _load_saved_levels_into_session(dataset_id: str, settings_hash: str) -> bool
     except (FileNotFoundError, ValueError, OSError) as exc:
         if get_active_levels_hash(dataset_id) == settings_hash:
             clear_active_levels_hash(dataset_id)
-        st.error(f"Unable to load saved levels ({settings_hash[:12]}...): {exc}")
+        st.error(
+            f"Unable to load saved levels ({settings_hash[:12]}...): {exc}. "
+            "Try recalculating levels or removing this saved snapshot."
+        )
         return False
 
     st.session_state["levels"] = levels_df
