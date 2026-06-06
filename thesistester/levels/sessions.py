@@ -88,6 +88,9 @@ def _overnight_high_low(
     onl = date_key.map(overnight["ONL"])
 
     rth = df["session"].eq("RTH")
+    if not rth.any():
+        return out
+
     first_rth_ts = df.loc[rth].groupby(date_key[rth], sort=True)["timestamp"].first()
     available = df["timestamp"] >= date_key.map(first_rth_ts)
 

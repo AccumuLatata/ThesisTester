@@ -58,6 +58,7 @@ def test_rth_open_matches_first_rth_bar_open():
     levels = compute_session_levels(_sample_two_day_df(), instrument="ES")
 
     day2 = levels[levels["timestamp"].dt.date == pd.Timestamp("2026-06-02").date()]
+    assert day2.iloc[1]["timestamp"] == pd.Timestamp("2026-06-02 09:30:00", tz=TZ)
     assert np.isnan(day2.iloc[0]["RTH_Open"])
     assert np.allclose(day2["RTH_Open"].to_numpy()[1:], [105.0, 105.0])
 
