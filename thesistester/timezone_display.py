@@ -75,11 +75,27 @@ def convert_dataframe_timestamps_for_display(
         if not pd.api.types.is_datetime64_any_dtype(series):
             continue
         if series.dt.tz is None:
+            try:
+                localized = series.dt.tz_localize(canonical_timezone)
+            except Exception as exc:
+                text = str(exc).lower()
+                if "ambiguous" in text or "dst" in text:
+                    warnings.append(
+                        f"Column '{col}' has ambiguous naive timestamps for {canonical_timezone}; "
+                        "left unchanged during export conversion."
+                    )
+                    continue
+                if "nonexistent" in text:
+                    warnings.append(
+                        f"Column '{col}' has nonexistent naive timestamps for {canonical_timezone}; "
+                        "left unchanged during export conversion."
+                    )
+                    continue
+                raise
             warnings.append(
                 f"Column '{col}' was timezone-naive during export conversion; "
                 f"localized to canonical timezone {canonical_timezone} before converting."
             )
-            localized = series.dt.tz_localize(canonical_timezone)
             out[col] = localized.dt.tz_convert(display_timezone)
         else:
             out[col] = series.dt.tz_convert(display_timezone)

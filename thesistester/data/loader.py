@@ -9,6 +9,7 @@ import pandas as pd
 from ..config import REQUIRED_COLUMNS
 # Flag gaps larger than 3x the inferred base interval as significant missing-bar regions.
 GAP_THRESHOLD_MULTIPLIER = 3
+DST_TRANSITION_CONTEXT_WINDOW = 3
 SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 60 * SECONDS_PER_MINUTE
 SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
@@ -272,8 +273,8 @@ def validate_ohlcv(df: pd.DataFrame) -> ValidationReport:
             transition_idx = offset_change[offset_change != 0].index
             dst_gap_count = 0
             for idx in transition_idx:
-                start = max(1, idx - 3)
-                end = min(len(df) - 1, idx + 3)
+                start = max(1, idx - DST_TRANSITION_CONTEXT_WINDOW)
+                end = min(len(df) - 1, idx + DST_TRANSITION_CONTEXT_WINDOW)
                 around = df["timestamp"].iloc[start : end + 1].diff().dropna()
                 dst_gap_count += int((around > gap_threshold).sum())
             if dst_gap_count:
