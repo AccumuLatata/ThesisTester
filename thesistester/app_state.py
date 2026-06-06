@@ -23,11 +23,20 @@ def bootstrap_active_saved_dataset() -> bool:
     if active_dataset_id is None:
         return False
 
+    dataset_id = active_dataset_id
+
     try:
         loaded_df, loaded_meta = load_dataset(active_dataset_id)
     except (FileNotFoundError, ValueError, OSError):
         clear_active_dataset_id()
-        clear_active_levels_hash(active_dataset_id)
+        clear_active_levels_hash(dataset_id)
+        st.session_state.pop(ACTIVE_SAVED_DATASET_KEY, None)
+        return False
+
+    required_meta_keys = ("instrument", "base_interval", "source_timezone", "exchange_timezone")
+    if not isinstance(loaded_meta, dict) or any(key not in loaded_meta for key in required_meta_keys):
+        clear_active_dataset_id()
+        clear_active_levels_hash(dataset_id)
         st.session_state.pop(ACTIVE_SAVED_DATASET_KEY, None)
         return False
 
@@ -37,8 +46,8 @@ def bootstrap_active_saved_dataset() -> bool:
     st.session_state["base_interval"] = loaded_meta.get("base_interval")
     st.session_state["source_timezone"] = loaded_meta.get("source_timezone")
     st.session_state["exchange_timezone"] = loaded_meta.get("exchange_timezone")
-    st.session_state["dataset_id"] = loaded_meta["dataset_id"]
-    st.session_state[ACTIVE_SAVED_DATASET_KEY] = loaded_meta["dataset_id"]
+    st.session_state["dataset_id"] = dataset_id
+    st.session_state[ACTIVE_SAVED_DATASET_KEY] = dataset_id
     st.session_state[BOOTSTRAP_MESSAGE_KEY] = (
         f"Restored saved dataset '{loaded_meta.get('name') or 'Unnamed dataset'}'."
     )
