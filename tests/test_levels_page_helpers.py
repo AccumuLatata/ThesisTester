@@ -51,6 +51,9 @@ def _import_levels_helpers():
         mod._sync_levels_widget_state,
         mod._SMA_TIMEFRAMES_KEY,
         mod._EMA_TIMEFRAMES_KEY,
+        mod._PRIOR_DAY_AGG_TICKS_KEY,
+        mod._PRIOR_WEEK_AGG_TICKS_KEY,
+        mod._PRIOR_MONTH_AGG_TICKS_KEY,
     )
 
 
@@ -60,6 +63,9 @@ def _import_levels_helpers():
     _sync_levels_widget_state,
     _SMA_TIMEFRAMES_KEY,
     _EMA_TIMEFRAMES_KEY,
+    _PRIOR_DAY_AGG_TICKS_KEY,
+    _PRIOR_WEEK_AGG_TICKS_KEY,
+    _PRIOR_MONTH_AGG_TICKS_KEY,
 ) = _import_levels_helpers()
 
 
@@ -77,6 +83,9 @@ def test_normalize_levels_settings_sorts_indicator_timeframes():
     assert normalized["ema_timeframes"] == ["1min", "5min"]
     assert normalized["vwap_windows"] == ["15min", "1h"]
     assert normalized["poc_windows"] == ["30min", "4h"]
+    assert normalized["prior_day_profile_aggregation_ticks"] == 1
+    assert normalized["prior_week_profile_aggregation_ticks"] == 1
+    assert normalized["prior_month_profile_aggregation_ticks"] == 1
 
 
 def test_sync_levels_widget_state_restores_indicator_timeframe_selections():
@@ -92,3 +101,17 @@ def test_sync_levels_widget_state_restores_indicator_timeframe_selections():
     assert _st_stub.session_state[_EMA_TIMEFRAMES_KEY] == ["5min"]
     assert "unsupported" not in _st_stub.session_state[_SMA_TIMEFRAMES_KEY]
     assert "unsupported" not in _st_stub.session_state[_EMA_TIMEFRAMES_KEY]
+
+
+def test_sync_levels_widget_state_restores_prior_profile_aggregation_ticks():
+    _st_stub.session_state.clear()
+    _sync_levels_widget_state(
+        {
+            "prior_day_profile_aggregation_ticks": 4,
+            "prior_week_profile_aggregation_ticks": 10,
+        }
+    )
+
+    assert _st_stub.session_state[_PRIOR_DAY_AGG_TICKS_KEY] == 4
+    assert _st_stub.session_state[_PRIOR_WEEK_AGG_TICKS_KEY] == 10
+    assert _st_stub.session_state[_PRIOR_MONTH_AGG_TICKS_KEY] == 1

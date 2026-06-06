@@ -65,6 +65,10 @@ them uniformly: each produces a price (or a band) at a given timestamp.
 | `pmVAH` / `pmVAL` / `pmPOC` | Prior **Month** Value Area High / Low / Point of Control |
 
 > Value Area = price range containing **70%** of traded volume around the POC (configurable).
+> Prior day/week/month profiles also support independent aggregation-tick multiples. The
+> effective prior-profile bin size is `instrument_tick_size × aggregation_ticks`, and these
+> controls affect only `pd*`, `pw*`, and `pm*` value-area/POC levels — not exchange tick
+> size, rolling POC windows, or other downstream logic.
 
 ### 2.4 "Naked" levels
 A level is **naked** (a.k.a. *virgin/untested*) if price has **not traded back to it**
