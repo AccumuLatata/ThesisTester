@@ -336,7 +336,7 @@ def test_trading_session_date_and_dopen_across_fall_dst_end():
     local_ts = pd.Series(
         pd.to_datetime(
             [
-                "2026-10-30 09:30:00",  # Friday — pre-DST EDT session
+                "2026-10-30 09:30:00",  # Friday — pre-DST-end EDT session
                 "2026-11-01 18:00:00",  # Sunday — ETH session open (now EST)
                 "2026-11-02 00:00:00",  # Monday midnight (EST)
                 "2026-11-02 09:30:00",  # Monday RTH open (EST)
