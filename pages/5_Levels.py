@@ -267,11 +267,12 @@ value_area_pct = (
     / 100.0
 )
 aggregation_help = (
-    "Affects only prior day/week/month VAH, VAL, and POC profile binning. "
+    "Affects only prior day pdVAH/pdVAL/pdPOC, prior week pwVAH/pwVAL/pwPOC, "
+    "and prior month pmVAH/pmVAL/pmPOC profile binning. "
     "Does not change instrument tick size or rolling POC windows."
 )
 prior_day_aggregation_ticks = st.number_input(
-    "Daily Value Area aggregation (ticks)",
+    "Prior day VA profile aggregation (ticks)",
     min_value=1,
     value=1,
     step=1,
@@ -279,7 +280,7 @@ prior_day_aggregation_ticks = st.number_input(
     help=aggregation_help,
 )
 prior_week_aggregation_ticks = st.number_input(
-    "Weekly Value Area aggregation (ticks)",
+    "Prior week VA profile aggregation (ticks)",
     min_value=1,
     value=1,
     step=1,
@@ -287,7 +288,7 @@ prior_week_aggregation_ticks = st.number_input(
     help=aggregation_help,
 )
 prior_month_aggregation_ticks = st.number_input(
-    "Monthly Value Area aggregation (ticks)",
+    "Prior month VA profile aggregation (ticks)",
     min_value=1,
     value=1,
     step=1,

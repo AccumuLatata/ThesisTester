@@ -146,6 +146,11 @@ def compute_profile_levels(
     keeps behavior deterministic with CSV OHLCV-only input. When true volume-at-price
     data is added later, this function can replace bar-level allocation with intrabar
     bin allocation while keeping the same output column contract.
+
+    Prior-profile aggregation values are tick multiples. The effective prior-profile
+    bin size is ``instrument_tick_size * aggregation_ticks`` for the ``pd*``, ``pw*``,
+    and ``pm*`` value-area columns, while rolling POC windows remain on the raw
+    instrument tick size.
     """
     require_tz_aware_timestamp(df)
     if instrument not in INSTRUMENTS:
