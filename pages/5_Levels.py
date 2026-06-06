@@ -104,7 +104,7 @@ def _saved_levels_label(meta: dict) -> str:
     created_at = str(created_at_raw)[:10] if created_at_raw else "unknown date"
     return (
         f"{str(meta.get('settings_hash', 'unknown'))[:12]}… · OR {opening_range}m · "
-        f"VA {value_area_label} · Daily/Weekly/Monthly agg {daily_agg}/{weekly_agg}/{monthly_agg} · saved {created_at}"
+        f"VA {value_area_label} · Day/Week/Month agg {daily_agg}/{weekly_agg}/{monthly_agg} · saved {created_at}"
     )
 
 
