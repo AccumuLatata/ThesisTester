@@ -54,8 +54,13 @@ def _rth_open(df: pd.DataFrame, date_key: pd.Series) -> pd.Series:
         return out
 
     rth = df["session"].eq("RTH")
+    if not rth.any():
+        return out
+
     first_open = df.loc[rth].groupby(date_key[rth], sort=True)["open"].first()
-    return date_key.map(first_open).astype("float64")
+    first_rth_ts = df.loc[rth].groupby(date_key[rth], sort=True)["timestamp"].first()
+    available = df["timestamp"] >= date_key.map(first_rth_ts)
+    return date_key.map(first_open).where(available).astype("float64")
 
 
 def _overnight_high_low(
@@ -79,8 +84,15 @@ def _overnight_high_low(
     overnight_date = overnight_date.where(~(mask_eth & (t >= rth_end.time())), overnight_date + timedelta(days=1))
 
     overnight = df.loc[is_overnight].groupby(overnight_date[is_overnight], sort=True).agg(ONH=("high", "max"), ONL=("low", "min"))
-    out["ONH"] = date_key.map(overnight["ONH"]).astype("float64")
-    out["ONL"] = date_key.map(overnight["ONL"]).astype("float64")
+    onh = date_key.map(overnight["ONH"])
+    onl = date_key.map(overnight["ONL"])
+
+    rth = df["session"].eq("RTH")
+    first_rth_ts = df.loc[rth].groupby(date_key[rth], sort=True)["timestamp"].first()
+    available = df["timestamp"] >= date_key.map(first_rth_ts)
+
+    out["ONH"] = onh.where(available).astype("float64")
+    out["ONL"] = onl.where(available).astype("float64")
     return out
 
 

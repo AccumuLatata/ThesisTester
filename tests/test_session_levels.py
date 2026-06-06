@@ -58,7 +58,22 @@ def test_rth_open_matches_first_rth_bar_open():
     levels = compute_session_levels(_sample_two_day_df(), instrument="ES")
 
     day2 = levels[levels["timestamp"].dt.date == pd.Timestamp("2026-06-02").date()]
-    assert np.allclose(day2["RTH_Open"].to_numpy(), [105.0, 105.0, 105.0])
+    assert np.isnan(day2.iloc[0]["RTH_Open"])
+    assert np.allclose(day2["RTH_Open"].to_numpy()[1:], [105.0, 105.0])
+
+
+def test_overnight_levels_are_hidden_until_rth_open():
+    levels = compute_session_levels(_sample_two_day_df(), instrument="ES")
+
+    day2 = levels[levels["timestamp"].dt.date == pd.Timestamp("2026-06-02").date()]
+    pre_rth = day2.iloc[0]
+    first_rth = day2.iloc[1]
+
+    # Causality-safe semantics: expose completed ONH/ONL only once RTH has started.
+    assert np.isnan(pre_rth["ONH"])
+    assert np.isnan(pre_rth["ONL"])
+    assert first_rth["ONH"] == 105.0
+    assert first_rth["ONL"] == 101.0
 
 
 def test_opening_range_waits_until_window_completes():
@@ -89,3 +104,43 @@ def test_prev_settlement_falls_back_to_prior_day_close():
 
     day2 = levels[levels["timestamp"].dt.date == pd.Timestamp("2026-06-02").date()]
     assert np.allclose(day2["prevSettlement"].to_numpy(), [103.0, 103.0, 103.0])
+
+
+def test_causality_columns_match_batch_vs_incremental():
+    ts = pd.to_datetime(
+        [
+            "2026-06-01 09:30:00",
+            "2026-06-01 09:31:00",
+            "2026-06-01 16:30:00",
+            "2026-06-02 08:00:00",
+            "2026-06-02 09:30:00",
+            "2026-06-02 09:31:00",
+            "2026-06-02 09:32:00",
+            "2026-06-02 09:33:00",
+            "2026-06-02 09:34:00",
+            "2026-06-02 09:35:00",
+        ]
+    ).tz_localize(TZ)
+    df = pd.DataFrame(
+        {
+            "timestamp": ts,
+            "open": [100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0],
+            "high": [101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0, 110.0],
+            "low": [99.0, 100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0],
+            "close": [100.5, 101.5, 102.5, 103.5, 104.5, 105.5, 106.5, 107.5, 108.5, 109.5],
+            "volume": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        }
+    )
+    tagged = tag_session(df, "ES")
+    cols = ["RTH_Open", "ONH", "ONL", "OR_High", "OR_Low", "pdHigh", "pdLow"]
+
+    batch = compute_session_levels(tagged, instrument="ES", opening_range_minutes=5)
+    for i in range(len(tagged)):
+        incremental = compute_session_levels(tagged.iloc[: i + 1], instrument="ES", opening_range_minutes=5)
+        row_batch = batch.iloc[i]
+        row_incremental = incremental.iloc[-1]
+        for col in cols:
+            if np.isnan(row_batch[col]):
+                assert np.isnan(row_incremental[col]), f"{col} mismatch at row {i}"
+            else:
+                assert row_incremental[col] == row_batch[col], f"{col} mismatch at row {i}"
