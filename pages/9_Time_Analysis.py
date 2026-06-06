@@ -16,7 +16,7 @@ from thesistester.analytics.time_analysis import (
     summarize_by_group,
 )
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
-from thesistester.timezone_display import ensure_display_timezone, timezone_contract_caption
+from thesistester.timezone_display import ensure_display_timezone
 
 st.title("🕐 Time Analysis")
 
@@ -32,13 +32,6 @@ inst = INSTRUMENTS.get(instrument)
 exchange_tz = inst.exchange_tz if inst else "America/New_York"
 ensure_display_timezone(st.session_state, exchange_timezone=exchange_tz)
 display_tz = st.session_state.get("display_timezone")
-st.caption(f"Time Analysis timezone: {exchange_tz} (exchange/session time)")
-if display_tz and display_tz != exchange_tz:
-    st.caption(
-        f"Display/export timezone is set to {display_tz}; "
-        "time buckets on this page use exchange/session timezone."
-    )
-st.caption(timezone_contract_caption(st.session_state))
 
 # ── KPI summary (full trade set) ──────────────────────────────────────────────
 st.subheader("Overall performance summary")
@@ -76,7 +69,17 @@ with st.sidebar:
         "Display/export timezone",
         options=TIMEZONE_OPTIONS,
         key="display_timezone",
-        help="Affects display/export only. Time bucket calculations remain in exchange/session time.",
+        help="Affects display/export only. Time bucket calculations remain unchanged unless you explicitly change the bucket timezone below.",
+    )
+
+    bucket_basis = st.selectbox(
+        "Time bucket timezone",
+        options=[
+            "Exchange/session timezone",
+            "Display/export timezone",
+        ],
+        index=0,
+        help="Controls only hourly/30-minute Time Analysis buckets and charts. Futures session logic remains exchange-time by default.",
     )
 
     timestamp_basis = st.selectbox(
@@ -100,11 +103,28 @@ with st.sidebar:
         )
     )
 
+bucket_tz = (
+    exchange_tz
+    if bucket_basis == "Exchange/session timezone"
+    else display_tz
+)
+
+st.caption(f"Exchange/session timezone: {exchange_tz}")
+st.caption(f"Display/export timezone: {display_tz}")
+st.caption(f"Time bucket timezone: {bucket_tz}")
+if bucket_tz != exchange_tz:
+    st.info(
+        f"Hourly and 30-minute buckets are grouped in {bucket_tz}. "
+        "RTH segment remains exchange/session-time based."
+    )
+
 # ── Add time buckets ──────────────────────────────────────────────────────────
 trades = add_time_buckets(
     trades_raw,
     timestamp_col=timestamp_basis,
     exchange_tz=exchange_tz,
+    bucket_tz=bucket_tz,
+    session_tz=exchange_tz,
 )
 st.session_state["time_bucketed_trades"] = trades
 

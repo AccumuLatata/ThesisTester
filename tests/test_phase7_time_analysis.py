@@ -108,6 +108,98 @@ def test_bucket_labels_are_string_clock_format():
     assert result["entry_30min_bucket"].str.match(r"^\d{2}:\d{2}$").all()
 
 
+def test_bucket_timezone_changes_labels():
+    trades = _make_trades(["2026-06-02 09:30"], [1.0])
+    ny = add_time_buckets(
+        trades,
+        bucket_tz="America/New_York",
+        session_tz="America/New_York",
+    )
+    utc = add_time_buckets(
+        trades,
+        bucket_tz="UTC",
+        session_tz="America/New_York",
+    )
+    assert ny["entry_30min_bucket"].iloc[0] == "09:30"
+    assert utc["entry_30min_bucket"].iloc[0] == "13:30"
+
+
+def test_rth_segment_remains_session_based_when_bucket_timezone_changes():
+    trades = _make_trades(["2026-06-02 09:30"], [1.0])
+    result = add_time_buckets(
+        trades,
+        bucket_tz="UTC",
+        session_tz="America/New_York",
+    )
+    assert result["entry_rth_segment"].iloc[0] == "rth_open_30m"
+
+
+def test_add_time_buckets_exchange_tz_call_is_backward_compatible():
+    trades = _make_trades(
+        ["2026-06-02 09:30", "2026-06-02 11:40"],
+        [1.0, -0.5],
+    )
+    legacy = add_time_buckets(trades, exchange_tz="America/New_York")
+    explicit = add_time_buckets(
+        trades,
+        exchange_tz="America/New_York",
+        bucket_tz="America/New_York",
+        session_tz="America/New_York",
+    )
+    pd.testing.assert_frame_equal(
+        legacy[_TIME_BUCKET_COLS].reset_index(drop=True),
+        explicit[_TIME_BUCKET_COLS].reset_index(drop=True),
+    )
+
+
+def test_add_time_buckets_empty_bucket_tz_raises_value_error():
+    trades = _make_trades(["2026-06-02 09:30"], [1.0])
+    with pytest.raises(ValueError, match="bucket_tz must be a non-empty IANA timezone string\\."):
+        add_time_buckets(trades, bucket_tz="")
+
+
+def test_add_time_buckets_empty_session_tz_raises_value_error():
+    trades = _make_trades(["2026-06-02 09:30"], [1.0])
+    with pytest.raises(ValueError, match="session_tz must be a non-empty IANA timezone string\\."):
+        add_time_buckets(trades, session_tz="")
+
+
+def test_add_time_buckets_empty_exchange_tz_raises_value_error():
+    trades = _make_trades(["2026-06-02 09:30"], [1.0])
+    with pytest.raises(ValueError, match="exchange_tz must be a non-empty IANA timezone string\\."):
+        add_time_buckets(trades, exchange_tz="")
+
+
+def test_grouped_summary_bucket_timezone_changes_labels_not_trade_count():
+    trades = _make_trades(
+        [
+            "2026-06-02 09:30",
+            "2026-06-02 10:00",
+            "2026-06-02 15:30",
+        ],
+        [1.0, -1.0, 0.5],
+    )
+    grouped_ny = summarize_by_group(
+        add_time_buckets(
+            trades,
+            bucket_tz="America/New_York",
+            session_tz="America/New_York",
+        ),
+        "entry_30min_bucket",
+    )
+    grouped_utc = summarize_by_group(
+        add_time_buckets(
+            trades,
+            bucket_tz="UTC",
+            session_tz="America/New_York",
+        ),
+        "entry_30min_bucket",
+    )
+    assert list(grouped_ny["entry_30min_bucket"]) == ["09:30", "10:00", "15:30"]
+    assert list(grouped_utc["entry_30min_bucket"]) == ["13:30", "14:00", "19:30"]
+    assert grouped_ny["trade_count"].sum() == grouped_utc["trade_count"].sum() == len(trades)
+
+
 def test_rth_segment_boundaries():
     """Each boundary timestamp maps to the expected RTH segment."""
     times = [

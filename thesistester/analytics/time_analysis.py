@@ -86,6 +86,12 @@ def _rth_segment(minute: int) -> str:
     return "post_rth"
 
 
+def _validate_timezone_string(name: str, value: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must be a non-empty IANA timezone string.")
+    return value
+
+
 def _group_max_drawdown(r: pd.Series) -> float:
     """Max drawdown of cumulative R within a group, anchored at 0R."""
     if r.empty:
@@ -104,6 +110,9 @@ def add_time_buckets(
     trades: pd.DataFrame,
     timestamp_col: str = "entry_timestamp",
     exchange_tz: str = "America/New_York",
+    *,
+    bucket_tz: str | None = None,
+    session_tz: str | None = None,
 ) -> pd.DataFrame:
     """Return a copy of *trades* with time-bucket columns added.
 
@@ -116,7 +125,16 @@ def add_time_buckets(
         added columns are always ``entry_``-prefixed regardless of which
         source column is used.
     exchange_tz:
-        IANA timezone string for the exchange (default ``"America/New_York"``).
+        IANA timezone string for the exchange/canonical engine timezone
+        (default ``"America/New_York"``). Also used to localize tz-naive
+        timestamps for backward compatibility.
+    bucket_tz:
+        IANA timezone string used for ``entry_date``, ``entry_time``,
+        ``entry_hour``, ``entry_minute``, ``entry_hour_bucket``, and
+        ``entry_30min_bucket``. Defaults to *exchange_tz*.
+    session_tz:
+        IANA timezone string used for ``entry_rth_segment``. Defaults to
+        *exchange_tz*.
 
     Returns
     -------
@@ -130,6 +148,11 @@ def add_time_buckets(
         empty.
     """
     result = trades.copy()
+    exchange_tz = _validate_timezone_string("exchange_tz", exchange_tz)
+    bucket_tz = exchange_tz if bucket_tz is None else bucket_tz
+    session_tz = exchange_tz if session_tz is None else session_tz
+    bucket_tz = _validate_timezone_string("bucket_tz", bucket_tz)
+    session_tz = _validate_timezone_string("session_tz", session_tz)
 
     if result.empty or timestamp_col not in result.columns:
         for col in _TIME_BUCKET_COLS:
@@ -138,28 +161,31 @@ def add_time_buckets(
 
     ts = result[timestamp_col]
 
-    # Ensure timezone-aware timestamps in exchange_tz
+    # Ensure timezone-aware timestamps in exchange_tz for canonical handling.
     if ts.dt.tz is None:
         ts = ts.dt.tz_localize(exchange_tz)
     else:
         ts = ts.dt.tz_convert(exchange_tz)
 
-    result["entry_date"] = ts.dt.date
-    result["entry_time"] = ts.dt.time
-    result["entry_hour"] = ts.dt.hour
-    result["entry_minute"] = ts.dt.minute
+    bucket_ts = ts.dt.tz_convert(bucket_tz)
+    session_ts = ts.dt.tz_convert(session_tz)
+
+    result["entry_date"] = bucket_ts.dt.date
+    result["entry_time"] = bucket_ts.dt.time
+    result["entry_hour"] = bucket_ts.dt.hour
+    result["entry_minute"] = bucket_ts.dt.minute
 
     # Hour bucket: "09:00", "10:00", …
-    result["entry_hour_bucket"] = ts.dt.strftime("%H:00").astype(str)
+    result["entry_hour_bucket"] = bucket_ts.dt.strftime("%H:00").astype(str)
 
     # 30-minute bucket: "09:30", "10:00", …
-    half_hour = (ts.dt.minute // 30) * 30
+    half_hour = (bucket_ts.dt.minute // 30) * 30
     result["entry_30min_bucket"] = (
-        ts.dt.strftime("%H:") + half_hour.astype(str).str.zfill(2)
+        bucket_ts.dt.strftime("%H:") + half_hour.astype(str).str.zfill(2)
     ).astype(str)
 
-    # RTH segment
-    mod = _minute_of_day(ts)
+    # RTH segment stays aligned with session/exchange time.
+    mod = _minute_of_day(session_ts)
     result["entry_rth_segment"] = mod.map(_rth_segment)
 
     return result
