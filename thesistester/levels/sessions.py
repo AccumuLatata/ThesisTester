@@ -64,6 +64,31 @@ def _rth_open(df: pd.DataFrame, session_date: pd.Series) -> pd.Series:
     return session_date.map(first_open).where(available).astype("float64")
 
 
+def _overnight_aggregates_by_session(
+    df: pd.DataFrame,
+    session_date: pd.Series,
+    local_ts: pd.Series,
+    eth_start: str,
+    rth_start: pd.Timestamp,
+    rth_end: pd.Timestamp,
+) -> pd.DataFrame:
+    if "session" not in df.columns:
+        return pd.DataFrame(columns=["ONH", "ONL"], dtype="float64")
+
+    t = local_ts.dt.time
+    mask_eth = df["session"].eq("ETH")
+    overnight_start_time = pd.to_datetime(eth_start).time() if eth_start else rth_end.time()
+    is_overnight = mask_eth & ((t >= overnight_start_time) | (t < rth_start.time()))
+    if not is_overnight.any():
+        return pd.DataFrame(columns=["ONH", "ONL"], dtype="float64")
+
+    overnight_key = pd.Series(session_date.values, index=df.index)
+    if not eth_start:
+        overnight_key = overnight_key.where(~(mask_eth & (t >= overnight_start_time)), overnight_key + timedelta(days=1))
+
+    return df.loc[is_overnight].groupby(overnight_key[is_overnight], sort=True).agg(ONH=("high", "max"), ONL=("low", "min"))
+
+
 def _overnight_high_low(
     df: pd.DataFrame,
     session_date: pd.Series,
@@ -73,21 +98,10 @@ def _overnight_high_low(
     rth_end: pd.Timestamp,
 ) -> pd.DataFrame:
     out = pd.DataFrame({"ONH": pd.Series(np.nan, index=df.index, dtype="float64"), "ONL": pd.Series(np.nan, index=df.index, dtype="float64")})
-    if "session" not in df.columns:
+    overnight = _overnight_aggregates_by_session(df, session_date, local_ts, eth_start, rth_start, rth_end)
+    if overnight.empty:
         return out
 
-    t = local_ts.dt.time
-    mask_eth = df["session"].eq("ETH")
-    overnight_start_time = pd.to_datetime(eth_start).time() if eth_start else rth_end.time()
-    is_overnight = mask_eth & ((t >= overnight_start_time) | (t < rth_start.time()))
-    if not is_overnight.any():
-        return out
-
-    overnight_key = pd.Series(session_date.values, index=df.index)
-    if not eth_start:
-        overnight_key = overnight_key.where(~(mask_eth & (t >= overnight_start_time)), overnight_key + timedelta(days=1))
-
-    overnight = df.loc[is_overnight].groupby(overnight_key[is_overnight], sort=True).agg(ONH=("high", "max"), ONL=("low", "min"))
     onh = session_date.map(overnight["ONH"])
     onl = session_date.map(overnight["ONL"])
 
@@ -100,6 +114,42 @@ def _overnight_high_low(
 
     out["ONH"] = onh.where(available).astype("float64")
     out["ONL"] = onl.where(available).astype("float64")
+    return out
+
+
+def _previous_session_references(
+    df: pd.DataFrame,
+    session_date: pd.Series,
+    local_ts: pd.Series,
+    eth_start: str,
+    rth_start: pd.Timestamp,
+    rth_end: pd.Timestamp,
+) -> pd.DataFrame:
+    out = pd.DataFrame(
+        {
+            "pONH": pd.Series(np.nan, index=df.index, dtype="float64"),
+            "pONL": pd.Series(np.nan, index=df.index, dtype="float64"),
+            "pRTH_Open": pd.Series(np.nan, index=df.index, dtype="float64"),
+        }
+    )
+    sessions = pd.Index(sorted(session_date.unique()))
+    if sessions.empty or "session" not in df.columns:
+        return out
+
+    overnight = _overnight_aggregates_by_session(df, session_date, local_ts, eth_start, rth_start, rth_end)
+    rth = df["session"].eq("RTH")
+    rth_open = pd.Series(index=sessions, dtype="float64")
+    if rth.any():
+        rth_open = df.loc[rth].groupby(session_date[rth], sort=True)["open"].first()
+
+    previous = pd.DataFrame(index=sessions)
+    previous["pONH"] = overnight["ONH"].reindex(sessions).shift(1)
+    previous["pONL"] = overnight["ONL"].reindex(sessions).shift(1)
+    previous["pRTH_Open"] = rth_open.reindex(sessions).shift(1)
+
+    out["pONH"] = session_date.map(previous["pONH"]).astype("float64")
+    out["pONL"] = session_date.map(previous["pONL"]).astype("float64")
+    out["pRTH_Open"] = session_date.map(previous["pRTH_Open"]).astype("float64")
     return out
 
 
@@ -225,15 +275,19 @@ def compute_session_levels(
 
     levels["RTH_Open"] = _rth_open(out, session_date)
     levels = levels.join(_overnight_high_low(out, session_date, local_ts, inst.eth_start, rth_start, rth_end))
+    levels = levels.join(_previous_session_references(out, session_date, local_ts, inst.eth_start, rth_start, rth_end))
     levels = levels.join(_opening_range(out, session_date, local_ts, rth_start, opening_range_minutes))
     levels["prevSettlement"] = _prev_settlement(out, session_date)
 
     ordered = [
         "ONH",
         "ONL",
+        "pONH",
+        "pONL",
         "OR_High",
         "OR_Low",
         "RTH_Open",
+        "pRTH_Open",
         "prevSettlement",
         "dOpen",
         "wOpen",

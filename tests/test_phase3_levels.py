@@ -514,7 +514,7 @@ def test_compute_all_levels_includes_session_indicator_and_profile_columns():
         value_area_pct=0.70,
     )
 
-    for col in ["RTH_Open", "SMA_2", "EMA_2", "VWAP_rolling_15min", "POC_rolling_30min", "pdVAH", "pdPOC"]:
+    for col in ["RTH_Open", "pONH", "pONL", "pRTH_Open", "SMA_2", "EMA_2", "VWAP_rolling_15min", "POC_rolling_30min", "pdVAH", "pdPOC"]:
         assert col in out.columns
 
 
