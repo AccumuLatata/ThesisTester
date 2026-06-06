@@ -17,6 +17,17 @@ from thesistester.persistence import (
 )
 
 
+_OPENING_RANGE_KEY = "levels_opening_range_minutes"
+_SMA_LENGTHS_KEY = "levels_sma_lengths_raw"
+_EMA_LENGTHS_KEY = "levels_ema_lengths_raw"
+_VWAP_WINDOWS_KEY = "levels_vwap_windows"
+_POC_WINDOWS_KEY = "levels_poc_windows"
+_VALUE_AREA_PCT_KEY = "levels_value_area_pct"
+_PENDING_WIDGET_SYNC_KEY = "_pending_levels_widget_sync_settings"
+_VWAP_WINDOW_OPTIONS = ["15min", "30min", "1h", "4h"]
+_POC_WINDOW_OPTIONS = ["30min", "1h", "4h"]
+
+
 def _parse_lengths(raw: str, label: str) -> list[int]:
     """Parse comma-separated length values for indicator controls."""
     lengths: list[int] = []
@@ -85,6 +96,45 @@ def _saved_levels_label(meta: dict) -> str:
     )
 
 
+def _queue_levels_widget_sync(settings: dict | None) -> None:
+    if isinstance(settings, dict):
+        st.session_state[_PENDING_WIDGET_SYNC_KEY] = settings
+    else:
+        st.session_state[_PENDING_WIDGET_SYNC_KEY] = None
+
+
+def _sync_levels_widget_state(settings: dict) -> None:
+    opening_range = settings.get("opening_range_minutes")
+    if opening_range in {5, 15, 30}:
+        st.session_state[_OPENING_RANGE_KEY] = opening_range
+
+    sma_lengths = settings.get("sma_lengths")
+    if isinstance(sma_lengths, list) and sma_lengths:
+        st.session_state[_SMA_LENGTHS_KEY] = ",".join(str(length) for length in sma_lengths)
+
+    ema_lengths = settings.get("ema_lengths")
+    if isinstance(ema_lengths, list) and ema_lengths:
+        st.session_state[_EMA_LENGTHS_KEY] = ",".join(str(length) for length in ema_lengths)
+
+    vwap_windows = settings.get("vwap_windows")
+    if isinstance(vwap_windows, list):
+        st.session_state[_VWAP_WINDOWS_KEY] = [
+            window for window in _VWAP_WINDOW_OPTIONS if window in vwap_windows
+        ]
+
+    poc_windows = settings.get("poc_windows")
+    if isinstance(poc_windows, list):
+        st.session_state[_POC_WINDOWS_KEY] = [
+            window for window in _POC_WINDOW_OPTIONS if window in poc_windows
+        ]
+
+    value_area_pct = settings.get("value_area_pct")
+    if isinstance(value_area_pct, (int, float)):
+        value_area_pct_int = round(value_area_pct * 100)
+        if 50 <= value_area_pct_int <= 95:
+            st.session_state[_VALUE_AREA_PCT_KEY] = value_area_pct_int
+
+
 def _load_saved_levels_into_session(dataset_id: str, settings_hash: str) -> bool:
     try:
         levels_df, session_levels, loaded_meta = load_levels(dataset_id, settings_hash)
@@ -101,6 +151,7 @@ def _load_saved_levels_into_session(dataset_id: str, settings_hash: str) -> bool
     st.session_state["session_levels"] = session_levels
     st.session_state["levels_settings"] = loaded_meta.get("levels_settings")
     st.session_state["levels_data_fingerprint"] = loaded_meta.get("levels_data_fingerprint")
+    _queue_levels_widget_sync(loaded_meta.get("levels_settings"))
     set_active_levels_hash(dataset_id, settings_hash)
     return True
 
@@ -108,6 +159,10 @@ def _load_saved_levels_into_session(dataset_id: str, settings_hash: str) -> bool
 st.title("📏 Levels")
 
 bootstrap_active_saved_dataset()
+
+pending_widget_sync = st.session_state.pop(_PENDING_WIDGET_SYNC_KEY, None)
+if isinstance(pending_widget_sync, dict):
+    _sync_levels_widget_state(pending_widget_sync)
 
 if "data" not in st.session_state:
     st.warning("No data loaded. Please load data from the Data page first.")
@@ -124,20 +179,45 @@ if not isinstance(dataset_id, str) or not dataset_id:
         exchange_timezone=st.session_state.get("exchange_timezone"),
     )
 st.session_state["dataset_id"] = dataset_id
-opening_range_minutes = st.selectbox("Opening range duration (minutes)", [5, 15, 30], index=2)
-sma_lengths_raw = st.text_input("SMA lengths (comma-separated)", value="20,50,200")
-ema_lengths_raw = st.text_input("EMA lengths (comma-separated)", value="20,50,200")
+opening_range_minutes = st.selectbox(
+    "Opening range duration (minutes)",
+    [5, 15, 30],
+    index=2,
+    key=_OPENING_RANGE_KEY,
+)
+sma_lengths_raw = st.text_input(
+    "SMA lengths (comma-separated)",
+    value="20,50,200",
+    key=_SMA_LENGTHS_KEY,
+)
+ema_lengths_raw = st.text_input(
+    "EMA lengths (comma-separated)",
+    value="20,50,200",
+    key=_EMA_LENGTHS_KEY,
+)
 vwap_windows = st.multiselect(
     "Rolling VWAP windows",
-    options=["15min", "30min", "1h", "4h"],
-    default=["15min", "30min", "1h", "4h"],
+    options=_VWAP_WINDOW_OPTIONS,
+    default=_VWAP_WINDOW_OPTIONS,
+    key=_VWAP_WINDOWS_KEY,
 )
 poc_windows = st.multiselect(
     "Rolling POC windows",
-    options=["30min", "1h", "4h"],
-    default=["30min", "1h", "4h"],
+    options=_POC_WINDOW_OPTIONS,
+    default=_POC_WINDOW_OPTIONS,
+    key=_POC_WINDOWS_KEY,
 )
-value_area_pct = st.slider("Value area (%)", min_value=50, max_value=95, value=70, step=1) / 100.0
+value_area_pct = (
+    st.slider(
+        "Value area (%)",
+        min_value=50,
+        max_value=95,
+        value=70,
+        step=1,
+        key=_VALUE_AREA_PCT_KEY,
+    )
+    / 100.0
+)
 
 try:
     sma_lengths = _parse_lengths(sma_lengths_raw, "SMA")
@@ -189,7 +269,7 @@ if matching_saved_levels is not None and (not has_calculated_levels or levels_ar
             has_calculated_levels = True
             levels_are_stale = False
             settings_are_stale = False
-            st.success("Loaded saved levels without recalculating.")
+            st.rerun()
     if saved_level_actions[1].button(
         "Delete saved levels",
         key="delete_matching_saved_levels_prompt",
@@ -239,7 +319,7 @@ if saved_level_snapshots:
             has_calculated_levels = True
             levels_are_stale = False
             settings_are_stale = False
-            st.success("Loaded selected saved levels.")
+            st.rerun()
     if snapshot_actions[1].button(
         "Delete selected saved levels",
         key="delete_selected_saved_levels",
