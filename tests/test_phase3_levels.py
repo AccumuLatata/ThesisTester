@@ -110,6 +110,18 @@ def test_indicator_levels_raise_on_unsupported_upsampling_request():
         )
 
 
+def test_indicator_levels_raise_on_unknown_timeframe_option():
+    df = _base_df("2026-06-02 09:30:00", periods=20, freq="1min")
+    with pytest.raises(ValueError, match="Unsupported SMA timeframe"):
+        compute_indicator_levels(
+            df,
+            sma_lengths=[2],
+            ema_lengths=[],
+            sma_timeframes=["2min"],
+            vwap_windows=[],
+        )
+
+
 def test_rolling_vwap_correctness_on_small_dataset():
     ts = pd.date_range("2026-06-02 09:30:00", periods=4, freq="1min", tz=TZ)
     df = pd.DataFrame(

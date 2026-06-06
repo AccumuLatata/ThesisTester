@@ -97,6 +97,7 @@ def _append_timeframe_levels(
             # so merge_asof exposes higher-timeframe values only after candle completion.
             timeframe_levels["align_timestamp"] = timeframe_levels["timestamp"] + pd.to_timedelta(timeframe)
         else:
+            # Native/base-timeframe series are already aligned to the input timeline.
             timeframe_levels["align_timestamp"] = timeframe_levels["timestamp"]
 
         merged = pd.merge_asof(
