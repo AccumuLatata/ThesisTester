@@ -133,9 +133,12 @@ def _opening_range(
 
     or_levels = df.loc[in_or_window].groupby(session_date[in_or_window], sort=True).agg(OR_High=("high", "max"), OR_Low=("low", "min"))
 
-    first_rth_ts = df.loc[rth].groupby(session_date[rth], sort=True)["timestamp"].first()
-    available_after = session_date.map(first_rth_ts) + pd.to_timedelta(opening_range_minutes, unit="minute")
-    available_mask = df["timestamp"] >= available_after
+    # Gate OR availability by clock time: session midnight + RTH start + OR length.
+    # This is independent of whether the first RTH bar exists or is delayed.
+    tz = local_ts.dt.tz
+    session_midnight = pd.to_datetime(session_date).dt.tz_localize(tz)
+    available_after = session_midnight + pd.to_timedelta(start_minute + opening_range_minutes, unit="minute")
+    available_mask = local_ts >= available_after
 
     out["OR_High"] = session_date.map(or_levels["OR_High"]).where(available_mask).astype("float64")
     out["OR_Low"] = session_date.map(or_levels["OR_Low"]).where(available_mask).astype("float64")

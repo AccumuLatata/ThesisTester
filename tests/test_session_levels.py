@@ -153,6 +153,31 @@ def test_opening_range_not_visible_on_new_session_eth_bar():
     assert row["OR_Low"] == 100.0
 
 
+def test_opening_range_availability_is_clock_based_not_first_rth_bar():
+    # First RTH bar is 09:31 (09:30 missing due to data gap).
+    # Clock-based OR (5-min) completes at 09:35 ET regardless.
+    # OR should be visible at 09:35, NOT at 09:36 (which is what first-bar+offset gives).
+    # OR values are computed from bars inside [09:30, 09:35) that exist: 09:31–09:34.
+    df = _build_df(
+        [
+            ("2026-06-02 18:00:00", 90.0, 91.0, 89.0, 90.0),
+            ("2026-06-03 09:31:00", 100.0, 103.0, 100.0, 102.0),
+            ("2026-06-03 09:32:00", 101.0, 104.0, 101.0, 103.0),
+            ("2026-06-03 09:33:00", 102.0, 105.0, 102.0, 104.0),
+            ("2026-06-03 09:34:00", 103.0, 106.0, 103.0, 105.0),
+            ("2026-06-03 09:35:00", 104.0, 107.0, 104.0, 106.0),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES", opening_range_minutes=5)
+
+    assert pd.isna(levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-03 09:34:00", tz=TZ), "OR_High"]).all()
+    assert pd.isna(levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-03 09:34:00", tz=TZ), "OR_Low"]).all()
+
+    row_35 = levels[levels["timestamp"] == pd.Timestamp("2026-06-03 09:35:00", tz=TZ)].iloc[0]
+    assert row_35["OR_High"] == 106.0  # max high of 09:31–09:34 bars
+    assert row_35["OR_Low"] == 100.0   # min low of 09:31–09:34 bars
+
+
 def test_rth_open_causality_is_preserved():
     df = _build_df(
         [
