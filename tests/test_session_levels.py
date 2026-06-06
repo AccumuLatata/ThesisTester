@@ -218,6 +218,109 @@ def test_overnight_levels_exclude_post_rth_contamination_and_stay_hidden_pre_rth
     assert first_rth["ONL"] == 95.0
 
 
+def test_previous_session_levels_map_to_all_rows_of_next_session():
+    df = _build_df(
+        [
+            ("2026-06-01 18:00:00", 100.0, 105.0, 99.0, 101.0),
+            ("2026-06-02 08:00:00", 101.0, 110.0, 98.0, 109.0),
+            ("2026-06-02 09:30:00", 120.0, 121.0, 119.0, 120.0),
+            ("2026-06-02 15:59:00", 121.0, 123.0, 118.0, 122.0),
+            ("2026-06-02 18:00:00", 200.0, 205.0, 199.0, 201.0),
+            ("2026-06-03 08:00:00", 201.0, 206.0, 198.0, 204.0),
+            ("2026-06-03 09:30:00", 210.0, 212.0, 208.0, 211.0),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+
+    first_session = levels[levels["timestamp"] <= pd.Timestamp("2026-06-02 15:59:00", tz=TZ)]
+    assert first_session["pONH"].isna().all()
+    assert first_session["pONL"].isna().all()
+    assert first_session["pRTH_Open"].isna().all()
+
+    first_session_onh = levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-02 09:30:00", tz=TZ), "ONH"].iloc[0]
+    first_session_onl = levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-02 09:30:00", tz=TZ), "ONL"].iloc[0]
+    first_session_rth_open = levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-02 09:30:00", tz=TZ), "RTH_Open"].iloc[0]
+
+    second_session = levels[levels["timestamp"] >= pd.Timestamp("2026-06-02 18:00:00", tz=TZ)]
+    assert np.allclose(second_session["pONH"].to_numpy(), [first_session_onh] * len(second_session))
+    assert np.allclose(second_session["pONL"].to_numpy(), [first_session_onl] * len(second_session))
+    assert np.allclose(second_session["pRTH_Open"].to_numpy(), [first_session_rth_open] * len(second_session))
+
+
+def test_previous_session_levels_use_previous_observed_session_across_weekend_gap():
+    df = _build_df(
+        [
+            ("2026-06-04 18:00:00", 100.0, 105.0, 99.0, 101.0),
+            ("2026-06-05 08:00:00", 101.0, 110.0, 98.0, 109.0),
+            ("2026-06-05 09:30:00", 120.0, 121.0, 119.0, 120.0),
+            ("2026-06-07 18:00:00", 200.0, 205.0, 199.0, 201.0),
+            ("2026-06-08 09:30:00", 210.0, 212.0, 208.0, 211.0),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+
+    friday_onh = levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-05 09:30:00", tz=TZ), "ONH"].iloc[0]
+    friday_onl = levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-05 09:30:00", tz=TZ), "ONL"].iloc[0]
+    friday_rth_open = levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-05 09:30:00", tz=TZ), "RTH_Open"].iloc[0]
+
+    monday_session = levels[levels["timestamp"] >= pd.Timestamp("2026-06-07 18:00:00", tz=TZ)]
+    assert np.allclose(monday_session["pONH"].to_numpy(), [friday_onh] * len(monday_session))
+    assert np.allclose(monday_session["pONL"].to_numpy(), [friday_onl] * len(monday_session))
+    assert np.allclose(monday_session["pRTH_Open"].to_numpy(), [friday_rth_open] * len(monday_session))
+
+
+def test_previous_session_levels_are_nan_for_overnight_when_prior_session_has_no_eth():
+    df = _build_df(
+        [
+            ("2026-06-02 09:30:00", 100.0, 105.0, 99.0, 101.0),
+            ("2026-06-02 15:59:00", 101.0, 106.0, 98.0, 102.0),
+            ("2026-06-02 18:00:00", 200.0, 205.0, 199.0, 201.0),
+            ("2026-06-03 09:30:00", 210.0, 212.0, 208.0, 211.0),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+
+    next_session = levels[levels["timestamp"] >= pd.Timestamp("2026-06-02 18:00:00", tz=TZ)]
+    assert next_session["pONH"].isna().all()
+    assert next_session["pONL"].isna().all()
+    assert np.allclose(next_session["pRTH_Open"].to_numpy(), [100.0] * len(next_session))
+
+
+def test_previous_session_levels_are_nan_for_rth_open_when_prior_session_has_no_rth():
+    df = _build_df(
+        [
+            ("2026-06-01 18:00:00", 100.0, 110.0, 100.0, 105.0),
+            ("2026-06-02 08:00:00", 101.0, 120.0, 95.0, 110.0),
+            ("2026-06-02 18:00:00", 200.0, 205.0, 199.0, 201.0),
+            ("2026-06-03 09:30:00", 210.0, 212.0, 208.0, 211.0),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+
+    next_session = levels[levels["timestamp"] >= pd.Timestamp("2026-06-02 18:00:00", tz=TZ)]
+    assert np.allclose(next_session["pONH"].to_numpy(), [120.0] * len(next_session))
+    assert np.allclose(next_session["pONL"].to_numpy(), [95.0] * len(next_session))
+    assert next_session["pRTH_Open"].isna().all()
+
+
+def test_previous_session_overnight_levels_exclude_post_rth_pre_eth_contamination():
+    df = _build_df(
+        [
+            ("2026-06-02 18:00:00", 100.0, 110.0, 100.0, 105.0),
+            ("2026-06-03 08:00:00", 101.0, 120.0, 95.0, 110.0),
+            ("2026-06-03 09:30:00", 111.0, 125.0, 109.0, 120.0),
+            ("2026-06-03 16:30:00", 90.0, 999.0, 1.0, 90.0),
+            ("2026-06-03 18:00:00", 200.0, 205.0, 199.0, 201.0),
+            ("2026-06-04 09:30:00", 210.0, 212.0, 208.0, 211.0),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+
+    next_session = levels[levels["timestamp"] >= pd.Timestamp("2026-06-03 18:00:00", tz=TZ)]
+    assert np.allclose(next_session["pONH"].to_numpy(), [120.0] * len(next_session))
+    assert np.allclose(next_session["pONL"].to_numpy(), [95.0] * len(next_session))
+
+
 def test_prev_settlement_fallback_uses_prior_rth_close_not_post_rth():
     # Previous session has RTH close at 15:59 (close=111.0) and a post-RTH/pre-ETH bar
     # at 16:59 (close=999.0). The new session starts at 18:00.
@@ -277,6 +380,9 @@ def test_batch_vs_incremental_causality_matches_with_eth_session_boundaries():
         "pmLow",
         "pmEQ",
         "RTH_Open",
+        "pONH",
+        "pONL",
+        "pRTH_Open",
         "ONH",
         "ONL",
         "OR_High",
