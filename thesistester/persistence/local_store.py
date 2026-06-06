@@ -43,6 +43,10 @@ def _dataset_manifest_path() -> Path:
     return _datasets_root() / "manifest.json"
 
 
+def _ui_state_path() -> Path:
+    return get_store_root() / "ui_state.json"
+
+
 def _dataset_dir(dataset_id: str) -> Path:
     return _datasets_root() / dataset_id
 
@@ -69,6 +73,94 @@ def _write_json(path: Path, payload: Any) -> None:
 
 def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _default_ui_state() -> dict[str, Any]:
+    return {
+        "schema_version": PERSISTENCE_SCHEMA_VERSION,
+        "active_dataset_id": None,
+        "active_levels_by_dataset": {},
+        "updated_at": None,
+    }
+
+
+def _normalize_ui_state(raw_state: dict[str, Any] | None) -> dict[str, Any]:
+    state = _default_ui_state()
+    if not isinstance(raw_state, dict):
+        return state
+
+    active_dataset_id = raw_state.get("active_dataset_id")
+    state["active_dataset_id"] = active_dataset_id if isinstance(active_dataset_id, str) else None
+
+    active_levels_raw = raw_state.get("active_levels_by_dataset")
+    active_levels: dict[str, str] = {}
+    if isinstance(active_levels_raw, dict):
+        for dataset_id, settings_hash in active_levels_raw.items():
+            if isinstance(dataset_id, str) and isinstance(settings_hash, str):
+                active_levels[dataset_id] = settings_hash
+    state["active_levels_by_dataset"] = active_levels
+    state["updated_at"] = raw_state.get("updated_at")
+    return state
+
+
+def load_ui_state() -> dict[str, Any]:
+    """Load optional UI state pointers from local persistence."""
+    ui_state_path = _ui_state_path()
+    if not ui_state_path.exists():
+        return _default_ui_state()
+    try:
+        raw_state = _read_json(ui_state_path)
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
+        return _default_ui_state()
+    return _normalize_ui_state(raw_state)
+
+
+def save_ui_state(state: dict[str, Any]) -> None:
+    """Persist UI state pointers for local rehydration."""
+    normalized = _normalize_ui_state(state)
+    normalized["updated_at"] = _utcnow_iso()
+    _write_json(_ui_state_path(), normalized)
+
+
+def get_active_dataset_id() -> str | None:
+    """Return the active saved dataset id, if any."""
+    active_dataset_id = load_ui_state().get("active_dataset_id")
+    return active_dataset_id if isinstance(active_dataset_id, str) else None
+
+
+def set_active_dataset_id(dataset_id: str | None) -> None:
+    """Set or clear the active saved dataset id pointer."""
+    state = load_ui_state()
+    state["active_dataset_id"] = dataset_id if isinstance(dataset_id, str) else None
+    save_ui_state(state)
+
+
+def get_active_levels_hash(dataset_id: str) -> str | None:
+    """Return the active levels settings hash for a dataset, if any."""
+    if not dataset_id:
+        return None
+    active_levels = load_ui_state().get("active_levels_by_dataset", {})
+    if not isinstance(active_levels, dict):
+        return None
+    settings_hash = active_levels.get(dataset_id)
+    return settings_hash if isinstance(settings_hash, str) else None
+
+
+def set_active_levels_hash(dataset_id: str, settings_hash: str | None) -> None:
+    """Set or clear the active levels settings hash for a dataset."""
+    if not dataset_id:
+        return
+    state = load_ui_state()
+    active_levels = state.get("active_levels_by_dataset")
+    if not isinstance(active_levels, dict):
+        active_levels = {}
+    active_levels = {str(key): str(value) for key, value in active_levels.items()}
+    if isinstance(settings_hash, str):
+        active_levels[dataset_id] = settings_hash
+    else:
+        active_levels.pop(dataset_id, None)
+    state["active_levels_by_dataset"] = active_levels
+    save_ui_state(state)
 
 
 def _normalize_json_value(value: Any) -> Any:
@@ -294,6 +386,9 @@ def delete_dataset(dataset_id: str) -> None:
     if related_levels_dir.exists():
         shutil.rmtree(related_levels_dir)
 
+    if get_active_dataset_id() == dataset_id:
+        set_active_dataset_id(None)
+    set_active_levels_hash(dataset_id, None)
     _refresh_dataset_manifest()
 
 

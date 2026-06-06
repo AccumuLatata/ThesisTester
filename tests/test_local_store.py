@@ -9,13 +9,19 @@ from thesistester.persistence.local_store import (
     delete_dataset,
     delete_levels,
     find_matching_levels,
+    get_active_dataset_id,
+    get_active_levels_hash,
     get_store_root,
     list_datasets,
     list_saved_levels,
+    load_ui_state,
     load_dataset,
     load_levels,
     save_dataset,
+    save_ui_state,
     save_levels,
+    set_active_dataset_id,
+    set_active_levels_hash,
 )
 
 
@@ -296,3 +302,59 @@ def test_default_store_root_stable(monkeypatch):
 
     persistence_dir = Path(local_store.__file__).resolve().parent
     assert not str(root).startswith(str(persistence_dir))
+
+
+def test_load_ui_state_missing_file_returns_defaults():
+    state = load_ui_state()
+    assert state["active_dataset_id"] is None
+    assert state["active_levels_by_dataset"] == {}
+
+
+def test_ui_state_roundtrip_active_dataset_id():
+    set_active_dataset_id("dataset-abc")
+    assert get_active_dataset_id() == "dataset-abc"
+    state = load_ui_state()
+    assert state["active_dataset_id"] == "dataset-abc"
+
+
+def test_clear_active_dataset_id():
+    set_active_dataset_id("dataset-abc")
+    set_active_dataset_id(None)
+    assert get_active_dataset_id() is None
+
+
+def test_active_levels_hash_per_dataset_roundtrip():
+    set_active_levels_hash("dataset-1", "hash-1")
+    set_active_levels_hash("dataset-2", "hash-2")
+    assert get_active_levels_hash("dataset-1") == "hash-1"
+    assert get_active_levels_hash("dataset-2") == "hash-2"
+
+
+def test_clear_active_levels_hash():
+    set_active_levels_hash("dataset-1", "hash-1")
+    set_active_levels_hash("dataset-1", None)
+    assert get_active_levels_hash("dataset-1") is None
+
+
+def test_load_ui_state_corrupt_file_is_safe(tmp_path, monkeypatch):
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    ui_state_path = Path(get_store_root()) / "ui_state.json"
+    ui_state_path.parent.mkdir(parents=True, exist_ok=True)
+    ui_state_path.write_text("{not-json", encoding="utf-8")
+
+    state = load_ui_state()
+    assert state["active_dataset_id"] is None
+    assert state["active_levels_by_dataset"] == {}
+
+
+def test_save_ui_state_roundtrip():
+    save_ui_state(
+        {
+            "schema_version": 1,
+            "active_dataset_id": "dataset-roundtrip",
+            "active_levels_by_dataset": {"dataset-roundtrip": "hash-roundtrip"},
+        }
+    )
+    state = load_ui_state()
+    assert state["active_dataset_id"] == "dataset-roundtrip"
+    assert state["active_levels_by_dataset"]["dataset-roundtrip"] == "hash-roundtrip"
