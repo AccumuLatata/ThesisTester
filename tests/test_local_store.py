@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from thesistester.persistence.local_store import (
+    compute_levels_settings_hash,
     compute_signal_settings_hash,
     compute_dataset_id,
     delete_dataset,
@@ -66,6 +67,8 @@ def _levels_settings(**overrides) -> dict:
         "opening_range_minutes": 30,
         "sma_lengths": [20, 50, 200],
         "ema_lengths": [20, 50, 200],
+        "sma_timeframes": ["1min"],
+        "ema_timeframes": ["1min"],
         "vwap_windows": ["15min", "1h"],
         "poc_windows": ["30min", "4h"],
         "value_area_pct": 0.7,
@@ -402,6 +405,20 @@ def test_compute_signal_settings_hash_is_deterministic():
     }
 
     assert compute_signal_settings_hash(settings_one) == compute_signal_settings_hash(settings_two)
+
+
+def test_compute_levels_settings_hash_changes_when_indicator_timeframes_change():
+    base = _levels_settings(sma_timeframes=["1min"], ema_timeframes=["1min"])
+    changed = _levels_settings(sma_timeframes=["1min", "5min"], ema_timeframes=["1min"])
+
+    assert compute_levels_settings_hash(base) != compute_levels_settings_hash(changed)
+
+
+def test_compute_levels_settings_hash_handles_none_indicator_timeframes():
+    with_none = _levels_settings(sma_timeframes=None, ema_timeframes=None)
+    with_default = _levels_settings(sma_timeframes=["1min"], ema_timeframes=["1min"])
+
+    assert compute_levels_settings_hash(with_none) != compute_levels_settings_hash(with_default)
 
 
 def test_compute_signal_settings_hash_ignores_selected_levels_order():
