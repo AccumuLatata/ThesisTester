@@ -104,7 +104,7 @@ def _saved_levels_label(meta: dict) -> str:
     created_at = str(created_at_raw)[:10] if created_at_raw else "unknown date"
     return (
         f"{str(meta.get('settings_hash', 'unknown'))[:12]}… · OR {opening_range}m · "
-        f"VA {value_area_label} · D/W/M agg {daily_agg}/{weekly_agg}/{monthly_agg} · saved {created_at}"
+        f"VA {value_area_label} · Daily/Weekly/Monthly agg {daily_agg}/{weekly_agg}/{monthly_agg} · saved {created_at}"
     )
 
 
@@ -271,7 +271,7 @@ aggregation_help = (
     "Does not change instrument tick size or rolling POC windows."
 )
 prior_day_aggregation_ticks = st.number_input(
-    "Daily VA aggregation (ticks)",
+    "Daily Value Area aggregation (ticks)",
     min_value=1,
     value=1,
     step=1,
@@ -279,7 +279,7 @@ prior_day_aggregation_ticks = st.number_input(
     help=aggregation_help,
 )
 prior_week_aggregation_ticks = st.number_input(
-    "Weekly VA aggregation (ticks)",
+    "Weekly Value Area aggregation (ticks)",
     min_value=1,
     value=1,
     step=1,
@@ -287,7 +287,7 @@ prior_week_aggregation_ticks = st.number_input(
     help=aggregation_help,
 )
 prior_month_aggregation_ticks = st.number_input(
-    "Monthly VA aggregation (ticks)",
+    "Monthly Value Area aggregation (ticks)",
     min_value=1,
     value=1,
     step=1,
