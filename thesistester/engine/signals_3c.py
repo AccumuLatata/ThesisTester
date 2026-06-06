@@ -25,8 +25,8 @@ _DEFAULT_3C_PARAMS: dict[str, float | int] = {
 def _normalize_3c_params(params: dict | None) -> dict[str, float | int]:
     p = params or {}
     return {
-        # arrival_tolerance_ticks is parsed for backward compat but always forced to 0
-        # in execution — arrival must actually touch the key level.
+        # arrival_tolerance_ticks may appear in legacy configs, but its value is
+        # intentionally ignored and normalized to 0.0 (strict level touch only).
         "arrival_tolerance_ticks": 0.0,
         "entry_retrace_ticks": float(p.get("entry_retrace_ticks", _DEFAULT_3C_PARAMS["entry_retrace_ticks"])),
         "max_entry_wait_bars_after_reversal": int(

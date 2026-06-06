@@ -91,7 +91,7 @@ A **setup** is defined by:
   - `reject` (touch + close back out → mean-reversion / fade)
   - `break` (close through → continuation/breakout)
   - `reclaim` (break then close back → trap)
-  - `confirm_3bar` (three-bar level interaction + reversal + bar-3 retracement limit entry)
+  - `3c` (three-candle level interaction + reversal + retracement entry)
 - **Direction** — long / short / both.
 - **Risk model** — SL and TP definitions (§7).
 - **Session filter** — time-of-day window (§8) and date range.
@@ -201,14 +201,14 @@ variants.
 
 | Variant | Notes |
 |---|---|
-| `3c-long` | Standard long |
-| `3c-short` | Standard short |
-| `muted-3c-long` | Long with inside candle(s) between arrival and reversal |
-| `muted-3c-short` | Short with inside candle(s) between arrival and reversal |
-| `3c-sfp-long` | Long SFP reversal |
-| `3c-sfp-short` | Short SFP reversal |
-| `muted-3c-sfp-long` | Muted + SFP long |
-| `muted-3c-sfp-short` | Muted + SFP short |
+| `3c_long` | Standard long |
+| `3c_short` | Standard short |
+| `3c_long_muted` | Long with inside candle(s) between arrival and reversal |
+| `3c_short_muted` | Short with inside candle(s) between arrival and reversal |
+| `3c_sfp_long` | Long SFP reversal |
+| `3c_sfp_short` | Short SFP reversal |
+| `3c_sfp_long_muted` | Muted + SFP long |
+| `3c_sfp_short_muted` | Muted + SFP short |
 
 **4 rules — Long**
 
@@ -253,7 +253,12 @@ key level; a near miss does not qualify.  The parameter is still accepted in
 `trigger_params` for backward compatibility with old saved configs, but its value is
 always ignored — effective tolerance is forced to zero.
 
-**Parameters table (confirm_3bar legacy — still supported)**
+**Historical note (removed trigger: `confirm_3bar`)**
+
+> `confirm_3bar` is not supported in the current app. The supported triggers are:
+> `touch`, `reject`, `break`, `reclaim`, and `3c`.
+
+**Historical parameters table (reference only)**
 
 | Parameter | Meaning |
 |---|---|
@@ -364,7 +369,7 @@ always ignored — effective tolerance is forced to zero.
 
 ### 7.2 Trade simulation (bar-by-bar, conservative fills)
 - **Entry:** at trigger bar close (or next-bar open — configurable; default next-bar open to avoid look-ahead).
-  Exception: `confirm_3bar` uses a conditional limit entry during bar 3 and only fills if retracement trades.
+  Exception: `3c` filled signals use an entry-bar retracement trigger/price.
 - **SL / TP definitions** (each independently selectable):
   - Fixed: ticks / points / %.
   - **ATR-multiple** (volatility-normalised) — recommended default.
@@ -626,7 +631,7 @@ rule_results
 4. **Intrabar fill assumption:** SL-first / pessimistic when both SL and TP are reachable in one candle.
 5. **Default entry timing:** next-bar open for simple triggers to avoid look-ahead bias.
 6. **Value-area percentage:** 70% default.
-7. **Trigger-specific exception:** `confirm_3bar` does not use default next-bar-open entry; it uses a bar-3 activation + stop-limit-style fill model and is void if either requirement is not traded.
+7. **Trigger-specific exception:** `3c` filled signals do not use default next-bar-open entry; they use the entry-bar retracement trigger/price model.
 
 ---
 

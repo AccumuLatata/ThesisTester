@@ -217,7 +217,8 @@ def _normalize_confirm_3bar_params(trigger_params: dict | None) -> dict:
 def _normalize_3c_params(trigger_params: dict | None) -> dict:
     params = trigger_params or {}
     return {
-        # arrival_tolerance_ticks is deprecated; always forced to 0 in execution.
+        # arrival_tolerance_ticks may appear in legacy configs, but its value is
+        # intentionally ignored and normalized to 0.0.
         "arrival_tolerance_ticks": 0.0,
         "entry_retrace_ticks": float(
             params.get("entry_retrace_ticks", _DEFAULT_3C_PARAMS["entry_retrace_ticks"])

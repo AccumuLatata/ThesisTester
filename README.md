@@ -88,8 +88,8 @@ Manual controls on the Signals page remain global-cluster only. To use anchor-ba
 - **3c trigger — authoritative 4-rule / 8-variant model:**
 
   The `3c` trigger implements a 3-candle entry sequence with 8 named variants:
-  `3c-long`, `3c-short`, `muted-3c-long`, `muted-3c-short`, `3c-sfp-long`,
-  `3c-sfp-short`, `muted-3c-sfp-long`, `muted-3c-sfp-short`.
+  `3c_long`, `3c_short`, `3c_long_muted`, `3c_short_muted`, `3c_sfp_long`,
+  `3c_sfp_short`, `3c_sfp_long_muted`, `3c_sfp_short_muted`.
 
   **4 rules (long):**
   1. Arrival candle must touch or pass through the key level.

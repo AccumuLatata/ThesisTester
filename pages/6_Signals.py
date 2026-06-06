@@ -183,7 +183,8 @@ def _render_anchor_diagnostics(zones: pd.DataFrame) -> None:
 def _normalize_3c_params(params: dict | None) -> dict:
     trigger_params = params or {}
     return {
-        # arrival_tolerance_ticks is deprecated; always forced to 0 in execution.
+        # arrival_tolerance_ticks may appear in legacy configs, but its value is
+        # intentionally ignored and normalized to 0.0.
         "arrival_tolerance_ticks": 0.0,
         "entry_retrace_ticks": float(trigger_params.get("entry_retrace_ticks", 4.0)),
         "max_entry_wait_bars_after_reversal": int(trigger_params.get("max_entry_wait_bars_after_reversal", 5)),

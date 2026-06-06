@@ -45,8 +45,8 @@ DEFAULT_3C_PARAMS: dict[str, Any] = {
 def _normalize_3c_params(params: dict[str, Any] | None) -> dict[str, Any]:
     trigger_params = params or {}
     return {
-        # arrival_tolerance_ticks is loaded from config for backward compat but
-        # always ignored/forced to 0 in execution.
+        # arrival_tolerance_ticks may appear in legacy configs, but its value is
+        # intentionally ignored and normalized to 0.0.
         "arrival_tolerance_ticks": 0.0,
         "entry_retrace_ticks": float(
             trigger_params.get("entry_retrace_ticks", DEFAULT_3C_PARAMS["entry_retrace_ticks"])
