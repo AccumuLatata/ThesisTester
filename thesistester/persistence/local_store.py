@@ -86,7 +86,7 @@ def _setup_dir(setup_id: str) -> Path:
 
 def _validate_setup_id(setup_id: str) -> str:
     if not isinstance(setup_id, str):
-        raise ValueError("setup_id must be a non-empty string.")
+        raise ValueError("setup_id must be a string.")
     normalized = setup_id.strip()
     if not normalized:
         raise ValueError("setup_id must be a non-empty string.")
