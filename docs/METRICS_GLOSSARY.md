@@ -53,4 +53,5 @@ Implementation: `cum_r`, `cummax().clip(lower=0.0)`, and drawdown in `thesistest
 
 ## Notes
 - Metrics are gross because trade P&L is computed without commissions/fees/slippage (`thesistester/engine/backtest.py:73-82,259-260`).
+- Backtest directional KPIs ("Long vs Short KPIs") use the same formulas above, applied independently to `direction == "long"` and `direction == "short"` subsets.
 - Validation pages label outputs as diagnostic only (`pages/10_Validation.py:18`, `thesistester/analytics/validation.py:13`).

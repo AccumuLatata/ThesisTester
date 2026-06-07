@@ -4,7 +4,12 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from thesistester.analytics.metrics import equity_curve, summarize_by_group, summarize_trades
+from thesistester.analytics.metrics import (
+    equity_curve,
+    summarize_by_group,
+    summarize_trades,
+    summarize_trades_by_direction,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +100,90 @@ def test_expectancy():
     t = _trades(2.0, -1.0)   # 50% win, avg_win=2, avg_loss=-1 → 0.5*2 + 0.5*(-1) = 0.5
     s = summarize_trades(t)
     assert s["expectancy_r"] == pytest.approx(0.5)
+
+
+def test_summarize_trades_by_direction_mixed_long_short():
+    t = pd.DataFrame(
+        {
+            "trade_id": [1, 2, 3, 4],
+            "direction": ["long", "long", "short", "short"],
+            "r_multiple": [1.0, -0.5, 2.0, -1.0],
+        }
+    )
+    out = summarize_trades_by_direction(t)
+    assert out["long"]["trade_count"] == 2
+    assert out["short"]["trade_count"] == 2
+    assert out["long"]["total_r"] == pytest.approx(0.5)
+    assert out["short"]["total_r"] == pytest.approx(1.0)
+
+
+def test_summarize_trades_by_direction_only_long():
+    t = pd.DataFrame(
+        {"trade_id": [1, 2], "direction": ["long", "long"], "r_multiple": [1.0, -1.0]}
+    )
+    out = summarize_trades_by_direction(t)
+    assert out["long"]["trade_count"] == 2
+    assert out["short"]["trade_count"] == 0
+    assert out["short"]["profit_factor"] is None
+
+
+def test_summarize_trades_by_direction_only_short():
+    t = pd.DataFrame(
+        {"trade_id": [1, 2], "direction": ["short", "short"], "r_multiple": [1.0, -1.0]}
+    )
+    out = summarize_trades_by_direction(t)
+    assert out["short"]["trade_count"] == 2
+    assert out["long"]["trade_count"] == 0
+    assert out["long"]["profit_factor"] is None
+
+
+def test_summarize_trades_by_direction_empty():
+    out = summarize_trades_by_direction(pd.DataFrame())
+    assert out["long"]["trade_count"] == 0
+    assert out["short"]["trade_count"] == 0
+    assert out["long"]["win_rate"] is None
+    assert out["short"]["win_rate"] is None
+
+
+def test_summarize_trades_by_direction_missing_r_multiple_is_safe():
+    t = pd.DataFrame(
+        {
+            "trade_id": [1, 2],
+            "direction": ["long", "short"],
+        }
+    )
+    out = summarize_trades_by_direction(t)
+    assert out["long"]["trade_count"] == 0
+    assert out["short"]["trade_count"] == 0
+    assert out["long"]["profit_factor"] is None
+    assert out["short"]["profit_factor"] is None
+
+
+def test_summarize_trades_by_direction_missing_direction_is_safe():
+    t = pd.DataFrame(
+        {
+            "trade_id": [1, 2],
+            "r_multiple": [1.0, -1.0],
+        }
+    )
+    out = summarize_trades_by_direction(t)
+    assert out["long"]["trade_count"] == 0
+    assert out["short"]["trade_count"] == 0
+    assert out["long"]["profit_factor"] is None
+    assert out["short"]["profit_factor"] is None
+
+
+def test_summarize_trades_by_direction_infinite_profit_factor_case():
+    t = pd.DataFrame(
+        {
+            "trade_id": [1, 2, 3],
+            "direction": ["long", "long", "short"],
+            "r_multiple": [1.0, 2.0, -1.0],
+        }
+    )
+    out = summarize_trades_by_direction(t)
+    assert out["long"]["profit_factor"] == float("inf")
+    assert out["short"]["profit_factor"] == 0.0
 
 
 def test_grouped_summary_empty_is_safe():

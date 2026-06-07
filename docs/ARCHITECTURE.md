@@ -16,6 +16,9 @@ flowchart LR
 
 Flow basis in app workflow and phase pages: `app.py:12-33`, `pages/1_Data.py`, `pages/5_Levels.py`, `pages/2_Setup_Builder.py`, `pages/6_Signals.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/9_Time_Analysis.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`.
 
+Backtest UI note: `pages/7_Backtest.py` shows both combined KPIs and a separate directional
+("Long vs Short KPIs") section sourced from the same `trades` DataFrame.
+
 ## `st.session_state` contract (current)
 
 | Key | Producing page(s) | Consuming page(s) | Schema (observed) |

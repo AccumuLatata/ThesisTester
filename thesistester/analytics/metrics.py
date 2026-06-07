@@ -9,6 +9,24 @@ import numpy as np
 import pandas as pd
 
 
+def _empty_trade_summary() -> dict:
+    return {
+        "trade_count": 0,
+        "win_rate": None,
+        "loss_rate": None,
+        "avg_r": None,
+        "median_r": None,
+        "total_r": None,
+        "profit_factor": None,
+        "avg_win_r": None,
+        "avg_loss_r": None,
+        "max_drawdown_r": None,
+        "expectancy_r": None,
+        "best_trade_r": None,
+        "worst_trade_r": None,
+    }
+
+
 def summarize_trades(trades: pd.DataFrame) -> dict:
     """Compute performance metrics for a completed trade set.
 
@@ -24,21 +42,7 @@ def summarize_trades(trades: pd.DataFrame) -> dict:
         Performance metrics.  All values are ``None`` / 0 / 0.0 when
         *trades* is empty so callers can always display something.
     """
-    empty: dict = {
-        "trade_count": 0,
-        "win_rate": None,
-        "loss_rate": None,
-        "avg_r": None,
-        "median_r": None,
-        "total_r": None,
-        "profit_factor": None,
-        "avg_win_r": None,
-        "avg_loss_r": None,
-        "max_drawdown_r": None,
-        "expectancy_r": None,
-        "best_trade_r": None,
-        "worst_trade_r": None,
-    }
+    empty: dict = _empty_trade_summary()
 
     if trades is None or trades.empty:
         return empty
@@ -99,6 +103,42 @@ def summarize_trades(trades: pd.DataFrame) -> dict:
         "best_trade_r": float(r.max()),
         "worst_trade_r": float(r.min()),
     }
+
+
+def summarize_trades_by_direction(trades: pd.DataFrame) -> dict[str, dict]:
+    """Compute long/short trade summaries with stable output keys.
+
+    Parameters
+    ----------
+    trades:
+        Trade table that may contain ``direction`` and ``r_multiple`` columns.
+        May be empty or ``None``.
+
+    Returns
+    -------
+    dict[str, dict]
+        Mapping with fixed ``"long"`` and ``"short"`` keys. Each value is the
+        output of :func:`summarize_trades` for that directional subset. Missing
+        or empty sides return the same safe empty-summary structure.
+    """
+    output: dict[str, dict] = {
+        "long": _empty_trade_summary(),
+        "short": _empty_trade_summary(),
+    }
+
+    if (
+        trades is None
+        or trades.empty
+        or "direction" not in trades.columns
+        or "r_multiple" not in trades.columns
+    ):
+        return output
+
+    direction_series = trades["direction"].astype(str).str.lower()
+    for direction in ("long", "short"):
+        subset = trades[direction_series == direction]
+        output[direction] = summarize_trades(subset)
+    return output
 
 
 def summarize_by_group(trades: pd.DataFrame, group_cols: list[str]) -> pd.DataFrame:
