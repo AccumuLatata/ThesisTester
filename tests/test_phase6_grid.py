@@ -273,3 +273,175 @@ def test_grid_uses_backtest_engine_known_r():
     assert row["total_r"] == pytest.approx(2.0)
     assert row["avg_r"] == pytest.approx(2.0)
     assert row["win_rate"] == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Directional grid columns
+# ---------------------------------------------------------------------------
+
+_DIRECTIONAL_COLS = [
+    "long_trade_count",
+    "long_profit_factor",
+    "long_expectancy_r",
+    "short_trade_count",
+    "short_profit_factor",
+    "short_expectancy_r",
+    "min_direction_trade_count",
+    "min_direction_profit_factor",
+    "min_direction_expectancy_r",
+]
+
+
+def test_directional_columns_exist():
+    """All Phase 2 directional columns must be present in grid output."""
+    grid = run_sl_tp_grid(
+        _OHLCV, _SIGNALS, TICK, POINT_VALUE,
+        stop_loss_ticks_values=SL_VALUES,
+        take_profit_ticks_values=TP_VALUES,
+    )
+    for col in _DIRECTIONAL_COLS:
+        assert col in grid.columns, f"Missing directional column: {col}"
+
+
+def test_long_only_grid_is_safe():
+    """Long-only signal set must produce safe directional metrics.
+
+    Existing synthetic data uses a long-only signal.
+    Expected:
+    - long_trade_count == 1
+    - short_trade_count == 0
+    - short_profit_factor is None (no short trades)
+    - min_direction_profit_factor is None (one side missing)
+    """
+    grid = run_sl_tp_grid(
+        _OHLCV, _SIGNALS, TICK, POINT_VALUE,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+    )
+    row = grid.iloc[0]
+    assert row["trade_count"] == 1
+    assert row["long_trade_count"] == 1
+    assert row["short_trade_count"] == 0
+    assert row["short_profit_factor"] is None
+    assert row["min_direction_profit_factor"] is None
+    assert row["min_direction_expectancy_r"] is None
+
+
+def _make_mixed_dataset():
+    """Build a minimal OHLCV + signals dataset with one long and one short signal.
+
+    Long signal (bar 0):
+      - entry bar 1 open = 100.0, long
+      - SL=4 ticks → 1.0 pt → stop at 99.0
+      - TP=8 ticks → 2.0 pt → target at 102.0
+      - Bar 1: high=102.5 > 102.0 → TP hit → R = +2.0
+
+    Short signal (bar 2):
+      - entry bar 3 open = 200.0, short
+      - SL=4 ticks → 1.0 pt → stop at 201.0
+      - TP=8 ticks → 2.0 pt → target at 198.0
+      - Bar 3: low=197.5 < 198.0 → TP hit → R = +2.0
+    """
+    TZ = "America/New_York"
+    ohlcv = pd.DataFrame([
+        {"timestamp": pd.Timestamp("2026-01-02 09:30", tz=TZ),
+         "open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0, "volume": 100.0},
+        {"timestamp": pd.Timestamp("2026-01-02 09:31", tz=TZ),
+         "open": 100.0, "high": 102.5, "low": 99.8, "close": 102.0, "volume": 100.0},
+        {"timestamp": pd.Timestamp("2026-01-02 09:32", tz=TZ),
+         "open": 200.0, "high": 200.5, "low": 199.5, "close": 200.0, "volume": 100.0},
+        {"timestamp": pd.Timestamp("2026-01-02 09:33", tz=TZ),
+         "open": 200.0, "high": 200.5, "low": 197.5, "close": 198.0, "volume": 100.0},
+    ])
+    signals = pd.DataFrame([
+        {
+            "signal_id": 0,
+            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
+            "bar_index": 0,
+            "trigger": "touch",
+            "direction": "long",
+            "zone_low": 99.5,
+            "zone_high": 100.5,
+            "zone_mid": 100.0,
+            "level_count": 2,
+            "level_names": "A|B",
+            "entry_reference_price": 100.0,
+            "entry_model": "candidate_next_bar_open",
+            "status": "candidate",
+            "naked_level_count": 0,
+            "naked_requirement": "any",
+            "notes": "",
+        },
+        {
+            "signal_id": 1,
+            "timestamp": pd.Timestamp("2026-01-02 09:32:00", tz=TZ),
+            "bar_index": 2,
+            "trigger": "touch",
+            "direction": "short",
+            "zone_low": 199.5,
+            "zone_high": 200.5,
+            "zone_mid": 200.0,
+            "level_count": 2,
+            "level_names": "C|D",
+            "entry_reference_price": 200.0,
+            "entry_model": "candidate_next_bar_open",
+            "status": "candidate",
+            "naked_level_count": 0,
+            "naked_requirement": "any",
+            "notes": "",
+        },
+    ])
+    return ohlcv, signals
+
+
+def test_mixed_directional_grid():
+    """Grid with long + short signals must compute both directional sides."""
+    ohlcv, signals = _make_mixed_dataset()
+    grid = run_sl_tp_grid(
+        ohlcv, signals, TICK, POINT_VALUE,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+    )
+    row = grid.iloc[0]
+    assert row["long_trade_count"] >= 1
+    assert row["short_trade_count"] >= 1
+    assert row["long_profit_factor"] is not None
+    assert row["short_profit_factor"] is not None
+    assert row["min_direction_profit_factor"] is not None
+    assert row["min_direction_expectancy_r"] is not None
+    assert row["min_direction_trade_count"] >= 1
+
+
+def test_best_grid_result_unchanged_with_new_columns():
+    """best_grid_result by expectancy_r still works after adding directional columns."""
+    grid = run_sl_tp_grid(
+        _OHLCV, _SIGNALS, TICK, POINT_VALUE,
+        stop_loss_ticks_values=SL_VALUES,
+        take_profit_ticks_values=TP_VALUES,
+    )
+    best = best_grid_result(grid, metric="expectancy_r")
+    assert best is not None
+    assert best["expectancy_r"] == grid["expectancy_r"].max()
+
+
+def test_best_grid_result_by_directional_metric():
+    """best_grid_result can rank by a directional metric when long trades exist."""
+    ohlcv, signals = _make_mixed_dataset()
+    grid = run_sl_tp_grid(
+        ohlcv, signals, TICK, POINT_VALUE,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+    )
+    best = best_grid_result(grid, metric="long_expectancy_r")
+    assert best is not None
+
+
+def test_best_grid_result_missing_metric_returns_none():
+    """best_grid_result returns None when metric column does not exist."""
+    grid = run_sl_tp_grid(
+        _OHLCV, _SIGNALS, TICK, POINT_VALUE,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+    )
+    result = best_grid_result(grid, metric="does_not_exist")
+    assert result is None

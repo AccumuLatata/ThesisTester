@@ -5,13 +5,92 @@ per grid cell.  All trade simulation is delegated to
 :func:`~thesistester.engine.backtest.simulate_trades` and
 :func:`~thesistester.analytics.metrics.summarize_trades` so that Phase 5
 assumptions are preserved exactly.
+
+Phase 2 extends each grid row with directional (long/short) metrics and
+balanced weaker-side summary columns computed from the same simulated trades.
 """
 from __future__ import annotations
 
 import pandas as pd
 
-from thesistester.analytics.metrics import summarize_trades
+from thesistester.analytics.metrics import summarize_trades, summarize_trades_by_direction
 from thesistester.engine.backtest import simulate_trades
+
+
+# ---------------------------------------------------------------------------
+# Private helpers for directional grid metrics
+# ---------------------------------------------------------------------------
+
+
+def _prefix_summary(summary: dict, prefix: str) -> dict:
+    """Return a copy of *summary* with every key prefixed by *prefix*."""
+    return {f"{prefix}{k}": v for k, v in summary.items()}
+
+
+def _min_valid(a: float | None, b: float | None) -> float | None:
+    """Return the minimum of two values, or ``None`` if either is ``None``."""
+    if a is None or b is None:
+        return None
+    return min(a, b)
+
+
+def _directional_grid_metrics(trades: pd.DataFrame) -> dict:
+    """Compute directional and balanced metrics for a single grid cell.
+
+    Parameters
+    ----------
+    trades:
+        Trade table for one (SL, TP) cell from ``simulate_trades``.
+
+    Returns
+    -------
+    dict
+        Long columns (``long_*``), short columns (``short_*``), and balanced
+        columns (``min_direction_*``).
+    """
+    direction_summary = summarize_trades_by_direction(trades)
+    long_s = direction_summary["long"]
+    short_s = direction_summary["short"]
+
+    long_cols = _prefix_summary(
+        {
+            "trade_count": long_s["trade_count"],
+            "win_rate": long_s["win_rate"],
+            "avg_r": long_s["avg_r"],
+            "expectancy_r": long_s["expectancy_r"],
+            "total_r": long_s["total_r"],
+            "profit_factor": long_s["profit_factor"],
+            "max_drawdown_r": long_s["max_drawdown_r"],
+        },
+        "long_",
+    )
+    short_cols = _prefix_summary(
+        {
+            "trade_count": short_s["trade_count"],
+            "win_rate": short_s["win_rate"],
+            "avg_r": short_s["avg_r"],
+            "expectancy_r": short_s["expectancy_r"],
+            "total_r": short_s["total_r"],
+            "profit_factor": short_s["profit_factor"],
+            "max_drawdown_r": short_s["max_drawdown_r"],
+        },
+        "short_",
+    )
+
+    # Balanced / weaker-side metrics.
+    # Use None when a side has no trades (profit_factor stays None in that case).
+    long_pf = long_s["profit_factor"] if long_s["trade_count"] > 0 else None
+    short_pf = short_s["profit_factor"] if short_s["trade_count"] > 0 else None
+    long_exp = long_s["expectancy_r"] if long_s["trade_count"] > 0 else None
+    short_exp = short_s["expectancy_r"] if short_s["trade_count"] > 0 else None
+
+    balanced_cols: dict = {
+        "min_direction_trade_count": min(long_s["trade_count"], short_s["trade_count"]),
+        "min_direction_profit_factor": _min_valid(long_pf, short_pf),
+        "min_direction_expectancy_r": _min_valid(long_exp, short_exp),
+    }
+
+    return {**long_cols, **short_cols, **balanced_cols}
 
 
 def run_sl_tp_grid(
@@ -58,7 +137,9 @@ def run_sl_tp_grid(
         ``stop_loss_ticks``, then ``take_profit_ticks``.
         Columns: ``stop_loss_ticks``, ``take_profit_ticks``, plus all
         metrics returned by :func:`summarize_trades`, plus
-        ``tp_sl_ratio``, ``risk_points``, ``target_points``.
+        ``tp_sl_ratio``, ``risk_points``, ``target_points``, and
+        directional columns (``long_*``, ``short_*``,
+        ``min_direction_*``).
 
     Raises
     ------
@@ -98,6 +179,7 @@ def run_sl_tp_grid(
                 allow_same_bar_exit=allow_same_bar_exit,
             )
             summary = summarize_trades(trades)
+            directional = _directional_grid_metrics(trades)
             row: dict = {
                 "stop_loss_ticks": sl,
                 "take_profit_ticks": tp,
@@ -105,6 +187,7 @@ def run_sl_tp_grid(
                 "tp_sl_ratio": tp / sl,
                 "risk_points": sl * tick_size,
                 "target_points": tp * tick_size,
+                **directional,
             }
             rows.append(row)
 

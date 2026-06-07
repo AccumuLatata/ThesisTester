@@ -55,3 +55,46 @@ Implementation: `cum_r`, `cummax().clip(lower=0.0)`, and drawdown in `thesistest
 - Metrics are gross because trade P&L is computed without commissions/fees/slippage (`thesistester/engine/backtest.py:73-82,259-260`).
 - Backtest directional KPIs ("Long vs Short KPIs") use the same formulas above, applied independently to `direction == "long"` and `direction == "short"` subsets.
 - Validation pages label outputs as diagnostic only (`pages/10_Validation.py:18`, `thesistester/analytics/validation.py:13`).
+
+## Grid Search directional metrics
+
+Each SL/TP grid cell includes long-side and short-side metrics computed by
+`summarize_trades_by_direction` applied to the same simulated trade set as the
+aggregate metrics.  Implementation: `thesistester/analytics/grid.py` —
+`_directional_grid_metrics()`.
+
+### Long/short columns
+
+For each direction `d` ∈ {`long`, `short`}:
+
+| Column | Description |
+|---|---|
+| `d_trade_count` | Number of trades in that direction |
+| `d_win_rate` | Win rate for that direction |
+| `d_avg_r` | Average R-multiple |
+| `d_expectancy_r` | Expectancy R (same formula as aggregate) |
+| `d_total_r` | Sum of R-multiples |
+| `d_profit_factor` | Profit factor (same formula as aggregate) |
+| `d_max_drawdown_r` | Max drawdown R for that direction |
+
+When a direction has zero trades, `profit_factor`, `expectancy_r`, and related
+values are `None`.
+
+### Balanced / weaker-side columns
+
+| Column | Description |
+|---|---|
+| `min_direction_trade_count` | `min(long_trade_count, short_trade_count)` |
+| `min_direction_profit_factor` | `min(long_profit_factor, short_profit_factor)`; `None` if either side missing |
+| `min_direction_expectancy_r` | `min(long_expectancy_r, short_expectancy_r)`; `None` if either side missing |
+
+`min_direction_expectancy_r` is the **recommended default directional ranking metric**
+because it rewards the weaker side being positive and avoids explosive values caused
+by Profit Factor's infinity behavior on small winning-only samples.
+
+### Small-sample caution
+
+Directional Profit Factor is unstable when one side has few trades.  A side with
+only wins produces `profit_factor = ∞`.  Use the **Min long trades** / **Min short
+trades** gates in Grid Search advanced mode to exclude cells with insufficient
+per-side sample sizes.  For serious research, values ≥ 10–30 per side are advisable.

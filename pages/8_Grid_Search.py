@@ -103,6 +103,68 @@ with st.sidebar:
         )
     )
 
+    st.subheader("Advanced directional ranking")
+    enable_directional = st.toggle(
+        "Enable directional ranking",
+        value=False,
+        help=(
+            "Rank by long/short or balanced directional metrics instead of "
+            "aggregate metrics.  Requires a minimum number of trades on each side."
+        ),
+    )
+
+    directional_metric = "expectancy_r"
+    min_long_trades = 1
+    min_short_trades = 1
+
+    if enable_directional:
+        directional_metric = st.selectbox(
+            "Directional ranking metric",
+            options=[
+                "expectancy_r",
+                "total_r",
+                "profit_factor",
+                "win_rate",
+                "long_expectancy_r",
+                "short_expectancy_r",
+                "long_profit_factor",
+                "short_profit_factor",
+                "min_direction_expectancy_r",
+                "min_direction_profit_factor",
+            ],
+            index=8,  # default: min_direction_expectancy_r
+            help=(
+                "Directional metrics reward the weaker side being positive.  "
+                "min_direction_expectancy_r is more conservative than Profit Factor."
+            ),
+        )
+        min_long_trades = int(
+            st.number_input(
+                "Min long trades",
+                min_value=1,
+                max_value=1000,
+                value=1,
+                step=1,
+                help=(
+                    "Grid cells with fewer long trades are excluded.  "
+                    "For real research, consider values ≥ 10–30."
+                ),
+            )
+        )
+        min_short_trades = int(
+            st.number_input(
+                "Min short trades",
+                min_value=1,
+                max_value=1000,
+                value=1,
+                step=1,
+                help=(
+                    "Grid cells with fewer short trades are excluded.  "
+                    "For real research, consider values ≥ 10–30."
+                ),
+            )
+        )
+
     run_btn = st.button("▶ Run grid search", type="primary", use_container_width=True)
 
 # ── Build SL / TP value lists ────────────────────────────────────────────────
@@ -143,6 +205,22 @@ if run_btn:
 
     best = best_grid_result(grid, metric=ranking_metric, min_trades=min_trades)
 
+    # Directional ranking: pre-filter by side-specific trade counts then rank.
+    if enable_directional:
+        active_metric = directional_metric
+        dir_filtered = grid.copy()
+        if "long_trade_count" in dir_filtered.columns:
+            dir_filtered = dir_filtered[
+                dir_filtered["long_trade_count"] >= min_long_trades
+            ]
+        if "short_trade_count" in dir_filtered.columns:
+            dir_filtered = dir_filtered[
+                dir_filtered["short_trade_count"] >= min_short_trades
+            ]
+        best = best_grid_result(dir_filtered, metric=active_metric, min_trades=min_trades)
+    else:
+        active_metric = ranking_metric
+
     st.session_state["grid_results"] = grid
     st.session_state["best_grid_result"] = best
 
@@ -164,6 +242,9 @@ def _fmt(v, fmt=".2f", fallback="—"):
         return fallback
 
 
+# Resolve the metric shown in the best-cell header
+active_metric = directional_metric if enable_directional else ranking_metric
+
 # Summary header
 n_combos = len(grid)
 st.write(f"**{n_combos}** combinations tested.")
@@ -173,7 +254,7 @@ if best is not None:
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("SL (ticks)", _fmt(best.get("stop_loss_ticks"), ".4g"))
     c2.metric("TP (ticks)", _fmt(best.get("take_profit_ticks"), ".4g"))
-    c3.metric(f"Best {ranking_metric}", _fmt(best.get(ranking_metric)))
+    c3.metric(f"Best {active_metric}", _fmt(best.get(active_metric)))
     c4.metric("Trades", int(best.get("trade_count", 0)))
     c5.metric("Win rate", _fmt(best.get("win_rate"), ".1%") if best.get("win_rate") is not None else "—")
     c6.metric("Max DD (R)", _fmt(best.get("max_drawdown_r")))
@@ -181,11 +262,36 @@ if best is not None:
     col_pf, col_tot = st.columns(2)
     col_pf.metric("Profit factor", _fmt(best.get("profit_factor")))
     col_tot.metric("Total R", _fmt(best.get("total_r")))
+
+    # Directional breakdown for the best cell (shown when columns exist)
+    if "long_trade_count" in grid.columns:
+        st.subheader("Best cell directional breakdown")
+        long_col, short_col = st.columns(2)
+        with long_col:
+            st.markdown("**Long**")
+            st.metric("Trades", int(best.get("long_trade_count", 0)))
+            st.metric("Win rate", _fmt(best.get("long_win_rate"), ".1%") if best.get("long_win_rate") is not None else "—")
+            st.metric("Avg R", _fmt(best.get("long_avg_r")))
+            st.metric("Total R", _fmt(best.get("long_total_r")))
+            st.metric("Profit factor", _fmt(best.get("long_profit_factor")))
+        with short_col:
+            st.markdown("**Short**")
+            st.metric("Trades", int(best.get("short_trade_count", 0)))
+            st.metric("Win rate", _fmt(best.get("short_win_rate"), ".1%") if best.get("short_win_rate") is not None else "—")
+            st.metric("Avg R", _fmt(best.get("short_avg_r")))
+            st.metric("Total R", _fmt(best.get("short_total_r")))
+            st.metric("Profit factor", _fmt(best.get("short_profit_factor")))
 else:
-    st.info(
-        f"No grid cell meets the minimum trade count of {min_trades}. "
-        "Try reducing the min trade count or widening the SL/TP ranges."
-    )
+    if enable_directional:
+        st.warning(
+            "No grid cell meets the directional trade-count requirements. "
+            "Reduce min long/short trades or widen the SL/TP range."
+        )
+    else:
+        st.info(
+            f"No grid cell meets the minimum trade count of {min_trades}. "
+            "Try reducing the min trade count or widening the SL/TP ranges."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -220,23 +326,32 @@ def _heatmap(grid: pd.DataFrame, metric: str, title: str) -> go.Figure:
     return fig
 
 
-# Heatmaps
+# Heatmaps — single metric selector
 st.subheader("Heatmaps")
-tab_exp, tab_total, tab_wr, tab_dd = st.tabs(
-    ["Expectancy / Avg R", "Total R", "Win rate", "Max drawdown R"]
+
+_heatmap_options_aggregate = [
+    "expectancy_r", "total_r", "profit_factor", "win_rate", "max_drawdown_r",
+]
+_heatmap_options_directional = [
+    "long_expectancy_r", "short_expectancy_r",
+    "long_profit_factor", "short_profit_factor",
+    "min_direction_expectancy_r", "min_direction_profit_factor",
+]
+_heatmap_all_options = _heatmap_options_aggregate + [
+    c for c in _heatmap_options_directional if c in grid.columns
+]
+
+heatmap_metric = st.selectbox(
+    "Heatmap metric",
+    options=[c for c in _heatmap_all_options if c in grid.columns],
+    index=0,
+    help="Select the metric to visualise across SL/TP combinations.",
 )
 
-with tab_exp:
-    st.plotly_chart(_heatmap(grid, "expectancy_r", "Expectancy R"), use_container_width=True)
-
-with tab_total:
-    st.plotly_chart(_heatmap(grid, "total_r", "Total R"), use_container_width=True)
-
-with tab_wr:
-    st.plotly_chart(_heatmap(grid, "win_rate", "Win rate"), use_container_width=True)
-
-with tab_dd:
-    st.plotly_chart(_heatmap(grid, "max_drawdown_r", "Max drawdown R"), use_container_width=True)
+st.plotly_chart(
+    _heatmap(grid, heatmap_metric, heatmap_metric.replace("_", " ").title()),
+    use_container_width=True,
+)
 
 # Full results table
 st.subheader("Full grid results")
@@ -247,5 +362,12 @@ display_cols = [c for c in [
     "avg_r", "expectancy_r", "median_r", "total_r",
     "profit_factor", "avg_win_r", "avg_loss_r",
     "max_drawdown_r", "best_trade_r", "worst_trade_r",
+    # Directional columns
+    "long_trade_count", "long_win_rate", "long_avg_r",
+    "long_expectancy_r", "long_total_r", "long_profit_factor",
+    "short_trade_count", "short_win_rate", "short_avg_r",
+    "short_expectancy_r", "short_total_r", "short_profit_factor",
+    "min_direction_trade_count", "min_direction_expectancy_r",
+    "min_direction_profit_factor",
 ] if c in grid.columns]
 st.dataframe(grid[display_cols], use_container_width=True, hide_index=True)

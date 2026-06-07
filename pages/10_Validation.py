@@ -98,11 +98,24 @@ with st.sidebar:
 
     grid_metric_options = ["expectancy_r", "avg_r", "total_r", "win_rate"]
     if grid_raw is not None and not grid_raw.empty:
-        grid_metric_options = [
-            c for c in grid_raw.columns
-            if c not in ("stop_loss_ticks", "take_profit_ticks",
-                         "tp_sl_ratio", "risk_points", "target_points")
-        ] or grid_metric_options
+        # Use an explicit allowlist to avoid polluting the selector with
+        # structural columns, trade counts, and every directional variant.
+        _grid_metric_allowlist = [
+            "expectancy_r",
+            "avg_r",
+            "total_r",
+            "profit_factor",
+            "win_rate",
+            "max_drawdown_r",
+            "long_expectancy_r",
+            "short_expectancy_r",
+            "long_profit_factor",
+            "short_profit_factor",
+            "min_direction_expectancy_r",
+            "min_direction_profit_factor",
+        ]
+        _available = [c for c in _grid_metric_allowlist if c in grid_raw.columns]
+        grid_metric_options = _available or grid_metric_options
 
     grid_metric = st.selectbox(
         "Grid metric",
