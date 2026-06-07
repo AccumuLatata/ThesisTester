@@ -739,6 +739,10 @@ def save_signal_run(
     signal_settings_hash = compute_signal_settings_hash(signal_settings)
     signal_run_dir = _signal_run_dir(dataset_id, levels_settings_hash, signal_settings_hash)
     signal_run_dir.mkdir(parents=True, exist_ok=True)
+    signals_path = signal_run_dir / SIGNALS_PARQUET_NAME
+    confluence_zones_path = signal_run_dir / CONFLUENCE_ZONES_PARQUET_NAME
+    naked_flags_path = signal_run_dir / NAKED_FLAGS_PARQUET_NAME
+    meta_path = signal_run_dir / "meta.json"
 
     metadata = {
         "schema_version": SIGNAL_RUN_SCHEMA_VERSION,
@@ -762,16 +766,19 @@ def save_signal_run(
         "created_at": _utcnow_iso(),
         "app_version": __version__,
     }
-    _canonicalize_dataframe(signals).to_parquet(signal_run_dir / SIGNALS_PARQUET_NAME, index=False)
+    _ensure_parent(signals_path)
+    _canonicalize_dataframe(signals).to_parquet(signals_path, index=False)
+    _ensure_parent(confluence_zones_path)
     _canonicalize_dataframe(confluence_zones).to_parquet(
-        signal_run_dir / CONFLUENCE_ZONES_PARQUET_NAME,
+        confluence_zones_path,
         index=False,
     )
+    _ensure_parent(naked_flags_path)
     _canonicalize_dataframe(naked_flags).to_parquet(
-        signal_run_dir / NAKED_FLAGS_PARQUET_NAME,
+        naked_flags_path,
         index=False,
     )
-    _write_json(signal_run_dir / "meta.json", metadata)
+    _write_json(meta_path, metadata)
     metadata["path"] = str(signal_run_dir)
     return metadata
 
