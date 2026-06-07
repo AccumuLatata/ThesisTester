@@ -159,6 +159,20 @@ def test_summarize_trades_by_direction_missing_r_multiple_is_safe():
     assert out["short"]["profit_factor"] is None
 
 
+def test_summarize_trades_by_direction_missing_direction_is_safe():
+    t = pd.DataFrame(
+        {
+            "trade_id": [1, 2],
+            "r_multiple": [1.0, -1.0],
+        }
+    )
+    out = summarize_trades_by_direction(t)
+    assert out["long"]["trade_count"] == 0
+    assert out["short"]["trade_count"] == 0
+    assert out["long"]["profit_factor"] is None
+    assert out["short"]["profit_factor"] is None
+
+
 def test_summarize_trades_by_direction_infinite_profit_factor_case():
     t = pd.DataFrame(
         {
