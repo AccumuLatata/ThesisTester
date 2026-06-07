@@ -617,6 +617,21 @@ class TestSimpleTriggerTimeframes:
         assert len(base) == 1
         assert five.empty
 
+    def test_base_trigger_timestamp_matches_canonical_bar_index(self):
+        df = self._ten_bars()
+        zones = _zone_df(1, low=99.8, high=100.0)
+        signals = generate_signals(
+            df,
+            zones,
+            trigger="break",
+            direction="long",
+            tick_size=TICK,
+            trigger_timeframe="base",
+        )
+        assert len(signals) == 1
+        signal = signals.iloc[0]
+        assert signal["timestamp"] == df["timestamp"].iloc[int(signal["bar_index"])]
+
     def test_non_base_trigger_timestamp_and_entry_stay_lookahead_safe(self):
         from thesistester.engine.backtest import simulate_trades
 
@@ -650,8 +665,9 @@ class TestSimpleTriggerTimeframes:
         assert signal["bar_index"] == 9
         assert signal["trigger_bar_index"] == 1
         assert signal["trigger_timeframe"] == "5min"
+        assert signal["timestamp"] == pd.Timestamp("2026-06-02 09:39:00", tz=TZ)
         assert signal["trigger_timestamp"] == pd.Timestamp("2026-06-02 09:40:00", tz=TZ)
-        assert signal["timestamp"] == pd.Timestamp("2026-06-02 09:40:00", tz=TZ)
+        assert signal["timestamp"] == df["timestamp"].iloc[int(signal["bar_index"])]
 
         trades = simulate_trades(
             df,

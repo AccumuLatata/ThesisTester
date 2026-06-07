@@ -391,6 +391,9 @@ def test_simple_trigger_five_min_enters_first_base_bar_after_trigger_close():
     assert int(signals.iloc[0]["bar_index"]) == 9
     assert int(signals.iloc[0]["trigger_bar_index"]) == 1
     assert signals.iloc[0]["trigger_timeframe"] == "5min"
+    assert signals.iloc[0]["timestamp"] == pd.Timestamp("2026-01-02 09:39:00", tz=TZ)
+    assert signals.iloc[0]["trigger_timestamp"] == pd.Timestamp("2026-01-02 09:40:00", tz=TZ)
+    assert signals.iloc[0]["timestamp"] == df["timestamp"].iloc[int(signals.iloc[0]["bar_index"])]
 
     trades = simulate_trades(df, signals, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8)
     assert len(trades) == 1

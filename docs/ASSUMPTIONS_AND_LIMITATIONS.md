@@ -22,6 +22,12 @@ This engine is for **research screening**, not proof of a durable edge.
 - The simulator loops each signal row independently (`for _, sig in signals.iterrows()`) and appends one trade result per signal (`thesistester/engine/backtest.py:137-140`, `264-301`).
 - There is no portfolio state, position netting, capital constraint, or overlap gate in this loop.
 
+### 5) Simple-trigger timestamp semantics are canonical/base aligned
+- For simple triggers (`touch`, `reject`, `break`, `reclaim`), emitted `timestamp` is always the canonical/base dataframe timestamp at `bar_index`.
+- When `trigger_timeframe` is non-base, trigger evaluation is performed on resampled trigger candles, and `trigger_timestamp` stores trigger-candle completion/actionability time.
+- Backtest entry for simple triggers remains `bar_index + 1` on the canonical/base dataframe (first base bar after trigger-candle completion).
+- `3c` remains base/current-timeframe only until dedicated multi-timeframe `3c` support is implemented.
+
 ## Validation implications
 - Validation diagnostics explicitly warn that assumptions like sign symmetry and independence limits apply; serial dependence is ignored (`thesistester/analytics/validation.py:10-11`, `115-117`).
 - Outputs are explicitly framed as diagnostics and not proof of edge (`thesistester/analytics/validation.py:13`, `pages/10_Validation.py:18`).

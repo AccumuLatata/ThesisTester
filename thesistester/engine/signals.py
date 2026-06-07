@@ -334,6 +334,7 @@ def _prepare_trigger_dataframe(df: pd.DataFrame, trigger_timeframe: str) -> pd.D
         trigger_df["trigger_timeframe"] = normalized_trigger_timeframe
         trigger_df["trigger_bar_start_timestamp"] = trigger_df["timestamp"]
         trigger_df["trigger_bar_end_timestamp"] = trigger_df["timestamp"]
+        trigger_df["base_end_timestamp"] = trigger_df["timestamp"]
         trigger_df["base_start_bar_index"] = trigger_df["__base_index"]
         trigger_df["base_end_bar_index"] = trigger_df["__base_index"]
         return trigger_df.drop(columns=["__base_index"])
@@ -342,6 +343,7 @@ def _prepare_trigger_dataframe(df: pd.DataFrame, trigger_timeframe: str) -> pd.D
     grouped = df_reset.copy()
     grouped["trigger_bar_start_timestamp"] = grouped["timestamp"].dt.floor(normalized_trigger_timeframe)
     grouped["trigger_bar_end_timestamp"] = grouped["trigger_bar_start_timestamp"] + timeframe_delta
+    grouped["base_end_timestamp"] = grouped["timestamp"]
 
     aggregations: dict[str, str] = {
         "open": "first",
@@ -351,6 +353,7 @@ def _prepare_trigger_dataframe(df: pd.DataFrame, trigger_timeframe: str) -> pd.D
         "volume": "sum",
         "__base_index": "last",
         "timestamp": "last",
+        "base_end_timestamp": "last",
     }
     for column in level_columns:
         aggregations[column] = "last"
@@ -401,7 +404,7 @@ def _check_touch(
     if bar["low"] <= zone["zone_high"] and bar["high"] >= zone["zone_low"]:
         return _make_signal(
             signal_id=signal_id,
-            ts=bar["trigger_bar_end_timestamp"],
+            ts=bar["base_end_timestamp"],
             bar_idx=base_bar_idx,
             trigger_bar_index=trigger_bar_idx,
             trigger_timeframe=trigger_timeframe,
@@ -439,7 +442,7 @@ def _check_reject(
         return None
     return _make_signal(
         signal_id=signal_id,
-        ts=bar["trigger_bar_end_timestamp"],
+        ts=bar["base_end_timestamp"],
         bar_idx=base_bar_idx,
         trigger_bar_index=trigger_bar_idx,
         trigger_timeframe=trigger_timeframe,
@@ -478,7 +481,7 @@ def _check_break(
         return None
     return _make_signal(
         signal_id=signal_id,
-        ts=bar["trigger_bar_end_timestamp"],
+        ts=bar["base_end_timestamp"],
         bar_idx=base_bar_idx,
         trigger_bar_index=trigger_bar_idx,
         trigger_timeframe=trigger_timeframe,
@@ -514,7 +517,7 @@ def _check_reclaim(
         return None
     return _make_signal(
         signal_id=signal_id,
-        ts=bar["trigger_bar_end_timestamp"],
+        ts=bar["base_end_timestamp"],
         bar_idx=base_bar_idx,
         trigger_bar_index=trigger_bar_idx,
         trigger_timeframe=trigger_timeframe,
@@ -707,8 +710,9 @@ def generate_signals(
     -----
     - Signals are **candidates only** in Phase 4; trade simulation (SL/TP,
       fills, P&L) is deferred to Phase 5.
-    - For simple triggers (touch / reject / break / reclaim) the signal
-      timestamp and bar_index correspond to the trigger bar.
+    - For simple triggers (touch / reject / break / reclaim), ``timestamp``
+      stays aligned to the canonical/base bar referenced by ``bar_index``.
+      ``trigger_timestamp`` stores trigger-candle completion time.
     - For ``3c`` one resolved setup row is emitted (``filled``/``void``).
     """
     if trigger not in VALID_TRIGGERS:
