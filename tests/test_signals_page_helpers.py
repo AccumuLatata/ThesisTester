@@ -84,6 +84,12 @@ def _import_page_helpers():
     return (
         mod._parse_anchor_rule_results,
         mod._render_anchor_diagnostics,
+        mod._dataset_relation_label,
+        mod._prioritize_saved_setups,
+        mod._saved_setup_option_label,
+        mod._filter_saved_setups_for_signals,
+        mod._saved_setup_compatibility_issues,
+        mod._extract_setup_snapshot_from_signal_run,
         mod._saved_setup_caption,
         mod._no_zones_message,
     )
@@ -92,6 +98,12 @@ def _import_page_helpers():
 (
     _parse_anchor_rule_results,
     _render_anchor_diagnostics,
+    _dataset_relation_label,
+    _prioritize_saved_setups,
+    _saved_setup_option_label,
+    _filter_saved_setups_for_signals,
+    _saved_setup_compatibility_issues,
+    _extract_setup_snapshot_from_signal_run,
     _saved_setup_caption,
     _no_zones_message,
 ) = _import_page_helpers()
@@ -245,6 +257,120 @@ def test_saved_setup_caption_anchor_mode():
         }
     )
     assert caption == "Mode=anchor_rules • Anchor=pdHigh • Rules=2 • Min valid=2 • Trigger TF=base"
+
+
+def test_dataset_relation_labels():
+    assert _dataset_relation_label("dataset-a", "dataset-a") == "current dataset"
+    assert _dataset_relation_label(None, "dataset-a") == "global/no dataset"
+    assert _dataset_relation_label("dataset-b", "dataset-a") == "other dataset"
+
+
+def test_saved_setup_prioritization_current_then_global_then_other():
+    setups = [
+        {"setup_id": "other", "dataset_id": "dataset-b"},
+        {"setup_id": "global", "dataset_id": None},
+        {"setup_id": "current", "dataset_id": "dataset-a"},
+    ]
+    prioritized = _prioritize_saved_setups(setups, current_dataset_id="dataset-a")
+    assert [item["setup_id"] for item in prioritized] == ["current", "global", "other"]
+
+
+def test_filter_saved_setups_defaults_to_current_and_global():
+    setups = [
+        {"setup_id": "other", "dataset_id": "dataset-b"},
+        {"setup_id": "global", "dataset_id": None},
+        {"setup_id": "current", "dataset_id": "dataset-a"},
+    ]
+    filtered = _filter_saved_setups_for_signals(
+        setups,
+        current_dataset_id="dataset-a",
+        include_other_datasets=False,
+    )
+    assert [item["setup_id"] for item in filtered] == ["current", "global"]
+
+
+def test_saved_setup_option_label_includes_dataset_relation():
+    label = _saved_setup_option_label(
+        {
+            "name": "My setup",
+            "instrument": "ES",
+            "updated_at": "2026-06-07T00:00:00Z",
+            "dataset_id": None,
+            "setup_config": {"confluence_mode": "global_cluster", "trigger": "touch", "direction": "both"},
+        },
+        "dataset-a",
+    )
+    assert "My setup · ES · 2026-06-07" in label
+    assert "mode=global_cluster" in label
+    assert "trigger=touch" in label
+    assert "direction=both" in label
+    assert "global/no dataset" in label
+
+
+def test_saved_setup_compatibility_detects_global_missing_levels():
+    issues = _saved_setup_compatibility_issues(
+        {
+            "confluence_mode": "global_cluster",
+            "selected_levels": ["ONH", "MISSING"],
+        },
+        ["ONH", "ONL"],
+    )
+    assert issues["selected_levels"] == ["MISSING"]
+    assert issues["anchor_level"] == []
+    assert issues["confluence_rules"] == []
+
+
+def test_saved_setup_compatibility_detects_anchor_missing_levels():
+    issues = _saved_setup_compatibility_issues(
+        {
+            "confluence_mode": "anchor_rules",
+            "anchor_level": "MISSING_ANCHOR",
+            "confluence_rules": [{"level": "ONH"}, {"level": "MISSING_RULE"}],
+        },
+        ["ONH", "ONL"],
+    )
+    assert issues["selected_levels"] == []
+    assert issues["anchor_level"] == ["MISSING_ANCHOR"]
+    assert issues["confluence_rules"] == ["MISSING_RULE"]
+
+
+def test_saved_setup_compatibility_valid_setup_has_no_issues():
+    issues = _saved_setup_compatibility_issues(
+        {
+            "confluence_mode": "anchor_rules",
+            "anchor_level": "ONH",
+            "confluence_rules": [{"level": "ONL"}],
+        },
+        ["ONH", "ONL"],
+    )
+    assert issues == {"selected_levels": [], "anchor_level": [], "confluence_rules": []}
+
+
+def test_extract_setup_snapshot_prefers_signal_settings_snapshot():
+    snapshot = _extract_setup_snapshot_from_signal_run(
+        {
+            "signal_settings": {"setup_snapshot": {"name": "from-settings"}},
+            "last_signal_setup": {"name": "fallback"},
+        }
+    )
+    assert snapshot == {"name": "from-settings"}
+
+
+def test_extract_setup_snapshot_falls_back_to_last_signal_setup():
+    snapshot = _extract_setup_snapshot_from_signal_run(
+        {
+            "signal_settings": {"setup_snapshot": None},
+            "last_signal_setup": {"name": "fallback"},
+        }
+    )
+    assert snapshot == {"name": "fallback"}
+
+
+def test_extract_setup_snapshot_handles_missing_snapshot():
+    snapshot = _extract_setup_snapshot_from_signal_run(
+        {"signal_settings": {}, "last_signal_setup": {}}
+    )
+    assert snapshot is None
 
 
 def test_no_zones_message_global_mode():

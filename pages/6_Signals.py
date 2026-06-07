@@ -24,7 +24,9 @@ from thesistester.persistence import (
     compute_signal_settings_hash,
     delete_signal_run,
     find_matching_signal_run,
+    list_saved_setups,
     list_saved_signal_runs,
+    load_setup,
     load_signal_run,
     save_signal_run,
 )
@@ -65,6 +67,9 @@ TRIGGER_TIMEFRAME_LABELS = {
     "15 minutes": "15min",
 }
 TRIGGER_TIMEFRAME_DISPLAY = {value: key for key, value in TRIGGER_TIMEFRAME_LABELS.items()}
+SETUP_SOURCE_MANUAL = "Configure manually"
+SETUP_SOURCE_ACTIVE = "Use active setup"
+SETUP_SOURCE_LIBRARY = "Use saved setup from library"
 
 _RULE_AUDIT_COLUMNS = [
     "zone_row",
@@ -218,6 +223,103 @@ def _saved_setup_caption(config: dict) -> str:
         f"Confluences={config.get('min_confluences')}–{config.get('max_confluences')} • "
         f"Trigger TF={trigger_timeframe}"
     )
+
+
+def _dataset_relation_label(setup_dataset_id: object, current_dataset_id: str | None) -> str:
+    if setup_dataset_id in (None, ""):
+        return "global/no dataset"
+    if isinstance(current_dataset_id, str) and current_dataset_id and setup_dataset_id == current_dataset_id:
+        return "current dataset"
+    return "other dataset"
+
+
+def _prioritize_saved_setups(
+    setups: list[dict],
+    *,
+    current_dataset_id: str | None,
+) -> list[dict]:
+    def _bucket(item: dict) -> int:
+        return {
+            "current dataset": 0,
+            "global/no dataset": 1,
+            "other dataset": 2,
+        }[_dataset_relation_label(item.get("dataset_id"), current_dataset_id)]
+
+    return sorted(setups, key=_bucket)
+
+
+def _saved_setup_option_label(meta: dict, current_dataset_id: str | None) -> str:
+    updated_raw = meta.get("updated_at") or meta.get("created_at") or ""
+    updated = str(updated_raw)[:10] if updated_raw else "unknown date"
+    setup_config = meta.get("setup_config")
+    if not isinstance(setup_config, dict):
+        setup_config = {}
+    return (
+        f"{meta.get('name', 'Untitled setup')} · {meta.get('instrument', '—')} · "
+        f"{updated} · mode={setup_config.get('confluence_mode', 'global_cluster')} · "
+        f"trigger={setup_config.get('trigger', 'touch')} · "
+        f"direction={setup_config.get('direction', 'both')} · "
+        f"{_dataset_relation_label(meta.get('dataset_id'), current_dataset_id)}"
+    )
+
+
+def _filter_saved_setups_for_signals(
+    setups: list[dict],
+    *,
+    current_dataset_id: str | None,
+    include_other_datasets: bool,
+) -> list[dict]:
+    prioritized = _prioritize_saved_setups(setups, current_dataset_id=current_dataset_id)
+    if include_other_datasets:
+        return prioritized
+    return [
+        item
+        for item in prioritized
+        if _dataset_relation_label(item.get("dataset_id"), current_dataset_id) != "other dataset"
+    ]
+
+
+def _saved_setup_compatibility_issues(config: dict, available_columns: list[str]) -> dict[str, list[str]]:
+    confluence_mode = str(config.get("confluence_mode", "global_cluster"))
+    if confluence_mode == "anchor_rules":
+        missing_anchor = []
+        anchor_level = config.get("anchor_level")
+        if isinstance(anchor_level, str) and anchor_level and anchor_level not in available_columns:
+            missing_anchor.append(anchor_level)
+        missing_rules: list[str] = []
+        for rule in list(config.get("confluence_rules", [])):
+            if not isinstance(rule, dict):
+                continue
+            level = str(rule.get("level", "")).strip()
+            if level and level not in available_columns:
+                missing_rules.append(level)
+        return {
+            "selected_levels": [],
+            "anchor_level": sorted(set(missing_anchor)),
+            "confluence_rules": sorted(set(missing_rules)),
+        }
+
+    selected_levels = config.get("selected_levels", [])
+    if not isinstance(selected_levels, list):
+        selected_levels = []
+    missing_selected = [str(level) for level in selected_levels if str(level) not in available_columns]
+    return {
+        "selected_levels": sorted(set(missing_selected)),
+        "anchor_level": [],
+        "confluence_rules": [],
+    }
+
+
+def _extract_setup_snapshot_from_signal_run(meta: dict) -> dict | None:
+    signal_settings = meta.get("signal_settings")
+    if isinstance(signal_settings, dict):
+        setup_snapshot = signal_settings.get("setup_snapshot")
+        if isinstance(setup_snapshot, dict) and setup_snapshot:
+            return dict(setup_snapshot)
+    fallback = meta.get("last_signal_setup")
+    if isinstance(fallback, dict) and fallback:
+        return dict(fallback)
+    return None
 
 
 def _no_zones_message(confluence_mode: str) -> str:
@@ -403,21 +505,93 @@ if not all_level_columns:
     st.warning("No level columns found. Please compute levels on the Levels page first.")
     st.stop()
 
-raw_saved_setup = st.session_state.get("setup_config")
-saved_setup = raw_saved_setup if isinstance(raw_saved_setup, dict) and raw_saved_setup else None
-if saved_setup:
-    st.info(f"Using setup: {saved_setup.get('name', 'Untitled setup')}")
-    st.caption(_saved_setup_caption(saved_setup))
+raw_active_setup = st.session_state.get("setup_config")
+active_setup = raw_active_setup if isinstance(raw_active_setup, dict) and raw_active_setup else None
+current_dataset_id = st.session_state.get("dataset_id")
+all_saved_setups = list_saved_setups()
 
 # ── Sidebar controls ──────────────────────────────────────────────────────────
+saved_setup: dict | None = None
+use_saved_setup = False
+generation_blockers: list[str] = []
 with st.sidebar:
     st.header("Signal generation")
 
-    use_saved_default = saved_setup is not None
-    use_saved_setup = st.toggle("Use saved setup", value=use_saved_default)
+    default_source = SETUP_SOURCE_MANUAL
+    preferred_saved_setups = _filter_saved_setups_for_signals(
+        all_saved_setups,
+        current_dataset_id=current_dataset_id if isinstance(current_dataset_id, str) else None,
+        include_other_datasets=False,
+    )
+    if active_setup is not None:
+        default_source = SETUP_SOURCE_ACTIVE
+    elif preferred_saved_setups:
+        default_source = SETUP_SOURCE_LIBRARY
 
-    if saved_setup is None:
-        st.info("No saved setup found. Configure manually here or create one in Setup Builder.")
+    st.subheader("Setup source")
+    source_options = [SETUP_SOURCE_MANUAL, SETUP_SOURCE_ACTIVE, SETUP_SOURCE_LIBRARY]
+    setup_source = st.radio(
+        "Setup source",
+        options=source_options,
+        index=source_options.index(default_source),
+    )
+
+    if setup_source == SETUP_SOURCE_ACTIVE and active_setup is None:
+        st.info("No active setup found. Configure manually or select a saved setup from library.")
+        setup_source = SETUP_SOURCE_MANUAL
+
+    if setup_source == SETUP_SOURCE_LIBRARY:
+        has_other_dataset_setups = any(
+            _dataset_relation_label(item.get("dataset_id"), current_dataset_id if isinstance(current_dataset_id, str) else None)
+            == "other dataset"
+            for item in all_saved_setups
+        )
+        include_other_datasets = st.checkbox(
+            "Include setups from other datasets",
+            value=False,
+            disabled=not has_other_dataset_setups,
+        )
+        setup_options = _filter_saved_setups_for_signals(
+            all_saved_setups,
+            current_dataset_id=current_dataset_id if isinstance(current_dataset_id, str) else None,
+            include_other_datasets=include_other_datasets,
+        )
+        option_map = {
+            item["setup_id"]: item
+            for item in setup_options
+            if isinstance(item.get("setup_id"), str) and item["setup_id"]
+        }
+        if not option_map:
+            st.info("No saved setups available for this selection. Configure manually or set an active setup.")
+            setup_source = SETUP_SOURCE_MANUAL
+        else:
+            setup_ids = list(option_map)
+            selected_setup_id = st.selectbox(
+                "Saved setup",
+                options=setup_ids,
+                format_func=lambda setup_id: _saved_setup_option_label(
+                    option_map[setup_id],
+                    current_dataset_id if isinstance(current_dataset_id, str) else None,
+                ),
+            )
+            try:
+                selected_setup_meta = load_setup(selected_setup_id)
+            except (FileNotFoundError, OSError, ValueError) as exc:
+                st.warning(f"Unable to load selected setup ({selected_setup_id[:12]}...): {exc}")
+                setup_source = SETUP_SOURCE_MANUAL
+            else:
+                saved_setup = dict(selected_setup_meta.get("setup_config", {}))
+                if _dataset_relation_label(
+                    selected_setup_meta.get("dataset_id"),
+                    current_dataset_id if isinstance(current_dataset_id, str) else None,
+                ) == "other dataset":
+                    st.warning(
+                        "Selected setup belongs to a different dataset. Verify level compatibility before generating signals."
+                    )
+    elif setup_source == SETUP_SOURCE_ACTIVE and active_setup is not None:
+        saved_setup = dict(active_setup)
+
+    use_saved_setup = setup_source in {SETUP_SOURCE_ACTIVE, SETUP_SOURCE_LIBRARY} and saved_setup is not None
 
     if use_saved_setup and saved_setup is not None:
         confluence_mode = str(saved_setup.get("confluence_mode", "global_cluster"))
@@ -426,9 +600,20 @@ with st.sidebar:
         confluence_rules = list(saved_setup.get("confluence_rules", []))
         min_valid_confluences = int(saved_setup.get("min_valid_confluences", 1))
         if confluence_mode == "anchor_rules":
-            selected_levels = _selected_anchor_levels(anchor_level, confluence_rules, all_level_columns)
+            selected_levels = []
+            if isinstance(anchor_level, str) and anchor_level:
+                selected_levels.append(anchor_level)
+            for rule in confluence_rules:
+                if not isinstance(rule, dict):
+                    continue
+                level = str(rule.get("level", "")).strip()
+                if level and level not in selected_levels:
+                    selected_levels.append(level)
         else:
-            selected_levels = [col for col in configured_levels if col in all_level_columns]
+            if isinstance(configured_levels, list):
+                selected_levels = [str(col) for col in configured_levels]
+            else:
+                selected_levels = []
             anchor_level = None
             confluence_rules = []
             min_valid_confluences = 1
@@ -450,26 +635,45 @@ with st.sidebar:
         st.caption(f"Levels: {', '.join(selected_levels) if selected_levels else '(none)'}")
 
         if trigger not in VALID_TRIGGERS:
-            st.error(
+            generation_blockers.append(
                 f"Saved setup trigger '{trigger}' is invalid. "
                 f"Valid options are: {sorted(VALID_TRIGGERS)}. "
-                "Disable saved setup mode and configure manually."
+                f"Switch setup source to {SETUP_SOURCE_MANUAL}, {SETUP_SOURCE_ACTIVE}, "
+                "or pick a different saved setup."
             )
-            st.stop()
         if direction not in VALID_DIRECTIONS:
-            st.error(
+            generation_blockers.append(
                 f"Saved setup direction '{direction}' is invalid. "
                 f"Valid options are: {sorted(VALID_DIRECTIONS)}. "
-                "Disable saved setup mode and configure manually."
+                f"Switch setup source to {SETUP_SOURCE_MANUAL}, {SETUP_SOURCE_ACTIVE}, "
+                "or pick a different saved setup."
             )
-            st.stop()
         if trigger_timeframe not in VALID_TRIGGER_TIMEFRAMES:
-            st.error(
+            generation_blockers.append(
                 f"Saved setup trigger timeframe '{trigger_timeframe}' is invalid. "
                 f"Valid options are: {sorted(VALID_TRIGGER_TIMEFRAMES)}. "
-                "Disable saved setup mode and configure manually."
+                f"Switch setup source to {SETUP_SOURCE_MANUAL}, {SETUP_SOURCE_ACTIVE}, "
+                "or pick a different saved setup."
             )
-            st.stop()
+        compatibility_issues = _saved_setup_compatibility_issues(saved_setup, all_level_columns)
+        if compatibility_issues["selected_levels"]:
+            generation_blockers.append(
+                "Saved setup references unavailable selected levels for global cluster mode: "
+                + ", ".join(compatibility_issues["selected_levels"])
+                + ". Switch setup source or update the setup in Setup Builder."
+            )
+        if compatibility_issues["anchor_level"]:
+            generation_blockers.append(
+                "Saved setup anchor level is unavailable in current levels: "
+                + ", ".join(compatibility_issues["anchor_level"])
+                + ". Switch setup source or update the setup in Setup Builder."
+            )
+        if compatibility_issues["confluence_rules"]:
+            generation_blockers.append(
+                "Saved setup confluence-rule levels are unavailable in current levels: "
+                + ", ".join(compatibility_issues["confluence_rules"])
+                + ". Switch setup source or update the setup in Setup Builder."
+            )
     else:
         selected_mode_label = st.selectbox(
             "Confluence mode",
@@ -635,7 +839,14 @@ with st.sidebar:
         else:
             trigger_params = {}
 
-    generate_btn = st.button("Generate signals", type="primary", use_container_width=True)
+    for blocker in generation_blockers:
+        st.warning(blocker)
+    generate_btn = st.button(
+        "Generate signals",
+        type="primary",
+        use_container_width=True,
+        disabled=bool(generation_blockers),
+    )
 
 signal_settings = _build_signal_settings(
     confluence_mode=confluence_mode,
@@ -875,6 +1086,18 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
             delete_signal_run(dataset_id, levels_settings_hash, selected_run_hash)
             st.success("Deleted selected saved signals.")
             st.rerun()
+        if st.button(
+            "Copy setup to Setup Builder",
+            key="copy_setup_snapshot_to_setup_builder",
+            use_container_width=True,
+        ):
+            setup_snapshot = _extract_setup_snapshot_from_signal_run(selected_run_meta)
+            if setup_snapshot is None:
+                st.warning("Selected saved signal run does not include a setup snapshot to copy.")
+            else:
+                st.session_state["setup_config"] = dict(setup_snapshot)
+                st.session_state["_setup_builder_editor_config"] = dict(setup_snapshot)
+                st.success("Copied setup snapshot to Setup Builder. Open Setup Builder to review, edit, and save.")
     else:
         st.divider()
         st.subheader("Saved signal runs")

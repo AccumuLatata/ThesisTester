@@ -32,7 +32,7 @@ Flow basis in app workflow and phase pages: `app.py:12-33`, `pages/1_Data.py`, `
 | `session_levels` | Levels (`pages/5_Levels.py:187,454`) | Bundles/save (`pages/5_Levels.py:497`, `pages/12_Research_Bundles.py:30`) | `pd.DataFrame` session-level table |
 | `levels_settings` | Levels (`pages/5_Levels.py:188,456`) | Levels stale checks (`pages/5_Levels.py:323`), Signals persistence context (`pages/6_Signals.py:599-610`) | `dict` |
 | `levels_data_fingerprint` | Levels (`pages/5_Levels.py:189,457`) | Levels stale checks (`pages/5_Levels.py:324-336`) | `dict` |
-| `setup_config` | Setup Builder (`pages/2_Setup_Builder.py:200`) | Signals saved-setup mode (`pages/6_Signals.py:386-427`), Report (`pages/11_Report_Export.py:36-43`) | `dict` setup configuration |
+| `setup_config` | Setup Builder (`pages/2_Setup_Builder.py:200`), Signals saved-run copy action (`pages/6_Signals.py`) | Signals setup-source selection (`pages/6_Signals.py`), Report (`pages/11_Report_Export.py:36-43`) | `dict` setup configuration |
 | `setup_configs` | Setup Builder (`pages/2_Setup_Builder.py:201-205`) | Setup Builder only | `list[dict]` |
 | `confluence_zones` | Signals (`pages/6_Signals.py:655,761`) | Signals display (`pages/6_Signals.py:849`), Backtest chart overlay (`pages/7_Backtest.py:294-300`), Bundles (`pages/12_Research_Bundles.py:36`) | `pd.DataFrame` zone rows |
 | `naked_flags` | Signals (`pages/6_Signals.py:664,762`) | Signals logic/save (`pages/6_Signals.py:678,783-804`), Bundles (`pages/12_Research_Bundles.py:37`) | `pd.DataFrame` naked-level flags |
@@ -60,5 +60,7 @@ Flow basis in app workflow and phase pages: `app.py:12-33`, `pages/1_Data.py`, `
 
 Setup persistence is local-only (no cloud sync/user accounts). Setup Builder stores setup
 configs in the setup library and keeps `st.session_state["setup_config"]` as the active setup
-for Signals-page compatibility. Saved setups carry `dataset_id` when available; Setup Builder
-labels cross-dataset entries and Data-page dataset switches clear incompatible active setups.
+for Signals compatibility. Signals now supports setup-source selection (manual, active setup,
+saved setup library), with dataset-aware setup-library labels/filtering and compatibility checks
+for missing level references. Saved signal runs also expose a copy action that restores a setup
+snapshot back into Setup Builder session state for review/edit/save before persistence.
