@@ -100,10 +100,12 @@ Manual controls on the Signals page remain global-cluster only. To use anchor-ba
   total R, win rate, max drawdown R).  Best result and full grid are stored in
   `st.session_state["best_grid_result"]` and `st.session_state["grid_results"]`.
 - **Phase 6.5 (workflow cleanup):** **Setup Builder** (`pages/2_Setup_Builder.py`) is now
-  functional and saves reusable setup configs in-session via
-  `st.session_state["setup_config"]` (and `st.session_state["setup_configs"]` for session
-  history).  **Signals** (`pages/6_Signals.py`) can consume the saved setup via
-  a `Use saved setup` toggle while still supporting manual configuration.
+  functional with a local filesystem **Saved setups** library. Setup configs are persisted
+  under `.thesistester_store/setups/` and can be loaded to editor, duplicated, set active,
+  and deleted. The active setup still mirrors into `st.session_state["setup_config"]`
+  (and `st.session_state["setup_configs"]` session history) for **Signals**
+  (`pages/6_Signals.py`) compatibility via `Use saved setup`. Setups are dataset-scoped
+  when `dataset_id` is available, and dataset switches clear incompatible active setups.
 - **3c trigger — authoritative 4-rule / 8-variant model:**
 
   The `3c` trigger implements a 3-candle entry sequence with 8 named variants:
