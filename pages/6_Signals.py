@@ -39,6 +39,7 @@ from thesistester.setup import (
     available_level_columns,
     default_selected_levels,
     normalize_trigger_timeframe,
+    validate_setup_config,
 )
 
 st.title("🎯 Signals")
@@ -308,6 +309,43 @@ def _saved_setup_compatibility_issues(config: dict, available_columns: list[str]
         "anchor_level": [],
         "confluence_rules": [],
     }
+
+
+def _saved_setup_generation_blockers(config: dict, available_columns: list[str]) -> list[str]:
+    """Return user-facing blocker strings for a saved or active setup.
+
+    Combines structural validation (``validate_setup_config``) with
+    dataset-level compatibility checks (``_saved_setup_compatibility_issues``).
+    """
+    blockers: list[str] = []
+
+    for error in validate_setup_config(config):
+        blockers.append(
+            f"Saved setup configuration error: {error} "
+            "Switch setup source or update the setup in Setup Builder."
+        )
+
+    compatibility_issues = _saved_setup_compatibility_issues(config, available_columns)
+    if compatibility_issues["selected_levels"]:
+        blockers.append(
+            "Saved setup references unavailable selected levels for global cluster mode: "
+            + ", ".join(compatibility_issues["selected_levels"])
+            + ". Switch setup source or update the setup in Setup Builder."
+        )
+    if compatibility_issues["anchor_level"]:
+        blockers.append(
+            "Saved setup anchor level is unavailable in current levels: "
+            + ", ".join(compatibility_issues["anchor_level"])
+            + ". Switch setup source or update the setup in Setup Builder."
+        )
+    if compatibility_issues["confluence_rules"]:
+        blockers.append(
+            "Saved setup confluence-rule levels are unavailable in current levels: "
+            + ", ".join(compatibility_issues["confluence_rules"])
+            + ". Switch setup source or update the setup in Setup Builder."
+        )
+
+    return blockers
 
 
 def _extract_setup_snapshot_from_signal_run(meta: dict) -> dict | None:
@@ -634,46 +672,8 @@ with st.sidebar:
         st.success(f"Using saved setup: {saved_setup.get('name', 'Untitled setup')}")
         st.caption(f"Levels: {', '.join(selected_levels) if selected_levels else '(none)'}")
 
-        if trigger not in VALID_TRIGGERS:
-            generation_blockers.append(
-                f"Saved setup trigger '{trigger}' is invalid. "
-                f"Valid options are: {sorted(VALID_TRIGGERS)}. "
-                f"Switch setup source to {SETUP_SOURCE_MANUAL}, {SETUP_SOURCE_ACTIVE}, "
-                "or pick a different saved setup."
-            )
-        if direction not in VALID_DIRECTIONS:
-            generation_blockers.append(
-                f"Saved setup direction '{direction}' is invalid. "
-                f"Valid options are: {sorted(VALID_DIRECTIONS)}. "
-                f"Switch setup source to {SETUP_SOURCE_MANUAL}, {SETUP_SOURCE_ACTIVE}, "
-                "or pick a different saved setup."
-            )
-        if trigger_timeframe not in VALID_TRIGGER_TIMEFRAMES:
-            generation_blockers.append(
-                f"Saved setup trigger timeframe '{trigger_timeframe}' is invalid. "
-                f"Valid options are: {sorted(VALID_TRIGGER_TIMEFRAMES)}. "
-                f"Switch setup source to {SETUP_SOURCE_MANUAL}, {SETUP_SOURCE_ACTIVE}, "
-                "or pick a different saved setup."
-            )
-        compatibility_issues = _saved_setup_compatibility_issues(saved_setup, all_level_columns)
-        if compatibility_issues["selected_levels"]:
-            generation_blockers.append(
-                "Saved setup references unavailable selected levels for global cluster mode: "
-                + ", ".join(compatibility_issues["selected_levels"])
-                + ". Switch setup source or update the setup in Setup Builder."
-            )
-        if compatibility_issues["anchor_level"]:
-            generation_blockers.append(
-                "Saved setup anchor level is unavailable in current levels: "
-                + ", ".join(compatibility_issues["anchor_level"])
-                + ". Switch setup source or update the setup in Setup Builder."
-            )
-        if compatibility_issues["confluence_rules"]:
-            generation_blockers.append(
-                "Saved setup confluence-rule levels are unavailable in current levels: "
-                + ", ".join(compatibility_issues["confluence_rules"])
-                + ". Switch setup source or update the setup in Setup Builder."
-            )
+        for blocker in _saved_setup_generation_blockers(saved_setup, all_level_columns):
+            generation_blockers.append(blocker)
     else:
         selected_mode_label = st.selectbox(
             "Confluence mode",

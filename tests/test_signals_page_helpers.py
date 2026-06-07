@@ -92,6 +92,7 @@ def _import_page_helpers():
         mod._extract_setup_snapshot_from_signal_run,
         mod._saved_setup_caption,
         mod._no_zones_message,
+        mod._saved_setup_generation_blockers,
     )
 
 
@@ -106,6 +107,7 @@ def _import_page_helpers():
     _extract_setup_snapshot_from_signal_run,
     _saved_setup_caption,
     _no_zones_message,
+    _saved_setup_generation_blockers,
 ) = _import_page_helpers()
 
 
@@ -386,3 +388,121 @@ def test_no_zones_message_anchor_mode():
         "For anchor setups, review the anchor level, confluence rules, "
         "and per-rule tolerances."
     )
+
+
+# ---------------------------------------------------------------------------
+# _saved_setup_generation_blockers tests
+# ---------------------------------------------------------------------------
+
+_VALID_GLOBAL_CONFIG = {
+    "name": "My Setup",
+    "confluence_mode": "global_cluster",
+    "selected_levels": ["ONH", "ONL"],
+    "tolerance_ticks": 4.0,
+    "min_confluences": 2,
+    "max_confluences": 5,
+    "naked_only": False,
+    "naked_requirement": "any",
+    "trigger": "touch",
+    "trigger_timeframe": "base",
+    "direction": "both",
+    "trigger_params": {},
+}
+
+
+def test_generation_blockers_valid_global_setup_returns_no_blockers():
+    blockers = _saved_setup_generation_blockers(
+        _VALID_GLOBAL_CONFIG,
+        ["ONH", "ONL", "VWAP"],
+    )
+    assert blockers == []
+
+
+def test_generation_blockers_invalid_confluence_mode():
+    config = {**_VALID_GLOBAL_CONFIG, "confluence_mode": "unsupported_mode"}
+    blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
+    assert any("confluence mode" in b.lower() for b in blockers)
+
+
+def test_generation_blockers_global_empty_selected_levels():
+    config = {**_VALID_GLOBAL_CONFIG, "selected_levels": []}
+    blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
+    assert any("level" in b.lower() for b in blockers)
+
+
+def test_generation_blockers_anchor_missing_anchor_level():
+    config = {
+        "name": "Anchor Setup",
+        "confluence_mode": "anchor_rules",
+        "anchor_level": "",
+        "confluence_rules": [{"level": "ONL", "tolerance_ticks": 4.0, "required": False}],
+        "min_valid_confluences": 1,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "touch",
+        "trigger_timeframe": "base",
+        "direction": "both",
+        "trigger_params": {},
+    }
+    blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
+    assert any("anchor" in b.lower() for b in blockers)
+
+
+def test_generation_blockers_anchor_empty_confluence_rules():
+    config = {
+        "name": "Anchor Setup",
+        "confluence_mode": "anchor_rules",
+        "anchor_level": "ONH",
+        "confluence_rules": [],
+        "min_valid_confluences": 1,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "touch",
+        "trigger_timeframe": "base",
+        "direction": "both",
+        "trigger_params": {},
+    }
+    blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
+    assert any("confluence rule" in b.lower() for b in blockers)
+
+
+def test_generation_blockers_min_valid_confluences_exceeds_rules():
+    config = {
+        "name": "Anchor Setup",
+        "confluence_mode": "anchor_rules",
+        "anchor_level": "ONH",
+        "confluence_rules": [{"level": "ONL", "tolerance_ticks": 4.0, "required": False}],
+        "min_valid_confluences": 5,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "touch",
+        "trigger_timeframe": "base",
+        "direction": "both",
+        "trigger_params": {},
+    }
+    blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
+    assert any("minimum valid confluences" in b.lower() for b in blockers)
+
+
+def test_generation_blockers_malformed_confluence_rule():
+    config = {
+        "name": "Anchor Setup",
+        "confluence_mode": "anchor_rules",
+        "anchor_level": "ONH",
+        "confluence_rules": ["not-a-dict"],
+        "min_valid_confluences": 1,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "touch",
+        "trigger_timeframe": "base",
+        "direction": "both",
+        "trigger_params": {},
+    }
+    blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
+    assert any("rule" in b.lower() for b in blockers)
+
+
+def test_generation_blockers_missing_available_level_references():
+    config = {**_VALID_GLOBAL_CONFIG, "selected_levels": ["ONH", "MISSING_LEVEL"]}
+    blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
+    assert any("MISSING_LEVEL" in b for b in blockers)
