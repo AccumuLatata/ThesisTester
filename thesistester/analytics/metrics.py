@@ -106,7 +106,21 @@ def summarize_trades(trades: pd.DataFrame) -> dict:
 
 
 def summarize_trades_by_direction(trades: pd.DataFrame) -> dict[str, dict]:
-    """Compute long/short trade summaries with stable output keys."""
+    """Compute long/short trade summaries with stable output keys.
+
+    Parameters
+    ----------
+    trades:
+        Trade table that may contain ``direction`` and ``r_multiple`` columns.
+        May be empty or ``None``.
+
+    Returns
+    -------
+    dict[str, dict]
+        Mapping with fixed ``"long"`` and ``"short"`` keys. Each value is the
+        output of :func:`summarize_trades` for that directional subset. Missing
+        or empty sides return the same safe empty-summary structure.
+    """
     output: dict[str, dict] = {
         "long": _empty_trade_summary(),
         "short": _empty_trade_summary(),

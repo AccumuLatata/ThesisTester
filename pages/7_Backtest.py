@@ -5,6 +5,8 @@ fixed SL/TP configuration and displays KPIs, equity curve, and trade table.
 """
 from __future__ import annotations
 
+import math
+
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -176,16 +178,27 @@ def _fmt(v, fmt=".2f", fallback="—"):
         return fallback
     try:
         v_float = float(v)
-        if v_float != v_float:
+        if math.isnan(v_float):
             return fallback
         return format(v_float, fmt)
     except (TypeError, ValueError):
         return fallback
 
 
+def _fmt_int(v):
+    try:
+        return int(v or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _fmt_win_rate(v):
+    return _fmt(v, ".1%") if v is not None else "—"
+
+
 col1, col2, col3, col4, col5, col6 = st.columns(6)
 col1.metric("Trades", summary.get("trade_count", 0))
-col2.metric("Win rate", f"{_fmt(summary.get('win_rate'), '.1%')}" if summary.get("win_rate") is not None else "—")
+col2.metric("Win rate", _fmt_win_rate(summary.get("win_rate")))
 col3.metric("Avg R", _fmt(summary.get("avg_r")))
 col4.metric("Total R", _fmt(summary.get("total_r")))
 col5.metric("Profit factor", _fmt(summary.get("profit_factor")))
@@ -198,8 +211,8 @@ long_col, short_col = st.columns(2)
 with long_col:
     long_summary = direction_summary.get("long", {})
     st.markdown("**Long trades**")
-    st.metric("Trade count", int(long_summary.get("trade_count", 0) or 0))
-    st.metric("Win rate", _fmt(long_summary.get("win_rate"), ".1%") if long_summary.get("win_rate") is not None else "—")
+    st.metric("Trades", _fmt_int(long_summary.get("trade_count", 0)))
+    st.metric("Win rate", _fmt_win_rate(long_summary.get("win_rate")))
     st.metric("Average R", _fmt(long_summary.get("avg_r")))
     st.metric("Total R", _fmt(long_summary.get("total_r")))
     st.metric("Profit factor", _fmt(long_summary.get("profit_factor")))
@@ -207,8 +220,8 @@ with long_col:
 with short_col:
     short_summary = direction_summary.get("short", {})
     st.markdown("**Short trades**")
-    st.metric("Trade count", int(short_summary.get("trade_count", 0) or 0))
-    st.metric("Win rate", _fmt(short_summary.get("win_rate"), ".1%") if short_summary.get("win_rate") is not None else "—")
+    st.metric("Trades", _fmt_int(short_summary.get("trade_count", 0)))
+    st.metric("Win rate", _fmt_win_rate(short_summary.get("win_rate")))
     st.metric("Average R", _fmt(short_summary.get("avg_r")))
     st.metric("Total R", _fmt(short_summary.get("total_r")))
     st.metric("Profit factor", _fmt(short_summary.get("profit_factor")))
