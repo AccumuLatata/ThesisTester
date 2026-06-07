@@ -92,3 +92,73 @@ def test_render_setup_level_warnings_reports_missing_levels_without_crashing(mon
     assert warnings
     assert "MISSING" in warnings[0]
 
+
+def test_sync_editor_widget_state_overwrites_for_loaded_setup():
+    setup_builder.st.session_state = {}
+    warnings = setup_builder._sync_editor_widget_state(
+        {
+            "name": "Loaded setup",
+            "description": "from library",
+            "confluence_mode": "global_cluster",
+            "selected_levels": ["ONH"],
+            "tolerance_ticks": 3.5,
+            "min_confluences": 2,
+            "max_confluences": 4,
+            "naked_only": True,
+            "naked_requirement": "all",
+            "trigger": "reject",
+            "trigger_timeframe": "5min",
+            "direction": "long",
+        },
+        ["ONH", "ONL"],
+        overwrite=True,
+    )
+    assert warnings == []
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_SETUP_NAME] == "Loaded setup"
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_TRIGGER] == "reject"
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_SELECTED_LEVELS] == ["ONH"]
+
+
+def test_sync_editor_widget_state_invalid_legacy_values_fallback_with_warnings():
+    setup_builder.st.session_state = {}
+    warnings = setup_builder._sync_editor_widget_state(
+        {
+            "name": 123,
+            "description": {"invalid": "description"},
+            "confluence_mode": "bad-mode",
+            "selected_levels": "ONH",
+            "tolerance_ticks": -10,
+            "min_confluences": "bad",
+            "max_confluences": 99,
+            "naked_requirement": "bad",
+            "trigger": "bad",
+            "trigger_timeframe": "bad",
+            "direction": "bad",
+            "trigger_params": {
+                "entry_retrace_ticks": -1,
+                "max_entry_wait_bars_after_reversal": "oops",
+            },
+        },
+        ["ONH", "ONL"],
+        overwrite=True,
+    )
+    assert any("confluence mode is invalid" in message for message in warnings)
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_CONFLUENCE_MODE] == "Global cluster"
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_TRIGGER] == "touch"
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_DIRECTION] == "both"
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_TRIGGER_TIMEFRAME] == "Base/current timeframe"
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_TOLERANCE_TICKS] == 0.0
+
+
+def test_unavailable_level_references_detected_for_save_guard():
+    unavailable = setup_builder._unavailable_level_references(
+        {
+            "confluence_mode": "anchor_rules",
+            "anchor_level": "MISSING_ANCHOR",
+            "confluence_rules": [{"level": "ONH"}, {"level": "MISSING_RULE"}],
+        },
+        ["ONH", "ONL"],
+    )
+    assert unavailable["anchor_level"] == ["MISSING_ANCHOR"]
+    assert unavailable["confluence_rules"] == ["MISSING_RULE"]
+    assert setup_builder._has_unavailable_level_references(unavailable) is True

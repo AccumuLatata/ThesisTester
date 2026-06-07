@@ -115,6 +115,7 @@ def _set_active_dataset_state(
         setup_dataset_id = active_setup.get("dataset_id") if isinstance(active_setup, dict) else None
         if isinstance(setup_dataset_id, str) and setup_dataset_id and setup_dataset_id != dataset_id:
             st.session_state.pop("setup_config", None)
+            st.session_state.pop("_setup_builder_editor_config", None)
     st.session_state["data"] = df
     st.session_state["resampled_data"] = resampled_data or {}
     st.session_state["instrument"] = instrument

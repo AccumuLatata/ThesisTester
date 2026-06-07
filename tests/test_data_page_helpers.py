@@ -64,6 +64,7 @@ def test_set_active_dataset_state_clears_mismatched_active_setup(monkeypatch):
     session_state = {
         "dataset_id": "dataset-old",
         "setup_config": {"name": "old setup", "dataset_id": "dataset-old"},
+        "_setup_builder_editor_config": {"name": "draft setup", "dataset_id": "dataset-old"},
     }
     data_page = _import_data_page_module(session_state)
     monkeypatch.setattr(data_page, "_clear_dataset_dependent_state", lambda: None)
@@ -83,4 +84,4 @@ def test_set_active_dataset_state_clears_mismatched_active_setup(monkeypatch):
     )
 
     assert "setup_config" not in session_state
-
+    assert "_setup_builder_editor_config" not in session_state
