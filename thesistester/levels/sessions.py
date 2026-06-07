@@ -231,9 +231,13 @@ def compute_session_levels(
         raise ValueError(f"Unsupported instrument: {instrument}")
 
     inst = INSTRUMENTS[instrument]
+    exchange_tz = getattr(inst, "exchange_tz", "America/New_York")
+    eth_start = getattr(inst, "eth_start", "") or ""
+    rth_start_s = getattr(inst, "rth_start", "09:30")
+    rth_end_s = getattr(inst, "rth_end", "16:00")
     out = df.sort_values("timestamp").reset_index(drop=True).copy()
-    local_ts = out["timestamp"].dt.tz_convert(inst.exchange_tz)
-    session_date = trading_session_date(local_ts, inst.eth_start)
+    local_ts = out["timestamp"].dt.tz_convert(exchange_tz)
+    session_date = trading_session_date(local_ts, eth_start)
     session_date_ts = pd.to_datetime(session_date)
     week_key = session_date_ts.dt.to_period("W-SUN")
     month_key = session_date_ts.dt.to_period("M")
@@ -270,12 +274,12 @@ def compute_session_levels(
         )
     )
 
-    rth_start = pd.to_datetime(inst.rth_start)
-    rth_end = pd.to_datetime(inst.rth_end)
+    rth_start = pd.to_datetime(rth_start_s)
+    rth_end = pd.to_datetime(rth_end_s)
 
     levels["RTH_Open"] = _rth_open(out, session_date)
-    levels = levels.join(_overnight_high_low(out, session_date, local_ts, inst.eth_start, rth_start, rth_end))
-    levels = levels.join(_previous_session_references(out, session_date, local_ts, inst.eth_start, rth_start, rth_end))
+    levels = levels.join(_overnight_high_low(out, session_date, local_ts, eth_start, rth_start, rth_end))
+    levels = levels.join(_previous_session_references(out, session_date, local_ts, eth_start, rth_start, rth_end))
     levels = levels.join(_opening_range(out, session_date, local_ts, rth_start, opening_range_minutes))
     levels["prevSettlement"] = _prev_settlement(out, session_date)
 
