@@ -46,6 +46,13 @@ Anchor-generated zones include diagnostics such as:
 
 Manual controls on the Signals page remain global-cluster only. To use anchor-based rules, create and save a setup in Setup Builder first.
 
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Assumptions & limitations](docs/ASSUMPTIONS_AND_LIMITATIONS.md)
+- [Metrics glossary](docs/METRICS_GLOSSARY.md)
+- [Agent guide](docs/AGENT_GUIDE.md)
+
 ## Phase status
 
 - **Phase 1 (data layer):** CSV OHLCV ingestion, timezone normalization, validation,
