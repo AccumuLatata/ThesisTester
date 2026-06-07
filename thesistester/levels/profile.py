@@ -170,6 +170,8 @@ def compute_profile_levels(
     )
 
     inst = INSTRUMENTS[instrument]
+    exchange_tz = getattr(inst, "exchange_tz", "America/New_York")
+    eth_start = getattr(inst, "eth_start", "") or ""
     rolling_windows = DEFAULT_ROLLING_POC_WINDOWS if rolling_windows is None else tuple(rolling_windows)
 
     out = df.sort_values("timestamp").reset_index(drop=True).copy()
@@ -192,8 +194,8 @@ def compute_profile_levels(
             value_area_pct=value_area_pct,
         )
 
-    local_ts = out["timestamp"].dt.tz_convert(inst.exchange_tz)
-    day_key = trading_session_date(local_ts, inst.eth_start)
+    local_ts = out["timestamp"].dt.tz_convert(exchange_tz)
+    day_key = trading_session_date(local_ts, eth_start)
     day_key_ts = pd.to_datetime(day_key)
     week_key = day_key_ts.dt.to_period("W-SUN")
     month_key = day_key_ts.dt.to_period("M")

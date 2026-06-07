@@ -1,7 +1,10 @@
 import numpy as np
 import pandas as pd
+from types import SimpleNamespace
 
+from thesistester.config import INSTRUMENTS
 from thesistester.data.sessions import tag_session
+from thesistester.levels.profile import compute_profile_levels
 from thesistester.levels.session_date import trading_session_date
 from thesistester.levels.sessions import compute_session_levels
 
@@ -56,6 +59,34 @@ def test_trading_session_date_helper_behavior():
         _date("2026-06-02"),
         _date("2026-06-02"),
     ]
+
+
+def test_levels_computation_handles_instrument_without_eth_start(monkeypatch):
+    legacy_inst = SimpleNamespace(
+        exchange_tz="America/New_York",
+        rth_start="09:30",
+        rth_end="16:00",
+        tick_size=0.25,
+        point_value=50.0,
+    )
+    monkeypatch.setitem(INSTRUMENTS, "ES", legacy_inst)
+
+    df = _build_df(
+        [
+            ("2026-06-02 18:00:00", 100.0, 101.0, 99.0, 100.0),
+            ("2026-06-03 08:00:00", 101.0, 103.0, 100.0, 102.0),
+            ("2026-06-03 09:30:00", 102.0, 104.0, 101.0, 103.0),
+        ]
+    )
+    tagged = tag_session(df, "ES")
+
+    session_levels = compute_session_levels(tagged, instrument="ES")
+    for col in ("ONH", "ONL", "dOpen"):
+        assert col in session_levels.columns
+    assert session_levels.loc[session_levels["timestamp"] == pd.Timestamp("2026-06-03 09:30:00", tz=TZ), "ONH"].notna().all()
+
+    profile_levels = compute_profile_levels(df, instrument="ES", rolling_windows=("30min",))
+    assert "pdPOC" in profile_levels.columns
 
 
 def test_dopen_uses_eth_session_start_not_midnight():
