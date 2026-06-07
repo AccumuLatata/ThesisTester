@@ -20,6 +20,9 @@ BASE_COLUMNS = {
 VALID_TRIGGERS = frozenset({"touch", "reject", "break", "reclaim", "3c"})
 VALID_DIRECTIONS = frozenset({"long", "short", "both"})
 VALID_CONFLUENCE_MODES = frozenset({"global_cluster", "anchor_rules"})
+TRIGGER_TIMEFRAME_CHOICES = ("base", "1min", "5min", "15min")
+VALID_TRIGGER_TIMEFRAMES = frozenset(TRIGGER_TIMEFRAME_CHOICES)
+DEFAULT_TRIGGER_TIMEFRAME = "base"
 
 SUGGESTED_DEFAULT_LEVELS = [
     "ONH",
@@ -70,6 +73,14 @@ def _is_boolean_compatible(value: Any) -> bool:
     return False
 
 
+def normalize_trigger_timeframe(value: Any) -> str:
+    """Normalize trigger timeframe while preserving backward-compatible defaults."""
+    if value is None:
+        return DEFAULT_TRIGGER_TIMEFRAME
+    normalized = str(value).strip().lower()
+    return normalized or DEFAULT_TRIGGER_TIMEFRAME
+
+
 def available_level_columns(df: pd.DataFrame) -> list[str]:
     """Return setup-eligible level columns from *df*."""
     return [column for column in df.columns if column not in BASE_COLUMNS]
@@ -95,6 +106,7 @@ def build_setup_config(
     naked_only: bool,
     naked_requirement: str,
     trigger: str,
+    trigger_timeframe: str = DEFAULT_TRIGGER_TIMEFRAME,
     direction: str,
     confluence_mode: str = "global_cluster",
     anchor_level: str | None = None,
@@ -103,8 +115,10 @@ def build_setup_config(
     trigger_params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a normalized setup configuration dictionary."""
+    normalized_trigger_timeframe = normalize_trigger_timeframe(trigger_timeframe)
     normalized_params = {}
     if trigger == "3c":
+        normalized_trigger_timeframe = DEFAULT_TRIGGER_TIMEFRAME
         normalized_params = _normalize_3c_params(trigger_params)
 
     return {
@@ -118,6 +132,7 @@ def build_setup_config(
         "naked_only": bool(naked_only),
         "naked_requirement": str(naked_requirement).lower(),
         "trigger": str(trigger),
+        "trigger_timeframe": normalized_trigger_timeframe,
         "direction": str(direction),
         "confluence_mode": str(confluence_mode or "global_cluster"),
         "anchor_level": anchor_level,
@@ -146,6 +161,12 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
     trigger = str(config.get("trigger", ""))
     if trigger not in VALID_TRIGGERS:
         errors.append(f"Trigger must be one of {sorted(VALID_TRIGGERS)}.")
+
+    trigger_timeframe = normalize_trigger_timeframe(config.get("trigger_timeframe"))
+    if trigger_timeframe not in VALID_TRIGGER_TIMEFRAMES:
+        errors.append(
+            f"Trigger timeframe must be one of {sorted(VALID_TRIGGER_TIMEFRAMES)}."
+        )
 
     direction = str(config.get("direction", ""))
     if direction not in VALID_DIRECTIONS:

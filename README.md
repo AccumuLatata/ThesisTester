@@ -71,7 +71,12 @@ Manual controls on the Signals page remain global-cluster only. To use anchor-ba
 - **Phase 4 (confluence detection, naked levels, signal generation):** tick-based
   confluence zone detection (`detect_confluence_zones`), naked/untested level flags
   (`flag_naked_levels`), and five trigger types — `touch`, `reject`, `break`, `reclaim`,
-  `3c` — exposed via a new **Signals** page (`pages/6_Signals.py`).
+  `3c` — exposed via a new **Signals** page (`pages/6_Signals.py`). Trigger timeframe
+  currently applies to simple triggers (`touch`, `reject`, `break`, `reclaim`) and
+  defaults to base/current timeframe. `3c` remains base/current-timeframe only until
+  dedicated `3c` trigger-timeframe support is implemented. For non-base simple triggers,
+  `bar_index`/`timestamp` remain aligned to the canonical/base bar at trigger-candle end,
+  while `trigger_timestamp` stores the trigger-candle completion/actionable time.
   Candidate signals are stored in `st.session_state["signals"]` for Phase 5 backtesting.
 - **Phase 5 (backtest engine, KPIs, results):** bar-by-bar trade simulation with a
   single fixed SL/TP tick configuration (`thesistester/engine/backtest.py`).  Simple

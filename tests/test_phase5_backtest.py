@@ -344,3 +344,58 @@ def test_empty_signals_returns_empty():
     sigs = pd.DataFrame()
     trades = simulate_trades(df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8)
     assert trades.empty
+
+
+def test_simple_trigger_five_min_enters_first_base_bar_after_trigger_close():
+    df = _df(
+        _bar("2026-01-02 09:30", 99.0, 99.8, 98.8, 99.2),
+        _bar("2026-01-02 09:31", 99.2, 99.9, 99.0, 99.4),
+        _bar("2026-01-02 09:32", 99.3, 99.8, 99.1, 99.3),
+        _bar("2026-01-02 09:33", 99.2, 99.7, 99.0, 99.1),
+        _bar("2026-01-02 09:34", 99.0, 99.6, 98.9, 99.0),   # first 5m close = 99.0
+        _bar("2026-01-02 09:35", 99.0, 99.6, 98.8, 99.2),
+        _bar("2026-01-02 09:36", 99.2, 100.5, 99.0, 100.0),
+        _bar("2026-01-02 09:37", 100.0, 100.8, 99.8, 100.3),
+        _bar("2026-01-02 09:38", 100.3, 101.0, 100.1, 100.7),
+        _bar("2026-01-02 09:39", 100.7, 101.4, 100.5, 101.0),  # second 5m close = 101.0
+        _bar("2026-01-02 09:40", 102.0, 103.5, 101.8, 103.2),  # entry bar
+        _bar("2026-01-02 09:41", 103.2, 104.0, 103.0, 103.8),
+        _bar("2026-01-02 09:42", 103.8, 104.2, 103.6, 104.0),
+        _bar("2026-01-02 09:43", 104.0, 104.5, 103.8, 104.2),
+        _bar("2026-01-02 09:44", 104.2, 104.6, 104.0, 104.4),
+    )
+    zones = pd.DataFrame(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-01-02 09:39:00", tz=TZ),
+                "bar_index": 9,
+                "zone_low": 99.5,
+                "zone_high": 100.0,
+                "zone_mid": 99.75,
+                "level_count": 1,
+                "level_names": "A",
+                "level_prices": "100.0",
+            }
+        ]
+    )
+    signals = generate_signals(
+        df,
+        zones,
+        trigger="break",
+        direction="long",
+        tick_size=TICK,
+        trigger_timeframe="5min",
+    )
+
+    assert len(signals) == 1
+    assert int(signals.iloc[0]["bar_index"]) == 9
+    assert int(signals.iloc[0]["trigger_bar_index"]) == 1
+    assert signals.iloc[0]["trigger_timeframe"] == "5min"
+    assert signals.iloc[0]["timestamp"] == pd.Timestamp("2026-01-02 09:39:00", tz=TZ)
+    assert signals.iloc[0]["trigger_timestamp"] == pd.Timestamp("2026-01-02 09:40:00", tz=TZ)
+    assert signals.iloc[0]["timestamp"] == df["timestamp"].iloc[int(signals.iloc[0]["bar_index"])]
+
+    trades = simulate_trades(df, signals, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8)
+    assert len(trades) == 1
+    assert int(trades.iloc[0]["entry_bar_index"]) == 10
+    assert float(trades.iloc[0]["entry_price"]) == 102.0

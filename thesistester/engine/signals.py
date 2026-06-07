@@ -6,6 +6,8 @@ import warnings
 import numpy as np
 import pandas as pd
 
+from thesistester.setup import VALID_TRIGGER_TIMEFRAMES, normalize_trigger_timeframe
+
 from .candidate_level import CandidateLevel, from_anchor_zones, from_global_cluster_zones, with_metadata
 from .signals_3c import detect_3c_setups
 
@@ -30,6 +32,9 @@ _SIGNAL_COLUMNS: list[str] = [
     "signal_id",
     "timestamp",
     "bar_index",
+    "trigger_bar_index",
+    "trigger_timeframe",
+    "trigger_timestamp",
     "trigger",
     "direction",
     "zone_low",
@@ -96,6 +101,9 @@ def _make_signal(
     signal_id: int,
     ts: object,
     bar_idx: int,
+    trigger_bar_index: int | None = None,
+    trigger_timeframe: str = "base",
+    trigger_timestamp: object | None = None,
     trigger: str,
     direction: str,
     zone: pd.Series,
@@ -140,6 +148,9 @@ def _make_signal(
         "signal_id": signal_id,
         "timestamp": ts,
         "bar_index": bar_idx,
+        "trigger_bar_index": trigger_bar_index,
+        "trigger_timeframe": trigger_timeframe,
+        "trigger_timestamp": trigger_timestamp if trigger_timestamp is not None else ts,
         "trigger": trigger,
         "direction": direction,
         "zone_low": zone["zone_low"],
@@ -303,21 +314,101 @@ def _find_tested_level_for_arrival(
     return min(candidates, key=lambda item: item[1])
 
 
+def _prepare_trigger_dataframe(df: pd.DataFrame, trigger_timeframe: str) -> pd.DataFrame:
+    """Build trigger bars with explicit mapping back to canonical/base bars."""
+    df_reset = df.reset_index(drop=True).copy()
+    if df_reset.empty:
+        return df_reset
+
+    normalized_trigger_timeframe = normalize_trigger_timeframe(trigger_timeframe)
+    level_columns = [
+        column
+        for column in df_reset.columns
+        if column not in {"timestamp", "open", "high", "low", "close", "volume"}
+    ]
+    df_reset["__base_index"] = df_reset.index.astype(int)
+
+    if normalized_trigger_timeframe == "base":
+        trigger_df = df_reset.copy()
+        trigger_df["trigger_bar_index"] = trigger_df.index.astype(int)
+        trigger_df["trigger_timeframe"] = normalized_trigger_timeframe
+        trigger_df["trigger_bar_start_timestamp"] = trigger_df["timestamp"]
+        trigger_df["trigger_bar_end_timestamp"] = trigger_df["timestamp"]
+        trigger_df["base_end_timestamp"] = trigger_df["timestamp"]
+        trigger_df["base_start_bar_index"] = trigger_df["__base_index"]
+        trigger_df["base_end_bar_index"] = trigger_df["__base_index"]
+        return trigger_df.drop(columns=["__base_index"])
+
+    timeframe_delta = pd.to_timedelta(normalized_trigger_timeframe)
+    grouped = df_reset.copy()
+    grouped["trigger_bar_start_timestamp"] = grouped["timestamp"].dt.floor(normalized_trigger_timeframe)
+    grouped["trigger_bar_end_timestamp"] = grouped["trigger_bar_start_timestamp"] + timeframe_delta
+    grouped["base_end_timestamp"] = grouped["timestamp"]
+
+    aggregations: dict[str, str] = {
+        "open": "first",
+        "high": "max",
+        "low": "min",
+        "close": "last",
+        "volume": "sum",
+        "__base_index": "last",
+        "timestamp": "last",
+        "base_end_timestamp": "last",
+    }
+    for column in level_columns:
+        aggregations[column] = "last"
+
+    trigger_df = (
+        grouped.groupby(
+            ["trigger_bar_start_timestamp", "trigger_bar_end_timestamp"],
+            sort=True,
+            observed=False,
+            as_index=False,
+        )
+        .agg(aggregations)
+        .rename(columns={"__base_index": "base_end_bar_index"})
+    )
+    base_start_indices = (
+        grouped.groupby(
+            ["trigger_bar_start_timestamp", "trigger_bar_end_timestamp"],
+            sort=True,
+            observed=False,
+        )["__base_index"]
+        .min()
+        .reset_index(name="base_start_bar_index")
+    )
+    trigger_df = trigger_df.merge(
+        base_start_indices,
+        on=["trigger_bar_start_timestamp", "trigger_bar_end_timestamp"],
+        how="left",
+    )
+    trigger_df["base_end_bar_index"] = trigger_df["base_end_bar_index"].astype(int)
+    trigger_df["base_start_bar_index"] = trigger_df["base_start_bar_index"].astype(int)
+    trigger_df["trigger_bar_index"] = trigger_df.index.astype(int)
+    trigger_df["trigger_timeframe"] = normalized_trigger_timeframe
+    return trigger_df
+
+
 def _check_touch(
     df: pd.DataFrame,
     zone: pd.Series,
-    bar_idx: int,
+    trigger_bar_idx: int,
+    base_bar_idx: int,
+    trigger_timeframe: str,
     direction: str,
     signal_id: int,
     naked_count: int,
     naked_req: str,
 ) -> dict | None:
-    bar = df.iloc[bar_idx]
+    bar = df.iloc[trigger_bar_idx]
     if bar["low"] <= zone["zone_high"] and bar["high"] >= zone["zone_low"]:
         return _make_signal(
             signal_id=signal_id,
-            ts=bar["timestamp"],
-            bar_idx=bar_idx,
+            ts=bar["base_end_timestamp"],
+            bar_idx=base_bar_idx,
+            trigger_bar_index=trigger_bar_idx,
+            trigger_timeframe=trigger_timeframe,
+            trigger_timestamp=bar["trigger_bar_end_timestamp"],
             trigger="touch",
             direction=direction,
             zone=zone,
@@ -333,13 +424,15 @@ def _check_touch(
 def _check_reject(
     df: pd.DataFrame,
     zone: pd.Series,
-    bar_idx: int,
+    trigger_bar_idx: int,
+    base_bar_idx: int,
+    trigger_timeframe: str,
     direction: str,
     signal_id: int,
     naked_count: int,
     naked_req: str,
 ) -> dict | None:
-    bar = df.iloc[bar_idx]
+    bar = df.iloc[trigger_bar_idx]
     touch = bar["low"] <= zone["zone_high"] and bar["high"] >= zone["zone_low"]
     if not touch:
         return None
@@ -349,8 +442,11 @@ def _check_reject(
         return None
     return _make_signal(
         signal_id=signal_id,
-        ts=bar["timestamp"],
-        bar_idx=bar_idx,
+        ts=bar["base_end_timestamp"],
+        bar_idx=base_bar_idx,
+        trigger_bar_index=trigger_bar_idx,
+        trigger_timeframe=trigger_timeframe,
+        trigger_timestamp=bar["trigger_bar_end_timestamp"],
         trigger="reject",
         direction=direction,
         zone=zone,
@@ -365,16 +461,18 @@ def _check_reject(
 def _check_break(
     df: pd.DataFrame,
     zone: pd.Series,
-    bar_idx: int,
+    trigger_bar_idx: int,
+    base_bar_idx: int,
+    trigger_timeframe: str,
     direction: str,
     signal_id: int,
     naked_count: int,
     naked_req: str,
 ) -> dict | None:
-    if bar_idx == 0:
+    if trigger_bar_idx == 0:
         return None
-    bar = df.iloc[bar_idx]
-    prev = df.iloc[bar_idx - 1]
+    bar = df.iloc[trigger_bar_idx]
+    prev = df.iloc[trigger_bar_idx - 1]
     if direction == "long":
         ok = float(prev["close"]) <= zone["zone_high"] and float(bar["close"]) > zone["zone_high"]
     else:
@@ -383,8 +481,11 @@ def _check_break(
         return None
     return _make_signal(
         signal_id=signal_id,
-        ts=bar["timestamp"],
-        bar_idx=bar_idx,
+        ts=bar["base_end_timestamp"],
+        bar_idx=base_bar_idx,
+        trigger_bar_index=trigger_bar_idx,
+        trigger_timeframe=trigger_timeframe,
+        trigger_timestamp=bar["trigger_bar_end_timestamp"],
         trigger="break",
         direction=direction,
         zone=zone,
@@ -399,13 +500,15 @@ def _check_break(
 def _check_reclaim(
     df: pd.DataFrame,
     zone: pd.Series,
-    bar_idx: int,
+    trigger_bar_idx: int,
+    base_bar_idx: int,
+    trigger_timeframe: str,
     direction: str,
     signal_id: int,
     naked_count: int,
     naked_req: str,
 ) -> dict | None:
-    bar = df.iloc[bar_idx]
+    bar = df.iloc[trigger_bar_idx]
     if direction == "long":
         ok = float(bar["low"]) < zone["zone_low"] and float(bar["close"]) > zone["zone_high"]
     else:
@@ -414,8 +517,11 @@ def _check_reclaim(
         return None
     return _make_signal(
         signal_id=signal_id,
-        ts=bar["timestamp"],
-        bar_idx=bar_idx,
+        ts=bar["base_end_timestamp"],
+        bar_idx=base_bar_idx,
+        trigger_bar_index=trigger_bar_idx,
+        trigger_timeframe=trigger_timeframe,
+        trigger_timestamp=bar["trigger_bar_end_timestamp"],
         trigger="reclaim",
         direction=direction,
         zone=zone,
@@ -557,6 +663,7 @@ def generate_signals(
     trigger: str,
     direction: str,
     tick_size: float,
+    trigger_timeframe: str = "base",
     trigger_params: dict | None = None,
     naked_only: bool = False,
     naked_flags: pd.DataFrame | None = None,
@@ -579,6 +686,8 @@ def generate_signals(
         Instrument tick size.
     trigger_params:
         Optional dict of trigger-specific parameters.
+    trigger_timeframe:
+        Trigger evaluation timeframe for simple triggers.
     naked_only:
         When ``True`` only zones where at least one level (or all levels,
         depending on *naked_requirement*) is naked are processed.
@@ -601,8 +710,9 @@ def generate_signals(
     -----
     - Signals are **candidates only** in Phase 4; trade simulation (SL/TP,
       fills, P&L) is deferred to Phase 5.
-    - For simple triggers (touch / reject / break / reclaim) the signal
-      timestamp and bar_index correspond to the trigger bar.
+    - For simple triggers (touch / reject / break / reclaim), ``timestamp``
+      stays aligned to the canonical/base bar referenced by ``bar_index``.
+      ``trigger_timestamp`` stores trigger-candle completion time.
     - For ``3c`` one resolved setup row is emitted (``filled``/``void``).
     """
     if trigger not in VALID_TRIGGERS:
@@ -615,11 +725,22 @@ def generate_signals(
         return _empty_signals_df()
 
     params = _normalize_3c_params(trigger_params) if trigger == "3c" else {}
+    requested_trigger_timeframe = normalize_trigger_timeframe(trigger_timeframe)
+    if requested_trigger_timeframe not in VALID_TRIGGER_TIMEFRAMES:
+        raise ValueError(
+            f"trigger_timeframe must be one of {sorted(VALID_TRIGGER_TIMEFRAMES)}, got {trigger_timeframe!r}"
+        )
+    effective_trigger_timeframe = "base" if trigger == "3c" else requested_trigger_timeframe
     naked_req = naked_requirement.lower()
     if naked_req not in {"any", "all"}:
         naked_req = "any"
 
     df_reset = df.reset_index(drop=True)
+    trigger_df = _prepare_trigger_dataframe(df_reset, effective_trigger_timeframe)
+    trigger_rows_by_base_end: dict[int, pd.Series] = {
+        int(row["base_end_bar_index"]): row
+        for _, row in trigger_df.iterrows()
+    }
     signals: list[dict] = []
     signal_id = 0
     filtered_zones: list[tuple[pd.Series, int]] = []
@@ -627,6 +748,8 @@ def generate_signals(
     for _, zone in zones.iterrows():
         bar_idx = int(zone["bar_index"])
         if bar_idx >= len(df_reset):
+            continue
+        if trigger != "3c" and bar_idx not in trigger_rows_by_base_end:
             continue
 
         # Naked filter
@@ -730,6 +853,9 @@ def generate_signals(
                     signal_id=signal_id,
                     ts=setup["timestamp"],
                     bar_idx=int(setup["bar_index"]),
+                    trigger_bar_index=int(setup["bar_index"]),
+                    trigger_timeframe=effective_trigger_timeframe,
+                    trigger_timestamp=setup["timestamp"],
                     trigger="3c",
                     direction=str(setup["direction"]),
                     zone=zone,
@@ -774,15 +900,60 @@ def generate_signals(
         directions = ["long", "short"] if direction == "both" else [direction]
         for zone, ncount in filtered_zones:
             bar_idx = int(zone["bar_index"])
+            trigger_row = trigger_rows_by_base_end.get(bar_idx)
+            if trigger_row is None:
+                continue
+            trigger_bar_idx = int(trigger_row["trigger_bar_index"])
+            base_bar_idx = int(trigger_row["base_end_bar_index"])
             for d in directions:
                 if trigger == "touch":
-                    sig = _check_touch(df_reset, zone, bar_idx, d, signal_id, ncount, naked_req)
+                    sig = _check_touch(
+                        trigger_df,
+                        zone,
+                        trigger_bar_idx,
+                        base_bar_idx,
+                        effective_trigger_timeframe,
+                        d,
+                        signal_id,
+                        ncount,
+                        naked_req,
+                    )
                 elif trigger == "reject":
-                    sig = _check_reject(df_reset, zone, bar_idx, d, signal_id, ncount, naked_req)
+                    sig = _check_reject(
+                        trigger_df,
+                        zone,
+                        trigger_bar_idx,
+                        base_bar_idx,
+                        effective_trigger_timeframe,
+                        d,
+                        signal_id,
+                        ncount,
+                        naked_req,
+                    )
                 elif trigger == "break":
-                    sig = _check_break(df_reset, zone, bar_idx, d, signal_id, ncount, naked_req)
+                    sig = _check_break(
+                        trigger_df,
+                        zone,
+                        trigger_bar_idx,
+                        base_bar_idx,
+                        effective_trigger_timeframe,
+                        d,
+                        signal_id,
+                        ncount,
+                        naked_req,
+                    )
                 elif trigger == "reclaim":
-                    sig = _check_reclaim(df_reset, zone, bar_idx, d, signal_id, ncount, naked_req)
+                    sig = _check_reclaim(
+                        trigger_df,
+                        zone,
+                        trigger_bar_idx,
+                        base_bar_idx,
+                        effective_trigger_timeframe,
+                        d,
+                        signal_id,
+                        ncount,
+                        naked_req,
+                    )
                 else:
                     sig = None
 

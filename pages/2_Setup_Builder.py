@@ -6,9 +6,13 @@ import re
 import streamlit as st
 
 from thesistester.setup import (
+    DEFAULT_TRIGGER_TIMEFRAME,
+    TRIGGER_TIMEFRAME_CHOICES,
+    VALID_TRIGGER_TIMEFRAMES,
     available_level_columns,
     build_setup_config,
     default_selected_levels,
+    normalize_trigger_timeframe,
     validate_setup_config,
 )
 
@@ -19,6 +23,13 @@ CONFLUENCE_MODE_LABELS = {
 }
 
 CONFLUENCE_MODE_DISPLAY = {value: key for key, value in CONFLUENCE_MODE_LABELS.items()}
+TRIGGER_TIMEFRAME_LABELS = {
+    "Base/current timeframe": "base",
+    "1 minute": "1min",
+    "5 minutes": "5min",
+    "15 minutes": "15min",
+}
+TRIGGER_TIMEFRAME_DISPLAY = {value: key for key, value in TRIGGER_TIMEFRAME_LABELS.items()}
 
 
 def _anchor_rule_key(prefix: str, level: str) -> str:
@@ -46,8 +57,22 @@ def _render_setup_summary(config: dict) -> None:
     st.markdown(f"**Naked only:** {config['naked_only']}")
     st.markdown(f"**Naked requirement:** {config['naked_requirement']}")
     st.markdown(f"**Trigger:** {config['trigger']}")
+    trigger = str(config.get("trigger", ""))
+    trigger_timeframe = (
+        DEFAULT_TRIGGER_TIMEFRAME
+        if trigger == "3c"
+        else normalize_trigger_timeframe(config.get("trigger_timeframe"))
+    )
+    st.markdown(
+        f"**Trigger timeframe:** "
+        f"{TRIGGER_TIMEFRAME_DISPLAY.get(trigger_timeframe, 'Base/current timeframe')}"
+    )
     st.markdown(f"**Direction:** {config['direction']}")
-    if config["trigger"] == "3c":
+    if trigger == "3c":
+        st.info(
+            "3c currently uses the base/current timeframe only. "
+            "Multi-timeframe 3c confirmation will be implemented separately."
+        )
         params = config.get("trigger_params", {})
         st.markdown("**Trigger params:**")
         st.markdown(
@@ -156,6 +181,34 @@ naked_requirement = st.radio("Naked requirement", options=["any", "all"], index=
 st.subheader("Trigger settings")
 trigger_options = ["touch", "reject", "break", "reclaim", "3c"]
 trigger = st.selectbox("Trigger", options=trigger_options, index=0)
+trigger_timeframe_options = [
+    option for option in TRIGGER_TIMEFRAME_CHOICES if option in VALID_TRIGGER_TIMEFRAMES
+]
+trigger_timeframe_default = trigger_timeframe_options.index(DEFAULT_TRIGGER_TIMEFRAME)
+if trigger == "3c":
+    st.selectbox(
+        "Trigger timeframe",
+        options=[TRIGGER_TIMEFRAME_DISPLAY[DEFAULT_TRIGGER_TIMEFRAME]],
+        index=0,
+        disabled=True,
+        help="3c currently uses the base/current timeframe only.",
+    )
+    trigger_timeframe = DEFAULT_TRIGGER_TIMEFRAME
+    st.info(
+        "3c currently uses the base/current timeframe only. "
+        "Multi-timeframe 3c confirmation will be implemented separately."
+    )
+else:
+    trigger_timeframe_label = st.selectbox(
+        "Trigger timeframe",
+        options=list(TRIGGER_TIMEFRAME_LABELS.keys()),
+        index=trigger_timeframe_default,
+        help=(
+            "Candle-close trigger logic is evaluated on the selected trigger timeframe. "
+            "The default preserves current behavior."
+        ),
+    )
+    trigger_timeframe = TRIGGER_TIMEFRAME_LABELS[trigger_timeframe_label]
 direction = st.selectbox("Direction", options=["long", "short", "both"], index=2)
 
 trigger_params = {}
@@ -184,6 +237,7 @@ if st.button("Save setup", type="primary"):
         naked_only=naked_only,
         naked_requirement=naked_requirement,
         trigger=trigger,
+        trigger_timeframe=trigger_timeframe,
         direction=direction,
         confluence_mode=confluence_mode,
         anchor_level=anchor_level,

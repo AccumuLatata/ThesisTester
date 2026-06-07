@@ -12,6 +12,7 @@ from typing import Any
 import pandas as pd
 
 from thesistester import __version__
+from thesistester.setup import normalize_trigger_timeframe
 
 PERSISTENCE_SCHEMA_VERSION = 1
 LEVEL_ENGINE_VERSION = 3
@@ -233,6 +234,9 @@ def _normalize_signal_settings_for_hash(settings: dict) -> dict:
     trigger_params = normalized.get("trigger_params")
     if isinstance(trigger_params, dict):
         normalized["trigger_params"] = dict(trigger_params)
+    normalized["trigger_timeframe"] = normalize_trigger_timeframe(
+        normalized.get("trigger_timeframe")
+    )
     setup_snapshot = normalized.get("setup_snapshot")
     if isinstance(setup_snapshot, dict):
         normalized["setup_snapshot"] = dict(setup_snapshot)

@@ -70,6 +70,7 @@ def test_build_setup_config_defaults_to_global_cluster():
     assert config["anchor_level"] is None
     assert config["confluence_rules"] == []
     assert config["min_valid_confluences"] == 1
+    assert config["trigger_timeframe"] == "base"
 
 
 def test_empty_setup_name_invalid():
@@ -122,6 +123,29 @@ def test_invalid_direction_invalid():
     assert any("Direction must be one of" in message for message in errors)
 
 
+def test_old_config_without_trigger_timeframe_remains_valid():
+    config = _base_config()
+    config.pop("trigger_timeframe")
+    assert validate_setup_config(config) == []
+
+
+def test_missing_trigger_timeframe_normalizes_to_base():
+    config = build_setup_config(
+        name="defaults",
+        description="",
+        instrument="ES",
+        selected_levels=["ONH"],
+        tolerance_ticks=4.0,
+        min_confluences=2,
+        max_confluences=5,
+        naked_only=False,
+        naked_requirement="any",
+        trigger="touch",
+        direction="both",
+    )
+    assert config["trigger_timeframe"] == "base"
+
+
 def test_3c_config_includes_expected_trigger_params():
     # arrival_tolerance_ticks is deprecated; it is accepted in input for backward
     # compat but normalized to 0.0 in the stored config.
@@ -172,6 +196,26 @@ def test_3c_missing_params_are_defaulted():
     assert config["trigger_params"]["arrival_tolerance_ticks"] == 0.0  # forced to 0
     assert config["trigger_params"]["entry_retrace_ticks"] == 4.0
     assert config["trigger_params"]["max_entry_wait_bars_after_reversal"] == 5
+    assert config["trigger_timeframe"] == "base"
+    assert validate_setup_config(config) == []
+
+
+def test_3c_non_base_trigger_timeframe_is_normalized_to_base():
+    config = build_setup_config(
+        name="3c forced base tf",
+        description="",
+        instrument="ES",
+        selected_levels=["ONH"],
+        tolerance_ticks=4.0,
+        min_confluences=2,
+        max_confluences=5,
+        naked_only=False,
+        naked_requirement="any",
+        trigger="3c",
+        trigger_timeframe="5min",
+        direction="both",
+    )
+    assert config["trigger_timeframe"] == "base"
     assert validate_setup_config(config) == []
 
 
