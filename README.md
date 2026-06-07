@@ -28,7 +28,13 @@ ThesisTester supports two confluence modes:
 Data -> Levels -> Setup Builder -> Signals -> Backtest
 ```
 
-Anchor-based rules are configured in **Setup Builder** and then used on the **Signals** page through **Use saved setup** mode.
+Anchor-based rules are configured in **Setup Builder** and then used on the **Signals** page through setup-source selection.
+
+Signals setup sources:
+
+- **Configure manually** (existing manual controls, unchanged)
+- **Use active setup** (`st.session_state["setup_config"]`, unchanged backward-compatible path)
+- **Use saved setup from library** (dataset-aware setup library selection)
 
 ### Diagnostics
 
@@ -42,9 +48,14 @@ Anchor-generated zones include diagnostics such as:
 - required/optional status
 - valid/invalid reason
 
-### Current limitation
+### Saved signal runs integration
 
-Manual controls on the Signals page remain global-cluster only. To use anchor-based rules, create and save a setup in Setup Builder first.
+In **Saved signal runs**, you can copy a run’s setup snapshot back into Setup Builder using **Copy setup to Setup Builder**. This writes the snapshot to:
+
+- `st.session_state["setup_config"]`
+- `st.session_state["_setup_builder_editor_config"]`
+
+Manual Signals controls remain unchanged and backtest behavior is unchanged.
 
 ## Documentation
 

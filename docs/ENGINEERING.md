@@ -577,8 +577,14 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
   and delete saved setups. Listing is newest-first and dataset-aware when `dataset_id` is present.
 - **Dataset-mismatch protection.** On dataset switch, incompatible active setups are cleared
   (when setup `dataset_id` differs from active `dataset_id`) to prevent silent stale reuse.
-- **Signals can consume saved setup configs.** `pages/6_Signals.py` supports `Use saved setup`
-  mode from Setup Builder while retaining full manual controls as fallback.
+- **Signals setup-source selection.** `pages/6_Signals.py` supports three explicit sources:
+  manual controls, active setup (`st.session_state["setup_config"]`), and saved setup library.
+  Manual controls remain available and unchanged.
+- **Dataset-aware setup library selection in Signals.** Signals lists current-dataset and
+  global setups by default, with optional inclusion of other-dataset setups and clear relation labels.
+- **Saved-run setup snapshot copy.** Signals can copy setup snapshots from selected saved signal
+  runs back into Setup Builder session state (`setup_config` and `_setup_builder_editor_config`)
+  for review/edit/save workflows without auto-persisting a new setup.
 
 ---
 
@@ -609,7 +615,7 @@ Anchor rule schema:
 
 ### 2. Engine routing
 
-Signals page routing for saved setups:
+Signals page routing for setup-source saved setups:
 
 ```text
 global_cluster -> detect_confluence_zones()

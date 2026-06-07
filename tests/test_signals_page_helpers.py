@@ -84,16 +84,42 @@ def _import_page_helpers():
     return (
         mod._parse_anchor_rule_results,
         mod._render_anchor_diagnostics,
+        mod._dataset_relation_label,
+        mod._prioritize_saved_setups,
+        mod._saved_setup_option_label,
+        mod._filter_saved_setups_for_signals,
+        mod._saved_setup_compatibility_issues,
+        mod._extract_setup_snapshot_from_signal_run,
         mod._saved_setup_caption,
         mod._no_zones_message,
+        mod._saved_setup_generation_blockers,
+        mod._normalize_3c_params,
+        mod._safe_float,
+        mod._safe_int,
+        mod._safe_bool,
+        mod._safe_dict,
+        mod._safe_list,
     )
 
 
 (
     _parse_anchor_rule_results,
     _render_anchor_diagnostics,
+    _dataset_relation_label,
+    _prioritize_saved_setups,
+    _saved_setup_option_label,
+    _filter_saved_setups_for_signals,
+    _saved_setup_compatibility_issues,
+    _extract_setup_snapshot_from_signal_run,
     _saved_setup_caption,
     _no_zones_message,
+    _saved_setup_generation_blockers,
+    _normalize_3c_params,
+    _safe_float,
+    _safe_int,
+    _safe_bool,
+    _safe_dict,
+    _safe_list,
 ) = _import_page_helpers()
 
 
@@ -247,6 +273,120 @@ def test_saved_setup_caption_anchor_mode():
     assert caption == "Mode=anchor_rules • Anchor=pdHigh • Rules=2 • Min valid=2 • Trigger TF=base"
 
 
+def test_dataset_relation_labels():
+    assert _dataset_relation_label("dataset-a", "dataset-a") == "current dataset"
+    assert _dataset_relation_label(None, "dataset-a") == "global/no dataset"
+    assert _dataset_relation_label("dataset-b", "dataset-a") == "other dataset"
+
+
+def test_saved_setup_prioritization_current_then_global_then_other():
+    setups = [
+        {"setup_id": "other", "dataset_id": "dataset-b"},
+        {"setup_id": "global", "dataset_id": None},
+        {"setup_id": "current", "dataset_id": "dataset-a"},
+    ]
+    prioritized = _prioritize_saved_setups(setups, current_dataset_id="dataset-a")
+    assert [item["setup_id"] for item in prioritized] == ["current", "global", "other"]
+
+
+def test_filter_saved_setups_defaults_to_current_and_global():
+    setups = [
+        {"setup_id": "other", "dataset_id": "dataset-b"},
+        {"setup_id": "global", "dataset_id": None},
+        {"setup_id": "current", "dataset_id": "dataset-a"},
+    ]
+    filtered = _filter_saved_setups_for_signals(
+        setups,
+        current_dataset_id="dataset-a",
+        include_other_datasets=False,
+    )
+    assert [item["setup_id"] for item in filtered] == ["current", "global"]
+
+
+def test_saved_setup_option_label_includes_dataset_relation():
+    label = _saved_setup_option_label(
+        {
+            "name": "My setup",
+            "instrument": "ES",
+            "updated_at": "2026-06-07T00:00:00Z",
+            "dataset_id": None,
+            "setup_config": {"confluence_mode": "global_cluster", "trigger": "touch", "direction": "both"},
+        },
+        "dataset-a",
+    )
+    assert "My setup · ES · 2026-06-07" in label
+    assert "mode=global_cluster" in label
+    assert "trigger=touch" in label
+    assert "direction=both" in label
+    assert "global/no dataset" in label
+
+
+def test_saved_setup_compatibility_detects_global_missing_levels():
+    issues = _saved_setup_compatibility_issues(
+        {
+            "confluence_mode": "global_cluster",
+            "selected_levels": ["ONH", "MISSING"],
+        },
+        ["ONH", "ONL"],
+    )
+    assert issues["selected_levels"] == ["MISSING"]
+    assert issues["anchor_level"] == []
+    assert issues["confluence_rules"] == []
+
+
+def test_saved_setup_compatibility_detects_anchor_missing_levels():
+    issues = _saved_setup_compatibility_issues(
+        {
+            "confluence_mode": "anchor_rules",
+            "anchor_level": "MISSING_ANCHOR",
+            "confluence_rules": [{"level": "ONH"}, {"level": "MISSING_RULE"}],
+        },
+        ["ONH", "ONL"],
+    )
+    assert issues["selected_levels"] == []
+    assert issues["anchor_level"] == ["MISSING_ANCHOR"]
+    assert issues["confluence_rules"] == ["MISSING_RULE"]
+
+
+def test_saved_setup_compatibility_valid_setup_has_no_issues():
+    issues = _saved_setup_compatibility_issues(
+        {
+            "confluence_mode": "anchor_rules",
+            "anchor_level": "ONH",
+            "confluence_rules": [{"level": "ONL"}],
+        },
+        ["ONH", "ONL"],
+    )
+    assert issues == {"selected_levels": [], "anchor_level": [], "confluence_rules": []}
+
+
+def test_extract_setup_snapshot_prefers_signal_settings_snapshot():
+    snapshot = _extract_setup_snapshot_from_signal_run(
+        {
+            "signal_settings": {"setup_snapshot": {"name": "from-settings"}},
+            "last_signal_setup": {"name": "fallback"},
+        }
+    )
+    assert snapshot == {"name": "from-settings"}
+
+
+def test_extract_setup_snapshot_falls_back_to_last_signal_setup():
+    snapshot = _extract_setup_snapshot_from_signal_run(
+        {
+            "signal_settings": {"setup_snapshot": None},
+            "last_signal_setup": {"name": "fallback"},
+        }
+    )
+    assert snapshot == {"name": "fallback"}
+
+
+def test_extract_setup_snapshot_handles_missing_snapshot():
+    snapshot = _extract_setup_snapshot_from_signal_run(
+        {"signal_settings": {}, "last_signal_setup": {}}
+    )
+    assert snapshot is None
+
+
 def test_no_zones_message_global_mode():
     assert _no_zones_message("global_cluster") == (
         "No confluence zones found with the current settings. "
@@ -260,3 +400,257 @@ def test_no_zones_message_anchor_mode():
         "For anchor setups, review the anchor level, confluence rules, "
         "and per-rule tolerances."
     )
+
+
+# ---------------------------------------------------------------------------
+# _saved_setup_generation_blockers tests
+# ---------------------------------------------------------------------------
+
+_VALID_GLOBAL_CONFIG = {
+    "name": "My Setup",
+    "confluence_mode": "global_cluster",
+    "selected_levels": ["ONH", "ONL"],
+    "tolerance_ticks": 4.0,
+    "min_confluences": 2,
+    "max_confluences": 5,
+    "naked_only": False,
+    "naked_requirement": "any",
+    "trigger": "touch",
+    "trigger_timeframe": "base",
+    "direction": "both",
+    "trigger_params": {},
+}
+
+
+def test_generation_blockers_valid_global_setup_returns_no_blockers():
+    blockers = _saved_setup_generation_blockers(
+        _VALID_GLOBAL_CONFIG,
+        ["ONH", "ONL", "VWAP"],
+    )
+    assert blockers == []
+
+
+def test_generation_blockers_invalid_confluence_mode():
+    config = {**_VALID_GLOBAL_CONFIG, "confluence_mode": "unsupported_mode"}
+    blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
+    assert any("confluence mode" in b.lower() for b in blockers)
+
+
+def test_generation_blockers_global_empty_selected_levels():
+    config = {**_VALID_GLOBAL_CONFIG, "selected_levels": []}
+    blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
+    assert any("level" in b.lower() for b in blockers)
+
+
+def test_generation_blockers_anchor_missing_anchor_level():
+    config = {
+        "name": "Anchor Setup",
+        "confluence_mode": "anchor_rules",
+        "anchor_level": "",
+        "confluence_rules": [{"level": "ONL", "tolerance_ticks": 4.0, "required": False}],
+        "min_valid_confluences": 1,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "touch",
+        "trigger_timeframe": "base",
+        "direction": "both",
+        "trigger_params": {},
+    }
+    blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
+    assert any("anchor" in b.lower() for b in blockers)
+
+
+def test_generation_blockers_anchor_empty_confluence_rules():
+    config = {
+        "name": "Anchor Setup",
+        "confluence_mode": "anchor_rules",
+        "anchor_level": "ONH",
+        "confluence_rules": [],
+        "min_valid_confluences": 1,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "touch",
+        "trigger_timeframe": "base",
+        "direction": "both",
+        "trigger_params": {},
+    }
+    blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
+    assert any("confluence rule" in b.lower() for b in blockers)
+
+
+def test_generation_blockers_min_valid_confluences_exceeds_rules():
+    config = {
+        "name": "Anchor Setup",
+        "confluence_mode": "anchor_rules",
+        "anchor_level": "ONH",
+        "confluence_rules": [{"level": "ONL", "tolerance_ticks": 4.0, "required": False}],
+        "min_valid_confluences": 5,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "touch",
+        "trigger_timeframe": "base",
+        "direction": "both",
+        "trigger_params": {},
+    }
+    blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
+    assert any("minimum valid confluences" in b.lower() for b in blockers)
+
+
+def test_generation_blockers_malformed_confluence_rule():
+    config = {
+        "name": "Anchor Setup",
+        "confluence_mode": "anchor_rules",
+        "anchor_level": "ONH",
+        "confluence_rules": ["not-a-dict"],
+        "min_valid_confluences": 1,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "touch",
+        "trigger_timeframe": "base",
+        "direction": "both",
+        "trigger_params": {},
+    }
+    blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
+    assert any("rule" in b.lower() for b in blockers)
+
+
+def test_generation_blockers_missing_available_level_references():
+    config = {**_VALID_GLOBAL_CONFIG, "selected_levels": ["ONH", "MISSING_LEVEL"]}
+    blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
+    assert any("MISSING_LEVEL" in b for b in blockers)
+
+
+# ---------------------------------------------------------------------------
+# _normalize_3c_params — safe coercion tests
+# ---------------------------------------------------------------------------
+
+def test_normalize_3c_params_none_returns_defaults():
+    result = _normalize_3c_params(None)
+    assert result["entry_retrace_ticks"] == 4.0
+    assert result["max_entry_wait_bars_after_reversal"] == 5
+    assert result["arrival_tolerance_ticks"] == 0.0
+
+
+def test_normalize_3c_params_non_dict_string_returns_defaults():
+    result = _normalize_3c_params("bad")
+    assert result["entry_retrace_ticks"] == 4.0
+    assert result["max_entry_wait_bars_after_reversal"] == 5
+    assert result["arrival_tolerance_ticks"] == 0.0
+
+
+def test_normalize_3c_params_bad_entry_retrace_returns_default():
+    result = _normalize_3c_params({"entry_retrace_ticks": "bad"})
+    assert result["entry_retrace_ticks"] == 4.0
+    assert result["max_entry_wait_bars_after_reversal"] == 5
+
+
+def test_normalize_3c_params_bad_max_wait_bars_returns_default():
+    result = _normalize_3c_params({"max_entry_wait_bars_after_reversal": "bad"})
+    assert result["entry_retrace_ticks"] == 4.0
+    assert result["max_entry_wait_bars_after_reversal"] == 5
+
+
+def test_normalize_3c_params_valid_values_are_preserved():
+    result = _normalize_3c_params({"entry_retrace_ticks": 6.0, "max_entry_wait_bars_after_reversal": 10})
+    assert result["entry_retrace_ticks"] == 6.0
+    assert result["max_entry_wait_bars_after_reversal"] == 10
+
+
+# ---------------------------------------------------------------------------
+# _saved_setup_generation_blockers — malformed setup no-crash tests
+# ---------------------------------------------------------------------------
+
+_MALFORMED_GLOBAL_SETUP = {
+    "name": "Bad setup",
+    "confluence_mode": "global_cluster",
+    "selected_levels": "ONH",        # wrong type — should be list
+    "tolerance_ticks": "bad",
+    "min_confluences": "bad",
+    "max_confluences": "bad",
+    "naked_only": "bad",
+    "naked_requirement": "bad",
+    "trigger": "3c",
+    "trigger_timeframe": "base",
+    "direction": "both",
+    "trigger_params": "bad",         # wrong type — should be dict
+}
+
+_MALFORMED_ANCHOR_SETUP = {
+    "name": "Bad anchor setup",
+    "confluence_mode": "anchor_rules",
+    "anchor_level": "ONH",
+    "confluence_rules": None,        # wrong type — should be list
+    "min_valid_confluences": "bad",
+    "trigger": "touch",
+    "trigger_timeframe": "base",
+    "direction": "both",
+}
+
+
+def test_generation_blockers_malformed_global_setup_does_not_crash():
+    """Malformed global setup must return blockers, not raise."""
+    blockers = _saved_setup_generation_blockers(_MALFORMED_GLOBAL_SETUP, ["ONH", "ONL"])
+    assert len(blockers) > 0
+
+
+def test_generation_blockers_malformed_anchor_setup_does_not_crash():
+    """Malformed anchor setup (confluence_rules=None) must return blockers, not raise."""
+    blockers = _saved_setup_generation_blockers(_MALFORMED_ANCHOR_SETUP, ["ONH", "ONL"])
+    assert len(blockers) > 0
+
+
+# ---------------------------------------------------------------------------
+# Safe coercion helpers
+# ---------------------------------------------------------------------------
+
+def test_safe_float_none_returns_default():
+    assert _safe_float(None, 4.0) == 4.0
+
+
+def test_safe_float_bad_string_returns_default():
+    assert _safe_float("bad", 4.0) == 4.0
+
+
+def test_safe_float_valid_string_converts():
+    assert _safe_float("3.5", 4.0) == 3.5
+
+
+def test_safe_int_none_returns_default():
+    assert _safe_int(None, 5) == 5
+
+
+def test_safe_int_bad_string_returns_default():
+    assert _safe_int("bad", 5) == 5
+
+
+def test_safe_int_valid_float_string_converts():
+    assert _safe_int("7.9", 5) == 7
+
+
+def test_safe_bool_bool_passthrough():
+    assert _safe_bool(True, False) is True
+    assert _safe_bool(False, True) is False
+
+
+def test_safe_bool_bad_string_returns_default():
+    assert _safe_bool("bad", False) is False
+
+
+def test_safe_dict_dict_passthrough():
+    d = {"a": 1}
+    assert _safe_dict(d) is d
+
+
+def test_safe_dict_non_dict_returns_empty():
+    assert _safe_dict("bad") == {}
+    assert _safe_dict(None) == {}
+
+
+def test_safe_list_list_passthrough():
+    lst = [1, 2]
+    assert _safe_list(lst) is lst
+
+
+def test_safe_list_non_list_returns_empty():
+    assert _safe_list(None) == []
+    assert _safe_list("bad") == []
