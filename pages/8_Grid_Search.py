@@ -207,7 +207,6 @@ if run_btn:
 
     # Directional ranking: pre-filter by side-specific trade counts then rank.
     if enable_directional:
-        active_metric = directional_metric
         dir_filtered = grid.copy()
         if "long_trade_count" in dir_filtered.columns:
             dir_filtered = dir_filtered[
@@ -217,9 +216,7 @@ if run_btn:
             dir_filtered = dir_filtered[
                 dir_filtered["short_trade_count"] >= min_short_trades
             ]
-        best = best_grid_result(dir_filtered, metric=active_metric, min_trades=min_trades)
-    else:
-        active_metric = ranking_metric
+        best = best_grid_result(dir_filtered, metric=directional_metric, min_trades=min_trades)
 
     st.session_state["grid_results"] = grid
     st.session_state["best_grid_result"] = best
