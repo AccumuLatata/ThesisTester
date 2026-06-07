@@ -542,6 +542,61 @@ def test_signal_run_roundtrip():
     assert loaded_meta["signal_settings"] == _signal_settings()
 
 
+def test_save_signal_run_creates_missing_directory_tree():
+    signal_settings = _signal_settings()
+    signal_hash = compute_signal_settings_hash(signal_settings)
+    run_dir = get_store_root() / "signals" / "dataset-123" / "levels-hash-1" / signal_hash
+    assert not run_dir.exists()
+
+    save_signal_run(
+        dataset_id="dataset-123",
+        levels_settings_hash="levels-hash-1",
+        signal_settings=signal_settings,
+        signals=_signals_frame(),
+        confluence_zones=_confluence_zones_frame(),
+        naked_flags=_naked_flags_frame(),
+        signal_context={},
+        last_signal_setup={},
+    )
+
+    assert (run_dir / "signals.parquet").exists()
+    assert (run_dir / "confluence_zones.parquet").exists()
+    assert (run_dir / "naked_flags.parquet").exists()
+    assert (run_dir / "meta.json").exists()
+
+
+def test_save_signal_run_repeat_save_succeeds():
+    signal_settings = _signal_settings()
+    signal_hash = compute_signal_settings_hash(signal_settings)
+    run_dir = get_store_root() / "signals" / "dataset-123" / "levels-hash-1" / signal_hash
+
+    save_signal_run(
+        dataset_id="dataset-123",
+        levels_settings_hash="levels-hash-1",
+        signal_settings=signal_settings,
+        signals=_signals_frame(),
+        confluence_zones=_confluence_zones_frame(),
+        naked_flags=_naked_flags_frame(),
+        signal_context={},
+        last_signal_setup={},
+    )
+    save_signal_run(
+        dataset_id="dataset-123",
+        levels_settings_hash="levels-hash-1",
+        signal_settings=signal_settings,
+        signals=_signals_frame(),
+        confluence_zones=_confluence_zones_frame(),
+        naked_flags=_naked_flags_frame(),
+        signal_context={},
+        last_signal_setup={},
+    )
+
+    assert (run_dir / "signals.parquet").exists()
+    assert (run_dir / "confluence_zones.parquet").exists()
+    assert (run_dir / "naked_flags.parquet").exists()
+    assert (run_dir / "meta.json").exists()
+
+
 def test_list_saved_signal_runs_filters_by_dataset_and_levels_hash():
     save_signal_run(
         dataset_id="dataset-a",
