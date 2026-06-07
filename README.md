@@ -72,11 +72,14 @@ Manual controls on the Signals page remain global-cluster only. To use anchor-ba
   confluence zone detection (`detect_confluence_zones`), naked/untested level flags
   (`flag_naked_levels`), and five trigger types — `touch`, `reject`, `break`, `reclaim`,
   `3c` — exposed via a new **Signals** page (`pages/6_Signals.py`). Trigger timeframe
-  currently applies to simple triggers (`touch`, `reject`, `break`, `reclaim`) and
-  defaults to base/current timeframe. `3c` remains base/current-timeframe only until
-  dedicated `3c` trigger-timeframe support is implemented. For non-base simple triggers,
-  `bar_index`/`timestamp` remain aligned to the canonical/base bar at trigger-candle end,
-  while `trigger_timestamp` stores the trigger-candle completion/actionable time.
+  (`base`, `1min`, `5min`, `15min`) applies to all triggers including `3c`, defaulting
+  to `base` for backward compatibility. For non-base triggers, `bar_index`/`timestamp`
+  remain aligned to the canonical/base bar at trigger-candle end, while `trigger_timestamp`
+  stores the trigger-candle completion/actionable time.
+  For `3c` with non-base trigger timeframe, arrival, inside/muted candles, SFP tagging, and
+  reversal confirmation are evaluated on trigger-timeframe candles; retrace entry fill is
+  evaluated on canonical/base bars after reversal trigger candle completion;
+  `max_entry_wait_bars_after_reversal` counts trigger-timeframe bars, not base bars.
   Candidate signals are stored in `st.session_state["signals"]` for Phase 5 backtesting.
 - **Phase 5 (backtest engine, KPIs, results):** bar-by-bar trade simulation with a
   single fixed SL/TP tick configuration (`thesistester/engine/backtest.py`).  Simple
@@ -123,6 +126,13 @@ Manual controls on the Signals page remain global-cluster only. To use anchor-ba
 
   **User-configurable parameters:** `entry_retrace_ticks` (default 4),
   `max_entry_wait_bars_after_reversal` (default 5).
+
+  **Trigger timeframe:** `3c` supports all trigger timeframes (`base`, `1min`, `5min`,
+  `15min`).  For non-base timeframes, arrival/muted/SFP/reversal are evaluated on the
+  selected trigger candles; retrace fill is monitored on canonical/base bars after reversal
+  candle completion; wait-window bars count trigger-timeframe bars.  Backtest entry uses
+  base-indexed `entry_bar_index` and `retrace_entry_price`, so backtest execution is
+  unchanged.
 
   **`arrival_tolerance_ticks` is deprecated** and is no longer user-configurable.
   Arrival must actually touch the key level (strict, zero tolerance).  Old saved

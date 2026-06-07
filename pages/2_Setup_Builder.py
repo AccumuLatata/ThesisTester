@@ -58,21 +58,13 @@ def _render_setup_summary(config: dict) -> None:
     st.markdown(f"**Naked requirement:** {config['naked_requirement']}")
     st.markdown(f"**Trigger:** {config['trigger']}")
     trigger = str(config.get("trigger", ""))
-    trigger_timeframe = (
-        DEFAULT_TRIGGER_TIMEFRAME
-        if trigger == "3c"
-        else normalize_trigger_timeframe(config.get("trigger_timeframe"))
-    )
+    trigger_timeframe = normalize_trigger_timeframe(config.get("trigger_timeframe"))
     st.markdown(
         f"**Trigger timeframe:** "
         f"{TRIGGER_TIMEFRAME_DISPLAY.get(trigger_timeframe, 'Base/current timeframe')}"
     )
     st.markdown(f"**Direction:** {config['direction']}")
     if trigger == "3c":
-        st.info(
-            "3c currently uses the base/current timeframe only. "
-            "Multi-timeframe 3c confirmation will be implemented separately."
-        )
         params = config.get("trigger_params", {})
         st.markdown("**Trigger params:**")
         st.markdown(
@@ -186,17 +178,21 @@ trigger_timeframe_options = [
 ]
 trigger_timeframe_default = trigger_timeframe_options.index(DEFAULT_TRIGGER_TIMEFRAME)
 if trigger == "3c":
-    st.selectbox(
+    trigger_timeframe_label = st.selectbox(
         "Trigger timeframe",
-        options=[TRIGGER_TIMEFRAME_DISPLAY[DEFAULT_TRIGGER_TIMEFRAME]],
-        index=0,
-        disabled=True,
-        help="3c currently uses the base/current timeframe only.",
+        options=list(TRIGGER_TIMEFRAME_LABELS.keys()),
+        index=trigger_timeframe_default,
+        help=(
+            "Arrival, inside/muted, SFP, and reversal are evaluated on the selected "
+            "trigger timeframe. Retrace entry fill is evaluated on canonical/base bars."
+        ),
     )
-    trigger_timeframe = DEFAULT_TRIGGER_TIMEFRAME
+    trigger_timeframe = TRIGGER_TIMEFRAME_LABELS[trigger_timeframe_label]
     st.info(
-        "3c currently uses the base/current timeframe only. "
-        "Multi-timeframe 3c confirmation will be implemented separately."
+        "3c with non-base trigger timeframe: arrival, muted, SFP, and reversal "
+        "are evaluated on trigger-timeframe candles. "
+        "Retrace entry fill is evaluated on canonical/base bars after reversal candle completes. "
+        "max_entry_wait_bars_after_reversal counts trigger-timeframe bars."
     )
 else:
     trigger_timeframe_label = st.selectbox(

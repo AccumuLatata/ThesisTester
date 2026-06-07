@@ -748,10 +748,51 @@ class TestStrict3cTrigger:
         assert pd.isna(sig["retrace_entry_price"])
         assert pd.isna(sig["activation_price"])
 
-    def test_3c_forces_base_trigger_timeframe_even_when_non_base_requested(self):
+    def test_3c_non_base_trigger_timeframe_is_used_when_requested(self):
+        """After PR #50, 3c + non-base trigger_timeframe is fully supported.
+
+        Uses a standard 15-row scenario (3 trigger bars) to produce a valid 5-min
+        non-base 3c signal and verifies trigger_timeframe='5min' is emitted.
+        """
+        TZ_NY = "America/New_York"
+        ts = pd.date_range("2026-06-02 09:30", periods=15, freq="1min", tz=TZ_NY)
+        rows_data = [
+            # T0 (bars 0-4): arrival
+            {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},
+            {"open": 100.5, "high": 100.9, "low": 100.3, "close": 100.7},
+            {"open": 100.7, "high": 100.9, "low": 100.2, "close": 100.8},
+            {"open": 100.8, "high": 101.0, "low": 100.2, "close": 100.9},
+            {"open": 100.9, "high": 101.0, "low": 100.2, "close": 100.9},
+            # T1 (bars 5-9): reversal
+            {"open": 100.9, "high": 101.5, "low": 100.1, "close": 101.2},
+            {"open": 101.2, "high": 101.4, "low": 101.0, "close": 101.3},
+            {"open": 101.3, "high": 101.4, "low": 101.0, "close": 101.2},
+            {"open": 101.2, "high": 101.3, "low": 101.0, "close": 101.2},
+            {"open": 101.2, "high": 101.5, "low": 101.0, "close": 101.25},
+            # T2 (bars 10-14): fill window
+            {"open": 101.25, "high": 101.5, "low": 101.1, "close": 101.3},
+            {"open": 101.3,  "high": 101.5, "low": 100.6, "close": 101.0},  # FILL
+            {"open": 101.0,  "high": 101.2, "low": 100.8, "close": 101.1},
+            {"open": 101.1,  "high": 101.2, "low": 100.9, "close": 101.0},
+            {"open": 101.0,  "high": 101.1, "low": 100.9, "close": 101.0},
+        ]
+        df = pd.DataFrame([
+            {"timestamp": ts[i], **r, "volume": 100.0}
+            for i, r in enumerate(rows_data)
+        ])
+        zone = pd.DataFrame([{
+            "timestamp": ts[0],
+            "bar_index": 0,
+            "zone_low": 100.0,
+            "zone_high": 100.0,
+            "zone_mid": 100.0,
+            "level_count": 1,
+            "level_names": "level_A",
+            "level_prices": "100.0",
+        }])
         sigs = generate_signals(
-            self._bars_for_3c(),
-            self._zone(),
+            df,
+            zone,
             trigger="3c",
             direction="long",
             tick_size=TICK,
@@ -759,7 +800,7 @@ class TestStrict3cTrigger:
             trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3},
         )
         assert not sigs.empty
-        assert (sigs["trigger_timeframe"] == "base").all()
+        assert (sigs["trigger_timeframe"] == "5min").all()
 
 
 class TestNakedFilter:

@@ -200,9 +200,10 @@ def test_3c_missing_params_are_defaulted():
     assert validate_setup_config(config) == []
 
 
-def test_3c_non_base_trigger_timeframe_is_normalized_to_base():
+def test_3c_non_base_trigger_timeframe_is_stored():
+    """3c now supports non-base trigger timeframes; '5min' must be stored as-is."""
     config = build_setup_config(
-        name="3c forced base tf",
+        name="3c 5min tf",
         description="",
         instrument="ES",
         selected_levels=["ONH"],
@@ -213,6 +214,26 @@ def test_3c_non_base_trigger_timeframe_is_normalized_to_base():
         naked_requirement="any",
         trigger="3c",
         trigger_timeframe="5min",
+        direction="both",
+    )
+    assert config["trigger_timeframe"] == "5min"
+    assert validate_setup_config(config) == []
+
+
+def test_3c_base_trigger_timeframe_remains_base():
+    """3c with explicit 'base' trigger_timeframe stores 'base'."""
+    config = build_setup_config(
+        name="3c base tf",
+        description="",
+        instrument="ES",
+        selected_levels=["ONH"],
+        tolerance_ticks=4.0,
+        min_confluences=2,
+        max_confluences=5,
+        naked_only=False,
+        naked_requirement="any",
+        trigger="3c",
+        trigger_timeframe="base",
         direction="both",
     )
     assert config["trigger_timeframe"] == "base"
