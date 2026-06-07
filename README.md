@@ -98,10 +98,17 @@ Manual controls on the Signals page remain global-cluster only. To use anchor-ba
 - **Phase 6 (SL/TP grid search, expectancy heatmaps):** sweeps all stop-loss × take-profit
   combinations over the Phase 5 backtest engine (`thesistester/analytics/grid.py`).
   `run_sl_tp_grid()` returns one summary row per cell; `best_grid_result()` picks the
-  top-ranked cell by any metric.  A new **Grid Search** page (`pages/8_Grid_Search.py`)
-  lets users configure SL/TP ranges and displays four Plotly heatmaps (expectancy R,
-  total R, win rate, max drawdown R).  Best result and full grid are stored in
-  `st.session_state["best_grid_result"]` and `st.session_state["grid_results"]`.
+  top-ranked cell by any metric.  Each grid row now includes **directional metrics**
+  (`long_*`, `short_*`) computed from the same simulated trades as the aggregate metrics,
+  plus balanced weaker-side columns (`min_direction_trade_count`,
+  `min_direction_expectancy_r`, `min_direction_profit_factor`).  A new **Grid Search**
+  page (`pages/8_Grid_Search.py`) lets users configure SL/TP ranges and displays a Plotly
+  heatmap with a metric selector (aggregate + directional options).  An **Advanced
+  directional ranking** section exposes optional directional metric ranking with per-side
+  minimum trade-count gates; the default aggregate ranking is unchanged.  The best-cell
+  display now includes a **Best cell directional breakdown** panel.  Best result and full
+  grid are stored in `st.session_state["best_grid_result"]` and
+  `st.session_state["grid_results"]`.
 - **Phase 6.5 (workflow cleanup):** **Setup Builder** (`pages/2_Setup_Builder.py`) is now
   functional with a local filesystem **Saved setups** library. Setup configs are persisted
   under `.thesistester_store/setups/` and can be loaded to editor, duplicated, set active,

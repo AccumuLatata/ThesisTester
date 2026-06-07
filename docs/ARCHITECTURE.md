@@ -19,6 +19,12 @@ Flow basis in app workflow and phase pages: `app.py:12-33`, `pages/1_Data.py`, `
 Backtest UI note: `pages/7_Backtest.py` shows both combined KPIs and a separate directional
 ("Long vs Short KPIs") section sourced from the same `trades` DataFrame.
 
+Grid Search directional note: `pages/8_Grid_Search.py` shows aggregate KPIs by default.
+Enable **Advanced directional ranking** to rank by long/short or balanced weaker-side
+metrics with per-side minimum trade-count gates.  Each grid row includes `long_*`,
+`short_*`, and `min_direction_*` columns computed by
+`thesistester.analytics.grid._directional_grid_metrics`.
+
 ## `st.session_state` contract (current)
 
 | Key | Producing page(s) | Consuming page(s) | Schema (observed) |
