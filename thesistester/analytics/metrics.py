@@ -126,7 +126,12 @@ def summarize_trades_by_direction(trades: pd.DataFrame) -> dict[str, dict]:
         "short": _empty_trade_summary(),
     }
 
-    if trades is None or trades.empty or "direction" not in trades.columns:
+    if (
+        trades is None
+        or trades.empty
+        or "direction" not in trades.columns
+        or "r_multiple" not in trades.columns
+    ):
         return output
 
     direction_series = trades["direction"].astype(str).str.lower()
