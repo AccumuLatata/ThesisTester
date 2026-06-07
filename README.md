@@ -73,13 +73,17 @@ Manual controls on the Signals page remain global-cluster only. To use anchor-ba
   (`flag_naked_levels`), and five trigger types — `touch`, `reject`, `break`, `reclaim`,
   `3c` — exposed via a new **Signals** page (`pages/6_Signals.py`). Trigger timeframe
   (`base`, `1min`, `5min`, `15min`) applies to all triggers including `3c`, defaulting
-  to `base` for backward compatibility. For non-base triggers, `bar_index`/`timestamp`
+  to `base` for backward compatibility.
+  For non-base simple triggers (`touch`, `reject`, `break`, `reclaim`), `bar_index`/`timestamp`
   remain aligned to the canonical/base bar at trigger-candle end, while `trigger_timestamp`
   stores the trigger-candle completion/actionable time.
-  For `3c` with non-base trigger timeframe, arrival, inside/muted candles, SFP tagging, and
-  reversal confirmation are evaluated on trigger-timeframe candles; retrace entry fill is
-  evaluated on canonical/base bars after reversal trigger candle completion;
-  `max_entry_wait_bars_after_reversal` counts trigger-timeframe bars, not base bars.
+  For non-base `3c`, arrival, inside/muted candles, SFP tagging, and reversal confirmation
+  are evaluated on trigger-timeframe candles; retrace entry fill is evaluated on
+  canonical/base bars after reversal trigger candle completion. When filled,
+  `bar_index`/`timestamp` refer to the canonical/base retrace fill bar; when void, they
+  refer to the canonical/base reversal bar. `trigger_timestamp` stores the reversal trigger
+  candle completion timestamp. `max_entry_wait_bars_after_reversal` counts trigger-timeframe
+  bars, not base bars.
   Candidate signals are stored in `st.session_state["signals"]` for Phase 5 backtesting.
 - **Phase 5 (backtest engine, KPIs, results):** bar-by-bar trade simulation with a
   single fixed SL/TP tick configuration (`thesistester/engine/backtest.py`).  Simple
