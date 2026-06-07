@@ -91,7 +91,7 @@ def _validate_setup_id(setup_id: str) -> str:
     if not normalized:
         raise ValueError("setup_id must be a non-empty string.")
     if not _SETUP_ID_RE.fullmatch(normalized):
-        raise ValueError(f"Invalid setup_id: {setup_id}")
+        raise ValueError(f"Invalid setup_id: {normalized}")
     return normalized
 
 

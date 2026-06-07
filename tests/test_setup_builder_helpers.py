@@ -151,6 +151,18 @@ def test_sync_editor_widget_state_invalid_legacy_values_fallback_with_warnings()
     assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_TOLERANCE_TICKS] == 0.0
 
 
+def test_sync_editor_widget_state_invalid_selected_levels_uses_default_selection():
+    setup_builder.st.session_state = {}
+    warnings = setup_builder._sync_editor_widget_state(
+        {"selected_levels": "ONH"},
+        ["ONH", "ONL"],
+        overwrite=True,
+    )
+
+    assert "Loaded selected levels are invalid; using default level selection." in warnings
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_SELECTED_LEVELS] == ["ONH", "ONL"]
+
+
 def test_unavailable_level_references_detected_for_save_guard():
     unavailable = setup_builder._unavailable_level_references(
         {
