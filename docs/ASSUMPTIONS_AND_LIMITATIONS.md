@@ -22,11 +22,12 @@ This engine is for **research screening**, not proof of a durable edge.
 - The simulator loops each signal row independently (`for _, sig in signals.iterrows()`) and appends one trade result per signal (`thesistester/engine/backtest.py:137-140`, `264-301`).
 - There is no portfolio state, position netting, capital constraint, or overlap gate in this loop.
 
-### 5) Simple-trigger timestamp semantics are canonical/base aligned
-- For simple triggers (`touch`, `reject`, `break`, `reclaim`), emitted `timestamp` is always the canonical/base dataframe timestamp at `bar_index`.
+### 5) Simple-trigger and `3c` timestamp semantics are canonical/base aligned
+- For all triggers, emitted `timestamp` is always the canonical/base dataframe timestamp at `bar_index`.
 - When `trigger_timeframe` is non-base, trigger evaluation is performed on resampled trigger candles, and `trigger_timestamp` stores trigger-candle completion/actionability time.
-- Backtest entry for simple triggers remains `bar_index + 1` on the canonical/base dataframe (first base bar after trigger-candle completion).
-- `3c` remains base/current-timeframe only until dedicated multi-timeframe `3c` support is implemented.
+- Backtest entry for simple triggers (`touch`, `reject`, `break`, `reclaim`) remains `bar_index + 1` on the canonical/base dataframe (first base bar after trigger-candle completion).
+- For `3c` with non-base trigger timeframe: arrival, inside/muted candles, SFP tagging, and reversal confirmation are evaluated on trigger-timeframe candles. The retrace entry fill is evaluated on canonical/base bars after the reversal trigger candle is complete. `max_entry_wait_bars_after_reversal` counts trigger-timeframe bars, not base bars. Backtest execution remains unchanged because `3c` emits base-indexed `entry_bar_index` and `retrace_entry_price`.
+- `arrival_bar_index`, `reversal_bar_index`, `entry_bar_index`, and `bar_index` are canonical/base indices. `trigger_arrival_bar_index`, `trigger_reversal_bar_index`, and `trigger_bar_index` are trigger-timeframe indices. `trigger_timestamp` is the reversal trigger candle completion timestamp.
 
 ## Validation implications
 - Validation diagnostics explicitly warn that assumptions like sign symmetry and independence limits apply; serial dependence is ignored (`thesistester/analytics/validation.py:10-11`, `115-117`).

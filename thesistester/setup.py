@@ -118,7 +118,6 @@ def build_setup_config(
     normalized_trigger_timeframe = normalize_trigger_timeframe(trigger_timeframe)
     normalized_params = {}
     if trigger == "3c":
-        normalized_trigger_timeframe = DEFAULT_TRIGGER_TIMEFRAME
         normalized_params = _normalize_3c_params(trigger_params)
 
     return {

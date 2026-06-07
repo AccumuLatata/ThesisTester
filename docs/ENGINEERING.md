@@ -93,13 +93,14 @@ A **setup** is defined by:
   - `reclaim` (break then close back → trap)
   - `3c` (three-candle level interaction + reversal + retracement entry)
 - **Trigger timeframe** — candle-close trigger logic runs on the configured trigger
-  timeframe (`base`, `1min`, `5min`, `15min`) for simple triggers (`touch`, `reject`,
-  `break`, `reclaim`). Default `base` preserves legacy behavior. Different trigger
-  timeframes are treated as separate strategy hypotheses. For non-base simple triggers,
-  emitted `bar_index` and `timestamp` remain aligned to the canonical/base bar at trigger
-  close, while `trigger_timestamp` captures trigger-candle completion/actionability.
-  `3c` currently remains base/current-timeframe only until dedicated `3c`
-  trigger-timeframe support is added.
+  timeframe (`base`, `1min`, `5min`, `15min`) for all supported triggers including `3c`.
+  Default `base` preserves legacy behavior. Different trigger timeframes are treated as
+  separate strategy hypotheses. For non-base triggers, emitted `bar_index` and `timestamp`
+  remain aligned to the canonical/base bar at trigger close (or fill for `3c`), while
+  `trigger_timestamp` captures trigger-candle completion/actionability.
+  For `3c` with non-base trigger timeframe, arrival, inside/muted candles, SFP tagging,
+  and reversal confirmation are evaluated on trigger-timeframe candles; retrace fill is
+  evaluated on canonical/base bars after reversal trigger candle completion.
 - **Direction** — long / short / both.
 - **Risk model** — SL and TP definitions (§7).
 - **Session filter** — time-of-day window (§8) and date range.
@@ -512,7 +513,20 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
   `arrival_tolerance_ticks` is deprecated — arrival must strictly touch the key level; any
   nonzero value in old configs is silently ignored.  Setups where the entry retrace is not
   hit within the watch window are included with `status="void"` to preserve research value.
-  In the current implementation, `3c` execution is base/current-timeframe only.
+  `3c` supports all trigger timeframes (`base`, `1min`, `5min`, `15min`):
+  - **Base/current-timeframe 3c**: all rules evaluated on canonical/base bars (unchanged path).
+  - **Non-base 3c**: arrival, inside/muted candles, SFP tagging, and reversal confirmation are
+    evaluated on trigger-timeframe candles.  Retrace entry fill is evaluated on canonical/base
+    bars after reversal trigger candle completion.  `max_entry_wait_bars_after_reversal` counts
+    trigger-timeframe bars, not base bars.  Emitted `entry_bar_index` and `retrace_entry_price`
+    are base-indexed so backtest execution remains unchanged.
+
+  Index semantics for both base and non-base 3c:
+  - `arrival_bar_index`, `reversal_bar_index`, `entry_bar_index`, `bar_index` are canonical/base indices.
+  - `trigger_arrival_bar_index`, `trigger_reversal_bar_index`, `trigger_bar_index` are trigger-df indices.
+  - `trigger_bar_index == trigger_reversal_bar_index` for 3c.
+  - `trigger_timestamp` is the reversal trigger candle completion timestamp.
+  - `timestamp == base_df["timestamp"].iloc[bar_index]` holds for all 3c signals.
 
 ---
 
