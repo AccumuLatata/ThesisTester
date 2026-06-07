@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from thesistester.app_state import bootstrap_active_saved_dataset
-from thesistester.analytics import equity_curve, summarize_trades
+from thesistester.analytics import equity_curve, summarize_trades, summarize_trades_by_direction
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.engine.backtest import simulate_trades
@@ -175,7 +175,10 @@ def _fmt(v, fmt=".2f", fallback="—"):
     if v is None:
         return fallback
     try:
-        return format(float(v), fmt)
+        v_float = float(v)
+        if v_float != v_float:
+            return fallback
+        return format(v_float, fmt)
     except (TypeError, ValueError):
         return fallback
 
@@ -187,6 +190,28 @@ col3.metric("Avg R", _fmt(summary.get("avg_r")))
 col4.metric("Total R", _fmt(summary.get("total_r")))
 col5.metric("Profit factor", _fmt(summary.get("profit_factor")))
 col6.metric("Max DD (R)", _fmt(summary.get("max_drawdown_r")))
+
+direction_summary = summarize_trades_by_direction(trades)
+st.subheader("Long vs Short KPIs")
+long_col, short_col = st.columns(2)
+
+with long_col:
+    long_summary = direction_summary.get("long", {})
+    st.markdown("**Long trades**")
+    st.metric("Trade count", int(long_summary.get("trade_count", 0) or 0))
+    st.metric("Win rate", _fmt(long_summary.get("win_rate"), ".1%") if long_summary.get("win_rate") is not None else "—")
+    st.metric("Average R", _fmt(long_summary.get("avg_r")))
+    st.metric("Total R", _fmt(long_summary.get("total_r")))
+    st.metric("Profit factor", _fmt(long_summary.get("profit_factor")))
+
+with short_col:
+    short_summary = direction_summary.get("short", {})
+    st.markdown("**Short trades**")
+    st.metric("Trade count", int(short_summary.get("trade_count", 0) or 0))
+    st.metric("Win rate", _fmt(short_summary.get("win_rate"), ".1%") if short_summary.get("win_rate") is not None else "—")
+    st.metric("Average R", _fmt(short_summary.get("avg_r")))
+    st.metric("Total R", _fmt(short_summary.get("total_r")))
+    st.metric("Profit factor", _fmt(short_summary.get("profit_factor")))
 
 if trades.empty:
     st.info("No trades were generated with the current signals and SL/TP settings.")
