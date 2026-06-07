@@ -365,14 +365,19 @@ def _prepare_trigger_dataframe(df: pd.DataFrame, trigger_timeframe: str) -> pd.D
         .agg(aggregations)
         .rename(columns={"__base_index": "base_end_bar_index"})
     )
-    trigger_df["base_start_bar_index"] = (
+    base_start_indices = (
         grouped.groupby(
             ["trigger_bar_start_timestamp", "trigger_bar_end_timestamp"],
             sort=True,
             observed=False,
         )["__base_index"]
         .min()
-        .to_numpy(dtype=int)
+        .reset_index(name="base_start_bar_index")
+    )
+    trigger_df = trigger_df.merge(
+        base_start_indices,
+        on=["trigger_bar_start_timestamp", "trigger_bar_end_timestamp"],
+        how="left",
     )
     trigger_df["base_end_bar_index"] = trigger_df["base_end_bar_index"].astype(int)
     trigger_df["base_start_bar_index"] = trigger_df["base_start_bar_index"].astype(int)

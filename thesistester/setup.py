@@ -20,7 +20,8 @@ BASE_COLUMNS = {
 VALID_TRIGGERS = frozenset({"touch", "reject", "break", "reclaim", "3c"})
 VALID_DIRECTIONS = frozenset({"long", "short", "both"})
 VALID_CONFLUENCE_MODES = frozenset({"global_cluster", "anchor_rules"})
-VALID_TRIGGER_TIMEFRAMES = frozenset({"base", "1min", "5min", "15min"})
+TRIGGER_TIMEFRAME_CHOICES = ("base", "1min", "5min", "15min")
+VALID_TRIGGER_TIMEFRAMES = frozenset(TRIGGER_TIMEFRAME_CHOICES)
 DEFAULT_TRIGGER_TIMEFRAME = "base"
 
 SUGGESTED_DEFAULT_LEVELS = [

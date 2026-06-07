@@ -346,7 +346,7 @@ def test_empty_signals_returns_empty():
     assert trades.empty
 
 
-def test_simple_trigger_5min_enters_first_base_bar_after_trigger_close():
+def test_simple_trigger_five_min_enters_first_base_bar_after_trigger_close():
     df = _df(
         _bar("2026-01-02 09:30", 99.0, 99.8, 98.8, 99.2),
         _bar("2026-01-02 09:31", 99.2, 99.9, 99.0, 99.4),

@@ -30,6 +30,7 @@ from thesistester.persistence import (
 )
 from thesistester.setup import (
     DEFAULT_TRIGGER_TIMEFRAME,
+    TRIGGER_TIMEFRAME_CHOICES,
     VALID_DIRECTIONS,
     VALID_TRIGGER_TIMEFRAMES,
     VALID_TRIGGERS,
@@ -569,7 +570,7 @@ with st.sidebar:
             index=2,
         )
         trigger_timeframe_options = [
-            value for value in ("base", "1min", "5min", "15min") if value in VALID_TRIGGER_TIMEFRAMES
+            value for value in TRIGGER_TIMEFRAME_CHOICES if value in VALID_TRIGGER_TIMEFRAMES
         ]
         default_trigger_timeframe_index = trigger_timeframe_options.index(DEFAULT_TRIGGER_TIMEFRAME)
         trigger_timeframe_label_options = [

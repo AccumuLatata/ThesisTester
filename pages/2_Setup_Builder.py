@@ -7,6 +7,7 @@ import streamlit as st
 
 from thesistester.setup import (
     DEFAULT_TRIGGER_TIMEFRAME,
+    TRIGGER_TIMEFRAME_CHOICES,
     VALID_TRIGGER_TIMEFRAMES,
     available_level_columns,
     build_setup_config,
@@ -170,7 +171,9 @@ naked_requirement = st.radio("Naked requirement", options=["any", "all"], index=
 st.subheader("Trigger settings")
 trigger_options = ["touch", "reject", "break", "reclaim", "3c"]
 trigger = st.selectbox("Trigger", options=trigger_options, index=0)
-trigger_timeframe_options = [option for option in ("base", "1min", "5min", "15min") if option in VALID_TRIGGER_TIMEFRAMES]
+trigger_timeframe_options = [
+    option for option in TRIGGER_TIMEFRAME_CHOICES if option in VALID_TRIGGER_TIMEFRAMES
+]
 trigger_timeframe_default = trigger_timeframe_options.index(DEFAULT_TRIGGER_TIMEFRAME)
 trigger_timeframe_label = st.selectbox(
     "Trigger timeframe",
