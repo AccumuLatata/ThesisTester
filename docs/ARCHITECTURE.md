@@ -9,14 +9,9 @@ flowchart LR
     C --> D[Signals]
     D --> E[Backtest]
     E --> F[Grid Search]
-    E --> G[Time Analysis]
-    E --> H[Validation]
-    F --> H
-    D --> I[Report / Export]
-    E --> I
-    F --> I
-    G --> I
-    H --> I
+    F --> G[Time Analysis]
+    G --> H[Validation]
+    H --> I[Report / Export]
 ```
 
 Flow basis in app workflow and phase pages: `app.py:12-33`, `pages/1_Data.py`, `pages/5_Levels.py`, `pages/2_Setup_Builder.py`, `pages/6_Signals.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/9_Time_Analysis.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`.
