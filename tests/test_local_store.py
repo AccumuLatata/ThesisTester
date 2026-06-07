@@ -465,6 +465,21 @@ def test_compute_signal_settings_hash_changes_when_settings_change():
     assert compute_signal_settings_hash(base) != compute_signal_settings_hash(changed)
 
 
+def test_compute_signal_settings_hash_treats_missing_trigger_timeframe_as_base():
+    missing = _signal_settings()
+    explicit_base = _signal_settings(trigger_timeframe="base")
+    missing.pop("trigger_timeframe", None)
+
+    assert compute_signal_settings_hash(missing) == compute_signal_settings_hash(explicit_base)
+
+
+def test_compute_signal_settings_hash_changes_between_base_and_5min():
+    base = _signal_settings(trigger_timeframe="base")
+    five_min = _signal_settings(trigger_timeframe="5min")
+
+    assert compute_signal_settings_hash(base) != compute_signal_settings_hash(five_min)
+
+
 def test_compute_signal_settings_hash_changes_when_rule_value_changes():
     base = _signal_settings(
         confluence_mode="anchor_rules",

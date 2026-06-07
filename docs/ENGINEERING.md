@@ -92,6 +92,9 @@ A **setup** is defined by:
   - `break` (close through → continuation/breakout)
   - `reclaim` (break then close back → trap)
   - `3c` (three-candle level interaction + reversal + retracement entry)
+- **Trigger timeframe** — candle-close trigger logic runs on the configured trigger
+  timeframe (`base`, `1min`, `5min`, `15min`). Default `base` preserves legacy behavior.
+  Different trigger timeframes are treated as separate strategy hypotheses.
 - **Direction** — long / short / both.
 - **Risk model** — SL and TP definitions (§7).
 - **Session filter** — time-of-day window (§8) and date range.
@@ -513,7 +516,9 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
   converts Phase 4 candidate signals into simulated trades using one fixed tick-based
   SL/TP configuration per run.
 - **Simple triggers** (touch / reject / break / reclaim) enter at next-bar open to preserve
-  no-look-ahead integrity.
+  no-look-ahead integrity. With non-base trigger timeframe selection, this still means
+  `bar_index + 1` on the canonical/base DataFrame, i.e., the first base bar after the
+  trigger candle has fully closed.
 - **`3c` filled signals** enter on their signal bar at `entry_reference_price`
   because Phase 4 only emits `status="filled"` after the entry retrace has already
   been hit.  `status="void"` rows are skipped.

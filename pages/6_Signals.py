@@ -29,10 +29,13 @@ from thesistester.persistence import (
     save_signal_run,
 )
 from thesistester.setup import (
+    DEFAULT_TRIGGER_TIMEFRAME,
     VALID_DIRECTIONS,
+    VALID_TRIGGER_TIMEFRAMES,
     VALID_TRIGGERS,
     available_level_columns,
     default_selected_levels,
+    normalize_trigger_timeframe,
 )
 
 st.title("🎯 Signals")
@@ -54,6 +57,13 @@ CONFLUENCE_MODE_OPTIONS = {
     "Global Cluster": "global_cluster",
     "Anchor Rules / User Anchor": "anchor_rules",
 }
+TRIGGER_TIMEFRAME_LABELS = {
+    "Base/current timeframe": "base",
+    "1 minute": "1min",
+    "5 minutes": "5min",
+    "15 minutes": "15min",
+}
+TRIGGER_TIMEFRAME_DISPLAY = {value: key for key, value in TRIGGER_TIMEFRAME_LABELS.items()}
 
 _RULE_AUDIT_COLUMNS = [
     "zone_row",
@@ -194,15 +204,18 @@ def _normalize_3c_params(params: dict | None) -> dict:
 
 def _saved_setup_caption(config: dict) -> str:
     confluence_mode = str(config.get("confluence_mode", "global_cluster"))
+    trigger_timeframe = normalize_trigger_timeframe(config.get("trigger_timeframe"))
     if confluence_mode == "anchor_rules":
         return (
             f"Mode=anchor_rules • Anchor={config.get('anchor_level') or '-'} • "
             f"Rules={len(config.get('confluence_rules', []))} • "
-            f"Min valid={int(config.get('min_valid_confluences', 1))}"
+            f"Min valid={int(config.get('min_valid_confluences', 1))} • "
+            f"Trigger TF={trigger_timeframe}"
         )
     return (
         f"Trigger={config.get('trigger')} • Direction={config.get('direction')} • "
-        f"Confluences={config.get('min_confluences')}–{config.get('max_confluences')}"
+        f"Confluences={config.get('min_confluences')}–{config.get('max_confluences')} • "
+        f"Trigger TF={trigger_timeframe}"
     )
 
 
@@ -275,6 +288,9 @@ def _normalize_signal_settings_for_hash(settings: dict) -> dict:
     trigger_params = normalized.get("trigger_params")
     if isinstance(trigger_params, dict):
         normalized["trigger_params"] = dict(trigger_params)
+    normalized["trigger_timeframe"] = normalize_trigger_timeframe(
+        normalized.get("trigger_timeframe")
+    )
     setup_snapshot = normalized.get("setup_snapshot")
     if isinstance(setup_snapshot, dict):
         normalized["setup_snapshot"] = dict(setup_snapshot)
@@ -294,6 +310,7 @@ def _build_signal_settings(
     naked_only: bool,
     naked_requirement: str,
     trigger: str,
+    trigger_timeframe: str,
     direction: str,
     trigger_params: dict,
     use_saved_setup: bool,
@@ -312,6 +329,7 @@ def _build_signal_settings(
             "naked_only": naked_only,
             "naked_requirement": naked_requirement,
             "trigger": trigger,
+            "trigger_timeframe": trigger_timeframe,
             "direction": direction,
             "trigger_params": trigger_params,
             "use_saved_setup": use_saved_setup,
@@ -333,6 +351,7 @@ def _saved_signal_run_label(meta: dict) -> str:
     return (
         f"{created} · {str(meta.get('signal_settings_hash', 'unknown'))[:12]}… · "
         f"trigger={settings.get('trigger', '—')} · direction={settings.get('direction', '—')} · "
+        f"tf={normalize_trigger_timeframe(settings.get('trigger_timeframe'))} · "
         f"mode={settings.get('confluence_mode', '—')} · levels={selected_count} · rows={row_count}"
     )
 
@@ -418,6 +437,9 @@ with st.sidebar:
         naked_only = bool(saved_setup.get("naked_only", False))
         naked_requirement = str(saved_setup.get("naked_requirement", "any"))
         trigger = str(saved_setup.get("trigger", "touch"))
+        trigger_timeframe = normalize_trigger_timeframe(
+            saved_setup.get("trigger_timeframe", DEFAULT_TRIGGER_TIMEFRAME)
+        )
         direction = str(saved_setup.get("direction", "both"))
         trigger_params = dict(saved_setup.get("trigger_params", {}))
         if trigger == "3c":
@@ -437,6 +459,13 @@ with st.sidebar:
             st.error(
                 f"Saved setup direction '{direction}' is invalid. "
                 f"Valid options are: {sorted(VALID_DIRECTIONS)}. "
+                "Disable saved setup mode and configure manually."
+            )
+            st.stop()
+        if trigger_timeframe not in VALID_TRIGGER_TIMEFRAMES:
+            st.error(
+                f"Saved setup trigger timeframe '{trigger_timeframe}' is invalid. "
+                f"Valid options are: {sorted(VALID_TRIGGER_TIMEFRAMES)}. "
                 "Disable saved setup mode and configure manually."
             )
             st.stop()
@@ -539,6 +568,23 @@ with st.sidebar:
             options=["long", "short", "both"],
             index=2,
         )
+        trigger_timeframe_options = [
+            value for value in ("base", "1min", "5min", "15min") if value in VALID_TRIGGER_TIMEFRAMES
+        ]
+        default_trigger_timeframe_index = trigger_timeframe_options.index(DEFAULT_TRIGGER_TIMEFRAME)
+        trigger_timeframe_label_options = [
+            TRIGGER_TIMEFRAME_DISPLAY[value] for value in trigger_timeframe_options
+        ]
+        trigger_timeframe_label = st.selectbox(
+            "Trigger timeframe",
+            options=trigger_timeframe_label_options,
+            index=default_trigger_timeframe_index,
+            help=(
+                "Candle-close trigger logic is evaluated on the selected trigger timeframe. "
+                "The default preserves current behavior."
+            ),
+        )
+        trigger_timeframe = TRIGGER_TIMEFRAME_LABELS[trigger_timeframe_label]
 
         naked_only = st.toggle("Naked / untested levels only", value=False)
         naked_requirement = "any"
@@ -589,6 +635,7 @@ signal_settings = _build_signal_settings(
     naked_only=naked_only,
     naked_requirement=naked_requirement,
     trigger=trigger,
+    trigger_timeframe=trigger_timeframe,
     direction=direction,
     trigger_params=trigger_params,
     use_saved_setup=use_saved_setup,
@@ -673,6 +720,7 @@ if generate_btn:
             trigger=trigger,
             direction=direction,
             tick_size=tick_size,
+            trigger_timeframe=trigger_timeframe,
             trigger_params=trigger_params,
             naked_only=naked_only,
             naked_flags=naked_flags if naked_only else None,

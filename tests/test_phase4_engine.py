@@ -562,6 +562,62 @@ class TestReclaimSignal:
         assert sigs.empty
 
 
+class TestSimpleTriggerTimeframes:
+    def _ten_bars(self) -> pd.DataFrame:
+        return _df_bars(
+            [
+                {"open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0},
+                {"open": 100.0, "high": 101.1, "low": 99.7, "close": 100.6},
+                {"open": 100.0, "high": 101.0, "low": 99.8, "close": 100.2},
+                {"open": 100.0, "high": 101.0, "low": 99.6, "close": 99.9},
+                {"open": 100.0, "high": 101.0, "low": 99.7, "close": 100.0},
+                {"open": 100.0, "high": 101.0, "low": 99.8, "close": 100.1},
+                {"open": 100.0, "high": 101.0, "low": 99.7, "close": 100.0},
+                {"open": 100.0, "high": 101.0, "low": 99.6, "close": 99.9},
+                {"open": 100.0, "high": 101.0, "low": 99.7, "close": 99.8},
+                {"open": 100.0, "high": 101.0, "low": 99.8, "close": 99.9},
+            ]
+        )
+
+    def test_break_differs_between_base_and_5min(self):
+        df = self._ten_bars()
+        zones = _zone_df(1, low=99.8, high=100.0)
+        base = generate_signals(df, zones, trigger="break", direction="long", tick_size=TICK, trigger_timeframe="base")
+        five = generate_signals(df, zones, trigger="break", direction="long", tick_size=TICK, trigger_timeframe="5min")
+        assert len(base) == 1
+        assert five.empty
+
+    def test_reject_differs_between_base_and_5min(self):
+        df = self._ten_bars()
+        zones = _zone_df(1, low=100.0, high=100.5)
+        base = generate_signals(df, zones, trigger="reject", direction="long", tick_size=TICK, trigger_timeframe="base")
+        five = generate_signals(df, zones, trigger="reject", direction="long", tick_size=TICK, trigger_timeframe="5min")
+        assert len(base) == 1
+        assert five.empty
+
+    def test_reclaim_differs_between_base_and_5min(self):
+        df = self._ten_bars()
+        zones = _zone_df(3, low=99.7, high=99.8)
+        base = generate_signals(
+            df,
+            zones,
+            trigger="reclaim",
+            direction="long",
+            tick_size=TICK,
+            trigger_timeframe="base",
+        )
+        five = generate_signals(
+            df,
+            zones,
+            trigger="reclaim",
+            direction="long",
+            tick_size=TICK,
+            trigger_timeframe="5min",
+        )
+        assert len(base) == 1
+        assert five.empty
+
+
 class TestStrict3cTrigger:
     def _bars_for_3c(self) -> pd.DataFrame:
         return _df_bars([

@@ -70,6 +70,7 @@ def test_build_setup_config_defaults_to_global_cluster():
     assert config["anchor_level"] is None
     assert config["confluence_rules"] == []
     assert config["min_valid_confluences"] == 1
+    assert config["trigger_timeframe"] == "base"
 
 
 def test_empty_setup_name_invalid():
@@ -120,6 +121,29 @@ def test_invalid_direction_invalid():
     config["direction"] = "up"
     errors = validate_setup_config(config)
     assert any("Direction must be one of" in message for message in errors)
+
+
+def test_old_config_without_trigger_timeframe_remains_valid():
+    config = _base_config()
+    config.pop("trigger_timeframe")
+    assert validate_setup_config(config) == []
+
+
+def test_missing_trigger_timeframe_normalizes_to_base():
+    config = build_setup_config(
+        name="defaults",
+        description="",
+        instrument="ES",
+        selected_levels=["ONH"],
+        tolerance_ticks=4.0,
+        min_confluences=2,
+        max_confluences=5,
+        naked_only=False,
+        naked_requirement="any",
+        trigger="touch",
+        direction="both",
+    )
+    assert config["trigger_timeframe"] == "base"
 
 
 def test_3c_config_includes_expected_trigger_params():
