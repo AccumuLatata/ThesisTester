@@ -147,6 +147,7 @@ def test_sync_editor_widget_state_invalid_legacy_values_fallback_with_warnings()
     assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_TRIGGER] == "touch"
     assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_DIRECTION] == "both"
     assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_TRIGGER_TIMEFRAME] == "Base/current timeframe"
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_SELECTED_LEVELS] == ["ONH", "ONL"]
     assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_TOLERANCE_TICKS] == 0.0
 
 
@@ -162,3 +163,69 @@ def test_unavailable_level_references_detected_for_save_guard():
     assert unavailable["anchor_level"] == ["MISSING_ANCHOR"]
     assert unavailable["confluence_rules"] == ["MISSING_RULE"]
     assert setup_builder._has_unavailable_level_references(unavailable) is True
+
+
+def test_current_editor_config_uses_current_candidate_not_stale_loaded_config():
+    stale_loaded = {
+        "setup_id": "setup-123",
+        "confluence_mode": "global_cluster",
+        "selected_levels": ["ONH", "MISSING"],
+    }
+    stale_missing = setup_builder._unavailable_level_references(stale_loaded, ["ONH", "ONL"])
+
+    current_candidate = setup_builder._build_current_editor_config(
+        editor_seed=stale_loaded,
+        instrument="ES",
+        current_dataset_id="dataset-a",
+        selected_levels=["ONH"],
+        tolerance_ticks=4.0,
+        min_confluences=2,
+        max_confluences=5,
+        naked_only=False,
+        naked_requirement="any",
+        trigger="touch",
+        trigger_timeframe="base",
+        direction="both",
+        confluence_mode="global_cluster",
+        anchor_level=None,
+        confluence_rules=[],
+        min_valid_confluences=1,
+        trigger_params={},
+        setup_name="Edited setup",
+        description="",
+    )
+    current_missing = setup_builder._unavailable_level_references(current_candidate, ["ONH", "ONL"])
+
+    assert stale_missing["selected_levels"] == ["MISSING"]
+    assert current_missing["selected_levels"] == []
+    assert current_candidate["setup_id"] == "setup-123"
+    assert current_candidate["dataset_id"] == "dataset-a"
+
+
+def test_current_editor_config_still_reports_missing_levels_when_candidate_is_invalid():
+    current_candidate = setup_builder._build_current_editor_config(
+        editor_seed={},
+        instrument="ES",
+        current_dataset_id="dataset-a",
+        selected_levels=["ONH", "MISSING"],
+        tolerance_ticks=4.0,
+        min_confluences=2,
+        max_confluences=5,
+        naked_only=False,
+        naked_requirement="any",
+        trigger="touch",
+        trigger_timeframe="base",
+        direction="both",
+        confluence_mode="global_cluster",
+        anchor_level=None,
+        confluence_rules=[],
+        min_valid_confluences=1,
+        trigger_params={},
+        setup_name="Edited setup",
+        description="",
+    )
+
+    current_missing = setup_builder._unavailable_level_references(current_candidate, ["ONH", "ONL"])
+
+    assert current_missing["selected_levels"] == ["MISSING"]
+    assert setup_builder._has_unavailable_level_references(current_missing) is True

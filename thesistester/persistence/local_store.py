@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,7 @@ DEFAULT_STORE_DIR_NAME = ".thesistester_store"
 SIGNALS_PARQUET_NAME = "signals.parquet"
 CONFLUENCE_ZONES_PARQUET_NAME = "confluence_zones.parquet"
 NAKED_FLAGS_PARQUET_NAME = "naked_flags.parquet"
+_SETUP_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _repo_root() -> Path:
@@ -79,7 +81,18 @@ def _signal_run_dir(
 
 
 def _setup_dir(setup_id: str) -> Path:
-    return _setups_root() / setup_id
+    return _setups_root() / _validate_setup_id(setup_id)
+
+
+def _validate_setup_id(setup_id: str) -> str:
+    if not isinstance(setup_id, str):
+        raise ValueError("setup_id must be a non-empty string.")
+    normalized = setup_id.strip()
+    if not normalized:
+        raise ValueError("setup_id must be a non-empty string.")
+    if not _SETUP_ID_RE.fullmatch(normalized):
+        raise ValueError(f"Invalid setup_id: {setup_id}")
+    return normalized
 
 
 def _signal_run_files_exist(signal_run_dir: Path) -> bool:
@@ -382,7 +395,11 @@ def save_setup(
     if not isinstance(setup_config, dict):
         raise ValueError("setup_config must be a dictionary.")
 
-    resolved_setup_id = (setup_id or setup_config.get("setup_id") or "").strip() or compute_setup_id()
+    raw_setup_id = setup_id if setup_id is not None else setup_config.get("setup_id")
+    if raw_setup_id is None:
+        resolved_setup_id = compute_setup_id()
+    else:
+        resolved_setup_id = _validate_setup_id(raw_setup_id)
     setup_dir = _setup_dir(resolved_setup_id)
     setup_dir.mkdir(parents=True, exist_ok=True)
     meta_path = setup_dir / "meta.json"

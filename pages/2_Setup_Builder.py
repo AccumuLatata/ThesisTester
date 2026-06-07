@@ -15,7 +15,6 @@ from thesistester.persistence import (
 from thesistester.setup import (
     DEFAULT_TRIGGER_TIMEFRAME,
     TRIGGER_TIMEFRAME_CHOICES,
-    VALID_DIRECTIONS,
     VALID_TRIGGER_TIMEFRAMES,
     available_level_columns,
     build_setup_config,
@@ -343,8 +342,8 @@ def _sync_editor_widget_state(config: dict[str, Any], level_columns: list[str], 
     if isinstance(selected_levels, list):
         selected_level_seed = [str(level) for level in selected_levels if str(level) in level_columns]
     else:
-        selected_level_seed = []
-        warnings.append("Loaded selected levels are invalid; using defaults.")
+        selected_level_seed = default_selected_levels(level_columns)
+        warnings.append("Loaded selected levels are invalid; using default level selection.")
     _assign(WIDGET_KEY_SELECTED_LEVELS, selected_level_seed)
 
     tolerance_ticks, tolerance_fallback = _safe_float_fallback(
@@ -475,6 +474,54 @@ def _sync_editor_widget_state(config: dict[str, Any], level_columns: list[str], 
     _assign(WIDGET_KEY_MAX_ENTRY_WAIT_BARS, max_wait_default)
 
     return warnings
+
+
+def _build_current_editor_config(
+    *,
+    editor_seed: dict[str, Any],
+    instrument: str,
+    current_dataset_id: str | None,
+    selected_levels: list[str],
+    tolerance_ticks: float,
+    min_confluences: int,
+    max_confluences: int,
+    naked_only: bool,
+    naked_requirement: str,
+    trigger: str,
+    trigger_timeframe: str,
+    direction: str,
+    confluence_mode: str,
+    anchor_level: str | None,
+    confluence_rules: list[dict[str, Any]],
+    min_valid_confluences: int,
+    trigger_params: dict[str, Any],
+    setup_name: str,
+    description: str,
+) -> dict[str, Any]:
+    config = build_setup_config(
+        name=setup_name,
+        description=description,
+        instrument=instrument,
+        selected_levels=selected_levels,
+        tolerance_ticks=tolerance_ticks,
+        min_confluences=min_confluences,
+        max_confluences=max_confluences,
+        naked_only=naked_only,
+        naked_requirement=naked_requirement,
+        trigger=trigger,
+        trigger_timeframe=trigger_timeframe,
+        direction=direction,
+        confluence_mode=confluence_mode,
+        anchor_level=anchor_level,
+        confluence_rules=confluence_rules,
+        min_valid_confluences=min_valid_confluences,
+        trigger_params=trigger_params,
+    )
+    setup_id = editor_seed.get("setup_id")
+    if isinstance(setup_id, str) and setup_id:
+        config["setup_id"] = setup_id
+    config["dataset_id"] = current_dataset_id if isinstance(current_dataset_id, str) and current_dataset_id else None
+    return config
 
 
 st.title("🧩 Setup Builder")
@@ -613,7 +660,7 @@ description = st.text_area(
 
 st.subheader("Level and confluence settings")
 mode_options = list(CONFLUENCE_MODE_LABELS.keys())
-mode_index, mode_label, mode_fallback = _safe_selectbox_index_fallback(
+mode_index, _, _ = _safe_selectbox_index_fallback(
     st.session_state.get(WIDGET_KEY_CONFLUENCE_MODE),
     options=mode_options,
     default="Global cluster",
@@ -881,7 +928,28 @@ if trigger == "3c":
         "max_entry_wait_bars_after_reversal": int(max_entry_wait_bars),
     }
 
-editor_missing_refs = _unavailable_level_references(editor_seed, all_level_columns)
+candidate_config = _build_current_editor_config(
+    editor_seed=editor_seed,
+    instrument=instrument,
+    current_dataset_id=current_dataset_id,
+    selected_levels=selected_levels,
+    tolerance_ticks=tolerance_ticks,
+    min_confluences=min_conf,
+    max_confluences=max_conf,
+    naked_only=naked_only,
+    naked_requirement=naked_requirement,
+    trigger=trigger,
+    trigger_timeframe=trigger_timeframe,
+    direction=direction,
+    confluence_mode=confluence_mode,
+    anchor_level=anchor_level,
+    confluence_rules=confluence_rules,
+    min_valid_confluences=min_valid_confluences,
+    trigger_params=trigger_params,
+    setup_name=setup_name,
+    description=description,
+)
+editor_missing_refs = _unavailable_level_references(candidate_config, all_level_columns)
 requires_missing_level_ack = _has_unavailable_level_references(editor_missing_refs)
 if requires_missing_level_ack:
     st.warning(
@@ -904,39 +972,15 @@ if st.button("Save setup", type="primary"):
             "Resolve them in the editor or explicitly choose 'Save with unavailable levels removed'."
         )
     else:
-        config = build_setup_config(
-            name=setup_name,
-            description=description,
-            instrument=instrument,
-            selected_levels=selected_levels,
-            tolerance_ticks=tolerance_ticks,
-            min_confluences=min_conf,
-            max_confluences=max_conf,
-            naked_only=naked_only,
-            naked_requirement=naked_requirement,
-            trigger=trigger,
-            trigger_timeframe=trigger_timeframe,
-            direction=direction,
-            confluence_mode=confluence_mode,
-            anchor_level=anchor_level,
-            confluence_rules=confluence_rules,
-            min_valid_confluences=min_valid_confluences,
-            trigger_params=trigger_params,
-        )
-        setup_id = editor_seed.get("setup_id")
-        if isinstance(setup_id, str) and setup_id:
-            config["setup_id"] = setup_id
-        config["dataset_id"] = current_dataset_id if isinstance(current_dataset_id, str) and current_dataset_id else None
-
-        errors = validate_setup_config(config)
+        errors = validate_setup_config(candidate_config)
         if errors:
             for error in errors:
                 st.error(error)
         else:
             saved_meta = save_setup(
-                config,
-                setup_id=config.get("setup_id"),
-                dataset_id=config.get("dataset_id"),
+                candidate_config,
+                setup_id=candidate_config.get("setup_id"),
+                dataset_id=candidate_config.get("dataset_id"),
                 instrument=instrument,
             )
             persisted_config = dict(saved_meta["setup_config"])

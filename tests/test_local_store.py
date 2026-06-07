@@ -789,3 +789,34 @@ def test_delete_setup_removes_saved_setup():
 
 def test_compute_setup_id_returns_unique_values():
     assert compute_setup_id() != compute_setup_id()
+
+
+@pytest.mark.parametrize("invalid_setup_id", ["../escape", "abc/def", r"abc\def", "", "   "])
+def test_setup_operations_reject_invalid_setup_ids(invalid_setup_id):
+    with pytest.raises(ValueError):
+        save_setup(_setup_config(), setup_id=invalid_setup_id, dataset_id="dataset-a")
+
+    with pytest.raises(ValueError):
+        load_setup(invalid_setup_id)
+
+    with pytest.raises(ValueError):
+        delete_setup(invalid_setup_id)
+
+
+@pytest.mark.parametrize("valid_setup_id", ["setup-123", "setup_123"])
+def test_setup_operations_accept_valid_explicit_setup_ids(valid_setup_id):
+    saved = save_setup(_setup_config(), setup_id=valid_setup_id, dataset_id="dataset-a")
+
+    loaded = load_setup(valid_setup_id)
+
+    assert saved["setup_id"] == valid_setup_id
+    assert loaded["setup_id"] == valid_setup_id
+
+
+def test_save_setup_accepts_generated_safe_setup_id():
+    saved = save_setup(_setup_config(), dataset_id="dataset-a")
+
+    assert saved["setup_id"]
+    assert "/" not in saved["setup_id"]
+    assert "\\" not in saved["setup_id"]
+    assert load_setup(saved["setup_id"])["setup_id"] == saved["setup_id"]
