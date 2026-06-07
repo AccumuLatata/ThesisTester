@@ -93,6 +93,12 @@ def _import_page_helpers():
         mod._saved_setup_caption,
         mod._no_zones_message,
         mod._saved_setup_generation_blockers,
+        mod._normalize_3c_params,
+        mod._safe_float,
+        mod._safe_int,
+        mod._safe_bool,
+        mod._safe_dict,
+        mod._safe_list,
     )
 
 
@@ -108,6 +114,12 @@ def _import_page_helpers():
     _saved_setup_caption,
     _no_zones_message,
     _saved_setup_generation_blockers,
+    _normalize_3c_params,
+    _safe_float,
+    _safe_int,
+    _safe_bool,
+    _safe_dict,
+    _safe_list,
 ) = _import_page_helpers()
 
 
@@ -506,3 +518,139 @@ def test_generation_blockers_missing_available_level_references():
     config = {**_VALID_GLOBAL_CONFIG, "selected_levels": ["ONH", "MISSING_LEVEL"]}
     blockers = _saved_setup_generation_blockers(config, ["ONH", "ONL"])
     assert any("MISSING_LEVEL" in b for b in blockers)
+
+
+# ---------------------------------------------------------------------------
+# _normalize_3c_params — safe coercion tests
+# ---------------------------------------------------------------------------
+
+def test_normalize_3c_params_none_returns_defaults():
+    result = _normalize_3c_params(None)
+    assert result["entry_retrace_ticks"] == 4.0
+    assert result["max_entry_wait_bars_after_reversal"] == 5
+    assert result["arrival_tolerance_ticks"] == 0.0
+
+
+def test_normalize_3c_params_non_dict_string_returns_defaults():
+    result = _normalize_3c_params("bad")
+    assert result["entry_retrace_ticks"] == 4.0
+    assert result["max_entry_wait_bars_after_reversal"] == 5
+    assert result["arrival_tolerance_ticks"] == 0.0
+
+
+def test_normalize_3c_params_bad_entry_retrace_returns_default():
+    result = _normalize_3c_params({"entry_retrace_ticks": "bad"})
+    assert result["entry_retrace_ticks"] == 4.0
+    assert result["max_entry_wait_bars_after_reversal"] == 5
+
+
+def test_normalize_3c_params_bad_max_wait_bars_returns_default():
+    result = _normalize_3c_params({"max_entry_wait_bars_after_reversal": "bad"})
+    assert result["entry_retrace_ticks"] == 4.0
+    assert result["max_entry_wait_bars_after_reversal"] == 5
+
+
+def test_normalize_3c_params_valid_values_are_preserved():
+    result = _normalize_3c_params({"entry_retrace_ticks": 6.0, "max_entry_wait_bars_after_reversal": 10})
+    assert result["entry_retrace_ticks"] == 6.0
+    assert result["max_entry_wait_bars_after_reversal"] == 10
+
+
+# ---------------------------------------------------------------------------
+# _saved_setup_generation_blockers — malformed setup no-crash tests
+# ---------------------------------------------------------------------------
+
+_MALFORMED_GLOBAL_SETUP = {
+    "name": "Bad setup",
+    "confluence_mode": "global_cluster",
+    "selected_levels": "ONH",        # wrong type — should be list
+    "tolerance_ticks": "bad",
+    "min_confluences": "bad",
+    "max_confluences": "bad",
+    "naked_only": "bad",
+    "naked_requirement": "bad",
+    "trigger": "3c",
+    "trigger_timeframe": "base",
+    "direction": "both",
+    "trigger_params": "bad",         # wrong type — should be dict
+}
+
+_MALFORMED_ANCHOR_SETUP = {
+    "name": "Bad anchor setup",
+    "confluence_mode": "anchor_rules",
+    "anchor_level": "ONH",
+    "confluence_rules": None,        # wrong type — should be list
+    "min_valid_confluences": "bad",
+    "trigger": "touch",
+    "trigger_timeframe": "base",
+    "direction": "both",
+}
+
+
+def test_generation_blockers_malformed_global_setup_does_not_crash():
+    """Malformed global setup must return blockers, not raise."""
+    blockers = _saved_setup_generation_blockers(_MALFORMED_GLOBAL_SETUP, ["ONH", "ONL"])
+    assert len(blockers) > 0
+
+
+def test_generation_blockers_malformed_anchor_setup_does_not_crash():
+    """Malformed anchor setup (confluence_rules=None) must return blockers, not raise."""
+    blockers = _saved_setup_generation_blockers(_MALFORMED_ANCHOR_SETUP, ["ONH", "ONL"])
+    assert len(blockers) > 0
+
+
+# ---------------------------------------------------------------------------
+# Safe coercion helpers
+# ---------------------------------------------------------------------------
+
+def test_safe_float_none_returns_default():
+    assert _safe_float(None, 4.0) == 4.0
+
+
+def test_safe_float_bad_string_returns_default():
+    assert _safe_float("bad", 4.0) == 4.0
+
+
+def test_safe_float_valid_string_converts():
+    assert _safe_float("3.5", 4.0) == 3.5
+
+
+def test_safe_int_none_returns_default():
+    assert _safe_int(None, 5) == 5
+
+
+def test_safe_int_bad_string_returns_default():
+    assert _safe_int("bad", 5) == 5
+
+
+def test_safe_int_valid_float_string_converts():
+    assert _safe_int("7.9", 5) == 7
+
+
+def test_safe_bool_bool_passthrough():
+    assert _safe_bool(True, False) is True
+    assert _safe_bool(False, True) is False
+
+
+def test_safe_bool_bad_string_returns_default():
+    assert _safe_bool("bad", False) is False
+
+
+def test_safe_dict_dict_passthrough():
+    d = {"a": 1}
+    assert _safe_dict(d) is d
+
+
+def test_safe_dict_non_dict_returns_empty():
+    assert _safe_dict("bad") == {}
+    assert _safe_dict(None) == {}
+
+
+def test_safe_list_list_passthrough():
+    lst = [1, 2]
+    assert _safe_list(lst) is lst
+
+
+def test_safe_list_non_list_returns_empty():
+    assert _safe_list(None) == []
+    assert _safe_list("bad") == []

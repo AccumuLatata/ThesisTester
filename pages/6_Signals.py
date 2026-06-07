@@ -197,15 +197,59 @@ def _render_anchor_diagnostics(zones: pd.DataFrame) -> None:
         )
 
 
-def _normalize_3c_params(params: dict | None) -> dict:
-    trigger_params = params or {}
+def _safe_float(value: object, default: float) -> float:
+    """Return ``float(value)`` or *default* if conversion fails or yields NaN."""
+    if value is None:
+        return default
+    try:
+        result = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    return default if pd.isna(result) else result
+
+
+def _safe_int(value: object, default: int) -> int:
+    """Return ``int(value)`` or *default* if conversion fails or yields non-finite."""
+    if value is None:
+        return default
+    try:
+        result = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    if pd.isna(result) or result == float("inf") or result == float("-inf"):
+        return default
+    return int(result)
+
+
+def _safe_bool(value: object, default: bool = False) -> bool:
+    """Return a bool from *value* without raising; fall back to *default*."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return default
+
+
+def _safe_dict(value: object) -> dict:
+    """Return *value* if it is a dict, otherwise ``{}``."""
+    return value if isinstance(value, dict) else {}
+
+
+def _safe_list(value: object) -> list:
+    """Return *value* if it is a list, otherwise ``[]``."""
+    return value if isinstance(value, list) else []
+
+
+def _normalize_3c_params(params: object) -> dict:
+    if not isinstance(params, dict):
+        params = {}
     return {
         # arrival_tolerance_ticks may appear in legacy configs, but its value is
         # intentionally ignored and normalized to 0.0.
         "arrival_tolerance_ticks": 0.0,
-        "entry_retrace_ticks": float(trigger_params.get("entry_retrace_ticks", 4.0)),
-        "max_entry_wait_bars_after_reversal": int(trigger_params.get("max_entry_wait_bars_after_reversal", 5)),
-        "_source_mode": str(trigger_params.get("_source_mode", "global_cluster")),
+        "entry_retrace_ticks": _safe_float(params.get("entry_retrace_ticks", 4.0), default=4.0),
+        "max_entry_wait_bars_after_reversal": _safe_int(params.get("max_entry_wait_bars_after_reversal", 5), default=5),
+        "_source_mode": str(params.get("_source_mode", "global_cluster")),
     }
 
 
@@ -215,8 +259,8 @@ def _saved_setup_caption(config: dict) -> str:
     if confluence_mode == "anchor_rules":
         return (
             f"Mode=anchor_rules • Anchor={config.get('anchor_level') or '-'} • "
-            f"Rules={len(config.get('confluence_rules', []))} • "
-            f"Min valid={int(config.get('min_valid_confluences', 1))} • "
+            f"Rules={len(_safe_list(config.get('confluence_rules')))} • "
+            f"Min valid={_safe_int(config.get('min_valid_confluences'), 1)} • "
             f"Trigger TF={trigger_timeframe}"
         )
     return (
@@ -288,7 +332,7 @@ def _saved_setup_compatibility_issues(config: dict, available_columns: list[str]
         if isinstance(anchor_level, str) and anchor_level and anchor_level not in available_columns:
             missing_anchor.append(anchor_level)
         missing_rules: list[str] = []
-        for rule in list(config.get("confluence_rules", [])):
+        for rule in _safe_list(config.get("confluence_rules")):
             if not isinstance(rule, dict):
                 continue
             level = str(rule.get("level", "")).strip()
@@ -632,11 +676,15 @@ with st.sidebar:
     use_saved_setup = setup_source in {SETUP_SOURCE_ACTIVE, SETUP_SOURCE_LIBRARY} and saved_setup is not None
 
     if use_saved_setup and saved_setup is not None:
+        # Compute blockers first — before any type coercion — so malformed/legacy
+        # configs surface as user-facing warnings instead of page crashes.
+        for blocker in _saved_setup_generation_blockers(saved_setup, all_level_columns):
+            generation_blockers.append(blocker)
+
         confluence_mode = str(saved_setup.get("confluence_mode", "global_cluster"))
-        configured_levels = saved_setup.get("selected_levels", [])
+        confluence_rules = _safe_list(saved_setup.get("confluence_rules"))
+        min_valid_confluences = _safe_int(saved_setup.get("min_valid_confluences"), 1)
         anchor_level = saved_setup.get("anchor_level")
-        confluence_rules = list(saved_setup.get("confluence_rules", []))
-        min_valid_confluences = int(saved_setup.get("min_valid_confluences", 1))
         if confluence_mode == "anchor_rules":
             selected_levels = []
             if isinstance(anchor_level, str) and anchor_level:
@@ -648,6 +696,7 @@ with st.sidebar:
                 if level and level not in selected_levels:
                     selected_levels.append(level)
         else:
+            configured_levels = saved_setup.get("selected_levels", [])
             if isinstance(configured_levels, list):
                 selected_levels = [str(col) for col in configured_levels]
             else:
@@ -655,25 +704,22 @@ with st.sidebar:
             anchor_level = None
             confluence_rules = []
             min_valid_confluences = 1
-        tolerance_ticks = float(saved_setup.get("tolerance_ticks", 4.0))
-        min_conf = int(saved_setup.get("min_confluences", 2))
-        max_conf = int(saved_setup.get("max_confluences", 5))
-        naked_only = bool(saved_setup.get("naked_only", False))
-        naked_requirement = str(saved_setup.get("naked_requirement", "any"))
-        trigger = str(saved_setup.get("trigger", "touch"))
+        tolerance_ticks = _safe_float(saved_setup.get("tolerance_ticks"), 4.0)
+        min_conf = _safe_int(saved_setup.get("min_confluences"), 2)
+        max_conf = _safe_int(saved_setup.get("max_confluences"), 5)
+        naked_only = _safe_bool(saved_setup.get("naked_only"), False)
+        naked_requirement = str(saved_setup.get("naked_requirement") or "any")
+        trigger = str(saved_setup.get("trigger") or "touch")
         trigger_timeframe = normalize_trigger_timeframe(
             saved_setup.get("trigger_timeframe", DEFAULT_TRIGGER_TIMEFRAME)
         )
-        direction = str(saved_setup.get("direction", "both"))
-        trigger_params = dict(saved_setup.get("trigger_params", {}))
+        direction = str(saved_setup.get("direction") or "both")
+        trigger_params = _safe_dict(saved_setup.get("trigger_params"))
         if trigger == "3c":
             trigger_params = _normalize_3c_params(trigger_params)
 
         st.success(f"Using saved setup: {saved_setup.get('name', 'Untitled setup')}")
         st.caption(f"Levels: {', '.join(selected_levels) if selected_levels else '(none)'}")
-
-        for blocker in _saved_setup_generation_blockers(saved_setup, all_level_columns):
-            generation_blockers.append(blocker)
     else:
         selected_mode_label = st.selectbox(
             "Confluence mode",
