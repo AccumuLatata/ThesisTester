@@ -6,6 +6,7 @@ entry signals from the levels computed on the Levels page.
 from __future__ import annotations
 
 import json
+import math
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -216,7 +217,7 @@ def _safe_int(value: object, default: int) -> int:
         result = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return default
-    if pd.isna(result) or result == float("inf") or result == float("-inf"):
+    if pd.isna(result) or math.isinf(result):
         return default
     return int(result)
 
@@ -708,6 +709,8 @@ with st.sidebar:
         min_conf = _safe_int(saved_setup.get("min_confluences"), 2)
         max_conf = _safe_int(saved_setup.get("max_confluences"), 5)
         naked_only = _safe_bool(saved_setup.get("naked_only"), False)
+        # Empty/None strings for enum-like fields normalize to defaults;
+        # validate_setup_config will flag genuinely invalid values.
         naked_requirement = str(saved_setup.get("naked_requirement") or "any")
         trigger = str(saved_setup.get("trigger") or "touch")
         trigger_timeframe = normalize_trigger_timeframe(
