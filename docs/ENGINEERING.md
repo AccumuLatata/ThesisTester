@@ -93,8 +93,10 @@ A **setup** is defined by:
   - `reclaim` (break then close back → trap)
   - `3c` (three-candle level interaction + reversal + retracement entry)
 - **Trigger timeframe** — candle-close trigger logic runs on the configured trigger
-  timeframe (`base`, `1min`, `5min`, `15min`). Default `base` preserves legacy behavior.
-  Different trigger timeframes are treated as separate strategy hypotheses.
+  timeframe (`base`, `1min`, `5min`, `15min`) for simple triggers (`touch`, `reject`,
+  `break`, `reclaim`). Default `base` preserves legacy behavior. Different trigger
+  timeframes are treated as separate strategy hypotheses. `3c` currently remains
+  base/current-timeframe only until dedicated `3c` trigger-timeframe support is added.
 - **Direction** — long / short / both.
 - **Risk model** — SL and TP definitions (§7).
 - **Session filter** — time-of-day window (§8) and date range.
@@ -507,6 +509,7 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
   `arrival_tolerance_ticks` is deprecated — arrival must strictly touch the key level; any
   nonzero value in old configs is silently ignored.  Setups where the entry retrace is not
   hit within the watch window are included with `status="void"` to preserve research value.
+  In the current implementation, `3c` execution is base/current-timeframe only.
 
 ---
 

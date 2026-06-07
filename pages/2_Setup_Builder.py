@@ -57,12 +57,22 @@ def _render_setup_summary(config: dict) -> None:
     st.markdown(f"**Naked only:** {config['naked_only']}")
     st.markdown(f"**Naked requirement:** {config['naked_requirement']}")
     st.markdown(f"**Trigger:** {config['trigger']}")
+    trigger = str(config.get("trigger", ""))
+    trigger_timeframe = (
+        DEFAULT_TRIGGER_TIMEFRAME
+        if trigger == "3c"
+        else normalize_trigger_timeframe(config.get("trigger_timeframe"))
+    )
     st.markdown(
         f"**Trigger timeframe:** "
-        f"{TRIGGER_TIMEFRAME_DISPLAY.get(normalize_trigger_timeframe(config.get('trigger_timeframe')), 'Base/current timeframe')}"
+        f"{TRIGGER_TIMEFRAME_DISPLAY.get(trigger_timeframe, 'Base/current timeframe')}"
     )
     st.markdown(f"**Direction:** {config['direction']}")
-    if config["trigger"] == "3c":
+    if trigger == "3c":
+        st.info(
+            "3c currently uses the base/current timeframe only. "
+            "Multi-timeframe 3c confirmation will be implemented separately."
+        )
         params = config.get("trigger_params", {})
         st.markdown("**Trigger params:**")
         st.markdown(
@@ -175,16 +185,30 @@ trigger_timeframe_options = [
     option for option in TRIGGER_TIMEFRAME_CHOICES if option in VALID_TRIGGER_TIMEFRAMES
 ]
 trigger_timeframe_default = trigger_timeframe_options.index(DEFAULT_TRIGGER_TIMEFRAME)
-trigger_timeframe_label = st.selectbox(
-    "Trigger timeframe",
-    options=list(TRIGGER_TIMEFRAME_LABELS.keys()),
-    index=trigger_timeframe_default,
-    help=(
-        "Candle-close trigger logic is evaluated on the selected trigger timeframe. "
-        "The default preserves current behavior."
-    ),
-)
-trigger_timeframe = TRIGGER_TIMEFRAME_LABELS[trigger_timeframe_label]
+if trigger == "3c":
+    st.selectbox(
+        "Trigger timeframe",
+        options=[TRIGGER_TIMEFRAME_DISPLAY[DEFAULT_TRIGGER_TIMEFRAME]],
+        index=0,
+        disabled=True,
+        help="3c currently uses the base/current timeframe only.",
+    )
+    trigger_timeframe = DEFAULT_TRIGGER_TIMEFRAME
+    st.info(
+        "3c currently uses the base/current timeframe only. "
+        "Multi-timeframe 3c confirmation will be implemented separately."
+    )
+else:
+    trigger_timeframe_label = st.selectbox(
+        "Trigger timeframe",
+        options=list(TRIGGER_TIMEFRAME_LABELS.keys()),
+        index=trigger_timeframe_default,
+        help=(
+            "Candle-close trigger logic is evaluated on the selected trigger timeframe. "
+            "The default preserves current behavior."
+        ),
+    )
+    trigger_timeframe = TRIGGER_TIMEFRAME_LABELS[trigger_timeframe_label]
 direction = st.selectbox("Direction", options=["long", "short", "both"], index=2)
 
 trigger_params = {}

@@ -196,6 +196,26 @@ def test_3c_missing_params_are_defaulted():
     assert config["trigger_params"]["arrival_tolerance_ticks"] == 0.0  # forced to 0
     assert config["trigger_params"]["entry_retrace_ticks"] == 4.0
     assert config["trigger_params"]["max_entry_wait_bars_after_reversal"] == 5
+    assert config["trigger_timeframe"] == "base"
+    assert validate_setup_config(config) == []
+
+
+def test_3c_non_base_trigger_timeframe_is_normalized_to_base():
+    config = build_setup_config(
+        name="3c forced base tf",
+        description="",
+        instrument="ES",
+        selected_levels=["ONH"],
+        tolerance_ticks=4.0,
+        min_confluences=2,
+        max_confluences=5,
+        naked_only=False,
+        naked_requirement="any",
+        trigger="3c",
+        trigger_timeframe="5min",
+        direction="both",
+    )
+    assert config["trigger_timeframe"] == "base"
     assert validate_setup_config(config) == []
 
 

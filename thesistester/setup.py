@@ -115,8 +115,10 @@ def build_setup_config(
     trigger_params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a normalized setup configuration dictionary."""
+    normalized_trigger_timeframe = normalize_trigger_timeframe(trigger_timeframe)
     normalized_params = {}
     if trigger == "3c":
+        normalized_trigger_timeframe = DEFAULT_TRIGGER_TIMEFRAME
         normalized_params = _normalize_3c_params(trigger_params)
 
     return {
@@ -130,7 +132,7 @@ def build_setup_config(
         "naked_only": bool(naked_only),
         "naked_requirement": str(naked_requirement).lower(),
         "trigger": str(trigger),
-        "trigger_timeframe": normalize_trigger_timeframe(trigger_timeframe),
+        "trigger_timeframe": normalized_trigger_timeframe,
         "direction": str(direction),
         "confluence_mode": str(confluence_mode or "global_cluster"),
         "anchor_level": anchor_level,

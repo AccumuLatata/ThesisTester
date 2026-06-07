@@ -617,6 +617,55 @@ class TestSimpleTriggerTimeframes:
         assert len(base) == 1
         assert five.empty
 
+    def test_non_base_trigger_timestamp_and_entry_stay_lookahead_safe(self):
+        from thesistester.engine.backtest import simulate_trades
+
+        df = _df_bars(
+            [
+                {"open": 100.0, "high": 100.2, "low": 99.8, "close": 99.9},
+                {"open": 99.9, "high": 100.1, "low": 99.7, "close": 99.8},
+                {"open": 99.8, "high": 100.0, "low": 99.6, "close": 99.9},
+                {"open": 99.9, "high": 100.1, "low": 99.8, "close": 99.9},
+                {"open": 99.9, "high": 100.2, "low": 99.8, "close": 100.0},  # 09:34 close
+                {"open": 100.0, "high": 100.4, "low": 99.9, "close": 100.1},
+                {"open": 100.1, "high": 100.6, "low": 100.0, "close": 100.3},
+                {"open": 100.3, "high": 100.8, "low": 100.2, "close": 100.5},
+                {"open": 100.5, "high": 101.0, "low": 100.4, "close": 100.8},
+                {"open": 100.8, "high": 101.3, "low": 100.7, "close": 101.0},  # 09:39 close
+                {"open": 101.2, "high": 101.6, "low": 101.0, "close": 101.4},  # 09:40 next base bar
+            ]
+        )
+        zones = _zone_df(9, low=99.8, high=100.0)
+
+        signals = generate_signals(
+            df,
+            zones,
+            trigger="break",
+            direction="long",
+            tick_size=TICK,
+            trigger_timeframe="5min",
+        )
+        assert len(signals) == 1
+        signal = signals.iloc[0]
+        assert signal["bar_index"] == 9
+        assert signal["trigger_bar_index"] == 1
+        assert signal["trigger_timeframe"] == "5min"
+        assert signal["trigger_timestamp"] == pd.Timestamp("2026-06-02 09:40:00", tz=TZ)
+        assert signal["timestamp"] == pd.Timestamp("2026-06-02 09:40:00", tz=TZ)
+
+        trades = simulate_trades(
+            df,
+            signals,
+            tick_size=TICK,
+            point_value=50.0,
+            stop_loss_ticks=8,
+            take_profit_ticks=8,
+        )
+        assert len(trades) == 1
+        trade = trades.iloc[0]
+        assert trade["entry_bar_index"] == 10
+        assert trade["entry_price"] == pytest.approx(float(df["open"].iloc[10]))
+
 
 class TestStrict3cTrigger:
     def _bars_for_3c(self) -> pd.DataFrame:
@@ -658,6 +707,7 @@ class TestStrict3cTrigger:
         assert sigs.iloc[0]["entry_reference_price"] == pytest.approx(sigs.iloc[0]["entry_trigger_price"])
         assert sigs.iloc[0]["retrace_entry_price"] == pytest.approx(sigs.iloc[0]["entry_trigger_price"])
         assert sigs.iloc[0]["activation_price"] == pytest.approx(sigs.iloc[0]["entry_trigger_price"])
+        assert sigs.iloc[0]["trigger_timeframe"] == "base"
 
     def test_3c_void_uses_theoretical_entry_trigger_as_reference(self):
         df = _df_bars([
@@ -681,6 +731,19 @@ class TestStrict3cTrigger:
         assert sig["entry_reference_price"] == pytest.approx(sig["entry_trigger_price"])
         assert pd.isna(sig["retrace_entry_price"])
         assert pd.isna(sig["activation_price"])
+
+    def test_3c_forces_base_trigger_timeframe_even_when_non_base_requested(self):
+        sigs = generate_signals(
+            self._bars_for_3c(),
+            self._zone(),
+            trigger="3c",
+            direction="long",
+            tick_size=TICK,
+            trigger_timeframe="5min",
+            trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3},
+        )
+        assert not sigs.empty
+        assert (sigs["trigger_timeframe"] == "base").all()
 
 
 class TestNakedFilter:
@@ -742,6 +805,20 @@ class TestEdgeCases:
         zones = _zone_df(0, 100.0, 100.5)
         with pytest.raises(ValueError, match="direction"):
             generate_signals(df, zones, trigger="touch", direction="diagonal", tick_size=TICK)
+
+    @pytest.mark.parametrize("trigger_timeframe", ["2min", "abc"])
+    def test_invalid_trigger_timeframe_raises(self, trigger_timeframe):
+        df = _simple_bars(5)
+        zones = _zone_df(0, 100.0, 100.5)
+        with pytest.raises(ValueError, match="trigger_timeframe"):
+            generate_signals(
+                df,
+                zones,
+                trigger="touch",
+                direction="long",
+                tick_size=TICK,
+                trigger_timeframe=trigger_timeframe,
+            )
 
     def test_confirm_3bar_is_no_longer_valid_trigger(self):
         df = _simple_bars(5)

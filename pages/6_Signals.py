@@ -205,7 +205,12 @@ def _normalize_3c_params(params: dict | None) -> dict:
 
 def _saved_setup_caption(config: dict) -> str:
     confluence_mode = str(config.get("confluence_mode", "global_cluster"))
-    trigger_timeframe = normalize_trigger_timeframe(config.get("trigger_timeframe"))
+    trigger = str(config.get("trigger", "touch"))
+    trigger_timeframe = (
+        DEFAULT_TRIGGER_TIMEFRAME
+        if trigger == "3c"
+        else normalize_trigger_timeframe(config.get("trigger_timeframe"))
+    )
     if confluence_mode == "anchor_rules":
         return (
             f"Mode=anchor_rules • Anchor={config.get('anchor_level') or '-'} • "
@@ -292,6 +297,8 @@ def _normalize_signal_settings_for_hash(settings: dict) -> dict:
     normalized["trigger_timeframe"] = normalize_trigger_timeframe(
         normalized.get("trigger_timeframe")
     )
+    if str(normalized.get("trigger")) == "3c":
+        normalized["trigger_timeframe"] = DEFAULT_TRIGGER_TIMEFRAME
     setup_snapshot = normalized.get("setup_snapshot")
     if isinstance(setup_snapshot, dict):
         normalized["setup_snapshot"] = dict(setup_snapshot)
@@ -444,7 +451,12 @@ with st.sidebar:
         direction = str(saved_setup.get("direction", "both"))
         trigger_params = dict(saved_setup.get("trigger_params", {}))
         if trigger == "3c":
+            trigger_timeframe = DEFAULT_TRIGGER_TIMEFRAME
             trigger_params = _normalize_3c_params(trigger_params)
+            st.info(
+                "3c currently uses the base/current timeframe only. "
+                "Multi-timeframe 3c confirmation will be implemented separately."
+            )
 
         st.success(f"Using saved setup: {saved_setup.get('name', 'Untitled setup')}")
         st.caption(f"Levels: {', '.join(selected_levels) if selected_levels else '(none)'}")
@@ -573,19 +585,33 @@ with st.sidebar:
             value for value in TRIGGER_TIMEFRAME_CHOICES if value in VALID_TRIGGER_TIMEFRAMES
         ]
         default_trigger_timeframe_index = trigger_timeframe_options.index(DEFAULT_TRIGGER_TIMEFRAME)
-        trigger_timeframe_label_options = [
-            TRIGGER_TIMEFRAME_DISPLAY[value] for value in trigger_timeframe_options
-        ]
-        trigger_timeframe_label = st.selectbox(
-            "Trigger timeframe",
-            options=trigger_timeframe_label_options,
-            index=default_trigger_timeframe_index,
-            help=(
-                "Candle-close trigger logic is evaluated on the selected trigger timeframe. "
-                "The default preserves current behavior."
-            ),
-        )
-        trigger_timeframe = TRIGGER_TIMEFRAME_LABELS[trigger_timeframe_label]
+        if trigger == "3c":
+            st.selectbox(
+                "Trigger timeframe",
+                options=[TRIGGER_TIMEFRAME_DISPLAY[DEFAULT_TRIGGER_TIMEFRAME]],
+                index=0,
+                disabled=True,
+                help="3c currently uses the base/current timeframe only.",
+            )
+            trigger_timeframe = DEFAULT_TRIGGER_TIMEFRAME
+            st.info(
+                "3c currently uses the base/current timeframe only. "
+                "Multi-timeframe 3c confirmation will be implemented separately."
+            )
+        else:
+            trigger_timeframe_label_options = [
+                TRIGGER_TIMEFRAME_DISPLAY[value] for value in trigger_timeframe_options
+            ]
+            trigger_timeframe_label = st.selectbox(
+                "Trigger timeframe",
+                options=trigger_timeframe_label_options,
+                index=default_trigger_timeframe_index,
+                help=(
+                    "Candle-close trigger logic is evaluated on the selected trigger timeframe. "
+                    "The default preserves current behavior."
+                ),
+            )
+            trigger_timeframe = TRIGGER_TIMEFRAME_LABELS[trigger_timeframe_label]
 
         naked_only = st.toggle("Naked / untested levels only", value=False)
         naked_requirement = "any"

@@ -6,7 +6,7 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from thesistester.setup import normalize_trigger_timeframe
+from thesistester.setup import VALID_TRIGGER_TIMEFRAMES, normalize_trigger_timeframe
 
 from .candidate_level import CandidateLevel, from_anchor_zones, from_global_cluster_zones, with_metadata
 from .signals_3c import detect_3c_setups
@@ -721,13 +721,18 @@ def generate_signals(
         return _empty_signals_df()
 
     params = _normalize_3c_params(trigger_params) if trigger == "3c" else {}
-    normalized_trigger_timeframe = normalize_trigger_timeframe(trigger_timeframe)
+    requested_trigger_timeframe = normalize_trigger_timeframe(trigger_timeframe)
+    if requested_trigger_timeframe not in VALID_TRIGGER_TIMEFRAMES:
+        raise ValueError(
+            f"trigger_timeframe must be one of {sorted(VALID_TRIGGER_TIMEFRAMES)}, got {trigger_timeframe!r}"
+        )
+    effective_trigger_timeframe = "base" if trigger == "3c" else requested_trigger_timeframe
     naked_req = naked_requirement.lower()
     if naked_req not in {"any", "all"}:
         naked_req = "any"
 
     df_reset = df.reset_index(drop=True)
-    trigger_df = _prepare_trigger_dataframe(df_reset, normalized_trigger_timeframe)
+    trigger_df = _prepare_trigger_dataframe(df_reset, effective_trigger_timeframe)
     trigger_rows_by_base_end: dict[int, pd.Series] = {
         int(row["base_end_bar_index"]): row
         for _, row in trigger_df.iterrows()
@@ -845,7 +850,7 @@ def generate_signals(
                     ts=setup["timestamp"],
                     bar_idx=int(setup["bar_index"]),
                     trigger_bar_index=int(setup["bar_index"]),
-                    trigger_timeframe=normalized_trigger_timeframe,
+                    trigger_timeframe=effective_trigger_timeframe,
                     trigger_timestamp=setup["timestamp"],
                     trigger="3c",
                     direction=str(setup["direction"]),
@@ -903,7 +908,7 @@ def generate_signals(
                         zone,
                         trigger_bar_idx,
                         base_bar_idx,
-                        normalized_trigger_timeframe,
+                        effective_trigger_timeframe,
                         d,
                         signal_id,
                         ncount,
@@ -915,7 +920,7 @@ def generate_signals(
                         zone,
                         trigger_bar_idx,
                         base_bar_idx,
-                        normalized_trigger_timeframe,
+                        effective_trigger_timeframe,
                         d,
                         signal_id,
                         ncount,
@@ -927,7 +932,7 @@ def generate_signals(
                         zone,
                         trigger_bar_idx,
                         base_bar_idx,
-                        normalized_trigger_timeframe,
+                        effective_trigger_timeframe,
                         d,
                         signal_id,
                         ncount,
@@ -939,7 +944,7 @@ def generate_signals(
                         zone,
                         trigger_bar_idx,
                         base_bar_idx,
-                        normalized_trigger_timeframe,
+                        effective_trigger_timeframe,
                         d,
                         signal_id,
                         ncount,
