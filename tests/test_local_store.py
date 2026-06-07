@@ -5,11 +5,14 @@ import pandas as pd
 import pytest
 
 from thesistester.persistence.local_store import (
+    SETUP_SCHEMA_VERSION,
+    compute_setup_id,
     compute_levels_settings_hash,
     compute_signal_settings_hash,
     compute_dataset_id,
     delete_dataset,
     delete_levels,
+    delete_setup,
     delete_signal_run,
     find_matching_levels,
     find_matching_signal_run,
@@ -17,13 +20,16 @@ from thesistester.persistence.local_store import (
     get_active_levels_hash,
     get_store_root,
     list_datasets,
+    list_saved_setups,
     list_saved_levels,
     list_saved_signal_runs,
     load_dataset,
     load_levels,
+    load_setup,
     load_signal_run,
     save_dataset,
     save_levels,
+    save_setup,
     save_signal_run,
     set_active_dataset_id,
     set_active_levels_hash,
@@ -668,3 +674,118 @@ def test_default_store_root_stable(monkeypatch):
 
     persistence_dir = Path(local_store.__file__).resolve().parent
     assert not str(root).startswith(str(persistence_dir))
+
+
+def _setup_config(**overrides) -> dict:
+    config = {
+        "name": "OR touch",
+        "description": "test setup",
+        "instrument": "ES",
+        "selected_levels": ["OR_High", "OR_Low"],
+        "tolerance_ticks": 4.0,
+        "min_confluences": 2,
+        "max_confluences": 5,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "touch",
+        "trigger_timeframe": "base",
+        "direction": "both",
+        "confluence_mode": "global_cluster",
+        "anchor_level": None,
+        "confluence_rules": [],
+        "min_valid_confluences": 1,
+        "trigger_params": {},
+    }
+    config.update(overrides)
+    return config
+
+
+def test_save_and_load_setup_roundtrip():
+    saved = save_setup(
+        _setup_config(),
+        dataset_id="dataset-a",
+        instrument="ES",
+    )
+    loaded = load_setup(saved["setup_id"])
+
+    assert loaded["schema_version"] == SETUP_SCHEMA_VERSION
+    assert loaded["kind"] == "setup"
+    assert loaded["dataset_id"] == "dataset-a"
+    assert loaded["instrument"] == "ES"
+    assert loaded["setup_config"]["name"] == "OR touch"
+    assert loaded["setup_id"] == saved["setup_id"]
+
+
+def test_save_setup_preserves_created_at_when_updating():
+    saved = save_setup(_setup_config(name="First"), setup_id="setup-123", dataset_id="dataset-a")
+    original_created_at = saved["created_at"]
+
+    updated = save_setup(_setup_config(name="Updated"), setup_id="setup-123", dataset_id="dataset-a")
+
+    assert updated["setup_id"] == "setup-123"
+    assert updated["created_at"] == original_created_at
+    assert updated["updated_at"] >= original_created_at
+    assert updated["name"] == "Updated"
+
+
+def test_list_saved_setups_returns_newest_first():
+    first = save_setup(_setup_config(name="first"), setup_id="setup-first", dataset_id="dataset-a")
+    second = save_setup(_setup_config(name="second"), setup_id="setup-second", dataset_id="dataset-a")
+
+    first_meta_path = Path(first["path"]) / "meta.json"
+    second_meta_path = Path(second["path"]) / "meta.json"
+    first_meta = json.loads(first_meta_path.read_text(encoding="utf-8"))
+    second_meta = json.loads(second_meta_path.read_text(encoding="utf-8"))
+    first_meta["updated_at"] = "2026-06-01T00:00:00+00:00"
+    second_meta["updated_at"] = "2026-06-02T00:00:00+00:00"
+    first_meta_path.write_text(json.dumps(first_meta), encoding="utf-8")
+    second_meta_path.write_text(json.dumps(second_meta), encoding="utf-8")
+
+    listed = list_saved_setups()
+
+    assert [item["setup_id"] for item in listed] == ["setup-second", "setup-first"]
+
+
+def test_list_saved_setups_ignores_corrupt_metadata():
+    corrupt_dir = get_store_root() / "setups" / "corrupt-setup"
+    corrupt_dir.mkdir(parents=True, exist_ok=True)
+    (corrupt_dir / "meta.json").write_text("{not json", encoding="utf-8")
+
+    assert list_saved_setups() == []
+
+
+def test_list_saved_setups_ignores_unsupported_schema():
+    saved = save_setup(_setup_config(), setup_id="setup-123", dataset_id="dataset-a")
+    meta_path = Path(saved["path"]) / "meta.json"
+    payload = json.loads(meta_path.read_text(encoding="utf-8"))
+    payload["schema_version"] = 999
+    meta_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    listed = list_saved_setups()
+    assert listed == []
+    with pytest.raises(ValueError):
+        load_setup("setup-123")
+
+
+def test_list_saved_setups_can_filter_dataset():
+    save_setup(_setup_config(name="a"), setup_id="setup-a", dataset_id="dataset-a")
+    save_setup(_setup_config(name="b"), setup_id="setup-b", dataset_id="dataset-b")
+    save_setup(_setup_config(name="global"), setup_id="setup-g", dataset_id=None)
+
+    filtered = list_saved_setups(dataset_id="dataset-a")
+
+    assert [item["setup_id"] for item in filtered] == ["setup-a"]
+
+
+def test_delete_setup_removes_saved_setup():
+    saved = save_setup(_setup_config(), setup_id="setup-123", dataset_id="dataset-a")
+
+    delete_setup(saved["setup_id"])
+
+    assert list_saved_setups() == []
+    with pytest.raises(FileNotFoundError):
+        load_setup(saved["setup_id"])
+
+
+def test_compute_setup_id_returns_unique_values():
+    assert compute_setup_id() != compute_setup_id()

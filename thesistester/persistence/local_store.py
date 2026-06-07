@@ -1,4 +1,4 @@
-"""Small local filesystem persistence helpers for datasets and computed levels."""
+"""Small local filesystem persistence helpers for datasets, setups, and computed levels."""
 from __future__ import annotations
 
 import hashlib
@@ -8,6 +8,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pandas as pd
 
@@ -17,6 +18,7 @@ from thesistester.setup import normalize_trigger_timeframe
 PERSISTENCE_SCHEMA_VERSION = 1
 LEVEL_ENGINE_VERSION = 3
 SIGNAL_RUN_SCHEMA_VERSION = 1
+SETUP_SCHEMA_VERSION = 1
 STORE_ENV_VAR = "THESISTESTER_STORE_DIR"
 DEFAULT_STORE_DIR_NAME = ".thesistester_store"
 SIGNALS_PARQUET_NAME = "signals.parquet"
@@ -48,6 +50,10 @@ def _signals_root() -> Path:
     return get_store_root() / "signals"
 
 
+def _setups_root() -> Path:
+    return get_store_root() / "setups"
+
+
 def _dataset_manifest_path() -> Path:
     return _datasets_root() / "manifest.json"
 
@@ -70,6 +76,10 @@ def _signal_run_dir(
     signal_settings_hash: str,
 ) -> Path:
     return _signals_root() / dataset_id / levels_settings_hash / signal_settings_hash
+
+
+def _setup_dir(setup_id: str) -> Path:
+    return _setups_root() / setup_id
 
 
 def _signal_run_files_exist(signal_run_dir: Path) -> bool:
@@ -168,6 +178,11 @@ def _timestamp_to_string(value: Any) -> str | None:
     if value is None or pd.isna(value):
         return None
     return pd.Timestamp(value).isoformat()
+
+
+def compute_setup_id() -> str:
+    """Return a random setup identifier."""
+    return uuid4().hex
 
 
 def compute_dataset_id(
@@ -354,6 +369,129 @@ def save_dataset(
     _refresh_dataset_manifest()
     metadata["path"] = str(dataset_dir)
     return metadata
+
+
+def save_setup(
+    setup_config: dict[str, Any],
+    *,
+    setup_id: str | None = None,
+    dataset_id: str | None = None,
+    instrument: str | None = None,
+) -> dict[str, Any]:
+    """Persist a setup config and return metadata."""
+    if not isinstance(setup_config, dict):
+        raise ValueError("setup_config must be a dictionary.")
+
+    resolved_setup_id = (setup_id or setup_config.get("setup_id") or "").strip() or compute_setup_id()
+    setup_dir = _setup_dir(resolved_setup_id)
+    setup_dir.mkdir(parents=True, exist_ok=True)
+    meta_path = setup_dir / "meta.json"
+
+    existing_created_at: str | None = None
+    if meta_path.exists():
+        try:
+            existing = _read_json(meta_path)
+        except (json.JSONDecodeError, OSError):
+            existing = None
+        if isinstance(existing, dict):
+            existing_created_at = existing.get("created_at")
+
+    resolved_dataset_id = dataset_id
+    if resolved_dataset_id is None:
+        raw_dataset_id = setup_config.get("dataset_id")
+        if isinstance(raw_dataset_id, str) and raw_dataset_id.strip():
+            resolved_dataset_id = raw_dataset_id.strip()
+
+    resolved_instrument = instrument or setup_config.get("instrument")
+    if resolved_instrument is not None:
+        resolved_instrument = str(resolved_instrument)
+
+    created_at = existing_created_at or _utcnow_iso()
+    metadata = {
+        "schema_version": SETUP_SCHEMA_VERSION,
+        "kind": "setup",
+        "setup_id": resolved_setup_id,
+        "dataset_id": resolved_dataset_id,
+        "instrument": resolved_instrument,
+        "name": str(setup_config.get("name", "")).strip() or "Untitled setup",
+        "description": str(setup_config.get("description", "")).strip(),
+        "created_at": created_at,
+        "updated_at": _utcnow_iso(),
+        "app_version": __version__,
+        "setup_config": _normalize_json_value(
+            {
+                **setup_config,
+                "setup_id": resolved_setup_id,
+                "dataset_id": resolved_dataset_id,
+            }
+        ),
+    }
+    _write_json(meta_path, metadata)
+    metadata["path"] = str(setup_dir)
+    return metadata
+
+
+def list_saved_setups(dataset_id: str | None = None) -> list[dict[str, Any]]:
+    """Return setup metadata sorted newest-first by updated timestamp."""
+    setups_root = _setups_root()
+    if not setups_root.exists():
+        return []
+
+    items: list[dict[str, Any]] = []
+    for meta_path in sorted(setups_root.glob("*/meta.json")):
+        try:
+            meta = _read_json(meta_path)
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(meta, dict):
+            continue
+        if meta.get("schema_version") != SETUP_SCHEMA_VERSION:
+            continue
+        if meta.get("kind") != "setup":
+            continue
+        setup_id = meta.get("setup_id")
+        if not isinstance(setup_id, str) or not setup_id:
+            continue
+        if dataset_id is not None and meta.get("dataset_id") != dataset_id:
+            continue
+        setup_config = meta.get("setup_config")
+        if not isinstance(setup_config, dict):
+            continue
+        meta["path"] = str(meta_path.parent)
+        items.append(meta)
+
+    items.sort(
+        key=lambda item: (
+            str(item.get("updated_at") or ""),
+            str(item.get("created_at") or ""),
+        ),
+        reverse=True,
+    )
+    return items
+
+
+def load_setup(setup_id: str) -> dict[str, Any]:
+    """Load saved setup metadata by id."""
+    meta_path = _setup_dir(setup_id) / "meta.json"
+    if not meta_path.exists():
+        raise FileNotFoundError(f"Saved setup not found: {setup_id}")
+
+    metadata = _read_json(meta_path)
+    if metadata.get("schema_version") != SETUP_SCHEMA_VERSION:
+        raise ValueError(f"Unsupported setup schema version: {metadata.get('schema_version')}")
+    if metadata.get("kind") != "setup":
+        raise ValueError(f"Unsupported persisted artifact kind: {metadata.get('kind')}")
+    if not isinstance(metadata.get("setup_config"), dict):
+        raise ValueError("Saved setup payload is invalid.")
+    metadata["path"] = str(meta_path.parent)
+    return metadata
+
+
+def delete_setup(setup_id: str) -> None:
+    """Delete a saved setup."""
+    setup_dir = _setup_dir(setup_id)
+    if setup_dir.exists():
+        shutil.rmtree(setup_dir)
 
 
 def list_datasets() -> list[dict[str, Any]]:

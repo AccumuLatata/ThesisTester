@@ -568,8 +568,15 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
 
 - **Setup Builder is functional.** `pages/2_Setup_Builder.py` now builds and validates reusable
   setup dictionaries and stores the active setup in `st.session_state["setup_config"]`.
-- **Session-only setup persistence.** Optional in-session history is kept in
-  `st.session_state["setup_configs"]`; there is no disk/database persistence in this phase.
+- **Local setup-library persistence.** Setup metadata and configs are stored in
+  `.thesistester_store/setups/` via `thesistester/persistence/local_store.py`
+  (`save_setup`, `list_saved_setups`, `load_setup`, `delete_setup`) using JSON payloads.
+  Active setup compatibility remains in-session via `st.session_state["setup_config"]`
+  and optional in-session history `st.session_state["setup_configs"]`.
+- **Saved setups workflow in Setup Builder.** Users can load to editor, duplicate, set active,
+  and delete saved setups. Listing is newest-first and dataset-aware when `dataset_id` is present.
+- **Dataset-mismatch protection.** On dataset switch, incompatible active setups are cleared
+  (when setup `dataset_id` differs from active `dataset_id`) to prevent silent stale reuse.
 - **Signals can consume saved setup configs.** `pages/6_Signals.py` supports `Use saved setup`
   mode from Setup Builder while retaining full manual controls as fallback.
 

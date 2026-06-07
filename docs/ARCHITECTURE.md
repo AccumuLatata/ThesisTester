@@ -49,3 +49,16 @@ Flow basis in app workflow and phase pages: `app.py:12-33`, `pages/1_Data.py`, `
 | `time_bucketed_trades` | Time (`pages/9_Time_Analysis.py:129`) | Report/Bundles availability checks (`pages/12_Research_Bundles.py:57`) | `pd.DataFrame` trades + time-bucket columns |
 | `time_grouped_summary` | Time (`pages/9_Time_Analysis.py:208`) | Report export (`pages/11_Report_Export.py:41,123`, `thesistester/reporting.py:180-185`) | `pd.DataFrame` grouped diagnostics |
 | `validation_summary` | Validation (`pages/10_Validation.py:130`) | Validation display/Report/Bundles (`pages/10_Validation.py:134`, `pages/11_Report_Export.py:42,82-83`, `pages/12_Research_Bundles.py:50`) | `dict` (`bootstrap`, `permutation`, `trade_count`, `grid_overfit`) |
+
+## Local persistence topology (filesystem)
+
+- Root: `.thesistester_store/` (or `$THESISTESTER_STORE_DIR`)
+- Datasets: `.thesistester_store/datasets/<dataset_id>/`
+- Levels: `.thesistester_store/levels/<dataset_id>/<levels_settings_hash>/`
+- Signal runs: `.thesistester_store/signals/<dataset_id>/<levels_settings_hash>/<signal_settings_hash>/`
+- Setups: `.thesistester_store/setups/<setup_id>/meta.json`
+
+Setup persistence is local-only (no cloud sync/user accounts). Setup Builder stores setup
+configs in the setup library and keeps `st.session_state["setup_config"]` as the active setup
+for Signals-page compatibility. Saved setups carry `dataset_id` when available; Setup Builder
+labels cross-dataset entries and Data-page dataset switches clear incompatible active setups.
