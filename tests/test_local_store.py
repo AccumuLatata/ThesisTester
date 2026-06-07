@@ -544,22 +544,23 @@ def test_signal_run_roundtrip():
     assert loaded_meta["signal_settings"] == _signal_settings()
 
 
-def test_save_signal_run_recovers_if_run_dir_is_deleted_before_first_write(monkeypatch):
+def test_save_signal_run_recreates_deleted_directory_before_first_write(monkeypatch):
     signal_settings = _signal_settings()
     signal_hash = compute_signal_settings_hash(signal_settings)
     run_dir = get_store_root() / "signals" / "dataset-123" / "levels-hash-1" / signal_hash
     assert not run_dir.exists()
     signals_path = run_dir / "signals.parquet"
     original_ensure_parent = local_store._ensure_parent
-    first_write = {"done": False}
-    run_dir_deleted = {"done": False}
+    first_write_done = False
+    run_dir_deleted = False
 
     def _drop_run_dir_before_first_parquet_write(path):
-        if not first_write["done"] and path == signals_path:
-            first_write["done"] = True
+        nonlocal first_write_done, run_dir_deleted
+        if not first_write_done and path == signals_path:
+            first_write_done = True
             if run_dir.exists():
                 shutil.rmtree(run_dir)
-                run_dir_deleted["done"] = True
+                run_dir_deleted = True
         return original_ensure_parent(path)
 
     monkeypatch.setattr(local_store, "_ensure_parent", _drop_run_dir_before_first_parquet_write)
@@ -575,8 +576,8 @@ def test_save_signal_run_recovers_if_run_dir_is_deleted_before_first_write(monke
         last_signal_setup={},
     )
 
-    assert first_write["done"] is True
-    assert run_dir_deleted["done"] is True
+    assert first_write_done
+    assert run_dir_deleted
     assert (run_dir / "signals.parquet").exists()
     assert (run_dir / "confluence_zones.parquet").exists()
     assert (run_dir / "naked_flags.parquet").exists()
