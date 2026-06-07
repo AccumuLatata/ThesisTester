@@ -310,8 +310,8 @@ def test_long_only_grid_is_safe():
     Expected:
     - long_trade_count == 1
     - short_trade_count == 0
-    - short_profit_factor is missing (no short trades)
-    - min_direction_profit_factor is missing (one side missing)
+    - short_profit_factor is NaN (no short trades)
+    - min_direction_profit_factor is NaN (one side missing)
     """
     grid = run_sl_tp_grid(
         _OHLCV, _SIGNALS, TICK, POINT_VALUE,

@@ -223,6 +223,7 @@ if run_btn:
     st.session_state["grid_results"] = grid
     st.session_state["best_grid_result"] = best
     st.session_state["grid_active_metric"] = active_metric
+    st.session_state["grid_ranking_metric"] = ranking_metric
     st.session_state["grid_directional_ranking_enabled"] = enable_directional
     st.session_state["grid_min_long_trades"] = min_long_trades
     st.session_state["grid_min_short_trades"] = min_short_trades
@@ -232,7 +233,9 @@ if run_btn:
 grid = st.session_state.get("grid_results")
 best = st.session_state.get("best_grid_result")
 grid_directional_ranking_enabled = st.session_state.get("grid_directional_ranking_enabled", False)
-grid_min_trades = st.session_state.get("grid_min_trades", min_trades)
+grid_min_trades = st.session_state.get("grid_min_trades", 1)
+grid_min_long_trades = st.session_state.get("grid_min_long_trades", 1)
+grid_min_short_trades = st.session_state.get("grid_min_short_trades", 1)
 
 if grid is None:
     st.info("Configure settings in the sidebar and click **▶ Run grid search**.")
@@ -252,7 +255,12 @@ def _fmt(v, fmt=".2f", fallback="—"):
 
 
 # Resolve the metric shown in the best-cell header
-active_metric = st.session_state.get("grid_active_metric") or ranking_metric
+_persisted_active_metric = st.session_state.get("grid_active_metric")
+active_metric = (
+    _persisted_active_metric
+    if _persisted_active_metric is not None
+    else st.session_state.get("grid_ranking_metric", "expectancy_r")
+)
 
 # Summary header
 n_combos = len(grid)
@@ -293,7 +301,8 @@ if best is not None:
 else:
     if grid_directional_ranking_enabled:
         st.warning(
-            "No grid cell meets the directional trade-count requirements. "
+            f"No grid cell meets the directional trade-count requirements "
+            f"(long ≥ {grid_min_long_trades}, short ≥ {grid_min_short_trades}). "
             "Reduce min long/short trades or widen the SL/TP range."
         )
     else:
