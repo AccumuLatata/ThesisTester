@@ -766,19 +766,18 @@ def save_signal_run(
         "created_at": _utcnow_iso(),
         "app_version": __version__,
     }
-    signals_path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_parent(signals_path)
     _canonicalize_dataframe(signals).to_parquet(signals_path, index=False)
-    confluence_zones_path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_parent(confluence_zones_path)
     _canonicalize_dataframe(confluence_zones).to_parquet(
         confluence_zones_path,
         index=False,
     )
-    naked_flags_path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_parent(naked_flags_path)
     _canonicalize_dataframe(naked_flags).to_parquet(
         naked_flags_path,
         index=False,
     )
-    meta_path.parent.mkdir(parents=True, exist_ok=True)
     _write_json(meta_path, metadata)
     metadata["path"] = str(signal_run_dir)
     return metadata
