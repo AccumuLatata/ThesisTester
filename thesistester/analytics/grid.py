@@ -78,7 +78,8 @@ def _directional_grid_metrics(trades: pd.DataFrame) -> dict:
     )
 
     # Balanced / weaker-side metrics.
-    # Use None when a side has no trades (profit_factor stays None in that case).
+    # min_direction_trade_count is always numeric (0 if one side has no trades),
+    # while weaker-side PF/expectancy use None when either side has no trades.
     long_pf = long_s["profit_factor"] if long_s["trade_count"] > 0 else None
     short_pf = short_s["profit_factor"] if short_s["trade_count"] > 0 else None
     long_exp = long_s["expectancy_r"] if long_s["trade_count"] > 0 else None

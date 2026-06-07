@@ -310,8 +310,8 @@ def test_long_only_grid_is_safe():
     Expected:
     - long_trade_count == 1
     - short_trade_count == 0
-    - short_profit_factor is None (no short trades)
-    - min_direction_profit_factor is None (one side missing)
+    - short_profit_factor is missing (no short trades)
+    - min_direction_profit_factor is missing (one side missing)
     """
     grid = run_sl_tp_grid(
         _OHLCV, _SIGNALS, TICK, POINT_VALUE,
@@ -322,9 +322,9 @@ def test_long_only_grid_is_safe():
     assert row["trade_count"] == 1
     assert row["long_trade_count"] == 1
     assert row["short_trade_count"] == 0
-    assert row["short_profit_factor"] is None
-    assert row["min_direction_profit_factor"] is None
-    assert row["min_direction_expectancy_r"] is None
+    assert pd.isna(row["short_profit_factor"])
+    assert pd.isna(row["min_direction_profit_factor"])
+    assert pd.isna(row["min_direction_expectancy_r"])
 
 
 def _make_mixed_dataset():
@@ -425,15 +425,17 @@ def test_best_grid_result_unchanged_with_new_columns():
 
 
 def test_best_grid_result_by_directional_metric():
-    """best_grid_result can rank by a directional metric when long trades exist."""
+    """best_grid_result ranks by the highest directional metric value."""
     ohlcv, signals = _make_mixed_dataset()
     grid = run_sl_tp_grid(
         ohlcv, signals, TICK, POINT_VALUE,
-        stop_loss_ticks_values=[4],
-        take_profit_ticks_values=[8],
+        stop_loss_ticks_values=[4, 8],
+        take_profit_ticks_values=[8, 16],
     )
+    valid = grid.dropna(subset=["long_expectancy_r"])
     best = best_grid_result(grid, metric="long_expectancy_r")
     assert best is not None
+    assert best["long_expectancy_r"] == valid["long_expectancy_r"].max()
 
 
 def test_best_grid_result_missing_metric_returns_none():

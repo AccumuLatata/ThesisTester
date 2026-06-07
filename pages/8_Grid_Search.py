@@ -204,6 +204,7 @@ if run_btn:
             st.stop()
 
     best = best_grid_result(grid, metric=ranking_metric, min_trades=min_trades)
+    active_metric = ranking_metric
 
     # Directional ranking: pre-filter by side-specific trade counts then rank.
     if enable_directional:
@@ -217,13 +218,21 @@ if run_btn:
                 dir_filtered["short_trade_count"] >= min_short_trades
             ]
         best = best_grid_result(dir_filtered, metric=directional_metric, min_trades=min_trades)
+        active_metric = directional_metric
 
     st.session_state["grid_results"] = grid
     st.session_state["best_grid_result"] = best
+    st.session_state["grid_active_metric"] = active_metric
+    st.session_state["grid_directional_ranking_enabled"] = enable_directional
+    st.session_state["grid_min_long_trades"] = min_long_trades
+    st.session_state["grid_min_short_trades"] = min_short_trades
+    st.session_state["grid_min_trades"] = min_trades
 
 # ── Display ───────────────────────────────────────────────────────────────────
 grid = st.session_state.get("grid_results")
 best = st.session_state.get("best_grid_result")
+grid_directional_ranking_enabled = st.session_state.get("grid_directional_ranking_enabled", False)
+grid_min_trades = st.session_state.get("grid_min_trades", min_trades)
 
 if grid is None:
     st.info("Configure settings in the sidebar and click **▶ Run grid search**.")
@@ -234,13 +243,16 @@ def _fmt(v, fmt=".2f", fallback="—"):
     if v is None:
         return fallback
     try:
-        return format(float(v), fmt)
+        v_float = float(v)
+        if pd.isna(v_float):
+            return fallback
+        return format(v_float, fmt)
     except (TypeError, ValueError):
         return fallback
 
 
 # Resolve the metric shown in the best-cell header
-active_metric = directional_metric if enable_directional else ranking_metric
+active_metric = st.session_state.get("grid_active_metric") or ranking_metric
 
 # Summary header
 n_combos = len(grid)
@@ -279,14 +291,14 @@ if best is not None:
             st.metric("Total R", _fmt(best.get("short_total_r")))
             st.metric("Profit factor", _fmt(best.get("short_profit_factor")))
 else:
-    if enable_directional:
+    if grid_directional_ranking_enabled:
         st.warning(
             "No grid cell meets the directional trade-count requirements. "
             "Reduce min long/short trades or widen the SL/TP range."
         )
     else:
         st.info(
-            f"No grid cell meets the minimum trade count of {min_trades}. "
+            f"No grid cell meets the minimum trade count of {grid_min_trades}. "
             "Try reducing the min trade count or widening the SL/TP ranges."
         )
 
