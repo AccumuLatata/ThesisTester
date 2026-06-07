@@ -207,6 +207,74 @@ def test_3c_base_uses_existing_path_and_has_no_trigger_indices():
     assert row["trigger_timeframe"] == "base"
 
 
+def test_base_3c_trigger_metadata_uses_reversal_bar_not_entry_bar():
+    """Regression: base 3c trigger_bar_index / trigger_timestamp must reflect the
+    reversal bar, NOT the entry bar.
+
+    Setup (4 base bars, arrival=0, reversal=1, entry=2):
+      bar 0: arrival — low<=level, close<level
+      bar 1: reversal — close > bar0 high
+      bar 2: fill — low touches entry_trigger
+      bar 3: padding
+
+    After the fix:
+      trigger_bar_index == reversal_bar_index (1)
+      trigger_timestamp == df.timestamp.iloc[1]
+      bar_index == entry_bar_index (2)           <- unchanged
+      timestamp == df.timestamp.iloc[2]          <- unchanged
+    """
+    zones = pd.DataFrame(
+        [
+            {
+                "bar_index": 0,
+                "timestamp": pd.Timestamp("2026-01-02 09:30", tz=TZ),
+                "zone_low": 99.5,
+                "zone_high": 100.5,
+                "zone_mid": 100.0,
+                "level_count": 1,
+                "level_names": "L1",
+                "level_prices": "100.0",
+            }
+        ]
+    )
+    # arrival_bar_index=0, reversal_bar_index=1, entry_bar_index=2 (all distinct)
+    df = _base_df(
+        [
+            # bar 0: arrival — low=100.0 <= level=100.0, close=100.5 < 101.0 (bar high)
+            {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},
+            # bar 1: reversal — close=101.3 > bar0.high=101.0
+            {"open": 100.6, "high": 101.3, "low": 100.2, "close": 101.3},
+            # bar 2: fill — entry_trigger = 101.3 - 2*0.25 = 100.8; low=100.7 <= 100.8
+            {"open": 101.2, "high": 101.3, "low": 100.7, "close": 101.1},
+            # bar 3: padding
+            {"open": 101.1, "high": 101.2, "low": 100.9, "close": 101.0},
+        ]
+    )
+    signals = generate_signals(
+        df, zones, trigger="3c", direction="long", tick_size=TICK,
+        trigger_timeframe="base",
+        trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3},
+    )
+    assert len(signals) >= 1
+    row = signals.iloc[0]
+    assert row["trigger_timeframe"] == "base"
+
+    # trigger indices must point to reversal bar
+    assert row["trigger_arrival_bar_index"] == row["arrival_bar_index"]
+    assert row["trigger_reversal_bar_index"] == row["reversal_bar_index"]
+    assert row["trigger_bar_index"] == row["trigger_reversal_bar_index"]
+    assert row["trigger_bar_index"] == row["reversal_bar_index"]
+    assert row["trigger_timestamp"] == df["timestamp"].iloc[int(row["reversal_bar_index"])]
+
+    # execution fields must remain at entry bar
+    assert row["bar_index"] == row["entry_bar_index"]
+    assert row["timestamp"] == df["timestamp"].iloc[int(row["bar_index"])]
+
+    # Ensure arrival != reversal != entry (all three distinct)
+    assert row["arrival_bar_index"] != row["reversal_bar_index"]
+    assert row["reversal_bar_index"] != row["entry_bar_index"]
+
+
 def test_old_config_without_trigger_timeframe_defaults_to_base():
     """Old configs with missing trigger_timeframe must default to 'base'."""
     config = build_setup_config(

@@ -416,10 +416,6 @@ def _project_zones_to_trigger_df(
 
     tdf = trigger_df.reset_index(drop=True)
 
-    # Build a fast lookup: base_end_bar_index -> trigger bar row
-    trigger_by_base_end: dict[int, pd.Series] = {
-        int(row["base_end_bar_index"]): row for _, row in tdf.iterrows()
-    }
     # Build a lookup: base bar index -> trigger bar row (for each base bar in any trigger bar)
     # This handles zones whose bar_index may not be exactly the base_end_bar_index.
     trigger_by_any_base: dict[int, pd.Series] = {}
@@ -910,14 +906,15 @@ def generate_signals(
                 entry_trigger_price = float(entry_trigger_raw)
                 retrace_entry_price = entry_trigger_price if filled else None
                 entry_bar_index = setup.get("entry_bar_index")
+                reversal_idx_base = int(setup["reversal_bar_index"])
                 signals.append(
                     _make_signal(
                         signal_id=signal_id,
                         ts=setup["timestamp"],
                         bar_idx=int(setup["bar_index"]),
-                        trigger_bar_index=int(setup["bar_index"]),
+                        trigger_bar_index=reversal_idx_base,
                         trigger_timeframe=effective_trigger_timeframe,
-                        trigger_timestamp=setup["timestamp"],
+                        trigger_timestamp=df_reset["timestamp"].iloc[reversal_idx_base],
                         trigger="3c",
                         direction=str(setup["direction"]),
                         zone=zone,

@@ -427,7 +427,7 @@ def detect_3c_setups_with_trigger_timeframe(
             # Eligible: base.timestamp > reversal_trigger_ts AND <= window_end_ts
             entry_idx_base: int | None = None
 
-            for b_idx in range(n_base):
+            for b_idx in range(base_reversal_idx + 1, n_base):
                 b_ts = base_df_reset.iloc[b_idx]["timestamp"]
                 if b_ts <= reversal_trigger_ts:
                     continue
