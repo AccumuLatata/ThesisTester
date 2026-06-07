@@ -426,14 +426,6 @@ def detect_3c_setups_with_trigger_timeframe(
             # Scan base bars for retrace fill.
             # Eligible: base.timestamp > reversal_trigger_ts AND <= window_end_ts
             entry_idx_base: int | None = None
-            scan_end_base: int = n_base - 1
-            for b_idx in range(n_base):
-                b_ts = base_df_reset.iloc[b_idx]["timestamp"]
-                if b_ts > window_end_ts:
-                    scan_end_base = b_idx - 1
-                    break
-            else:
-                scan_end_base = n_base - 1
 
             for b_idx in range(n_base):
                 b_ts = base_df_reset.iloc[b_idx]["timestamp"]
