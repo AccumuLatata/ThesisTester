@@ -174,17 +174,11 @@ def build_signals_chart(
             ("level_count", "level count"),
             ("level_names", "level names"),
         ]
-        x_values: list[object] = []
-        y_values: list[object] = []
-        text_values: list[object] = []
-        for _, zone in confluence_zones.iterrows():
-            hover_text = "<br>".join(
-                [
-                    f"{label}: {zone[col].isoformat() if isinstance(zone[col], pd.Timestamp) else zone[col]}"
-                    for col, label in zone_hover_fields
-                    if col in confluence_zones.columns and not pd.isna(zone[col])
-                ]
-            )
+        hover_texts = _build_hover_text(confluence_zones, zone_hover_fields)
+        x_values: list[pd.Timestamp | str | None] = []
+        y_values: list[float | int | None] = []
+        text_values: list[str | None] = []
+        for (_, zone), hover_text in zip(confluence_zones.iterrows(), hover_texts, strict=True):
             x_values.extend([zone["timestamp"], zone["timestamp"], None])
             y_values.extend([zone["zone_low"], zone["zone_high"], None])
             text_values.extend([hover_text, hover_text, None])
