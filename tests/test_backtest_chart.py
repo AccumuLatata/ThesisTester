@@ -75,6 +75,29 @@ def _trades_df() -> pd.DataFrame:
     )
 
 
+def _levels_df() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {"timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ), "A": 100.0, "B": 99.5},
+            {"timestamp": pd.Timestamp("2026-01-02 09:31:00", tz=TZ), "A": 100.5, "B": 100.0},
+            {"timestamp": pd.Timestamp("2026-01-02 09:32:00", tz=TZ), "A": 101.0, "B": 100.5},
+        ]
+    )
+
+
+def _confluence_df() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-01-02 09:31:00", tz=TZ),
+                "zone_low": 100.0,
+                "zone_high": 101.0,
+                "level_names": "A|B",
+            }
+        ]
+    )
+
+
 def test_valid_ohlcv_creates_one_candlestick_trace():
     fig = build_backtest_candlestick_chart(_ohlcv_df(), pd.DataFrame(), show_sessions=False)
 
@@ -203,3 +226,66 @@ def test_confluence_zones_are_capped_without_trade_links():
 
     zone_trace = next(trace for trace in fig.data if trace.name == "Confluence zones")
     assert len(zone_trace.x) == 72
+
+
+def test_defaults_include_levels_confluence_and_sl_tp():
+    fig = build_backtest_candlestick_chart(
+        _ohlcv_df(),
+        _trades_df(),
+        levels=_levels_df(),
+        confluence_zones=_confluence_df(),
+    )
+
+    trace_names = [trace.name for trace in fig.data]
+    assert trace_names[0] == "OHLC"
+    assert "Long entries" in trace_names
+    assert "Short entries" in trace_names
+    assert "Exits" in trace_names
+    assert any(name.startswith("Level: ") for name in trace_names)
+    assert "Confluence zones" in trace_names
+    assert fig.layout.shapes is not None
+    assert any(shape.line.color == "crimson" for shape in fig.layout.shapes)
+    assert any(shape.line.color == "seagreen" for shape in fig.layout.shapes)
+
+
+def test_show_sessions_false_removes_session_shapes():
+    fig = build_backtest_candlestick_chart(_ohlcv_df(), pd.DataFrame(), show_sessions=False)
+
+    assert not fig.layout.shapes
+
+
+def test_show_levels_false_removes_level_traces():
+    fig = build_backtest_candlestick_chart(
+        _ohlcv_df(),
+        _trades_df(),
+        levels=_levels_df(),
+        show_levels=False,
+        show_sessions=False,
+    )
+
+    assert not any(trace.name.startswith("Level: ") for trace in fig.data)
+
+
+def test_show_confluence_zones_false_removes_zone_trace():
+    fig = build_backtest_candlestick_chart(
+        _ohlcv_df(),
+        _trades_df(),
+        confluence_zones=_confluence_df(),
+        show_confluence_zones=False,
+        show_sessions=False,
+    )
+
+    assert "Confluence zones" not in {trace.name for trace in fig.data}
+
+
+def test_show_sl_tp_false_keeps_entries_and_exits_without_sl_tp_shapes():
+    fig = build_backtest_candlestick_chart(
+        _ohlcv_df(),
+        _trades_df(),
+        show_sl_tp=False,
+        show_sessions=False,
+    )
+
+    trace_names = {trace.name for trace in fig.data}
+    assert {"Long entries", "Short entries", "Exits"}.issubset(trace_names)
+    assert not fig.layout.shapes

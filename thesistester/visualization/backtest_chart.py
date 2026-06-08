@@ -98,6 +98,9 @@ def build_backtest_candlestick_chart(
     levels: pd.DataFrame | None = None,
     confluence_zones: pd.DataFrame | None = None,
     show_sessions: bool = True,
+    show_levels: bool = True,
+    show_confluence_zones: bool = True,
+    show_sl_tp: bool = True,
 ) -> go.Figure:
     """Build a candlestick chart with backtest overlays."""
     ohlcv = _prepare_ohlcv(ohlcv_df)
@@ -117,7 +120,7 @@ def build_backtest_candlestick_chart(
     if show_sessions:
         _add_session_context(fig, ohlcv)
 
-    if levels is not None and not levels.empty and "timestamp" in levels.columns:
+    if show_levels and levels is not None and not levels.empty and "timestamp" in levels.columns:
         levels_df = levels
         level_timeline = levels_df.copy()
         level_timeline["timestamp"] = pd.to_datetime(level_timeline["timestamp"], errors="coerce")
@@ -148,7 +151,7 @@ def build_backtest_candlestick_chart(
                 )
             )
 
-    if confluence_zones is not None and not confluence_zones.empty:
+    if show_confluence_zones and confluence_zones is not None and not confluence_zones.empty:
         required_zone_columns = {"timestamp", "zone_low", "zone_high"}
         if required_zone_columns.issubset(confluence_zones.columns):
             zones = confluence_zones.copy()
@@ -215,27 +218,36 @@ def build_backtest_candlestick_chart(
                 )
             )
 
-        for row in exit_rows.itertuples(index=False):
-            if pd.isna(row.stop_price) or pd.isna(row.target_price):
-                continue
-            fig.add_shape(
-                type="line",
-                x0=row.entry_timestamp,
-                x1=row.exit_timestamp,
-                y0=float(row.stop_price),
-                y1=float(row.stop_price),
-                line=_STOP_LINE_STYLE,
-                opacity=0.7,
-            )
-            fig.add_shape(
-                type="line",
-                x0=row.entry_timestamp,
-                x1=row.exit_timestamp,
-                y0=float(row.target_price),
-                y1=float(row.target_price),
-                line=_TARGET_LINE_STYLE,
-                opacity=0.7,
-            )
+        if show_sl_tp:
+            sl_tp_shapes: list[dict[str, object]] = []
+            for row in exit_rows.itertuples(index=False):
+                if pd.isna(row.stop_price) or pd.isna(row.target_price):
+                    continue
+                sl_tp_shapes.append(
+                    {
+                        "type": "line",
+                        "x0": row.entry_timestamp,
+                        "x1": row.exit_timestamp,
+                        "y0": float(row.stop_price),
+                        "y1": float(row.stop_price),
+                        "line": _STOP_LINE_STYLE,
+                        "opacity": 0.7,
+                    }
+                )
+                sl_tp_shapes.append(
+                    {
+                        "type": "line",
+                        "x0": row.entry_timestamp,
+                        "x1": row.exit_timestamp,
+                        "y0": float(row.target_price),
+                        "y1": float(row.target_price),
+                        "line": _TARGET_LINE_STYLE,
+                        "opacity": 0.7,
+                    }
+                )
+            if sl_tp_shapes:
+                existing_shapes = list(fig.layout.shapes) if fig.layout.shapes else []
+                fig.update_layout(shapes=[*existing_shapes, *sl_tp_shapes])
 
     fig.update_layout(
         height=680,

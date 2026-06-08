@@ -325,6 +325,10 @@ if has_trades:
 st.subheader("Backtest execution visualizer")
 show_chart = st.toggle("Show candlestick trade visualizer", value=False)
 if show_chart:
+    show_sessions = st.toggle("Show session context", value=True)
+    show_levels = st.toggle("Show levels", value=True)
+    show_confluence_zones = st.toggle("Show confluence zones", value=True)
+    show_sl_tp = st.toggle("Show SL/TP lines", value=True)
     if ohlcv_df is None or ohlcv_df.empty:
         st.info("No OHLCV data available to render the candlestick chart.")
     else:
@@ -335,10 +339,14 @@ if show_chart:
             trades=trades,
             levels=levels_df,
             confluence_zones=confluence_zones,
-            show_sessions=True,
+            show_sessions=show_sessions,
+            show_levels=show_levels,
+            show_confluence_zones=show_confluence_zones,
+            show_sl_tp=show_sl_tp,
         )
         st.plotly_chart(chart, use_container_width=True)
-        st.caption("Session context: ETH regions are shaded and RTH starts are marked with dotted vertical lines.")
+        if show_sessions:
+            st.caption("Session context: ETH regions are shaded and RTH starts are marked with dotted vertical lines.")
         st.info(
             "Execution visualization is based on OHLC bars. If SL and TP are both touched within one bar, "
             "engine assumptions determine the recorded outcome; the true intrabar path is unknown without tick data."

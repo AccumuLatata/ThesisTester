@@ -9,7 +9,6 @@ import json
 import math
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 from thesistester.app_state import bootstrap_active_saved_dataset
@@ -42,6 +41,7 @@ from thesistester.setup import (
     normalize_trigger_timeframe,
     validate_setup_config,
 )
+from thesistester.visualization import build_signals_chart
 
 st.title("🎯 Signals")
 bootstrap_active_saved_dataset()
@@ -1239,89 +1239,9 @@ else:
 # ── Chart ─────────────────────────────────────────────────────────────────────
 st.subheader("Price chart with signals")
 
-fig = go.Figure()
-
-# Close price
-fig.add_trace(
-    go.Scatter(
-        x=levels_df["timestamp"],
-        y=levels_df["close"],
-        mode="lines",
-        name="close",
-        line=dict(color="steelblue", width=1),
-    )
-)
-
-# Selected level lines (first 5 to avoid clutter)
-for col in selected_levels[:5]:
-    if col in levels_df.columns:
-        fig.add_trace(
-            go.Scatter(
-                x=levels_df["timestamp"],
-                y=levels_df[col],
-                mode="lines",
-                name=col,
-                line=dict(width=1, dash="dot"),
-                opacity=0.6,
-            )
-        )
-
-# Signal markers
-if signals is not None and not signals.empty:
-    long_filled = signals[(signals["direction"] == "long") & (signals["status"].isin(["candidate", "filled"]))]
-    short_filled = signals[(signals["direction"] == "short") & (signals["status"].isin(["candidate", "filled"]))]
-    long_void = signals[(signals["direction"] == "long") & (signals["status"] == "void")]
-    short_void = signals[(signals["direction"] == "short") & (signals["status"] == "void")]
-
-    # Long active signals — triangle-up below the bar
-    if not long_filled.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=long_filled["timestamp"],
-                y=long_filled["entry_reference_price"],
-                mode="markers",
-                name="long (candidate/filled)",
-                marker=dict(symbol="triangle-up", color="limegreen", size=10),
-            )
-        )
-
-    # Short active signals — triangle-down above the bar
-    if not short_filled.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=short_filled["timestamp"],
-                y=short_filled["entry_reference_price"],
-                mode="markers",
-                name="short (candidate/filled)",
-                marker=dict(symbol="triangle-down", color="tomato", size=10),
-            )
-        )
-
-    # Void signals — crosses, muted
-    if not long_void.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=long_void["timestamp"],
-                y=long_void["entry_reference_price"],
-                mode="markers",
-                name="long void",
-                marker=dict(symbol="x", color="mediumseagreen", size=8, opacity=0.4),
-            )
-        )
-    if not short_void.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=short_void["timestamp"],
-                y=short_void["entry_reference_price"],
-                mode="markers",
-                name="short void",
-                marker=dict(symbol="x", color="salmon", size=8, opacity=0.4),
-            )
-        )
-
-fig.update_layout(
-    height=560,
-    margin=dict(l=10, r=10, t=35, b=10),
-    legend=dict(orientation="h"),
+fig = build_signals_chart(
+    levels_df=levels_df,
+    signals=signals,
+    selected_levels=selected_levels,
 )
 st.plotly_chart(fig, use_container_width=True)

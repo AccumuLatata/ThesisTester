@@ -1,4 +1,3 @@
-import plotly.graph_objects as go
 import streamlit as st
 
 from thesistester.app_state import bootstrap_active_saved_dataset
@@ -15,6 +14,7 @@ from thesistester.persistence import (
     save_levels,
     set_active_levels_hash,
 )
+from thesistester.visualization import build_levels_chart
 
 
 _OPENING_RANGE_KEY = "levels_opening_range_minutes"
@@ -527,25 +527,5 @@ selected_levels = st.multiselect(
     default=[col for col in ["RTH_Open", "OR_High", "OR_Low", "ONH", "ONL"] if col in level_columns],
 )
 
-fig = go.Figure()
-fig.add_trace(
-    go.Scatter(
-        x=levels_df["timestamp"],
-        y=levels_df["close"],
-        mode="lines",
-        name="close",
-    )
-)
-
-for col in selected_levels:
-    fig.add_trace(
-        go.Scatter(
-            x=levels_df["timestamp"],
-            y=levels_df[col],
-            mode="lines",
-            name=col,
-        )
-    )
-
-fig.update_layout(height=520, margin=dict(l=10, r=10, t=35, b=10), legend=dict(orientation="h"))
+fig = build_levels_chart(levels_df=levels_df, selected_levels=selected_levels)
 st.plotly_chart(fig, use_container_width=True)
