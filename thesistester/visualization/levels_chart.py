@@ -10,6 +10,12 @@ def build_levels_chart(
     selected_levels: list[str],
 ) -> go.Figure:
     """Build levels preview chart, skipping selected level names not present in levels_df."""
+
+    required = ["timestamp", "close"]
+    missing = [col for col in required if col not in levels_df.columns]
+    if missing:
+        raise ValueError(f"levels_df is missing required columns: {', '.join(missing)}")
+
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
