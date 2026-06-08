@@ -5,10 +5,33 @@ import pandas as pd
 import plotly.graph_objects as go
 
 
+def _build_hover_text(rows: pd.DataFrame, fields: list[tuple[str, str]]) -> list[str]:
+    hover_text: list[str] = []
+    for _, row in rows.iterrows():
+        parts: list[str] = []
+        for column, label in fields:
+            if column not in rows.columns:
+                continue
+            value = row[column]
+            if pd.isna(value):
+                continue
+            if isinstance(value, pd.Timestamp):
+                rendered = value.isoformat()
+            else:
+                rendered = str(value)
+            parts.append(f"{label}: {rendered}")
+        hover_text.append("<br>".join(parts))
+    return hover_text
+
+
 def build_signals_chart(
     levels_df: pd.DataFrame,
     signals: pd.DataFrame | None,
     selected_levels: list[str],
+    *,
+    confluence_zones: pd.DataFrame | None = None,
+    show_confluence_zones: bool = True,
+    use_candles: bool = True,
 ) -> go.Figure:
     """Build signal preview chart; when signals is None/empty only price and selected levels are drawn."""
 
@@ -22,18 +45,40 @@ def build_signals_chart(
         missing_signals = [col for col in required_signals if col not in signals.columns]
         if missing_signals:
             raise ValueError(f"signals is missing required columns: {', '.join(missing_signals)}")
+    if confluence_zones is not None and not confluence_zones.empty:
+        required_zone_cols = ["timestamp", "zone_low", "zone_high"]
+        missing_zone_cols = [col for col in required_zone_cols if col not in confluence_zones.columns]
+        if missing_zone_cols:
+            raise ValueError(
+                f"confluence_zones is missing required columns: {', '.join(missing_zone_cols)}"
+            )
 
     fig = go.Figure()
 
-    fig.add_trace(
-        go.Scatter(
-            x=levels_df["timestamp"],
-            y=levels_df["close"],
-            mode="lines",
-            name="close",
-            line=dict(color="steelblue", width=1),
+    ohlc_columns = ["open", "high", "low", "close"]
+    has_ohlc = set(ohlc_columns).issubset(levels_df.columns)
+    has_complete_ohlc = has_ohlc and not levels_df[ohlc_columns].isna().to_numpy().any()
+    if use_candles and has_complete_ohlc:
+        fig.add_trace(
+            go.Candlestick(
+                x=levels_df["timestamp"],
+                open=levels_df["open"],
+                high=levels_df["high"],
+                low=levels_df["low"],
+                close=levels_df["close"],
+                name="OHLC",
+            )
         )
-    )
+    else:
+        fig.add_trace(
+            go.Scatter(
+                x=levels_df["timestamp"],
+                y=levels_df["close"],
+                mode="lines",
+                name="close",
+                line=dict(color="steelblue", width=1),
+            )
+        )
 
     for column in selected_levels[:5]:
         if column not in levels_df.columns:
@@ -55,6 +100,20 @@ def build_signals_chart(
         long_void = signals[(signals["direction"] == "long") & (signals["status"] == "void")]
         short_void = signals[(signals["direction"] == "short") & (signals["status"] == "void")]
 
+        marker_hover_fields = [
+            ("timestamp", "timestamp"),
+            ("direction", "direction"),
+            ("status", "status"),
+            ("trigger", "trigger"),
+            ("entry_reference_price", "entry reference price"),
+            ("zone_low", "zone low"),
+            ("zone_high", "zone high"),
+            ("zone_mid", "zone mid"),
+            ("level_count", "level count"),
+            ("level_names", "level names"),
+            ("setup_name", "setup name"),
+        ]
+
         if not long_filled.empty:
             fig.add_trace(
                 go.Scatter(
@@ -63,6 +122,8 @@ def build_signals_chart(
                     mode="markers",
                     name="long (candidate/filled)",
                     marker=dict(symbol="triangle-up", color="limegreen", size=10),
+                    text=_build_hover_text(long_filled, marker_hover_fields),
+                    hovertemplate="%{text}<extra></extra>",
                 )
             )
 
@@ -74,6 +135,8 @@ def build_signals_chart(
                     mode="markers",
                     name="short (candidate/filled)",
                     marker=dict(symbol="triangle-down", color="tomato", size=10),
+                    text=_build_hover_text(short_filled, marker_hover_fields),
+                    hovertemplate="%{text}<extra></extra>",
                 )
             )
 
@@ -85,6 +148,8 @@ def build_signals_chart(
                     mode="markers",
                     name="long void",
                     marker=dict(symbol="x", color="mediumseagreen", size=8, opacity=0.4),
+                    text=_build_hover_text(long_void, marker_hover_fields),
+                    hovertemplate="%{text}<extra></extra>",
                 )
             )
 
@@ -96,8 +161,41 @@ def build_signals_chart(
                     mode="markers",
                     name="short void",
                     marker=dict(symbol="x", color="salmon", size=8, opacity=0.4),
+                    text=_build_hover_text(short_void, marker_hover_fields),
+                    hovertemplate="%{text}<extra></extra>",
                 )
             )
+
+    if show_confluence_zones and confluence_zones is not None and not confluence_zones.empty:
+        zone_hover_fields = [
+            ("timestamp", "timestamp"),
+            ("zone_low", "zone low"),
+            ("zone_high", "zone high"),
+            ("zone_mid", "zone mid"),
+            ("level_count", "level count"),
+            ("level_names", "level names"),
+        ]
+        hover_texts = _build_hover_text(confluence_zones, zone_hover_fields)
+        x_values: list[pd.Timestamp | str | None] = []
+        y_values: list[float | int | None] = []
+        text_values: list[str | None] = []
+        for (_, zone), hover_text in zip(confluence_zones.iterrows(), hover_texts, strict=True):
+            x_values.extend([zone["timestamp"], zone["timestamp"], None])
+            y_values.extend([zone["zone_low"], zone["zone_high"], None])
+            text_values.extend([hover_text, hover_text, None])
+
+        fig.add_trace(
+            go.Scatter(
+                x=x_values,
+                y=y_values,
+                mode="lines",
+                name="Confluence zones",
+                line=dict(color="mediumpurple", width=3),
+                opacity=0.55,
+                text=text_values,
+                hovertemplate="%{text}<extra></extra>",
+            )
+        )
 
     fig.update_layout(
         height=560,
