@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 
 from thesistester.app_state import bootstrap_active_saved_dataset
 from thesistester.data.sessions import tag_session
@@ -14,7 +15,12 @@ from thesistester.persistence import (
     save_levels,
     set_active_levels_hash,
 )
-from thesistester.visualization import build_levels_chart
+from thesistester.visualization import (
+    build_levels_chart,
+    clip_by_time_window,
+    recent_rows_window,
+    timestamp_bounds,
+)
 
 
 _OPENING_RANGE_KEY = "levels_opening_range_minutes"
@@ -527,5 +533,45 @@ selected_levels = st.multiselect(
     default=[col for col in ["RTH_Open", "OR_High", "OR_Low", "ONH", "ONL"] if col in level_columns],
 )
 
-fig = build_levels_chart(levels_df=levels_df, selected_levels=selected_levels)
+chart_range = st.selectbox(
+    "Chart range",
+    options=["Last 2,000 rows", "Last 10,000 rows", "Custom date range", "Full dataset"],
+    index=0,
+)
+st.caption(
+    "Chart range affects visualization only. Tables, saved artifacts, and backtest metrics remain unchanged."
+)
+
+chart_start = None
+chart_end = None
+if chart_range == "Last 2,000 rows":
+    chart_start, chart_end = recent_rows_window(levels_df, rows=2_000)
+elif chart_range == "Last 10,000 rows":
+    chart_start, chart_end = recent_rows_window(levels_df, rows=10_000)
+elif chart_range == "Custom date range":
+    min_ts, max_ts = timestamp_bounds(levels_df)
+    if min_ts is not None and max_ts is not None:
+        custom_cols = st.columns(2)
+        custom_start_date = custom_cols[0].date_input(
+            "Custom chart start",
+            value=min_ts.date(),
+            min_value=min_ts.date(),
+            max_value=max_ts.date(),
+        )
+        custom_end_date = custom_cols[1].date_input(
+            "Custom chart end",
+            value=max_ts.date(),
+            min_value=min_ts.date(),
+            max_value=max_ts.date(),
+        )
+        chart_start = pd.Timestamp(custom_start_date)
+        chart_end = pd.Timestamp(custom_end_date) + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+
+chart_levels_df = (
+    levels_df.copy(deep=True)
+    if chart_range == "Full dataset"
+    else clip_by_time_window(levels_df, start=chart_start, end=chart_end)
+)
+
+fig = build_levels_chart(levels_df=chart_levels_df, selected_levels=selected_levels)
 st.plotly_chart(fig, use_container_width=True)

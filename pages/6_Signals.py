@@ -41,7 +41,13 @@ from thesistester.setup import (
     normalize_trigger_timeframe,
     validate_setup_config,
 )
-from thesistester.visualization import build_signals_chart
+from thesistester.visualization import (
+    build_signals_chart,
+    clip_by_time_window,
+    coerce_timestamp_series,
+    recent_rows_window,
+    timestamp_bounds,
+)
 
 st.title("🎯 Signals")
 bootstrap_active_saved_dataset()
@@ -572,6 +578,43 @@ def _get_stored_signal_settings() -> tuple[dict | None, str | None]:
     if not isinstance(settings_hash, str) or not settings_hash:
         settings_hash = compute_signal_settings_hash(normalized_settings)
     return normalized_settings, settings_hash
+
+
+def _buffered_rows_window(
+    df: pd.DataFrame,
+    *,
+    start: pd.Timestamp | None,
+    end: pd.Timestamp | None,
+    buffer_rows: int,
+    timestamp_col: str = "timestamp",
+) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
+    if (
+        df is None
+        or df.empty
+        or timestamp_col not in df.columns
+        or start is None
+        or end is None
+    ):
+        return None, None
+
+    timeline = coerce_timestamp_series(df[timestamp_col]).dropna().sort_values().reset_index(drop=True)
+    if timeline.empty:
+        return None, None
+
+    range_start = min(start, end)
+    range_end = max(start, end)
+    start_idx = int(timeline.searchsorted(range_start, side="left"))
+    end_idx = int(timeline.searchsorted(range_end, side="right")) - 1
+    if start_idx >= len(timeline):
+        start_idx = len(timeline) - 1
+    if end_idx < 0:
+        end_idx = 0
+    if end_idx < start_idx:
+        end_idx = start_idx
+
+    bounded_start_idx = max(0, start_idx - max(buffer_rows, 0))
+    bounded_end_idx = min(len(timeline) - 1, end_idx + max(buffer_rows, 0))
+    return timeline.iloc[bounded_start_idx], timeline.iloc[bounded_end_idx]
 
 # ── Require levels ────────────────────────────────────────────────────────────
 if "levels" not in st.session_state:
@@ -1239,12 +1282,80 @@ else:
 # ── Chart ─────────────────────────────────────────────────────────────────────
 st.subheader("Price chart with signals")
 show_confluence_zones = st.toggle("Show confluence zones", value=True)
+has_signals = signals is not None and not signals.empty
+chart_range_options = [
+    "Signal range ± 500 rows",
+    "Last 2,000 rows",
+    "Last 10,000 rows",
+    "Custom date range",
+    "Full dataset",
+]
+default_chart_range = "Signal range ± 500 rows" if has_signals else "Last 2,000 rows"
+chart_range = st.selectbox(
+    "Chart range",
+    options=chart_range_options,
+    index=chart_range_options.index(default_chart_range),
+)
+st.caption(
+    "Chart range affects visualization only. Tables, saved artifacts, and backtest metrics remain unchanged."
+)
+
+chart_start = None
+chart_end = None
+if chart_range == "Signal range ± 500 rows" and has_signals:
+    signal_start, signal_end = timestamp_bounds(signals)
+    chart_start, chart_end = _buffered_rows_window(
+        levels_df,
+        start=signal_start,
+        end=signal_end,
+        buffer_rows=500,
+    )
+    if chart_start is None or chart_end is None:
+        chart_start, chart_end = recent_rows_window(levels_df, rows=2_000)
+elif chart_range == "Last 2,000 rows":
+    chart_start, chart_end = recent_rows_window(levels_df, rows=2_000)
+elif chart_range == "Last 10,000 rows":
+    chart_start, chart_end = recent_rows_window(levels_df, rows=10_000)
+elif chart_range == "Custom date range":
+    min_ts, max_ts = timestamp_bounds(levels_df)
+    if min_ts is not None and max_ts is not None:
+        custom_cols = st.columns(2)
+        custom_start_date = custom_cols[0].date_input(
+            "Custom chart start",
+            value=min_ts.date(),
+            min_value=min_ts.date(),
+            max_value=max_ts.date(),
+        )
+        custom_end_date = custom_cols[1].date_input(
+            "Custom chart end",
+            value=max_ts.date(),
+            min_value=min_ts.date(),
+            max_value=max_ts.date(),
+        )
+        chart_start = pd.Timestamp(custom_start_date)
+        chart_end = pd.Timestamp(custom_end_date) + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+
+chart_levels_df = (
+    levels_df.copy(deep=True)
+    if chart_range == "Full dataset"
+    else clip_by_time_window(levels_df, start=chart_start, end=chart_end)
+)
+chart_signals_df = (
+    signals.copy(deep=True)
+    if chart_range == "Full dataset" and signals is not None
+    else clip_by_time_window(signals, start=chart_start, end=chart_end)
+)
+chart_zones_df = (
+    zones.copy(deep=True)
+    if chart_range == "Full dataset"
+    else clip_by_time_window(zones, start=chart_start, end=chart_end)
+)
 
 fig = build_signals_chart(
-    levels_df=levels_df,
-    signals=signals,
+    levels_df=chart_levels_df,
+    signals=chart_signals_df,
     selected_levels=selected_levels,
-    confluence_zones=zones,
+    confluence_zones=chart_zones_df,
     show_confluence_zones=show_confluence_zones,
 )
 st.plotly_chart(fig, use_container_width=True)
