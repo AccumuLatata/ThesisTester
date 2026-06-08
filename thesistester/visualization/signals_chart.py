@@ -11,6 +11,18 @@ def build_signals_chart(
     selected_levels: list[str],
 ) -> go.Figure:
     """Build signal preview chart; when signals is None/empty only price and selected levels are drawn."""
+
+    required_levels = ["timestamp", "close"]
+    missing_levels = [col for col in required_levels if col not in levels_df.columns]
+    if missing_levels:
+        raise ValueError(f"levels_df is missing required columns: {', '.join(missing_levels)}")
+
+    if signals is not None and not signals.empty:
+        required_signals = ["timestamp", "direction", "status", "entry_reference_price"]
+        missing_signals = [col for col in required_signals if col not in signals.columns]
+        if missing_signals:
+            raise ValueError(f"signals is missing required columns: {', '.join(missing_signals)}")
+
     fig = go.Figure()
 
     fig.add_trace(
