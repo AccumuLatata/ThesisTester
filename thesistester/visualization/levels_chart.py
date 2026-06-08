@@ -9,7 +9,7 @@ def build_levels_chart(
     levels_df: pd.DataFrame,
     selected_levels: list[str],
 ) -> go.Figure:
-    """Build levels preview chart from levels DataFrame and selected level names."""
+    """Build levels preview chart, skipping selected level names not present in levels_df."""
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(

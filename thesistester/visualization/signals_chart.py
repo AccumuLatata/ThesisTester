@@ -10,7 +10,7 @@ def build_signals_chart(
     signals: pd.DataFrame | None,
     selected_levels: list[str],
 ) -> go.Figure:
-    """Build signal preview chart from levels and signals artifacts."""
+    """Build signal preview chart; when signals is None/empty only price and selected levels are drawn."""
     fig = go.Figure()
 
     fig.add_trace(
