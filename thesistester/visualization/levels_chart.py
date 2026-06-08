@@ -19,9 +19,10 @@ def build_levels_chart(
         raise ValueError(f"levels_df is missing required columns: {', '.join(missing)}")
 
     fig = go.Figure()
-    ohlc_columns = {"open", "high", "low", "close"}
-    has_ohlc = ohlc_columns.issubset(levels_df.columns)
-    if use_candles and has_ohlc:
+    ohlc_columns = ["open", "high", "low", "close"]
+    has_ohlc = set(ohlc_columns).issubset(levels_df.columns)
+    has_complete_ohlc = has_ohlc and not levels_df[ohlc_columns].isna().any().any()
+    if use_candles and has_complete_ohlc:
         fig.add_trace(
             go.Candlestick(
                 x=levels_df["timestamp"],

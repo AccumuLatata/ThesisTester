@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 from pandas.testing import assert_frame_equal
 
 from thesistester.visualization import build_signals_chart
@@ -138,6 +139,16 @@ def test_signals_chart_falls_back_to_close_when_ohlc_unavailable():
     assert fig.data[0].name == "close"
 
 
+def test_signals_chart_falls_back_to_close_when_ohlc_incomplete():
+    levels_df = _levels_ohlc_df()
+    levels_df.loc[1, "open"] = float("nan")
+
+    fig = build_signals_chart(levels_df, _signals_df(), ["L1"])
+
+    assert fig.data[0].type == "scatter"
+    assert fig.data[0].name == "close"
+
+
 def test_signals_chart_use_candles_false_forces_close_line():
     fig = build_signals_chart(_levels_ohlc_df(), _signals_df(), ["L1"], use_candles=False)
 
@@ -204,12 +215,9 @@ def test_signals_chart_hides_confluence_zone_trace_when_disabled():
 def test_signals_chart_rejects_invalid_confluence_zone_columns():
     zones = _zones_df().drop(columns=["zone_high"])
 
-    try:
+    with pytest.raises(ValueError) as exc_info:
         build_signals_chart(_levels_df(), _signals_df(), ["L1"], confluence_zones=zones)
-    except ValueError as exc:
-        assert "confluence_zones is missing required columns: zone_high" == str(exc)
-    else:  # pragma: no cover
-        raise AssertionError("Expected ValueError for missing confluence zone columns")
+    assert "confluence_zones is missing required columns: zone_high" == str(exc_info.value)
 
 
 def test_signals_chart_sets_marker_hovertemplate_with_optional_fields():

@@ -53,6 +53,16 @@ def test_levels_chart_falls_back_to_close_when_ohlc_unavailable():
     assert fig.data[0].name == "close"
 
 
+def test_levels_chart_falls_back_to_close_when_ohlc_incomplete():
+    levels_df = _levels_ohlc_df()
+    levels_df.loc[0, "low"] = float("nan")
+
+    fig = build_levels_chart(levels_df, ["L1"])
+
+    assert fig.data[0].type == "scatter"
+    assert fig.data[0].name == "close"
+
+
 def test_levels_chart_use_candles_false_forces_close_line():
     fig = build_levels_chart(_levels_ohlc_df(), ["L1"], use_candles=False)
 
