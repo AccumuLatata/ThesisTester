@@ -52,17 +52,16 @@ def clip_by_time_window(
     if start_ts is not None and end_ts is not None and start_ts > end_ts:
         start_ts, end_ts = end_ts, start_ts
 
-    out = df.copy(deep=True)
-    if (start_ts is None and end_ts is None) or timestamp_col not in out.columns or out.empty:
-        return out
+    if (start_ts is None and end_ts is None) or timestamp_col not in df.columns or df.empty:
+        return df.copy(deep=True)
 
-    timestamps = coerce_timestamp_series(out[timestamp_col])
+    timestamps = coerce_timestamp_series(df[timestamp_col])
     mask = timestamps.notna()
     if start_ts is not None:
         mask &= timestamps >= start_ts
     if end_ts is not None:
         mask &= timestamps <= end_ts
-    return out.loc[mask].copy(deep=True)
+    return df.loc[mask].copy(deep=True)
 
 
 def recent_rows_window(

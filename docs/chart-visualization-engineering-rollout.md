@@ -44,6 +44,7 @@ This change set remains visualization-only. Trading, signal-generation, confluen
   - `timestamp_bounds`
   - `clip_by_time_window`
   - `recent_rows_window`
+  - `buffered_rows_window`
   - `trade_time_window`
 - Added chart range controls to:
   - `pages/5_Levels.py`

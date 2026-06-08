@@ -1261,7 +1261,7 @@ chart_range = st.selectbox(
     index=chart_range_options.index(default_chart_range),
 )
 st.caption(
-    "Chart range affects visualization only. Tables, saved artifacts, and backtest metrics remain unchanged."
+    "Chart range affects visualization only. Signal tables, saved signal artifacts, and generated signals remain unchanged."
 )
 
 chart_start = None
