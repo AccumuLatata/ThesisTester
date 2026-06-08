@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -16,7 +17,15 @@ from thesistester.analytics.metrics import summarize_by_group as summarize_trade
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.engine.backtest import simulate_trades
 from thesistester.timezone_display import ensure_display_timezone, timezone_contract_caption
-from thesistester.visualization import build_backtest_candlestick_chart
+from thesistester.visualization import (
+    buffered_rows_window,
+    build_backtest_candlestick_chart,
+    clip_by_time_window,
+    coerce_timestamp_series,
+    recent_rows_window,
+    timestamp_bounds,
+    trade_time_window,
+)
 
 st.title("📊 Backtest")
 bootstrap_active_saved_dataset()
@@ -45,6 +54,39 @@ def _signal_setup_context(signals, signal_context: dict | None) -> str | None:
     if setup_caption:
         return f"Backtesting generated signals • {setup_caption}"
     return None
+
+
+def _clip_trades_for_chart(trades_df, *, start, end):
+    if trades_df is None:
+        return None
+
+    out = trades_df.copy(deep=True)
+    if out.empty or (start is None and end is None):
+        return out
+    if "entry_timestamp" not in out.columns or "exit_timestamp" not in out.columns:
+        return out
+
+    start_ts = pd.to_datetime(start, errors="coerce") if start is not None else None
+    end_ts = pd.to_datetime(end, errors="coerce") if end is not None else None
+    if pd.isna(start_ts):
+        start_ts = None
+    if pd.isna(end_ts):
+        end_ts = None
+    if start_ts is not None and end_ts is not None and start_ts > end_ts:
+        start_ts, end_ts = end_ts, start_ts
+    if start_ts is None and end_ts is None:
+        return out
+
+    entry_ts = coerce_timestamp_series(out["entry_timestamp"])
+    exit_ts = coerce_timestamp_series(out["exit_timestamp"])
+    effective_entry = entry_ts.fillna(exit_ts)
+    effective_exit = exit_ts.fillna(entry_ts)
+    mask = effective_entry.notna() & effective_exit.notna()
+    if start_ts is not None:
+        mask &= effective_exit >= start_ts
+    if end_ts is not None:
+        mask &= effective_entry <= end_ts
+    return out.loc[mask].copy(deep=True)
 
 # ── Require signals ───────────────────────────────────────────────────────────
 if "signals" not in st.session_state:
@@ -325,6 +367,23 @@ if has_trades:
 st.subheader("Backtest execution visualizer")
 show_chart = st.toggle("Show candlestick trade visualizer", value=False)
 if show_chart:
+    chart_range_options = [
+        "First trade ± 100 bars",
+        "All trades range",
+        "Last 10,000 rows",
+        "Custom date range",
+        "Full dataset",
+    ]
+    default_chart_range = "First trade ± 100 bars" if has_trades else "Last 10,000 rows"
+    chart_range = st.selectbox(
+        "Chart range",
+        options=chart_range_options,
+        index=chart_range_options.index(default_chart_range),
+    )
+    st.caption(
+        "Chart range affects visualization only. Tables, saved artifacts, and backtest metrics remain unchanged."
+    )
+
     show_sessions = st.toggle("Show session context", value=True)
     show_levels = st.toggle("Show levels", value=True)
     show_confluence_zones = st.toggle("Show confluence zones", value=True)
@@ -334,11 +393,74 @@ if show_chart:
     else:
         levels_df = st.session_state.get("levels")
         confluence_zones = st.session_state.get("confluence_zones")
+
+        chart_start = None
+        chart_end = None
+        if chart_range == "First trade ± 100 bars" and has_trades:
+            chart_start, chart_end = trade_time_window(trades, ohlcv_df=ohlcv_df, buffer_rows=100)
+            if chart_start is None or chart_end is None:
+                chart_start, chart_end = recent_rows_window(ohlcv_df, rows=10_000)
+        elif chart_range == "All trades range" and has_trades:
+            entry_start, entry_end = timestamp_bounds(trades, timestamp_col="entry_timestamp")
+            exit_start, exit_end = timestamp_bounds(trades, timestamp_col="exit_timestamp")
+            trade_start_candidates = [ts for ts in [entry_start, exit_start] if ts is not None]
+            trade_end_candidates = [ts for ts in [entry_end, exit_end] if ts is not None]
+            if trade_start_candidates and trade_end_candidates:
+                chart_start, chart_end = buffered_rows_window(
+                    ohlcv_df,
+                    start=min(trade_start_candidates),
+                    end=max(trade_end_candidates),
+                    buffer_rows=100,
+                )
+            if chart_start is None or chart_end is None:
+                chart_start, chart_end = recent_rows_window(ohlcv_df, rows=10_000)
+        elif chart_range == "Last 10,000 rows":
+            chart_start, chart_end = recent_rows_window(ohlcv_df, rows=10_000)
+        elif chart_range == "Custom date range":
+            min_ts, max_ts = timestamp_bounds(ohlcv_df)
+            if min_ts is not None and max_ts is not None:
+                custom_cols = st.columns(2)
+                custom_start_date = custom_cols[0].date_input(
+                    "Custom chart start",
+                    value=min_ts.date(),
+                    min_value=min_ts.date(),
+                    max_value=max_ts.date(),
+                )
+                custom_end_date = custom_cols[1].date_input(
+                    "Custom chart end",
+                    value=max_ts.date(),
+                    min_value=min_ts.date(),
+                    max_value=max_ts.date(),
+                )
+                chart_start = pd.Timestamp(custom_start_date)
+                chart_end = pd.Timestamp(custom_end_date) + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+
+        chart_ohlcv_df = (
+            ohlcv_df.copy(deep=True)
+            if chart_range == "Full dataset"
+            else clip_by_time_window(ohlcv_df, start=chart_start, end=chart_end)
+        )
+        chart_trades = (
+            trades.copy(deep=True)
+            if chart_range == "Full dataset"
+            else _clip_trades_for_chart(trades, start=chart_start, end=chart_end)
+        )
+        chart_levels_df = (
+            levels_df.copy(deep=True)
+            if chart_range == "Full dataset" and levels_df is not None
+            else clip_by_time_window(levels_df, start=chart_start, end=chart_end)
+        )
+        chart_confluence_zones = (
+            confluence_zones.copy(deep=True)
+            if chart_range == "Full dataset" and confluence_zones is not None
+            else clip_by_time_window(confluence_zones, start=chart_start, end=chart_end)
+        )
+
         chart = build_backtest_candlestick_chart(
-            ohlcv_df=ohlcv_df,
-            trades=trades,
-            levels=levels_df,
-            confluence_zones=confluence_zones,
+            ohlcv_df=chart_ohlcv_df,
+            trades=chart_trades,
+            levels=chart_levels_df,
+            confluence_zones=chart_confluence_zones,
             show_sessions=show_sessions,
             show_levels=show_levels,
             show_confluence_zones=show_confluence_zones,

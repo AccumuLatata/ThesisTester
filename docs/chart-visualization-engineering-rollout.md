@@ -33,9 +33,30 @@ This change set remains visualization-only. Trading, signal-generation, confluen
 - Signal marker traces now expose richer hover text from available signal metadata fields without changing marker semantics or filtering.
 - Added focused tests for candlestick/fallback behavior, confluence-zone overlays/toggle behavior, required-column validation, marker hover metadata, and input immutability for both chart builders.
 
+## Phase 3 chart windowing and payload reduction (this PR)
+
+This change set remains visualization-only. Trading, signal-generation, confluence detection, level computation, backtest simulation, persistence/hash behavior, equity semantics, and KPI logic were not changed.
+
+### Implemented
+
+- Added reusable pure chart window helpers in `thesistester/visualization/chart_window.py`:
+  - `coerce_timestamp_series`
+  - `timestamp_bounds`
+  - `clip_by_time_window`
+  - `recent_rows_window`
+  - `buffered_rows_window`
+  - `trade_time_window`
+- Added chart range controls to:
+  - `pages/5_Levels.py`
+  - `pages/6_Signals.py`
+  - `pages/7_Backtest.py` execution visualizer
+- Updated default chart windows to render clipped data ranges instead of full datasets.
+- Kept explicit `Full dataset` options on Levels, Signals, and Backtest charts.
+- Applied clipping only to DataFrames passed into chart builders (Plotly inputs), not to session-state artifacts/tables/metrics.
+- Added focused helper tests in `tests/visualization/test_chart_window.py`.
+
 ## Future work (later phases)
 
-- Chart windowing.
 - Trade-review mode.
 - Downsampling/performance work (including larger-scale rendering improvements).
 - Compute optimization.
