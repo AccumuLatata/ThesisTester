@@ -19,10 +19,23 @@ This change set introduces a regression-safe visualization foundation only. Trad
 - Batched SL/TP shape construction into one `update_layout(shapes=...)` application to reduce repeated `add_shape()` calls and preserve existing session shapes.
 - Added focused visualization tests for Levels, Signals, and Backtest chart toggle behavior.
 
+## Phase 2 visualization readability (this PR)
+
+This change set remains visualization-only. Trading, signal-generation, confluence detection, level computation, backtest simulation, persistence/hash behavior, equity semantics, and KPI logic were not changed.
+
+### Implemented
+
+- `build_levels_chart(...)` now supports candlestick rendering (`OHLC`) when OHLC columns are present, with automatic close-line fallback and an explicit `use_candles=False` fallback mode.
+- `build_signals_chart(...)` now supports candlestick rendering (`OHLC`) when OHLC columns are present, with automatic close-line fallback and an explicit `use_candles=False` fallback mode.
+- `build_signals_chart(...)` now supports confluence-zone overlay rendering from existing `confluence_zones` as one batched `Confluence zones` trace.
+- `build_signals_chart(...)` now validates required confluence-zone columns (`timestamp`, `zone_low`, `zone_high`) when confluence zones are provided.
+- `pages/6_Signals.py` now includes a visualization-only toggle to show/hide confluence zones on the signals chart.
+- Signal marker traces now expose richer hover text from available signal metadata fields without changing marker semantics or filtering.
+- Added focused tests for candlestick/fallback behavior, confluence-zone overlays/toggle behavior, required-column validation, marker hover metadata, and input immutability for both chart builders.
+
 ## Future work (later phases)
 
-- Candlestick Levels/Signals charts.
-- Confluence overlays on Signals chart.
 - Chart windowing.
 - Trade-review mode.
 - Downsampling/performance work (including larger-scale rendering improvements).
+- Compute optimization.

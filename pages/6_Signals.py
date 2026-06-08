@@ -1238,10 +1238,13 @@ else:
 
 # ── Chart ─────────────────────────────────────────────────────────────────────
 st.subheader("Price chart with signals")
+show_confluence_zones = st.toggle("Show confluence zones", value=True)
 
 fig = build_signals_chart(
     levels_df=levels_df,
     signals=signals,
     selected_levels=selected_levels,
+    confluence_zones=zones,
+    show_confluence_zones=show_confluence_zones,
 )
 st.plotly_chart(fig, use_container_width=True)
