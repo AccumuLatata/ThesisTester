@@ -4,6 +4,7 @@ import pandas as pd
 from pandas.testing import assert_frame_equal
 
 from thesistester.visualization.chart_window import (
+    buffered_rows_window,
     clip_by_time_window,
     recent_rows_window,
     timestamp_bounds,
@@ -99,6 +100,20 @@ def test_recent_rows_window_handles_rows_larger_than_dataframe():
 
     assert start == pd.Timestamp("2026-01-01 09:30:00")
     assert end == pd.Timestamp("2026-01-01 09:31:00")
+
+
+def test_buffered_rows_window_returns_bounds_around_range():
+    df = pd.DataFrame({"timestamp": pd.date_range("2026-01-01 09:30:00", periods=10, freq="min")})
+
+    start, end = buffered_rows_window(
+        df,
+        start=pd.Timestamp("2026-01-01 09:33:00"),
+        end=pd.Timestamp("2026-01-01 09:35:00"),
+        buffer_rows=2,
+    )
+
+    assert start == pd.Timestamp("2026-01-01 09:31:00")
+    assert end == pd.Timestamp("2026-01-01 09:37:00")
 
 
 def test_trade_time_window_returns_window_around_first_trade():

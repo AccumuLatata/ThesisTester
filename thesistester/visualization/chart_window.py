@@ -7,7 +7,7 @@ import pandas as pd
 def _coerce_scalar_timestamp(value: object) -> pd.Timestamp | None:
     if value is None:
         return None
-    ts = pd.to_datetime(value, errors="coerce")
+    ts = pd.to_datetime(value, errors="coerce", format="mixed")
     if pd.isna(ts):
         return None
     if isinstance(ts, pd.Timestamp) and ts.tzinfo is not None:
@@ -17,7 +17,7 @@ def _coerce_scalar_timestamp(value: object) -> pd.Timestamp | None:
 
 def coerce_timestamp_series(series: pd.Series) -> pd.Series:
     """Return datetime-coerced timestamps without mutating the input."""
-    coerced = pd.to_datetime(series.copy(deep=True), errors="coerce")
+    coerced = pd.to_datetime(series.copy(deep=True), errors="coerce", format="mixed")
     if isinstance(getattr(coerced, "dtype", None), pd.DatetimeTZDtype):
         return coerced.dt.tz_localize(None)
     return coerced
@@ -75,6 +75,44 @@ def recent_rows_window(
     if df is None or df.empty or rows <= 0 or timestamp_col not in df.columns:
         return None, None
     return timestamp_bounds(df.tail(rows), timestamp_col=timestamp_col)
+
+
+def buffered_rows_window(
+    df: pd.DataFrame,
+    *,
+    start: pd.Timestamp | None,
+    end: pd.Timestamp | None,
+    buffer_rows: int,
+    timestamp_col: str = "timestamp",
+) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
+    """Return bounds around [start, end] expanded by ±buffer_rows in df timeline."""
+    if (
+        df is None
+        or df.empty
+        or timestamp_col not in df.columns
+        or start is None
+        or end is None
+    ):
+        return None, None
+
+    timeline = coerce_timestamp_series(df[timestamp_col]).dropna().sort_values().reset_index(drop=True)
+    if timeline.empty:
+        return None, None
+
+    range_start = min(start, end)
+    range_end = max(start, end)
+    start_idx = int(timeline.searchsorted(range_start, side="left"))
+    end_idx = int(timeline.searchsorted(range_end, side="right")) - 1
+    if start_idx >= len(timeline):
+        start_idx = len(timeline) - 1
+    if end_idx < 0:
+        end_idx = 0
+    if end_idx < start_idx:
+        end_idx = start_idx
+
+    bounded_start_idx = max(0, start_idx - max(buffer_rows, 0))
+    bounded_end_idx = min(len(timeline) - 1, end_idx + max(buffer_rows, 0))
+    return timeline.iloc[bounded_start_idx], timeline.iloc[bounded_end_idx]
 
 
 def trade_time_window(

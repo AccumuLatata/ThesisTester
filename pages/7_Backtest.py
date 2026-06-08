@@ -18,6 +18,7 @@ from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.engine.backtest import simulate_trades
 from thesistester.timezone_display import ensure_display_timezone, timezone_contract_caption
 from thesistester.visualization import (
+    buffered_rows_window,
     build_backtest_candlestick_chart,
     clip_by_time_window,
     coerce_timestamp_series,
@@ -53,43 +54,6 @@ def _signal_setup_context(signals, signal_context: dict | None) -> str | None:
     if setup_caption:
         return f"Backtesting generated signals • {setup_caption}"
     return None
-
-
-def _buffered_rows_window(
-    df,
-    *,
-    start,
-    end,
-    buffer_rows: int,
-    timestamp_col: str = "timestamp",
-):
-    if (
-        df is None
-        or df.empty
-        or timestamp_col not in df.columns
-        or start is None
-        or end is None
-    ):
-        return None, None
-
-    timeline = coerce_timestamp_series(df[timestamp_col]).dropna().sort_values().reset_index(drop=True)
-    if timeline.empty:
-        return None, None
-
-    range_start = min(start, end)
-    range_end = max(start, end)
-    start_idx = int(timeline.searchsorted(range_start, side="left"))
-    end_idx = int(timeline.searchsorted(range_end, side="right")) - 1
-    if start_idx >= len(timeline):
-        start_idx = len(timeline) - 1
-    if end_idx < 0:
-        end_idx = 0
-    if end_idx < start_idx:
-        end_idx = start_idx
-
-    bounded_start_idx = max(0, start_idx - max(buffer_rows, 0))
-    bounded_end_idx = min(len(timeline) - 1, end_idx + max(buffer_rows, 0))
-    return timeline.iloc[bounded_start_idx], timeline.iloc[bounded_end_idx]
 
 
 def _clip_trades_for_chart(trades_df, *, start, end):
@@ -442,7 +406,7 @@ if show_chart:
             trade_start_candidates = [ts for ts in [entry_start, exit_start] if ts is not None]
             trade_end_candidates = [ts for ts in [entry_end, exit_end] if ts is not None]
             if trade_start_candidates and trade_end_candidates:
-                chart_start, chart_end = _buffered_rows_window(
+                chart_start, chart_end = buffered_rows_window(
                     ohlcv_df,
                     start=min(trade_start_candidates),
                     end=max(trade_end_candidates),

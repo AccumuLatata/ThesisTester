@@ -42,9 +42,9 @@ from thesistester.setup import (
     validate_setup_config,
 )
 from thesistester.visualization import (
+    buffered_rows_window,
     build_signals_chart,
     clip_by_time_window,
-    coerce_timestamp_series,
     recent_rows_window,
     timestamp_bounds,
 )
@@ -579,42 +579,6 @@ def _get_stored_signal_settings() -> tuple[dict | None, str | None]:
         settings_hash = compute_signal_settings_hash(normalized_settings)
     return normalized_settings, settings_hash
 
-
-def _buffered_rows_window(
-    df: pd.DataFrame,
-    *,
-    start: pd.Timestamp | None,
-    end: pd.Timestamp | None,
-    buffer_rows: int,
-    timestamp_col: str = "timestamp",
-) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
-    if (
-        df is None
-        or df.empty
-        or timestamp_col not in df.columns
-        or start is None
-        or end is None
-    ):
-        return None, None
-
-    timeline = coerce_timestamp_series(df[timestamp_col]).dropna().sort_values().reset_index(drop=True)
-    if timeline.empty:
-        return None, None
-
-    range_start = min(start, end)
-    range_end = max(start, end)
-    start_idx = int(timeline.searchsorted(range_start, side="left"))
-    end_idx = int(timeline.searchsorted(range_end, side="right")) - 1
-    if start_idx >= len(timeline):
-        start_idx = len(timeline) - 1
-    if end_idx < 0:
-        end_idx = 0
-    if end_idx < start_idx:
-        end_idx = start_idx
-
-    bounded_start_idx = max(0, start_idx - max(buffer_rows, 0))
-    bounded_end_idx = min(len(timeline) - 1, end_idx + max(buffer_rows, 0))
-    return timeline.iloc[bounded_start_idx], timeline.iloc[bounded_end_idx]
 
 # ── Require levels ────────────────────────────────────────────────────────────
 if "levels" not in st.session_state:
@@ -1304,7 +1268,7 @@ chart_start = None
 chart_end = None
 if chart_range == "Signal range ± 500 rows" and has_signals:
     signal_start, signal_end = timestamp_bounds(signals)
-    chart_start, chart_end = _buffered_rows_window(
+    chart_start, chart_end = buffered_rows_window(
         levels_df,
         start=signal_start,
         end=signal_end,
