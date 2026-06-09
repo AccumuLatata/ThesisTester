@@ -18,6 +18,7 @@ Design notes
 from __future__ import annotations
 
 from datetime import time
+from zoneinfo import ZoneInfoNotFoundError
 
 import pandas as pd
 
@@ -102,7 +103,7 @@ def _timestamps_in_session_timezone(
         if session_timezone:
             try:
                 return ts.dt.tz_localize(session_timezone)
-            except Exception as exc:  # pragma: no cover - defensive
+            except (TypeError, ValueError, KeyError, ZoneInfoNotFoundError) as exc:
                 raise ValueError(
                     f"Invalid session_timezone {session_timezone!r}"
                 ) from exc
@@ -111,7 +112,7 @@ def _timestamps_in_session_timezone(
     if session_timezone:
         try:
             return ts.dt.tz_convert(session_timezone)
-        except Exception as exc:  # pragma: no cover - defensive
+        except (TypeError, ValueError, KeyError, ZoneInfoNotFoundError) as exc:
             raise ValueError(
                 f"Invalid session_timezone {session_timezone!r}"
             ) from exc
