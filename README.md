@@ -101,7 +101,9 @@ Manual Signals controls remain unchanged and backtest behavior is unchanged.
   optional execution-cost modelling (commission per side, adverse slippage ticks;
   defaults are zero-cost for backward compatibility).  Simple
   triggers enter at next-bar open; filled `3c` signals enter at their retracement
-  trigger price.  Intrabar ambiguity uses SL-first pessimistic rule.  Trade metrics
+  trigger price.  Optional session-aware day-trading controls can force flat-by-session-close
+  exits (`SESSION_CLOSE`) with optional no-new-entries cutoff, while default mode preserves
+  legacy dataset-end `EOD` behavior. Intrabar ambiguity uses SL-first pessimistic rule.  Trade metrics
   (win rate, expectancy, profit factor, max drawdown R, equity curve) are computed in
   `thesistester/analytics/metrics.py` and displayed on a new **Backtest** page
   (`pages/7_Backtest.py`). The page keeps the combined KPI cards and also shows a

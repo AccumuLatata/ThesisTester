@@ -13,13 +13,18 @@ This engine is for **research screening**, not proof of a durable edge.
 - Unrealistic cost assumptions can still overstate edge; research results should be interpreted with conservative cost settings.
 
 ### 2) Intrabar ambiguity is resolved with SL-first pessimism
-- If both stop and target are reachable in one bar, the engine exits at stop (`thesistester/engine/backtest.py:221-226`).
-- This behavior is explicitly documented in module notes (`thesistester/engine/backtest.py:12-14`).
+- If both stop and target are reachable in one bar, the engine exits at stop. Implemented in `simulate_trades()` in `thesistester/engine/backtest.py`.
+- This behavior is explicitly documented in the module design notes in `thesistester/engine/backtest.py`.
 
-### 3) TIME and EOD exits are bar-index based
-- `max_holding_bars` is implemented as a bar-count cap (`entry_bar_index + max_holding_bars - 1`) (`thesistester/engine/backtest.py:194-196`).
-- TIME exit uses that capped bar’s close (`thesistester/engine/backtest.py:240-243`).
-- If no SL/TP/TIME exit triggers, `EOD` is the **final bar in the loaded dataset** (`thesistester/engine/backtest.py:245-247`), not a session close event.
+### 3) TIME, SESSION_CLOSE, DATA_END, and EOD exits are bar-index based
+- `max_holding_bars` is implemented as a bar-count cap (`entry_bar_index + max_holding_bars - 1`) in `simulate_trades()` in `thesistester/engine/backtest.py`.
+- TIME exit uses that capped bar’s close in `simulate_trades()` in `thesistester/engine/backtest.py`.
+- Default mode keeps legacy behavior: if no SL/TP/TIME exit triggers, `EOD` is the **final bar in the loaded dataset**, not a session close event.
+- Optional session-aware mode (`flat_by_session_close=True`) caps exits to the configured session close for each trade entry date:
+  - `SESSION_CLOSE` means forced flat at the last available bar at or before the configured close time (when SL/TP is not hit first).
+  - `DATA_END` means data ended before session close and the trade was force-closed at the last available bar.
+- Current session-aware flattening is intended for same-calendar-day RTH-style sessions; overnight ETH session templates are not yet modeled.
+- If session-aware mode is not enabled, users can still unintentionally model overnight holds across sessions.
 
 ### 4) Signals are simulated independently (no overlap/exposure control)
 - The simulator loops each signal row independently (`for _, sig in signals.iterrows()`) and appends one trade result per signal (`thesistester/engine/backtest.py:137-140`, `264-301`).

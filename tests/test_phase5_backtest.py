@@ -528,3 +528,203 @@ def test_nonpositive_point_value_raises():
     sigs = _signal(bar_index=0)
     with pytest.raises(ValueError, match="point_value"):
         simulate_trades(df, sigs, TICK, 0.0, stop_loss_ticks=4, take_profit_ticks=8)
+
+
+def test_session_close_exit_uses_close_bar_and_slippage():
+    df = _df(
+        _bar("2026-01-02 15:58", 100.0, 100.4, 99.9, 100.2),
+        _bar("2026-01-02 15:59", 100.2, 100.4, 100.0, 100.3),  # entry
+        _bar("2026-01-02 16:00", 100.3, 100.5, 100.1, 100.4),  # session-close bar
+        _bar("2026-01-02 16:01", 100.4, 102.0, 100.3, 101.8),
+    )
+    sigs = _signal(bar_index=0, trigger="touch", direction="long")
+    trades = simulate_trades(
+        df,
+        sigs,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        slippage_ticks=1.0,
+        flat_by_session_close=True,
+        session_close_time="16:00",
+        session_timezone=TZ,
+    )
+    t = trades.iloc[0]
+    assert t["exit_reason"] == "SESSION_CLOSE"
+    assert t["exit_bar_index"] == 2
+    assert t["theoretical_exit_price"] == pytest.approx(100.4)
+    assert t["exit_price"] == pytest.approx(100.15)
+
+
+def test_session_close_preserves_sl_tp_precedence_before_close():
+    df = _df(
+        _bar("2026-01-02 15:58", 100.0, 100.3, 99.9, 100.1),
+        _bar("2026-01-02 15:59", 100.1, 102.5, 100.0, 102.2),  # TP hit before close
+        _bar("2026-01-02 16:00", 102.2, 102.3, 101.8, 102.0),
+    )
+    sigs = _signal(bar_index=0, trigger="touch", direction="long")
+    trades = simulate_trades(
+        df,
+        sigs,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=4,
+        take_profit_ticks=8,
+        flat_by_session_close=True,
+        session_close_time="16:00",
+        session_timezone=TZ,
+    )
+    assert trades.iloc[0]["exit_reason"] == "TP"
+
+
+def test_session_close_bar_still_uses_sl_first_when_both_hit():
+    df = _df(
+        _bar("2026-01-02 15:58", 100.0, 100.3, 99.8, 100.0),
+        _bar("2026-01-02 15:59", 100.0, 100.2, 99.9, 100.0),  # entry
+        _bar("2026-01-02 16:00", 102.5, 102.5, 98.5, 101.0),  # both SL/TP reachable
+    )
+    sigs = _signal(bar_index=0, trigger="touch", direction="long")
+    trades = simulate_trades(
+        df,
+        sigs,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=4,
+        take_profit_ticks=8,
+        flat_by_session_close=True,
+        session_close_time="16:00",
+        session_timezone=TZ,
+    )
+    assert trades.iloc[0]["exit_reason"] == "SL"
+
+
+def test_no_new_entries_after_skips_late_entry():
+    df = _df(
+        _bar("2026-01-02 15:58", 100.0, 100.4, 99.9, 100.1),
+        _bar("2026-01-02 15:59", 100.1, 100.4, 100.0, 100.2),  # entry timestamp
+        _bar("2026-01-02 16:00", 100.2, 100.5, 100.0, 100.3),
+    )
+    sigs = _signal(bar_index=0, trigger="touch", direction="long")
+    trades = simulate_trades(
+        df,
+        sigs,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=4,
+        take_profit_ticks=8,
+        no_new_entries_after="15:58",
+        session_timezone=TZ,
+    )
+    assert trades.empty
+
+
+def test_session_close_timezone_applied_to_aware_timestamps():
+    df = pd.DataFrame(
+        [
+            _bar("2026-01-02 09:58", 100.0, 100.3, 99.9, 100.1),
+            _bar("2026-01-02 09:59", 100.1, 100.3, 100.0, 100.2),  # entry
+            _bar("2026-01-02 10:00", 100.2, 100.4, 100.0, 100.25),  # 16:00 Berlin
+            _bar("2026-01-02 10:01", 100.25, 100.6, 100.2, 100.5),
+        ]
+    )
+    # Source bars are New York aware; session close interpreted in Berlin timezone.
+    trades = simulate_trades(
+        df,
+        _signal(bar_index=0, trigger="touch", direction="long"),
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        flat_by_session_close=True,
+        session_close_time="16:00",
+        session_timezone="Europe/Berlin",
+    )
+    assert trades.iloc[0]["exit_reason"] == "SESSION_CLOSE"
+    assert trades.iloc[0]["exit_bar_index"] == 2
+
+
+def test_flat_by_session_close_requires_valid_session_close_time():
+    df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0), _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5))
+    sigs = _signal(bar_index=0)
+    with pytest.raises(ValueError, match="session_close_time"):
+        simulate_trades(
+            df,
+            sigs,
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
+            flat_by_session_close=True,
+            session_close_time=None,
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid_session_close_time",
+    ["16:00:00.123", "16:00+01:00", "9:30", "16"],
+)
+def test_invalid_session_close_time_formats_raise(invalid_session_close_time):
+    df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0), _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5))
+    sigs = _signal(bar_index=0)
+    with pytest.raises(ValueError, match="session_close_time"):
+        simulate_trades(
+            df,
+            sigs,
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
+            flat_by_session_close=True,
+            session_close_time=invalid_session_close_time,
+        )
+
+
+def test_invalid_no_new_entries_after_raises():
+    df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0), _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5))
+    sigs = _signal(bar_index=0)
+    with pytest.raises(ValueError, match="no_new_entries_after"):
+        simulate_trades(
+            df,
+            sigs,
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
+            no_new_entries_after="not-a-time",
+        )
+
+
+def test_invalid_no_new_entries_after_fractional_seconds_raises():
+    df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0), _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5))
+    sigs = _signal(bar_index=0)
+    with pytest.raises(ValueError, match="no_new_entries_after"):
+        simulate_trades(
+            df,
+            sigs,
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
+            no_new_entries_after="15:45:00.123",
+        )
+
+
+def test_session_close_uses_data_end_when_data_ends_before_close():
+    df = _df(
+        _bar("2026-01-02 15:58", 100.0, 100.3, 99.9, 100.1),
+        _bar("2026-01-02 15:59", 100.1, 100.3, 100.0, 100.2),  # entry and last bar
+    )
+    sigs = _signal(bar_index=0, trigger="touch", direction="long")
+    trades = simulate_trades(
+        df,
+        sigs,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        flat_by_session_close=True,
+        session_close_time="16:00",
+        session_timezone=TZ,
+    )
+    assert trades.iloc[0]["exit_reason"] == "DATA_END"

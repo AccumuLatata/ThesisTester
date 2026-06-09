@@ -12,7 +12,7 @@ import streamlit as st
 
 from thesistester.app_state import bootstrap_active_saved_dataset
 from thesistester.analytics import best_grid_result, run_sl_tp_grid
-from thesistester.config import INSTRUMENTS
+from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 
 st.title("🔲 SL/TP Grid Search")
 bootstrap_active_saved_dataset()
@@ -101,6 +101,35 @@ with st.sidebar:
         step=0.25,
         help="Adverse slippage applied at both entry and exit.",
     )
+
+    st.subheader("Session exit policy")
+    flat_by_session_close = st.toggle("Flat by session close", value=False)
+    exchange_tz = st.session_state.get("exchange_timezone") or (inst.exchange_tz if inst else "America/New_York")
+    session_close_time = st.text_input(
+        "Session close time",
+        value="16:00",
+        disabled=not flat_by_session_close,
+        help="Local session close time in HH:MM or HH:MM:SS.",
+    )
+    session_timezone = st.selectbox(
+        "Session timezone",
+        options=TIMEZONE_OPTIONS,
+        index=(
+            TIMEZONE_OPTIONS.index(exchange_tz)
+            if exchange_tz in TIMEZONE_OPTIONS
+            else 0
+        ),
+        disabled=not flat_by_session_close,
+    )
+    no_new_entries_after = st.text_input(
+        "No new entries after (optional)",
+        value="",
+        disabled=not flat_by_session_close,
+        help="Optional local cutoff in HH:MM or HH:MM:SS.",
+    )
+    effective_no_new_entries_after = (
+        no_new_entries_after.strip() or None
+    ) if flat_by_session_close else None
 
     ranking_metric = st.selectbox(
         "Ranking metric",
@@ -217,6 +246,10 @@ if run_btn:
                 allow_same_bar_exit=allow_same_bar,
                 commission_per_side=float(commission_per_side),
                 slippage_ticks=float(slippage_ticks),
+                flat_by_session_close=flat_by_session_close,
+                session_close_time=session_close_time or None,
+                session_timezone=session_timezone if flat_by_session_close else None,
+                no_new_entries_after=effective_no_new_entries_after,
             )
         except ValueError as e:
             st.error(f"Grid search error: {e}")
@@ -255,6 +288,12 @@ if run_btn:
             if (float(commission_per_side) > 0.0 or float(slippage_ticks) > 0.0)
             else "gross==net (zero costs)"
         ),
+    }
+    st.session_state["grid_session_exit_policy"] = {
+        "flat_by_session_close": bool(flat_by_session_close),
+        "session_close_time": session_close_time or None,
+        "session_timezone": session_timezone if flat_by_session_close else None,
+        "no_new_entries_after": effective_no_new_entries_after,
     }
 
 # ── Display ───────────────────────────────────────────────────────────────────

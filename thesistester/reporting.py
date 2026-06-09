@@ -331,6 +331,99 @@ def execution_cost_assumptions_markdown(assumptions: Mapping[str, Mapping[str, A
     return section
 
 
+def build_session_exit_policy_assumptions(session_state: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Return scoped session-exit assumptions for current backtest/grid export data."""
+    backtest_results_available = _has_nonempty_value(session_state.get("trades")) or _has_nonempty_value(
+        session_state.get("trade_summary")
+    )
+    grid_results_available = _has_nonempty_value(session_state.get("grid_results")) or _has_nonempty_value(
+        session_state.get("best_grid_result")
+    )
+
+    backtest_policy = session_state.get("backtest_session_exit_policy")
+    grid_policy = session_state.get("grid_session_exit_policy")
+    backtest_available = (
+        backtest_results_available
+        and isinstance(backtest_policy, Mapping)
+        and len(backtest_policy) > 0
+    )
+    grid_available = (
+        grid_results_available
+        and isinstance(grid_policy, Mapping)
+        and len(grid_policy) > 0
+    )
+
+    assumptions: dict[str, dict[str, Any]] = {
+        "backtest": {
+            "available": backtest_available,
+            "flat_by_session_close": False,
+            "session_close_time": None,
+            "session_timezone": None,
+            "no_new_entries_after": None,
+        },
+        "grid": {
+            "available": grid_available,
+            "flat_by_session_close": False,
+            "session_close_time": None,
+            "session_timezone": None,
+            "no_new_entries_after": None,
+        },
+    }
+
+    if backtest_available:
+        assumptions["backtest"].update(
+            {
+                "flat_by_session_close": bool(backtest_policy.get("flat_by_session_close", False)),
+                "session_close_time": to_jsonable(backtest_policy.get("session_close_time")),
+                "session_timezone": to_jsonable(backtest_policy.get("session_timezone")),
+                "no_new_entries_after": to_jsonable(backtest_policy.get("no_new_entries_after")),
+            }
+        )
+    if grid_available:
+        assumptions["grid"].update(
+            {
+                "flat_by_session_close": bool(grid_policy.get("flat_by_session_close", False)),
+                "session_close_time": to_jsonable(grid_policy.get("session_close_time")),
+                "session_timezone": to_jsonable(grid_policy.get("session_timezone")),
+                "no_new_entries_after": to_jsonable(grid_policy.get("no_new_entries_after")),
+            }
+        )
+
+    return assumptions
+
+
+def session_exit_policy_assumptions_markdown(assumptions: Mapping[str, Mapping[str, Any]]) -> str:
+    """Render scoped session-exit assumptions as markdown report section text."""
+    backtest = assumptions.get("backtest", {})
+    grid = assumptions.get("grid", {})
+
+    section = (
+        "\n## Session Exit Policy Assumptions\n"
+        "\n### Backtest\n"
+        f"- Available: {'yes' if backtest.get('available') else 'no'}\n"
+    )
+    if backtest.get("available"):
+        section += (
+            f"- Flat by session close: {'yes' if backtest.get('flat_by_session_close') else 'no'}\n"
+            f"- Session close time: {backtest.get('session_close_time', '—') or '—'}\n"
+            f"- Session timezone: {backtest.get('session_timezone', '—') or '—'}\n"
+            f"- No new entries after: {backtest.get('no_new_entries_after', '—') or '—'}\n"
+        )
+
+    section += (
+        "\n### Grid Search\n"
+        f"- Available: {'yes' if grid.get('available') else 'no'}\n"
+    )
+    if grid.get("available"):
+        section += (
+            f"- Flat by session close: {'yes' if grid.get('flat_by_session_close') else 'no'}\n"
+            f"- Session close time: {grid.get('session_close_time', '—') or '—'}\n"
+            f"- Session timezone: {grid.get('session_timezone', '—') or '—'}\n"
+            f"- No new entries after: {grid.get('no_new_entries_after', '—') or '—'}\n"
+        )
+    return section
+
+
 def build_markdown_report(artifact: dict[str, Any]) -> str:
     """Build a concise markdown report from a research artifact."""
     metadata = artifact.get("metadata", {}) if isinstance(artifact, Mapping) else {}
