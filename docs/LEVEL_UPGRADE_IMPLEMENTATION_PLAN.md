@@ -244,7 +244,9 @@ Rules:
 
 ---
 
-### Stage 2 — Pivots ✅ COMPLETE
+### Stage 2 — Pivots
+
+**Status:** Implemented in PR #69; complete once merged.
 
 Implemented in `thesistester/levels/pivots.py`.
 
