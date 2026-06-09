@@ -101,7 +101,11 @@ def summarize_trades(trades: pd.DataFrame) -> dict:
     if trades is None or trades.empty:
         return empty
 
-    r = trades["r_multiple"].dropna()
+    t = trades.copy()
+    if "exit_timestamp" in t.columns:
+        t = t.sort_values("exit_timestamp").reset_index(drop=True)
+
+    r = t["r_multiple"].dropna()
     n = len(r)
     if n == 0:
         return empty
@@ -189,7 +193,7 @@ def summarize_trades(trades: pd.DataFrame) -> dict:
     )
     outlier_dependency_ratio = None
     if n >= 2 and not np.isclose(total_r, 0.0):
-        largest_abs_idx = r.abs().sort_values(ascending=False).index[0]
+        largest_abs_idx = r.abs().idxmax()
         total_r_without_largest_abs = float(r.drop(index=largest_abs_idx).sum())
         outlier_dependency_ratio = total_r_without_largest_abs / total_r
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from thesistester.analytics.metrics import summarize_trades, summarize_trades_by_direction
+from thesistester.analytics.metrics import equity_curve, summarize_trades, summarize_trades_by_direction
 from thesistester.analytics.walk_forward import run_walk_forward_sl_tp, summarize_walk_forward
 
 
@@ -123,6 +123,30 @@ def test_institutional_metrics_outlier_dependency_ratio():
 
     assert summary["outlier_dependency_ratio"] is not None
     assert summary["outlier_dependency_ratio"] == pytest.approx(-3.0 / 7.0)
+
+
+def test_path_dependent_metrics_sort_by_exit_timestamp():
+    trades = pd.DataFrame(
+        {
+            "trade_id": [1, 2, 3],
+            "exit_timestamp": [
+                pd.Timestamp("2026-01-02 09:40", tz="America/New_York"),
+                pd.Timestamp("2026-01-02 09:30", tz="America/New_York"),
+                pd.Timestamp("2026-01-02 09:35", tz="America/New_York"),
+            ],
+            "r_multiple": [-2.0, 1.0, 1.0],
+        }
+    )
+
+    summary = summarize_trades(trades)
+    curve = equity_curve(trades)
+
+    assert summary["max_consecutive_wins"] == 2
+    assert summary["max_consecutive_losses"] == 1
+    assert summary["max_drawdown_r"] == pytest.approx(2.0)
+    assert summary["ulcer_index_r"] >= 0.0
+    assert curve["r_multiple"].tolist() == [1.0, 1.0, -2.0]
+    assert summary["max_drawdown_r"] == pytest.approx(curve["drawdown_r"].max())
 
 
 def test_institutional_metrics_loss_only_and_win_only_are_safe():
