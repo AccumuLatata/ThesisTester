@@ -131,6 +131,27 @@ with st.sidebar:
         no_new_entries_after.strip() or None
     ) if flat_by_session_close else None
 
+    st.subheader("Exposure policy")
+    exposure_policy = st.selectbox(
+        "Policy",
+        options=[
+            "allow_all",
+            "single_position",
+            "single_direction",
+            "single_setup",
+        ],
+        index=0,
+    )
+    cooldown_bars_after_exit = int(
+        st.number_input(
+            "Cooldown bars after exit",
+            min_value=0,
+            max_value=10_000,
+            value=0,
+            step=1,
+        )
+    )
+
     ranking_metric = st.selectbox(
         "Ranking metric",
         options=["expectancy_r", "total_r", "profit_factor", "win_rate"],
@@ -250,6 +271,8 @@ if run_btn:
                 session_close_time=session_close_time or None,
                 session_timezone=session_timezone if flat_by_session_close else None,
                 no_new_entries_after=effective_no_new_entries_after,
+                exposure_policy=exposure_policy,
+                cooldown_bars_after_exit=cooldown_bars_after_exit,
             )
         except ValueError as e:
             st.error(f"Grid search error: {e}")
@@ -294,6 +317,10 @@ if run_btn:
         "session_close_time": session_close_time or None,
         "session_timezone": session_timezone if flat_by_session_close else None,
         "no_new_entries_after": effective_no_new_entries_after,
+    }
+    st.session_state["grid_exposure_policy"] = {
+        "exposure_policy": exposure_policy,
+        "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
     }
 
 # ── Display ───────────────────────────────────────────────────────────────────

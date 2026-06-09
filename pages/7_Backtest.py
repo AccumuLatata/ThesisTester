@@ -220,13 +220,34 @@ with st.sidebar:
         no_new_entries_after.strip() or None
     ) if flat_by_session_close else None
 
+    st.subheader("Exposure policy")
+    exposure_policy = st.selectbox(
+        "Policy",
+        options=[
+            "allow_all",
+            "single_position",
+            "single_direction",
+            "single_setup",
+        ],
+        index=0,
+    )
+    cooldown_bars_after_exit = int(
+        st.number_input(
+            "Cooldown bars after exit",
+            min_value=0,
+            max_value=10_000,
+            value=0,
+            step=1,
+        )
+    )
+
     run_btn = st.button("▶ Run backtest", type="primary", width="stretch")
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 if run_btn:
     with st.spinner("Simulating trades…"):
         try:
-            trades = simulate_trades(
+            trades, skipped_signals = simulate_trades(
                 df=ohlcv_df,
                 signals=signals,
                 tick_size=tick_size,
@@ -241,6 +262,9 @@ if run_btn:
                 session_close_time=session_close_time or None,
                 session_timezone=session_timezone if flat_by_session_close else None,
                 no_new_entries_after=effective_no_new_entries_after,
+                exposure_policy=exposure_policy,
+                cooldown_bars_after_exit=cooldown_bars_after_exit,
+                return_skipped_signals=True,
             )
         except ValueError as e:
             st.error(f"Backtest error: {e}")
@@ -252,6 +276,11 @@ if run_btn:
         st.session_state["trades"] = trades
         st.session_state["trade_summary"] = summary
         st.session_state["equity_curve"] = curve
+        st.session_state["skipped_signals"] = skipped_signals
+        st.session_state["exposure_policy"] = {
+            "exposure_policy": exposure_policy,
+            "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
+        }
         st.session_state["backtest_execution_costs"] = {
             "commission_per_side": float(commission_per_side),
             "slippage_ticks": float(slippage_ticks),
@@ -272,6 +301,7 @@ if run_btn:
 trades = st.session_state.get("trades")
 summary = st.session_state.get("trade_summary")
 curve = st.session_state.get("equity_curve")
+skipped_signals = st.session_state.get("skipped_signals")
 
 if trades is None:
     st.info("Configure settings in the sidebar and click **▶ Run backtest**.")
@@ -285,6 +315,31 @@ if costs.get("commission_per_side", 0.0) > 0.0 or costs.get("slippage_ticks", 0.
     )
 else:
     st.caption("Execution costs disabled — KPIs are gross (zero commission/slippage).")
+
+skipped_count = 0
+if isinstance(skipped_signals, pd.DataFrame):
+    skipped_count = int(len(skipped_signals))
+st.caption(
+    f"Accepted trades: {summary.get('trade_count', 0) if isinstance(summary, dict) else len(trades)} · "
+    f"Skipped by exposure policy: {skipped_count}"
+)
+if isinstance(skipped_signals, pd.DataFrame) and not skipped_signals.empty:
+    st.subheader("Exposure policy skips")
+    skip_cols = [
+        c
+        for c in [
+            "signal_id",
+            "entry_bar_index",
+            "trigger",
+            "direction",
+            "skip_reason",
+            "blocking_trade_id",
+            "blocking_exit_bar_index",
+            "exposure_group_key",
+        ]
+        if c in skipped_signals.columns
+    ]
+    st.dataframe(skipped_signals[skip_cols], width="stretch", hide_index=True)
 
 # KPI cards
 st.subheader("Performance summary")

@@ -11,10 +11,12 @@ from thesistester.data.loader import load_ohlcv
 from thesistester.reporting import (
     build_markdown_report,
     build_execution_cost_assumptions,
+    build_exposure_policy_assumptions,
     build_research_artifact,
     build_session_exit_policy_assumptions,
     dataframe_to_csv_bytes,
     dataframe_to_json_records,
+    exposure_policy_assumptions_markdown,
     execution_cost_assumptions_markdown,
     session_exit_policy_assumptions_markdown,
     to_jsonable,
@@ -535,3 +537,63 @@ def test_session_exit_policy_assumptions_markdown_has_scoped_headings():
     assert "## Session Exit Policy Assumptions" in markdown
     assert "### Backtest" in markdown
     assert "### Grid Search" in markdown
+
+
+def test_exposure_policy_assumptions_backtest_scope_exported():
+    state = _sample_session_state()
+    state["exposure_policy"] = {
+        "exposure_policy": "single_position",
+        "cooldown_bars_after_exit": 2,
+    }
+    state["skipped_signals"] = pd.DataFrame({"signal_id": [1, 2, 3]})
+    assumptions = build_exposure_policy_assumptions(state)
+    assert assumptions["backtest"]["available"] is True
+    assert assumptions["backtest"]["exposure_policy"] == "single_position"
+    assert assumptions["backtest"]["cooldown_bars_after_exit"] == 2
+    assert assumptions["backtest"]["skipped_signal_count"] == 3
+
+
+def test_exposure_policy_assumptions_grid_scope_exported():
+    state = _sample_session_state()
+    state["grid_exposure_policy"] = {
+        "exposure_policy": "single_direction",
+        "cooldown_bars_after_exit": 1,
+    }
+    assumptions = build_exposure_policy_assumptions(state)
+    assert assumptions["grid"]["available"] is True
+    assert assumptions["grid"]["exposure_policy"] == "single_direction"
+    assert assumptions["grid"]["cooldown_bars_after_exit"] == 1
+
+
+def test_exposure_policy_assumptions_ignores_stale_scope_without_results():
+    state = _sample_session_state()
+    state["trades"] = pd.DataFrame()
+    state["trade_summary"] = {}
+    state["exposure_policy"] = {
+        "exposure_policy": "single_position",
+        "cooldown_bars_after_exit": 2,
+    }
+    assumptions = build_exposure_policy_assumptions(state)
+    assert assumptions["backtest"]["available"] is False
+    assert assumptions["backtest"]["exposure_policy"] is None
+
+
+def test_exposure_policy_assumptions_markdown_has_scoped_headings():
+    assumptions = {
+        "backtest": {
+            "available": True,
+            "exposure_policy": "single_position",
+            "cooldown_bars_after_exit": 2,
+            "skipped_signal_count": 14,
+        },
+        "grid": {
+            "available": True,
+            "exposure_policy": "single_position",
+            "cooldown_bars_after_exit": 2,
+        },
+    }
+    markdown = exposure_policy_assumptions_markdown(assumptions)
+    assert "## Exposure Policy Assumptions" in markdown
+    assert "### Backtest" in markdown
+    assert "### Grid Search" in markdown
+    assert "single_position" in markdown

@@ -68,12 +68,40 @@ _TRADE_COLUMNS: list[str] = [
     "level_source_mode",
     "mae_points",
     "mfe_points",
+    "exposure_policy",
+    "exposure_group_key",
+    "cooldown_bars_after_exit",
     "status",
 ]
+
+_SKIPPED_SIGNAL_COLUMNS: list[str] = [
+    "signal_id",
+    "bar_index",
+    "entry_bar_index",
+    "trigger",
+    "direction",
+    "exposure_policy",
+    "exposure_group_key",
+    "skip_reason",
+    "blocking_trade_id",
+    "blocking_exit_bar_index",
+    "cooldown_bars_after_exit",
+]
+
+_VALID_EXPOSURE_POLICIES = {
+    "allow_all",
+    "single_position",
+    "single_direction",
+    "single_setup",
+}
 
 
 def _empty_trades_df() -> pd.DataFrame:
     return pd.DataFrame(columns=_TRADE_COLUMNS)
+
+
+def _empty_skipped_signals_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=_SKIPPED_SIGNAL_COLUMNS)
 
 
 _TIME_RE = re.compile(r"^\d{2}:\d{2}(:\d{2})?$")
@@ -125,6 +153,50 @@ def _timestamps_in_session_timezone(
     return ts
 
 
+def _stringify_setup_value(value: object) -> str:
+    if isinstance(value, (list, tuple, set)):
+        return "|".join(str(v) for v in value)
+    return str(value).strip()
+
+
+def _is_nonempty(value: object) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    try:
+        if pd.isna(value):
+            return False
+    except (TypeError, ValueError):
+        pass
+    return True
+
+
+def _exposure_group_key(
+    sig: pd.Series,
+    *,
+    exposure_policy: str,
+    trigger: str,
+    direction: str,
+) -> str:
+    if exposure_policy == "single_position":
+        return "position"
+    if exposure_policy == "single_direction":
+        return direction
+    if exposure_policy == "single_setup":
+        setup_candidates = [
+            ("setup_name", sig.get("setup_name")),
+            ("zone_id", sig.get("zone_id")),
+            ("level_source_label", sig.get("level_source_label")),
+            ("level_names", sig.get("level_names")),
+        ]
+        for label, raw_value in setup_candidates:
+            if _is_nonempty(raw_value):
+                return f"{label}:{_stringify_setup_value(raw_value)}"
+        return f"trigger_direction:{trigger}|{direction}"
+    return "allow_all"
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -145,7 +217,10 @@ def simulate_trades(
     session_close_time: str | None = None,
     session_timezone: str | None = None,
     no_new_entries_after: str | None = None,
-) -> pd.DataFrame:
+    exposure_policy: str = "allow_all",
+    cooldown_bars_after_exit: int = 0,
+    return_skipped_signals: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """Simulate bar-by-bar trades from Phase 4 candidate signals.
 
     Parameters
@@ -189,17 +264,28 @@ def simulate_trades(
         Optional local-time cutoff (HH:MM or HH:MM:SS). Entries whose local
         entry timestamp is later than this cutoff are skipped.
 
+    exposure_policy:
+        Exposure gate applied to executable signals. One of:
+        ``allow_all``, ``single_position``, ``single_direction``,
+        ``single_setup``.
+    cooldown_bars_after_exit:
+        Optional cooldown bars after a blocking trade exit. Must be >= 0.
+    return_skipped_signals:
+        If ``True``, returns ``(trades_df, skipped_signals_df)`` where skipped
+        signals include exposure-policy rejections only.
+
     Returns
     -------
-    pd.DataFrame
-        One row per executed trade.  Returns an empty DataFrame with the
-        correct schema when no trades are produced.
+    pd.DataFrame or tuple[pd.DataFrame, pd.DataFrame]
+        Trades DataFrame by default; optional tuple when
+        ``return_skipped_signals=True``.
 
     Raises
     ------
     ValueError
         If ``stop_loss_ticks <= 0``, price/risk inputs are invalid, cost inputs
-        are negative, or time/session policy inputs are invalid.
+        are negative, time/session policy inputs are invalid, exposure policy
+        is invalid, or cooldown is negative.
 
     Notes
     -----
@@ -227,6 +313,16 @@ def simulate_trades(
         raise ValueError(
             f"slippage_ticks must be >= 0, got {slippage_ticks!r}"
         )
+    if exposure_policy not in _VALID_EXPOSURE_POLICIES:
+        raise ValueError(
+            f"exposure_policy must be one of {sorted(_VALID_EXPOSURE_POLICIES)!r}, "
+            f"got {exposure_policy!r}"
+        )
+    if cooldown_bars_after_exit < 0:
+        raise ValueError(
+            "cooldown_bars_after_exit must be >= 0, "
+            f"got {cooldown_bars_after_exit!r}"
+        )
     parsed_session_close = _parse_time_input(
         session_close_time, field_name="session_close_time"
     )
@@ -239,7 +335,10 @@ def simulate_trades(
     )
 
     if signals is None or signals.empty:
-        return _empty_trades_df()
+        empty_trades = _empty_trades_df()
+        if return_skipped_signals:
+            return empty_trades, _empty_skipped_signals_df()
+        return empty_trades
 
     df_reset = df.reset_index(drop=True)
     n_bars = len(df_reset)
@@ -254,7 +353,9 @@ def simulate_trades(
     risk_currency = float(stop_loss_ticks) * float(tick_size) * float(point_value)
 
     trades: list[dict] = []
+    skipped_signals: list[dict] = []
     trade_id = 0
+    candidate_rows: list[dict] = []
 
     for _, sig in signals.iterrows():
         trigger = str(sig["trigger"])
@@ -298,6 +399,104 @@ def simulate_trades(
             parsed_no_new_entries_after is not None
             and entry_local_ts.time() > parsed_no_new_entries_after
         ):
+            continue
+
+        candidate_rows.append(
+            {
+                "sig": sig,
+                "trigger": trigger,
+                "direction": direction,
+                "bar_idx": bar_idx,
+                "entry_bar_index": entry_bar_index,
+                "entry_ts": entry_ts,
+                "theoretical_entry_price": theoretical_entry_price,
+                "entry_price": entry_price,
+                "entry_model": entry_model,
+                "exposure_group_key": _exposure_group_key(
+                    sig,
+                    exposure_policy=exposure_policy,
+                    trigger=trigger,
+                    direction=direction,
+                ),
+            }
+        )
+
+    if exposure_policy == "allow_all":
+        ordered_candidates = candidate_rows
+    else:
+        ordered_candidates = sorted(
+            candidate_rows,
+            key=lambda row: (
+                int(row["entry_bar_index"]),
+                int(row["bar_idx"]),
+                int(row["sig"]["signal_id"]),
+            ),
+        )
+
+    accepted_for_blocking: list[dict] = []
+    for candidate in ordered_candidates:
+        sig = candidate["sig"]
+        trigger = candidate["trigger"]
+        direction = candidate["direction"]
+        bar_idx = int(candidate["bar_idx"])
+        entry_bar_index = int(candidate["entry_bar_index"])
+        entry_ts = candidate["entry_ts"]
+        theoretical_entry_price = float(candidate["theoretical_entry_price"])
+        entry_price = float(candidate["entry_price"])
+        entry_model = str(candidate["entry_model"])
+        exposure_group_key = str(candidate["exposure_group_key"])
+
+        if exposure_policy == "single_position":
+            relevant_prior = accepted_for_blocking
+        elif exposure_policy == "single_direction":
+            relevant_prior = [
+                prior for prior in accepted_for_blocking if prior["direction"] == direction
+            ]
+        elif exposure_policy == "single_setup":
+            relevant_prior = [
+                prior
+                for prior in accepted_for_blocking
+                if prior["exposure_group_key"] == exposure_group_key
+            ]
+        else:
+            relevant_prior = []
+
+        blockers = [
+            prior
+            for prior in relevant_prior
+            if entry_bar_index <= (int(prior["exit_bar_index"]) + cooldown_bars_after_exit)
+        ]
+        if blockers:
+            blocker = sorted(
+                blockers,
+                key=lambda prior: (-int(prior["exit_bar_index"]), int(prior["trade_id"])),
+            )[0]
+            blocker_exit_bar_index = int(blocker["exit_bar_index"])
+            if entry_bar_index > blocker_exit_bar_index:
+                skip_reason = "cooldown_active"
+            elif exposure_policy == "single_position":
+                skip_reason = "overlapping_position"
+            elif exposure_policy == "single_direction":
+                skip_reason = "overlapping_direction"
+            else:
+                skip_reason = "overlapping_setup"
+
+            if return_skipped_signals:
+                skipped_signals.append(
+                    {
+                        "signal_id": int(sig["signal_id"]),
+                        "bar_index": bar_idx,
+                        "entry_bar_index": entry_bar_index,
+                        "trigger": trigger,
+                        "direction": direction,
+                        "exposure_policy": exposure_policy,
+                        "exposure_group_key": exposure_group_key,
+                        "skip_reason": skip_reason,
+                        "blocking_trade_id": int(blocker["trade_id"]),
+                        "blocking_exit_bar_index": blocker_exit_bar_index,
+                        "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
+                    }
+                )
             continue
 
         # ------------------------------------------------------------------
@@ -490,11 +689,28 @@ def simulate_trades(
                 "level_source_mode": sig.get("level_source_mode"),
                 "mae_points": mae_pts,
                 "mfe_points": mfe_pts,
+                "exposure_policy": exposure_policy,
+                "exposure_group_key": exposure_group_key,
+                "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
                 "status": "closed",
+            }
+        )
+        accepted_for_blocking.append(
+            {
+                "trade_id": trade_id,
+                "exit_bar_index": exit_bar_index,
+                "direction": direction,
+                "exposure_group_key": exposure_group_key,
             }
         )
         trade_id += 1
 
-    if not trades:
-        return _empty_trades_df()
-    return pd.DataFrame(trades)
+    trades_df = pd.DataFrame(trades) if trades else _empty_trades_df()
+    if return_skipped_signals:
+        skipped_df = (
+            pd.DataFrame(skipped_signals)
+            if skipped_signals
+            else _empty_skipped_signals_df()
+        )
+        return trades_df, skipped_df
+    return trades_df

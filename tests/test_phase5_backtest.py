@@ -728,3 +728,303 @@ def test_session_close_uses_data_end_when_data_ends_before_close():
         session_timezone=TZ,
     )
     assert trades.iloc[0]["exit_reason"] == "DATA_END"
+
+
+def _exposure_test_df() -> pd.DataFrame:
+    return _df(
+        _bar("2026-01-02 09:30", 100.0, 100.2, 99.8, 100.0),
+        _bar("2026-01-02 09:31", 100.0, 100.2, 99.8, 100.1),
+        _bar("2026-01-02 09:32", 100.1, 100.3, 99.9, 100.2),
+        _bar("2026-01-02 09:33", 100.2, 100.4, 100.0, 100.3),
+        _bar("2026-01-02 09:34", 100.3, 100.5, 100.1, 100.4),
+    )
+
+
+def test_exposure_allow_all_default_regression_matches_explicit_allow_all():
+    df = _exposure_test_df()
+    signals = pd.concat(
+        [
+            _signal(bar_index=0, signal_id=1, direction="long"),
+            _signal(bar_index=0, signal_id=2, direction="long"),
+            _signal(bar_index=1, signal_id=3, direction="short"),
+        ],
+        ignore_index=True,
+    )
+
+    default_trades = simulate_trades(
+        df,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        max_holding_bars=1,
+    )
+    allow_all_trades = simulate_trades(
+        df,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        max_holding_bars=1,
+        exposure_policy="allow_all",
+    )
+    pd.testing.assert_frame_equal(default_trades, allow_all_trades)
+    assert len(default_trades) == 3
+
+
+def test_single_position_blocks_overlap_with_skip_diagnostics():
+    df = _exposure_test_df()
+    signals = pd.concat(
+        [
+            _signal(bar_index=0, signal_id=10, direction="long"),
+            _signal(bar_index=0, signal_id=11, direction="short"),
+        ],
+        ignore_index=True,
+    )
+
+    trades, skipped = simulate_trades(
+        df,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        max_holding_bars=1,
+        exposure_policy="single_position",
+        return_skipped_signals=True,
+    )
+    assert len(trades) == 1
+    assert trades.iloc[0]["signal_id"] == 10
+    assert len(skipped) == 1
+    assert skipped.iloc[0]["signal_id"] == 11
+    assert skipped.iloc[0]["skip_reason"] == "overlapping_position"
+
+
+def test_single_direction_allows_opposite_direction_and_blocks_same_direction():
+    df = _exposure_test_df()
+    signals = pd.concat(
+        [
+            _signal(bar_index=0, signal_id=20, direction="long"),
+            _signal(bar_index=0, signal_id=21, direction="short"),
+            _signal(bar_index=0, signal_id=22, direction="long"),
+        ],
+        ignore_index=True,
+    )
+
+    trades, skipped = simulate_trades(
+        df,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        max_holding_bars=1,
+        exposure_policy="single_direction",
+        return_skipped_signals=True,
+    )
+    assert set(trades["signal_id"].tolist()) == {20, 21}
+    assert len(skipped) == 1
+    assert skipped.iloc[0]["signal_id"] == 22
+    assert skipped.iloc[0]["skip_reason"] == "overlapping_direction"
+
+
+def test_single_setup_blocks_same_setup_only():
+    df = _exposure_test_df()
+    signals = pd.concat(
+        [
+            _signal(bar_index=0, signal_id=30, direction="long", zone_id="zone_a"),
+            _signal(bar_index=0, signal_id=31, direction="long", zone_id="zone_a"),
+            _signal(bar_index=0, signal_id=32, direction="long", zone_id="zone_b"),
+        ],
+        ignore_index=True,
+    )
+
+    trades, skipped = simulate_trades(
+        df,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        max_holding_bars=1,
+        exposure_policy="single_setup",
+        return_skipped_signals=True,
+    )
+    assert set(trades["signal_id"].tolist()) == {30, 32}
+    assert len(skipped) == 1
+    assert skipped.iloc[0]["signal_id"] == 31
+    assert skipped.iloc[0]["skip_reason"] == "overlapping_setup"
+
+
+def test_cooldown_blocks_until_cooldown_expires():
+    df = _exposure_test_df()
+    signals = pd.concat(
+        [
+            _signal(bar_index=0, signal_id=40, direction="long"),
+            _signal(bar_index=1, signal_id=41, direction="long"),
+            _signal(bar_index=2, signal_id=42, direction="long"),
+        ],
+        ignore_index=True,
+    )
+
+    trades, skipped = simulate_trades(
+        df,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        max_holding_bars=1,
+        exposure_policy="single_position",
+        cooldown_bars_after_exit=1,
+        return_skipped_signals=True,
+    )
+    assert trades["signal_id"].tolist() == [40, 42]
+    assert len(skipped) == 1
+    assert skipped.iloc[0]["signal_id"] == 41
+    assert skipped.iloc[0]["skip_reason"] == "cooldown_active"
+
+
+def test_exposure_deterministic_sorting_uses_entry_bar_then_bar_then_signal_id():
+    df = _exposure_test_df()
+    signals = pd.concat(
+        [
+            _signal(bar_index=1, signal_id=9, direction="long"),
+            _signal(bar_index=0, signal_id=4, direction="long"),
+            _signal(bar_index=0, signal_id=3, direction="long"),
+        ],
+        ignore_index=True,
+    )
+
+    trades, skipped = simulate_trades(
+        df,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        max_holding_bars=1,
+        exposure_policy="single_position",
+        return_skipped_signals=True,
+    )
+    assert trades["signal_id"].tolist() == [3, 9]
+    assert skipped["signal_id"].tolist() == [4]
+
+
+def test_invalid_exposure_policy_and_negative_cooldown_raise():
+    df = _exposure_test_df()
+    sigs = _signal(bar_index=0, signal_id=50, direction="long")
+    with pytest.raises(ValueError, match="exposure_policy"):
+        simulate_trades(
+            df,
+            sigs,
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
+            exposure_policy="invalid_policy",
+        )
+    with pytest.raises(ValueError, match="cooldown_bars_after_exit"):
+        simulate_trades(
+            df,
+            sigs,
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
+            cooldown_bars_after_exit=-1,
+        )
+
+
+def test_return_skipped_signals_backward_compatible_return_type():
+    df = _exposure_test_df()
+    signals = pd.concat(
+        [
+            _signal(bar_index=0, signal_id=60, direction="long"),
+            _signal(bar_index=0, signal_id=61, direction="long"),
+        ],
+        ignore_index=True,
+    )
+
+    default_result = simulate_trades(
+        df,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        max_holding_bars=1,
+        exposure_policy="single_position",
+    )
+    detailed_result = simulate_trades(
+        df,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        max_holding_bars=1,
+        exposure_policy="single_position",
+        return_skipped_signals=True,
+    )
+
+    assert isinstance(default_result, pd.DataFrame)
+    assert isinstance(detailed_result, tuple)
+    assert len(detailed_result) == 2
+    assert isinstance(detailed_result[0], pd.DataFrame)
+    assert isinstance(detailed_result[1], pd.DataFrame)
+
+
+def test_allow_all_preserves_input_order_and_trade_ids():
+    """Under allow_all, signal processing order must match the input DataFrame row
+    order, not any sorted order.  Sorting by (entry_bar_index, bar_index,
+    signal_id) would reorder [9, 4, 3] into [3, 4, 9]; this test asserts the
+    original order is preserved and that trade_id is assigned accordingly."""
+    df = _exposure_test_df()
+
+    # Intentionally unsorted: bar_index=1/signal_id=9 first, then bar_index=0
+    signals = pd.concat(
+        [
+            _signal(bar_index=1, signal_id=9, direction="long"),
+            _signal(bar_index=0, signal_id=4, direction="long"),
+            _signal(bar_index=0, signal_id=3, direction="long"),
+        ],
+        ignore_index=True,
+    )
+
+    # Default (allow_all implicit)
+    default_trades = simulate_trades(
+        df,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        max_holding_bars=1,
+    )
+    assert default_trades["signal_id"].tolist() == [9, 4, 3], (
+        "Default allow_all must preserve input row order"
+    )
+    assert default_trades["trade_id"].tolist() == [0, 1, 2], (
+        "trade_ids must be assigned in input order"
+    )
+
+    # Explicit allow_all — must behave identically
+    explicit_trades = simulate_trades(
+        df,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        max_holding_bars=1,
+        exposure_policy="allow_all",
+    )
+    assert explicit_trades["signal_id"].tolist() == [9, 4, 3], (
+        "Explicit allow_all must preserve input row order"
+    )
+    assert explicit_trades["trade_id"].tolist() == [0, 1, 2], (
+        "trade_ids must be assigned in input order"
+    )

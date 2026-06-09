@@ -36,9 +36,12 @@ See `docs/POINT_IN_TIME_GUARANTEES.md` for audit details, coverage notes, and li
 
 ---
 
-## R4 — Exposure and Trade Lifecycle Model
+## R4 — Exposure and Trade Lifecycle Model ✅ Implemented
 
-Not yet implemented. Planned for a future milestone.
+Adds explicit overlap admission controls (`allow_all`, `single_position`,
+`single_direction`, `single_setup`) with deterministic signal admission order,
+optional cooldown, skipped-signal diagnostics, scoped UI controls, validation
+warning, and scoped export assumptions.
 
 ---
 
