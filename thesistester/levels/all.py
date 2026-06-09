@@ -44,7 +44,7 @@ def compute_all_levels(
     - ``session_vwap_enabled`` — developing session VWAP (Stage 3,
       **implemented** for ``session_vwap_anchor="RTH"``)
     - ``single_prints_enabled`` — TPO single print nearest-above/below
-      (Stage 4, raises ``NotImplementedError``)
+      (Stage 4, **implemented**)
     - ``apoc_enabled`` — APOC / pAPOC (Stage 5, raises ``NotImplementedError``)
 
     With all new gates at their defaults the output is **identical** to the
