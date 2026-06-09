@@ -9,7 +9,7 @@ import pytest
 
 from thesistester.engine.confluence import detect_confluence_zones
 from thesistester.engine.naked import flag_naked_levels
-from thesistester.engine.signals import _safe_signal_index, generate_signals
+from thesistester.engine.signals import _safe_signal_float, _safe_signal_index, generate_signals
 
 
 TZ = "America/New_York"
@@ -1009,3 +1009,46 @@ class TestSafeSignalIndex:
 
     def test_string_rejected(self):
         assert _safe_signal_index("abc", self.SIZE) is None
+
+
+class TestSafeSignalFloat:
+    """Regression tests for _safe_signal_float non-finite value rejection."""
+
+    def test_valid_float_accepted(self):
+        assert _safe_signal_float(100.25) == 100.25
+
+    def test_valid_zero_accepted(self):
+        assert _safe_signal_float(0.0) == 0.0
+
+    def test_valid_negative_float_accepted(self):
+        assert _safe_signal_float(-50.5) == -50.5
+
+    def test_inf_rejected(self):
+        assert _safe_signal_float(float("inf")) is None
+
+    def test_neg_inf_rejected(self):
+        assert _safe_signal_float(float("-inf")) is None
+
+    def test_numpy_inf_rejected(self):
+        assert _safe_signal_float(np.inf) is None
+
+    def test_numpy_neg_inf_rejected(self):
+        assert _safe_signal_float(-np.inf) is None
+
+    def test_nan_rejected(self):
+        assert _safe_signal_float(float("nan")) is None
+
+    def test_numpy_nan_rejected(self):
+        assert _safe_signal_float(np.nan) is None
+
+    def test_none_rejected(self):
+        assert _safe_signal_float(None) is None
+
+    def test_non_convertible_string_rejected(self):
+        assert _safe_signal_float("abc") is None
+
+    def test_valid_int_accepted(self):
+        assert _safe_signal_float(100) == 100.0
+
+    def test_valid_string_float_accepted(self):
+        assert _safe_signal_float("3.14") == pytest.approx(3.14)

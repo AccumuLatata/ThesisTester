@@ -104,7 +104,9 @@ def _safe_signal_float(value: object) -> float | None:
         result = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
-    return None if pd.isna(result) else result
+    if pd.isna(result) or not math.isfinite(result):
+        return None
+    return result
 
 
 def _safe_signal_index(value: object, size: int) -> int | None:
