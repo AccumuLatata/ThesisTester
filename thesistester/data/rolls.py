@@ -52,7 +52,6 @@ def _sorted_for_roll_analysis(df: pd.DataFrame) -> pd.DataFrame:
     if "timestamp" not in df.columns:
         return df.copy(deep=True).reset_index(drop=True)
     out = df.copy(deep=True)
-    out["_row_index"] = range(len(out))
     out = out.sort_values("timestamp", kind="mergesort").reset_index(drop=True)
     return out
 
@@ -192,7 +191,7 @@ def validate_roll_metadata(
             warnings.append("External continuous roll_rule is unknown.")
         if adjustment_method not in ADJUSTMENT_METHODS:
             warnings.append(f"Unrecognized adjustment_method '{adjustment_method}'.")
-        if roll_rule not in ROLL_RULES and roll_rule.strip() == "":
+        if roll_rule.strip() == "":
             warnings.append("Roll rule is empty.")
         if contract_count is not None and contract_count > 1:
             warnings.append(
@@ -210,7 +209,7 @@ def validate_roll_metadata(
             if "timestamp" not in df.columns:
                 warnings.append("Segmented contracts validation requires a timestamp column.")
                 valid = False
-            elif not bool(df["timestamp"].is_monotonic_increasing):
+            elif not df["timestamp"].is_monotonic_increasing:
                 warnings.append("Input timestamps were not monotonic; roll analysis used sorted timestamps.")
         warnings.append(
             "R7 does not adjust OHLC prices across roll gaps; metrics may include roll discontinuities."
