@@ -34,8 +34,10 @@ Approved definition:
 
 - Use confirmed fractal pivots.
 - A pivot at candle `k` becomes available only after `R` right-side candles have closed.
+- Availability timing is `pivot_candle_close_time + R * timeframe_duration`.
 - Default configuration: `left=2`, `right=2`, matching the 5-candle pivot concept.
 - Pivot levels must not repaint.
+- Supported labels remain exactly: `1min`, `5min`, `30min`, `4h`.
 
 Initial output columns:
 
@@ -53,6 +55,8 @@ Pivot_4h_Low
 Semantics:
 
 - Each column represents the latest confirmed pivot level for that timeframe and side.
+- When pivots are disabled (`pivots_enabled=False`), pivot computation remains a true no-op:
+  empty DataFrame, no timestamp validation, no added columns.
 - Do not store all historical pivots in dynamic columns in the first implementation.
 - SFP, liquidity grab, breaker, or retest interpretation should not be embedded in the level engine initially. The level engine should produce clean levels only.
 
@@ -242,6 +246,10 @@ Rules:
 
 ### Stage 2 — Pivots
 
+**Status:** Implemented in PR #69; complete once merged.
+
+Implemented in `thesistester/levels/pivots.py`.
+
 Implement:
 
 - native 1m pivots,
@@ -249,6 +257,15 @@ Implement:
 - confirmation delay,
 - higher-timeframe availability only after candle close plus right-window confirmation,
 - no forward-fill before confirmation.
+
+Implemented contract:
+
+- `pivot_timeframes=None` computes all supported pivot timeframes.
+- Enabled output is limited to scalar latest-confirmed columns:
+  `Pivot_1m_High/Low`, `Pivot_5m_High/Low`, `Pivot_30m_High/Low`, `Pivot_4h_High/Low`.
+- `pivot_left` and `pivot_right` must be positive integers.
+- Requesting a pivot timeframe smaller than the loaded base interval raises `ValueError`.
+- Before the first confirmed pivot exists, pivot columns remain `NaN`.
 
 Required tests:
 

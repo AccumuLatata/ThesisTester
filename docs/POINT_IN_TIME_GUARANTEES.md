@@ -21,6 +21,7 @@ tested here.
 | `thesistester/levels/sessions.py` | Session/structural levels (pdHigh, ONH, OR, …) |
 | `thesistester/levels/profile.py` | Rolling POC and prior day/week/month profile levels |
 | `thesistester/levels/indicators.py` | SMA, EMA, rolling VWAP |
+| `thesistester/levels/pivots.py` | Confirmed 1min / 5min / 30min / 4h pivot levels |
 | `thesistester/engine/naked.py` | Naked/untested level flags |
 | `thesistester/engine/confluence.py` | Global confluence zone detection |
 | `thesistester/engine/anchor_confluence.py` | Anchor-based confluence detection |
@@ -66,6 +67,13 @@ future-shock tests and/or code inspection.
 | `EMA_N` (base timeframe) | `ewm(span=N).mean()` on close | **Yes** | Bar `N-1` onwards | Same bar-close note as SMA | Same |
 | `SMA_N_TF` / `EMA_N_TF` (higher TF) | `_append_timeframe_levels` with `align_timestamp = bar_open + TF_delta` | **Yes** | After the higher-TF candle *completes* (not at its open) | Level is exposed at `merge_asof(direction="backward")` only once `align_timestamp ≤ base_timestamp` | `test_phase3_levels.py::test_higher_timeframe_indicator_alignment_has_no_lookahead` |
 | `VWAP_rolling_*` | `rolling(window).sum(pv) / rolling(window).sum(vol)` | **Yes** | Each bar uses only the time-indexed rolling window up to and including the current bar | Bar-level typical-price approximation; true intrabar VWAP would require tick data | `test_r3_point_in_time.py::test_rolling_indicators_future_shock` |
+
+### Confirmed pivots — `levels/pivots.py`
+
+| Level family | Source | Causal? | Availability timing | Known limitations | Tests |
+|---|---|---|---|---|---|
+| `Pivot_1m_High / Pivot_1m_Low` | strict fractal comparison on native bars | **Yes** | A pivot at bar `k` is exposed only from `pivot_bar_open + (pivot_right + 1) * 1min` onward | Requires enough left/right candles; before the first confirmed pivot the column is `NaN` | `tests/test_stage2_pivot_levels.py::test_native_1min_pivot_high_tracks_latest_confirmed_level`, `tests/test_stage2_pivot_levels.py::test_native_1min_pivot_low_respects_confirmation_delay` |
+| `Pivot_5m_*`, `Pivot_30m_*`, `Pivot_4h_*` | strict fractal comparison on resampled candles, merged back with `merge_asof(direction="backward")` | **Yes** | Exposed only after the higher-timeframe pivot candle closes and the full right-side confirmation window also closes (`pivot_bar_open + (pivot_right + 1) * timeframe`) | Requires base data at or below the requested pivot timeframe; no upsampling from larger source bars | `tests/test_stage2_pivot_levels.py::test_5min_pivot_from_1min_source_is_hidden_until_confirmation`, `tests/test_stage2_pivot_levels.py::test_30min_pivot_from_1min_source_is_hidden_until_confirmation`, `tests/test_stage2_pivot_levels.py::test_pivot_levels_are_point_in_time_safe_under_future_shock` |
 
 ### Naked levels — `engine/naked.py`
 
@@ -178,3 +186,8 @@ bar on date D; do not use the final row value.
    (close is not known until bar end). The current design treats signals as bar-close
    confirmed, so this is documented intent, not a bug. See assumption 5 in
    `ASSUMPTIONS_AND_LIMITATIONS.md`.
+
+6. **Confirmed pivots are latest-confirmed scalar levels only.** The pivot engine does
+   not emit historical pivot-instance columns. It keeps only the most recent confirmed
+   high and low per supported timeframe, and it does not yet classify sweeps, SFPs,
+   breakers, reclaims, or retests.

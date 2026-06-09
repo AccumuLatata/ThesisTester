@@ -298,13 +298,8 @@ def test_explicit_disabled_gates_no_new_columns():
 
 
 # -------------------------------------------------------------------
-# 6. Enabled=True raises NotImplementedError (stubs are not yet implemented)
+# 6. Other enabled Stage 1 stubs still raise NotImplementedError
 # -------------------------------------------------------------------
-
-def test_compute_pivot_levels_enabled_raises_not_implemented():
-    df = _base_df()
-    with pytest.raises(NotImplementedError):
-        compute_pivot_levels(df, enabled=True)
 
 
 def test_compute_session_vwap_levels_enabled_raises_not_implemented():
