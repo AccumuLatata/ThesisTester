@@ -15,8 +15,8 @@ from thesistester.reporting import (
     build_research_artifact,
     build_session_exit_policy_assumptions,
     dataframe_to_csv_bytes,
-    exposure_policy_assumptions_markdown,
     execution_cost_assumptions_markdown,
+    exposure_policy_assumptions_markdown,
     session_exit_policy_assumptions_markdown,
 )
 from thesistester.timezone_display import (

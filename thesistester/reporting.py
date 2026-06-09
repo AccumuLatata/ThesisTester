@@ -503,7 +503,7 @@ def exposure_policy_assumptions_markdown(assumptions: Mapping[str, Mapping[str, 
     )
     if backtest.get("available"):
         section += (
-            f"- Exposure policy: {backtest.get('exposure_policy', '—') or '—'}\n"
+            f"- Exposure policy: {backtest.get('exposure_policy') or '—'}\n"
             f"- Cooldown bars after exit: {backtest.get('cooldown_bars_after_exit', '—')}\n"
             f"- Skipped signal count: {backtest.get('skipped_signal_count', 0)}\n"
         )
@@ -514,7 +514,7 @@ def exposure_policy_assumptions_markdown(assumptions: Mapping[str, Mapping[str, 
     )
     if grid.get("available"):
         section += (
-            f"- Exposure policy: {grid.get('exposure_policy', '—') or '—'}\n"
+            f"- Exposure policy: {grid.get('exposure_policy') or '—'}\n"
             f"- Cooldown bars after exit: {grid.get('cooldown_bars_after_exit', '—')}\n"
         )
 

@@ -143,51 +143,6 @@ def _timestamps_in_session_timezone(
                 ) from exc
         return ts
 
-
-def _stringify_setup_value(value: object) -> str:
-        if isinstance(value, (list, tuple, set)):
-            return "|".join(str(v) for v in value)
-        text = str(value).strip()
-        return text
-
-
-def _is_nonempty(value: object) -> bool:
-        if value is None:
-            return False
-        if isinstance(value, str):
-            return bool(value.strip())
-        try:
-            if pd.isna(value):
-                return False
-        except (TypeError, ValueError):
-            pass
-        return True
-
-
-def _exposure_group_key(
-        sig: pd.Series,
-        *,
-        exposure_policy: str,
-        trigger: str,
-        direction: str,
-) -> str:
-        if exposure_policy == "single_position":
-            return "position"
-        if exposure_policy == "single_direction":
-            return direction
-        if exposure_policy == "single_setup":
-            setup_candidates = [
-                ("setup_name", sig.get("setup_name")),
-                ("zone_id", sig.get("zone_id")),
-                ("level_source_label", sig.get("level_source_label")),
-                ("level_names", sig.get("level_names")),
-            ]
-            for label, raw_value in setup_candidates:
-                if _is_nonempty(raw_value):
-                    return f"{label}:{_stringify_setup_value(raw_value)}"
-            return f"trigger_direction:{trigger}|{direction}"
-        return "allow_all"
-
     if session_timezone:
         try:
             return ts.dt.tz_convert(session_timezone)
@@ -196,6 +151,50 @@ def _exposure_group_key(
                 f"Invalid session_timezone {session_timezone!r}"
             ) from exc
     return ts
+
+
+def _stringify_setup_value(value: object) -> str:
+    if isinstance(value, (list, tuple, set)):
+        return "|".join(str(v) for v in value)
+    return str(value).strip()
+
+
+def _is_nonempty(value: object) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    try:
+        if pd.isna(value):
+            return False
+    except (TypeError, ValueError):
+        pass
+    return True
+
+
+def _exposure_group_key(
+    sig: pd.Series,
+    *,
+    exposure_policy: str,
+    trigger: str,
+    direction: str,
+) -> str:
+    if exposure_policy == "single_position":
+        return "position"
+    if exposure_policy == "single_direction":
+        return direction
+    if exposure_policy == "single_setup":
+        setup_candidates = [
+            ("setup_name", sig.get("setup_name")),
+            ("zone_id", sig.get("zone_id")),
+            ("level_source_label", sig.get("level_source_label")),
+            ("level_names", sig.get("level_names")),
+        ]
+        for label, raw_value in setup_candidates:
+            if _is_nonempty(raw_value):
+                return f"{label}:{_stringify_setup_value(raw_value)}"
+        return f"trigger_direction:{trigger}|{direction}"
+    return "allow_all"
 
 
 # ---------------------------------------------------------------------------
