@@ -17,6 +17,8 @@ Design notes
 """
 from __future__ import annotations
 
+from datetime import time
+
 import pandas as pd
 
 
@@ -72,6 +74,50 @@ def _empty_trades_df() -> pd.DataFrame:
     return pd.DataFrame(columns=_TRADE_COLUMNS)
 
 
+def _parse_time_input(value: str | None, *, field_name: str) -> time | None:
+    """Parse HH:MM or HH:MM:SS time input."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        parsed = time.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(
+            f"{field_name} must be HH:MM or HH:MM:SS, got {value!r}"
+        ) from exc
+    return parsed.replace(tzinfo=None)
+
+
+def _timestamps_in_session_timezone(
+    timestamps: pd.Series, session_timezone: str | None
+) -> pd.Series:
+    """Return timestamps converted/localized to session timezone when provided."""
+    ts = pd.to_datetime(timestamps, errors="coerce")
+    if ts.isna().any():
+        raise ValueError("df['timestamp'] contains invalid timestamps.")
+
+    if ts.dt.tz is None:
+        if session_timezone:
+            try:
+                return ts.dt.tz_localize(session_timezone)
+            except Exception as exc:  # pragma: no cover - defensive
+                raise ValueError(
+                    f"Invalid session_timezone {session_timezone!r}"
+                ) from exc
+        return ts
+
+    if session_timezone:
+        try:
+            return ts.dt.tz_convert(session_timezone)
+        except Exception as exc:  # pragma: no cover - defensive
+            raise ValueError(
+                f"Invalid session_timezone {session_timezone!r}"
+            ) from exc
+    return ts
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -88,6 +134,10 @@ def simulate_trades(
     allow_same_bar_exit: bool = True,
     commission_per_side: float = 0.0,
     slippage_ticks: float = 0.0,
+    flat_by_session_close: bool = False,
+    session_close_time: str | None = None,
+    session_timezone: str | None = None,
+    no_new_entries_after: str | None = None,
 ) -> pd.DataFrame:
     """Simulate bar-by-bar trades from Phase 4 candidate signals.
 
@@ -142,12 +192,25 @@ def simulate_trades(
         raise ValueError(
             f"slippage_ticks must be >= 0, got {slippage_ticks!r}"
         )
+    parsed_session_close = _parse_time_input(
+        session_close_time, field_name="session_close_time"
+    )
+    if flat_by_session_close and parsed_session_close is None:
+        raise ValueError(
+            "flat_by_session_close=True requires a valid session_close_time."
+        )
+    parsed_no_new_entries_after = _parse_time_input(
+        no_new_entries_after, field_name="no_new_entries_after"
+    )
 
     if signals is None or signals.empty:
         return _empty_trades_df()
 
     df_reset = df.reset_index(drop=True)
     n_bars = len(df_reset)
+    local_timestamps = _timestamps_in_session_timezone(
+        df_reset["timestamp"], session_timezone=session_timezone
+    )
 
     sl_pts = float(stop_loss_ticks) * float(tick_size)
     tp_pts = float(take_profit_ticks) * float(tick_size)
@@ -195,6 +258,12 @@ def simulate_trades(
             entry_price = theoretical_entry_price - slip_pts
 
         entry_ts = df_reset["timestamp"].iloc[entry_bar_index]
+        entry_local_ts = local_timestamps.iloc[entry_bar_index]
+        if (
+            parsed_no_new_entries_after is not None
+            and entry_local_ts.time() > parsed_no_new_entries_after
+        ):
+            continue
 
         # ------------------------------------------------------------------
         # Fixed SL / TP prices
@@ -221,8 +290,32 @@ def simulate_trades(
         start_bar = entry_bar_index if allow_same_bar_exit else entry_bar_index + 1
 
         max_bar = n_bars - 1
+        time_cap_bar: int | None = None
         if max_holding_bars is not None:
-            max_bar = min(max_bar, entry_bar_index + max_holding_bars - 1)
+            time_cap_bar = entry_bar_index + max_holding_bars - 1
+            max_bar = min(max_bar, time_cap_bar)
+
+        session_cap_bar: int | None = None
+        data_end_before_session_close = False
+        if flat_by_session_close:
+            session_close_ts = entry_local_ts.normalize() + pd.Timedelta(
+                hours=parsed_session_close.hour,
+                minutes=parsed_session_close.minute,
+                seconds=parsed_session_close.second,
+            )
+            bars_until_close = local_timestamps[
+                (local_timestamps.index >= entry_bar_index)
+                & (local_timestamps <= session_close_ts)
+            ]
+            if bars_until_close.empty:
+                continue
+            session_cap_bar = int(bars_until_close.index[-1])
+            max_bar = min(max_bar, session_cap_bar)
+            last_available_ts = local_timestamps.iloc[n_bars - 1]
+            data_end_before_session_close = (
+                session_cap_bar == n_bars - 1
+                and last_available_ts < session_close_ts
+            )
 
         for b in range(start_bar, max_bar + 1):
             bar = df_reset.iloc[b]
@@ -267,10 +360,25 @@ def simulate_trades(
 
         if exit_bar_index is None:
             # No SL/TP hit — TIME or EOD
-            if max_holding_bars is not None and (max_bar - entry_bar_index + 1) >= max_holding_bars:
+            if (
+                max_holding_bars is not None
+                and time_cap_bar is not None
+                and max_bar == time_cap_bar
+            ):
                 exit_bar_index = max_bar
                 theoretical_exit_price = float(df_reset["close"].iloc[max_bar])
                 exit_reason = "TIME"
+            elif flat_by_session_close:
+                exit_bar_index = max_bar
+                theoretical_exit_price = float(df_reset["close"].iloc[max_bar])
+                if (
+                    data_end_before_session_close
+                    and session_cap_bar is not None
+                    and max_bar == session_cap_bar
+                ):
+                    exit_reason = "DATA_END"
+                else:
+                    exit_reason = "SESSION_CLOSE"
             else:
                 exit_bar_index = n_bars - 1
                 theoretical_exit_price = float(df_reset["close"].iloc[n_bars - 1])

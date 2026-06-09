@@ -16,10 +16,14 @@ This engine is for **research screening**, not proof of a durable edge.
 - If both stop and target are reachable in one bar, the engine exits at stop (`thesistester/engine/backtest.py:221-226`).
 - This behavior is explicitly documented in module notes (`thesistester/engine/backtest.py:12-14`).
 
-### 3) TIME and EOD exits are bar-index based
+### 3) TIME, SESSION_CLOSE, DATA_END, and EOD exits are bar-index based
 - `max_holding_bars` is implemented as a bar-count cap (`entry_bar_index + max_holding_bars - 1`) (`thesistester/engine/backtest.py:194-196`).
 - TIME exit uses that capped bar’s close (`thesistester/engine/backtest.py:240-243`).
-- If no SL/TP/TIME exit triggers, `EOD` is the **final bar in the loaded dataset** (`thesistester/engine/backtest.py:245-247`), not a session close event.
+- Default mode keeps legacy behavior: if no SL/TP/TIME exit triggers, `EOD` is the **final bar in the loaded dataset**, not a session close event.
+- Optional session-aware mode (`flat_by_session_close=True`) caps exits to the configured session close for each trade entry date:
+  - `SESSION_CLOSE` means forced flat at the last available bar at or before the configured close time (when SL/TP is not hit first).
+  - `DATA_END` means data ended before session close and the trade was force-closed at the last available bar.
+- If session-aware mode is not enabled, users can still unintentionally model overnight holds across sessions.
 
 ### 4) Signals are simulated independently (no overlap/exposure control)
 - The simulator loops each signal row independently (`for _, sig in signals.iterrows()`) and appends one trade result per signal (`thesistester/engine/backtest.py:137-140`, `264-301`).

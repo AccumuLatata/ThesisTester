@@ -12,9 +12,11 @@ from thesistester.reporting import (
     build_markdown_report,
     build_execution_cost_assumptions,
     build_research_artifact,
+    build_session_exit_policy_assumptions,
     dataframe_to_csv_bytes,
     dataframe_to_json_records,
     execution_cost_assumptions_markdown,
+    session_exit_policy_assumptions_markdown,
     to_jsonable,
 )
 from thesistester.timezone_display import convert_dataframe_timestamps_for_display
@@ -463,3 +465,73 @@ def test_execution_cost_assumptions_markdown_has_scoped_headings_and_values():
     assert "### Grid Search" in markdown
     assert "1.2500" in markdown
     assert "0.5000" in markdown
+
+
+def test_session_exit_policy_assumptions_backtest_scope_exported():
+    state = _sample_session_state()
+    state["backtest_session_exit_policy"] = {
+        "flat_by_session_close": True,
+        "session_close_time": "16:00",
+        "session_timezone": "America/New_York",
+        "no_new_entries_after": "15:45",
+    }
+    assumptions = build_session_exit_policy_assumptions(state)
+    assert assumptions["backtest"]["available"] is True
+    assert assumptions["backtest"]["flat_by_session_close"] is True
+    assert assumptions["backtest"]["session_close_time"] == "16:00"
+    assert assumptions["backtest"]["session_timezone"] == "America/New_York"
+    assert assumptions["backtest"]["no_new_entries_after"] == "15:45"
+
+
+def test_session_exit_policy_assumptions_grid_scope_exported_separately():
+    state = _sample_session_state()
+    state["grid_session_exit_policy"] = {
+        "flat_by_session_close": True,
+        "session_close_time": "16:00",
+        "session_timezone": "America/New_York",
+        "no_new_entries_after": None,
+    }
+    assumptions = build_session_exit_policy_assumptions(state)
+    assert assumptions["grid"]["available"] is True
+    assert assumptions["grid"]["flat_by_session_close"] is True
+    assert assumptions["grid"]["session_close_time"] == "16:00"
+    assert assumptions["grid"]["session_timezone"] == "America/New_York"
+    assert assumptions["grid"]["no_new_entries_after"] is None
+
+
+def test_session_exit_policy_assumptions_ignores_stale_scope_without_results():
+    state = _sample_session_state()
+    state["trades"] = pd.DataFrame()
+    state["trade_summary"] = {}
+    state["backtest_session_exit_policy"] = {
+        "flat_by_session_close": True,
+        "session_close_time": "16:00",
+        "session_timezone": "America/New_York",
+        "no_new_entries_after": "15:45",
+    }
+    assumptions = build_session_exit_policy_assumptions(state)
+    assert assumptions["backtest"]["available"] is False
+    assert assumptions["backtest"]["session_close_time"] is None
+
+
+def test_session_exit_policy_assumptions_markdown_has_scoped_headings():
+    assumptions = {
+        "backtest": {
+            "available": True,
+            "flat_by_session_close": True,
+            "session_close_time": "16:00",
+            "session_timezone": "America/New_York",
+            "no_new_entries_after": "15:45",
+        },
+        "grid": {
+            "available": True,
+            "flat_by_session_close": False,
+            "session_close_time": "16:00",
+            "session_timezone": "America/New_York",
+            "no_new_entries_after": None,
+        },
+    }
+    markdown = session_exit_policy_assumptions_markdown(assumptions)
+    assert "## Session Exit Policy Assumptions" in markdown
+    assert "### Backtest" in markdown
+    assert "### Grid Search" in markdown

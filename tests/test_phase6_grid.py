@@ -469,3 +469,35 @@ def test_grid_cost_parameters_reduce_net_r():
         slippage_ticks=1.0,
     )
     assert net_grid.iloc[0]["total_r"] < gross_grid.iloc[0]["total_r"]
+
+
+def test_grid_session_policy_pass_through_changes_total_r():
+    ohlcv = _df(
+        _bar("2026-01-02 15:58", 100.0, 100.3, 99.9, 100.1),
+        _bar("2026-01-02 15:59", 100.1, 100.3, 100.0, 100.2),  # entry
+        _bar("2026-01-02 16:00", 100.2, 100.3, 100.0, 100.2),  # session close
+        _bar("2026-01-02 16:01", 100.2, 102.5, 100.2, 102.0),  # later TP if not flattened
+    )
+    signals = _signal(bar_index=0, trigger="touch", direction="long")
+
+    default_grid = run_sl_tp_grid(
+        ohlcv,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+    )
+    session_grid = run_sl_tp_grid(
+        ohlcv,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        flat_by_session_close=True,
+        session_close_time="16:00",
+        session_timezone=TZ,
+    )
+
+    assert default_grid.iloc[0]["total_r"] != session_grid.iloc[0]["total_r"]

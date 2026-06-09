@@ -105,6 +105,10 @@ def run_sl_tp_grid(
     allow_same_bar_exit: bool = True,
     commission_per_side: float = 0.0,
     slippage_ticks: float = 0.0,
+    flat_by_session_close: bool = False,
+    session_close_time: str | None = None,
+    session_timezone: str | None = None,
+    no_new_entries_after: str | None = None,
 ) -> pd.DataFrame:
     """Run a stop-loss × take-profit grid search.
 
@@ -135,6 +139,14 @@ def run_sl_tp_grid(
     commission_per_side:
         Passed through to ``simulate_trades``.
     slippage_ticks:
+        Passed through to ``simulate_trades``.
+    flat_by_session_close:
+        Passed through to ``simulate_trades``.
+    session_close_time:
+        Passed through to ``simulate_trades``.
+    session_timezone:
+        Passed through to ``simulate_trades``.
+    no_new_entries_after:
         Passed through to ``simulate_trades``.
 
     Returns
@@ -186,6 +198,10 @@ def run_sl_tp_grid(
                 allow_same_bar_exit=allow_same_bar_exit,
                 commission_per_side=commission_per_side,
                 slippage_ticks=slippage_ticks,
+                flat_by_session_close=flat_by_session_close,
+                session_close_time=session_close_time,
+                session_timezone=session_timezone,
+                no_new_entries_after=no_new_entries_after,
             )
             summary = summarize_trades(trades)
             directional = _directional_grid_metrics(trades)
