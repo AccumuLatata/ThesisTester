@@ -109,6 +109,8 @@ def run_sl_tp_grid(
     session_close_time: str | None = None,
     session_timezone: str | None = None,
     no_new_entries_after: str | None = None,
+    exposure_policy: str = "allow_all",
+    cooldown_bars_after_exit: int = 0,
 ) -> pd.DataFrame:
     """Run a stop-loss × take-profit grid search.
 
@@ -147,6 +149,10 @@ def run_sl_tp_grid(
     session_timezone:
         Passed through to ``simulate_trades``.
     no_new_entries_after:
+        Passed through to ``simulate_trades``.
+    exposure_policy:
+        Passed through to ``simulate_trades``.
+    cooldown_bars_after_exit:
         Passed through to ``simulate_trades``.
 
     Returns
@@ -202,6 +208,8 @@ def run_sl_tp_grid(
                 session_close_time=session_close_time,
                 session_timezone=session_timezone,
                 no_new_entries_after=no_new_entries_after,
+                exposure_policy=exposure_policy,
+                cooldown_bars_after_exit=cooldown_bars_after_exit,
             )
             summary = summarize_trades(trades)
             directional = _directional_grid_metrics(trades)
@@ -212,6 +220,8 @@ def run_sl_tp_grid(
                 "tp_sl_ratio": tp / sl,
                 "risk_points": sl * tick_size,
                 "target_points": tp * tick_size,
+                "exposure_policy": exposure_policy,
+                "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
                 **directional,
             }
             rows.append(row)

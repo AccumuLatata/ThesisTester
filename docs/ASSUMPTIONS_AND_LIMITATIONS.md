@@ -26,9 +26,16 @@ This engine is for **research screening**, not proof of a durable edge.
 - Current session-aware flattening is intended for same-calendar-day RTH-style sessions; overnight ETH session templates are not yet modeled.
 - If session-aware mode is not enabled, users can still unintentionally model overnight holds across sessions.
 
-### 4) Signals are simulated independently (no overlap/exposure control)
-- The simulator loops each signal row independently (`for _, sig in signals.iterrows()`) and appends one trade result per signal (`thesistester/engine/backtest.py:137-140`, `264-301`).
-- There is no portfolio state, position netting, capital constraint, or overlap gate in this loop.
+### 4) Exposure policy is explicit and configurable
+- `simulate_trades(...)` supports `exposure_policy` with:
+  - `allow_all` (default, legacy behavior),
+  - `single_position`,
+  - `single_direction`,
+  - `single_setup`.
+- Default remains `allow_all` for backward compatibility and broad signal screening.
+- `allow_all` can inflate trade counts because overlapping signals are treated independently.
+- Restrictive policies apply deterministic admission ordering and optional cooldown (`cooldown_bars_after_exit`) to model more conservative trade lifecycle assumptions.
+- Optional skipped-signal diagnostics contain exposure-policy rejections only; signals skipped for pre-existing non-executable reasons (e.g., void `3c`, missing future entry bar) are not included in skipped diagnostics.
 
 ### 5) Simple-trigger and `3c` timestamp semantics are canonical/base aligned
 - For all triggers, emitted `timestamp` is always the canonical/base dataframe timestamp at `bar_index`.

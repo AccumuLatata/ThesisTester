@@ -23,6 +23,16 @@ if trades_raw is None or trades_raw.empty:
     st.warning("No trades found. Please run a backtest first.")
     st.stop()
 
+backtest_exposure_policy = (
+    (st.session_state.get("exposure_policy") or {}).get("exposure_policy")
+)
+if backtest_exposure_policy == "allow_all":
+    st.warning(
+        "Exposure policy is `allow_all`: overlapping trades may inflate trade count "
+        "and understate uncertainty. For validation-grade results, consider "
+        "`single_position` or another restrictive policy."
+    )
+
 # ── Optional grid results ─────────────────────────────────────────────────────
 grid_raw = st.session_state.get("grid_results")
 

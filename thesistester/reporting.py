@@ -424,6 +424,103 @@ def session_exit_policy_assumptions_markdown(assumptions: Mapping[str, Mapping[s
     return section
 
 
+def build_exposure_policy_assumptions(session_state: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Return scoped exposure-policy assumptions for current backtest/grid export data."""
+    backtest_results_available = _has_nonempty_value(session_state.get("trades")) or _has_nonempty_value(
+        session_state.get("trade_summary")
+    )
+    grid_results_available = _has_nonempty_value(session_state.get("grid_results")) or _has_nonempty_value(
+        session_state.get("best_grid_result")
+    )
+
+    backtest_policy = session_state.get("exposure_policy")
+    grid_policy = session_state.get("grid_exposure_policy")
+    skipped_signals = session_state.get("skipped_signals")
+
+    backtest_available = (
+        backtest_results_available
+        and isinstance(backtest_policy, Mapping)
+        and len(backtest_policy) > 0
+    )
+    grid_available = (
+        grid_results_available
+        and isinstance(grid_policy, Mapping)
+        and len(grid_policy) > 0
+    )
+
+    skipped_signal_count = (
+        int(len(skipped_signals))
+        if isinstance(skipped_signals, pd.DataFrame)
+        else 0
+    )
+
+    assumptions: dict[str, dict[str, Any]] = {
+        "backtest": {
+            "available": backtest_available,
+            "exposure_policy": None,
+            "cooldown_bars_after_exit": None,
+            "skipped_signal_count": 0,
+        },
+        "grid": {
+            "available": grid_available,
+            "exposure_policy": None,
+            "cooldown_bars_after_exit": None,
+        },
+    }
+
+    if backtest_available:
+        assumptions["backtest"].update(
+            {
+                "exposure_policy": to_jsonable(backtest_policy.get("exposure_policy")),
+                "cooldown_bars_after_exit": int(
+                    backtest_policy.get("cooldown_bars_after_exit", 0)
+                ),
+                "skipped_signal_count": skipped_signal_count,
+            }
+        )
+    if grid_available:
+        assumptions["grid"].update(
+            {
+                "exposure_policy": to_jsonable(grid_policy.get("exposure_policy")),
+                "cooldown_bars_after_exit": int(
+                    grid_policy.get("cooldown_bars_after_exit", 0)
+                ),
+            }
+        )
+
+    return assumptions
+
+
+def exposure_policy_assumptions_markdown(assumptions: Mapping[str, Mapping[str, Any]]) -> str:
+    """Render scoped exposure-policy assumptions as markdown report section text."""
+    backtest = assumptions.get("backtest", {})
+    grid = assumptions.get("grid", {})
+
+    section = (
+        "\n## Exposure Policy Assumptions\n"
+        "\n### Backtest\n"
+        f"- Available: {'yes' if backtest.get('available') else 'no'}\n"
+    )
+    if backtest.get("available"):
+        section += (
+            f"- Exposure policy: {backtest.get('exposure_policy', '—') or '—'}\n"
+            f"- Cooldown bars after exit: {backtest.get('cooldown_bars_after_exit', '—')}\n"
+            f"- Skipped signal count: {backtest.get('skipped_signal_count', 0)}\n"
+        )
+
+    section += (
+        "\n### Grid Search\n"
+        f"- Available: {'yes' if grid.get('available') else 'no'}\n"
+    )
+    if grid.get("available"):
+        section += (
+            f"- Exposure policy: {grid.get('exposure_policy', '—') or '—'}\n"
+            f"- Cooldown bars after exit: {grid.get('cooldown_bars_after_exit', '—')}\n"
+        )
+
+    return section
+
+
 def build_markdown_report(artifact: dict[str, Any]) -> str:
     """Build a concise markdown report from a research artifact."""
     metadata = artifact.get("metadata", {}) if isinstance(artifact, Mapping) else {}

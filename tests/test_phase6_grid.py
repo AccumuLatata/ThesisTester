@@ -103,6 +103,8 @@ def test_grid_row_count():
 _REQUIRED_COLS = [
     "stop_loss_ticks",
     "take_profit_ticks",
+    "exposure_policy",
+    "cooldown_bars_after_exit",
     "trade_count",
     "win_rate",
     "loss_rate",
@@ -501,3 +503,44 @@ def test_grid_session_policy_pass_through_changes_total_r():
     )
 
     assert default_grid.iloc[0]["total_r"] != session_grid.iloc[0]["total_r"]
+
+
+def test_grid_exposure_policy_pass_through_reduces_trade_count_and_sets_metadata():
+    ohlcv = _df(
+        _bar("2026-01-02 09:30", 100.0, 100.2, 99.8, 100.0),
+        _bar("2026-01-02 09:31", 100.0, 100.2, 99.8, 100.1),
+        _bar("2026-01-02 09:32", 100.1, 100.3, 99.9, 100.2),
+    )
+    signals = pd.concat(
+        [
+            _signal(bar_index=0, trigger="touch", direction="long", signal_id=1),
+            _signal(bar_index=0, trigger="touch", direction="long", signal_id=2),
+        ],
+        ignore_index=True,
+    )
+
+    allow_all_grid = run_sl_tp_grid(
+        ohlcv,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks_values=[100],
+        take_profit_ticks_values=[100],
+        max_holding_bars=1,
+        exposure_policy="allow_all",
+    )
+    single_position_grid = run_sl_tp_grid(
+        ohlcv,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks_values=[100],
+        take_profit_ticks_values=[100],
+        max_holding_bars=1,
+        exposure_policy="single_position",
+        cooldown_bars_after_exit=1,
+    )
+
+    assert single_position_grid.iloc[0]["trade_count"] <= allow_all_grid.iloc[0]["trade_count"]
+    assert single_position_grid.iloc[0]["exposure_policy"] == "single_position"
+    assert single_position_grid.iloc[0]["cooldown_bars_after_exit"] == 1

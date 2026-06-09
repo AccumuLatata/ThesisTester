@@ -10,12 +10,14 @@ import streamlit as st
 from thesistester.config import TIMEZONE_OPTIONS
 from thesistester.reporting import (
     build_execution_cost_assumptions,
+    build_exposure_policy_assumptions,
     build_markdown_report,
     build_research_artifact,
     build_session_exit_policy_assumptions,
     dataframe_to_csv_bytes,
-    session_exit_policy_assumptions_markdown,
+    exposure_policy_assumptions_markdown,
     execution_cost_assumptions_markdown,
+    session_exit_policy_assumptions_markdown,
 )
 from thesistester.timezone_display import (
     convert_dataframe_timestamps_for_display,
@@ -75,12 +77,17 @@ if execution_cost_assumptions["backtest"]["available"] or execution_cost_assumpt
 session_exit_policy = build_session_exit_policy_assumptions(st.session_state)
 if session_exit_policy["backtest"]["available"] or session_exit_policy["grid"]["available"]:
     artifact["session_exit_policy"] = session_exit_policy
+exposure_policy_assumptions = build_exposure_policy_assumptions(st.session_state)
+if exposure_policy_assumptions["backtest"]["available"] or exposure_policy_assumptions["grid"]["available"]:
+    artifact["exposure_policy"] = exposure_policy_assumptions
 
 report_markdown = build_markdown_report(artifact)
 if "execution_cost_assumptions" in artifact:
     report_markdown += execution_cost_assumptions_markdown(artifact["execution_cost_assumptions"])
 if "session_exit_policy" in artifact:
     report_markdown += session_exit_policy_assumptions_markdown(artifact["session_exit_policy"])
+if "exposure_policy" in artifact:
+    report_markdown += exposure_policy_assumptions_markdown(artifact["exposure_policy"])
 
 status_rows = [
     {"Item": item, "Session state key": key, "Available": "✅" if _has_value(key) else "❌"}
@@ -129,6 +136,13 @@ if "session_exit_policy" in artifact:
         if artifact["session_exit_policy"].get(scope, {}).get("available")
     ]
     st.caption(f"Session exit policy assumptions included separately for: {', '.join(available_scopes)}.")
+if "exposure_policy" in artifact:
+    available_scopes = [
+        scope
+        for scope in ("backtest", "grid")
+        if artifact["exposure_policy"].get(scope, {}).get("available")
+    ]
+    st.caption(f"Exposure policy assumptions included separately for: {', '.join(available_scopes)}.")
 
 st.subheader("Downloads")
 json_text = json.dumps(artifact, indent=2)
