@@ -184,14 +184,15 @@ if run_wfo:
         inst = INSTRUMENTS.get(instrument)
         tick_size = inst.tick_size if inst else 0.25
         point_value = inst.point_value if inst else 50.0
+        max_window_bars = max(5, int(len(data_source)))
 
         c1, c2, c3 = st.columns(3)
-        train_bars = int(c1.number_input("Train bars", min_value=5, max_value=1_000_000, value=500, step=5))
-        test_bars = int(c2.number_input("Test bars", min_value=5, max_value=1_000_000, value=100, step=5))
+        train_bars = int(c1.number_input("Train bars", min_value=5, max_value=max_window_bars, value=min(500, max_window_bars), step=5))
+        test_bars = int(c2.number_input("Test bars", min_value=5, max_value=max_window_bars, value=min(100, max_window_bars), step=5))
         step_bars_input = c3.number_input(
             "Step bars (0 = default)",
             min_value=0,
-            max_value=1_000_000,
+            max_value=max_window_bars,
             value=0,
             step=1,
         )

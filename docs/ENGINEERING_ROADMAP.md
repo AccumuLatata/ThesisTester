@@ -45,9 +45,11 @@ warning, and scoped export assumptions.
 
 ---
 
-## R5 — Walk-Forward / Out-of-Sample Validation
+## R5 — Walk-Forward / Out-of-Sample Validation ✅ Implemented
 
-Not yet implemented. Planned for a future milestone.
+Adds deterministic bar-window walk-forward diagnostics for train-window SL/TP
+selection and following out-of-sample evaluation, with compact validation-page
+UI integration and scoped export/report fields.
 
 ---
 
