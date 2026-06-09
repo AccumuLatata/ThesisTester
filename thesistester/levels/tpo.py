@@ -43,9 +43,8 @@ Point-in-time guarantee:
 """
 from __future__ import annotations
 
-import math
 from collections import defaultdict
-from typing import Dict, FrozenSet, List, Optional, Set, Tuple
+from typing import Dict, FrozenSet, List, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -160,9 +159,6 @@ def _compute_single_prints(
     exchange_tz = inst.exchange_tz
     rth_start_time = pd.to_datetime(inst.rth_start).time()
 
-    # Precompute session dates for each row.
-    session_dates = work["_session_date"].values  # numpy array of date objects
-
     # --- Build per-session bracket information ---
     # For each session_date, collect (bracket_end_timestamp, bins) pairs in order.
     # bracket_end_timestamp = RTH_open + (bucket_idx + 1) * 30min
@@ -229,13 +225,7 @@ def _compute_single_prints(
             prior_sp_prices[sess_date] = _single_print_prices(prev_bins, tick_size)
 
     # --- Fill output arrays row by row using sorted work index ---
-    # For efficiency, pre-compute a lookup: for each row, find its session date and
-    # the bracket list for that session, then binary-search by timestamp.
-
-    # Build a per-row mapping: (session_date, current_close, row_timestamp) -> outputs.
-    # We iterate once over the work DataFrame in timestamp order.
-
-    timestamps = work["timestamp"].values  # numpy datetime64
+    # Iterate rows in timestamp order and use only brackets completed by row timestamp.
     closes = work["close"].values
     sessions_col = work["session"].values
     session_dates_col = work["_session_date"].values
@@ -289,7 +279,7 @@ def compute_tpo_levels(
     single_prints_enabled: bool = False,
     apoc_enabled: bool = False,
 ) -> pd.DataFrame:
-    """Return TPO-based level columns aligned to *df*'s index.
+    """Return TPO-based level columns.
 
     Parameters
     ----------
@@ -363,5 +353,4 @@ def compute_tpo_levels(
 
     result = _compute_single_prints(work, instrument)
 
-    # Drop the helper column before returning.
     return result

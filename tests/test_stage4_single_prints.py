@@ -463,17 +463,6 @@ def test_prior_session_values_are_frozen():
 def test_prior_session_nan_when_no_prior_sp():
     """If the prior session had no Single Prints, prior-session columns are NaN."""
     rows = [
-        # Session 1: only one bracket, but two bars with identical H/L (same bins in bracket A only).
-        _rth_bar(_rth_ts("2026-06-02", 9, 30), high=100.25, low=100.00, close=100.10),
-        _rth_bar(_rth_ts("2026-06-02", 10, 0), high=100.25, low=100.00, close=100.10),
-        _rth_bar(_rth_ts("2026-06-02", 10, 30), high=100.25, low=100.00, close=100.10),
-        # Session 1 bracket A and C are identical bins → NOT SP.
-        # Session 1 bracket B is unique → those are SP. But in this fixture we have:
-        # Actually let me make session 1 have NO unique brackets:
-        # A: 100.00-100.25, B: 100.00-100.25, C: 100.00-100.25 (all overlap) → 0 SP.
-    ]
-    # Override with truly overlapping brackets.
-    rows = [
         _rth_bar(_rth_ts("2026-06-02", 9, 30), high=100.25, low=100.00, close=100.10),
         _rth_bar(_rth_ts("2026-06-02", 10, 0), high=100.25, low=100.00, close=100.10),
         _rth_bar(_rth_ts("2026-06-02", 10, 30), high=100.25, low=100.00, close=100.10),
