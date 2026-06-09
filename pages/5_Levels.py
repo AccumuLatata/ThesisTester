@@ -348,7 +348,7 @@ if matching_saved_levels is not None and (not has_calculated_levels or levels_ar
     if saved_level_actions[0].button(
         "Load saved levels",
         key="load_matching_saved_levels",
-        use_container_width=True,
+        width="stretch",
     ):
         if _load_saved_levels_into_session(dataset_id, matching_saved_levels["settings_hash"]):
             levels_df = st.session_state.get("levels")
@@ -361,7 +361,7 @@ if matching_saved_levels is not None and (not has_calculated_levels or levels_ar
     if saved_level_actions[1].button(
         "Delete saved levels",
         key="delete_matching_saved_levels_prompt",
-        use_container_width=True,
+        width="stretch",
     ):
         delete_levels(dataset_id, matching_saved_levels["settings_hash"])
         if get_active_levels_hash(dataset_id) == matching_saved_levels["settings_hash"]:
@@ -398,7 +398,7 @@ if saved_level_snapshots:
     if snapshot_actions[0].button(
         "Load selected saved levels",
         key="load_selected_saved_levels",
-        use_container_width=True,
+        width="stretch",
     ):
         if _load_saved_levels_into_session(dataset_id, selected_settings_hash):
             levels_df = st.session_state.get("levels")
@@ -411,7 +411,7 @@ if saved_level_snapshots:
     if snapshot_actions[1].button(
         "Delete selected saved levels",
         key="delete_selected_saved_levels",
-        use_container_width=True,
+        width="stretch",
     ):
         delete_levels(dataset_id, selected_settings_hash)
         if get_active_levels_hash(dataset_id) == selected_settings_hash:
@@ -495,7 +495,7 @@ if levels_current:
     if persistence_actions[0].button(
         "Save levels locally",
         key="save_current_levels_locally",
-        use_container_width=True,
+        width="stretch",
     ):
         saved_levels_meta = save_levels(
             dataset_id=dataset_id,
@@ -512,7 +512,7 @@ if levels_current:
     if matching_saved_levels is not None and persistence_actions[1].button(
         "Delete saved levels",
         key="delete_current_saved_levels",
-        use_container_width=True,
+        width="stretch",
     ):
         delete_levels(dataset_id, matching_saved_levels["settings_hash"])
         if get_active_levels_hash(dataset_id) == matching_saved_levels["settings_hash"]:
@@ -525,7 +525,7 @@ level_columns = [col for col in levels_df.columns if col not in base_columns]
 
 st.subheader("Levels preview")
 preview_cols = ["timestamp", "close", "session", *level_columns]
-st.dataframe(levels_df[preview_cols].tail(200), use_container_width=True)
+st.dataframe(levels_df[preview_cols].tail(200), width="stretch")
 
 selected_levels = st.multiselect(
     "Levels to plot",
@@ -574,4 +574,4 @@ chart_levels_df = (
 )
 
 fig = build_levels_chart(levels_df=chart_levels_df, selected_levels=selected_levels)
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, width="stretch")

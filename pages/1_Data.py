@@ -173,10 +173,10 @@ def _render_dataset_summary(
 
     for timeframe, out in (resampled_data or {}).items():
         with st.expander(f"{timeframe} preview ({len(out):,} rows)"):
-            st.dataframe(out.head(50), use_container_width=True)
+            st.dataframe(out.head(50), width="stretch")
 
     st.subheader("Base timeframe preview")
-    st.dataframe(df.head(50), use_container_width=True)
+    st.dataframe(df.head(50), width="stretch")
 
 
 st.title("\U0001F4E5 Data")
@@ -209,7 +209,7 @@ if saved_datasets:
     selected_saved_dataset = saved_dataset_options[selected_saved_dataset_id]
 
     action_cols = st.columns(3)
-    if action_cols[0].button("Load saved dataset", use_container_width=True):
+    if action_cols[0].button("Load saved dataset", width="stretch"):
         loaded_df, loaded_meta = load_dataset(selected_saved_dataset_id)
         _set_active_dataset_state(
             loaded_df,
@@ -230,7 +230,7 @@ if saved_datasets:
             ]
         st.rerun()
 
-    if action_cols[1].button("Delete saved dataset", use_container_width=True):
+    if action_cols[1].button("Delete saved dataset", width="stretch"):
         delete_dataset(selected_saved_dataset_id)
         if st.session_state.get(ACTIVE_SAVED_DATASET_KEY) == selected_saved_dataset_id:
             st.session_state.pop(ACTIVE_SAVED_DATASET_KEY, None)
@@ -239,7 +239,7 @@ if saved_datasets:
         )
         st.rerun()
 
-    if action_cols[2].button("Refresh saved datasets", use_container_width=True):
+    if action_cols[2].button("Refresh saved datasets", width="stretch"):
         st.rerun()
 else:
     st.caption(f"No saved datasets found in `{get_store_root()}`.")

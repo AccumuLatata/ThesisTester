@@ -958,6 +958,27 @@ def test_trigger_and_base_indices_are_different():
     assert r["trigger_reversal_bar_index"] < r["reversal_bar_index"]
 
 
+def test_non_base_3c_skips_out_of_range_base_reversal_index():
+    base_rows = _make_standard_15row_long_base_rows()
+    base_df = _base_df(base_rows, freq="1min")
+    base_df_reset = base_df.reset_index(drop=True)
+    trigger_df = _prepare_trigger_dataframe(base_df_reset, "5min")
+    trigger_df.loc[1, "base_end_bar_index"] = len(base_df_reset)
+    delta = pd.to_timedelta("5min")
+
+    candidate = _candidate_trigger(direction="long", price=100.0, trigger_bar_index=0)
+    results = detect_3c_setups_with_trigger_timeframe(
+        trigger_df=trigger_df,
+        base_df=base_df_reset,
+        candidates=[candidate],
+        tick_size=TICK,
+        trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 5},
+        trigger_timeframe_delta=delta,
+    )
+
+    assert results == []
+
+
 # ===========================================================================
 # 21. Naked metadata uses base arrival index
 # ===========================================================================

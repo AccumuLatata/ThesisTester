@@ -71,7 +71,7 @@ status_rows = [
     for item, key in REQUIRED_ITEMS
 ]
 st.subheader("Run completeness checklist")
-st.dataframe(pd.DataFrame(status_rows), use_container_width=True, hide_index=True)
+st.dataframe(pd.DataFrame(status_rows), width="stretch", hide_index=True)
 
 if not _has_value("setup_config"):
     st.warning("No setup config found. Export will include empty configuration fields.")

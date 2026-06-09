@@ -165,7 +165,7 @@ with st.sidebar:
             )
         )
 
-    run_btn = st.button("▶ Run grid search", type="primary", use_container_width=True)
+    run_btn = st.button("▶ Run grid search", type="primary", width="stretch")
 
 # ── Build SL / TP value lists ────────────────────────────────────────────────
 def _range_list(start: float, stop: float, step: float) -> list[float]:
@@ -368,7 +368,7 @@ heatmap_metric = st.selectbox(
 
 st.plotly_chart(
     _heatmap(grid, heatmap_metric, heatmap_metric.replace("_", " ").title()),
-    use_container_width=True,
+    width="stretch",
 )
 
 # Full results table
@@ -388,4 +388,4 @@ display_cols = [c for c in [
     "min_direction_trade_count", "min_direction_expectancy_r",
     "min_direction_profit_factor",
 ] if c in grid.columns]
-st.dataframe(grid[display_cols], use_container_width=True, hide_index=True)
+st.dataframe(grid[display_cols], width="stretch", hide_index=True)

@@ -61,7 +61,7 @@ section_rows = [
 has_meaningful_state = any(row["Will include"] == "✅" for row in section_rows)
 
 st.subheader("Export preview")
-st.dataframe(pd.DataFrame(section_rows), use_container_width=True, hide_index=True)
+st.dataframe(pd.DataFrame(section_rows), width="stretch", hide_index=True)
 
 if not has_meaningful_state:
     st.warning("No meaningful research state found to export yet.")
@@ -97,7 +97,7 @@ if uploaded is not None:
         ]
 
         st.caption("Bundle validated. Review contents before importing.")
-        st.dataframe(pd.DataFrame(preview_rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(preview_rows), width="stretch", hide_index=True)
 
         if st.button("Import bundle into session", type="primary"):
             try:

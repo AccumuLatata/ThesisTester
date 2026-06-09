@@ -451,6 +451,11 @@ Multi-page app (`st.navigation` / `pages/`):
 UX rules: every run is reproducible (config hash shown); all heavy compute behind
 `st.cache_data`; never block UI without a spinner + sample-size warnings.
 
+- Streamlit widget/layout calls should use the current `width=` API (`"stretch"` /
+  `"content"`) instead of deprecated `use_container_width`.
+- The Signals page keeps saved-setup and saved-signal-run metadata in `st.session_state`
+  with local dirty/refresh handling so ordinary reruns avoid repeated filesystem scans.
+
 ---
 
 ## 11. Tech Stack & Repo Structure
@@ -527,6 +532,9 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
   - `trigger_bar_index == trigger_reversal_bar_index` for 3c.
   - `trigger_timestamp` is the reversal trigger candle completion timestamp.
   - `timestamp == base_df["timestamp"].iloc[bar_index]` holds for all 3c signals.
+  - Invalid edge-case setups (for example missing retrace trigger prices or out-of-range
+    base/reversal indices at dataset boundaries) are skipped defensively instead of
+    crashing signal generation.
 
 ---
 
