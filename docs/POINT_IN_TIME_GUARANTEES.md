@@ -7,8 +7,10 @@ emitted at timestamp `T` (or bar index `i`), only data from bars at or before `T
 was used to produce that value. No information from bars after `T` may influence
 any output visible at `T`.
 
-This document covers the audit performed under R3. It is specific to the current
-codebase. Claims of causality should not be extended beyond what is tested here.
+This document covers the audit performed under R3 (June 2026). It is specific to the
+codebase state at the time of the R3 milestone. See `docs/ENGINEERING_ROADMAP.md` for
+the milestone definition. Claims of causality should not be extended beyond what is
+tested here.
 
 ---
 
