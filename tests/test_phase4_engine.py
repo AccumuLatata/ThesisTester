@@ -1,13 +1,15 @@
 """Phase 4 engine tests: confluence detection, naked levels, signal generation."""
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from thesistester.engine.confluence import detect_confluence_zones
 from thesistester.engine.naked import flag_naked_levels
-from thesistester.engine.signals import generate_signals
+from thesistester.engine.signals import _safe_signal_index, generate_signals
 
 
 TZ = "America/New_York"
@@ -939,3 +941,71 @@ class TestEdgeCases:
         )
 
         assert sigs.empty
+
+
+# ===========================================================================
+# _safe_signal_index strict validation
+# ===========================================================================
+
+
+class TestSafeSignalIndex:
+    """Regression tests for _safe_signal_index strict integer validation."""
+
+    SIZE = 10
+
+    def test_valid_int_accepted(self):
+        assert _safe_signal_index(3, self.SIZE) == 3
+
+    def test_valid_zero_accepted(self):
+        assert _safe_signal_index(0, self.SIZE) == 0
+
+    def test_valid_max_boundary_accepted(self):
+        assert _safe_signal_index(9, self.SIZE) == 9
+
+    def test_integer_valued_float_accepted(self):
+        # 3.0 is an integer-valued float and must be accepted
+        assert _safe_signal_index(3.0, self.SIZE) == 3
+
+    def test_numpy_integer_accepted(self):
+        assert _safe_signal_index(np.int64(5), self.SIZE) == 5
+
+    def test_non_integer_float_rejected(self):
+        # 3.9 must NOT silently truncate to 3
+        assert _safe_signal_index(3.9, self.SIZE) is None
+
+    def test_non_integer_float_low_rejected(self):
+        assert _safe_signal_index(2.1, self.SIZE) is None
+
+    def test_nan_rejected(self):
+        assert _safe_signal_index(float("nan"), self.SIZE) is None
+
+    def test_numpy_nan_rejected(self):
+        assert _safe_signal_index(np.nan, self.SIZE) is None
+
+    def test_inf_rejected(self):
+        assert _safe_signal_index(float("inf"), self.SIZE) is None
+
+    def test_neg_inf_rejected(self):
+        assert _safe_signal_index(float("-inf"), self.SIZE) is None
+
+    def test_none_rejected(self):
+        assert _safe_signal_index(None, self.SIZE) is None
+
+    def test_boolean_true_rejected(self):
+        # bool is a subclass of int in Python; must be treated as invalid index
+        assert _safe_signal_index(True, self.SIZE) is None
+
+    def test_boolean_false_rejected(self):
+        assert _safe_signal_index(False, self.SIZE) is None
+
+    def test_negative_int_rejected(self):
+        assert _safe_signal_index(-1, self.SIZE) is None
+
+    def test_out_of_range_rejected(self):
+        assert _safe_signal_index(self.SIZE, self.SIZE) is None
+
+    def test_out_of_range_large_rejected(self):
+        assert _safe_signal_index(999, self.SIZE) is None
+
+    def test_string_rejected(self):
+        assert _safe_signal_index("abc", self.SIZE) is None

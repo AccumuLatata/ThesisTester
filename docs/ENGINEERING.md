@@ -452,7 +452,10 @@ UX rules: every run is reproducible (config hash shown); all heavy compute behin
 `st.cache_data`; never block UI without a spinner + sample-size warnings.
 
 - Streamlit widget/layout calls should use the current `width=` API (`"stretch"` /
-  `"content"`) instead of deprecated `use_container_width`.
+  `"content"`) instead of deprecated `use_container_width`. This API requires
+  **Streamlit ≥ 1.56** — the minimum version at which `width="stretch"` is
+  consistently supported for `st.dataframe`, `st.plotly_chart`, and `st.button`.
+  `requirements.txt` pins `streamlit>=1.56` accordingly.
 - The Signals page keeps saved-setup and saved-signal-run metadata in `st.session_state`
   with local dirty/refresh handling so ordinary reruns avoid repeated filesystem scans.
 

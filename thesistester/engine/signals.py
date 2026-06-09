@@ -1,6 +1,7 @@
 """Candidate signal generation from confluence zones and trigger logic."""
 from __future__ import annotations
 
+import math
 import warnings
 
 import numpy as np
@@ -107,11 +108,18 @@ def _safe_signal_float(value: object) -> float | None:
 
 
 def _safe_signal_index(value: object, size: int) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
     try:
-        idx = int(value)  # type: ignore[arg-type]
+        f = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
-    if pd.isna(idx) or idx < 0 or idx >= size:
+    if not math.isfinite(f):
+        return None
+    if f != math.floor(f):
+        return None
+    idx = int(f)
+    if idx < 0 or idx >= size:
         return None
     return idx
 

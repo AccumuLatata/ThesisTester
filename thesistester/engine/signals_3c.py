@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import math
 import pandas as pd
 
 from .candidate_level import CandidateLevel
@@ -70,11 +71,18 @@ def _rounded_price(price: float, tick_size: float) -> float:
 
 
 def _valid_bar_index(value: object, size: int) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
     try:
-        idx = int(value)  # type: ignore[arg-type]
+        f = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
-    if pd.isna(idx) or idx < 0 or idx >= size:
+    if not math.isfinite(f):
+        return None
+    if f != math.floor(f):
+        return None
+    idx = int(f)
+    if idx < 0 or idx >= size:
         return None
     return idx
 
