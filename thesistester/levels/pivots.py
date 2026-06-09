@@ -117,14 +117,14 @@ def compute_pivot_levels(
     *,
     enabled: bool = False,
 ) -> pd.DataFrame:
-    """Return latest confirmed pivot levels aligned to *df*'s index.
+    """Return latest confirmed pivot levels aligned to *df*'s sorted timeline.
 
     Parameters
     ----------
     df:
-        OHLCV DataFrame with a tz-aware ``timestamp`` column.  Must already
-        have its index set (or the timestamp column available) so the returned
-        DataFrame can be joined back by the caller.
+        Canonical OHLCV DataFrame with a tz-aware ``timestamp`` column.  The
+        function internally sorts rows by ``timestamp`` and resets the index,
+        so the original index is **not** preserved in the output.
     instrument:
         Instrument key (e.g. ``"ES"``). Reserved for future pivot extensions.
     pivot_timeframes:
