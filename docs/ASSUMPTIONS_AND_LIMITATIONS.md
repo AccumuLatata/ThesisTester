@@ -37,6 +37,48 @@ This engine is for **research screening**, not proof of a durable edge.
 - For `3c` with non-base trigger timeframe: arrival, inside/muted candles, SFP tagging, and reversal confirmation are evaluated on trigger-timeframe candles. The retrace entry fill is evaluated on canonical/base bars after the reversal trigger candle is complete. `max_entry_wait_bars_after_reversal` counts trigger-timeframe bars, not base bars. Backtest execution remains unchanged because `3c` emits base-indexed `entry_bar_index` and `retrace_entry_price`.
 - `arrival_bar_index`, `reversal_bar_index`, `entry_bar_index`, and `bar_index` are canonical/base indices. `trigger_arrival_bar_index`, `trigger_reversal_bar_index`, and `trigger_bar_index` are trigger-timeframe indices. `trigger_timestamp` is the reversal trigger candle completion timestamp.
 
+## 6) Point-in-time correctness (R3 audit)
+
+A full audit of all level, confluence, and signal modules was completed under R3. The
+findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
+
+**Parts that are point-in-time guaranteed:**
+- All prior-period session levels (pdHigh/pdLow/pdOpen/pdEQ, pwHigh/pwLow/pwOpen/pwEQ,
+  pmHigh/pmLow/pmOpen/pmEQ) use a `shift(1)` on per-period aggregates. Future bars
+  cannot change any prior bar's "prior" level values.
+- Prior profile levels (pdVAH/pdVAL/pdPOC, pwVAH/pwVAL/pwPOC, pmVAH/pmVAL/pmPOC)
+  use the same shift guarantee.
+- Rolling POC uses a strict `timestamps <= now` window. No future data enters.
+- Rolling indicators (SMA/EMA/VWAP) on the base timeframe use only bars up to and
+  including the current bar. Higher-timeframe indicators use `align_timestamp` gating
+  so values are visible only after candle completion.
+- RTH_Open and ONH/ONL are NaN until the first RTH bar of the session; no future RTH
+  or overnight data can change ETH-bar values.
+- Opening range (OR_High/OR_Low) is NaN until the clock-based OR window closes.
+- Naked (`<level>_naked`) flags are produced by a pure forward scan; future bars cannot
+  retroactively clear a prior bar's naked status.
+- Confluence zones (global and anchor) operate on level values already in the
+  DataFrame at each bar; causality inherits from the underlying level columns.
+- All signal triggers (`touch`, `reject`, `break`, `reclaim`, `3c`) emit signals
+  at the bar where the setup becomes knowable, never backdated to the arrival bar.
+
+**Remaining limitations (see full detail in `docs/POINT_IN_TIME_GUARANTEES.md`):**
+- Profile levels use a bar-level typical-price approximation. True intrabar
+  volume-at-price data would change level values but would not introduce look-ahead.
+- ONH/ONL is not available during ETH (by design; the overnight has not yet closed).
+- Rolling VWAP/POC/SMA/EMA at bar `i` include bar `i` close/volume. Signals treated
+  as bar-close confirmed; this is documented intent, not a bug.
+- `dOpen/wOpen/mOpen` are current-period (live) opens, not prior-period references.
+  Do not confuse them with `pdOpen/pwOpen/pmOpen`.
+
+**Warning against non-causal diagnostic use:**
+The `<level>_naked` columns are causal (each bar's value is determined by bars up to
+that bar only). However, if you inspect the final naked column in an exported table and
+read it as "this level is currently naked", you are reading a point-in-time snapshot at
+the last data bar, not a historical snapshot at an arbitrary earlier date. Do not
+interpret a diagnostic table's final naked status as a tradable signal for any bar
+other than the last bar in the dataset.
+
 ## Validation implications
 - Validation diagnostics explicitly warn that assumptions like sign symmetry and independence limits apply; serial dependence is ignored (`thesistester/analytics/validation.py:10-11`, `115-117`).
 - Outputs are explicitly framed as diagnostics and not proof of edge (`thesistester/analytics/validation.py:13`, `pages/10_Validation.py:18`).
