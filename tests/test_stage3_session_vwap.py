@@ -265,7 +265,7 @@ def test_zero_volume_single_bar_emits_nan():
     rows = [_rth_bar(pd.Timestamp("2026-06-02 09:30", tz=TZ), 101.0, 99.0, 100.0, 0.0)]
     df = pd.DataFrame(rows)
     result = compute_session_vwap_levels(df, enabled=True)
-    assert result["dVWAP_RTH"].iloc[0] != result["dVWAP_RTH"].iloc[0]  # NaN check
+    assert np.isnan(result["dVWAP_RTH"].iloc[0])
 
 
 def test_zero_volume_then_positive_volume():

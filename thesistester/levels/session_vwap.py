@@ -140,8 +140,9 @@ def compute_session_vwap_levels(
 
     # Re-align to original df index order if df was not sorted.
     if not df.index.equals(work.index):
-        # Map original positions back via position array (reset_index was used).
-        original_order = df["timestamp"].argsort().argsort()
-        out = out.iloc[original_order.values].set_axis(df.index)
+        # double argsort produces the inverse permutation: position i in `out`
+        # (sorted order) maps back to the original row position in df.
+        inverse_sort_indices = df["timestamp"].argsort().argsort()
+        out = out.iloc[inverse_sort_indices.values].set_axis(df.index)
 
     return out
