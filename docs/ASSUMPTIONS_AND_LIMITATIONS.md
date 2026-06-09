@@ -44,6 +44,12 @@ This engine is for **research screening**, not proof of a durable edge.
 - For `3c` with non-base trigger timeframe: arrival, inside/muted candles, SFP tagging, and reversal confirmation are evaluated on trigger-timeframe candles. The retrace entry fill is evaluated on canonical/base bars after the reversal trigger candle is complete. `max_entry_wait_bars_after_reversal` counts trigger-timeframe bars, not base bars. Backtest execution remains unchanged because `3c` emits base-indexed `entry_bar_index` and `retrace_entry_price`.
 - `arrival_bar_index`, `reversal_bar_index`, `entry_bar_index`, and `bar_index` are canonical/base indices. `trigger_arrival_bar_index`, `trigger_reversal_bar_index`, and `trigger_bar_index` are trigger-timeframe indices. `trigger_timestamp` is the reversal trigger candle completion timestamp.
 
+### 5a) Confirmed pivots are opt-in scalar levels
+- Confirmed pivots are disabled by default (`pivots_enabled=False`), so existing level output is unchanged unless the user explicitly enables them.
+- Supported pivot timeframe settings remain exactly `1min`, `5min`, `30min`, and `4h`.
+- Default fractal settings are `pivot_left=2` and `pivot_right=2`, matching the 5-candle pivot convention.
+- Each pivot column holds the latest confirmed pivot high/low for its timeframe; before the first confirmed pivot exists, the value is `NaN`.
+
 ## 6) Point-in-time correctness (R3 audit)
 
 A full audit of all level, confluence, and signal modules was completed under R3. The
@@ -59,6 +65,10 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 - Rolling indicators (SMA/EMA/VWAP) on the base timeframe use only bars up to and
   including the current bar. Higher-timeframe indicators use `align_timestamp` gating
   so values are visible only after candle completion.
+- Confirmed pivots use strict left/right fractal confirmation and are exposed only after
+  pivot-candle close plus the full right-side confirmation delay. Higher-timeframe pivot
+  values are merged back only after the higher-timeframe candle and confirmation window
+  have both completed.
 - RTH_Open and ONH/ONL are NaN until the first RTH bar of the session; no future RTH
   or overnight data can change ETH-bar values.
 - Opening range (OR_High/OR_Low) is NaN until the clock-based OR window closes.
@@ -77,6 +87,9 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   as bar-close confirmed; this is documented intent, not a bug.
 - `dOpen/wOpen/mOpen` are current-period (live) opens, not prior-period references.
   Do not confuse them with `pdOpen/pwOpen/pmOpen`.
+- Confirmed pivots require enough left/right candles to become knowable and expose only
+  the latest confirmed scalar levels. Historical pivot-instance columns and higher-order
+  classifications (SFP, breaker, reclaim, retest) are not implemented yet.
 
 **Warning against non-causal diagnostic use:**
 The `<level>_naked` columns are causal (each bar's value is determined by bars up to
