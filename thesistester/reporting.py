@@ -145,6 +145,10 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "setup_config": to_jsonable(setup_config),
             "last_signal_setup": to_jsonable(session_state.get("last_signal_setup")),
             "walk_forward_config": to_jsonable(session_state.get("walk_forward_config")),
+            "roll_policy": to_jsonable(session_state.get("roll_policy")),
+        },
+        "data_quality": {
+            "roll_validation": to_jsonable(session_state.get("roll_validation")),
         },
         "results": {
             "signal_count": _table_count(session_state, "signals"),
@@ -533,6 +537,7 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     """Build a concise markdown report from a research artifact."""
     metadata = artifact.get("metadata", {}) if isinstance(artifact, Mapping) else {}
     config = artifact.get("configuration", {}) if isinstance(artifact, Mapping) else {}
+    data_quality = artifact.get("data_quality", {}) if isinstance(artifact, Mapping) else {}
     results = artifact.get("results", {}) if isinstance(artifact, Mapping) else {}
     tables = artifact.get("tables", {}) if isinstance(artifact, Mapping) else {}
 
@@ -550,6 +555,8 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     permutation = validation.get("permutation") if isinstance(validation, Mapping) else {}
     trade_count_diag = validation.get("trade_count") if isinstance(validation, Mapping) else {}
     grid_overfit = validation.get("grid_overfit") if isinstance(validation, Mapping) else {}
+    roll_policy = config.get("roll_policy") if isinstance(config, Mapping) else {}
+    roll_validation = data_quality.get("roll_validation") if isinstance(data_quality, Mapping) else {}
 
     lines = [
         "# ThesisTester Research Report",
@@ -610,8 +617,23 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
         f"- Trade-count status: {trade_count_diag.get('status', '—') if isinstance(trade_count_diag, Mapping) else '—'}",
         f"- Grid overfit risk: {grid_overfit.get('risk_level', '—') if isinstance(grid_overfit, Mapping) else '—'}",
         "",
-        "## Caveats",
     ]
+
+    if isinstance(roll_policy, Mapping) or isinstance(roll_validation, Mapping):
+        lines.extend(
+            [
+                "## Futures Roll Assumptions",
+                f"- Roll method: {roll_policy.get('roll_method', '—') if isinstance(roll_policy, Mapping) else '—'}",
+                f"- Contract count: {roll_validation.get('contract_count', '—') if isinstance(roll_validation, Mapping) else '—'}",
+                f"- Adjustment method: {roll_policy.get('adjustment_method', '—') if isinstance(roll_policy, Mapping) else '—'}",
+                f"- Roll rule: {roll_policy.get('roll_rule', '—') if isinstance(roll_policy, Mapping) else '—'}",
+                f"- Warning count: {len(roll_validation.get('warnings', [])) if isinstance(roll_validation, Mapping) and isinstance(roll_validation.get('warnings'), list) else 0}",
+                f"- Roll gap count: {roll_validation.get('roll_gap_count', 0) if isinstance(roll_validation, Mapping) else 0}",
+                "",
+            ]
+        )
+
+    lines.append("## Caveats")
 
     for caveat in artifact.get("caveats", []):
         lines.append(f"- {caveat}")

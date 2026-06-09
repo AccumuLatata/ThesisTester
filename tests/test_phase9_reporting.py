@@ -205,6 +205,28 @@ def test_build_research_artifact_counts_match_signals_and_trades():
     assert len(artifact["tables"]["trades"]) == 2
 
 
+def test_build_research_artifact_includes_roll_policy_and_validation():
+    state = _sample_session_state()
+    state["roll_policy"] = {
+        "roll_method": "external_continuous",
+        "contract_column": "contract",
+        "adjustment_method": "back_adjusted",
+        "roll_rule": "volume",
+    }
+    state["roll_validation"] = {
+        "roll_method": "external_continuous",
+        "valid": True,
+        "warnings": [],
+        "contract_count": 2,
+        "roll_gap_count": 0,
+    }
+
+    artifact = build_research_artifact(state)
+
+    assert artifact["configuration"]["roll_policy"]["roll_method"] == "external_continuous"
+    assert artifact["data_quality"]["roll_validation"]["valid"] is True
+
+
 def test_build_research_artifact_excludes_raw_data_and_levels_tables():
     artifact = build_research_artifact(_sample_session_state())
 
@@ -241,6 +263,30 @@ def test_build_markdown_report_returns_string_and_required_sections():
     assert "### Advanced Risk Metrics" in markdown
     assert "## Validation Diagnostics" in markdown
     assert "## Caveats" in markdown
+
+
+def test_build_markdown_report_includes_futures_roll_assumptions_section():
+    artifact = build_research_artifact(_sample_session_state())
+    artifact["configuration"]["roll_policy"] = {
+        "roll_method": "segmented_contracts",
+        "adjustment_method": "unknown",
+        "roll_rule": "calendar",
+    }
+    artifact["data_quality"] = {
+        "roll_validation": {
+            "contract_count": 2,
+            "warnings": ["test warning"],
+            "roll_gap_count": 1,
+        }
+    }
+
+    markdown = build_markdown_report(artifact)
+
+    assert "## Futures Roll Assumptions" in markdown
+    assert "- Roll method: segmented_contracts" in markdown
+    assert "- Contract count: 2" in markdown
+    assert "- Warning count: 1" in markdown
+    assert "- Roll gap count: 1" in markdown
 
 
 def test_build_markdown_report_handles_missing_sections_gracefully():

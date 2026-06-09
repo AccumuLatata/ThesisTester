@@ -2,6 +2,7 @@ from pathlib import Path
 import sys
 import os
 
+import pandas as pd
 import streamlit as st
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +15,11 @@ from thesistester.data.loader import (
     format_interval,
     load_ohlcv,
     validate_ohlcv,
+)
+from thesistester.data.rolls import (
+    ROLL_METHODS,
+    detect_contract_column,
+    validate_roll_metadata,
 )
 from thesistester.data.resample import SUPPORTED_TIMEFRAMES, resample_ohlcv
 from thesistester.data.sessions import tag_session
@@ -87,6 +93,12 @@ def _clear_dataset_dependent_state() -> None:
         "time_bucketed_trades",
         "time_grouped_summary",
         "validation_summary",
+        "roll_policy",
+        "roll_validation",
+        "roll_method_selector",
+        "roll_contract_column_input",
+        "roll_adjustment_method_selector",
+        "roll_rule_selector",
     ]:
         st.session_state.pop(key, None)
 
@@ -177,6 +189,112 @@ def _render_dataset_summary(
 
     st.subheader("Base timeframe preview")
     st.dataframe(df.head(50), width="stretch")
+
+
+def _render_roll_assumptions(df, *, instrument: str) -> None:
+    st.subheader("Futures roll assumptions")
+    existing_policy = st.session_state.get("roll_policy")
+    if not isinstance(existing_policy, dict):
+        existing_policy = {}
+
+    detected_contract_column = detect_contract_column(df)
+    roll_method_options = [
+        "single_contract",
+        "external_continuous",
+        "segmented_contracts",
+    ]
+    default_roll_method = existing_policy.get("roll_method", "single_contract")
+    if default_roll_method not in ROLL_METHODS:
+        default_roll_method = "single_contract"
+    roll_method = st.selectbox(
+        "Roll method",
+        options=roll_method_options,
+        index=roll_method_options.index(default_roll_method),
+        key="roll_method_selector",
+    )
+
+    contract_column = st.text_input(
+        "Contract column",
+        value=(
+            existing_policy.get("contract_column")
+            or detected_contract_column
+            or "contract"
+        ),
+        key="roll_contract_column_input",
+    ).strip() or "contract"
+
+    adjustment_options = [
+        "unknown",
+        "back_adjusted",
+        "ratio_adjusted",
+        "panama",
+        "none",
+    ]
+    roll_rule_options = [
+        "unknown",
+        "volume",
+        "open_interest",
+        "calendar",
+        "first_notice",
+        "last_trade",
+    ]
+
+    default_adjustment = existing_policy.get("adjustment_method", "unknown")
+    if default_adjustment not in adjustment_options:
+        default_adjustment = "unknown"
+    default_roll_rule = existing_policy.get("roll_rule", "unknown")
+    if default_roll_rule not in roll_rule_options:
+        default_roll_rule = "unknown"
+
+    if roll_method == "external_continuous":
+        adjustment_method = st.selectbox(
+            "Adjustment method",
+            options=adjustment_options,
+            index=adjustment_options.index(default_adjustment),
+            key="roll_adjustment_method_selector",
+        )
+        roll_rule = st.selectbox(
+            "Roll rule",
+            options=roll_rule_options,
+            index=roll_rule_options.index(default_roll_rule),
+            key="roll_rule_selector",
+        )
+    else:
+        adjustment_method = "unknown"
+        roll_rule = "unknown"
+
+    st.session_state["roll_policy"] = {
+        "roll_method": roll_method,
+        "contract_column": contract_column,
+        "adjustment_method": adjustment_method,
+        "roll_rule": roll_rule,
+    }
+
+    tick_size = INSTRUMENTS[instrument].tick_size if instrument in INSTRUMENTS else None
+    if st.button("Validate roll metadata"):
+        st.session_state["roll_validation"] = validate_roll_metadata(
+            df,
+            roll_method=roll_method,
+            contract_column=contract_column,
+            adjustment_method=adjustment_method,
+            roll_rule=roll_rule,
+            tick_size=tick_size,
+        )
+
+    validation = st.session_state.get("roll_validation")
+    if not isinstance(validation, dict):
+        return
+
+    st.metric("Roll metadata valid", "✅" if validation.get("valid") else "❌")
+    st.write(f"Contract count: {validation.get('contract_count', '—')}")
+    warnings = validation.get("warnings")
+    if isinstance(warnings, list) and warnings:
+        st.warning("Warnings:")
+        for warning in warnings:
+            st.write(f"- {warning}")
+    roll_gaps = validation.get("roll_gaps")
+    if isinstance(roll_gaps, list) and roll_gaps:
+        st.dataframe(pd.DataFrame(roll_gaps), width="stretch")
 
 
 st.title("\U0001F4E5 Data")
@@ -347,10 +465,14 @@ elif "data" in st.session_state:
         saved_dataset_loaded=ACTIVE_SAVED_DATASET_KEY in st.session_state,
     )
 
-st.divider()
-
 current_df = st.session_state.get("data")
 if current_df is not None:
+    st.divider()
+    _render_roll_assumptions(
+        current_df,
+        instrument=st.session_state.get("instrument", inst),
+    )
+    st.divider()
     current_instrument = st.session_state.get("instrument", inst)
     default_name = _default_dataset_name(current_df, current_instrument)
     dataset_name = st.text_input("Local dataset name", value=default_name)

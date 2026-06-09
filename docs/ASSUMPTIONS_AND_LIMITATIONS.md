@@ -97,6 +97,13 @@ other than the last bar in the dataset.
 - Tail, percentile, skew, kurtosis, and outlier-dependency metrics are sensitive to sample size and can be unstable on small trade sets.
 - Ulcer index, drawdown, and streak metrics describe the realized trade ordering that occurred in the backtest; they are not guarantees of future path smoothness.
 
+## Futures roll methodology (R7)
+- ThesisTester R7 does **not** synthesize continuous futures prices.
+- R7 performs **no OHLC back-adjustment** and does not rewrite uploaded price columns.
+- For `external_continuous`, continuity assumptions come from the data provider; ThesisTester only records/exports the declared adjustment method and roll rule.
+- For `segmented_contracts`, roll gaps can remain in backtest metrics unless users pre-adjust data externally before upload.
+- Declared roll policy and roll-validation diagnostics are exported in research artifacts for auditability.
+
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
 - With non-zero cost settings, expectancy and downstream KPIs become net-of-cost.
