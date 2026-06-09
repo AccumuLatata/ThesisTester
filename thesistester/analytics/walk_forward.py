@@ -26,12 +26,19 @@ _RESULT_COLUMNS = [
     "train_total_r",
     "train_profit_factor",
     "train_win_rate",
+    "train_sharpe_like_r",
+    "train_sortino_like_r",
+    "train_ulcer_index_r",
     "test_trade_count",
     "test_expectancy_r",
     "test_total_r",
     "test_profit_factor",
     "test_win_rate",
     "test_max_drawdown_r",
+    "test_sharpe_like_r",
+    "test_sortino_like_r",
+    "test_ulcer_index_r",
+    "test_recovery_factor",
     "degradation_expectancy_r",
     "is_oos_profitable",
     "ranking_metric",
@@ -205,12 +212,19 @@ def run_walk_forward_sl_tp(
             "train_total_r": None,
             "train_profit_factor": None,
             "train_win_rate": None,
+            "train_sharpe_like_r": None,
+            "train_sortino_like_r": None,
+            "train_ulcer_index_r": None,
             "test_trade_count": None,
             "test_expectancy_r": None,
             "test_total_r": None,
             "test_profit_factor": None,
             "test_win_rate": None,
             "test_max_drawdown_r": None,
+            "test_sharpe_like_r": None,
+            "test_sortino_like_r": None,
+            "test_ulcer_index_r": None,
+            "test_recovery_factor": None,
             "degradation_expectancy_r": None,
             "is_oos_profitable": None,
             "ranking_metric": ranking_metric,
@@ -243,6 +257,9 @@ def run_walk_forward_sl_tp(
         row["train_total_r"] = best_train.get("total_r")
         row["train_profit_factor"] = best_train.get("profit_factor")
         row["train_win_rate"] = best_train.get("win_rate")
+        row["train_sharpe_like_r"] = best_train.get("sharpe_like_r")
+        row["train_sortino_like_r"] = best_train.get("sortino_like_r")
+        row["train_ulcer_index_r"] = best_train.get("ulcer_index_r")
 
         test_trades = simulate_trades(
             df=test_df,
@@ -269,6 +286,10 @@ def run_walk_forward_sl_tp(
         row["test_profit_factor"] = test_summary.get("profit_factor")
         row["test_win_rate"] = test_summary.get("win_rate")
         row["test_max_drawdown_r"] = test_summary.get("max_drawdown_r")
+        row["test_sharpe_like_r"] = test_summary.get("sharpe_like_r")
+        row["test_sortino_like_r"] = test_summary.get("sortino_like_r")
+        row["test_ulcer_index_r"] = test_summary.get("ulcer_index_r")
+        row["test_recovery_factor"] = test_summary.get("recovery_factor")
 
         if row["train_expectancy_r"] is not None and row["test_expectancy_r"] is not None:
             row["degradation_expectancy_r"] = (
@@ -302,6 +323,9 @@ def summarize_walk_forward(results: pd.DataFrame) -> dict:
         "median_train_expectancy_r": None,
         "median_test_expectancy_r": None,
         "median_degradation_expectancy_r": None,
+        "median_test_sharpe_like_r": None,
+        "median_test_sortino_like_r": None,
+        "median_test_ulcer_index_r": None,
         "aggregate_test_total_r": None,
         "aggregate_test_trade_count": 0,
         "status": "empty",
@@ -339,6 +363,9 @@ def summarize_walk_forward(results: pd.DataFrame) -> dict:
         "median_train_expectancy_r": _median_or_none(valid["train_expectancy_r"]),
         "median_test_expectancy_r": _median_or_none(valid["test_expectancy_r"]),
         "median_degradation_expectancy_r": _median_or_none(valid["degradation_expectancy_r"]),
+        "median_test_sharpe_like_r": _median_or_none(valid.get("test_sharpe_like_r", pd.Series(dtype=float))),
+        "median_test_sortino_like_r": _median_or_none(valid.get("test_sortino_like_r", pd.Series(dtype=float))),
+        "median_test_ulcer_index_r": _median_or_none(valid.get("test_ulcer_index_r", pd.Series(dtype=float))),
         "aggregate_test_total_r": aggregate_test_total_r,
         "aggregate_test_trade_count": aggregate_test_trade_count,
         "status": "ok",

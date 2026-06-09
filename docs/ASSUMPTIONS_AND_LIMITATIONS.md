@@ -93,6 +93,9 @@ other than the last bar in the dataset.
 - Current walk-forward splits use deterministic bar-index windows and are not calendar/session-aware.
 - Train-window SL/TP selection can still overfit when grids are large or fold count is small.
 - Each fold's test window is out-of-sample relative to that fold's train window only.
+- Advanced trade metrics are trade-sequence diagnostics on realized `r_multiple`, not annualized portfolio statistics.
+- Tail, percentile, skew, kurtosis, and outlier-dependency metrics are sensitive to sample size and can be unstable on small trade sets.
+- Ulcer index, drawdown, and streak metrics describe the realized trade ordering that occurred in the backtest; they are not guarantees of future path smoothness.
 
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
