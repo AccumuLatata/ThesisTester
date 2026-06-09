@@ -46,6 +46,7 @@ REQUIRED_ITEMS = [
     ("Grid results", "grid_results"),
     ("Time analysis", "time_grouped_summary"),
     ("Validation", "validation_summary"),
+    ("Walk-forward diagnostics", "walk_forward_results"),
 ]
 
 
@@ -166,6 +167,7 @@ csv_exports = [
     ("equity_curve", "equity_curve.csv"),
     ("grid_results", "grid_results.csv"),
     ("time_grouped_summary", "time_grouped_summary.csv"),
+    ("walk_forward_results", "walk_forward_results.csv"),
 ]
 
 for key, filename in csv_exports:

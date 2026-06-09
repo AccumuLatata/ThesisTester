@@ -9,13 +9,25 @@ warnings.  No trade re-simulation is performed.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from thesistester.analytics import run_walk_forward_sl_tp, summarize_walk_forward
 from thesistester.analytics.validation import validation_summary
+from thesistester.config import INSTRUMENTS
 
 st.title("📊 Statistical Validation")
 st.caption("Diagnostic only — not proof of edge.")
+
+
+def _fmt_value(v, fmt=".4f", fallback="—"):
+    if v is None:
+        return fallback
+    try:
+        return format(float(v), fmt)
+    except (TypeError, ValueError):
+        return fallback
 
 # ── Require trades ────────────────────────────────────────────────────────────
 trades_raw = st.session_state.get("trades")
@@ -152,6 +164,144 @@ if st.button("▶ Run Validation", type="primary"):
         )
     st.session_state["validation_summary"] = summary
     st.success("Validation complete.")
+
+st.divider()
+st.subheader("Walk-forward / OOS diagnostics")
+st.caption("Diagnostic only — walk-forward can still overfit.")
+
+run_wfo = st.toggle("Run walk-forward diagnostics", value=False)
+if run_wfo:
+    data_source = st.session_state.get("levels")
+    if data_source is None or data_source.empty:
+        data_source = st.session_state.get("data")
+    signals_raw = st.session_state.get("signals")
+    if data_source is None or data_source.empty:
+        st.warning("No OHLCV data found for walk-forward diagnostics.")
+    elif signals_raw is None or signals_raw.empty:
+        st.warning("No signals found for walk-forward diagnostics.")
+    else:
+        instrument = st.session_state.get("instrument", "ES")
+        inst = INSTRUMENTS.get(instrument)
+        tick_size = inst.tick_size if inst else 0.25
+        point_value = inst.point_value if inst else 50.0
+        max_window_bars = max(5, int(len(data_source)))
+
+        c1, c2, c3 = st.columns(3)
+        train_bars = int(c1.number_input("Train bars", min_value=5, max_value=max_window_bars, value=min(500, max_window_bars), step=5))
+        test_bars = int(c2.number_input("Test bars", min_value=5, max_value=max_window_bars, value=min(100, max_window_bars), step=5))
+        step_bars_input = c3.number_input(
+            "Step bars (0 = default)",
+            min_value=0,
+            max_value=max_window_bars,
+            value=0,
+            step=1,
+        )
+        step_bars = None if int(step_bars_input) == 0 else int(step_bars_input)
+
+        c4, c5 = st.columns(2)
+        wfo_ranking_metric = c4.selectbox(
+            "WFO ranking metric",
+            options=["expectancy_r", "total_r", "profit_factor", "win_rate"],
+            index=0,
+        )
+        wfo_min_train_trades = int(
+            c5.number_input(
+                "WFO min train trades",
+                min_value=1,
+                max_value=100_000,
+                value=1,
+                step=1,
+            )
+        )
+
+        grid_results = st.session_state.get("grid_results")
+        if grid_results is not None and not grid_results.empty:
+            sl_values = sorted(pd.to_numeric(grid_results["stop_loss_ticks"], errors="coerce").dropna().unique().tolist())
+            tp_values = sorted(pd.to_numeric(grid_results["take_profit_ticks"], errors="coerce").dropna().unique().tolist())
+            st.caption(f"Using SL/TP values from Grid Search ({len(sl_values)} SL × {len(tp_values)} TP).")
+        else:
+            gc1, gc2, gc3 = st.columns(3)
+            sl_start = float(gc1.number_input("SL start", min_value=1.0, max_value=500.0, value=4.0, step=1.0))
+            sl_stop = float(gc2.number_input("SL stop", min_value=1.0, max_value=500.0, value=20.0, step=1.0))
+            sl_step = float(gc3.number_input("SL step", min_value=1.0, max_value=100.0, value=4.0, step=1.0))
+            gc4, gc5, gc6 = st.columns(3)
+            tp_start = float(gc4.number_input("TP start", min_value=1.0, max_value=1000.0, value=8.0, step=1.0))
+            tp_stop = float(gc5.number_input("TP stop", min_value=1.0, max_value=1000.0, value=40.0, step=1.0))
+            tp_step = float(gc6.number_input("TP step", min_value=1.0, max_value=200.0, value=8.0, step=1.0))
+            sl_values = [round(v, 10) for v in np.arange(sl_start, sl_stop + sl_step * 0.5, sl_step).tolist() if v > 0]
+            tp_values = [round(v, 10) for v in np.arange(tp_start, tp_stop + tp_step * 0.5, tp_step).tolist() if v > 0]
+
+        grid_costs = st.session_state.get("grid_execution_costs") or st.session_state.get("backtest_execution_costs") or {}
+        session_policy = st.session_state.get("grid_session_exit_policy") or st.session_state.get("backtest_session_exit_policy") or {}
+        exposure_policy_state = st.session_state.get("grid_exposure_policy") or st.session_state.get("exposure_policy") or {}
+
+        if st.button("▶ Run walk-forward diagnostics", type="secondary"):
+            if not sl_values or not tp_values:
+                st.error("SL/TP grid values are empty; adjust the ranges.")
+            else:
+                with st.spinner("Running walk-forward diagnostics…"):
+                    try:
+                        results_df = run_walk_forward_sl_tp(
+                            df=data_source,
+                            signals=signals_raw,
+                            tick_size=tick_size,
+                            point_value=point_value,
+                            stop_loss_ticks_values=sl_values,
+                            take_profit_ticks_values=tp_values,
+                            train_bars=train_bars,
+                            test_bars=test_bars,
+                            step_bars=step_bars,
+                            ranking_metric=wfo_ranking_metric,
+                            min_train_trades=wfo_min_train_trades,
+                            max_holding_bars=None,
+                            allow_same_bar_exit=True,
+                            commission_per_side=float(grid_costs.get("commission_per_side", 0.0) or 0.0),
+                            slippage_ticks=float(grid_costs.get("slippage_ticks", 0.0) or 0.0),
+                            flat_by_session_close=bool(session_policy.get("flat_by_session_close", False)),
+                            session_close_time=session_policy.get("session_close_time"),
+                            session_timezone=session_policy.get("session_timezone"),
+                            no_new_entries_after=session_policy.get("no_new_entries_after"),
+                            exposure_policy=str(exposure_policy_state.get("exposure_policy", "allow_all")),
+                            cooldown_bars_after_exit=int(exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0),
+                        )
+                    except ValueError as e:
+                        st.error(f"Walk-forward diagnostics error: {e}")
+                    else:
+                        wfo_summary = summarize_walk_forward(results_df)
+                        wfo_config = {
+                            "train_bars": int(train_bars),
+                            "test_bars": int(test_bars),
+                            "step_bars": int(step_bars if step_bars is not None else test_bars),
+                            "ranking_metric": wfo_ranking_metric,
+                            "min_train_trades": int(wfo_min_train_trades),
+                            "stop_loss_ticks_values": sl_values,
+                            "take_profit_ticks_values": tp_values,
+                            "tick_size": float(tick_size),
+                            "point_value": float(point_value),
+                            "commission_per_side": float(grid_costs.get("commission_per_side", 0.0) or 0.0),
+                            "slippage_ticks": float(grid_costs.get("slippage_ticks", 0.0) or 0.0),
+                            "flat_by_session_close": bool(session_policy.get("flat_by_session_close", False)),
+                            "session_close_time": session_policy.get("session_close_time"),
+                            "session_timezone": session_policy.get("session_timezone"),
+                            "no_new_entries_after": session_policy.get("no_new_entries_after"),
+                            "exposure_policy": str(exposure_policy_state.get("exposure_policy", "allow_all")),
+                            "cooldown_bars_after_exit": int(exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0),
+                        }
+                        st.session_state["walk_forward_results"] = results_df
+                        st.session_state["walk_forward_summary"] = wfo_summary
+                        st.session_state["walk_forward_config"] = wfo_config
+                        st.success("Walk-forward diagnostics complete.")
+
+wfo_results = st.session_state.get("walk_forward_results")
+wfo_summary = st.session_state.get("walk_forward_summary")
+if isinstance(wfo_summary, dict):
+    s1, s2, s3, s4 = st.columns(4)
+    s1.metric("Folds", wfo_summary.get("fold_count", 0))
+    s2.metric("Valid OOS folds", wfo_summary.get("valid_fold_count", 0))
+    s3.metric("OOS profitable rate", _fmt_value(wfo_summary.get("oos_profitable_fold_rate"), ".1%"))
+    s4.metric("Median test expectancy", _fmt_value(wfo_summary.get("median_test_expectancy_r")))
+if hasattr(wfo_results, "empty") and not wfo_results.empty:
+    st.dataframe(wfo_results, width="stretch", hide_index=True)
 
 # ── Display results if available ──────────────────────────────────────────────
 summary = st.session_state.get("validation_summary")

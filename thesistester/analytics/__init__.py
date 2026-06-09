@@ -12,6 +12,7 @@ from .validation import (
     trade_count_diagnostics,
     validation_summary,
 )
+from .walk_forward import run_walk_forward_sl_tp, summarize_walk_forward
 
 __all__ = [
     "summarize_trades",
@@ -27,4 +28,6 @@ __all__ = [
     "trade_count_diagnostics",
     "grid_overfit_diagnostics",
     "validation_summary",
+    "run_walk_forward_sl_tp",
+    "summarize_walk_forward",
 ]
