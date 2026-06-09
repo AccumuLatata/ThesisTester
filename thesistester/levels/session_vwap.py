@@ -58,10 +58,10 @@ def compute_session_vwap_levels(
         Empty DataFrame when ``enabled=False`` (Stage 1 no-op).
         Will return ``dVWAP_RTH`` (and optionally ``dVWAP_ETH``) in Stage 3.
     """
-    require_tz_aware_timestamp(df)
-
     if not enabled:
         return pd.DataFrame(index=df.index)
+
+    require_tz_aware_timestamp(df)
 
     # Stage 3 implementation will go here.
     raise NotImplementedError(  # pragma: no cover

@@ -188,7 +188,7 @@ No implementation should begin before these semantics are documented.
 
 ### Stage 1 — Add Isolated Level Modules ✅ COMPLETE
 
-**Status:** Merged. Plumbing only — no level algorithms implemented yet.
+**Status:** Implemented in PR #68; complete once merged. Plumbing only — no level algorithms implemented yet.
 
 Added modules:
 
@@ -198,9 +198,13 @@ thesistester/levels/session_vwap.py — compute_session_vwap_levels() stub
 thesistester/levels/tpo.py          — compute_tpo_levels() stub (covers SP + APOC)
 ```
 
-All three functions accept an `enabled` / gate keyword that defaults to `False`
-and returns an empty DataFrame immediately, so `compute_all_levels` can call them
-without producing any new columns.
+All three functions accept an `enabled` / gate keyword that defaults to `False`.
+When the gate is disabled the function returns an empty DataFrame immediately
+(true no-op — no timestamp validation).  When the gate is enabled the function
+first validates that `timestamp` is tz-aware (raises `ValueError` for naive
+timestamps), then raises `NotImplementedError` until the corresponding stage is
+implemented.  This means `compute_all_levels` can call them without producing any
+new columns or incurring any validation cost under the default (disabled) settings.
 
 `compute_all_levels` (`thesistester/levels/all.py`) now accepts the following new
 keyword arguments, all defaulting to the no-op state:

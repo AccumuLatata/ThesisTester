@@ -38,10 +38,16 @@ def compute_all_levels(
     """Compute Phase 2 + Phase 3 levels in one timeline-aligned DataFrame.
 
     New level families (pivots, session VWAP, TPO single prints, APOC/pAPOC) are
-    wired in here but default to **disabled**.  Passing ``enabled=True`` for any of
-    them will raise ``NotImplementedError`` until the corresponding implementation
-    stage is merged.  With all new gates at their defaults the output is
-    **identical** to the pre-Stage-1 output.
+    wired in here but controlled by the following gates, all disabled by default:
+
+    - ``pivots_enabled`` — fractal pivot levels (Stage 2)
+    - ``session_vwap_enabled`` — developing session VWAP (Stage 3)
+    - ``single_prints_enabled`` — TPO single print nearest-above/below (Stage 4)
+    - ``apoc_enabled`` — APOC / pAPOC (Stage 5)
+
+    Enabling any of these gates will raise ``NotImplementedError`` until the
+    corresponding implementation stage is merged.  With all new gates at their
+    defaults the output is **identical** to the pre-Stage-1 output.
     """
     session_df = compute_session_levels(df, instrument=instrument, opening_range_minutes=opening_range_minutes)
     indicator_df = compute_indicator_levels(

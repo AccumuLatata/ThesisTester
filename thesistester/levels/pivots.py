@@ -67,10 +67,10 @@ def compute_pivot_levels(
         Empty DataFrame when ``enabled=False`` (Stage 1 no-op).
         Will return pivot columns aligned to *df*'s index in Stage 2.
     """
-    require_tz_aware_timestamp(df)
-
     if not enabled:
         return pd.DataFrame(index=df.index)
+
+    require_tz_aware_timestamp(df)
 
     # Stage 2 implementation will go here.
     raise NotImplementedError(  # pragma: no cover

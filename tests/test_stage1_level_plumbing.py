@@ -26,16 +26,13 @@ from thesistester.levels.pivots import (
     DEFAULT_PIVOT_LEFT,
     DEFAULT_PIVOT_RIGHT,
     SUPPORTED_PIVOT_TIMEFRAMES,
-    compute_pivot_levels as _direct_pivot,
 )
 from thesistester.levels.session_vwap import (
     DEFAULT_VWAP_ANCHOR,
     SUPPORTED_VWAP_ANCHORS,
-    compute_session_vwap_levels as _direct_vwap,
 )
 from thesistester.levels.tpo import (
     TPO_BRACKET_MINUTES,
-    compute_tpo_levels as _direct_tpo,
 )
 
 
@@ -329,28 +326,57 @@ def test_compute_tpo_levels_apoc_enabled_raises_not_implemented():
 
 
 # -------------------------------------------------------------------
-# 7. Stubs require a tz-aware timestamp column
+# 7. Timestamp validation: disabled stubs are true no-ops;
+#    enabled stubs require tz-aware timestamp
 # -------------------------------------------------------------------
 
-def test_compute_pivot_levels_requires_tz_aware_timestamp():
+def _naive_df() -> pd.DataFrame:
+    """DataFrame with a naive (tz-unaware) timestamp column."""
     df = _base_df()
     df["timestamp"] = df["timestamp"].dt.tz_localize(None)
+    return df
+
+
+# 7a. Disabled stubs accept naive timestamps (no validation when disabled).
+
+def test_compute_pivot_levels_disabled_accepts_naive_timestamp():
+    result = compute_pivot_levels(_naive_df(), enabled=False)
+    assert isinstance(result, pd.DataFrame)
+    assert len(result.columns) == 0
+
+
+def test_compute_session_vwap_levels_disabled_accepts_naive_timestamp():
+    result = compute_session_vwap_levels(_naive_df(), enabled=False)
+    assert isinstance(result, pd.DataFrame)
+    assert len(result.columns) == 0
+
+
+def test_compute_tpo_levels_disabled_accepts_naive_timestamp():
+    result = compute_tpo_levels(_naive_df(), single_prints_enabled=False, apoc_enabled=False)
+    assert isinstance(result, pd.DataFrame)
+    assert len(result.columns) == 0
+
+
+# 7b. Enabled stubs raise ValueError for naive timestamps.
+
+def test_compute_pivot_levels_enabled_requires_tz_aware_timestamp():
     with pytest.raises(ValueError, match="timezone-aware"):
-        compute_pivot_levels(df)
+        compute_pivot_levels(_naive_df(), enabled=True)
 
 
-def test_compute_session_vwap_levels_requires_tz_aware_timestamp():
-    df = _base_df()
-    df["timestamp"] = df["timestamp"].dt.tz_localize(None)
+def test_compute_session_vwap_levels_enabled_requires_tz_aware_timestamp():
     with pytest.raises(ValueError, match="timezone-aware"):
-        compute_session_vwap_levels(df)
+        compute_session_vwap_levels(_naive_df(), enabled=True)
 
 
-def test_compute_tpo_levels_requires_tz_aware_timestamp():
-    df = _base_df()
-    df["timestamp"] = df["timestamp"].dt.tz_localize(None)
+def test_compute_tpo_levels_single_prints_enabled_requires_tz_aware_timestamp():
     with pytest.raises(ValueError, match="timezone-aware"):
-        compute_tpo_levels(df)
+        compute_tpo_levels(_naive_df(), single_prints_enabled=True)
+
+
+def test_compute_tpo_levels_apoc_enabled_requires_tz_aware_timestamp():
+    with pytest.raises(ValueError, match="timezone-aware"):
+        compute_tpo_levels(_naive_df(), apoc_enabled=True)
 
 
 # -------------------------------------------------------------------

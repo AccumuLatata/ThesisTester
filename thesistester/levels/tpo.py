@@ -63,10 +63,10 @@ def compute_tpo_levels(
         Will return Single Print and/or APOC columns aligned to *df*'s index
         in Stages 4 and 5.
     """
-    require_tz_aware_timestamp(df)
-
     if not single_prints_enabled and not apoc_enabled:
         return pd.DataFrame(index=df.index)
+
+    require_tz_aware_timestamp(df)
 
     # Stage 4 / Stage 5 implementations will go here.
     raise NotImplementedError(  # pragma: no cover
