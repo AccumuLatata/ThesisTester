@@ -120,3 +120,11 @@ Directional Profit Factor is unstable when one side has few trades.  A side with
 only wins produces `profit_factor = ∞`.  Use the **Min long trades** / **Min short
 trades** gates in Grid Search advanced mode to exclude cells with insufficient
 per-side sample sizes.  For serious research, values ≥ 10–30 per side are advisable.
+
+## Walk-forward / OOS diagnostics metrics
+
+- **Train expectancy (R)**: expectancy from the selected train-window SL/TP row.
+- **Test expectancy (R)**: expectancy on the out-of-sample test window using the train-selected SL/TP.
+- **Degradation expectancy (R)**: `test_expectancy_r - train_expectancy_r` per fold.
+- **OOS profitable fold rate**: fraction of valid folds with `test_expectancy_r > 0`.
+- **Aggregate test total R**: sum of `test_total_r` across valid walk-forward folds.

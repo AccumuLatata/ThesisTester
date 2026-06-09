@@ -89,6 +89,10 @@ other than the last bar in the dataset.
 ## Validation implications
 - Validation diagnostics explicitly warn that assumptions like sign symmetry and independence limits apply; serial dependence is ignored (`thesistester/analytics/validation.py:10-11`, `115-117`).
 - Outputs are explicitly framed as diagnostics and not proof of edge (`thesistester/analytics/validation.py:13`, `pages/10_Validation.py:18`).
+- Walk-forward / out-of-sample diagnostics are also descriptive only, not proof of edge.
+- Current walk-forward splits use deterministic bar-index windows and are not calendar/session-aware.
+- Train-window SL/TP selection can still overfit when grids are large or fold count is small.
+- Each fold's test window is out-of-sample relative to that fold's train window only.
 
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.

@@ -144,6 +144,7 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "instrument": to_jsonable(instrument),
             "setup_config": to_jsonable(setup_config),
             "last_signal_setup": to_jsonable(session_state.get("last_signal_setup")),
+            "walk_forward_config": to_jsonable(session_state.get("walk_forward_config")),
         },
         "results": {
             "signal_count": _table_count(session_state, "signals"),
@@ -151,6 +152,7 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "trade_summary": to_jsonable(session_state.get("trade_summary")),
             "best_grid_result": to_jsonable(session_state.get("best_grid_result")),
             "validation_summary": to_jsonable(session_state.get("validation_summary")),
+            "walk_forward_summary": to_jsonable(session_state.get("walk_forward_summary")),
         },
         "tables": {
             "signals": _table_records(
@@ -180,6 +182,12 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "time_grouped_summary": _table_records(
                 session_state,
                 "time_grouped_summary",
+                display_timezone=display_timezone,
+                canonical_timezone=canonical_timezone,
+            ),
+            "walk_forward_results": _table_records(
+                session_state,
+                "walk_forward_results",
                 display_timezone=display_timezone,
                 canonical_timezone=canonical_timezone,
             ),
