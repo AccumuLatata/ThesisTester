@@ -155,6 +155,19 @@ def _contracts_from_column(df: pd.DataFrame, contract_column: str) -> list[str]:
     return [str(v) for v in values.drop_duplicates().tolist()]
 
 
+def _json_safe_timestamp(value: object) -> str | None:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
 def validate_roll_metadata(
     df: pd.DataFrame,
     roll_method: str,
@@ -166,6 +179,8 @@ def validate_roll_metadata(
     """Validate user-declared futures roll assumptions against dataset metadata."""
     warnings: list[str] = []
     valid = True
+    adjustment_method_text = str("unknown" if adjustment_method is None else adjustment_method).strip()
+    roll_rule_text = str("unknown" if roll_rule is None else roll_rule).strip()
 
     if roll_method not in ROLL_METHODS:
         warnings.append(f"Unsupported roll method '{roll_method}'.")
@@ -185,13 +200,13 @@ def validate_roll_metadata(
             valid = False
 
     elif roll_method == "external_continuous":
-        if adjustment_method == "unknown":
+        if adjustment_method_text == "unknown":
             warnings.append("External continuous adjustment_method is unknown.")
-        if roll_rule == "unknown":
+        if roll_rule_text == "unknown":
             warnings.append("External continuous roll_rule is unknown.")
-        if adjustment_method not in ADJUSTMENT_METHODS:
-            warnings.append(f"Unrecognized adjustment_method '{adjustment_method}'.")
-        if roll_rule.strip() == "":
+        if adjustment_method_text not in ADJUSTMENT_METHODS:
+            warnings.append(f"Unrecognized adjustment_method '{adjustment_method_text}'.")
+        if roll_rule_text == "":
             warnings.append("Roll rule is empty.")
         if contract_count is not None and contract_count > 1:
             warnings.append(
@@ -230,15 +245,13 @@ def validate_roll_metadata(
         "contract_column": detected_contract_column,
         "contract_count": contract_count,
         "contracts": contracts,
-        "adjustment_method": adjustment_method if roll_method == "external_continuous" else None,
-        "roll_rule": roll_rule if roll_method == "external_continuous" else None,
+        "adjustment_method": adjustment_method_text if roll_method == "external_continuous" else None,
+        "roll_rule": roll_rule_text if roll_method == "external_continuous" else None,
         "roll_gap_count": len(roll_gaps),
         "roll_gaps": [
             {
                 **gap,
-                "roll_timestamp": gap["roll_timestamp"].isoformat()
-                if isinstance(gap.get("roll_timestamp"), pd.Timestamp)
-                else gap.get("roll_timestamp"),
+                "roll_timestamp": _json_safe_timestamp(gap.get("roll_timestamp")),
             }
             for gap in roll_gaps
         ],

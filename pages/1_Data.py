@@ -95,6 +95,10 @@ def _clear_dataset_dependent_state() -> None:
         "validation_summary",
         "roll_policy",
         "roll_validation",
+        "roll_method_selector",
+        "roll_contract_column_input",
+        "roll_adjustment_method_selector",
+        "roll_rule_selector",
     ]:
         st.session_state.pop(key, None)
 

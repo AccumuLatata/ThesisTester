@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pandas as pd
 
 from thesistester.data.rolls import (
@@ -83,6 +85,33 @@ def test_external_continuous_warns_with_multiple_explicit_contracts():
     assert any("Multiple explicit contracts" in warning for warning in result["warnings"])
 
 
+def test_external_continuous_accepts_none_roll_metadata_inputs():
+    result = validate_roll_metadata(
+        _segmented_df().iloc[:2],
+        roll_method="external_continuous",
+        contract_column="contract",
+        adjustment_method=None,
+        roll_rule=None,
+    )
+    assert result["valid"] is True
+    assert result["adjustment_method"] == "unknown"
+    assert result["roll_rule"] == "unknown"
+    assert any("adjustment_method is unknown" in warning for warning in result["warnings"])
+    assert any("roll_rule is unknown" in warning for warning in result["warnings"])
+
+
+def test_external_continuous_empty_roll_rule_warns_without_crashing():
+    result = validate_roll_metadata(
+        _segmented_df().iloc[:2],
+        roll_method="external_continuous",
+        contract_column="contract",
+        adjustment_method="back_adjusted",
+        roll_rule="",
+    )
+    assert result["valid"] is True
+    assert any("Roll rule is empty." in warning for warning in result["warnings"])
+
+
 def test_segmented_contracts_invalid_without_contract_column():
     df = _segmented_df().drop(columns=["contract"])
     result = validate_roll_metadata(df, roll_method="segmented_contracts", contract_column="contract")
@@ -101,6 +130,40 @@ def test_segmented_contracts_valid_with_two_contracts_and_gaps():
     assert result["contract_count"] == 2
     assert result["roll_gap_count"] == 1
     assert len(result["roll_gaps"]) == 1
+
+
+def test_validate_roll_metadata_roll_gap_timestamps_are_json_safe_strings_or_none():
+    df = pd.DataFrame(
+        {
+            "timestamp": [
+                datetime(2026, 1, 1, 9, 30, tzinfo=timezone.utc),
+                datetime(2026, 1, 1, 9, 31, tzinfo=timezone.utc),
+                datetime(2026, 1, 1, 9, 32, tzinfo=timezone.utc),
+            ],
+            "open": [100.0, 101.0, 110.0],
+            "close": [100.5, 101.5, 110.5],
+            "contract": ["ESH2026", "ESH2026", "ESM2026"],
+        }
+    )
+    result = validate_roll_metadata(df, roll_method="segmented_contracts", contract_column="contract")
+    assert isinstance(result["roll_gaps"][0]["roll_timestamp"], str)
+
+
+def test_validate_roll_metadata_roll_gap_nat_timestamp_serializes_to_none():
+    df = pd.DataFrame(
+        {
+            "timestamp": [
+                pd.Timestamp("2026-01-01 09:30:00", tz="UTC"),
+                pd.Timestamp("2026-01-01 09:31:00", tz="UTC"),
+                pd.NaT,
+            ],
+            "open": [100.0, 101.0, 110.0],
+            "close": [100.5, 101.5, 110.5],
+            "contract": ["ESH2026", "ESH2026", "ESM2026"],
+        }
+    )
+    result = validate_roll_metadata(df, roll_method="segmented_contracts", contract_column="contract")
+    assert result["roll_gaps"][0]["roll_timestamp"] is None
 
 
 def test_roll_gap_ticks_computed_when_tick_size_provided():
