@@ -514,3 +514,17 @@ def test_negative_slippage_raises():
             take_profit_ticks=8,
             slippage_ticks=-0.1,
         )
+
+
+def test_nonpositive_tick_size_raises():
+    df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0))
+    sigs = _signal(bar_index=0)
+    with pytest.raises(ValueError, match="tick_size"):
+        simulate_trades(df, sigs, 0.0, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8)
+
+
+def test_nonpositive_point_value_raises():
+    df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0))
+    sigs = _signal(bar_index=0)
+    with pytest.raises(ValueError, match="point_value"):
+        simulate_trades(df, sigs, TICK, 0.0, stop_loss_ticks=4, take_profit_ticks=8)

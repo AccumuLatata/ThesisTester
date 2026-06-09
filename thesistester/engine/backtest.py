@@ -130,6 +130,10 @@ def simulate_trades(
         raise ValueError(
             f"stop_loss_ticks must be > 0, got {stop_loss_ticks!r}"
         )
+    if tick_size <= 0:
+        raise ValueError(f"tick_size must be > 0, got {tick_size!r}")
+    if point_value <= 0:
+        raise ValueError(f"point_value must be > 0, got {point_value!r}")
     if commission_per_side < 0:
         raise ValueError(
             f"commission_per_side must be >= 0, got {commission_per_side!r}"
@@ -148,7 +152,7 @@ def simulate_trades(
     sl_pts = float(stop_loss_ticks) * float(tick_size)
     tp_pts = float(take_profit_ticks) * float(tick_size)
     slip_pts = float(slippage_ticks) * float(tick_size)
-    commission_cost = 2.0 * float(commission_per_side)
+    total_commission_cost = 2.0 * float(commission_per_side)
     risk_currency = float(stop_loss_ticks) * float(tick_size) * float(point_value)
 
     trades: list[dict] = []
@@ -290,11 +294,14 @@ def simulate_trades(
             gross_pnl_points = entry_price - float(exit_price)
 
         gross_pnl_currency = gross_pnl_points * float(point_value)
+        # Cost modeling is adverse-only: any favorable rounding/noise is floored at 0.
         slippage_cost = max(
             0.0,
             (theoretical_pnl_points - gross_pnl_points) * float(point_value),
         )
-        net_pnl_currency = gross_pnl_currency - commission_cost
+        # gross_pnl_currency already reflects entry+exit slippage via slipped fills.
+        # Net P&L subtracts round-turn commissions on top of that gross value.
+        net_pnl_currency = gross_pnl_currency - total_commission_cost
         r_multiple = net_pnl_currency / risk_currency  # risk_currency is > 0
 
         bars_held = exit_bar_index - entry_bar_index + 1
@@ -321,7 +328,7 @@ def simulate_trades(
                 "take_profit_ticks": take_profit_ticks,
                 "gross_pnl_points": gross_pnl_points,
                 "gross_pnl_currency": gross_pnl_currency,
-                "commission_cost": commission_cost,
+                "commission_cost": total_commission_cost,
                 "slippage_cost": slippage_cost,
                 "net_pnl_currency": net_pnl_currency,
                 "pnl_points": gross_pnl_points,
