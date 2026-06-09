@@ -186,29 +186,57 @@ No implementation should begin before these semantics are documented.
 
 ---
 
-### Stage 1 — Add Isolated Level Modules
+### Stage 1 — Add Isolated Level Modules ✅ COMPLETE
 
-Add new functionality in isolated modules without changing existing level behavior.
+**Status:** Implemented in PR #68; complete once merged. Plumbing only — no level algorithms implemented yet.
 
-Recommended module structure:
-
-```text
-thesistester/levels/pivots.py
-thesistester/levels/session_vwap.py
-thesistester/levels/tpo.py
-```
-
-Alternatively, if the project prefers fewer files, profile-adjacent logic may live in:
+Added modules:
 
 ```text
-thesistester/levels/profile.py
+thesistester/levels/pivots.py       — compute_pivot_levels() stub
+thesistester/levels/session_vwap.py — compute_session_vwap_levels() stub
+thesistester/levels/tpo.py          — compute_tpo_levels() stub (covers SP + APOC)
 ```
+
+All three functions accept an `enabled` / gate keyword that defaults to `False`.
+When the gate is disabled the function returns an empty DataFrame immediately
+(true no-op — no timestamp validation).  When the gate is enabled the function
+first validates that `timestamp` is tz-aware (raises `ValueError` for naive
+timestamps), then raises `NotImplementedError` until the corresponding stage is
+implemented.  This means `compute_all_levels` can call them without producing any
+new columns or incurring any validation cost under the default (disabled) settings.
+
+`compute_all_levels` (`thesistester/levels/all.py`) now accepts the following new
+keyword arguments, all defaulting to the no-op state:
+
+```
+pivots_enabled=False
+pivot_timeframes=None
+pivot_left=2
+pivot_right=2
+session_vwap_enabled=False
+session_vwap_anchor="RTH"
+single_prints_enabled=False
+apoc_enabled=False
+```
+
+`thesistester/levels/__init__.py` exports all three new compute functions.
+
+Tests added in `tests/test_stage1_level_plumbing.py` (27 tests):
+
+- new modules are importable and exported from the package,
+- settings constants are correctly defined,
+- disabled stubs return empty DataFrames with the correct index length,
+- `compute_all_levels` with default settings produces zero new columns,
+- explicit disabled gates also produce zero new columns,
+- enabling any gate raises `NotImplementedError` (stub contract),
+- stubs require a tz-aware `timestamp` column.
 
 Rules:
 
-- Keep existing session, indicator, and profile outputs unchanged.
-- Wire new modules into the existing level aggregator only behind explicit settings.
-- Default all new features to disabled in the UI.
+- Keep existing session, indicator, and profile outputs unchanged. ✅
+- Wire new modules into the existing level aggregator only behind explicit settings. ✅
+- Default all new features to disabled in the UI. ✅
 
 ---
 
