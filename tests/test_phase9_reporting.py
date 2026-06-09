@@ -10,9 +10,11 @@ import pandas as pd
 from thesistester.data.loader import load_ohlcv
 from thesistester.reporting import (
     build_markdown_report,
+    build_execution_cost_assumptions,
     build_research_artifact,
     dataframe_to_csv_bytes,
     dataframe_to_json_records,
+    execution_cost_assumptions_markdown,
     to_jsonable,
 )
 from thesistester.timezone_display import convert_dataframe_timestamps_for_display
@@ -363,3 +365,101 @@ def test_export_conversion_warns_and_keeps_nonexistent_naive_timestamps():
     )
     assert any("nonexistent naive timestamps" in warning for warning in warnings)
     pd.testing.assert_series_equal(converted["entry_timestamp"], df["entry_timestamp"])
+
+
+def test_execution_cost_assumptions_backtest_only_costs():
+    state = _sample_session_state()
+    state["grid_results"] = pd.DataFrame()
+    state["best_grid_result"] = {}
+    state["backtest_execution_costs"] = {"commission_per_side": 1.25, "slippage_ticks": 1.0}
+
+    artifact = build_research_artifact(state)
+    assumptions = build_execution_cost_assumptions(state)
+    if assumptions["backtest"]["available"] or assumptions["grid"]["available"]:
+        artifact["execution_cost_assumptions"] = assumptions
+
+    assert assumptions["backtest"]["available"] is True
+    assert assumptions["backtest"]["commission_per_side"] == 1.25
+    assert assumptions["backtest"]["slippage_ticks"] == 1.0
+    assert assumptions["grid"]["available"] is False
+    assert artifact["execution_cost_assumptions"]["backtest"]["available"] is True
+
+
+def test_execution_cost_assumptions_grid_only_costs():
+    state = _sample_session_state()
+    state["trades"] = pd.DataFrame()
+    state["trade_summary"] = {}
+    state["grid_execution_costs"] = {"commission_per_side": 0.5, "slippage_ticks": 0.25}
+
+    artifact = build_research_artifact(state)
+    assumptions = build_execution_cost_assumptions(state)
+    if assumptions["backtest"]["available"] or assumptions["grid"]["available"]:
+        artifact["execution_cost_assumptions"] = assumptions
+
+    assert assumptions["grid"]["available"] is True
+    assert assumptions["grid"]["commission_per_side"] == 0.5
+    assert assumptions["grid"]["slippage_ticks"] == 0.25
+    assert assumptions["backtest"]["available"] is False
+    assert artifact["execution_cost_assumptions"]["grid"]["available"] is True
+
+
+def test_execution_cost_assumptions_preserves_distinct_backtest_and_grid_values():
+    state = _sample_session_state()
+    state["backtest_execution_costs"] = {"commission_per_side": 1.25, "slippage_ticks": 1.0}
+    state["grid_execution_costs"] = {"commission_per_side": 0.5, "slippage_ticks": 0.25}
+
+    artifact = build_research_artifact(state)
+    assumptions = build_execution_cost_assumptions(state)
+    if assumptions["backtest"]["available"] or assumptions["grid"]["available"]:
+        artifact["execution_cost_assumptions"] = assumptions
+
+    assert assumptions["backtest"]["available"] is True
+    assert assumptions["grid"]["available"] is True
+    assert assumptions["backtest"]["commission_per_side"] == 1.25
+    assert assumptions["grid"]["commission_per_side"] == 0.5
+    assert assumptions["backtest"]["slippage_ticks"] == 1.0
+    assert assumptions["grid"]["slippage_ticks"] == 0.25
+    assert artifact["execution_cost_assumptions"]["backtest"]["commission_per_side"] == 1.25
+    assert artifact["execution_cost_assumptions"]["grid"]["commission_per_side"] == 0.5
+
+
+def test_execution_cost_assumptions_ignores_stale_backtest_costs_without_results():
+    state = _sample_session_state()
+    state["trades"] = pd.DataFrame()
+    state["trade_summary"] = {}
+    state["backtest_execution_costs"] = {"commission_per_side": 1.25, "slippage_ticks": 1.0}
+
+    artifact = build_research_artifact(state)
+    assumptions = build_execution_cost_assumptions(state)
+    if assumptions["backtest"]["available"] or assumptions["grid"]["available"]:
+        artifact["execution_cost_assumptions"] = assumptions
+
+    assert assumptions["backtest"]["available"] is False
+    assert assumptions["backtest"]["commission_per_side"] is None
+    assert assumptions["backtest"]["slippage_ticks"] is None
+    assert "execution_cost_assumptions" not in artifact
+
+
+def test_execution_cost_assumptions_markdown_has_scoped_headings_and_values():
+    assumptions = {
+        "backtest": {
+            "available": True,
+            "commission_per_side": 1.25,
+            "slippage_ticks": 1.0,
+            "metrics_basis": "net-of-cost",
+        },
+        "grid": {
+            "available": True,
+            "commission_per_side": 0.5,
+            "slippage_ticks": 0.25,
+            "metrics_basis": "net-of-cost",
+        },
+    }
+
+    markdown = execution_cost_assumptions_markdown(assumptions)
+
+    assert "## Execution Cost Assumptions" in markdown
+    assert "### Backtest" in markdown
+    assert "### Grid Search" in markdown
+    assert "1.2500" in markdown
+    assert "0.5000" in markdown

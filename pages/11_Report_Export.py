@@ -9,9 +9,11 @@ import streamlit as st
 
 from thesistester.config import TIMEZONE_OPTIONS
 from thesistester.reporting import (
+    build_execution_cost_assumptions,
     build_markdown_report,
     build_research_artifact,
     dataframe_to_csv_bytes,
+    execution_cost_assumptions_markdown,
 )
 from thesistester.timezone_display import (
     convert_dataframe_timestamps_for_display,
@@ -65,35 +67,13 @@ def _fmt(v: Any, fmt: str = ".2f", fallback: str = "—") -> str:
 
 artifact = build_research_artifact(st.session_state)
 
-backtest_costs = st.session_state.get("backtest_execution_costs") or {}
-grid_costs = st.session_state.get("grid_execution_costs") or {}
-report_costs = (
-    backtest_costs
-    if backtest_costs
-    else grid_costs
-)
-if report_costs:
-    artifact["execution_cost_assumptions"] = {
-        "commission_per_side": float(report_costs.get("commission_per_side", 0.0)),
-        "slippage_ticks": float(report_costs.get("slippage_ticks", 0.0)),
-        "metrics_basis": (
-            "net-of-cost"
-            if (
-                float(report_costs.get("commission_per_side", 0.0)) > 0.0
-                or float(report_costs.get("slippage_ticks", 0.0)) > 0.0
-            )
-            else "gross==net (zero costs)"
-        ),
-    }
+execution_cost_assumptions = build_execution_cost_assumptions(st.session_state)
+if execution_cost_assumptions["backtest"]["available"] or execution_cost_assumptions["grid"]["available"]:
+    artifact["execution_cost_assumptions"] = execution_cost_assumptions
 
 report_markdown = build_markdown_report(artifact)
-if report_costs:
-    report_markdown += (
-        "\n## Execution Cost Assumptions\n"
-        f"- Commission per side: {float(report_costs.get('commission_per_side', 0.0)):.4f}\n"
-        f"- Slippage ticks (per side): {float(report_costs.get('slippage_ticks', 0.0)):.4f}\n"
-        f"- Metrics basis: {artifact['execution_cost_assumptions']['metrics_basis']}\n"
-    )
+if "execution_cost_assumptions" in artifact:
+    report_markdown += execution_cost_assumptions_markdown(artifact["execution_cost_assumptions"])
 
 status_rows = [
     {"Item": item, "Session state key": key, "Available": "✅" if _has_value(key) else "❌"}
@@ -128,12 +108,16 @@ col4.metric("Avg R", _fmt(trade_summary.get("avg_r")))
 col5.metric("Total R", _fmt(trade_summary.get("total_r")))
 col6.metric("Validation", (trade_count_diag or {}).get("status", "—"))
 
-if report_costs:
+if "execution_cost_assumptions" in artifact:
+    available_scopes = [
+        scope
+        for scope in ("backtest", "grid")
+        if artifact["execution_cost_assumptions"].get(scope, {}).get("available")
+    ]
     st.caption(
-        "Execution cost assumptions included in exports: "
-        f"commission/side={float(report_costs.get('commission_per_side', 0.0)):.4f}, "
-        f"slippage_ticks={float(report_costs.get('slippage_ticks', 0.0)):.4f}, "
-        f"metrics={artifact.get('execution_cost_assumptions', {}).get('metrics_basis', '—')}."
+        "Execution cost assumptions included separately for: "
+        + ", ".join(available_scopes)
+        + "."
     )
 
 st.subheader("Downloads")

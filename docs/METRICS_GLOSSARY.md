@@ -71,7 +71,10 @@ Implementation: `cum_r`, `cummax().clip(lower=0.0)`, and drawdown in `thesistest
 
 ## Notes
 - With zero-cost defaults, gross and net are identical.
+- `gross_pnl_currency` is still computed from slipped fills (so slippage is reflected before commission subtraction).
+- `net_pnl_currency = gross_pnl_currency - commission_cost`.
 - With non-zero commission/slippage, trade metrics use net `pnl_currency` / net `r_multiple`.
+- Exported research artifacts preserve execution-cost assumptions separately for backtest and grid sections.
 - Backtest directional KPIs ("Long vs Short KPIs") use the same formulas above, applied independently to `direction == "long"` and `direction == "short"` subsets.
 - Validation pages label outputs as diagnostic only (`pages/10_Validation.py:18`, `thesistester/analytics/validation.py:13`).
 
