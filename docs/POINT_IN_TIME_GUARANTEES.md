@@ -75,6 +75,12 @@ future-shock tests and/or code inspection.
 | `Pivot_1m_High / Pivot_1m_Low` | strict fractal comparison on native bars | **Yes** | A pivot at bar `k` is exposed only from `pivot_bar_open + (pivot_right + 1) * 1min` onward | Requires enough left/right candles; before the first confirmed pivot the column is `NaN` | `tests/test_stage2_pivot_levels.py::test_native_1min_pivot_high_tracks_latest_confirmed_level`, `tests/test_stage2_pivot_levels.py::test_native_1min_pivot_low_respects_confirmation_delay` |
 | `Pivot_5m_*`, `Pivot_30m_*`, `Pivot_4h_*` | strict fractal comparison on resampled candles, merged back with `merge_asof(direction="backward")` | **Yes** | Exposed only after the higher-timeframe pivot candle closes and the full right-side confirmation window also closes (`pivot_bar_open + (pivot_right + 1) * timeframe`) | Requires base data at or below the requested pivot timeframe; no upsampling from larger source bars | `tests/test_stage2_pivot_levels.py::test_5min_pivot_from_1min_source_is_hidden_until_confirmation`, `tests/test_stage2_pivot_levels.py::test_30min_pivot_from_1min_source_is_hidden_until_confirmation`, `tests/test_stage2_pivot_levels.py::test_pivot_levels_are_point_in_time_safe_under_future_shock` |
 
+### Developing session VWAP — `levels/session_vwap.py`
+
+| Level family | Source | Causal? | Availability timing | Known limitations | Tests |
+|---|---|---|---|---|---|
+| `dVWAP_RTH` | cumulative `(typical_price * volume) / volume` over RTH bars in the current RTH session | **Yes** | First RTH bar of each session; `NaN` on all non-RTH bars | Only RTH bars contribute; resets at each new RTH session; zero cumulative volume emits `NaN`; if session column is absent it is derived from instrument config | `tests/test_stage3_session_vwap.py` (future-shock tests: `test_dvwap_rth_future_shock`, `test_dvwap_rth_future_shock_across_sessions`) |
+
 ### Naked levels — `engine/naked.py`
 
 | Component | Source | Causal? | Availability timing | Known limitations | Tests |
@@ -191,3 +197,8 @@ bar on date D; do not use the final row value.
    not emit historical pivot-instance columns. It keeps only the most recent confirmed
    high and low per supported timeframe, and it does not yet classify sweeps, SFPs,
    breakers, reclaims, or retests.
+
+7. **`dVWAP_RTH` uses bar-level typical price.** `typical_price = (high + low + close) / 3`
+   is a bar-level approximation. True intrabar VWAP would require tick data but would not
+   introduce look-ahead bias. Bar `i` typical price is unknown until bar `i` closes;
+   since signals are treated as bar-close confirmed, this is documented intent, not a bug.

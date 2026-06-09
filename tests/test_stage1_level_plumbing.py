@@ -302,10 +302,14 @@ def test_explicit_disabled_gates_no_new_columns():
 # -------------------------------------------------------------------
 
 
-def test_compute_session_vwap_levels_enabled_raises_not_implemented():
-    df = _base_df()
-    with pytest.raises(NotImplementedError):
-        compute_session_vwap_levels(df, enabled=True)
+def test_compute_session_vwap_levels_enabled_returns_dvwap_column():
+    # Stage 3 is now implemented: enabled=True should return a DataFrame with
+    # dVWAP_RTH rather than raising NotImplementedError.
+    from thesistester.data.sessions import tag_session as _tag
+    df = _tag(_base_df(), "ES")
+    result = compute_session_vwap_levels(df, enabled=True)
+    assert isinstance(result, pd.DataFrame)
+    assert "dVWAP_RTH" in result.columns
 
 
 def test_compute_tpo_levels_single_prints_enabled_raises_not_implemented():

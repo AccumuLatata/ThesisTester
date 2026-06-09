@@ -50,6 +50,14 @@ This engine is for **research screening**, not proof of a durable edge.
 - Default fractal settings are `pivot_left=2` and `pivot_right=2`, matching the 5-candle pivot convention.
 - Each pivot column holds the latest confirmed pivot high/low for its timeframe; before the first confirmed pivot exists, the value is `NaN`.
 
+### 5b) Developing session VWAP (`dVWAP_RTH`) is opt-in
+- `dVWAP_RTH` is disabled by default (`session_vwap_enabled=False`), so existing level output is unchanged unless explicitly enabled.
+- Only `anchor="RTH"` is supported in Stage 3.
+- `dVWAP_RTH` resets at each RTH session open; non-RTH bars always emit `NaN`.
+- Zero cumulative RTH volume emits `NaN` (safe divide-by-zero handling).
+- If the input DataFrame lacks a `session` column, RTH membership is derived from the instrument configuration and the timestamp timezone.
+- `session_vwap_enabled=False` is a true no-op: no validation, no new columns, no timestamp checks.
+
 ## 6) Point-in-time correctness (R3 audit)
 
 A full audit of all level, confluence, and signal modules was completed under R3. The
@@ -69,6 +77,9 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   pivot-candle close plus the full right-side confirmation delay. Higher-timeframe pivot
   values are merged back only after the higher-timeframe candle and confirmation window
   have both completed.
+- `dVWAP_RTH` accumulates only RTH bars in the current RTH session using a causal
+  cumulative sum. Appending future bars cannot retroactively change any prior bar's
+  value. Non-RTH bars always emit `NaN`. Resets at each new RTH session.
 - RTH_Open and ONH/ONL are NaN until the first RTH bar of the session; no future RTH
   or overnight data can change ETH-bar values.
 - Opening range (OR_High/OR_Low) is NaN until the clock-based OR window closes.
@@ -90,6 +101,9 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 - Confirmed pivots require enough left/right candles to become knowable and expose only
   the latest confirmed scalar levels. Historical pivot-instance columns and higher-order
   classifications (SFP, breaker, reclaim, retest) are not implemented yet.
+- `dVWAP_RTH` uses bar-level typical price `(H+L+C)/3`. True intrabar VWAP would
+  require tick data. Since signals are treated as bar-close confirmed, this is
+  documented intent, not a bug.
 
 **Warning against non-causal diagnostic use:**
 The `<level>_naked` columns are causal (each bar's value is determined by bars up to
