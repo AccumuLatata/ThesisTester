@@ -421,16 +421,20 @@ def simulate_trades(
             }
         )
 
-    candidate_rows.sort(
-        key=lambda row: (
-            int(row["entry_bar_index"]),
-            int(row["bar_idx"]),
-            int(row["sig"]["signal_id"]),
+    if exposure_policy == "allow_all":
+        ordered_candidates = candidate_rows
+    else:
+        ordered_candidates = sorted(
+            candidate_rows,
+            key=lambda row: (
+                int(row["entry_bar_index"]),
+                int(row["bar_idx"]),
+                int(row["sig"]["signal_id"]),
+            ),
         )
-    )
 
     accepted_for_blocking: list[dict] = []
-    for candidate in candidate_rows:
+    for candidate in ordered_candidates:
         sig = candidate["sig"]
         trigger = candidate["trigger"]
         direction = candidate["direction"]

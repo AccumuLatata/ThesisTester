@@ -975,3 +975,56 @@ def test_return_skipped_signals_backward_compatible_return_type():
     assert len(detailed_result) == 2
     assert isinstance(detailed_result[0], pd.DataFrame)
     assert isinstance(detailed_result[1], pd.DataFrame)
+
+
+def test_allow_all_preserves_input_order_and_trade_ids():
+    """Under allow_all, signal processing order must match the input DataFrame row
+    order, not any sorted order.  Sorting by (entry_bar_index, bar_index,
+    signal_id) would reorder [9, 4, 3] into [3, 4, 9]; this test asserts the
+    original order is preserved and that trade_id is assigned accordingly."""
+    df = _exposure_test_df()
+
+    # Intentionally unsorted: bar_index=1/signal_id=9 first, then bar_index=0
+    signals = pd.concat(
+        [
+            _signal(bar_index=1, signal_id=9, direction="long"),
+            _signal(bar_index=0, signal_id=4, direction="long"),
+            _signal(bar_index=0, signal_id=3, direction="long"),
+        ],
+        ignore_index=True,
+    )
+
+    # Default (allow_all implicit)
+    default_trades = simulate_trades(
+        df,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        max_holding_bars=1,
+    )
+    assert default_trades["signal_id"].tolist() == [9, 4, 3], (
+        "Default allow_all must preserve input row order"
+    )
+    assert default_trades["trade_id"].tolist() == [0, 1, 2], (
+        "trade_ids must be assigned in input order"
+    )
+
+    # Explicit allow_all — must behave identically
+    explicit_trades = simulate_trades(
+        df,
+        signals,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,
+        take_profit_ticks=100,
+        max_holding_bars=1,
+        exposure_policy="allow_all",
+    )
+    assert explicit_trades["signal_id"].tolist() == [9, 4, 3], (
+        "Explicit allow_all must preserve input row order"
+    )
+    assert explicit_trades["trade_id"].tolist() == [0, 1, 2], (
+        "trade_ids must be assigned in input order"
+    )
