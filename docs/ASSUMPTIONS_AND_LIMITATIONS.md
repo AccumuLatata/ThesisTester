@@ -58,6 +58,19 @@ This engine is for **research screening**, not proof of a durable edge.
 - If the input DataFrame lacks a `session` column, RTH membership is derived from the instrument configuration and the timestamp timezone.
 - `session_vwap_enabled=False` is a true no-op: no validation, no new columns, no timestamp checks.
 
+### 5c) TPO 30m Single Prints are opt-in scalar levels
+- Single Prints are disabled by default (`single_prints_enabled=False`), so existing level output is unchanged unless explicitly enabled.
+- Only RTH 30-minute brackets contribute; ETH bars are completely excluded.
+- Only completed 30-minute brackets are used; the current incomplete bracket is always excluded.
+- Price bins are sized by instrument `tick_size` from `INSTRUMENTS`.
+- A bin is a Single Print if it is touched by exactly one completed bracket within the session.
+- Developing Single Prints (`dSinglePrint_30m_NearestAbove/Below`): nearest SP price strictly above/below current bar close, from completed current-session brackets only. NaN on non-RTH bars and before the first bracket completes.
+- Prior-session Single Prints (`pSinglePrint_30m_NearestAbove/Below`): nearest SP price strictly above/below close, from the previous completed RTH session's frozen SP set. NaN on non-RTH bars and if the prior session had no Single Prints.
+- `single_prints_enabled=False` is a true no-op: no validation, no new columns, no timestamp checks.
+- No dynamic Single Print columns are generated; only the four scalar columns above.
+- `apoc_enabled=True` continues to raise `NotImplementedError` (Stage 5 not yet implemented).
+- Known limitations: no APOC/pAPOC, no full market-profile object, no volume-at-price, no dynamic list of all Single Print bins.
+
 ## 6) Point-in-time correctness (R3 audit)
 
 A full audit of all level, confluence, and signal modules was completed under R3. The
@@ -80,6 +93,13 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 - `dVWAP_RTH` accumulates only RTH bars in the current RTH session using a causal
   cumulative sum. Appending future bars cannot retroactively change any prior bar's
   value. Non-RTH bars always emit `NaN`. Resets at each new RTH session.
+- `dSinglePrint_30m_NearestAbove/Below` use only completed 30-minute RTH brackets at
+  or before the current bar's timestamp. The current incomplete bracket is excluded.
+  ETH bars do not contribute. Non-RTH bars always emit `NaN`. Appending future bars
+  cannot alter Single Print values at earlier timestamps.
+- `pSinglePrint_30m_NearestAbove/Below` use the prior completed RTH session's frozen
+  SP set. Once a session is complete its SP set is immutable. Non-RTH bars always
+  emit `NaN`. If the prior session had no Single Prints, columns are `NaN`.
 - RTH_Open and ONH/ONL are NaN until the first RTH bar of the session; no future RTH
   or overnight data can change ETH-bar values.
 - Opening range (OR_High/OR_Low) is NaN until the clock-based OR window closes.
@@ -104,6 +124,10 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 - `dVWAP_RTH` uses bar-level typical price `(H+L+C)/3`. True intrabar VWAP would
   require tick data. Since signals are treated as bar-close confirmed, this is
   documented intent, not a bug.
+- Single Print columns (`dSinglePrint_30m_*`, `pSinglePrint_30m_*`) expose only scalar
+  nearest-above/below summaries. A full list of all Single Print bins is not emitted.
+  APOC / pAPOC are not yet implemented (Stage 5). No volume-at-price or full market
+  profile object is available.
 
 **Warning against non-causal diagnostic use:**
 The `<level>_naked` columns are causal (each bar's value is determined by bars up to

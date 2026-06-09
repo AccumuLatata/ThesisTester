@@ -312,10 +312,16 @@ def test_compute_session_vwap_levels_enabled_returns_dvwap_column():
     assert "dVWAP_RTH" in result.columns
 
 
-def test_compute_tpo_levels_single_prints_enabled_raises_not_implemented():
-    df = _base_df()
-    with pytest.raises(NotImplementedError):
-        compute_tpo_levels(df, single_prints_enabled=True)
+def test_compute_tpo_levels_single_prints_enabled_returns_sp_columns():
+    # Stage 4 is now implemented: single_prints_enabled=True should return a
+    # DataFrame with the four Single Print columns rather than raising NotImplementedError.
+    from thesistester.data.sessions import tag_session as _tag
+    df = _tag(_base_df(), "ES")
+    result = compute_tpo_levels(df, single_prints_enabled=True)
+    assert isinstance(result, pd.DataFrame)
+    sp_cols = {"dSinglePrint_30m_NearestAbove", "dSinglePrint_30m_NearestBelow",
+               "pSinglePrint_30m_NearestAbove", "pSinglePrint_30m_NearestBelow"}
+    assert sp_cols.issubset(set(result.columns))
 
 
 def test_compute_tpo_levels_apoc_enabled_raises_not_implemented():

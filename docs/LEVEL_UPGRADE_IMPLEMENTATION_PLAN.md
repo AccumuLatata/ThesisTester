@@ -357,9 +357,13 @@ Acceptance criteria:
 
 ### Stage 4 — Single Prints
 
-Implement TPO-based 30-minute Single Prints using instrument tick size.
+**Status:** Implemented in this PR; complete once merged.
 
-Initial columns:
+Implemented in `thesistester/levels/tpo.py`.
+
+Implements TPO-based 30-minute Single Prints using instrument tick size.
+
+Output columns:
 
 ```text
 dSinglePrint_30m_NearestAbove
@@ -370,26 +374,67 @@ pSinglePrint_30m_NearestBelow
 
 Rules:
 
-- Use 30-minute TPO brackets.
-- Use completed 30-minute brackets only for the first implementation.
-- Freeze historical prior-session values after session close.
+- Use RTH 30-minute TPO brackets (non-RTH bars do not contribute).
+- Use completed 30-minute brackets only (current incomplete bracket is excluded).
+- Price bins are instrument tick increments (tick_size from `INSTRUMENTS`).
+- A bin is a Single Print if it is touched by exactly one completed bracket per session.
+- Nearest-above uses strict `price > close`; nearest-below uses strict `price < close`.
+- Freeze prior-session Single Print set once that session is complete.
 - Developing values may change causally as new completed brackets become available.
-- Emit `NaN` if no valid Single Print exists.
+- Emit `NaN` if no valid Single Print exists or for non-RTH bars.
+- If `session` column is absent, derive from instrument config via `tag_session`.
 
-Required tests:
+Implemented tests in `tests/test_stage4_single_prints.py` (37 tests):
 
-- fixture with known single print bins,
-- no single prints returns `NaN`,
-- nearest-above and nearest-below correctness,
-- prior-session shift correctness,
-- tick-size binning correctness,
-- future-shock / point-in-time test.
+- disabled returns empty DataFrame (no validation),
+- disabled accepts naive timestamps and unsupported instruments,
+- `apoc_enabled=True` still raises `NotImplementedError`,
+- `compute_all_levels` with `single_prints_enabled=False` produces no SP columns,
+- enabling SP produces exactly the four scalar columns (no dynamic columns),
+- tick-size binning correctness (bins based on instrument tick size),
+- bins touched by multiple brackets are excluded,
+- single-bracket: all bins are Single Prints,
+- no developing SP before first bracket completes,
+- developing SP appear after bracket completes,
+- current incomplete bracket is excluded,
+- nearest-above/below use strict comparison to close,
+- developing SP update causally when new bracket completes,
+- prior-session SP maps to next session,
+- prior-session values are frozen,
+- prior-session NaN when no prior SP,
+- ETH bars do not contribute to SP sets,
+- ETH bars emit NaN for developing and prior-session SP columns,
+- session column derived from instrument config when absent,
+- future-shock: appending future current-session bars does not alter earlier values,
+- future-shock: appending next-session bars does not alter prior-session SP values,
+- unsorted input produces same result as sorted input,
+- naive timestamp raises ValueError,
+- unsupported instrument raises ValueError,
+- NQ instrument supported,
+- existing level outputs unchanged when SP disabled,
+- pivots and dVWAP unchanged when SP enabled,
+- `compute_all_levels` with SP enabled adds exactly the four SP columns.
+
+Known limitations:
+
+- No APOC / pAPOC yet (Stage 5).
+- No full market-profile object.
+- No volume-at-price.
+- No dynamic list of all Single Print bins.
 
 Acceptance criteria:
 
-- No dynamic Single Print columns are generated.
-- Prior-session Single Prints use completed prior sessions only.
-- Developing Single Prints do not use incomplete future brackets.
+- `single_prints_enabled=False` remains a true no-op.
+- `single_prints_enabled=True` produces only the four scalar SP columns.
+- `apoc_enabled=True` still raises `NotImplementedError`.
+- SP uses completed 30-min RTH brackets only.
+- Current incomplete bracket is excluded.
+- TPO bins use instrument tick size.
+- Nearest above/below use strict comparison to current close.
+- Prior-session SP are frozen and use completed prior sessions only.
+- ETH bars do not contribute.
+- Point-in-time future-shock tests pass.
+- Existing default outputs remain unchanged.
 
 ---
 

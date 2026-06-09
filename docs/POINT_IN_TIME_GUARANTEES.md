@@ -22,6 +22,8 @@ tested here.
 | `thesistester/levels/profile.py` | Rolling POC and prior day/week/month profile levels |
 | `thesistester/levels/indicators.py` | SMA, EMA, rolling VWAP |
 | `thesistester/levels/pivots.py` | Confirmed 1min / 5min / 30min / 4h pivot levels |
+| `thesistester/levels/session_vwap.py` | Developing session VWAP (`dVWAP_RTH`) |
+| `thesistester/levels/tpo.py` | TPO 30m Single Print scalar levels |
 | `thesistester/engine/naked.py` | Naked/untested level flags |
 | `thesistester/engine/confluence.py` | Global confluence zone detection |
 | `thesistester/engine/anchor_confluence.py` | Anchor-based confluence detection |
@@ -80,6 +82,15 @@ future-shock tests and/or code inspection.
 | Level family | Source | Causal? | Availability timing | Known limitations | Tests |
 |---|---|---|---|---|---|
 | `dVWAP_RTH` | cumulative `cumsum(typical_price * volume) / cumsum(volume)` over RTH bars in the current RTH session | **Yes** | First RTH bar of each session; `NaN` on all non-RTH bars | Only RTH bars contribute; resets at each new RTH session; zero cumulative volume emits `NaN`; if session column is absent it is derived from instrument config | `tests/test_stage3_session_vwap.py` (future-shock tests: `test_dvwap_rth_future_shock`, `test_dvwap_rth_future_shock_across_sessions`) |
+
+### TPO 30m Single Prints — `levels/tpo.py`
+
+| Level family | Source | Causal? | Availability timing | Known limitations | Tests |
+|---|---|---|---|---|---|
+| `dSinglePrint_30m_NearestAbove` | Nearest SP price strictly above close, from completed 30-min RTH brackets in the current session | **Yes** | Only after the first completed 30-min RTH bracket; `NaN` on non-RTH bars and before any bracket completes | Only completed brackets used; current incomplete bracket excluded; ETH bars never contribute | `tests/test_stage4_single_prints.py` (future-shock tests: `test_future_shock_appending_current_session_bars_does_not_change_prior_values`, `test_future_shock_appending_next_session_bars_does_not_change_prior_session_sp`) |
+| `dSinglePrint_30m_NearestBelow` | Nearest SP price strictly below close | **Yes** | Same as above | Same as above | Same |
+| `pSinglePrint_30m_NearestAbove` | Nearest SP price strictly above close, from the prior completed RTH session's frozen SP set | **Yes** | First RTH bar of the next session; `NaN` on non-RTH bars and if prior session had no SP | Prior-session SP set is frozen once the session is complete; current-session bars cannot alter it | Same |
+| `pSinglePrint_30m_NearestBelow` | Nearest SP price strictly below close, from prior session | **Yes** | Same as above | Same as above | Same |
 
 ### Naked levels — `engine/naked.py`
 
@@ -202,3 +213,8 @@ bar on date D; do not use the final row value.
    is a bar-level approximation. True intrabar VWAP would require tick data but would not
    introduce look-ahead bias. Bar `i` typical price is unknown until bar `i` closes;
    since signals are treated as bar-close confirmed, this is documented intent, not a bug.
+
+8. **Single Print columns expose only scalar nearest-above/below summaries.** No dynamic
+   list of all Single Print bins is emitted. The four scalar columns are sufficient for
+   signal proximity queries but do not provide the full Single Print set for manual
+   analysis. APOC / pAPOC are not yet implemented (Stage 5 pending).
