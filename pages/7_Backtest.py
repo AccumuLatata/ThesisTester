@@ -151,6 +151,24 @@ with st.sidebar:
         help="Fixed take-profit distance from entry in ticks.",
     )
 
+    commission_per_side = st.number_input(
+        "Commission per side (currency/contract)",
+        min_value=0.0,
+        max_value=1_000.0,
+        value=0.0,
+        step=0.1,
+        help="Round-turn commission cost is 2 × this value.",
+    )
+
+    slippage_ticks = st.number_input(
+        "Slippage (ticks per side)",
+        min_value=0.0,
+        max_value=100.0,
+        value=0.0,
+        step=0.25,
+        help="Adverse slippage applied at both entry and exit.",
+    )
+
     use_max_bars = st.toggle("Limit holding bars", value=False)
     max_bars: int | None = None
     if use_max_bars:
@@ -189,6 +207,8 @@ if run_btn:
                 take_profit_ticks=tp_ticks,
                 max_holding_bars=max_bars,
                 allow_same_bar_exit=allow_same_bar,
+                commission_per_side=float(commission_per_side),
+                slippage_ticks=float(slippage_ticks),
             )
         except ValueError as e:
             st.error(f"Backtest error: {e}")
@@ -200,6 +220,15 @@ if run_btn:
         st.session_state["trades"] = trades
         st.session_state["trade_summary"] = summary
         st.session_state["equity_curve"] = curve
+        st.session_state["backtest_execution_costs"] = {
+            "commission_per_side": float(commission_per_side),
+            "slippage_ticks": float(slippage_ticks),
+            "metrics_basis": (
+                "net-of-cost"
+                if (float(commission_per_side) > 0.0 or float(slippage_ticks) > 0.0)
+                else "gross==net (zero costs)"
+            ),
+        }
 
 # ── Display ───────────────────────────────────────────────────────────────────
 trades = st.session_state.get("trades")
@@ -211,6 +240,13 @@ if trades is None:
     st.stop()
 
 st.caption(timezone_contract_caption(st.session_state))
+costs = st.session_state.get("backtest_execution_costs") or {}
+if costs.get("commission_per_side", 0.0) > 0.0 or costs.get("slippage_ticks", 0.0) > 0.0:
+    st.caption(
+        "Execution costs active — KPIs use net-of-cost pnl_currency and net R (commission/slippage applied)."
+    )
+else:
+    st.caption("Execution costs disabled — KPIs are gross (zero commission/slippage).")
 
 # KPI cards
 st.subheader("Performance summary")
@@ -357,7 +393,8 @@ if has_trades:
         "exit_timestamp", "exit_price", "exit_reason",
         "stop_price", "target_price",
         "stop_loss_ticks", "take_profit_ticks",
-        "pnl_points", "pnl_currency", "r_multiple", "bars_held",
+        "gross_pnl_points", "gross_pnl_currency", "commission_cost", "slippage_cost",
+        "net_pnl_currency", "pnl_points", "pnl_currency", "r_multiple", "bars_held",
         "zone_low", "zone_high", "level_count", "level_names", "setup_name",
         "mae_points", "mfe_points",
     ] if c in trades.columns]

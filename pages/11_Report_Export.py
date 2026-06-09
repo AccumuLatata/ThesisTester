@@ -9,9 +9,11 @@ import streamlit as st
 
 from thesistester.config import TIMEZONE_OPTIONS
 from thesistester.reporting import (
+    build_execution_cost_assumptions,
     build_markdown_report,
     build_research_artifact,
     dataframe_to_csv_bytes,
+    execution_cost_assumptions_markdown,
 )
 from thesistester.timezone_display import (
     convert_dataframe_timestamps_for_display,
@@ -64,7 +66,14 @@ def _fmt(v: Any, fmt: str = ".2f", fallback: str = "—") -> str:
 
 
 artifact = build_research_artifact(st.session_state)
+
+execution_cost_assumptions = build_execution_cost_assumptions(st.session_state)
+if execution_cost_assumptions["backtest"]["available"] or execution_cost_assumptions["grid"]["available"]:
+    artifact["execution_cost_assumptions"] = execution_cost_assumptions
+
 report_markdown = build_markdown_report(artifact)
+if "execution_cost_assumptions" in artifact:
+    report_markdown += execution_cost_assumptions_markdown(artifact["execution_cost_assumptions"])
 
 status_rows = [
     {"Item": item, "Session state key": key, "Available": "✅" if _has_value(key) else "❌"}
@@ -98,6 +107,14 @@ col3.metric(
 col4.metric("Avg R", _fmt(trade_summary.get("avg_r")))
 col5.metric("Total R", _fmt(trade_summary.get("total_r")))
 col6.metric("Validation", (trade_count_diag or {}).get("status", "—"))
+
+if "execution_cost_assumptions" in artifact:
+    available_scopes = [
+        scope
+        for scope in ("backtest", "grid")
+        if artifact["execution_cost_assumptions"].get(scope, {}).get("available")
+    ]
+    st.caption(f"Execution cost assumptions included separately for: {', '.join(available_scopes)}.")
 
 st.subheader("Downloads")
 json_text = json.dumps(artifact, indent=2)

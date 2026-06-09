@@ -85,6 +85,23 @@ with st.sidebar:
         ),
     )
 
+    commission_per_side = st.number_input(
+        "Commission per side (currency/contract)",
+        min_value=0.0,
+        max_value=1_000.0,
+        value=0.0,
+        step=0.1,
+        help="Round-turn commission cost is 2 × this value.",
+    )
+    slippage_ticks = st.number_input(
+        "Slippage (ticks per side)",
+        min_value=0.0,
+        max_value=100.0,
+        value=0.0,
+        step=0.25,
+        help="Adverse slippage applied at both entry and exit.",
+    )
+
     ranking_metric = st.selectbox(
         "Ranking metric",
         options=["expectancy_r", "total_r", "profit_factor", "win_rate"],
@@ -198,6 +215,8 @@ if run_btn:
                 take_profit_ticks_values=tp_list,
                 max_holding_bars=max_bars,
                 allow_same_bar_exit=allow_same_bar,
+                commission_per_side=float(commission_per_side),
+                slippage_ticks=float(slippage_ticks),
             )
         except ValueError as e:
             st.error(f"Grid search error: {e}")
@@ -228,6 +247,15 @@ if run_btn:
     st.session_state["grid_min_long_trades"] = min_long_trades
     st.session_state["grid_min_short_trades"] = min_short_trades
     st.session_state["grid_min_trades"] = min_trades
+    st.session_state["grid_execution_costs"] = {
+        "commission_per_side": float(commission_per_side),
+        "slippage_ticks": float(slippage_ticks),
+        "metrics_basis": (
+            "net-of-cost"
+            if (float(commission_per_side) > 0.0 or float(slippage_ticks) > 0.0)
+            else "gross==net (zero costs)"
+        ),
+    }
 
 # ── Display ───────────────────────────────────────────────────────────────────
 grid = st.session_state.get("grid_results")
@@ -240,6 +268,14 @@ grid_min_short_trades = st.session_state.get("grid_min_short_trades", 1)
 if grid is None:
     st.info("Configure settings in the sidebar and click **▶ Run grid search**.")
     st.stop()
+
+grid_costs = st.session_state.get("grid_execution_costs") or {}
+if grid_costs.get("commission_per_side", 0.0) > 0.0 or grid_costs.get("slippage_ticks", 0.0) > 0.0:
+    st.caption(
+        "Grid metrics are net-of-cost (commission/slippage applied to each simulated trade)."
+    )
+else:
+    st.caption("Grid metrics are gross with zero execution costs.")
 
 
 def _fmt(v, fmt=".2f", fallback="—"):

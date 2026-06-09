@@ -97,7 +97,9 @@ Manual Signals controls remain unchanged and backtest behavior is unchanged.
   bars, not base bars.
   Candidate signals are stored in `st.session_state["signals"]` for Phase 5 backtesting.
 - **Phase 5 (backtest engine, KPIs, results):** bar-by-bar trade simulation with a
-  single fixed SL/TP tick configuration (`thesistester/engine/backtest.py`).  Simple
+  single fixed SL/TP tick configuration (`thesistester/engine/backtest.py`) plus
+  optional execution-cost modelling (commission per side, adverse slippage ticks;
+  defaults are zero-cost for backward compatibility).  Simple
   triggers enter at next-bar open; filled `3c` signals enter at their retracement
   trigger price.  Intrabar ambiguity uses SL-first pessimistic rule.  Trade metrics
   (win rate, expectancy, profit factor, max drawdown R, equity curve) are computed in

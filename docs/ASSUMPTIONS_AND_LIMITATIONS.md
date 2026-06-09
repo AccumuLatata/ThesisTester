@@ -4,10 +4,13 @@ This engine is for **research screening**, not proof of a durable edge.
 
 ## Verified engine assumptions (current implementation)
 
-### 1) P&L is gross (no commissions, fees, or slippage)
-- `simulate_trades(...)` accepts `tick_size`, `point_value`, SL/TP, and timing flags, but no cost/slippage parameters (`thesistester/engine/backtest.py:73-82`).
-- Currency P&L is computed directly as `pnl_points * point_value` (`thesistester/engine/backtest.py:254-260`).
-- Therefore all reported performance/expectancy is **gross**.
+### 1) Execution costs are optional; zero-cost is the default
+- `simulate_trades(...)` now accepts optional `commission_per_side` and `slippage_ticks` inputs (`thesistester/engine/backtest.py`).
+- Defaults are `commission_per_side=0.0` and `slippage_ticks=0.0`, which reproduce legacy gross behavior.
+- With non-zero costs, `pnl_currency` and `r_multiple` are **net-of-cost** (commission/slippage applied), while gross fields remain available (`gross_pnl_*`, `net_pnl_currency`, `commission_cost`, `slippage_cost`).
+- Report/export artifacts track execution-cost assumptions **separately** for backtest and grid sections, and only when corresponding result data is present in the current export.
+- Backtest and grid outputs are directly comparable only when they were produced under the same execution-cost assumptions.
+- Unrealistic cost assumptions can still overstate edge; research results should be interpreted with conservative cost settings.
 
 ### 2) Intrabar ambiguity is resolved with SL-first pessimism
 - If both stop and target are reachable in one bar, the engine exits at stop (`thesistester/engine/backtest.py:221-226`).
@@ -34,5 +37,6 @@ This engine is for **research screening**, not proof of a durable edge.
 - Outputs are explicitly framed as diagnostics and not proof of edge (`thesistester/analytics/validation.py:13`, `pages/10_Validation.py:18`).
 
 ## Practical interpretation
-- **Expectancy is gross expectancy** (costs/slippage excluded).
+- With default settings, expectancy remains equivalent to prior gross outputs.
+- With non-zero cost settings, expectancy and downstream KPIs become net-of-cost.
 - Treat results as **screening diagnostics, not proof of edge**.
