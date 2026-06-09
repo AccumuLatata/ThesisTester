@@ -243,8 +243,9 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     trade_count_diag = validation.get("trade_count") if isinstance(validation, Mapping) else {}
     grid_overfit = validation.get("grid_overfit") if isinstance(validation, Mapping) else {}
 
-    commission_val = cost_config.get("commission_per_side", 0.0) if isinstance(cost_config, Mapping) else 0.0
-    slip_val = cost_config.get("slippage_ticks", 0.0) if isinstance(cost_config, Mapping) else 0.0
+    is_cost_config = isinstance(cost_config, Mapping)
+    commission_val = cost_config.get("commission_per_side", 0.0) if is_cost_config else 0.0
+    slip_val = cost_config.get("slippage_ticks", 0.0) if is_cost_config else 0.0
     if commission_val or slip_val:
         cost_note = "net-of-cost"
     else:
