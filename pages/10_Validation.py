@@ -358,6 +358,15 @@ col5.metric(
     _fmt(bs.get("probability_positive"), ".1%") if bs.get("probability_positive") is not None else "—",
 )
 
+trade_summary = st.session_state.get("trade_summary") or {}
+if isinstance(trade_summary, dict):
+    st.subheader("Backtest tail / pain diagnostics")
+    vcol1, vcol2, vcol3, vcol4 = st.columns(4)
+    vcol1.metric("Outlier dependency", _fmt(trade_summary.get("outlier_dependency_ratio")))
+    vcol2.metric("Tail ratio", _fmt(trade_summary.get("tail_ratio")))
+    vcol3.metric("Max consecutive losses", trade_summary.get("max_consecutive_losses", 0))
+    vcol4.metric("Ulcer index R", _fmt(trade_summary.get("ulcer_index_r")))
+
 # CI includes zero warning
 ci_lower = bs.get("ci_lower")
 ci_upper = bs.get("ci_upper")

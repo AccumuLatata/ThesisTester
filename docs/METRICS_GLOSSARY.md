@@ -52,7 +52,31 @@ Implementation: `gross_win`, `gross_loss`, and branches in `thesistester/analyti
 \mathbb{E}[R] = \text{win\_rate} \cdot \overline{R}_{win} + \text{loss\_rate} \cdot \overline{R}_{loss}
 \]
 Fallback: when one side is missing (all-win/all-loss), code uses `avg_r`.
-Implementation: `thesistester/analytics/metrics.py:72-76`.
+Implementation: `thesistester/analytics/metrics.py`.
+
+### Institutional / advanced trade diagnostics
+
+- `median_r`: median trade `r_multiple`.
+- `std_r`: sample standard deviation of trade `r_multiple`; unavailable for fewer than 2 trades.
+- `downside_std_r`: sample standard deviation of losing-trade `r_multiple`; unavailable for fewer than 2 losing trades.
+- `sharpe_like_r = avg_r / std_r`: per-trade R dispersion diagnostic only; **not annualized Sharpe**.
+- `sortino_like_r = avg_r / downside_std_r`: downside-only per-trade R diagnostic; **not annualized Sortino**.
+- `expectancy_to_drawdown = total_r / max_drawdown_r`: return earned per unit of realized drawdown; unavailable when drawdown is zero.
+- `recovery_factor = total_r / max_drawdown_r`: same current formula as `expectancy_to_drawdown`; included for user familiarity.
+- `avg_win_r`: mean of winning trades.
+- `avg_loss_r`: mean of losing trades.
+- `win_loss_ratio = abs(avg_win_r / avg_loss_r)`: unavailable when either side is missing.
+- `largest_win_r`: largest trade `r_multiple`.
+- `largest_loss_r`: smallest trade `r_multiple`.
+- `max_consecutive_wins`: longest streak of `r_multiple > 0`.
+- `max_consecutive_losses`: longest streak of `r_multiple < 0`.
+- `p95_r` / `p05_r`: 95th / 5th percentile of trade `r_multiple`.
+- `tail_ratio = abs(p95_r / p05_r)`: unavailable when `p05_r` is zero or missing.
+- `trade_return_skew`: sample skew of trade `r_multiple`; unstable on small samples.
+- `trade_return_kurtosis`: excess kurtosis of trade `r_multiple`; unstable on small samples.
+- `ulcer_index_r`: root-mean-square drawdown magnitude on the cumulative-R equity curve.
+- `payoff_stability = median_r / mean_absolute_r`: conservative proxy for whether typical trade size is meaningful versus noisy.
+- `outlier_dependency_ratio`: remove the single largest absolute-R trade, then compute `total_r_without_largest_abs / total_r`; values far below 1 suggest dependence on one outlier.
 
 ### Drawdown with `clip(lower=0)` anchoring
 \[
@@ -77,6 +101,8 @@ Implementation: `cum_r`, `cummax().clip(lower=0.0)`, and drawdown in `thesistest
 - Exported research artifacts preserve execution-cost assumptions separately for backtest and grid sections.
 - Backtest directional KPIs ("Long vs Short KPIs") use the same formulas above, applied independently to `direction == "long"` and `direction == "short"` subsets.
 - Validation pages label outputs as diagnostic only (`pages/10_Validation.py:18`, `thesistester/analytics/validation.py:13`).
+- Higher-moment and tail metrics (`trade_return_skew`, `trade_return_kurtosis`, `p95_r`, `p05_r`, `tail_ratio`) are descriptive only and can swing sharply on small samples.
+- Advanced metrics are computed in per-trade `R` units and are not annualized or normalized to time.
 
 ## Grid Search directional metrics
 

@@ -173,6 +173,9 @@ def test_walk_forward_test_metrics_use_selected_train_config():
     summary = summarize_trades(trades)
     assert row["test_trade_count"] == summary["trade_count"]
     assert row["test_expectancy_r"] == pytest.approx(summary["expectancy_r"])
+    assert row["test_sharpe_like_r"] == pytest.approx(summary["sharpe_like_r"])
+    assert row["test_ulcer_index_r"] == pytest.approx(summary["ulcer_index_r"])
+    assert row["test_recovery_factor"] == pytest.approx(summary["recovery_factor"])
 
 
 def test_walk_forward_no_train_candidate_status():
@@ -234,6 +237,9 @@ def test_summarize_walk_forward_empty_no_valid_ok():
     assert ok["fold_count"] == 2
     assert ok["valid_fold_count"] == 2
     assert ok["aggregate_test_trade_count"] == 4
+    assert ok["median_test_sharpe_like_r"] is None
+    assert ok["median_test_sortino_like_r"] is None
+    assert ok["median_test_ulcer_index_r"] is None
 
 
 def test_walk_forward_execution_costs_pass_through():

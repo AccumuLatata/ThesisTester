@@ -53,9 +53,11 @@ UI integration and scoped export/report fields.
 
 ---
 
-## R6 — Institutional Metrics Upgrade
+## R6 — Institutional Metrics Upgrade ✅ Implemented
 
-Not yet implemented. Planned for a future milestone.
+Adds additive institutional-grade trade diagnostics (distribution, tail, streak,
+drawdown-pain, and outlier-dependency metrics) to summaries, grid results,
+compact UI/report sections, and targeted regression coverage.
 
 ---
 

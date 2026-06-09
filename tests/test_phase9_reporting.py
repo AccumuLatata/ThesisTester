@@ -68,6 +68,12 @@ def _sample_session_state() -> dict:
             "total_r": 0.5,
             "profit_factor": 2.0,
             "max_drawdown_r": 0.5,
+            "sharpe_like_r": 0.5,
+            "sortino_like_r": 0.75,
+            "ulcer_index_r": 0.25,
+            "recovery_factor": 1.0,
+            "tail_ratio": 1.2,
+            "outlier_dependency_ratio": 0.8,
         },
         "equity_curve": pd.DataFrame(
             {
@@ -232,6 +238,7 @@ def test_build_markdown_report_returns_string_and_required_sections():
     assert "# ThesisTester Research Report" in markdown
     assert "## Setup Configuration" in markdown
     assert "## Backtest Summary" in markdown
+    assert "### Advanced Risk Metrics" in markdown
     assert "## Validation Diagnostics" in markdown
     assert "## Caveats" in markdown
 
