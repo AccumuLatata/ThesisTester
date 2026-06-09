@@ -71,7 +71,7 @@ Implementation: `cum_r`, `cummax().clip(lower=0.0)`, and drawdown in `thesistest
 
 ## Notes
 - With zero-cost defaults, gross and net are identical.
-- `gross_pnl_currency` is still computed from slipped fills (so slippage is reflected before commission subtraction).
+- `gross_pnl_currency` is computed from slipped fills and therefore represents P&L after slippage but before commission.
 - `net_pnl_currency = gross_pnl_currency - commission_cost`.
 - With non-zero commission/slippage, trade metrics use net `pnl_currency` / net `r_multiple`.
 - Exported research artifacts preserve execution-cost assumptions separately for backtest and grid sections.

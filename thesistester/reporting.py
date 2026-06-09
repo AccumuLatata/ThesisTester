@@ -217,16 +217,18 @@ def _best_grid_metric(best_grid: Mapping[str, Any] | None) -> tuple[str | None, 
 
 
 def _has_nonempty_value(value: Any) -> bool:
+    """Return True when a value exists and is non-empty (including DataFrames)."""
     if value is None:
         return False
     if isinstance(value, pd.DataFrame):
         return not value.empty
-    if isinstance(value, (list, dict, tuple, set, Mapping)):
+    if isinstance(value, (list, tuple, set, Mapping)):
         return len(value) > 0
     return True
 
 
 def _metrics_basis(commission_per_side: float, slippage_ticks: float) -> str:
+    """Return metrics basis label based on whether any execution costs are enabled."""
     return (
         "net-of-cost"
         if commission_per_side > 0.0 or slippage_ticks > 0.0
@@ -235,6 +237,11 @@ def _metrics_basis(commission_per_side: float, slippage_ticks: float) -> str:
 
 
 def build_execution_cost_assumptions(session_state: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Return scoped execution-cost assumptions for current backtest/grid export data.
+
+    Availability is true only when both the corresponding result scope is present in
+    session state and a non-empty matching `*_execution_costs` mapping exists.
+    """
     backtest_results_available = _has_nonempty_value(session_state.get("trades")) or _has_nonempty_value(
         session_state.get("trade_summary")
     )
@@ -244,8 +251,16 @@ def build_execution_cost_assumptions(session_state: Mapping[str, Any]) -> dict[s
 
     backtest_costs = session_state.get("backtest_execution_costs")
     grid_costs = session_state.get("grid_execution_costs")
-    backtest_available = backtest_results_available and _has_nonempty_value(backtest_costs)
-    grid_available = grid_results_available and _has_nonempty_value(grid_costs)
+    backtest_available = (
+        backtest_results_available
+        and isinstance(backtest_costs, Mapping)
+        and len(backtest_costs) > 0
+    )
+    grid_available = (
+        grid_results_available
+        and isinstance(grid_costs, Mapping)
+        and len(grid_costs) > 0
+    )
 
     assumptions: dict[str, dict[str, Any]] = {
         "backtest": {
@@ -263,8 +278,8 @@ def build_execution_cost_assumptions(session_state: Mapping[str, Any]) -> dict[s
     }
 
     if backtest_available:
-        commission_per_side = float((backtest_costs or {}).get("commission_per_side", 0.0))
-        slippage_ticks = float((backtest_costs or {}).get("slippage_ticks", 0.0))
+        commission_per_side = float(backtest_costs.get("commission_per_side", 0.0))
+        slippage_ticks = float(backtest_costs.get("slippage_ticks", 0.0))
         assumptions["backtest"].update(
             {
                 "commission_per_side": commission_per_side,
@@ -273,8 +288,8 @@ def build_execution_cost_assumptions(session_state: Mapping[str, Any]) -> dict[s
             }
         )
     if grid_available:
-        commission_per_side = float((grid_costs or {}).get("commission_per_side", 0.0))
-        slippage_ticks = float((grid_costs or {}).get("slippage_ticks", 0.0))
+        commission_per_side = float(grid_costs.get("commission_per_side", 0.0))
+        slippage_ticks = float(grid_costs.get("slippage_ticks", 0.0))
         assumptions["grid"].update(
             {
                 "commission_per_side": commission_per_side,
@@ -287,6 +302,7 @@ def build_execution_cost_assumptions(session_state: Mapping[str, Any]) -> dict[s
 
 
 def execution_cost_assumptions_markdown(assumptions: Mapping[str, Mapping[str, Any]]) -> str:
+    """Render scoped execution-cost assumptions as markdown report section text."""
     backtest = assumptions.get("backtest", {})
     grid = assumptions.get("grid", {})
 
@@ -297,8 +313,8 @@ def execution_cost_assumptions_markdown(assumptions: Mapping[str, Mapping[str, A
     )
     if backtest.get("available"):
         section += (
-            f"- Commission per side: {float(backtest.get('commission_per_side', 0.0)):.4f}\n"
-            f"- Slippage ticks per side: {float(backtest.get('slippage_ticks', 0.0)):.4f}\n"
+            f"- Commission per side: {backtest.get('commission_per_side', 0.0):.4f}\n"
+            f"- Slippage ticks per side: {backtest.get('slippage_ticks', 0.0):.4f}\n"
             f"- Metrics basis: {backtest.get('metrics_basis', '—')}\n"
         )
 
@@ -308,8 +324,8 @@ def execution_cost_assumptions_markdown(assumptions: Mapping[str, Mapping[str, A
     )
     if grid.get("available"):
         section += (
-            f"- Commission per side: {float(grid.get('commission_per_side', 0.0)):.4f}\n"
-            f"- Slippage ticks per side: {float(grid.get('slippage_ticks', 0.0)):.4f}\n"
+            f"- Commission per side: {grid.get('commission_per_side', 0.0):.4f}\n"
+            f"- Slippage ticks per side: {grid.get('slippage_ticks', 0.0):.4f}\n"
             f"- Metrics basis: {grid.get('metrics_basis', '—')}\n"
         )
     return section

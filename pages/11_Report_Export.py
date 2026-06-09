@@ -114,11 +114,7 @@ if "execution_cost_assumptions" in artifact:
         for scope in ("backtest", "grid")
         if artifact["execution_cost_assumptions"].get(scope, {}).get("available")
     ]
-    st.caption(
-        "Execution cost assumptions included separately for: "
-        + ", ".join(available_scopes)
-        + "."
-    )
+    st.caption(f"Execution cost assumptions included separately for: {', '.join(available_scopes)}.")
 
 st.subheader("Downloads")
 json_text = json.dumps(artifact, indent=2)
