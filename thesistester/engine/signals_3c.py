@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import math
 import pandas as pd
 
 from .candidate_level import CandidateLevel
@@ -67,6 +68,23 @@ def _rounded_price(price: float, tick_size: float) -> float:
         return float(price)
     ticks = round(float(price) / float(tick_size))
     return float(ticks * float(tick_size))
+
+
+def _valid_bar_index(value: object, size: int) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        f = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(f):
+        return None
+    if f != math.floor(f):
+        return None
+    idx = int(f)
+    if idx < 0 or idx >= size:
+        return None
+    return idx
 
 
 def detect_3c_setups(
@@ -351,7 +369,9 @@ def detect_3c_setups_with_trigger_timeframe(
 
         # Base index at arrival trigger candle end (used for naked metadata and
         # as the emitted arrival_bar_index).
-        base_arrival_idx = int(t_arr_row["base_end_bar_index"])
+        base_arrival_idx = _valid_bar_index(t_arr_row.get("base_end_bar_index"), n_base)
+        if base_arrival_idx is None:
+            continue
 
         for direction in directions:
             effective_key = (
@@ -413,7 +433,9 @@ def detect_3c_setups_with_trigger_timeframe(
             # Reversal trigger candle end timestamp — used as base-scan boundary.
             t_rev_row = trigger_df_reset.iloc[t_rev_idx]
             reversal_trigger_ts = t_rev_row["trigger_bar_end_timestamp"]
-            base_reversal_idx = int(t_rev_row["base_end_bar_index"])
+            base_reversal_idx = _valid_bar_index(t_rev_row.get("base_end_bar_index"), n_base)
+            if base_reversal_idx is None:
+                continue
 
             if direction == "long":
                 entry_trigger_price = reversal_close - retrace_dist
@@ -451,7 +473,7 @@ def detect_3c_setups_with_trigger_timeframe(
                 ts_base = base_df_reset.iloc[entry_idx_base]["timestamp"]
             else:
                 bar_index_base = base_reversal_idx
-                ts_base = base_df_reset.iloc[base_reversal_idx]["timestamp"] if base_reversal_idx < n_base else None
+                ts_base = base_df_reset.iloc[base_reversal_idx]["timestamp"]
 
             is_muted = inside_count > 0
             raw.append(

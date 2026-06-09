@@ -1,6 +1,7 @@
 """Candidate signal generation from confluence zones and trigger logic."""
 from __future__ import annotations
 
+import math
 import warnings
 
 import numpy as np
@@ -96,6 +97,33 @@ def _naked_count(zone_level_names: str, bar_idx: int, naked_flags: pd.DataFrame)
             if naked_flags[col].iloc[bar_idx]:
                 count += 1
     return count
+
+
+def _safe_signal_float(value: object) -> float | None:
+    try:
+        result = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(result) or not math.isfinite(result):
+        return None
+    return result
+
+
+def _safe_signal_index(value: object, size: int) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        f = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(f):
+        return None
+    if f != math.floor(f):
+        return None
+    idx = int(f)
+    if idx < 0 or idx >= size:
+        return None
+    return idx
 
 
 def _make_signal(
@@ -863,6 +891,11 @@ def generate_signals(
             for setup in setup_rows:
                 zone = None
                 zone_id = setup.get("zone_id")
+                arrival_naked_idx = (
+                    _safe_signal_index(setup.get("arrival_bar_index"), len(naked_flags))
+                    if naked_flags is not None
+                    else None
+                )
                 if zone_id in zone_by_id:
                     candidate = zone_by_id[zone_id]
                     zone = pd.Series(
@@ -880,7 +913,11 @@ def generate_signals(
                             else (candidate.level_id or candidate.source_label or ""),
                         }
                     )
-                    ncount = _naked_count(str(zone["level_names"]), int(setup["arrival_bar_index"]), naked_flags) if naked_flags is not None else 0
+                    ncount = (
+                        _naked_count(str(zone["level_names"]), arrival_naked_idx, naked_flags)
+                        if naked_flags is not None and arrival_naked_idx is not None
+                        else 0
+                    )
                 else:
                     zone = pd.Series(
                         {
@@ -903,15 +940,33 @@ def generate_signals(
                 entry_trigger_raw = setup.get("entry_trigger_price", setup.get("retrace_entry_price"))
                 if entry_trigger_raw is None:
                     entry_trigger_raw = setup.get("arrival_level_price")
-                entry_trigger_price = float(entry_trigger_raw)
+                entry_trigger_price = _safe_signal_float(entry_trigger_raw)
+                if entry_trigger_price is None:
+                    continue
                 retrace_entry_price = entry_trigger_price if filled else None
                 entry_bar_index = setup.get("entry_bar_index")
-                reversal_idx_base = int(setup["reversal_bar_index"])
+                bar_index_base = _safe_signal_index(setup.get("bar_index"), len(df_reset))
+                arrival_idx_base = _safe_signal_index(setup.get("arrival_bar_index"), len(df_reset))
+                reversal_idx_base = _safe_signal_index(setup.get("reversal_bar_index"), len(df_reset))
+                entry_idx_base = (
+                    _safe_signal_index(entry_bar_index, len(df_reset))
+                    if entry_bar_index is not None
+                    else None
+                )
+                arrival_level_price = _safe_signal_float(setup.get("arrival_level_price"))
+                if (
+                    bar_index_base is None
+                    or arrival_idx_base is None
+                    or reversal_idx_base is None
+                    or (entry_bar_index is not None and entry_idx_base is None)
+                    or arrival_level_price is None
+                ):
+                    continue
                 signals.append(
                     _make_signal(
                         signal_id=signal_id,
                         ts=setup["timestamp"],
-                        bar_idx=int(setup["bar_index"]),
+                        bar_idx=bar_index_base,
                         trigger_bar_index=reversal_idx_base,
                         trigger_timeframe=effective_trigger_timeframe,
                         trigger_timestamp=df_reset["timestamp"].iloc[reversal_idx_base],
@@ -925,9 +980,9 @@ def generate_signals(
                         naked_req=naked_req,
                         tested_level_name=tested_level_name,
                         tested_level_price=tested_level_price,
-                        arrival_bar_index=int(setup["arrival_bar_index"]),
-                        reversal_bar_index=int(setup["reversal_bar_index"]),
-                        confirmation_bar_index=int(entry_bar_index) if entry_bar_index is not None else None,
+                        arrival_bar_index=arrival_idx_base,
+                        reversal_bar_index=reversal_idx_base,
+                        confirmation_bar_index=entry_idx_base,
                         reversal_type="sfp_reversal" if is_sfp else "standard_reversal",
                         is_sfp_reversal=is_sfp,
                         activation_price=entry_trigger_price if filled else None,
@@ -941,8 +996,8 @@ def generate_signals(
                         level_source_label=setup.get("level_source_label"),
                         zone_id=setup.get("zone_id"),
                         level_id=setup.get("level_id"),
-                        arrival_level_price=float(setup["arrival_level_price"]),
-                        entry_bar_index=int(entry_bar_index) if entry_bar_index is not None else None,
+                        arrival_level_price=arrival_level_price,
+                        entry_bar_index=entry_idx_base,
                         entry_trigger_price=entry_trigger_price,
                         retrace_entry_price=retrace_entry_price,
                         retrace_ticks_required=float(setup["entry_retrace_ticks"]),
@@ -953,8 +1008,8 @@ def generate_signals(
                         level_test_state_at_arrival=setup.get("level_test_state_at_arrival"),
                         was_naked_before_arrival=setup.get("was_naked_before_arrival"),
                         # Base 3c: trigger indices match base indices
-                        trigger_arrival_bar_index=int(setup["arrival_bar_index"]),
-                        trigger_reversal_bar_index=int(setup["reversal_bar_index"]),
+                        trigger_arrival_bar_index=arrival_idx_base,
+                        trigger_reversal_bar_index=reversal_idx_base,
                     )
                 )
                 signal_id += 1
@@ -1017,6 +1072,11 @@ def generate_signals(
             zone_by_id_nb = {candidate.zone_id: candidate for candidate in candidates if candidate.zone_id}
             for setup in setup_rows:
                 zone_id = setup.get("zone_id")
+                arrival_naked_idx = (
+                    _safe_signal_index(setup.get("arrival_bar_index"), len(naked_flags))
+                    if naked_flags is not None
+                    else None
+                )
                 if zone_id in zone_by_id_nb:
                     candidate = zone_by_id_nb[zone_id]
                     zone = pd.Series(
@@ -1035,7 +1095,11 @@ def generate_signals(
                         }
                     )
                     # Naked count uses base arrival index
-                    ncount = _naked_count(str(zone["level_names"]), int(setup["arrival_bar_index"]), naked_flags) if naked_flags is not None else 0
+                    ncount = (
+                        _naked_count(str(zone["level_names"]), arrival_naked_idx, naked_flags)
+                        if naked_flags is not None and arrival_naked_idx is not None
+                        else 0
+                    )
                 else:
                     zone = pd.Series(
                         {
@@ -1058,19 +1122,44 @@ def generate_signals(
                 entry_trigger_raw = setup.get("entry_trigger_price", setup.get("retrace_entry_price"))
                 if entry_trigger_raw is None:
                     entry_trigger_raw = setup.get("arrival_level_price")
-                entry_trigger_price = float(entry_trigger_raw)
+                entry_trigger_price = _safe_signal_float(entry_trigger_raw)
+                if entry_trigger_price is None:
+                    continue
                 retrace_entry_price = entry_trigger_price if filled else None
                 entry_bar_index = setup.get("entry_bar_index")
                 trigger_reversal_bar_index = setup.get("trigger_reversal_bar_index")
                 trigger_arrival_bar_index = setup.get("trigger_arrival_bar_index")
                 # trigger_bar_index equals trigger_reversal_bar_index for 3c
-                trigger_bar_index_3c = trigger_reversal_bar_index
+                trigger_bar_index_3c = _safe_signal_index(trigger_reversal_bar_index, len(trigger_df_3c))
+                bar_index_base = _safe_signal_index(setup.get("bar_index"), len(df_reset))
+                arrival_idx_base = _safe_signal_index(setup.get("arrival_bar_index"), len(df_reset))
+                reversal_idx_base = _safe_signal_index(setup.get("reversal_bar_index"), len(df_reset))
+                entry_idx_base = (
+                    _safe_signal_index(entry_bar_index, len(df_reset))
+                    if entry_bar_index is not None
+                    else None
+                )
+                trigger_arrival_idx = (
+                    _safe_signal_index(trigger_arrival_bar_index, len(trigger_df_3c))
+                    if trigger_arrival_bar_index is not None
+                    else None
+                )
+                arrival_level_price = _safe_signal_float(setup.get("arrival_level_price"))
+                if (
+                    trigger_bar_index_3c is None
+                    or bar_index_base is None
+                    or arrival_idx_base is None
+                    or reversal_idx_base is None
+                    or (entry_bar_index is not None and entry_idx_base is None)
+                    or arrival_level_price is None
+                ):
+                    continue
                 signals.append(
                     _make_signal(
                         signal_id=signal_id,
                         ts=setup["timestamp"],
-                        bar_idx=int(setup["bar_index"]),
-                        trigger_bar_index=int(trigger_bar_index_3c) if trigger_bar_index_3c is not None else None,
+                        bar_idx=bar_index_base,
+                        trigger_bar_index=trigger_bar_index_3c,
                         trigger_timeframe=effective_trigger_timeframe,
                         trigger_timestamp=setup.get("trigger_timestamp"),
                         trigger="3c",
@@ -1083,9 +1172,9 @@ def generate_signals(
                         naked_req=naked_req,
                         tested_level_name=tested_level_name,
                         tested_level_price=tested_level_price,
-                        arrival_bar_index=int(setup["arrival_bar_index"]),
-                        reversal_bar_index=int(setup["reversal_bar_index"]),
-                        confirmation_bar_index=int(entry_bar_index) if entry_bar_index is not None else None,
+                        arrival_bar_index=arrival_idx_base,
+                        reversal_bar_index=reversal_idx_base,
+                        confirmation_bar_index=entry_idx_base,
                         reversal_type="sfp_reversal" if is_sfp else "standard_reversal",
                         is_sfp_reversal=is_sfp,
                         activation_price=entry_trigger_price if filled else None,
@@ -1099,8 +1188,8 @@ def generate_signals(
                         level_source_label=setup.get("level_source_label"),
                         zone_id=setup.get("zone_id"),
                         level_id=setup.get("level_id"),
-                        arrival_level_price=float(setup["arrival_level_price"]),
-                        entry_bar_index=int(entry_bar_index) if entry_bar_index is not None else None,
+                        arrival_level_price=arrival_level_price,
+                        entry_bar_index=entry_idx_base,
                         entry_trigger_price=entry_trigger_price,
                         retrace_entry_price=retrace_entry_price,
                         retrace_ticks_required=float(setup["entry_retrace_ticks"]),
@@ -1110,8 +1199,8 @@ def generate_signals(
                         level_ids=level_ids,
                         level_test_state_at_arrival=setup.get("level_test_state_at_arrival"),
                         was_naked_before_arrival=setup.get("was_naked_before_arrival"),
-                        trigger_arrival_bar_index=int(trigger_arrival_bar_index) if trigger_arrival_bar_index is not None else None,
-                        trigger_reversal_bar_index=int(trigger_reversal_bar_index) if trigger_reversal_bar_index is not None else None,
+                        trigger_arrival_bar_index=trigger_arrival_idx,
+                        trigger_reversal_bar_index=trigger_bar_index_3c,
                     )
                 )
                 signal_id += 1

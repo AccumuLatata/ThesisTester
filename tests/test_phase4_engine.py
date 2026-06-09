@@ -1,13 +1,15 @@
 """Phase 4 engine tests: confluence detection, naked levels, signal generation."""
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from thesistester.engine.confluence import detect_confluence_zones
 from thesistester.engine.naked import flag_naked_levels
-from thesistester.engine.signals import generate_signals
+from thesistester.engine.signals import _safe_signal_float, _safe_signal_index, generate_signals
 
 
 TZ = "America/New_York"
@@ -889,3 +891,164 @@ class TestEdgeCases:
         zones = _zone_df(0, 100.0 - 1.5, 100.0 + 1.5)  # zone covers default bar range
         sigs = generate_signals(df, zones, trigger="3c", direction="long", tick_size=TICK)
         assert sigs.empty
+
+    def test_3c_skips_setup_when_entry_trigger_resolves_to_none(self, monkeypatch):
+        import thesistester.engine.signals as signals_module
+
+        df = _simple_bars(3)
+        zones = _zone_df(0, 99.5, 100.5, level_names="level_A")
+
+        def _malformed_detect(**kwargs):
+            return [
+                {
+                    "timestamp": df["timestamp"].iloc[1],
+                    "bar_index": 1,
+                    "direction": "long",
+                    "trigger_variant": "3c_long",
+                    "is_muted": False,
+                    "is_sfp": False,
+                    "inside_candle_count": 0,
+                    "arrival_bar_index": 0,
+                    "reversal_bar_index": 1,
+                    "entry_bar_index": None,
+                    "entry_trigger_price": None,
+                    "retrace_entry_price": None,
+                    "status": "void",
+                    "arrival_level_price": None,
+                    "level_source_mode": "global_cluster",
+                    "level_source_label": "level_A",
+                    "zone_id": "zone_0",
+                    "level_id": "level_A",
+                    "entry_retrace_ticks": 2.0,
+                    "source_labels": ["level_A"],
+                    "zone_ids": ["zone_0"],
+                    "level_ids": ["level_A"],
+                    "source_count": 1,
+                    "level_test_state_at_arrival": None,
+                    "was_naked_before_arrival": None,
+                }
+            ]
+
+        monkeypatch.setattr(signals_module, "detect_3c_setups", _malformed_detect)
+
+        sigs = generate_signals(
+            df,
+            zones,
+            trigger="3c",
+            direction="long",
+            tick_size=TICK,
+            trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3},
+        )
+
+        assert sigs.empty
+
+
+# ===========================================================================
+# _safe_signal_index strict validation
+# ===========================================================================
+
+
+class TestSafeSignalIndex:
+    """Regression tests for _safe_signal_index strict integer validation."""
+
+    SIZE = 10
+
+    def test_valid_int_accepted(self):
+        assert _safe_signal_index(3, self.SIZE) == 3
+
+    def test_valid_zero_accepted(self):
+        assert _safe_signal_index(0, self.SIZE) == 0
+
+    def test_valid_max_boundary_accepted(self):
+        assert _safe_signal_index(9, self.SIZE) == 9
+
+    def test_integer_valued_float_accepted(self):
+        # 3.0 is an integer-valued float and must be accepted
+        assert _safe_signal_index(3.0, self.SIZE) == 3
+
+    def test_numpy_integer_accepted(self):
+        assert _safe_signal_index(np.int64(5), self.SIZE) == 5
+
+    def test_non_integer_float_rejected(self):
+        # 3.9 must NOT silently truncate to 3
+        assert _safe_signal_index(3.9, self.SIZE) is None
+
+    def test_non_integer_float_low_rejected(self):
+        assert _safe_signal_index(2.1, self.SIZE) is None
+
+    def test_nan_rejected(self):
+        assert _safe_signal_index(float("nan"), self.SIZE) is None
+
+    def test_numpy_nan_rejected(self):
+        assert _safe_signal_index(np.nan, self.SIZE) is None
+
+    def test_inf_rejected(self):
+        assert _safe_signal_index(float("inf"), self.SIZE) is None
+
+    def test_neg_inf_rejected(self):
+        assert _safe_signal_index(float("-inf"), self.SIZE) is None
+
+    def test_none_rejected(self):
+        assert _safe_signal_index(None, self.SIZE) is None
+
+    def test_boolean_true_rejected(self):
+        # bool is a subclass of int in Python; must be treated as invalid index
+        assert _safe_signal_index(True, self.SIZE) is None
+
+    def test_boolean_false_rejected(self):
+        assert _safe_signal_index(False, self.SIZE) is None
+
+    def test_negative_int_rejected(self):
+        assert _safe_signal_index(-1, self.SIZE) is None
+
+    def test_out_of_range_rejected(self):
+        assert _safe_signal_index(self.SIZE, self.SIZE) is None
+
+    def test_out_of_range_large_rejected(self):
+        assert _safe_signal_index(999, self.SIZE) is None
+
+    def test_string_rejected(self):
+        assert _safe_signal_index("abc", self.SIZE) is None
+
+
+class TestSafeSignalFloat:
+    """Regression tests for _safe_signal_float non-finite value rejection."""
+
+    def test_valid_float_accepted(self):
+        assert _safe_signal_float(100.25) == 100.25
+
+    def test_valid_zero_accepted(self):
+        assert _safe_signal_float(0.0) == 0.0
+
+    def test_valid_negative_float_accepted(self):
+        assert _safe_signal_float(-50.5) == -50.5
+
+    def test_inf_rejected(self):
+        assert _safe_signal_float(float("inf")) is None
+
+    def test_neg_inf_rejected(self):
+        assert _safe_signal_float(float("-inf")) is None
+
+    def test_numpy_inf_rejected(self):
+        assert _safe_signal_float(np.inf) is None
+
+    def test_numpy_neg_inf_rejected(self):
+        assert _safe_signal_float(-np.inf) is None
+
+    def test_nan_rejected(self):
+        assert _safe_signal_float(float("nan")) is None
+
+    def test_numpy_nan_rejected(self):
+        assert _safe_signal_float(np.nan) is None
+
+    def test_none_rejected(self):
+        assert _safe_signal_float(None) is None
+
+    def test_non_convertible_string_rejected(self):
+        assert _safe_signal_float("abc") is None
+
+    def test_valid_int_accepted(self):
+        assert _safe_signal_float(100) == 100.0
+
+    def test_valid_string_float_accepted(self):
+        assert _safe_signal_float("3.14") == pytest.approx(3.14)

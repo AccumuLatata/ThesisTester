@@ -326,7 +326,7 @@ if bootstrap_means:
         margin=dict(l=10, r=10, t=30, b=10),
         showlegend=False,
     )
-    st.plotly_chart(fig_bs, use_container_width=True)
+    st.plotly_chart(fig_bs, width="stretch")
 else:
     st.info("No bootstrap results to display.")
 
@@ -368,7 +368,7 @@ if permuted_means:
         margin=dict(l=10, r=10, t=30, b=10),
         showlegend=False,
     )
-    st.plotly_chart(fig_perm, use_container_width=True)
+    st.plotly_chart(fig_perm, width="stretch")
 else:
     st.info("No permutation results to display.")
 

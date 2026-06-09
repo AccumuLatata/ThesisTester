@@ -174,7 +174,7 @@ def _render_anchor_diagnostics(zones: pd.DataFrame) -> None:
     st.subheader("Anchor zone summary")
     st.dataframe(
         zones[[c for c in summary_cols if c in zones.columns]].head(500),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -199,7 +199,7 @@ def _render_anchor_diagnostics(zones: pd.DataFrame) -> None:
         ]
         st.dataframe(
             rule_audit[[c for c in display_audit_cols if c in rule_audit.columns]].head(1000),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -580,6 +580,70 @@ def _get_stored_signal_settings() -> tuple[dict | None, str | None]:
     return normalized_settings, settings_hash
 
 
+_SAVED_SETUPS_CACHE_KEY = "_signals_saved_setups_cache"
+_SAVED_SETUPS_DIRTY_KEY = "_signals_saved_setups_dirty"
+_SAVED_SIGNAL_RUNS_CACHE_KEY = "_signals_saved_signal_runs_cache"
+_SAVED_SIGNAL_RUNS_DIRTY_KEY = "_signals_saved_signal_runs_dirty"
+
+
+def _get_cached_saved_setups(*, force_refresh: bool = False) -> list[dict]:
+    if force_refresh:
+        st.session_state[_SAVED_SETUPS_DIRTY_KEY] = True
+    cached = st.session_state.get(_SAVED_SETUPS_CACHE_KEY)
+    if bool(st.session_state.get(_SAVED_SETUPS_DIRTY_KEY, True)) or not isinstance(cached, list):
+        cached = list_saved_setups()
+        st.session_state[_SAVED_SETUPS_CACHE_KEY] = cached
+        st.session_state[_SAVED_SETUPS_DIRTY_KEY] = False
+    return list(cached)
+
+
+def _saved_signal_runs_cache_token(dataset_id: str, levels_settings_hash: str) -> str:
+    return f"{dataset_id}::{levels_settings_hash}"
+
+
+def _get_cached_saved_signal_runs(
+    *,
+    dataset_id: str,
+    levels_settings_hash: str,
+    force_refresh: bool = False,
+) -> list[dict]:
+    cache = st.session_state.get(_SAVED_SIGNAL_RUNS_CACHE_KEY)
+    if not isinstance(cache, dict):
+        cache = {}
+    dirty_tokens = st.session_state.get(_SAVED_SIGNAL_RUNS_DIRTY_KEY)
+    if not isinstance(dirty_tokens, set):
+        dirty_tokens = set()
+
+    cache_token = _saved_signal_runs_cache_token(dataset_id, levels_settings_hash)
+    if force_refresh:
+        dirty_tokens.add(cache_token)
+
+    if cache_token not in cache or cache_token in dirty_tokens:
+        cache[cache_token] = [
+            item
+            for item in list_saved_signal_runs(dataset_id=dataset_id, levels_settings_hash=levels_settings_hash)
+            if isinstance(item.get("signal_settings_hash"), str) and item["signal_settings_hash"]
+        ]
+        dirty_tokens.discard(cache_token)
+        st.session_state[_SAVED_SIGNAL_RUNS_CACHE_KEY] = cache
+        st.session_state[_SAVED_SIGNAL_RUNS_DIRTY_KEY] = dirty_tokens
+
+    cached_runs = cache.get(cache_token, [])
+    return list(cached_runs) if isinstance(cached_runs, list) else []
+
+
+def _mark_saved_signal_runs_dirty(dataset_id: object, levels_settings_hash: object) -> None:
+    if not isinstance(dataset_id, str) or not dataset_id:
+        return
+    if not isinstance(levels_settings_hash, str) or not levels_settings_hash:
+        return
+    dirty_tokens = st.session_state.get(_SAVED_SIGNAL_RUNS_DIRTY_KEY)
+    if not isinstance(dirty_tokens, set):
+        dirty_tokens = set()
+    dirty_tokens.add(_saved_signal_runs_cache_token(dataset_id, levels_settings_hash))
+    st.session_state[_SAVED_SIGNAL_RUNS_DIRTY_KEY] = dirty_tokens
+
+
 # ── Require levels ────────────────────────────────────────────────────────────
 if "levels" not in st.session_state:
     st.warning("No levels computed. Please load data on the **Data** page and compute levels on the **Levels** page first.")
@@ -598,7 +662,7 @@ if not all_level_columns:
 raw_active_setup = st.session_state.get("setup_config")
 active_setup = raw_active_setup if isinstance(raw_active_setup, dict) and raw_active_setup else None
 current_dataset_id = st.session_state.get("dataset_id")
-all_saved_setups = list_saved_setups()
+all_saved_setups = _get_cached_saved_setups()
 
 # ── Sidebar controls ──────────────────────────────────────────────────────────
 saved_setup: dict | None = None
@@ -636,6 +700,15 @@ with st.sidebar:
             == "other dataset"
             for item in all_saved_setups
         )
+        if st.button("Refresh saved setups", key="refresh_saved_setups", width="stretch"):
+            all_saved_setups = _get_cached_saved_setups(force_refresh=True)
+            has_other_dataset_setups = any(
+                _dataset_relation_label(
+                    item.get("dataset_id"),
+                    current_dataset_id if isinstance(current_dataset_id, str) else None,
+                ) == "other dataset"
+                for item in all_saved_setups
+            )
         include_other_datasets = st.checkbox(
             "Include setups from other datasets",
             value=False,
@@ -900,7 +973,7 @@ with st.sidebar:
     generate_btn = st.button(
         "Generate signals",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         disabled=bool(generation_blockers),
     )
 
@@ -1031,11 +1104,18 @@ saved_signal_runs: list[dict] = []
 matching_saved_signal_run: dict | None = None
 
 if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_hash, str):
-    saved_signal_runs = [
-        item
-        for item in list_saved_signal_runs(dataset_id=dataset_id, levels_settings_hash=levels_settings_hash)
-        if isinstance(item.get("signal_settings_hash"), str) and item["signal_settings_hash"]
-    ]
+    st.divider()
+    st.subheader("Saved signal runs")
+    refresh_saved_signal_runs = st.button(
+        "Refresh saved signal runs",
+        key="refresh_saved_signal_runs",
+        width="stretch",
+    )
+    saved_signal_runs = _get_cached_saved_signal_runs(
+        dataset_id=dataset_id,
+        levels_settings_hash=levels_settings_hash,
+        force_refresh=refresh_saved_signal_runs,
+    )
     matching_saved_signal_run = find_matching_signal_run(
         dataset_id=dataset_id,
         levels_settings_hash=levels_settings_hash,
@@ -1046,8 +1126,6 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
         st.info("Matching saved signals found.")
 
     if saved_signal_runs:
-        st.divider()
-        st.subheader("Saved signal runs")
         run_options = {item["signal_settings_hash"]: item for item in saved_signal_runs}
         run_ids = list(run_options)
         default_selected_run = (
@@ -1075,7 +1153,7 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
         if signal_actions[0].button(
             "Load selected saved signals",
             key="load_selected_saved_signals",
-            use_container_width=True,
+            width="stretch",
         ):
             try:
                 loaded_signals, loaded_zones, loaded_naked_flags, loaded_meta = load_signal_run(
@@ -1107,7 +1185,7 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
         if signal_actions[1].button(
             "Save current signals",
             key="save_current_signals_locally",
-            use_container_width=True,
+            width="stretch",
         ):
             current_signals, current_zones, current_naked_flags = _get_current_signal_artifacts()
             if not _can_save_signal_artifacts(current_signals, current_zones, current_naked_flags):
@@ -1133,19 +1211,22 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
                         signal_context=st.session_state.get("signal_context"),
                         last_signal_setup=st.session_state.get("last_signal_setup"),
                     )
+                    _mark_saved_signal_runs_dirty(dataset_id, levels_settings_hash)
                     st.success(f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...).")
+                    st.rerun()
         if signal_actions[2].button(
             "Delete selected saved signals",
             key="delete_selected_saved_signals",
-            use_container_width=True,
+            width="stretch",
         ):
             delete_signal_run(dataset_id, levels_settings_hash, selected_run_hash)
+            _mark_saved_signal_runs_dirty(dataset_id, levels_settings_hash)
             st.success("Deleted selected saved signals.")
             st.rerun()
         if st.button(
             "Copy setup to Setup Builder",
             key="copy_setup_snapshot_to_setup_builder",
-            use_container_width=True,
+            width="stretch",
         ):
             setup_snapshot = _extract_setup_snapshot_from_signal_run(selected_run_meta)
             if setup_snapshot is None:
@@ -1155,10 +1236,8 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
                 st.session_state["_setup_builder_editor_config"] = dict(setup_snapshot)
                 st.success("Copied setup snapshot to Setup Builder. Open Setup Builder to review, edit, and save.")
     else:
-        st.divider()
-        st.subheader("Saved signal runs")
         st.caption("No saved signal runs for this dataset and levels snapshot.")
-        if st.button("Save current signals", key="save_current_signals_empty", use_container_width=True):
+        if st.button("Save current signals", key="save_current_signals_empty", width="stretch"):
             current_signals, current_zones, current_naked_flags = _get_current_signal_artifacts()
             if not _can_save_signal_artifacts(current_signals, current_zones, current_naked_flags):
                 st.warning("Generate or load signals first, then save.")
@@ -1183,6 +1262,7 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
                         signal_context=st.session_state.get("signal_context"),
                         last_signal_setup=st.session_state.get("last_signal_setup"),
                     )
+                    _mark_saved_signal_runs_dirty(dataset_id, levels_settings_hash)
                     st.success(f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...).")
                     st.rerun()
 
@@ -1214,7 +1294,7 @@ if signals is not None and not signals.empty:
     if breakdown_cols:
         st.dataframe(
             signals.groupby(breakdown_cols).size().reset_index(name="count"),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -1239,7 +1319,7 @@ if signals is not None and not signals.empty:
         "naked_level_count",
         "notes",
     ] if c in signals.columns]
-    st.dataframe(signals[display_cols], use_container_width=True, hide_index=True)
+    st.dataframe(signals[display_cols], width="stretch", hide_index=True)
 else:
     st.info("No signals generated with the current settings.")
 
@@ -1322,4 +1402,4 @@ fig = build_signals_chart(
     confluence_zones=chart_zones_df,
     show_confluence_zones=show_confluence_zones,
 )
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, width="stretch")

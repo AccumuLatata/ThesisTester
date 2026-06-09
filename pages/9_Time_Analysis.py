@@ -239,7 +239,7 @@ else:
                 lambda v: f"{v:.3f}" if v is not None and not (isinstance(v, float) and __import__('math').isnan(v)) else "—"
             )
 
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    st.dataframe(display_df, width="stretch", hide_index=True)
 
 st.divider()
 
@@ -273,7 +273,7 @@ else:
                 margin=dict(l=10, r=10, t=50, b=10),
                 coloraxis_showscale=False,
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
     else:
         # Grouped bar chart
         chart_data = grouped[
@@ -296,7 +296,7 @@ else:
                 height=380,
                 margin=dict(l=10, r=10, t=50, b=10),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
 # ── Heatmap section (only when secondary grouping is active) ──────────────────
 if secondary_group is not None and not grouped.empty:
@@ -328,7 +328,7 @@ if secondary_group is not None and not grouped.empty:
             height=420,
             margin=dict(l=10, r=10, t=30, b=10),
         )
-        st.plotly_chart(fig_heat, use_container_width=True)
+        st.plotly_chart(fig_heat, width="stretch")
 
 # ── Trade count by time bucket ────────────────────────────────────────────────
 st.divider()
@@ -357,7 +357,7 @@ if primary_group in trades.columns:
         margin=dict(l=10, r=10, t=50, b=10),
         coloraxis_showscale=False,
     )
-    st.plotly_chart(fig_counts, use_container_width=True)
+    st.plotly_chart(fig_counts, width="stretch")
 
 # ── Detailed raw trade view ───────────────────────────────────────────────────
 with st.expander("Raw trades with time buckets"):
@@ -374,4 +374,4 @@ with st.expander("Raw trades with time buckets"):
         )
         if c in trades.columns
     ]
-    st.dataframe(trades[display_trade_cols], use_container_width=True, hide_index=True)
+    st.dataframe(trades[display_trade_cols], width="stretch", hide_index=True)

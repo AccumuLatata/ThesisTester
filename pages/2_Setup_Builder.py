@@ -604,7 +604,7 @@ if saved_setup_options:
     selected_saved_setup = saved_setup_options[selected_saved_setup_id]
 
     action_cols = st.columns(4)
-    if action_cols[0].button("Load to editor", use_container_width=True):
+    if action_cols[0].button("Load to editor", width="stretch"):
         loaded_meta = load_setup(selected_saved_setup_id)
         loaded_config = dict(loaded_meta.get("setup_config", {}))
         st.session_state[EDITOR_STATE_KEY] = loaded_config
@@ -612,7 +612,7 @@ if saved_setup_options:
         st.success(f"Loaded '{loaded_meta.get('name', 'setup')}' into editor.")
         st.rerun()
 
-    if action_cols[1].button("Duplicate", use_container_width=True):
+    if action_cols[1].button("Duplicate", width="stretch"):
         duplicate_config = dict(selected_saved_setup.get("setup_config", {}))
         duplicate_config.pop("setup_id", None)
         duplicate_config["name"] = _duplicate_setup_name(str(duplicate_config.get("name", "")))
@@ -626,12 +626,12 @@ if saved_setup_options:
         st.success(f"Duplicated as '{duplicate_meta.get('name', 'setup')}'.")
         st.rerun()
 
-    if action_cols[2].button("Set active", use_container_width=True):
+    if action_cols[2].button("Set active", width="stretch"):
         loaded_meta = load_setup(selected_saved_setup_id)
         st.session_state["setup_config"] = dict(loaded_meta.get("setup_config", {}))
         st.success(f"Active setup set to '{loaded_meta.get('name', 'setup')}'.")
 
-    if action_cols[3].button("Delete", use_container_width=True):
+    if action_cols[3].button("Delete", width="stretch"):
         delete_setup(selected_saved_setup_id)
         active = st.session_state.get("setup_config")
         if isinstance(active, dict) and active.get("setup_id") == selected_saved_setup_id:
