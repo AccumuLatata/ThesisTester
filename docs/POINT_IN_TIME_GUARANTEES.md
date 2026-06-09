@@ -24,12 +24,16 @@ tested here.
 | `thesistester/engine/naked.py` | Naked/untested level flags |
 | `thesistester/engine/confluence.py` | Global confluence zone detection |
 | `thesistester/engine/anchor_confluence.py` | Anchor-based confluence detection |
-| `thesistester/engine/signals.py` | Signal generation (touch/reject/break/reclaim/3c/confirm_3bar) |
+| `thesistester/engine/signals.py` | Signal generation (public: touch/reject/break/reclaim/3c; legacy/internal helper: confirm_3bar) |
 | `thesistester/engine/signals_3c.py` | 3c setup detector (base and non-base timeframes) |
 
 ---
 
 ## Level and signal family audit table
+
+Rows with `—` in the Tests column were verified by code inspection rather than by a
+dedicated future-shock regression test. Overall, audited behavior here is verified by
+future-shock tests and/or code inspection.
 
 ### Session levels — `levels/sessions.py`
 
@@ -85,13 +89,16 @@ bar), so naked filtering in signals is point-in-time correct.
 
 ### Signals — `engine/signals.py` / `engine/signals_3c.py`
 
+`confirm_3bar` is audited because the helper remains in `engine/signals.py`, but it is
+not part of the current public trigger set accepted by `generate_signals()`.
+
 | Trigger | Source | Causal? | Timestamp semantics | Known limitations | Tests |
 |---|---|---|---|---|---|
 | `touch` | `_check_touch` | **Yes** | Signal at trigger-bar close | Next-bar execution is assumed by `entry_model="candidate_next_bar_open"` | `test_r3_point_in_time.py::test_signals_touch_future_shock` |
 | `reject` | `_check_reject` | **Yes** | Signal at trigger-bar close | Same | Same |
 | `break` | `_check_break` | **Yes** | Signal at trigger-bar close; uses `prev` bar to confirm breakout | Same | Same |
 | `reclaim` | `_check_reclaim` | **Yes** | Signal at trigger-bar close | Same | Same |
-| `confirm_3bar` | `_check_confirm_3bar` | **Yes** | Signal timestamped at **bar 3** (`bar3_idx`), not backdated to arrival bar | Entry is bar3 OHLC intrabar fill (pessimistic SL-first); bar3 is both signal bar and entry bar | `test_r3_point_in_time.py::test_confirm_3bar_not_backdated` |
+| legacy/internal `confirm_3bar` helper | `_check_confirm_3bar` | **Yes** | Signal timestamped at **bar 3** (`bar3_idx`), not backdated to arrival bar | Entry is bar3 OHLC intrabar fill (pessimistic SL-first); bar3 is both signal bar and entry bar | `test_r3_point_in_time.py::test_confirm_3bar_not_backdated` |
 | `3c` (base TF) | `detect_3c_setups` | **Yes** | Signal at `entry_idx` (filled) or `reversal_idx` (void); never backdated to arrival | Looks forward only to find reversal and retrace within allowed window | `test_r3_point_in_time.py::test_3c_signals_not_backdated` |
 | `3c` (non-base TF) | `detect_3c_setups_with_trigger_timeframe` | **Yes** | `bar_index` / `timestamp` are canonical/base indexed at entry or reversal bar | `trigger_arrival_bar_index` / `trigger_reversal_bar_index` are trigger-TF indices; `trigger_timestamp` is reversal candle completion | Same |
 
@@ -108,7 +115,7 @@ For **simple triggers** (`touch`, `reject`, `break`, `reclaim`):
 - Same-bar close is used as `entry_reference_price`, not as an actual fill price; backtest
   entry is bar `i+1`.
 
-For **`confirm_3bar`**:
+For **legacy/internal `confirm_3bar` helper**:
 
 - Arrival at bar 1, reversal condition checked at bar 2, fill condition checked intrabar
   at bar 3.
@@ -161,10 +168,10 @@ bar on date D; do not use the final row value.
    of the session but represent a live level, not a historical reference. Do not confuse
    them with `pdOpen/pwOpen/pmOpen` (prior-period opens).
 
-4. **`confirm_3bar` uses intrabar bar-3 fill.** The 3-bar sequence fill at bar 3 is
-   assumed from bar-3 OHLC. This is an intrabar-fill assumption, not a next-bar-open
-   assumption. Results are pessimistic (SL-first) but are not independently verified
-   against tick data.
+4. **Legacy/internal `confirm_3bar` helper uses intrabar bar-3 fill.** The 3-bar
+   sequence fill at bar 3 is assumed from bar-3 OHLC. This is an intrabar-fill
+   assumption, not a next-bar-open assumption. Results are pessimistic (SL-first) but
+   are not independently verified against tick data.
 
 5. **Rolling VWAP / POC at bar `i` include bar `i` close/volume.** If signals trigger
    intrabar and use same-bar rolling levels, there is a mild look-ahead within the bar
