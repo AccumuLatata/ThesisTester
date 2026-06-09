@@ -56,7 +56,6 @@ def _rth_fixture(
     *,
     session_date: str = "2026-06-02",
     rth_start: str = "09:30",
-    freq: str = "1min",
 ) -> pd.DataFrame:
     """Synthetic RTH-only fixture with controlled OHLCV values."""
     start = pd.Timestamp(f"{session_date} {rth_start}", tz=TZ)
@@ -445,7 +444,60 @@ def test_dvwap_rth_future_shock_across_sessions():
 
 
 # ---------------------------------------------------------------------------
-# 9. Session column derived when absent
+# 9. Unsorted-input regression
+# ---------------------------------------------------------------------------
+
+def test_unsorted_input_output_is_timestamp_sorted():
+    """Output must be in timestamp-sorted order even if input rows are unsorted.
+
+    This test catches the previous silent-misalignment bug where dVWAP values
+    were labelled with indices 0..N-1 in sorted timestamp order while a
+    default-RangeIndex unsorted input caused the re-alignment guard to be
+    skipped.  After the fix, the function always returns values in the
+    timestamp-sorted timeline; the caller is responsible for aligning to any
+    other ordering.
+    """
+    # Build four RTH bars and intentionally reverse their row order.
+    row_a = _rth_bar(pd.Timestamp("2026-06-02 09:30", tz=TZ), high=101.0, low=99.0,  close=100.0, volume=10.0)
+    row_b = _rth_bar(pd.Timestamp("2026-06-02 09:31", tz=TZ), high=102.0, low=100.0, close=101.0, volume=20.0)
+    row_c = _rth_bar(pd.Timestamp("2026-06-02 09:32", tz=TZ), high=103.0, low=101.0, close=102.0, volume=30.0)
+    row_d = _rth_bar(pd.Timestamp("2026-06-02 09:33", tz=TZ), high=104.0, low=102.0, close=103.0, volume=40.0)
+
+    # rows in REVERSE timestamp order — input is unsorted
+    df_unsorted = pd.DataFrame([row_d, row_c, row_b, row_a])
+
+    result = compute_session_vwap_levels(df_unsorted, enabled=True)
+
+    # --- Verify index is a fresh RangeIndex (sorted timeline, not original order) ---
+    assert list(result.index) == list(range(len(df_unsorted)))
+
+    # --- Compute expected values in timestamp-sorted order ---
+    rows_sorted = [row_a, row_b, row_c, row_d]
+    tp = [(r["high"] + r["low"] + r["close"]) / 3.0 for r in rows_sorted]
+    vols = [r["volume"] for r in rows_sorted]
+    expected = []
+    cum_pv = 0.0
+    cum_v = 0.0
+    for t, v in zip(tp, vols):
+        cum_pv += t * v
+        cum_v += v
+        expected.append(cum_pv / cum_v)
+
+    assert result["dVWAP_RTH"].tolist() == pytest.approx(expected, rel=1e-9)
+
+    # --- Prove the old bug is gone: result[0] must correspond to the 09:30 bar,
+    #     NOT to the 09:33 bar that was in row 0 of the unsorted input. ---
+    tp_first_sorted = (101.0 + 99.0 + 100.0) / 3.0   # 09:30 bar
+    assert result["dVWAP_RTH"].iloc[0] == pytest.approx(tp_first_sorted, rel=1e-9)
+
+    tp_first_original = (104.0 + 102.0 + 103.0) / 3.0  # 09:33 bar (was row 0 of input)
+    assert result["dVWAP_RTH"].iloc[0] != pytest.approx(tp_first_original, rel=1e-3)
+
+
+
+
+# ---------------------------------------------------------------------------
+# 10. Session column derived when absent
 # ---------------------------------------------------------------------------
 
 def test_session_column_derived_from_instrument_config():
@@ -480,7 +532,7 @@ def test_session_column_derived_from_instrument_config():
 
 
 # ---------------------------------------------------------------------------
-# 10. NQ instrument support
+# 11. NQ instrument support
 # ---------------------------------------------------------------------------
 
 def test_nq_instrument_is_supported():

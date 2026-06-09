@@ -79,7 +79,14 @@ def compute_session_vwap_levels(
     -------
     pd.DataFrame
         - ``enabled=False``: empty DataFrame with the same index as *df*.
-        - ``enabled=True``: DataFrame with column ``dVWAP_RTH`` aligned to *df*.
+          Returns immediately without processing.
+        - ``enabled=True``: DataFrame with column ``dVWAP_RTH`` aligned to the
+          **internally sorted** timestamp timeline
+          (``sort_values("timestamp").reset_index(drop=True)``).  The returned
+          index is a fresh ``RangeIndex`` matching the sorted row order.  When
+          joining to other level DataFrames produced by ``compute_all_levels``,
+          alignment is guaranteed because all level functions operate on the
+          same sorted timeline.
 
     Raises
     ------
@@ -136,13 +143,4 @@ def compute_session_vwap_levels(
         # Emit NaN when cumulative volume is zero (prevents divide-by-zero).
         dvwap.loc[idx] = cum_pv.where(cum_vol > 0).div(cum_vol.replace(0, np.nan))
 
-    out = pd.DataFrame({"dVWAP_RTH": dvwap}, index=work.index)
-
-    # Re-align to original df index order if df was not sorted.
-    if not df.index.equals(work.index):
-        # double argsort produces the inverse permutation: position i in `out`
-        # (sorted order) maps back to the original row position in df.
-        inverse_sort_indices = df["timestamp"].argsort().argsort()
-        out = out.iloc[inverse_sort_indices.values].set_axis(df.index)
-
-    return out
+    return pd.DataFrame({"dVWAP_RTH": dvwap}, index=work.index)

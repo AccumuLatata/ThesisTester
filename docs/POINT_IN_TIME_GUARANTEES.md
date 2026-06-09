@@ -79,7 +79,7 @@ future-shock tests and/or code inspection.
 
 | Level family | Source | Causal? | Availability timing | Known limitations | Tests |
 |---|---|---|---|---|---|
-| `dVWAP_RTH` | cumulative `(typical_price * volume) / volume` over RTH bars in the current RTH session | **Yes** | First RTH bar of each session; `NaN` on all non-RTH bars | Only RTH bars contribute; resets at each new RTH session; zero cumulative volume emits `NaN`; if session column is absent it is derived from instrument config | `tests/test_stage3_session_vwap.py` (future-shock tests: `test_dvwap_rth_future_shock`, `test_dvwap_rth_future_shock_across_sessions`) |
+| `dVWAP_RTH` | cumulative `cumsum(typical_price * volume) / cumsum(volume)` over RTH bars in the current RTH session | **Yes** | First RTH bar of each session; `NaN` on all non-RTH bars | Only RTH bars contribute; resets at each new RTH session; zero cumulative volume emits `NaN`; if session column is absent it is derived from instrument config | `tests/test_stage3_session_vwap.py` (future-shock tests: `test_dvwap_rth_future_shock`, `test_dvwap_rth_future_shock_across_sessions`) |
 
 ### Naked levels — `engine/naked.py`
 
