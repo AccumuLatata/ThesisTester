@@ -213,8 +213,12 @@ with st.sidebar:
     no_new_entries_after = st.text_input(
         "No new entries after (optional)",
         value="",
+        disabled=not flat_by_session_close,
         help="Optional local cutoff in HH:MM or HH:MM:SS.",
     )
+    effective_no_new_entries_after = (
+        no_new_entries_after or None
+    ) if flat_by_session_close else None
 
     run_btn = st.button("▶ Run backtest", type="primary", width="stretch")
 
@@ -236,7 +240,7 @@ if run_btn:
                 flat_by_session_close=flat_by_session_close,
                 session_close_time=session_close_time or None,
                 session_timezone=session_timezone if flat_by_session_close else None,
-                no_new_entries_after=no_new_entries_after or None,
+                no_new_entries_after=effective_no_new_entries_after,
             )
         except ValueError as e:
             st.error(f"Backtest error: {e}")
@@ -261,7 +265,7 @@ if run_btn:
             "flat_by_session_close": bool(flat_by_session_close),
             "session_close_time": session_close_time or None,
             "session_timezone": session_timezone if flat_by_session_close else None,
-            "no_new_entries_after": no_new_entries_after or None,
+            "no_new_entries_after": effective_no_new_entries_after,
         }
 
 # ── Display ───────────────────────────────────────────────────────────────────

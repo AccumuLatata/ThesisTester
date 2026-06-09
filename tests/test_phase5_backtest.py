@@ -660,6 +660,26 @@ def test_flat_by_session_close_requires_valid_session_close_time():
         )
 
 
+@pytest.mark.parametrize(
+    "invalid_session_close_time",
+    ["16:00:00.123", "16:00+01:00", "9:30"],
+)
+def test_invalid_session_close_time_formats_raise(invalid_session_close_time):
+    df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0), _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5))
+    sigs = _signal(bar_index=0)
+    with pytest.raises(ValueError, match="session_close_time"):
+        simulate_trades(
+            df,
+            sigs,
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
+            flat_by_session_close=True,
+            session_close_time=invalid_session_close_time,
+        )
+
+
 def test_invalid_no_new_entries_after_raises():
     df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0), _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5))
     sigs = _signal(bar_index=0)
@@ -672,6 +692,21 @@ def test_invalid_no_new_entries_after_raises():
             stop_loss_ticks=4,
             take_profit_ticks=8,
             no_new_entries_after="not-a-time",
+        )
+
+
+def test_invalid_no_new_entries_after_fractional_seconds_raises():
+    df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0), _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5))
+    sigs = _signal(bar_index=0)
+    with pytest.raises(ValueError, match="no_new_entries_after"):
+        simulate_trades(
+            df,
+            sigs,
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
+            no_new_entries_after="15:45:00.123",
         )
 
 

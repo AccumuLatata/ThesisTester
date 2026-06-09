@@ -17,6 +17,7 @@ Design notes
 """
 from __future__ import annotations
 
+import re
 from datetime import time
 from zoneinfo import ZoneInfoNotFoundError
 
@@ -75,6 +76,9 @@ def _empty_trades_df() -> pd.DataFrame:
     return pd.DataFrame(columns=_TRADE_COLUMNS)
 
 
+_TIME_RE = re.compile(r"^\d{2}:\d{2}(:\d{2})?$")
+
+
 def _parse_time_input(value: str | None, *, field_name: str) -> time | None:
     """Parse HH:MM or HH:MM:SS time input."""
     if value is None:
@@ -82,6 +86,8 @@ def _parse_time_input(value: str | None, *, field_name: str) -> time | None:
     text = str(value).strip()
     if not text:
         return None
+    if _TIME_RE.fullmatch(text) is None:
+        raise ValueError(f"{field_name} must be HH:MM or HH:MM:SS, got {value!r}")
     try:
         parsed = time.fromisoformat(text)
     except ValueError as exc:
@@ -165,6 +171,23 @@ def simulate_trades(
         This matters for ``confirm_3bar`` filled entries where the bar is
         already closed.  Uses the SL-first pessimistic rule when both are
         reachable in the same bar.
+    commission_per_side:
+        Optional per-side commission in account currency. Must be >= 0.
+    slippage_ticks:
+        Optional adverse slippage in ticks applied at both entry and exit.
+        Must be >= 0.
+    flat_by_session_close:
+        If ``True``, cap each trade's exit walk at the configured session close
+        for the entry date; otherwise preserve legacy dataset-end behavior.
+    session_close_time:
+        Session close clock time (HH:MM or HH:MM:SS). Required when
+        ``flat_by_session_close=True``.
+    session_timezone:
+        Timezone used to interpret session-close and entry-cutoff times.
+        Naive timestamps are localized; aware timestamps are converted.
+    no_new_entries_after:
+        Optional local-time cutoff (HH:MM or HH:MM:SS). Entries whose local
+        entry timestamp is later than this cutoff are skipped.
 
     Returns
     -------
@@ -175,7 +198,18 @@ def simulate_trades(
     Raises
     ------
     ValueError
-        If ``stop_loss_ticks <= 0`` or cost inputs are negative.
+        If ``stop_loss_ticks <= 0``, price/risk inputs are invalid, cost inputs
+        are negative, or time/session policy inputs are invalid.
+
+    Notes
+    -----
+    - SL/TP precedence is unchanged: SL-first pessimism still applies when both
+      are reachable in the same bar.
+    - Default mode keeps legacy ``EOD`` semantics (last bar in loaded data).
+    - Session-aware mode can produce ``SESSION_CLOSE``; ``DATA_END`` means data
+      ended before a configured session-close bar was available.
+    - R1 execution costs (slippage/commission) still apply to ``SESSION_CLOSE``,
+      ``TIME``, ``DATA_END``, and ``EOD`` exits.
     """
     if stop_loss_ticks <= 0:
         raise ValueError(
