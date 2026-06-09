@@ -416,7 +416,7 @@ def test_developing_sp_update_as_new_bracket_completes():
     # Brackets A and C overlap → bins 400-404 no longer SP. Only B's bins (405-408) are SP.
 
     # Row 0 (09:30): bracket A not yet complete → NaN.
-    assert result.iloc[0][COL_D_ABOVE] != result.iloc[0][COL_D_ABOVE] or True  # may be NaN
+    assert math.isnan(result.iloc[0][COL_D_ABOVE])
 
     # Row 3 (11:00, after bracket C completes):
     # Only bracket B bins remain as SP → NearestAbove above close 101.00 = 101.25
