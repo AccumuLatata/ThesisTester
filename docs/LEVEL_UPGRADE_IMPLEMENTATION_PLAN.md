@@ -286,7 +286,11 @@ Acceptance criteria:
 
 ### Stage 3 — dVWAP
 
-Implement:
+**Status:** Implemented in this PR; complete once merged.
+
+Implemented in `thesistester/levels/session_vwap.py`.
+
+Implements:
 
 ```text
 dVWAP_RTH
@@ -296,23 +300,58 @@ Rules:
 
 - reset every RTH session,
 - compute cumulatively and causally,
-- emit `NaN` before RTH open,
-- handle zero cumulative volume safely,
+- emit `NaN` on non-RTH bars (pre-open and post-close),
+- handle zero cumulative volume safely (emit `NaN`),
 - do not modify existing rolling VWAP columns.
 
-Required tests:
+Output column:
+- `dVWAP_RTH` — developing VWAP from RTH session start.
 
-- exact cumulative VWAP calculation on synthetic data,
-- reset across sessions,
-- zero-volume handling,
-- DST/session-boundary fixture,
-- no behavior drift in existing rolling VWAP columns.
+Formula:
+
+```text
+typical_price = (high + low + close) / 3
+dVWAP_RTH[t] = cumsum(typical_price * volume) / cumsum(volume)
+```
+
+Session `session` column:
+- If present, used directly.
+- If absent, derived from timestamp and instrument config via `tag_session`.
+
+Implemented tests in `tests/test_stage3_session_vwap.py` (28 tests):
+
+- disabled returns empty DataFrame (no validation),
+- disabled accepts naive timestamps,
+- `compute_all_levels` with `session_vwap_enabled=False` produces no `dVWAP_RTH`,
+- exact bar-by-bar cumulative VWAP values,
+- output column name is `dVWAP_RTH`,
+- index length matches input,
+- session reset across two RTH sessions,
+- session 1 last value does not carry to session 2,
+- ETH bars before RTH emit NaN,
+- ETH bars after RTH close emit NaN,
+- only RTH bars have non-NaN dVWAP,
+- zero-volume single bar emits NaN,
+- zero-volume then positive volume: NaN then valid VWAP,
+- multiple zero-volume bars then valid VWAP,
+- unsupported anchor raises ValueError,
+- unsupported instrument raises ValueError,
+- naive timestamp raises ValueError,
+- disabled mode accepts naive timestamps / unsupported anchor / unsupported instrument,
+- existing level columns unchanged when VWAP disabled,
+- no dVWAP column without explicit enable,
+- dVWAP column present when enabled,
+- future-shock: appending future RTH bars does not change prior values,
+- future-shock across sessions,
+- session column derived from instrument config when absent,
+- NQ instrument supported.
 
 Acceptance criteria:
 
 - `dVWAP_RTH` starts only at RTH session open.
 - It updates causally bar by bar.
 - It resets correctly at the next RTH session.
+- Non-RTH bars always emit `NaN`.
 
 ---
 

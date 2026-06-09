@@ -1,28 +1,49 @@
-"""Session VWAP level computation stubs — Stage 1 plumbing only.
+"""Session VWAP level computation — Stage 3 implementation.
 
-Full developing-VWAP logic (cumulative session VWAP from RTH open, per-session reset,
-zero-volume-safe) will be implemented in Stage 3.  Until then every public function in
-this module returns an empty DataFrame so that ``compute_all_levels`` can wire these
-calls behind settings gates without any behaviour change.
+Implements developing VWAP anchored to the RTH session open (``dVWAP_RTH``).
 
-Planned output columns (Stage 3):
-    dVWAP_RTH
+Output column
+-------------
+``dVWAP_RTH``
+    Developing VWAP from the RTH session open.  Resets at each new RTH session.
+    ``NaN`` on bars outside RTH (before session open and after session close).
+    ``NaN`` when cumulative RTH volume is zero.
 
-Formula:
-    dVWAP_RTH[t] = cumsum(typical_price * volume) / cumsum(volume)
-    where typical_price = (high + low + close) / 3
-    cumsum resets at each RTH session open.
-    NaN before the RTH open of that session day.
+Formula
+-------
+    typical_price = (high + low + close) / 3
+    dVWAP_RTH[t] = cumsum(typical_price * volume)[t] / cumsum(volume)[t]
 
-A later extension may add dVWAP_ETH when the session model cleanly supports it.
+    ``cumsum`` resets at each RTH session open and includes only RTH bars.
+    Non-RTH bars always emit ``NaN``.
+
+Point-in-time guarantee
+-----------------------
+    At bar ``t``, only RTH bars at or before ``t`` (in the same session) are
+    used.  No future RTH bar can change the value at ``t``.
+
+Disabled behavior (``enabled=False``)
+--------------------------------------
+    Returns an empty DataFrame immediately — no timestamp validation, no new
+    columns.  This preserves the Stage 1 no-op contract.
+
+Unsupported anchor
+------------------
+    Raises ``ValueError``.  Only ``"RTH"`` is supported in Stage 3.
+
+A later extension may add ``dVWAP_ETH`` when the session model cleanly supports it.
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
+from ..config import INSTRUMENTS
+from ..data.sessions import tag_session
 from .common import require_tz_aware_timestamp
+from .session_date import trading_session_date
 
-# Anchor options that will be supported in Stage 3.
+# Anchor options supported in Stage 3.
 SUPPORTED_VWAP_ANCHORS: tuple[str, ...] = ("RTH",)
 
 # Default anchor for the first implementation.
@@ -41,30 +62,85 @@ def compute_session_vwap_levels(
     Parameters
     ----------
     df:
-        OHLCV DataFrame with a tz-aware ``timestamp`` column and a ``session``
-        column (added by :func:`~thesistester.data.sessions.tag_session`).
+        OHLCV DataFrame with a tz-aware ``timestamp`` column.  An optional
+        ``session`` column (values ``"RTH"`` / ``"ETH"``) can be pre-attached;
+        when it is absent, RTH membership is derived from ``instrument`` config
+        and the timestamp timezone.
     instrument:
-        Instrument key (e.g. ``"ES"``).  Used for session calendar configuration
-        in Stage 3.
+        Instrument key recognised by ``thesistester.config.INSTRUMENTS``
+        (e.g. ``"ES"``).
     anchor:
-        Session anchor for VWAP reset.  Currently only ``"RTH"`` is planned.
+        Session anchor for VWAP reset.  Currently only ``"RTH"`` is supported.
     enabled:
         Master gate.  When ``False`` (the default), returns an empty DataFrame
-        immediately so that no new columns are added by ``compute_all_levels``.
+        immediately — no timestamp validation, no new columns.
 
     Returns
     -------
     pd.DataFrame
-        Empty DataFrame when ``enabled=False`` (Stage 1 no-op).
-        Will return ``dVWAP_RTH`` (and optionally ``dVWAP_ETH``) in Stage 3.
+        - ``enabled=False``: empty DataFrame with the same index as *df*.
+          Returns immediately without processing.
+        - ``enabled=True``: DataFrame with column ``dVWAP_RTH`` aligned to the
+          **internally sorted** timestamp timeline
+          (``sort_values("timestamp").reset_index(drop=True)``).  The returned
+          index is a fresh ``RangeIndex`` matching the sorted row order.  When
+          joining to other level DataFrames produced by ``compute_all_levels``,
+          alignment is guaranteed because all level functions operate on the
+          same sorted timeline.
+
+    Raises
+    ------
+    ValueError
+        If ``enabled=True`` and:
+        - ``df["timestamp"]`` is timezone-naive,
+        - ``instrument`` is not in ``INSTRUMENTS``,
+        - ``anchor`` is not in ``SUPPORTED_VWAP_ANCHORS``.
     """
     if not enabled:
         return pd.DataFrame(index=df.index)
 
+    # --- Validation (only when enabled) ---
     require_tz_aware_timestamp(df)
 
-    # Stage 3 implementation will go here.
-    raise NotImplementedError(  # pragma: no cover
-        "Session VWAP level computation is not yet implemented.  "
-        "Set enabled=False (the default) until Stage 3 is merged."
-    )
+    if instrument not in INSTRUMENTS:
+        raise ValueError(
+            f"Unsupported instrument: {instrument!r}.  "
+            f"Supported instruments: {sorted(INSTRUMENTS)}"
+        )
+
+    if anchor not in SUPPORTED_VWAP_ANCHORS:
+        raise ValueError(
+            f"Unsupported VWAP anchor: {anchor!r}.  "
+            f"Supported anchors: {list(SUPPORTED_VWAP_ANCHORS)}"
+        )
+
+    # --- Sort and work on a copy so we never mutate the caller's frame ---
+    work = df.sort_values("timestamp").reset_index(drop=True).copy()
+
+    # --- Derive session membership ---
+    if "session" not in work.columns:
+        work = tag_session(work, instrument=instrument)
+
+    # --- Compute RTH session date for grouping ---
+    inst = INSTRUMENTS[instrument]
+    exchange_tz = inst.exchange_tz
+    eth_start = getattr(inst, "eth_start", "") or ""
+    local_ts = work["timestamp"].dt.tz_convert(exchange_tz)
+    session_date = trading_session_date(local_ts, eth_start)
+
+    # --- Build dVWAP_RTH ---
+    is_rth = work["session"].eq("RTH")
+    typical = (work["high"] + work["low"] + work["close"]) / 3.0
+    pv = typical * work["volume"]
+
+    # Group by RTH session date; accumulate pv and volume cumulatively within group.
+    # Non-RTH bars are excluded from the cumulative computation and receive NaN.
+    dvwap = pd.Series(np.nan, index=work.index, dtype="float64")
+
+    for _date, idx in work[is_rth].groupby(session_date[is_rth], sort=True).groups.items():
+        cum_pv = pv.loc[idx].cumsum()
+        cum_vol = work["volume"].loc[idx].cumsum()
+        # Emit NaN when cumulative volume is zero (prevents divide-by-zero).
+        dvwap.loc[idx] = cum_pv.where(cum_vol > 0).div(cum_vol.replace(0, np.nan))
+
+    return pd.DataFrame({"dVWAP_RTH": dvwap}, index=work.index)
