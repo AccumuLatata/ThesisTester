@@ -61,6 +61,9 @@ compact UI/report sections, and targeted regression coverage.
 
 ---
 
-## R7 — Futures Contract Roll Methodology
+## R7 — Futures Contract Roll Methodology ✅ Implemented
 
-Not yet implemented. Planned for a future milestone.
+Adds explicit roll-policy modes (`single_contract`, `external_continuous`,
+`segmented_contracts`), compact data-page assumptions controls, roll metadata
+validation/gap diagnostics, and export/report inclusion of roll assumptions for
+auditability without introducing internal price adjustment.
