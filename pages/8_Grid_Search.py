@@ -128,7 +128,7 @@ with st.sidebar:
         help="Optional local cutoff in HH:MM or HH:MM:SS.",
     )
     effective_no_new_entries_after = (
-        no_new_entries_after or None
+        no_new_entries_after.strip() or None
     ) if flat_by_session_close else None
 
     ranking_metric = st.selectbox(

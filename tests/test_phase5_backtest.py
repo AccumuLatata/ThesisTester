@@ -662,7 +662,7 @@ def test_flat_by_session_close_requires_valid_session_close_time():
 
 @pytest.mark.parametrize(
     "invalid_session_close_time",
-    ["16:00:00.123", "16:00+01:00", "9:30"],
+    ["16:00:00.123", "16:00+01:00", "9:30", "16"],
 )
 def test_invalid_session_close_time_formats_raise(invalid_session_close_time):
     df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0), _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5))
