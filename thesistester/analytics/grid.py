@@ -103,6 +103,8 @@ def run_sl_tp_grid(
     take_profit_ticks_values: list[int | float],
     max_holding_bars: int | None = None,
     allow_same_bar_exit: bool = True,
+    commission_per_side: float = 0.0,
+    slippage_ticks: float = 0.0,
 ) -> pd.DataFrame:
     """Run a stop-loss × take-profit grid search.
 
@@ -130,6 +132,12 @@ def run_sl_tp_grid(
         Passed through to ``simulate_trades``.
     allow_same_bar_exit:
         Passed through to ``simulate_trades``.
+    commission_per_side:
+        Currency cost per contract per side.  Passed through to
+        ``simulate_trades``.  Defaults to 0.0 (no commission).
+    slippage_ticks:
+        Adverse slippage in ticks.  Passed through to ``simulate_trades``.
+        Defaults to 0.0.
 
     Returns
     -------
@@ -178,6 +186,8 @@ def run_sl_tp_grid(
                 take_profit_ticks=tp,
                 max_holding_bars=max_holding_bars,
                 allow_same_bar_exit=allow_same_bar_exit,
+                commission_per_side=commission_per_side,
+                slippage_ticks=slippage_ticks,
             )
             summary = summarize_trades(trades)
             directional = _directional_grid_metrics(trades)

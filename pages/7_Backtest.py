@@ -174,6 +174,24 @@ with st.sidebar:
         ),
     )
 
+    st.subheader("Execution costs")
+    commission_per_side = st.number_input(
+        "Commission per side ($)",
+        min_value=0.0,
+        max_value=100.0,
+        value=0.0,
+        step=0.25,
+        help="Currency cost per contract per side (round-trip = 2×). E.g. $2.25 for NQ.",
+    )
+    slippage_ticks = st.number_input(
+        "Slippage (ticks)",
+        min_value=0.0,
+        max_value=20.0,
+        value=0.0,
+        step=0.5,
+        help="Adverse slippage in ticks applied to both entry and exit.",
+    )
+
     run_btn = st.button("▶ Run backtest", type="primary", use_container_width=True)
 
 # ── Run ───────────────────────────────────────────────────────────────────────
@@ -189,6 +207,8 @@ if run_btn:
                 take_profit_ticks=tp_ticks,
                 max_holding_bars=max_bars,
                 allow_same_bar_exit=allow_same_bar,
+                commission_per_side=commission_per_side,
+                slippage_ticks=slippage_ticks,
             )
         except ValueError as e:
             st.error(f"Backtest error: {e}")
@@ -200,6 +220,10 @@ if run_btn:
         st.session_state["trades"] = trades
         st.session_state["trade_summary"] = summary
         st.session_state["equity_curve"] = curve
+        st.session_state["backtest_cost_config"] = {
+            "commission_per_side": commission_per_side,
+            "slippage_ticks": slippage_ticks,
+        }
 
 # ── Display ───────────────────────────────────────────────────────────────────
 trades = st.session_state.get("trades")
@@ -211,6 +235,17 @@ if trades is None:
     st.stop()
 
 st.caption(timezone_contract_caption(st.session_state))
+
+# Net-of-cost indicator
+_cost_cfg = st.session_state.get("backtest_cost_config") or {}
+_commission = _cost_cfg.get("commission_per_side", 0.0) or 0.0
+_slip = _cost_cfg.get("slippage_ticks", 0.0) or 0.0
+if _commission > 0 or _slip > 0:
+    st.info(
+        f"📊 Metrics are **net-of-cost** "
+        f"(commission ${_commission:.2f}/side · slippage {_slip:g} tick(s)). "
+        "`pnl_currency` and `r_multiple` reflect net P&L."
+    )
 
 # KPI cards
 st.subheader("Performance summary")
@@ -357,6 +392,9 @@ if has_trades:
         "exit_timestamp", "exit_price", "exit_reason",
         "stop_price", "target_price",
         "stop_loss_ticks", "take_profit_ticks",
+        "theoretical_entry_price", "theoretical_exit_price",
+        "gross_pnl_points", "gross_pnl_currency",
+        "commission_cost", "slippage_cost", "net_pnl_currency",
         "pnl_points", "pnl_currency", "r_multiple", "bars_held",
         "zone_low", "zone_high", "level_count", "level_names", "setup_name",
         "mae_points", "mfe_points",

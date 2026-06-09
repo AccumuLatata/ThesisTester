@@ -4,10 +4,13 @@ This engine is for **research screening**, not proof of a durable edge.
 
 ## Verified engine assumptions (current implementation)
 
-### 1) P&L is gross (no commissions, fees, or slippage)
-- `simulate_trades(...)` accepts `tick_size`, `point_value`, SL/TP, and timing flags, but no cost/slippage parameters (`thesistester/engine/backtest.py:73-82`).
-- Currency P&L is computed directly as `pnl_points * point_value` (`thesistester/engine/backtest.py:254-260`).
-- Therefore all reported performance/expectancy is **gross**.
+### 1) P&L is net-of-cost when costs are supplied; gross by default
+- `simulate_trades(...)` accepts optional `commission_per_side` (default `0.0`) and `slippage_ticks` (default `0.0`) parameters (`thesistester/engine/backtest.py:88-90`).
+- With both parameters at their defaults the engine reproduces the prior gross-only behavior exactly.
+- When non-zero costs are supplied, `pnl_currency` and `r_multiple` reflect **net-of-cost** results.  `gross_pnl_currency` and `gross_pnl_points` remain available for reference (`thesistester/engine/backtest.py:317-325`).
+- Adverse slippage is applied to both entry and exit: long entries fill higher; long exits fill lower (and vice versa for shorts).  SL/TP levels are anchored to the slipped entry price for internal consistency.
+- Commission is a flat currency cost per side; round-trip cost = `2 × commission_per_side`.
+- **Warning:** using unrealistically low cost assumptions (e.g., zero slippage during volatile opens) will overstate net expectancy.
 
 ### 2) Intrabar ambiguity is resolved with SL-first pessimism
 - If both stop and target are reachable in one bar, the engine exits at stop (`thesistester/engine/backtest.py:221-226`).
@@ -34,5 +37,5 @@ This engine is for **research screening**, not proof of a durable edge.
 - Outputs are explicitly framed as diagnostics and not proof of edge (`thesistester/analytics/validation.py:13`, `pages/10_Validation.py:18`).
 
 ## Practical interpretation
-- **Expectancy is gross expectancy** (costs/slippage excluded).
+- **Expectancy is gross when default zero-cost parameters are used.** Supply `commission_per_side` and `slippage_ticks` to get net expectancy.
 - Treat results as **screening diagnostics, not proof of edge**.

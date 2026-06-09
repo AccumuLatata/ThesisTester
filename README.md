@@ -99,13 +99,20 @@ Manual Signals controls remain unchanged and backtest behavior is unchanged.
 - **Phase 5 (backtest engine, KPIs, results):** bar-by-bar trade simulation with a
   single fixed SL/TP tick configuration (`thesistester/engine/backtest.py`).  Simple
   triggers enter at next-bar open; filled `3c` signals enter at their retracement
-  trigger price.  Intrabar ambiguity uses SL-first pessimistic rule.  Trade metrics
-  (win rate, expectancy, profit factor, max drawdown R, equity curve) are computed in
-  `thesistester/analytics/metrics.py` and displayed on a new **Backtest** page
-  (`pages/7_Backtest.py`). The page keeps the combined KPI cards and also shows a
-  separate **Long vs Short KPIs** section (trade count, win rate, average/total R,
-  profit factor) computed from directional trade subsets. Trades are stored in
-  `st.session_state["trades"]`.
+  trigger price.  Intrabar ambiguity uses SL-first pessimistic rule.
+  **R1 (execution costs):** optional `commission_per_side` and `slippage_ticks`
+  parameters add realistic futures execution-cost modelling.  Adverse slippage is
+  applied to both entry and exit; commission is a flat per-side currency cost.
+  `pnl_currency` and `r_multiple` reflect net-of-cost results when costs are non-zero;
+  zero-cost defaults preserve all prior behavior.  New output columns:
+  `theoretical_entry_price`, `theoretical_exit_price`, `gross_pnl_points`,
+  `gross_pnl_currency`, `commission_cost`, `slippage_cost`, `net_pnl_currency`.
+  Trade metrics (win rate, expectancy, profit factor, max drawdown R, equity curve)
+  are computed in `thesistester/analytics/metrics.py` and displayed on a new
+  **Backtest** page (`pages/7_Backtest.py`). The page keeps the combined KPI cards
+  and also shows a separate **Long vs Short KPIs** section (trade count, win rate,
+  average/total R, profit factor) computed from directional trade subsets. Trades are
+  stored in `st.session_state["trades"]`.
 - **Phase 6 (SL/TP grid search, expectancy heatmaps):** sweeps all stop-loss × take-profit
   combinations over the Phase 5 backtest engine (`thesistester/analytics/grid.py`).
   `run_sl_tp_grid()` returns one summary row per cell; `best_grid_result()` picks the

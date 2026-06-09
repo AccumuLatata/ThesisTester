@@ -41,6 +41,13 @@ _TRADE_COLUMNS: list[str] = [
     "target_price",
     "stop_loss_ticks",
     "take_profit_ticks",
+    "theoretical_entry_price",
+    "theoretical_exit_price",
+    "gross_pnl_points",
+    "gross_pnl_currency",
+    "commission_cost",
+    "slippage_cost",
+    "net_pnl_currency",
     "pnl_points",
     "pnl_currency",
     "r_multiple",
@@ -79,6 +86,8 @@ def simulate_trades(
     take_profit_ticks: int | float,
     max_holding_bars: int | None = None,
     allow_same_bar_exit: bool = True,
+    commission_per_side: float = 0.0,
+    slippage_ticks: float = 0.0,
 ) -> pd.DataFrame:
     """Simulate bar-by-bar trades from Phase 4 candidate signals.
 
@@ -105,6 +114,13 @@ def simulate_trades(
         This matters for ``confirm_3bar`` filled entries where the bar is
         already closed.  Uses the SL-first pessimistic rule when both are
         reachable in the same bar.
+    commission_per_side:
+        Currency cost per contract per side (round-trip = 2×).  Must be
+        >= 0.  Defaults to 0.0 (no commission, preserving prior behavior).
+    slippage_ticks:
+        Adverse slippage in ticks applied to both entry and exit.  Must be
+        >= 0.  Long entries fill higher; long exits fill lower (and vice
+        versa for shorts).  Defaults to 0.0.
 
     Returns
     -------
@@ -112,14 +128,34 @@ def simulate_trades(
         One row per executed trade.  Returns an empty DataFrame with the
         correct schema when no trades are produced.
 
+        New output columns (in addition to all prior columns):
+        ``theoretical_entry_price``, ``theoretical_exit_price``,
+        ``gross_pnl_points``, ``gross_pnl_currency``, ``commission_cost``,
+        ``slippage_cost``, ``net_pnl_currency``.
+
+        Backward-compatible columns: ``entry_price`` and ``exit_price``
+        reflect the actual slipped fill prices.  ``pnl_points`` equals
+        ``gross_pnl_points``; ``pnl_currency`` equals ``net_pnl_currency``
+        so downstream metrics are net-of-cost when costs are non-zero.
+        ``r_multiple`` is ``net_pnl_currency / risk_currency``.
+
     Raises
     ------
     ValueError
-        If ``stop_loss_ticks <= 0``.
+        If ``stop_loss_ticks <= 0``, ``commission_per_side < 0``, or
+        ``slippage_ticks < 0``.
     """
     if stop_loss_ticks <= 0:
         raise ValueError(
             f"stop_loss_ticks must be > 0, got {stop_loss_ticks!r}"
+        )
+    if commission_per_side < 0:
+        raise ValueError(
+            f"commission_per_side must be >= 0, got {commission_per_side!r}"
+        )
+    if slippage_ticks < 0:
+        raise ValueError(
+            f"slippage_ticks must be >= 0, got {slippage_ticks!r}"
         )
 
     if signals is None or signals.empty:
@@ -130,6 +166,10 @@ def simulate_trades(
 
     sl_pts = float(stop_loss_ticks) * float(tick_size)
     tp_pts = float(take_profit_ticks) * float(tick_size)
+    slip_pts = float(slippage_ticks) * float(tick_size)
+    commission_cost_per_trade = 2.0 * float(commission_per_side)
+    slippage_cost_per_trade = 2.0 * slip_pts * float(point_value)
+    risk_currency = sl_pts * float(point_value)
 
     trades: list[dict] = []
     trade_id = 0
@@ -168,7 +208,16 @@ def simulate_trades(
         entry_ts = df_reset["timestamp"].iloc[entry_bar_index]
 
         # ------------------------------------------------------------------
-        # Fixed SL / TP prices
+        # Apply adverse entry slippage to get actual fill price
+        # ------------------------------------------------------------------
+        theoretical_entry_price = entry_price
+        if direction == "long":
+            entry_price = theoretical_entry_price + slip_pts
+        else:
+            entry_price = theoretical_entry_price - slip_pts
+
+        # ------------------------------------------------------------------
+        # Fixed SL / TP prices (based on slipped entry for internal consistency)
         # ------------------------------------------------------------------
         if direction == "long":
             stop_price = entry_price - sl_pts
@@ -249,15 +298,31 @@ def simulate_trades(
         exit_ts = df_reset["timestamp"].iloc[exit_bar_index]
 
         # ------------------------------------------------------------------
+        # Apply adverse exit slippage to get actual fill price
+        # ------------------------------------------------------------------
+        theoretical_exit_price = float(exit_price)
+        if direction == "long":
+            exit_price = theoretical_exit_price - slip_pts
+        else:
+            exit_price = theoretical_exit_price + slip_pts
+
+        # ------------------------------------------------------------------
         # P&L and R calculation
         # ------------------------------------------------------------------
         if direction == "long":
-            pnl_points = float(exit_price) - entry_price
+            gross_pnl_points = exit_price - entry_price
         else:
-            pnl_points = entry_price - float(exit_price)
+            gross_pnl_points = entry_price - exit_price
 
-        pnl_currency = pnl_points * float(point_value)
-        r_multiple = pnl_points / sl_pts  # sl_pts is already > 0
+        gross_pnl_currency = gross_pnl_points * float(point_value)
+        net_pnl_currency = gross_pnl_currency - commission_cost_per_trade
+
+        # pnl_points / pnl_currency: backward-compatible aliases
+        pnl_points = gross_pnl_points
+        pnl_currency = net_pnl_currency
+
+        # r_multiple based on net P&L divided by initial risk
+        r_multiple = net_pnl_currency / risk_currency  # risk_currency > 0 (sl_pts > 0)
 
         bars_held = exit_bar_index - entry_bar_index + 1
 
@@ -279,6 +344,13 @@ def simulate_trades(
                 "target_price": target_price,
                 "stop_loss_ticks": stop_loss_ticks,
                 "take_profit_ticks": take_profit_ticks,
+                "theoretical_entry_price": theoretical_entry_price,
+                "theoretical_exit_price": theoretical_exit_price,
+                "gross_pnl_points": gross_pnl_points,
+                "gross_pnl_currency": gross_pnl_currency,
+                "commission_cost": commission_cost_per_trade,
+                "slippage_cost": slippage_cost_per_trade,
+                "net_pnl_currency": net_pnl_currency,
                 "pnl_points": pnl_points,
                 "pnl_currency": pnl_currency,
                 "r_multiple": r_multiple,

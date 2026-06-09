@@ -85,6 +85,26 @@ with st.sidebar:
         ),
     )
 
+    st.subheader("Execution costs")
+    grid_commission = st.number_input(
+        "Commission per side ($)",
+        min_value=0.0,
+        max_value=100.0,
+        value=0.0,
+        step=0.25,
+        help="Currency cost per contract per side.  Applied to every grid cell.",
+        key="grid_commission_per_side",
+    )
+    grid_slippage = st.number_input(
+        "Slippage (ticks)",
+        min_value=0.0,
+        max_value=20.0,
+        value=0.0,
+        step=0.5,
+        help="Adverse slippage in ticks for entry and exit.  Applied to every grid cell.",
+        key="grid_slippage_ticks",
+    )
+
     ranking_metric = st.selectbox(
         "Ranking metric",
         options=["expectancy_r", "total_r", "profit_factor", "win_rate"],
@@ -198,6 +218,8 @@ if run_btn:
                 take_profit_ticks_values=tp_list,
                 max_holding_bars=max_bars,
                 allow_same_bar_exit=allow_same_bar,
+                commission_per_side=grid_commission,
+                slippage_ticks=grid_slippage,
             )
         except ValueError as e:
             st.error(f"Grid search error: {e}")

@@ -144,6 +144,10 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "instrument": to_jsonable(instrument),
             "setup_config": to_jsonable(setup_config),
             "last_signal_setup": to_jsonable(session_state.get("last_signal_setup")),
+            "backtest_cost_config": to_jsonable(
+                session_state.get("backtest_cost_config")
+                or {"commission_per_side": 0.0, "slippage_ticks": 0.0}
+            ),
         },
         "results": {
             "signal_count": _table_count(session_state, "signals"),
@@ -224,6 +228,7 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     tables = artifact.get("tables", {}) if isinstance(artifact, Mapping) else {}
 
     setup = config.get("setup_config") or {}
+    cost_config = config.get("backtest_cost_config") or {}
     trade_summary = results.get("trade_summary") or {}
     best_grid = results.get("best_grid_result") or {}
     validation = results.get("validation_summary") or {}
@@ -237,6 +242,13 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     permutation = validation.get("permutation") if isinstance(validation, Mapping) else {}
     trade_count_diag = validation.get("trade_count") if isinstance(validation, Mapping) else {}
     grid_overfit = validation.get("grid_overfit") if isinstance(validation, Mapping) else {}
+
+    commission_val = cost_config.get("commission_per_side", 0.0) if isinstance(cost_config, Mapping) else 0.0
+    slip_val = cost_config.get("slippage_ticks", 0.0) if isinstance(cost_config, Mapping) else 0.0
+    if commission_val or slip_val:
+        cost_note = "net-of-cost"
+    else:
+        cost_note = "gross (zero costs)"
 
     lines = [
         "# ThesisTester Research Report",
@@ -260,6 +272,11 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
             if isinstance(setup, Mapping)
             else "- Confluence settings: —"
         ),
+        "",
+        "## Execution Cost Assumptions",
+        f"- Commission per side: ${_fmt_number(commission_val, '.4f')}",
+        f"- Slippage: {_fmt_number(slip_val, '.4f')} tick(s)",
+        f"- Metrics basis: {cost_note}",
         "",
         "## Signal Summary",
         f"- Signal count: {results.get('signal_count', 0)}",
