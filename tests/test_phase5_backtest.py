@@ -399,3 +399,118 @@ def test_simple_trigger_five_min_enters_first_base_bar_after_trigger_close():
     assert len(trades) == 1
     assert int(trades.iloc[0]["entry_bar_index"]) == 10
     assert float(trades.iloc[0]["entry_price"]) == 102.0
+
+
+def test_zero_cost_inputs_match_default_behavior():
+    df = _df(
+        _bar("2026-01-02 09:30", 100.0, 100.5, 99.5, 100.0),
+        _bar("2026-01-02 09:31", 100.0, 102.5, 99.8, 102.0),
+    )
+    sigs = _signal(bar_index=0, trigger="touch", direction="long")
+
+    base = simulate_trades(df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8)
+    zero = simulate_trades(
+        df,
+        sigs,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=4,
+        take_profit_ticks=8,
+        commission_per_side=0.0,
+        slippage_ticks=0.0,
+    )
+
+    cols = ["entry_price", "exit_price", "pnl_points", "pnl_currency", "r_multiple"]
+    pd.testing.assert_frame_equal(base[cols], zero[cols])
+
+
+def test_long_trade_execution_cost_calculation():
+    df = _df(
+        _bar("2026-01-02 09:30", 100.0, 100.5, 99.5, 100.0),
+        _bar("2026-01-02 09:31", 100.0, 103.0, 99.5, 102.0),
+    )
+    sigs = _signal(bar_index=0, trigger="touch", direction="long")
+    trades = simulate_trades(
+        df,
+        sigs,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=4,
+        take_profit_ticks=8,
+        commission_per_side=1.25,
+        slippage_ticks=1.0,
+    )
+    t = trades.iloc[0]
+    assert t["theoretical_entry_price"] == pytest.approx(100.0)
+    assert t["entry_price"] == pytest.approx(100.25)
+    assert t["theoretical_exit_price"] == pytest.approx(102.25)
+    assert t["exit_price"] == pytest.approx(102.0)
+    assert t["gross_pnl_points"] == pytest.approx(1.75)
+    assert t["gross_pnl_currency"] == pytest.approx(87.5)
+    assert t["commission_cost"] == pytest.approx(2.5)
+    assert t["slippage_cost"] == pytest.approx(25.0)
+    assert t["net_pnl_currency"] == pytest.approx(85.0)
+    assert t["pnl_points"] == pytest.approx(t["gross_pnl_points"])
+    assert t["pnl_currency"] == pytest.approx(t["net_pnl_currency"])
+    assert t["r_multiple"] == pytest.approx(1.7)
+
+
+def test_short_trade_execution_cost_calculation():
+    df = _df(
+        _bar("2026-01-02 09:30", 100.0, 100.5, 99.5, 100.0),
+        _bar("2026-01-02 09:31", 100.0, 100.5, 97.5, 98.0),
+    )
+    sigs = _signal(bar_index=0, trigger="touch", direction="short")
+    trades = simulate_trades(
+        df,
+        sigs,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=4,
+        take_profit_ticks=8,
+        commission_per_side=1.25,
+        slippage_ticks=1.0,
+    )
+    t = trades.iloc[0]
+    assert t["theoretical_entry_price"] == pytest.approx(100.0)
+    assert t["entry_price"] == pytest.approx(99.75)
+    assert t["theoretical_exit_price"] == pytest.approx(97.75)
+    assert t["exit_price"] == pytest.approx(98.0)
+    assert t["gross_pnl_points"] == pytest.approx(1.75)
+    assert t["gross_pnl_currency"] == pytest.approx(87.5)
+    assert t["commission_cost"] == pytest.approx(2.5)
+    assert t["slippage_cost"] == pytest.approx(25.0)
+    assert t["net_pnl_currency"] == pytest.approx(85.0)
+    assert t["pnl_points"] == pytest.approx(t["gross_pnl_points"])
+    assert t["pnl_currency"] == pytest.approx(t["net_pnl_currency"])
+    assert t["r_multiple"] == pytest.approx(1.7)
+
+
+def test_negative_commission_raises():
+    df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0))
+    sigs = _signal(bar_index=0)
+    with pytest.raises(ValueError, match="commission_per_side"):
+        simulate_trades(
+            df,
+            sigs,
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
+            commission_per_side=-0.1,
+        )
+
+
+def test_negative_slippage_raises():
+    df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0))
+    sigs = _signal(bar_index=0)
+    with pytest.raises(ValueError, match="slippage_ticks"):
+        simulate_trades(
+            df,
+            sigs,
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
+            slippage_ticks=-0.1,
+        )

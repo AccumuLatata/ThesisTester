@@ -31,16 +31,23 @@ _TRADE_COLUMNS: list[str] = [
     "direction",
     "entry_timestamp",
     "entry_bar_index",
+    "theoretical_entry_price",
     "entry_price",
     "entry_model",
     "exit_timestamp",
     "exit_bar_index",
+    "theoretical_exit_price",
     "exit_price",
     "exit_reason",
     "stop_price",
     "target_price",
     "stop_loss_ticks",
     "take_profit_ticks",
+    "gross_pnl_points",
+    "gross_pnl_currency",
+    "commission_cost",
+    "slippage_cost",
+    "net_pnl_currency",
     "pnl_points",
     "pnl_currency",
     "r_multiple",
@@ -79,6 +86,8 @@ def simulate_trades(
     take_profit_ticks: int | float,
     max_holding_bars: int | None = None,
     allow_same_bar_exit: bool = True,
+    commission_per_side: float = 0.0,
+    slippage_ticks: float = 0.0,
 ) -> pd.DataFrame:
     """Simulate bar-by-bar trades from Phase 4 candidate signals.
 
@@ -115,11 +124,19 @@ def simulate_trades(
     Raises
     ------
     ValueError
-        If ``stop_loss_ticks <= 0``.
+        If ``stop_loss_ticks <= 0`` or cost inputs are negative.
     """
     if stop_loss_ticks <= 0:
         raise ValueError(
             f"stop_loss_ticks must be > 0, got {stop_loss_ticks!r}"
+        )
+    if commission_per_side < 0:
+        raise ValueError(
+            f"commission_per_side must be >= 0, got {commission_per_side!r}"
+        )
+    if slippage_ticks < 0:
+        raise ValueError(
+            f"slippage_ticks must be >= 0, got {slippage_ticks!r}"
         )
 
     if signals is None or signals.empty:
@@ -130,6 +147,9 @@ def simulate_trades(
 
     sl_pts = float(stop_loss_ticks) * float(tick_size)
     tp_pts = float(take_profit_ticks) * float(tick_size)
+    slip_pts = float(slippage_ticks) * float(tick_size)
+    commission_cost = 2.0 * float(commission_per_side)
+    risk_currency = float(stop_loss_ticks) * float(tick_size) * float(point_value)
 
     trades: list[dict] = []
     trade_id = 0
@@ -149,21 +169,26 @@ def simulate_trades(
             entry_bar_index = int(sig["entry_bar_index"])
             if entry_bar_index >= n_bars:
                 continue
-            entry_price = float(sig["retrace_entry_price"])
+            theoretical_entry_price = float(sig["retrace_entry_price"])
             entry_model = "3c_retrace_market"
         elif trigger == "confirm_3bar":
             if str(sig.get("status", "")) != "filled":
                 continue
             entry_bar_index = bar_idx
-            entry_price = float(sig["entry_reference_price"])
+            theoretical_entry_price = float(sig["entry_reference_price"])
             entry_model = "bar3_stop_limit_fill"
         else:
             # Simple triggers enter at next-bar open (no look-ahead).
             entry_bar_index = bar_idx + 1
             if entry_bar_index >= n_bars:
                 continue
-            entry_price = float(df_reset["open"].iloc[entry_bar_index])
+            theoretical_entry_price = float(df_reset["open"].iloc[entry_bar_index])
             entry_model = "next_bar_open"
+
+        if direction == "long":
+            entry_price = theoretical_entry_price + slip_pts
+        else:
+            entry_price = theoretical_entry_price - slip_pts
 
         entry_ts = df_reset["timestamp"].iloc[entry_bar_index]
 
@@ -181,6 +206,7 @@ def simulate_trades(
         # Bar-by-bar exit walk
         # ------------------------------------------------------------------
         exit_bar_index: int | None = None
+        theoretical_exit_price: float | None = None
         exit_price: float | None = None
         exit_reason: str | None = None
 
@@ -221,17 +247,17 @@ def simulate_trades(
             if stop_hit and target_hit:
                 # SL-first pessimistic rule
                 exit_bar_index = b
-                exit_price = stop_price
+                theoretical_exit_price = stop_price
                 exit_reason = "SL"
                 break
             elif stop_hit:
                 exit_bar_index = b
-                exit_price = stop_price
+                theoretical_exit_price = stop_price
                 exit_reason = "SL"
                 break
             elif target_hit:
                 exit_bar_index = b
-                exit_price = target_price
+                theoretical_exit_price = target_price
                 exit_reason = "TP"
                 break
 
@@ -239,12 +265,17 @@ def simulate_trades(
             # No SL/TP hit — TIME or EOD
             if max_holding_bars is not None and (max_bar - entry_bar_index + 1) >= max_holding_bars:
                 exit_bar_index = max_bar
-                exit_price = float(df_reset["close"].iloc[max_bar])
+                theoretical_exit_price = float(df_reset["close"].iloc[max_bar])
                 exit_reason = "TIME"
             else:
                 exit_bar_index = n_bars - 1
-                exit_price = float(df_reset["close"].iloc[n_bars - 1])
+                theoretical_exit_price = float(df_reset["close"].iloc[n_bars - 1])
                 exit_reason = "EOD"
+
+        if direction == "long":
+            exit_price = float(theoretical_exit_price) - slip_pts
+        else:
+            exit_price = float(theoretical_exit_price) + slip_pts
 
         exit_ts = df_reset["timestamp"].iloc[exit_bar_index]
 
@@ -252,12 +283,19 @@ def simulate_trades(
         # P&L and R calculation
         # ------------------------------------------------------------------
         if direction == "long":
-            pnl_points = float(exit_price) - entry_price
+            theoretical_pnl_points = float(theoretical_exit_price) - theoretical_entry_price
+            gross_pnl_points = float(exit_price) - entry_price
         else:
-            pnl_points = entry_price - float(exit_price)
+            theoretical_pnl_points = theoretical_entry_price - float(theoretical_exit_price)
+            gross_pnl_points = entry_price - float(exit_price)
 
-        pnl_currency = pnl_points * float(point_value)
-        r_multiple = pnl_points / sl_pts  # sl_pts is already > 0
+        gross_pnl_currency = gross_pnl_points * float(point_value)
+        slippage_cost = max(
+            0.0,
+            (theoretical_pnl_points - gross_pnl_points) * float(point_value),
+        )
+        net_pnl_currency = gross_pnl_currency - commission_cost
+        r_multiple = net_pnl_currency / risk_currency  # risk_currency is > 0
 
         bars_held = exit_bar_index - entry_bar_index + 1
 
@@ -269,18 +307,25 @@ def simulate_trades(
                 "direction": direction,
                 "entry_timestamp": entry_ts,
                 "entry_bar_index": entry_bar_index,
+                "theoretical_entry_price": theoretical_entry_price,
                 "entry_price": entry_price,
                 "entry_model": entry_model,
                 "exit_timestamp": exit_ts,
                 "exit_bar_index": exit_bar_index,
+                "theoretical_exit_price": float(theoretical_exit_price),
                 "exit_price": float(exit_price),
                 "exit_reason": exit_reason,
                 "stop_price": stop_price,
                 "target_price": target_price,
                 "stop_loss_ticks": stop_loss_ticks,
                 "take_profit_ticks": take_profit_ticks,
-                "pnl_points": pnl_points,
-                "pnl_currency": pnl_currency,
+                "gross_pnl_points": gross_pnl_points,
+                "gross_pnl_currency": gross_pnl_currency,
+                "commission_cost": commission_cost,
+                "slippage_cost": slippage_cost,
+                "net_pnl_currency": net_pnl_currency,
+                "pnl_points": gross_pnl_points,
+                "pnl_currency": net_pnl_currency,
                 "r_multiple": r_multiple,
                 "bars_held": bars_held,
                 "zone_low": sig.get("zone_low"),

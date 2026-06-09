@@ -447,3 +447,25 @@ def test_best_grid_result_missing_metric_returns_none():
     )
     result = best_grid_result(grid, metric="does_not_exist")
     assert result is None
+
+
+def test_grid_cost_parameters_reduce_net_r():
+    gross_grid = run_sl_tp_grid(
+        _OHLCV,
+        _SIGNALS,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+    )
+    net_grid = run_sl_tp_grid(
+        _OHLCV,
+        _SIGNALS,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        commission_per_side=1.0,
+        slippage_ticks=1.0,
+    )
+    assert net_grid.iloc[0]["total_r"] < gross_grid.iloc[0]["total_r"]

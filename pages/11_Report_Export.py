@@ -64,7 +64,36 @@ def _fmt(v: Any, fmt: str = ".2f", fallback: str = "—") -> str:
 
 
 artifact = build_research_artifact(st.session_state)
+
+backtest_costs = st.session_state.get("backtest_execution_costs") or {}
+grid_costs = st.session_state.get("grid_execution_costs") or {}
+report_costs = (
+    backtest_costs
+    if backtest_costs
+    else grid_costs
+)
+if report_costs:
+    artifact["execution_cost_assumptions"] = {
+        "commission_per_side": float(report_costs.get("commission_per_side", 0.0)),
+        "slippage_ticks": float(report_costs.get("slippage_ticks", 0.0)),
+        "metrics_basis": (
+            "net-of-cost"
+            if (
+                float(report_costs.get("commission_per_side", 0.0)) > 0.0
+                or float(report_costs.get("slippage_ticks", 0.0)) > 0.0
+            )
+            else "gross==net (zero costs)"
+        ),
+    }
+
 report_markdown = build_markdown_report(artifact)
+if report_costs:
+    report_markdown += (
+        "\n## Execution Cost Assumptions\n"
+        f"- Commission per side: {float(report_costs.get('commission_per_side', 0.0)):.4f}\n"
+        f"- Slippage ticks (per side): {float(report_costs.get('slippage_ticks', 0.0)):.4f}\n"
+        f"- Metrics basis: {artifact['execution_cost_assumptions']['metrics_basis']}\n"
+    )
 
 status_rows = [
     {"Item": item, "Session state key": key, "Available": "✅" if _has_value(key) else "❌"}
@@ -98,6 +127,14 @@ col3.metric(
 col4.metric("Avg R", _fmt(trade_summary.get("avg_r")))
 col5.metric("Total R", _fmt(trade_summary.get("total_r")))
 col6.metric("Validation", (trade_count_diag or {}).get("status", "—"))
+
+if report_costs:
+    st.caption(
+        "Execution cost assumptions included in exports: "
+        f"commission/side={float(report_costs.get('commission_per_side', 0.0)):.4f}, "
+        f"slippage_ticks={float(report_costs.get('slippage_ticks', 0.0)):.4f}, "
+        f"metrics={artifact.get('execution_cost_assumptions', {}).get('metrics_basis', '—')}."
+    )
 
 st.subheader("Downloads")
 json_text = json.dumps(artifact, indent=2)
