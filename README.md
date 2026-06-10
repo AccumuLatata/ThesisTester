@@ -64,6 +64,17 @@ Manual Signals controls remain unchanged and backtest behavior is unchanged.
 - [Metrics glossary](docs/METRICS_GLOSSARY.md)
 - [Agent guide](docs/AGENT_GUIDE.md)
 
+## Save-as-default execution settings
+
+The **Backtest** and **Grid Search** pages support saving and restoring execution settings:
+
+- Click **💾 Save execution settings as default** in the sidebar to persist the current execution settings (SL/TP, commission, slippage, session exit policy, exposure policy, etc.) across sessions.
+- Click **↩ Reset to built-in defaults** to clear saved defaults and revert widgets to their built-in values.
+- Defaults are stored in `.thesistester_store/ui_state.json` under `backtest_defaults` and `grid_defaults` namespaces, which are fully independent.
+- Defaults are **never auto-saved** when running a backtest or grid search.
+- Invalid or stale saved values (unknown policy/timezone/metric, out-of-range numbers, malformed times) are silently discarded — they never reach the engine.
+- Schema version drift (e.g. after an upgrade) causes saved defaults to be ignored, with a clean fallback to built-in widget defaults.
+
 ## Level-upgrade status
 
 - The Levels page supports advanced opt-in level families: confirmed pivots, `dVWAP_RTH`, TPO 30m Single Prints, and APOC / pAPOC.

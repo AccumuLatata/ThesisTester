@@ -20,6 +20,8 @@ PERSISTENCE_SCHEMA_VERSION = 1
 LEVEL_ENGINE_VERSION = 3
 SIGNAL_RUN_SCHEMA_VERSION = 1
 SETUP_SCHEMA_VERSION = 1
+BACKTEST_DEFAULTS_SCHEMA_VERSION = 1
+GRID_DEFAULTS_SCHEMA_VERSION = 1
 STORE_ENV_VAR = "THESISTESTER_STORE_DIR"
 DEFAULT_STORE_DIR_NAME = ".thesistester_store"
 SIGNALS_PARQUET_NAME = "signals.parquet"
@@ -888,3 +890,61 @@ def delete_signal_run(dataset_id: str, levels_settings_hash: str, signal_setting
     dataset_dir = levels_dir.parent
     if dataset_dir.exists() and not any(dataset_dir.iterdir()):
         dataset_dir.rmdir()
+
+
+# ── Execution-settings defaults ───────────────────────────────────────────────
+
+def get_backtest_defaults() -> dict | None:
+    """Return saved Backtest execution defaults, or None if absent/schema-mismatch."""
+    payload = _load_ui_state()
+    namespace = payload.get("backtest_defaults")
+    if not isinstance(namespace, dict):
+        return None
+    if namespace.get("defaults_schema_version") != BACKTEST_DEFAULTS_SCHEMA_VERSION:
+        return None
+    return namespace
+
+
+def save_backtest_defaults(defaults: dict) -> None:
+    """Persist Backtest execution defaults without affecting other UI state keys."""
+    payload = _load_ui_state()
+    payload["backtest_defaults"] = {
+        "defaults_schema_version": BACKTEST_DEFAULTS_SCHEMA_VERSION,
+        **{k: v for k, v in defaults.items() if k != "defaults_schema_version"},
+    }
+    _write_ui_state(payload)
+
+
+def clear_backtest_defaults() -> None:
+    """Remove the Backtest defaults namespace; other UI state keys are preserved."""
+    payload = _load_ui_state()
+    payload.pop("backtest_defaults", None)
+    _write_ui_state(payload)
+
+
+def get_grid_defaults() -> dict | None:
+    """Return saved Grid Search execution defaults, or None if absent/schema-mismatch."""
+    payload = _load_ui_state()
+    namespace = payload.get("grid_defaults")
+    if not isinstance(namespace, dict):
+        return None
+    if namespace.get("defaults_schema_version") != GRID_DEFAULTS_SCHEMA_VERSION:
+        return None
+    return namespace
+
+
+def save_grid_defaults(defaults: dict) -> None:
+    """Persist Grid Search execution defaults without affecting other UI state keys."""
+    payload = _load_ui_state()
+    payload["grid_defaults"] = {
+        "defaults_schema_version": GRID_DEFAULTS_SCHEMA_VERSION,
+        **{k: v for k, v in defaults.items() if k != "defaults_schema_version"},
+    }
+    _write_ui_state(payload)
+
+
+def clear_grid_defaults() -> None:
+    """Remove the Grid Search defaults namespace; other UI state keys are preserved."""
+    payload = _load_ui_state()
+    payload.pop("grid_defaults", None)
+    _write_ui_state(payload)

@@ -751,3 +751,30 @@ rule_results
 - **Research-only caveats are embedded in outputs.** Artifacts explicitly reiterate
   historical-data limitations, intrabar ambiguity assumptions, overfit risk, and that
   outputs are not trading advice.
+
+---
+
+## R8 Implementation Notes — Save-as-Default Execution Settings
+
+- **UI/persistence layer only.** No changes to `thesistester/engine/backtest.py`,
+  `thesistester/analytics/grid.py`, `thesistester/analytics/metrics.py`, reporting,
+  or calculation logic.
+- **Explicit-save-only policy.** Running a backtest or grid search never auto-saves
+  defaults.  Defaults are persisted only when the user explicitly clicks
+  **💾 Save execution settings as default**.
+- **Namespace isolation.** `backtest_defaults` and `grid_defaults` are independent
+  keys in `ui_state.json`.  Writing one never affects the other or any unrelated keys
+  such as `active_dataset_id`.
+- **Schema version guard.** Both namespaces include `defaults_schema_version = 1`.
+  A mismatch causes the namespace to be ignored and widgets to fall back to their
+  built-in `value=` defaults.
+- **Validation before injection.** Saved defaults pass through
+  `thesistester/execution_defaults.py` before reaching `st.session_state`.
+  Invalid values (out-of-range numbers, unknown policy/timezone/metric strings,
+  malformed time strings, non-bool booleans) are dropped silently.
+- **Session-state safety.** Defaults are injected only into absent session-state keys
+  (`if key not in session_state`).  In-session user edits are never overwritten.
+- **Reset preserves downstream results.** `reset_backtest_session_keys` and
+  `reset_grid_session_keys` remove only the known execution-settings widget keys.
+  Result keys such as `backtest_execution_costs`, `grid_results`, and
+  `grid_execution_costs` are preserved for downstream pages (Validation, Report).

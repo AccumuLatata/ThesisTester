@@ -66,6 +66,50 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 - Levels: `.thesistester_store/levels/<dataset_id>/<levels_settings_hash>/`
 - Signal runs: `.thesistester_store/signals/<dataset_id>/<levels_settings_hash>/<signal_settings_hash>/`
 - Setups: `.thesistester_store/setups/<setup_id>/meta.json`
+- UI state (active dataset, execution defaults): `.thesistester_store/ui_state.json`
+
+### `ui_state.json` namespaces
+
+| Key | Purpose |
+|---|---|
+| `active_dataset_id` | Currently selected dataset |
+| `active_levels_hash_by_dataset` | Persisted levels-hash per dataset |
+| `backtest_defaults` | Saved Backtest execution-settings defaults (see below) |
+| `grid_defaults` | Saved Grid Search execution-settings defaults (see below) |
+
+### Execution-settings defaults (`backtest_defaults` / `grid_defaults`)
+
+Both namespaces are written to `ui_state.json` and follow the same pattern:
+
+```json
+{
+  "backtest_defaults": {
+    "defaults_schema_version": 1,
+    "sl_ticks": 8.0,
+    "tp_ticks": 16.0,
+    "...": "..."
+  },
+  "grid_defaults": {
+    "defaults_schema_version": 1,
+    "sl_start": 4.0,
+    "sl_stop": 20.0,
+    "...": "..."
+  }
+}
+```
+
+Key properties:
+- Namespaces are **fully independent** — saving Backtest defaults never touches Grid defaults, and vice versa.
+- Defaults are **versioned** (`defaults_schema_version`). A version mismatch causes saved defaults to be ignored silently; widgets fall back to their built-in values.
+- Defaults are **loaded once per session** before widget rendering and injected only into absent `st.session_state` keys — user-edited values are never overwritten.
+- Defaults are **never auto-saved**. They are persisted only when the user explicitly clicks **💾 Save execution settings as default**.
+- Defaults can be **reset** with **↩ Reset to built-in defaults**, which clears the namespace from disk and removes the widget keys from `st.session_state`.
+- Invalid or stale field values (out-of-range numbers, unknown policy/timezone/metric strings, malformed time strings, non-bool booleans) are **dropped silently** before injection — they never reach the engine.
+- Clearing defaults removes only the relevant namespace; all other `ui_state.json` keys (e.g. `active_dataset_id`) are preserved.
+- Engine/analytics code (`simulate_trades`, `run_sl_tp_grid`) is **unaffected** — it always receives explicit parameters from the UI.
+
+Persistence API lives in `thesistester/persistence/local_store.py` (`get_backtest_defaults`, `save_backtest_defaults`, `clear_backtest_defaults`, `get_grid_defaults`, `save_grid_defaults`, `clear_grid_defaults`).
+Validation/injection helpers live in `thesistester/execution_defaults.py`.
 
 Setup persistence is local-only (no cloud sync/user accounts). Setup Builder stores setup
 configs in the setup library and keeps `st.session_state["setup_config"]` as the active setup
