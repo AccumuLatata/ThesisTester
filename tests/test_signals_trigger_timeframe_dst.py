@@ -41,6 +41,10 @@ def _zone_for_base_bar(df: pd.DataFrame, bar_index: int) -> pd.DataFrame:
 
 def test_generate_signals_non_base_trigger_timeframe_is_dst_safe():
     df = _dst_fallback_df()
+    offset_seconds = {timestamp.utcoffset().total_seconds() for timestamp in df["timestamp"]}
+    assert -4 * 60 * 60 in offset_seconds
+    assert -5 * 60 * 60 in offset_seconds
+
     trigger_df = _prepare_trigger_dataframe(df, "5min")
     zones = _zone_for_base_bar(df, int(trigger_df.iloc[0]["base_end_bar_index"]))
 

@@ -379,6 +379,7 @@ def _prepare_trigger_dataframe(df: pd.DataFrame, trigger_timeframe: str) -> pd.D
         timestamps = grouped["timestamp"]
         if not pd.api.types.is_datetime64_any_dtype(timestamps):
             timestamps = pd.to_datetime(timestamps, errors="raise")
+            grouped["timestamp"] = timestamps
         if timestamps.dt.tz is not None:
             original_tz = timestamps.dt.tz
             floored = timestamps.dt.tz_convert("UTC").dt.floor(normalized_trigger_timeframe)

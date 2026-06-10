@@ -1408,8 +1408,7 @@ try:
         confluence_zones=chart_zones_df,
         show_confluence_zones=show_confluence_zones,
     )
+    st.plotly_chart(fig, width="stretch")
 except Exception as exc:
     st.error("Signal chart rendering failed. Signal tables above remain available.")
     st.exception(exc)
-else:
-    st.plotly_chart(fig, width="stretch")
