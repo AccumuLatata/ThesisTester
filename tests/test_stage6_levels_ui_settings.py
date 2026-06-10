@@ -92,9 +92,7 @@ _PIVOT_TIMEFRAME_OPTIONS = _mod._PIVOT_TIMEFRAME_OPTIONS
 
 def _make_tz_df(n: int = 10) -> pd.DataFrame:
     """Minimal tz-aware 1min OHLCV DataFrame for compute_all_levels testing."""
-    import pytz
-    tz = pytz.timezone("America/New_York")
-    start = pd.Timestamp("2024-01-02 09:30:00", tz=tz)
+    start = pd.Timestamp("2024-01-02 09:30:00", tz="America/New_York")
     timestamps = pd.date_range(start, periods=n, freq="1min")
     return pd.DataFrame(
         {

@@ -383,7 +383,8 @@ with st.expander("Advanced opt-in levels", expanded=False):
             key=_PIVOT_RIGHT_KEY,
         )
     else:
-        # Store deterministic defaults in session state even when disabled
+        # Preserve prior pivot widget state when present, but provide deterministic
+        # local defaults for the disabled settings payload/hash.
         if _PIVOT_TIMEFRAMES_KEY not in st.session_state:
             st.session_state[_PIVOT_TIMEFRAMES_KEY] = list(_PIVOT_TIMEFRAME_OPTIONS)
         if _PIVOT_LEFT_KEY not in st.session_state:
