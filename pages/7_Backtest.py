@@ -16,6 +16,16 @@ from thesistester.analytics import equity_curve, summarize_trades, summarize_tra
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.engine.backtest import simulate_trades
+from thesistester.execution_defaults import (
+    apply_backtest_defaults,
+    collect_backtest_defaults,
+    reset_backtest_session_keys,
+)
+from thesistester.persistence import (
+    clear_backtest_defaults,
+    get_backtest_defaults,
+    save_backtest_defaults,
+)
 from thesistester.timezone_display import ensure_display_timezone, timezone_contract_caption
 from thesistester.visualization import (
     buffered_rows_window,
@@ -122,6 +132,13 @@ setup_context_caption = _signal_setup_context(signals, signal_context)
 if setup_context_caption:
     st.caption(setup_context_caption)
 
+# ── Load saved execution defaults (once per session) ──────────────────────────
+if "_backtest_defaults_applied" not in st.session_state:
+    _saved = get_backtest_defaults()
+    if _saved:
+        apply_backtest_defaults(st.session_state, _saved)
+    st.session_state["_backtest_defaults_applied"] = True
+
 # ── Sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Backtest settings")
@@ -139,6 +156,7 @@ with st.sidebar:
         max_value=500.0,
         value=8.0,
         step=1.0,
+        key="backtest_sl_ticks",
         help="Fixed stop-loss distance from entry in ticks.",
     )
 
@@ -148,6 +166,7 @@ with st.sidebar:
         max_value=1000.0,
         value=16.0,
         step=1.0,
+        key="backtest_tp_ticks",
         help="Fixed take-profit distance from entry in ticks.",
     )
 
@@ -157,6 +176,7 @@ with st.sidebar:
         max_value=1_000.0,
         value=0.0,
         step=0.1,
+        key="backtest_commission_per_side",
         help="Round-turn commission cost is 2 × this value.",
     )
 
@@ -166,10 +186,11 @@ with st.sidebar:
         max_value=100.0,
         value=0.0,
         step=0.25,
+        key="backtest_slippage_ticks",
         help="Adverse slippage applied at both entry and exit.",
     )
 
-    use_max_bars = st.toggle("Limit holding bars", value=False)
+    use_max_bars = st.toggle("Limit holding bars", value=False, key="backtest_use_max_bars")
     max_bars: int | None = None
     if use_max_bars:
         max_bars = int(
@@ -179,12 +200,14 @@ with st.sidebar:
                 max_value=500,
                 value=20,
                 step=1,
+                key="backtest_max_bars",
             )
         )
 
     allow_same_bar = st.toggle(
         "Allow same-bar exit",
         value=True,
+        key="backtest_allow_same_bar",
         help=(
             "If enabled, SL/TP checks begin on the entry bar (recommended for "
             "confirm_3bar filled entries). Uses SL-first pessimistic rule when "
@@ -193,10 +216,11 @@ with st.sidebar:
     )
 
     st.subheader("Session exit policy")
-    flat_by_session_close = st.toggle("Flat by session close", value=False)
+    flat_by_session_close = st.toggle("Flat by session close", value=False, key="backtest_flat_by_session_close")
     session_close_time = st.text_input(
         "Session close time",
         value="16:00",
+        key="backtest_session_close_time",
         disabled=not flat_by_session_close,
         help="Local session close time in HH:MM or HH:MM:SS.",
     )
@@ -208,11 +232,13 @@ with st.sidebar:
             if exchange_tz in TIMEZONE_OPTIONS
             else 0
         ),
+        key="backtest_session_timezone",
         disabled=not flat_by_session_close,
     )
     no_new_entries_after = st.text_input(
         "No new entries after (optional)",
         value="",
+        key="backtest_no_new_entries_after",
         disabled=not flat_by_session_close,
         help="Optional local cutoff in HH:MM or HH:MM:SS.",
     )
@@ -230,6 +256,7 @@ with st.sidebar:
             "single_setup",
         ],
         index=0,
+        key="backtest_exposure_policy",
     )
     cooldown_bars_after_exit = int(
         st.number_input(
@@ -238,8 +265,30 @@ with st.sidebar:
             max_value=10_000,
             value=0,
             step=1,
+            key="backtest_cooldown_bars",
         )
     )
+
+    st.divider()
+    _save_col, _reset_col = st.columns(2)
+    _save_btn = _save_col.button(
+        "💾 Save execution settings as default",
+        help="Save current execution settings as default for future sessions.",
+        use_container_width=True,
+    )
+    _reset_btn = _reset_col.button(
+        "↩ Reset to built-in defaults",
+        help="Clear saved execution defaults and revert to built-in widget values.",
+        use_container_width=True,
+    )
+    if _save_btn:
+        save_backtest_defaults(collect_backtest_defaults(st.session_state))
+        st.success("Execution settings saved as default.")
+    if _reset_btn:
+        clear_backtest_defaults()
+        reset_backtest_session_keys(st.session_state)
+        st.info("Built-in defaults restored.")
+        st.rerun()
 
     run_btn = st.button("▶ Run backtest", type="primary", width="stretch")
 

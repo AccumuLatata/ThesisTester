@@ -13,6 +13,16 @@ import streamlit as st
 from thesistester.app_state import bootstrap_active_saved_dataset
 from thesistester.analytics import best_grid_result, run_sl_tp_grid
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
+from thesistester.execution_defaults import (
+    apply_grid_defaults,
+    collect_grid_defaults,
+    reset_grid_session_keys,
+)
+from thesistester.persistence import (
+    clear_grid_defaults,
+    get_grid_defaults,
+    save_grid_defaults,
+)
 
 st.title("🔲 SL/TP Grid Search")
 bootstrap_active_saved_dataset()
@@ -44,6 +54,13 @@ inst = INSTRUMENTS.get(instrument)
 tick_size = inst.tick_size if inst else 0.25
 point_value = inst.point_value if inst else 50.0
 
+# ── Load saved execution defaults (once per session) ──────────────────────────
+if "_grid_defaults_applied" not in st.session_state:
+    _saved = get_grid_defaults()
+    if _saved:
+        apply_grid_defaults(st.session_state, _saved)
+    st.session_state["_grid_defaults_applied"] = True
+
 # ── Sidebar controls ─────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Grid search settings")
@@ -53,17 +70,17 @@ with st.sidebar:
     )
 
     st.subheader("Stop-loss range (ticks)")
-    sl_start = st.number_input("SL start", min_value=1.0, max_value=500.0, value=4.0, step=1.0)
-    sl_stop = st.number_input("SL stop", min_value=1.0, max_value=500.0, value=20.0, step=1.0)
-    sl_step = st.number_input("SL step", min_value=1.0, max_value=100.0, value=4.0, step=1.0)
+    sl_start = st.number_input("SL start", min_value=1.0, max_value=500.0, value=4.0, step=1.0, key="grid_sl_start")
+    sl_stop = st.number_input("SL stop", min_value=1.0, max_value=500.0, value=20.0, step=1.0, key="grid_sl_stop")
+    sl_step = st.number_input("SL step", min_value=1.0, max_value=100.0, value=4.0, step=1.0, key="grid_sl_step")
 
     st.subheader("Take-profit range (ticks)")
-    tp_start = st.number_input("TP start", min_value=1.0, max_value=1000.0, value=8.0, step=1.0)
-    tp_stop = st.number_input("TP stop", min_value=1.0, max_value=1000.0, value=40.0, step=1.0)
-    tp_step = st.number_input("TP step", min_value=1.0, max_value=200.0, value=8.0, step=1.0)
+    tp_start = st.number_input("TP start", min_value=1.0, max_value=1000.0, value=8.0, step=1.0, key="grid_tp_start")
+    tp_stop = st.number_input("TP stop", min_value=1.0, max_value=1000.0, value=40.0, step=1.0, key="grid_tp_stop")
+    tp_step = st.number_input("TP step", min_value=1.0, max_value=200.0, value=8.0, step=1.0, key="grid_tp_step")
 
     st.subheader("Options")
-    use_max_bars = st.toggle("Limit holding bars", value=False)
+    use_max_bars = st.toggle("Limit holding bars", value=False, key="grid_use_max_bars")
     max_bars: int | None = None
     if use_max_bars:
         max_bars = int(
@@ -73,12 +90,14 @@ with st.sidebar:
                 max_value=500,
                 value=20,
                 step=1,
+                key="grid_max_bars",
             )
         )
 
     allow_same_bar = st.toggle(
         "Allow same-bar exit",
         value=True,
+        key="grid_allow_same_bar",
         help=(
             "SL/TP checks begin on the entry bar. "
             "Uses SL-first pessimistic rule when both are reachable in the same bar."
@@ -91,6 +110,7 @@ with st.sidebar:
         max_value=1_000.0,
         value=0.0,
         step=0.1,
+        key="grid_commission_per_side",
         help="Round-turn commission cost is 2 × this value.",
     )
     slippage_ticks = st.number_input(
@@ -99,15 +119,17 @@ with st.sidebar:
         max_value=100.0,
         value=0.0,
         step=0.25,
+        key="grid_slippage_ticks",
         help="Adverse slippage applied at both entry and exit.",
     )
 
     st.subheader("Session exit policy")
-    flat_by_session_close = st.toggle("Flat by session close", value=False)
+    flat_by_session_close = st.toggle("Flat by session close", value=False, key="grid_flat_by_session_close")
     exchange_tz = st.session_state.get("exchange_timezone") or (inst.exchange_tz if inst else "America/New_York")
     session_close_time = st.text_input(
         "Session close time",
         value="16:00",
+        key="grid_session_close_time",
         disabled=not flat_by_session_close,
         help="Local session close time in HH:MM or HH:MM:SS.",
     )
@@ -119,11 +141,13 @@ with st.sidebar:
             if exchange_tz in TIMEZONE_OPTIONS
             else 0
         ),
+        key="grid_session_timezone",
         disabled=not flat_by_session_close,
     )
     no_new_entries_after = st.text_input(
         "No new entries after (optional)",
         value="",
+        key="grid_no_new_entries_after",
         disabled=not flat_by_session_close,
         help="Optional local cutoff in HH:MM or HH:MM:SS.",
     )
@@ -141,6 +165,7 @@ with st.sidebar:
             "single_setup",
         ],
         index=0,
+        key="grid_exposure_policy_widget",
     )
     cooldown_bars_after_exit = int(
         st.number_input(
@@ -149,6 +174,7 @@ with st.sidebar:
             max_value=10_000,
             value=0,
             step=1,
+            key="grid_cooldown_bars",
         )
     )
 
@@ -156,6 +182,7 @@ with st.sidebar:
         "Ranking metric",
         options=["expectancy_r", "total_r", "profit_factor", "win_rate"],
         index=0,
+        key="grid_ranking_metric_widget",
         help="Metric used to find the best SL/TP pair.",
     )
 
@@ -166,6 +193,7 @@ with st.sidebar:
             max_value=1000,
             value=1,
             step=1,
+            key="grid_min_trades_widget",
             help="Grid cells with fewer trades are ignored when ranking.",
         )
     )
@@ -174,6 +202,7 @@ with st.sidebar:
     enable_directional = st.toggle(
         "Enable directional ranking",
         value=False,
+        key="grid_enable_directional",
         help=(
             "Rank by long/short or balanced directional metrics instead of "
             "aggregate metrics.  Requires a minimum number of trades on each side."
@@ -200,6 +229,7 @@ with st.sidebar:
                 "min_direction_profit_factor",
             ],
             index=8,  # default: min_direction_expectancy_r
+            key="grid_directional_metric",
             help=(
                 "Directional metrics reward the weaker side being positive.  "
                 "min_direction_expectancy_r is more conservative than Profit Factor."
@@ -212,6 +242,7 @@ with st.sidebar:
                 max_value=1000,
                 value=1,
                 step=1,
+                key="grid_min_long_trades_widget",
                 help=(
                     "Grid cells with fewer long trades are excluded.  "
                     "For real research, consider values ≥ 10–30."
@@ -225,12 +256,34 @@ with st.sidebar:
                 max_value=1000,
                 value=1,
                 step=1,
+                key="grid_min_short_trades_widget",
                 help=(
                     "Grid cells with fewer short trades are excluded.  "
                     "For real research, consider values ≥ 10–30."
                 ),
             )
         )
+
+    st.divider()
+    _save_col, _reset_col = st.columns(2)
+    _save_btn = _save_col.button(
+        "💾 Save execution settings as default",
+        help="Save current execution settings as default for future sessions.",
+        use_container_width=True,
+    )
+    _reset_btn = _reset_col.button(
+        "↩ Reset to built-in defaults",
+        help="Clear saved execution defaults and revert to built-in widget values.",
+        use_container_width=True,
+    )
+    if _save_btn:
+        save_grid_defaults(collect_grid_defaults(st.session_state))
+        st.success("Execution settings saved as default.")
+    if _reset_btn:
+        clear_grid_defaults()
+        reset_grid_session_keys(st.session_state)
+        st.info("Built-in defaults restored.")
+        st.rerun()
 
     run_btn = st.button("▶ Run grid search", type="primary", width="stretch")
 
