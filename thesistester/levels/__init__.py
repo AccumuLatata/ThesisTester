@@ -1,6 +1,7 @@
 """Level computations."""
 
 from .all import compute_all_levels
+from .apoc import compute_apoc_levels
 from .indicators import compute_indicator_levels
 from .pivots import compute_pivot_levels
 from .profile import compute_profile_levels
@@ -15,5 +16,6 @@ __all__ = [
     "compute_pivot_levels",
     "compute_session_vwap_levels",
     "compute_tpo_levels",
+    "compute_apoc_levels",
     "compute_all_levels",
 ]

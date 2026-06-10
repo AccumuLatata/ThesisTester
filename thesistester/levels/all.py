@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from .apoc import compute_apoc_levels
 from .indicators import compute_indicator_levels
 from .pivots import compute_pivot_levels
 from .profile import compute_profile_levels
@@ -45,10 +46,17 @@ def compute_all_levels(
       **implemented** for ``session_vwap_anchor="RTH"``)
     - ``single_prints_enabled`` — TPO single print nearest-above/below
       (Stage 4, **implemented**)
-    - ``apoc_enabled`` — APOC / pAPOC (Stage 5, raises ``NotImplementedError``)
+    - ``apoc_enabled`` — APOC / pAPOC profile-based levels (Stage 5,
+      **implemented**; routes to ``compute_apoc_levels``, independent of
+      ``single_prints_enabled``)
 
     With all new gates at their defaults the output is **identical** to the
     pre-Stage-1 output.
+
+    Single Prints and APOC/pAPOC are independent level families.  Single Prints
+    are TPO auction-structure levels implemented in ``tpo.py``.  APOC/pAPOC are
+    profile/POC levels implemented in ``apoc.py``.  They may share session and
+    tick-size utilities, but APOC is not derived from Single Prints.
     """
     session_df = compute_session_levels(df, instrument=instrument, opening_range_minutes=opening_range_minutes)
     indicator_df = compute_indicator_levels(
@@ -82,17 +90,23 @@ def compute_all_levels(
         anchor=session_vwap_anchor,
         enabled=session_vwap_enabled,
     )
+    # Single Prints: TPO auction-structure levels (tpo.py).
     tpo_df = compute_tpo_levels(
         df,
         instrument=instrument,
         single_prints_enabled=single_prints_enabled,
-        apoc_enabled=apoc_enabled,
+    )
+    # APOC / pAPOC: profile-based levels (apoc.py) — independent of Single Prints.
+    apoc_df = compute_apoc_levels(
+        df,
+        instrument=instrument,
+        enabled=apoc_enabled,
     )
 
     base_columns = set(df.columns)
     out = session_df.copy()
 
-    for extra_df in (indicator_df, profile_df, pivot_df, session_vwap_df, tpo_df):
+    for extra_df in (indicator_df, profile_df, pivot_df, session_vwap_df, tpo_df, apoc_df):
         new_cols = [col for col in extra_df.columns if col not in base_columns and col not in out.columns]
         if new_cols:
             out = out.join(extra_df[new_cols])

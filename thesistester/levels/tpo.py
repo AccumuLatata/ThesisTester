@@ -1,17 +1,16 @@
-"""TPO / Single-Print and APOC level computation — Stage 4 implementation.
+"""TPO / Single-Print level computation — Stage 4 implementation.
 
-Stage 4 implements the scalar Single Print contract.  APOC / pAPOC remain
-stubs until Stage 5.
+Stage 4 implements the scalar Single Print contract.
 
-Output columns (Single Prints — Stage 4):
+Output columns (Single Prints):
     dSinglePrint_30m_NearestAbove   — developing (current session, completed brackets)
     dSinglePrint_30m_NearestBelow
     pSinglePrint_30m_NearestAbove   — prior session frozen
     pSinglePrint_30m_NearestBelow
 
-APOC / pAPOC (Stage 5):
-    APOC    — POC of the first completed RTH 30-minute bracket
-    pAPOC   — prior session's APOC
+APOC / pAPOC are **profile-based** levels implemented in Stage 5.  They live in
+``thesistester/levels/apoc.py``, not here.  Passing ``apoc_enabled=True`` to
+``compute_tpo_levels`` raises ``ValueError`` with a clear redirect message.
 
 Important architectural note:
     Single Prints are naturally multi-price structures; the current level engine
@@ -279,7 +278,7 @@ def compute_tpo_levels(
     single_prints_enabled: bool = False,
     apoc_enabled: bool = False,
 ) -> pd.DataFrame:
-    """Return TPO-based level columns.
+    """Return TPO-based Single Print level columns.
 
     Parameters
     ----------
@@ -295,8 +294,11 @@ def compute_tpo_levels(
         When ``True``, compute the four Single Print scalar columns.
         Defaults to ``False``.
     apoc_enabled:
-        When ``True``, would compute APOC / pAPOC columns.
-        Not yet implemented (Stage 5); always raises ``NotImplementedError``.
+        **Deprecated in this function.**  APOC / pAPOC are profile-based levels
+        and are no longer routed through ``compute_tpo_levels``.  Passing
+        ``apoc_enabled=True`` here raises ``ValueError``.  Use
+        ``compute_apoc_levels(df, enabled=True)`` or
+        ``compute_all_levels(..., apoc_enabled=True)`` instead.
 
     Returns
     -------
@@ -312,23 +314,25 @@ def compute_tpo_levels(
 
     Raises
     ------
-    NotImplementedError
-        If ``apoc_enabled=True`` (Stage 5, not yet implemented).
     ValueError
-        If ``single_prints_enabled=True`` and:
+        If ``apoc_enabled=True``.  APOC / pAPOC are profile-based levels;
+        use ``compute_apoc_levels`` or ``compute_all_levels`` instead.
+        Also raised when ``single_prints_enabled=True`` and:
         - ``df["timestamp"]`` is timezone-naive,
         - ``instrument`` is not in ``INSTRUMENTS``.
     """
-    if not single_prints_enabled and not apoc_enabled:
+    # APOC/pAPOC are profile-based levels and must not be computed here.
+    if apoc_enabled:
+        raise ValueError(
+            "APOC/pAPOC are profile-based levels and cannot be computed via "
+            "compute_tpo_levels().  Use compute_apoc_levels(..., enabled=True) "
+            "or compute_all_levels(..., apoc_enabled=True) instead."
+        )
+
+    if not single_prints_enabled:
         return pd.DataFrame(index=df.index)
 
     require_tz_aware_timestamp(df)
-
-    if apoc_enabled:
-        raise NotImplementedError(
-            "APOC / pAPOC computation is not yet implemented (Stage 5).  "
-            "Set apoc_enabled=False until Stage 5 is merged."
-        )
 
     # single_prints_enabled=True from here onward.
     if instrument not in INSTRUMENTS:

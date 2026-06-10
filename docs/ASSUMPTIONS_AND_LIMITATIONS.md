@@ -68,8 +68,23 @@ This engine is for **research screening**, not proof of a durable edge.
 - Prior-session Single Prints (`pSinglePrint_30m_NearestAbove/Below`): nearest SP price strictly above/below close, from the previous completed RTH session's frozen SP set. NaN on non-RTH bars and if the prior session had no Single Prints.
 - `single_prints_enabled=False` is a true no-op: no validation, no new columns, no timestamp checks.
 - No dynamic Single Print columns are generated; only the four scalar columns above.
-- `apoc_enabled=True` continues to raise `NotImplementedError` (Stage 5 not yet implemented).
-- Known limitations: no APOC/pAPOC, no full market-profile object, no volume-at-price, no dynamic list of all Single Print bins.
+- **Single Prints and APOC/pAPOC are independent level families.** Single Prints are TPO auction-structure levels; APOC/pAPOC are profile/POC levels. They are computed independently. Passing `apoc_enabled=True` to `compute_tpo_levels` now raises `ValueError` (see 5d).
+- Known limitations: no full market-profile object, no volume-at-price, no dynamic list of all Single Print bins.
+
+### 5d) APOC / pAPOC are opt-in profile-based scalar levels (Stage 5)
+- `APOC` and `pAPOC` are **profile / POC levels**, not Single Print levels. They are implemented in `thesistester/levels/apoc.py` and are independent of `tpo.py`.
+- `APOC` = POC of the first completed RTH 30-minute bracket (the A-period). Not derived from Single Prints; uses profile-style OHLCV approximation.
+- `pAPOC` = prior completed RTH session's APOC. Frozen at the start of the new RTH session.
+- APOC is disabled by default (`apoc_enabled=False`), so existing level output is unchanged unless explicitly enabled.
+- `apoc_enabled=False` is a true no-op: no validation, no new columns, no timestamp checks.
+- Profile approximation: `typical_price = (high + low + close) / 3`; full bar volume allocated to the tick bin containing `typical_price`. Same approximation as `profile.py`. POC tie-breaking: lowest-price bin wins (bins sorted ascending, `np.argmax` returns first max).
+- APOC availability: `NaN` before `RTH_open + 30 min`; emitted from the first bar at or after that timestamp. Non-RTH bars always emit `NaN`.
+- pAPOC availability: available from the first RTH bar of each session; frozen throughout. NaN on non-RTH bars and if the prior session produced no valid APOC.
+- ETH bars never contribute to APOC computation; only RTH bars in `[RTH_open, RTH_open + 30 min)` are included.
+- If the `session` column is absent, RTH membership is derived from the instrument configuration.
+- `compute_tpo_levels(..., apoc_enabled=True)` raises `ValueError` with a redirect message. Use `compute_apoc_levels(..., enabled=True)` or `compute_all_levels(..., apoc_enabled=True)` instead.
+- `compute_all_levels(..., single_prints_enabled=True, apoc_enabled=True)` produces all six independent columns: four Single Print columns plus `APOC` and `pAPOC`.
+- Known limitations: not true volume-at-price (bar-level approximation), not full-session POC, not Single Print-derived, approximation matches `profile.py` MVP.
 
 ## 6) Point-in-time correctness (R3 audit)
 
@@ -100,6 +115,12 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 - `pSinglePrint_30m_NearestAbove/Below` use the prior completed RTH session's frozen
   SP set. Once a session is complete its SP set is immutable. Non-RTH bars always
   emit `NaN`. If the prior session had no Single Prints, columns are `NaN`.
+- `APOC` uses only RTH bars in `[RTH_open, RTH_open + 30 min)` of the current session.
+  It is `NaN` before `RTH_open + 30 min`. Appending future bars cannot alter APOC at
+  earlier timestamps. Non-RTH bars always emit `NaN`.
+- `pAPOC` uses the prior completed RTH session's APOC. Once a session's APOC is computed
+  it is immutable. Appending future session bars cannot change prior sessions' pAPOC
+  values. Non-RTH bars always emit `NaN`.
 - RTH_Open and ONH/ONL are NaN until the first RTH bar of the session; no future RTH
   or overnight data can change ETH-bar values.
 - Opening range (OR_High/OR_Low) is NaN until the clock-based OR window closes.

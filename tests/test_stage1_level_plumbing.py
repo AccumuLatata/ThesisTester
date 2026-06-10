@@ -324,9 +324,10 @@ def test_compute_tpo_levels_single_prints_enabled_returns_sp_columns():
     assert sp_cols.issubset(set(result.columns))
 
 
-def test_compute_tpo_levels_apoc_enabled_raises_not_implemented():
+def test_compute_tpo_levels_apoc_enabled_raises_value_error():
+    """After Stage 5, apoc_enabled=True in compute_tpo_levels must raise ValueError."""
     df = _base_df()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError, match="compute_apoc_levels"):
         compute_tpo_levels(df, apoc_enabled=True)
 
 
@@ -379,8 +380,9 @@ def test_compute_tpo_levels_single_prints_enabled_requires_tz_aware_timestamp():
         compute_tpo_levels(_naive_df(), single_prints_enabled=True)
 
 
-def test_compute_tpo_levels_apoc_enabled_requires_tz_aware_timestamp():
-    with pytest.raises(ValueError, match="timezone-aware"):
+def test_compute_tpo_levels_apoc_enabled_raises_value_error_for_naive():
+    """apoc_enabled=True must raise ValueError immediately, even for naive timestamps."""
+    with pytest.raises(ValueError, match="compute_apoc_levels"):
         compute_tpo_levels(_naive_df(), apoc_enabled=True)
 
 
