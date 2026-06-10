@@ -558,6 +558,8 @@ Acceptance criteria:
 
 ### Stage 6 — UI and Persistence
 
+**Status:** Implemented in this PR; complete once merged.
+
 Add controls to the Levels page, default disabled:
 
 ```text
@@ -573,6 +575,19 @@ Rules:
 - Ensure cached level snapshots remain deterministic.
 - Existing saved snapshots must continue loading.
 - Do not change existing default enabled levels.
+
+Implementation details:
+
+- A compact **"Advanced opt-in levels"** expander is placed below existing profile settings.
+- Inside the expander: checkboxes for all four opt-in families; all default `False`.
+- When pivots are enabled: pivot timeframes multiselect, pivot left/right number inputs.
+- When pivots are disabled: deterministic defaults stored in session state for hash stability.
+- `_normalize_levels_settings` now adds Stage 6 keys with disabled defaults for old snapshots.
+- `pivot_timeframes` is sorted in normalization (same as `sma_timeframes`, etc.).
+- `_sync_levels_widget_state` restores all four new controls when a snapshot is loaded.
+- Old snapshots missing Stage 6 keys load safely and default new controls to disabled.
+- `compute_all_levels` call now explicitly passes all eight new gate arguments.
+- `_saved_levels_label` optionally appends a compact `Opt-in: pivots,dVWAP,SP,APOC` suffix.
 
 Acceptance criteria:
 
@@ -620,7 +635,7 @@ Stage 2 — Pivots (PR #69)
 Stage 3 — Developing session VWAP (dVWAP_RTH)
 Stage 4 — Single Prints (TPO 30m, four scalar columns)
 Stage 5 — APOC / pAPOC (profile-based, A-period POC)
-Stage 6 — UI and Persistence (pending)
+Stage 6 — UI and Persistence (implemented in this PR; complete once merged)
 Stage 7 — Documentation (ongoing)
 ```
 
