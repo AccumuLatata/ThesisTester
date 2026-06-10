@@ -383,7 +383,7 @@ def _prepare_trigger_dataframe(df: pd.DataFrame, trigger_timeframe: str) -> pd.D
             grouped["trigger_bar_start_timestamp"] = floored.dt.tz_convert(original_tz)
         else:
             grouped["trigger_bar_start_timestamp"] = timestamps.dt.floor(normalized_trigger_timeframe)
-    except Exception as exc:
+    except (TypeError, ValueError, AttributeError) as exc:
         raise ValueError(
             f"Unable to prepare trigger timeframe '{normalized_trigger_timeframe}' "
             "from timestamp data. Check for invalid or non-monotonic timestamps."
