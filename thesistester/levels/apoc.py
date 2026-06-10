@@ -62,6 +62,7 @@ Disabled behavior (``enabled=False``)
 """
 from __future__ import annotations
 
+import datetime
 from typing import Dict, List
 
 import numpy as np
@@ -200,13 +201,13 @@ def compute_apoc_levels(
     is_rth = work["session"].eq("RTH")
     rth_work = work[is_rth]
 
-    unique_sessions: List = (
+    unique_sessions: List[datetime.date] = (
         sorted(rth_work["_session_date"].unique()) if len(rth_work) > 0 else []
     )
 
     # --- Per session: compute A-period POC and availability timestamp ---
-    session_apoc: Dict = {}
-    session_apoc_avail_ts: Dict = {}
+    session_apoc: Dict[datetime.date, float] = {}
+    session_apoc_avail_ts: Dict[datetime.date, pd.Timestamp] = {}
 
     for sess_date in unique_sessions:
         rth_open_ts = pd.Timestamp(
@@ -231,7 +232,7 @@ def compute_apoc_levels(
 
     # --- Prior-session APOC per session ---
     sorted_sessions = sorted(session_apoc.keys())
-    prior_apoc: Dict = {
+    prior_apoc: Dict[datetime.date, float] = {
         sd: (session_apoc[sorted_sessions[i - 1]] if i > 0 else float("nan"))
         for i, sd in enumerate(sorted_sessions)
     }
