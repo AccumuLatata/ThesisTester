@@ -49,10 +49,12 @@ This engine is for **research screening**, not proof of a durable edge.
 - Supported pivot timeframe settings remain exactly `1min`, `5min`, `30min`, and `4h`.
 - Default fractal settings are `pivot_left=2` and `pivot_right=2`, matching the 5-candle pivot convention.
 - Each pivot column holds the latest confirmed pivot high/low for its timeframe; before the first confirmed pivot exists, the value is `NaN`.
+- Confirmed pivots are delayed by right-side confirmation and are not real-time swing predictions.
+- Confirmed pivots do not encode SFP, liquidity sweep, breaker, reclaim, or retest semantics.
 
 ### 5b) Developing session VWAP (`dVWAP_RTH`) is opt-in
 - `dVWAP_RTH` is disabled by default (`session_vwap_enabled=False`), so existing level output is unchanged unless explicitly enabled.
-- Only `anchor="RTH"` is supported in Stage 3.
+- Only `anchor="RTH"` is supported in current implementation (`dVWAP_ETH` is not implemented).
 - `dVWAP_RTH` resets at each RTH session open; non-RTH bars always emit `NaN`.
 - Zero cumulative RTH volume emits `NaN` (safe divide-by-zero handling).
 - If the input DataFrame lacks a `session` column, RTH membership is derived from the instrument configuration and the timestamp timezone.
@@ -161,8 +163,7 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   documented intent, not a bug.
 - Single Print columns (`dSinglePrint_30m_*`, `pSinglePrint_30m_*`) expose only scalar
   nearest-above/below summaries. A full list of all Single Print bins is not emitted.
-  APOC / pAPOC are not yet implemented (Stage 5). No volume-at-price or full market
-  profile object is available.
+  No volume-at-price or full market profile object is available.
 
 **Warning against non-causal diagnostic use:**
 The `<level>_naked` columns are causal (each bar's value is determined by bars up to

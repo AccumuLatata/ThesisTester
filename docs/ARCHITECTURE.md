@@ -96,3 +96,9 @@ Old snapshots missing Stage 6 keys default new controls to disabled without rais
 
 No computation behavior changes when all new controls remain unchecked.
 APOC / pAPOC are independent from Single Prints and are not routed through `compute_tpo_levels`.
+Single Prints are implemented in `thesistester/levels/tpo.py`; APOC / pAPOC are implemented in `thesistester/levels/apoc.py`.
+The Levels page writes these opt-in values into `st.session_state["levels_settings"]`, and saved snapshots include them via the levels settings hash.
+
+The level engine remains scalar-column based: each enabled family contributes deterministic
+columns onto the shared levels DataFrame, and downstream Signals/Backtest consume those columns
+generically without stage-specific workflow changes.

@@ -64,6 +64,12 @@ Manual Signals controls remain unchanged and backtest behavior is unchanged.
 - [Metrics glossary](docs/METRICS_GLOSSARY.md)
 - [Agent guide](docs/AGENT_GUIDE.md)
 
+## Level-upgrade status
+
+- The Levels page supports advanced opt-in level families: confirmed pivots, `dVWAP_RTH`, TPO 30m Single Prints, and APOC / pAPOC.
+- All advanced families default to disabled.
+- Existing baseline behavior remains unchanged unless these options are enabled.
+
 ## Phase status
 
 - **Phase 1 (data layer):** CSV OHLCV ingestion, timezone normalization, validation,
