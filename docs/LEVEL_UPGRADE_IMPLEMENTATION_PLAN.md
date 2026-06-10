@@ -199,16 +199,16 @@ Added modules:
 ```text
 thesistester/levels/pivots.py       — compute_pivot_levels() stub
 thesistester/levels/session_vwap.py — compute_session_vwap_levels() stub
-thesistester/levels/tpo.py          — compute_tpo_levels() stub (covers SP + APOC)
+thesistester/levels/tpo.py          — compute_tpo_levels() stub (Single Prints pathway)
 ```
 
 All three functions accept an `enabled` / gate keyword that defaults to `False`.
 When the gate is disabled the function returns an empty DataFrame immediately
-(true no-op — no timestamp validation).  When the gate is enabled the function
-first validates that `timestamp` is tz-aware (raises `ValueError` for naive
-timestamps), then raises `NotImplementedError` until the corresponding stage is
-implemented.  This means `compute_all_levels` can call them without producing any
-new columns or incurring any validation cost under the default (disabled) settings.
+(true no-op — no timestamp validation). During Stage 1 plumbing, enabling a gate
+validated tz-aware timestamps and intentionally stopped at the stage boundary
+until the corresponding implementation stage landed. This allowed
+`compute_all_levels` to call the plumbing safely without producing any new
+columns or incurring validation cost under default disabled settings.
 
 `compute_all_levels` (`thesistester/levels/all.py`) now accepts the following new
 keyword arguments, all defaulting to the no-op state:
@@ -233,7 +233,7 @@ Tests added in `tests/test_stage1_level_plumbing.py` (27 tests):
 - disabled stubs return empty DataFrames with the correct index length,
 - `compute_all_levels` with default settings produces zero new columns,
 - explicit disabled gates also produce zero new columns,
-- enabling any gate raises `NotImplementedError` (stub contract),
+- enabling any gate stops at the stage boundary (stub contract at Stage 1),
 - stubs require a tz-aware `timestamp` column.
 
 Rules:
@@ -388,7 +388,7 @@ Implemented tests in `tests/test_stage4_single_prints.py` (37 tests):
 
 - disabled returns empty DataFrame (no validation),
 - disabled accepts naive timestamps and unsupported instruments,
-- `apoc_enabled=True` still raises `NotImplementedError`,
+- Stage 4 did not implement APOC/pAPOC; APOC behavior was finalized in Stage 5,
 - `compute_all_levels` with `single_prints_enabled=False` produces no SP columns,
 - enabling SP produces exactly the four scalar columns (no dynamic columns),
 - tick-size binning correctness (bins based on instrument tick size),
@@ -426,7 +426,7 @@ Acceptance criteria:
 
 - `single_prints_enabled=False` remains a true no-op.
 - `single_prints_enabled=True` produces only the four scalar SP columns.
-- `apoc_enabled=True` still raises `NotImplementedError`.
+- Stage 4 acceptance focused on Single Print outputs only; APOC/pAPOC were implemented in Stage 5.
 - SP uses completed 30-min RTH brackets only.
 - Current incomplete bracket is excluded.
 - TPO bins use instrument tick size.
@@ -599,6 +599,8 @@ Acceptance criteria:
 
 ### Stage 7 — Documentation
 
+**Status:** Implemented in this PR; complete once merged.
+
 Update at minimum:
 
 ```text
@@ -635,8 +637,8 @@ Stage 2 — Pivots (PR #69)
 Stage 3 — Developing session VWAP (dVWAP_RTH)
 Stage 4 — Single Prints (TPO 30m, four scalar columns)
 Stage 5 — APOC / pAPOC (profile-based, A-period POC)
-Stage 6 — UI and Persistence (implemented in this PR; complete once merged)
-Stage 7 — Documentation (ongoing)
+Stage 6 — UI and Persistence
+Stage 7 — Documentation finalization (implemented in this PR; complete once merged)
 ```
 
 **Architectural note:** APOC/pAPOC (Stage 5) were implemented after Single Prints

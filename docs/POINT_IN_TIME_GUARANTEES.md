@@ -93,7 +93,7 @@ future-shock tests and/or code inspection.
 | `pSinglePrint_30m_NearestAbove` | Nearest SP price strictly above close, from the prior completed RTH session's frozen SP set | **Yes** | First RTH bar of the next session; `NaN` on non-RTH bars and if prior session had no SP | Prior-session SP set is frozen once the session is complete; current-session bars cannot alter it | Same |
 | `pSinglePrint_30m_NearestBelow` | Nearest SP price strictly below close, from prior session | **Yes** | Same as above | Same as above | Same |
 
-**Note:** Single Prints and APOC/pAPOC are independent level families. Single Prints are TPO auction-structure levels (implemented in `tpo.py`). APOC/pAPOC are profile/POC levels (implemented in `apoc.py`). They share session and tick-size utilities but APOC is not derived from Single Prints.
+**Note:** Single Prints and APOC/pAPOC are independent level families. Single Prints are TPO auction-structure levels (implemented in `tpo.py`). APOC/pAPOC are profile/POC levels (implemented in `apoc.py`). They share session and tick-size utilities but APOC is not derived from Single Prints. `compute_all_levels(..., apoc_enabled=True)` routes to APOC computation, while `compute_tpo_levels(..., apoc_enabled=True)` raises a redirecting `ValueError`.
 
 ### A-Period POC — `levels/apoc.py`
 
