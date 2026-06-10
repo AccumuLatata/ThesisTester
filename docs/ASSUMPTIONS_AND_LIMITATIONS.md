@@ -86,6 +86,20 @@ This engine is for **research screening**, not proof of a durable edge.
 - `compute_all_levels(..., single_prints_enabled=True, apoc_enabled=True)` produces all six independent columns: four Single Print columns plus `APOC` and `pAPOC`.
 - Known limitations: not true volume-at-price (bar-level approximation), not full-session POC, not Single Print-derived, approximation matches `profile.py` MVP.
 
+### 5e) Stage 6 UI and Persistence — opt-in level controls (Levels page)
+
+- The Levels page (`pages/5_Levels.py`) exposes an **"Advanced opt-in levels"** expander below the existing profile settings.
+- Inside the expander: checkboxes for confirmed pivots, developing RTH VWAP, TPO 30m Single Prints, and APOC / pAPOC; all default `False`.
+- No computation behavior changes when all new controls remain unchecked.
+- When pivots are enabled, pivot timeframes (multiselect), pivot left, and pivot right number inputs are shown.
+- `session_vwap_anchor` is fixed to `"RTH"` for Stage 6; no new anchors are exposed.
+- No Single Print or APOC configuration controls are exposed beyond the enable checkbox.
+- APOC / pAPOC remain independent from Single Prints; APOC is not routed through `compute_tpo_levels`.
+- `_normalize_levels_settings` adds all eight Stage 6 keys with disabled/default values so old saved snapshots remain compatible without crashing.
+- `pivot_timeframes` is sorted deterministically in normalization (same treatment as `sma_timeframes`, `ema_timeframes`, `vwap_windows`, `poc_windows`).
+- `_sync_levels_widget_state` restores all four new controls when a saved snapshot is loaded. Old snapshots missing Stage 6 keys load safely and default new controls to disabled.
+- Saved level snapshot labels optionally append a compact `Opt-in: pivots,dVWAP,SP,APOC` suffix when one or more opt-in families are enabled.
+
 ## 6) Point-in-time correctness (R3 audit)
 
 A full audit of all level, confluence, and signal modules was completed under R3. The

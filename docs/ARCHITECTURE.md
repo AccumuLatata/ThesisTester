@@ -73,3 +73,26 @@ for Signals compatibility. Signals now supports setup-source selection (manual, 
 saved setup library), with dataset-aware setup-library labels/filtering and compatibility checks
 for missing level references. Saved signal runs also expose a copy action that restores a setup
 snapshot back into Setup Builder session state for review/edit/save before persistence.
+
+## Levels page opt-in level controls (Stage 6)
+
+The Levels page (`pages/5_Levels.py`) exposes an **"Advanced opt-in levels"** expander below
+existing profile settings. Controls inside it:
+
+| Control | Default | Notes |
+|---|---|---|
+| Enable confirmed pivots | `False` | Shows pivot timeframes / left / right when enabled |
+| Enable developing RTH VWAP (dVWAP_RTH) | `False` | Anchor fixed to RTH |
+| Enable TPO 30m Single Prints | `False` | No additional config exposed |
+| Enable APOC / pAPOC | `False` | Independent of Single Prints |
+
+All eight gate values are included in the levels settings object and therefore in the
+settings hash used for saved snapshot matching. `_normalize_levels_settings` adds disabled
+defaults for all new keys so old saved snapshots remain compatible. `pivot_timeframes` is
+sorted deterministically alongside the other list-valued settings.
+
+When a saved snapshot is loaded, `_sync_levels_widget_state` restores all four new controls.
+Old snapshots missing Stage 6 keys default new controls to disabled without raising errors.
+
+No computation behavior changes when all new controls remain unchecked.
+APOC / pAPOC are independent from Single Prints and are not routed through `compute_tpo_levels`.

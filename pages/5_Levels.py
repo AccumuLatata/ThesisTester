@@ -38,6 +38,15 @@ _PENDING_WIDGET_SYNC_KEY = "_pending_levels_widget_sync_settings"
 _INDICATOR_TIMEFRAME_OPTIONS = ["1min", "5min", "30min"]
 _VWAP_WINDOW_OPTIONS = ["15min", "30min", "1h", "4h"]
 _POC_WINDOW_OPTIONS = ["30min", "1h", "4h"]
+# Stage 6 — opt-in level family keys
+_PIVOTS_ENABLED_KEY = "levels_pivots_enabled"
+_PIVOT_TIMEFRAMES_KEY = "levels_pivot_timeframes"
+_PIVOT_LEFT_KEY = "levels_pivot_left"
+_PIVOT_RIGHT_KEY = "levels_pivot_right"
+_SESSION_VWAP_ENABLED_KEY = "levels_session_vwap_enabled"
+_SINGLE_PRINTS_ENABLED_KEY = "levels_single_prints_enabled"
+_APOC_ENABLED_KEY = "levels_apoc_enabled"
+_PIVOT_TIMEFRAME_OPTIONS = ["1min", "5min", "30min", "4h"]
 
 
 def _parse_lengths(raw: str, label: str) -> list[int]:
@@ -64,7 +73,16 @@ def _normalize_levels_settings(settings: dict | None) -> dict | None:
     out.setdefault("prior_day_profile_aggregation_ticks", 1)
     out.setdefault("prior_week_profile_aggregation_ticks", 1)
     out.setdefault("prior_month_profile_aggregation_ticks", 1)
-    for key in ("sma_timeframes", "ema_timeframes", "vwap_windows", "poc_windows"):
+    # Stage 6 — opt-in level family defaults (all disabled for backward compat)
+    out.setdefault("pivots_enabled", False)
+    out.setdefault("pivot_timeframes", ["1min", "5min", "30min", "4h"])
+    out.setdefault("pivot_left", 2)
+    out.setdefault("pivot_right", 2)
+    out.setdefault("session_vwap_enabled", False)
+    out.setdefault("session_vwap_anchor", "RTH")
+    out.setdefault("single_prints_enabled", False)
+    out.setdefault("apoc_enabled", False)
+    for key in ("sma_timeframes", "ema_timeframes", "vwap_windows", "poc_windows", "pivot_timeframes"):
         value = out.get(key)
         if isinstance(value, list):
             out[key] = sorted(value)
@@ -108,9 +126,20 @@ def _saved_levels_label(meta: dict) -> str:
     monthly_agg = settings.get("prior_month_profile_aggregation_ticks", 1)
     created_at_raw = meta.get("created_at")
     created_at = str(created_at_raw)[:10] if created_at_raw else "unknown date"
+    opt_in_parts = []
+    if settings.get("pivots_enabled"):
+        opt_in_parts.append("pivots")
+    if settings.get("session_vwap_enabled"):
+        opt_in_parts.append("dVWAP")
+    if settings.get("single_prints_enabled"):
+        opt_in_parts.append("SP")
+    if settings.get("apoc_enabled"):
+        opt_in_parts.append("APOC")
+    opt_in_suffix = f" · Opt-in: {','.join(opt_in_parts)}" if opt_in_parts else ""
     return (
         f"{str(meta.get('settings_hash', 'unknown'))[:12]}… · OR {opening_range}m · "
         f"VA {value_area_label} · Day/Week/Month agg {daily_agg}/{weekly_agg}/{monthly_agg} · saved {created_at}"
+        f"{opt_in_suffix}"
     )
 
 
@@ -175,6 +204,29 @@ def _sync_levels_widget_state(settings: dict) -> None:
     prior_month_aggregation_ticks = settings.get("prior_month_profile_aggregation_ticks", 1)
     if isinstance(prior_month_aggregation_ticks, int) and prior_month_aggregation_ticks > 0:
         st.session_state[_PRIOR_MONTH_AGG_TICKS_KEY] = prior_month_aggregation_ticks
+
+    # Stage 6 — opt-in level family widget sync
+    st.session_state[_PIVOTS_ENABLED_KEY] = bool(settings.get("pivots_enabled", False))
+
+    pivot_timeframes = settings.get("pivot_timeframes")
+    if isinstance(pivot_timeframes, (list, tuple)):
+        st.session_state[_PIVOT_TIMEFRAMES_KEY] = [
+            tf for tf in _PIVOT_TIMEFRAME_OPTIONS if tf in pivot_timeframes
+        ]
+    else:
+        st.session_state[_PIVOT_TIMEFRAMES_KEY] = list(_PIVOT_TIMEFRAME_OPTIONS)
+
+    pivot_left = settings.get("pivot_left", 2)
+    if isinstance(pivot_left, int) and pivot_left >= 1:
+        st.session_state[_PIVOT_LEFT_KEY] = pivot_left
+
+    pivot_right = settings.get("pivot_right", 2)
+    if isinstance(pivot_right, int) and pivot_right >= 1:
+        st.session_state[_PIVOT_RIGHT_KEY] = pivot_right
+
+    st.session_state[_SESSION_VWAP_ENABLED_KEY] = bool(settings.get("session_vwap_enabled", False))
+    st.session_state[_SINGLE_PRINTS_ENABLED_KEY] = bool(settings.get("single_prints_enabled", False))
+    st.session_state[_APOC_ENABLED_KEY] = bool(settings.get("apoc_enabled", False))
 
 
 def _load_saved_levels_into_session(dataset_id: str, settings_hash: str) -> bool:
@@ -302,6 +354,62 @@ prior_month_aggregation_ticks = st.number_input(
     help=aggregation_help,
 )
 
+with st.expander("Advanced opt-in levels", expanded=False):
+    st.caption("All opt-in levels are disabled by default. Existing behavior is unchanged unless a box is checked.")
+    pivots_enabled = st.checkbox(
+        "Enable confirmed pivots",
+        value=False,
+        key=_PIVOTS_ENABLED_KEY,
+    )
+    if pivots_enabled:
+        pivot_timeframes = st.multiselect(
+            "Pivot timeframes",
+            options=_PIVOT_TIMEFRAME_OPTIONS,
+            default=_PIVOT_TIMEFRAME_OPTIONS,
+            key=_PIVOT_TIMEFRAMES_KEY,
+        )
+        pivot_left = st.number_input(
+            "Pivot left",
+            min_value=1,
+            value=2,
+            step=1,
+            key=_PIVOT_LEFT_KEY,
+        )
+        pivot_right = st.number_input(
+            "Pivot right",
+            min_value=1,
+            value=2,
+            step=1,
+            key=_PIVOT_RIGHT_KEY,
+        )
+    else:
+        # Preserve prior pivot widget state when present, but provide deterministic
+        # local defaults for the disabled settings payload/hash.
+        if _PIVOT_TIMEFRAMES_KEY not in st.session_state:
+            st.session_state[_PIVOT_TIMEFRAMES_KEY] = list(_PIVOT_TIMEFRAME_OPTIONS)
+        if _PIVOT_LEFT_KEY not in st.session_state:
+            st.session_state[_PIVOT_LEFT_KEY] = 2
+        if _PIVOT_RIGHT_KEY not in st.session_state:
+            st.session_state[_PIVOT_RIGHT_KEY] = 2
+        pivot_timeframes = list(_PIVOT_TIMEFRAME_OPTIONS)
+        pivot_left = 2
+        pivot_right = 2
+    session_vwap_enabled = st.checkbox(
+        "Enable developing RTH VWAP (dVWAP_RTH)",
+        value=False,
+        key=_SESSION_VWAP_ENABLED_KEY,
+    )
+    single_prints_enabled = st.checkbox(
+        "Enable TPO 30m Single Prints",
+        value=False,
+        key=_SINGLE_PRINTS_ENABLED_KEY,
+    )
+    apoc_enabled = st.checkbox(
+        "Enable APOC / pAPOC",
+        value=False,
+        key=_APOC_ENABLED_KEY,
+    )
+
 try:
     sma_lengths = _parse_lengths(sma_lengths_raw, "SMA")
     ema_lengths = _parse_lengths(ema_lengths_raw, "EMA")
@@ -323,6 +431,14 @@ current_settings = _normalize_levels_settings(
         "prior_day_profile_aggregation_ticks": int(prior_day_aggregation_ticks),
         "prior_week_profile_aggregation_ticks": int(prior_week_aggregation_ticks),
         "prior_month_profile_aggregation_ticks": int(prior_month_aggregation_ticks),
+        "pivots_enabled": pivots_enabled,
+        "pivot_timeframes": pivot_timeframes,
+        "pivot_left": int(pivot_left),
+        "pivot_right": int(pivot_right),
+        "session_vwap_enabled": session_vwap_enabled,
+        "session_vwap_anchor": "RTH",
+        "single_prints_enabled": single_prints_enabled,
+        "apoc_enabled": apoc_enabled,
     }
 )
 current_data_fingerprint = _levels_data_fingerprint(st.session_state["data"], instrument)
@@ -447,6 +563,14 @@ if calculate_levels:
                 prior_day_aggregation_ticks=int(prior_day_aggregation_ticks),
                 prior_week_aggregation_ticks=int(prior_week_aggregation_ticks),
                 prior_month_aggregation_ticks=int(prior_month_aggregation_ticks),
+                pivots_enabled=pivots_enabled,
+                pivot_timeframes=pivot_timeframes,
+                pivot_left=int(pivot_left),
+                pivot_right=int(pivot_right),
+                session_vwap_enabled=session_vwap_enabled,
+                session_vwap_anchor="RTH",
+                single_prints_enabled=single_prints_enabled,
+                apoc_enabled=apoc_enabled,
             )
         except ValueError as exc:
             st.error(str(exc))
