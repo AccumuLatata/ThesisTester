@@ -107,7 +107,7 @@ UI/persistence layer only. Engine and analytics code (`simulate_trades`,
 | File | Purpose |
 |---|---|
 | `thesistester/execution_defaults.py` | Validation, injection, and collection helpers |
-| `tests/test_backtest_grid_defaults.py` | 43 tests: roundtrip, isolation, schema drift, reset, validation, engine isolation |
+| `tests/test_backtest_grid_defaults.py` | Covers roundtrip persistence, namespace isolation, schema drift, reset behavior, validation/sanitization, widget/result key separation, and engine isolation |
 
 ### Modified files
 
