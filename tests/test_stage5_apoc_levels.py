@@ -24,11 +24,10 @@ import pytest
 
 from thesistester.data.sessions import tag_session
 from thesistester.levels import compute_all_levels, compute_apoc_levels, compute_tpo_levels
-from thesistester.levels.apoc import A_PERIOD_MINUTES, APOC_COLUMNS, COL_APOC, COL_PAPOC
+from thesistester.levels.apoc import COL_APOC, COL_PAPOC
 from thesistester.levels.tpo import SINGLE_PRINT_COLUMNS
 
 TZ = "America/New_York"
-TICK = 0.25  # ES tick size
 
 
 # ---------------------------------------------------------------------------
