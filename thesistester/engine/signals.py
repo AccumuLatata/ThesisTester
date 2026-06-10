@@ -375,11 +375,11 @@ def _prepare_trigger_dataframe(df: pd.DataFrame, trigger_timeframe: str) -> pd.D
 
     timeframe_delta = pd.to_timedelta(normalized_trigger_timeframe)
     grouped = df_reset.copy()
-    timestamps = grouped["timestamp"]
-    if not pd.api.types.is_datetime64_any_dtype(timestamps):
-        timestamps = pd.to_datetime(timestamps, errors="raise")
     try:
-        if getattr(timestamps.dt, "tz", None) is not None:
+        timestamps = grouped["timestamp"]
+        if not pd.api.types.is_datetime64_any_dtype(timestamps):
+            timestamps = pd.to_datetime(timestamps, errors="raise")
+        if timestamps.dt.tz is not None:
             original_tz = timestamps.dt.tz
             floored = timestamps.dt.tz_convert("UTC").dt.floor(normalized_trigger_timeframe)
             grouped["trigger_bar_start_timestamp"] = floored.dt.tz_convert(original_tz)
