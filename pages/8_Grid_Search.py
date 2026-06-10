@@ -165,7 +165,7 @@ with st.sidebar:
             "single_setup",
         ],
         index=0,
-        key="grid_exposure_policy",
+        key="grid_exposure_policy_widget",
     )
     cooldown_bars_after_exit = int(
         st.number_input(
@@ -182,7 +182,7 @@ with st.sidebar:
         "Ranking metric",
         options=["expectancy_r", "total_r", "profit_factor", "win_rate"],
         index=0,
-        key="grid_ranking_metric",
+        key="grid_ranking_metric_widget",
         help="Metric used to find the best SL/TP pair.",
     )
 
@@ -193,7 +193,7 @@ with st.sidebar:
             max_value=1000,
             value=1,
             step=1,
-            key="grid_min_trades",
+            key="grid_min_trades_widget",
             help="Grid cells with fewer trades are ignored when ranking.",
         )
     )
@@ -242,7 +242,7 @@ with st.sidebar:
                 max_value=1000,
                 value=1,
                 step=1,
-                key="grid_min_long_trades",
+                key="grid_min_long_trades_widget",
                 help=(
                     "Grid cells with fewer long trades are excluded.  "
                     "For real research, consider values ≥ 10–30."
@@ -256,7 +256,7 @@ with st.sidebar:
                 max_value=1000,
                 value=1,
                 step=1,
-                key="grid_min_short_trades",
+                key="grid_min_short_trades_widget",
                 help=(
                     "Grid cells with fewer short trades are excluded.  "
                     "For real research, consider values ≥ 10–30."

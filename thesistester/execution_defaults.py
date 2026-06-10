@@ -10,6 +10,7 @@ which keeps this module testable without a running Streamlit server.
 from __future__ import annotations
 
 import re
+from datetime import time as _time
 from typing import Any
 
 from thesistester.config import TIMEZONE_OPTIONS
@@ -43,13 +44,15 @@ DIRECTIONAL_METRIC_OPTIONS: tuple[str, ...] = (
     "min_direction_profit_factor",
 )
 
-_TIME_RE = re.compile(r"^\d{1,2}:\d{2}(:\d{2})?$")
+_TIME_RE = re.compile(r"^\d{2}:\d{2}(:\d{2})?$")
 
 
 # ── Primitive validators ──────────────────────────────────────────────────────
 
 def _valid_float(value: Any, *, lo: float, hi: float) -> float | None:
-    """Return a float clamped to [lo, hi], or None if conversion fails."""
+    """Return value converted to float if it is within [lo, hi] and not a bool, else None."""
+    if isinstance(value, bool):
+        return None
     try:
         v = float(value)
     except (TypeError, ValueError):
@@ -62,7 +65,9 @@ def _valid_float(value: Any, *, lo: float, hi: float) -> float | None:
 
 
 def _valid_int(value: Any, *, lo: int, hi: int) -> int | None:
-    """Return an int clamped to [lo, hi], or None if conversion fails."""
+    """Return value converted to int if it is within [lo, hi] and not a bool, else None."""
+    if isinstance(value, bool):
+        return None
     try:
         v = int(value)
     except (TypeError, ValueError):
@@ -80,19 +85,24 @@ def _valid_bool(value: Any) -> bool | None:
 
 
 def _valid_time_str(value: Any) -> str | None:
-    """Return value if it matches HH:MM or HH:MM:SS, else None."""
+    """Return value if it is a zero-padded HH:MM or HH:MM:SS with valid ranges
+    (HH: 00-23, MM: 00-59, SS: 00-59), else None."""
     if not isinstance(value, str):
         return None
     stripped = value.strip()
     if not stripped:
         return None
-    if not _TIME_RE.match(stripped):
+    if _TIME_RE.fullmatch(stripped) is None:
+        return None
+    try:
+        _time.fromisoformat(stripped)
+    except ValueError:
         return None
     return stripped
 
 
 def _valid_optional_time_str(value: Any) -> str | None:
-    """Return empty string if value is empty/None, a valid time string, or None (invalid)."""
+    """Return empty string if value is empty/None, a valid strict time string, or None (invalid)."""
     if value is None:
         return ""
     if not isinstance(value, str):
@@ -100,7 +110,11 @@ def _valid_optional_time_str(value: Any) -> str | None:
     stripped = value.strip()
     if not stripped:
         return ""
-    if not _TIME_RE.match(stripped):
+    if _TIME_RE.fullmatch(stripped) is None:
+        return None
+    try:
+        _time.fromisoformat(stripped)
+    except ValueError:
         return None
     return stripped
 
@@ -209,29 +223,29 @@ def reset_backtest_session_keys(session_state: Any) -> None:
 # ── Grid Search sanitisation ──────────────────────────────────────────────────
 
 _GRID_FIELD_SPECS: tuple[tuple[str, str, Any], ...] = (
-    ("grid_sl_start",              "sl_start",               lambda v: _valid_float(v, lo=1.0, hi=500.0)),
-    ("grid_sl_stop",               "sl_stop",                lambda v: _valid_float(v, lo=1.0, hi=500.0)),
-    ("grid_sl_step",               "sl_step",                lambda v: _valid_float(v, lo=1.0, hi=100.0)),
-    ("grid_tp_start",              "tp_start",               lambda v: _valid_float(v, lo=1.0, hi=1000.0)),
-    ("grid_tp_stop",               "tp_stop",                lambda v: _valid_float(v, lo=1.0, hi=1000.0)),
-    ("grid_tp_step",               "tp_step",                lambda v: _valid_float(v, lo=1.0, hi=200.0)),
-    ("grid_commission_per_side",   "commission_per_side",    lambda v: _valid_float(v, lo=0.0, hi=1000.0)),
-    ("grid_slippage_ticks",        "slippage_ticks",         lambda v: _valid_float(v, lo=0.0, hi=100.0)),
-    ("grid_use_max_bars",          "use_max_bars",           _valid_bool),
-    ("grid_max_bars",              "max_bars",               lambda v: _valid_int(v, lo=1, hi=500)),
-    ("grid_allow_same_bar",        "allow_same_bar",         _valid_bool),
-    ("grid_flat_by_session_close", "flat_by_session_close",  _valid_bool),
-    ("grid_session_close_time",    "session_close_time",     _valid_time_str),
-    ("grid_session_timezone",      "session_timezone",       _valid_timezone),
-    ("grid_no_new_entries_after",  "no_new_entries_after",   _valid_optional_time_str),
-    ("grid_exposure_policy",       "exposure_policy",        _valid_exposure_policy),
-    ("grid_cooldown_bars",         "cooldown_bars_after_exit", lambda v: _valid_int(v, lo=0, hi=10_000)),
-    ("grid_ranking_metric",        "ranking_metric",         _valid_ranking_metric),
-    ("grid_min_trades",            "min_trades",             lambda v: _valid_int(v, lo=1, hi=1000)),
-    ("grid_enable_directional",    "enable_directional",     _valid_bool),
-    ("grid_directional_metric",    "directional_metric",     _valid_directional_metric),
-    ("grid_min_long_trades",       "min_long_trades",        lambda v: _valid_int(v, lo=1, hi=1000)),
-    ("grid_min_short_trades",      "min_short_trades",       lambda v: _valid_int(v, lo=1, hi=1000)),
+    ("grid_sl_start",                  "sl_start",               lambda v: _valid_float(v, lo=1.0, hi=500.0)),
+    ("grid_sl_stop",                   "sl_stop",                lambda v: _valid_float(v, lo=1.0, hi=500.0)),
+    ("grid_sl_step",                   "sl_step",                lambda v: _valid_float(v, lo=1.0, hi=100.0)),
+    ("grid_tp_start",                  "tp_start",               lambda v: _valid_float(v, lo=1.0, hi=1000.0)),
+    ("grid_tp_stop",                   "tp_stop",                lambda v: _valid_float(v, lo=1.0, hi=1000.0)),
+    ("grid_tp_step",                   "tp_step",                lambda v: _valid_float(v, lo=1.0, hi=200.0)),
+    ("grid_commission_per_side",       "commission_per_side",    lambda v: _valid_float(v, lo=0.0, hi=1000.0)),
+    ("grid_slippage_ticks",            "slippage_ticks",         lambda v: _valid_float(v, lo=0.0, hi=100.0)),
+    ("grid_use_max_bars",              "use_max_bars",           _valid_bool),
+    ("grid_max_bars",                  "max_bars",               lambda v: _valid_int(v, lo=1, hi=500)),
+    ("grid_allow_same_bar",            "allow_same_bar",         _valid_bool),
+    ("grid_flat_by_session_close",     "flat_by_session_close",  _valid_bool),
+    ("grid_session_close_time",        "session_close_time",     _valid_time_str),
+    ("grid_session_timezone",          "session_timezone",       _valid_timezone),
+    ("grid_no_new_entries_after",      "no_new_entries_after",   _valid_optional_time_str),
+    ("grid_exposure_policy_widget",    "exposure_policy",        _valid_exposure_policy),
+    ("grid_cooldown_bars",             "cooldown_bars_after_exit", lambda v: _valid_int(v, lo=0, hi=10_000)),
+    ("grid_ranking_metric_widget",     "ranking_metric",         _valid_ranking_metric),
+    ("grid_min_trades_widget",         "min_trades",             lambda v: _valid_int(v, lo=1, hi=1000)),
+    ("grid_enable_directional",        "enable_directional",     _valid_bool),
+    ("grid_directional_metric",        "directional_metric",     _valid_directional_metric),
+    ("grid_min_long_trades_widget",    "min_long_trades",        lambda v: _valid_int(v, lo=1, hi=1000)),
+    ("grid_min_short_trades_widget",   "min_short_trades",       lambda v: _valid_int(v, lo=1, hi=1000)),
 )
 
 

@@ -355,7 +355,7 @@ def test_sanitize_backtest_real_bool_accepted():
 def test_sanitize_grid_invalid_ranking_metric_dropped():
     raw = {"ranking_metric": "nonexistent_metric"}
     sanitized = sanitize_grid_defaults(raw)
-    assert "grid_ranking_metric" not in sanitized
+    assert "grid_ranking_metric_widget" not in sanitized
 
 
 def test_sanitize_grid_invalid_directional_metric_dropped():
@@ -368,7 +368,7 @@ def test_sanitize_grid_valid_metrics_accepted():
     for metric in RANKING_METRIC_OPTIONS:
         raw = {"ranking_metric": metric}
         sanitized = sanitize_grid_defaults(raw)
-        assert sanitized.get("grid_ranking_metric") == metric
+        assert sanitized.get("grid_ranking_metric_widget") == metric
 
     for metric in DIRECTIONAL_METRIC_OPTIONS:
         raw = {"directional_metric": metric}
@@ -399,7 +399,7 @@ def test_sanitize_all_exposure_policies_accepted():
         bt = sanitize_backtest_defaults(raw)
         gr = sanitize_grid_defaults(raw)
         assert bt.get("backtest_exposure_policy") == policy
-        assert gr.get("grid_exposure_policy") == policy
+        assert gr.get("grid_exposure_policy_widget") == policy
 
 
 # ── 8. apply_backtest_defaults / apply_grid_defaults ─────────────────────────
@@ -459,7 +459,7 @@ def test_collect_backtest_defaults_extracts_known_keys():
 def test_collect_grid_defaults_extracts_known_keys():
     session = {
         "grid_sl_start": 4.0,
-        "grid_ranking_metric": "profit_factor",
+        "grid_ranking_metric_widget": "profit_factor",
         "grid_enable_directional": True,
         "unrelated": "skip",
     }
@@ -502,6 +502,49 @@ def test_reset_grid_removes_widget_keys_not_result_keys():
     assert "_grid_defaults_applied" not in session
     assert "grid_results" in session
     assert "grid_execution_costs" in session
+
+
+def test_reset_grid_preserves_exposure_policy_result_dict():
+    """reset_grid_session_keys must not delete the post-run grid_exposure_policy dict."""
+    session = {
+        "grid_exposure_policy_widget": "allow_all",
+        "grid_exposure_policy": {
+            "exposure_policy": "single_position",
+            "cooldown_bars_after_exit": 2,
+        },
+    }
+    reset_grid_session_keys(session)
+
+    assert "grid_exposure_policy_widget" not in session
+    assert "grid_exposure_policy" in session
+    assert isinstance(session["grid_exposure_policy"], dict)
+    assert session["grid_exposure_policy"]["exposure_policy"] == "single_position"
+
+
+def test_reset_grid_preserves_ranking_and_trade_count_result_keys():
+    """reset_grid_session_keys must not delete post-run result keys for ranking/trades."""
+    session = {
+        "grid_ranking_metric_widget": "profit_factor",
+        "grid_ranking_metric": "profit_factor",  # post-run result
+        "grid_min_trades_widget": 5,
+        "grid_min_trades": 5,                    # post-run result
+        "grid_min_long_trades_widget": 3,
+        "grid_min_long_trades": 3,               # post-run result
+        "grid_min_short_trades_widget": 3,
+        "grid_min_short_trades": 3,              # post-run result
+    }
+    reset_grid_session_keys(session)
+
+    # Widget keys removed
+    assert "grid_ranking_metric_widget" not in session
+    assert "grid_min_trades_widget" not in session
+    assert "grid_min_long_trades_widget" not in session
+    assert "grid_min_short_trades_widget" not in session
+    # Post-run result keys preserved
+    assert "grid_ranking_metric" in session
+    assert "grid_min_trades" in session
+    assert "grid_min_long_trades" in session
+    assert "grid_min_short_trades" in session
 
 
 # ── 11. Missing / corrupt ui_state.json is handled gracefully ─────────────────
@@ -602,3 +645,91 @@ def test_run_sl_tp_grid_not_affected_by_saved_grid_defaults():
     )
     assert isinstance(grid, pd.DataFrame)
     assert len(grid) == 4
+
+
+# ── 13. Strict time validation ────────────────────────────────────────────────
+
+def test_strict_time_validation_accepts_zero_padded():
+    """Zero-padded HH:MM and HH:MM:SS must be accepted."""
+    from thesistester.execution_defaults import _valid_time_str, _valid_optional_time_str
+    for t in ["09:30", "16:00", "16:00:00"]:
+        assert _valid_time_str(t) == t
+        assert _valid_optional_time_str(t) == t
+
+
+def test_strict_time_validation_rejects_single_digit_hour():
+    """Non-zero-padded single-digit hour must be rejected."""
+    from thesistester.execution_defaults import _valid_time_str, _valid_optional_time_str
+    assert _valid_time_str("9:30") is None
+    assert _valid_optional_time_str("9:30") is None
+
+
+def test_strict_time_validation_rejects_out_of_range():
+    """Times with out-of-range hour, minute, or second must be rejected."""
+    from thesistester.execution_defaults import _valid_time_str, _valid_optional_time_str
+    for t in ["99:99", "24:00", "12:99", "16:00:99"]:
+        assert _valid_time_str(t) is None, f"Expected None for {t!r}"
+        assert _valid_optional_time_str(t) is None, f"Expected None for {t!r}"
+
+
+def test_strict_time_validation_rejects_arbitrary_text():
+    from thesistester.execution_defaults import _valid_time_str, _valid_optional_time_str
+    assert _valid_time_str("not-a-time") is None
+    assert _valid_optional_time_str("not-a-time") is None
+
+
+def test_strict_time_validation_rejects_non_string():
+    from thesistester.execution_defaults import _valid_time_str, _valid_optional_time_str
+    assert _valid_time_str(1600) is None
+    assert _valid_optional_time_str(None) == ""  # None → empty string (no-time)
+    assert _valid_optional_time_str(1600) is None
+
+
+def test_sanitize_backtest_strict_time_rejects_invalid():
+    """Stricter time validation must reject single-digit and out-of-range values."""
+    for bad_time in ["9:30", "99:99", "24:00", "12:99", "16:00:99"]:
+        raw = {"session_close_time": bad_time}
+        sanitized = sanitize_backtest_defaults(raw)
+        assert "backtest_session_close_time" not in sanitized, f"Should reject {bad_time!r}"
+
+
+def test_sanitize_grid_strict_time_rejects_invalid():
+    for bad_time in ["9:30", "99:99", "24:00", "12:99", "16:00:99"]:
+        raw = {"session_close_time": bad_time}
+        sanitized = sanitize_grid_defaults(raw)
+        assert "grid_session_close_time" not in sanitized, f"Should reject {bad_time!r}"
+
+
+# ── 14. Numeric validators reject bools ──────────────────────────────────────
+
+def test_numeric_validators_reject_bools():
+    """_valid_float and _valid_int must reject bool values explicitly."""
+    from thesistester.execution_defaults import _valid_float, _valid_int
+    assert _valid_float(True, lo=0.0, hi=10.0) is None
+    assert _valid_float(False, lo=0.0, hi=10.0) is None
+    assert _valid_int(True, lo=0, hi=10) is None
+    assert _valid_int(False, lo=0, hi=10) is None
+
+
+def test_sanitize_backtest_rejects_bool_for_sl_ticks():
+    """sl_ticks=True must be dropped (bool is not a valid float)."""
+    raw = {"sl_ticks": True}
+    sanitized = sanitize_backtest_defaults(raw)
+    assert "backtest_sl_ticks" not in sanitized
+
+
+def test_sanitize_backtest_rejects_bool_for_cooldown():
+    """cooldown_bars_after_exit=False must be dropped."""
+    raw = {"cooldown_bars_after_exit": False}
+    sanitized = sanitize_backtest_defaults(raw)
+    assert "backtest_cooldown_bars" not in sanitized
+
+
+def test_sanitize_grid_rejects_bool_for_numerics():
+    """Grid numeric fields must also reject bools."""
+    raw = {"sl_start": True, "max_bars": False, "min_trades": True, "cooldown_bars_after_exit": False}
+    sanitized = sanitize_grid_defaults(raw)
+    assert "grid_sl_start" not in sanitized
+    assert "grid_max_bars" not in sanitized
+    assert "grid_min_trades_widget" not in sanitized
+    assert "grid_cooldown_bars" not in sanitized
