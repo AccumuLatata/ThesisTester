@@ -375,7 +375,7 @@ def _prepare_trigger_dataframe(df: pd.DataFrame, trigger_timeframe: str) -> pd.D
 
     timeframe_delta = pd.to_timedelta(normalized_trigger_timeframe)
     grouped = df_reset.copy()
-    timestamps = pd.to_datetime(grouped["timestamp"], errors="coerce")
+    timestamps = pd.to_datetime(grouped["timestamp"], errors="raise")
     try:
         if getattr(timestamps.dt, "tz", None) is not None:
             original_tz = timestamps.dt.tz
@@ -386,7 +386,7 @@ def _prepare_trigger_dataframe(df: pd.DataFrame, trigger_timeframe: str) -> pd.D
     except (TypeError, ValueError, AttributeError) as exc:
         raise ValueError(
             f"Unable to prepare trigger timeframe '{normalized_trigger_timeframe}' "
-            "from timestamp data. Check for invalid or non-monotonic timestamps."
+            "from timestamp data. Check for invalid, ambiguous, or timezone-incompatible timestamps."
         ) from exc
     grouped["trigger_bar_end_timestamp"] = grouped["trigger_bar_start_timestamp"] + timeframe_delta
     grouped["base_end_timestamp"] = grouped["timestamp"]
