@@ -516,6 +516,10 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
   `OR_High` is only finalized after the opening-range window closes).
 - **Candidate signals** are stored in `st.session_state["signals"]` via the Signals
   page (`pages/6_Signals.py`) for consumption by Phase 5 backtesting.
+- **DST-safe non-base trigger bucketing:** when trigger timeframe is non-base and
+  timestamps are timezone-aware, trigger-bar flooring is performed in UTC and then
+  converted back to the original timezone. This avoids ambiguous local-time flooring
+  failures around DST boundaries while preserving canonical/base timestamp semantics.
 - **`3c` trigger implementation:** uses `entry_retrace_ticks` (entry retrace after reversal
   close) and `max_entry_wait_bars_after_reversal` as independently configurable parameters.
   `arrival_tolerance_ticks` is deprecated — arrival must strictly touch the key level; any
@@ -538,6 +542,9 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
   - Invalid edge-case setups (for example missing retrace trigger prices or out-of-range
     base/reversal indices at dataset boundaries) are skipped defensively instead of
     crashing signal generation.
+- **Signals page observability guards:** generation and chart rendering are wrapped with
+  narrow exception guards so failures are surfaced in-page (`st.error` + traceback)
+  instead of triggering a full Streamlit page crash.
 
 ---
 

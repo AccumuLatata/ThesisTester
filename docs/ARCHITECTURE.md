@@ -59,6 +59,13 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `time_grouped_summary` | Time (`pages/9_Time_Analysis.py:208`) | Report export (`pages/11_Report_Export.py:41,123`, `thesistester/reporting.py:180-185`) | `pd.DataFrame` grouped diagnostics |
 | `validation_summary` | Validation (`pages/10_Validation.py:130`) | Validation display/Report/Bundles (`pages/10_Validation.py:134`, `pages/11_Report_Export.py:42,82-83`, `pages/12_Research_Bundles.py:50`) | `dict` (`bootstrap`, `permutation`, `trade_count`, `grid_overfit`) |
 
+Signals robustness notes:
+- Non-base trigger-timeframe grouping in `thesistester/engine/signals.py` uses DST-safe
+  UTC flooring for timezone-aware timestamps and converts floored trigger bars back to the
+  original timezone.
+- `pages/6_Signals.py` wraps signal generation and chart rendering with narrow exception
+  guards so errors are surfaced in-page without clearing already generated tables/state.
+
 ## Local persistence topology (filesystem)
 
 - Root: `.thesistester_store/` (or `$THESISTESTER_STORE_DIR`)
