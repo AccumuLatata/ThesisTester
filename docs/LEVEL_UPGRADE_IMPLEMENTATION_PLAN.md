@@ -637,7 +637,7 @@ Stage 2 — Pivots (PR #69)
 Stage 3 — Developing session VWAP (dVWAP_RTH)
 Stage 4 — Single Prints (TPO 30m, four scalar columns)
 Stage 5 — APOC / pAPOC (profile-based, A-period POC)
-Stage 6 — UI and Persistence (implemented in this PR; complete once merged)
+Stage 6 — UI and Persistence
 Stage 7 — Documentation finalization (implemented in this PR; complete once merged)
 ```
 
