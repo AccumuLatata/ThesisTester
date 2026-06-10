@@ -188,16 +188,17 @@ def test_disabled_accepts_unsupported_instrument():
     assert len(result.columns) == 0
 
 
-def test_apoc_enabled_raises_not_implemented():
+def test_apoc_enabled_raises_value_error():
+    """compute_tpo_levels must raise ValueError when apoc_enabled=True (profile-based redirect)."""
     df = tag_session(_base_df(), "ES")
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError, match="compute_apoc_levels"):
         compute_tpo_levels(df, apoc_enabled=True)
 
 
-def test_apoc_and_sp_enabled_raises_not_implemented():
-    """When apoc_enabled=True, raise NotImplementedError even if single_prints_enabled=True."""
+def test_apoc_and_sp_enabled_raises_value_error():
+    """When apoc_enabled=True, raise ValueError even if single_prints_enabled=True."""
     df = tag_session(_base_df(), "ES")
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError, match="compute_apoc_levels"):
         compute_tpo_levels(df, single_prints_enabled=True, apoc_enabled=True)
 
 

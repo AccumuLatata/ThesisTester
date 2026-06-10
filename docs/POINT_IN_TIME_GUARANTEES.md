@@ -24,6 +24,7 @@ tested here.
 | `thesistester/levels/pivots.py` | Confirmed 1min / 5min / 30min / 4h pivot levels |
 | `thesistester/levels/session_vwap.py` | Developing session VWAP (`dVWAP_RTH`) |
 | `thesistester/levels/tpo.py` | TPO 30m Single Print scalar levels |
+| `thesistester/levels/apoc.py` | A-Period POC scalar levels (`APOC`, `pAPOC`) |
 | `thesistester/engine/naked.py` | Naked/untested level flags |
 | `thesistester/engine/confluence.py` | Global confluence zone detection |
 | `thesistester/engine/anchor_confluence.py` | Anchor-based confluence detection |
@@ -91,6 +92,15 @@ future-shock tests and/or code inspection.
 | `dSinglePrint_30m_NearestBelow` | Nearest SP price strictly below close | **Yes** | Same as above | Same as above | Same |
 | `pSinglePrint_30m_NearestAbove` | Nearest SP price strictly above close, from the prior completed RTH session's frozen SP set | **Yes** | First RTH bar of the next session; `NaN` on non-RTH bars and if prior session had no SP | Prior-session SP set is frozen once the session is complete; current-session bars cannot alter it | Same |
 | `pSinglePrint_30m_NearestBelow` | Nearest SP price strictly below close, from prior session | **Yes** | Same as above | Same as above | Same |
+
+**Note:** Single Prints and APOC/pAPOC are independent level families. Single Prints are TPO auction-structure levels (implemented in `tpo.py`). APOC/pAPOC are profile/POC levels (implemented in `apoc.py`). They share session and tick-size utilities but APOC is not derived from Single Prints.
+
+### A-Period POC — `levels/apoc.py`
+
+| Level family | Source | Causal? | Availability timing | Known limitations | Tests |
+|---|---|---|---|---|---|
+| `APOC` | POC of RTH bars in `[RTH_open, RTH_open + 30 min)`, using typical-price profile approximation | **Yes** | `NaN` before `RTH_open + 30 min`; emitted from the first bar at or after A-period completion; `NaN` on all non-RTH bars | Bar-level typical-price approximation (not true volume-at-price); ETH bars never contribute; only the first 30-minute bracket is used, never full-session | `tests/test_stage5_apoc_levels.py` (future-shock tests: `test_future_shock_appending_current_session_bars_does_not_change_apoc`, `test_future_shock_appending_next_session_bars_does_not_change_papoc`) |
+| `pAPOC` | Prior completed RTH session's APOC; frozen at the start of each new session | **Yes** | First RTH bar of the next session; frozen throughout; `NaN` on non-RTH bars and if prior session had no valid APOC | Same approximation note as APOC; uses only prior completed sessions | Same |
 
 ### Naked levels — `engine/naked.py`
 
@@ -217,4 +227,10 @@ bar on date D; do not use the final row value.
 8. **Single Print columns expose only scalar nearest-above/below summaries.** No dynamic
    list of all Single Print bins is emitted. The four scalar columns are sufficient for
    signal proximity queries but do not provide the full Single Print set for manual
-   analysis. APOC / pAPOC are not yet implemented (Stage 5 pending).
+   analysis. APOC / pAPOC are now implemented (Stage 5; see `levels/apoc.py`).
+
+9. **APOC / pAPOC use bar-level typical-price approximation.** `typical_price = (high + low + close) / 3`
+   with full bar volume allocated to one tick bin. This is an MVP approximation consistent
+   with `profile.py`. True intrabar volume-at-price data would produce different POC values
+   but would not introduce look-ahead bias. APOC uses only the first RTH 30-minute bracket;
+   it is not the full-session POC and is not derived from Single Prints.

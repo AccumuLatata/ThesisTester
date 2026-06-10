@@ -440,33 +440,119 @@ Acceptance criteria:
 
 ### Stage 5 — APOC / pAPOC
 
-Implement:
+**Status:** Implemented in this PR; complete once merged.
+
+Implemented in `thesistester/levels/apoc.py` (a dedicated profile-adjacent module).
+
+**Architectural clarification:**
+
+APOC and pAPOC are **profile / POC levels**, not Single Print levels.  They are
+independent of the Single Print logic in `tpo.py`.  Single Prints are TPO
+auction-structure levels; APOC/pAPOC are profile/POC levels.  They may share
+session and tick-size utilities, but APOC is not derived from Single Prints.
+
+`compute_tpo_levels` now raises `ValueError` when `apoc_enabled=True`, redirecting
+callers to `compute_apoc_levels` or `compute_all_levels(apoc_enabled=True)`.
+
+Implements:
 
 ```text
 APOC
 pAPOC
 ```
 
+Definitions:
+
+- `APOC` = POC of the first completed RTH 30-minute bracket after NY/RTH open.
+- `pAPOC` = prior completed RTH session's APOC, frozen for the next session.
+
+Profile approximation (consistent with `profile.py`):
+
+```text
+typical_price = (high + low + close) / 3
+Full bar volume allocated to the tick bin containing typical_price.
+POC = highest-volume tick bin (lowest-price bin wins ties).
+```
+
 Rules:
 
-- APOC is the POC of the first completed RTH 30-minute bracket.
-- APOC is unavailable before that bracket completes.
-- pAPOC is the previous session's frozen APOC.
-- Missing or insufficient A-period data should produce `NaN`.
+- `APOC` is `NaN` until `RTH_open + 30 min`. Emitted from that timestamp onward.
+- Only RTH bars in `[RTH_open, RTH_open + 30 min)` contribute.
+- ETH bars never contribute.
+- Non-RTH bars emit `NaN` for both columns.
+- `pAPOC` is available from the first RTH bar of the next session; frozen throughout.
+- If the prior session produced no valid APOC, `pAPOC` is `NaN`.
+- If the `session` column is absent, RTH membership is derived from instrument config.
+- `apoc_enabled=False` is a true no-op: no validation, no new columns.
 
-Required tests:
+Module ownership:
 
-- APOC unavailable before A-period close,
-- APOC appears after A-period close,
-- pAPOC maps to the next session,
-- missing A-period returns `NaN`,
-- future-shock / point-in-time test.
+```text
+thesistester/levels/apoc.py   — compute_apoc_levels()
+```
+
+`compute_all_levels` routes `apoc_enabled` to `compute_apoc_levels`, independently
+of `single_prints_enabled` / `compute_tpo_levels`.
+
+`compute_all_levels(..., single_prints_enabled=True, apoc_enabled=True)` produces:
+
+```text
+dSinglePrint_30m_NearestAbove
+dSinglePrint_30m_NearestBelow
+pSinglePrint_30m_NearestAbove
+pSinglePrint_30m_NearestBelow
+APOC
+pAPOC
+```
+
+Implemented tests in `tests/test_stage5_apoc_levels.py` (40 tests):
+
+- disabled returns empty DataFrame (no validation),
+- disabled accepts naive timestamps and unsupported instruments,
+- `compute_all_levels` with `apoc_enabled=False` produces no APOC columns,
+- enabled returns exactly `APOC` and `pAPOC`,
+- `compute_all_levels(single_prints_enabled=True, apoc_enabled=True)` → six independent columns,
+- APOC is NaN before A-period completion,
+- APOC appears at/after A-period completion,
+- APOC equals expected profile POC using the existing profile approximation,
+- later RTH bars do not change APOC (frozen),
+- zero-volume A-period → NaN,
+- missing A-period → NaN,
+- session 2 pAPOC equals session 1 APOC,
+- pAPOC appears from session 2 RTH open,
+- pAPOC remains frozen through session 2,
+- no prior session → pAPOC is NaN,
+- prior session has no valid APOC → pAPOC is NaN,
+- ETH bars do not contribute to APOC,
+- non-RTH bars emit NaN for both columns,
+- session column derived from instrument config when absent,
+- tie-breaking: lowest-price bin wins for equal-volume bins,
+- future-shock: appending future current-session bars does not alter prior APOC,
+- future-shock: appending next-session bars does not alter prior pAPOC,
+- existing level outputs unchanged when `apoc_enabled=False`,
+- Single Print outputs unchanged when `apoc_enabled=True`,
+- no APOC columns without explicit enable,
+- `compute_tpo_levels(single_prints_enabled=True)` unchanged,
+- `compute_tpo_levels(apoc_enabled=True)` raises `ValueError`,
+- naive timestamp raises ValueError,
+- unsupported instrument raises ValueError,
+- NQ supported,
+- module exported correctly.
+
+Known limitations:
+
+- Not true volume-at-price (bar-level typical-price approximation).
+- Not full-session POC (A-period only: first 30-minute bracket).
+- Not Single Print-derived.
+- Approximation matches `profile.py` MVP; upgrading to tick data would not introduce lookahead.
 
 Acceptance criteria:
 
 - APOC never appears before the first RTH 30-minute bracket is complete.
 - pAPOC is stable throughout the next session.
 - No full-session lookahead is used.
+- APOC/pAPOC are independent of Single Prints.
+- ETH bars do not contribute.
 
 ---
 
@@ -523,50 +609,25 @@ Acceptance criteria:
 
 ---
 
-## Recommended PR Breakdown
+## Actual Implementation Order
 
-### PR 1 — Pivots + dVWAP
+The stages were implemented in the following order (differs from the original
+PR breakdown, which was a planning artefact and is no longer maintained):
 
-Scope:
+```
+Stage 1 — Level plumbing / stubs (PR #68)
+Stage 2 — Pivots (PR #69)
+Stage 3 — Developing session VWAP (dVWAP_RTH)
+Stage 4 — Single Prints (TPO 30m, four scalar columns)
+Stage 5 — APOC / pAPOC (profile-based, A-period POC)
+Stage 6 — UI and Persistence (pending)
+Stage 7 — Documentation (ongoing)
+```
 
-- Add confirmed pivots.
-- Add `dVWAP_RTH`.
-- Add UI toggles.
-- Add tests and documentation for these two families.
-
-Reason:
-
-- These are lower-risk, scalar, causal level additions.
-- They can be validated independently without touching TPO complexity.
-
----
-
-### PR 2 — APOC / pAPOC
-
-Scope:
-
-- Add APOC and pAPOC.
-- Reuse existing profile/POC logic where possible.
-- Add A-period availability tests and documentation.
-
-Reason:
-
-- APOC is profile-adjacent but still scalar and relatively contained.
-
----
-
-### PR 3 — Single Prints
-
-Scope:
-
-- Add scalar Single Print outputs.
-- Add TPO/tick-size binning logic.
-- Add developing and prior-session variants.
-- Add extensive point-in-time tests and documentation.
-
-Reason:
-
-- This is the highest architectural-risk feature and should be isolated.
+**Architectural note:** APOC/pAPOC (Stage 5) were implemented after Single Prints
+(Stage 4).  The original PR breakdown listed APOC before Single Prints; this was a
+planning artefact.  APOC/pAPOC are profile/POC levels (implemented in `apoc.py`),
+not Single Print levels.  They are independent of `tpo.py`.
 
 ---
 
