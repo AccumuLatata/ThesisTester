@@ -157,9 +157,8 @@ Report and research artifact schema: no standalone schema version constant exist
 
 - Baseline test file: `tests/test_otf_baseline.py`
 - Focused OTF verification: **223 passed in 0.86s** (`python3 -m pytest tests/test_loader.py tests/test_otf_contract.py tests/test_otf_baseline.py -q`)
-- Full-suite regression verification: **1106 passed in 23.20s** (`python3 -m pytest tests/ -q`)
+- Full-suite regression verification: **1106 passed in 23.22s** (`python3 -m pytest tests/ -q`)
 - Baseline fixture file: `tests/fixtures/otf_fixtures.py`
-- Schema version source: `thesistester/persistence/local_store.py`
 - Related PR: PR 1 — OTF specification and deterministic fixtures
 
 ## Phase 1 — Finalize the OTF contract
@@ -207,7 +206,7 @@ Report and research artifact schema: no standalone schema version constant exist
 - Contract test file: `tests/test_otf_contract.py`
 - Direct actual-resampler drift guard: `TestLookaheadSafety.test_actual_resample_5m_uses_close_timestamp_for_otf_availability`
 - Focused verification command/result: `python3 -m pytest tests/test_loader.py tests/test_otf_contract.py tests/test_otf_baseline.py -q` → **223 passed in 0.86s**
-- Full-suite verification command/result: `python3 -m pytest tests/ -q` → **1106 passed in 23.20s**
+- Full-suite verification command/result: `python3 -m pytest tests/ -q` → **1106 passed in 23.22s**
 - OHLCV fixture file: `tests/fixtures/otf_fixtures.py`
 - Resample helper implementation: `thesistester/data/resample.py`
 - Focused helper regression tests: `tests/test_loader.py`

@@ -793,6 +793,7 @@ class TestLookaheadSafety:
 
     def test_actual_resample_5m_uses_close_timestamp_for_otf_availability(self) -> None:
         """Actual 5m resampler output must use bar close, not row label, for OTF availability."""
+        bar_duration = pd.Timedelta(minutes=5)
         expected_labels = [
             pd.Timestamp(interval["bar_start_timestamp"], tz=TZ)
             for interval in OTF_LOOKAHEAD_SAFETY["htf_intervals"]
@@ -804,7 +805,7 @@ class TestLookaheadSafety:
         assert resampled["timestamp"].tolist() == expected_labels
 
         resampled["bar_close_timestamp"] = (
-            resampled["timestamp"] + pd.Timedelta(minutes=5)
+            resampled["timestamp"] + bar_duration
         )
         resampled["availability_timestamp"] = resampled["bar_close_timestamp"]
 
