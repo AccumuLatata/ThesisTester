@@ -358,29 +358,37 @@ OTF_INSUFFICIENT_HISTORY: dict = {
 # ---------------------------------------------------------------------------
 # Scenario 10 — Session Boundary (up sequence does NOT carry across sessions)
 #
-# Rule (§3.10): At each new session boundary up_run and down_run reset to 0
-# and state resets to "unknown".  OTF state does NOT carry across sessions
-# in v1 (session_reset=True).
+# Rule (§3.10): At each new trading-session boundary up_run and down_run reset
+# to 0 and state resets to "unknown".  OTF state does NOT carry across
+# trading sessions in v1 (session_reset=True).
 #
-# Session 1 (09:30 bars, 2026-01-05):
+# "Session boundary" is determined by trading_session_date() using the
+# instrument's exchange_tz and eth_start.  For ES/NQ futures:
+#   eth_start = "18:00" (America/New_York)
+#
+# Session 1 (09:30 bars, 2026-01-05, trading_session_date 2026-01-05):
 #   bars 0–3: establish OTF up
-# Session 2 (09:30 bars, 2026-01-06):
+# Session 2 (09:30 bars, 2026-01-06, trading_session_date 2026-01-06):
 #   bar 4 (first bar of new session): state = "unknown", up_run = 0
 #   bar 5: up_run begins building from 0
 # ---------------------------------------------------------------------------
 
 OTF_SESSION_BOUNDARY: dict = {
     "scenario": "session_boundary",
-    "description": "OTF up from session 1 does not carry into session 2; resets to unknown.",
+    "description": (
+        "OTF up from session 1 does not carry into session 2; resets to unknown. "
+        "trading_session_date changes from 2026-01-05 to 2026-01-06 when a new "
+        "RTH bar (09:30 ET) appears on the next calendar day."
+    ),
     "minimum_consecutive_bars": DEFAULT_MINIMUM_CONSECUTIVE_BARS,
     "session_reset": True,
     "bars": [
-        # --- Session 1: 2026-01-05 ---
+        # --- Session 1: trading_session_date 2026-01-05 (RTH bars) ---
         _bar("2026-01-05 09:30", 100.0, 101.0, 99.0,  100.5),  # bar 0: anchor s1
         _bar("2026-01-05 09:35", 100.5, 102.0, 99.5,  101.5),  # bar 1: up_run=1
         _bar("2026-01-05 09:40", 101.5, 103.0, 100.0, 102.5),  # bar 2: up_run=2
         _bar("2026-01-05 09:45", 102.5, 104.0, 100.5, 103.5),  # bar 3: up_run=3 → up
-        # --- Session 2: 2026-01-06 (new day) ---
+        # --- Session 2: trading_session_date 2026-01-06 (new day) ---
         _bar("2026-01-06 09:30", 103.5, 105.0, 101.0, 104.5),  # bar 4: first bar → unknown
         _bar("2026-01-06 09:35", 104.5, 106.0, 101.5, 105.5),  # bar 5: up_run=1
     ],
@@ -449,25 +457,62 @@ OTF_LOOKAHEAD_SAFETY: dict = {
     "source_interval": "1m",
     "target_timeframe": "5m",
     "bars": OTF_LOOKAHEAD_SOURCE_BARS,
+    # Explicit HTF interval definitions (see docs/otf-filter.md §6.1).
+    # bar_start_timestamp  = pandas resampled row label (left-labeled bucket start)
+    # bar_close_timestamp  = bar_start_timestamp + 5 minutes
+    # availability_timestamp = bar_close_timestamp  (bar available after close)
+    # IMPORTANT: the resampled row label is NOT the availability timestamp.
+    "htf_intervals": [
+        {
+            "bar_label": "5m_bar_A",
+            "bar_start_timestamp": "2026-01-05 09:20",
+            "bar_close_timestamp": "2026-01-05 09:25",
+            "availability_timestamp": "2026-01-05 09:25",
+            "resampled_row_label": "2026-01-05 09:20",
+            "note": "Resampled row label (09:20) != availability (09:25)",
+        },
+        {
+            "bar_label": "5m_bar_B",
+            "bar_start_timestamp": "2026-01-05 09:25",
+            "bar_close_timestamp": "2026-01-05 09:30",
+            "availability_timestamp": "2026-01-05 09:30",
+            "resampled_row_label": "2026-01-05 09:25",
+            "note": "Resampled row label (09:25) != availability (09:30)",
+        },
+        {
+            "bar_label": "5m_bar_C",
+            "bar_start_timestamp": "2026-01-05 09:30",
+            "bar_close_timestamp": "2026-01-05 09:35",
+            "availability_timestamp": "2026-01-05 09:35",
+            "resampled_row_label": "2026-01-05 09:30",
+            "note": "In-progress bar: final high/low unknown until 09:35; resampled row label (09:30) != availability (09:35)",
+        },
+    ],
     # Key contract assertions for look-ahead safety:
     "lookahead_vectors": [
         {
             "signal_timestamp": "2026-01-05 09:31",  # during 5m bar C
+            "last_completed_5m_bar_start": "2026-01-05 09:25",
             "last_completed_5m_close_time": "2026-01-05 09:30",
+            "in_progress_5m_bar_start": "2026-01-05 09:30",
             "in_progress_5m_close_time": "2026-01-05 09:35",
             "must_not_use_bar_C_high": True,
             "must_not_use_bar_C_low": True,
         },
         {
             "signal_timestamp": "2026-01-05 09:33",
+            "last_completed_5m_bar_start": "2026-01-05 09:25",
             "last_completed_5m_close_time": "2026-01-05 09:30",
+            "in_progress_5m_bar_start": "2026-01-05 09:30",
             "in_progress_5m_close_time": "2026-01-05 09:35",
             "must_not_use_bar_C_high": True,
             "must_not_use_bar_C_low": True,
         },
         {
             "signal_timestamp": "2026-01-05 09:35",  # exactly at 5m close
+            "last_completed_5m_bar_start": "2026-01-05 09:30",
             "last_completed_5m_close_time": "2026-01-05 09:35",
+            "in_progress_5m_bar_start": "2026-01-05 09:35",
             "in_progress_5m_close_time": "2026-01-05 09:40",
             "must_not_use_bar_C_high": False,  # bar C is now complete at 09:35
             "must_not_use_bar_C_low": False,
@@ -578,6 +623,80 @@ OTF_ALL_TIMEFRAME_ALIGNMENT: dict = {
 }
 
 
+
+# ---------------------------------------------------------------------------
+# Scenario 14 — Overnight Futures Session (midnight is NOT a session boundary)
+#
+# Rule (§3.10): Session boundaries are determined by trading_session_date()
+# from thesistester/levels/session_date.py, applied in the instrument's
+# exchange-local timezone using the configured eth_start.
+#
+# For ES/NQ futures (eth_start = "18:00", exchange_tz = "America/New_York"):
+#   - A bar at or after 18:00 ET on day D belongs to the session for day D+1.
+#   - A bar before 18:00 ET on day D belongs to the session for day D.
+#   - MIDNIGHT (00:00 ET) IS NOT a session boundary.
+#
+# This fixture demonstrates that an OTF sequence continues across midnight
+# without resetting, and that the TRUE session boundary at 18:00 ET is where
+# the reset occurs.
+#
+# Bars and their trading_session_date (eth_start="18:00", tz="America/New_York"):
+#   bar 0: 2026-01-05 22:00 ET  → base 2026-01-05, time>=18:00 → session 2026-01-06
+#   bar 1: 2026-01-05 23:00 ET  → base 2026-01-05, time>=18:00 → session 2026-01-06
+#   bar 2: 2026-01-06 00:00 ET  → base 2026-01-06, time<18:00  → session 2026-01-06 ← midnight crossed
+#   bar 3: 2026-01-06 00:30 ET  → base 2026-01-06, time<18:00  → session 2026-01-06
+#   bar 4: 2026-01-06 18:00 ET  → base 2026-01-06, time>=18:00 → session 2026-01-07 ← reset
+#
+# OTF state:
+#   bar 0: anchor → unknown
+#   bar 1: L(1)=99.5 > L(0)=99.0 → up_run=1, neutral
+#   bar 2: L(2)=100.0 > L(1)=99.5 → up_run=2, neutral  (midnight crossed; same session)
+#   bar 3: L(3)=100.5 > L(2)=100.0 → up_run=3, UP      (still session 2026-01-06)
+#   bar 4: session 2026-01-07 → reset → unknown
+# ---------------------------------------------------------------------------
+
+OTF_OVERNIGHT_SESSION: dict = {
+    "scenario": "overnight_session",
+    "description": (
+        "ES futures overnight session spanning midnight. "
+        "eth_start='18:00' ET means bars at 22:00 and 23:00 Monday ET and "
+        "at 00:00 and 00:30 Tuesday ET all belong to trading_session_date=2026-01-06 (Tuesday). "
+        "Midnight (00:00 ET) is NOT a session boundary. "
+        "The OTF up sequence continues across midnight without resetting. "
+        "The true session boundary at 18:00 ET Tuesday resets state to unknown."
+    ),
+    "instrument": "ES",
+    "eth_start": "18:00",
+    "exchange_tz": "America/New_York",
+    "minimum_consecutive_bars": DEFAULT_MINIMUM_CONSECUTIVE_BARS,
+    "session_reset": True,
+    "bars": [
+        # --- trading_session_date 2026-01-06 (Tuesday) ---
+        # Monday 2026-01-05 22:00 ET: time=22:00 >= 18:00 → session 2026-01-06
+        _bar("2026-01-05 22:00", 100.0, 101.0, 99.0,  100.5),  # bar 0: anchor
+        # Monday 2026-01-05 23:00 ET: time=23:00 >= 18:00 → session 2026-01-06
+        _bar("2026-01-05 23:00", 100.5, 102.0, 99.5,  101.5),  # bar 1
+        # Tuesday 2026-01-06 00:00 ET: MIDNIGHT; time=00:00 < 18:00 → session 2026-01-06 (unchanged)
+        _bar("2026-01-06 00:00", 101.5, 103.0, 100.0, 102.5),  # bar 2 ← midnight, same session
+        # Tuesday 2026-01-06 00:30 ET: time=00:30 < 18:00 → session 2026-01-06
+        _bar("2026-01-06 00:30", 102.5, 104.0, 100.5, 103.5),  # bar 3 → up
+        # --- trading_session_date 2026-01-07 (Wednesday) — session boundary ---
+        # Tuesday 2026-01-06 18:00 ET: time=18:00 >= 18:00 → session 2026-01-07 ← reset
+        _bar("2026-01-06 18:00", 103.5, 105.0, 101.0, 104.5),  # bar 4: first bar of new session
+    ],
+    "expected_states": [
+        # Session 2026-01-06 (Tuesday)
+        {"bar_index": 0, "state": "unknown", "up_run": 0, "down_run": 0, "trading_session_date": "2026-01-06"},
+        {"bar_index": 1, "state": "neutral", "up_run": 1, "down_run": 0, "trading_session_date": "2026-01-06"},
+        # bar 2: midnight has passed, but trading_session_date is still 2026-01-06 → no reset
+        {"bar_index": 2, "state": "neutral", "up_run": 2, "down_run": 0, "trading_session_date": "2026-01-06"},
+        {"bar_index": 3, "state": "up",      "up_run": 3, "down_run": 0, "trading_session_date": "2026-01-06"},
+        # Session 2026-01-07 (Wednesday) — reset at 18:00 ET Tuesday
+        {"bar_index": 4, "state": "unknown", "up_run": 0, "down_run": 0, "trading_session_date": "2026-01-07"},
+    ],
+}
+
+
 # ---------------------------------------------------------------------------
 # Registry of all scenarios for iteration in tests
 # ---------------------------------------------------------------------------
@@ -593,6 +712,7 @@ ALL_OHLCV_SCENARIOS: dict[str, dict] = {
     "equal_high":           OTF_EQUAL_HIGH,
     "insufficient_history": OTF_INSUFFICIENT_HISTORY,
     "session_boundary":     OTF_SESSION_BOUNDARY,
+    "overnight_session":    OTF_OVERNIGHT_SESSION,
 }
 
 ALL_VECTOR_SCENARIOS: dict[str, dict] = {

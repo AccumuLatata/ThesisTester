@@ -144,7 +144,7 @@ Rationale: equal extremes indicate stalled directional momentum, not continuatio
 
 ### §3.10 — Session reset
 
-OTF state resets at every session boundary.  The state from the previous session does **not** carry forward.
+OTF state resets at every trading-session boundary.  The state from the previous trading session does **not** carry forward.
 
 ```
 on_new_session():
@@ -154,7 +154,30 @@ on_new_session():
     prev_bar = None
 ```
 
-Session boundaries are determined by the `session_timezone` configuration parameter, which defaults to the exchange's primary timezone (`America/New_York` for US equity-index futures).
+**Trading-session date convention**
+
+Session boundaries are determined using `thesistester/levels/session_date.py::trading_session_date(local_ts, eth_start)`, the canonical ThesisTester session-date helper, applied in the instrument's exchange-local timezone (`exchange_tz`, default `America/New_York`).
+
+For instruments with a configured `eth_start` (e.g., ES and NQ futures with `eth_start = "18:00"`):
+
+- A bar whose exchange-local time is **at or after** `eth_start` belongs to the **next calendar date's** trading session (e.g., Monday 22:00 ET belongs to Tuesday's trading session).
+- A bar whose exchange-local time is **before** `eth_start` belongs to the **same calendar date's** trading session (e.g., Tuesday 00:30 ET also belongs to Tuesday's trading session).
+- **Midnight is not a trading-session boundary.** A futures session started at 18:00 ET on Monday evening continues through midnight and into Tuesday morning without resetting OTF state.
+- The true session boundary occurs at `eth_start` on the next trading day (e.g., 18:00 ET on Tuesday marks the start of Wednesday's session).
+
+The `trading_session_date` for a bar is the date label produced by the `trading_session_date()` helper, not the calendar date of the bar's UTC or local timestamp.
+
+**Example (ES futures, eth_start = "18:00", exchange_tz = "America/New_York")**
+
+| Bar timestamp (ET) | Calendar date | `trading_session_date` |
+|---|---|---|
+| 2026-01-05 22:00 (Mon) | 2026-01-05 | 2026-01-06 (Tue) |
+| 2026-01-05 23:00 (Mon) | 2026-01-05 | 2026-01-06 (Tue) |
+| 2026-01-06 00:00 (Tue) | 2026-01-06 | 2026-01-06 (Tue) |
+| 2026-01-06 00:30 (Tue) | 2026-01-06 | 2026-01-06 (Tue) |
+| 2026-01-06 18:00 (Tue) | 2026-01-06 | 2026-01-07 (Wed) ← boundary |
+
+OTF state is continuous across midnight (bars at 22:00 Mon through 00:30 Tue are all in the Tuesday session).  The session boundary and OTF reset occur at 18:00 ET on Tuesday.
 
 Session carry (preserving state across sessions) is not supported in v1.
 
@@ -179,10 +202,10 @@ Session carry (preserving state across sessions) is not supported in v1.
 | `enabled` | bool | `False` | When `False`, no OTF filtering is applied and existing behavior is unchanged. |
 | `timeframes` | list[str] | `[]` | Selected OTF timeframes.  Must be a subset of `{"5m", "15m", "30m"}`. |
 | `alignment_mode` | str | `"all"` | How multiple timeframes are combined.  Only `"all"` is supported in v1. |
-| `minimum_consecutive_bars` | int | `3` | Minimum number of consecutive qualifying bars to establish a directional state. |
+| `minimum_consecutive_bars` | int | `3` | Number of consecutive qualifying bar comparisons required to establish a directional state.  With the default of 3, the state first becomes directional at the 4th bar of a session (one anchor bar plus three subsequent qualifying comparisons). |
 | `directional` | bool | `True` | Whether the filter is direction-aware (long requires OTF up; short requires OTF down). |
 | `use_completed_bars_only` | bool | `True` | Must be `True`.  Use only completed higher-timeframe bars to prevent look-ahead bias. |
-| `session_reset` | str | `"session"` | Session-boundary behavior.  Only `"session"` (reset at each session) is supported in v1. |
+| `session_reset` | str | `"session"` | Session-boundary behavior.  Only `"session"` (reset at each trading-session boundary) is supported in v1. |
 
 ---
 
@@ -196,7 +219,7 @@ v1 supports exactly three higher-timeframe intervals:
 | `15m` | :00, :15, :30, :45 | 4 bars per hour |
 | `30m` | :00, :30 | 2 bars per hour |
 
-The source data must be at a granularity finer than the target timeframe (e.g., 1-minute bars for 5m OTF).  Resampling must use only bars that have closed at or before the signal decision timestamp.
+The source data must be at a granularity **strictly finer** than the target timeframe (e.g., 1-minute bars for 5m OTF).  Using a source interval equal to the target timeframe produces no resampling and is not supported by OTF v1.  The production engine in PR 2 must validate that the source interval is strictly finer than each selected OTF timeframe.  Resampling must use only bars that have closed at or before the signal decision timestamp.
 
 ---
 
@@ -204,21 +227,37 @@ The source data must be at a granularity finer than the target timeframe (e.g., 
 
 This is the most critical correctness constraint of the OTF implementation.
 
-### §6.1 — Rule
+### §6.1 — Timestamp definitions
 
-For a signal at timestamp T, the OTF engine may use only completed higher-timeframe bars whose close time is **at or before** T:
+Three distinct timestamps govern every higher-timeframe bar:
+
+| Term | Definition |
+|---|---|
+| `bar_start_timestamp` | The timestamp of the first source-interval bar included in the resampled HTF bar.  This is also the **row label** produced by `pandas.DataFrame.resample()` (which uses left-labeled, left-closed buckets by default). |
+| `bar_close_timestamp` | `bar_start_timestamp + timeframe_duration`.  This is when the bar is fully formed and its OHLCV values are final. |
+| `availability_timestamp` | Equal to `bar_close_timestamp`.  A bar is available for OTF evaluation only after it has closed. |
+
+**Critical:** The resampled row label (`bar_start_timestamp`) must never be interpreted as proof that the bar was available at that label.  A production engine must calculate `bar_close_timestamp = bar_start_timestamp + timeframe_duration` to determine availability.
+
+**PR 2 timestamp approach:** The production OTF engine will preserve the pandas start-label convention while adding an explicit `bar_close_timestamp` (and equivalently `availability_timestamp`) column derived by adding the timeframe duration to each row label.  This preserves compatibility with existing ThesisTester resampling output and makes availability unambiguous.
+
+### §6.2 — Rule
+
+For a signal at timestamp T, the OTF engine may use only completed higher-timeframe bars whose `availability_timestamp` is **at or before** T:
 
 ```
-available_bars = {bar : bar.close_time <= T}
+available_bars = {bar : bar.availability_timestamp <= T}
+                ≡ {bar : bar.bar_close_timestamp <= T}
+                ≡ {bar : bar.bar_start_timestamp + timeframe_duration <= T}
 ```
 
-The in-progress higher-timeframe bar (whose close time is after T) must not be used.  Its eventual high or low is not known at time T, and using it constitutes look-ahead bias.
+The in-progress higher-timeframe bar (whose `bar_close_timestamp` is after T) must not be used.  Its eventual high or low is not known at time T, and using it constitutes look-ahead bias.
 
-### §6.2 — Boundary behavior
+### §6.3 — Boundary behavior
 
-A higher-timeframe bar that closes exactly at T (i.e., `bar.close_time == T`) is available for signals at T.
+A higher-timeframe bar that closes exactly at T (i.e., `bar.bar_close_timestamp == T`) is available for signals at T.
 
-### §6.3 — Signal decision timestamps
+### §6.4 — Signal decision timestamps
 
 | Signal type | Decision timestamp T |
 |---|---|
@@ -228,25 +267,41 @@ A higher-timeframe bar that closes exactly at T (i.e., `bar.close_time == T`) is
 | `reclaim` | Close of the signal bar |
 | `3c` | Close of the confirmation (third) bar |
 
-### §6.4 — Example
+The OTF decision must occur at the signal decision timestamp T, not at trade entry time.
 
-Given a signal at 09:33 and 5-minute OTF:
+### §6.5 — Bucket semantics
 
-- The 5m bar covering 09:25–09:30 closed at 09:30 ≤ 09:33 → **available**.
-- The 5m bar covering 09:30–09:35 closes at 09:35 > 09:33 → **not available**.
+Resampled HTF bars use left-closed, left-labeled buckets.  Bucket boundaries for the supported timeframes are aligned to UTC-midnight clock boundaries (pandas default), which coincides with clean :05/:15/:30 boundaries in practice.
+
+| Timeframe | Example bucket | `bar_start_timestamp` | `bar_close_timestamp` | Availability |
+|---|---|---|---|---|
+| `5m` | 09:25–09:30 | 09:25 | 09:30 | signal T ≥ 09:30 |
+| `15m` | 09:15–09:30 | 09:15 | 09:30 | signal T ≥ 09:30 |
+| `30m` | 09:00–09:30 | 09:00 | 09:30 | signal T ≥ 09:30 |
+
+Partial first bucket of a trading session: if the session's first source bar does not land on a bucket boundary, the first resampled bucket is a partial bucket.  Whether partial first buckets are retained or discarded is deferred to PR 2.  For clarity, the lookahead fixture uses source bars that start on a clean bucket boundary.
+
+### §6.6 — Example
+
+Given a signal at 09:33 and 5-minute OTF (source: 1-minute bars):
+
+- The 5m bucket starting at 09:25 has `bar_close_timestamp = 09:30 ≤ 09:33` → **available**.
+- The 5m bucket starting at 09:30 has `bar_close_timestamp = 09:35 > 09:33` → **not available** (in progress).
+- The resampled row label "09:30" does NOT indicate the bar was available at 09:30; availability is at 09:35.
 - The eventual high of the 09:30–09:35 bar is not yet known at 09:33.
 
-The OTF state for the signal at 09:33 is computed using the completed 5m bar whose close time is 09:30, not the in-progress bar.
+The OTF state for the signal at 09:33 is computed using the completed 5m bar with `bar_start_timestamp = 09:25` and `bar_close_timestamp = 09:30`, not the in-progress bar.
 
 ---
 
 ## §7 — Timezone and session alignment
 
 - All timestamps must be timezone-aware.
-- The session timezone defaults to `America/New_York`.
-- Session boundaries are computed in the session timezone.
-- A bar from 16:59 ET is in a different session than a bar from 09:30 ET the following day.
-- Resampling to 5m, 15m, or 30m must be aligned to session-local clock boundaries, not UTC.
+- The exchange-local timezone is the instrument's `exchange_tz` property (default `America/New_York` for ES/NQ futures).
+- Trading-session boundaries are computed using `trading_session_date(local_ts, eth_start)` from `thesistester/levels/session_date.py`, applied in the exchange-local timezone.
+- For futures instruments with a configured `eth_start` (e.g., `"18:00"` for ES/NQ), the session begins in the evening of the prior calendar day.  A bar timestamped 22:00 ET on Monday and a bar timestamped 00:30 ET on Tuesday both belong to Tuesday's trading session.
+- Midnight (00:00 ET) is not a trading-session boundary for futures instruments with `eth_start` set.
+- Resampling to 5m, 15m, or 30m must be aligned to session-local clock boundaries, not UTC.  For instruments with `eth_start = "18:00"` ET (= 23:00 UTC), the first 5m bucket of a trading session starts at 23:00 UTC.
 
 ---
 
@@ -348,11 +403,14 @@ The contract version identifier (`v1`) is used in fixture files and this documen
 | Alignment mode | `all` only in v1 | Conservative directional confirmation; `any` and hierarchical deferred |
 | Default enabled state | Disabled | Preserves legacy behavior |
 | Completed bars only | Required | Prevents look-ahead bias |
-| Minimum sequence length | 3 bars (configurable) | Initial default; subject to statistical validation in Phase 10 |
+| Minimum sequence length | 3 qualifying comparisons (configurable) | Initial default; subject to statistical validation in Phase 10 |
 | Equal-high/equal-low | Strict inequality; break the sequence | Consistent with market-profile convention; avoids ambiguity |
 | Insufficient history | Return `unknown` | `neutral` would imply an evaluation was made; `unknown` is more accurate |
-| Session reset | Reset at each session | Session carry introduces subtle look-ahead risk when prior-session extremes are not yet tested |
+| Session reset | Reset at each trading-session boundary using `trading_session_date()` | Session carry introduces subtle look-ahead risk when prior-session extremes are not yet tested |
+| Futures session boundary | `eth_start` (e.g., 18:00 ET for ES/NQ); midnight is NOT a boundary | Matches ThesisTester's existing instrument-aware session model in `thesistester/levels/session_date.py` |
 | 5m as entry confirmation | Out of scope for v1 filter logic | Covered by existing trigger timeframe infrastructure |
+| HTF bar timestamp labeling | PR 2 will add explicit `bar_close_timestamp` alongside pandas start labels | Preserves existing resampling convention while making availability unambiguous |
+| Equal source/target interval | Not supported in OTF v1; source must be strictly finer | Resampling equal intervals produces no useful higher-timeframe information; PR 2 must validate |
 
 ---
 

@@ -37,6 +37,7 @@ from tests.fixtures.otf_fixtures import (
     OTF_INSUFFICIENT_HISTORY,
     OTF_LOOKAHEAD_SAFETY,
     OTF_NEUTRAL,
+    OTF_OVERNIGHT_SESSION,
     OTF_REVERSAL_UP_TO_DOWN,
     OTF_SEQUENCE_BREAK_DOWN,
     OTF_SEQUENCE_BREAK_UP,
@@ -47,6 +48,8 @@ from tests.fixtures.otf_fixtures import (
     VALID_STATES,
     _bars_to_df,
 )
+
+from thesistester.levels.session_date import trading_session_date
 
 
 # ---------------------------------------------------------------------------
@@ -538,6 +541,139 @@ class TestSessionBoundary:
 
 
 # ---------------------------------------------------------------------------
+# Section 10b — Overnight Session (§3.10 — futures eth_start convention)
+# ---------------------------------------------------------------------------
+
+
+class TestOvernightSession:
+    """Verify that midnight does not reset OTF state for futures instruments.
+
+    ThesisTester uses trading_session_date(local_ts, eth_start) from
+    thesistester/levels/session_date.py to determine session boundaries.
+    For ES/NQ futures (eth_start='18:00', exchange_tz='America/New_York'),
+    the session boundary is at 18:00 ET, NOT at midnight.
+
+    These tests use the production trading_session_date() function directly
+    to verify that the fixture's expected_states match the repository's
+    session-date convention.  This is fixture-verification only; no
+    competing session algorithm is implemented here.
+    """
+
+    def test_bars_span_midnight(self) -> None:
+        """Overnight fixture must include bars before and after midnight ET."""
+        bars = OTF_OVERNIGHT_SESSION["bars"]
+        timestamps_et = [b["timestamp"].tz_convert("America/New_York") for b in bars]
+        dates = [ts.date() for ts in timestamps_et]
+        # bars 0–1 are on 2026-01-05 (Monday), bars 2–4 are on 2026-01-06 (Tuesday)
+        assert any(d.isoformat() == "2026-01-05" for d in dates), (
+            "Overnight fixture must have bars on 2026-01-05 (Monday evening)"
+        )
+        assert any(d.isoformat() == "2026-01-06" for d in dates), (
+            "Overnight fixture must have bars on 2026-01-06 (after midnight)"
+        )
+
+    def test_midnight_does_not_reset_state(self) -> None:
+        """Bar 2 (00:00 ET, after midnight) must NOT reset OTF state.
+
+        Bar 2 is at 2026-01-06 00:00 ET which is after midnight but still
+        within the Tuesday trading session.  The expected state is 'neutral'
+        (not 'unknown'), confirming that midnight is not a session boundary.
+        """
+        s = OTF_OVERNIGHT_SESSION["expected_states"]
+        bar_2 = s[2]
+        # Bar 2 is the midnight bar
+        bars = OTF_OVERNIGHT_SESSION["bars"]
+        ts_et = bars[2]["timestamp"].tz_convert("America/New_York")
+        assert ts_et.hour == 0 and ts_et.minute == 0, (
+            f"Test setup: bar 2 should be at 00:00 ET, got {ts_et}"
+        )
+        assert bar_2["state"] != "unknown", (
+            "Midnight bar (00:00 ET) must not produce 'unknown' state — "
+            "midnight is not a session boundary for ES/NQ futures"
+        )
+        assert bar_2["state"] == "neutral", (
+            f"Midnight bar must continue OTF sequence as 'neutral', got {bar_2['state']!r}"
+        )
+        assert bar_2["up_run"] == 2, (
+            f"up_run must continue across midnight (expected 2), got {bar_2['up_run']}"
+        )
+
+    def test_session_boundary_at_1800_resets_state(self) -> None:
+        """Bar 4 (18:00 ET Tuesday) is the true session boundary; state must reset to 'unknown'."""
+        bars = OTF_OVERNIGHT_SESSION["bars"]
+        s = OTF_OVERNIGHT_SESSION["expected_states"]
+        bar_4 = s[4]
+        ts_et = bars[4]["timestamp"].tz_convert("America/New_York")
+        assert ts_et.hour == 18 and ts_et.minute == 0, (
+            f"Test setup: bar 4 should be at 18:00 ET, got {ts_et}"
+        )
+        assert bar_4["state"] == "unknown", (
+            "Bar at 18:00 ET (eth_start boundary) must reset OTF state to 'unknown'"
+        )
+        assert bar_4["up_run"] == 0, (
+            f"up_run must be 0 after session reset, got {bar_4['up_run']}"
+        )
+        assert bar_4["down_run"] == 0, (
+            f"down_run must be 0 after session reset, got {bar_4['down_run']}"
+        )
+
+    def test_fixture_uses_exchange_local_timestamps(self) -> None:
+        """All overnight fixture bars must use timezone-aware timestamps in America/New_York."""
+        bars = OTF_OVERNIGHT_SESSION["bars"]
+        for i, bar in enumerate(bars):
+            ts = bar["timestamp"]
+            assert ts.tzinfo is not None, f"Bar {i} timestamp must be timezone-aware"
+            ts_et = ts.tz_convert("America/New_York")
+            assert str(ts_et.tz) == "America/New_York", (
+                f"Bar {i} should be representable in America/New_York"
+            )
+
+    def test_session_assignment_matches_trading_session_date(self) -> None:
+        """Expected trading_session_date values must match the production helper.
+
+        This verifies the fixture against thesistester/levels/session_date.py::
+        trading_session_date().  It does not reimplement session logic; it
+        calls the production function directly.
+        """
+        bars = OTF_OVERNIGHT_SESSION["bars"]
+        eth_start = OTF_OVERNIGHT_SESSION["eth_start"]
+        exchange_tz = OTF_OVERNIGHT_SESSION["exchange_tz"]
+
+        timestamps_et = pd.Series(
+            [b["timestamp"].tz_convert(exchange_tz) for b in bars]
+        )
+        computed_dates = trading_session_date(timestamps_et, eth_start)
+
+        expected = OTF_OVERNIGHT_SESSION["expected_states"]
+        for i, (computed, vec) in enumerate(zip(computed_dates, expected)):
+            expected_date = vec["trading_session_date"]
+            assert str(computed) == expected_date, (
+                f"Bar {i}: production trading_session_date={computed!r} "
+                f"does not match fixture expected_states trading_session_date={expected_date!r}"
+            )
+
+    def test_all_pre_boundary_bars_share_session_date(self) -> None:
+        """Bars 0–3 (before the 18:00 ET boundary) must all have the same trading_session_date."""
+        s = OTF_OVERNIGHT_SESSION["expected_states"]
+        dates = {vec["trading_session_date"] for vec in s[:4]}
+        assert len(dates) == 1, (
+            f"Bars 0–3 should all share one trading_session_date, got: {dates}"
+        )
+        assert "2026-01-06" in dates
+
+    def test_boundary_bar_has_different_session_date(self) -> None:
+        """Bar 4 (18:00 ET boundary) must have a different trading_session_date than bars 0–3."""
+        s = OTF_OVERNIGHT_SESSION["expected_states"]
+        pre_boundary_date = s[0]["trading_session_date"]
+        boundary_date = s[4]["trading_session_date"]
+        assert boundary_date != pre_boundary_date, (
+            f"Bar 4 should have a different trading_session_date ({boundary_date!r}) "
+            f"than bars 0–3 ({pre_boundary_date!r})"
+        )
+        assert boundary_date == "2026-01-07"
+
+
+# ---------------------------------------------------------------------------
 # Section 11 — Look-Ahead Safety (§3.11)
 # ---------------------------------------------------------------------------
 
@@ -613,6 +749,88 @@ class TestLookaheadSafety:
             "In-progress 5m bar should have a higher eventual high than its first "
             "1m bar, demonstrating look-ahead risk"
         )
+
+    def test_htf_intervals_present(self) -> None:
+        """The look-ahead fixture must define explicit HTF interval timestamps."""
+        assert "htf_intervals" in OTF_LOOKAHEAD_SAFETY
+        assert len(OTF_LOOKAHEAD_SAFETY["htf_intervals"]) == 3
+
+    def test_htf_interval_start_plus_duration_equals_close(self) -> None:
+        """bar_close_timestamp must equal bar_start_timestamp + 5 minutes for every interval."""
+        for interval in OTF_LOOKAHEAD_SAFETY["htf_intervals"]:
+            start = pd.Timestamp(interval["bar_start_timestamp"], tz=TZ)
+            close = pd.Timestamp(interval["bar_close_timestamp"], tz=TZ)
+            assert close == start + pd.Timedelta(minutes=5), (
+                f"Interval {interval['bar_label']}: "
+                f"bar_close_timestamp ({close}) != bar_start_timestamp ({start}) + 5min"
+            )
+
+    def test_availability_timestamp_equals_close_timestamp(self) -> None:
+        """availability_timestamp must equal bar_close_timestamp for every interval."""
+        for interval in OTF_LOOKAHEAD_SAFETY["htf_intervals"]:
+            close = pd.Timestamp(interval["bar_close_timestamp"], tz=TZ)
+            avail = pd.Timestamp(interval["availability_timestamp"], tz=TZ)
+            assert avail == close, (
+                f"Interval {interval['bar_label']}: "
+                f"availability_timestamp ({avail}) != bar_close_timestamp ({close})"
+            )
+
+    def test_resampled_row_label_is_start_not_close(self) -> None:
+        """Resampled row label must equal bar_start_timestamp, not bar_close_timestamp."""
+        for interval in OTF_LOOKAHEAD_SAFETY["htf_intervals"]:
+            label = pd.Timestamp(interval["resampled_row_label"], tz=TZ)
+            start = pd.Timestamp(interval["bar_start_timestamp"], tz=TZ)
+            close = pd.Timestamp(interval["bar_close_timestamp"], tz=TZ)
+            assert label == start, (
+                f"Interval {interval['bar_label']}: "
+                f"resampled_row_label ({label}) must equal bar_start_timestamp ({start})"
+            )
+            assert label != close, (
+                f"Interval {interval['bar_label']}: "
+                f"resampled_row_label ({label}) must NOT equal bar_close_timestamp ({close}) — "
+                "the row label cannot be used as the availability timestamp"
+            )
+
+    def test_signal_before_close_cannot_use_inprogress_bar(self) -> None:
+        """A signal strictly before bar_close_timestamp must not use that bar.
+
+        Confirms the rule: available_bars = {bar : availability_timestamp <= signal_T}
+        """
+        # Signal at 09:33 — bar C availability is 09:35 → not available
+        bar_c = next(
+            iv for iv in OTF_LOOKAHEAD_SAFETY["htf_intervals"]
+            if iv["bar_label"] == "5m_bar_C"
+        )
+        signal_ts = pd.Timestamp("2026-01-05 09:33", tz=TZ)
+        avail = pd.Timestamp(bar_c["availability_timestamp"], tz=TZ)
+        assert signal_ts < avail, (
+            f"Signal at {signal_ts} should be before bar C availability ({avail})"
+        )
+
+    def test_signal_at_exact_close_can_use_bar(self) -> None:
+        """A signal exactly at bar_close_timestamp can use that completed bar.
+
+        Confirms the boundary rule: bar.availability_timestamp == T is available.
+        """
+        bar_b = next(
+            iv for iv in OTF_LOOKAHEAD_SAFETY["htf_intervals"]
+            if iv["bar_label"] == "5m_bar_B"
+        )
+        # The third lookahead_vector has signal_timestamp = 09:35 (bar C availability)
+        signal_at_bar_b_close = pd.Timestamp("2026-01-05 09:30", tz=TZ)
+        avail_b = pd.Timestamp(bar_b["bar_close_timestamp"], tz=TZ)
+        assert signal_at_bar_b_close == avail_b, (
+            f"Signal exactly at bar B close ({signal_at_bar_b_close}) should == "
+            f"bar B availability ({avail_b})"
+        )
+
+    def test_vector_bar_start_timestamps_present(self) -> None:
+        """Each lookahead_vector must include last_completed_5m_bar_start."""
+        for vec in OTF_LOOKAHEAD_SAFETY["lookahead_vectors"]:
+            assert "last_completed_5m_bar_start" in vec, (
+                f"Vector for signal {vec['signal_timestamp']!r} missing "
+                "'last_completed_5m_bar_start'"
+            )
 
 
 # ---------------------------------------------------------------------------
