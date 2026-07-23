@@ -6,7 +6,7 @@ tests/test_otf_contract.py to verify fixture integrity and contract
 consistency without implementing a production OTF engine.
 
 Contract reference: docs/otf-filter.md — OTF v1 Behavioral Contract
-Contract version:   1
+Contract version:   v1
 Last updated:       2026-07-23
 """
 from __future__ import annotations

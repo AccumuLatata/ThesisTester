@@ -27,7 +27,6 @@ import pytest
 
 from tests.fixtures.otf_fixtures import (
     ALL_OHLCV_SCENARIOS,
-    ALL_VECTOR_SCENARIOS,
     DEFAULT_MINIMUM_CONSECUTIVE_BARS,
     OTF_ALL_TIMEFRAME_ALIGNMENT,
     OTF_DIRECTIONAL_ELIGIBILITY,
@@ -816,7 +815,7 @@ class TestLookaheadSafety:
             iv for iv in OTF_LOOKAHEAD_SAFETY["htf_intervals"]
             if iv["bar_label"] == "5m_bar_B"
         )
-        # The third lookahead_vector has signal_timestamp = 09:35 (bar C availability)
+        # Boundary case for bar B: a signal exactly at 09:30 can use bar B.
         signal_at_bar_b_close = pd.Timestamp("2026-01-05 09:30", tz=TZ)
         avail_b = pd.Timestamp(bar_b["bar_close_timestamp"], tz=TZ)
         assert signal_at_bar_b_close == avail_b, (

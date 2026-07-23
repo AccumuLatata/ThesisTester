@@ -14,7 +14,7 @@ This document is the living implementation plan for adding an optional OTF filte
 
 - [x] OTF behavior specification approved
 - [x] Baseline behavior and metrics captured
-- [x] Deterministic OTF fixtures created (14 OHLCV scenarios + 3 vector scenarios)
+- [x] Deterministic OTF fixtures created (11 OHLCV scenarios + 3 vector scenarios)
 - [x] Futures session boundary semantics documented (eth_start; midnight is NOT a boundary)
 - [x] HTF bar timestamp/availability semantics documented (bar_start / bar_close / availability)
 - [x] Schema version inventory captured
@@ -157,7 +157,8 @@ Report and research artifact schema: no standalone schema version constant exist
 
 - Baseline test command: `python -m pytest tests/test_otf_baseline.py -v`
 - Pre-PR-1 test baseline: **898 tests pass** (`python -m pytest tests/ --ignore=tests/test_app_state.py -q`)
-- Post-PR-1 test count: **1097 tests pass** (898 pre-existing + 199 new OTF tests)
+- Focused follow-up verification: **222 tests pass** (`python3 -m pytest tests/test_loader.py tests/test_otf_contract.py tests/test_otf_baseline.py -q`)
+- Current branch regression count: **1101 tests pass** (`python3 -m pytest tests/ --ignore=tests/test_app_state.py -q`)
 - Baseline fixture file: `tests/fixtures/otf_fixtures.py`
 - Baseline test file: `tests/test_otf_baseline.py`
 - Schema version source: `thesistester/persistence/local_store.py`
@@ -199,6 +200,7 @@ Report and research artifact schema: no standalone schema version constant exist
 | State vocabulary | `up`, `down`, `neutral`, `unknown` | 2026-07-23 | Covers all states including contradictory and uninitialized. |
 | Futures session boundary | `eth_start` determines boundary (18:00 ET for ES/NQ); midnight is NOT a boundary | 2026-07-23 | Matches ThesisTester's `trading_session_date()` in `thesistester/levels/session_date.py`. |
 | HTF bar timestamp labeling | `bar_start_timestamp` (pandas left label) + explicit `bar_close_timestamp` | 2026-07-23 | Preserves pandas convention; makes availability unambiguous. Row label ≠ availability. |
+| HTF bucket alignment | Match `resample_ohlcv()` wall-clock labels in the input timezone; not a separate UTC-midnight/session-anchor rule | 2026-07-23 | `DataFrame.resample()` preserves the tz-aware index timezone. For ES/NQ, 18:00 ET still lands on clean 5m/15m/30m boundaries. |
 | Equal source/target interval | Not supported in OTF v1; source must be strictly finer | 2026-07-23 | Resampling equal intervals produces no higher-timeframe information; deferred to PR 2 for validation. |
 
 ### Evidence / links
@@ -206,6 +208,8 @@ Report and research artifact schema: no standalone schema version constant exist
 - Contract document: `docs/otf-filter.md`
 - Contract test file: `tests/test_otf_contract.py`
 - OHLCV fixture file: `tests/fixtures/otf_fixtures.py`
+- Resample helper implementation: `thesistester/data/resample.py`
+- Focused helper regression tests: `tests/test_loader.py`
 - Related PR: PR 1 — OTF specification and deterministic fixtures
 
 ## Phase 2 — Build the pure OTF engine

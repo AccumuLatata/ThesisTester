@@ -271,7 +271,7 @@ The OTF decision must occur at the signal decision timestamp T, not at trade ent
 
 ### §6.5 — Bucket semantics
 
-Resampled HTF bars use left-closed, left-labeled buckets.  Bucket boundaries for the supported timeframes are aligned to UTC-midnight clock boundaries (pandas default), which coincides with clean :05/:15/:30 boundaries in practice.
+Resampled HTF bars use left-closed, left-labeled buckets.  In ThesisTester, `thesistester.data.resample.resample_ohlcv()` delegates to `pandas.DataFrame.resample()` on a timezone-aware `timestamp` index and preserves that index timezone.  Bucket boundaries therefore follow the input index's wall-clock timezone, not a separate UTC-anchored labeling scheme.  With exchange-local input, the labels land on exchange-local :05/:15/:30 boundaries.
 
 | Timeframe | Example bucket | `bar_start_timestamp` | `bar_close_timestamp` | Availability |
 |---|---|---|---|---|
@@ -279,7 +279,7 @@ Resampled HTF bars use left-closed, left-labeled buckets.  Bucket boundaries for
 | `15m` | 09:15–09:30 | 09:15 | 09:30 | signal T ≥ 09:30 |
 | `30m` | 09:00–09:30 | 09:00 | 09:30 | signal T ≥ 09:30 |
 
-Partial first bucket of a trading session: if the session's first source bar does not land on a bucket boundary, the first resampled bucket is a partial bucket.  Whether partial first buckets are retained or discarded is deferred to PR 2.  For clarity, the lookahead fixture uses source bars that start on a clean bucket boundary.
+Current helper behavior is wall-clock aligned rather than independently session-anchored: if the first source bar arrives at 18:02 ET, the first 5m bucket is still labeled 18:00 ET and is therefore a partial bucket.  Whether PR 2 should retain or discard such partial first buckets for OTF is still deferred.  For clarity, the lookahead fixture uses source bars that start on a clean bucket boundary.
 
 ### §6.6 — Example
 
@@ -301,7 +301,10 @@ The OTF state for the signal at 09:33 is computed using the completed 5m bar wit
 - Trading-session boundaries are computed using `trading_session_date(local_ts, eth_start)` from `thesistester/levels/session_date.py`, applied in the exchange-local timezone.
 - For futures instruments with a configured `eth_start` (e.g., `"18:00"` for ES/NQ), the session begins in the evening of the prior calendar day.  A bar timestamped 22:00 ET on Monday and a bar timestamped 00:30 ET on Tuesday both belong to Tuesday's trading session.
 - Midnight (00:00 ET) is not a trading-session boundary for futures instruments with `eth_start` set.
-- Resampling to 5m, 15m, or 30m must be aligned to session-local clock boundaries, not UTC.  For instruments with `eth_start = "18:00"` ET (= 23:00 UTC), the first 5m bucket of a trading session starts at 23:00 UTC.
+- `thesistester.data.resample.resample_ohlcv()` preserves the timezone of the input `timestamp` column.  With exchange-local source data, HTF labels remain in the exchange-local timezone.
+- The current helper is exchange-local wall-clock aligned.  It is not separately anchored to session start beyond normal clock alignment.
+- For ES/NQ futures with `eth_start = "18:00"` ET, the session open still lands on clean 5m, 15m, and 30m boundaries because 18:00 is evenly divisible by those intervals.
+- Across daylight-saving transitions, the timestamp index keeps the exchange-local timezone and the HTF labels follow local clock behavior (for example, spring-forward jumps from 01:55 EST to 03:00 EDT; fall-back repeats the 01:00 hour with the new offset).
 
 ---
 
