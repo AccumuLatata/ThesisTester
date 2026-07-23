@@ -15,15 +15,12 @@ Design rules
 - All scenarios use the signal-generation and backtest code as-is today.
 - Assertions are precise (exact counts, exact prices, exact R-multiples)
   rather than range or snapshot comparisons.
-- Pre-existing failures unrelated to OTF are documented below if found.
 
-Pre-existing test baseline (PR 1)
-----------------------------------
-All 898 tests pass before these tests are added.
-Relevant test commands::
+Verification commands
+---------------------
 
-    python -m pytest tests/test_otf_baseline.py -v
-    python -m pytest tests/ --ignore=tests/test_app_state.py -q
+    python3 -m pytest tests/test_loader.py tests/test_otf_contract.py tests/test_otf_baseline.py -q
+    python3 -m pytest tests/ -q
 
 Related files
 -------------
