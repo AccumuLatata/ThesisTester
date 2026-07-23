@@ -156,8 +156,8 @@ Report and research artifact schema: no standalone schema version constant exist
 ### Evidence / links
 
 - Baseline test file: `tests/test_otf_baseline.py`
-- Focused OTF verification: **223 passed in 0.86s** (`python3 -m pytest tests/test_loader.py tests/test_otf_contract.py tests/test_otf_baseline.py -q`)
-- Full-suite regression verification: **1106 passed in 23.22s** (`python3 -m pytest tests/ -q`)
+- Focused OTF verification: **223 passed** (`python3 -m pytest tests/test_loader.py tests/test_otf_contract.py tests/test_otf_baseline.py -q`)
+- Full-suite regression verification: **1106 passed** (`python3 -m pytest tests/ -q`)
 - Baseline fixture file: `tests/fixtures/otf_fixtures.py`
 - Related PR: PR 1 — OTF specification and deterministic fixtures
 
@@ -205,8 +205,8 @@ Report and research artifact schema: no standalone schema version constant exist
 - Contract document: `docs/otf-filter.md`
 - Contract test file: `tests/test_otf_contract.py`
 - Direct actual-resampler drift guard: `TestLookaheadSafety.test_actual_resample_5m_uses_close_timestamp_for_otf_availability`
-- Focused verification command/result: `python3 -m pytest tests/test_loader.py tests/test_otf_contract.py tests/test_otf_baseline.py -q` → **223 passed in 0.86s**
-- Full-suite verification command/result: `python3 -m pytest tests/ -q` → **1106 passed in 23.22s**
+- Focused verification command/result: `python3 -m pytest tests/test_loader.py tests/test_otf_contract.py tests/test_otf_baseline.py -q` → **223 passed**
+- Full-suite verification command/result: `python3 -m pytest tests/ -q` → **1106 passed**
 - OHLCV fixture file: `tests/fixtures/otf_fixtures.py`
 - Resample helper implementation: `thesistester/data/resample.py`
 - Focused helper regression tests: `tests/test_loader.py`
@@ -538,31 +538,32 @@ A user can determine exactly:
 
 ### PR 1 — Specification and fixtures
 
-**Status:** Complete (follow-up corrections applied)
+**Status:** Complete (final verified documentation state)
 
 - [x] Documentation and state-transition contract (`docs/otf-filter.md`).
-- [x] Deterministic OHLCV fixtures (`tests/fixtures/otf_fixtures.py`).
+- [x] Deterministic OTF fixtures (`tests/fixtures/otf_fixtures.py`) with 11 OHLCV scenarios + 3 vector scenarios.
 - [x] Baseline regression tests (`tests/test_otf_baseline.py`).
 - [x] Contract integrity and vector tests (`tests/test_otf_contract.py`).
 - [x] Updated roadmap (`docs/otf-filter-roadmap.md`).
 - [x] No production behavior change.
+- [x] Phase 0 remains partially complete; Phase 1 is complete.
 - [x] Futures trading-session boundary corrected (eth_start convention; midnight is NOT a boundary).
 - [x] HTF bar timestamp/availability semantics clarified (bar_start vs bar_close vs availability).
 - [x] Overnight futures-session fixture added (Scenario 14).
 - [x] Look-ahead fixture updated with explicit start/close/availability timestamps.
 - [x] Schema inventory added to Phase 0 evidence.
+- [x] Partial first session-bucket handling remains deferred to PR 2.
+- [x] Production-engine future-shock and append-data invariance tests remain deferred to PR 2.
 
-**Test evidence (PR 1 follow-up):**
+**Test evidence (final verified state):**
 
 ```
-python -m pytest tests/test_otf_contract.py tests/test_otf_baseline.py -v
-RESULT: 199 passed in 0.67s
+python3 -m pytest tests/test_loader.py tests/test_otf_contract.py tests/test_otf_baseline.py -q
+# 223 passed
 
-python -m pytest tests/ --ignore=tests/test_app_state.py -q
-RESULT: 1097 passed in 22.10s
+python3 -m pytest tests/ -q
+# 1106 passed
 ```
-
-**Pre-existing excluded test:** `tests/test_app_state.py` requires a running Streamlit application instance.  This failure is pre-existing, unrelated to OTF changes, and exists on the base branch.
 
 **Regression statement:**
 
@@ -623,9 +624,9 @@ No production files outside `docs/` and `tests/` were modified.
 | Date | Phase / change | Evidence or link | Notes |
 |---|---|---|---|
 | 2026-07-23 | Roadmap created | _This document_ | Initial regression-safe and drift-safe plan. |
-| 2026-07-23 | Phase 0 partially complete | `tests/test_otf_baseline.py` | 898 pre-existing tests pass; baseline captured; schema inventory deferred until follow-up. |
-| 2026-07-23 | Phase 1 complete | `docs/otf-filter.md`, `tests/fixtures/otf_fixtures.py`, `tests/test_otf_contract.py` | OTF v1 contract approved; 13 OHLCV scenarios + 3 vector scenarios; 177 new tests pass. |
-| 2026-07-23 | PR 1 follow-up corrections | `docs/otf-filter.md`, `docs/otf-filter-roadmap.md`, `tests/fixtures/otf_fixtures.py`, `tests/test_otf_contract.py` | Session boundary corrected (eth_start; midnight NOT a boundary); HTF timestamp semantics added (bar_start/close/availability); overnight fixture added (Scenario 14); schema inventory added; 199 OTF tests + 1097 total pass. |
+| 2026-07-23 | Phase 0 partially complete | `tests/test_otf_baseline.py`, `docs/otf-filter-roadmap.md` | Baseline captured; schema inventory recorded; final verification shows 223 focused tests and 1106 full-suite tests passing; report-artifact schema remains deferred. |
+| 2026-07-23 | Phase 1 complete | `docs/otf-filter.md`, `tests/fixtures/otf_fixtures.py`, `tests/test_otf_contract.py` | OTF v1 contract approved; 11 OHLCV scenarios + 3 vector scenarios; direct resampler drift guard added; final verification shows 223 focused tests and 1106 full-suite tests passing. |
+| 2026-07-23 | PR 1 final verified state | `docs/otf-filter-roadmap.md` | Phase 0 remains partially complete; Phase 1 remains complete; partial first session-bucket handling plus production-engine future-shock/append-data invariance validation remain deferred to PR 2; production OTF behavior is still not implemented. |
 
 ## Open questions
 
@@ -645,5 +646,5 @@ No production files outside `docs/` and `tests/` were modified.
 | Date | Change |
 |---|---|
 | 2026-07-23 | Initial roadmap created. |
-| 2026-07-23 | PR 1: OTF v1 contract approved; `docs/otf-filter.md` created; deterministic OHLCV fixtures added; contract and baseline tests added; Phase 0 and Phase 1 marked complete. |
-| 2026-07-23 | PR 1 follow-up: Corrected futures-session boundary semantics; added bar_start/bar_close/availability timestamp definitions; added overnight session fixture (Scenario 14); added schema inventory to Phase 0; updated Phase 0 status to "Partially complete"; resolved open questions 2, 5, 6; updated test evidence to 199 OTF tests / 1097 total. |
+| 2026-07-23 | PR 1: OTF v1 contract approved; `docs/otf-filter.md` created; deterministic fixtures added; contract and baseline tests added; final verified scope is documentation/tests only with production OTF still unimplemented. |
+| 2026-07-23 | PR 1 follow-ups: Corrected futures-session boundary semantics; added bar_start/bar_close/availability timestamp definitions; added overnight session fixture (Scenario 14); added schema inventory to Phase 0; aligned evidence to the final verified commands/results (`223 passed` focused, `1106 passed` full suite); removed obsolete excluded-test guidance; retained PR 2 deferrals for partial first session-bucket handling and production-engine future-shock/append-data invariance validation. |
