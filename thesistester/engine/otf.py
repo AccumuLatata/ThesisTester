@@ -242,12 +242,12 @@ def calculate_otf_state(
     htf = htf.reset_index(drop=True)
 
     # ------------------------------------------------------------------
-    # 9. Run the OTF state machine over the completed HTF bars
+    # 10. Run the OTF state machine over the completed HTF bars
     # ------------------------------------------------------------------
     htf = _run_state_machine(htf, minimum_consecutive_bars)
 
     # ------------------------------------------------------------------
-    # 10. Return the final result with canonical column ordering
+    # 11. Return the final result with canonical column ordering
     # ------------------------------------------------------------------
     return _reorder_columns(htf)
 
