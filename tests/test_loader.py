@@ -244,6 +244,77 @@ def test_resample_ohlcv_correctness():
     assert out["timestamp"].dt.tz is not None
 
 
+@pytest.mark.parametrize(
+    ("timeframe", "expected_labels"),
+    [
+        ("5min", ["2026-01-06T18:00:00-05:00", "2026-01-06T18:05:00-05:00"]),
+        ("15min", ["2026-01-06T18:00:00-05:00"]),
+        ("30min", ["2026-01-06T18:00:00-05:00"]),
+    ],
+)
+def test_resample_ohlcv_uses_exchange_local_wall_clock_boundaries(timeframe, expected_labels):
+    timestamps = pd.date_range(
+        "2026-01-06 18:02:00", periods=6, freq="1min", tz="America/New_York"
+    )
+    df = pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "open": [10, 11, 12, 13, 14, 15],
+            "high": [11, 12, 13, 14, 15, 16],
+            "low": [9, 10, 11, 12, 13, 14],
+            "close": [10.5, 11.5, 12.5, 13.5, 14.5, 15.5],
+            "volume": [100, 200, 300, 400, 500, 600],
+        }
+    )
+
+    out = resample_ohlcv(df, timeframe)
+
+    assert str(out["timestamp"].dt.tz) == "America/New_York"
+    assert [ts.isoformat() for ts in out["timestamp"]] == expected_labels
+
+
+def test_resample_ohlcv_preserves_local_timezone_labels_across_dst_transitions():
+    def _ohlcv(ts: pd.DatetimeIndex) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "timestamp": ts,
+                "open": range(len(ts)),
+                "high": [x + 0.5 for x in range(len(ts))],
+                "low": [x - 0.5 for x in range(len(ts))],
+                "close": [x + 0.25 for x in range(len(ts))],
+                "volume": [1] * len(ts),
+            }
+        )
+
+    spring_forward = pd.date_range(
+        "2026-03-08 01:58:00", periods=6, freq="1min", tz="America/New_York"
+    )
+    spring_out = resample_ohlcv(_ohlcv(spring_forward), "5min")
+    assert str(spring_out["timestamp"].dt.tz) == "America/New_York"
+    assert [ts.isoformat() for ts in spring_out["timestamp"]] == [
+        "2026-03-08T01:55:00-05:00",
+        "2026-03-08T03:00:00-04:00",
+    ]
+
+    fall_back = pd.to_datetime(
+        [
+            "2026-11-01 05:58:00+00:00",
+            "2026-11-01 05:59:00+00:00",
+            "2026-11-01 06:00:00+00:00",
+            "2026-11-01 06:01:00+00:00",
+            "2026-11-01 06:02:00+00:00",
+            "2026-11-01 06:03:00+00:00",
+        ],
+        utc=True,
+    ).tz_convert("America/New_York")
+    fall_out = resample_ohlcv(_ohlcv(fall_back), "5min")
+    assert str(fall_out["timestamp"].dt.tz) == "America/New_York"
+    assert [ts.isoformat() for ts in fall_out["timestamp"]] == [
+        "2026-11-01T01:55:00-04:00",
+        "2026-11-01T01:00:00-05:00",
+    ]
+
+
 def test_validation_catches_duplicates_and_bad_high_low():
     df = load_ohlcv(SAMPLE)
     bad = pd.concat([df.iloc[[0]], df.iloc[[0]], df.iloc[[1]]], ignore_index=True)
