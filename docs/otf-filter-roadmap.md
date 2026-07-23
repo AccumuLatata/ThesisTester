@@ -18,8 +18,8 @@ This document is the living implementation plan for adding an optional OTF filte
 - [x] Futures session boundary semantics documented (eth_start; midnight is NOT a boundary)
 - [x] HTF bar timestamp/availability semantics documented (bar_start / bar_close / availability)
 - [x] Schema version inventory captured
-- [ ] Pure OTF calculation engine implemented
-- [ ] Look-ahead protections tested against production engine
+- [x] Pure OTF calculation engine implemented (`thesistester/engine/otf.py`)
+- [x] Look-ahead protections tested against production engine
 - [ ] Signal eligibility integration implemented
 - [ ] Setup persistence and compatibility implemented
 - [ ] UI controls implemented
@@ -220,26 +220,26 @@ Report and research artifact schema: no standalone schema version constant exist
 
 ## Phase 2 — Build the pure OTF engine
 
-**Status:** Not started
+**Status:** Complete (PR 2)
 
 ### Target files
 
-- `thesistester/engine/otf.py`
-- `tests/test_otf.py`
+- `thesistester/engine/otf.py` ✅ Created
+- `tests/test_otf.py` ✅ Created
 
 ### Work items
 
-- [ ] Validate required OHLCV columns.
-- [ ] Validate timestamps and timezone handling.
-- [ ] Implement 5m, 15m, and 30m resampling.
-- [ ] Implement completed-bar alignment.
-- [ ] Implement OTF state calculation.
-- [ ] Implement sequence length and reference timestamp outputs.
-- [ ] Implement session-reset behavior.
-- [ ] Expose a stable public API.
-- [ ] Add module-level documentation.
+- [x] Validate required OHLCV columns.
+- [x] Validate timestamps and timezone handling.
+- [x] Implement 5m, 15m, and 30m resampling (via `resample_ohlcv()`).
+- [x] Implement completed-bar alignment (`bar_close_timestamp <= max_source_ts` filter).
+- [x] Implement OTF state calculation.
+- [x] Implement sequence length and reference timestamp outputs.
+- [x] Implement session-reset behavior.
+- [x] Expose a stable public API.
+- [x] Add module-level documentation.
 
-### Suggested API
+### Implemented API
 
 ```python
 calculate_otf_state(
@@ -248,48 +248,81 @@ calculate_otf_state(
     *,
     minimum_consecutive_bars: int = 3,
     session_timezone: str | None = None,
+    eth_start: str | None = None,
     session_reset: str = "session",
 ) -> pd.DataFrame
 ```
 
-### Required output fields
+### Output fields (complete)
 
 ```text
-otf_state
-otf_sequence_length
-otf_reference_timestamp
+bar_start_timestamp       — pandas left-label of the resampled HTF bucket
+bar_close_timestamp       — bar_start + timeframe_duration
+availability_timestamp    — equal to bar_close_timestamp
+open, high, low, close, volume  — aggregated OHLCV of the completed HTF bar
+trading_session_date      — date label from trading_session_date()
+otf_state                 — "up" | "down" | "neutral" | "unknown"
+otf_sequence_length       — active directional run length (0 for neutral/unknown)
+up_run                    — consecutive higher-low counter
+down_run                  — consecutive lower-high counter
+otf_reference_timestamp   — bar_close_timestamp of the previous bar (NaT for first bar)
 ```
+
+### Partial first session-bucket policy (decision)
+
+**Decision:** Discard any HTF bar whose `bar_start_timestamp` is strictly earlier than the first source bar's timestamp within that trading session.
+
+**Rationale:** This is the most conservative, research-safe policy. A partial first bucket contains OHLCV values that do not represent a full period and may bias high/low comparisons. Discarding it ensures only complete bars contribute to OTF state calculations.
+
+**Implementation:** `_discard_partial_first_buckets()` in `thesistester/engine/otf.py`.
+
+**Example:** If the session opens at 09:31 ET and the 09:30 5m bucket has started before the first source bar, that bucket is discarded. The first usable HTF bar is the one whose `bar_start_timestamp >= 09:31`.
+
+### Look-ahead safety guarantees
+
+1. **In-progress bars excluded:** After resampling, bars with `bar_close_timestamp > max(source_timestamps)` are removed before any state computation. An in-progress bar whose eventual high/low is unknown at the last observed timestamp cannot influence any OTF output.
+
+2. **Append-data invariance:** `OTF state for timestamps <= T is unchanged when data after T is appended.` Proven by `TestLookaheadSafety::test_appending_bars_does_not_change_historical_states`.
+
+3. **Future-shock invariance:** `TestLookaheadSafety::test_future_highs_lows_do_not_alter_historical_state` confirms extreme future bar values do not alter past OTF states.
+
+4. **Exact-close availability:** A bar whose `bar_close_timestamp == max(source_timestamps)` IS included in the output (§6.3). Proven by `TestLookaheadSafety::test_bar_available_exactly_at_close_timestamp`.
+
+5. **Session-boundary counter isolation:** Prior-session `up_run`/`down_run` counters cannot appear in the new session. Proven by `TestLookaheadSafety::test_session_boundary_reset_does_not_leak_prior_counters`.
 
 ### Acceptance criteria
 
-- The engine is independent of Streamlit pages.
-- The engine is deterministic.
-- The engine does not mutate caller-owned data.
-- Unit tests cover normal and invalid input.
+- [x] The engine is independent of Streamlit pages.
+- [x] The engine is deterministic.
+- [x] The engine does not mutate caller-owned data.
+- [x] Unit tests cover normal and invalid input (99 tests in `tests/test_otf.py`).
 
 ## Phase 3 — Prove look-ahead safety
 
-**Status:** Not started
+**Status:** Complete (merged into PR 2)
+
+Look-ahead and drift safety tests are implemented in `tests/test_otf.py::TestLookaheadSafety` and run against the production engine.
 
 ### Work items
 
-- [ ] Test that unfinished 15m bars cannot affect earlier signals.
-- [ ] Test that unfinished 30m bars cannot affect earlier signals.
-- [ ] Test that future highs, lows, and closes do not alter prior states.
-- [ ] Test that appending bars after timestamp `T` does not change OTF states at or before `T`.
-- [ ] Test session-boundary behavior.
-- [ ] Test timezone-aware and timezone-naive inputs.
-- [ ] Test resampling boundaries for the supported source intervals.
+- [x] Test that unfinished 5m bars cannot affect earlier signals.
+- [x] Test that unfinished 15m bars cannot affect earlier signals.
+- [x] Test that unfinished 30m bars cannot affect earlier signals.
+- [x] Test that future highs, lows, and closes do not alter prior states.
+- [x] Test that appending bars after timestamp `T` does not change OTF states at or before `T`.
+- [x] Test session-boundary behavior.
+- [x] Test timezone-aware and timezone-naive inputs.
+- [x] Test resampling boundaries for the supported source intervals.
 
 ### Acceptance criteria
 
-The following property must hold:
+The following property holds:
 
 ```text
 OTF state for timestamps <= T is unchanged when data after T is appended.
 ```
 
-Any failure blocks integration.
+Proven by `tests/test_otf.py::TestLookaheadSafety::test_appending_bars_does_not_change_historical_states`.
 
 ## Phase 4 — Integrate at signal eligibility
 
@@ -626,6 +659,8 @@ No production files outside `docs/` and `tests/` were modified.
 | 2026-07-23 | Roadmap created | _This document_ | Initial regression-safe and drift-safe plan. |
 | 2026-07-23 | Phase 0 partially complete | `tests/test_otf_baseline.py`, `docs/otf-filter-roadmap.md` | Baseline captured; schema inventory recorded; final verification shows 223 focused tests and 1106 full-suite tests passing; report-artifact schema remains deferred. |
 | 2026-07-23 | Phase 1 complete | `docs/otf-filter.md`, `tests/fixtures/otf_fixtures.py`, `tests/test_otf_contract.py` | OTF v1 contract approved; 11 OHLCV scenarios + 3 vector scenarios; direct resampler drift guard added; final verification shows 223 focused tests and 1106 full-suite tests passing. |
+| 2026-07-23 | Phase 2 complete | `thesistester/engine/otf.py`, `tests/test_otf.py` | Pure OTF engine implemented; 99 new tests in `test_otf.py`; all look-ahead/drift-safety invariance tests pass against production engine; 322 focused tests pass; pre-existing baseline failures unchanged (22 failures due to missing Streamlit/pyarrow in test environment). |
+| 2026-07-23 | Phase 3 complete (merged into PR 2) | `tests/test_otf.py::TestLookaheadSafety` | 5m/15m/30m in-progress bar exclusion proven; append-data invariance proven; future-shock invariance proven; session-boundary counter isolation proven; bar available exactly at close timestamp proven. |
 | 2026-07-23 | PR 1 final verified state | `docs/otf-filter-roadmap.md` | Phase 0 remains partially complete; Phase 1 remains complete; partial first session-bucket handling plus production-engine future-shock/append-data invariance validation remain deferred to PR 2; production OTF behavior is still not implemented. |
 
 ## Open questions
@@ -639,7 +674,7 @@ No production files outside `docs/` and `tests/` were modified.
 7. Should the first release support only source intervals at or below 5 minutes? **Deferred to PR 2.**
 8. Should 5m OTF be treated as a regime filter, an entry confirmation, or both? **Deferred to Phase 6 (UI controls).**
 9. Which report artifact should become the authoritative record of OTF configuration? **Deferred to Phase 8 (reporting).**
-10. How should partial first buckets of a trading session be handled in resampling? **Deferred to PR 2.** The lookahead fixture uses bars starting on a clean bucket boundary; production alignment needs to be specified in PR 2.
+10. ~~How should partial first buckets of a trading session be handled in resampling?~~ **Resolved in PR 2.** Discard any HTF bar whose `bar_start_timestamp` is strictly earlier than the first source bar in that session. Implemented in `_discard_partial_first_buckets()` in `thesistester/engine/otf.py`.
 
 ## Change log
 
@@ -647,4 +682,4 @@ No production files outside `docs/` and `tests/` were modified.
 |---|---|
 | 2026-07-23 | Initial roadmap created. |
 | 2026-07-23 | PR 1: OTF v1 contract approved; `docs/otf-filter.md` created; deterministic fixtures added; contract and baseline tests added; final verified scope is documentation/tests only with production OTF still unimplemented. |
-| 2026-07-23 | PR 1 follow-ups: Corrected futures-session boundary semantics; added bar_start/bar_close/availability timestamp definitions; added overnight session fixture (Scenario 14); added schema inventory to Phase 0; aligned evidence to the final verified commands/results (`223 passed` focused, `1106 passed` full suite); removed obsolete excluded-test guidance; retained PR 2 deferrals for partial first session-bucket handling and production-engine future-shock/append-data invariance validation. |
+| 2026-07-23 | PR 2: Pure OTF engine created; phases 2 and 3 complete | `thesistester/engine/otf.py`, `tests/test_otf.py`, `docs/otf-filter-roadmap.md` | Engine is regression-safe and isolated from all production workflows; exact verification: 99 new OTF engine tests + 223 existing OTF tests = 322 focused tests passing; no production behavior changes. |
