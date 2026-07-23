@@ -12,9 +12,9 @@ This document is the living implementation plan for adding an optional OTF filte
 
 ## Current status
 
-- [ ] OTF behavior specification approved
-- [ ] Baseline behavior and metrics captured
-- [ ] Deterministic OTF fixtures created
+- [x] OTF behavior specification approved
+- [x] Baseline behavior and metrics captured
+- [x] Deterministic OTF fixtures created
 - [ ] Pure OTF calculation engine implemented
 - [ ] Look-ahead protections tested
 - [ ] Signal eligibility integration implemented
@@ -117,15 +117,15 @@ For each signal, use only the most recent completed higher-timeframe bar availab
 
 ## Phase 0 — Freeze the baseline
 
-**Status:** Not started
+**Status:** Complete (PR 1)
 
 ### Work items
 
-- [ ] Capture the current test result and environment.
-- [ ] Capture representative signal counts, trade counts, and metrics.
-- [ ] Record current setup, signal, persistence, and report schema versions.
-- [ ] Create a deterministic OHLCV fixture containing up, down, neutral, and broken OTF conditions.
-- [ ] Add a baseline regression test for OTF-disabled behavior.
+- [x] Capture the current test result and environment.
+- [x] Capture representative signal counts, trade counts, and metrics.
+- [x] Record current setup, signal, persistence, and report schema versions.
+- [x] Create a deterministic OHLCV fixture containing up, down, neutral, and broken OTF conditions.
+- [x] Add a baseline regression test for OTF-disabled behavior.
 
 ### Acceptance criteria
 
@@ -135,23 +135,25 @@ For each signal, use only the most recent completed higher-timeframe bar availab
 
 ### Evidence / links
 
-- Baseline test command: _To be added_
-- Baseline results: _To be added_
-- Related PR: _To be added_
+- Baseline test command: `python -m pytest tests/test_otf_baseline.py -v`
+- Pre-PR-1 test baseline: **898 tests pass** (`python -m pytest tests/ --ignore=tests/test_app_state.py -q`)
+- Baseline fixture file: `tests/fixtures/otf_fixtures.py`
+- Baseline test file: `tests/test_otf_baseline.py`
+- Related PR: PR 1 — OTF specification and deterministic fixtures
 
 ## Phase 1 — Finalize the OTF contract
 
-**Status:** Not started
+**Status:** Complete (PR 1)
 
 ### Work items
 
-- [ ] Finalize the exact OTF state machine.
-- [ ] Define how many consecutive bars are required.
-- [ ] Define how a sequence breaks.
-- [ ] Define whether OTF state resets at each trading session.
-- [ ] Define handling for insufficient history.
-- [ ] Define the timestamp at which each signal is evaluated.
-- [ ] Document all decisions in this file and the methodology documentation.
+- [x] Finalize the exact OTF state machine.
+- [x] Define how many consecutive bars are required.
+- [x] Define how a sequence breaks.
+- [x] Define whether OTF state resets at each trading session.
+- [x] Define handling for insufficient history.
+- [x] Define the timestamp at which each signal is evaluated.
+- [x] Document all decisions in this file and the methodology documentation.
 
 ### Acceptance criteria
 
@@ -167,6 +169,17 @@ For each signal, use only the most recent completed higher-timeframe bar availab
 | Default enabled state | Disabled | 2026-07-23 | Preserves legacy behavior. |
 | Completed bars only | Required | 2026-07-23 | Prevents look-ahead bias. |
 | Minimum sequence length | 3 bars initially | 2026-07-23 | Configurable and subject to validation. |
+| Equal-high/equal-low | Strict inequality; resets counter | 2026-07-23 | Avoids ambiguous sequence length; consistent with MP convention. |
+| Insufficient history | Returns `unknown` | 2026-07-23 | `neutral` implies an evaluation; `unknown` is more accurate. |
+| Session reset | Reset at each session boundary | 2026-07-23 | Session carry introduces subtle look-ahead risk. |
+| State vocabulary | `up`, `down`, `neutral`, `unknown` | 2026-07-23 | Covers all states including contradictory and uninitialized. |
+
+### Evidence / links
+
+- Contract document: `docs/otf-filter.md`
+- Contract test file: `tests/test_otf_contract.py`
+- OHLCV fixture file: `tests/fixtures/otf_fixtures.py`
+- Related PR: PR 1 — OTF specification and deterministic fixtures
 
 ## Phase 2 — Build the pure OTF engine
 
@@ -390,15 +403,15 @@ A user can determine exactly:
 
 ## Phase 9 — Documentation
 
-**Status:** In progress
+**Status:** In progress (PR 1 delivers initial documentation)
 
 ### Work items
 
 - [x] Create this living roadmap.
-- [ ] Document the OTF definition.
-- [ ] Document state transitions and sequence breaks.
-- [ ] Document resampling and completed-bar rules.
-- [ ] Document session and timezone policy.
+- [x] Document the OTF definition.
+- [x] Document state transitions and sequence breaks.
+- [x] Document resampling and completed-bar rules.
+- [x] Document session and timezone policy.
 - [ ] Document configuration examples.
 - [ ] Document rejected-signal interpretation.
 - [ ] Document walk-forward treatment.
@@ -488,10 +501,24 @@ A user can determine exactly:
 
 ### PR 1 — Specification and fixtures
 
-- Documentation and state-transition contract.
-- Deterministic OHLCV fixtures.
-- Baseline regression tests.
-- No production behavior change.
+**Status:** Complete
+
+- [x] Documentation and state-transition contract (`docs/otf-filter.md`).
+- [x] Deterministic OHLCV fixtures (`tests/fixtures/otf_fixtures.py`).
+- [x] Baseline regression tests (`tests/test_otf_baseline.py`).
+- [x] Contract integrity and vector tests (`tests/test_otf_contract.py`).
+- [x] Updated roadmap (`docs/otf-filter-roadmap.md`).
+- [x] No production behavior change.
+
+**Test evidence:**
+
+```
+python -m pytest tests/test_otf_contract.py tests/test_otf_baseline.py -v
+# → 177 passed
+
+python -m pytest tests/ --ignore=tests/test_app_state.py -q
+# → 1075 passed (898 pre-existing + 177 new)
+```
 
 ### PR 2 — Pure OTF engine
 
@@ -546,19 +573,22 @@ A user can determine exactly:
 | Date | Phase / change | Evidence or link | Notes |
 |---|---|---|---|
 | 2026-07-23 | Roadmap created | _This document_ | Initial regression-safe and drift-safe plan. |
+| 2026-07-23 | Phase 0 complete | `tests/test_otf_baseline.py` | 898 pre-existing tests pass; baseline captured. |
+| 2026-07-23 | Phase 1 complete | `docs/otf-filter.md`, `tests/fixtures/otf_fixtures.py`, `tests/test_otf_contract.py` | OTF v1 contract approved; 13 OHLCV scenarios + 3 vector scenarios; 177 new tests pass. |
 
 ## Open questions
 
-1. What exact state-transition rule should define a broken OTF sequence?
-2. Should OTF state reset at every exchange session, or can it carry across sessions?
-3. For each signal type, what is the precise decision timestamp?
-4. Should insufficient history return `unknown` or `neutral`?
-5. Should the first release support only source intervals at or below 5 minutes?
-6. Should 5m OTF be treated as a regime filter, an entry confirmation, or both?
-7. Which report artifact should become the authoritative record of OTF configuration?
+1. ~~What exact state-transition rule should define a broken OTF sequence?~~ **Resolved:** Sequence breaks when the qualifying condition is not met (lower low breaks up; equal or higher high breaks down). See `docs/otf-filter.md §3.6`.
+2. ~~Should OTF state reset at every exchange session, or can it carry across sessions?~~ **Resolved:** Reset at every session boundary in v1. See `docs/otf-filter.md §3.10`.
+3. For each signal type, what is the precise decision timestamp? **Partially resolved** for simple triggers and 3c; see `docs/otf-filter.md §6.3`.
+4. ~~Should insufficient history return `unknown` or `neutral`?~~ **Resolved:** `unknown`. See `docs/otf-filter.md §3.9`.
+5. Should the first release support only source intervals at or below 5 minutes? **Deferred to PR 2.**
+6. Should 5m OTF be treated as a regime filter, an entry confirmation, or both? **Deferred to Phase 6 (UI controls).**
+7. Which report artifact should become the authoritative record of OTF configuration? **Deferred to Phase 8 (reporting).**
 
 ## Change log
 
 | Date | Change |
 |---|---|
 | 2026-07-23 | Initial roadmap created. |
+| 2026-07-23 | PR 1: OTF v1 contract approved; `docs/otf-filter.md` created; deterministic OHLCV fixtures added; contract and baseline tests added; Phase 0 and Phase 1 marked complete. |
