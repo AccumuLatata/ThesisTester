@@ -155,8 +155,8 @@ Report and research artifact schema: no standalone schema version constant exist
 
 ### Evidence / links
 
-- Baseline test command: `python -m pytest tests/test_otf_baseline.py -v`
-- Pre-PR-1 test baseline: **898 tests pass** (`python -m pytest tests/ --ignore=tests/test_app_state.py -q`)
+- Baseline test command: `python3 -m pytest tests/test_otf_baseline.py -v`
+- Pre-PR-1 test baseline: **898 tests pass** (`python3 -m pytest tests/ --ignore=tests/test_app_state.py -q`)
 - Focused follow-up verification: **222 tests pass** (`python3 -m pytest tests/test_loader.py tests/test_otf_contract.py tests/test_otf_baseline.py -q`)
 - Current branch regression count: **1101 tests pass** (`python3 -m pytest tests/ --ignore=tests/test_app_state.py -q`)
 - Baseline fixture file: `tests/fixtures/otf_fixtures.py`
