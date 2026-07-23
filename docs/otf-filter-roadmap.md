@@ -155,12 +155,10 @@ Report and research artifact schema: no standalone schema version constant exist
 
 ### Evidence / links
 
-- Baseline test command: `python3 -m pytest tests/test_otf_baseline.py -v`
-- Pre-PR-1 test baseline: **898 tests pass** (`python3 -m pytest tests/ --ignore=tests/test_app_state.py -q`)
-- Focused follow-up verification: **222 tests pass** (`python3 -m pytest tests/test_loader.py tests/test_otf_contract.py tests/test_otf_baseline.py -q`)
-- Current branch regression count: **1101 tests pass** (`python3 -m pytest tests/ --ignore=tests/test_app_state.py -q`)
-- Baseline fixture file: `tests/fixtures/otf_fixtures.py`
 - Baseline test file: `tests/test_otf_baseline.py`
+- Focused OTF verification: **223 passed in 0.86s** (`python3 -m pytest tests/test_loader.py tests/test_otf_contract.py tests/test_otf_baseline.py -q`)
+- Full-suite regression verification: **1106 passed in 23.20s** (`python3 -m pytest tests/ -q`)
+- Baseline fixture file: `tests/fixtures/otf_fixtures.py`
 - Schema version source: `thesistester/persistence/local_store.py`
 - Related PR: PR 1 — OTF specification and deterministic fixtures
 
@@ -207,10 +205,19 @@ Report and research artifact schema: no standalone schema version constant exist
 
 - Contract document: `docs/otf-filter.md`
 - Contract test file: `tests/test_otf_contract.py`
+- Direct actual-resampler drift guard: `TestLookaheadSafety.test_actual_resample_5m_uses_close_timestamp_for_otf_availability`
+- Focused verification command/result: `python3 -m pytest tests/test_loader.py tests/test_otf_contract.py tests/test_otf_baseline.py -q` → **223 passed in 0.86s**
+- Full-suite verification command/result: `python3 -m pytest tests/ -q` → **1106 passed in 23.20s**
 - OHLCV fixture file: `tests/fixtures/otf_fixtures.py`
 - Resample helper implementation: `thesistester/data/resample.py`
 - Focused helper regression tests: `tests/test_loader.py`
 - Related PR: PR 1 — OTF specification and deterministic fixtures
+
+### PR 2 prerequisites carried forward
+
+- The production OTF engine must apply the verified availability contract: `bar_close_timestamp <= signal_decision_timestamp`.
+- Future-shock / append-data invariance must be tested against the real OTF engine.
+- Partial first session-boundary bucket handling remains a deliberate implementation decision.
 
 ## Phase 2 — Build the pure OTF engine
 

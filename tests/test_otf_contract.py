@@ -48,6 +48,7 @@ from tests.fixtures.otf_fixtures import (
     _bars_to_df,
 )
 
+from thesistester.data.resample import resample_ohlcv
 from thesistester.levels.session_date import trading_session_date
 
 
@@ -789,6 +790,49 @@ class TestLookaheadSafety:
                 f"resampled_row_label ({label}) must NOT equal bar_close_timestamp ({close}) — "
                 "the row label cannot be used as the availability timestamp"
             )
+
+    def test_actual_resample_5m_uses_close_timestamp_for_otf_availability(self) -> None:
+        """Actual 5m resampler output must use bar close, not row label, for OTF availability."""
+        expected_labels = [
+            pd.Timestamp(interval["bar_start_timestamp"], tz=TZ)
+            for interval in OTF_LOOKAHEAD_SAFETY["htf_intervals"]
+        ]
+        source_df = _bars_to_df(OTF_LOOKAHEAD_SAFETY["bars"])
+        resampled = resample_ohlcv(source_df, "5min").copy()
+
+        assert str(resampled["timestamp"].dt.tz) == TZ
+        assert resampled["timestamp"].tolist() == expected_labels
+
+        resampled["bar_close_timestamp"] = (
+            resampled["timestamp"] + pd.Timedelta(minutes=5)
+        )
+        resampled["availability_timestamp"] = resampled["bar_close_timestamp"]
+
+        signal_0933 = pd.Timestamp("2026-01-05 09:33", tz=TZ)
+        eligible_0933 = resampled.loc[
+            resampled["availability_timestamp"] <= signal_0933
+        ].reset_index(drop=True)
+        assert eligible_0933["timestamp"].tolist() == expected_labels[:2]
+
+        bar_0930 = resampled.loc[
+            resampled["timestamp"] == pd.Timestamp("2026-01-05 09:30", tz=TZ)
+        ].iloc[0]
+        assert bar_0930["bar_close_timestamp"] == pd.Timestamp("2026-01-05 09:35", tz=TZ)
+        assert bar_0930["timestamp"] not in eligible_0933["timestamp"].tolist()
+
+        last_eligible_0933 = eligible_0933.iloc[-1]
+        assert last_eligible_0933["timestamp"] == pd.Timestamp("2026-01-05 09:25", tz=TZ)
+        assert bar_0930["high"] not in eligible_0933["high"].tolist()
+        assert bar_0930["low"] not in eligible_0933["low"].tolist()
+
+        signal_0935 = pd.Timestamp("2026-01-05 09:35", tz=TZ)
+        eligible_0935 = resampled.loc[
+            resampled["availability_timestamp"] <= signal_0935
+        ].reset_index(drop=True)
+        assert eligible_0935["timestamp"].tolist() == expected_labels
+        assert eligible_0935.iloc[-1]["timestamp"] == bar_0930["timestamp"]
+        assert eligible_0935.iloc[-1]["high"] == bar_0930["high"]
+        assert eligible_0935.iloc[-1]["low"] == bar_0930["low"]
 
     def test_signal_before_close_cannot_use_inprogress_bar(self) -> None:
         """A signal strictly before bar_close_timestamp must not use that bar.
