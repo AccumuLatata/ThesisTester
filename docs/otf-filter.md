@@ -219,7 +219,7 @@ v1 supports exactly three higher-timeframe intervals:
 | `15m` | :00, :15, :30, :45 | 4 bars per hour |
 | `30m` | :00, :30 | 2 bars per hour |
 
-Canonical public OTF timeframe labels are `5m`, `15m`, and `30m`.  The pure PR 2 engine accepts `5min`, `15min`, and `30min` as backward-compatible aliases, but they are aliases only and are normalized internally before calling `resample_ohlcv()`.
+Canonical public OTF timeframe labels are `5m`, `15m`, and `30m`.  The pure PR 2 engine accepts `5min`, `15min`, and `30min` as backward-compatible aliases, but they are aliases only and are normalized internally before calling `resample_ohlcv()`.  The single authoritative normalization helper is `normalize_otf_timeframe()` exported from `thesistester.engine.otf`; both `calculate_otf_state()` and `apply_otf_filter()` delegate to this helper so callers do not need their own alias tables.
 
 The source data must be at a granularity **strictly finer** than the target timeframe (e.g., 1-minute bars for 5m OTF).  Using a source interval equal to the target timeframe produces no resampling and is not supported by OTF v1.  The production engine in PR 2 must validate that the source interval is strictly finer than each selected OTF timeframe, and that the target timeframe is exactly divisible by the inferred source interval.  When the source interval cannot be inferred safely from the input timestamps, the pure engine must reject the input rather than guessing completion.  Resampling must use only bars that have closed at or before the signal decision timestamp.
 
@@ -456,11 +456,25 @@ Existing saved setups without an `otf_filter` block must load and behave exactly
 
 PR 3 disabled-path contract:
 
+- `apply_otf_filter()` validates only that `enabled` is a boolean before returning.
+- All timeframe, `alignment_mode`, `minimum_consecutive_bars`, `session_reset`, signal direction, timestamp, and source-data validation is skipped.
 - All candidate signals are returned as accepted.
 - Rejected output is empty.
 - The OTF state engine is not called.
 - Per-timeframe metadata is not added when no timeframe is selected.
 - Legacy candidate population, ordering, and values are preserved.
+
+PR 3 enabled-empty-signals contract:
+
+When `enabled=True` and the `signals` DataFrame has zero rows:
+
+- Configuration and selected-timeframe validation is still performed (invalid config still raises).
+- The function returns two empty DataFrames (accepted and rejected) with identical schemas.
+- The schema includes all original signal columns plus `otf_signal_decision_timestamp`, per-selected-timeframe metadata (`otf_<tf>_state`, `otf_<tf>_sequence_length`, `otf_<tf>_reference_timestamp`), and `otf_filter_enabled`, `otf_filter_passed`, `otf_filter_reason`.
+- Metadata columns for unselected timeframes are absent.
+- No signal direction or timestamp columns are required.
+- Source OHLCV data is not inspected.
+- The OTF state engine is not called.
 
 ---
 

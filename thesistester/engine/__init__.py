@@ -6,6 +6,7 @@ from .anchor_confluence import detect_anchor_confluence_zones
 from .candidate_level import CandidateLevel, from_anchor_zones, from_global_cluster_zones
 from .confluence import detect_confluence_zones
 from .naked import flag_naked_levels
+from .otf import normalize_otf_timeframe
 from .otf_filter import apply_otf_filter
 from .signals import generate_signals
 
@@ -18,5 +19,6 @@ __all__ = [
     "from_global_cluster_zones",
     "generate_signals",
     "apply_otf_filter",
+    "normalize_otf_timeframe",
     "simulate_trades",
 ]

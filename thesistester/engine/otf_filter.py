@@ -9,13 +9,7 @@ from collections.abc import Sequence
 
 import pandas as pd
 
-from .otf import OTF_CANONICAL_TIMEFRAMES, calculate_otf_state
-
-_TIMEFRAME_ALIASES: dict[str, str] = {
-    "5min": "5m",
-    "15min": "15m",
-    "30min": "30m",
-}
+from .otf import normalize_otf_timeframe, calculate_otf_state
 
 _VALID_DIRECTIONS = frozenset({"long", "short"})
 
@@ -35,26 +29,59 @@ def apply_otf_filter(
     """Apply OTF eligibility filtering to candidate signals.
 
     Returns a tuple of ``(accepted_signals, rejected_signals)``.
+
+    When ``enabled=False`` the function returns immediately after validating
+    only the ``enabled`` parameter itself.  All timeframe, signal, timestamp,
+    and source-data validation is skipped.
+
+    When ``enabled=True`` and ``signals`` is empty the function validates
+    configuration and timeframe inputs, then returns stable empty
+    accepted/rejected DataFrames without inspecting source OHLCV data or
+    calling the OTF engine.
     """
-    _validate_config(
-        enabled=enabled,
-        timeframes=timeframes,
-        alignment_mode=alignment_mode,
-        minimum_consecutive_bars=minimum_consecutive_bars,
-        session_reset=session_reset,
-    )
-    normalized_timeframes = _normalize_timeframes(timeframes)
+    # ------------------------------------------------------------------
+    # 1. Validate `enabled` type only — this is the sole check for the
+    #    disabled path.
+    # ------------------------------------------------------------------
+    if not isinstance(enabled, bool):
+        raise ValueError(f"enabled must be a bool, got {enabled!r}")
 
-    signal_copy = signals.copy(deep=True)
-
+    # ------------------------------------------------------------------
+    # 2. Disabled short-circuit: true no-op for legacy compatibility.
+    #    No timeframe/signal/timestamp/source inspection.
+    # ------------------------------------------------------------------
     if not enabled:
-        accepted = signal_copy.copy(deep=True)
+        signal_copy = signals.copy(deep=True)
+        accepted = signal_copy.copy()
         accepted["otf_filter_enabled"] = False
         accepted["otf_filter_passed"] = True
         accepted["otf_filter_reason"] = None
         rejected = accepted.iloc[0:0].copy()
         return accepted, rejected
 
+    # ------------------------------------------------------------------
+    # 3. Validate remaining configuration (enabled=True only).
+    # ------------------------------------------------------------------
+    _validate_enabled_config(
+        alignment_mode=alignment_mode,
+        minimum_consecutive_bars=minimum_consecutive_bars,
+        session_reset=session_reset,
+        timeframes=timeframes,
+    )
+    normalized_timeframes = _normalize_timeframes(timeframes)
+
+    signal_copy = signals.copy(deep=True)
+
+    # ------------------------------------------------------------------
+    # 4. Empty-signals short-circuit: return stable empty schemas without
+    #    touching source OHLCV data or the OTF engine.
+    # ------------------------------------------------------------------
+    if signal_copy.empty:
+        return _build_empty_enabled_outputs(signal_copy, normalized_timeframes)
+
+    # ------------------------------------------------------------------
+    # 5. Validate signal content and evaluate eligibility.
+    # ------------------------------------------------------------------
     _validate_signal_directions(signal_copy)
     decision_timestamps = select_signal_decision_timestamp(
         signal_copy,
@@ -145,17 +172,14 @@ def select_signal_decision_timestamp(
     return parsed
 
 
-def _validate_config(
+def _validate_enabled_config(
     *,
-    enabled: bool,
-    timeframes: Sequence[str],
     alignment_mode: str,
     minimum_consecutive_bars: int,
     session_reset: str,
+    timeframes: Sequence[str],
 ) -> None:
-    if not isinstance(enabled, bool):
-        raise ValueError(f"enabled must be a bool, got {enabled!r}")
-
+    """Validate configuration parameters that apply only when enabled=True."""
     if alignment_mode != "all":
         raise ValueError("alignment_mode must be 'all' in OTF v1")
 
@@ -169,23 +193,17 @@ def _validate_config(
     if session_reset != "session":
         raise ValueError("session_reset must be 'session' in OTF v1")
 
-    if enabled and len(timeframes) == 0:
+    if len(timeframes) == 0:
         raise ValueError("enabled=True requires at least one selected timeframe")
 
 
 def _normalize_timeframes(timeframes: Sequence[str]) -> list[str]:
+    """Normalize timeframe inputs to canonical labels, detecting duplicates."""
     normalized: list[str] = []
     seen: set[str] = set()
-    supported = OTF_CANONICAL_TIMEFRAMES | frozenset(_TIMEFRAME_ALIASES)
 
     for timeframe in timeframes:
-        if timeframe not in supported:
-            raise ValueError(
-                f"Unsupported OTF timeframe: {timeframe!r}. "
-                f"Supported values: {sorted(OTF_CANONICAL_TIMEFRAMES)} "
-                "plus aliases ['5min', '15min', '30min']."
-            )
-        canonical = _TIMEFRAME_ALIASES.get(timeframe, timeframe)
+        canonical = normalize_otf_timeframe(timeframe)  # raises ValueError for unsupported
         if canonical in seen:
             raise ValueError(
                 f"Duplicate OTF timeframe after normalization: {canonical!r}"
@@ -194,6 +212,33 @@ def _normalize_timeframes(timeframes: Sequence[str]) -> list[str]:
         normalized.append(canonical)
 
     return normalized
+
+
+def _build_empty_enabled_outputs(
+    signal_copy: pd.DataFrame,
+    normalized_timeframes: list[str],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return stable empty accepted/rejected DataFrames with correct schema.
+
+    Both outputs have identical column sets: all original signal columns plus
+    OTF metadata columns for the selected timeframes only.
+    """
+    result = signal_copy.copy()
+    result["otf_signal_decision_timestamp"] = pd.Series(
+        dtype="datetime64[ns]", index=result.index
+    )
+    for tf in normalized_timeframes:
+        result[f"otf_{tf}_state"] = pd.Series(dtype="object", index=result.index)
+        result[f"otf_{tf}_sequence_length"] = pd.Series(dtype="int64", index=result.index)
+        result[f"otf_{tf}_reference_timestamp"] = pd.Series(
+            dtype="datetime64[ns]", index=result.index
+        )
+    result["otf_filter_enabled"] = pd.Series(dtype="bool", index=result.index)
+    result["otf_filter_passed"] = pd.Series(dtype="bool", index=result.index)
+    result["otf_filter_reason"] = pd.Series(dtype="object", index=result.index)
+    accepted = result.copy()
+    rejected = result.copy()
+    return accepted, rejected
 
 
 def _validate_signal_directions(signals: pd.DataFrame) -> None:

@@ -573,3 +573,267 @@ class TestPreservationAndAuditability:
 
         pd.testing.assert_frame_equal(acc_c.reset_index(drop=True), acc_a.reset_index(drop=True))
         pd.testing.assert_frame_equal(rej_c.reset_index(drop=True), rej_a.reset_index(drop=True))
+
+
+class TestDisabledIsATrueNoOp:
+    """Disabled mode must short-circuit after only the `enabled` bool check."""
+
+    def _empty_src(self) -> pd.DataFrame:
+        return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+    def test_disabled_ignores_unsupported_timeframe(self) -> None:
+        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        accepted, rejected = apply_otf_filter(self._empty_src(), sig, enabled=False, timeframes=("10m",))
+        assert len(accepted) == 1
+        assert rejected.empty
+
+    def test_disabled_ignores_duplicate_canonical_and_alias_timeframes(self) -> None:
+        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        accepted, rejected = apply_otf_filter(self._empty_src(), sig, enabled=False, timeframes=("5m", "5min"))
+        assert len(accepted) == 1
+        assert rejected.empty
+
+    def test_disabled_ignores_invalid_alignment_mode(self) -> None:
+        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        accepted, rejected = apply_otf_filter(
+            self._empty_src(), sig, enabled=False, timeframes=("5m",), alignment_mode="any"
+        )
+        assert len(accepted) == 1
+        assert rejected.empty
+
+    @pytest.mark.parametrize("value", [0, -1, 1.5, True])
+    def test_disabled_ignores_invalid_minimum_threshold(self, value: object) -> None:
+        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        accepted, rejected = apply_otf_filter(
+            self._empty_src(), sig, enabled=False, timeframes=("5m",),
+            minimum_consecutive_bars=value,  # type: ignore[arg-type]
+        )
+        assert len(accepted) == 1
+        assert rejected.empty
+
+    def test_disabled_ignores_invalid_session_reset(self) -> None:
+        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        accepted, rejected = apply_otf_filter(
+            self._empty_src(), sig, enabled=False, timeframes=("5m",), session_reset="none"
+        )
+        assert len(accepted) == 1
+        assert rejected.empty
+
+    def test_disabled_does_not_require_direction_column(self) -> None:
+        sig = pd.DataFrame([{"signal_id": 1, "timestamp": pd.Timestamp("2026-01-05 09:35", tz=TZ)}])
+        accepted, rejected = apply_otf_filter(self._empty_src(), sig, enabled=False)
+        assert len(accepted) == 1
+        assert rejected.empty
+
+    def test_disabled_does_not_require_timestamp_column(self) -> None:
+        sig = pd.DataFrame([{"signal_id": 1, "value": 42}])
+        accepted, rejected = apply_otf_filter(self._empty_src(), sig, enabled=False)
+        assert len(accepted) == 1
+        assert rejected.empty
+
+    def test_disabled_does_not_inspect_source_df(self) -> None:
+        # pass obviously invalid source — should succeed without inspection
+        invalid_src = pd.DataFrame([{"junk": 1}])
+        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        accepted, rejected = apply_otf_filter(invalid_src, sig, enabled=False)
+        assert len(accepted) == 1
+        assert rejected.empty
+
+    def test_disabled_does_not_call_otf_engine_with_any_args(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        called: list[object] = []
+
+        def _boom(*args: object, **kwargs: object) -> object:
+            called.append((args, kwargs))
+            raise AssertionError("OTF engine must not be called when disabled")
+
+        monkeypatch.setattr("thesistester.engine.otf_filter.calculate_otf_state", _boom)
+
+        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        apply_otf_filter(self._empty_src(), sig, enabled=False, timeframes=("unsupported_tf",))
+        assert len(called) == 0
+
+    def test_disabled_preserves_all_original_signal_rows_and_values(self) -> None:
+        sig = _signals(
+            _signal(signal_id=3, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long", notes="n3"),
+            _signal(signal_id=7, timestamp=pd.Timestamp("2026-01-05 09:36", tz=TZ), direction="short", notes="n7"),
+        )
+        sig_before = sig.copy(deep=True)
+        accepted, rejected = apply_otf_filter(self._empty_src(), sig, enabled=False)
+
+        pd.testing.assert_frame_equal(
+            accepted[sig.columns].reset_index(drop=True),
+            sig_before.reset_index(drop=True),
+        )
+        assert rejected.empty
+        # original not mutated
+        pd.testing.assert_frame_equal(sig, sig_before)
+
+    def test_non_bool_enabled_raises_before_disabled_return(self) -> None:
+        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        with pytest.raises(ValueError, match="enabled must be a bool"):
+            apply_otf_filter(self._empty_src(), sig, enabled="no")  # type: ignore[arg-type]
+
+    def test_disabled_with_empty_signals_and_no_timeframes_returns_empty_accepted_rejected(self) -> None:
+        sig = pd.DataFrame(columns=["signal_id", "timestamp", "direction"])
+        accepted, rejected = apply_otf_filter(self._empty_src(), sig, enabled=False)
+        assert accepted.empty
+        assert rejected.empty
+        assert list(accepted.columns) == list(rejected.columns)
+
+
+class TestEnabledEmptySignals:
+    """enabled=True with empty signals must return stable empty schemas without calling OTF engine."""
+
+    def _source(self) -> pd.DataFrame:
+        return _source_1m("2026-01-05 09:30", 30)
+
+    def _empty_signals(self) -> pd.DataFrame:
+        return pd.DataFrame(columns=["signal_id", "timestamp", "direction", "status"])
+
+    def test_returns_two_empty_dataframes(self) -> None:
+        sig = self._empty_signals()
+        accepted, rejected = apply_otf_filter(
+            self._source(), sig, enabled=True, timeframes=("5m",)
+        )
+        assert accepted.empty
+        assert rejected.empty
+
+    def test_accepted_and_rejected_schemas_are_identical(self) -> None:
+        sig = self._empty_signals()
+        accepted, rejected = apply_otf_filter(
+            self._source(), sig, enabled=True, timeframes=("5m", "15m")
+        )
+        assert list(accepted.columns) == list(rejected.columns)
+
+    def test_selected_timeframe_metadata_columns_are_present(self) -> None:
+        sig = self._empty_signals()
+        accepted, _ = apply_otf_filter(
+            self._source(), sig, enabled=True, timeframes=("5m", "15m")
+        )
+        for tf in ("5m", "15m"):
+            assert f"otf_{tf}_state" in accepted.columns
+            assert f"otf_{tf}_sequence_length" in accepted.columns
+            assert f"otf_{tf}_reference_timestamp" in accepted.columns
+        assert "otf_signal_decision_timestamp" in accepted.columns
+        assert "otf_filter_enabled" in accepted.columns
+        assert "otf_filter_passed" in accepted.columns
+        assert "otf_filter_reason" in accepted.columns
+
+    def test_unselected_timeframe_metadata_columns_are_absent(self) -> None:
+        sig = self._empty_signals()
+        accepted, _ = apply_otf_filter(
+            self._source(), sig, enabled=True, timeframes=("5m",)
+        )
+        assert "otf_15m_state" not in accepted.columns
+        assert "otf_30m_state" not in accepted.columns
+
+    def test_no_direction_or_timestamp_columns_required_to_return_safely(self) -> None:
+        # Completely empty DataFrame — no columns at all
+        sig = pd.DataFrame()
+        accepted, rejected = apply_otf_filter(
+            self._source(), sig, enabled=True, timeframes=("5m",)
+        )
+        assert accepted.empty
+        assert rejected.empty
+
+    def test_otf_engine_is_not_called(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        called: list[object] = []
+
+        def _record(*args: object, **kwargs: object) -> object:
+            called.append((args, kwargs))
+            raise AssertionError("OTF engine must not be called for empty signals")
+
+        monkeypatch.setattr("thesistester.engine.otf_filter.calculate_otf_state", _record)
+
+        sig = self._empty_signals()
+        apply_otf_filter(self._source(), sig, enabled=True, timeframes=("5m",))
+        assert len(called) == 0
+
+    def test_invalid_config_still_raises_before_empty_return(self) -> None:
+        sig = self._empty_signals()
+        with pytest.raises(ValueError, match="enabled=True requires at least one selected timeframe"):
+            apply_otf_filter(self._source(), sig, enabled=True, timeframes=())
+
+    def test_caller_owned_dataframes_not_mutated(self) -> None:
+        sig = self._empty_signals()
+        src = self._source()
+        sig_before = sig.copy(deep=True)
+        src_before = src.copy(deep=True)
+        apply_otf_filter(src, sig, enabled=True, timeframes=("5m",))
+        pd.testing.assert_frame_equal(sig, sig_before)
+        pd.testing.assert_frame_equal(src, src_before)
+
+
+class TestNormalizeOtfTimeframe:
+    """normalize_otf_timeframe must be the single authoritative normalization."""
+
+    def test_canonical_values_normalize_to_themselves(self) -> None:
+        from thesistester.engine import normalize_otf_timeframe
+
+        assert normalize_otf_timeframe("5m") == "5m"
+        assert normalize_otf_timeframe("15m") == "15m"
+        assert normalize_otf_timeframe("30m") == "30m"
+
+    def test_aliases_normalize_to_canonical_values(self) -> None:
+        from thesistester.engine import normalize_otf_timeframe
+
+        assert normalize_otf_timeframe("5min") == "5m"
+        assert normalize_otf_timeframe("15min") == "15m"
+        assert normalize_otf_timeframe("30min") == "30m"
+
+    def test_unsupported_values_raise_value_error(self) -> None:
+        from thesistester.engine import normalize_otf_timeframe
+
+        with pytest.raises(ValueError, match="Unsupported OTF timeframe"):
+            normalize_otf_timeframe("1m")
+        with pytest.raises(ValueError, match="Unsupported OTF timeframe"):
+            normalize_otf_timeframe("10m")
+        with pytest.raises(ValueError, match="Unsupported OTF timeframe"):
+            normalize_otf_timeframe("1h")
+
+    def test_otf_engine_canonical_and_alias_outputs_are_identical(self) -> None:
+        """calculate_otf_state with canonical and alias timeframes must produce the same result."""
+        src = _source_1m("2026-01-05 09:30", 120, trend="up")
+        from thesistester.engine.otf import calculate_otf_state
+
+        result_canonical = calculate_otf_state(src, "5m", minimum_consecutive_bars=1)
+        result_alias = calculate_otf_state(src, "5min", minimum_consecutive_bars=1)
+        pd.testing.assert_frame_equal(result_canonical.reset_index(drop=True), result_alias.reset_index(drop=True))
+
+    def test_filter_canonical_and_alias_outputs_are_identical(self) -> None:
+        """apply_otf_filter with canonical and alias timeframes must produce the same result."""
+        src = _source_1m("2026-01-05 09:30", 120, trend="up")
+        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 10:20", tz=TZ), direction="long"))
+
+        acc_c, rej_c = apply_otf_filter(src, sig, enabled=True, timeframes=("15m",), minimum_consecutive_bars=1)
+        acc_a, rej_a = apply_otf_filter(src, sig, enabled=True, timeframes=("15min",), minimum_consecutive_bars=1)
+
+        pd.testing.assert_frame_equal(
+            acc_c.rename(columns={"otf_15m_state": "state"}).reset_index(drop=True),
+            acc_a.rename(columns={"otf_15m_state": "state"}).reset_index(drop=True),
+        )
+
+    def test_duplicate_normalized_timeframes_raise_when_enabled(self) -> None:
+        src = _source_1m("2026-01-05 09:30", 20)
+        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        with pytest.raises(ValueError, match="Duplicate OTF timeframe"):
+            apply_otf_filter(src, sig, enabled=True, timeframes=("5m", "5min"))
+
+    def test_disabled_mode_does_not_invoke_normalization(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        called: list[object] = []
+        original = __import__(
+            "thesistester.engine.otf_filter", fromlist=["normalize_otf_timeframe"]
+        ).normalize_otf_timeframe
+
+        def _spy(tf: str) -> str:
+            called.append(tf)
+            return original(tf)
+
+        monkeypatch.setattr("thesistester.engine.otf_filter.normalize_otf_timeframe", _spy)
+
+        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        apply_otf_filter(
+            pd.DataFrame(), sig, enabled=False, timeframes=("5m", "unsupported")
+        )
+        assert len(called) == 0
+
