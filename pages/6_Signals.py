@@ -608,7 +608,7 @@ def _resolve_loaded_signal_identity(
 
 
 def _validate_signal_artifact_identity_for_save(
-    session_state: object,
+    session_state: dict,
     current_settings: dict | None,
 ) -> tuple[bool, str | None]:
     """Return (can_save, error_message) for saving current signal artifacts.
@@ -625,11 +625,11 @@ def _validate_signal_artifact_identity_for_save(
     drift uses ``_SIGNAL_CONTROLS_CHANGED_WARNING`` so the caller can surface it as
     a warning; all other failures use ``_OTF_INVALID_ARTIFACT_BLOCKER``.
     """
-    status = session_state.get(_SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY)  # type: ignore[union-attr]
+    status = session_state.get(_SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY)
     if status != _IDENTITY_STATUS_TRUSTED:
         return False, _OTF_INVALID_ARTIFACT_BLOCKER
 
-    stored_settings = session_state.get("signal_settings")  # type: ignore[union-attr]
+    stored_settings = session_state.get("signal_settings")
     if not isinstance(stored_settings, dict):
         return False, _OTF_INVALID_ARTIFACT_BLOCKER
 
@@ -637,7 +637,7 @@ def _validate_signal_artifact_identity_for_save(
     if normalized_stored is None:
         return False, _OTF_INVALID_ARTIFACT_BLOCKER
 
-    stored_hash = session_state.get("signal_settings_hash")  # type: ignore[union-attr]
+    stored_hash = session_state.get("signal_settings_hash")
     if not isinstance(stored_hash, str) or not stored_hash:
         return False, _OTF_INVALID_ARTIFACT_BLOCKER
 
@@ -1370,6 +1370,8 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
                 st.error(f"Unable to load saved signals ({selected_run_hash[:12]}...): {exc}")
             else:
                 # Resolve identity BEFORE touching session state so the transition is atomic.
+                # If we modified artifacts first and validation failed midway, new artifacts
+                # could end up associated with stale settings from a previous run.
                 identity = _resolve_loaded_signal_identity(
                     loaded_meta.get("signal_settings"),
                     loaded_meta.get("signal_settings_hash"),

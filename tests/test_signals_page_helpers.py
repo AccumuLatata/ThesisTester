@@ -819,10 +819,15 @@ def _valid_loaded_settings(**overrides) -> dict:
 
 def test_resolve_loaded_identity_valid_settings_returns_trusted():
     """Valid settings with no persisted hash → trusted identity with recomputed hash."""
-    identity = _resolve_loaded_signal_identity(_valid_loaded_settings(), None)
+    from thesistester.persistence.local_store import compute_signal_settings_hash
+
+    settings = _valid_loaded_settings()
+    normalized, _ = _try_normalize_signal_settings_for_hash(settings)
+    expected_hash = compute_signal_settings_hash(normalized)
+    identity = _resolve_loaded_signal_identity(settings, None)
     assert identity["status"] == _IDENTITY_STATUS_TRUSTED
-    assert isinstance(identity["settings"], dict)
-    assert isinstance(identity["hash"], str) and identity["hash"]
+    assert identity["settings"] == normalized
+    assert identity["hash"] == expected_hash
     assert identity["error"] is None
 
 
@@ -854,7 +859,7 @@ def test_resolve_loaded_identity_invalid_otf_returns_invalid():
 
 
 def test_resolve_loaded_identity_matching_persisted_hash_returns_trusted():
-    """Settings with persisted hash that matches recomputed → trusted."""
+    """Settings with persisted hash that matches recomputed → trusted; settings normalized."""
     from thesistester.persistence.local_store import compute_signal_settings_hash
 
     settings = _valid_loaded_settings()
@@ -863,6 +868,7 @@ def test_resolve_loaded_identity_matching_persisted_hash_returns_trusted():
     identity = _resolve_loaded_signal_identity(settings, good_hash)
     assert identity["status"] == _IDENTITY_STATUS_TRUSTED
     assert identity["hash"] == good_hash
+    assert identity["settings"] == normalized
 
 
 def test_resolve_loaded_identity_mismatched_persisted_hash_returns_invalid():
@@ -999,12 +1005,12 @@ def test_validate_save_none_current_settings_blocks_save():
 
 def test_validate_save_controls_drift_returns_controls_changed_message():
     """Trusted artifacts but current controls differ → blocked with controls-changed message."""
-    from thesistester.persistence.local_store import compute_signal_settings_hash
-
     ss = _trusted_session_state()
-    # current_settings differ from what was stored
+    # The stored settings use trigger="touch" (default in _valid_loaded_settings).
+    # Use a different trigger so the hash differs from the stored hash.
+    stored_trigger = ss["signal_settings"].get("trigger", "touch")
     different_settings = _valid_loaded_settings()
-    different_settings["trigger"] = "reject"  # different from what's in ss
+    different_settings["trigger"] = "reject" if stored_trigger == "touch" else "touch"
     can_save, err = _validate_signal_artifact_identity_for_save(ss, different_settings)
     assert can_save is False
     assert err == _SIGNAL_CONTROLS_CHANGED_WARNING
