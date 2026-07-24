@@ -219,7 +219,7 @@ v1 supports exactly three higher-timeframe intervals:
 | `15m` | :00, :15, :30, :45 | 4 bars per hour |
 | `30m` | :00, :30 | 2 bars per hour |
 
-Canonical public OTF timeframe labels are `5m`, `15m`, and `30m`.  The pure PR 2 engine may retain `5min`, `15min`, and `30min` as backward-compatible aliases, but they are aliases only and must be normalized internally before calling `resample_ohlcv()`.
+Canonical public OTF timeframe labels are `5m`, `15m`, and `30m`.  The pure PR 2 engine accepts `5min`, `15min`, and `30min` as backward-compatible aliases, but they are aliases only and are normalized internally before calling `resample_ohlcv()`.
 
 The source data must be at a granularity **strictly finer** than the target timeframe (e.g., 1-minute bars for 5m OTF).  Using a source interval equal to the target timeframe produces no resampling and is not supported by OTF v1.  The production engine in PR 2 must validate that the source interval is strictly finer than each selected OTF timeframe, and that the target timeframe is exactly divisible by the inferred source interval.  When the source interval cannot be inferred safely from the input timestamps, the pure engine must reject the input rather than guessing completion.  Resampling must use only bars that have closed at or before the signal decision timestamp.
 

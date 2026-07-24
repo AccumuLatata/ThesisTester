@@ -30,11 +30,11 @@ from tests.fixtures.otf_fixtures import (
     OTF_SEQUENCE_BREAK_UP,
     OTF_SESSION_BOUNDARY,
     OTF_UP_ESTABLISHED,
-    SUPPORTED_TIMEFRAMES,
     TZ,
     _bars_to_df,
 )
 from thesistester.engine.otf import (
+    OTF_CANONICAL_TIMEFRAMES,
     OTF_SUPPORTED_TIMEFRAMES,
     _OUTPUT_COLUMNS,
     calculate_otf_state,
@@ -641,7 +641,10 @@ class TestTimeframeApi:
         pd.testing.assert_frame_equal(canonical_result, alias_result)
 
     def test_supported_timeframe_constant_uses_canonical_labels(self) -> None:
-        assert OTF_SUPPORTED_TIMEFRAMES == frozenset(SUPPORTED_TIMEFRAMES)
+        assert OTF_CANONICAL_TIMEFRAMES == frozenset({"5m", "15m", "30m"})
+        assert OTF_SUPPORTED_TIMEFRAMES == frozenset(
+            {"5m", "15m", "30m", "5min", "15min", "30min"}
+        )
 
 
 # ---------------------------------------------------------------------------

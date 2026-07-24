@@ -155,27 +155,26 @@ from thesistester.levels.session_date import trading_session_date
 # Constants
 # ---------------------------------------------------------------------------
 
-#: Canonical public OTF higher-timeframe labels accepted by this engine (v1).
-OTF_SUPPORTED_TIMEFRAMES: Final[frozenset[str]] = frozenset({"5m", "15m", "30m"})
+#: Canonical public OTF higher-timeframe labels for this engine (v1).
+OTF_CANONICAL_TIMEFRAMES: Final[frozenset[str]] = frozenset({"5m", "15m", "30m"})
 
 #: Backward-compatible aliases accepted for existing callers.
+_TIMEFRAME_ALIASES: Final[dict[str, str]] = {
+    "5min": "5m",
+    "15min": "15m",
+    "30min": "30m",
+}
+
+#: All accepted public OTF timeframe inputs, including aliases.
+OTF_SUPPORTED_TIMEFRAMES: Final[frozenset[str]] = (
+    OTF_CANONICAL_TIMEFRAMES | frozenset(_TIMEFRAME_ALIASES)
+)
+
+#: Internal resampler labels for the canonical public timeframes.
 _TIMEFRAME_NORMALIZATION: Final[dict[str, str]] = {
     "5m": "5min",
     "15m": "15min",
     "30m": "30min",
-    "5min": "5min",
-    "15min": "15min",
-    "30min": "30min",
-}
-
-#: Canonical public labels for supported inputs and aliases.
-_TIMEFRAME_CANONICAL: Final[dict[str, str]] = {
-    "5m": "5m",
-    "15m": "15m",
-    "30m": "30m",
-    "5min": "5m",
-    "15min": "15m",
-    "30min": "30m",
 }
 
 #: Required source OHLCV columns.
@@ -324,11 +323,11 @@ def _validate_inputs(
         )
 
     # Timeframe support
-    if timeframe not in _TIMEFRAME_NORMALIZATION:
+    if timeframe not in OTF_SUPPORTED_TIMEFRAMES:
         raise ValueError(
             f"Unsupported OTF timeframe: {timeframe!r}. "
-            f"Canonical values: {sorted(OTF_SUPPORTED_TIMEFRAMES)}. "
-            "Backward-compatible aliases: ['15min', '30min', '5min']."
+            f"Canonical values: {sorted(OTF_CANONICAL_TIMEFRAMES)}. "
+            "Backward-compatible aliases: ['5min', '15min', '30min']."
         )
 
     # minimum_consecutive_bars
@@ -375,7 +374,8 @@ def _ensure_timezone_aware(
 
 def _normalize_timeframe(timeframe: str) -> str:
     """Normalize a canonical or alias timeframe to the resampler label."""
-    return _TIMEFRAME_NORMALIZATION[timeframe]
+    canonical_timeframe = _TIMEFRAME_ALIASES.get(timeframe, timeframe)
+    return _TIMEFRAME_NORMALIZATION[canonical_timeframe]
 
 
 def _coerce_and_validate_source_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
@@ -392,9 +392,10 @@ def _coerce_and_validate_source_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
     if (df["high"] < df["low"]).any():
         raise ValueError("Input contains bars with high < low.")
 
-    open_or_close_high = df[["open", "close"]].max(axis=1)
-    open_or_close_low = df[["open", "close"]].min(axis=1)
-    if (df["high"] < open_or_close_high).any() or (df["low"] > open_or_close_low).any():
+    open_close_max = df[["open", "close"]].max(axis=1)
+    open_close_min = df[["open", "close"]].min(axis=1)
+    within_range = (df["high"] >= open_close_max) & (df["low"] <= open_close_min)
+    if not within_range.all():
         raise ValueError("Input contains bars where open/close fall outside high/low.")
     if (df["volume"] < 0).any():
         raise ValueError("Input contains bars with negative volume.")
@@ -430,10 +431,6 @@ def _infer_validated_source_interval(
             "Could not infer a trustworthy source bar interval from the input timestamps. "
             "At least two source bars are required."
         )
-    if base_interval <= pd.Timedelta(0):
-        raise ValueError(
-            f"Inferred source bar interval must be positive, got {base_interval}."
-        )
 
     diffs = df["timestamp"].diff().dropna()
     diff_ns = diffs.to_numpy(dtype="timedelta64[ns]").astype("int64")
@@ -447,12 +444,12 @@ def _infer_validated_source_interval(
     if base_interval >= target_duration:
         raise ValueError(
             f"Source bar interval ({base_interval}) must be strictly finer than "
-            f"the target OTF timeframe ({_TIMEFRAME_CANONICAL[timeframe]} = {target_duration}). "
+            f"the target OTF timeframe ({timeframe} = {target_duration}). "
             "The OTF engine cannot resample from an equal or coarser source."
         )
     if target_duration.value % base_interval.value != 0:
         raise ValueError(
-            f"Target OTF timeframe ({_TIMEFRAME_CANONICAL[timeframe]} = {target_duration}) "
+            f"Target OTF timeframe ({timeframe} = {target_duration}) "
             f"must be exactly divisible by the inferred source bar interval ({base_interval})."
         )
     return base_interval
@@ -523,8 +520,10 @@ def _filter_complete_htf_buckets(
         how="left",
     )
     filtered = filtered[
-        filtered["bar_close_timestamp"].le(latest_source_availability_timestamp)
-        & filtered["is_complete_bucket"].fillna(False)
+        (
+            filtered["bar_close_timestamp"].le(latest_source_availability_timestamp)
+            & filtered["is_complete_bucket"].fillna(False)
+        )
     ].copy()
     return filtered.drop(columns=["is_complete_bucket"])
 
