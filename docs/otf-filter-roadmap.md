@@ -3,7 +3,7 @@
 **Project:** ThesisTester  
 **Status:** Planned  
 **Owner:** ThesisTester engineering  
-**Last updated:** 2026-07-23  
+**Last updated:** 2026-07-24  
 **Feature:** Directional One Timeframing (OTF) market-condition filter
 
 ## Document purpose
@@ -232,7 +232,7 @@ Report and research artifact schema: no standalone schema version constant exist
 - [x] Validate required OHLCV columns.
 - [x] Validate timestamps and timezone handling.
 - [x] Implement 5m, 15m, and 30m resampling (via `resample_ohlcv()`).
-- [x] Implement completed-bar alignment (`bar_close_timestamp <= max_source_ts` filter).
+- [x] Implement completed-bar alignment using source-bar close timestamps and complete source coverage.
 - [x] Implement OTF state calculation.
 - [x] Implement sequence length and reference timestamp outputs.
 - [x] Implement session-reset behavior.
@@ -251,6 +251,18 @@ calculate_otf_state(
     eth_start: str | None = None,
     session_reset: str = "session",
 ) -> pd.DataFrame
+```
+
+- Canonical public timeframe labels: `5m`, `15m`, `30m`
+- Backward-compatible aliases: `5min`, `15min`, `30min`
+- Internal normalization before resampling:
+
+```python
+{
+    "5m": "5min",
+    "15m": "15min",
+    "30m": "30min",
+}
 ```
 
 ### Output fields (complete)
@@ -278,15 +290,31 @@ otf_reference_timestamp   — bar_close_timestamp of the previous bar (NaT for f
 
 **Example:** If the session opens at 09:31 ET and the 09:30 5m bucket has started before the first source bar, that bucket is discarded. The first usable HTF bar is the one whose `bar_start_timestamp >= 09:31`.
 
+### Source-bar completion and bucket-coverage policy
+
+- Source rows are **start-labelled** bars.
+- `source_bar_close_timestamp = source_bar_start_timestamp + inferred_source_interval`
+- `latest_source_availability_timestamp = max(source_bar_close_timestamp)`
+- An HTF bucket is retained only when:
+  - `bar_close_timestamp <= latest_source_availability_timestamp`
+  - the first expected source row is present
+  - the final expected source row is present
+  - source timestamps are continuous at the inferred interval
+  - the expected source-row count is present (`target_duration / source_interval`)
+- The target timeframe must be exactly divisible by the inferred source interval.
+- Equal or coarser source intervals are rejected.
+- Irregular timestamps that prevent trustworthy interval inference are rejected.
+- No next-bucket sentinel row is required; the last required source row completes the HTF bucket.
+
 ### Look-ahead safety guarantees
 
-1. **In-progress bars excluded:** After resampling, bars with `bar_close_timestamp > max(source_timestamps)` are removed before any state computation. An in-progress bar whose eventual high/low is unknown at the last observed timestamp cannot influence any OTF output.
+1. **In-progress bars excluded:** After resampling, bars whose `bar_close_timestamp` exceeds the latest source-bar availability or lack full expected source coverage are removed before any state computation.
 
-2. **Append-data invariance:** `OTF state for timestamps <= T is unchanged when data after T is appended.` Proven by `TestLookaheadSafety::test_appending_bars_does_not_change_historical_states`.
+2. **Append-data invariance:** Historical output rows with `availability_timestamp <= T` are unchanged when data after `T` is appended. Proven by `TestLookaheadSafety::test_appending_bars_does_not_change_complete_historical_rows`.
 
-3. **Future-shock invariance:** `TestLookaheadSafety::test_future_highs_lows_do_not_alter_historical_state` confirms extreme future bar values do not alter past OTF states.
+3. **Future-shock invariance:** `TestLookaheadSafety::test_future_highs_lows_do_not_alter_historical_rows` confirms extreme future bar values do not alter prior completed rows.
 
-4. **Exact-close availability:** A bar whose `bar_close_timestamp == max(source_timestamps)` IS included in the output (§6.3). Proven by `TestLookaheadSafety::test_bar_available_exactly_at_close_timestamp`.
+4. **Exact-close availability:** A bar whose `bar_close_timestamp` equals the latest source-bar availability is included in the output (§6.3). Proven by `TestLookaheadSafety::test_bar_available_exactly_at_close_timestamp`.
 
 5. **Session-boundary counter isolation:** Prior-session `up_run`/`down_run` counters cannot appear in the new session. Proven by `TestLookaheadSafety::test_session_boundary_reset_does_not_leak_prior_counters`.
 
@@ -295,7 +323,7 @@ otf_reference_timestamp   — bar_close_timestamp of the previous bar (NaT for f
 - [x] The engine is independent of Streamlit pages.
 - [x] The engine is deterministic.
 - [x] The engine does not mutate caller-owned data.
-- [x] Unit tests cover normal and invalid input (99 tests in `tests/test_otf.py`).
+- [x] Unit tests cover normal and invalid input, canonical/alias timeframes, completion boundaries, gap handling, and deterministic OHLCV validation (`tests/test_otf.py`).
 
 ## Phase 3 — Prove look-ahead safety
 
@@ -308,21 +336,23 @@ Look-ahead and drift safety tests are implemented in `tests/test_otf.py::TestLoo
 - [x] Test that unfinished 5m bars cannot affect earlier signals.
 - [x] Test that unfinished 15m bars cannot affect earlier signals.
 - [x] Test that unfinished 30m bars cannot affect earlier signals.
-- [x] Test that future highs, lows, and closes do not alter prior states.
-- [x] Test that appending bars after timestamp `T` does not change OTF states at or before `T`.
+- [x] Test that future highs, lows, and closes do not alter prior completed rows.
+- [x] Test that appending bars after timestamp `T` does not change completed OTF outputs at or before `T`.
 - [x] Test session-boundary behavior.
 - [x] Test timezone-aware and timezone-naive inputs.
 - [x] Test resampling boundaries for the supported source intervals.
+- [x] Test exact-close completion without sentinel rows.
+- [x] Test missing-source-coverage bucket exclusion.
 
 ### Acceptance criteria
 
 The following property holds:
 
 ```text
-OTF state for timestamps <= T is unchanged when data after T is appended.
+Completed OTF output rows with availability_timestamp <= T are unchanged when data after T is appended.
 ```
 
-Proven by `tests/test_otf.py::TestLookaheadSafety::test_appending_bars_does_not_change_historical_states`.
+Proven by `tests/test_otf.py::TestLookaheadSafety::test_appending_bars_does_not_change_complete_historical_rows`.
 
 ## Phase 4 — Integrate at signal eligibility
 
@@ -611,6 +641,16 @@ No production files outside `docs/` and `tests/` were modified.
 - Look-ahead tests.
 - Feature remains unused by default.
 
+**PR 2 verified evidence:**
+
+```text
+python3 -m pytest tests/test_otf.py tests/test_otf_contract.py tests/test_otf_baseline.py tests/test_loader.py -q
+# 350 passed
+
+python3 -m pytest tests/ -q
+# 1233 passed
+```
+
 ### PR 3 — Signal filtering
 
 - Shared filter application.
@@ -659,8 +699,8 @@ No production files outside `docs/` and `tests/` were modified.
 | 2026-07-23 | Roadmap created | _This document_ | Initial regression-safe and drift-safe plan. |
 | 2026-07-23 | Phase 0 partially complete | `tests/test_otf_baseline.py`, `docs/otf-filter-roadmap.md` | Baseline captured; schema inventory recorded; final verification shows 223 focused tests and 1106 full-suite tests passing; report-artifact schema remains deferred. |
 | 2026-07-23 | Phase 1 complete | `docs/otf-filter.md`, `tests/fixtures/otf_fixtures.py`, `tests/test_otf_contract.py` | OTF v1 contract approved; 11 OHLCV scenarios + 3 vector scenarios; direct resampler drift guard added; final verification shows 223 focused tests and 1106 full-suite tests passing. |
-| 2026-07-23 | Phase 2 complete | `thesistester/engine/otf.py`, `tests/test_otf.py` | Pure OTF engine implemented; 99 new tests in `test_otf.py`; all look-ahead/drift-safety invariance tests pass against production engine; 322 focused tests pass; pre-existing baseline failures unchanged (22 failures due to missing Streamlit/pyarrow in test environment). |
-| 2026-07-23 | Phase 3 complete (merged into PR 2) | `tests/test_otf.py::TestLookaheadSafety` | 5m/15m/30m in-progress bar exclusion proven; append-data invariance proven; future-shock invariance proven; session-boundary counter isolation proven; bar available exactly at close timestamp proven. |
+| 2026-07-24 | Phase 2 complete | `thesistester/engine/otf.py`, `tests/test_otf.py`, `docs/otf-filter.md`, `docs/otf-filter-roadmap.md` | Pure OTF engine updated to use canonical public timeframe labels (`5m`/`15m`/`30m`), internal `*min` normalization, source-bar close semantics, complete-source-coverage filtering, deterministic OHLCV validation, and no-sentinel completion. Focused verification: 350 passed. Full suite: 1233 passed. |
+| 2026-07-24 | Phase 3 complete (merged into PR 2) | `tests/test_otf.py::TestLookaheadSafety` | 5m/15m/30m in-progress bar exclusion proven under source-bar close semantics; append-data invariance now compares full historical output rows; future-shock invariance, new-session invariance, exact-close availability, missing-coverage exclusion, and session-boundary counter isolation are all proven against the production engine. |
 | 2026-07-23 | PR 1 final verified state | `docs/otf-filter-roadmap.md` | Phase 0 remains partially complete; Phase 1 remains complete; partial first session-bucket handling plus production-engine future-shock/append-data invariance validation remain deferred to PR 2; production OTF behavior is still not implemented. |
 
 ## Open questions
@@ -671,7 +711,7 @@ No production files outside `docs/` and `tests/` were modified.
 4. ~~Should insufficient history return `unknown` or `neutral`?~~ **Resolved:** `unknown`. See `docs/otf-filter.md §3.9`.
 5. ~~Is equal source/target interval supported?~~ **Resolved:** Not supported in OTF v1; source must be strictly finer. PR 2 must validate. See `docs/otf-filter.md §5`.
 6. ~~How should HTF bar timestamps be interpreted in pandas resampling output?~~ **Resolved:** Pandas left label = `bar_start_timestamp`; `bar_close_timestamp = bar_start_timestamp + timeframe_duration`; `availability_timestamp = bar_close_timestamp`. Row label is NOT the availability timestamp. See `docs/otf-filter.md §6.1`.
-7. Should the first release support only source intervals at or below 5 minutes? **Deferred to PR 2.**
+7. ~~Should the first release support only source intervals at or below 5 minutes?~~ **Resolved in PR 2.** The pure engine accepts any trustworthy source interval that is strictly finer than the target timeframe and divides it exactly; equal, coarser, non-divisible, or irregular inputs are rejected.
 8. Should 5m OTF be treated as a regime filter, an entry confirmation, or both? **Deferred to Phase 6 (UI controls).**
 9. Which report artifact should become the authoritative record of OTF configuration? **Deferred to Phase 8 (reporting).**
 10. ~~How should partial first buckets of a trading session be handled in resampling?~~ **Resolved in PR 2.** Discard any HTF bar whose `bar_start_timestamp` is strictly earlier than the first source bar in that session. Implemented in `_discard_partial_first_buckets()` in `thesistester/engine/otf.py`.
@@ -682,4 +722,4 @@ No production files outside `docs/` and `tests/` were modified.
 |---|---|
 | 2026-07-23 | Initial roadmap created. |
 | 2026-07-23 | PR 1: OTF v1 contract approved; `docs/otf-filter.md` created; deterministic fixtures added; contract and baseline tests added; final verified scope is documentation/tests only with production OTF still unimplemented. |
-| 2026-07-23 | PR 2: Pure OTF engine created; phases 2 and 3 complete | `thesistester/engine/otf.py`, `tests/test_otf.py`, `docs/otf-filter-roadmap.md` | Engine is regression-safe and isolated from all production workflows; exact verification: 99 new OTF engine tests + 223 existing OTF tests = 322 focused tests passing; no production behavior changes. |
+| 2026-07-24 | PR 2 pure OTF engine updated and re-verified. Canonical public timeframe API aligned to `5m`/`15m`/`30m`; internal resampler normalization retained; source-bar start/close semantics and complete-source-coverage rule enforced; sentinel rows no longer required; focused verification: 350 passed; full suite: 1233 passed; no production behavior changes outside the pure engine/docs/tests scope. |

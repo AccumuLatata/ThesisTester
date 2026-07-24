@@ -57,12 +57,6 @@ def _expand_to_1m(bars: list[dict], source_tz: str = _TZ) -> pd.DataFrame:
     - Minutes 1-3: all fields = midpoint = (O+C)/2, vol=V/5
     - Minute 4: open=C, high=C, low=C, close=C, vol=V/5
 
-    An extra "sentinel" bar is appended after the last fixture bar's window to
-    ensure max(source_timestamps) >= last_bar_close_timestamp so the engine
-    does not filter out the last completed HTF bar as in-progress.
-    The sentinel bar lies in the next 5m bucket and is typically discarded by the
-    partial-first-bucket policy or simply forms an incomplete final bucket.
-
     The 5m bar timestamp is used as the *start* of the 5-minute slot.
     """
     rows: list[dict] = []
@@ -110,23 +104,6 @@ def _expand_to_1m(bars: list[dict], source_tz: str = _TZ) -> pd.DataFrame:
             }
         )
 
-    # Sentinel bar: ensures max_source_ts >= last_bar_close_timestamp so the
-    # engine includes the last fixture bar rather than treating it as in-progress.
-    if bars:
-        last_ts = bars[-1]["timestamp"]
-        last_C = bars[-1]["close"]
-        sentinel_ts = last_ts + pd.Timedelta(minutes=5)  # = last bar close
-        rows.append(
-            {
-                "timestamp": sentinel_ts,
-                "open": last_C,
-                "high": last_C,
-                "low": last_C,
-                "close": last_C,
-                "volume": 1.0,
-            }
-        )
-
     return pd.DataFrame(rows).reset_index(drop=True)
 
 
@@ -135,7 +112,7 @@ def _run_scenario_5m(scenario: dict) -> pd.DataFrame:
     src = _expand_to_1m(scenario["bars"])
     return calculate_otf_state(
         src,
-        "5min",
+        "5m",
         minimum_consecutive_bars=scenario.get(
             "minimum_consecutive_bars", DEFAULT_MINIMUM_CONSECUTIVE_BARS
         ),
@@ -190,12 +167,50 @@ def _run_scenario_overnight(scenario: dict) -> pd.DataFrame:
     df = pd.DataFrame(rows)
     return calculate_otf_state(
         df,
-        "30min",
+        "30m",
         minimum_consecutive_bars=scenario.get(
             "minimum_consecutive_bars", DEFAULT_MINIMUM_CONSECUTIVE_BARS
         ),
         eth_start=eth_start,
     )
+
+
+def _make_1m_source(
+    timestamps: list[pd.Timestamp],
+    *,
+    high_offset: float = 1.0,
+    low_offset: float = 1.0,
+    close_offset: float = 0.5,
+    volume: float = 500.0,
+) -> pd.DataFrame:
+    """Build deterministic 1-minute source rows for the provided timestamps."""
+    rows = []
+    for i, ts in enumerate(timestamps):
+        open_ = 100.0 + i * 0.1
+        close = open_ + close_offset
+        rows.append(
+            {
+                "timestamp": ts,
+                "open": open_,
+                "high": open_ + high_offset,
+                "low": open_ - low_offset,
+                "close": close,
+                "volume": volume,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _minute_range(
+    start: str,
+    count: int,
+    *,
+    tz: str = _TZ,
+    step_minutes: int = 1,
+) -> list[pd.Timestamp]:
+    """Return a list of tz-aware timestamps at a fixed minute cadence."""
+    base = pd.Timestamp(start, tz=tz)
+    return [base + pd.Timedelta(minutes=step_minutes * i) for i in range(count)]
 
 
 # ---------------------------------------------------------------------------
@@ -430,7 +445,7 @@ class TestConfigurableMinimum:
             {"timestamp": last_ts, "open": 100.0, "high": 100.0, "low": 100.0, "close": 100.0, "volume": 1}
         )
         df = pd.DataFrame(rows)
-        return calculate_otf_state(df, "5min", minimum_consecutive_bars=min_bars)
+        return calculate_otf_state(df, "5m", minimum_consecutive_bars=min_bars)
 
     def test_minimum_2_establishes_up_at_bar_2(self) -> None:
         result = self._bars_up(5, 2)
@@ -557,44 +572,76 @@ class TestTimeframeResampling:
         return pd.DataFrame(rows)
 
     def test_5m_produces_correct_bar_count(self) -> None:
-        # 20 bars at 09:00-09:19 → 3 completed 5m bars (09:00-09:05-09:10-09:15-09:20)
-        # But max_source=09:19 < 09:20 (4th bar close) → only 3 bars pass filter
-        src = self._make_source(21)  # 09:00-09:20 inclusive; max_source=09:20
-        result = calculate_otf_state(src, "5min")
+        # Source rows 09:00-09:19 are 20 start-labelled 1m bars whose final
+        # bar closes at 09:20, so four 5m buckets are complete with no sentinel.
+        src = self._make_source(20)
+        result = calculate_otf_state(src, "5m")
         assert len(result) == 4
 
     def test_15m_produces_correct_bar_count(self) -> None:
-        # Need max_source >= 09:45 to include 3rd 15m bar (09:30-09:45)
-        src = self._make_source(46)  # 09:00-09:45 inclusive
-        result = calculate_otf_state(src, "15min")
+        src = self._make_source(45)
+        result = calculate_otf_state(src, "15m")
         assert len(result) == 3
 
     def test_30m_produces_correct_bar_count(self) -> None:
-        # Need max_source >= 10:30 to include 3rd 30m bar (10:00-10:30)
-        src = self._make_source(91)  # 09:00-10:30 inclusive
-        result = calculate_otf_state(src, "30min")
+        src = self._make_source(90)
+        result = calculate_otf_state(src, "30m")
         assert len(result) == 3
 
     def test_5m_bar_close_equals_start_plus_5m(self) -> None:
-        src = self._make_source(21)
-        result = calculate_otf_state(src, "5min")
+        src = self._make_source(20)
+        result = calculate_otf_state(src, "5m")
         for _, row in result.iterrows():
-            expected = row["bar_start_timestamp"] + pd.Timedelta("5min")
+            expected = row["bar_start_timestamp"] + pd.Timedelta("5m")
             assert row["bar_close_timestamp"] == expected
 
     def test_15m_bar_close_equals_start_plus_15m(self) -> None:
-        src = self._make_source(46)
-        result = calculate_otf_state(src, "15min")
+        src = self._make_source(45)
+        result = calculate_otf_state(src, "15m")
         for _, row in result.iterrows():
-            expected = row["bar_start_timestamp"] + pd.Timedelta("15min")
+            expected = row["bar_start_timestamp"] + pd.Timedelta("15m")
             assert row["bar_close_timestamp"] == expected
 
     def test_30m_bar_close_equals_start_plus_30m(self) -> None:
-        src = self._make_source(91)
-        result = calculate_otf_state(src, "30min")
+        src = self._make_source(90)
+        result = calculate_otf_state(src, "30m")
         for _, row in result.iterrows():
-            expected = row["bar_start_timestamp"] + pd.Timedelta("30min")
+            expected = row["bar_start_timestamp"] + pd.Timedelta("30m")
             assert row["bar_close_timestamp"] == expected
+
+
+class TestTimeframeApi:
+    @pytest.mark.parametrize(
+        ("timeframe", "source_minutes", "expected_bars"),
+        [("5m", 20, 4), ("15m", 45, 3), ("30m", 90, 3)],
+    )
+    def test_canonical_public_timeframes_are_accepted(
+        self,
+        timeframe: str,
+        source_minutes: int,
+        expected_bars: int,
+    ) -> None:
+        timestamps = _minute_range("2026-01-05 09:00", source_minutes)
+        result = calculate_otf_state(_make_1m_source(timestamps), timeframe)
+        assert len(result) == expected_bars
+
+    @pytest.mark.parametrize(
+        ("canonical", "alias", "source_minutes"),
+        [("5m", "5min", 20), ("15m", "15min", 45), ("30m", "30min", 90)],
+    )
+    def test_alias_results_match_canonical_results(
+        self,
+        canonical: str,
+        alias: str,
+        source_minutes: int,
+    ) -> None:
+        source = _make_1m_source(_minute_range("2026-01-05 09:00", source_minutes))
+        canonical_result = calculate_otf_state(source, canonical)
+        alias_result = calculate_otf_state(source, alias)
+        pd.testing.assert_frame_equal(canonical_result, alias_result)
+
+    def test_supported_timeframe_constant_uses_canonical_labels(self) -> None:
+        assert OTF_SUPPORTED_TIMEFRAMES == frozenset(SUPPORTED_TIMEFRAMES)
 
 
 # ---------------------------------------------------------------------------
@@ -622,12 +669,12 @@ class TestTimestampSemantics:
 
     def test_availability_timestamp_equals_bar_close_timestamp(self) -> None:
         src = self._make_source_5m()
-        result = calculate_otf_state(src, "5min")
+        result = calculate_otf_state(src, "5m")
         assert (result["availability_timestamp"] == result["bar_close_timestamp"]).all()
 
     def test_bar_start_is_not_availability(self) -> None:
         src = self._make_source_5m()
-        result = calculate_otf_state(src, "5min")
+        result = calculate_otf_state(src, "5m")
         for _, row in result.iterrows():
             assert row["bar_start_timestamp"] != row["availability_timestamp"], (
                 "bar_start_timestamp must not equal availability_timestamp "
@@ -636,19 +683,19 @@ class TestTimestampSemantics:
 
     def test_first_completed_bar_starts_at_09_25(self) -> None:
         src = self._make_source_5m()
-        result = calculate_otf_state(src, "5min")
+        result = calculate_otf_state(src, "5m")
         expected_start = pd.Timestamp("2026-01-05 09:25", tz=_TZ)
         assert result.iloc[0]["bar_start_timestamp"] == expected_start
 
     def test_first_completed_bar_closes_at_09_30(self) -> None:
         src = self._make_source_5m()
-        result = calculate_otf_state(src, "5min")
+        result = calculate_otf_state(src, "5m")
         expected_close = pd.Timestamp("2026-01-05 09:30", tz=_TZ)
         assert result.iloc[0]["bar_close_timestamp"] == expected_close
 
     def test_first_completed_bar_available_at_09_30(self) -> None:
         src = self._make_source_5m()
-        result = calculate_otf_state(src, "5min")
+        result = calculate_otf_state(src, "5m")
         avail = result.iloc[0]["availability_timestamp"]
         assert avail == pd.Timestamp("2026-01-05 09:30", tz=_TZ)
 
@@ -677,7 +724,7 @@ class TestPartialFirstBucketPolicy:
                 }
             )
         src = pd.DataFrame(rows)
-        result = calculate_otf_state(src, "5min")
+        result = calculate_otf_state(src, "5m")
         # The 09:30 bucket starts before 09:31 → should be discarded
         if len(result) > 0:
             first_start = result.iloc[0]["bar_start_timestamp"]
@@ -703,7 +750,7 @@ class TestPartialFirstBucketPolicy:
                 }
             )
         src = pd.DataFrame(rows)
-        result = calculate_otf_state(src, "5min")
+        result = calculate_otf_state(src, "5m")
         assert len(result) >= 1
         first_start = result.iloc[0]["bar_start_timestamp"]
         assert first_start == pd.Timestamp("2026-01-05 09:30", tz=_TZ)
@@ -719,14 +766,14 @@ class TestEmptyInput:
         empty = pd.DataFrame(
             columns=["timestamp", "open", "high", "low", "close", "volume"]
         )
-        result = calculate_otf_state(empty, "5min")
+        result = calculate_otf_state(empty, "5m")
         assert result.empty
 
     def test_empty_result_has_correct_columns(self) -> None:
         empty = pd.DataFrame(
             columns=["timestamp", "open", "high", "low", "close", "volume"]
         )
-        result = calculate_otf_state(empty, "5min")
+        result = calculate_otf_state(empty, "5m")
         for col in _OUTPUT_COLUMNS:
             assert col in result.columns
 
@@ -746,7 +793,7 @@ class TestMissingColumns:
         cols.discard(missing_col)
         df = pd.DataFrame(columns=list(cols))
         with pytest.raises(ValueError, match=missing_col):
-            calculate_otf_state(df, "5min")
+            calculate_otf_state(df, "5m")
 
 
 # ---------------------------------------------------------------------------
@@ -775,7 +822,7 @@ class TestInvalidTimestamps:
         df = self._base_df()
         df.iloc[2, df.columns.get_loc("timestamp")] = df.iloc[1]["timestamp"]
         with pytest.raises(ValueError, match="monotonically"):
-            calculate_otf_state(df, "5min")
+            calculate_otf_state(df, "5m")
 
     def test_non_monotonic_timestamps_raise(self) -> None:
         df = self._base_df()
@@ -785,11 +832,52 @@ class TestInvalidTimestamps:
         df.iloc[2, df.columns.get_loc("timestamp")] = ts3
         df.iloc[3, df.columns.get_loc("timestamp")] = ts2
         with pytest.raises(ValueError, match="monotonically"):
-            calculate_otf_state(df, "5min")
+            calculate_otf_state(df, "5m")
 
 
 # ---------------------------------------------------------------------------
-# 18. Timezone-aware input
+# 18. OHLCV validation
+# ---------------------------------------------------------------------------
+
+
+class TestOhlcvValidation:
+    def _base_df(self) -> pd.DataFrame:
+        return _make_1m_source(_minute_range("2026-01-05 09:00", 5))
+
+    def test_missing_ohlc_raises(self) -> None:
+        df = self._base_df()
+        df.loc[0, "open"] = None
+        with pytest.raises(ValueError, match="OHLC"):
+            calculate_otf_state(df, "5m")
+
+    def test_non_numeric_volume_raises(self) -> None:
+        df = self._base_df()
+        df = df.astype({"volume": "object"})
+        df.loc[0, "volume"] = "bad"
+        with pytest.raises(ValueError, match="volume"):
+            calculate_otf_state(df, "5m")
+
+    def test_high_below_low_raises(self) -> None:
+        df = self._base_df()
+        df.loc[0, "high"] = df.loc[0, "low"] - 1
+        with pytest.raises(ValueError, match="high < low"):
+            calculate_otf_state(df, "5m")
+
+    def test_open_close_outside_range_raises(self) -> None:
+        df = self._base_df()
+        df.loc[0, "high"] = df.loc[0, "open"] - 0.1
+        with pytest.raises(ValueError, match="outside high/low"):
+            calculate_otf_state(df, "5m")
+
+    def test_negative_volume_raises(self) -> None:
+        df = self._base_df()
+        df.loc[0, "volume"] = -1
+        with pytest.raises(ValueError, match="negative volume"):
+            calculate_otf_state(df, "5m")
+
+
+# ---------------------------------------------------------------------------
+# 19. Timezone-aware input
 # ---------------------------------------------------------------------------
 
 
@@ -809,7 +897,7 @@ class TestTimezoneAwareInput:
                 }
             )
         df = pd.DataFrame(rows)
-        result = calculate_otf_state(df, "5min")
+        result = calculate_otf_state(df, "5m")
         assert not result.empty
         # Output timestamps should be timezone-aware
         assert result["bar_start_timestamp"].dt.tz is not None
@@ -829,7 +917,7 @@ class TestTimezoneAwareInput:
                 }
             )
         df = pd.DataFrame(rows)
-        result = calculate_otf_state(df, "5min")
+        result = calculate_otf_state(df, "5m")
         tz = result["bar_start_timestamp"].dt.tz
         assert tz is not None
 
@@ -859,16 +947,16 @@ class TestTimezoneNaive:
     def test_naive_without_session_timezone_raises(self) -> None:
         df = self._naive_source()
         with pytest.raises(ValueError, match="timezone-naive"):
-            calculate_otf_state(df, "5min", session_timezone=None)
+            calculate_otf_state(df, "5m", session_timezone=None)
 
     def test_naive_with_session_timezone_succeeds(self) -> None:
         df = self._naive_source()
-        result = calculate_otf_state(df, "5min", session_timezone="America/New_York")
+        result = calculate_otf_state(df, "5m", session_timezone="America/New_York")
         assert not result.empty
 
     def test_naive_with_session_timezone_output_is_aware(self) -> None:
         df = self._naive_source()
-        result = calculate_otf_state(df, "5min", session_timezone="UTC")
+        result = calculate_otf_state(df, "5m", session_timezone="UTC")
         assert result["bar_start_timestamp"].dt.tz is not None
 
 
@@ -878,7 +966,7 @@ class TestTimezoneNaive:
 
 
 class TestUnsupportedTimeframe:
-    @pytest.mark.parametrize("bad_tf", ["1m", "5m", "15m", "30m", "1h", "4h", "invalid"])
+    @pytest.mark.parametrize("bad_tf", ["1m", "10m", "1h", "4h", "invalid"])
     def test_unsupported_timeframe_raises(self, bad_tf: str) -> None:
         rows = [
             {
@@ -896,8 +984,63 @@ class TestUnsupportedTimeframe:
 
 
 # ---------------------------------------------------------------------------
-# 21. Equal source/target and coarser source interval rejection
+# 21. Completed-bucket coverage and source-interval validation
 # ---------------------------------------------------------------------------
+
+
+class TestCompletedBucketCoverage:
+    def test_5m_bucket_is_complete_without_next_bucket_sentinel(self) -> None:
+        source = _make_1m_source(_minute_range("2026-01-05 09:00", 5))
+        result = calculate_otf_state(source, "5m")
+        assert len(result) == 1
+        assert result.iloc[0]["bar_start_timestamp"] == pd.Timestamp(
+            "2026-01-05 09:00", tz=_TZ
+        )
+        assert result.iloc[0]["bar_close_timestamp"] == pd.Timestamp(
+            "2026-01-05 09:05", tz=_TZ
+        )
+
+    def test_5m_bucket_is_excluded_until_final_source_bar_is_present(self) -> None:
+        source = _make_1m_source(_minute_range("2026-01-05 09:00", 4))
+        result = calculate_otf_state(source, "5m")
+        assert result.empty
+
+    def test_15m_bucket_is_complete_without_next_bucket_sentinel(self) -> None:
+        source = _make_1m_source(_minute_range("2026-01-05 09:00", 15))
+        result = calculate_otf_state(source, "15m")
+        assert len(result) == 1
+        assert result.iloc[0]["bar_close_timestamp"] == pd.Timestamp(
+            "2026-01-05 09:15", tz=_TZ
+        )
+
+    def test_30m_bucket_is_complete_without_next_bucket_sentinel(self) -> None:
+        source = _make_1m_source(_minute_range("2026-01-05 09:00", 30))
+        result = calculate_otf_state(source, "30m")
+        assert len(result) == 1
+        assert result.iloc[0]["bar_close_timestamp"] == pd.Timestamp(
+            "2026-01-05 09:30", tz=_TZ
+        )
+
+    @pytest.mark.parametrize("missing_index", [0, 2, 4])
+    def test_missing_required_source_coverage_excludes_5m_bucket(
+        self,
+        missing_index: int,
+    ) -> None:
+        timestamps = _minute_range("2026-01-05 09:00", 5)
+        del timestamps[missing_index]
+        result = calculate_otf_state(_make_1m_source(timestamps), "5m")
+        assert result.empty
+
+    def test_large_gap_spanning_bucket_close_excludes_incomplete_buckets(self) -> None:
+        timestamps = [
+            pd.Timestamp("2026-01-05 09:00", tz=_TZ),
+            pd.Timestamp("2026-01-05 09:01", tz=_TZ),
+            pd.Timestamp("2026-01-05 09:02", tz=_TZ),
+            pd.Timestamp("2026-01-05 09:08", tz=_TZ),
+            pd.Timestamp("2026-01-05 09:09", tz=_TZ),
+        ]
+        result = calculate_otf_state(_make_1m_source(timestamps), "5m")
+        assert result.empty
 
 
 class TestSourceIntervalValidation:
@@ -920,7 +1063,7 @@ class TestSourceIntervalValidation:
     def test_equal_source_target_raises(self) -> None:
         df = self._make_5m_bars()
         with pytest.raises(ValueError, match="strictly finer"):
-            calculate_otf_state(df, "5min")
+            calculate_otf_state(df, "5m")
 
     def test_coarser_source_raises(self) -> None:
         rows = []
@@ -938,7 +1081,30 @@ class TestSourceIntervalValidation:
             )
         df = pd.DataFrame(rows)
         with pytest.raises(ValueError, match="strictly finer"):
-            calculate_otf_state(df, "5min")
+            calculate_otf_state(df, "5m")
+
+    def test_target_timeframe_must_be_divisible_by_source_interval(self) -> None:
+        source = _make_1m_source(
+            _minute_range("2026-01-05 09:00", 6, step_minutes=2)
+        )
+        with pytest.raises(ValueError, match="exactly divisible"):
+            calculate_otf_state(source, "5m")
+
+    def test_unknown_interval_raises(self) -> None:
+        source = _make_1m_source([pd.Timestamp("2026-01-05 09:00", tz=_TZ)])
+        with pytest.raises(ValueError, match="Could not infer"):
+            calculate_otf_state(source, "5m")
+
+    def test_irregular_timestamps_that_break_interval_trust_raise(self) -> None:
+        timestamps = [
+            pd.Timestamp("2026-01-05 09:00", tz=_TZ),
+            pd.Timestamp("2026-01-05 09:01", tz=_TZ),
+            pd.Timestamp("2026-01-05 09:02:30", tz=_TZ),
+            pd.Timestamp("2026-01-05 09:03:30", tz=_TZ),
+            pd.Timestamp("2026-01-05 09:04:30", tz=_TZ),
+        ]
+        with pytest.raises(ValueError, match="trustworthy inferred source interval"):
+            calculate_otf_state(_make_1m_source(timestamps), "5m")
 
 
 # ---------------------------------------------------------------------------
@@ -964,10 +1130,16 @@ class TestCallerInputNotMutated:
         df = pd.DataFrame(rows)
         original_cols = list(df.columns)
         original_shape = df.shape
-        calculate_otf_state(df, "5min")
+        calculate_otf_state(df, "5m")
         assert list(df.columns) == original_cols
         assert df.shape == original_shape
         assert "otf_state" not in df.columns
+
+    def test_alias_normalization_does_not_modify_caller_dataframe(self) -> None:
+        df = _make_1m_source(_minute_range("2026-01-05 09:00", 20))
+        original = df.copy(deep=True)
+        calculate_otf_state(df, "5min")
+        pd.testing.assert_frame_equal(df, original)
 
 
 # ---------------------------------------------------------------------------
@@ -990,7 +1162,7 @@ class TestOutputSchema:
                     "volume": 500,
                 }
             )
-        return calculate_otf_state(pd.DataFrame(rows), "5min")
+        return calculate_otf_state(pd.DataFrame(rows), "5m")
 
     def test_required_output_columns_present(self) -> None:
         result = self._run()
@@ -1035,15 +1207,53 @@ class TestLookaheadSafety:
         """Reconstruct the look-ahead fixture as a full 1-minute source DataFrame."""
         return pd.DataFrame(OTF_LOOKAHEAD_SOURCE_BARS)
 
+    def _make_linear_source(
+        self,
+        minutes: int,
+        *,
+        start: str = "2026-01-05 09:00",
+    ) -> pd.DataFrame:
+        return _make_1m_source(_minute_range(start, minutes))
+
+    def _assert_historical_rows_equal(
+        self,
+        before: pd.DataFrame,
+        after: pd.DataFrame,
+        cutoff: pd.Timestamp,
+    ) -> None:
+        columns = [
+            "bar_start_timestamp",
+            "bar_close_timestamp",
+            "availability_timestamp",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "trading_session_date",
+            "otf_state",
+            "otf_sequence_length",
+            "up_run",
+            "down_run",
+            "otf_reference_timestamp",
+        ]
+        before_rows = before[before["availability_timestamp"] <= cutoff][columns].reset_index(
+            drop=True
+        )
+        after_rows = after[after["availability_timestamp"] <= cutoff][columns].reset_index(
+            drop=True
+        )
+        pd.testing.assert_frame_equal(before_rows, after_rows)
+
     def test_5m_inprogress_bar_not_in_output_before_close(self) -> None:
         """At 09:33 the 09:30–09:35 bar must not appear in completed results."""
         all_bars = self._make_source_from_lookahead()
         # Slice source data as seen at 09:33
         cutoff = pd.Timestamp("2026-01-05 09:33", tz=_TZ)
         partial = all_bars[all_bars["timestamp"] <= cutoff].copy()
-        result = calculate_otf_state(partial, "5min")
-        # The engine filters out bars with bar_close_timestamp > max(source_ts).
-        # max(source_ts) = 09:33.  Bar C closes at 09:35 > 09:33 → excluded.
+        result = calculate_otf_state(partial, "5m")
+        # The last observed 1m source row is labelled 09:33 and becomes available
+        # at 09:34.  Bar C closes at 09:35 > 09:34, so it is still incomplete.
         # Only bar A (closes 09:25) and bar B (closes 09:30) should appear.
         assert len(result) == 2, (
             f"Expected 2 completed bars (A and B), got {len(result)}: "
@@ -1057,170 +1267,109 @@ class TestLookaheadSafety:
 
     def test_15m_inprogress_bar_not_in_output(self) -> None:
         """An in-progress 15m bar does not appear in completed output."""
-        rows = []
-        base = pd.Timestamp("2026-01-05 09:00", tz=_TZ)
-        for i in range(20):
-            rows.append(
-                {
-                    "timestamp": base + pd.Timedelta(minutes=i),
-                    "open": 100.0 + i,
-                    "high": 101.0 + i,
-                    "low": 99.0 + i,
-                    "close": 100.5 + i,
-                    "volume": 500,
-                }
-            )
-        # max_source = 09:19 (only 20 bars, 09:00-09:19)
-        # The 09:00 15m bar closes at 09:15 <= 09:19 → included
-        # The 09:15 15m bar closes at 09:30 > 09:19 → excluded (in-progress)
-        src = pd.DataFrame(rows)
-        result = calculate_otf_state(src, "15min")
-        # Only 1 completed 15m bar: 09:00 (closes 09:15)
+        src = self._make_linear_source(20)
+        result = calculate_otf_state(src, "15m")
         assert len(result) == 1, f"Expected 1 completed bar, got {len(result)}"
-        assert result.iloc[0]["bar_close_timestamp"] == base + pd.Timedelta(minutes=15)
+        assert result.iloc[0]["bar_close_timestamp"] == pd.Timestamp(
+            "2026-01-05 09:15", tz=_TZ
+        )
 
     def test_30m_inprogress_bar_not_in_output(self) -> None:
         """An in-progress 30m bar does not appear in completed output."""
-        rows = []
-        base = pd.Timestamp("2026-01-05 09:00", tz=_TZ)
-        for i in range(50):
-            rows.append(
-                {
-                    "timestamp": base + pd.Timedelta(minutes=i),
-                    "open": 100.0,
-                    "high": 101.0,
-                    "low": 99.0,
-                    "close": 100.0,
-                    "volume": 200,
-                }
-            )
-        # max_source = 09:49 (50 bars, 09:00-09:49)
-        # 09:00 30m bar closes at 09:30 <= 09:49 → included
-        # 09:30 30m bar closes at 10:00 > 09:49 → excluded (in-progress)
-        src = pd.DataFrame(rows)
-        result = calculate_otf_state(src, "30min")
-        # Only 1 completed 30m bar: 09:00 (closes 09:30)
+        src = self._make_linear_source(50)
+        result = calculate_otf_state(src, "30m")
         assert len(result) == 1, f"Expected 1 completed 30m bar, got {len(result)}"
-        assert result.iloc[0]["bar_close_timestamp"] == base + pd.Timedelta(minutes=30)
-
-    def test_appending_bars_does_not_change_historical_states(self) -> None:
-        """Appending source bars after T must not change OTF states whose
-        availability_timestamp <= T (append-data invariance).
-        """
-        rows = []
-        base = pd.Timestamp("2026-01-05 09:00", tz=_TZ)
-        for i in range(30):
-            rows.append(
-                {
-                    "timestamp": base + pd.Timedelta(minutes=i),
-                    "open": 100.0 + i * 0.5,
-                    "high": 101.0 + i * 0.5,
-                    "low": 99.0 + i * 0.5,
-                    "close": 100.5 + i * 0.5,
-                    "volume": 500,
-                }
-            )
-        src = pd.DataFrame(rows)
-        # Partial: first 10 minutes (09:00-09:09), max_source=09:09
-        # The 09:00-09:05 bar closes at 09:05 <= 09:09 → 1 completed bar
-        partial = src.iloc[:10].copy()
-        result_partial = calculate_otf_state(partial, "5min")
-        # Full: all 30 minutes
-        result_full = calculate_otf_state(src, "5min")
-
-        # Compare states for availability timestamps that exist in BOTH results.
-        # The cutoff is max_source of partial = 09:09.
-        cutoff_ts = partial["timestamp"].max()
-        partial_mask = result_partial["availability_timestamp"] <= cutoff_ts
-        full_mask = result_full["availability_timestamp"] <= cutoff_ts
-
-        partial_states = result_partial[partial_mask]["otf_state"].tolist()
-        full_states = result_full[full_mask]["otf_state"].tolist()
-
-        assert partial_states == full_states, (
-            f"Historical OTF states changed after appending data!\n"
-            f"Partial: {partial_states}\nFull: {full_states}"
+        assert result.iloc[0]["bar_close_timestamp"] == pd.Timestamp(
+            "2026-01-05 09:30", tz=_TZ
         )
-        # Both should have exactly 1 bar (09:00 closes at 09:05 <= 09:09)
-        assert len(partial_states) == 1
-        assert len(full_states) == 1
 
-    def test_future_highs_lows_do_not_alter_historical_state(self) -> None:
-        """Future bar highs/lows that differ from partial data must not change past OTF states."""
-        rows_base = []
+    @pytest.mark.parametrize(
+        ("timeframe", "base_minutes", "full_minutes", "cutoff"),
+        [
+            ("5m", 10, 20, pd.Timestamp("2026-01-05 09:10", tz=_TZ)),
+            ("15m", 30, 45, pd.Timestamp("2026-01-05 09:30", tz=_TZ)),
+            ("30m", 60, 90, pd.Timestamp("2026-01-05 10:00", tz=_TZ)),
+        ],
+    )
+    def test_appending_bars_does_not_change_complete_historical_rows(
+        self,
+        timeframe: str,
+        base_minutes: int,
+        full_minutes: int,
+        cutoff: pd.Timestamp,
+    ) -> None:
+        before = calculate_otf_state(self._make_linear_source(base_minutes), timeframe)
+        after = calculate_otf_state(self._make_linear_source(full_minutes), timeframe)
+        self._assert_historical_rows_equal(before, after, cutoff)
+
+    @pytest.mark.parametrize(
+        ("timeframe", "base_minutes", "shock_end"),
+        [("5m", 10, 30), ("15m", 30, 60), ("30m", 60, 120)],
+    )
+    def test_future_highs_lows_do_not_alter_historical_rows(
+        self,
+        timeframe: str,
+        base_minutes: int,
+        shock_end: int,
+    ) -> None:
+        before_source = self._make_linear_source(base_minutes)
+        before = calculate_otf_state(before_source, timeframe)
+
+        shocked = before_source.to_dict("records")
         base = pd.Timestamp("2026-01-05 09:00", tz=_TZ)
-        for i in range(11):  # 09:00-09:10, max_source=09:10
-            rows_base.append(
-                {
-                    "timestamp": base + pd.Timedelta(minutes=i),
-                    "open": 100.0,
-                    "high": 101.0 + i * 0.1,
-                    "low": 99.0 + i * 0.1,
-                    "close": 100.0,
-                    "volume": 500,
-                }
-            )
-        # Partial: 09:00-09:10, has 2 bars (09:00 closes 09:05, 09:05 closes 09:10)
-        result_before = calculate_otf_state(pd.DataFrame(rows_base), "5min")
-
-        # Append "shocking" future bars with extreme values
-        rows_after = rows_base.copy()
-        for i in range(11, 30):
-            rows_after.append(
+        for i in range(base_minutes, shock_end):
+            shocked.append(
                 {
                     "timestamp": base + pd.Timedelta(minutes=i),
                     "open": 200.0,
-                    "high": 300.0,  # extreme high
-                    "low": 1.0,     # extreme low
+                    "high": 400.0,
+                    "low": 1.0,
                     "close": 200.0,
                     "volume": 500,
                 }
             )
-        result_after = calculate_otf_state(pd.DataFrame(rows_after), "5min")
-
-        # States for bars completed before the future data must be unchanged.
-        # Use max_source of partial as the cutoff.
-        cutoff = pd.DataFrame(rows_base)["timestamp"].max()
-        before_states = result_before[
-            result_before["availability_timestamp"] <= cutoff
-        ]["otf_state"].tolist()
-        after_states = result_after[
-            result_after["availability_timestamp"] <= cutoff
-        ]["otf_state"].tolist()
-        assert before_states == after_states
+        after = calculate_otf_state(pd.DataFrame(shocked), timeframe)
+        self._assert_historical_rows_equal(
+            before,
+            after,
+            before["availability_timestamp"].max(),
+        )
 
     def test_bar_available_exactly_at_close_timestamp(self) -> None:
-        """A bar whose close timestamp equals max_source is included in output.
+        """A bar whose close timestamp equals the latest source availability is included.
 
         Contract §6.3: 'A higher-timeframe bar that closes exactly at T is
         available for signals at T.'
 
-        Here T = max_source = 09:05, and the 5m bar closes at 09:05.
+        Here the last observed 1m bar is labelled 09:04 and becomes available at
+        09:05.  The 5m bar ending at 09:05 is therefore complete without any
+        separate 09:05 source row.
         """
-        # 6 bars: 09:00, 09:01, 09:02, 09:03, 09:04, 09:05
-        # max_source = 09:05
-        # 5m bar [09:00, 09:05) closes at 09:05 <= 09:05 → included ✓
-        # 5m bar [09:05, 09:10) closes at 09:10 > 09:05 → excluded ✓
-        rows = []
-        base = pd.Timestamp("2026-01-05 09:00", tz=_TZ)
-        for i in range(6):
-            rows.append(
-                {
-                    "timestamp": base + pd.Timedelta(minutes=i),
-                    "open": 100.0,
-                    "high": 101.0,
-                    "low": 99.0,
-                    "close": 100.0,
-                    "volume": 500,
-                }
-            )
-        df = pd.DataFrame(rows)
-        result = calculate_otf_state(df, "5min")
+        result = calculate_otf_state(self._make_linear_source(5), "5m")
         assert len(result) == 1, f"Expected 1 completed bar, got {len(result)}"
         avail = result.iloc[0]["availability_timestamp"]
         close = result.iloc[0]["bar_close_timestamp"]
         assert avail == close
         assert avail == pd.Timestamp("2026-01-05 09:05", tz=_TZ)
+
+    def test_future_bars_in_new_session_do_not_change_prior_session_rows(self) -> None:
+        before = calculate_otf_state(self._make_linear_source(10), "5m")
+        after_rows = self._make_linear_source(10).to_dict("records")
+        after_rows.extend(
+            self._make_linear_source(10, start="2026-01-06 09:00").to_dict("records")
+        )
+        after = calculate_otf_state(pd.DataFrame(after_rows), "5m")
+        self._assert_historical_rows_equal(
+            before,
+            after,
+            pd.Timestamp("2026-01-05 09:10", tz=_TZ),
+        )
+
+    def test_incomplete_bucket_remains_excluded_until_all_source_rows_arrive(self) -> None:
+        incomplete = calculate_otf_state(self._make_linear_source(4), "5m")
+        complete = calculate_otf_state(self._make_linear_source(5), "5m")
+        assert incomplete.empty
+        assert len(complete) == 1
 
     def test_session_boundary_reset_does_not_leak_prior_counters(self) -> None:
         """Prior-session up_run/down_run must not appear in the new session."""
@@ -1252,7 +1401,7 @@ class TestSessionResetValidation:
         ]
         df = pd.DataFrame(rows)
         with pytest.raises(ValueError, match="session_reset"):
-            calculate_otf_state(df, "5min", session_reset="carry")
+            calculate_otf_state(df, "5m", session_reset="carry")
 
 
 # ---------------------------------------------------------------------------
@@ -1274,7 +1423,7 @@ class TestMinimumConsecutiveBarsValidation:
         ]
         df = pd.DataFrame(rows)
         with pytest.raises(ValueError, match="minimum_consecutive_bars"):
-            calculate_otf_state(df, "5min", minimum_consecutive_bars=0)
+            calculate_otf_state(df, "5m", minimum_consecutive_bars=0)
 
     def test_negative_minimum_raises(self) -> None:
         rows = [
@@ -1289,7 +1438,7 @@ class TestMinimumConsecutiveBarsValidation:
         ]
         df = pd.DataFrame(rows)
         with pytest.raises(ValueError, match="minimum_consecutive_bars"):
-            calculate_otf_state(df, "5min", minimum_consecutive_bars=-1)
+            calculate_otf_state(df, "5m", minimum_consecutive_bars=-1)
 
 
 # ---------------------------------------------------------------------------

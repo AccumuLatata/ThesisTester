@@ -3,8 +3,8 @@
 **Project:** ThesisTester  
 **Feature:** Directional One Timeframing (OTF) market-condition filter  
 **Contract version:** v1  
-**Status:** Approved — specification only; production engine not yet implemented  
-**Last updated:** 2026-07-23
+**Status:** Approved — contract implemented by the pure PR 2 engine  
+**Last updated:** 2026-07-24
 
 ## Purpose
 
@@ -138,7 +138,7 @@ Rationale: equal extremes indicate stalled directional momentum, not continuatio
 `unknown` is returned when fewer than 2 completed bars are available in the current session (i.e., when there is no previous bar to compare against).  This applies to:
 
 - The first completed bar of a session.
-- A dataset containing only one row.
+- A dataset containing only one **completed HTF bar** within the current session.
 
 `unknown` is the correct signal for downstream code to interpret as "no OTF information available."  It must not be treated as equivalent to `neutral`.
 
@@ -219,7 +219,9 @@ v1 supports exactly three higher-timeframe intervals:
 | `15m` | :00, :15, :30, :45 | 4 bars per hour |
 | `30m` | :00, :30 | 2 bars per hour |
 
-The source data must be at a granularity **strictly finer** than the target timeframe (e.g., 1-minute bars for 5m OTF).  Using a source interval equal to the target timeframe produces no resampling and is not supported by OTF v1.  The production engine in PR 2 must validate that the source interval is strictly finer than each selected OTF timeframe.  Resampling must use only bars that have closed at or before the signal decision timestamp.
+Canonical public OTF timeframe labels are `5m`, `15m`, and `30m`.  The pure PR 2 engine may retain `5min`, `15min`, and `30min` as backward-compatible aliases, but they are aliases only and must be normalized internally before calling `resample_ohlcv()`.
+
+The source data must be at a granularity **strictly finer** than the target timeframe (e.g., 1-minute bars for 5m OTF).  Using a source interval equal to the target timeframe produces no resampling and is not supported by OTF v1.  The production engine in PR 2 must validate that the source interval is strictly finer than each selected OTF timeframe, and that the target timeframe is exactly divisible by the inferred source interval.  When the source interval cannot be inferred safely from the input timestamps, the pure engine must reject the input rather than guessing completion.  Resampling must use only bars that have closed at or before the signal decision timestamp.
 
 ---
 
@@ -228,6 +230,11 @@ The source data must be at a granularity **strictly finer** than the target time
 This is the most critical correctness constraint of the OTF implementation.
 
 ### §6.1 — Timestamp definitions
+
+Source rows in ThesisTester are **start-labelled** bars.  For an inferred source
+interval `Δ`, a source row labelled `source_bar_start_timestamp` covers the
+half-open window `[source_bar_start_timestamp, source_bar_start_timestamp + Δ)`
+and becomes final at `source_bar_close_timestamp = source_bar_start_timestamp + Δ`.
 
 Three distinct timestamps govern every higher-timeframe bar:
 
@@ -253,9 +260,32 @@ available_bars = {bar : bar.availability_timestamp <= T}
 
 The in-progress higher-timeframe bar (whose `bar_close_timestamp` is after T) must not be used.  Its eventual high or low is not known at time T, and using it constitutes look-ahead bias.
 
+Because the source rows are start-labelled, the production engine must compare
+`bar_close_timestamp` with the **latest source-bar availability**, not with the
+last observed source row label:
+
+```python
+latest_source_availability_timestamp = max(source_bar_start_timestamp + source_interval)
+completed_htf_bar = bar_close_timestamp <= latest_source_availability_timestamp
+```
+
+An HTF bucket is complete only when its expected source coverage is fully present:
+
+- The first expected source row is present.
+- The final expected source row is present.
+- Source timestamps inside the bucket are continuous at the inferred interval.
+- The bucket contains exactly `target_duration / source_interval` source rows.
+
+Missing-data buckets are excluded.  A large gap must not falsely complete a bar.
+
 ### §6.3 — Boundary behavior
 
 A higher-timeframe bar that closes exactly at T (i.e., `bar.bar_close_timestamp == T`) is available for signals at T.
+
+Example: with 1-minute source data, the row labelled 09:04 becomes available at
+09:05.  Therefore, source rows labelled 09:00, 09:01, 09:02, 09:03, and 09:04
+fully complete the 5-minute bucket labelled 09:00 and closing at 09:05.  No
+separate 09:05 source-row sentinel is required.
 
 ### §6.4 — Signal decision timestamps
 
@@ -279,7 +309,7 @@ Resampled HTF bars use left-closed, left-labeled buckets.  In ThesisTester, `the
 | `15m` | 09:15–09:30 | 09:15 | 09:30 | signal T ≥ 09:30 |
 | `30m` | 09:00–09:30 | 09:00 | 09:30 | signal T ≥ 09:30 |
 
-Current helper behavior is wall-clock aligned rather than independently session-anchored: if the first source bar arrives at 18:02 ET, the first 5m bucket is still labeled 18:00 ET and is therefore a partial bucket.  Whether PR 2 should retain or discard such partial first buckets for OTF is still deferred.  For clarity, the lookahead fixture uses source bars that start on a clean bucket boundary.
+Current helper behavior is wall-clock aligned rather than independently session-anchored: if the first source bar arrives at 18:02 ET, the first 5m bucket is still labeled 18:00 ET and is therefore a partial bucket.  PR 2 uses the conservative policy of discarding such partial first-session buckets, and it also excludes any other bucket whose expected source coverage is incomplete.
 
 ### §6.6 — Example
 
@@ -296,7 +326,7 @@ The OTF state for the signal at 09:33 is computed using the completed 5m bar wit
 
 ## §7 — Timezone and session alignment
 
-- All timestamps must be timezone-aware.
+- Timestamps may be timezone-aware, or timezone-naive with an explicit timezone supplied so they can be localized before OTF processing.
 - The exchange-local timezone is the instrument's `exchange_tz` property (default `America/New_York` for ES/NQ futures).
 - Trading-session boundaries are computed using `trading_session_date(local_ts, eth_start)` from `thesistester/levels/session_date.py`, applied in the exchange-local timezone.
 - For futures instruments with a configured `eth_start` (e.g., `"18:00"` for ES/NQ), the session begins in the evening of the prior calendar day.  A bar timestamped 22:00 ET on Monday and a bar timestamped 00:30 ET on Tuesday both belong to Tuesday's trading session.

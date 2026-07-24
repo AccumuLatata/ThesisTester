@@ -14,7 +14,7 @@ Public API
 
     result = calculate_otf_state(
         df,
-        timeframe="15min",
+        timeframe="15m",
         minimum_consecutive_bars=3,
         session_timezone="America/New_York",
         eth_start="18:00",
@@ -25,13 +25,16 @@ Parameters
 ----------
 df : pd.DataFrame
     Source OHLCV bars with columns ``timestamp``, ``open``, ``high``, ``low``,
-    ``close``, ``volume``.  The ``timestamp`` column must be timezone-aware.
-    The rows must be in strictly ascending timestamp order with no duplicates.
-    The caller's DataFrame is never mutated.
+    ``close``, ``volume``.  The ``timestamp`` column must either be timezone-aware
+    or timezone-naive with ``session_timezone`` supplied so the engine can
+    localise it.  The rows must be in strictly ascending timestamp order with no
+    duplicates.  The caller's DataFrame is never mutated.
 timeframe : str
-    Target OTF higher timeframe.  Must be one of ``"5min"``, ``"15min"``,
-    ``"30min"`` (the pandas-compatible labels).  The source bar interval must be
-    strictly finer than this timeframe.
+    Target OTF higher timeframe.  Canonical public values are ``"5m"``,
+    ``"15m"``, and ``"30m"``.  Backward-compatible aliases ``"5min"``,
+    ``"15min"``, and ``"30min"`` are also accepted and normalized internally
+    before calling ``resample_ohlcv()``.  The source bar interval must be
+    strictly finer than this timeframe and must exactly divide it.
 minimum_consecutive_bars : int
     Number of consecutive qualifying bar comparisons required to establish a
     directional state.  Must be >= 1.  Default 3.
@@ -97,6 +100,26 @@ This is the most conservative policy because it avoids using OHLCV values that
 do not represent a full bucket period.  A full bucket starting on a session
 boundary or after the first source bar is always retained.
 
+Completed-source coverage policy
+--------------------------------
+ThesisTester source rows are start-labelled bars.  For an inferred source
+interval ``Δ``, each row covers the half-open window
+``[source_bar_start_timestamp, source_bar_start_timestamp + Δ)`` and becomes
+available at ``source_bar_close_timestamp = source_bar_start_timestamp + Δ``.
+
+An HTF bucket is retained only when:
+
+1. ``bar_close_timestamp <= latest_source_availability_timestamp``.
+2. The first expected source bar is present.
+3. The final expected source bar is present.
+4. The source timestamps within the bucket are continuous at the inferred
+   interval.
+5. The bucket contains exactly ``target_duration / source_interval`` source bars.
+
+No next-bucket sentinel row is required.  For example, 1-minute source rows
+labelled 09:00, 09:01, 09:02, 09:03, 09:04 fully complete the 5-minute HTF
+bucket labelled 09:00 and closing at 09:05.
+
 Look-ahead and drift safety
 ----------------------------
 The engine guarantees that:
@@ -132,11 +155,24 @@ from thesistester.levels.session_date import trading_session_date
 # Constants
 # ---------------------------------------------------------------------------
 
-#: OTF higher-timeframe labels accepted by this engine (v1).
-OTF_SUPPORTED_TIMEFRAMES: Final[frozenset[str]] = frozenset({"5min", "15min", "30min"})
+#: Canonical public OTF higher-timeframe labels accepted by this engine (v1).
+OTF_SUPPORTED_TIMEFRAMES: Final[frozenset[str]] = frozenset({"5m", "15m", "30m"})
 
-#: Human-readable labels used in error messages and output metadata.
-_TIMEFRAME_DISPLAY: Final[dict[str, str]] = {
+#: Backward-compatible aliases accepted for existing callers.
+_TIMEFRAME_NORMALIZATION: Final[dict[str, str]] = {
+    "5m": "5min",
+    "15m": "15min",
+    "30m": "30min",
+    "5min": "5min",
+    "15min": "15min",
+    "30min": "30min",
+}
+
+#: Canonical public labels for supported inputs and aliases.
+_TIMEFRAME_CANONICAL: Final[dict[str, str]] = {
+    "5m": "5m",
+    "15m": "15m",
+    "30m": "30m",
     "5min": "5m",
     "15min": "15m",
     "30min": "30m",
@@ -150,7 +186,7 @@ _REQUIRED_COLUMNS: Final[frozenset[str]] = frozenset(
 #: Valid OTF states (v1 contract §2).
 _VALID_STATES: Final[frozenset[str]] = frozenset({"up", "down", "neutral", "unknown"})
 
-#: Timeframe durations for supported frames.
+#: Timeframe durations for supported resampler labels.
 _TIMEFRAME_DURATION: Final[dict[str, pd.Timedelta]] = {
     "5min":  pd.Timedelta("5min"),
     "15min": pd.Timedelta("15min"),
@@ -180,6 +216,7 @@ def calculate_otf_state(
     # 1. Validate inputs
     # ------------------------------------------------------------------
     _validate_inputs(df, timeframe, minimum_consecutive_bars, session_reset)
+    normalized_timeframe = _normalize_timeframe(timeframe)
 
     if df.empty:
         return _empty_result()
@@ -200,39 +237,54 @@ def calculate_otf_state(
     _validate_timestamps(source)
 
     # ------------------------------------------------------------------
-    # 5. Validate that source interval is strictly finer than target timeframe
+    # 5. Validate and normalize source OHLCV values
     # ------------------------------------------------------------------
-    _validate_source_interval(source, timeframe)
+    source = _coerce_and_validate_source_ohlcv(source)
 
     # ------------------------------------------------------------------
-    # 6. Resample source bars to the target higher timeframe
+    # 6. Infer and validate the source interval used for completion checks
     # ------------------------------------------------------------------
-    duration = _TIMEFRAME_DURATION[timeframe]
-    htf = resample_ohlcv(source, timeframe).copy()
+    source_interval = _infer_validated_source_interval(source, normalized_timeframe)
+
+    # ------------------------------------------------------------------
+    # 7. Resample source bars to the target higher timeframe
+    # ------------------------------------------------------------------
+    duration = _TIMEFRAME_DURATION[normalized_timeframe]
+    htf = resample_ohlcv(source, normalized_timeframe).copy()
     htf = htf.rename(columns={"timestamp": "bar_start_timestamp"})
     htf["bar_close_timestamp"] = htf["bar_start_timestamp"] + duration
     htf["availability_timestamp"] = htf["bar_close_timestamp"]
 
     # ------------------------------------------------------------------
-    # 7. Assign trading-session dates (used for session-boundary detection)
+    # 8. Assign trading-session dates (used for session-boundary detection)
     # ------------------------------------------------------------------
     htf["trading_session_date"] = trading_session_date(
         htf["bar_start_timestamp"], eth_start
     )
 
     # ------------------------------------------------------------------
-    # 8. Remove in-progress (incomplete) HTF bars — look-ahead safety.
+    # 9. Keep only HTF bars backed by complete source-bar coverage.
     #
-    # A resampled bar is only *complete* (and therefore available for OTF
-    # evaluation) when bar_close_timestamp <= max(source timestamps).  Any
-    # bar whose close lies after the last observed source bar is still
-    # forming; its eventual high/low are unknown and must not be used.
+    # Source timestamps are source-bar *start* labels.  A source bar becomes
+    # available at source_bar_close_timestamp = source_bar_start_timestamp +
+    # source_interval.  An HTF bar is complete only when:
+    #   * bar_close_timestamp <= latest_source_availability_timestamp
+    #   * every expected source bar in that bucket is present and continuous
     # ------------------------------------------------------------------
-    max_source_ts: pd.Timestamp = source["timestamp"].max()
-    htf = htf[htf["bar_close_timestamp"] <= max_source_ts].copy()
+    htf = _filter_complete_htf_buckets(
+        htf,
+        source,
+        normalized_timeframe,
+        source_interval,
+    )
 
     # ------------------------------------------------------------------
-    # 9. Apply partial first session-bucket discard policy
+    # 10. Apply the conservative partial first session-bucket policy.
+    #
+    # This runs after the general completeness filter so both rules share the
+    # same definition of source-bar coverage.  The session-specific guard is
+    # kept explicitly because the contract treats first-session partial buckets
+    # as a notable policy decision.
     # ------------------------------------------------------------------
     htf = _discard_partial_first_buckets(htf, source, eth_start)
 
@@ -242,12 +294,12 @@ def calculate_otf_state(
     htf = htf.reset_index(drop=True)
 
     # ------------------------------------------------------------------
-    # 10. Run the OTF state machine over the completed HTF bars
+    # 11. Run the OTF state machine over the completed HTF bars
     # ------------------------------------------------------------------
     htf = _run_state_machine(htf, minimum_consecutive_bars)
 
     # ------------------------------------------------------------------
-    # 11. Return the final result with canonical column ordering
+    # 12. Return the final result with canonical column ordering
     # ------------------------------------------------------------------
     return _reorder_columns(htf)
 
@@ -272,10 +324,11 @@ def _validate_inputs(
         )
 
     # Timeframe support
-    if timeframe not in OTF_SUPPORTED_TIMEFRAMES:
+    if timeframe not in _TIMEFRAME_NORMALIZATION:
         raise ValueError(
             f"Unsupported OTF timeframe: {timeframe!r}. "
-            f"Supported values: {sorted(OTF_SUPPORTED_TIMEFRAMES)}"
+            f"Canonical values: {sorted(OTF_SUPPORTED_TIMEFRAMES)}. "
+            "Backward-compatible aliases: ['15min', '30min', '5min']."
         )
 
     # minimum_consecutive_bars
@@ -320,6 +373,35 @@ def _ensure_timezone_aware(
     return df
 
 
+def _normalize_timeframe(timeframe: str) -> str:
+    """Normalize a canonical or alias timeframe to the resampler label."""
+    return _TIMEFRAME_NORMALIZATION[timeframe]
+
+
+def _coerce_and_validate_source_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
+    """Coerce source OHLCV values to numeric and validate price/volume rules."""
+    df = df.copy()
+    ohlcv = ["open", "high", "low", "close", "volume"]
+    for column in ohlcv:
+        df[column] = pd.to_numeric(df[column], errors="coerce")
+
+    if df[["open", "high", "low", "close"]].isna().any().any():
+        raise ValueError("Input contains missing or non-numeric OHLC values.")
+    if df["volume"].isna().any():
+        raise ValueError("Input contains missing or non-numeric volume values.")
+    if (df["high"] < df["low"]).any():
+        raise ValueError("Input contains bars with high < low.")
+
+    open_or_close_high = df[["open", "close"]].max(axis=1)
+    open_or_close_low = df[["open", "close"]].min(axis=1)
+    if (df["high"] < open_or_close_high).any() or (df["low"] > open_or_close_low).any():
+        raise ValueError("Input contains bars where open/close fall outside high/low.")
+    if (df["volume"] < 0).any():
+        raise ValueError("Input contains bars with negative volume.")
+
+    return df
+
+
 def _validate_timestamps(df: pd.DataFrame) -> None:
     """Raise ValueError if timestamps are invalid, non-monotonic, or duplicated."""
     ts = df["timestamp"]
@@ -337,19 +419,114 @@ def _validate_timestamps(df: pd.DataFrame) -> None:
         )
 
 
-def _validate_source_interval(df: pd.DataFrame, timeframe: str) -> None:
-    """Raise ValueError if the source bar interval is not strictly finer than timeframe."""
+def _infer_validated_source_interval(
+    df: pd.DataFrame,
+    timeframe: str,
+) -> pd.Timedelta:
+    """Infer and validate the source interval used for completion checks."""
     base_interval = infer_base_interval(df["timestamp"])
     if base_interval is None:
-        # Only one bar — cannot infer interval; allow through (will produce one HTF bar)
-        return
+        raise ValueError(
+            "Could not infer a trustworthy source bar interval from the input timestamps. "
+            "At least two source bars are required."
+        )
+    if base_interval <= pd.Timedelta(0):
+        raise ValueError(
+            f"Inferred source bar interval must be positive, got {base_interval}."
+        )
+
+    diffs = df["timestamp"].diff().dropna()
+    diff_ns = diffs.to_numpy(dtype="timedelta64[ns]").astype("int64")
+    if (diff_ns % base_interval.value != 0).any():
+        raise ValueError(
+            "Input timestamps do not align to a trustworthy inferred source interval; "
+            "irregular timestamp gaps prevent safe HTF completion checks."
+        )
+
     target_duration = _TIMEFRAME_DURATION[timeframe]
     if base_interval >= target_duration:
         raise ValueError(
             f"Source bar interval ({base_interval}) must be strictly finer than "
-            f"the target OTF timeframe ({timeframe} = {target_duration}). "
+            f"the target OTF timeframe ({_TIMEFRAME_CANONICAL[timeframe]} = {target_duration}). "
             "The OTF engine cannot resample from an equal or coarser source."
         )
+    if target_duration.value % base_interval.value != 0:
+        raise ValueError(
+            f"Target OTF timeframe ({_TIMEFRAME_CANONICAL[timeframe]} = {target_duration}) "
+            f"must be exactly divisible by the inferred source bar interval ({base_interval})."
+        )
+    return base_interval
+
+
+def _filter_complete_htf_buckets(
+    htf: pd.DataFrame,
+    source: pd.DataFrame,
+    timeframe: str,
+    source_interval: pd.Timedelta,
+) -> pd.DataFrame:
+    """Keep only HTF buckets backed by complete source-bar coverage."""
+    if htf.empty or source.empty:
+        return htf
+
+    target_duration = _TIMEFRAME_DURATION[timeframe]
+    expected_count = target_duration.value // source_interval.value
+
+    coverage = pd.DataFrame(
+        {
+            "source_bar_start_timestamp": source["timestamp"],
+            "source_bar_close_timestamp": source["timestamp"] + source_interval,
+        }
+    )
+    coverage["bar_start_timestamp"] = coverage["source_bar_start_timestamp"].dt.floor(
+        timeframe
+    )
+    same_bucket_as_prev = coverage["bar_start_timestamp"].eq(
+        coverage["bar_start_timestamp"].shift()
+    )
+    coverage["is_continuation"] = same_bucket_as_prev & (
+        coverage["source_bar_start_timestamp"].diff() == source_interval
+    )
+
+    grouped = (
+        coverage.groupby("bar_start_timestamp", sort=False)
+        .agg(
+            source_bar_count=("source_bar_start_timestamp", "size"),
+            first_source_bar_start_timestamp=("source_bar_start_timestamp", "min"),
+            last_source_bar_start_timestamp=("source_bar_start_timestamp", "max"),
+            last_source_bar_close_timestamp=("source_bar_close_timestamp", "max"),
+            continuation_count=("is_continuation", "sum"),
+        )
+        .reset_index()
+    )
+
+    latest_source_availability_timestamp = coverage["source_bar_close_timestamp"].max()
+    grouped["expected_bar_close_timestamp"] = (
+        grouped["bar_start_timestamp"] + target_duration
+    )
+    grouped["is_complete_bucket"] = (
+        grouped["source_bar_count"].eq(expected_count)
+        & grouped["first_source_bar_start_timestamp"].eq(grouped["bar_start_timestamp"])
+        & grouped["last_source_bar_close_timestamp"].eq(
+            grouped["expected_bar_close_timestamp"]
+        )
+        & grouped["continuation_count"].eq(expected_count - 1)
+    )
+
+    filtered = htf.merge(
+        grouped[
+            [
+                "bar_start_timestamp",
+                "is_complete_bucket",
+            ]
+        ],
+        on="bar_start_timestamp",
+        how="left",
+    )
+    filtered = filtered[
+        filtered["bar_close_timestamp"].le(latest_source_availability_timestamp)
+        & filtered["is_complete_bucket"].fillna(False)
+    ].copy()
+    return filtered.drop(columns=["is_complete_bucket"])
 
 
 # ---------------------------------------------------------------------------
@@ -378,20 +555,17 @@ def _discard_partial_first_buckets(
     # Compute trading_session_date for each source bar
     source_sessions = trading_session_date(source["timestamp"], eth_start)
     # First source bar timestamp per session (keep as Series with tz-aware timestamps)
-    tmp = pd.DataFrame({"session": source_sessions, "ts": source["timestamp"]})
-    first_source: dict = tmp.groupby("session")["ts"].min().to_dict()
-
-    def _keep_row(row: pd.Series) -> bool:
-        sess = row["trading_session_date"]
-        if sess not in first_source:
-            return True  # no source bars for this session (edge case) — keep
-        bar_start = row["bar_start_timestamp"]
-        first_ts = first_source[sess]
-        # Normalize both to UTC nanoseconds for a safe cross-timezone comparison
-        return bar_start.value >= first_ts.value
-
-    mask = htf.apply(_keep_row, axis=1)
-    return htf[mask].copy()
+    tmp = (
+        pd.DataFrame({"trading_session_date": source_sessions, "first_source_ts": source["timestamp"]})
+        .groupby("trading_session_date", sort=False, as_index=False)["first_source_ts"]
+        .min()
+    )
+    filtered = htf.merge(tmp, on="trading_session_date", how="left")
+    mask = filtered["first_source_ts"].isna() | (
+        filtered["bar_start_timestamp"].astype("int64")
+        >= filtered["first_source_ts"].astype("int64")
+    )
+    return filtered.loc[mask, htf.columns].copy()
 
 
 # ---------------------------------------------------------------------------
