@@ -555,8 +555,7 @@ def _discard_partial_first_buckets(
     )
     filtered = htf.merge(tmp, on="trading_session_date", how="left")
     mask = filtered["first_source_ts"].isna() | (
-        filtered["bar_start_timestamp"].astype("int64")
-        >= filtered["first_source_ts"].astype("int64")
+        filtered["bar_start_timestamp"] >= filtered["first_source_ts"]
     )
     return filtered.loc[mask, htf.columns].copy()
 
