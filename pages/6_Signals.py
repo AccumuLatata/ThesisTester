@@ -646,7 +646,7 @@ def _validate_signal_artifact_identity_for_save(
         return False, _OTF_INVALID_ARTIFACT_BLOCKER
 
     if current_settings is None:
-        return False, _OTF_INVALID_SAVE_BLOCKER
+        return False, _OTF_INVALID_ARTIFACT_BLOCKER
 
     current_hash = compute_signal_settings_hash(current_settings)
     if current_hash != stored_hash:

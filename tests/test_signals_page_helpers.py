@@ -994,7 +994,7 @@ def test_validate_save_none_current_settings_blocks_save():
     ss = _trusted_session_state()
     can_save, err = _validate_signal_artifact_identity_for_save(ss, None)
     assert can_save is False
-    assert err is not None
+    assert err == _OTF_INVALID_ARTIFACT_BLOCKER
 
 
 def test_validate_save_controls_drift_returns_controls_changed_message():
@@ -1034,13 +1034,13 @@ def test_validate_save_both_paths_use_same_helper():
     ss = _trusted_session_state()
     ok1, _ = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
     ok2, _ = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
-    assert ok1 == ok2 == True
+    assert ok1 is True and ok2 is True
 
     # Invalid state → both fail identically
     ss[_SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY] = _IDENTITY_STATUS_INVALID
     fail1, msg1 = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
     fail2, msg2 = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
-    assert fail1 == fail2 == False
+    assert fail1 is False and fail2 is False
     assert msg1 == msg2 == _OTF_INVALID_ARTIFACT_BLOCKER
 
 
