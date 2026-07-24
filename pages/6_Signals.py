@@ -1038,7 +1038,7 @@ with st.sidebar:
     )
 
 signal_settings: dict | None = None
-_signal_settings_otf_error: str | None = None
+signal_settings_otf_error: str | None = None
 try:
     signal_settings = _build_signal_settings(
         confluence_mode=confluence_mode,
@@ -1058,14 +1058,14 @@ try:
         use_saved_setup=use_saved_setup,
         setup_snapshot=saved_setup if use_saved_setup else None,
     )
-except ValueError as _exc:
-    _signal_settings_otf_error = str(_exc)
+except ValueError as exc:
+    signal_settings_otf_error = str(exc)
 
-if _signal_settings_otf_error:
+if signal_settings_otf_error:
     st.error(
         "OTF configuration is invalid and cannot be hashed. "
         "Update the setup in Setup Builder before generating or saving signals. "
-        f"Detail: {_signal_settings_otf_error}"
+        f"Detail: {signal_settings_otf_error}"
     )
 
 dataset_id = st.session_state.get("dataset_id")

@@ -305,7 +305,7 @@ def test_resolve_otf_for_ui_valid_enabled_config_returns_no_warning():
 
 def test_resolve_otf_for_ui_invalid_config_returns_disabled_and_warning():
     config = {
-        "otf_filter": {"enabled": True, "timeframes": []}  # enabled with no timeframes — invalid
+        "otf_filter": {"enabled": True, "timeframes": []}  # invalid: enabled OTF requires at least one timeframe
     }
     otf_config, warning = setup_builder._resolve_otf_for_ui(config)
     assert otf_config["enabled"] is False  # fallen back to disabled
@@ -360,7 +360,7 @@ def test_seed_editor_config_malformed_otf_includes_repair_warning():
     """Malformed OTF config must produce a repair warning in the returned dict."""
     malformed = {
         "name": "Malformed",
-        "otf_filter": {"enabled": True, "timeframes": []},  # invalid
+        "otf_filter": {"enabled": True, "timeframes": []},  # invalid: enabled OTF requires at least one timeframe
     }
     seeded = setup_builder._seed_editor_config(
         active_setup=malformed,
@@ -368,8 +368,8 @@ def test_seed_editor_config_malformed_otf_includes_repair_warning():
         defaults=["ONH", "ONL"],
         dataset_id="dataset-a",
     )
-    assert "_otf_repair_warning" in seeded
-    assert isinstance(seeded["_otf_repair_warning"], str)
+    assert setup_builder._OTF_REPAIR_WARNING_KEY in seeded
+    assert isinstance(seeded[setup_builder._OTF_REPAIR_WARNING_KEY], str)
 
 
 def test_seed_editor_config_valid_enabled_otf_unchanged():
@@ -395,7 +395,7 @@ def test_seed_editor_config_valid_enabled_otf_unchanged():
     assert seeded["otf_filter"]["enabled"] is True
     assert seeded["otf_filter"]["timeframes"] == ["15m"]
     assert seeded["otf_filter"]["minimum_consecutive_bars"] == 4
-    assert "_otf_repair_warning" not in seeded
+    assert setup_builder._OTF_REPAIR_WARNING_KEY not in seeded
 
 
 def test_seed_editor_config_repaired_setup_has_canonical_hash():
