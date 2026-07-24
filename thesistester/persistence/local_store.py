@@ -14,7 +14,12 @@ from uuid import uuid4
 import pandas as pd
 
 from thesistester import __version__
-from thesistester.setup import normalize_trigger_timeframe
+from thesistester.engine.otf import OTF_ALGORITHM_VERSION
+from thesistester.setup import (
+    get_effective_otf_filter_config,
+    normalize_otf_filter_config,
+    normalize_trigger_timeframe,
+)
 
 PERSISTENCE_SCHEMA_VERSION = 1
 LEVEL_ENGINE_VERSION = 3
@@ -267,10 +272,40 @@ def _normalize_signal_settings_for_hash(settings: dict) -> dict:
     normalized["trigger_timeframe"] = normalize_trigger_timeframe(
         normalized.get("trigger_timeframe")
     )
+    if "otf_filter" in normalized:
+        otf_filter_config = normalize_otf_filter_config(normalized.get("otf_filter"))
+    else:
+        setup_snapshot = normalized.get("setup_snapshot")
+        if isinstance(setup_snapshot, dict):
+            otf_filter_config = get_effective_otf_filter_config(setup_snapshot)
+        else:
+            otf_filter_config = normalize_otf_filter_config(None)
+    normalized["otf_filter"] = otf_filter_config
+    normalized["otf_algorithm_version"] = OTF_ALGORITHM_VERSION
+    normalized["otf_config_hash"] = compute_otf_config_hash(otf_filter_config)
     setup_snapshot = normalized.get("setup_snapshot")
     if isinstance(setup_snapshot, dict):
-        normalized["setup_snapshot"] = dict(setup_snapshot)
+        normalized_setup_snapshot = dict(setup_snapshot)
+        normalized_setup_snapshot["otf_filter"] = get_effective_otf_filter_config(setup_snapshot)
+        normalized_setup_snapshot["otf_algorithm_version"] = OTF_ALGORITHM_VERSION
+        normalized_setup_snapshot["otf_config_hash"] = compute_otf_config_hash(
+            normalized_setup_snapshot["otf_filter"]
+        )
+        normalized["setup_snapshot"] = normalized_setup_snapshot
     return normalized
+
+
+def compute_otf_config_hash(config: dict[str, Any] | None) -> str:
+    """Return deterministic identity hash for canonical OTF configuration."""
+    normalized_otf_config = normalize_otf_filter_config(config)
+    return hashlib.sha256(
+        _stable_json_bytes(
+            {
+                "otf_algorithm_version": OTF_ALGORITHM_VERSION,
+                "otf_filter": normalized_otf_config,
+            }
+        )
+    ).hexdigest()
 
 
 def compute_signal_settings_hash(settings: dict) -> str:
@@ -396,8 +431,14 @@ def save_setup(
     """Persist a setup config and return metadata."""
     if not isinstance(setup_config, dict):
         raise ValueError("setup_config must be a dictionary.")
+    normalized_setup_config = dict(setup_config)
+    normalized_setup_config["otf_filter"] = get_effective_otf_filter_config(setup_config)
+    normalized_setup_config["otf_algorithm_version"] = OTF_ALGORITHM_VERSION
+    normalized_setup_config["otf_config_hash"] = compute_otf_config_hash(
+        normalized_setup_config["otf_filter"]
+    )
 
-    raw_setup_id = setup_id if setup_id is not None else setup_config.get("setup_id")
+    raw_setup_id = setup_id if setup_id is not None else normalized_setup_config.get("setup_id")
     if raw_setup_id is None:
         resolved_setup_id = compute_setup_id()
     else:
@@ -417,11 +458,11 @@ def save_setup(
 
     resolved_dataset_id = dataset_id
     if resolved_dataset_id is None:
-        raw_dataset_id = setup_config.get("dataset_id")
+        raw_dataset_id = normalized_setup_config.get("dataset_id")
         if isinstance(raw_dataset_id, str) and raw_dataset_id.strip():
             resolved_dataset_id = raw_dataset_id.strip()
 
-    resolved_instrument = instrument or setup_config.get("instrument")
+    resolved_instrument = instrument or normalized_setup_config.get("instrument")
     if resolved_instrument is not None:
         resolved_instrument = str(resolved_instrument)
 
@@ -432,14 +473,14 @@ def save_setup(
         "setup_id": resolved_setup_id,
         "dataset_id": resolved_dataset_id,
         "instrument": resolved_instrument,
-        "name": str(setup_config.get("name", "")).strip() or "Untitled setup",
-        "description": str(setup_config.get("description", "")).strip(),
+        "name": str(normalized_setup_config.get("name", "")).strip() or "Untitled setup",
+        "description": str(normalized_setup_config.get("description", "")).strip(),
         "created_at": created_at,
         "updated_at": _utcnow_iso(),
         "app_version": __version__,
         "setup_config": _normalize_json_value(
             {
-                **setup_config,
+                **normalized_setup_config,
                 "setup_id": resolved_setup_id,
                 "dataset_id": resolved_dataset_id,
             }
@@ -500,8 +541,14 @@ def load_setup(setup_id: str) -> dict[str, Any]:
         raise ValueError(f"Unsupported setup schema version: {metadata.get('schema_version')}")
     if metadata.get("kind") != "setup":
         raise ValueError(f"Unsupported persisted artifact kind: {metadata.get('kind')}")
-    if not isinstance(metadata.get("setup_config"), dict):
+    setup_config = metadata.get("setup_config")
+    if not isinstance(setup_config, dict):
         raise ValueError("Saved setup payload is invalid.")
+    if "otf_filter" in setup_config:
+        try:
+            normalize_otf_filter_config(setup_config.get("otf_filter"))
+        except ValueError as exc:
+            raise ValueError(f"Saved setup OTF configuration is invalid: {exc}") from exc
     metadata["path"] = str(meta_path.parent)
     return metadata
 

@@ -157,6 +157,9 @@ from thesistester.levels.session_date import trading_session_date
 #: Canonical public OTF higher-timeframe labels for this engine (v1).
 OTF_CANONICAL_TIMEFRAMES: Final[frozenset[str]] = frozenset({"5m", "15m", "30m"})
 
+#: Semantic version of the OTF algorithm implementation contract.
+OTF_ALGORITHM_VERSION: Final[int] = 1
+
 #: Backward-compatible aliases accepted for existing callers.
 _TIMEFRAME_ALIASES: Final[dict[str, str]] = {
     "5min": "5m",

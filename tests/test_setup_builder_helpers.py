@@ -203,6 +203,7 @@ def test_current_editor_config_uses_current_candidate_not_stale_loaded_config():
         confluence_rules=[],
         min_valid_confluences=1,
         trigger_params={},
+        otf_filter={"enabled": False, "timeframes": []},
         setup_name="Edited setup",
         description="",
     )
@@ -233,6 +234,7 @@ def test_current_editor_config_still_reports_missing_levels_when_candidate_is_in
         confluence_rules=[],
         min_valid_confluences=1,
         trigger_params={},
+        otf_filter={"enabled": False, "timeframes": []},
         setup_name="Edited setup",
         description="",
     )
@@ -241,3 +243,33 @@ def test_current_editor_config_still_reports_missing_levels_when_candidate_is_in
 
     assert current_missing["selected_levels"] == ["MISSING"]
     assert setup_builder._has_unavailable_level_references(current_missing) is True
+
+
+def test_sync_editor_widget_state_legacy_setup_hydrates_otf_disabled_defaults():
+    setup_builder.st.session_state = {}
+    setup_builder._sync_editor_widget_state({}, ["ONH", "ONL"], overwrite=True)
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_OTF_ENABLED] is False
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_OTF_TIMEFRAMES] == []
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS] == 3
+
+
+def test_sync_editor_widget_state_hydrates_enabled_otf_values():
+    setup_builder.st.session_state = {}
+    setup_builder._sync_editor_widget_state(
+        {
+            "otf_filter": {
+                "enabled": True,
+                "timeframes": ["30m", "5m"],
+                "alignment_mode": "all",
+                "minimum_consecutive_bars": 5,
+                "directional": True,
+                "use_completed_bars_only": True,
+                "session_reset": "session",
+            }
+        },
+        ["ONH", "ONL"],
+        overwrite=True,
+    )
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_OTF_ENABLED] is True
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_OTF_TIMEFRAMES] == ["30m", "5m"]
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS] == 5

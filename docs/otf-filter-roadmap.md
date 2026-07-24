@@ -415,19 +415,19 @@ otf_filter_reason
 
 ## Phase 5 — Add persistence and versioning
 
-**Status:** Not started
+**Status:** Completed in PR 4 (configuration + identity metadata only)
 
 ### Work items
 
-- [ ] Add an optional `otf_filter` block to setup configuration.
-- [ ] Define backward-compatible defaults for legacy setups.
-- [ ] Add configuration validation.
-- [ ] Add OTF algorithm version metadata.
-- [ ] Add OTF configuration hashing.
-- [ ] Include OTF identity in signal and research fingerprints.
-- [ ] Test save/load round trips.
-- [ ] Test loading setups created before OTF support.
-- [ ] Add migration logic only if required by the repository schema.
+- [x] Add an optional `otf_filter` block to setup configuration.
+- [x] Define backward-compatible defaults for legacy setups.
+- [x] Add configuration validation.
+- [x] Add OTF algorithm version metadata (`OTF_ALGORITHM_VERSION = 1`).
+- [x] Add OTF configuration hashing (`compute_otf_config_hash`).
+- [x] Include OTF identity in setup/signal fingerprints.
+- [x] Test save/load round trips.
+- [x] Test loading setups created before OTF support.
+- [x] Keep setup schema version unchanged (`SETUP_SCHEMA_VERSION = 1`); no migration required because `otf_filter` is optional and legacy-absent payloads are supported.
 
 ### Configuration shape
 
@@ -451,19 +451,19 @@ otf_filter_reason
 
 ## Phase 6 — Implement UI controls
 
-**Status:** Not started
+**Status:** Partially completed in PR 4 (saved-configuration controls only)
 
 ### Work items
 
-- [ ] Add an expandable market-regime filter section.
-- [ ] Add enable/disable control.
-- [ ] Add 5m, 15m, and 30m timeframe selection.
-- [ ] Add alignment-mode control, initially fixed to or limited to `all`.
-- [ ] Add minimum sequence length.
-- [ ] Add session-reset policy.
-- [ ] Add clear completed-bar/look-ahead explanation.
-- [ ] Validate enabled filters with no selected timeframe.
-- [ ] Display the active configuration in the backtest page.
+- [x] Add Setup Builder OTF configuration section (saved setup metadata path).
+- [x] Add enable/disable control.
+- [x] Add 5m, 15m, and 30m timeframe selection.
+- [x] Add alignment-mode control fixed to `all`.
+- [x] Add minimum sequence length.
+- [x] Add session-reset policy fixed to `session`.
+- [x] Add clear completed-bar/look-ahead explanation.
+- [x] Validate enabled filters with no selected timeframe.
+- [x] Display metadata status on Signals page with explicit non-integration boundary.
 
 ### Acceptance criteria
 
@@ -525,10 +525,10 @@ A user can determine exactly:
 - [x] Document state transitions and sequence breaks.
 - [x] Document resampling and completed-bar rules.
 - [x] Document session and timezone policy.
-- [ ] Document configuration examples.
+- [x] Document configuration examples.
 - [ ] Document rejected-signal interpretation.
 - [ ] Document walk-forward treatment.
-- [ ] Document algorithm versioning and drift controls.
+- [x] Document algorithm versioning and drift controls.
 - [ ] Update `README.md` and relevant methodology documentation.
 
 ### Recommended documentation files
@@ -688,6 +688,42 @@ python3 -m pytest tests/ -q
 - Versioning and hashing.
 - User controls and validation.
 
+**PR 4 implementation files (narrow scope):**
+
+- `thesistester/setup.py`
+- `thesistester/persistence/local_store.py`
+- `thesistester/persistence/__init__.py`
+- `thesistester/engine/otf.py` (algorithm version constant only)
+- `pages/2_Setup_Builder.py`
+- `pages/6_Signals.py`
+- `tests/test_setup_config.py`
+- `tests/test_local_store.py`
+- `tests/test_setup_builder_helpers.py`
+- `tests/test_signals_page_helpers.py`
+- `docs/otf-filter.md`
+- `docs/otf-filter-roadmap.md`
+
+**PR 4 decisions:**
+
+- Setup schema version unchanged (`SETUP_SCHEMA_VERSION = 1`) because OTF is an optional backward-compatible field.
+- Legacy setups without `otf_filter` continue loading and resolve to canonical disabled effective defaults.
+- OTF identity hash includes normalized `otf_filter` and `OTF_ALGORITHM_VERSION`.
+- Timeframe order is preserved in enabled config/hash identity.
+- Signals page messaging explicitly states PR 4 metadata-only boundary (no execution filtering yet).
+
+**PR 4 verified evidence:**
+
+```text
+python3 -m pytest tests/test_setup_config.py tests/test_local_store.py tests/test_setup_builder_helpers.py tests/test_signals_page_helpers.py -q
+# 170 passed in 0.88s
+
+python3 -m pytest tests/test_otf_filter.py tests/test_otf.py tests/test_otf_contract.py tests/test_otf_baseline.py -q
+# 407 passed in 5.70s
+
+python3 -m pytest tests/ -q
+# 1346 passed in 31.71s
+```
+
 ### PR 5 — Research integration and reporting
 
 - Backtest integration.
@@ -727,6 +763,7 @@ python3 -m pytest tests/ -q
 | 2026-07-24 | Phase 3 complete (merged into final PR #79) | `tests/test_otf.py::TestLookaheadSafety` | 5m/15m/30m in-progress bar exclusion proven under source-bar close semantics; append-data invariance compares full historical output rows; future-shock invariance, new-session invariance, exact-close availability, missing-coverage exclusion, session-boundary counter isolation, and DST spring-forward/fall-back invariance are all proven against the production engine. |
 | 2026-07-24 | Phase 4 partially complete (PR 3 pure layer) | `thesistester/engine/otf_filter.py`, `tests/test_otf_filter.py`, `docs/otf-filter.md`, `docs/otf-filter-roadmap.md` | Added pure `apply_otf_filter()` eligibility layer with deterministic config validation, decision-timestamp selection (`trigger_timestamp` fallback to `timestamp`), causal as-of alignment via `availability_timestamp <= decision_timestamp`, accepted/rejected output split, deterministic rejection reasons, and disabled-path no-engine-call regression guard. Focused verification: 400 passed in 3.67s. Full suite: 1283 passed in 21.95s. No Streamlit/persistence/backtest wiring added. |
 | 2026-07-24 | Phase 4 follow-up: disabled no-op hardening, enabled-empty-signals path, centralized timeframe normalization | `thesistester/engine/otf.py`, `thesistester/engine/otf_filter.py`, `thesistester/engine/__init__.py`, `tests/test_otf_filter.py`, `docs/otf-filter.md`, `docs/otf-filter-roadmap.md` | Disabled mode now short-circuits immediately after validating `enabled` is bool; all other config/signal/timestamp/source validation is skipped. Enabled mode with empty signals returns stable empty accepted/rejected schemas without calling OTF engine. Added `normalize_otf_timeframe()` as the single authoritative normalization helper in `otf.py`; removed duplicate alias mapping from `otf_filter.py`. Exported `normalize_otf_timeframe` from `thesistester.engine`. Focused verification: 430 passed in 5.38s. Full suite: 1313 passed in 30.69s. |
+| 2026-07-24 | Phase 5 complete + Phase 6 partial (PR 4) | `thesistester/setup.py`, `thesistester/persistence/local_store.py`, `pages/2_Setup_Builder.py`, `pages/6_Signals.py`, related tests/docs | Added canonical OTF setup config normalization/validation/effective helper, backward-compatible setup save/load handling without schema bump, OTF algorithm/version hash metadata, setup/signal identity inclusion, Setup Builder OTF controls with deterministic hydration, and explicit Signals metadata-only messaging (no execution integration yet). Verification: 170 targeted tests, 407 focused OTF tests, and 1346 full-suite tests passing. |
 | 2026-07-23 | PR 1 final verified state | `docs/otf-filter-roadmap.md` | Phase 0 remains partially complete; Phase 1 remains complete; partial first session-bucket handling plus production-engine future-shock/append-data invariance validation remain deferred to PR 2; production OTF behavior is still not implemented. |
 
 ## Open questions
@@ -751,3 +788,4 @@ python3 -m pytest tests/ -q
 | 2026-07-24 | PR 2 pure OTF engine finalized in PR #79 against `main`; PR #78 superseded. Canonical public timeframe API aligned to `5m`/`15m`/`30m`; internal resampler normalization retained; source-bar start/close semantics and complete-source-coverage rule enforced; DST-safe resampler-label bucket assignment added; sentinel rows removed; focused verification: 354 passed in 3.83s; full suite: 1237 passed in 29.26s; no production behavior changes outside the pure engine/docs/tests scope. |
 | 2026-07-24 | PR 3 pure OTF eligibility layer added: `thesistester/engine/otf_filter.py` and `tests/test_otf_filter.py`. Filter is deterministic, preserves candidate signals, splits accepted/rejected outputs, uses decision timestamp selection (`trigger_timestamp` then `timestamp`), applies causal as-of alignment (`availability_timestamp <= decision_timestamp`), adds deterministic rejection reasons, and guarantees disabled-path no-engine-call behavior. Focused verification: 400 passed in 3.67s; full suite: 1283 passed in 21.95s. Integration into Streamlit pages/persistence/backtests/grid-search/walk-forward/reporting remains deferred. |
 | 2026-07-24 | PR 3 follow-up: disabled-path hardened to true no-op (validates only `enabled` bool); enabled-empty-signals returns stable empty schemas without OTF engine call; `normalize_otf_timeframe()` added as single authoritative normalization helper in `otf.py`, duplicate alias mapping removed from `otf_filter.py`; helper exported from `thesistester.engine`. Focused verification: 430 passed in 5.38s; full suite: 1313 passed in 30.69s. |
+| 2026-07-24 | PR 4 configuration/persistence/versioning/UI metadata layer | Canonical OTF setup + identity work in setup/persistence/UI/test/docs files | Added canonical `otf_filter` model (`normalize_otf_filter_config`, `validate_otf_filter_config`, `get_effective_otf_filter_config`), setup persistence/load compatibility without schema bump, `OTF_ALGORITHM_VERSION = 1`, deterministic `compute_otf_config_hash`, signal-settings identity normalization, Setup Builder OTF controls/hydration, and explicit Signals non-integration messaging. Focused verification: 170 targeted tests + 407 OTF-focused tests; full suite: 1346 passed in 31.71s. |

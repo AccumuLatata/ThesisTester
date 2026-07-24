@@ -258,7 +258,7 @@ def test_saved_setup_caption_global_mode():
             "max_confluences": 5,
         }
     )
-    assert caption == "Trigger=touch • Direction=both • Confluences=2–5 • Trigger TF=base"
+    assert caption == "Trigger=touch • Direction=both • Confluences=2–5 • Trigger TF=base • OTF=disabled"
 
 
 def test_saved_setup_caption_anchor_mode():
@@ -270,7 +270,10 @@ def test_saved_setup_caption_anchor_mode():
             "min_valid_confluences": 2,
         }
     )
-    assert caption == "Mode=anchor_rules • Anchor=pdHigh • Rules=2 • Min valid=2 • Trigger TF=base"
+    assert (
+        caption
+        == "Mode=anchor_rules • Anchor=pdHigh • Rules=2 • Min valid=2 • Trigger TF=base • OTF=disabled"
+    )
 
 
 def test_dataset_relation_labels():

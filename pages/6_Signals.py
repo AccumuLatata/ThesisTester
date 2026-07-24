@@ -21,6 +21,7 @@ from thesistester.engine import (
 )
 from thesistester.persistence import (
     compute_levels_settings_hash,
+    compute_otf_config_hash,
     compute_signal_settings_hash,
     delete_signal_run,
     find_matching_signal_run,
@@ -38,9 +39,12 @@ from thesistester.setup import (
     VALID_TRIGGERS,
     available_level_columns,
     default_selected_levels,
+    get_effective_otf_filter_config,
+    normalize_otf_filter_config,
     normalize_trigger_timeframe,
     validate_setup_config,
 )
+from thesistester.engine.otf import OTF_ALGORITHM_VERSION
 from thesistester.visualization import (
     buffered_rows_window,
     build_signals_chart,
@@ -263,17 +267,23 @@ def _normalize_3c_params(params: object) -> dict:
 def _saved_setup_caption(config: dict) -> str:
     confluence_mode = str(config.get("confluence_mode", "global_cluster"))
     trigger_timeframe = normalize_trigger_timeframe(config.get("trigger_timeframe"))
+    otf_config = get_effective_otf_filter_config(config)
+    otf_caption = (
+        f"OTF=enabled({','.join(otf_config['timeframes'])}; min={otf_config['minimum_consecutive_bars']})"
+        if otf_config["enabled"]
+        else "OTF=disabled"
+    )
     if confluence_mode == "anchor_rules":
         return (
             f"Mode=anchor_rules • Anchor={config.get('anchor_level') or '-'} • "
             f"Rules={len(_safe_list(config.get('confluence_rules')))} • "
             f"Min valid={_safe_int(config.get('min_valid_confluences'), 1)} • "
-            f"Trigger TF={trigger_timeframe}"
+            f"Trigger TF={trigger_timeframe} • {otf_caption}"
         )
     return (
         f"Trigger={config.get('trigger')} • Direction={config.get('direction')} • "
         f"Confluences={config.get('min_confluences')}–{config.get('max_confluences')} • "
-        f"Trigger TF={trigger_timeframe}"
+        f"Trigger TF={trigger_timeframe} • {otf_caption}"
     )
 
 
@@ -483,9 +493,26 @@ def _normalize_signal_settings_for_hash(settings: dict) -> dict:
     normalized["trigger_timeframe"] = normalize_trigger_timeframe(
         normalized.get("trigger_timeframe")
     )
+    if "otf_filter" in normalized:
+        otf_filter_config = normalize_otf_filter_config(normalized.get("otf_filter"))
+    else:
+        setup_snapshot = normalized.get("setup_snapshot")
+        if isinstance(setup_snapshot, dict):
+            otf_filter_config = get_effective_otf_filter_config(setup_snapshot)
+        else:
+            otf_filter_config = normalize_otf_filter_config(None)
+    normalized["otf_filter"] = otf_filter_config
+    normalized["otf_algorithm_version"] = OTF_ALGORITHM_VERSION
+    normalized["otf_config_hash"] = compute_otf_config_hash(otf_filter_config)
     setup_snapshot = normalized.get("setup_snapshot")
     if isinstance(setup_snapshot, dict):
-        normalized["setup_snapshot"] = dict(setup_snapshot)
+        normalized_setup_snapshot = dict(setup_snapshot)
+        normalized_setup_snapshot["otf_filter"] = get_effective_otf_filter_config(setup_snapshot)
+        normalized_setup_snapshot["otf_algorithm_version"] = OTF_ALGORITHM_VERSION
+        normalized_setup_snapshot["otf_config_hash"] = compute_otf_config_hash(
+            normalized_setup_snapshot["otf_filter"]
+        )
+        normalized["setup_snapshot"] = normalized_setup_snapshot
     return normalized
 
 
@@ -803,6 +830,15 @@ with st.sidebar:
 
         st.success(f"Using saved setup: {saved_setup.get('name', 'Untitled setup')}")
         st.caption(f"Levels: {', '.join(selected_levels) if selected_levels else '(none)'}")
+        otf_config = get_effective_otf_filter_config(saved_setup)
+        st.caption(
+            "OTF configuration is stored as setup metadata only in PR 4; "
+            "signal generation/backtests are not filtered by OTF until PR 5."
+        )
+        st.caption(
+            f"OTF v{OTF_ALGORITHM_VERSION} · hash={compute_otf_config_hash(otf_config)[:12]}… · "
+            f"enabled={otf_config['enabled']} · timeframes={otf_config['timeframes']}"
+        )
     else:
         selected_mode_label = st.selectbox(
             "Confluence mode",
