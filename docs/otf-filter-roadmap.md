@@ -415,7 +415,7 @@ otf_filter_reason
 
 ## Phase 5 — Add persistence and versioning
 
-**Status:** Completed in PR 4 (configuration + identity metadata only)
+**Status:** Partially completed in PR 4 (setup/signal identity only; research-artifact identity deferred)
 
 ### Work items
 
@@ -424,10 +424,14 @@ otf_filter_reason
 - [x] Add configuration validation.
 - [x] Add OTF algorithm version metadata (`OTF_ALGORITHM_VERSION = 1`).
 - [x] Add OTF configuration hashing (`compute_otf_config_hash`).
-- [x] Include OTF identity in setup/signal fingerprints.
+- [x] Include OTF identity in setup fingerprints.
+- [x] Include OTF identity in signal-settings fingerprints.
 - [x] Test save/load round trips.
 - [x] Test loading setups created before OTF support.
 - [x] Keep setup schema version unchanged (`SETUP_SCHEMA_VERSION = 1`); no migration required because `otf_filter` is optional and legacy-absent payloads are supported.
+- [x] Enforce strict invalid-config identity: invalid explicit OTF config raises `ValueError`; only absent/null resolves to disabled defaults.
+- [ ] Include OTF identity in final research artifacts, reports, grid results, walk-forward results, and exports. (Deferred to PR 5.)
+- [ ] Reporting and export identity integration. (Deferred to PR 5.)
 
 ### Configuration shape
 
@@ -448,6 +452,9 @@ otf_filter_reason
 - Legacy setup files load successfully.
 - New configurations round-trip without loss.
 - Different OTF configurations produce different research identities.
+- Explicit invalid OTF configuration is rejected and never silently hashed as disabled.
+- Missing legacy configuration alone resolves to disabled defaults.
+- Research-artifact fingerprint integration remains deferred to PR 5.
 
 ## Phase 6 — Implement UI controls
 

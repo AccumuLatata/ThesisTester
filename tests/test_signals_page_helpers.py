@@ -99,6 +99,8 @@ def _import_page_helpers():
         mod._safe_bool,
         mod._safe_dict,
         mod._safe_list,
+        mod._normalize_signal_settings_for_hash,
+        mod._try_normalize_signal_settings_for_hash,
     )
 
 
@@ -120,6 +122,8 @@ def _import_page_helpers():
     _safe_bool,
     _safe_dict,
     _safe_list,
+    _normalize_signal_settings_for_hash,
+    _try_normalize_signal_settings_for_hash,
 ) = _import_page_helpers()
 
 
@@ -657,3 +661,129 @@ def test_safe_list_list_passthrough():
 def test_safe_list_non_list_returns_empty():
     assert _safe_list(None) == []
     assert _safe_list("bad") == []
+
+
+# ---------------------------------------------------------------------------
+# _normalize_signal_settings_for_hash / _try_normalize_signal_settings_for_hash
+# OTF identity strictness tests
+# ---------------------------------------------------------------------------
+
+def _base_signal_settings(**overrides) -> dict:
+    settings = {
+        "confluence_mode": "global_cluster",
+        "selected_levels": ["ONH", "ONL"],
+        "anchor_level": None,
+        "confluence_rules": [],
+        "min_valid_confluences": 1,
+        "tolerance_ticks": 4.0,
+        "min_confluences": 2,
+        "max_confluences": 5,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "touch",
+        "trigger_timeframe": "base",
+        "direction": "both",
+        "trigger_params": {},
+        "use_saved_setup": False,
+        "setup_snapshot": None,
+    }
+    settings.update(overrides)
+    return settings
+
+
+def test_normalize_signal_settings_invalid_explicit_otf_raises():
+    """Explicit invalid top-level OTF config must make normalization raise."""
+    settings = _base_signal_settings()
+    settings["otf_filter"] = {"enabled": True, "timeframes": []}  # enabled with no timeframes
+    with pytest.raises(ValueError):
+        _normalize_signal_settings_for_hash(settings)
+
+
+def test_normalize_signal_settings_invalid_setup_snapshot_otf_raises():
+    """Invalid setup_snapshot OTF config must make normalization raise."""
+    settings = _base_signal_settings(
+        use_saved_setup=True,
+        setup_snapshot={"name": "A", "otf_filter": {"enabled": True, "timeframes": []}},
+    )
+    with pytest.raises(ValueError):
+        _normalize_signal_settings_for_hash(settings)
+
+
+def test_normalize_signal_settings_missing_otf_resolves_to_disabled():
+    """Settings without otf_filter resolve to canonical disabled defaults."""
+    settings = _base_signal_settings()  # no otf_filter key
+    normalized = _normalize_signal_settings_for_hash(settings)
+    assert normalized["otf_filter"]["enabled"] is False
+    assert normalized["otf_filter"]["timeframes"] == []
+
+
+def test_normalize_signal_settings_valid_enabled_otf_preserved():
+    """Valid enabled OTF config is normalized and preserved."""
+    settings = _base_signal_settings()
+    settings["otf_filter"] = {
+        "enabled": True,
+        "timeframes": ["15m"],
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": 3,
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
+    }
+    normalized = _normalize_signal_settings_for_hash(settings)
+    assert normalized["otf_filter"]["enabled"] is True
+    assert "15m" in normalized["otf_filter"]["timeframes"]
+
+
+def test_try_normalize_signal_settings_returns_none_and_error_for_invalid_otf():
+    """_try_normalize_signal_settings_for_hash returns (None, message) for invalid OTF."""
+    settings = _base_signal_settings()
+    settings["otf_filter"] = {"enabled": True, "timeframes": []}
+    normalized, err = _try_normalize_signal_settings_for_hash(settings)
+    assert normalized is None
+    assert isinstance(err, str) and len(err) > 0
+
+
+def test_try_normalize_signal_settings_returns_normalized_for_valid_settings():
+    """_try_normalize_signal_settings_for_hash returns (normalized, None) for valid settings."""
+    settings = _base_signal_settings()
+    normalized, err = _try_normalize_signal_settings_for_hash(settings)
+    assert normalized is not None
+    assert err is None
+    assert "otf_filter" in normalized
+
+
+def test_try_normalize_does_not_produce_disabled_hash_for_invalid_otf():
+    """Invalid OTF never normalizes at all — no fallback disabled hash is produced."""
+    invalid = _base_signal_settings()
+    invalid["otf_filter"] = {"enabled": True, "timeframes": []}
+    normalized, err = _try_normalize_signal_settings_for_hash(invalid)
+    assert normalized is None  # no hash-able state produced
+
+
+def test_try_normalize_valid_legacy_settings_resolve_to_disabled():
+    """Valid legacy settings (no otf_filter) normalize to disabled defaults."""
+    settings = _base_signal_settings()
+    normalized, err = _try_normalize_signal_settings_for_hash(settings)
+    assert err is None
+    assert normalized is not None
+    assert normalized["otf_filter"]["enabled"] is False
+
+
+def test_try_normalize_alias_and_canonical_enabled_produce_same_hash():
+    """Alias timeframe labels and canonical labels produce the same normalized result."""
+    from thesistester.persistence.local_store import compute_signal_settings_hash
+
+    canonical = _base_signal_settings()
+    canonical["otf_filter"] = {
+        "enabled": True,
+        "timeframes": ["15m"],
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": 3,
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
+    }
+    alias = _base_signal_settings()
+    alias["otf_filter"] = {**canonical["otf_filter"], "timeframes": ["15min"]}
+
+    assert compute_signal_settings_hash(canonical) == compute_signal_settings_hash(alias)

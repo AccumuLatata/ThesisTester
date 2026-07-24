@@ -157,6 +157,22 @@ def _safe_confluence_mode_fallback(value: object) -> tuple[str, bool]:
     return "global_cluster", True
 
 
+def _resolve_otf_for_ui(config: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+    """Return (canonical_otf_config, warning_or_None) for UI hydration.
+
+    Always returns a valid canonical OTF config. If the config's ``otf_filter``
+    is malformed, falls back to canonical disabled defaults and returns a
+    non-None warning message. Never raises.
+    """
+    try:
+        return get_effective_otf_filter_config(config), None
+    except ValueError:
+        return normalize_otf_filter_config(None), (
+            "OTF filter settings are invalid and were reset to disabled defaults for editing. "
+            "Review and save in Setup Builder to persist the repaired configuration."
+        )
+
+
 def _render_setup_summary(config: dict) -> None:
     confluence_mode = config.get("confluence_mode", "global_cluster")
     st.markdown(f"**Name:** {config['name']}")
@@ -188,7 +204,9 @@ def _render_setup_summary(config: dict) -> None:
             f"- Entry retrace ticks: {params.get('entry_retrace_ticks', 4.0)}\n"
             f"- Max entry wait bars after reversal: {params.get('max_entry_wait_bars_after_reversal', 5)}"
         )
-    otf_config = get_effective_otf_filter_config(config)
+    otf_config, otf_resolve_warning = _resolve_otf_for_ui(config)
+    if otf_resolve_warning:
+        st.warning(otf_resolve_warning)
     st.markdown("**OTF filter configuration:**")
     st.markdown(f"- Enabled: {otf_config['enabled']}")
     st.markdown(f"- Timeframes: {', '.join(otf_config['timeframes']) if otf_config['timeframes'] else '(none)'}")
@@ -286,7 +304,10 @@ def _seed_editor_config(
         seeded.update(active_setup)
     seeded["selected_levels"] = list(seeded.get("selected_levels") or defaults)
     seeded["trigger_timeframe"] = normalize_trigger_timeframe(seeded.get("trigger_timeframe"))
-    seeded["otf_filter"] = get_effective_otf_filter_config(seeded)
+    otf_config, otf_warning = _resolve_otf_for_ui(seeded)
+    seeded["otf_filter"] = otf_config
+    if otf_warning:
+        seeded["_otf_repair_warning"] = otf_warning
     seeded["otf_algorithm_version"] = OTF_ALGORITHM_VERSION
     seeded["otf_config_hash"] = compute_otf_config_hash(seeded["otf_filter"])
     seeded["dataset_id"] = seeded.get("dataset_id", dataset_id)
@@ -593,22 +614,30 @@ active_setup = st.session_state.get("setup_config")
 active_setup = active_setup if isinstance(active_setup, dict) and active_setup else None
 
 if EDITOR_STATE_KEY not in st.session_state:
-    st.session_state[EDITOR_STATE_KEY] = _seed_editor_config(
+    _seeded = _seed_editor_config(
         active_setup=active_setup,
         instrument=instrument,
         defaults=defaults,
         dataset_id=current_dataset_id,
     )
+    _otf_seed_warning = _seeded.pop("_otf_repair_warning", None)
+    st.session_state[EDITOR_STATE_KEY] = _seeded
+    if _otf_seed_warning:
+        st.session_state["_setup_builder_otf_repair_warning"] = _otf_seed_warning
 
 editor_seed = st.session_state.get(EDITOR_STATE_KEY)
 if not isinstance(editor_seed, dict):
-    editor_seed = _seed_editor_config(
+    _seeded = _seed_editor_config(
         active_setup=active_setup,
         instrument=instrument,
         defaults=defaults,
         dataset_id=current_dataset_id,
     )
+    _otf_seed_warning = _seeded.pop("_otf_repair_warning", None)
+    editor_seed = _seeded
     st.session_state[EDITOR_STATE_KEY] = editor_seed
+    if _otf_seed_warning:
+        st.session_state["_setup_builder_otf_repair_warning"] = _otf_seed_warning
 
 pending_widget_sync = st.session_state.pop(PENDING_WIDGET_SYNC_KEY, None)
 if isinstance(pending_widget_sync, dict):
@@ -617,6 +646,9 @@ if isinstance(pending_widget_sync, dict):
     sync_warnings = _sync_editor_widget_state(editor_seed, all_level_columns, overwrite=True)
 else:
     sync_warnings = _sync_editor_widget_state(editor_seed, all_level_columns, overwrite=False)
+_pending_otf_repair_warning = st.session_state.pop("_setup_builder_otf_repair_warning", None)
+if _pending_otf_repair_warning:
+    st.warning(_pending_otf_repair_warning)
 for warning_message in sync_warnings:
     st.warning(warning_message)
 

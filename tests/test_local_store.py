@@ -598,6 +598,33 @@ def test_compute_otf_config_hash_rejects_invalid_config():
         compute_otf_config_hash({"enabled": True, "timeframes": []})
 
 
+def test_compute_signal_settings_hash_invalid_explicit_otf_raises():
+    """Explicit invalid top-level OTF config must make hashing raise (not silently hash as disabled)."""
+    invalid = _signal_settings()
+    invalid["otf_filter"] = {"enabled": True, "timeframes": []}  # enabled with no timeframes — invalid
+    with pytest.raises(ValueError):
+        compute_signal_settings_hash(invalid)
+
+
+def test_compute_signal_settings_hash_invalid_setup_snapshot_otf_raises():
+    """Invalid setup_snapshot OTF config must make hashing raise (not silently hash as disabled)."""
+    invalid_snapshot = {
+        "name": "A",
+        "otf_filter": {"enabled": True, "timeframes": []},  # invalid
+    }
+    settings = _signal_settings(setup_snapshot=invalid_snapshot)
+    with pytest.raises(ValueError):
+        compute_signal_settings_hash(settings)
+
+
+def test_compute_signal_settings_hash_invalid_otf_never_equals_disabled():
+    """Invalid OTF config must not be hashable at all, let alone collide with disabled defaults."""
+    invalid = _signal_settings()
+    invalid["otf_filter"] = {"enabled": True, "timeframes": []}
+    with pytest.raises(ValueError):
+        compute_signal_settings_hash(invalid)
+
+
 def test_compute_signal_settings_hash_treats_missing_otf_as_disabled_default():
     missing = _signal_settings(setup_snapshot={"name": "A"})
     explicit_disabled = _signal_settings(
@@ -615,6 +642,23 @@ def test_compute_signal_settings_hash_treats_missing_otf_as_disabled_default():
         }
     )
     assert compute_signal_settings_hash(missing) == compute_signal_settings_hash(explicit_disabled)
+
+
+def test_compute_signal_settings_hash_explicit_disabled_matches_missing():
+    """Explicit canonical disabled and completely absent otf_filter hash identically."""
+    no_otf = _signal_settings()  # no otf_filter key
+    no_otf.pop("otf_filter", None)
+    with_disabled = _signal_settings()
+    with_disabled["otf_filter"] = {
+        "enabled": False,
+        "timeframes": [],
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": 3,
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
+    }
+    assert compute_signal_settings_hash(no_otf) == compute_signal_settings_hash(with_disabled)
 
 
 def test_signal_run_roundtrip():

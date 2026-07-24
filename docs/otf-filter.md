@@ -524,6 +524,26 @@ Timeframe order policy for identity:
 - PR 4 treats timeframe order as identity-significant and preserves caller-selected order in normalized enabled configs.
 - Rationale: rejection reasons are deterministic in selected-timeframe order, so preserving order maintains reproducible audit identity.
 
+### Strict invalid-config identity policy
+
+- **Missing `otf_filter`** → resolves to canonical disabled defaults (legacy-safe).
+- **Explicit valid `otf_filter`** → normalizes to canonical form; aliases resolve to canonical labels.
+- **Explicit invalid `otf_filter`** → `normalize_otf_filter_config` raises `ValueError`; hashing is aborted.
+- Invalid explicit OTF configuration is **never** silently hashed as disabled. This prevents malformed or enabled configurations from colliding with the canonical disabled identity.
+- Only the absent/null field resolves to disabled defaults — an explicit but malformed block always fails validation.
+- UI surfaces (Setup Builder, Signals page) may catch `ValueError` at call sites, display a user-facing blocker or warning, and disable operations that require a trusted OTF identity. They must not overwrite malformed state silently or claim it is the same as disabled.
+
+### Research-artifact fingerprint integration (deferred)
+
+PR 4 implements OTF identity for setup and signal-settings fingerprints only. OTF identity is **not** yet embedded in:
+
+- Final research artifacts or report outputs
+- Grid-search result metadata
+- Walk-forward evaluation outputs
+- Exports
+
+Research-artifact fingerprint integration is deferred to PR 5.
+
 The contract version identifier (`v1`) remains the behavior-spec version for this
 document/fixtures and is distinct from `OTF_ALGORITHM_VERSION`.
 

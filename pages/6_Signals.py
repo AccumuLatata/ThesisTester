@@ -516,6 +516,21 @@ def _normalize_signal_settings_for_hash(settings: dict) -> dict:
     return normalized
 
 
+def _try_normalize_signal_settings_for_hash(
+    settings: dict,
+) -> tuple[dict | None, str | None]:
+    """Return (normalized, None) on success or (None, error_message) on invalid OTF config.
+
+    The strict ``_normalize_signal_settings_for_hash`` helper remains unchanged
+    for valid data and direct tests. This wrapper is for UI call sites that must
+    show a blocker rather than crash.
+    """
+    try:
+        return _normalize_signal_settings_for_hash(settings), None
+    except ValueError as exc:
+        return None, str(exc)
+
+
 def _build_signal_settings(
     *,
     confluence_mode: str,
@@ -600,7 +615,10 @@ def _get_stored_signal_settings() -> tuple[dict | None, str | None]:
     if not isinstance(settings, dict):
         return None, None
 
-    normalized_settings = _normalize_signal_settings_for_hash(settings)
+    normalized_settings, err = _try_normalize_signal_settings_for_hash(settings)
+    if normalized_settings is None:
+        return None, None  # malformed stored OTF state — unavailable
+
     settings_hash = st.session_state.get("signal_settings_hash")
     if not isinstance(settings_hash, str) or not settings_hash:
         settings_hash = compute_signal_settings_hash(normalized_settings)
@@ -830,15 +848,21 @@ with st.sidebar:
 
         st.success(f"Using saved setup: {saved_setup.get('name', 'Untitled setup')}")
         st.caption(f"Levels: {', '.join(selected_levels) if selected_levels else '(none)'}")
-        otf_config = get_effective_otf_filter_config(saved_setup)
-        st.caption(
-            "OTF configuration is stored as setup metadata only in PR 4; "
-            "signal generation/backtests are not filtered by OTF until PR 5."
-        )
-        st.caption(
-            f"OTF v{OTF_ALGORITHM_VERSION} · hash={compute_otf_config_hash(otf_config)[:12]}… · "
-            f"enabled={otf_config['enabled']} · timeframes={otf_config['timeframes']}"
-        )
+        try:
+            otf_config = get_effective_otf_filter_config(saved_setup)
+            st.caption(
+                "OTF configuration is stored as setup metadata only in PR 4; "
+                "signal generation/backtests are not filtered by OTF until PR 5."
+            )
+            st.caption(
+                f"OTF v{OTF_ALGORITHM_VERSION} · hash={compute_otf_config_hash(otf_config)[:12]}… · "
+                f"enabled={otf_config['enabled']} · timeframes={otf_config['timeframes']}"
+            )
+        except ValueError:
+            generation_blockers.append(
+                "Saved setup OTF configuration is invalid. "
+                "Update the setup in Setup Builder before generating or saving signals."
+            )
     else:
         selected_mode_label = st.selectbox(
             "Confluence mode",
@@ -1013,24 +1037,36 @@ with st.sidebar:
         disabled=bool(generation_blockers),
     )
 
-signal_settings = _build_signal_settings(
-    confluence_mode=confluence_mode,
-    selected_levels=selected_levels,
-    anchor_level=anchor_level,
-    confluence_rules=confluence_rules,
-    min_valid_confluences=min_valid_confluences,
-    tolerance_ticks=tolerance_ticks,
-    min_confluences=min_conf,
-    max_confluences=max_conf,
-    naked_only=naked_only,
-    naked_requirement=naked_requirement,
-    trigger=trigger,
-    trigger_timeframe=trigger_timeframe,
-    direction=direction,
-    trigger_params=trigger_params,
-    use_saved_setup=use_saved_setup,
-    setup_snapshot=saved_setup if use_saved_setup else None,
-)
+signal_settings: dict | None = None
+_signal_settings_otf_error: str | None = None
+try:
+    signal_settings = _build_signal_settings(
+        confluence_mode=confluence_mode,
+        selected_levels=selected_levels,
+        anchor_level=anchor_level,
+        confluence_rules=confluence_rules,
+        min_valid_confluences=min_valid_confluences,
+        tolerance_ticks=tolerance_ticks,
+        min_confluences=min_conf,
+        max_confluences=max_conf,
+        naked_only=naked_only,
+        naked_requirement=naked_requirement,
+        trigger=trigger,
+        trigger_timeframe=trigger_timeframe,
+        direction=direction,
+        trigger_params=trigger_params,
+        use_saved_setup=use_saved_setup,
+        setup_snapshot=saved_setup if use_saved_setup else None,
+    )
+except ValueError as _exc:
+    _signal_settings_otf_error = str(_exc)
+
+if _signal_settings_otf_error:
+    st.error(
+        "OTF configuration is invalid and cannot be hashed. "
+        "Update the setup in Setup Builder before generating or saving signals. "
+        f"Detail: {_signal_settings_otf_error}"
+    )
 
 dataset_id = st.session_state.get("dataset_id")
 levels_settings = st.session_state.get("levels_settings")
@@ -1134,8 +1170,9 @@ if generate_btn:
                     "setup_caption": None,
                 }
             st.session_state["signals"] = signals
-            st.session_state["signal_settings"] = signal_settings
-            st.session_state["signal_settings_hash"] = compute_signal_settings_hash(signal_settings)
+            if signal_settings is not None:
+                st.session_state["signal_settings"] = signal_settings
+                st.session_state["signal_settings_hash"] = compute_signal_settings_hash(signal_settings)
     except Exception as exc:
         st.error("Signal generation failed. Review the traceback below and adjust the setup or dataset.")
         st.exception(exc)
@@ -1161,7 +1198,7 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
         dataset_id=dataset_id,
         levels_settings_hash=levels_settings_hash,
         signal_settings=signal_settings,
-    )
+    ) if signal_settings is not None else None
 
     if matching_saved_signal_run is not None:
         st.info("Matching saved signals found.")
@@ -1184,11 +1221,12 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
         )
         selected_run_meta = run_options[selected_run_hash]
         selected_settings = selected_run_meta.get("signal_settings")
-        if (
-            isinstance(selected_settings, dict)
-            and _normalize_signal_settings_for_hash(selected_settings) != signal_settings
-        ):
-            st.caption("Selected saved signal settings differ from current controls.")
+        if isinstance(selected_settings, dict) and signal_settings is not None:
+            _selected_norm, _selected_err = _try_normalize_signal_settings_for_hash(selected_settings)
+            if _selected_norm is None:
+                st.caption("Settings comparison unavailable: saved run OTF settings are invalid.")
+            elif _selected_norm != signal_settings:
+                st.caption("Selected saved signal settings differ from current controls.")
 
         signal_actions = st.columns(3)
         if signal_actions[0].button(
@@ -1212,15 +1250,23 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
                 st.session_state["last_signal_setup"] = loaded_meta.get("last_signal_setup", {})
                 loaded_settings = loaded_meta.get("signal_settings")
                 if isinstance(loaded_settings, dict):
-                    normalized_loaded_settings = _normalize_signal_settings_for_hash(loaded_settings)
-                    st.session_state["signal_settings"] = normalized_loaded_settings
-                    loaded_hash = loaded_meta.get("signal_settings_hash")
-                    if isinstance(loaded_hash, str) and loaded_hash:
-                        st.session_state["signal_settings_hash"] = loaded_hash
-                    else:
-                        st.session_state["signal_settings_hash"] = compute_signal_settings_hash(
-                            normalized_loaded_settings
+                    normalized_loaded_settings, _load_err = _try_normalize_signal_settings_for_hash(
+                        loaded_settings
+                    )
+                    if normalized_loaded_settings is None:
+                        st.warning(
+                            "Loaded signal settings contain invalid OTF configuration and cannot be stored. "
+                            "Update the setup in Setup Builder before saving signals."
                         )
+                    else:
+                        st.session_state["signal_settings"] = normalized_loaded_settings
+                        loaded_hash = loaded_meta.get("signal_settings_hash")
+                        if isinstance(loaded_hash, str) and loaded_hash:
+                            st.session_state["signal_settings_hash"] = loaded_hash
+                        else:
+                            st.session_state["signal_settings_hash"] = compute_signal_settings_hash(
+                                normalized_loaded_settings
+                            )
                 st.success(f"Loaded saved signals ({selected_run_hash[:12]}...).")
                 st.rerun()
         if signal_actions[1].button(
@@ -1233,28 +1279,34 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
                 st.warning("Generate or load signals first, then save.")
             else:
                 generated_signal_settings, generated_signal_settings_hash = _get_stored_signal_settings()
-                current_signal_settings_hash = compute_signal_settings_hash(signal_settings)
-                if generated_signal_settings is None:
-                    st.warning("Signal settings for current artifacts are unavailable. Please regenerate signals before saving.")
-                elif generated_signal_settings_hash != current_signal_settings_hash:
+                if signal_settings is None:
                     st.warning(
-                        "Signal controls changed after these signals were generated. "
-                        "Please regenerate signals before saving."
+                        "OTF configuration is invalid and signal identity cannot be established. "
+                        "Update the setup in Setup Builder before saving signals."
                     )
+                elif generated_signal_settings is None:
+                    st.warning("Signal settings for current artifacts are unavailable. Please regenerate signals before saving.")
                 else:
-                    saved_meta = save_signal_run(
-                        dataset_id=dataset_id,
-                        levels_settings_hash=levels_settings_hash,
-                        signal_settings=generated_signal_settings,
-                        signals=current_signals,
-                        confluence_zones=current_zones,
-                        naked_flags=current_naked_flags,
-                        signal_context=st.session_state.get("signal_context"),
-                        last_signal_setup=st.session_state.get("last_signal_setup"),
-                    )
-                    _mark_saved_signal_runs_dirty(dataset_id, levels_settings_hash)
-                    st.success(f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...).")
-                    st.rerun()
+                    current_signal_settings_hash = compute_signal_settings_hash(signal_settings)
+                    if generated_signal_settings_hash != current_signal_settings_hash:
+                        st.warning(
+                            "Signal controls changed after these signals were generated. "
+                            "Please regenerate signals before saving."
+                        )
+                    else:
+                        saved_meta = save_signal_run(
+                            dataset_id=dataset_id,
+                            levels_settings_hash=levels_settings_hash,
+                            signal_settings=generated_signal_settings,
+                            signals=current_signals,
+                            confluence_zones=current_zones,
+                            naked_flags=current_naked_flags,
+                            signal_context=st.session_state.get("signal_context"),
+                            last_signal_setup=st.session_state.get("last_signal_setup"),
+                        )
+                        _mark_saved_signal_runs_dirty(dataset_id, levels_settings_hash)
+                        st.success(f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...).")
+                        st.rerun()
         if signal_actions[2].button(
             "Delete selected saved signals",
             key="delete_selected_saved_signals",
@@ -1284,28 +1336,34 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
                 st.warning("Generate or load signals first, then save.")
             else:
                 generated_signal_settings, generated_signal_settings_hash = _get_stored_signal_settings()
-                current_signal_settings_hash = compute_signal_settings_hash(signal_settings)
-                if generated_signal_settings is None:
-                    st.warning("Signal settings for current artifacts are unavailable. Please regenerate signals before saving.")
-                elif generated_signal_settings_hash != current_signal_settings_hash:
+                if signal_settings is None:
                     st.warning(
-                        "Signal controls changed after these signals were generated. "
-                        "Please regenerate signals before saving."
+                        "OTF configuration is invalid and signal identity cannot be established. "
+                        "Update the setup in Setup Builder before saving signals."
                     )
+                elif generated_signal_settings is None:
+                    st.warning("Signal settings for current artifacts are unavailable. Please regenerate signals before saving.")
                 else:
-                    saved_meta = save_signal_run(
-                        dataset_id=dataset_id,
-                        levels_settings_hash=levels_settings_hash,
-                        signal_settings=generated_signal_settings,
-                        signals=current_signals,
-                        confluence_zones=current_zones,
-                        naked_flags=current_naked_flags,
-                        signal_context=st.session_state.get("signal_context"),
-                        last_signal_setup=st.session_state.get("last_signal_setup"),
-                    )
-                    _mark_saved_signal_runs_dirty(dataset_id, levels_settings_hash)
-                    st.success(f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...).")
-                    st.rerun()
+                    current_signal_settings_hash = compute_signal_settings_hash(signal_settings)
+                    if generated_signal_settings_hash != current_signal_settings_hash:
+                        st.warning(
+                            "Signal controls changed after these signals were generated. "
+                            "Please regenerate signals before saving."
+                        )
+                    else:
+                        saved_meta = save_signal_run(
+                            dataset_id=dataset_id,
+                            levels_settings_hash=levels_settings_hash,
+                            signal_settings=generated_signal_settings,
+                            signals=current_signals,
+                            confluence_zones=current_zones,
+                            naked_flags=current_naked_flags,
+                            signal_context=st.session_state.get("signal_context"),
+                            last_signal_setup=st.session_state.get("last_signal_setup"),
+                        )
+                        _mark_saved_signal_runs_dirty(dataset_id, levels_settings_hash)
+                        st.success(f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...).")
+                        st.rerun()
 
 # ── Display results ───────────────────────────────────────────────────────────
 zones = st.session_state.get("confluence_zones")
