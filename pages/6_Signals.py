@@ -1295,10 +1295,10 @@ if generate_btn:
                 }
             st.session_state["signals"] = signals
             if signal_settings is not None:
-                st.session_state["signal_settings"] = signal_settings
-                st.session_state["signal_settings_hash"] = compute_signal_settings_hash(signal_settings)
                 st.session_state[_SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY] = _IDENTITY_STATUS_TRUSTED
                 st.session_state.pop(_SIGNAL_ARTIFACT_IDENTITY_ERROR_KEY, None)
+                st.session_state["signal_settings"] = signal_settings
+                st.session_state["signal_settings_hash"] = compute_signal_settings_hash(signal_settings)
     except Exception as exc:
         st.error("Signal generation failed. Review the traceback below and adjust the setup or dataset.")
         st.exception(exc)
