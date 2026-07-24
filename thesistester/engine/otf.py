@@ -477,9 +477,9 @@ def _filter_complete_htf_buckets(
 
         bucket_source_starts = indexed.index.take(positions)
         bucket_source_closes = bucket_source_starts + source_interval
-        continuation_count = (
-            bucket_source_starts.to_series().diff().dropna() == source_interval
-        ).sum()
+        continuation_count = int(
+            (bucket_source_starts[1:] - bucket_source_starts[:-1] == source_interval).sum()
+        )
         expected_bar_close_timestamp = bar_start_timestamp + target_duration
 
         grouped_rows.append(
@@ -489,13 +489,13 @@ def _filter_complete_htf_buckets(
                 "first_source_bar_start_timestamp": bucket_source_starts.min(),
                 "last_source_bar_start_timestamp": bucket_source_starts.max(),
                 "last_source_bar_close_timestamp": bucket_source_closes.max(),
-                "continuation_count": int(continuation_count),
+                "continuation_count": continuation_count,
                 "expected_bar_close_timestamp": expected_bar_close_timestamp,
                 "is_complete_bucket": (
                     len(bucket_source_starts) == expected_count
                     and bucket_source_starts.min() == bar_start_timestamp
                     and bucket_source_closes.max() == expected_bar_close_timestamp
-                    and int(continuation_count) == expected_count - 1
+                    and continuation_count == expected_count - 1
                 ),
             }
         )
