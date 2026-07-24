@@ -142,7 +142,6 @@ Contract version: v1
 """
 from __future__ import annotations
 
-import datetime
 from typing import Final
 
 import pandas as pd
