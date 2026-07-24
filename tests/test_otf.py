@@ -439,11 +439,6 @@ class TestConfigurableMinimum:
                 rows.append(
                     {"timestamp": ts, "open": o, "high": h, "low": lv, "close": c, "volume": 200}
                 )
-        # Sentinel: ensure last bar's close is reached
-        last_ts = base + pd.Timedelta(minutes=n_bars * 5)
-        rows.append(
-            {"timestamp": last_ts, "open": 100.0, "high": 100.0, "low": 100.0, "close": 100.0, "volume": 1}
-        )
         df = pd.DataFrame(rows)
         return calculate_otf_state(df, "5m", minimum_consecutive_bars=min_bars)
 
@@ -1218,6 +1213,14 @@ class TestLookaheadSafety:
     ) -> pd.DataFrame:
         return _make_1m_source(_minute_range(start, minutes))
 
+    def _make_utc_converted_source(self, start_utc: str, minutes: int) -> pd.DataFrame:
+        timestamps = (
+            pd.date_range(start=start_utc, periods=minutes, freq="min", tz="UTC")
+            .tz_convert(_TZ)
+            .tolist()
+        )
+        return _make_1m_source(timestamps)
+
     def _assert_historical_rows_equal(
         self,
         before: pd.DataFrame,
@@ -1383,6 +1386,85 @@ class TestLookaheadSafety:
         assert first["up_run"] == 0, "Prior-session up_run leaked into new session"
         assert first["down_run"] == 0, "Prior-session down_run leaked into new session"
         assert first["otf_state"] == "unknown"
+
+    def test_spring_forward_completion_is_timezone_aware_and_gap_safe(self) -> None:
+        result = calculate_otf_state(
+            self._make_utc_converted_source("2026-03-08 06:55", 15),
+            "5m",
+        )
+
+        assert len(result) == 3
+        assert result["bar_start_timestamp"].dt.tz is not None
+        assert result["bar_close_timestamp"].dt.tz is not None
+        assert result["availability_timestamp"].dt.tz is not None
+        assert result["availability_timestamp"].equals(result["bar_close_timestamp"])
+        assert not (result["bar_start_timestamp"].dt.hour == 2).any()
+        assert not (result["bar_close_timestamp"].dt.hour == 2).any()
+        assert not (result["availability_timestamp"].dt.hour == 2).any()
+
+        expected_starts = [
+            pd.Timestamp("2026-03-08 06:55", tz="UTC").tz_convert(_TZ),
+            pd.Timestamp("2026-03-08 07:00", tz="UTC").tz_convert(_TZ),
+            pd.Timestamp("2026-03-08 07:05", tz="UTC").tz_convert(_TZ),
+        ]
+        expected_closes = [
+            pd.Timestamp("2026-03-08 07:00", tz="UTC").tz_convert(_TZ),
+            pd.Timestamp("2026-03-08 07:05", tz="UTC").tz_convert(_TZ),
+            pd.Timestamp("2026-03-08 07:10", tz="UTC").tz_convert(_TZ),
+        ]
+        assert result["bar_start_timestamp"].tolist() == expected_starts
+        assert result["bar_close_timestamp"].tolist() == expected_closes
+
+    def test_spring_forward_append_data_does_not_change_completed_rows(self) -> None:
+        before = calculate_otf_state(
+            self._make_utc_converted_source("2026-03-08 06:55", 10),
+            "5m",
+        )
+        after = calculate_otf_state(
+            self._make_utc_converted_source("2026-03-08 06:55", 15),
+            "5m",
+        )
+        self._assert_historical_rows_equal(
+            before,
+            after,
+            pd.Timestamp("2026-03-08 07:05", tz="UTC").tz_convert(_TZ),
+        )
+
+    def test_fall_back_keeps_repeated_hour_occurrences_distinct(self) -> None:
+        result = calculate_otf_state(
+            self._make_utc_converted_source("2026-11-01 05:00", 70),
+            "5m",
+        )
+
+        assert len(result) == 14
+        assert result["bar_start_timestamp"].dt.tz is not None
+        bar_start_labels = result["bar_start_timestamp"].dt.strftime("%Y-%m-%d %H:%M %z")
+        assert "2026-11-01 01:00 -0400" in set(bar_start_labels)
+        assert "2026-11-01 01:00 -0500" in set(bar_start_labels)
+        assert set(result["bar_start_timestamp"].dt.strftime("%z")) == {"-0400", "-0500"}
+        assert bar_start_labels.tolist().count("2026-11-01 01:00 -0400") == 1
+        assert bar_start_labels.tolist().count("2026-11-01 01:00 -0500") == 1
+
+        assert result["bar_start_timestamp"].astype("int64").is_monotonic_increasing
+        assert result["bar_close_timestamp"].astype("int64").is_monotonic_increasing
+        assert result["availability_timestamp"].astype("int64").is_monotonic_increasing
+        reference = result["otf_reference_timestamp"].dropna()
+        assert reference.astype("int64").is_monotonic_increasing
+
+    def test_fall_back_append_data_does_not_change_completed_first_hour_rows(self) -> None:
+        before = calculate_otf_state(
+            self._make_utc_converted_source("2026-11-01 05:00", 60),
+            "5m",
+        )
+        after = calculate_otf_state(
+            self._make_utc_converted_source("2026-11-01 05:00", 70),
+            "5m",
+        )
+        self._assert_historical_rows_equal(
+            before,
+            after,
+            before["availability_timestamp"].max(),
+        )
 
 
 # ---------------------------------------------------------------------------

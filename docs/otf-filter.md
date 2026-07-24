@@ -303,13 +303,20 @@ The OTF decision must occur at the signal decision timestamp T, not at trade ent
 
 Resampled HTF bars use left-closed, left-labeled buckets.  In ThesisTester, `thesistester.data.resample.resample_ohlcv()` delegates to `pandas.DataFrame.resample()` on a timezone-aware `timestamp` index and preserves that index timezone.  Bucket boundaries therefore follow the input index's wall-clock timezone, not a separate UTC-anchored labeling scheme.  With exchange-local input, the labels land on exchange-local :05/:15/:30 boundaries.
 
+Bucket identity is based on the actual timezone-aware resampler label (i.e. the
+distinct absolute instant), not on a naive local clock string.  Across DST
+fall-back transitions, `01:00 -0400` and `01:00 -0500` are different buckets
+and must never be merged.  Across spring-forward transitions, nonexistent local
+times are not fabricated; a bucket can close at `03:00 EDT` immediately after
+starting at `01:55 EST` because five absolute minutes have elapsed.
+
 | Timeframe | Example bucket | `bar_start_timestamp` | `bar_close_timestamp` | Availability |
 |---|---|---|---|---|
 | `5m` | 09:25–09:30 | 09:25 | 09:30 | signal T ≥ 09:30 |
 | `15m` | 09:15–09:30 | 09:15 | 09:30 | signal T ≥ 09:30 |
 | `30m` | 09:00–09:30 | 09:00 | 09:30 | signal T ≥ 09:30 |
 
-Current helper behavior is wall-clock aligned rather than independently session-anchored: if the first source bar arrives at 18:02 ET, the first 5m bucket is still labeled 18:00 ET and is therefore a partial bucket.  PR 2 uses the conservative policy of discarding such partial first-session buckets, and it also excludes any other bucket whose expected source coverage is incomplete.
+Current helper behavior is wall-clock aligned rather than independently session-anchored: if the first source bar arrives at 18:02 ET, the first 5m bucket is still labeled 18:00 ET and is therefore a partial bucket.  PR 2 uses the conservative policy of discarding such partial first-session buckets, and it also excludes any other bucket whose expected source coverage is incomplete.  The same complete-source-coverage rule applies across DST transitions; repeated fall-back buckets stay distinct by offset, and spring-forward gaps do not create synthetic rows.
 
 ### §6.6 — Example
 
@@ -335,6 +342,7 @@ The OTF state for the signal at 09:33 is computed using the completed 5m bar wit
 - The current helper is exchange-local wall-clock aligned.  It is not separately anchored to session start beyond normal clock alignment.
 - For ES/NQ futures with `eth_start = "18:00"` ET, the session open still lands on clean 5m, 15m, and 30m boundaries because 18:00 is evenly divisible by those intervals.
 - Across daylight-saving transitions, the timestamp index keeps the exchange-local timezone and the HTF labels follow local clock behavior (for example, spring-forward jumps from 01:55 EST to 03:00 EDT; fall-back repeats the 01:00 hour with the new offset).
+- DST bucket identity is based on distinct timezone-aware instants.  Repeated fall-back local times retain their UTC offsets and are not merged; spring-forward nonexistent local times are not fabricated.
 
 ---
 

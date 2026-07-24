@@ -467,47 +467,41 @@ def _filter_complete_htf_buckets(
 
     target_duration = _TIMEFRAME_DURATION[timeframe]
     expected_count = target_duration.value // source_interval.value
+    indexed = source.set_index("timestamp")
+    grouped_rows: list[dict[str, object]] = []
+    # Use the actual resampler bucket labels for source-row assignment so DST
+    # repeated wall-clock times remain distinct by absolute instant / UTC offset.
+    for bar_start_timestamp, positions in indexed.resample(timeframe).indices.items():
+        if len(positions) == 0:
+            continue
 
-    coverage = pd.DataFrame(
-        {
-            "source_bar_start_timestamp": source["timestamp"],
-            "source_bar_close_timestamp": source["timestamp"] + source_interval,
-        }
-    )
-    coverage["bar_start_timestamp"] = coverage["source_bar_start_timestamp"].dt.floor(
-        timeframe
-    )
-    same_bucket_as_prev = coverage["bar_start_timestamp"].eq(
-        coverage["bar_start_timestamp"].shift()
-    )
-    coverage["is_continuation"] = same_bucket_as_prev & (
-        coverage["source_bar_start_timestamp"].diff() == source_interval
-    )
+        bucket_source_starts = indexed.index.take(positions)
+        bucket_source_closes = bucket_source_starts + source_interval
+        continuation_count = (
+            bucket_source_starts.to_series().diff().dropna() == source_interval
+        ).sum()
+        expected_bar_close_timestamp = bar_start_timestamp + target_duration
 
-    grouped = (
-        coverage.groupby("bar_start_timestamp", sort=False)
-        .agg(
-            source_bar_count=("source_bar_start_timestamp", "size"),
-            first_source_bar_start_timestamp=("source_bar_start_timestamp", "min"),
-            last_source_bar_start_timestamp=("source_bar_start_timestamp", "max"),
-            last_source_bar_close_timestamp=("source_bar_close_timestamp", "max"),
-            continuation_count=("is_continuation", "sum"),
+        grouped_rows.append(
+            {
+                "bar_start_timestamp": bar_start_timestamp,
+                "source_bar_count": len(bucket_source_starts),
+                "first_source_bar_start_timestamp": bucket_source_starts.min(),
+                "last_source_bar_start_timestamp": bucket_source_starts.max(),
+                "last_source_bar_close_timestamp": bucket_source_closes.max(),
+                "continuation_count": int(continuation_count),
+                "expected_bar_close_timestamp": expected_bar_close_timestamp,
+                "is_complete_bucket": (
+                    len(bucket_source_starts) == expected_count
+                    and bucket_source_starts.min() == bar_start_timestamp
+                    and bucket_source_closes.max() == expected_bar_close_timestamp
+                    and int(continuation_count) == expected_count - 1
+                ),
+            }
         )
-        .reset_index()
-    )
 
-    latest_source_availability_timestamp = coverage["source_bar_close_timestamp"].max()
-    grouped["expected_bar_close_timestamp"] = (
-        grouped["bar_start_timestamp"] + target_duration
-    )
-    grouped["is_complete_bucket"] = (
-        grouped["source_bar_count"].eq(expected_count)
-        & grouped["first_source_bar_start_timestamp"].eq(grouped["bar_start_timestamp"])
-        & grouped["last_source_bar_close_timestamp"].eq(
-            grouped["expected_bar_close_timestamp"]
-        )
-        & grouped["continuation_count"].eq(expected_count - 1)
-    )
+    grouped = pd.DataFrame(grouped_rows)
+    latest_source_availability_timestamp = source["timestamp"].max() + source_interval
 
     filtered = htf.merge(
         grouped[
