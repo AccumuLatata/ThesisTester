@@ -1019,11 +1019,11 @@ def test_validate_save_controls_drift_returns_controls_changed_message():
 def test_validate_save_invalid_stored_otf_blocks_save():
     """Stored settings with invalid OTF config (can't normalize) → blocked."""
     ss = _trusted_session_state()
-    # Corrupt the stored settings — enabled OTF with no timeframes is invalid.
-    corrupted = {"otf_filter": {"enabled": True, "timeframes": []}}
-    normalized, err = _try_normalize_signal_settings_for_hash(corrupted)
+    # Enabled OTF with no timeframes is invalid — verify normalization rejects it.
+    settings_with_invalid_otf = {"otf_filter": {"enabled": True, "timeframes": []}}
+    normalized, err = _try_normalize_signal_settings_for_hash(settings_with_invalid_otf)
     assert normalized is None, "Sanity: corrupted settings must be invalid"
-    ss["signal_settings"] = corrupted
+    ss["signal_settings"] = settings_with_invalid_otf
     can_save, err = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
     assert can_save is False
     assert err == _OTF_INVALID_ARTIFACT_BLOCKER
