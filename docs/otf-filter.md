@@ -3,7 +3,7 @@
 **Project:** ThesisTester  
 **Feature:** Directional One Timeframing (OTF) market-condition filter  
 **Contract version:** v1  
-**Status:** Approved — contract implemented by the pure PR 2 engine  
+**Status:** Approved — contract implemented by the pure PR 2 engine and PR 3 eligibility filter layer  
 **Last updated:** 2026-07-24
 
 ## Purpose
@@ -11,7 +11,7 @@
 This document is the single authoritative specification for OTF v1 behavior in ThesisTester.  
 Every implementation, test, and fixture must reference this document and use the exact definitions below.
 
-When a production engine is built (PR 2), it must match every assertion in `tests/test_otf_contract.py` and produce the expected states in `tests/fixtures/otf_fixtures.py`.  If any production behavior differs from this document, the document must be updated and the contract version incremented before the engine is merged.
+The production implementation must match every assertion in `tests/test_otf_contract.py`, `tests/test_otf.py`, and `tests/test_otf_filter.py`. If any production behavior differs from this document, the document must be updated and the contract version incremented before changes are merged.
 
 ---
 
@@ -219,7 +219,7 @@ v1 supports exactly three higher-timeframe intervals:
 | `15m` | :00, :15, :30, :45 | 4 bars per hour |
 | `30m` | :00, :30 | 2 bars per hour |
 
-Canonical public OTF timeframe labels are `5m`, `15m`, and `30m`.  The pure PR 2 engine accepts `5min`, `15min`, and `30min` as backward-compatible aliases, but they are aliases only and are normalized internally before calling `resample_ohlcv()`.
+Canonical public OTF timeframe labels are `5m`, `15m`, and `30m`.  The pure PR 2 engine accepts `5min`, `15min`, and `30min` as backward-compatible aliases, but they are aliases only and are normalized internally before calling `resample_ohlcv()`.  The single authoritative normalization helper is `normalize_otf_timeframe()` exported from `thesistester.engine.otf`; both `calculate_otf_state()` and `apply_otf_filter()` delegate to this helper so callers do not need their own alias tables.
 
 The source data must be at a granularity **strictly finer** than the target timeframe (e.g., 1-minute bars for 5m OTF).  Using a source interval equal to the target timeframe produces no resampling and is not supported by OTF v1.  The production engine in PR 2 must validate that the source interval is strictly finer than each selected OTF timeframe, and that the target timeframe is exactly divisible by the inferred source interval.  When the source interval cannot be inferred safely from the input timestamps, the pure engine must reject the input rather than guessing completion.  Resampling must use only bars that have closed at or before the signal decision timestamp.
 
@@ -298,6 +298,14 @@ separate 09:05 source-row sentinel is required.
 | `3c` | Close of the confirmation (third) bar |
 
 The OTF decision must occur at the signal decision timestamp T, not at trade entry time.
+
+PR 3 defines one deterministic selector for signal-decision timestamps:
+
+- Use `trigger_timestamp` when present and non-null.
+- Otherwise fall back to `timestamp`.
+
+This applies to base and non-base simple triggers, and to base/non-base `3c`
+rows under current signal semantics.
 
 ### §6.5 — Bucket semantics
 
@@ -386,7 +394,21 @@ Every rejected signal must record a deterministic, human-readable rejection reas
 
 ## §9 — Rejected signals
 
-Signals rejected by OTF must not be deleted.  They are retained with:
+The PR 3 eligibility filter runs **after candidate signal generation** and
+**before any explicit consumer chooses accepted signals for trade simulation**.
+`generate_signals()` remains candidate-only, and `simulate_trades()` remains
+execution-only.
+
+Signals rejected by OTF must not be deleted. The filter returns:
+
+1. Accepted signals.
+2. OTF-rejected signals.
+
+Both outputs preserve original candidate row content and `signal_id` values.
+OTF rejection is a separate concept from 3c `void` status and from execution
+skip reasons produced by exposure policy.
+
+Rejected signals are retained with:
 
 ```
 otf_filter_enabled:  True
@@ -397,7 +419,26 @@ otf_<tf>_sequence_length: <int>
 otf_<tf>_reference_timestamp: <pd.Timestamp>
 ```
 
-This allows post-hoc analysis of how many signals were rejected, for which timeframes, and why.  It is essential for comparing filtered versus unfiltered backtests.
+Per-timeframe metadata columns are emitted only for the selected timeframe set
+for that invocation; unselected timeframes are not implied/evaluated.
+
+For each selected timeframe, PR 3 aligns OTF state causally using:
+
+```text
+availability_timestamp <= decision_timestamp
+```
+
+using backward/as-of matching only (never forward-filling future rows). If no
+completed OTF bar is available yet, state is `unknown`, sequence length is `0`,
+and reference timestamp is `NaT`.
+
+Rejected rows must carry deterministic non-empty reasons identifying the first
+failing timeframe in caller-selected order. Accepted rows must have
+`otf_filter_reason = None`.
+
+This allows post-hoc analysis of how many signals were rejected, for which
+timeframes, and why. It is essential for comparing filtered versus unfiltered
+backtests.
 
 ---
 
@@ -412,6 +453,28 @@ metrics       ==  legacy metrics
 ```
 
 Existing saved setups without an `otf_filter` block must load and behave exactly as before OTF support was added.
+
+PR 3 disabled-path contract:
+
+- `apply_otf_filter()` validates only that `enabled` is a boolean before returning.
+- All timeframe, `alignment_mode`, `minimum_consecutive_bars`, `session_reset`, signal direction, timestamp, and source-data validation is skipped.
+- All candidate signals are returned as accepted.
+- Rejected output is empty.
+- The OTF state engine is not called.
+- Per-timeframe metadata is not added when no timeframe is selected.
+- Legacy candidate population, ordering, and values are preserved.
+
+PR 3 enabled-empty-signals contract:
+
+When `enabled=True` and the `signals` DataFrame has zero rows:
+
+- Configuration and selected-timeframe validation is still performed (invalid config still raises).
+- The function returns two empty DataFrames (accepted and rejected) with identical schemas.
+- The schema includes all original signal columns plus `otf_signal_decision_timestamp`, per-selected-timeframe metadata (`otf_<tf>_state`, `otf_<tf>_sequence_length`, `otf_<tf>_reference_timestamp`), and `otf_filter_enabled`, `otf_filter_passed`, `otf_filter_reason`.
+- Metadata columns for unselected timeframes are absent.
+- No signal direction or timestamp columns are required.
+- Source OHLCV data is not inspected.
+- The OTF state engine is not called.
 
 ---
 
@@ -463,4 +526,6 @@ The contract version identifier (`v1`) is used in fixture files and this documen
 | `tests/fixtures/otf_fixtures.py` | Deterministic OHLCV fixtures and expected-state test vectors |
 | `tests/test_otf_contract.py` | Fixture-integrity and contract-consistency tests |
 | `tests/test_otf_baseline.py` | Regression baseline tests (OTF absent/disabled) |
-| `thesistester/engine/otf.py` | Production engine (to be created in PR 2) |
+| `tests/test_otf_filter.py` | PR 3 OTF eligibility-filter validation and regression tests |
+| `thesistester/engine/otf.py` | Production OTF state engine (PR 2) |
+| `thesistester/engine/otf_filter.py` | Pure PR 3 eligibility-filter application layer |

@@ -371,10 +371,27 @@ def _ensure_timezone_aware(
     return df
 
 
+def normalize_otf_timeframe(timeframe: str) -> str:
+    """Return the canonical OTF label for *timeframe*: ``'5m'``, ``'15m'``, or ``'30m'``.
+
+    Accepts both canonical values and backward-compatible aliases
+    (``'5min'``, ``'15min'``, ``'30min'``).  Raises :exc:`ValueError` for any
+    unsupported input so that callers receive a deterministic error without
+    needing to maintain their own alias tables.
+    """
+    if timeframe not in OTF_SUPPORTED_TIMEFRAMES:
+        raise ValueError(
+            f"Unsupported OTF timeframe: {timeframe!r}. "
+            f"Canonical values: {sorted(OTF_CANONICAL_TIMEFRAMES)}. "
+            "Backward-compatible aliases: ['5min', '15min', '30min']."
+        )
+    return _TIMEFRAME_ALIASES.get(timeframe, timeframe)
+
+
 def _normalize_timeframe(timeframe: str) -> str:
-    """Normalize a canonical or alias timeframe to the resampler label."""
-    canonical_timeframe = _TIMEFRAME_ALIASES.get(timeframe, timeframe)
-    return _TIMEFRAME_NORMALIZATION[canonical_timeframe]
+    """Normalize a canonical or alias timeframe to the internal resampler label."""
+    canonical = normalize_otf_timeframe(timeframe)
+    return _TIMEFRAME_NORMALIZATION[canonical]
 
 
 def _coerce_and_validate_source_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
