@@ -602,7 +602,7 @@ class TestDisabledIsATrueNoOp:
         assert rejected.empty
 
     @pytest.mark.parametrize("value", [0, -1, 1.5, True])
-    def test_disabled_ignores_invalid_minimum_threshold(self, value: object) -> None:
+    def test_disabled_ignores_invalid_minimum_consecutive_bars(self, value: object) -> None:
         sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
         accepted, rejected = apply_otf_filter(
             self._empty_src(), sig, enabled=False, timeframes=("5m",),
@@ -808,10 +808,9 @@ class TestNormalizeOtfTimeframe:
         acc_c, rej_c = apply_otf_filter(src, sig, enabled=True, timeframes=("15m",), minimum_consecutive_bars=1)
         acc_a, rej_a = apply_otf_filter(src, sig, enabled=True, timeframes=("15min",), minimum_consecutive_bars=1)
 
-        pd.testing.assert_frame_equal(
-            acc_c.rename(columns={"otf_15m_state": "state"}).reset_index(drop=True),
-            acc_a.rename(columns={"otf_15m_state": "state"}).reset_index(drop=True),
-        )
+        # Both alias and canonical normalize to 15m, so schemas and values are identical.
+        pd.testing.assert_frame_equal(acc_c.reset_index(drop=True), acc_a.reset_index(drop=True))
+        pd.testing.assert_frame_equal(rej_c.reset_index(drop=True), rej_a.reset_index(drop=True))
 
     def test_duplicate_normalized_timeframes_raise_when_enabled(self) -> None:
         src = _source_1m("2026-01-05 09:30", 20)

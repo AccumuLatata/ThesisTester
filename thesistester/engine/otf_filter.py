@@ -51,8 +51,7 @@ def apply_otf_filter(
     #    No timeframe/signal/timestamp/source inspection.
     # ------------------------------------------------------------------
     if not enabled:
-        signal_copy = signals.copy(deep=True)
-        accepted = signal_copy.copy()
+        accepted = signals.copy(deep=True)
         accepted["otf_filter_enabled"] = False
         accepted["otf_filter_passed"] = True
         accepted["otf_filter_reason"] = None
