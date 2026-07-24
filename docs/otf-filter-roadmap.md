@@ -650,10 +650,10 @@ No production files outside `docs/` and `tests/` were modified.
 
 ```text
 python3 -m pytest tests/test_otf.py tests/test_otf_contract.py tests/test_otf_baseline.py tests/test_loader.py -q
-# 354 passed in 4.92s
+# 354 passed in 3.83s
 
 python3 -m pytest tests/ -q
-# 1237 passed in 30.58s
+# 1237 passed in 29.26s
 ```
 
 ### PR 3 — Signal filtering
@@ -704,7 +704,7 @@ python3 -m pytest tests/ -q
 | 2026-07-23 | Roadmap created | _This document_ | Initial regression-safe and drift-safe plan. |
 | 2026-07-23 | Phase 0 partially complete | `tests/test_otf_baseline.py`, `docs/otf-filter-roadmap.md` | Baseline captured; schema inventory recorded; final verification shows 223 focused tests and 1106 full-suite tests passing; report-artifact schema remains deferred. |
 | 2026-07-23 | Phase 1 complete | `docs/otf-filter.md`, `tests/fixtures/otf_fixtures.py`, `tests/test_otf_contract.py` | OTF v1 contract approved; 11 OHLCV scenarios + 3 vector scenarios; direct resampler drift guard added; final verification shows 223 focused tests and 1106 full-suite tests passing. |
-| 2026-07-24 | Phase 2 complete in final PR #79 against `main` | `thesistester/engine/otf.py`, `tests/test_otf.py`, `docs/otf-filter.md`, `docs/otf-filter-roadmap.md` | Pure OTF engine finalized in PR #79; PR #78 is superseded and must not be merged. Canonical public timeframe labels (`5m`/`15m`/`30m`), internal `*min` normalization, source-bar close semantics, complete-source-coverage filtering, deterministic OHLCV validation, DST-safe bucket assignment using actual timezone-aware resampler labels, and no-sentinel completion are all implemented. Focused verification: 354 passed in 4.92s. Full suite: 1237 passed in 30.58s. |
+| 2026-07-24 | Phase 2 complete in final PR #79 against `main` | `thesistester/engine/otf.py`, `tests/test_otf.py`, `docs/otf-filter.md`, `docs/otf-filter-roadmap.md` | Pure OTF engine finalized in PR #79; PR #78 is superseded and must not be merged. Canonical public timeframe labels (`5m`/`15m`/`30m`), internal `*min` normalization, source-bar close semantics, complete-source-coverage filtering, deterministic OHLCV validation, DST-safe bucket assignment using actual timezone-aware resampler labels, and no-sentinel completion are all implemented. Focused verification: 354 passed in 3.83s. Full suite: 1237 passed in 29.26s. |
 | 2026-07-24 | Phase 3 complete (merged into final PR #79) | `tests/test_otf.py::TestLookaheadSafety` | 5m/15m/30m in-progress bar exclusion proven under source-bar close semantics; append-data invariance compares full historical output rows; future-shock invariance, new-session invariance, exact-close availability, missing-coverage exclusion, session-boundary counter isolation, and DST spring-forward/fall-back invariance are all proven against the production engine. |
 | 2026-07-23 | PR 1 final verified state | `docs/otf-filter-roadmap.md` | Phase 0 remains partially complete; Phase 1 remains complete; partial first session-bucket handling plus production-engine future-shock/append-data invariance validation remain deferred to PR 2; production OTF behavior is still not implemented. |
 
@@ -727,4 +727,4 @@ python3 -m pytest tests/ -q
 |---|---|
 | 2026-07-23 | Initial roadmap created. |
 | 2026-07-23 | PR 1: OTF v1 contract approved; `docs/otf-filter.md` created; deterministic fixtures added; contract and baseline tests added; final verified scope is documentation/tests only with production OTF still unimplemented. |
-| 2026-07-24 | PR 2 pure OTF engine finalized in PR #79 against `main`; PR #78 superseded. Canonical public timeframe API aligned to `5m`/`15m`/`30m`; internal resampler normalization retained; source-bar start/close semantics and complete-source-coverage rule enforced; DST-safe resampler-label bucket assignment added; sentinel rows removed; focused verification: 354 passed in 4.92s; full suite: 1237 passed in 30.58s; no production behavior changes outside the pure engine/docs/tests scope. |
+| 2026-07-24 | PR 2 pure OTF engine finalized in PR #79 against `main`; PR #78 superseded. Canonical public timeframe API aligned to `5m`/`15m`/`30m`; internal resampler normalization retained; source-bar start/close semantics and complete-source-coverage rule enforced; DST-safe resampler-label bucket assignment added; sentinel rows removed; focused verification: 354 passed in 3.83s; full suite: 1237 passed in 29.26s; no production behavior changes outside the pure engine/docs/tests scope. |
