@@ -98,6 +98,11 @@ _RULE_AUDIT_COLUMNS = [
     "reason",
 ]
 
+_OTF_INVALID_SAVE_BLOCKER = (
+    "OTF configuration is invalid and signal identity cannot be established. "
+    "Update the setup in Setup Builder before saving signals."
+)
+
 
 def _widget_key_part(value: object) -> str:
     """Sanitize a value for widget keys by replacing non-alphanumerics with underscores."""
@@ -1280,10 +1285,7 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
             else:
                 generated_signal_settings, generated_signal_settings_hash = _get_stored_signal_settings()
                 if signal_settings is None:
-                    st.warning(
-                        "OTF configuration is invalid and signal identity cannot be established. "
-                        "Update the setup in Setup Builder before saving signals."
-                    )
+                    st.warning(_OTF_INVALID_SAVE_BLOCKER)
                 elif generated_signal_settings is None:
                     st.warning("Signal settings for current artifacts are unavailable. Please regenerate signals before saving.")
                 else:
@@ -1337,10 +1339,7 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
             else:
                 generated_signal_settings, generated_signal_settings_hash = _get_stored_signal_settings()
                 if signal_settings is None:
-                    st.warning(
-                        "OTF configuration is invalid and signal identity cannot be established. "
-                        "Update the setup in Setup Builder before saving signals."
-                    )
+                    st.warning(_OTF_INVALID_SAVE_BLOCKER)
                 elif generated_signal_settings is None:
                     st.warning("Signal settings for current artifacts are unavailable. Please regenerate signals before saving.")
                 else:

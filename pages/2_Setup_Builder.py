@@ -71,7 +71,7 @@ WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS = "_setup_builder_otf_min_consecutive_bars"
 WIDGET_KEY_OTF_DIRECTIONAL = "_setup_builder_otf_directional"
 WIDGET_KEY_OTF_COMPLETED_BARS_ONLY = "_setup_builder_otf_completed_bars_only"
 WIDGET_KEY_OTF_SESSION_RESET = "_setup_builder_otf_session_reset"
-_OTF_REPAIR_WARNING_KEY = "_otf_repair_warning"
+_OTF_REPAIR_DICT_KEY = "_otf_repair_warning"
 _SETUP_BUILDER_OTF_REPAIR_SESSION_KEY = "_setup_builder_otf_repair_warning"
 
 
@@ -309,7 +309,7 @@ def _seed_editor_config(
     otf_config, otf_warning = _resolve_otf_for_ui(seeded)
     seeded["otf_filter"] = otf_config
     if otf_warning:
-        seeded[_OTF_REPAIR_WARNING_KEY] = otf_warning
+        seeded[_OTF_REPAIR_DICT_KEY] = otf_warning
     seeded["otf_algorithm_version"] = OTF_ALGORITHM_VERSION
     seeded["otf_config_hash"] = compute_otf_config_hash(seeded["otf_filter"])
     seeded["dataset_id"] = seeded.get("dataset_id", dataset_id)
@@ -622,7 +622,7 @@ if EDITOR_STATE_KEY not in st.session_state:
         defaults=defaults,
         dataset_id=current_dataset_id,
     )
-    _otf_seed_warning = _seeded.pop(_OTF_REPAIR_WARNING_KEY, None)
+    _otf_seed_warning = _seeded.pop(_OTF_REPAIR_DICT_KEY, None)
     st.session_state[EDITOR_STATE_KEY] = _seeded
     if _otf_seed_warning:
         st.session_state[_SETUP_BUILDER_OTF_REPAIR_SESSION_KEY] = _otf_seed_warning
@@ -635,7 +635,7 @@ if not isinstance(editor_seed, dict):
         defaults=defaults,
         dataset_id=current_dataset_id,
     )
-    _otf_seed_warning = _seeded.pop(_OTF_REPAIR_WARNING_KEY, None)
+    _otf_seed_warning = _seeded.pop(_OTF_REPAIR_DICT_KEY, None)
     editor_seed = _seeded
     st.session_state[EDITOR_STATE_KEY] = editor_seed
     if _otf_seed_warning:

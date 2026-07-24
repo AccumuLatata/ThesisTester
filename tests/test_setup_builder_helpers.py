@@ -368,8 +368,8 @@ def test_seed_editor_config_malformed_otf_includes_repair_warning():
         defaults=["ONH", "ONL"],
         dataset_id="dataset-a",
     )
-    assert setup_builder._OTF_REPAIR_WARNING_KEY in seeded
-    assert isinstance(seeded[setup_builder._OTF_REPAIR_WARNING_KEY], str)
+    assert setup_builder._OTF_REPAIR_DICT_KEY in seeded
+    assert isinstance(seeded[setup_builder._OTF_REPAIR_DICT_KEY], str)
 
 
 def test_seed_editor_config_valid_enabled_otf_unchanged():
@@ -395,7 +395,7 @@ def test_seed_editor_config_valid_enabled_otf_unchanged():
     assert seeded["otf_filter"]["enabled"] is True
     assert seeded["otf_filter"]["timeframes"] == ["15m"]
     assert seeded["otf_filter"]["minimum_consecutive_bars"] == 4
-    assert setup_builder._OTF_REPAIR_WARNING_KEY not in seeded
+    assert setup_builder._OTF_REPAIR_DICT_KEY not in seeded
 
 
 def test_seed_editor_config_repaired_setup_has_canonical_hash():
