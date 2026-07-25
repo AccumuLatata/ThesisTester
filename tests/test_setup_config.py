@@ -5,13 +5,18 @@ import pytest
 
 from thesistester.setup import (
     BASE_COLUMNS,
+    DEFAULT_OTF_FILTER_CONFIG,
     available_level_columns,
     build_setup_config,
+    get_effective_otf_filter_config,
+    normalize_otf_filter_config,
+    validate_otf_filter_config,
     validate_setup_config,
 )
 
 
 def _base_config(**overrides) -> dict:
+    otf_filter = overrides.pop("otf_filter", None)
     config = build_setup_config(
         name="OR + ON setup",
         description="test",
@@ -25,6 +30,7 @@ def _base_config(**overrides) -> dict:
         trigger="touch",
         direction="both",
         trigger_params={},
+        otf_filter=otf_filter,
     )
     config.update(overrides)
     return config
@@ -321,3 +327,190 @@ def test_anchor_rules_required_accepts_boolean_compatible_values(required_value)
         )
     )
     assert errors == []
+
+
+def test_otf_missing_block_resolves_to_disabled_defaults():
+    config = _base_config()
+    config.pop("otf_filter", None)
+    assert get_effective_otf_filter_config(config) == DEFAULT_OTF_FILTER_CONFIG
+
+
+def test_otf_none_resolves_to_disabled_defaults():
+    assert normalize_otf_filter_config(None) == DEFAULT_OTF_FILTER_CONFIG
+
+
+def test_otf_explicit_disabled_normalizes_to_canonical_defaults():
+    normalized = normalize_otf_filter_config(
+        {
+            "enabled": False,
+            "timeframes": ["5m"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 9,
+            "directional": True,
+            "use_completed_bars_only": True,
+            "session_reset": "session",
+        }
+    )
+    assert normalized == DEFAULT_OTF_FILTER_CONFIG
+
+
+def test_otf_enabled_single_timeframe_normalizes():
+    normalized = normalize_otf_filter_config(
+        {
+            "enabled": True,
+            "timeframes": ["5m"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 3,
+            "directional": True,
+            "use_completed_bars_only": True,
+            "session_reset": "session",
+        }
+    )
+    assert normalized["enabled"] is True
+    assert normalized["timeframes"] == ["5m"]
+
+
+def test_otf_enabled_multi_timeframe_preserves_order():
+    normalized = normalize_otf_filter_config(
+        {
+            "enabled": True,
+            "timeframes": ["30m", "5m", "15m"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 4,
+            "directional": True,
+            "use_completed_bars_only": True,
+            "session_reset": "session",
+        }
+    )
+    assert normalized["timeframes"] == ["30m", "5m", "15m"]
+
+
+def test_otf_aliases_normalize_to_canonical_labels():
+    normalized = normalize_otf_filter_config(
+        {
+            "enabled": True,
+            "timeframes": ["5min", "15min", "30min"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 3,
+            "directional": True,
+            "use_completed_bars_only": True,
+            "session_reset": "session",
+        }
+    )
+    assert normalized["timeframes"] == ["5m", "15m", "30m"]
+
+
+def test_otf_duplicate_alias_and_canonical_values_reject():
+    errors = validate_otf_filter_config(
+        {
+            "enabled": True,
+            "timeframes": ["5m", "5min"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 3,
+            "directional": True,
+            "use_completed_bars_only": True,
+            "session_reset": "session",
+        }
+    )
+    assert any("Duplicate timeframe" in message for message in errors)
+
+
+def test_otf_enabled_without_timeframe_rejects():
+    errors = validate_otf_filter_config({"enabled": True, "timeframes": []})
+    assert any("Select at least one OTF timeframe" in message for message in errors)
+
+
+def test_otf_invalid_enabled_type_rejects():
+    errors = validate_otf_filter_config({"enabled": "yes"})
+    assert any("enabled must be a boolean" in message for message in errors)
+
+
+def test_otf_invalid_alignment_mode_rejects():
+    errors = validate_otf_filter_config({"enabled": True, "timeframes": ["5m"], "alignment_mode": "any"})
+    assert any("alignment_mode must be 'all'" in message for message in errors)
+
+
+def test_otf_invalid_threshold_and_bool_reject():
+    errors_bool = validate_otf_filter_config({"minimum_consecutive_bars": True})
+    errors_zero = validate_otf_filter_config({"minimum_consecutive_bars": 0})
+    assert any("minimum_consecutive_bars must be an integer" in message for message in errors_bool)
+    assert any("minimum_consecutive_bars must be >= 1" in message for message in errors_zero)
+
+
+def test_otf_directional_false_rejects():
+    errors = validate_otf_filter_config({"directional": False})
+    assert any("directional must be True" in message for message in errors)
+
+
+def test_otf_use_completed_bars_only_false_rejects():
+    errors = validate_otf_filter_config({"use_completed_bars_only": False})
+    assert any("use_completed_bars_only must be True" in message for message in errors)
+
+
+def test_otf_invalid_session_reset_rejects():
+    errors = validate_otf_filter_config({"session_reset": "carry"})
+    assert any("session_reset must be 'session'" in message for message in errors)
+
+
+def test_otf_input_dictionary_is_not_mutated():
+    payload = {
+        "enabled": True,
+        "timeframes": ["15min", "5m"],
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": 3,
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
+    }
+    snapshot = dict(payload)
+    snapshot["timeframes"] = list(payload["timeframes"])
+    normalize_otf_filter_config(payload)
+    assert payload == snapshot
+
+
+def test_build_setup_config_includes_disabled_otf_defaults():
+    config = _base_config()
+    assert config["otf_filter"] == DEFAULT_OTF_FILTER_CONFIG
+
+
+def test_build_setup_config_embeds_enabled_otf_canonically():
+    config = _base_config(
+        otf_filter={
+            "enabled": True,
+            "timeframes": ["30min", "5m"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 5,
+            "directional": True,
+            "use_completed_bars_only": True,
+            "session_reset": "session",
+        }
+    )
+    assert config["otf_filter"]["timeframes"] == ["30m", "5m"]
+
+
+def test_validate_setup_config_accepts_absent_legacy_otf_block():
+    config = _base_config()
+    config.pop("otf_filter", None)
+    assert validate_setup_config(config) == []
+
+
+def test_validate_setup_config_reports_invalid_otf_config():
+    config = _base_config()
+    config["otf_filter"] = {"enabled": True, "timeframes": []}
+    errors = validate_setup_config(config)
+    assert any("OTF filter" in message for message in errors)
+
+
+def test_effective_otf_helper_preserves_enabled_values():
+    config = _base_config(
+        otf_filter={
+            "enabled": True,
+            "timeframes": ["15m"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 6,
+            "directional": True,
+            "use_completed_bars_only": True,
+            "session_reset": "session",
+        }
+    )
+    assert get_effective_otf_filter_config(config)["minimum_consecutive_bars"] == 6

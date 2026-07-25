@@ -7,21 +7,27 @@ from typing import Any
 import streamlit as st
 
 from thesistester.persistence import (
+    compute_otf_config_hash,
     delete_setup,
     list_saved_setups,
     load_setup,
     save_setup,
 )
 from thesistester.setup import (
+    DEFAULT_OTF_FILTER_CONFIG,
+    OTF_TIMEFRAME_CHOICES,
     DEFAULT_TRIGGER_TIMEFRAME,
     TRIGGER_TIMEFRAME_CHOICES,
     VALID_TRIGGER_TIMEFRAMES,
     available_level_columns,
     build_setup_config,
     default_selected_levels,
+    get_effective_otf_filter_config,
     normalize_trigger_timeframe,
+    normalize_otf_filter_config,
     validate_setup_config,
 )
+from thesistester.engine.otf import OTF_ALGORITHM_VERSION
 
 
 CONFLUENCE_MODE_LABELS = {
@@ -58,6 +64,15 @@ WIDGET_KEY_DIRECTION = "_setup_builder_direction"
 WIDGET_KEY_ENTRY_RETRACE_TICKS = "_setup_builder_entry_retrace_ticks"
 WIDGET_KEY_MAX_ENTRY_WAIT_BARS = "_setup_builder_max_entry_wait_bars"
 WIDGET_KEY_ALLOW_MISSING_LEVEL_REMOVAL = "_setup_builder_allow_missing_level_removal"
+WIDGET_KEY_OTF_ENABLED = "_setup_builder_otf_enabled"
+WIDGET_KEY_OTF_TIMEFRAMES = "_setup_builder_otf_timeframes"
+WIDGET_KEY_OTF_ALIGNMENT_MODE = "_setup_builder_otf_alignment_mode"
+WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS = "_setup_builder_otf_min_consecutive_bars"
+WIDGET_KEY_OTF_DIRECTIONAL = "_setup_builder_otf_directional"
+WIDGET_KEY_OTF_COMPLETED_BARS_ONLY = "_setup_builder_otf_completed_bars_only"
+WIDGET_KEY_OTF_SESSION_RESET = "_setup_builder_otf_session_reset"
+_OTF_REPAIR_DICT_KEY = "_otf_repair_warning"
+_SETUP_BUILDER_OTF_REPAIR_SESSION_KEY = "_setup_builder_otf_repair_warning"
 
 
 def _anchor_rule_key(prefix: str, level: str) -> str:
@@ -144,6 +159,22 @@ def _safe_confluence_mode_fallback(value: object) -> tuple[str, bool]:
     return "global_cluster", True
 
 
+def _resolve_otf_for_ui(config: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+    """Return (canonical_otf_config, warning_or_None) for UI hydration.
+
+    Always returns a valid canonical OTF config. If the config's ``otf_filter``
+    is malformed, falls back to canonical disabled defaults and returns a
+    non-None warning message. Never raises.
+    """
+    try:
+        return get_effective_otf_filter_config(config), None
+    except ValueError:
+        return normalize_otf_filter_config(None), (
+            "OTF filter settings are invalid and were reset to disabled defaults for editing. "
+            "Review and save in Setup Builder to persist the repaired configuration."
+        )
+
+
 def _render_setup_summary(config: dict) -> None:
     confluence_mode = config.get("confluence_mode", "global_cluster")
     st.markdown(f"**Name:** {config['name']}")
@@ -175,6 +206,19 @@ def _render_setup_summary(config: dict) -> None:
             f"- Entry retrace ticks: {params.get('entry_retrace_ticks', 4.0)}\n"
             f"- Max entry wait bars after reversal: {params.get('max_entry_wait_bars_after_reversal', 5)}"
         )
+    otf_config, otf_resolve_warning = _resolve_otf_for_ui(config)
+    if otf_resolve_warning:
+        st.warning(otf_resolve_warning)
+    st.markdown("**OTF filter configuration:**")
+    st.markdown(f"- Enabled: {otf_config['enabled']}")
+    st.markdown(f"- Timeframes: {', '.join(otf_config['timeframes']) if otf_config['timeframes'] else '(none)'}")
+    st.markdown(f"- Alignment mode: {otf_config['alignment_mode']}")
+    st.markdown(f"- Minimum consecutive bars: {otf_config['minimum_consecutive_bars']}")
+    st.markdown(f"- Directional: {otf_config['directional']}")
+    st.markdown(f"- Completed bars only: {otf_config['use_completed_bars_only']}")
+    st.markdown(f"- Session reset: {otf_config['session_reset']}")
+    st.markdown(f"- OTF algorithm version: {OTF_ALGORITHM_VERSION}")
+    st.markdown(f"- OTF configuration hash: {compute_otf_config_hash(otf_config)}")
 
 
 def _duplicate_setup_name(name: str) -> str:
@@ -242,6 +286,9 @@ def _default_editor_config(
         "confluence_rules": [],
         "min_valid_confluences": 1,
         "trigger_params": {},
+        "otf_filter": normalize_otf_filter_config(DEFAULT_OTF_FILTER_CONFIG),
+        "otf_algorithm_version": OTF_ALGORITHM_VERSION,
+        "otf_config_hash": compute_otf_config_hash(DEFAULT_OTF_FILTER_CONFIG),
         "setup_id": None,
         "dataset_id": dataset_id,
     }
@@ -259,6 +306,12 @@ def _seed_editor_config(
         seeded.update(active_setup)
     seeded["selected_levels"] = list(seeded.get("selected_levels") or defaults)
     seeded["trigger_timeframe"] = normalize_trigger_timeframe(seeded.get("trigger_timeframe"))
+    otf_config, otf_warning = _resolve_otf_for_ui(seeded)
+    seeded["otf_filter"] = otf_config
+    if otf_warning:
+        seeded[_OTF_REPAIR_DICT_KEY] = otf_warning
+    seeded["otf_algorithm_version"] = OTF_ALGORITHM_VERSION
+    seeded["otf_config_hash"] = compute_otf_config_hash(seeded["otf_filter"])
     seeded["dataset_id"] = seeded.get("dataset_id", dataset_id)
     return seeded
 
@@ -473,6 +526,22 @@ def _sync_editor_widget_state(config: dict[str, Any], level_columns: list[str], 
     _assign(WIDGET_KEY_ENTRY_RETRACE_TICKS, entry_retrace_default)
     _assign(WIDGET_KEY_MAX_ENTRY_WAIT_BARS, max_wait_default)
 
+    try:
+        otf_config = normalize_otf_filter_config(config.get("otf_filter"))
+    except ValueError:
+        otf_config = normalize_otf_filter_config(None)
+        warnings.append("Loaded OTF filter settings are invalid; falling back to disabled defaults.")
+    _assign(WIDGET_KEY_OTF_ENABLED, bool(otf_config.get("enabled", False)))
+    _assign(WIDGET_KEY_OTF_TIMEFRAMES, list(otf_config.get("timeframes", [])))
+    _assign(WIDGET_KEY_OTF_ALIGNMENT_MODE, str(otf_config.get("alignment_mode", "all")))
+    _assign(
+        WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS,
+        int(otf_config.get("minimum_consecutive_bars", DEFAULT_OTF_FILTER_CONFIG["minimum_consecutive_bars"])),
+    )
+    _assign(WIDGET_KEY_OTF_DIRECTIONAL, True)
+    _assign(WIDGET_KEY_OTF_COMPLETED_BARS_ONLY, True)
+    _assign(WIDGET_KEY_OTF_SESSION_RESET, "session")
+
     return warnings
 
 
@@ -495,6 +564,7 @@ def _build_current_editor_config(
     confluence_rules: list[dict[str, Any]],
     min_valid_confluences: int,
     trigger_params: dict[str, Any],
+    otf_filter: dict[str, Any],
     setup_name: str,
     description: str,
 ) -> dict[str, Any]:
@@ -516,6 +586,7 @@ def _build_current_editor_config(
         confluence_rules=confluence_rules,
         min_valid_confluences=min_valid_confluences,
         trigger_params=trigger_params,
+        otf_filter=otf_filter,
     )
     setup_id = editor_seed.get("setup_id")
     if isinstance(setup_id, str) and setup_id:
@@ -545,22 +616,30 @@ active_setup = st.session_state.get("setup_config")
 active_setup = active_setup if isinstance(active_setup, dict) and active_setup else None
 
 if EDITOR_STATE_KEY not in st.session_state:
-    st.session_state[EDITOR_STATE_KEY] = _seed_editor_config(
+    _seeded = _seed_editor_config(
         active_setup=active_setup,
         instrument=instrument,
         defaults=defaults,
         dataset_id=current_dataset_id,
     )
+    _otf_seed_warning = _seeded.pop(_OTF_REPAIR_DICT_KEY, None)
+    st.session_state[EDITOR_STATE_KEY] = _seeded
+    if _otf_seed_warning:
+        st.session_state[_SETUP_BUILDER_OTF_REPAIR_SESSION_KEY] = _otf_seed_warning
 
 editor_seed = st.session_state.get(EDITOR_STATE_KEY)
 if not isinstance(editor_seed, dict):
-    editor_seed = _seed_editor_config(
+    _seeded = _seed_editor_config(
         active_setup=active_setup,
         instrument=instrument,
         defaults=defaults,
         dataset_id=current_dataset_id,
     )
+    _otf_seed_warning = _seeded.pop(_OTF_REPAIR_DICT_KEY, None)
+    editor_seed = _seeded
     st.session_state[EDITOR_STATE_KEY] = editor_seed
+    if _otf_seed_warning:
+        st.session_state[_SETUP_BUILDER_OTF_REPAIR_SESSION_KEY] = _otf_seed_warning
 
 pending_widget_sync = st.session_state.pop(PENDING_WIDGET_SYNC_KEY, None)
 if isinstance(pending_widget_sync, dict):
@@ -569,6 +648,9 @@ if isinstance(pending_widget_sync, dict):
     sync_warnings = _sync_editor_widget_state(editor_seed, all_level_columns, overwrite=True)
 else:
     sync_warnings = _sync_editor_widget_state(editor_seed, all_level_columns, overwrite=False)
+_pending_otf_repair_warning = st.session_state.pop(_SETUP_BUILDER_OTF_REPAIR_SESSION_KEY, None)
+if _pending_otf_repair_warning:
+    st.warning(_pending_otf_repair_warning)
 for warning_message in sync_warnings:
     st.warning(warning_message)
 
@@ -928,6 +1010,76 @@ if trigger == "3c":
         "max_entry_wait_bars_after_reversal": int(max_entry_wait_bars),
     }
 
+st.subheader("OTF filter configuration (saved for PR 5)")
+st.caption(
+    "OTF defaults to disabled to preserve current behavior. "
+    "This page stores OTF setup metadata only; standard signal generation/backtests are not filtered by OTF until PR 5."
+)
+st.caption("OTF v1 always uses completed HTF bars only; incomplete HTF bars are never used.")
+otf_enabled = st.toggle(
+    "Enable OTF filter configuration",
+    value=bool(st.session_state.get(WIDGET_KEY_OTF_ENABLED, False)),
+    key=WIDGET_KEY_OTF_ENABLED,
+)
+otf_timeframes = st.multiselect(
+    "OTF timeframes",
+    options=list(OTF_TIMEFRAME_CHOICES),
+    default=[
+        timeframe
+        for timeframe in st.session_state.get(WIDGET_KEY_OTF_TIMEFRAMES, [])
+        if timeframe in OTF_TIMEFRAME_CHOICES
+    ],
+    key=WIDGET_KEY_OTF_TIMEFRAMES,
+    disabled=not otf_enabled,
+)
+otf_alignment_mode = st.selectbox(
+    "OTF alignment mode",
+    options=["all"],
+    index=0,
+    key=WIDGET_KEY_OTF_ALIGNMENT_MODE,
+    disabled=True,
+)
+otf_minimum_default, otf_minimum_fallback = _safe_int_fallback(
+    st.session_state.get(WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS),
+    default=3,
+    min_value=1,
+    max_value=10_000,
+)
+if otf_minimum_fallback:
+    st.session_state[WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS] = otf_minimum_default
+otf_minimum_consecutive_bars = int(
+    st.number_input(
+        "OTF minimum consecutive comparisons",
+        min_value=1,
+        value=otf_minimum_default,
+        step=1,
+        key=WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS,
+    )
+)
+st.toggle("OTF directional mode (required in v1)", value=True, key=WIDGET_KEY_OTF_DIRECTIONAL, disabled=True)
+st.toggle(
+    "OTF use completed bars only (required in v1)",
+    value=True,
+    key=WIDGET_KEY_OTF_COMPLETED_BARS_ONLY,
+    disabled=True,
+)
+st.selectbox(
+    "OTF session reset policy",
+    options=["session"],
+    index=0,
+    key=WIDGET_KEY_OTF_SESSION_RESET,
+    disabled=True,
+)
+otf_filter = {
+    "enabled": otf_enabled,
+    "timeframes": otf_timeframes,
+    "alignment_mode": otf_alignment_mode,
+    "minimum_consecutive_bars": otf_minimum_consecutive_bars,
+    "directional": True,
+    "use_completed_bars_only": True,
+    "session_reset": "session",
+}
+
 candidate_config = _build_current_editor_config(
     editor_seed=editor_seed,
     instrument=instrument,
@@ -946,6 +1098,7 @@ candidate_config = _build_current_editor_config(
     confluence_rules=confluence_rules,
     min_valid_confluences=min_valid_confluences,
     trigger_params=trigger_params,
+    otf_filter=otf_filter,
     setup_name=setup_name,
     description=description,
 )

@@ -10,6 +10,7 @@ from thesistester.persistence.local_store import (
     SETUP_SCHEMA_VERSION,
     compute_setup_id,
     compute_levels_settings_hash,
+    compute_otf_config_hash,
     compute_signal_settings_hash,
     compute_dataset_id,
     delete_dataset,
@@ -36,6 +37,7 @@ from thesistester.persistence.local_store import (
     set_active_dataset_id,
     set_active_levels_hash,
 )
+from thesistester.engine.otf import OTF_ALGORITHM_VERSION
 
 
 TZ = "America/New_York"
@@ -518,6 +520,147 @@ def test_compute_signal_settings_hash_handles_malformed_rule_tolerance():
     assert compute_signal_settings_hash(malformed) == compute_signal_settings_hash(normalized)
 
 
+def test_otf_algorithm_version_is_integer_v1():
+    assert isinstance(OTF_ALGORITHM_VERSION, int)
+    assert OTF_ALGORITHM_VERSION == 1
+
+
+def test_compute_otf_config_hash_stable_across_dict_key_order():
+    config_one = {
+        "enabled": True,
+        "timeframes": ["5m", "15m"],
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": 3,
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
+    }
+    config_two = {
+        "session_reset": "session",
+        "use_completed_bars_only": True,
+        "directional": True,
+        "minimum_consecutive_bars": 3,
+        "alignment_mode": "all",
+        "timeframes": ["5m", "15m"],
+        "enabled": True,
+    }
+    assert compute_otf_config_hash(config_one) == compute_otf_config_hash(config_two)
+
+
+def test_compute_otf_config_hash_aliases_match_canonical_labels():
+    canonical = {
+        "enabled": True,
+        "timeframes": ["5m", "30m"],
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": 3,
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
+    }
+    alias = {**canonical, "timeframes": ["5min", "30min"]}
+    assert compute_otf_config_hash(canonical) == compute_otf_config_hash(alias)
+
+
+def test_compute_otf_config_hash_changes_across_enabled_state():
+    enabled = {
+        "enabled": True,
+        "timeframes": ["5m"],
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": 3,
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
+    }
+    disabled = {**enabled, "enabled": False}
+    assert compute_otf_config_hash(enabled) != compute_otf_config_hash(disabled)
+
+
+def test_compute_otf_config_hash_changes_for_timeframes_and_order_and_threshold():
+    base = {
+        "enabled": True,
+        "timeframes": ["5m", "15m"],
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": 3,
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
+    }
+    changed_timeframes = {**base, "timeframes": ["5m", "30m"]}
+    changed_order = {**base, "timeframes": ["15m", "5m"]}
+    changed_threshold = {**base, "minimum_consecutive_bars": 4}
+    assert compute_otf_config_hash(base) != compute_otf_config_hash(changed_timeframes)
+    assert compute_otf_config_hash(base) != compute_otf_config_hash(changed_order)
+    assert compute_otf_config_hash(base) != compute_otf_config_hash(changed_threshold)
+
+
+def test_compute_otf_config_hash_rejects_invalid_config():
+    with pytest.raises(ValueError):
+        compute_otf_config_hash({"enabled": True, "timeframes": []})
+
+
+def test_compute_signal_settings_hash_invalid_explicit_otf_raises():
+    """Explicit invalid top-level OTF config must make hashing raise (not silently hash as disabled)."""
+    invalid = _signal_settings()
+    invalid["otf_filter"] = {"enabled": True, "timeframes": []}  # enabled with no timeframes — invalid
+    with pytest.raises(ValueError):
+        compute_signal_settings_hash(invalid)
+
+
+def test_compute_signal_settings_hash_invalid_setup_snapshot_otf_raises():
+    """Invalid setup_snapshot OTF config must make hashing raise (not silently hash as disabled)."""
+    invalid_snapshot = {
+        "name": "A",
+        "otf_filter": {"enabled": True, "timeframes": []},  # invalid
+    }
+    settings = _signal_settings(setup_snapshot=invalid_snapshot)
+    with pytest.raises(ValueError):
+        compute_signal_settings_hash(settings)
+
+
+def test_compute_signal_settings_hash_invalid_otf_never_equals_disabled():
+    """Invalid OTF config must not be hashable at all, let alone collide with disabled defaults."""
+    invalid = _signal_settings()
+    invalid["otf_filter"] = {"enabled": True, "timeframes": []}
+    with pytest.raises(ValueError):
+        compute_signal_settings_hash(invalid)
+
+
+def test_compute_signal_settings_hash_treats_missing_otf_as_disabled_default():
+    missing = _signal_settings(setup_snapshot={"name": "A"})
+    explicit_disabled = _signal_settings(
+        setup_snapshot={
+            "name": "A",
+            "otf_filter": {
+                "enabled": False,
+                "timeframes": [],
+                "alignment_mode": "all",
+                "minimum_consecutive_bars": 3,
+                "directional": True,
+                "use_completed_bars_only": True,
+                "session_reset": "session",
+            },
+        }
+    )
+    assert compute_signal_settings_hash(missing) == compute_signal_settings_hash(explicit_disabled)
+
+
+def test_compute_signal_settings_hash_explicit_disabled_matches_missing():
+    """Explicit canonical disabled and completely absent otf_filter hash identically."""
+    no_otf = _signal_settings()  # no otf_filter key
+    no_otf.pop("otf_filter", None)
+    with_disabled = _signal_settings()
+    with_disabled["otf_filter"] = {
+        "enabled": False,
+        "timeframes": [],
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": 3,
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
+    }
+    assert compute_signal_settings_hash(no_otf) == compute_signal_settings_hash(with_disabled)
+
+
 def test_signal_run_roundtrip():
     saved_meta = save_signal_run(
         dataset_id="dataset-123",
@@ -788,6 +931,79 @@ def test_save_and_load_setup_roundtrip():
     assert loaded["instrument"] == "ES"
     assert loaded["setup_config"]["name"] == "OR touch"
     assert loaded["setup_id"] == saved["setup_id"]
+    assert loaded["setup_config"]["otf_filter"]["enabled"] is False
+
+
+def test_save_and_load_setup_roundtrip_enabled_otf():
+    saved = save_setup(
+        _setup_config(
+            otf_filter={
+                "enabled": True,
+                "timeframes": ["30m", "5m"],
+                "alignment_mode": "all",
+                "minimum_consecutive_bars": 4,
+                "directional": True,
+                "use_completed_bars_only": True,
+                "session_reset": "session",
+            }
+        ),
+        dataset_id="dataset-a",
+        instrument="ES",
+    )
+    loaded = load_setup(saved["setup_id"])
+    assert loaded["setup_config"]["otf_filter"] == {
+        "enabled": True,
+        "timeframes": ["30m", "5m"],
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": 4,
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
+    }
+
+
+def test_save_setup_alias_otf_timeframe_persists_canonically():
+    saved = save_setup(
+        _setup_config(
+            otf_filter={
+                "enabled": True,
+                "timeframes": ["15min"],
+                "alignment_mode": "all",
+                "minimum_consecutive_bars": 3,
+                "directional": True,
+                "use_completed_bars_only": True,
+                "session_reset": "session",
+            }
+        ),
+        setup_id="setup-otf-alias",
+        dataset_id="dataset-a",
+    )
+    loaded = load_setup(saved["setup_id"])
+    assert loaded["setup_config"]["otf_filter"]["timeframes"] == ["15m"]
+
+
+def test_load_setup_legacy_payload_without_otf_filter_is_supported():
+    saved = save_setup(_setup_config(), setup_id="legacy-no-otf", dataset_id="dataset-a")
+    meta_path = Path(saved["path"]) / "meta.json"
+    payload = json.loads(meta_path.read_text(encoding="utf-8"))
+    payload["setup_config"].pop("otf_filter", None)
+    payload["setup_config"].pop("otf_algorithm_version", None)
+    payload["setup_config"].pop("otf_config_hash", None)
+    meta_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = load_setup("legacy-no-otf")
+    assert "otf_filter" not in loaded["setup_config"]
+
+
+def test_load_setup_rejects_invalid_persisted_otf_filter():
+    saved = save_setup(_setup_config(), setup_id="invalid-otf", dataset_id="dataset-a")
+    meta_path = Path(saved["path"]) / "meta.json"
+    payload = json.loads(meta_path.read_text(encoding="utf-8"))
+    payload["setup_config"]["otf_filter"] = {"enabled": True, "timeframes": []}
+    meta_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Saved setup OTF configuration is invalid"):
+        load_setup("invalid-otf")
 
 
 def test_save_setup_preserves_created_at_when_updating():

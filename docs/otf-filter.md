@@ -207,6 +207,18 @@ Session carry (preserving state across sessions) is not supported in v1.
 | `use_completed_bars_only` | bool | `True` | Must be `True`.  Use only completed higher-timeframe bars to prevent look-ahead bias. |
 | `session_reset` | str | `"session"` | Session-boundary behavior.  Only `"session"` (reset at each trading-session boundary) is supported in v1. |
 
+Canonical setup normalization rules used by `thesistester.setup`:
+
+- Missing `otf_filter` in legacy setups is treated as the canonical disabled default block.
+- `None`/`null` `otf_filter` is treated as canonical disabled defaults.
+- Canonical timeframe labels are `5m`, `15m`, `30m`; aliases `5min`, `15min`, `30min` are accepted and normalized through `normalize_otf_timeframe()`.
+- `enabled=True` requires at least one timeframe.
+- Duplicate timeframes after alias normalization are invalid.
+- `minimum_consecutive_bars` must be an integer `>= 1`; `bool` is invalid.
+- v1 policy values are fixed: `alignment_mode="all"`, `directional=True`, `use_completed_bars_only=True`, `session_reset="session"`.
+- Disabled configs normalize to one deterministic representation:
+  `{"enabled": False, "timeframes": [], "alignment_mode": "all", "minimum_consecutive_bars": 3, "directional": True, "use_completed_bars_only": True, "session_reset": "session"}`.
+
 ---
 
 ## §5 — Supported higher timeframes
@@ -492,11 +504,60 @@ For multi-timeframe integration, these fields are prefixed with the timeframe la
 
 ---
 
-## §12 — Algorithm versioning
+## §12 — Algorithm versioning and deterministic identity
 
-OTF algorithm versioning and configuration hashing are reserved for PR 5 (persistence and versioning).  Do not introduce production version metadata in PRs 1–3.
+PR 4 introduces explicit configuration identity metadata while keeping trade/signal
+execution behavior unchanged:
 
-The contract version identifier (`v1`) is used in fixture files and this document to tie expected states to the specification.  When the specification is amended, increment the version in this document, the fixtures, and the progress log.
+- OTF algorithm semantic version constant: `OTF_ALGORITHM_VERSION = 1` in `thesistester/engine/otf.py`.
+- Deterministic OTF config hash: `compute_otf_config_hash(config)` in `thesistester/persistence/local_store.py`.
+- Hash payload includes both:
+  - normalized canonical `otf_filter` config
+  - `OTF_ALGORITHM_VERSION`
+- Hashes are stable across dictionary key ordering.
+- Timeframe aliases hash identically to canonical labels.
+- Legacy-missing `otf_filter` and explicit canonical disabled defaults hash identically.
+- Enabled/disabled, timeframe selection/order, and threshold differences hash differently.
+
+Timeframe order policy for identity:
+
+- PR 4 treats timeframe order as identity-significant and preserves caller-selected order in normalized enabled configs.
+- Rationale: rejection reasons are deterministic in selected-timeframe order, so preserving order maintains reproducible audit identity.
+
+### Strict invalid-config identity policy
+
+- **Missing `otf_filter`** → resolves to canonical disabled defaults (legacy-safe).
+- **Explicit valid `otf_filter`** → normalizes to canonical form; aliases resolve to canonical labels.
+- **Explicit invalid `otf_filter`** → `normalize_otf_filter_config` raises `ValueError`; hashing is aborted.
+- Invalid explicit OTF configuration is **never** silently hashed as disabled. This prevents malformed or enabled configurations from colliding with the canonical disabled identity.
+- Only the absent/null field resolves to disabled defaults — an explicit but malformed block always fails validation.
+- UI surfaces (Setup Builder, Signals page) may catch `ValueError` at call sites, display a user-facing blocker or warning, and disable operations that require a trusted OTF identity. They must not overwrite malformed state silently or claim it is the same as disabled.
+
+### Research-artifact fingerprint integration (deferred)
+
+PR 4 implements OTF identity for setup and signal-settings fingerprints only. OTF identity is **not** yet embedded in:
+
+- Final research artifacts or report outputs
+- Grid-search result metadata
+- Walk-forward evaluation outputs
+- Exports
+
+Research-artifact fingerprint integration is deferred to PR 5.
+
+The contract version identifier (`v1`) remains the behavior-spec version for this
+document/fixtures and is distinct from `OTF_ALGORITHM_VERSION`.
+
+### PR 4 non-integration boundary
+
+Setup Builder and Signals surfaces may display stored OTF configuration metadata,
+algorithm version, and config hash, but PR 4 does **not** wire OTF into standard
+signal generation/backtest/grid/walk-forward/report/export execution paths.
+
+Persistence compatibility note:
+
+- Setup persistence schema version remains unchanged (`SETUP_SCHEMA_VERSION = 1`).
+- Legacy setup files without `otf_filter` continue to load.
+- New setup saves include normalized canonical OTF configuration metadata.
 
 ---
 

@@ -203,6 +203,7 @@ def test_current_editor_config_uses_current_candidate_not_stale_loaded_config():
         confluence_rules=[],
         min_valid_confluences=1,
         trigger_params={},
+        otf_filter={"enabled": False, "timeframes": []},
         setup_name="Edited setup",
         description="",
     )
@@ -233,6 +234,7 @@ def test_current_editor_config_still_reports_missing_levels_when_candidate_is_in
         confluence_rules=[],
         min_valid_confluences=1,
         trigger_params={},
+        otf_filter={"enabled": False, "timeframes": []},
         setup_name="Edited setup",
         description="",
     )
@@ -241,3 +243,192 @@ def test_current_editor_config_still_reports_missing_levels_when_candidate_is_in
 
     assert current_missing["selected_levels"] == ["MISSING"]
     assert setup_builder._has_unavailable_level_references(current_missing) is True
+
+
+def test_sync_editor_widget_state_legacy_setup_hydrates_otf_disabled_defaults():
+    setup_builder.st.session_state = {}
+    setup_builder._sync_editor_widget_state({}, ["ONH", "ONL"], overwrite=True)
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_OTF_ENABLED] is False
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_OTF_TIMEFRAMES] == []
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS] == 3
+
+
+def test_sync_editor_widget_state_hydrates_enabled_otf_values():
+    setup_builder.st.session_state = {}
+    setup_builder._sync_editor_widget_state(
+        {
+            "otf_filter": {
+                "enabled": True,
+                "timeframes": ["30m", "5m"],
+                "alignment_mode": "all",
+                "minimum_consecutive_bars": 5,
+                "directional": True,
+                "use_completed_bars_only": True,
+                "session_reset": "session",
+            }
+        },
+        ["ONH", "ONL"],
+        overwrite=True,
+    )
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_OTF_ENABLED] is True
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_OTF_TIMEFRAMES] == ["30m", "5m"]
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS] == 5
+
+
+# ---------------------------------------------------------------------------
+# _resolve_otf_for_ui — UI-safe OTF resolution helper
+# ---------------------------------------------------------------------------
+
+def test_resolve_otf_for_ui_valid_disabled_config_returns_no_warning():
+    config = {"otf_filter": None}
+    otf_config, warning = setup_builder._resolve_otf_for_ui(config)
+    assert warning is None
+    assert otf_config["enabled"] is False
+
+
+def test_resolve_otf_for_ui_valid_enabled_config_returns_no_warning():
+    config = {
+        "otf_filter": {
+            "enabled": True,
+            "timeframes": ["15m"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 3,
+            "directional": True,
+            "use_completed_bars_only": True,
+            "session_reset": "session",
+        }
+    }
+    otf_config, warning = setup_builder._resolve_otf_for_ui(config)
+    assert warning is None
+    assert otf_config["enabled"] is True
+
+
+def test_resolve_otf_for_ui_invalid_config_returns_disabled_and_warning():
+    config = {
+        "otf_filter": {"enabled": True, "timeframes": []}  # invalid: enabled OTF requires at least one timeframe
+    }
+    otf_config, warning = setup_builder._resolve_otf_for_ui(config)
+    assert otf_config["enabled"] is False  # fallen back to disabled
+    assert isinstance(warning, str) and len(warning) > 0
+
+
+def test_resolve_otf_for_ui_does_not_mutate_caller_dict():
+    original = {
+        "otf_filter": {"enabled": True, "timeframes": []}  # invalid
+    }
+    original_copy = dict(original)
+    setup_builder._resolve_otf_for_ui(original)
+    assert original == original_copy  # caller's dict is unchanged
+
+
+# ---------------------------------------------------------------------------
+# _seed_editor_config — malformed OTF safety
+# ---------------------------------------------------------------------------
+
+def test_seed_editor_config_malformed_otf_does_not_crash():
+    """Malformed active OTF config must not crash editor seeding."""
+    malformed = {
+        "name": "Malformed",
+        "otf_filter": {"enabled": True, "timeframes": []},  # invalid
+    }
+    seeded = setup_builder._seed_editor_config(
+        active_setup=malformed,
+        instrument="ES",
+        defaults=["ONH", "ONL"],
+        dataset_id="dataset-a",
+    )
+    assert isinstance(seeded, dict)
+
+
+def test_seed_editor_config_malformed_otf_hydrates_disabled_defaults():
+    """Malformed active OTF config must hydrate disabled widget defaults."""
+    malformed = {
+        "name": "Malformed",
+        "otf_filter": {"enabled": True, "timeframes": []},  # invalid
+    }
+    seeded = setup_builder._seed_editor_config(
+        active_setup=malformed,
+        instrument="ES",
+        defaults=["ONH", "ONL"],
+        dataset_id="dataset-a",
+    )
+    assert seeded["otf_filter"]["enabled"] is False
+    assert seeded["otf_filter"]["timeframes"] == []
+
+
+def test_seed_editor_config_malformed_otf_includes_repair_warning():
+    """Malformed OTF config must produce a repair warning in the returned dict."""
+    malformed = {
+        "name": "Malformed",
+        "otf_filter": {"enabled": True, "timeframes": []},  # invalid: enabled OTF requires at least one timeframe
+    }
+    seeded = setup_builder._seed_editor_config(
+        active_setup=malformed,
+        instrument="ES",
+        defaults=["ONH", "ONL"],
+        dataset_id="dataset-a",
+    )
+    assert setup_builder._OTF_REPAIR_DICT_KEY in seeded
+    assert isinstance(seeded[setup_builder._OTF_REPAIR_DICT_KEY], str)
+
+
+def test_seed_editor_config_valid_enabled_otf_unchanged():
+    """Valid enabled OTF setup hydration must remain unchanged."""
+    valid_setup = {
+        "name": "Valid",
+        "otf_filter": {
+            "enabled": True,
+            "timeframes": ["15m"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 4,
+            "directional": True,
+            "use_completed_bars_only": True,
+            "session_reset": "session",
+        },
+    }
+    seeded = setup_builder._seed_editor_config(
+        active_setup=valid_setup,
+        instrument="ES",
+        defaults=["ONH", "ONL"],
+        dataset_id="dataset-a",
+    )
+    assert seeded["otf_filter"]["enabled"] is True
+    assert seeded["otf_filter"]["timeframes"] == ["15m"]
+    assert seeded["otf_filter"]["minimum_consecutive_bars"] == 4
+    assert setup_builder._OTF_REPAIR_DICT_KEY not in seeded
+
+
+def test_seed_editor_config_repaired_setup_has_canonical_hash():
+    """After seeding with malformed OTF, the resulting dict must have a valid canonical hash."""
+    from thesistester.persistence.local_store import compute_otf_config_hash
+
+    malformed = {
+        "name": "Malformed",
+        "otf_filter": {"enabled": True, "timeframes": []},
+    }
+    seeded = setup_builder._seed_editor_config(
+        active_setup=malformed,
+        instrument="ES",
+        defaults=["ONH", "ONL"],
+        dataset_id="dataset-a",
+    )
+    # The hash must be recomputable from the repaired otf_filter
+    expected_hash = compute_otf_config_hash(seeded["otf_filter"])
+    assert seeded["otf_config_hash"] == expected_hash
+
+
+def test_seed_editor_config_does_not_mutate_active_setup():
+    """_seed_editor_config must not mutate the caller-supplied active_setup dict."""
+    active = {
+        "name": "Original",
+        "otf_filter": {"enabled": True, "timeframes": []},  # invalid
+    }
+    original_active = dict(active)
+    setup_builder._seed_editor_config(
+        active_setup=active,
+        instrument="ES",
+        defaults=["ONH", "ONL"],
+        dataset_id="dataset-a",
+    )
+    assert active == original_active
+

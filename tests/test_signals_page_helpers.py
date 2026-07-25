@@ -99,6 +99,17 @@ def _import_page_helpers():
         mod._safe_bool,
         mod._safe_dict,
         mod._safe_list,
+        mod._normalize_signal_settings_for_hash,
+        mod._try_normalize_signal_settings_for_hash,
+        mod._resolve_loaded_signal_identity,
+        mod._validate_signal_artifact_identity_for_save,
+        mod._IDENTITY_STATUS_TRUSTED,
+        mod._IDENTITY_STATUS_INVALID,
+        mod._IDENTITY_STATUS_UNAVAILABLE,
+        mod._SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY,
+        mod._SIGNAL_ARTIFACT_IDENTITY_ERROR_KEY,
+        mod._OTF_INVALID_ARTIFACT_BLOCKER,
+        mod._SIGNAL_CONTROLS_CHANGED_WARNING,
     )
 
 
@@ -120,6 +131,17 @@ def _import_page_helpers():
     _safe_bool,
     _safe_dict,
     _safe_list,
+    _normalize_signal_settings_for_hash,
+    _try_normalize_signal_settings_for_hash,
+    _resolve_loaded_signal_identity,
+    _validate_signal_artifact_identity_for_save,
+    _IDENTITY_STATUS_TRUSTED,
+    _IDENTITY_STATUS_INVALID,
+    _IDENTITY_STATUS_UNAVAILABLE,
+    _SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY,
+    _SIGNAL_ARTIFACT_IDENTITY_ERROR_KEY,
+    _OTF_INVALID_ARTIFACT_BLOCKER,
+    _SIGNAL_CONTROLS_CHANGED_WARNING,
 ) = _import_page_helpers()
 
 
@@ -258,7 +280,7 @@ def test_saved_setup_caption_global_mode():
             "max_confluences": 5,
         }
     )
-    assert caption == "Trigger=touch • Direction=both • Confluences=2–5 • Trigger TF=base"
+    assert caption == "Trigger=touch • Direction=both • Confluences=2–5 • Trigger TF=base • OTF=disabled"
 
 
 def test_saved_setup_caption_anchor_mode():
@@ -270,7 +292,10 @@ def test_saved_setup_caption_anchor_mode():
             "min_valid_confluences": 2,
         }
     )
-    assert caption == "Mode=anchor_rules • Anchor=pdHigh • Rules=2 • Min valid=2 • Trigger TF=base"
+    assert (
+        caption
+        == "Mode=anchor_rules • Anchor=pdHigh • Rules=2 • Min valid=2 • Trigger TF=base • OTF=disabled"
+    )
 
 
 def test_dataset_relation_labels():
@@ -654,3 +679,417 @@ def test_safe_list_list_passthrough():
 def test_safe_list_non_list_returns_empty():
     assert _safe_list(None) == []
     assert _safe_list("bad") == []
+
+
+# ---------------------------------------------------------------------------
+# _normalize_signal_settings_for_hash / _try_normalize_signal_settings_for_hash
+# OTF identity strictness tests
+# ---------------------------------------------------------------------------
+
+def _base_signal_settings(**overrides) -> dict:
+    settings = {
+        "confluence_mode": "global_cluster",
+        "selected_levels": ["ONH", "ONL"],
+        "anchor_level": None,
+        "confluence_rules": [],
+        "min_valid_confluences": 1,
+        "tolerance_ticks": 4.0,
+        "min_confluences": 2,
+        "max_confluences": 5,
+        "naked_only": False,
+        "naked_requirement": "any",
+        "trigger": "touch",
+        "trigger_timeframe": "base",
+        "direction": "both",
+        "trigger_params": {},
+        "use_saved_setup": False,
+        "setup_snapshot": None,
+    }
+    settings.update(overrides)
+    return settings
+
+
+def test_normalize_signal_settings_invalid_explicit_otf_raises():
+    """Explicit invalid top-level OTF config must make normalization raise."""
+    settings = _base_signal_settings()
+    settings["otf_filter"] = {"enabled": True, "timeframes": []}  # enabled with no timeframes
+    with pytest.raises(ValueError):
+        _normalize_signal_settings_for_hash(settings)
+
+
+def test_normalize_signal_settings_invalid_setup_snapshot_otf_raises():
+    """Invalid setup_snapshot OTF config must make normalization raise."""
+    settings = _base_signal_settings(
+        use_saved_setup=True,
+        setup_snapshot={"name": "A", "otf_filter": {"enabled": True, "timeframes": []}},
+    )
+    with pytest.raises(ValueError):
+        _normalize_signal_settings_for_hash(settings)
+
+
+def test_normalize_signal_settings_missing_otf_resolves_to_disabled():
+    """Settings without otf_filter resolve to canonical disabled defaults."""
+    settings = _base_signal_settings()  # no otf_filter key
+    normalized = _normalize_signal_settings_for_hash(settings)
+    assert normalized["otf_filter"]["enabled"] is False
+    assert normalized["otf_filter"]["timeframes"] == []
+
+
+def test_normalize_signal_settings_valid_enabled_otf_preserved():
+    """Valid enabled OTF config is normalized and preserved."""
+    settings = _base_signal_settings()
+    settings["otf_filter"] = {
+        "enabled": True,
+        "timeframes": ["15m"],
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": 3,
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
+    }
+    normalized = _normalize_signal_settings_for_hash(settings)
+    assert normalized["otf_filter"]["enabled"] is True
+    assert "15m" in normalized["otf_filter"]["timeframes"]
+
+
+def test_try_normalize_signal_settings_returns_none_and_error_for_invalid_otf():
+    """_try_normalize_signal_settings_for_hash returns (None, message) for invalid OTF."""
+    settings = _base_signal_settings()
+    settings["otf_filter"] = {"enabled": True, "timeframes": []}
+    normalized, err = _try_normalize_signal_settings_for_hash(settings)
+    assert normalized is None
+    assert isinstance(err, str) and len(err) > 0
+
+
+def test_try_normalize_signal_settings_returns_normalized_for_valid_settings():
+    """_try_normalize_signal_settings_for_hash returns (normalized, None) for valid settings."""
+    settings = _base_signal_settings()
+    normalized, err = _try_normalize_signal_settings_for_hash(settings)
+    assert normalized is not None
+    assert err is None
+    assert "otf_filter" in normalized
+
+
+def test_try_normalize_does_not_produce_disabled_hash_for_invalid_otf():
+    """Invalid OTF never normalizes at all — no fallback disabled hash is produced."""
+    invalid = _base_signal_settings()
+    invalid["otf_filter"] = {"enabled": True, "timeframes": []}
+    normalized, err = _try_normalize_signal_settings_for_hash(invalid)
+    assert normalized is None  # no hash-able state produced
+
+
+def test_try_normalize_valid_legacy_settings_resolve_to_disabled():
+    """Valid legacy settings (no otf_filter) normalize to disabled defaults."""
+    settings = _base_signal_settings()
+    normalized, err = _try_normalize_signal_settings_for_hash(settings)
+    assert err is None
+    assert normalized is not None
+    assert normalized["otf_filter"]["enabled"] is False
+
+
+def test_try_normalize_alias_and_canonical_enabled_produce_same_hash():
+    """Alias timeframe labels and canonical labels produce the same normalized result."""
+    from thesistester.persistence.local_store import compute_signal_settings_hash
+
+    canonical = _base_signal_settings()
+    canonical["otf_filter"] = {
+        "enabled": True,
+        "timeframes": ["15m"],
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": 3,
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
+    }
+    alias = _base_signal_settings()
+    alias["otf_filter"] = {**canonical["otf_filter"], "timeframes": ["15min"]}
+
+    assert compute_signal_settings_hash(canonical) == compute_signal_settings_hash(alias)
+
+
+# ---------------------------------------------------------------------------
+# _resolve_loaded_signal_identity tests
+# ---------------------------------------------------------------------------
+
+def _valid_loaded_settings(**overrides) -> dict:
+    settings = _base_signal_settings()
+    settings.update(overrides)
+    return settings
+
+
+def test_resolve_loaded_identity_valid_settings_returns_trusted():
+    """Valid settings with no persisted hash → trusted identity with recomputed hash."""
+    from thesistester.persistence.local_store import compute_signal_settings_hash
+
+    settings = _valid_loaded_settings()
+    normalized, _ = _try_normalize_signal_settings_for_hash(settings)
+    expected_hash = compute_signal_settings_hash(normalized)
+    identity = _resolve_loaded_signal_identity(settings, None)
+    assert identity["status"] == _IDENTITY_STATUS_TRUSTED
+    assert identity["settings"] == normalized
+    assert identity["hash"] == expected_hash
+    assert identity["error"] is None
+
+
+def test_resolve_loaded_identity_none_settings_returns_unavailable():
+    """None loaded_settings → unavailable (no settings record)."""
+    identity = _resolve_loaded_signal_identity(None, None)
+    assert identity["status"] == _IDENTITY_STATUS_UNAVAILABLE
+    assert identity["settings"] is None
+    assert identity["hash"] is None
+    assert isinstance(identity["error"], str)
+
+
+def test_resolve_loaded_identity_non_dict_settings_returns_unavailable():
+    """Non-dict loaded_settings → unavailable."""
+    identity = _resolve_loaded_signal_identity("not-a-dict", None)
+    assert identity["status"] == _IDENTITY_STATUS_UNAVAILABLE
+    assert identity["settings"] is None
+
+
+def test_resolve_loaded_identity_invalid_otf_returns_invalid():
+    """Settings with invalid OTF → invalid identity."""
+    settings = _valid_loaded_settings()
+    settings["otf_filter"] = {"enabled": True, "timeframes": []}  # invalid
+    identity = _resolve_loaded_signal_identity(settings, None)
+    assert identity["status"] == _IDENTITY_STATUS_INVALID
+    assert identity["settings"] is None
+    assert identity["hash"] is None
+    assert isinstance(identity["error"], str) and len(identity["error"]) > 0
+
+
+def test_resolve_loaded_identity_matching_persisted_hash_returns_trusted():
+    """Settings with persisted hash that matches recomputed → trusted; settings normalized."""
+    from thesistester.persistence.local_store import compute_signal_settings_hash
+
+    settings = _valid_loaded_settings()
+    normalized, _ = _try_normalize_signal_settings_for_hash(settings)
+    good_hash = compute_signal_settings_hash(normalized)
+    identity = _resolve_loaded_signal_identity(settings, good_hash)
+    assert identity["status"] == _IDENTITY_STATUS_TRUSTED
+    assert identity["hash"] == good_hash
+    assert identity["settings"] == normalized
+
+
+def test_resolve_loaded_identity_mismatched_persisted_hash_returns_invalid():
+    """Settings with persisted hash that does NOT match recomputed → invalid."""
+    settings = _valid_loaded_settings()
+    identity = _resolve_loaded_signal_identity(settings, "definitely-wrong-hash-value")
+    assert identity["status"] == _IDENTITY_STATUS_INVALID
+    assert identity["settings"] is None
+    assert identity["hash"] is None
+    assert isinstance(identity["error"], str)
+
+
+def test_resolve_loaded_identity_empty_persisted_hash_is_ignored():
+    """Empty/blank persisted hash is treated as absent → trusted with recomputed hash."""
+    settings = _valid_loaded_settings()
+    identity = _resolve_loaded_signal_identity(settings, "")
+    assert identity["status"] == _IDENTITY_STATUS_TRUSTED
+
+
+def test_resolve_loaded_identity_never_returns_disabled_fallback_for_invalid_otf():
+    """Invalid OTF → invalid, not a disabled-fallback trusted identity."""
+    settings = _valid_loaded_settings()
+    settings["otf_filter"] = {"enabled": True, "timeframes": []}
+    identity = _resolve_loaded_signal_identity(settings, None)
+    assert identity["status"] == _IDENTITY_STATUS_INVALID
+    assert identity["hash"] is None  # no hash produced at all
+
+
+def test_resolve_loaded_identity_missing_otf_produces_trusted_disabled_identity():
+    """Settings without otf_filter → trusted with canonical disabled OTF hash."""
+    settings = _valid_loaded_settings()
+    settings.pop("otf_filter", None)
+    identity = _resolve_loaded_signal_identity(settings, None)
+    assert identity["status"] == _IDENTITY_STATUS_TRUSTED
+    assert identity["settings"]["otf_filter"]["enabled"] is False
+
+
+def test_resolve_loaded_identity_does_not_mutate_input():
+    """_resolve_loaded_signal_identity must not mutate the caller's dict."""
+    settings = _valid_loaded_settings()
+    original_copy = dict(settings)
+    _resolve_loaded_signal_identity(settings, None)
+    assert settings == original_copy
+
+
+# ---------------------------------------------------------------------------
+# _validate_signal_artifact_identity_for_save tests
+# ---------------------------------------------------------------------------
+
+def _trusted_session_state(settings_override=None) -> dict:
+    """Return a session state dict representing a trusted artifact."""
+    from thesistester.persistence.local_store import compute_signal_settings_hash
+
+    settings = settings_override if settings_override is not None else _valid_loaded_settings()
+    normalized, _ = _try_normalize_signal_settings_for_hash(settings)
+    trusted_hash = compute_signal_settings_hash(normalized)
+    return {
+        _SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY: _IDENTITY_STATUS_TRUSTED,
+        "signal_settings": normalized,
+        "signal_settings_hash": trusted_hash,
+    }
+
+
+def test_validate_save_trusted_identity_matching_controls_can_save():
+    """Trusted artifacts with matching current controls → can save."""
+    ss = _trusted_session_state()
+    current = _valid_loaded_settings()
+    can_save, err = _validate_signal_artifact_identity_for_save(ss, current)
+    assert can_save is True
+    assert err is None
+
+
+def test_validate_save_invalid_status_blocks_save():
+    """Invalid identity status → blocked with artifact blocker message."""
+    ss = _trusted_session_state()
+    ss[_SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY] = _IDENTITY_STATUS_INVALID
+    can_save, err = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
+    assert can_save is False
+    assert err == _OTF_INVALID_ARTIFACT_BLOCKER
+
+
+def test_validate_save_unavailable_status_blocks_save():
+    """Unavailable identity status → blocked."""
+    ss = _trusted_session_state()
+    ss[_SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY] = _IDENTITY_STATUS_UNAVAILABLE
+    can_save, err = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
+    assert can_save is False
+    assert err == _OTF_INVALID_ARTIFACT_BLOCKER
+
+
+def test_validate_save_missing_status_blocks_save():
+    """No identity status key in session state → blocked."""
+    ss = _trusted_session_state()
+    del ss[_SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY]
+    can_save, err = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
+    assert can_save is False
+    assert err == _OTF_INVALID_ARTIFACT_BLOCKER
+
+
+def test_validate_save_missing_stored_settings_blocks_save():
+    """Trusted status but stored signal_settings missing → blocked."""
+    ss = _trusted_session_state()
+    del ss["signal_settings"]
+    can_save, err = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
+    assert can_save is False
+    assert err == _OTF_INVALID_ARTIFACT_BLOCKER
+
+
+def test_validate_save_missing_stored_hash_blocks_save():
+    """Trusted status but stored signal_settings_hash missing → blocked."""
+    ss = _trusted_session_state()
+    del ss["signal_settings_hash"]
+    can_save, err = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
+    assert can_save is False
+    assert err == _OTF_INVALID_ARTIFACT_BLOCKER
+
+
+def test_validate_save_stored_hash_mismatch_blocks_save():
+    """Trusted status but stored hash does not match recomputed hash → blocked."""
+    ss = _trusted_session_state()
+    ss["signal_settings_hash"] = "tampered-hash-value"
+    can_save, err = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
+    assert can_save is False
+    assert err == _OTF_INVALID_ARTIFACT_BLOCKER
+
+
+def test_validate_save_none_current_settings_blocks_save():
+    """Trusted artifacts but current_settings is None (invalid OTF) → blocked."""
+    ss = _trusted_session_state()
+    can_save, err = _validate_signal_artifact_identity_for_save(ss, None)
+    assert can_save is False
+    assert err == _OTF_INVALID_ARTIFACT_BLOCKER
+
+
+def test_validate_save_controls_drift_returns_controls_changed_message():
+    """Trusted artifacts but current controls differ → blocked with controls-changed message."""
+    ss = _trusted_session_state()
+    # The stored settings use trigger="touch" (default in _valid_loaded_settings).
+    # Use a different trigger so the hash differs from the stored hash.
+    stored_trigger = ss["signal_settings"].get("trigger", "touch")
+    different_settings = _valid_loaded_settings()
+    different_settings["trigger"] = "reject" if stored_trigger == "touch" else "touch"
+    can_save, err = _validate_signal_artifact_identity_for_save(ss, different_settings)
+    assert can_save is False
+    assert err == _SIGNAL_CONTROLS_CHANGED_WARNING
+
+
+def test_validate_save_invalid_stored_otf_blocks_save():
+    """Stored settings with invalid OTF config (can't normalize) → blocked."""
+    ss = _trusted_session_state()
+    # Enabled OTF with no timeframes is invalid — verify normalization rejects it.
+    settings_with_invalid_otf = {"otf_filter": {"enabled": True, "timeframes": []}}
+    normalized, err = _try_normalize_signal_settings_for_hash(settings_with_invalid_otf)
+    assert normalized is None, "Sanity: corrupted settings must be invalid"
+    ss["signal_settings"] = settings_with_invalid_otf
+    can_save, err = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
+    assert can_save is False
+    assert err == _OTF_INVALID_ARTIFACT_BLOCKER
+
+
+def test_validate_save_does_not_mutate_session_state():
+    """_validate_signal_artifact_identity_for_save must not mutate session state."""
+    ss = _trusted_session_state()
+    original_keys = set(ss.keys())
+    _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
+    assert set(ss.keys()) == original_keys
+
+
+def test_validate_save_both_paths_use_same_helper():
+    """Both save paths share the same eligibility contract (verified by testing the helper)."""
+    # Valid trusted state → can save
+    ss = _trusted_session_state()
+    ok1, _ = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
+    ok2, _ = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
+    assert ok1 is True and ok2 is True
+
+    # Invalid state → both fail identically
+    ss[_SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY] = _IDENTITY_STATUS_INVALID
+    fail1, msg1 = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
+    fail2, msg2 = _validate_signal_artifact_identity_for_save(ss, _valid_loaded_settings())
+    assert fail1 is False and fail2 is False
+    assert msg1 == msg2 == _OTF_INVALID_ARTIFACT_BLOCKER
+
+
+# ---------------------------------------------------------------------------
+# Regression: existing hash and normalization behavior unchanged
+# ---------------------------------------------------------------------------
+
+def test_regression_strict_compute_signal_settings_hash_still_raises_on_invalid_otf():
+    """Existing strict behavior: invalid explicit OTF raises ValueError."""
+    from thesistester.persistence.local_store import compute_signal_settings_hash
+    settings = _base_signal_settings()
+    settings["otf_filter"] = {"enabled": True, "timeframes": []}
+    with pytest.raises(ValueError):
+        compute_signal_settings_hash(settings)
+
+
+def test_regression_missing_otf_still_hashes_as_disabled():
+    """Existing behavior: missing otf_filter hashes as canonical disabled."""
+    from thesistester.persistence.local_store import compute_signal_settings_hash
+    missing = _base_signal_settings()
+    missing.pop("otf_filter", None)
+    disabled = _base_signal_settings()
+    disabled["otf_filter"] = {
+        "enabled": False, "timeframes": [], "alignment_mode": "all",
+        "minimum_consecutive_bars": 3, "directional": True,
+        "use_completed_bars_only": True, "session_reset": "session",
+    }
+    assert compute_signal_settings_hash(missing) == compute_signal_settings_hash(disabled)
+
+
+def test_regression_valid_alias_and_canonical_still_equivalent():
+    """Existing behavior: alias and canonical timeframe labels hash identically."""
+    from thesistester.persistence.local_store import compute_signal_settings_hash
+    base_otf = {
+        "enabled": True, "timeframes": ["15m"], "alignment_mode": "all",
+        "minimum_consecutive_bars": 3, "directional": True,
+        "use_completed_bars_only": True, "session_reset": "session",
+    }
+    canonical = _base_signal_settings()
+    canonical["otf_filter"] = base_otf
+    alias = _base_signal_settings()
+    alias["otf_filter"] = {**base_otf, "timeframes": ["15min"]}
+    assert compute_signal_settings_hash(canonical) == compute_signal_settings_hash(alias)

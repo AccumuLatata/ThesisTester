@@ -44,6 +44,144 @@ DEFAULT_3C_PARAMS: dict[str, Any] = {
     "max_entry_wait_bars_after_reversal": 5,
 }
 
+OTF_TIMEFRAME_CHOICES = ("5m", "15m", "30m")
+_VALID_OTF_TIMEFRAMES = frozenset(OTF_TIMEFRAME_CHOICES)
+DEFAULT_OTF_FILTER_CONFIG: dict[str, Any] = {
+    "enabled": False,
+    "timeframes": [],
+    "alignment_mode": "all",
+    "minimum_consecutive_bars": 3,
+    "directional": True,
+    "use_completed_bars_only": True,
+    "session_reset": "session",
+}
+
+
+def _default_otf_filter_config() -> dict[str, Any]:
+    return {
+        "enabled": False,
+        "timeframes": [],
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": 3,
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
+    }
+
+
+def _normalize_otf_timeframes(value: Any) -> tuple[list[str], list[str]]:
+    errors: list[str] = []
+    if value is None:
+        return [], errors
+    if not isinstance(value, list):
+        return [], ["timeframes must be a list."]
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for index, raw_timeframe in enumerate(value, start=1):
+        if not isinstance(raw_timeframe, str):
+            errors.append(f"timeframes[{index}] must be a string.")
+            continue
+        timeframe = raw_timeframe.strip()
+        if not timeframe:
+            errors.append(f"timeframes[{index}] must be a non-empty string.")
+            continue
+        try:
+            from thesistester.engine.otf import normalize_otf_timeframe
+
+            canonical = normalize_otf_timeframe(timeframe)
+        except ValueError:
+            errors.append(
+                f"timeframes[{index}] must be one of {list(OTF_TIMEFRAME_CHOICES)} "
+                "or aliases ['5min', '15min', '30min']."
+            )
+            continue
+        if canonical not in _VALID_OTF_TIMEFRAMES:
+            errors.append(f"timeframes[{index}] is unsupported: {canonical!r}.")
+            continue
+        if canonical in seen:
+            errors.append(f"Duplicate timeframe is not allowed: {canonical}.")
+            continue
+        seen.add(canonical)
+        normalized.append(canonical)
+    return normalized, errors
+
+
+def validate_otf_filter_config(config: dict[str, Any] | None) -> list[str]:
+    """Validate OTF filter setup configuration and return user-facing errors."""
+    if config is None:
+        return []
+    if not isinstance(config, dict):
+        return ["otf_filter must be a dictionary or null."]
+
+    errors: list[str] = []
+    enabled = config.get("enabled", False)
+    if not isinstance(enabled, bool):
+        errors.append("enabled must be a boolean.")
+        enabled = False
+
+    normalized_timeframes, timeframe_errors = _normalize_otf_timeframes(config.get("timeframes", []))
+    errors.extend(timeframe_errors)
+
+    alignment_mode = config.get("alignment_mode", "all")
+    if alignment_mode != "all":
+        errors.append("alignment_mode must be 'all' for OTF v1.")
+
+    minimum_consecutive_bars = config.get("minimum_consecutive_bars", 3)
+    if isinstance(minimum_consecutive_bars, bool) or not isinstance(minimum_consecutive_bars, int):
+        errors.append("minimum_consecutive_bars must be an integer >= 1.")
+    elif minimum_consecutive_bars < 1:
+        errors.append("minimum_consecutive_bars must be >= 1.")
+
+    if config.get("directional", True) is not True:
+        errors.append("directional must be True for OTF v1.")
+    if config.get("use_completed_bars_only", True) is not True:
+        errors.append("use_completed_bars_only must be True for OTF v1.")
+    if config.get("session_reset", "session") != "session":
+        errors.append("session_reset must be 'session' for OTF v1.")
+
+    if enabled and not normalized_timeframes:
+        errors.append("Select at least one OTF timeframe when OTF filter is enabled.")
+
+    return errors
+
+
+def normalize_otf_filter_config(config: dict[str, Any] | None) -> dict[str, Any]:
+    """Return canonical OTF filter configuration."""
+    if config is None:
+        return _default_otf_filter_config()
+    if not isinstance(config, dict):
+        raise ValueError("otf_filter must be a dictionary or null.")
+
+    errors = validate_otf_filter_config(config)
+    if errors:
+        raise ValueError("; ".join(errors))
+
+    enabled = bool(config.get("enabled", False))
+    if not enabled:
+        return _default_otf_filter_config()
+
+    normalized_timeframes, _ = _normalize_otf_timeframes(config.get("timeframes", []))
+    return {
+        "enabled": True,
+        "timeframes": normalized_timeframes,
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": int(config.get("minimum_consecutive_bars", 3)),
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
+    }
+
+
+def get_effective_otf_filter_config(setup_config: dict[str, Any]) -> dict[str, Any]:
+    """Return canonical effective OTF config from any setup payload."""
+    if not isinstance(setup_config, dict):
+        return _default_otf_filter_config()
+    raw = setup_config.get("otf_filter")
+    if raw is None:
+        return _default_otf_filter_config()
+    return normalize_otf_filter_config(raw)
+
 
 def _normalize_3c_params(params: dict[str, Any] | None) -> dict[str, Any]:
     trigger_params = params or {}
@@ -113,12 +251,14 @@ def build_setup_config(
     confluence_rules: list[dict[str, Any]] | None = None,
     min_valid_confluences: int = 1,
     trigger_params: dict[str, Any] | None = None,
+    otf_filter: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a normalized setup configuration dictionary."""
     normalized_trigger_timeframe = normalize_trigger_timeframe(trigger_timeframe)
     normalized_params = {}
     if trigger == "3c":
         normalized_params = _normalize_3c_params(trigger_params)
+    normalized_otf_filter = normalize_otf_filter_config(otf_filter)
 
     return {
         "name": name.strip(),
@@ -138,6 +278,7 @@ def build_setup_config(
         "confluence_rules": list(confluence_rules or []),
         "min_valid_confluences": int(min_valid_confluences),
         "trigger_params": normalized_params,
+        "otf_filter": normalized_otf_filter,
     }
 
 
@@ -267,5 +408,9 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
                         errors.append(f"{key} must be >= 0.")
                 except (TypeError, ValueError):
                     errors.append(f"{key} must be a number.")
+
+    if "otf_filter" in config:
+        for error in validate_otf_filter_config(config.get("otf_filter")):
+            errors.append(f"OTF filter: {error}")
 
     return errors
