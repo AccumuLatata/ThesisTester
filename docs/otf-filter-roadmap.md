@@ -3,7 +3,7 @@
 **Project:** ThesisTester  
 **Status:** Planned  
 **Owner:** ThesisTester engineering  
-**Last updated:** 2026-07-24  
+**Last updated:** 2026-07-25  
 **Feature:** Directional One Timeframing (OTF) market-condition filter
 
 ## Document purpose
@@ -437,8 +437,8 @@ otf_filter_reason
 - [x] Test loading setups created before OTF support.
 - [x] Keep setup schema version unchanged (`SETUP_SCHEMA_VERSION = 1`); no migration required because `otf_filter` is optional and legacy-absent payloads are supported.
 - [x] Enforce strict invalid-config identity: invalid explicit OTF config raises `ValueError`; only absent/null resolves to disabled defaults.
-- [ ] Include OTF identity in final research artifacts, reports, grid results, walk-forward results, and exports. (Deferred to PR 5.)
-- [ ] Reporting and export identity integration. (Deferred to PR 5.)
+- [x] Include OTF identity in final research artifacts, reports, grid results, walk-forward results, and exports. (Complete in PR 5.)
+- [x] Reporting and export identity integration. (Complete in PR 5.)
 
 ### Configuration shape
 
@@ -461,7 +461,7 @@ otf_filter_reason
 - Different OTF configurations produce different research identities.
 - Explicit invalid OTF configuration is rejected and never silently hashed as disabled.
 - Missing legacy configuration alone resolves to disabled defaults.
-- Research-artifact fingerprint integration remains deferred to PR 5.
+- Research-artifact fingerprint integration is complete in PR 5.
 
 ## Phase 6 — UI configuration controls
 
@@ -487,50 +487,69 @@ otf_filter_reason
 
 ## Phase 7 — Integrate all research modes
 
-**Status:** Not started
+**Status:** Complete (PR 5)
 
 ### Work items
 
-- [ ] Standard backtest uses the filtered signal set.
-- [ ] SL/TP grid search uses the same filtered signal set for every risk combination.
-- [ ] Walk-forward uses only information available within each fold.
-- [ ] OTF configuration remains fixed across folds unless explicit training-only optimization is implemented.
-- [ ] Future research modes consume the shared filter output rather than reimplementing OTF.
-- [ ] Add integration tests for each mode.
+- [x] Standard backtest uses the filtered signal set.
+- [x] SL/TP grid search uses the same filtered signal set for every risk combination.
+- [x] Walk-forward uses only information available within each fold (fold-local OTF filtering).
+- [x] OTF configuration remains fixed across folds (no per-fold optimization).
+- [x] Future research modes consume the shared filter output via `apply_configured_otf_filter()`.
+- [x] Add integration tests for each mode (`tests/test_otf_integration.py`).
 
 ### Acceptance criteria
 
-- No duplicate OTF implementations exist.
-- Grid-search comparisons use identical eligible signals.
-- Walk-forward evaluation contains no OTF leakage from future folds.
+- [x] No duplicate OTF implementations exist.
+- [x] Grid-search comparisons use identical eligible signals.
+- [x] Walk-forward evaluation contains no OTF leakage from future folds.
+
+### Implementation Notes
+
+* Shared integration helper: `thesistester/engine/otf_integration.py`.
+* `apply_configured_otf_filter()` resolves config from session context and applies `apply_otf_filter()` once.
+* Config resolution precedence documented in `docs/otf-filter.md §13b`.
+* Backtest, grid search, walk-forward pages updated.
+* Session state keys: `otf_filter_result`, `otf_filter_summary`, `otf_candidate_signals`, `otf_accepted_signals`, `otf_rejected_signals`, `backtest_otf_filter`, `grid_otf_filter`, `walk_forward_otf_filter`.
+* Walk-forward fold-local OTF: `train_df` used as source for train signals, `test_df` for test signals.
+* OTF fold metadata columns added to `_RESULT_COLUMNS` in `walk_forward.py`.
 
 ## Phase 8 — Reporting and exports
 
-**Status:** Not started
+**Status:** Complete (PR 5)
 
 ### Work items
 
-- [ ] Display candidate signal count.
-- [ ] Display OTF-passed signal count.
-- [ ] Display OTF-rejected signal count.
-- [ ] Display rejection percentage.
-- [ ] Display the active OTF configuration.
-- [ ] Add rejected-signal table or export.
-- [ ] Include OTF algorithm version and configuration hash in research artifacts.
-- [ ] Distinguish disabled filtering from zero-pass filtering.
+- [x] Display candidate signal count.
+- [x] Display OTF-passed signal count.
+- [x] Display OTF-rejected signal count.
+- [x] Display rejection percentage.
+- [x] Display the active OTF configuration.
+- [x] Add rejected-signal table or export.
+- [x] Include OTF algorithm version and configuration hash in research artifacts.
+- [x] Distinguish disabled filtering from zero-pass filtering.
 
 ### Acceptance criteria
 
 A user can determine exactly:
 
-- Whether OTF was enabled.
-- Which timeframes were used.
-- Which algorithm version was used.
-- How many signals were rejected and why.
+- [x] Whether OTF was enabled.
+- [x] Which timeframes were used.
+- [x] Which algorithm version was used.
+- [x] How many signals were rejected and why.
+
+### Implementation Notes
+
+* `build_otf_filter_metadata()` added to `thesistester/reporting.py`.
+* `build_research_artifact()` includes an `"otf_filter"` section and `"otf_rejected_signals"` table.
+* `build_markdown_report()` includes an OTF summary section via `_otf_markdown_section()`.
+* Report/Export page (`pages/11_Report_Export.py`) adds OTF checklist and rejected-signal CSV download.
+* Four distinct artifact states: OTF available+enabled, available+disabled, unavailable.
+* OTF rejections remain distinct from exposure-policy skips and 3c void status.
 
 ## Phase 9 — Documentation
 
-**Status:** In progress (PR 1 delivers initial documentation)
+**Status:** In progress (PR 1 delivers initial documentation; PR 5 updates)
 
 ### Work items
 
@@ -540,9 +559,10 @@ A user can determine exactly:
 - [x] Document resampling and completed-bar rules.
 - [x] Document session and timezone policy.
 - [x] Document configuration examples.
-- [ ] Document rejected-signal interpretation.
-- [ ] Document walk-forward treatment.
+- [x] Document rejected-signal interpretation.
+- [x] Document walk-forward treatment.
 - [x] Document algorithm versioning and drift controls.
+- [x] Document PR 5 research-mode integration in `docs/otf-filter.md §13b`.
 - [ ] Update `README.md` and relevant methodology documentation.
 
 ### Recommended documentation files
@@ -742,8 +762,42 @@ python3 -m pytest tests/ -q
 
 - Backtest integration.
 - Grid-search integration.
-- Walk-forward integration.
+- Walk-forward fold-local OTF integration.
 - Reporting and export metadata.
+
+**PR 5 implementation files (narrow scope):**
+
+- `thesistester/engine/otf_integration.py` (new)
+- `thesistester/engine/__init__.py` (exports)
+- `thesistester/analytics/walk_forward.py` (fold-local OTF)
+- `thesistester/reporting.py` (OTF metadata)
+- `pages/7_Backtest.py` (OTF filter before `simulate_trades`)
+- `pages/8_Grid_Search.py` (OTF filter before grid)
+- `pages/10_Validation.py` (OTF config forwarded to walk-forward)
+- `pages/11_Report_Export.py` (OTF checklist + rejected-signal export)
+- `tests/test_otf_integration.py` (61 integration tests)
+- `docs/otf-filter.md`
+- `docs/otf-filter-roadmap.md`
+
+**PR 5 decisions:**
+
+- One shared integration helper (`apply_configured_otf_filter`) centralizes filter application; pages do not duplicate OTF logic.
+- OTF config resolution precedence: signal_settings["otf_filter"] > signal_settings["setup_snapshot"] > last_signal_setup > setup_config > disabled defaults.
+- `st.session_state["signals"]` never overwritten; candidate signals always preserved.
+- Walk-forward applies OTF per-fold using the fold's own OHLCV slice to prevent future state leakage.
+- Grid applies OTF once before the SL/TP grid; all cells use the same accepted signal set.
+- OTF rejections kept distinct from exposure-policy skips and 3c void status.
+- Disabled path: `simulate_trades()`, grid, and walk-forward receive exactly the same signals as before PR 5.
+
+**PR 5 verified evidence:**
+
+```text
+python3 -m pytest tests/test_otf_integration.py -q
+# 61 passed in 1.53s
+
+python3 -m pytest tests/ -q
+# 1455 passed in 33.47s
+```
 
 ### PR 6 — Validation and release
 
@@ -754,17 +808,17 @@ python3 -m pytest tests/ -q
 
 ## Definition of done
 
-- [ ] Existing users see no behavior change unless OTF is enabled.
-- [ ] OTF uses completed bars only.
-- [ ] Historical OTF states are invariant when future data is appended.
-- [ ] OTF-rejected signals are inspectable.
-- [ ] One shared implementation is used across all research modes.
-- [ ] OTF configuration is persisted and fingerprinted.
-- [ ] Legacy saved setups load successfully.
-- [ ] Reports identify the complete OTF configuration and algorithm version.
-- [ ] Documentation describes the exact methodology.
-- [ ] Out-of-sample validation is complete.
-- [ ] Regression and drift-safety reviews are complete.
+- [x] Existing users see no behavior change unless OTF is enabled.
+- [x] OTF uses completed bars only.
+- [x] Historical OTF states are invariant when future data is appended.
+- [x] OTF-rejected signals are inspectable.
+- [x] One shared implementation is used across all research modes.
+- [x] OTF configuration is persisted and fingerprinted.
+- [x] Legacy saved setups load successfully.
+- [x] Reports identify the complete OTF configuration and algorithm version.
+- [x] Documentation describes the exact methodology.
+- [ ] Out-of-sample validation is complete. (PR 6)
+- [ ] Regression and drift-safety reviews are complete. (PR 6)
 
 ## Progress log
 
@@ -780,7 +834,7 @@ python3 -m pytest tests/ -q
 | 2026-07-24 | Phase 5 partially complete + Phase 6 partial (PR 4) | `thesistester/setup.py`, `thesistester/persistence/local_store.py`, `pages/2_Setup_Builder.py`, `pages/6_Signals.py`, related tests/docs | Added canonical OTF setup config normalization/validation/effective helper, backward-compatible setup save/load handling without schema bump, OTF algorithm/version hash metadata, setup/signal identity inclusion, Setup Builder OTF controls with deterministic hydration, and explicit Signals metadata-only messaging (no execution integration yet). Phase 5 research-artifact identity deferred to PR 5. Initial verification (pre-follow-up): 170 targeted tests, 407 focused OTF tests, 1346 full-suite tests passing. |
 | 2026-07-24 | PR 4 follow-up: hardened invalid-OTF UI state; strict hash identity preserved | `pages/6_Signals.py`, `pages/2_Setup_Builder.py`, `tests/test_signals_page_helpers.py`, `tests/test_setup_builder_helpers.py`, `tests/test_local_store.py`, `docs/otf-filter-roadmap.md`, `docs/otf-filter.md` | Strict hashing: `compute_signal_settings_hash` raises on invalid explicit OTF; missing OTF resolves to disabled defaults; no silent fallback. Signals page: `_try_normalize_signal_settings_for_hash` wrapper at all UI call sites; signal generation/comparison/save blocked on invalid OTF identity. Setup Builder: `_resolve_otf_for_ui` pure helper for editor seeding and summary rendering; malformed OTF hydrates disabled defaults with explicit warning; caller dicts never mutated. Phase 5 marked partially complete; research-artifact identity deferred. Post-follow-up intermediate verification: 193 targeted tests + 407 OTF-focused tests; full suite: 1369 passed. |
 | 2026-07-24 | PR 4 final fix: atomic saved-run identity transitions; shared save-path eligibility helper | `pages/6_Signals.py`, `tests/test_signals_page_helpers.py`, `docs/otf-filter-roadmap.md` | Added `_resolve_loaded_signal_identity` pure helper: validates settings and persisted hash before touching session state; computes and verifies hash from normalized settings; returns trusted/invalid/unavailable status. Added `_validate_signal_artifact_identity_for_save` shared helper: enforces trusted status + hash integrity + current-controls match for both "Save current signals" paths. Load path: artifacts always installed for inspection; settings/hash atomically cleared when identity is untrusted; `signal_artifact_identity_status` set to trusted/invalid/unavailable. Generation path: sets trusted identity + clears error on success. Save paths: consolidated to single shared helper; no fallback hash produced for invalid/unavailable artifacts. Final verification: 218 targeted tests + 407 OTF-focused tests; full suite: 1394 passed in 30.36s. |
-| 2026-07-23 | PR 1 final verified state | `docs/otf-filter-roadmap.md` | Phase 0 remains partially complete; Phase 1 remains complete; partial first session-bucket handling plus production-engine future-shock/append-data invariance validation remain deferred to PR 2; production OTF behavior is still not implemented. |
+| 2026-07-25 | Phase 7 and Phase 8 complete (PR 5) | `thesistester/engine/otf_integration.py`, `thesistester/analytics/walk_forward.py`, `thesistester/reporting.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`, `tests/test_otf_integration.py`, `docs/otf-filter.md §13b`, `docs/otf-filter-roadmap.md` | Added shared `apply_configured_otf_filter()` integration helper with `OtfFilterResult` dataclass and `resolve_otf_config()` (precedence-based). Standard backtest filters before `simulate_trades()`; stores candidate/accepted/rejected in session state. Grid search applies OTF once before the SL/TP grid; all cells use the same accepted signal set. Walk-forward applies OTF per-fold using fold-local OHLCV slices (no future leakage). Reporting includes OTF metadata section and markdown summary; rejected signals available for CSV export. OTF rejections remain distinct from exposure-policy skips and 3c void. Disabled regression guarantee: exact legacy signals, trades, grid, and walk-forward output when OTF is off. Focused verification: 61 integration tests passed. Full suite: 1455 passed in 33.47s. |
 
 ## Open questions
 

@@ -12,6 +12,7 @@ from thesistester.reporting import (
     build_execution_cost_assumptions,
     build_exposure_policy_assumptions,
     build_markdown_report,
+    build_otf_filter_metadata,
     build_research_artifact,
     build_session_exit_policy_assumptions,
     dataframe_to_csv_bytes,
@@ -47,6 +48,11 @@ REQUIRED_ITEMS = [
     ("Time analysis", "time_grouped_summary"),
     ("Validation", "validation_summary"),
     ("Walk-forward diagnostics", "walk_forward_results"),
+]
+
+OTF_ITEMS = [
+    ("OTF filter summary", "otf_filter_summary"),
+    ("OTF rejected signals", "otf_rejected_signals"),
 ]
 
 
@@ -96,6 +102,26 @@ status_rows = [
 ]
 st.subheader("Run completeness checklist")
 st.dataframe(pd.DataFrame(status_rows), width="stretch", hide_index=True)
+
+# OTF filter checklist
+_otf_meta = build_otf_filter_metadata(st.session_state)
+if _otf_meta.get("available"):
+    otf_status_rows = [
+        {"Item": item, "Session state key": key, "Available": "✅" if _has_value(key) else "❌"}
+        for item, key in OTF_ITEMS
+    ]
+    st.subheader("OTF filter checklist")
+    st.dataframe(pd.DataFrame(otf_status_rows), width="stretch", hide_index=True)
+    _otf_enabled = bool(_otf_meta.get("enabled", False))
+    if _otf_enabled:
+        st.caption(
+            f"OTF filter enabled — {_otf_meta.get('accepted_signal_count', '?')} accepted, "
+            f"{_otf_meta.get('rejected_signal_count', '?')} rejected out of "
+            f"{_otf_meta.get('candidate_signal_count', '?')} candidates. "
+            f"Applied to: {', '.join(_otf_meta.get('applied_scopes', [])) or '—'}."
+        )
+    else:
+        st.caption("OTF filter: disabled — all candidate signals passed through to simulation.")
 
 if not _has_value("setup_config"):
     st.warning("No setup config found. Export will include empty configuration fields.")
@@ -168,6 +194,7 @@ csv_exports = [
     ("grid_results", "grid_results.csv"),
     ("time_grouped_summary", "time_grouped_summary.csv"),
     ("walk_forward_results", "walk_forward_results.csv"),
+    ("otf_rejected_signals", "otf_rejected_signals.csv"),
 ]
 
 for key, filename in csv_exports:

@@ -8,6 +8,7 @@ from .confluence import detect_confluence_zones
 from .naked import flag_naked_levels
 from .otf import normalize_otf_timeframe
 from .otf_filter import apply_otf_filter
+from .otf_integration import OtfFilterResult, apply_configured_otf_filter, resolve_otf_config
 from .signals import generate_signals
 
 __all__ = [
@@ -19,6 +20,9 @@ __all__ = [
     "from_global_cluster_zones",
     "generate_signals",
     "apply_otf_filter",
+    "apply_configured_otf_filter",
     "normalize_otf_timeframe",
+    "OtfFilterResult",
+    "resolve_otf_config",
     "simulate_trades",
 ]

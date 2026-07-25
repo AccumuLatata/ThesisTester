@@ -240,6 +240,13 @@ if run_wfo:
                 st.error("SL/TP grid values are empty; adjust the ranges.")
             else:
                 with st.spinner("Running walk-forward diagnostics…"):
+                    # Resolve OTF config for fold-local filtering
+                    from thesistester.engine.otf_integration import resolve_otf_config
+                    _wfo_otf_config = resolve_otf_config(
+                        signal_settings=st.session_state.get("signal_settings"),
+                        last_signal_setup=st.session_state.get("last_signal_setup"),
+                        setup_config=st.session_state.get("setup_config"),
+                    )
                     try:
                         results_df = run_walk_forward_sl_tp(
                             df=data_source,
@@ -263,11 +270,13 @@ if run_wfo:
                             no_new_entries_after=session_policy.get("no_new_entries_after"),
                             exposure_policy=str(exposure_policy_state.get("exposure_policy", "allow_all")),
                             cooldown_bars_after_exit=int(exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0),
+                            otf_config=_wfo_otf_config,
                         )
                     except ValueError as e:
                         st.error(f"Walk-forward diagnostics error: {e}")
                     else:
                         wfo_summary = summarize_walk_forward(results_df)
+                        _wfo_otf_enabled = bool(_wfo_otf_config.get("enabled", False))
                         wfo_config = {
                             "train_bars": int(train_bars),
                             "test_bars": int(test_bars),
@@ -286,10 +295,21 @@ if run_wfo:
                             "no_new_entries_after": session_policy.get("no_new_entries_after"),
                             "exposure_policy": str(exposure_policy_state.get("exposure_policy", "allow_all")),
                             "cooldown_bars_after_exit": int(exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0),
+                            "otf_filter_enabled": _wfo_otf_enabled,
+                            "otf_filter_config": _wfo_otf_config,
                         }
                         st.session_state["walk_forward_results"] = results_df
                         st.session_state["walk_forward_summary"] = wfo_summary
                         st.session_state["walk_forward_config"] = wfo_config
+                        # Store OTF summary for reporting
+                        from thesistester.persistence.local_store import compute_otf_config_hash
+                        from thesistester.engine.otf import OTF_ALGORITHM_VERSION
+                        st.session_state["walk_forward_otf_filter"] = {
+                            "otf_filter_enabled": _wfo_otf_enabled,
+                            "otf_filter_config": _wfo_otf_config,
+                            "otf_algorithm_version": OTF_ALGORITHM_VERSION,
+                            "otf_config_hash": compute_otf_config_hash(_wfo_otf_config),
+                        }
                         st.success("Walk-forward diagnostics complete.")
 
 wfo_results = st.session_state.get("walk_forward_results")

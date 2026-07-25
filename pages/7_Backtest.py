@@ -16,6 +16,7 @@ from thesistester.analytics import equity_curve, summarize_trades, summarize_tra
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.engine.backtest import simulate_trades
+from thesistester.engine.otf_integration import apply_configured_otf_filter
 from thesistester.execution_defaults import (
     apply_backtest_defaults,
     collect_backtest_defaults,
@@ -296,9 +297,24 @@ with st.sidebar:
 if run_btn:
     with st.spinner("Simulating trades…"):
         try:
+            # Apply OTF filter before simulation
+            _otf_result = apply_configured_otf_filter(
+                source_df=ohlcv_df,
+                candidate_signals=signals,
+                setup_config=st.session_state.get("setup_config"),
+                session_timezone=exchange_tz,
+                signal_settings=st.session_state.get("signal_settings"),
+                last_signal_setup=st.session_state.get("last_signal_setup"),
+            )
+            signals_for_backtest = _otf_result.accepted_signals
+        except ValueError as e:
+            st.error(f"OTF filter configuration error: {e}")
+            st.stop()
+
+        try:
             trades, skipped_signals = simulate_trades(
                 df=ohlcv_df,
-                signals=signals,
+                signals=signals_for_backtest,
                 tick_size=tick_size,
                 point_value=point_value,
                 stop_loss_ticks=sl_ticks,
@@ -345,6 +361,13 @@ if run_btn:
             "session_timezone": session_timezone if flat_by_session_close else None,
             "no_new_entries_after": effective_no_new_entries_after,
         }
+        # OTF filter session state — preserve originals, store filter results
+        st.session_state["otf_filter_result"] = _otf_result
+        st.session_state["otf_filter_summary"] = _otf_result.to_summary_dict()
+        st.session_state["otf_candidate_signals"] = _otf_result.candidate_signals
+        st.session_state["otf_accepted_signals"] = _otf_result.accepted_signals
+        st.session_state["otf_rejected_signals"] = _otf_result.rejected_signals
+        st.session_state["backtest_otf_filter"] = _otf_result.to_summary_dict()
 
 # ── Display ───────────────────────────────────────────────────────────────────
 trades = st.session_state.get("trades")
@@ -364,6 +387,28 @@ if costs.get("commission_per_side", 0.0) > 0.0 or costs.get("slippage_ticks", 0.
     )
 else:
     st.caption("Execution costs disabled — KPIs are gross (zero commission/slippage).")
+
+# ── OTF filter status ─────────────────────────────────────────────────────────
+_otf_summary = st.session_state.get("otf_filter_summary") or {}
+_otf_enabled = bool(_otf_summary.get("otf_filter_enabled", False))
+_otf_candidate_count = _otf_summary.get("candidate_signal_count", len(signals))
+_otf_accepted_count = _otf_summary.get("otf_accepted_signal_count", len(signals))
+_otf_rejected_count = _otf_summary.get("otf_rejected_signal_count", 0)
+
+if _otf_enabled:
+    _otf_config = _otf_summary.get("otf_filter_config") or {}
+    _otf_tfs = _otf_config.get("timeframes", []) if isinstance(_otf_config, dict) else []
+    _otf_min_bars = _otf_config.get("minimum_consecutive_bars", 3) if isinstance(_otf_config, dict) else 3
+    st.info(
+        f"🔎 **OTF filter enabled** — timeframes: {', '.join(_otf_tfs) or '—'} · "
+        f"min consecutive bars: {_otf_min_bars} · "
+        f"candidates: {_otf_candidate_count} · accepted: {_otf_accepted_count} · "
+        f"rejected: {_otf_rejected_count}"
+    )
+else:
+    st.caption(
+        f"OTF filter: **disabled** — all {_otf_candidate_count} candidate signals passed through."
+    )
 
 skipped_count = 0
 if isinstance(skipped_signals, pd.DataFrame):
@@ -389,6 +434,27 @@ if isinstance(skipped_signals, pd.DataFrame) and not skipped_signals.empty:
         if c in skipped_signals.columns
     ]
     st.dataframe(skipped_signals[skip_cols], width="stretch", hide_index=True)
+
+# OTF rejected signals (distinct from exposure skips and 3c void)
+_otf_rejected = st.session_state.get("otf_rejected_signals")
+if isinstance(_otf_rejected, pd.DataFrame) and not _otf_rejected.empty:
+    with st.expander(f"🚫 OTF rejected signals ({len(_otf_rejected)})"):
+        st.caption(
+            "Signals below were rejected by the OTF eligibility filter before simulation. "
+            "These are distinct from exposure-policy skipped signals and 3c void signal status."
+        )
+        _rej_cols = [
+            c for c in [
+                "signal_id", "timestamp", "trigger", "direction", "status",
+                "otf_filter_reason",
+                "otf_signal_decision_timestamp",
+                *[c for c in _otf_rejected.columns if c.startswith("otf_") and c not in (
+                    "otf_filter_enabled", "otf_filter_passed", "otf_filter_reason",
+                    "otf_signal_decision_timestamp",
+                )],
+            ] if c in _otf_rejected.columns
+        ]
+        st.dataframe(_otf_rejected[_rej_cols], width="stretch", hide_index=True)
 
 # KPI cards
 st.subheader("Performance summary")
