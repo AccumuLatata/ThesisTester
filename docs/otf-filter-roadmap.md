@@ -415,8 +415,15 @@ otf_filter_reason
 
 ## Phase 5 — Add persistence and versioning
 
-**Status:** Partially completed in PR 4 (setup/signal identity only; research-artifact identity deferred)
+*Status:* Partially complete
 
+**Implementation Notes:**
+* Setup identity complete.
+* Signal-settings identity complete.
+* Research-artifact fingerprint integration deferred to PR 5.
+* Reporting/export identity deferred to PR 5.
+* No execution or research-mode integration in PR 4.
+  
 ### Work items
 
 - [x] Add an optional `otf_filter` block to setup configuration.
@@ -456,9 +463,9 @@ otf_filter_reason
 - Missing legacy configuration alone resolves to disabled defaults.
 - Research-artifact fingerprint integration remains deferred to PR 5.
 
-## Phase 6 — Implement UI controls
+## Phase 6 — UI configuration controls
 
-**Status:** Partially completed in PR 4 (saved-configuration controls only)
+*Status:* Partially complete
 
 ### Work items
 
@@ -722,13 +729,13 @@ python3 -m pytest tests/ -q
 
 ```text
 python3 -m pytest tests/test_setup_config.py tests/test_local_store.py tests/test_setup_builder_helpers.py tests/test_signals_page_helpers.py -q
-# 170 passed in 0.88s
+# 193 passed
 
 python3 -m pytest tests/test_otf_filter.py tests/test_otf.py tests/test_otf_contract.py tests/test_otf_baseline.py -q
-# 407 passed in 5.70s
+# 407 passed
 
 python3 -m pytest tests/ -q
-# 1346 passed in 31.71s
+# 1369 passed
 ```
 
 ### PR 5 — Research integration and reporting
