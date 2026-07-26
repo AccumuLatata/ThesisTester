@@ -19,6 +19,15 @@ _CAVEATS = [
 ]
 
 
+def _dash_if_none(value: Any) -> Any:
+    """Return ``'—'`` when *value* is ``None``; otherwise return *value* unchanged.
+
+    Preserves ``0`` as ``0``, empty strings as empty strings, and any
+    other falsy-but-not-None values as themselves.
+    """
+    return "—" if value is None else value
+
+
 def _json_safe_float(value: float) -> float | None:
     if isnan(value) or isinf(value):
         return None
@@ -116,6 +125,86 @@ def _table_count(session_state: Mapping[str, Any], key: str) -> int:
     return 0
 
 
+def build_otf_filter_metadata(session_state: Mapping[str, Any]) -> dict[str, Any]:
+    """Build OTF filter metadata section from session state.
+
+    Reads OTF filter results stored by backtest, grid-search, and
+    walk-forward integration.  Returns a scoped metadata dict that
+    distinguishes disabled, enabled-with-rejections, enabled-zero-rejected,
+    and unavailable states.
+
+    Session-state keys consumed
+    ---------------------------
+    - ``otf_filter_result`` / ``otf_filter_summary`` — backtest scope
+    - ``grid_otf_filter`` — grid-search scope
+    - ``walk_forward_otf_filter`` — walk-forward scope
+    """
+    applied_scopes: list[str] = []
+
+    # Prefer the full result object; fall back to the summary dict
+    backtest_summary = session_state.get("otf_filter_summary")
+    backtest_result = session_state.get("otf_filter_result")
+    if backtest_result is not None and hasattr(backtest_result, "to_summary_dict"):
+        backtest_summary = backtest_result.to_summary_dict()
+
+    grid_summary = session_state.get("grid_otf_filter")
+    wf_summary = session_state.get("walk_forward_otf_filter")
+
+    # Determine primary summary (backtest > grid > walk-forward)
+    primary: dict[str, Any] | None = None
+    if isinstance(backtest_summary, Mapping) and len(backtest_summary) > 0:
+        primary = dict(backtest_summary)
+        applied_scopes.append("backtest")
+    if isinstance(grid_summary, Mapping) and len(grid_summary) > 0:
+        applied_scopes.append("grid")
+        if primary is None:
+            primary = dict(grid_summary)
+    if isinstance(wf_summary, Mapping) and len(wf_summary) > 0:
+        applied_scopes.append("walk_forward")
+        if primary is None:
+            primary = dict(wf_summary)
+
+    if primary is None:
+        return {
+            "available": False,
+            "enabled": None,
+            "config": None,
+            "algorithm_version": None,
+            "config_hash": None,
+            "candidate_signal_count": None,
+            "accepted_signal_count": None,
+            "rejected_signal_count": None,
+            "rejection_rate": None,
+            "applied_scopes": [],
+        }
+
+    enabled = bool(primary.get("otf_filter_enabled", False))
+    candidate_count = primary.get("candidate_signal_count")
+    accepted_count = primary.get("otf_accepted_signal_count")
+    rejected_count = primary.get("otf_rejected_signal_count")
+
+    rejection_rate: float | None = None
+    if (
+        isinstance(candidate_count, (int, float))
+        and isinstance(rejected_count, (int, float))
+        and candidate_count > 0
+    ):
+        rejection_rate = float(rejected_count) / float(candidate_count)
+
+    return {
+        "available": True,
+        "enabled": enabled,
+        "config": to_jsonable(primary.get("otf_filter_config")),
+        "algorithm_version": primary.get("otf_algorithm_version"),
+        "config_hash": primary.get("otf_config_hash"),
+        "candidate_signal_count": candidate_count,
+        "accepted_signal_count": accepted_count,
+        "rejected_signal_count": rejected_count,
+        "rejection_rate": rejection_rate,
+        "applied_scopes": applied_scopes,
+    }
+
+
 def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
     """Build a consolidated JSON-safe research artifact from session state."""
     setup_config = session_state.get("setup_config")
@@ -158,6 +247,7 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "validation_summary": to_jsonable(session_state.get("validation_summary")),
             "walk_forward_summary": to_jsonable(session_state.get("walk_forward_summary")),
         },
+        "otf_filter": to_jsonable(build_otf_filter_metadata(session_state)),
         "tables": {
             "signals": _table_records(
                 session_state,
@@ -195,10 +285,17 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
                 display_timezone=display_timezone,
                 canonical_timezone=canonical_timezone,
             ),
+            "otf_rejected_signals": _table_records(
+                session_state,
+                "otf_rejected_signals",
+                display_timezone=display_timezone,
+                canonical_timezone=canonical_timezone,
+            ),
         },
         "caveats": list(_CAVEATS),
     }
     return to_jsonable(artifact)
+
 
 
 def _fmt_number(value: Any, fmt: str = ".4f", fallback: str = "—") -> str:
@@ -533,6 +630,62 @@ def exposure_policy_assumptions_markdown(assumptions: Mapping[str, Mapping[str, 
     return section
 
 
+def _otf_markdown_section(otf_meta: Mapping[str, Any] | None) -> str:
+    """Render OTF filter metadata as a markdown report section."""
+    if not isinstance(otf_meta, Mapping) or not otf_meta.get("available"):
+        return (
+            "\n## OTF Filter\n"
+            "- Status: not available (no OTF filter data in session)\n"
+        )
+
+    enabled = otf_meta.get("enabled")
+    if enabled is None:
+        return (
+            "\n## OTF Filter\n"
+            "- Status: not available\n"
+        )
+
+    if not enabled:
+        return (
+            "\n## OTF Filter\n"
+            "- Status: disabled\n"
+            "- All candidate signals passed through to simulation unchanged.\n"
+        )
+
+    config = otf_meta.get("config") or {}
+    timeframes = config.get("timeframes", []) if isinstance(config, Mapping) else []
+    tf_str = ", ".join(timeframes) if timeframes else "—"
+    min_bars = _dash_if_none(config.get("minimum_consecutive_bars") if isinstance(config, Mapping) else None)
+    algorithm_version = _dash_if_none(otf_meta.get("algorithm_version"))
+    config_hash = otf_meta.get("config_hash") or "—"
+    config_hash_short = str(config_hash)[:12] if config_hash != "—" else "—"
+    candidate_count = _dash_if_none(otf_meta.get("candidate_signal_count"))
+    accepted_count = _dash_if_none(otf_meta.get("accepted_signal_count"))
+    rejected_count = _dash_if_none(otf_meta.get("rejected_signal_count"))
+    rejection_rate = otf_meta.get("rejection_rate")
+    applied_scopes = otf_meta.get("applied_scopes") or []
+
+    rejection_rate_str = (
+        format(float(rejection_rate), ".1%") if rejection_rate is not None else "—"
+    )
+
+    return (
+        "\n## OTF Filter\n"
+        "- Status: enabled\n"
+        f"- Selected timeframes: {tf_str}\n"
+        f"- Minimum consecutive bars: {min_bars}\n"
+        f"- Algorithm version: {algorithm_version}\n"
+        f"- Config hash (prefix): {config_hash_short}\n"
+        f"- Applied to scopes: {', '.join(applied_scopes) or '—'}\n"
+        f"- Candidate signals: {candidate_count}\n"
+        f"- Accepted signals: {accepted_count}\n"
+        f"- Rejected signals: {rejected_count}\n"
+        f"- Rejection rate: {rejection_rate_str}\n"
+        "- Note: OTF rejected signals are distinct from exposure-policy skips "
+        "and 3c void signal status.\n"
+    )
+
+
 def build_markdown_report(artifact: dict[str, Any]) -> str:
     """Build a concise markdown report from a research artifact."""
     metadata = artifact.get("metadata", {}) if isinstance(artifact, Mapping) else {}
@@ -540,6 +693,7 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     data_quality = artifact.get("data_quality", {}) if isinstance(artifact, Mapping) else {}
     results = artifact.get("results", {}) if isinstance(artifact, Mapping) else {}
     tables = artifact.get("tables", {}) if isinstance(artifact, Mapping) else {}
+    otf_meta = artifact.get("otf_filter") if isinstance(artifact, Mapping) else None
 
     setup = config.get("setup_config") or {}
     trade_summary = results.get("trade_summary") or {}
@@ -632,6 +786,10 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
                 "",
             ]
         )
+
+    # OTF filter section
+    lines.append(_otf_markdown_section(otf_meta).strip())
+    lines.append("")
 
     lines.append("## Caveats")
 

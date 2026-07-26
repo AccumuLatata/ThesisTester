@@ -13,6 +13,7 @@ import streamlit as st
 from thesistester.app_state import bootstrap_active_saved_dataset
 from thesistester.analytics import best_grid_result, run_sl_tp_grid
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
+from thesistester.engine.otf_integration import apply_configured_otf_filter
 from thesistester.execution_defaults import (
     apply_grid_defaults,
     collect_grid_defaults,
@@ -306,12 +307,29 @@ if run_btn:
         st.error("Take-profit range produced no valid values. Check start/stop/step.")
         st.stop()
 
+    # Apply OTF filter once before the grid — all grid cells use the same
+    # accepted signal set for consistency.
+    exchange_tz = st.session_state.get("exchange_timezone") or (inst.exchange_tz if inst else "America/New_York")
+    try:
+        _otf_result = apply_configured_otf_filter(
+            source_df=ohlcv_df,
+            candidate_signals=signals,
+            setup_config=st.session_state.get("setup_config"),
+            session_timezone=exchange_tz,
+            signal_settings=st.session_state.get("signal_settings"),
+            last_signal_setup=st.session_state.get("last_signal_setup"),
+        )
+        signals_for_grid = _otf_result.accepted_signals
+    except ValueError as e:
+        st.error(f"OTF filter configuration error: {e}")
+        st.stop()
+
     n_combos = len(sl_list) * len(tp_list)
     with st.spinner(f"Running {n_combos} combinations…"):
         try:
             grid = run_sl_tp_grid(
                 df=ohlcv_df,
-                signals=signals,
+                signals=signals_for_grid,
                 tick_size=tick_size,
                 point_value=point_value,
                 stop_loss_ticks_values=sl_list,
@@ -375,6 +393,8 @@ if run_btn:
         "exposure_policy": exposure_policy,
         "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
     }
+    # OTF filter session state for grid scope
+    st.session_state["grid_otf_filter"] = _otf_result.to_summary_dict()
 
 # ── Display ───────────────────────────────────────────────────────────────────
 grid = st.session_state.get("grid_results")

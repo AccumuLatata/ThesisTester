@@ -8,6 +8,87 @@ import pandas as pd
 from .grid import best_grid_result, run_sl_tp_grid
 from .metrics import summarize_trades
 from ..engine.backtest import simulate_trades
+from ..setup import normalize_otf_filter_config
+
+
+# Patterns that identify "insufficient fold-local OTF history" errors raised
+# by the pure OTF engine when a fold slice is too short to infer a source
+# interval or accumulate completed HTF bars.  Only these patterns are caught
+# and converted to "all-rejected as unknown"; all other ValueError instances
+# are re-raised so that programming errors and unexpected failures are not
+# silently swallowed.
+_EXPECTED_OTF_INSUFFICIENT_HISTORY_PATTERNS: tuple[str, ...] = (
+    "Could not infer a trustworthy source bar interval",
+    "At least two source bars are required",
+    "Input timestamps do not align to a trustworthy inferred source interval",
+    "must be strictly finer than",
+    "must be exactly divisible by the inferred source bar interval",
+)
+
+
+def _filter_fold_signals_with_otf(
+    fold_df: pd.DataFrame,
+    fold_signals: pd.DataFrame,
+    otf_config: dict[str, Any],
+    session_timezone: str | None,
+) -> tuple[pd.DataFrame, int, int]:
+    """Apply OTF filter to a fold's signals using fold-local OHLCV only.
+
+    If the fold slice has insufficient history for OTF evaluation (e.g.,
+    too few bars to complete an OTF state), all candidate signals are
+    treated as OTF ``unknown`` and therefore rejected.  This prevents
+    crashes on short folds without leaking future OTF state.
+
+    Only expected ``ValueError`` cases from OTF completion/interval
+    insufficiency are caught.  Invalid config ``ValueError`` propagates.
+
+    Parameters
+    ----------
+    fold_df:
+        Fold-local OHLCV slice (already reset-indexed).
+    fold_signals:
+        Fold-local candidate signals (already sliced and reset-indexed).
+    otf_config:
+        Canonical enabled OTF filter config.  Must have ``enabled=True``.
+    session_timezone:
+        Exchange timezone label for session alignment.
+
+    Returns
+    -------
+    tuple of (accepted_signals, rejected_count, candidate_count)
+        ``accepted_signals`` — signals that passed the OTF filter.
+        ``rejected_count``   — count of signals rejected (or all rejected
+                               on insufficient history).
+        ``candidate_count``  — count of original fold candidates.
+    """
+    from ..engine.otf_filter import apply_otf_filter as _apply_otf
+
+    candidate_count = int(len(fold_signals))
+
+    _otf_kwargs: dict[str, Any] = {
+        "enabled": True,
+        "timeframes": list(otf_config.get("timeframes", [])),
+        "alignment_mode": str(otf_config.get("alignment_mode", "all")),
+        "minimum_consecutive_bars": int(
+            otf_config.get("minimum_consecutive_bars", 3)
+        ),
+        "session_timezone": session_timezone,
+        "session_reset": str(otf_config.get("session_reset", "session")),
+    }
+
+    try:
+        accepted, rejected = _apply_otf(fold_df, fold_signals, **_otf_kwargs)
+        return accepted, int(len(rejected)), candidate_count
+    except ValueError as exc:
+        msg = str(exc)
+        if any(pattern in msg for pattern in _EXPECTED_OTF_INSUFFICIENT_HISTORY_PATTERNS):
+            # Insufficient fold-local OTF history — reject all as unknown.
+            # Return an empty accepted DataFrame preserving the schema.
+            empty_accepted = fold_signals.iloc[0:0].copy()
+            return empty_accepted, candidate_count, candidate_count
+        # Unexpected ValueError (programming error, data integrity issue, etc.)
+        # — re-raise so it is not silently swallowed.
+        raise
 
 
 _RESULT_COLUMNS = [
@@ -54,6 +135,14 @@ _RESULT_COLUMNS = [
     "session_close_time",
     "session_timezone",
     "no_new_entries_after",
+    # OTF metadata columns — present only when OTF is enabled
+    "otf_filter_enabled",
+    "train_otf_candidate_count",
+    "train_otf_accepted_count",
+    "train_otf_rejected_count",
+    "test_otf_candidate_count",
+    "test_otf_accepted_count",
+    "test_otf_rejected_count",
 ]
 
 
@@ -134,8 +223,27 @@ def run_walk_forward_sl_tp(
     no_new_entries_after: str | None = None,
     exposure_policy: str = "allow_all",
     cooldown_bars_after_exit: int = 0,
+    otf_config: dict[str, Any] | None = None,
 ) -> pd.DataFrame:
-    """Run deterministic bar-window walk-forward diagnostics for SL/TP selection."""
+    """Run deterministic bar-window walk-forward diagnostics for SL/TP selection.
+
+    When *otf_config* is provided and ``otf_config["enabled"]`` is ``True``,
+    OTF filtering is applied fold-locally: each fold's training signals are
+    filtered against the training OHLCV slice, and each fold's test signals
+    are filtered against the test OHLCV slice.  This prevents future OTF
+    state from leaking into earlier folds.
+
+    OTF configuration is fixed across all folds; this function does not
+    optimize OTF parameters.
+
+    Parameters
+    ----------
+    otf_config:
+        Optional canonical OTF filter config dict (as returned by
+        ``normalize_otf_filter_config`` or ``get_effective_otf_filter_config``).
+        When ``None`` or ``{"enabled": False, ...}``, OTF filtering is
+        disabled and legacy behavior is preserved exactly.
+    """
     if train_bars <= 0:
         raise ValueError("train_bars must be > 0.")
     if test_bars <= 0:
@@ -144,6 +252,19 @@ def run_walk_forward_sl_tp(
     step = test_bars if step_bars is None else int(step_bars)
     if step <= 0:
         raise ValueError("step_bars must be > 0.")
+
+    # Validate and normalize OTF config before fold processing.
+    # normalize_otf_filter_config raises ValueError for explicit invalid config
+    # (e.g. enabled=True with no timeframes, unsupported timeframe).  This
+    # ensures invalid config is caught once, up front, rather than being
+    # silently converted into "all-rejected" fold results.
+    otf_normalized_config: dict[str, Any] | None = None
+    if isinstance(otf_config, dict):
+        otf_normalized_config = normalize_otf_filter_config(otf_config)
+    _otf_enabled = (
+        otf_normalized_config is not None
+        and bool(otf_normalized_config.get("enabled", False))
+    )
 
     n_bars = int(len(df))
     fold_rows: list[dict[str, Any]] = []
@@ -171,6 +292,34 @@ def run_walk_forward_sl_tp(
             end_bar_exclusive=test_end_exclusive,
             n_slice_bars=len(test_df),
         )
+
+        # OTF fold-local filtering: apply to train and test independently
+        # using only their respective OHLCV slices to prevent future leakage.
+        train_otf_candidate = int(len(train_signals))
+        train_otf_accepted = train_otf_candidate
+        train_otf_rejected = 0
+        test_otf_candidate = int(len(test_signals))
+        test_otf_accepted = test_otf_candidate
+        test_otf_rejected = 0
+
+        if _otf_enabled and otf_normalized_config is not None:
+            # Apply OTF to train signals using train OHLCV only
+            train_signals, train_otf_rejected, train_otf_candidate = _filter_fold_signals_with_otf(
+                fold_df=train_df,
+                fold_signals=train_signals,
+                otf_config=otf_normalized_config,
+                session_timezone=session_timezone,
+            )
+            train_otf_accepted = int(len(train_signals))
+
+            # Apply OTF to test signals using test OHLCV only
+            test_signals, test_otf_rejected, test_otf_candidate = _filter_fold_signals_with_otf(
+                fold_df=test_df,
+                fold_signals=test_signals,
+                otf_config=otf_normalized_config,
+                session_timezone=session_timezone,
+            )
+            test_otf_accepted = int(len(test_signals))
 
         train_grid = run_sl_tp_grid(
             df=train_df,
@@ -240,6 +389,14 @@ def run_walk_forward_sl_tp(
             "session_close_time": session_close_time,
             "session_timezone": session_timezone,
             "no_new_entries_after": no_new_entries_after,
+            # OTF fold metadata
+            "otf_filter_enabled": _otf_enabled,
+            "train_otf_candidate_count": train_otf_candidate,
+            "train_otf_accepted_count": train_otf_accepted,
+            "train_otf_rejected_count": train_otf_rejected,
+            "test_otf_candidate_count": test_otf_candidate,
+            "test_otf_accepted_count": test_otf_accepted,
+            "test_otf_rejected_count": test_otf_rejected,
         }
 
         if best_train is None:
@@ -300,6 +457,7 @@ def run_walk_forward_sl_tp(
         fold_rows.append(row)
         fold_id += 1
         train_start += step
+
 
     results = pd.DataFrame(fold_rows)
     if results.empty:

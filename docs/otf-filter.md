@@ -3,8 +3,8 @@
 **Project:** ThesisTester  
 **Feature:** Directional One Timeframing (OTF) market-condition filter  
 **Contract version:** v1  
-**Status:** Approved — contract implemented by the pure PR 2 engine and PR 3 eligibility filter layer  
-**Last updated:** 2026-07-24
+**Status:** Approved — contract implemented through PR 5 (research-mode integration)  
+**Last updated:** 2026-07-26
 
 ## Purpose
 
@@ -542,7 +542,7 @@ PR 4 implements OTF identity for setup and signal-settings fingerprints only. OT
 - Walk-forward evaluation outputs
 - Exports
 
-Research-artifact fingerprint integration is deferred to PR 5.
+Research-artifact fingerprint integration is complete as of PR 5.
 
 The contract version identifier (`v1`) remains the behavior-spec version for this
 document/fixtures and is distinct from `OTF_ALGORITHM_VERSION`.
@@ -550,7 +550,7 @@ document/fixtures and is distinct from `OTF_ALGORITHM_VERSION`.
 ### PR 4 non-integration boundary
 
 Setup Builder and Signals surfaces may display stored OTF configuration metadata,
-algorithm version, and config hash, but PR 4 does **not** wire OTF into standard
+algorithm version, and config hash, but PR 4 did **not** wire OTF into standard
 signal generation/backtest/grid/walk-forward/report/export execution paths.
 
 Persistence compatibility note:
@@ -558,6 +558,200 @@ Persistence compatibility note:
 - Setup persistence schema version remains unchanged (`SETUP_SCHEMA_VERSION = 1`).
 - Legacy setup files without `otf_filter` continue to load.
 - New setup saves include normalized canonical OTF configuration metadata.
+
+---
+
+## §13b — PR 5 Research-Mode Integration
+
+PR 5 wires the configured OTF eligibility output into standard backtests, grid search,
+walk-forward diagnostics, and reporting/export metadata. It does not add OTF parameter
+optimization, new alignment modes, incomplete-bar modes, session carry, or statistical
+release-gate conclusions. Existing research behavior remains unchanged when OTF is disabled.
+
+### Shared integration helper
+
+`thesistester/engine/otf_integration.py` provides one shared, deterministic integration
+entry point so filter logic is not duplicated across pages or modes.
+
+```python
+apply_configured_otf_filter(
+    *,
+    source_df: pd.DataFrame,
+    candidate_signals: pd.DataFrame,
+    setup_config: dict | None = None,
+    signal_settings: dict | None = None,
+    last_signal_setup: dict | None = None,
+    session_timezone: str | None = None,
+    eth_start: str | None = None,
+) -> OtfFilterResult
+```
+
+The returned `OtfFilterResult` exposes:
+
+| Field | Description |
+|---|---|
+| `candidate_signals` | Original unmodified candidate signals (deep copy) |
+| `accepted_signals` | OTF-accepted candidates (or all when disabled) |
+| `rejected_signals` | OTF-rejected candidates (or empty when disabled) |
+| `otf_filter_config` | Resolved effective OTF configuration dict |
+| `otf_filter_enabled` | Boolean — whether OTF was active |
+| `otf_algorithm_version` | `OTF_ALGORITHM_VERSION` value |
+| `otf_config_hash` | Canonical hex hash of the effective config |
+| `candidate_signal_count` | Total input signals |
+| `otf_accepted_signal_count` | Accepted after filtering |
+| `otf_rejected_signal_count` | Rejected after filtering |
+
+### OTF config resolution precedence
+
+When resolving the effective OTF configuration for a research execution, the following
+priority order is used (first match wins):
+
+1. `signal_settings["otf_filter"]` — explicit key present in signal settings.
+2. `signal_settings["setup_snapshot"]` — effective OTF from signal-run snapshot.
+3. `last_signal_setup` — effective OTF from last signal generation setup.
+4. `setup_config` — active setup config effective OTF.
+5. Canonical disabled defaults.
+
+Invalid explicit OTF config always raises `ValueError`; it is never silently treated as
+disabled (strict identity policy from PR 4).
+
+### Standard backtest integration
+
+Before calling `simulate_trades()`, the backtest page:
+
+1. Resolves effective OTF config for the current signal set / setup context.
+2. Applies OTF filtering once using the shared integration helper.
+3. Passes only `accepted_signals` to `simulate_trades()`.
+4. Stores original candidates and rejected rows separately for audit.
+
+Session state keys established by the backtest page:
+
+| Key | Description |
+|---|---|
+| `otf_filter_result` | Full `OtfFilterResult` object |
+| `otf_filter_summary` | Summary dict with counts and metadata |
+| `otf_candidate_signals` | Original unmodified candidates |
+| `otf_accepted_signals` | OTF-accepted signals |
+| `otf_rejected_signals` | OTF-rejected signals |
+| `backtest_otf_filter` | Summary dict stored on the backtest result |
+
+`st.session_state["signals"]` is **never** overwritten; generated candidate signals are
+always preserved as-is.
+
+When OTF is disabled, `simulate_trades()` receives exactly the same rows it received
+before PR 5. Trade tables, equity curves, summaries, and skipped-signal behavior are
+unchanged.
+
+### Grid-search integration
+
+OTF filtering is applied **once** before the SL/TP grid runs. Every SL/TP combination
+uses the same accepted signal set. Recomputing per-cell would be incorrect and expensive.
+
+Grid results include OTF metadata for reporting:
+
+| Metadata | Description |
+|---|---|
+| `otf_filter_enabled` | Whether OTF was active |
+| `otf_candidate_signal_count` | Total candidates before filtering |
+| `otf_accepted_signal_count` | Accepted signals used for all cells |
+| `otf_rejected_signal_count` | Rejected candidates |
+| `otf_config_hash` | Hex hash of the effective config |
+| `otf_algorithm_version` | `OTF_ALGORITHM_VERSION` |
+
+The `grid_otf_filter` session key stores OTF metadata for the current grid run.
+
+When OTF is disabled, grid output is identical to pre-PR 5 output.
+
+### Walk-forward integration
+
+Walk-forward OTF filtering is fold-local to prevent future-data leakage.
+
+**Config validation before fold processing:**
+`run_walk_forward_sl_tp()` validates and normalizes the configured OTF block via
+`normalize_otf_filter_config()` before any fold is processed.  If the OTF config
+is explicitly invalid (e.g., `enabled=True` with no timeframes, or an unsupported
+timeframe label), `ValueError` is raised immediately and no fold results are
+produced.  This preserves the strict invalid-config identity policy established in
+PR 4 — invalid explicit OTF config is never silently converted into fold-level
+rejected signals.
+
+For each fold:
+
+- Training signals are filtered using only the training OHLCV slice as `source_df`.
+- Test signals are filtered using only the test OHLCV slice as `source_df`.
+- OTF state from later folds never influences earlier fold evaluations.
+- If a fold slice has insufficient source history for OTF state evaluation (fewer than 2 bars, or timestamps that cannot produce a trustworthy inferred source interval), all fold candidate signals are treated as OTF `unknown` and therefore rejected. The fold does not crash.  Full-dataset or future OTF state is never used to rescue short folds.
+- Only expected "insufficient fold-local OTF history" errors are handled (matched against `_EXPECTED_OTF_INSUFFICIENT_HISTORY_PATTERNS`).  Unexpected `ValueError` instances are re-raised.
+- If all train candidates are OTF-rejected, the fold receives `status = "no_train_candidate"` — the same deterministic behavior as having no train signals.
+
+Fold metadata includes OTF counts where practical:
+
+- `train_otf_candidate_count`, `train_otf_accepted_count`, `train_otf_rejected_count`
+- `test_otf_candidate_count`, `test_otf_accepted_count`, `test_otf_rejected_count`
+- `otf_filter_enabled`
+
+When OTF is disabled, walk-forward output is identical to pre-PR 5 output.
+
+### Reporting and export metadata
+
+`build_research_artifact()` includes an `"otf_filter"` section:
+
+```json
+"otf_filter": {
+  "available": true,
+  "enabled": true,
+  "config": {"enabled": true, "timeframes": ["15m", "30m"], ...},
+  "algorithm_version": 1,
+  "config_hash": "...",
+  "candidate_signal_count": 100,
+  "accepted_signal_count": 70,
+  "rejected_signal_count": 30,
+  "rejection_rate": 0.30,
+  "applied_scopes": ["backtest", "grid", "walk_forward"]
+}
+```
+
+The section distinguishes four states:
+
+| `available` | `enabled` | Meaning |
+|---|---|---|
+| `true` | `true` | OTF was active; counts reflect actual filtering |
+| `true` | `false` | OTF was explicitly disabled; all signals passed through |
+| `false` | — | OTF data not available (no backtest result in session) |
+
+When metadata is partial (e.g., only walk-forward OTF data is present without full
+signal counts), count fields such as `candidate_signal_count`, `accepted_signal_count`,
+and `rejected_signal_count` may be `None` / unavailable.  The markdown report and
+Report/Export UI render these as `—` (not `"None"`).  Zero counts render as `0`.
+
+Research artifacts also include an `"otf_rejected_signals"` table in the `"tables"`
+section when rejected signals are present.
+
+Markdown reports include a dedicated OTF section summarizing enabled/disabled status,
+selected timeframes, algorithm version and config hash, candidate/accepted/rejected
+counts, rejection rate, and the disabled-regression guarantee.
+
+### Signal distinction guarantee
+
+OTF rejections are tracked and displayed separately from:
+
+- **Exposure-policy skipped signals** — signals not traded due to open-position limits.
+- **3c `void` status** — signals voided by the 3c pattern engine.
+
+These three categories are stored in separate session state keys and reported separately
+in both the UI and artifact metadata.
+
+### Disabled regression guarantee
+
+When OTF is disabled or absent:
+
+- `simulate_trades()` receives exactly the same rows as before PR 5.
+- Grid cells use exactly the same signal population as before PR 5.
+- Walk-forward folds contain exactly the same signals as before PR 5.
+- Report/artifact content for non-OTF sections is unchanged.
+
+The disabled path short-circuits before any OTF engine calls, timeframe normalization,
+or signal inspection.
 
 ---
 
@@ -588,5 +782,9 @@ Persistence compatibility note:
 | `tests/test_otf_contract.py` | Fixture-integrity and contract-consistency tests |
 | `tests/test_otf_baseline.py` | Regression baseline tests (OTF absent/disabled) |
 | `tests/test_otf_filter.py` | PR 3 OTF eligibility-filter validation and regression tests |
+| `tests/test_otf_integration.py` | PR 5 research-mode integration tests |
 | `thesistester/engine/otf.py` | Production OTF state engine (PR 2) |
 | `thesistester/engine/otf_filter.py` | Pure PR 3 eligibility-filter application layer |
+| `thesistester/engine/otf_integration.py` | PR 5 shared integration helper (`apply_configured_otf_filter`) |
+| `thesistester/analytics/walk_forward.py` | Walk-forward with fold-local OTF filtering |
+| `thesistester/reporting.py` | Research artifacts and markdown reports with OTF metadata |
