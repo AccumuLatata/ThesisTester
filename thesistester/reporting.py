@@ -291,9 +291,27 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
                 display_timezone=display_timezone,
                 canonical_timezone=canonical_timezone,
             ),
+            "otf_validation_matrix": _table_records(
+                session_state,
+                "otf_validation_matrix",
+                display_timezone=display_timezone,
+                canonical_timezone=canonical_timezone,
+            ),
         },
         "caveats": list(_CAVEATS),
     }
+    # Add OTF validation section when results are available.
+    otf_val_matrix = session_state.get("otf_validation_matrix")
+    otf_val_summary = session_state.get("otf_validation_summary")
+    otf_val_config = session_state.get("otf_validation_config")
+    if isinstance(otf_val_matrix, pd.DataFrame) and not otf_val_matrix.empty:
+        artifact["otf_validation"] = {
+            "available": True,
+            "summary": to_jsonable(otf_val_summary) if otf_val_summary else None,
+            "config": to_jsonable(otf_val_config) if otf_val_config else None,
+        }
+    else:
+        artifact["otf_validation"] = {"available": False}
     return to_jsonable(artifact)
 
 
@@ -686,6 +704,74 @@ def _otf_markdown_section(otf_meta: Mapping[str, Any] | None) -> str:
     )
 
 
+def _otf_validation_markdown_section(otf_val: Mapping[str, Any] | None) -> str:
+    """Render OTF validation results as a markdown report section.
+
+    Only included when OTF validation has been run.  Preserves existing report
+    output unchanged when OTF validation is absent.
+    """
+    if not isinstance(otf_val, Mapping) or not otf_val.get("available"):
+        return (
+            "\n## OTF Validation Matrix\n"
+            "- Status: not run (no OTF validation data in session)\n"
+            "- Run OTF validation from the Validation page to include results.\n"
+        )
+
+    summary = otf_val.get("summary") or {}
+    config = otf_val.get("config") or {}
+
+    train_frac = config.get("train_fraction", "—")
+    oos_frac = config.get("oos_fraction", "—")
+    sl_ticks = _dash_if_none(config.get("sl_ticks"))
+    tp_ticks = _dash_if_none(config.get("tp_ticks"))
+    session_tz = _dash_if_none(config.get("session_timezone"))
+
+    selected_label = _dash_if_none(summary.get("selected_train_config"))
+    selected_oos = summary.get("selected_oos_expectancy_r")
+    selected_oos_str = _fmt_number(selected_oos) if selected_oos is not None else "—"
+    train_metric = _dash_if_none(summary.get("selected_by_train_metric"))
+
+    train_frac_str = (
+        format(float(train_frac), ".0%") if train_frac != "—" else "—"
+    )
+    oos_frac_str = (
+        format(float(oos_frac), ".0%") if oos_frac != "—" else "—"
+    )
+
+    section = (
+        "\n## OTF Validation Matrix\n"
+        "⚠️ **Diagnostic only — not proof of edge.  Do not select an OTF "
+        "configuration for production use based on these results.**\n\n"
+        "### Configurations tested\n"
+        "1. no_otf — OTF filter disabled (baseline)\n"
+        "2. otf_15m — 15m only\n"
+        "3. otf_30m — 30m only\n"
+        "4. otf_15m_30m — 15m + 30m\n"
+        "5. otf_5m_15m_30m — 5m + 15m + 30m\n"
+        "\n### Split methodology\n"
+        f"- Train fraction: {train_frac_str}\n"
+        f"- OOS fraction: {oos_frac_str}\n"
+        f"- SL ticks: {sl_ticks}\n"
+        f"- TP ticks: {tp_ticks}\n"
+        f"- Session timezone: {session_tz}\n"
+        "\n### Selection (train metrics only)\n"
+        f"- Selection metric: {train_metric}\n"
+        f"- Train-selected configuration: {selected_label}\n"
+        f"- OOS expectancy (train-selected config): {selected_oos_str} R\n"
+        "\n### Caveats\n"
+        "- Configuration selection uses train metrics only; OOS metrics are "
+        "provided for evaluation only.\n"
+        "- OOS performance is not proof of edge.\n"
+        "- Lower trade count alone is not an improvement.\n"
+        "- Multiple-comparison caution: comparing 5 configurations increases "
+        "the risk of spurious results.\n"
+        "- Minimum sample-size caution: small trade counts make all metrics "
+        "unreliable.\n"
+        "- See the full OTF validation matrix in the artifact tables section.\n"
+    )
+    return section
+
+
 def build_markdown_report(artifact: dict[str, Any]) -> str:
     """Build a concise markdown report from a research artifact."""
     metadata = artifact.get("metadata", {}) if isinstance(artifact, Mapping) else {}
@@ -789,6 +875,11 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
 
     # OTF filter section
     lines.append(_otf_markdown_section(otf_meta).strip())
+    lines.append("")
+
+    # OTF validation section
+    otf_val = artifact.get("otf_validation") if isinstance(artifact, Mapping) else None
+    lines.append(_otf_validation_markdown_section(otf_val).strip())
     lines.append("")
 
     lines.append("## Caveats")

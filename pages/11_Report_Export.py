@@ -54,6 +54,7 @@ REQUIRED_ITEMS = [
 OTF_ITEMS = [
     ("OTF filter summary", "otf_filter_summary"),
     ("OTF rejected signals", "otf_rejected_signals"),
+    ("OTF validation matrix", "otf_validation_matrix"),
 ]
 
 
@@ -196,6 +197,7 @@ csv_exports = [
     ("time_grouped_summary", "time_grouped_summary.csv"),
     ("walk_forward_results", "walk_forward_results.csv"),
     ("otf_rejected_signals", "otf_rejected_signals.csv"),
+    ("otf_validation_matrix", "otf_validation_matrix.csv"),
 ]
 
 for key, filename in csv_exports:

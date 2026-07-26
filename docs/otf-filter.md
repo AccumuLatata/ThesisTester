@@ -773,6 +773,91 @@ or signal inspection.
 
 ---
 
+## §15 — PR 6 Release-Gate Documentation
+
+**Status:** PR 6 — OTF statistical validation, drift review, and release-gate documentation.
+
+### OTF default state
+
+OTF remains **disabled by default** in all research modes.  Enabling OTF requires an
+explicit user action in the Setup Builder and is never automatic.
+
+### Validation methodology
+
+PR 6 adds a fixed five-configuration comparison matrix evaluated on a chronological
+train/OOS split.  The matrix compares:
+
+1. **no_otf** — OTF filter disabled (baseline)
+2. **otf_15m** — 15m only
+3. **otf_30m** — 30m only
+4. **otf_15m_30m** — 15m + 30m
+5. **otf_5m_15m_30m** — 5m + 15m + 30m
+
+All enabled configurations use OTF v1 defaults:
+- `alignment_mode: all`
+- `minimum_consecutive_bars: 3`
+- `session_reset: session`
+
+### Anti-overfit rules
+
+- **Train/OOS split is chronological** (default 70/30).  No shuffling.
+- **Selection (train_rank, is_train_selected) uses train metrics only.**
+- **OOS metrics must never influence configuration selection.**
+- **Do not select an OTF configuration based on full-dataset results.**
+- Results are labeled as diagnostic.  The UI, markdown report, and JSON artifact
+  all include warnings that results are not proof of edge.
+
+### Interpreting reduced trade count
+
+An OTF-enabled configuration that produces fewer trades is not necessarily better.
+Lower trade count reduces statistical power and makes all metrics less reliable.
+It is also not inherently worse.  Do not interpret trade-count reduction as a signal
+in either direction without adequate sample size in both periods.
+
+### OOS evaluation priority
+
+OOS performance is the evaluation view.  Train metrics are used for ranking/selection
+only.  A configuration that looks better in train but worse in OOS is a warning sign
+of potential overfit.
+
+### Multiple-comparison caution
+
+Comparing five configurations against a baseline inflates the risk of spurious results.
+Any apparent improvement in a single OTF configuration over no-OTF in OOS should be
+treated with extra caution.
+
+### Minimum sample-size caution
+
+OTF filtering reduces the number of accepted signals and therefore the number of
+simulated trades.  With very few trades in either the train or OOS period, all
+metrics (expectancy, win rate, profit factor) are unreliable.  The trade-count
+diagnostic from Phase 8 applies to each period independently.
+
+### No real user dataset available
+
+PR 6 cannot make a true business or statistical release recommendation because no
+real user dataset is available in the repository.  Do not fabricate validation
+conclusions.  The OTF validation matrix is a tool for the user to evaluate with
+their own data; it is not a pre-evaluated result.
+
+### Release-gate criteria
+
+Release approval requires that all of the following are true:
+
+| Criterion | Status |
+|---|---|
+| Existing disabled behavior unchanged | ✅ Verified by regression tests |
+| OTF uses completed bars only | ✅ Enforced by engine; tests in test_otf.py |
+| Historical states remain append-data / future-shock invariant | ✅ Tested in test_otf.py::TestLookaheadSafety |
+| OTF-rejected signals are inspectable | ✅ Stored in session state; available for CSV export |
+| One shared implementation used across research modes | ✅ `apply_otf_filter()` via `apply_configured_otf_filter()` |
+| OTF config / version / hash present in artifacts | ✅ `otf_config_hash`, `otf_algorithm_version` in all results |
+| Legacy setups load | ✅ Backward-compatible persistence; no schema bump required |
+| OOS validation available and diagnostic | ✅ `run_otf_validation_matrix()` in `otf_validation.py` |
+| No unsupported OTF mode enabled | ✅ Only `alignment_mode: all`, `session_reset: session` in v1 |
+
+---
+
 ## §14 — Related files
 
 | File | Purpose |
@@ -783,8 +868,10 @@ or signal inspection.
 | `tests/test_otf_baseline.py` | Regression baseline tests (OTF absent/disabled) |
 | `tests/test_otf_filter.py` | PR 3 OTF eligibility-filter validation and regression tests |
 | `tests/test_otf_integration.py` | PR 5 research-mode integration tests |
+| `tests/test_otf_validation.py` | PR 6 OTF validation matrix tests |
 | `thesistester/engine/otf.py` | Production OTF state engine (PR 2) |
 | `thesistester/engine/otf_filter.py` | Pure PR 3 eligibility-filter application layer |
 | `thesistester/engine/otf_integration.py` | PR 5 shared integration helper (`apply_configured_otf_filter`) |
+| `thesistester/analytics/otf_validation.py` | PR 6 OTF validation matrix helper |
 | `thesistester/analytics/walk_forward.py` | Walk-forward with fold-local OTF filtering |
 | `thesistester/reporting.py` | Research artifacts and markdown reports with OTF metadata |
