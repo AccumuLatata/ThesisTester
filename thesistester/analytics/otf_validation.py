@@ -35,6 +35,18 @@ from ..persistence.local_store import compute_otf_config_hash
 # Fixed OTF comparison matrix
 # ---------------------------------------------------------------------------
 
+#: Internal row-identity column. Survives ``apply_otf_filter()`` enabled-path
+#: ``reset_index(drop=True)`` so train/OOS membership does not depend on the
+#: pandas index.
+_ROW_ID_COL = "_otf_validation_row_id"
+
+#: Keys reserved by ``run_otf_validation_matrix`` / ``simulate_trades``; stripped
+#: from ``execution_kwargs`` so callers cannot trigger duplicate-kwarg failures
+#: that would be swallowed into empty-trade results.
+_RESERVED_EXECUTION_KEYS = frozenset(
+    {"tick_size", "point_value", "stop_loss_ticks", "take_profit_ticks"}
+)
+
 #: OTF v1 default parameters used for all enabled configurations.
 OTF_V1_DEFAULTS: dict[str, Any] = {
     "alignment_mode": "all",
@@ -91,41 +103,66 @@ def build_otf_matrix_configs() -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+def _stamp_row_ids(signals: pd.DataFrame) -> pd.DataFrame:
+    """Deep-copy *signals* and stamp a stable positional row-id column."""
+    out = signals.copy(deep=True)
+    out[_ROW_ID_COL] = range(len(out))
+    return out
+
+
+def _drop_row_id(df: pd.DataFrame) -> pd.DataFrame:
+    """Return *df* without the internal row-id column (copy when present)."""
+    if df is None or df.empty or _ROW_ID_COL not in df.columns:
+        return df
+    return df.drop(columns=[_ROW_ID_COL])
+
+
 def _chronological_train_oos_sets(
     signals: pd.DataFrame,
     train_fraction: float,
 ) -> tuple[frozenset, frozenset]:
-    """Return ``(train_index_set, oos_index_set)`` using pandas index labels.
+    """Return ``(train_id_set, oos_id_set)`` for a chronological split.
 
     Signals are sorted chronologically by ``timestamp`` then ``bar_index``
-    then positional order.  The returned sets are disjoint and together cover
-    every row in *signals*.
+    then positional order.  Membership prefers :data:`_ROW_ID_COL` when
+    present so the sets remain valid after ``apply_otf_filter()`` resets the
+    pandas index on the enabled path.  Falls back to index labels when the
+    row-id column is absent (direct helper unit tests).
     """
     if signals.empty:
         return frozenset(), frozenset()
 
     sort_cols = [c for c in ("timestamp", "bar_index") if c in signals.columns]
     if sort_cols:
-        sorted_idx = signals.sort_values(sort_cols, kind="stable").index.tolist()
+        ordered = signals.sort_values(sort_cols, kind="stable")
     else:
-        sorted_idx = signals.index.tolist()
+        ordered = signals
 
-    n = len(sorted_idx)
+    if _ROW_ID_COL in ordered.columns:
+        sorted_ids = ordered[_ROW_ID_COL].tolist()
+    else:
+        sorted_ids = ordered.index.tolist()
+
+    n = len(sorted_ids)
     n_train = max(0, min(n, int(n * train_fraction)))
 
-    return frozenset(sorted_idx[:n_train]), frozenset(sorted_idx[n_train:])
+    return frozenset(sorted_ids[:n_train]), frozenset(sorted_ids[n_train:])
 
 
 def _filter_period(df: pd.DataFrame, period_set: frozenset) -> pd.DataFrame:
-    """Return rows of *df* whose pandas index label is in *period_set*."""
+    """Return rows of *df* belonging to *period_set* (row-id or index)."""
     if df is None or df.empty or not period_set:
         return df.iloc[0:0].copy() if df is not None else pd.DataFrame()
+    if _ROW_ID_COL in df.columns:
+        return df[df[_ROW_ID_COL].isin(period_set)].copy()
     return df[df.index.isin(period_set)].copy()
 
 
 def _count_period(df: pd.DataFrame | None, period_set: frozenset) -> int:
     if df is None or df.empty or not period_set:
         return 0
+    if _ROW_ID_COL in df.columns:
+        return int(df[_ROW_ID_COL].isin(period_set).sum())
     return int(df.index.isin(period_set).sum())
 
 
@@ -286,12 +323,18 @@ def run_otf_validation_matrix(
             f"train_fraction must be in (0.0, 1.0), got {train_fraction!r}"
         )
 
-    exec_kw: dict[str, Any] = dict(execution_kwargs) if execution_kwargs else {}
+    raw_exec_kw: dict[str, Any] = dict(execution_kwargs) if execution_kwargs else {}
+    exec_kw = {
+        key: value
+        for key, value in raw_exec_kw.items()
+        if key not in _RESERVED_EXECUTION_KEYS
+    }
 
-    # Make a deep copy of candidate signals so input is never mutated.
-    candidates = candidate_signals.copy(deep=True)
+    # Deep copy + stable row ids so train/OOS membership survives filter
+    # index resets on the enabled path. Input DataFrame is never mutated.
+    candidates = _stamp_row_ids(candidate_signals)
 
-    # Chronological train/OOS split on candidate signals.
+    # Chronological train/OOS split on stamped row ids.
     train_set, oos_set = _chronological_train_oos_sets(candidates, train_fraction)
 
     matrix_entries = build_otf_matrix_configs()
@@ -332,11 +375,11 @@ def run_otf_validation_matrix(
             n_rejected / n_candidates if n_candidates > 0 else None
         )
 
-        # Split into train/OOS periods.
-        accepted_train = _filter_period(accepted_full, train_set)
-        accepted_oos = _filter_period(accepted_full, oos_set)
-        rejected_train = _filter_period(rejected_full, train_set)
-        rejected_oos = _filter_period(rejected_full, oos_set)
+        # Split into train/OOS periods by stamped row id (not pandas index).
+        accepted_train = _drop_row_id(_filter_period(accepted_full, train_set))
+        accepted_oos = _drop_row_id(_filter_period(accepted_full, oos_set))
+        rejected_train = _drop_row_id(_filter_period(rejected_full, train_set))
+        rejected_oos = _drop_row_id(_filter_period(rejected_full, oos_set))
 
         train_candidates = _count_period(candidates, train_set)
         oos_candidates = _count_period(candidates, oos_set)

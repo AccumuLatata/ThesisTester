@@ -300,7 +300,8 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
         },
         "caveats": list(_CAVEATS),
     }
-    # Add OTF validation section when results are available.
+    # Add OTF validation section only when results are available so existing
+    # artifact structure is unchanged when validation has not been run.
     otf_val_matrix = session_state.get("otf_validation_matrix")
     otf_val_summary = session_state.get("otf_validation_summary")
     otf_val_config = session_state.get("otf_validation_config")
@@ -310,8 +311,6 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "summary": to_jsonable(otf_val_summary) if otf_val_summary else None,
             "config": to_jsonable(otf_val_config) if otf_val_config else None,
         }
-    else:
-        artifact["otf_validation"] = {"available": False}
     return to_jsonable(artifact)
 
 
@@ -707,21 +706,23 @@ def _otf_markdown_section(otf_meta: Mapping[str, Any] | None) -> str:
 def _otf_validation_markdown_section(otf_val: Mapping[str, Any] | None) -> str:
     """Render OTF validation results as a markdown report section.
 
-    Only included when OTF validation has been run.  Preserves existing report
-    output unchanged when OTF validation is absent.
+    Returns an empty string when OTF validation has not been run so existing
+    report output is unchanged.
     """
     if not isinstance(otf_val, Mapping) or not otf_val.get("available"):
-        return (
-            "\n## OTF Validation Matrix\n"
-            "- Status: not run (no OTF validation data in session)\n"
-            "- Run OTF validation from the Validation page to include results.\n"
-        )
+        return ""
 
     summary = otf_val.get("summary") or {}
     config = otf_val.get("config") or {}
 
-    train_frac = config.get("train_fraction", "—")
-    oos_frac = config.get("oos_fraction", "—")
+    try:
+        train_frac_str = format(float(config.get("train_fraction")), ".0%")
+    except (TypeError, ValueError):
+        train_frac_str = "—"
+    try:
+        oos_frac_str = format(float(config.get("oos_fraction")), ".0%")
+    except (TypeError, ValueError):
+        oos_frac_str = "—"
     sl_ticks = _dash_if_none(config.get("sl_ticks"))
     tp_ticks = _dash_if_none(config.get("tp_ticks"))
     session_tz = _dash_if_none(config.get("session_timezone"))
@@ -730,13 +731,6 @@ def _otf_validation_markdown_section(otf_val: Mapping[str, Any] | None) -> str:
     selected_oos = summary.get("selected_oos_expectancy_r")
     selected_oos_str = _fmt_number(selected_oos) if selected_oos is not None else "—"
     train_metric = _dash_if_none(summary.get("selected_by_train_metric"))
-
-    train_frac_str = (
-        format(float(train_frac), ".0%") if train_frac != "—" else "—"
-    )
-    oos_frac_str = (
-        format(float(oos_frac), ".0%") if oos_frac != "—" else "—"
-    )
 
     section = (
         "\n## OTF Validation Matrix\n"
@@ -877,10 +871,12 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     lines.append(_otf_markdown_section(otf_meta).strip())
     lines.append("")
 
-    # OTF validation section
+    # OTF validation section — omit entirely when validation was not run.
     otf_val = artifact.get("otf_validation") if isinstance(artifact, Mapping) else None
-    lines.append(_otf_validation_markdown_section(otf_val).strip())
-    lines.append("")
+    otf_val_section = _otf_validation_markdown_section(otf_val).strip()
+    if otf_val_section:
+        lines.append(otf_val_section)
+        lines.append("")
 
     lines.append("## Caveats")
 

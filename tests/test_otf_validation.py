@@ -238,6 +238,75 @@ def test_counts_reconcile():
         assert o_acc + o_rej == o_cand
 
 
+def test_enabled_train_oos_split_survives_nondefault_index():
+    """Enabled OTF path resets pandas index; split must use stable row ids.
+
+    Regression: membership via ``df.index.isin(train_set)`` after
+    ``apply_otf_filter(..., enabled=True)`` emptied train/OOS partitions when
+    candidate signals used a non-default index.
+    """
+    source, sigs = _source_and_signals_for_validation()
+    sigs = sigs.copy()
+    sigs.index = range(1000, 1000 + len(sigs))
+
+    result = run_otf_validation_matrix(
+        source_df=source,
+        candidate_signals=sigs,
+        tick_size=TICK,
+        point_value=PV,
+        stop_loss_ticks=SL_TICKS,
+        take_profit_ticks=TP_TICKS,
+        session_timezone=TZ,
+    )
+
+    for _, row in result.iterrows():
+        label = row["configuration_label"]
+        total = row["candidate_signal_count"]
+        t_cand = row["train_candidate_signal_count"]
+        o_cand = row["oos_candidate_signal_count"]
+        t_acc = row["train_accepted_signal_count"]
+        t_rej = row["train_rejected_signal_count"]
+        o_acc = row["oos_accepted_signal_count"]
+        o_rej = row["oos_rejected_signal_count"]
+
+        assert t_cand + o_cand == total, label
+        assert t_acc + t_rej == t_cand, label
+        assert o_acc + o_rej == o_cand, label
+        assert (
+            t_acc + o_acc == row["accepted_signal_count"]
+        ), label
+        assert (
+            t_rej + o_rej == row["rejected_signal_count"]
+        ), label
+
+        if row["otf_filter_enabled"]:
+            # Non-trivial enabled configs must not collapse all period counts.
+            assert t_cand > 0 and o_cand > 0, label
+
+
+def test_reserved_execution_kwargs_are_stripped():
+    """Reserved simulate_trades kwargs in execution_kwargs must not abort runs."""
+    source, sigs = _source_and_signals_for_validation()
+    result = run_otf_validation_matrix(
+        source_df=source,
+        candidate_signals=sigs,
+        tick_size=TICK,
+        point_value=PV,
+        stop_loss_ticks=SL_TICKS,
+        take_profit_ticks=TP_TICKS,
+        session_timezone=TZ,
+        execution_kwargs={
+            "tick_size": 999.0,
+            "point_value": 1.0,
+            "stop_loss_ticks": 1,
+            "take_profit_ticks": 1,
+        },
+    )
+    assert len(result) == 5
+    no_otf = result[result["configuration_label"] == "no_otf"].iloc[0]
+    assert no_otf["train_candidate_signal_count"] > 0
+
+
 # ---------------------------------------------------------------------------
 # 7. Rejection rate is correct
 # ---------------------------------------------------------------------------

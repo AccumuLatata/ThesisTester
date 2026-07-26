@@ -1,7 +1,7 @@
 # OTF Filter Implementation Roadmap
 
 **Project:** ThesisTester  
-**Status:** PR 6 complete — OTF statistical validation, drift review, and release-gate documentation  
+**Status:** PR 6 diagnostic tooling in progress — train/OOS matrix available; real-dataset OOS/drift/release gate still open  
 **Owner:** ThesisTester engineering  
 **Last updated:** 2026-07-26  
 **Feature:** Directional One Timeframing (OTF) market-condition filter
@@ -26,7 +26,9 @@ This document is the living implementation plan for adding an optional OTF filte
 - [x] Backtest, grid-search, and walk-forward integration completed
 - [x] Reporting and export completed
 - [x] Documentation completed
-- [x] Statistical validation completed (diagnostic tooling — see Phase 10)
+- [x] Statistical validation diagnostic tooling implemented (see Phase 10)
+- [ ] Out-of-sample validation on a real user dataset (PR 6 DoD)
+- [ ] Regression and drift-safety review sign-off (PR 6 DoD)
 - [ ] Release approved (pending real user dataset validation)
 
 ## Objective
@@ -581,7 +583,7 @@ A user can determine exactly:
 
 ## Phase 10 — Statistical validation and release gate
 
-**Status:** Complete (PR 6) — diagnostic tooling implemented; release pending real user dataset validation.
+**Status:** Partially complete (PR 6) — diagnostic matrix tooling implemented; real-dataset OOS confirmation, drift-review sign-off, and release approval remain open.
 
 ### Comparison matrix
 
@@ -603,6 +605,12 @@ A user can determine exactly:
 - [x] Long/short trade count (train and OOS).
 - [x] Rejection rate and delta vs no_otf baseline.
 - [x] OOS expectancy delta vs no_otf baseline.
+
+### Metrics (deferred — use existing Time Analysis / trade diagnostics)
+
+- [ ] Session and time-of-day performance (use Phase 7 time analysis on accepted trades).
+- [ ] Time in market.
+- [ ] Full long/short performance beyond trade counts.
 
 ### Validation rules
 
@@ -832,10 +840,10 @@ python3 -m pytest tests/ -q
 
 ### PR 6 — Validation and release
 
-- Statistical comparison matrix.
-- Documentation completion.
-- Drift review.
-- Release approval with the feature disabled by default.
+- Statistical comparison matrix (diagnostic tooling).
+- Documentation completion (methodology + release-gate criteria).
+- Drift review sign-off (still open — prior look-ahead/regression tests exist; formal PR 6 review not closed).
+- Release approval with the feature disabled by default (still open — pending real user dataset).
 
 ## Definition of done
 
@@ -868,7 +876,8 @@ python3 -m pytest tests/ -q
 | 2026-07-25 | Phase 7 and Phase 8 complete (PR 5) | `thesistester/engine/otf_integration.py`, `thesistester/analytics/walk_forward.py`, `thesistester/reporting.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`, `tests/test_otf_integration.py`, `docs/otf-filter.md §13b`, `docs/otf-filter-roadmap.md` | Added shared `apply_configured_otf_filter()` integration helper with `OtfFilterResult` dataclass and `resolve_otf_config()` (precedence-based). Standard backtest filters before `simulate_trades()`; stores candidate/accepted/rejected in session state. Grid search applies OTF once before the SL/TP grid; all cells use the same accepted signal set. Walk-forward applies OTF per-fold using fold-local OHLCV slices (no future leakage). Reporting includes OTF metadata section and markdown summary; rejected signals available for CSV export. OTF rejections remain distinct from exposure-policy skips and 3c void. Disabled regression guarantee: exact legacy signals, trades, grid, and walk-forward output when OTF is off. Focused verification: 61 integration tests passed. Full suite: 1455 passed in 33.47s. |
 | 2026-07-26 | PR 5 follow-up hardening (frozen dataclass, short-fold robustness, None formatting, page error handling) | `thesistester/engine/otf_integration.py`, `thesistester/analytics/walk_forward.py`, `thesistester/reporting.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`, `tests/test_otf_integration.py` | `OtfFilterResult` made `frozen=True`; unused `field` import removed; `_filter_fold_signals_with_otf()` helper added for short-fold robustness; `_dash_if_none()` helper added for None formatting; Validation page catches invalid OTF config with dedicated `try/except ValueError`. 76 integration tests (61 original + 15 follow-up) passed. Full suite: 1470 passed. |
 | 2026-07-26 | PR 5 final fix — strict OTF config validation before walk-forward folds | `thesistester/analytics/walk_forward.py`, `tests/test_otf_integration.py`, `docs/otf-filter.md`, `docs/otf-filter-roadmap.md` | `run_walk_forward_sl_tp()` now calls `normalize_otf_filter_config()` before the fold loop; invalid explicit config (e.g. `enabled=True` with no timeframes, unsupported timeframe) raises `ValueError` immediately and no fold results are produced. `_filter_fold_signals_with_otf()` now catches `ValueError` only when the message matches `_EXPECTED_OTF_INSUFFICIENT_HISTORY_PATTERNS`; all other `ValueError` instances are re-raised. 7 new focused tests added (TestWalkForwardOtfConfigValidation; 83 integration tests total). Full suite: 1477 passed in 31.90s. |
-| 2026-07-26 | Phase 10 complete (PR 6) — OTF statistical validation, drift review, and release-gate documentation | `thesistester/analytics/otf_validation.py`, `tests/test_otf_validation.py`, `pages/10_Validation.py`, `thesistester/reporting.py`, `pages/11_Report_Export.py`, `docs/otf-filter.md §15`, `docs/otf-filter-roadmap.md` | Added `run_otf_validation_matrix()` — a pure, research-safe helper evaluating the fixed five-configuration OTF comparison matrix on a chronological train/OOS split (default 70/30). Metrics include train and OOS expectancy, trade count, win rate, profit factor, max drawdown, and rejection rate. Ranking uses train metrics only; OOS metrics never influence selection. Validation page adds an explicit OTF matrix section with train fraction slider, run button, matrix table display, train-selected row highlight, and six caveat warnings. Reporting adds OTF validation section to `research_artifact.json` (with `available` flag), OTF validation markdown section to report, and OTF validation matrix CSV download to Report/Export page. Documentation adds §15 (release-gate criteria table) to `docs/otf-filter.md` and Phase 10 completion evidence to roadmap. OTF remains disabled by default; existing behavior is unchanged unless the user explicitly runs OTF validation. Targeted verification: 424 tests (test_otf_integration + test_otf_filter + test_otf + test_setup_config + test_walk_forward + test_phase9_reporting + test_otf_validation) passed in 17.80s. New OTF validation tests: 37 passed in 10.07s. |
+| 2026-07-26 | Phase 10 partially complete (PR 6) — OTF statistical validation diagnostic tooling + release-gate docs | `thesistester/analytics/otf_validation.py`, `tests/test_otf_validation.py`, `pages/10_Validation.py`, `thesistester/reporting.py`, `pages/11_Report_Export.py`, `docs/otf-filter.md §15`, `docs/otf-filter-roadmap.md` | Added `run_otf_validation_matrix()` — fixed five-configuration matrix on chronological train/OOS split (default 70/30); train-only ranking; reporting/UI/docs. OTF remains disabled by default. DoD items for real-dataset OOS validation, drift-review sign-off, and release approval remain open. Session/time-of-day/time-in-market metrics deferred to existing Time Analysis diagnostics. |
+| 2026-07-26 | PR 6 follow-up — train/OOS split identity fix + honest roadmap status | `thesistester/analytics/otf_validation.py`, `tests/test_otf_validation.py`, `thesistester/reporting.py`, `docs/otf-filter-roadmap.md`, `docs/otf-filter.md` | Fixed enabled-path train/OOS period assignment to use a stamped row-id column that survives `apply_otf_filter()` `reset_index`; added non-default-index regression test; strip reserved `execution_kwargs`; omit artifact/markdown OTF validation section when not run; corrected Phase 10 / PR 6 status overclaims. |
 
 ## Open questions
 
