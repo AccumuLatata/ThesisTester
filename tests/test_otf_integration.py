@@ -1468,3 +1468,193 @@ class TestOtfMarkdownNoneFormatting:
         """_dash_if_none(False) returns False, not '—'."""
         from thesistester.reporting import _dash_if_none
         assert _dash_if_none(False) is False
+
+
+# ---------------------------------------------------------------------------
+# PR5 Final Fix — Strict OTF config validation before walk-forward folds
+# ---------------------------------------------------------------------------
+
+
+def _make_ohlcv_for_wf(n_bars: int = 20) -> pd.DataFrame:
+    """Minimal OHLCV for walk-forward tests."""
+    return pd.DataFrame([{
+        "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
+        "open": 100.0,
+        "high": 110.0,
+        "low": 90.0,
+        "close": 100.0,
+        "volume": 100.0,
+    } for i in range(n_bars)])
+
+
+def _make_signals_for_wf() -> pd.DataFrame:
+    return pd.DataFrame([{
+        "signal_id": 1,
+        "timestamp": pd.Timestamp("2026-01-02 09:31:00", tz=TZ),
+        "bar_index": 1,
+        "trigger": "touch",
+        "direction": "long",
+        "zone_low": 99.5,
+        "zone_high": 100.5,
+        "zone_mid": 100.0,
+        "level_count": 2,
+        "level_names": "A|B",
+        "entry_reference_price": 100.0,
+        "entry_model": "candidate_next_bar_open",
+        "status": "candidate",
+        "naked_level_count": 0,
+        "naked_requirement": "any",
+        "notes": "",
+    }])
+
+
+class TestWalkForwardOtfConfigValidation:
+    """run_walk_forward_sl_tp validates OTF config before fold processing."""
+
+    def test_invalid_otf_config_empty_timeframes_raises(self):
+        """Invalid OTF config (enabled=True, timeframes=[]) raises ValueError before folds."""
+        ohlcv = _make_ohlcv_for_wf()
+        signals = _make_signals_for_wf()
+        invalid_config = {"enabled": True, "timeframes": []}
+        with pytest.raises(ValueError):
+            run_walk_forward_sl_tp(
+                df=ohlcv,
+                signals=signals,
+                tick_size=TICK,
+                point_value=POINT_VALUE,
+                stop_loss_ticks_values=[4],
+                take_profit_ticks_values=[8],
+                train_bars=5,
+                test_bars=5,
+                otf_config=invalid_config,
+            )
+
+    def test_invalid_otf_config_unsupported_timeframe_raises(self):
+        """Invalid OTF config (unsupported timeframe) raises ValueError before folds."""
+        ohlcv = _make_ohlcv_for_wf()
+        signals = _make_signals_for_wf()
+        invalid_config = {
+            "enabled": True,
+            "timeframes": ["invalid_tf"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 3,
+            "session_reset": "session",
+        }
+        with pytest.raises(ValueError):
+            run_walk_forward_sl_tp(
+                df=ohlcv,
+                signals=signals,
+                tick_size=TICK,
+                point_value=POINT_VALUE,
+                stop_loss_ticks_values=[4],
+                take_profit_ticks_values=[8],
+                train_bars=5,
+                test_bars=5,
+                otf_config=invalid_config,
+            )
+
+    def test_filter_fold_signals_still_handles_short_fold(self):
+        """After fix: _filter_fold_signals_with_otf still rejects all on 1-bar fold."""
+        from thesistester.analytics.walk_forward import _filter_fold_signals_with_otf
+        fold_df = pd.DataFrame([{
+            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
+            "open": 100.0, "high": 110.0, "low": 90.0, "close": 100.0, "volume": 100.0,
+        }])
+        fold_signals = pd.DataFrame([_signal(signal_id=1, timestamp="2026-01-02 09:30:00", bar_index=0)])
+        valid_config = normalize_otf_filter_config({
+            "enabled": True, "timeframes": ["5m"],
+            "alignment_mode": "all", "minimum_consecutive_bars": 3,
+            "directional": True, "use_completed_bars_only": True, "session_reset": "session",
+        })
+        accepted, rejected_count, candidate_count = _filter_fold_signals_with_otf(
+            fold_df=fold_df,
+            fold_signals=fold_signals,
+            otf_config=valid_config,
+            session_timezone=TZ,
+        )
+        assert candidate_count == 1
+        assert rejected_count == 1
+        assert len(accepted) == 0
+
+    def test_filter_fold_reraises_unexpected_valueerror(self):
+        """_filter_fold_signals_with_otf re-raises unexpected ValueError from apply_otf_filter."""
+        from unittest.mock import patch
+        from thesistester.analytics.walk_forward import _filter_fold_signals_with_otf
+        fold_df = pd.DataFrame([{
+            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
+            "open": 100.0, "high": 110.0, "low": 90.0, "close": 100.0, "volume": 100.0,
+        }])
+        fold_signals = pd.DataFrame([_signal(signal_id=1, timestamp="2026-01-02 09:30:00", bar_index=0)])
+        valid_config = normalize_otf_filter_config({
+            "enabled": True, "timeframes": ["5m"],
+            "alignment_mode": "all", "minimum_consecutive_bars": 3,
+            "directional": True, "use_completed_bars_only": True, "session_reset": "session",
+        })
+        unexpected_msg = "Completely unexpected internal programming error XYZ"
+        with patch("thesistester.engine.otf_filter.apply_otf_filter", side_effect=ValueError(unexpected_msg)):
+            with pytest.raises(ValueError, match="Completely unexpected internal programming error XYZ"):
+                _filter_fold_signals_with_otf(
+                    fold_df=fold_df,
+                    fold_signals=fold_signals,
+                    otf_config=valid_config,
+                    session_timezone=TZ,
+                )
+
+    def test_valid_enabled_otf_config_still_runs(self):
+        """Valid enabled OTF config does not raise and produces fold results."""
+        ohlcv = _make_ohlcv_for_wf(n_bars=20)
+        signals = _make_signals_for_wf()
+        valid_config = normalize_otf_filter_config({
+            "enabled": True, "timeframes": ["5m"],
+            "alignment_mode": "all", "minimum_consecutive_bars": 3,
+            "directional": True, "use_completed_bars_only": True, "session_reset": "session",
+        })
+        results = run_walk_forward_sl_tp(
+            df=ohlcv,
+            signals=signals,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=5,
+            test_bars=5,
+            otf_config=valid_config,
+        )
+        assert isinstance(results, pd.DataFrame)
+        assert "otf_filter_enabled" in results.columns
+        assert results["otf_filter_enabled"].all()
+
+    def test_disabled_otf_config_matches_legacy(self):
+        """Disabled OTF config produces identical fold results to otf_config=None."""
+        ohlcv = _make_ohlcv_for_wf(n_bars=20)
+        signals = _make_signals_for_wf()
+        results_none = run_walk_forward_sl_tp(
+            df=ohlcv, signals=signals, tick_size=TICK, point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
+            train_bars=5, test_bars=5, otf_config=None,
+        )
+        results_disabled = run_walk_forward_sl_tp(
+            df=ohlcv, signals=signals, tick_size=TICK, point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
+            train_bars=5, test_bars=5, otf_config=_disabled_config(),
+        )
+        assert len(results_none) == len(results_disabled)
+        # Both should show OTF disabled
+        assert (results_none["otf_filter_enabled"] == False).all()
+        assert (results_disabled["otf_filter_enabled"] == False).all()
+
+    def test_invalid_config_never_produces_fold_results(self):
+        """Invalid explicit OTF config is never silently converted to rejected signals."""
+        ohlcv = _make_ohlcv_for_wf()
+        signals = _make_signals_for_wf()
+        invalid_config = {"enabled": True, "timeframes": []}
+        raised = False
+        try:
+            run_walk_forward_sl_tp(
+                df=ohlcv, signals=signals, tick_size=TICK, point_value=POINT_VALUE,
+                stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
+                train_bars=5, test_bars=5, otf_config=invalid_config,
+            )
+        except ValueError:
+            raised = True
+        assert raised, "Invalid OTF config must raise ValueError, not produce fold results"

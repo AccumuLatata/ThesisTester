@@ -666,12 +666,22 @@ When OTF is disabled, grid output is identical to pre-PR 5 output.
 
 Walk-forward OTF filtering is fold-local to prevent future-data leakage.
 
+**Config validation before fold processing:**
+`run_walk_forward_sl_tp()` validates and normalizes the configured OTF block via
+`normalize_otf_filter_config()` before any fold is processed.  If the OTF config
+is explicitly invalid (e.g., `enabled=True` with no timeframes, or an unsupported
+timeframe label), `ValueError` is raised immediately and no fold results are
+produced.  This preserves the strict invalid-config identity policy established in
+PR 4 — invalid explicit OTF config is never silently converted into fold-level
+rejected signals.
+
 For each fold:
 
 - Training signals are filtered using only the training OHLCV slice as `source_df`.
 - Test signals are filtered using only the test OHLCV slice as `source_df`.
 - OTF state from later folds never influences earlier fold evaluations.
-- If a fold slice has insufficient source history for OTF state evaluation (fewer than 2 bars), all fold candidate signals are treated as OTF `unknown` and therefore rejected. The fold does not crash.  Full-dataset or future OTF state is never used to rescue short folds.
+- If a fold slice has insufficient source history for OTF state evaluation (fewer than 2 bars, or timestamps that cannot produce a trustworthy inferred source interval), all fold candidate signals are treated as OTF `unknown` and therefore rejected. The fold does not crash.  Full-dataset or future OTF state is never used to rescue short folds.
+- Only expected "insufficient fold-local OTF history" errors are handled (matched against `_EXPECTED_OTF_INSUFFICIENT_HISTORY_PATTERNS`).  Unexpected `ValueError` instances are re-raised.
 - If all train candidates are OTF-rejected, the fold receives `status = "no_train_candidate"` — the same deterministic behavior as having no train signals.
 
 Fold metadata includes OTF counts where practical:

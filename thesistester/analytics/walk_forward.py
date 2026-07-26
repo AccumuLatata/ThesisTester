@@ -8,6 +8,22 @@ import pandas as pd
 from .grid import best_grid_result, run_sl_tp_grid
 from .metrics import summarize_trades
 from ..engine.backtest import simulate_trades
+from ..setup import normalize_otf_filter_config
+
+
+# Patterns that identify "insufficient fold-local OTF history" errors raised
+# by the pure OTF engine when a fold slice is too short to infer a source
+# interval or accumulate completed HTF bars.  Only these patterns are caught
+# and converted to "all-rejected as unknown"; all other ValueError instances
+# are re-raised so that programming errors and unexpected failures are not
+# silently swallowed.
+_EXPECTED_OTF_INSUFFICIENT_HISTORY_PATTERNS: tuple[str, ...] = (
+    "Could not infer a trustworthy source bar interval",
+    "At least two source bars are required",
+    "Input timestamps do not align to a trustworthy inferred source interval",
+    "must be strictly finer than",
+    "must be exactly divisible by the inferred source bar interval",
+)
 
 
 def _filter_fold_signals_with_otf(
@@ -63,11 +79,16 @@ def _filter_fold_signals_with_otf(
     try:
         accepted, rejected = _apply_otf(fold_df, fold_signals, **_otf_kwargs)
         return accepted, int(len(rejected)), candidate_count
-    except ValueError:
-        # Insufficient fold-local OTF history — reject all as unknown.
-        # Return an empty accepted DataFrame preserving the schema.
-        empty_accepted = fold_signals.iloc[0:0].copy()
-        return empty_accepted, candidate_count, candidate_count
+    except ValueError as exc:
+        msg = str(exc)
+        if any(pattern in msg for pattern in _EXPECTED_OTF_INSUFFICIENT_HISTORY_PATTERNS):
+            # Insufficient fold-local OTF history — reject all as unknown.
+            # Return an empty accepted DataFrame preserving the schema.
+            empty_accepted = fold_signals.iloc[0:0].copy()
+            return empty_accepted, candidate_count, candidate_count
+        # Unexpected ValueError (programming error, data integrity issue, etc.)
+        # — re-raise so it is not silently swallowed.
+        raise
 
 
 _RESULT_COLUMNS = [
@@ -232,9 +253,17 @@ def run_walk_forward_sl_tp(
     if step <= 0:
         raise ValueError("step_bars must be > 0.")
 
-    # Resolve OTF enabled flag from config (None → disabled)
+    # Validate and normalize OTF config before fold processing.
+    # normalize_otf_filter_config raises ValueError for explicit invalid config
+    # (e.g. enabled=True with no timeframes, unsupported timeframe).  This
+    # ensures invalid config is caught once, up front, rather than being
+    # silently converted into "all-rejected" fold results.
+    _otf_normalized_config: dict[str, Any] | None = None
+    if isinstance(otf_config, dict):
+        _otf_normalized_config = normalize_otf_filter_config(otf_config)
     _otf_enabled = (
-        isinstance(otf_config, dict) and bool(otf_config.get("enabled", False))
+        _otf_normalized_config is not None
+        and bool(_otf_normalized_config.get("enabled", False))
     )
 
     n_bars = int(len(df))
@@ -273,12 +302,12 @@ def run_walk_forward_sl_tp(
         test_otf_accepted = test_otf_candidate
         test_otf_rejected = 0
 
-        if _otf_enabled and otf_config is not None:
+        if _otf_enabled and _otf_normalized_config is not None:
             # Apply OTF to train signals using train OHLCV only
             train_signals, train_otf_rejected, train_otf_candidate = _filter_fold_signals_with_otf(
                 fold_df=train_df,
                 fold_signals=train_signals,
-                otf_config=otf_config,
+                otf_config=_otf_normalized_config,
                 session_timezone=session_timezone,
             )
             train_otf_accepted = int(len(train_signals))
@@ -287,7 +316,7 @@ def run_walk_forward_sl_tp(
             test_signals, test_otf_rejected, test_otf_candidate = _filter_fold_signals_with_otf(
                 fold_df=test_df,
                 fold_signals=test_signals,
-                otf_config=otf_config,
+                otf_config=_otf_normalized_config,
                 session_timezone=session_timezone,
             )
             test_otf_accepted = int(len(test_signals))

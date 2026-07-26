@@ -515,7 +515,7 @@ otf_filter_reason
 * Backtest, grid search, walk-forward pages updated.
 * Session state keys: `otf_filter_result`, `otf_filter_summary`, `otf_candidate_signals`, `otf_accepted_signals`, `otf_rejected_signals`, `backtest_otf_filter`, `grid_otf_filter`, `walk_forward_otf_filter`.
 * Walk-forward fold-local OTF: `train_df` used as source for train signals, `test_df` for test signals.
-* `_filter_fold_signals_with_otf()` private helper in `walk_forward.py` handles insufficient fold history by catching `ValueError` and rejecting all candidates as unknown. Invalid config propagates.
+* `_filter_fold_signals_with_otf()` private helper in `walk_forward.py` handles insufficient fold history by catching `ValueError` against `_EXPECTED_OTF_INSUFFICIENT_HISTORY_PATTERNS` and rejecting all candidates as unknown. Unknown `ValueError` instances are re-raised. Invalid config raises before reaching the helper via pre-fold `normalize_otf_filter_config()` call.
 * OTF fold metadata columns added to `_RESULT_COLUMNS` in `walk_forward.py`.
 
 ## Phase 8 — Reporting and exports
@@ -806,14 +806,23 @@ python3 -m pytest tests/ -q
 - `reporting.py`: `_dash_if_none()` helper added. `_otf_markdown_section()` uses it to render `None` as `—` for algorithm version, counts, and config hash. Zero counts render as `0`.
 - `pages/11_Report_Export.py`: OTF caption uses `_dash_if_none()` for accepted/rejected/candidate counts. Partial metadata (e.g., only walk-forward OTF data) renders as `—` instead of `None`.
 
-**PR 5 verified evidence (after follow-up hardening):**
+**PR 5 final fix decisions (strict walk-forward OTF config validation):**
+
+- `run_walk_forward_sl_tp()` calls `normalize_otf_filter_config()` before the fold loop. Invalid explicit OTF config (e.g. `enabled=True` with no timeframes, unsupported timeframe label) raises `ValueError` immediately; no fold results are produced and no silent fallback occurs.
+- `_filter_fold_signals_with_otf()` now catches `ValueError` only when `str(exc)` contains a pattern from `_EXPECTED_OTF_INSUFFICIENT_HISTORY_PATTERNS`. Unknown `ValueError` instances are re-raised to prevent silent swallowing of programming errors or data integrity failures.
+- Invalid config is never silently converted into rejected fold signals — it always raises before fold processing begins.
+
+**PR 5 verified evidence (after final fix):**
 
 ```text
 python3 -m pytest tests/test_otf_integration.py tests/test_otf_filter.py tests/test_otf.py tests/test_setup_config.py tests/test_walk_forward.py tests/test_phase9_reporting.py -q
-# 380 passed
+# 387 passed
 
 python3 -m pytest tests/test_otf_integration.py -q
-# 76 passed (61 original + 15 follow-up)
+# 83 passed (61 original + 15 follow-up + 7 final fix)
+
+python3 -m pytest tests/ -q
+# 1477 passed in 31.90s
 ```
 
 *Note: `test_local_store.py` failures are pre-existing missing-dependency failures (pyarrow/fastparquet) unrelated to OTF.*
@@ -854,6 +863,8 @@ python3 -m pytest tests/test_otf_integration.py -q
 | 2026-07-24 | PR 4 follow-up: hardened invalid-OTF UI state; strict hash identity preserved | `pages/6_Signals.py`, `pages/2_Setup_Builder.py`, `tests/test_signals_page_helpers.py`, `tests/test_setup_builder_helpers.py`, `tests/test_local_store.py`, `docs/otf-filter-roadmap.md`, `docs/otf-filter.md` | Strict hashing: `compute_signal_settings_hash` raises on invalid explicit OTF; missing OTF resolves to disabled defaults; no silent fallback. Signals page: `_try_normalize_signal_settings_for_hash` wrapper at all UI call sites; signal generation/comparison/save blocked on invalid OTF identity. Setup Builder: `_resolve_otf_for_ui` pure helper for editor seeding and summary rendering; malformed OTF hydrates disabled defaults with explicit warning; caller dicts never mutated. Phase 5 marked partially complete; research-artifact identity deferred. Post-follow-up intermediate verification: 193 targeted tests + 407 OTF-focused tests; full suite: 1369 passed. |
 | 2026-07-24 | PR 4 final fix: atomic saved-run identity transitions; shared save-path eligibility helper | `pages/6_Signals.py`, `tests/test_signals_page_helpers.py`, `docs/otf-filter-roadmap.md` | Added `_resolve_loaded_signal_identity` pure helper: validates settings and persisted hash before touching session state; computes and verifies hash from normalized settings; returns trusted/invalid/unavailable status. Added `_validate_signal_artifact_identity_for_save` shared helper: enforces trusted status + hash integrity + current-controls match for both "Save current signals" paths. Load path: artifacts always installed for inspection; settings/hash atomically cleared when identity is untrusted; `signal_artifact_identity_status` set to trusted/invalid/unavailable. Generation path: sets trusted identity + clears error on success. Save paths: consolidated to single shared helper; no fallback hash produced for invalid/unavailable artifacts. Final verification: 218 targeted tests + 407 OTF-focused tests; full suite: 1394 passed in 30.36s. |
 | 2026-07-25 | Phase 7 and Phase 8 complete (PR 5) | `thesistester/engine/otf_integration.py`, `thesistester/analytics/walk_forward.py`, `thesistester/reporting.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`, `tests/test_otf_integration.py`, `docs/otf-filter.md §13b`, `docs/otf-filter-roadmap.md` | Added shared `apply_configured_otf_filter()` integration helper with `OtfFilterResult` dataclass and `resolve_otf_config()` (precedence-based). Standard backtest filters before `simulate_trades()`; stores candidate/accepted/rejected in session state. Grid search applies OTF once before the SL/TP grid; all cells use the same accepted signal set. Walk-forward applies OTF per-fold using fold-local OHLCV slices (no future leakage). Reporting includes OTF metadata section and markdown summary; rejected signals available for CSV export. OTF rejections remain distinct from exposure-policy skips and 3c void. Disabled regression guarantee: exact legacy signals, trades, grid, and walk-forward output when OTF is off. Focused verification: 61 integration tests passed. Full suite: 1455 passed in 33.47s. |
+| 2026-07-26 | PR 5 follow-up hardening (frozen dataclass, short-fold robustness, None formatting, page error handling) | `thesistester/engine/otf_integration.py`, `thesistester/analytics/walk_forward.py`, `thesistester/reporting.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`, `tests/test_otf_integration.py` | `OtfFilterResult` made `frozen=True`; unused `field` import removed; `_filter_fold_signals_with_otf()` helper added for short-fold robustness; `_dash_if_none()` helper added for None formatting; Validation page catches invalid OTF config with dedicated `try/except ValueError`. 76 integration tests (61 original + 15 follow-up) passed. Full suite: 1470 passed. |
+| 2026-07-26 | PR 5 final fix — strict OTF config validation before walk-forward folds | `thesistester/analytics/walk_forward.py`, `tests/test_otf_integration.py`, `docs/otf-filter.md`, `docs/otf-filter-roadmap.md` | `run_walk_forward_sl_tp()` now calls `normalize_otf_filter_config()` before the fold loop; invalid explicit config (e.g. `enabled=True` with no timeframes, unsupported timeframe) raises `ValueError` immediately and no fold results are produced. `_filter_fold_signals_with_otf()` now catches `ValueError` only when the message matches `_EXPECTED_OTF_INSUFFICIENT_HISTORY_PATTERNS`; all other `ValueError` instances are re-raised. 7 new focused tests added (TestWalkForwardOtfConfigValidation; 83 integration tests total). Full suite: 1477 passed in 31.90s. |
 
 ## Open questions
 
