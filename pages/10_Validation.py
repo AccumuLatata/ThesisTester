@@ -599,7 +599,7 @@ st.caption(
 _signals_for_otf = st.session_state.get("signals")
 _source_for_otf = st.session_state.get("levels") or st.session_state.get("data")
 
-if _signals_for_otf is None or (_hasattr := hasattr(_signals_for_otf, "empty")) and _signals_for_otf.empty:
+if _signals_for_otf is None or (hasattr(_signals_for_otf, "empty") and _signals_for_otf.empty):
     st.info("No signals found in session state.  Generate signals before running OTF validation.")
 elif _source_for_otf is None or (hasattr(_source_for_otf, "empty") and _source_for_otf.empty):
     st.info("No OHLCV source data found in session state.  Load data before running OTF validation.")
@@ -719,8 +719,8 @@ else:
         )
 
         _summary = st.session_state.get("otf_validation_summary", {})
-        _sel = _summary.get("selected_train_config") or _summary.get("selected_by_train_metric")
-        if _selected_label := _summary.get("selected_train_config"):
+        _selected_label = _summary.get("selected_train_config")
+        if _selected_label:
             st.info(
                 f"🏆 **Train-selected configuration:** `{_selected_label}` "
                 f"(selected by train_expectancy_r only). "

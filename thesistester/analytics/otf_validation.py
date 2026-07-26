@@ -167,8 +167,9 @@ def _simulate(
     execution_kwargs: dict[str, Any],
 ) -> pd.DataFrame:
     """Run ``simulate_trades`` on accepted signals; return empty df on failure."""
+    from ..engine.backtest import _empty_trades_df  # type: ignore[attr-defined]
+
     if accepted is None or accepted.empty:
-        from ..engine.backtest import _empty_trades_df  # type: ignore[attr-defined]
         return _empty_trades_df()
     try:
         result = simulate_trades(
@@ -181,7 +182,6 @@ def _simulate(
             **execution_kwargs,
         )
     except Exception:  # pragma: no cover — defensive; caller controls inputs
-        from ..engine.backtest import _empty_trades_df  # type: ignore[attr-defined]
         return _empty_trades_df()
     # simulate_trades can return a tuple when return_skipped_signals=True
     if isinstance(result, tuple):
