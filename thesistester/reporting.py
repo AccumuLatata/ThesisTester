@@ -19,6 +19,15 @@ _CAVEATS = [
 ]
 
 
+def _dash_if_none(value: Any) -> Any:
+    """Return ``'—'`` when *value* is ``None``; otherwise return *value* unchanged.
+
+    Preserves ``0`` as ``0``, empty strings as empty strings, and any
+    other falsy-but-not-None values as themselves.
+    """
+    return "—" if value is None else value
+
+
 def _json_safe_float(value: float) -> float | None:
     if isnan(value) or isinf(value):
         return None
@@ -646,13 +655,13 @@ def _otf_markdown_section(otf_meta: Mapping[str, Any] | None) -> str:
     config = otf_meta.get("config") or {}
     timeframes = config.get("timeframes", []) if isinstance(config, Mapping) else []
     tf_str = ", ".join(timeframes) if timeframes else "—"
-    min_bars = config.get("minimum_consecutive_bars", "—") if isinstance(config, Mapping) else "—"
-    algorithm_version = otf_meta.get("algorithm_version", "—")
+    min_bars = _dash_if_none(config.get("minimum_consecutive_bars") if isinstance(config, Mapping) else None)
+    algorithm_version = _dash_if_none(otf_meta.get("algorithm_version"))
     config_hash = otf_meta.get("config_hash") or "—"
     config_hash_short = str(config_hash)[:12] if config_hash != "—" else "—"
-    candidate_count = otf_meta.get("candidate_signal_count", "—")
-    accepted_count = otf_meta.get("accepted_signal_count", "—")
-    rejected_count = otf_meta.get("rejected_signal_count", "—")
+    candidate_count = _dash_if_none(otf_meta.get("candidate_signal_count"))
+    accepted_count = _dash_if_none(otf_meta.get("accepted_signal_count"))
+    rejected_count = _dash_if_none(otf_meta.get("rejected_signal_count"))
     rejection_rate = otf_meta.get("rejection_rate")
     applied_scopes = otf_meta.get("applied_scopes") or []
 

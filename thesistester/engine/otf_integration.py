@@ -23,7 +23,7 @@ always raises ``ValueError`` — it is never silently treated as disabled.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
@@ -42,9 +42,13 @@ from ..setup import (
 # ---------------------------------------------------------------------------
 
 
-@dataclass
+@dataclass(frozen=True)
 class OtfFilterResult:
-    """Immutable result returned by :func:`apply_configured_otf_filter`.
+    """Frozen result returned by :func:`apply_configured_otf_filter`.
+
+    Attribute reassignment is prevented (``frozen=True``).  Note that
+    DataFrame attributes remain internally mutable objects; only the
+    reference slots on this dataclass are frozen.
 
     Attributes
     ----------

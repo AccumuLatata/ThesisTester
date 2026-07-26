@@ -10,6 +10,66 @@ from .metrics import summarize_trades
 from ..engine.backtest import simulate_trades
 
 
+def _filter_fold_signals_with_otf(
+    fold_df: pd.DataFrame,
+    fold_signals: pd.DataFrame,
+    otf_config: dict[str, Any],
+    session_timezone: str | None,
+) -> tuple[pd.DataFrame, int, int]:
+    """Apply OTF filter to a fold's signals using fold-local OHLCV only.
+
+    If the fold slice has insufficient history for OTF evaluation (e.g.,
+    too few bars to complete an OTF state), all candidate signals are
+    treated as OTF ``unknown`` and therefore rejected.  This prevents
+    crashes on short folds without leaking future OTF state.
+
+    Only expected ``ValueError`` cases from OTF completion/interval
+    insufficiency are caught.  Invalid config ``ValueError`` propagates.
+
+    Parameters
+    ----------
+    fold_df:
+        Fold-local OHLCV slice (already reset-indexed).
+    fold_signals:
+        Fold-local candidate signals (already sliced and reset-indexed).
+    otf_config:
+        Canonical enabled OTF filter config.  Must have ``enabled=True``.
+    session_timezone:
+        Exchange timezone label for session alignment.
+
+    Returns
+    -------
+    tuple of (accepted_signals, rejected_count, candidate_count)
+        ``accepted_signals`` — signals that passed the OTF filter.
+        ``rejected_count``   — count of signals rejected (or all rejected
+                               on insufficient history).
+        ``candidate_count``  — count of original fold candidates.
+    """
+    from ..engine.otf_filter import apply_otf_filter as _apply_otf
+
+    candidate_count = int(len(fold_signals))
+
+    _otf_kwargs: dict[str, Any] = {
+        "enabled": True,
+        "timeframes": list(otf_config.get("timeframes", [])),
+        "alignment_mode": str(otf_config.get("alignment_mode", "all")),
+        "minimum_consecutive_bars": int(
+            otf_config.get("minimum_consecutive_bars", 3)
+        ),
+        "session_timezone": session_timezone,
+        "session_reset": str(otf_config.get("session_reset", "session")),
+    }
+
+    try:
+        accepted, rejected = _apply_otf(fold_df, fold_signals, **_otf_kwargs)
+        return accepted, int(len(rejected)), candidate_count
+    except ValueError:
+        # Insufficient fold-local OTF history — reject all as unknown.
+        # Return an empty accepted DataFrame preserving the schema.
+        empty_accepted = fold_signals.iloc[0:0].copy()
+        return empty_accepted, candidate_count, candidate_count
+
+
 _RESULT_COLUMNS = [
     "fold_id",
     "train_start_bar",
@@ -214,33 +274,23 @@ def run_walk_forward_sl_tp(
         test_otf_rejected = 0
 
         if _otf_enabled and otf_config is not None:
-            from ..engine.otf_filter import apply_otf_filter as _apply_otf
-
-            _otf_kwargs: dict[str, Any] = {
-                "enabled": True,
-                "timeframes": list(otf_config.get("timeframes", [])),
-                "alignment_mode": str(otf_config.get("alignment_mode", "all")),
-                "minimum_consecutive_bars": int(
-                    otf_config.get("minimum_consecutive_bars", 3)
-                ),
-                "session_timezone": session_timezone,
-                "session_reset": str(otf_config.get("session_reset", "session")),
-            }
             # Apply OTF to train signals using train OHLCV only
-            _train_accepted, _train_rejected = _apply_otf(
-                train_df, train_signals, **_otf_kwargs
+            train_signals, train_otf_rejected, train_otf_candidate = _filter_fold_signals_with_otf(
+                fold_df=train_df,
+                fold_signals=train_signals,
+                otf_config=otf_config,
+                session_timezone=session_timezone,
             )
-            train_signals = _train_accepted
-            train_otf_accepted = int(len(_train_accepted))
-            train_otf_rejected = int(len(_train_rejected))
+            train_otf_accepted = int(len(train_signals))
 
             # Apply OTF to test signals using test OHLCV only
-            _test_accepted, _test_rejected = _apply_otf(
-                test_df, test_signals, **_otf_kwargs
+            test_signals, test_otf_rejected, test_otf_candidate = _filter_fold_signals_with_otf(
+                fold_df=test_df,
+                fold_signals=test_signals,
+                otf_config=otf_config,
+                session_timezone=session_timezone,
             )
-            test_signals = _test_accepted
-            test_otf_accepted = int(len(_test_accepted))
-            test_otf_rejected = int(len(_test_rejected))
+            test_otf_accepted = int(len(test_signals))
 
         train_grid = run_sl_tp_grid(
             df=train_df,

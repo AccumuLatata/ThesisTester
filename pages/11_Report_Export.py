@@ -9,6 +9,7 @@ import streamlit as st
 
 from thesistester.config import TIMEZONE_OPTIONS
 from thesistester.reporting import (
+    _dash_if_none,
     build_execution_cost_assumptions,
     build_exposure_policy_assumptions,
     build_markdown_report,
@@ -115,9 +116,9 @@ if _otf_meta.get("available"):
     _otf_enabled = bool(_otf_meta.get("enabled", False))
     if _otf_enabled:
         st.caption(
-            f"OTF filter enabled — {_otf_meta.get('accepted_signal_count', '?')} accepted, "
-            f"{_otf_meta.get('rejected_signal_count', '?')} rejected out of "
-            f"{_otf_meta.get('candidate_signal_count', '?')} candidates. "
+            f"OTF filter enabled — {_dash_if_none(_otf_meta.get('accepted_signal_count'))} accepted, "
+            f"{_dash_if_none(_otf_meta.get('rejected_signal_count'))} rejected out of "
+            f"{_dash_if_none(_otf_meta.get('candidate_signal_count'))} candidates. "
             f"Applied to: {', '.join(_otf_meta.get('applied_scopes', [])) or '—'}."
         )
     else:

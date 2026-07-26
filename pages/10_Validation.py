@@ -240,77 +240,82 @@ if run_wfo:
                 st.error("SL/TP grid values are empty; adjust the ranges.")
             else:
                 with st.spinner("Running walk-forward diagnostics…"):
-                    # Resolve OTF config for fold-local filtering
+                    # Resolve OTF config inside try so an invalid explicit
+                    # config shows a clear error and does not install stale results.
                     from thesistester.engine.otf_integration import resolve_otf_config
-                    _wfo_otf_config = resolve_otf_config(
-                        signal_settings=st.session_state.get("signal_settings"),
-                        last_signal_setup=st.session_state.get("last_signal_setup"),
-                        setup_config=st.session_state.get("setup_config"),
-                    )
                     try:
-                        results_df = run_walk_forward_sl_tp(
-                            df=data_source,
-                            signals=signals_raw,
-                            tick_size=tick_size,
-                            point_value=point_value,
-                            stop_loss_ticks_values=sl_values,
-                            take_profit_ticks_values=tp_values,
-                            train_bars=train_bars,
-                            test_bars=test_bars,
-                            step_bars=step_bars,
-                            ranking_metric=wfo_ranking_metric,
-                            min_train_trades=wfo_min_train_trades,
-                            max_holding_bars=None,
-                            allow_same_bar_exit=True,
-                            commission_per_side=float(grid_costs.get("commission_per_side", 0.0) or 0.0),
-                            slippage_ticks=float(grid_costs.get("slippage_ticks", 0.0) or 0.0),
-                            flat_by_session_close=bool(session_policy.get("flat_by_session_close", False)),
-                            session_close_time=session_policy.get("session_close_time"),
-                            session_timezone=session_policy.get("session_timezone"),
-                            no_new_entries_after=session_policy.get("no_new_entries_after"),
-                            exposure_policy=str(exposure_policy_state.get("exposure_policy", "allow_all")),
-                            cooldown_bars_after_exit=int(exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0),
-                            otf_config=_wfo_otf_config,
+                        _wfo_otf_config = resolve_otf_config(
+                            signal_settings=st.session_state.get("signal_settings"),
+                            last_signal_setup=st.session_state.get("last_signal_setup"),
+                            setup_config=st.session_state.get("setup_config"),
                         )
                     except ValueError as e:
-                        st.error(f"Walk-forward diagnostics error: {e}")
+                        st.error(f"OTF filter configuration error: {e}")
                     else:
-                        wfo_summary = summarize_walk_forward(results_df)
-                        _wfo_otf_enabled = bool(_wfo_otf_config.get("enabled", False))
-                        wfo_config = {
-                            "train_bars": int(train_bars),
-                            "test_bars": int(test_bars),
-                            "step_bars": int(step_bars if step_bars is not None else test_bars),
-                            "ranking_metric": wfo_ranking_metric,
-                            "min_train_trades": int(wfo_min_train_trades),
-                            "stop_loss_ticks_values": sl_values,
-                            "take_profit_ticks_values": tp_values,
-                            "tick_size": float(tick_size),
-                            "point_value": float(point_value),
-                            "commission_per_side": float(grid_costs.get("commission_per_side", 0.0) or 0.0),
-                            "slippage_ticks": float(grid_costs.get("slippage_ticks", 0.0) or 0.0),
-                            "flat_by_session_close": bool(session_policy.get("flat_by_session_close", False)),
-                            "session_close_time": session_policy.get("session_close_time"),
-                            "session_timezone": session_policy.get("session_timezone"),
-                            "no_new_entries_after": session_policy.get("no_new_entries_after"),
-                            "exposure_policy": str(exposure_policy_state.get("exposure_policy", "allow_all")),
-                            "cooldown_bars_after_exit": int(exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0),
-                            "otf_filter_enabled": _wfo_otf_enabled,
-                            "otf_filter_config": _wfo_otf_config,
-                        }
-                        st.session_state["walk_forward_results"] = results_df
-                        st.session_state["walk_forward_summary"] = wfo_summary
-                        st.session_state["walk_forward_config"] = wfo_config
-                        # Store OTF summary for reporting
-                        from thesistester.persistence.local_store import compute_otf_config_hash
-                        from thesistester.engine.otf import OTF_ALGORITHM_VERSION
-                        st.session_state["walk_forward_otf_filter"] = {
-                            "otf_filter_enabled": _wfo_otf_enabled,
-                            "otf_filter_config": _wfo_otf_config,
-                            "otf_algorithm_version": OTF_ALGORITHM_VERSION,
-                            "otf_config_hash": compute_otf_config_hash(_wfo_otf_config),
-                        }
-                        st.success("Walk-forward diagnostics complete.")
+                        try:
+                            results_df = run_walk_forward_sl_tp(
+                                df=data_source,
+                                signals=signals_raw,
+                                tick_size=tick_size,
+                                point_value=point_value,
+                                stop_loss_ticks_values=sl_values,
+                                take_profit_ticks_values=tp_values,
+                                train_bars=train_bars,
+                                test_bars=test_bars,
+                                step_bars=step_bars,
+                                ranking_metric=wfo_ranking_metric,
+                                min_train_trades=wfo_min_train_trades,
+                                max_holding_bars=None,
+                                allow_same_bar_exit=True,
+                                commission_per_side=float(grid_costs.get("commission_per_side", 0.0) or 0.0),
+                                slippage_ticks=float(grid_costs.get("slippage_ticks", 0.0) or 0.0),
+                                flat_by_session_close=bool(session_policy.get("flat_by_session_close", False)),
+                                session_close_time=session_policy.get("session_close_time"),
+                                session_timezone=session_policy.get("session_timezone"),
+                                no_new_entries_after=session_policy.get("no_new_entries_after"),
+                                exposure_policy=str(exposure_policy_state.get("exposure_policy", "allow_all")),
+                                cooldown_bars_after_exit=int(exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0),
+                                otf_config=_wfo_otf_config,
+                            )
+                        except ValueError as e:
+                            st.error(f"Walk-forward diagnostics error: {e}")
+                        else:
+                            wfo_summary = summarize_walk_forward(results_df)
+                            _wfo_otf_enabled = bool(_wfo_otf_config.get("enabled", False))
+                            wfo_config = {
+                                "train_bars": int(train_bars),
+                                "test_bars": int(test_bars),
+                                "step_bars": int(step_bars if step_bars is not None else test_bars),
+                                "ranking_metric": wfo_ranking_metric,
+                                "min_train_trades": int(wfo_min_train_trades),
+                                "stop_loss_ticks_values": sl_values,
+                                "take_profit_ticks_values": tp_values,
+                                "tick_size": float(tick_size),
+                                "point_value": float(point_value),
+                                "commission_per_side": float(grid_costs.get("commission_per_side", 0.0) or 0.0),
+                                "slippage_ticks": float(grid_costs.get("slippage_ticks", 0.0) or 0.0),
+                                "flat_by_session_close": bool(session_policy.get("flat_by_session_close", False)),
+                                "session_close_time": session_policy.get("session_close_time"),
+                                "session_timezone": session_policy.get("session_timezone"),
+                                "no_new_entries_after": session_policy.get("no_new_entries_after"),
+                                "exposure_policy": str(exposure_policy_state.get("exposure_policy", "allow_all")),
+                                "cooldown_bars_after_exit": int(exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0),
+                                "otf_filter_enabled": _wfo_otf_enabled,
+                                "otf_filter_config": _wfo_otf_config,
+                            }
+                            st.session_state["walk_forward_results"] = results_df
+                            st.session_state["walk_forward_summary"] = wfo_summary
+                            st.session_state["walk_forward_config"] = wfo_config
+                            # Store OTF summary for reporting
+                            from thesistester.persistence.local_store import compute_otf_config_hash
+                            from thesistester.engine.otf import OTF_ALGORITHM_VERSION
+                            st.session_state["walk_forward_otf_filter"] = {
+                                "otf_filter_enabled": _wfo_otf_enabled,
+                                "otf_filter_config": _wfo_otf_config,
+                                "otf_algorithm_version": OTF_ALGORITHM_VERSION,
+                                "otf_config_hash": compute_otf_config_hash(_wfo_otf_config),
+                            }
+                            st.success("Walk-forward diagnostics complete.")
 
 wfo_results = st.session_state.get("walk_forward_results")
 wfo_summary = st.session_state.get("walk_forward_summary")

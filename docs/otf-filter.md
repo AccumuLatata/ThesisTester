@@ -4,7 +4,7 @@
 **Feature:** Directional One Timeframing (OTF) market-condition filter  
 **Contract version:** v1  
 **Status:** Approved — contract implemented through PR 5 (research-mode integration)  
-**Last updated:** 2026-07-25
+**Last updated:** 2026-07-26
 
 ## Purpose
 
@@ -671,6 +671,8 @@ For each fold:
 - Training signals are filtered using only the training OHLCV slice as `source_df`.
 - Test signals are filtered using only the test OHLCV slice as `source_df`.
 - OTF state from later folds never influences earlier fold evaluations.
+- If a fold slice has insufficient source history for OTF state evaluation (fewer than 2 bars), all fold candidate signals are treated as OTF `unknown` and therefore rejected. The fold does not crash.  Full-dataset or future OTF state is never used to rescue short folds.
+- If all train candidates are OTF-rejected, the fold receives `status = "no_train_candidate"` — the same deterministic behavior as having no train signals.
 
 Fold metadata includes OTF counts where practical:
 
@@ -706,6 +708,11 @@ The section distinguishes four states:
 | `true` | `true` | OTF was active; counts reflect actual filtering |
 | `true` | `false` | OTF was explicitly disabled; all signals passed through |
 | `false` | — | OTF data not available (no backtest result in session) |
+
+When metadata is partial (e.g., only walk-forward OTF data is present without full
+signal counts), count fields such as `candidate_signal_count`, `accepted_signal_count`,
+and `rejected_signal_count` may be `None` / unavailable.  The markdown report and
+Report/Export UI render these as `—` (not `"None"`).  Zero counts render as `0`.
 
 Research artifacts also include an `"otf_rejected_signals"` table in the `"tables"`
 section when rejected signals are present.

@@ -1193,3 +1193,278 @@ class TestRegressionBoundaries:
         assert callable(apply_configured_otf_filter)
         assert callable(resolve_otf_config)
         assert OtfFilterResult is not None
+
+
+# ---------------------------------------------------------------------------
+# 44–52. Follow-up hardening tests (PR 5 follow-up)
+# ---------------------------------------------------------------------------
+
+
+class TestOtfFilterResultFrozen:
+    def test_frozen_dataclass_rejects_attribute_reassignment(self):
+        """OtfFilterResult is frozen — attribute reassignment must raise FrozenInstanceError."""
+        import dataclasses
+        source = _ohlcv_bars(3)
+        sigs = _signals_df(_signal(signal_id=1, timestamp="2026-01-02 09:30:00"))
+        result = apply_configured_otf_filter(source_df=source, candidate_signals=sigs)
+        with pytest.raises((dataclasses.FrozenInstanceError, AttributeError)):
+            result.otf_filter_enabled = True  # type: ignore[misc]
+
+    def test_frozen_dataclass_rejects_count_reassignment(self):
+        """OtfFilterResult frozen — count attribute reassignment raises."""
+        import dataclasses
+        source = _ohlcv_bars(3)
+        sigs = _signals_df(_signal(signal_id=1, timestamp="2026-01-02 09:30:00"))
+        result = apply_configured_otf_filter(source_df=source, candidate_signals=sigs)
+        with pytest.raises((dataclasses.FrozenInstanceError, AttributeError)):
+            result.candidate_signal_count = 999  # type: ignore[misc]
+
+
+class TestWalkForwardShortFoldRobustness:
+    """Walk-forward OTF with fold slices too short for OTF evaluation."""
+
+    def _make_enabled_config(self) -> dict:
+        return normalize_otf_filter_config({
+            "enabled": True,
+            "timeframes": ["5m"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 3,
+            "directional": True,
+            "use_completed_bars_only": True,
+            "session_reset": "session",
+        })
+
+    def _make_1bar_ohlcv(self) -> pd.DataFrame:
+        return pd.DataFrame([{
+            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
+            "open": 100.0,
+            "high": 110.0,
+            "low": 90.0,
+            "close": 100.0,
+            "volume": 100.0,
+        }])
+
+    def test_enabled_otf_with_1bar_fold_does_not_crash(self):
+        """OTF enabled walk-forward with 1-bar fold slice does not raise."""
+        from thesistester.analytics.walk_forward import _filter_fold_signals_with_otf
+        fold_df = self._make_1bar_ohlcv()
+        fold_signals = _signals_df(
+            _signal(signal_id=1, timestamp="2026-01-02 09:30:00", bar_index=0),
+        )
+        # Should not raise even though 1 bar is insufficient for OTF
+        accepted, rejected_count, candidate_count = _filter_fold_signals_with_otf(
+            fold_df=fold_df,
+            fold_signals=fold_signals,
+            otf_config=self._make_enabled_config(),
+            session_timezone=TZ,
+        )
+        # All candidates rejected as unknown on short slice
+        assert candidate_count == 1
+        assert rejected_count == 1
+        assert len(accepted) == 0
+
+    def test_enabled_otf_short_fold_rejects_all_as_unknown(self):
+        """Insufficient OTF history rejects all fold candidates, not crashes."""
+        from thesistester.analytics.walk_forward import _filter_fold_signals_with_otf
+        fold_df = self._make_1bar_ohlcv()
+        # 3 candidate signals
+        fold_signals = _signals_df(
+            _signal(signal_id=1, timestamp="2026-01-02 09:30:00", bar_index=0),
+            _signal(signal_id=2, timestamp="2026-01-02 09:30:00", bar_index=0),
+            _signal(signal_id=3, timestamp="2026-01-02 09:30:00", bar_index=0),
+        )
+        accepted, rejected_count, candidate_count = _filter_fold_signals_with_otf(
+            fold_df=fold_df,
+            fold_signals=fold_signals,
+            otf_config=self._make_enabled_config(),
+            session_timezone=TZ,
+        )
+        assert candidate_count == 3
+        assert rejected_count == 3
+        assert accepted.empty
+
+    def test_enabled_otf_short_fold_candidate_equals_accepted_plus_rejected(self):
+        """candidate_count == accepted_count + rejected_count even on short folds."""
+        from thesistester.analytics.walk_forward import _filter_fold_signals_with_otf
+        fold_df = self._make_1bar_ohlcv()
+        fold_signals = _signals_df(
+            _signal(signal_id=1, timestamp="2026-01-02 09:30:00", bar_index=0),
+            _signal(signal_id=2, timestamp="2026-01-02 09:30:00", bar_index=0),
+        )
+        accepted, rejected_count, candidate_count = _filter_fold_signals_with_otf(
+            fold_df=fold_df,
+            fold_signals=fold_signals,
+            otf_config=self._make_enabled_config(),
+            session_timezone=TZ,
+        )
+        assert len(accepted) + rejected_count == candidate_count
+
+    def test_short_fold_in_run_walk_forward_does_not_crash(self):
+        """run_walk_forward_sl_tp with enabled OTF and tiny fold does not raise."""
+        # Use very short train_bars=2 to create folds with insufficient OTF history
+        ohlcv = pd.DataFrame([{
+            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
+            "open": 100.0,
+            "high": 110.0,
+            "low": 90.0,
+            "close": 100.0,
+            "volume": 100.0,
+        } for i in range(20)])
+        signals = _signals_df(
+            _signal(signal_id=1, timestamp="2026-01-02 09:31:00", bar_index=1),
+        )
+        results = run_walk_forward_sl_tp(
+            df=ohlcv,
+            signals=signals,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=2,
+            test_bars=2,
+            otf_config=self._make_enabled_config(),
+        )
+        assert isinstance(results, pd.DataFrame)
+
+    def test_short_fold_produces_no_train_candidate_when_all_rejected(self):
+        """Short fold with all OTF-rejected train signals → status no_train_candidate."""
+        ohlcv = pd.DataFrame([{
+            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
+            "open": 100.0,
+            "high": 110.0,
+            "low": 90.0,
+            "close": 100.0,
+            "volume": 100.0,
+        } for i in range(10)])
+        signals = _signals_df(
+            _signal(signal_id=1, timestamp="2026-01-02 09:31:00", bar_index=1),
+        )
+        results = run_walk_forward_sl_tp(
+            df=ohlcv,
+            signals=signals,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=2,
+            test_bars=2,
+            otf_config=self._make_enabled_config(),
+        )
+        if not results.empty:
+            # Short folds should result in no_train_candidate (all train rejected)
+            assert (results["status"] == "no_train_candidate").all()
+
+    def test_disabled_walk_forward_unchanged_by_robustness_fix(self):
+        """Disabled OTF walk-forward is unaffected by the short-fold robustness fix."""
+        ohlcv = pd.DataFrame([{
+            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
+            "open": 100.0,
+            "high": 110.0,
+            "low": 90.0,
+            "close": 100.0,
+            "volume": 100.0,
+        } for i in range(20)])
+        signals = _signals_df(
+            _signal(signal_id=1, timestamp="2026-01-02 09:31:00", bar_index=1),
+        )
+        results_none = run_walk_forward_sl_tp(
+            df=ohlcv, signals=signals, tick_size=TICK, point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
+            train_bars=5, test_bars=5, otf_config=None,
+        )
+        results_disabled = run_walk_forward_sl_tp(
+            df=ohlcv, signals=signals, tick_size=TICK, point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
+            train_bars=5, test_bars=5, otf_config=_disabled_config(),
+        )
+        assert len(results_none) == len(results_disabled)
+
+
+class TestOtfMarkdownNoneFormatting:
+    """_otf_markdown_section and report/export caption render None as '—'."""
+
+    def _make_wfo_only_state(self) -> dict:
+        """Session state with only walk-forward OTF metadata (partial metadata)."""
+        return {
+            "walk_forward_otf_filter": {
+                "otf_filter_enabled": True,
+                "otf_algorithm_version": OTF_ALGORITHM_VERSION,
+                "otf_config_hash": "e" * 64,
+                "otf_filter_config": _enabled_config(["5m"]),
+                # No candidate/accepted/rejected counts — partial metadata
+            },
+        }
+
+    def test_build_otf_filter_metadata_with_only_wfo_data(self):
+        """Metadata with only walk-forward data: available=True, counts may be None."""
+        from thesistester.reporting import build_otf_filter_metadata
+        state = self._make_wfo_only_state()
+        meta = build_otf_filter_metadata(state)
+        assert meta["available"] is True
+
+    def test_markdown_with_none_counts_renders_dash_not_none(self):
+        """Markdown section with None counts shows '—', not 'None'."""
+        from thesistester.reporting import build_otf_filter_metadata, build_research_artifact, build_markdown_report
+
+        # Build a state where counts are absent → None in metadata
+        state = self._make_wfo_only_state()
+        meta = build_otf_filter_metadata(state)
+        # Inject None counts into artifact to simulate partial metadata
+        artifact_otf = {
+            "available": True,
+            "enabled": True,
+            "algorithm_version": OTF_ALGORITHM_VERSION,
+            "config_hash": "f" * 64,
+            "config": _enabled_config(["5m"]),
+            "candidate_signal_count": None,
+            "accepted_signal_count": None,
+            "rejected_signal_count": None,
+            "rejection_rate": None,
+            "applied_scopes": [],
+        }
+        artifact = {"otf_filter": artifact_otf}
+        from thesistester.reporting import _otf_markdown_section
+        md = _otf_markdown_section(artifact_otf)
+        assert "None" not in md, f"Markdown contains 'None': {md!r}"
+        assert "—" in md
+
+    def test_markdown_zero_counts_render_as_zero(self):
+        """Markdown section with zero counts shows '0', not '—'."""
+        from thesistester.reporting import _otf_markdown_section
+        artifact_otf = {
+            "available": True,
+            "enabled": True,
+            "algorithm_version": OTF_ALGORITHM_VERSION,
+            "config_hash": "a" * 64,
+            "config": _enabled_config(["5m"]),
+            "candidate_signal_count": 0,
+            "accepted_signal_count": 0,
+            "rejected_signal_count": 0,
+            "rejection_rate": None,
+            "applied_scopes": ["backtest"],
+        }
+        md = _otf_markdown_section(artifact_otf)
+        assert "Candidate signals: 0" in md
+        assert "Accepted signals: 0" in md
+        assert "Rejected signals: 0" in md
+        assert "None" not in md
+
+    def test_dash_if_none_helper_none_gives_dash(self):
+        """_dash_if_none(None) returns '—'."""
+        from thesistester.reporting import _dash_if_none
+        assert _dash_if_none(None) == "—"
+
+    def test_dash_if_none_helper_zero_gives_zero(self):
+        """_dash_if_none(0) returns 0, not '—'."""
+        from thesistester.reporting import _dash_if_none
+        assert _dash_if_none(0) == 0
+
+    def test_dash_if_none_helper_string_gives_string(self):
+        """_dash_if_none('abc') returns 'abc'."""
+        from thesistester.reporting import _dash_if_none
+        assert _dash_if_none("abc") == "abc"
+
+    def test_dash_if_none_helper_false_gives_false(self):
+        """_dash_if_none(False) returns False, not '—'."""
+        from thesistester.reporting import _dash_if_none
+        assert _dash_if_none(False) is False

@@ -3,7 +3,7 @@
 **Project:** ThesisTester  
 **Status:** Planned  
 **Owner:** ThesisTester engineering  
-**Last updated:** 2026-07-25  
+**Last updated:** 2026-07-26  
 **Feature:** Directional One Timeframing (OTF) market-condition filter
 
 ## Document purpose
@@ -487,7 +487,7 @@ otf_filter_reason
 
 ## Phase 7 — Integrate all research modes
 
-**Status:** Complete (PR 5)
+**Status:** Complete (PR 5, hardened in PR 5 follow-up)
 
 ### Work items
 
@@ -497,12 +497,15 @@ otf_filter_reason
 - [x] OTF configuration remains fixed across folds (no per-fold optimization).
 - [x] Future research modes consume the shared filter output via `apply_configured_otf_filter()`.
 - [x] Add integration tests for each mode (`tests/test_otf_integration.py`).
+- [x] Walk-forward fold-local OTF handles insufficient fold-local history by rejecting all fold candidates as `unknown`, not by crashing or using full-dataset OTF state.
+- [x] Walk-forward page catches invalid explicit OTF config with a clear error before running or installing results.
 
 ### Acceptance criteria
 
 - [x] No duplicate OTF implementations exist.
 - [x] Grid-search comparisons use identical eligible signals.
 - [x] Walk-forward evaluation contains no OTF leakage from future folds.
+- [x] Short folds with insufficient OTF history are handled deterministically (all candidates rejected as unknown).
 
 ### Implementation Notes
 
@@ -512,11 +515,12 @@ otf_filter_reason
 * Backtest, grid search, walk-forward pages updated.
 * Session state keys: `otf_filter_result`, `otf_filter_summary`, `otf_candidate_signals`, `otf_accepted_signals`, `otf_rejected_signals`, `backtest_otf_filter`, `grid_otf_filter`, `walk_forward_otf_filter`.
 * Walk-forward fold-local OTF: `train_df` used as source for train signals, `test_df` for test signals.
+* `_filter_fold_signals_with_otf()` private helper in `walk_forward.py` handles insufficient fold history by catching `ValueError` and rejecting all candidates as unknown. Invalid config propagates.
 * OTF fold metadata columns added to `_RESULT_COLUMNS` in `walk_forward.py`.
 
 ## Phase 8 — Reporting and exports
 
-**Status:** Complete (PR 5)
+**Status:** Complete (PR 5, hardened in PR 5 follow-up)
 
 ### Work items
 
@@ -528,6 +532,8 @@ otf_filter_reason
 - [x] Add rejected-signal table or export.
 - [x] Include OTF algorithm version and configuration hash in research artifacts.
 - [x] Distinguish disabled filtering from zero-pass filtering.
+- [x] Render `None` counts as `—` instead of `"None"` when partial metadata is available (e.g., only walk-forward OTF data present).
+- [x] Preserve zero counts as `0`, not `—`.
 
 ### Acceptance criteria
 
@@ -537,10 +543,12 @@ A user can determine exactly:
 - [x] Which timeframes were used.
 - [x] Which algorithm version was used.
 - [x] How many signals were rejected and why.
+- [x] Partial metadata (e.g., only walk-forward scope ran) renders unavailable counts as `—`, not `None`.
 
 ### Implementation Notes
 
 * `build_otf_filter_metadata()` added to `thesistester/reporting.py`.
+* `_dash_if_none()` helper added to `thesistester/reporting.py`; used by `_otf_markdown_section()` and imported by `pages/11_Report_Export.py`.
 * `build_research_artifact()` includes an `"otf_filter"` section and `"otf_rejected_signals"` table.
 * `build_markdown_report()` includes an OTF summary section via `_otf_markdown_section()`.
 * Report/Export page (`pages/11_Report_Export.py`) adds OTF checklist and rejected-signal CSV download.
@@ -775,7 +783,7 @@ python3 -m pytest tests/ -q
 - `pages/8_Grid_Search.py` (OTF filter before grid)
 - `pages/10_Validation.py` (OTF config forwarded to walk-forward)
 - `pages/11_Report_Export.py` (OTF checklist + rejected-signal export)
-- `tests/test_otf_integration.py` (61 integration tests)
+- `tests/test_otf_integration.py` (76 integration tests)
 - `docs/otf-filter.md`
 - `docs/otf-filter-roadmap.md`
 
@@ -789,15 +797,26 @@ python3 -m pytest tests/ -q
 - OTF rejections kept distinct from exposure-policy skips and 3c void status.
 - Disabled path: `simulate_trades()`, grid, and walk-forward receive exactly the same signals as before PR 5.
 
-**PR 5 verified evidence:**
+**PR 5 follow-up hardening decisions:**
+
+- `OtfFilterResult` is now `frozen=True`; attribute reassignment raises `FrozenInstanceError`. DataFrame attributes remain internally mutable, but slot references are frozen.
+- Unused `field` import removed from `otf_integration.py`.
+- `pages/10_Validation.py`: `resolve_otf_config()` moved inside the `try` block. Invalid explicit OTF config shows `"OTF filter configuration error: <details>"` and does not install stale walk-forward results. Walk-forward execution errors continue to show `"Walk-forward diagnostics error: <details>"`.
+- `walk_forward.py`: `_filter_fold_signals_with_otf()` private helper added. Fold-local OTF with insufficient source history (< 2 bars) catches `ValueError` and rejects all fold candidates as OTF `unknown`. Only expected OTF interval/insufficiency errors are caught; programming errors propagate. Invalid config `ValueError` propagates before reaching the helper.
+- `reporting.py`: `_dash_if_none()` helper added. `_otf_markdown_section()` uses it to render `None` as `—` for algorithm version, counts, and config hash. Zero counts render as `0`.
+- `pages/11_Report_Export.py`: OTF caption uses `_dash_if_none()` for accepted/rejected/candidate counts. Partial metadata (e.g., only walk-forward OTF data) renders as `—` instead of `None`.
+
+**PR 5 verified evidence (after follow-up hardening):**
 
 ```text
-python3 -m pytest tests/test_otf_integration.py -q
-# 61 passed in 1.53s
+python3 -m pytest tests/test_otf_integration.py tests/test_otf_filter.py tests/test_otf.py tests/test_setup_config.py tests/test_walk_forward.py tests/test_phase9_reporting.py -q
+# 380 passed
 
-python3 -m pytest tests/ -q
-# 1455 passed in 33.47s
+python3 -m pytest tests/test_otf_integration.py -q
+# 76 passed (61 original + 15 follow-up)
 ```
+
+*Note: `test_local_store.py` failures are pre-existing missing-dependency failures (pyarrow/fastparquet) unrelated to OTF.*
 
 ### PR 6 — Validation and release
 
