@@ -258,12 +258,12 @@ def run_walk_forward_sl_tp(
     # (e.g. enabled=True with no timeframes, unsupported timeframe).  This
     # ensures invalid config is caught once, up front, rather than being
     # silently converted into "all-rejected" fold results.
-    _otf_normalized_config: dict[str, Any] | None = None
+    otf_normalized_config: dict[str, Any] | None = None
     if isinstance(otf_config, dict):
-        _otf_normalized_config = normalize_otf_filter_config(otf_config)
+        otf_normalized_config = normalize_otf_filter_config(otf_config)
     _otf_enabled = (
-        _otf_normalized_config is not None
-        and bool(_otf_normalized_config.get("enabled", False))
+        otf_normalized_config is not None
+        and bool(otf_normalized_config.get("enabled", False))
     )
 
     n_bars = int(len(df))
@@ -302,12 +302,12 @@ def run_walk_forward_sl_tp(
         test_otf_accepted = test_otf_candidate
         test_otf_rejected = 0
 
-        if _otf_enabled and _otf_normalized_config is not None:
+        if _otf_enabled and otf_normalized_config is not None:
             # Apply OTF to train signals using train OHLCV only
             train_signals, train_otf_rejected, train_otf_candidate = _filter_fold_signals_with_otf(
                 fold_df=train_df,
                 fold_signals=train_signals,
-                otf_config=_otf_normalized_config,
+                otf_config=otf_normalized_config,
                 session_timezone=session_timezone,
             )
             train_otf_accepted = int(len(train_signals))
@@ -316,7 +316,7 @@ def run_walk_forward_sl_tp(
             test_signals, test_otf_rejected, test_otf_candidate = _filter_fold_signals_with_otf(
                 fold_df=test_df,
                 fold_signals=test_signals,
-                otf_config=_otf_normalized_config,
+                otf_config=otf_normalized_config,
                 session_timezone=session_timezone,
             )
             test_otf_accepted = int(len(test_signals))
