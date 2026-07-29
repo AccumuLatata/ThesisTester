@@ -63,6 +63,10 @@ Manual Signals controls remain unchanged and backtest behavior is unchanged.
 - [Assumptions & limitations](docs/ASSUMPTIONS_AND_LIMITATIONS.md)
 - [Metrics glossary](docs/METRICS_GLOSSARY.md)
 - [Agent guide](docs/AGENT_GUIDE.md)
+- Research & planning:
+  - [SOTA backtesting landscape](docs/SOTA_BACKTESTING_LANDSCAPE.md)
+  - [ThesisTester repository analysis](docs/THESISTESTER_ANALYSIS.md)
+  - [Engineering proposal & roadmap](docs/ENGINEERING_PROPOSAL.md)
 
 ## Save-as-default execution settings
 
