@@ -26,6 +26,8 @@ The proposal: **do not chase the incumbents' breadth** (replay, live trading, st
 
 From the landscape research (`docs/SOTA_BACKTESTING_LANDSCAPE.md` §9): **no single product combines** programmatic volume-profile/level primitives, realistic intraday fills, MAE/MFE-driven SL/TP tooling, and modern overfitting batteries. StrategyQuant X + AmiBroker/RealTest lead on validation; Sierra/ATAS own replay realism; LEAN/Nautilus own execution modeling. ThesisTester's defensible position is the intersection: a levels engine + session-aware event studies + statistical validation, purpose-built for the ES/NQ confluence-setups research loop.
 
+Benchmark classes follow the landscape's framing (`§1.1`): ThesisTester is a **quantitative setup-research tool**, so every roadmap milestone below is benchmarked against quant engines, robustness specialists, and the *analyzer subsystems* of retail platforms (Strategy Analyzer, WFO, Portfolio Maestro, Bar Magnifier) — never against chart/replay features, which are anti-scope (§2.2).
+
 ### 2.2 Explicit non-goals (anti-roadmap)
 
 These are SOTA capabilities we recommend **never** building, with reasons:

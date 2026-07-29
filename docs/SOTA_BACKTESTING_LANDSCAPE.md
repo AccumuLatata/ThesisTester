@@ -4,6 +4,7 @@
 **Date:** 2026-07-29
 **Method:** 40+ web searches (July 2026), prioritizing vendor documentation and 2024–2026 sources. Load-bearing claims carry inline citations. Capabilities not confirmed in cited sources are marked approximate.
 **Scope:** Features that current best-in-class backtesting software offers intraday futures daytraders, with emphasis on E-mini S&P (ES) and E-mini Nasdaq (NQ) research workflows.
+**Framing note:** "Backtesting software" covers two materially different product categories — chart/replay platforms and quantitative research tools. See §1.1 for the distinction and the comparator weighting used throughout; the rankings in §9 apply that filter.
 
 Related documents:
 
@@ -29,6 +30,26 @@ The clearest capability gaps separating leaders from the pack:
 - **First-class volume-profile / VWAP / delta primitives** accessible from strategy code.
 - **Walk-forward + Monte Carlo + overfitting-detection batteries** (PBO, deflated Sharpe, noise tests).
 - **Multi-strategy portfolio-level capital modeling.**
+
+---
+
+### 1.1 Framing — two meanings of "backtesting software"
+
+The term spans a spectrum whose ends are different product categories:
+
+1. **Chart-centric trading platforms** (NinjaTrader and TradingView charting, TradeStation charts, Sierra Chart, and Tier D order-flow tools). Core loop is visual and discretionary: watch price action, replay sessions, practice or verify setups by hand, optionally run an automated strategy on a chart. Their "backtesting" is often synonymous with *replay* — re-feeding history for manual or single-strategy simulated trading.
+2. **Quantitative strategy-research tools** (StrategyQuant X, Build Alpha, RealTest, Adaptrade Builder, AmiBroker's analysis layer, VectorBT, QuantConnect research — plus the *analyzer subsystems* embedded in Tier-A platforms: NinjaTrader's Strategy Analyzer, TradeStation's Walk-Forward Optimizer and Portfolio Maestro, MultiCharts' Portfolio Trader, TradingView's Deep Backtesting). Core loop is enumerative and statistical: codify a setup precisely, batch-simulate it over months/years of history across parameter grids, and interrogate the outcome distribution with validation science (walk-forward, Monte Carlo, overfitting corrections).
+
+**ThesisTester belongs squarely to category 2** — a quantitative setup-research tool: fixed SL/TP grids over months of 1-minute ES/NQ data, confluence-level event studies, statistical validation. It is not a replay/charting platform, and its charts are inspection UI, not the research method.
+
+Comparator weighting used in this document:
+
+- **Tiers B and C are the primary benchmarks** for ThesisTester (quant engines and robustness/validation specialists).
+- **Tier A matters only through its analyzer/optimizer/validation subsystems** (Strategy Analyzer, WFO, Portfolio Maestro, Bar Magnifier, Deep Backtesting) — not through its charting, replay, or brokerage sides. Those subsystems are quantitative research tools that happen to live inside chart platforms, and several are directly comparable to ThesisTester's grid/validation layer.
+- **Tier D (order-flow replay)** is relevant only as (a) a manual-mechanics verification complement for shortlisted setups and (b) explicit anti-scope — see the proposal's non-goals (`docs/ENGINEERING_PROPOSAL.md` §2.2).
+- **Tier E (AI/agentic workflows)** is a directional signal for how quant research loops are increasingly operated (headless, agent-driven), not a feature source.
+
+The full market map is retained below for completeness — knowing what the replay/chart category contains is what makes the anti-scope decision informed rather than accidental — but §9's ranked priorities and the proposal's roadmap are weighted by this framing.
 
 ---
 

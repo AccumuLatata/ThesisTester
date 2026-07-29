@@ -30,6 +30,8 @@ Its distinguishing strength is **engineering discipline unusual for a solo resea
 | Analytics depth | 6 | Strong trade-statistics (R6) incl. MAE/MFE capture; MAE/MFE *analytics* not surfaced |
 | Workflow/automation | 3 | Streamlit multipage only; no CLI/headless API, no batch experiments, no replay |
 
+**Comparator note:** the "vs SOTA" scores weight the quantitative-research tier (StrategyQuant X, Build Alpha, RealTest, AmiBroker, VectorBT, LEAN) and the analyzer subsystems of retail platforms more heavily than chart/replay tooling, per the framing in `docs/SOTA_BACKTESTING_LANDSCAPE.md` §1.1. ThesisTester is a quantitative setup-research tool, not a replay platform; "no replay" above is recorded as a workflow fact, not scored as a deficiency against order-flow replay tools.
+
 ---
 
 ## 2. Repository snapshot
