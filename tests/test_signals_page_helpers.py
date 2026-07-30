@@ -3,9 +3,9 @@
 We import the helpers by loading the module source directly so we avoid
 triggering Streamlit runtime side-effects that occur at page import time.
 """
+
 from __future__ import annotations
 
-import importlib
 import json
 import sys
 import types
@@ -19,6 +19,7 @@ import pytest
 # Streamlit server.
 # ---------------------------------------------------------------------------
 
+
 def _make_streamlit_stub() -> types.ModuleType:
     st = types.ModuleType("streamlit")
 
@@ -26,10 +27,27 @@ def _make_streamlit_stub() -> types.ModuleType:
         pass
 
     for name in (
-        "title", "header", "subheader", "info", "warning", "error",
-        "success", "caption", "stop", "spinner", "dataframe", "metric",
-        "plotly_chart", "checkbox", "toggle", "radio", "selectbox",
-        "multiselect", "number_input", "slider", "button",
+        "title",
+        "header",
+        "subheader",
+        "info",
+        "warning",
+        "error",
+        "success",
+        "caption",
+        "stop",
+        "spinner",
+        "dataframe",
+        "metric",
+        "plotly_chart",
+        "checkbox",
+        "toggle",
+        "radio",
+        "selectbox",
+        "multiselect",
+        "number_input",
+        "slider",
+        "button",
     ):
         setattr(st, name, _noop)
 
@@ -50,8 +68,10 @@ def _make_streamlit_stub() -> types.ModuleType:
     class _Ctx:
         def __enter__(self):
             return self
+
         def __exit__(self, *a):
             pass
+
         def __getattr__(self, item):
             return _noop
 
@@ -65,7 +85,9 @@ def _import_page_helpers():
     stub = _make_streamlit_stub()
     sys.modules.setdefault("streamlit", stub)
 
-    import importlib.util, pathlib
+    import importlib.util
+    import pathlib
+
     page_path = pathlib.Path(__file__).parent.parent / "pages" / "6_Signals.py"
     spec = importlib.util.spec_from_file_location("signals_page", page_path)
     mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
@@ -197,10 +219,24 @@ def test_parse_single_valid_rule():
 
 def test_parse_multiple_rules_per_zone():
     rules = [
-        {"level": "VWAP", "price": 4499.0, "tolerance_ticks": 4, "distance_ticks": 1.0,
-         "required": True, "valid": True, "reason": "ok"},
-        {"level": "pdLow", "price": 4495.0, "tolerance_ticks": 8, "distance_ticks": 20.0,
-         "required": False, "valid": False, "reason": "too far"},
+        {
+            "level": "VWAP",
+            "price": 4499.0,
+            "tolerance_ticks": 4,
+            "distance_ticks": 1.0,
+            "required": True,
+            "valid": True,
+            "reason": "ok",
+        },
+        {
+            "level": "pdLow",
+            "price": 4495.0,
+            "tolerance_ticks": 8,
+            "distance_ticks": 20.0,
+            "required": False,
+            "valid": False,
+            "reason": "too far",
+        },
     ]
     df = _zones(rule_results=[json.dumps(rules)])
     result = _parse_anchor_rule_results(df)
@@ -209,8 +245,15 @@ def test_parse_multiple_rules_per_zone():
 
 
 def test_parse_multiple_zones():
-    rule = {"level": "VWAP", "price": 4500.0, "tolerance_ticks": 4, "distance_ticks": 1.0,
-            "required": True, "valid": True, "reason": "ok"}
+    rule = {
+        "level": "VWAP",
+        "price": 4500.0,
+        "tolerance_ticks": 4,
+        "distance_ticks": 1.0,
+        "required": True,
+        "valid": True,
+        "reason": "ok",
+    }
     df = pd.DataFrame(
         {
             "timestamp": [
@@ -241,8 +284,19 @@ def test_parse_malformed_json_skips_row():
             "valid_confluence_count": [1, 1],
             "rule_results": [
                 "not-valid-json{{{",
-                json.dumps([{"level": "VWAP", "price": 4500.0, "tolerance_ticks": 4,
-                             "distance_ticks": 1.0, "required": True, "valid": True, "reason": "ok"}]),
+                json.dumps(
+                    [
+                        {
+                            "level": "VWAP",
+                            "price": 4500.0,
+                            "tolerance_ticks": 4,
+                            "distance_ticks": 1.0,
+                            "required": True,
+                            "valid": True,
+                            "reason": "ok",
+                        }
+                    ]
+                ),
             ],
         }
     )
@@ -259,14 +313,30 @@ def test_parse_none_json_skips_row():
 
 
 def test_parse_result_columns():
-    rule = {"level": "VWAP", "price": 4500.0, "tolerance_ticks": 4, "distance_ticks": 1.0,
-            "required": True, "valid": True, "reason": "ok"}
+    rule = {
+        "level": "VWAP",
+        "price": 4500.0,
+        "tolerance_ticks": 4,
+        "distance_ticks": 1.0,
+        "required": True,
+        "valid": True,
+        "reason": "ok",
+    }
     df = _zones(rule_results=[json.dumps([rule])])
     result = _parse_anchor_rule_results(df)
     expected = {
-        "zone_row", "timestamp", "bar_index", "anchor_level", "anchor_price",
-        "rule_level", "rule_price", "distance_ticks", "tolerance_ticks",
-        "required", "valid", "reason",
+        "zone_row",
+        "timestamp",
+        "bar_index",
+        "anchor_level",
+        "anchor_price",
+        "rule_level",
+        "rule_price",
+        "distance_ticks",
+        "tolerance_ticks",
+        "required",
+        "valid",
+        "reason",
     }
     assert expected.issubset(set(result.columns))
 
@@ -280,7 +350,10 @@ def test_saved_setup_caption_global_mode():
             "max_confluences": 5,
         }
     )
-    assert caption == "Trigger=touch • Direction=both • Confluences=2–5 • Trigger TF=base • OTF=disabled"
+    assert (
+        caption
+        == "Trigger=touch • Direction=both • Confluences=2–5 • Trigger TF=base • OTF=disabled"
+    )
 
 
 def test_saved_setup_caption_anchor_mode():
@@ -335,7 +408,11 @@ def test_saved_setup_option_label_includes_dataset_relation():
             "instrument": "ES",
             "updated_at": "2026-06-07T00:00:00Z",
             "dataset_id": None,
-            "setup_config": {"confluence_mode": "global_cluster", "trigger": "touch", "direction": "both"},
+            "setup_config": {
+                "confluence_mode": "global_cluster",
+                "trigger": "touch",
+                "direction": "both",
+            },
         },
         "dataset-a",
     )
@@ -549,6 +626,7 @@ def test_generation_blockers_missing_available_level_references():
 # _normalize_3c_params — safe coercion tests
 # ---------------------------------------------------------------------------
 
+
 def test_normalize_3c_params_none_returns_defaults():
     result = _normalize_3c_params(None)
     assert result["entry_retrace_ticks"] == 4.0
@@ -576,7 +654,9 @@ def test_normalize_3c_params_bad_max_wait_bars_returns_default():
 
 
 def test_normalize_3c_params_valid_values_are_preserved():
-    result = _normalize_3c_params({"entry_retrace_ticks": 6.0, "max_entry_wait_bars_after_reversal": 10})
+    result = _normalize_3c_params(
+        {"entry_retrace_ticks": 6.0, "max_entry_wait_bars_after_reversal": 10}
+    )
     assert result["entry_retrace_ticks"] == 6.0
     assert result["max_entry_wait_bars_after_reversal"] == 10
 
@@ -588,7 +668,7 @@ def test_normalize_3c_params_valid_values_are_preserved():
 _MALFORMED_GLOBAL_SETUP = {
     "name": "Bad setup",
     "confluence_mode": "global_cluster",
-    "selected_levels": "ONH",        # wrong type — should be list
+    "selected_levels": "ONH",  # wrong type — should be list
     "tolerance_ticks": "bad",
     "min_confluences": "bad",
     "max_confluences": "bad",
@@ -597,14 +677,14 @@ _MALFORMED_GLOBAL_SETUP = {
     "trigger": "3c",
     "trigger_timeframe": "base",
     "direction": "both",
-    "trigger_params": "bad",         # wrong type — should be dict
+    "trigger_params": "bad",  # wrong type — should be dict
 }
 
 _MALFORMED_ANCHOR_SETUP = {
     "name": "Bad anchor setup",
     "confluence_mode": "anchor_rules",
     "anchor_level": "ONH",
-    "confluence_rules": None,        # wrong type — should be list
+    "confluence_rules": None,  # wrong type — should be list
     "min_valid_confluences": "bad",
     "trigger": "touch",
     "trigger_timeframe": "base",
@@ -627,6 +707,7 @@ def test_generation_blockers_malformed_anchor_setup_does_not_crash():
 # ---------------------------------------------------------------------------
 # Safe coercion helpers
 # ---------------------------------------------------------------------------
+
 
 def test_safe_float_none_returns_default():
     assert _safe_float(None, 4.0) == 4.0
@@ -685,6 +766,7 @@ def test_safe_list_non_list_returns_empty():
 # _normalize_signal_settings_for_hash / _try_normalize_signal_settings_for_hash
 # OTF identity strictness tests
 # ---------------------------------------------------------------------------
+
 
 def _base_signal_settings(**overrides) -> dict:
     settings = {
@@ -811,6 +893,7 @@ def test_try_normalize_alias_and_canonical_enabled_produce_same_hash():
 # _resolve_loaded_signal_identity tests
 # ---------------------------------------------------------------------------
 
+
 def _valid_loaded_settings(**overrides) -> dict:
     settings = _base_signal_settings()
     settings.update(overrides)
@@ -917,6 +1000,7 @@ def test_resolve_loaded_identity_does_not_mutate_input():
 # ---------------------------------------------------------------------------
 # _validate_signal_artifact_identity_for_save tests
 # ---------------------------------------------------------------------------
+
 
 def _trusted_session_state(settings_override=None) -> dict:
     """Return a session state dict representing a trusted artifact."""
@@ -1057,9 +1141,11 @@ def test_validate_save_both_paths_use_same_helper():
 # Regression: existing hash and normalization behavior unchanged
 # ---------------------------------------------------------------------------
 
+
 def test_regression_strict_compute_signal_settings_hash_still_raises_on_invalid_otf():
     """Existing strict behavior: invalid explicit OTF raises ValueError."""
     from thesistester.persistence.local_store import compute_signal_settings_hash
+
     settings = _base_signal_settings()
     settings["otf_filter"] = {"enabled": True, "timeframes": []}
     with pytest.raises(ValueError):
@@ -1069,13 +1155,18 @@ def test_regression_strict_compute_signal_settings_hash_still_raises_on_invalid_
 def test_regression_missing_otf_still_hashes_as_disabled():
     """Existing behavior: missing otf_filter hashes as canonical disabled."""
     from thesistester.persistence.local_store import compute_signal_settings_hash
+
     missing = _base_signal_settings()
     missing.pop("otf_filter", None)
     disabled = _base_signal_settings()
     disabled["otf_filter"] = {
-        "enabled": False, "timeframes": [], "alignment_mode": "all",
-        "minimum_consecutive_bars": 3, "directional": True,
-        "use_completed_bars_only": True, "session_reset": "session",
+        "enabled": False,
+        "timeframes": [],
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": 3,
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
     }
     assert compute_signal_settings_hash(missing) == compute_signal_settings_hash(disabled)
 
@@ -1083,10 +1174,15 @@ def test_regression_missing_otf_still_hashes_as_disabled():
 def test_regression_valid_alias_and_canonical_still_equivalent():
     """Existing behavior: alias and canonical timeframe labels hash identically."""
     from thesistester.persistence.local_store import compute_signal_settings_hash
+
     base_otf = {
-        "enabled": True, "timeframes": ["15m"], "alignment_mode": "all",
-        "minimum_consecutive_bars": 3, "directional": True,
-        "use_completed_bars_only": True, "session_reset": "session",
+        "enabled": True,
+        "timeframes": ["15m"],
+        "alignment_mode": "all",
+        "minimum_consecutive_bars": 3,
+        "directional": True,
+        "use_completed_bars_only": True,
+        "session_reset": "session",
     }
     canonical = _base_signal_settings()
     canonical["otf_filter"] = base_otf

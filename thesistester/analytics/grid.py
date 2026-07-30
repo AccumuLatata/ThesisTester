@@ -9,6 +9,7 @@ assumptions are preserved exactly.
 Phase 2 extends each grid row with directional (long/short) metrics and
 balanced weaker-side summary columns computed from the same simulated trades.
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -181,14 +182,10 @@ def run_sl_tp_grid(
 
     for sl in sl_values:
         if sl <= 0:
-            raise ValueError(
-                f"All stop_loss_ticks values must be > 0; got {sl!r}."
-            )
+            raise ValueError(f"All stop_loss_ticks values must be > 0; got {sl!r}.")
     for tp in tp_values:
         if tp <= 0:
-            raise ValueError(
-                f"All take_profit_ticks values must be > 0; got {tp!r}."
-            )
+            raise ValueError(f"All take_profit_ticks values must be > 0; got {tp!r}.")
 
     rows: list[dict] = []
     for sl in sl_values:
@@ -226,9 +223,11 @@ def run_sl_tp_grid(
             }
             rows.append(row)
 
-    return pd.DataFrame(rows).sort_values(
-        ["stop_loss_ticks", "take_profit_ticks"]
-    ).reset_index(drop=True)
+    return (
+        pd.DataFrame(rows)
+        .sort_values(["stop_loss_ticks", "take_profit_ticks"])
+        .reset_index(drop=True)
+    )
 
 
 def best_grid_result(

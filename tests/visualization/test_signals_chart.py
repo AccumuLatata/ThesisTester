@@ -184,7 +184,9 @@ def test_signals_chart_handles_none_and_empty_signals():
 
 
 def test_signals_chart_adds_single_confluence_zone_trace():
-    fig = build_signals_chart(_levels_df(), _signals_df(), ["L1"], confluence_zones=_zones_df(), use_candles=False)
+    fig = build_signals_chart(
+        _levels_df(), _signals_df(), ["L1"], confluence_zones=_zones_df(), use_candles=False
+    )
 
     zone_trace = _trace_by_name(fig, "Confluence zones")
     assert zone_trace.mode == "lines"

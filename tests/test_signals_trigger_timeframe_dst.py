@@ -1,4 +1,5 @@
 """Regression tests for trigger-timeframe handling across DST boundaries."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -59,9 +60,14 @@ def test_generate_signals_non_base_trigger_timeframe_is_dst_safe():
 
     assert isinstance(signals, pd.DataFrame)
     assert not signals.empty
-    assert {"signal_id", "timestamp", "trigger_timestamp", "trigger_timeframe", "trigger", "direction"}.issubset(
-        signals.columns
-    )
+    assert {
+        "signal_id",
+        "timestamp",
+        "trigger_timestamp",
+        "trigger_timeframe",
+        "trigger",
+        "direction",
+    }.issubset(signals.columns)
     assert set(signals["trigger_timeframe"]) == {"5min"}
 
 

@@ -9,9 +9,9 @@ Each test follows the same pattern:
 
 This verifies that no future data leaks backward into historical bars.
 """
+
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -33,7 +33,9 @@ TICK = 0.25  # ES tick size
 # ---------------------------------------------------------------------------
 
 
-def _ohlcv_bar(ts: pd.Timestamp, open_: float, high: float, low: float, close: float, vol: float) -> dict:
+def _ohlcv_bar(
+    ts: pd.Timestamp, open_: float, high: float, low: float, close: float, vol: float
+) -> dict:
     return {"timestamp": ts, "open": open_, "high": high, "low": low, "close": close, "volume": vol}
 
 
@@ -52,7 +54,9 @@ def _standard_bars(start_date: str, n: int, base_price: float = 4000.0) -> list[
     ts = pd.Timestamp(f"{start_date} 09:30:00", tz=TZ)
     for i in range(n):
         p = base_price + i * 0.5
-        bars.append(_ohlcv_bar(ts + pd.Timedelta(minutes=i), p, p + 0.25, p - 0.25, p + 0.1, 100.0 + i))
+        bars.append(
+            _ohlcv_bar(ts + pd.Timedelta(minutes=i), p, p + 0.25, p - 0.25, p + 0.1, 100.0 + i)
+        )
     return bars
 
 
@@ -83,7 +87,9 @@ def test_prior_session_levels_future_shock():
 
     # T = last bar of day 2
     T = base["timestamp"].iloc[-1]
-    out_before = result_base[result_base["timestamp"] <= T][["timestamp", "pdHigh", "pdLow", "pdOpen", "pdEQ"]].copy()
+    out_before = result_base[result_base["timestamp"] <= T][
+        ["timestamp", "pdHigh", "pdLow", "pdOpen", "pdEQ"]
+    ].copy()
 
     # Future shock: add day 3 with extreme values
     day3_extreme = _extreme_future_bars(T, n=10)
@@ -91,7 +97,9 @@ def test_prior_session_levels_future_shock():
     extended = tag_session(extended)
     result_extended = compute_session_levels(extended, instrument="ES")
 
-    out_after = result_extended[result_extended["timestamp"] <= T][["timestamp", "pdHigh", "pdLow", "pdOpen", "pdEQ"]].copy()
+    out_after = result_extended[result_extended["timestamp"] <= T][
+        ["timestamp", "pdHigh", "pdLow", "pdOpen", "pdEQ"]
+    ].copy()
 
     pd.testing.assert_frame_equal(
         out_before.reset_index(drop=True),
@@ -223,8 +231,12 @@ def _profile_bars(date: str, prices: list[float], volumes: list[float]) -> list[
 def test_prior_day_profile_future_shock():
     """Prior-day profile levels (pdVAH/pdVAL/pdPOC) at T must not change
     when future bars from day D+1 (or later) are appended."""
-    day1 = _profile_bars("2026-06-02", [4000.0, 4005.0, 4010.0, 4005.0], [200.0, 500.0, 300.0, 400.0])
-    day2 = _profile_bars("2026-06-03", [4010.0, 4015.0, 4008.0, 4012.0], [150.0, 600.0, 250.0, 350.0])
+    day1 = _profile_bars(
+        "2026-06-02", [4000.0, 4005.0, 4010.0, 4005.0], [200.0, 500.0, 300.0, 400.0]
+    )
+    day2 = _profile_bars(
+        "2026-06-03", [4010.0, 4015.0, 4008.0, 4012.0], [150.0, 600.0, 250.0, 350.0]
+    )
 
     base = _build_df(day1 + day2)
     r_base = compute_profile_levels(base, instrument="ES")
@@ -278,14 +290,22 @@ def test_prior_week_profile_future_shock():
     week2_rows_ext = r_ext[r_ext["timestamp"].dt.date == pd.Timestamp("2026-06-08").date()]
     pw_after = week2_rows_ext[["pwVAH", "pwVAL", "pwPOC"]].dropna(subset=["pwPOC"]).iloc[0]
 
-    assert pw_before["pwPOC"] == pytest.approx(pw_after["pwPOC"]), "pwPOC changed after future bars appended"
-    assert pw_before["pwVAH"] == pytest.approx(pw_after["pwVAH"]), "pwVAH changed after future bars appended"
-    assert pw_before["pwVAL"] == pytest.approx(pw_after["pwVAL"]), "pwVAL changed after future bars appended"
+    assert pw_before["pwPOC"] == pytest.approx(pw_after["pwPOC"]), (
+        "pwPOC changed after future bars appended"
+    )
+    assert pw_before["pwVAH"] == pytest.approx(pw_after["pwVAH"]), (
+        "pwVAH changed after future bars appended"
+    )
+    assert pw_before["pwVAL"] == pytest.approx(pw_after["pwVAL"]), (
+        "pwVAL changed after future bars appended"
+    )
 
 
 def test_rolling_poc_future_shock():
     """Rolling POC at bar T must not change when future bars are appended."""
-    bars = _profile_bars("2026-06-02", [4000.0, 4005.0, 4010.0, 4008.0, 4003.0], [100.0, 300.0, 200.0, 400.0, 150.0])
+    bars = _profile_bars(
+        "2026-06-02", [4000.0, 4005.0, 4010.0, 4008.0, 4003.0], [100.0, 300.0, 200.0, 400.0, 150.0]
+    )
 
     base = _build_df(bars)
     r_base = compute_profile_levels(base, instrument="ES", rolling_windows=["1h"])
@@ -359,7 +379,9 @@ def test_naked_flags_future_shock():
     # Manually inject a constant level column
     base["test_level"] = 4010.0
 
-    r_base = flag_naked_levels(base, level_columns=["test_level"], tick_size=TICK, touch_tolerance_ticks=0)
+    r_base = flag_naked_levels(
+        base, level_columns=["test_level"], tick_size=TICK, touch_tolerance_ticks=0
+    )
     naked_before = r_base["test_level_naked"].tolist()
 
     assert all(naked_before), "Level at 4010 should be naked in all base bars (price < 4010)"
@@ -375,7 +397,9 @@ def test_naked_flags_future_shock():
     # Propagate the level column to future bars
     extended["test_level"] = 4010.0
 
-    r_ext = flag_naked_levels(extended, level_columns=["test_level"], tick_size=TICK, touch_tolerance_ticks=0)
+    r_ext = flag_naked_levels(
+        extended, level_columns=["test_level"], tick_size=TICK, touch_tolerance_ticks=0
+    )
 
     naked_after = r_ext["test_level_naked"].iloc[: len(bars)].tolist()
 
@@ -429,7 +453,6 @@ def test_confluence_zones_future_shock():
         tolerance_ticks=2,
         min_confluences=2,
     )
-    timestamps_before = set(zones_before["timestamp"].tolist()) if not zones_before.empty else set()
 
     # Future shock: append bars with extreme levels
     T = base["timestamp"].iloc[-1]
@@ -448,7 +471,9 @@ def test_confluence_zones_future_shock():
     )
 
     # Zones at or before T must be the same
-    zones_after_before_T = zones_after[zones_after["timestamp"] <= T] if not zones_after.empty else pd.DataFrame()
+    zones_after_before_T = (
+        zones_after[zones_after["timestamp"] <= T] if not zones_after.empty else pd.DataFrame()
+    )
 
     if not zones_before.empty and not zones_after_before_T.empty:
         # Compare zone counts per bar
@@ -491,8 +516,12 @@ def test_anchor_confluence_future_shock():
         min_valid_confluences=1,
     )
 
-    before_T = zones_before[zones_before["timestamp"] <= T] if not zones_before.empty else pd.DataFrame()
-    after_T = zones_after[zones_after["timestamp"] <= T] if not zones_after.empty else pd.DataFrame()
+    before_T = (
+        zones_before[zones_before["timestamp"] <= T] if not zones_before.empty else pd.DataFrame()
+    )
+    after_T = (
+        zones_after[zones_after["timestamp"] <= T] if not zones_after.empty else pd.DataFrame()
+    )
 
     assert len(before_T) == len(after_T), (
         f"Anchor zone count for bars ≤ T changed: {len(before_T)} → {len(after_T)}"
@@ -544,11 +573,19 @@ def test_signals_touch_future_shock():
     extended = pd.concat([df, _build_df(future)], ignore_index=True)
 
     # Zones unchanged (still only at bar 2)
-    sigs_after = generate_signals(extended, zones, trigger="touch", direction="both", tick_size=TICK)
+    sigs_after = generate_signals(
+        extended, zones, trigger="touch", direction="both", tick_size=TICK
+    )
 
     # Signals at or before T must be the same
-    sigs_before_T = sigs_before[sigs_before["bar_index"] < len(bars)] if not sigs_before.empty else pd.DataFrame()
-    sigs_after_T = sigs_after[sigs_after["bar_index"] < len(bars)] if not sigs_after.empty else pd.DataFrame()
+    sigs_before_T = (
+        sigs_before[sigs_before["bar_index"] < len(bars)]
+        if not sigs_before.empty
+        else pd.DataFrame()
+    )
+    sigs_after_T = (
+        sigs_after[sigs_after["bar_index"] < len(bars)] if not sigs_after.empty else pd.DataFrame()
+    )
 
     assert len(sigs_before_T) == len(sigs_after_T), (
         f"Signal count before T changed: {len(sigs_before_T)} → {len(sigs_after_T)}"
@@ -586,14 +623,16 @@ def test_confirm_3bar_not_backdated():
     df["base_end_timestamp"] = df["timestamp"]
     df["trigger_bar_end_timestamp"] = df["timestamp"]
 
-    zone = pd.Series({
-        "zone_low": 4004.5,
-        "zone_high": 4005.5,
-        "zone_mid": 4005.0,
-        "level_count": 2,
-        "level_names": "level_A|level_B",
-        "level_prices": "4004.5|4005.5",
-    })
+    zone = pd.Series(
+        {
+            "zone_low": 4004.5,
+            "zone_high": 4005.5,
+            "zone_mid": 4005.0,
+            "level_count": 2,
+            "level_names": "level_A|level_B",
+            "level_prices": "4004.5|4005.5",
+        }
+    )
 
     results = _check_confirm_3bar(
         df=df,
@@ -720,8 +759,16 @@ def test_3c_signals_before_T_unchanged_after_future_bars():
     )
 
     # Only compare signals whose bar_index falls within the original dataset
-    sigs_b = sigs_before[sigs_before["bar_index"] < len(bars)].reset_index(drop=True) if not sigs_before.empty else pd.DataFrame()
-    sigs_a = sigs_after[sigs_after["bar_index"] < len(bars)].reset_index(drop=True) if not sigs_after.empty else pd.DataFrame()
+    sigs_b = (
+        sigs_before[sigs_before["bar_index"] < len(bars)].reset_index(drop=True)
+        if not sigs_before.empty
+        else pd.DataFrame()
+    )
+    sigs_a = (
+        sigs_after[sigs_after["bar_index"] < len(bars)].reset_index(drop=True)
+        if not sigs_after.empty
+        else pd.DataFrame()
+    )
 
     assert len(sigs_b) == len(sigs_a), (
         f"3c signal count for bars ≤ T changed after future bars: {len(sigs_b)} → {len(sigs_a)}"

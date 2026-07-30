@@ -181,7 +181,9 @@ def _render_setup_summary(config: dict) -> None:
     st.markdown(f"**Instrument:** {config['instrument']}")
     st.markdown(f"**Description:** {config.get('description', '') or '-'}")
     st.markdown(f"**Mode:** {CONFLUENCE_MODE_DISPLAY.get(confluence_mode, confluence_mode)}")
-    st.markdown(f"**Selected levels ({len(config['selected_levels'])}):** {', '.join(config['selected_levels'])}")
+    st.markdown(
+        f"**Selected levels ({len(config['selected_levels'])}):** {', '.join(config['selected_levels'])}"
+    )
     if confluence_mode == "anchor_rules":
         st.markdown(f"**Anchor:** {config.get('anchor_level') or '-'}")
         st.markdown(f"**Rules:** {len(config.get('confluence_rules', []))}")
@@ -211,7 +213,9 @@ def _render_setup_summary(config: dict) -> None:
         st.warning(otf_resolve_warning)
     st.markdown("**OTF filter configuration:**")
     st.markdown(f"- Enabled: {otf_config['enabled']}")
-    st.markdown(f"- Timeframes: {', '.join(otf_config['timeframes']) if otf_config['timeframes'] else '(none)'}")
+    st.markdown(
+        f"- Timeframes: {', '.join(otf_config['timeframes']) if otf_config['timeframes'] else '(none)'}"
+    )
     st.markdown(f"- Alignment mode: {otf_config['alignment_mode']}")
     st.markdown(f"- Minimum consecutive bars: {otf_config['minimum_consecutive_bars']}")
     st.markdown(f"- Directional: {otf_config['directional']}")
@@ -233,7 +237,11 @@ def _newest_first_bucketed_setups(
 ) -> list[dict[str, Any]]:
     def _bucket(item: dict[str, Any]) -> int:
         dataset_id = item.get("dataset_id")
-        if isinstance(current_dataset_id, str) and current_dataset_id and dataset_id == current_dataset_id:
+        if (
+            isinstance(current_dataset_id, str)
+            and current_dataset_id
+            and dataset_id == current_dataset_id
+        ):
             return 0
         if dataset_id in (None, ""):
             return 1
@@ -245,7 +253,11 @@ def _newest_first_bucketed_setups(
 def _dataset_relation_label(setup_dataset_id: object, current_dataset_id: str | None) -> str:
     if setup_dataset_id in (None, ""):
         return "global/no dataset"
-    if isinstance(current_dataset_id, str) and current_dataset_id and setup_dataset_id == current_dataset_id:
+    if (
+        isinstance(current_dataset_id, str)
+        and current_dataset_id
+        and setup_dataset_id == current_dataset_id
+    ):
         return "current dataset"
     return "other dataset"
 
@@ -316,7 +328,9 @@ def _seed_editor_config(
     return seeded
 
 
-def _unavailable_level_references(config: dict[str, Any], level_columns: list[str]) -> dict[str, list[str]]:
+def _unavailable_level_references(
+    config: dict[str, Any], level_columns: list[str]
+) -> dict[str, list[str]]:
     mode = _safe_confluence_mode_fallback(config.get("confluence_mode"))[0]
     if mode == "anchor_rules":
         missing_anchor: list[str] = []
@@ -343,13 +357,19 @@ def _unavailable_level_references(config: dict[str, Any], level_columns: list[st
         "anchor_level": [],
         "confluence_rules": [],
         "selected_levels": sorted(
-            {str(level) for level in selected_levels if str(level) and str(level) not in level_columns}
+            {
+                str(level)
+                for level in selected_levels
+                if str(level) and str(level) not in level_columns
+            }
         ),
     }
 
 
 def _has_unavailable_level_references(unavailable: dict[str, list[str]]) -> bool:
-    return any(unavailable.get(key) for key in ("anchor_level", "confluence_rules", "selected_levels"))
+    return any(
+        unavailable.get(key) for key in ("anchor_level", "confluence_rules", "selected_levels")
+    )
 
 
 def _render_setup_level_warnings(config: dict[str, Any], level_columns: list[str]) -> None:
@@ -369,7 +389,9 @@ def _render_setup_level_warnings(config: dict[str, Any], level_columns: list[str
         )
 
 
-def _sync_editor_widget_state(config: dict[str, Any], level_columns: list[str], *, overwrite: bool) -> list[str]:
+def _sync_editor_widget_state(
+    config: dict[str, Any], level_columns: list[str], *, overwrite: bool
+) -> list[str]:
     warnings: list[str] = []
 
     def _assign(key: str, value: Any) -> None:
@@ -393,7 +415,9 @@ def _sync_editor_widget_state(config: dict[str, Any], level_columns: list[str], 
 
     selected_levels = config.get("selected_levels")
     if isinstance(selected_levels, list):
-        selected_level_seed = [str(level) for level in selected_levels if str(level) in level_columns]
+        selected_level_seed = [
+            str(level) for level in selected_levels if str(level) in level_columns
+        ]
     else:
         selected_level_seed = default_selected_levels(level_columns)
         warnings.append("Loaded selected levels are invalid; using default level selection.")
@@ -452,7 +476,9 @@ def _sync_editor_widget_state(config: dict[str, Any], level_columns: list[str], 
             )
             required_value = bool(rule.get("required", False))
             if tol_fallback:
-                warnings.append(f"Loaded tolerance for confluence rule '{level}' is invalid; using a safe value.")
+                warnings.append(
+                    f"Loaded tolerance for confluence rule '{level}' is invalid; using a safe value."
+                )
             rule_defaults[level] = {
                 "tolerance_ticks": tol_value,
                 "required": required_value,
@@ -491,7 +517,9 @@ def _sync_editor_widget_state(config: dict[str, Any], level_columns: list[str], 
         warnings.append("Loaded trigger is invalid; falling back to touch.")
     _assign(WIDGET_KEY_TRIGGER, trigger)
 
-    trigger_timeframe, timeframe_fallback = _safe_trigger_timeframe_fallback(config.get("trigger_timeframe"))
+    trigger_timeframe, timeframe_fallback = _safe_trigger_timeframe_fallback(
+        config.get("trigger_timeframe")
+    )
     if timeframe_fallback:
         warnings.append("Loaded trigger timeframe is invalid; falling back to base.")
     _assign(
@@ -530,13 +558,19 @@ def _sync_editor_widget_state(config: dict[str, Any], level_columns: list[str], 
         otf_config = normalize_otf_filter_config(config.get("otf_filter"))
     except ValueError:
         otf_config = normalize_otf_filter_config(None)
-        warnings.append("Loaded OTF filter settings are invalid; falling back to disabled defaults.")
+        warnings.append(
+            "Loaded OTF filter settings are invalid; falling back to disabled defaults."
+        )
     _assign(WIDGET_KEY_OTF_ENABLED, bool(otf_config.get("enabled", False)))
     _assign(WIDGET_KEY_OTF_TIMEFRAMES, list(otf_config.get("timeframes", [])))
     _assign(WIDGET_KEY_OTF_ALIGNMENT_MODE, str(otf_config.get("alignment_mode", "all")))
     _assign(
         WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS,
-        int(otf_config.get("minimum_consecutive_bars", DEFAULT_OTF_FILTER_CONFIG["minimum_consecutive_bars"])),
+        int(
+            otf_config.get(
+                "minimum_consecutive_bars", DEFAULT_OTF_FILTER_CONFIG["minimum_consecutive_bars"]
+            )
+        ),
     )
     _assign(WIDGET_KEY_OTF_DIRECTIONAL, True)
     _assign(WIDGET_KEY_OTF_COMPLETED_BARS_ONLY, True)
@@ -591,7 +625,9 @@ def _build_current_editor_config(
     setup_id = editor_seed.get("setup_id")
     if isinstance(setup_id, str) and setup_id:
         config["setup_id"] = setup_id
-    config["dataset_id"] = current_dataset_id if isinstance(current_dataset_id, str) and current_dataset_id else None
+    config["dataset_id"] = (
+        current_dataset_id if isinstance(current_dataset_id, str) and current_dataset_id else None
+    )
     return config
 
 
@@ -599,7 +635,9 @@ st.title("🧩 Setup Builder")
 st.caption("Configure and save reusable setup parameters for the Signals → Backtest workflow.")
 
 if "levels" not in st.session_state:
-    st.warning("No levels computed. Please load data on the Data page and compute levels on the Levels page first.")
+    st.warning(
+        "No levels computed. Please load data on the Data page and compute levels on the Levels page first."
+    )
     st.stop()
 
 levels_df = st.session_state["levels"]
@@ -674,13 +712,17 @@ saved_setups = _newest_first_bucketed_setups(
     list_saved_setups(),
     current_dataset_id=current_dataset_id,
 )
-saved_setup_options = {item["setup_id"]: item for item in saved_setups if isinstance(item.get("setup_id"), str)}
+saved_setup_options = {
+    item["setup_id"]: item for item in saved_setups if isinstance(item.get("setup_id"), str)
+}
 
 if saved_setup_options:
     selected_saved_setup_id = st.selectbox(
         "Local setup library",
         options=list(saved_setup_options),
-        format_func=lambda setup_id: _saved_setup_label(saved_setup_options[setup_id], current_dataset_id),
+        format_func=lambda setup_id: _saved_setup_label(
+            saved_setup_options[setup_id], current_dataset_id
+        ),
         key=WIDGET_KEY_SAVED_SETUP,
     )
     selected_saved_setup = saved_setup_options[selected_saved_setup_id]
@@ -718,9 +760,10 @@ if saved_setup_options:
         active = st.session_state.get("setup_config")
         if isinstance(active, dict) and active.get("setup_id") == selected_saved_setup_id:
             st.session_state.pop("setup_config", None)
-        if isinstance(st.session_state.get(EDITOR_STATE_KEY), dict) and st.session_state[EDITOR_STATE_KEY].get(
-            "setup_id"
-        ) == selected_saved_setup_id:
+        if (
+            isinstance(st.session_state.get(EDITOR_STATE_KEY), dict)
+            and st.session_state[EDITOR_STATE_KEY].get("setup_id") == selected_saved_setup_id
+        ):
             st.session_state.pop(EDITOR_STATE_KEY, None)
         st.success(f"Deleted '{selected_saved_setup.get('name', selected_saved_setup_id)}'.")
         st.rerun()
@@ -826,7 +869,9 @@ else:
     )
     confluence_level_options = [level for level in all_level_columns if level != anchor_level]
     confluence_seed = [
-        level for level in st.session_state.get(WIDGET_KEY_CONFLUENCE_LEVELS, []) if level in confluence_level_options
+        level
+        for level in st.session_state.get(WIDGET_KEY_CONFLUENCE_LEVELS, [])
+        if level in confluence_level_options
     ]
     selected_confluence_levels = st.multiselect(
         "Confluence levels",
@@ -885,7 +930,11 @@ else:
     else:
         st.info("Select at least one confluence level.")
 
-    selected_levels = [anchor_level, *selected_confluence_levels] if anchor_level else list(selected_confluence_levels)
+    selected_levels = (
+        [anchor_level, *selected_confluence_levels]
+        if anchor_level
+        else list(selected_confluence_levels)
+    )
 
 naked_only = st.toggle(
     "Naked only",
@@ -918,19 +967,25 @@ trigger_index, _, trigger_fallback = _safe_selectbox_index_fallback(
 )
 if trigger_fallback:
     st.session_state[WIDGET_KEY_TRIGGER] = "touch"
-trigger = st.selectbox("Trigger", options=trigger_options, index=trigger_index, key=WIDGET_KEY_TRIGGER)
+trigger = st.selectbox(
+    "Trigger", options=trigger_options, index=trigger_index, key=WIDGET_KEY_TRIGGER
+)
 trigger_timeframe_options = [
     option for option in TRIGGER_TIMEFRAME_CHOICES if option in VALID_TRIGGER_TIMEFRAMES
 ]
 trigger_timeframe_state = st.session_state.get(WIDGET_KEY_TRIGGER_TIMEFRAME)
 if isinstance(trigger_timeframe_state, str) and trigger_timeframe_state in TRIGGER_TIMEFRAME_LABELS:
     trigger_timeframe_state = TRIGGER_TIMEFRAME_LABELS[trigger_timeframe_state]
-trigger_timeframe_default_value, trigger_timeframe_fallback = _safe_trigger_timeframe_fallback(trigger_timeframe_state)
+trigger_timeframe_default_value, trigger_timeframe_fallback = _safe_trigger_timeframe_fallback(
+    trigger_timeframe_state
+)
 if trigger_timeframe_default_value not in trigger_timeframe_options:
     trigger_timeframe_default_value = DEFAULT_TRIGGER_TIMEFRAME
     trigger_timeframe_fallback = True
 if trigger_timeframe_fallback:
-    st.session_state[WIDGET_KEY_TRIGGER_TIMEFRAME] = TRIGGER_TIMEFRAME_DISPLAY[DEFAULT_TRIGGER_TIMEFRAME]
+    st.session_state[WIDGET_KEY_TRIGGER_TIMEFRAME] = TRIGGER_TIMEFRAME_DISPLAY[
+        DEFAULT_TRIGGER_TIMEFRAME
+    ]
 trigger_timeframe_default = trigger_timeframe_options.index(trigger_timeframe_default_value)
 
 if trigger == "3c":
@@ -972,7 +1027,9 @@ direction_index, _, direction_fallback = _safe_selectbox_index_fallback(
 )
 if direction_fallback:
     st.session_state[WIDGET_KEY_DIRECTION] = "both"
-direction = st.selectbox("Direction", options=direction_options, index=direction_index, key=WIDGET_KEY_DIRECTION)
+direction = st.selectbox(
+    "Direction", options=direction_options, index=direction_index, key=WIDGET_KEY_DIRECTION
+)
 
 trigger_params = {}
 if trigger == "3c":
@@ -1056,7 +1113,12 @@ otf_minimum_consecutive_bars = int(
         key=WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS,
     )
 )
-st.toggle("OTF directional mode (required in v1)", value=True, key=WIDGET_KEY_OTF_DIRECTIONAL, disabled=True)
+st.toggle(
+    "OTF directional mode (required in v1)",
+    value=True,
+    key=WIDGET_KEY_OTF_DIRECTIONAL,
+    disabled=True,
+)
 st.toggle(
     "OTF use completed bars only (required in v1)",
     value=True,

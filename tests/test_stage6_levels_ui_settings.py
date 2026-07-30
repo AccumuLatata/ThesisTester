@@ -1,5 +1,6 @@
 """Stage 6 — UI and Persistence: tests for _normalize_levels_settings,
 _sync_levels_widget_state, and compute_all_levels wiring."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -8,7 +9,6 @@ import sys
 import types
 
 import pandas as pd
-import pytest
 
 from thesistester.levels import compute_all_levels
 
@@ -30,15 +30,35 @@ def _make_streamlit_stub() -> types.ModuleType:
     def _stop():
         raise _StopCalled()
 
-    for name in ("title", "warning", "error", "success", "info", "caption", "divider",
-                 "subheader", "rerun", "selectbox", "text_input", "multiselect",
-                 "slider", "number_input", "checkbox", "button", "columns",
-                 "spinner", "dataframe", "plotly_chart", "expander"):
+    for name in (
+        "title",
+        "warning",
+        "error",
+        "success",
+        "info",
+        "caption",
+        "divider",
+        "subheader",
+        "rerun",
+        "selectbox",
+        "text_input",
+        "multiselect",
+        "slider",
+        "number_input",
+        "checkbox",
+        "button",
+        "columns",
+        "spinner",
+        "dataframe",
+        "plotly_chart",
+        "expander",
+    ):
         setattr(st, name, _noop)
 
     class _FakeExpander:
         def __enter__(self):
             return self
+
         def __exit__(self, *a):
             pass
 
@@ -339,9 +359,7 @@ class TestComputeAllLevelsWiring:
 
     def test_enabling_dvwap_adds_dvwap_column(self):
         df = _make_tz_df(200)
-        result = compute_all_levels(
-            df, session_vwap_enabled=True, session_vwap_anchor="RTH"
-        )
+        result = compute_all_levels(df, session_vwap_enabled=True, session_vwap_anchor="RTH")
         assert "dVWAP_RTH" in result.columns
         assert not any(col.startswith("Pivot_") for col in result.columns)
         assert not any("SinglePrint" in col for col in result.columns)
@@ -368,9 +386,7 @@ class TestComputeAllLevelsWiring:
     def test_apoc_not_routed_through_tpo(self):
         """APOC and Single Prints must be independent; enabling both works."""
         df = _make_tz_df(200)
-        result = compute_all_levels(
-            df, single_prints_enabled=True, apoc_enabled=True
-        )
+        result = compute_all_levels(df, single_prints_enabled=True, apoc_enabled=True)
         assert "APOC" in result.columns
         assert "pAPOC" in result.columns
         assert "dSinglePrint_30m_NearestAbove" in result.columns

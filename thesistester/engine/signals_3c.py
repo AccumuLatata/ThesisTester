@@ -13,6 +13,7 @@ Two public entry-points exist:
   Arrival, inside/muted, SFP, and reversal are evaluated on a resampled
   trigger DataFrame.  Retrace fill is evaluated on canonical/base bars.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -38,9 +39,14 @@ def _normalize_3c_params(params: dict | None) -> dict[str, float | int]:
         # arrival_tolerance_ticks may appear in legacy configs, but its value is
         # intentionally ignored and normalized to 0.0 (strict level touch only).
         "arrival_tolerance_ticks": 0.0,
-        "entry_retrace_ticks": float(p.get("entry_retrace_ticks", _DEFAULT_3C_PARAMS["entry_retrace_ticks"])),
+        "entry_retrace_ticks": float(
+            p.get("entry_retrace_ticks", _DEFAULT_3C_PARAMS["entry_retrace_ticks"])
+        ),
         "max_entry_wait_bars_after_reversal": int(
-            p.get("max_entry_wait_bars_after_reversal", _DEFAULT_3C_PARAMS["max_entry_wait_bars_after_reversal"])
+            p.get(
+                "max_entry_wait_bars_after_reversal",
+                _DEFAULT_3C_PARAMS["max_entry_wait_bars_after_reversal"],
+            )
         ),
     }
 
@@ -110,7 +116,11 @@ def detect_3c_setups(
 
     ordered_candidates = sorted(
         candidates,
-        key=lambda c: (int(c.bar_index), str(c.source_mode), _rounded_price(float(c.level_price), tick_size_f)),
+        key=lambda c: (
+            int(c.bar_index),
+            str(c.source_mode),
+            _rounded_price(float(c.level_price), tick_size_f),
+        ),
     )
 
     for candidate in ordered_candidates:
@@ -139,7 +149,9 @@ def detect_3c_setups(
             if direction == "long":
                 arrival_ok = bar1_low <= level_price + arrival_tol and bar1_close > level_price
             else:
-                arrival_ok = float(bar1["high"]) >= level_price - arrival_tol and bar1_close < level_price
+                arrival_ok = (
+                    float(bar1["high"]) >= level_price - arrival_tol and bar1_close < level_price
+                )
             if not arrival_ok:
                 continue
 
@@ -177,7 +189,9 @@ def detect_3c_setups(
             if reversal_idx is None or reversal_close is None:
                 if invalidated_at is not None:
                     existing_active_until = active_until_by_key.get(effective_key)
-                    if existing_active_until is None or invalidated_at >= int(existing_active_until):
+                    if existing_active_until is None or invalidated_at >= int(
+                        existing_active_until
+                    ):
                         active_until_by_key[effective_key] = int(invalidated_at)
                         active_arrival_by_key[effective_key] = bar1_idx
                 continue
@@ -204,7 +218,9 @@ def detect_3c_setups(
             is_muted = inside_count > 0
             raw.append(
                 {
-                    "timestamp": df_reset.iloc[entry_idx]["timestamp"] if entry_idx is not None else df_reset.iloc[reversal_idx]["timestamp"],
+                    "timestamp": df_reset.iloc[entry_idx]["timestamp"]
+                    if entry_idx is not None
+                    else df_reset.iloc[reversal_idx]["timestamp"],
                     "bar_index": entry_idx if entry_idx is not None else reversal_idx,
                     "direction": direction,
                     "trigger_variant": _variant(direction, is_muted, is_sfp),
@@ -227,7 +243,9 @@ def detect_3c_setups(
                     "zone_ids": [candidate.zone_id] if candidate.zone_id else [],
                     "level_ids": [candidate.level_id] if candidate.level_id else [],
                     "source_count": 1,
-                    "level_test_state_at_arrival": candidate.metadata.get("level_test_state_at_arrival"),
+                    "level_test_state_at_arrival": candidate.metadata.get(
+                        "level_test_state_at_arrival"
+                    ),
                     "was_naked_before_arrival": candidate.metadata.get("was_naked_before_arrival"),
                 }
             )
@@ -264,11 +282,21 @@ def detect_3c_setups(
         keep["source_labels"] = sorted(v for v in labels if v)
         keep["zone_ids"] = sorted(v for v in zone_ids if v)
         keep["level_ids"] = sorted(v for v in level_ids if v)
-        keep["source_count"] = len(keep["level_ids"]) if keep["level_ids"] else max(int(keep.get("source_count", 1)), 1)
+        keep["source_count"] = (
+            len(keep["level_ids"])
+            if keep["level_ids"]
+            else max(int(keep.get("source_count", 1)), 1)
+        )
         merged[key] = keep
 
     out = list(merged.values())
-    out.sort(key=lambda row: (int(row["arrival_bar_index"]), int(row["reversal_bar_index"]), row["direction"]))
+    out.sort(
+        key=lambda row: (
+            int(row["arrival_bar_index"]),
+            int(row["reversal_bar_index"]),
+            row["direction"],
+        )
+    )
     return out
 
 
@@ -352,7 +380,11 @@ def detect_3c_setups_with_trigger_timeframe(
 
     ordered_candidates = sorted(
         candidates,
-        key=lambda c: (int(c.bar_index), str(c.source_mode), _rounded_price(float(c.level_price), tick_size_f)),
+        key=lambda c: (
+            int(c.bar_index),
+            str(c.source_mode),
+            _rounded_price(float(c.level_price), tick_size_f),
+        ),
     )
 
     for candidate in ordered_candidates:
@@ -381,7 +413,11 @@ def detect_3c_setups_with_trigger_timeframe(
             )
             active_until = active_until_by_key.get(effective_key)
             active_arrival = active_arrival_by_key.get(effective_key)
-            if active_until is not None and t_arr_idx <= active_until and t_arr_idx != active_arrival:
+            if (
+                active_until is not None
+                and t_arr_idx <= active_until
+                and t_arr_idx != active_arrival
+            ):
                 continue
 
             if direction == "long":
@@ -425,7 +461,9 @@ def detect_3c_setups_with_trigger_timeframe(
             if t_rev_idx is None or reversal_close is None:
                 if invalidated_at is not None:
                     existing_active_until = active_until_by_key.get(effective_key)
-                    if existing_active_until is None or invalidated_at >= int(existing_active_until):
+                    if existing_active_until is None or invalidated_at >= int(
+                        existing_active_until
+                    ):
                         active_until_by_key[effective_key] = int(invalidated_at)
                         active_arrival_by_key[effective_key] = t_arr_idx
                 continue
@@ -490,7 +528,9 @@ def detect_3c_setups_with_trigger_timeframe(
                     "reversal_bar_index": base_reversal_idx,
                     "entry_bar_index": entry_idx_base,
                     "entry_trigger_price": entry_trigger_price,
-                    "retrace_entry_price": entry_trigger_price if entry_idx_base is not None else None,
+                    "retrace_entry_price": entry_trigger_price
+                    if entry_idx_base is not None
+                    else None,
                     "status": status,
                     "arrival_level_price": level_price,
                     "level_source_mode": candidate.source_mode,
@@ -501,7 +541,9 @@ def detect_3c_setups_with_trigger_timeframe(
                     "source_labels": [candidate.source_label] if candidate.source_label else [],
                     "zone_ids": [candidate.zone_id] if candidate.zone_id else [],
                     "level_ids": [candidate.level_id] if candidate.level_id else [],
-                    "level_test_state_at_arrival": candidate.metadata.get("level_test_state_at_arrival"),
+                    "level_test_state_at_arrival": candidate.metadata.get(
+                        "level_test_state_at_arrival"
+                    ),
                     "was_naked_before_arrival": candidate.metadata.get("was_naked_before_arrival"),
                     # Trigger-index metadata
                     "trigger_arrival_bar_index": t_arr_idx,
@@ -511,7 +553,9 @@ def detect_3c_setups_with_trigger_timeframe(
                 }
             )
             existing_active_until = active_until_by_key.get(effective_key)
-            if existing_active_until is None or resolved_through_trigger >= int(existing_active_until):
+            if existing_active_until is None or resolved_through_trigger >= int(
+                existing_active_until
+            ):
                 active_until_by_key[effective_key] = resolved_through_trigger
                 active_arrival_by_key[effective_key] = t_arr_idx
 
@@ -542,9 +586,19 @@ def detect_3c_setups_with_trigger_timeframe(
         keep["source_labels"] = sorted(v for v in labels if v)
         keep["zone_ids"] = sorted(v for v in zone_ids if v)
         keep["level_ids"] = sorted(v for v in level_ids if v)
-        keep["source_count"] = len(keep["level_ids"]) if keep["level_ids"] else max(int(keep.get("source_count", 1)), 1)
+        keep["source_count"] = (
+            len(keep["level_ids"])
+            if keep["level_ids"]
+            else max(int(keep.get("source_count", 1)), 1)
+        )
         merged[key] = keep
 
     out = list(merged.values())
-    out.sort(key=lambda row: (int(row["arrival_bar_index"]), int(row["reversal_bar_index"]), row["direction"]))
+    out.sort(
+        key=lambda row: (
+            int(row["arrival_bar_index"]),
+            int(row["reversal_bar_index"]),
+            row["direction"],
+        )
+    )
     return out

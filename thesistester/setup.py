@@ -1,4 +1,5 @@
 """Setup configuration helpers for Setup Builder and Signals pages."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -120,7 +121,9 @@ def validate_otf_filter_config(config: dict[str, Any] | None) -> list[str]:
         errors.append("enabled must be a boolean.")
         enabled = False
 
-    normalized_timeframes, timeframe_errors = _normalize_otf_timeframes(config.get("timeframes", []))
+    normalized_timeframes, timeframe_errors = _normalize_otf_timeframes(
+        config.get("timeframes", [])
+    )
     errors.extend(timeframe_errors)
 
     alignment_mode = config.get("alignment_mode", "all")
@@ -304,9 +307,7 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
 
     trigger_timeframe = normalize_trigger_timeframe(config.get("trigger_timeframe"))
     if trigger_timeframe not in VALID_TRIGGER_TIMEFRAMES:
-        errors.append(
-            f"Trigger timeframe must be one of {sorted(VALID_TRIGGER_TIMEFRAMES)}."
-        )
+        errors.append(f"Trigger timeframe must be one of {sorted(VALID_TRIGGER_TIMEFRAMES)}.")
 
     direction = str(config.get("direction", ""))
     if direction not in VALID_DIRECTIONS:
@@ -399,11 +400,17 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
             # arrival_tolerance_ticks is deprecated; no longer validated as an active parameter.
             numeric_fields = {
                 "entry_retrace_ticks": trigger_params.get("entry_retrace_ticks", 0.0),
-                "max_entry_wait_bars_after_reversal": trigger_params.get("max_entry_wait_bars_after_reversal", 0),
+                "max_entry_wait_bars_after_reversal": trigger_params.get(
+                    "max_entry_wait_bars_after_reversal", 0
+                ),
             }
             for key, raw_value in numeric_fields.items():
                 try:
-                    value = float(raw_value) if key != "max_entry_wait_bars_after_reversal" else int(raw_value)
+                    value = (
+                        float(raw_value)
+                        if key != "max_entry_wait_bars_after_reversal"
+                        else int(raw_value)
+                    )
                     if value < 0:
                         errors.append(f"{key} must be >= 0.")
                 except (TypeError, ValueError):

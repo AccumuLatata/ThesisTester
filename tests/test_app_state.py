@@ -21,7 +21,9 @@ def test_bootstrap_does_not_override_existing_data(monkeypatch):
     monkeypatch.setattr(
         app_state,
         "load_dataset",
-        lambda dataset_id: (_ for _ in ()).throw(AssertionError("load_dataset should not be called")),
+        lambda dataset_id: (_ for _ in ()).throw(
+            AssertionError("load_dataset should not be called")
+        ),
     )
 
     restored = app_state.bootstrap_active_saved_dataset()
@@ -31,7 +33,9 @@ def test_bootstrap_does_not_override_existing_data(monkeypatch):
 
 
 def test_bootstrap_restores_valid_saved_dataset(monkeypatch):
-    df = pd.DataFrame({"timestamp": [1], "open": [1.0], "high": [1.0], "low": [1.0], "close": [1.0]})
+    df = pd.DataFrame(
+        {"timestamp": [1], "open": [1.0], "high": [1.0], "low": [1.0], "close": [1.0]}
+    )
     meta = {
         "name": "Saved sample",
         "instrument": "ES",
@@ -70,7 +74,9 @@ def test_bootstrap_clears_stale_saved_dataset_pointer(monkeypatch):
         raise FileNotFoundError("missing dataset")
 
     monkeypatch.setattr(app_state, "load_dataset", _raise_stale)
-    monkeypatch.setattr(app_state, "clear_active_dataset_id", lambda: cleared.__setitem__("dataset", 1))
+    monkeypatch.setattr(
+        app_state, "clear_active_dataset_id", lambda: cleared.__setitem__("dataset", 1)
+    )
     monkeypatch.setattr(
         app_state,
         "clear_active_levels_hash",
@@ -85,7 +91,9 @@ def test_bootstrap_clears_stale_saved_dataset_pointer(monkeypatch):
 
 
 def test_bootstrap_clears_malformed_saved_dataset_metadata(monkeypatch):
-    df = pd.DataFrame({"timestamp": [1], "open": [1.0], "high": [1.0], "low": [1.0], "close": [1.0]})
+    df = pd.DataFrame(
+        {"timestamp": [1], "open": [1.0], "high": [1.0], "low": [1.0], "close": [1.0]}
+    )
     malformed_meta = {
         "name": "Saved sample",
         "base_interval": "1min",
@@ -98,7 +106,9 @@ def test_bootstrap_clears_malformed_saved_dataset_metadata(monkeypatch):
     cleared: dict[str, object] = {"dataset": 0, "levels_dataset_id": None}
     monkeypatch.setattr(app_state, "get_active_dataset_id", lambda: "dataset-abc")
     monkeypatch.setattr(app_state, "load_dataset", lambda dataset_id: (df, malformed_meta))
-    monkeypatch.setattr(app_state, "clear_active_dataset_id", lambda: cleared.__setitem__("dataset", 1))
+    monkeypatch.setattr(
+        app_state, "clear_active_dataset_id", lambda: cleared.__setitem__("dataset", 1)
+    )
     monkeypatch.setattr(
         app_state,
         "clear_active_levels_hash",

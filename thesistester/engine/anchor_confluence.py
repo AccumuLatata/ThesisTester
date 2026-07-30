@@ -1,4 +1,5 @@
 """Standalone anchor-based confluence detection engine."""
+
 from __future__ import annotations
 
 import json
@@ -63,7 +64,11 @@ def detect_anchor_confluence_zones(
     if not isinstance(confluence_rules, list) or not confluence_rules:
         return _empty_anchor_zones_df()
 
-    if not isinstance(anchor_level, str) or not anchor_level.strip() or anchor_level not in df.columns:
+    if (
+        not isinstance(anchor_level, str)
+        or not anchor_level.strip()
+        or anchor_level not in df.columns
+    ):
         return _empty_anchor_zones_df()
 
     min_valid = max(int(min_valid_confluences), 1)

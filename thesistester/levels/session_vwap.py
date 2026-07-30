@@ -33,6 +33,7 @@ Unsupported anchor
 
 A later extension may add ``dVWAP_ETH`` when the session model cleanly supports it.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -104,8 +105,7 @@ def compute_session_vwap_levels(
 
     if instrument not in INSTRUMENTS:
         raise ValueError(
-            f"Unsupported instrument: {instrument!r}.  "
-            f"Supported instruments: {sorted(INSTRUMENTS)}"
+            f"Unsupported instrument: {instrument!r}.  Supported instruments: {sorted(INSTRUMENTS)}"
         )
 
     if anchor not in SUPPORTED_VWAP_ANCHORS:

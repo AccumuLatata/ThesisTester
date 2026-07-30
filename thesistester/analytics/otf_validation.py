@@ -17,6 +17,7 @@ Methodology
 ⚠️ This module is diagnostic only.  Results are not proof of edge.  Do not
 select an OTF configuration for production use based on full-dataset results.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -319,15 +320,11 @@ def run_otf_validation_matrix(
     OOS metrics must only be used for evaluation, not selection.
     """
     if not (0.0 < train_fraction < 1.0):
-        raise ValueError(
-            f"train_fraction must be in (0.0, 1.0), got {train_fraction!r}"
-        )
+        raise ValueError(f"train_fraction must be in (0.0, 1.0), got {train_fraction!r}")
 
     raw_exec_kw: dict[str, Any] = dict(execution_kwargs) if execution_kwargs else {}
     exec_kw = {
-        key: value
-        for key, value in raw_exec_kw.items()
-        if key not in _RESERVED_EXECUTION_KEYS
+        key: value for key, value in raw_exec_kw.items() if key not in _RESERVED_EXECUTION_KEYS
     }
 
     # Deep copy + stable row ids so train/OOS membership survives filter
@@ -355,25 +352,19 @@ def run_otf_validation_matrix(
                 enabled=enabled,
                 timeframes=timeframes,
                 alignment_mode=str(otf_cfg.get("alignment_mode", "all")),
-                minimum_consecutive_bars=int(
-                    otf_cfg.get("minimum_consecutive_bars", 3)
-                ),
+                minimum_consecutive_bars=int(otf_cfg.get("minimum_consecutive_bars", 3)),
                 session_timezone=session_timezone,
                 eth_start=eth_start,
                 session_reset=str(otf_cfg.get("session_reset", "session")),
             )
         except Exception as exc:
-            raise ValueError(
-                f"OTF filter failed for configuration '{label}': {exc}"
-            ) from exc
+            raise ValueError(f"OTF filter failed for configuration '{label}': {exc}") from exc
 
         # Full-period counts.
         n_candidates = len(candidates)
         n_accepted = len(accepted_full)
         n_rejected = len(rejected_full)
-        rejection_rate: float | None = (
-            n_rejected / n_candidates if n_candidates > 0 else None
-        )
+        rejection_rate: float | None = n_rejected / n_candidates if n_candidates > 0 else None
 
         # Split into train/OOS periods by stamped row id (not pandas index).
         accepted_train = _drop_row_id(_filter_period(accepted_full, train_set))
@@ -489,20 +480,12 @@ def _add_delta_columns(df: pd.DataFrame) -> None:
         except (TypeError, ValueError):
             return pd.Series([None] * len(col), index=col.index)
         return col.apply(
-            lambda v: (float(v) - base_f)
-            if v is not None and not pd.isna(v)
-            else None
+            lambda v: (float(v) - base_f) if v is not None and not pd.isna(v) else None
         )
 
-    df["rejection_rate_delta_vs_no_otf"] = _delta(
-        df["rejection_rate"], base_rejection_rate
-    )
-    df["oos_expectancy_delta_vs_no_otf"] = _delta(
-        df["oos_expectancy_r"], base_oos_expectancy
-    )
-    df["oos_trade_count_delta_vs_no_otf"] = _delta(
-        df["oos_trade_count"], base_oos_trade_count
-    )
+    df["rejection_rate_delta_vs_no_otf"] = _delta(df["rejection_rate"], base_rejection_rate)
+    df["oos_expectancy_delta_vs_no_otf"] = _delta(df["oos_expectancy_r"], base_oos_expectancy)
+    df["oos_trade_count_delta_vs_no_otf"] = _delta(df["oos_trade_count"], base_oos_trade_count)
 
 
 def _add_train_ranking(df: pd.DataFrame) -> None:

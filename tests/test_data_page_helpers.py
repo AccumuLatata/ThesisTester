@@ -17,6 +17,7 @@ def _make_streamlit_stub(session_state: dict) -> types.ModuleType:
     def _cache_data(*args, **kwargs):
         def _decorator(fn):
             return fn
+
         return _decorator
 
     for name in (

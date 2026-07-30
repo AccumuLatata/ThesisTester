@@ -3,6 +3,7 @@
 Detects confluence zones, flags naked levels, and generates candidate
 entry signals from the levels computed on the Levels page.
 """
+
 from __future__ import annotations
 
 import json
@@ -34,9 +35,7 @@ from thesistester.persistence import (
 from thesistester.setup import (
     DEFAULT_TRIGGER_TIMEFRAME,
     TRIGGER_TIMEFRAME_CHOICES,
-    VALID_DIRECTIONS,
     VALID_TRIGGER_TIMEFRAMES,
-    VALID_TRIGGERS,
     available_level_columns,
     default_selected_levels,
     get_effective_otf_filter_config,
@@ -278,7 +277,9 @@ def _normalize_3c_params(params: object) -> dict:
         # intentionally ignored and normalized to 0.0.
         "arrival_tolerance_ticks": 0.0,
         "entry_retrace_ticks": _safe_float(params.get("entry_retrace_ticks", 4.0), default=4.0),
-        "max_entry_wait_bars_after_reversal": _safe_int(params.get("max_entry_wait_bars_after_reversal", 5), default=5),
+        "max_entry_wait_bars_after_reversal": _safe_int(
+            params.get("max_entry_wait_bars_after_reversal", 5), default=5
+        ),
         "_source_mode": str(params.get("_source_mode", "global_cluster")),
     }
 
@@ -309,7 +310,11 @@ def _saved_setup_caption(config: dict) -> str:
 def _dataset_relation_label(setup_dataset_id: object, current_dataset_id: str | None) -> str:
     if setup_dataset_id in (None, ""):
         return "global/no dataset"
-    if isinstance(current_dataset_id, str) and current_dataset_id and setup_dataset_id == current_dataset_id:
+    if (
+        isinstance(current_dataset_id, str)
+        and current_dataset_id
+        and setup_dataset_id == current_dataset_id
+    ):
         return "current dataset"
     return "other dataset"
 
@@ -360,7 +365,9 @@ def _filter_saved_setups_for_signals(
     ]
 
 
-def _saved_setup_compatibility_issues(config: dict, available_columns: list[str]) -> dict[str, list[str]]:
+def _saved_setup_compatibility_issues(
+    config: dict, available_columns: list[str]
+) -> dict[str, list[str]]:
     confluence_mode = str(config.get("confluence_mode", "global_cluster"))
     if confluence_mode == "anchor_rules":
         missing_anchor = []
@@ -383,7 +390,9 @@ def _saved_setup_compatibility_issues(config: dict, available_columns: list[str]
     selected_levels = config.get("selected_levels", [])
     if not isinstance(selected_levels, list):
         selected_levels = []
-    missing_selected = [str(level) for level in selected_levels if str(level) not in available_columns]
+    missing_selected = [
+        str(level) for level in selected_levels if str(level) not in available_columns
+    ]
     return {
         "selected_levels": sorted(set(missing_selected)),
         "anchor_level": [],
@@ -453,7 +462,9 @@ def _no_zones_message(confluence_mode: str) -> str:
     )
 
 
-def _selected_anchor_levels(anchor_level: str | None, confluence_rules: list[dict], available_columns: list[str]) -> list[str]:
+def _selected_anchor_levels(
+    anchor_level: str | None, confluence_rules: list[dict], available_columns: list[str]
+) -> list[str]:
     selected_levels: list[str] = []
     if anchor_level:
         selected_levels.append(anchor_level)
@@ -464,7 +475,9 @@ def _selected_anchor_levels(anchor_level: str | None, confluence_rules: list[dic
     return [level for level in selected_levels if level in available_columns]
 
 
-def _missing_anchor_columns(levels_df, anchor_level: str | None, confluence_rules: list[dict]) -> list[str]:
+def _missing_anchor_columns(
+    levels_df, anchor_level: str | None, confluence_rules: list[dict]
+) -> list[str]:
     missing_columns: list[str] = []
     if anchor_level and anchor_level not in levels_df.columns:
         missing_columns.append(anchor_level)
@@ -790,7 +803,9 @@ def _get_cached_saved_signal_runs(
     if cache_token not in cache or cache_token in dirty_tokens:
         cache[cache_token] = [
             item
-            for item in list_saved_signal_runs(dataset_id=dataset_id, levels_settings_hash=levels_settings_hash)
+            for item in list_saved_signal_runs(
+                dataset_id=dataset_id, levels_settings_hash=levels_settings_hash
+            )
             if isinstance(item.get("signal_settings_hash"), str) and item["signal_settings_hash"]
         ]
         dirty_tokens.discard(cache_token)
@@ -815,7 +830,9 @@ def _mark_saved_signal_runs_dirty(dataset_id: object, levels_settings_hash: obje
 
 # ── Require levels ────────────────────────────────────────────────────────────
 if "levels" not in st.session_state:
-    st.warning("No levels computed. Please load data on the **Data** page and compute levels on the **Levels** page first.")
+    st.warning(
+        "No levels computed. Please load data on the **Data** page and compute levels on the **Levels** page first."
+    )
     st.stop()
 
 levels_df = st.session_state["levels"]
@@ -865,7 +882,10 @@ with st.sidebar:
 
     if setup_source == SETUP_SOURCE_LIBRARY:
         has_other_dataset_setups = any(
-            _dataset_relation_label(item.get("dataset_id"), current_dataset_id if isinstance(current_dataset_id, str) else None)
+            _dataset_relation_label(
+                item.get("dataset_id"),
+                current_dataset_id if isinstance(current_dataset_id, str) else None,
+            )
             == "other dataset"
             for item in all_saved_setups
         )
@@ -875,7 +895,8 @@ with st.sidebar:
                 _dataset_relation_label(
                     item.get("dataset_id"),
                     current_dataset_id if isinstance(current_dataset_id, str) else None,
-                ) == "other dataset"
+                )
+                == "other dataset"
                 for item in all_saved_setups
             )
         include_other_datasets = st.checkbox(
@@ -894,7 +915,9 @@ with st.sidebar:
             if isinstance(item.get("setup_id"), str) and item["setup_id"]
         }
         if not option_map:
-            st.info("No saved setups available for this selection. Configure manually or set an active setup.")
+            st.info(
+                "No saved setups available for this selection. Configure manually or set an active setup."
+            )
             setup_source = SETUP_SOURCE_MANUAL
         else:
             setup_ids = list(option_map)
@@ -913,17 +936,22 @@ with st.sidebar:
                 setup_source = SETUP_SOURCE_MANUAL
             else:
                 saved_setup = dict(selected_setup_meta.get("setup_config", {}))
-                if _dataset_relation_label(
-                    selected_setup_meta.get("dataset_id"),
-                    current_dataset_id if isinstance(current_dataset_id, str) else None,
-                ) == "other dataset":
+                if (
+                    _dataset_relation_label(
+                        selected_setup_meta.get("dataset_id"),
+                        current_dataset_id if isinstance(current_dataset_id, str) else None,
+                    )
+                    == "other dataset"
+                ):
                     st.warning(
                         "Selected setup belongs to a different dataset. Verify level compatibility before generating signals."
                     )
     elif setup_source == SETUP_SOURCE_ACTIVE and active_setup is not None:
         saved_setup = dict(active_setup)
 
-    use_saved_setup = setup_source in {SETUP_SOURCE_ACTIVE, SETUP_SOURCE_LIBRARY} and saved_setup is not None
+    use_saved_setup = (
+        setup_source in {SETUP_SOURCE_ACTIVE, SETUP_SOURCE_LIBRARY} and saved_setup is not None
+    )
 
     if use_saved_setup and saved_setup is not None:
         # Compute blockers first — before any type coercion — so malformed/legacy
@@ -1028,7 +1056,9 @@ with st.sidebar:
                 index=0,
                 help="Primary level around which anchor confluence is evaluated.",
             )
-            confluence_level_options = [level for level in all_level_columns if level != anchor_level]
+            confluence_level_options = [
+                level for level in all_level_columns if level != anchor_level
+            ]
             selected_confluence_levels = st.multiselect(
                 "Confluence levels",
                 options=confluence_level_options,
@@ -1196,7 +1226,9 @@ dataset_id = st.session_state.get("dataset_id")
 levels_settings = st.session_state.get("levels_settings")
 levels_settings_hash: str | None = None
 if not isinstance(dataset_id, str) or not dataset_id:
-    st.warning("Signal persistence is unavailable because dataset context is missing. Load or save a dataset first.")
+    st.warning(
+        "Signal persistence is unavailable because dataset context is missing. Load or save a dataset first."
+    )
 elif not isinstance(levels_settings, dict) or not levels_settings:
     st.warning(
         "Signal persistence is unavailable because levels settings are missing. "
@@ -1224,7 +1256,9 @@ if generate_btn:
                     + ", ".join(missing_columns)
                 )
                 st.stop()
-            levels_for_naked_flags = _selected_anchor_levels(anchor_level, confluence_rules, list(levels_df.columns))
+            levels_for_naked_flags = _selected_anchor_levels(
+                anchor_level, confluence_rules, list(levels_df.columns)
+            )
         elif not selected_levels:
             st.error("Please select at least one level column.")
             st.stop()
@@ -1298,9 +1332,13 @@ if generate_btn:
                 st.session_state[_SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY] = _IDENTITY_STATUS_TRUSTED
                 st.session_state.pop(_SIGNAL_ARTIFACT_IDENTITY_ERROR_KEY, None)
                 st.session_state["signal_settings"] = signal_settings
-                st.session_state["signal_settings_hash"] = compute_signal_settings_hash(signal_settings)
+                st.session_state["signal_settings_hash"] = compute_signal_settings_hash(
+                    signal_settings
+                )
     except Exception as exc:
-        st.error("Signal generation failed. Review the traceback below and adjust the setup or dataset.")
+        st.error(
+            "Signal generation failed. Review the traceback below and adjust the setup or dataset."
+        )
         st.exception(exc)
         st.stop()
 
@@ -1320,11 +1358,15 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
         levels_settings_hash=levels_settings_hash,
         force_refresh=refresh_saved_signal_runs,
     )
-    matching_saved_signal_run = find_matching_signal_run(
-        dataset_id=dataset_id,
-        levels_settings_hash=levels_settings_hash,
-        signal_settings=signal_settings,
-    ) if signal_settings is not None else None
+    matching_saved_signal_run = (
+        find_matching_signal_run(
+            dataset_id=dataset_id,
+            levels_settings_hash=levels_settings_hash,
+            signal_settings=signal_settings,
+        )
+        if signal_settings is not None
+        else None
+    )
 
     if matching_saved_signal_run is not None:
         st.info("Matching saved signals found.")
@@ -1348,7 +1390,9 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
         selected_run_meta = run_options[selected_run_hash]
         selected_settings = selected_run_meta.get("signal_settings")
         if isinstance(selected_settings, dict) and signal_settings is not None:
-            _selected_norm, _selected_err = _try_normalize_signal_settings_for_hash(selected_settings)
+            _selected_norm, _selected_err = _try_normalize_signal_settings_for_hash(
+                selected_settings
+            )
             if _selected_norm is None:
                 st.caption("Settings comparison unavailable: saved run OTF settings are invalid.")
             elif _selected_norm != signal_settings:
@@ -1386,7 +1430,9 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
                 if identity["status"] == _IDENTITY_STATUS_TRUSTED:
                     st.session_state["signal_settings"] = identity["settings"]
                     st.session_state["signal_settings_hash"] = identity["hash"]
-                    st.session_state[_SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY] = _IDENTITY_STATUS_TRUSTED
+                    st.session_state[_SIGNAL_ARTIFACT_IDENTITY_STATUS_KEY] = (
+                        _IDENTITY_STATUS_TRUSTED
+                    )
                     st.session_state.pop(_SIGNAL_ARTIFACT_IDENTITY_ERROR_KEY, None)
                 else:
                     st.session_state.pop("signal_settings", None)
@@ -1424,7 +1470,9 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
                         last_signal_setup=st.session_state.get("last_signal_setup"),
                     )
                     _mark_saved_signal_runs_dirty(dataset_id, levels_settings_hash)
-                    st.success(f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...).")
+                    st.success(
+                        f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...)."
+                    )
                     st.rerun()
                 else:
                     st.warning(save_err)
@@ -1448,7 +1496,9 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
             else:
                 st.session_state["setup_config"] = dict(setup_snapshot)
                 st.session_state["_setup_builder_editor_config"] = dict(setup_snapshot)
-                st.success("Copied setup snapshot to Setup Builder. Open Setup Builder to review, edit, and save.")
+                st.success(
+                    "Copied setup snapshot to Setup Builder. Open Setup Builder to review, edit, and save."
+                )
     else:
         st.caption("No saved signal runs for this dataset and levels snapshot.")
         if st.button("Save current signals", key="save_current_signals_empty", width="stretch"):
@@ -1471,7 +1521,9 @@ if isinstance(dataset_id, str) and dataset_id and isinstance(levels_settings_has
                         last_signal_setup=st.session_state.get("last_signal_setup"),
                     )
                     _mark_saved_signal_runs_dirty(dataset_id, levels_settings_hash)
-                    st.success(f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...).")
+                    st.success(
+                        f"Saved signals locally ({saved_meta['signal_settings_hash'][:12]}...)."
+                    )
                     st.rerun()
                 else:
                     st.warning(save_err)
@@ -1509,26 +1561,30 @@ if signals is not None and not signals.empty:
         )
 
     st.subheader("Signal table")
-    display_cols = [c for c in [
-        "signal_id",
-        "timestamp",
-        "bar_index",
-        "trigger",
-        "direction",
-        "zone_low",
-        "zone_high",
-        "zone_mid",
-        "level_count",
-        "level_names",
-        "entry_reference_price",
-        "entry_model",
-        "status",
-        "trigger_variant",
-        "level_source_mode",
-        "setup_name",
-        "naked_level_count",
-        "notes",
-    ] if c in signals.columns]
+    display_cols = [
+        c
+        for c in [
+            "signal_id",
+            "timestamp",
+            "bar_index",
+            "trigger",
+            "direction",
+            "zone_low",
+            "zone_high",
+            "zone_mid",
+            "level_count",
+            "level_names",
+            "entry_reference_price",
+            "entry_model",
+            "status",
+            "trigger_variant",
+            "level_source_mode",
+            "setup_name",
+            "naked_level_count",
+            "notes",
+        ]
+        if c in signals.columns
+    ]
     st.dataframe(signals[display_cols], width="stretch", hide_index=True)
 else:
     st.info("No signals generated with the current settings.")
@@ -1587,7 +1643,9 @@ elif chart_range == "Custom date range":
             max_value=max_ts.date(),
         )
         chart_start = pd.Timestamp(custom_start_date)
-        chart_end = pd.Timestamp(custom_end_date) + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+        chart_end = (
+            pd.Timestamp(custom_end_date) + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+        )
 
 chart_levels_df = (
     levels_df.copy(deep=True)

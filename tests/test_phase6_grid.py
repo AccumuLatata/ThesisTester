@@ -3,6 +3,7 @@
 All tests use a small synthetic OHLCV + signals dataset so they run fast
 and produce deterministic results.
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -46,24 +47,28 @@ def _signal(
     zone_high: float = 100.5,
     signal_id: int = 0,
 ) -> pd.DataFrame:
-    return pd.DataFrame([{
-        "signal_id": signal_id,
-        "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
-        "bar_index": bar_index,
-        "trigger": trigger,
-        "direction": direction,
-        "zone_low": zone_low,
-        "zone_high": zone_high,
-        "zone_mid": (zone_low + zone_high) / 2.0,
-        "level_count": 2,
-        "level_names": "A|B",
-        "entry_reference_price": entry_ref,
-        "entry_model": "candidate_next_bar_open",
-        "status": status,
-        "naked_level_count": 0,
-        "naked_requirement": "any",
-        "notes": "",
-    }])
+    return pd.DataFrame(
+        [
+            {
+                "signal_id": signal_id,
+                "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
+                "bar_index": bar_index,
+                "trigger": trigger,
+                "direction": direction,
+                "zone_low": zone_low,
+                "zone_high": zone_high,
+                "zone_mid": (zone_low + zone_high) / 2.0,
+                "level_count": 2,
+                "level_names": "A|B",
+                "entry_reference_price": entry_ref,
+                "entry_model": "candidate_next_bar_open",
+                "status": status,
+                "naked_level_count": 0,
+                "naked_requirement": "any",
+                "notes": "",
+            }
+        ]
+    )
 
 
 # Minimal synthetic dataset: signal bar at index 0, entry at index 1 where TP is hit.
@@ -88,7 +93,10 @@ TP_VALUES = [8, 16, 24]
 def test_grid_row_count():
     """2 SL values × 3 TP values → 6 rows."""
     grid = run_sl_tp_grid(
-        _OHLCV, _SIGNALS, TICK, POINT_VALUE,
+        _OHLCV,
+        _SIGNALS,
+        TICK,
+        POINT_VALUE,
         stop_loss_ticks_values=SL_VALUES,
         take_profit_ticks_values=TP_VALUES,
     )
@@ -143,7 +151,10 @@ _REQUIRED_COLS = [
 def test_grid_output_columns():
     """All required columns must be present."""
     grid = run_sl_tp_grid(
-        _OHLCV, _SIGNALS, TICK, POINT_VALUE,
+        _OHLCV,
+        _SIGNALS,
+        TICK,
+        POINT_VALUE,
         stop_loss_ticks_values=SL_VALUES,
         take_profit_ticks_values=TP_VALUES,
     )
@@ -160,7 +171,10 @@ def test_grid_sorted_output():
     """Output must be sorted by stop_loss_ticks then take_profit_ticks."""
     # Pass values in reverse order to verify sorting is applied.
     grid = run_sl_tp_grid(
-        _OHLCV, _SIGNALS, TICK, POINT_VALUE,
+        _OHLCV,
+        _SIGNALS,
+        TICK,
+        POINT_VALUE,
         stop_loss_ticks_values=list(reversed(SL_VALUES)),
         take_profit_ticks_values=list(reversed(TP_VALUES)),
     )
@@ -168,9 +182,7 @@ def test_grid_sorted_output():
     assert sl_col == sorted(sl_col), "Rows not sorted by stop_loss_ticks"
     for sl in set(sl_col):
         tp_col = grid.loc[grid["stop_loss_ticks"] == sl, "take_profit_ticks"].tolist()
-        assert tp_col == sorted(tp_col), (
-            f"TP values not sorted for SL={sl}"
-        )
+        assert tp_col == sorted(tp_col), f"TP values not sorted for SL={sl}"
 
 
 # ---------------------------------------------------------------------------
@@ -181,33 +193,53 @@ def test_grid_sorted_output():
 def test_empty_sl_raises():
     """Empty stop_loss_ticks_values must raise ValueError."""
     with pytest.raises(ValueError, match="stop_loss_ticks"):
-        run_sl_tp_grid(_OHLCV, _SIGNALS, TICK, POINT_VALUE,
-                       stop_loss_ticks_values=[],
-                       take_profit_ticks_values=TP_VALUES)
+        run_sl_tp_grid(
+            _OHLCV,
+            _SIGNALS,
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks_values=[],
+            take_profit_ticks_values=TP_VALUES,
+        )
 
 
 def test_empty_tp_raises():
     """Empty take_profit_ticks_values must raise ValueError."""
     with pytest.raises(ValueError, match="take_profit_ticks"):
-        run_sl_tp_grid(_OHLCV, _SIGNALS, TICK, POINT_VALUE,
-                       stop_loss_ticks_values=SL_VALUES,
-                       take_profit_ticks_values=[])
+        run_sl_tp_grid(
+            _OHLCV,
+            _SIGNALS,
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks_values=SL_VALUES,
+            take_profit_ticks_values=[],
+        )
 
 
 def test_nonpositive_sl_raises():
     """SL value of 0 must raise ValueError."""
     with pytest.raises(ValueError):
-        run_sl_tp_grid(_OHLCV, _SIGNALS, TICK, POINT_VALUE,
-                       stop_loss_ticks_values=[0, 4],
-                       take_profit_ticks_values=TP_VALUES)
+        run_sl_tp_grid(
+            _OHLCV,
+            _SIGNALS,
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks_values=[0, 4],
+            take_profit_ticks_values=TP_VALUES,
+        )
 
 
 def test_nonpositive_tp_raises():
     """TP value ≤ 0 must raise ValueError."""
     with pytest.raises(ValueError):
-        run_sl_tp_grid(_OHLCV, _SIGNALS, TICK, POINT_VALUE,
-                       stop_loss_ticks_values=SL_VALUES,
-                       take_profit_ticks_values=[-1, 8])
+        run_sl_tp_grid(
+            _OHLCV,
+            _SIGNALS,
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks_values=SL_VALUES,
+            take_profit_ticks_values=[-1, 8],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +250,10 @@ def test_nonpositive_tp_raises():
 def test_best_grid_result_returns_highest():
     """best_grid_result should return the row with the highest expectancy_r."""
     grid = run_sl_tp_grid(
-        _OHLCV, _SIGNALS, TICK, POINT_VALUE,
+        _OHLCV,
+        _SIGNALS,
+        TICK,
+        POINT_VALUE,
         stop_loss_ticks_values=SL_VALUES,
         take_profit_ticks_values=TP_VALUES,
     )
@@ -235,7 +270,10 @@ def test_best_grid_result_returns_highest():
 def test_best_grid_result_respects_min_trades():
     """Rows with trade_count < min_trades must be excluded."""
     grid = run_sl_tp_grid(
-        _OHLCV, _SIGNALS, TICK, POINT_VALUE,
+        _OHLCV,
+        _SIGNALS,
+        TICK,
+        POINT_VALUE,
         stop_loss_ticks_values=[4],
         take_profit_ticks_values=[8],
     )
@@ -258,7 +296,10 @@ def test_best_grid_result_none_on_empty():
 def test_best_grid_result_none_when_all_filtered():
     """best_grid_result returns None when all rows are filtered out."""
     grid = run_sl_tp_grid(
-        _OHLCV, _SIGNALS, TICK, POINT_VALUE,
+        _OHLCV,
+        _SIGNALS,
+        TICK,
+        POINT_VALUE,
         stop_loss_ticks_values=[4],
         take_profit_ticks_values=[8],
     )
@@ -284,7 +325,10 @@ def test_grid_uses_backtest_engine_known_r():
         → TP hit → R = +2.0
     """
     grid = run_sl_tp_grid(
-        _OHLCV, _SIGNALS, TICK, POINT_VALUE,
+        _OHLCV,
+        _SIGNALS,
+        TICK,
+        POINT_VALUE,
         stop_loss_ticks_values=[4],
         take_profit_ticks_values=[8],
     )
@@ -316,7 +360,10 @@ _DIRECTIONAL_COLS = [
 def test_directional_columns_exist():
     """All Phase 2 directional columns must be present in grid output."""
     grid = run_sl_tp_grid(
-        _OHLCV, _SIGNALS, TICK, POINT_VALUE,
+        _OHLCV,
+        _SIGNALS,
+        TICK,
+        POINT_VALUE,
         stop_loss_ticks_values=SL_VALUES,
         take_profit_ticks_values=TP_VALUES,
     )
@@ -335,7 +382,10 @@ def test_long_only_grid_is_safe():
     - min_direction_profit_factor is NaN (one side missing)
     """
     grid = run_sl_tp_grid(
-        _OHLCV, _SIGNALS, TICK, POINT_VALUE,
+        _OHLCV,
+        _SIGNALS,
+        TICK,
+        POINT_VALUE,
         stop_loss_ticks_values=[4],
         take_profit_ticks_values=[8],
     )
@@ -364,54 +414,82 @@ def _make_mixed_dataset():
       - Bar 3: low=197.5 < 198.0 → TP hit → R = +2.0
     """
     TZ = "America/New_York"
-    ohlcv = pd.DataFrame([
-        {"timestamp": pd.Timestamp("2026-01-02 09:30", tz=TZ),
-         "open": 100.0, "high": 100.5, "low": 99.5, "close": 100.0, "volume": 100.0},
-        {"timestamp": pd.Timestamp("2026-01-02 09:31", tz=TZ),
-         "open": 100.0, "high": 102.5, "low": 99.8, "close": 102.0, "volume": 100.0},
-        {"timestamp": pd.Timestamp("2026-01-02 09:32", tz=TZ),
-         "open": 200.0, "high": 200.5, "low": 199.5, "close": 200.0, "volume": 100.0},
-        {"timestamp": pd.Timestamp("2026-01-02 09:33", tz=TZ),
-         "open": 200.0, "high": 200.5, "low": 197.5, "close": 198.0, "volume": 100.0},
-    ])
-    signals = pd.DataFrame([
-        {
-            "signal_id": 0,
-            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
-            "bar_index": 0,
-            "trigger": "touch",
-            "direction": "long",
-            "zone_low": 99.5,
-            "zone_high": 100.5,
-            "zone_mid": 100.0,
-            "level_count": 2,
-            "level_names": "A|B",
-            "entry_reference_price": 100.0,
-            "entry_model": "candidate_next_bar_open",
-            "status": "candidate",
-            "naked_level_count": 0,
-            "naked_requirement": "any",
-            "notes": "",
-        },
-        {
-            "signal_id": 1,
-            "timestamp": pd.Timestamp("2026-01-02 09:32:00", tz=TZ),
-            "bar_index": 2,
-            "trigger": "touch",
-            "direction": "short",
-            "zone_low": 199.5,
-            "zone_high": 200.5,
-            "zone_mid": 200.0,
-            "level_count": 2,
-            "level_names": "C|D",
-            "entry_reference_price": 200.0,
-            "entry_model": "candidate_next_bar_open",
-            "status": "candidate",
-            "naked_level_count": 0,
-            "naked_requirement": "any",
-            "notes": "",
-        },
-    ])
+    ohlcv = pd.DataFrame(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-01-02 09:30", tz=TZ),
+                "open": 100.0,
+                "high": 100.5,
+                "low": 99.5,
+                "close": 100.0,
+                "volume": 100.0,
+            },
+            {
+                "timestamp": pd.Timestamp("2026-01-02 09:31", tz=TZ),
+                "open": 100.0,
+                "high": 102.5,
+                "low": 99.8,
+                "close": 102.0,
+                "volume": 100.0,
+            },
+            {
+                "timestamp": pd.Timestamp("2026-01-02 09:32", tz=TZ),
+                "open": 200.0,
+                "high": 200.5,
+                "low": 199.5,
+                "close": 200.0,
+                "volume": 100.0,
+            },
+            {
+                "timestamp": pd.Timestamp("2026-01-02 09:33", tz=TZ),
+                "open": 200.0,
+                "high": 200.5,
+                "low": 197.5,
+                "close": 198.0,
+                "volume": 100.0,
+            },
+        ]
+    )
+    signals = pd.DataFrame(
+        [
+            {
+                "signal_id": 0,
+                "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
+                "bar_index": 0,
+                "trigger": "touch",
+                "direction": "long",
+                "zone_low": 99.5,
+                "zone_high": 100.5,
+                "zone_mid": 100.0,
+                "level_count": 2,
+                "level_names": "A|B",
+                "entry_reference_price": 100.0,
+                "entry_model": "candidate_next_bar_open",
+                "status": "candidate",
+                "naked_level_count": 0,
+                "naked_requirement": "any",
+                "notes": "",
+            },
+            {
+                "signal_id": 1,
+                "timestamp": pd.Timestamp("2026-01-02 09:32:00", tz=TZ),
+                "bar_index": 2,
+                "trigger": "touch",
+                "direction": "short",
+                "zone_low": 199.5,
+                "zone_high": 200.5,
+                "zone_mid": 200.0,
+                "level_count": 2,
+                "level_names": "C|D",
+                "entry_reference_price": 200.0,
+                "entry_model": "candidate_next_bar_open",
+                "status": "candidate",
+                "naked_level_count": 0,
+                "naked_requirement": "any",
+                "notes": "",
+            },
+        ]
+    )
     return ohlcv, signals
 
 
@@ -419,7 +497,10 @@ def test_mixed_directional_grid():
     """Grid with long + short signals must compute both directional sides."""
     ohlcv, signals = _make_mixed_dataset()
     grid = run_sl_tp_grid(
-        ohlcv, signals, TICK, POINT_VALUE,
+        ohlcv,
+        signals,
+        TICK,
+        POINT_VALUE,
         stop_loss_ticks_values=[4],
         take_profit_ticks_values=[8],
     )
@@ -436,7 +517,10 @@ def test_mixed_directional_grid():
 def test_best_grid_result_unchanged_with_new_columns():
     """best_grid_result by expectancy_r still works after adding directional columns."""
     grid = run_sl_tp_grid(
-        _OHLCV, _SIGNALS, TICK, POINT_VALUE,
+        _OHLCV,
+        _SIGNALS,
+        TICK,
+        POINT_VALUE,
         stop_loss_ticks_values=SL_VALUES,
         take_profit_ticks_values=TP_VALUES,
     )
@@ -449,7 +533,10 @@ def test_best_grid_result_by_directional_metric():
     """best_grid_result ranks by the highest directional metric value."""
     ohlcv, signals = _make_mixed_dataset()
     grid = run_sl_tp_grid(
-        ohlcv, signals, TICK, POINT_VALUE,
+        ohlcv,
+        signals,
+        TICK,
+        POINT_VALUE,
         stop_loss_ticks_values=[4, 8],
         take_profit_ticks_values=[8, 16],
     )
@@ -462,7 +549,10 @@ def test_best_grid_result_by_directional_metric():
 def test_best_grid_result_missing_metric_returns_none():
     """best_grid_result returns None when metric column does not exist."""
     grid = run_sl_tp_grid(
-        _OHLCV, _SIGNALS, TICK, POINT_VALUE,
+        _OHLCV,
+        _SIGNALS,
+        TICK,
+        POINT_VALUE,
         stop_loss_ticks_values=[4],
         take_profit_ticks_values=[8],
     )

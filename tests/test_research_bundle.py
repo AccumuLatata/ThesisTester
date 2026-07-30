@@ -17,7 +17,9 @@ from thesistester.research_bundle import (
 def _dataset_df() -> pd.DataFrame:
     return pd.DataFrame(
         {
-            "timestamp": pd.date_range("2026-06-01 09:30:00", periods=3, freq="1min", tz="America/New_York"),
+            "timestamp": pd.date_range(
+                "2026-06-01 09:30:00", periods=3, freq="1min", tz="America/New_York"
+            ),
             "open": [1.0, 2.0, 3.0],
             "high": [2.0, 3.0, 4.0],
             "low": [0.5, 1.5, 2.5],
@@ -134,7 +136,9 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
         "session_levels": base[["timestamp", "open", "high", "low", "close"]].copy(),
         "levels_settings": {"opening_range_minutes": 30},
         "levels_data_fingerprint": {"rows": 3},
-        "signals": pd.DataFrame({"signal_id": [1], "timestamp": [base["timestamp"].iloc[0]], "direction": ["long"]}),
+        "signals": pd.DataFrame(
+            {"signal_id": [1], "timestamp": [base["timestamp"].iloc[0]], "direction": ["long"]}
+        ),
         "confluence_zones": pd.DataFrame({"bar_index": [0], "zone_low": [1.0], "zone_high": [1.5]}),
         "naked_flags": pd.DataFrame({"RTH_Open": [True]}),
         "signal_context": {"setup_name": "A"},
@@ -144,7 +148,9 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
         "trades": pd.DataFrame({"trade_id": [1], "r_multiple": [1.0]}),
         "trade_summary": {"trade_count": 1},
         "equity_curve": pd.DataFrame({"trade_id": [1], "cum_r": [1.0]}),
-        "grid_results": pd.DataFrame({"stop_loss_ticks": [4.0], "take_profit_ticks": [8.0], "expectancy_r": [0.2]}),
+        "grid_results": pd.DataFrame(
+            {"stop_loss_ticks": [4.0], "take_profit_ticks": [8.0], "expectancy_r": [0.2]}
+        ),
         "best_grid_result": {"stop_loss_ticks": 4.0, "take_profit_ticks": 8.0},
         "validation_summary": {"trade_count": {"status": "limited"}},
     }
@@ -211,16 +217,20 @@ def test_invalid_bundle_schema_raises_clear_error():
 
 def test_bundle_export_handles_best_grid_result_series():
     source_state = {
-        "grid_results": pd.DataFrame({
-            "stop_loss_ticks": [4.0],
-            "take_profit_ticks": [8.0],
-            "expectancy_r": [0.25],
-        }),
-        "best_grid_result": pd.Series({
-            "stop_loss_ticks": 4.0,
-            "take_profit_ticks": 8.0,
-            "expectancy_r": 0.25,
-        }),
+        "grid_results": pd.DataFrame(
+            {
+                "stop_loss_ticks": [4.0],
+                "take_profit_ticks": [8.0],
+                "expectancy_r": [0.25],
+            }
+        ),
+        "best_grid_result": pd.Series(
+            {
+                "stop_loss_ticks": 4.0,
+                "take_profit_ticks": 8.0,
+                "expectancy_r": 0.25,
+            }
+        ),
     }
 
     bundle_bytes = build_research_bundle(source_state)
@@ -237,16 +247,20 @@ def test_bundle_export_handles_best_grid_result_series():
 
 def test_bundle_best_grid_result_series_nan_normalizes_to_none():
     source_state = {
-        "grid_results": pd.DataFrame({
-            "stop_loss_ticks": [4.0],
-            "take_profit_ticks": [float("nan")],
-            "expectancy_r": [0.25],
-        }),
-        "best_grid_result": pd.Series({
-            "stop_loss_ticks": 4.0,
-            "take_profit_ticks": float("nan"),
-            "expectancy_r": pd.NA,
-        }),
+        "grid_results": pd.DataFrame(
+            {
+                "stop_loss_ticks": [4.0],
+                "take_profit_ticks": [float("nan")],
+                "expectancy_r": [0.25],
+            }
+        ),
+        "best_grid_result": pd.Series(
+            {
+                "stop_loss_ticks": 4.0,
+                "take_profit_ticks": float("nan"),
+                "expectancy_r": pd.NA,
+            }
+        ),
     }
 
     bundle_bytes = build_research_bundle(source_state)

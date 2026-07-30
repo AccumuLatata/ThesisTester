@@ -1,4 +1,5 @@
 """Volume-profile and rolling POC level computations."""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -93,7 +94,12 @@ def _rolling_poc(
     for i, now in enumerate(timestamps):
         start = now - window_td
         in_window = (timestamps > start) & (timestamps <= now)
-        _, _, poc = _compute_profile(prices[in_window], volumes[in_window], tick_size=tick_size, value_area_pct=value_area_pct)
+        _, _, poc = _compute_profile(
+            prices[in_window],
+            volumes[in_window],
+            tick_size=tick_size,
+            value_area_pct=value_area_pct,
+        )
         out_series.iat[i] = poc
     return out_series
 
@@ -108,11 +114,15 @@ def _map_prior_profile_levels(
     prefix: str,
 ) -> pd.DataFrame:
     periods = pd.Index(period_key.unique()).sort_values()
-    prior_levels = pd.DataFrame(index=periods, columns=[f"{prefix}VAH", f"{prefix}VAL", f"{prefix}POC"], dtype="float64")
+    prior_levels = pd.DataFrame(
+        index=periods, columns=[f"{prefix}VAH", f"{prefix}VAL", f"{prefix}POC"], dtype="float64"
+    )
 
     for period in periods:
         mask = period_key == period
-        vah, val, poc = _compute_profile(prices[mask], volumes[mask], tick_size=tick_size, value_area_pct=value_area_pct)
+        vah, val, poc = _compute_profile(
+            prices[mask], volumes[mask], tick_size=tick_size, value_area_pct=value_area_pct
+        )
         prior_levels.loc[period, f"{prefix}VAH"] = vah
         prior_levels.loc[period, f"{prefix}VAL"] = val
         prior_levels.loc[period, f"{prefix}POC"] = poc
@@ -172,7 +182,9 @@ def compute_profile_levels(
     inst = INSTRUMENTS[instrument]
     exchange_tz = getattr(inst, "exchange_tz", "America/New_York")
     eth_start = getattr(inst, "eth_start", "") or ""
-    rolling_windows = DEFAULT_ROLLING_POC_WINDOWS if rolling_windows is None else tuple(rolling_windows)
+    rolling_windows = (
+        DEFAULT_ROLLING_POC_WINDOWS if rolling_windows is None else tuple(rolling_windows)
+    )
 
     out = df.sort_values("timestamp").reset_index(drop=True).copy()
     levels = pd.DataFrame(index=out.index)

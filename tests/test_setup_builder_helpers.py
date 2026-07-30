@@ -143,11 +143,19 @@ def test_sync_editor_widget_state_invalid_legacy_values_fallback_with_warnings()
         overwrite=True,
     )
     assert any("confluence mode is invalid" in message for message in warnings)
-    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_CONFLUENCE_MODE] == "Global cluster"
+    assert (
+        setup_builder.st.session_state[setup_builder.WIDGET_KEY_CONFLUENCE_MODE] == "Global cluster"
+    )
     assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_TRIGGER] == "touch"
     assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_DIRECTION] == "both"
-    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_TRIGGER_TIMEFRAME] == "Base/current timeframe"
-    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_SELECTED_LEVELS] == ["ONH", "ONL"]
+    assert (
+        setup_builder.st.session_state[setup_builder.WIDGET_KEY_TRIGGER_TIMEFRAME]
+        == "Base/current timeframe"
+    )
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_SELECTED_LEVELS] == [
+        "ONH",
+        "ONL",
+    ]
     assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_TOLERANCE_TICKS] == 0.0
 
 
@@ -160,7 +168,10 @@ def test_sync_editor_widget_state_invalid_selected_levels_uses_default_selection
     )
 
     assert "Loaded selected levels are invalid; using default level selection." in warnings
-    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_SELECTED_LEVELS] == ["ONH", "ONL"]
+    assert setup_builder.st.session_state[setup_builder.WIDGET_KEY_SELECTED_LEVELS] == [
+        "ONH",
+        "ONL",
+    ]
 
 
 def test_unavailable_level_references_detected_for_save_guard():
@@ -279,6 +290,7 @@ def test_sync_editor_widget_state_hydrates_enabled_otf_values():
 # _resolve_otf_for_ui — UI-safe OTF resolution helper
 # ---------------------------------------------------------------------------
 
+
 def test_resolve_otf_for_ui_valid_disabled_config_returns_no_warning():
     config = {"otf_filter": None}
     otf_config, warning = setup_builder._resolve_otf_for_ui(config)
@@ -305,7 +317,10 @@ def test_resolve_otf_for_ui_valid_enabled_config_returns_no_warning():
 
 def test_resolve_otf_for_ui_invalid_config_returns_disabled_and_warning():
     config = {
-        "otf_filter": {"enabled": True, "timeframes": []}  # invalid: enabled OTF requires at least one timeframe
+        "otf_filter": {
+            "enabled": True,
+            "timeframes": [],
+        }  # invalid: enabled OTF requires at least one timeframe
     }
     otf_config, warning = setup_builder._resolve_otf_for_ui(config)
     assert otf_config["enabled"] is False  # fallen back to disabled
@@ -324,6 +339,7 @@ def test_resolve_otf_for_ui_does_not_mutate_caller_dict():
 # ---------------------------------------------------------------------------
 # _seed_editor_config — malformed OTF safety
 # ---------------------------------------------------------------------------
+
 
 def test_seed_editor_config_malformed_otf_does_not_crash():
     """Malformed active OTF config must not crash editor seeding."""
@@ -360,7 +376,10 @@ def test_seed_editor_config_malformed_otf_includes_repair_warning():
     """Malformed OTF config must produce a repair warning in the returned dict."""
     malformed = {
         "name": "Malformed",
-        "otf_filter": {"enabled": True, "timeframes": []},  # invalid: enabled OTF requires at least one timeframe
+        "otf_filter": {
+            "enabled": True,
+            "timeframes": [],
+        },  # invalid: enabled OTF requires at least one timeframe
     }
     seeded = setup_builder._seed_editor_config(
         active_setup=malformed,
@@ -431,4 +450,3 @@ def test_seed_editor_config_does_not_mutate_active_setup():
         dataset_id="dataset-a",
     )
     assert active == original_active
-

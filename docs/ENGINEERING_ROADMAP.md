@@ -117,3 +117,67 @@ UI/persistence layer only. Engine and analytics code (`simulate_trades`,
 | `thesistester/persistence/__init__.py` | Exported new constants and functions |
 | `pages/7_Backtest.py` | Added stable `key=` to execution-setting widgets; load/save/reset logic |
 | `pages/8_Grid_Search.py` | Added stable `key=` to execution-setting widgets; load/save/reset logic |
+
+---
+
+## R9 — Engineering Hygiene: Packaging, CI, Lint ✅ Implemented
+
+First milestone of the proposal roadmap (`docs/ENGINEERING_PROPOSAL.md` §5 R9). Makes the
+repo's regression-safety conventions machine-enforced instead of aspirational. **No runtime
+behavior change:** the only code edits are mechanical (ruff safe fixes and one formatting
+pass), verified by the unchanged 1516-test suite.
+
+### Scope
+
+Tooling, CI, and documentation only. Engine, analytics, levels, persistence, and UI logic are
+**unaffected**; no `st.session_state` key was added, removed, or re-typed.
+
+### Features
+
+- **Packaging** — `pyproject.toml` (setuptools) makes `thesistester` importable after
+  `pip install -e .`, with `requires-python = ">=3.10"`, dependency ranges mirroring
+  `requirements.txt` plus conservative next-major caps, and a `dev` extra
+  (`pytest`, `pytest-cov`, `ruff`). Version is read from `thesistester.__version__`, so it
+  cannot drift from the package.
+- **CI** (`.github/workflows/ci.yml`), blocking on red:
+  - `ruff check` + `ruff format --check`;
+  - full suite on Python 3.10 / 3.11 / 3.12 with `--cov=thesistester`;
+  - clean-venv `pip install -e .` + import + `pip check`;
+  - **golden-master regeneration guard** — fails any PR that changes
+    `tests/fixtures/golden/**` without the `GOLDEN_REGEN` label
+    (`docs/ENGINEERING_PROPOSAL.md` §4.1 rule 3).
+  - Coverage is reported with an informational floor (warn only, never blocking); the R9
+    baseline is 88% statement+branch coverage.
+- **Lint/format** — deliberately minimal ruff rule set (`E4`, `E7`, `E9`, `F`, `W`) at line
+  length 100, with two documented per-file ignores: `E402` for Streamlit pages (they bootstrap
+  `sys.path` before importing) and `E741` for test fixtures using `l`/`O` bar shorthand.
+  Markdown is excluded: ruff formats fenced Python blocks, which would rewrite illustrative
+  snippets in historical design documents. A
+  one-time `ruff format` pass landed in its own commit; AST dumps of all 108 tracked Python
+  files are identical pre/post format, so the pass is provably semantics-preserving.
+- **Golden-master spec** — `tests/fixtures/golden/README.md` records the operational contract
+  (files, recording, verification, regeneration policy). Two measured findings shape it:
+  the repo's deterministic frame hash is *not* stable across pandas majors (dtype renames,
+  `datetime64[ns]` → `datetime64[us]`), and `build_research_bundle` bytes are not reproducible
+  (wall-clock `created_at` + zip metadata). Golden comparison is therefore value-level, with
+  bundle hashing over a canonical projection and scoped to the recorded pandas major. Golden
+  *data* lands in a dedicated follow-up PR before R12.
+- **LICENSE** — MIT.
+
+### New files
+
+| File | Purpose |
+|---|---|
+| `pyproject.toml` | Packaging metadata, dependency ranges/caps, ruff/pytest/coverage config |
+| `.github/workflows/ci.yml` | Lint, test matrix, packaging check, golden-regeneration guard |
+| `LICENSE` | MIT license |
+| `tests/fixtures/golden/README.md` | Golden-master operational spec (§4.1) |
+
+### Modified files
+
+| File | Change |
+|---|---|
+| `.gitignore` | Re-includes `tests/fixtures/golden/*.parquet` (repo-wide `*.parquet` ignore would otherwise silently drop golden fixtures); ignores ruff/coverage/packaging artifacts |
+| 101 `.py` files | One-time `ruff format` pass (formatting only) |
+| 13 `.py` files | Ruff safe lint fixes: unused imports/locals, split import line, two placeholder f-strings, `== False` → `.eq(False)` |
+| `README.md`, `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md` | Dev setup, CI gates, golden policy, packaging boundary |

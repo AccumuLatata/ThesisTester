@@ -1,4 +1,5 @@
 """Research bundle export/import page."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -27,7 +28,9 @@ def _will_include_dataset() -> bool:
 
 
 def _will_include_levels() -> bool:
-    return _is_dataframe(st.session_state.get("levels")) and _is_dataframe(st.session_state.get("session_levels"))
+    return _is_dataframe(st.session_state.get("levels")) and _is_dataframe(
+        st.session_state.get("session_levels")
+    )
 
 
 def _will_include_signals() -> bool:
@@ -39,7 +42,9 @@ def _will_include_signals() -> bool:
 
 
 def _will_include_backtest() -> bool:
-    return _is_dataframe(st.session_state.get("trades")) and _is_dataframe(st.session_state.get("equity_curve"))
+    return _is_dataframe(st.session_state.get("trades")) and _is_dataframe(
+        st.session_state.get("equity_curve")
+    )
 
 
 def _will_include_grid() -> bool:
@@ -88,12 +93,27 @@ if uploaded is not None:
         manifest = loaded_bundle.get("manifest", {})
         included = manifest.get("included", {}) if isinstance(manifest, dict) else {}
         preview_rows = [
-            {"Artifact": "Dataset", "Included in bundle": "✅" if included.get("dataset") else "❌"},
+            {
+                "Artifact": "Dataset",
+                "Included in bundle": "✅" if included.get("dataset") else "❌",
+            },
             {"Artifact": "Levels", "Included in bundle": "✅" if included.get("levels") else "❌"},
-            {"Artifact": "Signals", "Included in bundle": "✅" if included.get("signals") else "❌"},
-            {"Artifact": "Backtest", "Included in bundle": "✅" if included.get("backtest") else "❌"},
-            {"Artifact": "Grid search", "Included in bundle": "✅" if included.get("grid") else "❌"},
-            {"Artifact": "Validation", "Included in bundle": "✅" if included.get("validation") else "❌"},
+            {
+                "Artifact": "Signals",
+                "Included in bundle": "✅" if included.get("signals") else "❌",
+            },
+            {
+                "Artifact": "Backtest",
+                "Included in bundle": "✅" if included.get("backtest") else "❌",
+            },
+            {
+                "Artifact": "Grid search",
+                "Included in bundle": "✅" if included.get("grid") else "❌",
+            },
+            {
+                "Artifact": "Validation",
+                "Included in bundle": "✅" if included.get("validation") else "❌",
+            },
         ]
 
         st.caption("Bundle validated. Review contents before importing.")

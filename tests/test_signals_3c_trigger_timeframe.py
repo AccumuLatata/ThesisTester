@@ -11,18 +11,24 @@ Covers:
 - Signal settings hash distinguishes 3c + base vs 3c + non-base.
 - build_setup_config stores non-base trigger_timeframe for 3c.
 """
+
 from __future__ import annotations
 
-import math
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from thesistester.engine.candidate_level import CandidateLevel
-from thesistester.engine.signals_3c import _valid_bar_index, detect_3c_setups, detect_3c_setups_with_trigger_timeframe
-from thesistester.engine.signals import _prepare_trigger_dataframe, _project_zones_to_trigger_df, generate_signals
-from thesistester.engine.confluence import detect_confluence_zones
+from thesistester.engine.signals_3c import (
+    _valid_bar_index,
+    detect_3c_setups,
+    detect_3c_setups_with_trigger_timeframe,
+)
+from thesistester.engine.signals import (
+    _prepare_trigger_dataframe,
+    _project_zones_to_trigger_df,
+    generate_signals,
+)
 from thesistester.setup import build_setup_config
 
 TZ = "America/New_York"
@@ -99,9 +105,11 @@ def _run_nonbase(
         base_df=base_df_reset,
         candidates=[candidate],
         tick_size=TICK,
-        trigger_params=params or {"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3},
+        trigger_params=params
+        or {"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3},
         trigger_timeframe_delta=delta,
     )
+
 
 def _make_standard_15row_long_base_rows() -> list[dict]:
     """Standard 15-row base dataset for non-base 3c long scenario (5-min trigger).
@@ -126,15 +134,24 @@ def _make_standard_15row_long_base_rows() -> list[dict]:
         {"open": 101.2, "high": 101.4, "low": 101.0, "close": 101.3},  # base 6
         {"open": 101.3, "high": 101.4, "low": 101.0, "close": 101.2},  # base 7
         {"open": 101.2, "high": 101.3, "low": 101.0, "close": 101.2},  # base 8
-        {"open": 101.2, "high": 101.5, "low": 101.0, "close": 101.25}, # base 9 (T1 agg close=101.25)
+        {
+            "open": 101.2,
+            "high": 101.5,
+            "low": 101.0,
+            "close": 101.25,
+        },  # base 9 (T1 agg close=101.25)
         # trigger bar 2 (base 10-14): fill window
-        {"open": 101.25, "high": 101.5, "low": 101.1, "close": 101.3}, # base 10 ts=09:40 NOT eligible
-        {"open": 101.3,  "high": 101.5, "low": 100.6, "close": 101.0}, # base 11 ts=09:41 FILL
-        {"open": 101.0,  "high": 101.2, "low": 100.8, "close": 101.1}, # base 12
-        {"open": 101.1,  "high": 101.2, "low": 100.9, "close": 101.0}, # base 13
-        {"open": 101.0,  "high": 101.1, "low": 100.9, "close": 101.0}, # base 14
+        {
+            "open": 101.25,
+            "high": 101.5,
+            "low": 101.1,
+            "close": 101.3,
+        },  # base 10 ts=09:40 NOT eligible
+        {"open": 101.3, "high": 101.5, "low": 100.6, "close": 101.0},  # base 11 ts=09:41 FILL
+        {"open": 101.0, "high": 101.2, "low": 100.8, "close": 101.1},  # base 12
+        {"open": 101.1, "high": 101.2, "low": 100.9, "close": 101.0},  # base 13
+        {"open": 101.0, "high": 101.1, "low": 100.9, "close": 101.0},  # base 14
     ]
-
 
 
 # ===========================================================================
@@ -164,8 +181,12 @@ def test_base_3c_detect_unchanged():
         timestamp=df.iloc[0]["timestamp"],
         metadata={},
     )
-    setups = detect_3c_setups(df, [candidate], tick_size=TICK,
-                               trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3})
+    setups = detect_3c_setups(
+        df,
+        [candidate],
+        tick_size=TICK,
+        trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3},
+    )
     assert len(setups) == 1
     assert setups[0]["status"] == "filled"
     assert setups[0]["arrival_bar_index"] == 0
@@ -198,7 +219,11 @@ def test_3c_base_uses_existing_path_and_has_no_trigger_indices():
         ]
     )
     signals = generate_signals(
-        df, zones, trigger="3c", direction="long", tick_size=TICK,
+        df,
+        zones,
+        trigger="3c",
+        direction="long",
+        tick_size=TICK,
         trigger_timeframe="base",
         trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3},
     )
@@ -254,7 +279,11 @@ def test_base_3c_trigger_metadata_uses_reversal_bar_not_entry_bar():
         ]
     )
     signals = generate_signals(
-        df, zones, trigger="3c", direction="long", tick_size=TICK,
+        df,
+        zones,
+        trigger="3c",
+        direction="long",
+        tick_size=TICK,
         trigger_timeframe="base",
         trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3},
     )
@@ -323,7 +352,12 @@ def _make_5min_base_rows() -> list[dict]:
         {"open": 100.7, "high": 101.0, "low": 100.1, "close": 100.8},  # bar 3
         {"open": 100.8, "high": 101.0, "low": 100.4, "close": 100.9},  # bar 4
         # Trigger bar 1 base bars (bar indices 5-9 base)
-        {"open": 100.9, "high": 101.3, "low": 100.2, "close": 101.7},  # bar 5: reversal close > 101.5
+        {
+            "open": 100.9,
+            "high": 101.3,
+            "low": 100.2,
+            "close": 101.7,
+        },  # bar 5: reversal close > 101.5
         {"open": 101.7, "high": 101.8, "low": 101.1, "close": 101.5},  # bar 6: no retrace
         {"open": 101.5, "high": 101.6, "low": 101.1, "close": 101.4},  # bar 7: no retrace
         {"open": 101.4, "high": 101.5, "low": 101.0, "close": 101.2},  # bar 8: no retrace
@@ -353,13 +387,23 @@ def test_nonbase_3c_long_detected():
         {"open": 101.2, "high": 101.4, "low": 101.0, "close": 101.3},  # base 6
         {"open": 101.3, "high": 101.4, "low": 101.0, "close": 101.2},  # base 7
         {"open": 101.2, "high": 101.3, "low": 101.0, "close": 101.2},  # base 8
-        {"open": 101.2, "high": 101.5, "low": 101.0, "close": 101.25}, # base 9 (T1 agg close=101.25)
+        {
+            "open": 101.2,
+            "high": 101.5,
+            "low": 101.0,
+            "close": 101.25,
+        },  # base 9 (T1 agg close=101.25)
         # trigger bar 2 (base 10-14): fill window
-        {"open": 101.25, "high": 101.5, "low": 101.1, "close": 101.3}, # base 10 ts=09:40 NOT eligible
-        {"open": 101.3,  "high": 101.5, "low": 100.6, "close": 101.0}, # base 11 ts=09:41 FILL
-        {"open": 101.0,  "high": 101.2, "low": 100.8, "close": 101.1}, # base 12
-        {"open": 101.1,  "high": 101.2, "low": 100.9, "close": 101.0}, # base 13
-        {"open": 101.0,  "high": 101.1, "low": 100.9, "close": 101.0}, # base 14
+        {
+            "open": 101.25,
+            "high": 101.5,
+            "low": 101.1,
+            "close": 101.3,
+        },  # base 10 ts=09:40 NOT eligible
+        {"open": 101.3, "high": 101.5, "low": 100.6, "close": 101.0},  # base 11 ts=09:41 FILL
+        {"open": 101.0, "high": 101.2, "low": 100.8, "close": 101.1},  # base 12
+        {"open": 101.1, "high": 101.2, "low": 100.9, "close": 101.0},  # base 13
+        {"open": 101.0, "high": 101.1, "low": 100.9, "close": 101.0},  # base 14
     ]
     base_df = _base_df(base_rows, freq="1min")
     base_df_reset = base_df.reset_index(drop=True)
@@ -407,23 +451,28 @@ def test_nonbase_3c_short_detected():
     """
     base_rows = [
         # trigger bar 0 (base 0-4): arrival
-        {"open": 99.0, "high": 100.0, "low": 99.0, "close": 99.5},   # base 0
-        {"open": 99.5, "high": 99.8,  "low": 99.1, "close": 99.4},   # base 1
-        {"open": 99.4, "high": 99.7,  "low": 99.0, "close": 99.3},   # base 2
-        {"open": 99.3, "high": 99.6,  "low": 98.9, "close": 99.2},   # base 3
-        {"open": 99.2, "high": 99.5,  "low": 98.8, "close": 99.1},   # base 4
+        {"open": 99.0, "high": 100.0, "low": 99.0, "close": 99.5},  # base 0
+        {"open": 99.5, "high": 99.8, "low": 99.1, "close": 99.4},  # base 1
+        {"open": 99.4, "high": 99.7, "low": 99.0, "close": 99.3},  # base 2
+        {"open": 99.3, "high": 99.6, "low": 98.9, "close": 99.2},  # base 3
+        {"open": 99.2, "high": 99.5, "low": 98.8, "close": 99.1},  # base 4
         # trigger bar 1 (base 5-9, end=09:40): reversal; T1 close < T0.L=98.8
-        {"open": 99.1, "high": 99.3,  "low": 98.5, "close": 98.7},   # base 5
-        {"open": 98.7, "high": 99.0,  "low": 98.4, "close": 98.6},   # base 6
-        {"open": 98.6, "high": 98.9,  "low": 98.4, "close": 98.6},   # base 7
-        {"open": 98.6, "high": 98.9,  "low": 98.4, "close": 98.6},   # base 8
-        {"open": 98.6, "high": 98.9,  "low": 98.4, "close": 98.5},   # base 9 (T1 agg close=98.5)
+        {"open": 99.1, "high": 99.3, "low": 98.5, "close": 98.7},  # base 5
+        {"open": 98.7, "high": 99.0, "low": 98.4, "close": 98.6},  # base 6
+        {"open": 98.6, "high": 98.9, "low": 98.4, "close": 98.6},  # base 7
+        {"open": 98.6, "high": 98.9, "low": 98.4, "close": 98.6},  # base 8
+        {"open": 98.6, "high": 98.9, "low": 98.4, "close": 98.5},  # base 9 (T1 agg close=98.5)
         # trigger bar 2 (base 10-14): fill window
-        {"open": 98.5, "high": 98.8,  "low": 98.3, "close": 98.6},   # base 10 ts=09:40 NOT eligible
-        {"open": 98.6, "high": 99.1,  "low": 98.5, "close": 98.9},   # base 11 ts=09:41 FILL (H=99.1>=99.0)
-        {"open": 98.9, "high": 99.0,  "low": 98.7, "close": 98.9},   # base 12
-        {"open": 98.9, "high": 99.0,  "low": 98.8, "close": 98.9},   # base 13
-        {"open": 98.9, "high": 99.0,  "low": 98.8, "close": 98.9},   # base 14
+        {"open": 98.5, "high": 98.8, "low": 98.3, "close": 98.6},  # base 10 ts=09:40 NOT eligible
+        {
+            "open": 98.6,
+            "high": 99.1,
+            "low": 98.5,
+            "close": 98.9,
+        },  # base 11 ts=09:41 FILL (H=99.1>=99.0)
+        {"open": 98.9, "high": 99.0, "low": 98.7, "close": 98.9},  # base 12
+        {"open": 98.9, "high": 99.0, "low": 98.8, "close": 98.9},  # base 13
+        {"open": 98.9, "high": 99.0, "low": 98.8, "close": 98.9},  # base 14
     ]
     base_df = _base_df(base_rows, freq="1min")
     base_df_reset = base_df.reset_index(drop=True)
@@ -469,15 +518,25 @@ def test_nonbase_3c_muted_detected():
         {"open": 100.5, "high": 100.7, "low": 100.2, "close": 100.6},  # base 6
         {"open": 100.6, "high": 100.8, "low": 100.1, "close": 100.7},  # base 7
         {"open": 100.7, "high": 100.9, "low": 100.3, "close": 100.8},  # base 8
-        {"open": 100.8, "high": 100.95,"low": 100.2, "close": 100.8},  # base 9
+        {"open": 100.8, "high": 100.95, "low": 100.2, "close": 100.8},  # base 9
         # trigger bar 2 (base 10-14, end=09:45): reversal; T2 close > T0.H=101.0
         {"open": 100.8, "high": 101.4, "low": 100.1, "close": 101.2},  # base 10
         {"open": 101.2, "high": 101.5, "low": 101.0, "close": 101.3},  # base 11
         {"open": 101.3, "high": 101.5, "low": 101.0, "close": 101.2},  # base 12
         {"open": 101.2, "high": 101.4, "low": 100.9, "close": 101.1},  # base 13
-        {"open": 101.1, "high": 101.5, "low": 101.0, "close": 101.25}, # base 14 (T2 agg close=101.25)
+        {
+            "open": 101.1,
+            "high": 101.5,
+            "low": 101.0,
+            "close": 101.25,
+        },  # base 14 (T2 agg close=101.25)
         # trigger bar 3 (base 15-19): fill window
-        {"open": 101.25,"high": 101.5, "low": 101.0, "close": 101.3},  # base 15 ts=09:45 NOT eligible
+        {
+            "open": 101.25,
+            "high": 101.5,
+            "low": 101.0,
+            "close": 101.3,
+        },  # base 15 ts=09:45 NOT eligible
         {"open": 101.3, "high": 101.5, "low": 100.6, "close": 101.0},  # base 16 ts=09:46 FILL
         {"open": 101.0, "high": 101.2, "low": 100.8, "close": 101.1},  # base 17
         {"open": 101.1, "high": 101.2, "low": 100.9, "close": 101.0},  # base 18
@@ -546,7 +605,9 @@ def test_nonbase_3c_sfp_detected():
 # ===========================================================================
 
 
-def _scenario_two_trigger_bars(reversal_close: float = 101.2) -> tuple[pd.DataFrame, pd.DataFrame, pd.Timedelta]:
+def _scenario_two_trigger_bars(
+    reversal_close: float = 101.2,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Timedelta]:
     """Create a standard 2-trigger-bar scenario for fill boundary tests."""
     base_rows = [
         # trigger bar 0 (base 0-4): arrival
@@ -557,10 +618,30 @@ def _scenario_two_trigger_bars(reversal_close: float = 101.2) -> tuple[pd.DataFr
         {"open": 100.9, "high": 101.0, "low": 100.2, "close": 100.9},
         # trigger bar 1 (base 5-9): reversal close > 101.0 (bar0 high)
         {"open": 100.9, "high": 101.5, "low": 100.1, "close": reversal_close},
-        {"open": reversal_close, "high": reversal_close + 0.5, "low": reversal_close - 0.5, "close": reversal_close},
-        {"open": reversal_close, "high": reversal_close + 0.5, "low": reversal_close - 0.5, "close": reversal_close},
-        {"open": reversal_close, "high": reversal_close + 0.5, "low": reversal_close - 0.5, "close": reversal_close},
-        {"open": reversal_close, "high": reversal_close + 0.5, "low": reversal_close - 0.5, "close": reversal_close},
+        {
+            "open": reversal_close,
+            "high": reversal_close + 0.5,
+            "low": reversal_close - 0.5,
+            "close": reversal_close,
+        },
+        {
+            "open": reversal_close,
+            "high": reversal_close + 0.5,
+            "low": reversal_close - 0.5,
+            "close": reversal_close,
+        },
+        {
+            "open": reversal_close,
+            "high": reversal_close + 0.5,
+            "low": reversal_close - 0.5,
+            "close": reversal_close,
+        },
+        {
+            "open": reversal_close,
+            "high": reversal_close + 0.5,
+            "low": reversal_close - 0.5,
+            "close": reversal_close,
+        },
     ]
     base_df = _base_df(base_rows, freq="1min")
     base_df_reset = base_df.reset_index(drop=True)
@@ -675,14 +756,29 @@ def test_fill_after_window_end_not_allowed():
         {"open": 101.2, "high": 101.3, "low": 101.0, "close": 101.2},
         {"open": 101.2, "high": 101.3, "low": 101.0, "close": 101.2},
         # trigger bar 2 (base 10-14, end=09:45): within window (max_wait=1), no fill
-        {"open": 101.2, "high": 101.3, "low": 101.0, "close": 101.2},  # base 10 ts=09:40 not eligible
+        {
+            "open": 101.2,
+            "high": 101.3,
+            "low": 101.0,
+            "close": 101.2,
+        },  # base 10 ts=09:40 not eligible
         {"open": 101.2, "high": 101.3, "low": 101.0, "close": 101.2},  # base 11 ts=09:41
         {"open": 101.2, "high": 101.3, "low": 101.0, "close": 101.2},  # base 12 ts=09:42
         {"open": 101.2, "high": 101.3, "low": 101.0, "close": 101.2},  # base 13 ts=09:43
         {"open": 101.2, "high": 101.3, "low": 101.0, "close": 101.2},  # base 14 ts=09:44
         # trigger bar 3 (base 15-19): base 15 at ts=09:45 is AT window_end (no fill); after that -> out of window
-        {"open": 101.2, "high": 101.3, "low": 101.0, "close": 101.0},  # base 15 ts=09:45 AT window_end, no fill
-        {"open": 101.0, "high": 101.2, "low": 100.0, "close": 101.1},  # base 16 ts=09:46 AFTER window_end
+        {
+            "open": 101.2,
+            "high": 101.3,
+            "low": 101.0,
+            "close": 101.0,
+        },  # base 15 ts=09:45 AT window_end, no fill
+        {
+            "open": 101.0,
+            "high": 101.2,
+            "low": 100.0,
+            "close": 101.1,
+        },  # base 16 ts=09:46 AFTER window_end
         {"open": 101.1, "high": 101.2, "low": 100.9, "close": 101.0},  # base 17
         {"open": 101.0, "high": 101.1, "low": 100.9, "close": 101.0},  # base 18
         {"open": 101.0, "high": 101.1, "low": 100.9, "close": 101.0},  # base 19
@@ -1012,7 +1108,9 @@ def test_naked_metadata_uses_base_arrival_index():
     }
     candidate = _candidate_trigger(direction="long", price=100.0, trigger_bar_index=0)
     base_arr_idx = trigger_base_end_map.get(int(candidate.bar_index))
-    is_naked = bool(naked_flags["L1_naked"].iloc[base_arr_idx]) if base_arr_idx is not None else None
+    is_naked = (
+        bool(naked_flags["L1_naked"].iloc[base_arr_idx]) if base_arr_idx is not None else None
+    )
     state = "naked" if is_naked else "tested"
     candidate = with_metadata(
         candidate,
@@ -1086,7 +1184,11 @@ def test_global_mode_works():
     df = _make_base_df_for_full_test()
     zones = _make_zones_df()
     signals = generate_signals(
-        df, zones, trigger="3c", direction="long", tick_size=TICK,
+        df,
+        zones,
+        trigger="3c",
+        direction="long",
+        tick_size=TICK,
         trigger_timeframe="5min",
         trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 5},
     )
@@ -1101,9 +1203,17 @@ def test_anchor_mode_works():
     """Anchor rules mode produces signals for non-base 3c."""
     df = _make_base_df_for_full_test()
     zones = _make_anchor_zones_df()
-    trigger_params = {"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 5, "_source_mode": "anchor_rules"}
+    trigger_params = {
+        "entry_retrace_ticks": 2,
+        "max_entry_wait_bars_after_reversal": 5,
+        "_source_mode": "anchor_rules",
+    }
     signals = generate_signals(
-        df, zones, trigger="3c", direction="long", tick_size=TICK,
+        df,
+        zones,
+        trigger="3c",
+        direction="long",
+        tick_size=TICK,
         trigger_timeframe="5min",
         trigger_params=trigger_params,
     )

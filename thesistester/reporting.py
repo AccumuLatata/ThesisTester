@@ -1,4 +1,5 @@
 """Phase 9 reporting/export helpers for reproducible research artifacts."""
+
 from __future__ import annotations
 
 from datetime import date, datetime, time, timezone
@@ -213,14 +214,8 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
         instrument = setup_config.get("instrument")
 
     contract = timezone_contract(dict(session_state))
-    canonical_timezone = (
-        contract.get("canonical_engine_timezone")
-        or "America/New_York"
-    )
-    display_timezone = (
-        contract.get("display_export_timezone")
-        or canonical_timezone
-    )
+    canonical_timezone = contract.get("canonical_engine_timezone") or "America/New_York"
+    display_timezone = contract.get("display_export_timezone") or canonical_timezone
 
     artifact = {
         "metadata": {
@@ -314,7 +309,6 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
     return to_jsonable(artifact)
 
 
-
 def _fmt_number(value: Any, fmt: str = ".4f", fallback: str = "—") -> str:
     if value is None:
         return fallback
@@ -368,12 +362,12 @@ def build_execution_cost_assumptions(session_state: Mapping[str, Any]) -> dict[s
     Availability is true only when both the corresponding result scope is present in
     session state and a non-empty matching `*_execution_costs` mapping exists.
     """
-    backtest_results_available = _has_nonempty_value(session_state.get("trades")) or _has_nonempty_value(
-        session_state.get("trade_summary")
-    )
-    grid_results_available = _has_nonempty_value(session_state.get("grid_results")) or _has_nonempty_value(
-        session_state.get("best_grid_result")
-    )
+    backtest_results_available = _has_nonempty_value(
+        session_state.get("trades")
+    ) or _has_nonempty_value(session_state.get("trade_summary"))
+    grid_results_available = _has_nonempty_value(
+        session_state.get("grid_results")
+    ) or _has_nonempty_value(session_state.get("best_grid_result"))
 
     backtest_costs = session_state.get("backtest_execution_costs")
     grid_costs = session_state.get("grid_execution_costs")
@@ -383,9 +377,7 @@ def build_execution_cost_assumptions(session_state: Mapping[str, Any]) -> dict[s
         and len(backtest_costs) > 0
     )
     grid_available = (
-        grid_results_available
-        and isinstance(grid_costs, Mapping)
-        and len(grid_costs) > 0
+        grid_results_available and isinstance(grid_costs, Mapping) and len(grid_costs) > 0
     )
 
     assumptions: dict[str, dict[str, Any]] = {
@@ -444,10 +436,7 @@ def execution_cost_assumptions_markdown(assumptions: Mapping[str, Mapping[str, A
             f"- Metrics basis: {backtest.get('metrics_basis', '—')}\n"
         )
 
-    section += (
-        "\n### Grid Search\n"
-        f"- Available: {'yes' if grid.get('available') else 'no'}\n"
-    )
+    section += f"\n### Grid Search\n- Available: {'yes' if grid.get('available') else 'no'}\n"
     if grid.get("available"):
         section += (
             f"- Commission per side: {grid.get('commission_per_side', 0.0):.4f}\n"
@@ -457,14 +446,16 @@ def execution_cost_assumptions_markdown(assumptions: Mapping[str, Mapping[str, A
     return section
 
 
-def build_session_exit_policy_assumptions(session_state: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+def build_session_exit_policy_assumptions(
+    session_state: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
     """Return scoped session-exit assumptions for current backtest/grid export data."""
-    backtest_results_available = _has_nonempty_value(session_state.get("trades")) or _has_nonempty_value(
-        session_state.get("trade_summary")
-    )
-    grid_results_available = _has_nonempty_value(session_state.get("grid_results")) or _has_nonempty_value(
-        session_state.get("best_grid_result")
-    )
+    backtest_results_available = _has_nonempty_value(
+        session_state.get("trades")
+    ) or _has_nonempty_value(session_state.get("trade_summary"))
+    grid_results_available = _has_nonempty_value(
+        session_state.get("grid_results")
+    ) or _has_nonempty_value(session_state.get("best_grid_result"))
 
     backtest_policy = session_state.get("backtest_session_exit_policy")
     grid_policy = session_state.get("grid_session_exit_policy")
@@ -474,9 +465,7 @@ def build_session_exit_policy_assumptions(session_state: Mapping[str, Any]) -> d
         and len(backtest_policy) > 0
     )
     grid_available = (
-        grid_results_available
-        and isinstance(grid_policy, Mapping)
-        and len(grid_policy) > 0
+        grid_results_available and isinstance(grid_policy, Mapping) and len(grid_policy) > 0
     )
 
     assumptions: dict[str, dict[str, Any]] = {
@@ -536,10 +525,7 @@ def session_exit_policy_assumptions_markdown(assumptions: Mapping[str, Mapping[s
             f"- No new entries after: {backtest.get('no_new_entries_after', '—') or '—'}\n"
         )
 
-    section += (
-        "\n### Grid Search\n"
-        f"- Available: {'yes' if grid.get('available') else 'no'}\n"
-    )
+    section += f"\n### Grid Search\n- Available: {'yes' if grid.get('available') else 'no'}\n"
     if grid.get("available"):
         section += (
             f"- Flat by session close: {'yes' if grid.get('flat_by_session_close') else 'no'}\n"
@@ -550,14 +536,16 @@ def session_exit_policy_assumptions_markdown(assumptions: Mapping[str, Mapping[s
     return section
 
 
-def build_exposure_policy_assumptions(session_state: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+def build_exposure_policy_assumptions(
+    session_state: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
     """Return scoped exposure-policy assumptions for current backtest/grid export data."""
-    backtest_results_available = _has_nonempty_value(session_state.get("trades")) or _has_nonempty_value(
-        session_state.get("trade_summary")
-    )
-    grid_results_available = _has_nonempty_value(session_state.get("grid_results")) or _has_nonempty_value(
-        session_state.get("best_grid_result")
-    )
+    backtest_results_available = _has_nonempty_value(
+        session_state.get("trades")
+    ) or _has_nonempty_value(session_state.get("trade_summary"))
+    grid_results_available = _has_nonempty_value(
+        session_state.get("grid_results")
+    ) or _has_nonempty_value(session_state.get("best_grid_result"))
 
     backtest_policy = session_state.get("exposure_policy")
     grid_policy = session_state.get("grid_exposure_policy")
@@ -569,15 +557,11 @@ def build_exposure_policy_assumptions(session_state: Mapping[str, Any]) -> dict[
         and len(backtest_policy) > 0
     )
     grid_available = (
-        grid_results_available
-        and isinstance(grid_policy, Mapping)
-        and len(grid_policy) > 0
+        grid_results_available and isinstance(grid_policy, Mapping) and len(grid_policy) > 0
     )
 
     skipped_signal_count = (
-        int(len(skipped_signals))
-        if isinstance(skipped_signals, pd.DataFrame)
-        else 0
+        int(len(skipped_signals)) if isinstance(skipped_signals, pd.DataFrame) else 0
     )
 
     assumptions: dict[str, dict[str, Any]] = {
@@ -598,9 +582,7 @@ def build_exposure_policy_assumptions(session_state: Mapping[str, Any]) -> dict[
         assumptions["backtest"].update(
             {
                 "exposure_policy": to_jsonable(backtest_policy.get("exposure_policy")),
-                "cooldown_bars_after_exit": int(
-                    backtest_policy.get("cooldown_bars_after_exit", 0)
-                ),
+                "cooldown_bars_after_exit": int(backtest_policy.get("cooldown_bars_after_exit", 0)),
                 "skipped_signal_count": skipped_signal_count,
             }
         )
@@ -608,9 +590,7 @@ def build_exposure_policy_assumptions(session_state: Mapping[str, Any]) -> dict[
         assumptions["grid"].update(
             {
                 "exposure_policy": to_jsonable(grid_policy.get("exposure_policy")),
-                "cooldown_bars_after_exit": int(
-                    grid_policy.get("cooldown_bars_after_exit", 0)
-                ),
+                "cooldown_bars_after_exit": int(grid_policy.get("cooldown_bars_after_exit", 0)),
             }
         )
 
@@ -634,10 +614,7 @@ def exposure_policy_assumptions_markdown(assumptions: Mapping[str, Mapping[str, 
             f"- Skipped signal count: {backtest.get('skipped_signal_count', 0)}\n"
         )
 
-    section += (
-        "\n### Grid Search\n"
-        f"- Available: {'yes' if grid.get('available') else 'no'}\n"
-    )
+    section += f"\n### Grid Search\n- Available: {'yes' if grid.get('available') else 'no'}\n"
     if grid.get("available"):
         section += (
             f"- Exposure policy: {grid.get('exposure_policy') or '—'}\n"
@@ -650,17 +627,11 @@ def exposure_policy_assumptions_markdown(assumptions: Mapping[str, Mapping[str, 
 def _otf_markdown_section(otf_meta: Mapping[str, Any] | None) -> str:
     """Render OTF filter metadata as a markdown report section."""
     if not isinstance(otf_meta, Mapping) or not otf_meta.get("available"):
-        return (
-            "\n## OTF Filter\n"
-            "- Status: not available (no OTF filter data in session)\n"
-        )
+        return "\n## OTF Filter\n- Status: not available (no OTF filter data in session)\n"
 
     enabled = otf_meta.get("enabled")
     if enabled is None:
-        return (
-            "\n## OTF Filter\n"
-            "- Status: not available\n"
-        )
+        return "\n## OTF Filter\n- Status: not available\n"
 
     if not enabled:
         return (
@@ -672,7 +643,9 @@ def _otf_markdown_section(otf_meta: Mapping[str, Any] | None) -> str:
     config = otf_meta.get("config") or {}
     timeframes = config.get("timeframes", []) if isinstance(config, Mapping) else []
     tf_str = ", ".join(timeframes) if timeframes else "—"
-    min_bars = _dash_if_none(config.get("minimum_consecutive_bars") if isinstance(config, Mapping) else None)
+    min_bars = _dash_if_none(
+        config.get("minimum_consecutive_bars") if isinstance(config, Mapping) else None
+    )
     algorithm_version = _dash_if_none(otf_meta.get("algorithm_version"))
     config_hash = otf_meta.get("config_hash") or "—"
     config_hash_short = str(config_hash)[:12] if config_hash != "—" else "—"
@@ -682,9 +655,7 @@ def _otf_markdown_section(otf_meta: Mapping[str, Any] | None) -> str:
     rejection_rate = otf_meta.get("rejection_rate")
     applied_scopes = otf_meta.get("applied_scopes") or []
 
-    rejection_rate_str = (
-        format(float(rejection_rate), ".1%") if rejection_rate is not None else "—"
-    )
+    rejection_rate_str = format(float(rejection_rate), ".1%") if rejection_rate is not None else "—"
 
     return (
         "\n## OTF Filter\n"
@@ -781,7 +752,9 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     validation = results.get("validation_summary") or {}
 
     selected_levels = setup.get("selected_levels") if isinstance(setup, Mapping) else None
-    levels_str = ", ".join(selected_levels) if isinstance(selected_levels, list) and selected_levels else "—"
+    levels_str = (
+        ", ".join(selected_levels) if isinstance(selected_levels, list) and selected_levels else "—"
+    )
 
     grid_metric_name, grid_metric_value = _best_grid_metric(best_grid)
 
@@ -790,7 +763,9 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     trade_count_diag = validation.get("trade_count") if isinstance(validation, Mapping) else {}
     grid_overfit = validation.get("grid_overfit") if isinstance(validation, Mapping) else {}
     roll_policy = config.get("roll_policy") if isinstance(config, Mapping) else {}
-    roll_validation = data_quality.get("roll_validation") if isinstance(data_quality, Mapping) else {}
+    roll_validation = (
+        data_quality.get("roll_validation") if isinstance(data_quality, Mapping) else {}
+    )
 
     lines = [
         "# ThesisTester Research Report",

@@ -1,4 +1,5 @@
 """CSV ingestion + validation for intraday OHLCV data."""
+
 from __future__ import annotations
 
 from collections import Counter
@@ -7,6 +8,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from ..config import REQUIRED_COLUMNS
+
 # Flag gaps larger than 3x the inferred base interval as significant missing-bar regions.
 GAP_THRESHOLD_MULTIPLIER = 3
 DST_TRANSITION_CONTEXT_WINDOW = 3
@@ -265,9 +267,9 @@ def validate_ohlcv(df: pd.DataFrame) -> ValidationReport:
             )
 
         offset_change = (
-            df["timestamp"].map(
-                lambda ts: ts.utcoffset().total_seconds() if pd.notna(ts) else None
-            ).diff()
+            df["timestamp"]
+            .map(lambda ts: ts.utcoffset().total_seconds() if pd.notna(ts) else None)
+            .diff()
         )
         offset_change = offset_change.fillna(0)
         if (offset_change != 0).any():

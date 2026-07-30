@@ -3,6 +3,7 @@
 All calculations operate on the trade DataFrame produced by
 :func:`~thesistester.engine.backtest.simulate_trades`.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -155,11 +156,7 @@ def summarize_trades(trades: pd.DataFrame) -> dict:
         else 0.0
     )
 
-    sharpe_like_r = (
-        avg_r / std_r
-        if std_r is not None and not np.isclose(std_r, 0.0)
-        else None
-    )
+    sharpe_like_r = avg_r / std_r if std_r is not None and not np.isclose(std_r, 0.0) else None
     sortino_like_r = (
         avg_r / downside_std_r
         if downside_std_r is not None and not np.isclose(downside_std_r, 0.0)
@@ -173,16 +170,12 @@ def summarize_trades(trades: pd.DataFrame) -> dict:
     recovery_factor = expectancy_to_drawdown
     win_loss_ratio = (
         abs(avg_win_r / avg_loss_r)
-        if avg_win_r is not None
-        and avg_loss_r is not None
-        and not np.isclose(avg_loss_r, 0.0)
+        if avg_win_r is not None and avg_loss_r is not None and not np.isclose(avg_loss_r, 0.0)
         else None
     )
     tail_ratio = (
         abs(p95_r / p05_r)
-        if p95_r is not None
-        and p05_r is not None
-        and not np.isclose(p05_r, 0.0)
+        if p95_r is not None and p05_r is not None and not np.isclose(p05_r, 0.0)
         else None
     )
     mean_absolute_r = _float_or_none(r.abs().mean())
@@ -341,7 +334,11 @@ def summarize_by_group(trades: pd.DataFrame, group_cols: list[str]) -> pd.DataFr
     ordered_cols = available_group_cols + metric_cols
     present_cols = [c for c in ordered_cols if c in out.columns]
     out = out[present_cols]
-    return out.sort_values(available_group_cols).reset_index(drop=True) if available_group_cols else out.reset_index(drop=True)
+    return (
+        out.sort_values(available_group_cols).reset_index(drop=True)
+        if available_group_cols
+        else out.reset_index(drop=True)
+    )
 
 
 def equity_curve(trades: pd.DataFrame) -> pd.DataFrame:

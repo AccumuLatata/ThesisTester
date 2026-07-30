@@ -1,4 +1,5 @@
 """Futures roll methodology helpers."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -84,7 +85,9 @@ def detect_contract_segments(df: pd.DataFrame, contract_column: str = "contract"
         segments.append(
             {
                 "segment_id": int(segment_id),
-                "contract": None if pd.isna(first[contract_column]) else str(first[contract_column]),
+                "contract": None
+                if pd.isna(first[contract_column])
+                else str(first[contract_column]),
                 "start_timestamp": first.get("timestamp"),
                 "end_timestamp": last.get("timestamp"),
                 "start_row": start_row,
@@ -112,7 +115,9 @@ def compute_roll_gaps(
     ordered = _sorted_for_roll_analysis(df)
     contract_series = ordered[contract_column].astype("string")
     roll_boundary_positions = contract_series.ne(contract_series.shift(1)).fillna(True)
-    boundary_indices = [int(i) for i in ordered.index[roll_boundary_positions].tolist() if int(i) > 0]
+    boundary_indices = [
+        int(i) for i in ordered.index[roll_boundary_positions].tolist() if int(i) > 0
+    ]
 
     tick = float(tick_size) if tick_size is not None else None
     use_ticks = tick is not None and tick > 0
@@ -179,7 +184,9 @@ def validate_roll_metadata(
     """Validate user-declared futures roll assumptions against dataset metadata."""
     warnings: list[str] = []
     valid = True
-    adjustment_method_text = str("unknown" if adjustment_method is None else adjustment_method).strip()
+    adjustment_method_text = str(
+        "unknown" if adjustment_method is None else adjustment_method
+    ).strip()
     roll_rule_text = str("unknown" if roll_rule is None else roll_rule).strip()
 
     if roll_method not in ROLL_METHODS:
@@ -192,7 +199,9 @@ def validate_roll_metadata(
 
     if roll_method == "single_contract":
         if detected_contract_column is None:
-            warnings.append("No contract column found; treating dataset as single-contract by assumption.")
+            warnings.append(
+                "No contract column found; treating dataset as single-contract by assumption."
+            )
         elif contract_count is not None and contract_count > 1:
             warnings.append(
                 "Dataset contains multiple contracts but roll method is single_contract."
@@ -219,18 +228,27 @@ def validate_roll_metadata(
             valid = False
         else:
             if contract_count is not None and contract_count < 2:
-                warnings.append("Segmented contracts validation requires at least two distinct contracts.")
+                warnings.append(
+                    "Segmented contracts validation requires at least two distinct contracts."
+                )
                 valid = False
             if "timestamp" not in df.columns:
                 warnings.append("Segmented contracts validation requires a timestamp column.")
                 valid = False
             elif not df["timestamp"].is_monotonic_increasing:
-                warnings.append("Input timestamps were not monotonic; roll analysis used sorted timestamps.")
+                warnings.append(
+                    "Input timestamps were not monotonic; roll analysis used sorted timestamps."
+                )
         warnings.append(
             "R7 does not adjust OHLC prices across roll gaps; metrics may include roll discontinuities."
         )
 
-    if roll_method == "segmented_contracts" and {contract_column, "open", "close", "timestamp"}.issubset(df.columns):
+    if roll_method == "segmented_contracts" and {
+        contract_column,
+        "open",
+        "close",
+        "timestamp",
+    }.issubset(df.columns):
         roll_gaps = compute_roll_gaps(df, contract_column=contract_column, tick_size=tick_size)
     else:
         roll_gaps = []
@@ -245,7 +263,9 @@ def validate_roll_metadata(
         "contract_column": detected_contract_column,
         "contract_count": contract_count,
         "contracts": contracts,
-        "adjustment_method": adjustment_method_text if roll_method == "external_continuous" else None,
+        "adjustment_method": adjustment_method_text
+        if roll_method == "external_continuous"
+        else None,
         "roll_rule": roll_rule_text if roll_method == "external_continuous" else None,
         "roll_gap_count": len(roll_gaps),
         "roll_gaps": [

@@ -1,7 +1,7 @@
 """Phase 5 backtest engine tests."""
+
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -22,7 +22,11 @@ POINT_VALUE = 50.0
 def _bar(ts: str, o: float, h: float, l: float, c: float, vol: float = 100.0) -> dict:
     return {
         "timestamp": pd.Timestamp(ts, tz=TZ),
-        "open": o, "high": h, "low": l, "close": c, "volume": vol,
+        "open": o,
+        "high": h,
+        "low": l,
+        "close": c,
+        "volume": vol,
     }
 
 
@@ -105,8 +109,13 @@ def test_3c_filled_enters_on_entry_bar():
         _bar("2026-01-02 09:33", 100.0, 110.0, 99.0, 109.0),  # TP bar
     )
     sigs = _signal(
-        bar_index=2, trigger="3c", direction="long",
-        status="filled", entry_ref=99.0, entry_bar_index=2, retrace_entry_price=99.0,
+        bar_index=2,
+        trigger="3c",
+        direction="long",
+        status="filled",
+        entry_ref=99.0,
+        entry_bar_index=2,
+        retrace_entry_price=99.0,
     )
     trades = simulate_trades(df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8)
     assert len(trades) == 1
@@ -123,8 +132,13 @@ def test_3c_void_is_skipped():
         _bar("2026-01-02 09:32", 100.0, 101.0, 99.0, 100.0),
     )
     sigs = _signal(
-        bar_index=2, trigger="3c", direction="long",
-        status="void", entry_ref=99.0, entry_bar_index=None, retrace_entry_price=None,
+        bar_index=2,
+        trigger="3c",
+        direction="long",
+        status="void",
+        entry_ref=99.0,
+        entry_bar_index=None,
+        retrace_entry_price=None,
     )
     trades = simulate_trades(df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8)
     assert trades.empty
@@ -169,7 +183,9 @@ def test_3c_generated_filled_signal_enters_and_void_skips():
 
     void_signals = signals.copy()
     void_signals.loc[:, "status"] = "void"
-    void_trades = simulate_trades(df, void_signals, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8)
+    void_trades = simulate_trades(
+        df, void_signals, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+    )
     assert void_trades.empty
 
 
@@ -186,11 +202,13 @@ def test_long_tp_hit():
     tp_price = entry_open + tp_ticks * TICK  # 101.0
 
     df = _df(
-        _bar("2026-01-02 09:30", 100.0, 100.5, 99.5, 100.0),   # signal bar
+        _bar("2026-01-02 09:30", 100.0, 100.5, 99.5, 100.0),  # signal bar
         _bar("2026-01-02 09:31", entry_open, tp_price + 1, 99.8, tp_price + 0.5),  # TP hit
     )
     sigs = _signal(bar_index=0, trigger="touch", direction="long")
-    trades = simulate_trades(df, sigs, TICK, POINT_VALUE, stop_loss_ticks=sl_ticks, take_profit_ticks=tp_ticks)
+    trades = simulate_trades(
+        df, sigs, TICK, POINT_VALUE, stop_loss_ticks=sl_ticks, take_profit_ticks=tp_ticks
+    )
     t = trades.iloc[0]
     assert t["exit_reason"] == "TP"
     assert t["r_multiple"] > 0
@@ -207,7 +225,9 @@ def test_long_sl_hit():
         _bar("2026-01-02 09:31", entry_open, 100.5, sl_price - 1, 99.2),  # SL hit
     )
     sigs = _signal(bar_index=0, trigger="touch", direction="long")
-    trades = simulate_trades(df, sigs, TICK, POINT_VALUE, stop_loss_ticks=sl_ticks, take_profit_ticks=8)
+    trades = simulate_trades(
+        df, sigs, TICK, POINT_VALUE, stop_loss_ticks=sl_ticks, take_profit_ticks=8
+    )
     t = trades.iloc[0]
     assert t["exit_reason"] == "SL"
     assert t["r_multiple"] < 0
@@ -225,7 +245,9 @@ def test_short_tp_hit():
         _bar("2026-01-02 09:31", entry_open, 100.2, tp_price - 1, tp_price - 0.5),  # TP hit
     )
     sigs = _signal(bar_index=0, trigger="touch", direction="short")
-    trades = simulate_trades(df, sigs, TICK, POINT_VALUE, stop_loss_ticks=sl_ticks, take_profit_ticks=tp_ticks)
+    trades = simulate_trades(
+        df, sigs, TICK, POINT_VALUE, stop_loss_ticks=sl_ticks, take_profit_ticks=tp_ticks
+    )
     t = trades.iloc[0]
     assert t["exit_reason"] == "TP"
     assert t["r_multiple"] > 0
@@ -242,7 +264,9 @@ def test_short_sl_hit():
         _bar("2026-01-02 09:31", entry_open, sl_price + 1, 99.5, 101.5),  # SL hit
     )
     sigs = _signal(bar_index=0, trigger="touch", direction="short")
-    trades = simulate_trades(df, sigs, TICK, POINT_VALUE, stop_loss_ticks=sl_ticks, take_profit_ticks=8)
+    trades = simulate_trades(
+        df, sigs, TICK, POINT_VALUE, stop_loss_ticks=sl_ticks, take_profit_ticks=8
+    )
     t = trades.iloc[0]
     assert t["exit_reason"] == "SL"
     assert t["r_multiple"] < 0
@@ -253,8 +277,8 @@ def test_sl_first_when_both_hit_same_bar():
     entry_open = 100.0
     sl_ticks = 4
     tp_ticks = 8
-    sl_price = entry_open - sl_ticks * TICK   # 99.0 for long
-    tp_price = entry_open + tp_ticks * TICK   # 102.0
+    sl_price = entry_open - sl_ticks * TICK  # 99.0 for long
+    tp_price = entry_open + tp_ticks * TICK  # 102.0
 
     df = _df(
         _bar("2026-01-02 09:30", 100.0, 100.5, 99.5, 100.0),
@@ -262,7 +286,9 @@ def test_sl_first_when_both_hit_same_bar():
         _bar("2026-01-02 09:31", entry_open, tp_price + 0.5, sl_price - 0.5, 101.0),
     )
     sigs = _signal(bar_index=0, trigger="touch", direction="long")
-    trades = simulate_trades(df, sigs, TICK, POINT_VALUE, stop_loss_ticks=sl_ticks, take_profit_ticks=tp_ticks)
+    trades = simulate_trades(
+        df, sigs, TICK, POINT_VALUE, stop_loss_ticks=sl_ticks, take_profit_ticks=tp_ticks
+    )
     t = trades.iloc[0]
     assert t["exit_reason"] == "SL"
     assert t["exit_price"] == pytest.approx(sl_price)
@@ -281,8 +307,11 @@ def test_max_holding_bars_time_exit():
     sigs = _signal(bar_index=0, trigger="touch", direction="long")
     # Very tight SL/TP that won't be hit; force exit after 2 holding bars
     trades = simulate_trades(
-        df, sigs, TICK, POINT_VALUE,
-        stop_loss_ticks=100,   # far away
+        df,
+        sigs,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=100,  # far away
         take_profit_ticks=100,  # far away
         max_holding_bars=2,
     )
@@ -302,8 +331,11 @@ def test_end_of_data_eod_exit():
     )
     sigs = _signal(bar_index=0, trigger="touch", direction="long")
     trades = simulate_trades(
-        df, sigs, TICK, POINT_VALUE,
-        stop_loss_ticks=200,   # far away
+        df,
+        sigs,
+        TICK,
+        POINT_VALUE,
+        stop_loss_ticks=200,  # far away
         take_profit_ticks=200,  # far away
     )
     t = trades.iloc[0]
@@ -352,7 +384,7 @@ def test_simple_trigger_five_min_enters_first_base_bar_after_trigger_close():
         _bar("2026-01-02 09:31", 99.2, 99.9, 99.0, 99.4),
         _bar("2026-01-02 09:32", 99.3, 99.8, 99.1, 99.3),
         _bar("2026-01-02 09:33", 99.2, 99.7, 99.0, 99.1),
-        _bar("2026-01-02 09:34", 99.0, 99.6, 98.9, 99.0),   # first 5m close = 99.0
+        _bar("2026-01-02 09:34", 99.0, 99.6, 98.9, 99.0),  # first 5m close = 99.0
         _bar("2026-01-02 09:35", 99.0, 99.6, 98.8, 99.2),
         _bar("2026-01-02 09:36", 99.2, 100.5, 99.0, 100.0),
         _bar("2026-01-02 09:37", 100.0, 100.8, 99.8, 100.3),
@@ -645,7 +677,10 @@ def test_session_close_timezone_applied_to_aware_timestamps():
 
 
 def test_flat_by_session_close_requires_valid_session_close_time():
-    df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0), _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5))
+    df = _df(
+        _bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0),
+        _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5),
+    )
     sigs = _signal(bar_index=0)
     with pytest.raises(ValueError, match="session_close_time"):
         simulate_trades(
@@ -665,7 +700,10 @@ def test_flat_by_session_close_requires_valid_session_close_time():
     ["16:00:00.123", "16:00+01:00", "9:30", "16"],
 )
 def test_invalid_session_close_time_formats_raise(invalid_session_close_time):
-    df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0), _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5))
+    df = _df(
+        _bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0),
+        _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5),
+    )
     sigs = _signal(bar_index=0)
     with pytest.raises(ValueError, match="session_close_time"):
         simulate_trades(
@@ -681,7 +719,10 @@ def test_invalid_session_close_time_formats_raise(invalid_session_close_time):
 
 
 def test_invalid_no_new_entries_after_raises():
-    df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0), _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5))
+    df = _df(
+        _bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0),
+        _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5),
+    )
     sigs = _signal(bar_index=0)
     with pytest.raises(ValueError, match="no_new_entries_after"):
         simulate_trades(
@@ -696,7 +737,10 @@ def test_invalid_no_new_entries_after_raises():
 
 
 def test_invalid_no_new_entries_after_fractional_seconds_raises():
-    df = _df(_bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0), _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5))
+    df = _df(
+        _bar("2026-01-02 09:30", 100.0, 101.0, 99.0, 100.0),
+        _bar("2026-01-02 09:31", 100.0, 101.0, 99.0, 100.5),
+    )
     sigs = _signal(bar_index=0)
     with pytest.raises(ValueError, match="no_new_entries_after"):
         simulate_trades(

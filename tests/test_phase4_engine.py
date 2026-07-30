@@ -1,7 +1,7 @@
 """Phase 4 engine tests: confluence detection, naked levels, signal generation."""
+
 from __future__ import annotations
 
-import math
 
 import numpy as np
 import pandas as pd
@@ -30,15 +30,25 @@ ZONE_COLUMNS = [
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def _bar(ts, o, h, l, c, vol=100.0) -> dict:
-    return {"timestamp": pd.Timestamp(ts, tz=TZ), "open": o, "high": h, "low": l, "close": c, "volume": vol}
+    return {
+        "timestamp": pd.Timestamp(ts, tz=TZ),
+        "open": o,
+        "high": h,
+        "low": l,
+        "close": c,
+        "volume": vol,
+    }
 
 
 def _df(*rows) -> pd.DataFrame:
     return pd.DataFrame(list(rows))
 
 
-def _df_with_level(level_prices: list[float | None], bar_highs: list[float], bar_lows: list[float]) -> pd.DataFrame:
+def _df_with_level(
+    level_prices: list[float | None], bar_highs: list[float], bar_lows: list[float]
+) -> pd.DataFrame:
     """Build a minimal OHLCV + one level column for naked tests."""
     n = len(level_prices)
     ts = pd.date_range("2026-06-02 09:30", periods=n, freq="1min", tz=TZ)
@@ -99,7 +109,11 @@ class TestConfluenceDetection:
         """Single-bar DataFrame with arbitrary level columns."""
         row = {
             "timestamp": pd.Timestamp("2026-06-02 09:30:00", tz=TZ),
-            "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 100.0,
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.0,
+            "volume": 100.0,
             **kwargs,
         }
         return pd.DataFrame([row])
@@ -144,16 +158,22 @@ class TestConfluenceDetection:
         # Two levels within tolerance but min_confluences=3 → no zone
         df = self._df_levels(levelA=100.0, levelB=100.25)
         result = detect_confluence_zones(
-            df, level_columns=["levelA", "levelB"], tick_size=TICK,
-            tolerance_ticks=4, min_confluences=3
+            df,
+            level_columns=["levelA", "levelB"],
+            tick_size=TICK,
+            tolerance_ticks=4,
+            min_confluences=3,
         )
         assert result.empty
 
     def test_min_confluences_satisfied_emits_zone(self):
         df = self._df_levels(levelA=100.0, levelB=100.25, levelC=100.50)
         result = detect_confluence_zones(
-            df, level_columns=["levelA", "levelB", "levelC"],
-            tick_size=TICK, tolerance_ticks=4, min_confluences=3,
+            df,
+            level_columns=["levelA", "levelB", "levelC"],
+            tick_size=TICK,
+            tolerance_ticks=4,
+            min_confluences=3,
         )
         assert len(result) == 1
         assert result.iloc[0]["level_count"] == 3
@@ -181,16 +201,22 @@ class TestConfluenceDetection:
         # levelB is NaN — only levelA and levelC are valid, but they're far apart
         df = self._df_levels(levelA=100.0, levelB=np.nan, levelC=102.0)
         result = detect_confluence_zones(
-            df, level_columns=["levelA", "levelB", "levelC"],
-            tick_size=TICK, tolerance_ticks=2, min_confluences=2,
+            df,
+            level_columns=["levelA", "levelB", "levelC"],
+            tick_size=TICK,
+            tolerance_ticks=2,
+            min_confluences=2,
         )
         assert result.empty
 
     def test_nan_ignored_two_valid_close_levels(self):
         df = self._df_levels(levelA=100.0, levelB=np.nan, levelC=100.25)
         result = detect_confluence_zones(
-            df, level_columns=["levelA", "levelB", "levelC"],
-            tick_size=TICK, tolerance_ticks=2, min_confluences=2,
+            df,
+            level_columns=["levelA", "levelB", "levelC"],
+            tick_size=TICK,
+            tolerance_ticks=2,
+            min_confluences=2,
         )
         assert len(result) == 1
         assert result.iloc[0]["level_count"] == 2
@@ -217,8 +243,12 @@ class TestConfluenceDetection:
         df = self._df_levels(**kwargs)
         level_cols = list(kwargs.keys())
         result = detect_confluence_zones(
-            df, level_columns=level_cols, tick_size=TICK,
-            tolerance_ticks=0, min_confluences=2, max_confluences=5,
+            df,
+            level_columns=level_cols,
+            tick_size=TICK,
+            tolerance_ticks=0,
+            min_confluences=2,
+            max_confluences=5,
         )
         assert not result.empty
         assert result.iloc[0]["level_count"] <= 5
@@ -265,8 +295,11 @@ class TestConfluenceDetection:
         # Levels at 100.0 and 100.25 form one cluster, 102.0 and 102.25 form another
         df = self._df_levels(lA=100.0, lB=100.25, lC=102.0, lD=102.25)
         result = detect_confluence_zones(
-            df, level_columns=["lA", "lB", "lC", "lD"],
-            tick_size=TICK, tolerance_ticks=2, min_confluences=2,
+            df,
+            level_columns=["lA", "lB", "lC", "lD"],
+            tick_size=TICK,
+            tolerance_ticks=2,
+            min_confluences=2,
         )
         assert len(result) == 2
 
@@ -285,8 +318,26 @@ class TestConfluenceDetection:
 
     def test_bar_index_aligned_to_row_position(self):
         rows = [
-            {"timestamp": pd.Timestamp("2026-06-02 09:30:00", tz=TZ), "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 100.0, "lA": np.nan, "lB": np.nan},
-            {"timestamp": pd.Timestamp("2026-06-02 09:31:00", tz=TZ), "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 100.0, "lA": 100.0, "lB": 100.25},
+            {
+                "timestamp": pd.Timestamp("2026-06-02 09:30:00", tz=TZ),
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.0,
+                "volume": 100.0,
+                "lA": np.nan,
+                "lB": np.nan,
+            },
+            {
+                "timestamp": pd.Timestamp("2026-06-02 09:31:00", tz=TZ),
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.0,
+                "volume": 100.0,
+                "lA": 100.0,
+                "lB": 100.25,
+            },
         ]
         df = pd.DataFrame(rows)
         result = detect_confluence_zones(
@@ -362,7 +413,7 @@ class TestNakedLevels:
             bar_lows=[99.0, 99.0],
         )
         result = flag_naked_levels(df, level_columns=["level_A"], tick_size=TICK)
-        assert result["level_A_naked"].iloc[0] == True   # noqa: E712  # formation bar → naked
+        assert result["level_A_naked"].iloc[0] == True  # noqa: E712  # formation bar → naked
         assert result["level_A_naked"].iloc[1] == False  # noqa: E712  # touched at bar 1
 
     def test_formation_bar_not_immediately_tested(self):
@@ -387,9 +438,9 @@ class TestNakedLevels:
             bar_lows=[99.0, 99.0, 99.0],
         )
         result = flag_naked_levels(df, level_columns=["level_A"], tick_size=TICK)
-        assert result["level_A_naked"].iloc[0] == True   # noqa: E712
+        assert result["level_A_naked"].iloc[0] == True  # noqa: E712
         assert result["level_A_naked"].iloc[1] == False  # noqa: E712  # NaN → not naked
-        assert result["level_A_naked"].iloc[2] == True   # noqa: E712  # re-formed
+        assert result["level_A_naked"].iloc[2] == True  # noqa: E712  # re-formed
 
     def test_level_change_triggers_new_formation(self):
         # Bar 0: level=100 → naked
@@ -401,8 +452,8 @@ class TestNakedLevels:
             bar_lows=[99.0, 99.0, 100.5],
         )
         result = flag_naked_levels(df, level_columns=["level_A"], tick_size=TICK)
-        assert result["level_A_naked"].iloc[0] == True   # noqa: E712
-        assert result["level_A_naked"].iloc[1] == True   # noqa: E712  # new formation
+        assert result["level_A_naked"].iloc[0] == True  # noqa: E712
+        assert result["level_A_naked"].iloc[1] == True  # noqa: E712  # new formation
         assert result["level_A_naked"].iloc[2] == False  # noqa: E712  # touched at bar 2
 
     def test_touch_tolerance_extends_test_range(self):
@@ -413,8 +464,12 @@ class TestNakedLevels:
             bar_highs=[100.1, 100.1],
             bar_lows=[99.9, 99.9],
         )
-        result_no_tol = flag_naked_levels(df, level_columns=["level_A"], tick_size=TICK, touch_tolerance_ticks=0)
-        result_with_tol = flag_naked_levels(df, level_columns=["level_A"], tick_size=TICK, touch_tolerance_ticks=1)
+        result_no_tol = flag_naked_levels(
+            df, level_columns=["level_A"], tick_size=TICK, touch_tolerance_ticks=0
+        )
+        result_with_tol = flag_naked_levels(
+            df, level_columns=["level_A"], tick_size=TICK, touch_tolerance_ticks=1
+        )
         # Without tolerance: bar1 range [99.9, 100.1] includes 100.0 exactly → touched
         assert result_no_tol["level_A_naked"].iloc[1] == False  # noqa: E712
         # With tolerance: definitely touched
@@ -496,10 +551,12 @@ class TestBreakSignal:
         # Bar 0 close = 100.0 (at zone_high = 100.0)
         # Bar 1 close = 100.5 (above zone_high) → long break
         # Zone at bar 1
-        df = _df_bars([
-            {"open": 99.5, "high": 100.5, "low": 99.0, "close": 100.0},
-            {"open": 100.1, "high": 100.8, "low": 100.0, "close": 100.5},
-        ])
+        df = _df_bars(
+            [
+                {"open": 99.5, "high": 100.5, "low": 99.0, "close": 100.0},
+                {"open": 100.1, "high": 100.8, "low": 100.0, "close": 100.5},
+            ]
+        )
         zones = _zone_df(1, low=99.75, high=100.0)
         sigs = generate_signals(df, zones, trigger="break", direction="long", tick_size=TICK)
         assert len(sigs) == 1
@@ -507,10 +564,12 @@ class TestBreakSignal:
 
     def test_break_long_does_not_fire_if_prev_close_already_above_zone(self):
         # Previous close = 101.0, already above zone_high=100.0 → no break
-        df = _df_bars([
-            {"open": 101.0, "high": 101.5, "low": 100.5, "close": 101.0},
-            {"open": 101.0, "high": 101.5, "low": 100.8, "close": 101.2},
-        ])
+        df = _df_bars(
+            [
+                {"open": 101.0, "high": 101.5, "low": 100.5, "close": 101.0},
+                {"open": 101.0, "high": 101.5, "low": 100.8, "close": 101.2},
+            ]
+        )
         zones = _zone_df(1, low=99.75, high=100.0)
         sigs = generate_signals(df, zones, trigger="break", direction="long", tick_size=TICK)
         assert sigs.empty
@@ -518,10 +577,12 @@ class TestBreakSignal:
     def test_break_short_uses_previous_close(self):
         # Bar 0 close = 100.5 (at zone_low = 100.5)
         # Bar 1 close = 99.8 (below zone_low) → short break
-        df = _df_bars([
-            {"open": 100.5, "high": 101.0, "low": 100.0, "close": 100.5},
-            {"open": 100.3, "high": 100.5, "low": 99.5, "close": 99.8},
-        ])
+        df = _df_bars(
+            [
+                {"open": 100.5, "high": 101.0, "low": 100.0, "close": 100.5},
+                {"open": 100.3, "high": 100.5, "low": 99.5, "close": 99.8},
+            ]
+        )
         zones = _zone_df(1, low=100.5, high=101.0)
         sigs = generate_signals(df, zones, trigger="break", direction="short", tick_size=TICK)
         assert len(sigs) == 1
@@ -584,16 +645,24 @@ class TestSimpleTriggerTimeframes:
     def test_break_differs_between_base_and_5min(self):
         df = self._ten_bars()
         zones = _zone_df(1, low=99.8, high=100.0)
-        base = generate_signals(df, zones, trigger="break", direction="long", tick_size=TICK, trigger_timeframe="base")
-        five = generate_signals(df, zones, trigger="break", direction="long", tick_size=TICK, trigger_timeframe="5min")
+        base = generate_signals(
+            df, zones, trigger="break", direction="long", tick_size=TICK, trigger_timeframe="base"
+        )
+        five = generate_signals(
+            df, zones, trigger="break", direction="long", tick_size=TICK, trigger_timeframe="5min"
+        )
         assert len(base) == 1
         assert five.empty
 
     def test_reject_differs_between_base_and_5min(self):
         df = self._ten_bars()
         zones = _zone_df(1, low=100.0, high=100.5)
-        base = generate_signals(df, zones, trigger="reject", direction="long", tick_size=TICK, trigger_timeframe="base")
-        five = generate_signals(df, zones, trigger="reject", direction="long", tick_size=TICK, trigger_timeframe="5min")
+        base = generate_signals(
+            df, zones, trigger="reject", direction="long", tick_size=TICK, trigger_timeframe="base"
+        )
+        five = generate_signals(
+            df, zones, trigger="reject", direction="long", tick_size=TICK, trigger_timeframe="5min"
+        )
         assert len(base) == 1
         assert five.empty
 
@@ -687,11 +756,13 @@ class TestSimpleTriggerTimeframes:
 
 class TestStrict3cTrigger:
     def _bars_for_3c(self) -> pd.DataFrame:
-        return _df_bars([
-            {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},  # arrival
-            {"open": 100.6, "high": 101.3, "low": 100.2, "close": 101.1},  # reversal
-            {"open": 101.1, "high": 101.2, "low": 100.5, "close": 100.9},  # retrace fill
-        ])
+        return _df_bars(
+            [
+                {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},  # arrival
+                {"open": 100.6, "high": 101.3, "low": 100.2, "close": 101.1},  # reversal
+                {"open": 101.1, "high": 101.2, "low": 100.5, "close": 100.9},  # retrace fill
+            ]
+        )
 
     def _zone(self) -> pd.DataFrame:
         return pd.DataFrame(
@@ -722,18 +793,26 @@ class TestStrict3cTrigger:
         assert sigs.iloc[0]["status"] == "filled"
         assert sigs.iloc[0]["trigger_variant"] == "3c_long"
         assert sigs.iloc[0]["confirmation_bar_index"] == sigs.iloc[0]["entry_bar_index"]
-        assert sigs.iloc[0]["entry_reference_price"] == pytest.approx(sigs.iloc[0]["entry_trigger_price"])
-        assert sigs.iloc[0]["retrace_entry_price"] == pytest.approx(sigs.iloc[0]["entry_trigger_price"])
-        assert sigs.iloc[0]["activation_price"] == pytest.approx(sigs.iloc[0]["entry_trigger_price"])
+        assert sigs.iloc[0]["entry_reference_price"] == pytest.approx(
+            sigs.iloc[0]["entry_trigger_price"]
+        )
+        assert sigs.iloc[0]["retrace_entry_price"] == pytest.approx(
+            sigs.iloc[0]["entry_trigger_price"]
+        )
+        assert sigs.iloc[0]["activation_price"] == pytest.approx(
+            sigs.iloc[0]["entry_trigger_price"]
+        )
         assert sigs.iloc[0]["trigger_timeframe"] == "base"
 
     def test_3c_void_uses_theoretical_entry_trigger_as_reference(self):
-        df = _df_bars([
-            {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},  # arrival
-            {"open": 100.6, "high": 101.3, "low": 100.2, "close": 101.1},  # reversal
-            {"open": 101.1, "high": 101.4, "low": 100.8, "close": 101.2},  # no retrace hit
-            {"open": 101.2, "high": 101.5, "low": 100.7, "close": 101.3},  # no retrace hit
-        ])
+        df = _df_bars(
+            [
+                {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},  # arrival
+                {"open": 100.6, "high": 101.3, "low": 100.2, "close": 101.1},  # reversal
+                {"open": 101.1, "high": 101.4, "low": 100.8, "close": 101.2},  # no retrace hit
+                {"open": 101.2, "high": 101.5, "low": 100.7, "close": 101.3},  # no retrace hit
+            ]
+        )
         sigs = generate_signals(
             df,
             self._zone(),
@@ -773,25 +852,28 @@ class TestStrict3cTrigger:
             {"open": 101.2, "high": 101.5, "low": 101.0, "close": 101.25},
             # T2 (bars 10-14): fill window
             {"open": 101.25, "high": 101.5, "low": 101.1, "close": 101.3},
-            {"open": 101.3,  "high": 101.5, "low": 100.6, "close": 101.0},  # FILL
-            {"open": 101.0,  "high": 101.2, "low": 100.8, "close": 101.1},
-            {"open": 101.1,  "high": 101.2, "low": 100.9, "close": 101.0},
-            {"open": 101.0,  "high": 101.1, "low": 100.9, "close": 101.0},
+            {"open": 101.3, "high": 101.5, "low": 100.6, "close": 101.0},  # FILL
+            {"open": 101.0, "high": 101.2, "low": 100.8, "close": 101.1},
+            {"open": 101.1, "high": 101.2, "low": 100.9, "close": 101.0},
+            {"open": 101.0, "high": 101.1, "low": 100.9, "close": 101.0},
         ]
-        df = pd.DataFrame([
-            {"timestamp": ts[i], **r, "volume": 100.0}
-            for i, r in enumerate(rows_data)
-        ])
-        zone = pd.DataFrame([{
-            "timestamp": ts[0],
-            "bar_index": 0,
-            "zone_low": 100.0,
-            "zone_high": 100.0,
-            "zone_mid": 100.0,
-            "level_count": 1,
-            "level_names": "level_A",
-            "level_prices": "100.0",
-        }])
+        df = pd.DataFrame(
+            [{"timestamp": ts[i], **r, "volume": 100.0} for i, r in enumerate(rows_data)]
+        )
+        zone = pd.DataFrame(
+            [
+                {
+                    "timestamp": ts[0],
+                    "bar_index": 0,
+                    "zone_low": 100.0,
+                    "zone_high": 100.0,
+                    "zone_mid": 100.0,
+                    "level_count": 1,
+                    "level_names": "level_A",
+                    "level_prices": "100.0",
+                }
+            ]
+        )
         sigs = generate_signals(
             df,
             zone,
@@ -809,16 +891,18 @@ class TestNakedFilter:
     def test_naked_only_filters_zones_with_no_naked_levels(self):
         # Build a df with a level that has been touched (not naked at bar 1)
         ts = pd.date_range("2026-06-02 09:30", periods=3, freq="1min", tz=TZ)
-        df = pd.DataFrame({
-            "timestamp": ts,
-            "open": [100.0] * 3,
-            "high": [101.0] * 3,
-            "low": [99.0] * 3,
-            "close": [100.0] * 3,
-            "volume": [100.0] * 3,
-            "lA": [100.0, 100.0, 100.0],
-            "lB": [100.25, 100.25, 100.25],
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": ts,
+                "open": [100.0] * 3,
+                "high": [101.0] * 3,
+                "low": [99.0] * 3,
+                "close": [100.0] * 3,
+                "volume": [100.0] * 3,
+                "lA": [100.0, 100.0, 100.0],
+                "lB": [100.25, 100.25, 100.25],
+            }
+        )
         # Flag naked: both levels formed at bar 0; bar 1 touches them → not naked at bar 1
         naked_flags = flag_naked_levels(df, level_columns=["lA", "lB"], tick_size=TICK)
 
@@ -826,12 +910,22 @@ class TestNakedFilter:
         zones = _zone_df(1, low=100.0, high=100.25, level_names="lA|lB")
 
         sigs_all = generate_signals(
-            df, zones, trigger="touch", direction="long", tick_size=TICK,
+            df,
+            zones,
+            trigger="touch",
+            direction="long",
+            tick_size=TICK,
             naked_only=False,
         )
         sigs_naked_only = generate_signals(
-            df, zones, trigger="touch", direction="long", tick_size=TICK,
-            naked_only=True, naked_flags=naked_flags, naked_requirement="any",
+            df,
+            zones,
+            trigger="touch",
+            direction="long",
+            tick_size=TICK,
+            naked_only=True,
+            naked_flags=naked_flags,
+            naked_requirement="any",
         )
         # Without filter: signal emitted
         assert not sigs_all.empty
@@ -842,15 +936,25 @@ class TestNakedFilter:
         df = _simple_bars(3)
         zones = _zone_df(0, 100.0, 100.5)
         with pytest.raises(ValueError, match="naked_flags"):
-            generate_signals(df, zones, trigger="touch", direction="long",
-                             tick_size=TICK, naked_only=True, naked_flags=None)
+            generate_signals(
+                df,
+                zones,
+                trigger="touch",
+                direction="long",
+                tick_size=TICK,
+                naked_only=True,
+                naked_flags=None,
+            )
 
 
 class TestEdgeCases:
     def test_empty_zones_returns_empty_signals(self):
         from thesistester.engine.confluence import _empty_zones_df
+
         df = _simple_bars(5)
-        sigs = generate_signals(df, _empty_zones_df(), trigger="touch", direction="long", tick_size=TICK)
+        sigs = generate_signals(
+            df, _empty_zones_df(), trigger="touch", direction="long", tick_size=TICK
+        )
         assert sigs.empty
 
     def test_invalid_trigger_raises(self):

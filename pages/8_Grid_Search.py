@@ -3,6 +3,7 @@
 Sweeps stop-loss × take-profit combinations over the Phase 4 candidate
 signals and displays expectancy heatmaps plus a full results table.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -65,20 +66,29 @@ if "_grid_defaults_applied" not in st.session_state:
 # ── Sidebar controls ─────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Grid search settings")
-    st.caption(
-        f"Instrument: **{instrument}** · tick={tick_size} · "
-        f"point_value=${point_value:,.0f}"
-    )
+    st.caption(f"Instrument: **{instrument}** · tick={tick_size} · point_value=${point_value:,.0f}")
 
     st.subheader("Stop-loss range (ticks)")
-    sl_start = st.number_input("SL start", min_value=1.0, max_value=500.0, value=4.0, step=1.0, key="grid_sl_start")
-    sl_stop = st.number_input("SL stop", min_value=1.0, max_value=500.0, value=20.0, step=1.0, key="grid_sl_stop")
-    sl_step = st.number_input("SL step", min_value=1.0, max_value=100.0, value=4.0, step=1.0, key="grid_sl_step")
+    sl_start = st.number_input(
+        "SL start", min_value=1.0, max_value=500.0, value=4.0, step=1.0, key="grid_sl_start"
+    )
+    sl_stop = st.number_input(
+        "SL stop", min_value=1.0, max_value=500.0, value=20.0, step=1.0, key="grid_sl_stop"
+    )
+    sl_step = st.number_input(
+        "SL step", min_value=1.0, max_value=100.0, value=4.0, step=1.0, key="grid_sl_step"
+    )
 
     st.subheader("Take-profit range (ticks)")
-    tp_start = st.number_input("TP start", min_value=1.0, max_value=1000.0, value=8.0, step=1.0, key="grid_tp_start")
-    tp_stop = st.number_input("TP stop", min_value=1.0, max_value=1000.0, value=40.0, step=1.0, key="grid_tp_stop")
-    tp_step = st.number_input("TP step", min_value=1.0, max_value=200.0, value=8.0, step=1.0, key="grid_tp_step")
+    tp_start = st.number_input(
+        "TP start", min_value=1.0, max_value=1000.0, value=8.0, step=1.0, key="grid_tp_start"
+    )
+    tp_stop = st.number_input(
+        "TP stop", min_value=1.0, max_value=1000.0, value=40.0, step=1.0, key="grid_tp_stop"
+    )
+    tp_step = st.number_input(
+        "TP step", min_value=1.0, max_value=200.0, value=8.0, step=1.0, key="grid_tp_step"
+    )
 
     st.subheader("Options")
     use_max_bars = st.toggle("Limit holding bars", value=False, key="grid_use_max_bars")
@@ -125,8 +135,12 @@ with st.sidebar:
     )
 
     st.subheader("Session exit policy")
-    flat_by_session_close = st.toggle("Flat by session close", value=False, key="grid_flat_by_session_close")
-    exchange_tz = st.session_state.get("exchange_timezone") or (inst.exchange_tz if inst else "America/New_York")
+    flat_by_session_close = st.toggle(
+        "Flat by session close", value=False, key="grid_flat_by_session_close"
+    )
+    exchange_tz = st.session_state.get("exchange_timezone") or (
+        inst.exchange_tz if inst else "America/New_York"
+    )
     session_close_time = st.text_input(
         "Session close time",
         value="16:00",
@@ -137,11 +151,7 @@ with st.sidebar:
     session_timezone = st.selectbox(
         "Session timezone",
         options=TIMEZONE_OPTIONS,
-        index=(
-            TIMEZONE_OPTIONS.index(exchange_tz)
-            if exchange_tz in TIMEZONE_OPTIONS
-            else 0
-        ),
+        index=(TIMEZONE_OPTIONS.index(exchange_tz) if exchange_tz in TIMEZONE_OPTIONS else 0),
         key="grid_session_timezone",
         disabled=not flat_by_session_close,
     )
@@ -153,8 +163,8 @@ with st.sidebar:
         help="Optional local cutoff in HH:MM or HH:MM:SS.",
     )
     effective_no_new_entries_after = (
-        no_new_entries_after.strip() or None
-    ) if flat_by_session_close else None
+        (no_new_entries_after.strip() or None) if flat_by_session_close else None
+    )
 
     st.subheader("Exposure policy")
     exposure_policy = st.selectbox(
@@ -288,6 +298,7 @@ with st.sidebar:
 
     run_btn = st.button("▶ Run grid search", type="primary", width="stretch")
 
+
 # ── Build SL / TP value lists ────────────────────────────────────────────────
 def _range_list(start: float, stop: float, step: float) -> list[float]:
     """Inclusive arange as a Python list, rounded to avoid float drift."""
@@ -309,7 +320,9 @@ if run_btn:
 
     # Apply OTF filter once before the grid — all grid cells use the same
     # accepted signal set for consistency.
-    exchange_tz = st.session_state.get("exchange_timezone") or (inst.exchange_tz if inst else "America/New_York")
+    exchange_tz = st.session_state.get("exchange_timezone") or (
+        inst.exchange_tz if inst else "America/New_York"
+    )
     try:
         _otf_result = apply_configured_otf_filter(
             source_df=ohlcv_df,
@@ -356,13 +369,9 @@ if run_btn:
     if enable_directional:
         dir_filtered = grid.copy()
         if "long_trade_count" in dir_filtered.columns:
-            dir_filtered = dir_filtered[
-                dir_filtered["long_trade_count"] >= min_long_trades
-            ]
+            dir_filtered = dir_filtered[dir_filtered["long_trade_count"] >= min_long_trades]
         if "short_trade_count" in dir_filtered.columns:
-            dir_filtered = dir_filtered[
-                dir_filtered["short_trade_count"] >= min_short_trades
-            ]
+            dir_filtered = dir_filtered[dir_filtered["short_trade_count"] >= min_short_trades]
         best = best_grid_result(dir_filtered, metric=directional_metric, min_trades=min_trades)
         active_metric = directional_metric
 
@@ -448,7 +457,9 @@ if best is not None:
     c2.metric("TP (ticks)", _fmt(best.get("take_profit_ticks"), ".4g"))
     c3.metric(f"Best {active_metric}", _fmt(best.get(active_metric)))
     c4.metric("Trades", int(best.get("trade_count", 0)))
-    c5.metric("Win rate", _fmt(best.get("win_rate"), ".1%") if best.get("win_rate") is not None else "—")
+    c5.metric(
+        "Win rate", _fmt(best.get("win_rate"), ".1%") if best.get("win_rate") is not None else "—"
+    )
     c6.metric("Max DD (R)", _fmt(best.get("max_drawdown_r")))
 
     col_pf, col_tot = st.columns(2)
@@ -462,14 +473,24 @@ if best is not None:
         with long_col:
             st.markdown("**Long**")
             st.metric("Trades", int(best.get("long_trade_count", 0)))
-            st.metric("Win rate", _fmt(best.get("long_win_rate"), ".1%") if best.get("long_win_rate") is not None else "—")
+            st.metric(
+                "Win rate",
+                _fmt(best.get("long_win_rate"), ".1%")
+                if best.get("long_win_rate") is not None
+                else "—",
+            )
             st.metric("Avg R", _fmt(best.get("long_avg_r")))
             st.metric("Total R", _fmt(best.get("long_total_r")))
             st.metric("Profit factor", _fmt(best.get("long_profit_factor")))
         with short_col:
             st.markdown("**Short**")
             st.metric("Trades", int(best.get("short_trade_count", 0)))
-            st.metric("Win rate", _fmt(best.get("short_win_rate"), ".1%") if best.get("short_win_rate") is not None else "—")
+            st.metric(
+                "Win rate",
+                _fmt(best.get("short_win_rate"), ".1%")
+                if best.get("short_win_rate") is not None
+                else "—",
+            )
             st.metric("Avg R", _fmt(best.get("short_avg_r")))
             st.metric("Total R", _fmt(best.get("short_total_r")))
             st.metric("Profit factor", _fmt(best.get("short_profit_factor")))
@@ -490,6 +511,7 @@ else:
 # ---------------------------------------------------------------------------
 # Heatmap helper
 # ---------------------------------------------------------------------------
+
 
 def _heatmap(grid: pd.DataFrame, metric: str, title: str) -> go.Figure:
     pivot = grid.pivot(
@@ -523,12 +545,19 @@ def _heatmap(grid: pd.DataFrame, metric: str, title: str) -> go.Figure:
 st.subheader("Heatmaps")
 
 _heatmap_options_aggregate = [
-    "expectancy_r", "total_r", "profit_factor", "win_rate", "max_drawdown_r",
+    "expectancy_r",
+    "total_r",
+    "profit_factor",
+    "win_rate",
+    "max_drawdown_r",
 ]
 _heatmap_options_directional = [
-    "long_expectancy_r", "short_expectancy_r",
-    "long_profit_factor", "short_profit_factor",
-    "min_direction_expectancy_r", "min_direction_profit_factor",
+    "long_expectancy_r",
+    "short_expectancy_r",
+    "long_profit_factor",
+    "short_profit_factor",
+    "min_direction_expectancy_r",
+    "min_direction_profit_factor",
 ]
 _heatmap_all_options = _heatmap_options_aggregate + [
     c for c in _heatmap_options_directional if c in grid.columns
@@ -548,25 +577,63 @@ st.plotly_chart(
 
 # Full results table
 st.subheader("Full grid results")
-display_cols = [c for c in [
-    "stop_loss_ticks", "take_profit_ticks", "tp_sl_ratio",
-    "risk_points", "target_points",
-    "trade_count", "win_rate", "loss_rate",
-    "avg_r", "expectancy_r", "median_r", "std_r", "downside_std_r",
-    "sharpe_like_r", "sortino_like_r", "total_r",
-    "profit_factor", "avg_win_r", "avg_loss_r", "win_loss_ratio",
-    "largest_win_r", "largest_loss_r", "p95_r", "p05_r",
-    "tail_ratio", "trade_return_skew", "trade_return_kurtosis",
-    "max_consecutive_wins", "max_consecutive_losses",
-    "max_drawdown_r", "ulcer_index_r", "recovery_factor",
-    "expectancy_to_drawdown", "payoff_stability", "outlier_dependency_ratio",
-    "best_trade_r", "worst_trade_r",
-    # Directional columns
-    "long_trade_count", "long_win_rate", "long_avg_r",
-    "long_expectancy_r", "long_total_r", "long_profit_factor",
-    "short_trade_count", "short_win_rate", "short_avg_r",
-    "short_expectancy_r", "short_total_r", "short_profit_factor",
-    "min_direction_trade_count", "min_direction_expectancy_r",
-    "min_direction_profit_factor",
-] if c in grid.columns]
+display_cols = [
+    c
+    for c in [
+        "stop_loss_ticks",
+        "take_profit_ticks",
+        "tp_sl_ratio",
+        "risk_points",
+        "target_points",
+        "trade_count",
+        "win_rate",
+        "loss_rate",
+        "avg_r",
+        "expectancy_r",
+        "median_r",
+        "std_r",
+        "downside_std_r",
+        "sharpe_like_r",
+        "sortino_like_r",
+        "total_r",
+        "profit_factor",
+        "avg_win_r",
+        "avg_loss_r",
+        "win_loss_ratio",
+        "largest_win_r",
+        "largest_loss_r",
+        "p95_r",
+        "p05_r",
+        "tail_ratio",
+        "trade_return_skew",
+        "trade_return_kurtosis",
+        "max_consecutive_wins",
+        "max_consecutive_losses",
+        "max_drawdown_r",
+        "ulcer_index_r",
+        "recovery_factor",
+        "expectancy_to_drawdown",
+        "payoff_stability",
+        "outlier_dependency_ratio",
+        "best_trade_r",
+        "worst_trade_r",
+        # Directional columns
+        "long_trade_count",
+        "long_win_rate",
+        "long_avg_r",
+        "long_expectancy_r",
+        "long_total_r",
+        "long_profit_factor",
+        "short_trade_count",
+        "short_win_rate",
+        "short_avg_r",
+        "short_expectancy_r",
+        "short_total_r",
+        "short_profit_factor",
+        "min_direction_trade_count",
+        "min_direction_expectancy_r",
+        "min_direction_profit_factor",
+    ]
+    if c in grid.columns
+]
 st.dataframe(grid[display_cols], width="stretch", hide_index=True)

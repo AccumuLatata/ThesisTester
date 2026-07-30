@@ -1,0 +1,125 @@
+# Golden-master fixtures
+
+Operational spec for the golden-master mechanism required by
+`docs/ENGINEERING_PROPOSAL.md` §4 rule 2 and §4.1. It is the load-bearing regression
+control for the invasive engine milestones (R12 look-inside-bar, R13 break-even/trailing
+exits) and for the R22 core-surface refactor.
+
+**Status:** spec only. This directory intentionally contains no golden data yet. Recording
+the fixtures is a dedicated PR that must land *before* the first engine-touching milestone
+(R12), per §5 R9 scope. Until then, `pytest` collects nothing from this directory and the
+CI `golden-master regeneration guard` job passes trivially.
+
+---
+
+## 1. Scope
+
+- Goldens cover **legacy mode only**: every new capability ships default-off (§4 rule 3),
+  so the recorded outputs are exactly what today's `main` produces with default keyword
+  arguments. A milestone that changes behavior *only when its new flag is enabled* leaves
+  goldens untouched — that is the whole point of the gate.
+- Goldens are deliberately **minimal**: one small synthetic dataset. They prove "legacy
+  path unchanged", not "engine is correct" (unit tests do that). Small scope keeps
+  legitimate improvements unblocked (§7 brittleness risk).
+
+## 2. Files
+
+| File | Role |
+|---|---|
+| `dataset_nq_1m_small.parquet` | Input fixture: synthetic NQ 1-minute OHLCV covering a few RTH sessions. Written by the recorder; never edited by hand. |
+| `fixture_manifest.json` | Provenance: recorder version, generator parameters (seed, session count, tick size, point value), engine call arguments, recording environment (Python/pandas/numpy/pyarrow versions). |
+| `trades_legacy.parquet` | Recorded legacy-mode trade frame for that input (primary comparison artifact). |
+| `trades_legacy.csv` | Canonical text projection of the same frame — the readable diff required by the regeneration policy (§4 below) and the hash input (§3). |
+| `legacy_bundle_hash.txt` | `sha256` of the canonical research-bundle projection plus the `pandas_major` it was recorded under (see §3.2). |
+
+A deterministic generator (`tests/fixtures/golden/record_golden.py`, added with the data)
+produces the input fixture, so the dataset can be rebuilt from source rather than trusted
+as an opaque blob.
+
+## 3. Determinism contract (measured, not assumed)
+
+Two properties were verified on this repository before writing this spec. Both shape the
+comparison design; ignoring either would make the gate flaky and therefore useless.
+
+### 3.1 Value equality is the primary assertion — not byte equality
+
+`pandas`-level identity of the same logical frame is **not** stable across pandas majors.
+Measured with `thesistester.persistence.local_store._hash_dataframe` on one fixed
+5-column frame (tz-aware timestamps, ints, floats, strings):
+
+| Environment | Timestamp dtype | String dtype | Frame hash |
+|---|---|---|---|
+| Python 3.10 / pandas 2.3.3 | `datetime64[ns, America/New_York]` | `object` | `e81ac4a3…8629` |
+| Python 3.11 / pandas 3.0.5 | `datetime64[us, America/New_York]` | `str` | `2e7817a4…4649` |
+| Python 3.12 / pandas 3.0.5 | `datetime64[us, America/New_York]` | `str` | `2e7817a4…4649` |
+
+Parquet payload bytes differ for the same reason (3712 vs 3697 bytes). Consequences for
+the golden tests, which run on the full CI matrix (3.10/3.11/3.12):
+
+1. The trade-frame assertion compares **values**, via
+   `pandas.testing.assert_frame_equal(recorded, produced, check_dtype=False, check_exact=True)`
+   after a canonicalization step: sort by `(entry_bar_index, signal_id)`, reset index,
+   assert identical column *sets and order*, and coerce datetime columns to UTC
+   microsecond precision. Floats are compared exactly — R multiples and prices come from
+   deterministic arithmetic, so tolerance would hide real drift.
+2. Column dtypes are asserted separately against a canonical dtype *family* map
+   (integer / float / boolean / string / datetime-with-tz), so a pandas-version dtype
+   rename (`object` → `str`) does not fail the gate while a genuine
+   `float` → `object` regression does.
+3. Never assert on parquet bytes.
+
+### 3.2 The research-bundle hash must be taken over a canonical projection
+
+`thesistester.research_bundle.build_research_bundle` stamps `created_at`
+(`datetime.now(timezone.utc)`) into `manifest.json` and writes zip entries with local
+timestamps, so raw bundle bytes are not reproducible even within one process — two calls
+on identical session state produced `62653c4a…d0fd` and `ee1a0583…10b8`.
+
+`legacy_bundle_hash.txt` therefore records the `sha256` of a **canonical projection**:
+
+- every bundle member is hashed by content, keyed by filename, in sorted filename order;
+- JSON members are re-serialized with `sort_keys=True` after dropping `manifest.created_at`;
+- DataFrame members are hashed with `local_store._hash_dataframe` (the repo's existing
+  deterministic convention) rather than by their parquet bytes.
+
+Because that convention is pandas-major-sensitive (§3.1), the file also records the
+recording `pandas_major`. The hash assertion runs only when the executing environment's
+`pandas_major` matches the recorded one, and is skipped (not failed) otherwise; frame
+value-equality still gates every matrix cell. A pandas major bump thus produces a normal
+red-then-regenerate decision rather than an unexplained CI failure.
+
+## 4. Regeneration policy (§4.1 rule 3)
+
+Golden outputs are **never** silently re-recorded.
+
+1. Intentional behavior changes land behind a new default-off flag; legacy goldens stay
+   byte-for-byte valid, so no regeneration is needed.
+2. If a golden genuinely must change, that change lands in its **own PR** containing:
+   - the reason and the regression justification;
+   - the readable `trades_legacy.csv` diff (never only the parquet);
+   - the updated `fixture_manifest.json` recording environment;
+   - nothing else — no feature work in a regeneration PR.
+3. That PR must carry the **`GOLDEN_REGEN`** label and reviewer approval. The
+   `golden-master regeneration guard` job in `.github/workflows/ci.yml` fails any PR that
+   modifies files in this directory (other than this README) without the label.
+4. Regeneration command (available once the recorder lands):
+   `python -m tests.fixtures.golden.record_golden --confirm-regenerate`. It refuses to
+   overwrite existing files without the flag.
+
+## 5. Repository plumbing
+
+`.gitignore` excludes `*.parquet` repo-wide (research exports must never be committed).
+Golden parquet fixtures are explicitly re-included via
+`!tests/fixtures/golden/*.parquet`, so recording a fixture cannot silently fail to be
+committed.
+
+## 6. Checklist for the recording PR
+
+- [ ] Deterministic generator committed; fixture rebuildable from it.
+- [ ] `trades_legacy.parquet` + `trades_legacy.csv` + `fixture_manifest.json` +
+      `legacy_bundle_hash.txt` recorded from unmodified `main`.
+- [ ] `tests/test_golden_master.py` asserts trade-frame value equality on every matrix
+      cell and bundle-hash equality on the recorded `pandas_major`.
+- [ ] Golden tests fail loudly when a deliberate engine tweak is applied locally
+      (verified by temporarily perturbing e.g. the SL-first rule, then reverting).
+- [ ] `docs/ENGINEERING_ROADMAP.md` and `docs/AGENT_GUIDE.md` reference the gate.

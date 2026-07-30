@@ -117,7 +117,9 @@ def test_buffered_rows_window_returns_bounds_around_range():
 
 
 def test_trade_time_window_returns_window_around_first_trade():
-    ohlcv_df = pd.DataFrame({"timestamp": pd.date_range("2026-01-01 09:30:00", periods=10, freq="min")})
+    ohlcv_df = pd.DataFrame(
+        {"timestamp": pd.date_range("2026-01-01 09:30:00", periods=10, freq="min")}
+    )
     trades = pd.DataFrame(
         [
             {"entry_timestamp": "2026-01-01 09:33:00", "exit_timestamp": "2026-01-01 09:35:00"},
@@ -132,8 +134,12 @@ def test_trade_time_window_returns_window_around_first_trade():
 
 
 def test_trade_time_window_handles_empty_trades():
-    ohlcv_df = pd.DataFrame({"timestamp": pd.date_range("2026-01-01 09:30:00", periods=10, freq="min")})
-    start, end = trade_time_window(pd.DataFrame(columns=["entry_timestamp", "exit_timestamp"]), ohlcv_df=ohlcv_df)
+    ohlcv_df = pd.DataFrame(
+        {"timestamp": pd.date_range("2026-01-01 09:30:00", periods=10, freq="min")}
+    )
+    start, end = trade_time_window(
+        pd.DataFrame(columns=["entry_timestamp", "exit_timestamp"]), ohlcv_df=ohlcv_df
+    )
 
     assert start is None
     assert end is None

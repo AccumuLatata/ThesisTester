@@ -1,4 +1,5 @@
 """tests/test_otf_filter.py — Pure OTF signal-eligibility filter tests (PR 3)."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -72,39 +73,65 @@ def _signal(
 class TestValidation:
     def test_disabled_with_no_timeframes_succeeds(self) -> None:
         src = _source_1m("2026-01-05 09:30", 20)
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
         accepted, rejected = apply_otf_filter(src, sig, enabled=False, timeframes=())
         assert len(accepted) == 1
         assert rejected.empty
 
     def test_enabled_with_no_timeframes_raises(self) -> None:
         src = _source_1m("2026-01-05 09:30", 20)
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
-        with pytest.raises(ValueError, match="enabled=True requires at least one selected timeframe"):
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
+        with pytest.raises(
+            ValueError, match="enabled=True requires at least one selected timeframe"
+        ):
             apply_otf_filter(src, sig, enabled=True, timeframes=())
 
     def test_unsupported_timeframe_raises(self) -> None:
         src = _source_1m("2026-01-05 09:30", 20)
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
         with pytest.raises(ValueError, match="Unsupported OTF timeframe"):
             apply_otf_filter(src, sig, enabled=True, timeframes=("10m",))
 
     def test_duplicate_timeframes_after_alias_normalization_raise(self) -> None:
         src = _source_1m("2026-01-05 09:30", 20)
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
         with pytest.raises(ValueError, match="Duplicate OTF timeframe"):
             apply_otf_filter(src, sig, enabled=True, timeframes=("5m", "5min"))
 
     def test_invalid_alignment_mode_raises(self) -> None:
         src = _source_1m("2026-01-05 09:30", 20)
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
         with pytest.raises(ValueError, match="alignment_mode must be 'all'"):
             apply_otf_filter(src, sig, enabled=True, timeframes=("5m",), alignment_mode="any")
 
     @pytest.mark.parametrize("value", [0, -1, 1.5, True])
     def test_invalid_minimum_threshold_raises(self, value: object) -> None:
         src = _source_1m("2026-01-05 09:30", 20)
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
         with pytest.raises(ValueError, match="minimum_consecutive_bars"):
             apply_otf_filter(
                 src,
@@ -116,7 +143,11 @@ class TestValidation:
 
     def test_invalid_session_reset_mode_raises(self) -> None:
         src = _source_1m("2026-01-05 09:30", 20)
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
         with pytest.raises(ValueError, match="session_reset must be 'session'"):
             apply_otf_filter(src, sig, enabled=True, timeframes=("5m",), session_reset="none")
 
@@ -128,7 +159,11 @@ class TestValidation:
 
     def test_invalid_direction_raises(self) -> None:
         src = _source_1m("2026-01-05 09:30", 20)
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="flat"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="flat"
+            )
+        )
         with pytest.raises(ValueError, match="long'/'short"):
             apply_otf_filter(src, sig, enabled=True, timeframes=("5m",))
 
@@ -143,8 +178,18 @@ class TestDisabledRegression:
     def test_disabled_returns_all_candidates_accepted_and_none_rejected(self) -> None:
         src = _source_1m("2026-01-05 09:30", 20)
         sig = _signals(
-            _signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long", notes="alpha"),
-            _signal(signal_id=2, timestamp=pd.Timestamp("2026-01-05 09:36", tz=TZ), direction="short", notes="beta"),
+            _signal(
+                signal_id=1,
+                timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ),
+                direction="long",
+                notes="alpha",
+            ),
+            _signal(
+                signal_id=2,
+                timestamp=pd.Timestamp("2026-01-05 09:36", tz=TZ),
+                direction="short",
+                notes="beta",
+            ),
         )
 
         accepted, rejected = apply_otf_filter(src, sig, enabled=False, timeframes=())
@@ -158,8 +203,20 @@ class TestDisabledRegression:
     def test_disabled_path_preserves_original_rows_values_and_order(self) -> None:
         src = _source_1m("2026-01-05 09:30", 20)
         sig = _signals(
-            _signal(signal_id=7, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long", status="candidate", notes="n1"),
-            _signal(signal_id=9, timestamp=pd.Timestamp("2026-01-05 09:36", tz=TZ), direction="short", status="candidate", notes="n2"),
+            _signal(
+                signal_id=7,
+                timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ),
+                direction="long",
+                status="candidate",
+                notes="n1",
+            ),
+            _signal(
+                signal_id=9,
+                timestamp=pd.Timestamp("2026-01-05 09:36", tz=TZ),
+                direction="short",
+                status="candidate",
+                notes="n2",
+            ),
         )
         accepted, _ = apply_otf_filter(src, sig, enabled=False)
 
@@ -170,7 +227,11 @@ class TestDisabledRegression:
 
     def test_disabled_does_not_call_otf_engine(self, monkeypatch: pytest.MonkeyPatch) -> None:
         src = _source_1m("2026-01-05 09:30", 20)
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
 
         called = {"count": 0}
 
@@ -240,7 +301,11 @@ class TestDirectionalEligibilitySingleTimeframe:
 class TestMultiTimeframeAllMode:
     def test_long_all_selected_up_passes(self) -> None:
         src = _source_1m("2026-01-05 09:30", 200, trend="up")
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 11:10", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 11:10", tz=TZ), direction="long"
+            )
+        )
 
         accepted, rejected = apply_otf_filter(
             src,
@@ -258,7 +323,11 @@ class TestMultiTimeframeAllMode:
 
     def test_long_with_unknown_timeframe_rejects(self) -> None:
         src = _source_1m("2026-01-05 09:30", 20, trend="up")
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:40", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:40", tz=TZ), direction="long"
+            )
+        )
 
         accepted, rejected = apply_otf_filter(
             src,
@@ -274,7 +343,11 @@ class TestMultiTimeframeAllMode:
 
     def test_short_all_selected_down_passes(self) -> None:
         src = _source_1m("2026-01-05 09:30", 200, trend="down")
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 11:10", tz=TZ), direction="short"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 11:10", tz=TZ), direction="short"
+            )
+        )
 
         accepted, rejected = apply_otf_filter(
             src,
@@ -292,7 +365,11 @@ class TestMultiTimeframeAllMode:
 
     def test_short_with_opposing_timeframe_rejects(self) -> None:
         src = _source_1m("2026-01-05 09:30", 200, trend="up")
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 11:10", tz=TZ), direction="short"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 11:10", tz=TZ), direction="short"
+            )
+        )
 
         accepted, rejected = apply_otf_filter(
             src,
@@ -308,7 +385,11 @@ class TestMultiTimeframeAllMode:
 
     def test_reason_uses_selected_timeframe_order(self) -> None:
         src = _source_1m("2026-01-05 09:30", 200, trend="up")
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 11:10", tz=TZ), direction="short"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 11:10", tz=TZ), direction="short"
+            )
+        )
 
         _, rejected = apply_otf_filter(
             src,
@@ -325,7 +406,11 @@ class TestMultiTimeframeAllMode:
 class TestPointInTimeAlignment:
     def test_before_first_completed_bar_is_unknown(self) -> None:
         src = _source_1m("2026-01-05 09:30", 20, trend="up")
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:34", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:34", tz=TZ), direction="long"
+            )
+        )
 
         _, rejected = apply_otf_filter(src, sig, enabled=True, timeframes=("5m",))
 
@@ -336,7 +421,11 @@ class TestPointInTimeAlignment:
 
     def test_signal_exactly_at_htf_close_can_use_that_bar(self) -> None:
         src = _source_1m("2026-01-05 09:30", 20, trend="up")
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
 
         _, rejected = apply_otf_filter(src, sig, enabled=True, timeframes=("5m",))
         row = rejected.iloc[0]
@@ -345,7 +434,11 @@ class TestPointInTimeAlignment:
 
     def test_between_htf_closes_uses_latest_prior_completed_bar(self) -> None:
         src = _source_1m("2026-01-05 09:30", 20, trend="up")
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:37", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:37", tz=TZ), direction="long"
+            )
+        )
 
         _, rejected = apply_otf_filter(src, sig, enabled=True, timeframes=("5m",))
         row = rejected.iloc[0]
@@ -358,15 +451,31 @@ class TestPointInTimeAlignment:
         extended = pd.concat([base, future], ignore_index=True)
 
         sig = _signals(
-            _signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 10:10", tz=TZ), direction="long"),
-            _signal(signal_id=2, timestamp=pd.Timestamp("2026-01-05 10:40", tz=TZ), direction="long"),
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 10:10", tz=TZ), direction="long"
+            ),
+            _signal(
+                signal_id=2, timestamp=pd.Timestamp("2026-01-05 10:40", tz=TZ), direction="long"
+            ),
         )
 
-        acc_base, rej_base = apply_otf_filter(base, sig, enabled=True, timeframes=("5m", "15m"), minimum_consecutive_bars=1)
-        acc_ext, rej_ext = apply_otf_filter(extended, sig, enabled=True, timeframes=("5m", "15m"), minimum_consecutive_bars=1)
+        acc_base, rej_base = apply_otf_filter(
+            base, sig, enabled=True, timeframes=("5m", "15m"), minimum_consecutive_bars=1
+        )
+        acc_ext, rej_ext = apply_otf_filter(
+            extended, sig, enabled=True, timeframes=("5m", "15m"), minimum_consecutive_bars=1
+        )
 
-        left = pd.concat([acc_base, rej_base], ignore_index=True).sort_values("signal_id").reset_index(drop=True)
-        right = pd.concat([acc_ext, rej_ext], ignore_index=True).sort_values("signal_id").reset_index(drop=True)
+        left = (
+            pd.concat([acc_base, rej_base], ignore_index=True)
+            .sort_values("signal_id")
+            .reset_index(drop=True)
+        )
+        right = (
+            pd.concat([acc_ext, rej_ext], ignore_index=True)
+            .sort_values("signal_id")
+            .reset_index(drop=True)
+        )
 
         cols = [
             "signal_id",
@@ -385,19 +494,45 @@ class TestPointInTimeAlignment:
         base = _source_1m("2026-01-05 09:30", 20, trend="up")
         append_only_future = _source_1m("2026-01-05 10:00", 120, trend="up")
         extended = pd.concat([base, append_only_future], ignore_index=True)
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:40", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:40", tz=TZ), direction="long"
+            )
+        )
 
-        _, rej_base = apply_otf_filter(base, sig, enabled=True, timeframes=("30m",), minimum_consecutive_bars=1)
-        _, rej_ext = apply_otf_filter(extended, sig, enabled=True, timeframes=("30m",), minimum_consecutive_bars=1)
+        _, rej_base = apply_otf_filter(
+            base, sig, enabled=True, timeframes=("30m",), minimum_consecutive_bars=1
+        )
+        _, rej_ext = apply_otf_filter(
+            extended, sig, enabled=True, timeframes=("30m",), minimum_consecutive_bars=1
+        )
 
         pd.testing.assert_series_equal(
-            rej_base.iloc[0][["otf_30m_state", "otf_30m_sequence_length", "otf_30m_reference_timestamp", "otf_filter_reason"]],
-            rej_ext.iloc[0][["otf_30m_state", "otf_30m_sequence_length", "otf_30m_reference_timestamp", "otf_filter_reason"]],
+            rej_base.iloc[0][
+                [
+                    "otf_30m_state",
+                    "otf_30m_sequence_length",
+                    "otf_30m_reference_timestamp",
+                    "otf_filter_reason",
+                ]
+            ],
+            rej_ext.iloc[0][
+                [
+                    "otf_30m_state",
+                    "otf_30m_sequence_length",
+                    "otf_30m_reference_timestamp",
+                    "otf_filter_reason",
+                ]
+            ],
         )
 
     def test_5m_15m_30m_alignment_is_independently_correct(self) -> None:
         src = _source_1m("2026-01-05 09:30", 180, trend="up")
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 10:16", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 10:16", tz=TZ), direction="long"
+            )
+        )
 
         _, rejected = apply_otf_filter(
             src,
@@ -427,7 +562,9 @@ class TestPointInTimeAlignment:
         decision = pd.Timestamp("2024-03-10 03:05", tz=TZ)
         sig = _signals(_signal(signal_id=1, timestamp=decision, direction="long"))
 
-        accepted, rejected = apply_otf_filter(src, sig, enabled=True, timeframes=("5m",), minimum_consecutive_bars=1)
+        accepted, rejected = apply_otf_filter(
+            src, sig, enabled=True, timeframes=("5m",), minimum_consecutive_bars=1
+        )
         row = (accepted if not accepted.empty else rejected).iloc[0]
         ref_ts = row["otf_5m_reference_timestamp"]
 
@@ -452,12 +589,25 @@ class TestPointInTimeAlignment:
             _signal(signal_id=2, timestamp=second, direction="long"),
         )
 
-        accepted, rejected = apply_otf_filter(src, sig, enabled=True, timeframes=("5m",), minimum_consecutive_bars=1)
-        out = pd.concat([accepted, rejected], ignore_index=True).sort_values("signal_id").reset_index(drop=True)
+        accepted, rejected = apply_otf_filter(
+            src, sig, enabled=True, timeframes=("5m",), minimum_consecutive_bars=1
+        )
+        out = (
+            pd.concat([accepted, rejected], ignore_index=True)
+            .sort_values("signal_id")
+            .reset_index(drop=True)
+        )
 
-        assert out.loc[0, "otf_signal_decision_timestamp"].utcoffset() != out.loc[1, "otf_signal_decision_timestamp"].utcoffset()
-        assert out.loc[0, "otf_5m_reference_timestamp"] <= out.loc[0, "otf_signal_decision_timestamp"]
-        assert out.loc[1, "otf_5m_reference_timestamp"] <= out.loc[1, "otf_signal_decision_timestamp"]
+        assert (
+            out.loc[0, "otf_signal_decision_timestamp"].utcoffset()
+            != out.loc[1, "otf_signal_decision_timestamp"].utcoffset()
+        )
+        assert (
+            out.loc[0, "otf_5m_reference_timestamp"] <= out.loc[0, "otf_signal_decision_timestamp"]
+        )
+        assert (
+            out.loc[1, "otf_5m_reference_timestamp"] <= out.loc[1, "otf_signal_decision_timestamp"]
+        )
 
 
 class TestDecisionTimestampSelection:
@@ -530,14 +680,32 @@ class TestPreservationAndAuditability:
     def test_original_columns_values_status_notes_and_signal_ids_are_preserved(self) -> None:
         src = _source_1m("2026-01-05 09:30", 60, trend="down")
         sig = _signals(
-            _signal(signal_id=11, timestamp=pd.Timestamp("2026-01-05 09:50", tz=TZ), direction="long", status="candidate", notes="keep me"),
-            _signal(signal_id=12, timestamp=pd.Timestamp("2026-01-05 09:51", tz=TZ), direction="short", status="candidate", notes="keep me too"),
+            _signal(
+                signal_id=11,
+                timestamp=pd.Timestamp("2026-01-05 09:50", tz=TZ),
+                direction="long",
+                status="candidate",
+                notes="keep me",
+            ),
+            _signal(
+                signal_id=12,
+                timestamp=pd.Timestamp("2026-01-05 09:51", tz=TZ),
+                direction="short",
+                status="candidate",
+                notes="keep me too",
+            ),
         )
         sig_before = sig.copy(deep=True)
         src_before = src.copy(deep=True)
 
-        accepted, rejected = apply_otf_filter(src, sig, enabled=True, timeframes=("5m",), minimum_consecutive_bars=3)
-        combined = pd.concat([accepted, rejected], ignore_index=True).sort_values("signal_id").reset_index(drop=True)
+        accepted, rejected = apply_otf_filter(
+            src, sig, enabled=True, timeframes=("5m",), minimum_consecutive_bars=3
+        )
+        combined = (
+            pd.concat([accepted, rejected], ignore_index=True)
+            .sort_values("signal_id")
+            .reset_index(drop=True)
+        )
         original = sig_before.sort_values("signal_id").reset_index(drop=True)
 
         pd.testing.assert_frame_equal(combined[sig_before.columns], original)
@@ -553,11 +721,17 @@ class TestPreservationAndAuditability:
     def test_rejected_rows_are_preserved_separately_from_execution_skips(self) -> None:
         src = _source_1m("2026-01-05 09:30", 40, trend="down")
         sig = _signals(
-            _signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:50", tz=TZ), direction="long"),
-            _signal(signal_id=2, timestamp=pd.Timestamp("2026-01-05 09:50", tz=TZ), direction="short"),
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:50", tz=TZ), direction="long"
+            ),
+            _signal(
+                signal_id=2, timestamp=pd.Timestamp("2026-01-05 09:50", tz=TZ), direction="short"
+            ),
         )
 
-        accepted, rejected = apply_otf_filter(src, sig, enabled=True, timeframes=("5m",), minimum_consecutive_bars=3)
+        accepted, rejected = apply_otf_filter(
+            src, sig, enabled=True, timeframes=("5m",), minimum_consecutive_bars=3
+        )
 
         assert list(accepted["signal_id"]) == [2]
         assert list(rejected["signal_id"]) == [1]
@@ -566,10 +740,18 @@ class TestPreservationAndAuditability:
 
     def test_canonical_and_alias_timeframes_produce_identical_output(self) -> None:
         src = _source_1m("2026-01-05 09:30", 120, trend="up")
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 10:20", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 10:20", tz=TZ), direction="long"
+            )
+        )
 
-        acc_c, rej_c = apply_otf_filter(src, sig, enabled=True, timeframes=("5m", "15m"), minimum_consecutive_bars=1)
-        acc_a, rej_a = apply_otf_filter(src, sig, enabled=True, timeframes=("5min", "15min"), minimum_consecutive_bars=1)
+        acc_c, rej_c = apply_otf_filter(
+            src, sig, enabled=True, timeframes=("5m", "15m"), minimum_consecutive_bars=1
+        )
+        acc_a, rej_a = apply_otf_filter(
+            src, sig, enabled=True, timeframes=("5min", "15min"), minimum_consecutive_bars=1
+        )
 
         pd.testing.assert_frame_equal(acc_c.reset_index(drop=True), acc_a.reset_index(drop=True))
         pd.testing.assert_frame_equal(rej_c.reset_index(drop=True), rej_a.reset_index(drop=True))
@@ -582,19 +764,35 @@ class TestDisabledIsATrueNoOp:
         return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
     def test_disabled_ignores_unsupported_timeframe(self) -> None:
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
-        accepted, rejected = apply_otf_filter(self._empty_src(), sig, enabled=False, timeframes=("10m",))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
+        accepted, rejected = apply_otf_filter(
+            self._empty_src(), sig, enabled=False, timeframes=("10m",)
+        )
         assert len(accepted) == 1
         assert rejected.empty
 
     def test_disabled_ignores_duplicate_canonical_and_alias_timeframes(self) -> None:
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
-        accepted, rejected = apply_otf_filter(self._empty_src(), sig, enabled=False, timeframes=("5m", "5min"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
+        accepted, rejected = apply_otf_filter(
+            self._empty_src(), sig, enabled=False, timeframes=("5m", "5min")
+        )
         assert len(accepted) == 1
         assert rejected.empty
 
     def test_disabled_ignores_invalid_alignment_mode(self) -> None:
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
         accepted, rejected = apply_otf_filter(
             self._empty_src(), sig, enabled=False, timeframes=("5m",), alignment_mode="any"
         )
@@ -603,16 +801,27 @@ class TestDisabledIsATrueNoOp:
 
     @pytest.mark.parametrize("value", [0, -1, 1.5, True])
     def test_disabled_ignores_invalid_minimum_consecutive_bars(self, value: object) -> None:
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
         accepted, rejected = apply_otf_filter(
-            self._empty_src(), sig, enabled=False, timeframes=("5m",),
+            self._empty_src(),
+            sig,
+            enabled=False,
+            timeframes=("5m",),
             minimum_consecutive_bars=value,  # type: ignore[arg-type]
         )
         assert len(accepted) == 1
         assert rejected.empty
 
     def test_disabled_ignores_invalid_session_reset(self) -> None:
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
         accepted, rejected = apply_otf_filter(
             self._empty_src(), sig, enabled=False, timeframes=("5m",), session_reset="none"
         )
@@ -634,12 +843,18 @@ class TestDisabledIsATrueNoOp:
     def test_disabled_does_not_inspect_source_df(self) -> None:
         # pass obviously invalid source — should succeed without inspection
         invalid_src = pd.DataFrame([{"junk": 1}])
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
         accepted, rejected = apply_otf_filter(invalid_src, sig, enabled=False)
         assert len(accepted) == 1
         assert rejected.empty
 
-    def test_disabled_does_not_call_otf_engine_with_any_args(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_disabled_does_not_call_otf_engine_with_any_args(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         called: list[object] = []
 
         def _boom(*args: object, **kwargs: object) -> object:
@@ -648,14 +863,28 @@ class TestDisabledIsATrueNoOp:
 
         monkeypatch.setattr("thesistester.engine.otf_filter.calculate_otf_state", _boom)
 
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
         apply_otf_filter(self._empty_src(), sig, enabled=False, timeframes=("unsupported_tf",))
         assert len(called) == 0
 
     def test_disabled_preserves_all_original_signal_rows_and_values(self) -> None:
         sig = _signals(
-            _signal(signal_id=3, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long", notes="n3"),
-            _signal(signal_id=7, timestamp=pd.Timestamp("2026-01-05 09:36", tz=TZ), direction="short", notes="n7"),
+            _signal(
+                signal_id=3,
+                timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ),
+                direction="long",
+                notes="n3",
+            ),
+            _signal(
+                signal_id=7,
+                timestamp=pd.Timestamp("2026-01-05 09:36", tz=TZ),
+                direction="short",
+                notes="n7",
+            ),
         )
         sig_before = sig.copy(deep=True)
         accepted, rejected = apply_otf_filter(self._empty_src(), sig, enabled=False)
@@ -669,11 +898,17 @@ class TestDisabledIsATrueNoOp:
         pd.testing.assert_frame_equal(sig, sig_before)
 
     def test_non_bool_enabled_raises_before_disabled_return(self) -> None:
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
         with pytest.raises(ValueError, match="enabled must be a bool"):
             apply_otf_filter(self._empty_src(), sig, enabled="no")  # type: ignore[arg-type]
 
-    def test_disabled_with_empty_signals_and_no_timeframes_returns_empty_accepted_rejected(self) -> None:
+    def test_disabled_with_empty_signals_and_no_timeframes_returns_empty_accepted_rejected(
+        self,
+    ) -> None:
         sig = pd.DataFrame(columns=["signal_id", "timestamp", "direction"])
         accepted, rejected = apply_otf_filter(self._empty_src(), sig, enabled=False)
         assert accepted.empty
@@ -692,9 +927,7 @@ class TestEnabledEmptySignals:
 
     def test_returns_two_empty_dataframes(self) -> None:
         sig = self._empty_signals()
-        accepted, rejected = apply_otf_filter(
-            self._source(), sig, enabled=True, timeframes=("5m",)
-        )
+        accepted, rejected = apply_otf_filter(self._source(), sig, enabled=True, timeframes=("5m",))
         assert accepted.empty
         assert rejected.empty
 
@@ -707,9 +940,7 @@ class TestEnabledEmptySignals:
 
     def test_selected_timeframe_metadata_columns_are_present(self) -> None:
         sig = self._empty_signals()
-        accepted, _ = apply_otf_filter(
-            self._source(), sig, enabled=True, timeframes=("5m", "15m")
-        )
+        accepted, _ = apply_otf_filter(self._source(), sig, enabled=True, timeframes=("5m", "15m"))
         for tf in ("5m", "15m"):
             assert f"otf_{tf}_state" in accepted.columns
             assert f"otf_{tf}_sequence_length" in accepted.columns
@@ -721,18 +952,14 @@ class TestEnabledEmptySignals:
 
     def test_unselected_timeframe_metadata_columns_are_absent(self) -> None:
         sig = self._empty_signals()
-        accepted, _ = apply_otf_filter(
-            self._source(), sig, enabled=True, timeframes=("5m",)
-        )
+        accepted, _ = apply_otf_filter(self._source(), sig, enabled=True, timeframes=("5m",))
         assert "otf_15m_state" not in accepted.columns
         assert "otf_30m_state" not in accepted.columns
 
     def test_no_direction_or_timestamp_columns_required_to_return_safely(self) -> None:
         # Completely empty DataFrame — no columns at all
         sig = pd.DataFrame()
-        accepted, rejected = apply_otf_filter(
-            self._source(), sig, enabled=True, timeframes=("5m",)
-        )
+        accepted, rejected = apply_otf_filter(self._source(), sig, enabled=True, timeframes=("5m",))
         assert accepted.empty
         assert rejected.empty
 
@@ -751,7 +978,9 @@ class TestEnabledEmptySignals:
 
     def test_invalid_config_still_raises_before_empty_return(self) -> None:
         sig = self._empty_signals()
-        with pytest.raises(ValueError, match="enabled=True requires at least one selected timeframe"):
+        with pytest.raises(
+            ValueError, match="enabled=True requires at least one selected timeframe"
+        ):
             apply_otf_filter(self._source(), sig, enabled=True, timeframes=())
 
     def test_caller_owned_dataframes_not_mutated(self) -> None:
@@ -798,15 +1027,25 @@ class TestNormalizeOtfTimeframe:
 
         result_canonical = calculate_otf_state(src, "5m", minimum_consecutive_bars=1)
         result_alias = calculate_otf_state(src, "5min", minimum_consecutive_bars=1)
-        pd.testing.assert_frame_equal(result_canonical.reset_index(drop=True), result_alias.reset_index(drop=True))
+        pd.testing.assert_frame_equal(
+            result_canonical.reset_index(drop=True), result_alias.reset_index(drop=True)
+        )
 
     def test_filter_canonical_and_alias_outputs_are_identical(self) -> None:
         """apply_otf_filter with canonical and alias timeframes must produce the same result."""
         src = _source_1m("2026-01-05 09:30", 120, trend="up")
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 10:20", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 10:20", tz=TZ), direction="long"
+            )
+        )
 
-        acc_c, rej_c = apply_otf_filter(src, sig, enabled=True, timeframes=("15m",), minimum_consecutive_bars=1)
-        acc_a, rej_a = apply_otf_filter(src, sig, enabled=True, timeframes=("15min",), minimum_consecutive_bars=1)
+        acc_c, rej_c = apply_otf_filter(
+            src, sig, enabled=True, timeframes=("15m",), minimum_consecutive_bars=1
+        )
+        acc_a, rej_a = apply_otf_filter(
+            src, sig, enabled=True, timeframes=("15min",), minimum_consecutive_bars=1
+        )
 
         # Both alias and canonical normalize to 15m, so schemas and values are identical.
         pd.testing.assert_frame_equal(acc_c.reset_index(drop=True), acc_a.reset_index(drop=True))
@@ -814,11 +1053,17 @@ class TestNormalizeOtfTimeframe:
 
     def test_duplicate_normalized_timeframes_raise_when_enabled(self) -> None:
         src = _source_1m("2026-01-05 09:30", 20)
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
+        )
         with pytest.raises(ValueError, match="Duplicate OTF timeframe"):
             apply_otf_filter(src, sig, enabled=True, timeframes=("5m", "5min"))
 
-    def test_disabled_mode_does_not_invoke_normalization(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_disabled_mode_does_not_invoke_normalization(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         called: list[object] = []
         original = __import__(
             "thesistester.engine.otf_filter", fromlist=["normalize_otf_timeframe"]
@@ -830,9 +1075,10 @@ class TestNormalizeOtfTimeframe:
 
         monkeypatch.setattr("thesistester.engine.otf_filter.normalize_otf_timeframe", _spy)
 
-        sig = _signals(_signal(signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"))
-        apply_otf_filter(
-            pd.DataFrame(), sig, enabled=False, timeframes=("5m", "unsupported")
+        sig = _signals(
+            _signal(
+                signal_id=1, timestamp=pd.Timestamp("2026-01-05 09:35", tz=TZ), direction="long"
+            )
         )
+        apply_otf_filter(pd.DataFrame(), sig, enabled=False, timeframes=("5m", "unsupported"))
         assert len(called) == 0
-

@@ -269,9 +269,10 @@ def test_walk_forward_execution_costs_pass_through():
         commission_per_side=1.0,
         slippage_ticks=1.0,
     )
-    assert summarize_walk_forward(with_cost)["aggregate_test_total_r"] < summarize_walk_forward(zero_cost)[
-        "aggregate_test_total_r"
-    ]
+    assert (
+        summarize_walk_forward(with_cost)["aggregate_test_total_r"]
+        < summarize_walk_forward(zero_cost)["aggregate_test_total_r"]
+    )
 
 
 def test_walk_forward_exposure_policy_pass_through():
@@ -308,9 +309,10 @@ def test_walk_forward_exposure_policy_pass_through():
         max_holding_bars=1,
         exposure_policy="single_position",
     )
-    assert summarize_walk_forward(single_position)["aggregate_test_trade_count"] <= summarize_walk_forward(allow_all)[
-        "aggregate_test_trade_count"
-    ]
+    assert (
+        summarize_walk_forward(single_position)["aggregate_test_trade_count"]
+        <= summarize_walk_forward(allow_all)["aggregate_test_trade_count"]
+    )
 
 
 def test_research_artifact_includes_walk_forward_outputs():

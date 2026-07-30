@@ -1,4 +1,5 @@
 """Plotly chart builder for Levels page visualization."""
+
 from __future__ import annotations
 
 import pandas as pd

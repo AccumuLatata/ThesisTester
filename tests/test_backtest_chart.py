@@ -209,7 +209,8 @@ def test_confluence_zones_are_capped_without_trade_links():
     confluence_zones = pd.DataFrame(
         [
             {
-                "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=index),
+                "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ)
+                + pd.Timedelta(minutes=index),
                 "zone_low": 100.0 + index,
                 "zone_high": 100.5 + index,
             }

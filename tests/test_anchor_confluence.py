@@ -6,8 +6,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from thesistester.engine import detect_anchor_confluence_zones as exported_detect_anchor_confluence_zones
-from thesistester.engine.anchor_confluence import ANCHOR_ZONE_COLUMNS, detect_anchor_confluence_zones
+from thesistester.engine import (
+    detect_anchor_confluence_zones as exported_detect_anchor_confluence_zones,
+)
+from thesistester.engine.anchor_confluence import (
+    ANCHOR_ZONE_COLUMNS,
+    detect_anchor_confluence_zones,
+)
 
 
 TZ = "America/New_York"
@@ -133,7 +138,9 @@ def test_optional_invalid_does_not_block_if_min_valid_met():
         {"level": "opt_valid", "tolerance_ticks": 4, "required": False},
         {"level": "opt_invalid", "tolerance_ticks": 4, "required": False},
     ]
-    result = detect_anchor_confluence_zones(df, "pdHigh", rules, tick_size=TICK, min_valid_confluences=1)
+    result = detect_anchor_confluence_zones(
+        df, "pdHigh", rules, tick_size=TICK, min_valid_confluences=1
+    )
     assert len(result) == 1
     row = result.iloc[0]
     assert row["level_names"] == "pdHigh|opt_valid"
@@ -157,7 +164,9 @@ def test_minimum_valid_count_not_met_returns_no_zone():
         {"level": "rule_a", "tolerance_ticks": 4, "required": False},
         {"level": "rule_b", "tolerance_ticks": 4, "required": False},
     ]
-    result = detect_anchor_confluence_zones(df, "pdHigh", rules, tick_size=TICK, min_valid_confluences=2)
+    result = detect_anchor_confluence_zones(
+        df, "pdHigh", rules, tick_size=TICK, min_valid_confluences=2
+    )
     assert result.empty
 
 
@@ -191,7 +200,9 @@ def test_missing_optional_confluence_price_allows_zone_if_min_met():
         {"level": "rule_ok", "tolerance_ticks": 2, "required": False},
         {"level": "rule_nan", "tolerance_ticks": 2, "required": False},
     ]
-    result = detect_anchor_confluence_zones(df, "pdHigh", rules, tick_size=TICK, min_valid_confluences=1)
+    result = detect_anchor_confluence_zones(
+        df, "pdHigh", rules, tick_size=TICK, min_valid_confluences=1
+    )
     assert len(result) == 1
     parsed = json.loads(result.iloc[0]["rule_results"])
     nan_rule = next(r for r in parsed if r["level"] == "rule_nan")
@@ -246,7 +257,9 @@ def test_optional_missing_column_keeps_zone_and_records_reason():
         {"level": "rule_ok", "tolerance_ticks": 1, "required": False},
         {"level": "rule_missing", "tolerance_ticks": 1, "required": False},
     ]
-    result = detect_anchor_confluence_zones(df, "pdHigh", rules, tick_size=TICK, min_valid_confluences=1)
+    result = detect_anchor_confluence_zones(
+        df, "pdHigh", rules, tick_size=TICK, min_valid_confluences=1
+    )
     assert len(result) == 1
     parsed = json.loads(result.iloc[0]["rule_results"])
     missing_rule = next(r for r in parsed if r["level"] == "rule_missing")
@@ -333,7 +346,9 @@ def test_rule_results_is_valid_json_with_expected_fields():
     assert isinstance(parsed, list)
     assert parsed
     keys = set(parsed[0].keys())
-    assert {"level", "distance_ticks", "tolerance_ticks", "required", "valid", "reason"}.issubset(keys)
+    assert {"level", "distance_ticks", "tolerance_ticks", "required", "valid", "reason"}.issubset(
+        keys
+    )
 
 
 def test_anchor_is_first_and_rule_order_is_preserved_for_valid_entries():

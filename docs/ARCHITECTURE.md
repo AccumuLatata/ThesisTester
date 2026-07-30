@@ -1,5 +1,28 @@
 # ARCHITECTURE
 
+## Packaging and tooling boundary (R9)
+
+| Artifact | Packaged? | Notes |
+|---|---|---|
+| `thesistester/**` | Yes | The library. `pip install -e .` makes it importable outside Streamlit (`pyproject.toml`, `[tool.setuptools.packages.find] include = ["thesistester*"]`). |
+| `app.py`, `pages/**` | No | Streamlit entry points; run from a repo checkout. |
+| `tests/**` | No | Runs from the checkout; `testpaths = ["tests"]`. |
+
+Consequence that matters for later milestones: `thesistester/app_state.py` is currently the
+only library module that imports `streamlit` at module scope — data, levels, engine,
+analytics, persistence, reporting, and visualization modules are Streamlit-free. That is what
+makes the planned R18 headless facade a pure addition rather than a refactor. `streamlit`
+nevertheless remains a hard dependency in `pyproject.toml` (mirroring `requirements.txt`);
+splitting it into an extra is R18's decision, not R9's. Dependency ranges carry next-major
+caps, and `requirements.txt` stays the app-install path.
+
+Tool configuration is centralized in `pyproject.toml` (`ruff`, `pytest`, `coverage`).
+CI jobs and the golden-master regeneration guard are defined in `.github/workflows/ci.yml`;
+the golden fixture contract lives in `tests/fixtures/golden/README.md`.
+
+R9 introduced **no** `st.session_state` keys and no engine/analytics behavior change, so the
+contract table below is unchanged by it.
+
 ## End-to-end data flow
 
 ```mermaid

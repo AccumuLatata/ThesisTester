@@ -1,4 +1,5 @@
 """Plotly chart builder for Signals page visualization."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -47,7 +48,9 @@ def build_signals_chart(
             raise ValueError(f"signals is missing required columns: {', '.join(missing_signals)}")
     if confluence_zones is not None and not confluence_zones.empty:
         required_zone_cols = ["timestamp", "zone_low", "zone_high"]
-        missing_zone_cols = [col for col in required_zone_cols if col not in confluence_zones.columns]
+        missing_zone_cols = [
+            col for col in required_zone_cols if col not in confluence_zones.columns
+        ]
         if missing_zone_cols:
             raise ValueError(
                 f"confluence_zones is missing required columns: {', '.join(missing_zone_cols)}"
@@ -95,8 +98,12 @@ def build_signals_chart(
         )
 
     if signals is not None and not signals.empty:
-        long_filled = signals[(signals["direction"] == "long") & (signals["status"].isin(["candidate", "filled"]))]
-        short_filled = signals[(signals["direction"] == "short") & (signals["status"].isin(["candidate", "filled"]))]
+        long_filled = signals[
+            (signals["direction"] == "long") & (signals["status"].isin(["candidate", "filled"]))
+        ]
+        short_filled = signals[
+            (signals["direction"] == "short") & (signals["status"].isin(["candidate", "filled"]))
+        ]
         long_void = signals[(signals["direction"] == "long") & (signals["status"] == "void")]
         short_void = signals[(signals["direction"] == "short") & (signals["status"] == "void")]
 

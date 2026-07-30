@@ -1,4 +1,5 @@
 """Small local filesystem persistence helpers for datasets, setups, and computed levels."""
+
 from __future__ import annotations
 
 import hashlib
@@ -189,7 +190,9 @@ def _hash_dataframe(df: pd.DataFrame) -> str:
     row_hashes = pd.util.hash_pandas_object(canonical, index=False).to_numpy(dtype="uint64")
     hasher = hashlib.sha256()
     hasher.update(_stable_json_bytes(list(canonical.columns)))
-    hasher.update(_stable_json_bytes({column: str(dtype) for column, dtype in canonical.dtypes.items()}))
+    hasher.update(
+        _stable_json_bytes({column: str(dtype) for column, dtype in canonical.dtypes.items()})
+    )
     hasher.update(row_hashes.tobytes())
     return hasher.hexdigest()
 
@@ -739,7 +742,9 @@ def find_matching_levels(
     return metadata
 
 
-def load_levels(dataset_id: str, settings_hash: str) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+def load_levels(
+    dataset_id: str, settings_hash: str
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
     """Load saved levels and metadata."""
     levels_dir = _levels_dir(dataset_id, settings_hash)
     meta_path = levels_dir / "meta.json"
@@ -877,7 +882,9 @@ def find_matching_signal_run(
 ) -> dict[str, Any] | None:
     """Return saved signal-run metadata with an exact settings hash match."""
     signal_settings_hash = compute_signal_settings_hash(signal_settings)
-    meta_path = _signal_run_dir(dataset_id, levels_settings_hash, signal_settings_hash) / "meta.json"
+    meta_path = (
+        _signal_run_dir(dataset_id, levels_settings_hash, signal_settings_hash) / "meta.json"
+    )
     if not meta_path.exists():
         return None
 
@@ -924,7 +931,9 @@ def load_signal_run(
     return signals_df, confluence_df, naked_df, metadata
 
 
-def delete_signal_run(dataset_id: str, levels_settings_hash: str, signal_settings_hash: str) -> None:
+def delete_signal_run(
+    dataset_id: str, levels_settings_hash: str, signal_settings_hash: str
+) -> None:
     """Delete a saved signal run."""
     signal_run_dir = _signal_run_dir(dataset_id, levels_settings_hash, signal_settings_hash)
     if signal_run_dir.exists():
@@ -940,6 +949,7 @@ def delete_signal_run(dataset_id: str, levels_settings_hash: str, signal_setting
 
 
 # ── Execution-settings defaults ───────────────────────────────────────────────
+
 
 def get_backtest_defaults() -> dict | None:
     """Return saved Backtest execution defaults, or None if absent/schema-mismatch."""

@@ -1,4 +1,5 @@
 """Session tagging (RTH vs ETH) using the instrument's exchange calendar window."""
+
 from __future__ import annotations
 
 import pandas as pd

@@ -1,4 +1,5 @@
 """Pure helper utilities for visualization-only chart windowing."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -85,16 +86,12 @@ def buffered_rows_window(
     timestamp_col: str = "timestamp",
 ) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
     """Return bounds around [start, end] expanded by ±buffer_rows in df timeline."""
-    if (
-        df is None
-        or df.empty
-        or timestamp_col not in df.columns
-        or start is None
-        or end is None
-    ):
+    if df is None or df.empty or timestamp_col not in df.columns or start is None or end is None:
         return None, None
 
-    timeline = coerce_timestamp_series(df[timestamp_col]).dropna().sort_values().reset_index(drop=True)
+    timeline = (
+        coerce_timestamp_series(df[timestamp_col]).dropna().sort_values().reset_index(drop=True)
+    )
     if timeline.empty:
         return None, None
 
@@ -156,7 +153,9 @@ def trade_time_window(
     if trade_start > trade_end:
         trade_start, trade_end = trade_end, trade_start
 
-    timeline = coerce_timestamp_series(ohlcv_df["timestamp"]).dropna().sort_values().reset_index(drop=True)
+    timeline = (
+        coerce_timestamp_series(ohlcv_df["timestamp"]).dropna().sort_values().reset_index(drop=True)
+    )
     if timeline.empty:
         return None, None
 

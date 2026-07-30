@@ -29,6 +29,7 @@ Related files
 - docs/otf-filter.md              — OTF v1 behavioral contract
 - docs/otf-filter-roadmap.md      — implementation roadmap
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -51,7 +52,11 @@ POINT_VALUE = 50.0
 def _bar(ts: str, o: float, h: float, l: float, c: float, vol: float = 100.0) -> dict:
     return {
         "timestamp": pd.Timestamp(ts, tz=TZ),
-        "open": o, "high": h, "low": l, "close": c, "volume": vol,
+        "open": o,
+        "high": h,
+        "low": l,
+        "close": c,
+        "volume": vol,
     }
 
 
@@ -128,13 +133,17 @@ class TestBaselineSignalGenerationTouch:
         """Return (df, zones) for a single long touch scenario."""
         df = _df(
             _bar("2026-01-05 09:30", 102.0, 103.0, 101.5, 102.5),  # bar 0: no zone here
-            _bar("2026-01-05 09:31", 101.5, 101.8, 100.0, 100.5),  # bar 1: zone here, low=100.0 ≤ 100.25
+            _bar(
+                "2026-01-05 09:31", 101.5, 101.8, 100.0, 100.5
+            ),  # bar 1: zone here, low=100.0 ≤ 100.25
             _bar("2026-01-05 09:32", 100.8, 103.5, 100.5, 103.0),  # bar 2: entry bar, wide TP
             _bar("2026-01-05 09:33", 103.0, 103.5, 102.5, 103.2),  # bar 3: no zone touch
         )
-        zones = pd.DataFrame([
-            _zone(1, "2026-01-05 09:31", low=99.75, high=100.25),
-        ])
+        zones = pd.DataFrame(
+            [
+                _zone(1, "2026-01-05 09:31", low=99.75, high=100.25),
+            ]
+        )
         return df, zones
 
     def test_one_signal_is_generated(self) -> None:
@@ -145,9 +154,7 @@ class TestBaselineSignalGenerationTouch:
         """
         df, zones = self._setup()
         signals = generate_signals(df, zones, trigger="touch", direction="long", tick_size=TICK)
-        assert len(signals) == 1, (
-            f"Expected 1 signal, got {len(signals)}"
-        )
+        assert len(signals) == 1, f"Expected 1 signal, got {len(signals)}"
 
     def test_signal_direction_is_long(self) -> None:
         """Generated signal must be long."""
@@ -193,15 +200,15 @@ class TestBaselineSignalGenerationTouch:
         so the touch condition (bar_low <= zone_high) is not satisfied.
         """
         df = _df(
-            _bar("2026-01-05 09:30", 102.0, 103.0, 101.5, 102.5),  # bar 0: zone here, L=101.5 > 100.25
+            _bar(
+                "2026-01-05 09:30", 102.0, 103.0, 101.5, 102.5
+            ),  # bar 0: zone here, L=101.5 > 100.25
             _bar("2026-01-05 09:31", 102.0, 103.5, 101.5, 103.0),  # bar 1: no zone
             _bar("2026-01-05 09:32", 103.0, 104.0, 102.5, 103.8),  # bar 2: no zone
         )
         zones = pd.DataFrame([_zone(0, "2026-01-05 09:30", low=99.75, high=100.25)])
         signals = generate_signals(df, zones, trigger="touch", direction="long", tick_size=TICK)
-        assert signals.empty, (
-            f"Expected no signals when zone is never touched, got {len(signals)}"
-        )
+        assert signals.empty, f"Expected no signals when zone is never touched, got {len(signals)}"
 
     def test_empty_zones_produces_no_signals(self) -> None:
         """Empty zones input produces an empty signal DataFrame."""
@@ -209,10 +216,18 @@ class TestBaselineSignalGenerationTouch:
             _bar("2026-01-05 09:30", 100.0, 101.0, 99.0, 100.5),
             _bar("2026-01-05 09:31", 100.5, 102.0, 100.0, 101.5),
         )
-        zones = pd.DataFrame(columns=[
-            "timestamp", "bar_index", "zone_low", "zone_high",
-            "zone_mid", "level_count", "level_names", "level_prices",
-        ])
+        zones = pd.DataFrame(
+            columns=[
+                "timestamp",
+                "bar_index",
+                "zone_low",
+                "zone_high",
+                "zone_mid",
+                "level_count",
+                "level_names",
+                "level_prices",
+            ]
+        )
         signals = generate_signals(df, zones, trigger="touch", direction="long", tick_size=TICK)
         assert signals.empty
 
@@ -241,41 +256,47 @@ class TestBaselineBacktestLongTakeProfit:
     def test_one_trade_produced(self) -> None:
         """Exactly one trade is produced from one long signal."""
         df, sigs = self._data()
-        trades = simulate_trades(df, sigs, TICK, POINT_VALUE,
-                                 stop_loss_ticks=4, take_profit_ticks=8)
+        trades = simulate_trades(
+            df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+        )
         assert len(trades) == 1
 
     def test_trade_direction_is_long(self) -> None:
         df, sigs = self._data()
-        trades = simulate_trades(df, sigs, TICK, POINT_VALUE,
-                                 stop_loss_ticks=4, take_profit_ticks=8)
+        trades = simulate_trades(
+            df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+        )
         assert trades.iloc[0]["direction"] == "long"
 
     def test_trade_entry_price(self) -> None:
         """Entry price must be the open of bar 1 (100.0)."""
         df, sigs = self._data()
-        trades = simulate_trades(df, sigs, TICK, POINT_VALUE,
-                                 stop_loss_ticks=4, take_profit_ticks=8)
+        trades = simulate_trades(
+            df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+        )
         assert trades.iloc[0]["entry_price"] == pytest.approx(100.0)
 
     def test_trade_exit_reason_is_take_profit(self) -> None:
         df, sigs = self._data()
-        trades = simulate_trades(df, sigs, TICK, POINT_VALUE,
-                                 stop_loss_ticks=4, take_profit_ticks=8)
+        trades = simulate_trades(
+            df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+        )
         assert trades.iloc[0]["exit_reason"] == "TP"
 
     def test_trade_r_multiple(self) -> None:
         """R-multiple must be 2.0 (8 ticks profit / 4 ticks risk)."""
         df, sigs = self._data()
-        trades = simulate_trades(df, sigs, TICK, POINT_VALUE,
-                                 stop_loss_ticks=4, take_profit_ticks=8)
+        trades = simulate_trades(
+            df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+        )
         assert trades.iloc[0]["r_multiple"] == pytest.approx(2.0)
 
     def test_trade_pnl_points(self) -> None:
         """Gross P&L must be 2.0 points (8 ticks * 0.25)."""
         df, sigs = self._data()
-        trades = simulate_trades(df, sigs, TICK, POINT_VALUE,
-                                 stop_loss_ticks=4, take_profit_ticks=8)
+        trades = simulate_trades(
+            df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+        )
         assert trades.iloc[0]["pnl_points"] == pytest.approx(2.0)
 
 
@@ -303,27 +324,31 @@ class TestBaselineBacktestShortStopLoss:
 
     def test_one_trade_produced(self) -> None:
         df, sigs = self._data()
-        trades = simulate_trades(df, sigs, TICK, POINT_VALUE,
-                                 stop_loss_ticks=4, take_profit_ticks=8)
+        trades = simulate_trades(
+            df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+        )
         assert len(trades) == 1
 
     def test_trade_direction_is_short(self) -> None:
         df, sigs = self._data()
-        trades = simulate_trades(df, sigs, TICK, POINT_VALUE,
-                                 stop_loss_ticks=4, take_profit_ticks=8)
+        trades = simulate_trades(
+            df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+        )
         assert trades.iloc[0]["direction"] == "short"
 
     def test_trade_exit_reason_is_stop_loss(self) -> None:
         df, sigs = self._data()
-        trades = simulate_trades(df, sigs, TICK, POINT_VALUE,
-                                 stop_loss_ticks=4, take_profit_ticks=8)
+        trades = simulate_trades(
+            df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+        )
         assert trades.iloc[0]["exit_reason"] == "SL"
 
     def test_trade_r_multiple(self) -> None:
         """R-multiple must be -1.0 (stop hit = 1R loss)."""
         df, sigs = self._data()
-        trades = simulate_trades(df, sigs, TICK, POINT_VALUE,
-                                 stop_loss_ticks=4, take_profit_ticks=8)
+        trades = simulate_trades(
+            df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+        )
         assert trades.iloc[0]["r_multiple"] == pytest.approx(-1.0)
 
 
@@ -338,8 +363,12 @@ class TestBaselineEmptyInputs:
     def test_empty_signals_produce_empty_trades(self) -> None:
         df = _df(_bar("2026-01-05 09:30", 100.0, 101.0, 99.0, 100.5))
         trades = simulate_trades(
-            df, pd.DataFrame(), TICK, POINT_VALUE,
-            stop_loss_ticks=4, take_profit_ticks=8,
+            df,
+            pd.DataFrame(),
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
         )
         assert trades.empty
 
@@ -347,8 +376,12 @@ class TestBaselineEmptyInputs:
         """Default return is a DataFrame (not a tuple)."""
         df = _df(_bar("2026-01-05 09:30", 100.0, 101.0, 99.0, 100.5))
         result = simulate_trades(
-            df, pd.DataFrame(), TICK, POINT_VALUE,
-            stop_loss_ticks=4, take_profit_ticks=8,
+            df,
+            pd.DataFrame(),
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
         )
         assert isinstance(result, pd.DataFrame)
 
@@ -356,8 +389,12 @@ class TestBaselineEmptyInputs:
         """return_skipped_signals=True returns a (trades, skipped) tuple."""
         df = _df(_bar("2026-01-05 09:30", 100.0, 101.0, 99.0, 100.5))
         result = simulate_trades(
-            df, pd.DataFrame(), TICK, POINT_VALUE,
-            stop_loss_ticks=4, take_profit_ticks=8,
+            df,
+            pd.DataFrame(),
+            TICK,
+            POINT_VALUE,
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
             return_skipped_signals=True,
         )
         assert isinstance(result, tuple)
@@ -384,9 +421,11 @@ class TestBaselineSignalGenerationShort:
         Bar 1: H=100.1 >= zone_low=99.75 AND L=97.5 <= zone_high=100.25 → touch.
         """
         df = _df(
-            _bar("2026-01-05 09:30", 98.0,  98.5,  97.5,  98.0),   # bar 0: no zone
-            _bar("2026-01-05 09:31", 98.5,  100.1, 97.5,  99.0),   # bar 1: zone here, high touches zone
-            _bar("2026-01-05 09:32", 99.0,  99.5,  96.0,  96.5),   # bar 2: no zone touch
+            _bar("2026-01-05 09:30", 98.0, 98.5, 97.5, 98.0),  # bar 0: no zone
+            _bar(
+                "2026-01-05 09:31", 98.5, 100.1, 97.5, 99.0
+            ),  # bar 1: zone here, high touches zone
+            _bar("2026-01-05 09:32", 99.0, 99.5, 96.0, 96.5),  # bar 2: no zone touch
         )
         zones = pd.DataFrame([_zone(1, "2026-01-05 09:31", low=99.75, high=100.25)])
         signals = generate_signals(df, zones, trigger="touch", direction="short", tick_size=TICK)
@@ -395,9 +434,9 @@ class TestBaselineSignalGenerationShort:
 
     def test_short_signal_bar_index(self) -> None:
         df = _df(
-            _bar("2026-01-05 09:30", 98.0,  98.5,  97.5,  98.0),
-            _bar("2026-01-05 09:31", 98.5,  100.1, 97.5,  99.0),
-            _bar("2026-01-05 09:32", 99.0,  99.5,  96.0,  96.5),
+            _bar("2026-01-05 09:30", 98.0, 98.5, 97.5, 98.0),
+            _bar("2026-01-05 09:31", 98.5, 100.1, 97.5, 99.0),
+            _bar("2026-01-05 09:32", 99.0, 99.5, 96.0, 96.5),
         )
         zones = pd.DataFrame([_zone(1, "2026-01-05 09:31", low=99.75, high=100.25)])
         signals = generate_signals(df, zones, trigger="touch", direction="short", tick_size=TICK)
@@ -418,37 +457,43 @@ class TestBaselineTwoTrades:
 
     def _data(self) -> tuple[pd.DataFrame, pd.DataFrame]:
         df = _df(
-            _bar("2026-01-05 09:30", 100.0, 100.5,  99.5, 100.0),  # bar 0: signal bars
-            _bar("2026-01-05 09:31", 100.0, 103.0,  99.8, 102.5),  # bar 1: trade 0 entry — TP
-            _bar("2026-01-05 09:32", 100.0, 100.5,  99.5, 100.0),  # bar 2: signal bar (short)
-            _bar("2026-01-05 09:33", 100.0, 101.5,  99.0, 101.0),  # bar 3: trade 1 entry — SL
+            _bar("2026-01-05 09:30", 100.0, 100.5, 99.5, 100.0),  # bar 0: signal bars
+            _bar("2026-01-05 09:31", 100.0, 103.0, 99.8, 102.5),  # bar 1: trade 0 entry — TP
+            _bar("2026-01-05 09:32", 100.0, 100.5, 99.5, 100.0),  # bar 2: signal bar (short)
+            _bar("2026-01-05 09:33", 100.0, 101.5, 99.0, 101.0),  # bar 3: trade 1 entry — SL
         )
         # Signal 0: long at bar 0, entry bar 1, TP at 102.0 (8 ticks above 100.0)
         # Signal 1: short at bar 2, entry bar 3, SL at 101.0 (4 ticks above 100.0)
-        sigs = pd.concat([
-            _signal(bar_index=0, signal_id=0, direction="long",  entry_ref=100.0),
-            _signal(bar_index=2, signal_id=1, direction="short", entry_ref=100.0),
-        ], ignore_index=True)
+        sigs = pd.concat(
+            [
+                _signal(bar_index=0, signal_id=0, direction="long", entry_ref=100.0),
+                _signal(bar_index=2, signal_id=1, direction="short", entry_ref=100.0),
+            ],
+            ignore_index=True,
+        )
         return df, sigs
 
     def test_two_trades_produced(self) -> None:
         df, sigs = self._data()
-        trades = simulate_trades(df, sigs, TICK, POINT_VALUE,
-                                 stop_loss_ticks=4, take_profit_ticks=8)
+        trades = simulate_trades(
+            df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+        )
         assert len(trades) == 2
 
     def test_first_trade_is_long_tp(self) -> None:
         df, sigs = self._data()
-        trades = simulate_trades(df, sigs, TICK, POINT_VALUE,
-                                 stop_loss_ticks=4, take_profit_ticks=8)
+        trades = simulate_trades(
+            df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+        )
         t0 = trades[trades["direction"] == "long"].iloc[0]
         assert t0["exit_reason"] == "TP"
         assert t0["r_multiple"] == pytest.approx(2.0)
 
     def test_second_trade_is_short_sl(self) -> None:
         df, sigs = self._data()
-        trades = simulate_trades(df, sigs, TICK, POINT_VALUE,
-                                 stop_loss_ticks=4, take_profit_ticks=8)
+        trades = simulate_trades(
+            df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+        )
         t1 = trades[trades["direction"] == "short"].iloc[0]
         assert t1["exit_reason"] == "SL"
         assert t1["r_multiple"] == pytest.approx(-1.0)
@@ -456,8 +501,9 @@ class TestBaselineTwoTrades:
     def test_total_r_is_one(self) -> None:
         """Total R = 2.0 (TP) + (-1.0) (SL) = 1.0."""
         df, sigs = self._data()
-        trades = simulate_trades(df, sigs, TICK, POINT_VALUE,
-                                 stop_loss_ticks=4, take_profit_ticks=8)
+        trades = simulate_trades(
+            df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+        )
         total_r = trades["r_multiple"].sum()
         assert total_r == pytest.approx(1.0)
 
@@ -466,8 +512,9 @@ class TestBaselineTwoTrades:
         This assertion must remain true after future OTF integration when
         OTF is disabled (the default state)."""
         df, sigs = self._data()
-        trades = simulate_trades(df, sigs, TICK, POINT_VALUE,
-                                 stop_loss_ticks=4, take_profit_ticks=8)
+        trades = simulate_trades(
+            df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8
+        )
         # All 2 candidate signals → 2 trades (no OTF rejection)
         assert len(trades) == len(sigs)
 
@@ -567,8 +614,7 @@ class TestBaselineTradeSchema:
             _bar("2026-01-05 09:31", 100.0, 104.0, 99.8, 103.0),
         )
         sigs = _signal(bar_index=0, direction="long", entry_ref=100.0)
-        return simulate_trades(df, sigs, TICK, POINT_VALUE,
-                               stop_loss_ticks=4, take_profit_ticks=8)
+        return simulate_trades(df, sigs, TICK, POINT_VALUE, stop_loss_ticks=4, take_profit_ticks=8)
 
     def test_required_columns_present(self) -> None:
         """All required trade columns must be present in the output."""

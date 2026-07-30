@@ -1,4 +1,5 @@
 """Confirmed multi-timeframe pivot levels."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -26,7 +27,9 @@ def _normalize_pivot_timeframes(
         return SUPPORTED_PIVOT_TIMEFRAMES
 
     normalized = tuple(str(timeframe) for timeframe in timeframes)
-    invalid = sorted({timeframe for timeframe in normalized if timeframe not in SUPPORTED_PIVOT_TIMEFRAMES})
+    invalid = sorted(
+        {timeframe for timeframe in normalized if timeframe not in SUPPORTED_PIVOT_TIMEFRAMES}
+    )
     if invalid:
         raise ValueError(
             f"Unsupported pivot timeframe(s): {', '.join(invalid)}. "
@@ -54,11 +57,12 @@ def _resolve_pivot_source(
             for option in SUPPORTED_PIVOT_TIMEFRAMES
             if pd.to_timedelta(option) >= base_interval
         ]
-        hint = f"Load {timeframe} data." if not valid_choices else f"Load {timeframe} data or choose {', '.join(valid_choices)}."
-        raise ValueError(
-            f"Cannot compute {timeframe} pivots from {base_label} source data. "
-            f"{hint}"
+        hint = (
+            f"Load {timeframe} data."
+            if not valid_choices
+            else f"Load {timeframe} data or choose {', '.join(valid_choices)}."
         )
+        raise ValueError(f"Cannot compute {timeframe} pivots from {base_label} source data. {hint}")
 
     if base_interval is not None and target_interval == base_interval:
         return out.copy()
@@ -84,17 +88,19 @@ def _latest_confirmed_pivot_series(
     base_timestamps: pd.DataFrame,
 ) -> pd.Series:
     prices = pd.to_numeric(source_df[price_col], errors="coerce")
-    comparator = (lambda cur, other: cur > other) if price_col == "high" else (lambda cur, other: cur < other)
+    comparator = (
+        (lambda cur, other: cur > other)
+        if price_col == "high"
+        else (lambda cur, other: cur < other)
+    )
     pivot_mask = _detect_pivot_mask(prices, left=left, right=right, comparator=comparator)
 
     events = source_df.loc[pivot_mask, ["timestamp"]].copy()
     events["pivot_value"] = prices.loc[pivot_mask].to_numpy()
     events["align_timestamp"] = events["timestamp"] + (right + 1) * pd.to_timedelta(timeframe)
-    events = (
-        events.sort_values(["align_timestamp", "timestamp"])
-        .drop_duplicates(subset=["align_timestamp"], keep="last")
-        [["align_timestamp", "pivot_value"]]
-    )
+    events = events.sort_values(["align_timestamp", "timestamp"]).drop_duplicates(
+        subset=["align_timestamp"], keep="last"
+    )[["align_timestamp", "pivot_value"]]
     if events.empty:
         return pd.Series(index=base_timestamps.index, dtype="float64")
 
