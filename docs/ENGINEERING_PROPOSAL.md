@@ -16,7 +16,7 @@ ThesisTester already out-executes most retail tools on **correctness discipline*
 3. **Excursion analytics** — MAE/MFE is captured per trade but never analyzed; the SL/TP calibration loop SOTA tools build around it (RealTest, AmiBroker, Build Alpha Edge Ratio) is missing.
 4. **Workflow automation** — Streamlit-only; no headless engine API, batch experiments, or CI.
 
-The proposal: **do not chase the incumbents' breadth** (replay, live trading, strategy generation, order types zoo). Instead, deepen the niche ThesisTester already owns — *programmatic level-confluence statistics for intraday index futures* — through thirteen additive milestones (R9–R21), each opt-in, default-off, schema-versioned, and gated by the existing test suite plus new golden-master and future-shock tests. First milestone is engineering hygiene (CI + packaging + lint), because every subsequent milestone's regression safety depends on it.
+The proposal: **do not chase the incumbents' breadth** (replay, live trading, strategy generation, order types zoo). Instead, deepen the niche ThesisTester already owns — *programmatic level-confluence statistics for intraday index futures* — through fourteen additive milestones (R9–R22), each opt-in, default-off, schema-versioned, and gated by the existing test suite plus new golden-master and future-shock tests. First milestone is engineering hygiene (CI + packaging + lint), because every subsequent milestone's regression safety depends on it. A dedicated performance milestone (R22) is included because the validation-battery milestones multiply re-simulation load on the engine's Python-level loop.
 
 ---
 
@@ -133,9 +133,32 @@ The repo's conventions already encode most of this framework; R9 makes it enforc
 9. **CI gate.** After R9: full pytest + lint on every PR; no merge on red.
 10. **Honesty framing.** New statistical outputs ship with the same "diagnostic, not proof of edge" caveats as Phase 8/R5.
 
+### 4.1 Golden-master operational spec
+
+The golden-master mechanism (rule 2) is the load-bearing control for the only invasive engine milestones (R12/R13) and for any future engine refactor. It must be specified before any engine change:
+
+1. **Minimal canonical fixture** under `tests/fixtures/golden/`:
+   - `dataset_nq_1m_small.parquet` — one small synthetic NQ 1-minute dataset (a few RTH days), or a deterministic generator used by tests.
+   - `legacy_bundle_hash.txt` — the research-bundle hash produced by current `main` in legacy mode.
+   - `trades_legacy.parquet` — the canonical legacy-mode trade frame for that fixture.
+2. **Recording and verification.** Golden tests run the legacy pipeline on the fixture and assert exact equality — bundle hash string-compare and trade-frame value equality (parquet/pandas). Legacy mode must keep passing after any engine change.
+3. **Regeneration policy.** Golden outputs change only via a dedicated, reviewable PR that includes: the reason, a readable diff (CSV) of golden vs. new, and regression justification. CI blocks PRs that alter golden outputs unless an explicit `GOLDEN_REGEN` label and approval are present. Intentional new behavior always lands behind a new flag; the legacy golden is never silently regenerated.
+4. **Brittleness control.** Keep golden scope minimal (small fixture) so legitimate improvements are not blocked; scope goldens to *legacy-mode* outputs only, per §7.
+
+### 4.2 Per-milestone PR acceptance checklist
+
+Mandatory for every PR touching engine or analytics:
+
+- Unit tests for new functionality (single-run, deterministic).
+- Golden-master tests preserved (legacy outputs unchanged).
+- `random_state` seed parameter wherever randomness exists; deterministic otherwise.
+- Documentation updates in the same PR: `ASSUMPTIONS_AND_LIMITATIONS.md` (caveats), `METRICS_GLOSSARY.md` (new stats), `ARCHITECTURE.md` (API / `st.session_state` contract changes if any).
+- CI green across the matrix.
+- Small surface area; purpose-limited commits; a short "regression safety" paragraph in the PR body stating how golden gating is preserved.
+
 ---
 
-## 5. Roadmap — milestones R9 through R21
+## 5. Roadmap — milestones R9 through R22
 
 Milestones extend the existing R-series (`docs/ENGINEERING_ROADMAP.md` R1–R8). Order is the recommended implementation sequence; dependencies are noted. Each milestone lists: goal → SOTA benchmark → scope → regression-safety → acceptance.
 
@@ -144,12 +167,13 @@ Milestones extend the existing R-series (`docs/ENGINEERING_ROADMAP.md` R1–R8).
 - **Goal:** Make regression safety automatic instead of aspirational.
 - **Benchmark:** N/A — internal. (Addresses analysis weaknesses W1–W3, W14.)
 - **Scope:**
-  - `pyproject.toml` (setuptools or hatchling): package metadata, `thesistester` importable after `pip install -e .`, Python `>=3.10`, dependency ranges mirroring `requirements.txt` (which stays for the app).
-  - GitHub Actions: matrix `pytest -q` on Python 3.10/3.11/3.12; `ruff check` + `ruff format --check`; `pytest-cov` reporting (informational threshold, e.g. warn below current level).
+  - `pyproject.toml` (setuptools or hatchling): package metadata, `thesistester` importable after `pip install -e .`, Python `>=3.10`, dependency ranges mirroring `requirements.txt` (which stays for the app), and a `dev` extras group (`pytest`, `pytest-cov`, `ruff`).
+  - GitHub Actions `.github/workflows/ci.yml`: matrix `pytest -q --cov=thesistester` on Python 3.10/3.11/3.12; `ruff check` + `ruff format --check`; coverage reported (informational threshold, e.g. warn below current level — monitor, don't block initially).
   - Minimal `ruff` config (line length consistent with current style); one-time `ruff format` pass isolated in its own commit.
   - Add a LICENSE file (owner decision: MIT suggested for adoption).
+  - `tests/fixtures/golden/README.md` describing the golden-fixture format and regeneration policy from §4.1 (spec only — golden *data* is added in a follow-up PR before the first engine-touching milestone, not in R9 itself).
 - **Regression-safety:** No runtime code changes except mechanical formatting; golden behavior proven by the suite itself (1516 tests).
-- **Acceptance:** CI green on `main`; `pip install -e . && python -c "import thesistester"` works in a clean venv; coverage report visible in CI.
+- **Acceptance:** CI green on `main`; `pip install -e .` works in a fresh venv and `python -c "import thesistester"` succeeds; coverage report visible in CI; `tests/fixtures/golden/README.md` present. Suggested PR title: `R9: packaging + CI + LICENSE (regression-safe)`. Concrete `pyproject.toml` / `ci.yml` templates and a copy-ready implementation prompt live in the R9 PR description, not in this document, so they stay current with the code they scaffold.
 
 ### R10 — MAE/MFE excursion analytics & SL/TP calibration *(highest research value per effort)*
 
@@ -172,12 +196,12 @@ Milestones extend the existing R-series (`docs/ENGINEERING_ROADMAP.md` R1–R8).
 - **Goal:** Replace single-rule SL-first pessimism with a *configurable* intrabar resolution model — the single biggest realism gap vs SOTA.
 - **Benchmark:** TradingView **Bar Magnifier** (minimum viable: refine with lower timeframe), TradeStation **Look-Inside-Bar**, NinjaTrader **High fill resolution** (sub-series down to 1 tick for fills only).
 - **Scope:** `simulate_trades(..., intrabar_model: str = "sl_first")` — new keyword-only parameter. Models:
-  1. `"sl_first"` (default; legacy behavior, golden-tested).
+  1. `"sl_first"` (default; legacy behavior, golden-tested, byte-identical to current outputs).
   2. `"path_open_proximity"` — deterministic heuristic reconstructing likely intrabar path from OHLC relationship (NT-style 3-virtual-bar split).
   3. `"subtimeframe"` — when the canonical data is finer than the decision timeframe, walk sub-bars to order SL/TP hits (uses existing resample machinery); most defensible with real data.
-  Exit reason gains a suffix (e.g. `SL_intrabar_path`) so results remain distinguishable; both/ambiguous cases counted and exported as diagnostics. Grid search exposes the model choice so users can measure result sensitivity to intrabar assumptions (a robustness signal in itself).
-- **Regression-safety:** Default keeps legacy behavior byte-identical (R9 golden-masters gate this); new models additive; trade schema additive columns only; session_state keys unchanged.
-- **Acceptance:** Golden-master equality for default; per-model unit tests with hand-computed OHLC fixtures covering both-hit-same-bar orderings; PIT tests; assumptions doc updated (SL-first no longer the only modeled resolution).
+  **Contracts:** both non-legacy models are fully deterministic by design — determinism is a feature, so no `random_state` is required for them; the parameter is reserved (and becomes mandatory) only if a *probabilistic* intrabar path model is ever introduced later. Exit reasons gain a suffix (e.g. `SL_intrabar_path`, `TP_subtimeframe`) so results remain distinguishable. Trade schema is additive-only: new columns for `intrabar_model`, plus an `intrabar_diagnostic` payload — count/percent of same-bar both-hit events, ambiguous-resolution count, bars affected — which is also surfaced in the exported research artifact. Grid search exposes the model choice so users can measure result sensitivity to intrabar assumptions (a robustness signal in itself).
+- **Regression-safety:** Default keeps legacy behavior byte-identical (§4.1 golden-masters gate this); new models additive; trade schema additive columns only; session_state keys unchanged.
+- **Acceptance:** Golden-master equality for default; per-model unit tests with hand-computed OHLC fixtures covering both-hit same-bar orderings; PIT future-shock tests (appending future bars must not change past outputs under any model); diagnostic counts verified on fixtures with known both-hit bars; `ASSUMPTIONS_AND_LIMITATIONS.md` updated (SL-first no longer the only modeled resolution; ambiguity caveats restated per model).
 
 ### R13 — Exit flexibility: break-even move and trailing stop (opt-in)
 
@@ -251,21 +275,33 @@ Milestones extend the existing R-series (`docs/ENGINEERING_ROADMAP.md` R1–R8).
 - **Regression-safety:** Operates on outputs of independent per-setup runs (no change to single-run semantics); additive analytics.
 - **Acceptance:** Portfolio of disjoint setups equals sum of parts under `allow_all`-equivalent portfolio policy; overlapping fixtures match hand-computed admission; correlation matrix matches pandas reference on fixtures.
 
+### R22 — `simulate_trades` performance baseline and scaling path
+
+- **Goal:** Treat the engine's Python-level loop as a first-class engineering concern *before* the validation-battery milestones multiply its load. `simulate_trades` iterates signals (`iterrows`) and walks exits bar-by-bar in Python — O(signals × bars_held) — and R11 (Monte Carlo), R15 (PBO/vs-random), R16 (noise replicas), and R19 (sensitivity perturbations) each re-run it many times, while grid search already re-simulates per cell. This is the roadmap's primary scale bottleneck (analysis W12).
+- **Benchmark:** N/A — internal. Informed by the SOTA split (vectorized engines for parameter-space exploration vs. event-driven engines for realism), but the goal here is narrow: keep current semantics, remove the throughput ceiling.
+- **Scope (baseline first, optimize second):**
+  1. **Instrument, don't optimize yet.** Add timers and microbenchmarks under `tests/benchmarks/` measuring `simulate_trades` and `run_sl_tp_grid` wall-time on fixed fixtures (varying signal counts and bars-held); record results in a committed `docs/SIMULATE_PERF.md` baseline. Any later acceleration PR must state its measured improvement against this baseline.
+  2. **Narrow the core surface.** Refactor `simulate_trades` internals so the per-trade decision logic is isolated behind a clear, small core API — such that any later optimization (vectorization, Numba on the hot exit-walk loop, or parallel grid cells via R18) touches only the core implementation, never the semantics. No behavior change; the §4.1 golden-masters must stay byte-identical through this refactor.
+  3. **Acceleration (only if the baseline justifies it):** vectorized/Numba hot loop, or `multiprocessing`/joblib across independent grid cells and Monte Carlo replicas exposed through the R18 API. Acceleration that changes *any* numeric output is out of scope — parallel/vectorized paths must reproduce the serial golden outputs exactly.
+- **Regression-safety:** Baseline instrumentation and the core-surface refactor are internal-only; golden-masters gate byte-identical behavior. Any accelerated execution path must produce outputs identical to the serial reference on the golden fixtures (asserted in CI).
+- **Acceptance:** `docs/SIMULATE_PERF.md` exists with reproducible baseline timings; the refactored core passes the full suite and golden tests unchanged; if an accelerated path is added, a CI test asserts its outputs equal the serial path on fixtures, and `SIMULATE_PERF.md` records the measured speedup.
+
 ---
 
 ## 6. Sequencing and dependencies
 
 ```text
-R9 (CI/packaging/lint)
+R9 (CI/packaging/lint + golden-spec)
  ├──► R10 (MAE/MFE analytics)          ── cheap, immediate value
  ├──► R11 (Monte Carlo suite)          ── independent, high value
- ├──► R12 (look-inside-bar)            ── gated by R9 golden-masters
+ ├──► R12 (look-inside-bar)            ── gated by §4.1 golden-masters
  │     └──► R13 (BE/trailing exits)    ── engine surface after R12
  ├──► R14 (session-aware WFA)          ── independent of R12/R13
- ├──► R15 (PBO/DSR/vs-random)          ── benefits from R18 for runtime
- ├──► R16 (noise test)                 ── should follow R18 (full-pipeline replicas)
+ ├──► R15 (PBO/DSR/vs-random)          ── benefits from R18 + R22 for runtime
+ ├──► R16 (noise test)                 ── should follow R18 + R22 (full-pipeline replicas)
  ├──► R17 (data ingestion)             ── independent; enables future tick realism
- └──► R18 (headless API + CLI)         ── after R9; accelerates R15/R16/R19
+ ├──► R22 (simulate_trades perf)       ── baseline early; refactor before R15/R16/R19 load
+ └──► R18 (headless API + CLI)         ── after R9; accelerates R15/R16/R19; hosts R22 parallelism
         └──► R19 (SPP-lite)            ── uses R18 batch runs
 R20 (trade-review viz)                 ── independent, anytime after R10
 R21 (portfolio layer)                  ── last; composes per-setup outputs
@@ -274,8 +310,9 @@ R21 (portfolio layer)                  ── last; composes per-setup outputs
 **Recommended first wave (foundations + quick wins):** R9 → R10 → R11 → R18.
 **Second wave (realism + validation depth):** R12 → R13 → R14 → R15.
 **Third wave (scale + polish):** R16 → R17 → R19 → R20 → R21.
+**Cross-cutting:** R22 runs alongside the waves — baseline instrumentation right after R9, the core-surface refactor before the R15/R16/R19 validation-battery load lands, and optional acceleration only where the baseline justifies it.
 
-Rationale: R9 makes every later change verifiably regression-free; R10/R11 deliver SOTA-parity validation value at a fraction of engine-surgery risk; R18 multiplies the value of every subsequent analytics milestone by making them batch-runnable and agent-operable; R12/R13 are the only invasive engine changes and are deliberately scheduled after the safety net (golden-masters from R9, users calibrated by R10/R11) exists.
+Rationale: R9 makes every later change verifiably regression-free; R10/R11 deliver SOTA-parity validation value at a fraction of engine-surgery risk; R18 multiplies the value of every subsequent analytics milestone by making them batch-runnable and agent-operable; R12/R13 are the only invasive engine changes and are deliberately scheduled after the safety net (golden-masters from R9, users calibrated by R10/R11) exists; R22 ensures the engine can actually carry the re-simulation load those batteries impose.
 
 ---
 
@@ -284,9 +321,10 @@ Rationale: R9 makes every later change verifiably regression-free; R10/R11 deliv
 | Risk | Milestones | Mitigation |
 |---|---|---|
 | Intrabar models create false confidence ("now it's realistic!") | R12, R13 | Every new model ships with exported ambiguity diagnostics (both-hit counts) and docs stating OHLC ordering remains unknowable; sub-bar model is the recommended one when data allows |
-| Runtime blowup from full-pipeline replicas | R15, R16, R19 | Seeded subsampling, opt-in toggles, R18 parallelism first, explicit cost warnings in UI |
+| Runtime blowup from full-pipeline replicas | R15, R16, R19 | R22 baseline + core refactor first; seeded subsampling, opt-in toggles, R18 parallelism, explicit cost warnings in UI |
 | Statistical theater — batteries misread as proof | R11, R15, R16, R19 | Same honesty framing as Phase 8; glossary entries defining exactly what each number means; PBO/DSR assumptions stated (trade-sequence stationarity, trial-count estimation) |
-| Golden-master brittleness blocks legitimate engine improvements | R9→R12/13 | Golden files scoped to *legacy-mode* outputs; documented procedure for intentional regeneration with review |
+| Golden-master brittleness blocks legitimate engine improvements | R9→R12/13, R22 | Golden files scoped to *legacy-mode* outputs on a minimal fixture; §4.1 documented regeneration procedure with `GOLDEN_REGEN` label + approval |
+| Performance refactor drifts numeric outputs | R22 | Golden-masters must stay byte-identical through the refactor; accelerated paths asserted equal to the serial reference in CI |
 | Scope creep toward non-goals (replay, live trading) | All | §2.2 anti-roadmap is the standing decision record; revisit only via an explicit proposal amendment |
 | pandas/numpy major-version drift | R9 | CI matrix + conservative version caps in `pyproject.toml`; dependabot/renovate PRs gated by full suite |
 
