@@ -15,6 +15,11 @@ This engine is for **research screening**, not proof of a durable edge.
 ### 2) Intrabar ambiguity is resolved with SL-first pessimism
 - If both stop and target are reachable in one bar, the engine exits at stop. Implemented in `simulate_trades()` in `thesistester/engine/backtest.py`.
 - This behavior is explicitly documented in the module design notes in `thesistester/engine/backtest.py`.
+- R10 excursion calibration preserves this pessimism by default: when terminal
+  MAE and MFE both reach a candidate stop/target pair, `both_hit_rule="stop_first"`
+  counts the candidate as a stop hit. Users may also inspect `target_first` or
+  `exclude_ambiguous` sensitivity, but those are diagnostics, not evidence of
+  true intrabar ordering.
 
 ### 3) TIME, SESSION_CLOSE, DATA_END, and EOD exits are bar-index based
 - `max_holding_bars` is implemented as a bar-count cap (`entry_bar_index + max_holding_bars - 1`) in `simulate_trades()` in `thesistester/engine/backtest.py`.
@@ -179,6 +184,16 @@ other than the last bar in the dataset.
 - Validation diagnostics explicitly warn that assumptions like sign symmetry and independence limits apply; serial dependence is ignored (`thesistester/analytics/validation.py:10-11`, `115-117`).
 - Outputs are explicitly framed as diagnostics and not proof of edge (`thesistester/analytics/validation.py:13`, `pages/10_Validation.py:18`).
 - Walk-forward / out-of-sample diagnostics are also descriptive only, not proof of edge.
+- MAE/MFE excursion analytics are post-trade diagnostics only. They use terminal
+  bar-level `mae_points` / `mfe_points` captured by the engine and cannot prove
+  whether favorable or adverse excursion happened first within an OHLC bar.
+- The SL/TP calibration grid in `thesistester/analytics/excursions.py` estimates
+  hit probabilities from terminal excursions under an explicit ambiguity rule.
+  It is not a re-simulation and should not be interpreted as a fill-ordered
+  counterfactual backtest.
+- R10 edge-ratio decay uses completed-trade `bars_held` buckets as a proxy.
+  True Build Alpha-style decay across bars would require storing the intratrade
+  MAE/MFE path, which is intentionally out of R10 scope.
 - Current walk-forward splits use deterministic bar-index windows and are not calendar/session-aware.
 - Train-window SL/TP selection can still overfit when grids are large or fold count is small.
 - Each fold's test window is out-of-sample relative to that fold's train window only.
