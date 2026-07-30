@@ -40,6 +40,7 @@ Point-in-time guarantee:
     time is ≤ T were used.  Appending future bars cannot alter Single Print
     values at prior timestamps.
 """
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -73,6 +74,7 @@ SINGLE_PRINT_COLUMNS: Tuple[str, ...] = (
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _round_to_tick(price: float, tick_size: float) -> int:
     """Return price expressed as an integer number of ticks (deterministic)."""
@@ -174,7 +176,9 @@ def _compute_single_prints(
     # Per session: list of (bracket_end_ts, bins_frozenset) in ascending order.
     # bracket_end_ts is the timestamp at which the bracket *becomes available*:
     # i.e. rth_open + (bucket_idx+1) * 30min.
-    session_brackets: Dict[object, List[Tuple[pd.Timestamp, FrozenSet[int]]]] = {}  # date -> list of (end_ts, bins)
+    session_brackets: Dict[
+        object, List[Tuple[pd.Timestamp, FrozenSet[int]]]
+    ] = {}  # date -> list of (end_ts, bins)
 
     for sess_date in unique_sessions:
         rth_open_ts = pd.Timestamp(
@@ -213,7 +217,9 @@ def _compute_single_prints(
     # --- Compute prior-session SP set per session ---
     # For session S, the prior-session SP set is the SP set of the session just before S.
     sorted_session_dates = sorted(session_brackets.keys())
-    prior_sp_prices: Dict[object, List[float]] = {}  # date -> list of SP prices (from prior session)
+    prior_sp_prices: Dict[
+        object, List[float]
+    ] = {}  # date -> list of SP prices (from prior session)
     for i, sess_date in enumerate(sorted_session_dates):
         if i == 0:
             prior_sp_prices[sess_date] = []
@@ -270,6 +276,7 @@ def _compute_single_prints(
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def compute_tpo_levels(
     df: pd.DataFrame,
@@ -337,8 +344,7 @@ def compute_tpo_levels(
     # single_prints_enabled=True from here onward.
     if instrument not in INSTRUMENTS:
         raise ValueError(
-            f"Unsupported instrument: {instrument!r}.  "
-            f"Supported instruments: {sorted(INSTRUMENTS)}"
+            f"Unsupported instrument: {instrument!r}.  Supported instruments: {sorted(INSTRUMENTS)}"
         )
 
     # Sort and copy — never mutate the caller's frame.

@@ -3,6 +3,7 @@
 This module evaluates already-generated candidate signals against the shared
 OTF engine and returns accepted and rejected signals separately.
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -149,8 +150,7 @@ def select_signal_decision_timestamp(
     if candidate_ts.isna().any():
         missing_indexes = list(candidate_ts[candidate_ts.isna()].index)
         raise ValueError(
-            "Signal decision timestamp is missing for row index(es): "
-            f"{missing_indexes}"
+            f"Signal decision timestamp is missing for row index(es): {missing_indexes}"
         )
 
     try:
@@ -183,9 +183,7 @@ def _validate_enabled_config(
         raise ValueError("alignment_mode must be 'all' in OTF v1")
 
     if isinstance(minimum_consecutive_bars, bool) or not isinstance(minimum_consecutive_bars, int):
-        raise ValueError(
-            "minimum_consecutive_bars must be an integer >= 1"
-        )
+        raise ValueError("minimum_consecutive_bars must be an integer >= 1")
     if minimum_consecutive_bars < 1:
         raise ValueError("minimum_consecutive_bars must be >= 1")
 
@@ -204,9 +202,7 @@ def _normalize_timeframes(timeframes: Sequence[str]) -> list[str]:
     for timeframe in timeframes:
         canonical = normalize_otf_timeframe(timeframe)  # raises ValueError for unsupported
         if canonical in seen:
-            raise ValueError(
-                f"Duplicate OTF timeframe after normalization: {canonical!r}"
-            )
+            raise ValueError(f"Duplicate OTF timeframe after normalization: {canonical!r}")
         seen.add(canonical)
         normalized.append(canonical)
 
@@ -223,9 +219,7 @@ def _build_empty_enabled_outputs(
     OTF metadata columns for the selected timeframes only.
     """
     result = signal_copy.copy()
-    result["otf_signal_decision_timestamp"] = pd.Series(
-        dtype="datetime64[ns]", index=result.index
-    )
+    result["otf_signal_decision_timestamp"] = pd.Series(dtype="datetime64[ns]", index=result.index)
     for tf in normalized_timeframes:
         result[f"otf_{tf}_state"] = pd.Series(dtype="object", index=result.index)
         result[f"otf_{tf}_sequence_length"] = pd.Series(dtype="int64", index=result.index)
@@ -247,9 +241,7 @@ def _validate_signal_directions(signals: pd.DataFrame) -> None:
     invalid = signals[~signals["direction"].isin(_VALID_DIRECTIONS)]
     if not invalid.empty:
         bad_values = sorted({str(v) for v in invalid["direction"].tolist()})
-        raise ValueError(
-            f"signals.direction must contain only 'long'/'short'; got {bad_values}"
-        )
+        raise ValueError(f"signals.direction must contain only 'long'/'short'; got {bad_values}")
 
 
 def _align_otf_state(
@@ -291,12 +283,14 @@ def _align_otf_state(
 
     aligned = pd.merge_asof(
         left.sort_values("_otf_decision_timestamp_utc", kind="stable"),
-        right[[
-            "_otf_availability_timestamp_utc",
-            "availability_timestamp",
-            "otf_state",
-            "otf_sequence_length",
-        ]].sort_values("_otf_availability_timestamp_utc", kind="stable"),
+        right[
+            [
+                "_otf_availability_timestamp_utc",
+                "availability_timestamp",
+                "otf_state",
+                "otf_sequence_length",
+            ]
+        ].sort_values("_otf_availability_timestamp_utc", kind="stable"),
         left_on="_otf_decision_timestamp_utc",
         right_on="_otf_availability_timestamp_utc",
         direction="backward",

@@ -124,8 +124,14 @@ def _set_active_dataset_state(
     if previous_dataset_id is not None and previous_dataset_id != dataset_id:
         _clear_dataset_dependent_state()
         active_setup = st.session_state.get("setup_config")
-        setup_dataset_id = active_setup.get("dataset_id") if isinstance(active_setup, dict) else None
-        if isinstance(setup_dataset_id, str) and setup_dataset_id and setup_dataset_id != dataset_id:
+        setup_dataset_id = (
+            active_setup.get("dataset_id") if isinstance(active_setup, dict) else None
+        )
+        if (
+            isinstance(setup_dataset_id, str)
+            and setup_dataset_id
+            and setup_dataset_id != dataset_id
+        ):
             st.session_state.pop("setup_config", None)
             st.session_state.pop("_setup_builder_editor_config", None)
     st.session_state["data"] = df
@@ -213,15 +219,16 @@ def _render_roll_assumptions(df, *, instrument: str) -> None:
         key="roll_method_selector",
     )
 
-    contract_column = st.text_input(
-        "Contract column",
-        value=(
-            existing_policy.get("contract_column")
-            or detected_contract_column
-            or "contract"
-        ),
-        key="roll_contract_column_input",
-    ).strip() or "contract"
+    contract_column = (
+        st.text_input(
+            "Contract column",
+            value=(
+                existing_policy.get("contract_column") or detected_contract_column or "contract"
+            ),
+            key="roll_contract_column_input",
+        ).strip()
+        or "contract"
+    )
 
     adjustment_options = [
         "unknown",
@@ -297,7 +304,7 @@ def _render_roll_assumptions(df, *, instrument: str) -> None:
         st.dataframe(pd.DataFrame(roll_gaps), width="stretch")
 
 
-st.title("\U0001F4E5 Data")
+st.title("\U0001f4e5 Data")
 
 bootstrap_active_saved_dataset()
 
@@ -343,9 +350,7 @@ if saved_datasets:
         )
         st.session_state[PENDING_INSTRUMENT_SELECTOR_KEY] = loaded_meta["instrument"]
         if loaded_meta.get("source_timezone") is not None:
-            st.session_state[PENDING_SOURCE_TZ_SELECTOR_KEY] = loaded_meta[
-                "source_timezone"
-            ]
+            st.session_state[PENDING_SOURCE_TZ_SELECTOR_KEY] = loaded_meta["source_timezone"]
         st.rerun()
 
     if action_cols[1].button("Delete saved dataset", width="stretch"):

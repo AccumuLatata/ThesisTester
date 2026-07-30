@@ -21,6 +21,7 @@ Config resolution precedence
 An explicit but invalid OTF config (e.g. enabled=True with no timeframes)
 always raises ``ValueError`` — it is never silently treated as disabled.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -299,4 +300,5 @@ def _compute_hash(otf_config: dict[str, Any]) -> str:
     """Return deterministic SHA-256 hash for an OTF config dict."""
     # Import here to avoid circular imports at module load time
     from ..persistence.local_store import compute_otf_config_hash
+
     return compute_otf_config_hash(otf_config)

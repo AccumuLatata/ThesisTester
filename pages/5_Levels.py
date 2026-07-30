@@ -82,7 +82,13 @@ def _normalize_levels_settings(settings: dict | None) -> dict | None:
     out.setdefault("session_vwap_anchor", "RTH")
     out.setdefault("single_prints_enabled", False)
     out.setdefault("apoc_enabled", False)
-    for key in ("sma_timeframes", "ema_timeframes", "vwap_windows", "poc_windows", "pivot_timeframes"):
+    for key in (
+        "sma_timeframes",
+        "ema_timeframes",
+        "vwap_windows",
+        "poc_windows",
+        "pivot_timeframes",
+    ):
         value = out.get(key)
         if isinstance(value, list):
             out[key] = sorted(value)
@@ -225,7 +231,9 @@ def _sync_levels_widget_state(settings: dict) -> None:
         st.session_state[_PIVOT_RIGHT_KEY] = pivot_right
 
     st.session_state[_SESSION_VWAP_ENABLED_KEY] = bool(settings.get("session_vwap_enabled", False))
-    st.session_state[_SINGLE_PRINTS_ENABLED_KEY] = bool(settings.get("single_prints_enabled", False))
+    st.session_state[_SINGLE_PRINTS_ENABLED_KEY] = bool(
+        settings.get("single_prints_enabled", False)
+    )
     st.session_state[_APOC_ENABLED_KEY] = bool(settings.get("apoc_enabled", False))
 
 
@@ -355,7 +363,9 @@ prior_month_aggregation_ticks = st.number_input(
 )
 
 with st.expander("Advanced opt-in levels", expanded=False):
-    st.caption("All opt-in levels are disabled by default. Existing behavior is unchanged unless a box is checked.")
+    st.caption(
+        "All opt-in levels are disabled by default. Existing behavior is unchanged unless a box is checked."
+    )
     pivots_enabled = st.checkbox(
         "Enable confirmed pivots",
         value=False,
@@ -458,7 +468,9 @@ levels_are_stale = (
 )
 settings_are_stale = previous_settings is not None and previous_settings != current_settings
 
-if matching_saved_levels is not None and (not has_calculated_levels or levels_are_stale or settings_are_stale):
+if matching_saved_levels is not None and (
+    not has_calculated_levels or levels_are_stale or settings_are_stale
+):
     st.info("Matching saved levels found for this dataset/settings.")
     saved_level_actions = st.columns(2)
     if saved_level_actions[0].button(
@@ -496,7 +508,9 @@ if saved_level_snapshots:
     snapshot_options = {item["settings_hash"]: item for item in saved_level_snapshots}
     snapshot_ids = list(snapshot_options)
     active_snapshot_hash = get_active_levels_hash(dataset_id)
-    default_index = snapshot_ids.index(active_snapshot_hash) if active_snapshot_hash in snapshot_ids else 0
+    default_index = (
+        snapshot_ids.index(active_snapshot_hash) if active_snapshot_hash in snapshot_ids else 0
+    )
     selected_settings_hash = st.selectbox(
         "Saved snapshots",
         options=snapshot_ids,
@@ -630,9 +644,7 @@ if levels_current:
         )
         set_active_levels_hash(dataset_id, saved_levels_meta["settings_hash"])
         matching_saved_levels = saved_levels_meta
-        st.success(
-            f"Saved levels locally ({saved_levels_meta['settings_hash'][:12]}...)."
-        )
+        st.success(f"Saved levels locally ({saved_levels_meta['settings_hash'][:12]}...).")
     if matching_saved_levels is not None and persistence_actions[1].button(
         "Delete saved levels",
         key="delete_current_saved_levels",
@@ -654,7 +666,9 @@ st.dataframe(levels_df[preview_cols].tail(200), width="stretch")
 selected_levels = st.multiselect(
     "Levels to plot",
     options=level_columns,
-    default=[col for col in ["RTH_Open", "OR_High", "OR_Low", "ONH", "ONL"] if col in level_columns],
+    default=[
+        col for col in ["RTH_Open", "OR_High", "OR_Low", "ONH", "ONL"] if col in level_columns
+    ],
 )
 
 chart_range = st.selectbox(
@@ -689,7 +703,9 @@ elif chart_range == "Custom date range":
             max_value=max_ts.date(),
         )
         chart_start = pd.Timestamp(custom_start_date)
-        chart_end = pd.Timestamp(custom_end_date) + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+        chart_end = (
+            pd.Timestamp(custom_end_date) + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+        )
 
 chart_levels_df = (
     levels_df.copy(deep=True)

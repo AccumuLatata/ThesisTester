@@ -140,6 +140,7 @@ Contract reference
 ``docs/otf-filter.md`` — OTF v1 Behavioral Contract, §3, §6.
 Contract version: v1
 """
+
 from __future__ import annotations
 
 from typing import Final
@@ -168,8 +169,8 @@ _TIMEFRAME_ALIASES: Final[dict[str, str]] = {
 }
 
 #: All accepted public OTF timeframe inputs, including aliases.
-OTF_SUPPORTED_TIMEFRAMES: Final[frozenset[str]] = (
-    OTF_CANONICAL_TIMEFRAMES | frozenset(_TIMEFRAME_ALIASES)
+OTF_SUPPORTED_TIMEFRAMES: Final[frozenset[str]] = OTF_CANONICAL_TIMEFRAMES | frozenset(
+    _TIMEFRAME_ALIASES
 )
 
 #: Internal resampler labels for the canonical public timeframes.
@@ -189,7 +190,7 @@ _VALID_STATES: Final[frozenset[str]] = frozenset({"up", "down", "neutral", "unkn
 
 #: Timeframe durations for supported resampler labels.
 _TIMEFRAME_DURATION: Final[dict[str, pd.Timedelta]] = {
-    "5min":  pd.Timedelta("5min"),
+    "5min": pd.Timedelta("5min"),
     "15min": pd.Timedelta("15min"),
     "30min": pd.Timedelta("30min"),
 }
@@ -259,9 +260,7 @@ def calculate_otf_state(
     # ------------------------------------------------------------------
     # 8. Assign trading-session dates (used for session-boundary detection)
     # ------------------------------------------------------------------
-    htf["trading_session_date"] = trading_session_date(
-        htf["bar_start_timestamp"], eth_start
-    )
+    htf["trading_session_date"] = trading_session_date(htf["bar_start_timestamp"], eth_start)
 
     # ------------------------------------------------------------------
     # 9. Keep only HTF bars backed by complete source-bar coverage.
@@ -320,9 +319,7 @@ def _validate_inputs(
     # Required columns
     missing = _REQUIRED_COLUMNS - set(df.columns)
     if missing:
-        raise ValueError(
-            f"Input DataFrame is missing required columns: {sorted(missing)}"
-        )
+        raise ValueError(f"Input DataFrame is missing required columns: {sorted(missing)}")
 
     # Timeframe support
     if timeframe not in OTF_SUPPORTED_TIMEFRAMES:
@@ -335,8 +332,7 @@ def _validate_inputs(
     # minimum_consecutive_bars
     if not isinstance(minimum_consecutive_bars, int) or minimum_consecutive_bars < 1:
         raise ValueError(
-            f"minimum_consecutive_bars must be an integer >= 1, "
-            f"got {minimum_consecutive_bars!r}"
+            f"minimum_consecutive_bars must be an integer >= 1, got {minimum_consecutive_bars!r}"
         )
 
     # session_reset — only "session" is supported in v1
@@ -347,9 +343,7 @@ def _validate_inputs(
         )
 
 
-def _ensure_timezone_aware(
-    df: pd.DataFrame, session_timezone: str | None
-) -> pd.DataFrame:
+def _ensure_timezone_aware(df: pd.DataFrame, session_timezone: str | None) -> pd.DataFrame:
     """Return a copy of df with timezone-aware timestamps.
 
     If session_timezone is supplied, localise naive timestamps to that zone
@@ -568,7 +562,9 @@ def _discard_partial_first_buckets(
     source_sessions = trading_session_date(source["timestamp"], eth_start)
     # First source bar timestamp per session (keep as Series with tz-aware timestamps)
     tmp = (
-        pd.DataFrame({"trading_session_date": source_sessions, "first_source_ts": source["timestamp"]})
+        pd.DataFrame(
+            {"trading_session_date": source_sessions, "first_source_ts": source["timestamp"]}
+        )
         .groupby("trading_session_date", sort=False, as_index=False)["first_source_ts"]
         .min()
     )

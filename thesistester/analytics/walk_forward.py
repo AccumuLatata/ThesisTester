@@ -1,4 +1,5 @@
 """Walk-forward / out-of-sample diagnostics for SL/TP selection."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -69,9 +70,7 @@ def _filter_fold_signals_with_otf(
         "enabled": True,
         "timeframes": list(otf_config.get("timeframes", [])),
         "alignment_mode": str(otf_config.get("alignment_mode", "all")),
-        "minimum_consecutive_bars": int(
-            otf_config.get("minimum_consecutive_bars", 3)
-        ),
+        "minimum_consecutive_bars": int(otf_config.get("minimum_consecutive_bars", 3)),
         "session_timezone": session_timezone,
         "session_reset": str(otf_config.get("session_reset", "session")),
     }
@@ -261,9 +260,8 @@ def run_walk_forward_sl_tp(
     otf_normalized_config: dict[str, Any] | None = None
     if isinstance(otf_config, dict):
         otf_normalized_config = normalize_otf_filter_config(otf_config)
-    _otf_enabled = (
-        otf_normalized_config is not None
-        and bool(otf_normalized_config.get("enabled", False))
+    _otf_enabled = otf_normalized_config is not None and bool(
+        otf_normalized_config.get("enabled", False)
     )
 
     n_bars = int(len(df))
@@ -449,15 +447,14 @@ def run_walk_forward_sl_tp(
         row["test_recovery_factor"] = test_summary.get("recovery_factor")
 
         if row["train_expectancy_r"] is not None and row["test_expectancy_r"] is not None:
-            row["degradation_expectancy_r"] = (
-                float(row["test_expectancy_r"]) - float(row["train_expectancy_r"])
+            row["degradation_expectancy_r"] = float(row["test_expectancy_r"]) - float(
+                row["train_expectancy_r"]
             )
             row["is_oos_profitable"] = bool(float(row["test_expectancy_r"]) > 0.0)
 
         fold_rows.append(row)
         fold_id += 1
         train_start += step
-
 
     results = pd.DataFrame(fold_rows)
     if results.empty:
@@ -467,6 +464,7 @@ def run_walk_forward_sl_tp(
 
 def summarize_walk_forward(results: pd.DataFrame) -> dict:
     """Return a compact JSON-safe summary for walk-forward fold results."""
+
     def _median_or_none(series: pd.Series) -> float | None:
         value = pd.to_numeric(series, errors="coerce").median()
         if pd.isna(value):
@@ -521,9 +519,15 @@ def summarize_walk_forward(results: pd.DataFrame) -> dict:
         "median_train_expectancy_r": _median_or_none(valid["train_expectancy_r"]),
         "median_test_expectancy_r": _median_or_none(valid["test_expectancy_r"]),
         "median_degradation_expectancy_r": _median_or_none(valid["degradation_expectancy_r"]),
-        "median_test_sharpe_like_r": _median_or_none(valid.get("test_sharpe_like_r", pd.Series(dtype=float))),
-        "median_test_sortino_like_r": _median_or_none(valid.get("test_sortino_like_r", pd.Series(dtype=float))),
-        "median_test_ulcer_index_r": _median_or_none(valid.get("test_ulcer_index_r", pd.Series(dtype=float))),
+        "median_test_sharpe_like_r": _median_or_none(
+            valid.get("test_sharpe_like_r", pd.Series(dtype=float))
+        ),
+        "median_test_sortino_like_r": _median_or_none(
+            valid.get("test_sortino_like_r", pd.Series(dtype=float))
+        ),
+        "median_test_ulcer_index_r": _median_or_none(
+            valid.get("test_ulcer_index_r", pd.Series(dtype=float))
+        ),
         "aggregate_test_total_r": aggregate_test_total_r,
         "aggregate_test_trade_count": aggregate_test_trade_count,
         "status": "ok",

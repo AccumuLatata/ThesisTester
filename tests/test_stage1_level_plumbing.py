@@ -9,6 +9,7 @@ Verifies:
 - No new level columns appear with default settings.
 - Existing level columns are unchanged.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -42,7 +43,10 @@ TZ = "America/New_York"
 # Shared fixtures
 # -------------------------------------------------------------------
 
-def _base_df(start: str = "2026-06-02 09:30:00", periods: int = 20, freq: str = "1min") -> pd.DataFrame:
+
+def _base_df(
+    start: str = "2026-06-02 09:30:00", periods: int = 20, freq: str = "1min"
+) -> pd.DataFrame:
     ts = pd.date_range(start=start, periods=periods, freq=freq, tz=TZ)
     vals = np.arange(periods, dtype=float) + 100.0
     return pd.DataFrame(
@@ -60,6 +64,7 @@ def _base_df(start: str = "2026-06-02 09:30:00", periods: int = 20, freq: str = 
 # -------------------------------------------------------------------
 # 1. Import / public API surface
 # -------------------------------------------------------------------
+
 
 def test_new_modules_importable():
     """All three Stage 1 modules must be importable without errors."""
@@ -97,6 +102,7 @@ def test_new_modules_in_all_list():
 # 2. Settings constants are well-defined
 # -------------------------------------------------------------------
 
+
 def test_pivot_defaults():
     assert DEFAULT_PIVOT_LEFT == 2
     assert DEFAULT_PIVOT_RIGHT == 2
@@ -118,6 +124,7 @@ def test_tpo_bracket_minutes():
 # -------------------------------------------------------------------
 # 3. Disabled (default) stubs return empty DataFrames
 # -------------------------------------------------------------------
+
 
 def test_compute_pivot_levels_disabled_returns_empty_df():
     df = _base_df()
@@ -270,6 +277,7 @@ def test_compute_all_levels_new_stage1_settings_absent_produce_no_apoc_columns()
 # 5. Explicit disabled gates in compute_all_levels also produce no new columns
 # -------------------------------------------------------------------
 
+
 def test_explicit_disabled_gates_no_new_columns():
     df = tag_session(_base_df(), "ES")
     out = compute_all_levels(
@@ -288,7 +296,8 @@ def test_explicit_disabled_gates_no_new_columns():
     )
 
     new_cols = [
-        c for c in out.columns
+        c
+        for c in out.columns
         if c.startswith("Pivot_")
         or c.startswith("dVWAP_")
         or "SinglePrint" in c
@@ -306,6 +315,7 @@ def test_compute_session_vwap_levels_enabled_returns_dvwap_column():
     # Stage 3 is now implemented: enabled=True should return a DataFrame with
     # dVWAP_RTH rather than raising NotImplementedError.
     from thesistester.data.sessions import tag_session as _tag
+
     df = _tag(_base_df(), "ES")
     result = compute_session_vwap_levels(df, enabled=True)
     assert isinstance(result, pd.DataFrame)
@@ -316,11 +326,16 @@ def test_compute_tpo_levels_single_prints_enabled_returns_sp_columns():
     # Stage 4 is now implemented: single_prints_enabled=True should return a
     # DataFrame with the four Single Print columns rather than raising NotImplementedError.
     from thesistester.data.sessions import tag_session as _tag
+
     df = _tag(_base_df(), "ES")
     result = compute_tpo_levels(df, single_prints_enabled=True)
     assert isinstance(result, pd.DataFrame)
-    sp_cols = {"dSinglePrint_30m_NearestAbove", "dSinglePrint_30m_NearestBelow",
-               "pSinglePrint_30m_NearestAbove", "pSinglePrint_30m_NearestBelow"}
+    sp_cols = {
+        "dSinglePrint_30m_NearestAbove",
+        "dSinglePrint_30m_NearestBelow",
+        "pSinglePrint_30m_NearestAbove",
+        "pSinglePrint_30m_NearestBelow",
+    }
     assert sp_cols.issubset(set(result.columns))
 
 
@@ -336,6 +351,7 @@ def test_compute_tpo_levels_apoc_enabled_raises_value_error():
 #    enabled stubs require tz-aware timestamp
 # -------------------------------------------------------------------
 
+
 def _naive_df() -> pd.DataFrame:
     """DataFrame with a naive (tz-unaware) timestamp column."""
     df = _base_df()
@@ -344,6 +360,7 @@ def _naive_df() -> pd.DataFrame:
 
 
 # 7a. Disabled stubs accept naive timestamps (no validation when disabled).
+
 
 def test_compute_pivot_levels_disabled_accepts_naive_timestamp():
     result = compute_pivot_levels(_naive_df(), enabled=False)
@@ -364,6 +381,7 @@ def test_compute_tpo_levels_disabled_accepts_naive_timestamp():
 
 
 # 7b. Enabled stubs raise ValueError for naive timestamps.
+
 
 def test_compute_pivot_levels_enabled_requires_tz_aware_timestamp():
     with pytest.raises(ValueError, match="timezone-aware"):
@@ -389,6 +407,7 @@ def test_compute_tpo_levels_apoc_enabled_raises_value_error_for_naive():
 # -------------------------------------------------------------------
 # 8. Index alignment: empty stubs have the same length as input
 # -------------------------------------------------------------------
+
 
 def test_disabled_stubs_preserve_index_length():
     df = _base_df(periods=50)

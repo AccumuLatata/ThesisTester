@@ -1,8 +1,8 @@
 import streamlit as st
 
-st.set_page_config(page_title="ThesisTester", page_icon="\U0001F4C8", layout="wide")
+st.set_page_config(page_title="ThesisTester", page_icon="\U0001f4c8", layout="wide")
 
-st.title("\U0001F4C8 ThesisTester")
+st.title("\U0001f4c8 ThesisTester")
 st.caption("Intraday confluence-setup research and backtesting workbench for ES/NQ futures.")
 
 st.markdown(

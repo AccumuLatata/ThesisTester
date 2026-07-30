@@ -50,7 +50,9 @@ def test_single_contract_valid_with_one_contract():
 
 
 def test_single_contract_invalid_with_multiple_contracts():
-    result = validate_roll_metadata(_segmented_df(), roll_method="single_contract", contract_column="contract")
+    result = validate_roll_metadata(
+        _segmented_df(), roll_method="single_contract", contract_column="contract"
+    )
     assert result["valid"] is False
     assert result["contract_count"] == 2
 
@@ -114,18 +116,24 @@ def test_external_continuous_empty_roll_rule_warns_without_crashing():
 
 def test_segmented_contracts_invalid_without_contract_column():
     df = _segmented_df().drop(columns=["contract"])
-    result = validate_roll_metadata(df, roll_method="segmented_contracts", contract_column="contract")
+    result = validate_roll_metadata(
+        df, roll_method="segmented_contracts", contract_column="contract"
+    )
     assert result["valid"] is False
 
 
 def test_segmented_contracts_invalid_with_fewer_than_two_contracts():
     df = _segmented_df().iloc[:2].copy()
-    result = validate_roll_metadata(df, roll_method="segmented_contracts", contract_column="contract")
+    result = validate_roll_metadata(
+        df, roll_method="segmented_contracts", contract_column="contract"
+    )
     assert result["valid"] is False
 
 
 def test_segmented_contracts_valid_with_two_contracts_and_gaps():
-    result = validate_roll_metadata(_segmented_df(), roll_method="segmented_contracts", contract_column="contract")
+    result = validate_roll_metadata(
+        _segmented_df(), roll_method="segmented_contracts", contract_column="contract"
+    )
     assert result["valid"] is True
     assert result["contract_count"] == 2
     assert result["roll_gap_count"] == 1
@@ -145,7 +153,9 @@ def test_validate_roll_metadata_roll_gap_timestamps_are_json_safe_strings_or_non
             "contract": ["ESH2026", "ESH2026", "ESM2026"],
         }
     )
-    result = validate_roll_metadata(df, roll_method="segmented_contracts", contract_column="contract")
+    result = validate_roll_metadata(
+        df, roll_method="segmented_contracts", contract_column="contract"
+    )
     assert isinstance(result["roll_gaps"][0]["roll_timestamp"], str)
 
 
@@ -162,7 +172,9 @@ def test_validate_roll_metadata_roll_gap_nat_timestamp_serializes_to_none():
             "contract": ["ESH2026", "ESH2026", "ESM2026"],
         }
     )
-    result = validate_roll_metadata(df, roll_method="segmented_contracts", contract_column="contract")
+    result = validate_roll_metadata(
+        df, roll_method="segmented_contracts", contract_column="contract"
+    )
     assert result["roll_gaps"][0]["roll_timestamp"] is None
 
 

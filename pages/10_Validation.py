@@ -6,6 +6,7 @@ warnings.  No trade re-simulation is performed.
 
 ⚠️  All outputs are diagnostic only — not proof of edge.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -29,15 +30,14 @@ def _fmt_value(v, fmt=".4f", fallback="—"):
     except (TypeError, ValueError):
         return fallback
 
+
 # ── Require trades ────────────────────────────────────────────────────────────
 trades_raw = st.session_state.get("trades")
 if trades_raw is None or trades_raw.empty:
     st.warning("No trades found. Please run a backtest first.")
     st.stop()
 
-backtest_exposure_policy = (
-    (st.session_state.get("exposure_policy") or {}).get("exposure_policy")
-)
+backtest_exposure_policy = (st.session_state.get("exposure_policy") or {}).get("exposure_policy")
 if backtest_exposure_policy == "allow_all":
     st.warning(
         "Exposure policy is `allow_all`: overlapping trades may inflate trade count "
@@ -187,8 +187,24 @@ if run_wfo:
         max_window_bars = max(5, int(len(data_source)))
 
         c1, c2, c3 = st.columns(3)
-        train_bars = int(c1.number_input("Train bars", min_value=5, max_value=max_window_bars, value=min(500, max_window_bars), step=5))
-        test_bars = int(c2.number_input("Test bars", min_value=5, max_value=max_window_bars, value=min(100, max_window_bars), step=5))
+        train_bars = int(
+            c1.number_input(
+                "Train bars",
+                min_value=5,
+                max_value=max_window_bars,
+                value=min(500, max_window_bars),
+                step=5,
+            )
+        )
+        test_bars = int(
+            c2.number_input(
+                "Test bars",
+                min_value=5,
+                max_value=max_window_bars,
+                value=min(100, max_window_bars),
+                step=5,
+            )
+        )
         step_bars_input = c3.number_input(
             "Step bars (0 = default)",
             min_value=0,
@@ -216,24 +232,68 @@ if run_wfo:
 
         grid_results = st.session_state.get("grid_results")
         if grid_results is not None and not grid_results.empty:
-            sl_values = sorted(pd.to_numeric(grid_results["stop_loss_ticks"], errors="coerce").dropna().unique().tolist())
-            tp_values = sorted(pd.to_numeric(grid_results["take_profit_ticks"], errors="coerce").dropna().unique().tolist())
-            st.caption(f"Using SL/TP values from Grid Search ({len(sl_values)} SL × {len(tp_values)} TP).")
+            sl_values = sorted(
+                pd.to_numeric(grid_results["stop_loss_ticks"], errors="coerce")
+                .dropna()
+                .unique()
+                .tolist()
+            )
+            tp_values = sorted(
+                pd.to_numeric(grid_results["take_profit_ticks"], errors="coerce")
+                .dropna()
+                .unique()
+                .tolist()
+            )
+            st.caption(
+                f"Using SL/TP values from Grid Search ({len(sl_values)} SL × {len(tp_values)} TP)."
+            )
         else:
             gc1, gc2, gc3 = st.columns(3)
-            sl_start = float(gc1.number_input("SL start", min_value=1.0, max_value=500.0, value=4.0, step=1.0))
-            sl_stop = float(gc2.number_input("SL stop", min_value=1.0, max_value=500.0, value=20.0, step=1.0))
-            sl_step = float(gc3.number_input("SL step", min_value=1.0, max_value=100.0, value=4.0, step=1.0))
+            sl_start = float(
+                gc1.number_input("SL start", min_value=1.0, max_value=500.0, value=4.0, step=1.0)
+            )
+            sl_stop = float(
+                gc2.number_input("SL stop", min_value=1.0, max_value=500.0, value=20.0, step=1.0)
+            )
+            sl_step = float(
+                gc3.number_input("SL step", min_value=1.0, max_value=100.0, value=4.0, step=1.0)
+            )
             gc4, gc5, gc6 = st.columns(3)
-            tp_start = float(gc4.number_input("TP start", min_value=1.0, max_value=1000.0, value=8.0, step=1.0))
-            tp_stop = float(gc5.number_input("TP stop", min_value=1.0, max_value=1000.0, value=40.0, step=1.0))
-            tp_step = float(gc6.number_input("TP step", min_value=1.0, max_value=200.0, value=8.0, step=1.0))
-            sl_values = [round(v, 10) for v in np.arange(sl_start, sl_stop + sl_step * 0.5, sl_step).tolist() if v > 0]
-            tp_values = [round(v, 10) for v in np.arange(tp_start, tp_stop + tp_step * 0.5, tp_step).tolist() if v > 0]
+            tp_start = float(
+                gc4.number_input("TP start", min_value=1.0, max_value=1000.0, value=8.0, step=1.0)
+            )
+            tp_stop = float(
+                gc5.number_input("TP stop", min_value=1.0, max_value=1000.0, value=40.0, step=1.0)
+            )
+            tp_step = float(
+                gc6.number_input("TP step", min_value=1.0, max_value=200.0, value=8.0, step=1.0)
+            )
+            sl_values = [
+                round(v, 10)
+                for v in np.arange(sl_start, sl_stop + sl_step * 0.5, sl_step).tolist()
+                if v > 0
+            ]
+            tp_values = [
+                round(v, 10)
+                for v in np.arange(tp_start, tp_stop + tp_step * 0.5, tp_step).tolist()
+                if v > 0
+            ]
 
-        grid_costs = st.session_state.get("grid_execution_costs") or st.session_state.get("backtest_execution_costs") or {}
-        session_policy = st.session_state.get("grid_session_exit_policy") or st.session_state.get("backtest_session_exit_policy") or {}
-        exposure_policy_state = st.session_state.get("grid_exposure_policy") or st.session_state.get("exposure_policy") or {}
+        grid_costs = (
+            st.session_state.get("grid_execution_costs")
+            or st.session_state.get("backtest_execution_costs")
+            or {}
+        )
+        session_policy = (
+            st.session_state.get("grid_session_exit_policy")
+            or st.session_state.get("backtest_session_exit_policy")
+            or {}
+        )
+        exposure_policy_state = (
+            st.session_state.get("grid_exposure_policy")
+            or st.session_state.get("exposure_policy")
+            or {}
+        )
 
         if st.button("▶ Run walk-forward diagnostics", type="secondary"):
             if not sl_values or not tp_values:
@@ -243,6 +303,7 @@ if run_wfo:
                     # Resolve OTF config inside try so an invalid explicit
                     # config shows a clear error and does not install stale results.
                     from thesistester.engine.otf_integration import resolve_otf_config
+
                     try:
                         _wfo_otf_config = resolve_otf_config(
                             signal_settings=st.session_state.get("signal_settings"),
@@ -267,14 +328,22 @@ if run_wfo:
                                 min_train_trades=wfo_min_train_trades,
                                 max_holding_bars=None,
                                 allow_same_bar_exit=True,
-                                commission_per_side=float(grid_costs.get("commission_per_side", 0.0) or 0.0),
+                                commission_per_side=float(
+                                    grid_costs.get("commission_per_side", 0.0) or 0.0
+                                ),
                                 slippage_ticks=float(grid_costs.get("slippage_ticks", 0.0) or 0.0),
-                                flat_by_session_close=bool(session_policy.get("flat_by_session_close", False)),
+                                flat_by_session_close=bool(
+                                    session_policy.get("flat_by_session_close", False)
+                                ),
                                 session_close_time=session_policy.get("session_close_time"),
                                 session_timezone=session_policy.get("session_timezone"),
                                 no_new_entries_after=session_policy.get("no_new_entries_after"),
-                                exposure_policy=str(exposure_policy_state.get("exposure_policy", "allow_all")),
-                                cooldown_bars_after_exit=int(exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0),
+                                exposure_policy=str(
+                                    exposure_policy_state.get("exposure_policy", "allow_all")
+                                ),
+                                cooldown_bars_after_exit=int(
+                                    exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0
+                                ),
                                 otf_config=_wfo_otf_config,
                             )
                         except ValueError as e:
@@ -292,14 +361,24 @@ if run_wfo:
                                 "take_profit_ticks_values": tp_values,
                                 "tick_size": float(tick_size),
                                 "point_value": float(point_value),
-                                "commission_per_side": float(grid_costs.get("commission_per_side", 0.0) or 0.0),
-                                "slippage_ticks": float(grid_costs.get("slippage_ticks", 0.0) or 0.0),
-                                "flat_by_session_close": bool(session_policy.get("flat_by_session_close", False)),
+                                "commission_per_side": float(
+                                    grid_costs.get("commission_per_side", 0.0) or 0.0
+                                ),
+                                "slippage_ticks": float(
+                                    grid_costs.get("slippage_ticks", 0.0) or 0.0
+                                ),
+                                "flat_by_session_close": bool(
+                                    session_policy.get("flat_by_session_close", False)
+                                ),
                                 "session_close_time": session_policy.get("session_close_time"),
                                 "session_timezone": session_policy.get("session_timezone"),
                                 "no_new_entries_after": session_policy.get("no_new_entries_after"),
-                                "exposure_policy": str(exposure_policy_state.get("exposure_policy", "allow_all")),
-                                "cooldown_bars_after_exit": int(exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0),
+                                "exposure_policy": str(
+                                    exposure_policy_state.get("exposure_policy", "allow_all")
+                                ),
+                                "cooldown_bars_after_exit": int(
+                                    exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0
+                                ),
                                 "otf_filter_enabled": _wfo_otf_enabled,
                                 "otf_filter_config": _wfo_otf_config,
                             }
@@ -309,6 +388,7 @@ if run_wfo:
                             # Store OTF summary for reporting
                             from thesistester.persistence.local_store import compute_otf_config_hash
                             from thesistester.engine.otf import OTF_ALGORITHM_VERSION
+
                             st.session_state["walk_forward_otf_filter"] = {
                                 "otf_filter_enabled": _wfo_otf_enabled,
                                 "otf_filter_config": _wfo_otf_config,
@@ -341,9 +421,7 @@ go_diag = summary["grid_overfit"]
 
 # ── Trade-count diagnostic ────────────────────────────────────────────────────
 st.subheader("Trade count")
-status_emoji = {"insufficient": "🔴", "limited": "🟡", "reasonable": "🟢"}.get(
-    tc["status"], "⚪"
-)
+status_emoji = {"insufficient": "🔴", "limited": "🟡", "reasonable": "🟢"}.get(tc["status"], "⚪")
 st.markdown(f"{status_emoji} **{tc['status'].capitalize()}** — {tc['message']}")
 
 if tc["status"] == "insufficient":
@@ -358,6 +436,7 @@ st.divider()
 st.subheader("Bootstrap expectancy CI")
 
 col1, col2, col3, col4, col5 = st.columns(5)
+
 
 def _fmt(v, fmt=".4f", fallback="—"):
     if v is None:
@@ -380,7 +459,9 @@ col4.metric(
 )
 col5.metric(
     "P(mean R > 0)",
-    _fmt(bs.get("probability_positive"), ".1%") if bs.get("probability_positive") is not None else "—",
+    _fmt(bs.get("probability_positive"), ".1%")
+    if bs.get("probability_positive") is not None
+    else "—",
 )
 
 trade_summary = st.session_state.get("trade_summary") or {}
@@ -444,9 +525,7 @@ if grid_raw is not None and not grid_raw.empty:
     risk_emoji = {"none": "⚪", "low": "🟢", "medium": "🟡", "high": "🔴"}.get(
         go_diag["risk_level"], "⚪"
     )
-    st.markdown(
-        f"{risk_emoji} **Risk: {go_diag['risk_level'].upper()}** — {go_diag['message']}"
-    )
+    st.markdown(f"{risk_emoji} **Risk: {go_diag['risk_level'].upper()}** — {go_diag['message']}")
 
     gcol1, gcol2, gcol3, gcol4, gcol5 = st.columns(5)
     gcol1.metric("Grid cells", go_diag["grid_cell_count"])
@@ -457,8 +536,7 @@ if grid_raw is not None and not grid_raw.empty:
 
     if go_diag["risk_level"] in ("medium", "high"):
         st.warning(
-            "⚠️ Grid search tested many combinations; best result may be "
-            "overfit to in-sample data."
+            "⚠️ Grid search tested many combinations; best result may be overfit to in-sample data."
         )
 
     st.divider()
@@ -570,12 +648,8 @@ else:
 with st.expander("Full diagnostics (JSON)"):
     # Omit large arrays from the JSON display for readability
     display_summary = {
-        "bootstrap": {
-            k: v for k, v in bs.items() if k != "bootstrap_means"
-        },
-        "permutation": {
-            k: v for k, v in perm.items() if k != "permuted_means"
-        },
+        "bootstrap": {k: v for k, v in bs.items() if k != "bootstrap_means"},
+        "permutation": {k: v for k, v in perm.items() if k != "permuted_means"},
         "trade_count": tc,
         "grid_overfit": go_diag,
     }
@@ -602,7 +676,9 @@ _source_for_otf = st.session_state.get("levels") or st.session_state.get("data")
 if _signals_for_otf is None or (hasattr(_signals_for_otf, "empty") and _signals_for_otf.empty):
     st.info("No signals found in session state.  Generate signals before running OTF validation.")
 elif _source_for_otf is None or (hasattr(_source_for_otf, "empty") and _source_for_otf.empty):
-    st.info("No OHLCV source data found in session state.  Load data before running OTF validation.")
+    st.info(
+        "No OHLCV source data found in session state.  Load data before running OTF validation."
+    )
 else:
     _instrument = st.session_state.get("instrument", "ES")
     _inst = INSTRUMENTS.get(_instrument)
@@ -645,7 +721,9 @@ else:
                     train_fraction=_train_fraction,
                     session_timezone=_session_tz,
                     execution_kwargs={
-                        "commission_per_side": float(_backtest_exec.get("commission_per_side", 0.0) or 0.0),
+                        "commission_per_side": float(
+                            _backtest_exec.get("commission_per_side", 0.0) or 0.0
+                        ),
                         "slippage_ticks": float(_backtest_exec.get("slippage_ticks", 0.0) or 0.0),
                     },
                 )
@@ -661,8 +739,14 @@ else:
                 }
                 # Summary: train-selected row label and OOS expectancy
                 _selected_rows = _otf_matrix_result[_otf_matrix_result["is_train_selected"]]
-                _selected_label = _selected_rows.iloc[0]["configuration_label"] if not _selected_rows.empty else None
-                _selected_oos_exp = _selected_rows.iloc[0]["oos_expectancy_r"] if not _selected_rows.empty else None
+                _selected_label = (
+                    _selected_rows.iloc[0]["configuration_label"]
+                    if not _selected_rows.empty
+                    else None
+                )
+                _selected_oos_exp = (
+                    _selected_rows.iloc[0]["oos_expectancy_r"] if not _selected_rows.empty else None
+                )
                 st.session_state["otf_validation_summary"] = {
                     "selected_by_train_metric": "train_expectancy_r",
                     "selected_train_config": _selected_label,

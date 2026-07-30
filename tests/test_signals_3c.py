@@ -236,9 +236,19 @@ def test_no_lookahead_pragmatic():
 def test_overlapping_same_level_direction_source_mode_is_suppressed():
     rows = [
         {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},  # bar 0 arrival candidate
-        {"open": 100.8, "high": 101.3, "low": 100.4, "close": 101.1},  # bar 1 reversal for first setup
+        {
+            "open": 100.8,
+            "high": 101.3,
+            "low": 100.4,
+            "close": 101.1,
+        },  # bar 1 reversal for first setup
         {"open": 101.0, "high": 101.2, "low": 100.7, "close": 100.9},  # bar 2 still in watch window
-        {"open": 100.9, "high": 101.5, "low": 100.8, "close": 101.3},  # bar 3 could reverse second arrival
+        {
+            "open": 100.9,
+            "high": 101.5,
+            "low": 100.8,
+            "close": 101.3,
+        },  # bar 3 could reverse second arrival
         {"open": 101.4, "high": 101.6, "low": 100.9, "close": 101.5},  # bar 4
         {"open": 101.6, "high": 101.8, "low": 101.0, "close": 101.7},  # bar 5
     ]
@@ -258,9 +268,24 @@ def test_overlapping_same_level_direction_source_mode_is_suppressed():
 def test_overlapping_arrival_suppressed_when_invalidated_before_reversal():
     rows = [
         {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},  # bar 0 arrival
-        {"open": 100.4, "high": 100.8, "low": 100.1, "close": 100.3},  # bar 1 inside + possible overlapping arrival
-        {"open": 100.4, "high": 101.2, "low": 100.2, "close": 100.9},  # bar 2 invalidates bar 0; could reverse bar 1
-        {"open": 100.9, "high": 101.0, "low": 100.3, "close": 100.6},  # bar 3 would fill bar 1 if not suppressed
+        {
+            "open": 100.4,
+            "high": 100.8,
+            "low": 100.1,
+            "close": 100.3,
+        },  # bar 1 inside + possible overlapping arrival
+        {
+            "open": 100.4,
+            "high": 101.2,
+            "low": 100.2,
+            "close": 100.9,
+        },  # bar 2 invalidates bar 0; could reverse bar 1
+        {
+            "open": 100.9,
+            "high": 101.0,
+            "low": 100.3,
+            "close": 100.6,
+        },  # bar 3 would fill bar 1 if not suppressed
     ]
     setups = detect_3c_setups(
         _df(rows),
@@ -298,9 +323,9 @@ def test_same_level_different_directions_are_independent():
         {"open": 101.0, "high": 101.0, "low": 100.0, "close": 100.5},  # long arrival
         {"open": 100.8, "high": 101.3, "low": 100.4, "close": 101.1},  # long reversal
         {"open": 101.0, "high": 101.2, "low": 100.5, "close": 100.9},  # long fill
-        {"open": 99.6, "high": 100.0, "low": 99.0, "close": 99.5},     # short arrival
-        {"open": 99.4, "high": 99.7, "low": 98.6, "close": 98.8},      # short reversal
-        {"open": 98.9, "high": 99.4, "low": 98.7, "close": 99.1},      # short fill
+        {"open": 99.6, "high": 100.0, "low": 99.0, "close": 99.5},  # short arrival
+        {"open": 99.4, "high": 99.7, "low": 98.6, "close": 98.8},  # short reversal
+        {"open": 98.9, "high": 99.4, "low": 98.7, "close": 99.1},  # short fill
     ]
     setups = detect_3c_setups(
         _df(rows),
@@ -318,6 +343,7 @@ def test_same_level_different_directions_are_independent():
 # ---------------------------------------------------------------------------
 # Arrival-tolerance deprecation regression tests
 # ---------------------------------------------------------------------------
+
 
 def test_arrival_near_miss_does_not_qualify():
     """A candle that comes close but does not actually touch the key level must not

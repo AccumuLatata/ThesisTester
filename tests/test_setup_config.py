@@ -105,7 +105,9 @@ def test_max_confluences_less_than_min_invalid():
     config["min_confluences"] = 4
     config["max_confluences"] = 3
     errors = validate_setup_config(config)
-    assert any("Maximum confluences must be >= minimum confluences" in message for message in errors)
+    assert any(
+        "Maximum confluences must be >= minimum confluences" in message for message in errors
+    )
 
 
 def test_max_confluences_over_five_invalid():
@@ -297,7 +299,10 @@ def test_anchor_rules_anchor_level_cannot_be_reused_in_confluence_rules():
 
 def test_anchor_rules_min_valid_confluences_cannot_exceed_rule_count():
     errors = validate_setup_config(_anchor_config(min_valid_confluences=3))
-    assert any("Minimum valid confluences must be <= number of confluence rules" in message for message in errors)
+    assert any(
+        "Minimum valid confluences must be <= number of confluence rules" in message
+        for message in errors
+    )
 
 
 def test_invalid_confluence_mode_invalid():
@@ -426,7 +431,9 @@ def test_otf_invalid_enabled_type_rejects():
 
 
 def test_otf_invalid_alignment_mode_rejects():
-    errors = validate_otf_filter_config({"enabled": True, "timeframes": ["5m"], "alignment_mode": "any"})
+    errors = validate_otf_filter_config(
+        {"enabled": True, "timeframes": ["5m"], "alignment_mode": "any"}
+    )
     assert any("alignment_mode must be 'all'" in message for message in errors)
 
 

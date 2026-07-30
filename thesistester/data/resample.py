@@ -1,4 +1,5 @@
 """OHLCV resampling helpers for supported ThesisTester timeframes."""
+
 from __future__ import annotations
 
 import pandas as pd

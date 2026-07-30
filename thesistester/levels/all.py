@@ -1,4 +1,5 @@
 """Combined full level computation helpers."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -58,7 +59,9 @@ def compute_all_levels(
     profile/POC levels implemented in ``apoc.py``.  They may share session and
     tick-size utilities, but APOC is not derived from Single Prints.
     """
-    session_df = compute_session_levels(df, instrument=instrument, opening_range_minutes=opening_range_minutes)
+    session_df = compute_session_levels(
+        df, instrument=instrument, opening_range_minutes=opening_range_minutes
+    )
     indicator_df = compute_indicator_levels(
         df,
         sma_lengths=sma_lengths,
@@ -107,7 +110,9 @@ def compute_all_levels(
     out = session_df.copy()
 
     for extra_df in (indicator_df, profile_df, pivot_df, session_vwap_df, tpo_df, apoc_df):
-        new_cols = [col for col in extra_df.columns if col not in base_columns and col not in out.columns]
+        new_cols = [
+            col for col in extra_df.columns if col not in base_columns and col not in out.columns
+        ]
         if new_cols:
             out = out.join(extra_df[new_cols])
 

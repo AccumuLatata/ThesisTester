@@ -1,4 +1,5 @@
 """Phase 7 tests: add_time_buckets, summarize_by_group, pivot_time_metric."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -44,11 +45,13 @@ _GROUP_SUMMARY_COLS = [
 def _make_trades(timestamps_ny: list[str], r_multiples: list[float]) -> pd.DataFrame:
     """Build a minimal trade DataFrame with tz-naive NY timestamps."""
     ts = pd.to_datetime(timestamps_ny).tz_localize("America/New_York")
-    return pd.DataFrame({
-        "trade_id": list(range(len(r_multiples))),
-        "entry_timestamp": ts,
-        "r_multiple": r_multiples,
-    })
+    return pd.DataFrame(
+        {
+            "trade_id": list(range(len(r_multiples))),
+            "entry_timestamp": ts,
+            "r_multiple": r_multiples,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -67,11 +70,13 @@ def test_add_time_buckets_adds_expected_columns():
 def test_timezone_aware_timestamps_convert_to_exchange_timezone():
     """UTC-aware 13:30 should become 09:30 America/New_York."""
     ts_utc = pd.Timestamp("2026-06-02 13:30:00", tz="UTC")
-    trades = pd.DataFrame({
-        "trade_id": [0],
-        "entry_timestamp": [ts_utc],
-        "r_multiple": [1.0],
-    })
+    trades = pd.DataFrame(
+        {
+            "trade_id": [0],
+            "entry_timestamp": [ts_utc],
+            "r_multiple": [1.0],
+        }
+    )
     result = add_time_buckets(trades, exchange_tz="America/New_York")
     row = result.iloc[0]
     assert row["entry_hour"] == 9
@@ -84,11 +89,13 @@ def test_timezone_aware_timestamps_convert_to_exchange_timezone():
 def test_timezone_naive_timestamps_localize_to_exchange_timezone():
     """Tz-naive 10:00 should be treated as 10:00 America/New_York."""
     ts_naive = pd.Timestamp("2026-06-02 10:00:00")
-    trades = pd.DataFrame({
-        "trade_id": [0],
-        "entry_timestamp": [ts_naive],
-        "r_multiple": [1.0],
-    })
+    trades = pd.DataFrame(
+        {
+            "trade_id": [0],
+            "entry_timestamp": [ts_naive],
+            "r_multiple": [1.0],
+        }
+    )
     result = add_time_buckets(trades, exchange_tz="America/New_York")
     row = result.iloc[0]
     assert row["entry_hour"] == 10
@@ -221,11 +228,13 @@ def test_rth_segment_boundaries():
         "post_rth",
     ]
     ts = pd.to_datetime(times).tz_localize("America/New_York")
-    trades = pd.DataFrame({
-        "trade_id": list(range(len(times))),
-        "entry_timestamp": ts,
-        "r_multiple": [0.0] * len(times),
-    })
+    trades = pd.DataFrame(
+        {
+            "trade_id": list(range(len(times))),
+            "entry_timestamp": ts,
+            "r_multiple": [0.0] * len(times),
+        }
+    )
     result = add_time_buckets(trades, exchange_tz="America/New_York")
     assert list(result["entry_rth_segment"]) == expected_segments
 
@@ -334,11 +343,13 @@ def test_summarize_by_group_empty_returns_expected_columns():
 
 def _simple_grouped() -> pd.DataFrame:
     """Minimal grouped DataFrame for pivot tests."""
-    return pd.DataFrame({
-        "entry_hour_bucket": ["10:00", "09:00", "11:00"],
-        "avg_r": [1.0, 2.0, -0.5],
-        "trade_count": [3, 5, 2],
-    })
+    return pd.DataFrame(
+        {
+            "entry_hour_bucket": ["10:00", "09:00", "11:00"],
+            "avg_r": [1.0, 2.0, -0.5],
+            "trade_count": [3, 5, 2],
+        }
+    )
 
 
 def test_pivot_time_metric_one_dimensional_sorts_index():
@@ -352,11 +363,13 @@ def test_pivot_time_metric_one_dimensional_sorts_index():
 
 def test_pivot_time_metric_two_dimensional_shape():
     """2-D pivot must have segments as rows and directions as columns."""
-    grouped = pd.DataFrame({
-        "entry_rth_segment": ["rth_open_30m", "rth_open_30m", "rth_midday"],
-        "direction": ["long", "short", "long"],
-        "avg_r": [1.5, -0.5, 2.0],
-    })
+    grouped = pd.DataFrame(
+        {
+            "entry_rth_segment": ["rth_open_30m", "rth_open_30m", "rth_midday"],
+            "direction": ["long", "short", "long"],
+            "avg_r": [1.5, -0.5, 2.0],
+        }
+    )
     pivot = pivot_time_metric(
         grouped,
         index_col="entry_rth_segment",

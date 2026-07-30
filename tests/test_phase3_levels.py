@@ -119,9 +119,15 @@ def test_higher_timeframe_indicator_alignment_has_no_lookahead():
         vwap_windows=[],
     )
 
-    assert pd.isna(out.loc[out["timestamp"] == pd.Timestamp("2026-06-02 09:59:00", tz=TZ), "SMA_1_30min"]).all()
-    value_at_close = out.loc[out["timestamp"] == pd.Timestamp("2026-06-02 10:00:00", tz=TZ), "SMA_1_30min"].iloc[0]
-    assert value_at_close == pytest.approx(df.loc[df["timestamp"] == pd.Timestamp("2026-06-02 09:59:00", tz=TZ), "close"].iloc[0])
+    assert pd.isna(
+        out.loc[out["timestamp"] == pd.Timestamp("2026-06-02 09:59:00", tz=TZ), "SMA_1_30min"]
+    ).all()
+    value_at_close = out.loc[
+        out["timestamp"] == pd.Timestamp("2026-06-02 10:00:00", tz=TZ), "SMA_1_30min"
+    ].iloc[0]
+    assert value_at_close == pytest.approx(
+        df.loc[df["timestamp"] == pd.Timestamp("2026-06-02 09:59:00", tz=TZ), "close"].iloc[0]
+    )
 
 
 def test_sma_5min_no_lookahead_from_non_boundary_start():
@@ -366,7 +372,9 @@ def test_value_area_returns_sensible_bounds_around_poc():
     day2 = _base_df("2026-06-02 09:30:00", periods=2, freq="1h")
     df = pd.concat([day1, day2], ignore_index=True)
 
-    out = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70)
+    out = compute_profile_levels(
+        df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70
+    )
     second_day = out[out["timestamp"].dt.date == pd.Timestamp("2026-06-02").date()]
     assert np.allclose(second_day["pdPOC"].to_numpy(), [100.0, 100.0])
     assert np.allclose(second_day["pdVAL"].to_numpy(), [100.0, 100.0])
@@ -376,7 +384,9 @@ def test_value_area_returns_sensible_bounds_around_poc():
 def test_prior_profile_aggregation_defaults_preserve_existing_behavior():
     df = _multi_period_profile_df()
 
-    baseline = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70)
+    baseline = compute_profile_levels(
+        df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70
+    )
     explicit_defaults = compute_profile_levels(
         df,
         instrument="ES",
@@ -405,7 +415,9 @@ def test_prior_profile_aggregation_defaults_preserve_existing_behavior():
 def test_prior_day_aggregation_changes_only_prior_day_profile_levels():
     df = _multi_period_profile_df()
 
-    baseline = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70)
+    baseline = compute_profile_levels(
+        df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70
+    )
     changed = compute_profile_levels(
         df,
         instrument="ES",
@@ -446,10 +458,14 @@ def test_prior_day_aggregation_changes_only_prior_day_profile_levels():
         ),
     ],
 )
-def test_prior_profile_aggregation_settings_are_independent(kwargs, changed_prefix, unchanged_columns):
+def test_prior_profile_aggregation_settings_are_independent(
+    kwargs, changed_prefix, unchanged_columns
+):
     df = _multi_period_profile_df()
 
-    baseline = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70)
+    baseline = compute_profile_levels(
+        df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70
+    )
     changed = compute_profile_levels(
         df,
         instrument="ES",
@@ -472,7 +488,9 @@ def test_prior_profile_aggregation_settings_are_independent(kwargs, changed_pref
 def test_rolling_poc_is_unaffected_by_prior_profile_aggregation_settings():
     df = _multi_period_profile_df()
 
-    baseline = compute_profile_levels(df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70)
+    baseline = compute_profile_levels(
+        df, instrument="ES", rolling_windows=["30min"], value_area_pct=0.70
+    )
     changed = compute_profile_levels(
         df,
         instrument="ES",
@@ -514,14 +532,27 @@ def test_compute_all_levels_includes_session_indicator_and_profile_columns():
         value_area_pct=0.70,
     )
 
-    for col in ["RTH_Open", "pONH", "pONL", "pRTH_Open", "SMA_2", "EMA_2", "VWAP_rolling_15min", "POC_rolling_30min", "pdVAH", "pdPOC"]:
+    for col in [
+        "RTH_Open",
+        "pONH",
+        "pONL",
+        "pRTH_Open",
+        "SMA_2",
+        "EMA_2",
+        "VWAP_rolling_15min",
+        "POC_rolling_30min",
+        "pdVAH",
+        "pdPOC",
+    ]:
         assert col in out.columns
 
 
 def test_compute_all_levels_passes_prior_profile_aggregation_settings_through():
     df = tag_session(_multi_period_profile_df(), "ES")
 
-    baseline = compute_all_levels(df, instrument="ES", poc_windows=["30min"], sma_lengths=[], ema_lengths=[], vwap_windows=[])
+    baseline = compute_all_levels(
+        df, instrument="ES", poc_windows=["30min"], sma_lengths=[], ema_lengths=[], vwap_windows=[]
+    )
     changed = compute_all_levels(
         df,
         instrument="ES",

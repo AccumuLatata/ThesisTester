@@ -10,6 +10,7 @@ Covers:
 - Regression safety (existing levels unchanged; no dVWAP_RTH without explicit enable).
 - Point-in-time / future-shock test.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -26,6 +27,7 @@ TZ = "America/New_York"
 # ---------------------------------------------------------------------------
 # Helper builders
 # ---------------------------------------------------------------------------
+
 
 def _rth_bar(ts: pd.Timestamp, high: float, low: float, close: float, volume: float) -> dict:
     return {
@@ -118,6 +120,7 @@ def _full_session_fixture() -> pd.DataFrame:
 # 1. Disabled behavior
 # ---------------------------------------------------------------------------
 
+
 def test_disabled_returns_empty_dataframe():
     df = _rth_fixture()
     result = compute_session_vwap_levels(df, enabled=False)
@@ -149,14 +152,23 @@ def test_compute_all_levels_session_vwap_disabled_produces_no_dvwap_column():
 # 2. Basic correctness — bar-by-bar cumulative VWAP
 # ---------------------------------------------------------------------------
 
+
 def test_dvwap_rth_exact_values():
     """Verify exact cumulative VWAP computation bar by bar."""
     # Build 4 RTH bars with controlled values.
     rows = [
-        _rth_bar(pd.Timestamp("2026-06-02 09:30", tz=TZ), high=101.0, low=99.0,  close=100.0, volume=10.0),
-        _rth_bar(pd.Timestamp("2026-06-02 09:31", tz=TZ), high=102.0, low=100.0, close=101.0, volume=20.0),
-        _rth_bar(pd.Timestamp("2026-06-02 09:32", tz=TZ), high=103.0, low=101.0, close=102.0, volume=30.0),
-        _rth_bar(pd.Timestamp("2026-06-02 09:33", tz=TZ), high=104.0, low=102.0, close=103.0, volume=40.0),
+        _rth_bar(
+            pd.Timestamp("2026-06-02 09:30", tz=TZ), high=101.0, low=99.0, close=100.0, volume=10.0
+        ),
+        _rth_bar(
+            pd.Timestamp("2026-06-02 09:31", tz=TZ), high=102.0, low=100.0, close=101.0, volume=20.0
+        ),
+        _rth_bar(
+            pd.Timestamp("2026-06-02 09:32", tz=TZ), high=103.0, low=101.0, close=102.0, volume=30.0
+        ),
+        _rth_bar(
+            pd.Timestamp("2026-06-02 09:33", tz=TZ), high=104.0, low=102.0, close=103.0, volume=40.0
+        ),
     ]
     df = pd.DataFrame(rows)
 
@@ -194,6 +206,7 @@ def test_dvwap_index_length_matches_input():
 # 3. Session reset
 # ---------------------------------------------------------------------------
 
+
 def test_dvwap_resets_at_second_session():
     """dVWAP_RTH must reset at each new RTH session open."""
     df = _two_session_fixture()
@@ -222,7 +235,9 @@ def test_dvwap_session1_last_value_does_not_carry_to_session2():
     # Session 1 has 3 bars; session 2 first bar is rth_vals[3].
     # The first bar of session 2 VWAP uses only that bar's typical price.
     s2_first_row = df[rth].iloc[3]
-    expected_s2_vwap_bar0 = (s2_first_row["high"] + s2_first_row["low"] + s2_first_row["close"]) / 3.0
+    expected_s2_vwap_bar0 = (
+        s2_first_row["high"] + s2_first_row["low"] + s2_first_row["close"]
+    ) / 3.0
     # Session 1 last VWAP is definitely different (lower prices).
     assert rth_vals[3] != pytest.approx(rth_vals[2], rel=1e-3)
     assert rth_vals[3] == pytest.approx(expected_s2_vwap_bar0, rel=1e-9)
@@ -232,17 +247,22 @@ def test_dvwap_session1_last_value_does_not_carry_to_session2():
 # 4. Outside-RTH behavior (NaN outside RTH)
 # ---------------------------------------------------------------------------
 
+
 def test_eth_bars_before_rth_emit_nan():
     df = _full_session_fixture()
     result = compute_session_vwap_levels(df, enabled=True)
-    eth_before = df["session"].eq("ETH") & (df["timestamp"] < pd.Timestamp("2026-06-02 09:30", tz=TZ))
+    eth_before = df["session"].eq("ETH") & (
+        df["timestamp"] < pd.Timestamp("2026-06-02 09:30", tz=TZ)
+    )
     assert result.loc[eth_before, "dVWAP_RTH"].isna().all()
 
 
 def test_eth_bars_after_rth_close_emit_nan():
     df = _full_session_fixture()
     result = compute_session_vwap_levels(df, enabled=True)
-    eth_after = df["session"].eq("ETH") & (df["timestamp"] >= pd.Timestamp("2026-06-02 16:00", tz=TZ))
+    eth_after = df["session"].eq("ETH") & (
+        df["timestamp"] >= pd.Timestamp("2026-06-02 16:00", tz=TZ)
+    )
     assert result.loc[eth_after, "dVWAP_RTH"].isna().all()
 
 
@@ -259,6 +279,7 @@ def test_only_rth_bars_have_non_nan_dvwap():
 # ---------------------------------------------------------------------------
 # 5. Zero-volume behavior
 # ---------------------------------------------------------------------------
+
 
 def test_zero_volume_single_bar_emits_nan():
     rows = [_rth_bar(pd.Timestamp("2026-06-02 09:30", tz=TZ), 101.0, 99.0, 100.0, 0.0)]
@@ -296,6 +317,7 @@ def test_zero_volume_multiple_bars_then_valid():
 # ---------------------------------------------------------------------------
 # 6. Settings validation
 # ---------------------------------------------------------------------------
+
 
 def test_unsupported_anchor_raises_value_error():
     df = _rth_fixture()
@@ -342,6 +364,7 @@ def test_disabled_accepts_unsupported_instrument():
 # 7. Regression safety
 # ---------------------------------------------------------------------------
 
+
 def test_existing_level_columns_unchanged_when_vwap_disabled():
     df = tag_session(
         pd.DataFrame(
@@ -360,7 +383,12 @@ def test_existing_level_columns_unchanged_when_vwap_disabled():
         df, instrument="ES", opening_range_minutes=5, sma_lengths=[2], session_vwap_enabled=False
     )
     out_with_vwap = compute_all_levels(
-        df, instrument="ES", opening_range_minutes=5, sma_lengths=[2], session_vwap_enabled=True, session_vwap_anchor="RTH"
+        df,
+        instrument="ES",
+        opening_range_minutes=5,
+        sma_lengths=[2],
+        session_vwap_enabled=True,
+        session_vwap_anchor="RTH",
     )
 
     # All columns from the disabled run must be present and identical in the enabled run.
@@ -382,7 +410,11 @@ def test_no_dvwap_column_without_session_vwap_enabled():
 def test_dvwap_column_present_when_enabled():
     df = tag_session(_rth_fixture(), "ES")
     out = compute_all_levels(
-        df, instrument="ES", opening_range_minutes=5, session_vwap_enabled=True, session_vwap_anchor="RTH"
+        df,
+        instrument="ES",
+        opening_range_minutes=5,
+        session_vwap_enabled=True,
+        session_vwap_anchor="RTH",
     )
     assert "dVWAP_RTH" in out.columns
 
@@ -391,10 +423,11 @@ def test_dvwap_column_present_when_enabled():
 # 8. Point-in-time / future-shock test
 # ---------------------------------------------------------------------------
 
+
 def test_dvwap_rth_future_shock():
     """Appending future bars must not change dVWAP_RTH values at prior timestamps."""
     base_rows = [
-        _rth_bar(pd.Timestamp("2026-06-02 09:30", tz=TZ), 101.0, 99.0,  100.0, 10.0),
+        _rth_bar(pd.Timestamp("2026-06-02 09:30", tz=TZ), 101.0, 99.0, 100.0, 10.0),
         _rth_bar(pd.Timestamp("2026-06-02 09:31", tz=TZ), 102.0, 100.0, 101.0, 20.0),
         _rth_bar(pd.Timestamp("2026-06-02 09:32", tz=TZ), 103.0, 101.0, 102.0, 30.0),
     ]
@@ -447,6 +480,7 @@ def test_dvwap_rth_future_shock_across_sessions():
 # 9. Unsorted-input regression
 # ---------------------------------------------------------------------------
 
+
 def test_unsorted_input_output_is_timestamp_sorted():
     """Output must be in timestamp-sorted order even if input rows are unsorted.
 
@@ -458,10 +492,18 @@ def test_unsorted_input_output_is_timestamp_sorted():
     other ordering.
     """
     # Build four RTH bars and intentionally reverse their row order.
-    row_a = _rth_bar(pd.Timestamp("2026-06-02 09:30", tz=TZ), high=101.0, low=99.0,  close=100.0, volume=10.0)
-    row_b = _rth_bar(pd.Timestamp("2026-06-02 09:31", tz=TZ), high=102.0, low=100.0, close=101.0, volume=20.0)
-    row_c = _rth_bar(pd.Timestamp("2026-06-02 09:32", tz=TZ), high=103.0, low=101.0, close=102.0, volume=30.0)
-    row_d = _rth_bar(pd.Timestamp("2026-06-02 09:33", tz=TZ), high=104.0, low=102.0, close=103.0, volume=40.0)
+    row_a = _rth_bar(
+        pd.Timestamp("2026-06-02 09:30", tz=TZ), high=101.0, low=99.0, close=100.0, volume=10.0
+    )
+    row_b = _rth_bar(
+        pd.Timestamp("2026-06-02 09:31", tz=TZ), high=102.0, low=100.0, close=101.0, volume=20.0
+    )
+    row_c = _rth_bar(
+        pd.Timestamp("2026-06-02 09:32", tz=TZ), high=103.0, low=101.0, close=102.0, volume=30.0
+    )
+    row_d = _rth_bar(
+        pd.Timestamp("2026-06-02 09:33", tz=TZ), high=104.0, low=102.0, close=103.0, volume=40.0
+    )
 
     # rows in REVERSE timestamp order — input is unsorted
     df_unsorted = pd.DataFrame([row_d, row_c, row_b, row_a])
@@ -487,38 +529,55 @@ def test_unsorted_input_output_is_timestamp_sorted():
 
     # --- Prove the old bug is gone: result[0] must correspond to the 09:30 bar,
     #     NOT to the 09:33 bar that was in row 0 of the unsorted input. ---
-    tp_first_sorted = (101.0 + 99.0 + 100.0) / 3.0   # 09:30 bar
+    tp_first_sorted = (101.0 + 99.0 + 100.0) / 3.0  # 09:30 bar
     assert result["dVWAP_RTH"].iloc[0] == pytest.approx(tp_first_sorted, rel=1e-9)
 
     tp_first_original = (104.0 + 102.0 + 103.0) / 3.0  # 09:33 bar (was row 0 of input)
     assert result["dVWAP_RTH"].iloc[0] != pytest.approx(tp_first_original, rel=1e-3)
 
 
-
-
 # ---------------------------------------------------------------------------
 # 10. Session column derived when absent
 # ---------------------------------------------------------------------------
+
 
 def test_session_column_derived_from_instrument_config():
     """When session column is absent, RTH membership is derived from timestamps."""
     # Build a DataFrame with both RTH and ETH bars but no 'session' column.
     rows_no_session = []
     # 08:00 ETH bar
-    rows_no_session.append({
-        "timestamp": pd.Timestamp("2026-06-02 08:00", tz=TZ),
-        "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 5.0,
-    })
+    rows_no_session.append(
+        {
+            "timestamp": pd.Timestamp("2026-06-02 08:00", tz=TZ),
+            "open": 100.0,
+            "high": 101.0,
+            "low": 99.0,
+            "close": 100.0,
+            "volume": 5.0,
+        }
+    )
     # 09:30 RTH bar
-    rows_no_session.append({
-        "timestamp": pd.Timestamp("2026-06-02 09:30", tz=TZ),
-        "open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0, "volume": 10.0,
-    })
+    rows_no_session.append(
+        {
+            "timestamp": pd.Timestamp("2026-06-02 09:30", tz=TZ),
+            "open": 100.0,
+            "high": 102.0,
+            "low": 99.0,
+            "close": 101.0,
+            "volume": 10.0,
+        }
+    )
     # 09:31 RTH bar
-    rows_no_session.append({
-        "timestamp": pd.Timestamp("2026-06-02 09:31", tz=TZ),
-        "open": 101.0, "high": 103.0, "low": 100.0, "close": 102.0, "volume": 20.0,
-    })
+    rows_no_session.append(
+        {
+            "timestamp": pd.Timestamp("2026-06-02 09:31", tz=TZ),
+            "open": 101.0,
+            "high": 103.0,
+            "low": 100.0,
+            "close": 102.0,
+            "volume": 20.0,
+        }
+    )
     df = pd.DataFrame(rows_no_session)
     assert "session" not in df.columns
 
@@ -534,6 +593,7 @@ def test_session_column_derived_from_instrument_config():
 # ---------------------------------------------------------------------------
 # 11. NQ instrument support
 # ---------------------------------------------------------------------------
+
 
 def test_nq_instrument_is_supported():
     df = _rth_fixture()

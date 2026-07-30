@@ -10,6 +10,7 @@ Covers:
 - Point-in-time / future-shock tests.
 - Regression safety (existing level outputs unchanged).
 """
+
 from __future__ import annotations
 
 import math
@@ -80,7 +81,9 @@ def _naive_df() -> pd.DataFrame:
     )
 
 
-def _base_df(start: str = "2026-06-02 09:30:00", periods: int = 20, freq: str = "1min") -> pd.DataFrame:
+def _base_df(
+    start: str = "2026-06-02 09:30:00", periods: int = 20, freq: str = "1min"
+) -> pd.DataFrame:
     ts = pd.date_range(start=start, periods=periods, freq=freq, tz=TZ)
     n = len(ts)
     vals = np.arange(n, dtype=float) + 100.0
@@ -181,7 +184,9 @@ def test_disabled_accepts_naive_timestamps():
 
 def test_disabled_accepts_unsupported_instrument():
     df = _base_df()
-    result = compute_tpo_levels(df, instrument="UNSUPPORTED", single_prints_enabled=False, apoc_enabled=False)
+    result = compute_tpo_levels(
+        df, instrument="UNSUPPORTED", single_prints_enabled=False, apoc_enabled=False
+    )
     assert isinstance(result, pd.DataFrame)
     assert len(result.columns) == 0
 
@@ -286,7 +291,9 @@ def test_bin_touched_by_two_brackets_is_not_sp():
     assert not math.isnan(d_above), "NearestAbove should not be NaN after bracket B completes"
     assert abs(d_above - 101.25) < 1e-9, f"Expected 101.25, got {d_above}"
     # NearestBelow < 101.00: bracket B bins are all ≥ 101.25, so no SP below 101.00 → NaN
-    assert math.isnan(d_below), f"NearestBelow should be NaN (no SP below close {close_at_row}), got {d_below}"
+    assert math.isnan(d_below), (
+        f"NearestBelow should be NaN (no SP below close {close_at_row}), got {d_below}"
+    )
 
 
 def test_binning_uses_tick_size():
@@ -341,8 +348,12 @@ def test_developing_sp_appear_after_first_bracket_completes():
     df = pd.DataFrame(rows)
     result = compute_tpo_levels(df, instrument="ES", single_prints_enabled=True)
     # Bracket A completes at 10:00.  Rows at 10:00 and 10:01 have bracket A complete.
-    assert not math.isnan(result.iloc[1][COL_D_ABOVE]) or not math.isnan(result.iloc[1][COL_D_BELOW])
-    assert not math.isnan(result.iloc[2][COL_D_ABOVE]) or not math.isnan(result.iloc[2][COL_D_BELOW])
+    assert not math.isnan(result.iloc[1][COL_D_ABOVE]) or not math.isnan(
+        result.iloc[1][COL_D_BELOW]
+    )
+    assert not math.isnan(result.iloc[2][COL_D_ABOVE]) or not math.isnan(
+        result.iloc[2][COL_D_BELOW]
+    )
 
 
 def test_current_incomplete_bracket_is_excluded():
@@ -365,7 +376,9 @@ def test_current_incomplete_bracket_is_excluded():
         below = result.iloc[i][COL_D_BELOW]
         # SP prices from bracket A are around 100.0-100.5; close is 104.50.
         # NearestAbove: no SP > 104.50 → NaN.
-        assert math.isnan(above), f"Row {i}: NearestAbove should be NaN (no SP above 104.50), got {above}"
+        assert math.isnan(above), (
+            f"Row {i}: NearestAbove should be NaN (no SP above 104.50), got {above}"
+        )
         # NearestBelow: closest SP < 104.50 is 100.50.
         assert abs(below - 100.50) < 1e-9, f"Row {i}: NearestBelow should be 100.50, got {below}"
 
@@ -442,7 +455,9 @@ def test_prior_session_sp_maps_to_next_session():
     p_below = s2_row0[COL_P_BELOW]
     assert not math.isnan(p_below), "pNearestBelow should be set from prior session"
     assert abs(p_below - 102.00) < 1e-9, f"Expected 102.00, got {p_below}"
-    assert math.isnan(s2_row0[COL_P_ABOVE]), "pNearestAbove should be NaN (no prior SP above 105.50)"
+    assert math.isnan(s2_row0[COL_P_ABOVE]), (
+        "pNearestAbove should be NaN (no prior SP above 105.50)"
+    )
 
 
 def test_prior_session_values_are_frozen():
@@ -541,15 +556,27 @@ def test_session_column_can_be_absent():
     rows = [
         {
             "timestamp": pd.Timestamp("2026-06-02 09:30", tz=TZ),
-            "open": 100.0, "high": 100.50, "low": 100.00, "close": 100.25, "volume": 10.0,
+            "open": 100.0,
+            "high": 100.50,
+            "low": 100.00,
+            "close": 100.25,
+            "volume": 10.0,
         },
         {
             "timestamp": pd.Timestamp("2026-06-02 10:00", tz=TZ),
-            "open": 100.0, "high": 100.50, "low": 100.00, "close": 100.00, "volume": 10.0,
+            "open": 100.0,
+            "high": 100.50,
+            "low": 100.00,
+            "close": 100.00,
+            "volume": 10.0,
         },
         {
             "timestamp": pd.Timestamp("2026-06-02 10:01", tz=TZ),
-            "open": 100.0, "high": 100.50, "low": 100.00, "close": 100.00, "volume": 10.0,
+            "open": 100.0,
+            "high": 100.50,
+            "low": 100.00,
+            "close": 100.00,
+            "volume": 10.0,
         },
     ]
     df = pd.DataFrame(rows)
@@ -590,8 +617,7 @@ def test_future_shock_appending_current_session_bars_does_not_change_prior_value
             both_nan = math.isnan(v_base) and math.isnan(v_ext)
             if not both_nan:
                 assert abs(v_base - v_ext) < 1e-9, (
-                    f"Row {i}, {col}: future-shock mismatch. "
-                    f"base={v_base}, extended={v_ext}"
+                    f"Row {i}, {col}: future-shock mismatch. base={v_base}, extended={v_ext}"
                 )
 
 

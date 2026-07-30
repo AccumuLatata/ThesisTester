@@ -83,7 +83,13 @@ def test_levels_computation_handles_instrument_without_eth_start(monkeypatch):
     session_levels = compute_session_levels(tagged, instrument="ES")
     for col in ("ONH", "ONL", "dOpen"):
         assert col in session_levels.columns
-    assert session_levels.loc[session_levels["timestamp"] == pd.Timestamp("2026-06-03 09:30:00", tz=TZ), "ONH"].notna().all()
+    assert (
+        session_levels.loc[
+            session_levels["timestamp"] == pd.Timestamp("2026-06-03 09:30:00", tz=TZ), "ONH"
+        ]
+        .notna()
+        .all()
+    )
 
     profile_levels = compute_profile_levels(df, instrument="ES", rolling_windows=("30min",))
     assert "pdPOC" in profile_levels.columns
@@ -175,10 +181,18 @@ def test_opening_range_not_visible_on_new_session_eth_bar():
     )
     levels = compute_session_levels(tag_session(df, "ES"), instrument="ES", opening_range_minutes=5)
 
-    assert pd.isna(levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-02 18:00:00", tz=TZ), "OR_High"]).all()
-    assert pd.isna(levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-02 18:00:00", tz=TZ), "OR_Low"]).all()
-    assert pd.isna(levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-03 09:34:00", tz=TZ), "OR_High"]).all()
-    assert pd.isna(levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-03 09:34:00", tz=TZ), "OR_Low"]).all()
+    assert pd.isna(
+        levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-02 18:00:00", tz=TZ), "OR_High"]
+    ).all()
+    assert pd.isna(
+        levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-02 18:00:00", tz=TZ), "OR_Low"]
+    ).all()
+    assert pd.isna(
+        levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-03 09:34:00", tz=TZ), "OR_High"]
+    ).all()
+    assert pd.isna(
+        levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-03 09:34:00", tz=TZ), "OR_Low"]
+    ).all()
     row = levels[levels["timestamp"] == pd.Timestamp("2026-06-03 09:35:00", tz=TZ)].iloc[0]
     assert row["OR_High"] == 107.0
     assert row["OR_Low"] == 100.0
@@ -201,12 +215,16 @@ def test_opening_range_availability_is_clock_based_not_first_rth_bar():
     )
     levels = compute_session_levels(tag_session(df, "ES"), instrument="ES", opening_range_minutes=5)
 
-    assert pd.isna(levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-03 09:34:00", tz=TZ), "OR_High"]).all()
-    assert pd.isna(levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-03 09:34:00", tz=TZ), "OR_Low"]).all()
+    assert pd.isna(
+        levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-03 09:34:00", tz=TZ), "OR_High"]
+    ).all()
+    assert pd.isna(
+        levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-03 09:34:00", tz=TZ), "OR_Low"]
+    ).all()
 
     row_35 = levels[levels["timestamp"] == pd.Timestamp("2026-06-03 09:35:00", tz=TZ)].iloc[0]
     assert row_35["OR_High"] == 106.0  # max high of 09:31–09:34 bars
-    assert row_35["OR_Low"] == 100.0   # min low of 09:31–09:34 bars
+    assert row_35["OR_Low"] == 100.0  # min low of 09:31–09:34 bars
 
 
 def test_rth_open_causality_is_preserved():
@@ -268,14 +286,22 @@ def test_previous_session_levels_map_to_all_rows_of_next_session():
     assert first_session["pONL"].isna().all()
     assert first_session["pRTH_Open"].isna().all()
 
-    first_session_onh = levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-02 09:30:00", tz=TZ), "ONH"].iloc[0]
-    first_session_onl = levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-02 09:30:00", tz=TZ), "ONL"].iloc[0]
-    first_session_rth_open = levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-02 09:30:00", tz=TZ), "RTH_Open"].iloc[0]
+    first_session_onh = levels.loc[
+        levels["timestamp"] == pd.Timestamp("2026-06-02 09:30:00", tz=TZ), "ONH"
+    ].iloc[0]
+    first_session_onl = levels.loc[
+        levels["timestamp"] == pd.Timestamp("2026-06-02 09:30:00", tz=TZ), "ONL"
+    ].iloc[0]
+    first_session_rth_open = levels.loc[
+        levels["timestamp"] == pd.Timestamp("2026-06-02 09:30:00", tz=TZ), "RTH_Open"
+    ].iloc[0]
 
     second_session = levels[levels["timestamp"] >= pd.Timestamp("2026-06-02 18:00:00", tz=TZ)]
     assert np.allclose(second_session["pONH"].to_numpy(), [first_session_onh] * len(second_session))
     assert np.allclose(second_session["pONL"].to_numpy(), [first_session_onl] * len(second_session))
-    assert np.allclose(second_session["pRTH_Open"].to_numpy(), [first_session_rth_open] * len(second_session))
+    assert np.allclose(
+        second_session["pRTH_Open"].to_numpy(), [first_session_rth_open] * len(second_session)
+    )
 
 
 def test_previous_session_levels_use_previous_observed_session_across_weekend_gap():
@@ -290,14 +316,22 @@ def test_previous_session_levels_use_previous_observed_session_across_weekend_ga
     )
     levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
 
-    friday_onh = levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-05 09:30:00", tz=TZ), "ONH"].iloc[0]
-    friday_onl = levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-05 09:30:00", tz=TZ), "ONL"].iloc[0]
-    friday_rth_open = levels.loc[levels["timestamp"] == pd.Timestamp("2026-06-05 09:30:00", tz=TZ), "RTH_Open"].iloc[0]
+    friday_onh = levels.loc[
+        levels["timestamp"] == pd.Timestamp("2026-06-05 09:30:00", tz=TZ), "ONH"
+    ].iloc[0]
+    friday_onl = levels.loc[
+        levels["timestamp"] == pd.Timestamp("2026-06-05 09:30:00", tz=TZ), "ONL"
+    ].iloc[0]
+    friday_rth_open = levels.loc[
+        levels["timestamp"] == pd.Timestamp("2026-06-05 09:30:00", tz=TZ), "RTH_Open"
+    ].iloc[0]
 
     monday_session = levels[levels["timestamp"] >= pd.Timestamp("2026-06-07 18:00:00", tz=TZ)]
     assert np.allclose(monday_session["pONH"].to_numpy(), [friday_onh] * len(monday_session))
     assert np.allclose(monday_session["pONL"].to_numpy(), [friday_onl] * len(monday_session))
-    assert np.allclose(monday_session["pRTH_Open"].to_numpy(), [friday_rth_open] * len(monday_session))
+    assert np.allclose(
+        monday_session["pRTH_Open"].to_numpy(), [friday_rth_open] * len(monday_session)
+    )
 
 
 def test_previous_session_levels_are_nan_for_overnight_when_prior_session_has_no_eth():
@@ -365,7 +399,9 @@ def test_prev_settlement_fallback_uses_prior_rth_close_not_post_rth():
         ]
     )
     levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
-    new_session_bar = levels[levels["timestamp"] == pd.Timestamp("2026-06-02 18:00:00", tz=TZ)].iloc[0]
+    new_session_bar = levels[
+        levels["timestamp"] == pd.Timestamp("2026-06-02 18:00:00", tz=TZ)
+    ].iloc[0]
     assert new_session_bar["prevSettlement"] == 111.0, (
         f"prevSettlement should be last RTH close (111.0), not post-RTH bar (999.0), got {new_session_bar['prevSettlement']}"
     )
@@ -375,7 +411,9 @@ def test_prev_settlement_fallback_uses_prior_rth_close_not_post_rth():
     with_settlement = tag_session(df.copy(), "ES")
     with_settlement["settlement"] = [np.nan, np.nan, 124.5, np.nan]
     levels_with_settlement = compute_session_levels(with_settlement, instrument="ES")
-    new_session_bar = levels_with_settlement[levels_with_settlement["timestamp"] == pd.Timestamp("2026-06-02 18:00:00", tz=TZ)].iloc[0]
+    new_session_bar = levels_with_settlement[
+        levels_with_settlement["timestamp"] == pd.Timestamp("2026-06-02 18:00:00", tz=TZ)
+    ].iloc[0]
     assert new_session_bar["prevSettlement"] == 124.5
 
 
@@ -422,7 +460,9 @@ def test_batch_vs_incremental_causality_matches_with_eth_session_boundaries():
     ]
 
     for i in range(len(tagged)):
-        incremental = compute_session_levels(tagged.iloc[: i + 1], instrument="ES", opening_range_minutes=5)
+        incremental = compute_session_levels(
+            tagged.iloc[: i + 1], instrument="ES", opening_range_minutes=5
+        )
         row_batch = batch.iloc[i]
         row_incremental = incremental.iloc[-1]
         for col in cols:
@@ -448,7 +488,9 @@ def test_trading_session_date_and_dopen_across_spring_dst_start():
     )
     session_dates = trading_session_date(local_ts, "18:00")
     assert session_dates.iloc[0] == _date("2026-03-06"), "Friday bar should be 2026-03-06"
-    assert session_dates.iloc[1] == _date("2026-03-09"), "18:00 Sunday (post-DST) should map to 2026-03-09"
+    assert session_dates.iloc[1] == _date("2026-03-09"), (
+        "18:00 Sunday (post-DST) should map to 2026-03-09"
+    )
     assert session_dates.iloc[2] == _date("2026-03-09"), "Monday midnight should map to 2026-03-09"
     assert session_dates.iloc[3] == _date("2026-03-09"), "Monday RTH open should map to 2026-03-09"
 
@@ -482,7 +524,9 @@ def test_trading_session_date_and_dopen_across_fall_dst_end():
     )
     session_dates = trading_session_date(local_ts, "18:00")
     assert session_dates.iloc[0] == _date("2026-10-30"), "Friday bar should be 2026-10-30"
-    assert session_dates.iloc[1] == _date("2026-11-02"), "18:00 Sunday (post-DST) should map to 2026-11-02"
+    assert session_dates.iloc[1] == _date("2026-11-02"), (
+        "18:00 Sunday (post-DST) should map to 2026-11-02"
+    )
     assert session_dates.iloc[2] == _date("2026-11-02"), "Monday midnight should map to 2026-11-02"
     assert session_dates.iloc[3] == _date("2026-11-02"), "Monday RTH open should map to 2026-11-02"
 

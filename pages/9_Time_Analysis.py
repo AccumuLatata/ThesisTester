@@ -3,6 +3,7 @@
 Analyses completed trades from Phase 5 by time bucket and session segment.
 No trade re-simulation is performed; this page is purely descriptive.
 """
+
 from __future__ import annotations
 
 import plotly.express as px
@@ -84,10 +85,7 @@ with st.sidebar:
 
     timestamp_basis = st.selectbox(
         "Timestamp basis",
-        options=[
-            c for c in ["entry_timestamp", "exit_timestamp"]
-            if c in trades_raw.columns
-        ],
+        options=[c for c in ["entry_timestamp", "exit_timestamp"] if c in trades_raw.columns],
         index=0,
         help="Which timestamp to use for time bucketing.",
     )
@@ -103,11 +101,7 @@ with st.sidebar:
         )
     )
 
-bucket_tz = (
-    exchange_tz
-    if bucket_basis == "Exchange/session timezone"
-    else display_tz
-)
+bucket_tz = exchange_tz if bucket_basis == "Exchange/session timezone" else display_tz
 
 st.caption(f"Exchange/session timezone: {exchange_tz}")
 st.caption(f"Display/export timezone: {display_tz}")
@@ -160,9 +154,7 @@ _METRIC_OPTIONS = [
 ]
 
 primary_options = [c for c in _PRIMARY_OPTIONS if c in trades.columns]
-secondary_options = ["None"] + [
-    c for c in _SECONDARY_OPTIONS[1:] if c in trades.columns
-]
+secondary_options = ["None"] + [c for c in _SECONDARY_OPTIONS[1:] if c in trades.columns]
 
 with st.sidebar:
     primary_group = st.selectbox(
@@ -178,9 +170,7 @@ with st.sidebar:
         index=0,
         help="Add a second dimension for a cross-tab breakdown (optional).",
     )
-    secondary_group: str | None = (
-        None if secondary_group_raw == "None" else secondary_group_raw
-    )
+    secondary_group: str | None = None if secondary_group_raw == "None" else secondary_group_raw
 
     chart_metric = st.selectbox(
         "Metric for chart / heatmap",
@@ -226,17 +216,31 @@ else:
     for pct_col in ("win_rate", "loss_rate"):
         if pct_col in display_df.columns:
             display_df[pct_col] = display_df[pct_col].map(
-                lambda v: f"{v:.1%}" if v is not None and not (isinstance(v, float) and __import__('math').isnan(v)) else "—"
+                lambda v: (
+                    f"{v:.1%}"
+                    if v is not None and not (isinstance(v, float) and __import__("math").isnan(v))
+                    else "—"
+                )
             )
 
     for r_col in (
-        "avg_r", "median_r", "total_r", "profit_factor",
-        "avg_win_r", "avg_loss_r", "max_drawdown_r",
-        "best_trade_r", "worst_trade_r",
+        "avg_r",
+        "median_r",
+        "total_r",
+        "profit_factor",
+        "avg_win_r",
+        "avg_loss_r",
+        "max_drawdown_r",
+        "best_trade_r",
+        "worst_trade_r",
     ):
         if r_col in display_df.columns:
             display_df[r_col] = display_df[r_col].map(
-                lambda v: f"{v:.3f}" if v is not None and not (isinstance(v, float) and __import__('math').isnan(v)) else "—"
+                lambda v: (
+                    f"{v:.3f}"
+                    if v is not None and not (isinstance(v, float) and __import__("math").isnan(v))
+                    else "—"
+                )
             )
 
     st.dataframe(display_df, width="stretch", hide_index=True)
@@ -276,9 +280,11 @@ else:
             st.plotly_chart(fig, width="stretch")
     else:
         # Grouped bar chart
-        chart_data = grouped[
-            [primary_group, secondary_group, chart_metric, "trade_count"]
-        ].copy().dropna(subset=[chart_metric])
+        chart_data = (
+            grouped[[primary_group, secondary_group, chart_metric, "trade_count"]]
+            .copy()
+            .dropna(subset=[chart_metric])
+        )
         if chart_data.empty:
             st.info("No non-null values to plot.")
         else:
@@ -362,14 +368,26 @@ if primary_group in trades.columns:
 # ── Detailed raw trade view ───────────────────────────────────────────────────
 with st.expander("Raw trades with time buckets"):
     bucket_cols = [
-        "entry_date", "entry_time", "entry_hour", "entry_minute",
-        "entry_hour_bucket", "entry_30min_bucket", "entry_rth_segment",
+        "entry_date",
+        "entry_time",
+        "entry_hour",
+        "entry_minute",
+        "entry_hour_bucket",
+        "entry_30min_bucket",
+        "entry_rth_segment",
     ]
     display_trade_cols = [
-        c for c in (
-            ["trade_id"] + bucket_cols + [
-                "trigger", "direction", "exit_reason",
-                "r_multiple", "entry_timestamp", "exit_timestamp",
+        c
+        for c in (
+            ["trade_id"]
+            + bucket_cols
+            + [
+                "trigger",
+                "direction",
+                "exit_reason",
+                "r_multiple",
+                "entry_timestamp",
+                "exit_timestamp",
             ]
         )
         if c in trades.columns

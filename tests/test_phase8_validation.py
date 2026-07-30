@@ -1,4 +1,5 @@
 """Phase 8 tests: statistical validation and robustness diagnostics."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -15,6 +16,7 @@ from thesistester.analytics.validation import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _trades(r_multiples: list[float]) -> pd.DataFrame:
     """Build a minimal trade DataFrame with r_multiple values."""
@@ -64,8 +66,14 @@ def test_bootstrap_ci_keys_exist_and_bounds_ordered():
     trades = _trades([0.5, -0.5, 1.0, -1.0, 2.0])
     result = bootstrap_expectancy_ci(trades, n_bootstrap=100, random_state=1)
     for key in (
-        "trade_count", "observed_avg_r", "ci_lower", "ci_upper",
-        "confidence", "n_bootstrap", "probability_positive", "bootstrap_means",
+        "trade_count",
+        "observed_avg_r",
+        "ci_lower",
+        "ci_upper",
+        "confidence",
+        "n_bootstrap",
+        "probability_positive",
+        "bootstrap_means",
     ):
         assert key in result, f"Missing key: {key}"
     assert result["ci_lower"] <= result["ci_upper"]
@@ -155,12 +163,15 @@ def test_grid_overfit_large_grid_risk_at_least_medium():
     """Grid with >= 25 valid cells → risk_level 'medium' or 'high'."""
     # Build a grid with 30 rows and an expectancy_r column
     import numpy as np
+
     rng = np.random.default_rng(0)
-    grid = pd.DataFrame({
-        "stop_loss_ticks": list(range(30)),
-        "take_profit_ticks": [10] * 30,
-        "expectancy_r": rng.uniform(-0.5, 1.5, 30).tolist(),
-    })
+    grid = pd.DataFrame(
+        {
+            "stop_loss_ticks": list(range(30)),
+            "take_profit_ticks": [10] * 30,
+            "expectancy_r": rng.uniform(-0.5, 1.5, 30).tolist(),
+        }
+    )
     result = grid_overfit_diagnostics(grid, selected_metric="expectancy_r")
     assert result["risk_level"] in ("medium", "high")
 
@@ -168,12 +179,15 @@ def test_grid_overfit_large_grid_risk_at_least_medium():
 def test_grid_overfit_very_large_grid_risk_high():
     """Grid with >= 100 valid cells → risk_level 'high'."""
     import numpy as np
+
     rng = np.random.default_rng(1)
-    grid = pd.DataFrame({
-        "stop_loss_ticks": list(range(100)),
-        "take_profit_ticks": [10] * 100,
-        "expectancy_r": rng.uniform(-0.5, 1.5, 100).tolist(),
-    })
+    grid = pd.DataFrame(
+        {
+            "stop_loss_ticks": list(range(100)),
+            "take_profit_ticks": [10] * 100,
+            "expectancy_r": rng.uniform(-0.5, 1.5, 100).tolist(),
+        }
+    )
     result = grid_overfit_diagnostics(grid, selected_metric="expectancy_r")
     assert result["risk_level"] == "high"
 
@@ -181,17 +195,26 @@ def test_grid_overfit_very_large_grid_risk_high():
 def test_grid_overfit_output_contains_expected_keys():
     """Result must contain all documented output keys."""
     import numpy as np
+
     rng = np.random.default_rng(2)
-    grid = pd.DataFrame({
-        "stop_loss_ticks": [4, 6, 8],
-        "take_profit_ticks": [8, 12, 16],
-        "expectancy_r": rng.uniform(0, 1, 3).tolist(),
-    })
+    grid = pd.DataFrame(
+        {
+            "stop_loss_ticks": [4, 6, 8],
+            "take_profit_ticks": [8, 12, 16],
+            "expectancy_r": rng.uniform(0, 1, 3).tolist(),
+        }
+    )
     result = grid_overfit_diagnostics(grid)
     for key in (
-        "grid_cell_count", "valid_cell_count", "best_metric",
-        "median_metric", "mean_metric", "top_n_mean_metric",
-        "best_vs_median_delta", "risk_level", "message",
+        "grid_cell_count",
+        "valid_cell_count",
+        "best_metric",
+        "median_metric",
+        "mean_metric",
+        "top_n_mean_metric",
+        "best_vs_median_delta",
+        "risk_level",
+        "message",
     ):
         assert key in result, f"Missing key: {key}"
 
@@ -217,12 +240,15 @@ def test_validation_summary_returns_expected_top_level_keys():
 def test_validation_summary_with_grid():
     """validation_summary accepts an optional grid and populates grid_overfit."""
     import numpy as np
+
     trades = _trades([1.0, -0.5, 0.5])
     rng = np.random.default_rng(5)
-    grid = pd.DataFrame({
-        "stop_loss_ticks": list(range(30)),
-        "take_profit_ticks": [10] * 30,
-        "expectancy_r": rng.uniform(-0.5, 1.5, 30).tolist(),
-    })
+    grid = pd.DataFrame(
+        {
+            "stop_loss_ticks": list(range(30)),
+            "take_profit_ticks": [10] * 30,
+            "expectancy_r": rng.uniform(-0.5, 1.5, 30).tolist(),
+        }
+    )
     result = validation_summary(trades, grid=grid, n_bootstrap=50, n_permutations=50)
     assert result["grid_overfit"]["valid_cell_count"] == 30

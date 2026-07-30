@@ -24,6 +24,7 @@ RTH segment definitions (America/New_York):
 | post_rth          | 16:00 and later  |
 +-------------------+------------------+
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -35,13 +36,13 @@ import pandas as pd
 # Ordered segment definitions as (start_minute_of_day, end_minute_of_day,
 # label) tuples.  ``end_minute_of_day`` is exclusive.
 _RTH_SEGMENTS: list[tuple[int, int, str]] = [
-    (0, 570, "pre_rth"),          # < 09:30
-    (570, 600, "rth_open_30m"),   # 09:30 – 09:59
-    (600, 690, "rth_morning"),    # 10:00 – 11:29
-    (690, 810, "rth_midday"),     # 11:30 – 13:29
+    (0, 570, "pre_rth"),  # < 09:30
+    (570, 600, "rth_open_30m"),  # 09:30 – 09:59
+    (600, 690, "rth_morning"),  # 10:00 – 11:29
+    (690, 810, "rth_midday"),  # 11:30 – 13:29
     (810, 900, "rth_afternoon"),  # 13:30 – 14:59
-    (900, 960, "rth_power_hour"), # 15:00 – 15:59
-    (960, 1440, "post_rth"),      # 16:00+
+    (900, 960, "rth_power_hour"),  # 15:00 – 15:59
+    (960, 1440, "post_rth"),  # 16:00+
 ]
 
 # New columns added by add_time_buckets (used for empty-DataFrame guarantees)
@@ -322,11 +323,7 @@ def pivot_time_metric(
         return pd.DataFrame()
 
     if column_col is None:
-        result = (
-            grouped[[index_col, metric]]
-            .set_index(index_col)
-            .sort_index()
-        )
+        result = grouped[[index_col, metric]].set_index(index_col).sort_index()
         return result
 
     if column_col not in grouped.columns:

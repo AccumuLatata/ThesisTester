@@ -1,4 +1,5 @@
 """Plotly candlestick chart builder for backtest execution visualization."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -60,7 +61,9 @@ def _add_session_context(fig: go.Figure, ohlcv: pd.DataFrame) -> None:
             layer="below",
         )
 
-    rth_starts = tagged[(tagged["session"].str.upper() == "RTH") & (tagged["session"].shift().str.upper() != "RTH")]
+    rth_starts = tagged[
+        (tagged["session"].str.upper() == "RTH") & (tagged["session"].shift().str.upper() != "RTH")
+    ]
     for ts in rth_starts["timestamp"]:
         fig.add_vline(
             x=ts,
@@ -178,8 +181,12 @@ def build_backtest_candlestick_chart(
 
     if trades is not None and not trades.empty:
         chart_trades = trades.copy()
-        chart_trades["entry_timestamp"] = pd.to_datetime(chart_trades["entry_timestamp"], errors="coerce")
-        chart_trades["exit_timestamp"] = pd.to_datetime(chart_trades["exit_timestamp"], errors="coerce")
+        chart_trades["entry_timestamp"] = pd.to_datetime(
+            chart_trades["entry_timestamp"], errors="coerce"
+        )
+        chart_trades["exit_timestamp"] = pd.to_datetime(
+            chart_trades["exit_timestamp"], errors="coerce"
+        )
         chart_trades = chart_trades.dropna(subset=["entry_timestamp", "entry_price"])
 
         long_trades = chart_trades[chart_trades["direction"] == "long"]

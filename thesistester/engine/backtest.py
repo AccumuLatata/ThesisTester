@@ -15,6 +15,7 @@ Design notes
 - Phase 5 is a single-risk-config backtest only; SL/TP grid search belongs
   to Phase 6.
 """
+
 from __future__ import annotations
 
 import re
@@ -119,9 +120,7 @@ def _parse_time_input(value: str | None, *, field_name: str) -> time | None:
     try:
         parsed = time.fromisoformat(text)
     except ValueError as exc:
-        raise ValueError(
-            f"{field_name} must be HH:MM or HH:MM:SS, got {value!r}"
-        ) from exc
+        raise ValueError(f"{field_name} must be HH:MM or HH:MM:SS, got {value!r}") from exc
     return parsed.replace(tzinfo=None)
 
 
@@ -138,18 +137,14 @@ def _timestamps_in_session_timezone(
             try:
                 return ts.dt.tz_localize(session_timezone)
             except (TypeError, ValueError, KeyError, ZoneInfoNotFoundError) as exc:
-                raise ValueError(
-                    f"Invalid session_timezone {session_timezone!r}"
-                ) from exc
+                raise ValueError(f"Invalid session_timezone {session_timezone!r}") from exc
         return ts
 
     if session_timezone:
         try:
             return ts.dt.tz_convert(session_timezone)
         except (TypeError, ValueError, KeyError, ZoneInfoNotFoundError) as exc:
-            raise ValueError(
-                f"Invalid session_timezone {session_timezone!r}"
-            ) from exc
+            raise ValueError(f"Invalid session_timezone {session_timezone!r}") from exc
     return ts
 
 
@@ -298,38 +293,25 @@ def simulate_trades(
       ``TIME``, ``DATA_END``, and ``EOD`` exits.
     """
     if stop_loss_ticks <= 0:
-        raise ValueError(
-            f"stop_loss_ticks must be > 0, got {stop_loss_ticks!r}"
-        )
+        raise ValueError(f"stop_loss_ticks must be > 0, got {stop_loss_ticks!r}")
     if tick_size <= 0:
         raise ValueError(f"tick_size must be > 0, got {tick_size!r}")
     if point_value <= 0:
         raise ValueError(f"point_value must be > 0, got {point_value!r}")
     if commission_per_side < 0:
-        raise ValueError(
-            f"commission_per_side must be >= 0, got {commission_per_side!r}"
-        )
+        raise ValueError(f"commission_per_side must be >= 0, got {commission_per_side!r}")
     if slippage_ticks < 0:
-        raise ValueError(
-            f"slippage_ticks must be >= 0, got {slippage_ticks!r}"
-        )
+        raise ValueError(f"slippage_ticks must be >= 0, got {slippage_ticks!r}")
     if exposure_policy not in _VALID_EXPOSURE_POLICIES:
         raise ValueError(
             f"exposure_policy must be one of {sorted(_VALID_EXPOSURE_POLICIES)!r}, "
             f"got {exposure_policy!r}"
         )
     if cooldown_bars_after_exit < 0:
-        raise ValueError(
-            "cooldown_bars_after_exit must be >= 0, "
-            f"got {cooldown_bars_after_exit!r}"
-        )
-    parsed_session_close = _parse_time_input(
-        session_close_time, field_name="session_close_time"
-    )
+        raise ValueError(f"cooldown_bars_after_exit must be >= 0, got {cooldown_bars_after_exit!r}")
+    parsed_session_close = _parse_time_input(session_close_time, field_name="session_close_time")
     if flat_by_session_close and parsed_session_close is None:
-        raise ValueError(
-            "flat_by_session_close=True requires a valid session_close_time."
-        )
+        raise ValueError("flat_by_session_close=True requires a valid session_close_time.")
     parsed_no_new_entries_after = _parse_time_input(
         no_new_entries_after, field_name="no_new_entries_after"
     )
@@ -538,8 +520,7 @@ def simulate_trades(
                 seconds=parsed_session_close.second,
             )
             bars_until_close = local_timestamps[
-                (local_timestamps.index >= entry_bar_index)
-                & (local_timestamps <= session_close_ts)
+                (local_timestamps.index >= entry_bar_index) & (local_timestamps <= session_close_ts)
             ]
             if bars_until_close.empty:
                 continue
@@ -547,8 +528,7 @@ def simulate_trades(
             max_bar = min(max_bar, session_cap_bar)
             last_available_ts = local_timestamps.iloc[n_bars - 1]
             data_end_before_session_close = (
-                session_cap_bar == n_bars - 1
-                and last_available_ts < session_close_ts
+                session_cap_bar == n_bars - 1 and last_available_ts < session_close_ts
             )
 
         for b in range(start_bar, max_bar + 1):
@@ -708,9 +688,7 @@ def simulate_trades(
     trades_df = pd.DataFrame(trades) if trades else _empty_trades_df()
     if return_skipped_signals:
         skipped_df = (
-            pd.DataFrame(skipped_signals)
-            if skipped_signals
-            else _empty_skipped_signals_df()
+            pd.DataFrame(skipped_signals) if skipped_signals else _empty_skipped_signals_df()
         )
         return trades_df, skipped_df
     return trades_df

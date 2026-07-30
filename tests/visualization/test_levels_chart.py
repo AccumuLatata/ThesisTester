@@ -9,8 +9,18 @@ from thesistester.visualization import build_levels_chart
 def _levels_df() -> pd.DataFrame:
     return pd.DataFrame(
         [
-            {"timestamp": pd.Timestamp("2026-01-02 09:30:00"), "close": 100.0, "L1": 99.5, "L2": 101.0},
-            {"timestamp": pd.Timestamp("2026-01-02 09:31:00"), "close": 100.5, "L1": 100.0, "L2": 101.5},
+            {
+                "timestamp": pd.Timestamp("2026-01-02 09:30:00"),
+                "close": 100.0,
+                "L1": 99.5,
+                "L2": 101.0,
+            },
+            {
+                "timestamp": pd.Timestamp("2026-01-02 09:31:00"),
+                "close": 100.5,
+                "L1": 100.0,
+                "L2": 101.5,
+            },
         ]
     )
 

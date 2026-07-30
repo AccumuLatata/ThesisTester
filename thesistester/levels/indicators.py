@@ -1,4 +1,5 @@
 """Indicator/dynamic level computations."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -23,7 +24,9 @@ def _normalize_indicator_timeframes(
         return None
 
     normalized = tuple(str(timeframe) for timeframe in timeframes)
-    invalid = sorted({timeframe for timeframe in normalized if timeframe not in SUPPORTED_INDICATOR_TIMEFRAMES})
+    invalid = sorted(
+        {timeframe for timeframe in normalized if timeframe not in SUPPORTED_INDICATOR_TIMEFRAMES}
+    )
     if invalid:
         raise ValueError(
             f"Unsupported {indicator_name} timeframe(s): {', '.join(invalid)}. "
@@ -48,10 +51,13 @@ def _resolve_indicator_source(
             if pd.to_timedelta(option) >= base_interval
         ]
         choice_hint = "/".join(valid_choices)
-        hint = f"Load {timeframe} data." if not valid_choices else f"Load {timeframe} data or choose {choice_hint}."
+        hint = (
+            f"Load {timeframe} data."
+            if not valid_choices
+            else f"Load {timeframe} data or choose {choice_hint}."
+        )
         raise ValueError(
-            f"Cannot compute {timeframe} {indicator_name} from {base_label} source data. "
-            f"{hint}"
+            f"Cannot compute {timeframe} {indicator_name} from {base_label} source data. {hint}"
         )
 
     source_df = resample_ohlcv(out, timeframe)
@@ -85,7 +91,9 @@ def _append_timeframe_levels(
         for length in lengths:
             col = f"{indicator_prefix}_{int(length)}_{timeframe}"
             if is_sma:
-                timeframe_levels[col] = source_close.rolling(window=int(length), min_periods=int(length)).mean()
+                timeframe_levels[col] = source_close.rolling(
+                    window=int(length), min_periods=int(length)
+                ).mean()
             else:
                 timeframe_levels[col] = source_close.ewm(
                     span=int(length),
@@ -96,7 +104,9 @@ def _append_timeframe_levels(
         if uses_higher_timeframe:
             # Resampled timestamps are candle-open labels; shift to candle-close timestamps
             # so merge_asof exposes higher-timeframe values only after candle completion.
-            timeframe_levels["align_timestamp"] = timeframe_levels["timestamp"] + pd.to_timedelta(timeframe)
+            timeframe_levels["align_timestamp"] = timeframe_levels["timestamp"] + pd.to_timedelta(
+                timeframe
+            )
         else:
             # Native/base-timeframe series are already aligned to the input timeline.
             timeframe_levels["align_timestamp"] = timeframe_levels["timestamp"]
@@ -108,7 +118,9 @@ def _append_timeframe_levels(
             right_on="align_timestamp",
             direction="backward",
         )
-        timeframe_cols = [col for col in timeframe_levels.columns if col.startswith(f"{indicator_prefix}_")]
+        timeframe_cols = [
+            col for col in timeframe_levels.columns if col.startswith(f"{indicator_prefix}_")
+        ]
         for col in timeframe_cols:
             levels[col] = merged[col].to_numpy()
 
@@ -143,11 +155,17 @@ def compute_indicator_levels(
 
     close = pd.to_numeric(out["close"], errors="coerce")
     volume = pd.to_numeric(out["volume"], errors="coerce")
-    typical_price = (pd.to_numeric(out["high"], errors="coerce") + pd.to_numeric(out["low"], errors="coerce") + close) / 3.0
+    typical_price = (
+        pd.to_numeric(out["high"], errors="coerce")
+        + pd.to_numeric(out["low"], errors="coerce")
+        + close
+    ) / 3.0
 
     if sma_timeframes is None:
         for length in sma_lengths:
-            levels[f"SMA_{int(length)}"] = close.rolling(window=int(length), min_periods=int(length)).mean()
+            levels[f"SMA_{int(length)}"] = close.rolling(
+                window=int(length), min_periods=int(length)
+            ).mean()
     else:
         _append_timeframe_levels(
             out=out,
@@ -160,7 +178,9 @@ def compute_indicator_levels(
 
     if ema_timeframes is None:
         for length in ema_lengths:
-            levels[f"EMA_{int(length)}"] = close.ewm(span=int(length), adjust=False, min_periods=int(length)).mean()
+            levels[f"EMA_{int(length)}"] = close.ewm(
+                span=int(length), adjust=False, min_periods=int(length)
+            ).mean()
     else:
         _append_timeframe_levels(
             out=out,
@@ -178,6 +198,8 @@ def compute_indicator_levels(
         label = normalized_window_label(window)
         rolling_pv = pv.rolling(window=window).sum()
         rolling_vol = vol.rolling(window=window).sum()
-        levels[f"VWAP_rolling_{label}"] = (rolling_pv / rolling_vol.replace(0.0, float("nan"))).to_numpy()
+        levels[f"VWAP_rolling_{label}"] = (
+            rolling_pv / rolling_vol.replace(0.0, float("nan"))
+        ).to_numpy()
 
     return out.join(levels)

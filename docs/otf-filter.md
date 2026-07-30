@@ -188,12 +188,12 @@ Session carry (preserving state across sessions) is not supported in v1.
 ```python
 {
     "enabled": False,
-    "timeframes": [],                    # e.g., ["5m", "15m", "30m"]
-    "alignment_mode": "all",             # only "all" is supported in v1
+    "timeframes": [],  # e.g., ["5m", "15m", "30m"]
+    "alignment_mode": "all",  # only "all" is supported in v1
     "minimum_consecutive_bars": 3,
     "directional": True,
-    "use_completed_bars_only": True,     # required; non-negotiable
-    "session_reset": "session",          # only "session" is supported in v1
+    "use_completed_bars_only": True,  # required; non-negotiable
+    "session_reset": "session",  # only "session" is supported in v1
 }
 ```
 

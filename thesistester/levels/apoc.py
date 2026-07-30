@@ -60,6 +60,7 @@ Disabled behavior (``enabled=False``)
     Returns an empty DataFrame immediately — no timestamp validation, no new
     columns.  This preserves the Stage 1 no-op contract.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -178,8 +179,7 @@ def compute_apoc_levels(
 
     if instrument not in INSTRUMENTS:
         raise ValueError(
-            f"Unsupported instrument: {instrument!r}.  "
-            f"Supported instruments: {sorted(INSTRUMENTS)}"
+            f"Unsupported instrument: {instrument!r}.  Supported instruments: {sorted(INSTRUMENTS)}"
         )
 
     inst = INSTRUMENTS[instrument]
@@ -223,8 +223,7 @@ def compute_apoc_levels(
         # A-period bars: RTH_open <= timestamp < RTH_open + 30min
         sess_rth = rth_work[rth_work["_session_date"] == sess_date]
         a_bars = sess_rth[
-            (sess_rth["timestamp"] >= rth_open_ts)
-            & (sess_rth["timestamp"] < a_period_end)
+            (sess_rth["timestamp"] >= rth_open_ts) & (sess_rth["timestamp"] < a_period_end)
         ]
 
         session_apoc[sess_date] = _compute_a_period_poc(a_bars, inst.tick_size)

@@ -163,9 +163,7 @@ def test_duplicate_alias_collision_raises_data_validation_error(tmp_path):
             ]
         )
     )
-    with pytest.raises(
-        DataValidationError, match="Duplicate columns after alias normalization"
-    ):
+    with pytest.raises(DataValidationError, match="Duplicate columns after alias normalization"):
         load_ohlcv(path, source_tz="America/New_York", target_tz="America/New_York")
 
 
@@ -179,9 +177,7 @@ def test_duplicate_alias_collision_datetime_variant_raises_data_validation_error
             ]
         )
     )
-    with pytest.raises(
-        DataValidationError, match="Duplicate columns after alias normalization"
-    ):
+    with pytest.raises(DataValidationError, match="Duplicate columns after alias normalization"):
         load_ohlcv(path, source_tz="America/New_York", target_tz="America/New_York")
 
 
@@ -220,9 +216,7 @@ def test_session_tagging_rth():
 
 
 def test_resample_ohlcv_correctness():
-    timestamps = pd.date_range(
-        "2026-06-02 09:30:00", periods=5, freq="1min", tz="America/New_York"
-    )
+    timestamps = pd.date_range("2026-06-02 09:30:00", periods=5, freq="1min", tz="America/New_York")
     df = pd.DataFrame(
         {
             "timestamp": timestamps,
@@ -253,9 +247,7 @@ def test_resample_ohlcv_correctness():
     ],
 )
 def test_resample_ohlcv_uses_exchange_local_wall_clock_boundaries(timeframe, expected_labels):
-    timestamps = pd.date_range(
-        "2026-01-06 18:02:00", periods=6, freq="1min", tz="America/New_York"
-    )
+    timestamps = pd.date_range("2026-01-06 18:02:00", periods=6, freq="1min", tz="America/New_York")
     df = pd.DataFrame(
         {
             "timestamp": timestamps,

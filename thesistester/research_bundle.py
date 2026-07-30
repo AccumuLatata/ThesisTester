@@ -1,4 +1,5 @@
 """Research bundle export/import helpers."""
+
 from __future__ import annotations
 
 import io
@@ -82,7 +83,12 @@ _KNOWN_FILES = {
 _SECTION_REQUIRED_FILES = {
     "dataset": ("dataset.parquet", "dataset_meta.json"),
     "levels": ("levels.parquet", "session_levels.parquet", "levels_meta.json"),
-    "signals": ("signals.parquet", "confluence_zones.parquet", "naked_flags.parquet", "signals_meta.json"),
+    "signals": (
+        "signals.parquet",
+        "confluence_zones.parquet",
+        "naked_flags.parquet",
+        "signals_meta.json",
+    ),
     "backtest": ("trades.parquet", "trade_summary.json", "equity_curve.parquet"),
     "grid": ("grid_results.parquet", "best_grid_result.json"),
     "validation": ("validation_summary.json",),
@@ -182,7 +188,9 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
     data = session_state.get("data")
     if _is_dataframe(data):
         files["dataset.parquet"] = _to_parquet_bytes(data)
-        files["dataset_meta.json"] = _to_json_bytes({key: session_state.get(key) for key in _DATASET_META_KEYS})
+        files["dataset_meta.json"] = _to_json_bytes(
+            {key: session_state.get(key) for key in _DATASET_META_KEYS}
+        )
         manifest["included"]["dataset"] = True
         included_keys.update({"data", *_DATASET_META_KEYS})
 
@@ -191,7 +199,9 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
     if _is_dataframe(levels) and _is_dataframe(session_levels):
         files["levels.parquet"] = _to_parquet_bytes(levels)
         files["session_levels.parquet"] = _to_parquet_bytes(session_levels)
-        files["levels_meta.json"] = _to_json_bytes({key: session_state.get(key) for key in _LEVELS_META_KEYS})
+        files["levels_meta.json"] = _to_json_bytes(
+            {key: session_state.get(key) for key in _LEVELS_META_KEYS}
+        )
         manifest["included"]["levels"] = True
         included_keys.update({"levels", "session_levels", *_LEVELS_META_KEYS})
 
@@ -202,7 +212,9 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
         files["signals.parquet"] = _to_parquet_bytes(signals)
         files["confluence_zones.parquet"] = _to_parquet_bytes(confluence_zones)
         files["naked_flags.parquet"] = _to_parquet_bytes(naked_flags)
-        files["signals_meta.json"] = _to_json_bytes({key: session_state.get(key) for key in _SIGNALS_META_KEYS})
+        files["signals_meta.json"] = _to_json_bytes(
+            {key: session_state.get(key) for key in _SIGNALS_META_KEYS}
+        )
         manifest["included"]["signals"] = True
         included_keys.update({"signals", "confluence_zones", "naked_flags", *_SIGNALS_META_KEYS})
 
@@ -211,14 +223,18 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
     if _is_dataframe(trades) and _is_dataframe(equity_curve):
         files["trades.parquet"] = _to_parquet_bytes(trades)
         files["equity_curve.parquet"] = _to_parquet_bytes(equity_curve)
-        files["trade_summary.json"] = _to_json_bytes({key: session_state.get(key) for key in _BACKTEST_META_KEYS})
+        files["trade_summary.json"] = _to_json_bytes(
+            {key: session_state.get(key) for key in _BACKTEST_META_KEYS}
+        )
         manifest["included"]["backtest"] = True
         included_keys.update({"trades", "equity_curve", *_BACKTEST_META_KEYS})
 
     grid_results = session_state.get("grid_results")
     if _is_dataframe(grid_results):
         files["grid_results.parquet"] = _to_parquet_bytes(grid_results)
-        files["best_grid_result.json"] = _to_json_bytes({key: session_state.get(key) for key in _GRID_META_KEYS})
+        files["best_grid_result.json"] = _to_json_bytes(
+            {key: session_state.get(key) for key in _GRID_META_KEYS}
+        )
         manifest["included"]["grid"] = True
         included_keys.update({"grid_results", *_GRID_META_KEYS})
 
@@ -327,7 +343,9 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
 
         if included.get("signals"):
             session_values["signals"] = _read_parquet_from_zip(zf, "signals.parquet")
-            session_values["confluence_zones"] = _read_parquet_from_zip(zf, "confluence_zones.parquet")
+            session_values["confluence_zones"] = _read_parquet_from_zip(
+                zf, "confluence_zones.parquet"
+            )
             session_values["naked_flags"] = _read_parquet_from_zip(zf, "naked_flags.parquet")
             signals_meta = _read_json_from_zip(zf, "signals_meta.json")
             for key in _SIGNALS_META_KEYS:
@@ -359,7 +377,9 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
     }
 
 
-def apply_research_bundle_to_session(bundle: Mapping[str, Any], session_state: Any) -> dict[str, Any]:
+def apply_research_bundle_to_session(
+    bundle: Mapping[str, Any], session_state: Any
+) -> dict[str, Any]:
     """Apply loaded bundle values to Streamlit session state."""
     session_values = bundle.get("session_values")
     if not isinstance(session_values, dict):

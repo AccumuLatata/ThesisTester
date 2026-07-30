@@ -43,7 +43,11 @@ def test_3c_global_cluster_mode_sets_level_source_mode():
         trigger="3c",
         direction="long",
         tick_size=TICK,
-        trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3, "_source_mode": "global_cluster"},
+        trigger_params={
+            "entry_retrace_ticks": 2,
+            "max_entry_wait_bars_after_reversal": 3,
+            "_source_mode": "global_cluster",
+        },
     )
     assert not sigs.empty
     assert set(sigs["level_source_mode"]) == {"global_cluster"}
@@ -64,7 +68,11 @@ def test_3c_anchor_rules_mode_sets_user_anchor_label():
         trigger="3c",
         direction="long",
         tick_size=TICK,
-        trigger_params={"entry_retrace_ticks": 2, "max_entry_wait_bars_after_reversal": 3, "_source_mode": "anchor_rules"},
+        trigger_params={
+            "entry_retrace_ticks": 2,
+            "max_entry_wait_bars_after_reversal": 3,
+            "_source_mode": "anchor_rules",
+        },
     )
     assert not sigs.empty
     assert set(sigs["level_source_mode"]) == {"user_anchor"}

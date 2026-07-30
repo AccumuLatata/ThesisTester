@@ -1,4 +1,5 @@
 """Session bootstrap helpers for persisted local dataset state."""
+
 from __future__ import annotations
 
 import streamlit as st
@@ -35,7 +36,9 @@ def bootstrap_active_saved_dataset() -> bool:
         return False
 
     required_meta_keys = ("instrument", "base_interval", "source_timezone", "exchange_timezone")
-    if not isinstance(loaded_meta, dict) or any(key not in loaded_meta for key in required_meta_keys):
+    if not isinstance(loaded_meta, dict) or any(
+        key not in loaded_meta for key in required_meta_keys
+    ):
         clear_active_dataset_id()
         clear_active_levels_hash(dataset_id)
         st.session_state.pop(ACTIVE_SAVED_DATASET_KEY, None)

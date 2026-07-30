@@ -3,6 +3,7 @@
 Converts Phase 4 candidate signals into simulated trades using a single
 fixed SL/TP configuration and displays KPIs, equity curve, and trade table.
 """
+
 from __future__ import annotations
 
 import math
@@ -99,6 +100,7 @@ def _clip_trades_for_chart(trades_df, *, start, end):
         mask &= effective_entry <= end_ts
     return out.loc[mask].copy(deep=True)
 
+
 # ── Require signals ───────────────────────────────────────────────────────────
 if "signals" not in st.session_state:
     st.warning(
@@ -126,7 +128,9 @@ instrument = st.session_state.get("instrument", "ES")
 inst = INSTRUMENTS.get(instrument)
 tick_size = inst.tick_size if inst else 0.25
 point_value = inst.point_value if inst else 50.0
-exchange_tz = st.session_state.get("exchange_timezone") or (inst.exchange_tz if inst else "America/New_York")
+exchange_tz = st.session_state.get("exchange_timezone") or (
+    inst.exchange_tz if inst else "America/New_York"
+)
 ensure_display_timezone(st.session_state, exchange_timezone=exchange_tz)
 
 setup_context_caption = _signal_setup_context(signals, signal_context)
@@ -217,7 +221,9 @@ with st.sidebar:
     )
 
     st.subheader("Session exit policy")
-    flat_by_session_close = st.toggle("Flat by session close", value=False, key="backtest_flat_by_session_close")
+    flat_by_session_close = st.toggle(
+        "Flat by session close", value=False, key="backtest_flat_by_session_close"
+    )
     session_close_time = st.text_input(
         "Session close time",
         value="16:00",
@@ -228,11 +234,7 @@ with st.sidebar:
     session_timezone = st.selectbox(
         "Session timezone",
         options=TIMEZONE_OPTIONS,
-        index=(
-            TIMEZONE_OPTIONS.index(exchange_tz)
-            if exchange_tz in TIMEZONE_OPTIONS
-            else 0
-        ),
+        index=(TIMEZONE_OPTIONS.index(exchange_tz) if exchange_tz in TIMEZONE_OPTIONS else 0),
         key="backtest_session_timezone",
         disabled=not flat_by_session_close,
     )
@@ -244,8 +246,8 @@ with st.sidebar:
         help="Optional local cutoff in HH:MM or HH:MM:SS.",
     )
     effective_no_new_entries_after = (
-        no_new_entries_after.strip() or None
-    ) if flat_by_session_close else None
+        (no_new_entries_after.strip() or None) if flat_by_session_close else None
+    )
 
     st.subheader("Exposure policy")
     exposure_policy = st.selectbox(
@@ -398,7 +400,9 @@ _otf_rejected_count = _otf_summary.get("otf_rejected_signal_count", 0)
 if _otf_enabled:
     _otf_config = _otf_summary.get("otf_filter_config") or {}
     _otf_tfs = _otf_config.get("timeframes", []) if isinstance(_otf_config, dict) else []
-    _otf_min_bars = _otf_config.get("minimum_consecutive_bars", 3) if isinstance(_otf_config, dict) else 3
+    _otf_min_bars = (
+        _otf_config.get("minimum_consecutive_bars", 3) if isinstance(_otf_config, dict) else 3
+    )
     st.info(
         f"🔎 **OTF filter enabled** — timeframes: {', '.join(_otf_tfs) or '—'} · "
         f"min consecutive bars: {_otf_min_bars} · "
@@ -444,20 +448,35 @@ if isinstance(_otf_rejected, pd.DataFrame) and not _otf_rejected.empty:
             "These are distinct from exposure-policy skipped signals and 3c void signal status."
         )
         _rej_cols = [
-            c for c in [
-                "signal_id", "timestamp", "trigger", "direction", "status",
+            c
+            for c in [
+                "signal_id",
+                "timestamp",
+                "trigger",
+                "direction",
+                "status",
                 "otf_filter_reason",
                 "otf_signal_decision_timestamp",
-                *[c for c in _otf_rejected.columns if c.startswith("otf_") and c not in (
-                    "otf_filter_enabled", "otf_filter_passed", "otf_filter_reason",
-                    "otf_signal_decision_timestamp",
-                )],
-            ] if c in _otf_rejected.columns
+                *[
+                    c
+                    for c in _otf_rejected.columns
+                    if c.startswith("otf_")
+                    and c
+                    not in (
+                        "otf_filter_enabled",
+                        "otf_filter_passed",
+                        "otf_filter_reason",
+                        "otf_signal_decision_timestamp",
+                    )
+                ],
+            ]
+            if c in _otf_rejected.columns
         ]
         st.dataframe(_otf_rejected[_rej_cols], width="stretch", hide_index=True)
 
 # KPI cards
 st.subheader("Performance summary")
+
 
 def _fmt(v, fmt=".2f", fallback="—"):
     if v is None:
@@ -532,7 +551,9 @@ if trades.empty:
 has_trades = not trades.empty
 
 if has_trades:
-    group_cols = [c for c in ["trigger_variant", "level_source_mode", "direction"] if c in trades.columns]
+    group_cols = [
+        c for c in ["trigger_variant", "level_source_mode", "direction"] if c in trades.columns
+    ]
     if group_cols and "trigger" in trades.columns:
         trades_3c = trades[trades["trigger"] == "3c"]
         grouped = summarize_trade_groups(trades_3c, group_cols)
@@ -571,12 +592,14 @@ if has_trades:
     with tab_trigger:
         if "trigger" in trades.columns:
             st.dataframe(
-                trades.groupby("trigger").agg(
+                trades.groupby("trigger")
+                .agg(
                     count=("trade_id", "count"),
                     win_rate=("r_multiple", lambda x: (x > 0).mean()),
                     avg_r=("r_multiple", "mean"),
                     total_r=("r_multiple", "sum"),
-                ).reset_index(),
+                )
+                .reset_index(),
                 width="stretch",
                 hide_index=True,
             )
@@ -584,12 +607,14 @@ if has_trades:
     with tab_dir:
         if "direction" in trades.columns:
             st.dataframe(
-                trades.groupby("direction").agg(
+                trades.groupby("direction")
+                .agg(
                     count=("trade_id", "count"),
                     win_rate=("r_multiple", lambda x: (x > 0).mean()),
                     avg_r=("r_multiple", "mean"),
                     total_r=("r_multiple", "sum"),
-                ).reset_index(),
+                )
+                .reset_index(),
                 width="stretch",
                 hide_index=True,
             )
@@ -597,11 +622,13 @@ if has_trades:
     with tab_reason:
         if "exit_reason" in trades.columns:
             st.dataframe(
-                trades.groupby("exit_reason").agg(
+                trades.groupby("exit_reason")
+                .agg(
                     count=("trade_id", "count"),
                     avg_r=("r_multiple", "mean"),
                     total_r=("r_multiple", "sum"),
-                ).reset_index(),
+                )
+                .reset_index(),
                 width="stretch",
                 hide_index=True,
             )
@@ -609,17 +636,42 @@ if has_trades:
 # Full trade table
 if has_trades:
     st.subheader("Trade table")
-    display_cols = [c for c in [
-        "trade_id", "signal_id", "trigger", "direction",
-        "entry_timestamp", "entry_price", "entry_model",
-        "exit_timestamp", "exit_price", "exit_reason",
-        "stop_price", "target_price",
-        "stop_loss_ticks", "take_profit_ticks",
-        "gross_pnl_points", "gross_pnl_currency", "commission_cost", "slippage_cost",
-        "net_pnl_currency", "pnl_points", "pnl_currency", "r_multiple", "bars_held",
-        "zone_low", "zone_high", "level_count", "level_names", "setup_name",
-        "mae_points", "mfe_points",
-    ] if c in trades.columns]
+    display_cols = [
+        c
+        for c in [
+            "trade_id",
+            "signal_id",
+            "trigger",
+            "direction",
+            "entry_timestamp",
+            "entry_price",
+            "entry_model",
+            "exit_timestamp",
+            "exit_price",
+            "exit_reason",
+            "stop_price",
+            "target_price",
+            "stop_loss_ticks",
+            "take_profit_ticks",
+            "gross_pnl_points",
+            "gross_pnl_currency",
+            "commission_cost",
+            "slippage_cost",
+            "net_pnl_currency",
+            "pnl_points",
+            "pnl_currency",
+            "r_multiple",
+            "bars_held",
+            "zone_low",
+            "zone_high",
+            "level_count",
+            "level_names",
+            "setup_name",
+            "mae_points",
+            "mfe_points",
+        ]
+        if c in trades.columns
+    ]
     st.dataframe(trades[display_cols], width="stretch", hide_index=True)
 
 # Optional execution chart
@@ -692,7 +744,11 @@ if show_chart:
                     max_value=max_ts.date(),
                 )
                 chart_start = pd.Timestamp(custom_start_date)
-                chart_end = pd.Timestamp(custom_end_date) + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+                chart_end = (
+                    pd.Timestamp(custom_end_date)
+                    + pd.Timedelta(days=1)
+                    - pd.Timedelta(nanoseconds=1)
+                )
 
         chart_ohlcv_df = (
             ohlcv_df.copy(deep=True)
@@ -727,7 +783,9 @@ if show_chart:
         )
         st.plotly_chart(chart, width="stretch")
         if show_sessions:
-            st.caption("Session context: ETH regions are shaded and RTH starts are marked with dotted vertical lines.")
+            st.caption(
+                "Session context: ETH regions are shaded and RTH starts are marked with dotted vertical lines."
+            )
         st.info(
             "Execution visualization is based on OHLC bars. If SL and TP are both touched within one bar, "
             "engine assumptions determine the recorded outcome; the true intrabar path is unknown without tick data."

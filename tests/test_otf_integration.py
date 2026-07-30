@@ -8,6 +8,7 @@ Covers:
 - Reporting/export OTF metadata
 - Regression boundaries
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -23,7 +24,11 @@ from thesistester.setup import _default_otf_filter_config, normalize_otf_filter_
 from thesistester.analytics.walk_forward import run_walk_forward_sl_tp
 from thesistester.analytics.grid import run_sl_tp_grid
 from thesistester.engine.backtest import simulate_trades
-from thesistester.reporting import build_research_artifact, build_markdown_report, build_otf_filter_metadata
+from thesistester.reporting import (
+    build_research_artifact,
+    build_markdown_report,
+    build_otf_filter_metadata,
+)
 
 
 TZ = "America/New_York"
@@ -104,49 +109,57 @@ def _disabled_config() -> dict:
 
 
 def _enabled_config(timeframes: list[str] | None = None) -> dict:
-    return normalize_otf_filter_config({
-        "enabled": True,
-        "timeframes": timeframes or ["5m"],
-        "alignment_mode": "all",
-        "minimum_consecutive_bars": 3,
-        "directional": True,
-        "use_completed_bars_only": True,
-        "session_reset": "session",
-    })
+    return normalize_otf_filter_config(
+        {
+            "enabled": True,
+            "timeframes": timeframes or ["5m"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 3,
+            "directional": True,
+            "use_completed_bars_only": True,
+            "session_reset": "session",
+        }
+    )
 
 
 def _backtest_signal(bar_index: int = 0, direction: str = "long") -> pd.DataFrame:
-    return pd.DataFrame([{
-        "signal_id": bar_index,
-        "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
-        "bar_index": bar_index,
-        "trigger": "touch",
-        "direction": direction,
-        "zone_low": 99.5,
-        "zone_high": 100.5,
-        "zone_mid": 100.0,
-        "level_count": 2,
-        "level_names": "A|B",
-        "entry_reference_price": 100.0,
-        "entry_model": "candidate_next_bar_open",
-        "status": "candidate",
-        "naked_level_count": 0,
-        "naked_requirement": "any",
-        "notes": "",
-    }])
+    return pd.DataFrame(
+        [
+            {
+                "signal_id": bar_index,
+                "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
+                "bar_index": bar_index,
+                "trigger": "touch",
+                "direction": direction,
+                "zone_low": 99.5,
+                "zone_high": 100.5,
+                "zone_mid": 100.0,
+                "level_count": 2,
+                "level_names": "A|B",
+                "entry_reference_price": 100.0,
+                "entry_model": "candidate_next_bar_open",
+                "status": "candidate",
+                "naked_level_count": 0,
+                "naked_requirement": "any",
+                "notes": "",
+            }
+        ]
+    )
 
 
 def _ohlcv_bars(n: int = 3) -> pd.DataFrame:
     rows = []
     for i in range(n):
-        rows.append({
-            "timestamp": pd.Timestamp(f"2026-01-02 09:{30 + i:02d}:00", tz=TZ),
-            "open": 100.0,
-            "high": 110.0,
-            "low": 90.0,
-            "close": 100.0,
-            "volume": 100.0,
-        })
+        rows.append(
+            {
+                "timestamp": pd.Timestamp(f"2026-01-02 09:{30 + i:02d}:00", tz=TZ),
+                "open": 100.0,
+                "high": 110.0,
+                "low": 90.0,
+                "close": 100.0,
+                "volume": 100.0,
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -490,9 +503,7 @@ class TestOtfFilterResultSummary:
     def test_summary_dict_rejection_rate_none_for_empty(self):
         """rejection_rate is None when candidate_signal_count is 0."""
         sigs = pd.DataFrame(columns=["signal_id", "timestamp", "direction"])
-        result = apply_configured_otf_filter(
-            source_df=_ohlcv_bars(3), candidate_signals=sigs
-        )
+        result = apply_configured_otf_filter(source_df=_ohlcv_bars(3), candidate_signals=sigs)
         assert result.to_summary_dict()["rejection_rate"] is None
 
 
@@ -506,35 +517,41 @@ class TestBacktestOtfIntegration:
         rows = []
         for i in range(5):
             ts = pd.Timestamp(f"2026-01-02 09:{30 + i:02d}:00", tz=TZ)
-            rows.append({
-                "timestamp": ts,
-                "open": 100.0,
-                "high": 110.0,
-                "low": 90.0,
-                "close": 100.0,
-                "volume": 100.0,
-            })
+            rows.append(
+                {
+                    "timestamp": ts,
+                    "open": 100.0,
+                    "high": 110.0,
+                    "low": 90.0,
+                    "close": 100.0,
+                    "volume": 100.0,
+                }
+            )
         return pd.DataFrame(rows)
 
     def _make_signal(self, bar_index: int = 0, signal_id: int = 0) -> pd.DataFrame:
-        return pd.DataFrame([{
-            "signal_id": signal_id,
-            "timestamp": pd.Timestamp(f"2026-01-02 09:{30 + bar_index:02d}:00", tz=TZ),
-            "bar_index": bar_index,
-            "trigger": "touch",
-            "direction": "long",
-            "zone_low": 99.5,
-            "zone_high": 100.5,
-            "zone_mid": 100.0,
-            "level_count": 2,
-            "level_names": "A|B",
-            "entry_reference_price": 100.0,
-            "entry_model": "candidate_next_bar_open",
-            "status": "candidate",
-            "naked_level_count": 0,
-            "naked_requirement": "any",
-            "notes": "",
-        }])
+        return pd.DataFrame(
+            [
+                {
+                    "signal_id": signal_id,
+                    "timestamp": pd.Timestamp(f"2026-01-02 09:{30 + bar_index:02d}:00", tz=TZ),
+                    "bar_index": bar_index,
+                    "trigger": "touch",
+                    "direction": "long",
+                    "zone_low": 99.5,
+                    "zone_high": 100.5,
+                    "zone_mid": 100.0,
+                    "level_count": 2,
+                    "level_names": "A|B",
+                    "entry_reference_price": 100.0,
+                    "entry_model": "candidate_next_bar_open",
+                    "status": "candidate",
+                    "naked_level_count": 0,
+                    "naked_requirement": "any",
+                    "notes": "",
+                }
+            ]
+        )
 
     def test_disabled_backtest_equals_legacy(self):
         """OTF disabled: simulate_trades receives same signals as without OTF."""
@@ -570,12 +587,26 @@ class TestBacktestOtfIntegration:
         """Zero accepted signals: simulate_trades returns empty trades."""
         ohlcv = self._make_ohlcv()
         # Pass empty signals
-        empty_sigs = pd.DataFrame(columns=[
-            "signal_id", "timestamp", "bar_index", "trigger", "direction",
-            "zone_low", "zone_high", "zone_mid", "level_count", "level_names",
-            "entry_reference_price", "entry_model", "status",
-            "naked_level_count", "naked_requirement", "notes",
-        ])
+        empty_sigs = pd.DataFrame(
+            columns=[
+                "signal_id",
+                "timestamp",
+                "bar_index",
+                "trigger",
+                "direction",
+                "zone_low",
+                "zone_high",
+                "zone_mid",
+                "level_count",
+                "level_names",
+                "entry_reference_price",
+                "entry_model",
+                "status",
+                "naked_level_count",
+                "naked_requirement",
+                "notes",
+            ]
+        )
         trades = simulate_trades(
             df=ohlcv,
             signals=empty_sigs,
@@ -665,37 +696,41 @@ class TestGridSearchOtfIntegration:
         rows = []
         for i in range(n):
             ts = pd.Timestamp(f"2026-01-02 09:{30 + i:02d}:00", tz=TZ)
-            rows.append({
-                "timestamp": ts,
-                "open": 100.0,
-                "high": 110.0,
-                "low": 90.0,
-                "close": 100.0,
-                "volume": 100.0,
-            })
+            rows.append(
+                {
+                    "timestamp": ts,
+                    "open": 100.0,
+                    "high": 110.0,
+                    "low": 90.0,
+                    "close": 100.0,
+                    "volume": 100.0,
+                }
+            )
         return pd.DataFrame(rows)
 
     def _make_signals(self) -> pd.DataFrame:
         rows = []
         for i in range(3):
-            rows.append({
-                "signal_id": i,
-                "timestamp": pd.Timestamp(f"2026-01-02 09:{30 + i:02d}:00", tz=TZ),
-                "bar_index": i,
-                "trigger": "touch",
-                "direction": "long",
-                "zone_low": 99.5,
-                "zone_high": 100.5,
-                "zone_mid": 100.0,
-                "level_count": 2,
-                "level_names": "A|B",
-                "entry_reference_price": 100.0,
-                "entry_model": "candidate_next_bar_open",
-                "status": "candidate",
-                "naked_level_count": 0,
-                "naked_requirement": "any",
-                "notes": "",
-            })
+            rows.append(
+                {
+                    "signal_id": i,
+                    "timestamp": pd.Timestamp(f"2026-01-02 09:{30 + i:02d}:00", tz=TZ),
+                    "bar_index": i,
+                    "trigger": "touch",
+                    "direction": "long",
+                    "zone_low": 99.5,
+                    "zone_high": 100.5,
+                    "zone_mid": 100.0,
+                    "level_count": 2,
+                    "level_names": "A|B",
+                    "entry_reference_price": 100.0,
+                    "entry_model": "candidate_next_bar_open",
+                    "status": "candidate",
+                    "naked_level_count": 0,
+                    "naked_requirement": "any",
+                    "notes": "",
+                }
+            )
         return pd.DataFrame(rows)
 
     def test_disabled_grid_equals_legacy_grid(self):
@@ -764,12 +799,26 @@ class TestGridSearchOtfIntegration:
     def test_zero_accepted_grid_is_deterministic(self):
         """Zero accepted signals: grid runs without crashing, zero trades."""
         source = _source_1m("2026-01-02 09:30:00", count=50, trend="up")
-        empty_sigs = pd.DataFrame(columns=[
-            "signal_id", "timestamp", "direction", "bar_index", "trigger",
-            "zone_low", "zone_high", "zone_mid", "level_count", "level_names",
-            "entry_reference_price", "entry_model", "status",
-            "naked_level_count", "naked_requirement", "notes",
-        ])
+        empty_sigs = pd.DataFrame(
+            columns=[
+                "signal_id",
+                "timestamp",
+                "direction",
+                "bar_index",
+                "trigger",
+                "zone_low",
+                "zone_high",
+                "zone_mid",
+                "level_count",
+                "level_names",
+                "entry_reference_price",
+                "entry_model",
+                "status",
+                "naked_level_count",
+                "naked_requirement",
+                "notes",
+            ]
+        )
         grid = run_sl_tp_grid(
             df=source,
             signals=empty_sigs,
@@ -811,7 +860,10 @@ class TestGridSearchOtfIntegration:
             session_timezone=TZ,
         )
         # OTF rejected count is signal-level, not trade-level
-        assert result.otf_rejected_signal_count == result.candidate_signal_count - result.otf_accepted_signal_count
+        assert (
+            result.otf_rejected_signal_count
+            == result.candidate_signal_count - result.otf_accepted_signal_count
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -824,36 +876,42 @@ class TestWalkForwardOtfIntegration:
         """Make a simple OHLCV DataFrame and signals for walk-forward tests."""
         rows = []
         for i in range(n_bars):
-            rows.append({
-                "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
-                "open": 100.0,
-                "high": 110.0,
-                "low": 90.0,
-                "close": 100.0,
-                "volume": 100.0,
-            })
+            rows.append(
+                {
+                    "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ)
+                    + pd.Timedelta(minutes=i),
+                    "open": 100.0,
+                    "high": 110.0,
+                    "low": 90.0,
+                    "close": 100.0,
+                    "volume": 100.0,
+                }
+            )
         ohlcv = pd.DataFrame(rows)
 
         sigs = []
         for i in range(0, n_bars - 1, 5):
-            sigs.append({
-                "signal_id": i,
-                "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
-                "bar_index": i,
-                "trigger": "touch",
-                "direction": "long",
-                "zone_low": 99.5,
-                "zone_high": 100.5,
-                "zone_mid": 100.0,
-                "level_count": 2,
-                "level_names": "A|B",
-                "entry_reference_price": 100.0,
-                "entry_model": "candidate_next_bar_open",
-                "status": "candidate",
-                "naked_level_count": 0,
-                "naked_requirement": "any",
-                "notes": "",
-            })
+            sigs.append(
+                {
+                    "signal_id": i,
+                    "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ)
+                    + pd.Timedelta(minutes=i),
+                    "bar_index": i,
+                    "trigger": "touch",
+                    "direction": "long",
+                    "zone_low": 99.5,
+                    "zone_high": 100.5,
+                    "zone_mid": 100.0,
+                    "level_count": 2,
+                    "level_names": "A|B",
+                    "entry_reference_price": 100.0,
+                    "entry_model": "candidate_next_bar_open",
+                    "status": "candidate",
+                    "naked_level_count": 0,
+                    "naked_requirement": "any",
+                    "notes": "",
+                }
+            )
         signals = pd.DataFrame(sigs)
         return ohlcv, signals
 
@@ -886,7 +944,9 @@ class TestWalkForwardOtfIntegration:
 
         assert len(results_legacy) == len(results_otf)
         if not results_legacy.empty:
-            assert list(results_legacy["train_trade_count"]) == list(results_otf["train_trade_count"])
+            assert list(results_legacy["train_trade_count"]) == list(
+                results_otf["train_trade_count"]
+            )
             assert list(results_legacy["test_trade_count"]) == list(results_otf["test_trade_count"])
 
     def test_disabled_walk_forward_no_otf_config_equals_none(self):
@@ -894,14 +954,26 @@ class TestWalkForwardOtfIntegration:
         ohlcv, signals = self._make_ohlcv_and_signals(n_bars=30)
 
         results_none = run_walk_forward_sl_tp(
-            df=ohlcv, signals=signals, tick_size=TICK, point_value=POINT_VALUE,
-            stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
-            train_bars=10, test_bars=5, otf_config=None,
+            df=ohlcv,
+            signals=signals,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=10,
+            test_bars=5,
+            otf_config=None,
         )
         results_disabled = run_walk_forward_sl_tp(
-            df=ohlcv, signals=signals, tick_size=TICK, point_value=POINT_VALUE,
-            stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
-            train_bars=10, test_bars=5, otf_config=_disabled_config(),
+            df=ohlcv,
+            signals=signals,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=10,
+            test_bars=5,
+            otf_config=_disabled_config(),
         )
         assert len(results_none) == len(results_disabled)
 
@@ -909,9 +981,15 @@ class TestWalkForwardOtfIntegration:
         """Walk-forward results include otf_filter_enabled column."""
         ohlcv, signals = self._make_ohlcv_and_signals(n_bars=30)
         results = run_walk_forward_sl_tp(
-            df=ohlcv, signals=signals, tick_size=TICK, point_value=POINT_VALUE,
-            stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
-            train_bars=10, test_bars=5, otf_config=_disabled_config(),
+            df=ohlcv,
+            signals=signals,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=10,
+            test_bars=5,
+            otf_config=_disabled_config(),
         )
         assert "otf_filter_enabled" in results.columns
 
@@ -919,13 +997,23 @@ class TestWalkForwardOtfIntegration:
         """Walk-forward results include OTF candidate/accepted/rejected count columns."""
         ohlcv, signals = self._make_ohlcv_and_signals(n_bars=30)
         results = run_walk_forward_sl_tp(
-            df=ohlcv, signals=signals, tick_size=TICK, point_value=POINT_VALUE,
-            stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
-            train_bars=10, test_bars=5, otf_config=_disabled_config(),
+            df=ohlcv,
+            signals=signals,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=10,
+            test_bars=5,
+            otf_config=_disabled_config(),
         )
         for col in [
-            "train_otf_candidate_count", "train_otf_accepted_count", "train_otf_rejected_count",
-            "test_otf_candidate_count", "test_otf_accepted_count", "test_otf_rejected_count",
+            "train_otf_candidate_count",
+            "train_otf_accepted_count",
+            "train_otf_rejected_count",
+            "test_otf_candidate_count",
+            "test_otf_accepted_count",
+            "test_otf_rejected_count",
         ]:
             assert col in results.columns
 
@@ -933,9 +1021,15 @@ class TestWalkForwardOtfIntegration:
         """OTF filter_enabled value is consistent across all folds."""
         ohlcv, signals = self._make_ohlcv_and_signals(n_bars=30)
         results = run_walk_forward_sl_tp(
-            df=ohlcv, signals=signals, tick_size=TICK, point_value=POINT_VALUE,
-            stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
-            train_bars=10, test_bars=5, otf_config=_disabled_config(),
+            df=ohlcv,
+            signals=signals,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=10,
+            test_bars=5,
+            otf_config=_disabled_config(),
         )
         if not results.empty:
             # All folds have same otf_filter_enabled value
@@ -945,16 +1039,35 @@ class TestWalkForwardOtfIntegration:
         """Zero accepted train signals: fold status is no_train_candidate, no crash."""
         ohlcv, _ = self._make_ohlcv_and_signals(n_bars=30)
         # Use empty signals DataFrame so all folds have no train signals
-        empty_signals = pd.DataFrame(columns=[
-            "signal_id", "timestamp", "bar_index", "trigger", "direction",
-            "zone_low", "zone_high", "zone_mid", "level_count", "level_names",
-            "entry_reference_price", "entry_model", "status",
-            "naked_level_count", "naked_requirement", "notes",
-        ])
+        empty_signals = pd.DataFrame(
+            columns=[
+                "signal_id",
+                "timestamp",
+                "bar_index",
+                "trigger",
+                "direction",
+                "zone_low",
+                "zone_high",
+                "zone_mid",
+                "level_count",
+                "level_names",
+                "entry_reference_price",
+                "entry_model",
+                "status",
+                "naked_level_count",
+                "naked_requirement",
+                "notes",
+            ]
+        )
         results = run_walk_forward_sl_tp(
-            df=ohlcv, signals=empty_signals, tick_size=TICK, point_value=POINT_VALUE,
-            stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
-            train_bars=10, test_bars=5,
+            df=ohlcv,
+            signals=empty_signals,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=10,
+            test_bars=5,
         )
         assert isinstance(results, pd.DataFrame)
         if not results.empty:
@@ -1131,11 +1244,13 @@ class TestRegressionBoundaries:
     def test_generate_signals_unchanged(self):
         """generate_signals() function is importable and unchanged."""
         from thesistester.engine.signals import generate_signals
+
         assert callable(generate_signals)
 
     def test_apply_otf_filter_pure_behavior_unchanged(self):
         """apply_otf_filter() pure behavior is unchanged by PR 5."""
         from thesistester.engine.otf_filter import apply_otf_filter
+
         sigs = pd.DataFrame(columns=["signal_id", "timestamp", "direction"])
         source = pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
         accepted, rejected = apply_otf_filter(source, sigs, enabled=False)
@@ -1144,19 +1259,45 @@ class TestRegressionBoundaries:
 
     def test_simulate_trades_unchanged(self):
         """simulate_trades() function signature and behavior unchanged."""
-        ohlcv = pd.DataFrame([{
-            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
-            "open": 100.0, "high": 110.0, "low": 90.0, "close": 100.0, "volume": 100.0,
-        }])
-        sigs = pd.DataFrame(columns=[
-            "signal_id", "timestamp", "bar_index", "trigger", "direction",
-            "zone_low", "zone_high", "zone_mid", "level_count", "level_names",
-            "entry_reference_price", "entry_model", "status",
-            "naked_level_count", "naked_requirement", "notes",
-        ])
+        ohlcv = pd.DataFrame(
+            [
+                {
+                    "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
+                    "open": 100.0,
+                    "high": 110.0,
+                    "low": 90.0,
+                    "close": 100.0,
+                    "volume": 100.0,
+                }
+            ]
+        )
+        sigs = pd.DataFrame(
+            columns=[
+                "signal_id",
+                "timestamp",
+                "bar_index",
+                "trigger",
+                "direction",
+                "zone_low",
+                "zone_high",
+                "zone_mid",
+                "level_count",
+                "level_names",
+                "entry_reference_price",
+                "entry_model",
+                "status",
+                "naked_level_count",
+                "naked_requirement",
+                "notes",
+            ]
+        )
         trades = simulate_trades(
-            df=ohlcv, signals=sigs, tick_size=TICK, point_value=POINT_VALUE,
-            stop_loss_ticks=4, take_profit_ticks=8,
+            df=ohlcv,
+            signals=sigs,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
         )
         assert isinstance(trades, pd.DataFrame)
         assert trades.empty
@@ -1174,22 +1315,42 @@ class TestRegressionBoundaries:
 
     def test_walk_forward_without_otf_unchanged(self):
         """run_walk_forward_sl_tp without otf_config runs as before."""
-        ohlcv = pd.DataFrame([{
-            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
-            "open": 100.0, "high": 110.0, "low": 90.0, "close": 100.0, "volume": 100.0,
-        } for i in range(30)])
+        ohlcv = pd.DataFrame(
+            [
+                {
+                    "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ)
+                    + pd.Timedelta(minutes=i),
+                    "open": 100.0,
+                    "high": 110.0,
+                    "low": 90.0,
+                    "close": 100.0,
+                    "volume": 100.0,
+                }
+                for i in range(30)
+            ]
+        )
         sigs = pd.DataFrame([])
         # Should not raise with otf_config=None (default)
         results = run_walk_forward_sl_tp(
-            df=ohlcv, signals=sigs, tick_size=TICK, point_value=POINT_VALUE,
-            stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
-            train_bars=10, test_bars=5,
+            df=ohlcv,
+            signals=sigs,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=10,
+            test_bars=5,
         )
         assert isinstance(results, pd.DataFrame)
 
     def test_otf_integration_module_importable_from_engine(self):
         """OtfFilterResult and apply_configured_otf_filter importable from engine."""
-        from thesistester.engine import apply_configured_otf_filter, OtfFilterResult, resolve_otf_config
+        from thesistester.engine import (
+            apply_configured_otf_filter,
+            OtfFilterResult,
+            resolve_otf_config,
+        )
+
         assert callable(apply_configured_otf_filter)
         assert callable(resolve_otf_config)
         assert OtfFilterResult is not None
@@ -1204,6 +1365,7 @@ class TestOtfFilterResultFrozen:
     def test_frozen_dataclass_rejects_attribute_reassignment(self):
         """OtfFilterResult is frozen — attribute reassignment must raise FrozenInstanceError."""
         import dataclasses
+
         source = _ohlcv_bars(3)
         sigs = _signals_df(_signal(signal_id=1, timestamp="2026-01-02 09:30:00"))
         result = apply_configured_otf_filter(source_df=source, candidate_signals=sigs)
@@ -1213,6 +1375,7 @@ class TestOtfFilterResultFrozen:
     def test_frozen_dataclass_rejects_count_reassignment(self):
         """OtfFilterResult frozen — count attribute reassignment raises."""
         import dataclasses
+
         source = _ohlcv_bars(3)
         sigs = _signals_df(_signal(signal_id=1, timestamp="2026-01-02 09:30:00"))
         result = apply_configured_otf_filter(source_df=source, candidate_signals=sigs)
@@ -1224,29 +1387,36 @@ class TestWalkForwardShortFoldRobustness:
     """Walk-forward OTF with fold slices too short for OTF evaluation."""
 
     def _make_enabled_config(self) -> dict:
-        return normalize_otf_filter_config({
-            "enabled": True,
-            "timeframes": ["5m"],
-            "alignment_mode": "all",
-            "minimum_consecutive_bars": 3,
-            "directional": True,
-            "use_completed_bars_only": True,
-            "session_reset": "session",
-        })
+        return normalize_otf_filter_config(
+            {
+                "enabled": True,
+                "timeframes": ["5m"],
+                "alignment_mode": "all",
+                "minimum_consecutive_bars": 3,
+                "directional": True,
+                "use_completed_bars_only": True,
+                "session_reset": "session",
+            }
+        )
 
     def _make_1bar_ohlcv(self) -> pd.DataFrame:
-        return pd.DataFrame([{
-            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
-            "open": 100.0,
-            "high": 110.0,
-            "low": 90.0,
-            "close": 100.0,
-            "volume": 100.0,
-        }])
+        return pd.DataFrame(
+            [
+                {
+                    "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
+                    "open": 100.0,
+                    "high": 110.0,
+                    "low": 90.0,
+                    "close": 100.0,
+                    "volume": 100.0,
+                }
+            ]
+        )
 
     def test_enabled_otf_with_1bar_fold_does_not_crash(self):
         """OTF enabled walk-forward with 1-bar fold slice does not raise."""
         from thesistester.analytics.walk_forward import _filter_fold_signals_with_otf
+
         fold_df = self._make_1bar_ohlcv()
         fold_signals = _signals_df(
             _signal(signal_id=1, timestamp="2026-01-02 09:30:00", bar_index=0),
@@ -1266,6 +1436,7 @@ class TestWalkForwardShortFoldRobustness:
     def test_enabled_otf_short_fold_rejects_all_as_unknown(self):
         """Insufficient OTF history rejects all fold candidates, not crashes."""
         from thesistester.analytics.walk_forward import _filter_fold_signals_with_otf
+
         fold_df = self._make_1bar_ohlcv()
         # 3 candidate signals
         fold_signals = _signals_df(
@@ -1286,6 +1457,7 @@ class TestWalkForwardShortFoldRobustness:
     def test_enabled_otf_short_fold_candidate_equals_accepted_plus_rejected(self):
         """candidate_count == accepted_count + rejected_count even on short folds."""
         from thesistester.analytics.walk_forward import _filter_fold_signals_with_otf
+
         fold_df = self._make_1bar_ohlcv()
         fold_signals = _signals_df(
             _signal(signal_id=1, timestamp="2026-01-02 09:30:00", bar_index=0),
@@ -1302,14 +1474,20 @@ class TestWalkForwardShortFoldRobustness:
     def test_short_fold_in_run_walk_forward_does_not_crash(self):
         """run_walk_forward_sl_tp with enabled OTF and tiny fold does not raise."""
         # Use very short train_bars=2 to create folds with insufficient OTF history
-        ohlcv = pd.DataFrame([{
-            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
-            "open": 100.0,
-            "high": 110.0,
-            "low": 90.0,
-            "close": 100.0,
-            "volume": 100.0,
-        } for i in range(20)])
+        ohlcv = pd.DataFrame(
+            [
+                {
+                    "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ)
+                    + pd.Timedelta(minutes=i),
+                    "open": 100.0,
+                    "high": 110.0,
+                    "low": 90.0,
+                    "close": 100.0,
+                    "volume": 100.0,
+                }
+                for i in range(20)
+            ]
+        )
         signals = _signals_df(
             _signal(signal_id=1, timestamp="2026-01-02 09:31:00", bar_index=1),
         )
@@ -1328,14 +1506,20 @@ class TestWalkForwardShortFoldRobustness:
 
     def test_short_fold_produces_no_train_candidate_when_all_rejected(self):
         """Short fold with all OTF-rejected train signals → status no_train_candidate."""
-        ohlcv = pd.DataFrame([{
-            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
-            "open": 100.0,
-            "high": 110.0,
-            "low": 90.0,
-            "close": 100.0,
-            "volume": 100.0,
-        } for i in range(10)])
+        ohlcv = pd.DataFrame(
+            [
+                {
+                    "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ)
+                    + pd.Timedelta(minutes=i),
+                    "open": 100.0,
+                    "high": 110.0,
+                    "low": 90.0,
+                    "close": 100.0,
+                    "volume": 100.0,
+                }
+                for i in range(10)
+            ]
+        )
         signals = _signals_df(
             _signal(signal_id=1, timestamp="2026-01-02 09:31:00", bar_index=1),
         )
@@ -1356,26 +1540,44 @@ class TestWalkForwardShortFoldRobustness:
 
     def test_disabled_walk_forward_unchanged_by_robustness_fix(self):
         """Disabled OTF walk-forward is unaffected by the short-fold robustness fix."""
-        ohlcv = pd.DataFrame([{
-            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
-            "open": 100.0,
-            "high": 110.0,
-            "low": 90.0,
-            "close": 100.0,
-            "volume": 100.0,
-        } for i in range(20)])
+        ohlcv = pd.DataFrame(
+            [
+                {
+                    "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ)
+                    + pd.Timedelta(minutes=i),
+                    "open": 100.0,
+                    "high": 110.0,
+                    "low": 90.0,
+                    "close": 100.0,
+                    "volume": 100.0,
+                }
+                for i in range(20)
+            ]
+        )
         signals = _signals_df(
             _signal(signal_id=1, timestamp="2026-01-02 09:31:00", bar_index=1),
         )
         results_none = run_walk_forward_sl_tp(
-            df=ohlcv, signals=signals, tick_size=TICK, point_value=POINT_VALUE,
-            stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
-            train_bars=5, test_bars=5, otf_config=None,
+            df=ohlcv,
+            signals=signals,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=5,
+            test_bars=5,
+            otf_config=None,
         )
         results_disabled = run_walk_forward_sl_tp(
-            df=ohlcv, signals=signals, tick_size=TICK, point_value=POINT_VALUE,
-            stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
-            train_bars=5, test_bars=5, otf_config=_disabled_config(),
+            df=ohlcv,
+            signals=signals,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=5,
+            test_bars=5,
+            otf_config=_disabled_config(),
         )
         assert len(results_none) == len(results_disabled)
 
@@ -1398,6 +1600,7 @@ class TestOtfMarkdownNoneFormatting:
     def test_build_otf_filter_metadata_with_only_wfo_data(self):
         """Metadata with only walk-forward data: available=True, counts may be None."""
         from thesistester.reporting import build_otf_filter_metadata
+
         state = self._make_wfo_only_state()
         meta = build_otf_filter_metadata(state)
         assert meta["available"] is True
@@ -1423,6 +1626,7 @@ class TestOtfMarkdownNoneFormatting:
             "applied_scopes": [],
         }
         from thesistester.reporting import _otf_markdown_section
+
         md = _otf_markdown_section(artifact_otf)
         assert "None" not in md, f"Markdown contains 'None': {md!r}"
         assert "—" in md
@@ -1430,6 +1634,7 @@ class TestOtfMarkdownNoneFormatting:
     def test_markdown_zero_counts_render_as_zero(self):
         """Markdown section with zero counts shows '0', not '—'."""
         from thesistester.reporting import _otf_markdown_section
+
         artifact_otf = {
             "available": True,
             "enabled": True,
@@ -1451,21 +1656,25 @@ class TestOtfMarkdownNoneFormatting:
     def test_dash_if_none_helper_none_gives_dash(self):
         """_dash_if_none(None) returns '—'."""
         from thesistester.reporting import _dash_if_none
+
         assert _dash_if_none(None) == "—"
 
     def test_dash_if_none_helper_zero_gives_zero(self):
         """_dash_if_none(0) returns 0, not '—'."""
         from thesistester.reporting import _dash_if_none
+
         assert _dash_if_none(0) == 0
 
     def test_dash_if_none_helper_string_gives_string(self):
         """_dash_if_none('abc') returns 'abc'."""
         from thesistester.reporting import _dash_if_none
+
         assert _dash_if_none("abc") == "abc"
 
     def test_dash_if_none_helper_false_gives_false(self):
         """_dash_if_none(False) returns False, not '—'."""
         from thesistester.reporting import _dash_if_none
+
         assert _dash_if_none(False) is False
 
 
@@ -1476,35 +1685,44 @@ class TestOtfMarkdownNoneFormatting:
 
 def _make_ohlcv_for_wf(n_bars: int = 20) -> pd.DataFrame:
     """Minimal OHLCV for walk-forward tests."""
-    return pd.DataFrame([{
-        "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
-        "open": 100.0,
-        "high": 110.0,
-        "low": 90.0,
-        "close": 100.0,
-        "volume": 100.0,
-    } for i in range(n_bars)])
+    return pd.DataFrame(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
+                "open": 100.0,
+                "high": 110.0,
+                "low": 90.0,
+                "close": 100.0,
+                "volume": 100.0,
+            }
+            for i in range(n_bars)
+        ]
+    )
 
 
 def _make_signals_for_wf() -> pd.DataFrame:
-    return pd.DataFrame([{
-        "signal_id": 1,
-        "timestamp": pd.Timestamp("2026-01-02 09:31:00", tz=TZ),
-        "bar_index": 1,
-        "trigger": "touch",
-        "direction": "long",
-        "zone_low": 99.5,
-        "zone_high": 100.5,
-        "zone_mid": 100.0,
-        "level_count": 2,
-        "level_names": "A|B",
-        "entry_reference_price": 100.0,
-        "entry_model": "candidate_next_bar_open",
-        "status": "candidate",
-        "naked_level_count": 0,
-        "naked_requirement": "any",
-        "notes": "",
-    }])
+    return pd.DataFrame(
+        [
+            {
+                "signal_id": 1,
+                "timestamp": pd.Timestamp("2026-01-02 09:31:00", tz=TZ),
+                "bar_index": 1,
+                "trigger": "touch",
+                "direction": "long",
+                "zone_low": 99.5,
+                "zone_high": 100.5,
+                "zone_mid": 100.0,
+                "level_count": 2,
+                "level_names": "A|B",
+                "entry_reference_price": 100.0,
+                "entry_model": "candidate_next_bar_open",
+                "status": "candidate",
+                "naked_level_count": 0,
+                "naked_requirement": "any",
+                "notes": "",
+            }
+        ]
+    )
 
 
 class TestWalkForwardOtfConfigValidation:
@@ -1555,16 +1773,33 @@ class TestWalkForwardOtfConfigValidation:
     def test_filter_fold_signals_still_handles_short_fold(self):
         """After fix: _filter_fold_signals_with_otf still rejects all on 1-bar fold."""
         from thesistester.analytics.walk_forward import _filter_fold_signals_with_otf
-        fold_df = pd.DataFrame([{
-            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
-            "open": 100.0, "high": 110.0, "low": 90.0, "close": 100.0, "volume": 100.0,
-        }])
-        fold_signals = pd.DataFrame([_signal(signal_id=1, timestamp="2026-01-02 09:30:00", bar_index=0)])
-        valid_config = normalize_otf_filter_config({
-            "enabled": True, "timeframes": ["5m"],
-            "alignment_mode": "all", "minimum_consecutive_bars": 3,
-            "directional": True, "use_completed_bars_only": True, "session_reset": "session",
-        })
+
+        fold_df = pd.DataFrame(
+            [
+                {
+                    "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
+                    "open": 100.0,
+                    "high": 110.0,
+                    "low": 90.0,
+                    "close": 100.0,
+                    "volume": 100.0,
+                }
+            ]
+        )
+        fold_signals = pd.DataFrame(
+            [_signal(signal_id=1, timestamp="2026-01-02 09:30:00", bar_index=0)]
+        )
+        valid_config = normalize_otf_filter_config(
+            {
+                "enabled": True,
+                "timeframes": ["5m"],
+                "alignment_mode": "all",
+                "minimum_consecutive_bars": 3,
+                "directional": True,
+                "use_completed_bars_only": True,
+                "session_reset": "session",
+            }
+        )
         accepted, rejected_count, candidate_count = _filter_fold_signals_with_otf(
             fold_df=fold_df,
             fold_signals=fold_signals,
@@ -1579,19 +1814,41 @@ class TestWalkForwardOtfConfigValidation:
         """_filter_fold_signals_with_otf re-raises unexpected ValueError from apply_otf_filter."""
         from unittest.mock import patch
         from thesistester.analytics.walk_forward import _filter_fold_signals_with_otf
-        fold_df = pd.DataFrame([{
-            "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
-            "open": 100.0, "high": 110.0, "low": 90.0, "close": 100.0, "volume": 100.0,
-        }])
-        fold_signals = pd.DataFrame([_signal(signal_id=1, timestamp="2026-01-02 09:30:00", bar_index=0)])
-        valid_config = normalize_otf_filter_config({
-            "enabled": True, "timeframes": ["5m"],
-            "alignment_mode": "all", "minimum_consecutive_bars": 3,
-            "directional": True, "use_completed_bars_only": True, "session_reset": "session",
-        })
+
+        fold_df = pd.DataFrame(
+            [
+                {
+                    "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ),
+                    "open": 100.0,
+                    "high": 110.0,
+                    "low": 90.0,
+                    "close": 100.0,
+                    "volume": 100.0,
+                }
+            ]
+        )
+        fold_signals = pd.DataFrame(
+            [_signal(signal_id=1, timestamp="2026-01-02 09:30:00", bar_index=0)]
+        )
+        valid_config = normalize_otf_filter_config(
+            {
+                "enabled": True,
+                "timeframes": ["5m"],
+                "alignment_mode": "all",
+                "minimum_consecutive_bars": 3,
+                "directional": True,
+                "use_completed_bars_only": True,
+                "session_reset": "session",
+            }
+        )
         unexpected_msg = "Completely unexpected internal programming error XYZ"
-        with patch("thesistester.engine.otf_filter.apply_otf_filter", side_effect=ValueError(unexpected_msg)):
-            with pytest.raises(ValueError, match="Completely unexpected internal programming error XYZ"):
+        with patch(
+            "thesistester.engine.otf_filter.apply_otf_filter",
+            side_effect=ValueError(unexpected_msg),
+        ):
+            with pytest.raises(
+                ValueError, match="Completely unexpected internal programming error XYZ"
+            ):
                 _filter_fold_signals_with_otf(
                     fold_df=fold_df,
                     fold_signals=fold_signals,
@@ -1603,11 +1860,17 @@ class TestWalkForwardOtfConfigValidation:
         """Valid enabled OTF config does not raise and produces fold results."""
         ohlcv = _make_ohlcv_for_wf(n_bars=20)
         signals = _make_signals_for_wf()
-        valid_config = normalize_otf_filter_config({
-            "enabled": True, "timeframes": ["5m"],
-            "alignment_mode": "all", "minimum_consecutive_bars": 3,
-            "directional": True, "use_completed_bars_only": True, "session_reset": "session",
-        })
+        valid_config = normalize_otf_filter_config(
+            {
+                "enabled": True,
+                "timeframes": ["5m"],
+                "alignment_mode": "all",
+                "minimum_consecutive_bars": 3,
+                "directional": True,
+                "use_completed_bars_only": True,
+                "session_reset": "session",
+            }
+        )
         results = run_walk_forward_sl_tp(
             df=ohlcv,
             signals=signals,
@@ -1628,14 +1891,26 @@ class TestWalkForwardOtfConfigValidation:
         ohlcv = _make_ohlcv_for_wf(n_bars=20)
         signals = _make_signals_for_wf()
         results_none = run_walk_forward_sl_tp(
-            df=ohlcv, signals=signals, tick_size=TICK, point_value=POINT_VALUE,
-            stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
-            train_bars=5, test_bars=5, otf_config=None,
+            df=ohlcv,
+            signals=signals,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=5,
+            test_bars=5,
+            otf_config=None,
         )
         results_disabled = run_walk_forward_sl_tp(
-            df=ohlcv, signals=signals, tick_size=TICK, point_value=POINT_VALUE,
-            stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
-            train_bars=5, test_bars=5, otf_config=_disabled_config(),
+            df=ohlcv,
+            signals=signals,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=5,
+            test_bars=5,
+            otf_config=_disabled_config(),
         )
         assert len(results_none) == len(results_disabled)
         # Both should show OTF disabled
@@ -1650,9 +1925,15 @@ class TestWalkForwardOtfConfigValidation:
         raised = False
         try:
             run_walk_forward_sl_tp(
-                df=ohlcv, signals=signals, tick_size=TICK, point_value=POINT_VALUE,
-                stop_loss_ticks_values=[4], take_profit_ticks_values=[8],
-                train_bars=5, test_bars=5, otf_config=invalid_config,
+                df=ohlcv,
+                signals=signals,
+                tick_size=TICK,
+                point_value=POINT_VALUE,
+                stop_loss_ticks_values=[4],
+                take_profit_ticks_values=[8],
+                train_bars=5,
+                test_bars=5,
+                otf_config=invalid_config,
             )
         except ValueError:
             raised = True

@@ -10,6 +10,7 @@ Covers:
 - Validation / sanitisation of invalid values
 - Engine isolation (simulate_trades / run_sl_tp_grid remain unaffected)
 """
+
 from __future__ import annotations
 
 
@@ -46,6 +47,7 @@ from thesistester.persistence.local_store import (
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(autouse=True)
 def isolated_store(tmp_path, monkeypatch):
     """Redirect the persistence store to a fresh temp directory for each test."""
@@ -54,6 +56,7 @@ def isolated_store(tmp_path, monkeypatch):
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _sample_backtest_defaults() -> dict:
     return {
@@ -103,6 +106,7 @@ def _sample_grid_defaults() -> dict:
 
 # ── 1. Backtest defaults roundtrip ────────────────────────────────────────────
 
+
 def test_backtest_defaults_roundtrip():
     """Save, load, and verify schema version is present."""
     data = _sample_backtest_defaults()
@@ -124,6 +128,7 @@ def test_backtest_defaults_absent_returns_none():
 
 # ── 2. Grid defaults roundtrip ────────────────────────────────────────────────
 
+
 def test_grid_defaults_roundtrip():
     """Save, load, and verify schema version is present."""
     data = _sample_grid_defaults()
@@ -143,6 +148,7 @@ def test_grid_defaults_absent_returns_none():
 
 
 # ── 3. Namespace isolation ────────────────────────────────────────────────────
+
 
 def test_saving_backtest_does_not_affect_grid():
     """Saving Backtest defaults must not create or overwrite Grid defaults."""
@@ -183,6 +189,7 @@ def test_namespaces_coexist_independently():
 
 # ── 4. Existing UI state preservation ────────────────────────────────────────
 
+
 def test_writing_backtest_defaults_preserves_other_ui_keys():
     """Writing Backtest defaults must not remove existing keys like active_dataset_id."""
     set_active_dataset_id("abc123")
@@ -210,6 +217,7 @@ def test_both_defaults_and_active_dataset_coexist():
 
 
 # ── 5. Schema drift ───────────────────────────────────────────────────────────
+
 
 def test_backtest_wrong_schema_version_returns_none():
     """A future/different schema version must cause defaults to be ignored."""
@@ -241,6 +249,7 @@ def test_backtest_missing_schema_version_returns_none():
 
 
 # ── 6. Clear / reset ─────────────────────────────────────────────────────────
+
 
 def test_clear_backtest_removes_only_backtest():
     """clear_backtest_defaults must not remove Grid defaults or other keys."""
@@ -278,6 +287,7 @@ def test_clear_grid_when_absent_is_safe():
 
 
 # ── 7. Validation / sanitisation ─────────────────────────────────────────────
+
 
 def test_sanitize_backtest_invalid_exposure_policy_dropped():
     raw = {"sl_ticks": 8.0, "exposure_policy": "invalid_policy", "defaults_schema_version": 1}
@@ -399,6 +409,7 @@ def test_sanitize_all_exposure_policies_accepted():
 
 # ── 8. apply_backtest_defaults / apply_grid_defaults ─────────────────────────
 
+
 def test_apply_backtest_does_not_overwrite_existing_keys():
     """apply_backtest_defaults must not overwrite keys already in session_state."""
     session = {"backtest_sl_ticks": 5.0}  # user has already set this
@@ -414,8 +425,8 @@ def test_apply_grid_does_not_overwrite_existing_keys():
     session = {"grid_sl_start": 2.0}
     raw = {"sl_start": 8.0, "tp_start": 12.0, "defaults_schema_version": 1}
     apply_grid_defaults(session, raw)
-    assert session["grid_sl_start"] == 2.0   # unchanged
-    assert session["grid_tp_start"] == 12.0   # injected
+    assert session["grid_sl_start"] == 2.0  # unchanged
+    assert session["grid_tp_start"] == 12.0  # injected
 
 
 def test_apply_backtest_invalid_values_not_injected():
@@ -434,6 +445,7 @@ def test_apply_backtest_invalid_values_not_injected():
 
 
 # ── 9. collect_backtest_defaults / collect_grid_defaults ─────────────────────
+
 
 def test_collect_backtest_defaults_extracts_known_keys():
     session = {
@@ -466,6 +478,7 @@ def test_collect_grid_defaults_extracts_known_keys():
 
 
 # ── 10. reset_backtest_session_keys / reset_grid_session_keys ─────────────────
+
 
 def test_reset_backtest_removes_widget_keys_not_result_keys():
     session = {
@@ -522,11 +535,11 @@ def test_reset_grid_preserves_ranking_and_trade_count_result_keys():
         "grid_ranking_metric_widget": "profit_factor",
         "grid_ranking_metric": "profit_factor",  # post-run result
         "grid_min_trades_widget": 5,
-        "grid_min_trades": 5,                    # post-run result
+        "grid_min_trades": 5,  # post-run result
         "grid_min_long_trades_widget": 3,
-        "grid_min_long_trades": 3,               # post-run result
+        "grid_min_long_trades": 3,  # post-run result
         "grid_min_short_trades_widget": 3,
-        "grid_min_short_trades": 3,              # post-run result
+        "grid_min_short_trades": 3,  # post-run result
     }
     reset_grid_session_keys(session)
 
@@ -543,6 +556,7 @@ def test_reset_grid_preserves_ranking_and_trade_count_result_keys():
 
 
 # ── 11. Missing / corrupt ui_state.json is handled gracefully ─────────────────
+
 
 def test_corrupt_ui_state_does_not_crash(tmp_path, monkeypatch):
     store = tmp_path / "corrupt_store"
@@ -567,40 +581,48 @@ def test_missing_ui_state_does_not_crash():
 
 # ── 12. Engine isolation ─────────────────────────────────────────────────────
 
+
 def _make_df():
     import pandas as pd
-    timestamps = pd.date_range("2026-01-02 09:30", periods=20, freq="1min",
-                               tz="America/New_York")
-    return pd.DataFrame({
-        "timestamp": timestamps,
-        "open":   [100.0] * 20,
-        "high":   [101.0] * 20,
-        "low":    [99.5]  * 20,
-        "close":  [100.5] * 20,
-        "volume": [100.0] * 20,
-    })
+
+    timestamps = pd.date_range("2026-01-02 09:30", periods=20, freq="1min", tz="America/New_York")
+    return pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "open": [100.0] * 20,
+            "high": [101.0] * 20,
+            "low": [99.5] * 20,
+            "close": [100.5] * 20,
+            "volume": [100.0] * 20,
+        }
+    )
 
 
 def _make_signals():
     import pandas as pd
-    return pd.DataFrame([{
-        "signal_id": 1,
-        "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz="America/New_York"),
-        "bar_index": 2,
-        "trigger": "touch",
-        "direction": "long",
-        "zone_low": 99.5,
-        "zone_high": 100.5,
-        "zone_mid": 100.0,
-        "level_count": 1,
-        "level_names": "A",
-        "entry_reference_price": 100.0,
-        "entry_model": "candidate_next_bar_open",
-        "status": "candidate",
-        "naked_level_count": 0,
-        "naked_requirement": "any",
-        "notes": "",
-    }])
+
+    return pd.DataFrame(
+        [
+            {
+                "signal_id": 1,
+                "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz="America/New_York"),
+                "bar_index": 2,
+                "trigger": "touch",
+                "direction": "long",
+                "zone_low": 99.5,
+                "zone_high": 100.5,
+                "zone_mid": 100.0,
+                "level_count": 1,
+                "level_names": "A",
+                "entry_reference_price": 100.0,
+                "entry_model": "candidate_next_bar_open",
+                "status": "candidate",
+                "naked_level_count": 0,
+                "naked_requirement": "any",
+                "notes": "",
+            }
+        ]
+    )
 
 
 def test_simulate_trades_not_affected_by_saved_backtest_defaults():
@@ -608,7 +630,9 @@ def test_simulate_trades_not_affected_by_saved_backtest_defaults():
     from thesistester.engine.backtest import simulate_trades
 
     # Save some defaults that differ from the explicit call args below
-    save_backtest_defaults({"sl_ticks": 100.0, "tp_ticks": 200.0, "exposure_policy": "single_position"})
+    save_backtest_defaults(
+        {"sl_ticks": 100.0, "tp_ticks": 200.0, "exposure_policy": "single_position"}
+    )
 
     trades, _ = simulate_trades(
         df=_make_df(),
@@ -620,6 +644,7 @@ def test_simulate_trades_not_affected_by_saved_backtest_defaults():
         return_skipped_signals=True,
     )
     import pandas as pd
+
     assert isinstance(trades, pd.DataFrame)
 
 
@@ -644,9 +669,11 @@ def test_run_sl_tp_grid_not_affected_by_saved_grid_defaults():
 
 # ── 13. Strict time validation ────────────────────────────────────────────────
 
+
 def test_strict_time_validation_accepts_zero_padded():
     """Zero-padded HH:MM and HH:MM:SS must be accepted."""
     from thesistester.execution_defaults import _valid_time_str, _valid_optional_time_str
+
     for t in ["09:30", "16:00", "16:00:00"]:
         assert _valid_time_str(t) == t
         assert _valid_optional_time_str(t) == t
@@ -655,6 +682,7 @@ def test_strict_time_validation_accepts_zero_padded():
 def test_strict_time_validation_rejects_single_digit_hour():
     """Non-zero-padded single-digit hour must be rejected."""
     from thesistester.execution_defaults import _valid_time_str, _valid_optional_time_str
+
     assert _valid_time_str("9:30") is None
     assert _valid_optional_time_str("9:30") is None
 
@@ -662,6 +690,7 @@ def test_strict_time_validation_rejects_single_digit_hour():
 def test_strict_time_validation_rejects_out_of_range():
     """Times with out-of-range hour, minute, or second must be rejected."""
     from thesistester.execution_defaults import _valid_time_str, _valid_optional_time_str
+
     for t in ["99:99", "24:00", "12:99", "16:00:99"]:
         assert _valid_time_str(t) is None, f"Expected None for {t!r}"
         assert _valid_optional_time_str(t) is None, f"Expected None for {t!r}"
@@ -669,12 +698,14 @@ def test_strict_time_validation_rejects_out_of_range():
 
 def test_strict_time_validation_rejects_arbitrary_text():
     from thesistester.execution_defaults import _valid_time_str, _valid_optional_time_str
+
     assert _valid_time_str("not-a-time") is None
     assert _valid_optional_time_str("not-a-time") is None
 
 
 def test_strict_time_validation_rejects_non_string():
     from thesistester.execution_defaults import _valid_time_str, _valid_optional_time_str
+
     assert _valid_time_str(1600) is None
     assert _valid_optional_time_str(None) == ""  # None → empty string (no-time)
     assert _valid_optional_time_str(1600) is None
@@ -697,9 +728,11 @@ def test_sanitize_grid_strict_time_rejects_invalid():
 
 # ── 14. Numeric validators reject bools ──────────────────────────────────────
 
+
 def test_numeric_validators_reject_bools():
     """_valid_float and _valid_int must reject bool values explicitly."""
     from thesistester.execution_defaults import _valid_float, _valid_int
+
     assert _valid_float(True, lo=0.0, hi=10.0) is None
     assert _valid_float(False, lo=0.0, hi=10.0) is None
     assert _valid_int(True, lo=0, hi=10) is None
@@ -722,7 +755,12 @@ def test_sanitize_backtest_rejects_bool_for_cooldown():
 
 def test_sanitize_grid_rejects_bool_for_numerics():
     """Grid numeric fields must also reject bools."""
-    raw = {"sl_start": True, "max_bars": False, "min_trades": True, "cooldown_bars_after_exit": False}
+    raw = {
+        "sl_start": True,
+        "max_bars": False,
+        "min_trades": True,
+        "cooldown_bars_after_exit": False,
+    }
     sanitized = sanitize_grid_defaults(raw)
     assert "grid_sl_start" not in sanitized
     assert "grid_max_bars" not in sanitized

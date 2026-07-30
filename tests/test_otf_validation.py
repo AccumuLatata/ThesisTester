@@ -11,6 +11,7 @@ Covers:
 - Input immutability
 - Invalid train_fraction raises
 """
+
 from __future__ import annotations
 
 
@@ -219,8 +220,7 @@ def test_counts_reconcile():
         acc = row["accepted_signal_count"]
         rej = row["rejected_signal_count"]
         assert acc + rej == total, (
-            f"Counts don't reconcile for {row['configuration_label']}: "
-            f"{acc} + {rej} != {total}"
+            f"Counts don't reconcile for {row['configuration_label']}: {acc} + {rej} != {total}"
         )
 
         # Train/OOS split reconciles within candidate count
@@ -271,12 +271,8 @@ def test_enabled_train_oos_split_survives_nondefault_index():
         assert t_cand + o_cand == total, label
         assert t_acc + t_rej == t_cand, label
         assert o_acc + o_rej == o_cand, label
-        assert (
-            t_acc + o_acc == row["accepted_signal_count"]
-        ), label
-        assert (
-            t_rej + o_rej == row["rejected_signal_count"]
-        ), label
+        assert t_acc + o_acc == row["accepted_signal_count"], label
+        assert t_rej + o_rej == row["rejected_signal_count"], label
 
         if row["otf_filter_enabled"]:
             # Non-trivial enabled configs must not collapse all period counts.
@@ -516,9 +512,7 @@ def test_is_train_selected_exactly_one():
         session_timezone=TZ,
     )
     selected_count = result["is_train_selected"].sum()
-    assert selected_count == 1, (
-        f"Expected exactly 1 train-selected row, got {selected_count}"
-    )
+    assert selected_count == 1, f"Expected exactly 1 train-selected row, got {selected_count}"
 
 
 def test_train_selected_has_best_train_expectancy():

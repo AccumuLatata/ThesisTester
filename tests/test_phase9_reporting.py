@@ -1,4 +1,5 @@
 """Phase 9 tests: reporting/export helpers and artifact rendering."""
+
 from __future__ import annotations
 
 import json
@@ -383,9 +384,9 @@ def test_round_trip_timezone_semantics_for_naive_berlin_csv(tmp_path):
         display_timezone="Europe/Berlin",
         canonical_timezone="America/New_York",
     )
-    expected = pd.to_datetime(
-        ["2026-06-02 15:30:00", "2026-06-02 15:31:00"]
-    ).tz_localize("Europe/Berlin")
+    expected = pd.to_datetime(["2026-06-02 15:30:00", "2026-06-02 15:31:00"]).tz_localize(
+        "Europe/Berlin"
+    )
     pd.testing.assert_series_equal(
         round_trip["timestamp"].reset_index(drop=True),
         pd.Series(expected, name="timestamp"),

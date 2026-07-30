@@ -3,7 +3,11 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from thesistester.analytics.metrics import equity_curve, summarize_trades, summarize_trades_by_direction
+from thesistester.analytics.metrics import (
+    equity_curve,
+    summarize_trades,
+    summarize_trades_by_direction,
+)
 from thesistester.analytics.walk_forward import run_walk_forward_sl_tp, summarize_walk_forward
 
 

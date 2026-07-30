@@ -308,7 +308,9 @@ def test_delete_behavior():
     with pytest.raises(FileNotFoundError):
         load_dataset(dataset["dataset_id"])
     with pytest.raises(FileNotFoundError):
-        load_signal_run(dataset["dataset_id"], levels["settings_hash"], signal_run["signal_settings_hash"])
+        load_signal_run(
+            dataset["dataset_id"], levels["settings_hash"], signal_run["signal_settings_hash"]
+        )
 
 
 def test_delete_dataset_clears_active_pointers():
@@ -601,7 +603,10 @@ def test_compute_otf_config_hash_rejects_invalid_config():
 def test_compute_signal_settings_hash_invalid_explicit_otf_raises():
     """Explicit invalid top-level OTF config must make hashing raise (not silently hash as disabled)."""
     invalid = _signal_settings()
-    invalid["otf_filter"] = {"enabled": True, "timeframes": []}  # enabled with no timeframes — invalid
+    invalid["otf_filter"] = {
+        "enabled": True,
+        "timeframes": [],
+    }  # enabled with no timeframes — invalid
     with pytest.raises(ValueError):
         compute_signal_settings_hash(invalid)
 
@@ -669,7 +674,11 @@ def test_signal_run_roundtrip():
         signals=_signals_frame(),
         confluence_zones=_confluence_zones_frame(),
         naked_flags=_naked_flags_frame(),
-        signal_context={"setup_name": None, "confluence_mode": "global_cluster", "setup_caption": None},
+        signal_context={
+            "setup_name": None,
+            "confluence_mode": "global_cluster",
+            "setup_caption": None,
+        },
         last_signal_setup={},
     )
 
@@ -853,7 +862,9 @@ def test_delete_signal_run_removes_only_selected_run():
 
     with pytest.raises(FileNotFoundError):
         load_signal_run("dataset-123", "levels-hash-1", saved_touch["signal_settings_hash"])
-    remaining = load_signal_run("dataset-123", "levels-hash-1", saved_reject["signal_settings_hash"])
+    remaining = load_signal_run(
+        "dataset-123", "levels-hash-1", saved_reject["signal_settings_hash"]
+    )
     assert len(remaining[0]) == len(_signals_frame())
 
 
@@ -875,7 +886,9 @@ def test_list_saved_signal_runs_ignores_missing_or_corrupt_entries():
     corrupt_root.mkdir(parents=True, exist_ok=True)
     (corrupt_root / "meta.json").write_text("{not json", encoding="utf-8")
 
-    assert list_saved_signal_runs(dataset_id="dataset-123", levels_settings_hash="levels-hash-1") == []
+    assert (
+        list_saved_signal_runs(dataset_id="dataset-123", levels_settings_hash="levels-hash-1") == []
+    )
 
 
 def test_default_store_root_stable(monkeypatch):
@@ -1010,7 +1023,9 @@ def test_save_setup_preserves_created_at_when_updating():
     saved = save_setup(_setup_config(name="First"), setup_id="setup-123", dataset_id="dataset-a")
     original_created_at = saved["created_at"]
 
-    updated = save_setup(_setup_config(name="Updated"), setup_id="setup-123", dataset_id="dataset-a")
+    updated = save_setup(
+        _setup_config(name="Updated"), setup_id="setup-123", dataset_id="dataset-a"
+    )
 
     assert updated["setup_id"] == "setup-123"
     assert updated["created_at"] == original_created_at
@@ -1020,7 +1035,9 @@ def test_save_setup_preserves_created_at_when_updating():
 
 def test_list_saved_setups_returns_newest_first():
     first = save_setup(_setup_config(name="first"), setup_id="setup-first", dataset_id="dataset-a")
-    second = save_setup(_setup_config(name="second"), setup_id="setup-second", dataset_id="dataset-a")
+    second = save_setup(
+        _setup_config(name="second"), setup_id="setup-second", dataset_id="dataset-a"
+    )
 
     first_meta_path = Path(first["path"]) / "meta.json"
     second_meta_path = Path(second["path"]) / "meta.json"

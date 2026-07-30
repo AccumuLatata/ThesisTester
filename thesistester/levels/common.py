@@ -1,4 +1,5 @@
 """Shared helpers for level modules."""
+
 from __future__ import annotations
 
 import pandas as pd

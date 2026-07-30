@@ -18,7 +18,17 @@ def _make_streamlit_stub() -> types.ModuleType:
     def _stop():
         raise _StopCalled()
 
-    for name in ("title", "warning", "error", "success", "info", "caption", "divider", "subheader", "rerun"):
+    for name in (
+        "title",
+        "warning",
+        "error",
+        "success",
+        "info",
+        "caption",
+        "divider",
+        "subheader",
+        "rerun",
+    ):
         setattr(st, name, _noop)
     st.stop = _stop  # type: ignore[assignment]
     st.session_state = {}  # type: ignore[assignment]

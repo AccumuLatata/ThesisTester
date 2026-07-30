@@ -14,6 +14,7 @@ APOC and pAPOC are profile/POC levels, not Single Print levels.
 They are computed in ``thesistester/levels/apoc.py`` and are independent
 of the Single Print logic in ``thesistester/levels/tpo.py``.
 """
+
 from __future__ import annotations
 
 import math
@@ -626,8 +627,12 @@ def test_single_print_outputs_unchanged_when_apoc_enabled():
     """Enabling APOC must not change Single Print column values."""
     df = _two_session_fixture()
 
-    out_sp_only = compute_all_levels(df, instrument="ES", single_prints_enabled=True, apoc_enabled=False)
-    out_sp_and_apoc = compute_all_levels(df, instrument="ES", single_prints_enabled=True, apoc_enabled=True)
+    out_sp_only = compute_all_levels(
+        df, instrument="ES", single_prints_enabled=True, apoc_enabled=False
+    )
+    out_sp_and_apoc = compute_all_levels(
+        df, instrument="ES", single_prints_enabled=True, apoc_enabled=True
+    )
 
     for col in SINGLE_PRINT_COLUMNS:
         if col in out_sp_only.columns and col in out_sp_and_apoc.columns:
@@ -688,7 +693,9 @@ def test_enabled_requires_supported_instrument():
 def test_nq_instrument_supported():
     """NQ must be a supported instrument."""
     rows = [
-        _rth_bar(_rth_ts("2026-06-02", 9, 30), high=18050.0, low=17950.0, close=18000.0, volume=100),
+        _rth_bar(
+            _rth_ts("2026-06-02", 9, 30), high=18050.0, low=17950.0, close=18000.0, volume=100
+        ),
         _rth_bar(_rth_ts("2026-06-02", 10, 0), high=18050.0, low=17950.0, close=18000.0, volume=50),
     ]
     df = pd.DataFrame(rows)
@@ -706,18 +713,21 @@ def test_output_index_length_matches_sorted_input():
 def test_compute_apoc_levels_exported_from_package():
     """compute_apoc_levels must be importable from thesistester.levels."""
     from thesistester.levels import compute_apoc_levels as fn
+
     assert callable(fn)
 
 
 def test_compute_apoc_levels_in_all_list():
     """compute_apoc_levels must be in thesistester.levels.__all__."""
     import thesistester.levels as lvl
+
     assert "compute_apoc_levels" in lvl.__all__
 
 
 def test_apoc_constants_exported_from_module():
     """APOC constants must be importable from apoc.py."""
     from thesistester.levels.apoc import A_PERIOD_MINUTES, APOC_COLUMNS, COL_APOC, COL_PAPOC
+
     assert A_PERIOD_MINUTES == 30
     assert COL_APOC == "APOC"
     assert COL_PAPOC == "pAPOC"

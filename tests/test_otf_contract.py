@@ -20,6 +20,7 @@ These tests verify that:
 Reference: docs/otf-filter.md — OTF v1 Behavioral Contract
 Contract version: v1
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -62,11 +63,11 @@ def _check_valid_ohlcv_bar(bar: dict, bar_index: int, scenario: str) -> None:
     ctx = f"scenario={scenario!r}, bar_index={bar_index}"
 
     assert "timestamp" in bar, f"Missing 'timestamp' column — {ctx}"
-    assert "open" in bar,      f"Missing 'open' column — {ctx}"
-    assert "high" in bar,      f"Missing 'high' column — {ctx}"
-    assert "low" in bar,       f"Missing 'low' column — {ctx}"
-    assert "close" in bar,     f"Missing 'close' column — {ctx}"
-    assert "volume" in bar,    f"Missing 'volume' column — {ctx}"
+    assert "open" in bar, f"Missing 'open' column — {ctx}"
+    assert "high" in bar, f"Missing 'high' column — {ctx}"
+    assert "low" in bar, f"Missing 'low' column — {ctx}"
+    assert "close" in bar, f"Missing 'close' column — {ctx}"
+    assert "volume" in bar, f"Missing 'volume' column — {ctx}"
 
     ts = bar["timestamp"]
     assert isinstance(ts, pd.Timestamp), f"timestamp must be pd.Timestamp — {ctx}"
@@ -128,7 +129,7 @@ class TestFixtureIntegrity:
             curr_ts = bars[i]["timestamp"]
             assert curr_ts > prev_ts, (
                 f"scenario={scenario_name!r}: bar {i} timestamp {curr_ts} is not "
-                f"after bar {i-1} timestamp {prev_ts}"
+                f"after bar {i - 1} timestamp {prev_ts}"
             )
 
     @pytest.mark.parametrize("scenario_name", list(ALL_OHLCV_SCENARIOS))
@@ -215,12 +216,8 @@ class TestFirstBarRule:
         """Bar 0 must have up_run=0 and down_run=0 (no previous bar to compare)."""
         scenario = ALL_OHLCV_SCENARIOS[scenario_name]
         first = scenario["expected_states"][0]
-        assert first["up_run"] == 0, (
-            f"scenario={scenario_name!r}: first bar up_run should be 0"
-        )
-        assert first["down_run"] == 0, (
-            f"scenario={scenario_name!r}: first bar down_run should be 0"
-        )
+        assert first["up_run"] == 0, f"scenario={scenario_name!r}: first bar up_run should be 0"
+        assert first["down_run"] == 0, f"scenario={scenario_name!r}: first bar down_run should be 0"
 
 
 # ---------------------------------------------------------------------------
@@ -259,14 +256,14 @@ class TestOtfUpContract:
             if vec["up_run"] >= 1:
                 assert bars[i]["low"] > bars[i - 1]["low"], (
                     f"up_run={vec['up_run']} at bar {i} but "
-                    f"low({bars[i]['low']}) <= prev_low({bars[i-1]['low']})"
+                    f"low({bars[i]['low']}) <= prev_low({bars[i - 1]['low']})"
                 )
             if vec["state"] == "up":
                 # Verify the most recent min_bars bars each have higher lows.
                 for j in range(i - min_bars + 1, i + 1):
                     assert bars[j]["low"] > bars[j - 1]["low"], (
                         f"state='up' at bar {i} but bar {j} low is not strictly "
-                        f"higher than bar {j-1} low"
+                        f"higher than bar {j - 1} low"
                     )
 
 
@@ -306,13 +303,13 @@ class TestOtfDownContract:
             if vec["down_run"] >= 1:
                 assert bars[i]["high"] < bars[i - 1]["high"], (
                     f"down_run={vec['down_run']} at bar {i} but "
-                    f"high({bars[i]['high']}) >= prev_high({bars[i-1]['high']})"
+                    f"high({bars[i]['high']}) >= prev_high({bars[i - 1]['high']})"
                 )
             if vec["state"] == "down":
                 for j in range(i - min_bars + 1, i + 1):
                     assert bars[j]["high"] < bars[j - 1]["high"], (
                         f"state='down' at bar {i} but bar {j} high is not strictly "
-                        f"lower than bar {j-1} high"
+                        f"lower than bar {j - 1} high"
                     )
 
 
@@ -426,7 +423,7 @@ class TestReversal:
         for i in range(4, 7):
             assert bars[i]["high"] < bars[i - 1]["high"], (
                 f"Reversal: bar {i} high({bars[i]['high']}) should be < "
-                f"bar {i-1} high({bars[i-1]['high']})"
+                f"bar {i - 1} high({bars[i - 1]['high']})"
             )
 
 
@@ -448,8 +445,7 @@ class TestEqualHighLow:
         """Bar 2 and bar 1 must have exactly equal lows in the equal-low fixture."""
         bars = OTF_EQUAL_LOW["bars"]
         assert bars[2]["low"] == bars[1]["low"], (
-            f"Equal-low fixture: bar 2 low ({bars[2]['low']}) != "
-            f"bar 1 low ({bars[1]['low']})"
+            f"Equal-low fixture: bar 2 low ({bars[2]['low']}) != bar 1 low ({bars[1]['low']})"
         )
 
     def test_up_run_before_equal_low_was_positive(self) -> None:
@@ -467,8 +463,7 @@ class TestEqualHighLow:
         """Bar 2 and bar 1 must have exactly equal highs in the equal-high fixture."""
         bars = OTF_EQUAL_HIGH["bars"]
         assert bars[2]["high"] == bars[1]["high"], (
-            f"Equal-high fixture: bar 2 high ({bars[2]['high']}) != "
-            f"bar 1 high ({bars[1]['high']})"
+            f"Equal-high fixture: bar 2 high ({bars[2]['high']}) != bar 1 high ({bars[1]['high']})"
         )
 
     def test_down_run_before_equal_high_was_positive(self) -> None:
@@ -610,9 +605,7 @@ class TestOvernightSession:
         assert bar_4["state"] == "unknown", (
             "Bar at 18:00 ET (eth_start boundary) must reset OTF state to 'unknown'"
         )
-        assert bar_4["up_run"] == 0, (
-            f"up_run must be 0 after session reset, got {bar_4['up_run']}"
-        )
+        assert bar_4["up_run"] == 0, f"up_run must be 0 after session reset, got {bar_4['up_run']}"
         assert bar_4["down_run"] == 0, (
             f"down_run must be 0 after session reset, got {bar_4['down_run']}"
         )
@@ -639,9 +632,7 @@ class TestOvernightSession:
         eth_start = OTF_OVERNIGHT_SESSION["eth_start"]
         exchange_tz = OTF_OVERNIGHT_SESSION["exchange_tz"]
 
-        timestamps_et = pd.Series(
-            [b["timestamp"].tz_convert(exchange_tz) for b in bars]
-        )
+        timestamps_et = pd.Series([b["timestamp"].tz_convert(exchange_tz) for b in bars])
         computed_dates = trading_session_date(timestamps_et, eth_start)
 
         expected = OTF_OVERNIGHT_SESSION["expected_states"]
@@ -656,9 +647,7 @@ class TestOvernightSession:
         """Bars 0–3 (before the 18:00 ET boundary) must all have the same trading_session_date."""
         s = OTF_OVERNIGHT_SESSION["expected_states"]
         dates = {vec["trading_session_date"] for vec in s[:4]}
-        assert len(dates) == 1, (
-            f"Bars 0–3 should all share one trading_session_date, got: {dates}"
-        )
+        assert len(dates) == 1, f"Bars 0–3 should all share one trading_session_date, got: {dates}"
         assert "2026-01-06" in dates
 
     def test_boundary_bar_has_different_session_date(self) -> None:
@@ -718,8 +707,7 @@ class TestLookaheadSafety:
         """A 5m bar is available exactly at its close time (signal_timestamp == close_time)."""
         # The third vector has signal_timestamp == in-progress becomes completed
         vec = next(
-            v for v in OTF_LOOKAHEAD_SAFETY["lookahead_vectors"]
-            if not v["must_not_use_bar_C_high"]
+            v for v in OTF_LOOKAHEAD_SAFETY["lookahead_vectors"] if not v["must_not_use_bar_C_high"]
         )
         sig_ts = pd.Timestamp(vec["signal_timestamp"], tz=TZ)
         last_close = pd.Timestamp(vec["last_completed_5m_close_time"], tz=TZ)
@@ -804,9 +792,7 @@ class TestLookaheadSafety:
         assert str(resampled["timestamp"].dt.tz) == TZ
         assert resampled["timestamp"].tolist() == expected_labels
 
-        resampled["bar_close_timestamp"] = (
-            resampled["timestamp"] + bar_duration
-        )
+        resampled["bar_close_timestamp"] = resampled["timestamp"] + bar_duration
         resampled["availability_timestamp"] = resampled["bar_close_timestamp"]
 
         signal_0933 = pd.Timestamp("2026-01-05 09:33", tz=TZ)
@@ -842,8 +828,7 @@ class TestLookaheadSafety:
         """
         # Signal at 09:33 — bar C availability is 09:35 → not available
         bar_c = next(
-            iv for iv in OTF_LOOKAHEAD_SAFETY["htf_intervals"]
-            if iv["bar_label"] == "5m_bar_C"
+            iv for iv in OTF_LOOKAHEAD_SAFETY["htf_intervals"] if iv["bar_label"] == "5m_bar_C"
         )
         signal_ts = pd.Timestamp("2026-01-05 09:33", tz=TZ)
         avail = pd.Timestamp(bar_c["availability_timestamp"], tz=TZ)
@@ -857,8 +842,7 @@ class TestLookaheadSafety:
         Confirms the boundary rule: bar.availability_timestamp == T is available.
         """
         bar_b = next(
-            iv for iv in OTF_LOOKAHEAD_SAFETY["htf_intervals"]
-            if iv["bar_label"] == "5m_bar_B"
+            iv for iv in OTF_LOOKAHEAD_SAFETY["htf_intervals"] if iv["bar_label"] == "5m_bar_B"
         )
         # Boundary case for bar B: a signal exactly at 09:30 can use bar B.
         signal_at_bar_b_close = pd.Timestamp("2026-01-05 09:30", tz=TZ)
@@ -888,7 +872,8 @@ class TestDirectionalEligibility:
     def test_up_long_passes(self) -> None:
         """OTF up + long signal must pass."""
         vec = next(
-            v for v in OTF_DIRECTIONAL_ELIGIBILITY["vectors"]
+            v
+            for v in OTF_DIRECTIONAL_ELIGIBILITY["vectors"]
             if v["otf_state"] == "up" and v["signal_direction"] == "long"
         )
         assert vec["passes"] is True
@@ -896,7 +881,8 @@ class TestDirectionalEligibility:
     def test_up_short_fails(self) -> None:
         """OTF up + short signal must fail."""
         vec = next(
-            v for v in OTF_DIRECTIONAL_ELIGIBILITY["vectors"]
+            v
+            for v in OTF_DIRECTIONAL_ELIGIBILITY["vectors"]
             if v["otf_state"] == "up" and v["signal_direction"] == "short"
         )
         assert vec["passes"] is False
@@ -904,7 +890,8 @@ class TestDirectionalEligibility:
     def test_down_short_passes(self) -> None:
         """OTF down + short signal must pass."""
         vec = next(
-            v for v in OTF_DIRECTIONAL_ELIGIBILITY["vectors"]
+            v
+            for v in OTF_DIRECTIONAL_ELIGIBILITY["vectors"]
             if v["otf_state"] == "down" and v["signal_direction"] == "short"
         )
         assert vec["passes"] is True
@@ -912,7 +899,8 @@ class TestDirectionalEligibility:
     def test_down_long_fails(self) -> None:
         """OTF down + long signal must fail."""
         vec = next(
-            v for v in OTF_DIRECTIONAL_ELIGIBILITY["vectors"]
+            v
+            for v in OTF_DIRECTIONAL_ELIGIBILITY["vectors"]
             if v["otf_state"] == "down" and v["signal_direction"] == "long"
         )
         assert vec["passes"] is False
@@ -969,7 +957,8 @@ class TestAllTimeframeAlignment:
     def test_all_up_long_passes(self) -> None:
         """All timeframes up + long signal must pass."""
         vec = next(
-            v for v in OTF_ALL_TIMEFRAME_ALIGNMENT["vectors"]
+            v
+            for v in OTF_ALL_TIMEFRAME_ALIGNMENT["vectors"]
             if v["signal_direction"] == "long"
             and all(s == "up" for s in v["timeframe_states"].values())
         )
@@ -978,7 +967,8 @@ class TestAllTimeframeAlignment:
     def test_any_non_up_long_fails(self) -> None:
         """Long signal fails if any timeframe is not 'up'."""
         failing = [
-            v for v in OTF_ALL_TIMEFRAME_ALIGNMENT["vectors"]
+            v
+            for v in OTF_ALL_TIMEFRAME_ALIGNMENT["vectors"]
             if v["signal_direction"] == "long"
             and not all(s == "up" for s in v["timeframe_states"].values())
         ]
@@ -989,7 +979,8 @@ class TestAllTimeframeAlignment:
     def test_all_down_short_passes(self) -> None:
         """All timeframes down + short signal must pass."""
         vec = next(
-            v for v in OTF_ALL_TIMEFRAME_ALIGNMENT["vectors"]
+            v
+            for v in OTF_ALL_TIMEFRAME_ALIGNMENT["vectors"]
             if v["signal_direction"] == "short"
             and all(s == "down" for s in v["timeframe_states"].values())
         )
@@ -998,7 +989,8 @@ class TestAllTimeframeAlignment:
     def test_any_non_down_short_fails(self) -> None:
         """Short signal fails if any timeframe is not 'down'."""
         failing = [
-            v for v in OTF_ALL_TIMEFRAME_ALIGNMENT["vectors"]
+            v
+            for v in OTF_ALL_TIMEFRAME_ALIGNMENT["vectors"]
             if v["signal_direction"] == "short"
             and not all(s == "down" for s in v["timeframe_states"].values())
         ]
@@ -1009,7 +1001,8 @@ class TestAllTimeframeAlignment:
     def test_single_timeframe_selection_long_passes(self) -> None:
         """Single selected timeframe (15m=up) is sufficient for long pass."""
         vec = next(
-            v for v in OTF_ALL_TIMEFRAME_ALIGNMENT["vectors"]
+            v
+            for v in OTF_ALL_TIMEFRAME_ALIGNMENT["vectors"]
             if v["signal_direction"] == "long"
             and set(v["timeframe_states"].keys()) == {"15m"}
             and v["timeframe_states"]["15m"] == "up"

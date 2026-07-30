@@ -9,6 +9,7 @@ Contract reference: docs/otf-filter.md — OTF v1 Behavioral Contract
 Contract version:   v1
 Last updated:       2026-07-23
 """
+
 from __future__ import annotations
 
 import pandas as pd
@@ -83,8 +84,8 @@ OTF_UP_ESTABLISHED: dict = {
     "minimum_consecutive_bars": DEFAULT_MINIMUM_CONSECUTIVE_BARS,
     "session_reset": True,
     "bars": [
-        _bar("2026-01-05 09:30", 100.0, 101.0, 99.0, 100.5),   # bar 0: anchor
-        _bar("2026-01-05 09:35", 100.5, 102.0, 99.5, 101.5),   # bar 1
+        _bar("2026-01-05 09:30", 100.0, 101.0, 99.0, 100.5),  # bar 0: anchor
+        _bar("2026-01-05 09:35", 100.5, 102.0, 99.5, 101.5),  # bar 1
         _bar("2026-01-05 09:40", 101.5, 103.0, 100.0, 102.5),  # bar 2
         _bar("2026-01-05 09:45", 102.5, 104.0, 100.5, 103.5),  # bar 3 → up
         _bar("2026-01-05 09:50", 103.5, 105.0, 101.0, 104.5),  # bar 4 → up (extended)
@@ -93,8 +94,8 @@ OTF_UP_ESTABLISHED: dict = {
         {"bar_index": 0, "state": "unknown", "up_run": 0, "down_run": 0},
         {"bar_index": 1, "state": "neutral", "up_run": 1, "down_run": 0},
         {"bar_index": 2, "state": "neutral", "up_run": 2, "down_run": 0},
-        {"bar_index": 3, "state": "up",      "up_run": 3, "down_run": 0},
-        {"bar_index": 4, "state": "up",      "up_run": 4, "down_run": 0},
+        {"bar_index": 3, "state": "up", "up_run": 3, "down_run": 0},
+        {"bar_index": 4, "state": "up", "up_run": 4, "down_run": 0},
     ],
 }
 
@@ -121,16 +122,16 @@ OTF_DOWN_ESTABLISHED: dict = {
     "bars": [
         _bar("2026-01-05 09:30", 103.0, 105.0, 101.0, 104.0),  # bar 0: anchor
         _bar("2026-01-05 09:35", 102.0, 104.0, 100.0, 103.0),  # bar 1
-        _bar("2026-01-05 09:40", 101.0, 103.0, 99.0,  102.0),  # bar 2
-        _bar("2026-01-05 09:45", 100.0, 102.0, 98.0,  101.0),  # bar 3 → down
-        _bar("2026-01-05 09:50", 99.0,  101.0, 97.0,  100.0),  # bar 4 → down (extended)
+        _bar("2026-01-05 09:40", 101.0, 103.0, 99.0, 102.0),  # bar 2
+        _bar("2026-01-05 09:45", 100.0, 102.0, 98.0, 101.0),  # bar 3 → down
+        _bar("2026-01-05 09:50", 99.0, 101.0, 97.0, 100.0),  # bar 4 → down (extended)
     ],
     "expected_states": [
         {"bar_index": 0, "state": "unknown", "up_run": 0, "down_run": 0},
         {"bar_index": 1, "state": "neutral", "up_run": 0, "down_run": 1},
         {"bar_index": 2, "state": "neutral", "up_run": 0, "down_run": 2},
-        {"bar_index": 3, "state": "down",    "up_run": 0, "down_run": 3},
-        {"bar_index": 4, "state": "down",    "up_run": 0, "down_run": 4},
+        {"bar_index": 3, "state": "down", "up_run": 0, "down_run": 3},
+        {"bar_index": 4, "state": "down", "up_run": 0, "down_run": 4},
     ],
 }
 
@@ -185,17 +186,17 @@ OTF_SEQUENCE_BREAK_UP: dict = {
     "minimum_consecutive_bars": DEFAULT_MINIMUM_CONSECUTIVE_BARS,
     "session_reset": True,
     "bars": [
-        _bar("2026-01-05 09:30", 100.0, 101.0, 99.0,  100.5),  # bar 0: anchor
-        _bar("2026-01-05 09:35", 100.5, 102.0, 99.5,  101.5),  # bar 1
+        _bar("2026-01-05 09:30", 100.0, 101.0, 99.0, 100.5),  # bar 0: anchor
+        _bar("2026-01-05 09:35", 100.5, 102.0, 99.5, 101.5),  # bar 1
         _bar("2026-01-05 09:40", 101.5, 103.0, 100.0, 102.5),  # bar 2
         _bar("2026-01-05 09:45", 102.5, 104.0, 100.5, 103.5),  # bar 3 → up
-        _bar("2026-01-05 09:50", 103.0, 105.0, 99.0,  101.0),  # bar 4: break (L=99 < 100.5)
+        _bar("2026-01-05 09:50", 103.0, 105.0, 99.0, 101.0),  # bar 4: break (L=99 < 100.5)
     ],
     "expected_states": [
         {"bar_index": 0, "state": "unknown", "up_run": 0, "down_run": 0},
         {"bar_index": 1, "state": "neutral", "up_run": 1, "down_run": 0},
         {"bar_index": 2, "state": "neutral", "up_run": 2, "down_run": 0},
-        {"bar_index": 3, "state": "up",      "up_run": 3, "down_run": 0},
+        {"bar_index": 3, "state": "up", "up_run": 3, "down_run": 0},
         {"bar_index": 4, "state": "neutral", "up_run": 0, "down_run": 0},
     ],
 }
@@ -218,15 +219,15 @@ OTF_SEQUENCE_BREAK_DOWN: dict = {
     "bars": [
         _bar("2026-01-05 09:30", 103.0, 105.0, 101.0, 104.0),  # bar 0: anchor
         _bar("2026-01-05 09:35", 102.0, 104.0, 100.0, 103.0),  # bar 1
-        _bar("2026-01-05 09:40", 101.0, 103.0, 99.0,  102.0),  # bar 2
-        _bar("2026-01-05 09:45", 100.0, 102.0, 98.0,  101.0),  # bar 3 → down
+        _bar("2026-01-05 09:40", 101.0, 103.0, 99.0, 102.0),  # bar 2
+        _bar("2026-01-05 09:45", 100.0, 102.0, 98.0, 101.0),  # bar 3 → down
         _bar("2026-01-05 09:50", 102.0, 104.0, 100.0, 103.0),  # bar 4: break (H=104 > 102)
     ],
     "expected_states": [
         {"bar_index": 0, "state": "unknown", "up_run": 0, "down_run": 0},
         {"bar_index": 1, "state": "neutral", "up_run": 0, "down_run": 1},
         {"bar_index": 2, "state": "neutral", "up_run": 0, "down_run": 2},
-        {"bar_index": 3, "state": "down",    "up_run": 0, "down_run": 3},
+        {"bar_index": 3, "state": "down", "up_run": 0, "down_run": 3},
         {"bar_index": 4, "state": "neutral", "up_run": 1, "down_run": 0},
     ],
 }
@@ -250,22 +251,24 @@ OTF_REVERSAL_UP_TO_DOWN: dict = {
     "minimum_consecutive_bars": DEFAULT_MINIMUM_CONSECUTIVE_BARS,
     "session_reset": True,
     "bars": [
-        _bar("2026-01-05 09:30", 100.0, 101.0, 99.0,  100.5),  # bar 0: anchor
-        _bar("2026-01-05 09:35", 100.5, 102.0, 99.5,  101.5),  # bar 1
+        _bar("2026-01-05 09:30", 100.0, 101.0, 99.0, 100.5),  # bar 0: anchor
+        _bar("2026-01-05 09:35", 100.5, 102.0, 99.5, 101.5),  # bar 1
         _bar("2026-01-05 09:40", 101.5, 103.0, 100.0, 102.5),  # bar 2
         _bar("2026-01-05 09:45", 102.5, 104.0, 100.5, 103.5),  # bar 3 → up
-        _bar("2026-01-05 09:50", 101.0, 103.0, 98.0,  100.0),  # bar 4: L<prev, H<prev → up_run=0, down_run=1
-        _bar("2026-01-05 09:55", 99.0,  102.0, 97.0,  99.0),   # bar 5: H<prev → down_run=2
-        _bar("2026-01-05 10:00", 98.0,  101.0, 96.0,  98.0),   # bar 6: H<prev → down_run=3 → down
+        _bar(
+            "2026-01-05 09:50", 101.0, 103.0, 98.0, 100.0
+        ),  # bar 4: L<prev, H<prev → up_run=0, down_run=1
+        _bar("2026-01-05 09:55", 99.0, 102.0, 97.0, 99.0),  # bar 5: H<prev → down_run=2
+        _bar("2026-01-05 10:00", 98.0, 101.0, 96.0, 98.0),  # bar 6: H<prev → down_run=3 → down
     ],
     "expected_states": [
         {"bar_index": 0, "state": "unknown", "up_run": 0, "down_run": 0},
         {"bar_index": 1, "state": "neutral", "up_run": 1, "down_run": 0},
         {"bar_index": 2, "state": "neutral", "up_run": 2, "down_run": 0},
-        {"bar_index": 3, "state": "up",      "up_run": 3, "down_run": 0},
+        {"bar_index": 3, "state": "up", "up_run": 3, "down_run": 0},
         {"bar_index": 4, "state": "neutral", "up_run": 0, "down_run": 1},
         {"bar_index": 5, "state": "neutral", "up_run": 0, "down_run": 2},
-        {"bar_index": 6, "state": "down",    "up_run": 0, "down_run": 3},
+        {"bar_index": 6, "state": "down", "up_run": 0, "down_run": 3},
     ],
 }
 
@@ -288,9 +291,9 @@ OTF_EQUAL_LOW: dict = {
     "minimum_consecutive_bars": DEFAULT_MINIMUM_CONSECUTIVE_BARS,
     "session_reset": True,
     "bars": [
-        _bar("2026-01-05 09:30", 100.0, 101.0, 99.0,  100.5),  # bar 0: anchor
-        _bar("2026-01-05 09:35", 100.5, 102.0, 99.5,  101.5),  # bar 1: L=99.5 > 99.0 → up_run=1
-        _bar("2026-01-05 09:40", 101.0, 103.0, 99.5,  102.0),  # bar 2: L=99.5 == 99.5 → up_run=0
+        _bar("2026-01-05 09:30", 100.0, 101.0, 99.0, 100.5),  # bar 0: anchor
+        _bar("2026-01-05 09:35", 100.5, 102.0, 99.5, 101.5),  # bar 1: L=99.5 > 99.0 → up_run=1
+        _bar("2026-01-05 09:40", 101.0, 103.0, 99.5, 102.0),  # bar 2: L=99.5 == 99.5 → up_run=0
         _bar("2026-01-05 09:45", 102.0, 104.0, 100.0, 103.0),  # bar 3: L=100.0 > 99.5 → up_run=1
     ],
     "expected_states": [
@@ -322,14 +325,16 @@ OTF_EQUAL_HIGH: dict = {
     "bars": [
         _bar("2026-01-05 09:30", 103.0, 105.0, 101.0, 104.0),  # bar 0: anchor
         _bar("2026-01-05 09:35", 102.0, 104.0, 100.0, 103.0),  # bar 1: H=104.0 < 105.0 → down_run=1
-        _bar("2026-01-05 09:40", 102.5, 104.0, 100.5, 103.5),  # bar 2: H=104.0 == 104.0 → down_run=0
-        _bar("2026-01-05 09:45", 101.5, 103.0, 99.5,  102.0),  # bar 3: H=103.0 < 104.0 → down_run=1
+        _bar(
+            "2026-01-05 09:40", 102.5, 104.0, 100.5, 103.5
+        ),  # bar 2: H=104.0 == 104.0 → down_run=0
+        _bar("2026-01-05 09:45", 101.5, 103.0, 99.5, 102.0),  # bar 3: H=103.0 < 104.0 → down_run=1
     ],
     "expected_states": [
-        {"bar_index": 0, "state": "unknown",  "up_run": 0, "down_run": 0},
-        {"bar_index": 1, "state": "neutral",  "up_run": 0, "down_run": 1},
-        {"bar_index": 2, "state": "neutral",  "up_run": 0, "down_run": 0},
-        {"bar_index": 3, "state": "neutral",  "up_run": 0, "down_run": 1},
+        {"bar_index": 0, "state": "unknown", "up_run": 0, "down_run": 0},
+        {"bar_index": 1, "state": "neutral", "up_run": 0, "down_run": 1},
+        {"bar_index": 2, "state": "neutral", "up_run": 0, "down_run": 0},
+        {"bar_index": 3, "state": "neutral", "up_run": 0, "down_run": 1},
     ],
 }
 
@@ -384,8 +389,8 @@ OTF_SESSION_BOUNDARY: dict = {
     "session_reset": True,
     "bars": [
         # --- Session 1: trading_session_date 2026-01-05 (RTH bars) ---
-        _bar("2026-01-05 09:30", 100.0, 101.0, 99.0,  100.5),  # bar 0: anchor s1
-        _bar("2026-01-05 09:35", 100.5, 102.0, 99.5,  101.5),  # bar 1: up_run=1
+        _bar("2026-01-05 09:30", 100.0, 101.0, 99.0, 100.5),  # bar 0: anchor s1
+        _bar("2026-01-05 09:35", 100.5, 102.0, 99.5, 101.5),  # bar 1: up_run=1
         _bar("2026-01-05 09:40", 101.5, 103.0, 100.0, 102.5),  # bar 2: up_run=2
         _bar("2026-01-05 09:45", 102.5, 104.0, 100.5, 103.5),  # bar 3: up_run=3 → up
         # --- Session 2: trading_session_date 2026-01-06 (new day) ---
@@ -397,7 +402,7 @@ OTF_SESSION_BOUNDARY: dict = {
         {"bar_index": 0, "state": "unknown", "up_run": 0, "down_run": 0, "session": 1},
         {"bar_index": 1, "state": "neutral", "up_run": 1, "down_run": 0, "session": 1},
         {"bar_index": 2, "state": "neutral", "up_run": 2, "down_run": 0, "session": 1},
-        {"bar_index": 3, "state": "up",      "up_run": 3, "down_run": 0, "session": 1},
+        {"bar_index": 3, "state": "up", "up_run": 3, "down_run": 0, "session": 1},
         # Session 2 — reset
         {"bar_index": 4, "state": "unknown", "up_run": 0, "down_run": 0, "session": 2},
         {"bar_index": 5, "state": "neutral", "up_run": 1, "down_run": 0, "session": 2},
@@ -428,8 +433,8 @@ OTF_SESSION_BOUNDARY: dict = {
 #: 1-minute source bars spanning two complete and one partial 5-minute periods.
 OTF_LOOKAHEAD_SOURCE_BARS: list[dict] = [
     # 5m bar A: 09:20–09:25 (closes 09:25)
-    _bar("2026-01-05 09:20", 99.5,  99.8, 99.2, 99.6),
-    _bar("2026-01-05 09:21", 99.6,  99.9, 99.4, 99.8),
+    _bar("2026-01-05 09:20", 99.5, 99.8, 99.2, 99.6),
+    _bar("2026-01-05 09:21", 99.6, 99.9, 99.4, 99.8),
     _bar("2026-01-05 09:22", 99.8, 100.0, 99.5, 99.9),
     _bar("2026-01-05 09:23", 99.9, 100.1, 99.6, 100.0),
     _bar("2026-01-05 09:24", 100.0, 100.2, 99.7, 100.1),
@@ -537,14 +542,44 @@ OTF_DIRECTIONAL_ELIGIBILITY: dict = {
     "description": "Filter pass/fail for each (OTF state, signal direction) combination.",
     "alignment_mode": "all",
     "vectors": [
-        {"otf_state": "up",      "signal_direction": "long",  "passes": True,  "reason": None},
-        {"otf_state": "up",      "signal_direction": "short", "passes": False, "reason": "long signal required for OTF up; short direction rejected"},
-        {"otf_state": "down",    "signal_direction": "short", "passes": True,  "reason": None},
-        {"otf_state": "down",    "signal_direction": "long",  "passes": False, "reason": "short signal required for OTF down; long direction rejected"},
-        {"otf_state": "neutral", "signal_direction": "long",  "passes": False, "reason": "OTF state is neutral; no directional bias"},
-        {"otf_state": "neutral", "signal_direction": "short", "passes": False, "reason": "OTF state is neutral; no directional bias"},
-        {"otf_state": "unknown", "signal_direction": "long",  "passes": False, "reason": "OTF state is unknown; insufficient history"},
-        {"otf_state": "unknown", "signal_direction": "short", "passes": False, "reason": "OTF state is unknown; insufficient history"},
+        {"otf_state": "up", "signal_direction": "long", "passes": True, "reason": None},
+        {
+            "otf_state": "up",
+            "signal_direction": "short",
+            "passes": False,
+            "reason": "long signal required for OTF up; short direction rejected",
+        },
+        {"otf_state": "down", "signal_direction": "short", "passes": True, "reason": None},
+        {
+            "otf_state": "down",
+            "signal_direction": "long",
+            "passes": False,
+            "reason": "short signal required for OTF down; long direction rejected",
+        },
+        {
+            "otf_state": "neutral",
+            "signal_direction": "long",
+            "passes": False,
+            "reason": "OTF state is neutral; no directional bias",
+        },
+        {
+            "otf_state": "neutral",
+            "signal_direction": "short",
+            "passes": False,
+            "reason": "OTF state is neutral; no directional bias",
+        },
+        {
+            "otf_state": "unknown",
+            "signal_direction": "long",
+            "passes": False,
+            "reason": "OTF state is unknown; insufficient history",
+        },
+        {
+            "otf_state": "unknown",
+            "signal_direction": "short",
+            "passes": False,
+            "reason": "OTF state is unknown; insufficient history",
+        },
     ],
 }
 
@@ -623,7 +658,6 @@ OTF_ALL_TIMEFRAME_ALIGNMENT: dict = {
 }
 
 
-
 # ---------------------------------------------------------------------------
 # Scenario 14 — Overnight Futures Session (midnight is NOT a session boundary)
 #
@@ -673,9 +707,9 @@ OTF_OVERNIGHT_SESSION: dict = {
     "bars": [
         # --- trading_session_date 2026-01-06 (Tuesday) ---
         # Monday 2026-01-05 22:00 ET: time=22:00 >= 18:00 → session 2026-01-06
-        _bar("2026-01-05 22:00", 100.0, 101.0, 99.0,  100.5),  # bar 0: anchor
+        _bar("2026-01-05 22:00", 100.0, 101.0, 99.0, 100.5),  # bar 0: anchor
         # Monday 2026-01-05 23:00 ET: time=23:00 >= 18:00 → session 2026-01-06
-        _bar("2026-01-05 23:00", 100.5, 102.0, 99.5,  101.5),  # bar 1
+        _bar("2026-01-05 23:00", 100.5, 102.0, 99.5, 101.5),  # bar 1
         # Tuesday 2026-01-06 00:00 ET: MIDNIGHT; time=00:00 < 18:00 → session 2026-01-06 (unchanged)
         _bar("2026-01-06 00:00", 101.5, 103.0, 100.0, 102.5),  # bar 2 ← midnight, same session
         # Tuesday 2026-01-06 00:30 ET: time=00:30 < 18:00 → session 2026-01-06
@@ -686,13 +720,43 @@ OTF_OVERNIGHT_SESSION: dict = {
     ],
     "expected_states": [
         # Session 2026-01-06 (Tuesday)
-        {"bar_index": 0, "state": "unknown", "up_run": 0, "down_run": 0, "trading_session_date": "2026-01-06"},
-        {"bar_index": 1, "state": "neutral", "up_run": 1, "down_run": 0, "trading_session_date": "2026-01-06"},
+        {
+            "bar_index": 0,
+            "state": "unknown",
+            "up_run": 0,
+            "down_run": 0,
+            "trading_session_date": "2026-01-06",
+        },
+        {
+            "bar_index": 1,
+            "state": "neutral",
+            "up_run": 1,
+            "down_run": 0,
+            "trading_session_date": "2026-01-06",
+        },
         # bar 2: midnight has passed, but trading_session_date is still 2026-01-06 → no reset
-        {"bar_index": 2, "state": "neutral", "up_run": 2, "down_run": 0, "trading_session_date": "2026-01-06"},
-        {"bar_index": 3, "state": "up",      "up_run": 3, "down_run": 0, "trading_session_date": "2026-01-06"},
+        {
+            "bar_index": 2,
+            "state": "neutral",
+            "up_run": 2,
+            "down_run": 0,
+            "trading_session_date": "2026-01-06",
+        },
+        {
+            "bar_index": 3,
+            "state": "up",
+            "up_run": 3,
+            "down_run": 0,
+            "trading_session_date": "2026-01-06",
+        },
         # Session 2026-01-07 (Wednesday) — reset at 18:00 ET Tuesday
-        {"bar_index": 4, "state": "unknown", "up_run": 0, "down_run": 0, "trading_session_date": "2026-01-07"},
+        {
+            "bar_index": 4,
+            "state": "unknown",
+            "up_run": 0,
+            "down_run": 0,
+            "trading_session_date": "2026-01-07",
+        },
     ],
 }
 
@@ -702,21 +766,21 @@ OTF_OVERNIGHT_SESSION: dict = {
 # ---------------------------------------------------------------------------
 
 ALL_OHLCV_SCENARIOS: dict[str, dict] = {
-    "up_established":       OTF_UP_ESTABLISHED,
-    "down_established":     OTF_DOWN_ESTABLISHED,
-    "neutral":              OTF_NEUTRAL,
-    "sequence_break_up":    OTF_SEQUENCE_BREAK_UP,
-    "sequence_break_down":  OTF_SEQUENCE_BREAK_DOWN,
-    "reversal_up_to_down":  OTF_REVERSAL_UP_TO_DOWN,
-    "equal_low":            OTF_EQUAL_LOW,
-    "equal_high":           OTF_EQUAL_HIGH,
+    "up_established": OTF_UP_ESTABLISHED,
+    "down_established": OTF_DOWN_ESTABLISHED,
+    "neutral": OTF_NEUTRAL,
+    "sequence_break_up": OTF_SEQUENCE_BREAK_UP,
+    "sequence_break_down": OTF_SEQUENCE_BREAK_DOWN,
+    "reversal_up_to_down": OTF_REVERSAL_UP_TO_DOWN,
+    "equal_low": OTF_EQUAL_LOW,
+    "equal_high": OTF_EQUAL_HIGH,
     "insufficient_history": OTF_INSUFFICIENT_HISTORY,
-    "session_boundary":     OTF_SESSION_BOUNDARY,
-    "overnight_session":    OTF_OVERNIGHT_SESSION,
+    "session_boundary": OTF_SESSION_BOUNDARY,
+    "overnight_session": OTF_OVERNIGHT_SESSION,
 }
 
 ALL_VECTOR_SCENARIOS: dict[str, dict] = {
-    "lookahead_safety":           OTF_LOOKAHEAD_SAFETY,
-    "directional_eligibility":    OTF_DIRECTIONAL_ELIGIBILITY,
-    "all_timeframe_alignment":    OTF_ALL_TIMEFRAME_ALIGNMENT,
+    "lookahead_safety": OTF_LOOKAHEAD_SAFETY,
+    "directional_eligibility": OTF_DIRECTIONAL_ELIGIBILITY,
+    "all_timeframe_alignment": OTF_ALL_TIMEFRAME_ALIGNMENT,
 }

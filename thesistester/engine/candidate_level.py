@@ -1,4 +1,5 @@
 """Normalized candidate-level adapter for strict 3c detection."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -93,7 +94,9 @@ def from_anchor_zones(zones: pd.DataFrame, direction: str) -> list[CandidateLeve
                     timestamp=zone.get("timestamp"),
                     metadata={
                         "level_count": zone.get("level_count"),
-                        "confluence_mode": _mode_label(str(zone.get("confluence_mode", "anchor_rules"))),
+                        "confluence_mode": _mode_label(
+                            str(zone.get("confluence_mode", "anchor_rules"))
+                        ),
                         "anchor_level": anchor_level,
                         "anchor_price": zone.get("anchor_price"),
                         "valid_confluence_count": zone.get("valid_confluence_count"),

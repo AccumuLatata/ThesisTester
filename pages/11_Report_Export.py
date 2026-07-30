@@ -1,4 +1,5 @@
 """Phase 9 — Research report and export page."""
+
 from __future__ import annotations
 
 import json
@@ -81,13 +82,19 @@ def _fmt(v: Any, fmt: str = ".2f", fallback: str = "—") -> str:
 artifact = build_research_artifact(st.session_state)
 
 execution_cost_assumptions = build_execution_cost_assumptions(st.session_state)
-if execution_cost_assumptions["backtest"]["available"] or execution_cost_assumptions["grid"]["available"]:
+if (
+    execution_cost_assumptions["backtest"]["available"]
+    or execution_cost_assumptions["grid"]["available"]
+):
     artifact["execution_cost_assumptions"] = execution_cost_assumptions
 session_exit_policy = build_session_exit_policy_assumptions(st.session_state)
 if session_exit_policy["backtest"]["available"] or session_exit_policy["grid"]["available"]:
     artifact["session_exit_policy"] = session_exit_policy
 exposure_policy_assumptions = build_exposure_policy_assumptions(st.session_state)
-if exposure_policy_assumptions["backtest"]["available"] or exposure_policy_assumptions["grid"]["available"]:
+if (
+    exposure_policy_assumptions["backtest"]["available"]
+    or exposure_policy_assumptions["grid"]["available"]
+):
     artifact["exposure_policy"] = exposure_policy_assumptions
 
 report_markdown = build_markdown_report(artifact)
@@ -137,7 +144,9 @@ if not _has_value("validation_summary"):
 results = artifact.get("results", {})
 trade_summary = results.get("trade_summary") or {}
 validation_summary = results.get("validation_summary") or {}
-trade_count_diag = validation_summary.get("trade_count") if isinstance(validation_summary, dict) else {}
+trade_count_diag = (
+    validation_summary.get("trade_count") if isinstance(validation_summary, dict) else {}
+)
 
 st.subheader("Summary")
 col1, col2, col3, col4, col5, col6 = st.columns(6)
@@ -145,7 +154,9 @@ col1.metric("Signals", results.get("signal_count", 0))
 col2.metric("Trades", results.get("trade_count", 0))
 col3.metric(
     "Win rate",
-    _fmt(trade_summary.get("win_rate"), ".1%") if trade_summary.get("win_rate") is not None else "—",
+    _fmt(trade_summary.get("win_rate"), ".1%")
+    if trade_summary.get("win_rate") is not None
+    else "—",
 )
 col4.metric("Avg R", _fmt(trade_summary.get("avg_r")))
 col5.metric("Total R", _fmt(trade_summary.get("total_r")))
@@ -157,21 +168,27 @@ if "execution_cost_assumptions" in artifact:
         for scope in ("backtest", "grid")
         if artifact["execution_cost_assumptions"].get(scope, {}).get("available")
     ]
-    st.caption(f"Execution cost assumptions included separately for: {', '.join(available_scopes)}.")
+    st.caption(
+        f"Execution cost assumptions included separately for: {', '.join(available_scopes)}."
+    )
 if "session_exit_policy" in artifact:
     available_scopes = [
         scope
         for scope in ("backtest", "grid")
         if artifact["session_exit_policy"].get(scope, {}).get("available")
     ]
-    st.caption(f"Session exit policy assumptions included separately for: {', '.join(available_scopes)}.")
+    st.caption(
+        f"Session exit policy assumptions included separately for: {', '.join(available_scopes)}."
+    )
 if "exposure_policy" in artifact:
     available_scopes = [
         scope
         for scope in ("backtest", "grid")
         if artifact["exposure_policy"].get(scope, {}).get("available")
     ]
-    st.caption(f"Exposure policy assumptions included separately for: {', '.join(available_scopes)}.")
+    st.caption(
+        f"Exposure policy assumptions included separately for: {', '.join(available_scopes)}."
+    )
 
 st.subheader("Downloads")
 json_text = json.dumps(artifact, indent=2)
@@ -233,8 +250,12 @@ if uploaded is not None:
         st.error("Invalid JSON file.")
     else:
         st.success("Artifact loaded (read-only preview).")
-        up_meta = uploaded_artifact.get("metadata", {}) if isinstance(uploaded_artifact, dict) else {}
-        up_results = uploaded_artifact.get("results", {}) if isinstance(uploaded_artifact, dict) else {}
+        up_meta = (
+            uploaded_artifact.get("metadata", {}) if isinstance(uploaded_artifact, dict) else {}
+        )
+        up_results = (
+            uploaded_artifact.get("results", {}) if isinstance(uploaded_artifact, dict) else {}
+        )
         up_summary = up_results.get("trade_summary") if isinstance(up_results, dict) else {}
 
         st.write(f"Generated at: {up_meta.get('generated_at', '—')}")

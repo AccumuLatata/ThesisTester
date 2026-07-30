@@ -12,6 +12,7 @@ Caveats
 - Grid-search overfit warnings are heuristic and descriptive only.
 - None of these diagnostics prove edge.  They surface evidence and warnings.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -21,6 +22,7 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 # A. bootstrap_expectancy_ci
 # ---------------------------------------------------------------------------
+
 
 def bootstrap_expectancy_ci(
     trades: pd.DataFrame,
@@ -100,6 +102,7 @@ def bootstrap_expectancy_ci(
 # B. permutation_test_expectancy
 # ---------------------------------------------------------------------------
 
+
 def permutation_test_expectancy(
     trades: pd.DataFrame,
     n_permutations: int = 5000,
@@ -172,6 +175,7 @@ def permutation_test_expectancy(
 # C. trade_count_diagnostics
 # ---------------------------------------------------------------------------
 
+
 def trade_count_diagnostics(
     trades: pd.DataFrame,
     min_trades_soft: int = 30,
@@ -236,6 +240,7 @@ def trade_count_diagnostics(
 # D. grid_overfit_diagnostics
 # ---------------------------------------------------------------------------
 
+
 def grid_overfit_diagnostics(
     grid: pd.DataFrame,
     selected_metric: str = "expectancy_r",
@@ -289,9 +294,7 @@ def grid_overfit_diagnostics(
     if selected_metric not in grid.columns:
         result = dict(empty)
         result["grid_cell_count"] = grid_cell_count
-        result["message"] = (
-            f"Selected metric '{selected_metric}' not found in grid."
-        )
+        result["message"] = f"Selected metric '{selected_metric}' not found in grid."
         return result
 
     valid = grid[selected_metric].dropna()
@@ -368,6 +371,7 @@ def grid_overfit_diagnostics(
 # ---------------------------------------------------------------------------
 # E. validation_summary
 # ---------------------------------------------------------------------------
+
 
 def validation_summary(
     trades: pd.DataFrame,
