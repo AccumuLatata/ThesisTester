@@ -15,8 +15,10 @@ Regression-safe onboarding guide for contributors/agents working in ThesisTester
   1. `ruff check .`
   2. `ruff format --check .`
   3. `pytest -q`
-- Lint scope is deliberately narrow (`E4`, `E7`, `E9`, `F`, `W` at line length 100). Widening
-  the rule set is a separate, reviewable PR — never a side effect of feature work.
+- Lint scope is deliberately narrow (`E4`, `E7`, `E9`, `F`, `W` at line length 100) and applies
+  to Python only — Markdown is excluded so documentation snippets are never rewritten by the
+  formatter. Widening the rule set is a separate, reviewable PR — never a side effect of
+  feature work.
 - `ruff` is version-capped in the `dev` extra so formatting decisions cannot change under CI
   without an explicit bump.
 

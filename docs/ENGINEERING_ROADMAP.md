@@ -150,7 +150,9 @@ Tooling, CI, and documentation only. Engine, analytics, levels, persistence, and
     baseline is 88% statement+branch coverage.
 - **Lint/format** — deliberately minimal ruff rule set (`E4`, `E7`, `E9`, `F`, `W`) at line
   length 100, with two documented per-file ignores: `E402` for Streamlit pages (they bootstrap
-  `sys.path` before importing) and `E741` for test fixtures using `l`/`O` bar shorthand. A
+  `sys.path` before importing) and `E741` for test fixtures using `l`/`O` bar shorthand.
+  Markdown is excluded: ruff formats fenced Python blocks, which would rewrite illustrative
+  snippets in historical design documents. A
   one-time `ruff format` pass landed in its own commit; AST dumps of all 108 tracked Python
   files are identical pre/post format, so the pass is provably semantics-preserving.
 - **Golden-master spec** — `tests/fixtures/golden/README.md` records the operational contract
