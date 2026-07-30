@@ -5,6 +5,17 @@ venv/
 .env
 .streamlit/secrets.toml
 .pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+# Packaging artifacts from `pip install -e .` / builds
+*.egg-info/
+build/
+dist/
 *.parquet
+# Golden-master fixtures are committed on purpose (see tests/fixtures/golden/README.md).
+!tests/fixtures/golden/*.parquet
 .thesistester_store/
 .DS_Store
