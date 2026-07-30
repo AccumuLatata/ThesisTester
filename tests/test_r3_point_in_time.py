@@ -11,7 +11,6 @@ This verifies that no future data leaks backward into historical bars.
 """
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -429,7 +428,6 @@ def test_confluence_zones_future_shock():
         tolerance_ticks=2,
         min_confluences=2,
     )
-    timestamps_before = set(zones_before["timestamp"].tolist()) if not zones_before.empty else set()
 
     # Future shock: append bars with extreme levels
     T = base["timestamp"].iloc[-1]

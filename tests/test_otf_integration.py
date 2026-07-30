@@ -20,7 +20,7 @@ from thesistester.engine.otf_integration import (
 )
 from thesistester.engine.otf import OTF_ALGORITHM_VERSION
 from thesistester.setup import _default_otf_filter_config, normalize_otf_filter_config
-from thesistester.analytics.walk_forward import run_walk_forward_sl_tp, summarize_walk_forward
+from thesistester.analytics.walk_forward import run_walk_forward_sl_tp
 from thesistester.analytics.grid import run_sl_tp_grid
 from thesistester.engine.backtest import simulate_trades
 from thesistester.reporting import build_research_artifact, build_markdown_report, build_otf_filter_metadata
@@ -194,7 +194,7 @@ class TestApplyConfiguredOtfFilterDisabled:
         source = _ohlcv_bars(3)
         sigs = _signals_df(_signal(signal_id=1, timestamp="2026-01-02 09:30:00"))
         original_cols = set(sigs.columns)
-        result = apply_configured_otf_filter(
+        apply_configured_otf_filter(
             source_df=source,
             candidate_signals=sigs,
         )
@@ -825,7 +825,7 @@ class TestWalkForwardOtfIntegration:
         rows = []
         for i in range(n_bars):
             rows.append({
-                "timestamp": pd.Timestamp(f"2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
+                "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
                 "open": 100.0,
                 "high": 110.0,
                 "low": 90.0,
@@ -838,7 +838,7 @@ class TestWalkForwardOtfIntegration:
         for i in range(0, n_bars - 1, 5):
             sigs.append({
                 "signal_id": i,
-                "timestamp": pd.Timestamp(f"2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
+                "timestamp": pd.Timestamp("2026-01-02 09:30:00", tz=TZ) + pd.Timedelta(minutes=i),
                 "bar_index": i,
                 "trigger": "touch",
                 "direction": "long",
@@ -1404,11 +1404,11 @@ class TestOtfMarkdownNoneFormatting:
 
     def test_markdown_with_none_counts_renders_dash_not_none(self):
         """Markdown section with None counts shows '—', not 'None'."""
-        from thesistester.reporting import build_otf_filter_metadata, build_research_artifact, build_markdown_report
+        from thesistester.reporting import build_otf_filter_metadata
 
         # Build a state where counts are absent → None in metadata
         state = self._make_wfo_only_state()
-        meta = build_otf_filter_metadata(state)
+        build_otf_filter_metadata(state)
         # Inject None counts into artifact to simulate partial metadata
         artifact_otf = {
             "available": True,
@@ -1422,7 +1422,6 @@ class TestOtfMarkdownNoneFormatting:
             "rejection_rate": None,
             "applied_scopes": [],
         }
-        artifact = {"otf_filter": artifact_otf}
         from thesistester.reporting import _otf_markdown_section
         md = _otf_markdown_section(artifact_otf)
         assert "None" not in md, f"Markdown contains 'None': {md!r}"
@@ -1640,8 +1639,8 @@ class TestWalkForwardOtfConfigValidation:
         )
         assert len(results_none) == len(results_disabled)
         # Both should show OTF disabled
-        assert (results_none["otf_filter_enabled"] == False).all()
-        assert (results_disabled["otf_filter_enabled"] == False).all()
+        assert results_none["otf_filter_enabled"].eq(False).all()
+        assert results_disabled["otf_filter_enabled"].eq(False).all()
 
     def test_invalid_config_never_produces_fold_results(self):
         """Invalid explicit OTF config is never silently converted to rejected signals."""

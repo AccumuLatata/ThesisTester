@@ -13,16 +13,13 @@ Covers:
 """
 from __future__ import annotations
 
-import math
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from thesistester.engine.candidate_level import CandidateLevel
 from thesistester.engine.signals_3c import _valid_bar_index, detect_3c_setups, detect_3c_setups_with_trigger_timeframe
 from thesistester.engine.signals import _prepare_trigger_dataframe, _project_zones_to_trigger_df, generate_signals
-from thesistester.engine.confluence import detect_confluence_zones
 from thesistester.setup import build_setup_config
 
 TZ = "America/New_York"

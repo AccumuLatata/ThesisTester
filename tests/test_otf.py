@@ -10,7 +10,6 @@ Contract version:   v1
 from __future__ import annotations
 
 import datetime
-from typing import Any
 
 import pandas as pd
 import pytest
@@ -21,7 +20,6 @@ from tests.fixtures.otf_fixtures import (
     OTF_EQUAL_HIGH,
     OTF_EQUAL_LOW,
     OTF_INSUFFICIENT_HISTORY,
-    OTF_LOOKAHEAD_SAFETY,
     OTF_LOOKAHEAD_SOURCE_BARS,
     OTF_NEUTRAL,
     OTF_OVERNIGHT_SESSION,
@@ -31,7 +29,6 @@ from tests.fixtures.otf_fixtures import (
     OTF_SESSION_BOUNDARY,
     OTF_UP_ESTABLISHED,
     TZ,
-    _bars_to_df,
 )
 from thesistester.engine.otf import (
     OTF_CANONICAL_TIMEFRAMES,
@@ -503,8 +500,6 @@ class TestOvernightSession:
     def test_midnight_does_not_reset_state(self) -> None:
         """OTF up sequence continues across midnight within the same futures session."""
         result = _run_scenario_overnight(OTF_OVERNIGHT_SESSION)
-        # Find bar 2 (midnight bar, 00:00 ET on 2026-01-06)
-        midnight_ts = pd.Timestamp("2026-01-06 00:00", tz=_TZ)
         # The HTF bar whose bar_start_timestamp == midnight should be in same session
         # as bars before midnight
         sessions = result["trading_session_date"].unique()

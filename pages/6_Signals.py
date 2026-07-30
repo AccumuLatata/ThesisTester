@@ -34,9 +34,7 @@ from thesistester.persistence import (
 from thesistester.setup import (
     DEFAULT_TRIGGER_TIMEFRAME,
     TRIGGER_TIMEFRAME_CHOICES,
-    VALID_DIRECTIONS,
     VALID_TRIGGER_TIMEFRAMES,
-    VALID_TRIGGERS,
     available_level_columns,
     default_selected_levels,
     get_effective_otf_filter_config,

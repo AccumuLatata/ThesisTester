@@ -5,7 +5,6 @@ triggering Streamlit runtime side-effects that occur at page import time.
 """
 from __future__ import annotations
 
-import importlib
 import json
 import sys
 import types
@@ -65,7 +64,8 @@ def _import_page_helpers():
     stub = _make_streamlit_stub()
     sys.modules.setdefault("streamlit", stub)
 
-    import importlib.util, pathlib
+    import importlib.util
+    import pathlib
     page_path = pathlib.Path(__file__).parent.parent / "pages" / "6_Signals.py"
     spec = importlib.util.spec_from_file_location("signals_page", page_path)
     mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]

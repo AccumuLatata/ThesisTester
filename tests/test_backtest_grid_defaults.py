@@ -12,12 +12,9 @@ Covers:
 """
 from __future__ import annotations
 
-import os
-from pathlib import Path
 
 import pytest
 
-import thesistester.persistence.local_store as local_store
 from thesistester.execution_defaults import (
     EXPOSURE_POLICY_OPTIONS,
     RANKING_METRIC_OPTIONS,
@@ -30,8 +27,6 @@ from thesistester.execution_defaults import (
     collect_grid_defaults,
     reset_backtest_session_keys,
     reset_grid_session_keys,
-    _BACKTEST_FIELD_SPECS,
-    _GRID_FIELD_SPECS,
 )
 from thesistester.persistence.local_store import (
     BACKTEST_DEFAULTS_SCHEMA_VERSION,

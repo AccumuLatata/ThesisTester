@@ -78,7 +78,6 @@ def _rth_ts(session_date: str, h: int, m: int) -> pd.Timestamp:
 def _naive_df() -> pd.DataFrame:
     """Minimal DataFrame with naive (tz-unaware) timestamps."""
     ts = pd.date_range("2026-06-02 09:30", periods=5, freq="1min")
-    n = len(ts)
     return pd.DataFrame(
         {
             "timestamp": ts,

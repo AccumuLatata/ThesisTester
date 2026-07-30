@@ -13,7 +13,6 @@ Covers:
 """
 from __future__ import annotations
 
-import copy
 
 import pandas as pd
 import pytest

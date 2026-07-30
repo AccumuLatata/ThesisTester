@@ -26,7 +26,6 @@ from thesistester.levels.tpo import (
     COL_P_ABOVE,
     COL_P_BELOW,
     SINGLE_PRINT_COLUMNS,
-    TPO_BRACKET_MINUTES,
 )
 
 TZ = "America/New_York"
@@ -68,7 +67,6 @@ def _rth_ts(session_date: str, h: int, m: int) -> pd.Timestamp:
 def _naive_df() -> pd.DataFrame:
     """Minimal DataFrame with naive (tz-unaware) timestamps."""
     ts = pd.date_range("2026-06-02 09:30", periods=5, freq="1min")
-    n = len(ts)
     return pd.DataFrame(
         {
             "timestamp": ts,

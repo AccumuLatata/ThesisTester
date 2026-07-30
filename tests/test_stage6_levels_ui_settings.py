@@ -8,7 +8,6 @@ import sys
 import types
 
 import pandas as pd
-import pytest
 
 from thesistester.levels import compute_all_levels
 
