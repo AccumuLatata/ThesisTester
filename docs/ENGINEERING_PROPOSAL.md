@@ -3,7 +3,7 @@
 **Document type:** Proposal + engineering roadmap
 **Date:** 2026-07-29
 **Inputs:** `docs/SOTA_BACKTESTING_LANDSCAPE.md` (market research), `docs/THESISTESTER_ANALYSIS.md` (repository analysis with runtime verification).
-**Status of this document:** Proposal. Nothing here is implemented. Each milestone is designed to land as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
+**Status of this document:** Proposal under implementation. **R9 is implemented** (see `docs/ENGINEERING_ROADMAP.md` R9); R10–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
 
 ---
 
@@ -162,8 +162,9 @@ Mandatory for every PR touching engine or analytics:
 
 Milestones extend the existing R-series (`docs/ENGINEERING_ROADMAP.md` R1–R8). Order is the recommended implementation sequence; dependencies are noted. Each milestone lists: goal → SOTA benchmark → scope → regression-safety → acceptance.
 
-### R9 — Engineering hygiene: CI, packaging, lint, coverage *(prerequisite for everything)*
+### R9 — Engineering hygiene: CI, packaging, lint, coverage *(prerequisite for everything)* — ✅ **Implemented**
 
+- **Status:** landed. Implementation record and deviations: `docs/ENGINEERING_ROADMAP.md` R9. Two spec refinements were forced by measurement and are documented in `tests/fixtures/golden/README.md`: golden comparison is value-level rather than byte-level (the repo's frame hash is not stable across pandas majors), and the "bundle hash" is taken over a canonical projection because `build_research_bundle` embeds a wall-clock `created_at`.
 - **Goal:** Make regression safety automatic instead of aspirational.
 - **Benchmark:** N/A — internal. (Addresses analysis weaknesses W1–W3, W14.)
 - **Scope:**

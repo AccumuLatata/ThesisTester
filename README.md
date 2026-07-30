@@ -1,5 +1,7 @@
 # ThesisTester
 
+[![CI](https://github.com/AccumuLatata/ThesisTester/actions/workflows/ci.yml/badge.svg)](https://github.com/AccumuLatata/ThesisTester/actions/workflows/ci.yml)
+
 Simple Streamlit app for intraday strategy research on futures data.
 
 ## Run locally
@@ -14,6 +16,31 @@ streamlit run app.py
 ```bash
 pytest -q
 ```
+
+## Development setup
+
+The library is packaged with `pyproject.toml`, so `thesistester` is importable outside the
+Streamlit app (headless scripts, notebooks, future CLI use):
+
+```bash
+pip install -e ".[dev]"     # library + pytest, pytest-cov, ruff
+pytest -q                   # full suite
+ruff check .                # lint
+ruff format .               # format (line length 100)
+pytest -q --cov=thesistester --cov-report=term-missing
+```
+
+`requirements.txt` remains the app-install path; `pyproject.toml` mirrors those ranges with
+conservative next-major caps so dependency majors arrive as explicit, test-gated bumps.
+
+CI (`.github/workflows/ci.yml`) runs on every push to `main` and every pull request:
+`ruff check` + `ruff format --check`, the full suite on Python 3.10/3.11/3.12 with coverage
+(reported, non-blocking), a clean-environment `pip install -e .` check, and the
+golden-master regeneration guard described in `tests/fixtures/golden/README.md`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ## Anchor confluence workflow
 
