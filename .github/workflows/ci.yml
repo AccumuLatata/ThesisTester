@@ -1,0 +1,147 @@
+name: CI
+
+# R9 regression-safety gate (docs/ENGINEERING_PROPOSAL.md §4.9): full pytest + lint on
+# every push and pull request. Coverage is reported but never blocking (monitor first).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Informational only: CI warns below this line, it never fails on coverage.
+  # Baseline at R9 was 88% statement+branch coverage of `thesistester`.
+  COVERAGE_FLOOR: 85
+
+jobs:
+  lint:
+    name: ruff (lint + format)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      # Ruff comes from the `dev` extra so its pinned version is the single source of
+      # truth for local runs and CI alike (installing the extra itself would pull the
+      # whole app dependency tree for a lint-only job).
+      - name: Resolve pinned ruff requirement
+        id: ruff
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import pathlib
+          import tomllib
+
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          dev = data["project"]["optional-dependencies"]["dev"]
+          print("spec=" + next(req for req in dev if req.startswith("ruff")))
+          PY
+      - name: Install ruff
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "${{ steps.ruff.outputs.spec }}"
+      - name: ruff check
+        run: ruff check --output-format=github .
+      - name: ruff format --check
+        run: ruff format --check .
+
+  tests:
+    name: pytest (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install package + dev extras
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Record resolved dependency versions
+        run: python -m pip list
+      - name: pytest with coverage
+        run: pytest -q --cov=thesistester --cov-report=term-missing --cov-report=xml
+      - name: Report coverage (informational)
+        run: |
+          total="$(python -m coverage report --format=total)"
+          echo "Coverage: ${total}% (informational floor: ${COVERAGE_FLOOR}%)" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${total}" -lt "${COVERAGE_FLOOR}" ]; then
+            echo "::warning title=Coverage below floor::${total}% < ${COVERAGE_FLOOR}% (informational, not blocking)"
+          fi
+      - name: Upload coverage report
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: error
+
+  package:
+    name: editable install (no dev extras)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: pip install -e . in a clean environment
+        run: |
+          python -m venv /tmp/venv
+          /tmp/venv/bin/python -m pip install --upgrade pip
+          /tmp/venv/bin/python -m pip install -e .
+          /tmp/venv/bin/python -c "import thesistester; print(thesistester.__version__)"
+          /tmp/venv/bin/python -m pip check
+
+  golden-guard:
+    # Enforces the golden-master regeneration policy (proposal §4.1.3): golden files may
+    # only change in a PR that carries the `GOLDEN_REGEN` label, so legacy-mode outputs
+    # are never silently re-recorded.
+    name: golden-master regeneration guard
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check for golden-fixture changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HAS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'GOLDEN_REGEN') }}
+        run: |
+          changed="$(git diff --name-only --diff-filter=ACMRD "$BASE_SHA" "$HEAD_SHA" \
+            -- tests/fixtures/golden \
+            ':(exclude)tests/fixtures/golden/README.md')"
+          if [ -z "$changed" ]; then
+            echo "No golden-fixture changes."
+            exit 0
+          fi
+          echo "Golden fixtures changed:"
+          echo "$changed"
+          if [ "$HAS_LABEL" = "true" ]; then
+            echo "::notice title=Golden regeneration approved::GOLDEN_REGEN label present."
+            exit 0
+          fi
+          echo "::error title=Golden fixtures changed without GOLDEN_REGEN::Recorded legacy-mode outputs may only change in a dedicated PR labelled GOLDEN_REGEN (see tests/fixtures/golden/README.md)."
+          exit 1
