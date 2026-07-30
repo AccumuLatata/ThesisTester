@@ -67,7 +67,10 @@ exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-extend-exclude = [".thesistester_store", "sample_data"]
+# Markdown is excluded on purpose: ruff formats fenced Python blocks, which would silently
+# rewrite illustrative snippets in historical design documents (and make docs PRs fail
+# formatting for prose reasons). R9 keeps tooling scoped to executable Python.
+extend-exclude = [".thesistester_store", "sample_data", "*.md"]
 
 [tool.ruff.lint]
 # Deliberately minimal (R9 is hygiene, not a refactor): pycodestyle errors/warnings and

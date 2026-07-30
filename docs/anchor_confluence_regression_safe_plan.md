@@ -301,7 +301,8 @@ def detect_anchor_confluence_zones(
     confluence_rules: list[dict],
     tick_size: float,
     min_valid_confluences: int = 1,
-) -> pd.DataFrame: ...
+) -> pd.DataFrame:
+    ...
 ```
 
 ### 6.2 Per-bar algorithm
@@ -732,9 +733,7 @@ zones = detect_confluence_zones(
 New behavior:
 
 ```python
-confluence_mode = (
-    saved_setup.get("confluence_mode", "global_cluster") if saved_setup else "global_cluster"
-)
+confluence_mode = saved_setup.get("confluence_mode", "global_cluster") if saved_setup else "global_cluster"
 
 if confluence_mode == "global_cluster":
     zones = detect_confluence_zones(
