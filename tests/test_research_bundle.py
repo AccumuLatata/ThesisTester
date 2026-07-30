@@ -65,6 +65,7 @@ def test_empty_session_exports_manifest_only():
         "backtest": False,
         "grid": False,
         "validation": False,
+        "excursion": False,
     }
 
 
@@ -108,6 +109,22 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         "trades": pd.DataFrame({"trade_id": [1]}),
         "grid_results": pd.DataFrame({"expectancy_r": [0.1]}),
         "validation_summary": {"trade_count": {"status": "limited"}},
+        "excursion_summary": {
+            "schema_version": 1,
+            "available": True,
+            "trade_count": 1,
+            "edge_ratio": {"mean_edge_ratio_r": 2.0},
+        },
+        "excursion_config": {"both_hit_rule": "stop_first"},
+        "excursion_grouped_summary": pd.DataFrame(
+            {"direction": ["long"], "trade_count": [1], "mean_mae_r": [0.5]}
+        ),
+        "excursion_calibration_grid": pd.DataFrame(
+            {"stop_r": [1.0], "target_r": [2.0], "target_hit_probability": [0.5]}
+        ),
+        "excursion_quadrant_summary": pd.DataFrame(
+            {"quadrant": ["target_without_full_stop"], "count": [1]}
+        ),
     }
 
     apply_research_bundle_to_session(loaded, existing_state)
@@ -119,7 +136,18 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
     assert existing_state["source_timezone"] == "America/New_York"
     assert existing_state["exchange_timezone"] == "America/New_York"
 
-    for key in ("levels", "signals", "trades", "grid_results", "validation_summary"):
+    for key in (
+        "levels",
+        "signals",
+        "trades",
+        "grid_results",
+        "validation_summary",
+        "excursion_summary",
+        "excursion_config",
+        "excursion_grouped_summary",
+        "excursion_calibration_grid",
+        "excursion_quadrant_summary",
+    ):
         assert key not in existing_state
 
 
@@ -153,6 +181,22 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
         ),
         "best_grid_result": {"stop_loss_ticks": 4.0, "take_profit_ticks": 8.0},
         "validation_summary": {"trade_count": {"status": "limited"}},
+        "excursion_summary": {
+            "schema_version": 1,
+            "available": True,
+            "trade_count": 1,
+            "edge_ratio": {"mean_edge_ratio_r": 2.0},
+        },
+        "excursion_config": {"both_hit_rule": "stop_first"},
+        "excursion_grouped_summary": pd.DataFrame(
+            {"direction": ["long"], "trade_count": [1], "mean_mae_r": [0.5]}
+        ),
+        "excursion_calibration_grid": pd.DataFrame(
+            {"stop_r": [1.0], "target_r": [2.0], "target_hit_probability": [0.5]}
+        ),
+        "excursion_quadrant_summary": pd.DataFrame(
+            {"quadrant": ["target_without_full_stop"], "count": [1]}
+        ),
     }
 
     bundle_bytes = build_research_bundle(source_state)
@@ -170,6 +214,9 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
         "trades",
         "equity_curve",
         "grid_results",
+        "excursion_grouped_summary",
+        "excursion_calibration_grid",
+        "excursion_quadrant_summary",
     ):
         pd.testing.assert_frame_equal(restored_state[key], source_state[key])
 
@@ -182,6 +229,9 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
     assert restored_state["trade_summary"] == {"trade_count": 1}
     assert restored_state["best_grid_result"] == {"stop_loss_ticks": 4.0, "take_profit_ticks": 8.0}
     assert restored_state["validation_summary"] == {"trade_count": {"status": "limited"}}
+    assert restored_state["excursion_summary"]["schema_version"] == 1
+    assert restored_state["excursion_summary"]["trade_count"] == 1
+    assert restored_state["excursion_config"] == {"both_hit_rule": "stop_first"}
 
 
 def test_unknown_zip_files_are_ignored():

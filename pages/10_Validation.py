@@ -14,7 +14,13 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from thesistester.analytics import run_walk_forward_sl_tp, summarize_walk_forward
+from thesistester.analytics import (
+    add_excursion_r_columns,
+    add_time_buckets,
+    excursion_summary,
+    run_walk_forward_sl_tp,
+    summarize_walk_forward,
+)
 from thesistester.analytics.validation import validation_summary
 from thesistester.config import INSTRUMENTS
 
@@ -407,6 +413,196 @@ if isinstance(wfo_summary, dict):
     s4.metric("Median test expectancy", _fmt_value(wfo_summary.get("median_test_expectancy_r")))
 if hasattr(wfo_results, "empty") and not wfo_results.empty:
     st.dataframe(wfo_results, width="stretch", hide_index=True)
+
+st.divider()
+st.subheader("MAE/MFE excursion analytics")
+st.caption(
+    "Diagnostic only — calibrates from completed-trade bar-level excursions, not intrabar path order."
+)
+
+instrument_for_excursions = st.session_state.get("instrument", "ES")
+inst_for_excursions = INSTRUMENTS.get(instrument_for_excursions)
+excursion_tick_size = inst_for_excursions.tick_size if inst_for_excursions else 0.25
+excursion_exchange_tz = st.session_state.get("exchange_timezone") or "America/New_York"
+
+try:
+    excursion_trades = add_time_buckets(
+        trades_raw,
+        exchange_tz=excursion_exchange_tz,
+        bucket_tz=excursion_exchange_tz,
+        session_tz=excursion_exchange_tz,
+    )
+except (AttributeError, TypeError, ValueError):
+    excursion_trades = trades_raw.copy()
+
+available_group_cols = [
+    col
+    for col in (
+        "direction",
+        "trigger",
+        "trigger_variant",
+        "level_source_mode",
+        "entry_rth_segment",
+        "entry_hour_bucket",
+    )
+    if col in excursion_trades.columns
+]
+default_group_cols = [col for col in ("direction", "trigger") if col in available_group_cols]
+
+ec1, ec2, ec3 = st.columns(3)
+excursion_group_cols = ec1.multiselect(
+    "Excursion grouping",
+    options=available_group_cols,
+    default=default_group_cols,
+    help="Existing trade columns used for grouped MAE/MFE distributions.",
+)
+excursion_min_trades = int(
+    ec2.number_input(
+        "Excursion min trades",
+        min_value=1,
+        max_value=100_000,
+        value=10,
+        step=1,
+        help="Groups below this count are flagged with sample_warning.",
+    )
+)
+excursion_both_hit_rule = ec3.selectbox(
+    "Calibration both-hit rule",
+    options=["stop_first", "target_first", "exclude_ambiguous"],
+    index=0,
+    help="How to classify trades whose terminal MAE and MFE both reach a candidate SL/TP pair.",
+)
+
+gr1, gr2, gr3 = st.columns(3)
+stop_r_start = float(
+    gr1.number_input("Stop R start", min_value=0.1, max_value=20.0, value=0.5, step=0.25)
+)
+stop_r_stop = float(
+    gr2.number_input("Stop R stop", min_value=0.1, max_value=20.0, value=1.5, step=0.25)
+)
+stop_r_step = float(
+    gr3.number_input("Stop R step", min_value=0.1, max_value=5.0, value=0.25, step=0.25)
+)
+
+tg1, tg2, tg3 = st.columns(3)
+target_r_start = float(
+    tg1.number_input("Target R start", min_value=0.1, max_value=50.0, value=0.5, step=0.25)
+)
+target_r_stop = float(
+    tg2.number_input("Target R stop", min_value=0.1, max_value=50.0, value=3.0, step=0.25)
+)
+target_r_step = float(
+    tg3.number_input("Target R step", min_value=0.1, max_value=10.0, value=0.5, step=0.25)
+)
+
+stop_r_values = [
+    round(v, 10)
+    for v in np.arange(stop_r_start, stop_r_stop + stop_r_step * 0.5, stop_r_step).tolist()
+    if v > 0
+]
+target_r_values = [
+    round(v, 10)
+    for v in np.arange(target_r_start, target_r_stop + target_r_step * 0.5, target_r_step).tolist()
+    if v > 0
+]
+
+if st.button("▶ Run excursion analytics", type="secondary"):
+    if not stop_r_values or not target_r_values:
+        st.error("Stop/target R grids are empty; adjust the ranges.")
+    else:
+        with st.spinner("Computing MAE/MFE excursion diagnostics…"):
+            exc_summary = excursion_summary(
+                excursion_trades,
+                excursion_tick_size,
+                group_cols=excursion_group_cols,
+                stop_r_grid=stop_r_values,
+                target_r_grid=target_r_values,
+                both_hit_rule=excursion_both_hit_rule,
+                min_trades=excursion_min_trades,
+            )
+            st.session_state["excursion_summary"] = exc_summary
+            st.session_state["excursion_grouped_summary"] = pd.DataFrame(exc_summary["grouped"])
+            st.session_state["excursion_calibration_grid"] = pd.DataFrame(
+                exc_summary["calibration_grid"]
+            )
+            st.session_state["excursion_quadrant_summary"] = pd.DataFrame(exc_summary["quadrants"])
+            st.session_state["excursion_config"] = exc_summary["config"]
+        st.success("Excursion analytics complete.")
+
+exc_summary = st.session_state.get("excursion_summary")
+if isinstance(exc_summary, dict) and exc_summary.get("available"):
+    edge = exc_summary.get("edge_ratio", {})
+    e1, e2, e3, e4 = st.columns(4)
+    e1.metric("Trades with excursions", exc_summary.get("trade_count", 0))
+    e2.metric("Mean MAE (R)", _fmt_value(edge.get("mean_mae_r")))
+    e3.metric("Mean MFE (R)", _fmt_value(edge.get("mean_mfe_r")))
+    e4.metric("Mean edge ratio", _fmt_value(edge.get("mean_edge_ratio_r")))
+
+    st.caption(exc_summary.get("caveat", ""))
+
+    normalized_excursions = add_excursion_r_columns(excursion_trades, excursion_tick_size)
+    if not normalized_excursions.empty and {"mae_r", "mfe_r"}.issubset(
+        normalized_excursions.columns
+    ):
+        fig_exc = go.Figure()
+        fig_exc.add_trace(
+            go.Scatter(
+                x=normalized_excursions["mae_r"],
+                y=normalized_excursions["mfe_r"],
+                mode="markers",
+                marker=dict(color="steelblue", opacity=0.65),
+                text=normalized_excursions.get("trade_id"),
+                name="Trades",
+            )
+        )
+        fig_exc.add_hline(y=1.0, line_dash="dash", line_color="gray")
+        fig_exc.add_vline(x=1.0, line_dash="dash", line_color="gray")
+        fig_exc.update_layout(
+            xaxis_title="MAE (R)",
+            yaxis_title="MFE (R)",
+            height=360,
+            margin=dict(l=10, r=10, t=30, b=10),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_exc, width="stretch")
+
+    grouped_exc = st.session_state.get("excursion_grouped_summary")
+    if isinstance(grouped_exc, pd.DataFrame) and not grouped_exc.empty:
+        st.markdown("**Grouped MAE/MFE distributions**")
+        st.dataframe(grouped_exc, width="stretch", hide_index=True)
+
+    quadrant_exc = st.session_state.get("excursion_quadrant_summary")
+    if isinstance(quadrant_exc, pd.DataFrame) and not quadrant_exc.empty:
+        st.markdown("**MAE×MFE quadrant counts**")
+        st.dataframe(quadrant_exc, width="stretch", hide_index=True)
+
+    calibration_exc = st.session_state.get("excursion_calibration_grid")
+    if isinstance(calibration_exc, pd.DataFrame) and not calibration_exc.empty:
+        st.markdown("**Counterfactual SL/TP hit-probability grid**")
+        heat = calibration_exc.pivot(
+            index="stop_r", columns="target_r", values="target_hit_probability"
+        )
+        fig_cal = go.Figure(
+            data=go.Heatmap(
+                z=heat.values,
+                x=[str(c) for c in heat.columns],
+                y=[str(i) for i in heat.index],
+                colorscale="Blues",
+                zmin=0,
+                zmax=1,
+                colorbar=dict(title="P(target)"),
+            )
+        )
+        fig_cal.update_layout(
+            xaxis_title="Target distance (R)",
+            yaxis_title="Stop distance (R)",
+            height=360,
+            margin=dict(l=10, r=10, t=30, b=10),
+        )
+        st.plotly_chart(fig_cal, width="stretch")
+        st.dataframe(calibration_exc, width="stretch", hide_index=True)
+else:
+    st.info("Run excursion analytics to inspect MAE/MFE distributions and SL/TP calibration.")
 
 # ── Display results if available ──────────────────────────────────────────────
 summary = st.session_state.get("validation_summary")
