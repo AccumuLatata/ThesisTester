@@ -153,6 +153,26 @@ _LEVEL_ARGUMENT_MAP = {
     "prior_week_profile_aggregation_ticks": "prior_week_aggregation_ticks",
     "prior_month_profile_aggregation_ticks": "prior_month_aggregation_ticks",
 }
+_SETUP_EXECUTION_KEYS = {
+    "name",
+    "description",
+    "instrument",
+    "selected_levels",
+    "tolerance_ticks",
+    "min_confluences",
+    "max_confluences",
+    "naked_only",
+    "naked_requirement",
+    "trigger",
+    "trigger_timeframe",
+    "direction",
+    "confluence_mode",
+    "anchor_level",
+    "confluence_rules",
+    "min_valid_confluences",
+    "trigger_params",
+    "otf_filter",
+}
 _BACKTEST_DEFAULTS: dict[str, Any] = {
     "stop_loss_ticks": 8.0,
     "take_profit_ticks": 16.0,
@@ -1193,8 +1213,11 @@ def compute_levels(
 
 def build_setup(config: Mapping[str, Any]) -> dict[str, Any]:
     """Normalize and validate a setup using the same library contract as the UI."""
+    executable_config = {
+        key: value for key, value in dict(config).items() if key in _SETUP_EXECUTION_KEYS
+    }
     try:
-        setup = build_setup_config(**dict(config))
+        setup = build_setup_config(**executable_config)
     except TypeError as exc:
         raise ValueError(f"Invalid setup configuration: {exc}") from exc
     errors = validate_setup_config(setup)
