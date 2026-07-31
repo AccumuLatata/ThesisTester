@@ -23,6 +23,16 @@ INSTRUMENTS: dict[str, Instrument] = {
     "NQ": Instrument(
         "NQ", "E-mini Nasdaq-100", tick_size=0.25, point_value=20.0, eth_start="18:00"
     ),
+    "MES": Instrument(
+        "MES", "Micro E-mini S&P 500", tick_size=0.25, point_value=5.0, eth_start="18:00"
+    ),
+    "MNQ": Instrument(
+        "MNQ",
+        "Micro E-mini Nasdaq-100",
+        tick_size=0.25,
+        point_value=2.0,
+        eth_start="18:00",
+    ),
 }
 
 TIMEZONE_OPTIONS: list[str] = [

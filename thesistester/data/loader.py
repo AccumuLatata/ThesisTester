@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+import io
+from typing import Literal
 
 import pandas as pd
 
@@ -21,6 +23,22 @@ COLUMN_ALIASES = {
     "volume(from bar)": "volume",
     "volume (from bar)": "volume",
 }
+FORMAT_PROFILES = (
+    "canonical",
+    "ninjatrader",
+    "sierra_intraday",
+    "databento_trades",
+    "tick_capture",
+    "second_capture",
+)
+FormatProfile = Literal[
+    "canonical",
+    "ninjatrader",
+    "sierra_intraday",
+    "databento_trades",
+    "tick_capture",
+    "second_capture",
+]
 
 
 class DataValidationError(Exception):
@@ -99,12 +117,121 @@ def format_interval(interval: pd.Timedelta | None) -> str:
     return str(interval)
 
 
+def _normalize_profile_columns(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    columns = [normalize_column_name(column) for column in out.columns]
+    out.columns = [COLUMN_ALIASES.get(column, column) for column in columns]
+    return out
+
+
+def _profile_timestamp(values: pd.Series, *, source_tz: str, target_tz: str) -> pd.Series:
+    parsed = pd.to_datetime(values, errors="coerce", format="mixed")
+    if parsed.isna().any():
+        raise DataValidationError("Unparseable values in profile timestamp column.")
+    if parsed.dt.tz is None:
+        parsed = parsed.dt.tz_localize(source_tz)
+    return parsed.dt.tz_convert(target_tz)
+
+
+def _aggregate_capture_rows(rows: pd.DataFrame) -> pd.DataFrame:
+    work = rows.sort_values("timestamp", kind="mergesort").copy()
+    work["price"] = pd.to_numeric(work["price"], errors="coerce")
+    work["volume"] = pd.to_numeric(work["volume"], errors="coerce")
+    if work[["price", "volume"]].isna().any().any():
+        raise DataValidationError("Capture rows must have numeric price and volume.")
+    work["_bucket"] = work["timestamp"].dt.floor("1min")
+    return (
+        work.groupby("_bucket", sort=True)
+        .agg(
+            open=("price", "first"),
+            high=("price", "max"),
+            low=("price", "min"),
+            close=("price", "last"),
+            volume=("volume", "sum"),
+        )
+        .reset_index()
+        .rename(columns={"_bucket": "timestamp"})
+    )
+
+
+def _read_explicit_profile(
+    file,
+    *,
+    format_profile: FormatProfile,
+    source_tz: str,
+    target_tz: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Parse a non-canonical vendor profile into canonical bars plus raw rows."""
+    if format_profile == "ninjatrader":
+        raw = pd.read_csv(file, sep=";", header=None)
+        if raw.shape[1] == 6:
+            raw.columns = ["timestamp", "open", "high", "low", "close", "volume"]
+            raw["timestamp"] = _profile_timestamp(
+                raw["timestamp"], source_tz=source_tz, target_tz=target_tz
+            )
+            return raw, raw.copy()
+        if raw.shape[1] in {3, 5}:
+            raw = raw.iloc[:, [0, 1, raw.shape[1] - 1]].copy()
+            raw.columns = ["timestamp", "price", "volume"]
+            raw["timestamp"] = _profile_timestamp(
+                raw["timestamp"], source_tz=source_tz, target_tz=target_tz
+            )
+            return _aggregate_capture_rows(raw), raw
+        raise DataValidationError(
+            "NinjaTrader profile expects 6 bar fields or 3/5 capture fields separated by ';'."
+        )
+
+    raw = _normalize_profile_columns(pd.read_csv(file))
+    if format_profile == "sierra_intraday":
+        if "date" in raw.columns and "time" in raw.columns:
+            raw["timestamp"] = (
+                raw["date"].astype("string").str.strip()
+                + " "
+                + raw["time"].astype("string").str.strip()
+            )
+        if "last" in raw.columns and "close" not in raw.columns:
+            raw["close"] = raw["last"]
+        raw["timestamp"] = _profile_timestamp(
+            raw["timestamp"], source_tz=source_tz, target_tz=target_tz
+        )
+        return raw, raw.copy()
+
+    if format_profile == "databento_trades":
+        if "action" in raw.columns:
+            raw = raw[raw["action"].astype("string").str.upper().eq("T")].copy()
+        if not {"ts_event", "price", "size"} <= set(raw.columns):
+            raise DataValidationError(
+                "Databento trades profile requires ts_event, price, and size columns."
+            )
+        raw["timestamp"] = pd.to_datetime(raw["ts_event"], unit="ns", utc=True, errors="coerce")
+        if raw["timestamp"].isna().any():
+            raise DataValidationError("Databento trades profile has unparseable ts_event values.")
+        raw["timestamp"] = raw["timestamp"].dt.tz_convert(target_tz)
+        raw["price"] = pd.to_numeric(raw["price"], errors="coerce")
+        raw.loc[raw["price"].abs() >= 10_000_000, "price"] /= 1_000_000_000
+        raw["volume"] = raw["size"]
+        return _aggregate_capture_rows(raw), raw
+
+    if format_profile in {"tick_capture", "second_capture"}:
+        if not {"timestamp", "price", "volume"} <= set(raw.columns):
+            raise DataValidationError(
+                f"{format_profile} profile requires timestamp, price, and volume columns."
+            )
+        raw["timestamp"] = _profile_timestamp(
+            raw["timestamp"], source_tz=source_tz, target_tz=target_tz
+        )
+        return _aggregate_capture_rows(raw), raw
+    raise DataValidationError(f"Unsupported format profile: {format_profile!r}.")
+
+
 def load_ohlcv(
     file,
     tz: str = "America/New_York",
     source_tz: str | None = None,
     target_tz: str | None = None,
-) -> pd.DataFrame:
+    format_profile: FormatProfile = "canonical",
+    return_raw: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """Load an OHLCV CSV into the canonical, tz-aware, sorted contract.
 
     `file` may be a path or a file-like object (e.g. Streamlit upload).
@@ -112,7 +239,25 @@ def load_ohlcv(
     aware ones are converted using their embedded timezone.
     """
     target = target_tz or tz
-    source = source_tz or target
+    if format_profile not in FORMAT_PROFILES:
+        raise DataValidationError(
+            f"Unsupported format profile: {format_profile!r}. Choose one of {list(FORMAT_PROFILES)}."
+        )
+    source = source_tz or ("UTC" if format_profile == "ninjatrader" else target)
+    if format_profile != "canonical":
+        bars, raw = _read_explicit_profile(
+            file,
+            format_profile=format_profile,
+            source_tz=source,
+            target_tz=target,
+        )
+        canonical = load_ohlcv(
+            io.StringIO(bars[REQUIRED_COLUMNS].to_csv(index=False)),
+            source_tz=target,
+            target_tz=target,
+        )
+        canonical.attrs["format_profile"] = format_profile
+        return (canonical, raw.reset_index(drop=True)) if return_raw else canonical
 
     df = pd.read_csv(file)
     raw_columns = [normalize_column_name(c) for c in df.columns]
@@ -179,7 +324,8 @@ def load_ohlcv(
     df = df.sort_values("timestamp").reset_index(drop=True)
     out = df[REQUIRED_COLUMNS]
     out.attrs["was_monotonic_before_sort"] = was_monotonic
-    return out
+    out.attrs["format_profile"] = "canonical"
+    return (out, df.reset_index(drop=True)) if return_raw else out
 
 
 def validate_ohlcv(df: pd.DataFrame) -> ValidationReport:

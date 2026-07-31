@@ -564,3 +564,42 @@ levels, signals, engine semantics, or the existing validation contract.
 - A single-bar trigger fixture verifies materially degraded persistence under
   perturbation.
 - API, report, bundle, and existing golden-master gates cover additive wiring.
+
+---
+
+## R17 — Vendor Ingestion and Tick Capture ✅ Implemented
+
+Adds explicit, opt-in data-format profiles while retaining the existing
+canonical/Quantower CSV parser as the unchanged default path.
+
+### Features
+
+- `load_ohlcv()` accepts `canonical`, `ninjatrader`, `sierra_intraday`,
+  `databento_trades`, `tick_capture`, and `second_capture` profiles; no
+  profile is auto-detected.
+- NinjaTrader semicolon exports, Sierra Date/Time + Last exports, and
+  Databento fixed-point trade rows are normalized into canonical OHLCV.
+- Trade/tick/second captures aggregate deterministically to one-minute OHLCV
+  (first/max/min/last/sum); Databento bid/ask fields are retained in raw
+  capture only and remain unused by the bar engine.
+- Local datasets can persist an optional `raw.parquet` sidecar with profile,
+  raw-row count, and interval provenance. Dataset IDs continue to hash only
+  canonical engine input.
+- UI/API/CLI accept the explicit profile and MNQ/MES presets use CME-standard
+  0.25-point ticks with $2/$5 point values respectively.
+
+### Regression safety
+
+- The canonical profile remains the default and current sample CSV output is
+  byte-identical to the legacy loader.
+- No engine, level, signal, R7 roll metadata, or R12 subtimeframe semantics
+  changed. Captured ticks are not presented as subtimeframe replay data.
+- All vendor mappings are profile-gated; selecting the wrong profile fails
+  clearly instead of silently reinterpreting a file.
+
+### Tests
+
+- Synthetic NinjaTrader, Sierra, Databento, and generic capture fixtures
+  verify canonical bar output and raw quote preservation.
+- Canonical sample identity, loader aliases, raw-sidecar round trip, MNQ/MES
+  contract values, API validation, and full golden-master gates remain covered.

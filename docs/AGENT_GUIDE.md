@@ -226,6 +226,16 @@ Agent safety requirements:
 - Run `pytest -q tests/test_noise.py tests/test_api.py tests/test_golden_master.py`
   after R16 changes.
 
+## R17 ingestion research safety
+
+- Keep `dataset.format_profile` explicit in API/CLI specifications; canonical
+  remains the default and no format auto-detection is permitted.
+- Preserve captured raw rows only as provenance; use canonical one-minute bars
+  for current engine work and do not treat raw ticks as R12 subtimeframe data.
+- Confirm the canonical sample CSV remains byte-identical after loader edits.
+- Run `pytest -q tests/test_loader.py tests/test_vendor_loaders.py tests/test_local_store.py`
+  after R17 changes.
+
 ## Repository conventions (verified)
 - Multipage Streamlit workflow with phase pages under `pages/` (`app.py:10-33`).
 - Core outputs are passed through `st.session_state` between phases (see `docs/ARCHITECTURE.md`).

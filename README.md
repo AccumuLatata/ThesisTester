@@ -136,6 +136,10 @@ The **Backtest** and **Grid Search** pages support saving and restoring executio
 - **Phase 1 (data layer):** CSV OHLCV ingestion, timezone normalization, validation,
   base-interval inference, RTH/ETH session tagging, and OHLCV resampling (1min, 5min,
   15min, 30min, 1h, 4h, 1D).
+- **R17 vendor profiles:** choose an explicit canonical/Quantower, NinjaTrader,
+  Sierra Intraday, Databento trades, tick-capture, or second-capture profile.
+  Captures are aggregated to one-minute bars and raw rows are retained locally;
+  MNQ and MES are supported instrument presets.
 - **Timezone handling:** the Data page includes a source timestamp timezone selector.
   Timezone-naive CSV timestamps are localized to the selected source timezone and
   converted to the instrument exchange timezone (`America/New_York` for ES/NQ).

@@ -13,6 +13,7 @@ from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.data.loader import (
     DataValidationError,
     format_interval,
+    infer_base_interval,
     load_ohlcv,
     validate_ohlcv,
 )
@@ -79,6 +80,9 @@ def _clear_dataset_dependent_state() -> None:
         "levels",
         "subtimeframe_data",
         "subtimeframe_interval",
+        "raw_data",
+        "raw_interval",
+        "format_profile",
         "session_levels",
         "levels_settings",
         "levels_data_fingerprint",
@@ -417,6 +421,24 @@ st.caption(
 )
 
 source = st.radio("Source", ["Sample data", "Upload CSV"], horizontal=True)
+profile_options = {
+    "canonical": "Canonical / Quantower OHLCV",
+    "ninjatrader": "NinjaTrader export",
+    "sierra_intraday": "Sierra Intraday CSV",
+    "databento_trades": "Databento trades CSV",
+    "tick_capture": "Generic tick capture CSV",
+    "second_capture": "Generic second capture CSV",
+}
+format_profile = (
+    st.selectbox(
+        "CSV format profile",
+        options=list(profile_options),
+        format_func=profile_options.get,
+        help="Explicit selection only; ThesisTester never auto-detects vendor formats.",
+    )
+    if source == "Upload CSV"
+    else "canonical"
+)
 default_source_tz = "America/New_York" if source == "Sample data" else meta.exchange_tz
 if PENDING_SOURCE_TZ_SELECTOR_KEY in st.session_state:
     st.session_state["data_source_timezone_selector"] = st.session_state.pop(
@@ -437,9 +459,7 @@ source_tz = st.selectbox(
 
 file = None
 if source == "Upload CSV":
-    file = st.file_uploader(
-        "OHLCV CSV with columns: timestamp,open,high,low,close,volume", type=["csv"]
-    )
+    file = st.file_uploader("CSV file for the selected explicit profile", type=["csv", "txt"])
 else:
     sample = REPO_ROOT / "sample_data" / "ES_sample_1m.csv"
     file = sample if sample.exists() else None
@@ -452,7 +472,13 @@ use_source_dataset = file is not None and (
 
 if use_source_dataset:
     try:
-        raw_df = load_ohlcv(file, source_tz=source_tz, target_tz=meta.exchange_tz)
+        raw_df, captured_raw = load_ohlcv(
+            file,
+            source_tz=source_tz,
+            target_tz=meta.exchange_tz,
+            format_profile=format_profile,
+            return_raw=True,
+        )
         report = validate_ohlcv(raw_df)
         base_interval = format_interval(report.inferred_interval)
         df = tag_session(raw_df, inst)
@@ -476,6 +502,18 @@ if use_source_dataset:
             resampled_data=resampled_data,
             saved_dataset_id=None,
         )
+        st.session_state["format_profile"] = format_profile
+        if format_profile in {"databento_trades", "tick_capture", "second_capture"}:
+            st.session_state["raw_data"] = captured_raw
+            st.session_state["raw_interval"] = format_interval(
+                infer_base_interval(captured_raw["timestamp"])
+            )
+            st.caption(
+                f"Captured {len(captured_raw):,} raw rows; the engine uses the resampled 1-minute bars."
+            )
+        else:
+            st.session_state.pop("raw_data", None)
+            st.session_state.pop("raw_interval", None)
         _render_dataset_summary(
             df,
             instrument=inst,
@@ -517,6 +555,9 @@ if current_df is not None:
             base_interval=st.session_state.get("base_interval"),
             source_timezone=st.session_state.get("source_timezone"),
             exchange_timezone=st.session_state.get("exchange_timezone"),
+            raw_data=st.session_state.get("raw_data"),
+            format_profile=st.session_state.get("format_profile", "canonical"),
+            raw_interval=st.session_state.get("raw_interval"),
         )
         st.session_state["dataset_id"] = saved_meta["dataset_id"]
         set_active_dataset_id(saved_meta["dataset_id"])

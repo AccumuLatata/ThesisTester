@@ -307,6 +307,12 @@ other than the last bar in the dataset.
 - R16 cost is replicas × the complete levels/signal/backtest pipeline. It is
   opt-in and should use a smaller replica count for exploratory runs; results
   remain diagnostics rather than proof of edge.
+- R17 vendor parsing is selected explicitly; ThesisTester does not infer a
+  format from headers or file extension. Select the documented profile for the
+  vendor export and verify the displayed canonical bars before research use.
+- R17 tick/second and Databento trade captures are resampled to one-minute
+  OHLCV for the current bar engine. Preserved raw rows, including bid/ask, are
+  capture-only and are not used for spread modeling or R12 subtimeframe fills.
 - Train-window SL/TP selection can still overfit when grids are large or fold count is small.
 - Each fold's test window is out-of-sample relative to that fold's train window only.
 - Advanced trade metrics are trade-sequence diagnostics on realized `r_multiple`, not annualized portfolio statistics.

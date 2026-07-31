@@ -326,6 +326,9 @@ def _dataset_metadata(
     base_interval: str | None,
     source_timezone: str | None,
     exchange_timezone: str | None,
+    format_profile: str = "canonical",
+    raw_interval: str | None = None,
+    raw_rows: int | None = None,
     created_at: str | None = None,
 ) -> dict[str, Any]:
     canonical = _canonicalize_dataframe(df)
@@ -348,6 +351,9 @@ def _dataset_metadata(
         "base_interval": base_interval,
         "source_timezone": source_timezone,
         "exchange_timezone": exchange_timezone,
+        "format_profile": format_profile,
+        "raw_interval": raw_interval,
+        "raw_rows": raw_rows,
         "created_at": created_at or _utcnow_iso(),
         "app_version": __version__,
     }
@@ -395,6 +401,9 @@ def save_dataset(
     base_interval: str | None,
     source_timezone: str | None,
     exchange_timezone: str | None,
+    raw_data: pd.DataFrame | None = None,
+    format_profile: str = "canonical",
+    raw_interval: str | None = None,
 ) -> dict[str, Any]:
     """Persist a canonical dataset and return its metadata."""
     canonical = _canonicalize_dataframe(df)
@@ -416,8 +425,13 @@ def save_dataset(
         base_interval=base_interval,
         source_timezone=source_timezone,
         exchange_timezone=exchange_timezone,
+        format_profile=format_profile,
+        raw_interval=raw_interval,
+        raw_rows=None if raw_data is None else int(len(raw_data)),
     )
     canonical.to_parquet(dataset_dir / "canonical.parquet", index=False)
+    if raw_data is not None:
+        _canonicalize_dataframe(raw_data).to_parquet(dataset_dir / "raw.parquet", index=False)
     _write_json(dataset_dir / "meta.json", metadata)
     _refresh_dataset_manifest()
     metadata["path"] = str(dataset_dir)
@@ -583,6 +597,12 @@ def load_dataset(dataset_id: str) -> tuple[pd.DataFrame, dict[str, Any]]:
     df = pd.read_parquet(parquet_path)
     metadata["path"] = str(dataset_dir)
     return df, metadata
+
+
+def load_raw_dataset(dataset_id: str) -> pd.DataFrame | None:
+    """Load an optional R17 raw capture sidecar without changing canonical loads."""
+    raw_path = _dataset_dir(dataset_id) / "raw.parquet"
+    return pd.read_parquet(raw_path) if raw_path.exists() else None
 
 
 def delete_dataset(dataset_id: str) -> None:
