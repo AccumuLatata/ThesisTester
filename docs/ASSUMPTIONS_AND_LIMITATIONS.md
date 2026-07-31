@@ -12,14 +12,56 @@ This engine is for **research screening**, not proof of a durable edge.
 - Backtest and grid outputs are directly comparable only when they were produced under the same execution-cost assumptions.
 - Unrealistic cost assumptions can still overstate edge; research results should be interpreted with conservative cost settings.
 
-### 2) Intrabar ambiguity is resolved with SL-first pessimism
-- If both stop and target are reachable in one bar, the engine exits at stop. Implemented in `simulate_trades()` in `thesistester/engine/backtest.py`.
-- This behavior is explicitly documented in the module design notes in `thesistester/engine/backtest.py`.
-- R10 excursion calibration preserves this pessimism by default: when terminal
-  MAE and MFE both reach a candidate stop/target pair, `both_hit_rule="stop_first"`
-  counts the candidate as a stop hit. Users may also inspect `target_first` or
-  `exclude_ambiguous` sensitivity, but those are diagnostics, not evidence of
-  true intrabar ordering.
+### 2) Intrabar resolution is explicit and remains assumption-bound
+- `intrabar_model="sl_first"` is the default and exactly preserves the legacy
+  pessimistic rule: if stop and target are reachable in one OHLC bar, stop wins.
+- `intrabar_model="path_open_proximity"` uses a deterministic three-segment
+  heuristic. If the open is closer to the high, the path is O→H→L→C; otherwise
+  O→L→H→C. Equal proximity remains SL-first and is counted as ambiguous.
+- `intrabar_model="subtimeframe"` walks observed lower-timeframe bars in
+  timestamp order. It fails closed unless data is strictly finer, complete for
+  every parent bar, and reconciles to parent O/H/L/C. When stop and target occur
+  inside the same terminal sub-bar, residual ordering is still unknowable and
+  resolves SL-first.
+- For intrabar `3c`/legacy `confirm_3bar` entries, pre-entry movement is
+  excluded. If an entry and stop occur in one lower bar, stop is taken
+  pessimistically; a target seen only in that entry sub-bar is not credited
+  because target-after-entry ordering is unproved. The event is counted as
+  residual ambiguity.
+- Path-model exits use `SL_intrabar_path` / `TP_intrabar_path`; lower-timeframe
+  exits use `SL_subtimeframe` / `TP_subtimeframe`. Legacy reasons remain `SL` /
+  `TP`.
+- Non-legacy trades add model/resolution audit columns. Run diagnostics state
+  the both-hit denominator (`bracket_exit_trade_count`), residual ambiguity
+  count, affected parent bars, and lower interval where applicable.
+- The open-proximity path is a deterministic sensitivity assumption, not an
+  estimate of the true market path. Lower-timeframe replay reduces uncertainty
+  only to the lower bar; it does not recover tick ordering.
+- MAE/MFE remains based on complete parent-bar extremes for compatibility. It
+  can therefore include an extreme that occurred after the modeled exit within
+  the same parent bar.
+- R10 excursion calibration remains a separate terminal-excursion diagnostic.
+  Its `both_hit_rule` does not inherit or replay the selected R12 engine model.
+
+### 2a) Break-even and trailing stops are completed-bar management rules
+- R13 break-even and trailing stops are opt-in. Defaults `None` preserve the
+  fixed-bracket legacy path.
+- Break-even moves the active stop to the slipped entry price after a completed
+  bar reaches the configured favorable R threshold. The moved stop becomes
+  active on the next parent bar.
+- Trailing stops arm after a completed bar reaches the configured favorable R
+  threshold. The active stop then ratchets from the best favorable parent-bar
+  high/low minus/plus the configured tick distance and is active from the next
+  bar. It never loosens.
+- Bar-close activation is conservative for OHLC data: the engine never assumes
+  that an intrabar high armed a stop before an earlier low in the same bar.
+- If an already-active BE/TRAIL stop and the fixed target are reachable in one
+  bar, the selected R12 intrabar model resolves event order.
+- `stop_price` remains the initial bracket stop. R-multiples and R10 MAE/MFE
+  normalization still use initial risk, not the moved stop.
+- A BE exit can be slightly negative after slippage/commission because the
+  theoretical stop is at entry but actual fills still include adverse slippage
+  and costs.
 
 ### 3) TIME, SESSION_CLOSE, DATA_END, and EOD exits are bar-index based
 - `max_holding_bars` is implemented as a bar-count cap (`entry_bar_index + max_holding_bars - 1`) in `simulate_trades()` in `thesistester/engine/backtest.py`.
@@ -221,7 +263,37 @@ other than the last bar in the dataset.
   not a market truth.
 - Monte Carlo equity fans and drawdown probabilities are diagnostics on the
   observed trade sample, not forecasts or proof of future edge.
-- Current walk-forward splits use deterministic bar-index windows and are not calendar/session-aware.
+- Walk-forward defaults remain deterministic bar-index rolling windows for
+  backward compatibility. R14 session mode instead groups observed bars by the
+  exchange trading-session date using the instrument ETH boundary; every
+  observed session is atomic, including shortened sessions.
+- Session mode is calendar-aware by observed trading date, not a complete
+  exchange holiday schedule. An absent session is treated as absent data, not
+  synthesized or certified as a holiday.
+- Rolling windows keep a fixed train-session count; anchored windows grow the
+  train history from the first observed session.
+- Expectancy retention ratio is reported only when IS expectancy is positive;
+  zero/negative/undefined IS expectancy has no economically meaningful ratio.
+- Stitched OOS equity concatenates test-window trades only. Overlapping test
+  windows default to `overlap_policy="reject"`; `first`/`last` explicitly
+  assign duplicate executable entries to one fold.
+- Stitched OOS equity is a sequence of fold-local OOS segments, not a single
+  continuous portfolio simulation across parameter-change boundaries.
+- The WFA matrix is a robustness surface across train/test session lengths,
+  not another parameter optimizer. Selecting the best matrix cell using its
+  OOS result reintroduces multiple-testing bias.
+- R15 CSCV/PBO partitions realized trade R sequences contiguously. It is not
+  purged/embargoed bar-level cross-validation and assumes limited dependence
+  across blocks.
+- R15 PSR/DSR uses unannualized per-trade R Sharpe-like statistics. DSR only
+  corrects the grid trials declared in the current run; discarded grids,
+  signal variants, manual iteration, and correlated trials are not recoverable
+  automatically.
+- R15 vs-random tests a seeded random-entry timing/direction null under the
+  same simulator settings. It does not test random levels, regime matching, or
+  all possible alternative strategies.
+- R15 re-simulates every grid cell and many random schedules. It is opt-in and
+  can be expensive; results remain diagnostics rather than proof of edge.
 - Train-window SL/TP selection can still overfit when grids are large or fold count is small.
 - Each fold's test window is out-of-sample relative to that fold's train window only.
 - Advanced trade metrics are trade-sequence diagnostics on realized `r_multiple`, not annualized portfolio statistics.

@@ -18,6 +18,10 @@ from thesistester.analytics import (
     equity_curve,
     excursion_summary,
     monte_carlo_summary,
+    grid_trade_sequences,
+    overfitting_summary,
+    run_walk_forward_sl_tp,
+    run_wfa_matrix,
     run_sl_tp_grid,
     summarize_trades,
     validation_summary,
@@ -26,12 +30,14 @@ from thesistester.config import INSTRUMENTS
 from thesistester.data.loader import format_interval, load_ohlcv, validate_ohlcv
 from thesistester.data.sessions import tag_session
 from thesistester.engine import (
+    VALID_INTRABAR_MODELS,
     apply_configured_otf_filter,
     detect_anchor_confluence_zones,
     detect_confluence_zones,
     flag_naked_levels,
     generate_signals as _generate_signals,
     simulate_trades,
+    validate_exit_management_config,
 )
 from thesistester.levels.all import compute_all_levels
 from thesistester.levels.sessions import compute_session_levels
@@ -76,6 +82,8 @@ class BacktestResult(TypedDict):
     accepted_signals: pd.DataFrame
     rejected_signals: pd.DataFrame
     otf_filter_summary: dict[str, Any]
+    intrabar_diagnostic: dict[str, Any]
+    exit_management_diagnostic: dict[str, Any]
 
 
 class GridResult(TypedDict):
@@ -99,6 +107,21 @@ class ValidationResult(TypedDict, total=False):
     excursion_quadrant_summary: pd.DataFrame
     monte_carlo_summary: dict[str, Any]
     monte_carlo_config: dict[str, Any]
+    overfitting_summary: dict[str, Any]
+    overfitting_config: dict[str, Any]
+
+
+class WalkForwardAnalysisResult(TypedDict, total=False):
+    """Bundle-ready R14 analysis handoff."""
+
+    walk_forward_results: pd.DataFrame
+    walk_forward_summary: dict[str, Any]
+    walk_forward_config: dict[str, Any]
+    walk_forward_oos_trades: pd.DataFrame
+    walk_forward_stitched_equity: pd.DataFrame
+    walk_forward_warnings: list[str]
+    wfa_matrix: pd.DataFrame
+    wfa_matrix_config: dict[str, Any]
 
 
 _LEVEL_DEFAULTS: dict[str, Any] = {
@@ -140,6 +163,10 @@ _BACKTEST_DEFAULTS: dict[str, Any] = {
     "no_new_entries_after": None,
     "exposure_policy": "allow_all",
     "cooldown_bars_after_exit": 0,
+    "intrabar_model": "sl_first",
+    "breakeven_after_r": None,
+    "trailing_after_r": None,
+    "trailing_distance_ticks": None,
 }
 _GRID_DEFAULTS: dict[str, Any] = {
     "stop_loss_ticks_values": [4.0, 8.0, 12.0],
@@ -156,6 +183,11 @@ _GRID_DEFAULTS: dict[str, Any] = {
     "cooldown_bars_after_exit": 0,
     "ranking_metric": "expectancy_r",
     "min_trades": 1,
+    "intrabar_model": "sl_first",
+    "breakeven_after_r_values": [None],
+    "trailing_after_r_values": [None],
+    "trailing_distance_ticks_values": [None],
+    "max_grid_cells": 500,
 }
 _VALIDATION_DEFAULTS: dict[str, Any] = {
     "n_bootstrap": 2000,
@@ -166,8 +198,23 @@ _VALIDATION_DEFAULTS: dict[str, Any] = {
     "min_trades_hard": 100,
     "selected_grid_metric": "expectancy_r",
 }
-_RUN_KEYS = {"name", "dataset", "levels", "setup", "backtest", "grid", "validation"}
-_DATASET_KEYS = {"path", "instrument", "source_timezone", "exchange_timezone"}
+_RUN_KEYS = {
+    "name",
+    "dataset",
+    "levels",
+    "setup",
+    "backtest",
+    "grid",
+    "validation",
+    "walk_forward",
+}
+_DATASET_KEYS = {
+    "path",
+    "subtimeframe_path",
+    "instrument",
+    "source_timezone",
+    "exchange_timezone",
+}
 _EXCURSION_KEYS = {
     "enabled",
     "group_cols",
@@ -188,6 +235,37 @@ _MONTE_CARLO_KEYS = {
     "drawdown_thresholds_r",
     "random_state",
     "include_paths",
+}
+_OVERFITTING_KEYS = {
+    "enabled",
+    "pbo_partitions",
+    "pbo_min_trades",
+    "vs_random_n_replicas",
+    "random_state",
+}
+_WALK_FORWARD_KEYS = {
+    "enabled",
+    "fold_mode",
+    "window_mode",
+    "train_bars",
+    "test_bars",
+    "step_bars",
+    "train_sessions",
+    "test_sessions",
+    "step_sessions",
+    "ranking_metric",
+    "min_train_trades",
+    "stop_loss_ticks_values",
+    "take_profit_ticks_values",
+    "overlap_policy",
+    "matrix",
+}
+_WFA_MATRIX_KEYS = {
+    "enabled",
+    "train_session_values",
+    "test_session_values",
+    "matrix_metric",
+    "max_matrix_cells",
 }
 
 
@@ -338,6 +416,8 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         raise ValueError("Experiment dataset.path is required")
     if not isinstance(dataset["path"], (str, Path)):
         raise ValueError("dataset.path must be a path string")
+    if "subtimeframe_path" in dataset and not isinstance(dataset["subtimeframe_path"], (str, Path)):
+        raise ValueError("dataset.subtimeframe_path must be a path string")
     for key in ("instrument", "source_timezone", "exchange_timezone"):
         if key in dataset and dataset[key] is not None and not isinstance(dataset[key], str):
             raise ValueError(f"dataset.{key} must be a string or null")
@@ -534,7 +614,15 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     )
     _validate_number_fields(
         backtest,
-        {"stop_loss_ticks", "take_profit_ticks", "commission_per_side", "slippage_ticks"},
+        {
+            "stop_loss_ticks",
+            "take_profit_ticks",
+            "commission_per_side",
+            "slippage_ticks",
+            "breakeven_after_r",
+            "trailing_after_r",
+            "trailing_distance_ticks",
+        },
         section="backtest",
     )
     _validate_number_fields(
@@ -567,9 +655,17 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             "session_timezone",
             "no_new_entries_after",
             "exposure_policy",
+            "intrabar_model",
         },
         section="backtest",
         nullable={"session_close_time", "session_timezone", "no_new_entries_after"},
+    )
+    if backtest.get("intrabar_model", "sl_first") not in VALID_INTRABAR_MODELS:
+        raise ValueError(f"backtest.intrabar_model must be one of {sorted(VALID_INTRABAR_MODELS)}")
+    validate_exit_management_config(
+        breakeven_after_r=backtest.get("breakeven_after_r"),
+        trailing_after_r=backtest.get("trailing_after_r"),
+        trailing_distance_ticks=backtest.get("trailing_distance_ticks"),
     )
     if backtest.get("max_holding_bars") is not None:
         _validate_number_fields(
@@ -590,9 +686,15 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         )
         _validate_list_fields(
             grid,
-            {"stop_loss_ticks_values", "take_profit_ticks_values"},
+            {
+                "stop_loss_ticks_values",
+                "take_profit_ticks_values",
+                "breakeven_after_r_values",
+                "trailing_after_r_values",
+                "trailing_distance_ticks_values",
+            },
             section="grid",
-            item_type=Real,
+            item_type=(Real, type(None)),
         )
         _validate_positive_list(grid, "stop_loss_ticks_values", section="grid")
         _validate_positive_list(grid, "take_profit_ticks_values", section="grid")
@@ -603,7 +705,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         )
         _validate_number_fields(
             grid,
-            {"cooldown_bars_after_exit", "min_trades"},
+            {"cooldown_bars_after_exit", "min_trades", "max_grid_cells"},
             section="grid",
             integer=True,
         )
@@ -619,10 +721,46 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                 "no_new_entries_after",
                 "exposure_policy",
                 "ranking_metric",
+                "intrabar_model",
             },
             section="grid",
             nullable={"session_close_time", "session_timezone", "no_new_entries_after"},
         )
+        if grid.get("intrabar_model", "sl_first") not in VALID_INTRABAR_MODELS:
+            raise ValueError(f"grid.intrabar_model must be one of {sorted(VALID_INTRABAR_MODELS)}")
+        for be in grid.get("breakeven_after_r_values", [None]):
+            validate_exit_management_config(
+                breakeven_after_r=be,
+                trailing_after_r=None,
+                trailing_distance_ticks=None,
+            )
+        for distance in grid.get("trailing_distance_ticks_values", [None]):
+            if distance is not None:
+                validate_exit_management_config(
+                    breakeven_after_r=None,
+                    trailing_after_r=1.0,
+                    trailing_distance_ticks=distance,
+                )
+        for trail_after in grid.get("trailing_after_r_values", [None]):
+            if trail_after is not None and not any(
+                distance is not None
+                for distance in grid.get("trailing_distance_ticks_values", [None])
+            ):
+                validate_exit_management_config(
+                    breakeven_after_r=None,
+                    trailing_after_r=trail_after,
+                    trailing_distance_ticks=None,
+                )
+            for distance in grid.get("trailing_distance_ticks_values", [None]):
+                if distance is None:
+                    continue
+                if trail_after is None:
+                    continue
+                validate_exit_management_config(
+                    breakeven_after_r=None,
+                    trailing_after_r=trail_after,
+                    trailing_distance_ticks=distance,
+                )
         if grid.get("max_holding_bars") is not None:
             _validate_number_fields(
                 grid,
@@ -631,12 +769,110 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                 integer=True,
             )
             _validate_range(grid, "max_holding_bars", section="grid", minimum=1)
+    requested_intrabar_models = {backtest.get("intrabar_model", "sl_first")}
+    if isinstance(grid, Mapping) and grid.get("enabled", True):
+        requested_intrabar_models.add(grid.get("intrabar_model", "sl_first"))
+    if "subtimeframe" in requested_intrabar_models and "subtimeframe_path" not in dataset:
+        raise ValueError(
+            "dataset.subtimeframe_path is required when an enabled run section "
+            "uses intrabar_model='subtimeframe'"
+        )
+    walk_forward = run.get("walk_forward")
+    if walk_forward is not None:
+        walk_forward = _require_mapping(walk_forward, section="walk_forward")
+        _validate_keys(
+            walk_forward,
+            _WALK_FORWARD_KEYS,
+            section="walk_forward",
+        )
+        _validate_bool_fields(walk_forward, {"enabled"}, section="walk_forward")
+        _validate_string_fields(
+            walk_forward,
+            {"fold_mode", "window_mode", "ranking_metric", "overlap_policy"},
+            section="walk_forward",
+        )
+        if walk_forward.get("fold_mode", "bars") not in {"bars", "sessions"}:
+            raise ValueError("walk_forward.fold_mode must be 'bars' or 'sessions'")
+        if walk_forward.get("window_mode", "rolling") not in {"rolling", "anchored"}:
+            raise ValueError("walk_forward.window_mode must be 'rolling' or 'anchored'")
+        if walk_forward.get("overlap_policy", "reject") not in {
+            "reject",
+            "first",
+            "last",
+        }:
+            raise ValueError("walk_forward.overlap_policy must be 'reject', 'first', or 'last'")
+        _validate_number_fields(
+            walk_forward,
+            {
+                "train_bars",
+                "test_bars",
+                "step_bars",
+                "train_sessions",
+                "test_sessions",
+                "step_sessions",
+                "min_train_trades",
+            },
+            section="walk_forward",
+            integer=True,
+        )
+        _validate_list_fields(
+            walk_forward,
+            {"stop_loss_ticks_values", "take_profit_ticks_values"},
+            section="walk_forward",
+            item_type=Real,
+        )
+        matrix = walk_forward.get("matrix")
+        if matrix is not None:
+            matrix = _require_mapping(matrix, section="walk_forward.matrix")
+            _validate_keys(matrix, _WFA_MATRIX_KEYS, section="walk_forward.matrix")
+            _validate_bool_fields(matrix, {"enabled"}, section="walk_forward.matrix")
+            _validate_list_fields(
+                matrix,
+                {"train_session_values", "test_session_values"},
+                section="walk_forward.matrix",
+                item_type=Integral,
+            )
+            _validate_number_fields(
+                matrix,
+                {"max_matrix_cells"},
+                section="walk_forward.matrix",
+                integer=True,
+            )
+            if matrix.get("enabled", False):
+                for key in ("train_session_values", "test_session_values"):
+                    if key not in matrix:
+                        raise ValueError(f"walk_forward.matrix.{key} is required when enabled")
+                    _validate_positive_list(
+                        matrix,
+                        key,
+                        section="walk_forward.matrix",
+                    )
+                valid_matrix_metrics = {
+                    "median_test_expectancy_r",
+                    "median_retention_ratio_expectancy",
+                    "stitched_oos_total_r",
+                    "oos_profitable_fold_rate",
+                }
+                if (
+                    matrix.get("matrix_metric", "median_test_expectancy_r")
+                    not in valid_matrix_metrics
+                ):
+                    raise ValueError(
+                        "walk_forward.matrix.matrix_metric must be one of "
+                        f"{sorted(valid_matrix_metrics)}"
+                    )
     validation = run.get("validation")
     if validation is not None:
         validation = _require_mapping(validation, section="validation")
         _validate_keys(
             validation,
-            {*_VALIDATION_DEFAULTS, "enabled", "excursion", "monte_carlo"},
+            {
+                *_VALIDATION_DEFAULTS,
+                "enabled",
+                "excursion",
+                "monte_carlo",
+                "overfitting",
+            },
             section="validation",
         )
         _validate_bool_fields(validation, {"enabled"}, section="validation")
@@ -783,6 +1019,26 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             if monte_carlo.get("enabled", True):
                 mc_seed = monte_carlo.get("random_state", 42)
                 _validate_random_state(mc_seed, section="validation.monte_carlo")
+        overfitting = validation.get("overfitting")
+        if overfitting is not None:
+            overfitting = _require_mapping(overfitting, section="validation.overfitting")
+            _validate_keys(
+                overfitting,
+                _OVERFITTING_KEYS,
+                section="validation.overfitting",
+            )
+            _validate_bool_fields(overfitting, {"enabled"}, section="validation.overfitting")
+            _validate_number_fields(
+                overfitting,
+                {
+                    "pbo_partitions",
+                    "pbo_min_trades",
+                    "vs_random_n_replicas",
+                    "random_state",
+                },
+                section="validation.overfitting",
+                integer=True,
+            )
 
 
 def _setup_caption(config: Mapping[str, Any]) -> str:
@@ -994,6 +1250,7 @@ def run_backtest(
     setup_config: Mapping[str, Any] | None = None,
     signal_settings: Mapping[str, Any] | None = None,
     last_signal_setup: Mapping[str, Any] | None = None,
+    subtimeframe_data: pd.DataFrame | None = None,
 ) -> BacktestResult:
     """Run the UI backtest composition, including the shared OTF pre-filter."""
     inst = _instrument(instrument)
@@ -1008,7 +1265,7 @@ def run_backtest(
         signal_settings=dict(signal_settings or {}),
         last_signal_setup=dict(last_signal_setup or {}),
     )
-    trades, skipped = simulate_trades(
+    simulation = simulate_trades(
         df=data,
         signals=otf.accepted_signals,
         tick_size=inst.tick_size,
@@ -1025,8 +1282,15 @@ def run_backtest(
         no_new_entries_after=settings["no_new_entries_after"],
         exposure_policy=str(settings["exposure_policy"]),
         cooldown_bars_after_exit=int(settings["cooldown_bars_after_exit"]),
-        return_skipped_signals=True,
+        intrabar_model=str(settings["intrabar_model"]),
+        subtimeframe_data=subtimeframe_data,
+        breakeven_after_r=settings["breakeven_after_r"],
+        trailing_after_r=settings["trailing_after_r"],
+        trailing_distance_ticks=settings["trailing_distance_ticks"],
+        return_result=True,
     )
+    trades = simulation.trades
+    skipped = simulation.skipped_signals
     return {
         "trades": trades,
         "trade_summary": summarize_trades(trades),
@@ -1035,6 +1299,8 @@ def run_backtest(
         "accepted_signals": otf.accepted_signals,
         "rejected_signals": otf.rejected_signals,
         "otf_filter_summary": otf.to_summary_dict(),
+        "intrabar_diagnostic": simulation.intrabar_diagnostic,
+        "exit_management_diagnostic": simulation.exit_management_diagnostic,
     }
 
 
@@ -1047,6 +1313,7 @@ def run_grid(
     setup_config: Mapping[str, Any] | None = None,
     signal_settings: Mapping[str, Any] | None = None,
     last_signal_setup: Mapping[str, Any] | None = None,
+    subtimeframe_data: pd.DataFrame | None = None,
 ) -> GridResult:
     """Run the UI grid composition, including one shared OTF pre-filter."""
     inst = _instrument(instrument)
@@ -1078,6 +1345,12 @@ def run_grid(
         no_new_entries_after=settings["no_new_entries_after"],
         exposure_policy=str(settings["exposure_policy"]),
         cooldown_bars_after_exit=int(settings["cooldown_bars_after_exit"]),
+        intrabar_model=str(settings["intrabar_model"]),
+        subtimeframe_data=subtimeframe_data,
+        breakeven_after_r_values=list(settings["breakeven_after_r_values"]),
+        trailing_after_r_values=list(settings["trailing_after_r_values"]),
+        trailing_distance_ticks_values=list(settings["trailing_distance_ticks_values"]),
+        max_grid_cells=int(settings["max_grid_cells"]),
     )
     best = best_grid_result(
         grid,
@@ -1093,17 +1366,139 @@ def run_grid(
     }
 
 
+def run_walk_forward(
+    data: pd.DataFrame,
+    signals: pd.DataFrame,
+    *,
+    instrument: str = "ES",
+    config: Mapping[str, Any],
+    execution_config: Mapping[str, Any] | None = None,
+    otf_config: Mapping[str, Any] | None = None,
+    subtimeframe_data: pd.DataFrame | None = None,
+) -> WalkForwardAnalysisResult:
+    """Run R14 session/bar WFA with optional robustness matrix."""
+    inst = _instrument(instrument)
+    settings = dict(config)
+    execution = dict(execution_config or {})
+    matrix_config = settings.pop("matrix", None)
+    sl_values = list(
+        settings.pop("stop_loss_ticks_values", [execution.get("stop_loss_ticks", 8.0)])
+    )
+    tp_values = list(
+        settings.pop("take_profit_ticks_values", [execution.get("take_profit_ticks", 16.0)])
+    )
+    fold_mode = str(settings.get("fold_mode", "bars"))
+    detailed = run_walk_forward_sl_tp(
+        df=data,
+        signals=signals,
+        tick_size=inst.tick_size,
+        point_value=inst.point_value,
+        stop_loss_ticks_values=sl_values,
+        take_profit_ticks_values=tp_values,
+        train_bars=int(settings.get("train_bars", 500 if fold_mode == "bars" else 1)),
+        test_bars=int(settings.get("test_bars", 100 if fold_mode == "bars" else 1)),
+        step_bars=settings.get("step_bars"),
+        ranking_metric=str(settings.get("ranking_metric", "expectancy_r")),
+        min_train_trades=int(settings.get("min_train_trades", 1)),
+        max_holding_bars=execution.get("max_holding_bars"),
+        allow_same_bar_exit=bool(execution.get("allow_same_bar_exit", True)),
+        commission_per_side=float(execution.get("commission_per_side", 0.0)),
+        slippage_ticks=float(execution.get("slippage_ticks", 0.0)),
+        flat_by_session_close=bool(execution.get("flat_by_session_close", False)),
+        session_close_time=execution.get("session_close_time"),
+        session_timezone=execution.get("session_timezone"),
+        no_new_entries_after=execution.get("no_new_entries_after"),
+        exposure_policy=str(execution.get("exposure_policy", "allow_all")),
+        cooldown_bars_after_exit=int(execution.get("cooldown_bars_after_exit", 0)),
+        otf_config=dict(otf_config or {}),
+        intrabar_model=str(execution.get("intrabar_model", "sl_first")),
+        subtimeframe_data=subtimeframe_data,
+        breakeven_after_r_values=list(execution.get("breakeven_after_r_values", [None])),
+        trailing_after_r_values=list(execution.get("trailing_after_r_values", [None])),
+        trailing_distance_ticks_values=list(
+            execution.get("trailing_distance_ticks_values", [None])
+        ),
+        max_grid_cells=int(execution.get("max_grid_cells", 500)),
+        fold_mode=fold_mode,
+        window_mode=str(settings.get("window_mode", "rolling")),
+        train_sessions=settings.get("train_sessions"),
+        test_sessions=settings.get("test_sessions"),
+        step_sessions=settings.get("step_sessions"),
+        exchange_timezone=inst.exchange_tz,
+        eth_start=inst.eth_start,
+        overlap_policy=str(settings.get("overlap_policy", "reject")),
+        return_result=True,
+    )
+    output: WalkForwardAnalysisResult = {
+        "walk_forward_results": detailed.folds,
+        "walk_forward_summary": detailed.summary,
+        "walk_forward_config": detailed.config,
+        "walk_forward_oos_trades": detailed.oos_trades,
+        "walk_forward_stitched_equity": detailed.stitched_equity,
+        "walk_forward_warnings": list(detailed.warnings),
+    }
+    if isinstance(matrix_config, Mapping) and matrix_config.get("enabled", False):
+        for key in ("train_session_values", "test_session_values"):
+            if key not in matrix_config:
+                raise ValueError(f"walk_forward.matrix.{key} is required when enabled")
+        matrix = run_wfa_matrix(
+            df=data,
+            signals=signals,
+            tick_size=inst.tick_size,
+            point_value=inst.point_value,
+            stop_loss_ticks_values=sl_values,
+            take_profit_ticks_values=tp_values,
+            train_session_values=list(matrix_config["train_session_values"]),
+            test_session_values=list(matrix_config["test_session_values"]),
+            matrix_metric=str(matrix_config.get("matrix_metric", "median_test_expectancy_r")),
+            max_matrix_cells=int(matrix_config.get("max_matrix_cells", 25)),
+            window_mode=str(settings.get("window_mode", "rolling")),
+            exchange_timezone=inst.exchange_tz,
+            eth_start=inst.eth_start,
+            max_holding_bars=execution.get("max_holding_bars"),
+            allow_same_bar_exit=bool(execution.get("allow_same_bar_exit", True)),
+            commission_per_side=float(execution.get("commission_per_side", 0.0)),
+            slippage_ticks=float(execution.get("slippage_ticks", 0.0)),
+            flat_by_session_close=bool(execution.get("flat_by_session_close", False)),
+            session_close_time=execution.get("session_close_time"),
+            session_timezone=execution.get("session_timezone"),
+            no_new_entries_after=execution.get("no_new_entries_after"),
+            exposure_policy=str(execution.get("exposure_policy", "allow_all")),
+            cooldown_bars_after_exit=int(execution.get("cooldown_bars_after_exit", 0)),
+            otf_config=dict(otf_config or {}),
+            intrabar_model=str(execution.get("intrabar_model", "sl_first")),
+            subtimeframe_data=subtimeframe_data,
+            breakeven_after_r_values=list(execution.get("breakeven_after_r_values", [None])),
+            trailing_after_r_values=list(execution.get("trailing_after_r_values", [None])),
+            trailing_distance_ticks_values=list(
+                execution.get("trailing_distance_ticks_values", [None])
+            ),
+            max_grid_cells=int(execution.get("max_grid_cells", 500)),
+            overlap_policy=str(settings.get("overlap_policy", "reject")),
+        )
+        output["wfa_matrix"] = matrix
+        output["wfa_matrix_config"] = dict(matrix_config)
+    return output
+
+
 def run_validation(
     trades: pd.DataFrame,
     *,
     grid: pd.DataFrame | None = None,
     tick_size: float | None = None,
     config: Mapping[str, Any] | None = None,
+    df: pd.DataFrame | None = None,
+    signals: pd.DataFrame | None = None,
+    point_value: float | None = None,
+    execution_kwargs: Mapping[str, Any] | None = None,
+    selected_grid_metric: str = "expectancy_r",
+    selected_min_trades: int = 1,
 ) -> ValidationResult:
     """Run deterministic validation plus optional R10/R11 diagnostics."""
     raw = dict(config or {})
     excursion_config = raw.pop("excursion", None)
     monte_carlo_config = raw.pop("monte_carlo", None)
+    overfitting_config = raw.pop("overfitting", None)
     settings = _merge_known(_VALIDATION_DEFAULTS, raw, section="validation")
     _validate_random_state(settings["random_state"], section="validation")
     result: ValidationResult = {
@@ -1156,6 +1551,72 @@ def run_validation(
                 "monte_carlo_config": monte_carlo["config"],
             }
         )
+    if overfitting_config is not None and not isinstance(overfitting_config, Mapping):
+        raise ValueError("validation.overfitting must be a mapping")
+    if isinstance(overfitting_config, Mapping) and overfitting_config.get("enabled", True):
+        if df is None or signals is None or tick_size is None or point_value is None:
+            raise ValueError(
+                "df, signals, tick_size, and point_value are required for R15 overfitting"
+            )
+        if grid is None or grid.empty:
+            raise ValueError("grid results are required for R15 overfitting")
+        overfit_settings = {
+            key: value for key, value in overfitting_config.items() if key != "enabled"
+        }
+        _validate_keys(
+            overfitting_config,
+            _OVERFITTING_KEYS,
+            section="validation.overfitting",
+        )
+        sequence_result = grid_trade_sequences(
+            df,
+            signals,
+            tick_size=tick_size,
+            point_value=point_value,
+            grid=grid,
+            execution_kwargs=execution_kwargs,
+        )
+        candidate_grid = sequence_result.grid_results
+        selected = best_grid_result(
+            candidate_grid,
+            metric=selected_grid_metric,
+            min_trades=selected_min_trades,
+        )
+        if selected is None:
+            selected_trades = trades
+        else:
+            selected_key = (
+                float(selected["stop_loss_ticks"]),
+                float(selected["take_profit_ticks"]),
+                None
+                if pd.isna(selected.get("breakeven_after_r"))
+                else float(selected.get("breakeven_after_r")),
+                None
+                if pd.isna(selected.get("trailing_after_r"))
+                else float(selected.get("trailing_after_r")),
+                None
+                if pd.isna(selected.get("trailing_distance_ticks"))
+                else float(selected.get("trailing_distance_ticks")),
+            )
+            selected_trades = sequence_result.cell_trades.get(selected_key, trades)
+        summary = overfitting_summary(
+            selected_trades=selected_trades,
+            cell_trades=sequence_result.cell_trades,
+            grid_results=candidate_grid,
+            df=df,
+            tick_size=tick_size,
+            point_value=point_value,
+            execution_kwargs=execution_kwargs,
+            selected_grid_metric=selected_grid_metric,
+            selected_min_trades=selected_min_trades,
+            **overfit_settings,
+        )
+        result.update(
+            {
+                "overfitting_summary": summary,
+                "overfitting_config": summary["config"],
+            }
+        )
     return result
 
 
@@ -1183,6 +1644,18 @@ def run_experiment(
         source_timezone=source_timezone,
         exchange_timezone=exchange_timezone,
     )
+    subtimeframe_data: pd.DataFrame | None = None
+    subtimeframe_path_value = dataset_config.get("subtimeframe_path")
+    if subtimeframe_path_value is not None:
+        subtimeframe_path = Path(subtimeframe_path_value)
+        if not subtimeframe_path.is_absolute():
+            subtimeframe_path = Path(base_directory) / subtimeframe_path
+        subtimeframe_data = load_dataset(
+            subtimeframe_path,
+            instrument=instrument,
+            source_timezone=source_timezone,
+            exchange_timezone=exchange_timezone,
+        )
     validation_report = validate_ohlcv(data)
     base_interval = format_interval(validation_report.inferred_interval)
     dataset_id = compute_dataset_id(
@@ -1205,6 +1678,7 @@ def run_experiment(
         setup_config=setup,
         signal_settings=signal_result["signal_settings"],
         last_signal_setup=setup,
+        subtimeframe_data=subtimeframe_data,
     )
 
     state: dict[str, Any] = {
@@ -1237,13 +1711,31 @@ def run_experiment(
         "trade_summary": backtest_result["trade_summary"],
         "equity_curve": backtest_result["equity_curve"],
         "backtest_otf_filter": backtest_result["otf_filter_summary"],
+        "backtest_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": backtest_config.get("intrabar_model", "sl_first"),
+            "subtimeframe_data_supplied": subtimeframe_data is not None,
+        },
+        "backtest_intrabar_diagnostic": backtest_result["intrabar_diagnostic"],
+        "backtest_exit_management_policy": {
+            "schema_version": 1,
+            "breakeven_after_r": backtest_config.get("breakeven_after_r"),
+            "trailing_after_r": backtest_config.get("trailing_after_r"),
+            "trailing_distance_ticks": backtest_config.get("trailing_distance_ticks"),
+        },
+        "backtest_exit_management_diagnostic": backtest_result["exit_management_diagnostic"],
         "backtest_execution_costs": {
             "commission_per_side": float(backtest_config.get("commission_per_side", 0.0)),
             "slippage_ticks": float(backtest_config.get("slippage_ticks", 0.0)),
         },
     }
+    if subtimeframe_data is not None:
+        subtimeframe_report = validate_ohlcv(subtimeframe_data)
+        state["subtimeframe_data"] = subtimeframe_data
+        state["subtimeframe_interval"] = format_interval(subtimeframe_report.inferred_interval)
 
     grid_config = run.get("grid")
+    grid_settings: dict[str, Any] = {}
     if isinstance(grid_config, Mapping) and grid_config.get("enabled", True):
         grid_settings = {key: value for key, value in grid_config.items() if key != "enabled"}
         grid_result = run_grid(
@@ -1254,13 +1746,64 @@ def run_experiment(
             setup_config=setup,
             signal_settings=signal_result["signal_settings"],
             last_signal_setup=setup,
+            subtimeframe_data=subtimeframe_data,
         )
         state.update(
             {
                 "grid_results": grid_result["grid_results"],
                 "best_grid_result": grid_result["best_grid_result"],
                 "grid_otf_filter": grid_result["otf_filter_summary"],
+                "grid_accepted_signals": grid_result["accepted_signals"],
+                "grid_intrabar_policy": {
+                    "schema_version": 1,
+                    "intrabar_model": grid_settings.get("intrabar_model", "sl_first"),
+                    "subtimeframe_data_supplied": subtimeframe_data is not None,
+                },
+                "grid_exit_management_policy": {
+                    "schema_version": 1,
+                    "breakeven_after_r_values": grid_settings.get(
+                        "breakeven_after_r_values", [None]
+                    ),
+                    "trailing_after_r_values": grid_settings.get("trailing_after_r_values", [None]),
+                    "trailing_distance_ticks_values": grid_settings.get(
+                        "trailing_distance_ticks_values", [None]
+                    ),
+                    "max_grid_cells": grid_settings.get("max_grid_cells", 500),
+                },
             }
+        )
+
+    walk_forward_config = run.get("walk_forward")
+    if isinstance(walk_forward_config, Mapping) and walk_forward_config.get("enabled", True):
+        wfa_settings = {
+            key: value for key, value in walk_forward_config.items() if key != "enabled"
+        }
+        execution_for_wfa = {
+            **backtest_config,
+            "breakeven_after_r_values": grid_settings.get(
+                "breakeven_after_r_values",
+                [backtest_config.get("breakeven_after_r")],
+            ),
+            "trailing_after_r_values": grid_settings.get(
+                "trailing_after_r_values",
+                [backtest_config.get("trailing_after_r")],
+            ),
+            "trailing_distance_ticks_values": grid_settings.get(
+                "trailing_distance_ticks_values",
+                [backtest_config.get("trailing_distance_ticks")],
+            ),
+            "max_grid_cells": grid_settings.get("max_grid_cells", 500),
+        }
+        state.update(
+            run_walk_forward(
+                level_result["levels"],
+                signal_result["signals"],
+                instrument=instrument,
+                config=wfa_settings,
+                execution_config=execution_for_wfa,
+                otf_config=setup.get("otf_filter"),
+                subtimeframe_data=subtimeframe_data,
+            )
         )
 
     validation_config = run.get("validation")
@@ -1274,6 +1817,15 @@ def run_experiment(
                 grid=state.get("grid_results"),
                 tick_size=inst.tick_size,
                 config=validation_settings,
+                df=level_result["levels"],
+                signals=state.get("grid_accepted_signals", signal_result["signals"]),
+                point_value=inst.point_value,
+                execution_kwargs={
+                    **grid_settings,
+                    "subtimeframe_data": subtimeframe_data,
+                },
+                selected_grid_metric=grid_settings.get("ranking_metric", "expectancy_r"),
+                selected_min_trades=int(grid_settings.get("min_trades", 1)),
             )
         )
     return state

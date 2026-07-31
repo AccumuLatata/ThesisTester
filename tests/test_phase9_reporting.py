@@ -76,6 +76,34 @@ def _sample_session_state() -> dict:
             "tail_ratio": 1.2,
             "outlier_dependency_ratio": 0.8,
         },
+        "backtest_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": "path_open_proximity",
+        },
+        "backtest_intrabar_diagnostic": {
+            "schema_version": 1,
+            "same_bar_both_hit_count": 2,
+            "ambiguous_resolution_count": 1,
+        },
+        "backtest_exit_management_policy": {
+            "schema_version": 1,
+            "breakeven_after_r": 1.0,
+            "trailing_after_r": 1.5,
+            "trailing_distance_ticks": 8,
+        },
+        "backtest_exit_management_diagnostic": {
+            "schema_version": 1,
+            "be_exit_count": 1,
+            "trail_exit_count": 1,
+        },
+        "grid_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": "path_open_proximity",
+        },
+        "grid_exit_management_policy": {
+            "schema_version": 1,
+            "breakeven_after_r_values": [None, 1.0],
+        },
         "equity_curve": pd.DataFrame(
             {
                 "trade_id": [10, 11],
@@ -98,6 +126,49 @@ def _sample_session_state() -> dict:
             "take_profit_ticks": 8.0,
             "expectancy_r": 0.2,
         },
+        "walk_forward_results": pd.DataFrame(
+            {
+                "fold_id": [0],
+                "fold_mode": ["sessions"],
+                "window_mode": ["rolling"],
+                "test_expectancy_r": [0.2],
+            }
+        ),
+        "walk_forward_summary": {
+            "schema_version": 2,
+            "fold_count": 1,
+            "valid_fold_count": 1,
+            "median_test_expectancy_r": 0.2,
+            "median_retention_ratio_expectancy": 0.5,
+            "stitched_oos_total_r": 1.0,
+            "stitched_oos_status": "ok",
+        },
+        "walk_forward_config": {
+            "fold_mode": "sessions",
+            "window_mode": "rolling",
+            "train_sessions": 2,
+            "test_sessions": 1,
+        },
+        "walk_forward_oos_trades": pd.DataFrame(
+            {"trade_id": [0], "fold_id": [0], "r_multiple": [1.0]}
+        ),
+        "walk_forward_stitched_equity": pd.DataFrame(
+            {
+                "trade_id": [0],
+                "exit_timestamp": [pd.Timestamp("2026-06-01T14:10:00Z")],
+                "r_multiple": [1.0],
+                "cum_r": [1.0],
+                "drawdown_r": [0.0],
+            }
+        ),
+        "walk_forward_warnings": [],
+        "wfa_matrix": pd.DataFrame(
+            {
+                "train_sessions": [2],
+                "test_sessions": [1],
+                "matrix_value": [0.2],
+            }
+        ),
         "time_grouped_summary": pd.DataFrame(
             {
                 "entry_hour_bucket": ["09:00", "10:00"],
@@ -164,6 +235,13 @@ def _sample_session_state() -> dict:
                     "probability_drawdown_exceeds": [{"threshold_r": 1.0, "probability": 0.0}],
                 }
             },
+        },
+        "overfitting_summary": {
+            "schema_version": 1,
+            "available": True,
+            "pbo": {"pbo": 0.25},
+            "deflated_sharpe": {"dsr": 0.4},
+            "vs_random": {"p_value_greater_or_equal": 0.1},
         },
         "data": pd.DataFrame({"x": [1, 2, 3]}),
         "levels": pd.DataFrame({"y": [4, 5, 6]}),
@@ -254,6 +332,16 @@ def test_build_research_artifact_counts_match_signals_and_trades():
     assert artifact["results"]["trade_count"] == 2
     assert artifact["results"]["excursion_summary"]["schema_version"] == 1
     assert artifact["results"]["monte_carlo_summary"]["schema_version"] == 1
+    assert artifact["intrabar"]["backtest_policy"]["intrabar_model"] == "path_open_proximity"
+    assert artifact["results"]["backtest_intrabar_diagnostic"]["same_bar_both_hit_count"] == 2
+    assert artifact["exit_management"]["backtest_policy"]["breakeven_after_r"] == 1.0
+    assert artifact["results"]["backtest_exit_management_diagnostic"]["trail_exit_count"] == 1
+    assert artifact["results"]["walk_forward_summary"]["schema_version"] == 2
+    assert artifact["results"]["overfitting_summary"]["schema_version"] == 1
+    assert len(artifact["tables"]["walk_forward_results"]) == 1
+    assert len(artifact["tables"]["walk_forward_oos_trades"]) == 1
+    assert len(artifact["tables"]["walk_forward_stitched_equity"]) == 1
+    assert len(artifact["tables"]["wfa_matrix"]) == 1
     assert len(artifact["tables"]["signals"]) == 2
     assert len(artifact["tables"]["trades"]) == 2
     assert len(artifact["tables"]["excursion_grouped_summary"]) == 2
@@ -317,6 +405,18 @@ def test_build_markdown_report_returns_string_and_required_sections():
     assert "## Setup Configuration" in markdown
     assert "## Backtest Summary" in markdown
     assert "### Advanced Risk Metrics" in markdown
+    assert "### Intrabar Resolution" in markdown
+    assert "- Model: path_open_proximity" in markdown
+    assert "- Same-bar both-hit exits: 2" in markdown
+    assert "### Exit Management" in markdown
+    assert "- Break-even after R: 1.0" in markdown
+    assert "- TRAIL exits: 1" in markdown
+    assert "## Walk-Forward / OOS Diagnostics" in markdown
+    assert "- Fold mode: sessions" in markdown
+    assert "- Median expectancy retention ratio: 0.5000" in markdown
+    assert "- Stitched OOS status: ok" in markdown
+    assert "## Overfitting-Detection Battery" in markdown
+    assert "- PBO: 25.0%" in markdown
     assert "## Validation Diagnostics" in markdown
     assert "## Excursion Analytics" in markdown
     assert "- Mean edge ratio: 2.0000" in markdown

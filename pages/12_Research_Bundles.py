@@ -27,6 +27,10 @@ def _will_include_dataset() -> bool:
     return _is_dataframe(st.session_state.get("data"))
 
 
+def _will_include_subtimeframe() -> bool:
+    return _is_dataframe(st.session_state.get("subtimeframe_data"))
+
+
 def _will_include_levels() -> bool:
     return _is_dataframe(st.session_state.get("levels")) and _is_dataframe(
         st.session_state.get("session_levels")
@@ -63,8 +67,16 @@ def _will_include_monte_carlo() -> bool:
     return st.session_state.get("monte_carlo_summary") is not None
 
 
+def _will_include_overfitting() -> bool:
+    return st.session_state.get("overfitting_summary") is not None
+
+
 section_rows = [
     {"Artifact": "Dataset", "Will include": "✅" if _will_include_dataset() else "❌"},
+    {
+        "Artifact": "Lower-timeframe fill data",
+        "Will include": "✅" if _will_include_subtimeframe() else "❌",
+    },
     {"Artifact": "Levels", "Will include": "✅" if _will_include_levels() else "❌"},
     {"Artifact": "Signals", "Will include": "✅" if _will_include_signals() else "❌"},
     {"Artifact": "Backtest", "Will include": "✅" if _will_include_backtest() else "❌"},
@@ -75,6 +87,10 @@ section_rows = [
         "Will include": "✅" if _will_include_excursion() else "❌",
     },
     {"Artifact": "Monte Carlo", "Will include": "✅" if _will_include_monte_carlo() else "❌"},
+    {
+        "Artifact": "Overfitting diagnostics",
+        "Will include": "✅" if _will_include_overfitting() else "❌",
+    },
 ]
 has_meaningful_state = any(row["Will include"] == "✅" for row in section_rows)
 
@@ -109,6 +125,17 @@ if uploaded is not None:
             {
                 "Artifact": "Dataset",
                 "Included in bundle": "✅" if included.get("dataset") else "❌",
+            },
+            {
+                "Artifact": "Lower-timeframe fill data",
+                "Included in bundle": (
+                    "✅"
+                    if isinstance(
+                        loaded_bundle.get("session_values", {}).get("subtimeframe_data"),
+                        pd.DataFrame,
+                    )
+                    else "❌"
+                ),
             },
             {"Artifact": "Levels", "Included in bundle": "✅" if included.get("levels") else "❌"},
             {

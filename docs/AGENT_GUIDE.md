@@ -41,6 +41,8 @@ YAML file. Each run writes `<name>.research.zip`; `results_index.csv` records
 the canonical bundle hash and key metrics. `--workers N` uses isolated spawned
 processes across runs only. Each individual levels/signals/backtest/grid/
 validation pipeline stays single-threaded, and output order follows YAML order.
+R12 adds optional `dataset.subtimeframe_path`; it is required when an enabled
+backtest/grid section selects `intrabar_model: subtimeframe`.
 
 Minimal complete shape:
 
@@ -144,10 +146,71 @@ Agent safety requirements:
 - Read `tests/fixtures/golden/README.md` before touching `simulate_trades`, level
   computation, or signal generation. It is the operational spec for
   `docs/ENGINEERING_PROPOSAL.md` §4.1.
+- The gate is active. Run `pytest -q tests/test_golden_master.py` before and
+  after engine edits. It rebuilds the deterministic NQ fixture and compares
+  exact legacy trade values; the bundle hash is additionally checked on its
+  recorded pandas major.
 - Legacy-mode outputs are the contract: new behavior ships behind a default-off flag, so
   goldens must stay valid. Never regenerate a golden to make a diff go away.
 - Golden regeneration is its own PR with a readable CSV diff, justification, and the
-  `GOLDEN_REGEN` label.
+  `GOLDEN_REGEN` label. The only write command is
+  `python -m tests.fixtures.golden.record_golden --confirm-regenerate`.
+
+## R12 intrabar research safety
+
+- Never change the `sl_first` default or its legacy trade schema without a
+  separate approved golden-regeneration decision.
+- Treat `path_open_proximity` as sensitivity analysis, not recovered event
+  order. Do not choose it because it produces the best result.
+- `subtimeframe` must fail closed on missing, duplicate, unsorted, non-dividing,
+  or parent-OHLC-inconsistent lower rows. Never interpolate or silently fall
+  back to an OHLC heuristic.
+- Keep one intrabar model fixed across every grid cell and walk-forward fold.
+- For R18 batches, supply observed lower data through
+  `dataset.subtimeframe_path` and retain the bundle's policy/diagnostic fields.
+- Run `pytest -q tests/test_golden_master.py tests/test_intrabar.py` after any
+  execution-path edit.
+
+## R13 exit-management research safety
+
+- Break-even/trailing defaults must remain `None`; legacy goldens must stay
+  unchanged.
+- Treat BE/trailing as strategy parameters, not evidence of better fills.
+  Grid/WFO sweeps must preserve the selected values explicitly in exported
+  policy snapshots.
+- Stop movement is completed-bar and active on the next parent bar. Do not
+  introduce same-bar arming without a separate proposal and new ambiguity tests.
+- Keep `stop_price` as the initial bracket stop and keep R-multiple/MAE/MFE
+  semantics based on initial risk.
+- Run `pytest -q tests/test_golden_master.py tests/test_exit_management.py tests/test_intrabar.py`
+  after any BE/trailing or intrabar interaction edit.
+
+## R14 walk-forward research safety
+
+- Keep `fold_mode="bars"` and `window_mode="rolling"` as backward-compatible
+  defaults.
+- Session folds use observed ETH-boundary trading dates. Do not claim an
+  exchange holiday calendar or complete-session certification without a
+  schedule source.
+- Assign session-fold signals by executable entry bar, not formation bar.
+- Never stitch overlapping OOS windows without explicit `first`/`last`
+  ownership; default `reject` is the safe policy.
+- Do not select the best WFA matrix cell using its OOS performance and then
+  report that same result as unbiased.
+- Run `pytest -q tests/test_walk_forward.py tests/test_otf_integration.py`
+  after any fold, session, or matrix change.
+
+## R15 overfitting research safety
+
+- Keep R15 opt-in and retain `validation_summary()` unchanged.
+- Treat PBO/DSR/vs-random as diagnostics of declared historical trials/nulls,
+  never as proof of a durable edge.
+- Use explicit `random_state`; do not replace local seeded RNG with global
+  sampling.
+- Preserve grid-cell execution assumptions when re-simulating sequences or
+  random schedules.
+- Run `pytest -q tests/test_overfitting.py tests/test_phase8_validation.py`
+  after changing R15 statistics or validation integration.
 
 ## Repository conventions (verified)
 - Multipage Streamlit workflow with phase pages under `pages/` (`app.py:10-33`).

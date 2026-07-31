@@ -19,8 +19,10 @@ from thesistester.analytics import (
     add_time_buckets,
     excursion_summary,
     monte_carlo_summary,
+    overfitting_summary,
+    grid_trade_sequences,
     run_walk_forward_sl_tp,
-    summarize_walk_forward,
+    run_wfa_matrix,
 )
 from thesistester.analytics.validation import validation_summary
 from thesistester.config import INSTRUMENTS
@@ -36,6 +38,19 @@ def _fmt_value(v, fmt=".4f", fallback="—"):
         return format(float(v), fmt)
     except (TypeError, ValueError):
         return fallback
+
+
+def _parse_positive_int_values(raw: str) -> list[int]:
+    values = sorted(
+        {
+            int(token.strip())
+            for token in str(raw).split(",")
+            if token.strip() and int(token.strip()) > 0
+        }
+    )
+    if not values:
+        raise ValueError("Provide at least one positive integer.")
+    return values
 
 
 # ── Require trades ────────────────────────────────────────────────────────────
@@ -192,34 +207,80 @@ if run_wfo:
         tick_size = inst.tick_size if inst else 0.25
         point_value = inst.point_value if inst else 50.0
         max_window_bars = max(5, int(len(data_source)))
-
-        c1, c2, c3 = st.columns(3)
-        train_bars = int(
-            c1.number_input(
-                "Train bars",
-                min_value=5,
-                max_value=max_window_bars,
-                value=min(500, max_window_bars),
-                step=5,
+        mode1, mode2 = st.columns(2)
+        fold_mode = mode1.selectbox(
+            "Fold units",
+            options=["bars", "sessions"],
+            format_func=lambda value: "Bars (legacy)" if value == "bars" else "Trading sessions",
+        )
+        window_mode = mode2.selectbox(
+            "Window mode",
+            options=["rolling", "anchored"],
+        )
+        train_sessions = test_sessions = step_sessions = None
+        if fold_mode == "bars":
+            c1, c2, c3 = st.columns(3)
+            train_bars = int(
+                c1.number_input(
+                    "Train bars",
+                    min_value=5,
+                    max_value=max_window_bars,
+                    value=min(500, max_window_bars),
+                    step=5,
+                )
             )
-        )
-        test_bars = int(
-            c2.number_input(
-                "Test bars",
-                min_value=5,
-                max_value=max_window_bars,
-                value=min(100, max_window_bars),
-                step=5,
+            test_bars = int(
+                c2.number_input(
+                    "Test bars",
+                    min_value=5,
+                    max_value=max_window_bars,
+                    value=min(100, max_window_bars),
+                    step=5,
+                )
             )
+            step_bars_input = c3.number_input(
+                "Step bars (0 = default)",
+                min_value=0,
+                max_value=max_window_bars,
+                value=0,
+                step=1,
+            )
+            step_bars = None if int(step_bars_input) == 0 else int(step_bars_input)
+        else:
+            train_bars = test_bars = 1
+            step_bars = None
+            c1, c2, c3 = st.columns(3)
+            train_sessions = int(c1.number_input("Train sessions", min_value=1, value=5, step=1))
+            test_sessions = int(c2.number_input("Test sessions", min_value=1, value=2, step=1))
+            step_sessions_input = int(
+                c3.number_input(
+                    "Step sessions (0 = test size)",
+                    min_value=0,
+                    value=0,
+                    step=1,
+                )
+            )
+            step_sessions = None if step_sessions_input == 0 else step_sessions_input
+        overlap_policy = st.selectbox(
+            "Overlapping OOS ownership",
+            options=["reject", "first", "last"],
+            help="Reject avoids double-counting by withholding stitched equity.",
         )
-        step_bars_input = c3.number_input(
-            "Step bars (0 = default)",
-            min_value=0,
-            max_value=max_window_bars,
-            value=0,
-            step=1,
+        run_matrix = fold_mode == "sessions" and st.toggle(
+            "Also run WFA matrix",
+            value=False,
         )
-        step_bars = None if int(step_bars_input) == 0 else int(step_bars_input)
+        matrix_train_raw = matrix_test_raw = ""
+        if run_matrix:
+            m1, m2 = st.columns(2)
+            matrix_train_raw = m1.text_input(
+                "Matrix train sessions",
+                value=f"{train_sessions},{train_sessions + 1}",
+            )
+            matrix_test_raw = m2.text_input(
+                "Matrix test sessions",
+                value=f"{test_sessions},{test_sessions + 1}",
+            )
 
         c4, c5 = st.columns(2)
         wfo_ranking_metric = c4.selectbox(
@@ -301,6 +362,28 @@ if run_wfo:
             or st.session_state.get("exposure_policy")
             or {}
         )
+        intrabar_policy = (
+            st.session_state.get("grid_intrabar_policy")
+            or st.session_state.get("backtest_intrabar_policy")
+            or {"intrabar_model": "sl_first"}
+        )
+        exit_management_policy = st.session_state.get("grid_exit_management_policy") or {
+            "breakeven_after_r_values": [
+                (st.session_state.get("backtest_exit_management_policy") or {}).get(
+                    "breakeven_after_r"
+                )
+            ],
+            "trailing_after_r_values": [
+                (st.session_state.get("backtest_exit_management_policy") or {}).get(
+                    "trailing_after_r"
+                )
+            ],
+            "trailing_distance_ticks_values": [
+                (st.session_state.get("backtest_exit_management_policy") or {}).get(
+                    "trailing_distance_ticks"
+                )
+            ],
+        }
 
         if st.button("▶ Run walk-forward diagnostics", type="secondary"):
             if not sl_values or not tp_values:
@@ -321,7 +404,7 @@ if run_wfo:
                         st.error(f"OTF filter configuration error: {e}")
                     else:
                         try:
-                            results_df = run_walk_forward_sl_tp(
+                            detailed_wfo = run_walk_forward_sl_tp(
                                 df=data_source,
                                 signals=signals_raw,
                                 tick_size=tick_size,
@@ -352,11 +435,39 @@ if run_wfo:
                                     exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0
                                 ),
                                 otf_config=_wfo_otf_config,
+                                intrabar_model=str(
+                                    intrabar_policy.get("intrabar_model", "sl_first")
+                                ),
+                                subtimeframe_data=st.session_state.get("subtimeframe_data"),
+                                breakeven_after_r_values=exit_management_policy.get(
+                                    "breakeven_after_r_values", [None]
+                                ),
+                                trailing_after_r_values=exit_management_policy.get(
+                                    "trailing_after_r_values", [None]
+                                ),
+                                trailing_distance_ticks_values=exit_management_policy.get(
+                                    "trailing_distance_ticks_values", [None]
+                                ),
+                                max_grid_cells=int(
+                                    exit_management_policy.get("max_grid_cells", 500)
+                                ),
+                                fold_mode=fold_mode,
+                                window_mode=window_mode,
+                                train_sessions=train_sessions,
+                                test_sessions=test_sessions,
+                                step_sessions=step_sessions,
+                                exchange_timezone=(
+                                    st.session_state.get("exchange_timezone") or "America/New_York"
+                                ),
+                                eth_start=(inst.eth_start if inst else "18:00"),
+                                overlap_policy=overlap_policy,
+                                return_result=True,
                             )
                         except ValueError as e:
                             st.error(f"Walk-forward diagnostics error: {e}")
                         else:
-                            wfo_summary = summarize_walk_forward(results_df)
+                            results_df = detailed_wfo.folds
+                            wfo_summary = detailed_wfo.summary
                             _wfo_otf_enabled = bool(_wfo_otf_config.get("enabled", False))
                             wfo_config = {
                                 "train_bars": int(train_bars),
@@ -387,11 +498,99 @@ if run_wfo:
                                     exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0
                                 ),
                                 "otf_filter_enabled": _wfo_otf_enabled,
+                                "intrabar_model": str(
+                                    intrabar_policy.get("intrabar_model", "sl_first")
+                                ),
+                                "exit_management_policy": exit_management_policy,
+                                "fold_mode": fold_mode,
+                                "window_mode": window_mode,
+                                "train_sessions": train_sessions,
+                                "test_sessions": test_sessions,
+                                "step_sessions": step_sessions,
+                                "overlap_policy": overlap_policy,
                                 "otf_filter_config": _wfo_otf_config,
                             }
                             st.session_state["walk_forward_results"] = results_df
                             st.session_state["walk_forward_summary"] = wfo_summary
                             st.session_state["walk_forward_config"] = wfo_config
+                            st.session_state["walk_forward_oos_trades"] = detailed_wfo.oos_trades
+                            st.session_state["walk_forward_stitched_equity"] = (
+                                detailed_wfo.stitched_equity
+                            )
+                            st.session_state["walk_forward_warnings"] = list(detailed_wfo.warnings)
+                            if run_matrix:
+                                matrix_df = run_wfa_matrix(
+                                    df=data_source,
+                                    signals=signals_raw,
+                                    tick_size=tick_size,
+                                    point_value=point_value,
+                                    stop_loss_ticks_values=sl_values,
+                                    take_profit_ticks_values=tp_values,
+                                    train_session_values=_parse_positive_int_values(
+                                        matrix_train_raw
+                                    ),
+                                    test_session_values=_parse_positive_int_values(matrix_test_raw),
+                                    window_mode=window_mode,
+                                    exchange_timezone=(
+                                        st.session_state.get("exchange_timezone")
+                                        or "America/New_York"
+                                    ),
+                                    eth_start=(inst.eth_start if inst else "18:00"),
+                                    ranking_metric=wfo_ranking_metric,
+                                    min_train_trades=wfo_min_train_trades,
+                                    max_holding_bars=None,
+                                    allow_same_bar_exit=True,
+                                    commission_per_side=float(
+                                        grid_costs.get("commission_per_side", 0.0) or 0.0
+                                    ),
+                                    slippage_ticks=float(
+                                        grid_costs.get("slippage_ticks", 0.0) or 0.0
+                                    ),
+                                    flat_by_session_close=bool(
+                                        session_policy.get("flat_by_session_close", False)
+                                    ),
+                                    session_close_time=session_policy.get("session_close_time"),
+                                    session_timezone=session_policy.get("session_timezone"),
+                                    no_new_entries_after=session_policy.get("no_new_entries_after"),
+                                    exposure_policy=str(
+                                        exposure_policy_state.get("exposure_policy", "allow_all")
+                                    ),
+                                    cooldown_bars_after_exit=int(
+                                        exposure_policy_state.get("cooldown_bars_after_exit", 0)
+                                        or 0
+                                    ),
+                                    otf_config=_wfo_otf_config,
+                                    intrabar_model=str(
+                                        intrabar_policy.get("intrabar_model", "sl_first")
+                                    ),
+                                    subtimeframe_data=st.session_state.get("subtimeframe_data"),
+                                    breakeven_after_r_values=exit_management_policy.get(
+                                        "breakeven_after_r_values", [None]
+                                    ),
+                                    trailing_after_r_values=exit_management_policy.get(
+                                        "trailing_after_r_values", [None]
+                                    ),
+                                    trailing_distance_ticks_values=exit_management_policy.get(
+                                        "trailing_distance_ticks_values", [None]
+                                    ),
+                                    max_grid_cells=int(
+                                        exit_management_policy.get("max_grid_cells", 500)
+                                    ),
+                                    overlap_policy=overlap_policy,
+                                )
+                                st.session_state["wfa_matrix"] = matrix_df
+                                st.session_state["wfa_matrix_config"] = {
+                                    "train_session_values": _parse_positive_int_values(
+                                        matrix_train_raw
+                                    ),
+                                    "test_session_values": _parse_positive_int_values(
+                                        matrix_test_raw
+                                    ),
+                                    "matrix_metric": "median_test_expectancy_r",
+                                }
+                            else:
+                                st.session_state.pop("wfa_matrix", None)
+                                st.session_state.pop("wfa_matrix_config", None)
                             # Store OTF summary for reporting
                             from thesistester.persistence.local_store import compute_otf_config_hash
                             from thesistester.engine.otf import OTF_ALGORITHM_VERSION
@@ -414,6 +613,200 @@ if isinstance(wfo_summary, dict):
     s4.metric("Median test expectancy", _fmt_value(wfo_summary.get("median_test_expectancy_r")))
 if hasattr(wfo_results, "empty") and not wfo_results.empty:
     st.dataframe(wfo_results, width="stretch", hide_index=True)
+for warning in st.session_state.get("walk_forward_warnings", []):
+    st.warning(warning)
+wfo_equity = st.session_state.get("walk_forward_stitched_equity")
+if isinstance(wfo_equity, pd.DataFrame) and not wfo_equity.empty:
+    st.markdown("**Stitched OOS equity**")
+    st.line_chart(wfo_equity.set_index("exit_timestamp")["cum_r"])
+wfa_matrix = st.session_state.get("wfa_matrix")
+if isinstance(wfa_matrix, pd.DataFrame) and not wfa_matrix.empty:
+    st.markdown("**Walk-Forward Analysis matrix**")
+    matrix_pivot = wfa_matrix.pivot(
+        index="train_sessions",
+        columns="test_sessions",
+        values="matrix_value",
+    )
+    matrix_fig = go.Figure(
+        go.Heatmap(
+            z=matrix_pivot.values,
+            x=[str(value) for value in matrix_pivot.columns],
+            y=[str(value) for value in matrix_pivot.index],
+            colorscale="RdYlGn",
+            colorbar=dict(title="Median OOS expectancy R"),
+        )
+    )
+    matrix_fig.update_layout(
+        xaxis_title="Test sessions",
+        yaxis_title="Train sessions",
+        margin=dict(l=10, r=10, t=30, b=10),
+    )
+    st.plotly_chart(matrix_fig, width="stretch")
+    st.dataframe(wfa_matrix, width="stretch", hide_index=True)
+
+st.divider()
+st.subheader("R15 overfitting-detection battery")
+st.caption(
+    "Diagnostic only — CSCV/PBO, DSR, and vs-random quantify specified historical "
+    "selection risks; they do not prove a future edge."
+)
+if grid_raw is None or grid_raw.empty:
+    st.info("Run Grid Search first. R15 needs multiple grid cells.")
+else:
+    r15c1, r15c2, r15c3 = st.columns(3)
+    r15_partitions = int(
+        r15c1.number_input(
+            "CSCV partitions",
+            min_value=4,
+            max_value=12,
+            value=4,
+            step=2,
+            help="Even contiguous trade-sequence partitions.",
+        )
+    )
+    r15_random_replicas = int(
+        r15c2.number_input(
+            "Vs-random replicas",
+            min_value=10,
+            max_value=2_000,
+            value=100,
+            step=10,
+        )
+    )
+    r15_min_trades = int(
+        r15c3.number_input(
+            "R15 min trades per cell",
+            min_value=1,
+            max_value=1_000,
+            value=1,
+            step=1,
+        )
+    )
+    st.warning(
+        f"Cost estimate: {len(grid_raw)} grid replays + {r15_random_replicas} "
+        "random-entry replays. This is opt-in and can be computationally expensive."
+    )
+    if st.button("▶ Run R15 overfitting battery", type="secondary"):
+        instrument_r15 = st.session_state.get("instrument", "ES")
+        inst_r15 = INSTRUMENTS.get(instrument_r15)
+        data_r15 = st.session_state.get("levels")
+        if data_r15 is None or data_r15.empty:
+            data_r15 = st.session_state.get("data")
+        signals_r15 = st.session_state.get("grid_accepted_signals")
+        if signals_r15 is None or signals_r15.empty:
+            signals_r15 = st.session_state.get("signals")
+        if data_r15 is None or signals_r15 is None or inst_r15 is None:
+            st.error("Data, signals, and a supported instrument are required.")
+        else:
+            backtest_costs = (
+                st.session_state.get("grid_execution_costs")
+                or st.session_state.get("backtest_execution_costs")
+                or {}
+            )
+            backtest_policy = (
+                st.session_state.get("grid_session_exit_policy")
+                or st.session_state.get("backtest_session_exit_policy")
+                or {}
+            )
+            exposure = (
+                st.session_state.get("grid_exposure_policy")
+                or st.session_state.get("exposure_policy")
+                or {}
+            )
+            execution_r15 = {
+                "commission_per_side": float(backtest_costs.get("commission_per_side", 0.0)),
+                "slippage_ticks": float(backtest_costs.get("slippage_ticks", 0.0)),
+                "flat_by_session_close": bool(backtest_policy.get("flat_by_session_close", False)),
+                "session_close_time": backtest_policy.get("session_close_time"),
+                "session_timezone": backtest_policy.get("session_timezone"),
+                "no_new_entries_after": backtest_policy.get("no_new_entries_after"),
+                "exposure_policy": exposure.get("exposure_policy", "allow_all"),
+                "cooldown_bars_after_exit": int(exposure.get("cooldown_bars_after_exit", 0) or 0),
+                "intrabar_model": (
+                    st.session_state.get("grid_intrabar_policy")
+                    or st.session_state.get("backtest_intrabar_policy")
+                    or {}
+                ).get("intrabar_model", "sl_first"),
+                "subtimeframe_data": st.session_state.get("subtimeframe_data"),
+            }
+            grid_context_r15 = st.session_state.get("grid_execution_context") or {}
+            with st.spinner("Running CSCV/PBO, DSR, and vs-random diagnostics…"):
+                sequences = grid_trade_sequences(
+                    data_r15,
+                    signals_r15,
+                    tick_size=inst_r15.tick_size,
+                    point_value=inst_r15.point_value,
+                    grid=grid_raw,
+                    execution_kwargs=execution_r15,
+                )
+                selection_metric = grid_context_r15.get("ranking_metric", "expectancy_r")
+                selection_min_trades = int(grid_context_r15.get("min_trades", 1))
+                eligible_sequences = sequences.grid_results[
+                    sequences.grid_results["trade_count"] >= selection_min_trades
+                ].dropna(subset=[selection_metric])
+                if grid_context_r15.get("directional_ranking_enabled", False):
+                    eligible_sequences = eligible_sequences[
+                        eligible_sequences["long_trade_count"]
+                        >= int(grid_context_r15.get("min_long_trades", 1))
+                    ]
+                    eligible_sequences = eligible_sequences[
+                        eligible_sequences["short_trade_count"]
+                        >= int(grid_context_r15.get("min_short_trades", 1))
+                    ]
+                if eligible_sequences.empty:
+                    st.error("No R15 grid cell passes the recorded selection rule.")
+                    st.stop()
+                selected = eligible_sequences.sort_values(
+                    [selection_metric, "stop_loss_ticks", "take_profit_ticks"],
+                    ascending=[False, True, True],
+                    kind="mergesort",
+                ).iloc[0]
+                key = (
+                    float(selected["stop_loss_ticks"]),
+                    float(selected["take_profit_ticks"]),
+                    None
+                    if pd.isna(selected.get("breakeven_after_r"))
+                    else float(selected.get("breakeven_after_r")),
+                    None
+                    if pd.isna(selected.get("trailing_after_r"))
+                    else float(selected.get("trailing_after_r")),
+                    None
+                    if pd.isna(selected.get("trailing_distance_ticks"))
+                    else float(selected.get("trailing_distance_ticks")),
+                )
+                summary_r15 = overfitting_summary(
+                    selected_trades=sequences.cell_trades[key],
+                    cell_trades=sequences.cell_trades,
+                    grid_results=sequences.grid_results,
+                    df=data_r15,
+                    tick_size=inst_r15.tick_size,
+                    point_value=inst_r15.point_value,
+                    execution_kwargs=execution_r15,
+                    selected_grid_metric=selection_metric,
+                    selected_min_trades=selection_min_trades,
+                    pbo_partitions=r15_partitions,
+                    pbo_min_trades=r15_min_trades,
+                    vs_random_n_replicas=r15_random_replicas,
+                    random_state=random_seed,
+                )
+            st.session_state["overfitting_summary"] = summary_r15
+            st.session_state["overfitting_config"] = summary_r15["config"]
+            st.success("R15 overfitting battery complete.")
+overfit_summary = st.session_state.get("overfitting_summary")
+if isinstance(overfit_summary, dict):
+    pbo = overfit_summary.get("pbo") or {}
+    dsr = overfit_summary.get("deflated_sharpe") or {}
+    random_benchmark = overfit_summary.get("vs_random") or {}
+    oc1, oc2, oc3 = st.columns(3)
+    oc1.metric("PBO", _fmt_value(pbo.get("pbo"), ".1%"))
+    oc2.metric("Deflated Sharpe probability", _fmt_value(dsr.get("dsr"), ".1%"))
+    oc3.metric(
+        "Vs-random p-value", _fmt_value(random_benchmark.get("p_value_greater_or_equal"), ".4f")
+    )
+    st.caption(overfit_summary.get("caveat", ""))
+    split_rows = pbo.get("split_results", [])
+    if split_rows:
+        st.dataframe(pd.DataFrame(split_rows), width="stretch", hide_index=True)
 
 st.divider()
 st.subheader("MAE/MFE excursion analytics")

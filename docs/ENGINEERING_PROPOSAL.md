@@ -3,7 +3,7 @@
 **Document type:** Proposal + engineering roadmap
 **Date:** 2026-07-29
 **Inputs:** `docs/SOTA_BACKTESTING_LANDSCAPE.md` (market research), `docs/THESISTESTER_ANALYSIS.md` (repository analysis with runtime verification).
-**Status of this document:** Proposal under implementation. **R9, R10, R11, and R18 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R12–R17 and R19–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
+**Status of this document:** Proposal under implementation. **R9, R10, R11, R12, R13, R14, R15, and R18 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R16–R17 and R19–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
 
 ---
 
@@ -196,6 +196,11 @@ Milestones extend the existing R-series (`docs/ENGINEERING_ROADMAP.md` R1–R8).
 
 ### R12 — Look-inside-bar intrabar fill refinement
 
+✅ **Implemented.** See `docs/ENGINEERING_ROADMAP.md`. A dedicated prerequisite
+PR activates the legacy golden gate before the engine change. R12 keeps
+`sl_first` exact by default, adds deterministic open-proximity paths, and
+requires complete OHLC-reconciling lower data for subtimeframe replay.
+
 - **Goal:** Replace single-rule SL-first pessimism with a *configurable* intrabar resolution model — the single biggest realism gap vs SOTA.
 - **Benchmark:** TradingView **Bar Magnifier** (minimum viable: refine with lower timeframe), TradeStation **Look-Inside-Bar**, NinjaTrader **High fill resolution** (sub-series down to 1 tick for fills only).
 - **Scope:** `simulate_trades(..., intrabar_model: str = "sl_first")` — new keyword-only parameter. Models:
@@ -208,6 +213,10 @@ Milestones extend the existing R-series (`docs/ENGINEERING_ROADMAP.md` R1–R8).
 
 ### R13 — Exit flexibility: break-even move and trailing stop (opt-in)
 
+✅ **Implemented.** See `docs/ENGINEERING_ROADMAP.md`. R13 adds completed-bar
+break-even and trailing-stop management that becomes active on the following
+bar, preserving R12 intrabar ordering and legacy defaults.
+
 - **Goal:** Express the two exit adjustments day-traders actually use, without opening the full order-type zoo.
 - **Benchmark:** Common subset of NT/TradeStation bracket management (breakeven-after-R, trail-after-R in tick steps).
 - **Scope:** `simulate_trades(..., breakeven_after_r: float | None = None, trailing_after_r: float | None = None, trailing_distance_ticks: float | None = None)`; new exit reasons `BE` and `TRAIL`; MAE/MFE semantics unchanged; grid optionally sweeps the two new parameters (cartesian with SL/TP, capped to keep cell counts sane — reuse the existing grid-overfit heuristics as a guardrail).
@@ -216,6 +225,11 @@ Milestones extend the existing R-series (`docs/ENGINEERING_ROADMAP.md` R1–R8).
 
 ### R14 — Calendar/session-aware walk-forward + WFA matrix
 
+✅ **Implemented.** See `docs/ENGINEERING_ROADMAP.md`. R14 preserves legacy
+bar/rolling folds while adding complete observed-session boundaries,
+rolling/anchored modes, retention ratios, overlap-safe stitched OOS equity,
+and a deterministic WFA matrix.
+
 - **Goal:** Fix the documented R5 limitation ("bar-index windows, not calendar/session-aware") and add the matrix view.
 - **Benchmark:** TradeStation WFO (rolling/anchored, cluster analysis), SQX Walk-Forward Matrix, AmiBroker sliced IS/OOS equity.
 - **Scope:** Fold boundaries on session counts (e.g. train 60 sessions / test 20 sessions) instead of bar indices; anchored and rolling modes; per-fold IS→OOS degradation ratio; WFA matrix view (multiple train/test window combinations → stability heatmap); stitched OOS equity curve across folds. Existing bar-index mode retained as `fold_mode="bars"` default for one release, then reconsider `="sessions"` default only behind an explicit migration note.
@@ -223,6 +237,10 @@ Milestones extend the existing R-series (`docs/ENGINEERING_ROADMAP.md` R1–R8).
 - **Acceptance:** Session folds never split an RTH session mid-day (asserted on holiday-shortened fixtures); matrix heatmap renders from deterministic fixtures; R5 docs updated.
 
 ### R15 — Overfitting-detection battery: PBO, Deflated Sharpe, vs-random
+
+✅ **Implemented.** See `docs/ENGINEERING_ROADMAP.md`. R15 adds opt-in,
+seeded CSCV/PBO, unannualized PSR/DSR, and a simulator-matched vs-random
+benchmark without changing existing Phase 8 validation outputs.
 
 - **Goal:** Upgrade the heuristic grid-overfit warning to the quantitative multiple-testing corrections SOTA tools mainstreamed.
 - **Benchmark:** PBO via CSCV and DSR (Bailey/López de Prado; implemented accessibly in VectorBT Pro's purged combinatorial CV); Build Alpha **Vs Random**.

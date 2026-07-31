@@ -19,6 +19,7 @@ from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.engine.backtest import simulate_trades
 from thesistester.engine.otf_integration import apply_configured_otf_filter
 from thesistester.execution_defaults import (
+    INTRABAR_MODEL_OPTIONS,
     apply_backtest_defaults,
     collect_backtest_defaults,
     reset_backtest_session_keys,
@@ -219,6 +220,73 @@ with st.sidebar:
             "both are reachable in the same bar."
         ),
     )
+    intrabar_model = st.selectbox(
+        "Intrabar resolution",
+        options=INTRABAR_MODEL_OPTIONS,
+        index=0,
+        key="backtest_intrabar_model",
+        format_func=lambda value: {
+            "sl_first": "SL-first (legacy pessimistic)",
+            "path_open_proximity": "OHLC open-proximity path",
+            "subtimeframe": "Observed lower-timeframe replay",
+        }[value],
+        help=(
+            "OHLC path is a deterministic assumption. Subtimeframe requires "
+            "strictly finer data loaded in the current research state."
+        ),
+    )
+    subtimeframe_data = st.session_state.get("subtimeframe_data")
+    if intrabar_model == "subtimeframe" and not isinstance(subtimeframe_data, pd.DataFrame):
+        st.warning(
+            "Subtimeframe replay requires lower-timeframe data. Load it through "
+            "a research bundle or use the R18 API/CLI `dataset.subtimeframe_path` contract."
+        )
+    with st.expander("Exit management (R13)", expanded=False):
+        enable_breakeven = st.toggle(
+            "Enable break-even move", value=False, key="backtest_enable_be"
+        )
+        breakeven_after_r = None
+        if enable_breakeven:
+            breakeven_after_r = float(
+                st.number_input(
+                    "Move stop to break-even after R",
+                    min_value=0.1,
+                    max_value=20.0,
+                    value=1.0,
+                    step=0.1,
+                    key="backtest_breakeven_after_r",
+                )
+            )
+        enable_trailing = st.toggle(
+            "Enable trailing stop", value=False, key="backtest_enable_trail"
+        )
+        trailing_after_r = None
+        trailing_distance_ticks = None
+        if enable_trailing:
+            trailing_after_r = float(
+                st.number_input(
+                    "Start trailing after R",
+                    min_value=0.1,
+                    max_value=20.0,
+                    value=1.5,
+                    step=0.1,
+                    key="backtest_trailing_after_r",
+                )
+            )
+            trailing_distance_ticks = float(
+                st.number_input(
+                    "Trailing distance (ticks)",
+                    min_value=1.0,
+                    max_value=500.0,
+                    value=8.0,
+                    step=1.0,
+                    key="backtest_trailing_distance_ticks",
+                )
+            )
+        st.caption(
+            "Break-even/trailing adjustments are committed after completed bars "
+            "and become active on the next bar."
+        )
 
     st.subheader("Session exit policy")
     flat_by_session_close = st.toggle(
@@ -314,7 +382,7 @@ if run_btn:
             st.stop()
 
         try:
-            trades, skipped_signals = simulate_trades(
+            simulation = simulate_trades(
                 df=ohlcv_df,
                 signals=signals_for_backtest,
                 tick_size=tick_size,
@@ -331,8 +399,15 @@ if run_btn:
                 no_new_entries_after=effective_no_new_entries_after,
                 exposure_policy=exposure_policy,
                 cooldown_bars_after_exit=cooldown_bars_after_exit,
-                return_skipped_signals=True,
+                intrabar_model=intrabar_model,
+                subtimeframe_data=subtimeframe_data,
+                breakeven_after_r=breakeven_after_r,
+                trailing_after_r=trailing_after_r,
+                trailing_distance_ticks=trailing_distance_ticks,
+                return_result=True,
             )
+            trades = simulation.trades
+            skipped_signals = simulation.skipped_signals
         except ValueError as e:
             st.error(f"Backtest error: {e}")
             st.stop()
@@ -370,6 +445,21 @@ if run_btn:
         st.session_state["otf_accepted_signals"] = _otf_result.accepted_signals
         st.session_state["otf_rejected_signals"] = _otf_result.rejected_signals
         st.session_state["backtest_otf_filter"] = _otf_result.to_summary_dict()
+        st.session_state["backtest_intrabar_policy"] = {
+            "schema_version": 1,
+            "intrabar_model": intrabar_model,
+            "subtimeframe_data_supplied": isinstance(subtimeframe_data, pd.DataFrame),
+        }
+        st.session_state["backtest_intrabar_diagnostic"] = simulation.intrabar_diagnostic
+        st.session_state["backtest_exit_management_policy"] = {
+            "schema_version": 1,
+            "breakeven_after_r": breakeven_after_r,
+            "trailing_after_r": trailing_after_r,
+            "trailing_distance_ticks": trailing_distance_ticks,
+        }
+        st.session_state["backtest_exit_management_diagnostic"] = (
+            simulation.exit_management_diagnostic
+        )
 
 # ── Display ───────────────────────────────────────────────────────────────────
 trades = st.session_state.get("trades")
@@ -389,6 +479,24 @@ if costs.get("commission_per_side", 0.0) > 0.0 or costs.get("slippage_ticks", 0.
     )
 else:
     st.caption("Execution costs disabled — KPIs are gross (zero commission/slippage).")
+intrabar_diagnostic = st.session_state.get("backtest_intrabar_diagnostic") or {}
+if intrabar_diagnostic:
+    st.caption(
+        "Intrabar model: "
+        f"`{intrabar_diagnostic.get('intrabar_model', 'sl_first')}` · "
+        f"both-hit exits: {intrabar_diagnostic.get('same_bar_both_hit_count', 0)} · "
+        f"residual ambiguities: {intrabar_diagnostic.get('ambiguous_resolution_count', 0)}. "
+        "Deterministic OHLC paths are assumptions, not recovered market paths."
+    )
+exit_mgmt = st.session_state.get("backtest_exit_management_diagnostic") or {}
+if exit_mgmt and exit_mgmt.get("enabled"):
+    st.caption(
+        "Exit management: "
+        f"BE after {exit_mgmt.get('breakeven_after_r') or 'off'}R · "
+        f"trail after {exit_mgmt.get('trailing_after_r') or 'off'}R · "
+        f"BE exits: {exit_mgmt.get('be_exit_count', 0)} · "
+        f"TRAIL exits: {exit_mgmt.get('trail_exit_count', 0)}."
+    )
 
 # ── OTF filter status ─────────────────────────────────────────────────────────
 _otf_summary = st.session_state.get("otf_filter_summary") or {}

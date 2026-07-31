@@ -7,6 +7,7 @@ import math
 import pandas as pd
 import yaml
 
+import thesistester.api as api
 from thesistester.api import (
     build_setup,
     compute_levels,
@@ -173,6 +174,19 @@ def _manual_ui_equivalent_state(run: dict, base_directory) -> dict:
         "trade_summary": backtest["trade_summary"],
         "equity_curve": backtest["equity_curve"],
         "backtest_otf_filter": backtest["otf_filter_summary"],
+        "backtest_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": "sl_first",
+            "subtimeframe_data_supplied": False,
+        },
+        "backtest_intrabar_diagnostic": backtest["intrabar_diagnostic"],
+        "backtest_exit_management_policy": {
+            "schema_version": 1,
+            "breakeven_after_r": None,
+            "trailing_after_r": None,
+            "trailing_distance_ticks": None,
+        },
+        "backtest_exit_management_diagnostic": backtest["exit_management_diagnostic"],
         "backtest_execution_costs": {
             "commission_per_side": 0.0,
             "slippage_ticks": 0.0,
@@ -180,6 +194,18 @@ def _manual_ui_equivalent_state(run: dict, base_directory) -> dict:
         "grid_results": grid["grid_results"],
         "best_grid_result": grid["best_grid_result"],
         "grid_otf_filter": grid["otf_filter_summary"],
+        "grid_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": "sl_first",
+            "subtimeframe_data_supplied": False,
+        },
+        "grid_exit_management_policy": {
+            "schema_version": 1,
+            "breakeven_after_r_values": [None],
+            "trailing_after_r_values": [None],
+            "trailing_distance_ticks_values": [None],
+            "max_grid_cells": 500,
+        },
         **validation,
     }
 
@@ -207,11 +233,83 @@ def test_module_cli_bundle_matches_headless_ui_equivalent_pipeline(tmp_path):
     assert canonical_bundle_hash(cli_bundle) == canonical_bundle_hash(reference_bundle)
 
 
+def test_experiment_forwards_subtimeframe_data_to_r15_replay(tmp_path, monkeypatch):
+    """R15 grid replay must retain the grid's lower-timeframe fill input."""
+    _write_dataset(tmp_path / "bars.csv")
+    base = pd.read_csv(tmp_path / "bars.csv")
+    subtimeframe_rows = []
+    for parent in base.itertuples(index=False):
+        timestamp = pd.Timestamp(parent.timestamp)
+        subtimeframe_rows.extend(
+            [
+                (timestamp, parent.open, parent.high, parent.open, parent.open),
+                (
+                    timestamp + pd.Timedelta(seconds=15),
+                    parent.open,
+                    parent.open,
+                    parent.low,
+                    parent.low,
+                ),
+                (
+                    timestamp + pd.Timedelta(seconds=30),
+                    parent.low,
+                    parent.open,
+                    parent.low,
+                    parent.open,
+                ),
+                (
+                    timestamp + pd.Timedelta(seconds=45),
+                    parent.open,
+                    max(parent.open, parent.close),
+                    min(parent.open, parent.close),
+                    parent.close,
+                ),
+            ]
+        )
+    pd.DataFrame(
+        subtimeframe_rows,
+        columns=["timestamp", "open", "high", "low", "close"],
+    ).assign(volume=25).to_csv(tmp_path / "subtimeframe.csv", index=False)
+
+    run = _run("r15-subtimeframe")
+    run["dataset"]["subtimeframe_path"] = "subtimeframe.csv"
+    run["grid"]["intrabar_model"] = "subtimeframe"
+    run["validation"] = {"overfitting": {"enabled": True}}
+    captured: dict = {}
+
+    def capture_validation(*_args, **kwargs):
+        captured.update(kwargs)
+        return {}
+
+    monkeypatch.setattr(api, "run_validation", capture_validation)
+    state = api.run_experiment(run, base_directory=tmp_path)
+
+    execution_kwargs = captured["execution_kwargs"]
+    assert execution_kwargs["intrabar_model"] == "subtimeframe"
+    assert execution_kwargs["subtimeframe_data"] is state["subtimeframe_data"]
+
+
 def test_parallel_batch_is_identical_to_serial(tmp_path):
     _write_dataset(tmp_path / "bars.csv")
+    path_run = _run("path-model", stop=3)
+    path_run["backtest"]["intrabar_model"] = "path_open_proximity"
+    path_run["grid"]["intrabar_model"] = "path_open_proximity"
+    path_run["grid"]["trailing_after_r_values"] = [None, 1.0]
+    path_run["grid"]["trailing_distance_ticks_values"] = [None, 2.0]
+    path_run["grid"]["max_grid_cells"] = 8
+    path_run["walk_forward"] = {
+        "enabled": True,
+        "fold_mode": "bars",
+        "window_mode": "rolling",
+        "train_bars": 6,
+        "test_bars": 4,
+        "step_bars": 4,
+        "stop_loss_ticks_values": [2],
+        "take_profit_ticks_values": [3],
+    }
     experiment = {
         "schema_version": 1,
-        "runs": [_run("baseline", stop=2), _run("wider-stop", stop=3)],
+        "runs": [_run("baseline", stop=2), path_run],
     }
     serial = run_batch(
         experiment,
@@ -226,7 +324,7 @@ def test_parallel_batch_is_identical_to_serial(tmp_path):
         workers=2,
     )
     pd.testing.assert_frame_equal(serial, parallel)
-    for name in ("baseline", "wider-stop"):
+    for name in ("baseline", "path-model"):
         serial_bundle = (tmp_path / "serial" / f"{name}.research.zip").read_bytes()
         parallel_bundle = (tmp_path / "parallel" / f"{name}.research.zip").read_bytes()
         assert canonical_bundle_hash(serial_bundle) == canonical_bundle_hash(parallel_bundle)
@@ -291,6 +389,42 @@ def test_experiment_schema_and_names_fail_fast(tmp_path):
                 ],
             },
             "must be >",
+        ),
+        (
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        **_run("bad-intrabar"),
+                        "backtest": {"intrabar_model": "clairvoyant"},
+                    }
+                ],
+            },
+            "intrabar_model",
+        ),
+        (
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        **_run("missing-sub-bars"),
+                        "backtest": {"intrabar_model": "subtimeframe"},
+                    }
+                ],
+            },
+            "subtimeframe_path",
+        ),
+        (
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        **_run("bad-trailing"),
+                        "backtest": {"trailing_after_r": 1.0},
+                    }
+                ],
+            },
+            "trailing_distance_ticks",
         ),
     ]
     for index, (payload, message) in enumerate(cases):

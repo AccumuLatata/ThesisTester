@@ -312,3 +312,59 @@ per-side sample sizes.  For serious research, values ≥ 10–30 per side are ad
 - **Degradation expectancy (R)**: `test_expectancy_r - train_expectancy_r` per fold.
 - **OOS profitable fold rate**: fraction of valid folds with `test_expectancy_r > 0`.
 - **Aggregate test total R**: sum of `test_total_r` across valid walk-forward folds.
+- **Expectancy retention ratio**: `test_expectancy_r / train_expectancy_r`
+  when train expectancy is positive; otherwise unavailable.
+- **Expectancy degradation percentage**: `retention_ratio - 1`.
+- **Stitched OOS total R**: sum of deduplicated OOS trade R under the selected
+  overlap policy.
+- **Stitched OOS equity**: cumulative R and zero-anchored drawdown over the
+  chronologically concatenated, fold-owned OOS trades.
+- **WFA matrix value**: selected summary statistic (default median OOS
+  expectancy R) for one train-session × test-session window pair.
+
+## R15 overfitting-detection battery
+
+- **PBO (Probability of Backtest Overfitting):** fraction of CSCV splits where
+  the IS-selected grid cell lands below the OOS median. R15 uses contiguous
+  realized trade-R partitions and reports every valid split.
+- **PSR (Probabilistic Sharpe Ratio):** estimated probability that the
+  unannualized per-trade R Sharpe-like statistic exceeds the stated benchmark
+  (default zero), adjusted for sample skew/kurtosis.
+- **DSR (Deflated Sharpe Ratio):** PSR evaluated against an expected maximum
+  Sharpe threshold from the declared effective grid trial count. It is not an
+  annualized portfolio Sharpe or a correction for unrecorded experimentation.
+- **Vs-random p-value:** finite-replica, one-sided probability that a seeded
+  random next-open entry schedule achieves expectancy at least as high as the
+  observed selected configuration under identical execution settings.
+
+## R12 intrabar diagnostics
+
+| Field | Definition |
+|---|---|
+| `bracket_exit_trade_count` | Trades ending through SL/TP under the selected run model |
+| `same_bar_both_hit_count` | Bracket exits whose parent OHLC bar reached both stop and target |
+| `same_bar_both_hit_pct` | `same_bar_both_hit_count / bracket_exit_trade_count`; zero when denominator is zero |
+| `ambiguous_resolution_count` | Trades affected by unresolved ordering: OHLC proximity ties, same-sub-bar SL/TP, or entry and a bracket event sharing one lower bar; the trade may later end by another bracket or forced exit |
+| `bars_affected_count` | Count of distinct parent bar indices containing a both-hit bracket exit |
+| `path_proximity_tie_count` | Parent OHLC bars where distance(open, high) equals distance(open, low) |
+| `subtimeframe_resolved_count` | Bracket exits ordered using observed lower-timeframe rows |
+
+Counts are execution-model diagnostics, not performance metrics. A lower
+ambiguity count does not prove fill realism; it only states how often the
+selected data/model could distinguish event order.
+
+## R13 break-even and trailing exits
+
+| Field / reason | Definition |
+|---|---|
+| `BE` | Exit at an active break-even stop. The theoretical price is the slipped entry price; realized R can be below zero after costs/slippage |
+| `TRAIL` | Exit at an active trailing stop that ratcheted from the best favorable parent-bar extreme |
+| `breakeven_after_r` | Favorable completed-bar excursion threshold, in initial-risk R, needed to arm break-even |
+| `trailing_after_r` | Favorable completed-bar excursion threshold, in initial-risk R, needed to arm trailing |
+| `trailing_distance_ticks` | Distance from best favorable parent-bar high/low used to place the trailing stop |
+| `active_stop_price_at_exit` | Dynamic stop price active on the exit bar |
+| `stop_adjustment_count` | Number of completed-bar stop ratchets recorded for the trade |
+
+R13 diagnostics count BE exits, TRAIL exits, trades with exit management armed,
+and average stop adjustments per trade. All R values still use initial bracket
+risk (`stop_loss_ticks * tick_size * point_value`) as denominator.

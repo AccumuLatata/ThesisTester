@@ -11,6 +11,7 @@ from thesistester.api import (
     load_dataset,
     run_backtest,
     run_grid,
+    run_walk_forward,
     run_validation,
 )
 from thesistester.engine import apply_configured_otf_filter, simulate_trades
@@ -116,10 +117,35 @@ def test_headless_facade_matches_ui_backtest_composition(tmp_path):
         exposure_policy="single_position",
         return_skipped_signals=True,
     )
-    pd.testing.assert_frame_equal(facade["trades"], expected_trades)
+    assert facade["exit_management_diagnostic"]["enabled"] is False
+    assert "active_stop_price_at_exit" not in facade["trades"].columns
     pd.testing.assert_frame_equal(facade["skipped_signals"], expected_skipped)
     pd.testing.assert_frame_equal(facade["equity_curve"], equity_curve(expected_trades))
     assert facade["trade_summary"] == summarize_trades(expected_trades)
+    assert facade["intrabar_diagnostic"]["intrabar_model"] == "sl_first"
+
+
+def test_headless_backtest_surfaces_exit_management_diagnostics(tmp_path):
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path, instrument="ES")
+    levels = compute_levels(data, instrument="ES", config=_levels_config())["levels"]
+    setup = _setup()
+    signals = generate_signals(levels, setup)
+    result = run_backtest(
+        levels,
+        signals["signals"],
+        instrument="ES",
+        config={
+            "stop_loss_ticks": 2,
+            "take_profit_ticks": 2,
+            "breakeven_after_r": 1.0,
+        },
+        setup_config=setup,
+        signal_settings=signals["signal_settings"],
+    )
+    assert result["exit_management_diagnostic"]["breakeven_after_r"] == 1.0
+    assert "active_stop_price_at_exit" in result["trades"].columns
 
 
 def test_grid_and_validation_battery_are_seeded_and_plain_data(tmp_path):
@@ -173,6 +199,116 @@ def test_grid_and_validation_battery_are_seeded_and_plain_data(tmp_path):
         first["excursion_calibration_grid"],
         second["excursion_calibration_grid"],
     )
+
+
+def test_headless_walk_forward_returns_bundle_ready_r14_artifacts(tmp_path):
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path)
+    levels = compute_levels(data, config=_levels_config())["levels"]
+    setup = _setup()
+    signal_result = generate_signals(levels, setup)
+    result = run_walk_forward(
+        levels,
+        signal_result["signals"],
+        config={
+            "fold_mode": "bars",
+            "window_mode": "rolling",
+            "train_bars": 6,
+            "test_bars": 4,
+            "step_bars": 4,
+            "stop_loss_ticks_values": [2],
+            "take_profit_ticks_values": [3],
+        },
+        execution_config={"intrabar_model": "sl_first"},
+    )
+    assert isinstance(result["walk_forward_results"], pd.DataFrame)
+    assert result["walk_forward_summary"]["schema_version"] == 2
+    assert isinstance(result["walk_forward_oos_trades"], pd.DataFrame)
+    assert isinstance(result["walk_forward_stitched_equity"], pd.DataFrame)
+
+
+def test_headless_walk_forward_matrix_requires_dimensions(tmp_path):
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path)
+    levels = compute_levels(data, config=_levels_config())["levels"]
+    setup = _setup()
+    signal_result = generate_signals(levels, setup)
+    try:
+        run_walk_forward(
+            levels,
+            signal_result["signals"],
+            config={
+                "fold_mode": "sessions",
+                "train_sessions": 2,
+                "test_sessions": 1,
+                "stop_loss_ticks_values": [2],
+                "take_profit_ticks_values": [3],
+                "matrix": {"enabled": True, "train_session_values": [2]},
+            },
+        )
+    except ValueError as exc:
+        assert "test_session_values" in str(exc)
+    else:
+        raise AssertionError("Expected missing matrix dimensions to fail")
+
+
+def test_validation_r15_is_opt_in_and_seeded(tmp_path):
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path)
+    levels = compute_levels(data, config=_levels_config())["levels"]
+    setup = _setup()
+    signal_result = generate_signals(levels, setup)
+    grid = run_grid(
+        levels,
+        signal_result["signals"],
+        config={
+            "stop_loss_ticks_values": [2, 3],
+            "take_profit_ticks_values": [3, 4],
+        },
+        setup_config=setup,
+        signal_settings=signal_result["signal_settings"],
+    )
+    backtest = run_backtest(
+        levels,
+        signal_result["signals"],
+        config={"stop_loss_ticks": 2, "take_profit_ticks": 3},
+        setup_config=setup,
+        signal_settings=signal_result["signal_settings"],
+    )
+    config = {
+        "n_bootstrap": 10,
+        "n_permutations": 10,
+        "overfitting": {
+            "enabled": True,
+            "pbo_partitions": 4,
+            "pbo_min_trades": 1,
+            "vs_random_n_replicas": 10,
+            "random_state": 42,
+        },
+    }
+    first = run_validation(
+        backtest["trades"],
+        grid=grid["grid_results"],
+        tick_size=0.25,
+        config=config,
+        df=levels,
+        signals=signal_result["signals"],
+        point_value=50.0,
+    )
+    second = run_validation(
+        backtest["trades"],
+        grid=grid["grid_results"],
+        tick_size=0.25,
+        config=config,
+        df=levels,
+        signals=signal_result["signals"],
+        point_value=50.0,
+    )
+    assert first["overfitting_summary"] == second["overfitting_summary"]
+    assert first["overfitting_summary"]["schema_version"] == 1
 
 
 def test_facade_rejects_unknown_configuration_keys(tmp_path):

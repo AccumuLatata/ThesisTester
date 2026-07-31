@@ -148,10 +148,26 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
     loaded = load_research_bundle(bundle_bytes)
     existing_state: dict = {
         "levels": pd.DataFrame({"level": [1.0]}),
+        "subtimeframe_data": _dataset_df(),
+        "subtimeframe_interval": "1min",
         "signals": pd.DataFrame({"signal_id": [1]}),
         "trades": pd.DataFrame({"trade_id": [1]}),
+        "backtest_intrabar_policy": {"intrabar_model": "path_open_proximity"},
+        "backtest_intrabar_diagnostic": {"same_bar_both_hit_count": 1},
+        "backtest_exit_management_policy": {"breakeven_after_r": 1.0},
+        "backtest_exit_management_diagnostic": {"be_exit_count": 1},
         "grid_results": pd.DataFrame({"expectancy_r": [0.1]}),
+        "grid_intrabar_policy": {"intrabar_model": "path_open_proximity"},
+        "grid_exit_management_policy": {"breakeven_after_r_values": [1.0]},
         "validation_summary": {"trade_count": {"status": "limited"}},
+        "walk_forward_results": pd.DataFrame({"fold_id": [0]}),
+        "walk_forward_summary": {"fold_count": 1},
+        "walk_forward_config": {"fold_mode": "sessions"},
+        "walk_forward_oos_trades": pd.DataFrame({"trade_id": [0]}),
+        "walk_forward_stitched_equity": pd.DataFrame({"cum_r": [1.0]}),
+        "walk_forward_warnings": ["stale"],
+        "wfa_matrix": pd.DataFrame({"matrix_value": [0.1]}),
+        "wfa_matrix_config": {"train_session_values": [2]},
         "excursion_summary": {
             "schema_version": 1,
             "available": True,
@@ -170,6 +186,8 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         ),
         "monte_carlo_summary": {"schema_version": 1, "available": True},
         "monte_carlo_config": {"n_simulations": 100},
+        "overfitting_summary": {"schema_version": 1, "available": True},
+        "overfitting_config": {"pbo_partitions": 4},
     }
 
     apply_research_bundle_to_session(loaded, existing_state)
@@ -183,10 +201,26 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
 
     for key in (
         "levels",
+        "subtimeframe_data",
+        "subtimeframe_interval",
         "signals",
         "trades",
+        "backtest_intrabar_policy",
+        "backtest_intrabar_diagnostic",
+        "backtest_exit_management_policy",
+        "backtest_exit_management_diagnostic",
         "grid_results",
+        "grid_intrabar_policy",
+        "grid_exit_management_policy",
         "validation_summary",
+        "walk_forward_results",
+        "walk_forward_summary",
+        "walk_forward_config",
+        "walk_forward_oos_trades",
+        "walk_forward_stitched_equity",
+        "walk_forward_warnings",
+        "wfa_matrix",
+        "wfa_matrix_config",
         "excursion_summary",
         "excursion_config",
         "excursion_grouped_summary",
@@ -194,6 +228,8 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         "excursion_quadrant_summary",
         "monte_carlo_summary",
         "monte_carlo_config",
+        "overfitting_summary",
+        "overfitting_config",
     ):
         assert key not in existing_state
 
@@ -202,6 +238,8 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
     base = _dataset_df()
     source_state = {
         "data": base,
+        "subtimeframe_data": base.copy(),
+        "subtimeframe_interval": "1min",
         "dataset_id": "dataset-xyz",
         "instrument": "NQ",
         "base_interval": "1min",
@@ -222,12 +260,73 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
         "signal_settings_hash": "sig-hash",
         "trades": pd.DataFrame({"trade_id": [1], "r_multiple": [1.0]}),
         "trade_summary": {"trade_count": 1},
+        "backtest_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": "subtimeframe",
+        },
+        "backtest_intrabar_diagnostic": {
+            "schema_version": 1,
+            "same_bar_both_hit_count": 1,
+        },
+        "backtest_exit_management_policy": {
+            "schema_version": 1,
+            "breakeven_after_r": 1.0,
+            "trailing_after_r": None,
+            "trailing_distance_ticks": None,
+        },
+        "backtest_exit_management_diagnostic": {
+            "schema_version": 1,
+            "be_exit_count": 1,
+            "trail_exit_count": 0,
+        },
         "equity_curve": pd.DataFrame({"trade_id": [1], "cum_r": [1.0]}),
         "grid_results": pd.DataFrame(
             {"stop_loss_ticks": [4.0], "take_profit_ticks": [8.0], "expectancy_r": [0.2]}
         ),
         "best_grid_result": {"stop_loss_ticks": 4.0, "take_profit_ticks": 8.0},
+        "grid_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": "path_open_proximity",
+        },
+        "grid_exit_management_policy": {
+            "schema_version": 1,
+            "breakeven_after_r_values": [None, 1.0],
+            "trailing_after_r_values": [None],
+        },
         "validation_summary": {"trade_count": {"status": "limited"}},
+        "walk_forward_results": pd.DataFrame(
+            {
+                "fold_id": [0],
+                "fold_mode": ["sessions"],
+                "test_expectancy_r": [0.2],
+            }
+        ),
+        "walk_forward_summary": {
+            "schema_version": 2,
+            "fold_count": 1,
+            "stitched_oos_status": "ok",
+        },
+        "walk_forward_config": {
+            "fold_mode": "sessions",
+            "train_sessions": 2,
+            "test_sessions": 1,
+        },
+        "walk_forward_oos_trades": pd.DataFrame(
+            {"trade_id": [0], "fold_id": [0], "r_multiple": [1.0]}
+        ),
+        "walk_forward_stitched_equity": pd.DataFrame({"trade_id": [0], "cum_r": [1.0]}),
+        "walk_forward_warnings": [],
+        "wfa_matrix": pd.DataFrame(
+            {
+                "train_sessions": [2],
+                "test_sessions": [1],
+                "matrix_value": [0.2],
+            }
+        ),
+        "wfa_matrix_config": {
+            "train_session_values": [2],
+            "test_session_values": [1],
+        },
         "excursion_summary": {
             "schema_version": 1,
             "available": True,
@@ -256,6 +355,12 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
             },
         },
         "monte_carlo_config": {"n_simulations": 50, "random_state": 42},
+        "overfitting_summary": {
+            "schema_version": 1,
+            "available": True,
+            "pbo": {"pbo": 0.25},
+        },
+        "overfitting_config": {"pbo_partitions": 4, "random_state": 42},
     }
 
     bundle_bytes = build_research_bundle(source_state)
@@ -265,6 +370,7 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
 
     for key in (
         "data",
+        "subtimeframe_data",
         "levels",
         "session_levels",
         "signals",
@@ -273,6 +379,10 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
         "trades",
         "equity_curve",
         "grid_results",
+        "walk_forward_results",
+        "walk_forward_oos_trades",
+        "walk_forward_stitched_equity",
+        "wfa_matrix",
         "excursion_grouped_summary",
         "excursion_calibration_grid",
         "excursion_quadrant_summary",
@@ -286,14 +396,26 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
     assert restored_state["signal_settings"] == {"trigger": "touch"}
     assert restored_state["signal_settings_hash"] == "sig-hash"
     assert restored_state["trade_summary"] == {"trade_count": 1}
+    assert restored_state["subtimeframe_interval"] == "1min"
+    assert restored_state["backtest_intrabar_policy"]["intrabar_model"] == "subtimeframe"
+    assert restored_state["backtest_intrabar_diagnostic"]["same_bar_both_hit_count"] == 1
+    assert restored_state["backtest_exit_management_policy"]["breakeven_after_r"] == 1.0
+    assert restored_state["backtest_exit_management_diagnostic"]["be_exit_count"] == 1
     assert restored_state["best_grid_result"] == {"stop_loss_ticks": 4.0, "take_profit_ticks": 8.0}
+    assert restored_state["grid_intrabar_policy"]["intrabar_model"] == "path_open_proximity"
+    assert restored_state["grid_exit_management_policy"]["breakeven_after_r_values"] == [None, 1.0]
     assert restored_state["validation_summary"] == {"trade_count": {"status": "limited"}}
+    assert restored_state["walk_forward_summary"]["schema_version"] == 2
+    assert restored_state["walk_forward_config"]["fold_mode"] == "sessions"
+    assert restored_state["wfa_matrix_config"]["train_session_values"] == [2]
     assert restored_state["excursion_summary"]["schema_version"] == 1
     assert restored_state["excursion_summary"]["trade_count"] == 1
     assert restored_state["excursion_config"] == {"both_hit_rule": "stop_first"}
     assert restored_state["monte_carlo_summary"]["schema_version"] == 1
     assert restored_state["monte_carlo_summary"]["trade_count"] == 1
     assert restored_state["monte_carlo_config"] == {"n_simulations": 50, "random_state": 42}
+    assert restored_state["overfitting_summary"]["schema_version"] == 1
+    assert restored_state["overfitting_config"]["pbo_partitions"] == 4
 
 
 def test_unknown_zip_files_are_ignored():

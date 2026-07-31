@@ -14,7 +14,7 @@ from .timezone_display import convert_dataframe_timestamps_for_display, timezone
 _CAVEATS = [
     "Research output only; not trading advice.",
     "Backtests are based on historical data and assumptions.",
-    "OHLC bars cannot resolve true intrabar event order; SL-first pessimistic rule is used where applicable.",
+    "OHLC bars cannot reveal true intrabar event order; selected deterministic models are assumptions, and lower-timeframe replay retains residual within-sub-bar ambiguity.",
     "Grid search can overfit; validation diagnostics are descriptive only.",
     "No guarantee of future performance.",
 ]
@@ -241,8 +241,28 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "best_grid_result": to_jsonable(session_state.get("best_grid_result")),
             "validation_summary": to_jsonable(session_state.get("validation_summary")),
             "walk_forward_summary": to_jsonable(session_state.get("walk_forward_summary")),
+            "walk_forward_warnings": to_jsonable(session_state.get("walk_forward_warnings")),
             "excursion_summary": to_jsonable(session_state.get("excursion_summary")),
             "monte_carlo_summary": to_jsonable(session_state.get("monte_carlo_summary")),
+            "overfitting_summary": to_jsonable(session_state.get("overfitting_summary")),
+            "backtest_intrabar_diagnostic": to_jsonable(
+                session_state.get("backtest_intrabar_diagnostic")
+            ),
+            "backtest_exit_management_diagnostic": to_jsonable(
+                session_state.get("backtest_exit_management_diagnostic")
+            ),
+        },
+        "intrabar": {
+            "backtest_policy": to_jsonable(session_state.get("backtest_intrabar_policy")),
+            "backtest_diagnostic": to_jsonable(session_state.get("backtest_intrabar_diagnostic")),
+            "grid_policy": to_jsonable(session_state.get("grid_intrabar_policy")),
+        },
+        "exit_management": {
+            "backtest_policy": to_jsonable(session_state.get("backtest_exit_management_policy")),
+            "backtest_diagnostic": to_jsonable(
+                session_state.get("backtest_exit_management_diagnostic")
+            ),
+            "grid_policy": to_jsonable(session_state.get("grid_exit_management_policy")),
         },
         "otf_filter": to_jsonable(build_otf_filter_metadata(session_state)),
         "tables": {
@@ -279,6 +299,24 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "walk_forward_results": _table_records(
                 session_state,
                 "walk_forward_results",
+                display_timezone=display_timezone,
+                canonical_timezone=canonical_timezone,
+            ),
+            "walk_forward_oos_trades": _table_records(
+                session_state,
+                "walk_forward_oos_trades",
+                display_timezone=display_timezone,
+                canonical_timezone=canonical_timezone,
+            ),
+            "walk_forward_stitched_equity": _table_records(
+                session_state,
+                "walk_forward_stitched_equity",
+                display_timezone=display_timezone,
+                canonical_timezone=canonical_timezone,
+            ),
+            "wfa_matrix": _table_records(
+                session_state,
+                "wfa_matrix",
                 display_timezone=display_timezone,
                 canonical_timezone=canonical_timezone,
             ),
@@ -772,6 +810,22 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     validation = results.get("validation_summary") or {}
     excursion = results.get("excursion_summary") or {}
     monte_carlo = results.get("monte_carlo_summary") or {}
+    overfitting = results.get("overfitting_summary") or {}
+    walk_forward = results.get("walk_forward_summary") or {}
+    intrabar = artifact.get("intrabar", {}) if isinstance(artifact, Mapping) else {}
+    intrabar_policy = intrabar.get("backtest_policy", {}) if isinstance(intrabar, Mapping) else {}
+    intrabar_diagnostic = (
+        intrabar.get("backtest_diagnostic", {}) if isinstance(intrabar, Mapping) else {}
+    )
+    exit_management = artifact.get("exit_management", {}) if isinstance(artifact, Mapping) else {}
+    exit_mgmt_policy = (
+        exit_management.get("backtest_policy", {}) if isinstance(exit_management, Mapping) else {}
+    )
+    exit_mgmt_diagnostic = (
+        exit_management.get("backtest_diagnostic", {})
+        if isinstance(exit_management, Mapping)
+        else {}
+    )
 
     selected_levels = setup.get("selected_levels") if isinstance(setup, Mapping) else None
     levels_str = (
@@ -823,6 +877,33 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
         f"- Total R: {_fmt_number(trade_summary.get('total_r') if isinstance(trade_summary, Mapping) else None)}",
         f"- Profit factor: {_fmt_number(trade_summary.get('profit_factor') if isinstance(trade_summary, Mapping) else None)}",
         f"- Max drawdown R: {_fmt_number(trade_summary.get('max_drawdown_r') if isinstance(trade_summary, Mapping) else None)}",
+        "",
+        "### Intrabar Resolution",
+        f"- Model: {intrabar_policy.get('intrabar_model', 'sl_first') if isinstance(intrabar_policy, Mapping) else 'sl_first'}",
+        f"- Same-bar both-hit exits: {intrabar_diagnostic.get('same_bar_both_hit_count', 0) if isinstance(intrabar_diagnostic, Mapping) else 0}",
+        f"- Residual ambiguous resolutions: {intrabar_diagnostic.get('ambiguous_resolution_count', 0) if isinstance(intrabar_diagnostic, Mapping) else 0}",
+        "- Deterministic OHLC paths are assumptions, not reconstructed market paths.",
+        "",
+        "### Exit Management",
+        f"- Break-even after R: {exit_mgmt_policy.get('breakeven_after_r', 'off') if isinstance(exit_mgmt_policy, Mapping) else 'off'}",
+        f"- Trailing after R: {exit_mgmt_policy.get('trailing_after_r', 'off') if isinstance(exit_mgmt_policy, Mapping) else 'off'}",
+        f"- BE exits: {exit_mgmt_diagnostic.get('be_exit_count', 0) if isinstance(exit_mgmt_diagnostic, Mapping) else 0}",
+        f"- TRAIL exits: {exit_mgmt_diagnostic.get('trail_exit_count', 0) if isinstance(exit_mgmt_diagnostic, Mapping) else 0}",
+        "",
+        "## Walk-Forward / OOS Diagnostics",
+        f"- Fold mode: {(config.get('walk_forward_config') or {}).get('fold_mode', 'bars') if isinstance(config.get('walk_forward_config'), Mapping) else 'bars'}",
+        f"- Window mode: {(config.get('walk_forward_config') or {}).get('window_mode', 'rolling') if isinstance(config.get('walk_forward_config'), Mapping) else 'rolling'}",
+        f"- Valid folds: {walk_forward.get('valid_fold_count', 0) if isinstance(walk_forward, Mapping) else 0}",
+        f"- Median OOS expectancy R: {_fmt_number(walk_forward.get('median_test_expectancy_r') if isinstance(walk_forward, Mapping) else None)}",
+        f"- Median expectancy retention ratio: {_fmt_number(walk_forward.get('median_retention_ratio_expectancy') if isinstance(walk_forward, Mapping) else None)}",
+        f"- Stitched OOS total R: {_fmt_number(walk_forward.get('stitched_oos_total_r') if isinstance(walk_forward, Mapping) else None)}",
+        f"- Stitched OOS status: {walk_forward.get('stitched_oos_status', 'unavailable') if isinstance(walk_forward, Mapping) else 'unavailable'}",
+        "",
+        "## Overfitting-Detection Battery",
+        f"- PBO: {_fmt_pct((overfitting.get('pbo') or {}).get('pbo') if isinstance(overfitting, Mapping) else None)}",
+        f"- Deflated Sharpe probability: {_fmt_pct((overfitting.get('deflated_sharpe') or {}).get('dsr') if isinstance(overfitting, Mapping) else None)}",
+        f"- Vs-random p-value: {_fmt_number((overfitting.get('vs_random') or {}).get('p_value_greater_or_equal') if isinstance(overfitting, Mapping) else None)}",
+        "- CSCV, DSR, and vs-random are diagnostics on declared historical trials/nulls, not proof of future edge.",
         "",
         "### Advanced Risk Metrics",
         f"- Sharpe-like R: {_fmt_number(trade_summary.get('sharpe_like_r') if isinstance(trade_summary, Mapping) else None)}",

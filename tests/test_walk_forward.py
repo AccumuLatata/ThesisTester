@@ -4,7 +4,12 @@ import pandas as pd
 import pytest
 
 from thesistester.analytics import best_grid_result, run_sl_tp_grid
-from thesistester.analytics.walk_forward import run_walk_forward_sl_tp, summarize_walk_forward
+from thesistester.analytics.walk_forward import (
+    WalkForwardResult,
+    run_walk_forward_sl_tp,
+    run_wfa_matrix,
+    summarize_walk_forward,
+)
 from thesistester.analytics.metrics import summarize_trades
 from thesistester.engine.backtest import simulate_trades
 from thesistester.reporting import build_research_artifact
@@ -58,6 +63,44 @@ def _signal_df(*rows: dict) -> pd.DataFrame:
     return pd.DataFrame(list(rows))
 
 
+def _session_ohlcv(
+    session_count: int,
+    *,
+    short_session_index: int | None = None,
+) -> pd.DataFrame:
+    rows: list[dict] = []
+    for session_index in range(session_count):
+        periods = 2 if session_index == short_session_index else 4
+        timestamps = pd.date_range(
+            pd.Timestamp("2026-01-05 09:30", tz=TZ) + pd.offsets.BusinessDay(session_index),
+            periods=periods,
+            freq="1min",
+        )
+        base = 100.0 + session_index
+        for timestamp in timestamps:
+            rows.append(
+                {
+                    "timestamp": timestamp,
+                    "open": base,
+                    "high": base + 2.5,
+                    "low": base - 0.5,
+                    "close": base + 1.0,
+                    "volume": 100.0,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _session_signals(df: pd.DataFrame) -> pd.DataFrame:
+    local_dates = df["timestamp"].dt.date
+    rows = []
+    for signal_id, (_, indices) in enumerate(df.groupby(local_dates).groups.items(), start=1):
+        first = int(min(indices))
+        if first + 1 < len(df):
+            rows.append(_touch_signal(signal_id, first))
+    return pd.DataFrame(rows)
+
+
 def test_walk_forward_basic_fold_generation():
     df = _ohlcv(12)
     signals = _signal_df(*[_touch_signal(i, i) for i in range(10)])
@@ -77,6 +120,217 @@ def test_walk_forward_basic_fold_generation():
     assert results["train_end_bar"].tolist() == [3, 5, 7, 9]
     assert results["test_start_bar"].tolist() == [4, 6, 8, 10]
     assert results["test_end_bar"].tolist() == [5, 7, 9, 11]
+    assert set(results["intrabar_model"]) == {"sl_first"}
+
+
+def test_session_folds_are_atomic_with_holiday_shortened_session():
+    df = _session_ohlcv(6, short_session_index=3)
+    results = run_walk_forward_sl_tp(
+        df=df,
+        signals=_session_signals(df),
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        train_bars=1,
+        test_bars=1,
+        fold_mode="sessions",
+        train_sessions=2,
+        test_sessions=1,
+        step_sessions=1,
+    )
+    assert len(results) == 4
+    assert set(results["fold_mode"]) == {"sessions"}
+    assert set(results["train_session_count"]) == {2}
+    assert set(results["test_session_count"]) == {1}
+    session_dates = df["timestamp"].dt.date.astype(str)
+    for row in results.itertuples():
+        test_dates = set(session_dates.iloc[row.test_start_bar : row.test_end_bar + 1])
+        assert test_dates == {row.test_start_session_date}
+    shortened_date = str(df["timestamp"].dt.date.unique()[3])
+    shortened_rows = results[results["test_start_session_date"] == shortened_date]
+    assert not shortened_rows.empty
+    row = shortened_rows.iloc[0]
+    assert row["test_end_bar"] - row["test_start_bar"] + 1 == 2
+
+
+def test_anchored_session_folds_grow_training_window_from_origin():
+    df = _session_ohlcv(6)
+    results = run_walk_forward_sl_tp(
+        df=df,
+        signals=_session_signals(df),
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        train_bars=1,
+        test_bars=1,
+        fold_mode="sessions",
+        window_mode="anchored",
+        train_sessions=2,
+        test_sessions=1,
+        step_sessions=1,
+    )
+    assert results["train_start_bar"].tolist() == [0, 0, 0, 0]
+    assert results["train_session_count"].tolist() == [2, 3, 4, 5]
+
+
+def test_default_bar_mode_matches_explicit_legacy_mode():
+    df = _ohlcv(12)
+    signals = _signal_df(*[_touch_signal(i, i) for i in range(10)])
+    kwargs = dict(
+        df=df,
+        signals=signals,
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        train_bars=4,
+        test_bars=2,
+        step_bars=2,
+    )
+    default = run_walk_forward_sl_tp(**kwargs)
+    explicit = run_walk_forward_sl_tp(
+        **kwargs,
+        fold_mode="bars",
+        window_mode="rolling",
+    )
+    pd.testing.assert_frame_equal(default, explicit)
+
+
+def test_walk_forward_propagates_fixed_intrabar_model_to_train_and_oos():
+    df = _ohlcv(8)
+    signals = _signal_df(*[_touch_signal(i, i) for i in range(6)])
+    results = run_walk_forward_sl_tp(
+        df=df,
+        signals=signals,
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        train_bars=4,
+        test_bars=2,
+        intrabar_model="path_open_proximity",
+    )
+    assert not results.empty
+    assert set(results["intrabar_model"]) == {"path_open_proximity"}
+
+
+def test_detailed_session_result_stitches_non_overlapping_oos_equity():
+    df = _session_ohlcv(6)
+    detailed = run_walk_forward_sl_tp(
+        df=df,
+        signals=_session_signals(df),
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        train_bars=1,
+        test_bars=1,
+        fold_mode="sessions",
+        train_sessions=2,
+        test_sessions=1,
+        step_sessions=1,
+        return_result=True,
+    )
+    assert isinstance(detailed, WalkForwardResult)
+    assert detailed.schema_version == 2
+    assert detailed.summary["stitched_oos_status"] == "ok"
+    assert detailed.summary["stitched_oos_trade_count"] == len(detailed.oos_trades)
+    assert len(detailed.stitched_equity) == len(detailed.oos_trades)
+    if not detailed.oos_trades.empty:
+        assert detailed.summary["stitched_oos_total_r"] == pytest.approx(
+            detailed.oos_trades["r_multiple"].sum()
+        )
+
+
+def test_overlapping_oos_windows_require_explicit_ownership_policy():
+    df = _session_ohlcv(8)
+    common = dict(
+        df=df,
+        signals=_session_signals(df),
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        train_bars=1,
+        test_bars=1,
+        fold_mode="sessions",
+        train_sessions=2,
+        test_sessions=2,
+        step_sessions=1,
+        return_result=True,
+    )
+    rejected = run_walk_forward_sl_tp(**common, overlap_policy="reject")
+    assert rejected.summary["stitched_oos_status"] == "overlapping_oos_windows"
+    assert rejected.stitched_equity.empty
+    assert not rejected.oos_trades.empty
+    assert not rejected.oos_trades["trade_id"].duplicated().any()
+    first = run_walk_forward_sl_tp(**common, overlap_policy="first")
+    assert first.summary["stitched_oos_status"] == "ok"
+    assert not first.oos_trades.duplicated(["global_entry_bar_index", "signal_id"]).any()
+    assert not first.oos_trades["trade_id"].duplicated().any()
+
+
+def test_session_future_shock_does_not_change_existing_folds():
+    original = _session_ohlcv(6)
+    future = _session_ohlcv(8)
+    original_results = run_walk_forward_sl_tp(
+        original,
+        _session_signals(original),
+        TICK,
+        POINT,
+        [4],
+        [8],
+        1,
+        1,
+        fold_mode="sessions",
+        train_sessions=2,
+        test_sessions=1,
+    )
+    future_results = run_walk_forward_sl_tp(
+        future,
+        _session_signals(future),
+        TICK,
+        POINT,
+        [4],
+        [8],
+        1,
+        1,
+        fold_mode="sessions",
+        train_sessions=2,
+        test_sessions=1,
+    )
+    pd.testing.assert_frame_equal(
+        original_results,
+        future_results.iloc[: len(original_results)].reset_index(drop=True),
+    )
+
+
+def test_wfa_matrix_is_deterministic_and_tidy():
+    df = _session_ohlcv(8)
+    kwargs = dict(
+        df=df,
+        signals=_session_signals(df),
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        train_session_values=[3, 2, 2],
+        test_session_values=[2, 1],
+    )
+    first = run_wfa_matrix(**kwargs)
+    second = run_wfa_matrix(**kwargs)
+    pd.testing.assert_frame_equal(first, second)
+    assert len(first) == 4
+    assert first[["train_sessions", "test_sessions"]].values.tolist() == [
+        [2, 1],
+        [2, 2],
+        [3, 1],
+        [3, 2],
+    ]
+    with pytest.raises(ValueError, match="matrix_metric"):
+        run_wfa_matrix(**kwargs, matrix_metric="not_a_metric")
 
 
 def test_walk_forward_remaps_entry_indices_for_slice():

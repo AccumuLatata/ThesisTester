@@ -52,6 +52,7 @@ REQUIRED_ITEMS = [
     ("Walk-forward diagnostics", "walk_forward_results"),
     ("Excursion analytics", "excursion_summary"),
     ("Monte Carlo diagnostics", "monte_carlo_summary"),
+    ("Overfitting diagnostics", "overfitting_summary"),
 ]
 
 OTF_ITEMS = [
@@ -215,6 +216,9 @@ csv_exports = [
     ("grid_results", "grid_results.csv"),
     ("time_grouped_summary", "time_grouped_summary.csv"),
     ("walk_forward_results", "walk_forward_results.csv"),
+    ("walk_forward_oos_trades", "walk_forward_oos_trades.csv"),
+    ("walk_forward_stitched_equity", "walk_forward_stitched_equity.csv"),
+    ("wfa_matrix", "wfa_matrix.csv"),
     ("excursion_grouped_summary", "excursion_grouped_summary.csv"),
     ("excursion_calibration_grid", "excursion_calibration_grid.csv"),
     ("excursion_quadrant_summary", "excursion_quadrant_summary.csv"),

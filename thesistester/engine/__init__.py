@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .backtest import simulate_trades
+from .backtest import SimulationResult, simulate_trades
 from .anchor_confluence import detect_anchor_confluence_zones
 from .candidate_level import CandidateLevel, from_anchor_zones, from_global_cluster_zones
 from .confluence import detect_confluence_zones
@@ -11,6 +11,8 @@ from .otf import normalize_otf_timeframe
 from .otf_filter import apply_otf_filter
 from .otf_integration import OtfFilterResult, apply_configured_otf_filter, resolve_otf_config
 from .signals import generate_signals
+from .intrabar import VALID_INTRABAR_MODELS
+from .exit_management import validate_exit_management_config
 
 __all__ = [
     "detect_anchor_confluence_zones",
@@ -26,4 +28,7 @@ __all__ = [
     "OtfFilterResult",
     "resolve_otf_config",
     "simulate_trades",
+    "SimulationResult",
+    "VALID_INTRABAR_MODELS",
+    "validate_exit_management_config",
 ]

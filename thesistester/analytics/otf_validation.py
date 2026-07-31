@@ -45,7 +45,14 @@ _ROW_ID_COL = "_otf_validation_row_id"
 #: from ``execution_kwargs`` so callers cannot trigger duplicate-kwarg failures
 #: that would be swallowed into empty-trade results.
 _RESERVED_EXECUTION_KEYS = frozenset(
-    {"tick_size", "point_value", "stop_loss_ticks", "take_profit_ticks"}
+    {
+        "tick_size",
+        "point_value",
+        "stop_loss_ticks",
+        "take_profit_ticks",
+        "return_result",
+        "return_skipped_signals",
+    }
 )
 
 #: OTF v1 default parameters used for all enabled configurations.
