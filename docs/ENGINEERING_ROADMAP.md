@@ -503,6 +503,8 @@ contract are unchanged.
   - unannualized per-trade R PSR and DSR using declared grid trial counts;
   - seeded vs-random next-open entry benchmark using the existing simulator and
     matching execution assumptions;
+  - fail-closed selection: DSR and vs-random require a replayed grid cell that
+    passes the declared selection rule, never the separate Phase 5 trade table;
   - schema-version-1 combined summary and explicit caveat.
 - Validation page has an independent, cost-labelled R15 run button and displays
   PBO, deflated Sharpe probability, vs-random p-value, and CSCV split rows.

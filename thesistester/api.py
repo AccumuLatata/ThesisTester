@@ -1583,22 +1583,29 @@ def run_validation(
             min_trades=selected_min_trades,
         )
         if selected is None:
-            selected_trades = trades
-        else:
-            selected_key = (
-                float(selected["stop_loss_ticks"]),
-                float(selected["take_profit_ticks"]),
-                None
-                if pd.isna(selected.get("breakeven_after_r"))
-                else float(selected.get("breakeven_after_r")),
-                None
-                if pd.isna(selected.get("trailing_after_r"))
-                else float(selected.get("trailing_after_r")),
-                None
-                if pd.isna(selected.get("trailing_distance_ticks"))
-                else float(selected.get("trailing_distance_ticks")),
+            raise ValueError(
+                "No replayed grid cell passes the R15 selection rule; "
+                "cannot run overfitting diagnostics."
             )
-            selected_trades = sequence_result.cell_trades.get(selected_key, trades)
+        selected_key = (
+            float(selected["stop_loss_ticks"]),
+            float(selected["take_profit_ticks"]),
+            None
+            if pd.isna(selected.get("breakeven_after_r"))
+            else float(selected.get("breakeven_after_r")),
+            None
+            if pd.isna(selected.get("trailing_after_r"))
+            else float(selected.get("trailing_after_r")),
+            None
+            if pd.isna(selected.get("trailing_distance_ticks"))
+            else float(selected.get("trailing_distance_ticks")),
+        )
+        selected_trades = sequence_result.cell_trades.get(selected_key)
+        if selected_trades is None:
+            raise ValueError(
+                "The selected R15 grid cell has no replayed trade sequence; "
+                "cannot run overfitting diagnostics."
+            )
         summary = overfitting_summary(
             selected_trades=selected_trades,
             cell_trades=sequence_result.cell_trades,

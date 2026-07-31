@@ -311,6 +311,55 @@ def test_validation_r15_is_opt_in_and_seeded(tmp_path):
     assert first["overfitting_summary"]["schema_version"] == 1
 
 
+def test_validation_r15_rejects_nonempty_grid_without_eligible_replayed_cell(tmp_path):
+    """R15 must never substitute Phase 5 trades for an ineligible grid cell."""
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path)
+    levels = compute_levels(data, config=_levels_config())["levels"]
+    setup = _setup()
+    signal_result = generate_signals(levels, setup)
+    grid = run_grid(
+        levels,
+        signal_result["signals"],
+        config={
+            "stop_loss_ticks_values": [2, 3],
+            "take_profit_ticks_values": [3, 4],
+        },
+        setup_config=setup,
+        signal_settings=signal_result["signal_settings"],
+    )
+    backtest = run_backtest(
+        levels,
+        signal_result["signals"],
+        config={"stop_loss_ticks": 2, "take_profit_ticks": 3},
+        setup_config=setup,
+        signal_settings=signal_result["signal_settings"],
+    )
+    assert not grid["grid_results"].empty
+    assert not backtest["trades"].empty
+
+    with pytest.raises(ValueError, match="No replayed grid cell passes the R15 selection rule"):
+        run_validation(
+            backtest["trades"],
+            grid=grid["grid_results"],
+            tick_size=0.25,
+            config={
+                "overfitting": {
+                    "enabled": True,
+                    "pbo_partitions": 4,
+                    "pbo_min_trades": 1,
+                    "vs_random_n_replicas": 10,
+                    "random_state": 42,
+                }
+            },
+            df=levels,
+            signals=signal_result["signals"],
+            point_value=50.0,
+            selected_min_trades=int(grid["grid_results"]["trade_count"].max()) + 1,
+        )
+
+
 def test_facade_rejects_unknown_configuration_keys(tmp_path):
     csv_path = tmp_path / "bars.csv"
     _write_dataset(csv_path)
