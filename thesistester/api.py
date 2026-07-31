@@ -237,6 +237,7 @@ _DATASET_KEYS = {
     "instrument",
     "source_timezone",
     "exchange_timezone",
+    "format_profile",
 }
 _EXCURSION_KEYS = {
     "enabled",
@@ -451,9 +452,18 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         raise ValueError("dataset.path must be a path string")
     if "subtimeframe_path" in dataset and not isinstance(dataset["subtimeframe_path"], (str, Path)):
         raise ValueError("dataset.subtimeframe_path must be a path string")
-    for key in ("instrument", "source_timezone", "exchange_timezone"):
+    for key in ("instrument", "source_timezone", "exchange_timezone", "format_profile"):
         if key in dataset and dataset[key] is not None and not isinstance(dataset[key], str):
             raise ValueError(f"dataset.{key} must be a string or null")
+    if dataset.get("format_profile", "canonical") not in {
+        "canonical",
+        "ninjatrader",
+        "sierra_intraday",
+        "databento_trades",
+        "tick_capture",
+        "second_capture",
+    }:
+        raise ValueError("dataset.format_profile is unsupported")
     instrument = str(dataset.get("instrument", "ES"))
     _instrument(instrument)
 
@@ -1149,14 +1159,16 @@ def load_dataset(
     instrument: str = "ES",
     source_timezone: str | None = None,
     exchange_timezone: str | None = None,
+    format_profile: str = "canonical",
 ) -> pd.DataFrame:
-    """Load, validate, and session-tag one canonical CSV dataset."""
+    """Load an explicit vendor profile into canonical, session-tagged OHLCV."""
     inst = _instrument(instrument)
     target_timezone = exchange_timezone or inst.exchange_tz
     data = load_ohlcv(
         Path(path),
-        source_tz=source_timezone or target_timezone,
+        source_tz=source_timezone,
         target_tz=target_timezone,
+        format_profile=format_profile,
     )
     report = validate_ohlcv(data)
     fatal_codes = {
@@ -1804,11 +1816,13 @@ def run_experiment(
         dataset_path = Path(base_directory) / dataset_path
     source_timezone = dataset_config.get("source_timezone") or inst.exchange_tz
     exchange_timezone = dataset_config.get("exchange_timezone") or inst.exchange_tz
+    format_profile = str(dataset_config.get("format_profile", "canonical"))
     data = load_dataset(
         dataset_path,
         instrument=instrument,
         source_timezone=source_timezone,
         exchange_timezone=exchange_timezone,
+        format_profile=format_profile,
     )
     subtimeframe_data: pd.DataFrame | None = None
     subtimeframe_path_value = dataset_config.get("subtimeframe_path")
@@ -1821,6 +1835,7 @@ def run_experiment(
             instrument=instrument,
             source_timezone=source_timezone,
             exchange_timezone=exchange_timezone,
+            format_profile="canonical",
         )
     validation_report = validate_ohlcv(data)
     base_interval = format_interval(validation_report.inferred_interval)
@@ -1854,6 +1869,7 @@ def run_experiment(
         "base_interval": base_interval,
         "source_timezone": source_timezone,
         "exchange_timezone": exchange_timezone,
+        "format_profile": format_profile,
         **level_result,
         "levels_data_fingerprint": {
             "instrument": instrument,

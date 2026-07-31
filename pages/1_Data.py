@@ -13,6 +13,7 @@ from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.data.loader import (
     DataValidationError,
     format_interval,
+    infer_base_interval,
     load_ohlcv,
     validate_ohlcv,
 )
@@ -27,6 +28,7 @@ from thesistester.app_state import (
     ACTIVE_SAVED_DATASET_KEY,
     BOOTSTRAP_MESSAGE_KEY,
     bootstrap_active_saved_dataset,
+    restore_saved_dataset_provenance,
 )
 from thesistester.persistence import (
     clear_active_dataset_id,
@@ -46,6 +48,26 @@ from thesistester.timezone_display import (
 FLASH_MESSAGE_KEY = "_data_local_store_message"
 PENDING_INSTRUMENT_SELECTOR_KEY = "_pending_data_instrument_selector"
 PENDING_SOURCE_TZ_SELECTOR_KEY = "_pending_data_source_timezone_selector"
+RAW_CAPTURE_PROFILES = frozenset(
+    {"ninjatrader", "databento_trades", "tick_capture", "second_capture"}
+)
+
+
+def _default_source_timezone(format_profile: str, exchange_timezone: str) -> str:
+    """Return the profile's default timezone for timezone-naive timestamps."""
+    return "UTC" if format_profile == "ninjatrader" else exchange_timezone
+
+
+def _reset_source_timezone_for_import() -> None:
+    """Apply the selected source/profile default for timezone-naive timestamps."""
+    source = st.session_state["data_source_selector"]
+    profile = st.session_state.get("data_format_profile_selector", "canonical")
+    exchange_timezone = INSTRUMENTS[st.session_state["data_instrument_selector"]].exchange_tz
+    st.session_state["data_source_timezone_selector"] = (
+        "America/New_York"
+        if source == "Sample data"
+        else _default_source_timezone(profile, exchange_timezone)
+    )
 
 
 @st.cache_data(show_spinner=False)
@@ -79,6 +101,9 @@ def _clear_dataset_dependent_state() -> None:
         "levels",
         "subtimeframe_data",
         "subtimeframe_interval",
+        "raw_data",
+        "raw_interval",
+        "format_profile",
         "session_levels",
         "levels_settings",
         "levels_data_fingerprint",
@@ -342,6 +367,9 @@ if flash_message:
 bootstrap_message = st.session_state.pop(BOOTSTRAP_MESSAGE_KEY, None)
 if bootstrap_message:
     st.success(bootstrap_message)
+raw_capture_warning = st.session_state.pop("raw_capture_warning", None)
+if raw_capture_warning:
+    st.warning(raw_capture_warning)
 
 st.subheader("Local saved datasets")
 st.caption(f"Local store: `{get_store_root()}`")
@@ -372,6 +400,10 @@ if saved_datasets:
             exchange_timezone=loaded_meta.get("exchange_timezone"),
             resampled_data={},
             saved_dataset_id=loaded_meta["dataset_id"],
+        )
+        restore_saved_dataset_provenance(
+            loaded_meta["dataset_id"],
+            loaded_meta,
         )
         st.session_state[FLASH_MESSAGE_KEY] = (
             f"Loaded saved dataset '{loaded_meta['name']}' ({loaded_meta['dataset_id'][:12]}...)."
@@ -416,8 +448,38 @@ st.caption(
     f"\u00b7 session tz {meta.exchange_tz} ({meta.rth_start}\u2013{meta.rth_end} RTH)"
 )
 
-source = st.radio("Source", ["Sample data", "Upload CSV"], horizontal=True)
-default_source_tz = "America/New_York" if source == "Sample data" else meta.exchange_tz
+source = st.radio(
+    "Source",
+    ["Sample data", "Upload CSV"],
+    horizontal=True,
+    key="data_source_selector",
+    on_change=_reset_source_timezone_for_import,
+)
+profile_options = {
+    "canonical": "Canonical / Quantower OHLCV",
+    "ninjatrader": "NinjaTrader export",
+    "sierra_intraday": "Sierra Intraday CSV",
+    "databento_trades": "Databento trades CSV",
+    "tick_capture": "Generic tick capture CSV",
+    "second_capture": "Generic second capture CSV",
+}
+format_profile = (
+    st.selectbox(
+        "CSV format profile",
+        options=list(profile_options),
+        format_func=profile_options.get,
+        help="Explicit selection only; ThesisTester never auto-detects vendor formats.",
+        key="data_format_profile_selector",
+        on_change=_reset_source_timezone_for_import,
+    )
+    if source == "Upload CSV"
+    else "canonical"
+)
+default_source_tz = (
+    "America/New_York"
+    if source == "Sample data"
+    else _default_source_timezone(format_profile, meta.exchange_tz)
+)
 if PENDING_SOURCE_TZ_SELECTOR_KEY in st.session_state:
     st.session_state["data_source_timezone_selector"] = st.session_state.pop(
         PENDING_SOURCE_TZ_SELECTOR_KEY
@@ -437,9 +499,7 @@ source_tz = st.selectbox(
 
 file = None
 if source == "Upload CSV":
-    file = st.file_uploader(
-        "OHLCV CSV with columns: timestamp,open,high,low,close,volume", type=["csv"]
-    )
+    file = st.file_uploader("CSV file for the selected explicit profile", type=["csv", "txt"])
 else:
     sample = REPO_ROOT / "sample_data" / "ES_sample_1m.csv"
     file = sample if sample.exists() else None
@@ -452,7 +512,13 @@ use_source_dataset = file is not None and (
 
 if use_source_dataset:
     try:
-        raw_df = load_ohlcv(file, source_tz=source_tz, target_tz=meta.exchange_tz)
+        raw_df, captured_raw = load_ohlcv(
+            file,
+            source_tz=source_tz,
+            target_tz=meta.exchange_tz,
+            format_profile=format_profile,
+            return_raw=True,
+        )
         report = validate_ohlcv(raw_df)
         base_interval = format_interval(report.inferred_interval)
         df = tag_session(raw_df, inst)
@@ -476,6 +542,18 @@ if use_source_dataset:
             resampled_data=resampled_data,
             saved_dataset_id=None,
         )
+        st.session_state["format_profile"] = format_profile
+        if format_profile in RAW_CAPTURE_PROFILES:
+            st.session_state["raw_data"] = captured_raw
+            st.session_state["raw_interval"] = format_interval(
+                infer_base_interval(captured_raw["timestamp"])
+            )
+            st.caption(
+                f"Captured {len(captured_raw):,} raw rows; the engine uses the resampled 1-minute bars."
+            )
+        else:
+            st.session_state.pop("raw_data", None)
+            st.session_state.pop("raw_interval", None)
         _render_dataset_summary(
             df,
             instrument=inst,
@@ -517,6 +595,9 @@ if current_df is not None:
             base_interval=st.session_state.get("base_interval"),
             source_timezone=st.session_state.get("source_timezone"),
             exchange_timezone=st.session_state.get("exchange_timezone"),
+            raw_data=st.session_state.get("raw_data"),
+            format_profile=st.session_state.get("format_profile", "canonical"),
+            raw_interval=st.session_state.get("raw_interval"),
         )
         st.session_state["dataset_id"] = saved_meta["dataset_id"]
         set_active_dataset_id(saved_meta["dataset_id"])

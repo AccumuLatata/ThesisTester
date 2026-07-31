@@ -3,7 +3,7 @@
 **Document type:** Proposal + engineering roadmap
 **Date:** 2026-07-29
 **Inputs:** `docs/SOTA_BACKTESTING_LANDSCAPE.md` (market research), `docs/THESISTESTER_ANALYSIS.md` (repository analysis with runtime verification).
-**Status of this document:** Proposal under implementation. **R9–R16 and R18 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R17 and R19–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
+**Status of this document:** Proposal under implementation. **R9–R18 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R19–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
 
 ---
 
@@ -261,6 +261,10 @@ levels → signals → backtest pipeline without changing the engine.
 - **Acceptance:** Perturbed OHLC invariants hold in all replicas (property-style loop assertions); a deliberately fragile fixture (single-bar trigger) shows visibly degraded persistence, demonstrating the test detects fragility; runtime budget documented.
 
 ### R17 — Data ingestion expansion: vendor formats + tick/quote capture
+
+✅ **Implemented.** See `docs/ENGINEERING_ROADMAP.md`. R17 adds explicit
+vendor profiles, canonical one-minute trade-capture aggregation, raw capture
+sidecars, and micro futures presets without changing the default CSV contract.
 
 - **Goal:** Unblock realism upgrades at the source and cut data-acquisition friction.
 - **Benchmark:** Databento (CME tick + continuous symbology), NinjaTrader/Sierra/Quantower export formats; QC futures data conventions (roll mapping/normalization) for guidance only.

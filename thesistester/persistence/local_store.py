@@ -326,6 +326,9 @@ def _dataset_metadata(
     base_interval: str | None,
     source_timezone: str | None,
     exchange_timezone: str | None,
+    format_profile: str = "canonical",
+    raw_interval: str | None = None,
+    raw_rows: int | None = None,
     created_at: str | None = None,
 ) -> dict[str, Any]:
     canonical = _canonicalize_dataframe(df)
@@ -348,6 +351,9 @@ def _dataset_metadata(
         "base_interval": base_interval,
         "source_timezone": source_timezone,
         "exchange_timezone": exchange_timezone,
+        "format_profile": format_profile,
+        "raw_interval": raw_interval,
+        "raw_rows": raw_rows,
         "created_at": created_at or _utcnow_iso(),
         "app_version": __version__,
     }
@@ -395,8 +401,15 @@ def save_dataset(
     base_interval: str | None,
     source_timezone: str | None,
     exchange_timezone: str | None,
+    raw_data: pd.DataFrame | None = None,
+    format_profile: str = "canonical",
+    raw_interval: str | None = None,
 ) -> dict[str, Any]:
-    """Persist a canonical dataset and return its metadata."""
+    """Persist a canonical dataset and return its metadata.
+
+    When the deterministic dataset directory already contains a raw-capture
+    sidecar, omitting ``raw_data`` preserves that sidecar's provenance.
+    """
     canonical = _canonicalize_dataframe(df)
     dataset_id = compute_dataset_id(
         canonical,
@@ -407,6 +420,29 @@ def save_dataset(
     )
     dataset_dir = _dataset_dir(dataset_id)
     dataset_dir.mkdir(parents=True, exist_ok=True)
+    raw_path = dataset_dir / "raw.parquet"
+    metadata_path = dataset_dir / "meta.json"
+    metadata_format_profile = format_profile
+    metadata_raw_interval = raw_interval
+    metadata_raw_rows = None if raw_data is None else int(len(raw_data))
+
+    if raw_data is None and raw_path.exists():
+        existing_metadata = _read_json(metadata_path)
+        metadata_format_profile = existing_metadata.get("format_profile", format_profile)
+        metadata_raw_interval = existing_metadata.get("raw_interval", raw_interval)
+        metadata_raw_rows = int(len(pd.read_parquet(raw_path)))
+    elif raw_data is not None and raw_path.exists():
+        existing_metadata = _read_json(metadata_path)
+        existing_raw = pd.read_parquet(raw_path)
+        existing_profile = existing_metadata.get("format_profile", "canonical")
+        if (
+            _hash_dataframe(existing_raw) != _hash_dataframe(raw_data)
+            or existing_profile != format_profile
+        ):
+            raise ValueError(
+                "A different raw capture already exists for this canonical dataset. "
+                "Refusing to overwrite raw provenance."
+            )
 
     metadata = _dataset_metadata(
         canonical,
@@ -416,9 +452,14 @@ def save_dataset(
         base_interval=base_interval,
         source_timezone=source_timezone,
         exchange_timezone=exchange_timezone,
+        format_profile=metadata_format_profile,
+        raw_interval=metadata_raw_interval,
+        raw_rows=metadata_raw_rows,
     )
     canonical.to_parquet(dataset_dir / "canonical.parquet", index=False)
-    _write_json(dataset_dir / "meta.json", metadata)
+    if raw_data is not None:
+        _canonicalize_dataframe(raw_data).to_parquet(raw_path, index=False)
+    _write_json(metadata_path, metadata)
     _refresh_dataset_manifest()
     metadata["path"] = str(dataset_dir)
     return metadata
@@ -583,6 +624,12 @@ def load_dataset(dataset_id: str) -> tuple[pd.DataFrame, dict[str, Any]]:
     df = pd.read_parquet(parquet_path)
     metadata["path"] = str(dataset_dir)
     return df, metadata
+
+
+def load_raw_dataset(dataset_id: str) -> pd.DataFrame | None:
+    """Load an optional R17 raw capture sidecar without changing canonical loads."""
+    raw_path = _dataset_dir(dataset_id) / "raw.parquet"
+    return pd.read_parquet(raw_path) if raw_path.exists() else None
 
 
 def delete_dataset(dataset_id: str) -> None:

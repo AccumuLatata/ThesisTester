@@ -170,6 +170,8 @@ resample to needed frames → cache`.
   session tagging, level generation, signal generation, backtesting, and time analysis.
 - For timezone-naive CSV timestamps, the Data page source timezone selector determines
   how timestamps are localized before conversion.
+- NinjaTrader semicolon exports default timezone-naive timestamps to UTC; choose a
+  different source timezone only when the export is known to contain local wall time.
 - For timezone-aware CSV timestamps, the embedded timestamp timezone is trusted and the
   selector is ignored.
 - ES/NQ exchange timezone remains `America/New_York`.

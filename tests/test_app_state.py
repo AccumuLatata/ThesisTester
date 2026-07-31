@@ -62,6 +62,73 @@ def test_bootstrap_restores_valid_saved_dataset(monkeypatch):
     assert session_state[app_state.ACTIVE_SAVED_DATASET_KEY] == "dataset-abc"
 
 
+def test_bootstrap_restores_capture_profile_and_raw_sidecar(monkeypatch):
+    df = pd.DataFrame(
+        {"timestamp": [1], "open": [1.0], "high": [1.0], "low": [1.0], "close": [1.0]}
+    )
+    raw = pd.DataFrame({"timestamp": [1], "price": [1.0], "volume": [1.0]})
+    meta = {
+        "name": "Saved tick capture",
+        "instrument": "ES",
+        "base_interval": "1min",
+        "source_timezone": "America/New_York",
+        "exchange_timezone": "America/New_York",
+        "format_profile": "tick_capture",
+        "raw_interval": "0 days 00:00:01",
+    }
+    session_state: dict = {}
+    _stub_streamlit_state(monkeypatch, session_state)
+
+    monkeypatch.setattr(app_state, "get_active_dataset_id", lambda: "dataset-abc")
+    monkeypatch.setattr(app_state, "load_dataset", lambda dataset_id: (df, meta))
+    monkeypatch.setattr(app_state, "load_raw_dataset", lambda dataset_id: raw)
+
+    restored = app_state.bootstrap_active_saved_dataset()
+
+    assert restored is True
+    assert session_state["format_profile"] == "tick_capture"
+    assert session_state["raw_data"] is raw
+    assert session_state["raw_interval"] == "0 days 00:00:01"
+
+
+def test_restore_saved_dataset_provenance_clears_absent_raw_sidecar(monkeypatch):
+    session_state = {
+        "format_profile": "tick_capture",
+        "raw_data": pd.DataFrame({"timestamp": [1]}),
+        "raw_interval": "0 days 00:00:01",
+    }
+    _stub_streamlit_state(monkeypatch, session_state)
+    monkeypatch.setattr(app_state, "load_raw_dataset", lambda dataset_id: None)
+
+    app_state.restore_saved_dataset_provenance(
+        "dataset-abc",
+        {"format_profile": "canonical", "raw_interval": None},
+    )
+
+    assert session_state["format_profile"] == "canonical"
+    assert "raw_data" not in session_state
+    assert "raw_interval" not in session_state
+
+
+def test_restore_saved_dataset_provenance_keeps_canonical_state_when_raw_is_corrupt(monkeypatch):
+    session_state: dict = {}
+    _stub_streamlit_state(monkeypatch, session_state)
+    monkeypatch.setattr(
+        app_state,
+        "load_raw_dataset",
+        lambda dataset_id: (_ for _ in ()).throw(ValueError("invalid parquet")),
+    )
+
+    app_state.restore_saved_dataset_provenance(
+        "dataset-abc",
+        {"format_profile": "tick_capture", "raw_interval": "0 days 00:00:01"},
+    )
+
+    assert session_state["format_profile"] == "tick_capture"
+    assert "raw_data" not in session_state
+    assert "raw_capture_warning" in session_state
+
+
 def test_bootstrap_clears_stale_saved_dataset_pointer(monkeypatch):
     session_state: dict = {}
     _stub_streamlit_state(monkeypatch, session_state)
