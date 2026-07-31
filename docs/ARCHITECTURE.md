@@ -155,6 +155,15 @@ their shared bar indices and emits combined equity, correlation, and
 leave-one-out contributions. It does not invoke the backtest engine or make
 claims about capital, margin, liquidity, or fill interactions.
 
+## R22 simulation-core boundary
+
+`thesistester.engine.sim_core` is an internal-only hot-path boundary. It owns
+immutable parent-bar OHLC snapshots and one-bar intrabar resolution, while
+`simulate_trades` retains all public orchestration: signal admission, caps,
+MAE/MFE, exit management, costs, record construction, and diagnostics. No
+accelerated execution mode is enabled; `docs/SIMULATE_PERF.md` is the
+informational serial baseline for future parity-gated work.
+
 ## R17 ingestion boundary
 
 `thesistester.data.loader.load_ohlcv()` is the sole explicit-profile adapter

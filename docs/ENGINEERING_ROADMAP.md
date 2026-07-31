@@ -567,6 +567,38 @@ levels, signals, engine semantics, or the existing validation contract.
 
 ---
 
+## R22 — `simulate_trades` Performance Baseline and Core Boundary ✅ Implemented
+
+Adds a reproducible serial performance ruler and a narrow internal hot-path
+boundary without changing simulation behavior or adding an accelerated mode.
+
+### Features
+
+- `tests/benchmarks/` supplies deterministic, informational workloads for
+  signal scaling, bars-held scaling, and a 3×3 grid multiplier.
+- `docs/SIMULATE_PERF.md` records the command, fixture design, environment,
+  median/p95 baseline measurements, and the acceleration decision record.
+- `thesistester.engine.sim_core` owns immutable parent OHLC snapshots and
+  one-bar bracket resolution; `simulate_trades` remains the sole orchestrator
+  of admission, caps, MAE/MFE, costs, trade records, and diagnostics.
+
+### Regression safety
+
+- The public `simulate_trades` signature, defaults, trade schema, and return
+  forms are unchanged.
+- No vectorized, Numba, or parallel path is enabled. Future acceleration must
+  measure against the committed baseline and assert exact serial parity.
+- Legacy goldens, intrabar variants, exit management, and Phase-5 admission
+  tests gate the internal extraction.
+
+### Tests
+
+- Benchmark fixture smoke tests confirm all documented scenarios run.
+- Golden master, intrabar, exit-management, and Phase-5 engine tests retain
+  exact legacy behavior after the core-boundary extraction.
+
+---
+
 ## R21 — Multi-Setup Portfolio Layer ✅ Implemented
 
 Adds an opt-in, post-trade portfolio diagnostic that composes independent

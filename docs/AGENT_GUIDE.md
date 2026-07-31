@@ -273,6 +273,18 @@ Agent safety requirements:
 - Run `pytest -q tests/test_portfolio.py tests/test_api.py tests/test_research_bundle.py tests/test_golden_master.py`
   after R21 changes.
 
+## R22 simulation performance safety
+
+- Treat `docs/SIMULATE_PERF.md` as the informational serial baseline; do not
+  claim a speedup without rerunning its exact benchmark scenarios.
+- Keep all public `simulate_trades` behavior unchanged through core refactors.
+  Any accelerated path must be opt-in and exactly equal to serial golden and
+  feature-path outputs.
+- Keep optimization work inside `engine.sim_core`; admission, P&L, trade
+  schema, and diagnostics remain orchestrated by `backtest.py`.
+- Run `pytest -q tests/benchmarks/test_simulate_baseline.py tests/test_golden_master.py tests/test_intrabar.py tests/test_exit_management.py tests/test_phase5_backtest.py`
+  after R22 changes.
+
 ## Repository conventions (verified)
 - Multipage Streamlit workflow with phase pages under `pages/` (`app.py:10-33`).
 - Core outputs are passed through `st.session_state` between phases (see `docs/ARCHITECTURE.md`).

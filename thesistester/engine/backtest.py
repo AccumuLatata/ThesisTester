@@ -28,10 +28,9 @@ import pandas as pd
 
 from .intrabar import (
     prepare_subtimeframe_context,
-    resolve_ohlc_bar,
-    resolve_subtimeframe_bar,
     validate_intrabar_model,
 )
+from .sim_core import BarData, resolve_trade_bar
 from .exit_management import (
     exit_management_enabled,
     initial_exit_management_state,
@@ -500,6 +499,7 @@ def simulate_trades(
 
     df_reset = df.reset_index(drop=True)
     n_bars = len(df_reset)
+    bars = BarData.from_frame(df_reset)
     local_timestamps = _timestamps_in_session_timezone(
         df_reset["timestamp"], session_timezone=session_timezone
     )
@@ -742,7 +742,7 @@ def simulate_trades(
             and entry_model == "next_bar_open"
             and entry_bar_index < max_bar
         ):
-            entry_bar = df_reset.iloc[entry_bar_index]
+            entry_bar = bars.at(entry_bar_index)
             stop_state = update_exit_management_after_bar(
                 state=stop_state,
                 direction=direction,
@@ -750,8 +750,8 @@ def simulate_trades(
                 initial_stop=stop_price,
                 tick_size=tick_size,
                 risk_points=sl_pts,
-                bar_high=float(entry_bar["high"]),
-                bar_low=float(entry_bar["low"]),
+                bar_high=entry_bar.high,
+                bar_low=entry_bar.low,
                 bar_index=entry_bar_index,
                 breakeven_after_r=breakeven_after_r,
                 trailing_after_r=trailing_after_r,
@@ -759,9 +759,22 @@ def simulate_trades(
             )
 
         for b in range(start_bar, max_bar + 1):
-            bar = df_reset.iloc[b]
-            bar_low = float(bar["low"])
-            bar_high = float(bar["high"])
+            bar, resolution = resolve_trade_bar(
+                bars,
+                bar_index=b,
+                intrabar_model=intrabar_model,
+                subtimeframe_context=subtimeframe_context,
+                stop_price=stop_state.effective_stop,
+                target_price=target_price,
+                direction=direction,
+                entry_activation_price=(
+                    theoretical_entry_price
+                    if b == entry_bar_index and trigger in {"3c", "confirm_3bar"}
+                    else None
+                ),
+            )
+            bar_low = bar.low
+            bar_high = bar.high
 
             # Track MAE / MFE
             if direction == "long":
@@ -773,34 +786,6 @@ def simulate_trades(
 
             mae_pts = max(mae_pts, excursion_adverse)
             mfe_pts = max(mfe_pts, excursion_favorable)
-
-            entry_activation_price = (
-                theoretical_entry_price
-                if b == entry_bar_index and trigger in {"3c", "confirm_3bar"}
-                else None
-            )
-            if intrabar_model == "subtimeframe":
-                resolution = resolve_subtimeframe_bar(
-                    subtimeframe_context.groups[b],
-                    stop_price=stop_state.effective_stop,
-                    target_price=target_price,
-                    direction=direction,
-                    parent_low=bar_low,
-                    parent_high=bar_high,
-                    entry_price=entry_activation_price,
-                )
-            else:
-                resolution = resolve_ohlc_bar(
-                    open_price=float(bar["open"]),
-                    high=bar_high,
-                    low=bar_low,
-                    close=float(bar["close"]),
-                    stop_price=stop_state.effective_stop,
-                    target_price=target_price,
-                    direction=direction,
-                    model=intrabar_model,
-                    entry_price=entry_activation_price,
-                )
 
             pending_intrabar_ambiguity = pending_intrabar_ambiguity or resolution.ambiguous
             if resolution.exit_kind is not None:
@@ -858,12 +843,12 @@ def simulate_trades(
                 and max_bar == time_cap_bar
             ):
                 exit_bar_index = max_bar
-                theoretical_exit_price = float(df_reset["close"].iloc[max_bar])
+                theoretical_exit_price = bars.close[max_bar]
                 exit_reason = "TIME"
                 intrabar_resolution = "forced_time"
             elif flat_by_session_close:
                 exit_bar_index = max_bar
-                theoretical_exit_price = float(df_reset["close"].iloc[max_bar])
+                theoretical_exit_price = bars.close[max_bar]
                 if (
                     data_end_before_session_close
                     and session_cap_bar is not None
@@ -876,7 +861,7 @@ def simulate_trades(
                     intrabar_resolution = "forced_session_close"
             else:
                 exit_bar_index = n_bars - 1
-                theoretical_exit_price = float(df_reset["close"].iloc[n_bars - 1])
+                theoretical_exit_price = bars.close[n_bars - 1]
                 exit_reason = "EOD"
                 intrabar_resolution = "forced_eod"
             if pending_intrabar_ambiguity:
