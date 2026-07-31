@@ -26,7 +26,7 @@ from thesistester.analytics import (
     run_wfa_matrix,
 )
 from thesistester.analytics.validation import validation_summary
-from thesistester.api import run_noise_test
+from thesistester.api import run_noise_test, run_sensitivity_profile
 from thesistester.config import INSTRUMENTS
 
 st.title("📊 Statistical Validation")
@@ -928,6 +928,140 @@ if isinstance(noise_result, dict) and noise_result.get("available"):
         ),
     )
     st.caption(noise_result.get("caveat", ""))
+
+st.divider()
+st.subheader("R19 parameter sensitivity (SPP-lite)")
+st.caption(
+    "Diagnostic only — changes one selected execution parameter at a time while holding "
+    "signals and every other parameter fixed. It measures local flatness, not future edge."
+)
+if grid_raw is None or grid_raw.empty:
+    st.info("Run Grid Search first. R19 profiles the selected grid cell.")
+else:
+    sensitivity_columns = [
+        column
+        for column in (
+            "stop_loss_ticks",
+            "take_profit_ticks",
+            "breakeven_after_r",
+            "trailing_after_r",
+            "trailing_distance_ticks",
+        )
+        if column in grid_raw and grid_raw[column].notna().any()
+    ]
+    s1, s2, s3 = st.columns(3)
+    sensitivity_fraction = float(
+        s1.slider("R19 perturbation fraction (±)", 0.05, 0.50, 0.20, 0.05, format="%.2f")
+    )
+    sensitivity_steps = int(
+        s2.number_input("R19 steps per side", min_value=1, max_value=20, value=5, step=1)
+    )
+    sensitivity_parameters = s3.multiselect(
+        "R19 parameters",
+        options=sensitivity_columns,
+        default=sensitivity_columns,
+    )
+    replay_count = len(sensitivity_parameters) * (2 * sensitivity_steps + 1) + 1
+    st.warning(
+        f"Cost estimate: {replay_count} `simulate_trades` replays. R19 is opt-in; "
+        "R22 parallel acceleration is not yet available."
+    )
+    if st.button("▶ Run R19 sensitivity profile", type="secondary"):
+        instrument_r19 = st.session_state.get("instrument", "ES")
+        inst_r19 = INSTRUMENTS.get(instrument_r19)
+        data_r19 = st.session_state.get("levels")
+        if data_r19 is None or data_r19.empty:
+            data_r19 = st.session_state.get("data")
+        signals_r19 = st.session_state.get("grid_accepted_signals")
+        if signals_r19 is None or signals_r19.empty:
+            signals_r19 = st.session_state.get("signals")
+        if data_r19 is None or signals_r19 is None or inst_r19 is None:
+            st.error("Data, signals, and a supported instrument are required.")
+        elif not sensitivity_parameters:
+            st.error("Select at least one active numeric grid parameter.")
+        else:
+            costs_r19 = st.session_state.get("grid_execution_costs") or {}
+            policy_r19 = st.session_state.get("grid_session_exit_policy") or {}
+            exposure_r19 = st.session_state.get("grid_exposure_policy") or {}
+            context_r19 = st.session_state.get("grid_execution_context") or {}
+            with st.spinner("Replaying one-at-a-time parameter perturbations…"):
+                summary_r19 = run_sensitivity_profile(
+                    data_r19,
+                    signals_r19,
+                    tick_size=inst_r19.tick_size,
+                    point_value=inst_r19.point_value,
+                    grid=grid_raw,
+                    execution_kwargs={
+                        "commission_per_side": float(costs_r19.get("commission_per_side", 0.0)),
+                        "slippage_ticks": float(costs_r19.get("slippage_ticks", 0.0)),
+                        "flat_by_session_close": bool(
+                            policy_r19.get("flat_by_session_close", False)
+                        ),
+                        "session_close_time": policy_r19.get("session_close_time"),
+                        "session_timezone": policy_r19.get("session_timezone"),
+                        "no_new_entries_after": policy_r19.get("no_new_entries_after"),
+                        "exposure_policy": exposure_r19.get("exposure_policy", "allow_all"),
+                        "cooldown_bars_after_exit": int(
+                            exposure_r19.get("cooldown_bars_after_exit", 0) or 0
+                        ),
+                        "intrabar_model": (st.session_state.get("grid_intrabar_policy") or {}).get(
+                            "intrabar_model", "sl_first"
+                        ),
+                        "subtimeframe_data": st.session_state.get("subtimeframe_data"),
+                    },
+                    selected_grid_metric=context_r19.get("ranking_metric", "expectancy_r"),
+                    selected_min_trades=int(context_r19.get("min_trades", 1)),
+                    sensitivity_config={
+                        "perturbation_fraction": sensitivity_fraction,
+                        "n_steps_per_side": sensitivity_steps,
+                        "parameters": sensitivity_parameters,
+                        "random_state": random_seed,
+                    },
+                )
+            st.session_state["sensitivity_summary"] = summary_r19
+            st.session_state["sensitivity_config"] = summary_r19["config"]
+            st.success("R19 sensitivity profile complete.")
+sensitivity_result = st.session_state.get("sensitivity_summary")
+if isinstance(sensitivity_result, dict) and sensitivity_result.get("available"):
+    r19a, r19b = st.columns(2)
+    r19a.metric("Fragile parameters", sensitivity_result.get("fragile_parameter_count", 0))
+    r19b.metric(
+        "Baseline expectancy R",
+        _fmt_value((sensitivity_result.get("baseline") or {}).get("expectancy_r")),
+    )
+    st.caption(sensitivity_result.get("caveat", ""))
+    for profile in sensitivity_result.get("parameters", []):
+        curve = profile.get("curve") or []
+        if not curve:
+            continue
+        curve_frame = pd.DataFrame(curve)
+        figure = go.Figure()
+        figure.add_trace(
+            go.Scatter(
+                x=curve_frame["parameter_value"],
+                y=curve_frame["expectancy_r"],
+                mode="lines+markers",
+                name="Expectancy R",
+            )
+        )
+        figure.add_trace(
+            go.Scatter(
+                x=curve_frame["parameter_value"],
+                y=curve_frame["profit_factor"],
+                mode="lines+markers",
+                name="Profit factor",
+                yaxis="y2",
+            )
+        )
+        figure.update_layout(
+            title=f"{profile.get('parameter')} — {'fragile' if profile.get('fragile') else 'no sign flip'}",
+            xaxis_title="Perturbed parameter value",
+            yaxis_title="Expectancy R",
+            yaxis2=dict(title="Profit factor", overlaying="y", side="right"),
+            margin=dict(l=10, r=10, t=35, b=10),
+        )
+        st.plotly_chart(figure, width="stretch")
+        st.dataframe(curve_frame, width="stretch", hide_index=True)
 
 st.divider()
 st.subheader("MAE/MFE excursion analytics")

@@ -36,6 +36,7 @@ from .overfitting import (
     probabilistic_sharpe,
     vs_random_benchmark,
 )
+from .sensitivity import sensitivity_summary
 from .time_analysis import add_time_buckets, pivot_time_metric, summarize_by_group
 from .validation import (
     bootstrap_expectancy_ci,
@@ -72,6 +73,7 @@ __all__ = [
     "deflated_sharpe",
     "vs_random_benchmark",
     "overfitting_summary",
+    "sensitivity_summary",
     "add_excursion_r_columns",
     "edge_ratio_summary",
     "excursion_distribution",

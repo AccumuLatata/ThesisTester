@@ -567,6 +567,42 @@ levels, signals, engine semantics, or the existing validation contract.
 
 ---
 
+## R19 — Parameter Sensitivity Profiling (SPP-lite) ✅ Implemented
+
+Adds an opt-in, schema-version-1 local execution-parameter robustness
+diagnostic without changing engine, signal, grid, or `validation_summary()`
+semantics.
+
+### Features
+
+- `thesistester/analytics/sensitivity.py` replays one selected grid cell while
+  changing one active numeric execution parameter at a time over deterministic
+  ±fraction steps.
+- It records expectancy-R, profit-factor, and trade-count curves, and flags a
+  parameter as fragile only where the curve contains both positive and
+  negative expectancy values. Tick-valued parameters use nearest-integer tick
+  rounding with duplicate candidates collapsed; R thresholds remain continuous.
+- R18 API/YAML validation, the Validation page, reports, research bundles, and
+  stale-data cleanup preserve the exported summary.
+
+### Regression safety
+
+- The feature is default-off and purely additive; it reuses the unchanged
+  serial `simulate_trades` engine through explicit selected-cell replays.
+- No RNG is required, but `random_state` remains recorded for stable
+  configuration identity and forward compatibility.
+- The UI presents replay cost before running; local OAT curves explicitly do
+  not establish interaction robustness, sampling uncertainty, or future edge.
+
+### Tests
+
+- Cliff-edge and plateau fixtures assert sign-flip fragility classification,
+  tick rounding, and deterministic output.
+- API/YAML, report/bundle, lint, full-suite, and golden-master gates protect
+  the unchanged legacy pipeline.
+
+---
+
 ## R17 — Vendor Ingestion and Tick Capture ✅ Implemented
 
 Adds explicit, opt-in data-format profiles while retaining the existing

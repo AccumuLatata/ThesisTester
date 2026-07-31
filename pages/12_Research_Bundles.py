@@ -75,6 +75,10 @@ def _will_include_overfitting() -> bool:
     return st.session_state.get("overfitting_summary") is not None
 
 
+def _will_include_sensitivity() -> bool:
+    return st.session_state.get("sensitivity_summary") is not None
+
+
 section_rows = [
     {"Artifact": "Dataset", "Will include": "✅" if _will_include_dataset() else "❌"},
     {
@@ -95,6 +99,10 @@ section_rows = [
     {
         "Artifact": "Overfitting diagnostics",
         "Will include": "✅" if _will_include_overfitting() else "❌",
+    },
+    {
+        "Artifact": "Parameter sensitivity",
+        "Will include": "✅" if _will_include_sensitivity() else "❌",
     },
 ]
 has_meaningful_state = any(row["Will include"] == "✅" for row in section_rows)

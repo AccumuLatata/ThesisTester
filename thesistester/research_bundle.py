@@ -52,6 +52,7 @@ _EXCURSION_META_KEYS = ("excursion_summary", "excursion_config")
 _MONTE_CARLO_META_KEYS = ("monte_carlo_summary", "monte_carlo_config")
 _NOISE_META_KEYS = ("noise_summary", "noise_config")
 _OVERFITTING_META_KEYS = ("overfitting_summary", "overfitting_config")
+_SENSITIVITY_META_KEYS = ("sensitivity_summary", "sensitivity_config")
 _MANAGED_RESEARCH_KEYS = {
     "data",
     "subtimeframe_data",
@@ -106,6 +107,8 @@ _MANAGED_RESEARCH_KEYS = {
     "noise_config",
     "overfitting_summary",
     "overfitting_config",
+    "sensitivity_summary",
+    "sensitivity_config",
 }
 
 _KNOWN_FILES = {
@@ -139,6 +142,7 @@ _KNOWN_FILES = {
     "monte_carlo_summary.json",
     "noise_summary.json",
     "overfitting_summary.json",
+    "sensitivity_summary.json",
 }
 
 _SECTION_REQUIRED_FILES = {
@@ -158,6 +162,7 @@ _SECTION_REQUIRED_FILES = {
     "monte_carlo": ("monte_carlo_summary.json",),
     "noise": ("noise_summary.json",),
     "overfitting": ("overfitting_summary.json",),
+    "sensitivity": ("sensitivity_summary.json",),
 }
 
 
@@ -422,6 +427,13 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
         manifest["included"]["overfitting"] = True
         included_keys.update(_OVERFITTING_META_KEYS)
 
+    if session_state.get("sensitivity_summary") is not None:
+        files["sensitivity_summary.json"] = _to_json_bytes(
+            {key: session_state.get(key) for key in _SENSITIVITY_META_KEYS}
+        )
+        manifest["included"]["sensitivity"] = True
+        included_keys.update(_SENSITIVITY_META_KEYS)
+
     manifest["session_keys"] = sorted(included_keys)
     files[MANIFEST_FILENAME] = _to_json_bytes(manifest)
 
@@ -612,6 +624,12 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
             for key in _OVERFITTING_META_KEYS:
                 if key in overfitting_meta:
                     session_values[key] = overfitting_meta[key]
+
+        if included.get("sensitivity"):
+            sensitivity_meta = _read_json_from_zip(zf, "sensitivity_summary.json")
+            for key in _SENSITIVITY_META_KEYS:
+                if key in sensitivity_meta:
+                    session_values[key] = sensitivity_meta[key]
 
     return {
         "manifest": manifest,

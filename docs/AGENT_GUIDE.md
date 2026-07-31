@@ -238,6 +238,18 @@ Agent safety requirements:
 - Run `pytest -q tests/test_loader.py tests/test_vendor_loaders.py tests/test_local_store.py`
   after R17 changes.
 
+## R19 parameter-sensitivity research safety
+
+- Keep R19 opt-in and retain `validation_summary()` unchanged.
+- Re-simulate only a selected grid cell with fixed signals and fixed execution
+  assumptions; do not turn R19 into a level/signal optimizer.
+- Preserve deterministic step ordering, the tick-rounding policy, and the
+  configured perturbation range in exported config.
+- Describe OAT sign-flip fragility as a local diagnostic, distinct from R11
+  sampling uncertainty, R15 trial-selection risk, and R16 input robustness.
+- Run `pytest -q tests/test_sensitivity.py tests/test_api.py tests/test_golden_master.py`
+  after R19 changes.
+
 ## Repository conventions (verified)
 - Multipage Streamlit workflow with phase pages under `pages/` (`app.py:10-33`).
 - Core outputs are passed through `st.session_state` between phases (see `docs/ARCHITECTURE.md`).

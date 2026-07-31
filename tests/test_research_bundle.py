@@ -190,6 +190,8 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         "noise_config": {"n_replicas": 100},
         "overfitting_summary": {"schema_version": 1, "available": True},
         "overfitting_config": {"pbo_partitions": 4},
+        "sensitivity_summary": {"schema_version": 1, "available": True},
+        "sensitivity_config": {"perturbation_fraction": 0.2},
     }
 
     apply_research_bundle_to_session(loaded, existing_state)
@@ -234,6 +236,8 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         "noise_config",
         "overfitting_summary",
         "overfitting_config",
+        "sensitivity_summary",
+        "sensitivity_config",
     ):
         assert key not in existing_state
 
@@ -371,6 +375,12 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
             "pbo": {"pbo": 0.25},
         },
         "overfitting_config": {"pbo_partitions": 4, "random_state": 42},
+        "sensitivity_summary": {
+            "schema_version": 1,
+            "available": True,
+            "fragile_parameter_count": 1,
+        },
+        "sensitivity_config": {"perturbation_fraction": 0.2, "n_steps_per_side": 5},
     }
 
     bundle_bytes = build_research_bundle(source_state)
@@ -428,6 +438,8 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
     assert restored_state["noise_config"] == {"n_replicas": 50, "random_state": 42}
     assert restored_state["overfitting_summary"]["schema_version"] == 1
     assert restored_state["overfitting_config"]["pbo_partitions"] == 4
+    assert restored_state["sensitivity_summary"]["fragile_parameter_count"] == 1
+    assert restored_state["sensitivity_config"]["perturbation_fraction"] == 0.2
 
 
 def test_unknown_zip_files_are_ignored():

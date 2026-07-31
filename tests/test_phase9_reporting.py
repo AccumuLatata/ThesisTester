@@ -253,6 +253,13 @@ def _sample_session_state() -> dict:
             "deflated_sharpe": {"dsr": 0.4},
             "vs_random": {"p_value_greater_or_equal": 0.1},
         },
+        "sensitivity_summary": {
+            "schema_version": 1,
+            "available": True,
+            "fragile_parameter_count": 1,
+            "baseline": {"expectancy_r": 0.2},
+            "parameters": [{"parameter": "stop_loss_ticks"}],
+        },
         "data": pd.DataFrame({"x": [1, 2, 3]}),
         "levels": pd.DataFrame({"y": [4, 5, 6]}),
     }
@@ -364,6 +371,7 @@ def test_build_research_artifact_counts_match_signals_and_trades():
     assert artifact["results"]["backtest_exit_management_diagnostic"]["trail_exit_count"] == 1
     assert artifact["results"]["walk_forward_summary"]["schema_version"] == 2
     assert artifact["results"]["overfitting_summary"]["schema_version"] == 1
+    assert artifact["results"]["sensitivity_summary"]["fragile_parameter_count"] == 1
     assert len(artifact["tables"]["walk_forward_results"]) == 1
     assert len(artifact["tables"]["walk_forward_oos_trades"]) == 1
     assert len(artifact["tables"]["walk_forward_stitched_equity"]) == 1
@@ -443,6 +451,7 @@ def test_build_markdown_report_returns_string_and_required_sections():
     assert "- Stitched OOS status: ok" in markdown
     assert "## Overfitting-Detection Battery" in markdown
     assert "- PBO: 25.0%" in markdown
+    assert "## Parameter Sensitivity (SPP-lite)" in markdown
     assert "## Validation Diagnostics" in markdown
     assert "## Excursion Analytics" in markdown
     assert "- Mean edge ratio: 2.0000" in markdown

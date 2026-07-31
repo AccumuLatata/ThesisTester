@@ -307,6 +307,16 @@ other than the last bar in the dataset.
 - R16 cost is replicas × the complete levels/signal/backtest pipeline. It is
   opt-in and should use a smaller replica count for exploratory runs; results
   remain diagnostics rather than proof of edge.
+- R19 changes one selected execution parameter at a time around the chosen
+  grid cell while holding fixed signals and all other parameters. It cannot
+  detect parameter interactions, unseen regimes, or sampling uncertainty.
+- R19 flags a positive/negative expectancy sign flip only within its declared
+  local perturbation range. A non-fragile result is not proof that the
+  parameter is globally robust; a fragile result can also reflect small-sample
+  noise. Tick-valued candidates use nearest-integer rounding and may collapse
+  to fewer unique values than requested.
+- R19 cost scales with profiled parameters × perturbation steps × serial trade
+  replays. It is opt-in; R22 acceleration is not yet available.
 - R17 vendor parsing is selected explicitly; ThesisTester does not infer a
   format from headers or file extension. Select the documented profile for the
   vendor export and verify the displayed canonical bars before research use.
