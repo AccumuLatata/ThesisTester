@@ -1820,7 +1820,10 @@ def run_experiment(
                 df=level_result["levels"],
                 signals=state.get("grid_accepted_signals", signal_result["signals"]),
                 point_value=inst.point_value,
-                execution_kwargs=grid_settings,
+                execution_kwargs={
+                    **grid_settings,
+                    "subtimeframe_data": subtimeframe_data,
+                },
                 selected_grid_metric=grid_settings.get("ranking_metric", "expectancy_r"),
                 selected_min_trades=int(grid_settings.get("min_trades", 1)),
             )

@@ -7,6 +7,7 @@ import math
 import pandas as pd
 import yaml
 
+import thesistester.api as api
 from thesistester.api import (
     build_setup,
     compute_levels,
@@ -230,6 +231,62 @@ def test_module_cli_bundle_matches_headless_ui_equivalent_pipeline(tmp_path):
     reference_state = _manual_ui_equivalent_state(_run("parity"), tmp_path)
     reference_bundle = build_research_bundle(reference_state)
     assert canonical_bundle_hash(cli_bundle) == canonical_bundle_hash(reference_bundle)
+
+
+def test_experiment_forwards_subtimeframe_data_to_r15_replay(tmp_path, monkeypatch):
+    """R15 grid replay must retain the grid's lower-timeframe fill input."""
+    _write_dataset(tmp_path / "bars.csv")
+    base = pd.read_csv(tmp_path / "bars.csv")
+    subtimeframe_rows = []
+    for parent in base.itertuples(index=False):
+        timestamp = pd.Timestamp(parent.timestamp)
+        subtimeframe_rows.extend(
+            [
+                (timestamp, parent.open, parent.high, parent.open, parent.open),
+                (
+                    timestamp + pd.Timedelta(seconds=15),
+                    parent.open,
+                    parent.open,
+                    parent.low,
+                    parent.low,
+                ),
+                (
+                    timestamp + pd.Timedelta(seconds=30),
+                    parent.low,
+                    parent.open,
+                    parent.low,
+                    parent.open,
+                ),
+                (
+                    timestamp + pd.Timedelta(seconds=45),
+                    parent.open,
+                    max(parent.open, parent.close),
+                    min(parent.open, parent.close),
+                    parent.close,
+                ),
+            ]
+        )
+    pd.DataFrame(
+        subtimeframe_rows,
+        columns=["timestamp", "open", "high", "low", "close"],
+    ).assign(volume=25).to_csv(tmp_path / "subtimeframe.csv", index=False)
+
+    run = _run("r15-subtimeframe")
+    run["dataset"]["subtimeframe_path"] = "subtimeframe.csv"
+    run["grid"]["intrabar_model"] = "subtimeframe"
+    run["validation"] = {"overfitting": {"enabled": True}}
+    captured: dict = {}
+
+    def capture_validation(*_args, **kwargs):
+        captured.update(kwargs)
+        return {}
+
+    monkeypatch.setattr(api, "run_validation", capture_validation)
+    state = api.run_experiment(run, base_directory=tmp_path)
+
+    execution_kwargs = captured["execution_kwargs"]
+    assert execution_kwargs["intrabar_model"] == "subtimeframe"
+    assert execution_kwargs["subtimeframe_data"] is state["subtimeframe_data"]
 
 
 def test_parallel_batch_is_identical_to_serial(tmp_path):
