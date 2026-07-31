@@ -160,6 +160,14 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         "grid_intrabar_policy": {"intrabar_model": "path_open_proximity"},
         "grid_exit_management_policy": {"breakeven_after_r_values": [1.0]},
         "validation_summary": {"trade_count": {"status": "limited"}},
+        "walk_forward_results": pd.DataFrame({"fold_id": [0]}),
+        "walk_forward_summary": {"fold_count": 1},
+        "walk_forward_config": {"fold_mode": "sessions"},
+        "walk_forward_oos_trades": pd.DataFrame({"trade_id": [0]}),
+        "walk_forward_stitched_equity": pd.DataFrame({"cum_r": [1.0]}),
+        "walk_forward_warnings": ["stale"],
+        "wfa_matrix": pd.DataFrame({"matrix_value": [0.1]}),
+        "wfa_matrix_config": {"train_session_values": [2]},
         "excursion_summary": {
             "schema_version": 1,
             "available": True,
@@ -203,6 +211,14 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         "grid_intrabar_policy",
         "grid_exit_management_policy",
         "validation_summary",
+        "walk_forward_results",
+        "walk_forward_summary",
+        "walk_forward_config",
+        "walk_forward_oos_trades",
+        "walk_forward_stitched_equity",
+        "walk_forward_warnings",
+        "wfa_matrix",
+        "wfa_matrix_config",
         "excursion_summary",
         "excursion_config",
         "excursion_grouped_summary",
@@ -274,6 +290,39 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
             "trailing_after_r_values": [None],
         },
         "validation_summary": {"trade_count": {"status": "limited"}},
+        "walk_forward_results": pd.DataFrame(
+            {
+                "fold_id": [0],
+                "fold_mode": ["sessions"],
+                "test_expectancy_r": [0.2],
+            }
+        ),
+        "walk_forward_summary": {
+            "schema_version": 2,
+            "fold_count": 1,
+            "stitched_oos_status": "ok",
+        },
+        "walk_forward_config": {
+            "fold_mode": "sessions",
+            "train_sessions": 2,
+            "test_sessions": 1,
+        },
+        "walk_forward_oos_trades": pd.DataFrame(
+            {"trade_id": [0], "fold_id": [0], "r_multiple": [1.0]}
+        ),
+        "walk_forward_stitched_equity": pd.DataFrame({"trade_id": [0], "cum_r": [1.0]}),
+        "walk_forward_warnings": [],
+        "wfa_matrix": pd.DataFrame(
+            {
+                "train_sessions": [2],
+                "test_sessions": [1],
+                "matrix_value": [0.2],
+            }
+        ),
+        "wfa_matrix_config": {
+            "train_session_values": [2],
+            "test_session_values": [1],
+        },
         "excursion_summary": {
             "schema_version": 1,
             "available": True,
@@ -320,6 +369,10 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
         "trades",
         "equity_curve",
         "grid_results",
+        "walk_forward_results",
+        "walk_forward_oos_trades",
+        "walk_forward_stitched_equity",
+        "wfa_matrix",
         "excursion_grouped_summary",
         "excursion_calibration_grid",
         "excursion_quadrant_summary",
@@ -342,6 +395,9 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
     assert restored_state["grid_intrabar_policy"]["intrabar_model"] == "path_open_proximity"
     assert restored_state["grid_exit_management_policy"]["breakeven_after_r_values"] == [None, 1.0]
     assert restored_state["validation_summary"] == {"trade_count": {"status": "limited"}}
+    assert restored_state["walk_forward_summary"]["schema_version"] == 2
+    assert restored_state["walk_forward_config"]["fold_mode"] == "sessions"
+    assert restored_state["wfa_matrix_config"]["train_session_values"] == [2]
     assert restored_state["excursion_summary"]["schema_version"] == 1
     assert restored_state["excursion_summary"]["trade_count"] == 1
     assert restored_state["excursion_config"] == {"both_hit_rule": "stop_first"}

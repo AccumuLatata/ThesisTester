@@ -3,7 +3,7 @@
 **Document type:** Proposal + engineering roadmap
 **Date:** 2026-07-29
 **Inputs:** `docs/SOTA_BACKTESTING_LANDSCAPE.md` (market research), `docs/THESISTESTER_ANALYSIS.md` (repository analysis with runtime verification).
-**Status of this document:** Proposal under implementation. **R9, R10, R11, R12, R13, and R18 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R14–R17 and R19–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
+**Status of this document:** Proposal under implementation. **R9, R10, R11, R12, R13, R14, and R18 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R15–R17 and R19–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
 
 ---
 
@@ -224,6 +224,11 @@ bar, preserving R12 intrabar ordering and legacy defaults.
 - **Acceptance:** Hand-computed fixtures for BE/TRAIL sequences; interaction tests with R12 intrabar models; grid-overfit warning thresholds re-validated.
 
 ### R14 — Calendar/session-aware walk-forward + WFA matrix
+
+✅ **Implemented.** See `docs/ENGINEERING_ROADMAP.md`. R14 preserves legacy
+bar/rolling folds while adding complete observed-session boundaries,
+rolling/anchored modes, retention ratios, overlap-safe stitched OOS equity,
+and a deterministic WFA matrix.
 
 - **Goal:** Fix the documented R5 limitation ("bar-index windows, not calendar/session-aware") and add the matrix view.
 - **Benchmark:** TradeStation WFO (rolling/anchored, cluster analysis), SQX Walk-Forward Matrix, AmiBroker sliced IS/OOS equity.

@@ -185,6 +185,21 @@ Agent safety requirements:
 - Run `pytest -q tests/test_golden_master.py tests/test_exit_management.py tests/test_intrabar.py`
   after any BE/trailing or intrabar interaction edit.
 
+## R14 walk-forward research safety
+
+- Keep `fold_mode="bars"` and `window_mode="rolling"` as backward-compatible
+  defaults.
+- Session folds use observed ETH-boundary trading dates. Do not claim an
+  exchange holiday calendar or complete-session certification without a
+  schedule source.
+- Assign session-fold signals by executable entry bar, not formation bar.
+- Never stitch overlapping OOS windows without explicit `first`/`last`
+  ownership; default `reject` is the safe policy.
+- Do not select the best WFA matrix cell using its OOS performance and then
+  report that same result as unbiased.
+- Run `pytest -q tests/test_walk_forward.py tests/test_otf_integration.py`
+  after any fold, session, or matrix change.
+
 ## Repository conventions (verified)
 - Multipage Streamlit workflow with phase pages under `pages/` (`app.py:10-33`).
 - Core outputs are passed through `st.session_state` between phases (see `docs/ARCHITECTURE.md`).

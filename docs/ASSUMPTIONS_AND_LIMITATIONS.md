@@ -263,7 +263,25 @@ other than the last bar in the dataset.
   not a market truth.
 - Monte Carlo equity fans and drawdown probabilities are diagnostics on the
   observed trade sample, not forecasts or proof of future edge.
-- Current walk-forward splits use deterministic bar-index windows and are not calendar/session-aware.
+- Walk-forward defaults remain deterministic bar-index rolling windows for
+  backward compatibility. R14 session mode instead groups observed bars by the
+  exchange trading-session date using the instrument ETH boundary; every
+  observed session is atomic, including shortened sessions.
+- Session mode is calendar-aware by observed trading date, not a complete
+  exchange holiday schedule. An absent session is treated as absent data, not
+  synthesized or certified as a holiday.
+- Rolling windows keep a fixed train-session count; anchored windows grow the
+  train history from the first observed session.
+- Expectancy retention ratio is reported only when IS expectancy is positive;
+  zero/negative/undefined IS expectancy has no economically meaningful ratio.
+- Stitched OOS equity concatenates test-window trades only. Overlapping test
+  windows default to `overlap_policy="reject"`; `first`/`last` explicitly
+  assign duplicate executable entries to one fold.
+- Stitched OOS equity is a sequence of fold-local OOS segments, not a single
+  continuous portfolio simulation across parameter-change boundaries.
+- The WFA matrix is a robustness surface across train/test session lengths,
+  not another parameter optimizer. Selecting the best matrix cell using its
+  OOS result reintroduces multiple-testing bias.
 - Train-window SL/TP selection can still overfit when grids are large or fold count is small.
 - Each fold's test window is out-of-sample relative to that fold's train window only.
 - Advanced trade metrics are trade-sequence diagnostics on realized `r_multiple`, not annualized portfolio statistics.

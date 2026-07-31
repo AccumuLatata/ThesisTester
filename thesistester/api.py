@@ -18,6 +18,8 @@ from thesistester.analytics import (
     equity_curve,
     excursion_summary,
     monte_carlo_summary,
+    run_walk_forward_sl_tp,
+    run_wfa_matrix,
     run_sl_tp_grid,
     summarize_trades,
     validation_summary,
@@ -105,6 +107,19 @@ class ValidationResult(TypedDict, total=False):
     monte_carlo_config: dict[str, Any]
 
 
+class WalkForwardAnalysisResult(TypedDict, total=False):
+    """Bundle-ready R14 analysis handoff."""
+
+    walk_forward_results: pd.DataFrame
+    walk_forward_summary: dict[str, Any]
+    walk_forward_config: dict[str, Any]
+    walk_forward_oos_trades: pd.DataFrame
+    walk_forward_stitched_equity: pd.DataFrame
+    walk_forward_warnings: list[str]
+    wfa_matrix: pd.DataFrame
+    wfa_matrix_config: dict[str, Any]
+
+
 _LEVEL_DEFAULTS: dict[str, Any] = {
     "opening_range_minutes": 30,
     "sma_lengths": [20, 50, 200],
@@ -179,7 +194,16 @@ _VALIDATION_DEFAULTS: dict[str, Any] = {
     "min_trades_hard": 100,
     "selected_grid_metric": "expectancy_r",
 }
-_RUN_KEYS = {"name", "dataset", "levels", "setup", "backtest", "grid", "validation"}
+_RUN_KEYS = {
+    "name",
+    "dataset",
+    "levels",
+    "setup",
+    "backtest",
+    "grid",
+    "validation",
+    "walk_forward",
+}
 _DATASET_KEYS = {
     "path",
     "subtimeframe_path",
@@ -207,6 +231,30 @@ _MONTE_CARLO_KEYS = {
     "drawdown_thresholds_r",
     "random_state",
     "include_paths",
+}
+_WALK_FORWARD_KEYS = {
+    "enabled",
+    "fold_mode",
+    "window_mode",
+    "train_bars",
+    "test_bars",
+    "step_bars",
+    "train_sessions",
+    "test_sessions",
+    "step_sessions",
+    "ranking_metric",
+    "min_train_trades",
+    "stop_loss_ticks_values",
+    "take_profit_ticks_values",
+    "overlap_policy",
+    "matrix",
+}
+_WFA_MATRIX_KEYS = {
+    "enabled",
+    "train_session_values",
+    "test_session_values",
+    "matrix_metric",
+    "max_matrix_cells",
 }
 
 
@@ -718,6 +766,90 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             "dataset.subtimeframe_path is required when an enabled run section "
             "uses intrabar_model='subtimeframe'"
         )
+    walk_forward = run.get("walk_forward")
+    if walk_forward is not None:
+        walk_forward = _require_mapping(walk_forward, section="walk_forward")
+        _validate_keys(
+            walk_forward,
+            _WALK_FORWARD_KEYS,
+            section="walk_forward",
+        )
+        _validate_bool_fields(walk_forward, {"enabled"}, section="walk_forward")
+        _validate_string_fields(
+            walk_forward,
+            {"fold_mode", "window_mode", "ranking_metric", "overlap_policy"},
+            section="walk_forward",
+        )
+        if walk_forward.get("fold_mode", "bars") not in {"bars", "sessions"}:
+            raise ValueError("walk_forward.fold_mode must be 'bars' or 'sessions'")
+        if walk_forward.get("window_mode", "rolling") not in {"rolling", "anchored"}:
+            raise ValueError("walk_forward.window_mode must be 'rolling' or 'anchored'")
+        if walk_forward.get("overlap_policy", "reject") not in {
+            "reject",
+            "first",
+            "last",
+        }:
+            raise ValueError("walk_forward.overlap_policy must be 'reject', 'first', or 'last'")
+        _validate_number_fields(
+            walk_forward,
+            {
+                "train_bars",
+                "test_bars",
+                "step_bars",
+                "train_sessions",
+                "test_sessions",
+                "step_sessions",
+                "min_train_trades",
+            },
+            section="walk_forward",
+            integer=True,
+        )
+        _validate_list_fields(
+            walk_forward,
+            {"stop_loss_ticks_values", "take_profit_ticks_values"},
+            section="walk_forward",
+            item_type=Real,
+        )
+        matrix = walk_forward.get("matrix")
+        if matrix is not None:
+            matrix = _require_mapping(matrix, section="walk_forward.matrix")
+            _validate_keys(matrix, _WFA_MATRIX_KEYS, section="walk_forward.matrix")
+            _validate_bool_fields(matrix, {"enabled"}, section="walk_forward.matrix")
+            _validate_list_fields(
+                matrix,
+                {"train_session_values", "test_session_values"},
+                section="walk_forward.matrix",
+                item_type=Integral,
+            )
+            _validate_number_fields(
+                matrix,
+                {"max_matrix_cells"},
+                section="walk_forward.matrix",
+                integer=True,
+            )
+            if matrix.get("enabled", False):
+                for key in ("train_session_values", "test_session_values"):
+                    if key not in matrix:
+                        raise ValueError(f"walk_forward.matrix.{key} is required when enabled")
+                    _validate_positive_list(
+                        matrix,
+                        key,
+                        section="walk_forward.matrix",
+                    )
+                valid_matrix_metrics = {
+                    "median_test_expectancy_r",
+                    "median_retention_ratio_expectancy",
+                    "stitched_oos_total_r",
+                    "oos_profitable_fold_rate",
+                }
+                if (
+                    matrix.get("matrix_metric", "median_test_expectancy_r")
+                    not in valid_matrix_metrics
+                ):
+                    raise ValueError(
+                        "walk_forward.matrix.matrix_metric must be one of "
+                        f"{sorted(valid_matrix_metrics)}"
+                    )
     validation = run.get("validation")
     if validation is not None:
         validation = _require_mapping(validation, section="validation")
@@ -1197,6 +1329,121 @@ def run_grid(
     }
 
 
+def run_walk_forward(
+    data: pd.DataFrame,
+    signals: pd.DataFrame,
+    *,
+    instrument: str = "ES",
+    config: Mapping[str, Any],
+    execution_config: Mapping[str, Any] | None = None,
+    otf_config: Mapping[str, Any] | None = None,
+    subtimeframe_data: pd.DataFrame | None = None,
+) -> WalkForwardAnalysisResult:
+    """Run R14 session/bar WFA with optional robustness matrix."""
+    inst = _instrument(instrument)
+    settings = dict(config)
+    execution = dict(execution_config or {})
+    matrix_config = settings.pop("matrix", None)
+    sl_values = list(
+        settings.pop("stop_loss_ticks_values", [execution.get("stop_loss_ticks", 8.0)])
+    )
+    tp_values = list(
+        settings.pop("take_profit_ticks_values", [execution.get("take_profit_ticks", 16.0)])
+    )
+    fold_mode = str(settings.get("fold_mode", "bars"))
+    detailed = run_walk_forward_sl_tp(
+        df=data,
+        signals=signals,
+        tick_size=inst.tick_size,
+        point_value=inst.point_value,
+        stop_loss_ticks_values=sl_values,
+        take_profit_ticks_values=tp_values,
+        train_bars=int(settings.get("train_bars", 500 if fold_mode == "bars" else 1)),
+        test_bars=int(settings.get("test_bars", 100 if fold_mode == "bars" else 1)),
+        step_bars=settings.get("step_bars"),
+        ranking_metric=str(settings.get("ranking_metric", "expectancy_r")),
+        min_train_trades=int(settings.get("min_train_trades", 1)),
+        max_holding_bars=execution.get("max_holding_bars"),
+        allow_same_bar_exit=bool(execution.get("allow_same_bar_exit", True)),
+        commission_per_side=float(execution.get("commission_per_side", 0.0)),
+        slippage_ticks=float(execution.get("slippage_ticks", 0.0)),
+        flat_by_session_close=bool(execution.get("flat_by_session_close", False)),
+        session_close_time=execution.get("session_close_time"),
+        session_timezone=execution.get("session_timezone"),
+        no_new_entries_after=execution.get("no_new_entries_after"),
+        exposure_policy=str(execution.get("exposure_policy", "allow_all")),
+        cooldown_bars_after_exit=int(execution.get("cooldown_bars_after_exit", 0)),
+        otf_config=dict(otf_config or {}),
+        intrabar_model=str(execution.get("intrabar_model", "sl_first")),
+        subtimeframe_data=subtimeframe_data,
+        breakeven_after_r_values=list(execution.get("breakeven_after_r_values", [None])),
+        trailing_after_r_values=list(execution.get("trailing_after_r_values", [None])),
+        trailing_distance_ticks_values=list(
+            execution.get("trailing_distance_ticks_values", [None])
+        ),
+        max_grid_cells=int(execution.get("max_grid_cells", 500)),
+        fold_mode=fold_mode,
+        window_mode=str(settings.get("window_mode", "rolling")),
+        train_sessions=settings.get("train_sessions"),
+        test_sessions=settings.get("test_sessions"),
+        step_sessions=settings.get("step_sessions"),
+        exchange_timezone=inst.exchange_tz,
+        eth_start=inst.eth_start,
+        overlap_policy=str(settings.get("overlap_policy", "reject")),
+        return_result=True,
+    )
+    output: WalkForwardAnalysisResult = {
+        "walk_forward_results": detailed.folds,
+        "walk_forward_summary": detailed.summary,
+        "walk_forward_config": detailed.config,
+        "walk_forward_oos_trades": detailed.oos_trades,
+        "walk_forward_stitched_equity": detailed.stitched_equity,
+        "walk_forward_warnings": list(detailed.warnings),
+    }
+    if isinstance(matrix_config, Mapping) and matrix_config.get("enabled", False):
+        for key in ("train_session_values", "test_session_values"):
+            if key not in matrix_config:
+                raise ValueError(f"walk_forward.matrix.{key} is required when enabled")
+        matrix = run_wfa_matrix(
+            df=data,
+            signals=signals,
+            tick_size=inst.tick_size,
+            point_value=inst.point_value,
+            stop_loss_ticks_values=sl_values,
+            take_profit_ticks_values=tp_values,
+            train_session_values=list(matrix_config["train_session_values"]),
+            test_session_values=list(matrix_config["test_session_values"]),
+            matrix_metric=str(matrix_config.get("matrix_metric", "median_test_expectancy_r")),
+            max_matrix_cells=int(matrix_config.get("max_matrix_cells", 25)),
+            window_mode=str(settings.get("window_mode", "rolling")),
+            exchange_timezone=inst.exchange_tz,
+            eth_start=inst.eth_start,
+            max_holding_bars=execution.get("max_holding_bars"),
+            allow_same_bar_exit=bool(execution.get("allow_same_bar_exit", True)),
+            commission_per_side=float(execution.get("commission_per_side", 0.0)),
+            slippage_ticks=float(execution.get("slippage_ticks", 0.0)),
+            flat_by_session_close=bool(execution.get("flat_by_session_close", False)),
+            session_close_time=execution.get("session_close_time"),
+            session_timezone=execution.get("session_timezone"),
+            no_new_entries_after=execution.get("no_new_entries_after"),
+            exposure_policy=str(execution.get("exposure_policy", "allow_all")),
+            cooldown_bars_after_exit=int(execution.get("cooldown_bars_after_exit", 0)),
+            otf_config=dict(otf_config or {}),
+            intrabar_model=str(execution.get("intrabar_model", "sl_first")),
+            subtimeframe_data=subtimeframe_data,
+            breakeven_after_r_values=list(execution.get("breakeven_after_r_values", [None])),
+            trailing_after_r_values=list(execution.get("trailing_after_r_values", [None])),
+            trailing_distance_ticks_values=list(
+                execution.get("trailing_distance_ticks_values", [None])
+            ),
+            max_grid_cells=int(execution.get("max_grid_cells", 500)),
+            overlap_policy=str(settings.get("overlap_policy", "reject")),
+        )
+        output["wfa_matrix"] = matrix
+        output["wfa_matrix_config"] = dict(matrix_config)
+    return output
+
+
 def run_validation(
     trades: pd.DataFrame,
     *,
@@ -1378,6 +1625,7 @@ def run_experiment(
         state["subtimeframe_interval"] = format_interval(subtimeframe_report.inferred_interval)
 
     grid_config = run.get("grid")
+    grid_settings: dict[str, Any] = {}
     if isinstance(grid_config, Mapping) and grid_config.get("enabled", True):
         grid_settings = {key: value for key, value in grid_config.items() if key != "enabled"}
         grid_result = run_grid(
@@ -1412,6 +1660,39 @@ def run_experiment(
                     "max_grid_cells": grid_settings.get("max_grid_cells", 500),
                 },
             }
+        )
+
+    walk_forward_config = run.get("walk_forward")
+    if isinstance(walk_forward_config, Mapping) and walk_forward_config.get("enabled", True):
+        wfa_settings = {
+            key: value for key, value in walk_forward_config.items() if key != "enabled"
+        }
+        execution_for_wfa = {
+            **backtest_config,
+            "breakeven_after_r_values": grid_settings.get(
+                "breakeven_after_r_values",
+                [backtest_config.get("breakeven_after_r")],
+            ),
+            "trailing_after_r_values": grid_settings.get(
+                "trailing_after_r_values",
+                [backtest_config.get("trailing_after_r")],
+            ),
+            "trailing_distance_ticks_values": grid_settings.get(
+                "trailing_distance_ticks_values",
+                [backtest_config.get("trailing_distance_ticks")],
+            ),
+            "max_grid_cells": grid_settings.get("max_grid_cells", 500),
+        }
+        state.update(
+            run_walk_forward(
+                level_result["levels"],
+                signal_result["signals"],
+                instrument=instrument,
+                config=wfa_settings,
+                execution_config=execution_for_wfa,
+                otf_config=setup.get("otf_filter"),
+                subtimeframe_data=subtimeframe_data,
+            )
         )
 
     validation_config = run.get("validation")

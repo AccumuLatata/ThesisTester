@@ -41,6 +41,13 @@ _BACKTEST_META_KEYS = (
 )
 _GRID_META_KEYS = ("best_grid_result", "grid_intrabar_policy", "grid_exit_management_policy")
 _VALIDATION_META_KEYS = ("validation_summary",)
+_WFA_META_KEYS = (
+    "walk_forward_summary",
+    "walk_forward_config",
+    "walk_forward_otf_filter",
+    "walk_forward_warnings",
+    "wfa_matrix_config",
+)
 _EXCURSION_META_KEYS = ("excursion_summary", "excursion_config")
 _MONTE_CARLO_META_KEYS = ("monte_carlo_summary", "monte_carlo_config")
 _MANAGED_RESEARCH_KEYS = {
@@ -77,6 +84,15 @@ _MANAGED_RESEARCH_KEYS = {
     "time_bucketed_trades",
     "time_grouped_summary",
     "validation_summary",
+    "walk_forward_results",
+    "walk_forward_summary",
+    "walk_forward_config",
+    "walk_forward_otf_filter",
+    "walk_forward_oos_trades",
+    "walk_forward_stitched_equity",
+    "walk_forward_warnings",
+    "wfa_matrix",
+    "wfa_matrix_config",
     "excursion_summary",
     "excursion_config",
     "excursion_grouped_summary",
@@ -105,6 +121,11 @@ _KNOWN_FILES = {
     "grid_results.parquet",
     "best_grid_result.json",
     "validation_summary.json",
+    "walk_forward_results.parquet",
+    "walk_forward_oos_trades.parquet",
+    "walk_forward_stitched_equity.parquet",
+    "wfa_matrix.parquet",
+    "walk_forward_meta.json",
     "excursion_summary.json",
     "excursion_grouped_summary.parquet",
     "excursion_calibration_grid.parquet",
@@ -124,6 +145,7 @@ _SECTION_REQUIRED_FILES = {
     "backtest": ("trades.parquet", "trade_summary.json", "equity_curve.parquet"),
     "grid": ("grid_results.parquet", "best_grid_result.json"),
     "validation": ("validation_summary.json",),
+    "walk_forward": ("walk_forward_results.parquet", "walk_forward_meta.json"),
     "excursion": ("excursion_summary.json",),
     "monte_carlo": ("monte_carlo_summary.json",),
 }
@@ -328,6 +350,28 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
         manifest["included"]["validation"] = True
         included_keys.update(_VALIDATION_META_KEYS)
 
+    walk_forward_results = session_state.get("walk_forward_results")
+    if _is_dataframe(walk_forward_results):
+        files["walk_forward_results.parquet"] = _to_parquet_bytes(walk_forward_results)
+        files["walk_forward_meta.json"] = _to_json_bytes(
+            {key: session_state.get(key) for key in _WFA_META_KEYS if key in session_state}
+        )
+        for key, filename in (
+            ("walk_forward_oos_trades", "walk_forward_oos_trades.parquet"),
+            (
+                "walk_forward_stitched_equity",
+                "walk_forward_stitched_equity.parquet",
+            ),
+            ("wfa_matrix", "wfa_matrix.parquet"),
+        ):
+            value = session_state.get(key)
+            if _is_dataframe(value):
+                files[filename] = _to_parquet_bytes(value)
+                included_keys.add(key)
+        manifest["included"]["walk_forward"] = True
+        included_keys.add("walk_forward_results")
+        included_keys.update(key for key in _WFA_META_KEYS if key in session_state)
+
     if session_state.get("excursion_summary") is not None:
         files["excursion_summary.json"] = _to_json_bytes(
             {key: session_state.get(key) for key in _EXCURSION_META_KEYS}
@@ -489,6 +533,25 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
             validation_meta = _read_json_from_zip(zf, "validation_summary.json")
             if "validation_summary" in validation_meta:
                 session_values["validation_summary"] = validation_meta["validation_summary"]
+
+        if included.get("walk_forward"):
+            session_values["walk_forward_results"] = _read_parquet_from_zip(
+                zf, "walk_forward_results.parquet"
+            )
+            walk_forward_meta = _read_json_from_zip(zf, "walk_forward_meta.json")
+            for key in _WFA_META_KEYS:
+                if key in walk_forward_meta:
+                    session_values[key] = walk_forward_meta[key]
+            for key, filename in (
+                ("walk_forward_oos_trades", "walk_forward_oos_trades.parquet"),
+                (
+                    "walk_forward_stitched_equity",
+                    "walk_forward_stitched_equity.parquet",
+                ),
+                ("wfa_matrix", "wfa_matrix.parquet"),
+            ):
+                if filename in names:
+                    session_values[key] = _read_parquet_from_zip(zf, filename)
 
         if included.get("excursion"):
             excursion_meta = _read_json_from_zip(zf, "excursion_summary.json")

@@ -11,6 +11,7 @@ from thesistester.api import (
     load_dataset,
     run_backtest,
     run_grid,
+    run_walk_forward,
     run_validation,
 )
 from thesistester.engine import apply_configured_otf_filter, simulate_trades
@@ -198,6 +199,59 @@ def test_grid_and_validation_battery_are_seeded_and_plain_data(tmp_path):
         first["excursion_calibration_grid"],
         second["excursion_calibration_grid"],
     )
+
+
+def test_headless_walk_forward_returns_bundle_ready_r14_artifacts(tmp_path):
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path)
+    levels = compute_levels(data, config=_levels_config())["levels"]
+    setup = _setup()
+    signal_result = generate_signals(levels, setup)
+    result = run_walk_forward(
+        levels,
+        signal_result["signals"],
+        config={
+            "fold_mode": "bars",
+            "window_mode": "rolling",
+            "train_bars": 6,
+            "test_bars": 4,
+            "step_bars": 4,
+            "stop_loss_ticks_values": [2],
+            "take_profit_ticks_values": [3],
+        },
+        execution_config={"intrabar_model": "sl_first"},
+    )
+    assert isinstance(result["walk_forward_results"], pd.DataFrame)
+    assert result["walk_forward_summary"]["schema_version"] == 2
+    assert isinstance(result["walk_forward_oos_trades"], pd.DataFrame)
+    assert isinstance(result["walk_forward_stitched_equity"], pd.DataFrame)
+
+
+def test_headless_walk_forward_matrix_requires_dimensions(tmp_path):
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path)
+    levels = compute_levels(data, config=_levels_config())["levels"]
+    setup = _setup()
+    signal_result = generate_signals(levels, setup)
+    try:
+        run_walk_forward(
+            levels,
+            signal_result["signals"],
+            config={
+                "fold_mode": "sessions",
+                "train_sessions": 2,
+                "test_sessions": 1,
+                "stop_loss_ticks_values": [2],
+                "take_profit_ticks_values": [3],
+                "matrix": {"enabled": True, "train_session_values": [2]},
+            },
+        )
+    except ValueError as exc:
+        assert "test_session_values" in str(exc)
+    else:
+        raise AssertionError("Expected missing matrix dimensions to fail")
 
 
 def test_facade_rejects_unknown_configuration_keys(tmp_path):

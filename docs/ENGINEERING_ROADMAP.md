@@ -446,3 +446,44 @@ day traders while keeping the fixed-bracket legacy engine untouched by default.
   disabled legacy schema, and grid cell cap.
 - Existing golden, intrabar, grid, walk-forward, API/CLI, defaults, reporting,
   and research-bundle tests extended for R13 propagation and persistence.
+
+---
+
+## R14 — Session-Aware Walk-Forward + WFA Matrix ✅ Implemented
+
+Extends R5 walk-forward validation with observed trading-session boundaries
+while retaining legacy bar-index rolling folds as the default.
+
+### Features
+
+- `fold_mode="sessions"` constructs folds from complete ETH-boundary-aware
+  trading-session dates; shortened observed sessions remain atomic.
+- `window_mode` supports fixed rolling and growing anchored train windows.
+- Fold rows add session boundaries/counts, expectancy retention ratio, and
+  degradation percentage while preserving all legacy columns.
+- `WalkForwardResult` returns folds, fold-owned OOS trades, stitched equity,
+  schema-version-2 summary, and warnings.
+- Overlapping OOS windows default to no stitch; explicit `first`/`last`
+  ownership deduplicates executable entries.
+- `run_wfa_matrix()` emits deterministic train-session × test-session
+  robustness cells for the Validation heatmap.
+- Validation UI, R18 API/CLI, reports, CSV export, stale-state cleanup, and
+  research bundles preserve all R14 artifacts.
+
+### Regression safety
+
+- Default `fold_mode="bars"` and `window_mode="rolling"` reproduce the existing
+  boundary sequence and fold execution.
+- No engine, level, signal, or golden artifact changes.
+- Session folds assign signals by executable entry ownership and never split an
+  observed trading session.
+- Future-shock tests prove appended sessions do not alter existing folds.
+- Overlap handling is explicit; stitched equity cannot silently double-count.
+
+### Tests
+
+- `tests/test_walk_forward.py`: shortened-session atomicity, rolling/anchored
+  boundaries, bar-mode identity, stitched OOS equity, overlap ownership,
+  session future shock, and deterministic matrix ordering.
+- API/CLI, reporting, research-bundle, OTF, and golden tests cover R14
+  propagation and regression safety.
