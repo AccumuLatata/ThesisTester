@@ -48,6 +48,9 @@ from thesistester.timezone_display import (
 FLASH_MESSAGE_KEY = "_data_local_store_message"
 PENDING_INSTRUMENT_SELECTOR_KEY = "_pending_data_instrument_selector"
 PENDING_SOURCE_TZ_SELECTOR_KEY = "_pending_data_source_timezone_selector"
+RAW_CAPTURE_PROFILES = frozenset(
+    {"ninjatrader", "databento_trades", "tick_capture", "second_capture"}
+)
 
 
 @st.cache_data(show_spinner=False)
@@ -508,7 +511,7 @@ if use_source_dataset:
             saved_dataset_id=None,
         )
         st.session_state["format_profile"] = format_profile
-        if format_profile in {"databento_trades", "tick_capture", "second_capture"}:
+        if format_profile in RAW_CAPTURE_PROFILES:
             st.session_state["raw_data"] = captured_raw
             st.session_state["raw_interval"] = format_interval(
                 infer_base_interval(captured_raw["timestamp"])
