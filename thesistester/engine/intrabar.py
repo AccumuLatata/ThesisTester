@@ -172,7 +172,7 @@ def resolve_ohlc_bar(
             for vertices in candidate_paths
             if (active_vertices := _path_after_entry(vertices, entry_price))
         }
-        kind = "SL" if "SL" in outcomes else ("TP" if "TP" in outcomes else None)
+        kind = "SL" if "SL" in outcomes else ("TP" if outcomes == {"TP"} else None)
         return IntrabarResolution(
             kind,
             "intrabar_path_proximity_tie_sl_first",

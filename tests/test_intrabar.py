@@ -112,6 +112,24 @@ def test_open_proximity_does_not_exit_on_single_target_hit_before_entry():
     assert result.trades.iloc[0]["exit_reason"] == "EOD"
 
 
+def test_open_proximity_tie_requires_target_after_entry_on_both_candidate_paths():
+    parent = _parent_bar(high=104.0, low=100.0, close=102.0)
+    parent.loc[1, "open"] = 102.0
+    result = simulate_trades(
+        parent,
+        _three_c_signal(entry_price=101.0),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=2,
+        intrabar_model="path_open_proximity",
+        return_result=True,
+    )
+    assert isinstance(result, SimulationResult)
+    assert result.trades.iloc[0]["exit_reason"] == "EOD"
+    assert result.intrabar_diagnostic["ambiguous_resolution_count"] == 1
+
+
 def _subtimeframe_data(*, residual_both_hit: bool = False) -> pd.DataFrame:
     timestamps = pd.date_range("2026-01-05 09:30", periods=10, freq="1min", tz=TZ)
     rows = [
