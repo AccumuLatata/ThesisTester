@@ -28,6 +28,7 @@ from thesistester.app_state import (
     ACTIVE_SAVED_DATASET_KEY,
     BOOTSTRAP_MESSAGE_KEY,
     bootstrap_active_saved_dataset,
+    restore_saved_dataset_provenance,
 )
 from thesistester.persistence import (
     clear_active_dataset_id,
@@ -376,6 +377,10 @@ if saved_datasets:
             exchange_timezone=loaded_meta.get("exchange_timezone"),
             resampled_data={},
             saved_dataset_id=loaded_meta["dataset_id"],
+        )
+        restore_saved_dataset_provenance(
+            loaded_meta["dataset_id"],
+            loaded_meta,
         )
         st.session_state[FLASH_MESSAGE_KEY] = (
             f"Loaded saved dataset '{loaded_meta['name']}' ({loaded_meta['dataset_id'][:12]}...)."

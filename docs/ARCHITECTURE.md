@@ -168,9 +168,9 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | Key | Producing page(s) | Consuming page(s) | Schema (observed) |
 |---|---|---|---|
 | `data` | Data (`pages/1_Data.py:114`) | Levels (`pages/5_Levels.py:203-217,425`), Backtest (`pages/7_Backtest.py:64-68`), Grid (`pages/8_Grid_Search.py:36-40`), Report/Bundles (`pages/12_Research_Bundles.py:26`) | `pd.DataFrame` OHLCV/session columns |
-| `format_profile` | Data | Local dataset provenance | Explicit R17 parser profile; defaults to `canonical` |
-| `raw_data` | Data capture profiles | Local persistence only | Optional unaggregated tick/trade rows; never consumed by the bar engine |
-| `raw_interval` | Data capture profiles | Local dataset provenance | Inferred raw capture interval |
+| `format_profile` | Data / saved-dataset bootstrap | Local dataset provenance | Explicit R17 parser profile; restored from saved metadata and defaults to `canonical` |
+| `raw_data` | Data capture profiles / saved-dataset bootstrap | Local persistence only | Optional unaggregated tick/trade rows restored from `raw.parquet`; never consumed by the bar engine |
+| `raw_interval` | Data capture profiles / saved-dataset bootstrap | Local dataset provenance | Inferred raw capture interval restored from saved metadata |
 | `subtimeframe_data` | R18 API/CLI or Research Bundle import | Backtest/Grid/Walk-forward, Research Bundles | Optional strictly finer `pd.DataFrame` OHLCV/session rows for R12 replay |
 | `subtimeframe_interval` | R18 API/CLI or Research Bundle import | Research Bundles/report provenance | `str \| None` inferred lower interval |
 | `resampled_data` | Data (`pages/1_Data.py:115`) | Data summary (`pages/1_Data.py:341`) | `dict[str, pd.DataFrame]` |

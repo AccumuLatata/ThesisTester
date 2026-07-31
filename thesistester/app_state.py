@@ -9,11 +9,30 @@ from thesistester.persistence import (
     clear_active_levels_hash,
     get_active_dataset_id,
     load_dataset,
+    load_raw_dataset,
 )
 from thesistester.timezone_display import ensure_display_timezone
 
 ACTIVE_SAVED_DATASET_KEY = "_active_saved_dataset_id"
 BOOTSTRAP_MESSAGE_KEY = "_data_bootstrap_message"
+
+
+def restore_saved_dataset_provenance(
+    dataset_id: str, metadata: dict[str, object]
+) -> None:
+    """Restore saved ingestion provenance and its optional raw capture sidecar."""
+    st.session_state["format_profile"] = metadata.get("format_profile", "canonical")
+    raw_interval = metadata.get("raw_interval")
+    if raw_interval is None:
+        st.session_state.pop("raw_interval", None)
+    else:
+        st.session_state["raw_interval"] = raw_interval
+
+    raw_data = load_raw_dataset(dataset_id)
+    if raw_data is None:
+        st.session_state.pop("raw_data", None)
+    else:
+        st.session_state["raw_data"] = raw_data
 
 
 def bootstrap_active_saved_dataset() -> bool:
@@ -50,6 +69,7 @@ def bootstrap_active_saved_dataset() -> bool:
     st.session_state["base_interval"] = loaded_meta.get("base_interval")
     st.session_state["source_timezone"] = loaded_meta.get("source_timezone")
     st.session_state["exchange_timezone"] = loaded_meta.get("exchange_timezone")
+    restore_saved_dataset_provenance(dataset_id, loaded_meta)
     ensure_display_timezone(
         st.session_state,
         exchange_timezone=loaded_meta.get("exchange_timezone"),
