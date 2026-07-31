@@ -30,6 +30,7 @@ dependencies = [
     "numpy>=1.26,<3",
     "plotly>=5.22,<7",
     "pyarrow>=16,<25",
+    "PyYAML>=6.0.3,<7",
 ]
 
 [project.optional-dependencies]
