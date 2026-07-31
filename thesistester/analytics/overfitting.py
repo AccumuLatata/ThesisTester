@@ -10,6 +10,7 @@ from typing import Any, Iterable, Mapping
 import numpy as np
 import pandas as pd
 
+from thesistester.analytics.grid import _directional_grid_metrics
 from thesistester.analytics.metrics import summarize_trades
 from thesistester.engine.backtest import simulate_trades
 
@@ -124,7 +125,7 @@ def grid_trade_sequences(
     grid: pd.DataFrame,
     execution_kwargs: Mapping[str, Any] | None = None,
 ) -> GridSequenceResult:
-    """Re-simulate grid cells and retain deterministic ordered trade sequences."""
+    """Re-simulate grid cells with the Grid Search metric schema and trade sequences."""
     if grid is None or grid.empty:
         return GridSequenceResult(pd.DataFrame(), {})
     kwargs = {
@@ -170,6 +171,7 @@ def grid_trade_sequences(
                 "trailing_after_r": key[3],
                 "trailing_distance_ticks": key[4],
                 **summarize_trades(ordered),
+                **_directional_grid_metrics(ordered),
             }
         )
     return GridSequenceResult(pd.DataFrame(rows), sequences)
