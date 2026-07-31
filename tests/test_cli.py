@@ -220,9 +220,12 @@ def test_module_cli_bundle_matches_headless_ui_equivalent_pipeline(tmp_path):
 
 def test_parallel_batch_is_identical_to_serial(tmp_path):
     _write_dataset(tmp_path / "bars.csv")
+    path_run = _run("path-model", stop=3)
+    path_run["backtest"]["intrabar_model"] = "path_open_proximity"
+    path_run["grid"]["intrabar_model"] = "path_open_proximity"
     experiment = {
         "schema_version": 1,
-        "runs": [_run("baseline", stop=2), _run("wider-stop", stop=3)],
+        "runs": [_run("baseline", stop=2), path_run],
     }
     serial = run_batch(
         experiment,
@@ -237,7 +240,7 @@ def test_parallel_batch_is_identical_to_serial(tmp_path):
         workers=2,
     )
     pd.testing.assert_frame_equal(serial, parallel)
-    for name in ("baseline", "wider-stop"):
+    for name in ("baseline", "path-model"):
         serial_bundle = (tmp_path / "serial" / f"{name}.research.zip").read_bytes()
         parallel_bundle = (tmp_path / "parallel" / f"{name}.research.zip").read_bytes()
         assert canonical_bundle_hash(serial_bundle) == canonical_bundle_hash(parallel_bundle)
@@ -314,6 +317,18 @@ def test_experiment_schema_and_names_fail_fast(tmp_path):
                 ],
             },
             "intrabar_model",
+        ),
+        (
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        **_run("missing-sub-bars"),
+                        "backtest": {"intrabar_model": "subtimeframe"},
+                    }
+                ],
+            },
+            "subtimeframe_path",
         ),
     ]
     for index, (payload, message) in enumerate(cases):

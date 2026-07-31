@@ -9,9 +9,9 @@ Design notes
   to avoid look-ahead bias.
 - ``3c`` signals with ``status="filled"`` enter at ``retrace_entry_price`` on
   ``entry_bar_index``. ``status="void"`` rows are skipped.
-- When both SL and TP are reachable within the same OHLC bar the engine
-  exits at SL (SL-first / pessimistic rule), because intrabar event order
-  is unknowable from OHLC data alone.
+- The default resolves same-bar SL/TP ambiguity at SL (legacy pessimism).
+  Opt-in deterministic OHLC-path and observed lower-timeframe models retain
+  explicit residual-ambiguity diagnostics.
 - Phase 5 is a single-risk-config backtest only; SL/TP grid search belongs
   to Phase 6.
 """

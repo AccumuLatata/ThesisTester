@@ -649,6 +649,14 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                 integer=True,
             )
             _validate_range(grid, "max_holding_bars", section="grid", minimum=1)
+    requested_intrabar_models = {backtest.get("intrabar_model", "sl_first")}
+    if isinstance(grid, Mapping) and grid.get("enabled", True):
+        requested_intrabar_models.add(grid.get("intrabar_model", "sl_first"))
+    if "subtimeframe" in requested_intrabar_models and "subtimeframe_path" not in dataset:
+        raise ValueError(
+            "dataset.subtimeframe_path is required when an enabled run section "
+            "uses intrabar_model='subtimeframe'"
+        )
     validation = run.get("validation")
     if validation is not None:
         validation = _require_mapping(validation, section="validation")
