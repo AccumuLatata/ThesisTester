@@ -162,6 +162,12 @@ def _valid_intrabar_model(value: Any) -> str | None:
     return value if value in INTRABAR_MODEL_OPTIONS else None
 
 
+def _valid_optional_positive_float(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    return _valid_float(value, lo=0.000001, hi=1000.0)
+
+
 # ── Backtest sanitisation ─────────────────────────────────────────────────────
 
 #: Maps session-state key → (validator_fn, raw_defaults_key)
@@ -184,6 +190,15 @@ _BACKTEST_FIELD_SPECS: tuple[tuple[str, str, Any], ...] = (
     ("backtest_no_new_entries_after", "no_new_entries_after", _valid_optional_time_str),
     ("backtest_exposure_policy", "exposure_policy", _valid_exposure_policy),
     ("backtest_intrabar_model", "intrabar_model", _valid_intrabar_model),
+    ("backtest_enable_be", "enable_breakeven", _valid_bool),
+    ("backtest_breakeven_after_r", "breakeven_after_r", _valid_optional_positive_float),
+    ("backtest_enable_trail", "enable_trailing", _valid_bool),
+    ("backtest_trailing_after_r", "trailing_after_r", _valid_optional_positive_float),
+    (
+        "backtest_trailing_distance_ticks",
+        "trailing_distance_ticks",
+        _valid_optional_positive_float,
+    ),
     (
         "backtest_cooldown_bars",
         "cooldown_bars_after_exit",
@@ -268,6 +283,15 @@ _GRID_FIELD_SPECS: tuple[tuple[str, str, Any], ...] = (
     ("grid_no_new_entries_after", "no_new_entries_after", _valid_optional_time_str),
     ("grid_exposure_policy_widget", "exposure_policy", _valid_exposure_policy),
     ("grid_intrabar_model_widget", "intrabar_model", _valid_intrabar_model),
+    ("grid_enable_be", "enable_breakeven", _valid_bool),
+    ("grid_breakeven_after_r", "breakeven_after_r", _valid_optional_positive_float),
+    ("grid_enable_trail", "enable_trailing", _valid_bool),
+    ("grid_trailing_after_r", "trailing_after_r", _valid_optional_positive_float),
+    (
+        "grid_trailing_distance_ticks",
+        "trailing_distance_ticks",
+        _valid_optional_positive_float,
+    ),
     ("grid_cooldown_bars", "cooldown_bars_after_exit", lambda v: _valid_int(v, lo=0, hi=10_000)),
     ("grid_ranking_metric_widget", "ranking_metric", _valid_ranking_metric),
     ("grid_min_trades_widget", "min_trades", lambda v: _valid_int(v, lo=1, hi=1000)),

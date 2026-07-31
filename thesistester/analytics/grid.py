@@ -95,6 +95,10 @@ def _directional_grid_metrics(trades: pd.DataFrame) -> dict:
     return {**long_cols, **short_cols, **balanced_cols}
 
 
+def _sorted_optional_values(values: list[int | float | None]) -> list[int | float | None]:
+    return sorted(set(values), key=lambda value: (value is not None, float(value or 0.0)))
+
+
 def run_sl_tp_grid(
     df: pd.DataFrame,
     signals: pd.DataFrame,
@@ -115,6 +119,10 @@ def run_sl_tp_grid(
     *,
     intrabar_model: str = "sl_first",
     subtimeframe_data: pd.DataFrame | None = None,
+    breakeven_after_r_values: list[float | None] | None = None,
+    trailing_after_r_values: list[float | None] | None = None,
+    trailing_distance_ticks_values: list[float | None] | None = None,
+    max_grid_cells: int = 500,
 ) -> pd.DataFrame:
     """Run a stop-loss × take-profit grid search.
 
@@ -179,6 +187,8 @@ def run_sl_tp_grid(
         raise ValueError("stop_loss_ticks_values must not be empty.")
     if not take_profit_ticks_values:
         raise ValueError("take_profit_ticks_values must not be empty.")
+    if max_grid_cells <= 0:
+        raise ValueError("max_grid_cells must be > 0.")
 
     sl_values = sorted(set(stop_loss_ticks_values))
     tp_values = sorted(set(take_profit_ticks_values))
@@ -189,55 +199,123 @@ def run_sl_tp_grid(
     for tp in tp_values:
         if tp <= 0:
             raise ValueError(f"All take_profit_ticks values must be > 0; got {tp!r}.")
+    be_values = (
+        [None]
+        if breakeven_after_r_values is None
+        else _sorted_optional_values(breakeven_after_r_values)
+    )
+    trail_after_values = (
+        [None]
+        if trailing_after_r_values is None
+        else _sorted_optional_values(trailing_after_r_values)
+    )
+    trail_distance_values = (
+        [None]
+        if trailing_distance_ticks_values is None
+        else _sorted_optional_values(trailing_distance_ticks_values)
+    )
+    if not be_values:
+        raise ValueError("breakeven_after_r_values must not be empty.")
+    if not trail_after_values:
+        raise ValueError("trailing_after_r_values must not be empty.")
+    if not trail_distance_values:
+        raise ValueError("trailing_distance_ticks_values must not be empty.")
+    for label, values in (
+        ("breakeven_after_r_values", be_values),
+        ("trailing_after_r_values", trail_after_values),
+        ("trailing_distance_ticks_values", trail_distance_values),
+    ):
+        for value in values:
+            if value is not None and value <= 0:
+                raise ValueError(f"All {label} entries must be > 0 or None; got {value!r}.")
+    trailing_configs: list[tuple[float | None, float | None]] = []
+    for trailing_after_r in trail_after_values:
+        if trailing_after_r is None:
+            trailing_configs.append((None, None))
+            continue
+        distances = [value for value in trail_distance_values if value is not None]
+        if not distances:
+            raise ValueError(
+                "trailing_distance_ticks_values must include a positive value when trailing is enabled."
+            )
+        trailing_configs.extend((trailing_after_r, distance) for distance in distances)
+    cell_count = len(sl_values) * len(tp_values) * len(be_values) * len(trailing_configs)
+    if cell_count > int(max_grid_cells):
+        raise ValueError(
+            f"Grid would run {cell_count} cells, exceeding max_grid_cells={max_grid_cells}."
+        )
 
     rows: list[dict] = []
     for sl in sl_values:
         for tp in tp_values:
-            simulation = simulate_trades(
-                df=df,
-                signals=signals,
-                tick_size=tick_size,
-                point_value=point_value,
-                stop_loss_ticks=sl,
-                take_profit_ticks=tp,
-                max_holding_bars=max_holding_bars,
-                allow_same_bar_exit=allow_same_bar_exit,
-                commission_per_side=commission_per_side,
-                slippage_ticks=slippage_ticks,
-                flat_by_session_close=flat_by_session_close,
-                session_close_time=session_close_time,
-                session_timezone=session_timezone,
-                no_new_entries_after=no_new_entries_after,
-                exposure_policy=exposure_policy,
-                cooldown_bars_after_exit=cooldown_bars_after_exit,
-                intrabar_model=intrabar_model,
-                subtimeframe_data=subtimeframe_data,
-                return_result=True,
-            )
-            trades = simulation.trades
-            intrabar_diagnostic = simulation.intrabar_diagnostic
-            summary = summarize_trades(trades)
-            directional = _directional_grid_metrics(trades)
-            row: dict = {
-                "stop_loss_ticks": sl,
-                "take_profit_ticks": tp,
-                **summary,
-                "tp_sl_ratio": tp / sl,
-                "risk_points": sl * tick_size,
-                "target_points": tp * tick_size,
-                "exposure_policy": exposure_policy,
-                "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
-                "intrabar_model": intrabar_model,
-                "intrabar_both_hit_count": intrabar_diagnostic["same_bar_both_hit_count"],
-                "intrabar_both_hit_pct": intrabar_diagnostic["same_bar_both_hit_pct"],
-                "intrabar_ambiguous_count": intrabar_diagnostic["ambiguous_resolution_count"],
-                **directional,
-            }
-            rows.append(row)
+            for breakeven_after_r in be_values:
+                for trailing_after_r, trailing_distance_ticks in trailing_configs:
+                    simulation = simulate_trades(
+                        df=df,
+                        signals=signals,
+                        tick_size=tick_size,
+                        point_value=point_value,
+                        stop_loss_ticks=sl,
+                        take_profit_ticks=tp,
+                        max_holding_bars=max_holding_bars,
+                        allow_same_bar_exit=allow_same_bar_exit,
+                        commission_per_side=commission_per_side,
+                        slippage_ticks=slippage_ticks,
+                        flat_by_session_close=flat_by_session_close,
+                        session_close_time=session_close_time,
+                        session_timezone=session_timezone,
+                        no_new_entries_after=no_new_entries_after,
+                        exposure_policy=exposure_policy,
+                        cooldown_bars_after_exit=cooldown_bars_after_exit,
+                        intrabar_model=intrabar_model,
+                        subtimeframe_data=subtimeframe_data,
+                        breakeven_after_r=breakeven_after_r,
+                        trailing_after_r=trailing_after_r,
+                        trailing_distance_ticks=trailing_distance_ticks,
+                        return_result=True,
+                    )
+                    trades = simulation.trades
+                    intrabar_diagnostic = simulation.intrabar_diagnostic
+                    exit_mgmt = simulation.exit_management_diagnostic
+                    summary = summarize_trades(trades)
+                    directional = _directional_grid_metrics(trades)
+                    row: dict = {
+                        "stop_loss_ticks": sl,
+                        "take_profit_ticks": tp,
+                        "breakeven_after_r": breakeven_after_r,
+                        "trailing_after_r": trailing_after_r,
+                        "trailing_distance_ticks": trailing_distance_ticks,
+                        **summary,
+                        "tp_sl_ratio": tp / sl,
+                        "risk_points": sl * tick_size,
+                        "target_points": tp * tick_size,
+                        "exposure_policy": exposure_policy,
+                        "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
+                        "intrabar_model": intrabar_model,
+                        "intrabar_both_hit_count": intrabar_diagnostic["same_bar_both_hit_count"],
+                        "intrabar_both_hit_pct": intrabar_diagnostic["same_bar_both_hit_pct"],
+                        "intrabar_ambiguous_count": intrabar_diagnostic[
+                            "ambiguous_resolution_count"
+                        ],
+                        "be_exit_count": exit_mgmt["be_exit_count"],
+                        "trail_exit_count": exit_mgmt["trail_exit_count"],
+                        "stop_adjustment_count": exit_mgmt["stop_adjustment_count"],
+                        **directional,
+                    }
+                    rows.append(row)
 
     return (
         pd.DataFrame(rows)
-        .sort_values(["stop_loss_ticks", "take_profit_ticks"])
+        .sort_values(
+            [
+                "stop_loss_ticks",
+                "take_profit_ticks",
+                "breakeven_after_r",
+                "trailing_after_r",
+                "trailing_distance_ticks",
+            ],
+            na_position="first",
+        )
         .reset_index(drop=True)
     )
 

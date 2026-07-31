@@ -85,9 +85,24 @@ def _sample_session_state() -> dict:
             "same_bar_both_hit_count": 2,
             "ambiguous_resolution_count": 1,
         },
+        "backtest_exit_management_policy": {
+            "schema_version": 1,
+            "breakeven_after_r": 1.0,
+            "trailing_after_r": 1.5,
+            "trailing_distance_ticks": 8,
+        },
+        "backtest_exit_management_diagnostic": {
+            "schema_version": 1,
+            "be_exit_count": 1,
+            "trail_exit_count": 1,
+        },
         "grid_intrabar_policy": {
             "schema_version": 1,
             "intrabar_model": "path_open_proximity",
+        },
+        "grid_exit_management_policy": {
+            "schema_version": 1,
+            "breakeven_after_r_values": [None, 1.0],
         },
         "equity_curve": pd.DataFrame(
             {
@@ -269,6 +284,8 @@ def test_build_research_artifact_counts_match_signals_and_trades():
     assert artifact["results"]["monte_carlo_summary"]["schema_version"] == 1
     assert artifact["intrabar"]["backtest_policy"]["intrabar_model"] == "path_open_proximity"
     assert artifact["results"]["backtest_intrabar_diagnostic"]["same_bar_both_hit_count"] == 2
+    assert artifact["exit_management"]["backtest_policy"]["breakeven_after_r"] == 1.0
+    assert artifact["results"]["backtest_exit_management_diagnostic"]["trail_exit_count"] == 1
     assert len(artifact["tables"]["signals"]) == 2
     assert len(artifact["tables"]["trades"]) == 2
     assert len(artifact["tables"]["excursion_grouped_summary"]) == 2
@@ -335,6 +352,9 @@ def test_build_markdown_report_returns_string_and_required_sections():
     assert "### Intrabar Resolution" in markdown
     assert "- Model: path_open_proximity" in markdown
     assert "- Same-bar both-hit exits: 2" in markdown
+    assert "### Exit Management" in markdown
+    assert "- Break-even after R: 1.0" in markdown
+    assert "- TRAIL exits: 1" in markdown
     assert "## Validation Diagnostics" in markdown
     assert "## Excursion Analytics" in markdown
     assert "- Mean edge ratio: 2.0000" in markdown

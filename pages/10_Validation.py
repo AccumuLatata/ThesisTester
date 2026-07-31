@@ -306,6 +306,23 @@ if run_wfo:
             or st.session_state.get("backtest_intrabar_policy")
             or {"intrabar_model": "sl_first"}
         )
+        exit_management_policy = st.session_state.get("grid_exit_management_policy") or {
+            "breakeven_after_r_values": [
+                (st.session_state.get("backtest_exit_management_policy") or {}).get(
+                    "breakeven_after_r"
+                )
+            ],
+            "trailing_after_r_values": [
+                (st.session_state.get("backtest_exit_management_policy") or {}).get(
+                    "trailing_after_r"
+                )
+            ],
+            "trailing_distance_ticks_values": [
+                (st.session_state.get("backtest_exit_management_policy") or {}).get(
+                    "trailing_distance_ticks"
+                )
+            ],
+        }
 
         if st.button("▶ Run walk-forward diagnostics", type="secondary"):
             if not sl_values or not tp_values:
@@ -361,6 +378,15 @@ if run_wfo:
                                     intrabar_policy.get("intrabar_model", "sl_first")
                                 ),
                                 subtimeframe_data=st.session_state.get("subtimeframe_data"),
+                                breakeven_after_r_values=exit_management_policy.get(
+                                    "breakeven_after_r_values", [None]
+                                ),
+                                trailing_after_r_values=exit_management_policy.get(
+                                    "trailing_after_r_values", [None]
+                                ),
+                                trailing_distance_ticks_values=exit_management_policy.get(
+                                    "trailing_distance_ticks_values", [None]
+                                ),
                             )
                         except ValueError as e:
                             st.error(f"Walk-forward diagnostics error: {e}")
@@ -399,6 +425,7 @@ if run_wfo:
                                 "intrabar_model": str(
                                     intrabar_policy.get("intrabar_model", "sl_first")
                                 ),
+                                "exit_management_policy": exit_management_policy,
                                 "otf_filter_config": _wfo_otf_config,
                             }
                             st.session_state["walk_forward_results"] = results_df

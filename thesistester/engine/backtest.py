@@ -32,6 +32,13 @@ from .intrabar import (
     resolve_subtimeframe_bar,
     validate_intrabar_model,
 )
+from .exit_management import (
+    exit_management_enabled,
+    initial_exit_management_state,
+    policy_dict as exit_management_policy_dict,
+    update_exit_management_after_bar,
+    validate_exit_management_config,
+)
 
 # ---------------------------------------------------------------------------
 # Trade output schema
@@ -111,6 +118,20 @@ _INTRABAR_TRADE_COLUMNS = [
     "intrabar_ambiguous",
     "exit_subbar_timestamp",
 ]
+_EXIT_MANAGEMENT_TRADE_COLUMNS = [
+    "breakeven_after_r",
+    "trailing_after_r",
+    "trailing_distance_ticks",
+    "initial_stop_price",
+    "active_stop_price_at_exit",
+    "final_stop_price",
+    "stop_management_mode",
+    "breakeven_activated_bar_index",
+    "trailing_activated_bar_index",
+    "stop_adjustment_count",
+    "stop_adjustment_path",
+    "exit_management_armed",
+]
 
 
 @dataclass(frozen=True)
@@ -120,6 +141,7 @@ class SimulationResult:
     trades: pd.DataFrame
     skipped_signals: pd.DataFrame
     intrabar_diagnostic: dict[str, Any]
+    exit_management_diagnostic: dict[str, Any]
 
 
 def _empty_trades_df() -> pd.DataFrame:
@@ -158,6 +180,37 @@ def _intrabar_diagnostic(
         "subtimeframe_resolved_count": int(subtimeframe_resolved_count),
         "subtimeframe_interval": (
             str(subtimeframe_interval) if subtimeframe_interval is not None else None
+        ),
+    }
+
+
+def _exit_management_diagnostic(
+    *,
+    breakeven_after_r: float | None,
+    trailing_after_r: float | None,
+    trailing_distance_ticks: float | None,
+    trade_count: int,
+    trades_with_exit_mgmt_count: int,
+    be_exit_count: int,
+    trail_exit_count: int,
+    stop_adjustment_count: int,
+) -> dict[str, Any]:
+    return {
+        **exit_management_policy_dict(
+            breakeven_after_r=breakeven_after_r,
+            trailing_after_r=trailing_after_r,
+            trailing_distance_ticks=trailing_distance_ticks,
+        ),
+        "trade_count": int(trade_count),
+        "trades_with_exit_mgmt_count": int(trades_with_exit_mgmt_count),
+        "trades_with_exit_mgmt_pct": (
+            float(trades_with_exit_mgmt_count / trade_count) if trade_count > 0 else 0.0
+        ),
+        "be_exit_count": int(be_exit_count),
+        "trail_exit_count": int(trail_exit_count),
+        "stop_adjustment_count": int(stop_adjustment_count),
+        "average_stop_adjustments_per_trade": (
+            float(stop_adjustment_count / trade_count) if trade_count > 0 else 0.0
         ),
     }
 
@@ -275,6 +328,9 @@ def simulate_trades(
     *,
     intrabar_model: str = "sl_first",
     subtimeframe_data: pd.DataFrame | None = None,
+    breakeven_after_r: float | None = None,
+    trailing_after_r: float | None = None,
+    trailing_distance_ticks: float | None = None,
     return_result: bool = False,
 ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame] | SimulationResult:
     """Simulate bar-by-bar trades from Phase 4 candidate signals.
@@ -337,6 +393,15 @@ def simulate_trades(
     subtimeframe_data:
         Strictly finer OHLC data covering and reconciling every parent bar.
         Required only by ``intrabar_model="subtimeframe"``.
+    breakeven_after_r:
+        Optional completed-bar favorable excursion threshold that moves the
+        active stop to the slipped entry price on the next bar.
+    trailing_after_r:
+        Optional completed-bar favorable excursion threshold that arms a
+        monotonic trailing stop on the next bar.
+    trailing_distance_ticks:
+        Required when ``trailing_after_r`` is provided. Distance from the
+        best favorable parent-bar extreme, in ticks.
     return_result:
         Return :class:`SimulationResult` with skipped signals and a run-level
         intrabar diagnostic. Default ``False`` preserves the legacy return API.
@@ -383,6 +448,16 @@ def simulate_trades(
     if cooldown_bars_after_exit < 0:
         raise ValueError(f"cooldown_bars_after_exit must be >= 0, got {cooldown_bars_after_exit!r}")
     validate_intrabar_model(intrabar_model)
+    validate_exit_management_config(
+        breakeven_after_r=breakeven_after_r,
+        trailing_after_r=trailing_after_r,
+        trailing_distance_ticks=trailing_distance_ticks,
+    )
+    exit_management_active = exit_management_enabled(
+        breakeven_after_r=breakeven_after_r,
+        trailing_after_r=trailing_after_r,
+        trailing_distance_ticks=trailing_distance_ticks,
+    )
     parsed_session_close = _parse_time_input(session_close_time, field_name="session_close_time")
     if flat_by_session_close and parsed_session_close is None:
         raise ValueError("flat_by_session_close=True requires a valid session_close_time.")
@@ -407,6 +482,16 @@ def simulate_trades(
                     proximity_tie_count=0,
                     subtimeframe_resolved_count=0,
                     subtimeframe_interval=None,
+                ),
+                exit_management_diagnostic=_exit_management_diagnostic(
+                    breakeven_after_r=breakeven_after_r,
+                    trailing_after_r=trailing_after_r,
+                    trailing_distance_ticks=trailing_distance_ticks,
+                    trade_count=0,
+                    trades_with_exit_mgmt_count=0,
+                    be_exit_count=0,
+                    trail_exit_count=0,
+                    stop_adjustment_count=0,
                 ),
             )
         if return_skipped_signals:
@@ -444,6 +529,10 @@ def simulate_trades(
     affected_bars: set[int] = set()
     proximity_tie_count = 0
     subtimeframe_resolved_count = 0
+    be_exit_count = 0
+    trail_exit_count = 0
+    trades_with_exit_mgmt_count = 0
+    total_stop_adjustment_count = 0
 
     for _, sig in signals.iterrows():
         trigger = str(sig["trigger"])
@@ -596,6 +685,11 @@ def simulate_trades(
         else:
             stop_price = entry_price + sl_pts
             target_price = entry_price - tp_pts
+        stop_state = initial_exit_management_state(
+            initial_stop=stop_price,
+            entry_price=entry_price,
+            direction=direction,
+        )
 
         # ------------------------------------------------------------------
         # Bar-by-bar exit walk
@@ -642,6 +736,28 @@ def simulate_trades(
                 session_cap_bar == n_bars - 1 and last_available_ts < session_close_ts
             )
 
+        if (
+            exit_management_active
+            and not allow_same_bar_exit
+            and entry_model == "next_bar_open"
+            and entry_bar_index < max_bar
+        ):
+            entry_bar = df_reset.iloc[entry_bar_index]
+            stop_state = update_exit_management_after_bar(
+                state=stop_state,
+                direction=direction,
+                entry_price=entry_price,
+                initial_stop=stop_price,
+                tick_size=tick_size,
+                risk_points=sl_pts,
+                bar_high=float(entry_bar["high"]),
+                bar_low=float(entry_bar["low"]),
+                bar_index=entry_bar_index,
+                breakeven_after_r=breakeven_after_r,
+                trailing_after_r=trailing_after_r,
+                trailing_distance_ticks=trailing_distance_ticks,
+            )
+
         for b in range(start_bar, max_bar + 1):
             bar = df_reset.iloc[b]
             bar_low = float(bar["low"])
@@ -666,7 +782,7 @@ def simulate_trades(
             if intrabar_model == "subtimeframe":
                 resolution = resolve_subtimeframe_bar(
                     subtimeframe_context.groups[b],
-                    stop_price=stop_price,
+                    stop_price=stop_state.effective_stop,
                     target_price=target_price,
                     direction=direction,
                     parent_low=bar_low,
@@ -679,7 +795,7 @@ def simulate_trades(
                     high=bar_high,
                     low=bar_low,
                     close=float(bar["close"]),
-                    stop_price=stop_price,
+                    stop_price=stop_state.effective_stop,
                     target_price=target_price,
                     direction=direction,
                     model=intrabar_model,
@@ -690,9 +806,11 @@ def simulate_trades(
             if resolution.exit_kind is not None:
                 exit_bar_index = b
                 theoretical_exit_price = (
-                    stop_price if resolution.exit_kind == "SL" else target_price
+                    stop_state.effective_stop if resolution.exit_kind == "SL" else target_price
                 )
-                if intrabar_model == "sl_first":
+                if resolution.exit_kind == "SL" and stop_state.active_reason in {"BE", "TRAIL"}:
+                    exit_reason = stop_state.active_reason
+                elif intrabar_model == "sl_first":
                     exit_reason = resolution.exit_kind
                 elif intrabar_model == "path_open_proximity":
                     exit_reason = f"{resolution.exit_kind}_intrabar_path"
@@ -713,6 +831,24 @@ def simulate_trades(
                 if intrabar_model == "subtimeframe":
                     subtimeframe_resolved_count += 1
                 break
+            can_update_exit_management = (
+                entry_model == "next_bar_open" and b >= entry_bar_index
+            ) or (entry_model != "next_bar_open" and b > entry_bar_index)
+            if exit_management_active and can_update_exit_management and b < max_bar:
+                stop_state = update_exit_management_after_bar(
+                    state=stop_state,
+                    direction=direction,
+                    entry_price=entry_price,
+                    initial_stop=stop_price,
+                    tick_size=tick_size,
+                    risk_points=sl_pts,
+                    bar_high=bar_high,
+                    bar_low=bar_low,
+                    bar_index=b,
+                    breakeven_after_r=breakeven_after_r,
+                    trailing_after_r=trailing_after_r,
+                    trailing_distance_ticks=trailing_distance_ticks,
+                )
 
         if exit_bar_index is None:
             # No SL/TP hit — TIME or EOD
@@ -832,6 +968,38 @@ def simulate_trades(
                     "exit_subbar_timestamp": exit_subbar_timestamp,
                 }
             )
+        if exit_management_active:
+            stop_management_mode = "fixed"
+            if breakeven_after_r is not None and trailing_after_r is not None:
+                stop_management_mode = "breakeven_trailing"
+            elif breakeven_after_r is not None:
+                stop_management_mode = "breakeven"
+            elif trailing_after_r is not None:
+                stop_management_mode = "trailing"
+            exit_management_armed = stop_state.breakeven_armed or stop_state.trailing_armed
+            trade.update(
+                {
+                    "breakeven_after_r": breakeven_after_r,
+                    "trailing_after_r": trailing_after_r,
+                    "trailing_distance_ticks": trailing_distance_ticks,
+                    "initial_stop_price": stop_price,
+                    "active_stop_price_at_exit": stop_state.effective_stop,
+                    "final_stop_price": stop_state.effective_stop,
+                    "stop_management_mode": stop_management_mode,
+                    "breakeven_activated_bar_index": stop_state.breakeven_activated_bar_index,
+                    "trailing_activated_bar_index": stop_state.trailing_activated_bar_index,
+                    "stop_adjustment_count": stop_state.adjustment_count,
+                    "stop_adjustment_path": "|".join(stop_state.adjustment_path),
+                    "exit_management_armed": bool(exit_management_armed),
+                }
+            )
+            if exit_management_armed:
+                trades_with_exit_mgmt_count += 1
+            if exit_reason == "BE":
+                be_exit_count += 1
+            if exit_reason == "TRAIL":
+                trail_exit_count += 1
+            total_stop_adjustment_count += int(stop_state.adjustment_count)
         trades.append(trade)
         accepted_for_blocking.append(
             {
@@ -846,6 +1014,9 @@ def simulate_trades(
     trades_df = pd.DataFrame(trades) if trades else _empty_trades_df()
     if intrabar_model != "sl_first" and trades_df.empty:
         for column in _INTRABAR_TRADE_COLUMNS:
+            trades_df[column] = pd.Series(dtype="object")
+    if exit_management_active and trades_df.empty:
+        for column in _EXIT_MANAGEMENT_TRADE_COLUMNS:
             trades_df[column] = pd.Series(dtype="object")
     skipped_df = pd.DataFrame(skipped_signals) if skipped_signals else _empty_skipped_signals_df()
     if return_result:
@@ -864,6 +1035,16 @@ def simulate_trades(
                 subtimeframe_interval=(
                     subtimeframe_context.sub_interval if subtimeframe_context is not None else None
                 ),
+            ),
+            exit_management_diagnostic=_exit_management_diagnostic(
+                breakeven_after_r=breakeven_after_r,
+                trailing_after_r=trailing_after_r,
+                trailing_distance_ticks=trailing_distance_ticks,
+                trade_count=len(trades_df),
+                trades_with_exit_mgmt_count=trades_with_exit_mgmt_count,
+                be_exit_count=be_exit_count,
+                trail_exit_count=trail_exit_count,
+                stop_adjustment_count=total_stop_adjustment_count,
             ),
         )
     if return_skipped_signals:

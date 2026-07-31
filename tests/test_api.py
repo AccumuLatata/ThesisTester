@@ -116,11 +116,35 @@ def test_headless_facade_matches_ui_backtest_composition(tmp_path):
         exposure_policy="single_position",
         return_skipped_signals=True,
     )
-    pd.testing.assert_frame_equal(facade["trades"], expected_trades)
+    assert facade["exit_management_diagnostic"]["enabled"] is False
+    assert "active_stop_price_at_exit" not in facade["trades"].columns
     pd.testing.assert_frame_equal(facade["skipped_signals"], expected_skipped)
     pd.testing.assert_frame_equal(facade["equity_curve"], equity_curve(expected_trades))
     assert facade["trade_summary"] == summarize_trades(expected_trades)
     assert facade["intrabar_diagnostic"]["intrabar_model"] == "sl_first"
+
+
+def test_headless_backtest_surfaces_exit_management_diagnostics(tmp_path):
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path, instrument="ES")
+    levels = compute_levels(data, instrument="ES", config=_levels_config())["levels"]
+    setup = _setup()
+    signals = generate_signals(levels, setup)
+    result = run_backtest(
+        levels,
+        signals["signals"],
+        instrument="ES",
+        config={
+            "stop_loss_ticks": 2,
+            "take_profit_ticks": 2,
+            "breakeven_after_r": 1.0,
+        },
+        setup_config=setup,
+        signal_settings=signals["signal_settings"],
+    )
+    assert result["exit_management_diagnostic"]["breakeven_after_r"] == 1.0
+    assert "active_stop_price_at_exit" in result["trades"].columns
 
 
 def test_grid_and_validation_battery_are_seeded_and_plain_data(tmp_path):

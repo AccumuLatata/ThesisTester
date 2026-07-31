@@ -73,6 +73,23 @@ path assumption, not an optimization dimension. R18 experiment schema version
 1 remains backward compatible and accepts optional
 `dataset.subtimeframe_path`.
 
+## Exit-management boundary (R13)
+
+R13 adds optional break-even and trailing stop management to
+`simulate_trades()`. The fixed bracket still defines initial risk:
+`stop_price` remains the initial stop, `target_price` remains fixed, and
+R-multiple denominators remain unchanged. Dynamic stop state is held separately
+and audited through `active_stop_price_at_exit`, activation bar indices, and
+stop-adjustment columns only when the feature is enabled.
+
+BE/trailing updates are committed after completed parent bars and become
+active on the next bar. This keeps OHLC-only assumptions conservative and lets
+R12 intrabar models resolve event order only for already-active stops.
+
+Grid and walk-forward can sweep BE/trailing values, but the chosen policy is
+stored explicitly so downstream validation and reports can distinguish
+strategy parameters from market-path assumptions.
+
 ## End-to-end data flow
 
 ```mermaid
@@ -130,9 +147,12 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `equity_curve` | Backtest (`pages/7_Backtest.py:158`) | Backtest display/Report/Bundles (`pages/7_Backtest.py:163,207`, `pages/11_Report_Export.py:121-122`, `pages/12_Research_Bundles.py:42`) | `pd.DataFrame` cumulative-R curve |
 | `backtest_intrabar_policy` | Backtest/R18 API | Validation, Report, Research Bundles | R12 schema-versioned model/data-availability snapshot |
 | `backtest_intrabar_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R12 schema-versioned both-hit/ambiguity diagnostic |
+| `backtest_exit_management_policy` | Backtest/R18 API | Validation, Report, Research Bundles | R13 schema-versioned BE/trailing parameter snapshot |
+| `backtest_exit_management_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R13 schema-versioned BE/TRAIL counts and adjustment diagnostics |
 | `grid_results` | Grid (`pages/8_Grid_Search.py:146`) | Validation/Report/Bundles (`pages/10_Validation.py:27`, `pages/11_Report_Export.py:40,123`, `pages/12_Research_Bundles.py:46`) | `pd.DataFrame` one row per SL/TP cell |
 | `best_grid_result` | Grid (`pages/8_Grid_Search.py:147`) | Report artifact (`thesistester/reporting.py:152`) | `dict` best ranked cell |
 | `grid_intrabar_policy` | Grid/R18 API | Validation walk-forward, Report, Research Bundles | R12 schema-versioned fixed grid model snapshot |
+| `grid_exit_management_policy` | Grid/R18 API | Validation walk-forward, Report, Research Bundles | R13 schema-versioned grid BE/trailing sweep snapshot |
 | `time_bucketed_trades` | Time (`pages/9_Time_Analysis.py:129`) | Report/Bundles availability checks (`pages/12_Research_Bundles.py:57`) | `pd.DataFrame` trades + time-bucket columns |
 | `time_grouped_summary` | Time (`pages/9_Time_Analysis.py:208`) | Report export (`pages/11_Report_Export.py:41,123`, `thesistester/reporting.py:180-185`) | `pd.DataFrame` grouped diagnostics |
 | `validation_summary` | Validation (`pages/10_Validation.py:130`) | Validation display/Report/Bundles (`pages/10_Validation.py:134`, `pages/11_Report_Export.py:42,82-83`, `pages/12_Research_Bundles.py:50`) | `dict` (`bootstrap`, `permutation`, `trade_count`, `grid_overfit`) |

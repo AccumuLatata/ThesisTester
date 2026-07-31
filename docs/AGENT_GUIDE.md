@@ -171,6 +171,20 @@ Agent safety requirements:
 - Run `pytest -q tests/test_golden_master.py tests/test_intrabar.py` after any
   execution-path edit.
 
+## R13 exit-management research safety
+
+- Break-even/trailing defaults must remain `None`; legacy goldens must stay
+  unchanged.
+- Treat BE/trailing as strategy parameters, not evidence of better fills.
+  Grid/WFO sweeps must preserve the selected values explicitly in exported
+  policy snapshots.
+- Stop movement is completed-bar and active on the next parent bar. Do not
+  introduce same-bar arming without a separate proposal and new ambiguity tests.
+- Keep `stop_price` as the initial bracket stop and keep R-multiple/MAE/MFE
+  semantics based on initial risk.
+- Run `pytest -q tests/test_golden_master.py tests/test_exit_management.py tests/test_intrabar.py`
+  after any BE/trailing or intrabar interaction edit.
+
 ## Repository conventions (verified)
 - Multipage Streamlit workflow with phase pages under `pages/` (`app.py:10-33`).
 - Core outputs are passed through `st.session_state` between phases (see `docs/ARCHITECTURE.md`).

@@ -328,3 +328,19 @@ per-side sample sizes.  For serious research, values ≥ 10–30 per side are ad
 Counts are execution-model diagnostics, not performance metrics. A lower
 ambiguity count does not prove fill realism; it only states how often the
 selected data/model could distinguish event order.
+
+## R13 break-even and trailing exits
+
+| Field / reason | Definition |
+|---|---|
+| `BE` | Exit at an active break-even stop. The theoretical price is the slipped entry price; realized R can be below zero after costs/slippage |
+| `TRAIL` | Exit at an active trailing stop that ratcheted from the best favorable parent-bar extreme |
+| `breakeven_after_r` | Favorable completed-bar excursion threshold, in initial-risk R, needed to arm break-even |
+| `trailing_after_r` | Favorable completed-bar excursion threshold, in initial-risk R, needed to arm trailing |
+| `trailing_distance_ticks` | Distance from best favorable parent-bar high/low used to place the trailing stop |
+| `active_stop_price_at_exit` | Dynamic stop price active on the exit bar |
+| `stop_adjustment_count` | Number of completed-bar stop ratchets recorded for the trade |
+
+R13 diagnostics count BE exits, TRAIL exits, trades with exit management armed,
+and average stop adjustments per trade. All R values still use initial bracket
+risk (`stop_loss_ticks * tick_size * point_value`) as denominator.

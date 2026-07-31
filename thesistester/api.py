@@ -33,6 +33,7 @@ from thesistester.engine import (
     flag_naked_levels,
     generate_signals as _generate_signals,
     simulate_trades,
+    validate_exit_management_config,
 )
 from thesistester.levels.all import compute_all_levels
 from thesistester.levels.sessions import compute_session_levels
@@ -78,6 +79,7 @@ class BacktestResult(TypedDict):
     rejected_signals: pd.DataFrame
     otf_filter_summary: dict[str, Any]
     intrabar_diagnostic: dict[str, Any]
+    exit_management_diagnostic: dict[str, Any]
 
 
 class GridResult(TypedDict):
@@ -143,6 +145,9 @@ _BACKTEST_DEFAULTS: dict[str, Any] = {
     "exposure_policy": "allow_all",
     "cooldown_bars_after_exit": 0,
     "intrabar_model": "sl_first",
+    "breakeven_after_r": None,
+    "trailing_after_r": None,
+    "trailing_distance_ticks": None,
 }
 _GRID_DEFAULTS: dict[str, Any] = {
     "stop_loss_ticks_values": [4.0, 8.0, 12.0],
@@ -160,6 +165,10 @@ _GRID_DEFAULTS: dict[str, Any] = {
     "ranking_metric": "expectancy_r",
     "min_trades": 1,
     "intrabar_model": "sl_first",
+    "breakeven_after_r_values": [None],
+    "trailing_after_r_values": [None],
+    "trailing_distance_ticks_values": [None],
+    "max_grid_cells": 500,
 }
 _VALIDATION_DEFAULTS: dict[str, Any] = {
     "n_bootstrap": 2000,
@@ -546,7 +555,15 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     )
     _validate_number_fields(
         backtest,
-        {"stop_loss_ticks", "take_profit_ticks", "commission_per_side", "slippage_ticks"},
+        {
+            "stop_loss_ticks",
+            "take_profit_ticks",
+            "commission_per_side",
+            "slippage_ticks",
+            "breakeven_after_r",
+            "trailing_after_r",
+            "trailing_distance_ticks",
+        },
         section="backtest",
     )
     _validate_number_fields(
@@ -586,6 +603,11 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     )
     if backtest.get("intrabar_model", "sl_first") not in VALID_INTRABAR_MODELS:
         raise ValueError(f"backtest.intrabar_model must be one of {sorted(VALID_INTRABAR_MODELS)}")
+    validate_exit_management_config(
+        breakeven_after_r=backtest.get("breakeven_after_r"),
+        trailing_after_r=backtest.get("trailing_after_r"),
+        trailing_distance_ticks=backtest.get("trailing_distance_ticks"),
+    )
     if backtest.get("max_holding_bars") is not None:
         _validate_number_fields(
             backtest,
@@ -605,9 +627,15 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         )
         _validate_list_fields(
             grid,
-            {"stop_loss_ticks_values", "take_profit_ticks_values"},
+            {
+                "stop_loss_ticks_values",
+                "take_profit_ticks_values",
+                "breakeven_after_r_values",
+                "trailing_after_r_values",
+                "trailing_distance_ticks_values",
+            },
             section="grid",
-            item_type=Real,
+            item_type=(Real, type(None)),
         )
         _validate_positive_list(grid, "stop_loss_ticks_values", section="grid")
         _validate_positive_list(grid, "take_profit_ticks_values", section="grid")
@@ -618,7 +646,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         )
         _validate_number_fields(
             grid,
-            {"cooldown_bars_after_exit", "min_trades"},
+            {"cooldown_bars_after_exit", "min_trades", "max_grid_cells"},
             section="grid",
             integer=True,
         )
@@ -641,6 +669,39 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         )
         if grid.get("intrabar_model", "sl_first") not in VALID_INTRABAR_MODELS:
             raise ValueError(f"grid.intrabar_model must be one of {sorted(VALID_INTRABAR_MODELS)}")
+        for be in grid.get("breakeven_after_r_values", [None]):
+            validate_exit_management_config(
+                breakeven_after_r=be,
+                trailing_after_r=None,
+                trailing_distance_ticks=None,
+            )
+        for distance in grid.get("trailing_distance_ticks_values", [None]):
+            if distance is not None:
+                validate_exit_management_config(
+                    breakeven_after_r=None,
+                    trailing_after_r=1.0,
+                    trailing_distance_ticks=distance,
+                )
+        for trail_after in grid.get("trailing_after_r_values", [None]):
+            if trail_after is not None and not any(
+                distance is not None
+                for distance in grid.get("trailing_distance_ticks_values", [None])
+            ):
+                validate_exit_management_config(
+                    breakeven_after_r=None,
+                    trailing_after_r=trail_after,
+                    trailing_distance_ticks=None,
+                )
+            for distance in grid.get("trailing_distance_ticks_values", [None]):
+                if distance is None:
+                    continue
+                if trail_after is None:
+                    continue
+                validate_exit_management_config(
+                    breakeven_after_r=None,
+                    trailing_after_r=trail_after,
+                    trailing_distance_ticks=distance,
+                )
         if grid.get("max_holding_bars") is not None:
             _validate_number_fields(
                 grid,
@@ -1054,6 +1115,9 @@ def run_backtest(
         cooldown_bars_after_exit=int(settings["cooldown_bars_after_exit"]),
         intrabar_model=str(settings["intrabar_model"]),
         subtimeframe_data=subtimeframe_data,
+        breakeven_after_r=settings["breakeven_after_r"],
+        trailing_after_r=settings["trailing_after_r"],
+        trailing_distance_ticks=settings["trailing_distance_ticks"],
         return_result=True,
     )
     trades = simulation.trades
@@ -1067,6 +1131,7 @@ def run_backtest(
         "rejected_signals": otf.rejected_signals,
         "otf_filter_summary": otf.to_summary_dict(),
         "intrabar_diagnostic": simulation.intrabar_diagnostic,
+        "exit_management_diagnostic": simulation.exit_management_diagnostic,
     }
 
 
@@ -1113,6 +1178,10 @@ def run_grid(
         cooldown_bars_after_exit=int(settings["cooldown_bars_after_exit"]),
         intrabar_model=str(settings["intrabar_model"]),
         subtimeframe_data=subtimeframe_data,
+        breakeven_after_r_values=list(settings["breakeven_after_r_values"]),
+        trailing_after_r_values=list(settings["trailing_after_r_values"]),
+        trailing_distance_ticks_values=list(settings["trailing_distance_ticks_values"]),
+        max_grid_cells=int(settings["max_grid_cells"]),
     )
     best = best_grid_result(
         grid,
@@ -1291,6 +1360,13 @@ def run_experiment(
             "subtimeframe_data_supplied": subtimeframe_data is not None,
         },
         "backtest_intrabar_diagnostic": backtest_result["intrabar_diagnostic"],
+        "backtest_exit_management_policy": {
+            "schema_version": 1,
+            "breakeven_after_r": backtest_config.get("breakeven_after_r"),
+            "trailing_after_r": backtest_config.get("trailing_after_r"),
+            "trailing_distance_ticks": backtest_config.get("trailing_distance_ticks"),
+        },
+        "backtest_exit_management_diagnostic": backtest_result["exit_management_diagnostic"],
         "backtest_execution_costs": {
             "commission_per_side": float(backtest_config.get("commission_per_side", 0.0)),
             "slippage_ticks": float(backtest_config.get("slippage_ticks", 0.0)),
@@ -1323,6 +1399,17 @@ def run_experiment(
                     "schema_version": 1,
                     "intrabar_model": grid_settings.get("intrabar_model", "sl_first"),
                     "subtimeframe_data_supplied": subtimeframe_data is not None,
+                },
+                "grid_exit_management_policy": {
+                    "schema_version": 1,
+                    "breakeven_after_r_values": grid_settings.get(
+                        "breakeven_after_r_values", [None]
+                    ),
+                    "trailing_after_r_values": grid_settings.get("trailing_after_r_values", [None]),
+                    "trailing_distance_ticks_values": grid_settings.get(
+                        "trailing_distance_ticks_values", [None]
+                    ),
+                    "max_grid_cells": grid_settings.get("max_grid_cells", 500),
                 },
             }
         )

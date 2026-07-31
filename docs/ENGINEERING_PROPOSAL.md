@@ -3,7 +3,7 @@
 **Document type:** Proposal + engineering roadmap
 **Date:** 2026-07-29
 **Inputs:** `docs/SOTA_BACKTESTING_LANDSCAPE.md` (market research), `docs/THESISTESTER_ANALYSIS.md` (repository analysis with runtime verification).
-**Status of this document:** Proposal under implementation. **R9, R10, R11, R12, and R18 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R13–R17 and R19–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
+**Status of this document:** Proposal under implementation. **R9, R10, R11, R12, R13, and R18 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R14–R17 and R19–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
 
 ---
 
@@ -212,6 +212,10 @@ requires complete OHLC-reconciling lower data for subtimeframe replay.
 - **Acceptance:** Golden-master equality for default; per-model unit tests with hand-computed OHLC fixtures covering both-hit same-bar orderings; PIT future-shock tests (appending future bars must not change past outputs under any model); diagnostic counts verified on fixtures with known both-hit bars; `ASSUMPTIONS_AND_LIMITATIONS.md` updated (SL-first no longer the only modeled resolution; ambiguity caveats restated per model).
 
 ### R13 — Exit flexibility: break-even move and trailing stop (opt-in)
+
+✅ **Implemented.** See `docs/ENGINEERING_ROADMAP.md`. R13 adds completed-bar
+break-even and trailing-stop management that becomes active on the following
+bar, preserving R12 intrabar ordering and legacy defaults.
 
 - **Goal:** Express the two exit adjustments day-traders actually use, without opening the full order-type zoo.
 - **Benchmark:** Common subset of NT/TradeStation bracket management (breakeven-after-R, trail-after-R in tick steps).
