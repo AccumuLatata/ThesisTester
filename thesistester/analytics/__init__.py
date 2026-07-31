@@ -20,6 +20,15 @@ from .monte_carlo import (
     monte_carlo_summary,
     path_metrics_from_r,
 )
+from .overfitting import (
+    GridSequenceResult,
+    cscv_pbo,
+    deflated_sharpe,
+    grid_trade_sequences,
+    overfitting_summary,
+    probabilistic_sharpe,
+    vs_random_benchmark,
+)
 from .time_analysis import add_time_buckets, pivot_time_metric, summarize_by_group
 from .validation import (
     bootstrap_expectancy_ci,
@@ -44,6 +53,13 @@ __all__ = [
     "monte_carlo_skip",
     "monte_carlo_block_resample",
     "monte_carlo_summary",
+    "GridSequenceResult",
+    "grid_trade_sequences",
+    "cscv_pbo",
+    "probabilistic_sharpe",
+    "deflated_sharpe",
+    "vs_random_benchmark",
+    "overfitting_summary",
     "add_excursion_r_columns",
     "edge_ratio_summary",
     "excursion_distribution",

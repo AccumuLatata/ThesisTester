@@ -117,6 +117,8 @@ def _clear_dataset_dependent_state() -> None:
         "excursion_quadrant_summary",
         "monte_carlo_summary",
         "monte_carlo_config",
+        "overfitting_summary",
+        "overfitting_config",
         "roll_policy",
         "roll_validation",
         "roll_method_selector",

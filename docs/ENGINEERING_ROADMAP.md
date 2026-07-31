@@ -487,3 +487,40 @@ while retaining legacy bar-index rolling folds as the default.
   session future shock, and deterministic matrix ordering.
 - API/CLI, reporting, research-bundle, OTF, and golden tests cover R14
   propagation and regression safety.
+
+---
+
+## R15 — PBO, Deflated Sharpe, and Vs-Random ✅ Implemented
+
+Adds a separate, opt-in multiple-testing diagnostic battery; the existing
+Phase 8 heuristic `grid_overfit_diagnostics()` and `validation_summary()`
+contract are unchanged.
+
+### Features
+
+- `thesistester/analytics/overfitting.py`:
+  - deterministic CSCV/PBO over retained per-cell grid trade sequences;
+  - unannualized per-trade R PSR and DSR using declared grid trial counts;
+  - seeded vs-random next-open entry benchmark using the existing simulator and
+    matching execution assumptions;
+  - schema-version-1 combined summary and explicit caveat.
+- Validation page has an independent, cost-labelled R15 run button and displays
+  PBO, deflated Sharpe probability, vs-random p-value, and CSCV split rows.
+- R18 API/CLI, reports, research bundles, stale-state cleanup, and bundle
+  previews preserve R15 summary/config.
+
+### Regression safety
+
+- No engine, signal, level, grid-summary, or `validation_summary()` change.
+- Heavy re-simulation is opt-in; RNG uses explicit local seeded streams.
+- CSCV split enumeration and grid-cell tie order are deterministic.
+- Existing grid-overfit heuristic remains available alongside R15.
+- All Sharpe outputs are explicitly non-annualized per-trade R diagnostics.
+
+### Tests
+
+- `tests/test_overfitting.py`: exact four-partition CSCV fixture
+  (`PBO=1/3`), deterministic splits, PSR/DSR availability/deflation, seeded
+  vs-random finite p-values, and stable summary schema.
+- API, CLI, report, research-bundle, and legacy validation tests cover opt-in
+  persistence and unchanged default paths.

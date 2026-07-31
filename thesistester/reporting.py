@@ -244,6 +244,7 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "walk_forward_warnings": to_jsonable(session_state.get("walk_forward_warnings")),
             "excursion_summary": to_jsonable(session_state.get("excursion_summary")),
             "monte_carlo_summary": to_jsonable(session_state.get("monte_carlo_summary")),
+            "overfitting_summary": to_jsonable(session_state.get("overfitting_summary")),
             "backtest_intrabar_diagnostic": to_jsonable(
                 session_state.get("backtest_intrabar_diagnostic")
             ),
@@ -809,6 +810,7 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     validation = results.get("validation_summary") or {}
     excursion = results.get("excursion_summary") or {}
     monte_carlo = results.get("monte_carlo_summary") or {}
+    overfitting = results.get("overfitting_summary") or {}
     walk_forward = results.get("walk_forward_summary") or {}
     intrabar = artifact.get("intrabar", {}) if isinstance(artifact, Mapping) else {}
     intrabar_policy = intrabar.get("backtest_policy", {}) if isinstance(intrabar, Mapping) else {}
@@ -896,6 +898,12 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
         f"- Median expectancy retention ratio: {_fmt_number(walk_forward.get('median_retention_ratio_expectancy') if isinstance(walk_forward, Mapping) else None)}",
         f"- Stitched OOS total R: {_fmt_number(walk_forward.get('stitched_oos_total_r') if isinstance(walk_forward, Mapping) else None)}",
         f"- Stitched OOS status: {walk_forward.get('stitched_oos_status', 'unavailable') if isinstance(walk_forward, Mapping) else 'unavailable'}",
+        "",
+        "## Overfitting-Detection Battery",
+        f"- PBO: {_fmt_pct((overfitting.get('pbo') or {}).get('pbo') if isinstance(overfitting, Mapping) else None)}",
+        f"- Deflated Sharpe probability: {_fmt_pct((overfitting.get('deflated_sharpe') or {}).get('dsr') if isinstance(overfitting, Mapping) else None)}",
+        f"- Vs-random p-value: {_fmt_number((overfitting.get('vs_random') or {}).get('p_value_greater_or_equal') if isinstance(overfitting, Mapping) else None)}",
+        "- CSCV, DSR, and vs-random are diagnostics on declared historical trials/nulls, not proof of future edge.",
         "",
         "### Advanced Risk Metrics",
         f"- Sharpe-like R: {_fmt_number(trade_summary.get('sharpe_like_r') if isinstance(trade_summary, Mapping) else None)}",

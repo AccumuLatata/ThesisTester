@@ -200,6 +200,18 @@ Agent safety requirements:
 - Run `pytest -q tests/test_walk_forward.py tests/test_otf_integration.py`
   after any fold, session, or matrix change.
 
+## R15 overfitting research safety
+
+- Keep R15 opt-in and retain `validation_summary()` unchanged.
+- Treat PBO/DSR/vs-random as diagnostics of declared historical trials/nulls,
+  never as proof of a durable edge.
+- Use explicit `random_state`; do not replace local seeded RNG with global
+  sampling.
+- Preserve grid-cell execution assumptions when re-simulating sequences or
+  random schedules.
+- Run `pytest -q tests/test_overfitting.py tests/test_phase8_validation.py`
+  after changing R15 statistics or validation integration.
+
 ## Repository conventions (verified)
 - Multipage Streamlit workflow with phase pages under `pages/` (`app.py:10-33`).
 - Core outputs are passed through `st.session_state` between phases (see `docs/ARCHITECTURE.md`).

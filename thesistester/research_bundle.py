@@ -50,6 +50,7 @@ _WFA_META_KEYS = (
 )
 _EXCURSION_META_KEYS = ("excursion_summary", "excursion_config")
 _MONTE_CARLO_META_KEYS = ("monte_carlo_summary", "monte_carlo_config")
+_OVERFITTING_META_KEYS = ("overfitting_summary", "overfitting_config")
 _MANAGED_RESEARCH_KEYS = {
     "data",
     "subtimeframe_data",
@@ -100,6 +101,8 @@ _MANAGED_RESEARCH_KEYS = {
     "excursion_quadrant_summary",
     "monte_carlo_summary",
     "monte_carlo_config",
+    "overfitting_summary",
+    "overfitting_config",
 }
 
 _KNOWN_FILES = {
@@ -131,6 +134,7 @@ _KNOWN_FILES = {
     "excursion_calibration_grid.parquet",
     "excursion_quadrant_summary.parquet",
     "monte_carlo_summary.json",
+    "overfitting_summary.json",
 }
 
 _SECTION_REQUIRED_FILES = {
@@ -148,6 +152,7 @@ _SECTION_REQUIRED_FILES = {
     "walk_forward": ("walk_forward_results.parquet", "walk_forward_meta.json"),
     "excursion": ("excursion_summary.json",),
     "monte_carlo": ("monte_carlo_summary.json",),
+    "overfitting": ("overfitting_summary.json",),
 }
 
 
@@ -398,6 +403,13 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
         manifest["included"]["monte_carlo"] = True
         included_keys.update(_MONTE_CARLO_META_KEYS)
 
+    if session_state.get("overfitting_summary") is not None:
+        files["overfitting_summary.json"] = _to_json_bytes(
+            {key: session_state.get(key) for key in _OVERFITTING_META_KEYS}
+        )
+        manifest["included"]["overfitting"] = True
+        included_keys.update(_OVERFITTING_META_KEYS)
+
     manifest["session_keys"] = sorted(included_keys)
     files[MANIFEST_FILENAME] = _to_json_bytes(manifest)
 
@@ -576,6 +588,12 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
             for key in _MONTE_CARLO_META_KEYS:
                 if key in monte_carlo_meta:
                     session_values[key] = monte_carlo_meta[key]
+
+        if included.get("overfitting"):
+            overfitting_meta = _read_json_from_zip(zf, "overfitting_summary.json")
+            for key in _OVERFITTING_META_KEYS:
+                if key in overfitting_meta:
+                    session_values[key] = overfitting_meta[key]
 
     return {
         "manifest": manifest,
