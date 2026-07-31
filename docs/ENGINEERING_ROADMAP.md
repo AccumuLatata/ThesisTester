@@ -299,3 +299,58 @@ contract remains unchanged.
   stable summary keys.
 - Existing report and research-bundle tests extended for R11 JSON/Markdown and
   bundle roundtrip.
+
+---
+
+## R18 — Headless Research API + Batch Experiment Runner ✅ Implemented
+
+Adds a typed, Streamlit-free orchestration facade and versioned batch runner
+over the existing pure research pipeline. No engine behavior, Streamlit page,
+or `st.session_state` contract changes.
+
+### Scope
+
+New API/CLI entry points, canonical bundle comparison, packaging dependency,
+tests, and documentation. Existing level, signal, OTF, simulation, grid, and
+validation implementations are **unchanged**.
+
+### Features
+
+- `thesistester/api.py`:
+  - typed plain-data handoffs for dataset, levels, setup, signals, backtest,
+    grid, and validation;
+  - UI-equivalent shared OTF pre-filter composition for backtest and grid;
+  - deterministic Phase 8, R10 excursion, and R11 Monte Carlo battery;
+  - `run_experiment()` produces the mapping consumed by research bundles.
+- `thesistester/cli.py` and `thesistester/__main__.py`:
+  - `python -m thesistester run experiment.yaml`;
+  - schema-version-1 YAML with unique safe run names and paths relative to the
+    definition;
+  - one research bundle per run plus `results_index.csv`;
+  - spawned `ProcessPoolExecutor` parallelism across independent runs only,
+    preserving YAML result order.
+- `canonical_bundle_hash()` compares logical bundle contents. It omits
+  nondeterministic manifest/archive time metadata and hashes parquet members
+  through the established DataFrame projection.
+- PyYAML is an explicit runtime dependency in both install paths.
+
+### Regression safety
+
+- Zero engine-internal changes and zero page changes.
+- Existing pages continue to use `st.session_state`; the API is an additional
+  consumer of existing pure functions.
+- Unknown facade configuration keys fail closed.
+- Seeded diagnostics remain deterministic, and each individual run remains
+  single-threaded.
+- Bundle schema remains version 1; raw ZIP bytes are never treated as a
+  determinism contract.
+- Agent documentation restates PIT boundaries, multiple-testing risk, and
+  diagnostic-not-proof framing.
+
+### Tests
+
+- `tests/test_api.py`: API/UI backtest-composition parity, deterministic grid
+  and validation batteries, plain-data outputs, and fail-closed config.
+- `tests/test_cli.py`: real module CLI bundle parity, canonical hash equality,
+  schema validation, and serial-vs-parallel identity for both index rows and
+  every output bundle.

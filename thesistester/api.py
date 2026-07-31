@@ -1,0 +1,1279 @@
+"""Typed, Streamlit-free facade for the ThesisTester research pipeline.
+
+The functions in this module only compose existing level, signal, engine, and
+analytics functions. They intentionally contain no alternative trading logic.
+"""
+
+from __future__ import annotations
+
+import math
+from numbers import Integral, Real
+from pathlib import Path
+from typing import Any, Mapping, TypedDict
+
+import pandas as pd
+
+from thesistester.analytics import (
+    best_grid_result,
+    equity_curve,
+    excursion_summary,
+    monte_carlo_summary,
+    run_sl_tp_grid,
+    summarize_trades,
+    validation_summary,
+)
+from thesistester.config import INSTRUMENTS
+from thesistester.data.loader import format_interval, load_ohlcv, validate_ohlcv
+from thesistester.data.sessions import tag_session
+from thesistester.engine import (
+    apply_configured_otf_filter,
+    detect_anchor_confluence_zones,
+    detect_confluence_zones,
+    flag_naked_levels,
+    generate_signals as _generate_signals,
+    simulate_trades,
+)
+from thesistester.levels.all import compute_all_levels
+from thesistester.levels.sessions import compute_session_levels
+from thesistester.persistence.local_store import (
+    _normalize_signal_settings_for_hash,
+    compute_dataset_id,
+    compute_signal_settings_hash,
+)
+from thesistester.setup import (
+    build_setup_config,
+    get_effective_otf_filter_config,
+    normalize_trigger_timeframe,
+    validate_setup_config,
+)
+
+
+class LevelsResult(TypedDict):
+    """Plain-data handoff from level computation."""
+
+    levels: pd.DataFrame
+    session_levels: pd.DataFrame
+    levels_settings: dict[str, Any]
+
+
+class SignalsResult(TypedDict):
+    """Plain-data handoff from signal generation."""
+
+    signals: pd.DataFrame
+    confluence_zones: pd.DataFrame
+    naked_flags: pd.DataFrame
+    signal_settings: dict[str, Any]
+    signal_settings_hash: str
+
+
+class BacktestResult(TypedDict):
+    """Plain-data handoff from one fixed-SL/TP backtest."""
+
+    trades: pd.DataFrame
+    trade_summary: dict[str, Any]
+    equity_curve: pd.DataFrame
+    skipped_signals: pd.DataFrame
+    accepted_signals: pd.DataFrame
+    rejected_signals: pd.DataFrame
+    otf_filter_summary: dict[str, Any]
+
+
+class GridResult(TypedDict):
+    """Plain-data handoff from an SL/TP grid."""
+
+    grid_results: pd.DataFrame
+    best_grid_result: dict[str, Any] | None
+    accepted_signals: pd.DataFrame
+    rejected_signals: pd.DataFrame
+    otf_filter_summary: dict[str, Any]
+
+
+class ValidationResult(TypedDict, total=False):
+    """Plain-data handoff from the configured validation battery."""
+
+    validation_summary: dict[str, Any]
+    excursion_summary: dict[str, Any]
+    excursion_config: dict[str, Any]
+    excursion_grouped_summary: pd.DataFrame
+    excursion_calibration_grid: pd.DataFrame
+    excursion_quadrant_summary: pd.DataFrame
+    monte_carlo_summary: dict[str, Any]
+    monte_carlo_config: dict[str, Any]
+
+
+_LEVEL_DEFAULTS: dict[str, Any] = {
+    "opening_range_minutes": 30,
+    "sma_lengths": [20, 50, 200],
+    "ema_lengths": [20, 50, 200],
+    "sma_timeframes": ["1min"],
+    "ema_timeframes": ["1min"],
+    "vwap_windows": ["1h", "4h", "1D"],
+    "poc_windows": ["1h", "4h", "1D"],
+    "value_area_pct": 0.70,
+    "prior_day_profile_aggregation_ticks": 1,
+    "prior_week_profile_aggregation_ticks": 1,
+    "prior_month_profile_aggregation_ticks": 1,
+    "pivots_enabled": False,
+    "pivot_timeframes": ["1min", "5min", "30min", "4h"],
+    "pivot_left": 2,
+    "pivot_right": 2,
+    "session_vwap_enabled": False,
+    "session_vwap_anchor": "RTH",
+    "single_prints_enabled": False,
+    "apoc_enabled": False,
+}
+_LEVEL_ARGUMENT_MAP = {
+    "prior_day_profile_aggregation_ticks": "prior_day_aggregation_ticks",
+    "prior_week_profile_aggregation_ticks": "prior_week_aggregation_ticks",
+    "prior_month_profile_aggregation_ticks": "prior_month_aggregation_ticks",
+}
+_BACKTEST_DEFAULTS: dict[str, Any] = {
+    "stop_loss_ticks": 8.0,
+    "take_profit_ticks": 16.0,
+    "max_holding_bars": None,
+    "allow_same_bar_exit": True,
+    "commission_per_side": 0.0,
+    "slippage_ticks": 0.0,
+    "flat_by_session_close": False,
+    "session_close_time": None,
+    "session_timezone": None,
+    "no_new_entries_after": None,
+    "exposure_policy": "allow_all",
+    "cooldown_bars_after_exit": 0,
+}
+_GRID_DEFAULTS: dict[str, Any] = {
+    "stop_loss_ticks_values": [4.0, 8.0, 12.0],
+    "take_profit_ticks_values": [8.0, 16.0, 24.0],
+    "max_holding_bars": None,
+    "allow_same_bar_exit": True,
+    "commission_per_side": 0.0,
+    "slippage_ticks": 0.0,
+    "flat_by_session_close": False,
+    "session_close_time": None,
+    "session_timezone": None,
+    "no_new_entries_after": None,
+    "exposure_policy": "allow_all",
+    "cooldown_bars_after_exit": 0,
+    "ranking_metric": "expectancy_r",
+    "min_trades": 1,
+}
+_VALIDATION_DEFAULTS: dict[str, Any] = {
+    "n_bootstrap": 2000,
+    "n_permutations": 5000,
+    "confidence": 0.95,
+    "random_state": 42,
+    "min_trades_soft": 30,
+    "min_trades_hard": 100,
+    "selected_grid_metric": "expectancy_r",
+}
+_RUN_KEYS = {"name", "dataset", "levels", "setup", "backtest", "grid", "validation"}
+_DATASET_KEYS = {"path", "instrument", "source_timezone", "exchange_timezone"}
+_EXCURSION_KEYS = {
+    "enabled",
+    "group_cols",
+    "stop_r_grid",
+    "target_r_grid",
+    "both_hit_rule",
+    "min_trades",
+    "mae_r_threshold",
+    "mfe_r_threshold",
+}
+_MONTE_CARLO_KEYS = {
+    "enabled",
+    "methods",
+    "n_simulations",
+    "skip_fraction",
+    "block_length",
+    "percentiles",
+    "drawdown_thresholds_r",
+    "random_state",
+    "include_paths",
+}
+
+
+def _instrument(instrument: str):
+    try:
+        return INSTRUMENTS[instrument]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported instrument: {instrument!r}") from exc
+
+
+def _merge_known(
+    defaults: Mapping[str, Any],
+    config: Mapping[str, Any] | None,
+    *,
+    section: str,
+) -> dict[str, Any]:
+    raw = dict(config or {})
+    unknown = sorted(set(raw) - set(defaults))
+    if unknown:
+        raise ValueError(f"Unknown {section} configuration keys: {unknown}")
+    return {**defaults, **raw}
+
+
+def _validate_keys(config: Mapping[str, Any], allowed: set[str], *, section: str) -> None:
+    unknown = sorted(set(config) - allowed)
+    if unknown:
+        raise ValueError(f"Unknown {section} configuration keys: {unknown}")
+
+
+def _require_mapping(value: Any, *, section: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{section} must be a mapping")
+    return value
+
+
+def _validate_random_state(value: Any, *, section: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, Integral) or value < 0:
+        raise ValueError(f"{section}.random_state must be an integer >= 0")
+
+
+def _validate_bool_fields(
+    config: Mapping[str, Any],
+    fields: set[str],
+    *,
+    section: str,
+) -> None:
+    for key in sorted(fields & set(config)):
+        if not isinstance(config[key], bool):
+            raise ValueError(f"{section}.{key} must be a boolean")
+
+
+def _validate_number_fields(
+    config: Mapping[str, Any],
+    fields: set[str],
+    *,
+    section: str,
+    integer: bool = False,
+) -> None:
+    expected = Integral if integer else Real
+    label = "an integer" if integer else "a number"
+    for key in sorted(fields & set(config)):
+        value = config[key]
+        if isinstance(value, bool) or not isinstance(value, expected):
+            raise ValueError(f"{section}.{key} must be {label}")
+        if not math.isfinite(float(value)):
+            raise ValueError(f"{section}.{key} must be finite")
+
+
+def _validate_list_fields(
+    config: Mapping[str, Any],
+    fields: set[str],
+    *,
+    section: str,
+    item_type: type | tuple[type, ...],
+) -> None:
+    for key in sorted(fields & set(config)):
+        value = config[key]
+        if not isinstance(value, (list, tuple)):
+            raise ValueError(f"{section}.{key} must be a list")
+        if any(isinstance(item, bool) or not isinstance(item, item_type) for item in value):
+            raise ValueError(f"{section}.{key} contains an invalid item type")
+
+
+def _validate_string_fields(
+    config: Mapping[str, Any],
+    fields: set[str],
+    *,
+    section: str,
+    nullable: set[str] | None = None,
+) -> None:
+    nullable = nullable or set()
+    for key in sorted(fields & set(config)):
+        value = config[key]
+        if value is None and key in nullable:
+            continue
+        if not isinstance(value, str):
+            raise ValueError(f"{section}.{key} must be a string")
+
+
+def _validate_range(
+    config: Mapping[str, Any],
+    key: str,
+    *,
+    section: str,
+    minimum: float | None = None,
+    maximum: float | None = None,
+    minimum_exclusive: bool = False,
+    maximum_exclusive: bool = False,
+) -> None:
+    if key not in config or config[key] is None:
+        return
+    value = float(config[key])
+    if minimum is not None:
+        invalid = value <= minimum if minimum_exclusive else value < minimum
+        if invalid:
+            operator = ">" if minimum_exclusive else ">="
+            raise ValueError(f"{section}.{key} must be {operator} {minimum}")
+    if maximum is not None:
+        invalid = value >= maximum if maximum_exclusive else value > maximum
+        if invalid:
+            operator = "<" if maximum_exclusive else "<="
+            raise ValueError(f"{section}.{key} must be {operator} {maximum}")
+
+
+def _validate_positive_list(
+    config: Mapping[str, Any],
+    key: str,
+    *,
+    section: str,
+    allow_empty: bool = False,
+) -> None:
+    if key not in config:
+        return
+    values = config[key]
+    if not allow_empty and not values:
+        raise ValueError(f"{section}.{key} must be non-empty")
+    if any(not math.isfinite(float(value)) or float(value) <= 0 for value in values):
+        raise ValueError(f"{section}.{key} values must be finite and > 0")
+
+
+def validate_run_spec(spec: Mapping[str, Any]) -> None:
+    """Fail closed on unknown or nondeterministic experiment configuration."""
+    run = _require_mapping(spec, section="run")
+    _validate_keys(run, _RUN_KEYS, section="run")
+    dataset = _require_mapping(run.get("dataset"), section="dataset")
+    _validate_keys(dataset, _DATASET_KEYS, section="dataset")
+    if "path" not in dataset:
+        raise ValueError("Experiment dataset.path is required")
+    if not isinstance(dataset["path"], (str, Path)):
+        raise ValueError("dataset.path must be a path string")
+    for key in ("instrument", "source_timezone", "exchange_timezone"):
+        if key in dataset and dataset[key] is not None and not isinstance(dataset[key], str):
+            raise ValueError(f"dataset.{key} must be a string or null")
+    instrument = str(dataset.get("instrument", "ES"))
+    _instrument(instrument)
+
+    levels = run.get("levels", {})
+    _require_mapping(levels, section="levels")
+    _validate_keys(levels, set(_LEVEL_DEFAULTS), section="levels")
+    _validate_bool_fields(
+        levels,
+        {"pivots_enabled", "session_vwap_enabled", "single_prints_enabled", "apoc_enabled"},
+        section="levels",
+    )
+    _validate_number_fields(
+        levels,
+        {"value_area_pct"},
+        section="levels",
+    )
+    _validate_number_fields(
+        levels,
+        {
+            "opening_range_minutes",
+            "prior_day_profile_aggregation_ticks",
+            "prior_week_profile_aggregation_ticks",
+            "prior_month_profile_aggregation_ticks",
+            "pivot_left",
+            "pivot_right",
+        },
+        section="levels",
+        integer=True,
+    )
+    _validate_list_fields(
+        levels,
+        {"sma_lengths", "ema_lengths"},
+        section="levels",
+        item_type=Integral,
+    )
+    _validate_list_fields(
+        levels,
+        {
+            "sma_timeframes",
+            "ema_timeframes",
+            "vwap_windows",
+            "poc_windows",
+            "pivot_timeframes",
+        },
+        section="levels",
+        item_type=str,
+    )
+    _validate_positive_list(levels, "sma_lengths", section="levels")
+    _validate_positive_list(levels, "ema_lengths", section="levels")
+    _validate_range(
+        levels,
+        "value_area_pct",
+        section="levels",
+        minimum=0,
+        maximum=1,
+        minimum_exclusive=True,
+    )
+    for key in (
+        "opening_range_minutes",
+        "prior_day_profile_aggregation_ticks",
+        "prior_week_profile_aggregation_ticks",
+        "prior_month_profile_aggregation_ticks",
+        "pivot_left",
+        "pivot_right",
+    ):
+        _validate_range(levels, key, section="levels", minimum=1)
+    setup = _require_mapping(run.get("setup"), section="setup")
+    _validate_string_fields(
+        setup,
+        {
+            "name",
+            "description",
+            "instrument",
+            "naked_requirement",
+            "trigger",
+            "trigger_timeframe",
+            "direction",
+            "confluence_mode",
+            "anchor_level",
+        },
+        section="setup",
+        nullable={"anchor_level"},
+    )
+    _validate_bool_fields(setup, {"naked_only"}, section="setup")
+    _validate_number_fields(setup, {"tolerance_ticks"}, section="setup")
+    _validate_number_fields(
+        setup,
+        {"min_confluences", "max_confluences", "min_valid_confluences"},
+        section="setup",
+        integer=True,
+    )
+    _validate_range(setup, "tolerance_ticks", section="setup", minimum=0)
+    _validate_range(setup, "min_confluences", section="setup", minimum=1)
+    _validate_range(setup, "max_confluences", section="setup", minimum=1, maximum=5)
+    _validate_range(setup, "min_valid_confluences", section="setup", minimum=1)
+    _validate_list_fields(
+        setup,
+        {"selected_levels"},
+        section="setup",
+        item_type=str,
+    )
+    rules = setup.get("confluence_rules")
+    if rules is not None:
+        if not isinstance(rules, list):
+            raise ValueError("setup.confluence_rules must be a list")
+        for index, rule in enumerate(rules):
+            rule = _require_mapping(rule, section=f"setup.confluence_rules[{index}]")
+            _validate_keys(
+                rule,
+                {"level", "tolerance_ticks", "required"},
+                section=f"setup.confluence_rules[{index}]",
+            )
+            _validate_string_fields(
+                rule,
+                {"level"},
+                section=f"setup.confluence_rules[{index}]",
+            )
+            _validate_number_fields(
+                rule,
+                {"tolerance_ticks"},
+                section=f"setup.confluence_rules[{index}]",
+            )
+            _validate_range(
+                rule,
+                "tolerance_ticks",
+                section=f"setup.confluence_rules[{index}]",
+                minimum=0,
+            )
+            _validate_bool_fields(
+                rule,
+                {"required"},
+                section=f"setup.confluence_rules[{index}]",
+            )
+    trigger_params = setup.get("trigger_params")
+    if trigger_params is not None:
+        trigger_params = _require_mapping(trigger_params, section="setup.trigger_params")
+        _validate_keys(
+            trigger_params,
+            {
+                "arrival_tolerance_ticks",
+                "entry_retrace_ticks",
+                "max_entry_wait_bars_after_reversal",
+            },
+            section="setup.trigger_params",
+        )
+        _validate_number_fields(
+            trigger_params,
+            {"arrival_tolerance_ticks", "entry_retrace_ticks"},
+            section="setup.trigger_params",
+        )
+        _validate_number_fields(
+            trigger_params,
+            {"max_entry_wait_bars_after_reversal"},
+            section="setup.trigger_params",
+            integer=True,
+        )
+        for key in (
+            "arrival_tolerance_ticks",
+            "entry_retrace_ticks",
+            "max_entry_wait_bars_after_reversal",
+        ):
+            _validate_range(trigger_params, key, section="setup.trigger_params", minimum=0)
+    otf = setup.get("otf_filter")
+    if otf is not None:
+        otf = _require_mapping(otf, section="setup.otf_filter")
+        _validate_keys(
+            otf,
+            {
+                "enabled",
+                "timeframes",
+                "alignment_mode",
+                "minimum_consecutive_bars",
+                "directional",
+                "use_completed_bars_only",
+                "session_reset",
+            },
+            section="setup.otf_filter",
+        )
+    normalized_setup = build_setup(setup)
+    if normalized_setup["instrument"] != instrument:
+        raise ValueError(
+            "setup.instrument must match dataset.instrument "
+            f"({normalized_setup['instrument']!r} != {instrument!r})"
+        )
+    backtest = _require_mapping(run.get("backtest", {}), section="backtest")
+    _validate_keys(backtest, set(_BACKTEST_DEFAULTS), section="backtest")
+    _validate_bool_fields(
+        backtest,
+        {"allow_same_bar_exit", "flat_by_session_close"},
+        section="backtest",
+    )
+    _validate_number_fields(
+        backtest,
+        {"stop_loss_ticks", "take_profit_ticks", "commission_per_side", "slippage_ticks"},
+        section="backtest",
+    )
+    _validate_number_fields(
+        backtest,
+        {"cooldown_bars_after_exit"},
+        section="backtest",
+        integer=True,
+    )
+    _validate_range(
+        backtest,
+        "stop_loss_ticks",
+        section="backtest",
+        minimum=0,
+        minimum_exclusive=True,
+    )
+    _validate_range(
+        backtest,
+        "take_profit_ticks",
+        section="backtest",
+        minimum=0,
+        minimum_exclusive=True,
+    )
+    _validate_range(backtest, "commission_per_side", section="backtest", minimum=0)
+    _validate_range(backtest, "slippage_ticks", section="backtest", minimum=0)
+    _validate_range(backtest, "cooldown_bars_after_exit", section="backtest", minimum=0)
+    _validate_string_fields(
+        backtest,
+        {
+            "session_close_time",
+            "session_timezone",
+            "no_new_entries_after",
+            "exposure_policy",
+        },
+        section="backtest",
+        nullable={"session_close_time", "session_timezone", "no_new_entries_after"},
+    )
+    if backtest.get("max_holding_bars") is not None:
+        _validate_number_fields(
+            backtest,
+            {"max_holding_bars"},
+            section="backtest",
+            integer=True,
+        )
+        _validate_range(backtest, "max_holding_bars", section="backtest", minimum=1)
+    grid = run.get("grid")
+    if grid is not None:
+        grid = _require_mapping(grid, section="grid")
+        _validate_keys(grid, {*_GRID_DEFAULTS, "enabled"}, section="grid")
+        _validate_bool_fields(
+            grid,
+            {"enabled", "allow_same_bar_exit", "flat_by_session_close"},
+            section="grid",
+        )
+        _validate_list_fields(
+            grid,
+            {"stop_loss_ticks_values", "take_profit_ticks_values"},
+            section="grid",
+            item_type=Real,
+        )
+        _validate_positive_list(grid, "stop_loss_ticks_values", section="grid")
+        _validate_positive_list(grid, "take_profit_ticks_values", section="grid")
+        _validate_number_fields(
+            grid,
+            {"commission_per_side", "slippage_ticks"},
+            section="grid",
+        )
+        _validate_number_fields(
+            grid,
+            {"cooldown_bars_after_exit", "min_trades"},
+            section="grid",
+            integer=True,
+        )
+        _validate_range(grid, "commission_per_side", section="grid", minimum=0)
+        _validate_range(grid, "slippage_ticks", section="grid", minimum=0)
+        _validate_range(grid, "cooldown_bars_after_exit", section="grid", minimum=0)
+        _validate_range(grid, "min_trades", section="grid", minimum=1)
+        _validate_string_fields(
+            grid,
+            {
+                "session_close_time",
+                "session_timezone",
+                "no_new_entries_after",
+                "exposure_policy",
+                "ranking_metric",
+            },
+            section="grid",
+            nullable={"session_close_time", "session_timezone", "no_new_entries_after"},
+        )
+        if grid.get("max_holding_bars") is not None:
+            _validate_number_fields(
+                grid,
+                {"max_holding_bars"},
+                section="grid",
+                integer=True,
+            )
+            _validate_range(grid, "max_holding_bars", section="grid", minimum=1)
+    validation = run.get("validation")
+    if validation is not None:
+        validation = _require_mapping(validation, section="validation")
+        _validate_keys(
+            validation,
+            {*_VALIDATION_DEFAULTS, "enabled", "excursion", "monte_carlo"},
+            section="validation",
+        )
+        _validate_bool_fields(validation, {"enabled"}, section="validation")
+        _validate_number_fields(validation, {"confidence"}, section="validation")
+        _validate_number_fields(
+            validation,
+            {"n_bootstrap", "n_permutations", "min_trades_soft", "min_trades_hard"},
+            section="validation",
+            integer=True,
+        )
+        _validate_range(validation, "n_bootstrap", section="validation", minimum=1)
+        _validate_range(validation, "n_permutations", section="validation", minimum=1)
+        _validate_range(validation, "min_trades_soft", section="validation", minimum=1)
+        _validate_range(validation, "min_trades_hard", section="validation", minimum=1)
+        _validate_range(
+            validation,
+            "confidence",
+            section="validation",
+            minimum=0,
+            maximum=1,
+            minimum_exclusive=True,
+            maximum_exclusive=True,
+        )
+        random_state = validation.get("random_state", _VALIDATION_DEFAULTS["random_state"])
+        _validate_random_state(random_state, section="validation")
+        excursion = validation.get("excursion")
+        if excursion is not None:
+            excursion = _require_mapping(excursion, section="validation.excursion")
+            _validate_keys(excursion, _EXCURSION_KEYS, section="validation.excursion")
+            _validate_bool_fields(excursion, {"enabled"}, section="validation.excursion")
+            _validate_number_fields(
+                excursion,
+                {"min_trades"},
+                section="validation.excursion",
+                integer=True,
+            )
+            _validate_number_fields(
+                excursion,
+                {"mae_r_threshold", "mfe_r_threshold"},
+                section="validation.excursion",
+            )
+            _validate_range(
+                excursion,
+                "min_trades",
+                section="validation.excursion",
+                minimum=1,
+            )
+            _validate_range(
+                excursion,
+                "mae_r_threshold",
+                section="validation.excursion",
+                minimum=0,
+            )
+            _validate_range(
+                excursion,
+                "mfe_r_threshold",
+                section="validation.excursion",
+                minimum=0,
+            )
+            _validate_list_fields(
+                excursion,
+                {"stop_r_grid", "target_r_grid"},
+                section="validation.excursion",
+                item_type=Real,
+            )
+            _validate_positive_list(
+                excursion,
+                "stop_r_grid",
+                section="validation.excursion",
+            )
+            _validate_positive_list(
+                excursion,
+                "target_r_grid",
+                section="validation.excursion",
+            )
+        monte_carlo = validation.get("monte_carlo")
+        if monte_carlo is not None:
+            monte_carlo = _require_mapping(monte_carlo, section="validation.monte_carlo")
+            _validate_keys(
+                monte_carlo,
+                _MONTE_CARLO_KEYS,
+                section="validation.monte_carlo",
+            )
+            _validate_bool_fields(
+                monte_carlo,
+                {"enabled", "include_paths"},
+                section="validation.monte_carlo",
+            )
+            _validate_number_fields(
+                monte_carlo,
+                {"n_simulations"},
+                section="validation.monte_carlo",
+                integer=True,
+            )
+            if monte_carlo.get("block_length") is not None:
+                _validate_number_fields(
+                    monte_carlo,
+                    {"block_length"},
+                    section="validation.monte_carlo",
+                    integer=True,
+                )
+                _validate_range(
+                    monte_carlo,
+                    "block_length",
+                    section="validation.monte_carlo",
+                    minimum=1,
+                )
+            _validate_number_fields(
+                monte_carlo,
+                {"skip_fraction"},
+                section="validation.monte_carlo",
+            )
+            _validate_range(
+                monte_carlo,
+                "n_simulations",
+                section="validation.monte_carlo",
+                minimum=1,
+            )
+            _validate_range(
+                monte_carlo,
+                "skip_fraction",
+                section="validation.monte_carlo",
+                minimum=0,
+                maximum=1,
+                maximum_exclusive=True,
+            )
+            _validate_list_fields(
+                monte_carlo,
+                {"methods"},
+                section="validation.monte_carlo",
+                item_type=str,
+            )
+            _validate_list_fields(
+                monte_carlo,
+                {"percentiles", "drawdown_thresholds_r"},
+                section="validation.monte_carlo",
+                item_type=Real,
+            )
+            _validate_positive_list(
+                monte_carlo,
+                "drawdown_thresholds_r",
+                section="validation.monte_carlo",
+            )
+            if monte_carlo.get("enabled", True):
+                mc_seed = monte_carlo.get("random_state", 42)
+                _validate_random_state(mc_seed, section="validation.monte_carlo")
+
+
+def _setup_caption(config: Mapping[str, Any]) -> str:
+    """Build the setup audit caption stored by the Signals page."""
+    mode = str(config.get("confluence_mode", "global_cluster"))
+    trigger_timeframe = normalize_trigger_timeframe(config.get("trigger_timeframe"))
+    otf = get_effective_otf_filter_config(dict(config))
+    otf_caption = (
+        f"OTF=enabled({','.join(otf['timeframes'])}; min={otf['minimum_consecutive_bars']})"
+        if otf["enabled"]
+        else "OTF=disabled"
+    )
+    if mode == "anchor_rules":
+        return (
+            f"Mode=anchor_rules • Anchor={config.get('anchor_level') or '-'} • "
+            f"Rules={len(config.get('confluence_rules') or [])} • "
+            f"Min valid={int(config.get('min_valid_confluences', 1))} • "
+            f"Trigger TF={trigger_timeframe} • {otf_caption}"
+        )
+    return (
+        f"Trigger={config.get('trigger')} • Direction={config.get('direction')} • "
+        f"Confluences={config.get('min_confluences')}–{config.get('max_confluences')} • "
+        f"Trigger TF={trigger_timeframe} • {otf_caption}"
+    )
+
+
+def load_dataset(
+    path: str | Path,
+    *,
+    instrument: str = "ES",
+    source_timezone: str | None = None,
+    exchange_timezone: str | None = None,
+) -> pd.DataFrame:
+    """Load, validate, and session-tag one canonical CSV dataset."""
+    inst = _instrument(instrument)
+    target_timezone = exchange_timezone or inst.exchange_tz
+    data = load_ohlcv(
+        Path(path),
+        source_tz=source_timezone or target_timezone,
+        target_tz=target_timezone,
+    )
+    report = validate_ohlcv(data)
+    fatal_codes = {
+        "duplicate_timestamps",
+        "missing_values",
+        "high_below_low",
+        "open_close_outside_range",
+        "negative_volume",
+    }
+    fatal_messages = [issue.message for issue in report.issues if issue.code in fatal_codes]
+    if fatal_messages:
+        raise ValueError("Dataset validation failed: " + "; ".join(fatal_messages))
+    return tag_session(data, instrument)
+
+
+def compute_levels(
+    data: pd.DataFrame,
+    *,
+    instrument: str = "ES",
+    config: Mapping[str, Any] | None = None,
+) -> LevelsResult:
+    """Compute UI-equivalent levels without reading or writing session state."""
+    _instrument(instrument)
+    settings = _merge_known(_LEVEL_DEFAULTS, config, section="levels")
+    settings["instrument"] = instrument
+    for key in (
+        "sma_lengths",
+        "ema_lengths",
+        "sma_timeframes",
+        "ema_timeframes",
+        "vwap_windows",
+        "poc_windows",
+        "pivot_timeframes",
+    ):
+        settings[key] = sorted(list(settings[key]))
+
+    kwargs = {
+        _LEVEL_ARGUMENT_MAP.get(key, key): value
+        for key, value in settings.items()
+        if key != "instrument"
+    }
+    levels = compute_all_levels(data, instrument=instrument, **kwargs)
+    session_levels = compute_session_levels(
+        data,
+        instrument=instrument,
+        opening_range_minutes=int(settings["opening_range_minutes"]),
+    )
+    return {
+        "levels": levels,
+        "session_levels": session_levels,
+        "levels_settings": settings,
+    }
+
+
+def build_setup(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize and validate a setup using the same library contract as the UI."""
+    try:
+        setup = build_setup_config(**dict(config))
+    except TypeError as exc:
+        raise ValueError(f"Invalid setup configuration: {exc}") from exc
+    errors = validate_setup_config(setup)
+    if errors:
+        raise ValueError("Invalid setup configuration: " + "; ".join(errors))
+    return setup
+
+
+def generate_signals(
+    levels: pd.DataFrame,
+    setup: Mapping[str, Any],
+    *,
+    instrument: str | None = None,
+) -> SignalsResult:
+    """Generate zones, naked flags, and candidate signals from one setup."""
+    setup_config = dict(setup)
+    errors = validate_setup_config(setup_config)
+    if errors:
+        raise ValueError("Invalid setup configuration: " + "; ".join(errors))
+    instrument_name = instrument or str(setup_config.get("instrument", "ES"))
+    inst = _instrument(instrument_name)
+    mode = str(setup_config.get("confluence_mode", "global_cluster"))
+    selected_levels = list(setup_config.get("selected_levels", []))
+
+    if mode == "global_cluster":
+        zones = detect_confluence_zones(
+            levels,
+            level_columns=selected_levels,
+            tick_size=inst.tick_size,
+            tolerance_ticks=float(setup_config["tolerance_ticks"]),
+            min_confluences=int(setup_config["min_confluences"]),
+            max_confluences=int(setup_config["max_confluences"]),
+        )
+        naked_level_columns = selected_levels
+    elif mode == "anchor_rules":
+        anchor_level = str(setup_config.get("anchor_level") or "")
+        rules = list(setup_config.get("confluence_rules", []))
+        referenced = [anchor_level, *(str(rule.get("level", "")) for rule in rules)]
+        missing = sorted({column for column in referenced if column not in levels.columns})
+        if missing:
+            raise ValueError(f"Setup references unavailable level columns: {missing}")
+        zones = detect_anchor_confluence_zones(
+            levels,
+            anchor_level=anchor_level,
+            confluence_rules=rules,
+            tick_size=inst.tick_size,
+            min_valid_confluences=int(setup_config.get("min_valid_confluences", 1)),
+        )
+        naked_level_columns = list(dict.fromkeys(referenced))
+    else:
+        raise ValueError(f"Unsupported confluence mode: {mode!r}")
+
+    naked_flags = flag_naked_levels(
+        levels,
+        level_columns=naked_level_columns,
+        tick_size=inst.tick_size,
+        touch_tolerance_ticks=0,
+    )
+    trigger_params = dict(setup_config.get("trigger_params") or {})
+    if setup_config["trigger"] == "3c":
+        trigger_params["_source_mode"] = mode
+    signals = _generate_signals(
+        levels,
+        zones=zones,
+        trigger=str(setup_config["trigger"]),
+        direction=str(setup_config["direction"]),
+        tick_size=inst.tick_size,
+        trigger_timeframe=str(setup_config.get("trigger_timeframe", "base")),
+        trigger_params=trigger_params,
+        naked_only=bool(setup_config.get("naked_only", False)),
+        naked_flags=naked_flags if setup_config.get("naked_only", False) else None,
+        naked_requirement=str(setup_config.get("naked_requirement", "any")),
+    )
+    signals = signals.copy()
+    signals["setup_name"] = setup_config.get("name", "Untitled setup")
+    signal_settings = _normalize_signal_settings_for_hash(
+        {
+            "confluence_mode": mode,
+            "selected_levels": selected_levels,
+            "anchor_level": setup_config.get("anchor_level"),
+            "confluence_rules": list(setup_config.get("confluence_rules", [])),
+            "min_valid_confluences": int(setup_config.get("min_valid_confluences", 1)),
+            "tolerance_ticks": float(setup_config.get("tolerance_ticks", 0.0)),
+            "min_confluences": int(setup_config.get("min_confluences", 1)),
+            "max_confluences": int(setup_config.get("max_confluences", 5)),
+            "naked_only": bool(setup_config.get("naked_only", False)),
+            "naked_requirement": str(setup_config.get("naked_requirement", "any")),
+            "trigger": str(setup_config["trigger"]),
+            "trigger_timeframe": str(setup_config.get("trigger_timeframe", "base")),
+            "direction": str(setup_config["direction"]),
+            "trigger_params": dict(setup_config.get("trigger_params") or {}),
+            "use_saved_setup": True,
+            "setup_snapshot": setup_config,
+        }
+    )
+    return {
+        "signals": signals,
+        "confluence_zones": zones,
+        "naked_flags": naked_flags,
+        "signal_settings": signal_settings,
+        "signal_settings_hash": compute_signal_settings_hash(signal_settings),
+    }
+
+
+def run_backtest(
+    data: pd.DataFrame,
+    signals: pd.DataFrame,
+    *,
+    instrument: str = "ES",
+    config: Mapping[str, Any] | None = None,
+    setup_config: Mapping[str, Any] | None = None,
+    signal_settings: Mapping[str, Any] | None = None,
+    last_signal_setup: Mapping[str, Any] | None = None,
+) -> BacktestResult:
+    """Run the UI backtest composition, including the shared OTF pre-filter."""
+    inst = _instrument(instrument)
+    settings = _merge_known(_BACKTEST_DEFAULTS, config, section="backtest")
+    session_timezone = settings["session_timezone"] or inst.exchange_tz
+    otf = apply_configured_otf_filter(
+        source_df=data,
+        candidate_signals=signals,
+        setup_config=dict(setup_config or {}),
+        session_timezone=inst.exchange_tz,
+        eth_start=inst.eth_start,
+        signal_settings=dict(signal_settings or {}),
+        last_signal_setup=dict(last_signal_setup or {}),
+    )
+    trades, skipped = simulate_trades(
+        df=data,
+        signals=otf.accepted_signals,
+        tick_size=inst.tick_size,
+        point_value=inst.point_value,
+        stop_loss_ticks=settings["stop_loss_ticks"],
+        take_profit_ticks=settings["take_profit_ticks"],
+        max_holding_bars=settings["max_holding_bars"],
+        allow_same_bar_exit=bool(settings["allow_same_bar_exit"]),
+        commission_per_side=float(settings["commission_per_side"]),
+        slippage_ticks=float(settings["slippage_ticks"]),
+        flat_by_session_close=bool(settings["flat_by_session_close"]),
+        session_close_time=settings["session_close_time"],
+        session_timezone=session_timezone if settings["flat_by_session_close"] else None,
+        no_new_entries_after=settings["no_new_entries_after"],
+        exposure_policy=str(settings["exposure_policy"]),
+        cooldown_bars_after_exit=int(settings["cooldown_bars_after_exit"]),
+        return_skipped_signals=True,
+    )
+    return {
+        "trades": trades,
+        "trade_summary": summarize_trades(trades),
+        "equity_curve": equity_curve(trades),
+        "skipped_signals": skipped,
+        "accepted_signals": otf.accepted_signals,
+        "rejected_signals": otf.rejected_signals,
+        "otf_filter_summary": otf.to_summary_dict(),
+    }
+
+
+def run_grid(
+    data: pd.DataFrame,
+    signals: pd.DataFrame,
+    *,
+    instrument: str = "ES",
+    config: Mapping[str, Any] | None = None,
+    setup_config: Mapping[str, Any] | None = None,
+    signal_settings: Mapping[str, Any] | None = None,
+    last_signal_setup: Mapping[str, Any] | None = None,
+) -> GridResult:
+    """Run the UI grid composition, including one shared OTF pre-filter."""
+    inst = _instrument(instrument)
+    settings = _merge_known(_GRID_DEFAULTS, config, section="grid")
+    session_timezone = settings["session_timezone"] or inst.exchange_tz
+    otf = apply_configured_otf_filter(
+        source_df=data,
+        candidate_signals=signals,
+        setup_config=dict(setup_config or {}),
+        session_timezone=inst.exchange_tz,
+        eth_start=inst.eth_start,
+        signal_settings=dict(signal_settings or {}),
+        last_signal_setup=dict(last_signal_setup or {}),
+    )
+    grid = run_sl_tp_grid(
+        df=data,
+        signals=otf.accepted_signals,
+        tick_size=inst.tick_size,
+        point_value=inst.point_value,
+        stop_loss_ticks_values=list(settings["stop_loss_ticks_values"]),
+        take_profit_ticks_values=list(settings["take_profit_ticks_values"]),
+        max_holding_bars=settings["max_holding_bars"],
+        allow_same_bar_exit=bool(settings["allow_same_bar_exit"]),
+        commission_per_side=float(settings["commission_per_side"]),
+        slippage_ticks=float(settings["slippage_ticks"]),
+        flat_by_session_close=bool(settings["flat_by_session_close"]),
+        session_close_time=settings["session_close_time"],
+        session_timezone=session_timezone if settings["flat_by_session_close"] else None,
+        no_new_entries_after=settings["no_new_entries_after"],
+        exposure_policy=str(settings["exposure_policy"]),
+        cooldown_bars_after_exit=int(settings["cooldown_bars_after_exit"]),
+    )
+    best = best_grid_result(
+        grid,
+        metric=str(settings["ranking_metric"]),
+        min_trades=int(settings["min_trades"]),
+    )
+    return {
+        "grid_results": grid,
+        "best_grid_result": None if best is None else best.to_dict(),
+        "accepted_signals": otf.accepted_signals,
+        "rejected_signals": otf.rejected_signals,
+        "otf_filter_summary": otf.to_summary_dict(),
+    }
+
+
+def run_validation(
+    trades: pd.DataFrame,
+    *,
+    grid: pd.DataFrame | None = None,
+    tick_size: float | None = None,
+    config: Mapping[str, Any] | None = None,
+) -> ValidationResult:
+    """Run deterministic validation plus optional R10/R11 diagnostics."""
+    raw = dict(config or {})
+    excursion_config = raw.pop("excursion", None)
+    monte_carlo_config = raw.pop("monte_carlo", None)
+    settings = _merge_known(_VALIDATION_DEFAULTS, raw, section="validation")
+    _validate_random_state(settings["random_state"], section="validation")
+    result: ValidationResult = {
+        "validation_summary": validation_summary(trades, grid=grid, **settings)
+    }
+
+    if excursion_config is not None and not isinstance(excursion_config, Mapping):
+        raise ValueError("validation.excursion must be a mapping")
+    if isinstance(excursion_config, Mapping) and excursion_config.get("enabled", True):
+        if tick_size is None:
+            raise ValueError("tick_size is required when excursion validation is enabled")
+        _validate_keys(
+            excursion_config,
+            _EXCURSION_KEYS,
+            section="validation.excursion",
+        )
+        excursion_settings = {
+            key: value for key, value in excursion_config.items() if key != "enabled"
+        }
+        excursion = excursion_summary(trades, tick_size, **excursion_settings)
+        result.update(
+            {
+                "excursion_summary": excursion,
+                "excursion_config": excursion["config"],
+                "excursion_grouped_summary": pd.DataFrame(excursion["grouped"]),
+                "excursion_calibration_grid": pd.DataFrame(excursion["calibration_grid"]),
+                "excursion_quadrant_summary": pd.DataFrame(excursion["quadrants"]),
+            }
+        )
+
+    if monte_carlo_config is not None and not isinstance(monte_carlo_config, Mapping):
+        raise ValueError("validation.monte_carlo must be a mapping")
+    if isinstance(monte_carlo_config, Mapping) and monte_carlo_config.get("enabled", True):
+        monte_carlo_settings = {
+            key: value for key, value in monte_carlo_config.items() if key != "enabled"
+        }
+        _validate_keys(
+            monte_carlo_config,
+            _MONTE_CARLO_KEYS,
+            section="validation.monte_carlo",
+        )
+        _validate_random_state(
+            monte_carlo_settings.get("random_state", 42),
+            section="validation.monte_carlo",
+        )
+        monte_carlo = monte_carlo_summary(trades, **monte_carlo_settings)
+        result.update(
+            {
+                "monte_carlo_summary": monte_carlo,
+                "monte_carlo_config": monte_carlo["config"],
+            }
+        )
+    return result
+
+
+def run_experiment(
+    spec: Mapping[str, Any],
+    *,
+    base_directory: str | Path = ".",
+) -> dict[str, Any]:
+    """Execute one version-1 experiment and return a bundle-ready plain dict."""
+    validate_run_spec(spec)
+    run = dict(spec)
+    dataset_config = dict(run.get("dataset") or {})
+    if "path" not in dataset_config:
+        raise ValueError("Experiment dataset.path is required")
+    instrument = str(dataset_config.get("instrument", "ES"))
+    inst = _instrument(instrument)
+    dataset_path = Path(dataset_config["path"])
+    if not dataset_path.is_absolute():
+        dataset_path = Path(base_directory) / dataset_path
+    source_timezone = dataset_config.get("source_timezone") or inst.exchange_tz
+    exchange_timezone = dataset_config.get("exchange_timezone") or inst.exchange_tz
+    data = load_dataset(
+        dataset_path,
+        instrument=instrument,
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
+    )
+    validation_report = validate_ohlcv(data)
+    base_interval = format_interval(validation_report.inferred_interval)
+    dataset_id = compute_dataset_id(
+        data,
+        instrument=instrument,
+        base_interval=base_interval,
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
+    )
+
+    level_result = compute_levels(data, instrument=instrument, config=run.get("levels"))
+    setup = build_setup(dict(run.get("setup") or {}))
+    signal_result = generate_signals(level_result["levels"], setup, instrument=instrument)
+    backtest_config = dict(run.get("backtest") or {})
+    backtest_result = run_backtest(
+        level_result["levels"],
+        signal_result["signals"],
+        instrument=instrument,
+        config=backtest_config,
+        setup_config=setup,
+        signal_settings=signal_result["signal_settings"],
+        last_signal_setup=setup,
+    )
+
+    state: dict[str, Any] = {
+        "data": data,
+        "dataset_id": dataset_id,
+        "instrument": instrument,
+        "base_interval": base_interval,
+        "source_timezone": source_timezone,
+        "exchange_timezone": exchange_timezone,
+        **level_result,
+        "levels_data_fingerprint": {
+            "instrument": instrument,
+            "rows": len(data),
+            "timestamp_min": str(data["timestamp"].min()) if not data.empty else None,
+            "timestamp_max": str(data["timestamp"].max()) if not data.empty else None,
+            "columns": sorted(data.columns),
+            "base_interval": base_interval,
+            "source_timezone": source_timezone,
+            "exchange_timezone": exchange_timezone,
+        },
+        "setup_config": setup,
+        **signal_result,
+        "last_signal_setup": setup,
+        "signal_context": {
+            "setup_name": setup["name"],
+            "confluence_mode": setup["confluence_mode"],
+            "setup_caption": _setup_caption(setup),
+        },
+        "trades": backtest_result["trades"],
+        "trade_summary": backtest_result["trade_summary"],
+        "equity_curve": backtest_result["equity_curve"],
+        "backtest_otf_filter": backtest_result["otf_filter_summary"],
+        "backtest_execution_costs": {
+            "commission_per_side": float(backtest_config.get("commission_per_side", 0.0)),
+            "slippage_ticks": float(backtest_config.get("slippage_ticks", 0.0)),
+        },
+    }
+
+    grid_config = run.get("grid")
+    if isinstance(grid_config, Mapping) and grid_config.get("enabled", True):
+        grid_settings = {key: value for key, value in grid_config.items() if key != "enabled"}
+        grid_result = run_grid(
+            level_result["levels"],
+            signal_result["signals"],
+            instrument=instrument,
+            config=grid_settings,
+            setup_config=setup,
+            signal_settings=signal_result["signal_settings"],
+            last_signal_setup=setup,
+        )
+        state.update(
+            {
+                "grid_results": grid_result["grid_results"],
+                "best_grid_result": grid_result["best_grid_result"],
+                "grid_otf_filter": grid_result["otf_filter_summary"],
+            }
+        )
+
+    validation_config = run.get("validation")
+    if isinstance(validation_config, Mapping) and validation_config.get("enabled", True):
+        validation_settings = {
+            key: value for key, value in validation_config.items() if key != "enabled"
+        }
+        state.update(
+            run_validation(
+                backtest_result["trades"],
+                grid=state.get("grid_results"),
+                tick_size=inst.tick_size,
+                config=validation_settings,
+            )
+        )
+    return state

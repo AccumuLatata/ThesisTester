@@ -11,9 +11,9 @@
 Consequence that matters for later milestones: `thesistester/app_state.py` is currently the
 only library module that imports `streamlit` at module scope — data, levels, engine,
 analytics, persistence, reporting, and visualization modules are Streamlit-free. That is what
-makes the planned R18 headless facade a pure addition rather than a refactor. `streamlit`
+makes the R18 headless facade a pure addition rather than a refactor. `streamlit`
 nevertheless remains a hard dependency in `pyproject.toml` (mirroring `requirements.txt`);
-splitting it into an extra is R18's decision, not R9's. Dependency ranges carry next-major
+R18 keeps it there to avoid changing the established install contract. Dependency ranges carry next-major
 caps, and `requirements.txt` stays the app-install path.
 
 Tool configuration is centralized in `pyproject.toml` (`ruff`, `pytest`, `coverage`).
@@ -22,6 +22,31 @@ the golden fixture contract lives in `tests/fixtures/golden/README.md`.
 
 R9 introduced **no** `st.session_state` keys and no engine/analytics behavior change, so the
 contract table below is unchanged by it.
+
+## Headless composition boundary (R18)
+
+`thesistester/api.py` is an additional consumer of the same pure functions used
+by the Streamlit pages. Its public path is `load_dataset → compute_levels →
+build_setup → generate_signals → run_backtest → run_grid → run_validation`;
+handoffs are typed `DataFrame`/`dict` values. It owns orchestration only: the
+level, signal, OTF, simulation, grid, and validation implementations are
+unchanged.
+
+`thesistester/cli.py` validates experiment schema version 1, calls the facade,
+and sends its bundle-ready mapping to `build_research_bundle()`.
+`thesistester/__main__.py` supplies `python -m thesistester run ...`. Spawned
+`ProcessPoolExecutor` workers isolate independent runs; no worker introduces
+parallelism inside a single engine pipeline. Results are collected in YAML
+order and summarized in `results_index.csv`.
+
+Research ZIP bytes include archive timestamps and are not deterministic.
+`canonical_bundle_hash()` projects JSON with sorted keys (excluding
+`manifest.created_at`) and parquet members through the repository DataFrame
+hash before computing the final digest. This implements the golden-master
+projection contract without changing bundle schema version 1.
+
+R18 adds no `st.session_state` keys and does not route existing pages through
+the facade. The session-state contract below is therefore unchanged.
 
 ## End-to-end data flow
 

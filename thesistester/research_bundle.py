@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import json
 import zipfile
 from datetime import datetime, timezone
@@ -11,6 +12,7 @@ from typing import Any, Mapping
 import pandas as pd
 
 from thesistester import __version__
+from thesistester.persistence.local_store import _hash_dataframe
 
 BUNDLE_SCHEMA_VERSION = 1
 BUNDLE_KIND = "thesistester_research_bundle"
@@ -171,6 +173,44 @@ def _to_parquet_bytes(df: pd.DataFrame) -> bytes:
     buffer = io.BytesIO()
     df.to_parquet(buffer, index=False)
     return buffer.getvalue()
+
+
+def canonical_bundle_hash(bundle_bytes: bytes) -> str:
+    """Hash logical bundle contents while excluding archive/time metadata.
+
+    Parquet members are projected through the repository's deterministic
+    DataFrame hash. JSON members are normalized with sorted keys, and the
+    nondeterministic manifest ``created_at`` field is omitted.
+    """
+    member_hashes: dict[str, str] = {}
+    with zipfile.ZipFile(io.BytesIO(bundle_bytes), "r") as archive:
+        for name in sorted(archive.namelist()):
+            payload = archive.read(name)
+            if name.endswith(".parquet"):
+                frame = pd.read_parquet(io.BytesIO(payload))
+                digest = _hash_dataframe(frame)
+            elif name.endswith(".json"):
+                value = json.loads(payload.decode("utf-8"))
+                if name == MANIFEST_FILENAME and isinstance(value, dict):
+                    value = dict(value)
+                    value.pop("created_at", None)
+                normalized = json.dumps(
+                    value,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+                digest = hashlib.sha256(normalized).hexdigest()
+            else:
+                digest = hashlib.sha256(payload).hexdigest()
+            member_hashes[name] = digest
+    projection = json.dumps(
+        member_hashes,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(projection).hexdigest()
 
 
 def _is_dataframe(value: Any) -> bool:

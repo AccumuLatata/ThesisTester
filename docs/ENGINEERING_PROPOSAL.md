@@ -3,7 +3,7 @@
 **Document type:** Proposal + engineering roadmap
 **Date:** 2026-07-29
 **Inputs:** `docs/SOTA_BACKTESTING_LANDSCAPE.md` (market research), `docs/THESISTESTER_ANALYSIS.md` (repository analysis with runtime verification).
-**Status of this document:** Proposal under implementation. **R9, R10, and R11 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R12–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
+**Status of this document:** Proposal under implementation. **R9, R10, R11, and R18 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R12–R17 and R19–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
 
 ---
 
@@ -247,6 +247,11 @@ Milestones extend the existing R-series (`docs/ENGINEERING_ROADMAP.md` R1–R8).
 - **Acceptance:** Round-trip tests per vendor fixture (small synthetic files in each format); current sample CSV produces byte-identical canonical output; new presets validated against CME contract specs.
 
 ### R18 — Headless research API + batch experiment runner
+
+✅ **Implemented.** See the implementation record in
+`docs/ENGINEERING_ROADMAP.md`. The facade is additive and Streamlit-free,
+parallelism is isolated across runs, and canonical bundle hashes gate CLI/UI
+composition parity without treating nondeterministic ZIP bytes as stable.
 
 - **Goal:** Decouple the engine from Streamlit so research can be automated, parallelized, and operated by AI agents — the 2025–2026 SOTA workflow trend (VectorBT PRO's agent-friendly APIs, RealTest + Claude Code loop, leakage-aware agent architectures).
 - **Benchmark:** VectorBT/VectorBT PRO scripting UX; QuantRocket Moonshot batch parameter scans; SQX cross-check funnels (as a sequencing concept).

@@ -8,6 +8,114 @@ Regression-safe onboarding guide for contributors/agents working in ThesisTester
 2. Run tests: `pytest -q` (`README.md:12-16`).
 3. Optional app run: `streamlit run app.py` (`README.md:7-10`).
 
+## Headless and agent operation (R18)
+
+Use `thesistester.api` for one in-process research pipeline or the versioned YAML
+runner for independent batches:
+
+```bash
+python -m thesistester run experiment.yaml --workers 4
+```
+
+The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
+`dict` values:
+
+1. `load_dataset(...) -> DataFrame` returns validated, exchange-timezone,
+   session-tagged OHLCV.
+2. `compute_levels(...) -> LevelsResult` returns `levels`, `session_levels`,
+   and canonical `levels_settings`.
+3. `build_setup(...) -> dict` applies the Setup Builder normalization and
+   validation contract.
+4. `generate_signals(...) -> SignalsResult` returns zones, naked flags,
+   signals, and deterministic settings identity.
+5. `run_backtest(...) -> BacktestResult` and `run_grid(...) -> GridResult`
+   apply the shared OTF filter before the unchanged engine functions.
+6. `run_validation(...) -> ValidationResult` runs seeded Phase 8 diagnostics
+   plus explicitly enabled R10/R11 batteries.
+7. `run_experiment(...) -> dict` returns a bundle-ready mapping with the same
+   research keys used by the Streamlit workflow.
+
+Experiment files require `schema_version: 1`, a non-empty `runs` list, and
+unique filesystem-safe run names. Dataset paths are resolved relative to the
+YAML file. Each run writes `<name>.research.zip`; `results_index.csv` records
+the canonical bundle hash and key metrics. `--workers N` uses isolated spawned
+processes across runs only. Each individual levels/signals/backtest/grid/
+validation pipeline stays single-threaded, and output order follows YAML order.
+
+Minimal complete shape:
+
+```yaml
+schema_version: 1
+output_dir: results
+workers: 2
+runs:
+  - name: es_touch_baseline
+    dataset:
+      path: data/es_1m.csv
+      instrument: ES
+      source_timezone: America/New_York
+    levels:
+      opening_range_minutes: 30
+    setup:
+      name: ES touch
+      description: RTH open confluence
+      instrument: ES
+      selected_levels: [dOpen, RTH_Open]
+      tolerance_ticks: 0
+      min_confluences: 2
+      max_confluences: 2
+      naked_only: false
+      naked_requirement: any
+      trigger: touch
+      trigger_timeframe: base
+      direction: both
+      confluence_mode: global_cluster
+      anchor_level: null
+      confluence_rules: []
+      min_valid_confluences: 1
+      trigger_params: {}
+      otf_filter: null
+    backtest:
+      stop_loss_ticks: 8
+      take_profit_ticks: 16
+      exposure_policy: single_position
+    grid:
+      stop_loss_ticks_values: [4, 8, 12]
+      take_profit_ticks_values: [8, 16, 24]
+      ranking_metric: expectancy_r
+      min_trades: 30
+    validation:
+      n_bootstrap: 2000
+      n_permutations: 5000
+      random_state: 42
+      excursion:
+        enabled: true
+        min_trades: 10
+      monte_carlo:
+        enabled: true
+        n_simulations: 2000
+        random_state: 42
+```
+
+Agent safety requirements:
+
+- Treat YAML and API arguments as research specifications, not permission to
+  alter engine behavior. Unknown facade configuration keys fail closed.
+- Preserve explicit `random_state` values. Never compare raw ZIP bytes:
+  `canonical_bundle_hash()` removes archive/manifest time metadata and hashes
+  logical DataFrame contents.
+- Point-in-time guarantees are bounded by
+  `docs/POINT_IN_TIME_GUARANTEES.md`. The facade adds no causality guarantee:
+  confluence inherits the causality of supplied level columns, same-bar
+  close/volume assumptions still apply, and externally supplied non-causal
+  data remains non-causal.
+- Do not select parameters using the final test sample and then describe that
+  sample as out-of-sample. Batch scale increases multiple-testing risk; use
+  walk-forward/OOS and robustness diagnostics, and retain all attempted runs.
+- Outputs are research-screening diagnostics, not proof of edge or executable
+  trading advice. Existing intrabar, execution-cost, roll, and serial-
+  dependence limitations remain unchanged.
+
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned
   tool config live in `pyproject.toml`).

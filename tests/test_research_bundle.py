@@ -10,6 +10,7 @@ import pytest
 from thesistester.research_bundle import (
     apply_research_bundle_to_session,
     build_research_bundle,
+    canonical_bundle_hash,
     load_research_bundle,
 )
 
@@ -68,6 +69,47 @@ def test_empty_session_exports_manifest_only():
         "excursion": False,
         "monte_carlo": False,
     }
+
+
+def test_canonical_hash_ignores_created_at_but_detects_logical_changes():
+    first_empty = build_research_bundle({})
+    second_empty = build_research_bundle({})
+    assert first_empty != second_empty
+    assert canonical_bundle_hash(first_empty) == canonical_bundle_hash(second_empty)
+
+    base = _dataset_df()
+    es_bundle = build_research_bundle(
+        {
+            "data": base,
+            "dataset_id": "same",
+            "instrument": "ES",
+            "base_interval": "1min",
+            "source_timezone": "America/New_York",
+            "exchange_timezone": "America/New_York",
+        }
+    )
+    nq_bundle = build_research_bundle(
+        {
+            "data": base,
+            "dataset_id": "same",
+            "instrument": "NQ",
+            "base_interval": "1min",
+            "source_timezone": "America/New_York",
+            "exchange_timezone": "America/New_York",
+        }
+    )
+    changed_frame_bundle = build_research_bundle(
+        {
+            "data": base.assign(close=[1.5, 2.5, 99.0]),
+            "dataset_id": "same",
+            "instrument": "ES",
+            "base_interval": "1min",
+            "source_timezone": "America/New_York",
+            "exchange_timezone": "America/New_York",
+        }
+    )
+    assert canonical_bundle_hash(es_bundle) != canonical_bundle_hash(nq_bundle)
+    assert canonical_bundle_hash(es_bundle) != canonical_bundle_hash(changed_frame_bundle)
 
 
 def test_dataset_only_roundtrip_restores_data_and_metadata():
