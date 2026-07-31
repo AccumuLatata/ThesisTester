@@ -21,6 +21,7 @@ from thesistester.analytics import (
     grid_trade_sequences,
     noise_summary,
     overfitting_summary,
+    sensitivity_summary,
     run_walk_forward_sl_tp,
     run_wfa_matrix,
     run_sl_tp_grid,
@@ -112,6 +113,8 @@ class ValidationResult(TypedDict, total=False):
     noise_config: dict[str, Any]
     overfitting_summary: dict[str, Any]
     overfitting_config: dict[str, Any]
+    sensitivity_summary: dict[str, Any]
+    sensitivity_config: dict[str, Any]
 
 
 class WalkForwardAnalysisResult(TypedDict, total=False):
@@ -275,6 +278,14 @@ _NOISE_KEYS = {
     "atr_period",
     "random_state",
     "percentiles",
+    "include_rows",
+}
+_SENSITIVITY_KEYS = {
+    "enabled",
+    "perturbation_fraction",
+    "n_steps_per_side",
+    "parameters",
+    "random_state",
     "include_rows",
 }
 _WALK_FORWARD_KEYS = {
@@ -916,6 +927,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                 "monte_carlo",
                 "overfitting",
                 "noise",
+                "sensitivity",
             },
             section="validation",
         )
@@ -1126,6 +1138,51 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                 _validate_random_state(
                     noise.get("random_state", 42),
                     section="validation.noise",
+                )
+        sensitivity = validation.get("sensitivity")
+        if sensitivity is not None:
+            sensitivity = _require_mapping(sensitivity, section="validation.sensitivity")
+            _validate_keys(sensitivity, _SENSITIVITY_KEYS, section="validation.sensitivity")
+            _validate_bool_fields(
+                sensitivity,
+                {"enabled", "include_rows"},
+                section="validation.sensitivity",
+            )
+            _validate_number_fields(
+                sensitivity,
+                {"n_steps_per_side", "random_state"},
+                section="validation.sensitivity",
+                integer=True,
+            )
+            _validate_number_fields(
+                sensitivity,
+                {"perturbation_fraction"},
+                section="validation.sensitivity",
+            )
+            _validate_range(
+                sensitivity,
+                "n_steps_per_side",
+                section="validation.sensitivity",
+                minimum=1,
+            )
+            _validate_range(
+                sensitivity,
+                "perturbation_fraction",
+                section="validation.sensitivity",
+                minimum=0,
+                maximum=1,
+                minimum_exclusive=True,
+            )
+            _validate_list_fields(
+                sensitivity,
+                {"parameters"},
+                section="validation.sensitivity",
+                item_type=str,
+            )
+            if sensitivity.get("enabled", True):
+                _validate_random_state(
+                    sensitivity.get("random_state", 42),
+                    section="validation.sensitivity",
                 )
 
 
@@ -1447,6 +1504,46 @@ def run_noise_test(
     )
 
 
+def run_sensitivity_profile(
+    df: pd.DataFrame,
+    signals: pd.DataFrame,
+    *,
+    tick_size: float,
+    point_value: float,
+    grid: pd.DataFrame,
+    execution_kwargs: Mapping[str, Any] | None = None,
+    selected_grid_metric: str = "expectancy_r",
+    selected_min_trades: int = 1,
+    sensitivity_config: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run R19 OAT profiling around the selected Grid Search cell."""
+    if grid is None or grid.empty:
+        raise ValueError("grid results are required for R19 sensitivity profiling")
+    selected = best_grid_result(
+        grid,
+        metric=selected_grid_metric,
+        min_trades=selected_min_trades,
+    )
+    if selected is None:
+        raise ValueError("No grid cell passes the R19 selection rule.")
+    settings = dict(sensitivity_config or {})
+    settings.pop("enabled", None)
+    _validate_keys(
+        {"enabled": True, **settings},
+        _SENSITIVITY_KEYS,
+        section="validation.sensitivity",
+    )
+    return sensitivity_summary(
+        df,
+        signals,
+        tick_size=tick_size,
+        point_value=point_value,
+        selected_cell=selected,
+        execution_kwargs=execution_kwargs,
+        **settings,
+    )
+
+
 def run_grid(
     data: pd.DataFrame,
     signals: pd.DataFrame,
@@ -1648,6 +1745,7 @@ def run_validation(
     monte_carlo_config = raw.pop("monte_carlo", None)
     overfitting_config = raw.pop("overfitting", None)
     noise_config = raw.pop("noise", None)
+    sensitivity_config = raw.pop("sensitivity", None)
     settings = _merge_known(_VALIDATION_DEFAULTS, raw, section="validation")
     _validate_random_state(settings["random_state"], section="validation")
     result: ValidationResult = {
@@ -1722,6 +1820,38 @@ def run_validation(
             subtimeframe_data=subtimeframe_data,
         )
         result.update({"noise_summary": summary, "noise_config": summary["config"]})
+    if sensitivity_config is not None and not isinstance(sensitivity_config, Mapping):
+        raise ValueError("validation.sensitivity must be a mapping")
+    if isinstance(sensitivity_config, Mapping) and sensitivity_config.get("enabled", True):
+        if df is None or signals is None or tick_size is None or point_value is None:
+            raise ValueError(
+                "df, signals, tick_size, and point_value are required for R19 sensitivity"
+            )
+        sensitivity_settings = {
+            key: value for key, value in sensitivity_config.items() if key != "enabled"
+        }
+        _validate_keys(
+            sensitivity_config,
+            _SENSITIVITY_KEYS,
+            section="validation.sensitivity",
+        )
+        summary = run_sensitivity_profile(
+            df,
+            signals,
+            tick_size=tick_size,
+            point_value=point_value,
+            grid=grid if grid is not None else pd.DataFrame(),
+            execution_kwargs=execution_kwargs,
+            selected_grid_metric=selected_grid_metric,
+            selected_min_trades=selected_min_trades,
+            sensitivity_config=sensitivity_settings,
+        )
+        result.update(
+            {
+                "sensitivity_summary": summary,
+                "sensitivity_config": summary["config"],
+            }
+        )
     if overfitting_config is not None and not isinstance(overfitting_config, Mapping):
         raise ValueError("validation.overfitting must be a mapping")
     if isinstance(overfitting_config, Mapping) and overfitting_config.get("enabled", True):

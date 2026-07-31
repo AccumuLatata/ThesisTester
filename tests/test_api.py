@@ -74,6 +74,41 @@ def _setup() -> dict:
     )
 
 
+def test_run_validation_wires_opt_in_sensitivity_profile(monkeypatch):
+    expected = {
+        "schema_version": 1,
+        "available": True,
+        "config": {"perturbation_fraction": 0.2},
+        "parameters": [],
+    }
+
+    def fake_profile(*args, **kwargs):
+        assert kwargs["selected_grid_metric"] == "expectancy_r"
+        assert kwargs["sensitivity_config"] == {"perturbation_fraction": 0.2}
+        return expected
+
+    monkeypatch.setattr("thesistester.api.run_sensitivity_profile", fake_profile)
+    result = run_validation(
+        pd.DataFrame(),
+        df=pd.DataFrame(),
+        signals=pd.DataFrame(),
+        tick_size=0.25,
+        point_value=5.0,
+        grid=pd.DataFrame(
+            {
+                "stop_loss_ticks": [8.0],
+                "take_profit_ticks": [16.0],
+                "expectancy_r": [0.5],
+                "trade_count": [10],
+            }
+        ),
+        config={"sensitivity": {"enabled": True, "perturbation_fraction": 0.2}},
+    )
+
+    assert result["sensitivity_summary"] == expected
+    assert result["sensitivity_config"] == expected["config"]
+
+
 def _levels_config() -> dict:
     return {
         "sma_lengths": [],

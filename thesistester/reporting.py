@@ -251,6 +251,7 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "monte_carlo_summary": to_jsonable(session_state.get("monte_carlo_summary")),
             "noise_summary": to_jsonable(session_state.get("noise_summary")),
             "overfitting_summary": to_jsonable(session_state.get("overfitting_summary")),
+            "sensitivity_summary": to_jsonable(session_state.get("sensitivity_summary")),
             "backtest_intrabar_diagnostic": to_jsonable(
                 session_state.get("backtest_intrabar_diagnostic")
             ),
@@ -818,6 +819,7 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     monte_carlo = results.get("monte_carlo_summary") or {}
     noise = results.get("noise_summary") or {}
     overfitting = results.get("overfitting_summary") or {}
+    sensitivity = results.get("sensitivity_summary") or {}
     walk_forward = results.get("walk_forward_summary") or {}
     intrabar = artifact.get("intrabar", {}) if isinstance(artifact, Mapping) else {}
     intrabar_policy = intrabar.get("backtest_policy", {}) if isinstance(intrabar, Mapping) else {}
@@ -1006,6 +1008,21 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
                 f"- Noise: {noise_config.get('noise_fraction', '—') if isinstance(noise_config, Mapping) else '—'} × {noise_config.get('scale_basis', '—') if isinstance(noise_config, Mapping) else '—'}",
                 f"- P50 expectancy R: {_fmt_number(expectancy.get('p50') if isinstance(expectancy, Mapping) else None)}",
                 f"- P50 trade persistence: {_fmt_pct(persistence.get('p50') if isinstance(persistence, Mapping) else None)}",
+                "",
+            ]
+        )
+
+    if isinstance(sensitivity, Mapping) and sensitivity.get("available"):
+        profiles = sensitivity.get("parameters") if isinstance(sensitivity, Mapping) else []
+        fragile_count = sensitivity.get("fragile_parameter_count", 0)
+        lines.extend(
+            [
+                "## Parameter Sensitivity (SPP-lite)",
+                "⚠️ Diagnostic only — local one-at-a-time execution-parameter changes do not measure interactions or prove edge.",
+                "",
+                f"- Parameters profiled: {len(profiles) if isinstance(profiles, list) else 0}",
+                f"- Fragile parameters: {fragile_count}",
+                f"- Baseline expectancy R: {_fmt_number((sensitivity.get('baseline') or {}).get('expectancy_r') if isinstance(sensitivity.get('baseline'), Mapping) else None)}",
                 "",
             ]
         )

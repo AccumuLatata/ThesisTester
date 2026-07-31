@@ -351,6 +351,21 @@ per-side sample sizes.  For serious research, values ≥ 10–30 per side are ad
 - **Pinned subtimeframe policy:** supplied lower-timeframe R12 data is reused
   unchanged; R16 does not fabricate synthetic sub-bars.
 
+## R19 parameter sensitivity (SPP-lite)
+
+- **OAT sensitivity curve:** expectancy R, profit factor, and trade count from
+  re-simulating a selected grid cell after changing one active execution
+  parameter at a time over deterministic ±fraction steps.
+- **Fragile parameter:** an OAT curve containing both positive and negative
+  expectancy-R outcomes within its configured perturbation window.
+- **Tick rounding policy:** stop/target/trailing-distance candidates are
+  nearest-integer ticks and duplicate rounded candidates are collapsed;
+  break-even/trailing R thresholds are not rounded.
+
+R19 measures local parameter flatness only. It is distinct from R11
+trade-sequence sampling uncertainty, R15 selection/multiple-testing
+diagnostics, and R16 input-OHLC robustness.
+
 ## R12 intrabar diagnostics
 
 | Field | Definition |

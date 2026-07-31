@@ -146,6 +146,8 @@ def _clear_dataset_dependent_state() -> None:
         "noise_config",
         "overfitting_summary",
         "overfitting_config",
+        "sensitivity_summary",
+        "sensitivity_config",
         "roll_policy",
         "roll_validation",
         "roll_method_selector",

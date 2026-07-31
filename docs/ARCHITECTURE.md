@@ -130,6 +130,15 @@ levels → signals → OTF → backtest composition. It neither changes engine
 semantics nor synthesizes R12 lower-timeframe bars; supplied lower-timeframe
 data remains pinned and that limitation is recorded in `noise_config`.
 
+## R19 parameter-sensitivity boundary
+
+`thesistester/analytics/sensitivity.py` is an opt-in, Streamlit-free local
+OAT diagnostic. It selects a recorded Grid Search cell, replays fixed signals
+through the unchanged engine for deterministic execution-parameter changes,
+and writes a separate schema-versioned `sensitivity_summary`. It does not
+recompute levels/signals, alter `validation_summary()`, or claim parameter
+interaction or out-of-sample robustness.
+
 ## R17 ingestion boundary
 
 `thesistester.data.loader.load_ohlcv()` is the sole explicit-profile adapter
@@ -219,6 +228,8 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `overfitting_config` | Validation/R18 API | Research Bundles | R15 partition, replica, seed, and Sharpe-basis config |
 | `noise_summary` | Validation/R18 API | Validation display, Report, Research Bundles | R16 schema-version-1 full-pipeline perturbation diagnostic |
 | `noise_config` | Validation/R18 API | Research Bundles | R16 noise scale, seed, replica count, persistence matcher, and subtimeframe policy |
+| `sensitivity_summary` | Validation/R18 API | Validation display, Report, Research Bundles | R19 schema-version-1 one-at-a-time local expectancy/PF curves and fragility classification |
+| `sensitivity_config` | Validation/R18 API | Research Bundles | R19 fraction, step count, selected parameters, rounding policy, and seed |
 | `excursion_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report, Research Bundles | `dict` R10 schema version 1 (`overall`, `grouped`, `quadrants`, `calibration_grid`, `edge_ratio`, `config`, caveat) |
 | `excursion_config` | Validation (`pages/10_Validation.py`) | Research Bundles | `dict` copied from `excursion_summary["config"]` |
 | `excursion_grouped_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report CSV, Research Bundles | `pd.DataFrame` grouped MAE/MFE distribution stats |

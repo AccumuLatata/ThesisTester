@@ -54,6 +54,7 @@ REQUIRED_ITEMS = [
     ("Monte Carlo diagnostics", "monte_carlo_summary"),
     ("Noise-test diagnostics", "noise_summary"),
     ("Overfitting diagnostics", "overfitting_summary"),
+    ("Parameter sensitivity diagnostics", "sensitivity_summary"),
 ]
 
 OTF_ITEMS = [
