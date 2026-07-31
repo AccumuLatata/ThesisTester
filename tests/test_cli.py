@@ -73,13 +73,13 @@ def _run(name: str, *, stop: int = 2) -> dict:
             "min_trades": 1,
         },
         "validation": {
-            "n_bootstrap": 20,
-            "n_permutations": 20,
+            "n_bootstrap": 500,
+            "n_permutations": 500,
             "random_state": 11,
             "excursion": {"enabled": True, "min_trades": 1},
             "monte_carlo": {
                 "enabled": True,
-                "n_simulations": 20,
+                "n_simulations": 100,
                 "random_state": 11,
             },
         },
@@ -135,14 +135,35 @@ def test_parallel_batch_is_identical_to_serial(tmp_path):
 
 
 def test_experiment_schema_and_names_fail_fast(tmp_path):
-    invalid = tmp_path / "invalid.yaml"
-    invalid.write_text(
-        yaml.safe_dump({"schema_version": 2, "runs": [{"name": "../unsafe"}]}),
-        encoding="utf-8",
-    )
-    try:
-        load_experiment_file(invalid)
-    except ValueError as exc:
-        assert "schema_version" in str(exc)
-    else:
-        raise AssertionError("Expected invalid schema to be rejected")
+    cases = [
+        ({"schema_version": 2, "runs": [{"name": "valid"}]}, "schema_version"),
+        ({"schema_version": 1, "runs": [{"name": "../unsafe"}]}, "name must match"),
+        (
+            {
+                "schema_version": 1,
+                "runs": [{**_run("typo"), "validaton": {"random_state": 1}}],
+            },
+            "Unknown run configuration keys",
+        ),
+        (
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        **_run("unseeded"),
+                        "validation": {"random_state": None},
+                    }
+                ],
+            },
+            "random_state",
+        ),
+    ]
+    for index, (payload, message) in enumerate(cases):
+        invalid = tmp_path / f"invalid-{index}.yaml"
+        invalid.write_text(yaml.safe_dump(payload), encoding="utf-8")
+        try:
+            load_experiment_file(invalid)
+        except ValueError as exc:
+            assert message in str(exc)
+        else:
+            raise AssertionError(f"Expected invalid experiment {index} to be rejected")

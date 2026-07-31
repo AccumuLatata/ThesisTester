@@ -75,6 +75,9 @@ def test_headless_facade_matches_ui_backtest_composition(tmp_path):
     setup = _setup()
     signal_result = generate_signals(level_result["levels"], setup)
     assert not signal_result["signals"].empty
+    assert signal_result["signal_settings"]["otf_algorithm_version"]
+    assert signal_result["signal_settings"]["otf_config_hash"]
+    assert signal_result["signal_settings"]["setup_snapshot"] == setup
 
     config = {
         "stop_loss_ticks": 2,
@@ -174,3 +177,32 @@ def test_facade_rejects_unknown_configuration_keys(tmp_path):
     data = load_dataset(csv_path)
     with pytest.raises(ValueError, match="Unknown levels configuration keys"):
         compute_levels(data, config={"lookahead": True})
+
+
+def test_backtest_preserves_ui_otf_precedence_for_signal_producing_setup(tmp_path):
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path)
+    levels = compute_levels(data, config=_levels_config())["levels"]
+    producing_setup = _setup()
+    signals = generate_signals(levels, producing_setup)["signals"]
+    active_setup = {
+        **producing_setup,
+        "otf_filter": {
+            "enabled": True,
+            "timeframes": ["5m"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 1,
+            "directional": True,
+            "use_completed_bars_only": True,
+            "session_reset": "session",
+        },
+    }
+    result = run_backtest(
+        levels,
+        signals,
+        setup_config=active_setup,
+        last_signal_setup=producing_setup,
+        signal_settings={},
+    )
+    assert result["otf_filter_summary"]["otf_filter_enabled"] is False

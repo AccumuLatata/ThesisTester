@@ -13,11 +13,12 @@ from typing import Any, Mapping, Sequence
 import pandas as pd
 import yaml
 
-from thesistester.api import run_experiment
+from thesistester.api import run_experiment, validate_run_spec
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
 
 EXPERIMENT_SCHEMA_VERSION = 1
 _RUN_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+_EXPERIMENT_KEYS = {"schema_version", "output_dir", "workers", "runs"}
 
 
 def load_experiment_file(path: str | Path) -> dict[str, Any]:
@@ -29,6 +30,9 @@ def load_experiment_file(path: str | Path) -> dict[str, Any]:
         raise ValueError(f"Unable to load experiment file {experiment_path}: {exc}") from exc
     if not isinstance(payload, dict):
         raise ValueError("Experiment file must contain a YAML mapping")
+    unknown_root = sorted(set(payload) - _EXPERIMENT_KEYS)
+    if unknown_root:
+        raise ValueError(f"Unknown experiment configuration keys: {unknown_root}")
     if payload.get("schema_version") != EXPERIMENT_SCHEMA_VERSION:
         raise ValueError(
             f"Unsupported experiment schema_version: {payload.get('schema_version')!r}; "
@@ -48,9 +52,16 @@ def load_experiment_file(path: str | Path) -> dict[str, Any]:
                 f"runs[{index}].name must match {_RUN_NAME_RE.pattern!r}; got {name!r}"
             )
         names.append(name)
+        validate_run_spec(run)
     duplicates = sorted({name for name in names if names.count(name) > 1})
     if duplicates:
         raise ValueError(f"Run names must be unique; duplicates: {duplicates}")
+    workers = payload.get("workers", 1)
+    if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
+        raise ValueError("workers must be an integer >= 1")
+    output_dir = payload.get("output_dir")
+    if output_dir is not None and not isinstance(output_dir, str):
+        raise ValueError("output_dir must be a string")
     return payload
 
 

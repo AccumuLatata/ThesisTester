@@ -34,10 +34,16 @@ from thesistester.engine import (
 from thesistester.levels.all import compute_all_levels
 from thesistester.levels.sessions import compute_session_levels
 from thesistester.persistence.local_store import (
+    _normalize_signal_settings_for_hash,
     compute_dataset_id,
     compute_signal_settings_hash,
 )
-from thesistester.setup import build_setup_config, validate_setup_config
+from thesistester.setup import (
+    build_setup_config,
+    get_effective_otf_filter_config,
+    normalize_trigger_timeframe,
+    validate_setup_config,
+)
 
 
 class LevelsResult(TypedDict):
@@ -158,6 +164,29 @@ _VALIDATION_DEFAULTS: dict[str, Any] = {
     "min_trades_hard": 100,
     "selected_grid_metric": "expectancy_r",
 }
+_RUN_KEYS = {"name", "dataset", "levels", "setup", "backtest", "grid", "validation"}
+_DATASET_KEYS = {"path", "instrument", "source_timezone", "exchange_timezone"}
+_EXCURSION_KEYS = {
+    "enabled",
+    "group_cols",
+    "stop_r_grid",
+    "target_r_grid",
+    "both_hit_rule",
+    "min_trades",
+    "mae_r_threshold",
+    "mfe_r_threshold",
+}
+_MONTE_CARLO_KEYS = {
+    "enabled",
+    "methods",
+    "n_simulations",
+    "skip_fraction",
+    "block_length",
+    "percentiles",
+    "drawdown_thresholds_r",
+    "random_state",
+    "include_paths",
+}
 
 
 def _instrument(instrument: str):
@@ -178,6 +207,101 @@ def _merge_known(
     if unknown:
         raise ValueError(f"Unknown {section} configuration keys: {unknown}")
     return {**defaults, **raw}
+
+
+def _validate_keys(config: Mapping[str, Any], allowed: set[str], *, section: str) -> None:
+    unknown = sorted(set(config) - allowed)
+    if unknown:
+        raise ValueError(f"Unknown {section} configuration keys: {unknown}")
+
+
+def _require_mapping(value: Any, *, section: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{section} must be a mapping")
+    return value
+
+
+def _validate_random_state(value: Any, *, section: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{section}.random_state must be an integer >= 0")
+
+
+def validate_run_spec(spec: Mapping[str, Any]) -> None:
+    """Fail closed on unknown or nondeterministic experiment configuration."""
+    run = _require_mapping(spec, section="run")
+    _validate_keys(run, _RUN_KEYS, section="run")
+    dataset = _require_mapping(run.get("dataset"), section="dataset")
+    _validate_keys(dataset, _DATASET_KEYS, section="dataset")
+    if "path" not in dataset:
+        raise ValueError("Experiment dataset.path is required")
+    instrument = str(dataset.get("instrument", "ES"))
+    _instrument(instrument)
+
+    levels = run.get("levels", {})
+    _require_mapping(levels, section="levels")
+    _validate_keys(levels, set(_LEVEL_DEFAULTS), section="levels")
+    setup = _require_mapping(run.get("setup"), section="setup")
+    normalized_setup = build_setup(setup)
+    if normalized_setup["instrument"] != instrument:
+        raise ValueError(
+            "setup.instrument must match dataset.instrument "
+            f"({normalized_setup['instrument']!r} != {instrument!r})"
+        )
+    backtest = _require_mapping(run.get("backtest", {}), section="backtest")
+    _validate_keys(backtest, set(_BACKTEST_DEFAULTS), section="backtest")
+    grid = run.get("grid")
+    if grid is not None:
+        grid = _require_mapping(grid, section="grid")
+        _validate_keys(grid, {*_GRID_DEFAULTS, "enabled"}, section="grid")
+    validation = run.get("validation")
+    if validation is not None:
+        validation = _require_mapping(validation, section="validation")
+        _validate_keys(
+            validation,
+            {*_VALIDATION_DEFAULTS, "enabled", "excursion", "monte_carlo"},
+            section="validation",
+        )
+        random_state = validation.get("random_state", _VALIDATION_DEFAULTS["random_state"])
+        _validate_random_state(random_state, section="validation")
+        excursion = validation.get("excursion")
+        if excursion is not None:
+            excursion = _require_mapping(excursion, section="validation.excursion")
+            _validate_keys(excursion, _EXCURSION_KEYS, section="validation.excursion")
+        monte_carlo = validation.get("monte_carlo")
+        if monte_carlo is not None:
+            monte_carlo = _require_mapping(monte_carlo, section="validation.monte_carlo")
+            _validate_keys(
+                monte_carlo,
+                _MONTE_CARLO_KEYS,
+                section="validation.monte_carlo",
+            )
+            if monte_carlo.get("enabled", True):
+                mc_seed = monte_carlo.get("random_state", 42)
+                _validate_random_state(mc_seed, section="validation.monte_carlo")
+
+
+def _setup_caption(config: Mapping[str, Any]) -> str:
+    """Build the setup audit caption stored by the Signals page."""
+    mode = str(config.get("confluence_mode", "global_cluster"))
+    trigger_timeframe = normalize_trigger_timeframe(config.get("trigger_timeframe"))
+    otf = get_effective_otf_filter_config(dict(config))
+    otf_caption = (
+        f"OTF=enabled({','.join(otf['timeframes'])}; min={otf['minimum_consecutive_bars']})"
+        if otf["enabled"]
+        else "OTF=disabled"
+    )
+    if mode == "anchor_rules":
+        return (
+            f"Mode=anchor_rules • Anchor={config.get('anchor_level') or '-'} • "
+            f"Rules={len(config.get('confluence_rules') or [])} • "
+            f"Min valid={int(config.get('min_valid_confluences', 1))} • "
+            f"Trigger TF={trigger_timeframe} • {otf_caption}"
+        )
+    return (
+        f"Trigger={config.get('trigger')} • Direction={config.get('direction')} • "
+        f"Confluences={config.get('min_confluences')}–{config.get('max_confluences')} • "
+        f"Trigger TF={trigger_timeframe} • {otf_caption}"
+    )
 
 
 def load_dataset(
@@ -327,25 +451,26 @@ def generate_signals(
     )
     signals = signals.copy()
     signals["setup_name"] = setup_config.get("name", "Untitled setup")
-    signal_settings = {
-        "confluence_mode": mode,
-        "selected_levels": selected_levels,
-        "anchor_level": setup_config.get("anchor_level"),
-        "confluence_rules": list(setup_config.get("confluence_rules", [])),
-        "min_valid_confluences": int(setup_config.get("min_valid_confluences", 1)),
-        "tolerance_ticks": float(setup_config.get("tolerance_ticks", 0.0)),
-        "min_confluences": int(setup_config.get("min_confluences", 1)),
-        "max_confluences": int(setup_config.get("max_confluences", 5)),
-        "naked_only": bool(setup_config.get("naked_only", False)),
-        "naked_requirement": str(setup_config.get("naked_requirement", "any")),
-        "trigger": str(setup_config["trigger"]),
-        "trigger_timeframe": str(setup_config.get("trigger_timeframe", "base")),
-        "direction": str(setup_config["direction"]),
-        "trigger_params": dict(setup_config.get("trigger_params") or {}),
-        "use_saved_setup": True,
-        "setup_snapshot": setup_config,
-        "otf_filter": setup_config.get("otf_filter"),
-    }
+    signal_settings = _normalize_signal_settings_for_hash(
+        {
+            "confluence_mode": mode,
+            "selected_levels": selected_levels,
+            "anchor_level": setup_config.get("anchor_level"),
+            "confluence_rules": list(setup_config.get("confluence_rules", [])),
+            "min_valid_confluences": int(setup_config.get("min_valid_confluences", 1)),
+            "tolerance_ticks": float(setup_config.get("tolerance_ticks", 0.0)),
+            "min_confluences": int(setup_config.get("min_confluences", 1)),
+            "max_confluences": int(setup_config.get("max_confluences", 5)),
+            "naked_only": bool(setup_config.get("naked_only", False)),
+            "naked_requirement": str(setup_config.get("naked_requirement", "any")),
+            "trigger": str(setup_config["trigger"]),
+            "trigger_timeframe": str(setup_config.get("trigger_timeframe", "base")),
+            "direction": str(setup_config["direction"]),
+            "trigger_params": dict(setup_config.get("trigger_params") or {}),
+            "use_saved_setup": True,
+            "setup_snapshot": setup_config,
+        }
+    )
     return {
         "signals": signals,
         "confluence_zones": zones,
@@ -363,6 +488,7 @@ def run_backtest(
     config: Mapping[str, Any] | None = None,
     setup_config: Mapping[str, Any] | None = None,
     signal_settings: Mapping[str, Any] | None = None,
+    last_signal_setup: Mapping[str, Any] | None = None,
 ) -> BacktestResult:
     """Run the UI backtest composition, including the shared OTF pre-filter."""
     inst = _instrument(instrument)
@@ -375,7 +501,7 @@ def run_backtest(
         session_timezone=inst.exchange_tz,
         eth_start=inst.eth_start,
         signal_settings=dict(signal_settings or {}),
-        last_signal_setup=dict(setup_config or {}),
+        last_signal_setup=dict(last_signal_setup or {}),
     )
     trades, skipped = simulate_trades(
         df=data,
@@ -415,6 +541,7 @@ def run_grid(
     config: Mapping[str, Any] | None = None,
     setup_config: Mapping[str, Any] | None = None,
     signal_settings: Mapping[str, Any] | None = None,
+    last_signal_setup: Mapping[str, Any] | None = None,
 ) -> GridResult:
     """Run the UI grid composition, including one shared OTF pre-filter."""
     inst = _instrument(instrument)
@@ -427,7 +554,7 @@ def run_grid(
         session_timezone=inst.exchange_tz,
         eth_start=inst.eth_start,
         signal_settings=dict(signal_settings or {}),
-        last_signal_setup=dict(setup_config or {}),
+        last_signal_setup=dict(last_signal_setup or {}),
     )
     grid = run_sl_tp_grid(
         df=data,
@@ -473,13 +600,21 @@ def run_validation(
     excursion_config = raw.pop("excursion", None)
     monte_carlo_config = raw.pop("monte_carlo", None)
     settings = _merge_known(_VALIDATION_DEFAULTS, raw, section="validation")
+    _validate_random_state(settings["random_state"], section="validation")
     result: ValidationResult = {
         "validation_summary": validation_summary(trades, grid=grid, **settings)
     }
 
+    if excursion_config is not None and not isinstance(excursion_config, Mapping):
+        raise ValueError("validation.excursion must be a mapping")
     if isinstance(excursion_config, Mapping) and excursion_config.get("enabled", True):
         if tick_size is None:
             raise ValueError("tick_size is required when excursion validation is enabled")
+        _validate_keys(
+            excursion_config,
+            _EXCURSION_KEYS,
+            section="validation.excursion",
+        )
         excursion_settings = {
             key: value for key, value in excursion_config.items() if key != "enabled"
         }
@@ -494,10 +629,21 @@ def run_validation(
             }
         )
 
+    if monte_carlo_config is not None and not isinstance(monte_carlo_config, Mapping):
+        raise ValueError("validation.monte_carlo must be a mapping")
     if isinstance(monte_carlo_config, Mapping) and monte_carlo_config.get("enabled", True):
         monte_carlo_settings = {
             key: value for key, value in monte_carlo_config.items() if key != "enabled"
         }
+        _validate_keys(
+            monte_carlo_config,
+            _MONTE_CARLO_KEYS,
+            section="validation.monte_carlo",
+        )
+        _validate_random_state(
+            monte_carlo_settings.get("random_state", 42),
+            section="validation.monte_carlo",
+        )
         monte_carlo = monte_carlo_summary(trades, **monte_carlo_settings)
         result.update(
             {
@@ -514,6 +660,7 @@ def run_experiment(
     base_directory: str | Path = ".",
 ) -> dict[str, Any]:
     """Execute one version-1 experiment and return a bundle-ready plain dict."""
+    validate_run_spec(spec)
     run = dict(spec)
     dataset_config = dict(run.get("dataset") or {})
     if "path" not in dataset_config:
@@ -552,6 +699,7 @@ def run_experiment(
         config=backtest_config,
         setup_config=setup,
         signal_settings=signal_result["signal_settings"],
+        last_signal_setup=setup,
     )
 
     state: dict[str, Any] = {
@@ -578,7 +726,7 @@ def run_experiment(
         "signal_context": {
             "setup_name": setup["name"],
             "confluence_mode": setup["confluence_mode"],
-            "setup_caption": None,
+            "setup_caption": _setup_caption(setup),
         },
         "trades": backtest_result["trades"],
         "trade_summary": backtest_result["trade_summary"],
@@ -600,6 +748,7 @@ def run_experiment(
             config=grid_settings,
             setup_config=setup,
             signal_settings=signal_result["signal_settings"],
+            last_signal_setup=setup,
         )
         state.update(
             {
