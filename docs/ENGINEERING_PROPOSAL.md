@@ -3,7 +3,7 @@
 **Document type:** Proposal + engineering roadmap
 **Date:** 2026-07-29
 **Inputs:** `docs/SOTA_BACKTESTING_LANDSCAPE.md` (market research), `docs/THESISTESTER_ANALYSIS.md` (repository analysis with runtime verification).
-**Status of this document:** Proposal under implementation. **R9 is implemented** (see `docs/ENGINEERING_ROADMAP.md` R9); R10–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
+**Status of this document:** Proposal under implementation. **R9 and R10 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R11–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
 
 ---
 
@@ -176,8 +176,9 @@ Milestones extend the existing R-series (`docs/ENGINEERING_ROADMAP.md` R1–R8).
 - **Regression-safety:** No runtime code changes except mechanical formatting; golden behavior proven by the suite itself (1516 tests).
 - **Acceptance:** CI green on `main`; `pip install -e .` works in a fresh venv and `python -c "import thesistester"` succeeds; coverage report visible in CI; `tests/fixtures/golden/README.md` present. Suggested PR title: `R9: packaging + CI + LICENSE (regression-safe)`. Concrete `pyproject.toml` / `ci.yml` templates and a copy-ready implementation prompt live in the R9 PR description, not in this document, so they stay current with the code they scaffold.
 
-### R10 — MAE/MFE excursion analytics & SL/TP calibration *(highest research value per effort)*
+### R10 — MAE/MFE excursion analytics & SL/TP calibration *(highest research value per effort)* — ✅ **Implemented**
 
+- **Status:** landed. Implementation record: `docs/ENGINEERING_ROADMAP.md` R10. The shipped edge-ratio decay view is explicitly a `bars_held` bucket proxy because R10 uses terminal trade-level excursions only; true intratrade decay remains future work.
 - **Goal:** Turn the already-captured `mae_points`/`mfe_points` into the calibration tooling RealTest/AmiBroker/Build Alpha users rely on.
 - **Benchmark:** RealTest MAE/MFE distributions & trade plots; AmiBroker Pro MAE/MFE stats; Build Alpha **Edge Ratio** (edge magnitude + decay).
 - **Scope:** New pure module `thesistester/analytics/excursions.py`: MAE/MFE distributions by direction/trigger/setup/time-bucket; excursion heatmap (MAE×MFE quadrant analysis); "give-back" curve — for each candidate stop distance s and target distance t, empirical hit probabilities derived from excursions (with explicit caveat that bar-level excursions bound but do not order intrabar events); Edge-Ratio-style summary (mean favorable excursion in R vs adverse, and its decay across bars held). Validation page section + report/export fields.

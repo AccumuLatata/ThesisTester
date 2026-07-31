@@ -115,6 +115,40 @@ def _sample_session_state() -> dict:
             "trade_count": {"status": "insufficient"},
             "grid_overfit": {"risk_level": "low"},
         },
+        "excursion_summary": {
+            "schema_version": 1,
+            "available": True,
+            "trade_count": 2,
+            "config": {"both_hit_rule": "stop_first"},
+            "edge_ratio": {
+                "mean_mae_r": 0.75,
+                "mean_mfe_r": 1.5,
+                "mean_edge_ratio_r": 2.0,
+                "median_edge_ratio_r": 2.0,
+            },
+            "caveat": "Excursion analytics use terminal bar-level MAE/MFE.",
+        },
+        "excursion_grouped_summary": pd.DataFrame(
+            {
+                "direction": ["long", "short"],
+                "trade_count": [1, 1],
+                "mean_mae_r": [0.5, 1.0],
+            }
+        ),
+        "excursion_calibration_grid": pd.DataFrame(
+            {
+                "stop_r": [1.0],
+                "target_r": [2.0],
+                "target_hit_probability": [0.5],
+            }
+        ),
+        "excursion_quadrant_summary": pd.DataFrame(
+            {
+                "quadrant": ["target_without_full_stop"],
+                "count": [1],
+                "pct": [0.5],
+            }
+        ),
         "data": pd.DataFrame({"x": [1, 2, 3]}),
         "levels": pd.DataFrame({"y": [4, 5, 6]}),
     }
@@ -202,8 +236,12 @@ def test_build_research_artifact_counts_match_signals_and_trades():
 
     assert artifact["results"]["signal_count"] == 2
     assert artifact["results"]["trade_count"] == 2
+    assert artifact["results"]["excursion_summary"]["schema_version"] == 1
     assert len(artifact["tables"]["signals"]) == 2
     assert len(artifact["tables"]["trades"]) == 2
+    assert len(artifact["tables"]["excursion_grouped_summary"]) == 2
+    assert len(artifact["tables"]["excursion_calibration_grid"]) == 1
+    assert len(artifact["tables"]["excursion_quadrant_summary"]) == 1
 
 
 def test_build_research_artifact_includes_roll_policy_and_validation():
@@ -263,6 +301,9 @@ def test_build_markdown_report_returns_string_and_required_sections():
     assert "## Backtest Summary" in markdown
     assert "### Advanced Risk Metrics" in markdown
     assert "## Validation Diagnostics" in markdown
+    assert "## Excursion Analytics" in markdown
+    assert "- Mean edge ratio: 2.0000" in markdown
+    assert "- Calibration both-hit rule: stop_first" in markdown
     assert "## Caveats" in markdown
 
 

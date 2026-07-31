@@ -50,6 +50,7 @@ REQUIRED_ITEMS = [
     ("Time analysis", "time_grouped_summary"),
     ("Validation", "validation_summary"),
     ("Walk-forward diagnostics", "walk_forward_results"),
+    ("Excursion analytics", "excursion_summary"),
 ]
 
 OTF_ITEMS = [
@@ -213,6 +214,9 @@ csv_exports = [
     ("grid_results", "grid_results.csv"),
     ("time_grouped_summary", "time_grouped_summary.csv"),
     ("walk_forward_results", "walk_forward_results.csv"),
+    ("excursion_grouped_summary", "excursion_grouped_summary.csv"),
+    ("excursion_calibration_grid", "excursion_calibration_grid.csv"),
+    ("excursion_quadrant_summary", "excursion_quadrant_summary.csv"),
     ("otf_rejected_signals", "otf_rejected_signals.csv"),
     ("otf_validation_matrix", "otf_validation_matrix.csv"),
 ]

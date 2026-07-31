@@ -33,6 +33,7 @@ _SIGNALS_META_KEYS = (
 _BACKTEST_META_KEYS = ("trade_summary",)
 _GRID_META_KEYS = ("best_grid_result",)
 _VALIDATION_META_KEYS = ("validation_summary",)
+_EXCURSION_META_KEYS = ("excursion_summary", "excursion_config")
 _MANAGED_RESEARCH_KEYS = {
     "data",
     "dataset_id",
@@ -59,6 +60,11 @@ _MANAGED_RESEARCH_KEYS = {
     "time_bucketed_trades",
     "time_grouped_summary",
     "validation_summary",
+    "excursion_summary",
+    "excursion_config",
+    "excursion_grouped_summary",
+    "excursion_calibration_grid",
+    "excursion_quadrant_summary",
 }
 
 _KNOWN_FILES = {
@@ -78,6 +84,10 @@ _KNOWN_FILES = {
     "grid_results.parquet",
     "best_grid_result.json",
     "validation_summary.json",
+    "excursion_summary.json",
+    "excursion_grouped_summary.parquet",
+    "excursion_calibration_grid.parquet",
+    "excursion_quadrant_summary.parquet",
 }
 
 _SECTION_REQUIRED_FILES = {
@@ -92,6 +102,7 @@ _SECTION_REQUIRED_FILES = {
     "backtest": ("trades.parquet", "trade_summary.json", "equity_curve.parquet"),
     "grid": ("grid_results.parquet", "best_grid_result.json"),
     "validation": ("validation_summary.json",),
+    "excursion": ("excursion_summary.json",),
 }
 
 
@@ -174,6 +185,7 @@ def _manifest_base() -> dict[str, Any]:
             "backtest": False,
             "grid": False,
             "validation": False,
+            "excursion": False,
         },
         "session_keys": [],
     }
@@ -244,6 +256,25 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
         )
         manifest["included"]["validation"] = True
         included_keys.update(_VALIDATION_META_KEYS)
+
+    if session_state.get("excursion_summary") is not None:
+        files["excursion_summary.json"] = _to_json_bytes(
+            {key: session_state.get(key) for key in _EXCURSION_META_KEYS}
+        )
+        excursion_grouped = session_state.get("excursion_grouped_summary")
+        if _is_dataframe(excursion_grouped):
+            files["excursion_grouped_summary.parquet"] = _to_parquet_bytes(excursion_grouped)
+            included_keys.add("excursion_grouped_summary")
+        excursion_calibration = session_state.get("excursion_calibration_grid")
+        if _is_dataframe(excursion_calibration):
+            files["excursion_calibration_grid.parquet"] = _to_parquet_bytes(excursion_calibration)
+            included_keys.add("excursion_calibration_grid")
+        excursion_quadrants = session_state.get("excursion_quadrant_summary")
+        if _is_dataframe(excursion_quadrants):
+            files["excursion_quadrant_summary.parquet"] = _to_parquet_bytes(excursion_quadrants)
+            included_keys.add("excursion_quadrant_summary")
+        manifest["included"]["excursion"] = True
+        included_keys.update(_EXCURSION_META_KEYS)
 
     manifest["session_keys"] = sorted(included_keys)
     files[MANIFEST_FILENAME] = _to_json_bytes(manifest)
@@ -369,6 +400,24 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
             validation_meta = _read_json_from_zip(zf, "validation_summary.json")
             if "validation_summary" in validation_meta:
                 session_values["validation_summary"] = validation_meta["validation_summary"]
+
+        if included.get("excursion"):
+            excursion_meta = _read_json_from_zip(zf, "excursion_summary.json")
+            for key in _EXCURSION_META_KEYS:
+                if key in excursion_meta:
+                    session_values[key] = excursion_meta[key]
+            if "excursion_grouped_summary.parquet" in names:
+                session_values["excursion_grouped_summary"] = _read_parquet_from_zip(
+                    zf, "excursion_grouped_summary.parquet"
+                )
+            if "excursion_calibration_grid.parquet" in names:
+                session_values["excursion_calibration_grid"] = _read_parquet_from_zip(
+                    zf, "excursion_calibration_grid.parquet"
+                )
+            if "excursion_quadrant_summary.parquet" in names:
+                session_values["excursion_quadrant_summary"] = _read_parquet_from_zip(
+                    zf, "excursion_quadrant_summary.parquet"
+                )
 
     return {
         "manifest": manifest,

@@ -93,6 +93,97 @@ Implementation: `thesistester/analytics/metrics.py`.
 \]
 Implementation: `cum_r`, `cummax().clip(lower=0.0)`, and drawdown in `thesistester/analytics/metrics.py:82-85` (and same anchor logic in equity curve at `thesistester/analytics/metrics.py:203-206`).
 
+## MAE/MFE excursion analytics (R10)
+
+R10 uses the already-recorded per-trade excursion columns from
+`simulate_trades()`:
+
+- `mae_points`: maximum adverse excursion in price points from the trade's
+  slipped `entry_price` to the worst bar high/low reached before exit.
+- `mfe_points`: maximum favorable excursion in price points from the trade's
+  slipped `entry_price` to the best bar high/low reached before exit.
+
+Both are descriptive post-trade diagnostics. They are **not** net-of-cost and
+they do not prove the order in which intrabar prices traded.
+
+### MAE/MFE in R
+
+\[
+\text{risk\_points}_i =
+\text{stop\_loss\_ticks}_i \times \text{tick\_size}
+\]
+
+\[
+\text{MAE}_{R,i} = \frac{\text{mae\_points}_i}{\text{risk\_points}_i}
+\quad
+\text{and}
+\quad
+\text{MFE}_{R,i} = \frac{\text{mfe\_points}_i}{\text{risk\_points}_i}
+\]
+
+Implementation: `add_excursion_r_columns()` in
+`thesistester/analytics/excursions.py`.
+
+### Edge ratio
+
+\[
+\text{edge\_ratio}_{R,i} =
+\frac{\text{MFE}_{R,i}}{\text{MAE}_{R,i}}
+\]
+
+Trades with `MAE_R <= 0` have no finite edge ratio and are excluded from edge
+ratio means/medians. The aggregate `mean_edge_ratio_r` and
+`median_edge_ratio_r` are therefore finite-trade summaries, not guarantees of
+future excursion quality.
+
+### Giveback (R)
+
+\[
+\text{giveback}_{R,i} = \text{MFE}_{R,i} - R_i
+\]
+
+This measures how much favorable excursion was given back by the realized exit.
+It is descriptive only; a large giveback can be caused by session exits, time
+exits, or intrabar ambiguity rather than poor stop/target placement.
+
+### MAE×MFE quadrants
+
+`excursion_quadrant_counts()` classifies each trade against configurable MAE
+and MFE thresholds (default 1R/1R):
+
+| Quadrant | Meaning |
+|---|---|
+| `neither_threshold_reached` | Neither adverse nor favorable threshold reached |
+| `target_without_full_stop` | Favorable threshold reached while adverse threshold was not |
+| `stop_without_target` | Adverse threshold reached while favorable threshold was not |
+| `both_stop_and_target_reached` | Both thresholds were reached at some point in the trade |
+
+The `both_stop_and_target_reached` bucket is the key ambiguity bucket: terminal
+bar-level excursions prove both levels were reachable, but not which level came
+first.
+
+### Counterfactual SL/TP hit probability
+
+`sl_tp_hit_probability_grid()` evaluates candidate stop and target distances in
+R from terminal excursions:
+
+\[
+P(\text{target}) =
+\frac{\# \text{trades classified as target hit}}
+{\# \text{evaluated trades}}
+\]
+
+Ambiguous trades where both `MAE_R >= stop_R` and `MFE_R >= target_R` are
+classified by `both_hit_rule`:
+
+- `stop_first` (default): ambiguous trades count as stop hits, matching the
+  engine's pessimistic same-bar rule.
+- `target_first`: ambiguous trades count as target hits.
+- `exclude_ambiguous`: ambiguous trades are removed from the denominator.
+
+These probabilities are calibration diagnostics, not executable counterfactual
+backtests.
+
 ## Notes
 - With zero-cost defaults, gross and net are identical.
 - `gross_pnl_currency` is computed from slipped fills and therefore represents P&L after slippage but before commission.

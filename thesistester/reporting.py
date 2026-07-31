@@ -241,6 +241,7 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "best_grid_result": to_jsonable(session_state.get("best_grid_result")),
             "validation_summary": to_jsonable(session_state.get("validation_summary")),
             "walk_forward_summary": to_jsonable(session_state.get("walk_forward_summary")),
+            "excursion_summary": to_jsonable(session_state.get("excursion_summary")),
         },
         "otf_filter": to_jsonable(build_otf_filter_metadata(session_state)),
         "tables": {
@@ -289,6 +290,24 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "otf_validation_matrix": _table_records(
                 session_state,
                 "otf_validation_matrix",
+                display_timezone=display_timezone,
+                canonical_timezone=canonical_timezone,
+            ),
+            "excursion_grouped_summary": _table_records(
+                session_state,
+                "excursion_grouped_summary",
+                display_timezone=display_timezone,
+                canonical_timezone=canonical_timezone,
+            ),
+            "excursion_calibration_grid": _table_records(
+                session_state,
+                "excursion_calibration_grid",
+                display_timezone=display_timezone,
+                canonical_timezone=canonical_timezone,
+            ),
+            "excursion_quadrant_summary": _table_records(
+                session_state,
+                "excursion_quadrant_summary",
                 display_timezone=display_timezone,
                 canonical_timezone=canonical_timezone,
             ),
@@ -750,6 +769,7 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     trade_summary = results.get("trade_summary") or {}
     best_grid = results.get("best_grid_result") or {}
     validation = results.get("validation_summary") or {}
+    excursion = results.get("excursion_summary") or {}
 
     selected_levels = setup.get("selected_levels") if isinstance(setup, Mapping) else None
     levels_str = (
@@ -827,6 +847,26 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
         f"- Grid overfit risk: {grid_overfit.get('risk_level', '—') if isinstance(grid_overfit, Mapping) else '—'}",
         "",
     ]
+
+    if isinstance(excursion, Mapping) and excursion.get("available"):
+        edge_ratio = excursion.get("edge_ratio") if isinstance(excursion, Mapping) else {}
+        config_exc = excursion.get("config") if isinstance(excursion, Mapping) else {}
+        lines.extend(
+            [
+                "## Excursion Analytics",
+                "⚠️ Diagnostic only — terminal bar-level MAE/MFE cannot prove intrabar order.",
+                "",
+                f"- Trades with excursions: {excursion.get('trade_count', 0)}",
+                f"- Mean MAE (R): {_fmt_number(edge_ratio.get('mean_mae_r') if isinstance(edge_ratio, Mapping) else None)}",
+                f"- Mean MFE (R): {_fmt_number(edge_ratio.get('mean_mfe_r') if isinstance(edge_ratio, Mapping) else None)}",
+                f"- Mean edge ratio: {_fmt_number(edge_ratio.get('mean_edge_ratio_r') if isinstance(edge_ratio, Mapping) else None)}",
+                f"- Median edge ratio: {_fmt_number(edge_ratio.get('median_edge_ratio_r') if isinstance(edge_ratio, Mapping) else None)}",
+                f"- Calibration both-hit rule: {config_exc.get('both_hit_rule', '—') if isinstance(config_exc, Mapping) else '—'}",
+                f"- Grouped summary rows exported: {len(tables.get('excursion_grouped_summary', [])) if isinstance(tables.get('excursion_grouped_summary', []), list) else 0}",
+                f"- Calibration grid rows exported: {len(tables.get('excursion_calibration_grid', [])) if isinstance(tables.get('excursion_calibration_grid', []), list) else 0}",
+                "",
+            ]
+        )
 
     if isinstance(roll_policy, Mapping) or isinstance(roll_validation, Mapping):
         lines.extend(

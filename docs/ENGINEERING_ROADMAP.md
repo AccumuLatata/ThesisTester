@@ -181,3 +181,62 @@ Tooling, CI, and documentation only. Engine, analytics, levels, persistence, and
 | 101 `.py` files | One-time `ruff format` pass (formatting only) |
 | 13 `.py` files | Ruff safe lint fixes: unused imports/locals, split import line, two placeholder f-strings, `== False` → `.eq(False)` |
 | `README.md`, `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md` | Dev setup, CI gates, golden policy, packaging boundary |
+
+---
+
+## R10 — MAE/MFE Excursion Analytics & SL/TP Calibration ✅ Implemented
+
+Adds a pure post-trade analytics layer over the engine's existing
+`mae_points` / `mfe_points` trade columns. No engine behavior changes and no
+golden-fixture regeneration required.
+
+### Scope
+
+Analytics, Validation-page display, report/export, research-bundle persistence,
+and docs only. `simulate_trades()` output and trade-admission semantics are
+**unchanged**.
+
+### Features
+
+- `thesistester/analytics/excursions.py`:
+  - R-normalized MAE/MFE (`mae_r`, `mfe_r`) using each trade's
+    `stop_loss_ticks * tick_size` risk distance.
+  - Edge-ratio and giveback diagnostics.
+  - Grouped MAE/MFE distributions by existing trade columns (direction,
+    trigger, trigger variant, level-source mode, RTH/time buckets).
+  - MAE×MFE quadrant counts for default 1R/1R thresholds.
+  - Counterfactual SL/TP hit-probability grid from terminal excursions with
+    explicit `both_hit_rule` (`stop_first`, `target_first`,
+    `exclude_ambiguous`). Default `stop_first` matches the engine's
+    pessimistic same-bar ambiguity rule.
+  - Bars-held edge-ratio decay proxy.
+- Validation page:
+  - Independent **MAE/MFE excursion analytics** section.
+  - Stores additive session keys: `excursion_summary`, `excursion_config`,
+    `excursion_grouped_summary`, `excursion_calibration_grid`,
+    `excursion_quadrant_summary`.
+  - Shows edge metrics, MAE/MFE scatter, grouped table, quadrant table, and
+    SL/TP probability heatmap.
+- Report/export:
+  - JSON artifact includes `results.excursion_summary` and excursion tables.
+  - Markdown report adds an **Excursion Analytics** section only when results
+    exist.
+  - CSV downloads include grouped, calibration-grid, and quadrant outputs.
+  - Research bundles roundtrip the new R10 session keys.
+
+### Regression safety
+
+- No engine or level/signal computation changes.
+- Deterministic: no RNG.
+- Empty/partial trade tables are safe.
+- R10 summary is schema-versioned (`schema_version = 1`).
+- Docs updated in the same PR: glossary formulas, assumptions/caveats,
+  architecture session-state contract, and this roadmap entry.
+
+### Tests
+
+- `tests/test_excursions.py`: hand-computed R normalization, distributions,
+  quadrants, stop-first / target-first / exclude-ambiguous calibration,
+  edge-ratio decay proxy, empty safety, and stable summary keys.
+- Existing report and research-bundle tests extended for R10 JSON/Markdown/CSV
+  and bundle roundtrip.

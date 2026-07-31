@@ -3,6 +3,14 @@ and statistical validation."""
 
 from __future__ import annotations
 
+from .excursions import (
+    add_excursion_r_columns,
+    edge_ratio_summary,
+    excursion_distribution,
+    excursion_quadrant_counts,
+    excursion_summary,
+    sl_tp_hit_probability_grid,
+)
 from .grid import best_grid_result, run_sl_tp_grid
 from .metrics import equity_curve, summarize_trades, summarize_trades_by_direction
 from .time_analysis import add_time_buckets, pivot_time_metric, summarize_by_group
@@ -19,6 +27,12 @@ __all__ = [
     "summarize_trades",
     "summarize_trades_by_direction",
     "equity_curve",
+    "add_excursion_r_columns",
+    "edge_ratio_summary",
+    "excursion_distribution",
+    "excursion_quadrant_counts",
+    "excursion_summary",
+    "sl_tp_hit_probability_grid",
     "run_sl_tp_grid",
     "best_grid_result",
     "add_time_buckets",
