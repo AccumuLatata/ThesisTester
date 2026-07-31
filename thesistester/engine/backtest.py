@@ -569,7 +569,7 @@ def simulate_trades(
             else:
                 skip_reason = "overlapping_setup"
 
-            if return_skipped_signals:
+            if return_skipped_signals or return_result:
                 skipped_signals.append(
                     {
                         "signal_id": int(sig["signal_id"]),

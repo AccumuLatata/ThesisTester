@@ -300,7 +300,7 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
         files["trades.parquet"] = _to_parquet_bytes(trades)
         files["equity_curve.parquet"] = _to_parquet_bytes(equity_curve)
         files["trade_summary.json"] = _to_json_bytes(
-            {key: session_state.get(key) for key in _BACKTEST_META_KEYS}
+            {key: session_state.get(key) for key in _BACKTEST_META_KEYS if key in session_state}
         )
         manifest["included"]["backtest"] = True
         included_keys.update({"trades", "equity_curve", *_BACKTEST_META_KEYS})
@@ -309,7 +309,7 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
     if _is_dataframe(grid_results):
         files["grid_results.parquet"] = _to_parquet_bytes(grid_results)
         files["best_grid_result.json"] = _to_json_bytes(
-            {key: session_state.get(key) for key in _GRID_META_KEYS}
+            {key: session_state.get(key) for key in _GRID_META_KEYS if key in session_state}
         )
         manifest["included"]["grid"] = True
         included_keys.update({"grid_results", *_GRID_META_KEYS})
