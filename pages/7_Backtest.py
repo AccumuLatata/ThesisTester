@@ -419,6 +419,8 @@ if costs.get("commission_per_side", 0.0) > 0.0 or costs.get("slippage_ticks", 0.
     st.caption(
         "Execution costs active — KPIs use net-of-cost pnl_currency and net R (commission/slippage applied)."
     )
+else:
+    st.caption("Execution costs disabled — KPIs are gross (zero commission/slippage).")
 intrabar_diagnostic = st.session_state.get("backtest_intrabar_diagnostic") or {}
 if intrabar_diagnostic:
     st.caption(
@@ -428,8 +430,6 @@ if intrabar_diagnostic:
         f"residual ambiguities: {intrabar_diagnostic.get('ambiguous_resolution_count', 0)}. "
         "Deterministic OHLC paths are assumptions, not recovered market paths."
     )
-else:
-    st.caption("Execution costs disabled — KPIs are gross (zero commission/slippage).")
 
 # ── OTF filter status ─────────────────────────────────────────────────────────
 _otf_summary = st.session_state.get("otf_filter_summary") or {}

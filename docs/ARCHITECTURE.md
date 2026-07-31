@@ -64,8 +64,9 @@ append audit columns; existing columns are neither removed nor retyped.
 `path_open_proximity` is a pure OHLC heuristic. `subtimeframe` has a strict
 dual-resolution boundary: lower rows must be sorted, duplicate-free, strictly
 finer, exactly divide the parent interval, completely cover every parent bar,
+match every expected lower timestamp exactly, contain finite valid OHLC ranges,
 and reconcile first-open/max-high/min-low/last-close. No interpolation,
-upsampling, or silent fallback is permitted.
+upsampling, offset cadence, or silent fallback is permitted.
 
 Grid and walk-forward runs hold one intrabar model fixed; the model is a market
 path assumption, not an optimization dimension. R18 experiment schema version

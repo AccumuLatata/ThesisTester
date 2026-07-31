@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Literal
 
 import pandas as pd
@@ -150,17 +151,32 @@ def resolve_ohlc_bar(
         )
     if model != "path_open_proximity":
         raise ValueError("resolve_ohlc_bar does not accept subtimeframe without sub-bars")
-    if not both_hit:
+    if not both_hit and entry_price is None:
         kind = "SL" if stop_hit else "TP"
         return IntrabarResolution(kind, "intrabar_path_single_hit", False)
 
     distance_high = abs(high - open_price)
     distance_low = abs(open_price - low)
     if distance_high == distance_low:
+        candidate_paths = (
+            [open_price, high, low, close],
+            [open_price, low, high, close],
+        )
+        outcomes = {
+            _first_event_on_path(
+                active_vertices,
+                stop_price=stop_price,
+                target_price=target_price,
+                direction=direction,
+            )
+            for vertices in candidate_paths
+            if (active_vertices := _path_after_entry(vertices, entry_price))
+        }
+        kind = "SL" if "SL" in outcomes else ("TP" if "TP" in outcomes else None)
         return IntrabarResolution(
-            "SL",
+            kind,
             "intrabar_path_proximity_tie_sl_first",
-            True,
+            both_hit,
             ambiguous=True,
             proximity_tie=True,
         )
@@ -181,7 +197,7 @@ def resolve_ohlc_bar(
         if active_vertices
         else None
     )
-    return IntrabarResolution(kind, resolution, True)
+    return IntrabarResolution(kind, resolution, both_hit)
 
 
 def prepare_subtimeframe_context(
@@ -231,6 +247,25 @@ def prepare_subtimeframe_context(
                 f"{parent_reset['timestamp'].iloc[index]}: "
                 f"expected {expected_count}, observed {len(group)}"
             )
+        actual_timestamps = pd.to_datetime(group["timestamp"], utc=True).tolist()
+        expected_timestamps = [start + offset * sub_interval for offset in range(expected_count)]
+        if actual_timestamps != expected_timestamps:
+            raise ValueError(
+                "subtimeframe timestamps are not exactly aligned for parent timestamp "
+                f"{parent_reset['timestamp'].iloc[index]}"
+            )
+        for label, candidate in (("parent", parent_reset.iloc[[index]]), ("subtimeframe", group)):
+            numeric = candidate[["open", "high", "low", "close"]].apply(
+                pd.to_numeric, errors="coerce"
+            )
+            if not numeric.map(lambda value: math.isfinite(float(value))).all().all():
+                raise ValueError(f"{label} OHLC contains non-finite values")
+            invalid_range = (numeric["high"] < numeric[["open", "close"]].max(axis=1)) | (
+                numeric["low"] > numeric[["open", "close"]].min(axis=1)
+            )
+            invalid_range |= numeric["high"] < numeric["low"]
+            if invalid_range.any():
+                raise ValueError(f"{label} OHLC invariants are invalid")
         parent_row = parent_reset.iloc[index]
         comparisons = {
             "open": (float(group["open"].iloc[0]), float(parent_row["open"])),
@@ -272,13 +307,16 @@ def resolve_subtimeframe_bar(
     )
     parent_both = parent_stop and parent_target
     active = entry_price is None
+    entry_subbar_ambiguous = False
     for _, sub_bar in sub_bars.iterrows():
         low = float(sub_bar["low"])
         high = float(sub_bar["high"])
+        activated_this_subbar = False
         if not active:
             active = low <= float(entry_price) <= high
             if not active:
                 continue
+            activated_this_subbar = True
         stop_hit, target_hit = _hits(
             low=low,
             high=high,
@@ -286,6 +324,18 @@ def resolve_subtimeframe_bar(
             target_price=target_price,
             direction=direction,
         )
+        if activated_this_subbar:
+            if stop_hit:
+                return IntrabarResolution(
+                    "SL",
+                    "subtimeframe_entry_subbar_pessimistic",
+                    parent_both,
+                    ambiguous=True,
+                    exit_subbar_timestamp=pd.Timestamp(sub_bar["timestamp"]),
+                )
+            if target_hit:
+                entry_subbar_ambiguous = True
+                continue
         if stop_hit and target_hit:
             return IntrabarResolution(
                 "SL",
@@ -297,8 +347,18 @@ def resolve_subtimeframe_bar(
         if stop_hit or target_hit:
             return IntrabarResolution(
                 "SL" if stop_hit else "TP",
-                "subtimeframe_sequence",
+                (
+                    "subtimeframe_sequence_after_entry_ambiguity"
+                    if entry_subbar_ambiguous
+                    else "subtimeframe_sequence"
+                ),
                 parent_both,
+                ambiguous=entry_subbar_ambiguous,
                 exit_subbar_timestamp=pd.Timestamp(sub_bar["timestamp"]),
             )
-    return IntrabarResolution(None, "no_hit_after_entry", parent_both)
+    return IntrabarResolution(
+        None,
+        ("no_hit_after_entry_ambiguity" if entry_subbar_ambiguous else "no_hit_after_entry"),
+        parent_both,
+        ambiguous=entry_subbar_ambiguous,
+    )

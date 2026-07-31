@@ -20,6 +20,20 @@ def _signal(direction: str = "long") -> pd.DataFrame:
     )
 
 
+def _three_c_signal(entry_price: float = 99.0) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "signal_id": [1],
+            "bar_index": [1],
+            "entry_bar_index": [1],
+            "retrace_entry_price": [entry_price],
+            "trigger": ["3c"],
+            "direction": ["long"],
+            "status": ["filled"],
+        }
+    )
+
+
 def _parent_bar(*, high: float, low: float, close: float = 100.0) -> pd.DataFrame:
     return pd.DataFrame(
         {
@@ -81,6 +95,23 @@ def test_open_proximity_tie_is_deterministically_sl_first():
     assert result.intrabar_diagnostic["ambiguous_resolution_count"] == 1
 
 
+def test_open_proximity_does_not_exit_on_single_target_hit_before_entry():
+    parent = _parent_bar(high=104.0, low=98.0, close=100.0)
+    parent.loc[1, "open"] = 102.0
+    result = simulate_trades(
+        parent,
+        _three_c_signal(),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=4,
+        intrabar_model="path_open_proximity",
+        return_result=True,
+    )
+    assert isinstance(result, SimulationResult)
+    assert result.trades.iloc[0]["exit_reason"] == "EOD"
+
+
 def _subtimeframe_data(*, residual_both_hit: bool = False) -> pd.DataFrame:
     timestamps = pd.date_range("2026-01-05 09:30", periods=10, freq="1min", tz=TZ)
     rows = [
@@ -105,6 +136,18 @@ def _subtimeframe_data(*, residual_both_hit: bool = False) -> pd.DataFrame:
             "volume": [200] * len(rows),
         }
     )
+
+
+def _preentry_subtimeframe_data(*, target_on_entry_subbar: bool = False) -> pd.DataFrame:
+    frame = _subtimeframe_data()
+    frame.loc[5:, ["open", "high", "low", "close"]] = [
+        [102.0, 104.0, 102.0, 103.0],
+        [100.0, 104.0 if target_on_entry_subbar else 102.0, 98.0, 100.0],
+        [100.0, 102.0, 99.0, 100.0],
+        [100.0, 101.0, 99.0, 100.0],
+        [100.0, 101.0, 99.0, 100.0],
+    ]
+    return frame
 
 
 def test_subtimeframe_sequence_orders_target_before_later_stop():
@@ -149,6 +192,30 @@ def test_subtimeframe_residual_same_subbar_is_pessimistic_and_audited():
     assert result.intrabar_diagnostic["ambiguous_resolution_count"] == 1
 
 
+@pytest.mark.parametrize("target_on_entry_subbar", [False, True])
+def test_subtimeframe_never_credits_target_before_or_unordered_with_entry(
+    target_on_entry_subbar,
+):
+    parent = _parent_bar(high=104.0, low=98.0, close=100.0)
+    parent.loc[1, "open"] = 102.0
+    result = simulate_trades(
+        parent,
+        _three_c_signal(),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=4,
+        intrabar_model="subtimeframe",
+        subtimeframe_data=_preentry_subtimeframe_data(
+            target_on_entry_subbar=target_on_entry_subbar
+        ),
+        return_result=True,
+    )
+    assert isinstance(result, SimulationResult)
+    assert result.trades.iloc[0]["exit_reason"] == "EOD"
+    assert result.intrabar_diagnostic["ambiguous_resolution_count"] == int(target_on_entry_subbar)
+
+
 def test_subtimeframe_requires_complete_reconciling_finer_data():
     parent = _parent_bar(high=104.5, low=97.0)
     with pytest.raises(ValueError, match="requires subtimeframe_data"):
@@ -172,6 +239,32 @@ def test_subtimeframe_requires_complete_reconciling_finer_data():
             intrabar_model="subtimeframe",
             subtimeframe_data=_subtimeframe_data().iloc[:-1],
         )
+
+
+def test_subtimeframe_rejects_offset_nonfinite_and_invalid_ohlc_rows():
+    parent = _parent_bar(high=104.5, low=97.0)
+    offset = _subtimeframe_data()
+    offset["timestamp"] = offset["timestamp"] + pd.Timedelta(seconds=30)
+    malformed_nan = _subtimeframe_data()
+    malformed_nan.loc[2, "open"] = float("nan")
+    malformed_range = _subtimeframe_data()
+    malformed_range.loc[2, "high"] = malformed_range.loc[2, "low"] - 1
+    for frame, message in (
+        (offset, "not exactly aligned"),
+        (malformed_nan, "non-finite"),
+        (malformed_range, "invariants"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            simulate_trades(
+                parent,
+                _signal(),
+                tick_size=1.0,
+                point_value=1.0,
+                stop_loss_ticks=2,
+                take_profit_ticks=4,
+                intrabar_model="subtimeframe",
+                subtimeframe_data=frame,
+            )
 
 
 def test_default_and_explicit_sl_first_preserve_legacy_schema_and_values():

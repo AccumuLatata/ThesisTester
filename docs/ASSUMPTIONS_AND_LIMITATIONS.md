@@ -23,6 +23,11 @@ This engine is for **research screening**, not proof of a durable edge.
   every parent bar, and reconciles to parent O/H/L/C. When stop and target occur
   inside the same terminal sub-bar, residual ordering is still unknowable and
   resolves SL-first.
+- For intrabar `3c`/legacy `confirm_3bar` entries, pre-entry movement is
+  excluded. If an entry and stop occur in one lower bar, stop is taken
+  pessimistically; a target seen only in that entry sub-bar is not credited
+  because target-after-entry ordering is unproved. The event is counted as
+  residual ambiguity.
 - Path-model exits use `SL_intrabar_path` / `TP_intrabar_path`; lower-timeframe
   exits use `SL_subtimeframe` / `TP_subtimeframe`. Legacy reasons remain `SL` /
   `TP`.

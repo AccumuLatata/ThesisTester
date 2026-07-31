@@ -607,6 +607,7 @@ def simulate_trades(
         intrabar_resolution = "not_evaluated"
         intrabar_parent_both_hit = False
         intrabar_ambiguous = False
+        pending_intrabar_ambiguity = False
         exit_subbar_timestamp: pd.Timestamp | None = None
 
         # MAE / MFE tracking (adverse / favorable excursion in points)
@@ -685,6 +686,7 @@ def simulate_trades(
                     entry_price=entry_activation_price,
                 )
 
+            pending_intrabar_ambiguity = pending_intrabar_ambiguity or resolution.ambiguous
             if resolution.exit_kind is not None:
                 exit_bar_index = b
                 theoretical_exit_price = (
@@ -698,13 +700,13 @@ def simulate_trades(
                     exit_reason = f"{resolution.exit_kind}_subtimeframe"
                 intrabar_resolution = resolution.resolution
                 intrabar_parent_both_hit = resolution.parent_both_hit
-                intrabar_ambiguous = resolution.ambiguous
+                intrabar_ambiguous = pending_intrabar_ambiguity
                 exit_subbar_timestamp = resolution.exit_subbar_timestamp
                 bracket_exit_count += 1
                 if resolution.parent_both_hit:
                     both_hit_count += 1
                     affected_bars.add(b)
-                if resolution.ambiguous:
+                if intrabar_ambiguous:
                     ambiguous_count += 1
                 if resolution.proximity_tie:
                     proximity_tie_count += 1
@@ -741,6 +743,9 @@ def simulate_trades(
                 theoretical_exit_price = float(df_reset["close"].iloc[n_bars - 1])
                 exit_reason = "EOD"
                 intrabar_resolution = "forced_eod"
+            if pending_intrabar_ambiguity:
+                intrabar_ambiguous = True
+                ambiguous_count += 1
 
         if direction == "long":
             exit_price = float(theoretical_exit_price) - slip_pts
