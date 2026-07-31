@@ -131,7 +131,22 @@ def _profile_timestamp(values: pd.Series, *, source_tz: str, target_tz: str) -> 
     if parsed.isna().any():
         raise DataValidationError("Unparseable values in profile timestamp column.")
     if parsed.dt.tz is None:
-        parsed = parsed.dt.tz_localize(source_tz)
+        try:
+            parsed = parsed.dt.tz_localize(source_tz)
+        except Exception as exc:
+            text = str(exc).lower()
+            class_name = exc.__class__.__name__.lower()
+            if "nonexistent" in class_name or "nonexistent" in text:
+                raise DataValidationError(
+                    f"Nonexistent local timestamps detected for source timezone {source_tz}. "
+                    "Review timestamps around spring-forward DST transition and retry."
+                ) from exc
+            if "ambiguous" in class_name or "ambiguous" in text:
+                raise DataValidationError(
+                    f"Ambiguous local timestamps detected for source timezone {source_tz}. "
+                    "Review timestamps around fall-back DST transition and retry."
+                ) from exc
+            raise
     return parsed.dt.tz_convert(target_tz)
 
 

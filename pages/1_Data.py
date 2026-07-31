@@ -62,9 +62,7 @@ def _reset_source_timezone_for_import() -> None:
     """Apply the selected source/profile default for timezone-naive timestamps."""
     source = st.session_state["data_source_selector"]
     profile = st.session_state.get("data_format_profile_selector", "canonical")
-    exchange_timezone = INSTRUMENTS[
-        st.session_state["data_instrument_selector"]
-    ].exchange_tz
+    exchange_timezone = INSTRUMENTS[st.session_state["data_instrument_selector"]].exchange_tz
     st.session_state["data_source_timezone_selector"] = (
         "America/New_York"
         if source == "Sample data"
@@ -369,6 +367,9 @@ if flash_message:
 bootstrap_message = st.session_state.pop(BOOTSTRAP_MESSAGE_KEY, None)
 if bootstrap_message:
     st.success(bootstrap_message)
+raw_capture_warning = st.session_state.pop("raw_capture_warning", None)
+if raw_capture_warning:
+    st.warning(raw_capture_warning)
 
 st.subheader("Local saved datasets")
 st.caption(f"Local store: `{get_store_root()}`")

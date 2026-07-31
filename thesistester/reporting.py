@@ -226,6 +226,11 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
         "timezone_contract": contract,
         "configuration": {
             "instrument": to_jsonable(instrument),
+            "format_profile": to_jsonable(session_state.get("format_profile", "canonical")),
+            "raw_capture": {
+                "raw_interval": to_jsonable(session_state.get("raw_interval")),
+                "raw_rows": _table_count(session_state, "raw_data"),
+            },
             "setup_config": to_jsonable(setup_config),
             "last_signal_setup": to_jsonable(session_state.get("last_signal_setup")),
             "walk_forward_config": to_jsonable(session_state.get("walk_forward_config")),

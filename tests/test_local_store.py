@@ -262,6 +262,40 @@ def test_dataset_resave_preserves_existing_raw_sidecar_metadata():
     pd.testing.assert_frame_equal(load_raw_dataset(resaved["dataset_id"]), raw)
 
 
+def test_dataset_rejects_conflicting_raw_capture_for_same_canonical_bars():
+    df = _base_dataset()
+    first_raw = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-06-02 09:30:01", periods=2, freq="1s", tz=TZ),
+            "price": [100.0, 100.25],
+            "volume": [1, 2],
+        }
+    )
+    second_raw = first_raw.copy()
+    second_raw.loc[1, "price"] = 100.5
+    save_dataset(
+        df,
+        name="First capture",
+        instrument="MES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+        raw_data=first_raw,
+        format_profile="tick_capture",
+    )
+    with pytest.raises(ValueError, match="Refusing to overwrite raw provenance"):
+        save_dataset(
+            df,
+            name="Conflicting capture",
+            instrument="MES",
+            base_interval="1min",
+            source_timezone=TZ,
+            exchange_timezone=TZ,
+            raw_data=second_raw,
+            format_profile="tick_capture",
+        )
+
+
 def test_dataset_id_content_sensitivity():
     df_one = _base_dataset()
     df_two = _base_dataset()

@@ -124,3 +124,24 @@ def test_vendor_profile_must_be_explicit(tmp_path):
     path.write_text("20260602 133000;100;101;99;100.5;10\n")
     with pytest.raises(DataValidationError, match="Missing required columns"):
         load_ohlcv(path)
+
+
+@pytest.mark.parametrize(
+    ("timestamp", "message"),
+    [
+        ("2026-03-08 02:30:00", "Nonexistent local timestamps"),
+        ("2026-11-01 01:30:00", "Ambiguous local timestamps"),
+    ],
+)
+def test_profile_timestamps_translate_dst_failures_to_data_validation_error(
+    tmp_path, timestamp, message
+):
+    path = tmp_path / "ticks.csv"
+    path.write_text(f"timestamp,price,volume\n{timestamp},100,1\n")
+    with pytest.raises(DataValidationError, match=message):
+        load_ohlcv(
+            path,
+            format_profile="tick_capture",
+            source_tz="America/New_York",
+            target_tz="America/New_York",
+        )

@@ -97,10 +97,5 @@ def test_ninjatrader_is_a_raw_capture_profile():
 def test_ninjatrader_default_source_timezone_is_utc():
     data_page = _import_data_page_module({})
 
-    assert (
-        data_page._default_source_timezone("ninjatrader", "America/New_York") == "UTC"
-    )
-    assert (
-        data_page._default_source_timezone("canonical", "America/New_York")
-        == "America/New_York"
-    )
+    assert data_page._default_source_timezone("ninjatrader", "America/New_York") == "UTC"
+    assert data_page._default_source_timezone("canonical", "America/New_York") == "America/New_York"

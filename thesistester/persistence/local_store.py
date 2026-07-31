@@ -431,6 +431,18 @@ def save_dataset(
         metadata_format_profile = existing_metadata.get("format_profile", format_profile)
         metadata_raw_interval = existing_metadata.get("raw_interval", raw_interval)
         metadata_raw_rows = int(len(pd.read_parquet(raw_path)))
+    elif raw_data is not None and raw_path.exists():
+        existing_metadata = _read_json(metadata_path)
+        existing_raw = pd.read_parquet(raw_path)
+        existing_profile = existing_metadata.get("format_profile", "canonical")
+        if (
+            _hash_dataframe(existing_raw) != _hash_dataframe(raw_data)
+            or existing_profile != format_profile
+        ):
+            raise ValueError(
+                "A different raw capture already exists for this canonical dataset. "
+                "Refusing to overwrite raw provenance."
+            )
 
     metadata = _dataset_metadata(
         canonical,

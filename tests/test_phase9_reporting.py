@@ -335,6 +335,21 @@ def test_build_research_artifact_handles_missing_keys_gracefully():
     assert artifact["tables"]["trades"] == []
 
 
+def test_research_artifact_exports_r17_ingestion_provenance():
+    artifact = build_research_artifact(
+        {
+            "format_profile": "databento_trades",
+            "raw_interval": "0 days 00:00:01",
+            "raw_data": pd.DataFrame({"timestamp": [1, 2], "price": [100.0, 101.0]}),
+        }
+    )
+    assert artifact["configuration"]["format_profile"] == "databento_trades"
+    assert artifact["configuration"]["raw_capture"] == {
+        "raw_interval": "0 days 00:00:01",
+        "raw_rows": 2,
+    }
+
+
 def test_build_research_artifact_counts_match_signals_and_trades():
     artifact = build_research_artifact(_sample_session_state())
 

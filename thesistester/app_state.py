@@ -17,9 +17,7 @@ ACTIVE_SAVED_DATASET_KEY = "_active_saved_dataset_id"
 BOOTSTRAP_MESSAGE_KEY = "_data_bootstrap_message"
 
 
-def restore_saved_dataset_provenance(
-    dataset_id: str, metadata: dict[str, object]
-) -> None:
+def restore_saved_dataset_provenance(dataset_id: str, metadata: dict[str, object]) -> None:
     """Restore saved ingestion provenance and its optional raw capture sidecar."""
     st.session_state["format_profile"] = metadata.get("format_profile", "canonical")
     raw_interval = metadata.get("raw_interval")
@@ -28,7 +26,15 @@ def restore_saved_dataset_provenance(
     else:
         st.session_state["raw_interval"] = raw_interval
 
-    raw_data = load_raw_dataset(dataset_id)
+    try:
+        raw_data = load_raw_dataset(dataset_id)
+    except (OSError, ValueError):
+        raw_data = None
+        st.session_state["raw_capture_warning"] = (
+            "Saved raw capture sidecar could not be read; canonical bars remain available."
+        )
+    else:
+        st.session_state.pop("raw_capture_warning", None)
     if raw_data is None:
         st.session_state.pop("raw_data", None)
     else:
