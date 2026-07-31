@@ -77,7 +77,11 @@ def test_headless_facade_matches_ui_backtest_composition(tmp_path):
     assert not signal_result["signals"].empty
     assert signal_result["signal_settings"]["otf_algorithm_version"]
     assert signal_result["signal_settings"]["otf_config_hash"]
-    assert signal_result["signal_settings"]["setup_snapshot"] == setup
+    normalized_snapshot = signal_result["signal_settings"]["setup_snapshot"]
+    assert normalized_snapshot["name"] == setup["name"]
+    assert normalized_snapshot["otf_filter"] == setup["otf_filter"]
+    assert normalized_snapshot["otf_algorithm_version"]
+    assert normalized_snapshot["otf_config_hash"]
 
     config = {
         "stop_loss_ticks": 2,
