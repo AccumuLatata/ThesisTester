@@ -12,6 +12,7 @@ from thesistester.visualization import (
     export_worst_loser_review_pngs,
     selected_trade_time_window,
     select_worst_losers,
+    trade_review_export_signature,
     trade_excursion_price_levels,
 )
 
@@ -119,3 +120,36 @@ def test_worst_loser_export_contains_bounded_pngs():
     with zipfile.ZipFile(io.BytesIO(export)) as archive:
         assert archive.namelist() == ["trade_7_-1.50R.png", "trade_8_-0.50R.png"]
         assert all(archive.read(name).startswith(b"\x89PNG") for name in archive.namelist())
+
+
+def test_export_rejects_missing_trade_timestamps_before_rendering():
+    invalid_loss = _trade().drop(labels=["entry_timestamp", "exit_timestamp"])
+
+    with pytest.raises(ValueError, match="no usable timestamps"):
+        export_worst_loser_review_pngs(
+            pd.DataFrame([invalid_loss]),
+            _ohlcv(),
+            count=1,
+            buffer_rows=3,
+        )
+
+
+def test_export_signature_changes_with_trades_and_display_settings():
+    kwargs = {
+        "count": 1,
+        "buffer_rows": 100,
+        "show_sessions": True,
+        "show_levels": True,
+        "show_confluence_zones": True,
+        "show_final_stop": False,
+    }
+    baseline = trade_review_export_signature(pd.DataFrame([_trade()]), **kwargs)
+    changed_settings = trade_review_export_signature(
+        pd.DataFrame([_trade()]), **{**kwargs, "show_final_stop": True}
+    )
+    changed_trades = _trade()
+    changed_trades["r_multiple"] = -0.5
+    changed_inputs = trade_review_export_signature(pd.DataFrame([changed_trades]), **kwargs)
+
+    assert baseline != changed_settings
+    assert baseline != changed_inputs

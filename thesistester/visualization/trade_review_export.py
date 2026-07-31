@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import re
 import zipfile
+from hashlib import sha256
 
 import pandas as pd
 import plotly.io as pio
@@ -35,6 +36,30 @@ def _filename(trade: pd.Series) -> str:
     return f"trade_{trade_id}_{r_label}.png"
 
 
+def trade_review_export_signature(
+    trades: pd.DataFrame,
+    *,
+    count: int,
+    buffer_rows: int,
+    show_sessions: bool,
+    show_levels: bool,
+    show_confluence_zones: bool,
+    show_final_stop: bool,
+) -> str:
+    """Return a stable identity for the export inputs and display configuration."""
+    selected = select_worst_losers(trades, count=count)
+    payload = selected.to_json(orient="split", date_format="iso", default_handler=str)
+    settings = (
+        int(count),
+        int(buffer_rows),
+        bool(show_sessions),
+        bool(show_levels),
+        bool(show_confluence_zones),
+        bool(show_final_stop),
+    )
+    return sha256(repr((payload, settings)).encode("utf-8")).hexdigest()
+
+
 def _image_safe_chart(chart):
     """Round-trip through Plotly JSON to normalize pandas timestamps for Kaleido."""
     return pio.from_json(chart.to_json())
@@ -48,6 +73,10 @@ def export_worst_loser_review_pngs(
     buffer_rows: int,
     levels: pd.DataFrame | None = None,
     confluence_zones: pd.DataFrame | None = None,
+    show_sessions: bool = True,
+    show_levels: bool = True,
+    show_confluence_zones: bool = True,
+    show_final_stop: bool = False,
 ) -> bytes:
     """Return a ZIP of bounded PNG charts for the worst-N losing trades.
 
@@ -68,11 +97,19 @@ def export_worst_loser_review_pngs(
                 ohlcv_df=ohlcv_df,
                 buffer_rows=buffer_rows,
             )
+            if start is None or end is None:
+                raise ValueError(
+                    f"Trade {trade.get('trade_id', '—')} has no usable timestamps for a bounded review."
+                )
             chart = build_trade_review_chart(
                 clip_by_time_window(ohlcv_df, start=start, end=end),
                 trade,
                 levels=clip_by_time_window(levels, start=start, end=end),
                 confluence_zones=clip_by_time_window(confluence_zones, start=start, end=end),
+                show_sessions=show_sessions,
+                show_levels=show_levels,
+                show_confluence_zones=show_confluence_zones,
+                show_final_stop=show_final_stop,
             )
             archive.writestr(
                 _filename(trade),

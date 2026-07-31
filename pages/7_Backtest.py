@@ -41,6 +41,7 @@ from thesistester.visualization import (
     trade_time_window,
     build_trade_review_chart,
     export_worst_loser_review_pngs,
+    trade_review_export_signature,
 )
 
 st.title("📊 Backtest")
@@ -863,6 +864,15 @@ if has_trades:
                 step=1,
             )
         )
+        export_signature = trade_review_export_signature(
+            trades,
+            count=loss_count,
+            buffer_rows=review_buffer_rows,
+            show_sessions=review_show_sessions,
+            show_levels=review_show_levels,
+            show_confluence_zones=review_show_zones,
+            show_final_stop=review_show_final_stop,
+        )
         if st.button("Prepare worst-loser PNG export", type="secondary"):
             try:
                 with st.spinner("Rendering bounded trade-review PNGs…"):
@@ -873,12 +883,20 @@ if has_trades:
                         buffer_rows=review_buffer_rows,
                         levels=st.session_state.get("levels"),
                         confluence_zones=st.session_state.get("confluence_zones"),
+                        show_sessions=review_show_sessions,
+                        show_levels=review_show_levels,
+                        show_confluence_zones=review_show_zones,
+                        show_final_stop=review_show_final_stop,
                     )
                 st.session_state["trade_review_export_zip"] = export_bytes
+                st.session_state["trade_review_export_signature"] = export_signature
             except (ValueError, RuntimeError) as exc:
                 st.error(f"Could not render PNG export: {exc}")
         export_bytes = st.session_state.get("trade_review_export_zip")
-        if isinstance(export_bytes, bytes):
+        if (
+            isinstance(export_bytes, bytes)
+            and st.session_state.get("trade_review_export_signature") == export_signature
+        ):
             st.download_button(
                 "Download worst-loser trade reviews (.zip)",
                 data=export_bytes,

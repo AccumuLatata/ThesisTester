@@ -151,6 +151,7 @@ def _clear_dataset_dependent_state() -> None:
         "trade_review_trade_id",
         "trade_review_buffer_rows",
         "trade_review_export_zip",
+        "trade_review_export_signature",
         "roll_policy",
         "roll_validation",
         "roll_method_selector",
