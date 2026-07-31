@@ -20,6 +20,13 @@ from .monte_carlo import (
     monte_carlo_summary,
     path_metrics_from_r,
 )
+from .noise import (
+    assert_valid_ohlc,
+    noise_summary,
+    perturb_ohlc,
+    rolling_atr,
+    trade_persistence_rate,
+)
 from .overfitting import (
     GridSequenceResult,
     cscv_pbo,
@@ -53,6 +60,11 @@ __all__ = [
     "monte_carlo_skip",
     "monte_carlo_block_resample",
     "monte_carlo_summary",
+    "rolling_atr",
+    "assert_valid_ohlc",
+    "perturb_ohlc",
+    "trade_persistence_rate",
+    "noise_summary",
     "GridSequenceResult",
     "grid_trade_sequences",
     "cscv_pbo",

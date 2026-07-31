@@ -186,6 +186,8 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         ),
         "monte_carlo_summary": {"schema_version": 1, "available": True},
         "monte_carlo_config": {"n_simulations": 100},
+        "noise_summary": {"schema_version": 1, "available": True},
+        "noise_config": {"n_replicas": 100},
         "overfitting_summary": {"schema_version": 1, "available": True},
         "overfitting_config": {"pbo_partitions": 4},
     }
@@ -228,6 +230,8 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         "excursion_quadrant_summary",
         "monte_carlo_summary",
         "monte_carlo_config",
+        "noise_summary",
+        "noise_config",
         "overfitting_summary",
         "overfitting_config",
     ):
@@ -355,6 +359,12 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
             },
         },
         "monte_carlo_config": {"n_simulations": 50, "random_state": 42},
+        "noise_summary": {
+            "schema_version": 1,
+            "available": True,
+            "replicas": {"n_completed": 50},
+        },
+        "noise_config": {"n_replicas": 50, "random_state": 42},
         "overfitting_summary": {
             "schema_version": 1,
             "available": True,
@@ -414,6 +424,8 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
     assert restored_state["monte_carlo_summary"]["schema_version"] == 1
     assert restored_state["monte_carlo_summary"]["trade_count"] == 1
     assert restored_state["monte_carlo_config"] == {"n_simulations": 50, "random_state": 42}
+    assert restored_state["noise_summary"]["schema_version"] == 1
+    assert restored_state["noise_config"] == {"n_replicas": 50, "random_state": 42}
     assert restored_state["overfitting_summary"]["schema_version"] == 1
     assert restored_state["overfitting_config"]["pbo_partitions"] == 4
 

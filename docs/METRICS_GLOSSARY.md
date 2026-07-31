@@ -339,6 +339,18 @@ per-side sample sizes.  For serious research, values ≥ 10–30 per side are ad
   random next-open entry schedule achieves expectancy at least as high as the
   selected replayed grid cell under identical execution settings.
 
+## R16 price-series noise test
+
+- **Noise fraction:** symmetric perturbation magnitude as a fraction of either
+  per-bar range or rolling true-range ATR.
+- **Replica expectancy / profit-factor percentile:** percentile across complete
+  levels → signals → backtest reruns on synthetic but OHLC-valid parent bars.
+- **Trade persistence rate:** fraction of baseline trades also present in a
+  replica, matched by `signal_id`, or by direction plus entry timestamp when
+  no signal ID is available.
+- **Pinned subtimeframe policy:** supplied lower-timeframe R12 data is reused
+  unchanged; R16 does not fabricate synthetic sub-bars.
+
 ## R12 intrabar diagnostics
 
 | Field | Definition |

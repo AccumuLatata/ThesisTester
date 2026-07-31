@@ -212,6 +212,20 @@ Agent safety requirements:
 - Run `pytest -q tests/test_overfitting.py tests/test_phase8_validation.py`
   after changing R15 statistics or validation integration.
 
+## R16 noise-test research safety
+
+- Keep R16 opt-in and retain `validation_summary()` unchanged.
+- Perturb only a copied OHLC frame and assert high/low consistency for every
+  replica; never mutate uploaded/canonical data.
+- Re-run the canonical levels → signals → OTF → backtest path rather than
+  approximating a noisy trade sequence.
+- Use explicit local seeded RNG and preserve the noise scale, seed, matching
+  rule, and subtimeframe policy in the exported config.
+- Do not synthesize lower-timeframe data; document pinned lower-timeframe
+  replay as a limitation.
+- Run `pytest -q tests/test_noise.py tests/test_api.py tests/test_golden_master.py`
+  after R16 changes.
+
 ## Repository conventions (verified)
 - Multipage Streamlit workflow with phase pages under `pages/` (`app.py:10-33`).
 - Core outputs are passed through `st.session_state` between phases (see `docs/ARCHITECTURE.md`).

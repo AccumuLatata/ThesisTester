@@ -201,6 +201,44 @@ def test_grid_and_validation_battery_are_seeded_and_plain_data(tmp_path):
     )
 
 
+def test_validation_r16_noise_is_opt_in_and_seeded(tmp_path):
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path)
+    levels = compute_levels(data, config=_levels_config())["levels"]
+    setup = _setup()
+    signals = generate_signals(levels, setup)
+    backtest = run_backtest(
+        levels,
+        signals["signals"],
+        config={"stop_loss_ticks": 2, "take_profit_ticks": 3},
+        setup_config=setup,
+        signal_settings=signals["signal_settings"],
+    )
+    config = {
+        "n_bootstrap": 25,
+        "n_permutations": 25,
+        "noise": {
+            "enabled": True,
+            "n_replicas": 5,
+            "noise_fraction": 0.05,
+            "scale_basis": "atr",
+            "atr_period": 3,
+            "random_state": 7,
+        },
+    }
+    kwargs = {
+        "raw_data": data,
+        "levels_config": _levels_config(),
+        "setup_config": setup,
+        "backtest_config": {"stop_loss_ticks": 2, "take_profit_ticks": 3},
+    }
+    first = run_validation(backtest["trades"], config=config, **kwargs)
+    second = run_validation(backtest["trades"], config=config, **kwargs)
+    assert first["noise_summary"] == second["noise_summary"]
+    assert first["noise_config"]["random_state"] == 7
+
+
 def test_headless_walk_forward_returns_bundle_ready_r14_artifacts(tmp_path):
     csv_path = tmp_path / "bars.csv"
     _write_dataset(csv_path)

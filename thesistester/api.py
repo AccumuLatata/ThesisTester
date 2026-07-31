@@ -19,6 +19,7 @@ from thesistester.analytics import (
     excursion_summary,
     monte_carlo_summary,
     grid_trade_sequences,
+    noise_summary,
     overfitting_summary,
     run_walk_forward_sl_tp,
     run_wfa_matrix,
@@ -107,6 +108,8 @@ class ValidationResult(TypedDict, total=False):
     excursion_quadrant_summary: pd.DataFrame
     monte_carlo_summary: dict[str, Any]
     monte_carlo_config: dict[str, Any]
+    noise_summary: dict[str, Any]
+    noise_config: dict[str, Any]
     overfitting_summary: dict[str, Any]
     overfitting_config: dict[str, Any]
 
@@ -242,6 +245,16 @@ _OVERFITTING_KEYS = {
     "pbo_min_trades",
     "vs_random_n_replicas",
     "random_state",
+}
+_NOISE_KEYS = {
+    "enabled",
+    "n_replicas",
+    "noise_fraction",
+    "scale_basis",
+    "atr_period",
+    "random_state",
+    "percentiles",
+    "include_rows",
 }
 _WALK_FORWARD_KEYS = {
     "enabled",
@@ -872,6 +885,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                 "excursion",
                 "monte_carlo",
                 "overfitting",
+                "noise",
             },
             section="validation",
         )
@@ -1039,6 +1053,50 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                 section="validation.overfitting",
                 integer=True,
             )
+        noise = validation.get("noise")
+        if noise is not None:
+            noise = _require_mapping(noise, section="validation.noise")
+            _validate_keys(noise, _NOISE_KEYS, section="validation.noise")
+            _validate_bool_fields(
+                noise,
+                {"enabled", "include_rows"},
+                section="validation.noise",
+            )
+            _validate_number_fields(
+                noise,
+                {"n_replicas", "atr_period"},
+                section="validation.noise",
+                integer=True,
+            )
+            _validate_number_fields(
+                noise,
+                {"noise_fraction"},
+                section="validation.noise",
+            )
+            _validate_range(noise, "n_replicas", section="validation.noise", minimum=1)
+            _validate_range(noise, "atr_period", section="validation.noise", minimum=1)
+            _validate_range(
+                noise,
+                "noise_fraction",
+                section="validation.noise",
+                minimum=0,
+                maximum=1,
+                minimum_exclusive=True,
+            )
+            _validate_string_fields(noise, {"scale_basis"}, section="validation.noise")
+            if noise.get("scale_basis", "atr") not in {"atr", "range"}:
+                raise ValueError("validation.noise.scale_basis must be 'atr' or 'range'")
+            _validate_list_fields(
+                noise,
+                {"percentiles"},
+                section="validation.noise",
+                item_type=Real,
+            )
+            if noise.get("enabled", True):
+                _validate_random_state(
+                    noise.get("random_state", 42),
+                    section="validation.noise",
+                )
 
 
 def _setup_caption(config: Mapping[str, Any]) -> str:
@@ -1304,6 +1362,49 @@ def run_backtest(
     }
 
 
+def run_noise_test(
+    data: pd.DataFrame,
+    baseline_trades: pd.DataFrame,
+    *,
+    instrument: str = "ES",
+    levels_config: Mapping[str, Any] | None = None,
+    setup_config: Mapping[str, Any],
+    backtest_config: Mapping[str, Any] | None = None,
+    noise_config: Mapping[str, Any] | None = None,
+    subtimeframe_data: pd.DataFrame | None = None,
+) -> dict[str, Any]:
+    """Run R16 replicas through the canonical levels-to-backtest composition.
+
+    Parent OHLC bars are perturbed. Lower-timeframe R12 data remains pinned so
+    the test does not fabricate an unsupported sub-bar reconstruction.
+    """
+    setup = build_setup(setup_config)
+    settings = dict(noise_config or {})
+    settings.pop("enabled", None)
+
+    def _run_replica(perturbed: pd.DataFrame) -> pd.DataFrame:
+        levels = compute_levels(perturbed, instrument=instrument, config=levels_config)
+        signals = generate_signals(levels["levels"], setup, instrument=instrument)
+        backtest = run_backtest(
+            levels["levels"],
+            signals["signals"],
+            instrument=instrument,
+            config=backtest_config,
+            setup_config=setup,
+            signal_settings=signals["signal_settings"],
+            last_signal_setup=setup,
+            subtimeframe_data=subtimeframe_data,
+        )
+        return backtest["trades"]
+
+    return noise_summary(
+        data,
+        baseline_trades,
+        replica_runner=_run_replica,
+        **settings,
+    )
+
+
 def run_grid(
     data: pd.DataFrame,
     signals: pd.DataFrame,
@@ -1493,12 +1594,18 @@ def run_validation(
     execution_kwargs: Mapping[str, Any] | None = None,
     selected_grid_metric: str = "expectancy_r",
     selected_min_trades: int = 1,
+    raw_data: pd.DataFrame | None = None,
+    levels_config: Mapping[str, Any] | None = None,
+    setup_config: Mapping[str, Any] | None = None,
+    backtest_config: Mapping[str, Any] | None = None,
+    subtimeframe_data: pd.DataFrame | None = None,
 ) -> ValidationResult:
     """Run deterministic validation plus optional R10/R11 diagnostics."""
     raw = dict(config or {})
     excursion_config = raw.pop("excursion", None)
     monte_carlo_config = raw.pop("monte_carlo", None)
     overfitting_config = raw.pop("overfitting", None)
+    noise_config = raw.pop("noise", None)
     settings = _merge_known(_VALIDATION_DEFAULTS, raw, section="validation")
     _validate_random_state(settings["random_state"], section="validation")
     result: ValidationResult = {
@@ -1551,6 +1658,28 @@ def run_validation(
                 "monte_carlo_config": monte_carlo["config"],
             }
         )
+    if noise_config is not None and not isinstance(noise_config, Mapping):
+        raise ValueError("validation.noise must be a mapping")
+    if isinstance(noise_config, Mapping) and noise_config.get("enabled", True):
+        if raw_data is None or setup_config is None:
+            raise ValueError("raw_data and setup_config are required for R16 noise diagnostics")
+        _validate_keys(noise_config, _NOISE_KEYS, section="validation.noise")
+        noise_settings = {key: value for key, value in noise_config.items() if key != "enabled"}
+        _validate_random_state(
+            noise_settings.get("random_state", 42),
+            section="validation.noise",
+        )
+        summary = run_noise_test(
+            raw_data,
+            trades,
+            instrument=str(setup_config.get("instrument", "ES")),
+            levels_config=levels_config,
+            setup_config=setup_config,
+            backtest_config=backtest_config,
+            noise_config=noise_settings,
+            subtimeframe_data=subtimeframe_data,
+        )
+        result.update({"noise_summary": summary, "noise_config": summary["config"]})
     if overfitting_config is not None and not isinstance(overfitting_config, Mapping):
         raise ValueError("validation.overfitting must be a mapping")
     if isinstance(overfitting_config, Mapping) and overfitting_config.get("enabled", True):
@@ -1833,6 +1962,11 @@ def run_experiment(
                 },
                 selected_grid_metric=grid_settings.get("ranking_metric", "expectancy_r"),
                 selected_min_trades=int(grid_settings.get("min_trades", 1)),
+                raw_data=data,
+                levels_config=run.get("levels"),
+                setup_config=setup,
+                backtest_config=backtest_config,
+                subtimeframe_data=subtimeframe_data,
             )
         )
     return state

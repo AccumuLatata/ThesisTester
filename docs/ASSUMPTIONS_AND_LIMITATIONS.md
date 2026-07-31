@@ -295,6 +295,18 @@ other than the last bar in the dataset.
   all possible alternative strategies.
 - R15 re-simulates every grid cell and many random schedules. It is opt-in and
   can be expensive; results remain diagnostics rather than proof of edge.
+- R16 perturbs copied parent OHLC bars with symmetric ATR- or range-scaled
+  noise, then enforces bar validity. This is one declared local perturbation
+  model, not a model of exchange microstructure, spread, gaps, or tick paths.
+- R16 persistence prefers stable `signal_id`; when unavailable it matches
+  direction plus entry timestamp. A changed/recomputed signal can therefore be
+  classified as non-persistent even if it is economically similar.
+- R16 keeps supplied lower-timeframe R12 data unchanged rather than inventing
+  noisy sub-bars. Parent/subtimeframe reconciliation is consequently not
+  guaranteed for a subtimeframe replay.
+- R16 cost is replicas × the complete levels/signal/backtest pipeline. It is
+  opt-in and should use a smaller replica count for exploratory runs; results
+  remain diagnostics rather than proof of edge.
 - Train-window SL/TP selection can still overfit when grids are large or fold count is small.
 - Each fold's test window is out-of-sample relative to that fold's train window only.
 - Advanced trade metrics are trade-sequence diagnostics on realized `r_multiple`, not annualized portfolio statistics.

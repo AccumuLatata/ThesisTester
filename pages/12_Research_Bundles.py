@@ -67,6 +67,10 @@ def _will_include_monte_carlo() -> bool:
     return st.session_state.get("monte_carlo_summary") is not None
 
 
+def _will_include_noise() -> bool:
+    return st.session_state.get("noise_summary") is not None
+
+
 def _will_include_overfitting() -> bool:
     return st.session_state.get("overfitting_summary") is not None
 
@@ -87,6 +91,7 @@ section_rows = [
         "Will include": "✅" if _will_include_excursion() else "❌",
     },
     {"Artifact": "Monte Carlo", "Will include": "✅" if _will_include_monte_carlo() else "❌"},
+    {"Artifact": "Noise test", "Will include": "✅" if _will_include_noise() else "❌"},
     {
         "Artifact": "Overfitting diagnostics",
         "Will include": "✅" if _will_include_overfitting() else "❌",
@@ -161,6 +166,10 @@ if uploaded is not None:
             {
                 "Artifact": "Monte Carlo",
                 "Included in bundle": "✅" if included.get("monte_carlo") else "❌",
+            },
+            {
+                "Artifact": "Noise test",
+                "Included in bundle": "✅" if included.get("noise") else "❌",
             },
         ]
 
