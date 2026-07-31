@@ -19,11 +19,19 @@ Design notes
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import time
+from typing import Any
 from zoneinfo import ZoneInfoNotFoundError
 
 import pandas as pd
 
+from .intrabar import (
+    prepare_subtimeframe_context,
+    resolve_ohlc_bar,
+    resolve_subtimeframe_bar,
+    validate_intrabar_model,
+)
 
 # ---------------------------------------------------------------------------
 # Trade output schema
@@ -96,6 +104,23 @@ _VALID_EXPOSURE_POLICIES = {
     "single_setup",
 }
 
+_INTRABAR_TRADE_COLUMNS = [
+    "intrabar_model",
+    "intrabar_resolution",
+    "intrabar_parent_both_hit",
+    "intrabar_ambiguous",
+    "exit_subbar_timestamp",
+]
+
+
+@dataclass(frozen=True)
+class SimulationResult:
+    """Detailed opt-in result preserving the legacy DataFrame/tuple API."""
+
+    trades: pd.DataFrame
+    skipped_signals: pd.DataFrame
+    intrabar_diagnostic: dict[str, Any]
+
 
 def _empty_trades_df() -> pd.DataFrame:
     return pd.DataFrame(columns=_TRADE_COLUMNS)
@@ -103,6 +128,38 @@ def _empty_trades_df() -> pd.DataFrame:
 
 def _empty_skipped_signals_df() -> pd.DataFrame:
     return pd.DataFrame(columns=_SKIPPED_SIGNAL_COLUMNS)
+
+
+def _intrabar_diagnostic(
+    *,
+    model: str,
+    trade_count: int,
+    bracket_exit_count: int,
+    both_hit_count: int,
+    ambiguous_count: int,
+    affected_bars: set[int],
+    proximity_tie_count: int,
+    subtimeframe_resolved_count: int,
+    subtimeframe_interval: pd.Timedelta | None,
+) -> dict[str, Any]:
+    denominator = bracket_exit_count
+    return {
+        "schema_version": 1,
+        "intrabar_model": model,
+        "trade_count": int(trade_count),
+        "bracket_exit_trade_count": int(bracket_exit_count),
+        "same_bar_both_hit_count": int(both_hit_count),
+        "same_bar_both_hit_pct": (float(both_hit_count / denominator) if denominator > 0 else 0.0),
+        "same_bar_both_hit_denominator": "bracket_exit_trade_count",
+        "ambiguous_resolution_count": int(ambiguous_count),
+        "bars_affected_count": int(len(affected_bars)),
+        "bars_affected": sorted(affected_bars),
+        "path_proximity_tie_count": int(proximity_tie_count),
+        "subtimeframe_resolved_count": int(subtimeframe_resolved_count),
+        "subtimeframe_interval": (
+            str(subtimeframe_interval) if subtimeframe_interval is not None else None
+        ),
+    }
 
 
 _TIME_RE = re.compile(r"^\d{2}:\d{2}(:\d{2})?$")
@@ -215,7 +272,11 @@ def simulate_trades(
     exposure_policy: str = "allow_all",
     cooldown_bars_after_exit: int = 0,
     return_skipped_signals: bool = False,
-) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
+    *,
+    intrabar_model: str = "sl_first",
+    subtimeframe_data: pd.DataFrame | None = None,
+    return_result: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame] | SimulationResult:
     """Simulate bar-by-bar trades from Phase 4 candidate signals.
 
     Parameters
@@ -268,12 +329,24 @@ def simulate_trades(
     return_skipped_signals:
         If ``True``, returns ``(trades_df, skipped_signals_df)`` where skipped
         signals include exposure-policy rejections only.
+    intrabar_model:
+        ``"sl_first"`` preserves legacy pessimistic behavior.
+        ``"path_open_proximity"`` walks a deterministic OHLC path beginning
+        with the extreme nearest the open. ``"subtimeframe"`` walks validated
+        lower-timeframe bars supplied through ``subtimeframe_data``.
+    subtimeframe_data:
+        Strictly finer OHLC data covering and reconciling every parent bar.
+        Required only by ``intrabar_model="subtimeframe"``.
+    return_result:
+        Return :class:`SimulationResult` with skipped signals and a run-level
+        intrabar diagnostic. Default ``False`` preserves the legacy return API.
 
     Returns
     -------
-    pd.DataFrame or tuple[pd.DataFrame, pd.DataFrame]
+    pd.DataFrame, tuple, or SimulationResult
         Trades DataFrame by default; optional tuple when
-        ``return_skipped_signals=True``.
+        ``return_skipped_signals=True``; detailed result when
+        ``return_result=True``.
 
     Raises
     ------
@@ -284,8 +357,8 @@ def simulate_trades(
 
     Notes
     -----
-    - SL/TP precedence is unchanged: SL-first pessimism still applies when both
-      are reachable in the same bar.
+    - Default SL/TP precedence is unchanged: SL-first pessimism applies when
+      both are reachable in the same bar.
     - Default mode keeps legacy ``EOD`` semantics (last bar in loaded data).
     - Session-aware mode can produce ``SESSION_CLOSE``; ``DATA_END`` means data
       ended before a configured session-close bar was available.
@@ -309,6 +382,7 @@ def simulate_trades(
         )
     if cooldown_bars_after_exit < 0:
         raise ValueError(f"cooldown_bars_after_exit must be >= 0, got {cooldown_bars_after_exit!r}")
+    validate_intrabar_model(intrabar_model)
     parsed_session_close = _parse_time_input(session_close_time, field_name="session_close_time")
     if flat_by_session_close and parsed_session_close is None:
         raise ValueError("flat_by_session_close=True requires a valid session_close_time.")
@@ -318,14 +392,40 @@ def simulate_trades(
 
     if signals is None or signals.empty:
         empty_trades = _empty_trades_df()
+        empty_skipped = _empty_skipped_signals_df()
+        if return_result:
+            return SimulationResult(
+                trades=empty_trades,
+                skipped_signals=empty_skipped,
+                intrabar_diagnostic=_intrabar_diagnostic(
+                    model=intrabar_model,
+                    trade_count=0,
+                    bracket_exit_count=0,
+                    both_hit_count=0,
+                    ambiguous_count=0,
+                    affected_bars=set(),
+                    proximity_tie_count=0,
+                    subtimeframe_resolved_count=0,
+                    subtimeframe_interval=None,
+                ),
+            )
         if return_skipped_signals:
-            return empty_trades, _empty_skipped_signals_df()
+            return empty_trades, empty_skipped
         return empty_trades
 
     df_reset = df.reset_index(drop=True)
     n_bars = len(df_reset)
     local_timestamps = _timestamps_in_session_timezone(
         df_reset["timestamp"], session_timezone=session_timezone
+    )
+    subtimeframe_context = (
+        prepare_subtimeframe_context(
+            df_reset,
+            subtimeframe_data,
+            tick_size=float(tick_size),
+        )
+        if intrabar_model == "subtimeframe"
+        else None
     )
 
     sl_pts = float(stop_loss_ticks) * float(tick_size)
@@ -338,6 +438,12 @@ def simulate_trades(
     skipped_signals: list[dict] = []
     trade_id = 0
     candidate_rows: list[dict] = []
+    bracket_exit_count = 0
+    both_hit_count = 0
+    ambiguous_count = 0
+    affected_bars: set[int] = set()
+    proximity_tie_count = 0
+    subtimeframe_resolved_count = 0
 
     for _, sig in signals.iterrows():
         trigger = str(sig["trigger"])
@@ -498,6 +604,10 @@ def simulate_trades(
         theoretical_exit_price: float | None = None
         exit_price: float | None = None
         exit_reason: str | None = None
+        intrabar_resolution = "not_evaluated"
+        intrabar_parent_both_hit = False
+        intrabar_ambiguous = False
+        exit_subbar_timestamp: pd.Timestamp | None = None
 
         # MAE / MFE tracking (adverse / favorable excursion in points)
         mae_pts = 0.0  # worst excursion against position
@@ -547,29 +657,59 @@ def simulate_trades(
             mae_pts = max(mae_pts, excursion_adverse)
             mfe_pts = max(mfe_pts, excursion_favorable)
 
-            # Exit checks
-            if direction == "long":
-                stop_hit = bar_low <= stop_price
-                target_hit = bar_high >= target_price
+            entry_activation_price = (
+                theoretical_entry_price
+                if b == entry_bar_index and trigger in {"3c", "confirm_3bar"}
+                else None
+            )
+            if intrabar_model == "subtimeframe":
+                resolution = resolve_subtimeframe_bar(
+                    subtimeframe_context.groups[b],
+                    stop_price=stop_price,
+                    target_price=target_price,
+                    direction=direction,
+                    parent_low=bar_low,
+                    parent_high=bar_high,
+                    entry_price=entry_activation_price,
+                )
             else:
-                stop_hit = bar_high >= stop_price
-                target_hit = bar_low <= target_price
+                resolution = resolve_ohlc_bar(
+                    open_price=float(bar["open"]),
+                    high=bar_high,
+                    low=bar_low,
+                    close=float(bar["close"]),
+                    stop_price=stop_price,
+                    target_price=target_price,
+                    direction=direction,
+                    model=intrabar_model,
+                    entry_price=entry_activation_price,
+                )
 
-            if stop_hit and target_hit:
-                # SL-first pessimistic rule
+            if resolution.exit_kind is not None:
                 exit_bar_index = b
-                theoretical_exit_price = stop_price
-                exit_reason = "SL"
-                break
-            elif stop_hit:
-                exit_bar_index = b
-                theoretical_exit_price = stop_price
-                exit_reason = "SL"
-                break
-            elif target_hit:
-                exit_bar_index = b
-                theoretical_exit_price = target_price
-                exit_reason = "TP"
+                theoretical_exit_price = (
+                    stop_price if resolution.exit_kind == "SL" else target_price
+                )
+                if intrabar_model == "sl_first":
+                    exit_reason = resolution.exit_kind
+                elif intrabar_model == "path_open_proximity":
+                    exit_reason = f"{resolution.exit_kind}_intrabar_path"
+                else:
+                    exit_reason = f"{resolution.exit_kind}_subtimeframe"
+                intrabar_resolution = resolution.resolution
+                intrabar_parent_both_hit = resolution.parent_both_hit
+                intrabar_ambiguous = resolution.ambiguous
+                exit_subbar_timestamp = resolution.exit_subbar_timestamp
+                bracket_exit_count += 1
+                if resolution.parent_both_hit:
+                    both_hit_count += 1
+                    affected_bars.add(b)
+                if resolution.ambiguous:
+                    ambiguous_count += 1
+                if resolution.proximity_tie:
+                    proximity_tie_count += 1
+                if intrabar_model == "subtimeframe":
+                    subtimeframe_resolved_count += 1
                 break
 
         if exit_bar_index is None:
@@ -582,6 +722,7 @@ def simulate_trades(
                 exit_bar_index = max_bar
                 theoretical_exit_price = float(df_reset["close"].iloc[max_bar])
                 exit_reason = "TIME"
+                intrabar_resolution = "forced_time"
             elif flat_by_session_close:
                 exit_bar_index = max_bar
                 theoretical_exit_price = float(df_reset["close"].iloc[max_bar])
@@ -591,12 +732,15 @@ def simulate_trades(
                     and max_bar == session_cap_bar
                 ):
                     exit_reason = "DATA_END"
+                    intrabar_resolution = "forced_data_end"
                 else:
                     exit_reason = "SESSION_CLOSE"
+                    intrabar_resolution = "forced_session_close"
             else:
                 exit_bar_index = n_bars - 1
                 theoretical_exit_price = float(df_reset["close"].iloc[n_bars - 1])
                 exit_reason = "EOD"
+                intrabar_resolution = "forced_eod"
 
         if direction == "long":
             exit_price = float(theoretical_exit_price) - slip_pts
@@ -628,53 +772,62 @@ def simulate_trades(
 
         bars_held = exit_bar_index - entry_bar_index + 1
 
-        trades.append(
-            {
-                "trade_id": trade_id,
-                "signal_id": int(sig["signal_id"]),
-                "trigger": trigger,
-                "direction": direction,
-                "entry_timestamp": entry_ts,
-                "entry_bar_index": entry_bar_index,
-                "theoretical_entry_price": theoretical_entry_price,
-                "entry_price": entry_price,
-                "entry_model": entry_model,
-                "exit_timestamp": exit_ts,
-                "exit_bar_index": exit_bar_index,
-                "theoretical_exit_price": float(theoretical_exit_price),
-                "exit_price": float(exit_price),
-                "exit_reason": exit_reason,
-                "stop_price": stop_price,
-                "target_price": target_price,
-                "stop_loss_ticks": stop_loss_ticks,
-                "take_profit_ticks": take_profit_ticks,
-                "gross_pnl_points": gross_pnl_points,
-                "gross_pnl_currency": gross_pnl_currency,
-                "commission_cost": total_commission_cost,
-                "slippage_cost": slippage_cost,
-                "net_pnl_currency": net_pnl_currency,
-                "pnl_points": gross_pnl_points,
-                "pnl_currency": net_pnl_currency,
-                "r_multiple": r_multiple,
-                "bars_held": bars_held,
-                "zone_low": sig.get("zone_low"),
-                "zone_high": sig.get("zone_high"),
-                "zone_mid": sig.get("zone_mid"),
-                "level_count": sig.get("level_count"),
-                "level_names": sig.get("level_names"),
-                "trigger_variant": sig.get("trigger_variant"),
-                "is_muted": sig.get("is_muted"),
-                "is_sfp": sig.get("is_sfp"),
-                "inside_candle_count": sig.get("inside_candle_count"),
-                "level_source_mode": sig.get("level_source_mode"),
-                "mae_points": mae_pts,
-                "mfe_points": mfe_pts,
-                "exposure_policy": exposure_policy,
-                "exposure_group_key": exposure_group_key,
-                "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
-                "status": "closed",
-            }
-        )
+        trade = {
+            "trade_id": trade_id,
+            "signal_id": int(sig["signal_id"]),
+            "trigger": trigger,
+            "direction": direction,
+            "entry_timestamp": entry_ts,
+            "entry_bar_index": entry_bar_index,
+            "theoretical_entry_price": theoretical_entry_price,
+            "entry_price": entry_price,
+            "entry_model": entry_model,
+            "exit_timestamp": exit_ts,
+            "exit_bar_index": exit_bar_index,
+            "theoretical_exit_price": float(theoretical_exit_price),
+            "exit_price": float(exit_price),
+            "exit_reason": exit_reason,
+            "stop_price": stop_price,
+            "target_price": target_price,
+            "stop_loss_ticks": stop_loss_ticks,
+            "take_profit_ticks": take_profit_ticks,
+            "gross_pnl_points": gross_pnl_points,
+            "gross_pnl_currency": gross_pnl_currency,
+            "commission_cost": total_commission_cost,
+            "slippage_cost": slippage_cost,
+            "net_pnl_currency": net_pnl_currency,
+            "pnl_points": gross_pnl_points,
+            "pnl_currency": net_pnl_currency,
+            "r_multiple": r_multiple,
+            "bars_held": bars_held,
+            "zone_low": sig.get("zone_low"),
+            "zone_high": sig.get("zone_high"),
+            "zone_mid": sig.get("zone_mid"),
+            "level_count": sig.get("level_count"),
+            "level_names": sig.get("level_names"),
+            "trigger_variant": sig.get("trigger_variant"),
+            "is_muted": sig.get("is_muted"),
+            "is_sfp": sig.get("is_sfp"),
+            "inside_candle_count": sig.get("inside_candle_count"),
+            "level_source_mode": sig.get("level_source_mode"),
+            "mae_points": mae_pts,
+            "mfe_points": mfe_pts,
+            "exposure_policy": exposure_policy,
+            "exposure_group_key": exposure_group_key,
+            "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
+            "status": "closed",
+        }
+        if intrabar_model != "sl_first":
+            trade.update(
+                {
+                    "intrabar_model": intrabar_model,
+                    "intrabar_resolution": intrabar_resolution,
+                    "intrabar_parent_both_hit": intrabar_parent_both_hit,
+                    "intrabar_ambiguous": intrabar_ambiguous,
+                    "exit_subbar_timestamp": exit_subbar_timestamp,
+                }
+            )
+        trades.append(trade)
         accepted_for_blocking.append(
             {
                 "trade_id": trade_id,
@@ -686,9 +839,28 @@ def simulate_trades(
         trade_id += 1
 
     trades_df = pd.DataFrame(trades) if trades else _empty_trades_df()
-    if return_skipped_signals:
-        skipped_df = (
-            pd.DataFrame(skipped_signals) if skipped_signals else _empty_skipped_signals_df()
+    if intrabar_model != "sl_first" and trades_df.empty:
+        for column in _INTRABAR_TRADE_COLUMNS:
+            trades_df[column] = pd.Series(dtype="object")
+    skipped_df = pd.DataFrame(skipped_signals) if skipped_signals else _empty_skipped_signals_df()
+    if return_result:
+        return SimulationResult(
+            trades=trades_df,
+            skipped_signals=skipped_df,
+            intrabar_diagnostic=_intrabar_diagnostic(
+                model=intrabar_model,
+                trade_count=len(trades_df),
+                bracket_exit_count=bracket_exit_count,
+                both_hit_count=both_hit_count,
+                ambiguous_count=ambiguous_count,
+                affected_bars=affected_bars,
+                proximity_tie_count=proximity_tie_count,
+                subtimeframe_resolved_count=subtimeframe_resolved_count,
+                subtimeframe_interval=(
+                    subtimeframe_context.sub_interval if subtimeframe_context is not None else None
+                ),
+            ),
         )
+    if return_skipped_signals:
         return trades_df, skipped_df
     return trades_df

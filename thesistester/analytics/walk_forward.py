@@ -6,6 +6,7 @@ from typing import Any
 
 import pandas as pd
 
+from ..data.loader import infer_base_interval
 from .grid import best_grid_result, run_sl_tp_grid
 from .metrics import summarize_trades
 from ..engine.backtest import simulate_trades
@@ -134,6 +135,7 @@ _RESULT_COLUMNS = [
     "session_close_time",
     "session_timezone",
     "no_new_entries_after",
+    "intrabar_model",
     # OTF metadata columns — present only when OTF is enabled
     "otf_filter_enabled",
     "train_otf_candidate_count",
@@ -143,6 +145,22 @@ _RESULT_COLUMNS = [
     "test_otf_accepted_count",
     "test_otf_rejected_count",
 ]
+
+
+def _slice_subtimeframe_data(
+    subtimeframe_data: pd.DataFrame | None,
+    fold_df: pd.DataFrame,
+) -> pd.DataFrame | None:
+    if subtimeframe_data is None:
+        return None
+    parent_interval = infer_base_interval(fold_df["timestamp"])
+    if parent_interval is None or fold_df.empty:
+        return subtimeframe_data.iloc[0:0].copy()
+    parent_timestamps = pd.to_datetime(fold_df["timestamp"], utc=True)
+    sub_timestamps = pd.to_datetime(subtimeframe_data["timestamp"], utc=True)
+    start = parent_timestamps.iloc[0]
+    end = parent_timestamps.iloc[-1] + parent_interval
+    return subtimeframe_data.loc[(sub_timestamps >= start) & (sub_timestamps < end)].copy()
 
 
 def _actionable_index_column(signals: pd.DataFrame) -> pd.Series:
@@ -223,6 +241,9 @@ def run_walk_forward_sl_tp(
     exposure_policy: str = "allow_all",
     cooldown_bars_after_exit: int = 0,
     otf_config: dict[str, Any] | None = None,
+    *,
+    intrabar_model: str = "sl_first",
+    subtimeframe_data: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Run deterministic bar-window walk-forward diagnostics for SL/TP selection.
 
@@ -278,6 +299,8 @@ def run_walk_forward_sl_tp(
 
         train_df = df.iloc[train_start:train_end_exclusive].reset_index(drop=True)
         test_df = df.iloc[test_start:test_end_exclusive].reset_index(drop=True)
+        train_subtimeframe = _slice_subtimeframe_data(subtimeframe_data, train_df)
+        test_subtimeframe = _slice_subtimeframe_data(subtimeframe_data, test_df)
         train_signals = _slice_signals(
             signals=signals,
             start_bar=train_start,
@@ -336,6 +359,8 @@ def run_walk_forward_sl_tp(
             no_new_entries_after=no_new_entries_after,
             exposure_policy=exposure_policy,
             cooldown_bars_after_exit=cooldown_bars_after_exit,
+            intrabar_model=intrabar_model,
+            subtimeframe_data=train_subtimeframe,
         )
         best_train = best_grid_result(
             train_grid,
@@ -387,6 +412,7 @@ def run_walk_forward_sl_tp(
             "session_close_time": session_close_time,
             "session_timezone": session_timezone,
             "no_new_entries_after": no_new_entries_after,
+            "intrabar_model": intrabar_model,
             # OTF fold metadata
             "otf_filter_enabled": _otf_enabled,
             "train_otf_candidate_count": train_otf_candidate,
@@ -433,6 +459,8 @@ def run_walk_forward_sl_tp(
             no_new_entries_after=no_new_entries_after,
             exposure_policy=exposure_policy,
             cooldown_bars_after_exit=cooldown_bars_after_exit,
+            intrabar_model=intrabar_model,
+            subtimeframe_data=test_subtimeframe,
         )
         test_summary = summarize_trades(test_trades)
         row["test_trade_count"] = test_summary.get("trade_count")
