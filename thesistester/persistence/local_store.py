@@ -405,7 +405,11 @@ def save_dataset(
     format_profile: str = "canonical",
     raw_interval: str | None = None,
 ) -> dict[str, Any]:
-    """Persist a canonical dataset and return its metadata."""
+    """Persist a canonical dataset and return its metadata.
+
+    When the deterministic dataset directory already contains a raw-capture
+    sidecar, omitting ``raw_data`` preserves that sidecar's provenance.
+    """
     canonical = _canonicalize_dataframe(df)
     dataset_id = compute_dataset_id(
         canonical,
@@ -416,6 +420,17 @@ def save_dataset(
     )
     dataset_dir = _dataset_dir(dataset_id)
     dataset_dir.mkdir(parents=True, exist_ok=True)
+    raw_path = dataset_dir / "raw.parquet"
+    metadata_path = dataset_dir / "meta.json"
+    metadata_format_profile = format_profile
+    metadata_raw_interval = raw_interval
+    metadata_raw_rows = None if raw_data is None else int(len(raw_data))
+
+    if raw_data is None and raw_path.exists():
+        existing_metadata = _read_json(metadata_path)
+        metadata_format_profile = existing_metadata.get("format_profile", format_profile)
+        metadata_raw_interval = existing_metadata.get("raw_interval", raw_interval)
+        metadata_raw_rows = int(len(pd.read_parquet(raw_path)))
 
     metadata = _dataset_metadata(
         canonical,
@@ -425,14 +440,14 @@ def save_dataset(
         base_interval=base_interval,
         source_timezone=source_timezone,
         exchange_timezone=exchange_timezone,
-        format_profile=format_profile,
-        raw_interval=raw_interval,
-        raw_rows=None if raw_data is None else int(len(raw_data)),
+        format_profile=metadata_format_profile,
+        raw_interval=metadata_raw_interval,
+        raw_rows=metadata_raw_rows,
     )
     canonical.to_parquet(dataset_dir / "canonical.parquet", index=False)
     if raw_data is not None:
-        _canonicalize_dataframe(raw_data).to_parquet(dataset_dir / "raw.parquet", index=False)
-    _write_json(dataset_dir / "meta.json", metadata)
+        _canonicalize_dataframe(raw_data).to_parquet(raw_path, index=False)
+    _write_json(metadata_path, metadata)
     _refresh_dataset_manifest()
     metadata["path"] = str(dataset_dir)
     return metadata

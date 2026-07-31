@@ -224,6 +224,44 @@ def test_dataset_raw_capture_sidecar_roundtrip_does_not_change_canonical_identit
     assert saved["raw_rows"] == 2
 
 
+def test_dataset_resave_preserves_existing_raw_sidecar_metadata():
+    df = _base_dataset()
+    raw = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-06-02 09:30:01", periods=2, freq="1s", tz=TZ),
+            "price": [100.0, 100.25],
+            "volume": [1, 2],
+        }
+    )
+    initial = save_dataset(
+        df,
+        name="Tick capture",
+        instrument="MES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+        raw_data=raw,
+        format_profile="tick_capture",
+        raw_interval="0 days 00:00:01",
+    )
+
+    resaved = save_dataset(
+        df,
+        name="Renamed tick capture",
+        instrument="MES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+    )
+
+    assert resaved["dataset_id"] == initial["dataset_id"]
+    assert resaved["name"] == "Renamed tick capture"
+    assert resaved["format_profile"] == "tick_capture"
+    assert resaved["raw_interval"] == "0 days 00:00:01"
+    assert resaved["raw_rows"] == len(raw)
+    pd.testing.assert_frame_equal(load_raw_dataset(resaved["dataset_id"]), raw)
+
+
 def test_dataset_id_content_sensitivity():
     df_one = _base_dataset()
     df_two = _base_dataset()
