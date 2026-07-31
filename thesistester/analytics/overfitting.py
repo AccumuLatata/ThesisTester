@@ -15,6 +15,20 @@ from thesistester.engine.backtest import simulate_trades
 
 CellKey = tuple[float, float, float | None, float | None, float | None]
 _NORMAL_EULER_GAMMA = 0.5772156649015329
+_SIMULATION_KWARGS = {
+    "max_holding_bars",
+    "allow_same_bar_exit",
+    "commission_per_side",
+    "slippage_ticks",
+    "flat_by_session_close",
+    "session_close_time",
+    "session_timezone",
+    "no_new_entries_after",
+    "exposure_policy",
+    "cooldown_bars_after_exit",
+    "intrabar_model",
+    "subtimeframe_data",
+}
 
 
 @dataclass(frozen=True)
@@ -113,7 +127,11 @@ def grid_trade_sequences(
     """Re-simulate grid cells and retain deterministic ordered trade sequences."""
     if grid is None or grid.empty:
         return GridSequenceResult(pd.DataFrame(), {})
-    kwargs = dict(execution_kwargs or {})
+    kwargs = {
+        key: value
+        for key, value in dict(execution_kwargs or {}).items()
+        if key in _SIMULATION_KWARGS
+    }
     sequences: dict[CellKey, pd.DataFrame] = {}
     rows: list[dict[str, Any]] = []
     for _, row in grid.sort_values(

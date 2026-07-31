@@ -480,6 +480,9 @@ if run_btn:
     st.session_state["grid_execution_context"] = {
         "ranking_metric": active_metric,
         "min_trades": int(min_trades),
+        "directional_ranking_enabled": bool(enable_directional),
+        "min_long_trades": int(min_long_trades),
+        "min_short_trades": int(min_short_trades),
         "commission_per_side": float(commission_per_side),
         "slippage_ticks": float(slippage_ticks),
         "flat_by_session_close": bool(flat_by_session_close),

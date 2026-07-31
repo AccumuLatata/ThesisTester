@@ -692,7 +692,7 @@ else:
         data_r15 = st.session_state.get("levels")
         if data_r15 is None or data_r15.empty:
             data_r15 = st.session_state.get("data")
-        signals_r15 = st.session_state.get("otf_accepted_signals")
+        signals_r15 = st.session_state.get("grid_accepted_signals")
         if signals_r15 is None or signals_r15.empty:
             signals_r15 = st.session_state.get("signals")
         if data_r15 is None or signals_r15 is None or inst_r15 is None:
@@ -744,6 +744,15 @@ else:
                 eligible_sequences = sequences.grid_results[
                     sequences.grid_results["trade_count"] >= selection_min_trades
                 ].dropna(subset=[selection_metric])
+                if grid_context_r15.get("directional_ranking_enabled", False):
+                    eligible_sequences = eligible_sequences[
+                        eligible_sequences["long_trade_count"]
+                        >= int(grid_context_r15.get("min_long_trades", 1))
+                    ]
+                    eligible_sequences = eligible_sequences[
+                        eligible_sequences["short_trade_count"]
+                        >= int(grid_context_r15.get("min_short_trades", 1))
+                    ]
                 if eligible_sequences.empty:
                     st.error("No R15 grid cell passes the recorded selection rule.")
                     st.stop()
