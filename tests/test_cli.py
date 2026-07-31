@@ -179,6 +179,13 @@ def _manual_ui_equivalent_state(run: dict, base_directory) -> dict:
             "subtimeframe_data_supplied": False,
         },
         "backtest_intrabar_diagnostic": backtest["intrabar_diagnostic"],
+        "backtest_exit_management_policy": {
+            "schema_version": 1,
+            "breakeven_after_r": None,
+            "trailing_after_r": None,
+            "trailing_distance_ticks": None,
+        },
+        "backtest_exit_management_diagnostic": backtest["exit_management_diagnostic"],
         "backtest_execution_costs": {
             "commission_per_side": 0.0,
             "slippage_ticks": 0.0,
@@ -190,6 +197,13 @@ def _manual_ui_equivalent_state(run: dict, base_directory) -> dict:
             "schema_version": 1,
             "intrabar_model": "sl_first",
             "subtimeframe_data_supplied": False,
+        },
+        "grid_exit_management_policy": {
+            "schema_version": 1,
+            "breakeven_after_r_values": [None],
+            "trailing_after_r_values": [None],
+            "trailing_distance_ticks_values": [None],
+            "max_grid_cells": 500,
         },
         **validation,
     }
@@ -329,6 +343,18 @@ def test_experiment_schema_and_names_fail_fast(tmp_path):
                 ],
             },
             "subtimeframe_path",
+        ),
+        (
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        **_run("bad-trailing"),
+                        "backtest": {"trailing_after_r": 1.0},
+                    }
+                ],
+            },
+            "trailing_distance_ticks",
         ),
     ]
     for index, (payload, message) in enumerate(cases):

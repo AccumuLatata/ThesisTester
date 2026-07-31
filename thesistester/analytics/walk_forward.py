@@ -136,6 +136,9 @@ _RESULT_COLUMNS = [
     "session_timezone",
     "no_new_entries_after",
     "intrabar_model",
+    "breakeven_after_r",
+    "trailing_after_r",
+    "trailing_distance_ticks",
     # OTF metadata columns — present only when OTF is enabled
     "otf_filter_enabled",
     "train_otf_candidate_count",
@@ -244,6 +247,10 @@ def run_walk_forward_sl_tp(
     *,
     intrabar_model: str = "sl_first",
     subtimeframe_data: pd.DataFrame | None = None,
+    breakeven_after_r_values: list[float | None] | None = None,
+    trailing_after_r_values: list[float | None] | None = None,
+    trailing_distance_ticks_values: list[float | None] | None = None,
+    max_grid_cells: int = 500,
 ) -> pd.DataFrame:
     """Run deterministic bar-window walk-forward diagnostics for SL/TP selection.
 
@@ -361,6 +368,10 @@ def run_walk_forward_sl_tp(
             cooldown_bars_after_exit=cooldown_bars_after_exit,
             intrabar_model=intrabar_model,
             subtimeframe_data=train_subtimeframe,
+            breakeven_after_r_values=breakeven_after_r_values,
+            trailing_after_r_values=trailing_after_r_values,
+            trailing_distance_ticks_values=trailing_distance_ticks_values,
+            max_grid_cells=max_grid_cells,
         )
         best_train = best_grid_result(
             train_grid,
@@ -413,6 +424,9 @@ def run_walk_forward_sl_tp(
             "session_timezone": session_timezone,
             "no_new_entries_after": no_new_entries_after,
             "intrabar_model": intrabar_model,
+            "breakeven_after_r": None,
+            "trailing_after_r": None,
+            "trailing_distance_ticks": None,
             # OTF fold metadata
             "otf_filter_enabled": _otf_enabled,
             "train_otf_candidate_count": train_otf_candidate,
@@ -432,6 +446,9 @@ def run_walk_forward_sl_tp(
 
         row["selected_stop_loss_ticks"] = best_train.get("stop_loss_ticks")
         row["selected_take_profit_ticks"] = best_train.get("take_profit_ticks")
+        row["breakeven_after_r"] = best_train.get("breakeven_after_r")
+        row["trailing_after_r"] = best_train.get("trailing_after_r")
+        row["trailing_distance_ticks"] = best_train.get("trailing_distance_ticks")
         row["selected_train_metric_value"] = best_train.get(ranking_metric)
         row["train_trade_count"] = best_train.get("trade_count")
         row["train_expectancy_r"] = best_train.get("expectancy_r")
@@ -461,6 +478,21 @@ def run_walk_forward_sl_tp(
             cooldown_bars_after_exit=cooldown_bars_after_exit,
             intrabar_model=intrabar_model,
             subtimeframe_data=test_subtimeframe,
+            breakeven_after_r=(
+                None
+                if pd.isna(best_train.get("breakeven_after_r"))
+                else float(best_train.get("breakeven_after_r"))
+            ),
+            trailing_after_r=(
+                None
+                if pd.isna(best_train.get("trailing_after_r"))
+                else float(best_train.get("trailing_after_r"))
+            ),
+            trailing_distance_ticks=(
+                None
+                if pd.isna(best_train.get("trailing_distance_ticks"))
+                else float(best_train.get("trailing_distance_ticks"))
+            ),
         )
         test_summary = summarize_trades(test_trades)
         row["test_trade_count"] = test_summary.get("trade_count")

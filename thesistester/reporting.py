@@ -246,11 +246,21 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "backtest_intrabar_diagnostic": to_jsonable(
                 session_state.get("backtest_intrabar_diagnostic")
             ),
+            "backtest_exit_management_diagnostic": to_jsonable(
+                session_state.get("backtest_exit_management_diagnostic")
+            ),
         },
         "intrabar": {
             "backtest_policy": to_jsonable(session_state.get("backtest_intrabar_policy")),
             "backtest_diagnostic": to_jsonable(session_state.get("backtest_intrabar_diagnostic")),
             "grid_policy": to_jsonable(session_state.get("grid_intrabar_policy")),
+        },
+        "exit_management": {
+            "backtest_policy": to_jsonable(session_state.get("backtest_exit_management_policy")),
+            "backtest_diagnostic": to_jsonable(
+                session_state.get("backtest_exit_management_diagnostic")
+            ),
+            "grid_policy": to_jsonable(session_state.get("grid_exit_management_policy")),
         },
         "otf_filter": to_jsonable(build_otf_filter_metadata(session_state)),
         "tables": {
@@ -785,6 +795,15 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     intrabar_diagnostic = (
         intrabar.get("backtest_diagnostic", {}) if isinstance(intrabar, Mapping) else {}
     )
+    exit_management = artifact.get("exit_management", {}) if isinstance(artifact, Mapping) else {}
+    exit_mgmt_policy = (
+        exit_management.get("backtest_policy", {}) if isinstance(exit_management, Mapping) else {}
+    )
+    exit_mgmt_diagnostic = (
+        exit_management.get("backtest_diagnostic", {})
+        if isinstance(exit_management, Mapping)
+        else {}
+    )
 
     selected_levels = setup.get("selected_levels") if isinstance(setup, Mapping) else None
     levels_str = (
@@ -842,6 +861,12 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
         f"- Same-bar both-hit exits: {intrabar_diagnostic.get('same_bar_both_hit_count', 0) if isinstance(intrabar_diagnostic, Mapping) else 0}",
         f"- Residual ambiguous resolutions: {intrabar_diagnostic.get('ambiguous_resolution_count', 0) if isinstance(intrabar_diagnostic, Mapping) else 0}",
         "- Deterministic OHLC paths are assumptions, not reconstructed market paths.",
+        "",
+        "### Exit Management",
+        f"- Break-even after R: {exit_mgmt_policy.get('breakeven_after_r', 'off') if isinstance(exit_mgmt_policy, Mapping) else 'off'}",
+        f"- Trailing after R: {exit_mgmt_policy.get('trailing_after_r', 'off') if isinstance(exit_mgmt_policy, Mapping) else 'off'}",
+        f"- BE exits: {exit_mgmt_diagnostic.get('be_exit_count', 0) if isinstance(exit_mgmt_diagnostic, Mapping) else 0}",
+        f"- TRAIL exits: {exit_mgmt_diagnostic.get('trail_exit_count', 0) if isinstance(exit_mgmt_diagnostic, Mapping) else 0}",
         "",
         "### Advanced Risk Metrics",
         f"- Sharpe-like R: {_fmt_number(trade_summary.get('sharpe_like_r') if isinstance(trade_summary, Mapping) else None)}",

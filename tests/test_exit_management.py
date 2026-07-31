@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from thesistester.analytics.grid import run_sl_tp_grid
 from thesistester.engine.backtest import SimulationResult, simulate_trades
 
 TZ = "America/New_York"
@@ -230,3 +231,35 @@ def test_disabled_exit_management_preserves_legacy_output_and_schema():
     )
     pd.testing.assert_frame_equal(default, explicit_disabled)
     assert "active_stop_price_at_exit" not in default.columns
+
+
+def test_grid_sweeps_exit_management_with_cell_cap():
+    grid = run_sl_tp_grid(
+        _bars(
+            [(100, 100, 100, 100), (100, 101, 99, 100), (100, 103, 100, 102), (102, 102, 100, 101)]
+        ),
+        _signal(),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks_values=[2],
+        take_profit_ticks_values=[4],
+        breakeven_after_r_values=[None, 1.0],
+        trailing_after_r_values=[None, 1.0],
+        trailing_distance_ticks_values=[None, 2],
+        max_grid_cells=4,
+    )
+    assert len(grid) == 4
+    assert {"breakeven_after_r", "trailing_after_r", "trailing_distance_ticks"}.issubset(
+        grid.columns
+    )
+    with pytest.raises(ValueError, match="exceeding max_grid_cells"):
+        run_sl_tp_grid(
+            _bars([(100, 100, 100, 100), (100, 101, 99, 100)]),
+            _signal(),
+            tick_size=1.0,
+            point_value=1.0,
+            stop_loss_ticks_values=[1, 2],
+            take_profit_ticks_values=[3, 4],
+            breakeven_after_r_values=[None, 1.0],
+            max_grid_cells=3,
+        )

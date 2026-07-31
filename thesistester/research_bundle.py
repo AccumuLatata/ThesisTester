@@ -36,8 +36,10 @@ _BACKTEST_META_KEYS = (
     "trade_summary",
     "backtest_intrabar_policy",
     "backtest_intrabar_diagnostic",
+    "backtest_exit_management_policy",
+    "backtest_exit_management_diagnostic",
 )
-_GRID_META_KEYS = ("best_grid_result", "grid_intrabar_policy")
+_GRID_META_KEYS = ("best_grid_result", "grid_intrabar_policy", "grid_exit_management_policy")
 _VALIDATION_META_KEYS = ("validation_summary",)
 _EXCURSION_META_KEYS = ("excursion_summary", "excursion_config")
 _MONTE_CARLO_META_KEYS = ("monte_carlo_summary", "monte_carlo_config")
@@ -65,10 +67,13 @@ _MANAGED_RESEARCH_KEYS = {
     "trade_summary",
     "backtest_intrabar_policy",
     "backtest_intrabar_diagnostic",
+    "backtest_exit_management_policy",
+    "backtest_exit_management_diagnostic",
     "equity_curve",
     "grid_results",
     "best_grid_result",
     "grid_intrabar_policy",
+    "grid_exit_management_policy",
     "time_bucketed_trades",
     "time_grouped_summary",
     "validation_summary",

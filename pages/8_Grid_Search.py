@@ -130,6 +130,45 @@ with st.sidebar:
     subtimeframe_data = st.session_state.get("subtimeframe_data")
     if intrabar_model == "subtimeframe" and not isinstance(subtimeframe_data, pd.DataFrame):
         st.warning("Subtimeframe replay requires strictly finer data in the research state.")
+    with st.expander("Exit management (R13)", expanded=False):
+        enable_breakeven = st.toggle("Enable break-even move", value=False, key="grid_enable_be")
+        grid_breakeven_after_r = None
+        if enable_breakeven:
+            grid_breakeven_after_r = float(
+                st.number_input(
+                    "Move stop to break-even after R",
+                    min_value=0.1,
+                    max_value=20.0,
+                    value=1.0,
+                    step=0.1,
+                    key="grid_breakeven_after_r",
+                )
+            )
+        enable_trailing = st.toggle("Enable trailing stop", value=False, key="grid_enable_trail")
+        grid_trailing_after_r = None
+        grid_trailing_distance_ticks = None
+        if enable_trailing:
+            grid_trailing_after_r = float(
+                st.number_input(
+                    "Start trailing after R",
+                    min_value=0.1,
+                    max_value=20.0,
+                    value=1.5,
+                    step=0.1,
+                    key="grid_trailing_after_r",
+                )
+            )
+            grid_trailing_distance_ticks = float(
+                st.number_input(
+                    "Trailing distance (ticks)",
+                    min_value=1.0,
+                    max_value=500.0,
+                    value=8.0,
+                    step=1.0,
+                    key="grid_trailing_distance_ticks",
+                )
+            )
+        st.caption("One fixed exit-management policy is applied to every grid cell.")
 
     commission_per_side = st.number_input(
         "Commission per side (currency/contract)",
@@ -375,6 +414,9 @@ if run_btn:
                 cooldown_bars_after_exit=cooldown_bars_after_exit,
                 intrabar_model=intrabar_model,
                 subtimeframe_data=subtimeframe_data,
+                breakeven_after_r_values=[grid_breakeven_after_r],
+                trailing_after_r_values=[grid_trailing_after_r],
+                trailing_distance_ticks_values=[grid_trailing_distance_ticks],
             )
         except ValueError as e:
             st.error(f"Grid search error: {e}")
@@ -426,6 +468,13 @@ if run_btn:
         "schema_version": 1,
         "intrabar_model": intrabar_model,
         "subtimeframe_data_supplied": isinstance(subtimeframe_data, pd.DataFrame),
+    }
+    st.session_state["grid_exit_management_policy"] = {
+        "schema_version": 1,
+        "breakeven_after_r_values": [grid_breakeven_after_r],
+        "trailing_after_r_values": [grid_trailing_after_r],
+        "trailing_distance_ticks_values": [grid_trailing_distance_ticks],
+        "max_grid_cells": 500,
     }
 
 # ── Display ───────────────────────────────────────────────────────────────────

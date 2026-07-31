@@ -241,6 +241,48 @@ with st.sidebar:
             "Subtimeframe replay requires lower-timeframe data. Load it through "
             "a research bundle or use the R18 API/CLI `dataset.subtimeframe_path` contract."
         )
+    with st.expander("Exit management (R13)", expanded=False):
+        enable_breakeven = st.toggle("Enable break-even move", value=False)
+        breakeven_after_r = None
+        if enable_breakeven:
+            breakeven_after_r = float(
+                st.number_input(
+                    "Move stop to break-even after R",
+                    min_value=0.1,
+                    max_value=20.0,
+                    value=1.0,
+                    step=0.1,
+                    key="backtest_breakeven_after_r",
+                )
+            )
+        enable_trailing = st.toggle("Enable trailing stop", value=False)
+        trailing_after_r = None
+        trailing_distance_ticks = None
+        if enable_trailing:
+            trailing_after_r = float(
+                st.number_input(
+                    "Start trailing after R",
+                    min_value=0.1,
+                    max_value=20.0,
+                    value=1.5,
+                    step=0.1,
+                    key="backtest_trailing_after_r",
+                )
+            )
+            trailing_distance_ticks = float(
+                st.number_input(
+                    "Trailing distance (ticks)",
+                    min_value=1.0,
+                    max_value=500.0,
+                    value=8.0,
+                    step=1.0,
+                    key="backtest_trailing_distance_ticks",
+                )
+            )
+        st.caption(
+            "Break-even/trailing adjustments are committed after completed bars "
+            "and become active on the next bar."
+        )
 
     st.subheader("Session exit policy")
     flat_by_session_close = st.toggle(
@@ -355,6 +397,9 @@ if run_btn:
                 cooldown_bars_after_exit=cooldown_bars_after_exit,
                 intrabar_model=intrabar_model,
                 subtimeframe_data=subtimeframe_data,
+                breakeven_after_r=breakeven_after_r,
+                trailing_after_r=trailing_after_r,
+                trailing_distance_ticks=trailing_distance_ticks,
                 return_result=True,
             )
             trades = simulation.trades
@@ -402,6 +447,15 @@ if run_btn:
             "subtimeframe_data_supplied": isinstance(subtimeframe_data, pd.DataFrame),
         }
         st.session_state["backtest_intrabar_diagnostic"] = simulation.intrabar_diagnostic
+        st.session_state["backtest_exit_management_policy"] = {
+            "schema_version": 1,
+            "breakeven_after_r": breakeven_after_r,
+            "trailing_after_r": trailing_after_r,
+            "trailing_distance_ticks": trailing_distance_ticks,
+        }
+        st.session_state["backtest_exit_management_diagnostic"] = (
+            simulation.exit_management_diagnostic
+        )
 
 # ── Display ───────────────────────────────────────────────────────────────────
 trades = st.session_state.get("trades")
@@ -429,6 +483,15 @@ if intrabar_diagnostic:
         f"both-hit exits: {intrabar_diagnostic.get('same_bar_both_hit_count', 0)} · "
         f"residual ambiguities: {intrabar_diagnostic.get('ambiguous_resolution_count', 0)}. "
         "Deterministic OHLC paths are assumptions, not recovered market paths."
+    )
+exit_mgmt = st.session_state.get("backtest_exit_management_diagnostic") or {}
+if exit_mgmt and exit_mgmt.get("enabled"):
+    st.caption(
+        "Exit management: "
+        f"BE after {exit_mgmt.get('breakeven_after_r') or 'off'}R · "
+        f"trail after {exit_mgmt.get('trailing_after_r') or 'off'}R · "
+        f"BE exits: {exit_mgmt.get('be_exit_count', 0)} · "
+        f"TRAIL exits: {exit_mgmt.get('trail_exit_count', 0)}."
     )
 
 # ── OTF filter status ─────────────────────────────────────────────────────────
