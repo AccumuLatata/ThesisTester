@@ -402,3 +402,47 @@ the exact legacy engine path by default.
   projection, and pandas-major-scoped bundle hash.
 - API/CLI, defaults, grid, walk-forward, reporting, and research-bundle tests
   cover end-to-end policy propagation and persistence.
+
+---
+
+## R13 — Break-Even and Trailing Stop Exit Management ✅ Implemented
+
+Adds the two dynamic bracket-management rules used most often by discretionary
+day traders while keeping the fixed-bracket legacy engine untouched by default.
+
+### Features
+
+- `simulate_trades()` accepts keyword-only:
+  - `breakeven_after_r`;
+  - `trailing_after_r`;
+  - `trailing_distance_ticks`.
+- Defaults `None` preserve fixed SL/TP behavior and golden-master outputs.
+- Stop management commits after completed bars and becomes active on the next
+  parent bar. This avoids optimistic same-bar OHLC ordering assumptions.
+- Break-even exits use reason `BE`; trailing exits use reason `TRAIL`.
+- `stop_price` remains the initial bracket stop; moved-stop evidence is stored
+  in additive audit columns such as `active_stop_price_at_exit`,
+  activation bar indices, and `stop_adjustment_path`.
+- Grid supports capped BE/trailing cartesian sweeps. UI grid runs apply one
+  fixed policy across every cell by default; R18/API callers may provide
+  explicit value lists.
+- Walk-forward applies the train-selected BE/trailing parameters to OOS folds.
+- Reports and research bundles preserve policy/diagnostic snapshots.
+
+### Regression safety
+
+- No golden artifacts are regenerated.
+- Legacy `sl_first` + no exit management remains byte/value identical.
+- All new behavior is opt-in and deterministic.
+- Initial-risk R denominators and MAE/MFE semantics remain unchanged.
+- R12 intrabar models still own stop-vs-target event ordering for active stops.
+- Invalid configurations fail closed: trailing requires a positive distance;
+  thresholds/distances must be finite and positive.
+
+### Tests
+
+- `tests/test_exit_management.py`: long/short BE, slippage-costed BE, long/short
+  trailing, entry-bar no-arm behavior, R12 model interactions, invalid config,
+  disabled legacy schema, and grid cell cap.
+- Existing golden, intrabar, grid, walk-forward, API/CLI, defaults, reporting,
+  and research-bundle tests extended for R13 propagation and persistence.

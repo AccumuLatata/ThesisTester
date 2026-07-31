@@ -181,6 +181,9 @@ The **Backtest** and **Grid Search** pages support saving and restoring executio
   OHLC `path_open_proximity`, and strict observed `subtimeframe` replay.
   Lower-timeframe replay requires complete OHLC-reconciling finer data; it
   never upsamples or silently falls back.
+  R13 adds opt-in break-even and trailing-stop management. Stop adjustments
+  are committed after completed bars and become active on the next bar; legacy
+  fixed-bracket behavior remains the default.
 - **Phase 6 (SL/TP grid search, expectancy heatmaps):** sweeps all stop-loss × take-profit
   combinations over the Phase 5 backtest engine (`thesistester/analytics/grid.py`).
   `run_sl_tp_grid()` returns one summary row per cell; `best_grid_result()` picks the

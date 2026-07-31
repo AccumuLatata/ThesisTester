@@ -43,6 +43,26 @@ This engine is for **research screening**, not proof of a durable edge.
 - R10 excursion calibration remains a separate terminal-excursion diagnostic.
   Its `both_hit_rule` does not inherit or replay the selected R12 engine model.
 
+### 2a) Break-even and trailing stops are completed-bar management rules
+- R13 break-even and trailing stops are opt-in. Defaults `None` preserve the
+  fixed-bracket legacy path.
+- Break-even moves the active stop to the slipped entry price after a completed
+  bar reaches the configured favorable R threshold. The moved stop becomes
+  active on the next parent bar.
+- Trailing stops arm after a completed bar reaches the configured favorable R
+  threshold. The active stop then ratchets from the best favorable parent-bar
+  high/low minus/plus the configured tick distance and is active from the next
+  bar. It never loosens.
+- Bar-close activation is conservative for OHLC data: the engine never assumes
+  that an intrabar high armed a stop before an earlier low in the same bar.
+- If an already-active BE/TRAIL stop and the fixed target are reachable in one
+  bar, the selected R12 intrabar model resolves event order.
+- `stop_price` remains the initial bracket stop. R-multiples and R10 MAE/MFE
+  normalization still use initial risk, not the moved stop.
+- A BE exit can be slightly negative after slippage/commission because the
+  theoretical stop is at entry but actual fills still include adverse slippage
+  and costs.
+
 ### 3) TIME, SESSION_CLOSE, DATA_END, and EOD exits are bar-index based
 - `max_holding_bars` is implemented as a bar-count cap (`entry_bar_index + max_holding_bars - 1`) in `simulate_trades()` in `thesistester/engine/backtest.py`.
 - TIME exit uses that capped bar’s close in `simulate_trades()` in `thesistester/engine/backtest.py`.
