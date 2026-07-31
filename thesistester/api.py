@@ -482,25 +482,6 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             section="backtest",
             integer=True,
         )
-        _validate_string_fields(
-            grid,
-            {
-                "session_close_time",
-                "session_timezone",
-                "no_new_entries_after",
-                "exposure_policy",
-                "ranking_metric",
-            },
-            section="grid",
-            nullable={"session_close_time", "session_timezone", "no_new_entries_after"},
-        )
-        if grid.get("max_holding_bars") is not None:
-            _validate_number_fields(
-                grid,
-                {"max_holding_bars"},
-                section="grid",
-                integer=True,
-            )
     grid = run.get("grid")
     if grid is not None:
         grid = _require_mapping(grid, section="grid")
@@ -527,6 +508,25 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             section="grid",
             integer=True,
         )
+        _validate_string_fields(
+            grid,
+            {
+                "session_close_time",
+                "session_timezone",
+                "no_new_entries_after",
+                "exposure_policy",
+                "ranking_metric",
+            },
+            section="grid",
+            nullable={"session_close_time", "session_timezone", "no_new_entries_after"},
+        )
+        if grid.get("max_holding_bars") is not None:
+            _validate_number_fields(
+                grid,
+                {"max_holding_bars"},
+                section="grid",
+                integer=True,
+            )
     validation = run.get("validation")
     if validation is not None:
         validation = _require_mapping(validation, section="validation")
