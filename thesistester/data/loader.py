@@ -17,6 +17,8 @@ DST_TRANSITION_CONTEXT_WINDOW = 3
 SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 60 * SECONDS_PER_MINUTE
 SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
+DATABENTO_FIXED_POINT_SCALE = 1_000_000_000
+DATABENTO_FIXED_POINT_THRESHOLD = 10_000_000
 COLUMN_ALIASES = {
     "date time": "timestamp",
     "datetime": "timestamp",
@@ -207,8 +209,13 @@ def _read_explicit_profile(
         if raw["timestamp"].isna().any():
             raise DataValidationError("Databento trades profile has unparseable ts_event values.")
         raw["timestamp"] = raw["timestamp"].dt.tz_convert(target_tz)
-        raw["price"] = pd.to_numeric(raw["price"], errors="coerce")
-        raw.loc[raw["price"].abs() >= 10_000_000, "price"] /= 1_000_000_000
+        # Keep all available price fields in decimal units for raw-sidecar provenance.
+        for column in ("price", "bid_price", "ask_price"):
+            if column in raw:
+                raw[column] = pd.to_numeric(raw[column], errors="coerce")
+                raw.loc[
+                    raw[column].abs() >= DATABENTO_FIXED_POINT_THRESHOLD, column
+                ] /= DATABENTO_FIXED_POINT_SCALE
         raw["volume"] = raw["size"]
         return _aggregate_capture_rows(raw), raw
 

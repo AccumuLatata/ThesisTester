@@ -54,7 +54,12 @@ def test_databento_trades_aggregate_fixed_point_prices_and_preserve_quotes():
         {"open": 100.0, "high": 101.0, "low": 100.0, "close": 101.0, "volume": 5},
         {"open": 102.0, "high": 102.0, "low": 99.0, "close": 99.0, "volume": 9},
     ]
-    assert {"bid_price", "ask_price"} <= set(raw.columns)
+    assert raw[["price", "bid_price", "ask_price"]].to_dict("records") == [
+        {"price": 100.0, "bid_price": 99.9, "ask_price": 100.1},
+        {"price": 101.0, "bid_price": 100.9, "ask_price": 101.1},
+        {"price": 102.0, "bid_price": 101.9, "ask_price": 102.1},
+        {"price": 99.0, "bid_price": 98.9, "ask_price": 99.1},
+    ]
 
 
 def test_generic_tick_capture_resamples_to_one_minute_and_returns_raw(tmp_path):
