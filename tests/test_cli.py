@@ -309,8 +309,8 @@ def test_experiment_loads_subtimeframe_as_canonical_with_vendor_parent(tmp_path,
                 (
                     timestamp + pd.Timedelta(seconds=30),
                     row.open,
-                    row.open,
-                    row.low,
+                    max(row.open, row.close),
+                    min(row.low, row.close),
                     row.close,
                 ),
             ]
