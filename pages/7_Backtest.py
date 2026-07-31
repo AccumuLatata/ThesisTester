@@ -872,6 +872,9 @@ if has_trades:
             show_levels=review_show_levels,
             show_confluence_zones=review_show_zones,
             show_final_stop=review_show_final_stop,
+            ohlcv_df=ohlcv_df,
+            levels=st.session_state.get("levels"),
+            confluence_zones=st.session_state.get("confluence_zones"),
         )
         if st.button("Prepare worst-loser PNG export", type="secondary"):
             try:

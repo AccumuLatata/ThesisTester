@@ -143,13 +143,19 @@ def test_export_signature_changes_with_trades_and_display_settings():
         "show_confluence_zones": True,
         "show_final_stop": False,
     }
-    baseline = trade_review_export_signature(pd.DataFrame([_trade()]), **kwargs)
+    baseline = trade_review_export_signature(pd.DataFrame([_trade()]), **kwargs, ohlcv_df=_ohlcv())
     changed_settings = trade_review_export_signature(
         pd.DataFrame([_trade()]), **{**kwargs, "show_final_stop": True}
     )
     changed_trades = _trade()
     changed_trades["r_multiple"] = -0.5
     changed_inputs = trade_review_export_signature(pd.DataFrame([changed_trades]), **kwargs)
+    changed_overlay = trade_review_export_signature(
+        pd.DataFrame([_trade()]),
+        **kwargs,
+        ohlcv_df=_ohlcv().assign(close=lambda frame: frame["close"] + 1.0),
+    )
 
     assert baseline != changed_settings
     assert baseline != changed_inputs
+    assert baseline != changed_overlay

@@ -36,6 +36,18 @@ def _filename(trade: pd.Series) -> str:
     return f"trade_{trade_id}_{r_label}.png"
 
 
+def _dataframe_digest(frame: pd.DataFrame | None) -> str:
+    """Hash chart-input values and schema without retaining the source frame."""
+    if frame is None:
+        return "none"
+    work = frame.copy(deep=True)
+    hasher = sha256()
+    hasher.update(repr(tuple(work.columns)).encode("utf-8"))
+    hasher.update(repr(tuple(str(dtype) for dtype in work.dtypes)).encode("utf-8"))
+    hasher.update(pd.util.hash_pandas_object(work, index=True).to_numpy().tobytes())
+    return hasher.hexdigest()
+
+
 def trade_review_export_signature(
     trades: pd.DataFrame,
     *,
@@ -45,6 +57,9 @@ def trade_review_export_signature(
     show_levels: bool,
     show_confluence_zones: bool,
     show_final_stop: bool,
+    ohlcv_df: pd.DataFrame | None = None,
+    levels: pd.DataFrame | None = None,
+    confluence_zones: pd.DataFrame | None = None,
 ) -> str:
     """Return a stable identity for the export inputs and display configuration."""
     selected = select_worst_losers(trades, count=count)
@@ -57,7 +72,12 @@ def trade_review_export_signature(
         bool(show_confluence_zones),
         bool(show_final_stop),
     )
-    return sha256(repr((payload, settings)).encode("utf-8")).hexdigest()
+    inputs = (
+        _dataframe_digest(ohlcv_df),
+        _dataframe_digest(levels),
+        _dataframe_digest(confluence_zones),
+    )
+    return sha256(repr((payload, settings, inputs)).encode("utf-8")).hexdigest()
 
 
 def _image_safe_chart(chart):

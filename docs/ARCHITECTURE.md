@@ -241,7 +241,7 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `trade_review_trade_id` | Backtest (`pages/7_Backtest.py`) | Backtest | Selected display-index of the read-only R20 review chart; cleared on dataset change |
 | `trade_review_buffer_rows` | Backtest (`pages/7_Backtest.py`) | Backtest | Bounded selected-trade chart buffer (10–500 OHLC rows each side) |
 | `trade_review_export_zip` | Backtest (`pages/7_Backtest.py`) | Backtest download | Ephemeral ZIP of R20 worst-loser PNG charts; cleared on dataset change and not persisted in research bundles |
-| `trade_review_export_signature` | Backtest (`pages/7_Backtest.py`) | Backtest download guard | Current trades, review display settings, buffer, and loser count identity; stale ZIPs are withheld |
+| `trade_review_export_signature` | Backtest (`pages/7_Backtest.py`) | Backtest download guard | Current trades, OHLC/level/zone overlays, review display settings, buffer, and loser count identity; stale ZIPs are withheld |
 | `excursion_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report, Research Bundles | `dict` R10 schema version 1 (`overall`, `grouped`, `quadrants`, `calibration_grid`, `edge_ratio`, `config`, caveat) |
 | `excursion_config` | Validation (`pages/10_Validation.py`) | Research Bundles | `dict` copied from `excursion_summary["config"]` |
 | `excursion_grouped_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report CSV, Research Bundles | `pd.DataFrame` grouped MAE/MFE distribution stats |
