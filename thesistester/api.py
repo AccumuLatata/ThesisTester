@@ -1404,9 +1404,16 @@ def run_noise_test(
     setup = build_setup(setup_config)
     settings = dict(noise_config or {})
     settings.pop("enabled", None)
+    replica_levels_config = {
+        key: value for key, value in dict(levels_config or {}).items() if key != "instrument"
+    }
 
     def _run_replica(perturbed: pd.DataFrame) -> pd.DataFrame:
-        levels = compute_levels(perturbed, instrument=instrument, config=levels_config)
+        levels = compute_levels(
+            perturbed,
+            instrument=instrument,
+            config=replica_levels_config,
+        )
         signals = generate_signals(levels["levels"], setup, instrument=instrument)
         backtest = run_backtest(
             levels["levels"],

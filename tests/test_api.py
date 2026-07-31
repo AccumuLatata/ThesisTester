@@ -229,7 +229,7 @@ def test_validation_r16_noise_is_opt_in_and_seeded(tmp_path):
     }
     kwargs = {
         "raw_data": data,
-        "levels_config": _levels_config(),
+        "levels_config": {**_levels_config(), "instrument": "ES"},
         "setup_config": {**setup, "dataset_id": "saved-setup-metadata"},
         "backtest_config": {"stop_loss_ticks": 2, "take_profit_ticks": 3},
     }
