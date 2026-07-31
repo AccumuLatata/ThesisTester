@@ -325,7 +325,7 @@ def best_grid_result(
     metric: str = "expectancy_r",
     min_trades: int = 1,
 ) -> pd.Series | None:
-    """Return the grid row with the highest value of *metric*.
+    """Return the highest-ranked grid row under the canonical selection rule.
 
     Parameters
     ----------
@@ -339,9 +339,10 @@ def best_grid_result(
     Returns
     -------
     pd.Series or None
-        The row with the highest ``metric`` value, or ``None`` if no
-        valid rows exist (empty grid, all filtered by ``min_trades``,
-        or all metric values are NaN).
+        The row with the highest ``metric`` value, breaking ties by ascending
+        ``stop_loss_ticks`` then ``take_profit_ticks``, or ``None`` if no
+        valid rows exist (empty grid, all filtered by ``min_trades``, or all
+        metric values are NaN).
     """
     if grid is None or grid.empty:
         return None
@@ -357,5 +358,8 @@ def best_grid_result(
     if filtered.empty:
         return None
 
-    idx = filtered[metric].idxmax()
-    return filtered.loc[idx]
+    return filtered.sort_values(
+        [metric, "stop_loss_ticks", "take_profit_ticks"],
+        ascending=[False, True, True],
+        kind="mergesort",
+    ).iloc[0]

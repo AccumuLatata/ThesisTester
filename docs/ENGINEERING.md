@@ -573,7 +573,9 @@ Recommend shipping **Phases 0–5 as MVP**, then 6–9.
 - **`run_sl_tp_grid()`** returns one tidy summary row per cell including expectancy, total R,
   win rate, profit factor, max drawdown R, and optional ratio / point columns.
 - **`best_grid_result()`** filters by a minimum trade count and returns the row with the
-  highest value of the chosen metric (default `expectancy_r`).
+  highest value of the chosen metric (default `expectancy_r`), breaking metric ties by
+  ascending stop-loss ticks and then take-profit ticks. Grid Search and R15 use this shared
+  rule, so validation diagnostics describe the displayed selected cell.
 - **No walk-forward or statistical validation** is implemented in Phase 6.  Grid search is
   purely descriptive: sweeping many SL/TP combinations on the same dataset can overfit.
   Out-of-sample validation belongs to a later phase.

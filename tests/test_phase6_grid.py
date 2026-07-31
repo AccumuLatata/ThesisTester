@@ -262,6 +262,24 @@ def test_best_grid_result_returns_highest():
     assert best["expectancy_r"] == grid["expectancy_r"].max()
 
 
+def test_best_grid_result_breaks_metric_ties_by_sl_then_tp():
+    """Tie selection must not depend on the input DataFrame row order."""
+    grid = pd.DataFrame(
+        {
+            "stop_loss_ticks": [8.0, 4.0, 4.0],
+            "take_profit_ticks": [4.0, 12.0, 8.0],
+            "trade_count": [10, 10, 10],
+            "expectancy_r": [1.0, 1.0, 1.0],
+        }
+    )
+
+    best = best_grid_result(grid, metric="expectancy_r")
+
+    assert best is not None
+    assert best["stop_loss_ticks"] == 4.0
+    assert best["take_profit_ticks"] == 8.0
+
+
 # ---------------------------------------------------------------------------
 # 9. best_grid_result respects min_trades
 # ---------------------------------------------------------------------------
