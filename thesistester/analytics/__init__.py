@@ -37,6 +37,13 @@ from .overfitting import (
     vs_random_benchmark,
 )
 from .sensitivity import sensitivity_summary
+from .portfolio import (
+    apply_portfolio_exposure,
+    portfolio_equity_curve,
+    portfolio_summary,
+    setup_correlation_matrices,
+    tag_setup_trades,
+)
 from .time_analysis import add_time_buckets, pivot_time_metric, summarize_by_group
 from .validation import (
     bootstrap_expectancy_ci,
@@ -74,6 +81,11 @@ __all__ = [
     "vs_random_benchmark",
     "overfitting_summary",
     "sensitivity_summary",
+    "tag_setup_trades",
+    "apply_portfolio_exposure",
+    "portfolio_equity_curve",
+    "setup_correlation_matrices",
+    "portfolio_summary",
     "add_excursion_r_columns",
     "edge_ratio_summary",
     "excursion_distribution",

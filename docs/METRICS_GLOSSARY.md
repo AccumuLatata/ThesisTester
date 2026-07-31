@@ -376,6 +376,18 @@ diagnostics, and R16 input-OHLC robustness.
 - **Initial / final stop line:** initial stop is the R-risk bracket; optional
   final stop is the completed-bar managed-stop state at exit.
 
+## R21 multi-setup portfolio
+
+- **Portfolio admission:** deterministic accept/reject of merged completed
+  setup trades under a declared portfolio-level exposure and cooldown policy.
+- **Portfolio equity:** cumulative admitted `r_multiple` and available
+  `pnl_currency`; it is not a margin-aware equity simulation.
+- **Setup return/drawdown correlation:** Pearson correlation of aligned
+  exit-timestamp R increments, or their cumulative drawdown paths, with
+  zero-R values for timestamps where a setup has no exit.
+- **Marginal contribution:** leave-one-out difference in portfolio total R or
+  max drawdown after removing a setup's admitted trades.
+
 ## R12 intrabar diagnostics
 
 | Field | Definition |

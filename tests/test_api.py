@@ -13,6 +13,7 @@ from thesistester.api import (
     load_dataset,
     run_backtest,
     run_grid,
+    run_portfolio_analysis,
     run_walk_forward,
     run_validation,
 )
@@ -107,6 +108,33 @@ def test_run_validation_wires_opt_in_sensitivity_profile(monkeypatch):
 
     assert result["sensitivity_summary"] == expected
     assert result["sensitivity_config"] == expected["config"]
+
+
+def test_run_portfolio_analysis_returns_bundle_ready_outputs():
+    timestamps = pd.date_range("2026-01-05 09:30", periods=4, freq="1min")
+
+    def trades(trade_id, entry, exit_, r_multiple):
+        return pd.DataFrame(
+            {
+                "trade_id": [trade_id],
+                "entry_bar_index": [entry],
+                "exit_bar_index": [exit_],
+                "entry_timestamp": [timestamps[entry]],
+                "exit_timestamp": [timestamps[exit_]],
+                "direction": ["long"],
+                "r_multiple": [r_multiple],
+            }
+        )
+
+    result = run_portfolio_analysis(
+        {"A": trades(1, 0, 1, 1.0), "B": trades(2, 2, 3, 2.0)},
+        instrument="ES",
+        bar_count=4,
+    )
+
+    assert result["portfolio_summary"]["portfolio_metrics"]["total_r"] == 3.0
+    assert result["portfolio_config"]["setup_ids"] == ["A", "B"]
+    assert len(result["portfolio_trades"]) == 2
 
 
 def _levels_config() -> dict:

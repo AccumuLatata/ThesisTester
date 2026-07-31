@@ -567,6 +567,40 @@ levels, signals, engine semantics, or the existing validation contract.
 
 ---
 
+## R21 — Multi-Setup Portfolio Layer ✅ Implemented
+
+Adds an opt-in, post-trade portfolio diagnostic that composes independent
+completed setup runs without changing single-setup execution semantics.
+
+### Features
+
+- `thesistester/analytics/portfolio.py` tags and merges same-instrument,
+  shared-bar-index trade frames, then applies deterministic R4-equivalent
+  portfolio admission (`allow_all`, single position/direction/setup, cooldown).
+- It produces combined R/currency equity, return and drawdown correlation
+  matrices, admission diagnostics, and leave-one-out marginal contribution.
+- The Portfolio page accepts current Backtest trades plus completed trade CSVs;
+  reports and research bundles preserve schema-version-1 summaries and tables.
+
+### Regression safety
+
+- R21 is additive post-trade analytics only. It neither invokes nor modifies
+  `simulate_trades`, signals, levels, or individual setup outputs.
+- Every input requires canonical completed-trade columns; supplied parent bar
+  counts hard-fail out-of-range bar indices.
+- Results state that portfolio outputs are not continuous capital, margin,
+  liquidity, or fill simulations.
+
+### Tests
+
+- Disjoint setups under `allow_all` equal the sum of parts.
+- Hand-computed overlap, direction, cooldown, and bar-index fixtures lock
+  admission behavior; correlation matches pandas reference.
+- API, research-bundle, legacy golden, lint, full-suite, and package gates
+  cover additive wiring.
+
+---
+
 ## R20 — Trade-Review Visualization (Replay-lite) ✅ Implemented
 
 Adds an opt-in, read-only per-trade inspection view without changing levels,

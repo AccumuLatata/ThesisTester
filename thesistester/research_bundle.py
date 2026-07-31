@@ -53,6 +53,7 @@ _MONTE_CARLO_META_KEYS = ("monte_carlo_summary", "monte_carlo_config")
 _NOISE_META_KEYS = ("noise_summary", "noise_config")
 _OVERFITTING_META_KEYS = ("overfitting_summary", "overfitting_config")
 _SENSITIVITY_META_KEYS = ("sensitivity_summary", "sensitivity_config")
+_PORTFOLIO_META_KEYS = ("portfolio_summary", "portfolio_config", "portfolio_setup_inputs")
 _MANAGED_RESEARCH_KEYS = {
     "data",
     "subtimeframe_data",
@@ -109,6 +110,15 @@ _MANAGED_RESEARCH_KEYS = {
     "overfitting_config",
     "sensitivity_summary",
     "sensitivity_config",
+    "portfolio_summary",
+    "portfolio_config",
+    "portfolio_setup_inputs",
+    "portfolio_trades",
+    "portfolio_skipped_trades",
+    "portfolio_equity_curve",
+    "portfolio_correlation",
+    "portfolio_drawdown_correlation",
+    "portfolio_marginal_contribution",
 }
 
 _KNOWN_FILES = {
@@ -143,6 +153,13 @@ _KNOWN_FILES = {
     "noise_summary.json",
     "overfitting_summary.json",
     "sensitivity_summary.json",
+    "portfolio_summary.json",
+    "portfolio_trades.parquet",
+    "portfolio_skipped_trades.parquet",
+    "portfolio_equity_curve.parquet",
+    "portfolio_correlation.parquet",
+    "portfolio_drawdown_correlation.parquet",
+    "portfolio_marginal_contribution.parquet",
 }
 
 _SECTION_REQUIRED_FILES = {
@@ -163,6 +180,7 @@ _SECTION_REQUIRED_FILES = {
     "noise": ("noise_summary.json",),
     "overfitting": ("overfitting_summary.json",),
     "sensitivity": ("sensitivity_summary.json",),
+    "portfolio": ("portfolio_summary.json", "portfolio_trades.parquet"),
 }
 
 
@@ -434,6 +452,25 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
         manifest["included"]["sensitivity"] = True
         included_keys.update(_SENSITIVITY_META_KEYS)
 
+    if session_state.get("portfolio_summary") is not None:
+        files["portfolio_summary.json"] = _to_json_bytes(
+            {key: session_state.get(key) for key in _PORTFOLIO_META_KEYS}
+        )
+        for key in (
+            "portfolio_trades",
+            "portfolio_skipped_trades",
+            "portfolio_equity_curve",
+            "portfolio_correlation",
+            "portfolio_drawdown_correlation",
+            "portfolio_marginal_contribution",
+        ):
+            frame = session_state.get(key)
+            if _is_dataframe(frame):
+                files[f"{key}.parquet"] = _to_parquet_bytes(frame)
+                included_keys.add(key)
+        manifest["included"]["portfolio"] = True
+        included_keys.update(_PORTFOLIO_META_KEYS)
+
     manifest["session_keys"] = sorted(included_keys)
     files[MANIFEST_FILENAME] = _to_json_bytes(manifest)
 
@@ -630,6 +667,23 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
             for key in _SENSITIVITY_META_KEYS:
                 if key in sensitivity_meta:
                     session_values[key] = sensitivity_meta[key]
+
+        if included.get("portfolio"):
+            portfolio_meta = _read_json_from_zip(zf, "portfolio_summary.json")
+            for key in _PORTFOLIO_META_KEYS:
+                if key in portfolio_meta:
+                    session_values[key] = portfolio_meta[key]
+            for key in (
+                "portfolio_trades",
+                "portfolio_skipped_trades",
+                "portfolio_equity_curve",
+                "portfolio_correlation",
+                "portfolio_drawdown_correlation",
+                "portfolio_marginal_contribution",
+            ):
+                filename = f"{key}.parquet"
+                if filename in names:
+                    session_values[key] = _read_parquet_from_zip(zf, filename)
 
     return {
         "manifest": manifest,

@@ -252,6 +252,7 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "noise_summary": to_jsonable(session_state.get("noise_summary")),
             "overfitting_summary": to_jsonable(session_state.get("overfitting_summary")),
             "sensitivity_summary": to_jsonable(session_state.get("sensitivity_summary")),
+            "portfolio_summary": to_jsonable(session_state.get("portfolio_summary")),
             "backtest_intrabar_diagnostic": to_jsonable(
                 session_state.get("backtest_intrabar_diagnostic")
             ),
@@ -820,6 +821,7 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     noise = results.get("noise_summary") or {}
     overfitting = results.get("overfitting_summary") or {}
     sensitivity = results.get("sensitivity_summary") or {}
+    portfolio = results.get("portfolio_summary") or {}
     walk_forward = results.get("walk_forward_summary") or {}
     intrabar = artifact.get("intrabar", {}) if isinstance(artifact, Mapping) else {}
     intrabar_policy = intrabar.get("backtest_policy", {}) if isinstance(intrabar, Mapping) else {}
@@ -1023,6 +1025,22 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
                 f"- Parameters profiled: {len(profiles) if isinstance(profiles, list) else 0}",
                 f"- Fragile parameters: {fragile_count}",
                 f"- Baseline expectancy R: {_fmt_number((sensitivity.get('baseline') or {}).get('expectancy_r') if isinstance(sensitivity.get('baseline'), Mapping) else None)}",
+                "",
+            ]
+        )
+
+    if isinstance(portfolio, Mapping) and portfolio.get("available"):
+        portfolio_metrics = portfolio.get("portfolio_metrics") or {}
+        admission = portfolio.get("admission") or {}
+        lines.extend(
+            [
+                "## Multi-Setup Portfolio",
+                "⚠️ Diagnostic only — post-hoc completed-trade merge, not a capital or fill simulation.",
+                "",
+                f"- Setup count: {len((portfolio.get('config') or {}).get('setup_ids', []))}",
+                f"- Portfolio total R: {_fmt_number(portfolio_metrics.get('total_r') if isinstance(portfolio_metrics, Mapping) else None)}",
+                f"- Portfolio max drawdown R: {_fmt_number(portfolio_metrics.get('max_drawdown_r') if isinstance(portfolio_metrics, Mapping) else None)}",
+                f"- Admitted / skipped trades: {admission.get('admitted_trade_count', 0) if isinstance(admission, Mapping) else 0} / {admission.get('skipped_trade_count', 0) if isinstance(admission, Mapping) else 0}",
                 "",
             ]
         )

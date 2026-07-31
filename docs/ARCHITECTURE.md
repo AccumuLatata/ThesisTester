@@ -147,6 +147,14 @@ single-trade charts from existing OHLC, trade, level, and zone frames.
 worst-loser windows. MAE/MFE bands are terminal bar-extreme envelopes, not
 intrabar replay; neither module changes engine or research-artifact semantics.
 
+## R21 portfolio boundary
+
+`thesistester.analytics.portfolio` operates only on independently completed
+setup trade frames. It applies deterministic portfolio-level admission over
+their shared bar indices and emits combined equity, correlation, and
+leave-one-out contributions. It does not invoke the backtest engine or make
+claims about capital, margin, liquidity, or fill interactions.
+
 ## R17 ingestion boundary
 
 `thesistester.data.loader.load_ohlcv()` is the sole explicit-profile adapter
@@ -242,6 +250,15 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `trade_review_buffer_rows` | Backtest (`pages/7_Backtest.py`) | Backtest | Bounded selected-trade chart buffer (10–500 OHLC rows each side) |
 | `trade_review_export_zip` | Backtest (`pages/7_Backtest.py`) | Backtest download | Ephemeral ZIP of R20 worst-loser PNG charts; cleared on dataset change and not persisted in research bundles |
 | `trade_review_export_signature` | Backtest (`pages/7_Backtest.py`) | Backtest download guard | Current trades, OHLC/level/zone overlays, review display settings, buffer, and loser count identity; stale ZIPs are withheld |
+| `portfolio_setup_inputs` | Portfolio (`pages/13_Portfolio.py`) | Portfolio, Research Bundles | Current setup IDs included in a R21 run |
+| `portfolio_config` | Portfolio/R18 API | Report, Research Bundles | R21 instrument, exposure policy, cooldown, parent bar-count, and setup IDs |
+| `portfolio_summary` | Portfolio/R18 API | Portfolio display, Report, Research Bundles | R21 schema-version-1 summary and caveat |
+| `portfolio_trades` | Portfolio/R18 API | Portfolio display, Research Bundles | Tagged, portfolio-admitted completed trade rows |
+| `portfolio_skipped_trades` | Portfolio/R18 API | Portfolio display, Research Bundles | Tagged R21 exposure/cooldown admission skips |
+| `portfolio_equity_curve` | Portfolio/R18 API | Portfolio display, Research Bundles | Combined cumulative R/currency and drawdown curve |
+| `portfolio_correlation` | Portfolio/R18 API | Portfolio display, Research Bundles | Setup return correlation matrix |
+| `portfolio_drawdown_correlation` | Portfolio/R18 API | Research Bundles | Setup drawdown correlation matrix |
+| `portfolio_marginal_contribution` | Portfolio/R18 API | Portfolio display, Research Bundles | Leave-one-out total-R/max-drawdown deltas |
 | `excursion_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report, Research Bundles | `dict` R10 schema version 1 (`overall`, `grouped`, `quadrants`, `calibration_grid`, `edge_ratio`, `config`, caveat) |
 | `excursion_config` | Validation (`pages/10_Validation.py`) | Research Bundles | `dict` copied from `excursion_summary["config"]` |
 | `excursion_grouped_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report CSV, Research Bundles | `pd.DataFrame` grouped MAE/MFE distribution stats |

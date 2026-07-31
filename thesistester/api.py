@@ -21,6 +21,7 @@ from thesistester.analytics import (
     grid_trade_sequences,
     noise_summary,
     overfitting_summary,
+    portfolio_summary,
     sensitivity_summary,
     run_walk_forward_sl_tp,
     run_wfa_matrix,
@@ -115,6 +116,19 @@ class ValidationResult(TypedDict, total=False):
     overfitting_config: dict[str, Any]
     sensitivity_summary: dict[str, Any]
     sensitivity_config: dict[str, Any]
+
+
+class PortfolioResult(TypedDict):
+    """Bundle-ready R21 portfolio analysis handoff."""
+
+    portfolio_summary: dict[str, Any]
+    portfolio_config: dict[str, Any]
+    portfolio_trades: pd.DataFrame
+    portfolio_skipped_trades: pd.DataFrame
+    portfolio_equity_curve: pd.DataFrame
+    portfolio_correlation: pd.DataFrame
+    portfolio_drawdown_correlation: pd.DataFrame
+    portfolio_marginal_contribution: pd.DataFrame
 
 
 class WalkForwardAnalysisResult(TypedDict, total=False):
@@ -1542,6 +1556,53 @@ def run_sensitivity_profile(
         execution_kwargs=execution_kwargs,
         **settings,
     )
+
+
+def run_portfolio_analysis(
+    setup_trades: Mapping[str, pd.DataFrame],
+    *,
+    instrument: str,
+    config: Mapping[str, Any] | None = None,
+    bar_count: int | None = None,
+) -> PortfolioResult:
+    """Run additive R21 analysis over independent completed setup trade frames."""
+    settings = dict(config or {})
+    allowed = {"exposure_policy", "cooldown_bars_after_exit"}
+    _validate_keys(settings, allowed, section="portfolio")
+    summary = portfolio_summary(
+        setup_trades,
+        instrument=instrument,
+        exposure_policy=str(settings.get("exposure_policy", "allow_all")),
+        cooldown_bars_after_exit=int(settings.get("cooldown_bars_after_exit", 0)),
+        bar_count=bar_count,
+    )
+    return {
+        "portfolio_summary": {
+            key: value
+            for key, value in summary.items()
+            if key
+            not in {
+                "portfolio_trades",
+                "portfolio_skipped_trades",
+                "portfolio_equity_curve",
+                "portfolio_correlation",
+                "portfolio_drawdown_correlation",
+                "portfolio_marginal_contribution",
+            }
+        },
+        "portfolio_config": summary["config"],
+        **{
+            key: summary[key]
+            for key in (
+                "portfolio_trades",
+                "portfolio_skipped_trades",
+                "portfolio_equity_curve",
+                "portfolio_correlation",
+                "portfolio_drawdown_correlation",
+                "portfolio_marginal_contribution",
+            )
+        },
+    }
 
 
 def run_grid(
