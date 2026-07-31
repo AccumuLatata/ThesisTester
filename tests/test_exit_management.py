@@ -33,6 +33,20 @@ def _signal(direction: str = "long") -> pd.DataFrame:
     )
 
 
+def _three_c_signal() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "signal_id": [1],
+            "bar_index": [1],
+            "entry_bar_index": [1],
+            "retrace_entry_price": [100.0],
+            "trigger": ["3c"],
+            "direction": ["long"],
+            "status": ["filled"],
+        }
+    )
+
+
 def _simulate(
     bars: pd.DataFrame,
     direction: str = "long",
@@ -57,9 +71,8 @@ def test_long_breakeven_arms_after_completed_bar_and_exits_next_bar():
         _bars(
             [
                 (100, 100, 100, 100),
-                (100, 101.0, 99.5, 100.5),
-                (100.5, 102.5, 100.5, 101.5),
-                (101.5, 101.5, 100.0, 100.5),
+                (100, 102.5, 99.5, 100.5),
+                (100.5, 101.5, 100.0, 100.5),
             ]
         ),
         breakeven_after_r=1.0,
@@ -70,7 +83,7 @@ def test_long_breakeven_arms_after_completed_bar_and_exits_next_bar():
     assert trade["r_multiple"] == 0.0
     assert trade["stop_price"] == 98.0
     assert trade["active_stop_price_at_exit"] == 100.0
-    assert trade["breakeven_activated_bar_index"] == 2
+    assert trade["breakeven_activated_bar_index"] == 1
     assert result.exit_management_diagnostic["be_exit_count"] == 1
 
 
@@ -121,8 +134,7 @@ def test_trailing_stop_ratchets_and_exits_long():
         _bars(
             [
                 (100, 100, 100, 100),
-                (100, 101.0, 99.5, 100.5),
-                (100.5, 103.0, 100.5, 102.0),
+                (100, 103.0, 99.5, 102.0),
                 (102, 102.5, 101.0, 101.5),
             ]
         ),
@@ -133,7 +145,7 @@ def test_trailing_stop_ratchets_and_exits_long():
     assert trade["exit_reason"] == "TRAIL"
     assert trade["theoretical_exit_price"] == 101.0
     assert trade["r_multiple"] == pytest.approx(0.5)
-    assert trade["trailing_activated_bar_index"] == 2
+    assert trade["trailing_activated_bar_index"] == 1
     assert result.exit_management_diagnostic["trail_exit_count"] == 1
 
 
@@ -157,19 +169,41 @@ def test_trailing_stop_ratchets_and_exits_short():
     assert trade["r_multiple"] == pytest.approx(0.5)
 
 
-def test_entry_bar_does_not_arm_breakeven_for_same_bar_exit():
+def test_simple_next_open_can_arm_breakeven_after_entry_bar_close():
     result = _simulate(
         _bars(
             [
                 (100, 100, 100, 100),
                 (100, 103.0, 100.0, 102.0),
-                (102, 103.0, 101.0, 102.5),
-                (102, 102.5, 99.0, 100.0),
+                (102, 102.5, 100.0, 100.0),
             ]
         ),
         breakeven_after_r=1.0,
     )
     trade = result.trades.iloc[0]
+    assert trade["exit_reason"] == "BE"
+    assert trade["exit_bar_index"] == 2
+    assert trade["breakeven_activated_bar_index"] == 1
+
+
+def test_intrabar_entry_does_not_arm_breakeven_on_entry_parent_bar():
+    result = simulate_trades(
+        _bars(
+            [
+                (100, 100, 100, 100),
+                (100, 103.0, 100.0, 102.0),
+                (102, 103.0, 101.0, 102.5),
+                (102, 102.5, 100.0, 100.5),
+            ]
+        ),
+        _three_c_signal(),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=4,
+        breakeven_after_r=1.0,
+    )
+    trade = result.iloc[0]
     assert trade["exit_reason"] == "BE"
     assert trade["exit_bar_index"] == 3
     assert trade["breakeven_activated_bar_index"] == 2

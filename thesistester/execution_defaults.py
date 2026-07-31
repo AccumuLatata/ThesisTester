@@ -190,7 +190,9 @@ _BACKTEST_FIELD_SPECS: tuple[tuple[str, str, Any], ...] = (
     ("backtest_no_new_entries_after", "no_new_entries_after", _valid_optional_time_str),
     ("backtest_exposure_policy", "exposure_policy", _valid_exposure_policy),
     ("backtest_intrabar_model", "intrabar_model", _valid_intrabar_model),
+    ("backtest_enable_be", "enable_breakeven", _valid_bool),
     ("backtest_breakeven_after_r", "breakeven_after_r", _valid_optional_positive_float),
+    ("backtest_enable_trail", "enable_trailing", _valid_bool),
     ("backtest_trailing_after_r", "trailing_after_r", _valid_optional_positive_float),
     (
         "backtest_trailing_distance_ticks",
@@ -281,7 +283,9 @@ _GRID_FIELD_SPECS: tuple[tuple[str, str, Any], ...] = (
     ("grid_no_new_entries_after", "no_new_entries_after", _valid_optional_time_str),
     ("grid_exposure_policy_widget", "exposure_policy", _valid_exposure_policy),
     ("grid_intrabar_model_widget", "intrabar_model", _valid_intrabar_model),
+    ("grid_enable_be", "enable_breakeven", _valid_bool),
     ("grid_breakeven_after_r", "breakeven_after_r", _valid_optional_positive_float),
+    ("grid_enable_trail", "enable_trailing", _valid_bool),
     ("grid_trailing_after_r", "trailing_after_r", _valid_optional_positive_float),
     (
         "grid_trailing_distance_ticks",

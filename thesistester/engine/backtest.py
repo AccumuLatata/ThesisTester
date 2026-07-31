@@ -809,7 +809,10 @@ def simulate_trades(
                 if intrabar_model == "subtimeframe":
                     subtimeframe_resolved_count += 1
                 break
-            if exit_management_active and b > entry_bar_index and b < max_bar:
+            can_update_exit_management = (
+                entry_model == "next_bar_open" and b >= entry_bar_index
+            ) or (entry_model != "next_bar_open" and b > entry_bar_index)
+            if exit_management_active and can_update_exit_management and b < max_bar:
                 stop_state = update_exit_management_after_bar(
                     state=stop_state,
                     direction=direction,

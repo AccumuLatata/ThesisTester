@@ -654,6 +654,9 @@ display_cols = [
     for c in [
         "stop_loss_ticks",
         "take_profit_ticks",
+        "breakeven_after_r",
+        "trailing_after_r",
+        "trailing_distance_ticks",
         "tp_sl_ratio",
         "risk_points",
         "target_points",
@@ -689,6 +692,12 @@ display_cols = [
         "outlier_dependency_ratio",
         "best_trade_r",
         "worst_trade_r",
+        "be_exit_count",
+        "trail_exit_count",
+        "stop_adjustment_count",
+        "intrabar_model",
+        "intrabar_both_hit_count",
+        "intrabar_ambiguous_count",
         # Directional columns
         "long_trade_count",
         "long_win_rate",

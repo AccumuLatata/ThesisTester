@@ -242,7 +242,9 @@ with st.sidebar:
             "a research bundle or use the R18 API/CLI `dataset.subtimeframe_path` contract."
         )
     with st.expander("Exit management (R13)", expanded=False):
-        enable_breakeven = st.toggle("Enable break-even move", value=False)
+        enable_breakeven = st.toggle(
+            "Enable break-even move", value=False, key="backtest_enable_be"
+        )
         breakeven_after_r = None
         if enable_breakeven:
             breakeven_after_r = float(
@@ -255,7 +257,9 @@ with st.sidebar:
                     key="backtest_breakeven_after_r",
                 )
             )
-        enable_trailing = st.toggle("Enable trailing stop", value=False)
+        enable_trailing = st.toggle(
+            "Enable trailing stop", value=False, key="backtest_enable_trail"
+        )
         trailing_after_r = None
         trailing_distance_ticks = None
         if enable_trailing:
