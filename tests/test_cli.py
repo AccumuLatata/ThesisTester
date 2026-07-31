@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import math
 
 import pandas as pd
 import yaml
@@ -266,6 +267,30 @@ def test_experiment_schema_and_names_fail_fast(tmp_path):
                 ],
             },
             "must be a boolean",
+        ),
+        (
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        **_run("nan-risk"),
+                        "backtest": {"stop_loss_ticks": math.nan},
+                    }
+                ],
+            },
+            "must be finite",
+        ),
+        (
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        **_run("negative-target"),
+                        "backtest": {"take_profit_ticks": -1},
+                    }
+                ],
+            },
+            "must be >",
         ),
     ]
     for index, (payload, message) in enumerate(cases):

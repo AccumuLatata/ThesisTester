@@ -6,6 +6,7 @@ analytics functions. They intentionally contain no alternative trading logic.
 
 from __future__ import annotations
 
+import math
 from numbers import Integral, Real
 from pathlib import Path
 from typing import Any, Mapping, TypedDict
@@ -251,6 +252,8 @@ def _validate_number_fields(
         value = config[key]
         if isinstance(value, bool) or not isinstance(value, expected):
             raise ValueError(f"{section}.{key} must be {label}")
+        if not math.isfinite(float(value)):
+            raise ValueError(f"{section}.{key} must be finite")
 
 
 def _validate_list_fields(
@@ -282,6 +285,47 @@ def _validate_string_fields(
             continue
         if not isinstance(value, str):
             raise ValueError(f"{section}.{key} must be a string")
+
+
+def _validate_range(
+    config: Mapping[str, Any],
+    key: str,
+    *,
+    section: str,
+    minimum: float | None = None,
+    maximum: float | None = None,
+    minimum_exclusive: bool = False,
+    maximum_exclusive: bool = False,
+) -> None:
+    if key not in config or config[key] is None:
+        return
+    value = float(config[key])
+    if minimum is not None:
+        invalid = value <= minimum if minimum_exclusive else value < minimum
+        if invalid:
+            operator = ">" if minimum_exclusive else ">="
+            raise ValueError(f"{section}.{key} must be {operator} {minimum}")
+    if maximum is not None:
+        invalid = value >= maximum if maximum_exclusive else value > maximum
+        if invalid:
+            operator = "<" if maximum_exclusive else "<="
+            raise ValueError(f"{section}.{key} must be {operator} {maximum}")
+
+
+def _validate_positive_list(
+    config: Mapping[str, Any],
+    key: str,
+    *,
+    section: str,
+    allow_empty: bool = False,
+) -> None:
+    if key not in config:
+        return
+    values = config[key]
+    if not allow_empty and not values:
+        raise ValueError(f"{section}.{key} must be non-empty")
+    if any(not math.isfinite(float(value)) or float(value) <= 0 for value in values):
+        raise ValueError(f"{section}.{key} values must be finite and > 0")
 
 
 def validate_run_spec(spec: Mapping[str, Any]) -> None:
@@ -344,6 +388,25 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         section="levels",
         item_type=str,
     )
+    _validate_positive_list(levels, "sma_lengths", section="levels")
+    _validate_positive_list(levels, "ema_lengths", section="levels")
+    _validate_range(
+        levels,
+        "value_area_pct",
+        section="levels",
+        minimum=0,
+        maximum=1,
+        minimum_exclusive=True,
+    )
+    for key in (
+        "opening_range_minutes",
+        "prior_day_profile_aggregation_ticks",
+        "prior_week_profile_aggregation_ticks",
+        "prior_month_profile_aggregation_ticks",
+        "pivot_left",
+        "pivot_right",
+    ):
+        _validate_range(levels, key, section="levels", minimum=1)
     setup = _require_mapping(run.get("setup"), section="setup")
     _validate_string_fields(
         setup,
@@ -369,6 +432,10 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         section="setup",
         integer=True,
     )
+    _validate_range(setup, "tolerance_ticks", section="setup", minimum=0)
+    _validate_range(setup, "min_confluences", section="setup", minimum=1)
+    _validate_range(setup, "max_confluences", section="setup", minimum=1, maximum=5)
+    _validate_range(setup, "min_valid_confluences", section="setup", minimum=1)
     _validate_list_fields(
         setup,
         {"selected_levels"},
@@ -395,6 +462,12 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                 rule,
                 {"tolerance_ticks"},
                 section=f"setup.confluence_rules[{index}]",
+            )
+            _validate_range(
+                rule,
+                "tolerance_ticks",
+                section=f"setup.confluence_rules[{index}]",
+                minimum=0,
             )
             _validate_bool_fields(
                 rule,
@@ -424,6 +497,12 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             section="setup.trigger_params",
             integer=True,
         )
+        for key in (
+            "arrival_tolerance_ticks",
+            "entry_retrace_ticks",
+            "max_entry_wait_bars_after_reversal",
+        ):
+            _validate_range(trigger_params, key, section="setup.trigger_params", minimum=0)
     otf = setup.get("otf_filter")
     if otf is not None:
         otf = _require_mapping(otf, section="setup.otf_filter")
@@ -464,6 +543,23 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         section="backtest",
         integer=True,
     )
+    _validate_range(
+        backtest,
+        "stop_loss_ticks",
+        section="backtest",
+        minimum=0,
+        minimum_exclusive=True,
+    )
+    _validate_range(
+        backtest,
+        "take_profit_ticks",
+        section="backtest",
+        minimum=0,
+        minimum_exclusive=True,
+    )
+    _validate_range(backtest, "commission_per_side", section="backtest", minimum=0)
+    _validate_range(backtest, "slippage_ticks", section="backtest", minimum=0)
+    _validate_range(backtest, "cooldown_bars_after_exit", section="backtest", minimum=0)
     _validate_string_fields(
         backtest,
         {
@@ -482,6 +578,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             section="backtest",
             integer=True,
         )
+        _validate_range(backtest, "max_holding_bars", section="backtest", minimum=1)
     grid = run.get("grid")
     if grid is not None:
         grid = _require_mapping(grid, section="grid")
@@ -497,6 +594,8 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             section="grid",
             item_type=Real,
         )
+        _validate_positive_list(grid, "stop_loss_ticks_values", section="grid")
+        _validate_positive_list(grid, "take_profit_ticks_values", section="grid")
         _validate_number_fields(
             grid,
             {"commission_per_side", "slippage_ticks"},
@@ -508,6 +607,10 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             section="grid",
             integer=True,
         )
+        _validate_range(grid, "commission_per_side", section="grid", minimum=0)
+        _validate_range(grid, "slippage_ticks", section="grid", minimum=0)
+        _validate_range(grid, "cooldown_bars_after_exit", section="grid", minimum=0)
+        _validate_range(grid, "min_trades", section="grid", minimum=1)
         _validate_string_fields(
             grid,
             {
@@ -527,6 +630,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                 section="grid",
                 integer=True,
             )
+            _validate_range(grid, "max_holding_bars", section="grid", minimum=1)
     validation = run.get("validation")
     if validation is not None:
         validation = _require_mapping(validation, section="validation")
@@ -542,6 +646,19 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             {"n_bootstrap", "n_permutations", "min_trades_soft", "min_trades_hard"},
             section="validation",
             integer=True,
+        )
+        _validate_range(validation, "n_bootstrap", section="validation", minimum=1)
+        _validate_range(validation, "n_permutations", section="validation", minimum=1)
+        _validate_range(validation, "min_trades_soft", section="validation", minimum=1)
+        _validate_range(validation, "min_trades_hard", section="validation", minimum=1)
+        _validate_range(
+            validation,
+            "confidence",
+            section="validation",
+            minimum=0,
+            maximum=1,
+            minimum_exclusive=True,
+            maximum_exclusive=True,
         )
         random_state = validation.get("random_state", _VALIDATION_DEFAULTS["random_state"])
         _validate_random_state(random_state, section="validation")
@@ -559,6 +676,40 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             _validate_number_fields(
                 excursion,
                 {"mae_r_threshold", "mfe_r_threshold"},
+                section="validation.excursion",
+            )
+            _validate_range(
+                excursion,
+                "min_trades",
+                section="validation.excursion",
+                minimum=1,
+            )
+            _validate_range(
+                excursion,
+                "mae_r_threshold",
+                section="validation.excursion",
+                minimum=0,
+            )
+            _validate_range(
+                excursion,
+                "mfe_r_threshold",
+                section="validation.excursion",
+                minimum=0,
+            )
+            _validate_list_fields(
+                excursion,
+                {"stop_r_grid", "target_r_grid"},
+                section="validation.excursion",
+                item_type=Real,
+            )
+            _validate_positive_list(
+                excursion,
+                "stop_r_grid",
+                section="validation.excursion",
+            )
+            _validate_positive_list(
+                excursion,
+                "target_r_grid",
                 section="validation.excursion",
             )
         monte_carlo = validation.get("monte_carlo")
@@ -587,9 +738,46 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                     section="validation.monte_carlo",
                     integer=True,
                 )
+                _validate_range(
+                    monte_carlo,
+                    "block_length",
+                    section="validation.monte_carlo",
+                    minimum=1,
+                )
             _validate_number_fields(
                 monte_carlo,
                 {"skip_fraction"},
+                section="validation.monte_carlo",
+            )
+            _validate_range(
+                monte_carlo,
+                "n_simulations",
+                section="validation.monte_carlo",
+                minimum=1,
+            )
+            _validate_range(
+                monte_carlo,
+                "skip_fraction",
+                section="validation.monte_carlo",
+                minimum=0,
+                maximum=1,
+                maximum_exclusive=True,
+            )
+            _validate_list_fields(
+                monte_carlo,
+                {"methods"},
+                section="validation.monte_carlo",
+                item_type=str,
+            )
+            _validate_list_fields(
+                monte_carlo,
+                {"percentiles", "drawdown_thresholds_r"},
+                section="validation.monte_carlo",
+                item_type=Real,
+            )
+            _validate_positive_list(
+                monte_carlo,
+                "drawdown_thresholds_r",
                 section="validation.monte_carlo",
             )
             if monte_carlo.get("enabled", True):
