@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
 
 from ..data.loader import infer_base_interval
+from ..levels.session_date import trading_session_date
 from .grid import best_grid_result, run_sl_tp_grid
-from .metrics import summarize_trades
+from .metrics import equity_curve, summarize_trades
 from ..engine.backtest import simulate_trades
 from ..setup import normalize_otf_filter_config
 
@@ -147,7 +149,140 @@ _RESULT_COLUMNS = [
     "test_otf_candidate_count",
     "test_otf_accepted_count",
     "test_otf_rejected_count",
+    "fold_mode",
+    "window_mode",
+    "train_start_session_date",
+    "train_end_session_date",
+    "test_start_session_date",
+    "test_end_session_date",
+    "train_session_count",
+    "test_session_count",
+    "retention_ratio_expectancy",
+    "degradation_pct_expectancy",
+    "ratio_status",
 ]
+
+
+@dataclass(frozen=True)
+class FoldBoundary:
+    """Half-open train/test bar boundaries with optional session metadata."""
+
+    fold_id: int
+    train_start: int
+    train_end_exclusive: int
+    test_start: int
+    test_end_exclusive: int
+    train_start_session: str | None = None
+    train_end_session: str | None = None
+    test_start_session: str | None = None
+    test_end_session: str | None = None
+    train_session_count: int | None = None
+    test_session_count: int | None = None
+
+
+@dataclass(frozen=True)
+class WalkForwardResult:
+    """Detailed R14 walk-forward output."""
+
+    schema_version: int
+    config: dict[str, Any]
+    folds: pd.DataFrame
+    oos_trades: pd.DataFrame
+    stitched_equity: pd.DataFrame
+    summary: dict[str, Any]
+    warnings: tuple[str, ...]
+
+
+def _validate_timeline(df: pd.DataFrame) -> None:
+    timestamps = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
+    if timestamps.isna().any():
+        raise ValueError("df['timestamp'] contains invalid timestamps.")
+    if timestamps.duplicated().any():
+        raise ValueError("df['timestamp'] contains duplicate timestamps.")
+    if not timestamps.is_monotonic_increasing:
+        raise ValueError("df['timestamp'] must be monotonic increasing.")
+
+
+def _bar_fold_boundaries(
+    *,
+    n_bars: int,
+    train_bars: int,
+    test_bars: int,
+    step_bars: int,
+    window_mode: str,
+) -> list[FoldBoundary]:
+    folds: list[FoldBoundary] = []
+    test_start = int(train_bars)
+    fold_id = 0
+    while test_start + int(test_bars) <= n_bars:
+        train_start = 0 if window_mode == "anchored" else test_start - int(train_bars)
+        folds.append(
+            FoldBoundary(
+                fold_id=fold_id,
+                train_start=train_start,
+                train_end_exclusive=test_start,
+                test_start=test_start,
+                test_end_exclusive=test_start + int(test_bars),
+            )
+        )
+        test_start += int(step_bars)
+        fold_id += 1
+    return folds
+
+
+def _session_fold_boundaries(
+    df: pd.DataFrame,
+    *,
+    train_sessions: int,
+    test_sessions: int,
+    step_sessions: int,
+    window_mode: str,
+    exchange_timezone: str,
+    eth_start: str,
+) -> tuple[list[FoldBoundary], pd.Series]:
+    timestamps = pd.to_datetime(df["timestamp"], errors="coerce")
+    if timestamps.dt.tz is None:
+        timestamps = timestamps.dt.tz_localize(exchange_timezone)
+    else:
+        timestamps = timestamps.dt.tz_convert(exchange_timezone)
+    session_ids = trading_session_date(timestamps, eth_start).astype(str)
+    ordered_sessions = list(dict.fromkeys(session_ids.tolist()))
+    session_ranges: dict[str, tuple[int, int]] = {}
+    for session_id in ordered_sessions:
+        indices = session_ids.index[session_ids.eq(session_id)]
+        start = int(indices[0])
+        end = int(indices[-1]) + 1
+        if list(indices) != list(range(start, end)):
+            raise ValueError(f"Session {session_id} is not contiguous in df.")
+        session_ranges[session_id] = (start, end)
+
+    folds: list[FoldBoundary] = []
+    test_start_session = int(train_sessions)
+    fold_id = 0
+    while test_start_session + int(test_sessions) <= len(ordered_sessions):
+        train_start_session = (
+            0 if window_mode == "anchored" else test_start_session - int(train_sessions)
+        )
+        train_ids = ordered_sessions[train_start_session:test_start_session]
+        test_ids = ordered_sessions[test_start_session : test_start_session + int(test_sessions)]
+        folds.append(
+            FoldBoundary(
+                fold_id=fold_id,
+                train_start=session_ranges[train_ids[0]][0],
+                train_end_exclusive=session_ranges[train_ids[-1]][1],
+                test_start=session_ranges[test_ids[0]][0],
+                test_end_exclusive=session_ranges[test_ids[-1]][1],
+                train_start_session=train_ids[0],
+                train_end_session=train_ids[-1],
+                test_start_session=test_ids[0],
+                test_end_session=test_ids[-1],
+                train_session_count=len(train_ids),
+                test_session_count=len(test_ids),
+            )
+        )
+        test_start_session += int(step_sessions)
+        fold_id += 1
+    return folds, session_ids
 
 
 def _slice_subtimeframe_data(
@@ -166,14 +301,28 @@ def _slice_subtimeframe_data(
     return subtimeframe_data.loc[(sub_timestamps >= start) & (sub_timestamps < end)].copy()
 
 
-def _actionable_index_column(signals: pd.DataFrame) -> pd.Series:
+def _actionable_index_column(
+    signals: pd.DataFrame,
+    *,
+    executable_entry_ownership: bool = False,
+) -> pd.Series:
     has_entry = "entry_bar_index" in signals.columns
     if has_entry:
         entry = pd.to_numeric(signals["entry_bar_index"], errors="coerce")
         if entry.notna().any():
             fallback = pd.to_numeric(signals["bar_index"], errors="coerce")
+            if executable_entry_ownership:
+                trigger = signals.get(
+                    "trigger", pd.Series(index=signals.index, dtype=object)
+                ).astype(str)
+                simple_entry = fallback + 1
+                fallback = fallback.where(trigger.eq("confirm_3bar"), simple_entry)
             return entry.where(entry.notna(), fallback)
-    return pd.to_numeric(signals["bar_index"], errors="coerce")
+    bar_index = pd.to_numeric(signals["bar_index"], errors="coerce")
+    if not executable_entry_ownership:
+        return bar_index
+    trigger = signals.get("trigger", pd.Series(index=signals.index, dtype=object)).astype(str)
+    return bar_index.where(trigger.eq("confirm_3bar"), bar_index + 1)
 
 
 def _slice_signals(
@@ -181,13 +330,17 @@ def _slice_signals(
     start_bar: int,
     end_bar_exclusive: int,
     n_slice_bars: int,
+    executable_entry_ownership: bool = False,
 ) -> pd.DataFrame:
     if signals is None:
         return pd.DataFrame()
     if signals.empty:
         return signals.iloc[0:0].copy()
 
-    actionable = _actionable_index_column(signals)
+    actionable = _actionable_index_column(
+        signals,
+        executable_entry_ownership=executable_entry_ownership,
+    )
     mask = actionable.ge(start_bar) & actionable.lt(end_bar_exclusive)
     sliced = signals.loc[mask].copy()
     if sliced.empty:
@@ -198,8 +351,12 @@ def _slice_signals(
         entry = pd.to_numeric(sliced["entry_bar_index"], errors="coerce")
         sliced["entry_bar_index"] = entry - start_bar
 
-    valid = sliced["bar_index"].notna()
-    valid &= sliced["bar_index"].ge(0) & sliced["bar_index"].lt(n_slice_bars)
+    if executable_entry_ownership:
+        local_actionable = actionable.loc[sliced.index] - start_bar
+        valid = local_actionable.ge(0) & local_actionable.lt(n_slice_bars)
+    else:
+        valid = sliced["bar_index"].notna()
+        valid &= sliced["bar_index"].ge(0) & sliced["bar_index"].lt(n_slice_bars)
 
     if "entry_bar_index" in sliced.columns:
         entry = pd.to_numeric(sliced["entry_bar_index"], errors="coerce")
@@ -251,7 +408,16 @@ def run_walk_forward_sl_tp(
     trailing_after_r_values: list[float | None] | None = None,
     trailing_distance_ticks_values: list[float | None] | None = None,
     max_grid_cells: int = 500,
-) -> pd.DataFrame:
+    fold_mode: str = "bars",
+    window_mode: str = "rolling",
+    train_sessions: int | None = None,
+    test_sessions: int | None = None,
+    step_sessions: int | None = None,
+    exchange_timezone: str = "America/New_York",
+    eth_start: str = "18:00",
+    overlap_policy: str = "reject",
+    return_result: bool = False,
+) -> pd.DataFrame | WalkForwardResult:
     """Run deterministic bar-window walk-forward diagnostics for SL/TP selection.
 
     When *otf_config* is provided and ``otf_config["enabled"]`` is ``True``,
@@ -271,14 +437,50 @@ def run_walk_forward_sl_tp(
         When ``None`` or ``{"enabled": False, ...}``, OTF filtering is
         disabled and legacy behavior is preserved exactly.
     """
-    if train_bars <= 0:
-        raise ValueError("train_bars must be > 0.")
-    if test_bars <= 0:
-        raise ValueError("test_bars must be > 0.")
+    if fold_mode not in {"bars", "sessions"}:
+        raise ValueError("fold_mode must be 'bars' or 'sessions'.")
+    if window_mode not in {"rolling", "anchored"}:
+        raise ValueError("window_mode must be 'rolling' or 'anchored'.")
+    if overlap_policy not in {"reject", "first", "last"}:
+        raise ValueError("overlap_policy must be 'reject', 'first', or 'last'.")
+    _validate_timeline(df)
 
-    step = test_bars if step_bars is None else int(step_bars)
-    if step <= 0:
-        raise ValueError("step_bars must be > 0.")
+    if fold_mode == "bars":
+        if train_bars <= 0:
+            raise ValueError("train_bars must be > 0.")
+        if test_bars <= 0:
+            raise ValueError("test_bars must be > 0.")
+        step = test_bars if step_bars is None else int(step_bars)
+        if step <= 0:
+            raise ValueError("step_bars must be > 0.")
+        boundaries = _bar_fold_boundaries(
+            n_bars=len(df),
+            train_bars=train_bars,
+            test_bars=test_bars,
+            step_bars=step,
+            window_mode=window_mode,
+        )
+        effective_step_sessions = None
+    else:
+        if train_sessions is None or train_sessions <= 0:
+            raise ValueError("train_sessions must be > 0 in session mode.")
+        if test_sessions is None or test_sessions <= 0:
+            raise ValueError("test_sessions must be > 0 in session mode.")
+        effective_step_sessions = (
+            int(test_sessions) if step_sessions is None else int(step_sessions)
+        )
+        if effective_step_sessions <= 0:
+            raise ValueError("step_sessions must be > 0.")
+        boundaries, _session_ids = _session_fold_boundaries(
+            df,
+            train_sessions=int(train_sessions),
+            test_sessions=int(test_sessions),
+            step_sessions=effective_step_sessions,
+            window_mode=window_mode,
+            exchange_timezone=exchange_timezone,
+            eth_start=eth_start,
+        )
+        step = test_bars if step_bars is None else int(step_bars)
 
     # Validate and normalize OTF config before fold processing.
     # normalize_otf_filter_config raises ValueError for explicit invalid config
@@ -292,18 +494,15 @@ def run_walk_forward_sl_tp(
         otf_normalized_config.get("enabled", False)
     )
 
-    n_bars = int(len(df))
     fold_rows: list[dict[str, Any]] = []
-    fold_id = 0
-    train_start = 0
+    oos_trade_frames: list[pd.DataFrame] = []
 
-    while True:
-        train_end_exclusive = train_start + int(train_bars)
-        test_start = train_end_exclusive
-        test_end_exclusive = test_start + int(test_bars)
-        if test_end_exclusive > n_bars:
-            break
-
+    for boundary in boundaries:
+        fold_id = boundary.fold_id
+        train_start = boundary.train_start
+        train_end_exclusive = boundary.train_end_exclusive
+        test_start = boundary.test_start
+        test_end_exclusive = boundary.test_end_exclusive
         train_df = df.iloc[train_start:train_end_exclusive].reset_index(drop=True)
         test_df = df.iloc[test_start:test_end_exclusive].reset_index(drop=True)
         train_subtimeframe = _slice_subtimeframe_data(subtimeframe_data, train_df)
@@ -313,12 +512,14 @@ def run_walk_forward_sl_tp(
             start_bar=train_start,
             end_bar_exclusive=train_end_exclusive,
             n_slice_bars=len(train_df),
+            executable_entry_ownership=fold_mode == "sessions",
         )
         test_signals = _slice_signals(
             signals=signals,
             start_bar=test_start,
             end_bar_exclusive=test_end_exclusive,
             n_slice_bars=len(test_df),
+            executable_entry_ownership=fold_mode == "sessions",
         )
 
         # OTF fold-local filtering: apply to train and test independently
@@ -435,13 +636,22 @@ def run_walk_forward_sl_tp(
             "test_otf_candidate_count": test_otf_candidate,
             "test_otf_accepted_count": test_otf_accepted,
             "test_otf_rejected_count": test_otf_rejected,
+            "fold_mode": fold_mode,
+            "window_mode": window_mode,
+            "train_start_session_date": boundary.train_start_session,
+            "train_end_session_date": boundary.train_end_session,
+            "test_start_session_date": boundary.test_start_session,
+            "test_end_session_date": boundary.test_end_session,
+            "train_session_count": boundary.train_session_count,
+            "test_session_count": boundary.test_session_count,
+            "retention_ratio_expectancy": None,
+            "degradation_pct_expectancy": None,
+            "ratio_status": "unavailable",
         }
 
         if best_train is None:
             row["status"] = "no_train_candidate"
             fold_rows.append(row)
-            fold_id += 1
-            train_start += step
             continue
 
         row["selected_stop_loss_ticks"] = best_train.get("stop_loss_ticks")
@@ -495,6 +705,21 @@ def run_walk_forward_sl_tp(
             ),
         )
         test_summary = summarize_trades(test_trades)
+        if test_trades is not None and not test_trades.empty:
+            fold_trades = test_trades.copy()
+            fold_trades["fold_id"] = int(fold_id)
+            fold_trades["global_entry_bar_index"] = (
+                pd.to_numeric(fold_trades["entry_bar_index"], errors="coerce") + test_start
+            )
+            fold_trades["global_exit_bar_index"] = (
+                pd.to_numeric(fold_trades["exit_bar_index"], errors="coerce") + test_start
+            )
+            fold_trades["test_start_bar"] = test_start
+            fold_trades["test_end_bar"] = test_end_exclusive - 1
+            if fold_mode == "sessions":
+                fold_trades["test_start_session_date"] = boundary.test_start_session
+                fold_trades["test_end_session_date"] = boundary.test_end_session
+            oos_trade_frames.append(fold_trades)
         row["test_trade_count"] = test_summary.get("trade_count")
         row["test_expectancy_r"] = test_summary.get("expectancy_r")
         row["test_total_r"] = test_summary.get("total_r")
@@ -507,19 +732,114 @@ def run_walk_forward_sl_tp(
         row["test_recovery_factor"] = test_summary.get("recovery_factor")
 
         if row["train_expectancy_r"] is not None and row["test_expectancy_r"] is not None:
-            row["degradation_expectancy_r"] = float(row["test_expectancy_r"]) - float(
-                row["train_expectancy_r"]
-            )
+            train_expectancy = float(row["train_expectancy_r"])
+            test_expectancy = float(row["test_expectancy_r"])
+            row["degradation_expectancy_r"] = test_expectancy - train_expectancy
+            if train_expectancy > 1e-12:
+                retention = test_expectancy / train_expectancy
+                row["retention_ratio_expectancy"] = retention
+                row["degradation_pct_expectancy"] = retention - 1.0
+                row["ratio_status"] = "ok"
+            else:
+                row["ratio_status"] = "nonpositive_or_undefined_is"
             row["is_oos_profitable"] = bool(float(row["test_expectancy_r"]) > 0.0)
 
         fold_rows.append(row)
-        fold_id += 1
-        train_start += step
 
     results = pd.DataFrame(fold_rows)
     if results.empty:
-        return pd.DataFrame(columns=_RESULT_COLUMNS)
-    return results.reindex(columns=_RESULT_COLUMNS)
+        results = pd.DataFrame(columns=_RESULT_COLUMNS)
+    else:
+        results = results.reindex(columns=_RESULT_COLUMNS)
+    if not return_result:
+        return results
+
+    raw_oos = pd.concat(oos_trade_frames, ignore_index=True) if oos_trade_frames else pd.DataFrame()
+    warnings: list[str] = []
+    overlap_exists = False
+    if len(boundaries) > 1:
+        overlap_exists = any(
+            current.test_start < previous.test_end_exclusive
+            for previous, current in zip(boundaries, boundaries[1:])
+        )
+    stitched_trades = raw_oos.copy()
+    stitched_status = "ok"
+    if overlap_exists and overlap_policy == "reject":
+        stitched_trades = raw_oos.iloc[0:0].copy()
+        stitched_status = "overlapping_oos_windows"
+        warnings.append(
+            "OOS windows overlap; stitched equity is unavailable under overlap_policy='reject'."
+        )
+    elif overlap_exists and not raw_oos.empty:
+        ascending = overlap_policy == "first"
+        stitched_trades = (
+            raw_oos.sort_values(
+                ["global_entry_bar_index", "signal_id", "fold_id"],
+                ascending=[True, True, ascending],
+                kind="mergesort",
+            )
+            .drop_duplicates(
+                subset=["global_entry_bar_index", "signal_id"],
+                keep="first",
+            )
+            .reset_index(drop=True)
+        )
+        warnings.append(
+            f"Overlapping OOS windows were deduplicated with overlap_policy={overlap_policy!r}."
+        )
+    if not stitched_trades.empty:
+        stitched_trades = stitched_trades.sort_values(
+            ["exit_timestamp", "entry_timestamp", "signal_id", "fold_id"],
+            kind="mergesort",
+        ).reset_index(drop=True)
+        stitched_trades["trade_id"] = range(len(stitched_trades))
+        stitched_equity = equity_curve(stitched_trades)
+    else:
+        stitched_equity = equity_curve(pd.DataFrame())
+    summary = summarize_walk_forward(results)
+    summary.update(
+        {
+            "schema_version": 2,
+            "stitched_oos_status": stitched_status,
+            "stitched_oos_trade_count": int(len(stitched_trades)),
+            "stitched_oos_total_r": (
+                float(pd.to_numeric(stitched_trades["r_multiple"], errors="coerce").sum())
+                if not stitched_trades.empty
+                else None
+            ),
+            "median_retention_ratio_expectancy": (
+                float(
+                    pd.to_numeric(results["retention_ratio_expectancy"], errors="coerce").median()
+                )
+                if not results.empty
+                and pd.to_numeric(results["retention_ratio_expectancy"], errors="coerce")
+                .notna()
+                .any()
+                else None
+            ),
+        }
+    )
+    return WalkForwardResult(
+        schema_version=2,
+        config={
+            "fold_mode": fold_mode,
+            "window_mode": window_mode,
+            "train_bars": train_bars,
+            "test_bars": test_bars,
+            "step_bars": step,
+            "train_sessions": train_sessions,
+            "test_sessions": test_sessions,
+            "step_sessions": effective_step_sessions,
+            "exchange_timezone": exchange_timezone,
+            "eth_start": eth_start,
+            "overlap_policy": overlap_policy,
+        },
+        folds=results,
+        oos_trades=stitched_trades,
+        stitched_equity=stitched_equity,
+        summary=summary,
+        warnings=tuple(warnings),
+    )
 
 
 def summarize_walk_forward(results: pd.DataFrame) -> dict:
@@ -592,3 +912,79 @@ def summarize_walk_forward(results: pd.DataFrame) -> dict:
         "aggregate_test_trade_count": aggregate_test_trade_count,
         "status": "ok",
     }
+
+
+def run_wfa_matrix(
+    df: pd.DataFrame,
+    signals: pd.DataFrame,
+    tick_size: float,
+    point_value: float,
+    stop_loss_ticks_values: list[int | float],
+    take_profit_ticks_values: list[int | float],
+    *,
+    train_session_values: list[int],
+    test_session_values: list[int],
+    matrix_metric: str = "median_test_expectancy_r",
+    max_matrix_cells: int = 25,
+    window_mode: str = "rolling",
+    exchange_timezone: str = "America/New_York",
+    eth_start: str = "18:00",
+    **walk_forward_kwargs: Any,
+) -> pd.DataFrame:
+    """Run a deterministic session-count WFA robustness matrix."""
+    train_values = sorted(set(int(value) for value in train_session_values))
+    test_values = sorted(set(int(value) for value in test_session_values))
+    if not train_values or any(value <= 0 for value in train_values):
+        raise ValueError("train_session_values must contain positive integers.")
+    if not test_values or any(value <= 0 for value in test_values):
+        raise ValueError("test_session_values must contain positive integers.")
+    cell_count = len(train_values) * len(test_values)
+    if cell_count > int(max_matrix_cells):
+        raise ValueError(
+            f"WFA matrix would run {cell_count} cells, exceeding "
+            f"max_matrix_cells={max_matrix_cells}."
+        )
+    rows: list[dict[str, Any]] = []
+    for train_sessions in train_values:
+        for test_sessions in test_values:
+            detailed = run_walk_forward_sl_tp(
+                df=df,
+                signals=signals,
+                tick_size=tick_size,
+                point_value=point_value,
+                stop_loss_ticks_values=stop_loss_ticks_values,
+                take_profit_ticks_values=take_profit_ticks_values,
+                train_bars=1,
+                test_bars=1,
+                fold_mode="sessions",
+                window_mode=window_mode,
+                train_sessions=train_sessions,
+                test_sessions=test_sessions,
+                step_sessions=test_sessions,
+                exchange_timezone=exchange_timezone,
+                eth_start=eth_start,
+                return_result=True,
+                **walk_forward_kwargs,
+            )
+            summary = detailed.summary
+            metric_value = summary.get(matrix_metric)
+            rows.append(
+                {
+                    "train_sessions": train_sessions,
+                    "test_sessions": test_sessions,
+                    "fold_count": summary.get("fold_count", 0),
+                    "valid_fold_count": summary.get("valid_fold_count", 0),
+                    "median_test_expectancy_r": summary.get("median_test_expectancy_r"),
+                    "median_retention_ratio_expectancy": summary.get(
+                        "median_retention_ratio_expectancy"
+                    ),
+                    "stitched_oos_trade_count": summary.get("stitched_oos_trade_count", 0),
+                    "stitched_oos_total_r": summary.get("stitched_oos_total_r"),
+                    "matrix_metric": matrix_metric,
+                    "matrix_value": metric_value,
+                    "status": summary.get("status", "empty"),
+                }
+            )
+    return (
+        pd.DataFrame(rows).sort_values(["train_sessions", "test_sessions"]).reset_index(drop=True)
+    )
