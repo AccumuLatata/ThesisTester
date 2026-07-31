@@ -312,6 +312,15 @@ per-side sample sizes.  For serious research, values ≥ 10–30 per side are ad
 - **Degradation expectancy (R)**: `test_expectancy_r - train_expectancy_r` per fold.
 - **OOS profitable fold rate**: fraction of valid folds with `test_expectancy_r > 0`.
 - **Aggregate test total R**: sum of `test_total_r` across valid walk-forward folds.
+- **Expectancy retention ratio**: `test_expectancy_r / train_expectancy_r`
+  when train expectancy is positive; otherwise unavailable.
+- **Expectancy degradation percentage**: `retention_ratio - 1`.
+- **Stitched OOS total R**: sum of deduplicated OOS trade R under the selected
+  overlap policy.
+- **Stitched OOS equity**: cumulative R and zero-anchored drawdown over the
+  chronologically concatenated, fold-owned OOS trades.
+- **WFA matrix value**: selected summary statistic (default median OOS
+  expectancy R) for one train-session × test-session window pair.
 
 ## R12 intrabar diagnostics
 

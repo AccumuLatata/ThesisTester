@@ -90,6 +90,23 @@ Grid and walk-forward can sweep BE/trailing values, but the chosen policy is
 stored explicitly so downstream validation and reports can distinguish
 strategy parameters from market-path assumptions.
 
+## Session-aware walk-forward boundary (R14)
+
+`run_walk_forward_sl_tp()` keeps `fold_mode="bars"` and
+`window_mode="rolling"` as legacy defaults. Session mode maps every observed
+bar to an ETH-boundary-aware trading-session date and constructs half-open fold
+ranges from complete observed sessions. Rolling windows use a fixed train
+count; anchored windows grow train history from the first observed session.
+
+`WalkForwardResult` adds fold rows, fold-owned OOS trades, stitched OOS equity,
+summary schema version 2, and explicit warnings. Overlapping OOS windows do not
+silently double-count: the default rejects stitching, while `first`/`last`
+select one owner per executable entry.
+
+`run_wfa_matrix()` evaluates sorted train/test session-size pairs and emits a
+tidy matrix table consumed by the Validation heatmap, R18 API/CLI, reports, and
+research bundles.
+
 ## End-to-end data flow
 
 ```mermaid
@@ -156,6 +173,14 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `time_bucketed_trades` | Time (`pages/9_Time_Analysis.py:129`) | Report/Bundles availability checks (`pages/12_Research_Bundles.py:57`) | `pd.DataFrame` trades + time-bucket columns |
 | `time_grouped_summary` | Time (`pages/9_Time_Analysis.py:208`) | Report export (`pages/11_Report_Export.py:41,123`, `thesistester/reporting.py:180-185`) | `pd.DataFrame` grouped diagnostics |
 | `validation_summary` | Validation (`pages/10_Validation.py:130`) | Validation display/Report/Bundles (`pages/10_Validation.py:134`, `pages/11_Report_Export.py:42,82-83`, `pages/12_Research_Bundles.py:50`) | `dict` (`bootstrap`, `permutation`, `trade_count`, `grid_overfit`) |
+| `walk_forward_results` | Validation/R18 API | Validation display, Report, Research Bundles | R14 per-fold `pd.DataFrame` with bar/session boundaries and IS/OOS metrics |
+| `walk_forward_summary` | Validation/R18 API | Validation display, Report, Research Bundles | R14 schema-version-2 summary including retention and stitched OOS status |
+| `walk_forward_config` | Validation/R18 API | Report, Research Bundles | Fold/window/session/overlap and execution configuration |
+| `walk_forward_oos_trades` | Validation/R18 API | Report CSV, Research Bundles | Fold-owned/deduplicated OOS trades |
+| `walk_forward_stitched_equity` | Validation/R18 API | Validation chart, Report CSV, Research Bundles | Cumulative-R OOS equity curve |
+| `walk_forward_warnings` | Validation/R18 API | Validation display, Research Bundles | Explicit overlap/ownership warnings |
+| `wfa_matrix` | Validation/R18 API | Validation heatmap, Report CSV, Research Bundles | Tidy train-session × test-session robustness cells |
+| `wfa_matrix_config` | Validation/R18 API | Research Bundles | Matrix dimensions, metric, and cap |
 | `excursion_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report, Research Bundles | `dict` R10 schema version 1 (`overall`, `grouped`, `quadrants`, `calibration_grid`, `edge_ratio`, `config`, caveat) |
 | `excursion_config` | Validation (`pages/10_Validation.py`) | Research Bundles | `dict` copied from `excursion_summary["config"]` |
 | `excursion_grouped_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report CSV, Research Bundles | `pd.DataFrame` grouped MAE/MFE distribution stats |
