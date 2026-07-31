@@ -33,9 +33,14 @@ def load_experiment_file(path: str | Path) -> dict[str, Any]:
     unknown_root = sorted(set(payload) - _EXPERIMENT_KEYS)
     if unknown_root:
         raise ValueError(f"Unknown experiment configuration keys: {unknown_root}")
-    if payload.get("schema_version") != EXPERIMENT_SCHEMA_VERSION:
+    schema_version = payload.get("schema_version")
+    if (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version != EXPERIMENT_SCHEMA_VERSION
+    ):
         raise ValueError(
-            f"Unsupported experiment schema_version: {payload.get('schema_version')!r}; "
+            f"Unsupported experiment schema_version: {schema_version!r}; "
             f"expected {EXPERIMENT_SCHEMA_VERSION}"
         )
     runs = payload.get("runs")
@@ -104,6 +109,20 @@ def run_batch(
     runs = experiment.get("runs")
     if not isinstance(runs, list) or not runs:
         raise ValueError("Experiment must contain a non-empty runs list")
+    names: list[str] = []
+    for index, run in enumerate(runs):
+        if not isinstance(run, Mapping):
+            raise ValueError(f"runs[{index}] must be a mapping")
+        name = run.get("name")
+        if not isinstance(name, str) or not _RUN_NAME_RE.fullmatch(name):
+            raise ValueError(
+                f"runs[{index}].name must match {_RUN_NAME_RE.pattern!r}; got {name!r}"
+            )
+        names.append(name)
+        validate_run_spec(run)
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise ValueError(f"Run names must be unique; duplicates: {duplicates}")
     tasks = [(dict(run), str(Path(base_directory).resolve())) for run in runs]
     if workers == 1:
         completed = [_execute_run(task) for task in tasks]

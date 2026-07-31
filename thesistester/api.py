@@ -6,6 +6,7 @@ analytics functions. They intentionally contain no alternative trading logic.
 
 from __future__ import annotations
 
+from numbers import Integral, Real
 from pathlib import Path
 from typing import Any, Mapping, TypedDict
 
@@ -222,8 +223,65 @@ def _require_mapping(value: Any, *, section: str) -> Mapping[str, Any]:
 
 
 def _validate_random_state(value: Any, *, section: str) -> None:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    if isinstance(value, bool) or not isinstance(value, Integral) or value < 0:
         raise ValueError(f"{section}.random_state must be an integer >= 0")
+
+
+def _validate_bool_fields(
+    config: Mapping[str, Any],
+    fields: set[str],
+    *,
+    section: str,
+) -> None:
+    for key in sorted(fields & set(config)):
+        if not isinstance(config[key], bool):
+            raise ValueError(f"{section}.{key} must be a boolean")
+
+
+def _validate_number_fields(
+    config: Mapping[str, Any],
+    fields: set[str],
+    *,
+    section: str,
+    integer: bool = False,
+) -> None:
+    expected = Integral if integer else Real
+    label = "an integer" if integer else "a number"
+    for key in sorted(fields & set(config)):
+        value = config[key]
+        if isinstance(value, bool) or not isinstance(value, expected):
+            raise ValueError(f"{section}.{key} must be {label}")
+
+
+def _validate_list_fields(
+    config: Mapping[str, Any],
+    fields: set[str],
+    *,
+    section: str,
+    item_type: type | tuple[type, ...],
+) -> None:
+    for key in sorted(fields & set(config)):
+        value = config[key]
+        if not isinstance(value, (list, tuple)):
+            raise ValueError(f"{section}.{key} must be a list")
+        if any(isinstance(item, bool) or not isinstance(item, item_type) for item in value):
+            raise ValueError(f"{section}.{key} contains an invalid item type")
+
+
+def _validate_string_fields(
+    config: Mapping[str, Any],
+    fields: set[str],
+    *,
+    section: str,
+    nullable: set[str] | None = None,
+) -> None:
+    nullable = nullable or set()
+    for key in sorted(fields & set(config)):
+        value = config[key]
+        if value is None and key in nullable:
+            continue
+        if not isinstance(value, str):
+            raise ValueError(f"{section}.{key} must be a string")
 
 
 def validate_run_spec(spec: Mapping[str, Any]) -> None:
@@ -234,13 +292,154 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     _validate_keys(dataset, _DATASET_KEYS, section="dataset")
     if "path" not in dataset:
         raise ValueError("Experiment dataset.path is required")
+    if not isinstance(dataset["path"], (str, Path)):
+        raise ValueError("dataset.path must be a path string")
+    for key in ("instrument", "source_timezone", "exchange_timezone"):
+        if key in dataset and dataset[key] is not None and not isinstance(dataset[key], str):
+            raise ValueError(f"dataset.{key} must be a string or null")
     instrument = str(dataset.get("instrument", "ES"))
     _instrument(instrument)
 
     levels = run.get("levels", {})
     _require_mapping(levels, section="levels")
     _validate_keys(levels, set(_LEVEL_DEFAULTS), section="levels")
+    _validate_bool_fields(
+        levels,
+        {"pivots_enabled", "session_vwap_enabled", "single_prints_enabled", "apoc_enabled"},
+        section="levels",
+    )
+    _validate_number_fields(
+        levels,
+        {"value_area_pct"},
+        section="levels",
+    )
+    _validate_number_fields(
+        levels,
+        {
+            "opening_range_minutes",
+            "prior_day_profile_aggregation_ticks",
+            "prior_week_profile_aggregation_ticks",
+            "prior_month_profile_aggregation_ticks",
+            "pivot_left",
+            "pivot_right",
+        },
+        section="levels",
+        integer=True,
+    )
+    _validate_list_fields(
+        levels,
+        {"sma_lengths", "ema_lengths"},
+        section="levels",
+        item_type=Integral,
+    )
+    _validate_list_fields(
+        levels,
+        {
+            "sma_timeframes",
+            "ema_timeframes",
+            "vwap_windows",
+            "poc_windows",
+            "pivot_timeframes",
+        },
+        section="levels",
+        item_type=str,
+    )
     setup = _require_mapping(run.get("setup"), section="setup")
+    _validate_string_fields(
+        setup,
+        {
+            "name",
+            "description",
+            "instrument",
+            "naked_requirement",
+            "trigger",
+            "trigger_timeframe",
+            "direction",
+            "confluence_mode",
+            "anchor_level",
+        },
+        section="setup",
+        nullable={"anchor_level"},
+    )
+    _validate_bool_fields(setup, {"naked_only"}, section="setup")
+    _validate_number_fields(setup, {"tolerance_ticks"}, section="setup")
+    _validate_number_fields(
+        setup,
+        {"min_confluences", "max_confluences", "min_valid_confluences"},
+        section="setup",
+        integer=True,
+    )
+    _validate_list_fields(
+        setup,
+        {"selected_levels"},
+        section="setup",
+        item_type=str,
+    )
+    rules = setup.get("confluence_rules")
+    if rules is not None:
+        if not isinstance(rules, list):
+            raise ValueError("setup.confluence_rules must be a list")
+        for index, rule in enumerate(rules):
+            rule = _require_mapping(rule, section=f"setup.confluence_rules[{index}]")
+            _validate_keys(
+                rule,
+                {"level", "tolerance_ticks", "required"},
+                section=f"setup.confluence_rules[{index}]",
+            )
+            _validate_string_fields(
+                rule,
+                {"level"},
+                section=f"setup.confluence_rules[{index}]",
+            )
+            _validate_number_fields(
+                rule,
+                {"tolerance_ticks"},
+                section=f"setup.confluence_rules[{index}]",
+            )
+            _validate_bool_fields(
+                rule,
+                {"required"},
+                section=f"setup.confluence_rules[{index}]",
+            )
+    trigger_params = setup.get("trigger_params")
+    if trigger_params is not None:
+        trigger_params = _require_mapping(trigger_params, section="setup.trigger_params")
+        _validate_keys(
+            trigger_params,
+            {
+                "arrival_tolerance_ticks",
+                "entry_retrace_ticks",
+                "max_entry_wait_bars_after_reversal",
+            },
+            section="setup.trigger_params",
+        )
+        _validate_number_fields(
+            trigger_params,
+            {"arrival_tolerance_ticks", "entry_retrace_ticks"},
+            section="setup.trigger_params",
+        )
+        _validate_number_fields(
+            trigger_params,
+            {"max_entry_wait_bars_after_reversal"},
+            section="setup.trigger_params",
+            integer=True,
+        )
+    otf = setup.get("otf_filter")
+    if otf is not None:
+        otf = _require_mapping(otf, section="setup.otf_filter")
+        _validate_keys(
+            otf,
+            {
+                "enabled",
+                "timeframes",
+                "alignment_mode",
+                "minimum_consecutive_bars",
+                "directional",
+                "use_completed_bars_only",
+                "session_reset",
+            },
+            section="setup.otf_filter",
+        )
     normalized_setup = build_setup(setup)
     if normalized_setup["instrument"] != instrument:
         raise ValueError(
@@ -249,10 +448,85 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         )
     backtest = _require_mapping(run.get("backtest", {}), section="backtest")
     _validate_keys(backtest, set(_BACKTEST_DEFAULTS), section="backtest")
+    _validate_bool_fields(
+        backtest,
+        {"allow_same_bar_exit", "flat_by_session_close"},
+        section="backtest",
+    )
+    _validate_number_fields(
+        backtest,
+        {"stop_loss_ticks", "take_profit_ticks", "commission_per_side", "slippage_ticks"},
+        section="backtest",
+    )
+    _validate_number_fields(
+        backtest,
+        {"cooldown_bars_after_exit"},
+        section="backtest",
+        integer=True,
+    )
+    _validate_string_fields(
+        backtest,
+        {
+            "session_close_time",
+            "session_timezone",
+            "no_new_entries_after",
+            "exposure_policy",
+        },
+        section="backtest",
+        nullable={"session_close_time", "session_timezone", "no_new_entries_after"},
+    )
+    if backtest.get("max_holding_bars") is not None:
+        _validate_number_fields(
+            backtest,
+            {"max_holding_bars"},
+            section="backtest",
+            integer=True,
+        )
+        _validate_string_fields(
+            grid,
+            {
+                "session_close_time",
+                "session_timezone",
+                "no_new_entries_after",
+                "exposure_policy",
+                "ranking_metric",
+            },
+            section="grid",
+            nullable={"session_close_time", "session_timezone", "no_new_entries_after"},
+        )
+        if grid.get("max_holding_bars") is not None:
+            _validate_number_fields(
+                grid,
+                {"max_holding_bars"},
+                section="grid",
+                integer=True,
+            )
     grid = run.get("grid")
     if grid is not None:
         grid = _require_mapping(grid, section="grid")
         _validate_keys(grid, {*_GRID_DEFAULTS, "enabled"}, section="grid")
+        _validate_bool_fields(
+            grid,
+            {"enabled", "allow_same_bar_exit", "flat_by_session_close"},
+            section="grid",
+        )
+        _validate_list_fields(
+            grid,
+            {"stop_loss_ticks_values", "take_profit_ticks_values"},
+            section="grid",
+            item_type=Real,
+        )
+        _validate_number_fields(
+            grid,
+            {"commission_per_side", "slippage_ticks"},
+            section="grid",
+        )
+        _validate_number_fields(
+            grid,
+            {"cooldown_bars_after_exit", "min_trades"},
+            section="grid",
+            integer=True,
+        )
     validation = run.get("validation")
     if validation is not None:
         validation = _require_mapping(validation, section="validation")
@@ -261,18 +535,61 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             {*_VALIDATION_DEFAULTS, "enabled", "excursion", "monte_carlo"},
             section="validation",
         )
+        _validate_bool_fields(validation, {"enabled"}, section="validation")
+        _validate_number_fields(validation, {"confidence"}, section="validation")
+        _validate_number_fields(
+            validation,
+            {"n_bootstrap", "n_permutations", "min_trades_soft", "min_trades_hard"},
+            section="validation",
+            integer=True,
+        )
         random_state = validation.get("random_state", _VALIDATION_DEFAULTS["random_state"])
         _validate_random_state(random_state, section="validation")
         excursion = validation.get("excursion")
         if excursion is not None:
             excursion = _require_mapping(excursion, section="validation.excursion")
             _validate_keys(excursion, _EXCURSION_KEYS, section="validation.excursion")
+            _validate_bool_fields(excursion, {"enabled"}, section="validation.excursion")
+            _validate_number_fields(
+                excursion,
+                {"min_trades"},
+                section="validation.excursion",
+                integer=True,
+            )
+            _validate_number_fields(
+                excursion,
+                {"mae_r_threshold", "mfe_r_threshold"},
+                section="validation.excursion",
+            )
         monte_carlo = validation.get("monte_carlo")
         if monte_carlo is not None:
             monte_carlo = _require_mapping(monte_carlo, section="validation.monte_carlo")
             _validate_keys(
                 monte_carlo,
                 _MONTE_CARLO_KEYS,
+                section="validation.monte_carlo",
+            )
+            _validate_bool_fields(
+                monte_carlo,
+                {"enabled", "include_paths"},
+                section="validation.monte_carlo",
+            )
+            _validate_number_fields(
+                monte_carlo,
+                {"n_simulations"},
+                section="validation.monte_carlo",
+                integer=True,
+            )
+            if monte_carlo.get("block_length") is not None:
+                _validate_number_fields(
+                    monte_carlo,
+                    {"block_length"},
+                    section="validation.monte_carlo",
+                    integer=True,
+                )
+            _validate_number_fields(
+                monte_carlo,
+                {"skip_fraction"},
                 section="validation.monte_carlo",
             )
             if monte_carlo.get("enabled", True):

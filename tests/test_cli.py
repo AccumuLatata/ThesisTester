@@ -6,8 +6,18 @@ import sys
 import pandas as pd
 import yaml
 
-from thesistester.api import run_experiment
+from thesistester.api import (
+    build_setup,
+    compute_levels,
+    generate_signals,
+    load_dataset,
+    run_backtest,
+    run_grid,
+    run_validation,
+)
 from thesistester.cli import load_experiment_file, run_batch
+from thesistester.data.loader import format_interval, validate_ohlcv
+from thesistester.persistence.local_store import compute_dataset_id
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
 
 
@@ -34,10 +44,10 @@ def _run(name: str, *, stop: int = 2) -> dict:
             "source_timezone": "America/New_York",
         },
         "levels": {
-            "sma_lengths": [],
-            "ema_lengths": [],
-            "sma_timeframes": [],
-            "ema_timeframes": [],
+            "sma_lengths": [2],
+            "ema_lengths": [2],
+            "sma_timeframes": ["1min"],
+            "ema_timeframes": ["1min"],
             "vwap_windows": [],
             "poc_windows": [],
         },
@@ -86,6 +96,93 @@ def _run(name: str, *, stop: int = 2) -> dict:
     }
 
 
+def _manual_ui_equivalent_state(run: dict, base_directory) -> dict:
+    dataset = run["dataset"]
+    instrument = dataset["instrument"]
+    data = load_dataset(
+        base_directory / dataset["path"],
+        instrument=instrument,
+        source_timezone=dataset["source_timezone"],
+    )
+    report = validate_ohlcv(data)
+    base_interval = format_interval(report.inferred_interval)
+    dataset_id = compute_dataset_id(
+        data,
+        instrument=instrument,
+        base_interval=base_interval,
+        source_timezone=dataset["source_timezone"],
+        exchange_timezone="America/New_York",
+    )
+    level_result = compute_levels(data, instrument=instrument, config=run["levels"])
+    setup = build_setup(run["setup"])
+    signal_result = generate_signals(level_result["levels"], setup, instrument=instrument)
+    backtest = run_backtest(
+        level_result["levels"],
+        signal_result["signals"],
+        instrument=instrument,
+        config=run["backtest"],
+        setup_config=setup,
+        signal_settings=signal_result["signal_settings"],
+        last_signal_setup=setup,
+    )
+    grid = run_grid(
+        level_result["levels"],
+        signal_result["signals"],
+        instrument=instrument,
+        config=run["grid"],
+        setup_config=setup,
+        signal_settings=signal_result["signal_settings"],
+        last_signal_setup=setup,
+    )
+    validation = run_validation(
+        backtest["trades"],
+        grid=grid["grid_results"],
+        tick_size=0.25,
+        config=run["validation"],
+    )
+    return {
+        "data": data,
+        "dataset_id": dataset_id,
+        "instrument": instrument,
+        "base_interval": base_interval,
+        "source_timezone": dataset["source_timezone"],
+        "exchange_timezone": "America/New_York",
+        **level_result,
+        "levels_data_fingerprint": {
+            "instrument": instrument,
+            "rows": len(data),
+            "timestamp_min": str(data["timestamp"].min()),
+            "timestamp_max": str(data["timestamp"].max()),
+            "columns": sorted(data.columns),
+            "base_interval": base_interval,
+            "source_timezone": dataset["source_timezone"],
+            "exchange_timezone": "America/New_York",
+        },
+        "setup_config": setup,
+        **signal_result,
+        "last_signal_setup": setup,
+        "signal_context": {
+            "setup_name": setup["name"],
+            "confluence_mode": setup["confluence_mode"],
+            "setup_caption": (
+                "Trigger=touch • Direction=both • Confluences=2–2 • Trigger TF=base • OTF=disabled"
+            ),
+        },
+        "trades": backtest["trades"],
+        "trade_summary": backtest["trade_summary"],
+        "equity_curve": backtest["equity_curve"],
+        "backtest_otf_filter": backtest["otf_filter_summary"],
+        "backtest_execution_costs": {
+            "commission_per_side": 0.0,
+            "slippage_ticks": 0.0,
+        },
+        "grid_results": grid["grid_results"],
+        "best_grid_result": grid["best_grid_result"],
+        "grid_otf_filter": grid["otf_filter_summary"],
+        **validation,
+    }
+
+
 def test_module_cli_bundle_matches_headless_ui_equivalent_pipeline(tmp_path):
     _write_dataset(tmp_path / "bars.csv")
     experiment = {
@@ -104,7 +201,7 @@ def test_module_cli_bundle_matches_headless_ui_equivalent_pipeline(tmp_path):
     )
     assert completed.returncode == 0, completed.stderr
     cli_bundle = (tmp_path / "cli-output" / "parity.research.zip").read_bytes()
-    reference_state = run_experiment(_run("parity"), base_directory=tmp_path)
+    reference_state = _manual_ui_equivalent_state(_run("parity"), tmp_path)
     reference_bundle = build_research_bundle(reference_state)
     assert canonical_bundle_hash(cli_bundle) == canonical_bundle_hash(reference_bundle)
 
@@ -137,6 +234,7 @@ def test_parallel_batch_is_identical_to_serial(tmp_path):
 def test_experiment_schema_and_names_fail_fast(tmp_path):
     cases = [
         ({"schema_version": 2, "runs": [{"name": "valid"}]}, "schema_version"),
+        ({"schema_version": True, "runs": [{"name": "valid"}]}, "schema_version"),
         ({"schema_version": 1, "runs": [{"name": "../unsafe"}]}, "name must match"),
         (
             {
@@ -157,6 +255,18 @@ def test_experiment_schema_and_names_fail_fast(tmp_path):
             },
             "random_state",
         ),
+        (
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        **_run("quoted-bool"),
+                        "backtest": {"allow_same_bar_exit": "false"},
+                    }
+                ],
+            },
+            "must be a boolean",
+        ),
     ]
     for index, (payload, message) in enumerate(cases):
         invalid = tmp_path / f"invalid-{index}.yaml"
@@ -167,3 +277,21 @@ def test_experiment_schema_and_names_fail_fast(tmp_path):
             assert message in str(exc)
         else:
             raise AssertionError(f"Expected invalid experiment {index} to be rejected")
+
+
+def test_programmatic_batch_rejects_unsafe_and_duplicate_names(tmp_path):
+    _write_dataset(tmp_path / "bars.csv")
+    for runs, message in (
+        ([{**_run("safe"), "name": "../escape"}], "name must match"),
+        ([_run("same"), _run("same")], "unique"),
+    ):
+        try:
+            run_batch(
+                {"schema_version": 1, "runs": runs},
+                base_directory=tmp_path,
+                output_directory=tmp_path / "output",
+            )
+        except ValueError as exc:
+            assert message in str(exc)
+        else:
+            raise AssertionError("Expected unsafe programmatic batch to be rejected")
