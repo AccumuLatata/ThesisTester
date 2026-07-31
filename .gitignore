@@ -6,6 +6,9 @@ venv/
 .streamlit/secrets.toml
 .pytest_cache/
 .ruff_cache/
+# The app deploys from declared constraints; UV lockfiles produced by newer UV
+# releases are not portable to the Streamlit installer parser.
+uv.lock
 .coverage
 .coverage.*
 coverage.xml
