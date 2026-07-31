@@ -42,6 +42,28 @@ def test_sierra_intraday_profile_combines_date_time_and_last():
     assert bars["close"].tolist() == [100.5, 101.5]
 
 
+@pytest.mark.parametrize(
+    ("contents", "missing_column"),
+    [
+        ("Open,High,Low,Last,Volume\n100,101,99,100.5,10\n", "timestamp"),
+        (
+            "Date,Time,Open,High,Low,Last\n2026/06/02,09:30:00,100,101,99,100.5\n",
+            "volume",
+        ),
+    ],
+)
+def test_sierra_intraday_profile_rejects_missing_canonical_columns(
+    tmp_path, contents, missing_column
+):
+    path = tmp_path / "incomplete_sierra.csv"
+    path.write_text(contents)
+
+    with pytest.raises(
+        DataValidationError, match=f"missing required columns: \\['{missing_column}'\\]"
+    ):
+        load_ohlcv(path, format_profile="sierra_intraday")
+
+
 def test_databento_trades_aggregate_fixed_point_prices_and_preserve_quotes():
     path = VENDOR_FIXTURES / "databento_trades.csv"
     bars, raw = load_ohlcv(

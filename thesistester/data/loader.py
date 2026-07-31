@@ -193,6 +193,12 @@ def _read_explicit_profile(
             )
         if "last" in raw.columns and "close" not in raw.columns:
             raw["close"] = raw["last"]
+        missing = [column for column in REQUIRED_COLUMNS if column not in raw.columns]
+        if missing:
+            raise DataValidationError(
+                f"Sierra Intraday profile is missing required columns: {missing}. "
+                f"Detected columns after normalization: {list(raw.columns)}"
+            )
         raw["timestamp"] = _profile_timestamp(
             raw["timestamp"], source_tz=source_tz, target_tz=target_tz
         )
