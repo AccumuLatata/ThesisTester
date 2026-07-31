@@ -1552,7 +1552,9 @@ st.caption(
 )
 
 _signals_for_otf = st.session_state.get("signals")
-_source_for_otf = st.session_state.get("levels") or st.session_state.get("data")
+_source_for_otf = st.session_state.get("levels")
+if _source_for_otf is None or (hasattr(_source_for_otf, "empty") and _source_for_otf.empty):
+    _source_for_otf = st.session_state.get("data")
 
 if _signals_for_otf is None or (hasattr(_signals_for_otf, "empty") and _signals_for_otf.empty):
     st.info("No signals found in session state.  Generate signals before running OTF validation.")
