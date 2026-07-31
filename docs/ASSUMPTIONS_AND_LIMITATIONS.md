@@ -282,6 +282,18 @@ other than the last bar in the dataset.
 - The WFA matrix is a robustness surface across train/test session lengths,
   not another parameter optimizer. Selecting the best matrix cell using its
   OOS result reintroduces multiple-testing bias.
+- R15 CSCV/PBO partitions realized trade R sequences contiguously. It is not
+  purged/embargoed bar-level cross-validation and assumes limited dependence
+  across blocks.
+- R15 PSR/DSR uses unannualized per-trade R Sharpe-like statistics. DSR only
+  corrects the grid trials declared in the current run; discarded grids,
+  signal variants, manual iteration, and correlated trials are not recoverable
+  automatically.
+- R15 vs-random tests a seeded random-entry timing/direction null under the
+  same simulator settings. It does not test random levels, regime matching, or
+  all possible alternative strategies.
+- R15 re-simulates every grid cell and many random schedules. It is opt-in and
+  can be expensive; results remain diagnostics rather than proof of edge.
 - Train-window SL/TP selection can still overfit when grids are large or fold count is small.
 - Each fold's test window is out-of-sample relative to that fold's train window only.
 - Advanced trade metrics are trade-sequence diagnostics on realized `r_multiple`, not annualized portfolio statistics.

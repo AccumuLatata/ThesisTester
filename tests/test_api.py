@@ -254,6 +254,63 @@ def test_headless_walk_forward_matrix_requires_dimensions(tmp_path):
         raise AssertionError("Expected missing matrix dimensions to fail")
 
 
+def test_validation_r15_is_opt_in_and_seeded(tmp_path):
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path)
+    levels = compute_levels(data, config=_levels_config())["levels"]
+    setup = _setup()
+    signal_result = generate_signals(levels, setup)
+    grid = run_grid(
+        levels,
+        signal_result["signals"],
+        config={
+            "stop_loss_ticks_values": [2, 3],
+            "take_profit_ticks_values": [3, 4],
+        },
+        setup_config=setup,
+        signal_settings=signal_result["signal_settings"],
+    )
+    backtest = run_backtest(
+        levels,
+        signal_result["signals"],
+        config={"stop_loss_ticks": 2, "take_profit_ticks": 3},
+        setup_config=setup,
+        signal_settings=signal_result["signal_settings"],
+    )
+    config = {
+        "n_bootstrap": 10,
+        "n_permutations": 10,
+        "overfitting": {
+            "enabled": True,
+            "pbo_partitions": 4,
+            "pbo_min_trades": 1,
+            "vs_random_n_replicas": 10,
+            "random_state": 42,
+        },
+    }
+    first = run_validation(
+        backtest["trades"],
+        grid=grid["grid_results"],
+        tick_size=0.25,
+        config=config,
+        df=levels,
+        signals=signal_result["signals"],
+        point_value=50.0,
+    )
+    second = run_validation(
+        backtest["trades"],
+        grid=grid["grid_results"],
+        tick_size=0.25,
+        config=config,
+        df=levels,
+        signals=signal_result["signals"],
+        point_value=50.0,
+    )
+    assert first["overfitting_summary"] == second["overfitting_summary"]
+    assert first["overfitting_summary"]["schema_version"] == 1
+
+
 def test_facade_rejects_unknown_configuration_keys(tmp_path):
     csv_path = tmp_path / "bars.csv"
     _write_dataset(csv_path)

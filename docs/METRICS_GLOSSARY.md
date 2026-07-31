@@ -322,6 +322,21 @@ per-side sample sizes.  For serious research, values ≥ 10–30 per side are ad
 - **WFA matrix value**: selected summary statistic (default median OOS
   expectancy R) for one train-session × test-session window pair.
 
+## R15 overfitting-detection battery
+
+- **PBO (Probability of Backtest Overfitting):** fraction of CSCV splits where
+  the IS-selected grid cell lands below the OOS median. R15 uses contiguous
+  realized trade-R partitions and reports every valid split.
+- **PSR (Probabilistic Sharpe Ratio):** estimated probability that the
+  unannualized per-trade R Sharpe-like statistic exceeds the stated benchmark
+  (default zero), adjusted for sample skew/kurtosis.
+- **DSR (Deflated Sharpe Ratio):** PSR evaluated against an expected maximum
+  Sharpe threshold from the declared effective grid trial count. It is not an
+  annualized portfolio Sharpe or a correction for unrecorded experimentation.
+- **Vs-random p-value:** finite-replica, one-sided probability that a seeded
+  random next-open entry schedule achieves expectancy at least as high as the
+  observed selected configuration under identical execution settings.
+
 ## R12 intrabar diagnostics
 
 | Field | Definition |

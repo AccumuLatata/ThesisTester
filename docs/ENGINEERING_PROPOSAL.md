@@ -3,7 +3,7 @@
 **Document type:** Proposal + engineering roadmap
 **Date:** 2026-07-29
 **Inputs:** `docs/SOTA_BACKTESTING_LANDSCAPE.md` (market research), `docs/THESISTESTER_ANALYSIS.md` (repository analysis with runtime verification).
-**Status of this document:** Proposal under implementation. **R9, R10, R11, R12, R13, R14, and R18 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R15–R17 and R19–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
+**Status of this document:** Proposal under implementation. **R9, R10, R11, R12, R13, R14, R15, and R18 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R16–R17 and R19–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
 
 ---
 
@@ -237,6 +237,10 @@ and a deterministic WFA matrix.
 - **Acceptance:** Session folds never split an RTH session mid-day (asserted on holiday-shortened fixtures); matrix heatmap renders from deterministic fixtures; R5 docs updated.
 
 ### R15 — Overfitting-detection battery: PBO, Deflated Sharpe, vs-random
+
+✅ **Implemented.** See `docs/ENGINEERING_ROADMAP.md`. R15 adds opt-in,
+seeded CSCV/PBO, unannualized PSR/DSR, and a simulator-matched vs-random
+benchmark without changing existing Phase 8 validation outputs.
 
 - **Goal:** Upgrade the heuristic grid-overfit warning to the quantitative multiple-testing corrections SOTA tools mainstreamed.
 - **Benchmark:** PBO via CSCV and DSR (Bailey/López de Prado; implemented accessibly in VectorBT Pro's purged combinatorial CV); Build Alpha **Vs Random**.

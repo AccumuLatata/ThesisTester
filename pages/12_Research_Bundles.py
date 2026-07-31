@@ -67,6 +67,10 @@ def _will_include_monte_carlo() -> bool:
     return st.session_state.get("monte_carlo_summary") is not None
 
 
+def _will_include_overfitting() -> bool:
+    return st.session_state.get("overfitting_summary") is not None
+
+
 section_rows = [
     {"Artifact": "Dataset", "Will include": "✅" if _will_include_dataset() else "❌"},
     {
@@ -83,6 +87,10 @@ section_rows = [
         "Will include": "✅" if _will_include_excursion() else "❌",
     },
     {"Artifact": "Monte Carlo", "Will include": "✅" if _will_include_monte_carlo() else "❌"},
+    {
+        "Artifact": "Overfitting diagnostics",
+        "Will include": "✅" if _will_include_overfitting() else "❌",
+    },
 ]
 has_meaningful_state = any(row["Will include"] == "✅" for row in section_rows)
 

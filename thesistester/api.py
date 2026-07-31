@@ -18,6 +18,8 @@ from thesistester.analytics import (
     equity_curve,
     excursion_summary,
     monte_carlo_summary,
+    grid_trade_sequences,
+    overfitting_summary,
     run_walk_forward_sl_tp,
     run_wfa_matrix,
     run_sl_tp_grid,
@@ -105,6 +107,8 @@ class ValidationResult(TypedDict, total=False):
     excursion_quadrant_summary: pd.DataFrame
     monte_carlo_summary: dict[str, Any]
     monte_carlo_config: dict[str, Any]
+    overfitting_summary: dict[str, Any]
+    overfitting_config: dict[str, Any]
 
 
 class WalkForwardAnalysisResult(TypedDict, total=False):
@@ -231,6 +235,13 @@ _MONTE_CARLO_KEYS = {
     "drawdown_thresholds_r",
     "random_state",
     "include_paths",
+}
+_OVERFITTING_KEYS = {
+    "enabled",
+    "pbo_partitions",
+    "pbo_min_trades",
+    "vs_random_n_replicas",
+    "random_state",
 }
 _WALK_FORWARD_KEYS = {
     "enabled",
@@ -855,7 +866,13 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         validation = _require_mapping(validation, section="validation")
         _validate_keys(
             validation,
-            {*_VALIDATION_DEFAULTS, "enabled", "excursion", "monte_carlo"},
+            {
+                *_VALIDATION_DEFAULTS,
+                "enabled",
+                "excursion",
+                "monte_carlo",
+                "overfitting",
+            },
             section="validation",
         )
         _validate_bool_fields(validation, {"enabled"}, section="validation")
@@ -1002,6 +1019,26 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             if monte_carlo.get("enabled", True):
                 mc_seed = monte_carlo.get("random_state", 42)
                 _validate_random_state(mc_seed, section="validation.monte_carlo")
+        overfitting = validation.get("overfitting")
+        if overfitting is not None:
+            overfitting = _require_mapping(overfitting, section="validation.overfitting")
+            _validate_keys(
+                overfitting,
+                _OVERFITTING_KEYS,
+                section="validation.overfitting",
+            )
+            _validate_bool_fields(overfitting, {"enabled"}, section="validation.overfitting")
+            _validate_number_fields(
+                overfitting,
+                {
+                    "pbo_partitions",
+                    "pbo_min_trades",
+                    "vs_random_n_replicas",
+                    "random_state",
+                },
+                section="validation.overfitting",
+                integer=True,
+            )
 
 
 def _setup_caption(config: Mapping[str, Any]) -> str:
@@ -1450,11 +1487,16 @@ def run_validation(
     grid: pd.DataFrame | None = None,
     tick_size: float | None = None,
     config: Mapping[str, Any] | None = None,
+    df: pd.DataFrame | None = None,
+    signals: pd.DataFrame | None = None,
+    point_value: float | None = None,
+    execution_kwargs: Mapping[str, Any] | None = None,
 ) -> ValidationResult:
     """Run deterministic validation plus optional R10/R11 diagnostics."""
     raw = dict(config or {})
     excursion_config = raw.pop("excursion", None)
     monte_carlo_config = raw.pop("monte_carlo", None)
+    overfitting_config = raw.pop("overfitting", None)
     settings = _merge_known(_VALIDATION_DEFAULTS, raw, section="validation")
     _validate_random_state(settings["random_state"], section="validation")
     result: ValidationResult = {
@@ -1505,6 +1547,70 @@ def run_validation(
             {
                 "monte_carlo_summary": monte_carlo,
                 "monte_carlo_config": monte_carlo["config"],
+            }
+        )
+    if overfitting_config is not None and not isinstance(overfitting_config, Mapping):
+        raise ValueError("validation.overfitting must be a mapping")
+    if isinstance(overfitting_config, Mapping) and overfitting_config.get("enabled", True):
+        if df is None or signals is None or tick_size is None or point_value is None:
+            raise ValueError(
+                "df, signals, tick_size, and point_value are required for R15 overfitting"
+            )
+        if grid is None or grid.empty:
+            raise ValueError("grid results are required for R15 overfitting")
+        overfit_settings = {
+            key: value for key, value in overfitting_config.items() if key != "enabled"
+        }
+        _validate_keys(
+            overfitting_config,
+            _OVERFITTING_KEYS,
+            section="validation.overfitting",
+        )
+        sequence_result = grid_trade_sequences(
+            df,
+            signals,
+            tick_size=tick_size,
+            point_value=point_value,
+            grid=grid,
+            execution_kwargs=execution_kwargs,
+        )
+        candidate_grid = sequence_result.grid_results
+        selected = best_grid_result(
+            candidate_grid,
+            metric="expectancy_r",
+            min_trades=1,
+        )
+        if selected is None:
+            selected_trades = trades
+        else:
+            selected_key = (
+                float(selected["stop_loss_ticks"]),
+                float(selected["take_profit_ticks"]),
+                None
+                if pd.isna(selected.get("breakeven_after_r"))
+                else float(selected.get("breakeven_after_r")),
+                None
+                if pd.isna(selected.get("trailing_after_r"))
+                else float(selected.get("trailing_after_r")),
+                None
+                if pd.isna(selected.get("trailing_distance_ticks"))
+                else float(selected.get("trailing_distance_ticks")),
+            )
+            selected_trades = sequence_result.cell_trades.get(selected_key, trades)
+        summary = overfitting_summary(
+            selected_trades=selected_trades,
+            cell_trades=sequence_result.cell_trades,
+            grid_results=candidate_grid,
+            df=df,
+            tick_size=tick_size,
+            point_value=point_value,
+            execution_kwargs=execution_kwargs,
+            **overfit_settings,
+        )
+        result.update(
+            {
+                "overfitting_summary": summary,
+                "overfitting_config": summary["config"],
             }
         )
     return result
@@ -1706,6 +1812,18 @@ def run_experiment(
                 grid=state.get("grid_results"),
                 tick_size=inst.tick_size,
                 config=validation_settings,
+                df=level_result["levels"],
+                signals=signal_result["signals"],
+                point_value=inst.point_value,
+                execution_kwargs={
+                    key: value
+                    for key, value in backtest_config.items()
+                    if key
+                    not in {
+                        "stop_loss_ticks",
+                        "take_profit_ticks",
+                    }
+                },
             )
         )
     return state

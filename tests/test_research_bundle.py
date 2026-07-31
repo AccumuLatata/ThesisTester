@@ -68,6 +68,7 @@ def test_empty_session_exports_manifest_only():
         "validation": False,
         "excursion": False,
         "monte_carlo": False,
+        "overfitting": False,
     }
 
 
@@ -186,6 +187,8 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         ),
         "monte_carlo_summary": {"schema_version": 1, "available": True},
         "monte_carlo_config": {"n_simulations": 100},
+        "overfitting_summary": {"schema_version": 1, "available": True},
+        "overfitting_config": {"pbo_partitions": 4},
     }
 
     apply_research_bundle_to_session(loaded, existing_state)
@@ -226,6 +229,8 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         "excursion_quadrant_summary",
         "monte_carlo_summary",
         "monte_carlo_config",
+        "overfitting_summary",
+        "overfitting_config",
     ):
         assert key not in existing_state
 
@@ -351,6 +356,12 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
             },
         },
         "monte_carlo_config": {"n_simulations": 50, "random_state": 42},
+        "overfitting_summary": {
+            "schema_version": 1,
+            "available": True,
+            "pbo": {"pbo": 0.25},
+        },
+        "overfitting_config": {"pbo_partitions": 4, "random_state": 42},
     }
 
     bundle_bytes = build_research_bundle(source_state)
@@ -404,6 +415,8 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
     assert restored_state["monte_carlo_summary"]["schema_version"] == 1
     assert restored_state["monte_carlo_summary"]["trade_count"] == 1
     assert restored_state["monte_carlo_config"] == {"n_simulations": 50, "random_state": 42}
+    assert restored_state["overfitting_summary"]["schema_version"] == 1
+    assert restored_state["overfitting_config"]["pbo_partitions"] == 4
 
 
 def test_unknown_zip_files_are_ignored():

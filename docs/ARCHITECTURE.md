@@ -107,6 +107,15 @@ select one owner per executable entry.
 tidy matrix table consumed by the Validation heatmap, R18 API/CLI, reports, and
 research bundles.
 
+## R15 overfitting boundary
+
+`thesistester/analytics/overfitting.py` is an opt-in, Streamlit-free
+diagnostic layer. It preserves per-cell grid trade sequences only inside the
+R15 execution path; the established `run_sl_tp_grid()` summary-frame contract
+remains unchanged. CSCV/PBO, PSR/DSR, and vs-random output a separate
+schema-versioned `overfitting_summary`, leaving `validation_summary()` and
+its heuristic grid-overfit section unchanged.
+
 ## End-to-end data flow
 
 ```mermaid
@@ -181,6 +190,8 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `walk_forward_warnings` | Validation/R18 API | Validation display, Research Bundles | Explicit overlap/ownership warnings |
 | `wfa_matrix` | Validation/R18 API | Validation heatmap, Report CSV, Research Bundles | Tidy train-session × test-session robustness cells |
 | `wfa_matrix_config` | Validation/R18 API | Research Bundles | Matrix dimensions, metric, and cap |
+| `overfitting_summary` | Validation/R18 API | Validation display, Report, Research Bundles | R15 schema-version-1 PBO/DSR/vs-random diagnostic artifact |
+| `overfitting_config` | Validation/R18 API | Research Bundles | R15 partition, replica, seed, and Sharpe-basis config |
 | `excursion_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report, Research Bundles | `dict` R10 schema version 1 (`overall`, `grouped`, `quadrants`, `calibration_grid`, `edge_ratio`, `config`, caveat) |
 | `excursion_config` | Validation (`pages/10_Validation.py`) | Research Bundles | `dict` copied from `excursion_summary["config"]` |
 | `excursion_grouped_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report CSV, Research Bundles | `pd.DataFrame` grouped MAE/MFE distribution stats |

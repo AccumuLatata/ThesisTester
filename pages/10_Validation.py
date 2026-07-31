@@ -19,6 +19,8 @@ from thesistester.analytics import (
     add_time_buckets,
     excursion_summary,
     monte_carlo_summary,
+    overfitting_summary,
+    grid_trade_sequences,
     run_walk_forward_sl_tp,
     run_wfa_matrix,
 )
@@ -641,6 +643,133 @@ if isinstance(wfa_matrix, pd.DataFrame) and not wfa_matrix.empty:
     )
     st.plotly_chart(matrix_fig, width="stretch")
     st.dataframe(wfa_matrix, width="stretch", hide_index=True)
+
+st.divider()
+st.subheader("R15 overfitting-detection battery")
+st.caption(
+    "Diagnostic only — CSCV/PBO, DSR, and vs-random quantify specified historical "
+    "selection risks; they do not prove a future edge."
+)
+if grid_raw is None or grid_raw.empty:
+    st.info("Run Grid Search first. R15 needs multiple grid cells.")
+else:
+    r15c1, r15c2, r15c3 = st.columns(3)
+    r15_partitions = int(
+        r15c1.number_input(
+            "CSCV partitions",
+            min_value=4,
+            max_value=12,
+            value=4,
+            step=2,
+            help="Even contiguous trade-sequence partitions.",
+        )
+    )
+    r15_random_replicas = int(
+        r15c2.number_input(
+            "Vs-random replicas",
+            min_value=10,
+            max_value=2_000,
+            value=100,
+            step=10,
+        )
+    )
+    r15_min_trades = int(
+        r15c3.number_input(
+            "R15 min trades per cell",
+            min_value=1,
+            max_value=1_000,
+            value=1,
+            step=1,
+        )
+    )
+    st.warning(
+        f"Cost estimate: {len(grid_raw)} grid replays + {r15_random_replicas} "
+        "random-entry replays. This is opt-in and can be computationally expensive."
+    )
+    if st.button("▶ Run R15 overfitting battery", type="secondary"):
+        instrument_r15 = st.session_state.get("instrument", "ES")
+        inst_r15 = INSTRUMENTS.get(instrument_r15)
+        data_r15 = st.session_state.get("levels")
+        if data_r15 is None or data_r15.empty:
+            data_r15 = st.session_state.get("data")
+        signals_r15 = st.session_state.get("signals")
+        if data_r15 is None or signals_r15 is None or inst_r15 is None:
+            st.error("Data, signals, and a supported instrument are required.")
+        else:
+            backtest_costs = st.session_state.get("backtest_execution_costs") or {}
+            backtest_policy = st.session_state.get("backtest_session_exit_policy") or {}
+            exposure = st.session_state.get("exposure_policy") or {}
+            with st.spinner("Running CSCV/PBO, DSR, and vs-random diagnostics…"):
+                sequences = grid_trade_sequences(
+                    data_r15,
+                    signals_r15,
+                    tick_size=inst_r15.tick_size,
+                    point_value=inst_r15.point_value,
+                    grid=grid_raw,
+                    execution_kwargs={
+                        "commission_per_side": float(
+                            backtest_costs.get("commission_per_side", 0.0)
+                        ),
+                        "slippage_ticks": float(backtest_costs.get("slippage_ticks", 0.0)),
+                        "flat_by_session_close": bool(
+                            backtest_policy.get("flat_by_session_close", False)
+                        ),
+                        "session_close_time": backtest_policy.get("session_close_time"),
+                        "session_timezone": backtest_policy.get("session_timezone"),
+                        "no_new_entries_after": backtest_policy.get("no_new_entries_after"),
+                        "exposure_policy": exposure.get("exposure_policy", "allow_all"),
+                        "cooldown_bars_after_exit": int(
+                            exposure.get("cooldown_bars_after_exit", 0) or 0
+                        ),
+                    },
+                )
+                selected = sequences.grid_results.sort_values(
+                    "expectancy_r", ascending=False, kind="mergesort"
+                ).iloc[0]
+                key = (
+                    float(selected["stop_loss_ticks"]),
+                    float(selected["take_profit_ticks"]),
+                    None
+                    if pd.isna(selected.get("breakeven_after_r"))
+                    else float(selected.get("breakeven_after_r")),
+                    None
+                    if pd.isna(selected.get("trailing_after_r"))
+                    else float(selected.get("trailing_after_r")),
+                    None
+                    if pd.isna(selected.get("trailing_distance_ticks"))
+                    else float(selected.get("trailing_distance_ticks")),
+                )
+                summary_r15 = overfitting_summary(
+                    selected_trades=sequences.cell_trades[key],
+                    cell_trades=sequences.cell_trades,
+                    grid_results=sequences.grid_results,
+                    df=data_r15,
+                    tick_size=inst_r15.tick_size,
+                    point_value=inst_r15.point_value,
+                    execution_kwargs={},
+                    pbo_partitions=r15_partitions,
+                    pbo_min_trades=r15_min_trades,
+                    vs_random_n_replicas=r15_random_replicas,
+                    random_state=random_seed,
+                )
+            st.session_state["overfitting_summary"] = summary_r15
+            st.session_state["overfitting_config"] = summary_r15["config"]
+            st.success("R15 overfitting battery complete.")
+overfit_summary = st.session_state.get("overfitting_summary")
+if isinstance(overfit_summary, dict):
+    pbo = overfit_summary.get("pbo") or {}
+    dsr = overfit_summary.get("deflated_sharpe") or {}
+    random_benchmark = overfit_summary.get("vs_random") or {}
+    oc1, oc2, oc3 = st.columns(3)
+    oc1.metric("PBO", _fmt_value(pbo.get("pbo"), ".1%"))
+    oc2.metric("Deflated Sharpe probability", _fmt_value(dsr.get("dsr"), ".1%"))
+    oc3.metric(
+        "Vs-random p-value", _fmt_value(random_benchmark.get("p_value_greater_or_equal"), ".4f")
+    )
+    st.caption(overfit_summary.get("caveat", ""))
+    split_rows = pbo.get("split_results", [])
+    if split_rows:
+        st.dataframe(pd.DataFrame(split_rows), width="stretch", hide_index=True)
 
 st.divider()
 st.subheader("MAE/MFE excursion analytics")
