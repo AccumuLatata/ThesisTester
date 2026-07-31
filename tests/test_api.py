@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -30,6 +32,21 @@ def _write_dataset(path) -> None:
         }
     )
     frame.to_csv(path, index=False)
+
+
+def test_load_dataset_preserves_ninjatrader_utc_default():
+    path = Path(__file__).parent / "fixtures" / "vendor" / "ninjatrader_minute.txt"
+
+    default = load_dataset(path, instrument="ES", format_profile="ninjatrader")
+    explicit_exchange = load_dataset(
+        path,
+        instrument="ES",
+        source_timezone="America/New_York",
+        format_profile="ninjatrader",
+    )
+
+    assert default["timestamp"].iloc[0].isoformat() == "2026-06-02T09:30:00-04:00"
+    assert explicit_exchange["timestamp"].iloc[0].isoformat() == "2026-06-02T13:30:00-04:00"
 
 
 def _setup() -> dict:

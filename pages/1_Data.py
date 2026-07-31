@@ -53,6 +53,25 @@ RAW_CAPTURE_PROFILES = frozenset(
 )
 
 
+def _default_source_timezone(format_profile: str, exchange_timezone: str) -> str:
+    """Return the profile's default timezone for timezone-naive timestamps."""
+    return "UTC" if format_profile == "ninjatrader" else exchange_timezone
+
+
+def _reset_source_timezone_for_import() -> None:
+    """Apply the selected source/profile default for timezone-naive timestamps."""
+    source = st.session_state["data_source_selector"]
+    profile = st.session_state.get("data_format_profile_selector", "canonical")
+    exchange_timezone = INSTRUMENTS[
+        st.session_state["data_instrument_selector"]
+    ].exchange_tz
+    st.session_state["data_source_timezone_selector"] = (
+        "America/New_York"
+        if source == "Sample data"
+        else _default_source_timezone(profile, exchange_timezone)
+    )
+
+
 @st.cache_data(show_spinner=False)
 def cached_resample_and_tag(raw_df, instrument: str, timeframe: str):
     """Cache and return session-tagged resampled OHLCV data for preview."""
@@ -428,7 +447,13 @@ st.caption(
     f"\u00b7 session tz {meta.exchange_tz} ({meta.rth_start}\u2013{meta.rth_end} RTH)"
 )
 
-source = st.radio("Source", ["Sample data", "Upload CSV"], horizontal=True)
+source = st.radio(
+    "Source",
+    ["Sample data", "Upload CSV"],
+    horizontal=True,
+    key="data_source_selector",
+    on_change=_reset_source_timezone_for_import,
+)
 profile_options = {
     "canonical": "Canonical / Quantower OHLCV",
     "ninjatrader": "NinjaTrader export",
@@ -443,11 +468,17 @@ format_profile = (
         options=list(profile_options),
         format_func=profile_options.get,
         help="Explicit selection only; ThesisTester never auto-detects vendor formats.",
+        key="data_format_profile_selector",
+        on_change=_reset_source_timezone_for_import,
     )
     if source == "Upload CSV"
     else "canonical"
 )
-default_source_tz = "America/New_York" if source == "Sample data" else meta.exchange_tz
+default_source_tz = (
+    "America/New_York"
+    if source == "Sample data"
+    else _default_source_timezone(format_profile, meta.exchange_tz)
+)
 if PENDING_SOURCE_TZ_SELECTOR_KEY in st.session_state:
     st.session_state["data_source_timezone_selector"] = st.session_state.pop(
         PENDING_SOURCE_TZ_SELECTOR_KEY

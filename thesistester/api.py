@@ -1166,7 +1166,7 @@ def load_dataset(
     target_timezone = exchange_timezone or inst.exchange_tz
     data = load_ohlcv(
         Path(path),
-        source_tz=source_timezone or target_timezone,
+        source_tz=source_timezone,
         target_tz=target_timezone,
         format_profile=format_profile,
     )
