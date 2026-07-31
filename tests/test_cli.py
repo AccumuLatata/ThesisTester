@@ -289,6 +289,58 @@ def test_experiment_forwards_subtimeframe_data_to_r15_replay(tmp_path, monkeypat
     assert execution_kwargs["subtimeframe_data"] is state["subtimeframe_data"]
 
 
+def test_experiment_loads_subtimeframe_as_canonical_with_vendor_parent(tmp_path, monkeypatch):
+    """R12 lower-timeframe replay accepts canonical OHLCV beside a vendor parent."""
+    _write_dataset(tmp_path / "canonical_parent.csv")
+    parent = pd.read_csv(tmp_path / "canonical_parent.csv")
+    (tmp_path / "ninjatrader_parent.txt").write_text(
+        "".join(
+            f"{pd.Timestamp(row.timestamp):%Y%m%d %H%M%S};{row.open};{row.high};"
+            f"{row.low};{row.close};{row.volume}\n"
+            for row in parent.itertuples(index=False)
+        )
+    )
+    subtimeframe = []
+    for row in parent.itertuples(index=False):
+        timestamp = pd.Timestamp(row.timestamp)
+        subtimeframe.extend(
+            [
+                (timestamp, row.open, row.high, row.open, row.open),
+                (
+                    timestamp + pd.Timedelta(seconds=30),
+                    row.open,
+                    row.open,
+                    row.low,
+                    row.close,
+                ),
+            ]
+        )
+    pd.DataFrame(
+        subtimeframe,
+        columns=["timestamp", "open", "high", "low", "close"],
+    ).assign(volume=25).to_csv(tmp_path / "subtimeframe.csv", index=False)
+
+    run = _run("vendor-parent-canonical-subtimeframe")
+    run["dataset"].update(
+        {
+            "path": "ninjatrader_parent.txt",
+            "format_profile": "ninjatrader",
+            "subtimeframe_path": "subtimeframe.csv",
+        }
+    )
+    captured: dict = {}
+
+    def capture_validation(*_args, **kwargs):
+        captured.update(kwargs)
+        return {}
+
+    monkeypatch.setattr(api, "run_validation", capture_validation)
+    state = api.run_experiment(run, base_directory=tmp_path)
+
+    assert state["subtimeframe_data"]["timestamp"].size == len(subtimeframe)
+    assert captured["execution_kwargs"]["subtimeframe_data"] is state["subtimeframe_data"]
+
+
 def test_parallel_batch_is_identical_to_serial(tmp_path):
     _write_dataset(tmp_path / "bars.csv")
     path_run = _run("path-model", stop=3)

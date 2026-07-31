@@ -230,6 +230,8 @@ Agent safety requirements:
 
 - Keep `dataset.format_profile` explicit in API/CLI specifications; canonical
   remains the default and no format auto-detection is permitted.
+- `dataset.subtimeframe_path` is always canonical OHLCV for R12 replay; it
+  never inherits the primary dataset's vendor `format_profile`.
 - Preserve captured raw rows only as provenance; use canonical one-minute bars
   for current engine work and do not treat raw ticks as R12 subtimeframe data.
 - Confirm the canonical sample CSV remains byte-identical after loader edits.

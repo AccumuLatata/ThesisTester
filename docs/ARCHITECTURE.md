@@ -171,7 +171,7 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `format_profile` | Data / saved-dataset bootstrap | Local dataset provenance | Explicit R17 parser profile; restored from saved metadata and defaults to `canonical` |
 | `raw_data` | Data capture profiles / saved-dataset bootstrap | Local persistence only | Optional unaggregated tick/trade rows restored from `raw.parquet`; never consumed by the bar engine |
 | `raw_interval` | Data capture profiles / saved-dataset bootstrap | Local dataset provenance | Inferred raw capture interval restored from saved metadata |
-| `subtimeframe_data` | R18 API/CLI or Research Bundle import | Backtest/Grid/Walk-forward, Research Bundles | Optional strictly finer `pd.DataFrame` OHLCV/session rows for R12 replay |
+| `subtimeframe_data` | R18 API/CLI or Research Bundle import | Backtest/Grid/Walk-forward, Research Bundles | Optional strictly finer canonical `pd.DataFrame` OHLCV/session rows for R12 replay; `dataset.subtimeframe_path` never inherits the primary dataset vendor profile |
 | `subtimeframe_interval` | R18 API/CLI or Research Bundle import | Research Bundles/report provenance | `str \| None` inferred lower interval |
 | `resampled_data` | Data (`pages/1_Data.py:115`) | Data summary (`pages/1_Data.py:341`) | `dict[str, pd.DataFrame]` |
 | `instrument` | Data (`pages/1_Data.py:116`) | Levels/Setup/Signals/Backtest/Grid/Time (`pages/5_Levels.py:207`, `pages/2_Setup_Builder.py:67`, `pages/6_Signals.py`, `pages/7_Backtest.py:70`, `pages/8_Grid_Search.py:42`, `pages/9_Time_Analysis.py:30`) | `str` (e.g., `ES`, `NQ`) |

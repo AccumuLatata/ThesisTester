@@ -1834,7 +1834,7 @@ def run_experiment(
             instrument=instrument,
             source_timezone=source_timezone,
             exchange_timezone=exchange_timezone,
-            format_profile=str(dataset_config.get("format_profile", "canonical")),
+            format_profile="canonical",
         )
     validation_report = validate_ohlcv(data)
     base_interval = format_interval(validation_report.inferred_interval)
