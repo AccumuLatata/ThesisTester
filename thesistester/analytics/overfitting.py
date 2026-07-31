@@ -444,6 +444,8 @@ def overfitting_summary(
     tick_size: float,
     point_value: float,
     execution_kwargs: Mapping[str, Any] | None = None,
+    selected_grid_metric: str = "expectancy_r",
+    selected_min_trades: int = 1,
     pbo_partitions: int = 8,
     pbo_min_trades: int = 1,
     vs_random_n_replicas: int = 500,
@@ -464,6 +466,15 @@ def overfitting_summary(
         trial_sharpes,
         effective_trials=int(len(grid_results)),
     )
+    selected_execution = dict(execution_kwargs or {})
+    if selected_trades is not None and not selected_trades.empty:
+        for key in (
+            "breakeven_after_r",
+            "trailing_after_r",
+            "trailing_distance_ticks",
+        ):
+            value = selected_trades[key].iloc[0] if key in selected_trades else None
+            selected_execution[key] = None if pd.isna(value) else value
     random = (
         vs_random_benchmark(
             df,
@@ -472,7 +483,7 @@ def overfitting_summary(
             point_value=point_value,
             stop_loss_ticks=float(selected_trades["stop_loss_ticks"].iloc[0]),
             take_profit_ticks=float(selected_trades["take_profit_ticks"].iloc[0]),
-            execution_kwargs=execution_kwargs,
+            execution_kwargs=selected_execution,
             n_replicas=vs_random_n_replicas,
             random_state=random_state,
         )
@@ -488,6 +499,8 @@ def overfitting_summary(
             "vs_random_n_replicas": int(vs_random_n_replicas),
             "random_state": int(random_state),
             "sharpe_annualized": False,
+            "selected_grid_metric": selected_grid_metric,
+            "selected_min_trades": int(selected_min_trades),
         },
         "pbo": pbo,
         "deflated_sharpe": dsr,

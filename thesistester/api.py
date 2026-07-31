@@ -1491,6 +1491,8 @@ def run_validation(
     signals: pd.DataFrame | None = None,
     point_value: float | None = None,
     execution_kwargs: Mapping[str, Any] | None = None,
+    selected_grid_metric: str = "expectancy_r",
+    selected_min_trades: int = 1,
 ) -> ValidationResult:
     """Run deterministic validation plus optional R10/R11 diagnostics."""
     raw = dict(config or {})
@@ -1577,8 +1579,8 @@ def run_validation(
         candidate_grid = sequence_result.grid_results
         selected = best_grid_result(
             candidate_grid,
-            metric="expectancy_r",
-            min_trades=1,
+            metric=selected_grid_metric,
+            min_trades=selected_min_trades,
         )
         if selected is None:
             selected_trades = trades
@@ -1605,6 +1607,8 @@ def run_validation(
             tick_size=tick_size,
             point_value=point_value,
             execution_kwargs=execution_kwargs,
+            selected_grid_metric=selected_grid_metric,
+            selected_min_trades=selected_min_trades,
             **overfit_settings,
         )
         result.update(
@@ -1749,6 +1753,7 @@ def run_experiment(
                 "grid_results": grid_result["grid_results"],
                 "best_grid_result": grid_result["best_grid_result"],
                 "grid_otf_filter": grid_result["otf_filter_summary"],
+                "grid_accepted_signals": grid_result["accepted_signals"],
                 "grid_intrabar_policy": {
                     "schema_version": 1,
                     "intrabar_model": grid_settings.get("intrabar_model", "sl_first"),
@@ -1813,17 +1818,11 @@ def run_experiment(
                 tick_size=inst.tick_size,
                 config=validation_settings,
                 df=level_result["levels"],
-                signals=signal_result["signals"],
+                signals=state.get("grid_accepted_signals", signal_result["signals"]),
                 point_value=inst.point_value,
-                execution_kwargs={
-                    key: value
-                    for key, value in backtest_config.items()
-                    if key
-                    not in {
-                        "stop_loss_ticks",
-                        "take_profit_ticks",
-                    }
-                },
+                execution_kwargs=grid_settings,
+                selected_grid_metric=grid_settings.get("ranking_metric", "expectancy_r"),
+                selected_min_trades=int(grid_settings.get("min_trades", 1)),
             )
         )
     return state

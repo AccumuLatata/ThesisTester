@@ -464,6 +464,7 @@ if run_btn:
     }
     # OTF filter session state for grid scope
     st.session_state["grid_otf_filter"] = _otf_result.to_summary_dict()
+    st.session_state["grid_accepted_signals"] = signals_for_grid.copy(deep=True)
     st.session_state["grid_intrabar_policy"] = {
         "schema_version": 1,
         "intrabar_model": intrabar_model,
@@ -475,6 +476,20 @@ if run_btn:
         "trailing_after_r_values": [grid_trailing_after_r],
         "trailing_distance_ticks_values": [grid_trailing_distance_ticks],
         "max_grid_cells": 500,
+    }
+    st.session_state["grid_execution_context"] = {
+        "ranking_metric": active_metric,
+        "min_trades": int(min_trades),
+        "commission_per_side": float(commission_per_side),
+        "slippage_ticks": float(slippage_ticks),
+        "flat_by_session_close": bool(flat_by_session_close),
+        "session_close_time": session_close_time or None,
+        "session_timezone": session_timezone if flat_by_session_close else None,
+        "no_new_entries_after": effective_no_new_entries_after,
+        "exposure_policy": exposure_policy,
+        "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
+        "intrabar_model": intrabar_model,
+        "subtimeframe_data_supplied": isinstance(subtimeframe_data, pd.DataFrame),
     }
 
 # ── Display ───────────────────────────────────────────────────────────────────

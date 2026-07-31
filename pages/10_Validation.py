@@ -729,6 +729,7 @@ else:
                 ).get("intrabar_model", "sl_first"),
                 "subtimeframe_data": st.session_state.get("subtimeframe_data"),
             }
+            grid_context_r15 = st.session_state.get("grid_execution_context") or {}
             with st.spinner("Running CSCV/PBO, DSR, and vs-random diagnostics…"):
                 sequences = grid_trade_sequences(
                     data_r15,
@@ -738,8 +739,18 @@ else:
                     grid=grid_raw,
                     execution_kwargs=execution_r15,
                 )
-                selected = sequences.grid_results.sort_values(
-                    "expectancy_r", ascending=False, kind="mergesort"
+                selection_metric = grid_context_r15.get("ranking_metric", "expectancy_r")
+                selection_min_trades = int(grid_context_r15.get("min_trades", 1))
+                eligible_sequences = sequences.grid_results[
+                    sequences.grid_results["trade_count"] >= selection_min_trades
+                ].dropna(subset=[selection_metric])
+                if eligible_sequences.empty:
+                    st.error("No R15 grid cell passes the recorded selection rule.")
+                    st.stop()
+                selected = eligible_sequences.sort_values(
+                    [selection_metric, "stop_loss_ticks", "take_profit_ticks"],
+                    ascending=[False, True, True],
+                    kind="mergesort",
                 ).iloc[0]
                 key = (
                     float(selected["stop_loss_ticks"]),
@@ -762,6 +773,8 @@ else:
                     tick_size=inst_r15.tick_size,
                     point_value=inst_r15.point_value,
                     execution_kwargs=execution_r15,
+                    selected_grid_metric=selection_metric,
+                    selected_min_trades=selection_min_trades,
                     pbo_partitions=r15_partitions,
                     pbo_min_trades=r15_min_trades,
                     vs_random_n_replicas=r15_random_replicas,
