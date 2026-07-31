@@ -317,6 +317,14 @@ other than the last bar in the dataset.
   to fewer unique values than requested.
 - R19 cost scales with profiled parameters × perturbation steps × serial trade
   replays. It is opt-in; R22 acceleration is not yet available.
+- R20 trade-review charts show completed-trade parent-bar OHLC context. MAE/MFE
+  bands are terminal extrema relative to entry, not a temporal replay of
+  adverse/favorable movement or evidence of intrabar fill ordering.
+- R20 displays `stop_price` as the initial bracket stop. The optional final
+  managed-stop line is a completed-bar R13 diagnostic and must not be read as
+  active within the bar in which it was adjusted.
+- PNG export is capped to twenty selected losers and uses only bounded windows;
+  it is a review aid, not a batch simulation or an exported research result.
 - R17 vendor parsing is selected explicitly; ThesisTester does not infer a
   format from headers or file extension. Select the documented profile for the
   vendor export and verify the displayed canonical bars before research use.

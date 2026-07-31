@@ -567,6 +567,39 @@ levels, signals, engine semantics, or the existing validation contract.
 
 ---
 
+## R20 — Trade-Review Visualization (Replay-lite) ✅ Implemented
+
+Adds an opt-in, read-only per-trade inspection view without changing levels,
+signals, trade execution, metrics, or persisted research results.
+
+### Features
+
+- The Backtest page provides a bounded selected-trade candlestick window with
+  entry, initial SL/TP, actual exit, linked level/zone overlays, and terminal
+  MAE/MFE envelope shading.
+- Users can export a ZIP of PNG reviews for up to twenty worst losing trades;
+  each image independently clips OHLC, levels, and zones to the selected
+  trade's buffer.
+- `kaleido` supplies the Plotly PNG renderer. The export fails visibly if its
+  renderer is unavailable instead of silently substituting another format.
+
+### Regression safety
+
+- R20 reads existing frames only and never invokes or alters the engine.
+- Review windows are strictly bounded to the selected hold interval plus a
+  user-capped buffer; no full-dataset review mode exists.
+- MAE/MFE shading is explicitly documented as a terminal parent-bar envelope,
+  not an intrabar path or fill-order reconstruction.
+
+### Tests
+
+- Figure-structure smoke tests assert single-trade markers, SL/TP/final-stop
+  and MAE/MFE shapes, JSON serializability, input immutability, and bounded
+  per-trade windows.
+- Golden-master trade fixtures and engine semantics are unchanged.
+
+---
+
 ## R19 — Parameter Sensitivity Profiling (SPP-lite) ✅ Implemented
 
 Adds an opt-in, schema-version-1 local execution-parameter robustness

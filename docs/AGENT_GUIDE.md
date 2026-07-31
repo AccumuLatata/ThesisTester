@@ -250,6 +250,18 @@ Agent safety requirements:
 - Run `pytest -q tests/test_sensitivity.py tests/test_api.py tests/test_golden_master.py`
   after R19 changes.
 
+## R20 trade-review visualization safety
+
+- Keep R20 read-only: it may consume existing OHLC/trade/level/zone frames but
+  must not modify execution, metrics, signal generation, or research bundles.
+- Bound every selected-trade and batch-export payload to the hold interval plus
+  an explicit capped row buffer; never add a full-dataset review mode.
+- Describe MAE/MFE bands as terminal parent-bar envelopes, not intrabar replay
+  or proof of fill ordering. Preserve initial-stop semantics; final-stop
+  display is explicitly optional.
+- Run `pytest -q tests/visualization/test_trade_review_chart.py tests/test_backtest_chart.py tests/test_golden_master.py`
+  after R20 changes.
+
 ## Repository conventions (verified)
 - Multipage Streamlit workflow with phase pages under `pages/` (`app.py:10-33`).
 - Core outputs are passed through `st.session_state` between phases (see `docs/ARCHITECTURE.md`).

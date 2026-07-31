@@ -171,3 +171,28 @@ def trade_time_window(
     window_start_idx = max(0, start_idx - max(buffer_rows, 0))
     window_end_idx = min(len(timeline) - 1, end_idx + max(buffer_rows, 0))
     return timeline.iloc[window_start_idx], timeline.iloc[window_end_idx]
+
+
+def selected_trade_time_window(
+    trade: pd.Series,
+    *,
+    ohlcv_df: pd.DataFrame,
+    buffer_rows: int = 100,
+) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
+    """Return bounded chart timestamps around one selected trade."""
+    if trade is None or ohlcv_df is None or ohlcv_df.empty or "timestamp" not in ohlcv_df.columns:
+        return None, None
+    entry = _coerce_scalar_timestamp(trade.get("entry_timestamp"))
+    exit_ = _coerce_scalar_timestamp(trade.get("exit_timestamp"))
+    if entry is None:
+        entry = exit_
+    if exit_ is None:
+        exit_ = entry
+    if entry is None or exit_ is None:
+        return None, None
+    return buffered_rows_window(
+        ohlcv_df,
+        start=entry,
+        end=exit_,
+        buffer_rows=buffer_rows,
+    )

@@ -36,8 +36,11 @@ from thesistester.visualization import (
     clip_by_time_window,
     coerce_timestamp_series,
     recent_rows_window,
+    selected_trade_time_window,
     timestamp_bounds,
     trade_time_window,
+    build_trade_review_chart,
+    export_worst_loser_review_pngs,
 )
 
 st.title("📊 Backtest")
@@ -781,6 +784,107 @@ if has_trades:
         if c in trades.columns
     ]
     st.dataframe(trades[display_cols], width="stretch", hide_index=True)
+
+    with st.expander("Trade review (R20 replay-lite)", expanded=False):
+        st.caption(
+            "Visualization only. MAE/MFE shading is the terminal parent-bar excursion envelope, "
+            "not a reconstructed intrabar path or proof of fill ordering."
+        )
+        review_labels = {
+            index: (
+                f"#{row.get('trade_id', index)} | {row.get('direction', '—')} | "
+                f"{float(row.get('r_multiple', 0.0)):+.2f}R | {row.get('exit_reason', '—')}"
+            )
+            for index, (_, row) in enumerate(trades.iterrows())
+        }
+        selected_review_index = st.selectbox(
+            "Completed trade",
+            options=list(review_labels),
+            format_func=lambda index: review_labels[index],
+            key="trade_review_trade_id",
+        )
+        review_buffer_rows = int(
+            st.slider(
+                "Bars before/after trade",
+                min_value=10,
+                max_value=500,
+                value=100,
+                step=10,
+                key="trade_review_buffer_rows",
+            )
+        )
+        review_options = st.columns(4)
+        review_show_sessions = review_options[0].toggle("Sessions", value=True)
+        review_show_levels = review_options[1].toggle("Levels", value=True)
+        review_show_zones = review_options[2].toggle("Zones", value=True)
+        review_show_final_stop = review_options[3].toggle("Final managed stop", value=False)
+        selected_trade = trades.iloc[int(selected_review_index)].copy(deep=True)
+        review_start, review_end = selected_trade_time_window(
+            selected_trade,
+            ohlcv_df=ohlcv_df,
+            buffer_rows=review_buffer_rows,
+        )
+        if review_start is None or review_end is None:
+            st.warning("The selected trade has no usable entry/exit timestamps.")
+        else:
+            review_ohlcv = clip_by_time_window(ohlcv_df, start=review_start, end=review_end)
+            review_levels = clip_by_time_window(
+                st.session_state.get("levels"),
+                start=review_start,
+                end=review_end,
+            )
+            review_zones = clip_by_time_window(
+                st.session_state.get("confluence_zones"),
+                start=review_start,
+                end=review_end,
+            )
+            review_chart = build_trade_review_chart(
+                review_ohlcv,
+                selected_trade,
+                levels=review_levels,
+                confluence_zones=review_zones,
+                show_sessions=review_show_sessions,
+                show_levels=review_show_levels,
+                show_confluence_zones=review_show_zones,
+                show_final_stop=review_show_final_stop,
+            )
+            st.plotly_chart(review_chart, width="stretch")
+            st.caption(
+                f"Bounded payload: {len(review_ohlcv):,} OHLC rows "
+                f"({review_buffer_rows} bars before/after the trade)."
+            )
+
+        loss_count = int(
+            st.number_input(
+                "Worst losing trades to export",
+                min_value=1,
+                max_value=20,
+                value=5,
+                step=1,
+            )
+        )
+        if st.button("Prepare worst-loser PNG export", type="secondary"):
+            try:
+                with st.spinner("Rendering bounded trade-review PNGs…"):
+                    export_bytes = export_worst_loser_review_pngs(
+                        trades,
+                        ohlcv_df,
+                        count=loss_count,
+                        buffer_rows=review_buffer_rows,
+                        levels=st.session_state.get("levels"),
+                        confluence_zones=st.session_state.get("confluence_zones"),
+                    )
+                st.session_state["trade_review_export_zip"] = export_bytes
+            except (ValueError, RuntimeError) as exc:
+                st.error(f"Could not render PNG export: {exc}")
+        export_bytes = st.session_state.get("trade_review_export_zip")
+        if isinstance(export_bytes, bytes):
+            st.download_button(
+                "Download worst-loser trade reviews (.zip)",
+                data=export_bytes,
+                file_name="worst_loser_trade_reviews.zip",
+                mime="application/zip",
+            )
 
 # Optional execution chart
 st.subheader("Backtest execution visualizer")

@@ -139,6 +139,14 @@ and writes a separate schema-versioned `sensitivity_summary`. It does not
 recompute levels/signals, alter `validation_summary()`, or claim parameter
 interaction or out-of-sample robustness.
 
+## R20 trade-review boundary
+
+`thesistester.visualization.trade_review_chart` builds bounded, read-only
+single-trade charts from existing OHLC, trade, level, and zone frames.
+`trade_review_export` creates PNG ZIPs only from independently clipped
+worst-loser windows. MAE/MFE bands are terminal bar-extreme envelopes, not
+intrabar replay; neither module changes engine or research-artifact semantics.
+
 ## R17 ingestion boundary
 
 `thesistester.data.loader.load_ohlcv()` is the sole explicit-profile adapter
@@ -230,6 +238,9 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `noise_config` | Validation/R18 API | Research Bundles | R16 noise scale, seed, replica count, persistence matcher, and subtimeframe policy |
 | `sensitivity_summary` | Validation/R18 API | Validation display, Report, Research Bundles | R19 schema-version-1 one-at-a-time local expectancy/PF curves and fragility classification |
 | `sensitivity_config` | Validation/R18 API | Research Bundles | R19 fraction, step count, selected parameters, rounding policy, and seed |
+| `trade_review_trade_id` | Backtest (`pages/7_Backtest.py`) | Backtest | Selected display-index of the read-only R20 review chart; cleared on dataset change |
+| `trade_review_buffer_rows` | Backtest (`pages/7_Backtest.py`) | Backtest | Bounded selected-trade chart buffer (10–500 OHLC rows each side) |
+| `trade_review_export_zip` | Backtest (`pages/7_Backtest.py`) | Backtest download | Ephemeral ZIP of R20 worst-loser PNG charts; cleared on dataset change and not persisted in research bundles |
 | `excursion_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report, Research Bundles | `dict` R10 schema version 1 (`overall`, `grouped`, `quadrants`, `calibration_grid`, `edge_ratio`, `config`, caveat) |
 | `excursion_config` | Validation (`pages/10_Validation.py`) | Research Bundles | `dict` copied from `excursion_summary["config"]` |
 | `excursion_grouped_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report CSV, Research Bundles | `pd.DataFrame` grouped MAE/MFE distribution stats |

@@ -366,6 +366,16 @@ R19 measures local parameter flatness only. It is distinct from R11
 trade-sequence sampling uncertainty, R15 selection/multiple-testing
 diagnostics, and R16 input-OHLC robustness.
 
+## R20 trade-review chart
+
+- **Trade-review window:** selected trade entry-to-exit bars plus a bounded
+  number of surrounding OHLC rows; it only affects the chart payload.
+- **MAE/MFE envelope:** shaded price interval from entry to the terminal
+  adverse/favorable parent-bar extreme. It is not a sequence of observed
+  intrabar events.
+- **Initial / final stop line:** initial stop is the R-risk bracket; optional
+  final stop is the completed-bar managed-stop state at exit.
+
 ## R12 intrabar diagnostics
 
 | Field | Definition |
