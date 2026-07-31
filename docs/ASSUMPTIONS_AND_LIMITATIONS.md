@@ -194,6 +194,20 @@ other than the last bar in the dataset.
 - R10 edge-ratio decay uses completed-trade `bars_held` buckets as a proxy.
   True Build Alpha-style decay across bars would require storing the intratrade
   MAE/MFE path, which is intentionally out of R10 scope.
+- Monte Carlo diagnostics in `thesistester/analytics/monte_carlo.py` resample
+  the realized trade `r_multiple` sequence only; they do not re-run entries,
+  exits, costs, session policies, or exposure admission.
+- `reshuffle` changes trade order only and therefore tests path-risk sensitivity
+  to ordering. It preserves the realized R multiset and cannot reveal whether
+  the trade sample itself is overfit.
+- `skip` models independent missed trades by replacing random trade slots with
+  0R. It does not model liquidity, calendar clustering, trader discretion, or
+  execution-state dependence.
+- `block_resample` preserves local streak structure better than iid reshuffle,
+  but it remains a bootstrap approximation. Block length is a modeling choice,
+  not a market truth.
+- Monte Carlo equity fans and drawdown probabilities are diagnostics on the
+  observed trade sample, not forecasts or proof of future edge.
 - Current walk-forward splits use deterministic bar-index windows and are not calendar/session-aware.
 - Train-window SL/TP selection can still overfit when grids are large or fold count is small.
 - Each fold's test window is out-of-sample relative to that fold's train window only.

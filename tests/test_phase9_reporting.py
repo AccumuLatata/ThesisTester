@@ -149,6 +149,22 @@ def _sample_session_state() -> dict:
                 "pct": [0.5],
             }
         ),
+        "monte_carlo_summary": {
+            "schema_version": 1,
+            "available": True,
+            "trade_count": 2,
+            "config": {"n_simulations": 50},
+            "methods": {
+                "reshuffle": {
+                    "observed": {"final_r": 0.5},
+                    "simulated": {
+                        "max_drawdown_r": {"p95": 0.5},
+                        "max_loss_streak": {"p95": 1.0},
+                    },
+                    "probability_drawdown_exceeds": [{"threshold_r": 1.0, "probability": 0.0}],
+                }
+            },
+        },
         "data": pd.DataFrame({"x": [1, 2, 3]}),
         "levels": pd.DataFrame({"y": [4, 5, 6]}),
     }
@@ -237,6 +253,7 @@ def test_build_research_artifact_counts_match_signals_and_trades():
     assert artifact["results"]["signal_count"] == 2
     assert artifact["results"]["trade_count"] == 2
     assert artifact["results"]["excursion_summary"]["schema_version"] == 1
+    assert artifact["results"]["monte_carlo_summary"]["schema_version"] == 1
     assert len(artifact["tables"]["signals"]) == 2
     assert len(artifact["tables"]["trades"]) == 2
     assert len(artifact["tables"]["excursion_grouped_summary"]) == 2
@@ -304,6 +321,9 @@ def test_build_markdown_report_returns_string_and_required_sections():
     assert "## Excursion Analytics" in markdown
     assert "- Mean edge ratio: 2.0000" in markdown
     assert "- Calibration both-hit rule: stop_first" in markdown
+    assert "## Monte Carlo Path Robustness" in markdown
+    assert "- Simulations per method: 50" in markdown
+    assert "reshuffle: observed final R 0.5000" in markdown
     assert "## Caveats" in markdown
 
 

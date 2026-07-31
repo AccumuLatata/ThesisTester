@@ -13,6 +13,13 @@ from .excursions import (
 )
 from .grid import best_grid_result, run_sl_tp_grid
 from .metrics import equity_curve, summarize_trades, summarize_trades_by_direction
+from .monte_carlo import (
+    monte_carlo_block_resample,
+    monte_carlo_reshuffle,
+    monte_carlo_skip,
+    monte_carlo_summary,
+    path_metrics_from_r,
+)
 from .time_analysis import add_time_buckets, pivot_time_metric, summarize_by_group
 from .validation import (
     bootstrap_expectancy_ci,
@@ -27,6 +34,11 @@ __all__ = [
     "summarize_trades",
     "summarize_trades_by_direction",
     "equity_curve",
+    "path_metrics_from_r",
+    "monte_carlo_reshuffle",
+    "monte_carlo_skip",
+    "monte_carlo_block_resample",
+    "monte_carlo_summary",
     "add_excursion_r_columns",
     "edge_ratio_summary",
     "excursion_distribution",

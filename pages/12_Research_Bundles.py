@@ -55,6 +55,14 @@ def _will_include_validation() -> bool:
     return st.session_state.get("validation_summary") is not None
 
 
+def _will_include_excursion() -> bool:
+    return st.session_state.get("excursion_summary") is not None
+
+
+def _will_include_monte_carlo() -> bool:
+    return st.session_state.get("monte_carlo_summary") is not None
+
+
 section_rows = [
     {"Artifact": "Dataset", "Will include": "✅" if _will_include_dataset() else "❌"},
     {"Artifact": "Levels", "Will include": "✅" if _will_include_levels() else "❌"},
@@ -62,6 +70,11 @@ section_rows = [
     {"Artifact": "Backtest", "Will include": "✅" if _will_include_backtest() else "❌"},
     {"Artifact": "Grid search", "Will include": "✅" if _will_include_grid() else "❌"},
     {"Artifact": "Validation", "Will include": "✅" if _will_include_validation() else "❌"},
+    {
+        "Artifact": "Excursion analytics",
+        "Will include": "✅" if _will_include_excursion() else "❌",
+    },
+    {"Artifact": "Monte Carlo", "Will include": "✅" if _will_include_monte_carlo() else "❌"},
 ]
 has_meaningful_state = any(row["Will include"] == "✅" for row in section_rows)
 
@@ -113,6 +126,14 @@ if uploaded is not None:
             {
                 "Artifact": "Validation",
                 "Included in bundle": "✅" if included.get("validation") else "❌",
+            },
+            {
+                "Artifact": "Excursion analytics",
+                "Included in bundle": "✅" if included.get("excursion") else "❌",
+            },
+            {
+                "Artifact": "Monte Carlo",
+                "Included in bundle": "✅" if included.get("monte_carlo") else "❌",
             },
         ]
 

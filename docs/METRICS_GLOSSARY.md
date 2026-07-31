@@ -184,6 +184,73 @@ classified by `both_hit_rule`:
 These probabilities are calibration diagnostics, not executable counterfactual
 backtests.
 
+## Monte Carlo path robustness diagnostics (R11)
+
+R11 uses the chronological realized trade `r_multiple` sequence, sorted by
+`exit_timestamp` when present. It does **not** re-run the engine and it does not
+change realized trade outcomes.
+
+### Path metrics
+
+For one simulated sequence \(R_1, \ldots, R_n\):
+
+\[
+\text{final\_r} = \sum_{i=1}^{n} R_i
+\]
+
+\[
+\text{cum\_r}_t = \sum_{i=1}^{t} R_i
+\]
+
+\[
+\text{running\_max}_t =
+\max_{k \le t}(\text{cum\_r}_k)\ \text{clipped at}\ \ge 0
+\]
+
+\[
+\text{max\_drawdown\_r} =
+\max_t(\text{running\_max}_t - \text{cum\_r}_t)
+\]
+
+`max_loss_streak` is the longest consecutive run where `r_multiple < 0`.
+Implementation: `path_metrics_from_r()` in
+`thesistester/analytics/monte_carlo.py`.
+
+### Simulation methods
+
+| Method | What it changes | What it preserves |
+|---|---|---|
+| `reshuffle` | Randomly permutes trade order | Exact realized R multiset and final R |
+| `skip` | Randomly replaces trade slots with 0R using `skip_fraction` | Original chronological slots for equity-fan alignment |
+| `block_resample` | Samples circular fixed-length blocks until a full path is built | Local streak structure better than iid reshuffle |
+
+All methods are seeded with `random_state` and are deterministic for a fixed
+input/config.
+
+### Percentile bands and drawdown probabilities
+
+For each method, R11 reports percentile summaries (default p05/p25/p50/p75/p95)
+for:
+
+- `final_r`
+- `max_drawdown_r`
+- `max_loss_streak`
+
+For each configured threshold \(X\), R11 also reports:
+
+\[
+P(\text{max\_drawdown\_r} > X)
+=
+\frac{\#\{\text{simulated paths with max\_drawdown\_r} > X\}}
+{\#\{\text{simulated paths}\}}
+\]
+
+### Equity fan chart
+
+At each trade index, R11 computes percentile bands over simulated cumulative-R
+paths and overlays the observed chronological cumulative-R path. The fan chart
+summarizes path uncertainty under the selected method; it is not a forecast.
+
 ## Notes
 - With zero-cost defaults, gross and net are identical.
 - `gross_pnl_currency` is computed from slipped fills and therefore represents P&L after slippage but before commission.

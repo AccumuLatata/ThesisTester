@@ -51,6 +51,7 @@ REQUIRED_ITEMS = [
     ("Validation", "validation_summary"),
     ("Walk-forward diagnostics", "walk_forward_results"),
     ("Excursion analytics", "excursion_summary"),
+    ("Monte Carlo diagnostics", "monte_carlo_summary"),
 ]
 
 OTF_ITEMS = [

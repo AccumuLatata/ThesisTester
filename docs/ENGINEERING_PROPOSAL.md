@@ -3,7 +3,7 @@
 **Document type:** Proposal + engineering roadmap
 **Date:** 2026-07-29
 **Inputs:** `docs/SOTA_BACKTESTING_LANDSCAPE.md` (market research), `docs/THESISTESTER_ANALYSIS.md` (repository analysis with runtime verification).
-**Status of this document:** Proposal under implementation. **R9 and R10 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R11–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
+**Status of this document:** Proposal under implementation. **R9, R10, and R11 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R12–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
 
 ---
 
@@ -185,8 +185,9 @@ Milestones extend the existing R-series (`docs/ENGINEERING_ROADMAP.md` R1–R8).
 - **Regression-safety:** Pure post-trade analytics; reads existing trade columns only; no engine changes. Deterministic; empty-trade safe like `metrics.py`.
 - **Acceptance:** Golden tests on fixed trade fixtures; glossary entries in `METRICS_GLOSSARY.md`; UI section hidden when no trades.
 
-### R11 — Monte Carlo simulation suite
+### R11 — Monte Carlo simulation suite — ✅ **Implemented**
 
+- **Status:** landed. Implementation record: `docs/ENGINEERING_ROADMAP.md` R11. R11 keeps Monte Carlo outputs separate from `validation_summary()` and stores a schema-versioned `monte_carlo_summary`.
 - **Goal:** The SOTA baseline robustness battery on realized trade sequences.
 - **Benchmark:** AmiBroker Monte Carlo (CDF, straw-broom, MC-as-objective), NinjaTrader/TradeStation MC, SQX Monte Carlo trade manipulation (9+ sim types).
 - **Scope:** New `thesistester/analytics/monte_carlo.py` (seeded): trade **reshuffle** (order permutation → drawdown distribution), trade **skip** (randomly drop x% → robustness to missed fills), block **resample** (stationary bootstrap preserving streak structure — answers the serial-dependence caveat already documented in `validation.py`); outputs: percentile bands for final R / max drawdown R / longest loss streak, probability of drawdown > X R, equity-curve fan chart data. Validation page section + export.

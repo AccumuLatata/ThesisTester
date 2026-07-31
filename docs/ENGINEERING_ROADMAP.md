@@ -240,3 +240,62 @@ and docs only. `simulate_trades()` output and trade-admission semantics are
   edge-ratio decay proxy, empty safety, and stable summary keys.
 - Existing report and research-bundle tests extended for R10 JSON/Markdown/CSV
   and bundle roundtrip.
+
+---
+
+## R11 — Monte Carlo Simulation Suite ✅ Implemented
+
+Adds seeded trade-sequence Monte Carlo diagnostics on completed backtest trades.
+No engine behavior changes and no golden-fixture regeneration required.
+
+### Scope
+
+Pure analytics plus Validation-page display, report/export, research-bundle
+persistence, stale-state cleanup, and docs. The existing `validation_summary()`
+contract remains unchanged.
+
+### Features
+
+- `thesistester/analytics/monte_carlo.py`:
+  - `path_metrics_from_r()` for final R, max drawdown R (same 0R-anchored
+    drawdown convention as `metrics.py`), and max loss streak.
+  - `monte_carlo_reshuffle()` — random permutations of realized trade order.
+  - `monte_carlo_skip()` — independent missed-trade robustness by replacing
+    random trade slots with 0R.
+  - `monte_carlo_block_resample()` — circular fixed-block bootstrap preserving
+    local streak structure better than iid reshuffle.
+  - `monte_carlo_summary()` — schema-versioned (`schema_version = 1`) export
+    contract with observed equity, per-method percentile bands, drawdown
+    exceedance probabilities, and equity-fan bands.
+- Validation page:
+  - Independent **Monte Carlo path robustness** section with method selection,
+    simulation count, seed, skip fraction, block length, drawdown thresholds, and
+    its own run button.
+  - Stores additive session keys: `monte_carlo_summary`,
+    `monte_carlo_config`.
+  - Displays observed/P50/P95 metrics, drawdown probability table, and fan chart
+    per selected method.
+- Report/export/bundles:
+  - JSON artifact includes `results.monte_carlo_summary`.
+  - Markdown report adds a **Monte Carlo Path Robustness** section only when
+    results exist.
+  - Research bundles roundtrip Monte Carlo summary/config.
+  - Data reload clears stale R10/R11 analytics keys.
+
+### Regression safety
+
+- No engine, levels, signals, or `validation_summary()` changes.
+- Deterministic RNG via `np.random.default_rng(random_state)`.
+- Empty/missing `r_multiple` tables are safe.
+- Full outputs are additive and schema-versioned.
+- Docs updated in the same PR: glossary formulas, assumptions/caveats,
+  architecture session-state contract, and this roadmap entry.
+
+### Tests
+
+- `tests/test_monte_carlo.py`: path metrics, empty safety, seeded
+  determinism, reshuffle final-R preservation, skip behavior, block-resample
+  streak preservation fixture, fan-chart shape, drawdown probabilities, and
+  stable summary keys.
+- Existing report and research-bundle tests extended for R11 JSON/Markdown and
+  bundle roundtrip.

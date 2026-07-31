@@ -242,6 +242,7 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "validation_summary": to_jsonable(session_state.get("validation_summary")),
             "walk_forward_summary": to_jsonable(session_state.get("walk_forward_summary")),
             "excursion_summary": to_jsonable(session_state.get("excursion_summary")),
+            "monte_carlo_summary": to_jsonable(session_state.get("monte_carlo_summary")),
         },
         "otf_filter": to_jsonable(build_otf_filter_metadata(session_state)),
         "tables": {
@@ -770,6 +771,7 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     best_grid = results.get("best_grid_result") or {}
     validation = results.get("validation_summary") or {}
     excursion = results.get("excursion_summary") or {}
+    monte_carlo = results.get("monte_carlo_summary") or {}
 
     selected_levels = setup.get("selected_levels") if isinstance(setup, Mapping) else None
     levels_str = (
@@ -867,6 +869,38 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
                 "",
             ]
         )
+
+    if isinstance(monte_carlo, Mapping) and monte_carlo.get("available"):
+        mc_methods = monte_carlo.get("methods") if isinstance(monte_carlo, Mapping) else {}
+        mc_config = monte_carlo.get("config") if isinstance(monte_carlo, Mapping) else {}
+        lines.extend(
+            [
+                "## Monte Carlo Path Robustness",
+                "⚠️ Diagnostic only — resamples the realized trade sequence and does not prove edge.",
+                "",
+                f"- Trades: {monte_carlo.get('trade_count', 0)}",
+                f"- Simulations per method: {mc_config.get('n_simulations', '—') if isinstance(mc_config, Mapping) else '—'}",
+                f"- Methods: {', '.join(mc_methods.keys()) if isinstance(mc_methods, Mapping) else '—'}",
+            ]
+        )
+        if isinstance(mc_methods, Mapping):
+            for method_name, method in mc_methods.items():
+                observed = method.get("observed", {}) if isinstance(method, Mapping) else {}
+                simulated = method.get("simulated", {}) if isinstance(method, Mapping) else {}
+                max_dd = (
+                    simulated.get("max_drawdown_r", {}) if isinstance(simulated, Mapping) else {}
+                )
+                loss_streak = (
+                    simulated.get("max_loss_streak", {}) if isinstance(simulated, Mapping) else {}
+                )
+                lines.extend(
+                    [
+                        f"- {method_name}: observed final R {_fmt_number(observed.get('final_r') if isinstance(observed, Mapping) else None)}, "
+                        f"P95 max DD {_fmt_number(max_dd.get('p95') if isinstance(max_dd, Mapping) else None)}, "
+                        f"P95 loss streak {_fmt_number(loss_streak.get('p95') if isinstance(loss_streak, Mapping) else None, '.0f')}",
+                    ]
+                )
+        lines.append("")
 
     if isinstance(roll_policy, Mapping) or isinstance(roll_validation, Mapping):
         lines.extend(

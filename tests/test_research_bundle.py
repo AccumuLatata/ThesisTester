@@ -66,6 +66,7 @@ def test_empty_session_exports_manifest_only():
         "grid": False,
         "validation": False,
         "excursion": False,
+        "monte_carlo": False,
     }
 
 
@@ -125,6 +126,8 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         "excursion_quadrant_summary": pd.DataFrame(
             {"quadrant": ["target_without_full_stop"], "count": [1]}
         ),
+        "monte_carlo_summary": {"schema_version": 1, "available": True},
+        "monte_carlo_config": {"n_simulations": 100},
     }
 
     apply_research_bundle_to_session(loaded, existing_state)
@@ -147,6 +150,8 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         "excursion_grouped_summary",
         "excursion_calibration_grid",
         "excursion_quadrant_summary",
+        "monte_carlo_summary",
+        "monte_carlo_config",
     ):
         assert key not in existing_state
 
@@ -197,6 +202,18 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
         "excursion_quadrant_summary": pd.DataFrame(
             {"quadrant": ["target_without_full_stop"], "count": [1]}
         ),
+        "monte_carlo_summary": {
+            "schema_version": 1,
+            "available": True,
+            "trade_count": 1,
+            "methods": {
+                "reshuffle": {
+                    "observed": {"final_r": 1.0},
+                    "simulated": {"max_drawdown_r": {"p95": 0.5}},
+                }
+            },
+        },
+        "monte_carlo_config": {"n_simulations": 50, "random_state": 42},
     }
 
     bundle_bytes = build_research_bundle(source_state)
@@ -232,6 +249,9 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
     assert restored_state["excursion_summary"]["schema_version"] == 1
     assert restored_state["excursion_summary"]["trade_count"] == 1
     assert restored_state["excursion_config"] == {"both_hit_rule": "stop_first"}
+    assert restored_state["monte_carlo_summary"]["schema_version"] == 1
+    assert restored_state["monte_carlo_summary"]["trade_count"] == 1
+    assert restored_state["monte_carlo_config"] == {"n_simulations": 50, "random_state": 42}
 
 
 def test_unknown_zip_files_are_ignored():
