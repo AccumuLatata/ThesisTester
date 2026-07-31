@@ -55,6 +55,7 @@ REQUIRED_ITEMS = [
     ("Noise-test diagnostics", "noise_summary"),
     ("Overfitting diagnostics", "overfitting_summary"),
     ("Parameter sensitivity diagnostics", "sensitivity_summary"),
+    ("Portfolio diagnostics", "portfolio_summary"),
 ]
 
 OTF_ITEMS = [

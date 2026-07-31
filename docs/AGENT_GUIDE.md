@@ -262,6 +262,17 @@ Agent safety requirements:
 - Run `pytest -q tests/visualization/test_trade_review_chart.py tests/test_backtest_chart.py tests/test_golden_master.py`
   after R20 changes.
 
+## R21 portfolio research safety
+
+- Keep R21 post-trade and additive: never route a portfolio policy into
+  `simulate_trades` or change single-setup execution semantics.
+- Require compatible completed-trade schema and shared parent bar-index bounds;
+  treat the portfolio admission policy as a deterministic approximation.
+- Keep correlation and leave-one-out contribution framing diagnostic, not
+  allocation or future-risk proof.
+- Run `pytest -q tests/test_portfolio.py tests/test_api.py tests/test_research_bundle.py tests/test_golden_master.py`
+  after R21 changes.
+
 ## Repository conventions (verified)
 - Multipage Streamlit workflow with phase pages under `pages/` (`app.py:10-33`).
 - Core outputs are passed through `st.session_state` between phases (see `docs/ARCHITECTURE.md`).

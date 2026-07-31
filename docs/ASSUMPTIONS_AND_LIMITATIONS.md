@@ -325,6 +325,16 @@ other than the last bar in the dataset.
   active within the bar in which it was adjusted.
 - PNG export is capped to twenty selected losers and uses only bounded windows;
   it is a review aid, not a batch simulation or an exported research result.
+- R21 combines independent completed setup trades after their individual
+  simulations. It is not a continuous capital, margin, liquidity, correlation,
+  or fill simulation; its exposure policy is a deterministic admission
+  approximation on shared parent-bar indices.
+- R21 requires all source runs to share an instrument and parent bar-index
+  timeline. Per-setup runs should use `allow_all` when portfolio-level
+  admission is intended; otherwise exposure restrictions can be applied twice.
+- R21 return/drawdown correlations align exit-timestamp R increments and fill
+  no-trade steps with zero. They are descriptive historical co-movement, not
+  forecasts or allocation recommendations.
 - R17 vendor parsing is selected explicitly; ThesisTester does not infer a
   format from headers or file extension. Select the documented profile for the
   vendor export and verify the displayed canonical bars before research use.

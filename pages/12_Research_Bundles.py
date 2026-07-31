@@ -79,6 +79,10 @@ def _will_include_sensitivity() -> bool:
     return st.session_state.get("sensitivity_summary") is not None
 
 
+def _will_include_portfolio() -> bool:
+    return st.session_state.get("portfolio_summary") is not None
+
+
 section_rows = [
     {"Artifact": "Dataset", "Will include": "✅" if _will_include_dataset() else "❌"},
     {
@@ -104,6 +108,7 @@ section_rows = [
         "Artifact": "Parameter sensitivity",
         "Will include": "✅" if _will_include_sensitivity() else "❌",
     },
+    {"Artifact": "Portfolio", "Will include": "✅" if _will_include_portfolio() else "❌"},
 ]
 has_meaningful_state = any(row["Will include"] == "✅" for row in section_rows)
 

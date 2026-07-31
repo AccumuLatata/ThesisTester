@@ -442,6 +442,36 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
     assert restored_state["sensitivity_config"]["perturbation_fraction"] == 0.2
 
 
+def test_portfolio_bundle_roundtrip_restores_portfolio_artifacts():
+    state = {
+        "portfolio_summary": {
+            "schema_version": 1,
+            "available": True,
+            "portfolio_metrics": {"total_r": 3.0},
+        },
+        "portfolio_config": {"instrument": "ES", "setup_ids": ["A", "B"]},
+        "portfolio_setup_inputs": ["A", "B"],
+        "portfolio_trades": pd.DataFrame({"setup_id": ["A", "B"], "r_multiple": [1.0, 2.0]}),
+        "portfolio_skipped_trades": pd.DataFrame({"setup_id": ["C"], "skip_reason": ["x"]}),
+        "portfolio_equity_curve": pd.DataFrame({"cum_r": [1.0, 3.0]}),
+        "portfolio_correlation": pd.DataFrame([[1.0, 0.5], [0.5, 1.0]], columns=["A", "B"]),
+        "portfolio_drawdown_correlation": pd.DataFrame(
+            [[1.0, 0.25], [0.25, 1.0]], columns=["A", "B"]
+        ),
+        "portfolio_marginal_contribution": pd.DataFrame(
+            {"setup_id": ["A", "B"], "total_r_contribution": [1.0, 2.0]}
+        ),
+    }
+
+    loaded = load_research_bundle(build_research_bundle(state))
+
+    assert loaded["manifest"]["included"]["portfolio"] is True
+    assert loaded["session_values"]["portfolio_summary"]["portfolio_metrics"]["total_r"] == 3.0
+    pd.testing.assert_frame_equal(
+        loaded["session_values"]["portfolio_trades"], state["portfolio_trades"]
+    )
+
+
 def test_unknown_zip_files_are_ignored():
     bundle_bytes = build_research_bundle({"data": _dataset_df()})
     output = io.BytesIO()
