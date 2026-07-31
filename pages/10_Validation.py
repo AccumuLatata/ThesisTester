@@ -692,13 +692,43 @@ else:
         data_r15 = st.session_state.get("levels")
         if data_r15 is None or data_r15.empty:
             data_r15 = st.session_state.get("data")
-        signals_r15 = st.session_state.get("signals")
+        signals_r15 = st.session_state.get("otf_accepted_signals")
+        if signals_r15 is None or signals_r15.empty:
+            signals_r15 = st.session_state.get("signals")
         if data_r15 is None or signals_r15 is None or inst_r15 is None:
             st.error("Data, signals, and a supported instrument are required.")
         else:
-            backtest_costs = st.session_state.get("backtest_execution_costs") or {}
-            backtest_policy = st.session_state.get("backtest_session_exit_policy") or {}
-            exposure = st.session_state.get("exposure_policy") or {}
+            backtest_costs = (
+                st.session_state.get("grid_execution_costs")
+                or st.session_state.get("backtest_execution_costs")
+                or {}
+            )
+            backtest_policy = (
+                st.session_state.get("grid_session_exit_policy")
+                or st.session_state.get("backtest_session_exit_policy")
+                or {}
+            )
+            exposure = (
+                st.session_state.get("grid_exposure_policy")
+                or st.session_state.get("exposure_policy")
+                or {}
+            )
+            execution_r15 = {
+                "commission_per_side": float(backtest_costs.get("commission_per_side", 0.0)),
+                "slippage_ticks": float(backtest_costs.get("slippage_ticks", 0.0)),
+                "flat_by_session_close": bool(backtest_policy.get("flat_by_session_close", False)),
+                "session_close_time": backtest_policy.get("session_close_time"),
+                "session_timezone": backtest_policy.get("session_timezone"),
+                "no_new_entries_after": backtest_policy.get("no_new_entries_after"),
+                "exposure_policy": exposure.get("exposure_policy", "allow_all"),
+                "cooldown_bars_after_exit": int(exposure.get("cooldown_bars_after_exit", 0) or 0),
+                "intrabar_model": (
+                    st.session_state.get("grid_intrabar_policy")
+                    or st.session_state.get("backtest_intrabar_policy")
+                    or {}
+                ).get("intrabar_model", "sl_first"),
+                "subtimeframe_data": st.session_state.get("subtimeframe_data"),
+            }
             with st.spinner("Running CSCV/PBO, DSR, and vs-random diagnostics…"):
                 sequences = grid_trade_sequences(
                     data_r15,
@@ -706,22 +736,7 @@ else:
                     tick_size=inst_r15.tick_size,
                     point_value=inst_r15.point_value,
                     grid=grid_raw,
-                    execution_kwargs={
-                        "commission_per_side": float(
-                            backtest_costs.get("commission_per_side", 0.0)
-                        ),
-                        "slippage_ticks": float(backtest_costs.get("slippage_ticks", 0.0)),
-                        "flat_by_session_close": bool(
-                            backtest_policy.get("flat_by_session_close", False)
-                        ),
-                        "session_close_time": backtest_policy.get("session_close_time"),
-                        "session_timezone": backtest_policy.get("session_timezone"),
-                        "no_new_entries_after": backtest_policy.get("no_new_entries_after"),
-                        "exposure_policy": exposure.get("exposure_policy", "allow_all"),
-                        "cooldown_bars_after_exit": int(
-                            exposure.get("cooldown_bars_after_exit", 0) or 0
-                        ),
-                    },
+                    execution_kwargs=execution_r15,
                 )
                 selected = sequences.grid_results.sort_values(
                     "expectancy_r", ascending=False, kind="mergesort"
@@ -746,7 +761,7 @@ else:
                     df=data_r15,
                     tick_size=inst_r15.tick_size,
                     point_value=inst_r15.point_value,
-                    execution_kwargs={},
+                    execution_kwargs=execution_r15,
                     pbo_partitions=r15_partitions,
                     pbo_min_trades=r15_min_trades,
                     vs_random_n_replicas=r15_random_replicas,

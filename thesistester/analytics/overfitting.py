@@ -164,6 +164,10 @@ def _partition_returns(values: np.ndarray, partitions: int) -> list[np.ndarray]:
     ]
 
 
+def _sortable_cell_key(key: CellKey) -> tuple[float, ...]:
+    return tuple(-1.0 if value is None else float(value) for value in key)
+
+
 def cscv_pbo(
     cell_trades: Mapping[CellKey, pd.DataFrame],
     *,
@@ -173,8 +177,8 @@ def cscv_pbo(
     """Estimate PBO with deterministic contiguous trade-sequence CSCV."""
     if partitions < 4 or partitions % 2:
         raise ValueError("partitions must be an even integer >= 4.")
-    eligible: dict[CellKey, np.ndarray] = {
-        key: _r_values(trades)
+    eligible: dict[CellKey, pd.DataFrame] = {
+        key: trades.copy()
         for key, trades in cell_trades.items()
         if len(_r_values(trades)) >= int(min_trades)
     }
@@ -190,7 +194,33 @@ def cscv_pbo(
     }
     if len(eligible) < 2:
         return base
-    partitioned = {key: _partition_returns(values, partitions) for key, values in eligible.items()}
+    universe = pd.concat(
+        [
+            pd.to_datetime(trades["exit_timestamp"], errors="coerce", utc=True)
+            for trades in eligible.values()
+        ],
+        ignore_index=True,
+    ).dropna()
+    timestamps = pd.Index(universe.unique()).sort_values()
+    if len(timestamps) < partitions:
+        return base
+    timestamp_partitions = {
+        timestamp: int(index * partitions // len(timestamps))
+        for index, timestamp in enumerate(timestamps)
+    }
+    partitioned: dict[CellKey, list[np.ndarray]] = {}
+    for key, trades in eligible.items():
+        work = trades.copy()
+        work["_r15_timestamp"] = pd.to_datetime(work["exit_timestamp"], errors="coerce", utc=True)
+        work["_r15_r"] = pd.to_numeric(work["r_multiple"], errors="coerce")
+        work = work.dropna(subset=["_r15_timestamp", "_r15_r"])
+        partitioned[key] = [
+            work.loc[
+                work["_r15_timestamp"].map(timestamp_partitions).eq(partition),
+                "_r15_r",
+            ].to_numpy(dtype=float)
+            for partition in range(partitions)
+        ]
     splits: list[dict[str, Any]] = []
     lambdas: list[float] = []
     for is_blocks in combinations(range(partitions), partitions // 2):
@@ -204,7 +234,7 @@ def cscv_pbo(
             candidates.append((float(is_r.mean()), key, float(oos_r.mean())))
         if len(candidates) < 2:
             continue
-        candidates.sort(key=lambda item: (-item[0], item[1]))
+        candidates.sort(key=lambda item: (-item[0], _sortable_cell_key(item[1])))
         selected_is, selected_key, selected_oos = candidates[0]
         oos_scores = np.array([item[2] for item in candidates], dtype=float)
         rank_worst_one = 1.0 + float((oos_scores < selected_oos).sum())
@@ -429,7 +459,11 @@ def overfitting_summary(
         grid_results.get("sharpe_like_r", pd.Series(dtype=float)),
         errors="coerce",
     ).dropna()
-    dsr = deflated_sharpe(selected_trades, trial_sharpes)
+    dsr = deflated_sharpe(
+        selected_trades,
+        trial_sharpes,
+        effective_trials=int(len(grid_results)),
+    )
     random = (
         vs_random_benchmark(
             df,

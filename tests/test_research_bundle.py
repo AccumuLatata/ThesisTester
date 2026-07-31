@@ -68,7 +68,6 @@ def test_empty_session_exports_manifest_only():
         "validation": False,
         "excursion": False,
         "monte_carlo": False,
-        "overfitting": False,
     }
 
 

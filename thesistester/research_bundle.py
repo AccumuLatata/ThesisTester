@@ -275,7 +275,6 @@ def _manifest_base() -> dict[str, Any]:
             "validation": False,
             "excursion": False,
             "monte_carlo": False,
-            "overfitting": False,
         },
         "session_keys": [],
     }
