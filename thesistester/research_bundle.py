@@ -268,7 +268,6 @@ def _manifest_base() -> dict[str, Any]:
             "backtest": False,
             "grid": False,
             "validation": False,
-            "walk_forward": False,
             "excursion": False,
             "monte_carlo": False,
         },

@@ -66,7 +66,6 @@ def test_empty_session_exports_manifest_only():
         "backtest": False,
         "grid": False,
         "validation": False,
-        "walk_forward": False,
         "excursion": False,
         "monte_carlo": False,
     }

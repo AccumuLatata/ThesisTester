@@ -21,7 +21,6 @@ from thesistester.analytics import (
     monte_carlo_summary,
     run_walk_forward_sl_tp,
     run_wfa_matrix,
-    summarize_walk_forward,
 )
 from thesistester.analytics.validation import validation_summary
 from thesistester.config import INSTRUMENTS
@@ -32,6 +31,10 @@ st.caption("Diagnostic only — not proof of edge.")
 
 def _fmt_value(v, fmt=".4f", fallback="—"):
     if v is None:
+        return fallback
+    try:
+        return format(float(v), fmt)
+    except (TypeError, ValueError):
         return fallback
 
 
@@ -46,10 +49,6 @@ def _parse_positive_int_values(raw: str) -> list[int]:
     if not values:
         raise ValueError("Provide at least one positive integer.")
     return values
-    try:
-        return format(float(v), fmt)
-    except (TypeError, ValueError):
-        return fallback
 
 
 # ── Require trades ────────────────────────────────────────────────────────────
