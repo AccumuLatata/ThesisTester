@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import multiprocessing
 import os
 import re
 from concurrent.futures import ProcessPoolExecutor
@@ -96,7 +97,10 @@ def run_batch(
     if workers == 1:
         completed = [_execute_run(task) for task in tasks]
     else:
-        with ProcessPoolExecutor(max_workers=min(workers, len(tasks))) as executor:
+        with ProcessPoolExecutor(
+            max_workers=min(workers, len(tasks)),
+            mp_context=multiprocessing.get_context("spawn"),
+        ) as executor:
             completed = list(executor.map(_execute_run, tasks))
 
     output = Path(output_directory)
