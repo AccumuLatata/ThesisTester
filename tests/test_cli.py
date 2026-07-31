@@ -173,6 +173,12 @@ def _manual_ui_equivalent_state(run: dict, base_directory) -> dict:
         "trade_summary": backtest["trade_summary"],
         "equity_curve": backtest["equity_curve"],
         "backtest_otf_filter": backtest["otf_filter_summary"],
+        "backtest_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": "sl_first",
+            "subtimeframe_data_supplied": False,
+        },
+        "backtest_intrabar_diagnostic": backtest["intrabar_diagnostic"],
         "backtest_execution_costs": {
             "commission_per_side": 0.0,
             "slippage_ticks": 0.0,
@@ -180,6 +186,11 @@ def _manual_ui_equivalent_state(run: dict, base_directory) -> dict:
         "grid_results": grid["grid_results"],
         "best_grid_result": grid["best_grid_result"],
         "grid_otf_filter": grid["otf_filter_summary"],
+        "grid_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": "sl_first",
+            "subtimeframe_data_supplied": False,
+        },
         **validation,
     }
 
@@ -291,6 +302,18 @@ def test_experiment_schema_and_names_fail_fast(tmp_path):
                 ],
             },
             "must be >",
+        ),
+        (
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        **_run("bad-intrabar"),
+                        "backtest": {"intrabar_model": "clairvoyant"},
+                    }
+                ],
+            },
+            "intrabar_model",
         ),
     ]
     for index, (payload, message) in enumerate(cases):

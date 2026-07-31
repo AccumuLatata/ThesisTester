@@ -77,6 +77,8 @@ def _saved_dataset_label(meta: dict) -> str:
 def _clear_dataset_dependent_state() -> None:
     for key in [
         "levels",
+        "subtimeframe_data",
+        "subtimeframe_interval",
         "session_levels",
         "levels_settings",
         "levels_data_fingerprint",
@@ -88,8 +90,11 @@ def _clear_dataset_dependent_state() -> None:
         "trades",
         "trade_summary",
         "equity_curve",
+        "backtest_intrabar_policy",
+        "backtest_intrabar_diagnostic",
         "grid_results",
         "best_grid_result",
+        "grid_intrabar_policy",
         "time_bucketed_trades",
         "time_grouped_summary",
         "validation_summary",

@@ -32,13 +32,19 @@ _SIGNALS_META_KEYS = (
     "signal_settings",
     "signal_settings_hash",
 )
-_BACKTEST_META_KEYS = ("trade_summary",)
-_GRID_META_KEYS = ("best_grid_result",)
+_BACKTEST_META_KEYS = (
+    "trade_summary",
+    "backtest_intrabar_policy",
+    "backtest_intrabar_diagnostic",
+)
+_GRID_META_KEYS = ("best_grid_result", "grid_intrabar_policy")
 _VALIDATION_META_KEYS = ("validation_summary",)
 _EXCURSION_META_KEYS = ("excursion_summary", "excursion_config")
 _MONTE_CARLO_META_KEYS = ("monte_carlo_summary", "monte_carlo_config")
 _MANAGED_RESEARCH_KEYS = {
     "data",
+    "subtimeframe_data",
+    "subtimeframe_interval",
     "dataset_id",
     "instrument",
     "base_interval",
@@ -57,9 +63,12 @@ _MANAGED_RESEARCH_KEYS = {
     "signal_settings_hash",
     "trades",
     "trade_summary",
+    "backtest_intrabar_policy",
+    "backtest_intrabar_diagnostic",
     "equity_curve",
     "grid_results",
     "best_grid_result",
+    "grid_intrabar_policy",
     "time_bucketed_trades",
     "time_grouped_summary",
     "validation_summary",
@@ -76,6 +85,8 @@ _KNOWN_FILES = {
     MANIFEST_FILENAME,
     "dataset.parquet",
     "dataset_meta.json",
+    "subtimeframe_data.parquet",
+    "subtimeframe_meta.json",
     "levels.parquet",
     "session_levels.parquet",
     "levels_meta.json",
@@ -251,6 +262,13 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
         )
         manifest["included"]["dataset"] = True
         included_keys.update({"data", *_DATASET_META_KEYS})
+        subtimeframe_data = session_state.get("subtimeframe_data")
+        if _is_dataframe(subtimeframe_data):
+            files["subtimeframe_data.parquet"] = _to_parquet_bytes(subtimeframe_data)
+            files["subtimeframe_meta.json"] = _to_json_bytes(
+                {"subtimeframe_interval": session_state.get("subtimeframe_interval")}
+            )
+            included_keys.update({"subtimeframe_data", "subtimeframe_interval"})
 
     levels = session_state.get("levels")
     session_levels = session_state.get("session_levels")
@@ -416,6 +434,15 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
             for key in _DATASET_META_KEYS:
                 if key in dataset_meta:
                     session_values[key] = dataset_meta[key]
+            if "subtimeframe_data.parquet" in names:
+                session_values["subtimeframe_data"] = _read_parquet_from_zip(
+                    zf, "subtimeframe_data.parquet"
+                )
+                subtimeframe_meta = _read_json_from_zip(zf, "subtimeframe_meta.json")
+                if "subtimeframe_interval" in subtimeframe_meta:
+                    session_values["subtimeframe_interval"] = subtimeframe_meta[
+                        "subtimeframe_interval"
+                    ]
 
         if included.get("levels"):
             session_values["levels"] = _read_parquet_from_zip(zf, "levels.parquet")
@@ -440,14 +467,16 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
             session_values["trades"] = _read_parquet_from_zip(zf, "trades.parquet")
             session_values["equity_curve"] = _read_parquet_from_zip(zf, "equity_curve.parquet")
             backtest_meta = _read_json_from_zip(zf, "trade_summary.json")
-            if "trade_summary" in backtest_meta:
-                session_values["trade_summary"] = backtest_meta["trade_summary"]
+            for key in _BACKTEST_META_KEYS:
+                if key in backtest_meta:
+                    session_values[key] = backtest_meta[key]
 
         if included.get("grid"):
             session_values["grid_results"] = _read_parquet_from_zip(zf, "grid_results.parquet")
             grid_meta = _read_json_from_zip(zf, "best_grid_result.json")
-            if "best_grid_result" in grid_meta:
-                session_values["best_grid_result"] = grid_meta["best_grid_result"]
+            for key in _GRID_META_KEYS:
+                if key in grid_meta:
+                    session_values[key] = grid_meta[key]
 
         if included.get("validation"):
             validation_meta = _read_json_from_zip(zf, "validation_summary.json")

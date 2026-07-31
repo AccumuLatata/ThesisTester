@@ -76,6 +76,19 @@ def _sample_session_state() -> dict:
             "tail_ratio": 1.2,
             "outlier_dependency_ratio": 0.8,
         },
+        "backtest_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": "path_open_proximity",
+        },
+        "backtest_intrabar_diagnostic": {
+            "schema_version": 1,
+            "same_bar_both_hit_count": 2,
+            "ambiguous_resolution_count": 1,
+        },
+        "grid_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": "path_open_proximity",
+        },
         "equity_curve": pd.DataFrame(
             {
                 "trade_id": [10, 11],
@@ -254,6 +267,8 @@ def test_build_research_artifact_counts_match_signals_and_trades():
     assert artifact["results"]["trade_count"] == 2
     assert artifact["results"]["excursion_summary"]["schema_version"] == 1
     assert artifact["results"]["monte_carlo_summary"]["schema_version"] == 1
+    assert artifact["intrabar"]["backtest_policy"]["intrabar_model"] == "path_open_proximity"
+    assert artifact["results"]["backtest_intrabar_diagnostic"]["same_bar_both_hit_count"] == 2
     assert len(artifact["tables"]["signals"]) == 2
     assert len(artifact["tables"]["trades"]) == 2
     assert len(artifact["tables"]["excursion_grouped_summary"]) == 2
@@ -317,6 +332,9 @@ def test_build_markdown_report_returns_string_and_required_sections():
     assert "## Setup Configuration" in markdown
     assert "## Backtest Summary" in markdown
     assert "### Advanced Risk Metrics" in markdown
+    assert "### Intrabar Resolution" in markdown
+    assert "- Model: path_open_proximity" in markdown
+    assert "- Same-bar both-hit exits: 2" in markdown
     assert "## Validation Diagnostics" in markdown
     assert "## Excursion Analytics" in markdown
     assert "- Mean edge ratio: 2.0000" in markdown

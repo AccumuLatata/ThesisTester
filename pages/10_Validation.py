@@ -301,6 +301,11 @@ if run_wfo:
             or st.session_state.get("exposure_policy")
             or {}
         )
+        intrabar_policy = (
+            st.session_state.get("grid_intrabar_policy")
+            or st.session_state.get("backtest_intrabar_policy")
+            or {"intrabar_model": "sl_first"}
+        )
 
         if st.button("▶ Run walk-forward diagnostics", type="secondary"):
             if not sl_values or not tp_values:
@@ -352,6 +357,10 @@ if run_wfo:
                                     exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0
                                 ),
                                 otf_config=_wfo_otf_config,
+                                intrabar_model=str(
+                                    intrabar_policy.get("intrabar_model", "sl_first")
+                                ),
+                                subtimeframe_data=st.session_state.get("subtimeframe_data"),
                             )
                         except ValueError as e:
                             st.error(f"Walk-forward diagnostics error: {e}")
@@ -387,6 +396,9 @@ if run_wfo:
                                     exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0
                                 ),
                                 "otf_filter_enabled": _wfo_otf_enabled,
+                                "intrabar_model": str(
+                                    intrabar_policy.get("intrabar_model", "sl_first")
+                                ),
                                 "otf_filter_config": _wfo_otf_config,
                             }
                             st.session_state["walk_forward_results"] = results_df

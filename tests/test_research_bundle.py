@@ -148,9 +148,14 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
     loaded = load_research_bundle(bundle_bytes)
     existing_state: dict = {
         "levels": pd.DataFrame({"level": [1.0]}),
+        "subtimeframe_data": _dataset_df(),
+        "subtimeframe_interval": "1min",
         "signals": pd.DataFrame({"signal_id": [1]}),
         "trades": pd.DataFrame({"trade_id": [1]}),
+        "backtest_intrabar_policy": {"intrabar_model": "path_open_proximity"},
+        "backtest_intrabar_diagnostic": {"same_bar_both_hit_count": 1},
         "grid_results": pd.DataFrame({"expectancy_r": [0.1]}),
+        "grid_intrabar_policy": {"intrabar_model": "path_open_proximity"},
         "validation_summary": {"trade_count": {"status": "limited"}},
         "excursion_summary": {
             "schema_version": 1,
@@ -183,9 +188,14 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
 
     for key in (
         "levels",
+        "subtimeframe_data",
+        "subtimeframe_interval",
         "signals",
         "trades",
+        "backtest_intrabar_policy",
+        "backtest_intrabar_diagnostic",
         "grid_results",
+        "grid_intrabar_policy",
         "validation_summary",
         "excursion_summary",
         "excursion_config",
@@ -202,6 +212,8 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
     base = _dataset_df()
     source_state = {
         "data": base,
+        "subtimeframe_data": base.copy(),
+        "subtimeframe_interval": "1min",
         "dataset_id": "dataset-xyz",
         "instrument": "NQ",
         "base_interval": "1min",
@@ -222,11 +234,23 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
         "signal_settings_hash": "sig-hash",
         "trades": pd.DataFrame({"trade_id": [1], "r_multiple": [1.0]}),
         "trade_summary": {"trade_count": 1},
+        "backtest_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": "subtimeframe",
+        },
+        "backtest_intrabar_diagnostic": {
+            "schema_version": 1,
+            "same_bar_both_hit_count": 1,
+        },
         "equity_curve": pd.DataFrame({"trade_id": [1], "cum_r": [1.0]}),
         "grid_results": pd.DataFrame(
             {"stop_loss_ticks": [4.0], "take_profit_ticks": [8.0], "expectancy_r": [0.2]}
         ),
         "best_grid_result": {"stop_loss_ticks": 4.0, "take_profit_ticks": 8.0},
+        "grid_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": "path_open_proximity",
+        },
         "validation_summary": {"trade_count": {"status": "limited"}},
         "excursion_summary": {
             "schema_version": 1,
@@ -265,6 +289,7 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
 
     for key in (
         "data",
+        "subtimeframe_data",
         "levels",
         "session_levels",
         "signals",
@@ -286,7 +311,11 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
     assert restored_state["signal_settings"] == {"trigger": "touch"}
     assert restored_state["signal_settings_hash"] == "sig-hash"
     assert restored_state["trade_summary"] == {"trade_count": 1}
+    assert restored_state["subtimeframe_interval"] == "1min"
+    assert restored_state["backtest_intrabar_policy"]["intrabar_model"] == "subtimeframe"
+    assert restored_state["backtest_intrabar_diagnostic"]["same_bar_both_hit_count"] == 1
     assert restored_state["best_grid_result"] == {"stop_loss_ticks": 4.0, "take_profit_ticks": 8.0}
+    assert restored_state["grid_intrabar_policy"]["intrabar_model"] == "path_open_proximity"
     assert restored_state["validation_summary"] == {"trade_count": {"status": "limited"}}
     assert restored_state["excursion_summary"]["schema_version"] == 1
     assert restored_state["excursion_summary"]["trade_count"] == 1

@@ -26,6 +26,7 @@ from thesistester.config import INSTRUMENTS
 from thesistester.data.loader import format_interval, load_ohlcv, validate_ohlcv
 from thesistester.data.sessions import tag_session
 from thesistester.engine import (
+    VALID_INTRABAR_MODELS,
     apply_configured_otf_filter,
     detect_anchor_confluence_zones,
     detect_confluence_zones,
@@ -76,6 +77,7 @@ class BacktestResult(TypedDict):
     accepted_signals: pd.DataFrame
     rejected_signals: pd.DataFrame
     otf_filter_summary: dict[str, Any]
+    intrabar_diagnostic: dict[str, Any]
 
 
 class GridResult(TypedDict):
@@ -140,6 +142,7 @@ _BACKTEST_DEFAULTS: dict[str, Any] = {
     "no_new_entries_after": None,
     "exposure_policy": "allow_all",
     "cooldown_bars_after_exit": 0,
+    "intrabar_model": "sl_first",
 }
 _GRID_DEFAULTS: dict[str, Any] = {
     "stop_loss_ticks_values": [4.0, 8.0, 12.0],
@@ -156,6 +159,7 @@ _GRID_DEFAULTS: dict[str, Any] = {
     "cooldown_bars_after_exit": 0,
     "ranking_metric": "expectancy_r",
     "min_trades": 1,
+    "intrabar_model": "sl_first",
 }
 _VALIDATION_DEFAULTS: dict[str, Any] = {
     "n_bootstrap": 2000,
@@ -167,7 +171,13 @@ _VALIDATION_DEFAULTS: dict[str, Any] = {
     "selected_grid_metric": "expectancy_r",
 }
 _RUN_KEYS = {"name", "dataset", "levels", "setup", "backtest", "grid", "validation"}
-_DATASET_KEYS = {"path", "instrument", "source_timezone", "exchange_timezone"}
+_DATASET_KEYS = {
+    "path",
+    "subtimeframe_path",
+    "instrument",
+    "source_timezone",
+    "exchange_timezone",
+}
 _EXCURSION_KEYS = {
     "enabled",
     "group_cols",
@@ -338,6 +348,8 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         raise ValueError("Experiment dataset.path is required")
     if not isinstance(dataset["path"], (str, Path)):
         raise ValueError("dataset.path must be a path string")
+    if "subtimeframe_path" in dataset and not isinstance(dataset["subtimeframe_path"], (str, Path)):
+        raise ValueError("dataset.subtimeframe_path must be a path string")
     for key in ("instrument", "source_timezone", "exchange_timezone"):
         if key in dataset and dataset[key] is not None and not isinstance(dataset[key], str):
             raise ValueError(f"dataset.{key} must be a string or null")
@@ -567,10 +579,13 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             "session_timezone",
             "no_new_entries_after",
             "exposure_policy",
+            "intrabar_model",
         },
         section="backtest",
         nullable={"session_close_time", "session_timezone", "no_new_entries_after"},
     )
+    if backtest.get("intrabar_model", "sl_first") not in VALID_INTRABAR_MODELS:
+        raise ValueError(f"backtest.intrabar_model must be one of {sorted(VALID_INTRABAR_MODELS)}")
     if backtest.get("max_holding_bars") is not None:
         _validate_number_fields(
             backtest,
@@ -619,10 +634,13 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                 "no_new_entries_after",
                 "exposure_policy",
                 "ranking_metric",
+                "intrabar_model",
             },
             section="grid",
             nullable={"session_close_time", "session_timezone", "no_new_entries_after"},
         )
+        if grid.get("intrabar_model", "sl_first") not in VALID_INTRABAR_MODELS:
+            raise ValueError(f"grid.intrabar_model must be one of {sorted(VALID_INTRABAR_MODELS)}")
         if grid.get("max_holding_bars") is not None:
             _validate_number_fields(
                 grid,
@@ -994,6 +1012,7 @@ def run_backtest(
     setup_config: Mapping[str, Any] | None = None,
     signal_settings: Mapping[str, Any] | None = None,
     last_signal_setup: Mapping[str, Any] | None = None,
+    subtimeframe_data: pd.DataFrame | None = None,
 ) -> BacktestResult:
     """Run the UI backtest composition, including the shared OTF pre-filter."""
     inst = _instrument(instrument)
@@ -1008,7 +1027,7 @@ def run_backtest(
         signal_settings=dict(signal_settings or {}),
         last_signal_setup=dict(last_signal_setup or {}),
     )
-    trades, skipped = simulate_trades(
+    simulation = simulate_trades(
         df=data,
         signals=otf.accepted_signals,
         tick_size=inst.tick_size,
@@ -1025,8 +1044,12 @@ def run_backtest(
         no_new_entries_after=settings["no_new_entries_after"],
         exposure_policy=str(settings["exposure_policy"]),
         cooldown_bars_after_exit=int(settings["cooldown_bars_after_exit"]),
-        return_skipped_signals=True,
+        intrabar_model=str(settings["intrabar_model"]),
+        subtimeframe_data=subtimeframe_data,
+        return_result=True,
     )
+    trades = simulation.trades
+    skipped = simulation.skipped_signals
     return {
         "trades": trades,
         "trade_summary": summarize_trades(trades),
@@ -1035,6 +1058,7 @@ def run_backtest(
         "accepted_signals": otf.accepted_signals,
         "rejected_signals": otf.rejected_signals,
         "otf_filter_summary": otf.to_summary_dict(),
+        "intrabar_diagnostic": simulation.intrabar_diagnostic,
     }
 
 
@@ -1047,6 +1071,7 @@ def run_grid(
     setup_config: Mapping[str, Any] | None = None,
     signal_settings: Mapping[str, Any] | None = None,
     last_signal_setup: Mapping[str, Any] | None = None,
+    subtimeframe_data: pd.DataFrame | None = None,
 ) -> GridResult:
     """Run the UI grid composition, including one shared OTF pre-filter."""
     inst = _instrument(instrument)
@@ -1078,6 +1103,8 @@ def run_grid(
         no_new_entries_after=settings["no_new_entries_after"],
         exposure_policy=str(settings["exposure_policy"]),
         cooldown_bars_after_exit=int(settings["cooldown_bars_after_exit"]),
+        intrabar_model=str(settings["intrabar_model"]),
+        subtimeframe_data=subtimeframe_data,
     )
     best = best_grid_result(
         grid,
@@ -1183,6 +1210,18 @@ def run_experiment(
         source_timezone=source_timezone,
         exchange_timezone=exchange_timezone,
     )
+    subtimeframe_data: pd.DataFrame | None = None
+    subtimeframe_path_value = dataset_config.get("subtimeframe_path")
+    if subtimeframe_path_value is not None:
+        subtimeframe_path = Path(subtimeframe_path_value)
+        if not subtimeframe_path.is_absolute():
+            subtimeframe_path = Path(base_directory) / subtimeframe_path
+        subtimeframe_data = load_dataset(
+            subtimeframe_path,
+            instrument=instrument,
+            source_timezone=source_timezone,
+            exchange_timezone=exchange_timezone,
+        )
     validation_report = validate_ohlcv(data)
     base_interval = format_interval(validation_report.inferred_interval)
     dataset_id = compute_dataset_id(
@@ -1205,6 +1244,7 @@ def run_experiment(
         setup_config=setup,
         signal_settings=signal_result["signal_settings"],
         last_signal_setup=setup,
+        subtimeframe_data=subtimeframe_data,
     )
 
     state: dict[str, Any] = {
@@ -1237,11 +1277,21 @@ def run_experiment(
         "trade_summary": backtest_result["trade_summary"],
         "equity_curve": backtest_result["equity_curve"],
         "backtest_otf_filter": backtest_result["otf_filter_summary"],
+        "backtest_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": backtest_config.get("intrabar_model", "sl_first"),
+            "subtimeframe_data_supplied": subtimeframe_data is not None,
+        },
+        "backtest_intrabar_diagnostic": backtest_result["intrabar_diagnostic"],
         "backtest_execution_costs": {
             "commission_per_side": float(backtest_config.get("commission_per_side", 0.0)),
             "slippage_ticks": float(backtest_config.get("slippage_ticks", 0.0)),
         },
     }
+    if subtimeframe_data is not None:
+        subtimeframe_report = validate_ohlcv(subtimeframe_data)
+        state["subtimeframe_data"] = subtimeframe_data
+        state["subtimeframe_interval"] = format_interval(subtimeframe_report.inferred_interval)
 
     grid_config = run.get("grid")
     if isinstance(grid_config, Mapping) and grid_config.get("enabled", True):
@@ -1254,12 +1304,18 @@ def run_experiment(
             setup_config=setup,
             signal_settings=signal_result["signal_settings"],
             last_signal_setup=setup,
+            subtimeframe_data=subtimeframe_data,
         )
         state.update(
             {
                 "grid_results": grid_result["grid_results"],
                 "best_grid_result": grid_result["best_grid_result"],
                 "grid_otf_filter": grid_result["otf_filter_summary"],
+                "grid_intrabar_policy": {
+                    "schema_version": 1,
+                    "intrabar_model": grid_settings.get("intrabar_model", "sl_first"),
+                    "subtimeframe_data_supplied": subtimeframe_data is not None,
+                },
             }
         )
 
