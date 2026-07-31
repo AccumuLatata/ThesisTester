@@ -144,10 +144,15 @@ Agent safety requirements:
 - Read `tests/fixtures/golden/README.md` before touching `simulate_trades`, level
   computation, or signal generation. It is the operational spec for
   `docs/ENGINEERING_PROPOSAL.md` §4.1.
+- The gate is active. Run `pytest -q tests/test_golden_master.py` before and
+  after engine edits. It rebuilds the deterministic NQ fixture and compares
+  exact legacy trade values; the bundle hash is additionally checked on its
+  recorded pandas major.
 - Legacy-mode outputs are the contract: new behavior ships behind a default-off flag, so
   goldens must stay valid. Never regenerate a golden to make a diff go away.
 - Golden regeneration is its own PR with a readable CSV diff, justification, and the
-  `GOLDEN_REGEN` label.
+  `GOLDEN_REGEN` label. The only write command is
+  `python -m tests.fixtures.golden.record_golden --confirm-regenerate`.
 
 ## Repository conventions (verified)
 - Multipage Streamlit workflow with phase pages under `pages/` (`app.py:10-33`).

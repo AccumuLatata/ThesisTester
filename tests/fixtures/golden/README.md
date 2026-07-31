@@ -5,10 +5,10 @@ Operational spec for the golden-master mechanism required by
 control for the invasive engine milestones (R12 look-inside-bar, R13 break-even/trailing
 exits) and for the R22 core-surface refactor.
 
-**Status:** spec only. This directory intentionally contains no golden data yet. Recording
-the fixtures is a dedicated PR that must land *before* the first engine-touching milestone
-(R12), per §5 R9 scope. Until then, `pytest` collects nothing from this directory and the
-CI `golden-master regeneration guard` job passes trivially.
+**Status:** active. The deterministic NQ fixture, legacy trades, readable CSV,
+manifest, canonical bundle hash, recorder, and verification tests were recorded
+from unmodified post-R18 `main` before R12 engine work. Any future output change
+must follow the regeneration policy in §4.
 
 ---
 
@@ -32,9 +32,9 @@ CI `golden-master regeneration guard` job passes trivially.
 | `trades_legacy.csv` | Canonical text projection of the same frame — the readable diff required by the regeneration policy (§4 below) and the hash input (§3). |
 | `legacy_bundle_hash.txt` | `sha256` of the canonical research-bundle projection plus the `pandas_major` it was recorded under (see §3.2). |
 
-A deterministic generator (`tests/fixtures/golden/record_golden.py`, added with the data)
-produces the input fixture, so the dataset can be rebuilt from source rather than trusted
-as an opaque blob.
+The deterministic generator in `tests/fixtures/golden/generate.py` produces
+the input fixture, and `record_golden.py` runs the frozen pipeline, so every
+artifact can be rebuilt from source rather than trusted as an opaque blob.
 
 ## 3. Determinism contract (measured, not assumed)
 
@@ -107,9 +107,9 @@ Golden outputs are **never** silently re-recorded.
 3. That PR must carry the **`GOLDEN_REGEN`** label and reviewer approval. The
    `golden-master regeneration guard` job in `.github/workflows/ci.yml` fails any PR that
    modifies files in this directory (other than this README) without the label.
-4. Regeneration command (available once the recorder lands):
+4. Regeneration command:
    `python -m tests.fixtures.golden.record_golden --confirm-regenerate`. It refuses to
-   overwrite existing files without the flag.
+   write any files without the flag.
 
 ## 5. Repository plumbing
 
@@ -118,13 +118,13 @@ Golden parquet fixtures are explicitly re-included via
 `!tests/fixtures/golden/*.parquet`, so recording a fixture cannot silently fail to be
 committed.
 
-## 6. Checklist for the recording PR
+## 6. Recording status
 
-- [ ] Deterministic generator committed; fixture rebuildable from it.
-- [ ] `trades_legacy.parquet` + `trades_legacy.csv` + `fixture_manifest.json` +
+- [x] Deterministic generator committed; fixture rebuildable from it.
+- [x] `trades_legacy.parquet` + `trades_legacy.csv` + `fixture_manifest.json` +
       `legacy_bundle_hash.txt` recorded from unmodified `main`.
-- [ ] `tests/test_golden_master.py` asserts trade-frame value equality on every matrix
+- [x] `tests/test_golden_master.py` asserts trade-frame value equality on every matrix
       cell and bundle-hash equality on the recorded `pandas_major`.
-- [ ] Golden tests fail loudly when a deliberate engine tweak is applied locally
-      (verified by temporarily perturbing e.g. the SL-first rule, then reverting).
-- [ ] `docs/ENGINEERING_ROADMAP.md` and `docs/AGENT_GUIDE.md` reference the gate.
+- [x] Fixture deliberately exercises six same-bar both-hit trades resolved by
+      legacy SL-first behavior, so perturbing that rule makes the value gate red.
+- [x] `docs/ENGINEERING_ROADMAP.md` and `docs/AGENT_GUIDE.md` reference the active gate.

@@ -161,7 +161,10 @@ Tooling, CI, and documentation only. Engine, analytics, levels, persistence, and
   `datetime64[ns]` → `datetime64[us]`), and `build_research_bundle` bytes are not reproducible
   (wall-clock `created_at` + zip metadata). Golden comparison is therefore value-level, with
   bundle hashing over a canonical projection and scoped to the recorded pandas major. Golden
-  *data* lands in a dedicated follow-up PR before R12.
+  *data* is now active: a dedicated pre-R12 PR records a deterministic three-session NQ
+  fixture, nine legacy trades (including six same-bar both-hit cases), readable CSV,
+  provenance manifest, and canonical bundle hash. `tests/test_golden_master.py` rebuilds
+  the fixture and gates exact legacy values on every supported Python/pandas matrix cell.
 - **LICENSE** — MIT.
 
 ### New files
