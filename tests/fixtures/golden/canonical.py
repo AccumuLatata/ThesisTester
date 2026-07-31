@@ -36,7 +36,7 @@ def dtype_family(series: pd.Series) -> str:
         return "integer"
     if pd.api.types.is_float_dtype(dtype):
         return "float"
-    if pd.api.types.is_string_dtype(dtype) or dtype == object:
+    if pd.api.types.is_string_dtype(dtype) or dtype is object:
         non_null = series.dropna()
         if non_null.empty or non_null.map(lambda value: isinstance(value, str)).all():
             return "string"
