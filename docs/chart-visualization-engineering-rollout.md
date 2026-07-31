@@ -55,8 +55,25 @@ This change set remains visualization-only. Trading, signal-generation, confluen
 - Applied clipping only to DataFrames passed into chart builders (Plotly inputs), not to session-state artifacts/tables/metrics.
 - Added focused helper tests in `tests/visualization/test_chart_window.py`.
 
+## Phase 4 trade-review mode (R20)
+
+This change set remains visualization-only. It reads completed trade data and
+bounded chart windows without modifying any engine, signal, metric,
+persistence, or research-artifact contract.
+
+### Implemented
+
+- Added `selected_trade_time_window(...)` for a bounded single-trade OHLC
+  payload and `build_trade_review_chart(...)` for entry/exit, initial SL/TP,
+  levels/zones, and terminal MAE/MFE envelope overlays.
+- Added a collapsed Backtest-page trade-review selector with a 10–500-row
+  buffer and optional final managed-stop display.
+- Added a capped worst-loser PNG ZIP export using Kaleido; every exported
+  review builds from its own clipped inputs.
+- Added figure-structure, serializability, window-bound, loser-selection, and
+  input-immutability tests.
+
 ## Future work (later phases)
 
-- Trade-review mode.
 - Downsampling/performance work (including larger-scale rendering improvements).
 - Compute optimization.
