@@ -33,6 +33,25 @@ pytest -q --cov=thesistester --cov-report=term-missing
 `requirements.txt` remains the app-install path; `pyproject.toml` mirrors those ranges with
 conservative next-major caps so dependency majors arrive as explicit, test-gated bumps.
 
+## Headless API and batch CLI
+
+R18 exposes the existing research pipeline without Streamlit:
+
+```python
+from thesistester.api import load_dataset, compute_levels, build_setup
+```
+
+Run a versioned YAML batch with one research bundle per run and a summary CSV:
+
+```bash
+python -m thesistester run experiment.yaml --workers 4
+```
+
+Dataset paths are relative to the YAML file. Parallelism is across independent
+runs only; each run remains single-threaded and deterministic. See
+[`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) for the full schema, typed handoffs,
+seed rules, and point-in-time constraints.
+
 CI (`.github/workflows/ci.yml`) runs on every push to `main` and every pull request:
 `ruff check` + `ruff format --check`, the full suite on Python 3.10/3.11/3.12 with coverage
 (reported, non-blocking), a clean-environment `pip install -e .` check, and the

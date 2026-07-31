@@ -88,6 +88,11 @@ recording `pandas_major`. The hash assertion runs only when the executing enviro
 value-equality still gates every matrix cell. A pandas major bump thus produces a normal
 red-then-regenerate decision rather than an unexplained CI failure.
 
+R18 implements this projection as
+`thesistester.research_bundle.canonical_bundle_hash()`. CLI parity and
+serial/parallel determinism tests use that shared helper; callers must not
+replace it with a raw ZIP hash.
+
 ## 4. Regeneration policy (§4.1 rule 3)
 
 Golden outputs are **never** silently re-recorded.

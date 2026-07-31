@@ -181,6 +181,19 @@ interpret a diagnostic table's final naked status as a tradable signal for any b
 other than the last bar in the dataset.
 
 ## Validation implications
+- The R18 headless facade composes the existing pipeline; it does not strengthen
+  causal, execution, or statistical guarantees. Externally supplied level/data
+  columns are only point-in-time safe if their construction is causal.
+- Batch execution can make broad parameter searches cheap enough to create
+  severe multiple-testing bias. A large run count is not independent evidence;
+  retain attempted runs and use genuinely held-out or walk-forward evaluation.
+- CLI parallelism is across isolated runs only. A single run remains
+  single-threaded; large level grids and validation batteries can still have
+  substantial CPU and memory cost.
+- Determinism requires fixed input files, configuration, dependency major
+  versions, and explicit seeds. Canonical bundle hashes intentionally ignore
+  archive/manifest timestamps, but the DataFrame projection remains
+  pandas-major-sensitive as documented by the golden-master policy.
 - Validation diagnostics explicitly warn that assumptions like sign symmetry and independence limits apply; serial dependence is ignored (`thesistester/analytics/validation.py:10-11`, `115-117`).
 - Outputs are explicitly framed as diagnostics and not proof of edge (`thesistester/analytics/validation.py:13`, `pages/10_Validation.py:18`).
 - Walk-forward / out-of-sample diagnostics are also descriptive only, not proof of edge.
