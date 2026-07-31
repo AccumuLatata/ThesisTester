@@ -80,6 +80,7 @@ def _execute_run(
     summary = state.get("trade_summary") or {}
     best = state.get("best_grid_result") or {}
     validation = state.get("validation_summary") or {}
+    walk_forward = state.get("walk_forward_summary") or {}
     index_row = {
         "run_name": name,
         "bundle_hash": canonical_bundle_hash(bundle),
@@ -92,6 +93,10 @@ def _execute_run(
         "best_grid_stop_loss_ticks": best.get("stop_loss_ticks"),
         "best_grid_take_profit_ticks": best.get("take_profit_ticks"),
         "validation_trade_count_status": (validation.get("trade_count") or {}).get("status"),
+        "wfa_fold_count": walk_forward.get("fold_count"),
+        "wfa_valid_fold_count": walk_forward.get("valid_fold_count"),
+        "wfa_median_test_expectancy_r": walk_forward.get("median_test_expectancy_r"),
+        "wfa_stitched_oos_total_r": walk_forward.get("stitched_oos_total_r"),
     }
     return name, bundle, index_row
 

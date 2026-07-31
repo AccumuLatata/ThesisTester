@@ -240,6 +240,16 @@ def test_parallel_batch_is_identical_to_serial(tmp_path):
     path_run["grid"]["trailing_after_r_values"] = [None, 1.0]
     path_run["grid"]["trailing_distance_ticks_values"] = [None, 2.0]
     path_run["grid"]["max_grid_cells"] = 8
+    path_run["walk_forward"] = {
+        "enabled": True,
+        "fold_mode": "bars",
+        "window_mode": "rolling",
+        "train_bars": 6,
+        "test_bars": 4,
+        "step_bars": 4,
+        "stop_loss_ticks_values": [2],
+        "take_profit_ticks_values": [3],
+    }
     experiment = {
         "schema_version": 1,
         "runs": [_run("baseline", stop=2), path_run],
