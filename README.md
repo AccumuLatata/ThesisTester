@@ -177,6 +177,10 @@ The **Backtest** and **Grid Search** pages support saving and restoring executio
   separate **Long vs Short KPIs** section (trade count, win rate, average/total R,
   profit factor) computed from directional trade subsets. Trades are stored in
   `st.session_state["trades"]`.
+  R12 adds opt-in deterministic intrabar resolution: legacy `sl_first`,
+  OHLC `path_open_proximity`, and strict observed `subtimeframe` replay.
+  Lower-timeframe replay requires complete OHLC-reconciling finer data; it
+  never upsamples or silently falls back.
 - **Phase 6 (SL/TP grid search, expectancy heatmaps):** sweeps all stop-loss × take-profit
   combinations over the Phase 5 backtest engine (`thesistester/analytics/grid.py`).
   `run_sl_tp_grid()` returns one summary row per cell; `best_grid_result()` picks the

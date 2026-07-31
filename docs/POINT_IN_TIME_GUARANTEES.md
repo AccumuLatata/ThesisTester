@@ -141,6 +141,21 @@ not part of the current public trigger set accepted by `generate_signals()`.
 
 ## Same-bar vs next-bar semantics
 
+### R12 intrabar resolution
+
+All R12 models operate only on the current parent bar being evaluated:
+
+- `sl_first` reads current parent high/low exactly as legacy behavior.
+- `path_open_proximity` reads current parent O/H/L/C only.
+- `subtimeframe` reads lower rows in
+  `[parent_timestamp, parent_timestamp + parent_interval)` only after strict
+  parent reconciliation. Rows from later parent intervals are never included.
+
+Appending parent or lower-timeframe rows after a completed trade cannot change
+that trade. `tests/test_intrabar.py::test_intrabar_models_are_future_shock_safe`
+asserts this for all three models. This guarantee does not make an OHLC path
+heuristic true; it establishes causality and deterministic replay only.
+
 For **simple triggers** (`touch`, `reject`, `break`, `reclaim`):
 
 - The signal is generated when the trigger bar **closes** (bar `i`).

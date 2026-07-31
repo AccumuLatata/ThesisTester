@@ -48,6 +48,30 @@ projection contract without changing bundle schema version 1.
 R18 adds no `st.session_state` keys and does not route existing pages through
 the facade. The session-state contract below is therefore unchanged.
 
+## Intrabar execution boundary (R12)
+
+`thesistester/engine/intrabar.py` owns deterministic event ordering only.
+`simulate_trades()` retains trade admission, bracket prices, costs, bar-count
+holding limits, forced exits, and parent-bar MAE/MFE. Its new keyword-only
+inputs are `intrabar_model`, optional `subtimeframe_data`, and
+`return_result`.
+
+The default `sl_first` branch preserves the historical DataFrame schema and
+return types exactly. `return_result=True` returns `SimulationResult` with
+trades, skipped signals, and schema-versioned diagnostics. Non-legacy trades
+append audit columns; existing columns are neither removed nor retyped.
+
+`path_open_proximity` is a pure OHLC heuristic. `subtimeframe` has a strict
+dual-resolution boundary: lower rows must be sorted, duplicate-free, strictly
+finer, exactly divide the parent interval, completely cover every parent bar,
+and reconcile first-open/max-high/min-low/last-close. No interpolation,
+upsampling, or silent fallback is permitted.
+
+Grid and walk-forward runs hold one intrabar model fixed; the model is a market
+path assumption, not an optimization dimension. R18 experiment schema version
+1 remains backward compatible and accepts optional
+`dataset.subtimeframe_path`.
+
 ## End-to-end data flow
 
 ```mermaid
@@ -78,6 +102,8 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | Key | Producing page(s) | Consuming page(s) | Schema (observed) |
 |---|---|---|---|
 | `data` | Data (`pages/1_Data.py:114`) | Levels (`pages/5_Levels.py:203-217,425`), Backtest (`pages/7_Backtest.py:64-68`), Grid (`pages/8_Grid_Search.py:36-40`), Report/Bundles (`pages/12_Research_Bundles.py:26`) | `pd.DataFrame` OHLCV/session columns |
+| `subtimeframe_data` | R18 API/CLI or Research Bundle import | Backtest/Grid/Walk-forward, Research Bundles | Optional strictly finer `pd.DataFrame` OHLCV/session rows for R12 replay |
+| `subtimeframe_interval` | R18 API/CLI or Research Bundle import | Research Bundles/report provenance | `str \| None` inferred lower interval |
 | `resampled_data` | Data (`pages/1_Data.py:115`) | Data summary (`pages/1_Data.py:341`) | `dict[str, pd.DataFrame]` |
 | `instrument` | Data (`pages/1_Data.py:116`) | Levels/Setup/Signals/Backtest/Grid/Time (`pages/5_Levels.py:207`, `pages/2_Setup_Builder.py:67`, `pages/6_Signals.py`, `pages/7_Backtest.py:70`, `pages/8_Grid_Search.py:42`, `pages/9_Time_Analysis.py:30`) | `str` (e.g., `ES`, `NQ`) |
 | `base_interval` | Data (`pages/1_Data.py:117`) | Levels fingerprint (`pages/5_Levels.py:84`), dataset persistence (`pages/1_Data.py:357`) | `str \| None` |
@@ -101,8 +127,11 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `trades` | Backtest (`pages/7_Backtest.py:156`) | Time/Validation/Report/Bundles (`pages/9_Time_Analysis.py:24`, `pages/10_Validation.py:21`, `pages/11_Report_Export.py:39`, `pages/12_Research_Bundles.py:42`) | `pd.DataFrame` simulated trade rows |
 | `trade_summary` | Backtest (`pages/7_Backtest.py:157`) | Time/Report (`pages/9_Time_Analysis.py:39`, `thesistester/reporting.py:151`) | `dict` KPI summary |
 | `equity_curve` | Backtest (`pages/7_Backtest.py:158`) | Backtest display/Report/Bundles (`pages/7_Backtest.py:163,207`, `pages/11_Report_Export.py:121-122`, `pages/12_Research_Bundles.py:42`) | `pd.DataFrame` cumulative-R curve |
+| `backtest_intrabar_policy` | Backtest/R18 API | Validation, Report, Research Bundles | R12 schema-versioned model/data-availability snapshot |
+| `backtest_intrabar_diagnostic` | Backtest/R18 API | Backtest display, Report, Research Bundles | R12 schema-versioned both-hit/ambiguity diagnostic |
 | `grid_results` | Grid (`pages/8_Grid_Search.py:146`) | Validation/Report/Bundles (`pages/10_Validation.py:27`, `pages/11_Report_Export.py:40,123`, `pages/12_Research_Bundles.py:46`) | `pd.DataFrame` one row per SL/TP cell |
 | `best_grid_result` | Grid (`pages/8_Grid_Search.py:147`) | Report artifact (`thesistester/reporting.py:152`) | `dict` best ranked cell |
+| `grid_intrabar_policy` | Grid/R18 API | Validation walk-forward, Report, Research Bundles | R12 schema-versioned fixed grid model snapshot |
 | `time_bucketed_trades` | Time (`pages/9_Time_Analysis.py:129`) | Report/Bundles availability checks (`pages/12_Research_Bundles.py:57`) | `pd.DataFrame` trades + time-bucket columns |
 | `time_grouped_summary` | Time (`pages/9_Time_Analysis.py:208`) | Report export (`pages/11_Report_Export.py:41,123`, `thesistester/reporting.py:180-185`) | `pd.DataFrame` grouped diagnostics |
 | `validation_summary` | Validation (`pages/10_Validation.py:130`) | Validation display/Report/Bundles (`pages/10_Validation.py:134`, `pages/11_Report_Export.py:42,82-83`, `pages/12_Research_Bundles.py:50`) | `dict` (`bootstrap`, `permutation`, `trade_count`, `grid_overfit`) |
