@@ -303,7 +303,8 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
             {key: session_state.get(key) for key in _BACKTEST_META_KEYS if key in session_state}
         )
         manifest["included"]["backtest"] = True
-        included_keys.update({"trades", "equity_curve", *_BACKTEST_META_KEYS})
+        included_keys.update({"trades", "equity_curve"})
+        included_keys.update(key for key in _BACKTEST_META_KEYS if key in session_state)
 
     grid_results = session_state.get("grid_results")
     if _is_dataframe(grid_results):
@@ -312,7 +313,8 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
             {key: session_state.get(key) for key in _GRID_META_KEYS if key in session_state}
         )
         manifest["included"]["grid"] = True
-        included_keys.update({"grid_results", *_GRID_META_KEYS})
+        included_keys.add("grid_results")
+        included_keys.update(key for key in _GRID_META_KEYS if key in session_state)
 
     if session_state.get("validation_summary") is not None:
         files["validation_summary.json"] = _to_json_bytes(
