@@ -140,6 +140,10 @@ The **Backtest** and **Grid Search** pages support saving and restoring executio
   Sierra Intraday, Databento trades, tick-capture, or second-capture profile.
   Captures are aggregated to one-minute bars and raw rows are retained locally;
   MNQ and MES are supported instrument presets.
+- **R12 lower-timeframe replay:** after loading a main chart on the Data page,
+  optionally upload a second canonical OHLCV CSV for observed lower-timeframe
+  replay. It must exactly cover and reconcile to every main-chart bar. For
+  batch runs, retain the equivalent R18 `dataset.subtimeframe_path` setting.
 - **Timezone handling:** the Data page includes a source timestamp timezone selector.
   Timezone-naive CSV timestamps are localized to the selected source timezone and
   converted to the instrument exchange timezone (`America/New_York` for ES/NQ).

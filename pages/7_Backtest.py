@@ -242,8 +242,9 @@ with st.sidebar:
     subtimeframe_data = st.session_state.get("subtimeframe_data")
     if intrabar_model == "subtimeframe" and not isinstance(subtimeframe_data, pd.DataFrame):
         st.warning(
-            "Subtimeframe replay requires lower-timeframe data. Load it through "
-            "a research bundle or use the R18 API/CLI `dataset.subtimeframe_path` contract."
+            "Subtimeframe replay requires lower-timeframe data. Upload it on the "
+            "Data page, load it through a research bundle, or use the R18 API/CLI "
+            "`dataset.subtimeframe_path` contract."
         )
     with st.expander("Exit management (R13)", expanded=False):
         enable_breakeven = st.toggle(

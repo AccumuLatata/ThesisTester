@@ -116,6 +116,8 @@ def format_interval(interval: pd.Timedelta | None) -> str:
     if total_seconds % SECONDS_PER_MINUTE == 0:
         minutes = total_seconds // SECONDS_PER_MINUTE
         return f"{minutes}min"
+    if total_seconds > 0:
+        return f"{total_seconds}s"
     return str(interval)
 
 

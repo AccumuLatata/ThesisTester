@@ -43,6 +43,10 @@ processes across runs only. Each individual levels/signals/backtest/grid/
 validation pipeline stays single-threaded, and output order follows YAML order.
 R12 adds optional `dataset.subtimeframe_path`; it is required when an enabled
 backtest/grid section selects `intrabar_model: subtimeframe`.
+For interactive Streamlit research, the Data page can instead load an optional
+canonical lower-timeframe CSV after the primary dataset is loaded. This is a
+session-scoped producer of the same `subtimeframe_data` contract; YAML remains
+the reproducible headless contract.
 
 Minimal complete shape:
 
