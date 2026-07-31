@@ -212,10 +212,11 @@ def _read_explicit_profile(
         # Keep all available price fields in decimal units for raw-sidecar provenance.
         for column in ("price", "bid_price", "ask_price"):
             if column in raw:
-                raw[column] = pd.to_numeric(raw[column], errors="coerce")
-                raw.loc[
-                    raw[column].abs() >= DATABENTO_FIXED_POINT_THRESHOLD, column
-                ] /= DATABENTO_FIXED_POINT_SCALE
+                values = pd.to_numeric(raw[column], errors="coerce")
+                raw[column] = values.where(
+                    values.abs() < DATABENTO_FIXED_POINT_THRESHOLD,
+                    values / DATABENTO_FIXED_POINT_SCALE,
+                )
         raw["volume"] = raw["size"]
         return _aggregate_capture_rows(raw), raw
 
