@@ -20,6 +20,7 @@ from thesistester.analytics import (
     excursion_summary,
     monte_carlo_summary,
     overfitting_summary,
+    best_grid_result,
     grid_trade_sequences,
     run_walk_forward_sl_tp,
     run_wfa_matrix,
@@ -756,11 +757,14 @@ else:
                 if eligible_sequences.empty:
                     st.error("No R15 grid cell passes the recorded selection rule.")
                     st.stop()
-                selected = eligible_sequences.sort_values(
-                    [selection_metric, "stop_loss_ticks", "take_profit_ticks"],
-                    ascending=[False, True, True],
-                    kind="mergesort",
-                ).iloc[0]
+                selected = best_grid_result(
+                    eligible_sequences,
+                    metric=selection_metric,
+                    min_trades=selection_min_trades,
+                )
+                if selected is None:
+                    st.error("No R15 grid cell passes the recorded selection rule.")
+                    st.stop()
                 key = (
                     float(selected["stop_loss_ticks"]),
                     float(selected["take_profit_ticks"]),
