@@ -26,6 +26,7 @@ from thesistester.analytics import (
     run_wfa_matrix,
 )
 from thesistester.analytics.validation import validation_summary
+from thesistester.api import run_noise_test
 from thesistester.config import INSTRUMENTS
 
 st.title("📊 Statistical Validation")
@@ -813,6 +814,122 @@ if isinstance(overfit_summary, dict):
         st.dataframe(pd.DataFrame(split_rows), width="stretch", hide_index=True)
 
 st.divider()
+st.subheader("R16 price-series noise test")
+st.caption(
+    "Diagnostic only — perturbs parent OHLC bars, then recomputes levels, signals, and trades. "
+    "It measures local input sensitivity, not future edge."
+)
+noise_data = st.session_state.get("data")
+noise_setup = st.session_state.get("setup_config") or st.session_state.get("last_signal_setup")
+if (
+    not isinstance(noise_data, pd.DataFrame)
+    or noise_data.empty
+    or not isinstance(noise_setup, dict)
+):
+    st.info("R16 requires the loaded OHLC dataset and a saved setup configuration.")
+else:
+    n1, n2, n3, n4 = st.columns(4)
+    noise_replicas = int(
+        n1.number_input("Noise replicas", min_value=5, max_value=1_000, value=100, step=5)
+    )
+    noise_fraction = float(
+        n2.slider(
+            "Noise fraction",
+            min_value=0.005,
+            max_value=0.25,
+            value=0.05,
+            step=0.005,
+            help="Symmetric OHLC noise as a fraction of rolling ATR or bar range.",
+        )
+    )
+    noise_basis = n3.selectbox("Noise scale", options=["atr", "range"])
+    noise_atr_period = int(
+        n4.number_input("ATR period", min_value=1, max_value=200, value=14, step=1)
+    )
+    st.warning(
+        f"Cost estimate: {noise_replicas} complete levels → signals → backtest replays. "
+        "R16 is opt-in; 1,000 replicas can be expensive on long datasets."
+    )
+    if st.button("▶ Run R16 noise test", type="secondary"):
+        backtest_policy_noise = st.session_state.get("backtest_session_exit_policy") or {}
+        backtest_costs_noise = st.session_state.get("backtest_execution_costs") or {}
+        exposure_noise = st.session_state.get("exposure_policy") or {}
+        intrabar_noise = st.session_state.get("backtest_intrabar_policy") or {}
+        exit_noise = st.session_state.get("backtest_exit_management_policy") or {}
+        try:
+            with st.spinner("Running full-pipeline OHLC noise replicas…"):
+                noise_result = run_noise_test(
+                    noise_data,
+                    trades_raw,
+                    instrument=st.session_state.get("instrument", "ES"),
+                    levels_config=st.session_state.get("levels_settings"),
+                    setup_config=noise_setup,
+                    backtest_config={
+                        "stop_loss_ticks": float(st.session_state.get("backtest_sl_ticks", 8.0)),
+                        "take_profit_ticks": float(st.session_state.get("backtest_tp_ticks", 16.0)),
+                        "max_holding_bars": (
+                            int(st.session_state["backtest_max_bars"])
+                            if st.session_state.get("backtest_use_max_bars")
+                            else None
+                        ),
+                        "allow_same_bar_exit": bool(
+                            st.session_state.get("backtest_allow_same_bar", True)
+                        ),
+                        "commission_per_side": float(
+                            backtest_costs_noise.get("commission_per_side", 0.0)
+                        ),
+                        "slippage_ticks": float(backtest_costs_noise.get("slippage_ticks", 0.0)),
+                        "flat_by_session_close": bool(
+                            backtest_policy_noise.get("flat_by_session_close", False)
+                        ),
+                        "session_close_time": backtest_policy_noise.get("session_close_time"),
+                        "session_timezone": backtest_policy_noise.get("session_timezone"),
+                        "no_new_entries_after": backtest_policy_noise.get("no_new_entries_after"),
+                        "exposure_policy": exposure_noise.get("exposure_policy", "allow_all"),
+                        "cooldown_bars_after_exit": int(
+                            exposure_noise.get("cooldown_bars_after_exit", 0) or 0
+                        ),
+                        "intrabar_model": intrabar_noise.get("intrabar_model", "sl_first"),
+                        "breakeven_after_r": exit_noise.get("breakeven_after_r"),
+                        "trailing_after_r": exit_noise.get("trailing_after_r"),
+                        "trailing_distance_ticks": exit_noise.get("trailing_distance_ticks"),
+                    },
+                    noise_config={
+                        "n_replicas": noise_replicas,
+                        "noise_fraction": noise_fraction,
+                        "scale_basis": noise_basis,
+                        "atr_period": noise_atr_period,
+                        "random_state": random_seed,
+                    },
+                    subtimeframe_data=st.session_state.get("subtimeframe_data"),
+                )
+            st.session_state["noise_summary"] = noise_result
+            st.session_state["noise_config"] = noise_result["config"]
+            st.success("R16 noise test complete.")
+        except ValueError as exc:
+            st.error(str(exc))
+noise_result = st.session_state.get("noise_summary")
+if isinstance(noise_result, dict) and noise_result.get("available"):
+    noise_replicas_result = noise_result.get("replicas") or {}
+    nr1, nr2, nr3 = st.columns(3)
+    nr1.metric(
+        "P50 expectancy R",
+        _fmt_value((noise_replicas_result.get("expectancy_r") or {}).get("p50")),
+    )
+    nr2.metric(
+        "P50 profit factor",
+        _fmt_value((noise_replicas_result.get("profit_factor") or {}).get("p50")),
+    )
+    nr3.metric(
+        "P50 trade persistence",
+        _fmt_value(
+            (noise_replicas_result.get("trade_persistence_rate") or {}).get("p50"),
+            ".1%",
+        ),
+    )
+    st.caption(noise_result.get("caveat", ""))
+
+st.divider()
 st.subheader("MAE/MFE excursion analytics")
 st.caption(
     "Diagnostic only — calibrates from completed-trade bar-level excursions, not intrabar path order."
@@ -1435,7 +1552,9 @@ st.caption(
 )
 
 _signals_for_otf = st.session_state.get("signals")
-_source_for_otf = st.session_state.get("levels") or st.session_state.get("data")
+_source_for_otf = st.session_state.get("levels")
+if _source_for_otf is None or (hasattr(_source_for_otf, "empty") and _source_for_otf.empty):
+    _source_for_otf = st.session_state.get("data")
 
 if _signals_for_otf is None or (hasattr(_signals_for_otf, "empty") and _signals_for_otf.empty):
     st.info("No signals found in session state.  Generate signals before running OTF validation.")

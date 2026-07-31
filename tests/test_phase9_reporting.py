@@ -236,6 +236,16 @@ def _sample_session_state() -> dict:
                 }
             },
         },
+        "noise_summary": {
+            "schema_version": 1,
+            "available": True,
+            "config": {"noise_fraction": 0.05, "scale_basis": "atr"},
+            "replicas": {
+                "n_completed": 50,
+                "expectancy_r": {"p50": 0.2},
+                "trade_persistence_rate": {"p50": 0.6},
+            },
+        },
         "overfitting_summary": {
             "schema_version": 1,
             "available": True,
@@ -332,6 +342,7 @@ def test_build_research_artifact_counts_match_signals_and_trades():
     assert artifact["results"]["trade_count"] == 2
     assert artifact["results"]["excursion_summary"]["schema_version"] == 1
     assert artifact["results"]["monte_carlo_summary"]["schema_version"] == 1
+    assert artifact["results"]["noise_summary"]["schema_version"] == 1
     assert artifact["intrabar"]["backtest_policy"]["intrabar_model"] == "path_open_proximity"
     assert artifact["results"]["backtest_intrabar_diagnostic"]["same_bar_both_hit_count"] == 2
     assert artifact["exit_management"]["backtest_policy"]["breakeven_after_r"] == 1.0

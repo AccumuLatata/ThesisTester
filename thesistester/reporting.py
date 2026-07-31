@@ -244,6 +244,7 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "walk_forward_warnings": to_jsonable(session_state.get("walk_forward_warnings")),
             "excursion_summary": to_jsonable(session_state.get("excursion_summary")),
             "monte_carlo_summary": to_jsonable(session_state.get("monte_carlo_summary")),
+            "noise_summary": to_jsonable(session_state.get("noise_summary")),
             "overfitting_summary": to_jsonable(session_state.get("overfitting_summary")),
             "backtest_intrabar_diagnostic": to_jsonable(
                 session_state.get("backtest_intrabar_diagnostic")
@@ -810,6 +811,7 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     validation = results.get("validation_summary") or {}
     excursion = results.get("excursion_summary") or {}
     monte_carlo = results.get("monte_carlo_summary") or {}
+    noise = results.get("noise_summary") or {}
     overfitting = results.get("overfitting_summary") or {}
     walk_forward = results.get("walk_forward_summary") or {}
     intrabar = artifact.get("intrabar", {}) if isinstance(artifact, Mapping) else {}
@@ -982,6 +984,26 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
                     ]
                 )
         lines.append("")
+
+    if isinstance(noise, Mapping) and noise.get("available"):
+        replicas = noise.get("replicas") if isinstance(noise, Mapping) else {}
+        noise_config = noise.get("config") if isinstance(noise, Mapping) else {}
+        expectancy = replicas.get("expectancy_r", {}) if isinstance(replicas, Mapping) else {}
+        persistence = (
+            replicas.get("trade_persistence_rate", {}) if isinstance(replicas, Mapping) else {}
+        )
+        lines.extend(
+            [
+                "## Price-Series Noise Test",
+                "⚠️ Diagnostic only — perturbs OHLC input and reruns the full pipeline; it does not prove edge.",
+                "",
+                f"- Replicas: {replicas.get('n_completed', 0) if isinstance(replicas, Mapping) else 0}",
+                f"- Noise: {noise_config.get('noise_fraction', '—') if isinstance(noise_config, Mapping) else '—'} × {noise_config.get('scale_basis', '—') if isinstance(noise_config, Mapping) else '—'}",
+                f"- P50 expectancy R: {_fmt_number(expectancy.get('p50') if isinstance(expectancy, Mapping) else None)}",
+                f"- P50 trade persistence: {_fmt_pct(persistence.get('p50') if isinstance(persistence, Mapping) else None)}",
+                "",
+            ]
+        )
 
     if isinstance(roll_policy, Mapping) or isinstance(roll_validation, Mapping):
         lines.extend(

@@ -526,3 +526,41 @@ contract are unchanged.
   vs-random finite p-values, and stable summary schema.
 - API, CLI, report, research-bundle, and legacy validation tests cover opt-in
   persistence and unchanged default paths.
+
+---
+
+## R16 — Price-Series Noise Test ✅ Implemented
+
+Adds an opt-in full-pipeline input-robustness diagnostic. It does not alter
+levels, signals, engine semantics, or the existing validation contract.
+
+### Features
+
+- `thesistester/analytics/noise.py` applies seeded symmetric OHLC noise scaled
+  by rolling ATR or bar range, then repairs high/low bounds so every synthetic
+  bar remains valid.
+- The R18 facade recomputes levels, signals, OTF admission, and trades for
+  each replica; parent OHLC input is copied and lower-timeframe intrabar data
+  remains pinned rather than fabricated.
+- The schema-version-1 result records perturbation settings, expectancy/PF
+  percentile bands, and baseline-trade persistence keyed by `signal_id`
+  (falling back to direction plus entry timestamp).
+- Validation UI, YAML/API execution, reports, research bundles, and stale-data
+  cleanup preserve the exported summary.
+
+### Regression safety
+
+- No engine, level, signal, grid, or `validation_summary()` behavior changes.
+- Replica streams use local explicit seeded RNGs and stable sequential order.
+- The source DataFrame is never mutated; every replica validates OHLC bounds.
+- Heavy work remains opt-in with a visible `replicas × full pipeline` cost
+  warning. A 1,000-replica run is supported but may be expensive before R22.
+
+### Tests
+
+- Property-style loops assert ATR- and range-scaled replicas preserve OHLC
+  validity and source immutability.
+- Seeded summary/schema tests lock deterministic output.
+- A single-bar trigger fixture verifies materially degraded persistence under
+  perturbation.
+- API, report, bundle, and existing golden-master gates cover additive wiring.

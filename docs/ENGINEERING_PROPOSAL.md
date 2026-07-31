@@ -3,7 +3,7 @@
 **Document type:** Proposal + engineering roadmap
 **Date:** 2026-07-29
 **Inputs:** `docs/SOTA_BACKTESTING_LANDSCAPE.md` (market research), `docs/THESISTESTER_ANALYSIS.md` (repository analysis with runtime verification).
-**Status of this document:** Proposal under implementation. **R9, R10, R11, R12, R13, R14, R15, and R18 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R16–R17 and R19–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
+**Status of this document:** Proposal under implementation. **R9–R16 and R18 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R17 and R19–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
 
 ---
 
@@ -249,6 +249,10 @@ benchmark without changing existing Phase 8 validation outputs.
 - **Acceptance:** PBO implementation reproduces published toy examples (test fixtures from the Bailey/López de Prado reference cases); vs-random on a degenerate no-edge fixture yields p ≈ uniform behavior; honesty caveats in UI + docs.
 
 ### R16 — Noise test (price-series perturbation robustness)
+
+✅ **Implemented.** See `docs/ENGINEERING_ROADMAP.md`. R16 adds seeded,
+invariant-preserving parent-OHLC perturbations and replays the canonical
+levels → signals → backtest pipeline without changing the engine.
 
 - **Goal:** Build Alpha's signature **Noise Test** for the confluence niche: is the setup robust to small perturbations of the very bars that define its levels and triggers?
 - **Benchmark:** Build Alpha Noise Test (perturb O/H/L/C by % of ATR → 1,000 synthetic series → re-trade; optional noise-adjusted optimization).

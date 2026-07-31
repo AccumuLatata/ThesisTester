@@ -52,6 +52,7 @@ REQUIRED_ITEMS = [
     ("Walk-forward diagnostics", "walk_forward_results"),
     ("Excursion analytics", "excursion_summary"),
     ("Monte Carlo diagnostics", "monte_carlo_summary"),
+    ("Noise-test diagnostics", "noise_summary"),
     ("Overfitting diagnostics", "overfitting_summary"),
 ]
 

@@ -121,6 +121,15 @@ Phase 5 backtest trade table. CSCV/PBO, PSR/DSR, and vs-random output a
 separate schema-versioned `overfitting_summary`, leaving `validation_summary()`
 and its heuristic grid-overfit section unchanged.
 
+## R16 noise-test boundary
+
+`thesistester/analytics/noise.py` is an opt-in, read-only input perturbation
+layer. It copies parent OHLC data, applies seeded ATR/range-scaled noise,
+enforces OHLC bounds, and delegates each replica to the existing R18 canonical
+levels → signals → OTF → backtest composition. It neither changes engine
+semantics nor synthesizes R12 lower-timeframe bars; supplied lower-timeframe
+data remains pinned and that limitation is recorded in `noise_config`.
+
 ## End-to-end data flow
 
 ```mermaid
@@ -197,6 +206,8 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `wfa_matrix_config` | Validation/R18 API | Research Bundles | Matrix dimensions, metric, and cap |
 | `overfitting_summary` | Validation/R18 API | Validation display, Report, Research Bundles | R15 schema-version-1 PBO/DSR/vs-random diagnostic artifact |
 | `overfitting_config` | Validation/R18 API | Research Bundles | R15 partition, replica, seed, and Sharpe-basis config |
+| `noise_summary` | Validation/R18 API | Validation display, Report, Research Bundles | R16 schema-version-1 full-pipeline perturbation diagnostic |
+| `noise_config` | Validation/R18 API | Research Bundles | R16 noise scale, seed, replica count, persistence matcher, and subtimeframe policy |
 | `excursion_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report, Research Bundles | `dict` R10 schema version 1 (`overall`, `grouped`, `quadrants`, `calibration_grid`, `edge_ratio`, `config`, caveat) |
 | `excursion_config` | Validation (`pages/10_Validation.py`) | Research Bundles | `dict` copied from `excursion_summary["config"]` |
 | `excursion_grouped_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report CSV, Research Bundles | `pd.DataFrame` grouped MAE/MFE distribution stats |
