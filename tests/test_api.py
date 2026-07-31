@@ -228,6 +228,32 @@ def test_headless_walk_forward_returns_bundle_ready_r14_artifacts(tmp_path):
     assert isinstance(result["walk_forward_stitched_equity"], pd.DataFrame)
 
 
+def test_headless_walk_forward_matrix_requires_dimensions(tmp_path):
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path)
+    levels = compute_levels(data, config=_levels_config())["levels"]
+    setup = _setup()
+    signal_result = generate_signals(levels, setup)
+    try:
+        run_walk_forward(
+            levels,
+            signal_result["signals"],
+            config={
+                "fold_mode": "sessions",
+                "train_sessions": 2,
+                "test_sessions": 1,
+                "stop_loss_ticks_values": [2],
+                "take_profit_ticks_values": [3],
+                "matrix": {"enabled": True, "train_session_values": [2]},
+            },
+        )
+    except ValueError as exc:
+        assert "test_session_values" in str(exc)
+    else:
+        raise AssertionError("Expected missing matrix dimensions to fail")
+
+
 def test_facade_rejects_unknown_configuration_keys(tmp_path):
     csv_path = tmp_path / "bars.csv"
     _write_dataset(csv_path)

@@ -1401,6 +1401,9 @@ def run_walk_forward(
         "walk_forward_warnings": list(detailed.warnings),
     }
     if isinstance(matrix_config, Mapping) and matrix_config.get("enabled", False):
+        for key in ("train_session_values", "test_session_values"):
+            if key not in matrix_config:
+                raise ValueError(f"walk_forward.matrix.{key} is required when enabled")
         matrix = run_wfa_matrix(
             df=data,
             signals=signals,

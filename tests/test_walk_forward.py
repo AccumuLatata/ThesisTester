@@ -265,9 +265,11 @@ def test_overlapping_oos_windows_require_explicit_ownership_policy():
     assert rejected.summary["stitched_oos_status"] == "overlapping_oos_windows"
     assert rejected.stitched_equity.empty
     assert not rejected.oos_trades.empty
+    assert not rejected.oos_trades["trade_id"].duplicated().any()
     first = run_walk_forward_sl_tp(**common, overlap_policy="first")
     assert first.summary["stitched_oos_status"] == "ok"
     assert not first.oos_trades.duplicated(["global_entry_bar_index", "signal_id"]).any()
+    assert not first.oos_trades["trade_id"].duplicated().any()
 
 
 def test_session_future_shock_does_not_change_existing_folds():
@@ -327,6 +329,8 @@ def test_wfa_matrix_is_deterministic_and_tidy():
         [3, 1],
         [3, 2],
     ]
+    with pytest.raises(ValueError, match="matrix_metric"):
+        run_wfa_matrix(**kwargs, matrix_metric="not_a_metric")
 
 
 def test_walk_forward_remaps_entry_indices_for_slice():

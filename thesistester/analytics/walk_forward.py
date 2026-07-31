@@ -802,8 +802,13 @@ def run_walk_forward_sl_tp(
         ).reset_index(drop=True)
         stitched_trades["trade_id"] = range(len(stitched_trades))
         stitched_equity = equity_curve(stitched_trades)
+        if not (overlap_exists and overlap_policy == "reject"):
+            returned_oos_trades = stitched_trades.copy()
     else:
         stitched_equity = equity_curve(pd.DataFrame())
+    if not returned_oos_trades.empty:
+        returned_oos_trades = returned_oos_trades.reset_index(drop=True)
+        returned_oos_trades["trade_id"] = range(len(returned_oos_trades))
     summary = summarize_walk_forward(results)
     summary.update(
         {
@@ -940,6 +945,14 @@ def run_wfa_matrix(
     **walk_forward_kwargs: Any,
 ) -> pd.DataFrame:
     """Run a deterministic session-count WFA robustness matrix."""
+    valid_metrics = {
+        "median_test_expectancy_r",
+        "median_retention_ratio_expectancy",
+        "stitched_oos_total_r",
+        "oos_profitable_fold_rate",
+    }
+    if matrix_metric not in valid_metrics:
+        raise ValueError(f"matrix_metric must be one of {sorted(valid_metrics)}.")
     train_values = sorted(set(int(value) for value in train_session_values))
     test_values = sorted(set(int(value) for value in test_session_values))
     if not train_values or any(value <= 0 for value in train_values):

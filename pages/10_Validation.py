@@ -446,6 +446,9 @@ if run_wfo:
                                 trailing_distance_ticks_values=exit_management_policy.get(
                                     "trailing_distance_ticks_values", [None]
                                 ),
+                                max_grid_cells=int(
+                                    exit_management_policy.get("max_grid_cells", 500)
+                                ),
                                 fold_mode=fold_mode,
                                 window_mode=window_mode,
                                 train_sessions=train_sessions,
