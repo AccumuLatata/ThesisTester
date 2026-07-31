@@ -9,6 +9,7 @@ from thesistester.config import INSTRUMENTS
 from thesistester.data.loader import DataValidationError, load_ohlcv
 
 SAMPLE = Path(__file__).resolve().parents[1] / "sample_data" / "ES_sample_1m.csv"
+VENDOR_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "vendor"
 
 
 def test_canonical_profile_is_byte_identical_to_legacy_default():
@@ -17,9 +18,8 @@ def test_canonical_profile_is_byte_identical_to_legacy_default():
     pd.testing.assert_frame_equal(legacy, explicit, check_exact=True)
 
 
-def test_ninjatrader_minute_profile_uses_explicit_semicolon_contract(tmp_path):
-    path = tmp_path / "nt.txt"
-    path.write_text("20260602 133000;100;101;99;100.5;10\n20260602 133100;100.5;102;100;101.5;20\n")
+def test_ninjatrader_minute_profile_uses_explicit_semicolon_contract():
+    path = VENDOR_FIXTURES / "ninjatrader_minute.txt"
     bars, raw = load_ohlcv(
         path,
         format_profile="ninjatrader",
@@ -31,13 +31,8 @@ def test_ninjatrader_minute_profile_uses_explicit_semicolon_contract(tmp_path):
     assert len(raw) == 2
 
 
-def test_sierra_intraday_profile_combines_date_time_and_last(tmp_path):
-    path = tmp_path / "sierra.csv"
-    path.write_text(
-        "Date,Time,Open,High,Low,Last,Volume,NumberOfTrades\n"
-        "2026/06/02,09:30:00,100,101,99,100.5,10,4\n"
-        "2026/06/02,09:31:00,100.5,102,100,101.5,20,5\n"
-    )
+def test_sierra_intraday_profile_combines_date_time_and_last():
+    path = VENDOR_FIXTURES / "sierra_intraday.csv"
     bars = load_ohlcv(
         path,
         format_profile="sierra_intraday",
@@ -47,15 +42,8 @@ def test_sierra_intraday_profile_combines_date_time_and_last(tmp_path):
     assert bars["close"].tolist() == [100.5, 101.5]
 
 
-def test_databento_trades_aggregate_fixed_point_prices_and_preserve_quotes(tmp_path):
-    path = tmp_path / "databento.csv"
-    path.write_text(
-        "ts_event,action,price,size,bid_price,ask_price\n"
-        "1780417800000000000,T,100000000000,2,99900000000,100100000000\n"
-        "1780417810000000000,T,101000000000,3,100900000000,101100000000\n"
-        "1780417860000000000,T,102000000000,4,101900000000,102100000000\n"
-        "1780417870000000000,T,99000000000,5,98900000000,99100000000\n"
-    )
+def test_databento_trades_aggregate_fixed_point_prices_and_preserve_quotes():
+    path = VENDOR_FIXTURES / "databento_trades.csv"
     bars, raw = load_ohlcv(
         path,
         format_profile="databento_trades",
