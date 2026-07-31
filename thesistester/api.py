@@ -683,7 +683,18 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                     trailing_distance_ticks=distance,
                 )
         for trail_after in grid.get("trailing_after_r_values", [None]):
+            if trail_after is not None and not any(
+                distance is not None
+                for distance in grid.get("trailing_distance_ticks_values", [None])
+            ):
+                validate_exit_management_config(
+                    breakeven_after_r=None,
+                    trailing_after_r=trail_after,
+                    trailing_distance_ticks=None,
+                )
             for distance in grid.get("trailing_distance_ticks_values", [None]):
+                if distance is None:
+                    continue
                 if trail_after is None:
                     continue
                 validate_exit_management_config(

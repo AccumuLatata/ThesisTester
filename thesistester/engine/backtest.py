@@ -736,6 +736,28 @@ def simulate_trades(
                 session_cap_bar == n_bars - 1 and last_available_ts < session_close_ts
             )
 
+        if (
+            exit_management_active
+            and not allow_same_bar_exit
+            and entry_model == "next_bar_open"
+            and entry_bar_index < max_bar
+        ):
+            entry_bar = df_reset.iloc[entry_bar_index]
+            stop_state = update_exit_management_after_bar(
+                state=stop_state,
+                direction=direction,
+                entry_price=entry_price,
+                initial_stop=stop_price,
+                tick_size=tick_size,
+                risk_points=sl_pts,
+                bar_high=float(entry_bar["high"]),
+                bar_low=float(entry_bar["low"]),
+                bar_index=entry_bar_index,
+                breakeven_after_r=breakeven_after_r,
+                trailing_after_r=trailing_after_r,
+                trailing_distance_ticks=trailing_distance_ticks,
+            )
+
         for b in range(start_bar, max_bar + 1):
             bar = df_reset.iloc[b]
             bar_low = float(bar["low"])

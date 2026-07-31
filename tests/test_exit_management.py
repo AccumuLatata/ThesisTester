@@ -186,6 +186,24 @@ def test_simple_next_open_can_arm_breakeven_after_entry_bar_close():
     assert trade["breakeven_activated_bar_index"] == 1
 
 
+def test_same_bar_exit_disabled_still_arms_breakeven_after_entry_bar_close():
+    result = _simulate(
+        _bars(
+            [
+                (100, 100, 100, 100),
+                (100, 103.0, 100.0, 102.0),
+                (102, 102.5, 100.0, 100.0),
+            ]
+        ),
+        breakeven_after_r=1.0,
+        allow_same_bar_exit=False,
+    )
+    trade = result.trades.iloc[0]
+    assert trade["exit_reason"] == "BE"
+    assert trade["exit_bar_index"] == 2
+    assert trade["breakeven_activated_bar_index"] == 1
+
+
 def test_intrabar_entry_does_not_arm_breakeven_on_entry_parent_bar():
     result = simulate_trades(
         _bars(
