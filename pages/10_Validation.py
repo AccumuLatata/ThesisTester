@@ -18,6 +18,7 @@ from thesistester.analytics import (
     add_excursion_r_columns,
     add_time_buckets,
     excursion_summary,
+    monte_carlo_summary,
     run_walk_forward_sl_tp,
     summarize_walk_forward,
 )
@@ -603,6 +604,176 @@ if isinstance(exc_summary, dict) and exc_summary.get("available"):
         st.dataframe(calibration_exc, width="stretch", hide_index=True)
 else:
     st.info("Run excursion analytics to inspect MAE/MFE distributions and SL/TP calibration.")
+
+st.divider()
+st.subheader("Monte Carlo path robustness")
+st.caption(
+    "Diagnostic only — resamples the realized R sequence; no trade re-simulation is performed."
+)
+
+mc_col1, mc_col2, mc_col3 = st.columns(3)
+mc_methods = mc_col1.multiselect(
+    "Monte Carlo methods",
+    options=["reshuffle", "skip", "block_resample"],
+    default=["reshuffle", "skip", "block_resample"],
+    help="Reshuffle tests order risk; skip tests missed fills; block resample preserves local streaks.",
+)
+mc_n_simulations = int(
+    mc_col2.number_input(
+        "MC simulations",
+        min_value=100,
+        max_value=10_000,
+        value=2000,
+        step=100,
+        help="Number of simulated paths per selected method.",
+    )
+)
+mc_seed = int(
+    mc_col3.number_input(
+        "MC random seed",
+        min_value=0,
+        max_value=99_999,
+        value=random_seed,
+        step=1,
+        help="Seed for deterministic Monte Carlo paths.",
+    )
+)
+
+mc_col4, mc_col5, mc_col6 = st.columns(3)
+mc_skip_fraction = float(
+    mc_col4.slider(
+        "Skip fraction",
+        min_value=0.0,
+        max_value=0.75,
+        value=0.10,
+        step=0.05,
+        help="Fraction of trades randomly missed in the skip simulation.",
+    )
+)
+mc_block_length_input = int(
+    mc_col5.number_input(
+        "Block length (0 = sqrt(n))",
+        min_value=0,
+        max_value=1_000,
+        value=0,
+        step=1,
+        help="Fixed circular block length for block resampling. 0 uses sqrt(trade_count).",
+    )
+)
+mc_drawdown_threshold_text = mc_col6.text_input(
+    "Drawdown thresholds (R)",
+    value="3,5,10",
+    help="Comma-separated max-drawdown thresholds for probability estimates.",
+)
+
+
+def _parse_thresholds(text: str) -> list[float]:
+    thresholds: list[float] = []
+    for part in str(text).split(","):
+        try:
+            value = float(part.strip())
+        except ValueError:
+            continue
+        if value > 0:
+            thresholds.append(value)
+    return sorted(dict.fromkeys(thresholds)) or [3.0, 5.0, 10.0]
+
+
+if st.button("▶ Run Monte Carlo", type="secondary"):
+    if not mc_methods:
+        st.error("Select at least one Monte Carlo method.")
+    else:
+        with st.spinner("Running Monte Carlo path diagnostics…"):
+            mc_summary = monte_carlo_summary(
+                trades_raw,
+                methods=mc_methods,
+                n_simulations=mc_n_simulations,
+                skip_fraction=mc_skip_fraction,
+                block_length=None if mc_block_length_input == 0 else mc_block_length_input,
+                drawdown_thresholds_r=_parse_thresholds(mc_drawdown_threshold_text),
+                random_state=mc_seed,
+            )
+            st.session_state["monte_carlo_summary"] = mc_summary
+            st.session_state["monte_carlo_config"] = mc_summary["config"]
+        st.success("Monte Carlo diagnostics complete.")
+
+mc_summary = st.session_state.get("monte_carlo_summary")
+if isinstance(mc_summary, dict) and mc_summary.get("available"):
+    st.caption(mc_summary.get("caveat", ""))
+    mc_methods_result = mc_summary.get("methods", {})
+    method_labels = {
+        "reshuffle": "Reshuffle",
+        "skip": "Skip",
+        "block_resample": "Block resample",
+    }
+    for method_name, result in mc_methods_result.items():
+        st.markdown(f"**{method_labels.get(method_name, method_name)}**")
+        observed = result.get("observed", {})
+        simulated = result.get("simulated", {})
+        final_r = simulated.get("final_r", {})
+        max_dd = simulated.get("max_drawdown_r", {})
+        loss_streak = simulated.get("max_loss_streak", {})
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Observed final R", _fmt_value(observed.get("final_r")))
+        m2.metric("P50 final R", _fmt_value(final_r.get("p50")))
+        m3.metric("P95 max DD (R)", _fmt_value(max_dd.get("p95")))
+        m4.metric("P95 loss streak", _fmt_value(loss_streak.get("p95"), ".0f"))
+
+        dd_probs = pd.DataFrame(result.get("probability_drawdown_exceeds", []))
+        if not dd_probs.empty:
+            st.dataframe(dd_probs, width="stretch", hide_index=True)
+
+        fan = result.get("equity_fan", {})
+        if isinstance(fan, dict) and fan.get("trade_index"):
+            fig_fan = go.Figure()
+            if "p05" in fan and "p95" in fan:
+                fig_fan.add_trace(
+                    go.Scatter(
+                        x=fan["trade_index"],
+                        y=fan["p95"],
+                        line=dict(width=0),
+                        showlegend=False,
+                        hoverinfo="skip",
+                    )
+                )
+                fig_fan.add_trace(
+                    go.Scatter(
+                        x=fan["trade_index"],
+                        y=fan["p05"],
+                        fill="tonexty",
+                        fillcolor="rgba(70, 130, 180, 0.20)",
+                        line=dict(width=0),
+                        name="P05-P95 band",
+                    )
+                )
+            if "p50" in fan:
+                fig_fan.add_trace(
+                    go.Scatter(
+                        x=fan["trade_index"],
+                        y=fan["p50"],
+                        mode="lines",
+                        name="P50 simulated",
+                        line=dict(color="steelblue", dash="dash"),
+                    )
+                )
+            fig_fan.add_trace(
+                go.Scatter(
+                    x=fan["trade_index"],
+                    y=fan["observed_cum_r"],
+                    mode="lines+markers",
+                    name="Observed",
+                    line=dict(color="orange"),
+                )
+            )
+            fig_fan.update_layout(
+                xaxis_title="Trade index",
+                yaxis_title="Cumulative R",
+                height=360,
+                margin=dict(l=10, r=10, t=30, b=10),
+            )
+            st.plotly_chart(fig_fan, width="stretch")
+else:
+    st.info("Run Monte Carlo diagnostics to inspect path risk and drawdown probabilities.")
 
 # ── Display results if available ──────────────────────────────────────────────
 summary = st.session_state.get("validation_summary")

@@ -34,6 +34,7 @@ _BACKTEST_META_KEYS = ("trade_summary",)
 _GRID_META_KEYS = ("best_grid_result",)
 _VALIDATION_META_KEYS = ("validation_summary",)
 _EXCURSION_META_KEYS = ("excursion_summary", "excursion_config")
+_MONTE_CARLO_META_KEYS = ("monte_carlo_summary", "monte_carlo_config")
 _MANAGED_RESEARCH_KEYS = {
     "data",
     "dataset_id",
@@ -65,6 +66,8 @@ _MANAGED_RESEARCH_KEYS = {
     "excursion_grouped_summary",
     "excursion_calibration_grid",
     "excursion_quadrant_summary",
+    "monte_carlo_summary",
+    "monte_carlo_config",
 }
 
 _KNOWN_FILES = {
@@ -88,6 +91,7 @@ _KNOWN_FILES = {
     "excursion_grouped_summary.parquet",
     "excursion_calibration_grid.parquet",
     "excursion_quadrant_summary.parquet",
+    "monte_carlo_summary.json",
 }
 
 _SECTION_REQUIRED_FILES = {
@@ -103,6 +107,7 @@ _SECTION_REQUIRED_FILES = {
     "grid": ("grid_results.parquet", "best_grid_result.json"),
     "validation": ("validation_summary.json",),
     "excursion": ("excursion_summary.json",),
+    "monte_carlo": ("monte_carlo_summary.json",),
 }
 
 
@@ -186,6 +191,7 @@ def _manifest_base() -> dict[str, Any]:
             "grid": False,
             "validation": False,
             "excursion": False,
+            "monte_carlo": False,
         },
         "session_keys": [],
     }
@@ -275,6 +281,13 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
             included_keys.add("excursion_quadrant_summary")
         manifest["included"]["excursion"] = True
         included_keys.update(_EXCURSION_META_KEYS)
+
+    if session_state.get("monte_carlo_summary") is not None:
+        files["monte_carlo_summary.json"] = _to_json_bytes(
+            {key: session_state.get(key) for key in _MONTE_CARLO_META_KEYS}
+        )
+        manifest["included"]["monte_carlo"] = True
+        included_keys.update(_MONTE_CARLO_META_KEYS)
 
     manifest["session_keys"] = sorted(included_keys)
     files[MANIFEST_FILENAME] = _to_json_bytes(manifest)
@@ -418,6 +431,12 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
                 session_values["excursion_quadrant_summary"] = _read_parquet_from_zip(
                     zf, "excursion_quadrant_summary.parquet"
                 )
+
+        if included.get("monte_carlo"):
+            monte_carlo_meta = _read_json_from_zip(zf, "monte_carlo_summary.json")
+            for key in _MONTE_CARLO_META_KEYS:
+                if key in monte_carlo_meta:
+                    session_values[key] = monte_carlo_meta[key]
 
     return {
         "manifest": manifest,
