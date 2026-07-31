@@ -112,7 +112,9 @@ research bundles.
 `thesistester/analytics/overfitting.py` is an opt-in, Streamlit-free
 diagnostic layer. It preserves per-cell grid trade sequences only inside the
 R15 execution path; the established `run_sl_tp_grid()` summary-frame contract
-remains unchanged. CSCV/PBO, PSR/DSR, and vs-random output a separate
+is reproduced for the re-simulated cells, including `long_*`, `short_*`, and
+`min_direction_*` metrics needed to replay a recorded directional selection
+rule. CSCV/PBO, PSR/DSR, and vs-random output a separate
 schema-versioned `overfitting_summary`, leaving `validation_summary()` and
 its heuristic grid-overfit section unchanged.
 

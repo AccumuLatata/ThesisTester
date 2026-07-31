@@ -6,6 +6,7 @@ import pytest
 from thesistester.analytics.overfitting import (
     cscv_pbo,
     deflated_sharpe,
+    grid_trade_sequences,
     overfitting_summary,
     probabilistic_sharpe,
     vs_random_benchmark,
@@ -50,6 +51,64 @@ def _ohlcv() -> pd.DataFrame:
             "volume": [100.0] * len(timestamps),
         }
     )
+
+
+def _directional_trades(long_returns: list[float], short_returns: list[float]) -> pd.DataFrame:
+    long_trades = _trades(long_returns, direction="long")
+    short_trades = _trades(short_returns, direction="short")
+    short_trades["trade_id"] += len(long_trades)
+    short_trades["signal_id"] += len(long_trades)
+    return pd.concat([long_trades, short_trades], ignore_index=True)
+
+
+def test_grid_trade_sequences_preserves_directional_grid_selection_schema(monkeypatch):
+    """R15 sequence summaries must support the recorded Grid Search rule."""
+    directional_cells = {
+        2.0: _directional_trades([2.0, 2.0], [-1.0, -1.0]),
+        3.0: _directional_trades([1.0, 1.0], [1.0, 1.0]),
+    }
+
+    def fake_simulate_trades(**kwargs):
+        return directional_cells[kwargs["stop_loss_ticks"]].copy()
+
+    monkeypatch.setattr(
+        "thesistester.analytics.overfitting.simulate_trades",
+        fake_simulate_trades,
+    )
+    sequences = grid_trade_sequences(
+        _ohlcv(),
+        pd.DataFrame(),
+        tick_size=1.0,
+        point_value=1.0,
+        grid=pd.DataFrame(
+            {
+                "stop_loss_ticks": [2.0, 3.0],
+                "take_profit_ticks": [4.0, 4.0],
+                "breakeven_after_r": [None, None],
+                "trailing_after_r": [None, None],
+                "trailing_distance_ticks": [None, None],
+            }
+        ),
+    )
+
+    assert {
+        "long_trade_count",
+        "short_trade_count",
+        "long_expectancy_r",
+        "short_expectancy_r",
+        "min_direction_expectancy_r",
+    } <= set(sequences.grid_results.columns)
+    eligible = sequences.grid_results[
+        (sequences.grid_results["long_trade_count"] >= 1)
+        & (sequences.grid_results["short_trade_count"] >= 1)
+    ]
+    selected = eligible.sort_values(
+        ["long_expectancy_r", "stop_loss_ticks", "take_profit_ticks"],
+        ascending=[False, True, True],
+        kind="mergesort",
+    ).iloc[0]
+    assert selected["stop_loss_ticks"] == 2.0
+    assert selected["long_expectancy_r"] == pytest.approx(2.0)
 
 
 def test_cscv_hand_computed_four_partition_fixture():
