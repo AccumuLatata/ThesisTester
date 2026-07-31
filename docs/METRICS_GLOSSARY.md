@@ -312,3 +312,19 @@ per-side sample sizes.  For serious research, values ≥ 10–30 per side are ad
 - **Degradation expectancy (R)**: `test_expectancy_r - train_expectancy_r` per fold.
 - **OOS profitable fold rate**: fraction of valid folds with `test_expectancy_r > 0`.
 - **Aggregate test total R**: sum of `test_total_r` across valid walk-forward folds.
+
+## R12 intrabar diagnostics
+
+| Field | Definition |
+|---|---|
+| `bracket_exit_trade_count` | Trades ending through SL/TP under the selected run model |
+| `same_bar_both_hit_count` | Bracket exits whose parent OHLC bar reached both stop and target |
+| `same_bar_both_hit_pct` | `same_bar_both_hit_count / bracket_exit_trade_count`; zero when denominator is zero |
+| `ambiguous_resolution_count` | Trades affected by unresolved ordering: OHLC proximity ties, same-sub-bar SL/TP, or entry and a bracket event sharing one lower bar; the trade may later end by another bracket or forced exit |
+| `bars_affected_count` | Count of distinct parent bar indices containing a both-hit bracket exit |
+| `path_proximity_tie_count` | Parent OHLC bars where distance(open, high) equals distance(open, low) |
+| `subtimeframe_resolved_count` | Bracket exits ordered using observed lower-timeframe rows |
+
+Counts are execution-model diagnostics, not performance metrics. A lower
+ambiguity count does not prove fill realism; it only states how often the
+selected data/model could distinguish event order.

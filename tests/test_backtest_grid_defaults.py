@@ -73,6 +73,7 @@ def _sample_backtest_defaults() -> dict:
         "no_new_entries_after": "15:30",
         "exposure_policy": "single_direction",
         "cooldown_bars_after_exit": 2,
+        "intrabar_model": "path_open_proximity",
     }
 
 
@@ -95,6 +96,7 @@ def _sample_grid_defaults() -> dict:
         "no_new_entries_after": "",
         "exposure_policy": "allow_all",
         "cooldown_bars_after_exit": 0,
+        "intrabar_model": "sl_first",
         "ranking_metric": "expectancy_r",
         "min_trades": 5,
         "enable_directional": False,
@@ -405,6 +407,21 @@ def test_sanitize_all_exposure_policies_accepted():
         gr = sanitize_grid_defaults(raw)
         assert bt.get("backtest_exposure_policy") == policy
         assert gr.get("grid_exposure_policy_widget") == policy
+
+
+def test_intrabar_model_defaults_are_validated_and_scoped():
+    for model in ("sl_first", "path_open_proximity", "subtimeframe"):
+        assert (
+            sanitize_backtest_defaults({"intrabar_model": model})["backtest_intrabar_model"]
+            == model
+        )
+        assert (
+            sanitize_grid_defaults({"intrabar_model": model})["grid_intrabar_model_widget"] == model
+        )
+    assert "backtest_intrabar_model" not in sanitize_backtest_defaults(
+        {"intrabar_model": "clairvoyant"}
+    )
+    assert "grid_intrabar_model_widget" not in sanitize_grid_defaults({"intrabar_model": False})
 
 
 # ── 8. apply_backtest_defaults / apply_grid_defaults ─────────────────────────

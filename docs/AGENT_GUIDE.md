@@ -41,6 +41,8 @@ YAML file. Each run writes `<name>.research.zip`; `results_index.csv` records
 the canonical bundle hash and key metrics. `--workers N` uses isolated spawned
 processes across runs only. Each individual levels/signals/backtest/grid/
 validation pipeline stays single-threaded, and output order follows YAML order.
+R12 adds optional `dataset.subtimeframe_path`; it is required when an enabled
+backtest/grid section selects `intrabar_model: subtimeframe`.
 
 Minimal complete shape:
 
@@ -153,6 +155,21 @@ Agent safety requirements:
 - Golden regeneration is its own PR with a readable CSV diff, justification, and the
   `GOLDEN_REGEN` label. The only write command is
   `python -m tests.fixtures.golden.record_golden --confirm-regenerate`.
+
+## R12 intrabar research safety
+
+- Never change the `sl_first` default or its legacy trade schema without a
+  separate approved golden-regeneration decision.
+- Treat `path_open_proximity` as sensitivity analysis, not recovered event
+  order. Do not choose it because it produces the best result.
+- `subtimeframe` must fail closed on missing, duplicate, unsorted, non-dividing,
+  or parent-OHLC-inconsistent lower rows. Never interpolate or silently fall
+  back to an OHLC heuristic.
+- Keep one intrabar model fixed across every grid cell and walk-forward fold.
+- For R18 batches, supply observed lower data through
+  `dataset.subtimeframe_path` and retain the bundle's policy/diagnostic fields.
+- Run `pytest -q tests/test_golden_master.py tests/test_intrabar.py` after any
+  execution-path edit.
 
 ## Repository conventions (verified)
 - Multipage Streamlit workflow with phase pages under `pages/` (`app.py:10-33`).

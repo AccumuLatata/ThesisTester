@@ -112,6 +112,9 @@ def run_sl_tp_grid(
     no_new_entries_after: str | None = None,
     exposure_policy: str = "allow_all",
     cooldown_bars_after_exit: int = 0,
+    *,
+    intrabar_model: str = "sl_first",
+    subtimeframe_data: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Run a stop-loss × take-profit grid search.
 
@@ -190,7 +193,7 @@ def run_sl_tp_grid(
     rows: list[dict] = []
     for sl in sl_values:
         for tp in tp_values:
-            trades = simulate_trades(
+            simulation = simulate_trades(
                 df=df,
                 signals=signals,
                 tick_size=tick_size,
@@ -207,7 +210,12 @@ def run_sl_tp_grid(
                 no_new_entries_after=no_new_entries_after,
                 exposure_policy=exposure_policy,
                 cooldown_bars_after_exit=cooldown_bars_after_exit,
+                intrabar_model=intrabar_model,
+                subtimeframe_data=subtimeframe_data,
+                return_result=True,
             )
+            trades = simulation.trades
+            intrabar_diagnostic = simulation.intrabar_diagnostic
             summary = summarize_trades(trades)
             directional = _directional_grid_metrics(trades)
             row: dict = {
@@ -219,6 +227,10 @@ def run_sl_tp_grid(
                 "target_points": tp * tick_size,
                 "exposure_policy": exposure_policy,
                 "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
+                "intrabar_model": intrabar_model,
+                "intrabar_both_hit_count": intrabar_diagnostic["same_bar_both_hit_count"],
+                "intrabar_both_hit_pct": intrabar_diagnostic["same_bar_both_hit_pct"],
+                "intrabar_ambiguous_count": intrabar_diagnostic["ambiguous_resolution_count"],
                 **directional,
             }
             rows.append(row)

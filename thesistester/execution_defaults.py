@@ -45,6 +45,12 @@ DIRECTIONAL_METRIC_OPTIONS: tuple[str, ...] = (
     "min_direction_profit_factor",
 )
 
+INTRABAR_MODEL_OPTIONS: tuple[str, ...] = (
+    "sl_first",
+    "path_open_proximity",
+    "subtimeframe",
+)
+
 _TIME_RE = re.compile(r"^\d{2}:\d{2}(:\d{2})?$")
 
 
@@ -149,6 +155,13 @@ def _valid_directional_metric(value: Any) -> str | None:
     return value if value in DIRECTIONAL_METRIC_OPTIONS else None
 
 
+def _valid_intrabar_model(value: Any) -> str | None:
+    """Return a supported deterministic intrabar model, else None."""
+    if not isinstance(value, str):
+        return None
+    return value if value in INTRABAR_MODEL_OPTIONS else None
+
+
 # ── Backtest sanitisation ─────────────────────────────────────────────────────
 
 #: Maps session-state key → (validator_fn, raw_defaults_key)
@@ -170,6 +183,7 @@ _BACKTEST_FIELD_SPECS: tuple[tuple[str, str, Any], ...] = (
     ("backtest_session_timezone", "session_timezone", _valid_timezone),
     ("backtest_no_new_entries_after", "no_new_entries_after", _valid_optional_time_str),
     ("backtest_exposure_policy", "exposure_policy", _valid_exposure_policy),
+    ("backtest_intrabar_model", "intrabar_model", _valid_intrabar_model),
     (
         "backtest_cooldown_bars",
         "cooldown_bars_after_exit",
@@ -253,6 +267,7 @@ _GRID_FIELD_SPECS: tuple[tuple[str, str, Any], ...] = (
     ("grid_session_timezone", "session_timezone", _valid_timezone),
     ("grid_no_new_entries_after", "no_new_entries_after", _valid_optional_time_str),
     ("grid_exposure_policy_widget", "exposure_policy", _valid_exposure_policy),
+    ("grid_intrabar_model_widget", "intrabar_model", _valid_intrabar_model),
     ("grid_cooldown_bars", "cooldown_bars_after_exit", lambda v: _valid_int(v, lo=0, hi=10_000)),
     ("grid_ranking_metric_widget", "ranking_metric", _valid_ranking_metric),
     ("grid_min_trades_widget", "min_trades", lambda v: _valid_int(v, lo=1, hi=1000)),

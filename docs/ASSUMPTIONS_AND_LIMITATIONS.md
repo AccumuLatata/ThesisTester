@@ -12,14 +12,36 @@ This engine is for **research screening**, not proof of a durable edge.
 - Backtest and grid outputs are directly comparable only when they were produced under the same execution-cost assumptions.
 - Unrealistic cost assumptions can still overstate edge; research results should be interpreted with conservative cost settings.
 
-### 2) Intrabar ambiguity is resolved with SL-first pessimism
-- If both stop and target are reachable in one bar, the engine exits at stop. Implemented in `simulate_trades()` in `thesistester/engine/backtest.py`.
-- This behavior is explicitly documented in the module design notes in `thesistester/engine/backtest.py`.
-- R10 excursion calibration preserves this pessimism by default: when terminal
-  MAE and MFE both reach a candidate stop/target pair, `both_hit_rule="stop_first"`
-  counts the candidate as a stop hit. Users may also inspect `target_first` or
-  `exclude_ambiguous` sensitivity, but those are diagnostics, not evidence of
-  true intrabar ordering.
+### 2) Intrabar resolution is explicit and remains assumption-bound
+- `intrabar_model="sl_first"` is the default and exactly preserves the legacy
+  pessimistic rule: if stop and target are reachable in one OHLC bar, stop wins.
+- `intrabar_model="path_open_proximity"` uses a deterministic three-segment
+  heuristic. If the open is closer to the high, the path is O→H→L→C; otherwise
+  O→L→H→C. Equal proximity remains SL-first and is counted as ambiguous.
+- `intrabar_model="subtimeframe"` walks observed lower-timeframe bars in
+  timestamp order. It fails closed unless data is strictly finer, complete for
+  every parent bar, and reconciles to parent O/H/L/C. When stop and target occur
+  inside the same terminal sub-bar, residual ordering is still unknowable and
+  resolves SL-first.
+- For intrabar `3c`/legacy `confirm_3bar` entries, pre-entry movement is
+  excluded. If an entry and stop occur in one lower bar, stop is taken
+  pessimistically; a target seen only in that entry sub-bar is not credited
+  because target-after-entry ordering is unproved. The event is counted as
+  residual ambiguity.
+- Path-model exits use `SL_intrabar_path` / `TP_intrabar_path`; lower-timeframe
+  exits use `SL_subtimeframe` / `TP_subtimeframe`. Legacy reasons remain `SL` /
+  `TP`.
+- Non-legacy trades add model/resolution audit columns. Run diagnostics state
+  the both-hit denominator (`bracket_exit_trade_count`), residual ambiguity
+  count, affected parent bars, and lower interval where applicable.
+- The open-proximity path is a deterministic sensitivity assumption, not an
+  estimate of the true market path. Lower-timeframe replay reduces uncertainty
+  only to the lower bar; it does not recover tick ordering.
+- MAE/MFE remains based on complete parent-bar extremes for compatibility. It
+  can therefore include an extreme that occurred after the modeled exit within
+  the same parent bar.
+- R10 excursion calibration remains a separate terminal-excursion diagnostic.
+  Its `both_hit_rule` does not inherit or replay the selected R12 engine model.
 
 ### 3) TIME, SESSION_CLOSE, DATA_END, and EOD exits are bar-index based
 - `max_holding_bars` is implemented as a bar-count cap (`entry_bar_index + max_holding_bars - 1`) in `simulate_trades()` in `thesistester/engine/backtest.py`.

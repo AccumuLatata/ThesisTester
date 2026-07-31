@@ -77,6 +77,25 @@ def test_walk_forward_basic_fold_generation():
     assert results["train_end_bar"].tolist() == [3, 5, 7, 9]
     assert results["test_start_bar"].tolist() == [4, 6, 8, 10]
     assert results["test_end_bar"].tolist() == [5, 7, 9, 11]
+    assert set(results["intrabar_model"]) == {"sl_first"}
+
+
+def test_walk_forward_propagates_fixed_intrabar_model_to_train_and_oos():
+    df = _ohlcv(8)
+    signals = _signal_df(*[_touch_signal(i, i) for i in range(6)])
+    results = run_walk_forward_sl_tp(
+        df=df,
+        signals=signals,
+        tick_size=TICK,
+        point_value=POINT,
+        stop_loss_ticks_values=[4],
+        take_profit_ticks_values=[8],
+        train_bars=4,
+        test_bars=2,
+        intrabar_model="path_open_proximity",
+    )
+    assert not results.empty
+    assert set(results["intrabar_model"]) == {"path_open_proximity"}
 
 
 def test_walk_forward_remaps_entry_indices_for_slice():

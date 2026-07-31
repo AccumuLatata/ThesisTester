@@ -3,7 +3,7 @@
 **Document type:** Proposal + engineering roadmap
 **Date:** 2026-07-29
 **Inputs:** `docs/SOTA_BACKTESTING_LANDSCAPE.md` (market research), `docs/THESISTESTER_ANALYSIS.md` (repository analysis with runtime verification).
-**Status of this document:** Proposal under implementation. **R9, R10, R11, and R18 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R12–R17 and R19–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
+**Status of this document:** Proposal under implementation. **R9, R10, R11, R12, and R18 are implemented** (see `docs/ENGINEERING_ROADMAP.md`); R13–R17 and R19–R22 are not yet started. Each milestone lands as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
 
 ---
 
@@ -195,6 +195,11 @@ Milestones extend the existing R-series (`docs/ENGINEERING_ROADMAP.md` R1–R8).
 - **Acceptance:** Deterministic outputs under fixed seed verified by golden tests; block-resample preserves streak statistics better than iid reshuffle (asserted on a streaked fixture); docs caveats added.
 
 ### R12 — Look-inside-bar intrabar fill refinement
+
+✅ **Implemented.** See `docs/ENGINEERING_ROADMAP.md`. A dedicated prerequisite
+PR activates the legacy golden gate before the engine change. R12 keeps
+`sl_first` exact by default, adds deterministic open-proximity paths, and
+requires complete OHLC-reconciling lower data for subtimeframe replay.
 
 - **Goal:** Replace single-rule SL-first pessimism with a *configurable* intrabar resolution model — the single biggest realism gap vs SOTA.
 - **Benchmark:** TradingView **Bar Magnifier** (minimum viable: refine with lower timeframe), TradeStation **Look-Inside-Bar**, NinjaTrader **High fill resolution** (sub-series down to 1 tick for fills only).

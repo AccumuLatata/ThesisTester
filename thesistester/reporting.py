@@ -14,7 +14,7 @@ from .timezone_display import convert_dataframe_timestamps_for_display, timezone
 _CAVEATS = [
     "Research output only; not trading advice.",
     "Backtests are based on historical data and assumptions.",
-    "OHLC bars cannot resolve true intrabar event order; SL-first pessimistic rule is used where applicable.",
+    "OHLC bars cannot reveal true intrabar event order; selected deterministic models are assumptions, and lower-timeframe replay retains residual within-sub-bar ambiguity.",
     "Grid search can overfit; validation diagnostics are descriptive only.",
     "No guarantee of future performance.",
 ]
@@ -243,6 +243,14 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "walk_forward_summary": to_jsonable(session_state.get("walk_forward_summary")),
             "excursion_summary": to_jsonable(session_state.get("excursion_summary")),
             "monte_carlo_summary": to_jsonable(session_state.get("monte_carlo_summary")),
+            "backtest_intrabar_diagnostic": to_jsonable(
+                session_state.get("backtest_intrabar_diagnostic")
+            ),
+        },
+        "intrabar": {
+            "backtest_policy": to_jsonable(session_state.get("backtest_intrabar_policy")),
+            "backtest_diagnostic": to_jsonable(session_state.get("backtest_intrabar_diagnostic")),
+            "grid_policy": to_jsonable(session_state.get("grid_intrabar_policy")),
         },
         "otf_filter": to_jsonable(build_otf_filter_metadata(session_state)),
         "tables": {
@@ -772,6 +780,11 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     validation = results.get("validation_summary") or {}
     excursion = results.get("excursion_summary") or {}
     monte_carlo = results.get("monte_carlo_summary") or {}
+    intrabar = artifact.get("intrabar", {}) if isinstance(artifact, Mapping) else {}
+    intrabar_policy = intrabar.get("backtest_policy", {}) if isinstance(intrabar, Mapping) else {}
+    intrabar_diagnostic = (
+        intrabar.get("backtest_diagnostic", {}) if isinstance(intrabar, Mapping) else {}
+    )
 
     selected_levels = setup.get("selected_levels") if isinstance(setup, Mapping) else None
     levels_str = (
@@ -823,6 +836,12 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
         f"- Total R: {_fmt_number(trade_summary.get('total_r') if isinstance(trade_summary, Mapping) else None)}",
         f"- Profit factor: {_fmt_number(trade_summary.get('profit_factor') if isinstance(trade_summary, Mapping) else None)}",
         f"- Max drawdown R: {_fmt_number(trade_summary.get('max_drawdown_r') if isinstance(trade_summary, Mapping) else None)}",
+        "",
+        "### Intrabar Resolution",
+        f"- Model: {intrabar_policy.get('intrabar_model', 'sl_first') if isinstance(intrabar_policy, Mapping) else 'sl_first'}",
+        f"- Same-bar both-hit exits: {intrabar_diagnostic.get('same_bar_both_hit_count', 0) if isinstance(intrabar_diagnostic, Mapping) else 0}",
+        f"- Residual ambiguous resolutions: {intrabar_diagnostic.get('ambiguous_resolution_count', 0) if isinstance(intrabar_diagnostic, Mapping) else 0}",
+        "- Deterministic OHLC paths are assumptions, not reconstructed market paths.",
         "",
         "### Advanced Risk Metrics",
         f"- Sharpe-like R: {_fmt_number(trade_summary.get('sharpe_like_r') if isinstance(trade_summary, Mapping) else None)}",

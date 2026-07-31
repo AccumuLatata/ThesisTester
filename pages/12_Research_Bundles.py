@@ -27,6 +27,10 @@ def _will_include_dataset() -> bool:
     return _is_dataframe(st.session_state.get("data"))
 
 
+def _will_include_subtimeframe() -> bool:
+    return _is_dataframe(st.session_state.get("subtimeframe_data"))
+
+
 def _will_include_levels() -> bool:
     return _is_dataframe(st.session_state.get("levels")) and _is_dataframe(
         st.session_state.get("session_levels")
@@ -65,6 +69,10 @@ def _will_include_monte_carlo() -> bool:
 
 section_rows = [
     {"Artifact": "Dataset", "Will include": "✅" if _will_include_dataset() else "❌"},
+    {
+        "Artifact": "Lower-timeframe fill data",
+        "Will include": "✅" if _will_include_subtimeframe() else "❌",
+    },
     {"Artifact": "Levels", "Will include": "✅" if _will_include_levels() else "❌"},
     {"Artifact": "Signals", "Will include": "✅" if _will_include_signals() else "❌"},
     {"Artifact": "Backtest", "Will include": "✅" if _will_include_backtest() else "❌"},
@@ -109,6 +117,17 @@ if uploaded is not None:
             {
                 "Artifact": "Dataset",
                 "Included in bundle": "✅" if included.get("dataset") else "❌",
+            },
+            {
+                "Artifact": "Lower-timeframe fill data",
+                "Included in bundle": (
+                    "✅"
+                    if isinstance(
+                        loaded_bundle.get("session_values", {}).get("subtimeframe_data"),
+                        pd.DataFrame,
+                    )
+                    else "❌"
+                ),
             },
             {"Artifact": "Levels", "Included in bundle": "✅" if included.get("levels") else "❌"},
             {

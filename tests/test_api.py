@@ -120,6 +120,7 @@ def test_headless_facade_matches_ui_backtest_composition(tmp_path):
     pd.testing.assert_frame_equal(facade["skipped_signals"], expected_skipped)
     pd.testing.assert_frame_equal(facade["equity_curve"], equity_curve(expected_trades))
     assert facade["trade_summary"] == summarize_trades(expected_trades)
+    assert facade["intrabar_diagnostic"]["intrabar_model"] == "sl_first"
 
 
 def test_grid_and_validation_battery_are_seeded_and_plain_data(tmp_path):

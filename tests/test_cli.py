@@ -173,6 +173,12 @@ def _manual_ui_equivalent_state(run: dict, base_directory) -> dict:
         "trade_summary": backtest["trade_summary"],
         "equity_curve": backtest["equity_curve"],
         "backtest_otf_filter": backtest["otf_filter_summary"],
+        "backtest_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": "sl_first",
+            "subtimeframe_data_supplied": False,
+        },
+        "backtest_intrabar_diagnostic": backtest["intrabar_diagnostic"],
         "backtest_execution_costs": {
             "commission_per_side": 0.0,
             "slippage_ticks": 0.0,
@@ -180,6 +186,11 @@ def _manual_ui_equivalent_state(run: dict, base_directory) -> dict:
         "grid_results": grid["grid_results"],
         "best_grid_result": grid["best_grid_result"],
         "grid_otf_filter": grid["otf_filter_summary"],
+        "grid_intrabar_policy": {
+            "schema_version": 1,
+            "intrabar_model": "sl_first",
+            "subtimeframe_data_supplied": False,
+        },
         **validation,
     }
 
@@ -209,9 +220,12 @@ def test_module_cli_bundle_matches_headless_ui_equivalent_pipeline(tmp_path):
 
 def test_parallel_batch_is_identical_to_serial(tmp_path):
     _write_dataset(tmp_path / "bars.csv")
+    path_run = _run("path-model", stop=3)
+    path_run["backtest"]["intrabar_model"] = "path_open_proximity"
+    path_run["grid"]["intrabar_model"] = "path_open_proximity"
     experiment = {
         "schema_version": 1,
-        "runs": [_run("baseline", stop=2), _run("wider-stop", stop=3)],
+        "runs": [_run("baseline", stop=2), path_run],
     }
     serial = run_batch(
         experiment,
@@ -226,7 +240,7 @@ def test_parallel_batch_is_identical_to_serial(tmp_path):
         workers=2,
     )
     pd.testing.assert_frame_equal(serial, parallel)
-    for name in ("baseline", "wider-stop"):
+    for name in ("baseline", "path-model"):
         serial_bundle = (tmp_path / "serial" / f"{name}.research.zip").read_bytes()
         parallel_bundle = (tmp_path / "parallel" / f"{name}.research.zip").read_bytes()
         assert canonical_bundle_hash(serial_bundle) == canonical_bundle_hash(parallel_bundle)
@@ -291,6 +305,30 @@ def test_experiment_schema_and_names_fail_fast(tmp_path):
                 ],
             },
             "must be >",
+        ),
+        (
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        **_run("bad-intrabar"),
+                        "backtest": {"intrabar_model": "clairvoyant"},
+                    }
+                ],
+            },
+            "intrabar_model",
+        ),
+        (
+            {
+                "schema_version": 1,
+                "runs": [
+                    {
+                        **_run("missing-sub-bars"),
+                        "backtest": {"intrabar_model": "subtimeframe"},
+                    }
+                ],
+            },
+            "subtimeframe_path",
         ),
     ]
     for index, (payload, message) in enumerate(cases):

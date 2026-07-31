@@ -16,6 +16,7 @@ from thesistester.analytics import best_grid_result, run_sl_tp_grid
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.engine.otf_integration import apply_configured_otf_filter
 from thesistester.execution_defaults import (
+    INTRABAR_MODEL_OPTIONS,
     apply_grid_defaults,
     collect_grid_defaults,
     reset_grid_session_keys,
@@ -114,6 +115,21 @@ with st.sidebar:
             "Uses SL-first pessimistic rule when both are reachable in the same bar."
         ),
     )
+    intrabar_model = st.selectbox(
+        "Intrabar resolution",
+        options=INTRABAR_MODEL_OPTIONS,
+        index=0,
+        key="grid_intrabar_model_widget",
+        format_func=lambda value: {
+            "sl_first": "SL-first (legacy pessimistic)",
+            "path_open_proximity": "OHLC open-proximity path",
+            "subtimeframe": "Observed lower-timeframe replay",
+        }[value],
+        help="One fixed market-path assumption is used across every grid cell.",
+    )
+    subtimeframe_data = st.session_state.get("subtimeframe_data")
+    if intrabar_model == "subtimeframe" and not isinstance(subtimeframe_data, pd.DataFrame):
+        st.warning("Subtimeframe replay requires strictly finer data in the research state.")
 
     commission_per_side = st.number_input(
         "Commission per side (currency/contract)",
@@ -357,6 +373,8 @@ if run_btn:
                 no_new_entries_after=effective_no_new_entries_after,
                 exposure_policy=exposure_policy,
                 cooldown_bars_after_exit=cooldown_bars_after_exit,
+                intrabar_model=intrabar_model,
+                subtimeframe_data=subtimeframe_data,
             )
         except ValueError as e:
             st.error(f"Grid search error: {e}")
@@ -404,6 +422,11 @@ if run_btn:
     }
     # OTF filter session state for grid scope
     st.session_state["grid_otf_filter"] = _otf_result.to_summary_dict()
+    st.session_state["grid_intrabar_policy"] = {
+        "schema_version": 1,
+        "intrabar_model": intrabar_model,
+        "subtimeframe_data_supplied": isinstance(subtimeframe_data, pd.DataFrame),
+    }
 
 # ── Display ───────────────────────────────────────────────────────────────────
 grid = st.session_state.get("grid_results")
