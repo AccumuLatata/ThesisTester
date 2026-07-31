@@ -288,7 +288,8 @@ other than the last bar in the dataset.
 - R15 PSR/DSR uses unannualized per-trade R Sharpe-like statistics. DSR only
   corrects the grid trials declared in the current run; discarded grids,
   signal variants, manual iteration, and correlated trials are not recoverable
-  automatically.
+  automatically. Its observed sequence must be a replayed cell passing the
+  declared grid selection rule; R15 does not fall back to the Phase 5 backtest.
 - R15 vs-random tests a seeded random-entry timing/direction null under the
   same simulator settings. It does not test random levels, regime matching, or
   all possible alternative strategies.

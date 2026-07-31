@@ -115,9 +115,11 @@ R15 execution path; the established `run_sl_tp_grid()` summary-frame contract
 is reproduced for the re-simulated cells, including `long_*`, `short_*`, and
 `min_direction_*` metrics needed to replay a recorded directional selection
 rule. Replay retains the grid execution assumptions, including optional
-lower-timeframe intrabar data. CSCV/PBO, PSR/DSR, and vs-random output a separate
-schema-versioned `overfitting_summary`, leaving `validation_summary()` and
-its heuristic grid-overfit section unchanged.
+lower-timeframe intrabar data. R15 fails closed when no replayed grid cell
+passes that rule or its sequence is unavailable; it never substitutes the
+Phase 5 backtest trade table. CSCV/PBO, PSR/DSR, and vs-random output a
+separate schema-versioned `overfitting_summary`, leaving `validation_summary()`
+and its heuristic grid-overfit section unchanged.
 
 ## End-to-end data flow
 

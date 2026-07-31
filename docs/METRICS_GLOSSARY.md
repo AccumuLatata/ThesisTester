@@ -333,9 +333,11 @@ per-side sample sizes.  For serious research, values ≥ 10–30 per side are ad
 - **DSR (Deflated Sharpe Ratio):** PSR evaluated against an expected maximum
   Sharpe threshold from the declared effective grid trial count. It is not an
   annualized portfolio Sharpe or a correction for unrecorded experimentation.
+  Its observed sequence is the replayed grid cell selected by the declared
+  rule; the battery is unavailable when no cell qualifies.
 - **Vs-random p-value:** finite-replica, one-sided probability that a seeded
   random next-open entry schedule achieves expectancy at least as high as the
-  observed selected configuration under identical execution settings.
+  selected replayed grid cell under identical execution settings.
 
 ## R12 intrabar diagnostics
 
