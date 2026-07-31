@@ -82,9 +82,7 @@ def test_psr_and_dsr_handle_moments_and_trial_deflation():
     psr = probabilistic_sharpe(selected)
     assert psr["available"] is True
     assert 0.5 < psr["psr"] <= 1.0
-    dsr_one = deflated_sharpe(
-        selected, [psr["sharpe_like_r"], psr["sharpe_like_r"] - 0.01]
-    )
+    dsr_one = deflated_sharpe(selected, [psr["sharpe_like_r"], psr["sharpe_like_r"] - 0.01])
     dsr_many = deflated_sharpe(
         selected,
         [psr["sharpe_like_r"], psr["sharpe_like_r"] - 0.2],
