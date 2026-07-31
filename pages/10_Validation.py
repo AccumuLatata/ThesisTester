@@ -533,18 +533,32 @@ if run_wfo:
                                     eth_start=(inst.eth_start if inst else "18:00"),
                                     ranking_metric=wfo_ranking_metric,
                                     min_train_trades=wfo_min_train_trades,
+                                    max_holding_bars=None,
+                                    allow_same_bar_exit=True,
                                     commission_per_side=float(
                                         grid_costs.get("commission_per_side", 0.0) or 0.0
                                     ),
                                     slippage_ticks=float(
                                         grid_costs.get("slippage_ticks", 0.0) or 0.0
                                     ),
+                                    flat_by_session_close=bool(
+                                        session_policy.get("flat_by_session_close", False)
+                                    ),
+                                    session_close_time=session_policy.get("session_close_time"),
+                                    session_timezone=session_policy.get("session_timezone"),
+                                    no_new_entries_after=session_policy.get("no_new_entries_after"),
                                     exposure_policy=str(
                                         exposure_policy_state.get("exposure_policy", "allow_all")
                                     ),
+                                    cooldown_bars_after_exit=int(
+                                        exposure_policy_state.get("cooldown_bars_after_exit", 0)
+                                        or 0
+                                    ),
+                                    otf_config=_wfo_otf_config,
                                     intrabar_model=str(
                                         intrabar_policy.get("intrabar_model", "sl_first")
                                     ),
+                                    subtimeframe_data=st.session_state.get("subtimeframe_data"),
                                     breakeven_after_r_values=exit_management_policy.get(
                                         "breakeven_after_r_values", [None]
                                     ),
@@ -554,6 +568,10 @@ if run_wfo:
                                     trailing_distance_ticks_values=exit_management_policy.get(
                                         "trailing_distance_ticks_values", [None]
                                     ),
+                                    max_grid_cells=int(
+                                        exit_management_policy.get("max_grid_cells", 500)
+                                    ),
+                                    overlap_policy=overlap_policy,
                                 )
                                 st.session_state["wfa_matrix"] = matrix_df
                                 st.session_state["wfa_matrix_config"] = {
@@ -565,6 +583,9 @@ if run_wfo:
                                     ),
                                     "matrix_metric": "median_test_expectancy_r",
                                 }
+                            else:
+                                st.session_state.pop("wfa_matrix", None)
+                                st.session_state.pop("wfa_matrix_config", None)
                             # Store OTF summary for reporting
                             from thesistester.persistence.local_store import compute_otf_config_hash
                             from thesistester.engine.otf import OTF_ALGORITHM_VERSION

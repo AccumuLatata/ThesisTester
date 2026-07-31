@@ -35,6 +35,7 @@ def _filter_fold_signals_with_otf(
     fold_signals: pd.DataFrame,
     otf_config: dict[str, Any],
     session_timezone: str | None,
+    eth_start: str | None = None,
 ) -> tuple[pd.DataFrame, int, int]:
     """Apply OTF filter to a fold's signals using fold-local OHLCV only.
 
@@ -75,6 +76,7 @@ def _filter_fold_signals_with_otf(
         "alignment_mode": str(otf_config.get("alignment_mode", "all")),
         "minimum_consecutive_bars": int(otf_config.get("minimum_consecutive_bars", 3)),
         "session_timezone": session_timezone,
+        "eth_start": eth_start,
         "session_reset": str(otf_config.get("session_reset", "session")),
     }
 
@@ -538,6 +540,7 @@ def run_walk_forward_sl_tp(
                 fold_signals=train_signals,
                 otf_config=otf_normalized_config,
                 session_timezone=session_timezone,
+                eth_start=eth_start,
             )
             train_otf_accepted = int(len(train_signals))
 
@@ -547,6 +550,7 @@ def run_walk_forward_sl_tp(
                 fold_signals=test_signals,
                 otf_config=otf_normalized_config,
                 session_timezone=session_timezone,
+                eth_start=eth_start,
             )
             test_otf_accepted = int(len(test_signals))
 
@@ -766,6 +770,7 @@ def run_walk_forward_sl_tp(
     stitched_status = "ok"
     if overlap_exists and overlap_policy == "reject":
         stitched_trades = raw_oos.iloc[0:0].copy()
+        returned_oos_trades = raw_oos.copy()
         stitched_status = "overlapping_oos_windows"
         warnings.append(
             "OOS windows overlap; stitched equity is unavailable under overlap_policy='reject'."
@@ -787,6 +792,9 @@ def run_walk_forward_sl_tp(
         warnings.append(
             f"Overlapping OOS windows were deduplicated with overlap_policy={overlap_policy!r}."
         )
+        returned_oos_trades = stitched_trades.copy()
+    else:
+        returned_oos_trades = stitched_trades.copy()
     if not stitched_trades.empty:
         stitched_trades = stitched_trades.sort_values(
             ["exit_timestamp", "entry_timestamp", "signal_id", "fold_id"],
@@ -835,7 +843,7 @@ def run_walk_forward_sl_tp(
             "overlap_policy": overlap_policy,
         },
         folds=results,
-        oos_trades=stitched_trades,
+        oos_trades=returned_oos_trades,
         stitched_equity=stitched_equity,
         summary=summary,
         warnings=tuple(warnings),

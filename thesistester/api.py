@@ -827,6 +827,29 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
                 section="walk_forward.matrix",
                 integer=True,
             )
+            if matrix.get("enabled", False):
+                for key in ("train_session_values", "test_session_values"):
+                    if key not in matrix:
+                        raise ValueError(f"walk_forward.matrix.{key} is required when enabled")
+                    _validate_positive_list(
+                        matrix,
+                        key,
+                        section="walk_forward.matrix",
+                    )
+                valid_matrix_metrics = {
+                    "median_test_expectancy_r",
+                    "median_retention_ratio_expectancy",
+                    "stitched_oos_total_r",
+                    "oos_profitable_fold_rate",
+                }
+                if (
+                    matrix.get("matrix_metric", "median_test_expectancy_r")
+                    not in valid_matrix_metrics
+                ):
+                    raise ValueError(
+                        "walk_forward.matrix.matrix_metric must be one of "
+                        f"{sorted(valid_matrix_metrics)}"
+                    )
     validation = run.get("validation")
     if validation is not None:
         validation = _require_mapping(validation, section="validation")
@@ -1392,12 +1415,26 @@ def run_walk_forward(
             window_mode=str(settings.get("window_mode", "rolling")),
             exchange_timezone=inst.exchange_tz,
             eth_start=inst.eth_start,
+            max_holding_bars=execution.get("max_holding_bars"),
+            allow_same_bar_exit=bool(execution.get("allow_same_bar_exit", True)),
+            commission_per_side=float(execution.get("commission_per_side", 0.0)),
+            slippage_ticks=float(execution.get("slippage_ticks", 0.0)),
+            flat_by_session_close=bool(execution.get("flat_by_session_close", False)),
+            session_close_time=execution.get("session_close_time"),
+            session_timezone=execution.get("session_timezone"),
+            no_new_entries_after=execution.get("no_new_entries_after"),
+            exposure_policy=str(execution.get("exposure_policy", "allow_all")),
+            cooldown_bars_after_exit=int(execution.get("cooldown_bars_after_exit", 0)),
+            otf_config=dict(otf_config or {}),
             intrabar_model=str(execution.get("intrabar_model", "sl_first")),
+            subtimeframe_data=subtimeframe_data,
             breakeven_after_r_values=list(execution.get("breakeven_after_r_values", [None])),
             trailing_after_r_values=list(execution.get("trailing_after_r_values", [None])),
             trailing_distance_ticks_values=list(
                 execution.get("trailing_distance_ticks_values", [None])
             ),
+            max_grid_cells=int(execution.get("max_grid_cells", 500)),
+            overlap_policy=str(settings.get("overlap_policy", "reject")),
         )
         output["wfa_matrix"] = matrix
         output["wfa_matrix_config"] = dict(matrix_config)

@@ -264,6 +264,7 @@ def test_overlapping_oos_windows_require_explicit_ownership_policy():
     rejected = run_walk_forward_sl_tp(**common, overlap_policy="reject")
     assert rejected.summary["stitched_oos_status"] == "overlapping_oos_windows"
     assert rejected.stitched_equity.empty
+    assert not rejected.oos_trades.empty
     first = run_walk_forward_sl_tp(**common, overlap_policy="first")
     assert first.summary["stitched_oos_status"] == "ok"
     assert not first.oos_trades.duplicated(["global_entry_bar_index", "signal_id"]).any()
