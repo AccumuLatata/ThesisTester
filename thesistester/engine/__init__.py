@@ -12,6 +12,7 @@ from .otf_filter import apply_otf_filter
 from .otf_integration import OtfFilterResult, apply_configured_otf_filter, resolve_otf_config
 from .signals import generate_signals
 from .intrabar import VALID_INTRABAR_MODELS
+from .exit_management import validate_exit_management_config
 
 __all__ = [
     "detect_anchor_confluence_zones",
@@ -29,4 +30,5 @@ __all__ = [
     "simulate_trades",
     "SimulationResult",
     "VALID_INTRABAR_MODELS",
+    "validate_exit_management_config",
 ]
