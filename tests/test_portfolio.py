@@ -108,3 +108,17 @@ def test_portfolio_rejects_non_shared_bar_index_range():
             instrument="ES",
             bar_count=10,
         )
+
+
+def test_portfolio_normalizes_uploaded_string_timestamps():
+    uploaded = _trades([(2, 3, "short", 0.5)]).astype(
+        {"entry_timestamp": str, "exit_timestamp": str}
+    )
+    summary = portfolio_summary(
+        {"A": _trades([(0, 1, "long", 1.0)]), "B": uploaded},
+        instrument="ES",
+        bar_count=10,
+    )
+
+    assert summary["portfolio_metrics"]["total_r"] == 1.5
+    assert pd.api.types.is_datetime64_any_dtype(summary["portfolio_trades"]["exit_timestamp"])

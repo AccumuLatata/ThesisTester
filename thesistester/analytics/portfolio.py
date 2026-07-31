@@ -63,6 +63,11 @@ def tag_setup_trades(setup_trades: Mapping[str, pd.DataFrame]) -> pd.DataFrame:
             frame[column] = numeric.astype(int)
         if (frame["exit_bar_index"] < frame["entry_bar_index"]).any():
             raise ValueError(f"Portfolio setup {setup_id!r} exits before entry.")
+        for column in ("entry_timestamp", "exit_timestamp"):
+            timestamps = pd.to_datetime(frame[column], errors="coerce", format="mixed", utc=True)
+            if timestamps.isna().any():
+                raise ValueError(f"Portfolio setup {setup_id!r} has invalid {column}.")
+            frame[column] = timestamps
         frames.append(frame)
     if not frames:
         return _empty_candidates()
