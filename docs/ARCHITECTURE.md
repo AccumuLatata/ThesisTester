@@ -43,8 +43,9 @@ order and summarized in `results_index.csv`.
 
 `thesistester.assistant` is a Streamlit-free metadata boundary for the proposed
 single-user AI Research Assistant. It currently defines versioned, JSON-safe
-contracts and a feature-parity registry only; it does not execute research,
-persist assistant state, import Streamlit, or alter engine/analytics behavior.
+contracts, a feature-parity registry, and an additive local thesis repository.
+It does not execute research, import Streamlit, or alter engine/analytics
+behavior.
 
 The registry records every user-visible product area as `executable`,
 `inspect_only`, `import_export`, or `unsupported`, with its public symbol,
@@ -55,6 +56,12 @@ Undeclared and unsupported capability requests fail closed.
 
 This boundary adds no `st.session_state` keys. A future assistant page must use
 additive, namespaced keys and document them here in the same PR.
+
+`LocalThesisRepository` stores schema-versioned thesis metadata, immutable
+specification versions, requested/terminal run provenance, and append-only
+conversations under `.thesistester_store/assistant/`. It writes assistant
+documents atomically and fails closed on corrupt or newer schema records.
+It does not read or modify research bundles or existing local-store namespaces.
 
 Research ZIP bytes include archive timestamps and are not deterministic.
 `canonical_bundle_hash()` projects JSON with sorted keys (excluding
