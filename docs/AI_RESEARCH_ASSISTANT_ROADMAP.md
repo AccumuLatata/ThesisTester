@@ -2,7 +2,7 @@
 
 ## Status and purpose
 
-**Status:** proposed implementation plan.  
+**Status:** proposed implementation plan.
 **Owner model:** one trusted local user, local datasets, and local execution.
 
 This document is the implementation contract for an AI Research Assistant in
