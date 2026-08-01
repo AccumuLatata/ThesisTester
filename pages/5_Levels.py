@@ -8,6 +8,7 @@ import streamlit as st
 from thesistester.app_state import bootstrap_active_saved_dataset
 from thesistester.data.sessions import tag_session
 from thesistester.levels import compute_all_levels, compute_session_levels
+from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.persistence import (
     clear_active_levels_hash,
     compute_dataset_id,
@@ -387,41 +388,41 @@ st.session_state["dataset_id"] = dataset_id
 opening_range_minutes = st.selectbox(
     "Opening range duration (minutes)",
     [5, 15, 30],
-    index=2,
+    index=[5, 15, 30].index(DEFAULT_LEVELS_SETTINGS["opening_range_minutes"]),
     key=_OPENING_RANGE_KEY,
 )
 sma_lengths_raw = st.text_input(
     "SMA lengths (comma-separated)",
-    value="20,50,200",
+    value=",".join(str(length) for length in DEFAULT_LEVELS_SETTINGS["sma_lengths"]),
     key=_SMA_LENGTHS_KEY,
 )
 ema_lengths_raw = st.text_input(
     "EMA lengths (comma-separated)",
-    value="20,50,200",
+    value=",".join(str(length) for length in DEFAULT_LEVELS_SETTINGS["ema_lengths"]),
     key=_EMA_LENGTHS_KEY,
 )
 sma_timeframes = st.multiselect(
     "SMA timeframes",
     options=_INDICATOR_TIMEFRAME_OPTIONS,
-    default=["1min"],
+    default=DEFAULT_LEVELS_SETTINGS["sma_timeframes"],
     key=_SMA_TIMEFRAMES_KEY,
 )
 ema_timeframes = st.multiselect(
     "EMA timeframes",
     options=_INDICATOR_TIMEFRAME_OPTIONS,
-    default=["1min"],
+    default=DEFAULT_LEVELS_SETTINGS["ema_timeframes"],
     key=_EMA_TIMEFRAMES_KEY,
 )
 vwap_windows = st.multiselect(
     "Rolling VWAP windows",
     options=_VWAP_WINDOW_OPTIONS,
-    default=_VWAP_WINDOW_OPTIONS,
+    default=DEFAULT_LEVELS_SETTINGS["vwap_windows"],
     key=_VWAP_WINDOWS_KEY,
 )
 poc_windows = st.multiselect(
     "Rolling POC windows",
     options=_POC_WINDOW_OPTIONS,
-    default=_POC_WINDOW_OPTIONS,
+    default=DEFAULT_LEVELS_SETTINGS["poc_windows"],
     key=_POC_WINDOWS_KEY,
 )
 value_area_pct = (
@@ -443,7 +444,7 @@ aggregation_help = (
 prior_day_aggregation_ticks = st.number_input(
     "Prior day VA profile aggregation (ticks)",
     min_value=1,
-    value=1,
+    value=DEFAULT_LEVELS_SETTINGS["prior_day_profile_aggregation_ticks"],
     step=1,
     key=_PRIOR_DAY_AGG_TICKS_KEY,
     help=aggregation_help,
@@ -451,7 +452,7 @@ prior_day_aggregation_ticks = st.number_input(
 prior_week_aggregation_ticks = st.number_input(
     "Prior week VA profile aggregation (ticks)",
     min_value=1,
-    value=1,
+    value=DEFAULT_LEVELS_SETTINGS["prior_week_profile_aggregation_ticks"],
     step=1,
     key=_PRIOR_WEEK_AGG_TICKS_KEY,
     help=aggregation_help,
@@ -459,39 +460,40 @@ prior_week_aggregation_ticks = st.number_input(
 prior_month_aggregation_ticks = st.number_input(
     "Prior month VA profile aggregation (ticks)",
     min_value=1,
-    value=1,
+    value=DEFAULT_LEVELS_SETTINGS["prior_month_profile_aggregation_ticks"],
     step=1,
     key=_PRIOR_MONTH_AGG_TICKS_KEY,
     help=aggregation_help,
 )
 
-with st.expander("Advanced opt-in levels", expanded=False):
+with st.expander("Advanced opt-in levels", expanded=True):
     st.caption(
-        "All opt-in levels are disabled by default. Existing behavior is unchanged unless a box is checked."
+        "All advanced level families are enabled in the built-in configuration. "
+        "Uncheck a box to omit that family."
     )
     pivots_enabled = st.checkbox(
         "Enable confirmed pivots",
-        value=False,
+        value=DEFAULT_LEVELS_SETTINGS["pivots_enabled"],
         key=_PIVOTS_ENABLED_KEY,
     )
     if pivots_enabled:
         pivot_timeframes = st.multiselect(
             "Pivot timeframes",
             options=_PIVOT_TIMEFRAME_OPTIONS,
-            default=_PIVOT_TIMEFRAME_OPTIONS,
+            default=DEFAULT_LEVELS_SETTINGS["pivot_timeframes"],
             key=_PIVOT_TIMEFRAMES_KEY,
         )
         pivot_left = st.number_input(
             "Pivot left",
             min_value=1,
-            value=2,
+            value=DEFAULT_LEVELS_SETTINGS["pivot_left"],
             step=1,
             key=_PIVOT_LEFT_KEY,
         )
         pivot_right = st.number_input(
             "Pivot right",
             min_value=1,
-            value=2,
+            value=DEFAULT_LEVELS_SETTINGS["pivot_right"],
             step=1,
             key=_PIVOT_RIGHT_KEY,
         )
@@ -509,17 +511,17 @@ with st.expander("Advanced opt-in levels", expanded=False):
         pivot_right = 2
     session_vwap_enabled = st.checkbox(
         "Enable developing RTH VWAP (dVWAP_RTH)",
-        value=False,
+        value=DEFAULT_LEVELS_SETTINGS["session_vwap_enabled"],
         key=_SESSION_VWAP_ENABLED_KEY,
     )
     single_prints_enabled = st.checkbox(
         "Enable TPO 30m Single Prints",
-        value=False,
+        value=DEFAULT_LEVELS_SETTINGS["single_prints_enabled"],
         key=_SINGLE_PRINTS_ENABLED_KEY,
     )
     apoc_enabled = st.checkbox(
         "Enable APOC / pAPOC",
-        value=False,
+        value=DEFAULT_LEVELS_SETTINGS["apoc_enabled"],
         key=_APOC_ENABLED_KEY,
     )
 

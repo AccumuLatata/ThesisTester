@@ -98,7 +98,7 @@ This engine is for **research screening**, not proof of a durable edge.
 - `arrival_bar_index`, `reversal_bar_index`, `entry_bar_index`, and `bar_index` are canonical/base indices. `trigger_arrival_bar_index`, `trigger_reversal_bar_index`, and `trigger_bar_index` are trigger-timeframe indices. `trigger_timestamp` is the reversal trigger candle completion timestamp.
 
 ### 5a) Confirmed pivots are opt-in scalar levels
-- Confirmed pivots are disabled by default (`pivots_enabled=False`), so existing level output is unchanged unless the user explicitly enables them.
+- The Levels page and headless API enable confirmed pivots in their built-in configuration. Direct `compute_all_levels` calls retain `pivots_enabled=False` by default.
 - Supported pivot timeframe settings remain exactly `1min`, `5min`, `30min`, and `4h`.
 - Default fractal settings are `pivot_left=2` and `pivot_right=2`, matching the 5-candle pivot convention.
 - Each pivot column holds the latest confirmed pivot high/low for its timeframe; before the first confirmed pivot exists, the value is `NaN`.
@@ -106,7 +106,7 @@ This engine is for **research screening**, not proof of a durable edge.
 - Confirmed pivots do not encode SFP, liquidity sweep, breaker, reclaim, or retest semantics.
 
 ### 5b) Developing session VWAP (`dVWAP_RTH`) is opt-in
-- `dVWAP_RTH` is disabled by default (`session_vwap_enabled=False`), so existing level output is unchanged unless explicitly enabled.
+- The Levels page and headless API enable `dVWAP_RTH` in their built-in configuration. Direct `compute_all_levels` calls retain `session_vwap_enabled=False` by default.
 - Only `anchor="RTH"` is supported in current implementation (`dVWAP_ETH` is not implemented).
 - `dVWAP_RTH` resets at each RTH session open; non-RTH bars always emit `NaN`.
 - Zero cumulative RTH volume emits `NaN` (safe divide-by-zero handling).
@@ -114,7 +114,7 @@ This engine is for **research screening**, not proof of a durable edge.
 - `session_vwap_enabled=False` is a true no-op: no validation, no new columns, no timestamp checks.
 
 ### 5c) TPO 30m Single Prints are opt-in scalar levels
-- Single Prints are disabled by default (`single_prints_enabled=False`), so existing level output is unchanged unless explicitly enabled.
+- The Levels page and headless API enable Single Prints in their built-in configuration. Direct `compute_all_levels` calls retain `single_prints_enabled=False` by default.
 - Only RTH 30-minute brackets contribute; ETH bars are completely excluded.
 - Only completed 30-minute brackets are used; the current incomplete bracket is always excluded.
 - Price bins are sized by instrument `tick_size` from `INSTRUMENTS`.
@@ -130,7 +130,7 @@ This engine is for **research screening**, not proof of a durable edge.
 - `APOC` and `pAPOC` are **profile / POC levels**, not Single Print levels. They are implemented in `thesistester/levels/apoc.py` and are independent of `tpo.py`.
 - `APOC` = POC of the first completed RTH 30-minute bracket (the A-period). Not derived from Single Prints; uses profile-style OHLCV approximation.
 - `pAPOC` = prior completed RTH session's APOC. Frozen at the start of the new RTH session.
-- APOC is disabled by default (`apoc_enabled=False`), so existing level output is unchanged unless explicitly enabled.
+- The Levels page and headless API enable APOC / pAPOC in their built-in configuration. Direct `compute_all_levels` calls retain `apoc_enabled=False` by default.
 - `apoc_enabled=False` is a true no-op: no validation, no new columns, no timestamp checks.
 - Profile approximation: `typical_price = (high + low + close) / 3`; full bar volume allocated to the tick bin containing `typical_price`. Same approximation as `profile.py`. POC tie-breaking: lowest-price bin wins (bins sorted ascending, `np.argmax` returns first max).
 - APOC availability: `NaN` before `RTH_open + 30 min`; emitted from the first bar at or after that timestamp. Non-RTH bars always emit `NaN`.
@@ -144,15 +144,15 @@ This engine is for **research screening**, not proof of a durable edge.
 ### 5e) Stage 6 UI and Persistence — opt-in level controls (Levels page)
 
 - The Levels page (`pages/5_Levels.py`) exposes an **"Advanced opt-in levels"** expander below the existing profile settings.
-- Inside the expander: checkboxes for confirmed pivots, developing RTH VWAP, TPO 30m Single Prints, and APOC / pAPOC; all default `False`.
-- No computation behavior changes when all new controls remain unchecked.
+- Inside the expander: checkboxes for confirmed pivots, developing RTH VWAP, TPO 30m Single Prints, and APOC / pAPOC; all default `True` in the built-in Levels page configuration.
+- `thesistester/levels/defaults.py` also sets the shared headless API defaults: 15-minute opening range; SMA 50/200 and EMA 9/21 on `1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min`; 70% value area; and prior day/week/month profile aggregation of 4/8/10 ticks.
 - When pivots are enabled, pivot timeframes (multiselect), pivot left, and pivot right number inputs are shown.
 - `session_vwap_anchor` is fixed to `"RTH"` for Stage 6; no new anchors are exposed.
 - No Single Print or APOC configuration controls are exposed beyond the enable checkbox.
 - APOC / pAPOC remain independent from Single Prints; APOC is not routed through `compute_tpo_levels`.
-- `_normalize_levels_settings` adds all eight Stage 6 keys with disabled/default values so old saved snapshots remain compatible without crashing.
+- `_normalize_levels_settings` retains disabled defaults for missing Stage 6 keys so old saved snapshots remain compatible without changing their historical calculation contract.
 - `pivot_timeframes` is sorted deterministically in normalization (same treatment as `sma_timeframes`, `ema_timeframes`, `vwap_windows`, `poc_windows`).
-- `_sync_levels_widget_state` restores all four new controls when a saved snapshot is loaded. Old snapshots missing Stage 6 keys load safely and default new controls to disabled.
+- `_sync_levels_widget_state` restores all four new controls when a saved snapshot is loaded. Old snapshots missing Stage 6 keys load safely and default those controls to disabled.
 - Saved level snapshot labels optionally append a compact `Opt-in: pivots,dVWAP,SP,APOC` suffix when one or more opt-in families are enabled.
 
 ## 6) Point-in-time correctness (R3 audit)

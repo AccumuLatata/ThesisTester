@@ -342,27 +342,32 @@ saved setup library), with dataset-aware setup-library labels/filtering and comp
 for missing level references. Saved signal runs also expose a copy action that restores a setup
 snapshot back into Setup Builder session state for review/edit/save before persistence.
 
-## Levels page opt-in level controls (Stage 6)
+## Levels page advanced level controls (Stage 6)
 
 The Levels page (`pages/5_Levels.py`) exposes an **"Advanced opt-in levels"** expander below
 existing profile settings. Controls inside it:
 
 | Control | Default | Notes |
 |---|---|---|
-| Enable confirmed pivots | `False` | Shows pivot timeframes / left / right when enabled |
-| Enable developing RTH VWAP (dVWAP_RTH) | `False` | Anchor fixed to RTH |
-| Enable TPO 30m Single Prints | `False` | No additional config exposed |
-| Enable APOC / pAPOC | `False` | Independent of Single Prints |
+| Enable confirmed pivots | `True` | `1min`, `5min`, `30min`, `4h`; left/right `2` |
+| Enable developing RTH VWAP (dVWAP_RTH) | `True` | Anchor fixed to RTH |
+| Enable TPO 30m Single Prints | `True` | No additional config exposed |
+| Enable APOC / pAPOC | `True` | Independent of Single Prints |
 
-All eight gate values are included in the levels settings object and therefore in the
-settings hash used for saved snapshot matching. `_normalize_levels_settings` adds disabled
-defaults for all new keys so old saved snapshots remain compatible. `pivot_timeframes` is
-sorted deterministically alongside the other list-valued settings.
+`thesistester/levels/defaults.py` is the canonical product configuration used by both the
+Levels page and the headless API: 15-minute opening range; SMA 50/200 and EMA 9/21 on
+`1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min`; 70% value area;
+and prior day/week/month profile aggregation of 4/8/10 ticks. All gate values are included
+in the levels settings object and therefore in the settings hash used for saved snapshot
+matching. `pivot_timeframes` is sorted deterministically alongside the other list-valued
+settings.
 
 When a saved snapshot is loaded, `_sync_levels_widget_state` restores all four new controls.
-Old snapshots missing Stage 6 keys default new controls to disabled without raising errors.
+Old snapshots missing Stage 6 keys still default those controls to disabled without raising
+errors, preserving the historical saved calculation contract.
 
-No computation behavior changes when all new controls remain unchecked.
+Direct low-level `compute_all_levels` calls retain disabled keyword defaults; the shared
+product configuration is applied by the page and headless API.
 APOC / pAPOC are independent from Single Prints and are not routed through `compute_tpo_levels`.
 Single Prints are implemented in `thesistester/levels/tpo.py`; APOC / pAPOC are implemented in `thesistester/levels/apoc.py`.
 The Levels page writes these opt-in values into `st.session_state["levels_settings"]`, and saved snapshots include them via the levels settings hash.
