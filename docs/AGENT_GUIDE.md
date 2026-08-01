@@ -122,6 +122,22 @@ Agent safety requirements:
   trading advice. Existing intrabar, execution-cost, roll, and serial-
   dependence limitations remain unchanged.
 
+## AI Research Assistant contracts (AIA-0)
+
+`thesistester.assistant` is an additive, non-executing contract layer for the
+proposed local AI Research Assistant. `FEATURE_PARITY_REGISTRY` is the source of
+truth for the assistant's present product coverage. Every request must first
+parse as an `AssistantRequest`, then pass `validate_capability_request()`.
+
+- Unknown request keys and unknown capability IDs fail closed.
+- Capability IDs classified as `unsupported` cannot be executed; their
+  registry limitation must be surfaced to the user.
+- Registry metadata does not grant arbitrary code, shell, or filesystem access.
+  Future tools may invoke only their declared public headless symbols.
+- Compute-capable rows require the registry's stated confirmation level and
+  resource envelope. Execution, persistence, and conversational state are
+  explicitly deferred to later AIA milestones.
+
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned
   tool config live in `pyproject.toml`).
