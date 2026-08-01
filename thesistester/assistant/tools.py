@@ -63,7 +63,7 @@ def _bounded_spec(spec: Mapping[str, Any], limits: ToolLimits) -> dict[str, Any]
         if cell_count > configured_cap:
             raise AssistantToolError(f"Grid exceeds maximum of {limits.max_grid_cells} cells.")
     walk_forward = copied.get("walk_forward")
-    if isinstance(walk_forward, Mapping) and walk_forward.get("enabled", False):
+    if isinstance(walk_forward, Mapping) and walk_forward.get("enabled", True):
         matrix = walk_forward.get("matrix")
         if isinstance(matrix, Mapping) and matrix.get("enabled", False):
             configured_cap = matrix.get("max_matrix_cells", limits.max_walk_forward_matrix_cells)
