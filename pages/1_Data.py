@@ -333,9 +333,10 @@ def _clear_subtimeframe_state() -> None:
     _clear_execution_dependent_state()
 
 
-def _upload_signature(uploaded_file) -> str:
-    """Return a stable signature without trusting an uploaded filename."""
-    return hashlib.sha256(uploaded_file.getvalue()).hexdigest()
+def _upload_signature(uploaded_file, *, format_profile: str) -> str:
+    """Return a stable signature for file content and its explicit parser profile."""
+    content_hash = hashlib.sha256(uploaded_file.getvalue()).hexdigest()
+    return f"{format_profile}:{content_hash}"
 
 
 def _render_subtimeframe_upload(
@@ -364,7 +365,11 @@ def _render_subtimeframe_upload(
             type=["csv", "txt"],
             key=f"subtimeframe_csv_upload_{uploader_nonce}",
         )
-        upload_signature = _upload_signature(uploaded_file) if uploaded_file is not None else None
+        upload_signature = (
+            _upload_signature(uploaded_file, format_profile=subtimeframe_format_profile)
+            if uploaded_file is not None
+            else None
+        )
         compatibility_report = st.session_state.get(SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY)
         if isinstance(
             compatibility_report, pd.DataFrame

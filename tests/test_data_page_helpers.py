@@ -137,6 +137,19 @@ def test_ninjatrader_default_source_timezone_is_utc():
     assert data_page._default_source_timezone("canonical", "America/New_York") == "America/New_York"
 
 
+def test_subtimeframe_upload_signature_includes_explicit_profile():
+    data_page = _import_data_page_module({})
+
+    class UploadedFile:
+        def getvalue(self):
+            return b"same-content"
+
+    upload = UploadedFile()
+    assert data_page._upload_signature(
+        upload, format_profile="canonical"
+    ) != data_page._upload_signature(upload, format_profile="quantower_history_exporter")
+
+
 def test_load_subtimeframe_upload_accepts_reconciling_canonical_bars(tmp_path):
     data_page = _import_data_page_module({})
     parent, subtimeframe = _parent_and_subtimeframe_frames()
