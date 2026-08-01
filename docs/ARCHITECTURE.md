@@ -370,3 +370,18 @@ The Levels page writes these opt-in values into `st.session_state["levels_settin
 The level engine remains scalar-column based: each enabled family contributes deterministic
 columns onto the shared levels DataFrame, and downstream Signals/Backtest consume those columns
 generically without stage-specific workflow changes.
+
+### Levels calculation observability
+
+`pages/5_Levels.py` treats a calculation as an atomic UI transaction. It computes into local
+frames and installs `levels`, `session_levels`, settings, and the data fingerprint in
+`st.session_state` only after both level calls succeed. A failure retains any prior valid results
+and records `levels_calculation_status` with the dataset id, settings hash, input row count,
+duration, exception type/message, and traceback for in-page diagnosis. This status is UI-only:
+it does not alter level-engine inputs, outputs, persistence schemas, or saved-level hashes.
+Loading a saved-level snapshot clears this transient status so its diagnostics cannot be
+misrepresented as the result of the loaded snapshot.
+
+For datasets with at least 3,000 bars and one or more rolling POC windows enabled, the page
+shows a non-blocking synchronous-compute warning before calculation. The threshold is an
+observability aid, not a data-size limit or an engine behavior change.
