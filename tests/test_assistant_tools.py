@@ -81,6 +81,14 @@ def test_validate_experiment_applies_grid_and_validation_limits(tmp_path):
     with pytest.raises(AssistantToolError, match="Grid exceeds"):
         tools.validate_experiment(spec)
 
+    spec["grid"] = {
+        "stop_loss_ticks_values": [1, 2],
+        "take_profit_ticks_values": [1, 2],
+        "max_grid_cells": 3,
+    }
+    with pytest.raises(AssistantToolError, match="Grid exceeds"):
+        tools.validate_experiment(spec)
+
     spec["grid"] = {"stop_loss_ticks_values": [1, 2], "take_profit_ticks_values": [1, 2]}
     spec["validation"] = {"n_bootstrap": 11}
     with pytest.raises(AssistantToolError, match="n_bootstrap"):

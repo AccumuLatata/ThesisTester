@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from thesistester import __version__
+from thesistester.api import _GRID_DEFAULTS
 from thesistester.api import run_experiment as _run_experiment
 from thesistester.api import validate_run_spec
 from thesistester.persistence.local_store import list_datasets, load_dataset
@@ -24,6 +25,7 @@ class ToolLimits:
 
     max_grid_cells: int = 500
     max_simulations: int = 5000
+    max_walk_forward_matrix_cells: int = 100
 
 
 def _resolve_within(path: str | Path, roots: tuple[Path, ...]) -> Path:
@@ -40,7 +42,7 @@ def _bounded_spec(spec: Mapping[str, Any], limits: ToolLimits) -> dict[str, Any]
         raise AssistantToolError("Experiment specification must be an object.")
     copied = dict(spec)
     grid = copied.get("grid")
-    if isinstance(grid, Mapping):
+    if isinstance(grid, Mapping) and grid.get("enabled", True):
         configured_cap = grid.get("max_grid_cells", limits.max_grid_cells)
         if not isinstance(configured_cap, int) or isinstance(configured_cap, bool):
             raise AssistantToolError("grid.max_grid_cells must be an integer.")
@@ -55,11 +57,34 @@ def _bounded_spec(spec: Mapping[str, Any], limits: ToolLimits) -> dict[str, Any]
         )
         cell_count = 1
         for key in dimensions:
-            values = grid.get(key, [None])
+            values = grid.get(key, _GRID_DEFAULTS[key])
             if isinstance(values, list):
                 cell_count *= len(values)
-        if cell_count > limits.max_grid_cells:
+        if cell_count > configured_cap:
             raise AssistantToolError(f"Grid exceeds maximum of {limits.max_grid_cells} cells.")
+    walk_forward = copied.get("walk_forward")
+    if isinstance(walk_forward, Mapping) and walk_forward.get("enabled", False):
+        matrix = walk_forward.get("matrix")
+        if isinstance(matrix, Mapping) and matrix.get("enabled", False):
+            configured_cap = matrix.get("max_matrix_cells", limits.max_walk_forward_matrix_cells)
+            if not isinstance(configured_cap, int) or isinstance(configured_cap, bool):
+                raise AssistantToolError("walk_forward.matrix.max_matrix_cells must be an integer.")
+            if configured_cap > limits.max_walk_forward_matrix_cells:
+                raise AssistantToolError(
+                    "Walk-forward matrix exceeds maximum of "
+                    f"{limits.max_walk_forward_matrix_cells} cells."
+                )
+            train = matrix.get("train_session_values", [])
+            test = matrix.get("test_session_values", [])
+            if (
+                isinstance(train, list)
+                and isinstance(test, list)
+                and len(train) * len(test) > configured_cap
+            ):
+                raise AssistantToolError(
+                    "Walk-forward matrix exceeds maximum of "
+                    f"{limits.max_walk_forward_matrix_cells} cells."
+                )
     validation = copied.get("validation")
     if isinstance(validation, Mapping):
         for key in ("n_bootstrap", "n_permutations"):
