@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from thesistester.data.loader import (
+    duplicate_timestamp_report,
     DataValidationError,
     format_interval,
     infer_base_interval,
@@ -24,6 +25,32 @@ def test_sample_loads_clean():
     assert report.is_clean
     assert report.messages() == []
     assert format_interval(report.inferred_interval) == "1min"
+
+
+def test_duplicate_timestamp_report_distinguishes_exact_and_conflicting_groups():
+    frame = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(
+                [
+                    "2026-01-05 09:30:00+00:00",
+                    "2026-01-05 09:30:00+00:00",
+                    "2026-01-05 09:31:00+00:00",
+                    "2026-01-05 09:31:00+00:00",
+                ]
+            ),
+            "open": [100.0, 100.0, 101.0, 101.0],
+            "high": [101.0, 101.0, 102.0, 103.0],
+            "low": [99.0, 99.0, 100.0, 100.0],
+            "close": [100.5, 100.5, 101.5, 101.5],
+            "volume": [10, 10, 12, 12],
+        }
+    )
+
+    report = duplicate_timestamp_report(frame)
+
+    assert report["duplicate_group_size"].tolist() == [2, 2, 2, 2]
+    assert report["duplicate_row_number"].tolist() == [1, 2, 1, 2]
+    assert report["exact_duplicate_group"].tolist() == [True, True, False, False]
 
 
 def test_timestamps_are_tz_aware_and_sorted():

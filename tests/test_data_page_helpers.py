@@ -6,6 +6,7 @@ import sys
 import types
 
 import pandas as pd
+import pytest
 
 
 def _parent_and_subtimeframe_frames() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -193,6 +194,27 @@ def test_load_subtimeframe_upload_accepts_incomplete_bars_for_conservative_model
             "reason": "incomplete coverage: expected 4, observed 3",
         }
     ]
+
+
+def test_load_subtimeframe_upload_returns_duplicate_diagnostic(tmp_path):
+    data_page = _import_data_page_module({})
+    parent, subtimeframe = _parent_and_subtimeframe_frames()
+    path = tmp_path / "duplicate_subtimeframe.csv"
+    pd.concat([subtimeframe, subtimeframe.iloc[[0]]], ignore_index=True).to_csv(path, index=False)
+
+    with pytest.raises(data_page.SubtimeframeDuplicateTimestampError) as exc_info:
+        data_page._load_subtimeframe_upload(
+            path,
+            parent_df=parent,
+            instrument="ES",
+            source_timezone="America/New_York",
+            exchange_timezone="America/New_York",
+            format_profile="canonical",
+        )
+
+    report = exc_info.value.report
+    assert len(report) == 2
+    assert report["exact_duplicate_group"].tolist() == [True, True]
 
 
 def test_load_subtimeframe_upload_rejects_parent_ohlc_mismatch(tmp_path):
