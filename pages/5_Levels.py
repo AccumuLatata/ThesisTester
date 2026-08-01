@@ -667,6 +667,7 @@ calculate_levels = st.button(button_label, type="primary")
 
 if calculate_levels:
     with st.spinner("Calculating levels..."):
+
         def _calculate() -> tuple[pd.DataFrame, pd.DataFrame]:
             base_df = st.session_state["data"]
             if "session" not in base_df.columns:
