@@ -61,6 +61,7 @@ SUBTIMEFRAME_UPLOADER_NONCE_KEY = "_subtimeframe_uploader_nonce"
 SUBTIMEFRAME_FALLBACK_BARS_KEY = "subtimeframe_fallback_parent_bars"
 SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY = "_subtimeframe_compatibility_report"
 SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY = "_subtimeframe_compatibility_signature"
+SUBTIMEFRAME_FORMAT_PROFILES = ("canonical", "quantower_history_exporter")
 FATAL_OHLCV_CODES = frozenset(
     {
         "duplicate_timestamps",
@@ -266,13 +267,14 @@ def _load_subtimeframe_upload(
     instrument: str,
     source_timezone: str | None,
     exchange_timezone: str,
+    format_profile: str,
 ) -> tuple[pd.DataFrame, str, list[dict[str, object]]]:
     """Load canonical lower bars for strict or conservative R12 replay."""
     raw_df = load_ohlcv(
         uploaded_file,
         source_tz=source_timezone,
         target_tz=exchange_timezone,
-        format_profile="canonical",
+        format_profile=format_profile,
     )
     report = validate_ohlcv(raw_df)
     fatal_messages = [issue.message for issue in report.issues if issue.code in FATAL_OHLCV_CODES]
@@ -331,9 +333,10 @@ def _clear_subtimeframe_state() -> None:
     _clear_execution_dependent_state()
 
 
-def _upload_signature(uploaded_file) -> str:
-    """Return a stable signature without trusting an uploaded filename."""
-    return hashlib.sha256(uploaded_file.getvalue()).hexdigest()
+def _upload_signature(uploaded_file, *, format_profile: str) -> str:
+    """Return a stable signature for file content and its explicit parser profile."""
+    content_hash = hashlib.sha256(uploaded_file.getvalue()).hexdigest()
+    return f"{format_profile}:{content_hash}"
 
 
 def _render_subtimeframe_upload(
@@ -346,9 +349,15 @@ def _render_subtimeframe_upload(
     """Render the optional interactive R12 lower-timeframe import."""
     with st.expander("Lower-timeframe R12 replay (optional)", expanded=False):
         st.caption(
-            "Upload canonical OHLCV bars for observed lower-timeframe replay. "
-            "They must cover and reconcile exactly to every main-chart bar; "
-            "vendor profiles are not applied to this file."
+            "Upload lower OHLCV bars for observed lower-timeframe replay. "
+            "They must cover and reconcile exactly to every main-chart bar."
+        )
+        subtimeframe_format_profile = st.selectbox(
+            "Lower CSV format profile",
+            options=SUBTIMEFRAME_FORMAT_PROFILES,
+            format_func=profile_options.get,
+            key="subtimeframe_format_profile",
+            help="Explicit selection only; the lower file never inherits the main CSV profile.",
         )
         uploader_nonce = int(st.session_state.get(SUBTIMEFRAME_UPLOADER_NONCE_KEY, 0))
         uploaded_file = st.file_uploader(
@@ -356,7 +365,11 @@ def _render_subtimeframe_upload(
             type=["csv", "txt"],
             key=f"subtimeframe_csv_upload_{uploader_nonce}",
         )
-        upload_signature = _upload_signature(uploaded_file) if uploaded_file is not None else None
+        upload_signature = (
+            _upload_signature(uploaded_file, format_profile=subtimeframe_format_profile)
+            if uploaded_file is not None
+            else None
+        )
         compatibility_report = st.session_state.get(SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY)
         if isinstance(
             compatibility_report, pd.DataFrame
@@ -384,6 +397,7 @@ def _render_subtimeframe_upload(
                     instrument=instrument,
                     source_timezone=source_timezone,
                     exchange_timezone=exchange_timezone,
+                    format_profile=subtimeframe_format_profile,
                 )
                 _set_subtimeframe_state(
                     subtimeframe_df,
@@ -727,6 +741,7 @@ source = st.radio(
 )
 profile_options = {
     "canonical": "Canonical / Quantower OHLCV",
+    "quantower_history_exporter": "Quantower History Exporter (semicolon)",
     "ninjatrader": "NinjaTrader export",
     "sierra_intraday": "Sierra Intraday CSV",
     "databento_trades": "Databento trades CSV",

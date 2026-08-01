@@ -236,6 +236,7 @@ _DATASET_KEYS = {
     "source_timezone",
     "exchange_timezone",
     "format_profile",
+    "subtimeframe_format_profile",
 }
 _EXCURSION_KEYS = {
     "enabled",
@@ -458,18 +459,30 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         raise ValueError("dataset.path must be a path string")
     if "subtimeframe_path" in dataset and not isinstance(dataset["subtimeframe_path"], (str, Path)):
         raise ValueError("dataset.subtimeframe_path must be a path string")
-    for key in ("instrument", "source_timezone", "exchange_timezone", "format_profile"):
+    for key in (
+        "instrument",
+        "source_timezone",
+        "exchange_timezone",
+        "format_profile",
+        "subtimeframe_format_profile",
+    ):
         if key in dataset and dataset[key] is not None and not isinstance(dataset[key], str):
             raise ValueError(f"dataset.{key} must be a string or null")
     if dataset.get("format_profile", "canonical") not in {
         "canonical",
         "ninjatrader",
         "sierra_intraday",
+        "quantower_history_exporter",
         "databento_trades",
         "tick_capture",
         "second_capture",
     }:
         raise ValueError("dataset.format_profile is unsupported")
+    if dataset.get("subtimeframe_format_profile", "canonical") not in {
+        "canonical",
+        "quantower_history_exporter",
+    }:
+        raise ValueError("dataset.subtimeframe_format_profile is unsupported")
     instrument = str(dataset.get("instrument", "ES"))
     _instrument(instrument)
 
@@ -2007,7 +2020,7 @@ def run_experiment(
             instrument=instrument,
             source_timezone=source_timezone,
             exchange_timezone=exchange_timezone,
-            format_profile="canonical",
+            format_profile=str(dataset_config.get("subtimeframe_format_profile", "canonical")),
         )
     validation_report = validate_ohlcv(data)
     base_interval = format_interval(validation_report.inferred_interval)
@@ -2087,6 +2100,9 @@ def run_experiment(
         subtimeframe_report = validate_ohlcv(subtimeframe_data)
         state["subtimeframe_data"] = subtimeframe_data
         state["subtimeframe_interval"] = format_interval(subtimeframe_report.inferred_interval)
+        state["subtimeframe_format_profile"] = str(
+            dataset_config.get("subtimeframe_format_profile", "canonical")
+        )
 
     grid_config = run.get("grid")
     grid_settings: dict[str, Any] = {}

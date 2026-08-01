@@ -7,6 +7,7 @@ import pytest
 
 from thesistester.config import INSTRUMENTS
 from thesistester.data.loader import DataValidationError, load_ohlcv
+from thesistester.engine.intrabar import prepare_subtimeframe_context
 
 SAMPLE = Path(__file__).resolve().parents[1] / "sample_data" / "ES_sample_1m.csv"
 VENDOR_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "vendor"
@@ -40,6 +41,34 @@ def test_sierra_intraday_profile_combines_date_time_and_last():
         target_tz="America/New_York",
     )
     assert bars["close"].tolist() == [100.5, 101.5]
+
+
+def test_quantower_history_exporter_profile_parses_semicolon_bars_and_reconciles():
+    parent = load_ohlcv(
+        VENDOR_FIXTURES / "quantower_history_exporter_1m.csv",
+        format_profile="quantower_history_exporter",
+        source_tz="America/New_York",
+        target_tz="America/New_York",
+    )
+    lower = load_ohlcv(
+        VENDOR_FIXTURES / "quantower_history_exporter_15s.csv",
+        format_profile="quantower_history_exporter",
+        source_tz="America/New_York",
+        target_tz="America/New_York",
+    )
+
+    assert parent["timestamp"].iloc[0].isoformat() == "2026-06-02T09:30:00-04:00"
+    assert parent["volume"].tolist() == [10, 12]
+    assert lower["timestamp"].diff().dropna().eq(pd.Timedelta(seconds=15)).all()
+    prepare_subtimeframe_context(parent, lower, tick_size=0.25)
+
+
+def test_quantower_history_exporter_profile_requires_time_left(tmp_path):
+    path = tmp_path / "missing_time_left.csv"
+    path.write_text("Open;High;Low;Close;Volume\n100;101;99;100;10\n")
+
+    with pytest.raises(DataValidationError, match="missing required columns: \\['timestamp'\\]"):
+        load_ohlcv(path, format_profile="quantower_history_exporter")
 
 
 @pytest.mark.parametrize(
