@@ -106,14 +106,18 @@ def test_request_round_trip_is_json_safe_and_fail_closed():
 
 @pytest.mark.parametrize("schema_version", [True, 1.0])
 def test_request_rejects_non_integer_schema_version_equivalents(schema_version):
-    with pytest.raises(AssistantContractError, match="Unsupported assistant request schema_version"):
+    with pytest.raises(
+        AssistantContractError, match="Unsupported assistant request schema_version"
+    ):
         AssistantRequest(
             capability_id="PIPELINE.validate_run_spec",
             payload={},
             schema_version=schema_version,
         )
 
-    with pytest.raises(AssistantContractError, match="Unsupported assistant request schema_version"):
+    with pytest.raises(
+        AssistantContractError, match="Unsupported assistant request schema_version"
+    ):
         AssistantRequest.from_dict(
             {
                 "schema_version": schema_version,
