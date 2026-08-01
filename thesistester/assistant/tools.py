@@ -41,13 +41,24 @@ def _bounded_spec(spec: Mapping[str, Any], limits: ToolLimits) -> dict[str, Any]
     copied = dict(spec)
     grid = copied.get("grid")
     if isinstance(grid, Mapping):
-        stops = grid.get("stop_loss_ticks_values", [])
-        targets = grid.get("take_profit_ticks_values", [])
-        if (
-            isinstance(stops, list)
-            and isinstance(targets, list)
-            and len(stops) * len(targets) > limits.max_grid_cells
-        ):
+        configured_cap = grid.get("max_grid_cells", limits.max_grid_cells)
+        if not isinstance(configured_cap, int) or isinstance(configured_cap, bool):
+            raise AssistantToolError("grid.max_grid_cells must be an integer.")
+        if configured_cap > limits.max_grid_cells:
+            raise AssistantToolError(f"Grid exceeds maximum of {limits.max_grid_cells} cells.")
+        dimensions = (
+            "stop_loss_ticks_values",
+            "take_profit_ticks_values",
+            "breakeven_after_r_values",
+            "trailing_after_r_values",
+            "trailing_distance_ticks_values",
+        )
+        cell_count = 1
+        for key in dimensions:
+            values = grid.get(key, [None])
+            if isinstance(values, list):
+                cell_count *= len(values)
+        if cell_count > limits.max_grid_cells:
             raise AssistantToolError(f"Grid exceeds maximum of {limits.max_grid_cells} cells.")
     validation = copied.get("validation")
     if isinstance(validation, Mapping):
@@ -58,6 +69,19 @@ def _bounded_spec(spec: Mapping[str, Any], limits: ToolLimits) -> dict[str, Any]
                     f"validation.{key} exceeds maximum of {limits.max_simulations}."
                 )
     return copied
+
+
+def _normalize_dataset_paths(spec: dict[str, Any], roots: tuple[Path, ...]) -> dict[str, Any]:
+    dataset = spec.get("dataset")
+    if not isinstance(dataset, Mapping) or "path" not in dataset:
+        raise AssistantToolError("Experiment dataset.path is required.")
+    normalized_dataset = dict(dataset)
+    normalized_dataset["path"] = str(_resolve_within(dataset["path"], roots))
+    if "subtimeframe_path" in dataset and dataset["subtimeframe_path"] is not None:
+        normalized_dataset["subtimeframe_path"] = str(
+            _resolve_within(dataset["subtimeframe_path"], roots)
+        )
+    return {**spec, "dataset": normalized_dataset}
 
 
 def _state_summary(state: Mapping[str, Any]) -> dict[str, Any]:
@@ -95,23 +119,15 @@ class AssistantTools:
     def validate_experiment(self, spec: Mapping[str, Any]) -> dict[str, Any]:
         """Validate a bounded public experiment spec without executing it."""
         bounded = _bounded_spec(spec, self.limits)
-        dataset = bounded.get("dataset")
-        if not isinstance(dataset, Mapping) or "path" not in dataset:
-            raise AssistantToolError("Experiment dataset.path is required.")
-        _resolve_within(dataset["path"], self.data_roots)
-        validate_run_spec(bounded)
+        validate_run_spec(_normalize_dataset_paths(bounded, self.data_roots))
         return {"valid": True, "tool_version": __version__}
 
     def run_experiment(self, spec: Mapping[str, Any]) -> dict[str, Any]:
         """Run a validated public experiment and return bounded result evidence."""
         bounded = _bounded_spec(spec, self.limits)
-        dataset = bounded.get("dataset")
-        if not isinstance(dataset, Mapping) or "path" not in dataset:
-            raise AssistantToolError("Experiment dataset.path is required.")
-        dataset_path = _resolve_within(dataset["path"], self.data_roots)
-        normalized = dict(bounded)
-        normalized["dataset"] = {**dataset, "path": str(dataset_path)}
+        normalized = _normalize_dataset_paths(bounded, self.data_roots)
         validate_run_spec(normalized)
+        dataset_path = Path(normalized["dataset"]["path"])
         state = _run_experiment(normalized, base_directory=dataset_path.parent)
         return {"summary": _state_summary(state), "tool_version": __version__}
 

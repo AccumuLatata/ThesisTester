@@ -40,6 +40,17 @@ def test_validate_experiment_rejects_paths_outside_allowed_root(tmp_path):
         tools.validate_experiment(_spec(tmp_path / "outside.csv"))
 
 
+def test_validate_experiment_rejects_subtimeframe_outside_allowed_root(tmp_path):
+    root = tmp_path / "allowed"
+    root.mkdir()
+    tools = AssistantTools(data_roots=(root,))
+    spec = _spec(root / "bars.csv")
+    spec["dataset"]["subtimeframe_path"] = str(tmp_path / "outside.csv")
+
+    with pytest.raises(AssistantToolError, match="outside"):
+        tools.validate_experiment(spec)
+
+
 def test_validate_experiment_applies_grid_and_validation_limits(tmp_path):
     root = tmp_path / "allowed"
     root.mkdir()
@@ -49,6 +60,24 @@ def test_validate_experiment_applies_grid_and_validation_limits(tmp_path):
     spec = _spec(root / "bars.csv")
     spec["grid"] = {"stop_loss_ticks_values": [1, 2, 3], "take_profit_ticks_values": [1, 2]}
 
+    with pytest.raises(AssistantToolError, match="Grid exceeds"):
+        tools.validate_experiment(spec)
+
+    spec["grid"] = {
+        "stop_loss_ticks_values": [1],
+        "take_profit_ticks_values": [1],
+        "breakeven_after_r_values": [None, 1],
+        "trailing_after_r_values": [None, 1],
+        "trailing_distance_ticks_values": [None, 4],
+    }
+    with pytest.raises(AssistantToolError, match="Grid exceeds"):
+        tools.validate_experiment(spec)
+
+    spec["grid"] = {
+        "stop_loss_ticks_values": [1],
+        "take_profit_ticks_values": [1],
+        "max_grid_cells": 5,
+    }
     with pytest.raises(AssistantToolError, match="Grid exceeds"):
         tools.validate_experiment(spec)
 
