@@ -25,7 +25,10 @@ from thesistester.data.rolls import (
 )
 from thesistester.data.resample import SUPPORTED_TIMEFRAMES, resample_ohlcv
 from thesistester.data.sessions import tag_session
-from thesistester.engine.intrabar import prepare_subtimeframe_conservative_context
+from thesistester.engine.intrabar import (
+    inspect_subtimeframe_compatibility,
+    prepare_subtimeframe_conservative_context,
+)
 from thesistester.app_state import (
     ACTIVE_SAVED_DATASET_KEY,
     BOOTSTRAP_MESSAGE_KEY,
@@ -56,6 +59,8 @@ RAW_CAPTURE_PROFILES = frozenset(
 SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY = "_subtimeframe_upload_signature"
 SUBTIMEFRAME_UPLOADER_NONCE_KEY = "_subtimeframe_uploader_nonce"
 SUBTIMEFRAME_FALLBACK_BARS_KEY = "subtimeframe_fallback_parent_bars"
+SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY = "_subtimeframe_compatibility_report"
+SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY = "_subtimeframe_compatibility_signature"
 FATAL_OHLCV_CODES = frozenset(
     {
         "duplicate_timestamps",
@@ -65,6 +70,14 @@ FATAL_OHLCV_CODES = frozenset(
         "negative_volume",
     }
 )
+
+
+class SubtimeframeCompatibilityError(ValueError):
+    """Lower CSV cannot be replayed; retain its read-only diagnostic report."""
+
+    def __init__(self, message: str, report: pd.DataFrame) -> None:
+        super().__init__(message)
+        self.report = report
 
 
 def _default_source_timezone(format_profile: str, exchange_timezone: str) -> str:
@@ -116,6 +129,8 @@ def _clear_dataset_dependent_state() -> None:
         "subtimeframe_data",
         "subtimeframe_interval",
         SUBTIMEFRAME_FALLBACK_BARS_KEY,
+        SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY,
+        SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY,
         SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY,
         SUBTIMEFRAME_UPLOADER_NONCE_KEY,
         "raw_data",
@@ -265,11 +280,19 @@ def _load_subtimeframe_upload(
         raise ValueError("Lower-timeframe validation failed: " + "; ".join(fatal_messages))
 
     subtimeframe_df = tag_session(raw_df, instrument)
-    context = prepare_subtimeframe_conservative_context(
-        parent_df,
-        subtimeframe_df,
-        tick_size=INSTRUMENTS[instrument].tick_size,
-    )
+    try:
+        context = prepare_subtimeframe_conservative_context(
+            parent_df,
+            subtimeframe_df,
+            tick_size=INSTRUMENTS[instrument].tick_size,
+        )
+    except ValueError as exc:
+        compatibility = inspect_subtimeframe_compatibility(
+            parent_df,
+            subtimeframe_df,
+            tick_size=INSTRUMENTS[instrument].tick_size,
+        )
+        raise SubtimeframeCompatibilityError(str(exc), compatibility.to_frame()) from exc
     return (
         subtimeframe_df,
         format_interval(context.sub_interval),
@@ -289,6 +312,8 @@ def _set_subtimeframe_state(
     st.session_state["subtimeframe_interval"] = interval
     st.session_state[SUBTIMEFRAME_FALLBACK_BARS_KEY] = fallback_bars
     st.session_state[SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY] = upload_signature
+    st.session_state.pop(SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY, None)
+    st.session_state.pop(SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY, None)
     _clear_execution_dependent_state()
 
 
@@ -297,6 +322,8 @@ def _clear_subtimeframe_state() -> None:
     st.session_state.pop("subtimeframe_data", None)
     st.session_state.pop("subtimeframe_interval", None)
     st.session_state.pop(SUBTIMEFRAME_FALLBACK_BARS_KEY, None)
+    st.session_state.pop(SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY, None)
+    st.session_state.pop(SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY, None)
     st.session_state.pop(SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY, None)
     st.session_state[SUBTIMEFRAME_UPLOADER_NONCE_KEY] = (
         int(st.session_state.get(SUBTIMEFRAME_UPLOADER_NONCE_KEY, 0)) + 1
@@ -330,8 +357,25 @@ def _render_subtimeframe_upload(
             key=f"subtimeframe_csv_upload_{uploader_nonce}",
         )
         upload_signature = _upload_signature(uploaded_file) if uploaded_file is not None else None
-        if uploaded_file is not None and upload_signature != st.session_state.get(
-            SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY
+        compatibility_report = st.session_state.get(SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY)
+        if isinstance(
+            compatibility_report, pd.DataFrame
+        ) and upload_signature == st.session_state.get(SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY):
+            st.warning(
+                f"R12 compatibility report: {len(compatibility_report):,} parent bars "
+                "cannot be replayed from this lower CSV."
+            )
+            st.dataframe(compatibility_report, width="stretch")
+            st.download_button(
+                "Download R12 compatibility report CSV",
+                data=compatibility_report.to_csv(index=False).encode("utf-8"),
+                file_name="r12_compatibility_report.csv",
+                mime="text/csv",
+            )
+        if (
+            uploaded_file is not None
+            and upload_signature != st.session_state.get(SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY)
+            and upload_signature != st.session_state.get(SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY)
         ):
             try:
                 subtimeframe_df, interval, fallback_bars = _load_subtimeframe_upload(
@@ -359,6 +403,11 @@ def _render_subtimeframe_upload(
                         f"R12 data ready: {len(subtimeframe_df):,} {interval} bars "
                         f"reconcile to the main chart."
                     )
+            except SubtimeframeCompatibilityError as exc:
+                st.session_state[SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY] = exc.report
+                st.session_state[SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY] = upload_signature
+                st.error(str(exc))
+                st.rerun()
             except (DataValidationError, ValueError) as exc:
                 st.error(str(exc))
 

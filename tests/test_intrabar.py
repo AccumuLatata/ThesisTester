@@ -5,6 +5,7 @@ import pytest
 
 from thesistester.analytics.grid import run_sl_tp_grid
 from thesistester.engine.backtest import SimulationResult, simulate_trades
+from thesistester.engine.intrabar import inspect_subtimeframe_compatibility
 from thesistester.engine.intrabar import prepare_subtimeframe_conservative_context
 
 TZ = "America/New_York"
@@ -258,6 +259,31 @@ def test_subtimeframe_requires_complete_reconciling_finer_data():
             intrabar_model="subtimeframe",
             subtimeframe_data=_subtimeframe_data().iloc[:-1],
         )
+
+
+def test_subtimeframe_compatibility_report_scans_missing_and_ohlc_mismatch_bars():
+    parent = _parent_bar(high=104.5, low=97.0)
+    incomplete = _subtimeframe_data().drop(index=1).reset_index(drop=True)
+    report = inspect_subtimeframe_compatibility(parent, incomplete, tick_size=1.0)
+
+    assert report.compatible_parent_count == 1
+    assert report.to_frame().to_dict("records") == [
+        {
+            "bar_index": 0,
+            "timestamp": "2026-01-05 09:30:00-05:00",
+            "issue_code": "incomplete_coverage",
+            "detail": "expected 5, observed 4",
+            "expected_sub_bars": 5,
+            "observed_sub_bars": 4,
+            "mismatch_fields": "",
+        }
+    ]
+
+    mismatch = _subtimeframe_data()
+    mismatch.loc[5, "high"] = 105.0
+    mismatch_report = inspect_subtimeframe_compatibility(parent, mismatch, tick_size=1.0)
+    assert mismatch_report.to_frame().iloc[0]["issue_code"] == "ohlc_mismatch"
+    assert mismatch_report.to_frame().iloc[0]["mismatch_fields"] == "high"
 
 
 def test_conservative_subtimeframe_uses_sl_first_only_for_unavailable_parent_bar():
