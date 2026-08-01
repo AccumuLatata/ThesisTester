@@ -315,6 +315,7 @@ def test_failed_subtimeframe_upload_clears_stale_loaded_data(monkeypatch):
         "subtimeframe_interval": "15s",
         "subtimeframe_fallback_parent_bars": [{"bar_index": 1}],
         "_subtimeframe_upload_signature": "old-upload",
+        "_subtimeframe_diagnostic_data": "diagnostic-lower",
         "trades": "stale-trades",
         "grid_results": "stale-grid",
     }
@@ -328,6 +329,7 @@ def test_failed_subtimeframe_upload_clears_stale_loaded_data(monkeypatch):
         "subtimeframe_interval",
         "subtimeframe_fallback_parent_bars",
         "_subtimeframe_upload_signature",
+        "_subtimeframe_diagnostic_data",
         "trades",
         "grid_results",
     ):
