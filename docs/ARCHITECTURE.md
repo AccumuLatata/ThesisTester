@@ -39,6 +39,23 @@ and sends its bundle-ready mapping to `build_research_bundle()`.
 parallelism inside a single engine pipeline. Results are collected in YAML
 order and summarized in `results_index.csv`.
 
+## AI Research Assistant contract boundary (AIA-0)
+
+`thesistester.assistant` is a Streamlit-free metadata boundary for the proposed
+single-user AI Research Assistant. It currently defines versioned, JSON-safe
+contracts and a feature-parity registry only; it does not execute research,
+persist assistant state, import Streamlit, or alter engine/analytics behavior.
+
+The registry records every user-visible product area as `executable`,
+`inspect_only`, `import_export`, or `unsupported`, with its public symbol,
+confirmation requirement, resource envelope, and any documented limitation.
+Future assistant tools must validate an `AssistantRequest` against this registry
+before execution and may only call declared public headless interfaces.
+Undeclared and unsupported capability requests fail closed.
+
+This boundary adds no `st.session_state` keys. A future assistant page must use
+additive, namespaced keys and document them here in the same PR.
+
 Research ZIP bytes include archive timestamps and are not deterministic.
 `canonical_bundle_hash()` projects JSON with sorted keys (excluding
 `manifest.created_at`) and parquet members through the repository DataFrame
