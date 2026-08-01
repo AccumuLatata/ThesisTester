@@ -6,6 +6,7 @@ import sys
 import types
 
 import pandas as pd
+import pytest
 
 
 def _parent_and_subtimeframe_frames() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -195,6 +196,27 @@ def test_load_subtimeframe_upload_accepts_incomplete_bars_for_conservative_model
     ]
 
 
+def test_load_subtimeframe_upload_returns_duplicate_diagnostic(tmp_path):
+    data_page = _import_data_page_module({})
+    parent, subtimeframe = _parent_and_subtimeframe_frames()
+    path = tmp_path / "duplicate_subtimeframe.csv"
+    pd.concat([subtimeframe, subtimeframe.iloc[[0]]], ignore_index=True).to_csv(path, index=False)
+
+    with pytest.raises(data_page.SubtimeframeDuplicateTimestampError) as exc_info:
+        data_page._load_subtimeframe_upload(
+            path,
+            parent_df=parent,
+            instrument="ES",
+            source_timezone="America/New_York",
+            exchange_timezone="America/New_York",
+            format_profile="canonical",
+        )
+
+    report = exc_info.value.report
+    assert len(report) == 2
+    assert report["exact_duplicate_group"].tolist() == [True, True]
+
+
 def test_load_subtimeframe_upload_rejects_parent_ohlc_mismatch(tmp_path):
     data_page = _import_data_page_module({})
     parent, subtimeframe = _parent_and_subtimeframe_frames()
@@ -259,3 +281,28 @@ def test_remove_subtimeframe_resets_uploader_for_same_file_reupload(monkeypatch)
     )
 
     assert session_state["subtimeframe_data"] is subtimeframe
+
+
+def test_failed_subtimeframe_upload_clears_stale_loaded_data(monkeypatch):
+    session_state = {
+        "subtimeframe_data": "stale-data",
+        "subtimeframe_interval": "15s",
+        "subtimeframe_fallback_parent_bars": [{"bar_index": 1}],
+        "_subtimeframe_upload_signature": "old-upload",
+        "trades": "stale-trades",
+        "grid_results": "stale-grid",
+    }
+    data_page = _import_data_page_module(session_state)
+    monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
+
+    data_page._clear_loaded_subtimeframe_after_failed_upload()
+
+    for key in (
+        "subtimeframe_data",
+        "subtimeframe_interval",
+        "subtimeframe_fallback_parent_bars",
+        "_subtimeframe_upload_signature",
+        "trades",
+        "grid_results",
+    ):
+        assert key not in session_state

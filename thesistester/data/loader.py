@@ -494,3 +494,36 @@ def validate_ohlcv(df: pd.DataFrame) -> ValidationReport:
                 )
 
     return ValidationReport(issues=issues, inferred_interval=inferred_interval)
+
+
+def duplicate_timestamp_report(df: pd.DataFrame) -> pd.DataFrame:
+    """Return duplicate bars and classify duplicate groups as exact or conflicting."""
+    columns = [
+        "timestamp",
+        "duplicate_group_size",
+        "duplicate_row_number",
+        "exact_duplicate_group",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+    ]
+    duplicate_rows = df.loc[df["timestamp"].duplicated(keep=False)].copy()
+    if duplicate_rows.empty:
+        return pd.DataFrame(columns=columns)
+
+    ohlcv = ["open", "high", "low", "close", "volume"]
+    duplicate_rows["duplicate_group_size"] = duplicate_rows.groupby("timestamp")[
+        "timestamp"
+    ].transform("size")
+    duplicate_rows["duplicate_row_number"] = duplicate_rows.groupby("timestamp").cumcount() + 1
+    exact_groups = duplicate_rows.groupby("timestamp")[ohlcv].apply(
+        lambda group: group.drop_duplicates().shape[0] == 1
+    )
+    duplicate_rows["exact_duplicate_group"] = duplicate_rows["timestamp"].map(exact_groups)
+    return (
+        duplicate_rows[columns]
+        .sort_values(["timestamp", "duplicate_row_number"], kind="mergesort")
+        .reset_index(drop=True)
+    )

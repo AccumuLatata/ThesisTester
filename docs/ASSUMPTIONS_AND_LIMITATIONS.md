@@ -53,6 +53,9 @@ This engine is for **research screening**, not proof of a durable edge.
   `Time left`/OHLCV bars to canonical data. Parser success does not establish
   that separately exported 1m and 15s files reconcile; R12 remains the
   authority for that check.
+- Lower-upload duplicate timestamps remain fail-closed. The Data page can
+  export a read-only duplicate report that distinguishes exact duplicate rows
+  from conflicting same-timestamp bars; it never deduplicates automatically.
 - MAE/MFE remains based on complete parent-bar extremes for compatibility. It
   can therefore include an extreme that occurred after the modeled exit within
   the same parent bar.
