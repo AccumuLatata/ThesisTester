@@ -71,6 +71,8 @@ upsampling, offset cadence, or silent fallback is permitted.
 complete reconciled groups use observed replay, while incomplete or misaligned
 groups use the existing pessimistic SL-first rule and are exported in
 diagnostics. Invalid OHLC and complete-group OHLC mismatches remain fatal.
+The Data page can emit a read-only full-series compatibility CSV when such a
+fatal lower-data mismatch occurs; it never mutates either uploaded dataset.
 
 Grid and walk-forward runs hold one intrabar model fixed; the model is a market
 path assumption, not an optimization dimension. R18 experiment schema version

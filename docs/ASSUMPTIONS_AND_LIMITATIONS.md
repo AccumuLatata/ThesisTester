@@ -46,6 +46,9 @@ This engine is for **research screening**, not proof of a durable edge.
   (and any exported research bundle), not alongside a locally saved primary
   dataset. Re-upload it after restoring a local dataset, or use the R18
   `dataset.subtimeframe_path` contract for a reproducible headless run.
+- When a lower upload cannot be replayed, the Data-page compatibility report is
+  diagnostic only: it identifies every incompatible parent bar but never
+  patches, drops, or otherwise alters either source dataset.
 - MAE/MFE remains based on complete parent-bar extremes for compatibility. It
   can therefore include an extreme that occurred after the modeled exit within
   the same parent bar.

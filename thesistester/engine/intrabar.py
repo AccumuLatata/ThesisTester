@@ -56,6 +56,41 @@ class SubtimeframeContext:
         ]
 
 
+@dataclass(frozen=True)
+class SubtimeframeCompatibilityReport:
+    """Read-only full-series lower-timeframe compatibility result."""
+
+    parent_interval: pd.Timedelta
+    sub_interval: pd.Timedelta
+    parent_bar_count: int
+    compatible_parent_count: int
+    issues: tuple[dict[str, object], ...]
+
+    @property
+    def is_strictly_compatible(self) -> bool:
+        return not self.issues
+
+    @property
+    def conservative_eligible(self) -> bool:
+        return all(
+            issue["issue_code"] in {"incomplete_coverage", "timestamp_misalignment"}
+            for issue in self.issues
+        )
+
+    def to_frame(self) -> pd.DataFrame:
+        """Return a stable, downloadable issue table."""
+        columns = [
+            "bar_index",
+            "timestamp",
+            "issue_code",
+            "detail",
+            "expected_sub_bars",
+            "observed_sub_bars",
+            "mismatch_fields",
+        ]
+        return pd.DataFrame(self.issues, columns=columns)
+
+
 def validate_intrabar_model(model: str) -> str:
     """Return a supported model or raise a clear configuration error."""
     if model not in VALID_INTRABAR_MODELS:
@@ -151,6 +186,117 @@ def _ohlc_validation_masks(frame: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     )
     invalid_range |= numeric["high"] < numeric["low"]
     return finite, ~invalid_range
+
+
+def inspect_subtimeframe_compatibility(
+    parent: pd.DataFrame,
+    subtimeframe: pd.DataFrame | None,
+    *,
+    tick_size: float,
+) -> SubtimeframeCompatibilityReport:
+    """Scan every parent bar without changing R12 execution semantics."""
+    if subtimeframe is None:
+        raise ValueError("subtimeframe compatibility requires subtimeframe_data")
+    for label, frame in (("parent", parent), ("subtimeframe", subtimeframe)):
+        missing = [column for column in _REQUIRED_OHLC if column not in frame.columns]
+        if missing:
+            raise ValueError(f"{label} data missing required columns: {missing}")
+        timestamps = pd.to_datetime(frame["timestamp"], errors="coerce", utc=True)
+        if timestamps.isna().any():
+            raise ValueError(f"{label} data contains invalid timestamps")
+        if timestamps.duplicated().any():
+            raise ValueError(f"{label} data contains duplicate timestamps")
+        if not timestamps.is_monotonic_increasing:
+            raise ValueError(f"{label} data timestamps must be sorted")
+
+    parent_interval = infer_base_interval(parent["timestamp"])
+    sub_interval = infer_base_interval(subtimeframe["timestamp"])
+    if parent_interval is None or sub_interval is None:
+        raise ValueError("parent and subtimeframe data require at least two timestamp intervals")
+    if sub_interval <= pd.Timedelta(0) or sub_interval >= parent_interval:
+        raise ValueError("subtimeframe interval must be strictly finer than parent interval")
+    expected_count = int(parent_interval / sub_interval)
+    if parent_interval / sub_interval != expected_count:
+        raise ValueError("parent interval must be an exact multiple of subtimeframe interval")
+
+    parent_reset = parent.reset_index(drop=True)
+    sub_reset = subtimeframe.reset_index(drop=True)
+    parent_utc = pd.to_datetime(parent_reset["timestamp"], utc=True)
+    sub_utc = pd.to_datetime(sub_reset["timestamp"], utc=True)
+    parent_finite, parent_invariant = _ohlc_validation_masks(parent_reset)
+    sub_finite, sub_invariant = _ohlc_validation_masks(sub_reset)
+    tolerance = float(tick_size) * 1e-6
+    issues: list[dict[str, object]] = []
+    for index, start in enumerate(parent_utc):
+        end = start + parent_interval
+        group_start = sub_utc.searchsorted(start, side="left")
+        group_end = sub_utc.searchsorted(end, side="left")
+        group = sub_reset.iloc[group_start:group_end]
+        issue: dict[str, object] = {
+            "bar_index": index,
+            "timestamp": str(parent_reset["timestamp"].iloc[index]),
+            "expected_sub_bars": expected_count,
+            "observed_sub_bars": len(group),
+            "mismatch_fields": "",
+        }
+        if len(group) != expected_count:
+            issue.update(
+                issue_code="incomplete_coverage",
+                detail=f"expected {expected_count}, observed {len(group)}",
+            )
+        else:
+            actual = pd.to_datetime(group["timestamp"], utc=True).tolist()
+            expected = [start + offset * sub_interval for offset in range(expected_count)]
+            if actual != expected:
+                issue.update(
+                    issue_code="timestamp_misalignment",
+                    detail="lower timestamps are not exactly aligned",
+                )
+            elif not bool(parent_finite.iloc[index]):
+                issue.update(issue_code="parent_nonfinite_ohlc", detail="parent OHLC is non-finite")
+            elif not bool(parent_invariant.iloc[index]):
+                issue.update(
+                    issue_code="parent_invalid_ohlc", detail="parent OHLC invariants are invalid"
+                )
+            elif not bool(sub_finite.iloc[group_start:group_end].all()):
+                issue.update(
+                    issue_code="subtimeframe_nonfinite_ohlc",
+                    detail="lower OHLC is non-finite",
+                )
+            elif not bool(sub_invariant.iloc[group_start:group_end].all()):
+                issue.update(
+                    issue_code="subtimeframe_invalid_ohlc",
+                    detail="lower OHLC invariants are invalid",
+                )
+            else:
+                parent_row = parent_reset.iloc[index]
+                comparisons = {
+                    "open": (float(group["open"].iloc[0]), float(parent_row["open"])),
+                    "high": (float(group["high"].max()), float(parent_row["high"])),
+                    "low": (float(group["low"].min()), float(parent_row["low"])),
+                    "close": (float(group["close"].iloc[-1]), float(parent_row["close"])),
+                }
+                mismatches = [
+                    key
+                    for key, (actual_value, expected_value) in comparisons.items()
+                    if abs(actual_value - expected_value) > tolerance
+                ]
+                if mismatches:
+                    issue.update(
+                        issue_code="ohlc_mismatch",
+                        detail="lower aggregate does not reconcile to parent OHLC",
+                        mismatch_fields=",".join(mismatches),
+                    )
+                else:
+                    continue
+        issues.append(issue)
+    return SubtimeframeCompatibilityReport(
+        parent_interval,
+        sub_interval,
+        len(parent_reset),
+        len(parent_reset) - len(issues),
+        tuple(issues),
+    )
 
 
 def resolve_ohlc_bar(
