@@ -379,6 +379,8 @@ frames and installs `levels`, `session_levels`, settings, and the data fingerpri
 and records `levels_calculation_status` with the dataset id, settings hash, input row count,
 duration, exception type/message, and traceback for in-page diagnosis. This status is UI-only:
 it does not alter level-engine inputs, outputs, persistence schemas, or saved-level hashes.
+Loading a saved-level snapshot clears this transient status so its diagnostics cannot be
+misrepresented as the result of the loaded snapshot.
 
 For datasets with at least 3,000 bars and one or more rolling POC windows enabled, the page
 shows a non-blocking synchronous-compute warning before calculation. The threshold is an

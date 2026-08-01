@@ -355,6 +355,7 @@ def _load_saved_levels_into_session(dataset_id: str, settings_hash: str) -> bool
     st.session_state["session_levels"] = session_levels
     st.session_state["levels_settings"] = loaded_meta.get("levels_settings")
     st.session_state["levels_data_fingerprint"] = loaded_meta.get("levels_data_fingerprint")
+    st.session_state.pop(_LEVELS_CALCULATION_STATUS_KEY, None)
     _queue_levels_widget_sync(loaded_meta.get("levels_settings"))
     set_active_levels_hash(dataset_id, settings_hash)
     return True

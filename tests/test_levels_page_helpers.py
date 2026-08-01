@@ -59,6 +59,7 @@ def _import_levels_helpers():
 
     return (
         stub,
+        mod,
         mod._normalize_levels_settings,
         mod._sync_levels_widget_state,
         mod._calculate_levels_transaction,
@@ -73,6 +74,7 @@ def _import_levels_helpers():
 
 (
     _st_stub,
+    _levels_page,
     _normalize_levels_settings,
     _sync_levels_widget_state,
     _calculate_levels_transaction,
@@ -193,3 +195,34 @@ def test_calculation_transaction_preserves_prior_results_on_failure():
     assert status["error_type"] == "MemoryError"
     assert status["error_message"] == "allocation failed"
     assert "MemoryError: allocation failed" in status["traceback"]
+
+
+def test_loading_saved_levels_clears_stale_calculation_status(monkeypatch):
+    levels = pd.DataFrame({"level": [1.0]})
+    session_levels = pd.DataFrame({"session_level": [1.0]})
+    _st_stub.session_state.clear()
+    _st_stub.session_state[_LEVELS_CALCULATION_STATUS_KEY] = {
+        "state": "failed",
+        "error_message": "stale failure",
+    }
+    monkeypatch.setattr(
+        _levels_page,
+        "load_levels",
+        lambda _dataset_id, _settings_hash: (
+            levels,
+            session_levels,
+            {
+                "levels_settings": {"opening_range_minutes": 30},
+                "levels_data_fingerprint": {"rows": 1},
+            },
+        ),
+    )
+    monkeypatch.setattr(_levels_page, "_queue_levels_widget_sync", lambda _settings: None)
+    monkeypatch.setattr(_levels_page, "set_active_levels_hash", lambda *_args: None)
+
+    loaded = _levels_page._load_saved_levels_into_session("dataset-1", "settings-1")
+
+    assert loaded is True
+    assert _st_stub.session_state["levels"] is levels
+    assert _st_stub.session_state["session_levels"] is session_levels
+    assert _LEVELS_CALCULATION_STATUS_KEY not in _st_stub.session_state
