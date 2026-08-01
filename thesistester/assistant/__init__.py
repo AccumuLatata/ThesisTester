@@ -28,12 +28,15 @@ from thesistester.assistant.repository import (
     SpecVersion,
     Thesis,
 )
+from thesistester.assistant.tools import AssistantToolError, AssistantTools, ToolLimits
 
 __all__ = [
     "ASSISTANT_CONTRACT_SCHEMA_VERSION",
     "ASSISTANT_REPOSITORY_SCHEMA_VERSION",
     "AssistantContractError",
     "AssistantRepositoryError",
+    "AssistantToolError",
+    "AssistantTools",
     "AssistantRequest",
     "Capability",
     "CapabilityMode",
@@ -49,6 +52,7 @@ __all__ = [
     "ResourceEnvelope",
     "SpecVersion",
     "Thesis",
+    "ToolLimits",
     "UnknownCapabilityError",
     "get_capability",
     "validate_capability_request",
