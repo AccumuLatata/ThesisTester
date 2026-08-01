@@ -332,6 +332,9 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
                     "subtimeframe_fallback_parent_bars": session_state.get(
                         "subtimeframe_fallback_parent_bars"
                     ),
+                    "subtimeframe_duplicate_resolution": session_state.get(
+                        "subtimeframe_duplicate_resolution"
+                    ),
                 }
             )
             included_keys.update({"subtimeframe_data", "subtimeframe_interval"})
@@ -576,6 +579,10 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
                 if "subtimeframe_fallback_parent_bars" in subtimeframe_meta:
                     session_values["subtimeframe_fallback_parent_bars"] = subtimeframe_meta[
                         "subtimeframe_fallback_parent_bars"
+                    ]
+                if "subtimeframe_duplicate_resolution" in subtimeframe_meta:
+                    session_values["subtimeframe_duplicate_resolution"] = subtimeframe_meta[
+                        "subtimeframe_duplicate_resolution"
                     ]
 
         if included.get("levels"):

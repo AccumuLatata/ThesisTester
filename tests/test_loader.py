@@ -9,6 +9,7 @@ from thesistester.data.loader import (
     format_interval,
     infer_base_interval,
     load_ohlcv,
+    resolve_ohlc_identical_duplicates,
     validate_ohlcv,
 )
 from thesistester.data.resample import resample_ohlcv
@@ -51,6 +52,40 @@ def test_duplicate_timestamp_report_distinguishes_exact_and_conflicting_groups()
     assert report["duplicate_group_size"].tolist() == [2, 2, 2, 2]
     assert report["duplicate_row_number"].tolist() == [1, 2, 1, 2]
     assert report["exact_duplicate_group"].tolist() == [True, True, False, False]
+    assert report["ohlc_identical_group"].tolist() == [True, True, False, False]
+    assert report["volume_conflict"].tolist() == [False, False, False, False]
+
+
+def test_resolve_ohlc_identical_duplicate_bars_keeps_lowest_volume_with_audit():
+    frame = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(
+                [
+                    "2026-01-05 09:30:00+00:00",
+                    "2026-01-05 09:30:00+00:00",
+                    "2026-01-05 09:30:15+00:00",
+                ]
+            ),
+            "open": [100.0, 100.0, 101.0],
+            "high": [101.0, 101.0, 102.0],
+            "low": [99.0, 99.0, 100.0],
+            "close": [100.5, 100.5, 101.5],
+            "volume": [30, 10, 12],
+        }
+    )
+
+    resolved, audit = resolve_ohlc_identical_duplicates(frame)
+
+    assert resolved["volume"].tolist() == [10, 12]
+    assert audit == [
+        {
+            "timestamp": "2026-01-05 09:30:00+00:00",
+            "policy": "ohlc_identical_keep_lowest_volume",
+            "duplicate_group_size": 2,
+            "retained_volume": 10.0,
+            "discarded_volumes": [30.0],
+        }
+    ]
 
 
 def test_timestamps_are_tz_aware_and_sorted():

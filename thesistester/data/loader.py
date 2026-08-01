@@ -503,6 +503,8 @@ def duplicate_timestamp_report(df: pd.DataFrame) -> pd.DataFrame:
         "duplicate_group_size",
         "duplicate_row_number",
         "exact_duplicate_group",
+        "ohlc_identical_group",
+        "volume_conflict",
         "open",
         "high",
         "low",
@@ -514,6 +516,7 @@ def duplicate_timestamp_report(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=columns)
 
     ohlcv = ["open", "high", "low", "close", "volume"]
+    ohlc = ["open", "high", "low", "close"]
     duplicate_rows["duplicate_group_size"] = duplicate_rows.groupby("timestamp")[
         "timestamp"
     ].transform("size")
@@ -521,9 +524,55 @@ def duplicate_timestamp_report(df: pd.DataFrame) -> pd.DataFrame:
     exact_groups = duplicate_rows.groupby("timestamp")[ohlcv].apply(
         lambda group: group.drop_duplicates().shape[0] == 1
     )
+    ohlc_identical_groups = duplicate_rows.groupby("timestamp")[ohlc].apply(
+        lambda group: group.drop_duplicates().shape[0] == 1
+    )
     duplicate_rows["exact_duplicate_group"] = duplicate_rows["timestamp"].map(exact_groups)
+    duplicate_rows["ohlc_identical_group"] = duplicate_rows["timestamp"].map(ohlc_identical_groups)
+    duplicate_rows["volume_conflict"] = (
+        duplicate_rows["ohlc_identical_group"] & ~duplicate_rows["exact_duplicate_group"]
+    )
     return (
         duplicate_rows[columns]
         .sort_values(["timestamp", "duplicate_row_number"], kind="mergesort")
         .reset_index(drop=True)
     )
+
+
+def resolve_ohlc_identical_duplicates(
+    df: pd.DataFrame,
+) -> tuple[pd.DataFrame, list[dict[str, object]]]:
+    """Resolve lower-only duplicate bars when every duplicate group shares OHLC."""
+    report = duplicate_timestamp_report(df)
+    if report.empty:
+        return df.copy(), []
+    if not bool(report["ohlc_identical_group"].all()):
+        raise DataValidationError(
+            "Cannot resolve duplicate timestamps with conflicting OHLC values."
+        )
+
+    duplicate_timestamps = set(report["timestamp"])
+    retained_parts: list[pd.DataFrame] = [df.loc[~df["timestamp"].isin(duplicate_timestamps)]]
+    audit: list[dict[str, object]] = []
+    for timestamp, group in df.loc[df["timestamp"].isin(duplicate_timestamps)].groupby(
+        "timestamp", sort=True
+    ):
+        selected = group.sort_values("volume", kind="mergesort").iloc[[0]]
+        retained_parts.append(selected)
+        audit.append(
+            {
+                "timestamp": str(timestamp),
+                "policy": "ohlc_identical_keep_lowest_volume",
+                "duplicate_group_size": int(len(group)),
+                "retained_volume": float(selected["volume"].iloc[0]),
+                "discarded_volumes": [
+                    float(value) for value in group.drop(selected.index)["volume"].tolist()
+                ],
+            }
+        )
+    resolved = (
+        pd.concat(retained_parts, ignore_index=True)
+        .sort_values("timestamp", kind="mergesort")
+        .reset_index(drop=True)
+    )
+    return resolved, audit
