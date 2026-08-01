@@ -649,8 +649,7 @@ class LocalThesisRepository:
         return self._load_thesis(thesis_id)
 
     def list_theses(self, *, include_archived: bool = False) -> tuple[Thesis, ...]:
-        if not self._assert_readable_root():
-            return ()
+        self._assert_readable_root()
         root = self.root / "theses"
         if not root.exists():
             return ()

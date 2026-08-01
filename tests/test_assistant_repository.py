@@ -39,6 +39,14 @@ def test_theses_are_versioned_clonable_and_archivable(repository):
         repository.rename_thesis(thesis.thesis_id, name="stale", expected_revision=1)
 
 
+def test_list_theses_reads_records_when_store_marker_is_absent(repository):
+    thesis = repository.create_thesis(name="Markerless thesis")
+    repository._marker_path.unlink()
+
+    assert repository.get_thesis(thesis.thesis_id) == thesis
+    assert repository.list_theses() == (thesis,)
+
+
 def test_specs_are_immutable_and_runs_require_confirmation(repository):
     thesis = repository.create_thesis(name="dVWAP pullback")
     draft = repository.create_spec_version(
