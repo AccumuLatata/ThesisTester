@@ -331,22 +331,44 @@ def test_subtimeframe_rejects_offset_nonfinite_and_invalid_ohlc_rows():
     malformed_nan.loc[2, "open"] = float("nan")
     malformed_range = _subtimeframe_data()
     malformed_range.loc[2, "high"] = malformed_range.loc[2, "low"] - 1
-    for frame, message in (
-        (offset, "not exactly aligned"),
-        (malformed_nan, "non-finite"),
-        (malformed_range, "invariants"),
-    ):
-        with pytest.raises(ValueError, match=message):
-            simulate_trades(
-                parent,
-                _signal(),
-                tick_size=1.0,
-                point_value=1.0,
-                stop_loss_ticks=2,
-                take_profit_ticks=4,
-                intrabar_model="subtimeframe",
-                subtimeframe_data=frame,
-            )
+    with pytest.raises(ValueError, match="not exactly aligned"):
+        simulate_trades(
+            parent,
+            _signal(),
+            tick_size=1.0,
+            point_value=1.0,
+            stop_loss_ticks=2,
+            take_profit_ticks=4,
+            intrabar_model="subtimeframe",
+            subtimeframe_data=offset,
+        )
+    conservative_offset = simulate_trades(
+        parent,
+        _signal(),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=4,
+        intrabar_model="subtimeframe_conservative",
+        subtimeframe_data=offset,
+        return_result=True,
+    )
+    assert isinstance(conservative_offset, SimulationResult)
+    assert conservative_offset.intrabar_diagnostic["subtimeframe_fallback_parent_count"] == 2
+
+    for frame, message in ((malformed_nan, "non-finite"), (malformed_range, "invariants")):
+        for model in ("subtimeframe", "subtimeframe_conservative"):
+            with pytest.raises(ValueError, match=message):
+                simulate_trades(
+                    parent,
+                    _signal(),
+                    tick_size=1.0,
+                    point_value=1.0,
+                    stop_loss_ticks=2,
+                    take_profit_ticks=4,
+                    intrabar_model=model,
+                    subtimeframe_data=frame,
+                )
 
 
 def test_default_and_explicit_sl_first_preserve_legacy_schema_and_values():

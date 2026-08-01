@@ -248,6 +248,13 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
         "data": base,
         "subtimeframe_data": base.copy(),
         "subtimeframe_interval": "1min",
+        "subtimeframe_fallback_parent_bars": [
+            {
+                "bar_index": 1,
+                "timestamp": "2026-01-05 09:31:00-05:00",
+                "reason": "incomplete coverage: expected 4, observed 3",
+            }
+        ],
         "dataset_id": "dataset-xyz",
         "instrument": "NQ",
         "base_interval": "1min",
@@ -417,6 +424,13 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
     assert restored_state["signal_settings_hash"] == "sig-hash"
     assert restored_state["trade_summary"] == {"trade_count": 1}
     assert restored_state["subtimeframe_interval"] == "1min"
+    assert restored_state["subtimeframe_fallback_parent_bars"] == [
+        {
+            "bar_index": 1,
+            "timestamp": "2026-01-05 09:31:00-05:00",
+            "reason": "incomplete coverage: expected 4, observed 3",
+        }
+    ]
     assert restored_state["backtest_intrabar_policy"]["intrabar_model"] == "subtimeframe"
     assert restored_state["backtest_intrabar_diagnostic"]["same_bar_both_hit_count"] == 1
     assert restored_state["backtest_exit_management_policy"]["breakeven_after_r"] == 1.0
