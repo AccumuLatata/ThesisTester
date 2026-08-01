@@ -7,7 +7,7 @@ trade semantics in `backtest.py`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import pandas as pd
@@ -72,16 +72,34 @@ def resolve_trade_bar(
     serial parity for every supported model.
     """
     bar = bars.at(bar_index)
-    if intrabar_model == "subtimeframe":
-        resolution = resolve_subtimeframe_bar(
-            subtimeframe_context.groups[bar_index],
-            stop_price=stop_price,
-            target_price=target_price,
-            direction=direction,
-            parent_low=bar.low,
-            parent_high=bar.high,
-            entry_price=entry_activation_price,
-        )
+    if intrabar_model in {"subtimeframe", "subtimeframe_conservative"}:
+        sub_bars = subtimeframe_context.groups.get(bar_index)
+        if sub_bars is not None:
+            resolution = resolve_subtimeframe_bar(
+                sub_bars,
+                stop_price=stop_price,
+                target_price=target_price,
+                direction=direction,
+                parent_low=bar.low,
+                parent_high=bar.high,
+                entry_price=entry_activation_price,
+            )
+        else:
+            resolution = replace(
+                resolve_ohlc_bar(
+                    open_price=bar.open,
+                    high=bar.high,
+                    low=bar.low,
+                    close=bar.close,
+                    stop_price=stop_price,
+                    target_price=target_price,
+                    direction=direction,
+                    model="sl_first",
+                    entry_price=entry_activation_price,
+                ),
+                resolution="subtimeframe_conservative_fallback_sl_first",
+                subtimeframe_fallback=True,
+            )
     else:
         resolution = resolve_ohlc_bar(
             open_price=bar.open,

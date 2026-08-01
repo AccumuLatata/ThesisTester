@@ -67,6 +67,10 @@ finer, exactly divide the parent interval, completely cover every parent bar,
 match every expected lower timestamp exactly, contain finite valid OHLC ranges,
 and reconcile first-open/max-high/min-low/last-close. No interpolation,
 upsampling, offset cadence, or silent fallback is permitted.
+`subtimeframe_conservative` is a separate, opt-in mixed-resolution model:
+complete reconciled groups use observed replay, while incomplete or misaligned
+groups use the existing pessimistic SL-first rule and are exported in
+diagnostics. Invalid OHLC and complete-group OHLC mismatches remain fatal.
 
 Grid and walk-forward runs hold one intrabar model fixed; the model is a market
 path assumption, not an optimization dimension. R18 experiment schema version

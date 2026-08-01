@@ -23,6 +23,11 @@ This engine is for **research screening**, not proof of a durable edge.
   every parent bar, and reconciles to parent O/H/L/C. When stop and target occur
   inside the same terminal sub-bar, residual ordering is still unknowable and
   resolves SL-first.
+- `intrabar_model="subtimeframe_conservative"` is explicitly not full observed
+  replay: it uses observed replay only for complete reconciled parent groups
+  and SL-first for missing or misaligned lower groups. Diagnostics identify
+  every fallback parent bar and exit; invalid OHLC and OHLC mismatches still
+  reject the data.
 - For intrabar `3c`/legacy `confirm_3bar` entries, pre-entry movement is
   excluded. If an entry and stop occur in one lower bar, stop is taken
   pessimistically; a target seen only in that entry sub-bar is not credited

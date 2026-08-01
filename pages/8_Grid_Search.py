@@ -124,11 +124,14 @@ with st.sidebar:
             "sl_first": "SL-first (legacy pessimistic)",
             "path_open_proximity": "OHLC open-proximity path",
             "subtimeframe": "Observed lower-timeframe replay",
+            "subtimeframe_conservative": "Observed replay + SL-first fallback",
         }[value],
         help="One fixed market-path assumption is used across every grid cell.",
     )
     subtimeframe_data = st.session_state.get("subtimeframe_data")
-    if intrabar_model == "subtimeframe" and not isinstance(subtimeframe_data, pd.DataFrame):
+    if intrabar_model in {"subtimeframe", "subtimeframe_conservative"} and not isinstance(
+        subtimeframe_data, pd.DataFrame
+    ):
         st.warning(
             "Subtimeframe replay requires strictly finer data. Upload it on the "
             "Data page, load it through a research bundle, or use the R18 API/CLI "

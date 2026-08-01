@@ -143,7 +143,7 @@ def test_load_subtimeframe_upload_accepts_reconciling_canonical_bars(tmp_path):
     path = tmp_path / "subtimeframe.csv"
     subtimeframe.to_csv(path, index=False)
 
-    loaded, interval = data_page._load_subtimeframe_upload(
+    loaded, interval, fallback_bars = data_page._load_subtimeframe_upload(
         path,
         parent_df=parent,
         instrument="ES",
@@ -153,6 +153,31 @@ def test_load_subtimeframe_upload_accepts_reconciling_canonical_bars(tmp_path):
 
     assert interval == "15s"
     assert len(loaded) == len(subtimeframe)
+    assert fallback_bars == []
+
+
+def test_load_subtimeframe_upload_accepts_incomplete_bars_for_conservative_model(tmp_path):
+    data_page = _import_data_page_module({})
+    parent, subtimeframe = _parent_and_subtimeframe_frames()
+    path = tmp_path / "subtimeframe.csv"
+    subtimeframe.drop(index=1).to_csv(path, index=False)
+
+    _, interval, fallback_bars = data_page._load_subtimeframe_upload(
+        path,
+        parent_df=parent,
+        instrument="ES",
+        source_timezone="America/New_York",
+        exchange_timezone="America/New_York",
+    )
+
+    assert interval == "15s"
+    assert fallback_bars == [
+        {
+            "bar_index": 0,
+            "timestamp": "2024-01-02 09:30:00-05:00",
+            "reason": "incomplete coverage: expected 4, observed 3",
+        }
+    ]
 
 
 def test_load_subtimeframe_upload_rejects_parent_ohlc_mismatch(tmp_path):
@@ -193,6 +218,7 @@ def test_remove_subtimeframe_resets_uploader_for_same_file_reupload(monkeypatch)
         subtimeframe,
         interval="15s",
         upload_signature="signature",
+        fallback_bars=[],
     )
 
     assert session_state["subtimeframe_data"] is subtimeframe
@@ -213,6 +239,7 @@ def test_remove_subtimeframe_resets_uploader_for_same_file_reupload(monkeypatch)
         subtimeframe,
         interval="15s",
         upload_signature="signature",
+        fallback_bars=[],
     )
 
     assert session_state["subtimeframe_data"] is subtimeframe

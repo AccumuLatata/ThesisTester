@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 from typing import Literal
 
@@ -10,8 +10,15 @@ import pandas as pd
 
 from thesistester.data.loader import infer_base_interval
 
-IntrabarModel = Literal["sl_first", "path_open_proximity", "subtimeframe"]
-VALID_INTRABAR_MODELS = frozenset({"sl_first", "path_open_proximity", "subtimeframe"})
+IntrabarModel = Literal[
+    "sl_first",
+    "path_open_proximity",
+    "subtimeframe",
+    "subtimeframe_conservative",
+]
+VALID_INTRABAR_MODELS = frozenset(
+    {"sl_first", "path_open_proximity", "subtimeframe", "subtimeframe_conservative"}
+)
 _REQUIRED_OHLC = ("timestamp", "open", "high", "low", "close")
 
 
@@ -25,6 +32,7 @@ class IntrabarResolution:
     ambiguous: bool = False
     proximity_tie: bool = False
     exit_subbar_timestamp: pd.Timestamp | None = None
+    subtimeframe_fallback: bool = False
 
 
 @dataclass(frozen=True)
@@ -34,6 +42,18 @@ class SubtimeframeContext:
     parent_interval: pd.Timedelta
     sub_interval: pd.Timedelta
     groups: dict[int, pd.DataFrame]
+    fallback_reasons: dict[int, str] = field(default_factory=dict)
+
+    def fallback_diagnostics(self, parent: pd.DataFrame) -> list[dict[str, object]]:
+        """Return serializable reasons for parent bars without replayable sub-bars."""
+        return [
+            {
+                "bar_index": index,
+                "timestamp": str(parent["timestamp"].iloc[index]),
+                "reason": reason,
+            }
+            for index, reason in sorted(self.fallback_reasons.items())
+        ]
 
 
 def validate_intrabar_model(model: str) -> str:
@@ -285,6 +305,101 @@ def prepare_subtimeframe_context(
             )
         groups[index] = group.reset_index(drop=True)
     return SubtimeframeContext(parent_interval, sub_interval, groups)
+
+
+def prepare_subtimeframe_conservative_context(
+    parent: pd.DataFrame,
+    subtimeframe: pd.DataFrame | None,
+    *,
+    tick_size: float,
+) -> SubtimeframeContext:
+    """Prepare replayable groups and retain SL-first fallback reasons.
+
+    Unlike :func:`prepare_subtimeframe_context`, incomplete or misaligned
+    lower-bar groups are not replayed. Every replayed group still satisfies the
+    exact strict R12 contract; invalid OHLC or an OHLC mismatch remains fatal.
+    """
+    if subtimeframe is None:
+        raise ValueError("intrabar_model='subtimeframe_conservative' requires subtimeframe_data")
+    for label, frame in (("parent", parent), ("subtimeframe", subtimeframe)):
+        missing = [column for column in _REQUIRED_OHLC if column not in frame.columns]
+        if missing:
+            raise ValueError(f"{label} data missing required columns: {missing}")
+        timestamps = pd.to_datetime(frame["timestamp"], errors="coerce", utc=True)
+        if timestamps.isna().any():
+            raise ValueError(f"{label} data contains invalid timestamps")
+        if timestamps.duplicated().any():
+            raise ValueError(f"{label} data contains duplicate timestamps")
+        if not timestamps.is_monotonic_increasing:
+            raise ValueError(f"{label} data timestamps must be sorted")
+
+    parent_interval = infer_base_interval(parent["timestamp"])
+    sub_interval = infer_base_interval(subtimeframe["timestamp"])
+    if parent_interval is None or sub_interval is None:
+        raise ValueError("parent and subtimeframe data require at least two timestamp intervals")
+    if sub_interval <= pd.Timedelta(0) or sub_interval >= parent_interval:
+        raise ValueError("subtimeframe interval must be strictly finer than parent interval")
+    ratio = parent_interval / sub_interval
+    expected_count = int(ratio)
+    if ratio != expected_count:
+        raise ValueError("parent interval must be an exact multiple of subtimeframe interval")
+
+    parent_reset = parent.reset_index(drop=True)
+    sub_reset = subtimeframe.reset_index(drop=True)
+    parent_utc = pd.to_datetime(parent_reset["timestamp"], utc=True)
+    sub_utc = pd.to_datetime(sub_reset["timestamp"], utc=True)
+    tolerance = float(tick_size) * 1e-6
+    groups: dict[int, pd.DataFrame] = {}
+    fallback_reasons: dict[int, str] = {}
+    for index, start in enumerate(parent_utc):
+        end = start + parent_interval
+        group = sub_reset.loc[(sub_utc >= start) & (sub_utc < end)].copy()
+        if len(group) != expected_count:
+            fallback_reasons[index] = (
+                f"incomplete coverage: expected {expected_count}, observed {len(group)}"
+            )
+            continue
+        actual_timestamps = pd.to_datetime(group["timestamp"], utc=True).tolist()
+        expected_timestamps = [start + offset * sub_interval for offset in range(expected_count)]
+        if actual_timestamps != expected_timestamps:
+            fallback_reasons[index] = "timestamps are not exactly aligned"
+            continue
+        for label, candidate in (("parent", parent_reset.iloc[[index]]), ("subtimeframe", group)):
+            numeric = candidate[["open", "high", "low", "close"]].apply(
+                pd.to_numeric, errors="coerce"
+            )
+            if not numeric.map(lambda value: math.isfinite(float(value))).all().all():
+                raise ValueError(f"{label} OHLC contains non-finite values")
+            invalid_range = (numeric["high"] < numeric[["open", "close"]].max(axis=1)) | (
+                numeric["low"] > numeric[["open", "close"]].min(axis=1)
+            )
+            invalid_range |= numeric["high"] < numeric["low"]
+            if invalid_range.any():
+                raise ValueError(f"{label} OHLC invariants are invalid")
+        parent_row = parent_reset.iloc[index]
+        comparisons = {
+            "open": (float(group["open"].iloc[0]), float(parent_row["open"])),
+            "high": (float(group["high"].max()), float(parent_row["high"])),
+            "low": (float(group["low"].min()), float(parent_row["low"])),
+            "close": (float(group["close"].iloc[-1]), float(parent_row["close"])),
+        }
+        mismatches = [
+            key
+            for key, (actual, expected) in comparisons.items()
+            if abs(actual - expected) > tolerance
+        ]
+        if mismatches:
+            raise ValueError(
+                "subtimeframe OHLC does not reconcile for parent timestamp "
+                f"{parent_reset['timestamp'].iloc[index]}: {mismatches}"
+            )
+        groups[index] = group.reset_index(drop=True)
+    return SubtimeframeContext(
+        parent_interval,
+        sub_interval,
+        groups,
+        fallback_reasons=fallback_reasons,
+    )
 
 
 def resolve_subtimeframe_bar(

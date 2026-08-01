@@ -186,7 +186,9 @@ The **Backtest** and **Grid Search** pages support saving and restoring executio
   profit factor) computed from directional trade subsets. Trades are stored in
   `st.session_state["trades"]`.
   R12 adds opt-in deterministic intrabar resolution: legacy `sl_first`,
-  OHLC `path_open_proximity`, and strict observed `subtimeframe` replay.
+  OHLC `path_open_proximity`, strict observed `subtimeframe` replay, and
+  `subtimeframe_conservative`, which applies SL-first only to audited parent
+  bars without replayable lower data.
   Lower-timeframe replay requires complete OHLC-reconciling finer data; it
   never upsamples or silently falls back.
   R13 adds opt-in break-even and trailing-stop management. Stop adjustments

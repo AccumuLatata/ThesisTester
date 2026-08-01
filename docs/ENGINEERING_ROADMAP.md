@@ -374,6 +374,9 @@ the exact legacy engine path by default.
 - `subtimeframe` walks observed lower bars in order. Coverage must be strictly
   finer, complete, exactly divisible, duplicate-free, and OHLC-reconciling;
   there is no silent fallback.
+- `subtimeframe_conservative` is an explicit, opt-in mixed model for vendor
+  exports with isolated lower-bar gaps: complete reconciled groups replay
+  observed bars, while unavailable groups use SL-first and are audited.
 - Non-legacy trades append model, resolution, parent-both-hit, residual
   ambiguity, and lower exit timestamp fields.
 - `SimulationResult` provides skipped signals and schema-versioned run
