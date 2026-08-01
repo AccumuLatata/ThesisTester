@@ -5,6 +5,7 @@ import pytest
 
 from thesistester.analytics.grid import run_sl_tp_grid
 from thesistester.engine.backtest import SimulationResult, simulate_trades
+from thesistester.engine.intrabar import prepare_subtimeframe_conservative_context
 
 TZ = "America/New_York"
 
@@ -259,6 +260,86 @@ def test_subtimeframe_requires_complete_reconciling_finer_data():
         )
 
 
+def test_conservative_subtimeframe_uses_sl_first_only_for_unavailable_parent_bar():
+    parent = _parent_bar(high=104.5, low=97.0)
+    incomplete = _subtimeframe_data().drop(index=6).reset_index(drop=True)
+
+    with pytest.raises(ValueError, match="incomplete subtimeframe coverage"):
+        simulate_trades(
+            parent,
+            _signal(),
+            tick_size=1.0,
+            point_value=1.0,
+            stop_loss_ticks=2,
+            take_profit_ticks=4,
+            intrabar_model="subtimeframe",
+            subtimeframe_data=incomplete,
+        )
+
+    result = simulate_trades(
+        parent,
+        _signal(),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=4,
+        intrabar_model="subtimeframe_conservative",
+        subtimeframe_data=incomplete,
+        return_result=True,
+    )
+
+    assert isinstance(result, SimulationResult)
+    trade = result.trades.iloc[0]
+    assert trade["exit_reason"] == "SL_subtimeframe_fallback"
+    assert trade["intrabar_resolution"] == "subtimeframe_conservative_fallback_sl_first"
+    assert result.intrabar_diagnostic["subtimeframe_resolved_count"] == 0
+    assert result.intrabar_diagnostic["subtimeframe_fallback_exit_count"] == 1
+    assert result.intrabar_diagnostic["subtimeframe_fallback_parent_count"] == 1
+    assert result.intrabar_diagnostic["subtimeframe_fallback_parent_bars"] == [
+        {
+            "bar_index": 1,
+            "timestamp": "2026-01-05 09:35:00-05:00",
+            "reason": "incomplete coverage: expected 5, observed 4",
+        }
+    ]
+
+
+def test_conservative_subtimeframe_replays_complete_parent_bars():
+    parent = _parent_bar(high=104.5, low=97.0)
+    result = simulate_trades(
+        parent,
+        _signal(),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=4,
+        intrabar_model="subtimeframe_conservative",
+        subtimeframe_data=_subtimeframe_data(),
+        return_result=True,
+    )
+
+    assert isinstance(result, SimulationResult)
+    assert result.trades.iloc[0]["exit_reason"] == "TP_subtimeframe"
+    assert result.intrabar_diagnostic["subtimeframe_resolved_count"] == 1
+    assert result.intrabar_diagnostic["subtimeframe_fallback_parent_count"] == 0
+
+
+def test_conservative_context_skips_ohlc_validation_for_unreplayable_groups():
+    parent = _parent_bar(high=104.5, low=97.0)
+    incomplete = _subtimeframe_data().drop(index=6).reset_index(drop=True)
+    parent.loc[1, "high"] = parent.loc[1, "low"] - 1
+    incomplete.loc[6, "open"] = float("nan")
+
+    context = prepare_subtimeframe_conservative_context(
+        parent,
+        incomplete,
+        tick_size=1.0,
+    )
+
+    assert set(context.groups) == {0}
+    assert context.fallback_reasons == {1: "incomplete coverage: expected 5, observed 4"}
+
+
 def test_subtimeframe_rejects_offset_nonfinite_and_invalid_ohlc_rows():
     parent = _parent_bar(high=104.5, low=97.0)
     offset = _subtimeframe_data()
@@ -267,22 +348,44 @@ def test_subtimeframe_rejects_offset_nonfinite_and_invalid_ohlc_rows():
     malformed_nan.loc[2, "open"] = float("nan")
     malformed_range = _subtimeframe_data()
     malformed_range.loc[2, "high"] = malformed_range.loc[2, "low"] - 1
-    for frame, message in (
-        (offset, "not exactly aligned"),
-        (malformed_nan, "non-finite"),
-        (malformed_range, "invariants"),
-    ):
-        with pytest.raises(ValueError, match=message):
-            simulate_trades(
-                parent,
-                _signal(),
-                tick_size=1.0,
-                point_value=1.0,
-                stop_loss_ticks=2,
-                take_profit_ticks=4,
-                intrabar_model="subtimeframe",
-                subtimeframe_data=frame,
-            )
+    with pytest.raises(ValueError, match="not exactly aligned"):
+        simulate_trades(
+            parent,
+            _signal(),
+            tick_size=1.0,
+            point_value=1.0,
+            stop_loss_ticks=2,
+            take_profit_ticks=4,
+            intrabar_model="subtimeframe",
+            subtimeframe_data=offset,
+        )
+    conservative_offset = simulate_trades(
+        parent,
+        _signal(),
+        tick_size=1.0,
+        point_value=1.0,
+        stop_loss_ticks=2,
+        take_profit_ticks=4,
+        intrabar_model="subtimeframe_conservative",
+        subtimeframe_data=offset,
+        return_result=True,
+    )
+    assert isinstance(conservative_offset, SimulationResult)
+    assert conservative_offset.intrabar_diagnostic["subtimeframe_fallback_parent_count"] == 2
+
+    for frame, message in ((malformed_nan, "non-finite"), (malformed_range, "invariants")):
+        for model in ("subtimeframe", "subtimeframe_conservative"):
+            with pytest.raises(ValueError, match=message):
+                simulate_trades(
+                    parent,
+                    _signal(),
+                    tick_size=1.0,
+                    point_value=1.0,
+                    stop_loss_ticks=2,
+                    take_profit_ticks=4,
+                    intrabar_model=model,
+                    subtimeframe_data=frame,
+                )
 
 
 def test_default_and_explicit_sl_first_preserve_legacy_schema_and_values():
@@ -324,11 +427,18 @@ def test_grid_records_fixed_intrabar_assumption_and_diagnostics():
     assert grid.loc[0, "intrabar_ambiguous_count"] == 0
 
 
-@pytest.mark.parametrize("model", ["sl_first", "path_open_proximity", "subtimeframe"])
+@pytest.mark.parametrize(
+    "model",
+    ["sl_first", "path_open_proximity", "subtimeframe", "subtimeframe_conservative"],
+)
 def test_intrabar_models_are_future_shock_safe(model):
     parent = _parent_bar(high=104.5, low=97.0)
     subtimeframe = _subtimeframe_data()
-    kwargs = {"subtimeframe_data": subtimeframe} if model == "subtimeframe" else {}
+    kwargs = (
+        {"subtimeframe_data": subtimeframe}
+        if model in {"subtimeframe", "subtimeframe_conservative"}
+        else {}
+    )
     before = simulate_trades(
         parent,
         _signal(),
@@ -351,7 +461,7 @@ def test_intrabar_models_are_future_shock_safe(model):
         }
     )
     extended_parent = pd.concat([parent, future_parent], ignore_index=True)
-    if model == "subtimeframe":
+    if model in {"subtimeframe", "subtimeframe_conservative"}:
         future_sub = pd.DataFrame(
             {
                 "timestamp": pd.date_range("2026-01-05 09:40", periods=5, freq="1min", tz=TZ),

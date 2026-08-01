@@ -169,6 +169,10 @@ Agent safety requirements:
 - `subtimeframe` must fail closed on missing, duplicate, unsorted, non-dividing,
   or parent-OHLC-inconsistent lower rows. Never interpolate or silently fall
   back to an OHLC heuristic.
+- `subtimeframe_conservative` is the only permitted partial-data policy: it
+  must preserve strict replay for valid groups, apply SL-first only to recorded
+  incomplete/misaligned groups, and reject invalid OHLC or reconciliation
+  mismatches. Never describe it as full observed replay.
 - Keep one intrabar model fixed across every grid cell and walk-forward fold.
 - For R18 batches, supply observed lower data through
   `dataset.subtimeframe_path` and retain the bundle's policy/diagnostic fields.

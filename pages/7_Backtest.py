@@ -233,14 +233,18 @@ with st.sidebar:
             "sl_first": "SL-first (legacy pessimistic)",
             "path_open_proximity": "OHLC open-proximity path",
             "subtimeframe": "Observed lower-timeframe replay",
+            "subtimeframe_conservative": "Observed replay + SL-first fallback",
         }[value],
         help=(
-            "OHLC path is a deterministic assumption. Subtimeframe requires "
-            "strictly finer data loaded in the current research state."
+            "Observed replay requires strictly finer data. The conservative "
+            "model replays validated lower bars and uses SL-first only where "
+            "lower bars are unavailable."
         ),
     )
     subtimeframe_data = st.session_state.get("subtimeframe_data")
-    if intrabar_model == "subtimeframe" and not isinstance(subtimeframe_data, pd.DataFrame):
+    if intrabar_model in {"subtimeframe", "subtimeframe_conservative"} and not isinstance(
+        subtimeframe_data, pd.DataFrame
+    ):
         st.warning(
             "Subtimeframe replay requires lower-timeframe data. Upload it on the "
             "Data page, load it through a research bundle, or use the R18 API/CLI "

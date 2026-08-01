@@ -58,6 +58,7 @@ _MANAGED_RESEARCH_KEYS = {
     "data",
     "subtimeframe_data",
     "subtimeframe_interval",
+    "subtimeframe_fallback_parent_bars",
     "dataset_id",
     "instrument",
     "base_interval",
@@ -326,7 +327,12 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
         if _is_dataframe(subtimeframe_data):
             files["subtimeframe_data.parquet"] = _to_parquet_bytes(subtimeframe_data)
             files["subtimeframe_meta.json"] = _to_json_bytes(
-                {"subtimeframe_interval": session_state.get("subtimeframe_interval")}
+                {
+                    "subtimeframe_interval": session_state.get("subtimeframe_interval"),
+                    "subtimeframe_fallback_parent_bars": session_state.get(
+                        "subtimeframe_fallback_parent_bars"
+                    ),
+                }
             )
             included_keys.update({"subtimeframe_data", "subtimeframe_interval"})
 
@@ -566,6 +572,10 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
                 if "subtimeframe_interval" in subtimeframe_meta:
                     session_values["subtimeframe_interval"] = subtimeframe_meta[
                         "subtimeframe_interval"
+                    ]
+                if "subtimeframe_fallback_parent_bars" in subtimeframe_meta:
+                    session_values["subtimeframe_fallback_parent_bars"] = subtimeframe_meta[
+                        "subtimeframe_fallback_parent_bars"
                     ]
 
         if included.get("levels"):

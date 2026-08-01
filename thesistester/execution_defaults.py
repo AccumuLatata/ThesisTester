@@ -49,6 +49,7 @@ INTRABAR_MODEL_OPTIONS: tuple[str, ...] = (
     "sl_first",
     "path_open_proximity",
     "subtimeframe",
+    "subtimeframe_conservative",
 )
 
 _TIME_RE = re.compile(r"^\d{2}:\d{2}(:\d{2})?$")

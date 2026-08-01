@@ -893,6 +893,8 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
         f"- Model: {intrabar_policy.get('intrabar_model', 'sl_first') if isinstance(intrabar_policy, Mapping) else 'sl_first'}",
         f"- Same-bar both-hit exits: {intrabar_diagnostic.get('same_bar_both_hit_count', 0) if isinstance(intrabar_diagnostic, Mapping) else 0}",
         f"- Residual ambiguous resolutions: {intrabar_diagnostic.get('ambiguous_resolution_count', 0) if isinstance(intrabar_diagnostic, Mapping) else 0}",
+        f"- Lower-data fallback parent bars: {intrabar_diagnostic.get('subtimeframe_fallback_parent_count', 0) if isinstance(intrabar_diagnostic, Mapping) else 0}",
+        f"- Lower-data fallback exits: {intrabar_diagnostic.get('subtimeframe_fallback_exit_count', 0) if isinstance(intrabar_diagnostic, Mapping) else 0}",
         "- Deterministic OHLC paths are assumptions, not reconstructed market paths.",
         "",
         "### Exit Management",

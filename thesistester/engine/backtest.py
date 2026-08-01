@@ -28,6 +28,7 @@ import pandas as pd
 
 from .intrabar import (
     prepare_subtimeframe_context,
+    prepare_subtimeframe_conservative_context,
     validate_intrabar_model,
 )
 from .sim_core import BarData, resolve_trade_bar
@@ -161,6 +162,8 @@ def _intrabar_diagnostic(
     affected_bars: set[int],
     proximity_tie_count: int,
     subtimeframe_resolved_count: int,
+    subtimeframe_fallback_exit_count: int,
+    subtimeframe_fallback_bars: list[dict[str, object]],
     subtimeframe_interval: pd.Timedelta | None,
 ) -> dict[str, Any]:
     denominator = bracket_exit_count
@@ -177,6 +180,9 @@ def _intrabar_diagnostic(
         "bars_affected": sorted(affected_bars),
         "path_proximity_tie_count": int(proximity_tie_count),
         "subtimeframe_resolved_count": int(subtimeframe_resolved_count),
+        "subtimeframe_fallback_exit_count": int(subtimeframe_fallback_exit_count),
+        "subtimeframe_fallback_parent_bars": subtimeframe_fallback_bars,
+        "subtimeframe_fallback_parent_count": int(len(subtimeframe_fallback_bars)),
         "subtimeframe_interval": (
             str(subtimeframe_interval) if subtimeframe_interval is not None else None
         ),
@@ -480,6 +486,8 @@ def simulate_trades(
                     affected_bars=set(),
                     proximity_tie_count=0,
                     subtimeframe_resolved_count=0,
+                    subtimeframe_fallback_exit_count=0,
+                    subtimeframe_fallback_bars=[],
                     subtimeframe_interval=None,
                 ),
                 exit_management_diagnostic=_exit_management_diagnostic(
@@ -503,15 +511,20 @@ def simulate_trades(
     local_timestamps = _timestamps_in_session_timezone(
         df_reset["timestamp"], session_timezone=session_timezone
     )
-    subtimeframe_context = (
-        prepare_subtimeframe_context(
+    if intrabar_model == "subtimeframe":
+        subtimeframe_context = prepare_subtimeframe_context(
             df_reset,
             subtimeframe_data,
             tick_size=float(tick_size),
         )
-        if intrabar_model == "subtimeframe"
-        else None
-    )
+    elif intrabar_model == "subtimeframe_conservative":
+        subtimeframe_context = prepare_subtimeframe_conservative_context(
+            df_reset,
+            subtimeframe_data,
+            tick_size=float(tick_size),
+        )
+    else:
+        subtimeframe_context = None
 
     sl_pts = float(stop_loss_ticks) * float(tick_size)
     tp_pts = float(take_profit_ticks) * float(tick_size)
@@ -529,6 +542,7 @@ def simulate_trades(
     affected_bars: set[int] = set()
     proximity_tie_count = 0
     subtimeframe_resolved_count = 0
+    subtimeframe_fallback_exit_count = 0
     be_exit_count = 0
     trail_exit_count = 0
     trades_with_exit_mgmt_count = 0
@@ -799,6 +813,11 @@ def simulate_trades(
                     exit_reason = resolution.exit_kind
                 elif intrabar_model == "path_open_proximity":
                     exit_reason = f"{resolution.exit_kind}_intrabar_path"
+                elif (
+                    intrabar_model == "subtimeframe_conservative"
+                    and resolution.subtimeframe_fallback
+                ):
+                    exit_reason = f"{resolution.exit_kind}_subtimeframe_fallback"
                 else:
                     exit_reason = f"{resolution.exit_kind}_subtimeframe"
                 intrabar_resolution = resolution.resolution
@@ -813,8 +832,11 @@ def simulate_trades(
                     ambiguous_count += 1
                 if resolution.proximity_tie:
                     proximity_tie_count += 1
-                if intrabar_model == "subtimeframe":
-                    subtimeframe_resolved_count += 1
+                if intrabar_model in {"subtimeframe", "subtimeframe_conservative"}:
+                    if resolution.subtimeframe_fallback:
+                        subtimeframe_fallback_exit_count += 1
+                    else:
+                        subtimeframe_resolved_count += 1
                 break
             can_update_exit_management = (
                 entry_model == "next_bar_open" and b >= entry_bar_index
@@ -1017,6 +1039,12 @@ def simulate_trades(
                 affected_bars=affected_bars,
                 proximity_tie_count=proximity_tie_count,
                 subtimeframe_resolved_count=subtimeframe_resolved_count,
+                subtimeframe_fallback_exit_count=subtimeframe_fallback_exit_count,
+                subtimeframe_fallback_bars=(
+                    subtimeframe_context.fallback_diagnostics(df_reset)
+                    if subtimeframe_context is not None
+                    else []
+                ),
                 subtimeframe_interval=(
                     subtimeframe_context.sub_interval if subtimeframe_context is not None else None
                 ),

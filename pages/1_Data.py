@@ -25,7 +25,7 @@ from thesistester.data.rolls import (
 )
 from thesistester.data.resample import SUPPORTED_TIMEFRAMES, resample_ohlcv
 from thesistester.data.sessions import tag_session
-from thesistester.engine.intrabar import prepare_subtimeframe_context
+from thesistester.engine.intrabar import prepare_subtimeframe_conservative_context
 from thesistester.app_state import (
     ACTIVE_SAVED_DATASET_KEY,
     BOOTSTRAP_MESSAGE_KEY,
@@ -55,6 +55,7 @@ RAW_CAPTURE_PROFILES = frozenset(
 )
 SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY = "_subtimeframe_upload_signature"
 SUBTIMEFRAME_UPLOADER_NONCE_KEY = "_subtimeframe_uploader_nonce"
+SUBTIMEFRAME_FALLBACK_BARS_KEY = "subtimeframe_fallback_parent_bars"
 FATAL_OHLCV_CODES = frozenset(
     {
         "duplicate_timestamps",
@@ -114,6 +115,7 @@ def _clear_dataset_dependent_state() -> None:
         "levels",
         "subtimeframe_data",
         "subtimeframe_interval",
+        SUBTIMEFRAME_FALLBACK_BARS_KEY,
         SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY,
         SUBTIMEFRAME_UPLOADER_NONCE_KEY,
         "raw_data",
@@ -249,8 +251,8 @@ def _load_subtimeframe_upload(
     instrument: str,
     source_timezone: str | None,
     exchange_timezone: str,
-) -> tuple[pd.DataFrame, str]:
-    """Load canonical lower bars and verify the R12 parent-bar contract."""
+) -> tuple[pd.DataFrame, str, list[dict[str, object]]]:
+    """Load canonical lower bars for strict or conservative R12 replay."""
     raw_df = load_ohlcv(
         uploaded_file,
         source_tz=source_timezone,
@@ -263,12 +265,16 @@ def _load_subtimeframe_upload(
         raise ValueError("Lower-timeframe validation failed: " + "; ".join(fatal_messages))
 
     subtimeframe_df = tag_session(raw_df, instrument)
-    context = prepare_subtimeframe_context(
+    context = prepare_subtimeframe_conservative_context(
         parent_df,
         subtimeframe_df,
         tick_size=INSTRUMENTS[instrument].tick_size,
     )
-    return subtimeframe_df, format_interval(context.sub_interval)
+    return (
+        subtimeframe_df,
+        format_interval(context.sub_interval),
+        context.fallback_diagnostics(parent_df),
+    )
 
 
 def _set_subtimeframe_state(
@@ -276,10 +282,12 @@ def _set_subtimeframe_state(
     *,
     interval: str,
     upload_signature: str,
+    fallback_bars: list[dict[str, object]],
 ) -> None:
     """Store validated R12 data and invalidate dependent execution outputs."""
     st.session_state["subtimeframe_data"] = subtimeframe_df
     st.session_state["subtimeframe_interval"] = interval
+    st.session_state[SUBTIMEFRAME_FALLBACK_BARS_KEY] = fallback_bars
     st.session_state[SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY] = upload_signature
     _clear_execution_dependent_state()
 
@@ -288,6 +296,7 @@ def _clear_subtimeframe_state() -> None:
     """Remove R12 data and reset its uploader while retaining primary data."""
     st.session_state.pop("subtimeframe_data", None)
     st.session_state.pop("subtimeframe_interval", None)
+    st.session_state.pop(SUBTIMEFRAME_FALLBACK_BARS_KEY, None)
     st.session_state.pop(SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY, None)
     st.session_state[SUBTIMEFRAME_UPLOADER_NONCE_KEY] = (
         int(st.session_state.get(SUBTIMEFRAME_UPLOADER_NONCE_KEY, 0)) + 1
@@ -325,7 +334,7 @@ def _render_subtimeframe_upload(
             SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY
         ):
             try:
-                subtimeframe_df, interval = _load_subtimeframe_upload(
+                subtimeframe_df, interval, fallback_bars = _load_subtimeframe_upload(
                     uploaded_file,
                     parent_df=parent_df,
                     instrument=instrument,
@@ -336,11 +345,20 @@ def _render_subtimeframe_upload(
                     subtimeframe_df,
                     interval=interval,
                     upload_signature=upload_signature,
+                    fallback_bars=fallback_bars,
                 )
-                st.success(
-                    f"R12 data ready: {len(subtimeframe_df):,} {interval} bars "
-                    f"reconcile to the main chart."
-                )
+                if fallback_bars:
+                    st.warning(
+                        f"{len(fallback_bars):,} parent bars lack replayable lower data. "
+                        "Strict observed replay will reject this file; "
+                        "select the explicit conservative model to use SL-first "
+                        "fallback only on those bars."
+                    )
+                else:
+                    st.success(
+                        f"R12 data ready: {len(subtimeframe_df):,} {interval} bars "
+                        f"reconcile to the main chart."
+                    )
             except (DataValidationError, ValueError) as exc:
                 st.error(str(exc))
 
@@ -348,6 +366,12 @@ def _render_subtimeframe_upload(
         if isinstance(subtimeframe_df, pd.DataFrame):
             interval = st.session_state.get("subtimeframe_interval", "unknown interval")
             st.info(f"R12 data loaded: {len(subtimeframe_df):,} bars at {interval}.")
+            fallback_bars = st.session_state.get(SUBTIMEFRAME_FALLBACK_BARS_KEY, [])
+            if fallback_bars:
+                st.caption(
+                    f"Conservative R12 fallback is required for {len(fallback_bars):,} "
+                    "parent bars; the strict model remains unavailable."
+                )
             if st.button("Remove lower-timeframe data"):
                 _clear_subtimeframe_state()
                 st.rerun()
