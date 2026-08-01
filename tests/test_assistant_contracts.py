@@ -20,7 +20,9 @@ from thesistester.assistant import (
 
 
 def test_feature_parity_registry_covers_every_product_area():
-    sections = {capability.capability_id.split(".", maxsplit=1)[0] for capability in FEATURE_PARITY_REGISTRY}
+    sections = {
+        capability.capability_id.split(".", maxsplit=1)[0] for capability in FEATURE_PARITY_REGISTRY
+    }
 
     assert sections == {
         "HOME",
@@ -40,8 +42,10 @@ def test_feature_parity_registry_covers_every_product_area():
     assert len({capability.capability_id for capability in FEATURE_PARITY_REGISTRY}) == len(
         FEATURE_PARITY_REGISTRY
     )
-    assert all(capability.to_dict()["schema_version"] == ASSISTANT_CONTRACT_SCHEMA_VERSION
-               for capability in FEATURE_PARITY_REGISTRY)
+    assert all(
+        capability.to_dict()["schema_version"] == ASSISTANT_CONTRACT_SCHEMA_VERSION
+        for capability in FEATURE_PARITY_REGISTRY
+    )
 
 
 def test_registry_declares_current_headless_pipeline_as_executable():

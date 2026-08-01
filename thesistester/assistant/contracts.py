@@ -55,7 +55,9 @@ class ResourceEnvelope:
             ("max_simulations", self.max_simulations),
             ("max_walk_forward_folds", self.max_walk_forward_folds),
         ):
-            if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 1):
+            if value is not None and (
+                not isinstance(value, int) or isinstance(value, bool) or value < 1
+            ):
                 raise AssistantContractError(f"{name} must be a positive integer or None.")
 
     def to_dict(self) -> dict[str, int | None]:
