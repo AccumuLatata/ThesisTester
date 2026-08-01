@@ -151,6 +151,32 @@ def test_subtimeframe_upload_signature_includes_explicit_profile():
     ) != data_page._upload_signature(upload, format_profile="quantower_history_exporter")
 
 
+def test_primary_duplicate_report_is_diagnostic_only_when_validation_detects_duplicates():
+    data_page = _import_data_page_module({})
+    frame = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(["2026-01-05 09:30:00+00:00", "2026-01-05 09:30:00+00:00"]),
+            "open": [100.0, 100.0],
+            "high": [101.0, 101.0],
+            "low": [99.0, 99.0],
+            "close": [100.5, 100.5],
+            "volume": [10, 12],
+        }
+    )
+    duplicate_report = data_page.validate_ohlcv(frame)
+
+    report = data_page._primary_duplicate_report(frame, duplicate_report)
+
+    assert report is not None
+    assert report["volume_conflict"].tolist() == [True, True]
+    assert (
+        data_page._primary_duplicate_report(
+            frame.drop(index=1), data_page.validate_ohlcv(frame.drop(index=1))
+        )
+        is None
+    )
+
+
 def test_load_subtimeframe_upload_accepts_reconciling_canonical_bars(tmp_path):
     data_page = _import_data_page_module({})
     parent, subtimeframe = _parent_and_subtimeframe_frames()

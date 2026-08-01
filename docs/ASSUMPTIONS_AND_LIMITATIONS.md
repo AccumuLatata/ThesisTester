@@ -60,6 +60,9 @@ This engine is for **research screening**, not proof of a durable edge.
   identical OHLC but conflicting volume by retaining the lowest-volume row.
   R12 does not use lower-bar volume for event ordering; every discarded volume
   is retained in research-bundle provenance. Any OHLC conflict still rejects.
+- Primary-data duplicate reports are diagnostic only. Primary bars are never
+  deduplicated automatically because their volume affects VWAP and profile
+  calculations.
 - MAE/MFE remains based on complete parent-bar extremes for compatibility. It
   can therefore include an extreme that occurred after the modeled exit within
   the same parent bar.
