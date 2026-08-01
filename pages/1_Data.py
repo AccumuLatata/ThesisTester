@@ -54,7 +54,7 @@ RAW_CAPTURE_PROFILES = frozenset(
     {"ninjatrader", "databento_trades", "tick_capture", "second_capture"}
 )
 SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY = "_subtimeframe_upload_signature"
-IGNORED_SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY = "_ignored_subtimeframe_upload_signature"
+SUBTIMEFRAME_UPLOADER_NONCE_KEY = "_subtimeframe_uploader_nonce"
 FATAL_OHLCV_CODES = frozenset(
     {
         "duplicate_timestamps",
@@ -115,7 +115,7 @@ def _clear_dataset_dependent_state() -> None:
         "subtimeframe_data",
         "subtimeframe_interval",
         SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY,
-        IGNORED_SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY,
+        SUBTIMEFRAME_UPLOADER_NONCE_KEY,
         "raw_data",
         "raw_interval",
         "format_profile",
@@ -281,19 +281,17 @@ def _set_subtimeframe_state(
     st.session_state["subtimeframe_data"] = subtimeframe_df
     st.session_state["subtimeframe_interval"] = interval
     st.session_state[SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY] = upload_signature
-    st.session_state.pop(IGNORED_SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY, None)
     _clear_execution_dependent_state()
 
 
-def _clear_subtimeframe_state(*, ignored_upload_signature: str | None = None) -> None:
-    """Remove R12 data while retaining the primary research dataset."""
+def _clear_subtimeframe_state() -> None:
+    """Remove R12 data and reset its uploader while retaining primary data."""
     st.session_state.pop("subtimeframe_data", None)
     st.session_state.pop("subtimeframe_interval", None)
     st.session_state.pop(SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY, None)
-    if ignored_upload_signature is None:
-        st.session_state.pop(IGNORED_SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY, None)
-    else:
-        st.session_state[IGNORED_SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY] = ignored_upload_signature
+    st.session_state[SUBTIMEFRAME_UPLOADER_NONCE_KEY] = (
+        int(st.session_state.get(SUBTIMEFRAME_UPLOADER_NONCE_KEY, 0)) + 1
+    )
     _clear_execution_dependent_state()
 
 
@@ -316,16 +314,15 @@ def _render_subtimeframe_upload(
             "They must cover and reconcile exactly to every main-chart bar; "
             "vendor profiles are not applied to this file."
         )
+        uploader_nonce = int(st.session_state.get(SUBTIMEFRAME_UPLOADER_NONCE_KEY, 0))
         uploaded_file = st.file_uploader(
             "Lower-timeframe CSV (canonical OHLCV)",
             type=["csv", "txt"],
-            key="subtimeframe_csv_upload",
+            key=f"subtimeframe_csv_upload_{uploader_nonce}",
         )
         upload_signature = _upload_signature(uploaded_file) if uploaded_file is not None else None
-        if (
-            uploaded_file is not None
-            and upload_signature != st.session_state.get(SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY)
-            and upload_signature != st.session_state.get(IGNORED_SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY)
+        if uploaded_file is not None and upload_signature != st.session_state.get(
+            SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY
         ):
             try:
                 subtimeframe_df, interval = _load_subtimeframe_upload(
@@ -352,7 +349,7 @@ def _render_subtimeframe_upload(
             interval = st.session_state.get("subtimeframe_interval", "unknown interval")
             st.info(f"R12 data loaded: {len(subtimeframe_df):,} bars at {interval}.")
             if st.button("Remove lower-timeframe data"):
-                _clear_subtimeframe_state(ignored_upload_signature=upload_signature)
+                _clear_subtimeframe_state()
                 st.rerun()
 
 

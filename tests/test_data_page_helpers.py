@@ -176,13 +176,14 @@ def test_load_subtimeframe_upload_rejects_parent_ohlc_mismatch(tmp_path):
         raise AssertionError("Expected non-reconciling lower bars to be rejected.")
 
 
-def test_set_and_clear_subtimeframe_state_invalidates_execution_only(monkeypatch):
+def test_remove_subtimeframe_resets_uploader_for_same_file_reupload(monkeypatch):
     session_state = {
         "data": "main-data",
         "levels": "levels",
         "signals": "signals",
         "trades": "stale-trades",
         "grid_results": "stale-grid",
+        "_subtimeframe_uploader_nonce": 4,
     }
     data_page = _import_data_page_module(session_state)
     monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
@@ -206,3 +207,12 @@ def test_set_and_clear_subtimeframe_state_invalidates_execution_only(monkeypatch
 
     assert "subtimeframe_data" not in session_state
     assert "subtimeframe_interval" not in session_state
+    assert session_state[data_page.SUBTIMEFRAME_UPLOADER_NONCE_KEY] == 5
+
+    data_page._set_subtimeframe_state(
+        subtimeframe,
+        interval="15s",
+        upload_signature="signature",
+    )
+
+    assert session_state["subtimeframe_data"] is subtimeframe
