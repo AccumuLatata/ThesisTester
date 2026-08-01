@@ -299,8 +299,15 @@ def load_ohlcv(
             source_tz=source,
             target_tz=target,
         )
+        canonical_input = bars[REQUIRED_COLUMNS].copy()
+        # Explicit profiles already emit tz-aware timestamps. Normalize them to
+        # one UTC representation before the canonical CSV re-entry so a dataset
+        # crossing DST does not serialize mixed -04:00/-05:00 offsets.
+        canonical_input["timestamp"] = pd.to_datetime(
+            canonical_input["timestamp"], utc=True
+        ).astype(str)
         canonical = load_ohlcv(
-            io.StringIO(bars[REQUIRED_COLUMNS].to_csv(index=False)),
+            io.StringIO(canonical_input.to_csv(index=False)),
             source_tz=target,
             target_tz=target,
         )
