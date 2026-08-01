@@ -408,6 +408,8 @@ def _render_subtimeframe_upload(
         if isinstance(duplicate_report, pd.DataFrame) and upload_signature == st.session_state.get(
             SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY
         ):
+            if "subtimeframe_data" in st.session_state:
+                _clear_loaded_subtimeframe_after_failed_upload()
             exact_count = int(duplicate_report["exact_duplicate_group"].sum())
             group_count = int(duplicate_report["timestamp"].nunique())
             st.warning(
