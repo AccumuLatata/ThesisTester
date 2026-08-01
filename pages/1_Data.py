@@ -633,6 +633,21 @@ def _render_dataset_summary(
             st.warning("Validation issues detected:")
             for issue in report.messages():
                 st.write(f"- {issue}")
+            primary_duplicate_report = _primary_duplicate_report(df, report)
+            if primary_duplicate_report is not None:
+                group_count = int(primary_duplicate_report["timestamp"].nunique())
+                st.warning(
+                    f"Primary duplicate report: {group_count:,} duplicate timestamp groups. "
+                    "Primary bars are never deduplicated automatically because their "
+                    "volume can affect VWAP and profile calculations."
+                )
+                st.dataframe(primary_duplicate_report, width="stretch")
+                st.download_button(
+                    "Download primary duplicate report CSV",
+                    data=primary_duplicate_report.to_csv(index=False).encode("utf-8"),
+                    file_name="primary_duplicate_report.csv",
+                    mime="text/csv",
+                )
     elif saved_dataset_loaded:
         st.info("Loaded canonical dataset from local store.")
     else:
@@ -644,6 +659,13 @@ def _render_dataset_summary(
 
     st.subheader("Base timeframe preview")
     st.dataframe(df.head(50), width="stretch")
+
+
+def _primary_duplicate_report(df: pd.DataFrame, report) -> pd.DataFrame | None:
+    """Return a duplicate diagnostic only when primary validation found duplicates."""
+    if report is None or not any(issue.code == "duplicate_timestamps" for issue in report.issues):
+        return None
+    return duplicate_timestamp_report(df)
 
 
 def _render_roll_assumptions(df, *, instrument: str) -> None:
