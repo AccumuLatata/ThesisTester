@@ -142,7 +142,11 @@ class AssistantRequest:
     schema_version: int = ASSISTANT_CONTRACT_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
-        if self.schema_version != ASSISTANT_CONTRACT_SCHEMA_VERSION:
+        if (
+            not isinstance(self.schema_version, int)
+            or isinstance(self.schema_version, bool)
+            or self.schema_version != ASSISTANT_CONTRACT_SCHEMA_VERSION
+        ):
             raise AssistantContractError(
                 f"Unsupported assistant request schema_version: {self.schema_version}."
             )
