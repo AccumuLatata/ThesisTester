@@ -355,6 +355,18 @@ def _clear_subtimeframe_state() -> None:
     _clear_execution_dependent_state()
 
 
+def _clear_loaded_subtimeframe_after_failed_upload() -> None:
+    """Fail closed when a replacement lower upload cannot be parsed safely."""
+    for key in (
+        "subtimeframe_data",
+        "subtimeframe_interval",
+        SUBTIMEFRAME_FALLBACK_BARS_KEY,
+        SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY,
+    ):
+        st.session_state.pop(key, None)
+    _clear_execution_dependent_state()
+
+
 def _upload_signature(uploaded_file, *, format_profile: str) -> str:
     """Return a stable signature for file content and its explicit parser profile."""
     content_hash = hashlib.sha256(uploaded_file.getvalue()).hexdigest()
@@ -459,16 +471,19 @@ def _render_subtimeframe_upload(
                         f"reconcile to the main chart."
                     )
             except SubtimeframeDuplicateTimestampError as exc:
+                _clear_loaded_subtimeframe_after_failed_upload()
                 st.session_state[SUBTIMEFRAME_DUPLICATE_REPORT_KEY] = exc.report
                 st.session_state[SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY] = upload_signature
                 st.error(str(exc))
                 st.rerun()
             except SubtimeframeCompatibilityError as exc:
+                _clear_loaded_subtimeframe_after_failed_upload()
                 st.session_state[SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY] = exc.report
                 st.session_state[SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY] = upload_signature
                 st.error(str(exc))
                 st.rerun()
             except (DataValidationError, ValueError) as exc:
+                _clear_loaded_subtimeframe_after_failed_upload()
                 st.error(str(exc))
 
         subtimeframe_df = st.session_state.get("subtimeframe_data")

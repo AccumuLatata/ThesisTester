@@ -281,3 +281,28 @@ def test_remove_subtimeframe_resets_uploader_for_same_file_reupload(monkeypatch)
     )
 
     assert session_state["subtimeframe_data"] is subtimeframe
+
+
+def test_failed_subtimeframe_upload_clears_stale_loaded_data(monkeypatch):
+    session_state = {
+        "subtimeframe_data": "stale-data",
+        "subtimeframe_interval": "15s",
+        "subtimeframe_fallback_parent_bars": [{"bar_index": 1}],
+        "_subtimeframe_upload_signature": "old-upload",
+        "trades": "stale-trades",
+        "grid_results": "stale-grid",
+    }
+    data_page = _import_data_page_module(session_state)
+    monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
+
+    data_page._clear_loaded_subtimeframe_after_failed_upload()
+
+    for key in (
+        "subtimeframe_data",
+        "subtimeframe_interval",
+        "subtimeframe_fallback_parent_bars",
+        "_subtimeframe_upload_signature",
+        "trades",
+        "grid_results",
+    ):
+        assert key not in session_state
