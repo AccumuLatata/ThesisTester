@@ -71,6 +71,27 @@ def test_quantower_history_exporter_profile_requires_time_left(tmp_path):
         load_ohlcv(path, format_profile="quantower_history_exporter")
 
 
+def test_quantower_history_exporter_profile_handles_dst_offset_change(tmp_path):
+    path = tmp_path / "history_exporter_dst.csv"
+    path.write_text(
+        "Time left;Time right;Open;High;Low;Close;Volume;\n"
+        "2026-03-08 06:59:00.000;2026-03-08 06:59:59.999;100;101;99;100.5;10;\n"
+        "2026-03-08 07:00:00.000;2026-03-08 07:00:59.999;100.5;102;100;101;12;\n"
+    )
+
+    bars = load_ohlcv(
+        path,
+        format_profile="quantower_history_exporter",
+        source_tz="UTC",
+        target_tz="America/New_York",
+    )
+
+    assert bars["timestamp"].astype(str).tolist() == [
+        "2026-03-08 01:59:00-05:00",
+        "2026-03-08 03:00:00-04:00",
+    ]
+
+
 @pytest.mark.parametrize(
     ("contents", "missing_column"),
     [
