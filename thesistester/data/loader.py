@@ -576,3 +576,86 @@ def resolve_ohlc_identical_duplicates(
         .reset_index(drop=True)
     )
     return resolved, audit
+
+
+def primary_duplicate_volume_comparison(
+    primary: pd.DataFrame,
+    lower: pd.DataFrame,
+) -> pd.DataFrame:
+    """Compare duplicated primary volumes to complete lower-bar volume sums."""
+    columns = [
+        "timestamp",
+        "primary_duplicate_group_size",
+        "primary_candidate_volumes",
+        "lower_aggregate_volume",
+        "matching_primary_row_numbers",
+        "comparison_status",
+    ]
+    primary_report = duplicate_timestamp_report(primary)
+    if primary_report.empty:
+        return pd.DataFrame(columns=columns)
+
+    parent_interval = infer_base_interval(primary["timestamp"])
+    lower_interval = infer_base_interval(lower["timestamp"])
+    if parent_interval is None or lower_interval is None or lower_interval >= parent_interval:
+        raise DataValidationError(
+            "Primary/lower volume comparison requires a strictly finer inferred lower interval."
+        )
+    ratio = parent_interval / lower_interval
+    expected_count = int(ratio)
+    if ratio != expected_count:
+        raise DataValidationError(
+            "Primary/lower volume comparison requires an exact interval multiple."
+        )
+
+    lower_sorted = lower.sort_values("timestamp", kind="mergesort").reset_index(drop=True)
+    lower_utc = pd.to_datetime(lower_sorted["timestamp"], utc=True)
+    results: list[dict[str, object]] = []
+    for timestamp, group in primary.loc[primary["timestamp"].duplicated(keep=False)].groupby(
+        "timestamp", sort=True
+    ):
+        candidate_volumes = [float(value) for value in group["volume"].tolist()]
+        row: dict[str, object] = {
+            "timestamp": str(timestamp),
+            "primary_duplicate_group_size": int(len(group)),
+            "primary_candidate_volumes": ",".join(str(value) for value in candidate_volumes),
+            "lower_aggregate_volume": None,
+            "matching_primary_row_numbers": "",
+            "comparison_status": "",
+        }
+        if group[["open", "high", "low", "close"]].drop_duplicates().shape[0] != 1:
+            row["comparison_status"] = "primary_ohlc_conflict"
+            results.append(row)
+            continue
+
+        start = pd.Timestamp(timestamp).tz_convert("UTC")
+        end = start + parent_interval
+        start_index = lower_utc.searchsorted(start, side="left")
+        end_index = lower_utc.searchsorted(end, side="left")
+        lower_group = lower_sorted.iloc[start_index:end_index]
+        expected_timestamps = [start + offset * lower_interval for offset in range(expected_count)]
+        if (
+            len(lower_group) != expected_count
+            or pd.to_datetime(lower_group["timestamp"], utc=True).tolist() != expected_timestamps
+        ):
+            row["comparison_status"] = "lower_group_unavailable"
+            results.append(row)
+            continue
+
+        lower_volume = float(lower_group["volume"].sum(min_count=1))
+        matching_rows = [
+            index + 1
+            for index, volume in enumerate(candidate_volumes)
+            if abs(volume - lower_volume) <= max(1e-9, abs(lower_volume) * 1e-9)
+        ]
+        row["lower_aggregate_volume"] = lower_volume
+        row["matching_primary_row_numbers"] = ",".join(str(index) for index in matching_rows)
+        row["comparison_status"] = (
+            "matched_one"
+            if len(matching_rows) == 1
+            else "matched_multiple"
+            if len(matching_rows) > 1
+            else "no_primary_volume_match"
+        )
+        results.append(row)
+    return pd.DataFrame(results, columns=columns)

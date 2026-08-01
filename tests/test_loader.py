@@ -9,6 +9,7 @@ from thesistester.data.loader import (
     format_interval,
     infer_base_interval,
     load_ohlcv,
+    primary_duplicate_volume_comparison,
     resolve_ohlc_identical_duplicates,
     validate_ohlcv,
 )
@@ -84,6 +85,48 @@ def test_resolve_ohlc_identical_duplicate_bars_keeps_lowest_volume_with_audit():
             "duplicate_group_size": 2,
             "retained_volume": 10.0,
             "discarded_volumes": [30.0],
+        }
+    ]
+
+
+def test_primary_duplicate_volume_comparison_identifies_unique_lower_volume_match():
+    primary = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(
+                [
+                    "2026-01-05 09:30:00+00:00",
+                    "2026-01-05 09:30:00+00:00",
+                    "2026-01-05 09:31:00+00:00",
+                ]
+            ),
+            "open": [100.0, 100.0, 101.0],
+            "high": [101.0, 101.0, 102.0],
+            "low": [99.0, 99.0, 100.0],
+            "close": [100.5, 100.5, 101.5],
+            "volume": [100, 40, 12],
+        }
+    )
+    lower = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-01-05 09:30:00+00:00", periods=4, freq="15s"),
+            "open": [100.0, 100.0, 100.0, 100.0],
+            "high": [101.0, 101.0, 101.0, 101.0],
+            "low": [99.0, 99.0, 99.0, 99.0],
+            "close": [100.5, 100.5, 100.5, 100.5],
+            "volume": [10, 10, 10, 10],
+        }
+    )
+
+    comparison = primary_duplicate_volume_comparison(primary, lower)
+
+    assert comparison.to_dict("records") == [
+        {
+            "timestamp": "2026-01-05 09:30:00+00:00",
+            "primary_duplicate_group_size": 2,
+            "primary_candidate_volumes": "100.0,40.0",
+            "lower_aggregate_volume": 40.0,
+            "matching_primary_row_numbers": "2",
+            "comparison_status": "matched_one",
         }
     ]
 

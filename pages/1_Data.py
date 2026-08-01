@@ -17,6 +17,7 @@ from thesistester.data.loader import (
     format_interval,
     infer_base_interval,
     load_ohlcv,
+    primary_duplicate_volume_comparison,
     resolve_ohlc_identical_duplicates,
     validate_ohlcv,
 )
@@ -648,6 +649,25 @@ def _render_dataset_summary(
                     file_name="primary_duplicate_report.csv",
                     mime="text/csv",
                 )
+                lower_data = st.session_state.get("subtimeframe_data")
+                if isinstance(lower_data, pd.DataFrame):
+                    volume_comparison = primary_duplicate_volume_comparison(df, lower_data)
+                    matched_count = int(
+                        volume_comparison["comparison_status"].eq("matched_one").sum()
+                    )
+                    st.info(
+                        f"Primary/lower volume comparison: {matched_count:,} of "
+                        f"{len(volume_comparison):,} duplicate groups have exactly one "
+                        "primary volume matching the lower-bar aggregate. This is "
+                        "diagnostic only; primary data remains unchanged."
+                    )
+                    st.dataframe(volume_comparison, width="stretch")
+                    st.download_button(
+                        "Download primary/lower volume comparison CSV",
+                        data=volume_comparison.to_csv(index=False).encode("utf-8"),
+                        file_name="primary_lower_volume_comparison.csv",
+                        mime="text/csv",
+                    )
     elif saved_dataset_loaded:
         st.info("Loaded canonical dataset from local store.")
     else:
