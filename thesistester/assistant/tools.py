@@ -62,7 +62,7 @@ def _bounded_spec(spec: Mapping[str, Any], limits: ToolLimits) -> dict[str, Any]
             if isinstance(values, list):
                 cell_count *= len(values)
         if cell_count > configured_cap:
-            raise AssistantToolError(f"Grid exceeds maximum of {limits.max_grid_cells} cells.")
+            raise AssistantToolError(f"Grid exceeds maximum of {configured_cap} cells.")
     walk_forward = copied.get("walk_forward")
     if isinstance(walk_forward, Mapping) and walk_forward.get("enabled", True):
         matrix = walk_forward.get("matrix")
@@ -83,16 +83,23 @@ def _bounded_spec(spec: Mapping[str, Any], limits: ToolLimits) -> dict[str, Any]
                 and len(train) * len(test) > configured_cap
             ):
                 raise AssistantToolError(
-                    "Walk-forward matrix exceeds maximum of "
-                    f"{limits.max_walk_forward_matrix_cells} cells."
+                    f"Walk-forward matrix exceeds maximum of {configured_cap} cells."
                 )
     validation = copied.get("validation")
-    if isinstance(validation, Mapping):
+    if isinstance(validation, Mapping) and validation.get("enabled", True):
         for key in ("n_bootstrap", "n_permutations"):
             value = validation.get(key, _VALIDATION_DEFAULTS[key])
             if isinstance(value, int) and value > limits.max_simulations:
                 raise AssistantToolError(
                     f"validation.{key} exceeds maximum of {limits.max_simulations}."
+                )
+        monte_carlo = validation.get("monte_carlo")
+        if isinstance(monte_carlo, Mapping) and monte_carlo.get("enabled", True):
+            simulations = monte_carlo.get("n_simulations", limits.max_simulations)
+            if isinstance(simulations, int) and simulations > limits.max_simulations:
+                raise AssistantToolError(
+                    "validation.monte_carlo.n_simulations exceeds maximum of "
+                    f"{limits.max_simulations}."
                 )
     return copied
 
