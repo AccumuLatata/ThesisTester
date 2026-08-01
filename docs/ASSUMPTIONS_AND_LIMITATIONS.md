@@ -63,6 +63,10 @@ This engine is for **research screening**, not proof of a durable edge.
 - Primary-data duplicate reports are diagnostic only. Primary bars are never
   deduplicated automatically because their volume affects VWAP and profile
   calculations.
+- When cleaned lower R12 data is available, the primary duplicate diagnostic
+  can compare each candidate primary volume with the complete lower-bar volume
+  sum. A match is evidence for investigation, not an automatic primary-volume
+  selection rule.
 - MAE/MFE remains based on complete parent-bar extremes for compatibility. It
   can therefore include an extreme that occurred after the modeled exit within
   the same parent bar.
