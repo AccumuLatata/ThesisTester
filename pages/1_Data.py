@@ -17,6 +17,7 @@ from thesistester.data.loader import (
     format_interval,
     infer_base_interval,
     load_ohlcv,
+    resolve_ohlc_identical_duplicates,
     validate_ohlcv,
 )
 from thesistester.data.rolls import (
@@ -64,6 +65,8 @@ SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY = "_subtimeframe_compatibility_report"
 SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY = "_subtimeframe_compatibility_signature"
 SUBTIMEFRAME_DUPLICATE_REPORT_KEY = "_subtimeframe_duplicate_report"
 SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY = "_subtimeframe_duplicate_signature"
+SUBTIMEFRAME_DUPLICATE_SOURCE_KEY = "_subtimeframe_duplicate_source"
+SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY = "subtimeframe_duplicate_resolution"
 SUBTIMEFRAME_FORMAT_PROFILES = ("canonical", "quantower_history_exporter")
 FATAL_OHLCV_CODES = frozenset(
     {
@@ -87,9 +90,10 @@ class SubtimeframeCompatibilityError(ValueError):
 class SubtimeframeDuplicateTimestampError(ValueError):
     """Lower CSV contains duplicate bar-open timestamps."""
 
-    def __init__(self, message: str, report: pd.DataFrame) -> None:
+    def __init__(self, message: str, report: pd.DataFrame, source: pd.DataFrame) -> None:
         super().__init__(message)
         self.report = report
+        self.source = source
 
 
 def _default_source_timezone(format_profile: str, exchange_timezone: str) -> str:
@@ -145,6 +149,8 @@ def _clear_dataset_dependent_state() -> None:
         SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY,
         SUBTIMEFRAME_DUPLICATE_REPORT_KEY,
         SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY,
+        SUBTIMEFRAME_DUPLICATE_SOURCE_KEY,
+        SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY,
         SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY,
         SUBTIMEFRAME_UPLOADER_NONCE_KEY,
         "raw_data",
@@ -296,6 +302,7 @@ def _load_subtimeframe_upload(
             raise SubtimeframeDuplicateTimestampError(
                 "Lower-timeframe validation failed: " + "; ".join(fatal_messages),
                 duplicate_timestamp_report(raw_df),
+                raw_df,
             )
         raise ValueError("Lower-timeframe validation failed: " + "; ".join(fatal_messages))
 
@@ -336,6 +343,8 @@ def _set_subtimeframe_state(
     st.session_state.pop(SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY, None)
     st.session_state.pop(SUBTIMEFRAME_DUPLICATE_REPORT_KEY, None)
     st.session_state.pop(SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY, None)
+    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_SOURCE_KEY, None)
+    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY, None)
     _clear_execution_dependent_state()
 
 
@@ -348,6 +357,8 @@ def _clear_subtimeframe_state() -> None:
     st.session_state.pop(SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY, None)
     st.session_state.pop(SUBTIMEFRAME_DUPLICATE_REPORT_KEY, None)
     st.session_state.pop(SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY, None)
+    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_SOURCE_KEY, None)
+    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY, None)
     st.session_state.pop(SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY, None)
     st.session_state[SUBTIMEFRAME_UPLOADER_NONCE_KEY] = (
         int(st.session_state.get(SUBTIMEFRAME_UPLOADER_NONCE_KEY, 0)) + 1
@@ -424,6 +435,43 @@ def _render_subtimeframe_upload(
                 file_name="r12_lower_duplicate_report.csv",
                 mime="text/csv",
             )
+            if bool(duplicate_report["ohlc_identical_group"].all()):
+                st.info(
+                    "All duplicate groups share identical OHLC. R12 does not use "
+                    "lower-bar volume for event ordering; one lowest-volume row per "
+                    "timestamp can be retained with a recorded audit trail."
+                )
+                if st.button("Use OHLC-identical duplicates for R12 only"):
+                    source = st.session_state.get(SUBTIMEFRAME_DUPLICATE_SOURCE_KEY)
+                    if not isinstance(source, pd.DataFrame):
+                        st.error("Duplicate source data is unavailable; re-upload the lower CSV.")
+                    else:
+                        try:
+                            resolved, audit = resolve_ohlc_identical_duplicates(source)
+                            subtimeframe_df = tag_session(resolved, instrument)
+                            context = prepare_subtimeframe_conservative_context(
+                                parent_df,
+                                subtimeframe_df,
+                                tick_size=INSTRUMENTS[instrument].tick_size,
+                            )
+                            _set_subtimeframe_state(
+                                subtimeframe_df,
+                                interval=format_interval(context.sub_interval),
+                                upload_signature=upload_signature,
+                                fallback_bars=context.fallback_diagnostics(parent_df),
+                            )
+                            st.session_state[SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY] = {
+                                "policy": "ohlc_identical_keep_lowest_volume",
+                                "groups_resolved": len(audit),
+                                "groups": audit,
+                            }
+                            st.success(
+                                f"Resolved {len(audit):,} OHLC-identical duplicate groups "
+                                "for R12 only."
+                            )
+                            st.rerun()
+                        except (DataValidationError, ValueError) as exc:
+                            st.error(str(exc))
         compatibility_report = st.session_state.get(SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY)
         if isinstance(
             compatibility_report, pd.DataFrame
@@ -476,6 +524,7 @@ def _render_subtimeframe_upload(
                 _clear_loaded_subtimeframe_after_failed_upload()
                 st.session_state[SUBTIMEFRAME_DUPLICATE_REPORT_KEY] = exc.report
                 st.session_state[SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY] = upload_signature
+                st.session_state[SUBTIMEFRAME_DUPLICATE_SOURCE_KEY] = exc.source
                 st.error(str(exc))
                 st.rerun()
             except SubtimeframeCompatibilityError as exc:
