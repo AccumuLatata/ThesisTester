@@ -8,6 +8,7 @@ from typing import Any, Mapping
 
 from thesistester import __version__
 from thesistester.api import _GRID_DEFAULTS
+from thesistester.api import _VALIDATION_DEFAULTS
 from thesistester.api import run_experiment as _run_experiment
 from thesistester.api import validate_run_spec
 from thesistester.persistence.local_store import list_datasets, load_dataset
@@ -88,7 +89,7 @@ def _bounded_spec(spec: Mapping[str, Any], limits: ToolLimits) -> dict[str, Any]
     validation = copied.get("validation")
     if isinstance(validation, Mapping):
         for key in ("n_bootstrap", "n_permutations"):
-            value = validation.get(key)
+            value = validation.get(key, _VALIDATION_DEFAULTS[key])
             if isinstance(value, int) and value > limits.max_simulations:
                 raise AssistantToolError(
                     f"validation.{key} exceeds maximum of {limits.max_simulations}."

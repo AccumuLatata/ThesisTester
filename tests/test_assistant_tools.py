@@ -94,6 +94,10 @@ def test_validate_experiment_applies_grid_and_validation_limits(tmp_path):
     with pytest.raises(AssistantToolError, match="n_bootstrap"):
         tools.validate_experiment(spec)
 
+    spec["validation"] = {}
+    with pytest.raises(AssistantToolError, match="n_bootstrap"):
+        tools.validate_experiment(spec)
+
 
 def test_run_experiment_uses_public_facade_and_returns_compact_summary(tmp_path, monkeypatch):
     root = tmp_path / "allowed"
