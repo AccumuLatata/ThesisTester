@@ -29,6 +29,7 @@ from thesistester.assistant.repository import (
     Thesis,
 )
 from thesistester.assistant.tools import AssistantToolError, AssistantTools, ToolLimits
+from thesistester.assistant.thesis_compiler import COMPILER_VERSION, ThesisDraft, compile_thesis
 
 __all__ = [
     "ASSISTANT_CONTRACT_SCHEMA_VERSION",
@@ -40,6 +41,7 @@ __all__ = [
     "AssistantRequest",
     "Capability",
     "CapabilityMode",
+    "COMPILER_VERSION",
     "ConfirmationLevel",
     "Conversation",
     "FEATURE_PARITY_REGISTRY",
@@ -52,8 +54,10 @@ __all__ = [
     "ResourceEnvelope",
     "SpecVersion",
     "Thesis",
+    "ThesisDraft",
     "ToolLimits",
     "UnknownCapabilityError",
     "get_capability",
     "validate_capability_request",
+    "compile_thesis",
 ]
