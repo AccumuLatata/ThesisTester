@@ -137,7 +137,8 @@ The **Backtest** and **Grid Search** pages support saving and restoring executio
   base-interval inference, RTH/ETH session tagging, and OHLCV resampling (1min, 5min,
   15min, 30min, 1h, 4h, 1D).
 - **R17 vendor profiles:** choose an explicit canonical/Quantower, NinjaTrader,
-  Sierra Intraday, Databento trades, tick-capture, or second-capture profile.
+  Sierra Intraday, Quantower History Exporter, Databento trades, tick-capture,
+  or second-capture profile.
   Captures are aggregated to one-minute bars and raw rows are retained locally;
   MNQ and MES are supported instrument presets.
 - **R12 lower-timeframe replay:** after loading a main chart on the Data page,

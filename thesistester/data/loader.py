@@ -22,6 +22,7 @@ DATABENTO_FIXED_POINT_THRESHOLD = 10_000_000
 COLUMN_ALIASES = {
     "date time": "timestamp",
     "datetime": "timestamp",
+    "time left": "timestamp",
     "volume(from bar)": "volume",
     "volume (from bar)": "volume",
 }
@@ -29,6 +30,7 @@ FORMAT_PROFILES = (
     "canonical",
     "ninjatrader",
     "sierra_intraday",
+    "quantower_history_exporter",
     "databento_trades",
     "tick_capture",
     "second_capture",
@@ -37,6 +39,7 @@ FormatProfile = Literal[
     "canonical",
     "ninjatrader",
     "sierra_intraday",
+    "quantower_history_exporter",
     "databento_trades",
     "tick_capture",
     "second_capture",
@@ -199,6 +202,20 @@ def _read_explicit_profile(
         raise DataValidationError(
             "NinjaTrader profile expects 6 bar fields or 3/5 capture fields separated by ';'."
         )
+
+    if format_profile == "quantower_history_exporter":
+        raw = _normalize_profile_columns(pd.read_csv(file, sep=";"))
+        raw = raw.dropna(axis=1, how="all")
+        missing = [column for column in REQUIRED_COLUMNS if column not in raw.columns]
+        if missing:
+            raise DataValidationError(
+                "Quantower History Exporter profile is missing required columns: "
+                f"{missing}. Detected columns after normalization: {list(raw.columns)}"
+            )
+        raw["timestamp"] = _profile_timestamp(
+            raw["timestamp"], source_tz=source_tz, target_tz=target_tz
+        )
+        return raw, raw.copy()
 
     raw = _normalize_profile_columns(pd.read_csv(file))
     if format_profile == "sierra_intraday":

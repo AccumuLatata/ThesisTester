@@ -49,6 +49,10 @@ This engine is for **research screening**, not proof of a durable edge.
 - When a lower upload cannot be replayed, the Data-page compatibility report is
   diagnostic only: it identifies every incompatible parent bar but never
   patches, drops, or otherwise alters either source dataset.
+- The explicit `quantower_history_exporter` profile maps semicolon-delimited
+  `Time left`/OHLCV bars to canonical data. Parser success does not establish
+  that separately exported 1m and 15s files reconcile; R12 remains the
+  authority for that check.
 - MAE/MFE remains based on complete parent-bar extremes for compatibility. It
   can therefore include an extreme that occurred after the modeled exit within
   the same parent bar.

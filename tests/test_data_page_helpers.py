@@ -149,6 +149,7 @@ def test_load_subtimeframe_upload_accepts_reconciling_canonical_bars(tmp_path):
         instrument="ES",
         source_timezone="America/New_York",
         exchange_timezone="America/New_York",
+        format_profile="canonical",
     )
 
     assert interval == "15s"
@@ -168,6 +169,7 @@ def test_load_subtimeframe_upload_accepts_incomplete_bars_for_conservative_model
         instrument="ES",
         source_timezone="America/New_York",
         exchange_timezone="America/New_York",
+        format_profile="canonical",
     )
 
     assert interval == "15s"
@@ -194,6 +196,7 @@ def test_load_subtimeframe_upload_rejects_parent_ohlc_mismatch(tmp_path):
             instrument="ES",
             source_timezone="America/New_York",
             exchange_timezone="America/New_York",
+            format_profile="canonical",
         )
     except ValueError as exc:
         assert "does not reconcile" in str(exc)

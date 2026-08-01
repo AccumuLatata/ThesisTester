@@ -176,6 +176,9 @@ Agent safety requirements:
 - Keep one intrabar model fixed across every grid cell and walk-forward fold.
 - For R18 batches, supply observed lower data through
   `dataset.subtimeframe_path` and retain the bundle's policy/diagnostic fields.
+- Select `quantower_history_exporter` explicitly for semicolon-delimited
+  Quantower History Exporter files. `dataset.subtimeframe_format_profile`
+  defaults to `canonical`; it never inherits the parent profile.
 - Run `pytest -q tests/test_golden_master.py tests/test_intrabar.py` after any
   execution-path edit.
 
