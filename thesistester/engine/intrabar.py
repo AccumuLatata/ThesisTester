@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 import math
+import time
 from typing import Literal
 
 import pandas as pd
@@ -20,6 +22,23 @@ VALID_INTRABAR_MODELS = frozenset(
     {"sl_first", "path_open_proximity", "subtimeframe", "subtimeframe_conservative"}
 )
 _REQUIRED_OHLC = ("timestamp", "open", "high", "low", "close")
+
+
+def _debug_log(hypothesis_id: str, location: str, message: str, data: dict[str, object]) -> None:
+    """Append scoped debug evidence while profiling subtimeframe preparation."""
+    with open("/opt/cursor/logs/debug.log", "a", encoding="utf-8") as log_file:
+        log_file.write(
+            json.dumps(
+                {
+                    "hypothesisId": hypothesis_id,
+                    "location": location,
+                    "message": message,
+                    "data": data,
+                    "timestamp": time.time_ns() // 1_000_000,
+                }
+            )
+            + "\n"
+        )
 
 
 @dataclass(frozen=True)
@@ -137,6 +156,22 @@ def _path_after_entry(vertices: list[float], entry_price: float | None) -> list[
     return []
 
 
+def _ohlc_validation_masks(frame: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+    """Return per-row finite and OHLC-invariant validation masks.
+
+    Numeric coercion is intentionally performed once per source frame. Callers
+    still evaluate the masks only after a parent group's coverage and timestamp
+    alignment have passed, preserving strict and conservative error semantics.
+    """
+    numeric = frame[["open", "high", "low", "close"]].apply(pd.to_numeric, errors="coerce")
+    finite = numeric.map(lambda value: math.isfinite(float(value))).all(axis=1)
+    invalid_range = (numeric["high"] < numeric[["open", "close"]].max(axis=1)) | (
+        numeric["low"] > numeric[["open", "close"]].min(axis=1)
+    )
+    invalid_range |= numeric["high"] < numeric["low"]
+    return finite, ~invalid_range
+
+
 def resolve_ohlc_bar(
     *,
     open_price: float,
@@ -227,6 +262,18 @@ def prepare_subtimeframe_context(
     tick_size: float,
 ) -> SubtimeframeContext:
     """Validate strict lower-timeframe coverage and reconcile parent OHLC."""
+    started_at = time.perf_counter()
+    # region agent log
+    _debug_log(
+        "A",
+        "intrabar.py:249",
+        "strict context entry",
+        {
+            "parent_rows": len(parent),
+            "subtimeframe_rows": 0 if subtimeframe is None else len(subtimeframe),
+        },
+    )
+    # endregion agent log
     if subtimeframe is None:
         raise ValueError("intrabar_model='subtimeframe' requires subtimeframe_data")
     for label, frame in (("parent", parent), ("subtimeframe", subtimeframe)):
@@ -251,16 +298,37 @@ def prepare_subtimeframe_context(
     expected_count = int(ratio)
     if ratio != expected_count:
         raise ValueError("parent interval must be an exact multiple of subtimeframe interval")
+    # region agent log
+    _debug_log(
+        "A",
+        "intrabar.py:283",
+        "strict context intervals validated",
+        {
+            "parent_interval_ns": int(parent_interval.value),
+            "sub_interval_ns": int(sub_interval.value),
+            "expected_count": expected_count,
+            "validation_elapsed_ms": round((time.perf_counter() - started_at) * 1_000, 3),
+        },
+    )
+    # endregion agent log
 
     parent_reset = parent.reset_index(drop=True)
     sub_reset = subtimeframe.reset_index(drop=True)
     parent_utc = pd.to_datetime(parent_reset["timestamp"], utc=True)
     sub_utc = pd.to_datetime(sub_reset["timestamp"], utc=True)
+    parent_finite, parent_invariant = _ohlc_validation_masks(parent_reset)
+    sub_finite, sub_invariant = _ohlc_validation_masks(sub_reset)
     tolerance = float(tick_size) * 1e-6
     groups: dict[int, pd.DataFrame] = {}
+    grouping_elapsed = 0.0
+    validation_elapsed = 0.0
     for index, start in enumerate(parent_utc):
+        grouping_started_at = time.perf_counter()
         end = start + parent_interval
-        group = sub_reset.loc[(sub_utc >= start) & (sub_utc < end)].copy()
+        group_start = sub_utc.searchsorted(start, side="left")
+        group_end = sub_utc.searchsorted(end, side="left")
+        group = sub_reset.iloc[group_start:group_end].copy()
+        grouping_elapsed += time.perf_counter() - grouping_started_at
         if len(group) != expected_count:
             raise ValueError(
                 "incomplete subtimeframe coverage for parent timestamp "
@@ -274,18 +342,16 @@ def prepare_subtimeframe_context(
                 "subtimeframe timestamps are not exactly aligned for parent timestamp "
                 f"{parent_reset['timestamp'].iloc[index]}"
             )
-        for label, candidate in (("parent", parent_reset.iloc[[index]]), ("subtimeframe", group)):
-            numeric = candidate[["open", "high", "low", "close"]].apply(
-                pd.to_numeric, errors="coerce"
-            )
-            if not numeric.map(lambda value: math.isfinite(float(value))).all().all():
-                raise ValueError(f"{label} OHLC contains non-finite values")
-            invalid_range = (numeric["high"] < numeric[["open", "close"]].max(axis=1)) | (
-                numeric["low"] > numeric[["open", "close"]].min(axis=1)
-            )
-            invalid_range |= numeric["high"] < numeric["low"]
-            if invalid_range.any():
-                raise ValueError(f"{label} OHLC invariants are invalid")
+        candidate_validation_started_at = time.perf_counter()
+        if not bool(parent_finite.iloc[index]):
+            raise ValueError("parent OHLC contains non-finite values")
+        if not bool(parent_invariant.iloc[index]):
+            raise ValueError("parent OHLC invariants are invalid")
+        if not bool(sub_finite.iloc[group_start:group_end].all()):
+            raise ValueError("subtimeframe OHLC contains non-finite values")
+        if not bool(sub_invariant.iloc[group_start:group_end].all()):
+            raise ValueError("subtimeframe OHLC invariants are invalid")
+        validation_elapsed += time.perf_counter() - candidate_validation_started_at
         parent_row = parent_reset.iloc[index]
         comparisons = {
             "open": (float(group["open"].iloc[0]), float(parent_row["open"])),
@@ -304,6 +370,29 @@ def prepare_subtimeframe_context(
                 f"{parent_reset['timestamp'].iloc[index]}: {mismatches}"
             )
         groups[index] = group.reset_index(drop=True)
+    # region agent log
+    _debug_log(
+        "B",
+        "intrabar.py:347",
+        "strict context loop timings",
+        {
+            "group_count": len(groups),
+            "grouping_elapsed_ms": round(grouping_elapsed * 1_000, 3),
+            "numeric_validation_elapsed_ms": round(validation_elapsed * 1_000, 3),
+        },
+    )
+    # endregion agent log
+    # region agent log
+    _debug_log(
+        "C",
+        "intrabar.py:357",
+        "strict context exit",
+        {
+            "group_count": len(groups),
+            "total_elapsed_ms": round((time.perf_counter() - started_at) * 1_000, 3),
+        },
+    )
+    # endregion agent log
     return SubtimeframeContext(parent_interval, sub_interval, groups)
 
 
@@ -319,6 +408,18 @@ def prepare_subtimeframe_conservative_context(
     lower-bar groups are not replayed. Every replayed group still satisfies the
     exact strict R12 contract; invalid OHLC or an OHLC mismatch remains fatal.
     """
+    started_at = time.perf_counter()
+    # region agent log
+    _debug_log(
+        "D",
+        "intrabar.py:374",
+        "conservative context entry",
+        {
+            "parent_rows": len(parent),
+            "subtimeframe_rows": 0 if subtimeframe is None else len(subtimeframe),
+        },
+    )
+    # endregion agent log
     if subtimeframe is None:
         raise ValueError("intrabar_model='subtimeframe_conservative' requires subtimeframe_data")
     for label, frame in (("parent", parent), ("subtimeframe", subtimeframe)):
@@ -343,17 +444,38 @@ def prepare_subtimeframe_conservative_context(
     expected_count = int(ratio)
     if ratio != expected_count:
         raise ValueError("parent interval must be an exact multiple of subtimeframe interval")
+    # region agent log
+    _debug_log(
+        "D",
+        "intrabar.py:408",
+        "conservative context intervals validated",
+        {
+            "parent_interval_ns": int(parent_interval.value),
+            "sub_interval_ns": int(sub_interval.value),
+            "expected_count": expected_count,
+            "validation_elapsed_ms": round((time.perf_counter() - started_at) * 1_000, 3),
+        },
+    )
+    # endregion agent log
 
     parent_reset = parent.reset_index(drop=True)
     sub_reset = subtimeframe.reset_index(drop=True)
     parent_utc = pd.to_datetime(parent_reset["timestamp"], utc=True)
     sub_utc = pd.to_datetime(sub_reset["timestamp"], utc=True)
+    parent_finite, parent_invariant = _ohlc_validation_masks(parent_reset)
+    sub_finite, sub_invariant = _ohlc_validation_masks(sub_reset)
     tolerance = float(tick_size) * 1e-6
     groups: dict[int, pd.DataFrame] = {}
     fallback_reasons: dict[int, str] = {}
+    grouping_elapsed = 0.0
+    validation_elapsed = 0.0
     for index, start in enumerate(parent_utc):
+        grouping_started_at = time.perf_counter()
         end = start + parent_interval
-        group = sub_reset.loc[(sub_utc >= start) & (sub_utc < end)].copy()
+        group_start = sub_utc.searchsorted(start, side="left")
+        group_end = sub_utc.searchsorted(end, side="left")
+        group = sub_reset.iloc[group_start:group_end].copy()
+        grouping_elapsed += time.perf_counter() - grouping_started_at
         if len(group) != expected_count:
             fallback_reasons[index] = (
                 f"incomplete coverage: expected {expected_count}, observed {len(group)}"
@@ -364,18 +486,16 @@ def prepare_subtimeframe_conservative_context(
         if actual_timestamps != expected_timestamps:
             fallback_reasons[index] = "timestamps are not exactly aligned"
             continue
-        for label, candidate in (("parent", parent_reset.iloc[[index]]), ("subtimeframe", group)):
-            numeric = candidate[["open", "high", "low", "close"]].apply(
-                pd.to_numeric, errors="coerce"
-            )
-            if not numeric.map(lambda value: math.isfinite(float(value))).all().all():
-                raise ValueError(f"{label} OHLC contains non-finite values")
-            invalid_range = (numeric["high"] < numeric[["open", "close"]].max(axis=1)) | (
-                numeric["low"] > numeric[["open", "close"]].min(axis=1)
-            )
-            invalid_range |= numeric["high"] < numeric["low"]
-            if invalid_range.any():
-                raise ValueError(f"{label} OHLC invariants are invalid")
+        candidate_validation_started_at = time.perf_counter()
+        if not bool(parent_finite.iloc[index]):
+            raise ValueError("parent OHLC contains non-finite values")
+        if not bool(parent_invariant.iloc[index]):
+            raise ValueError("parent OHLC invariants are invalid")
+        if not bool(sub_finite.iloc[group_start:group_end].all()):
+            raise ValueError("subtimeframe OHLC contains non-finite values")
+        if not bool(sub_invariant.iloc[group_start:group_end].all()):
+            raise ValueError("subtimeframe OHLC invariants are invalid")
+        validation_elapsed += time.perf_counter() - candidate_validation_started_at
         parent_row = parent_reset.iloc[index]
         comparisons = {
             "open": (float(group["open"].iloc[0]), float(parent_row["open"])),
@@ -394,6 +514,31 @@ def prepare_subtimeframe_conservative_context(
                 f"{parent_reset['timestamp'].iloc[index]}: {mismatches}"
             )
         groups[index] = group.reset_index(drop=True)
+    # region agent log
+    _debug_log(
+        "E",
+        "intrabar.py:483",
+        "conservative context loop classifications and timings",
+        {
+            "group_count": len(groups),
+            "fallback_count": len(fallback_reasons),
+            "grouping_elapsed_ms": round(grouping_elapsed * 1_000, 3),
+            "numeric_validation_elapsed_ms": round(validation_elapsed * 1_000, 3),
+        },
+    )
+    # endregion agent log
+    # region agent log
+    _debug_log(
+        "F",
+        "intrabar.py:496",
+        "conservative context exit",
+        {
+            "group_count": len(groups),
+            "fallback_count": len(fallback_reasons),
+            "total_elapsed_ms": round((time.perf_counter() - started_at) * 1_000, 3),
+        },
+    )
+    # endregion agent log
     return SubtimeframeContext(
         parent_interval,
         sub_interval,

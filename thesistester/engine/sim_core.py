@@ -12,7 +12,7 @@ from typing import Any
 
 import pandas as pd
 
-from .intrabar import resolve_ohlc_bar, resolve_subtimeframe_bar
+from .intrabar import IntrabarResolution, resolve_ohlc_bar, resolve_subtimeframe_bar
 
 
 @dataclass(frozen=True)
@@ -72,7 +72,17 @@ def resolve_trade_bar(
     serial parity for every supported model.
     """
     bar = bars.at(bar_index)
-    if intrabar_model in {"subtimeframe", "subtimeframe_conservative"}:
+    if intrabar_model == "subtimeframe":
+        resolution = resolve_subtimeframe_bar(
+            subtimeframe_context.groups[bar_index],
+            stop_price=stop_price,
+            target_price=target_price,
+            direction=direction,
+            parent_low=bar.low,
+            parent_high=bar.high,
+            entry_price=entry_activation_price,
+        )
+    elif intrabar_model == "subtimeframe_conservative":
         sub_bars = subtimeframe_context.groups.get(bar_index)
         if sub_bars is not None:
             resolution = resolve_subtimeframe_bar(
@@ -85,19 +95,40 @@ def resolve_trade_bar(
                 entry_price=entry_activation_price,
             )
         else:
+            fallback = resolve_ohlc_bar(
+                open_price=bar.open,
+                high=bar.high,
+                low=bar.low,
+                close=bar.close,
+                stop_price=stop_price,
+                target_price=target_price,
+                direction=direction,
+                model="sl_first",
+            )
+            entry_reached = (
+                entry_activation_price is None
+                or bar.low <= float(entry_activation_price) <= bar.high
+            )
+            if not entry_reached:
+                fallback = IntrabarResolution(
+                    None,
+                    "subtimeframe_conservative_entry_not_reached",
+                    fallback.parent_both_hit,
+                )
+            elif entry_activation_price is not None and fallback.exit_kind == "TP":
+                fallback = IntrabarResolution(
+                    None,
+                    "subtimeframe_conservative_entry_parent_unresolved",
+                    fallback.parent_both_hit,
+                    ambiguous=True,
+                )
             resolution = replace(
-                resolve_ohlc_bar(
-                    open_price=bar.open,
-                    high=bar.high,
-                    low=bar.low,
-                    close=bar.close,
-                    stop_price=stop_price,
-                    target_price=target_price,
-                    direction=direction,
-                    model="sl_first",
-                    entry_price=entry_activation_price,
+                fallback,
+                resolution=(
+                    fallback.resolution
+                    if fallback.exit_kind is None
+                    else "subtimeframe_conservative_fallback_sl_first"
                 ),
-                resolution="subtimeframe_conservative_fallback_sl_first",
                 subtimeframe_fallback=True,
             )
     else:

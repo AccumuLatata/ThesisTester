@@ -5,6 +5,7 @@ import pytest
 
 from thesistester.analytics.grid import run_sl_tp_grid
 from thesistester.engine.backtest import SimulationResult, simulate_trades
+from thesistester.engine.intrabar import prepare_subtimeframe_conservative_context
 
 TZ = "America/New_York"
 
@@ -321,6 +322,22 @@ def test_conservative_subtimeframe_replays_complete_parent_bars():
     assert result.trades.iloc[0]["exit_reason"] == "TP_subtimeframe"
     assert result.intrabar_diagnostic["subtimeframe_resolved_count"] == 1
     assert result.intrabar_diagnostic["subtimeframe_fallback_parent_count"] == 0
+
+
+def test_conservative_context_skips_ohlc_validation_for_unreplayable_groups():
+    parent = _parent_bar(high=104.5, low=97.0)
+    incomplete = _subtimeframe_data().drop(index=6).reset_index(drop=True)
+    parent.loc[1, "high"] = parent.loc[1, "low"] - 1
+    incomplete.loc[6, "open"] = float("nan")
+
+    context = prepare_subtimeframe_conservative_context(
+        parent,
+        incomplete,
+        tick_size=1.0,
+    )
+
+    assert set(context.groups) == {0}
+    assert context.fallback_reasons == {1: "incomplete coverage: expected 5, observed 4"}
 
 
 def test_subtimeframe_rejects_offset_nonfinite_and_invalid_ohlc_rows():

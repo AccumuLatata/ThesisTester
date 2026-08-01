@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 from pandas.testing import assert_frame_equal
 
-from thesistester.engine.intrabar import resolve_ohlc_bar
+from thesistester.engine.intrabar import SubtimeframeContext, resolve_ohlc_bar
 from thesistester.engine.sim_core import BarData, resolve_trade_bar
 
 
@@ -55,3 +56,43 @@ def test_serial_core_resolution_matches_legacy_ohlc_resolver():
     )
 
     assert actual == expected
+
+
+def test_strict_subtimeframe_never_uses_a_missing_group_as_fallback():
+    with pytest.raises(KeyError):
+        resolve_trade_bar(
+            BarData.from_frame(_bars()),
+            bar_index=0,
+            intrabar_model="subtimeframe",
+            subtimeframe_context=SubtimeframeContext(
+                pd.Timedelta("1min"),
+                pd.Timedelta("15s"),
+                {},
+            ),
+            stop_price=99.5,
+            target_price=101.5,
+            direction="long",
+            entry_activation_price=None,
+        )
+
+
+def test_conservative_fallback_respects_parent_bar_entry_gating():
+    _, resolution = resolve_trade_bar(
+        BarData.from_frame(_bars()),
+        bar_index=0,
+        intrabar_model="subtimeframe_conservative",
+        subtimeframe_context=SubtimeframeContext(
+            pd.Timedelta("1min"),
+            pd.Timedelta("15s"),
+            {},
+            fallback_reasons={0: "incomplete coverage"},
+        ),
+        stop_price=98.0,
+        target_price=101.5,
+        direction="long",
+        entry_activation_price=100.0,
+    )
+
+    assert resolution.exit_kind is None
+    assert resolution.ambiguous is True
+    assert resolution.subtimeframe_fallback is True
