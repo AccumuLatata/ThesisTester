@@ -68,6 +68,7 @@ SUBTIMEFRAME_DUPLICATE_REPORT_KEY = "_subtimeframe_duplicate_report"
 SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY = "_subtimeframe_duplicate_signature"
 SUBTIMEFRAME_DUPLICATE_SOURCE_KEY = "_subtimeframe_duplicate_source"
 SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY = "subtimeframe_duplicate_resolution"
+SUBTIMEFRAME_DIAGNOSTIC_DATA_KEY = "_subtimeframe_diagnostic_data"
 SUBTIMEFRAME_FORMAT_PROFILES = ("canonical", "quantower_history_exporter")
 FATAL_OHLCV_CODES = frozenset(
     {
@@ -152,6 +153,7 @@ def _clear_dataset_dependent_state() -> None:
         SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY,
         SUBTIMEFRAME_DUPLICATE_SOURCE_KEY,
         SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY,
+        SUBTIMEFRAME_DIAGNOSTIC_DATA_KEY,
         SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY,
         SUBTIMEFRAME_UPLOADER_NONCE_KEY,
         "raw_data",
@@ -346,6 +348,7 @@ def _set_subtimeframe_state(
     st.session_state.pop(SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY, None)
     st.session_state.pop(SUBTIMEFRAME_DUPLICATE_SOURCE_KEY, None)
     st.session_state.pop(SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY, None)
+    st.session_state.pop(SUBTIMEFRAME_DIAGNOSTIC_DATA_KEY, None)
     _clear_execution_dependent_state()
 
 
@@ -360,6 +363,7 @@ def _clear_subtimeframe_state() -> None:
     st.session_state.pop(SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY, None)
     st.session_state.pop(SUBTIMEFRAME_DUPLICATE_SOURCE_KEY, None)
     st.session_state.pop(SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY, None)
+    st.session_state.pop(SUBTIMEFRAME_DIAGNOSTIC_DATA_KEY, None)
     st.session_state.pop(SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY, None)
     st.session_state[SUBTIMEFRAME_UPLOADER_NONCE_KEY] = (
         int(st.session_state.get(SUBTIMEFRAME_UPLOADER_NONCE_KEY, 0)) + 1
@@ -374,6 +378,7 @@ def _clear_loaded_subtimeframe_after_failed_upload() -> None:
         "subtimeframe_interval",
         SUBTIMEFRAME_FALLBACK_BARS_KEY,
         SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY,
+        SUBTIMEFRAME_DIAGNOSTIC_DATA_KEY,
     ):
         st.session_state.pop(key, None)
     _clear_execution_dependent_state()
@@ -472,7 +477,25 @@ def _render_subtimeframe_upload(
                             )
                             st.rerun()
                         except (DataValidationError, ValueError) as exc:
-                            st.error(str(exc))
+                            primary_report = validate_ohlcv(parent_df)
+                            if "parent data contains duplicate timestamps" in str(exc) and any(
+                                issue.code == "duplicate_timestamps"
+                                for issue in primary_report.issues
+                            ):
+                                st.session_state[SUBTIMEFRAME_DIAGNOSTIC_DATA_KEY] = subtimeframe_df
+                                st.session_state[SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY] = {
+                                    "policy": "ohlc_identical_keep_lowest_volume",
+                                    "groups_resolved": len(audit),
+                                    "groups": audit,
+                                }
+                                st.warning(
+                                    "Resolved lower data is retained for primary-volume "
+                                    "diagnostics only. R12 remains unavailable until "
+                                    "primary duplicate timestamps are resolved."
+                                )
+                                st.rerun()
+                            else:
+                                st.error(str(exc))
         compatibility_report = st.session_state.get(SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY)
         if isinstance(
             compatibility_report, pd.DataFrame
@@ -650,6 +673,10 @@ def _render_dataset_summary(
                     mime="text/csv",
                 )
                 lower_data = st.session_state.get("subtimeframe_data")
+                diagnostic_only = False
+                if not isinstance(lower_data, pd.DataFrame):
+                    lower_data = st.session_state.get(SUBTIMEFRAME_DIAGNOSTIC_DATA_KEY)
+                    diagnostic_only = isinstance(lower_data, pd.DataFrame)
                 if isinstance(lower_data, pd.DataFrame):
                     volume_comparison = primary_duplicate_volume_comparison(df, lower_data)
                     matched_count = int(
@@ -661,6 +688,11 @@ def _render_dataset_summary(
                         "primary volume matching the lower-bar aggregate. This is "
                         "diagnostic only; primary data remains unchanged."
                     )
+                    if diagnostic_only:
+                        st.caption(
+                            "Lower data is retained for this comparison only and is not active "
+                            "for R12 execution."
+                        )
                     st.dataframe(volume_comparison, width="stretch")
                     st.download_button(
                         "Download primary/lower volume comparison CSV",
