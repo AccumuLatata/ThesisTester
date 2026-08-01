@@ -129,7 +129,11 @@ with st.sidebar:
     )
     subtimeframe_data = st.session_state.get("subtimeframe_data")
     if intrabar_model == "subtimeframe" and not isinstance(subtimeframe_data, pd.DataFrame):
-        st.warning("Subtimeframe replay requires strictly finer data in the research state.")
+        st.warning(
+            "Subtimeframe replay requires strictly finer data. Upload it on the "
+            "Data page, load it through a research bundle, or use the R18 API/CLI "
+            "`dataset.subtimeframe_path` contract."
+        )
     with st.expander("Exit management (R13)", expanded=False):
         enable_breakeven = st.toggle("Enable break-even move", value=False, key="grid_enable_be")
         grid_breakeven_after_r = None

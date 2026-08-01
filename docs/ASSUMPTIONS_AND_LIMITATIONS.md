@@ -37,6 +37,10 @@ This engine is for **research screening**, not proof of a durable edge.
 - The open-proximity path is a deterministic sensitivity assumption, not an
   estimate of the true market path. Lower-timeframe replay reduces uncertainty
   only to the lower bar; it does not recover tick ordering.
+- The Data-page lower-timeframe upload is retained only for the active session
+  (and any exported research bundle), not alongside a locally saved primary
+  dataset. Re-upload it after restoring a local dataset, or use the R18
+  `dataset.subtimeframe_path` contract for a reproducible headless run.
 - MAE/MFE remains based on complete parent-bar extremes for compatibility. It
   can therefore include an extreme that occurred after the modeled exit within
   the same parent bar.

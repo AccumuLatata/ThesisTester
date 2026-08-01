@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 import os
+import hashlib
 
 import pandas as pd
 import streamlit as st
@@ -24,6 +25,7 @@ from thesistester.data.rolls import (
 )
 from thesistester.data.resample import SUPPORTED_TIMEFRAMES, resample_ohlcv
 from thesistester.data.sessions import tag_session
+from thesistester.engine.intrabar import prepare_subtimeframe_context
 from thesistester.app_state import (
     ACTIVE_SAVED_DATASET_KEY,
     BOOTSTRAP_MESSAGE_KEY,
@@ -50,6 +52,17 @@ PENDING_INSTRUMENT_SELECTOR_KEY = "_pending_data_instrument_selector"
 PENDING_SOURCE_TZ_SELECTOR_KEY = "_pending_data_source_timezone_selector"
 RAW_CAPTURE_PROFILES = frozenset(
     {"ninjatrader", "databento_trades", "tick_capture", "second_capture"}
+)
+SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY = "_subtimeframe_upload_signature"
+IGNORED_SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY = "_ignored_subtimeframe_upload_signature"
+FATAL_OHLCV_CODES = frozenset(
+    {
+        "duplicate_timestamps",
+        "missing_values",
+        "high_below_low",
+        "open_close_outside_range",
+        "negative_volume",
+    }
 )
 
 
@@ -101,6 +114,8 @@ def _clear_dataset_dependent_state() -> None:
         "levels",
         "subtimeframe_data",
         "subtimeframe_interval",
+        SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY,
+        IGNORED_SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY,
         "raw_data",
         "raw_interval",
         "format_profile",
@@ -169,6 +184,176 @@ def _clear_dataset_dependent_state() -> None:
         "roll_rule_selector",
     ]:
         st.session_state.pop(key, None)
+
+
+def _clear_execution_dependent_state() -> None:
+    """Clear outputs whose results depend on the selected intrabar data."""
+    for key in [
+        "trades",
+        "trade_summary",
+        "equity_curve",
+        "backtest_intrabar_policy",
+        "backtest_intrabar_diagnostic",
+        "backtest_exit_management_policy",
+        "backtest_exit_management_diagnostic",
+        "grid_results",
+        "best_grid_result",
+        "grid_intrabar_policy",
+        "grid_exit_management_policy",
+        "time_bucketed_trades",
+        "time_grouped_summary",
+        "validation_summary",
+        "walk_forward_results",
+        "walk_forward_summary",
+        "walk_forward_config",
+        "walk_forward_otf_filter",
+        "walk_forward_oos_trades",
+        "walk_forward_stitched_equity",
+        "walk_forward_warnings",
+        "wfa_matrix",
+        "wfa_matrix_config",
+        "excursion_summary",
+        "excursion_config",
+        "excursion_grouped_summary",
+        "excursion_calibration_grid",
+        "excursion_quadrant_summary",
+        "monte_carlo_summary",
+        "monte_carlo_config",
+        "noise_summary",
+        "noise_config",
+        "overfitting_summary",
+        "overfitting_config",
+        "sensitivity_summary",
+        "sensitivity_config",
+        "trade_review_trade_id",
+        "trade_review_buffer_rows",
+        "trade_review_export_zip",
+        "trade_review_export_signature",
+        "portfolio_setup_inputs",
+        "portfolio_config",
+        "portfolio_summary",
+        "portfolio_trades",
+        "portfolio_skipped_trades",
+        "portfolio_equity_curve",
+        "portfolio_correlation",
+        "portfolio_drawdown_correlation",
+        "portfolio_marginal_contribution",
+    ]:
+        st.session_state.pop(key, None)
+
+
+def _load_subtimeframe_upload(
+    uploaded_file,
+    *,
+    parent_df: pd.DataFrame,
+    instrument: str,
+    source_timezone: str | None,
+    exchange_timezone: str,
+) -> tuple[pd.DataFrame, str]:
+    """Load canonical lower bars and verify the R12 parent-bar contract."""
+    raw_df = load_ohlcv(
+        uploaded_file,
+        source_tz=source_timezone,
+        target_tz=exchange_timezone,
+        format_profile="canonical",
+    )
+    report = validate_ohlcv(raw_df)
+    fatal_messages = [issue.message for issue in report.issues if issue.code in FATAL_OHLCV_CODES]
+    if fatal_messages:
+        raise ValueError("Lower-timeframe validation failed: " + "; ".join(fatal_messages))
+
+    subtimeframe_df = tag_session(raw_df, instrument)
+    context = prepare_subtimeframe_context(
+        parent_df,
+        subtimeframe_df,
+        tick_size=INSTRUMENTS[instrument].tick_size,
+    )
+    return subtimeframe_df, format_interval(context.sub_interval)
+
+
+def _set_subtimeframe_state(
+    subtimeframe_df: pd.DataFrame,
+    *,
+    interval: str,
+    upload_signature: str,
+) -> None:
+    """Store validated R12 data and invalidate dependent execution outputs."""
+    st.session_state["subtimeframe_data"] = subtimeframe_df
+    st.session_state["subtimeframe_interval"] = interval
+    st.session_state[SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY] = upload_signature
+    st.session_state.pop(IGNORED_SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY, None)
+    _clear_execution_dependent_state()
+
+
+def _clear_subtimeframe_state(*, ignored_upload_signature: str | None = None) -> None:
+    """Remove R12 data while retaining the primary research dataset."""
+    st.session_state.pop("subtimeframe_data", None)
+    st.session_state.pop("subtimeframe_interval", None)
+    st.session_state.pop(SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY, None)
+    if ignored_upload_signature is None:
+        st.session_state.pop(IGNORED_SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY, None)
+    else:
+        st.session_state[IGNORED_SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY] = ignored_upload_signature
+    _clear_execution_dependent_state()
+
+
+def _upload_signature(uploaded_file) -> str:
+    """Return a stable signature without trusting an uploaded filename."""
+    return hashlib.sha256(uploaded_file.getvalue()).hexdigest()
+
+
+def _render_subtimeframe_upload(
+    parent_df: pd.DataFrame,
+    *,
+    instrument: str,
+    source_timezone: str | None,
+    exchange_timezone: str,
+) -> None:
+    """Render the optional interactive R12 lower-timeframe import."""
+    with st.expander("Lower-timeframe R12 replay (optional)", expanded=False):
+        st.caption(
+            "Upload canonical OHLCV bars for observed lower-timeframe replay. "
+            "They must cover and reconcile exactly to every main-chart bar; "
+            "vendor profiles are not applied to this file."
+        )
+        uploaded_file = st.file_uploader(
+            "Lower-timeframe CSV (canonical OHLCV)",
+            type=["csv", "txt"],
+            key="subtimeframe_csv_upload",
+        )
+        upload_signature = _upload_signature(uploaded_file) if uploaded_file is not None else None
+        if (
+            uploaded_file is not None
+            and upload_signature != st.session_state.get(SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY)
+            and upload_signature != st.session_state.get(IGNORED_SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY)
+        ):
+            try:
+                subtimeframe_df, interval = _load_subtimeframe_upload(
+                    uploaded_file,
+                    parent_df=parent_df,
+                    instrument=instrument,
+                    source_timezone=source_timezone,
+                    exchange_timezone=exchange_timezone,
+                )
+                _set_subtimeframe_state(
+                    subtimeframe_df,
+                    interval=interval,
+                    upload_signature=upload_signature,
+                )
+                st.success(
+                    f"R12 data ready: {len(subtimeframe_df):,} {interval} bars "
+                    f"reconcile to the main chart."
+                )
+            except (DataValidationError, ValueError) as exc:
+                st.error(str(exc))
+
+        subtimeframe_df = st.session_state.get("subtimeframe_data")
+        if isinstance(subtimeframe_df, pd.DataFrame):
+            interval = st.session_state.get("subtimeframe_interval", "unknown interval")
+            st.info(f"R12 data loaded: {len(subtimeframe_df):,} bars at {interval}.")
+            if st.button("Remove lower-timeframe data"):
+                _clear_subtimeframe_state(ignored_upload_signature=upload_signature)
+                st.rerun()
 
 
 def _set_active_dataset_state(
@@ -593,6 +778,13 @@ elif "data" in st.session_state:
 
 current_df = st.session_state.get("data")
 if current_df is not None:
+    st.divider()
+    _render_subtimeframe_upload(
+        current_df,
+        instrument=st.session_state.get("instrument", inst),
+        source_timezone=st.session_state.get("source_timezone"),
+        exchange_timezone=st.session_state.get("exchange_timezone", meta.exchange_tz),
+    )
     st.divider()
     _render_roll_assumptions(
         current_df,
