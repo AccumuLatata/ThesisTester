@@ -1,5 +1,9 @@
-import streamlit as st
+from datetime import datetime, timezone
+import time
+import traceback
+
 import pandas as pd
+import streamlit as st
 
 from thesistester.app_state import bootstrap_active_saved_dataset
 from thesistester.data.sessions import tag_session
@@ -7,6 +11,7 @@ from thesistester.levels import compute_all_levels, compute_session_levels
 from thesistester.persistence import (
     clear_active_levels_hash,
     compute_dataset_id,
+    compute_levels_settings_hash,
     delete_levels,
     find_matching_levels,
     get_active_levels_hash,
@@ -47,6 +52,8 @@ _SESSION_VWAP_ENABLED_KEY = "levels_session_vwap_enabled"
 _SINGLE_PRINTS_ENABLED_KEY = "levels_single_prints_enabled"
 _APOC_ENABLED_KEY = "levels_apoc_enabled"
 _PIVOT_TIMEFRAME_OPTIONS = ["1min", "5min", "30min", "4h"]
+_LEVELS_CALCULATION_STATUS_KEY = "levels_calculation_status"
+_LEVELS_COST_WARNING_BARS = 3_000
 
 
 def _parse_lengths(raw: str, label: str) -> list[int]:
@@ -115,6 +122,101 @@ def _levels_data_fingerprint(df, instrument: str) -> dict:
         "source_timezone": st.session_state.get("source_timezone"),
         "exchange_timezone": st.session_state.get("exchange_timezone"),
     }
+
+
+def _calculate_levels_transaction(
+    *,
+    calculate,
+    session_state,
+    current_settings: dict,
+    current_data_fingerprint: dict,
+    dataset_id: str,
+    settings_hash: str,
+    input_rows: int,
+) -> bool:
+    """Run a Levels calculation and install outputs only after complete success.
+
+    The calculation callable must return ``(levels, session_levels)``. Failure
+    diagnostics are retained separately so a failed recalculation cannot replace
+    a prior valid Levels result or its identity metadata.
+    """
+    started_at = datetime.now(timezone.utc).isoformat()
+    started = time.perf_counter()
+    context = {
+        "dataset_id": dataset_id,
+        "settings_hash": settings_hash,
+        "input_rows": int(input_rows),
+        "started_at": started_at,
+    }
+    session_state[_LEVELS_CALCULATION_STATUS_KEY] = {
+        **context,
+        "state": "running",
+    }
+
+    try:
+        calculated_levels, calculated_session_levels = calculate()
+    except Exception as exc:
+        completed_at = datetime.now(timezone.utc).isoformat()
+        session_state[_LEVELS_CALCULATION_STATUS_KEY] = {
+            **context,
+            "state": "failed",
+            "completed_at": completed_at,
+            "duration_seconds": time.perf_counter() - started,
+            "error_type": type(exc).__name__,
+            "error_message": str(exc),
+            "traceback": traceback.format_exc(),
+        }
+        return False
+
+    completed_at = datetime.now(timezone.utc).isoformat()
+    session_state.update(
+        {
+            "levels": calculated_levels,
+            "session_levels": calculated_session_levels,
+            "levels_settings": current_settings,
+            "levels_data_fingerprint": current_data_fingerprint,
+            _LEVELS_CALCULATION_STATUS_KEY: {
+                **context,
+                "state": "succeeded",
+                "completed_at": completed_at,
+                "duration_seconds": time.perf_counter() - started,
+                "levels_rows": int(len(calculated_levels)),
+                "levels_columns": int(len(calculated_levels.columns)),
+                "session_levels_rows": int(len(calculated_session_levels)),
+            },
+        }
+    )
+    return True
+
+
+def _render_levels_calculation_status(status: dict | None) -> None:
+    """Render persistent calculation diagnostics without exposing them to the engine."""
+    if not isinstance(status, dict):
+        return
+
+    state = status.get("state")
+    if state == "succeeded":
+        st.success(
+            "Levels calculated successfully "
+            f"({status.get('levels_rows', '—'):,} rows, "
+            f"{status.get('levels_columns', '—')} columns, "
+            f"{status.get('duration_seconds', 0.0):.1f}s)."
+        )
+    elif state == "failed":
+        st.error(
+            "Level calculation failed "
+            f"after {status.get('duration_seconds', 0.0):.1f}s "
+            f"({status.get('error_type', 'Exception')}: "
+            f"{status.get('error_message', 'no message')}). "
+            "Previous successful levels, if any, were retained."
+        )
+        with st.expander("Calculation diagnostics"):
+            st.caption(
+                f"Dataset: {status.get('dataset_id', '—')} · "
+                f"Settings hash: {str(status.get('settings_hash', '—'))[:12]}… · "
+                f"Input rows: {status.get('input_rows', '—'):,}"
+            )
+            st.code(status.get("traceback", ""), language="text")
 
 
 def _saved_levels_label(meta: dict) -> str:
@@ -452,6 +554,7 @@ current_settings = _normalize_levels_settings(
     }
 )
 current_data_fingerprint = _levels_data_fingerprint(st.session_state["data"], instrument)
+current_settings_hash = compute_levels_settings_hash(current_settings)
 previous_settings = _normalize_levels_settings(st.session_state.get("levels_settings"))
 previous_data_fingerprint = st.session_state.get("levels_data_fingerprint")
 has_calculated_levels = "levels" in st.session_state and "session_levels" in st.session_state
@@ -554,16 +657,21 @@ if saved_level_snapshots:
         st.success("Deleted selected saved levels.")
 
 button_label = "Recalculate levels" if has_calculated_levels else "Calculate levels"
+if len(st.session_state["data"]) >= _LEVELS_COST_WARNING_BARS and poc_windows:
+    st.warning(
+        f"This dataset has {len(st.session_state['data']):,} bars and {len(poc_windows)} rolling "
+        "POC window(s) enabled. Level calculation runs synchronously and may take substantial "
+        "time; keep this page open until a completion or failure status appears."
+    )
 calculate_levels = st.button(button_label, type="primary")
 
 if calculate_levels:
     with st.spinner("Calculating levels..."):
-        base_df = st.session_state["data"]
-        if "session" not in base_df.columns:
-            base_df = tag_session(base_df, instrument)
-
-        try:
-            levels_df = compute_all_levels(
+        def _calculate() -> tuple[pd.DataFrame, pd.DataFrame]:
+            base_df = st.session_state["data"]
+            if "session" not in base_df.columns:
+                base_df = tag_session(base_df, instrument)
+            calculated_levels = compute_all_levels(
                 base_df,
                 instrument=instrument,
                 opening_range_minutes=opening_range_minutes,
@@ -586,22 +694,27 @@ if calculate_levels:
                 single_prints_enabled=single_prints_enabled,
                 apoc_enabled=apoc_enabled,
             )
-        except ValueError as exc:
-            st.error(str(exc))
-            st.stop()
+            calculated_session_levels = compute_session_levels(
+                base_df,
+                instrument=instrument,
+                opening_range_minutes=opening_range_minutes,
+            )
+            return calculated_levels, calculated_session_levels
 
-        session_levels = compute_session_levels(
-            base_df,
-            instrument=instrument,
-            opening_range_minutes=opening_range_minutes,
-        )
-        st.session_state["session_levels"] = session_levels
-        st.session_state["levels"] = levels_df
-        st.session_state["levels_settings"] = current_settings
-        st.session_state["levels_data_fingerprint"] = current_data_fingerprint
-        previous_settings = current_settings
-        previous_data_fingerprint = current_data_fingerprint
-        has_calculated_levels = True
+        if _calculate_levels_transaction(
+            calculate=_calculate,
+            session_state=st.session_state,
+            current_settings=current_settings,
+            current_data_fingerprint=current_data_fingerprint,
+            dataset_id=dataset_id,
+            settings_hash=current_settings_hash,
+            input_rows=len(st.session_state["data"]),
+        ):
+            previous_settings = current_settings
+            previous_data_fingerprint = current_data_fingerprint
+            has_calculated_levels = True
+
+_render_levels_calculation_status(st.session_state.get(_LEVELS_CALCULATION_STATUS_KEY))
 
 levels_df = st.session_state.get("levels")
 if levels_df is None:
