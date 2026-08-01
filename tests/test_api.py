@@ -18,6 +18,7 @@ from thesistester.api import (
     run_validation,
 )
 from thesistester.engine import apply_configured_otf_filter, simulate_trades
+from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 
 
 def _write_dataset(path) -> None:
@@ -146,6 +147,30 @@ def _levels_config() -> dict:
         "vwap_windows": [],
         "poc_windows": [],
     }
+
+
+def test_compute_levels_uses_shared_product_defaults(tmp_path):
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path, instrument="ES")
+
+    result = compute_levels(data, instrument="ES")
+
+    expected = dict(DEFAULT_LEVELS_SETTINGS)
+    for key in (
+        "sma_timeframes",
+        "ema_timeframes",
+        "vwap_windows",
+        "poc_windows",
+        "pivot_timeframes",
+    ):
+        expected[key] = sorted(expected[key])
+    expected["instrument"] = "ES"
+    assert result["levels_settings"] == expected
+    assert "dVWAP_RTH" in result["levels"]
+    assert "APOC" in result["levels"]
+    assert "dSinglePrint_30m_NearestAbove" in result["levels"]
+    assert any(column.startswith("Pivot_") for column in result["levels"])
 
 
 def test_headless_facade_matches_ui_backtest_composition(tmp_path):

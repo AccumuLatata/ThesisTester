@@ -574,14 +574,14 @@ Rules:
 - Include all new settings in the existing level settings hash.
 - Ensure cached level snapshots remain deterministic.
 - Existing saved snapshots must continue loading.
-- Do not change existing default enabled levels.
+- Preserve saved snapshot settings; product defaults are defined centrally and may evolve independently.
 
 Implementation details:
 
 - A compact **"Advanced opt-in levels"** expander is placed below existing profile settings.
-- Inside the expander: checkboxes for all four opt-in families; all default `False`.
+- Inside the expander: checkboxes for all four advanced families; the current product configuration enables all four by default.
 - When pivots are enabled: pivot timeframes multiselect, pivot left/right number inputs.
-- When pivots are disabled: deterministic defaults stored in session state for hash stability.
+- When pivots are disabled: deterministic settings are stored in session state for hash stability.
 - `_normalize_levels_settings` now adds Stage 6 keys with disabled defaults for old snapshots.
 - `pivot_timeframes` is sorted in normalization (same as `sma_timeframes`, etc.).
 - `_sync_levels_widget_state` restores all four new controls when a snapshot is loaded.
@@ -591,7 +591,7 @@ Implementation details:
 
 Acceptance criteria:
 
-- New levels are only computed when explicitly enabled.
+- The Levels page and headless API use the documented product configuration; direct `compute_all_levels` calls keep their explicit disabled keyword defaults.
 - Existing saved level snapshots remain compatible.
 - Recomputing with identical settings produces deterministic outputs.
 

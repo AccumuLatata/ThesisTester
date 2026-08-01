@@ -43,6 +43,7 @@ from thesistester.engine import (
     validate_exit_management_config,
 )
 from thesistester.levels.all import compute_all_levels
+from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.levels.sessions import compute_session_levels
 from thesistester.persistence.local_store import (
     _normalize_signal_settings_for_hash,
@@ -144,27 +145,7 @@ class WalkForwardAnalysisResult(TypedDict, total=False):
     wfa_matrix_config: dict[str, Any]
 
 
-_LEVEL_DEFAULTS: dict[str, Any] = {
-    "opening_range_minutes": 30,
-    "sma_lengths": [20, 50, 200],
-    "ema_lengths": [20, 50, 200],
-    "sma_timeframes": ["1min"],
-    "ema_timeframes": ["1min"],
-    "vwap_windows": ["1h", "4h", "1D"],
-    "poc_windows": ["1h", "4h", "1D"],
-    "value_area_pct": 0.70,
-    "prior_day_profile_aggregation_ticks": 1,
-    "prior_week_profile_aggregation_ticks": 1,
-    "prior_month_profile_aggregation_ticks": 1,
-    "pivots_enabled": False,
-    "pivot_timeframes": ["1min", "5min", "30min", "4h"],
-    "pivot_left": 2,
-    "pivot_right": 2,
-    "session_vwap_enabled": False,
-    "session_vwap_anchor": "RTH",
-    "single_prints_enabled": False,
-    "apoc_enabled": False,
-}
+_LEVEL_DEFAULTS: dict[str, Any] = DEFAULT_LEVELS_SETTINGS
 _LEVEL_ARGUMENT_MAP = {
     "prior_day_profile_aggregation_ticks": "prior_day_aggregation_ticks",
     "prior_week_profile_aggregation_ticks": "prior_week_aggregation_ticks",
