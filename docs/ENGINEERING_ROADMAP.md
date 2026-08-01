@@ -3,6 +3,10 @@
 This document tracks the ThesisTester engineering roadmap milestones in established
 phase order.
 
+The proposed AI Research Assistant has a separate, regression-safe implementation
+plan in `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md`. Its AIA-series milestones are
+additive to this R-series and must follow its stated regression gates.
+
 ---
 
 ## R1 — Execution Realism ✅ Implemented
