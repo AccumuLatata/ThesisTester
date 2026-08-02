@@ -2,11 +2,29 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 from uuid import uuid4
 
 COMPARISON_SCHEMA_VERSION = 1
+
+
+def _freeze(value: Any) -> Any:
+    if isinstance(value, dict):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_freeze(item) for item in value)
+    return value
+
+
+def _thaw(value: Any) -> Any:
+    if isinstance(value, dict) or isinstance(value, MappingProxyType):
+        return {key: _thaw(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw(item) for item in value]
+    return value
 
 
 @dataclass(frozen=True)
@@ -21,6 +39,13 @@ class Comparison:
     right_bundle_hash: str
     evidence: dict[str, Any]
 
+    def __post_init__(self) -> None:
+        if self.left_run_id == self.right_run_id:
+            raise ValueError("Comparison requires two distinct run IDs.")
+        object.__setattr__(
+            self, "evidence", _freeze(json.loads(json.dumps(self.evidence, sort_keys=True)))
+        )
+
     @classmethod
     def create(
         cls,
@@ -32,8 +57,6 @@ class Comparison:
         right_bundle_hash: str,
         evidence: dict[str, Any],
     ) -> Comparison:
-        if left_run_id == right_run_id:
-            raise ValueError("Comparison requires two distinct run IDs.")
         return cls(
             comparison_id=f"cmp_{uuid4().hex}",
             thesis_id=thesis_id,
@@ -54,5 +77,5 @@ class Comparison:
             "right_run_id": self.right_run_id,
             "left_bundle_hash": self.left_bundle_hash,
             "right_bundle_hash": self.right_bundle_hash,
-            "evidence": self.evidence,
+            "evidence": _thaw(self.evidence),
         }
