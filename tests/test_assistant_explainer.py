@@ -144,6 +144,13 @@ def test_grid_ranking_claim_grounds_to_assumptions_when_absent_from_best_row():
     assert len(metric_claims) == 1
     assert metric_claims[0]["path"] == "assumptions.grid.ranking_metric"
     assert metric_claims[0]["value"] == "expectancy_r"
+    cost_paths = {
+        claim["path"]: claim["value"]
+        for claim in report["claims"]
+        if claim["path"].startswith("assumptions.costs_exposure.")
+    }
+    assert cost_paths["assumptions.costs_exposure.commission_per_side"] == 1.25
+    assert cost_paths["assumptions.costs_exposure.slippage_ticks"] == 0.5
     assert_claims_grounded(packet, report)
 
 

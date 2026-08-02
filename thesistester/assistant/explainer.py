@@ -558,6 +558,8 @@ def _template_sl_tp(packet: EvidencePacket, claims: list[EvidenceClaim], lines: 
     _claim(claims, text, "results.best_grid_result.trade_count", trade_count)
     _claim(claims, text, "results.best_grid_result.stop_loss_ticks", stop)
     _claim(claims, text, "results.best_grid_result.take_profit_ticks", target)
+    _claim(claims, text, "assumptions.costs_exposure.commission_per_side", commission)
+    _claim(claims, text, "assumptions.costs_exposure.slippage_ticks", slippage)
     lines.append(
         "Grid candidate uses the stated ranking metric and sample; confirm it with OOS/WFA evidence."
     )
