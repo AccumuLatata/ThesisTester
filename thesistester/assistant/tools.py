@@ -24,6 +24,8 @@ from thesistester.persistence.local_store import (
     get_backtest_defaults,
     get_grid_defaults,
     list_datasets,
+    list_saved_setups,
+    load_setup,
     load_dataset,
     save_backtest_defaults,
     save_grid_defaults,
@@ -159,6 +161,14 @@ class AssistantTools:
     def list_local_datasets(self) -> list[dict[str, Any]]:
         """List persisted datasets without reading arbitrary filesystem paths."""
         return to_jsonable(list_datasets())
+
+    def list_saved_setup_summaries(self, *, dataset_id: str | None = None) -> list[dict[str, Any]]:
+        """List persisted setup metadata for assistant selection without mutation."""
+        return to_jsonable(list_saved_setups(dataset_id=dataset_id))
+
+    def load_saved_setup(self, setup_id: str) -> dict[str, Any]:
+        """Load one persisted setup configuration for review or explicit reuse."""
+        return to_jsonable(load_setup(setup_id))
 
     def get_execution_defaults(self) -> dict[str, Any]:
         """Return persisted backtest/grid defaults without mutating them."""
