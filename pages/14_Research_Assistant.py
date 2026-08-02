@@ -28,7 +28,7 @@ def _init_state() -> None:
     st.session_state.setdefault("assistant_selected_thesis_id", None)
     st.session_state.setdefault("assistant_draft_prompt", "")
     st.session_state.setdefault("assistant_draft_choices", {})
-    st.session_state.setdefault("assistant_conversation_id", None)
+    st.session_state.setdefault("assistant_conversation_ids", {})
 
 
 def _select_thesis(thesis_id: str) -> None:
@@ -90,16 +90,21 @@ st.subheader(thesis.name)
 st.caption(f"Revision {thesis.revision} · {thesis.lifecycle}")
 
 conversations = repository.list_conversations(thesis_id)
-if st.session_state["assistant_conversation_id"] not in {
+conversation_ids = st.session_state["assistant_conversation_ids"]
+if conversation_ids.get(thesis_id) not in {
     conversation.conversation_id for conversation in conversations
 }:
     conversation = conversations[-1] if conversations else repository.create_conversation(thesis_id)
-    st.session_state["assistant_conversation_id"] = conversation.conversation_id
+    conversation_ids[thesis_id] = conversation.conversation_id
+conversation_id = conversation_ids[thesis_id]
+active_conversation = repository.get_conversation(thesis_id, conversation_id)
+for message in reversed(active_conversation.messages):
+    if message.get("role") == "assistant" and isinstance(message.get("choices"), dict):
+        st.session_state["assistant_draft_choices"] = message["choices"]
+        break
 
 st.subheader("Assistant chat")
-for message in repository.get_conversation(
-    thesis_id, st.session_state["assistant_conversation_id"]
-).messages:
+for message in active_conversation.messages:
     with st.chat_message(message.get("role", "assistant")):
         st.write(message.get("content", ""))
 
@@ -114,10 +119,10 @@ if chat_message := st.chat_input("Describe or refine this thesis"):
         draft = orchestrator.handle_chat_turn(
             client,
             thesis_id=thesis_id,
-            conversation_id=st.session_state["assistant_conversation_id"],
+            conversation_id=conversation_id,
             user_message=chat_message,
         )
-        st.session_state["assistant_draft_prompt"] = draft.prompt
+        st.session_state["assistant_draft_prompt"] = chat_message
         st.session_state["assistant_draft_choices"] = draft.normalized_run_spec
         st.rerun()
     except LLMConfigurationError as exc:
