@@ -11,7 +11,12 @@ from pathlib import Path
 
 import streamlit as st
 
-from thesistester.assistant import AssistantOrchestrator, LocalThesisRepository, compile_thesis
+from thesistester.assistant import (
+    AssistantOrchestrator,
+    LocalThesisRepository,
+    compile_run_spec,
+    compile_thesis,
+)
 from thesistester.assistant.llm import (
     LLMConfigurationError,
     create_openai_client,
@@ -30,6 +35,7 @@ def _init_state() -> None:
     st.session_state.setdefault("assistant_draft_choices", {})
     st.session_state.setdefault("assistant_conversation_ids", {})
     st.session_state.setdefault("assistant_hydrated_conversation_id", None)
+    st.session_state.setdefault("assistant_validated_run_spec", None)
 
 
 def _select_thesis(thesis_id: str) -> None:
@@ -175,6 +181,28 @@ if st.button("Draft research plan", type="primary"):
         st.rerun()
     except (ValueError, json.JSONDecodeError) as exc:
         st.error(str(exc))
+
+if st.button("Validate executable RunSpec"):
+    try:
+        current_choices = _choices_from_editor(choices_raw)
+        validated = compile_run_spec(name=thesis.name, choices=current_choices)
+        st.session_state["assistant_draft_choices"] = current_choices
+        st.session_state["assistant_validated_run_spec"] = {
+            "choices": current_choices,
+            "spec": validated,
+        }
+        st.success("Executable RunSpec is valid and ready for explicit confirmation.")
+    except ValueError as exc:
+        st.session_state["assistant_validated_run_spec"] = None
+        st.error(str(exc))
+
+validated_state = st.session_state["assistant_validated_run_spec"]
+if (
+    isinstance(validated_state, dict)
+    and validated_state.get("choices") == st.session_state["assistant_draft_choices"]
+):
+    with st.expander("Validated executable RunSpec"):
+        st.json(validated_state["spec"])
 
 specifications = repository.list_spec_versions(thesis_id)
 confirmed_parents = {spec.parent_version for spec in specifications if spec.status == "confirmed"}
