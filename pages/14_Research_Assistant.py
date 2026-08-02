@@ -183,6 +183,28 @@ if chat_message := st.chat_input("Describe or refine this thesis"):
     except LLMConfigurationError as exc:
         st.error(str(exc))
 
+with st.expander("Structured research clarifications"):
+    with st.form(f"assistant_clarifications_{thesis_id}"):
+        current = st.session_state["assistant_draft_choices"]
+        trend_rule = st.text_input("Trend rule", value=str(current.get("trend_rule", "")))
+        trigger = st.text_input("Entry trigger", value=str(current.get("trigger", "")))
+        session_window = st.text_input(
+            "Session window", value=str(current.get("session_window", ""))
+        )
+        success_criteria = st.text_input(
+            "Success criteria", value=str(current.get("success_criteria", ""))
+        )
+        if st.form_submit_button("Apply clarifications"):
+            st.session_state["assistant_draft_choices"] = {
+                **current,
+                "trend_rule": trend_rule,
+                "trigger": trigger,
+                "session_window": session_window,
+                "success_criteria": success_criteria,
+            }
+            st.session_state["assistant_validated_run_spec"] = None
+            st.rerun()
+
 prompt = st.text_area(
     "Describe the setup thesis",
     value=st.session_state["assistant_draft_prompt"],
