@@ -1,6 +1,11 @@
 import pytest
 
-from thesistester.assistant import compile_canonical_run_spec, compile_run_spec, compile_thesis
+from thesistester.assistant import (
+    StructuredThesisChoices,
+    compile_canonical_run_spec,
+    compile_run_spec,
+    compile_thesis,
+)
 
 
 def test_compiler_marks_ambiguous_trading_language_for_clarification():
@@ -54,6 +59,7 @@ def test_canonical_compiler_rejects_implicit_execution_assumptions(monkeypatch):
     )
     choices = {
         "dataset": {"path": "bars.csv", "instrument": "ES"},
+        "levels": {},
         "setup": {"trigger": "touch", "tolerance_ticks": 0, "selected_levels": ["dVWAP_RTH"]},
         "backtest": {
             "commission_per_side": 0.0,
@@ -68,3 +74,47 @@ def test_canonical_compiler_rejects_implicit_execution_assumptions(monkeypatch):
     choices["backtest"].pop("slippage_ticks")
     with pytest.raises(ValueError, match="slippage_ticks"):
         compile_canonical_run_spec(name="Implicit", choices=choices)
+
+
+def test_canonical_compiler_normalizes_omitted_levels_to_empty_mapping(monkeypatch):
+    monkeypatch.setattr(
+        "thesistester.assistant.thesis_compiler.validate_run_spec", lambda spec: None
+    )
+    choices = {
+        "dataset": {"path": "bars.csv", "instrument": "ES"},
+        "setup": {"trigger": "touch", "tolerance_ticks": 0, "selected_levels": ["dVWAP_RTH"]},
+        "backtest": {
+            "commission_per_side": 0.0,
+            "slippage_ticks": 0.0,
+            "exposure_policy": "single_position",
+            "intrabar_model": "sl_first",
+        },
+    }
+
+    structured = StructuredThesisChoices.from_mapping(choices)
+    compiled = compile_canonical_run_spec(name="No levels", choices=choices)
+
+    assert structured.levels == {}
+    assert compiled["levels"] == {}
+
+
+def test_structured_choices_rejects_non_mapping_levels():
+    with pytest.raises(ValueError, match="levels"):
+        StructuredThesisChoices.from_mapping(
+            {
+                "dataset": {},
+                "levels": [],
+                "setup": {},
+                "backtest": {},
+            }
+        )
+
+
+def test_structured_choices_have_stable_canonical_serialization():
+    choices = StructuredThesisChoices(
+        dataset={"instrument": "ES", "path": "bars.csv"},
+        levels={},
+        setup={},
+        backtest={},
+    )
+    assert choices.canonical_json() == choices.canonical_json()

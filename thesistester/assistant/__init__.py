@@ -31,6 +31,7 @@ from thesistester.assistant.repository import (
 from thesistester.assistant.tools import AssistantToolError, AssistantTools, ToolLimits
 from thesistester.assistant.thesis_compiler import (
     COMPILER_VERSION,
+    StructuredThesisChoices,
     ThesisDraft,
     compile_canonical_run_spec,
     compile_run_spec,
@@ -73,6 +74,7 @@ __all__ = [
     "ResourceEnvelope",
     "SpecVersion",
     "Thesis",
+    "StructuredThesisChoices",
     "ThesisDraft",
     "ToolLimits",
     "UnknownCapabilityError",

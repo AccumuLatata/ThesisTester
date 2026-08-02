@@ -7,6 +7,7 @@ It turns explicit structured choices plus user prose into a reviewable draft.
 from __future__ import annotations
 
 import re
+import json
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Mapping
@@ -27,6 +28,59 @@ class ThesisDraft:
     @property
     def ready_for_confirmation(self) -> bool:
         return not self.unresolved_assumptions
+
+
+@dataclass(frozen=True)
+class StructuredThesisChoices:
+    """Typed executable choices; narrative-only fields are intentionally excluded."""
+
+    dataset: dict[str, Any]
+    levels: dict[str, Any]
+    setup: dict[str, Any]
+    backtest: dict[str, Any]
+    grid: dict[str, Any] | None = None
+    validation: dict[str, Any] | None = None
+    walk_forward: dict[str, Any] | None = None
+
+    @classmethod
+    def from_mapping(cls, choices: Mapping[str, Any]) -> StructuredThesisChoices:
+        """Create typed choices, normalizing an omitted levels section to empty."""
+        required = ("dataset", "setup", "backtest")
+        missing = [key for key in required if not isinstance(choices.get(key), Mapping)]
+        if missing:
+            raise ValueError(f"Structured choices require objects: {', '.join(missing)}.")
+        levels = choices.get("levels", {})
+        if not isinstance(levels, Mapping):
+            raise ValueError("Structured choices require objects: levels.")
+        optional = {}
+        for key in ("grid", "validation", "walk_forward"):
+            value = choices.get(key)
+            if value is not None and not isinstance(value, Mapping):
+                raise ValueError(f"{key} must be an object when provided.")
+            optional[key] = dict(value) if value is not None else None
+        return cls(
+            dataset=dict(choices["dataset"]),
+            levels=dict(levels),
+            setup=dict(choices["setup"]),
+            backtest=dict(choices["backtest"]),
+            **optional,
+        )
+
+    def to_mapping(self) -> dict[str, Any]:
+        result = {
+            "dataset": deepcopy(self.dataset),
+            "levels": deepcopy(self.levels),
+            "setup": deepcopy(self.setup),
+            "backtest": deepcopy(self.backtest),
+        }
+        for key in ("grid", "validation", "walk_forward"):
+            value = getattr(self, key)
+            if value is not None:
+                result[key] = deepcopy(value)
+        return result
+
+    def canonical_json(self) -> str:
+        return json.dumps(self.to_mapping(), sort_keys=True, separators=(",", ":"))
 
 
 def compile_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict[str, Any]:
@@ -59,7 +113,8 @@ def compile_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict[str, Any]
 
 def compile_canonical_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict[str, Any]:
     """Compile only fully explicit research assumptions into an executable spec."""
-    spec = compile_run_spec(name=name, choices=choices)
+    typed_choices = StructuredThesisChoices.from_mapping(choices)
+    spec = compile_run_spec(name=name, choices=typed_choices.to_mapping())
     dataset = spec["dataset"]
     backtest = spec["backtest"]
     setup = spec["setup"]
