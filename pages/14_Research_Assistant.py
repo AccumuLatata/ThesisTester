@@ -505,7 +505,13 @@ if len(completed_runs) >= 2:
     if st.button("Analyze portfolio") and len(portfolio_ids) >= 2:
         try:
             selected = {run.run_id: run for run in completed_runs}
-            bundle_paths = [selected[run_id].provenance["bundle_path"] for run_id in portfolio_ids]
+            bundle_paths = []
+            for run_id in portfolio_ids:
+                run = selected[run_id]
+                raw = Path(run.provenance["bundle_path"]).read_bytes()
+                if canonical_bundle_hash(raw) != run.provenance["canonical_bundle_hash"]:
+                    raise ValueError("Bundle hash does not match recorded run provenance.")
+                bundle_paths.append(run.provenance["bundle_path"])
             st.json(
                 AssistantTools(data_roots=(Path.cwd(), get_store_root())).analyze_bundle_portfolio(
                     bundle_paths,
