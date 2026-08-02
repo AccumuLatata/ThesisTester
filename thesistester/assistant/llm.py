@@ -98,6 +98,23 @@ class OpenAIStructuredClient:
         )
         text = response.get("output_text")
         if not isinstance(text, str):
+            output = response.get("output")
+            if isinstance(output, list):
+                for item in output:
+                    if not isinstance(item, dict) or item.get("type") != "message":
+                        continue
+                    content = item.get("content")
+                    if not isinstance(content, list):
+                        continue
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") == "output_text":
+                            candidate = part.get("text")
+                            if isinstance(candidate, str):
+                                text = candidate
+                                break
+                    if isinstance(text, str):
+                        break
+        if not isinstance(text, str):
             raise LLMProviderError("OpenAI response did not contain output_text.")
         try:
             decoded = json.loads(text)

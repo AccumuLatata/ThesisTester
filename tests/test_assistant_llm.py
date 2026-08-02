@@ -44,3 +44,20 @@ def test_factory_requires_openai_provider(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "rotated")
     with pytest.raises(LLMConfigurationError, match="not openai"):
         create_openai_client(LLMSettings("other", "test", 1, 1))
+
+
+def test_openai_client_parses_responses_output_array():
+    class Transport:
+        def post_json(self, **kwargs):
+            return {
+                "output": [
+                    {"type": "message", "content": [{"type": "output_text", "text": '{"ok":true}'}]}
+                ]
+            }
+
+    client = OpenAIStructuredClient(
+        settings=LLMSettings("openai", "test", 1, 1), api_key="test", transport=Transport()
+    )
+    assert client.complete_structured(system="system", user="user", schema={"type": "object"}) == {
+        "ok": True
+    }
