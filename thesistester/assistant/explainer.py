@@ -92,6 +92,18 @@ def explain_evidence(packet: EvidencePacket) -> str:
         f"Historical sample: {trades} trades; expectancy R: {expectancy}.",
         "This describes the recorded sample, not a forecast.",
     ]
+    if packet.results.get("best_grid_result") is not None:
+        lines.append(
+            "Grid result is a candidate selected from the recorded sample; confirm it with OOS/WFA evidence."
+        )
+    if packet.results.get("validation_summary") is not None:
+        lines.append(
+            "Validation diagnostics are available and should be reviewed alongside the baseline."
+        )
+    if packet.results.get("walk_forward_summary") is not None:
+        lines.append(
+            "Walk-forward output is available; do not treat in-sample selection as OOS performance."
+        )
     lines.extend(f"Caveat: {warning}" for warning in packet.warnings)
     return "\n".join(lines)
 

@@ -74,3 +74,20 @@ def test_comparison_reports_only_selected_packet_metrics():
 
     assert comparison["metrics"]["expectancy_r"] == {"left": 0.1, "right": 0.2}
     assert comparison["warnings"] == ["Low sample.", "Costs excluded."]
+
+
+def test_explanation_flags_grid_selection_and_walk_forward_scope():
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={
+            "trade_summary": {"trade_count": 40, "expectancy_r": 0.1},
+            "best_grid_result": {},
+            "validation_summary": {},
+            "walk_forward_summary": {},
+        },
+        warnings=(),
+    )
+    explanation = explain_evidence(packet)
+    assert "candidate selected" in explanation
+    assert "Walk-forward output" in explanation
