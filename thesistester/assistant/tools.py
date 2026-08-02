@@ -13,6 +13,7 @@ from thesistester.api import (
     run_otf_validation,
     run_portfolio_analysis,
     run_time_analysis,
+    validate_roll_assumptions,
 )
 from thesistester.api import _VALIDATION_DEFAULTS
 from thesistester.api import run_experiment as _run_experiment
@@ -309,6 +310,24 @@ class AssistantTools:
             raise AssistantToolError("Bundle does not include a dataset.")
         return to_jsonable(
             preview_resampled_ohlcv(data, timeframe=timeframe, max_rows=max_rows).to_dict("records")
+        )
+
+    def validate_bundle_roll_assumptions(
+        self,
+        bundle_path: str | Path,
+        *,
+        contract_column: str = "contract",
+        roll_method: str = "single_contract",
+    ) -> dict[str, Any]:
+        """Return roll diagnostics for a selected bundle dataset."""
+        path = _resolve_within(bundle_path, self.data_roots)
+        data = load_research_bundle(path.read_bytes())["session_values"].get("data")
+        if data is None:
+            raise AssistantToolError("Bundle does not include a dataset.")
+        return to_jsonable(
+            validate_roll_assumptions(
+                data, contract_column=contract_column, roll_method=roll_method
+            )
         )
 
     def analyze_bundle_portfolio(

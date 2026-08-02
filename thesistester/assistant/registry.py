@@ -131,10 +131,9 @@ FEATURE_PARITY_REGISTRY = _validate_registry(
             "DATA.configure_roll_assumptions",
             "Data",
             "Configure and validate futures roll metadata",
-            "thesistester.data.rolls",
-            CapabilityMode.UNSUPPORTED,
+            "thesistester.api.validate_roll_assumptions",
+            CapabilityMode.EXECUTABLE,
             ConfirmationLevel.NONE,
-            limitation="Roll controls are not exposed by the current headless facade.",
         ),
         _capability(
             "SETUP.configure",

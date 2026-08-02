@@ -34,6 +34,7 @@ from thesistester.analytics.otf_validation import run_otf_validation_matrix
 from thesistester.config import INSTRUMENTS
 from thesistester.data.loader import format_interval, load_ohlcv, validate_ohlcv
 from thesistester.data.resample import resample_ohlcv
+from thesistester.data.rolls import validate_roll_metadata
 from thesistester.data.sessions import tag_session
 from thesistester.engine import (
     VALID_INTRABAR_MODELS,
@@ -2005,6 +2006,13 @@ def preview_resampled_ohlcv(
     if not isinstance(max_rows, int) or isinstance(max_rows, bool) or not 1 <= max_rows <= 1000:
         raise ValueError("max_rows must be an integer from 1 to 1000.")
     return resample_ohlcv(df, timeframe).head(max_rows).reset_index(drop=True)
+
+
+def validate_roll_assumptions(
+    df: pd.DataFrame, *, contract_column: str = "contract", roll_method: str = "single_contract"
+) -> dict[str, Any]:
+    """Return read-only futures-roll metadata diagnostics."""
+    return validate_roll_metadata(df, contract_column=contract_column, roll_method=roll_method)
 
 
 def run_otf_validation(
