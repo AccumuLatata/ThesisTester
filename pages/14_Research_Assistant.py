@@ -342,12 +342,15 @@ if len(completed_runs) >= 2:
                         load_research_bundle(raw)["session_values"], provenance=run.provenance
                     )
                 )
-            st.session_state["assistant_run_comparisons"][thesis_id] = compare_evidence(*packets)
+            st.session_state["assistant_run_comparisons"][thesis_id] = {
+                "run_ids": [left_id, right_id],
+                "comparison": compare_evidence(*packets),
+            }
         except (OSError, ValueError) as exc:
             st.error(f"Unable to compare runs: {exc}")
-    comparison = st.session_state["assistant_run_comparisons"].get(thesis_id)
-    if comparison:
-        st.json(comparison)
+    comparison_state = st.session_state["assistant_run_comparisons"].get(thesis_id)
+    if comparison_state and comparison_state.get("run_ids") == [left_id, right_id]:
+        st.json(comparison_state["comparison"])
 
 st.subheader("Conversation audit")
 conversations = repository.list_conversations(thesis_id)
