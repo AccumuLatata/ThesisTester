@@ -32,7 +32,7 @@ from thesistester.assistant.llm import (
 )
 from thesistester.assistant.llm_explainer import explain_packet_with_llm
 from thesistester.assistant.tools import AssistantTools
-from thesistester.persistence.local_store import get_store_root
+from thesistester.persistence.local_store import get_store_root, list_saved_setups, load_setup
 from thesistester.research_bundle import canonical_bundle_hash, load_research_bundle
 
 
@@ -216,6 +216,32 @@ with st.expander("Structured research clarifications"):
             }
             st.session_state["assistant_validated_run_spec"] = None
             st.rerun()
+
+with st.expander("Reuse saved setup"):
+    saved_setups = list_saved_setups()
+    setup_options = {
+        setup["setup_id"]: f"{setup.get('name', 'Unnamed')} ({setup['setup_id'][-8:]})"
+        for setup in saved_setups
+    }
+    selected_setup_id = st.selectbox(
+        "Saved setup",
+        list(setup_options),
+        format_func=setup_options.get,
+        index=None,
+        key=f"assistant_saved_setup_{thesis_id}",
+    )
+    if selected_setup_id and st.button("Apply saved setup"):
+        setup = load_setup(selected_setup_id)
+        setup_config = setup.get("setup_config")
+        if not isinstance(setup_config, dict):
+            st.error("Saved setup does not contain a valid setup configuration.")
+            st.stop()
+        st.session_state["assistant_draft_choices"] = {
+            **st.session_state["assistant_draft_choices"],
+            "setup": setup_config,
+        }
+        st.session_state["assistant_validated_run_spec"] = None
+        st.rerun()
 
 prompt = st.text_area(
     "Describe the setup thesis",
