@@ -384,16 +384,21 @@ with st.expander("Structured validation controls"):
 with st.expander("Structured grid controls"):
     current = st.session_state["assistant_draft_choices"]
     grid = current.get("grid") if isinstance(current.get("grid"), dict) else {}
-    with st.form(f"assistant_grid_{thesis_id}"):
+    grid_fingerprint = hashlib.sha256(
+        json.dumps(grid, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:12]
+    with st.form(f"assistant_grid_{thesis_id}_{grid_fingerprint}"):
+        raw_stop_values = grid.get("stop_loss_ticks_values")
+        raw_target_values = grid.get("take_profit_ticks_values")
+        stop_defaults = raw_stop_values if isinstance(raw_stop_values, list) else [4, 8, 12]
+        target_defaults = raw_target_values if isinstance(raw_target_values, list) else [8, 16, 24]
         stop_values = st.text_input(
             "Grid stop ticks",
-            value=", ".join(str(value) for value in grid.get("stop_loss_ticks_values", [4, 8, 12])),
+            value=", ".join(str(value) for value in stop_defaults),
         )
         target_values = st.text_input(
             "Grid target ticks",
-            value=", ".join(
-                str(value) for value in grid.get("take_profit_ticks_values", [8, 16, 24])
-            ),
+            value=", ".join(str(value) for value in target_defaults),
         )
         ranking_metric = st.selectbox(
             "Grid ranking metric",
