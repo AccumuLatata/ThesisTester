@@ -28,7 +28,7 @@ from thesistester.persistence.local_store import (
     save_backtest_defaults,
     save_grid_defaults,
 )
-from thesistester.reporting import build_research_artifact, to_jsonable
+from thesistester.reporting import build_markdown_report, build_research_artifact, to_jsonable
 from thesistester.research_bundle import (
     build_research_bundle,
     canonical_bundle_hash,
@@ -239,6 +239,12 @@ class AssistantTools:
             "canonical_bundle_hash": canonical_bundle_hash(raw),
             "summary": _state_summary(state),
         }
+
+    def render_bundle_markdown_report(self, bundle_path: str | Path) -> str:
+        """Render the established report from a selected portable research bundle."""
+        path = _resolve_within(bundle_path, self.data_roots)
+        state = load_research_bundle(path.read_bytes())["session_values"]
+        return build_markdown_report(build_research_artifact(state))
 
     def compare_bundle_summaries(self, bundle_paths: list[str | Path]) -> list[dict[str, Any]]:
         """Return independently grounded summaries for explicit bundle choices."""
