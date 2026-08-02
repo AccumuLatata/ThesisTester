@@ -22,7 +22,11 @@ from thesistester.assistant.contracts import (
     UnknownCapabilityError,
     structured_error,
 )
-from thesistester.assistant.explainer import compare_evidence, explain_evidence
+from thesistester.assistant.explainer import (
+    assert_claims_grounded,
+    compare_evidence,
+    explain_evidence_report,
+)
 from thesistester.assistant.handlers import (
     HANDLER_REGISTRY,
     HandlerContext,
@@ -736,10 +740,16 @@ class AssistantOrchestrator:
         if result.status != OrchestrationStatus.COMPLETED.value:
             return result
         packet = evidence_packet_from_payload(result.payload)
+        report = explain_evidence_report(packet)
+        assert_claims_grounded(packet, report)
         return OrchestrationResult(
             status=result.status,
             capability_id=result.capability_id,
-            payload={**result.payload, "explanation": explain_evidence(packet)},
+            payload={
+                **result.payload,
+                "explanation": report["narrative"],
+                "explanation_report": report,
+            },
         )
 
     def explain_run_with_llm(
@@ -838,6 +848,7 @@ class AssistantOrchestrator:
             left_bundle_hash=str(left_run.provenance["canonical_bundle_hash"]),
             right_bundle_hash=str(right_run.provenance["canonical_bundle_hash"]),
             evidence=comparison,
+            conclusions=tuple(comparison.get("conclusions") or ()),
         )
         # Persistence is best-effort: computed comparison evidence must still
         # reach the UI when the immutable comparison write fails.

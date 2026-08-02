@@ -120,7 +120,14 @@ clarifications only when the newest specification is still
 defaults use `safe_int`/`safe_float` so malformed JSON/chat values cannot crash
 rerenders. Bundle restore clears `assistant_validated_run_spec` and the page
 reruns so the Active handoff caption refreshes immediately.
-`compare_completed_runs()` still returns computed comparison evidence when
+Explanations are packet-backed: `EvidencePacket` is schema-versioned and
+includes structured caveats, limitations, claims, and next-experiment guidance.
+`explain_evidence_report()` / `assert_claims_grounded()` ensure every displayed
+numeric claim cites an evidence path and exact value. `compare_evidence()`
+returns versioned nested evidence covering metrics, executable-spec diffs,
+data comparability, conclusions, and next experiments. Persisted `Comparison`
+records are schema v2 (`created_at`, `conclusions`); v1 records migrate on
+read. `compare_completed_runs()` still returns computed comparison evidence when
 immutable comparison persistence fails (`persistence_error`), so the UI is not
 blocked by a save race. Report and research-artifact export remain independent
 UI actions. Untouched execution drafts default `exposure_policy` to

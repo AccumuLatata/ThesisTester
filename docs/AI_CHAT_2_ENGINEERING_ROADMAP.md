@@ -222,6 +222,26 @@ coordinator between UI, repository, compiler, tools, and explainer.
 - Mandatory caveats appear for low N, zero costs, overlap, intrabar ambiguity,
   grid selection, and failed robustness checks.
 
+**Implemented contract (versioned evidence / research-grade explanations)**
+- `EvidencePacket` is schema-versioned (`EVIDENCE_PACKET_SCHEMA_VERSION`) and
+  carries structured `caveats`, `limitations`, `claims`, and
+  `next_experiments` in addition to provenance/assumptions/results/warnings.
+- Deterministic templates cover baseline, failure, candidate SL/TP, validation,
+  Monte Carlo/noise/sensitivity/overfitting, WFA/OOS, time/session, OTF,
+  portfolio, and run comparison. `assert_claims_grounded()` requires every
+  numeric claim path/value to exist in the packet.
+- Mandatory caveat codes include low sample, zero costs, overlapping exposure,
+  intrabar ambiguity, grid selection, missing/failed OOS, failed robustness,
+  and multiple testing. Cost/exposure caveats prefer
+  `provenance.effective_configuration` so assistant bundle paths fire closed.
+- `compare_evidence` returns versioned nested evidence with metrics,
+  assumptions_diff, data_comparability, conclusions, and next-experiment
+  guidance. “Better” statements always include metric, candidate set, samples,
+  costs, and OOS status.
+- Persisted `Comparison` records are schema v2 with `created_at` and
+  `conclusions`; v1 records migrate on read. Reloaded comparisons reproduce
+  evidence and conclusions.
+
 ## C2-6 — Optional LLM provider layer
 
 **Goal:** add conversational natural-language assistance only after C2-1–5.
