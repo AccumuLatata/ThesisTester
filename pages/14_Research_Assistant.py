@@ -516,7 +516,15 @@ with st.expander("Structured level controls"):
             else 2,
         )
         if st.form_submit_button("Apply level controls"):
-            sma_lengths = [50] if sma_50 else []
+            sma_lengths = [
+                length for length in current_sma_lengths if isinstance(length, int) and length > 0
+            ]
+            if sma_50 and 50 not in sma_lengths:
+                sma_lengths.append(50)
+            if not sma_50:
+                sma_lengths = [length for length in sma_lengths if length != 50]
+            if not sma_lengths:
+                sma_lengths = [200]
             st.session_state["assistant_draft_choices"] = {
                 **current,
                 "levels": {
