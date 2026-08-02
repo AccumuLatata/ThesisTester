@@ -57,6 +57,29 @@ def compile_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict[str, Any]
     return spec
 
 
+def compile_canonical_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict[str, Any]:
+    """Compile only fully explicit research assumptions into an executable spec."""
+    spec = compile_run_spec(name=name, choices=choices)
+    dataset = spec["dataset"]
+    backtest = spec["backtest"]
+    setup = spec["setup"]
+    missing: list[str] = []
+    if not dataset.get("instrument"):
+        missing.append("dataset.instrument")
+    for key in ("commission_per_side", "slippage_ticks", "exposure_policy", "intrabar_model"):
+        if key not in backtest:
+            missing.append(f"backtest.{key}")
+    for key in ("trigger", "tolerance_ticks", "selected_levels"):
+        if key not in setup:
+            missing.append(f"setup.{key}")
+    validation = spec.get("validation")
+    if isinstance(validation, Mapping) and "random_state" not in validation:
+        missing.append("validation.random_state")
+    if missing:
+        raise ValueError(f"Canonical RunSpec requires explicit assumptions: {', '.join(missing)}.")
+    return spec
+
+
 def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> ThesisDraft:
     """Create a deterministic draft and name missing executable definitions."""
     if not isinstance(prompt, str) or not prompt.strip():

@@ -32,6 +32,7 @@ from thesistester.assistant.tools import AssistantToolError, AssistantTools, Too
 from thesistester.assistant.thesis_compiler import (
     COMPILER_VERSION,
     ThesisDraft,
+    compile_canonical_run_spec,
     compile_run_spec,
     compile_thesis,
 )
@@ -79,6 +80,7 @@ __all__ = [
     "validate_capability_request",
     "compile_thesis",
     "compile_run_spec",
+    "compile_canonical_run_spec",
     "build_evidence_packet",
     "compare_evidence",
     "explain_evidence",

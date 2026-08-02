@@ -1,6 +1,6 @@
 import pytest
 
-from thesistester.assistant import compile_run_spec, compile_thesis
+from thesistester.assistant import compile_canonical_run_spec, compile_run_spec, compile_thesis
 
 
 def test_compiler_marks_ambiguous_trading_language_for_clarification():
@@ -46,3 +46,25 @@ def test_run_spec_compiler_requires_explicit_execution_sections(monkeypatch):
     assert compiled["dataset"] is not choices["dataset"]
     with pytest.raises(ValueError, match="backtest"):
         compile_run_spec(name="Missing", choices={"dataset": {}, "setup": {}})
+
+
+def test_canonical_compiler_rejects_implicit_execution_assumptions(monkeypatch):
+    monkeypatch.setattr(
+        "thesistester.assistant.thesis_compiler.validate_run_spec", lambda spec: None
+    )
+    choices = {
+        "dataset": {"path": "bars.csv", "instrument": "ES"},
+        "setup": {"trigger": "touch", "tolerance_ticks": 0, "selected_levels": ["dVWAP_RTH"]},
+        "backtest": {
+            "commission_per_side": 0.0,
+            "slippage_ticks": 0.0,
+            "exposure_policy": "single_position",
+            "intrabar_model": "sl_first",
+        },
+        "validation": {"random_state": 42},
+    }
+    assert compile_canonical_run_spec(name="Explicit", choices=choices)["name"] == "Explicit"
+
+    choices["backtest"].pop("slippage_ticks")
+    with pytest.raises(ValueError, match="slippage_ticks"):
+        compile_canonical_run_spec(name="Implicit", choices=choices)

@@ -18,7 +18,7 @@ from thesistester.assistant import (
     AssistantOrchestrator,
     Comparison,
     LocalThesisRepository,
-    compile_run_spec,
+    compile_canonical_run_spec,
     compile_thesis,
 )
 from thesistester.assistant.explainer import (
@@ -599,7 +599,7 @@ if st.button("Draft research plan", type="primary"):
 if st.button("Validate executable RunSpec"):
     try:
         current_choices = _choices_from_editor(choices_raw)
-        validated = compile_run_spec(name=thesis.name, choices=current_choices)
+        validated = compile_canonical_run_spec(name=thesis.name, choices=current_choices)
         st.session_state["assistant_draft_choices"] = current_choices
         st.session_state["assistant_validated_run_spec"] = {
             "choices": current_choices,
