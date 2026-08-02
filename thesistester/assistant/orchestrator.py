@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from thesistester.assistant.contracts import (
     AssistantContractError,
@@ -49,6 +49,26 @@ class OrchestrationResult:
     status: str
     capability_id: str
     payload: dict[str, Any]
+
+
+def confirmed_run_feedback(result: OrchestrationResult) -> tuple[str, str]:
+    """Map a confirmed-run orchestration result to UI level and message.
+
+    Returns ``(level, message)`` where level is ``success``, ``warning``, or
+    ``error``. Callers must not assume success merely because no exception was
+    raised: cancel races return ``status="cancelled"``.
+    """
+    if result.status == OrchestrationStatus.COMPLETED.value:
+        return "success", "Research run completed and provenance was recorded."
+    error = result.payload.get("error") if isinstance(result.payload, dict) else None
+    message = None
+    if isinstance(error, Mapping):
+        message = error.get("message")
+    if not isinstance(message, str) or not message.strip():
+        message = f"Research run ended with status {result.status}."
+    if result.status == OrchestrationStatus.CANCELLED.value:
+        return "warning", message
+    return "error", message
 
 
 def _assert_handler_coverage() -> None:

@@ -6,6 +6,8 @@ from thesistester.assistant import (
     CapabilityMode,
     FEATURE_PARITY_REGISTRY,
     LocalThesisRepository,
+    OrchestrationResult,
+    confirmed_run_feedback,
 )
 from thesistester.assistant.handlers import HANDLER_REGISTRY
 from thesistester.assistant.tools import AssistantTools
@@ -176,6 +178,36 @@ def test_cancel_run_records_terminal_state_and_audit(tmp_path):
         thesis.thesis_id, conversation.conversation_id
     ).tool_transcript
     assert transcript[-1]["status"] == "cancelled"
+
+
+def test_confirmed_run_feedback_distinguishes_cancelled_from_completed():
+    completed = OrchestrationResult(
+        status="completed",
+        capability_id="PIPELINE.run_experiment",
+        payload={"run_id": "run_1"},
+    )
+    cancelled = OrchestrationResult(
+        status="cancelled",
+        capability_id="PIPELINE.run_experiment",
+        payload={
+            "run_id": "run_2",
+            "error": {
+                "category": "cancellation",
+                "retryable": False,
+                "remediation": "Retry",
+                "message": "Cancelled from another session.",
+            },
+        },
+    )
+
+    assert confirmed_run_feedback(completed) == (
+        "success",
+        "Research run completed and provenance was recorded.",
+    )
+    assert confirmed_run_feedback(cancelled) == (
+        "warning",
+        "Cancelled from another session.",
+    )
 
 
 def test_cancel_run_returns_structured_error_when_no_longer_running(tmp_path):

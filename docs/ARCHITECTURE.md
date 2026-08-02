@@ -100,7 +100,9 @@ append races. `cancel_run()` returns a structured lifecycle failure when the
 target run is no longer `running`, so stale Cancel clicks do not raise. If
 cancel wins while execution is still finishing, the orchestrator keeps the
 cancelled terminal state, attaches late bundle provenance when available, and
-does not attempt `fail_run` against the already-terminal record.
+does not attempt `fail_run` against the already-terminal record. The Research
+Assistant UI reads that returned status through `confirmed_run_feedback()` so
+a cancelled race is not shown as a successful completion.
 
 Research ZIP bytes include archive timestamps and are not deterministic.
 `canonical_bundle_hash()` projects JSON with sorted keys (excluding

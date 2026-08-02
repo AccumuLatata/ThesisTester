@@ -82,7 +82,8 @@ coordinator between UI, repository, compiler, tools, and explainer.
   audits the outcome. Stale cancel attempts against non-running runs return a
   structured lifecycle failure instead of raising. Cancel-vs-complete races keep
   the cancelled terminal state and attach late bundle provenance when compute
-  finished after cancel.
+  finished after cancel. UI feedback uses the returned orchestration status so
+  cancelled races are not reported as completed.
 - Provenance-gated bundle loads require non-empty expected hashes
   (`BUNDLE.import`, export, and `PORTFOLIO.analyze`) and fail closed instead of
   skipping verification. Terminal lifecycle audits are best-effort so a

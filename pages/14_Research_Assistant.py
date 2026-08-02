@@ -21,6 +21,7 @@ from thesistester.assistant import (
     EvidencePacket,
     LocalThesisRepository,
     compile_thesis,
+    confirmed_run_feedback,
     map_thesis_choices_to_run_spec,
     normalize_setup_level_selection,
     normalize_walk_forward_controls,
@@ -824,13 +825,19 @@ for spec in reversed(specifications):
                         / "bundles"
                         / f"{uuid4().hex}.research.zip"
                     )
-                    orchestrator.execute_confirmed_run(
+                    run_result = orchestrator.execute_confirmed_run(
                         thesis_id=thesis_id,
                         spec_version=spec.version,
                         output_path=output_path,
                         conversation_id=conversation_id,
                     )
-                    st.success("Research run completed and provenance was recorded.")
+                    level, message = confirmed_run_feedback(run_result)
+                    if level == "success":
+                        st.success(message)
+                    elif level == "warning":
+                        st.warning(message)
+                    else:
+                        st.error(message)
                     st.rerun()
                 except Exception as exc:
                     st.error(f"Research run failed: {exc}")

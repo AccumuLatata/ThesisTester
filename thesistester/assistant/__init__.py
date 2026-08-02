@@ -52,7 +52,11 @@ from thesistester.assistant.explainer import (
     compare_evidence,
     explain_evidence,
 )
-from thesistester.assistant.orchestrator import AssistantOrchestrator, OrchestrationResult
+from thesistester.assistant.orchestrator import (
+    AssistantOrchestrator,
+    OrchestrationResult,
+    confirmed_run_feedback,
+)
 from thesistester.assistant.comparison import COMPARISON_SCHEMA_VERSION, Comparison
 
 __all__ = [
@@ -79,6 +83,7 @@ __all__ = [
     "LocalThesisRepository",
     "OrchestrationResult",
     "OrchestrationStatus",
+    "confirmed_run_feedback",
     "RepositoryConflictError",
     "RepositoryCorruptionError",
     "RepositoryReadOnlyError",
