@@ -352,6 +352,7 @@ for spec in reversed(specifications):
                         thesis_id=thesis_id,
                         spec_version=spec.version,
                         output_path=output_path,
+                        conversation_id=conversation_id,
                     )
                     st.success("Research run completed and provenance was recorded.")
                     st.rerun()
