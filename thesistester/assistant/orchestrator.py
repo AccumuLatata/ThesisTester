@@ -10,8 +10,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from thesistester.assistant.contracts import AssistantRequest, ConfirmationLevel
+from thesistester.assistant.llm import StructuredLLMClient
+from thesistester.assistant.llm_intent import propose_thesis_draft
 from thesistester.assistant.registry import validate_capability_request
 from thesistester.assistant.repository import LocalThesisRepository
+from thesistester.assistant.thesis_compiler import ThesisDraft
 from thesistester.assistant.tools import AssistantTools
 
 
@@ -72,6 +75,36 @@ class AssistantOrchestrator:
         return OrchestrationResult(
             status="completed", capability_id=request.capability_id, payload=result
         )
+
+    def handle_chat_turn(
+        self,
+        client: StructuredLLMClient,
+        *,
+        thesis_id: str,
+        conversation_id: str,
+        user_message: str,
+    ) -> ThesisDraft:
+        """Persist a non-executing chat turn and return its deterministic draft."""
+        conversation = self.repository.get_conversation(thesis_id, conversation_id)
+        user_record = self.repository.append_conversation_message(
+            thesis_id,
+            conversation_id,
+            expected_revision=conversation.revision,
+            message={"role": "user", "content": user_message},
+        )
+        draft = propose_thesis_draft(client, prompt=user_message)
+        self.repository.append_conversation_message(
+            thesis_id,
+            conversation_id,
+            expected_revision=user_record.revision,
+            message={
+                "role": "assistant",
+                "content": "Drafted non-executing research choices.",
+                "choices": draft.normalized_run_spec,
+                "clarifications": list(draft.unresolved_assumptions),
+            },
+        )
+        return draft
 
     def _execute(self, request: AssistantRequest) -> dict[str, Any]:
         if request.capability_id == "PIPELINE.validate_run_spec":

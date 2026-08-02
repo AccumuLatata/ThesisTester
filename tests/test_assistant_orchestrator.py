@@ -31,3 +31,37 @@ def test_validated_request_routes_only_through_declared_tool(tmp_path, monkeypat
 
     assert result.status == "completed"
     assert result.payload == {"valid": True}
+
+
+def test_chat_turn_persists_user_and_nonexecuting_assistant_draft(tmp_path):
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "choices": [
+                    {"key": "trend_rule", "value": "slope"},
+                    {"key": "trigger", "value": "touch"},
+                    {"key": "session_window", "value": "10:00 ET"},
+                    {"key": "success_criteria", "value": "30 trades"},
+                ],
+                "clarifications": [],
+            }
+
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    thesis = repository.create_thesis(name="Chat")
+    conversation = repository.create_conversation(thesis.thesis_id)
+    orchestrator = AssistantOrchestrator(
+        tools=AssistantTools(data_roots=(Path(tmp_path),)), repository=repository
+    )
+
+    draft = orchestrator.handle_chat_turn(
+        Client(),
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+        user_message="Test",
+    )
+
+    assert draft.ready_for_confirmation
+    assert (
+        len(repository.get_conversation(thesis.thesis_id, conversation.conversation_id).messages)
+        == 2
+    )
