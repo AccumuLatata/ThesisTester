@@ -217,9 +217,7 @@ def map_thesis_choices_to_run_spec(*, name: str, choices: Mapping[str, Any]) -> 
     return compile_canonical_run_spec(name=name, choices=canonical_choices)
 
 
-def map_persisted_confirmed_run_spec(
-    *, name: str, choices: Mapping[str, Any]
-) -> dict[str, Any]:
+def map_persisted_confirmed_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict[str, Any]:
     """Compile a confirmed record, preserving historical session defaults.
 
     Confirmations written before the canonical session-control contract were
@@ -244,7 +242,9 @@ def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> 
     """Create a deterministic draft and name missing executable definitions.
 
     A required section must be a non-empty mapping so a confirmation-ready
-    draft is eligible for canonical RunSpec mapping.
+    draft is eligible for canonical RunSpec mapping. Narrative LLM hints remain
+    available only while deriving clarifications; they are never staged as
+    executable choices.
     """
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError("Thesis prompt must be a non-empty string.")
@@ -278,6 +278,8 @@ def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> 
             unresolved.append("Define the SMA confluence tolerance in ticks.")
     return ThesisDraft(
         prompt=prompt.strip(),
-        normalized_run_spec=selected,
+        normalized_run_spec={
+            key: deepcopy(selected[key]) for key in _CANONICAL_CHOICE_KEYS if key in selected
+        },
         unresolved_assumptions=tuple(unresolved),
     )

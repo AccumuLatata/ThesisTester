@@ -33,6 +33,22 @@ def test_compiler_is_deterministic_for_complete_explicit_choices():
     assert first.ready_for_confirmation
 
 
+def test_compiler_does_not_stage_narrative_llm_hints_as_executable_choices():
+    draft = compile_thesis(
+        "Test a touch entry.",
+        choices={
+            "trend_rule": "positive 30-minute SMA slope",
+            "trigger": "touch",
+            "dataset": {"path": "bars.csv", "instrument": "ES"},
+        },
+    )
+
+    assert draft.normalized_run_spec == {
+        "dataset": {"path": "bars.csv", "instrument": "ES"},
+    }
+    assert not draft.ready_for_confirmation
+
+
 @pytest.mark.parametrize("empty_section", ("dataset", "setup", "backtest"))
 def test_compiler_requires_non_empty_required_choice_sections(monkeypatch, empty_section):
     monkeypatch.setattr(

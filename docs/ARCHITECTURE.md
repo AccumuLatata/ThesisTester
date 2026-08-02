@@ -63,8 +63,10 @@ The AIA-5 Research Assistant page adds only `assistant_selected_thesis_id`,
 `assistant_validated_run_spec`, `assistant_run_explanations`, and
 `assistant_run_comparisons`, `assistant_llm_attempts`, and
 `assistant_run_reports`, and `assistant_run_artifacts`. They select and stage
-assistant-library objects; they do not replace existing data, levels, signals,
-or backtest session-state producers.
+assistant-library objects. `assistant_draft_choices` contains only supported
+structured RunSpec sections; narrative LLM hints stay in conversation history
+and never become execution candidates. These keys do not replace existing data,
+levels, signals, or backtest session-state producers.
 
 `LocalThesisRepository` stores schema-versioned thesis metadata, immutable
 specification versions, requested/terminal run provenance, and append-only
