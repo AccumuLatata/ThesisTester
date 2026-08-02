@@ -23,6 +23,13 @@ def _init_state() -> None:
     st.session_state.setdefault("assistant_draft_choices", {})
 
 
+def _select_thesis(thesis_id: str) -> None:
+    if st.session_state["assistant_selected_thesis_id"] != thesis_id:
+        st.session_state["assistant_selected_thesis_id"] = thesis_id
+        st.session_state["assistant_draft_prompt"] = ""
+        st.session_state["assistant_draft_choices"] = {}
+
+
 def _choices_from_editor(raw: str) -> dict:
     if not raw.strip():
         return {}
@@ -43,13 +50,16 @@ with st.sidebar:
     new_name = st.text_input("New thesis name", key="assistant_new_thesis_name")
     if st.button("Create thesis", use_container_width=True):
         thesis = repository.create_thesis(name=new_name)
-        st.session_state["assistant_selected_thesis_id"] = thesis.thesis_id
+        _select_thesis(thesis.thesis_id)
         st.rerun()
     theses = repository.list_theses(include_archived=True)
-    thesis_options = {f"{thesis.name} ({thesis.lifecycle})": thesis.thesis_id for thesis in theses}
+    thesis_options = {
+        f"{thesis.name} ({thesis.lifecycle}, {thesis.thesis_id[-8:]})": thesis.thesis_id
+        for thesis in theses
+    }
     selected_label = st.selectbox("Select thesis", list(thesis_options), index=None)
     if selected_label:
-        st.session_state["assistant_selected_thesis_id"] = thesis_options[selected_label]
+        _select_thesis(thesis_options[selected_label])
 
 thesis_id = st.session_state["assistant_selected_thesis_id"]
 if not thesis_id:
