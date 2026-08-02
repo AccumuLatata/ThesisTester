@@ -380,6 +380,8 @@ else:
                 llm_explanation = st.session_state["assistant_llm_run_explanations"].get(run.run_id)
                 if llm_explanation:
                     st.write(llm_explanation.summary)
+                    for caveat in llm_explanation.caveats:
+                        st.caption(f"Caveat: {caveat}")
 
 completed_runs = [
     run
