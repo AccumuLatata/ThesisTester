@@ -45,9 +45,19 @@ class AssistantOrchestrator:
                 capability_id=request.capability_id,
                 payload={"reason": "Explicit confirmation is required before this action."},
             )
-        result = self._execute(request)
+        conversation = None
         if thesis_id is not None and conversation_id is not None:
             conversation = self.repository.get_conversation(thesis_id, conversation_id)
+        try:
+            result = self._execute(request)
+        except ValueError as exc:
+            return OrchestrationResult(
+                status="unavailable",
+                capability_id=request.capability_id,
+                payload={"reason": str(exc)},
+            )
+        if thesis_id is not None and conversation_id is not None:
+            assert conversation is not None
             self.repository.append_conversation_message(
                 thesis_id,
                 conversation_id,
