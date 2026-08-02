@@ -123,6 +123,13 @@ class AssistantOrchestrator:
         spec = self.repository.get_spec_version(thesis_id, spec_version)
         if spec.status != "confirmed":
             raise ValueError("Only confirmed specifications may execute.")
+        request = AssistantRequest(
+            capability_id="PIPELINE.run_experiment",
+            payload={"run_spec": spec.normalized_run_spec},
+        )
+        capability = validate_capability_request(request)
+        if capability.confirmation is not ConfirmationLevel.EXPLICIT_CONFIRMATION:
+            raise ValueError("Run capability must require explicit confirmation.")
         run = self.repository.start_run(
             thesis_id,
             spec_version=spec_version,
@@ -142,6 +149,8 @@ class AssistantOrchestrator:
                     "canonical_bundle_hash": result["canonical_bundle_hash"],
                     "dataset_fingerprint": result["dataset_fingerprint"],
                     "tool_version": result["tool_version"],
+                    "summary": result["summary"],
+                    "warnings": result.get("warnings", []),
                 },
             )
         except BaseException as exc:
