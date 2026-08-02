@@ -226,6 +226,36 @@ with st.expander("Structured research clarifications"):
             st.session_state["assistant_validated_run_spec"] = None
             st.rerun()
 
+with st.expander("Structured execution controls"):
+    with st.form(f"assistant_execution_{thesis_id}"):
+        current = st.session_state["assistant_draft_choices"]
+        dataset = current.get("dataset", {})
+        backtest = current.get("backtest", {})
+        dataset_path = st.text_input("Dataset CSV path", value=str(dataset.get("path", "")))
+        instrument = st.selectbox(
+            "Instrument",
+            ["ES", "NQ", "MES", "MNQ"],
+            index=["ES", "NQ", "MES", "MNQ"].index(str(dataset.get("instrument", "ES"))),
+        )
+        stop_loss_ticks = st.number_input(
+            "Stop loss ticks", min_value=1, value=int(backtest.get("stop_loss_ticks", 8))
+        )
+        take_profit_ticks = st.number_input(
+            "Take profit ticks", min_value=1, value=int(backtest.get("take_profit_ticks", 16))
+        )
+        if st.form_submit_button("Apply execution controls"):
+            st.session_state["assistant_draft_choices"] = {
+                **current,
+                "dataset": {**dataset, "path": dataset_path, "instrument": instrument},
+                "backtest": {
+                    **backtest,
+                    "stop_loss_ticks": stop_loss_ticks,
+                    "take_profit_ticks": take_profit_ticks,
+                },
+            }
+            st.session_state["assistant_validated_run_spec"] = None
+            st.rerun()
+
 with st.expander("Reuse saved setup"):
     saved_setups = list_saved_setups()
     setup_options = {
