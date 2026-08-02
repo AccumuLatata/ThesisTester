@@ -6,6 +6,7 @@ interpret prose, run engine internals, or grant arbitrary tool access.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -87,8 +88,7 @@ class AssistantOrchestrator:
         """Persist a non-executing chat turn and return its deterministic draft."""
         conversation = self.repository.get_conversation(thesis_id, conversation_id)
         history = "\n".join(
-            f"{message.get('role', 'unknown')}: {message.get('content', '')}"
-            for message in conversation.messages
+            json.dumps(message, sort_keys=True) for message in conversation.messages
         )
         prompt = f"{history}\nuser: {user_message}" if history else user_message
         draft = propose_thesis_draft(client, prompt=prompt)
