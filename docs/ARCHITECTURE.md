@@ -96,7 +96,8 @@ entry for each gated or terminal outcome. Page code must not call
 non-empty expected hashes and fail closed when they are missing or blank; they
 never silently skip digest verification. Completed/cancelled run lifecycle
 outcomes keep their terminal repository state even if conversation-audit
-append races.
+append races. `cancel_run()` returns a structured lifecycle failure when the
+target run is no longer `running`, so stale Cancel clicks do not raise.
 
 Research ZIP bytes include archive timestamps and are not deterministic.
 `canonical_bundle_hash()` projects JSON with sorted keys (excluding

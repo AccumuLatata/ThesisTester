@@ -111,9 +111,8 @@ def test_every_routed_registry_capability_has_a_handler():
     assert all(capability_id in HANDLER_REGISTRY for capability_id in routed)
 
 
-def test_cancel_run_records_terminal_state_and_audit(tmp_path):
-    repository = LocalThesisRepository(tmp_path / "assistant")
-    thesis = repository.create_thesis(name="Cancel")
+def _confirmed_run(repository, *, name: str):
+    thesis = repository.create_thesis(name=name)
     conversation = repository.create_conversation(thesis.thesis_id)
     draft = repository.create_spec_version(
         thesis.thesis_id,
@@ -121,7 +120,7 @@ def test_cancel_run_records_terminal_state_and_audit(tmp_path):
             "dataset": {"path": "bars.csv", "instrument": "ES"},
             "levels": {},
             "setup": {
-                "name": "Cancel",
+                "name": name,
                 "description": "",
                 "instrument": "ES",
                 "selected_levels": ["dVWAP_RTH"],
@@ -152,6 +151,12 @@ def test_cancel_run_records_terminal_state_and_audit(tmp_path):
         spec_version=confirmed.version,
         request={"run_spec": confirmed.normalized_run_spec},
     )
+    return thesis, conversation, run
+
+
+def test_cancel_run_records_terminal_state_and_audit(tmp_path):
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    thesis, conversation, run = _confirmed_run(repository, name="Cancel")
     orchestrator = AssistantOrchestrator(
         tools=AssistantTools(data_roots=(Path(tmp_path),)), repository=repository
     )
@@ -171,6 +176,36 @@ def test_cancel_run_records_terminal_state_and_audit(tmp_path):
         thesis.thesis_id, conversation.conversation_id
     ).tool_transcript
     assert transcript[-1]["status"] == "cancelled"
+
+
+def test_cancel_run_returns_structured_error_when_no_longer_running(tmp_path):
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    thesis, conversation, run = _confirmed_run(repository, name="Already done")
+    repository.complete_run(
+        thesis.thesis_id,
+        run.run_id,
+        expected_revision=run.revision,
+        provenance={"canonical_bundle_hash": "a" * 64, "bundle_path": "done.research.zip"},
+    )
+    orchestrator = AssistantOrchestrator(
+        tools=AssistantTools(data_roots=(Path(tmp_path),)), repository=repository
+    )
+
+    result = orchestrator.cancel_run(
+        thesis_id=thesis.thesis_id,
+        run_id=run.run_id,
+        conversation_id=conversation.conversation_id,
+    )
+
+    restored = repository.get_run(thesis.thesis_id, run.run_id)
+    assert result.status == "failed"
+    assert result.payload["error"]["category"] == "lifecycle"
+    assert result.payload["error"]["retryable"] is True
+    assert restored.status == "completed"
+    transcript = repository.get_conversation(
+        thesis.thesis_id, conversation.conversation_id
+    ).tool_transcript
+    assert transcript[-1]["status"] == "failed"
 
 
 def test_chat_turn_persists_user_and_nonexecuting_assistant_draft(tmp_path):

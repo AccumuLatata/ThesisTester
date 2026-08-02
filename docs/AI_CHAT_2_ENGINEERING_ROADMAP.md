@@ -79,7 +79,8 @@ coordinator between UI, repository, compiler, tools, and explainer.
   execution. Confirmed runs persist effective configuration, resolved paths,
   seeds, limits, warnings, fingerprint, canonical hash, and terminal errors.
 - Explicit `cancel_run()` transitions a running research run to cancelled and
-  audits the outcome.
+  audits the outcome. Stale cancel attempts against non-running runs return a
+  structured lifecycle failure instead of raising.
 - Provenance-gated bundle loads require non-empty expected hashes
   (`BUNDLE.import`, export, and `PORTFOLIO.analyze`) and fail closed instead of
   skipping verification. Terminal lifecycle audits are best-effort so a

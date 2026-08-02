@@ -860,6 +860,14 @@ else:
                 if cancelled.status == "cancelled":
                     st.warning("Research run cancelled.")
                     st.rerun()
+                else:
+                    st.error(
+                        cancelled.payload.get("error", {}).get(
+                            "message",
+                            "Unable to cancel this run because it is no longer running.",
+                        )
+                    )
+                    st.rerun()
             if run.status == "completed" and isinstance(run.provenance, dict):
                 bundle_path = run.provenance.get("bundle_path")
                 try:

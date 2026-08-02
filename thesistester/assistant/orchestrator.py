@@ -29,7 +29,11 @@ from thesistester.assistant.handlers import (
 from thesistester.assistant.llm import StructuredLLMClient
 from thesistester.assistant.llm_intent import propose_thesis_draft
 from thesistester.assistant.registry import FEATURE_PARITY_REGISTRY, validate_capability_request
-from thesistester.assistant.repository import LocalThesisRepository
+from thesistester.assistant.repository import (
+    InvalidStateTransitionError,
+    LocalThesisRepository,
+    RepositoryConflictError,
+)
 from thesistester.assistant.thesis_compiler import (
     ThesisDraft,
     map_persisted_confirmed_run_spec,
@@ -393,18 +397,49 @@ class AssistantOrchestrator:
         reason: str = "Cancelled by user.",
         conversation_id: str | None = None,
     ) -> OrchestrationResult:
-        """Cancel one running research run and record a terminal audit entry."""
-        run = self.repository.get_run(thesis_id, run_id)
-        cancelled = self.repository.cancel_run(
-            thesis_id,
-            run_id,
-            expected_revision=run.revision,
-            reason=reason,
-        )
+        """Cancel one running research run and record a terminal audit entry.
+
+        If the run is no longer cancellable (for example it completed between
+        UI render and click), return a structured failure instead of raising.
+        """
         request = AssistantRequest(
             capability_id="PIPELINE.run_experiment",
             payload={"run_id": run_id, "action": "cancel"},
         )
+        try:
+            run = self.repository.get_run(thesis_id, run_id)
+            cancelled = self.repository.cancel_run(
+                thesis_id,
+                run_id,
+                expected_revision=run.revision,
+                reason=reason,
+            )
+        except (InvalidStateTransitionError, RepositoryConflictError) as exc:
+            result = OrchestrationResult(
+                status=OrchestrationStatus.FAILED.value,
+                capability_id="PIPELINE.run_experiment",
+                payload={
+                    "run_id": run_id,
+                    "error": structured_error(
+                        category="lifecycle",
+                        retryable=True,
+                        remediation=(
+                            "Refresh the run list; only currently running research "
+                            "runs can be cancelled."
+                        ),
+                        message=str(exc),
+                    ).to_dict(),
+                },
+            )
+            self._record_audit(
+                result,
+                request=request,
+                thesis_id=thesis_id,
+                conversation_id=conversation_id,
+                extra={"run_id": run_id},
+                best_effort=True,
+            )
+            return result
         result = OrchestrationResult(
             status=OrchestrationStatus.CANCELLED.value,
             capability_id="PIPELINE.run_experiment",
