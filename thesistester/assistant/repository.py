@@ -779,14 +779,47 @@ class LocalThesisRepository:
     def confirm_spec_version(
         self, thesis_id: str, version: int, *, confirmation_note: str | None = None
     ) -> SpecVersion:
+        """Atomically validate and immutably confirm one executable specification."""
         self._assert_mutable_root()
         source = self.get_spec_version(thesis_id, version)
         if source.status == "confirmed":
-            raise InvalidStateTransitionError("Specification version is already confirmed.")
-        return self._create_confirmed_copy(source, confirmation_note=confirmation_note)
+            return source
+        existing_confirmation = next(
+            (
+                spec
+                for spec in self.list_spec_versions(thesis_id)
+                if spec.status == "confirmed" and spec.parent_version == source.version
+            ),
+            None,
+        )
+        if existing_confirmation is not None:
+            return existing_confirmation
+        if source.status != "ready_for_confirmation" or source.unresolved_assumptions:
+            raise InvalidStateTransitionError(
+                "Only a resolved, ready-for-confirmation specification may be confirmed."
+            )
+        # Import lazily to keep the persistence module free of import-time API
+        # initialization. The compiler calls validate_run_spec before any
+        # immutable confirmed record is written.
+        from thesistester.assistant.thesis_compiler import map_thesis_choices_to_run_spec
+
+        thesis = self._load_thesis(thesis_id)
+        canonical_spec = map_thesis_choices_to_run_spec(
+            name=thesis.name,
+            choices=source.normalized_run_spec,
+        )
+        return self._create_confirmed_copy(
+            source,
+            normalized_run_spec=canonical_spec,
+            confirmation_note=confirmation_note,
+        )
 
     def _create_confirmed_copy(
-        self, source: SpecVersion, *, confirmation_note: str | None
+        self,
+        source: SpecVersion,
+        *,
+        normalized_run_spec: dict[str, Any],
+        confirmation_note: str | None,
     ) -> SpecVersion:
         existing = self.list_spec_versions(source.thesis_id)
         confirmed = SpecVersion.create(
@@ -794,8 +827,8 @@ class LocalThesisRepository:
             version=len(existing) + 1,
             parent_version=source.version,
             status="confirmed",
-            normalized_run_spec=source.normalized_run_spec,
-            unresolved_assumptions=source.unresolved_assumptions,
+            normalized_run_spec=normalized_run_spec,
+            unresolved_assumptions=(),
             compiler_version=source.compiler_version,
             confirmed_at=_utcnow(),
             confirmation_note=confirmation_note,

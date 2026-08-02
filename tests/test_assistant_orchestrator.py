@@ -60,7 +60,7 @@ def test_chat_turn_persists_user_and_nonexecuting_assistant_draft(tmp_path):
         user_message="Test",
     )
 
-    assert draft.ready_for_confirmation
+    assert not draft.ready_for_confirmation
     assert (
         len(repository.get_conversation(thesis.thesis_id, conversation.conversation_id).messages)
         == 2

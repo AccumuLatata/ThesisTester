@@ -63,14 +63,29 @@ The AIA-5 Research Assistant page adds only `assistant_selected_thesis_id`,
 `assistant_validated_run_spec`, `assistant_run_explanations`, and
 `assistant_run_comparisons`, `assistant_llm_attempts`, and
 `assistant_run_reports`, and `assistant_run_artifacts`. They select and stage
-assistant-library objects; they do not replace existing data, levels, signals,
-or backtest session-state producers.
+assistant-library objects. `assistant_draft_choices` contains only supported
+structured RunSpec sections; narrative LLM hints stay in conversation history
+and never become execution candidates. Clarification checks likewise trust only
+structured sections (`levels.session_vwap_enabled`, `setup.tolerance_ticks`),
+never legacy flat keys. Setup controls reject empty confluence-level lists so
+`min_confluences`/`max_confluences` cannot claim levels that were not selected.
+Enabled walk-forward controls persist explicit `window_mode` and
+`overlap_policy` alongside fold/session counts, and canonical compilation
+rejects enabled walk-forward blocks that omit those sizing fields so API
+train/test defaults cannot be inferred at confirmation. These keys do not
+replace existing data, levels, signals, or backtest session-state producers.
 
 `LocalThesisRepository` stores schema-versioned thesis metadata, immutable
 specification versions, requested/terminal run provenance, and append-only
 conversations under `.thesistester_store/assistant/`. It writes assistant
 documents atomically and fails closed on corrupt or newer schema records.
 It does not read or modify research bundles or existing local-store namespaces.
+Confirmation is an atomic compiler boundary: it accepts only a resolved
+ready-for-confirmation draft, recompiles the typed structured choices into an
+API RunSpec, and calls `validate_run_spec()` before writing an immutable
+confirmed child. The orchestrator repeats that validation immediately before
+execution. Narrative fields that have no public-pipeline mapping are rejected,
+rather than being stored as executable assumptions.
 
 Research ZIP bytes include archive timestamps and are not deterministic.
 `canonical_bundle_hash()` projects JSON with sorted keys (excluding

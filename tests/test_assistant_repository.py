@@ -51,9 +51,35 @@ def test_specs_are_immutable_and_runs_require_confirmation(repository):
     thesis = repository.create_thesis(name="dVWAP pullback")
     draft = repository.create_spec_version(
         thesis.thesis_id,
-        normalized_run_spec={"schema_version": 1, "runs": []},
-        unresolved_assumptions=("Define uptrend.",),
-        compiler_version="test",
+        normalized_run_spec={
+            "dataset": {"path": "bars.csv", "instrument": "ES"},
+            "levels": {},
+            "setup": {
+                "name": "dVWAP pullback",
+                "description": "",
+                "instrument": "ES",
+                "selected_levels": ["dVWAP_RTH"],
+                "tolerance_ticks": 0,
+                "min_confluences": 1,
+                "max_confluences": 1,
+                "naked_only": False,
+                "naked_requirement": "any",
+                "trigger": "touch",
+                "direction": "both",
+            },
+            "backtest": {
+                "commission_per_side": 0,
+                "slippage_ticks": 0,
+                "exposure_policy": "single_position",
+                "intrabar_model": "sl_first",
+                "flat_by_session_close": True,
+                "session_close_time": "16:00",
+                "session_timezone": "America/New_York",
+                "no_new_entries_after": "15:45",
+            },
+        },
+        status="ready_for_confirmation",
+        compiler_version="runspec-2",
     )
     draft_path = repository._spec_path(thesis.thesis_id, draft.version).read_bytes()
 
@@ -83,6 +109,69 @@ def test_specs_are_immutable_and_runs_require_confirmation(repository):
         repository.fail_run(
             thesis.thesis_id, run.run_id, expected_revision=completed.revision, error={"x": 1}
         )
+
+
+def test_confirmation_rejects_unresolved_or_invalid_content_and_is_idempotent(repository):
+    thesis = repository.create_thesis(name="Canonical thesis")
+    unresolved = repository.create_spec_version(
+        thesis.thesis_id,
+        normalized_run_spec={},
+        status="needs_clarification",
+        unresolved_assumptions=("Select a dataset.",),
+        compiler_version="runspec-2",
+    )
+    with pytest.raises(InvalidStateTransitionError, match="resolved"):
+        repository.confirm_spec_version(thesis.thesis_id, unresolved.version)
+
+    invalid = repository.create_spec_version(
+        thesis.thesis_id,
+        normalized_run_spec={
+            "dataset": {"path": "bars.csv", "instrument": "ES"},
+            "setup": {},
+            "backtest": {},
+        },
+        status="ready_for_confirmation",
+        compiler_version="runspec-2",
+    )
+    with pytest.raises(ValueError, match="Invalid setup configuration"):
+        repository.confirm_spec_version(thesis.thesis_id, invalid.version)
+
+    valid = repository.create_spec_version(
+        thesis.thesis_id,
+        normalized_run_spec={
+            "dataset": {"path": "bars.csv", "instrument": "ES"},
+            "levels": {},
+            "setup": {
+                "name": "Canonical thesis",
+                "description": "",
+                "instrument": "ES",
+                "selected_levels": ["dVWAP_RTH"],
+                "tolerance_ticks": 0,
+                "min_confluences": 1,
+                "max_confluences": 1,
+                "naked_only": False,
+                "naked_requirement": "any",
+                "trigger": "touch",
+                "direction": "both",
+            },
+            "backtest": {
+                "commission_per_side": 0,
+                "slippage_ticks": 0,
+                "exposure_policy": "single_position",
+                "intrabar_model": "sl_first",
+                "flat_by_session_close": True,
+                "session_close_time": "16:00",
+                "session_timezone": "America/New_York",
+                "no_new_entries_after": "15:45",
+            },
+        },
+        status="ready_for_confirmation",
+        compiler_version="runspec-2",
+    )
+    first = repository.confirm_spec_version(thesis.thesis_id, valid.version)
+    second = repository.confirm_spec_version(thesis.thesis_id, valid.version)
+
+    assert first == second
 
 
 def test_conversations_are_append_only_and_reject_stale_revisions(repository):

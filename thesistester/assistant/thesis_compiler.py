@@ -10,11 +10,35 @@ import re
 import json
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, ClassVar, Mapping
 
 from thesistester.api import validate_run_spec
 
-COMPILER_VERSION = "1"
+COMPILER_VERSION = "2"
+RUN_SPEC_DRAFT_SCHEMA_VERSION = 1
+_CANONICAL_CHOICE_KEYS = {
+    "name",
+    "dataset",
+    "levels",
+    "setup",
+    "backtest",
+    "grid",
+    "validation",
+    "walk_forward",
+}
+# These are the session-control defaults used by the public run API before
+# canonical confirmations required every execution assumption to be persisted.
+# Keep this snapshot immutable: it preserves the semantics of legacy confirmed
+# records even if current API defaults evolve.
+_LEGACY_BACKTEST_SESSION_DEFAULTS = {
+    "flat_by_session_close": False,
+    "session_close_time": None,
+    "session_timezone": None,
+    "no_new_entries_after": None,
+}
+_WALK_FORWARD_FOLD_MODES = frozenset({"bars", "sessions"})
+_WALK_FORWARD_WINDOW_MODES = frozenset({"rolling", "anchored"})
+_WALK_FORWARD_OVERLAP_POLICIES = frozenset({"reject", "first", "last"})
 
 
 @dataclass(frozen=True)
@@ -34,6 +58,7 @@ class ThesisDraft:
 class StructuredThesisChoices:
     """Typed executable choices; narrative-only fields are intentionally excluded."""
 
+    schema_version: ClassVar[int] = RUN_SPEC_DRAFT_SCHEMA_VERSION
     dataset: dict[str, Any]
     levels: dict[str, Any]
     setup: dict[str, Any]
@@ -121,7 +146,16 @@ def compile_canonical_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict
     missing: list[str] = []
     if not dataset.get("instrument"):
         missing.append("dataset.instrument")
-    for key in ("commission_per_side", "slippage_ticks", "exposure_policy", "intrabar_model"):
+    for key in (
+        "commission_per_side",
+        "slippage_ticks",
+        "exposure_policy",
+        "intrabar_model",
+        "flat_by_session_close",
+        "session_close_time",
+        "session_timezone",
+        "no_new_entries_after",
+    ):
         if key not in backtest:
             missing.append(f"backtest.{key}")
     for key in ("trigger", "tolerance_ticks", "selected_levels"):
@@ -130,46 +164,204 @@ def compile_canonical_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict
     validation = spec.get("validation")
     if isinstance(validation, Mapping) and "random_state" not in validation:
         missing.append("validation.random_state")
+    grid = spec.get("grid")
+    if isinstance(grid, Mapping) and grid.get("enabled", True):
+        for key in ("ranking_metric", "min_trades"):
+            if key not in grid:
+                missing.append(f"grid.{key}")
+    walk_forward = spec.get("walk_forward")
+    if isinstance(walk_forward, Mapping):
+        if "enabled" not in walk_forward:
+            missing.append("walk_forward.enabled")
+        if walk_forward.get("enabled", True):
+            for key in ("fold_mode", "window_mode", "overlap_policy"):
+                if key not in walk_forward:
+                    missing.append(f"walk_forward.{key}")
+            # Fold sizes are mandatory when enabled: the public run API supplies
+            # train/test defaults (e.g. 500/100 bars) that must never be inferred
+            # for a confirmed assistant RunSpec.
+            fold_mode = walk_forward.get("fold_mode")
+            if fold_mode == "bars":
+                for key in ("train_bars", "test_bars", "step_bars"):
+                    if key not in walk_forward:
+                        missing.append(f"walk_forward.{key}")
+            elif fold_mode == "sessions":
+                for key in ("train_sessions", "test_sessions", "step_sessions"):
+                    if key not in walk_forward:
+                        missing.append(f"walk_forward.{key}")
     if missing:
         raise ValueError(f"Canonical RunSpec requires explicit assumptions: {', '.join(missing)}.")
     return spec
 
 
+def map_thesis_choices_to_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict[str, Any]:
+    """Compile supported structured choices into one canonical executable RunSpec.
+
+    This boundary deliberately rejects narrative-only fields.  A value either
+    maps to the public API schema or remains a clarification; it is never
+    persisted as an executable-looking but ignored "ghost" assumption.  The
+    explicit ``name`` argument is authoritative so a previously confirmed
+    RunSpec can be safely recompiled after its thesis is renamed.
+    """
+    if not isinstance(choices, Mapping):
+        raise ValueError("Research choices must be an object.")
+    unknown = sorted(set(choices) - _CANONICAL_CHOICE_KEYS)
+    if unknown:
+        raise ValueError(
+            "Unsupported non-executable research choices: "
+            + ", ".join(unknown)
+            + ". Use structured executable controls instead."
+        )
+    canonical_choices = {
+        key: deepcopy(choices[key])
+        for key in ("dataset", "levels", "setup", "backtest", "grid", "validation", "walk_forward")
+        if key in choices
+    }
+    setup = canonical_choices.get("setup")
+    dataset = canonical_choices.get("dataset")
+    if isinstance(setup, Mapping) and isinstance(dataset, Mapping):
+        setup = dict(setup)
+        if "instrument" not in setup and dataset.get("instrument"):
+            # This is a deterministic consistency binding, not an instrument
+            # default: the canonical validator verifies the values match.
+            setup["instrument"] = dataset["instrument"]
+        selected_levels = setup.get("selected_levels")
+        if isinstance(selected_levels, str):
+            setup["selected_levels"] = [selected_levels]
+        canonical_choices["setup"] = setup
+    return compile_canonical_run_spec(name=name, choices=canonical_choices)
+
+
+def map_persisted_confirmed_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict[str, Any]:
+    """Compile a confirmed record, preserving historical session defaults.
+
+    Confirmations written before the canonical session-control contract were
+    executable because the public run API supplied these defaults at execution
+    time. Hydrate only those historical omissions before applying the current
+    canonical validator; all other incomplete or unsupported choices still
+    fail closed.
+    """
+    if not isinstance(choices, Mapping):
+        raise ValueError("Research choices must be an object.")
+    persisted_choices = deepcopy(dict(choices))
+    backtest = persisted_choices.get("backtest")
+    if isinstance(backtest, Mapping):
+        persisted_choices["backtest"] = {
+            **_LEGACY_BACKTEST_SESSION_DEFAULTS,
+            **deepcopy(dict(backtest)),
+        }
+    return map_thesis_choices_to_run_spec(name=name, choices=persisted_choices)
+
+
+def normalize_setup_level_selection(
+    selected_levels: Any,
+    *,
+    previous_min: Any = 1,
+    previous_max: Any = None,
+) -> tuple[list[str], int, int]:
+    """Normalize confluence columns and clamp confluence bounds to their count.
+
+    An empty selection fails closed: confluence bounds must never claim one or
+    more levels when no executable level columns were provided.
+    """
+    if isinstance(selected_levels, str):
+        levels = [item.strip() for item in selected_levels.split(",") if item.strip()]
+    elif isinstance(selected_levels, list):
+        levels = [str(item).strip() for item in selected_levels if str(item).strip()]
+    else:
+        raise ValueError("Confluence levels must be a comma-separated string or list.")
+    if not levels:
+        raise ValueError("Confluence levels must include at least one level column.")
+    level_count = len(levels)
+    try:
+        prior_min = int(previous_min)
+        prior_max = int(previous_max if previous_max is not None else level_count)
+    except (TypeError, ValueError):
+        prior_min, prior_max = 1, level_count
+    min_confluences = min(max(1, prior_min), level_count)
+    max_confluences = min(max(min_confluences, prior_max), level_count)
+    return levels, min_confluences, max_confluences
+
+
+def normalize_walk_forward_controls(
+    *,
+    enabled: bool,
+    train_sessions: Any = 20,
+    test_sessions: Any = 5,
+    step_sessions: Any = 5,
+    fold_mode: str = "sessions",
+    window_mode: str = "rolling",
+    overlap_policy: str = "reject",
+) -> dict[str, Any]:
+    """Build an explicit walk-forward draft section for assistant controls.
+
+    Disabled walk-forward persists only the opt-out flag. Enabled walk-forward
+    requires every canonical assumption field so UI drafts remain confirmation-
+    eligible without silent API defaults.
+    """
+    if not enabled:
+        return {"enabled": False}
+    if fold_mode not in _WALK_FORWARD_FOLD_MODES:
+        raise ValueError("walk_forward.fold_mode must be 'bars' or 'sessions'.")
+    if window_mode not in _WALK_FORWARD_WINDOW_MODES:
+        raise ValueError("walk_forward.window_mode must be 'rolling' or 'anchored'.")
+    if overlap_policy not in _WALK_FORWARD_OVERLAP_POLICIES:
+        raise ValueError("walk_forward.overlap_policy must be 'reject', 'first', or 'last'.")
+    try:
+        train = int(train_sessions)
+        test = int(test_sessions)
+        step = int(step_sessions)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Walk-forward session counts must be positive integers.") from exc
+    if min(train, test, step) < 1:
+        raise ValueError("Walk-forward session counts must be positive integers.")
+    return {
+        "enabled": True,
+        "fold_mode": fold_mode,
+        "window_mode": window_mode,
+        "overlap_policy": overlap_policy,
+        "train_sessions": train,
+        "test_sessions": test,
+        "step_sessions": step,
+    }
+
+
 def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> ThesisDraft:
-    """Create a deterministic draft and name missing executable definitions."""
+    """Create a deterministic draft and name missing executable definitions.
+
+    A required section must be a non-empty mapping so a confirmation-ready
+    draft is eligible for canonical RunSpec mapping. Narrative LLM hints remain
+    available only while deriving clarifications; they are never staged as
+    executable choices and never suppress structured-section clarifications.
+    """
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError("Thesis prompt must be a non-empty string.")
     selected = dict(choices or {})
     text = prompt.lower()
 
-    def has_choice(key: str) -> bool:
-        value = selected.get(key)
-        if isinstance(value, str):
-            return bool(value.strip())
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
-
     unresolved: list[str] = []
     required = {
-        "trend_rule": "Define the measurable trend rule.",
-        "trigger": "Define the entry trigger and tick tolerance.",
-        "session_window": "Define the exact exchange-time session window.",
-        "success_criteria": "Define performance, sample-size, and OOS success criteria.",
+        "dataset": "Select a dataset and instrument.",
+        "setup": "Define setup levels, trigger, direction, and tolerance.",
+        "backtest": "Define costs, exposure, intrabar, and session assumptions.",
     }
     for key, question in required.items():
-        if not has_choice(key):
+        if not isinstance(selected.get(key), Mapping) or not selected[key]:
             unresolved.append(question)
-    if re.search(r"\bdvwap\b", text) and not has_choice("session_vwap_anchor"):
-        unresolved.append("Confirm dVWAP_RTH and its RTH-only availability.")
-    if (re.search(r"\bsma\b", text) or "moving average" in text) and not has_choice(
-        "confluence_tolerance_ticks"
-    ):
-        unresolved.append("Define the SMA confluence tolerance in ticks.")
-    if re.search(r"\b(?:stops?|targets?|sl|take[- ]profit)\b", text) and not has_choice(
-        "selection_protocol"
-    ):
-        unresolved.append("Define SL/TP candidate grid and OOS selection protocol.")
+    # Clarifications consult only staged executable sections. Legacy flat keys
+    # such as session_vwap_anchor / confluence_tolerance_ticks are ignored.
+    if re.search(r"\bdvwap\b", text):
+        levels = selected.get("levels")
+        if not isinstance(levels, Mapping) or not levels.get("session_vwap_enabled"):
+            unresolved.append("Enable developing RTH VWAP for the dVWAP thesis.")
+    if re.search(r"\bsma\b", text) or "moving average" in text:
+        setup = selected.get("setup")
+        if not isinstance(setup, Mapping) or "tolerance_ticks" not in setup:
+            unresolved.append("Define the SMA confluence tolerance in ticks.")
     return ThesisDraft(
         prompt=prompt.strip(),
-        normalized_run_spec=selected,
+        normalized_run_spec={
+            key: deepcopy(selected[key]) for key in _CANONICAL_CHOICE_KEYS if key in selected
+        },
         unresolved_assumptions=tuple(unresolved),
     )
