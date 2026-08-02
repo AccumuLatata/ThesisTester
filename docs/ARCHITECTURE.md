@@ -57,6 +57,11 @@ Undeclared and unsupported capability requests fail closed.
 This boundary adds no `st.session_state` keys. A future assistant page must use
 additive, namespaced keys and document them here in the same PR.
 
+The AIA-5 Research Assistant page adds only `assistant_selected_thesis_id`,
+`assistant_draft_prompt`, and `assistant_draft_choices`. They select and stage
+assistant-library objects; they do not replace existing data, levels, signals,
+or backtest session-state producers.
+
 `LocalThesisRepository` stores schema-versioned thesis metadata, immutable
 specification versions, requested/terminal run provenance, and append-only
 conversations under `.thesistester_store/assistant/`. It writes assistant
