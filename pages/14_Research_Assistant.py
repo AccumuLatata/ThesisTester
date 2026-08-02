@@ -70,6 +70,13 @@ repository = _repository()
 
 st.title("Research Assistant")
 st.caption("Draft explicit research theses. Execution remains confirmation- and schema-gated.")
+with st.expander("Open detailed research views"):
+    st.page_link("pages/7_Backtest.py", label="Backtest")
+    st.page_link("pages/8_Grid_Search.py", label="Grid Search")
+    st.page_link("pages/9_Time_Analysis.py", label="Time Analysis")
+    st.page_link("pages/10_Validation.py", label="Validation")
+    st.page_link("pages/11_Report_Export.py", label="Report / Export")
+    st.page_link("pages/12_Research_Bundles.py", label="Research Bundles")
 
 with st.sidebar:
     st.subheader("Theses")
