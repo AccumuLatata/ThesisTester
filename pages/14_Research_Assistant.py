@@ -440,7 +440,10 @@ with st.expander("Structured walk-forward controls"):
     walk_forward = (
         current.get("walk_forward") if isinstance(current.get("walk_forward"), dict) else {}
     )
-    with st.form(f"assistant_walk_forward_{thesis_id}"):
+    walk_forward_fingerprint = hashlib.sha256(
+        json.dumps(walk_forward, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:12]
+    with st.form(f"assistant_walk_forward_{thesis_id}_{walk_forward_fingerprint}"):
         enabled = st.checkbox("Enable walk-forward", value=bool(walk_forward.get("enabled", False)))
         train_sessions = st.number_input(
             "Training sessions",
