@@ -11,6 +11,7 @@ from thesistester.api import (
     _GRID_DEFAULTS,
     preview_resampled_ohlcv,
     run_otf_validation,
+    run_portfolio_analysis,
     run_time_analysis,
 )
 from thesistester.api import _VALIDATION_DEFAULTS
@@ -308,4 +309,25 @@ class AssistantTools:
             raise AssistantToolError("Bundle does not include a dataset.")
         return to_jsonable(
             preview_resampled_ohlcv(data, timeframe=timeframe, max_rows=max_rows).to_dict("records")
+        )
+
+    def analyze_bundle_portfolio(
+        self,
+        bundle_paths: list[str | Path],
+        *,
+        instrument: str,
+        config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Analyze explicitly selected completed-run bundles as a portfolio."""
+        if len(bundle_paths) < 2:
+            raise AssistantToolError("Portfolio analysis requires at least two bundles.")
+        setup_trades = {}
+        for index, bundle_path in enumerate(bundle_paths, start=1):
+            path = _resolve_within(bundle_path, self.data_roots)
+            trades = load_research_bundle(path.read_bytes())["session_values"].get("trades")
+            if trades is None or trades.empty:
+                raise AssistantToolError("Each bundle requires completed trades.")
+            setup_trades[f"run_{index}"] = trades
+        return to_jsonable(
+            run_portfolio_analysis(setup_trades, instrument=instrument, config=config)
         )
