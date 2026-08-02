@@ -18,7 +18,11 @@ from thesistester.assistant import (
     compile_run_spec,
     compile_thesis,
 )
-from thesistester.assistant.explainer import build_evidence_packet, explain_evidence
+from thesistester.assistant.explainer import (
+    build_evidence_packet,
+    compare_evidence,
+    explain_evidence,
+)
 from thesistester.assistant.llm import (
     LLMConfigurationError,
     create_openai_client,
@@ -300,6 +304,38 @@ else:
                 explanation = st.session_state["assistant_run_explanations"].get(run.run_id)
                 if explanation:
                     st.write(explanation)
+
+completed_runs = [
+    run for run in runs if run.status == "completed" and isinstance(run.provenance, dict)
+]
+if len(completed_runs) >= 2:
+    st.subheader("Compare completed runs")
+    labels = {
+        run.run_id: f"Run {run.run_id[-8:]} · spec v{run.spec_version}" for run in completed_runs
+    }
+    left_id = st.selectbox(
+        "Left run", list(labels), format_func=labels.get, key="assistant_compare_left"
+    )
+    right_id = st.selectbox(
+        "Right run", list(labels), format_func=labels.get, key="assistant_compare_right"
+    )
+    if st.button("Compare runs") and left_id != right_id:
+        try:
+            selected = {run.run_id: run for run in completed_runs}
+            packets = []
+            for run_id in (left_id, right_id):
+                run = selected[run_id]
+                raw = Path(run.provenance["bundle_path"]).read_bytes()
+                if canonical_bundle_hash(raw) != run.provenance["canonical_bundle_hash"]:
+                    raise ValueError("Bundle hash does not match recorded run provenance.")
+                packets.append(
+                    build_evidence_packet(
+                        load_research_bundle(raw)["session_values"], provenance=run.provenance
+                    )
+                )
+            st.json(compare_evidence(*packets))
+        except (OSError, ValueError) as exc:
+            st.error(f"Unable to compare runs: {exc}")
 
 st.subheader("Conversation audit")
 conversations = repository.list_conversations(thesis_id)
