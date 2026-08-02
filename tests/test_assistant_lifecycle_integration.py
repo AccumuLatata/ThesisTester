@@ -1,9 +1,23 @@
+import io
+import json
+import zipfile
 from copy import deepcopy
 from pathlib import Path
 
 import pytest
 
 from thesistester.assistant import AssistantOrchestrator, LocalThesisRepository, SpecVersion
+from thesistester.research_bundle import canonical_bundle_hash
+
+
+def _mock_bundle_bytes() -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, mode="w") as archive:
+        archive.writestr(
+            "manifest.json",
+            json.dumps({"kind": "research_bundle", "created_at": "test"}),
+        )
+    return buffer.getvalue()
 
 
 class _BundleTools:
@@ -15,10 +29,11 @@ class _BundleTools:
     def run_experiment_to_bundle(self, spec, *, output_path):
         self.run_specs.append(spec)
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(output_path).write_bytes(b"bundle")
+        raw = _mock_bundle_bytes()
+        Path(output_path).write_bytes(raw)
         return {
             "bundle_path": str(output_path),
-            "canonical_bundle_hash": "a" * 64,
+            "canonical_bundle_hash": canonical_bundle_hash(raw),
             "dataset_fingerprint": {"rows": 10},
             "tool_version": "test",
             "summary": {"warnings": {"intrabar": "assumption"}},
@@ -82,9 +97,10 @@ def test_confirmed_spec_runs_and_persists_bundle_provenance(tmp_path):
 
     restored = repository.get_run(thesis.thesis_id, result.payload["run_id"])
     assert restored.status == "completed"
-    assert restored.provenance["canonical_bundle_hash"] == "a" * 64
+    bundle_bytes = Path(restored.provenance["bundle_path"]).read_bytes()
+    assert restored.provenance["canonical_bundle_hash"] == canonical_bundle_hash(bundle_bytes)
     assert restored.warnings == ("intrabar: assumption",)
-    assert Path(restored.provenance["bundle_path"]).read_bytes() == b"bundle"
+    assert zipfile.is_zipfile(Path(restored.provenance["bundle_path"]))
     assert "resource_limits" in restored.request
     assert restored.provenance["effective_configuration"]["dataset"]["path"] == "bars.csv"
     assert restored.provenance["resolved_paths"]["dataset.path"] == "bars.csv"
@@ -245,7 +261,9 @@ def test_completed_run_survives_conversation_audit_failure(tmp_path, monkeypatch
     restored = repository.get_run(thesis.thesis_id, result.payload["run_id"])
     assert result.status == "completed"
     assert restored.status == "completed"
-    assert restored.provenance["canonical_bundle_hash"] == "a" * 64
+    assert restored.provenance["canonical_bundle_hash"] == canonical_bundle_hash(
+        Path(restored.provenance["bundle_path"]).read_bytes()
+    )
 
 
 def test_cancel_during_execution_keeps_cancel_and_bundle_provenance(tmp_path):
@@ -285,8 +303,10 @@ def test_cancel_during_execution_keeps_cancel_and_bundle_provenance(tmp_path):
     assert result.status == "cancelled"
     assert restored.status == "cancelled"
     assert restored.error["reason"] == "Cancelled from another session."
-    assert restored.provenance["canonical_bundle_hash"] == "a" * 64
-    assert Path(restored.provenance["bundle_path"]).read_bytes() == b"bundle"
+    assert restored.provenance["canonical_bundle_hash"] == canonical_bundle_hash(
+        Path(restored.provenance["bundle_path"]).read_bytes()
+    )
+    assert zipfile.is_zipfile(Path(restored.provenance["bundle_path"]))
     transcript = repository.get_conversation(
         thesis.thesis_id, conversation.conversation_id
     ).tool_transcript

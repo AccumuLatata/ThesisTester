@@ -39,9 +39,26 @@ from thesistester.assistant.thesis_compiler import (
     map_persisted_confirmed_run_spec,
 )
 from thesistester.assistant.tools import AssistantToolError, AssistantTools, ToolLimits
+from thesistester.research_bundle import canonical_bundle_hash
 
 
 _READ_ONLY_ACTIONS = frozenset({"get", "list", "describe", "load", "summary", "evidence"})
+
+
+def _assert_readable_bundle_provenance(result: Mapping[str, Any]) -> None:
+    """Fail closed unless the written bundle exists and matches its hash."""
+    bundle_path = result.get("bundle_path")
+    expected_hash = result.get("canonical_bundle_hash")
+    if not isinstance(bundle_path, str) or not bundle_path.strip():
+        raise AssistantToolError("Completed runs require a readable bundle_path.")
+    if not isinstance(expected_hash, str) or not expected_hash.strip():
+        raise AssistantToolError("Completed runs require a canonical_bundle_hash.")
+    path = Path(bundle_path)
+    if not path.is_file():
+        raise AssistantToolError("Research bundle was not written before completion.")
+    digest = canonical_bundle_hash(path.read_bytes())
+    if digest != expected_hash:
+        raise AssistantToolError("Written research bundle hash does not match reported provenance.")
 
 
 @dataclass(frozen=True)
@@ -382,6 +399,9 @@ class AssistantOrchestrator:
                 "resource_limits": result.get("resource_limits"),
                 "seeds": result.get("seeds"),
             }
+            # Never mark a run completed before its portable bundle is readable
+            # and the reported canonical hash verifies against those bytes.
+            _assert_readable_bundle_provenance(result)
             completed = self.repository.complete_run(
                 thesis_id,
                 run.run_id,

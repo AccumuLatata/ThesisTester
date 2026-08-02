@@ -143,6 +143,21 @@ coordinator between UI, repository, compiler, tools, and explainer.
   summary.
 - Reloading a thesis displays historical completed runs unchanged.
 
+**Implemented contract (execution parity / provenance gate)**
+- Fixed fixture `tests/fixtures/assistant_parity.py` drives direct
+  `run_experiment`, CLI `run_batch` / `python -m thesistester run`, assistant
+  `run_experiment_to_bundle`, and `execute_confirmed_run`; all four surfaces
+  must emit the same `canonical_bundle_hash`.
+- `execute_confirmed_run` fails closed unless the written bundle is readable
+  and its on-disk digest matches the reported hash before `complete_run`.
+- Provenance-gated loads reject replaced/corrupt bundles for explanation
+  (`BUNDLE.import` evidence), comparison (`compare_bundle_summaries`),
+  report/artifact export, and portfolio analysis.
+- Completed, failed, interrupted (`KeyboardInterrupt` during compute), and
+  cancelled terminal states retain request metadata; only completed runs carry
+  a success summary. Historical reload via a fresh repository preserves
+  provenance and compact summary bytes.
+
 ## C2-4 — Research workspace completion
 
 **Goal:** complete the Streamlit workflow without duplicating business logic.
