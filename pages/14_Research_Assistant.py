@@ -517,7 +517,9 @@ with st.expander("Structured level controls"):
         )
         if st.form_submit_button("Apply level controls"):
             sma_lengths = [
-                length for length in current_sma_lengths if isinstance(length, int) and length > 0
+                int(length)
+                for length in current_sma_lengths
+                if isinstance(length, (int, float)) and length > 0 and float(length).is_integer()
             ]
             if sma_50 and 50 not in sma_lengths:
                 sma_lengths.append(50)
