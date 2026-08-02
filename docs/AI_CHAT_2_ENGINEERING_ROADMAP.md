@@ -235,7 +235,8 @@ coordinator between UI, repository, compiler, tools, and explainer.
   claimed under `assumptions.costs_exposure`. Failure narratives claim
   `results.error` when provenance has no error field. OTF validation is wired
   from top-level artifact `otf_validation` into packet results, and OTF
-  availability claims cite the concrete evidence path.
+  availability claims cite the concrete evidence path. Intrabar ambiguity
+  caveats read `intrabar_model` from policy/costs, not only diagnostic blobs.
 - Mandatory caveat codes include low sample, zero costs, overlapping exposure,
   intrabar ambiguity, grid selection, missing/failed OOS, failed robustness,
   and multiple testing. Cost/exposure caveats prefer

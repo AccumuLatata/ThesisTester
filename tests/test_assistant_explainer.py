@@ -287,19 +287,49 @@ def test_otf_template_does_not_claim_availability_on_empty_filter():
     assert_claims_grounded(packet, report)
 
 
+def test_intrabar_ambiguity_caveat_from_costs_model_without_diagnostic():
+    """Non-sl_first models must caveat even when diagnostic evidence is absent."""
+    packet = EvidencePacket.from_dict(
+        {
+            "schema_version": 1,
+            "provenance": {},
+            "assumptions": {
+                "intrabar": {"intrabar_model": "path_open_proximity"},
+                "costs_exposure": {"intrabar_model": "path_open_proximity"},
+            },
+            "results": {"trade_summary": {"trade_count": 40, "expectancy_r": 0.1}},
+            "warnings": [],
+            "caveats": [],
+            "limitations": [],
+            "claims": [],
+            "next_experiments": [],
+        }
+    )
+    # Rebuild caveats through the packet builder path using a monkeypatched artifact.
+    from thesistester.assistant import explainer as explainer_mod
+
+    caveats, _limitations = explainer_mod._derive_caveats(
+        results=packet.results,
+        assumptions=packet.assumptions,
+        provenance=packet.provenance,
+    )
+    match = [item for item in caveats if item.code == "intrabar_ambiguity"]
+    assert match
+    assert match[0].path == "assumptions.intrabar.intrabar_model"
+
+
 def test_mandatory_caveats_cover_costs_overlap_oos_and_robustness(monkeypatch):
     monkeypatch.setattr(
         "thesistester.assistant.explainer.build_research_artifact",
         lambda state: {
             "configuration": {"setup_config": {}, "instrument": "ES"},
-            "intrabar": {"backtest_policy": {"model": "path_open_proximity"}},
+            "intrabar": {"backtest_policy": {"intrabar_model": "path_open_proximity"}},
             "otf_filter": {"available": False},
             "results": {
                 "trade_summary": {"trade_count": 5, "expectancy_r": 0.1},
                 "best_grid_result": {"ranking_metric": "expectancy_r", "trade_count": 5},
                 "validation_summary": {"available": False},
                 "walk_forward_summary": {"fold_count": 2, "valid_fold_count": 0},
-                "backtest_intrabar_diagnostic": {"ambiguous": True},
             },
         },
     )

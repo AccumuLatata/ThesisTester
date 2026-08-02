@@ -281,19 +281,27 @@ def _derive_caveats(
             caveats, "overlapping_exposure", path="assumptions.costs_exposure.exposure_policy"
         )
 
-    if results.get("backtest_intrabar_diagnostic") or (
-        (_as_mapping(assumptions.get("intrabar")) or {}).get("model") not in (None, "sl_first")
-        and (_as_mapping(assumptions.get("intrabar")) or {}).get("model") is not None
-    ):
-        if results.get("backtest_intrabar_diagnostic") or costs.get("intrabar_model") not in (
-            None,
-            "sl_first",
-        ):
-            _append_caveat(
-                caveats,
-                "intrabar_ambiguity",
-                path="results.backtest_intrabar_diagnostic",
-            )
+    # Real backtest_intrabar_policy / costs_exposure store `intrabar_model`.
+    # Accept legacy `model` for older packet fixtures.
+    intrabar_policy = _as_mapping(assumptions.get("intrabar")) or {}
+    intrabar_model = (
+        intrabar_policy.get("intrabar_model")
+        if intrabar_policy.get("intrabar_model") is not None
+        else intrabar_policy.get("model")
+        if intrabar_policy.get("model") is not None
+        else costs.get("intrabar_model")
+    )
+    has_intrabar_diagnostic = results.get("backtest_intrabar_diagnostic") is not None
+    if has_intrabar_diagnostic or intrabar_model not in (None, "sl_first"):
+        if has_intrabar_diagnostic:
+            caveat_path = "results.backtest_intrabar_diagnostic"
+        elif intrabar_policy.get("intrabar_model") not in (None, "sl_first"):
+            caveat_path = "assumptions.intrabar.intrabar_model"
+        elif intrabar_policy.get("model") not in (None, "sl_first"):
+            caveat_path = "assumptions.intrabar.model"
+        else:
+            caveat_path = "assumptions.costs_exposure.intrabar_model"
+        _append_caveat(caveats, "intrabar_ambiguity", path=caveat_path)
 
     grid_result = _as_mapping(results.get("best_grid_result"))
     grid_cfg = _as_mapping(assumptions.get("grid")) or {}

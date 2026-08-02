@@ -131,6 +131,9 @@ claimed at `assumptions.costs_exposure.*`. Failure diagnostics claim
 Top-level research-artifact `otf_validation` is projected into
 `results.otf_validation` / `results.otf_validation_summary`, and OTF availability
 claims cite `assumptions.otf_filter.available` or validation result paths only.
+`intrabar_ambiguity` fires for non-`sl_first` models via
+`assumptions.intrabar.intrabar_model` / `costs_exposure.intrabar_model` even when
+`backtest_intrabar_diagnostic` is absent.
 `compare_evidence()`
 returns versioned nested evidence covering metrics, executable-spec diffs,
 data comparability, conclusions, and next experiments. Persisted `Comparison`
