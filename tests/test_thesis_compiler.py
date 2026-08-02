@@ -5,6 +5,7 @@ from thesistester.assistant import (
     compile_canonical_run_spec,
     compile_run_spec,
     compile_thesis,
+    map_persisted_confirmed_run_spec,
     map_thesis_choices_to_run_spec,
 )
 
@@ -99,6 +100,35 @@ def test_canonical_compiler_rejects_implicit_execution_assumptions(monkeypatch):
     choices["backtest"].pop("slippage_ticks")
     with pytest.raises(ValueError, match="slippage_ticks"):
         compile_canonical_run_spec(name="Implicit", choices=choices)
+
+
+def test_persisted_confirmed_compiler_hydrates_only_legacy_session_defaults(monkeypatch):
+    monkeypatch.setattr(
+        "thesistester.assistant.thesis_compiler.validate_run_spec", lambda spec: None
+    )
+    choices = {
+        "dataset": {"path": "bars.csv", "instrument": "ES"},
+        "setup": {"trigger": "touch", "tolerance_ticks": 0, "selected_levels": ["dVWAP_RTH"]},
+        "backtest": {
+            "commission_per_side": 0.0,
+            "slippage_ticks": 0.0,
+            "exposure_policy": "single_position",
+            "intrabar_model": "sl_first",
+        },
+    }
+
+    with pytest.raises(ValueError, match="flat_by_session_close"):
+        map_thesis_choices_to_run_spec(name="Legacy", choices=choices)
+
+    compiled = map_persisted_confirmed_run_spec(name="Legacy", choices=choices)
+
+    assert compiled["backtest"] == {
+        **choices["backtest"],
+        "flat_by_session_close": False,
+        "session_close_time": None,
+        "session_timezone": None,
+        "no_new_entries_after": None,
+    }
 
 
 def test_canonical_compiler_normalizes_omitted_levels_to_empty_mapping(monkeypatch):

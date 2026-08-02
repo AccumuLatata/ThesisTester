@@ -26,6 +26,16 @@ _CANONICAL_CHOICE_KEYS = {
     "validation",
     "walk_forward",
 }
+# These are the session-control defaults used by the public run API before
+# canonical confirmations required every execution assumption to be persisted.
+# Keep this snapshot immutable: it preserves the semantics of legacy confirmed
+# records even if current API defaults evolve.
+_LEGACY_BACKTEST_SESSION_DEFAULTS = {
+    "flat_by_session_close": False,
+    "session_close_time": None,
+    "session_timezone": None,
+    "no_new_entries_after": None,
+}
 
 
 @dataclass(frozen=True)
@@ -205,6 +215,29 @@ def map_thesis_choices_to_run_spec(*, name: str, choices: Mapping[str, Any]) -> 
             setup["selected_levels"] = [selected_levels]
         canonical_choices["setup"] = setup
     return compile_canonical_run_spec(name=name, choices=canonical_choices)
+
+
+def map_persisted_confirmed_run_spec(
+    *, name: str, choices: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Compile a confirmed record, preserving historical session defaults.
+
+    Confirmations written before the canonical session-control contract were
+    executable because the public run API supplied these defaults at execution
+    time. Hydrate only those historical omissions before applying the current
+    canonical validator; all other incomplete or unsupported choices still
+    fail closed.
+    """
+    if not isinstance(choices, Mapping):
+        raise ValueError("Research choices must be an object.")
+    persisted_choices = deepcopy(dict(choices))
+    backtest = persisted_choices.get("backtest")
+    if isinstance(backtest, Mapping):
+        persisted_choices["backtest"] = {
+            **_LEGACY_BACKTEST_SESSION_DEFAULTS,
+            **deepcopy(dict(backtest)),
+        }
+    return map_thesis_choices_to_run_spec(name=name, choices=persisted_choices)
 
 
 def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> ThesisDraft:

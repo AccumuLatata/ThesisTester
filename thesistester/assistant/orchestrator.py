@@ -16,7 +16,10 @@ from thesistester.assistant.llm import StructuredLLMClient
 from thesistester.assistant.llm_intent import propose_thesis_draft
 from thesistester.assistant.registry import validate_capability_request
 from thesistester.assistant.repository import LocalThesisRepository
-from thesistester.assistant.thesis_compiler import ThesisDraft, map_thesis_choices_to_run_spec
+from thesistester.assistant.thesis_compiler import (
+    ThesisDraft,
+    map_persisted_confirmed_run_spec,
+)
 from thesistester.assistant.tools import AssistantTools
 
 
@@ -129,10 +132,11 @@ class AssistantOrchestrator:
         if spec.status != "confirmed":
             raise ValueError("Only confirmed specifications may execute.")
         thesis = self.repository.get_thesis(thesis_id)
-        # Recompile and validate the immutable persisted content immediately
-        # before execution; a confirmed record is never trusted as executable
-        # merely because its status says so.
-        run_spec = map_thesis_choices_to_run_spec(
+        # Recompile and validate immutable persisted content immediately before
+        # execution. The compatibility mapper makes historical API defaults
+        # explicit only for legacy confirmed records that predate the canonical
+        # session-control contract.
+        run_spec = map_persisted_confirmed_run_spec(
             name=thesis.name,
             choices=spec.normalized_run_spec,
         )
