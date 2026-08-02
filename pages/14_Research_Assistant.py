@@ -522,6 +522,23 @@ with st.expander("Structured setup controls"):
         )
         if st.form_submit_button("Apply setup controls"):
             levels = [item.strip() for item in selected_levels.split(",") if item.strip()]
+            level_count = max(1, len(levels))
+            try:
+                previous_min_confluences = int(setup.get("min_confluences", 1))
+            except (TypeError, ValueError):
+                previous_min_confluences = 1
+            try:
+                previous_max_confluences = int(
+                    setup.get("max_confluences", level_count)
+                )
+            except (TypeError, ValueError):
+                previous_max_confluences = level_count
+            min_confluences = min(
+                max(1, previous_min_confluences), level_count
+            )
+            max_confluences = min(
+                max(min_confluences, previous_max_confluences), level_count
+            )
             instrument = str((current.get("dataset") or {}).get("instrument") or "ES")
             st.session_state["assistant_draft_choices"] = {
                 **current,
@@ -532,8 +549,8 @@ with st.expander("Structured setup controls"):
                     "instrument": instrument,
                     "selected_levels": levels,
                     "tolerance_ticks": tolerance_ticks,
-                    "min_confluences": setup.get("min_confluences", 1),
-                    "max_confluences": setup.get("max_confluences", max(1, len(levels))),
+                    "min_confluences": min_confluences,
+                    "max_confluences": max_confluences,
                     "naked_only": setup.get("naked_only", False),
                     "naked_requirement": setup.get("naked_requirement", "any"),
                     "trigger": trigger,

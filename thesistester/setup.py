@@ -317,6 +317,9 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
         selected_levels = config.get("selected_levels", [])
         if not isinstance(selected_levels, list) or not selected_levels:
             errors.append("Select at least one level column.")
+            level_count = None
+        else:
+            level_count = len(selected_levels)
 
         try:
             tolerance_ticks = float(config.get("tolerance_ticks", 0.0))
@@ -333,6 +336,9 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
             min_conf = 1
             errors.append("Minimum confluences must be an integer.")
 
+        if level_count is not None and min_conf > level_count:
+            errors.append("Minimum confluences must be <= number of selected levels.")
+
         try:
             max_conf = int(config.get("max_confluences", 0))
         except (TypeError, ValueError):
@@ -343,6 +349,10 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
                 errors.append("Maximum confluences must be >= minimum confluences.")
             if max_conf > 5:
                 errors.append("Maximum confluences must be <= 5.")
+            if level_count is not None and max_conf > level_count:
+                errors.append(
+                    "Maximum confluences must be <= number of selected levels."
+                )
     elif confluence_mode == "anchor_rules":
         raw_anchor_level = config.get("anchor_level")
         anchor_level = raw_anchor_level.strip() if isinstance(raw_anchor_level, str) else ""

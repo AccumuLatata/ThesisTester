@@ -24,7 +24,7 @@ def _base_config(**overrides) -> dict:
         selected_levels=["ONH", "ONL", "OR_High", "OR_Low"],
         tolerance_ticks=4.0,
         min_confluences=2,
-        max_confluences=5,
+        max_confluences=4,
         naked_only=False,
         naked_requirement="any",
         trigger="touch",
@@ -117,6 +117,17 @@ def test_max_confluences_over_five_invalid():
     assert any("Maximum confluences must be <= 5" in message for message in errors)
 
 
+def test_confluence_bounds_must_not_exceed_selected_level_count():
+    config = _base_config(selected_levels=["ONH", "ONL"])
+    config["min_confluences"] = 3
+    config["max_confluences"] = 3
+
+    errors = validate_setup_config(config)
+
+    assert "Minimum confluences must be <= number of selected levels." in errors
+    assert "Maximum confluences must be <= number of selected levels." in errors
+
+
 def test_invalid_trigger_invalid():
     config = _base_config()
     config["trigger"] = "bad_trigger"
@@ -144,8 +155,8 @@ def test_missing_trigger_timeframe_normalizes_to_base():
         instrument="ES",
         selected_levels=["ONH"],
         tolerance_ticks=4.0,
-        min_confluences=2,
-        max_confluences=5,
+        min_confluences=1,
+        max_confluences=1,
         naked_only=False,
         naked_requirement="any",
         trigger="touch",
@@ -163,8 +174,8 @@ def test_3c_config_includes_expected_trigger_params():
         instrument="ES",
         selected_levels=["ONH"],
         tolerance_ticks=4.0,
-        min_confluences=2,
-        max_confluences=5,
+        min_confluences=1,
+        max_confluences=1,
         naked_only=False,
         naked_requirement="any",
         trigger="3c",
@@ -191,8 +202,8 @@ def test_3c_missing_params_are_defaulted():
         instrument="ES",
         selected_levels=["ONH"],
         tolerance_ticks=4.0,
-        min_confluences=2,
-        max_confluences=5,
+        min_confluences=1,
+        max_confluences=1,
         naked_only=False,
         naked_requirement="any",
         trigger="3c",
@@ -216,8 +227,8 @@ def test_3c_non_base_trigger_timeframe_is_stored():
         instrument="ES",
         selected_levels=["ONH"],
         tolerance_ticks=4.0,
-        min_confluences=2,
-        max_confluences=5,
+        min_confluences=1,
+        max_confluences=1,
         naked_only=False,
         naked_requirement="any",
         trigger="3c",

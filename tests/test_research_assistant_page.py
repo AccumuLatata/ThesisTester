@@ -44,3 +44,27 @@ def test_structured_setup_trigger_options_include_3c_and_are_used_by_the_widget(
         and widget.args[1].id == "SETUP_TRIGGER_OPTIONS"
         for widget in trigger_widgets
     )
+
+
+def test_structured_setup_controls_clamp_confluence_bounds_to_selected_levels():
+    """Applying a shorter level list must not preserve impossible prior bounds."""
+    tree = ast.parse(PAGE_PATH.read_text(encoding="utf-8"))
+    submit_handler = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.If)
+        and isinstance(node.test, ast.Call)
+        and isinstance(node.test.func, ast.Attribute)
+        and node.test.func.attr == "form_submit_button"
+        and node.test.args
+        and isinstance(node.test.args[0], ast.Constant)
+        and node.test.args[0].value == "Apply setup controls"
+    )
+
+    handler_source = ast.unparse(submit_handler)
+    assert "level_count = max(1, len(levels))" in handler_source
+    assert "min_confluences = min(max(1, previous_min_confluences), level_count)" in handler_source
+    assert (
+        "max_confluences = min(max(min_confluences, previous_max_confluences), level_count)"
+        in handler_source
+    )
