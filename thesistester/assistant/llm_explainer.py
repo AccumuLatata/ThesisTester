@@ -91,17 +91,45 @@ def _normalize_number_token(token: str) -> str:
 
 
 def _allowed_number_tokens(values: list[Any]) -> set[str]:
+    """Build normalized numeric tokens accepted for cited packet values."""
     allowed: set[str] = set()
     for value in values:
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             continue
         allowed.add(_normalize_number_token(str(value)))
-        allowed.add(_normalize_number_token(f"{value}%"))
     return allowed
 
 
 def _extract_number_tokens(text: str) -> list[str]:
     return [_normalize_number_token(match.group(0)) for match in _NUMBER_RE.finditer(text)]
+
+
+def _token_grounded(raw_token: str, *, allowed: set[str]) -> bool:
+    """Return True when ``raw_token`` is grounded in cited values.
+
+    Percent-suffixed narration (``50%``) is accepted when the matching fractional
+    claim value (``0.5``) is allowlisted. Bare ``50`` is not inferred from ``0.5``.
+    """
+    token = _normalize_number_token(raw_token)
+    if token in allowed:
+        return True
+    if not raw_token.rstrip().endswith("%"):
+        return False
+    try:
+        percent_value = float(raw_token.strip().rstrip("%"))
+    except ValueError:
+        return False
+    return _normalize_number_token(str(percent_value / 100.0)) in allowed
+
+
+def _assert_tokens_grounded(text: str, *, allowed: set[str]) -> None:
+    for match in _NUMBER_RE.finditer(text):
+        raw = match.group(0)
+        if not _token_grounded(raw, allowed=allowed):
+            raise LLMEvidenceError(
+                f"Uncited numerical claim {_normalize_number_token(raw)!r} "
+                "is not grounded in cited evidence."
+            )
 
 
 def assert_llm_explanation_grounded(
@@ -112,16 +140,22 @@ def assert_llm_explanation_grounded(
     claims: tuple[EvidenceClaim, ...],
 ) -> None:
     """Reject uncited numerical claims before any UI rendering."""
-    allowed = _allowed_number_tokens([claim.value for claim in claims])
-    # Qualitative packet caveat codes may be echoed without new numbers.
-    for caveat in packet.caveats:
-        allowed |= set(_extract_number_tokens(caveat.message))
-    narrative = "\n".join((summary, *caveats, *(claim.text for claim in claims)))
-    for token in _extract_number_tokens(narrative):
-        if token not in allowed:
-            raise LLMEvidenceError(
-                f"Uncited numerical claim {token!r} is not grounded in cited evidence."
-            )
+    allowed_from_claims = _allowed_number_tokens([claim.value for claim in claims])
+    # Summary and claim text may only use numbers from cited claim values.
+    _assert_tokens_grounded(summary, allowed=allowed_from_claims)
+    for claim in claims:
+        _assert_tokens_grounded(claim.text, allowed=allowed_from_claims)
+    # Packet caveat numbers are allowlisted only for LLM caveat lines that
+    # actually echo that packet caveat message — never for the whole narrative.
+    packet_caveat_messages = tuple(
+        caveat.message for caveat in packet.caveats if isinstance(caveat.message, str)
+    )
+    for llm_caveat in caveats:
+        allowed = set(allowed_from_claims)
+        for message in packet_caveat_messages:
+            if message and (message in llm_caveat or llm_caveat in message):
+                allowed |= set(_extract_number_tokens(message))
+        _assert_tokens_grounded(llm_caveat, allowed=allowed)
 
 
 def explain_packet_with_llm(

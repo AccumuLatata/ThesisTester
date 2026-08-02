@@ -276,7 +276,9 @@ C2-6.5–C2-6.7 (PR6) enforce the release gate:
 - `explain_packet_with_llm` requires structured `{summary, caveats, claims}`
   where each claim cites an existing evidence-packet path; the server resolves
   claim values and rejects any numeric token not grounded in cited values
-  (or echoed packet-caveat messages) before UI render (`LLMEvidenceError`).
+  before UI render (`LLMEvidenceError`). Percent forms (`50%`) ground to
+  fractional claim values (`0.5`); packet-caveat numbers are allowlisted only
+  on LLM caveat lines that echo that caveat message.
 - Credentials: `OPENAI_API_KEY` only (env). Placeholder
   `REPLACE_WITH_ROTATED_OPENAI_API_KEY` is rejected. Non-secret settings live in
   `config/assistant.toml` (`evidence_only = true`, retries, history trim).

@@ -129,9 +129,12 @@ separate fail-closed gate: provider JSON must be exactly
 `{summary, caveats, claims}` with claim `{text, path}` objects; the server
 resolves `path` against the immutable packet, attaches the packet value, and
 `assert_llm_explanation_grounded()` rejects any numeric token not present in
-cited claim values (packet caveat message numbers may be echoed). The LLM never
-executes tools, mutates confirmed specs, or bypasses confirmation. Without a
-provider, deterministic explain/compare/export remains the default path.
+cited claim values. Percent-suffixed narration (`50%`) is accepted when the
+matching fractional claim value (`0.5`) is cited. Packet caveat message numbers
+may be echoed only on LLM caveat lines that actually repeat that packet caveat
+— never as a global allowlist for the summary. The LLM never executes tools,
+mutates confirmed specs, or bypasses confirmation. Without a provider,
+deterministic explain/compare/export remains the default path.
 `audit_capability_registry()` is the machine-readable release audit over
 `FEATURE_PARITY_REGISTRY` × `HANDLER_REGISTRY`. Grid ranking-metric claims
 ground to `assumptions.grid.ranking_metric` when `best_grid_result` omits that

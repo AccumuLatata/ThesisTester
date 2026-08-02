@@ -127,7 +127,7 @@ def test_explanation_accepts_cited_numerical_claims():
         warnings=("Trade count is below the 30-trade screening threshold.",),
         caveats=(),
     )
-    # Reconstruct caveats for allowlisted caveat numbers via from_dict.
+    # Reconstruct caveats so echoed LLM caveat lines may reuse packet numbers.
     packet = EvidencePacket.from_dict(
         {
             **packet.to_dict(),
@@ -149,6 +149,69 @@ def test_explanation_accepts_cited_numerical_claims():
         caveats=explanation.caveats,
         claims=explanation.claims,
     )
+
+
+def test_explanation_accepts_percent_narration_of_fractional_claims():
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Win rate is 50% on the cited sample.",
+                "caveats": ["Rate is historical only."],
+                "claims": [
+                    {
+                        "text": "Win rate is 50%.",
+                        "path": "results.trade_summary.win_rate",
+                    }
+                ],
+            }
+
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={"trade_summary": {"win_rate": 0.5}},
+        warnings=(),
+    )
+    explanation = explain_packet_with_llm(Client(), packet=packet)
+    assert explanation.claims[0].value == 0.5
+
+
+def test_explanation_rejects_packet_caveat_numbers_in_summary():
+    """Packet caveat numbers must not globally allowlist the whole narrative."""
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Screening used a 30 threshold without citing it.",
+                "caveats": ["Qualitative only."],
+                "claims": [
+                    {
+                        "text": "Historical sample has 10 trades.",
+                        "path": "results.trade_summary.trade_count",
+                    }
+                ],
+            }
+
+    packet = EvidencePacket.from_dict(
+        {
+            "schema_version": 1,
+            "provenance": {},
+            "assumptions": {},
+            "results": {"trade_summary": {"trade_count": 10}},
+            "warnings": [],
+            "limitations": [],
+            "claims": [],
+            "next_experiments": [],
+            "caveats": [
+                {
+                    "code": "low_sample",
+                    "message": "Trade count is below the 30-trade screening threshold.",
+                    "path": "results.trade_summary.trade_count",
+                }
+            ],
+        }
+    )
+    with pytest.raises(LLMEvidenceError, match="Uncited numerical claim"):
+        explain_packet_with_llm(Client(), packet=packet)
 
 
 def test_explanation_rejects_missing_claim_paths():
