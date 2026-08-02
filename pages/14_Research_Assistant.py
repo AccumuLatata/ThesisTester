@@ -328,14 +328,24 @@ with st.expander("Structured validation controls"):
         raw_permutations = validation.get("n_permutations", 5000)
         raw_seed = validation.get("random_state", 42)
         bootstrap_default = (
-            int(raw_bootstrap) if isinstance(raw_bootstrap, int) and raw_bootstrap > 0 else 2000
+            int(raw_bootstrap)
+            if isinstance(raw_bootstrap, (int, float))
+            and raw_bootstrap > 0
+            and float(raw_bootstrap).is_integer()
+            else 2000
         )
         permutations_default = (
             int(raw_permutations)
-            if isinstance(raw_permutations, int) and raw_permutations > 0
+            if isinstance(raw_permutations, (int, float))
+            and raw_permutations > 0
+            and float(raw_permutations).is_integer()
             else 5000
         )
-        seed_default = int(raw_seed) if isinstance(raw_seed, int) and raw_seed >= 0 else 42
+        seed_default = (
+            int(raw_seed)
+            if isinstance(raw_seed, (int, float)) and raw_seed >= 0 and float(raw_seed).is_integer()
+            else 42
+        )
         bootstrap = st.number_input(
             "Bootstrap samples",
             min_value=1,
