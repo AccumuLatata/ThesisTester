@@ -6,6 +6,7 @@ It turns explicit structured choices plus user prose into a reviewable draft.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -31,6 +32,11 @@ def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> 
         raise ValueError("Thesis prompt must be a non-empty string.")
     selected = dict(choices or {})
     text = prompt.lower()
+
+    def has_choice(key: str) -> bool:
+        value = selected.get(key)
+        return value is not None and (not isinstance(value, str) or bool(value.strip()))
+
     unresolved: list[str] = []
     required = {
         "trend_rule": "Define the measurable trend rule.",
@@ -39,17 +45,15 @@ def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> 
         "success_criteria": "Define performance, sample-size, and OOS success criteria.",
     }
     for key, question in required.items():
-        if not selected.get(key):
+        if not has_choice(key):
             unresolved.append(question)
-    if "dvw" in text and not selected.get("session_vwap_anchor"):
+    if re.search(r"\bdvwap\b", text) and not has_choice("session_vwap_anchor"):
         unresolved.append("Confirm dVWAP_RTH and its RTH-only availability.")
-    if ("sma" in text or "moving average" in text) and not selected.get(
+    if (re.search(r"\bsma\b", text) or "moving average" in text) and not has_choice(
         "confluence_tolerance_ticks"
     ):
         unresolved.append("Define the SMA confluence tolerance in ticks.")
-    if ("stop" in text or "target" in text or "sl" in text) and not selected.get(
-        "selection_protocol"
-    ):
+    if re.search(r"\b(?:stop|target|sl)\b", text) and not has_choice("selection_protocol"):
         unresolved.append("Define SL/TP candidate grid and OOS selection protocol.")
     return ThesisDraft(
         prompt=prompt.strip(),
