@@ -18,6 +18,7 @@ from thesistester.assistant import (
     compile_run_spec,
     compile_thesis,
 )
+from thesistester.assistant.explainer import build_evidence_packet, explain_evidence
 from thesistester.assistant.llm import (
     LLMConfigurationError,
     create_openai_client,
@@ -25,6 +26,7 @@ from thesistester.assistant.llm import (
 )
 from thesistester.assistant.tools import AssistantTools
 from thesistester.persistence.local_store import get_store_root
+from thesistester.research_bundle import load_research_bundle
 
 
 def _repository() -> LocalThesisRepository:
@@ -284,6 +286,17 @@ else:
                     "error": run.error,
                 }
             )
+            if run.status == "completed" and isinstance(run.provenance, dict):
+                bundle_path = run.provenance.get("bundle_path")
+                if isinstance(bundle_path, str) and st.button(
+                    "Explain run", key=f"explain-{run.run_id}"
+                ):
+                    try:
+                        state = load_research_bundle(Path(bundle_path).read_bytes())
+                        packet = build_evidence_packet(state, provenance=run.provenance)
+                        st.write(explain_evidence(packet))
+                    except (OSError, ValueError) as exc:
+                        st.error(f"Unable to load run evidence: {exc}")
 
 st.subheader("Conversation audit")
 conversations = repository.list_conversations(thesis_id)
