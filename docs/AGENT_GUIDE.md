@@ -135,8 +135,13 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
 - Registry metadata does not grant arbitrary code, shell, or filesystem access.
   Future tools may invoke only their declared public headless symbols.
 - Compute-capable rows require the registry's stated confirmation level and
-  resource envelope. Execution, persistence, and conversational state are
-  explicitly deferred to later AIA milestones.
+  resource envelope. A confirmed RunSpec is recompiled and validated through
+  `validate_run_spec()` at confirmation and again immediately before execution.
+- The canonical compiler accepts only executable API sections (`dataset`,
+  `levels`, `setup`, `backtest`, optional `grid`, `validation`, and
+  `walk_forward`). Do not add prose-only fields such as trend rules or success
+  criteria to executable drafts; represent a requirement with a supported
+  structured control or leave it as an explicit clarification.
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned

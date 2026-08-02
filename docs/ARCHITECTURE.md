@@ -71,6 +71,12 @@ specification versions, requested/terminal run provenance, and append-only
 conversations under `.thesistester_store/assistant/`. It writes assistant
 documents atomically and fails closed on corrupt or newer schema records.
 It does not read or modify research bundles or existing local-store namespaces.
+Confirmation is an atomic compiler boundary: it accepts only a resolved
+ready-for-confirmation draft, recompiles the typed structured choices into an
+API RunSpec, and calls `validate_run_spec()` before writing an immutable
+confirmed child. The orchestrator repeats that validation immediately before
+execution. Narrative fields that have no public-pipeline mapping are rejected,
+rather than being stored as executable assumptions.
 
 Research ZIP bytes include archive timestamps and are not deterministic.
 `canonical_bundle_hash()` projects JSON with sorted keys (excluding

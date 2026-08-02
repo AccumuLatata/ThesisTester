@@ -31,9 +31,12 @@ from thesistester.assistant.repository import (
 from thesistester.assistant.tools import AssistantToolError, AssistantTools, ToolLimits
 from thesistester.assistant.thesis_compiler import (
     COMPILER_VERSION,
+    RUN_SPEC_DRAFT_SCHEMA_VERSION,
     StructuredThesisChoices,
     ThesisDraft,
     compile_canonical_run_spec,
+    map_persisted_confirmed_run_spec,
+    map_thesis_choices_to_run_spec,
     compile_run_spec,
     compile_thesis,
 )
@@ -58,6 +61,7 @@ __all__ = [
     "Capability",
     "CapabilityMode",
     "COMPILER_VERSION",
+    "RUN_SPEC_DRAFT_SCHEMA_VERSION",
     "COMPARISON_SCHEMA_VERSION",
     "Comparison",
     "EvidencePacket",
@@ -83,6 +87,8 @@ __all__ = [
     "compile_thesis",
     "compile_run_spec",
     "compile_canonical_run_spec",
+    "map_persisted_confirmed_run_spec",
+    "map_thesis_choices_to_run_spec",
     "build_evidence_packet",
     "compare_evidence",
     "explain_evidence",
