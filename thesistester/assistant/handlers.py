@@ -26,6 +26,12 @@ class HandlerContext:
 CapabilityHandler = Callable[[AssistantRequest, HandlerContext], dict[str, Any]]
 
 
+def _require_expected_hash(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("expected_hash must be a non-empty string.")
+    return value.strip()
+
+
 def tool_limits_from_envelope(
     envelope: ResourceEnvelope, *, base: ToolLimits | None = None
 ) -> ToolLimits:
@@ -196,14 +202,14 @@ def _handle_export_artifact(request: AssistantRequest, context: HandlerContext) 
     bundle_path = request.payload.get("bundle_path")
     if not isinstance(bundle_path, str) or not bundle_path.strip():
         raise ValueError("bundle_path must be a non-empty string.")
-    expected_hash = request.payload.get("expected_hash")
+    expected_hash = _require_expected_hash(request.payload.get("expected_hash"))
     artifact = context.tools.build_bundle_research_artifact(
         bundle_path,
-        expected_hash=expected_hash if isinstance(expected_hash, str) else None,
+        expected_hash=expected_hash,
     )
     report = context.tools.render_bundle_markdown_report(
         bundle_path,
-        expected_hash=expected_hash if isinstance(expected_hash, str) else None,
+        expected_hash=expected_hash,
     )
     return {"artifact": artifact, "markdown_report": report}
 
@@ -212,20 +218,20 @@ def _handle_bundle_import(request: AssistantRequest, context: HandlerContext) ->
     bundle_path = request.payload.get("bundle_path")
     if not isinstance(bundle_path, str) or not bundle_path.strip():
         raise ValueError("bundle_path must be a non-empty string.")
-    expected_hash = request.payload.get("expected_hash")
+    expected_hash = _require_expected_hash(request.payload.get("expected_hash"))
     action = request.payload.get("action", "summary")
     if action == "evidence":
         provenance = request.payload.get("provenance")
         return {
             "evidence": context.tools.build_bundle_evidence_packet(
                 bundle_path,
-                expected_hash=expected_hash if isinstance(expected_hash, str) else None,
+                expected_hash=expected_hash,
                 provenance=provenance if isinstance(provenance, Mapping) else None,
             )
         }
     return context.tools.load_bundle_summary(
         bundle_path,
-        expected_hash=expected_hash if isinstance(expected_hash, str) else None,
+        expected_hash=expected_hash,
     )
 
 

@@ -164,17 +164,28 @@ def _seed_snapshot(spec: Mapping[str, Any]) -> dict[str, Any]:
     return seeds
 
 
+def _require_expected_hash(expected_hash: Any) -> str:
+    if not isinstance(expected_hash, str) or not expected_hash.strip():
+        raise AssistantToolError("Bundle load requires a non-empty expected hash.")
+    return expected_hash.strip()
+
+
 def _read_verified_bundle(
     bundle_path: str | Path,
     roots: tuple[Path, ...],
     *,
     expected_hash: str | None = None,
+    require_hash: bool = False,
 ) -> tuple[Path, bytes, dict[str, Any]]:
     path = _resolve_within(bundle_path, roots)
     raw = path.read_bytes()
     digest = canonical_bundle_hash(raw)
-    if expected_hash is not None and digest != expected_hash:
-        raise AssistantToolError("Bundle hash does not match recorded run provenance.")
+    if require_hash or expected_hash is not None:
+        # Provenance-gated loads fail closed: a missing/blank hash must never
+        # silently skip integrity verification.
+        expected = _require_expected_hash(expected_hash)
+        if digest != expected:
+            raise AssistantToolError("Bundle hash does not match recorded run provenance.")
     payload = load_research_bundle(raw)
     session_values = payload.get("session_values")
     if not isinstance(session_values, dict):
@@ -296,12 +307,13 @@ class AssistantTools:
             "seeds": _seed_snapshot(normalized),
         }
 
-    def load_bundle_summary(
-        self, bundle_path: str | Path, *, expected_hash: str | None = None
-    ) -> dict[str, Any]:
+    def load_bundle_summary(self, bundle_path: str | Path, *, expected_hash: str) -> dict[str, Any]:
         """Load a bundle beneath an allowed root and return compact evidence."""
         path, raw, session_values = _read_verified_bundle(
-            bundle_path, self.data_roots, expected_hash=expected_hash
+            bundle_path,
+            self.data_roots,
+            expected_hash=expected_hash,
+            require_hash=True,
         )
         return {
             "bundle_path": str(path),
@@ -309,21 +321,25 @@ class AssistantTools:
             "summary": _state_summary(session_values),
         }
 
-    def render_bundle_markdown_report(
-        self, bundle_path: str | Path, *, expected_hash: str | None = None
-    ) -> str:
+    def render_bundle_markdown_report(self, bundle_path: str | Path, *, expected_hash: str) -> str:
         """Render the established report from a selected portable research bundle."""
         _path, _raw, session_values = _read_verified_bundle(
-            bundle_path, self.data_roots, expected_hash=expected_hash
+            bundle_path,
+            self.data_roots,
+            expected_hash=expected_hash,
+            require_hash=True,
         )
         return build_markdown_report(build_research_artifact(session_values))
 
     def build_bundle_research_artifact(
-        self, bundle_path: str | Path, *, expected_hash: str | None = None
+        self, bundle_path: str | Path, *, expected_hash: str
     ) -> dict[str, Any]:
         """Build a JSON-safe research artifact from one verified portable bundle."""
         _path, _raw, session_values = _read_verified_bundle(
-            bundle_path, self.data_roots, expected_hash=expected_hash
+            bundle_path,
+            self.data_roots,
+            expected_hash=expected_hash,
+            require_hash=True,
         )
         return to_jsonable(build_research_artifact(session_values))
 
@@ -331,12 +347,15 @@ class AssistantTools:
         self,
         bundle_path: str | Path,
         *,
-        expected_hash: str | None = None,
+        expected_hash: str,
         provenance: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build explanation evidence from one hash-verified research bundle."""
         path, raw, session_values = _read_verified_bundle(
-            bundle_path, self.data_roots, expected_hash=expected_hash
+            bundle_path,
+            self.data_roots,
+            expected_hash=expected_hash,
+            require_hash=True,
         )
         packet = build_evidence_packet(
             session_values,
@@ -348,11 +367,21 @@ class AssistantTools:
         )
         return packet.to_dict()
 
-    def compare_bundle_summaries(self, bundle_paths: list[str | Path]) -> list[dict[str, Any]]:
+    def compare_bundle_summaries(
+        self,
+        bundle_paths: list[str | Path],
+        *,
+        expected_hashes: list[str],
+    ) -> list[dict[str, Any]]:
         """Return independently grounded summaries for explicit bundle choices."""
         if len(bundle_paths) < 2:
             raise AssistantToolError("Select at least two bundles to compare.")
-        return [self.load_bundle_summary(path) for path in bundle_paths]
+        if len(expected_hashes) != len(bundle_paths):
+            raise AssistantToolError("expected_hashes must match bundle_paths.")
+        return [
+            self.load_bundle_summary(path, expected_hash=expected_hash)
+            for path, expected_hash in zip(bundle_paths, expected_hashes, strict=True)
+        ]
 
     def summarize_bundle_time_analysis(
         self,
@@ -441,26 +470,26 @@ class AssistantTools:
         bundle_paths: list[str | Path],
         *,
         instrument: str,
+        expected_hashes: list[str],
         config: dict[str, Any] | None = None,
-        expected_hashes: list[str] | None = None,
     ) -> dict[str, Any]:
         """Analyze explicitly selected completed-run bundles as a portfolio.
 
-        When ``expected_hashes`` is provided it must align 1:1 with
-        ``bundle_paths`` and each digest is checked against recorded provenance
-        before trades are admitted into portfolio metrics.
+        ``expected_hashes`` must align 1:1 with ``bundle_paths``. Each digest is
+        checked against recorded provenance before trades are admitted into
+        portfolio metrics.
         """
         if len(bundle_paths) < 2:
             raise AssistantToolError("Portfolio analysis requires at least two bundles.")
-        if expected_hashes is not None and len(expected_hashes) != len(bundle_paths):
+        if len(expected_hashes) != len(bundle_paths):
             raise AssistantToolError("expected_hashes must match bundle_paths.")
         setup_trades = {}
         for index, bundle_path in enumerate(bundle_paths, start=1):
-            expected_hash = None if expected_hashes is None else expected_hashes[index - 1]
             _path, _raw, session_values = _read_verified_bundle(
                 bundle_path,
                 self.data_roots,
-                expected_hash=expected_hash,
+                expected_hash=expected_hashes[index - 1],
+                require_hash=True,
             )
             trades = session_values.get("trades")
             if trades is None or trades.empty:

@@ -165,8 +165,8 @@ def test_analyze_bundle_portfolio_verifies_expected_hashes(tmp_path, monkeypatch
     tools = AssistantTools(data_roots=(root,))
     calls = []
 
-    def fake_read(bundle_path, roots, *, expected_hash=None):
-        calls.append((Path(bundle_path).name, expected_hash))
+    def fake_read(bundle_path, roots, *, expected_hash=None, require_hash=False):
+        calls.append((Path(bundle_path).name, expected_hash, require_hash))
         trades = pd.DataFrame({"r_multiple": [1.0, -0.5]})
         return Path(bundle_path), b"raw", {"trades": trades}
 
@@ -191,6 +191,34 @@ def test_analyze_bundle_portfolio_verifies_expected_hashes(tmp_path, monkeypatch
 
     assert result == {"count": 2}
     assert calls == [
-        ("left.research.zip", "hash-left"),
-        ("right.research.zip", "hash-right"),
+        ("left.research.zip", "hash-left", True),
+        ("right.research.zip", "hash-right", True),
     ]
+
+
+def test_read_verified_bundle_fails_closed_without_expected_hash(tmp_path, monkeypatch):
+    from thesistester.assistant.tools import _read_verified_bundle
+
+    root = tmp_path / "allowed"
+    root.mkdir()
+    bundle = root / "run.research.zip"
+    bundle.write_bytes(b"bundle")
+    monkeypatch.setattr("thesistester.assistant.tools.canonical_bundle_hash", lambda raw: "digest")
+    monkeypatch.setattr(
+        "thesistester.assistant.tools.load_research_bundle",
+        lambda raw: {"session_values": {"trades": pd.DataFrame()}},
+    )
+
+    with pytest.raises(AssistantToolError, match="non-empty expected hash"):
+        _read_verified_bundle(bundle, (root,), expected_hash=None, require_hash=True)
+    with pytest.raises(AssistantToolError, match="non-empty expected hash"):
+        _read_verified_bundle(bundle, (root,), expected_hash="   ", require_hash=True)
+    with pytest.raises(AssistantToolError, match="does not match"):
+        _read_verified_bundle(bundle, (root,), expected_hash="other", require_hash=True)
+
+    path, raw, session_values = _read_verified_bundle(
+        bundle, (root,), expected_hash="digest", require_hash=True
+    )
+    assert path == bundle
+    assert raw == b"bundle"
+    assert "trades" in session_values

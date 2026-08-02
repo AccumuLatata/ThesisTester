@@ -80,9 +80,10 @@ coordinator between UI, repository, compiler, tools, and explainer.
   seeds, limits, warnings, fingerprint, canonical hash, and terminal errors.
 - Explicit `cancel_run()` transitions a running research run to cancelled and
   audits the outcome.
-- `PORTFOLIO.analyze` requires provenance `expected_hashes` for every selected
-  bundle path. Terminal lifecycle audits are best-effort so a transcript race
-  cannot overturn a completed or cancelled run.
+- Provenance-gated bundle loads require non-empty expected hashes
+  (`BUNDLE.import`, export, and `PORTFOLIO.analyze`) and fail closed instead of
+  skipping verification. Terminal lifecycle audits are best-effort so a
+  transcript race cannot overturn a completed or cancelled run.
 
 ## C2-2 — Executable RunSpec compiler
 

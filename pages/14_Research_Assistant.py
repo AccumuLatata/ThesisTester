@@ -113,6 +113,13 @@ def _positive_number_list(raw: str) -> list[float]:
     return values
 
 
+def _require_run_bundle_hash(provenance: dict) -> str:
+    expected_hash = provenance.get("canonical_bundle_hash")
+    if not isinstance(expected_hash, str) or not expected_hash.strip():
+        raise ValueError("Completed run is missing canonical bundle hash provenance.")
+    return expected_hash.strip()
+
+
 SETUP_TRIGGER_OPTIONS = ["touch", "reject", "break", "reclaim", "3c"]
 
 
@@ -855,33 +862,39 @@ else:
                     st.rerun()
             if run.status == "completed" and isinstance(run.provenance, dict):
                 bundle_path = run.provenance.get("bundle_path")
-                expected_hash = run.provenance.get("canonical_bundle_hash")
+                try:
+                    expected_hash = _require_run_bundle_hash(run.provenance)
+                except ValueError:
+                    expected_hash = None
                 if isinstance(bundle_path, str) and st.button(
                     "Explain run", key=f"explain-{run.run_id}"
                 ):
-                    result = _dispatch(
-                        orchestrator,
-                        capability_id="BUNDLE.import",
-                        payload={
-                            "action": "evidence",
-                            "bundle_path": bundle_path,
-                            "expected_hash": expected_hash,
-                            "provenance": run.provenance,
-                        },
-                        thesis_id=thesis_id,
-                        conversation_id=conversation_id,
-                    )
-                    if result.status != "completed":
-                        st.error(
-                            result.payload.get("error", {}).get(
-                                "message", "Unable to load evidence."
-                            )
-                        )
+                    if expected_hash is None:
+                        st.error("Completed run is missing canonical bundle hash provenance.")
                     else:
-                        packet = _evidence_packet(result.payload)
-                        st.session_state["assistant_run_explanations"][run.run_id] = (
-                            explain_evidence(packet)
+                        result = _dispatch(
+                            orchestrator,
+                            capability_id="BUNDLE.import",
+                            payload={
+                                "action": "evidence",
+                                "bundle_path": bundle_path,
+                                "expected_hash": expected_hash,
+                                "provenance": run.provenance,
+                            },
+                            thesis_id=thesis_id,
+                            conversation_id=conversation_id,
                         )
+                        if result.status != "completed":
+                            st.error(
+                                result.payload.get("error", {}).get(
+                                    "message", "Unable to load evidence."
+                                )
+                            )
+                        else:
+                            packet = _evidence_packet(result.payload)
+                            st.session_state["assistant_run_explanations"][run.run_id] = (
+                                explain_evidence(packet)
+                            )
                 explanation = st.session_state["assistant_run_explanations"].get(run.run_id)
                 if explanation:
                     st.write(explanation)
@@ -889,6 +902,10 @@ else:
                     "Generate evidence-only AI explanation", key=f"llm-explain-{run.run_id}"
                 ):
                     try:
+                        if expected_hash is None:
+                            raise ValueError(
+                                "Completed run is missing canonical bundle hash provenance."
+                            )
                         result = _dispatch(
                             orchestrator,
                             capability_id="BUNDLE.import",
@@ -928,27 +945,30 @@ else:
                 if isinstance(bundle_path, str) and st.button(
                     "Render markdown report", key=f"report-{run.run_id}"
                 ):
-                    result = _dispatch(
-                        orchestrator,
-                        capability_id="EXPORT.build_research_artifact",
-                        payload={
-                            "bundle_path": bundle_path,
-                            "expected_hash": expected_hash,
-                        },
-                        confirmed=True,
-                        thesis_id=thesis_id,
-                        conversation_id=conversation_id,
-                    )
-                    if result.status != "completed":
-                        st.error(
-                            result.payload.get("error", {}).get(
-                                "message", "Unable to render report."
-                            )
-                        )
+                    if expected_hash is None:
+                        st.error("Completed run is missing canonical bundle hash provenance.")
                     else:
-                        st.session_state["assistant_run_reports"][run.run_id] = result.payload[
-                            "markdown_report"
-                        ]
+                        result = _dispatch(
+                            orchestrator,
+                            capability_id="EXPORT.build_research_artifact",
+                            payload={
+                                "bundle_path": bundle_path,
+                                "expected_hash": expected_hash,
+                            },
+                            confirmed=True,
+                            thesis_id=thesis_id,
+                            conversation_id=conversation_id,
+                        )
+                        if result.status != "completed":
+                            st.error(
+                                result.payload.get("error", {}).get(
+                                    "message", "Unable to render report."
+                                )
+                            )
+                        else:
+                            st.session_state["assistant_run_reports"][run.run_id] = result.payload[
+                                "markdown_report"
+                            ]
                 report = st.session_state["assistant_run_reports"].get(run.run_id)
                 if report:
                     st.markdown(report)
@@ -962,27 +982,30 @@ else:
                 if isinstance(bundle_path, str) and st.button(
                     "Build research artifact", key=f"artifact-{run.run_id}"
                 ):
-                    result = _dispatch(
-                        orchestrator,
-                        capability_id="EXPORT.build_research_artifact",
-                        payload={
-                            "bundle_path": bundle_path,
-                            "expected_hash": expected_hash,
-                        },
-                        confirmed=True,
-                        thesis_id=thesis_id,
-                        conversation_id=conversation_id,
-                    )
-                    if result.status != "completed":
-                        st.error(
-                            result.payload.get("error", {}).get(
-                                "message", "Unable to build research artifact."
-                            )
-                        )
+                    if expected_hash is None:
+                        st.error("Completed run is missing canonical bundle hash provenance.")
                     else:
-                        st.session_state["assistant_run_artifacts"][run.run_id] = result.payload[
-                            "artifact"
-                        ]
+                        result = _dispatch(
+                            orchestrator,
+                            capability_id="EXPORT.build_research_artifact",
+                            payload={
+                                "bundle_path": bundle_path,
+                                "expected_hash": expected_hash,
+                            },
+                            confirmed=True,
+                            thesis_id=thesis_id,
+                            conversation_id=conversation_id,
+                        )
+                        if result.status != "completed":
+                            st.error(
+                                result.payload.get("error", {}).get(
+                                    "message", "Unable to build research artifact."
+                                )
+                            )
+                        else:
+                            st.session_state["assistant_run_artifacts"][run.run_id] = (
+                                result.payload["artifact"]
+                            )
                 artifact = st.session_state["assistant_run_artifacts"].get(run.run_id)
                 if artifact:
                     st.download_button(
@@ -1000,6 +1023,7 @@ completed_runs = [
     and isinstance(run.provenance, dict)
     and isinstance(run.provenance.get("bundle_path"), str)
     and isinstance(run.provenance.get("canonical_bundle_hash"), str)
+    and bool(str(run.provenance.get("canonical_bundle_hash")).strip())
 ]
 if len(completed_runs) >= 2:
     st.subheader("Compare completed runs")

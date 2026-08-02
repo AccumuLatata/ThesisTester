@@ -240,9 +240,9 @@ def test_portfolio_analyze_requires_matching_expected_hashes(tmp_path, monkeypat
     orchestrator = AssistantOrchestrator(tools=tools, repository=repository)
     captured = {}
 
-    def fake_analyze(bundle_paths, *, instrument, config=None, expected_hashes=None):
+    def fake_analyze(bundle_paths, *, instrument, expected_hashes, config=None):
         captured["bundle_paths"] = list(bundle_paths)
-        captured["expected_hashes"] = list(expected_hashes or [])
+        captured["expected_hashes"] = list(expected_hashes)
         captured["instrument"] = instrument
         return {"portfolio": {"trade_count": 2}}
 
@@ -278,3 +278,56 @@ def test_portfolio_analyze_requires_matching_expected_hashes(tmp_path, monkeypat
         "expected_hashes": ["a" * 64, "b" * 64],
         "instrument": "ES",
     }
+
+
+def test_bundle_import_and_export_require_expected_hash(tmp_path, monkeypatch):
+    tools = AssistantTools(data_roots=(Path(tmp_path),))
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    orchestrator = AssistantOrchestrator(tools=tools, repository=repository)
+    monkeypatch.setattr(
+        tools,
+        "load_bundle_summary",
+        lambda bundle_path, *, expected_hash: {"summary": True, "expected_hash": expected_hash},
+    )
+    monkeypatch.setattr(
+        tools,
+        "build_bundle_research_artifact",
+        lambda bundle_path, *, expected_hash: {"artifact": True},
+    )
+    monkeypatch.setattr(
+        tools,
+        "render_bundle_markdown_report",
+        lambda bundle_path, *, expected_hash: "# report",
+    )
+
+    missing = orchestrator.dispatch(
+        AssistantRequest(
+            capability_id="BUNDLE.import",
+            payload={"action": "summary", "bundle_path": "run.research.zip"},
+        )
+    )
+    assert missing.status == "failed"
+    assert "expected_hash" in missing.payload["error"]["message"]
+
+    blank = orchestrator.dispatch(
+        AssistantRequest(
+            capability_id="EXPORT.build_research_artifact",
+            payload={"bundle_path": "run.research.zip", "expected_hash": "   "},
+        ),
+        confirmed=True,
+    )
+    assert blank.status == "failed"
+    assert "expected_hash" in blank.payload["error"]["message"]
+
+    imported = orchestrator.dispatch(
+        AssistantRequest(
+            capability_id="BUNDLE.import",
+            payload={
+                "action": "summary",
+                "bundle_path": "run.research.zip",
+                "expected_hash": "a" * 64,
+            },
+        )
+    )
+    assert imported.status == "completed"
+    assert imported.payload["expected_hash"] == "a" * 64
