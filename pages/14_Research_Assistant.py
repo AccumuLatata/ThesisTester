@@ -49,17 +49,28 @@ with st.sidebar:
     st.subheader("Theses")
     new_name = st.text_input("New thesis name", key="assistant_new_thesis_name")
     if st.button("Create thesis", use_container_width=True):
-        thesis = repository.create_thesis(name=new_name)
-        _select_thesis(thesis.thesis_id)
-        st.rerun()
+        try:
+            thesis = repository.create_thesis(name=new_name)
+            _select_thesis(thesis.thesis_id)
+            st.session_state["assistant_thesis_picker"] = thesis.thesis_id
+            st.rerun()
+        except ValueError as exc:
+            st.error(str(exc))
     theses = repository.list_theses(include_archived=True)
-    thesis_options = {
-        f"{thesis.name} ({thesis.lifecycle}, {thesis.thesis_id[-8:]})": thesis.thesis_id
+    thesis_ids = [thesis.thesis_id for thesis in theses]
+    labels = {
+        thesis.thesis_id: f"{thesis.name} ({thesis.lifecycle}, {thesis.thesis_id[-8:]})"
         for thesis in theses
     }
-    selected_label = st.selectbox("Select thesis", list(thesis_options), index=None)
-    if selected_label:
-        _select_thesis(thesis_options[selected_label])
+    selected_id = st.selectbox(
+        "Select thesis",
+        thesis_ids,
+        format_func=labels.get,
+        index=None,
+        key="assistant_thesis_picker",
+    )
+    if selected_id:
+        _select_thesis(selected_id)
 
 thesis_id = st.session_state["assistant_selected_thesis_id"]
 if not thesis_id:
@@ -96,6 +107,7 @@ if st.button("Draft research plan", type="primary"):
             compiler_version="1",
         )
         st.success(f"Saved specification version {spec.version}.")
+        st.rerun()
     except (ValueError, json.JSONDecodeError) as exc:
         st.error(str(exc))
 
