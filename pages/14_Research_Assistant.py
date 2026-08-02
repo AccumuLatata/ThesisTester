@@ -130,3 +130,34 @@ for spec in reversed(specifications):
                     thesis_id, spec.version, confirmation_note="Confirmed in UI"
                 )
                 st.rerun()
+
+st.subheader("Research runs")
+runs = repository.list_runs(thesis_id)
+if not runs:
+    st.info("No research runs are recorded for this thesis yet.")
+else:
+    for run in reversed(runs):
+        with st.expander(f"Run {run.run_id[-8:]} · {run.status}"):
+            st.caption(f"Specification v{run.spec_version} · revision {run.revision}")
+            st.json(
+                {
+                    "request": run.request,
+                    "provenance": run.provenance,
+                    "warnings": list(run.warnings),
+                    "error": run.error,
+                }
+            )
+
+st.subheader("Conversation audit")
+conversations = repository.list_conversations(thesis_id)
+if not conversations:
+    st.caption("No conversation transcript has been recorded yet.")
+else:
+    for conversation in reversed(conversations):
+        with st.expander(f"Conversation {conversation.conversation_id[-8:]}"):
+            st.json(
+                {
+                    "messages": list(conversation.messages),
+                    "tool_transcript": list(conversation.tool_transcript),
+                }
+            )
