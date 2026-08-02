@@ -320,21 +320,36 @@ with st.expander("Structured execution controls"):
 with st.expander("Structured validation controls"):
     current = st.session_state["assistant_draft_choices"]
     validation = current.get("validation") if isinstance(current.get("validation"), dict) else {}
-    with st.form(f"assistant_validation_{thesis_id}"):
+    validation_fingerprint = hashlib.sha256(
+        json.dumps(validation, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:12]
+    with st.form(f"assistant_validation_{thesis_id}_{validation_fingerprint}"):
+        raw_bootstrap = validation.get("n_bootstrap", 2000)
+        raw_permutations = validation.get("n_permutations", 5000)
+        raw_seed = validation.get("random_state", 42)
+        bootstrap_default = (
+            int(raw_bootstrap) if isinstance(raw_bootstrap, int) and raw_bootstrap > 0 else 2000
+        )
+        permutations_default = (
+            int(raw_permutations)
+            if isinstance(raw_permutations, int) and raw_permutations > 0
+            else 5000
+        )
+        seed_default = int(raw_seed) if isinstance(raw_seed, int) and raw_seed >= 0 else 42
         bootstrap = st.number_input(
             "Bootstrap samples",
             min_value=1,
-            value=int(validation.get("n_bootstrap") or 2000),
+            value=bootstrap_default,
         )
         permutations = st.number_input(
             "Permutation samples",
             min_value=1,
-            value=int(validation.get("n_permutations") or 5000),
+            value=permutations_default,
         )
         random_state = st.number_input(
             "Validation random seed",
             min_value=0,
-            value=int(validation.get("random_state") or 42),
+            value=seed_default,
         )
         if st.form_submit_button("Apply validation controls"):
             st.session_state["assistant_draft_choices"] = {
