@@ -292,8 +292,11 @@ else:
                     "Explain run", key=f"explain-{run.run_id}"
                 ):
                     try:
-                        state = load_research_bundle(Path(bundle_path).read_bytes())
-                        packet = build_evidence_packet(state, provenance=run.provenance)
+                        bundle = load_research_bundle(Path(bundle_path).read_bytes())
+                        packet = build_evidence_packet(
+                            bundle["session_values"],
+                            provenance=run.provenance,
+                        )
                         st.write(explain_evidence(packet))
                     except (OSError, ValueError) as exc:
                         st.error(f"Unable to load run evidence: {exc}")
