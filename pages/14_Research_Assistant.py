@@ -445,20 +445,28 @@ with st.expander("Structured walk-forward controls"):
     ).hexdigest()[:12]
     with st.form(f"assistant_walk_forward_{thesis_id}_{walk_forward_fingerprint}"):
         enabled = st.checkbox("Enable walk-forward", value=bool(walk_forward.get("enabled", False)))
+        raw_train = walk_forward.get("train_sessions", 20)
+        raw_test = walk_forward.get("test_sessions", 5)
+        raw_step = walk_forward.get("step_sessions", 5)
+        train_default = (
+            int(raw_train) if isinstance(raw_train, (int, float)) and raw_train > 0 else 20
+        )
+        test_default = int(raw_test) if isinstance(raw_test, (int, float)) and raw_test > 0 else 5
+        step_default = int(raw_step) if isinstance(raw_step, (int, float)) and raw_step > 0 else 5
         train_sessions = st.number_input(
             "Training sessions",
             min_value=1,
-            value=int(walk_forward.get("train_sessions") or 20),
+            value=train_default,
         )
         test_sessions = st.number_input(
             "Test sessions",
             min_value=1,
-            value=int(walk_forward.get("test_sessions") or 5),
+            value=test_default,
         )
         step_sessions = st.number_input(
             "Step sessions",
             min_value=1,
-            value=int(walk_forward.get("step_sessions") or 5),
+            value=step_default,
         )
         if st.form_submit_button("Apply walk-forward controls"):
             st.session_state["assistant_draft_choices"] = {
