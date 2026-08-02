@@ -48,6 +48,7 @@ def _init_state() -> None:
     st.session_state.setdefault("assistant_validated_run_spec", None)
     st.session_state.setdefault("assistant_run_explanations", {})
     st.session_state.setdefault("assistant_llm_run_explanations", {})
+    st.session_state.setdefault("assistant_llm_attempts", {})
     st.session_state.setdefault("assistant_run_comparisons", {})
 
 
@@ -370,10 +371,12 @@ else:
                         packet = build_evidence_packet(
                             load_research_bundle(raw)["session_values"], provenance=run.provenance
                         )
+                        client = create_openai_client(load_llm_settings())
                         st.session_state["assistant_llm_run_explanations"][run.run_id] = (
-                            explain_packet_with_llm(
-                                create_openai_client(load_llm_settings()), packet=packet
-                            )
+                            explain_packet_with_llm(client, packet=packet)
+                        )
+                        st.session_state["assistant_llm_attempts"][run.run_id] = (
+                            client.last_attempt_count
                         )
                     except (LLMConfigurationError, OSError, ValueError) as exc:
                         st.error(f"Unable to generate AI explanation: {exc}")
@@ -382,6 +385,9 @@ else:
                     st.write(llm_explanation.summary)
                     for caveat in llm_explanation.caveats:
                         st.caption(f"Caveat: {caveat}")
+                    attempts = st.session_state["assistant_llm_attempts"].get(run.run_id)
+                    if attempts:
+                        st.caption(f"Provider attempts: {attempts}")
 
 completed_runs = [
     run
