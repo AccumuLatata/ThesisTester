@@ -107,7 +107,11 @@ def test_canonical_compiler_normalizes_omitted_levels_to_empty_mapping(monkeypat
     )
     choices = {
         "dataset": {"path": "bars.csv", "instrument": "ES"},
-        "setup": {"trigger": "touch", "tolerance_ticks": 0, "selected_levels": ["dVWAP_RTH"]},
+        "setup": {
+            "trigger": "touch",
+            "tolerance_ticks": 0,
+            "selected_levels": ["dVWAP_RTH"],
+        },
         "backtest": {
             "commission_per_side": 0.0,
             "slippage_ticks": 0.0,
@@ -125,6 +129,57 @@ def test_canonical_compiler_normalizes_omitted_levels_to_empty_mapping(monkeypat
 
     assert structured.levels == {}
     assert compiled["levels"] == {}
+
+
+def test_canonical_compiler_accepts_minimal_disabled_walk_forward():
+    choices = {
+        "dataset": {"path": "bars.csv", "instrument": "ES"},
+        "setup": {
+            "instrument": "ES",
+            "trigger": "touch",
+            "tolerance_ticks": 0,
+            "selected_levels": ["dVWAP_RTH"],
+        },
+        "backtest": {
+            "commission_per_side": 0.0,
+            "slippage_ticks": 0.0,
+            "exposure_policy": "single_position",
+            "intrabar_model": "sl_first",
+            "flat_by_session_close": True,
+            "session_close_time": "16:00",
+            "session_timezone": "America/New_York",
+            "no_new_entries_after": "15:45",
+        },
+        "walk_forward": {"enabled": False},
+    }
+
+    compiled = compile_canonical_run_spec(name="Disabled walk-forward", choices=choices)
+
+    assert compiled["walk_forward"] == {"enabled": False}
+
+
+def test_canonical_compiler_requires_modes_for_enabled_walk_forward(monkeypatch):
+    monkeypatch.setattr(
+        "thesistester.assistant.thesis_compiler.validate_run_spec", lambda spec: None
+    )
+    choices = {
+        "dataset": {"path": "bars.csv", "instrument": "ES"},
+        "setup": {"trigger": "touch", "tolerance_ticks": 0, "selected_levels": ["dVWAP_RTH"]},
+        "backtest": {
+            "commission_per_side": 0.0,
+            "slippage_ticks": 0.0,
+            "exposure_policy": "single_position",
+            "intrabar_model": "sl_first",
+            "flat_by_session_close": True,
+            "session_close_time": "16:00",
+            "session_timezone": "America/New_York",
+            "no_new_entries_after": "15:45",
+        },
+        "walk_forward": {"enabled": True},
+    }
+
+    with pytest.raises(ValueError, match="walk_forward.fold_mode"):
+        compile_canonical_run_spec(name="Enabled walk-forward", choices=choices)
 
 
 def test_structured_choices_rejects_non_mapping_levels():

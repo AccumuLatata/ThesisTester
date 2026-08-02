@@ -158,9 +158,12 @@ def compile_canonical_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict
                 missing.append(f"grid.{key}")
     walk_forward = spec.get("walk_forward")
     if isinstance(walk_forward, Mapping):
-        for key in ("enabled", "fold_mode", "window_mode", "overlap_policy"):
-            if key not in walk_forward:
-                missing.append(f"walk_forward.{key}")
+        if "enabled" not in walk_forward:
+            missing.append("walk_forward.enabled")
+        if walk_forward.get("enabled", True):
+            for key in ("fold_mode", "window_mode", "overlap_policy"):
+                if key not in walk_forward:
+                    missing.append(f"walk_forward.{key}")
     if missing:
         raise ValueError(f"Canonical RunSpec requires explicit assumptions: {', '.join(missing)}.")
     return spec
