@@ -126,3 +126,27 @@ def test_run_experiment_uses_public_facade_and_returns_compact_summary(tmp_path,
 
     assert result["summary"]["instrument"] == "ES"
     assert result["summary"]["results"]["trade_summary"]["trade_count"] == 2
+
+
+def test_bundle_execution_records_canonical_provenance(tmp_path, monkeypatch):
+    root = tmp_path / "allowed"
+    root.mkdir()
+    tools = AssistantTools(data_roots=(root,))
+    spec = _spec(root / "bars.csv")
+    monkeypatch.setattr("thesistester.assistant.tools.validate_run_spec", lambda value: None)
+    monkeypatch.setattr(
+        "thesistester.assistant.tools._run_experiment", lambda value, base_directory: {}
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.tools.build_research_bundle", lambda state: b"bundle"
+    )
+    monkeypatch.setattr("thesistester.assistant.tools.canonical_bundle_hash", lambda bundle: "hash")
+    monkeypatch.setattr(
+        "thesistester.assistant.tools._state_summary",
+        lambda state: {"instrument": "ES", "results": {}},
+    )
+
+    result = tools.run_experiment_to_bundle(spec, output_path=root / "run.research.zip")
+
+    assert (root / "run.research.zip").read_bytes() == b"bundle"
+    assert result["canonical_bundle_hash"] == "hash"
