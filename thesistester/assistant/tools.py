@@ -11,6 +11,7 @@ from thesistester.api import _GRID_DEFAULTS
 from thesistester.api import _VALIDATION_DEFAULTS
 from thesistester.api import run_experiment as _run_experiment
 from thesistester.api import validate_run_spec
+from thesistester.analytics.time_analysis import add_time_buckets, summarize_by_group
 from thesistester.persistence.local_store import list_datasets, load_dataset
 from thesistester.reporting import build_research_artifact, to_jsonable
 from thesistester.research_bundle import canonical_bundle_hash, load_research_bundle
@@ -180,3 +181,22 @@ class AssistantTools:
         if len(bundle_paths) < 2:
             raise AssistantToolError("Select at least two bundles to compare.")
         return [self.load_bundle_summary(path) for path in bundle_paths]
+
+    def summarize_bundle_time_analysis(
+        self,
+        bundle_path: str | Path,
+        *,
+        group_col: str = "entry_rth_segment",
+        bucket_timezone: str = "America/New_York",
+        min_trades: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Return bounded descriptive time analysis for a selected research bundle."""
+        path = _resolve_within(bundle_path, self.data_roots)
+        state = load_research_bundle(path.read_bytes())
+        trades = state.get("trades")
+        if trades is None:
+            raise AssistantToolError("Bundle does not include completed trades.")
+        bucketed = add_time_buckets(trades, bucket_tz=bucket_timezone)
+        return to_jsonable(
+            summarize_by_group(bucketed, group_col, min_trades=min_trades).to_dict("records")
+        )
