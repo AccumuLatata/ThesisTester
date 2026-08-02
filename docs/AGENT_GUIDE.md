@@ -156,6 +156,13 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   `tests/test_assistant_execution_parity.py` and workspace/page-contract
   coverage in `tests/test_assistant_workspace.py` green when touching
   lifecycle, bundle tools, or the Research Assistant page.
+- Assistant narratives must stay evidence-backed: extend
+  `thesistester/assistant/explainer.py` templates rather than free-text UI
+  claims. Every numeric claim needs a packet path; missing evidence becomes a
+  limitation. “Best”/“better” language must state metric, candidate set, sample,
+  costs, and OOS status. Keep `tests/test_assistant_explainer.py` and
+  `tests/test_assistant_comparison.py` green when changing explanation or
+  comparison contracts.
 - Document every additive `assistant_*` session key in `ARCHITECTURE.md` and
   `ASSISTANT_SESSION_KEYS`. Thesis switches must clear
   `THESIS_SCOPED_STAGING_KEYS` (including `assistant_bundle_handoff`).

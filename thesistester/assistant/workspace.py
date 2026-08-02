@@ -233,12 +233,7 @@ def evidence_packet_from_payload(payload: Mapping[str, Any]) -> EvidencePacket:
     evidence = payload.get("evidence")
     if not isinstance(evidence, Mapping):
         raise ValueError("Evidence payload is missing.")
-    return EvidencePacket(
-        provenance=dict(evidence.get("provenance") or {}),
-        assumptions=dict(evidence.get("assumptions") or {}),
-        results=dict(evidence.get("results") or {}),
-        warnings=tuple(evidence.get("warnings") or ()),
-    )
+    return EvidencePacket.from_dict(evidence)
 
 
 def merge_execution_controls(

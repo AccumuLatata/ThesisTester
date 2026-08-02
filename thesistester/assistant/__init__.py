@@ -47,10 +47,13 @@ from thesistester.assistant.thesis_compiler import (
     normalize_walk_forward_controls,
 )
 from thesistester.assistant.explainer import (
+    EVIDENCE_PACKET_SCHEMA_VERSION,
     EvidencePacket,
+    assert_claims_grounded,
     build_evidence_packet,
     compare_evidence,
     explain_evidence,
+    explain_evidence_report,
 )
 from thesistester.assistant.orchestrator import (
     AssistantOrchestrator,
@@ -86,6 +89,7 @@ __all__ = [
     "RUN_SPEC_DRAFT_SCHEMA_VERSION",
     "COMPARISON_SCHEMA_VERSION",
     "Comparison",
+    "EVIDENCE_PACKET_SCHEMA_VERSION",
     "EvidencePacket",
     "ConfirmationLevel",
     "Conversation",
@@ -121,8 +125,10 @@ __all__ = [
     "normalize_setup_level_selection",
     "normalize_walk_forward_controls",
     "build_evidence_packet",
+    "assert_claims_grounded",
     "compare_evidence",
     "explain_evidence",
+    "explain_evidence_report",
     "ASSISTANT_SESSION_KEYS",
     "THESIS_SCOPED_STAGING_KEYS",
     "active_bundle_handoff",
