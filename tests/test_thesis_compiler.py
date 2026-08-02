@@ -8,6 +8,7 @@ from thesistester.assistant import (
     map_persisted_confirmed_run_spec,
     map_thesis_choices_to_run_spec,
     normalize_setup_level_selection,
+    normalize_walk_forward_controls,
 )
 
 
@@ -88,6 +89,73 @@ def test_normalize_setup_level_selection_clamps_to_provided_levels():
     assert levels == ["dVWAP_RTH", "SMA_50_30min"]
     assert min_confluences == 2
     assert max_confluences == 2
+
+
+def test_normalize_walk_forward_controls_requires_modes_when_enabled():
+    assert normalize_walk_forward_controls(enabled=False) == {"enabled": False}
+
+    enabled = normalize_walk_forward_controls(
+        enabled=True,
+        train_sessions=20,
+        test_sessions=5,
+        step_sessions=5,
+        window_mode="anchored",
+        overlap_policy="first",
+    )
+
+    assert enabled == {
+        "enabled": True,
+        "fold_mode": "sessions",
+        "window_mode": "anchored",
+        "overlap_policy": "first",
+        "train_sessions": 20,
+        "test_sessions": 5,
+        "step_sessions": 5,
+    }
+    with pytest.raises(ValueError, match="window_mode"):
+        normalize_walk_forward_controls(enabled=True, window_mode="diagonal")
+
+
+def test_enabled_walk_forward_controls_compile_canonically():
+    choices = {
+        "dataset": {"path": "bars.csv", "instrument": "ES"},
+        "setup": {
+            "name": "Enabled walk-forward",
+            "description": "",
+            "instrument": "ES",
+            "selected_levels": ["dVWAP_RTH"],
+            "trigger": "touch",
+            "tolerance_ticks": 0,
+            "min_confluences": 1,
+            "max_confluences": 1,
+            "naked_only": False,
+            "naked_requirement": "any",
+            "direction": "both",
+        },
+        "backtest": {
+            "commission_per_side": 0.0,
+            "slippage_ticks": 0.0,
+            "exposure_policy": "single_position",
+            "intrabar_model": "sl_first",
+            "flat_by_session_close": True,
+            "session_close_time": "16:00",
+            "session_timezone": "America/New_York",
+            "no_new_entries_after": "15:45",
+        },
+        "walk_forward": normalize_walk_forward_controls(
+            enabled=True,
+            train_sessions=20,
+            test_sessions=5,
+            step_sessions=5,
+            window_mode="rolling",
+            overlap_policy="reject",
+        ),
+    }
+
+    compiled = map_thesis_choices_to_run_spec(name="Enabled walk-forward", choices=choices)
+
+    assert compiled["walk_forward"]["window_mode"] == "rolling"
+    assert compiled["walk_forward"]["overlap_policy"] == "reject"
 
 
 @pytest.mark.parametrize("empty_section", ("dataset", "setup", "backtest"))

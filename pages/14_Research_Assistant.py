@@ -21,6 +21,7 @@ from thesistester.assistant import (
     compile_thesis,
     map_thesis_choices_to_run_spec,
     normalize_setup_level_selection,
+    normalize_walk_forward_controls,
 )
 from thesistester.assistant.explainer import (
     build_evidence_packet,
@@ -455,6 +456,24 @@ with st.expander("Structured walk-forward controls"):
         )
         test_default = int(raw_test) if isinstance(raw_test, (int, float)) and raw_test > 0 else 5
         step_default = int(raw_step) if isinstance(raw_step, (int, float)) and raw_step > 0 else 5
+        window_modes = ["rolling", "anchored"]
+        overlap_policies = ["reject", "first", "last"]
+        current_window_mode = str(walk_forward.get("window_mode") or "rolling")
+        current_overlap_policy = str(walk_forward.get("overlap_policy") or "reject")
+        window_mode = st.selectbox(
+            "Window mode",
+            window_modes,
+            index=window_modes.index(current_window_mode)
+            if current_window_mode in window_modes
+            else 0,
+        )
+        overlap_policy = st.selectbox(
+            "Overlapping OOS ownership",
+            overlap_policies,
+            index=overlap_policies.index(current_overlap_policy)
+            if current_overlap_policy in overlap_policies
+            else 0,
+        )
         train_sessions = st.number_input(
             "Training sessions",
             min_value=1,
@@ -471,19 +490,23 @@ with st.expander("Structured walk-forward controls"):
             value=step_default,
         )
         if st.form_submit_button("Apply walk-forward controls"):
-            st.session_state["assistant_draft_choices"] = {
-                **current,
-                "walk_forward": {
-                    **walk_forward,
-                    "enabled": enabled,
-                    "fold_mode": "sessions",
-                    "train_sessions": train_sessions,
-                    "test_sessions": test_sessions,
-                    "step_sessions": step_sessions,
-                },
-            }
-            st.session_state["assistant_validated_run_spec"] = None
-            st.rerun()
+            try:
+                st.session_state["assistant_draft_choices"] = {
+                    **current,
+                    "walk_forward": normalize_walk_forward_controls(
+                        enabled=enabled,
+                        train_sessions=train_sessions,
+                        test_sessions=test_sessions,
+                        step_sessions=step_sessions,
+                        fold_mode="sessions",
+                        window_mode=window_mode,
+                        overlap_policy=overlap_policy,
+                    ),
+                }
+                st.session_state["assistant_validated_run_spec"] = None
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
 
 with st.expander("Structured level controls"):
     current = st.session_state["assistant_draft_choices"]

@@ -36,6 +36,9 @@ _LEGACY_BACKTEST_SESSION_DEFAULTS = {
     "session_timezone": None,
     "no_new_entries_after": None,
 }
+_WALK_FORWARD_FOLD_MODES = frozenset({"bars", "sessions"})
+_WALK_FORWARD_WINDOW_MODES = frozenset({"rolling", "anchored"})
+_WALK_FORWARD_OVERLAP_POLICIES = frozenset({"reject", "first", "last"})
 
 
 @dataclass(frozen=True)
@@ -266,6 +269,49 @@ def normalize_setup_level_selection(
     min_confluences = min(max(1, prior_min), level_count)
     max_confluences = min(max(min_confluences, prior_max), level_count)
     return levels, min_confluences, max_confluences
+
+
+def normalize_walk_forward_controls(
+    *,
+    enabled: bool,
+    train_sessions: Any = 20,
+    test_sessions: Any = 5,
+    step_sessions: Any = 5,
+    fold_mode: str = "sessions",
+    window_mode: str = "rolling",
+    overlap_policy: str = "reject",
+) -> dict[str, Any]:
+    """Build an explicit walk-forward draft section for assistant controls.
+
+    Disabled walk-forward persists only the opt-out flag. Enabled walk-forward
+    requires every canonical assumption field so UI drafts remain confirmation-
+    eligible without silent API defaults.
+    """
+    if not enabled:
+        return {"enabled": False}
+    if fold_mode not in _WALK_FORWARD_FOLD_MODES:
+        raise ValueError("walk_forward.fold_mode must be 'bars' or 'sessions'.")
+    if window_mode not in _WALK_FORWARD_WINDOW_MODES:
+        raise ValueError("walk_forward.window_mode must be 'rolling' or 'anchored'.")
+    if overlap_policy not in _WALK_FORWARD_OVERLAP_POLICIES:
+        raise ValueError("walk_forward.overlap_policy must be 'reject', 'first', or 'last'.")
+    try:
+        train = int(train_sessions)
+        test = int(test_sessions)
+        step = int(step_sessions)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Walk-forward session counts must be positive integers.") from exc
+    if min(train, test, step) < 1:
+        raise ValueError("Walk-forward session counts must be positive integers.")
+    return {
+        "enabled": True,
+        "fold_mode": fold_mode,
+        "window_mode": window_mode,
+        "overlap_policy": overlap_policy,
+        "train_sessions": train,
+        "test_sessions": test,
+        "step_sessions": step,
+    }
 
 
 def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> ThesisDraft:
