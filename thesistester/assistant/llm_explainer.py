@@ -2,7 +2,8 @@
 
 Provider output is untrusted. Structured claims must cite evidence paths; any
 numeric token that is not grounded in a cited packet value is rejected before
-rendering.
+rendering. Percent-suffixed narration maps to fractional claim values; packet
+caveat numbers are scoped to echoing caveat lines only.
 """
 
 from __future__ import annotations
