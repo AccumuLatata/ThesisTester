@@ -133,7 +133,18 @@ class AssistantOrchestrator:
                 spec.normalized_run_spec,
                 output_path=output_path,
             )
-        except Exception as exc:
+            completed = self.repository.complete_run(
+                thesis_id,
+                run.run_id,
+                expected_revision=run.revision,
+                provenance={
+                    "bundle_path": result["bundle_path"],
+                    "canonical_bundle_hash": result["canonical_bundle_hash"],
+                    "dataset_fingerprint": result["dataset_fingerprint"],
+                    "tool_version": result["tool_version"],
+                },
+            )
+        except BaseException as exc:
             self.repository.fail_run(
                 thesis_id,
                 run.run_id,
@@ -141,17 +152,6 @@ class AssistantOrchestrator:
                 error={"type": type(exc).__name__, "message": str(exc)},
             )
             raise
-        completed = self.repository.complete_run(
-            thesis_id,
-            run.run_id,
-            expected_revision=run.revision,
-            provenance={
-                "bundle_path": result["bundle_path"],
-                "canonical_bundle_hash": result["canonical_bundle_hash"],
-                "dataset_fingerprint": result["dataset_fingerprint"],
-                "tool_version": result["tool_version"],
-            },
-        )
         return OrchestrationResult(
             status="completed",
             capability_id="PIPELINE.run_experiment",
