@@ -41,6 +41,56 @@ class ConfirmationLevel(str, Enum):
     EXPLICIT_CONFIRMATION = "explicit_confirmation"
 
 
+class OrchestrationStatus(str, Enum):
+    """Terminal or gated outcomes recorded by the orchestrator audit path."""
+
+    APPROVAL_REQUIRED = "approval_required"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    UNAVAILABLE = "unavailable"
+    CANCELLED = "cancelled"
+
+
+@dataclass(frozen=True)
+class StructuredError:
+    """Machine-readable remediation metadata for a gated or failed action."""
+
+    category: str
+    retryable: bool
+    remediation: str
+    message: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "category": self.category,
+            "retryable": self.retryable,
+            "remediation": self.remediation,
+            "message": self.message,
+        }
+
+
+def structured_error(
+    *,
+    category: str,
+    retryable: bool,
+    remediation: str,
+    message: str,
+) -> StructuredError:
+    """Construct a JSON-safe structured orchestration error."""
+    if not category.strip():
+        raise AssistantContractError("Structured error category must be non-empty.")
+    if not remediation.strip():
+        raise AssistantContractError("Structured error remediation must be non-empty.")
+    if not message.strip():
+        raise AssistantContractError("Structured error message must be non-empty.")
+    return StructuredError(
+        category=category.strip(),
+        retryable=bool(retryable),
+        remediation=remediation.strip(),
+        message=message.strip(),
+    )
+
+
 @dataclass(frozen=True)
 class ResourceEnvelope:
     """Declared limits for a future assistant tool implementation."""

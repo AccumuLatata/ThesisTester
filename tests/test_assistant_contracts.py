@@ -130,3 +130,17 @@ def test_request_rejects_non_integer_schema_version_equivalents(schema_version):
 def test_unknown_capability_fails_before_execution():
     with pytest.raises(UnknownCapabilityError, match="Unknown assistant capability"):
         validate_capability_request(AssistantRequest(capability_id="DATA.not_real", payload={}))
+
+
+def test_unsupported_registry_rows_document_limitations():
+    unsupported = [
+        capability
+        for capability in FEATURE_PARITY_REGISTRY
+        if capability.mode is CapabilityMode.UNSUPPORTED
+    ]
+    assert unsupported
+    assert all(capability.limitation for capability in unsupported)
+    with pytest.raises(AssistantContractError, match="unsupported"):
+        validate_capability_request(
+            AssistantRequest(capability_id="BACKTEST.configure_and_run", payload={})
+        )

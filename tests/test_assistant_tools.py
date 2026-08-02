@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import pandas as pd
 import pytest
 
 from thesistester.assistant.tools import AssistantToolError, AssistantTools, ToolLimits
@@ -150,3 +153,72 @@ def test_bundle_execution_records_canonical_provenance(tmp_path, monkeypatch):
 
     assert (root / "run.research.zip").read_bytes() == b"bundle"
     assert result["canonical_bundle_hash"] == "hash"
+
+
+def test_analyze_bundle_portfolio_verifies_expected_hashes(tmp_path, monkeypatch):
+    root = tmp_path / "allowed"
+    root.mkdir()
+    left = root / "left.research.zip"
+    right = root / "right.research.zip"
+    left.write_bytes(b"left")
+    right.write_bytes(b"right")
+    tools = AssistantTools(data_roots=(root,))
+    calls = []
+
+    def fake_read(bundle_path, roots, *, expected_hash=None, require_hash=False):
+        calls.append((Path(bundle_path).name, expected_hash, require_hash))
+        trades = pd.DataFrame({"r_multiple": [1.0, -0.5]})
+        return Path(bundle_path), b"raw", {"trades": trades}
+
+    monkeypatch.setattr("thesistester.assistant.tools._read_verified_bundle", fake_read)
+    monkeypatch.setattr(
+        "thesistester.assistant.tools.run_portfolio_analysis",
+        lambda setup_trades, instrument, config=None: {"count": len(setup_trades)},
+    )
+
+    with pytest.raises(AssistantToolError, match="expected_hashes"):
+        tools.analyze_bundle_portfolio(
+            [left, right],
+            instrument="ES",
+            expected_hashes=["only-one"],
+        )
+
+    result = tools.analyze_bundle_portfolio(
+        [left, right],
+        instrument="ES",
+        expected_hashes=["hash-left", "hash-right"],
+    )
+
+    assert result == {"count": 2}
+    assert calls == [
+        ("left.research.zip", "hash-left", True),
+        ("right.research.zip", "hash-right", True),
+    ]
+
+
+def test_read_verified_bundle_fails_closed_without_expected_hash(tmp_path, monkeypatch):
+    from thesistester.assistant.tools import _read_verified_bundle
+
+    root = tmp_path / "allowed"
+    root.mkdir()
+    bundle = root / "run.research.zip"
+    bundle.write_bytes(b"bundle")
+    monkeypatch.setattr("thesistester.assistant.tools.canonical_bundle_hash", lambda raw: "digest")
+    monkeypatch.setattr(
+        "thesistester.assistant.tools.load_research_bundle",
+        lambda raw: {"session_values": {"trades": pd.DataFrame()}},
+    )
+
+    with pytest.raises(AssistantToolError, match="non-empty expected hash"):
+        _read_verified_bundle(bundle, (root,), expected_hash=None, require_hash=True)
+    with pytest.raises(AssistantToolError, match="non-empty expected hash"):
+        _read_verified_bundle(bundle, (root,), expected_hash="   ", require_hash=True)
+    with pytest.raises(AssistantToolError, match="does not match"):
+        _read_verified_bundle(bundle, (root,), expected_hash="other", require_hash=True)
+
+    path, raw, session_values = _read_verified_bundle(
+        bundle, (root,), expected_hash="digest", require_hash=True
+    )
+    assert path == bundle
+    assert raw == b"bundle"
+    assert "trades" in session_values

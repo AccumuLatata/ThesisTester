@@ -18,6 +18,7 @@ from thesistester.api import (
 from thesistester.api import _VALIDATION_DEFAULTS
 from thesistester.api import run_experiment as _run_experiment
 from thesistester.api import validate_run_spec
+from thesistester.assistant.explainer import build_evidence_packet
 from thesistester.persistence.local_store import (
     clear_backtest_defaults,
     clear_grid_defaults,
@@ -29,6 +30,7 @@ from thesistester.persistence.local_store import (
     load_dataset,
     save_backtest_defaults,
     save_grid_defaults,
+    save_setup,
 )
 from thesistester.reporting import build_markdown_report, build_research_artifact, to_jsonable
 from thesistester.research_bundle import (
@@ -139,6 +141,58 @@ def _normalize_dataset_paths(spec: dict[str, Any], roots: tuple[Path, ...]) -> d
     return {**spec, "dataset": normalized_dataset}
 
 
+def _resolved_paths(spec: Mapping[str, Any]) -> dict[str, str]:
+    dataset = spec.get("dataset")
+    if not isinstance(dataset, Mapping):
+        return {}
+    paths = {"dataset.path": str(dataset["path"])}
+    if dataset.get("subtimeframe_path") is not None:
+        paths["dataset.subtimeframe_path"] = str(dataset["subtimeframe_path"])
+    return paths
+
+
+def _seed_snapshot(spec: Mapping[str, Any]) -> dict[str, Any]:
+    seeds: dict[str, Any] = {}
+    validation = spec.get("validation")
+    if isinstance(validation, Mapping):
+        if "random_state" in validation:
+            seeds["validation.random_state"] = validation["random_state"]
+        for section in ("monte_carlo", "overfitting", "noise", "sensitivity"):
+            nested = validation.get(section)
+            if isinstance(nested, Mapping) and "random_state" in nested:
+                seeds[f"validation.{section}.random_state"] = nested["random_state"]
+    return seeds
+
+
+def _require_expected_hash(expected_hash: Any) -> str:
+    if not isinstance(expected_hash, str) or not expected_hash.strip():
+        raise AssistantToolError("Bundle load requires a non-empty expected hash.")
+    return expected_hash.strip()
+
+
+def _read_verified_bundle(
+    bundle_path: str | Path,
+    roots: tuple[Path, ...],
+    *,
+    expected_hash: str | None = None,
+    require_hash: bool = False,
+) -> tuple[Path, bytes, dict[str, Any]]:
+    path = _resolve_within(bundle_path, roots)
+    raw = path.read_bytes()
+    digest = canonical_bundle_hash(raw)
+    if require_hash or expected_hash is not None:
+        # Provenance-gated loads fail closed: a missing/blank hash must never
+        # silently skip integrity verification.
+        expected = _require_expected_hash(expected_hash)
+        if digest != expected:
+            raise AssistantToolError("Bundle hash does not match recorded run provenance.")
+    payload = load_research_bundle(raw)
+    session_values = payload.get("session_values")
+    if not isinstance(session_values, dict):
+        raise AssistantToolError("Bundle payload is missing session values.")
+    return path, raw, session_values
+
+
 def _state_summary(state: Mapping[str, Any]) -> dict[str, Any]:
     artifact = build_research_artifact(state)
     return {
@@ -169,6 +223,12 @@ class AssistantTools:
     def load_saved_setup(self, setup_id: str) -> dict[str, Any]:
         """Load one persisted setup configuration for review or explicit reuse."""
         return to_jsonable(load_setup(setup_id))
+
+    def save_saved_setup(
+        self, setup: Mapping[str, Any], *, instrument: str | None = None
+    ) -> dict[str, Any]:
+        """Persist one validated setup configuration through the local store."""
+        return to_jsonable(save_setup(dict(setup), instrument=instrument))
 
     def get_execution_defaults(self) -> dict[str, Any]:
         """Return persisted backtest/grid defaults without mutating them."""
@@ -237,30 +297,91 @@ class AssistantTools:
             "canonical_bundle_hash": canonical_bundle_hash(bundle),
             "dataset_fingerprint": to_jsonable(state.get("levels_data_fingerprint")),
             "tool_version": __version__,
+            "effective_configuration": to_jsonable(normalized),
+            "resolved_paths": _resolved_paths(normalized),
+            "resource_limits": {
+                "max_grid_cells": self.limits.max_grid_cells,
+                "max_simulations": self.limits.max_simulations,
+                "max_walk_forward_matrix_cells": self.limits.max_walk_forward_matrix_cells,
+            },
+            "seeds": _seed_snapshot(normalized),
         }
 
-    def load_bundle_summary(self, bundle_path: str | Path) -> dict[str, Any]:
+    def load_bundle_summary(self, bundle_path: str | Path, *, expected_hash: str) -> dict[str, Any]:
         """Load a bundle beneath an allowed root and return compact evidence."""
-        path = _resolve_within(bundle_path, self.data_roots)
-        raw = path.read_bytes()
-        state = load_research_bundle(raw)
+        path, raw, session_values = _read_verified_bundle(
+            bundle_path,
+            self.data_roots,
+            expected_hash=expected_hash,
+            require_hash=True,
+        )
         return {
             "bundle_path": str(path),
             "canonical_bundle_hash": canonical_bundle_hash(raw),
-            "summary": _state_summary(state),
+            "summary": _state_summary(session_values),
         }
 
-    def render_bundle_markdown_report(self, bundle_path: str | Path) -> str:
+    def render_bundle_markdown_report(self, bundle_path: str | Path, *, expected_hash: str) -> str:
         """Render the established report from a selected portable research bundle."""
-        path = _resolve_within(bundle_path, self.data_roots)
-        state = load_research_bundle(path.read_bytes())["session_values"]
-        return build_markdown_report(build_research_artifact(state))
+        _path, _raw, session_values = _read_verified_bundle(
+            bundle_path,
+            self.data_roots,
+            expected_hash=expected_hash,
+            require_hash=True,
+        )
+        return build_markdown_report(build_research_artifact(session_values))
 
-    def compare_bundle_summaries(self, bundle_paths: list[str | Path]) -> list[dict[str, Any]]:
+    def build_bundle_research_artifact(
+        self, bundle_path: str | Path, *, expected_hash: str
+    ) -> dict[str, Any]:
+        """Build a JSON-safe research artifact from one verified portable bundle."""
+        _path, _raw, session_values = _read_verified_bundle(
+            bundle_path,
+            self.data_roots,
+            expected_hash=expected_hash,
+            require_hash=True,
+        )
+        return to_jsonable(build_research_artifact(session_values))
+
+    def build_bundle_evidence_packet(
+        self,
+        bundle_path: str | Path,
+        *,
+        expected_hash: str,
+        provenance: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Build explanation evidence from one hash-verified research bundle."""
+        path, raw, session_values = _read_verified_bundle(
+            bundle_path,
+            self.data_roots,
+            expected_hash=expected_hash,
+            require_hash=True,
+        )
+        packet = build_evidence_packet(
+            session_values,
+            provenance=dict(provenance or {})
+            | {
+                "bundle_path": str(path),
+                "canonical_bundle_hash": canonical_bundle_hash(raw),
+            },
+        )
+        return packet.to_dict()
+
+    def compare_bundle_summaries(
+        self,
+        bundle_paths: list[str | Path],
+        *,
+        expected_hashes: list[str],
+    ) -> list[dict[str, Any]]:
         """Return independently grounded summaries for explicit bundle choices."""
         if len(bundle_paths) < 2:
             raise AssistantToolError("Select at least two bundles to compare.")
-        return [self.load_bundle_summary(path) for path in bundle_paths]
+        if len(expected_hashes) != len(bundle_paths):
+            raise AssistantToolError("expected_hashes must match bundle_paths.")
+        return [
+            self.load_bundle_summary(path, expected_hash=expected_hash)
+            for path, expected_hash in zip(bundle_paths, expected_hashes, strict=True)
+        ]
 
     def summarize_bundle_time_analysis(
         self,
@@ -271,9 +392,8 @@ class AssistantTools:
         min_trades: int = 10,
     ) -> list[dict[str, Any]]:
         """Return bounded descriptive time analysis for a selected research bundle."""
-        path = _resolve_within(bundle_path, self.data_roots)
-        state = load_research_bundle(path.read_bytes())
-        trades = state.get("trades")
+        _path, _raw, session_values = _read_verified_bundle(bundle_path, self.data_roots)
+        trades = session_values.get("trades")
         if trades is None:
             raise AssistantToolError("Bundle does not include completed trades.")
         return to_jsonable(
@@ -295,10 +415,9 @@ class AssistantTools:
         train_fraction: float = 0.7,
     ) -> list[dict[str, Any]]:
         """Run the fixed OTF matrix from a selected bundle's dataset and signals."""
-        path = _resolve_within(bundle_path, self.data_roots)
-        state = load_research_bundle(path.read_bytes())["session_values"]
-        data = state.get("data")
-        signals = state.get("signals")
+        _path, _raw, session_values = _read_verified_bundle(bundle_path, self.data_roots)
+        data = session_values.get("data")
+        signals = session_values.get("signals")
         if data is None or signals is None:
             raise AssistantToolError("Bundle requires dataset and signals for OTF validation.")
         return to_jsonable(
@@ -309,10 +428,10 @@ class AssistantTools:
                 stop_loss_ticks=stop_loss_ticks,
                 take_profit_ticks=take_profit_ticks,
                 train_fraction=train_fraction,
-                session_timezone=state.get("exchange_timezone"),
-                eth_start=state.get("eth_start"),
-                setup_config=state.get("setup_config"),
-                signal_settings=state.get("signal_settings"),
+                session_timezone=session_values.get("exchange_timezone"),
+                eth_start=session_values.get("eth_start"),
+                setup_config=session_values.get("setup_config"),
+                signal_settings=session_values.get("signal_settings"),
             ).to_dict("records")
         )
 
@@ -320,8 +439,8 @@ class AssistantTools:
         self, bundle_path: str | Path, *, timeframe: str, max_rows: int = 200
     ) -> list[dict[str, Any]]:
         """Return a bounded resample preview for a selected bundle dataset."""
-        path = _resolve_within(bundle_path, self.data_roots)
-        data = load_research_bundle(path.read_bytes())["session_values"].get("data")
+        _path, _raw, session_values = _read_verified_bundle(bundle_path, self.data_roots)
+        data = session_values.get("data")
         if data is None:
             raise AssistantToolError("Bundle does not include a dataset.")
         return to_jsonable(
@@ -336,8 +455,8 @@ class AssistantTools:
         roll_method: str = "single_contract",
     ) -> dict[str, Any]:
         """Return roll diagnostics for a selected bundle dataset."""
-        path = _resolve_within(bundle_path, self.data_roots)
-        data = load_research_bundle(path.read_bytes())["session_values"].get("data")
+        _path, _raw, session_values = _read_verified_bundle(bundle_path, self.data_roots)
+        data = session_values.get("data")
         if data is None:
             raise AssistantToolError("Bundle does not include a dataset.")
         return to_jsonable(
@@ -351,15 +470,28 @@ class AssistantTools:
         bundle_paths: list[str | Path],
         *,
         instrument: str,
+        expected_hashes: list[str],
         config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Analyze explicitly selected completed-run bundles as a portfolio."""
+        """Analyze explicitly selected completed-run bundles as a portfolio.
+
+        ``expected_hashes`` must align 1:1 with ``bundle_paths``. Each digest is
+        checked against recorded provenance before trades are admitted into
+        portfolio metrics.
+        """
         if len(bundle_paths) < 2:
             raise AssistantToolError("Portfolio analysis requires at least two bundles.")
+        if len(expected_hashes) != len(bundle_paths):
+            raise AssistantToolError("expected_hashes must match bundle_paths.")
         setup_trades = {}
         for index, bundle_path in enumerate(bundle_paths, start=1):
-            path = _resolve_within(bundle_path, self.data_roots)
-            trades = load_research_bundle(path.read_bytes())["session_values"].get("trades")
+            _path, _raw, session_values = _read_verified_bundle(
+                bundle_path,
+                self.data_roots,
+                expected_hash=expected_hashes[index - 1],
+                require_hash=True,
+            )
+            trades = session_values.get("trades")
             if trades is None or trades.empty:
                 raise AssistantToolError("Each bundle requires completed trades.")
             setup_trades[f"run_{index}"] = trades

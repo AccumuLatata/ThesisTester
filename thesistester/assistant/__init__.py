@@ -7,9 +7,13 @@ from thesistester.assistant.contracts import (
     Capability,
     CapabilityMode,
     ConfirmationLevel,
+    OrchestrationStatus,
     ResourceEnvelope,
+    StructuredError,
     UnknownCapabilityError,
+    structured_error,
 )
+from thesistester.assistant.handlers import HANDLER_REGISTRY, get_handler
 from thesistester.assistant.registry import (
     FEATURE_PARITY_REGISTRY,
     get_capability,
@@ -48,7 +52,12 @@ from thesistester.assistant.explainer import (
     compare_evidence,
     explain_evidence,
 )
-from thesistester.assistant.orchestrator import AssistantOrchestrator, OrchestrationResult
+from thesistester.assistant.orchestrator import (
+    AssistantOrchestrator,
+    OrchestrationResult,
+    confirmed_run_feedback,
+    list_payload_or_error,
+)
 from thesistester.assistant.comparison import COMPARISON_SCHEMA_VERSION, Comparison
 
 __all__ = [
@@ -70,21 +79,28 @@ __all__ = [
     "ConfirmationLevel",
     "Conversation",
     "FEATURE_PARITY_REGISTRY",
+    "HANDLER_REGISTRY",
     "InvalidStateTransitionError",
     "LocalThesisRepository",
     "OrchestrationResult",
+    "OrchestrationStatus",
+    "confirmed_run_feedback",
+    "list_payload_or_error",
     "RepositoryConflictError",
     "RepositoryCorruptionError",
     "RepositoryReadOnlyError",
     "ResearchRun",
     "ResourceEnvelope",
     "SpecVersion",
+    "StructuredError",
     "Thesis",
     "StructuredThesisChoices",
     "ThesisDraft",
     "ToolLimits",
     "UnknownCapabilityError",
     "get_capability",
+    "get_handler",
+    "structured_error",
     "validate_capability_request",
     "compile_thesis",
     "compile_run_spec",

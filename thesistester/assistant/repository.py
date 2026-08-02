@@ -969,6 +969,48 @@ class LocalThesisRepository:
             error={"reason": reason},
         )
 
+    def attach_cancelled_run_provenance(
+        self,
+        thesis_id: str,
+        run_id: str,
+        *,
+        expected_revision: int,
+        provenance: dict[str, Any],
+        warnings: tuple[str, ...] = (),
+    ) -> ResearchRun:
+        """Attach late compute provenance to a cancelled run.
+
+        Used when execution finishes after cancel won the lifecycle race, so the
+        on-disk bundle remains discoverable without overturning cancellation.
+        """
+        self._assert_mutable_root()
+        run = self.get_run(thesis_id, run_id)
+        if run.revision != expected_revision:
+            raise RepositoryConflictError("Research run revision is stale.")
+        if run.status != "cancelled":
+            raise InvalidStateTransitionError(
+                "Only cancelled research runs may receive late provenance."
+            )
+        if run.provenance is not None:
+            raise InvalidStateTransitionError("Cancelled run provenance is immutable once set.")
+        if not isinstance(provenance, dict):
+            raise AssistantRepositoryError("provenance must be an object.")
+        updated = ResearchRun(
+            run_id=run.run_id,
+            thesis_id=run.thesis_id,
+            spec_version=run.spec_version,
+            request=run.request,
+            status="cancelled",
+            provenance=provenance,
+            warnings=warnings,
+            error=run.error,
+            created_at=run.created_at,
+            updated_at=_utcnow(),
+            revision=run.revision + 1,
+        )
+        self._write_json_atomic(self._run_path(thesis_id, run_id), updated.to_dict())
+        return updated
+
     def _conversation_path(self, thesis_id: str, conversation_id: str) -> Path:
         return (
             self._thesis_dir(thesis_id)

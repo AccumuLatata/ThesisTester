@@ -142,6 +142,11 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   `walk_forward`). Do not add prose-only fields such as trend rules or success
   criteria to executable drafts; represent a requirement with a supported
   structured control or leave it as an explicit clarification.
+- Route assistant compute only through `AssistantOrchestrator.dispatch()` or
+  `execute_confirmed_run()` / `cancel_run()`. Every non-unsupported registry
+  capability must have a `HANDLER_REGISTRY` entry; otherwise mark it
+  `unsupported` with a limitation. Structured errors must include `category`,
+  `retryable`, and `remediation`.
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned

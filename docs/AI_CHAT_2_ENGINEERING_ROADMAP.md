@@ -67,6 +67,29 @@ coordinator between UI, repository, compiler, tools, and explainer.
 - Unit tests cover confirmation bypass, unsupported capability, and idempotent
   read-only operations.
 
+**Implemented contract (typed router)**
+- `HANDLER_REGISTRY` maps every non-unsupported registry capability to a typed
+  handler. Capabilities without a handler are marked `unsupported` with an
+  explicit limitation.
+- `dispatch()` records exactly one tool-transcript audit entry for
+  `approval_required`, `completed`, `failed`, `unavailable`, and `cancelled`
+  when thesis/conversation IDs are supplied.
+- Structured errors always include `category`, `retryable`, and `remediation`.
+- Capability resource envelopes are projected onto `ToolLimits` before handler
+  execution. Confirmed runs persist effective configuration, resolved paths,
+  seeds, limits, warnings, fingerprint, canonical hash, and terminal errors.
+- Explicit `cancel_run()` transitions a running research run to cancelled and
+  audits the outcome. Stale cancel attempts against non-running runs return a
+  structured lifecycle failure instead of raising. Cancel-vs-complete races keep
+  the cancelled terminal state and attach late bundle provenance when compute
+  finished after cancel. UI feedback uses the returned orchestration status so
+  cancelled races are not reported as completed. Failed list dispatches are
+  shown as errors rather than empty collections.
+- Provenance-gated bundle loads require non-empty expected hashes
+  (`BUNDLE.import`, export, and `PORTFOLIO.analyze`) and fail closed instead of
+  skipping verification. Terminal lifecycle audits are best-effort so a
+  transcript race cannot overturn a completed or cancelled run.
+
 ## C2-2 — Executable RunSpec compiler
 
 **Goal:** compile a thesis into a version-1 API-valid research specification.

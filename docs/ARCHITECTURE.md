@@ -87,6 +87,25 @@ confirmed child. The orchestrator repeats that validation immediately before
 execution. Narrative fields that have no public-pipeline mapping are rejected,
 rather than being stored as executable assumptions.
 
+`AssistantOrchestrator.dispatch()` is the only compute router for assistant
+capabilities. It validates the registry request, enforces confirmation and
+resource envelopes, invokes a typed handler, and writes one transcript audit
+entry for each gated or terminal outcome. Page code must not call
+`AssistantTools` or public compute APIs directly. Provenance-gated bundle loads
+(`BUNDLE.import`, `EXPORT.build_research_artifact`, `PORTFOLIO.analyze`) require
+non-empty expected hashes and fail closed when they are missing or blank; they
+never silently skip digest verification. Completed/cancelled run lifecycle
+outcomes keep their terminal repository state even if conversation-audit
+append races. `cancel_run()` returns a structured lifecycle failure when the
+target run is no longer `running`, so stale Cancel clicks do not raise. If
+cancel wins while execution is still finishing, the orchestrator keeps the
+cancelled terminal state, attaches late bundle provenance when available, and
+does not attempt `fail_run` against the already-terminal record. The Research
+Assistant UI reads that returned status through `confirmed_run_feedback()` so
+a cancelled race is not shown as a successful completion. List-style dispatches
+use `list_payload_or_error()` so failed/gated outcomes surface as errors instead
+of an empty “no items” success state.
+
 Research ZIP bytes include archive timestamps and are not deterministic.
 `canonical_bundle_hash()` projects JSON with sorted keys (excluding
 `manifest.created_at`) and parquet members through the repository DataFrame
