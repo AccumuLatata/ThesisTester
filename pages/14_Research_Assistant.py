@@ -235,7 +235,7 @@ with st.expander("Structured execution controls"):
         dataset_path = st.text_input("Dataset CSV path", value=str(dataset.get("path", "")))
         instruments = ["ES", "NQ", "MES", "MNQ"]
         current_instrument = str(
-            dataset.get("instrument") or (setup or {}).get("instrument") or "ES"
+            (setup or {}).get("instrument") or dataset.get("instrument") or "ES"
         )
         instrument = st.selectbox(
             "Instrument",
