@@ -58,9 +58,7 @@ def _assert_readable_bundle_provenance(result: Mapping[str, Any]) -> None:
         raise AssistantToolError("Research bundle was not written before completion.")
     digest = canonical_bundle_hash(path.read_bytes())
     if digest != expected_hash:
-        raise AssistantToolError(
-            "Written research bundle hash does not match reported provenance."
-        )
+        raise AssistantToolError("Written research bundle hash does not match reported provenance.")
 
 
 @dataclass(frozen=True)

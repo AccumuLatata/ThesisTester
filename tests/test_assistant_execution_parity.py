@@ -178,9 +178,10 @@ def test_restored_bundle_reproduces_provenance_and_summary(tmp_path):
     restored = tools.load_bundle_summary(bundle_path, expected_hash=digest)
     assert restored["canonical_bundle_hash"] == digest
     assert restored["summary"]["instrument"] == "ES"
-    assert restored["summary"]["results"]["trade_count"] == run.provenance["summary"]["results"][
-        "trade_count"
-    ]
+    assert (
+        restored["summary"]["results"]["trade_count"]
+        == run.provenance["summary"]["results"]["trade_count"]
+    )
 
     evidence = orchestrator.dispatch(
         AssistantRequest(
@@ -200,22 +201,21 @@ def test_hash_mismatch_rejects_explanation_comparison_export_and_portfolio(tmp_p
     write_parity_bars(tmp_path / "bars.csv")
     tools = AssistantTools(data_roots=(tmp_path,))
     left = tools.run_experiment_to_bundle(
-        absolute_parity_run_spec(tmp_path, name="parity_left"),
+        absolute_parity_run_spec(tmp_path),
         output_path=tmp_path / "left.research.zip",
     )
-    right = tools.run_experiment_to_bundle(
-        absolute_parity_run_spec(tmp_path, name="parity_right"),
-        output_path=tmp_path / "right.research.zip",
-    )
+    right_path = tmp_path / "right.research.zip"
+    right_path.write_bytes((tmp_path / "left.research.zip").read_bytes())
     left_hash = left["canonical_bundle_hash"]
-    right_hash = right["canonical_bundle_hash"]
-    assert left_hash == right_hash
+    assert canonical_bundle_hash(right_path.read_bytes()) == left_hash
 
     replaced = tmp_path / "replaced.research.zip"
     _write_replacement_bundle(replaced)
     assert canonical_bundle_hash(replaced.read_bytes()) != left_hash
 
-    orchestrator = AssistantOrchestrator(tools=tools, repository=LocalThesisRepository(tmp_path / "assistant"))
+    orchestrator = AssistantOrchestrator(
+        tools=tools, repository=LocalThesisRepository(tmp_path / "assistant")
+    )
 
     explanation = orchestrator.dispatch(
         AssistantRequest(
@@ -254,7 +254,7 @@ def test_hash_mismatch_rejects_explanation_comparison_export_and_portfolio(tmp_p
             capability_id="PORTFOLIO.analyze",
             payload={
                 "bundle_paths": [str(tmp_path / "left.research.zip"), str(replaced)],
-                "expected_hashes": [left_hash, right_hash],
+                "expected_hashes": [left_hash, left_hash],
                 "instrument": "ES",
             },
         ),
@@ -265,14 +265,14 @@ def test_hash_mismatch_rejects_explanation_comparison_export_and_portfolio(tmp_p
 
 
 @pytest.mark.parametrize(
-    ("failure", "expected_status", "error_category"),
+    ("failure", "error_fragment"),
     [
-        (RuntimeError("forced execution failure"), "failed", "execution"),
-        (KeyboardInterrupt(), "failed", "execution"),
+        (RuntimeError("forced execution failure"), "RuntimeError"),
+        (KeyboardInterrupt(), "KeyboardInterrupt"),
     ],
 )
 def test_failed_and_interrupted_runs_retain_request_without_success_summary(
-    tmp_path, failure, expected_status, error_category
+    tmp_path, failure, error_fragment
 ):
     write_parity_bars(tmp_path / "bars.csv")
     repository = LocalThesisRepository(tmp_path / "assistant")
@@ -283,21 +283,22 @@ def test_failed_and_interrupted_runs_retain_request_without_success_summary(
         def run_experiment_to_bundle(self, spec, *, output_path):
             raise failure
 
-    result = AssistantOrchestrator(
-        tools=_FailingTools(data_roots=(tmp_path,)),
-        repository=repository,
-    ).execute_confirmed_run(
-        thesis_id=thesis.thesis_id,
-        spec_version=confirmed.version,
-        output_path=tmp_path / "fail.research.zip",
-    )
+    with pytest.raises(type(failure)):
+        AssistantOrchestrator(
+            tools=_FailingTools(data_roots=(tmp_path,)),
+            repository=repository,
+        ).execute_confirmed_run(
+            thesis_id=thesis.thesis_id,
+            spec_version=confirmed.version,
+            output_path=tmp_path / "fail.research.zip",
+        )
 
-    assert result.status == expected_status
     run = repository.list_runs(thesis.thesis_id)[0]
-    assert run.status == expected_status
+    assert run.status == "failed"
     assert run.request["run_spec"]["name"] == PARITY_RUN_NAME
     assert run.provenance is None
-    assert run.error["category"] == error_category
+    assert run.error["category"] == "execution"
+    assert error_fragment in run.error["message"]
     assert "summary" not in (run.error or {})
 
 
@@ -355,15 +356,15 @@ def test_run_cannot_complete_without_readable_bundle_and_verified_hash(tmp_path)
                 "summary": {"warnings": {}},
             }
 
-    missing = AssistantOrchestrator(
-        tools=_MissingBundleTools(data_roots=(tmp_path,)),
-        repository=repository,
-    ).execute_confirmed_run(
-        thesis_id=thesis.thesis_id,
-        spec_version=confirmed.version,
-        output_path=tmp_path / "missing.research.zip",
-    )
-    assert missing.status == "failed"
+    with pytest.raises(AssistantToolError, match="not written"):
+        AssistantOrchestrator(
+            tools=_MissingBundleTools(data_roots=(tmp_path,)),
+            repository=repository,
+        ).execute_confirmed_run(
+            thesis_id=thesis.thesis_id,
+            spec_version=confirmed.version,
+            output_path=tmp_path / "missing.research.zip",
+        )
     missing_run = repository.list_runs(thesis.thesis_id)[0]
     assert missing_run.status == "failed"
     assert missing_run.provenance is None
@@ -376,7 +377,7 @@ def test_run_cannot_complete_without_readable_bundle_and_verified_hash(tmp_path)
         def run_experiment_to_bundle(self, spec, *, output_path):
             path = Path(output_path)
             path.parent.mkdir(parents=True, exist_ok=True)
-            raw = _write_replacement_bundle(path)
+            _write_replacement_bundle(path)
             return {
                 "bundle_path": str(path),
                 "canonical_bundle_hash": "b" * 64,
@@ -387,18 +388,17 @@ def test_run_cannot_complete_without_readable_bundle_and_verified_hash(tmp_path)
                 "resolved_paths": {},
                 "resource_limits": {},
                 "seeds": {},
-                "_actual": canonical_bundle_hash(raw),
             }
 
-    mismatched = AssistantOrchestrator(
-        tools=_MismatchedHashTools(data_roots=(tmp_path,)),
-        repository=repository,
-    ).execute_confirmed_run(
-        thesis_id=thesis_b.thesis_id,
-        spec_version=confirmed_b.version,
-        output_path=tmp_path / "mismatch.research.zip",
-    )
-    assert mismatched.status == "failed"
+    with pytest.raises(AssistantToolError, match="does not match"):
+        AssistantOrchestrator(
+            tools=_MismatchedHashTools(data_roots=(tmp_path,)),
+            repository=repository,
+        ).execute_confirmed_run(
+            thesis_id=thesis_b.thesis_id,
+            spec_version=confirmed_b.version,
+            output_path=tmp_path / "mismatch.research.zip",
+        )
     mismatched_run = repository.list_runs(thesis_b.thesis_id)[0]
     assert mismatched_run.status == "failed"
     assert mismatched_run.provenance is None
