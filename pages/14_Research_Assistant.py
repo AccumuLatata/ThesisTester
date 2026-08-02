@@ -20,6 +20,7 @@ from thesistester.assistant import (
     LocalThesisRepository,
     compile_thesis,
     map_thesis_choices_to_run_spec,
+    normalize_setup_level_selection,
 )
 from thesistester.assistant.explainer import (
     build_evidence_packet,
@@ -575,42 +576,41 @@ with st.expander("Structured setup controls"):
             value=float(setup.get("tolerance_ticks") or 0.0),
         )
         if st.form_submit_button("Apply setup controls"):
-            levels = [item.strip() for item in selected_levels.split(",") if item.strip()]
-            level_count = max(1, len(levels))
             try:
-                previous_min = int(setup.get("min_confluences", 1))
-                previous_max = int(setup.get("max_confluences", level_count))
-            except (TypeError, ValueError):
-                previous_min, previous_max = 1, level_count
-            min_confluences = min(max(1, previous_min), level_count)
-            max_confluences = min(max(min_confluences, previous_max), level_count)
-            instrument = str((current.get("dataset") or {}).get("instrument") or "ES")
-            st.session_state["assistant_draft_choices"] = {
-                **current,
-                "setup": {
-                    **setup,
-                    "name": setup_name,
-                    "description": setup.get("description", ""),
-                    "instrument": instrument,
-                    "selected_levels": levels,
-                    "tolerance_ticks": tolerance_ticks,
-                    "min_confluences": min_confluences,
-                    "max_confluences": max_confluences,
-                    "naked_only": setup.get("naked_only", False),
-                    "naked_requirement": setup.get("naked_requirement", "any"),
-                    "trigger": trigger,
-                    "trigger_timeframe": setup.get("trigger_timeframe", "base"),
-                    "direction": direction,
-                    "confluence_mode": setup.get("confluence_mode", "global_cluster"),
-                    "anchor_level": setup.get("anchor_level"),
-                    "confluence_rules": setup.get("confluence_rules", []),
-                    "min_valid_confluences": setup.get("min_valid_confluences", 1),
-                    "trigger_params": setup.get("trigger_params", {}),
-                    "otf_filter": setup.get("otf_filter"),
-                },
-            }
-            st.session_state["assistant_validated_run_spec"] = None
-            st.rerun()
+                levels, min_confluences, max_confluences = normalize_setup_level_selection(
+                    selected_levels,
+                    previous_min=setup.get("min_confluences", 1),
+                    previous_max=setup.get("max_confluences"),
+                )
+                instrument = str((current.get("dataset") or {}).get("instrument") or "ES")
+                st.session_state["assistant_draft_choices"] = {
+                    **current,
+                    "setup": {
+                        **setup,
+                        "name": setup_name,
+                        "description": setup.get("description", ""),
+                        "instrument": instrument,
+                        "selected_levels": levels,
+                        "tolerance_ticks": tolerance_ticks,
+                        "min_confluences": min_confluences,
+                        "max_confluences": max_confluences,
+                        "naked_only": setup.get("naked_only", False),
+                        "naked_requirement": setup.get("naked_requirement", "any"),
+                        "trigger": trigger,
+                        "trigger_timeframe": setup.get("trigger_timeframe", "base"),
+                        "direction": direction,
+                        "confluence_mode": setup.get("confluence_mode", "global_cluster"),
+                        "anchor_level": setup.get("anchor_level"),
+                        "confluence_rules": setup.get("confluence_rules", []),
+                        "min_valid_confluences": setup.get("min_valid_confluences", 1),
+                        "trigger_params": setup.get("trigger_params", {}),
+                        "otf_filter": setup.get("otf_filter"),
+                    },
+                }
+                st.session_state["assistant_validated_run_spec"] = None
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
 
 with st.expander("Reuse saved setup"):
     saved_setups = list_saved_setups()

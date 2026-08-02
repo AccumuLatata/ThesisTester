@@ -238,24 +238,48 @@ def map_persisted_confirmed_run_spec(*, name: str, choices: Mapping[str, Any]) -
     return map_thesis_choices_to_run_spec(name=name, choices=persisted_choices)
 
 
+def normalize_setup_level_selection(
+    selected_levels: Any,
+    *,
+    previous_min: Any = 1,
+    previous_max: Any = None,
+) -> tuple[list[str], int, int]:
+    """Normalize confluence columns and clamp confluence bounds to their count.
+
+    An empty selection fails closed: confluence bounds must never claim one or
+    more levels when no executable level columns were provided.
+    """
+    if isinstance(selected_levels, str):
+        levels = [item.strip() for item in selected_levels.split(",") if item.strip()]
+    elif isinstance(selected_levels, list):
+        levels = [str(item).strip() for item in selected_levels if str(item).strip()]
+    else:
+        raise ValueError("Confluence levels must be a comma-separated string or list.")
+    if not levels:
+        raise ValueError("Confluence levels must include at least one level column.")
+    level_count = len(levels)
+    try:
+        prior_min = int(previous_min)
+        prior_max = int(previous_max if previous_max is not None else level_count)
+    except (TypeError, ValueError):
+        prior_min, prior_max = 1, level_count
+    min_confluences = min(max(1, prior_min), level_count)
+    max_confluences = min(max(min_confluences, prior_max), level_count)
+    return levels, min_confluences, max_confluences
+
+
 def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> ThesisDraft:
     """Create a deterministic draft and name missing executable definitions.
 
     A required section must be a non-empty mapping so a confirmation-ready
     draft is eligible for canonical RunSpec mapping. Narrative LLM hints remain
     available only while deriving clarifications; they are never staged as
-    executable choices.
+    executable choices and never suppress structured-section clarifications.
     """
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError("Thesis prompt must be a non-empty string.")
     selected = dict(choices or {})
     text = prompt.lower()
-
-    def has_choice(key: str) -> bool:
-        value = selected.get(key)
-        if isinstance(value, str):
-            return bool(value.strip())
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
 
     unresolved: list[str] = []
     required = {
@@ -266,13 +290,13 @@ def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> 
     for key, question in required.items():
         if not isinstance(selected.get(key), Mapping) or not selected[key]:
             unresolved.append(question)
-    if re.search(r"\bdvwap\b", text) and not has_choice("session_vwap_anchor"):
+    # Clarifications consult only staged executable sections. Legacy flat keys
+    # such as session_vwap_anchor / confluence_tolerance_ticks are ignored.
+    if re.search(r"\bdvwap\b", text):
         levels = selected.get("levels")
         if not isinstance(levels, Mapping) or not levels.get("session_vwap_enabled"):
             unresolved.append("Enable developing RTH VWAP for the dVWAP thesis.")
-    if (re.search(r"\bsma\b", text) or "moving average" in text) and not has_choice(
-        "confluence_tolerance_ticks"
-    ):
+    if re.search(r"\bsma\b", text) or "moving average" in text:
         setup = selected.get("setup")
         if not isinstance(setup, Mapping) or "tolerance_ticks" not in setup:
             unresolved.append("Define the SMA confluence tolerance in ticks.")

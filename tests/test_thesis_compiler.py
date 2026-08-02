@@ -7,6 +7,7 @@ from thesistester.assistant import (
     compile_thesis,
     map_persisted_confirmed_run_spec,
     map_thesis_choices_to_run_spec,
+    normalize_setup_level_selection,
 )
 
 
@@ -47,6 +48,46 @@ def test_compiler_does_not_stage_narrative_llm_hints_as_executable_choices():
         "dataset": {"path": "bars.csv", "instrument": "ES"},
     }
     assert not draft.ready_for_confirmation
+
+
+def test_compiler_ignores_legacy_flat_keys_for_structured_clarifications():
+    draft = compile_thesis(
+        "Uptrend retraces to dVWAP with a 30m SMA confluence.",
+        choices={
+            "session_vwap_anchor": "RTH",
+            "confluence_tolerance_ticks": 2,
+            "dataset": {"path": "bars.csv", "instrument": "ES"},
+            "setup": {"trigger": "touch"},
+            "backtest": {"intrabar_model": "sl_first"},
+        },
+    )
+
+    assert draft.normalized_run_spec == {
+        "dataset": {"path": "bars.csv", "instrument": "ES"},
+        "setup": {"trigger": "touch"},
+        "backtest": {"intrabar_model": "sl_first"},
+    }
+    assert any("dVWAP" in item for item in draft.unresolved_assumptions)
+    assert any("SMA confluence tolerance" in item for item in draft.unresolved_assumptions)
+
+
+def test_normalize_setup_level_selection_rejects_empty_levels():
+    with pytest.raises(ValueError, match="at least one level"):
+        normalize_setup_level_selection("", previous_min=1, previous_max=1)
+    with pytest.raises(ValueError, match="at least one level"):
+        normalize_setup_level_selection([], previous_min=1, previous_max=1)
+
+
+def test_normalize_setup_level_selection_clamps_to_provided_levels():
+    levels, min_confluences, max_confluences = normalize_setup_level_selection(
+        "dVWAP_RTH, SMA_50_30min",
+        previous_min=3,
+        previous_max=5,
+    )
+
+    assert levels == ["dVWAP_RTH", "SMA_50_30min"]
+    assert min_confluences == 2
+    assert max_confluences == 2
 
 
 @pytest.mark.parametrize("empty_section", ("dataset", "setup", "backtest"))

@@ -65,8 +65,12 @@ The AIA-5 Research Assistant page adds only `assistant_selected_thesis_id`,
 `assistant_run_reports`, and `assistant_run_artifacts`. They select and stage
 assistant-library objects. `assistant_draft_choices` contains only supported
 structured RunSpec sections; narrative LLM hints stay in conversation history
-and never become execution candidates. These keys do not replace existing data,
-levels, signals, or backtest session-state producers.
+and never become execution candidates. Clarification checks likewise trust only
+structured sections (`levels.session_vwap_enabled`, `setup.tolerance_ticks`),
+never legacy flat keys. Setup controls reject empty confluence-level lists so
+`min_confluences`/`max_confluences` cannot claim levels that were not selected.
+These keys do not replace existing data, levels, signals, or backtest
+session-state producers.
 
 `LocalThesisRepository` stores schema-versioned thesis metadata, immutable
 specification versions, requested/terminal run provenance, and append-only

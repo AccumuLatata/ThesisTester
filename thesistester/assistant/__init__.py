@@ -39,6 +39,7 @@ from thesistester.assistant.thesis_compiler import (
     map_thesis_choices_to_run_spec,
     compile_run_spec,
     compile_thesis,
+    normalize_setup_level_selection,
 )
 from thesistester.assistant.explainer import (
     EvidencePacket,
@@ -89,6 +90,7 @@ __all__ = [
     "compile_canonical_run_spec",
     "map_persisted_confirmed_run_spec",
     "map_thesis_choices_to_run_spec",
+    "normalize_setup_level_selection",
     "build_evidence_packet",
     "compare_evidence",
     "explain_evidence",
