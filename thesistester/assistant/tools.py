@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from thesistester import __version__
-from thesistester.api import _GRID_DEFAULTS, run_time_analysis
+from thesistester.api import _GRID_DEFAULTS, run_otf_validation, run_time_analysis
 from thesistester.api import _VALIDATION_DEFAULTS
 from thesistester.api import run_experiment as _run_experiment
 from thesistester.api import validate_run_spec
@@ -227,5 +227,36 @@ class AssistantTools:
                 group_col=group_col,
                 bucket_timezone=bucket_timezone,
                 min_trades=min_trades,
+            ).to_dict("records")
+        )
+
+    def run_bundle_otf_validation(
+        self,
+        bundle_path: str | Path,
+        *,
+        instrument: str,
+        stop_loss_ticks: int | float,
+        take_profit_ticks: int | float,
+        train_fraction: float = 0.7,
+    ) -> list[dict[str, Any]]:
+        """Run the fixed OTF matrix from a selected bundle's dataset and signals."""
+        path = _resolve_within(bundle_path, self.data_roots)
+        state = load_research_bundle(path.read_bytes())["session_values"]
+        data = state.get("data")
+        signals = state.get("signals")
+        if data is None or signals is None:
+            raise AssistantToolError("Bundle requires dataset and signals for OTF validation.")
+        return to_jsonable(
+            run_otf_validation(
+                data,
+                signals,
+                instrument=instrument,
+                stop_loss_ticks=stop_loss_ticks,
+                take_profit_ticks=take_profit_ticks,
+                train_fraction=train_fraction,
+                session_timezone=state.get("exchange_timezone"),
+                eth_start=state.get("eth_start"),
+                setup_config=state.get("setup_config"),
+                signal_settings=state.get("signal_settings"),
             ).to_dict("records")
         )
