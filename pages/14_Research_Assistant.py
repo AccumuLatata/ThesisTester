@@ -86,6 +86,7 @@ with st.expander("Open detailed research views"):
     st.page_link("pages/10_Validation.py", label="Validation")
     st.page_link("pages/11_Report_Export.py", label="Report / Export")
     st.page_link("pages/12_Research_Bundles.py", label="Research Bundles")
+    st.page_link("pages/13_Portfolio.py", label="Portfolio")
 
 with st.sidebar:
     st.subheader("Theses")
