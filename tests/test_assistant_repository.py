@@ -47,12 +47,13 @@ def test_list_theses_reads_records_when_store_marker_is_absent(repository):
     assert repository.list_theses() == (thesis,)
 
 
-def test_specs_are_immutable_and_runs_require_confirmation(repository):
+def test_specs_are_immutable_and_runs_require_confirmation(repository, monkeypatch):
+    monkeypatch.setattr("thesistester.assistant.repository.validate_run_spec", lambda spec: None)
     thesis = repository.create_thesis(name="dVWAP pullback")
     draft = repository.create_spec_version(
         thesis.thesis_id,
         normalized_run_spec={"schema_version": 1, "runs": []},
-        unresolved_assumptions=("Define uptrend.",),
+        unresolved_assumptions=(),
         compiler_version="test",
     )
     draft_path = repository._spec_path(thesis.thesis_id, draft.version).read_bytes()

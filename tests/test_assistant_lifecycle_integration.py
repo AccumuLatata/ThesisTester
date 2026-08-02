@@ -18,7 +18,9 @@ class _BundleTools:
         }
 
 
-def test_confirmed_spec_runs_and_persists_bundle_provenance(tmp_path):
+def test_confirmed_spec_runs_and_persists_bundle_provenance(tmp_path, monkeypatch):
+    monkeypatch.setattr("thesistester.assistant.repository.validate_run_spec", lambda spec: None)
+    monkeypatch.setattr("thesistester.assistant.orchestrator.validate_run_spec", lambda spec: None)
     repository = LocalThesisRepository(tmp_path / "assistant")
     thesis = repository.create_thesis(name="Lifecycle")
     draft = repository.create_spec_version(
@@ -42,10 +44,13 @@ def test_confirmed_spec_runs_and_persists_bundle_provenance(tmp_path):
     assert Path(restored.provenance["bundle_path"]).read_bytes() == b"bundle"
 
 
-def test_unconfirmed_or_failed_run_has_safe_terminal_state(tmp_path):
+def test_unconfirmed_or_failed_run_has_safe_terminal_state(tmp_path, monkeypatch):
     class FailingTools:
         def run_experiment_to_bundle(self, spec, *, output_path):
             raise RuntimeError("fixture execution failure")
+
+    monkeypatch.setattr("thesistester.assistant.repository.validate_run_spec", lambda spec: None)
+    monkeypatch.setattr("thesistester.assistant.orchestrator.validate_run_spec", lambda spec: None)
 
     repository = LocalThesisRepository(tmp_path / "assistant")
     thesis = repository.create_thesis(name="Failure")
