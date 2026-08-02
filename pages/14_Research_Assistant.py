@@ -26,7 +26,7 @@ from thesistester.assistant.llm import (
 )
 from thesistester.assistant.tools import AssistantTools
 from thesistester.persistence.local_store import get_store_root
-from thesistester.research_bundle import load_research_bundle
+from thesistester.research_bundle import canonical_bundle_hash, load_research_bundle
 
 
 def _repository() -> LocalThesisRepository:
@@ -233,17 +233,6 @@ for spec in reversed(specifications):
             st.warning("Clarifications required")
             for assumption in spec.unresolved_assumptions:
                 st.write(f"- {assumption}")
-        if (
-            spec.status != "confirmed"
-            and spec.version not in confirmed_parents
-            and not spec.unresolved_assumptions
-            and {"dataset", "setup", "backtest"}.issubset(spec.normalized_run_spec)
-        ):
-            if st.button("Confirm specification", key=f"confirm-{spec.version}"):
-                repository.confirm_spec_version(
-                    thesis_id, spec.version, confirmation_note="Confirmed in UI"
-                )
-                st.rerun()
         if spec.status == "confirmed" and {"dataset", "setup", "backtest"}.issubset(
             spec.normalized_run_spec
         ):
@@ -293,7 +282,12 @@ else:
                     "Explain run", key=f"explain-{run.run_id}"
                 ):
                     try:
-                        bundle = load_research_bundle(Path(bundle_path).read_bytes())
+                        raw_bundle = Path(bundle_path).read_bytes()
+                        if canonical_bundle_hash(raw_bundle) != run.provenance.get(
+                            "canonical_bundle_hash"
+                        ):
+                            raise ValueError("Bundle hash does not match recorded run provenance.")
+                        bundle = load_research_bundle(raw_bundle)
                         packet = build_evidence_packet(
                             bundle["session_values"],
                             provenance=run.provenance,
