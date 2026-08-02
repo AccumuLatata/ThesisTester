@@ -38,6 +38,7 @@ from thesistester.persistence.local_store import (
     load_setup,
     save_setup,
 )
+from thesistester.reporting import build_research_artifact, to_jsonable
 from thesistester.research_bundle import canonical_bundle_hash, load_research_bundle
 
 
@@ -56,6 +57,7 @@ def _init_state() -> None:
     st.session_state.setdefault("assistant_llm_run_explanations", {})
     st.session_state.setdefault("assistant_llm_attempts", {})
     st.session_state.setdefault("assistant_run_reports", {})
+    st.session_state.setdefault("assistant_run_artifacts", {})
     st.session_state.setdefault("assistant_run_comparisons", {})
 
 
@@ -453,6 +455,30 @@ else:
                         file_name=f"assistant_run_{run.run_id[-8:]}.md",
                         mime="text/markdown",
                         key=f"download-report-{run.run_id}",
+                    )
+                if isinstance(bundle_path, str) and st.button(
+                    "Build research artifact", key=f"artifact-{run.run_id}"
+                ):
+                    try:
+                        raw = Path(bundle_path).read_bytes()
+                        if canonical_bundle_hash(raw) != run.provenance.get(
+                            "canonical_bundle_hash"
+                        ):
+                            raise ValueError("Bundle hash does not match recorded run provenance.")
+                        state = load_research_bundle(raw)["session_values"]
+                        st.session_state["assistant_run_artifacts"][run.run_id] = to_jsonable(
+                            build_research_artifact(state)
+                        )
+                    except (OSError, ValueError) as exc:
+                        st.error(f"Unable to build research artifact: {exc}")
+                artifact = st.session_state["assistant_run_artifacts"].get(run.run_id)
+                if artifact:
+                    st.download_button(
+                        "Download research artifact JSON",
+                        data=json.dumps(artifact, indent=2, sort_keys=True),
+                        file_name=f"assistant_run_{run.run_id[-8:]}.research.json",
+                        mime="application/json",
+                        key=f"download-artifact-{run.run_id}",
                     )
 
 completed_runs = [

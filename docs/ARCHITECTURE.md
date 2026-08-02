@@ -62,7 +62,7 @@ The AIA-5 Research Assistant page adds only `assistant_selected_thesis_id`,
 `assistant_conversation_ids`, `assistant_hydrated_conversation_id`, and
 `assistant_validated_run_spec`, `assistant_run_explanations`, and
 `assistant_run_comparisons`, `assistant_llm_attempts`, and
-`assistant_run_reports`. They select and stage
+`assistant_run_reports`, and `assistant_run_artifacts`. They select and stage
 assistant-library objects; they do not replace existing data, levels, signals,
 or backtest session-state producers.
 
