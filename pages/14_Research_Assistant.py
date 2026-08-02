@@ -317,6 +317,63 @@ with st.expander("Structured execution controls"):
             st.session_state["assistant_validated_run_spec"] = None
             st.rerun()
 
+with st.expander("Structured validation controls"):
+    current = st.session_state["assistant_draft_choices"]
+    validation = current.get("validation") if isinstance(current.get("validation"), dict) else {}
+    validation_fingerprint = hashlib.sha256(
+        json.dumps(validation, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:12]
+    with st.form(f"assistant_validation_{thesis_id}_{validation_fingerprint}"):
+        raw_bootstrap = validation.get("n_bootstrap", 2000)
+        raw_permutations = validation.get("n_permutations", 5000)
+        raw_seed = validation.get("random_state", 42)
+        bootstrap_default = (
+            int(raw_bootstrap)
+            if isinstance(raw_bootstrap, (int, float))
+            and raw_bootstrap > 0
+            and float(raw_bootstrap).is_integer()
+            else 2000
+        )
+        permutations_default = (
+            int(raw_permutations)
+            if isinstance(raw_permutations, (int, float))
+            and raw_permutations > 0
+            and float(raw_permutations).is_integer()
+            else 5000
+        )
+        seed_default = (
+            int(raw_seed)
+            if isinstance(raw_seed, (int, float)) and raw_seed >= 0 and float(raw_seed).is_integer()
+            else 42
+        )
+        bootstrap = st.number_input(
+            "Bootstrap samples",
+            min_value=1,
+            value=bootstrap_default,
+        )
+        permutations = st.number_input(
+            "Permutation samples",
+            min_value=1,
+            value=permutations_default,
+        )
+        random_state = st.number_input(
+            "Validation random seed",
+            min_value=0,
+            value=seed_default,
+        )
+        if st.form_submit_button("Apply validation controls"):
+            st.session_state["assistant_draft_choices"] = {
+                **current,
+                "validation": {
+                    **validation,
+                    "n_bootstrap": bootstrap,
+                    "n_permutations": permutations,
+                    "random_state": random_state,
+                },
+            }
+            st.session_state["assistant_validated_run_spec"] = None
+            st.rerun()
+
 with st.expander("Reuse saved setup"):
     saved_setups = list_saved_setups()
     setup_options = {
