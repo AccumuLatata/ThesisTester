@@ -13,7 +13,15 @@ _INTENT_SCHEMA = {
     "additionalProperties": False,
     "required": ["choices", "clarifications"],
     "properties": {
-        "choices": {"type": "object", "additionalProperties": True},
+        "choices": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["key", "value"],
+                "properties": {"key": {"type": "string"}, "value": {"type": "string"}},
+            },
+        },
         "clarifications": {"type": "array", "items": {"type": "string"}},
     },
 }
@@ -35,11 +43,23 @@ def parse_llm_intent(payload: Mapping[str, Any]) -> LLMIntent:
         raise LLMIntentError("LLM intent must contain only choices and clarifications.")
     choices = payload["choices"]
     clarifications = payload["clarifications"]
-    if not isinstance(choices, dict) or not isinstance(clarifications, list):
+    if not isinstance(choices, list) or not isinstance(clarifications, list):
         raise LLMIntentError("LLM intent fields have invalid types.")
+    if any(
+        not isinstance(item, dict)
+        or set(item) != {"key", "value"}
+        or not isinstance(item["key"], str)
+        or not item["key"].strip()
+        or not isinstance(item["value"], str)
+        for item in choices
+    ):
+        raise LLMIntentError("LLM choices must be key/value string objects.")
     if any(not isinstance(item, str) or not item.strip() for item in clarifications):
         raise LLMIntentError("LLM clarifications must be non-empty strings.")
-    return LLMIntent(choices=choices, clarifications=tuple(clarifications))
+    return LLMIntent(
+        choices={item["key"]: item["value"] for item in choices},
+        clarifications=tuple(clarifications),
+    )
 
 
 def propose_thesis_draft(client: StructuredLLMClient, *, prompt: str) -> ThesisDraft:
