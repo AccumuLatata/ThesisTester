@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from thesistester.assistant.contracts import AssistantRequest, ConfirmationLevel
@@ -110,6 +111,52 @@ class AssistantOrchestrator:
             },
         )
         return draft
+
+    def execute_confirmed_run(
+        self,
+        *,
+        thesis_id: str,
+        spec_version: int,
+        output_path: str | Path,
+    ) -> OrchestrationResult:
+        """Execute one confirmed spec and persist its terminal provenance."""
+        spec = self.repository.get_spec_version(thesis_id, spec_version)
+        if spec.status != "confirmed":
+            raise ValueError("Only confirmed specifications may execute.")
+        run = self.repository.start_run(
+            thesis_id,
+            spec_version=spec_version,
+            request={"run_spec": spec.normalized_run_spec},
+        )
+        try:
+            result = self.tools.run_experiment_to_bundle(
+                spec.normalized_run_spec,
+                output_path=output_path,
+            )
+            completed = self.repository.complete_run(
+                thesis_id,
+                run.run_id,
+                expected_revision=run.revision,
+                provenance={
+                    "bundle_path": result["bundle_path"],
+                    "canonical_bundle_hash": result["canonical_bundle_hash"],
+                    "dataset_fingerprint": result["dataset_fingerprint"],
+                    "tool_version": result["tool_version"],
+                },
+            )
+        except BaseException as exc:
+            self.repository.fail_run(
+                thesis_id,
+                run.run_id,
+                expected_revision=run.revision,
+                error={"type": type(exc).__name__, "message": str(exc)},
+            )
+            raise
+        return OrchestrationResult(
+            status="completed",
+            capability_id="PIPELINE.run_experiment",
+            payload={"run_id": completed.run_id, **result},
+        )
 
     def _execute(self, request: AssistantRequest) -> dict[str, Any]:
         if request.capability_id == "PIPELINE.validate_run_spec":
