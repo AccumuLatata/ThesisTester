@@ -209,6 +209,11 @@ Add an agent evaluation suite before enabling an LLM provider: realistic
 read-only tasks, deterministic expected outputs, tool-call assertions,
 confirmation-gate tests, and adversarial prompt-injection cases.
 
+**C2-6.7 implementation status:** adversarial fixtures cover malformed intent,
+tool-request injection, duplicate/blank choices, and unexpected explanation
+fields. Extend this suite with provider-failure and UI confirmation scenarios as
+each execution path is connected.
+
 ## External design inputs
 
 - [Anthropic advanced tool use](https://www.anthropic.com/engineering/advanced-tool-use):
