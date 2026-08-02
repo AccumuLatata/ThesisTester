@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Mapping
 from uuid import uuid4
 
 COMPARISON_SCHEMA_VERSION = 1
@@ -79,3 +79,32 @@ class Comparison:
             "right_bundle_hash": self.right_bundle_hash,
             "evidence": _thaw(self.evidence),
         }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> Comparison:
+        required = {
+            "schema_version",
+            "kind",
+            "comparison_id",
+            "thesis_id",
+            "left_run_id",
+            "right_run_id",
+            "left_bundle_hash",
+            "right_bundle_hash",
+            "evidence",
+        }
+        if set(payload) != required or payload.get("schema_version") != COMPARISON_SCHEMA_VERSION:
+            raise ValueError("Invalid comparison record.")
+        if payload.get("kind") != "assistant_comparison" or not isinstance(
+            payload.get("evidence"), dict
+        ):
+            raise ValueError("Invalid comparison record.")
+        return cls(
+            comparison_id=payload["comparison_id"],
+            thesis_id=payload["thesis_id"],
+            left_run_id=payload["left_run_id"],
+            right_run_id=payload["right_run_id"],
+            left_bundle_hash=payload["left_bundle_hash"],
+            right_bundle_hash=payload["right_bundle_hash"],
+            evidence=payload["evidence"],
+        )

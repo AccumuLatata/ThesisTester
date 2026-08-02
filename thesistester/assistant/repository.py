@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Mapping
 from uuid import uuid4
 
+from thesistester.assistant.comparison import Comparison
 from thesistester.persistence.local_store import get_store_root
 
 ASSISTANT_REPOSITORY_SCHEMA_VERSION = 1
@@ -1028,3 +1029,32 @@ class LocalThesisRepository:
             self._conversation_path(thesis_id, conversation_id), updated.to_dict()
         )
         return updated
+
+    def save_comparison(self, comparison: Comparison) -> Comparison:
+        """Persist immutable selected-run comparison evidence for one thesis."""
+        self._assert_mutable_root()
+        self._load_thesis(comparison.thesis_id)
+        path = (
+            self._thesis_dir(comparison.thesis_id)
+            / "comparisons"
+            / f"{comparison.comparison_id}.json"
+        )
+        self._write_json_atomic(path, comparison.to_dict(), exclusive=True)
+        return comparison
+
+    def list_comparisons(self, thesis_id: str) -> tuple[Comparison, ...]:
+        """List persisted comparison records for one thesis."""
+        self._assert_readable_root()
+        root = self._thesis_dir(thesis_id) / "comparisons"
+        if not root.exists():
+            return ()
+        records = []
+        for path in root.glob("cmp_*.json"):
+            try:
+                record = Comparison.from_dict(self._read_json(path))
+            except ValueError as exc:
+                raise RepositoryCorruptionError("Invalid comparison record.") from exc
+            if record.thesis_id != thesis_id:
+                raise RepositoryCorruptionError("Comparison is stored under the wrong thesis.")
+            records.append(record)
+        return tuple(sorted(records, key=lambda record: record.comparison_id))
