@@ -163,6 +163,17 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   costs, and OOS status. Keep `tests/test_assistant_explainer.py` and
   `tests/test_assistant_comparison.py` green when changing explanation or
   comparison contracts.
+- Optional LLM paraphrase (`llm_explainer.explain_packet_with_llm`) is
+  evidence-only: structured claims with packet paths, server-resolved values,
+  and rejection of uncited numbers (`LLMEvidenceError`) before render. Chat
+  (`handle_chat_turn`) drafts non-executing choices only—never `dispatch` or
+  `execute_confirmed_run`. Keep `tests/test_assistant_llm_evaluations.py` and
+  `tests/test_assistant_registry_audit.py` green when changing the provider
+  boundary or registry audit.
+- Provider setup: non-secret settings in `config/assistant.toml`; secret only via
+  rotated `OPENAI_API_KEY` (env). Reject the placeholder
+  `REPLACE_WITH_ROTATED_OPENAI_API_KEY`. Recovery/cancellation stays on
+  orchestrator `cancel_run` / confirmation lifecycle, not the LLM.
 - Document every additive `assistant_*` session key in `ARCHITECTURE.md` and
   `ASSISTANT_SESSION_KEYS`. Thesis switches must clear
   `THESIS_SCOPED_STAGING_KEYS` (including `assistant_bundle_handoff`).

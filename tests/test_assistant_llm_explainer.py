@@ -6,7 +6,16 @@ def test_llm_explanation_receives_only_evidence_packet():
     class Client:
         def complete_structured(self, **kwargs):
             assert "secret" not in kwargs["user"]
-            return {"summary": "Observed sample result.", "caveats": ["Small sample."]}
+            return {
+                "summary": "Observed sample has 10 trades.",
+                "caveats": ["Small sample."],
+                "claims": [
+                    {
+                        "text": "Observed sample has 10 trades.",
+                        "path": "results.trade_summary.trade_count",
+                    }
+                ],
+            }
 
     packet = EvidencePacket(
         provenance={"run_id": "run"},
@@ -15,4 +24,5 @@ def test_llm_explanation_receives_only_evidence_packet():
         warnings=("Small sample.",),
     )
     explanation = explain_packet_with_llm(Client(), packet=packet)
-    assert explanation.summary == "Observed sample result."
+    assert explanation.summary == "Observed sample has 10 trades."
+    assert explanation.claims[0].value == 10

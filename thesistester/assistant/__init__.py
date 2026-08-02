@@ -73,6 +73,18 @@ from thesistester.assistant.workspace import (
     latest_unresolved_assumptions,
     select_thesis,
 )
+from thesistester.assistant.llm_explainer import (
+    LLMEvidenceError,
+    LLMExplanation,
+    assert_llm_explanation_grounded,
+    explain_packet_with_llm,
+)
+from thesistester.assistant.registry_audit import (
+    CapabilityAuditRow,
+    audit_capability_registry,
+    capability_audit_summary,
+    render_capability_audit_markdown,
+)
 
 __all__ = [
     "ASSISTANT_CONTRACT_SCHEMA_VERSION",
@@ -138,4 +150,12 @@ __all__ = [
     "init_assistant_session_state",
     "latest_unresolved_assumptions",
     "select_thesis",
+    "LLMEvidenceError",
+    "LLMExplanation",
+    "assert_llm_explanation_grounded",
+    "explain_packet_with_llm",
+    "CapabilityAuditRow",
+    "audit_capability_registry",
+    "capability_audit_summary",
+    "render_capability_audit_markdown",
 ]
