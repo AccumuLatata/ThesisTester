@@ -70,8 +70,10 @@ structured sections (`levels.session_vwap_enabled`, `setup.tolerance_ticks`),
 never legacy flat keys. Setup controls reject empty confluence-level lists so
 `min_confluences`/`max_confluences` cannot claim levels that were not selected.
 Enabled walk-forward controls persist explicit `window_mode` and
-`overlap_policy` alongside fold/session counts. These keys do not replace
-existing data, levels, signals, or backtest session-state producers.
+`overlap_policy` alongside fold/session counts, and canonical compilation
+rejects enabled walk-forward blocks that omit those sizing fields so API
+train/test defaults cannot be inferred at confirmation. These keys do not
+replace existing data, levels, signals, or backtest session-state producers.
 
 `LocalThesisRepository` stores schema-versioned thesis metadata, immutable
 specification versions, requested/terminal run provenance, and append-only

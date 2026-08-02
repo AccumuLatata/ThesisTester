@@ -177,6 +177,18 @@ def compile_canonical_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict
             for key in ("fold_mode", "window_mode", "overlap_policy"):
                 if key not in walk_forward:
                     missing.append(f"walk_forward.{key}")
+            # Fold sizes are mandatory when enabled: the public run API supplies
+            # train/test defaults (e.g. 500/100 bars) that must never be inferred
+            # for a confirmed assistant RunSpec.
+            fold_mode = walk_forward.get("fold_mode")
+            if fold_mode == "bars":
+                for key in ("train_bars", "test_bars", "step_bars"):
+                    if key not in walk_forward:
+                        missing.append(f"walk_forward.{key}")
+            elif fold_mode == "sessions":
+                for key in ("train_sessions", "test_sessions", "step_sessions"):
+                    if key not in walk_forward:
+                        missing.append(f"walk_forward.{key}")
     if missing:
         raise ValueError(f"Canonical RunSpec requires explicit assumptions: {', '.join(missing)}.")
     return spec

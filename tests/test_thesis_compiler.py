@@ -344,6 +344,55 @@ def test_canonical_compiler_requires_modes_for_enabled_walk_forward(monkeypatch)
         compile_canonical_run_spec(name="Enabled walk-forward", choices=choices)
 
 
+@pytest.mark.parametrize(
+    ("walk_forward", "message"),
+    [
+        (
+            {
+                "enabled": True,
+                "fold_mode": "sessions",
+                "window_mode": "rolling",
+                "overlap_policy": "reject",
+            },
+            "walk_forward.train_sessions",
+        ),
+        (
+            {
+                "enabled": True,
+                "fold_mode": "bars",
+                "window_mode": "rolling",
+                "overlap_policy": "reject",
+            },
+            "walk_forward.train_bars",
+        ),
+    ],
+)
+def test_canonical_compiler_requires_fold_sizes_for_enabled_walk_forward(
+    monkeypatch, walk_forward, message
+):
+    monkeypatch.setattr(
+        "thesistester.assistant.thesis_compiler.validate_run_spec", lambda spec: None
+    )
+    choices = {
+        "dataset": {"path": "bars.csv", "instrument": "ES"},
+        "setup": {"trigger": "touch", "tolerance_ticks": 0, "selected_levels": ["dVWAP_RTH"]},
+        "backtest": {
+            "commission_per_side": 0.0,
+            "slippage_ticks": 0.0,
+            "exposure_policy": "single_position",
+            "intrabar_model": "sl_first",
+            "flat_by_session_close": True,
+            "session_close_time": "16:00",
+            "session_timezone": "America/New_York",
+            "no_new_entries_after": "15:45",
+        },
+        "walk_forward": walk_forward,
+    }
+
+    with pytest.raises(ValueError, match=message):
+        compile_canonical_run_spec(name="Sized walk-forward", choices=choices)
+
+
 def test_structured_choices_rejects_non_mapping_levels():
     with pytest.raises(ValueError, match="levels"):
         StructuredThesisChoices.from_mapping(
