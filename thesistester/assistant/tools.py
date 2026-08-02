@@ -7,11 +7,10 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from thesistester import __version__
-from thesistester.api import _GRID_DEFAULTS
+from thesistester.api import _GRID_DEFAULTS, run_time_analysis
 from thesistester.api import _VALIDATION_DEFAULTS
 from thesistester.api import run_experiment as _run_experiment
 from thesistester.api import validate_run_spec
-from thesistester.analytics.time_analysis import add_time_buckets, summarize_by_group
 from thesistester.persistence.local_store import list_datasets, load_dataset
 from thesistester.reporting import build_research_artifact, to_jsonable
 from thesistester.research_bundle import (
@@ -222,7 +221,11 @@ class AssistantTools:
         trades = state.get("trades")
         if trades is None:
             raise AssistantToolError("Bundle does not include completed trades.")
-        bucketed = add_time_buckets(trades, bucket_tz=bucket_timezone)
         return to_jsonable(
-            summarize_by_group(bucketed, group_col, min_trades=min_trades).to_dict("records")
+            run_time_analysis(
+                trades,
+                group_col=group_col,
+                bucket_timezone=bucket_timezone,
+                min_trades=min_trades,
+            ).to_dict("records")
         )
