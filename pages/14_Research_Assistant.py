@@ -435,6 +435,43 @@ with st.expander("Structured grid controls"):
             except ValueError as exc:
                 st.error(str(exc))
 
+with st.expander("Structured walk-forward controls"):
+    current = st.session_state["assistant_draft_choices"]
+    walk_forward = (
+        current.get("walk_forward") if isinstance(current.get("walk_forward"), dict) else {}
+    )
+    with st.form(f"assistant_walk_forward_{thesis_id}"):
+        enabled = st.checkbox("Enable walk-forward", value=bool(walk_forward.get("enabled", False)))
+        train_sessions = st.number_input(
+            "Training sessions",
+            min_value=1,
+            value=int(walk_forward.get("train_sessions") or 20),
+        )
+        test_sessions = st.number_input(
+            "Test sessions",
+            min_value=1,
+            value=int(walk_forward.get("test_sessions") or 5),
+        )
+        step_sessions = st.number_input(
+            "Step sessions",
+            min_value=1,
+            value=int(walk_forward.get("step_sessions") or 5),
+        )
+        if st.form_submit_button("Apply walk-forward controls"):
+            st.session_state["assistant_draft_choices"] = {
+                **current,
+                "walk_forward": {
+                    **walk_forward,
+                    "enabled": enabled,
+                    "fold_mode": "sessions",
+                    "train_sessions": train_sessions,
+                    "test_sessions": test_sessions,
+                    "step_sessions": step_sessions,
+                },
+            }
+            st.session_state["assistant_validated_run_spec"] = None
+            st.rerun()
+
 with st.expander("Reuse saved setup"):
     saved_setups = list_saved_setups()
     setup_options = {
