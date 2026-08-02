@@ -1,6 +1,11 @@
 import pytest
 
-from thesistester.assistant import compile_canonical_run_spec, compile_run_spec, compile_thesis
+from thesistester.assistant import (
+    StructuredThesisChoices,
+    compile_canonical_run_spec,
+    compile_run_spec,
+    compile_thesis,
+)
 
 
 def test_compiler_marks_ambiguous_trading_language_for_clarification():
@@ -68,3 +73,13 @@ def test_canonical_compiler_rejects_implicit_execution_assumptions(monkeypatch):
     choices["backtest"].pop("slippage_ticks")
     with pytest.raises(ValueError, match="slippage_ticks"):
         compile_canonical_run_spec(name="Implicit", choices=choices)
+
+
+def test_structured_choices_have_stable_canonical_serialization():
+    choices = StructuredThesisChoices(
+        dataset={"instrument": "ES", "path": "bars.csv"},
+        levels={},
+        setup={},
+        backtest={},
+    )
+    assert choices.canonical_json() == choices.canonical_json()
