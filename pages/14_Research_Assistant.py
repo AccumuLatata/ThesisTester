@@ -7,6 +7,7 @@ It does not implement backtesting semantics or execute arbitrary model output.
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 from uuid import uuid4
 
@@ -231,7 +232,10 @@ with st.expander("Structured execution controls"):
     dataset = current.get("dataset") if isinstance(current.get("dataset"), dict) else {}
     backtest = current.get("backtest") if isinstance(current.get("backtest"), dict) else {}
     setup = current.get("setup") if isinstance(current.get("setup"), dict) else None
-    with st.form(f"assistant_execution_{thesis_id}"):
+    controls_fingerprint = hashlib.sha256(
+        json.dumps(current, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:12]
+    with st.form(f"assistant_execution_{thesis_id}_{controls_fingerprint}"):
         dataset_path = st.text_input("Dataset CSV path", value=str(dataset.get("path", "")))
         instruments = ["ES", "NQ", "MES", "MNQ"]
         current_instrument = str(
