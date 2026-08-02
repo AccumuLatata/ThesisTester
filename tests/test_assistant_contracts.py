@@ -133,5 +133,5 @@ def test_unknown_or_unsupported_capability_fails_before_execution():
 
     with pytest.raises(AssistantContractError, match="unsupported"):
         validate_capability_request(
-            AssistantRequest(capability_id="TIME.analyze", payload={"trade_run_id": "run-1"})
+            AssistantRequest(capability_id="GRID.manage_execution_defaults", payload={})
         )

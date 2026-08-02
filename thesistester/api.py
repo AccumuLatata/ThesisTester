@@ -29,6 +29,7 @@ from thesistester.analytics import (
     summarize_trades,
     validation_summary,
 )
+from thesistester.analytics.time_analysis import add_time_buckets, summarize_by_group
 from thesistester.config import INSTRUMENTS
 from thesistester.data.loader import format_interval, load_ohlcv, validate_ohlcv
 from thesistester.data.sessions import tag_session
@@ -1981,6 +1982,18 @@ def run_validation(
             }
         )
     return result
+
+
+def run_time_analysis(
+    trades: pd.DataFrame,
+    *,
+    group_col: str = "entry_rth_segment",
+    bucket_timezone: str = "America/New_York",
+    min_trades: int = 10,
+) -> pd.DataFrame:
+    """Return descriptive grouped time analysis without re-simulating trades."""
+    bucketed = add_time_buckets(trades, bucket_tz=bucket_timezone)
+    return summarize_by_group(bucketed, group_col, min_trades=min_trades)
 
 
 def run_experiment(

@@ -273,10 +273,9 @@ FEATURE_PARITY_REGISTRY = _validate_registry(
             "TIME.analyze",
             "Time Analysis",
             "Bucket completed trades and inspect grouped time performance",
-            "thesistester.analytics.time_analysis",
-            CapabilityMode.UNSUPPORTED,
+            "thesistester.api.run_time_analysis",
+            CapabilityMode.EXECUTABLE,
             ConfirmationLevel.NONE,
-            limitation="Time-analysis functions are not yet exposed through the headless facade.",
         ),
         _capability(
             "VALIDATION.run_core",
