@@ -503,7 +503,15 @@ with st.expander("Structured setup controls"):
             if str(setup.get("trigger") or "touch") in ["touch", "reject", "break", "reclaim"]
             else 0,
         )
-        direction = st.selectbox("Direction", ["both", "long", "short"])
+        direction_options = ["both", "long", "short"]
+        direction_value = str(setup.get("direction") or "both")
+        direction = st.selectbox(
+            "Direction",
+            direction_options,
+            index=direction_options.index(direction_value)
+            if direction_value in direction_options
+            else 0,
+        )
         tolerance_ticks = st.number_input(
             "Confluence tolerance ticks",
             min_value=0.0,
