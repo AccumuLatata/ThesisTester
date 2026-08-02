@@ -44,10 +44,14 @@ class StructuredThesisChoices:
 
     @classmethod
     def from_mapping(cls, choices: Mapping[str, Any]) -> StructuredThesisChoices:
-        required = ("dataset", "levels", "setup", "backtest")
+        """Create typed choices, normalizing an omitted levels section to empty."""
+        required = ("dataset", "setup", "backtest")
         missing = [key for key in required if not isinstance(choices.get(key), Mapping)]
         if missing:
             raise ValueError(f"Structured choices require objects: {', '.join(missing)}.")
+        levels = choices.get("levels", {})
+        if not isinstance(levels, Mapping):
+            raise ValueError("Structured choices require objects: levels.")
         optional = {}
         for key in ("grid", "validation", "walk_forward"):
             value = choices.get(key)
@@ -56,7 +60,7 @@ class StructuredThesisChoices:
             optional[key] = dict(value) if value is not None else None
         return cls(
             dataset=dict(choices["dataset"]),
-            levels=dict(choices["levels"]),
+            levels=dict(levels),
             setup=dict(choices["setup"]),
             backtest=dict(choices["backtest"]),
             **optional,
