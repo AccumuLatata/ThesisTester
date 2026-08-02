@@ -483,6 +483,62 @@ with st.expander("Structured walk-forward controls"):
             st.session_state["assistant_validated_run_spec"] = None
             st.rerun()
 
+with st.expander("Structured setup controls"):
+    current = st.session_state["assistant_draft_choices"]
+    setup = current.get("setup") if isinstance(current.get("setup"), dict) else {}
+    with st.form(
+        f"assistant_setup_{thesis_id}_{hashlib.sha256(json.dumps(setup, sort_keys=True, default=str).encode('utf-8')).hexdigest()[:12]}"
+    ):
+        setup_name = st.text_input("Setup name", value=str(setup.get("name") or thesis.name))
+        selected_levels = st.text_input(
+            "Confluence levels (comma-separated)",
+            value=", ".join(setup.get("selected_levels") or ["dVWAP_RTH", "SMA_50_30min"]),
+        )
+        trigger = st.selectbox(
+            "Trigger",
+            ["touch", "reject", "break", "reclaim"],
+            index=["touch", "reject", "break", "reclaim"].index(
+                str(setup.get("trigger") or "touch")
+            )
+            if str(setup.get("trigger") or "touch") in ["touch", "reject", "break", "reclaim"]
+            else 0,
+        )
+        direction = st.selectbox("Direction", ["both", "long", "short"])
+        tolerance_ticks = st.number_input(
+            "Confluence tolerance ticks",
+            min_value=0.0,
+            value=float(setup.get("tolerance_ticks") or 0.0),
+        )
+        if st.form_submit_button("Apply setup controls"):
+            levels = [item.strip() for item in selected_levels.split(",") if item.strip()]
+            instrument = str((current.get("dataset") or {}).get("instrument") or "ES")
+            st.session_state["assistant_draft_choices"] = {
+                **current,
+                "setup": {
+                    **setup,
+                    "name": setup_name,
+                    "description": setup.get("description", ""),
+                    "instrument": instrument,
+                    "selected_levels": levels,
+                    "tolerance_ticks": tolerance_ticks,
+                    "min_confluences": setup.get("min_confluences", 1),
+                    "max_confluences": setup.get("max_confluences", max(1, len(levels))),
+                    "naked_only": setup.get("naked_only", False),
+                    "naked_requirement": setup.get("naked_requirement", "any"),
+                    "trigger": trigger,
+                    "trigger_timeframe": setup.get("trigger_timeframe", "base"),
+                    "direction": direction,
+                    "confluence_mode": setup.get("confluence_mode", "global_cluster"),
+                    "anchor_level": setup.get("anchor_level"),
+                    "confluence_rules": setup.get("confluence_rules", []),
+                    "min_valid_confluences": setup.get("min_valid_confluences", 1),
+                    "trigger_params": setup.get("trigger_params", {}),
+                    "otf_filter": setup.get("otf_filter"),
+                },
+            }
+            st.session_state["assistant_validated_run_spec"] = None
+            st.rerun()
+
 with st.expander("Reuse saved setup"):
     saved_setups = list_saved_setups()
     setup_options = {
