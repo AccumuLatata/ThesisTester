@@ -105,6 +105,26 @@ if not thesis_id:
 thesis = repository.get_thesis(thesis_id)
 st.subheader(thesis.name)
 st.caption(f"Revision {thesis.revision} · {thesis.lifecycle}")
+with st.expander("Manage thesis"):
+    renamed = st.text_input("Rename thesis", value=thesis.name, key=f"assistant_rename_{thesis_id}")
+    if st.button("Save thesis name", key=f"rename-{thesis_id}"):
+        try:
+            repository.rename_thesis(thesis_id, name=renamed, expected_revision=thesis.revision)
+            st.rerun()
+        except ValueError as exc:
+            st.error(str(exc))
+    if st.button("Clone thesis", key=f"clone-{thesis_id}"):
+        clone = repository.clone_thesis(thesis_id)
+        _select_thesis(clone.thesis_id)
+        st.session_state["assistant_thesis_picker"] = clone.thesis_id
+        st.rerun()
+    if thesis.lifecycle == "active":
+        if st.button("Archive thesis", key=f"archive-{thesis_id}"):
+            repository.archive_thesis(thesis_id, expected_revision=thesis.revision)
+            st.rerun()
+    elif st.button("Restore thesis", key=f"restore-{thesis_id}"):
+        repository.restore_thesis(thesis_id, expected_revision=thesis.revision)
+        st.rerun()
 
 conversations = repository.list_conversations(thesis_id)
 conversation_ids = st.session_state["assistant_conversation_ids"]
