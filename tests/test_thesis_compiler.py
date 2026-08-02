@@ -32,6 +32,26 @@ def test_compiler_is_deterministic_for_complete_explicit_choices():
     assert first.ready_for_confirmation
 
 
+@pytest.mark.parametrize("empty_section", ("dataset", "setup", "backtest"))
+def test_compiler_requires_non_empty_required_choice_sections(monkeypatch, empty_section):
+    monkeypatch.setattr(
+        "thesistester.assistant.thesis_compiler.validate_run_spec", lambda spec: None
+    )
+    choices = {
+        "dataset": {"instrument": "ES"},
+        "setup": {"trigger": "touch"},
+        "backtest": {"intrabar_model": "sl_first"},
+    }
+    choices[empty_section] = {}
+
+    draft = compile_thesis("Explicit thesis", choices=choices)
+
+    assert not draft.ready_for_confirmation
+    assert draft.unresolved_assumptions
+    with pytest.raises(ValueError):
+        map_thesis_choices_to_run_spec(name="Explicit thesis", choices=choices)
+
+
 def test_compiler_rejects_empty_prompt():
     with pytest.raises(ValueError, match="non-empty"):
         compile_thesis(" ")

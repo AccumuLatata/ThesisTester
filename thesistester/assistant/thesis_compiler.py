@@ -205,7 +205,11 @@ def map_thesis_choices_to_run_spec(*, name: str, choices: Mapping[str, Any]) -> 
 
 
 def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> ThesisDraft:
-    """Create a deterministic draft and name missing executable definitions."""
+    """Create a deterministic draft and name missing executable definitions.
+
+    A required section must be a non-empty mapping so a confirmation-ready
+    draft is eligible for canonical RunSpec mapping.
+    """
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError("Thesis prompt must be a non-empty string.")
     selected = dict(choices or {})
@@ -224,7 +228,7 @@ def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> 
         "backtest": "Define costs, exposure, intrabar, and session assumptions.",
     }
     for key, question in required.items():
-        if not isinstance(selected.get(key), Mapping):
+        if not isinstance(selected.get(key), Mapping) or not selected[key]:
             unresolved.append(question)
     if re.search(r"\bdvwap\b", text) and not has_choice("session_vwap_anchor"):
         levels = selected.get("levels")
