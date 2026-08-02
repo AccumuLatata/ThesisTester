@@ -57,23 +57,45 @@ Undeclared and unsupported capability requests fail closed.
 This boundary adds no `st.session_state` keys. A future assistant page must use
 additive, namespaced keys and document them here in the same PR.
 
-The AIA-5 Research Assistant page adds only `assistant_selected_thesis_id`,
-`assistant_draft_prompt`, `assistant_draft_choices`, and
-`assistant_conversation_ids`, `assistant_hydrated_conversation_id`, and
-`assistant_validated_run_spec`, `assistant_run_explanations`, and
-`assistant_run_comparisons`, `assistant_llm_attempts`, and
-`assistant_run_reports`, and `assistant_run_artifacts`. They select and stage
-assistant-library objects. `assistant_draft_choices` contains only supported
-structured RunSpec sections; narrative LLM hints stay in conversation history
-and never become execution candidates. Clarification checks likewise trust only
-structured sections (`levels.session_vwap_enabled`, `setup.tolerance_ticks`),
-never legacy flat keys. Setup controls reject empty confluence-level lists so
+The Research Assistant page stages only these additive `assistant_*` keys
+(source of truth: `ASSISTANT_SESSION_KEYS` in
+`thesistester/assistant/workspace.py`):
+
+| Key | Role |
+|---|---|
+| `assistant_selected_thesis_id` | Active thesis |
+| `assistant_draft_prompt` | Staged prose prompt |
+| `assistant_draft_choices` | Staged structured RunSpec sections |
+| `assistant_conversation_ids` | `{thesis_id: conversation_id}` map |
+| `assistant_hydrated_conversation_id` | Conversation hydration guard |
+| `assistant_validated_run_spec` | `{choices, spec}` after validate |
+| `assistant_run_explanations` | Deterministic explain cache by run_id |
+| `assistant_llm_run_explanations` | Evidence-only LLM explain cache |
+| `assistant_llm_attempts` | Provider attempt counts by run_id |
+| `assistant_run_reports` | Markdown report cache by run_id |
+| `assistant_run_artifacts` | Research artifact cache by run_id |
+| `assistant_run_comparisons` | In-session comparison by thesis_id |
+| `assistant_bundle_handoff` | Last hash-verified restore into research pages |
+
+Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
+`assistant_draft_choices`, `assistant_hydrated_conversation_id`,
+`assistant_validated_run_spec`, `assistant_bundle_handoff`) so
+draft/validation/hydration/handoff cannot leak. The Active handoff caption is
+further gated by `active_bundle_handoff()` so a stale handoff never displays for
+a different thesis.
+`assistant_draft_choices` contains only supported structured RunSpec sections;
+narrative LLM hints stay in conversation history and never become execution
+candidates. Clarification checks trust only structured sections
+(`levels.session_vwap_enabled`, `setup.tolerance_ticks`), never legacy flat
+keys. Setup controls reject empty confluence-level lists so
 `min_confluences`/`max_confluences` cannot claim levels that were not selected.
 Enabled walk-forward controls persist explicit `window_mode` and
-`overlap_policy` alongside fold/session counts, and canonical compilation
-rejects enabled walk-forward blocks that omit those sizing fields so API
-train/test defaults cannot be inferred at confirmation. These keys do not
-replace existing data, levels, signals, or backtest session-state producers.
+`overlap_policy` alongside fold sizes (sessions or bars), and canonical
+compilation rejects enabled walk-forward blocks that omit those sizing fields
+so API train/test defaults cannot be inferred at confirmation. Bundle handoff
+restores managed research keys through
+`AssistantOrchestrator.restore_run_bundle_to_session()` after hash verification;
+it does not bypass existing research-page producers for new compute.
 
 `LocalThesisRepository` stores schema-versioned thesis metadata, immutable
 specification versions, requested/terminal run provenance, and append-only
@@ -87,11 +109,26 @@ confirmed child. The orchestrator repeats that validation immediately before
 execution. Narrative fields that have no public-pipeline mapping are rejected,
 rather than being stored as executable assumptions.
 
-`AssistantOrchestrator.dispatch()` is the only compute router for assistant
-capabilities. It validates the registry request, enforces confirmation and
-resource envelopes, invokes a typed handler, and writes one transcript audit
-entry for each gated or terminal outcome. Page code must not call
-`AssistantTools` or public compute APIs directly. Provenance-gated bundle loads
+`AssistantOrchestrator.for_local_workspace()` is the Streamlit entrypoint.
+`dispatch()` remains the only compute router for registry capabilities. Workspace
+façade methods wrap thesis/spec/run/conversation/comparison lifecycle,
+validate/confirm, explain/compare/export/portfolio, and bundle handoff so the
+Research Assistant page stays presentation-only. Plan review surfaces
+clarifications only when the newest specification is still
+`needs_clarification` (`latest_unresolved_assumptions()`). Drafting syncs
+`normalized_run_spec` back into `assistant_draft_choices`. Numeric widget
+defaults use `safe_int`/`safe_float` so malformed JSON/chat values cannot crash
+rerenders. Bundle restore clears `assistant_validated_run_spec` and the page
+reruns so the Active handoff caption refreshes immediately.
+`compare_completed_runs()` still returns computed comparison evidence when
+immutable comparison persistence fails (`persistence_error`), so the UI is not
+blocked by a save race. Report and research-artifact export remain independent
+UI actions. Untouched execution drafts default `exposure_policy` to
+`allow_all`. Confirm stays gated on `plan["ready_for_confirmation"]` so a
+validated RunSpec cannot be confirmed while clarifications remain. WFA matrix
+controls are sessions-fold-only (parity with Validation). Page code must not construct
+`AssistantTools`, mutate `LocalThesisRepository`, compile RunSpecs, explain
+evidence, or read bundle bytes directly. Provenance-gated bundle loads
 (`BUNDLE.import`, `EXPORT.build_research_artifact`, `PORTFOLIO.analyze`) require
 non-empty expected hashes and fail closed when they are missing or blank; they
 never silently skip digest verification. `execute_confirmed_run` additionally

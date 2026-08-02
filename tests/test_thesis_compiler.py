@@ -112,6 +112,20 @@ def test_normalize_walk_forward_controls_requires_modes_when_enabled():
         "test_sessions": 5,
         "step_sessions": 5,
     }
+    bars = normalize_walk_forward_controls(
+        enabled=True,
+        fold_mode="bars",
+        train_bars=100,
+        test_bars=20,
+        step_bars=20,
+        ranking_metric="expectancy_r",
+        min_train_trades=5,
+        stop_loss_ticks_values=[8],
+        take_profit_ticks_values=[16],
+    )
+    assert bars["train_bars"] == 100
+    assert bars["ranking_metric"] == "expectancy_r"
+    assert bars["stop_loss_ticks_values"] == [8]
     with pytest.raises(ValueError, match="window_mode"):
         normalize_walk_forward_controls(enabled=True, window_mode="diagonal")
 

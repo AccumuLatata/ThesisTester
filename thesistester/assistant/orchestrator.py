@@ -10,8 +10,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, MutableMapping
+from uuid import uuid4
 
+from thesistester.assistant.comparison import Comparison
 from thesistester.assistant.contracts import (
     AssistantContractError,
     AssistantRequest,
@@ -20,6 +22,7 @@ from thesistester.assistant.contracts import (
     UnknownCapabilityError,
     structured_error,
 )
+from thesistester.assistant.explainer import compare_evidence, explain_evidence
 from thesistester.assistant.handlers import (
     HANDLER_REGISTRY,
     HandlerContext,
@@ -27,19 +30,35 @@ from thesistester.assistant.handlers import (
     tool_limits_from_envelope,
 )
 from thesistester.assistant.llm import StructuredLLMClient
+from thesistester.assistant.llm_explainer import explain_packet_with_llm
 from thesistester.assistant.llm_intent import propose_thesis_draft
 from thesistester.assistant.registry import FEATURE_PARITY_REGISTRY, validate_capability_request
 from thesistester.assistant.repository import (
+    AssistantRepositoryError,
+    Conversation,
     InvalidStateTransitionError,
     LocalThesisRepository,
     RepositoryConflictError,
+    ResearchRun,
+    SpecVersion,
+    Thesis,
 )
 from thesistester.assistant.thesis_compiler import (
     ThesisDraft,
+    compile_thesis,
     map_persisted_confirmed_run_spec,
+    map_thesis_choices_to_run_spec,
 )
 from thesistester.assistant.tools import AssistantToolError, AssistantTools, ToolLimits
-from thesistester.research_bundle import canonical_bundle_hash
+from thesistester.assistant.workspace import (
+    evidence_packet_from_payload,
+    require_run_bundle_hash,
+)
+from thesistester.persistence.local_store import get_store_root
+from thesistester.research_bundle import (
+    apply_research_bundle_to_session,
+    canonical_bundle_hash,
+)
 
 
 _READ_ONLY_ACTIONS = frozenset({"get", "list", "describe", "load", "summary", "evidence"})
@@ -132,6 +151,20 @@ class AssistantOrchestrator:
     def __init__(self, *, tools: AssistantTools, repository: LocalThesisRepository) -> None:
         self.tools = tools
         self.repository = repository
+
+    @classmethod
+    def for_local_workspace(
+        cls, *, repository: LocalThesisRepository | None = None
+    ) -> AssistantOrchestrator:
+        """Build the production Streamlit workspace orchestrator.
+
+        The page must not construct tools or repository clients itself.
+        """
+        roots = (Path.cwd().resolve(), get_store_root().resolve())
+        return cls(
+            tools=AssistantTools(data_roots=roots),
+            repository=repository or LocalThesisRepository(),
+        )
 
     def _tools_for_envelope(self, limits: ToolLimits):
         """Return tools constrained by the capability envelope.
@@ -513,6 +546,395 @@ class AssistantOrchestrator:
             best_effort=True,
         )
         return result
+
+    # --- Workspace façade (presentation pages must not call the repository) ---
+
+    def create_thesis(self, *, name: str, tags: tuple[str, ...] = ()) -> Thesis:
+        """Create one thesis through the repository façade."""
+        return self.repository.create_thesis(name=name, tags=tags)
+
+    def list_theses(self, *, include_archived: bool = True) -> tuple[Thesis, ...]:
+        """List theses through the repository façade."""
+        return self.repository.list_theses(include_archived=include_archived)
+
+    def get_thesis(self, thesis_id: str) -> Thesis:
+        """Load one thesis through the repository façade."""
+        return self.repository.get_thesis(thesis_id)
+
+    def rename_thesis(self, thesis_id: str, *, name: str, expected_revision: int) -> Thesis:
+        """Rename one thesis through the repository façade."""
+        return self.repository.rename_thesis(
+            thesis_id, name=name, expected_revision=expected_revision
+        )
+
+    def clone_thesis(self, thesis_id: str, *, name: str | None = None) -> Thesis:
+        """Clone one thesis through the repository façade."""
+        return self.repository.clone_thesis(thesis_id, name=name)
+
+    def archive_thesis(self, thesis_id: str, *, expected_revision: int) -> Thesis:
+        """Archive one thesis through the repository façade."""
+        return self.repository.archive_thesis(thesis_id, expected_revision=expected_revision)
+
+    def restore_thesis(self, thesis_id: str, *, expected_revision: int) -> Thesis:
+        """Restore one archived thesis through the repository façade."""
+        return self.repository.restore_thesis(thesis_id, expected_revision=expected_revision)
+
+    def ensure_conversation(
+        self, thesis_id: str, *, preferred_conversation_id: str | None = None
+    ) -> Conversation:
+        """Return the preferred or latest conversation, creating one if needed."""
+        conversations = self.repository.list_conversations(thesis_id)
+        known = {item.conversation_id: item for item in conversations}
+        if preferred_conversation_id in known:
+            return known[preferred_conversation_id]
+        if conversations:
+            return conversations[-1]
+        return self.repository.create_conversation(thesis_id)
+
+    def list_conversations(self, thesis_id: str) -> tuple[Conversation, ...]:
+        """List conversations through the repository façade."""
+        return self.repository.list_conversations(thesis_id)
+
+    def get_conversation(self, thesis_id: str, conversation_id: str) -> Conversation:
+        """Load one conversation through the repository façade."""
+        return self.repository.get_conversation(thesis_id, conversation_id)
+
+    def list_spec_versions(self, thesis_id: str) -> tuple[SpecVersion, ...]:
+        """List specification versions through the repository façade."""
+        return self.repository.list_spec_versions(thesis_id)
+
+    def list_runs(self, thesis_id: str) -> tuple[ResearchRun, ...]:
+        """List research runs through the repository façade."""
+        return self.repository.list_runs(thesis_id)
+
+    def list_comparisons(self, thesis_id: str) -> tuple[Comparison, ...]:
+        """List persisted comparisons through the repository façade."""
+        return self.repository.list_comparisons(thesis_id)
+
+    def draft_specification(
+        self,
+        *,
+        thesis_id: str,
+        prompt: str,
+        choices: Mapping[str, Any],
+    ) -> SpecVersion:
+        """Compile staged choices into a persisted non-executing specification."""
+        draft = compile_thesis(prompt, choices=choices)
+        return self.repository.create_spec_version(
+            thesis_id,
+            normalized_run_spec=draft.normalized_run_spec,
+            status="ready_for_confirmation"
+            if draft.ready_for_confirmation
+            else "needs_clarification",
+            unresolved_assumptions=draft.unresolved_assumptions,
+            compiler_version="1",
+        )
+
+    def validate_choices(
+        self,
+        *,
+        thesis_id: str,
+        conversation_id: str | None,
+        thesis_name: str,
+        choices: Mapping[str, Any],
+    ) -> OrchestrationResult:
+        """Map staged choices to a canonical RunSpec and validate through the registry."""
+        try:
+            validated = map_thesis_choices_to_run_spec(name=thesis_name, choices=choices)
+        except ValueError as exc:
+            return OrchestrationResult(
+                status=OrchestrationStatus.FAILED.value,
+                capability_id="PIPELINE.validate_run_spec",
+                payload={
+                    "error": structured_error(
+                        category="validation",
+                        retryable=True,
+                        remediation="Correct structured controls and validate again.",
+                        message=str(exc),
+                    ).to_dict()
+                },
+            )
+        result = self.dispatch(
+            AssistantRequest(
+                capability_id="PIPELINE.validate_run_spec",
+                payload={"run_spec": validated},
+            ),
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+        )
+        if result.status == OrchestrationStatus.COMPLETED.value:
+            return OrchestrationResult(
+                status=result.status,
+                capability_id=result.capability_id,
+                payload={
+                    **result.payload,
+                    "choices": dict(choices),
+                    "spec": validated,
+                },
+            )
+        return result
+
+    def confirm_validated_spec(
+        self,
+        *,
+        thesis_id: str,
+        validated_spec: Mapping[str, Any],
+        confirmation_note: str = "Confirmed validated executable RunSpec in UI",
+    ) -> SpecVersion:
+        """Persist and confirm one already-validated executable RunSpec."""
+        executable = self.repository.create_spec_version(
+            thesis_id,
+            normalized_run_spec=dict(validated_spec),
+            status="ready_for_confirmation",
+            unresolved_assumptions=(),
+            compiler_version="runspec-2",
+        )
+        return self.repository.confirm_spec_version(
+            thesis_id,
+            executable.version,
+            confirmation_note=confirmation_note,
+        )
+
+    def default_bundle_output_path(self, thesis_id: str) -> Path:
+        """Return a thesis-scoped portable bundle path under the local store."""
+        return (
+            get_store_root()
+            / "assistant"
+            / "theses"
+            / thesis_id
+            / "bundles"
+            / f"{uuid4().hex}.research.zip"
+        )
+
+    def explain_run(
+        self,
+        *,
+        thesis_id: str,
+        conversation_id: str | None,
+        run: ResearchRun,
+    ) -> OrchestrationResult:
+        """Load hash-verified evidence and return a deterministic explanation."""
+        if run.status != "completed" or not isinstance(run.provenance, Mapping):
+            raise ValueError("Only completed runs with provenance can be explained.")
+        bundle_path = run.provenance.get("bundle_path")
+        expected_hash = require_run_bundle_hash(run.provenance)
+        if not isinstance(bundle_path, str) or not bundle_path.strip():
+            raise ValueError("Completed run is missing bundle_path provenance.")
+        result = self.dispatch(
+            AssistantRequest(
+                capability_id="BUNDLE.import",
+                payload={
+                    "action": "evidence",
+                    "bundle_path": bundle_path,
+                    "expected_hash": expected_hash,
+                    "provenance": dict(run.provenance),
+                },
+            ),
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+        )
+        if result.status != OrchestrationStatus.COMPLETED.value:
+            return result
+        packet = evidence_packet_from_payload(result.payload)
+        return OrchestrationResult(
+            status=result.status,
+            capability_id=result.capability_id,
+            payload={**result.payload, "explanation": explain_evidence(packet)},
+        )
+
+    def explain_run_with_llm(
+        self,
+        client: StructuredLLMClient,
+        *,
+        thesis_id: str,
+        conversation_id: str | None,
+        run: ResearchRun,
+    ) -> OrchestrationResult:
+        """Load hash-verified evidence and paraphrase it through a bounded LLM client."""
+        evidence = self.explain_run(
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+            run=run,
+        )
+        if evidence.status != OrchestrationStatus.COMPLETED.value:
+            return evidence
+        packet = evidence_packet_from_payload(evidence.payload)
+        explanation = explain_packet_with_llm(client, packet=packet)
+        return OrchestrationResult(
+            status=evidence.status,
+            capability_id=evidence.capability_id,
+            payload={
+                **evidence.payload,
+                "llm_explanation": explanation,
+                "provider_attempts": getattr(client, "last_attempt_count", None),
+            },
+        )
+
+    def export_run(
+        self,
+        *,
+        thesis_id: str,
+        conversation_id: str | None,
+        run: ResearchRun,
+    ) -> OrchestrationResult:
+        """Build the markdown report and research artifact for one completed run."""
+        if run.status != "completed" or not isinstance(run.provenance, Mapping):
+            raise ValueError("Only completed runs with provenance can be exported.")
+        bundle_path = run.provenance.get("bundle_path")
+        expected_hash = require_run_bundle_hash(run.provenance)
+        if not isinstance(bundle_path, str) or not bundle_path.strip():
+            raise ValueError("Completed run is missing bundle_path provenance.")
+        return self.dispatch(
+            AssistantRequest(
+                capability_id="EXPORT.build_research_artifact",
+                payload={
+                    "bundle_path": bundle_path,
+                    "expected_hash": expected_hash,
+                },
+            ),
+            confirmed=True,
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+        )
+
+    def compare_completed_runs(
+        self,
+        *,
+        thesis_id: str,
+        conversation_id: str | None,
+        left_run: ResearchRun,
+        right_run: ResearchRun,
+    ) -> OrchestrationResult:
+        """Compare two completed runs, persist the comparison, and return evidence."""
+        packets = []
+        for run in (left_run, right_run):
+            if run.status != "completed" or not isinstance(run.provenance, Mapping):
+                raise ValueError("Comparison requires completed runs with provenance.")
+            bundle_path = run.provenance.get("bundle_path")
+            expected_hash = require_run_bundle_hash(run.provenance)
+            if not isinstance(bundle_path, str) or not bundle_path.strip():
+                raise ValueError("Completed run is missing bundle_path provenance.")
+            result = self.dispatch(
+                AssistantRequest(
+                    capability_id="BUNDLE.import",
+                    payload={
+                        "action": "evidence",
+                        "bundle_path": bundle_path,
+                        "expected_hash": expected_hash,
+                        "provenance": dict(run.provenance),
+                    },
+                ),
+                thesis_id=thesis_id,
+                conversation_id=conversation_id,
+            )
+            if result.status != OrchestrationStatus.COMPLETED.value:
+                return result
+            packets.append(evidence_packet_from_payload(result.payload))
+        comparison = compare_evidence(*packets)
+        record = Comparison.create(
+            thesis_id=thesis_id,
+            left_run_id=left_run.run_id,
+            right_run_id=right_run.run_id,
+            left_bundle_hash=str(left_run.provenance["canonical_bundle_hash"]),
+            right_bundle_hash=str(right_run.provenance["canonical_bundle_hash"]),
+            evidence=comparison,
+        )
+        # Persistence is best-effort: computed comparison evidence must still
+        # reach the UI when the immutable comparison write fails.
+        try:
+            saved = self.repository.save_comparison(record)
+        except AssistantRepositoryError as exc:
+            return OrchestrationResult(
+                status=OrchestrationStatus.COMPLETED.value,
+                capability_id="BUNDLE.import",
+                payload={
+                    "comparison": comparison,
+                    "record": None,
+                    "run_ids": [left_run.run_id, right_run.run_id],
+                    "persistence_error": str(exc),
+                },
+            )
+        return OrchestrationResult(
+            status=OrchestrationStatus.COMPLETED.value,
+            capability_id="BUNDLE.import",
+            payload={
+                "comparison": comparison,
+                "record": saved.to_dict(),
+                "run_ids": [left_run.run_id, right_run.run_id],
+            },
+        )
+
+    def analyze_portfolio_runs(
+        self,
+        *,
+        thesis_id: str,
+        conversation_id: str | None,
+        runs: list[ResearchRun],
+        instrument: str,
+    ) -> OrchestrationResult:
+        """Analyze explicitly selected completed-run bundles as a portfolio."""
+        if len(runs) < 2:
+            raise ValueError("Portfolio analysis requires at least two completed runs.")
+        bundle_paths: list[str] = []
+        expected_hashes: list[str] = []
+        for run in runs:
+            if run.status != "completed" or not isinstance(run.provenance, Mapping):
+                raise ValueError("Portfolio analysis requires completed runs with provenance.")
+            bundle_path = run.provenance.get("bundle_path")
+            expected_hash = require_run_bundle_hash(run.provenance)
+            if not isinstance(bundle_path, str) or not bundle_path.strip():
+                raise ValueError("Completed run is missing bundle_path provenance.")
+            bundle_paths.append(bundle_path)
+            expected_hashes.append(expected_hash)
+        return self.dispatch(
+            AssistantRequest(
+                capability_id="PORTFOLIO.analyze",
+                payload={
+                    "bundle_paths": bundle_paths,
+                    "expected_hashes": expected_hashes,
+                    "instrument": instrument,
+                },
+            ),
+            confirmed=True,
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+        )
+
+    def restore_run_bundle_to_session(
+        self,
+        *,
+        thesis_id: str,
+        run_id: str,
+        session_state: MutableMapping[str, Any],
+    ) -> dict[str, Any]:
+        """Hash-verify a completed run bundle and hand it to research pages."""
+        run = self.repository.get_run(thesis_id, run_id)
+        if run.status != "completed" or not isinstance(run.provenance, Mapping):
+            raise ValueError("Only completed runs with provenance can be restored.")
+        bundle_path = run.provenance.get("bundle_path")
+        expected_hash = require_run_bundle_hash(run.provenance)
+        if not isinstance(bundle_path, str) or not bundle_path.strip():
+            raise ValueError("Completed run is missing bundle_path provenance.")
+        if not isinstance(self.tools, AssistantTools):
+            raise AssistantToolError("Bundle restoration requires AssistantTools.")
+        loaded = self.tools.load_verified_bundle_session(bundle_path, expected_hash=expected_hash)
+        applied = apply_research_bundle_to_session(
+            {"session_values": loaded["session_values"]},
+            session_state,
+        )
+        handoff = {
+            "thesis_id": thesis_id,
+            "run_id": run_id,
+            "bundle_path": loaded["bundle_path"],
+            "canonical_bundle_hash": loaded["canonical_bundle_hash"],
+            **applied,
+        }
+        # Bundle session values are not the staged assistant RunSpec; drop any
+        # prior validated confirmation candidate so Confirm cannot target stale
+        # choices after a hash-verified research-page restore.
+        session_state["assistant_validated_run_spec"] = None
+        session_state["assistant_bundle_handoff"] = handoff
+        return handoff
 
     def _finalize_raced_or_failed_run(
         self,

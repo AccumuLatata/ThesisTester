@@ -142,17 +142,23 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   `walk_forward`). Do not add prose-only fields such as trend rules or success
   criteria to executable drafts; represent a requirement with a supported
   structured control or leave it as an explicit clarification.
-- Route assistant compute only through `AssistantOrchestrator.dispatch()` or
-  `execute_confirmed_run()` / `cancel_run()`. Every non-unsupported registry
-  capability must have a `HANDLER_REGISTRY` entry; otherwise mark it
-  `unsupported` with a limitation. Structured errors must include `category`,
-  `retryable`, and `remediation`.
+- Route assistant compute only through `AssistantOrchestrator` façade methods
+  (`for_local_workspace()`, `dispatch()`, `execute_confirmed_run()`,
+  `cancel_run()`, validate/confirm/explain/compare/export/portfolio/handoff).
+  The Research Assistant page must remain presentation-only. Every
+  non-unsupported registry capability must have a `HANDLER_REGISTRY` entry;
+  otherwise mark it `unsupported` with a limitation. Structured errors must
+  include `category`, `retryable`, and `remediation`.
 - Completed runs require a readable on-disk research bundle whose
   `canonical_bundle_hash` matches reported provenance before `complete_run`.
   Provenance-gated explanation, comparison, export, and portfolio paths must
   fail closed on hash mismatch. Keep API/CLI/assistant parity coverage in
-  `tests/test_assistant_execution_parity.py` green when touching lifecycle or
-  bundle tools.
+  `tests/test_assistant_execution_parity.py` and workspace/page-contract
+  coverage in `tests/test_assistant_workspace.py` green when touching
+  lifecycle, bundle tools, or the Research Assistant page.
+- Document every additive `assistant_*` session key in `ARCHITECTURE.md` and
+  `ASSISTANT_SESSION_KEYS`. Thesis switches must clear
+  `THESIS_SCOPED_STAGING_KEYS` (including `assistant_bundle_handoff`).
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned
