@@ -16,7 +16,7 @@ from thesistester.assistant.llm import StructuredLLMClient
 from thesistester.assistant.llm_intent import propose_thesis_draft
 from thesistester.assistant.registry import validate_capability_request
 from thesistester.assistant.repository import LocalThesisRepository
-from thesistester.assistant.thesis_compiler import ThesisDraft
+from thesistester.assistant.thesis_compiler import ThesisDraft, map_thesis_choices_to_run_spec
 from thesistester.assistant.tools import AssistantTools
 
 
@@ -128,9 +128,17 @@ class AssistantOrchestrator:
         spec = self.repository.get_spec_version(thesis_id, spec_version)
         if spec.status != "confirmed":
             raise ValueError("Only confirmed specifications may execute.")
+        thesis = self.repository.get_thesis(thesis_id)
+        # Recompile and validate the immutable persisted content immediately
+        # before execution; a confirmed record is never trusted as executable
+        # merely because its status says so.
+        run_spec = map_thesis_choices_to_run_spec(
+            name=thesis.name,
+            choices=spec.normalized_run_spec,
+        )
         request = AssistantRequest(
             capability_id="PIPELINE.run_experiment",
-            payload={"run_spec": spec.normalized_run_spec},
+            payload={"run_spec": run_spec},
         )
         capability = validate_capability_request(request)
         if capability.confirmation is not ConfirmationLevel.EXPLICIT_CONFIRMATION:
@@ -138,11 +146,11 @@ class AssistantOrchestrator:
         run = self.repository.start_run(
             thesis_id,
             spec_version=spec_version,
-            request={"run_spec": spec.normalized_run_spec},
+            request={"run_spec": run_spec},
         )
         try:
             result = self.tools.run_experiment_to_bundle(
-                spec.normalized_run_spec,
+                run_spec,
                 output_path=output_path,
             )
             warning_data = result.get("summary", {}).get("warnings", {})

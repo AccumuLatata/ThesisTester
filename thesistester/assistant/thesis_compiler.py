@@ -10,11 +10,22 @@ import re
 import json
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, ClassVar, Mapping
 
 from thesistester.api import validate_run_spec
 
-COMPILER_VERSION = "1"
+COMPILER_VERSION = "2"
+RUN_SPEC_DRAFT_SCHEMA_VERSION = 1
+_CANONICAL_CHOICE_KEYS = {
+    "name",
+    "dataset",
+    "levels",
+    "setup",
+    "backtest",
+    "grid",
+    "validation",
+    "walk_forward",
+}
 
 
 @dataclass(frozen=True)
@@ -34,6 +45,7 @@ class ThesisDraft:
 class StructuredThesisChoices:
     """Typed executable choices; narrative-only fields are intentionally excluded."""
 
+    schema_version: ClassVar[int] = RUN_SPEC_DRAFT_SCHEMA_VERSION
     dataset: dict[str, Any]
     levels: dict[str, Any]
     setup: dict[str, Any]
@@ -121,7 +133,16 @@ def compile_canonical_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict
     missing: list[str] = []
     if not dataset.get("instrument"):
         missing.append("dataset.instrument")
-    for key in ("commission_per_side", "slippage_ticks", "exposure_policy", "intrabar_model"):
+    for key in (
+        "commission_per_side",
+        "slippage_ticks",
+        "exposure_policy",
+        "intrabar_model",
+        "flat_by_session_close",
+        "session_close_time",
+        "session_timezone",
+        "no_new_entries_after",
+    ):
         if key not in backtest:
             missing.append(f"backtest.{key}")
     for key in ("trigger", "tolerance_ticks", "selected_levels"):
@@ -130,9 +151,58 @@ def compile_canonical_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict
     validation = spec.get("validation")
     if isinstance(validation, Mapping) and "random_state" not in validation:
         missing.append("validation.random_state")
+    grid = spec.get("grid")
+    if isinstance(grid, Mapping) and grid.get("enabled", True):
+        for key in ("ranking_metric", "min_trades"):
+            if key not in grid:
+                missing.append(f"grid.{key}")
+    walk_forward = spec.get("walk_forward")
+    if isinstance(walk_forward, Mapping):
+        for key in ("enabled", "fold_mode", "window_mode", "overlap_policy"):
+            if key not in walk_forward:
+                missing.append(f"walk_forward.{key}")
     if missing:
         raise ValueError(f"Canonical RunSpec requires explicit assumptions: {', '.join(missing)}.")
     return spec
+
+
+def map_thesis_choices_to_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict[str, Any]:
+    """Compile supported structured choices into one canonical executable RunSpec.
+
+    This boundary deliberately rejects narrative-only fields.  A value either
+    maps to the public API schema or remains a clarification; it is never
+    persisted as an executable-looking but ignored "ghost" assumption.
+    """
+    if not isinstance(choices, Mapping):
+        raise ValueError("Research choices must be an object.")
+    unknown = sorted(set(choices) - _CANONICAL_CHOICE_KEYS)
+    if unknown:
+        raise ValueError(
+            "Unsupported non-executable research choices: "
+            + ", ".join(unknown)
+            + ". Use structured executable controls instead."
+        )
+    supplied_name = choices.get("name")
+    if supplied_name is not None and supplied_name != name.strip():
+        raise ValueError("Research choices name must match the selected thesis name.")
+    canonical_choices = {
+        key: deepcopy(choices[key])
+        for key in ("dataset", "levels", "setup", "backtest", "grid", "validation", "walk_forward")
+        if key in choices
+    }
+    setup = canonical_choices.get("setup")
+    dataset = canonical_choices.get("dataset")
+    if isinstance(setup, Mapping) and isinstance(dataset, Mapping):
+        setup = dict(setup)
+        if "instrument" not in setup and dataset.get("instrument"):
+            # This is a deterministic consistency binding, not an instrument
+            # default: the canonical validator verifies the values match.
+            setup["instrument"] = dataset["instrument"]
+        selected_levels = setup.get("selected_levels")
+        if isinstance(selected_levels, str):
+            setup["selected_levels"] = [selected_levels]
+        canonical_choices["setup"] = setup
+    return compile_canonical_run_spec(name=name, choices=canonical_choices)
 
 
 def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> ThesisDraft:
@@ -150,20 +220,23 @@ def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> 
 
     unresolved: list[str] = []
     required = {
-        "trend_rule": "Define the measurable trend rule.",
-        "trigger": "Define the entry trigger and tick tolerance.",
-        "session_window": "Define the exact exchange-time session window.",
-        "success_criteria": "Define performance, sample-size, and OOS success criteria.",
+        "dataset": "Select a dataset and instrument.",
+        "setup": "Define setup levels, trigger, direction, and tolerance.",
+        "backtest": "Define costs, exposure, intrabar, and session assumptions.",
     }
     for key, question in required.items():
-        if not has_choice(key):
+        if not isinstance(selected.get(key), Mapping):
             unresolved.append(question)
     if re.search(r"\bdvwap\b", text) and not has_choice("session_vwap_anchor"):
-        unresolved.append("Confirm dVWAP_RTH and its RTH-only availability.")
+        levels = selected.get("levels")
+        if not isinstance(levels, Mapping) or not levels.get("session_vwap_enabled"):
+            unresolved.append("Enable developing RTH VWAP for the dVWAP thesis.")
     if (re.search(r"\bsma\b", text) or "moving average" in text) and not has_choice(
         "confluence_tolerance_ticks"
     ):
-        unresolved.append("Define the SMA confluence tolerance in ticks.")
+        setup = selected.get("setup")
+        if not isinstance(setup, Mapping) or "tolerance_ticks" not in setup:
+            unresolved.append("Define the SMA confluence tolerance in ticks.")
     if re.search(r"\b(?:stops?|targets?|sl|take[- ]profit)\b", text) and not has_choice(
         "selection_protocol"
     ):

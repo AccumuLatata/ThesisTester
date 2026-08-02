@@ -88,6 +88,16 @@ coordinator between UI, repository, compiler, tools, and explainer.
 - Fixtures prove no silent defaults for costs, session, selection protocol, or
   random state.
 
+**Implemented contract (compiler v2)**
+- `StructuredThesisChoices` is the versioned typed draft boundary. The canonical
+  mapper accepts only public executable sections and rejects narrative-only
+  fields rather than persisting ignored assumptions.
+- Confirmation recompiles and calls `validate_run_spec()` before its immutable
+  child record is written. Confirmed content is revalidated before execution.
+- Costs, exposure, intrabar behavior, session close/timezone/entry cutoff,
+  validation seed, enabled-grid selection, and walk-forward protocol are
+  explicit inputs; the compiler supplies none of them.
+
 ## C2-3 — Bundle-backed run lifecycle
 
 **Goal:** connect confirmed specs to reproducible execution and provenance.

@@ -5,6 +5,7 @@ from thesistester.assistant import (
     compile_canonical_run_spec,
     compile_run_spec,
     compile_thesis,
+    map_thesis_choices_to_run_spec,
 )
 
 
@@ -17,13 +18,10 @@ def test_compiler_marks_ambiguous_trading_language_for_clarification():
 
 def test_compiler_is_deterministic_for_complete_explicit_choices():
     choices = {
-        "trend_rule": "30m SMA50 slope > 0",
-        "trigger": "touch within 2 ticks",
-        "session_window": "10:30-11:30 America/New_York",
-        "success_criteria": "30 trades and walk-forward review",
-        "session_vwap_anchor": "RTH",
-        "confluence_tolerance_ticks": 2,
-        "selection_protocol": "grid then OOS",
+        "dataset": {"path": "bars.csv", "instrument": "ES"},
+        "levels": {"session_vwap_enabled": True, "sma_lengths": [50]},
+        "setup": {"trigger": "touch", "tolerance_ticks": 2},
+        "backtest": {},
     }
     first = compile_thesis("dVWAP SMA stop target", choices=choices)
     second = compile_thesis("dVWAP SMA stop target", choices=choices)
@@ -66,6 +64,10 @@ def test_canonical_compiler_rejects_implicit_execution_assumptions(monkeypatch):
             "slippage_ticks": 0.0,
             "exposure_policy": "single_position",
             "intrabar_model": "sl_first",
+            "flat_by_session_close": True,
+            "session_close_time": "16:00",
+            "session_timezone": "America/New_York",
+            "no_new_entries_after": "15:45",
         },
         "validation": {"random_state": 42},
     }
@@ -88,6 +90,10 @@ def test_canonical_compiler_normalizes_omitted_levels_to_empty_mapping(monkeypat
             "slippage_ticks": 0.0,
             "exposure_policy": "single_position",
             "intrabar_model": "sl_first",
+            "flat_by_session_close": True,
+            "session_close_time": "16:00",
+            "session_timezone": "America/New_York",
+            "no_new_entries_after": "15:45",
         },
     }
 
@@ -118,3 +124,62 @@ def test_structured_choices_have_stable_canonical_serialization():
         backtest={},
     )
     assert choices.canonical_json() == choices.canonical_json()
+
+
+def test_dvwap_sma_structured_choices_compile_canonically(monkeypatch):
+    monkeypatch.setattr(
+        "thesistester.assistant.thesis_compiler.validate_run_spec", lambda spec: None
+    )
+    choices = {
+        "dataset": {"path": "bars.csv", "instrument": "ES"},
+        "levels": {
+            "session_vwap_enabled": True,
+            "sma_lengths": [50],
+            "sma_timeframes": ["30min"],
+        },
+        "setup": {
+            "selected_levels": "dVWAP_RTH",
+            "trigger": "touch",
+            "tolerance_ticks": 2,
+        },
+        "backtest": {
+            "commission_per_side": 2.5,
+            "slippage_ticks": 1,
+            "exposure_policy": "single_position",
+            "intrabar_model": "sl_first",
+            "flat_by_session_close": True,
+            "session_close_time": "16:00",
+            "session_timezone": "America/New_York",
+            "no_new_entries_after": "15:45",
+        },
+        "validation": {"random_state": 7},
+    }
+
+    first = map_thesis_choices_to_run_spec(name="dVWAP SMA", choices=choices)
+    second = map_thesis_choices_to_run_spec(name="dVWAP SMA", choices=choices)
+
+    assert first == second
+    assert first["setup"]["instrument"] == "ES"
+    assert first["setup"]["selected_levels"] == ["dVWAP_RTH"]
+
+
+@pytest.mark.parametrize(
+    ("choices", "message"),
+    [
+        ({"trend_rule": "up"}, "non-executable"),
+        (
+            {
+                "dataset": {"path": "bars.csv", "instrument": "ES"},
+                "setup": {},
+                "backtest": {},
+            },
+            "setup.trigger",
+        ),
+    ],
+)
+def test_structured_mapping_rejects_ghost_and_incomplete_choices(monkeypatch, choices, message):
+    monkeypatch.setattr(
+        "thesistester.assistant.thesis_compiler.validate_run_spec", lambda spec: None
+    )
+    with pytest.raises(ValueError, match=message):
+        map_thesis_choices_to_run_spec(name="Thesis", choices=choices)

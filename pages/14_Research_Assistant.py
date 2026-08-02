@@ -18,8 +18,8 @@ from thesistester.assistant import (
     AssistantOrchestrator,
     Comparison,
     LocalThesisRepository,
-    compile_canonical_run_spec,
     compile_thesis,
+    map_thesis_choices_to_run_spec,
 )
 from thesistester.assistant.explainer import (
     build_evidence_packet,
@@ -84,6 +84,9 @@ def _positive_number_list(raw: str) -> list[float]:
     if not values or any(not math.isfinite(value) or value <= 0 for value in values):
         raise ValueError("Provide one or more positive comma-separated values.")
     return values
+
+
+SETUP_TRIGGER_OPTIONS = ["touch", "reject", "break", "reclaim", "3c"]
 
 
 _init_state()
@@ -213,28 +216,6 @@ if chat_message := st.chat_input("Describe or refine this thesis"):
     except (LLMConfigurationError, LLMProviderError) as exc:
         st.error(str(exc))
 
-with st.expander("Structured research clarifications"):
-    with st.form(f"assistant_clarifications_{thesis_id}"):
-        current = st.session_state["assistant_draft_choices"]
-        trend_rule = st.text_input("Trend rule", value=str(current.get("trend_rule", "")))
-        trigger = st.text_input("Entry trigger", value=str(current.get("trigger", "")))
-        session_window = st.text_input(
-            "Session window", value=str(current.get("session_window", ""))
-        )
-        success_criteria = st.text_input(
-            "Success criteria", value=str(current.get("success_criteria", ""))
-        )
-        if st.form_submit_button("Apply clarifications"):
-            st.session_state["assistant_draft_choices"] = {
-                **current,
-                "trend_rule": trend_rule,
-                "trigger": trigger,
-                "session_window": session_window,
-                "success_criteria": success_criteria,
-            }
-            st.session_state["assistant_validated_run_spec"] = None
-            st.rerun()
-
 with st.expander("Structured execution controls"):
     current = st.session_state["assistant_draft_choices"]
     dataset = current.get("dataset") if isinstance(current.get("dataset"), dict) else {}
@@ -307,6 +288,22 @@ with st.expander("Structured execution controls"):
             in ["sl_first", "path_open_proximity", "subtimeframe", "subtimeframe_conservative"]
             else 0,
         )
+        flat_by_session_close = st.checkbox(
+            "Flatten at session close",
+            value=bool(backtest.get("flat_by_session_close", False)),
+        )
+        session_close_time = st.text_input(
+            "Session close time (exchange time)",
+            value=str(backtest.get("session_close_time") or "16:00"),
+        )
+        session_timezone = st.text_input(
+            "Session timezone",
+            value=str(backtest.get("session_timezone") or "America/New_York"),
+        )
+        no_new_entries_after = st.text_input(
+            "No new entries after (exchange time)",
+            value=str(backtest.get("no_new_entries_after") or "15:45"),
+        )
         if st.form_submit_button("Apply execution controls"):
             st.session_state["assistant_draft_choices"] = {
                 **current,
@@ -320,6 +317,10 @@ with st.expander("Structured execution controls"):
                     "slippage_ticks": slippage_ticks,
                     "exposure_policy": exposure_policy,
                     "intrabar_model": intrabar_model,
+                    "flat_by_session_close": flat_by_session_close,
+                    "session_close_time": session_close_time,
+                    "session_timezone": session_timezone,
+                    "no_new_entries_after": no_new_entries_after,
                 },
             }
             st.session_state["assistant_validated_run_spec"] = None
@@ -539,6 +540,78 @@ with st.expander("Structured level controls"):
             st.session_state["assistant_validated_run_spec"] = None
             st.rerun()
 
+with st.expander("Structured setup controls"):
+    current = st.session_state["assistant_draft_choices"]
+    setup = current.get("setup") if isinstance(current.get("setup"), dict) else {}
+    setup_fingerprint = hashlib.sha256(
+        json.dumps(setup, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:12]
+    with st.form(f"assistant_setup_{thesis_id}_{setup_fingerprint}"):
+        setup_name = st.text_input("Setup name", value=str(setup.get("name") or thesis.name))
+        selected_levels = st.text_input(
+            "Confluence levels (comma-separated)",
+            value=", ".join(setup.get("selected_levels") or ["dVWAP_RTH", "SMA_50_30min"]),
+        )
+        trigger_value = str(setup.get("trigger") or "touch")
+        trigger = st.selectbox(
+            "Trigger",
+            SETUP_TRIGGER_OPTIONS,
+            index=SETUP_TRIGGER_OPTIONS.index(trigger_value)
+            if trigger_value in SETUP_TRIGGER_OPTIONS
+            else 0,
+        )
+        direction_options = ["both", "long", "short"]
+        direction_value = str(setup.get("direction") or "both")
+        direction = st.selectbox(
+            "Direction",
+            direction_options,
+            index=direction_options.index(direction_value)
+            if direction_value in direction_options
+            else 0,
+        )
+        tolerance_ticks = st.number_input(
+            "Confluence tolerance ticks",
+            min_value=0.0,
+            value=float(setup.get("tolerance_ticks") or 0.0),
+        )
+        if st.form_submit_button("Apply setup controls"):
+            levels = [item.strip() for item in selected_levels.split(",") if item.strip()]
+            level_count = max(1, len(levels))
+            try:
+                previous_min = int(setup.get("min_confluences", 1))
+                previous_max = int(setup.get("max_confluences", level_count))
+            except (TypeError, ValueError):
+                previous_min, previous_max = 1, level_count
+            min_confluences = min(max(1, previous_min), level_count)
+            max_confluences = min(max(min_confluences, previous_max), level_count)
+            instrument = str((current.get("dataset") or {}).get("instrument") or "ES")
+            st.session_state["assistant_draft_choices"] = {
+                **current,
+                "setup": {
+                    **setup,
+                    "name": setup_name,
+                    "description": setup.get("description", ""),
+                    "instrument": instrument,
+                    "selected_levels": levels,
+                    "tolerance_ticks": tolerance_ticks,
+                    "min_confluences": min_confluences,
+                    "max_confluences": max_confluences,
+                    "naked_only": setup.get("naked_only", False),
+                    "naked_requirement": setup.get("naked_requirement", "any"),
+                    "trigger": trigger,
+                    "trigger_timeframe": setup.get("trigger_timeframe", "base"),
+                    "direction": direction,
+                    "confluence_mode": setup.get("confluence_mode", "global_cluster"),
+                    "anchor_level": setup.get("anchor_level"),
+                    "confluence_rules": setup.get("confluence_rules", []),
+                    "min_valid_confluences": setup.get("min_valid_confluences", 1),
+                    "trigger_params": setup.get("trigger_params", {}),
+                    "otf_filter": setup.get("otf_filter"),
+                },
+            }
+            st.session_state["assistant_validated_run_spec"] = None
+            st.rerun()
+
 with st.expander("Reuse saved setup"):
     saved_setups = list_saved_setups()
     setup_options = {
@@ -574,7 +647,7 @@ with st.expander("Advanced: edit complete research choices as JSON"):
     choices_raw = st.text_area(
         "Explicit research choices (JSON)",
         value=json.dumps(st.session_state["assistant_draft_choices"], indent=2),
-        help="Use structured clarifications above for common fields.",
+        help="Use structured controls above for executable assumptions.",
     )
 if st.button("Draft research plan", type="primary"):
     try:
@@ -599,7 +672,7 @@ if st.button("Draft research plan", type="primary"):
 if st.button("Validate executable RunSpec"):
     try:
         current_choices = _choices_from_editor(choices_raw)
-        validated = compile_canonical_run_spec(name=thesis.name, choices=current_choices)
+        validated = map_thesis_choices_to_run_spec(name=thesis.name, choices=current_choices)
         st.session_state["assistant_draft_choices"] = current_choices
         st.session_state["assistant_validated_run_spec"] = {
             "choices": current_choices,
@@ -629,7 +702,7 @@ if (
             normalized_run_spec=validated_state["spec"],
             status="ready_for_confirmation",
             unresolved_assumptions=(),
-            compiler_version="runspec-1",
+            compiler_version="runspec-2",
         )
         repository.confirm_spec_version(
             thesis_id,
