@@ -40,6 +40,7 @@ def _init_state() -> None:
     st.session_state.setdefault("assistant_conversation_ids", {})
     st.session_state.setdefault("assistant_hydrated_conversation_id", None)
     st.session_state.setdefault("assistant_validated_run_spec", None)
+    st.session_state.setdefault("assistant_run_explanations", {})
 
 
 def _select_thesis(thesis_id: str) -> None:
@@ -297,9 +298,14 @@ else:
                             bundle["session_values"],
                             provenance=run.provenance,
                         )
-                        st.write(explain_evidence(packet))
+                        st.session_state["assistant_run_explanations"][run.run_id] = (
+                            explain_evidence(packet)
+                        )
                     except (OSError, ValueError) as exc:
                         st.error(f"Unable to load run evidence: {exc}")
+                explanation = st.session_state["assistant_run_explanations"].get(run.run_id)
+                if explanation:
+                    st.write(explanation)
 
 st.subheader("Conversation audit")
 conversations = repository.list_conversations(thesis_id)
