@@ -239,12 +239,14 @@ with st.expander("Structured execution controls"):
             instruments,
             index=instruments.index(current_instrument) if current_instrument in instruments else 0,
         )
-        stop_loss_ticks = st.number_input(
-            "Stop loss ticks", min_value=1, value=int(backtest.get("stop_loss_ticks", 8))
+        raw_stop = backtest.get("stop_loss_ticks", 8)
+        raw_target = backtest.get("take_profit_ticks", 16)
+        stop_default = int(raw_stop) if isinstance(raw_stop, (int, float)) and raw_stop > 0 else 8
+        target_default = (
+            int(raw_target) if isinstance(raw_target, (int, float)) and raw_target > 0 else 16
         )
-        take_profit_ticks = st.number_input(
-            "Take profit ticks", min_value=1, value=int(backtest.get("take_profit_ticks", 16))
-        )
+        stop_loss_ticks = st.number_input("Stop loss ticks", min_value=1, value=stop_default)
+        take_profit_ticks = st.number_input("Take profit ticks", min_value=1, value=target_default)
         if st.form_submit_button("Apply execution controls"):
             st.session_state["assistant_draft_choices"] = {
                 **current,
