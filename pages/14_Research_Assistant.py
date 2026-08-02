@@ -18,6 +18,7 @@ from thesistester.assistant import (
     compile_run_spec,
     compile_thesis,
 )
+from thesistester.assistant.explainer import build_evidence_packet, explain_evidence
 from thesistester.assistant.llm import (
     LLMConfigurationError,
     create_openai_client,
@@ -25,6 +26,7 @@ from thesistester.assistant.llm import (
 )
 from thesistester.assistant.tools import AssistantTools
 from thesistester.persistence.local_store import get_store_root
+from thesistester.research_bundle import load_research_bundle
 
 
 def _repository() -> LocalThesisRepository:
@@ -38,6 +40,7 @@ def _init_state() -> None:
     st.session_state.setdefault("assistant_conversation_ids", {})
     st.session_state.setdefault("assistant_hydrated_conversation_id", None)
     st.session_state.setdefault("assistant_validated_run_spec", None)
+    st.session_state.setdefault("assistant_run_explanations", {})
 
 
 def _select_thesis(thesis_id: str) -> None:
@@ -284,6 +287,25 @@ else:
                     "error": run.error,
                 }
             )
+            if run.status == "completed" and isinstance(run.provenance, dict):
+                bundle_path = run.provenance.get("bundle_path")
+                if isinstance(bundle_path, str) and st.button(
+                    "Explain run", key=f"explain-{run.run_id}"
+                ):
+                    try:
+                        bundle = load_research_bundle(Path(bundle_path).read_bytes())
+                        packet = build_evidence_packet(
+                            bundle["session_values"],
+                            provenance=run.provenance,
+                        )
+                        st.session_state["assistant_run_explanations"][run.run_id] = (
+                            explain_evidence(packet)
+                        )
+                    except (OSError, ValueError) as exc:
+                        st.error(f"Unable to load run evidence: {exc}")
+                explanation = st.session_state["assistant_run_explanations"].get(run.run_id)
+                if explanation:
+                    st.write(explanation)
 
 st.subheader("Conversation audit")
 conversations = repository.list_conversations(thesis_id)

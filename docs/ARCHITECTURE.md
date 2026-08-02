@@ -60,7 +60,7 @@ additive, namespaced keys and document them here in the same PR.
 The AIA-5 Research Assistant page adds only `assistant_selected_thesis_id`,
 `assistant_draft_prompt`, `assistant_draft_choices`, and
 `assistant_conversation_ids`, `assistant_hydrated_conversation_id`, and
-`assistant_validated_run_spec`. They select and stage
+`assistant_validated_run_spec`, and `assistant_run_explanations`. They select and stage
 assistant-library objects; they do not replace existing data, levels, signals,
 or backtest session-state producers.
 
