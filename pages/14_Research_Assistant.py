@@ -45,6 +45,7 @@ def _init_state() -> None:
     st.session_state.setdefault("assistant_hydrated_conversation_id", None)
     st.session_state.setdefault("assistant_validated_run_spec", None)
     st.session_state.setdefault("assistant_run_explanations", {})
+    st.session_state.setdefault("assistant_run_comparisons", {})
 
 
 def _select_thesis(thesis_id: str) -> None:
@@ -306,7 +307,12 @@ else:
                     st.write(explanation)
 
 completed_runs = [
-    run for run in runs if run.status == "completed" and isinstance(run.provenance, dict)
+    run
+    for run in runs
+    if run.status == "completed"
+    and isinstance(run.provenance, dict)
+    and isinstance(run.provenance.get("bundle_path"), str)
+    and isinstance(run.provenance.get("canonical_bundle_hash"), str)
 ]
 if len(completed_runs) >= 2:
     st.subheader("Compare completed runs")
@@ -314,10 +320,13 @@ if len(completed_runs) >= 2:
         run.run_id: f"Run {run.run_id[-8:]} · spec v{run.spec_version}" for run in completed_runs
     }
     left_id = st.selectbox(
-        "Left run", list(labels), format_func=labels.get, key="assistant_compare_left"
+        "Left run", list(labels), format_func=labels.get, key=f"assistant_compare_left_{thesis_id}"
     )
     right_id = st.selectbox(
-        "Right run", list(labels), format_func=labels.get, key="assistant_compare_right"
+        "Right run",
+        list(labels),
+        format_func=labels.get,
+        key=f"assistant_compare_right_{thesis_id}",
     )
     if st.button("Compare runs") and left_id != right_id:
         try:
@@ -333,9 +342,12 @@ if len(completed_runs) >= 2:
                         load_research_bundle(raw)["session_values"], provenance=run.provenance
                     )
                 )
-            st.json(compare_evidence(*packets))
+            st.session_state["assistant_run_comparisons"][thesis_id] = compare_evidence(*packets)
         except (OSError, ValueError) as exc:
             st.error(f"Unable to compare runs: {exc}")
+    comparison = st.session_state["assistant_run_comparisons"].get(thesis_id)
+    if comparison:
+        st.json(comparison)
 
 st.subheader("Conversation audit")
 conversations = repository.list_conversations(thesis_id)
