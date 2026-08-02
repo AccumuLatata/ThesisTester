@@ -86,13 +86,18 @@ class AssistantOrchestrator:
     ) -> ThesisDraft:
         """Persist a non-executing chat turn and return its deterministic draft."""
         conversation = self.repository.get_conversation(thesis_id, conversation_id)
+        history = "\n".join(
+            f"{message.get('role', 'unknown')}: {message.get('content', '')}"
+            for message in conversation.messages
+        )
+        prompt = f"{history}\nuser: {user_message}" if history else user_message
+        draft = propose_thesis_draft(client, prompt=prompt)
         user_record = self.repository.append_conversation_message(
             thesis_id,
             conversation_id,
             expected_revision=conversation.revision,
             message={"role": "user", "content": user_message},
         )
-        draft = propose_thesis_draft(client, prompt=user_message)
         self.repository.append_conversation_message(
             thesis_id,
             conversation_id,
