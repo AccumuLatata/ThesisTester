@@ -29,7 +29,12 @@ from thesistester.assistant.repository import (
     Thesis,
 )
 from thesistester.assistant.tools import AssistantToolError, AssistantTools, ToolLimits
-from thesistester.assistant.thesis_compiler import COMPILER_VERSION, ThesisDraft, compile_thesis
+from thesistester.assistant.thesis_compiler import (
+    COMPILER_VERSION,
+    ThesisDraft,
+    compile_run_spec,
+    compile_thesis,
+)
 from thesistester.assistant.explainer import EvidencePacket, build_evidence_packet, explain_evidence
 from thesistester.assistant.orchestrator import AssistantOrchestrator, OrchestrationResult
 
@@ -65,6 +70,7 @@ __all__ = [
     "get_capability",
     "validate_capability_request",
     "compile_thesis",
+    "compile_run_spec",
     "build_evidence_packet",
     "explain_evidence",
 ]

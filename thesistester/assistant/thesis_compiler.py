@@ -7,8 +7,11 @@ It turns explicit structured choices plus user prose into a reviewable draft.
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Mapping
+
+from thesistester.api import validate_run_spec
 
 COMPILER_VERSION = "1"
 
@@ -24,6 +27,34 @@ class ThesisDraft:
     @property
     def ready_for_confirmation(self) -> bool:
         return not self.unresolved_assumptions
+
+
+def compile_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict[str, Any]:
+    """Build and validate an executable public experiment specification.
+
+    The caller must provide explicit API sections; this function never infers
+    execution assumptions from prose.
+    """
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("Run name must be a non-empty string.")
+    if not isinstance(choices, Mapping):
+        raise ValueError("Research choices must be an object.")
+    required = ("dataset", "setup", "backtest")
+    missing = [key for key in required if key not in choices]
+    if missing:
+        raise ValueError(f"Executable research choices require: {', '.join(missing)}.")
+    spec = {
+        "name": name.strip(),
+        "dataset": deepcopy(choices["dataset"]),
+        "levels": deepcopy(choices.get("levels", {})),
+        "setup": deepcopy(choices["setup"]),
+        "backtest": deepcopy(choices["backtest"]),
+    }
+    for optional in ("grid", "validation", "walk_forward"):
+        if optional in choices:
+            spec[optional] = deepcopy(choices[optional])
+    validate_run_spec(spec)
+    return spec
 
 
 def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> ThesisDraft:
