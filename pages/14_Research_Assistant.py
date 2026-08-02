@@ -252,17 +252,29 @@ with st.expander("Structured execution controls"):
         target_default = (
             int(raw_target) if isinstance(raw_target, (int, float)) and raw_target > 0 else 16
         )
+        raw_commission = backtest.get("commission_per_side", 0)
+        raw_slippage = backtest.get("slippage_ticks", 0)
+        commission_default = (
+            float(raw_commission)
+            if isinstance(raw_commission, (int, float)) and raw_commission >= 0
+            else 0.0
+        )
+        slippage_default = (
+            float(raw_slippage)
+            if isinstance(raw_slippage, (int, float)) and raw_slippage >= 0
+            else 0.0
+        )
         stop_loss_ticks = st.number_input("Stop loss ticks", min_value=1, value=stop_default)
         take_profit_ticks = st.number_input("Take profit ticks", min_value=1, value=target_default)
         commission_per_side = st.number_input(
             "Commission per side",
             min_value=0.0,
-            value=float(backtest.get("commission_per_side") or 0.0),
+            value=commission_default,
         )
         slippage_ticks = st.number_input(
             "Slippage ticks",
             min_value=0.0,
-            value=float(backtest.get("slippage_ticks") or 0.0),
+            value=slippage_default,
         )
         exposure_policy = st.selectbox(
             "Exposure policy",
