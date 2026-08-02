@@ -2004,7 +2004,7 @@ def preview_resampled_ohlcv(
     """Return a bounded read-only OHLCV resample preview."""
     if not isinstance(max_rows, int) or isinstance(max_rows, bool) or not 1 <= max_rows <= 1000:
         raise ValueError("max_rows must be an integer from 1 to 1000.")
-    return resample_ohlcv(df, timeframe).tail(max_rows).reset_index(drop=True)
+    return resample_ohlcv(df, timeframe).head(max_rows).reset_index(drop=True)
 
 
 def run_otf_validation(
