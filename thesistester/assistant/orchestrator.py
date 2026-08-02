@@ -169,7 +169,16 @@ class AssistantOrchestrator:
                 },
                 warnings=warnings,
             )
-            if conversation_id is not None:
+        except BaseException as exc:
+            self.repository.fail_run(
+                thesis_id,
+                run.run_id,
+                expected_revision=run.revision,
+                error={"type": type(exc).__name__, "message": str(exc)},
+            )
+            raise
+        if conversation_id is not None:
+            try:
                 conversation = self.repository.get_conversation(thesis_id, conversation_id)
                 self.repository.append_conversation_message(
                     thesis_id,
@@ -183,14 +192,8 @@ class AssistantOrchestrator:
                         "status": "completed",
                     },
                 )
-        except BaseException as exc:
-            self.repository.fail_run(
-                thesis_id,
-                run.run_id,
-                expected_revision=run.revision,
-                error={"type": type(exc).__name__, "message": str(exc)},
-            )
-            raise
+            except Exception:
+                pass
         return OrchestrationResult(
             status="completed",
             capability_id="PIPELINE.run_experiment",
