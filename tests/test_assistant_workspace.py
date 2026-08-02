@@ -109,6 +109,11 @@ def test_page_is_orchestrator_only_and_keeps_json_advanced():
     assert "Apply JSON audit edits" in source
     assert "Restore bundle into research pages" in source
     assert "Plan review" in source
+    assert "Build research artifact" in source
+    assert "active_bundle_handoff(" in source
+    assert "latest_unresolved_assumptions(" in source
+    assert 'or "allow_all"' in source
+    assert "assistant_bundle_handoff" in THESIS_SCOPED_STAGING_KEYS
 
 
 def test_assistant_session_keys_cover_documented_staging_surface():
@@ -116,6 +121,7 @@ def test_assistant_session_keys_cover_documented_staging_surface():
     assert "assistant_validated_run_spec" in ASSISTANT_SESSION_KEYS
     assert "assistant_llm_run_explanations" in ASSISTANT_SESSION_KEYS
     assert "assistant_bundle_handoff" in ASSISTANT_SESSION_KEYS
+    assert "assistant_bundle_handoff" in THESIS_SCOPED_STAGING_KEYS
     assert set(THESIS_SCOPED_STAGING_KEYS).issubset(ASSISTANT_SESSION_KEYS)
 
 
@@ -127,6 +133,11 @@ def test_thesis_switch_clears_draft_validation_and_hydration():
     state["assistant_draft_choices"] = {"dataset": {"path": "a.csv"}}
     state["assistant_validated_run_spec"] = {"spec": {"name": "x"}}
     state["assistant_hydrated_conversation_id"] = "conv_old"
+    state["assistant_bundle_handoff"] = {
+        "thesis_id": "th_a",
+        "run_id": "run_old",
+        "restored_count": 3,
+    }
     state["assistant_run_comparisons"] = {"th_a": {"run_ids": ["r1", "r2"]}}
 
     changed = select_thesis(state, "th_b")
@@ -136,9 +147,25 @@ def test_thesis_switch_clears_draft_validation_and_hydration():
     assert state["assistant_draft_choices"] == {}
     assert state["assistant_validated_run_spec"] is None
     assert state["assistant_hydrated_conversation_id"] is None
+    assert state["assistant_bundle_handoff"] is None
     # Persisted comparison cache is thesis-keyed and intentionally retained.
     assert state["assistant_run_comparisons"]["th_a"]["run_ids"] == ["r1", "r2"]
     assert select_thesis(state, "th_b") is False
+
+
+def test_active_bundle_handoff_requires_matching_thesis():
+    from thesistester.assistant.workspace import active_bundle_handoff
+
+    state = {
+        "assistant_bundle_handoff": {
+            "thesis_id": "th_a",
+            "run_id": "run_1",
+            "restored_count": 2,
+        }
+    }
+    assert active_bundle_handoff(state, thesis_id="th_a")["run_id"] == "run_1"
+    assert active_bundle_handoff(state, thesis_id="th_b") is None
+    assert active_bundle_handoff({}, thesis_id="th_a") is None
 
 
 def test_structured_merges_cover_setup_levels_execution_grid_validation_wfa():
@@ -254,6 +281,29 @@ def test_plan_review_ready_flag_requires_validated_spec():
     )
     assert plan["ready_for_confirmation"] is False
     assert plan["unresolved_assumptions"] == ["Define costs."]
+
+
+def test_latest_unresolved_assumptions_uses_newest_clarification_spec():
+    from types import SimpleNamespace
+
+    from thesistester.assistant.workspace import latest_unresolved_assumptions
+
+    specs = (
+        SimpleNamespace(status="needs_clarification", unresolved_assumptions=("old",)),
+        SimpleNamespace(status="ready_for_confirmation", unresolved_assumptions=()),
+        SimpleNamespace(status="needs_clarification", unresolved_assumptions=("new",)),
+        SimpleNamespace(status="confirmed", unresolved_assumptions=()),
+    )
+    assert latest_unresolved_assumptions(specs) == ("new",)
+
+
+def test_option_index_defaults_exposure_policy_to_allow_all():
+    from thesistester.assistant.workspace import EXPOSURE_POLICIES, option_index
+
+    assert EXPOSURE_POLICIES[0] == "allow_all"
+    assert option_index(EXPOSURE_POLICIES, None) == 0
+    assert option_index(EXPOSURE_POLICIES, "missing") == 0
+    assert option_index(EXPOSURE_POLICIES, "single_position") == 1
 
 
 def test_orchestrator_facade_draft_validate_confirm_is_idempotent(tmp_path):
@@ -485,6 +535,7 @@ def test_clear_thesis_scoped_state_helper():
         "assistant_draft_choices": {"a": 1},
         "assistant_hydrated_conversation_id": "c",
         "assistant_validated_run_spec": {"spec": {}},
+        "assistant_bundle_handoff": {"thesis_id": "th_a", "run_id": "r1"},
         "assistant_run_explanations": {"r1": "keep"},
     }
     clear_thesis_scoped_state(state)
@@ -492,4 +543,58 @@ def test_clear_thesis_scoped_state_helper():
     assert state["assistant_draft_choices"] == {}
     assert state["assistant_hydrated_conversation_id"] is None
     assert state["assistant_validated_run_spec"] is None
+    assert state["assistant_bundle_handoff"] is None
     assert state["assistant_run_explanations"] == {"r1": "keep"}
+
+
+def test_compare_completed_runs_returns_evidence_when_save_fails(tmp_path):
+    from tests.fixtures.assistant_parity import absolute_parity_run_spec, write_parity_bars
+    from thesistester.assistant.repository import AssistantRepositoryError
+
+    write_parity_bars(tmp_path / "bars.csv")
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    orchestrator = AssistantOrchestrator(
+        tools=AssistantTools(data_roots=(tmp_path,)),
+        repository=repository,
+    )
+    thesis = orchestrator.create_thesis(name="compare-save")
+    conversation = orchestrator.ensure_conversation(thesis.thesis_id)
+    choices = {
+        key: value for key, value in absolute_parity_run_spec(tmp_path).items() if key != "name"
+    }
+    validated = orchestrator.validate_choices(
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+        thesis_name=thesis.name,
+        choices=choices,
+    )
+    runs = []
+    for index in range(2):
+        confirmed = orchestrator.confirm_validated_spec(
+            thesis_id=thesis.thesis_id,
+            validated_spec=validated.payload["spec"],
+        )
+        result = orchestrator.execute_confirmed_run(
+            thesis_id=thesis.thesis_id,
+            spec_version=confirmed.version,
+            output_path=tmp_path / f"cmp-{index}.research.zip",
+            conversation_id=conversation.conversation_id,
+        )
+        assert result.status == "completed"
+        runs.append(repository.get_run(thesis.thesis_id, result.payload["run_id"]))
+
+    def boom(comparison):
+        raise AssistantRepositoryError("forced comparison save failure")
+
+    repository.save_comparison = boom
+    compared = orchestrator.compare_completed_runs(
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+        left_run=runs[0],
+        right_run=runs[1],
+    )
+    assert compared.status == "completed"
+    assert compared.payload["comparison"]
+    assert compared.payload["record"] is None
+    assert "forced comparison save failure" in compared.payload["persistence_error"]
+    assert orchestrator.list_comparisons(thesis.thesis_id) == ()

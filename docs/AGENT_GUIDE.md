@@ -158,7 +158,7 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   lifecycle, bundle tools, or the Research Assistant page.
 - Document every additive `assistant_*` session key in `ARCHITECTURE.md` and
   `ASSISTANT_SESSION_KEYS`. Thesis switches must clear
-  `THESIS_SCOPED_STAGING_KEYS`.
+  `THESIS_SCOPED_STAGING_KEYS` (including `assistant_bundle_handoff`).
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned

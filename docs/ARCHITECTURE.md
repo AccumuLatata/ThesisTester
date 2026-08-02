@@ -79,7 +79,10 @@ The Research Assistant page stages only these additive `assistant_*` keys
 
 Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_draft_choices`, `assistant_hydrated_conversation_id`,
-`assistant_validated_run_spec`) so draft/validation/hydration cannot leak.
+`assistant_validated_run_spec`, `assistant_bundle_handoff`) so
+draft/validation/hydration/handoff cannot leak. The Active handoff caption is
+further gated by `active_bundle_handoff()` so a stale handoff never displays for
+a different thesis.
 `assistant_draft_choices` contains only supported structured RunSpec sections;
 narrative LLM hints stay in conversation history and never become execution
 candidates. Clarification checks trust only structured sections
@@ -110,7 +113,13 @@ rather than being stored as executable assumptions.
 `dispatch()` remains the only compute router for registry capabilities. Workspace
 façade methods wrap thesis/spec/run/conversation/comparison lifecycle,
 validate/confirm, explain/compare/export/portfolio, and bundle handoff so the
-Research Assistant page stays presentation-only. Page code must not construct
+Research Assistant page stays presentation-only. Plan review surfaces
+`needs_clarification` assumptions via `latest_unresolved_assumptions()`.
+`compare_completed_runs()` still returns computed comparison evidence when
+immutable comparison persistence fails (`persistence_error`), so the UI is not
+blocked by a save race. Report and research-artifact export remain independent
+UI actions. Untouched execution drafts default `exposure_policy` to
+`allow_all`. Page code must not construct
 `AssistantTools`, mutate `LocalThesisRepository`, compile RunSpecs, explain
 evidence, or read bundle bytes directly. Provenance-gated bundle loads
 (`BUNDLE.import`, `EXPORT.build_research_artifact`, `PORTFOLIO.analyze`) require

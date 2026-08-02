@@ -39,10 +39,12 @@ from thesistester.assistant.workspace import (
     TRIGGER_TIMEFRAMES,
     WFA_MATRIX_METRICS,
     WINDOW_MODES,
+    active_bundle_handoff,
     build_plan_review,
     build_provenance_card,
     init_assistant_session_state,
     invalidate_validation,
+    latest_unresolved_assumptions,
     merge_execution_controls,
     merge_grid_controls,
     merge_level_controls,
@@ -74,13 +76,6 @@ with st.expander("Open detailed research views"):
     st.page_link("pages/11_Report_Export.py", label="Report / Export")
     st.page_link("pages/12_Research_Bundles.py", label="Research Bundles")
     st.page_link("pages/13_Portfolio.py", label="Portfolio")
-    handoff = st.session_state.get("assistant_bundle_handoff")
-    if isinstance(handoff, dict) and handoff.get("run_id"):
-        st.caption(
-            "Active handoff: "
-            f"run {str(handoff['run_id'])[-8:]} · "
-            f"restored {handoff.get('restored_count', 0)} session keys."
-        )
 
 with st.sidebar:
     st.subheader("Theses")
@@ -118,6 +113,13 @@ if not thesis_id:
 thesis = orchestrator.get_thesis(thesis_id)
 st.subheader(thesis.name)
 st.caption(f"Revision {thesis.revision} · {thesis.lifecycle}")
+handoff = active_bundle_handoff(st.session_state, thesis_id=thesis_id)
+if handoff is not None:
+    st.caption(
+        "Active handoff: "
+        f"run {str(handoff['run_id'])[-8:]} · "
+        f"restored {handoff.get('restored_count', 0)} session keys."
+    )
 with st.expander("Manage thesis"):
     renamed = st.text_input("Rename thesis", value=thesis.name, key=f"assistant_rename_{thesis_id}")
     if st.button("Save thesis name", key=f"rename-{thesis_id}"):
@@ -239,7 +241,10 @@ with st.expander("Structured execution controls", expanded=True):
         exposure_policy = st.selectbox(
             "Exposure policy",
             list(EXPOSURE_POLICIES),
-            index=option_index(EXPOSURE_POLICIES, backtest.get("exposure_policy"), 1),
+            index=option_index(
+                EXPOSURE_POLICIES,
+                backtest.get("exposure_policy") or "allow_all",
+            ),
         )
         intrabar_model = st.selectbox(
             "Intrabar model",
@@ -763,6 +768,7 @@ with validate_col:
             st.success("Executable RunSpec is valid and ready for explicit confirmation.")
 
 validated_state = st.session_state["assistant_validated_run_spec"]
+spec_versions = orchestrator.list_spec_versions(thesis_id)
 plan = build_plan_review(
     thesis_name=thesis.name,
     choices=st.session_state["assistant_draft_choices"],
@@ -770,6 +776,7 @@ plan = build_plan_review(
     if isinstance(validated_state, dict)
     and validated_state.get("choices") == st.session_state["assistant_draft_choices"]
     else None,
+    unresolved_assumptions=latest_unresolved_assumptions(spec_versions),
 )
 st.subheader("Plan review")
 st.write(
@@ -817,7 +824,7 @@ if plan["validated_spec"] is not None:
         st.rerun()
 
 st.subheader("Specifications")
-for spec in reversed(orchestrator.list_spec_versions(thesis_id)):
+for spec in reversed(spec_versions):
     with st.expander(f"Specification v{spec.version} · {spec.status}", expanded=False):
         st.json(spec.normalized_run_spec)
         if spec.unresolved_assumptions:
@@ -944,9 +951,6 @@ else:
                         st.session_state["assistant_run_reports"][run.run_id] = result.payload[
                             "markdown_report"
                         ]
-                        st.session_state["assistant_run_artifacts"][run.run_id] = result.payload[
-                            "artifact"
-                        ]
                 report = st.session_state["assistant_run_reports"].get(run.run_id)
                 if report:
                     st.markdown(report)
@@ -957,6 +961,22 @@ else:
                         mime="text/markdown",
                         key=f"download-report-{run.run_id}",
                     )
+                if st.button("Build research artifact", key=f"artifact-{run.run_id}"):
+                    result = orchestrator.export_run(
+                        thesis_id=thesis_id,
+                        conversation_id=conversation_id,
+                        run=run,
+                    )
+                    if result.status != "completed":
+                        st.error(
+                            result.payload.get("error", {}).get(
+                                "message", "Unable to build research artifact."
+                            )
+                        )
+                    else:
+                        st.session_state["assistant_run_artifacts"][run.run_id] = result.payload[
+                            "artifact"
+                        ]
                 artifact = st.session_state["assistant_run_artifacts"].get(run.run_id)
                 if artifact:
                     st.download_button(
@@ -1019,6 +1039,11 @@ if len(completed_runs) >= 2:
                 "run_ids": result.payload["run_ids"],
                 "comparison": result.payload["comparison"],
             }
+            if result.payload.get("persistence_error"):
+                st.warning(
+                    "Comparison computed but could not be persisted: "
+                    f"{result.payload['persistence_error']}"
+                )
     comparison_state = st.session_state["assistant_run_comparisons"].get(thesis_id)
     if comparison_state and comparison_state.get("run_ids") == [left_id, right_id]:
         st.json(comparison_state["comparison"])

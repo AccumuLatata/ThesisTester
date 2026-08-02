@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import math
 from copy import deepcopy
-from typing import Any, Mapping, MutableMapping
+from typing import Any, Iterable, Mapping, MutableMapping
 
 from thesistester.assistant.explainer import EvidencePacket
 from thesistester.assistant.thesis_compiler import (
@@ -34,13 +34,14 @@ ASSISTANT_SESSION_KEYS: tuple[str, ...] = (
     "assistant_bundle_handoff",
 )
 
-# Cleared whenever the active thesis changes so drafts/validation/comparison
+# Cleared whenever the active thesis changes so drafts/validation/handoff
 # staging cannot leak across theses.
 THESIS_SCOPED_STAGING_KEYS: tuple[str, ...] = (
     "assistant_draft_prompt",
     "assistant_draft_choices",
     "assistant_hydrated_conversation_id",
     "assistant_validated_run_spec",
+    "assistant_bundle_handoff",
 )
 
 SETUP_TRIGGER_OPTIONS: tuple[str, ...] = ("touch", "reject", "break", "reclaim", "3c")
@@ -110,11 +111,38 @@ def select_thesis(session_state: MutableMapping[str, Any], thesis_id: str) -> bo
 
 
 def clear_thesis_scoped_state(session_state: MutableMapping[str, Any]) -> None:
-    """Drop draft/validation/hydration staging that must not cross theses."""
+    """Drop draft/validation/hydration/handoff staging that must not cross theses."""
     session_state["assistant_draft_prompt"] = ""
     session_state["assistant_draft_choices"] = {}
     session_state["assistant_hydrated_conversation_id"] = None
     session_state["assistant_validated_run_spec"] = None
+    session_state["assistant_bundle_handoff"] = None
+
+
+def active_bundle_handoff(
+    session_state: Mapping[str, Any], *, thesis_id: str | None
+) -> dict[str, Any] | None:
+    """Return the staged handoff only when it belongs to the active thesis."""
+    handoff = session_state.get("assistant_bundle_handoff")
+    if not isinstance(handoff, dict) or not handoff.get("run_id"):
+        return None
+    if not isinstance(thesis_id, str) or not thesis_id.strip():
+        return None
+    if handoff.get("thesis_id") != thesis_id:
+        return None
+    return handoff
+
+
+def latest_unresolved_assumptions(specs: Iterable[Any]) -> tuple[str, ...]:
+    """Return clarifications from the newest needs_clarification specification."""
+    newest: tuple[str, ...] | None = None
+    for spec in specs:
+        status = getattr(spec, "status", None)
+        assumptions = getattr(spec, "unresolved_assumptions", ())
+        if status != "needs_clarification":
+            continue
+        newest = tuple(str(item) for item in assumptions)
+    return newest or ()
 
 
 def invalidate_validation(session_state: MutableMapping[str, Any]) -> None:

@@ -34,6 +34,7 @@ from thesistester.assistant.llm_explainer import explain_packet_with_llm
 from thesistester.assistant.llm_intent import propose_thesis_draft
 from thesistester.assistant.registry import FEATURE_PARITY_REGISTRY, validate_capability_request
 from thesistester.assistant.repository import (
+    AssistantRepositoryError,
     Conversation,
     InvalidStateTransitionError,
     LocalThesisRepository,
@@ -838,7 +839,21 @@ class AssistantOrchestrator:
             right_bundle_hash=str(right_run.provenance["canonical_bundle_hash"]),
             evidence=comparison,
         )
-        saved = self.repository.save_comparison(record)
+        # Persistence is best-effort: computed comparison evidence must still
+        # reach the UI when the immutable comparison write fails.
+        try:
+            saved = self.repository.save_comparison(record)
+        except AssistantRepositoryError as exc:
+            return OrchestrationResult(
+                status=OrchestrationStatus.COMPLETED.value,
+                capability_id="BUNDLE.import",
+                payload={
+                    "comparison": comparison,
+                    "record": None,
+                    "run_ids": [left_run.run_id, right_run.run_id],
+                    "persistence_error": str(exc),
+                },
+            )
         return OrchestrationResult(
             status=OrchestrationStatus.COMPLETED.value,
             capability_id="BUNDLE.import",
