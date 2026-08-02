@@ -184,18 +184,25 @@ if st.button("Draft research plan", type="primary"):
 
 if st.button("Validate executable RunSpec"):
     try:
-        validated = compile_run_spec(
-            name=thesis.name, choices=st.session_state["assistant_draft_choices"]
-        )
-        st.session_state["assistant_validated_run_spec"] = validated
+        current_choices = _choices_from_editor(choices_raw)
+        validated = compile_run_spec(name=thesis.name, choices=current_choices)
+        st.session_state["assistant_draft_choices"] = current_choices
+        st.session_state["assistant_validated_run_spec"] = {
+            "choices": current_choices,
+            "spec": validated,
+        }
         st.success("Executable RunSpec is valid and ready for explicit confirmation.")
     except ValueError as exc:
         st.session_state["assistant_validated_run_spec"] = None
         st.error(str(exc))
 
-if st.session_state["assistant_validated_run_spec"] is not None:
+validated_state = st.session_state["assistant_validated_run_spec"]
+if (
+    isinstance(validated_state, dict)
+    and validated_state.get("choices") == st.session_state["assistant_draft_choices"]
+):
     with st.expander("Validated executable RunSpec"):
-        st.json(st.session_state["assistant_validated_run_spec"])
+        st.json(validated_state["spec"])
 
 specifications = repository.list_spec_versions(thesis_id)
 confirmed_parents = {spec.parent_version for spec in specifications if spec.status == "confirmed"}
