@@ -132,6 +132,25 @@ def test_assistant_session_keys_cover_documented_staging_surface():
     assert set(THESIS_SCOPED_STAGING_KEYS).issubset(ASSISTANT_SESSION_KEYS)
 
 
+def test_failed_llm_regen_clears_stale_explanation_cache():
+    from thesistester.assistant.workspace import clear_failed_llm_run_explanation
+
+    state = {}
+    init_assistant_session_state(state)
+    state["assistant_llm_run_explanations"]["run_a"] = object()
+    state["assistant_llm_run_explanations"]["run_b"] = object()
+    state["assistant_llm_attempts"]["run_a"] = 2
+    state["assistant_llm_attempts"]["run_b"] = 1
+    clear_failed_llm_run_explanation(state, "run_a")
+    assert "run_a" not in state["assistant_llm_run_explanations"]
+    assert "run_a" not in state["assistant_llm_attempts"]
+    assert "run_b" in state["assistant_llm_run_explanations"]
+    assert state["assistant_llm_attempts"]["run_b"] == 1
+    page_path = pathlib.Path(__file__).parent.parent / "pages" / "14_Research_Assistant.py"
+    source = page_path.read_text(encoding="utf-8")
+    assert "clear_failed_llm_run_explanation(" in source
+
+
 def test_thesis_switch_clears_draft_validation_and_hydration():
     state = {}
     init_assistant_session_state(state)

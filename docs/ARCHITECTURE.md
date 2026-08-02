@@ -70,8 +70,8 @@ The Research Assistant page stages only these additive `assistant_*` keys
 | `assistant_hydrated_conversation_id` | Conversation hydration guard |
 | `assistant_validated_run_spec` | `{choices, spec}` after validate |
 | `assistant_run_explanations` | Deterministic explain cache by run_id |
-| `assistant_llm_run_explanations` | Evidence-only LLM explain cache |
-| `assistant_llm_attempts` | Provider attempt counts by run_id |
+| `assistant_llm_run_explanations` | Evidence-only LLM explain cache (cleared on failed regen) |
+| `assistant_llm_attempts` | Provider attempt counts by run_id (cleared with failed regen) |
 | `assistant_run_reports` | Markdown report cache by run_id |
 | `assistant_run_artifacts` | Research artifact cache by run_id |
 | `assistant_run_comparisons` | In-session comparison by thesis_id |

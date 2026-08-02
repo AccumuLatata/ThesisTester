@@ -96,6 +96,24 @@ def init_assistant_session_state(session_state: MutableMapping[str, Any]) -> Non
         session_state.setdefault(key, deepcopy(value) if isinstance(value, (dict, list)) else value)
 
 
+def clear_failed_llm_run_explanation(
+    session_state: MutableMapping[str, Any], run_id: str
+) -> None:
+    """Drop cached LLM paraphrase after a failed regen for ``run_id``.
+
+    Fail-closed: a grounding/provider/config error must not leave a prior
+    summary/claims visible for the same run.
+    """
+    if not isinstance(run_id, str) or not run_id:
+        return
+    explanations = session_state.get("assistant_llm_run_explanations")
+    if isinstance(explanations, dict):
+        explanations.pop(run_id, None)
+    attempts = session_state.get("assistant_llm_attempts")
+    if isinstance(attempts, dict):
+        attempts.pop(run_id, None)
+
+
 def select_thesis(session_state: MutableMapping[str, Any], thesis_id: str) -> bool:
     """Switch the active thesis and clear scoped staging state.
 
