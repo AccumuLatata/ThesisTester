@@ -435,6 +435,54 @@ with st.expander("Structured grid controls"):
             except ValueError as exc:
                 st.error(str(exc))
 
+with st.expander("Structured walk-forward controls"):
+    current = st.session_state["assistant_draft_choices"]
+    walk_forward = (
+        current.get("walk_forward") if isinstance(current.get("walk_forward"), dict) else {}
+    )
+    walk_forward_fingerprint = hashlib.sha256(
+        json.dumps(walk_forward, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:12]
+    with st.form(f"assistant_walk_forward_{thesis_id}_{walk_forward_fingerprint}"):
+        enabled = st.checkbox("Enable walk-forward", value=bool(walk_forward.get("enabled", False)))
+        raw_train = walk_forward.get("train_sessions", 20)
+        raw_test = walk_forward.get("test_sessions", 5)
+        raw_step = walk_forward.get("step_sessions", 5)
+        train_default = (
+            int(raw_train) if isinstance(raw_train, (int, float)) and raw_train > 0 else 20
+        )
+        test_default = int(raw_test) if isinstance(raw_test, (int, float)) and raw_test > 0 else 5
+        step_default = int(raw_step) if isinstance(raw_step, (int, float)) and raw_step > 0 else 5
+        train_sessions = st.number_input(
+            "Training sessions",
+            min_value=1,
+            value=train_default,
+        )
+        test_sessions = st.number_input(
+            "Test sessions",
+            min_value=1,
+            value=test_default,
+        )
+        step_sessions = st.number_input(
+            "Step sessions",
+            min_value=1,
+            value=step_default,
+        )
+        if st.form_submit_button("Apply walk-forward controls"):
+            st.session_state["assistant_draft_choices"] = {
+                **current,
+                "walk_forward": {
+                    **walk_forward,
+                    "enabled": enabled,
+                    "fold_mode": "sessions",
+                    "train_sessions": train_sessions,
+                    "test_sessions": test_sessions,
+                    "step_sessions": step_sessions,
+                },
+            }
+            st.session_state["assistant_validated_run_spec"] = None
+            st.rerun()
+
 with st.expander("Reuse saved setup"):
     saved_setups = list_saved_setups()
     setup_options = {
