@@ -16,7 +16,16 @@ from thesistester.api import (
 from thesistester.api import _VALIDATION_DEFAULTS
 from thesistester.api import run_experiment as _run_experiment
 from thesistester.api import validate_run_spec
-from thesistester.persistence.local_store import list_datasets, load_dataset
+from thesistester.persistence.local_store import (
+    clear_backtest_defaults,
+    clear_grid_defaults,
+    get_backtest_defaults,
+    get_grid_defaults,
+    list_datasets,
+    load_dataset,
+    save_backtest_defaults,
+    save_grid_defaults,
+)
 from thesistester.reporting import build_research_artifact, to_jsonable
 from thesistester.research_bundle import (
     build_research_bundle,
@@ -148,6 +157,23 @@ class AssistantTools:
     def list_local_datasets(self) -> list[dict[str, Any]]:
         """List persisted datasets without reading arbitrary filesystem paths."""
         return to_jsonable(list_datasets())
+
+    def get_execution_defaults(self) -> dict[str, Any]:
+        """Return persisted backtest/grid defaults without mutating them."""
+        return {
+            "backtest": to_jsonable(get_backtest_defaults()),
+            "grid": to_jsonable(get_grid_defaults()),
+        }
+
+    def save_execution_defaults(self, *, backtest: dict[str, Any], grid: dict[str, Any]) -> None:
+        """Persist explicit assistant-requested execution defaults."""
+        save_backtest_defaults(backtest)
+        save_grid_defaults(grid)
+
+    def clear_execution_defaults(self) -> None:
+        """Clear explicit assistant-requested execution defaults."""
+        clear_backtest_defaults()
+        clear_grid_defaults()
 
     def describe_local_dataset(self, dataset_id: str) -> dict[str, Any]:
         """Return bounded persisted-dataset metadata."""
