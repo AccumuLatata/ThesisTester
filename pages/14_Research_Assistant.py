@@ -434,6 +434,11 @@ else:
                     "Render markdown report", key=f"report-{run.run_id}"
                 ):
                     try:
+                        raw = Path(bundle_path).read_bytes()
+                        if canonical_bundle_hash(raw) != run.provenance.get(
+                            "canonical_bundle_hash"
+                        ):
+                            raise ValueError("Bundle hash does not match recorded run provenance.")
                         st.session_state["assistant_run_reports"][run.run_id] = AssistantTools(
                             data_roots=(Path.cwd(), get_store_root())
                         ).render_bundle_markdown_report(bundle_path)
