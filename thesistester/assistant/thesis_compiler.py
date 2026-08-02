@@ -53,7 +53,9 @@ def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> 
         "confluence_tolerance_ticks"
     ):
         unresolved.append("Define the SMA confluence tolerance in ticks.")
-    if re.search(r"\b(?:stop|target|sl)\b", text) and not has_choice("selection_protocol"):
+    if re.search(r"\b(?:stops?|targets?|sl|take[- ]profit)\b", text) and not has_choice(
+        "selection_protocol"
+    ):
         unresolved.append("Define SL/TP candidate grid and OOS selection protocol.")
     return ThesisDraft(
         prompt=prompt.strip(),
