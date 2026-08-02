@@ -403,12 +403,48 @@ def _next_experiments(
     return guidance
 
 
+def _otf_validation_from_artifact(
+    artifact: Mapping[str, Any], state: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """Project top-level artifact/session OTF validation into packet results."""
+    otf_validation = artifact.get("otf_validation")
+    if isinstance(otf_validation, Mapping):
+        return dict(to_jsonable(otf_validation))
+    summary = state.get("otf_validation_summary")
+    config = state.get("otf_validation_config")
+    matrix = state.get("otf_validation_matrix")
+    has_matrix = False
+    if matrix is not None:
+        try:
+            has_matrix = len(matrix) > 0
+        except TypeError:
+            has_matrix = bool(matrix)
+    if summary is None and config is None and not has_matrix:
+        return None
+    return {
+        "available": True,
+        "summary": to_jsonable(summary) if summary is not None else None,
+        "config": to_jsonable(config) if config is not None else None,
+    }
+
+
 def build_evidence_packet(
     state: Mapping[str, Any], *, provenance: Mapping[str, Any]
 ) -> EvidencePacket:
     """Build bounded explanation evidence from an existing research result only."""
     artifact = build_research_artifact(state)
     results = to_jsonable(artifact["results"])
+    if not isinstance(results, dict):
+        results = {}
+    else:
+        results = dict(results)
+    # Research artifacts store OTF validation as a top-level section, not under
+    # results; project it so explanation templates can ground OTF claims.
+    otf_validation = _otf_validation_from_artifact(artifact, state)
+    if otf_validation is not None:
+        results["otf_validation"] = otf_validation
+        if results.get("otf_validation_summary") is None:
+            results["otf_validation_summary"] = otf_validation.get("summary")
     provenance_data = to_jsonable(dict(provenance))
     config = _effective_configuration(provenance_data, state)
     costs_exposure = _cost_exposure_assumptions(config, state)
@@ -446,7 +482,13 @@ def build_evidence_packet(
         if results.get(key) is None:
             limitations.append(f"{label} are not present in this evidence packet.")
     otf = _as_mapping(assumptions.get("otf_filter")) or {}
-    if otf.get("available") is False or (not otf and results.get("otf_validation_summary") is None):
+    has_otf_validation = (
+        results.get("otf_validation_summary") is not None
+        or (_as_mapping(results.get("otf_validation")) or {}).get("available") is True
+    )
+    if otf.get("available") is False and not has_otf_validation:
+        limitations.append("OTF filter evidence is not available for this run.")
+    elif not otf and not has_otf_validation:
         limitations.append("OTF filter evidence is not available for this run.")
 
     next_experiments = _next_experiments(caveats=caveats, results=results, limitations=limitations)
@@ -635,13 +677,27 @@ def _template_time(packet: EvidencePacket, claims: list[EvidenceClaim], lines: l
 
 def _template_otf(packet: EvidencePacket, claims: list[EvidenceClaim], lines: list[str]) -> None:
     otf = _as_mapping(packet.assumptions.get("otf_filter")) or {}
-    otf_results = packet.results.get("otf_validation_summary")
-    if not otf and otf_results is None:
+    otf_validation = _as_mapping(packet.results.get("otf_validation")) or {}
+    otf_summary = packet.results.get("otf_validation_summary")
+    if otf_summary is None and otf_validation:
+        otf_summary = otf_validation.get("summary")
+    if not otf and otf_summary is None and not otf_validation:
         return
-    available = otf.get("available", otf_results is not None)
-    text = f"OTF filter evidence available={available}."
-    lines.append(text)
-    _claim(claims, text, "assumptions.otf_filter", otf)
+    # Availability must be claimed at the path that actually stores it.
+    if "available" in otf:
+        available = otf.get("available")
+        text = f"OTF filter evidence available={available}."
+        lines.append(text)
+        _claim(claims, text, "assumptions.otf_filter.available", available)
+    if otf_summary is not None:
+        text = "OTF validation summary evidence is present."
+        lines.append(text)
+        _claim(claims, text, "results.otf_validation_summary", otf_summary)
+    elif "available" in otf_validation:
+        available = otf_validation.get("available")
+        text = f"OTF validation evidence available={available}."
+        lines.append(text)
+        _claim(claims, text, "results.otf_validation.available", available)
 
 
 def _template_portfolio(

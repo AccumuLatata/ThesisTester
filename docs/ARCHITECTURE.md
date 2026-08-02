@@ -128,6 +128,9 @@ ground to `assumptions.grid.ranking_metric` when `best_grid_result` omits that
 field (typical grid row snapshots), and printed commission/slippage values are
 claimed at `assumptions.costs_exposure.*`. Failure diagnostics claim
 `provenance.error` or `results.error` according to where the message lives.
+Top-level research-artifact `otf_validation` is projected into
+`results.otf_validation` / `results.otf_validation_summary`, and OTF availability
+claims cite `assumptions.otf_filter.available` or validation result paths only.
 `compare_evidence()`
 returns versioned nested evidence covering metrics, executable-spec diffs,
 data comparability, conclusions, and next experiments. Persisted `Comparison`

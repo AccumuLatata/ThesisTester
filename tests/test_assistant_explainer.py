@@ -236,6 +236,57 @@ def test_explanation_flags_grid_selection_and_walk_forward_scope():
     assert_claims_grounded(rich)
 
 
+def test_build_evidence_packet_wires_top_level_otf_validation(monkeypatch):
+    monkeypatch.setattr(
+        "thesistester.assistant.explainer.build_research_artifact",
+        lambda state: {
+            "configuration": {"setup_config": {}, "instrument": "ES"},
+            "intrabar": {"backtest_policy": {}},
+            "otf_filter": {"available": False},
+            "results": {"trade_summary": {"trade_count": 40, "expectancy_r": 0.1}},
+            "otf_validation": {
+                "available": True,
+                "summary": {"selected_label": "off", "oos_expectancy_r": 0.02},
+                "config": {"train_fraction": 0.7},
+            },
+        },
+    )
+    packet = build_evidence_packet({}, provenance={})
+    assert packet.results["otf_validation"]["available"] is True
+    assert packet.results["otf_validation_summary"]["selected_label"] == "off"
+    report = explain_evidence_report(packet)
+    assert "OTF validation summary evidence is present." in report["narrative"]
+    assert any(
+        claim["path"] == "results.otf_validation_summary"
+        and claim["value"]["selected_label"] == "off"
+        for claim in report["claims"]
+    )
+    assert_claims_grounded(packet, report)
+
+
+def test_otf_template_does_not_claim_availability_on_empty_filter():
+    packet = EvidencePacket.from_dict(
+        {
+            "schema_version": 1,
+            "provenance": {},
+            "assumptions": {"otf_filter": {}},
+            "results": {
+                "otf_validation_summary": {"selected_label": "baseline"},
+            },
+            "warnings": [],
+            "caveats": [],
+            "limitations": [],
+            "claims": [],
+            "next_experiments": [],
+        }
+    )
+    report = explain_evidence_report(packet)
+    assert "OTF validation summary evidence is present." in report["narrative"]
+    assert "OTF filter evidence available=True" not in report["narrative"]
+    assert all(claim["path"] != "assumptions.otf_filter" for claim in report["claims"])
+    assert_claims_grounded(packet, report)
+
+
 def test_mandatory_caveats_cover_costs_overlap_oos_and_robustness(monkeypatch):
     monkeypatch.setattr(
         "thesistester.assistant.explainer.build_research_artifact",
