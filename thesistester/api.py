@@ -30,6 +30,7 @@ from thesistester.analytics import (
     validation_summary,
 )
 from thesistester.analytics.time_analysis import add_time_buckets, summarize_by_group
+from thesistester.analytics.otf_validation import run_otf_validation_matrix
 from thesistester.config import INSTRUMENTS
 from thesistester.data.loader import format_interval, load_ohlcv, validate_ohlcv
 from thesistester.data.sessions import tag_session
@@ -1994,6 +1995,36 @@ def run_time_analysis(
     """Return descriptive grouped time analysis without re-simulating trades."""
     bucketed = add_time_buckets(trades, bucket_tz=bucket_timezone)
     return summarize_by_group(bucketed, group_col, min_trades=min_trades)
+
+
+def run_otf_validation(
+    df: pd.DataFrame,
+    signals: pd.DataFrame,
+    *,
+    instrument: str,
+    stop_loss_ticks: int | float,
+    take_profit_ticks: int | float,
+    train_fraction: float = 0.7,
+    setup_config: dict | None = None,
+    signal_settings: dict | None = None,
+    execution_kwargs: dict | None = None,
+) -> pd.DataFrame:
+    """Run the fixed OTF validation matrix through the public facade."""
+    config = _instrument(instrument)
+    return run_otf_validation_matrix(
+        source_df=df,
+        candidate_signals=signals,
+        tick_size=config.tick_size,
+        point_value=config.point_value,
+        stop_loss_ticks=stop_loss_ticks,
+        take_profit_ticks=take_profit_ticks,
+        train_fraction=train_fraction,
+        session_timezone=config.exchange_tz,
+        eth_start=config.eth_start,
+        setup_config=setup_config,
+        signal_settings=signal_settings,
+        execution_kwargs=execution_kwargs,
+    )
 
 
 def run_experiment(
