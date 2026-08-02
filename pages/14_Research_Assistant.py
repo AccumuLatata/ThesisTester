@@ -447,6 +447,13 @@ else:
                 report = st.session_state["assistant_run_reports"].get(run.run_id)
                 if report:
                     st.markdown(report)
+                    st.download_button(
+                        "Download markdown report",
+                        data=report,
+                        file_name=f"assistant_run_{run.run_id[-8:]}.md",
+                        mime="text/markdown",
+                        key=f"download-report-{run.run_id}",
+                    )
 
 completed_runs = [
     run
