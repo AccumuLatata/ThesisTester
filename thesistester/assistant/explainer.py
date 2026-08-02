@@ -108,9 +108,12 @@ def explain_evidence(packet: EvidencePacket) -> str:
         f"Historical sample: {trades} trades; expectancy R: {expectancy}.",
         "This describes the recorded sample, not a forecast.",
     ]
-    if packet.results.get("best_grid_result") is not None:
+    grid_result = packet.results.get("best_grid_result")
+    if isinstance(grid_result, Mapping):
+        metric = grid_result.get("ranking_metric", "the configured ranking metric")
+        trade_count = grid_result.get("trade_count", "an unavailable trade count")
         lines.append(
-            "Grid result is a candidate selected from the recorded sample; confirm it with OOS/WFA evidence."
+            f"Grid candidate uses {metric} with {trade_count} trades; confirm it with OOS/WFA evidence."
         )
     if packet.results.get("validation_summary") is not None:
         lines.append(

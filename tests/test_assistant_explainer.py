@@ -82,12 +82,12 @@ def test_explanation_flags_grid_selection_and_walk_forward_scope():
         assumptions={},
         results={
             "trade_summary": {"trade_count": 40, "expectancy_r": 0.1},
-            "best_grid_result": {},
+            "best_grid_result": {"ranking_metric": "expectancy_r", "trade_count": 40},
             "validation_summary": {},
             "walk_forward_summary": {},
         },
         warnings=(),
     )
     explanation = explain_evidence(packet)
-    assert "candidate selected" in explanation
+    assert "expectancy_r" in explanation
     assert "Walk-forward output" in explanation
