@@ -31,12 +31,14 @@ from thesistester.assistant.repository import (
 from thesistester.assistant.tools import AssistantToolError, AssistantTools, ToolLimits
 from thesistester.assistant.thesis_compiler import COMPILER_VERSION, ThesisDraft, compile_thesis
 from thesistester.assistant.explainer import EvidencePacket, build_evidence_packet, explain_evidence
+from thesistester.assistant.orchestrator import AssistantOrchestrator, OrchestrationResult
 
 __all__ = [
     "ASSISTANT_CONTRACT_SCHEMA_VERSION",
     "ASSISTANT_REPOSITORY_SCHEMA_VERSION",
     "AssistantContractError",
     "AssistantRepositoryError",
+    "AssistantOrchestrator",
     "AssistantToolError",
     "AssistantTools",
     "AssistantRequest",
@@ -49,6 +51,7 @@ __all__ = [
     "FEATURE_PARITY_REGISTRY",
     "InvalidStateTransitionError",
     "LocalThesisRepository",
+    "OrchestrationResult",
     "RepositoryConflictError",
     "RepositoryCorruptionError",
     "RepositoryReadOnlyError",
