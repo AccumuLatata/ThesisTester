@@ -190,10 +190,12 @@ coordinator between UI, repository, compiler, tools, and explainer.
   JSON remains under Advanced and applies only through an explicit audit
   action.
 - Plan-review and provenance cards are presentation helpers in
-  `thesistester/assistant/workspace.py`. Plan review includes the newest
-  `needs_clarification` assumptions. Thesis switches clear scoped staging
-  keys (including `assistant_bundle_handoff`) so draft/validation/hydration/
-  handoff cannot leak across theses.
+  `thesistester/assistant/workspace.py`. Plan review includes clarifications
+  only when the newest specification still needs them. Drafting syncs compiler
+  output into session choices; numeric widgets coerce malformed defaults safely.
+  Thesis switches clear scoped staging keys (including
+  `assistant_bundle_handoff`) so draft/validation/hydration/handoff cannot leak
+  across theses. Bundle restore clears validated RunSpecs and reruns the page.
 - Compare persistence is best-effort: computed evidence remains available when
   `save_comparison` fails. Report and artifact export are independent actions.
   Untouched drafts keep the `allow_all` exposure-policy default.

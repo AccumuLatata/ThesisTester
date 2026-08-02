@@ -134,15 +134,56 @@ def active_bundle_handoff(
 
 
 def latest_unresolved_assumptions(specs: Iterable[Any]) -> tuple[str, ...]:
-    """Return clarifications from the newest needs_clarification specification."""
-    newest: tuple[str, ...] | None = None
-    for spec in specs:
-        status = getattr(spec, "status", None)
-        assumptions = getattr(spec, "unresolved_assumptions", ())
-        if status != "needs_clarification":
-            continue
-        newest = tuple(str(item) for item in assumptions)
-    return newest or ()
+    """Return clarifications only when the newest specification still needs them.
+
+    Older ``needs_clarification`` versions are ignored once a later ready or
+    confirmed specification exists, so plan review never shows stale warnings.
+    """
+    ordered = list(specs)
+    if not ordered:
+        return ()
+    try:
+        ordered.sort(key=lambda spec: int(getattr(spec, "version", 0) or 0))
+    except (TypeError, ValueError):
+        pass
+    latest = ordered[-1]
+    if getattr(latest, "status", None) != "needs_clarification":
+        return ()
+    assumptions = getattr(latest, "unresolved_assumptions", ()) or ()
+    return tuple(str(item) for item in assumptions)
+
+
+def safe_int(value: Any, default: int) -> int:
+    """Coerce widget defaults to int without raising on malformed draft values."""
+    if isinstance(value, bool) or value is None:
+        return int(default)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if math.isfinite(value) and float(value).is_integer():
+            return int(value)
+        return int(default)
+    try:
+        parsed = float(str(value).strip())
+    except (TypeError, ValueError):
+        return int(default)
+    if math.isfinite(parsed) and parsed.is_integer():
+        return int(parsed)
+    return int(default)
+
+
+def safe_float(value: Any, default: float) -> float:
+    """Coerce widget defaults to float without raising on malformed draft values."""
+    if isinstance(value, bool) or value is None:
+        return float(default)
+    if isinstance(value, (int, float)):
+        parsed = float(value)
+        return parsed if math.isfinite(parsed) else float(default)
+    try:
+        parsed = float(str(value).strip())
+    except (TypeError, ValueError):
+        return float(default)
+    return parsed if math.isfinite(parsed) else float(default)
 
 
 def invalidate_validation(session_state: MutableMapping[str, Any]) -> None:

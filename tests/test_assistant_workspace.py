@@ -114,6 +114,11 @@ def test_page_is_orchestrator_only_and_keeps_json_advanced():
     assert "latest_unresolved_assumptions(" in source
     assert 'or "allow_all"' in source
     assert "assistant_bundle_handoff" in THESIS_SCOPED_STAGING_KEYS
+    assert "dict(spec.normalized_run_spec)" in source
+    assert "safe_int(" in source
+    assert "safe_float(" in source
+    restore_idx = source.index("Restore bundle into research pages")
+    assert "st.rerun()" in source[restore_idx : restore_idx + 700]
 
 
 def test_assistant_session_keys_cover_documented_staging_surface():
@@ -283,18 +288,23 @@ def test_plan_review_ready_flag_requires_validated_spec():
     assert plan["unresolved_assumptions"] == ["Define costs."]
 
 
-def test_latest_unresolved_assumptions_uses_newest_clarification_spec():
+def test_latest_unresolved_assumptions_only_from_newest_spec():
     from types import SimpleNamespace
 
     from thesistester.assistant.workspace import latest_unresolved_assumptions
 
-    specs = (
-        SimpleNamespace(status="needs_clarification", unresolved_assumptions=("old",)),
-        SimpleNamespace(status="ready_for_confirmation", unresolved_assumptions=()),
-        SimpleNamespace(status="needs_clarification", unresolved_assumptions=("new",)),
-        SimpleNamespace(status="confirmed", unresolved_assumptions=()),
+    stale_after_ready = (
+        SimpleNamespace(version=1, status="needs_clarification", unresolved_assumptions=("old",)),
+        SimpleNamespace(version=2, status="ready_for_confirmation", unresolved_assumptions=()),
     )
-    assert latest_unresolved_assumptions(specs) == ("new",)
+    assert latest_unresolved_assumptions(stale_after_ready) == ()
+
+    newest_needs_help = (
+        SimpleNamespace(version=1, status="ready_for_confirmation", unresolved_assumptions=()),
+        SimpleNamespace(version=3, status="needs_clarification", unresolved_assumptions=("new",)),
+        SimpleNamespace(version=2, status="needs_clarification", unresolved_assumptions=("mid",)),
+    )
+    assert latest_unresolved_assumptions(newest_needs_help) == ("new",)
 
 
 def test_option_index_defaults_exposure_policy_to_allow_all():
@@ -304,6 +314,18 @@ def test_option_index_defaults_exposure_policy_to_allow_all():
     assert option_index(EXPOSURE_POLICIES, None) == 0
     assert option_index(EXPOSURE_POLICIES, "missing") == 0
     assert option_index(EXPOSURE_POLICIES, "single_position") == 1
+
+
+def test_safe_numeric_defaults_tolerate_malformed_draft_values():
+    from thesistester.assistant.workspace import safe_float, safe_int
+
+    assert safe_int("8", 1) == 8
+    assert safe_int("nope", 8) == 8
+    assert safe_int(None, 8) == 8
+    assert safe_int(True, 8) == 8
+    assert safe_float("1.5", 0.0) == 1.5
+    assert safe_float("bad", 0.25) == 0.25
+    assert safe_float(None, 0.0) == 0.0
 
 
 def test_orchestrator_facade_draft_validate_confirm_is_idempotent(tmp_path):
@@ -363,18 +385,21 @@ def test_orchestrator_facade_draft_validate_confirm_is_idempotent(tmp_path):
         poc_windows_raw="",
     )
 
+    dirty_choices = {**choices, "legacy_narrative_hint": "should be stripped by draft"}
     draft = orchestrator.draft_specification(
         thesis_id=thesis.thesis_id,
         prompt="Touch dOpen with RTH open confluence.",
-        choices=choices,
+        choices=dirty_choices,
     )
     assert draft.status in {"ready_for_confirmation", "needs_clarification"}
+    assert "legacy_narrative_hint" not in draft.normalized_run_spec
+    assert isinstance(draft.normalized_run_spec, dict)
 
     validated = orchestrator.validate_choices(
         thesis_id=thesis.thesis_id,
         conversation_id=conversation.conversation_id,
         thesis_name=thesis.name,
-        choices=choices,
+        choices=draft.normalized_run_spec,
     )
     assert validated.status == "completed"
     confirmed = orchestrator.confirm_validated_spec(
@@ -481,6 +506,10 @@ def test_orchestrator_facade_restores_failed_cancelled_and_bundle_handoff(tmp_pa
     assert completed.status == "completed"
     run = repository.get_run(thesis.thesis_id, completed.payload["run_id"])
     session_state: dict = {"stale": 1}
+    session_state["assistant_validated_run_spec"] = {
+        "choices": {"dataset": {"path": "stale.csv"}},
+        "spec": {"name": "stale"},
+    }
     handoff = orchestrator.restore_run_bundle_to_session(
         thesis_id=thesis.thesis_id,
         run_id=run.run_id,
@@ -489,6 +518,7 @@ def test_orchestrator_facade_restores_failed_cancelled_and_bundle_handoff(tmp_pa
     assert handoff["canonical_bundle_hash"] == run.provenance["canonical_bundle_hash"]
     assert handoff["restored_count"] > 0
     assert session_state["assistant_bundle_handoff"]["run_id"] == run.run_id
+    assert session_state["assistant_validated_run_spec"] is None
     assert "data" in session_state
 
     exported = orchestrator.export_run(

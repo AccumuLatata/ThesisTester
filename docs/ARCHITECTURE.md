@@ -114,7 +114,12 @@ rather than being stored as executable assumptions.
 façade methods wrap thesis/spec/run/conversation/comparison lifecycle,
 validate/confirm, explain/compare/export/portfolio, and bundle handoff so the
 Research Assistant page stays presentation-only. Plan review surfaces
-`needs_clarification` assumptions via `latest_unresolved_assumptions()`.
+clarifications only when the newest specification is still
+`needs_clarification` (`latest_unresolved_assumptions()`). Drafting syncs
+`normalized_run_spec` back into `assistant_draft_choices`. Numeric widget
+defaults use `safe_int`/`safe_float` so malformed JSON/chat values cannot crash
+rerenders. Bundle restore clears `assistant_validated_run_spec` and the page
+reruns so the Active handoff caption refreshes immediately.
 `compare_completed_runs()` still returns computed comparison evidence when
 immutable comparison persistence fails (`persistence_error`), so the UI is not
 blocked by a save race. Report and research-artifact export remain independent

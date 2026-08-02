@@ -929,6 +929,10 @@ class AssistantOrchestrator:
             "canonical_bundle_hash": loaded["canonical_bundle_hash"],
             **applied,
         }
+        # Bundle session values are not the staged assistant RunSpec; drop any
+        # prior validated confirmation candidate so Confirm cannot target stale
+        # choices after a hash-verified research-page restore.
+        session_state["assistant_validated_run_spec"] = None
         session_state["assistant_bundle_handoff"] = handoff
         return handoff
 

@@ -53,6 +53,8 @@ from thesistester.assistant.workspace import (
     merge_walk_forward_controls,
     option_index,
     parse_json_choices,
+    safe_float,
+    safe_int,
     select_thesis,
 )
 
@@ -221,22 +223,22 @@ with st.expander("Structured execution controls", expanded=True):
         stop_loss_ticks = st.number_input(
             "Stop loss ticks",
             min_value=1,
-            value=int(backtest.get("stop_loss_ticks") or 8),
+            value=safe_int(backtest.get("stop_loss_ticks"), 8),
         )
         take_profit_ticks = st.number_input(
             "Take profit ticks",
             min_value=1,
-            value=int(backtest.get("take_profit_ticks") or 16),
+            value=safe_int(backtest.get("take_profit_ticks"), 16),
         )
         commission_per_side = st.number_input(
             "Commission per side",
             min_value=0.0,
-            value=float(backtest.get("commission_per_side") or 0.0),
+            value=safe_float(backtest.get("commission_per_side"), 0.0),
         )
         slippage_ticks = st.number_input(
             "Slippage ticks",
             min_value=0.0,
-            value=float(backtest.get("slippage_ticks") or 0.0),
+            value=safe_float(backtest.get("slippage_ticks"), 0.0),
         )
         exposure_policy = st.selectbox(
             "Exposure policy",
@@ -267,11 +269,10 @@ with st.expander("Structured execution controls", expanded=True):
             "No new entries after (exchange time)",
             value=str(backtest.get("no_new_entries_after") or "15:45"),
         )
-        max_holding_raw = backtest.get("max_holding_bars")
         max_holding_bars = st.number_input(
             "Max holding bars (0 = unlimited)",
             min_value=0,
-            value=int(max_holding_raw) if isinstance(max_holding_raw, (int, float)) else 0,
+            value=safe_int(backtest.get("max_holding_bars"), 0),
         )
         allow_same_bar_exit = st.checkbox(
             "Allow same-bar exit",
@@ -280,7 +281,7 @@ with st.expander("Structured execution controls", expanded=True):
         cooldown_bars_after_exit = st.number_input(
             "Cooldown bars after exit",
             min_value=0,
-            value=int(backtest.get("cooldown_bars_after_exit") or 0),
+            value=safe_int(backtest.get("cooldown_bars_after_exit"), 0),
         )
         if st.form_submit_button("Apply execution controls"):
             st.session_state["assistant_draft_choices"] = merge_execution_controls(
@@ -327,17 +328,17 @@ with st.expander("Structured setup and confluence controls", expanded=True):
         tolerance_ticks = st.number_input(
             "Confluence tolerance ticks",
             min_value=0.0,
-            value=float(setup.get("tolerance_ticks") or 0.0),
+            value=safe_float(setup.get("tolerance_ticks"), 0.0),
         )
         min_confluences = st.number_input(
             "Minimum confluences",
             min_value=1,
-            value=int(setup.get("min_confluences") or 1),
+            value=safe_int(setup.get("min_confluences"), 1),
         )
         max_confluences = st.number_input(
             "Maximum confluences",
             min_value=1,
-            value=int(setup.get("max_confluences") or 1),
+            value=safe_int(setup.get("max_confluences"), 1),
         )
         naked_only = st.checkbox("Naked levels only", value=bool(setup.get("naked_only", False)))
         naked_requirement = st.selectbox(
@@ -362,7 +363,7 @@ with st.expander("Structured setup and confluence controls", expanded=True):
         min_valid_confluences = st.number_input(
             "Minimum valid confluences",
             min_value=1,
-            value=int(setup.get("min_valid_confluences") or 1),
+            value=safe_int(setup.get("min_valid_confluences"), 1),
         )
         if st.form_submit_button("Apply setup controls"):
             try:
@@ -397,7 +398,7 @@ with st.expander("Structured level controls"):
         opening_range_minutes = st.number_input(
             "Opening range minutes",
             min_value=1,
-            value=int(levels.get("opening_range_minutes") or 30),
+            value=safe_int(levels.get("opening_range_minutes"), 30),
         )
         sma_lengths_raw = st.text_input(
             "SMA lengths",
@@ -452,27 +453,29 @@ with st.expander("Structured validation controls"):
     )
     with st.form(f"assistant_validation_{thesis_id}_{_fingerprint(validation)}"):
         bootstrap = st.number_input(
-            "Bootstrap samples", min_value=1, value=int(validation.get("n_bootstrap") or 2000)
+            "Bootstrap samples",
+            min_value=1,
+            value=safe_int(validation.get("n_bootstrap"), 2000),
         )
         permutations = st.number_input(
             "Permutation samples",
             min_value=1,
-            value=int(validation.get("n_permutations") or 5000),
+            value=safe_int(validation.get("n_permutations"), 5000),
         )
         random_state = st.number_input(
             "Validation random seed",
             min_value=0,
-            value=int(validation.get("random_state") or 42),
+            value=safe_int(validation.get("random_state"), 42),
         )
         min_trades_soft = st.number_input(
             "Soft minimum trades",
             min_value=1,
-            value=int(validation.get("min_trades_soft") or 30),
+            value=safe_int(validation.get("min_trades_soft"), 30),
         )
         min_trades_hard = st.number_input(
             "Hard minimum trades",
             min_value=1,
-            value=int(validation.get("min_trades_hard") or 10),
+            value=safe_int(validation.get("min_trades_hard"), 10),
         )
         monte_carlo_enabled = st.checkbox(
             "Enable Monte Carlo", value=bool(monte_carlo.get("enabled", False))
@@ -480,7 +483,7 @@ with st.expander("Structured validation controls"):
         monte_carlo_simulations = st.number_input(
             "Monte Carlo simulations",
             min_value=1,
-            value=int(monte_carlo.get("n_simulations") or 200),
+            value=safe_int(monte_carlo.get("n_simulations"), 200),
         )
         excursion_enabled = st.checkbox(
             "Enable excursion diagnostics",
@@ -533,10 +536,14 @@ with st.expander("Structured grid controls"):
             index=option_index(RANKING_METRICS, grid.get("ranking_metric")),
         )
         min_trades = st.number_input(
-            "Grid minimum trades", min_value=1, value=int(grid.get("min_trades") or 30)
+            "Grid minimum trades",
+            min_value=1,
+            value=safe_int(grid.get("min_trades"), 30),
         )
         max_grid_cells = st.number_input(
-            "Max grid cells", min_value=1, value=int(grid.get("max_grid_cells") or 500)
+            "Max grid cells",
+            min_value=1,
+            value=safe_int(grid.get("max_grid_cells"), 500),
         )
         if st.form_submit_button("Apply grid controls"):
             try:
@@ -591,17 +598,17 @@ with st.expander("Structured walk-forward controls"):
         train_size = st.number_input(
             "Train size",
             min_value=1,
-            value=int(train_default or (20 if fold_mode == "sessions" else 500)),
+            value=safe_int(train_default, 20 if fold_mode == "sessions" else 500),
         )
         test_size = st.number_input(
             "Test size",
             min_value=1,
-            value=int(test_default or (5 if fold_mode == "sessions" else 100)),
+            value=safe_int(test_default, 5 if fold_mode == "sessions" else 100),
         )
         step_size = st.number_input(
             "Step size",
             min_value=1,
-            value=int(step_default or (5 if fold_mode == "sessions" else 100)),
+            value=safe_int(step_default, 5 if fold_mode == "sessions" else 100),
         )
         wfa_ranking = st.selectbox(
             "Walk-forward ranking metric",
@@ -611,7 +618,7 @@ with st.expander("Structured walk-forward controls"):
         min_train_trades = st.number_input(
             "Minimum train trades",
             min_value=1,
-            value=int(walk_forward.get("min_train_trades") or 10),
+            value=safe_int(walk_forward.get("min_train_trades"), 10),
         )
         wfa_stops = st.text_input(
             "Walk-forward stop ticks",
@@ -638,7 +645,7 @@ with st.expander("Structured walk-forward controls"):
         max_matrix_cells = st.number_input(
             "Max matrix cells",
             min_value=1,
-            value=int(matrix.get("max_matrix_cells") or 100),
+            value=safe_int(matrix.get("max_matrix_cells"), 100),
         )
         if st.form_submit_button("Apply walk-forward controls"):
             try:
@@ -743,6 +750,9 @@ with draft_col:
                 prompt=st.session_state["assistant_draft_prompt"],
                 choices=st.session_state["assistant_draft_choices"],
             )
+            # Keep staged session choices aligned with the persisted compiler output.
+            st.session_state["assistant_draft_choices"] = dict(spec.normalized_run_spec)
+            invalidate_validation(st.session_state)
             st.success(f"Saved specification version {spec.version}.")
             st.rerun()
         except ValueError as exc:
@@ -998,6 +1008,7 @@ else:
                             f"{handoff_result['restored_count']} research keys from "
                             f"run {run.run_id[-8:]}."
                         )
+                        st.rerun()
                     except Exception as exc:
                         st.error(f"Unable to restore bundle: {exc}")
 
