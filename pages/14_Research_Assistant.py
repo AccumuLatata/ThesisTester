@@ -489,6 +489,38 @@ if len(completed_runs) >= 2:
     if comparison_state and comparison_state.get("run_ids") == [left_id, right_id]:
         st.json(comparison_state["comparison"])
 
+if len(completed_runs) >= 2:
+    st.subheader("Portfolio analysis")
+    portfolio_ids = st.multiselect(
+        "Completed runs",
+        [run.run_id for run in completed_runs],
+        format_func=labels.get,
+        key=f"assistant_portfolio_runs_{thesis_id}",
+    )
+    instrument = st.selectbox(
+        "Portfolio instrument",
+        ["ES", "NQ", "MES", "MNQ"],
+        key=f"assistant_portfolio_instrument_{thesis_id}",
+    )
+    if st.button("Analyze portfolio") and len(portfolio_ids) >= 2:
+        try:
+            selected = {run.run_id: run for run in completed_runs}
+            bundle_paths = []
+            for run_id in portfolio_ids:
+                run = selected[run_id]
+                raw = Path(run.provenance["bundle_path"]).read_bytes()
+                if canonical_bundle_hash(raw) != run.provenance["canonical_bundle_hash"]:
+                    raise ValueError("Bundle hash does not match recorded run provenance.")
+                bundle_paths.append(run.provenance["bundle_path"])
+            st.json(
+                AssistantTools(data_roots=(Path.cwd(), get_store_root())).analyze_bundle_portfolio(
+                    bundle_paths,
+                    instrument=instrument,
+                )
+            )
+        except (OSError, ValueError) as exc:
+            st.error(f"Unable to analyze portfolio: {exc}")
+
 with st.expander("Saved comparisons"):
     for record in repository.list_comparisons(thesis_id):
         st.json(record.to_dict())
