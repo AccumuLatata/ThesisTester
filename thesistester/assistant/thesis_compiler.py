@@ -146,6 +146,10 @@ def map_thesis_choices_to_run_spec(*, name: str, choices: Mapping[str, Any]) -> 
         isinstance(choices.get(key), Mapping) for key in ("dataset", "setup", "backtest")
     ) and all(key in setup_choice for key in ("selected_levels", "trigger", "tolerance_ticks")):
         canonical_choices = dict(choices)
+        canonical_setup = dict(choices["setup"])
+        if isinstance(canonical_setup["selected_levels"], str):
+            canonical_setup["selected_levels"] = [canonical_setup["selected_levels"]]
+        canonical_choices["setup"] = canonical_setup
         canonical_choices.setdefault("levels", {})
         return compile_canonical_run_spec(name=name, choices=canonical_choices)
     dataset_choice = choices.get("dataset")
@@ -202,13 +206,16 @@ def map_thesis_choices_to_run_spec(*, name: str, choices: Mapping[str, Any]) -> 
     }
     canonical = {
         "dataset": {"path": dataset_path, "instrument": instrument},
-        "levels": dict(choices.get("levels", {})),
+        "levels": dict(choices.get("levels") or {}),
         "setup": setup,
-        "backtest": dict(choices.get("backtest", {})),
+        "backtest": dict(choices.get("backtest") or {}),
     }
     for key in ("grid", "validation", "walk_forward"):
         if key in choices:
-            canonical[key] = dict(choices[key])
+            value = choices[key]
+            if value is None or not isinstance(value, Mapping):
+                raise ValueError(f"{key} must be an object when provided.")
+            canonical[key] = dict(value)
     return compile_canonical_run_spec(name=name, choices=canonical)
 
 
