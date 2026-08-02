@@ -200,3 +200,24 @@ class AssistantTools:
         return to_jsonable(
             summarize_by_group(bucketed, group_col, min_trades=min_trades).to_dict("records")
         )
+
+    def summarize_bundle_validation(self, bundle_path: str | Path) -> dict[str, Any]:
+        """Return selected validation diagnostics without re-running research."""
+        path = _resolve_within(bundle_path, self.data_roots)
+        state = load_research_bundle(path.read_bytes())
+        keys = (
+            "validation_summary",
+            "excursion_summary",
+            "monte_carlo_summary",
+            "noise_summary",
+            "overfitting_summary",
+            "sensitivity_summary",
+            "walk_forward_summary",
+            "walk_forward_warnings",
+        )
+        return {
+            "bundle_path": str(path),
+            "validation": {
+                key: to_jsonable(state.get(key)) for key in keys if state.get(key) is not None
+            },
+        }
