@@ -217,11 +217,12 @@ prompt = st.text_area(
     value=st.session_state["assistant_draft_prompt"],
     placeholder="Example: Uptrend retraces to dVWAP with 30m SMA confluence in NY B session.",
 )
-choices_raw = st.text_area(
-    "Explicit research choices (JSON)",
-    value=json.dumps(st.session_state["assistant_draft_choices"], indent=2),
-    help="Define trend_rule, trigger, session_window, success_criteria, and any applicable details.",
-)
+with st.expander("Advanced: edit complete research choices as JSON"):
+    choices_raw = st.text_area(
+        "Explicit research choices (JSON)",
+        value=json.dumps(st.session_state["assistant_draft_choices"], indent=2),
+        help="Use structured clarifications above for common fields.",
+    )
 if st.button("Draft research plan", type="primary"):
     try:
         choices = _choices_from_editor(choices_raw)
