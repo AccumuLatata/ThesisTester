@@ -29,6 +29,7 @@ from thesistester.assistant.llm import (
     create_openai_client,
     load_llm_settings,
 )
+from thesistester.assistant.llm_explainer import explain_packet_with_llm
 from thesistester.assistant.tools import AssistantTools
 from thesistester.persistence.local_store import get_store_root
 from thesistester.research_bundle import canonical_bundle_hash, load_research_bundle
@@ -46,6 +47,7 @@ def _init_state() -> None:
     st.session_state.setdefault("assistant_hydrated_conversation_id", None)
     st.session_state.setdefault("assistant_validated_run_spec", None)
     st.session_state.setdefault("assistant_run_explanations", {})
+    st.session_state.setdefault("assistant_llm_run_explanations", {})
     st.session_state.setdefault("assistant_run_comparisons", {})
 
 
@@ -356,6 +358,30 @@ else:
                 explanation = st.session_state["assistant_run_explanations"].get(run.run_id)
                 if explanation:
                     st.write(explanation)
+                if isinstance(bundle_path, str) and st.button(
+                    "Generate evidence-only AI explanation", key=f"llm-explain-{run.run_id}"
+                ):
+                    try:
+                        raw = Path(bundle_path).read_bytes()
+                        if canonical_bundle_hash(raw) != run.provenance.get(
+                            "canonical_bundle_hash"
+                        ):
+                            raise ValueError("Bundle hash does not match recorded run provenance.")
+                        packet = build_evidence_packet(
+                            load_research_bundle(raw)["session_values"], provenance=run.provenance
+                        )
+                        st.session_state["assistant_llm_run_explanations"][run.run_id] = (
+                            explain_packet_with_llm(
+                                create_openai_client(load_llm_settings()), packet=packet
+                            )
+                        )
+                    except (LLMConfigurationError, OSError, ValueError) as exc:
+                        st.error(f"Unable to generate AI explanation: {exc}")
+                llm_explanation = st.session_state["assistant_llm_run_explanations"].get(run.run_id)
+                if llm_explanation:
+                    st.write(llm_explanation.summary)
+                    for caveat in llm_explanation.caveats:
+                        st.caption(f"Caveat: {caveat}")
 
 completed_runs = [
     run
