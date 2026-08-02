@@ -26,6 +26,7 @@ from thesistester.assistant.explainer import (
 )
 from thesistester.assistant.llm import (
     LLMConfigurationError,
+    LLMProviderError,
     create_openai_client,
     load_llm_settings,
 )
@@ -191,7 +192,7 @@ if chat_message := st.chat_input("Describe or refine this thesis"):
         )
         st.session_state["assistant_draft_choices"] = draft.normalized_run_spec
         st.rerun()
-    except LLMConfigurationError as exc:
+    except (LLMConfigurationError, LLMProviderError) as exc:
         st.error(str(exc))
 
 with st.expander("Structured research clarifications"):
@@ -379,7 +380,7 @@ else:
                         st.session_state["assistant_llm_attempts"][run.run_id] = (
                             client.last_attempt_count
                         )
-                    except (LLMConfigurationError, OSError, ValueError) as exc:
+                    except (LLMConfigurationError, LLMProviderError, OSError, ValueError) as exc:
                         st.error(f"Unable to generate AI explanation: {exc}")
                 llm_explanation = st.session_state["assistant_llm_run_explanations"].get(run.run_id)
                 if llm_explanation:
