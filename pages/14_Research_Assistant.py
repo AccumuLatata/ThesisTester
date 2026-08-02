@@ -32,7 +32,12 @@ from thesistester.assistant.llm import (
 )
 from thesistester.assistant.llm_explainer import explain_packet_with_llm
 from thesistester.assistant.tools import AssistantTools
-from thesistester.persistence.local_store import get_store_root, list_saved_setups, load_setup
+from thesistester.persistence.local_store import (
+    get_store_root,
+    list_saved_setups,
+    load_setup,
+    save_setup,
+)
 from thesistester.research_bundle import canonical_bundle_hash, load_research_bundle
 
 
@@ -295,6 +300,12 @@ if (
 ):
     with st.expander("Validated executable RunSpec"):
         st.json(validated_state["spec"])
+    if st.button("Save validated setup to library"):
+        saved = save_setup(
+            validated_state["spec"]["setup"],
+            instrument=validated_state["spec"]["setup"].get("instrument"),
+        )
+        st.success(f"Saved setup {saved['setup_id']}.")
     if st.button("Confirm validated RunSpec", type="primary"):
         executable = repository.create_spec_version(
             thesis_id,
