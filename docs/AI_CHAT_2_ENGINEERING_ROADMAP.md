@@ -177,6 +177,23 @@ coordinator between UI, repository, compiler, tools, and explainer.
 - UI tests cover thesis switch, confirmation idempotency, failed run, and
   restored bundle state.
 
+**Implemented contract (orchestrator-only workspace)**
+- `pages/14_Research_Assistant.py` is presentation-only: it constructs
+  `AssistantOrchestrator.for_local_workspace()` and never calls
+  `LocalThesisRepository`, `AssistantTools`, compilers, explainers, or
+  bundle I/O directly.
+- Workspace façade methods cover thesis/spec lifecycle, validate/confirm,
+  execute/cancel, explain/compare, report/artifact export, portfolio analysis,
+  and hash-verified bundle handoff into research-page session keys.
+- Structured controls cover setup/confluence, levels, execution, grid,
+  validation, and walk-forward (including bars mode and optional WFA matrix).
+  JSON remains under Advanced and applies only through an explicit audit
+  action.
+- Plan-review and provenance cards are presentation helpers in
+  `thesistester/assistant/workspace.py`. Thesis switches clear scoped staging
+  keys so draft/validation/hydration cannot leak across theses.
+- Helper/page-contract tests live in `tests/test_assistant_workspace.py`.
+
 ## C2-5 — Evidence and comparison expansion
 
 **Goal:** answer useful research questions without hallucinating statistics.

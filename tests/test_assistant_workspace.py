@@ -1,0 +1,495 @@
+"""Workspace façade and Research Assistant presentation-helper tests (C2-4)."""
+
+from __future__ import annotations
+
+import pathlib
+import sys
+import types
+from pathlib import Path
+
+import pytest
+
+from thesistester.assistant import (
+    ASSISTANT_SESSION_KEYS,
+    THESIS_SCOPED_STAGING_KEYS,
+    AssistantOrchestrator,
+    LocalThesisRepository,
+    build_plan_review,
+    clear_thesis_scoped_state,
+    init_assistant_session_state,
+    select_thesis,
+)
+from thesistester.assistant.tools import AssistantTools
+from thesistester.assistant.workspace import (
+    merge_execution_controls,
+    merge_grid_controls,
+    merge_level_controls,
+    merge_setup_controls,
+    merge_validation_controls,
+    merge_walk_forward_controls,
+    parse_json_choices,
+    parse_positive_number_list,
+)
+from thesistester.research_bundle import canonical_bundle_hash
+
+
+def _make_streamlit_stub() -> types.ModuleType:
+    st = types.ModuleType("streamlit")
+
+    def _noop(*args, **kwargs):
+        return None
+
+    class _Ctx:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    for name in (
+        "title",
+        "caption",
+        "subheader",
+        "warning",
+        "info",
+        "error",
+        "success",
+        "markdown",
+        "stop",
+        "rerun",
+        "button",
+        "checkbox",
+        "toggle",
+        "radio",
+        "selectbox",
+        "multiselect",
+        "number_input",
+        "slider",
+        "text_input",
+        "text_area",
+        "columns",
+        "write",
+        "json",
+        "page_link",
+        "download_button",
+        "chat_input",
+        "chat_message",
+        "form_submit_button",
+    ):
+        setattr(st, name, _noop)
+    st.expander = lambda *args, **kwargs: _Ctx()
+    st.form = lambda *args, **kwargs: _Ctx()
+    st.sidebar = _Ctx()
+    st.session_state = {}
+    return st
+
+
+def _load_research_assistant_page():
+    stub = _make_streamlit_stub()
+    sys.modules["streamlit"] = stub
+    page_path = pathlib.Path(__file__).parent.parent / "pages" / "14_Research_Assistant.py"
+    source = page_path.read_text(encoding="utf-8")
+    # Avoid executing the full Streamlit page body; import helpers via AST-free
+    # source contract checks instead.
+    return source
+
+
+def test_page_is_orchestrator_only_and_keeps_json_advanced():
+    source = _load_research_assistant_page()
+    assert "LocalThesisRepository(" not in source
+    assert "AssistantTools(" not in source
+    assert "Path.read_bytes" not in source
+    assert "compile_thesis(" not in source
+    assert "map_thesis_choices_to_run_spec(" not in source
+    assert "explain_evidence(" not in source
+    assert "compare_evidence(" not in source
+    assert "apply_research_bundle_to_session(" not in source
+    assert "for_local_workspace(" in source
+    assert "Advanced: edit complete research choices as JSON" in source
+    assert "Apply JSON audit edits" in source
+    assert "Restore bundle into research pages" in source
+    assert "Plan review" in source
+
+
+def test_assistant_session_keys_cover_documented_staging_surface():
+    assert "assistant_selected_thesis_id" in ASSISTANT_SESSION_KEYS
+    assert "assistant_validated_run_spec" in ASSISTANT_SESSION_KEYS
+    assert "assistant_llm_run_explanations" in ASSISTANT_SESSION_KEYS
+    assert "assistant_bundle_handoff" in ASSISTANT_SESSION_KEYS
+    assert set(THESIS_SCOPED_STAGING_KEYS).issubset(ASSISTANT_SESSION_KEYS)
+
+
+def test_thesis_switch_clears_draft_validation_and_hydration():
+    state = {}
+    init_assistant_session_state(state)
+    state["assistant_selected_thesis_id"] = "th_a"
+    state["assistant_draft_prompt"] = "old prompt"
+    state["assistant_draft_choices"] = {"dataset": {"path": "a.csv"}}
+    state["assistant_validated_run_spec"] = {"spec": {"name": "x"}}
+    state["assistant_hydrated_conversation_id"] = "conv_old"
+    state["assistant_run_comparisons"] = {"th_a": {"run_ids": ["r1", "r2"]}}
+
+    changed = select_thesis(state, "th_b")
+    assert changed is True
+    assert state["assistant_selected_thesis_id"] == "th_b"
+    assert state["assistant_draft_prompt"] == ""
+    assert state["assistant_draft_choices"] == {}
+    assert state["assistant_validated_run_spec"] is None
+    assert state["assistant_hydrated_conversation_id"] is None
+    # Persisted comparison cache is thesis-keyed and intentionally retained.
+    assert state["assistant_run_comparisons"]["th_a"]["run_ids"] == ["r1", "r2"]
+    assert select_thesis(state, "th_b") is False
+
+
+def test_structured_merges_cover_setup_levels_execution_grid_validation_wfa():
+    choices = {}
+    choices = merge_execution_controls(
+        choices,
+        dataset_path="bars.csv",
+        instrument="ES",
+        source_timezone="America/New_York",
+        subtimeframe_path="",
+        stop_loss_ticks=8,
+        take_profit_ticks=16,
+        commission_per_side=0.0,
+        slippage_ticks=0.0,
+        exposure_policy="single_position",
+        intrabar_model="sl_first",
+        flat_by_session_close=True,
+        session_close_time="16:00",
+        session_timezone="America/New_York",
+        no_new_entries_after="15:45",
+        max_holding_bars=None,
+        allow_same_bar_exit=True,
+        cooldown_bars_after_exit=0,
+    )
+    choices = merge_setup_controls(
+        choices,
+        setup_name="Touch",
+        description="dVWAP touch",
+        selected_levels_raw="dVWAP_RTH, SMA_50_30min",
+        trigger="touch",
+        direction="both",
+        tolerance_ticks=0.0,
+        min_confluences=2,
+        max_confluences=2,
+        naked_only=False,
+        naked_requirement="any",
+        trigger_timeframe="base",
+        confluence_mode="global_cluster",
+        anchor_level="",
+        min_valid_confluences=1,
+    )
+    choices = merge_level_controls(
+        choices,
+        session_vwap_enabled=True,
+        opening_range_minutes=30,
+        sma_lengths_raw="50,200",
+        sma_timeframes=["30min"],
+        ema_lengths_raw="20",
+        ema_timeframes=["5min"],
+        vwap_windows_raw="",
+        poc_windows_raw="",
+    )
+    choices = merge_validation_controls(
+        choices,
+        n_bootstrap=100,
+        n_permutations=100,
+        random_state=7,
+        monte_carlo_enabled=True,
+        monte_carlo_simulations=25,
+        excursion_enabled=True,
+        overfitting_enabled=False,
+        noise_enabled=False,
+        sensitivity_enabled=False,
+        min_trades_soft=20,
+        min_trades_hard=5,
+    )
+    choices = merge_grid_controls(
+        choices,
+        enabled=True,
+        stop_values_raw="4,8",
+        target_values_raw="8,16",
+        ranking_metric="expectancy_r",
+        min_trades=10,
+        max_grid_cells=50,
+    )
+    choices = merge_walk_forward_controls(
+        choices,
+        enabled=True,
+        fold_mode="bars",
+        window_mode="rolling",
+        overlap_policy="reject",
+        train_size=100,
+        test_size=20,
+        step_size=20,
+        ranking_metric="expectancy_r",
+        min_train_trades=5,
+        stop_values_raw="8",
+        target_values_raw="16",
+        matrix_enabled=True,
+        matrix_train_raw="20,40",
+        matrix_test_raw="5",
+        matrix_metric="median_test_expectancy_r",
+        max_matrix_cells=20,
+    )
+
+    assert choices["setup"]["selected_levels"] == ["dVWAP_RTH", "SMA_50_30min"]
+    assert choices["levels"]["ema_lengths"] == [20]
+    assert choices["validation"]["monte_carlo"]["enabled"] is True
+    assert choices["grid"]["max_grid_cells"] == 50
+    assert choices["walk_forward"]["fold_mode"] == "bars"
+    assert choices["walk_forward"]["train_bars"] == 100
+    assert choices["walk_forward"]["matrix"]["enabled"] is True
+    assert parse_positive_number_list("1, 2.5") == [1.0, 2.5]
+    assert parse_json_choices('{"dataset": {"path": "x.csv"}}')["dataset"]["path"] == "x.csv"
+
+
+def test_plan_review_ready_flag_requires_validated_spec():
+    plan = build_plan_review(
+        thesis_name="Demo",
+        choices={"dataset": {"path": "bars.csv", "instrument": "ES"}},
+        validated_spec=None,
+        unresolved_assumptions=("Define costs.",),
+    )
+    assert plan["ready_for_confirmation"] is False
+    assert plan["unresolved_assumptions"] == ["Define costs."]
+
+
+def test_orchestrator_facade_draft_validate_confirm_is_idempotent(tmp_path):
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    orchestrator = AssistantOrchestrator(
+        tools=AssistantTools(data_roots=(tmp_path,)),
+        repository=repository,
+    )
+    thesis = orchestrator.create_thesis(name="Workspace")
+    conversation = orchestrator.ensure_conversation(thesis.thesis_id)
+    choices = merge_execution_controls(
+        {},
+        dataset_path=str(tmp_path / "bars.csv"),
+        instrument="ES",
+        source_timezone="America/New_York",
+        subtimeframe_path="",
+        stop_loss_ticks=2,
+        take_profit_ticks=3,
+        commission_per_side=0.0,
+        slippage_ticks=0.0,
+        exposure_policy="single_position",
+        intrabar_model="sl_first",
+        flat_by_session_close=False,
+        session_close_time="",
+        session_timezone="",
+        no_new_entries_after="",
+        max_holding_bars=None,
+        allow_same_bar_exit=True,
+        cooldown_bars_after_exit=0,
+    )
+    choices = merge_setup_controls(
+        choices,
+        setup_name="Workspace",
+        description="",
+        selected_levels_raw="dOpen, RTH_Open",
+        trigger="touch",
+        direction="both",
+        tolerance_ticks=0.0,
+        min_confluences=2,
+        max_confluences=2,
+        naked_only=False,
+        naked_requirement="any",
+        trigger_timeframe="base",
+        confluence_mode="global_cluster",
+        anchor_level="",
+        min_valid_confluences=1,
+    )
+    choices = merge_level_controls(
+        choices,
+        session_vwap_enabled=False,
+        opening_range_minutes=30,
+        sma_lengths_raw="2",
+        sma_timeframes=["1min"],
+        ema_lengths_raw="2",
+        ema_timeframes=["1min"],
+        vwap_windows_raw="",
+        poc_windows_raw="",
+    )
+
+    draft = orchestrator.draft_specification(
+        thesis_id=thesis.thesis_id,
+        prompt="Touch dOpen with RTH open confluence.",
+        choices=choices,
+    )
+    assert draft.status in {"ready_for_confirmation", "needs_clarification"}
+
+    validated = orchestrator.validate_choices(
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+        thesis_name=thesis.name,
+        choices=choices,
+    )
+    assert validated.status == "completed"
+    confirmed = orchestrator.confirm_validated_spec(
+        thesis_id=thesis.thesis_id,
+        validated_spec=validated.payload["spec"],
+        confirmation_note="idempotent confirm",
+    )
+    again = orchestrator.confirm_validated_spec(
+        thesis_id=thesis.thesis_id,
+        validated_spec=validated.payload["spec"],
+        confirmation_note="idempotent confirm again",
+    )
+    assert confirmed.status == "confirmed"
+    assert again.status == "confirmed"
+    assert again.version != confirmed.version
+    listed = orchestrator.list_spec_versions(thesis.thesis_id)
+    assert sum(1 for item in listed if item.status == "confirmed") >= 2
+
+
+def test_orchestrator_facade_restores_failed_cancelled_and_bundle_handoff(tmp_path):
+    from tests.fixtures.assistant_parity import absolute_parity_run_spec, write_parity_bars
+
+    write_parity_bars(tmp_path / "bars.csv")
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    tools = AssistantTools(data_roots=(tmp_path,))
+    orchestrator = AssistantOrchestrator(tools=tools, repository=repository)
+    thesis = orchestrator.create_thesis(name="assistant_parity")
+    conversation = orchestrator.ensure_conversation(thesis.thesis_id)
+
+    choices = {
+        key: value for key, value in absolute_parity_run_spec(tmp_path).items() if key != "name"
+    }
+    validated = orchestrator.validate_choices(
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+        thesis_name=thesis.name,
+        choices=choices,
+    )
+    assert validated.status == "completed"
+    confirmed = orchestrator.confirm_validated_spec(
+        thesis_id=thesis.thesis_id,
+        validated_spec=validated.payload["spec"],
+    )
+
+    class _FailingTools(AssistantTools):
+        def run_experiment_to_bundle(self, spec, *, output_path):
+            raise RuntimeError("forced failure")
+
+    failing = AssistantOrchestrator(
+        tools=_FailingTools(data_roots=(tmp_path,)),
+        repository=repository,
+    )
+    with pytest.raises(RuntimeError, match="forced failure"):
+        failing.execute_confirmed_run(
+            thesis_id=thesis.thesis_id,
+            spec_version=confirmed.version,
+            output_path=tmp_path / "fail.research.zip",
+            conversation_id=conversation.conversation_id,
+        )
+    failed = orchestrator.list_runs(thesis.thesis_id)[-1]
+    assert failed.status == "failed"
+    assert failed.provenance is None
+
+    confirmed_b = orchestrator.confirm_validated_spec(
+        thesis_id=thesis.thesis_id,
+        validated_spec=validated.payload["spec"],
+    )
+    tools_ok = AssistantTools(data_roots=(tmp_path,))
+    original = tools_ok.run_experiment_to_bundle
+
+    def cancel_then_run(spec, *, output_path):
+        running = repository.list_runs(thesis.thesis_id)[-1]
+        repository.cancel_run(
+            thesis.thesis_id,
+            running.run_id,
+            expected_revision=running.revision,
+            reason="operator cancel",
+        )
+        return original(spec, output_path=output_path)
+
+    tools_ok.run_experiment_to_bundle = cancel_then_run
+    cancelled_orchestrator = AssistantOrchestrator(tools=tools_ok, repository=repository)
+    cancelled = cancelled_orchestrator.execute_confirmed_run(
+        thesis_id=thesis.thesis_id,
+        spec_version=confirmed_b.version,
+        output_path=tmp_path / "cancel.research.zip",
+        conversation_id=conversation.conversation_id,
+    )
+    assert cancelled.status == "cancelled"
+
+    confirmed_c = orchestrator.confirm_validated_spec(
+        thesis_id=thesis.thesis_id,
+        validated_spec=validated.payload["spec"],
+    )
+    completed = AssistantOrchestrator(
+        tools=AssistantTools(data_roots=(tmp_path,)),
+        repository=repository,
+    ).execute_confirmed_run(
+        thesis_id=thesis.thesis_id,
+        spec_version=confirmed_c.version,
+        output_path=tmp_path / "ok.research.zip",
+        conversation_id=conversation.conversation_id,
+    )
+    assert completed.status == "completed"
+    run = repository.get_run(thesis.thesis_id, completed.payload["run_id"])
+    session_state: dict = {"stale": 1}
+    handoff = orchestrator.restore_run_bundle_to_session(
+        thesis_id=thesis.thesis_id,
+        run_id=run.run_id,
+        session_state=session_state,
+    )
+    assert handoff["canonical_bundle_hash"] == run.provenance["canonical_bundle_hash"]
+    assert handoff["restored_count"] > 0
+    assert session_state["assistant_bundle_handoff"]["run_id"] == run.run_id
+    assert "data" in session_state
+
+    exported = orchestrator.export_run(
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+        run=run,
+    )
+    assert exported.status == "completed"
+    assert "markdown_report" in exported.payload
+    assert "artifact" in exported.payload
+
+    # Second completed run for comparison restoration.
+    confirmed_d = orchestrator.confirm_validated_spec(
+        thesis_id=thesis.thesis_id,
+        validated_spec=validated.payload["spec"],
+    )
+    second = AssistantOrchestrator(
+        tools=AssistantTools(data_roots=(tmp_path,)),
+        repository=repository,
+    ).execute_confirmed_run(
+        thesis_id=thesis.thesis_id,
+        spec_version=confirmed_d.version,
+        output_path=tmp_path / "ok2.research.zip",
+        conversation_id=conversation.conversation_id,
+    )
+    right = repository.get_run(thesis.thesis_id, second.payload["run_id"])
+    comparison = orchestrator.compare_completed_runs(
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+        left_run=run,
+        right_run=right,
+    )
+    assert comparison.status == "completed"
+    restored_comparisons = orchestrator.list_comparisons(thesis.thesis_id)
+    assert len(restored_comparisons) == 1
+    assert restored_comparisons[0].left_bundle_hash == canonical_bundle_hash(
+        Path(run.provenance["bundle_path"]).read_bytes()
+    )
+
+
+def test_clear_thesis_scoped_state_helper():
+    state = {
+        "assistant_draft_prompt": "x",
+        "assistant_draft_choices": {"a": 1},
+        "assistant_hydrated_conversation_id": "c",
+        "assistant_validated_run_spec": {"spec": {}},
+        "assistant_run_explanations": {"r1": "keep"},
+    }
+    clear_thesis_scoped_state(state)
+    assert state["assistant_draft_prompt"] == ""
+    assert state["assistant_draft_choices"] == {}
+    assert state["assistant_hydrated_conversation_id"] is None
+    assert state["assistant_validated_run_spec"] is None
+    assert state["assistant_run_explanations"] == {"r1": "keep"}

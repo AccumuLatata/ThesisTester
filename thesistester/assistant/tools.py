@@ -321,6 +321,22 @@ class AssistantTools:
             "summary": _state_summary(session_values),
         }
 
+    def load_verified_bundle_session(
+        self, bundle_path: str | Path, *, expected_hash: str
+    ) -> dict[str, Any]:
+        """Return hash-verified session values for research-page handoff."""
+        path, raw, session_values = _read_verified_bundle(
+            bundle_path,
+            self.data_roots,
+            expected_hash=expected_hash,
+            require_hash=True,
+        )
+        return {
+            "bundle_path": str(path),
+            "canonical_bundle_hash": canonical_bundle_hash(raw),
+            "session_values": session_values,
+        }
+
     def render_bundle_markdown_report(self, bundle_path: str | Path, *, expected_hash: str) -> str:
         """Render the established report from a selected portable research bundle."""
         _path, _raw, session_values = _read_verified_bundle(

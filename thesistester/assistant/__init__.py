@@ -59,6 +59,15 @@ from thesistester.assistant.orchestrator import (
     list_payload_or_error,
 )
 from thesistester.assistant.comparison import COMPARISON_SCHEMA_VERSION, Comparison
+from thesistester.assistant.workspace import (
+    ASSISTANT_SESSION_KEYS,
+    THESIS_SCOPED_STAGING_KEYS,
+    build_plan_review,
+    build_provenance_card,
+    clear_thesis_scoped_state,
+    init_assistant_session_state,
+    select_thesis,
+)
 
 __all__ = [
     "ASSISTANT_CONTRACT_SCHEMA_VERSION",
@@ -112,4 +121,11 @@ __all__ = [
     "build_evidence_packet",
     "compare_evidence",
     "explain_evidence",
+    "ASSISTANT_SESSION_KEYS",
+    "THESIS_SCOPED_STAGING_KEYS",
+    "build_plan_review",
+    "build_provenance_card",
+    "clear_thesis_scoped_state",
+    "init_assistant_session_state",
+    "select_thesis",
 ]

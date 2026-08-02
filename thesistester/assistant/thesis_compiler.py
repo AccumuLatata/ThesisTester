@@ -289,15 +289,22 @@ def normalize_walk_forward_controls(
     train_sessions: Any = 20,
     test_sessions: Any = 5,
     step_sessions: Any = 5,
+    train_bars: Any = 500,
+    test_bars: Any = 100,
+    step_bars: Any = 100,
     fold_mode: str = "sessions",
     window_mode: str = "rolling",
     overlap_policy: str = "reject",
+    ranking_metric: str | None = None,
+    min_train_trades: Any = None,
+    stop_loss_ticks_values: list[float] | None = None,
+    take_profit_ticks_values: list[float] | None = None,
 ) -> dict[str, Any]:
     """Build an explicit walk-forward draft section for assistant controls.
 
     Disabled walk-forward persists only the opt-out flag. Enabled walk-forward
     requires every canonical assumption field so UI drafts remain confirmation-
-    eligible without silent API defaults.
+    eligible without silent API defaults. Fold sizes follow ``fold_mode``.
     """
     if not enabled:
         return {"enabled": False}
@@ -307,23 +314,55 @@ def normalize_walk_forward_controls(
         raise ValueError("walk_forward.window_mode must be 'rolling' or 'anchored'.")
     if overlap_policy not in _WALK_FORWARD_OVERLAP_POLICIES:
         raise ValueError("walk_forward.overlap_policy must be 'reject', 'first', or 'last'.")
-    try:
-        train = int(train_sessions)
-        test = int(test_sessions)
-        step = int(step_sessions)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Walk-forward session counts must be positive integers.") from exc
-    if min(train, test, step) < 1:
-        raise ValueError("Walk-forward session counts must be positive integers.")
-    return {
+    payload: dict[str, Any] = {
         "enabled": True,
         "fold_mode": fold_mode,
         "window_mode": window_mode,
         "overlap_policy": overlap_policy,
-        "train_sessions": train,
-        "test_sessions": test,
-        "step_sessions": step,
     }
+    size_label = "session counts" if fold_mode == "sessions" else "bar counts"
+    try:
+        if fold_mode == "sessions":
+            train = int(train_sessions)
+            test = int(test_sessions)
+            step = int(step_sessions)
+            payload.update(
+                {
+                    "train_sessions": train,
+                    "test_sessions": test,
+                    "step_sessions": step,
+                }
+            )
+        else:
+            train = int(train_bars)
+            test = int(test_bars)
+            step = int(step_bars)
+            payload.update(
+                {
+                    "train_bars": train,
+                    "test_bars": test,
+                    "step_bars": step,
+                }
+            )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Walk-forward {size_label} must be positive integers.") from exc
+    if min(train, test, step) < 1:
+        raise ValueError(f"Walk-forward {size_label} must be positive integers.")
+    if ranking_metric is not None:
+        payload["ranking_metric"] = ranking_metric
+    if min_train_trades is not None:
+        try:
+            min_trades = int(min_train_trades)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("walk_forward.min_train_trades must be a positive integer.") from exc
+        if min_trades < 1:
+            raise ValueError("walk_forward.min_train_trades must be a positive integer.")
+        payload["min_train_trades"] = min_trades
+    if stop_loss_ticks_values is not None:
+        payload["stop_loss_ticks_values"] = list(stop_loss_ticks_values)
+    if take_profit_ticks_values is not None:
+        payload["take_profit_ticks_values"] = list(take_profit_ticks_values)
+    return payload
 
 
 def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> ThesisDraft:

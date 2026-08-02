@@ -1,133 +1,68 @@
 """AI Research Assistant thesis workspace.
 
-This page is intentionally a thin Streamlit consumer of the assistant library.
-It does not implement backtesting semantics or execute arbitrary model output.
+Presentation-only Streamlit consumer of ``AssistantOrchestrator``. The page
+never mutates the thesis repository, calls tools, reads bundle bytes, or
+compiles RunSpecs directly.
 """
 
 from __future__ import annotations
 
-import json
 import hashlib
-import math
-from pathlib import Path
-from uuid import uuid4
+import json
 
 import streamlit as st
 
 from thesistester.assistant import (
     AssistantOrchestrator,
-    AssistantRequest,
-    Comparison,
-    EvidencePacket,
-    LocalThesisRepository,
-    compile_thesis,
     confirmed_run_feedback,
     list_payload_or_error,
-    map_thesis_choices_to_run_spec,
-    normalize_setup_level_selection,
-    normalize_walk_forward_controls,
 )
-from thesistester.assistant.explainer import compare_evidence, explain_evidence
+from thesistester.assistant.contracts import AssistantRequest
 from thesistester.assistant.llm import (
     LLMConfigurationError,
     LLMProviderError,
     create_openai_client,
     load_llm_settings,
 )
-from thesistester.assistant.llm_explainer import explain_packet_with_llm
-from thesistester.assistant.tools import AssistantTools
-from thesistester.persistence.local_store import get_store_root
+from thesistester.assistant.workspace import (
+    CONFLUENCE_MODES,
+    DIRECTIONS,
+    EXPOSURE_POLICIES,
+    FOLD_MODES,
+    INSTRUMENTS,
+    INTRABAR_MODELS,
+    NAKED_REQUIREMENTS,
+    OVERLAP_POLICIES,
+    RANKING_METRICS,
+    SETUP_TRIGGER_OPTIONS,
+    SMA_TIMEFRAMES,
+    TRIGGER_TIMEFRAMES,
+    WFA_MATRIX_METRICS,
+    WINDOW_MODES,
+    build_plan_review,
+    build_provenance_card,
+    init_assistant_session_state,
+    invalidate_validation,
+    merge_execution_controls,
+    merge_grid_controls,
+    merge_level_controls,
+    merge_setup_controls,
+    merge_validation_controls,
+    merge_walk_forward_controls,
+    option_index,
+    parse_json_choices,
+    select_thesis,
+)
 
 
-def _repository() -> LocalThesisRepository:
-    return LocalThesisRepository()
+def _fingerprint(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:12]
 
 
-def _orchestrator(repository: LocalThesisRepository) -> AssistantOrchestrator:
-    return AssistantOrchestrator(
-        tools=AssistantTools(data_roots=(Path.cwd(), get_store_root())),
-        repository=repository,
-    )
-
-
-def _dispatch(
-    orchestrator: AssistantOrchestrator,
-    *,
-    capability_id: str,
-    payload: dict,
-    confirmed: bool = False,
-    thesis_id: str | None = None,
-    conversation_id: str | None = None,
-):
-    return orchestrator.dispatch(
-        AssistantRequest(capability_id=capability_id, payload=payload),
-        confirmed=confirmed,
-        thesis_id=thesis_id,
-        conversation_id=conversation_id,
-    )
-
-
-def _evidence_packet(payload: dict) -> EvidencePacket:
-    evidence = payload["evidence"]
-    return EvidencePacket(
-        provenance=evidence["provenance"],
-        assumptions=evidence["assumptions"],
-        results=evidence["results"],
-        warnings=tuple(evidence["warnings"]),
-    )
-
-
-def _init_state() -> None:
-    st.session_state.setdefault("assistant_selected_thesis_id", None)
-    st.session_state.setdefault("assistant_draft_prompt", "")
-    st.session_state.setdefault("assistant_draft_choices", {})
-    st.session_state.setdefault("assistant_conversation_ids", {})
-    st.session_state.setdefault("assistant_hydrated_conversation_id", None)
-    st.session_state.setdefault("assistant_validated_run_spec", None)
-    st.session_state.setdefault("assistant_run_explanations", {})
-    st.session_state.setdefault("assistant_llm_run_explanations", {})
-    st.session_state.setdefault("assistant_llm_attempts", {})
-    st.session_state.setdefault("assistant_run_reports", {})
-    st.session_state.setdefault("assistant_run_artifacts", {})
-    st.session_state.setdefault("assistant_run_comparisons", {})
-
-
-def _select_thesis(thesis_id: str) -> None:
-    if st.session_state["assistant_selected_thesis_id"] != thesis_id:
-        st.session_state["assistant_selected_thesis_id"] = thesis_id
-        st.session_state["assistant_draft_prompt"] = ""
-        st.session_state["assistant_draft_choices"] = {}
-
-
-def _choices_from_editor(raw: str) -> dict:
-    if not raw.strip():
-        return {}
-    parsed = json.loads(raw)
-    if not isinstance(parsed, dict):
-        raise ValueError("Choices must be a JSON object.")
-    return parsed
-
-
-def _positive_number_list(raw: str) -> list[float]:
-    values = [float(item.strip()) for item in raw.split(",") if item.strip()]
-    if not values or any(not math.isfinite(value) or value <= 0 for value in values):
-        raise ValueError("Provide one or more positive comma-separated values.")
-    return values
-
-
-def _require_run_bundle_hash(provenance: dict) -> str:
-    expected_hash = provenance.get("canonical_bundle_hash")
-    if not isinstance(expected_hash, str) or not expected_hash.strip():
-        raise ValueError("Completed run is missing canonical bundle hash provenance.")
-    return expected_hash.strip()
-
-
-SETUP_TRIGGER_OPTIONS = ["touch", "reject", "break", "reclaim", "3c"]
-
-
-_init_state()
-repository = _repository()
-orchestrator = _orchestrator(repository)
+init_assistant_session_state(st.session_state)
+orchestrator = AssistantOrchestrator.for_local_workspace()
 
 st.title("Research Assistant")
 st.caption("Draft explicit research theses. Execution remains confirmation- and schema-gated.")
@@ -139,19 +74,26 @@ with st.expander("Open detailed research views"):
     st.page_link("pages/11_Report_Export.py", label="Report / Export")
     st.page_link("pages/12_Research_Bundles.py", label="Research Bundles")
     st.page_link("pages/13_Portfolio.py", label="Portfolio")
+    handoff = st.session_state.get("assistant_bundle_handoff")
+    if isinstance(handoff, dict) and handoff.get("run_id"):
+        st.caption(
+            "Active handoff: "
+            f"run {str(handoff['run_id'])[-8:]} · "
+            f"restored {handoff.get('restored_count', 0)} session keys."
+        )
 
 with st.sidebar:
     st.subheader("Theses")
     new_name = st.text_input("New thesis name", key="assistant_new_thesis_name")
     if st.button("Create thesis", use_container_width=True):
         try:
-            thesis = repository.create_thesis(name=new_name)
-            _select_thesis(thesis.thesis_id)
+            thesis = orchestrator.create_thesis(name=new_name)
+            select_thesis(st.session_state, thesis.thesis_id)
             st.session_state["assistant_thesis_picker"] = thesis.thesis_id
             st.rerun()
         except ValueError as exc:
             st.error(str(exc))
-    theses = repository.list_theses(include_archived=True)
+    theses = orchestrator.list_theses(include_archived=True)
     thesis_ids = [thesis.thesis_id for thesis in theses]
     labels = {
         thesis.thesis_id: f"{thesis.name} ({thesis.lifecycle}, {thesis.thesis_id[-8:]})"
@@ -165,46 +107,45 @@ with st.sidebar:
         key="assistant_thesis_picker",
     )
     if selected_id:
-        _select_thesis(selected_id)
+        if select_thesis(st.session_state, selected_id):
+            st.rerun()
 
 thesis_id = st.session_state["assistant_selected_thesis_id"]
 if not thesis_id:
     st.info("Create or select a thesis to begin.")
     st.stop()
 
-thesis = repository.get_thesis(thesis_id)
+thesis = orchestrator.get_thesis(thesis_id)
 st.subheader(thesis.name)
 st.caption(f"Revision {thesis.revision} · {thesis.lifecycle}")
 with st.expander("Manage thesis"):
     renamed = st.text_input("Rename thesis", value=thesis.name, key=f"assistant_rename_{thesis_id}")
     if st.button("Save thesis name", key=f"rename-{thesis_id}"):
         try:
-            repository.rename_thesis(thesis_id, name=renamed, expected_revision=thesis.revision)
+            orchestrator.rename_thesis(thesis_id, name=renamed, expected_revision=thesis.revision)
             st.rerun()
         except ValueError as exc:
             st.error(str(exc))
     if st.button("Clone thesis", key=f"clone-{thesis_id}"):
-        clone = repository.clone_thesis(thesis_id)
-        _select_thesis(clone.thesis_id)
+        clone = orchestrator.clone_thesis(thesis_id)
+        select_thesis(st.session_state, clone.thesis_id)
         st.session_state["assistant_thesis_picker"] = clone.thesis_id
         st.rerun()
     if thesis.lifecycle == "active":
         if st.button("Archive thesis", key=f"archive-{thesis_id}"):
-            repository.archive_thesis(thesis_id, expected_revision=thesis.revision)
+            orchestrator.archive_thesis(thesis_id, expected_revision=thesis.revision)
             st.rerun()
     elif st.button("Restore thesis", key=f"restore-{thesis_id}"):
-        repository.restore_thesis(thesis_id, expected_revision=thesis.revision)
+        orchestrator.restore_thesis(thesis_id, expected_revision=thesis.revision)
         st.rerun()
 
-conversations = repository.list_conversations(thesis_id)
 conversation_ids = st.session_state["assistant_conversation_ids"]
-if conversation_ids.get(thesis_id) not in {
-    conversation.conversation_id for conversation in conversations
-}:
-    conversation = conversations[-1] if conversations else repository.create_conversation(thesis_id)
-    conversation_ids[thesis_id] = conversation.conversation_id
-conversation_id = conversation_ids[thesis_id]
-active_conversation = repository.get_conversation(thesis_id, conversation_id)
+active_conversation = orchestrator.ensure_conversation(
+    thesis_id,
+    preferred_conversation_id=conversation_ids.get(thesis_id),
+)
+conversation_ids[thesis_id] = active_conversation.conversation_id
+conversation_id = active_conversation.conversation_id
 if st.session_state["assistant_hydrated_conversation_id"] != conversation_id:
     st.session_state["assistant_draft_choices"] = {}
     st.session_state["assistant_draft_prompt"] = "\n".join(
@@ -217,6 +158,7 @@ if st.session_state["assistant_hydrated_conversation_id"] != conversation_id:
             st.session_state["assistant_draft_choices"] = message["choices"]
             break
     st.session_state["assistant_hydrated_conversation_id"] = conversation_id
+    invalidate_validation(st.session_state)
 
 st.subheader("Assistant chat")
 for message in active_conversation.messages:
@@ -234,92 +176,75 @@ if chat_message := st.chat_input("Describe or refine this thesis"):
             user_message=chat_message,
             max_history_messages=settings.max_history_messages,
         )
+        refreshed = orchestrator.get_conversation(thesis_id, conversation_id)
         st.session_state["assistant_draft_prompt"] = "\n".join(
-            [
-                *(
-                    str(message.get("content", ""))
-                    for message in active_conversation.messages
-                    if message.get("role") == "user"
-                ),
-                chat_message,
-            ]
+            str(message.get("content", ""))
+            for message in refreshed.messages
+            if message.get("role") == "user"
         )
         st.session_state["assistant_draft_choices"] = draft.normalized_run_spec
+        invalidate_validation(st.session_state)
         st.rerun()
     except (LLMConfigurationError, LLMProviderError) as exc:
         st.error(str(exc))
 
-with st.expander("Structured execution controls"):
-    current = st.session_state["assistant_draft_choices"]
-    dataset = current.get("dataset") if isinstance(current.get("dataset"), dict) else {}
-    backtest = current.get("backtest") if isinstance(current.get("backtest"), dict) else {}
-    setup = current.get("setup") if isinstance(current.get("setup"), dict) else None
-    controls_fingerprint = hashlib.sha256(
-        json.dumps(current, sort_keys=True, default=str).encode("utf-8")
-    ).hexdigest()[:12]
-    with st.form(f"assistant_execution_{thesis_id}_{controls_fingerprint}"):
+current = st.session_state["assistant_draft_choices"]
+dataset = current.get("dataset") if isinstance(current.get("dataset"), dict) else {}
+backtest = current.get("backtest") if isinstance(current.get("backtest"), dict) else {}
+setup = current.get("setup") if isinstance(current.get("setup"), dict) else {}
+levels = current.get("levels") if isinstance(current.get("levels"), dict) else {}
+validation = current.get("validation") if isinstance(current.get("validation"), dict) else {}
+grid = current.get("grid") if isinstance(current.get("grid"), dict) else {}
+walk_forward = current.get("walk_forward") if isinstance(current.get("walk_forward"), dict) else {}
+
+with st.expander("Structured execution controls", expanded=True):
+    with st.form(f"assistant_execution_{thesis_id}_{_fingerprint(current)}"):
         dataset_path = st.text_input("Dataset CSV path", value=str(dataset.get("path", "")))
-        instruments = ["ES", "NQ", "MES", "MNQ"]
-        current_instrument = str(
-            (setup or {}).get("instrument") or dataset.get("instrument") or "ES"
-        )
         instrument = st.selectbox(
             "Instrument",
-            instruments,
-            index=instruments.index(current_instrument) if current_instrument in instruments else 0,
+            list(INSTRUMENTS),
+            index=option_index(
+                INSTRUMENTS,
+                (setup or {}).get("instrument") or dataset.get("instrument") or "ES",
+            ),
         )
-        raw_stop = backtest.get("stop_loss_ticks", 8)
-        raw_target = backtest.get("take_profit_ticks", 16)
-        stop_default = int(raw_stop) if isinstance(raw_stop, (int, float)) and raw_stop > 0 else 8
-        target_default = (
-            int(raw_target) if isinstance(raw_target, (int, float)) and raw_target > 0 else 16
+        source_timezone = st.text_input(
+            "Source timezone",
+            value=str(dataset.get("source_timezone") or "America/New_York"),
         )
-        raw_commission = backtest.get("commission_per_side", 0)
-        raw_slippage = backtest.get("slippage_ticks", 0)
-        commission_default = (
-            float(raw_commission)
-            if isinstance(raw_commission, (int, float)) and raw_commission >= 0
-            else 0.0
+        subtimeframe_path = st.text_input(
+            "Subtimeframe CSV path (optional)",
+            value=str(dataset.get("subtimeframe_path") or ""),
         )
-        slippage_default = (
-            float(raw_slippage)
-            if isinstance(raw_slippage, (int, float)) and raw_slippage >= 0
-            else 0.0
+        stop_loss_ticks = st.number_input(
+            "Stop loss ticks",
+            min_value=1,
+            value=int(backtest.get("stop_loss_ticks") or 8),
         )
-        stop_loss_ticks = st.number_input("Stop loss ticks", min_value=1, value=stop_default)
-        take_profit_ticks = st.number_input("Take profit ticks", min_value=1, value=target_default)
+        take_profit_ticks = st.number_input(
+            "Take profit ticks",
+            min_value=1,
+            value=int(backtest.get("take_profit_ticks") or 16),
+        )
         commission_per_side = st.number_input(
             "Commission per side",
             min_value=0.0,
-            value=commission_default,
+            value=float(backtest.get("commission_per_side") or 0.0),
         )
         slippage_ticks = st.number_input(
             "Slippage ticks",
             min_value=0.0,
-            value=slippage_default,
+            value=float(backtest.get("slippage_ticks") or 0.0),
         )
         exposure_policy = st.selectbox(
             "Exposure policy",
-            ["allow_all", "single_position", "single_direction", "single_setup"],
-            index=["allow_all", "single_position", "single_direction", "single_setup"].index(
-                str(backtest.get("exposure_policy") or "allow_all")
-            )
-            if str(backtest.get("exposure_policy") or "allow_all")
-            in ["allow_all", "single_position", "single_direction", "single_setup"]
-            else 0,
+            list(EXPOSURE_POLICIES),
+            index=option_index(EXPOSURE_POLICIES, backtest.get("exposure_policy"), 1),
         )
         intrabar_model = st.selectbox(
             "Intrabar model",
-            ["sl_first", "path_open_proximity", "subtimeframe", "subtimeframe_conservative"],
-            index=[
-                "sl_first",
-                "path_open_proximity",
-                "subtimeframe",
-                "subtimeframe_conservative",
-            ].index(str(backtest.get("intrabar_model") or "sl_first"))
-            if str(backtest.get("intrabar_model") or "sl_first")
-            in ["sl_first", "path_open_proximity", "subtimeframe", "subtimeframe_conservative"]
-            else 0,
+            list(INTRABAR_MODELS),
+            index=option_index(INTRABAR_MODELS, backtest.get("intrabar_model")),
         )
         flat_by_session_close = st.checkbox(
             "Flatten at session close",
@@ -337,340 +262,408 @@ with st.expander("Structured execution controls"):
             "No new entries after (exchange time)",
             value=str(backtest.get("no_new_entries_after") or "15:45"),
         )
-        if st.form_submit_button("Apply execution controls"):
-            st.session_state["assistant_draft_choices"] = {
-                **current,
-                "dataset": {**dataset, "path": dataset_path, "instrument": instrument},
-                **({"setup": {**setup, "instrument": instrument}} if setup is not None else {}),
-                "backtest": {
-                    **backtest,
-                    "stop_loss_ticks": stop_loss_ticks,
-                    "take_profit_ticks": take_profit_ticks,
-                    "commission_per_side": commission_per_side,
-                    "slippage_ticks": slippage_ticks,
-                    "exposure_policy": exposure_policy,
-                    "intrabar_model": intrabar_model,
-                    "flat_by_session_close": flat_by_session_close,
-                    "session_close_time": session_close_time,
-                    "session_timezone": session_timezone,
-                    "no_new_entries_after": no_new_entries_after,
-                },
-            }
-            st.session_state["assistant_validated_run_spec"] = None
-            st.rerun()
-
-with st.expander("Structured validation controls"):
-    current = st.session_state["assistant_draft_choices"]
-    validation = current.get("validation") if isinstance(current.get("validation"), dict) else {}
-    validation_fingerprint = hashlib.sha256(
-        json.dumps(validation, sort_keys=True, default=str).encode("utf-8")
-    ).hexdigest()[:12]
-    with st.form(f"assistant_validation_{thesis_id}_{validation_fingerprint}"):
-        raw_bootstrap = validation.get("n_bootstrap", 2000)
-        raw_permutations = validation.get("n_permutations", 5000)
-        raw_seed = validation.get("random_state", 42)
-        bootstrap_default = (
-            int(raw_bootstrap)
-            if isinstance(raw_bootstrap, (int, float))
-            and raw_bootstrap > 0
-            and float(raw_bootstrap).is_integer()
-            else 2000
-        )
-        permutations_default = (
-            int(raw_permutations)
-            if isinstance(raw_permutations, (int, float))
-            and raw_permutations > 0
-            and float(raw_permutations).is_integer()
-            else 5000
-        )
-        seed_default = (
-            int(raw_seed)
-            if isinstance(raw_seed, (int, float)) and raw_seed >= 0 and float(raw_seed).is_integer()
-            else 42
-        )
-        bootstrap = st.number_input(
-            "Bootstrap samples",
-            min_value=1,
-            value=bootstrap_default,
-        )
-        permutations = st.number_input(
-            "Permutation samples",
-            min_value=1,
-            value=permutations_default,
-        )
-        random_state = st.number_input(
-            "Validation random seed",
+        max_holding_raw = backtest.get("max_holding_bars")
+        max_holding_bars = st.number_input(
+            "Max holding bars (0 = unlimited)",
             min_value=0,
-            value=seed_default,
+            value=int(max_holding_raw) if isinstance(max_holding_raw, (int, float)) else 0,
         )
-        if st.form_submit_button("Apply validation controls"):
-            st.session_state["assistant_draft_choices"] = {
-                **current,
-                "validation": {
-                    **validation,
-                    "n_bootstrap": bootstrap,
-                    "n_permutations": permutations,
-                    "random_state": random_state,
-                },
-            }
-            st.session_state["assistant_validated_run_spec"] = None
+        allow_same_bar_exit = st.checkbox(
+            "Allow same-bar exit",
+            value=bool(backtest.get("allow_same_bar_exit", True)),
+        )
+        cooldown_bars_after_exit = st.number_input(
+            "Cooldown bars after exit",
+            min_value=0,
+            value=int(backtest.get("cooldown_bars_after_exit") or 0),
+        )
+        if st.form_submit_button("Apply execution controls"):
+            st.session_state["assistant_draft_choices"] = merge_execution_controls(
+                current,
+                dataset_path=dataset_path,
+                instrument=instrument,
+                source_timezone=source_timezone,
+                subtimeframe_path=subtimeframe_path,
+                stop_loss_ticks=int(stop_loss_ticks),
+                take_profit_ticks=int(take_profit_ticks),
+                commission_per_side=float(commission_per_side),
+                slippage_ticks=float(slippage_ticks),
+                exposure_policy=exposure_policy,
+                intrabar_model=intrabar_model,
+                flat_by_session_close=flat_by_session_close,
+                session_close_time=session_close_time,
+                session_timezone=session_timezone,
+                no_new_entries_after=no_new_entries_after,
+                max_holding_bars=int(max_holding_bars) or None,
+                allow_same_bar_exit=allow_same_bar_exit,
+                cooldown_bars_after_exit=int(cooldown_bars_after_exit),
+            )
+            invalidate_validation(st.session_state)
             st.rerun()
 
-with st.expander("Structured grid controls"):
-    current = st.session_state["assistant_draft_choices"]
-    grid = current.get("grid") if isinstance(current.get("grid"), dict) else {}
-    grid_fingerprint = hashlib.sha256(
-        json.dumps(grid, sort_keys=True, default=str).encode("utf-8")
-    ).hexdigest()[:12]
-    with st.form(f"assistant_grid_{thesis_id}_{grid_fingerprint}"):
-        raw_stop_values = grid.get("stop_loss_ticks_values")
-        raw_target_values = grid.get("take_profit_ticks_values")
-        stop_defaults = raw_stop_values if isinstance(raw_stop_values, list) else [4, 8, 12]
-        target_defaults = raw_target_values if isinstance(raw_target_values, list) else [8, 16, 24]
-        stop_values = st.text_input(
-            "Grid stop ticks",
-            value=", ".join(str(value) for value in stop_defaults),
-        )
-        target_values = st.text_input(
-            "Grid target ticks",
-            value=", ".join(str(value) for value in target_defaults),
-        )
-        ranking_metric = st.selectbox(
-            "Grid ranking metric",
-            ["expectancy_r", "total_r", "profit_factor", "win_rate"],
-            index=["expectancy_r", "total_r", "profit_factor", "win_rate"].index(
-                str(grid.get("ranking_metric") or "expectancy_r")
-            )
-            if str(grid.get("ranking_metric") or "expectancy_r")
-            in ["expectancy_r", "total_r", "profit_factor", "win_rate"]
-            else 0,
-        )
-        raw_min_trades = grid.get("min_trades", 30)
-        min_trade_default = (
-            int(raw_min_trades)
-            if isinstance(raw_min_trades, (int, float)) and raw_min_trades > 0
-            else 30
-        )
-        min_trades = st.number_input("Grid minimum trades", min_value=1, value=min_trade_default)
-        if st.form_submit_button("Apply grid controls"):
-            try:
-                st.session_state["assistant_draft_choices"] = {
-                    **current,
-                    "grid": {
-                        **grid,
-                        "stop_loss_ticks_values": _positive_number_list(stop_values),
-                        "take_profit_ticks_values": _positive_number_list(target_values),
-                        "ranking_metric": ranking_metric,
-                        "min_trades": min_trades,
-                    },
-                }
-                st.session_state["assistant_validated_run_spec"] = None
-                st.rerun()
-            except ValueError as exc:
-                st.error(str(exc))
-
-with st.expander("Structured walk-forward controls"):
-    current = st.session_state["assistant_draft_choices"]
-    walk_forward = (
-        current.get("walk_forward") if isinstance(current.get("walk_forward"), dict) else {}
-    )
-    walk_forward_fingerprint = hashlib.sha256(
-        json.dumps(walk_forward, sort_keys=True, default=str).encode("utf-8")
-    ).hexdigest()[:12]
-    with st.form(f"assistant_walk_forward_{thesis_id}_{walk_forward_fingerprint}"):
-        enabled = st.checkbox("Enable walk-forward", value=bool(walk_forward.get("enabled", False)))
-        raw_train = walk_forward.get("train_sessions", 20)
-        raw_test = walk_forward.get("test_sessions", 5)
-        raw_step = walk_forward.get("step_sessions", 5)
-        train_default = (
-            int(raw_train) if isinstance(raw_train, (int, float)) and raw_train > 0 else 20
-        )
-        test_default = int(raw_test) if isinstance(raw_test, (int, float)) and raw_test > 0 else 5
-        step_default = int(raw_step) if isinstance(raw_step, (int, float)) and raw_step > 0 else 5
-        window_modes = ["rolling", "anchored"]
-        overlap_policies = ["reject", "first", "last"]
-        current_window_mode = str(walk_forward.get("window_mode") or "rolling")
-        current_overlap_policy = str(walk_forward.get("overlap_policy") or "reject")
-        window_mode = st.selectbox(
-            "Window mode",
-            window_modes,
-            index=window_modes.index(current_window_mode)
-            if current_window_mode in window_modes
-            else 0,
-        )
-        overlap_policy = st.selectbox(
-            "Overlapping OOS ownership",
-            overlap_policies,
-            index=overlap_policies.index(current_overlap_policy)
-            if current_overlap_policy in overlap_policies
-            else 0,
-        )
-        train_sessions = st.number_input(
-            "Training sessions",
-            min_value=1,
-            value=train_default,
-        )
-        test_sessions = st.number_input(
-            "Test sessions",
-            min_value=1,
-            value=test_default,
-        )
-        step_sessions = st.number_input(
-            "Step sessions",
-            min_value=1,
-            value=step_default,
-        )
-        if st.form_submit_button("Apply walk-forward controls"):
-            try:
-                st.session_state["assistant_draft_choices"] = {
-                    **current,
-                    "walk_forward": normalize_walk_forward_controls(
-                        enabled=enabled,
-                        train_sessions=train_sessions,
-                        test_sessions=test_sessions,
-                        step_sessions=step_sessions,
-                        fold_mode="sessions",
-                        window_mode=window_mode,
-                        overlap_policy=overlap_policy,
-                    ),
-                }
-                st.session_state["assistant_validated_run_spec"] = None
-                st.rerun()
-            except ValueError as exc:
-                st.error(str(exc))
-
-with st.expander("Structured level controls"):
-    current = st.session_state["assistant_draft_choices"]
-    levels = current.get("levels") if isinstance(current.get("levels"), dict) else {}
-    levels_fingerprint = hashlib.sha256(
-        json.dumps(levels, sort_keys=True, default=str).encode("utf-8")
-    ).hexdigest()[:12]
-    with st.form(f"assistant_levels_{thesis_id}_{levels_fingerprint}"):
-        current_sma_lengths = levels.get("sma_lengths")
-        current_sma_lengths = (
-            current_sma_lengths if isinstance(current_sma_lengths, list) else [50, 200]
-        )
-        current_sma_timeframes = levels.get("sma_timeframes")
-        current_sma_timeframes = (
-            current_sma_timeframes if isinstance(current_sma_timeframes, list) else ["30min"]
-        )
-        session_vwap_enabled = st.checkbox(
-            "Enable developing RTH VWAP",
-            value=bool(levels.get("session_vwap_enabled", True)),
-        )
-        sma_50 = st.checkbox(
-            "Enable SMA 50",
-            value=50 in current_sma_lengths,
-        )
-        sma_timeframe = st.selectbox(
-            "SMA timeframe",
-            ["1min", "5min", "30min", "4h"],
-            index=["1min", "5min", "30min", "4h"].index(
-                str((current_sma_timeframes or ["30min"])[0])
-            )
-            if str((current_sma_timeframes or ["30min"])[0]) in ["1min", "5min", "30min", "4h"]
-            else 2,
-        )
-        if st.form_submit_button("Apply level controls"):
-            sma_lengths = [
-                int(length)
-                for length in current_sma_lengths
-                if isinstance(length, (int, float)) and length > 0 and float(length).is_integer()
-            ]
-            if sma_50 and 50 not in sma_lengths:
-                sma_lengths.append(50)
-            if not sma_50:
-                sma_lengths = [length for length in sma_lengths if length != 50]
-            if not sma_lengths:
-                sma_lengths = [200]
-            st.session_state["assistant_draft_choices"] = {
-                **current,
-                "levels": {
-                    **levels,
-                    "session_vwap_enabled": session_vwap_enabled,
-                    "sma_lengths": sma_lengths,
-                    "sma_timeframes": [sma_timeframe],
-                },
-            }
-            st.session_state["assistant_validated_run_spec"] = None
-            st.rerun()
-
-with st.expander("Structured setup controls"):
-    current = st.session_state["assistant_draft_choices"]
-    setup = current.get("setup") if isinstance(current.get("setup"), dict) else {}
-    setup_fingerprint = hashlib.sha256(
-        json.dumps(setup, sort_keys=True, default=str).encode("utf-8")
-    ).hexdigest()[:12]
-    with st.form(f"assistant_setup_{thesis_id}_{setup_fingerprint}"):
+with st.expander("Structured setup and confluence controls", expanded=True):
+    with st.form(f"assistant_setup_{thesis_id}_{_fingerprint(setup)}"):
         setup_name = st.text_input("Setup name", value=str(setup.get("name") or thesis.name))
+        description = st.text_input("Setup description", value=str(setup.get("description") or ""))
         selected_levels = st.text_input(
             "Confluence levels (comma-separated)",
             value=", ".join(setup.get("selected_levels") or ["dVWAP_RTH", "SMA_50_30min"]),
         )
-        trigger_value = str(setup.get("trigger") or "touch")
         trigger = st.selectbox(
             "Trigger",
-            SETUP_TRIGGER_OPTIONS,
-            index=SETUP_TRIGGER_OPTIONS.index(trigger_value)
-            if trigger_value in SETUP_TRIGGER_OPTIONS
-            else 0,
+            list(SETUP_TRIGGER_OPTIONS),
+            index=option_index(SETUP_TRIGGER_OPTIONS, setup.get("trigger")),
         )
-        direction_options = ["both", "long", "short"]
-        direction_value = str(setup.get("direction") or "both")
         direction = st.selectbox(
             "Direction",
-            direction_options,
-            index=direction_options.index(direction_value)
-            if direction_value in direction_options
-            else 0,
+            list(DIRECTIONS),
+            index=option_index(DIRECTIONS, setup.get("direction")),
         )
         tolerance_ticks = st.number_input(
             "Confluence tolerance ticks",
             min_value=0.0,
             value=float(setup.get("tolerance_ticks") or 0.0),
         )
+        min_confluences = st.number_input(
+            "Minimum confluences",
+            min_value=1,
+            value=int(setup.get("min_confluences") or 1),
+        )
+        max_confluences = st.number_input(
+            "Maximum confluences",
+            min_value=1,
+            value=int(setup.get("max_confluences") or 1),
+        )
+        naked_only = st.checkbox("Naked levels only", value=bool(setup.get("naked_only", False)))
+        naked_requirement = st.selectbox(
+            "Naked requirement",
+            list(NAKED_REQUIREMENTS),
+            index=option_index(NAKED_REQUIREMENTS, setup.get("naked_requirement")),
+        )
+        trigger_timeframe = st.selectbox(
+            "Trigger timeframe",
+            list(TRIGGER_TIMEFRAMES),
+            index=option_index(TRIGGER_TIMEFRAMES, setup.get("trigger_timeframe")),
+        )
+        confluence_mode = st.selectbox(
+            "Confluence mode",
+            list(CONFLUENCE_MODES),
+            index=option_index(CONFLUENCE_MODES, setup.get("confluence_mode")),
+        )
+        anchor_level = st.text_input(
+            "Anchor level (anchor_rules mode)",
+            value=str(setup.get("anchor_level") or ""),
+        )
+        min_valid_confluences = st.number_input(
+            "Minimum valid confluences",
+            min_value=1,
+            value=int(setup.get("min_valid_confluences") or 1),
+        )
         if st.form_submit_button("Apply setup controls"):
             try:
-                levels, min_confluences, max_confluences = normalize_setup_level_selection(
-                    selected_levels,
-                    previous_min=setup.get("min_confluences", 1),
-                    previous_max=setup.get("max_confluences"),
+                st.session_state["assistant_draft_choices"] = merge_setup_controls(
+                    current,
+                    setup_name=setup_name,
+                    description=description,
+                    selected_levels_raw=selected_levels,
+                    trigger=trigger,
+                    direction=direction,
+                    tolerance_ticks=float(tolerance_ticks),
+                    min_confluences=int(min_confluences),
+                    max_confluences=int(max_confluences),
+                    naked_only=naked_only,
+                    naked_requirement=naked_requirement,
+                    trigger_timeframe=trigger_timeframe,
+                    confluence_mode=confluence_mode,
+                    anchor_level=anchor_level,
+                    min_valid_confluences=int(min_valid_confluences),
                 )
-                instrument = str((current.get("dataset") or {}).get("instrument") or "ES")
-                st.session_state["assistant_draft_choices"] = {
-                    **current,
-                    "setup": {
-                        **setup,
-                        "name": setup_name,
-                        "description": setup.get("description", ""),
-                        "instrument": instrument,
-                        "selected_levels": levels,
-                        "tolerance_ticks": tolerance_ticks,
-                        "min_confluences": min_confluences,
-                        "max_confluences": max_confluences,
-                        "naked_only": setup.get("naked_only", False),
-                        "naked_requirement": setup.get("naked_requirement", "any"),
-                        "trigger": trigger,
-                        "trigger_timeframe": setup.get("trigger_timeframe", "base"),
-                        "direction": direction,
-                        "confluence_mode": setup.get("confluence_mode", "global_cluster"),
-                        "anchor_level": setup.get("anchor_level"),
-                        "confluence_rules": setup.get("confluence_rules", []),
-                        "min_valid_confluences": setup.get("min_valid_confluences", 1),
-                        "trigger_params": setup.get("trigger_params", {}),
-                        "otf_filter": setup.get("otf_filter"),
-                    },
-                }
-                st.session_state["assistant_validated_run_spec"] = None
+                invalidate_validation(st.session_state)
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+
+with st.expander("Structured level controls"):
+    with st.form(f"assistant_levels_{thesis_id}_{_fingerprint(levels)}"):
+        session_vwap_enabled = st.checkbox(
+            "Enable developing RTH VWAP",
+            value=bool(levels.get("session_vwap_enabled", True)),
+        )
+        opening_range_minutes = st.number_input(
+            "Opening range minutes",
+            min_value=1,
+            value=int(levels.get("opening_range_minutes") or 30),
+        )
+        sma_lengths_raw = st.text_input(
+            "SMA lengths",
+            value=", ".join(str(v) for v in (levels.get("sma_lengths") or [50, 200])),
+        )
+        sma_timeframes = st.multiselect(
+            "SMA timeframes",
+            list(SMA_TIMEFRAMES),
+            default=[
+                tf for tf in (levels.get("sma_timeframes") or ["30min"]) if tf in SMA_TIMEFRAMES
+            ]
+            or ["30min"],
+        )
+        ema_lengths_raw = st.text_input(
+            "EMA lengths",
+            value=", ".join(str(v) for v in (levels.get("ema_lengths") or [])),
+        )
+        ema_timeframes = st.multiselect(
+            "EMA timeframes",
+            list(SMA_TIMEFRAMES),
+            default=[tf for tf in (levels.get("ema_timeframes") or []) if tf in SMA_TIMEFRAMES],
+        )
+        vwap_windows_raw = st.text_input(
+            "VWAP windows",
+            value=", ".join(str(v) for v in (levels.get("vwap_windows") or [])),
+        )
+        poc_windows_raw = st.text_input(
+            "POC windows",
+            value=", ".join(str(v) for v in (levels.get("poc_windows") or [])),
+        )
+        if st.form_submit_button("Apply level controls"):
+            try:
+                st.session_state["assistant_draft_choices"] = merge_level_controls(
+                    current,
+                    session_vwap_enabled=session_vwap_enabled,
+                    opening_range_minutes=int(opening_range_minutes),
+                    sma_lengths_raw=sma_lengths_raw,
+                    sma_timeframes=sma_timeframes,
+                    ema_lengths_raw=ema_lengths_raw,
+                    ema_timeframes=ema_timeframes,
+                    vwap_windows_raw=vwap_windows_raw,
+                    poc_windows_raw=poc_windows_raw,
+                )
+                invalidate_validation(st.session_state)
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+
+with st.expander("Structured validation controls"):
+    monte_carlo = (
+        validation.get("monte_carlo") if isinstance(validation.get("monte_carlo"), dict) else {}
+    )
+    with st.form(f"assistant_validation_{thesis_id}_{_fingerprint(validation)}"):
+        bootstrap = st.number_input(
+            "Bootstrap samples", min_value=1, value=int(validation.get("n_bootstrap") or 2000)
+        )
+        permutations = st.number_input(
+            "Permutation samples",
+            min_value=1,
+            value=int(validation.get("n_permutations") or 5000),
+        )
+        random_state = st.number_input(
+            "Validation random seed",
+            min_value=0,
+            value=int(validation.get("random_state") or 42),
+        )
+        min_trades_soft = st.number_input(
+            "Soft minimum trades",
+            min_value=1,
+            value=int(validation.get("min_trades_soft") or 30),
+        )
+        min_trades_hard = st.number_input(
+            "Hard minimum trades",
+            min_value=1,
+            value=int(validation.get("min_trades_hard") or 10),
+        )
+        monte_carlo_enabled = st.checkbox(
+            "Enable Monte Carlo", value=bool(monte_carlo.get("enabled", False))
+        )
+        monte_carlo_simulations = st.number_input(
+            "Monte Carlo simulations",
+            min_value=1,
+            value=int(monte_carlo.get("n_simulations") or 200),
+        )
+        excursion_enabled = st.checkbox(
+            "Enable excursion diagnostics",
+            value=bool((validation.get("excursion") or {}).get("enabled", False)),
+        )
+        overfitting_enabled = st.checkbox(
+            "Enable overfitting diagnostics",
+            value=bool((validation.get("overfitting") or {}).get("enabled", False)),
+        )
+        noise_enabled = st.checkbox(
+            "Enable noise diagnostics",
+            value=bool((validation.get("noise") or {}).get("enabled", False)),
+        )
+        sensitivity_enabled = st.checkbox(
+            "Enable sensitivity diagnostics",
+            value=bool((validation.get("sensitivity") or {}).get("enabled", False)),
+        )
+        if st.form_submit_button("Apply validation controls"):
+            st.session_state["assistant_draft_choices"] = merge_validation_controls(
+                current,
+                n_bootstrap=int(bootstrap),
+                n_permutations=int(permutations),
+                random_state=int(random_state),
+                monte_carlo_enabled=monte_carlo_enabled,
+                monte_carlo_simulations=int(monte_carlo_simulations),
+                excursion_enabled=excursion_enabled,
+                overfitting_enabled=overfitting_enabled,
+                noise_enabled=noise_enabled,
+                sensitivity_enabled=sensitivity_enabled,
+                min_trades_soft=int(min_trades_soft),
+                min_trades_hard=int(min_trades_hard),
+            )
+            invalidate_validation(st.session_state)
+            st.rerun()
+
+with st.expander("Structured grid controls"):
+    with st.form(f"assistant_grid_{thesis_id}_{_fingerprint(grid)}"):
+        grid_enabled = st.checkbox("Enable grid search", value=bool(grid.get("enabled", True)))
+        stop_values = st.text_input(
+            "Grid stop ticks",
+            value=", ".join(str(v) for v in (grid.get("stop_loss_ticks_values") or [4, 8, 12])),
+        )
+        target_values = st.text_input(
+            "Grid target ticks",
+            value=", ".join(str(v) for v in (grid.get("take_profit_ticks_values") or [8, 16, 24])),
+        )
+        ranking_metric = st.selectbox(
+            "Grid ranking metric",
+            list(RANKING_METRICS),
+            index=option_index(RANKING_METRICS, grid.get("ranking_metric")),
+        )
+        min_trades = st.number_input(
+            "Grid minimum trades", min_value=1, value=int(grid.get("min_trades") or 30)
+        )
+        max_grid_cells = st.number_input(
+            "Max grid cells", min_value=1, value=int(grid.get("max_grid_cells") or 500)
+        )
+        if st.form_submit_button("Apply grid controls"):
+            try:
+                st.session_state["assistant_draft_choices"] = merge_grid_controls(
+                    current,
+                    enabled=grid_enabled,
+                    stop_values_raw=stop_values,
+                    target_values_raw=target_values,
+                    ranking_metric=ranking_metric,
+                    min_trades=int(min_trades),
+                    max_grid_cells=int(max_grid_cells),
+                )
+                invalidate_validation(st.session_state)
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+
+with st.expander("Structured walk-forward controls"):
+    matrix = walk_forward.get("matrix") if isinstance(walk_forward.get("matrix"), dict) else {}
+    with st.form(f"assistant_walk_forward_{thesis_id}_{_fingerprint(walk_forward)}"):
+        enabled = st.checkbox("Enable walk-forward", value=bool(walk_forward.get("enabled", False)))
+        fold_mode = st.selectbox(
+            "Fold mode",
+            list(FOLD_MODES),
+            index=option_index(FOLD_MODES, walk_forward.get("fold_mode")),
+        )
+        window_mode = st.selectbox(
+            "Window mode",
+            list(WINDOW_MODES),
+            index=option_index(WINDOW_MODES, walk_forward.get("window_mode")),
+        )
+        overlap_policy = st.selectbox(
+            "Overlapping OOS ownership",
+            list(OVERLAP_POLICIES),
+            index=option_index(OVERLAP_POLICIES, walk_forward.get("overlap_policy")),
+        )
+        train_default = (
+            walk_forward.get("train_sessions")
+            if fold_mode == "sessions"
+            else walk_forward.get("train_bars")
+        )
+        test_default = (
+            walk_forward.get("test_sessions")
+            if fold_mode == "sessions"
+            else walk_forward.get("test_bars")
+        )
+        step_default = (
+            walk_forward.get("step_sessions")
+            if fold_mode == "sessions"
+            else walk_forward.get("step_bars")
+        )
+        train_size = st.number_input(
+            "Train size",
+            min_value=1,
+            value=int(train_default or (20 if fold_mode == "sessions" else 500)),
+        )
+        test_size = st.number_input(
+            "Test size",
+            min_value=1,
+            value=int(test_default or (5 if fold_mode == "sessions" else 100)),
+        )
+        step_size = st.number_input(
+            "Step size",
+            min_value=1,
+            value=int(step_default or (5 if fold_mode == "sessions" else 100)),
+        )
+        wfa_ranking = st.selectbox(
+            "Walk-forward ranking metric",
+            list(RANKING_METRICS),
+            index=option_index(RANKING_METRICS, walk_forward.get("ranking_metric")),
+        )
+        min_train_trades = st.number_input(
+            "Minimum train trades",
+            min_value=1,
+            value=int(walk_forward.get("min_train_trades") or 10),
+        )
+        wfa_stops = st.text_input(
+            "Walk-forward stop ticks",
+            value=", ".join(str(v) for v in (walk_forward.get("stop_loss_ticks_values") or [8])),
+        )
+        wfa_targets = st.text_input(
+            "Walk-forward target ticks",
+            value=", ".join(str(v) for v in (walk_forward.get("take_profit_ticks_values") or [16])),
+        )
+        matrix_enabled = st.checkbox("Enable WFA matrix", value=bool(matrix.get("enabled", False)))
+        matrix_train_raw = st.text_input(
+            "Matrix train session values",
+            value=", ".join(str(v) for v in (matrix.get("train_session_values") or [20, 40])),
+        )
+        matrix_test_raw = st.text_input(
+            "Matrix test session values",
+            value=", ".join(str(v) for v in (matrix.get("test_session_values") or [5, 10])),
+        )
+        matrix_metric = st.selectbox(
+            "Matrix metric",
+            list(WFA_MATRIX_METRICS),
+            index=option_index(WFA_MATRIX_METRICS, matrix.get("matrix_metric")),
+        )
+        max_matrix_cells = st.number_input(
+            "Max matrix cells",
+            min_value=1,
+            value=int(matrix.get("max_matrix_cells") or 100),
+        )
+        if st.form_submit_button("Apply walk-forward controls"):
+            try:
+                st.session_state["assistant_draft_choices"] = merge_walk_forward_controls(
+                    current,
+                    enabled=enabled,
+                    fold_mode=fold_mode,
+                    window_mode=window_mode,
+                    overlap_policy=overlap_policy,
+                    train_size=int(train_size),
+                    test_size=int(test_size),
+                    step_size=int(step_size),
+                    ranking_metric=wfa_ranking,
+                    min_train_trades=int(min_train_trades),
+                    stop_values_raw=wfa_stops,
+                    target_values_raw=wfa_targets,
+                    matrix_enabled=matrix_enabled,
+                    matrix_train_raw=matrix_train_raw,
+                    matrix_test_raw=matrix_test_raw,
+                    matrix_metric=matrix_metric,
+                    max_matrix_cells=int(max_matrix_cells),
+                )
+                invalidate_validation(st.session_state)
                 st.rerun()
             except ValueError as exc:
                 st.error(str(exc))
 
 with st.expander("Reuse saved setup"):
-    listed = _dispatch(
-        orchestrator,
-        capability_id="SETUP.manage_saved_setups",
-        payload={"action": "list"},
+    listed = orchestrator.dispatch(
+        AssistantRequest(capability_id="SETUP.manage_saved_setups", payload={"action": "list"})
     )
     saved_setups, list_error = list_payload_or_error(
         listed,
@@ -680,9 +673,9 @@ with st.expander("Reuse saved setup"):
     if list_error is not None:
         st.error(list_error)
     setup_options = {
-        setup["setup_id"]: f"{setup.get('name', 'Unnamed')} ({setup['setup_id'][-8:]})"
-        for setup in saved_setups
-        if isinstance(setup, dict) and isinstance(setup.get("setup_id"), str)
+        item["setup_id"]: f"{item.get('name', 'Unnamed')} ({item['setup_id'][-8:]})"
+        for item in saved_setups
+        if isinstance(item, dict) and isinstance(item.get("setup_id"), str)
     }
     selected_setup_id = st.selectbox(
         "Saved setup",
@@ -693,100 +686,120 @@ with st.expander("Reuse saved setup"):
         disabled=list_error is not None,
     )
     if selected_setup_id and st.button("Apply saved setup"):
-        loaded = _dispatch(
-            orchestrator,
-            capability_id="SETUP.manage_saved_setups",
-            payload={"action": "load", "setup_id": selected_setup_id},
+        loaded = orchestrator.dispatch(
+            AssistantRequest(
+                capability_id="SETUP.manage_saved_setups",
+                payload={"action": "load", "setup_id": selected_setup_id},
+            ),
             thesis_id=thesis_id,
             conversation_id=conversation_id,
         )
         if loaded.status != "completed":
             st.error(loaded.payload.get("error", {}).get("message", "Unable to load setup."))
-            st.stop()
-        setup = loaded.payload.get("setup", {})
-        setup_config = setup.get("setup_config")
-        if not isinstance(setup_config, dict):
-            st.error("Saved setup does not contain a valid setup configuration.")
-            st.stop()
-        st.session_state["assistant_draft_choices"] = {
-            **st.session_state["assistant_draft_choices"],
-            "setup": setup_config,
-        }
-        st.session_state["assistant_validated_run_spec"] = None
-        st.rerun()
+        else:
+            setup_config = loaded.payload.get("setup", {}).get("setup_config")
+            if not isinstance(setup_config, dict):
+                st.error("Saved setup does not contain a valid setup configuration.")
+            else:
+                st.session_state["assistant_draft_choices"] = {
+                    **st.session_state["assistant_draft_choices"],
+                    "setup": setup_config,
+                }
+                invalidate_validation(st.session_state)
+                st.rerun()
 
 prompt = st.text_area(
     "Describe the setup thesis",
     value=st.session_state["assistant_draft_prompt"],
     placeholder="Example: Uptrend retraces to dVWAP with 30m SMA confluence in NY B session.",
 )
+st.session_state["assistant_draft_prompt"] = prompt
+
 with st.expander("Advanced: edit complete research choices as JSON"):
     choices_raw = st.text_area(
         "Explicit research choices (JSON)",
         value=json.dumps(st.session_state["assistant_draft_choices"], indent=2),
-        help="Use structured controls above for executable assumptions.",
+        help="Audit-only. Apply JSON edits explicitly; structured controls own the default path.",
     )
-if st.button("Draft research plan", type="primary"):
-    try:
-        choices = _choices_from_editor(choices_raw)
-        draft = compile_thesis(prompt, choices=choices)
-        st.session_state["assistant_draft_prompt"] = draft.prompt
-        st.session_state["assistant_draft_choices"] = draft.normalized_run_spec
-        spec = repository.create_spec_version(
-            thesis_id,
-            normalized_run_spec=draft.normalized_run_spec,
-            status="ready_for_confirmation"
-            if draft.ready_for_confirmation
-            else "needs_clarification",
-            unresolved_assumptions=draft.unresolved_assumptions,
-            compiler_version="1",
-        )
-        st.success(f"Saved specification version {spec.version}.")
-        st.rerun()
-    except (ValueError, json.JSONDecodeError) as exc:
-        st.error(str(exc))
+    if st.button("Apply JSON audit edits"):
+        try:
+            st.session_state["assistant_draft_choices"] = parse_json_choices(choices_raw)
+            invalidate_validation(st.session_state)
+            st.rerun()
+        except (ValueError, json.JSONDecodeError) as exc:
+            st.error(str(exc))
 
-if st.button("Validate executable RunSpec"):
-    try:
-        current_choices = _choices_from_editor(choices_raw)
-        validated = map_thesis_choices_to_run_spec(name=thesis.name, choices=current_choices)
-        validation = _dispatch(
-            orchestrator,
-            capability_id="PIPELINE.validate_run_spec",
-            payload={"run_spec": validated},
+draft_col, validate_col = st.columns(2)
+with draft_col:
+    if st.button("Draft research plan", type="primary"):
+        try:
+            spec = orchestrator.draft_specification(
+                thesis_id=thesis_id,
+                prompt=st.session_state["assistant_draft_prompt"],
+                choices=st.session_state["assistant_draft_choices"],
+            )
+            st.success(f"Saved specification version {spec.version}.")
+            st.rerun()
+        except ValueError as exc:
+            st.error(str(exc))
+with validate_col:
+    if st.button("Validate executable RunSpec"):
+        validation_result = orchestrator.validate_choices(
             thesis_id=thesis_id,
             conversation_id=conversation_id,
+            thesis_name=thesis.name,
+            choices=st.session_state["assistant_draft_choices"],
         )
-        if validation.status != "completed":
-            raise ValueError(
-                validation.payload.get("error", {}).get("message", "Validation failed.")
+        if validation_result.status != "completed":
+            st.session_state["assistant_validated_run_spec"] = None
+            st.error(
+                validation_result.payload.get("error", {}).get("message", "Validation failed.")
             )
-        st.session_state["assistant_draft_choices"] = current_choices
-        st.session_state["assistant_validated_run_spec"] = {
-            "choices": current_choices,
-            "spec": validated,
-        }
-        st.success("Executable RunSpec is valid and ready for explicit confirmation.")
-    except ValueError as exc:
-        st.session_state["assistant_validated_run_spec"] = None
-        st.error(str(exc))
+        else:
+            st.session_state["assistant_validated_run_spec"] = {
+                "choices": validation_result.payload["choices"],
+                "spec": validation_result.payload["spec"],
+            }
+            st.success("Executable RunSpec is valid and ready for explicit confirmation.")
 
 validated_state = st.session_state["assistant_validated_run_spec"]
-if (
-    isinstance(validated_state, dict)
+plan = build_plan_review(
+    thesis_name=thesis.name,
+    choices=st.session_state["assistant_draft_choices"],
+    validated_spec=validated_state["spec"]
+    if isinstance(validated_state, dict)
     and validated_state.get("choices") == st.session_state["assistant_draft_choices"]
-):
-    with st.expander("Validated executable RunSpec"):
-        st.json(validated_state["spec"])
+    else None,
+)
+st.subheader("Plan review")
+st.write(
+    f"**{plan['thesis_name']}** · instrument `{plan['instrument']}` · "
+    f"trigger `{plan['trigger']}` · levels `{', '.join(plan['selected_levels']) or '—'}`"
+)
+st.caption(
+    f"Dataset `{plan['dataset_path'] or '—'}` · exposure `{plan['exposure_policy']}` · "
+    f"intrabar `{plan['intrabar_model']}` · "
+    f"grid={'on' if plan['has_grid'] else 'off'} · "
+    f"validation={'on' if plan['has_validation'] else 'off'} · "
+    f"WFA={'on' if plan['has_walk_forward'] else 'off'}"
+)
+if plan["unresolved_assumptions"]:
+    st.warning("Clarifications still required before confirmation.")
+    for item in plan["unresolved_assumptions"]:
+        st.write(f"- {item}")
+if plan["validated_spec"] is not None:
+    with st.expander("Validated executable RunSpec", expanded=True):
+        st.json(plan["validated_spec"])
     if st.button("Save validated setup to library"):
-        saved = _dispatch(
-            orchestrator,
-            capability_id="SETUP.manage_saved_setups",
-            payload={
-                "action": "save",
-                "setup": validated_state["spec"]["setup"],
-                "instrument": validated_state["spec"]["setup"].get("instrument"),
-            },
+        saved = orchestrator.dispatch(
+            AssistantRequest(
+                capability_id="SETUP.manage_saved_setups",
+                payload={
+                    "action": "save",
+                    "setup": plan["validated_spec"]["setup"],
+                    "instrument": plan["validated_spec"]["setup"].get("instrument"),
+                },
+            ),
             confirmed=True,
             thesis_id=thesis_id,
             conversation_id=conversation_id,
@@ -796,25 +809,16 @@ if (
         else:
             st.success(f"Saved setup {saved.payload['setup']['setup_id']}.")
     if st.button("Confirm validated RunSpec", type="primary"):
-        executable = repository.create_spec_version(
-            thesis_id,
-            normalized_run_spec=validated_state["spec"],
-            status="ready_for_confirmation",
-            unresolved_assumptions=(),
-            compiler_version="runspec-2",
-        )
-        repository.confirm_spec_version(
-            thesis_id,
-            executable.version,
-            confirmation_note="Confirmed validated executable RunSpec in UI",
+        orchestrator.confirm_validated_spec(
+            thesis_id=thesis_id,
+            validated_spec=plan["validated_spec"],
         )
         st.session_state["assistant_validated_run_spec"] = None
         st.rerun()
 
-specifications = repository.list_spec_versions(thesis_id)
-confirmed_parents = {spec.parent_version for spec in specifications if spec.status == "confirmed"}
-for spec in reversed(specifications):
-    with st.expander(f"Specification v{spec.version} · {spec.status}", expanded=spec.version == 1):
+st.subheader("Specifications")
+for spec in reversed(orchestrator.list_spec_versions(thesis_id)):
+    with st.expander(f"Specification v{spec.version} · {spec.status}", expanded=False):
         st.json(spec.normalized_run_spec)
         if spec.unresolved_assumptions:
             st.warning("Clarifications required")
@@ -825,18 +829,10 @@ for spec in reversed(specifications):
         ):
             if st.button("Run confirmed research", key=f"run-{spec.version}"):
                 try:
-                    output_path = (
-                        get_store_root()
-                        / "assistant"
-                        / "theses"
-                        / thesis_id
-                        / "bundles"
-                        / f"{uuid4().hex}.research.zip"
-                    )
                     run_result = orchestrator.execute_confirmed_run(
                         thesis_id=thesis_id,
                         spec_version=spec.version,
-                        output_path=output_path,
+                        output_path=orchestrator.default_bundle_output_path(thesis_id),
                         conversation_id=conversation_id,
                     )
                     level, message = confirmed_run_feedback(run_result)
@@ -851,21 +847,18 @@ for spec in reversed(specifications):
                     st.error(f"Research run failed: {exc}")
 
 st.subheader("Research runs")
-runs = repository.list_runs(thesis_id)
+runs = orchestrator.list_runs(thesis_id)
 if not runs:
     st.info("No research runs are recorded for this thesis yet.")
 else:
     for run in reversed(runs):
+        provenance_card = build_provenance_card(run.to_dict())
         with st.expander(f"Run {run.run_id[-8:]} · {run.status}"):
-            st.caption(f"Specification v{run.spec_version} · revision {run.revision}")
-            st.json(
-                {
-                    "request": run.request,
-                    "provenance": run.provenance,
-                    "warnings": list(run.warnings),
-                    "error": run.error,
-                }
+            st.caption(
+                f"Specification v{run.spec_version} · revision {run.revision} · "
+                f"hash `{str(provenance_card.get('canonical_bundle_hash') or '—')[:16]}`"
             )
+            st.json(provenance_card)
             if run.status == "running" and st.button("Cancel run", key=f"cancel-{run.run_id}"):
                 cancelled = orchestrator.cancel_run(
                     thesis_id=thesis_id,
@@ -874,7 +867,6 @@ else:
                 )
                 if cancelled.status == "cancelled":
                     st.warning("Research run cancelled.")
-                    st.rerun()
                 else:
                     st.error(
                         cancelled.payload.get("error", {}).get(
@@ -882,64 +874,37 @@ else:
                             "Unable to cancel this run because it is no longer running.",
                         )
                     )
-                    st.rerun()
+                st.rerun()
             if run.status == "completed" and isinstance(run.provenance, dict):
-                bundle_path = run.provenance.get("bundle_path")
-                try:
-                    expected_hash = _require_run_bundle_hash(run.provenance)
-                except ValueError:
-                    expected_hash = None
-                if isinstance(bundle_path, str) and st.button(
-                    "Explain run", key=f"explain-{run.run_id}"
-                ):
-                    if expected_hash is None:
-                        st.error("Completed run is missing canonical bundle hash provenance.")
-                    else:
-                        result = _dispatch(
-                            orchestrator,
-                            capability_id="BUNDLE.import",
-                            payload={
-                                "action": "evidence",
-                                "bundle_path": bundle_path,
-                                "expected_hash": expected_hash,
-                                "provenance": run.provenance,
-                            },
-                            thesis_id=thesis_id,
-                            conversation_id=conversation_id,
+                if st.button("Explain run", key=f"explain-{run.run_id}"):
+                    result = orchestrator.explain_run(
+                        thesis_id=thesis_id,
+                        conversation_id=conversation_id,
+                        run=run,
+                    )
+                    if result.status != "completed":
+                        st.error(
+                            result.payload.get("error", {}).get(
+                                "message", "Unable to load evidence."
+                            )
                         )
-                        if result.status != "completed":
-                            st.error(
-                                result.payload.get("error", {}).get(
-                                    "message", "Unable to load evidence."
-                                )
-                            )
-                        else:
-                            packet = _evidence_packet(result.payload)
-                            st.session_state["assistant_run_explanations"][run.run_id] = (
-                                explain_evidence(packet)
-                            )
+                    else:
+                        st.session_state["assistant_run_explanations"][run.run_id] = result.payload[
+                            "explanation"
+                        ]
                 explanation = st.session_state["assistant_run_explanations"].get(run.run_id)
                 if explanation:
                     st.write(explanation)
-                if isinstance(bundle_path, str) and st.button(
+                if st.button(
                     "Generate evidence-only AI explanation", key=f"llm-explain-{run.run_id}"
                 ):
                     try:
-                        if expected_hash is None:
-                            raise ValueError(
-                                "Completed run is missing canonical bundle hash provenance."
-                            )
-                        result = _dispatch(
-                            orchestrator,
-                            capability_id="BUNDLE.import",
-                            payload={
-                                "action": "evidence",
-                                "bundle_path": bundle_path,
-                                "expected_hash": expected_hash,
-                                "provenance": run.provenance,
-                            },
+                        client = create_openai_client(load_llm_settings())
+                        result = orchestrator.explain_run_with_llm(
+                            client,
                             thesis_id=thesis_id,
                             conversation_id=conversation_id,
+                            run=run,
                         )
                         if result.status != "completed":
                             raise ValueError(
@@ -947,13 +912,11 @@ else:
                                     "message", "Unable to load evidence."
                                 )
                             )
-                        packet = _evidence_packet(result.payload)
-                        client = create_openai_client(load_llm_settings())
                         st.session_state["assistant_llm_run_explanations"][run.run_id] = (
-                            explain_packet_with_llm(client, packet=packet)
+                            result.payload["llm_explanation"]
                         )
-                        st.session_state["assistant_llm_attempts"][run.run_id] = (
-                            client.last_attempt_count
+                        st.session_state["assistant_llm_attempts"][run.run_id] = result.payload.get(
+                            "provider_attempts"
                         )
                     except (LLMConfigurationError, LLMProviderError, ValueError) as exc:
                         st.error(f"Unable to generate AI explanation: {exc}")
@@ -965,33 +928,25 @@ else:
                     attempts = st.session_state["assistant_llm_attempts"].get(run.run_id)
                     if attempts:
                         st.caption(f"Provider attempts: {attempts}")
-                if isinstance(bundle_path, str) and st.button(
-                    "Render markdown report", key=f"report-{run.run_id}"
-                ):
-                    if expected_hash is None:
-                        st.error("Completed run is missing canonical bundle hash provenance.")
-                    else:
-                        result = _dispatch(
-                            orchestrator,
-                            capability_id="EXPORT.build_research_artifact",
-                            payload={
-                                "bundle_path": bundle_path,
-                                "expected_hash": expected_hash,
-                            },
-                            confirmed=True,
-                            thesis_id=thesis_id,
-                            conversation_id=conversation_id,
-                        )
-                        if result.status != "completed":
-                            st.error(
-                                result.payload.get("error", {}).get(
-                                    "message", "Unable to render report."
-                                )
+                if st.button("Render markdown report", key=f"report-{run.run_id}"):
+                    result = orchestrator.export_run(
+                        thesis_id=thesis_id,
+                        conversation_id=conversation_id,
+                        run=run,
+                    )
+                    if result.status != "completed":
+                        st.error(
+                            result.payload.get("error", {}).get(
+                                "message", "Unable to render report."
                             )
-                        else:
-                            st.session_state["assistant_run_reports"][run.run_id] = result.payload[
-                                "markdown_report"
-                            ]
+                        )
+                    else:
+                        st.session_state["assistant_run_reports"][run.run_id] = result.payload[
+                            "markdown_report"
+                        ]
+                        st.session_state["assistant_run_artifacts"][run.run_id] = result.payload[
+                            "artifact"
+                        ]
                 report = st.session_state["assistant_run_reports"].get(run.run_id)
                 if report:
                     st.markdown(report)
@@ -1002,33 +957,6 @@ else:
                         mime="text/markdown",
                         key=f"download-report-{run.run_id}",
                     )
-                if isinstance(bundle_path, str) and st.button(
-                    "Build research artifact", key=f"artifact-{run.run_id}"
-                ):
-                    if expected_hash is None:
-                        st.error("Completed run is missing canonical bundle hash provenance.")
-                    else:
-                        result = _dispatch(
-                            orchestrator,
-                            capability_id="EXPORT.build_research_artifact",
-                            payload={
-                                "bundle_path": bundle_path,
-                                "expected_hash": expected_hash,
-                            },
-                            confirmed=True,
-                            thesis_id=thesis_id,
-                            conversation_id=conversation_id,
-                        )
-                        if result.status != "completed":
-                            st.error(
-                                result.payload.get("error", {}).get(
-                                    "message", "Unable to build research artifact."
-                                )
-                            )
-                        else:
-                            st.session_state["assistant_run_artifacts"][run.run_id] = (
-                                result.payload["artifact"]
-                            )
                 artifact = st.session_state["assistant_run_artifacts"].get(run.run_id)
                 if artifact:
                     st.download_button(
@@ -1038,6 +966,20 @@ else:
                         mime="application/json",
                         key=f"download-artifact-{run.run_id}",
                     )
+                if st.button("Restore bundle into research pages", key=f"handoff-{run.run_id}"):
+                    try:
+                        handoff_result = orchestrator.restore_run_bundle_to_session(
+                            thesis_id=thesis_id,
+                            run_id=run.run_id,
+                            session_state=st.session_state,
+                        )
+                        st.success(
+                            "Restored "
+                            f"{handoff_result['restored_count']} research keys from "
+                            f"run {run.run_id[-8:]}."
+                        )
+                    except Exception as exc:
+                        st.error(f"Unable to restore bundle: {exc}")
 
 completed_runs = [
     run
@@ -1063,53 +1005,24 @@ if len(completed_runs) >= 2:
         key=f"assistant_compare_right_{thesis_id}",
     )
     if st.button("Compare runs") and left_id != right_id:
-        try:
-            selected = {run.run_id: run for run in completed_runs}
-            packets = []
-            for run_id in (left_id, right_id):
-                run = selected[run_id]
-                result = _dispatch(
-                    orchestrator,
-                    capability_id="BUNDLE.import",
-                    payload={
-                        "action": "evidence",
-                        "bundle_path": run.provenance["bundle_path"],
-                        "expected_hash": run.provenance["canonical_bundle_hash"],
-                        "provenance": run.provenance,
-                    },
-                    thesis_id=thesis_id,
-                    conversation_id=conversation_id,
-                )
-                if result.status != "completed":
-                    raise ValueError(
-                        result.payload.get("error", {}).get("message", "Unable to load evidence.")
-                    )
-                packets.append(_evidence_packet(result.payload))
-            comparison = compare_evidence(*packets)
+        selected = {run.run_id: run for run in completed_runs}
+        result = orchestrator.compare_completed_runs(
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+            left_run=selected[left_id],
+            right_run=selected[right_id],
+        )
+        if result.status != "completed":
+            st.error(result.payload.get("error", {}).get("message", "Unable to compare runs."))
+        else:
             st.session_state["assistant_run_comparisons"][thesis_id] = {
-                "run_ids": [left_id, right_id],
-                "comparison": comparison,
+                "run_ids": result.payload["run_ids"],
+                "comparison": result.payload["comparison"],
             }
-            try:
-                repository.save_comparison(
-                    Comparison.create(
-                        thesis_id=thesis_id,
-                        left_run_id=left_id,
-                        right_run_id=right_id,
-                        left_bundle_hash=selected[left_id].provenance["canonical_bundle_hash"],
-                        right_bundle_hash=selected[right_id].provenance["canonical_bundle_hash"],
-                        evidence=comparison,
-                    )
-                )
-            except ValueError as exc:
-                st.warning(f"Comparison was calculated but could not be saved: {exc}")
-        except ValueError as exc:
-            st.error(f"Unable to compare runs: {exc}")
     comparison_state = st.session_state["assistant_run_comparisons"].get(thesis_id)
     if comparison_state and comparison_state.get("run_ids") == [left_id, right_id]:
         st.json(comparison_state["comparison"])
 
-if len(completed_runs) >= 2:
     st.subheader("Portfolio analysis")
     portfolio_ids = st.multiselect(
         "Completed runs",
@@ -1119,26 +1032,16 @@ if len(completed_runs) >= 2:
     )
     instrument = st.selectbox(
         "Portfolio instrument",
-        ["ES", "NQ", "MES", "MNQ"],
+        list(INSTRUMENTS),
         key=f"assistant_portfolio_instrument_{thesis_id}",
     )
     if st.button("Analyze portfolio") and len(portfolio_ids) >= 2:
         selected = {run.run_id: run for run in completed_runs}
-        bundle_paths = [selected[run_id].provenance["bundle_path"] for run_id in portfolio_ids]
-        expected_hashes = [
-            selected[run_id].provenance["canonical_bundle_hash"] for run_id in portfolio_ids
-        ]
-        result = _dispatch(
-            orchestrator,
-            capability_id="PORTFOLIO.analyze",
-            payload={
-                "bundle_paths": bundle_paths,
-                "expected_hashes": expected_hashes,
-                "instrument": instrument,
-            },
-            confirmed=True,
+        result = orchestrator.analyze_portfolio_runs(
             thesis_id=thesis_id,
             conversation_id=conversation_id,
+            runs=[selected[run_id] for run_id in portfolio_ids],
+            instrument=instrument,
         )
         if result.status != "completed":
             st.error(result.payload.get("error", {}).get("message", "Unable to analyze portfolio."))
@@ -1148,11 +1051,11 @@ if len(completed_runs) >= 2:
             )
 
 with st.expander("Saved comparisons"):
-    for record in repository.list_comparisons(thesis_id):
+    for record in orchestrator.list_comparisons(thesis_id):
         st.json(record.to_dict())
 
 st.subheader("Conversation audit")
-conversations = repository.list_conversations(thesis_id)
+conversations = orchestrator.list_conversations(thesis_id)
 if not conversations:
     st.caption("No conversation transcript has been recorded yet.")
 else:
