@@ -232,9 +232,13 @@ with st.expander("Reuse saved setup"):
     )
     if selected_setup_id and st.button("Apply saved setup"):
         setup = load_setup(selected_setup_id)
+        setup_config = setup.get("setup_config")
+        if not isinstance(setup_config, dict):
+            st.error("Saved setup does not contain a valid setup configuration.")
+            st.stop()
         st.session_state["assistant_draft_choices"] = {
             **st.session_state["assistant_draft_choices"],
-            "setup": setup,
+            "setup": setup_config,
         }
         st.session_state["assistant_validated_run_spec"] = None
         st.rerun()
