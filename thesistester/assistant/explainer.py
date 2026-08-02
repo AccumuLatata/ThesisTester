@@ -64,6 +64,16 @@ def build_evidence_packet(
         warnings.append("Trade count is unavailable; sample-size screening cannot be assessed.")
     if results.get("backtest_intrabar_diagnostic"):
         warnings.append("Intrabar ordering remains model-dependent.")
+    costs = state.get("backtest_execution_costs")
+    if (
+        isinstance(costs, Mapping)
+        and costs.get("commission_per_side", 0) == 0
+        and costs.get("slippage_ticks", 0) == 0
+    ):
+        warnings.append("Backtest uses zero commission and zero slippage assumptions.")
+    exposure = state.get("exposure_policy")
+    if isinstance(exposure, Mapping) and exposure.get("exposure_policy") == "allow_all":
+        warnings.append("Allow-all exposure can count overlapping signals independently.")
     return EvidencePacket(
         provenance=to_jsonable(dict(provenance)),
         assumptions={
