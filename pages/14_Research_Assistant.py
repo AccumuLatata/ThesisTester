@@ -7,10 +7,17 @@ It does not implement backtesting semantics or execute arbitrary model output.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import streamlit as st
 
-from thesistester.assistant import LocalThesisRepository, compile_thesis
+from thesistester.assistant import AssistantOrchestrator, LocalThesisRepository, compile_thesis
+from thesistester.assistant.llm import (
+    LLMConfigurationError,
+    create_openai_client,
+    load_llm_settings,
+)
+from thesistester.assistant.tools import AssistantTools
 
 
 def _repository() -> LocalThesisRepository:
@@ -21,6 +28,8 @@ def _init_state() -> None:
     st.session_state.setdefault("assistant_selected_thesis_id", None)
     st.session_state.setdefault("assistant_draft_prompt", "")
     st.session_state.setdefault("assistant_draft_choices", {})
+    st.session_state.setdefault("assistant_conversation_ids", {})
+    st.session_state.setdefault("assistant_hydrated_conversation_id", None)
 
 
 def _select_thesis(thesis_id: str) -> None:
@@ -80,6 +89,62 @@ if not thesis_id:
 thesis = repository.get_thesis(thesis_id)
 st.subheader(thesis.name)
 st.caption(f"Revision {thesis.revision} · {thesis.lifecycle}")
+
+conversations = repository.list_conversations(thesis_id)
+conversation_ids = st.session_state["assistant_conversation_ids"]
+if conversation_ids.get(thesis_id) not in {
+    conversation.conversation_id for conversation in conversations
+}:
+    conversation = conversations[-1] if conversations else repository.create_conversation(thesis_id)
+    conversation_ids[thesis_id] = conversation.conversation_id
+conversation_id = conversation_ids[thesis_id]
+active_conversation = repository.get_conversation(thesis_id, conversation_id)
+if st.session_state["assistant_hydrated_conversation_id"] != conversation_id:
+    st.session_state["assistant_draft_choices"] = {}
+    st.session_state["assistant_draft_prompt"] = "\n".join(
+        str(message.get("content", ""))
+        for message in active_conversation.messages
+        if message.get("role") == "user"
+    )
+    for message in reversed(active_conversation.messages):
+        if message.get("role") == "assistant" and isinstance(message.get("choices"), dict):
+            st.session_state["assistant_draft_choices"] = message["choices"]
+            break
+    st.session_state["assistant_hydrated_conversation_id"] = conversation_id
+
+st.subheader("Assistant chat")
+for message in active_conversation.messages:
+    with st.chat_message(message.get("role", "assistant")):
+        st.write(message.get("content", ""))
+
+if chat_message := st.chat_input("Describe or refine this thesis"):
+    try:
+        settings = load_llm_settings()
+        client = create_openai_client(settings)
+        orchestrator = AssistantOrchestrator(
+            tools=AssistantTools(data_roots=(Path.cwd(),)),
+            repository=repository,
+        )
+        draft = orchestrator.handle_chat_turn(
+            client,
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+            user_message=chat_message,
+        )
+        st.session_state["assistant_draft_prompt"] = "\n".join(
+            [
+                *(
+                    str(message.get("content", ""))
+                    for message in active_conversation.messages
+                    if message.get("role") == "user"
+                ),
+                chat_message,
+            ]
+        )
+        st.session_state["assistant_draft_choices"] = draft.normalized_run_spec
+        st.rerun()
+    except LLMConfigurationError as exc:
+        st.error(str(exc))
 
 prompt = st.text_area(
     "Describe the setup thesis",

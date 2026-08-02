@@ -166,6 +166,11 @@ coordinator between UI, repository, compiler, tools, and explainer.
 - Tool request/output schemas are evaluated with realistic multi-step fixtures.
 - LLM-free deterministic fallback remains usable.
 
+**Implementation status:** C2-6.1 through C2-6.3 provide the provider,
+strict intent adapter, and persisted non-executing turns. C2-6.4 adds the
+Streamlit transcript/input integration; tool execution remains unavailable from
+chat until the explicit confirmation/run lifecycle is wired.
+
 ## C2-7 — Feature-parity completion
 
 Implement remaining registry capabilities in this order:
