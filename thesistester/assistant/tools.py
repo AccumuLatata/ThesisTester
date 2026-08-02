@@ -187,7 +187,7 @@ class AssistantTools:
             "summary": _state_summary(state),
             "bundle_path": str(path),
             "canonical_bundle_hash": canonical_bundle_hash(bundle),
-            "dataset_fingerprint": to_jsonable(state.get("data_fingerprint")),
+            "dataset_fingerprint": to_jsonable(state.get("levels_data_fingerprint")),
             "tool_version": __version__,
         }
 
