@@ -483,6 +483,62 @@ with st.expander("Structured walk-forward controls"):
             st.session_state["assistant_validated_run_spec"] = None
             st.rerun()
 
+with st.expander("Structured level controls"):
+    current = st.session_state["assistant_draft_choices"]
+    levels = current.get("levels") if isinstance(current.get("levels"), dict) else {}
+    levels_fingerprint = hashlib.sha256(
+        json.dumps(levels, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:12]
+    with st.form(f"assistant_levels_{thesis_id}_{levels_fingerprint}"):
+        current_sma_lengths = levels.get("sma_lengths")
+        current_sma_lengths = (
+            current_sma_lengths if isinstance(current_sma_lengths, list) else [50, 200]
+        )
+        current_sma_timeframes = levels.get("sma_timeframes")
+        current_sma_timeframes = (
+            current_sma_timeframes if isinstance(current_sma_timeframes, list) else ["30min"]
+        )
+        session_vwap_enabled = st.checkbox(
+            "Enable developing RTH VWAP",
+            value=bool(levels.get("session_vwap_enabled", True)),
+        )
+        sma_50 = st.checkbox(
+            "Enable SMA 50",
+            value=50 in current_sma_lengths,
+        )
+        sma_timeframe = st.selectbox(
+            "SMA timeframe",
+            ["1min", "5min", "30min", "4h"],
+            index=["1min", "5min", "30min", "4h"].index(
+                str((current_sma_timeframes or ["30min"])[0])
+            )
+            if str((current_sma_timeframes or ["30min"])[0]) in ["1min", "5min", "30min", "4h"]
+            else 2,
+        )
+        if st.form_submit_button("Apply level controls"):
+            sma_lengths = [
+                int(length)
+                for length in current_sma_lengths
+                if isinstance(length, (int, float)) and length > 0 and float(length).is_integer()
+            ]
+            if sma_50 and 50 not in sma_lengths:
+                sma_lengths.append(50)
+            if not sma_50:
+                sma_lengths = [length for length in sma_lengths if length != 50]
+            if not sma_lengths:
+                sma_lengths = [200]
+            st.session_state["assistant_draft_choices"] = {
+                **current,
+                "levels": {
+                    **levels,
+                    "session_vwap_enabled": session_vwap_enabled,
+                    "sma_lengths": sma_lengths,
+                    "sma_timeframes": [sma_timeframe],
+                },
+            }
+            st.session_state["assistant_validated_run_spec"] = None
+            st.rerun()
+
 with st.expander("Reuse saved setup"):
     saved_setups = list_saved_setups()
     setup_options = {
