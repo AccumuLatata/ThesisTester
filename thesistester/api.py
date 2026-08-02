@@ -2002,8 +2002,8 @@ def preview_resampled_ohlcv(
     df: pd.DataFrame, *, timeframe: str, max_rows: int = 200
 ) -> pd.DataFrame:
     """Return a bounded read-only OHLCV resample preview."""
-    if not isinstance(max_rows, int) or isinstance(max_rows, bool) or max_rows < 1:
-        raise ValueError("max_rows must be a positive integer.")
+    if not isinstance(max_rows, int) or isinstance(max_rows, bool) or not 1 <= max_rows <= 1000:
+        raise ValueError("max_rows must be an integer from 1 to 1000.")
     return resample_ohlcv(df, timeframe).tail(max_rows).reset_index(drop=True)
 
 
