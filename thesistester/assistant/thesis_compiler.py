@@ -141,11 +141,25 @@ def map_thesis_choices_to_run_spec(*, name: str, choices: Mapping[str, Any]) -> 
     Canonical choices require ``dataset``, ``setup``, and ``backtest`` mappings;
     ``levels`` is optional and normalizes to an empty mapping.
     """
-    if all(isinstance(choices.get(key), Mapping) for key in ("dataset", "setup", "backtest")):
+    setup_choice = choices.get("setup")
+    if all(
+        isinstance(choices.get(key), Mapping) for key in ("dataset", "setup", "backtest")
+    ) and all(key in setup_choice for key in ("selected_levels", "trigger", "tolerance_ticks")):
         canonical_choices = dict(choices)
         canonical_choices.setdefault("levels", {})
         return compile_canonical_run_spec(name=name, choices=canonical_choices)
-    required = ("dataset_path", "instrument", "selected_levels", "trigger", "tolerance_ticks")
+    dataset_choice = choices.get("dataset")
+    dataset_path = (
+        dataset_choice.get("path")
+        if isinstance(dataset_choice, Mapping)
+        else choices.get("dataset_path")
+    )
+    instrument_choice = (
+        dataset_choice.get("instrument")
+        if isinstance(dataset_choice, Mapping)
+        else choices.get("instrument")
+    )
+    required = ("selected_levels", "trigger", "tolerance_ticks")
     missing = [
         key
         for key in required
@@ -153,9 +167,13 @@ def map_thesis_choices_to_run_spec(*, name: str, choices: Mapping[str, Any]) -> 
         or choices[key] is None
         or (isinstance(choices[key], str) and not choices[key].strip())
     ]
+    if not dataset_path:
+        missing.append("dataset.path")
+    if not instrument_choice:
+        missing.append("dataset.instrument")
     if missing:
         raise ValueError(f"Thesis choices require: {', '.join(missing)}.")
-    instrument = str(choices["instrument"])
+    instrument = str(instrument_choice)
     raw_levels = choices["selected_levels"]
     selected_levels = [raw_levels] if isinstance(raw_levels, str) else list(raw_levels)
     if not selected_levels or any(
@@ -183,7 +201,7 @@ def map_thesis_choices_to_run_spec(*, name: str, choices: Mapping[str, Any]) -> 
         "otf_filter": choices.get("otf_filter"),
     }
     canonical = {
-        "dataset": {"path": choices["dataset_path"], "instrument": instrument},
+        "dataset": {"path": dataset_path, "instrument": instrument},
         "levels": dict(choices.get("levels", {})),
         "setup": setup,
         "backtest": dict(choices.get("backtest", {})),
