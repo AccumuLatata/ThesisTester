@@ -56,9 +56,14 @@ def test_specs_are_immutable_and_runs_require_confirmation(repository):
             "levels": {},
             "setup": {
                 "name": "dVWAP pullback",
+                "description": "",
                 "instrument": "ES",
                 "selected_levels": ["dVWAP_RTH"],
                 "tolerance_ticks": 0,
+                "min_confluences": 1,
+                "max_confluences": 1,
+                "naked_only": False,
+                "naked_requirement": "any",
                 "trigger": "touch",
                 "direction": "both",
             },
@@ -128,7 +133,7 @@ def test_confirmation_rejects_unresolved_or_invalid_content_and_is_idempotent(re
         status="ready_for_confirmation",
         compiler_version="runspec-2",
     )
-    with pytest.raises(ValueError, match="Canonical RunSpec"):
+    with pytest.raises(ValueError, match="Invalid setup configuration"):
         repository.confirm_spec_version(thesis.thesis_id, invalid.version)
 
     valid = repository.create_spec_version(
@@ -138,9 +143,14 @@ def test_confirmation_rejects_unresolved_or_invalid_content_and_is_idempotent(re
             "levels": {},
             "setup": {
                 "name": "Canonical thesis",
+                "description": "",
                 "instrument": "ES",
                 "selected_levels": ["dVWAP_RTH"],
                 "tolerance_ticks": 0,
+                "min_confluences": 1,
+                "max_confluences": 1,
+                "naked_only": False,
+                "naked_requirement": "any",
                 "trigger": "touch",
                 "direction": "both",
             },

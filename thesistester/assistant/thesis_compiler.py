@@ -237,10 +237,6 @@ def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> 
         setup = selected.get("setup")
         if not isinstance(setup, Mapping) or "tolerance_ticks" not in setup:
             unresolved.append("Define the SMA confluence tolerance in ticks.")
-    if re.search(r"\b(?:stops?|targets?|sl|take[- ]profit)\b", text) and not has_choice(
-        "selection_protocol"
-    ):
-        unresolved.append("Define SL/TP candidate grid and OOS selection protocol.")
     return ThesisDraft(
         prompt=prompt.strip(),
         normalized_run_spec=selected,

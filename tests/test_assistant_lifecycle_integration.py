@@ -18,12 +18,42 @@ class _BundleTools:
         }
 
 
+def _canonical_choices(name: str) -> dict:
+    return {
+        "dataset": {"path": "bars.csv", "instrument": "ES"},
+        "levels": {},
+        "setup": {
+            "name": name,
+            "description": "",
+            "instrument": "ES",
+            "selected_levels": ["dVWAP_RTH"],
+            "tolerance_ticks": 0,
+            "min_confluences": 1,
+            "max_confluences": 1,
+            "naked_only": False,
+            "naked_requirement": "any",
+            "trigger": "touch",
+            "direction": "both",
+        },
+        "backtest": {
+            "commission_per_side": 0,
+            "slippage_ticks": 0,
+            "exposure_policy": "single_position",
+            "intrabar_model": "sl_first",
+            "flat_by_session_close": True,
+            "session_close_time": "16:00",
+            "session_timezone": "America/New_York",
+            "no_new_entries_after": "15:45",
+        },
+    }
+
+
 def test_confirmed_spec_runs_and_persists_bundle_provenance(tmp_path):
     repository = LocalThesisRepository(tmp_path / "assistant")
     thesis = repository.create_thesis(name="Lifecycle")
     draft = repository.create_spec_version(
         thesis.thesis_id,
-        normalized_run_spec={"dataset": {}, "setup": {}, "backtest": {}},
+        normalized_run_spec=_canonical_choices(thesis.name),
         status="ready_for_confirmation",
     )
     confirmed = repository.confirm_spec_version(thesis.thesis_id, draft.version)
@@ -51,7 +81,7 @@ def test_unconfirmed_or_failed_run_has_safe_terminal_state(tmp_path):
     thesis = repository.create_thesis(name="Failure")
     draft = repository.create_spec_version(
         thesis.thesis_id,
-        normalized_run_spec={"dataset": {}, "setup": {}, "backtest": {}},
+        normalized_run_spec=_canonical_choices(thesis.name),
         status="ready_for_confirmation",
     )
     orchestrator = AssistantOrchestrator(tools=FailingTools(), repository=repository)

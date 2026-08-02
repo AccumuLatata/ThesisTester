@@ -12,7 +12,7 @@ from thesistester.assistant import (
 def test_compiler_marks_ambiguous_trading_language_for_clarification():
     draft = compile_thesis("Uptrend retraces to dVWAP with a 30m SMA confluence in B session.")
     assert not draft.ready_for_confirmation
-    assert any("trend" in item.lower() for item in draft.unresolved_assumptions)
+    assert any("dataset" in item.lower() for item in draft.unresolved_assumptions)
     assert any("dVWAP" in item for item in draft.unresolved_assumptions)
 
 
@@ -20,8 +20,11 @@ def test_compiler_is_deterministic_for_complete_explicit_choices():
     choices = {
         "dataset": {"path": "bars.csv", "instrument": "ES"},
         "levels": {"session_vwap_enabled": True, "sma_lengths": [50]},
-        "setup": {"trigger": "touch", "tolerance_ticks": 2},
-        "backtest": {},
+        "setup": {
+            "trigger": "touch",
+            "tolerance_ticks": 2,
+        },
+        "backtest": {"stop_loss_ticks": 8, "take_profit_ticks": 16},
     }
     first = compile_thesis("dVWAP SMA stop target", choices=choices)
     second = compile_thesis("dVWAP SMA stop target", choices=choices)
