@@ -78,6 +78,13 @@ def _choices_from_editor(raw: str) -> dict:
     return parsed
 
 
+def _positive_number_list(raw: str) -> list[float]:
+    values = [float(item.strip()) for item in raw.split(",") if item.strip()]
+    if not values or any(value <= 0 for value in values):
+        raise ValueError("Provide one or more positive comma-separated values.")
+    return values
+
+
 _init_state()
 repository = _repository()
 
@@ -373,6 +380,54 @@ with st.expander("Structured validation controls"):
             }
             st.session_state["assistant_validated_run_spec"] = None
             st.rerun()
+
+with st.expander("Structured grid controls"):
+    current = st.session_state["assistant_draft_choices"]
+    grid = current.get("grid") if isinstance(current.get("grid"), dict) else {}
+    with st.form(f"assistant_grid_{thesis_id}"):
+        stop_values = st.text_input(
+            "Grid stop ticks",
+            value=", ".join(str(value) for value in grid.get("stop_loss_ticks_values", [4, 8, 12])),
+        )
+        target_values = st.text_input(
+            "Grid target ticks",
+            value=", ".join(
+                str(value) for value in grid.get("take_profit_ticks_values", [8, 16, 24])
+            ),
+        )
+        ranking_metric = st.selectbox(
+            "Grid ranking metric",
+            ["expectancy_r", "total_r", "profit_factor", "win_rate"],
+            index=["expectancy_r", "total_r", "profit_factor", "win_rate"].index(
+                str(grid.get("ranking_metric") or "expectancy_r")
+            )
+            if str(grid.get("ranking_metric") or "expectancy_r")
+            in ["expectancy_r", "total_r", "profit_factor", "win_rate"]
+            else 0,
+        )
+        raw_min_trades = grid.get("min_trades", 30)
+        min_trade_default = (
+            int(raw_min_trades)
+            if isinstance(raw_min_trades, (int, float)) and raw_min_trades > 0
+            else 30
+        )
+        min_trades = st.number_input("Grid minimum trades", min_value=1, value=min_trade_default)
+        if st.form_submit_button("Apply grid controls"):
+            try:
+                st.session_state["assistant_draft_choices"] = {
+                    **current,
+                    "grid": {
+                        **grid,
+                        "stop_loss_ticks_values": _positive_number_list(stop_values),
+                        "take_profit_ticks_values": _positive_number_list(target_values),
+                        "ranking_metric": ranking_metric,
+                        "min_trades": min_trades,
+                    },
+                }
+                st.session_state["assistant_validated_run_spec"] = None
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
 
 with st.expander("Reuse saved setup"):
     saved_setups = list_saved_setups()
