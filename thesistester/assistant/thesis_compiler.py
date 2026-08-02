@@ -137,16 +137,27 @@ def compile_canonical_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict
 
 def map_thesis_choices_to_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict[str, Any]:
     """Map supported structured thesis fields into canonical public API sections."""
-    if all(
-        isinstance(choices.get(key), Mapping) for key in ("dataset", "levels", "setup", "backtest")
-    ):
-        return compile_canonical_run_spec(name=name, choices=choices)
+    if all(isinstance(choices.get(key), Mapping) for key in ("dataset", "setup", "backtest")):
+        canonical_choices = dict(choices)
+        canonical_choices.setdefault("levels", {})
+        return compile_canonical_run_spec(name=name, choices=canonical_choices)
     required = ("dataset_path", "instrument", "selected_levels", "trigger", "tolerance_ticks")
-    missing = [key for key in required if not choices.get(key)]
+    missing = [
+        key
+        for key in required
+        if key not in choices
+        or choices[key] is None
+        or (isinstance(choices[key], str) and not choices[key].strip())
+    ]
     if missing:
         raise ValueError(f"Thesis choices require: {', '.join(missing)}.")
     instrument = str(choices["instrument"])
-    selected_levels = list(choices["selected_levels"])
+    raw_levels = choices["selected_levels"]
+    selected_levels = [raw_levels] if isinstance(raw_levels, str) else list(raw_levels)
+    if not selected_levels or any(
+        not isinstance(level, str) or not level.strip() for level in selected_levels
+    ):
+        raise ValueError("selected_levels must contain one or more non-empty level names.")
     setup = {
         "name": name,
         "description": str(choices.get("description", "")),
