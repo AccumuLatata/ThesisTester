@@ -317,6 +317,38 @@ with st.expander("Structured execution controls"):
             st.session_state["assistant_validated_run_spec"] = None
             st.rerun()
 
+with st.expander("Structured validation controls"):
+    current = st.session_state["assistant_draft_choices"]
+    validation = current.get("validation") if isinstance(current.get("validation"), dict) else {}
+    with st.form(f"assistant_validation_{thesis_id}"):
+        bootstrap = st.number_input(
+            "Bootstrap samples",
+            min_value=1,
+            value=int(validation.get("n_bootstrap") or 2000),
+        )
+        permutations = st.number_input(
+            "Permutation samples",
+            min_value=1,
+            value=int(validation.get("n_permutations") or 5000),
+        )
+        random_state = st.number_input(
+            "Validation random seed",
+            min_value=0,
+            value=int(validation.get("random_state") or 42),
+        )
+        if st.form_submit_button("Apply validation controls"):
+            st.session_state["assistant_draft_choices"] = {
+                **current,
+                "validation": {
+                    **validation,
+                    "n_bootstrap": bootstrap,
+                    "n_permutations": permutations,
+                    "random_state": random_state,
+                },
+            }
+            st.session_state["assistant_validated_run_spec"] = None
+            st.rerun()
+
 with st.expander("Reuse saved setup"):
     saved_setups = list_saved_setups()
     setup_options = {
