@@ -114,7 +114,9 @@ with st.expander("Manage thesis"):
         except ValueError as exc:
             st.error(str(exc))
     if st.button("Clone thesis", key=f"clone-{thesis_id}"):
-        repository.clone_thesis(thesis_id)
+        clone = repository.clone_thesis(thesis_id)
+        _select_thesis(clone.thesis_id)
+        st.session_state["assistant_thesis_picker"] = clone.thesis_id
         st.rerun()
     if thesis.lifecycle == "active":
         if st.button("Archive thesis", key=f"archive-{thesis_id}"):
