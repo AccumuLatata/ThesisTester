@@ -289,7 +289,8 @@ C2-6.5–C2-6.7 (PR6) enforce the release gate:
 
 **Release audit (PR6):** `audit_capability_registry()` classifies every
 `FEATURE_PARITY_REGISTRY` row as `routed` (handler present) or `unsupported`
-(non-empty user-visible limitation, no handler). Invalid rows fail CI via
+(non-empty user-visible limitation, no handler). Current snapshot: 45 total,
+15 routed, 30 unsupported, 0 invalid. Invalid rows fail CI via
 `tests/test_assistant_registry_audit.py`. Remaining unsupported rows are
 intentional funnels through routed compute (`PIPELINE.run_experiment`,
 bundle evidence, export/portfolio) rather than silent gaps; expand only when a
