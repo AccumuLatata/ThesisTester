@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from uuid import uuid4
 
 import streamlit as st
 
@@ -23,6 +24,7 @@ from thesistester.assistant.llm import (
     load_llm_settings,
 )
 from thesistester.assistant.tools import AssistantTools
+from thesistester.persistence.local_store import get_store_root
 
 
 def _repository() -> LocalThesisRepository:
@@ -239,6 +241,32 @@ for spec in reversed(specifications):
                     thesis_id, spec.version, confirmation_note="Confirmed in UI"
                 )
                 st.rerun()
+        if spec.status == "confirmed" and {"dataset", "setup", "backtest"}.issubset(
+            spec.normalized_run_spec
+        ):
+            if st.button("Run confirmed research", key=f"run-{spec.version}"):
+                try:
+                    output_path = (
+                        get_store_root()
+                        / "assistant"
+                        / "theses"
+                        / thesis_id
+                        / "bundles"
+                        / f"{uuid4().hex}.research.zip"
+                    )
+                    orchestrator = AssistantOrchestrator(
+                        tools=AssistantTools(data_roots=(Path.cwd(), get_store_root())),
+                        repository=repository,
+                    )
+                    orchestrator.execute_confirmed_run(
+                        thesis_id=thesis_id,
+                        spec_version=spec.version,
+                        output_path=output_path,
+                    )
+                    st.success("Research run completed and provenance was recorded.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Research run failed: {exc}")
 
 st.subheader("Research runs")
 runs = repository.list_runs(thesis_id)
