@@ -147,6 +147,12 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   capability must have a `HANDLER_REGISTRY` entry; otherwise mark it
   `unsupported` with a limitation. Structured errors must include `category`,
   `retryable`, and `remediation`.
+- Completed runs require a readable on-disk research bundle whose
+  `canonical_bundle_hash` matches reported provenance before `complete_run`.
+  Provenance-gated explanation, comparison, export, and portfolio paths must
+  fail closed on hash mismatch. Keep API/CLI/assistant parity coverage in
+  `tests/test_assistant_execution_parity.py` green when touching lifecycle or
+  bundle tools.
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned
