@@ -1,6 +1,6 @@
 import pytest
 
-from thesistester.assistant import compile_thesis
+from thesistester.assistant import compile_run_spec, compile_thesis
 
 
 def test_compiler_marks_ambiguous_trading_language_for_clarification():
@@ -29,3 +29,20 @@ def test_compiler_is_deterministic_for_complete_explicit_choices():
 def test_compiler_rejects_empty_prompt():
     with pytest.raises(ValueError, match="non-empty"):
         compile_thesis(" ")
+
+
+def test_run_spec_compiler_requires_explicit_execution_sections(monkeypatch):
+    monkeypatch.setattr(
+        "thesistester.assistant.thesis_compiler.validate_run_spec", lambda spec: None
+    )
+    choices = {
+        "dataset": {"path": "bars.csv"},
+        "setup": {"instrument": "ES"},
+        "backtest": {"stop_loss_ticks": 8},
+    }
+    compiled = compile_run_spec(name="Explicit", choices=choices)
+
+    assert compiled["name"] == "Explicit"
+    assert compiled["dataset"] is not choices["dataset"]
+    with pytest.raises(ValueError, match="backtest"):
+        compile_run_spec(name="Missing", choices={"dataset": {}, "setup": {}})
