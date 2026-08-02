@@ -130,4 +130,3 @@ def test_request_rejects_non_integer_schema_version_equivalents(schema_version):
 def test_unknown_capability_fails_before_execution():
     with pytest.raises(UnknownCapabilityError, match="Unknown assistant capability"):
         validate_capability_request(AssistantRequest(capability_id="DATA.not_real", payload={}))
-
