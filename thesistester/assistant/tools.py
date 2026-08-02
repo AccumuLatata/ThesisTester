@@ -14,7 +14,11 @@ from thesistester.api import validate_run_spec
 from thesistester.analytics.time_analysis import add_time_buckets, summarize_by_group
 from thesistester.persistence.local_store import list_datasets, load_dataset
 from thesistester.reporting import build_research_artifact, to_jsonable
-from thesistester.research_bundle import canonical_bundle_hash, load_research_bundle
+from thesistester.research_bundle import (
+    build_research_bundle,
+    canonical_bundle_hash,
+    load_research_bundle,
+)
 
 
 class AssistantToolError(ValueError):
@@ -164,6 +168,28 @@ class AssistantTools:
         dataset_path = Path(normalized["dataset"]["path"])
         state = _run_experiment(normalized, base_directory=dataset_path.parent)
         return {"summary": _state_summary(state), "tool_version": __version__}
+
+    def run_experiment_to_bundle(
+        self, spec: Mapping[str, Any], *, output_path: str | Path
+    ) -> dict[str, Any]:
+        """Execute once, write a portable bundle, and return reproducible provenance."""
+        bounded = _bounded_spec(spec, self.limits)
+        normalized = _normalize_dataset_paths(bounded, self.data_roots)
+        validate_run_spec(normalized)
+        path = _resolve_within(output_path, self.data_roots)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        state = _run_experiment(
+            normalized, base_directory=Path(normalized["dataset"]["path"]).parent
+        )
+        bundle = build_research_bundle(state)
+        path.write_bytes(bundle)
+        return {
+            "summary": _state_summary(state),
+            "bundle_path": str(path),
+            "canonical_bundle_hash": canonical_bundle_hash(bundle),
+            "dataset_fingerprint": to_jsonable(state.get("levels_data_fingerprint")),
+            "tool_version": __version__,
+        }
 
     def load_bundle_summary(self, bundle_path: str | Path) -> dict[str, Any]:
         """Load a bundle beneath an allowed root and return compact evidence."""
