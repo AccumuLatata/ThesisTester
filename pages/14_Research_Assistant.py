@@ -55,6 +55,7 @@ def _init_state() -> None:
     st.session_state.setdefault("assistant_run_explanations", {})
     st.session_state.setdefault("assistant_llm_run_explanations", {})
     st.session_state.setdefault("assistant_llm_attempts", {})
+    st.session_state.setdefault("assistant_run_reports", {})
     st.session_state.setdefault("assistant_run_comparisons", {})
 
 
@@ -429,6 +430,23 @@ else:
                     attempts = st.session_state["assistant_llm_attempts"].get(run.run_id)
                     if attempts:
                         st.caption(f"Provider attempts: {attempts}")
+                if isinstance(bundle_path, str) and st.button(
+                    "Render markdown report", key=f"report-{run.run_id}"
+                ):
+                    try:
+                        raw = Path(bundle_path).read_bytes()
+                        if canonical_bundle_hash(raw) != run.provenance.get(
+                            "canonical_bundle_hash"
+                        ):
+                            raise ValueError("Bundle hash does not match recorded run provenance.")
+                        st.session_state["assistant_run_reports"][run.run_id] = AssistantTools(
+                            data_roots=(Path.cwd(), get_store_root())
+                        ).render_bundle_markdown_report(bundle_path)
+                    except (OSError, ValueError) as exc:
+                        st.error(f"Unable to render report: {exc}")
+                report = st.session_state["assistant_run_reports"].get(run.run_id)
+                if report:
+                    st.markdown(report)
 
 completed_runs = [
     run
