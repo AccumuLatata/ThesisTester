@@ -29,6 +29,7 @@ def _init_state() -> None:
     st.session_state.setdefault("assistant_draft_prompt", "")
     st.session_state.setdefault("assistant_draft_choices", {})
     st.session_state.setdefault("assistant_conversation_ids", {})
+    st.session_state.setdefault("assistant_hydrated_conversation_id", None)
 
 
 def _select_thesis(thesis_id: str) -> None:
@@ -98,10 +99,12 @@ if conversation_ids.get(thesis_id) not in {
     conversation_ids[thesis_id] = conversation.conversation_id
 conversation_id = conversation_ids[thesis_id]
 active_conversation = repository.get_conversation(thesis_id, conversation_id)
-for message in reversed(active_conversation.messages):
-    if message.get("role") == "assistant" and isinstance(message.get("choices"), dict):
-        st.session_state["assistant_draft_choices"] = message["choices"]
-        break
+if st.session_state["assistant_hydrated_conversation_id"] != conversation_id:
+    for message in reversed(active_conversation.messages):
+        if message.get("role") == "assistant" and isinstance(message.get("choices"), dict):
+            st.session_state["assistant_draft_choices"] = message["choices"]
+            break
+    st.session_state["assistant_hydrated_conversation_id"] = conversation_id
 
 st.subheader("Assistant chat")
 for message in active_conversation.messages:
