@@ -165,14 +165,20 @@ class AssistantTools:
             "grid": to_jsonable(get_grid_defaults()),
         }
 
-    def save_execution_defaults(self, *, backtest: dict[str, Any], grid: dict[str, Any]) -> None:
-        """Persist explicit assistant-requested execution defaults."""
-        save_backtest_defaults(backtest)
-        save_grid_defaults(grid)
+    def save_backtest_execution_defaults(self, defaults: dict[str, Any]) -> None:
+        """Persist explicit backtest defaults without altering grid defaults."""
+        save_backtest_defaults(defaults)
 
-    def clear_execution_defaults(self) -> None:
-        """Clear explicit assistant-requested execution defaults."""
+    def save_grid_execution_defaults(self, defaults: dict[str, Any]) -> None:
+        """Persist explicit grid defaults without altering backtest defaults."""
+        save_grid_defaults(defaults)
+
+    def clear_backtest_execution_defaults(self) -> None:
+        """Clear backtest defaults without altering grid defaults."""
         clear_backtest_defaults()
+
+    def clear_grid_execution_defaults(self) -> None:
+        """Clear grid defaults without altering backtest defaults."""
         clear_grid_defaults()
 
     def describe_local_dataset(self, dataset_id: str) -> dict[str, Any]:
