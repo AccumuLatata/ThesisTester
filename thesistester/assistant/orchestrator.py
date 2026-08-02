@@ -140,6 +140,16 @@ class AssistantOrchestrator:
                 spec.normalized_run_spec,
                 output_path=output_path,
             )
+            warning_data = result.get("summary", {}).get("warnings", {})
+            warnings = (
+                tuple(
+                    f"{key}: {value}"
+                    for key, value in warning_data.items()
+                    if value not in (None, [], {}, "")
+                )
+                if isinstance(warning_data, dict)
+                else ()
+            )
             completed = self.repository.complete_run(
                 thesis_id,
                 run.run_id,
@@ -150,8 +160,9 @@ class AssistantOrchestrator:
                     "dataset_fingerprint": result["dataset_fingerprint"],
                     "tool_version": result["tool_version"],
                     "summary": result["summary"],
-                    "warnings": result.get("warnings", []),
+                    "warnings": list(warnings),
                 },
+                warnings=warnings,
             )
         except BaseException as exc:
             self.repository.fail_run(
