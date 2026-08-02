@@ -123,7 +123,17 @@ reruns so the Active handoff caption refreshes immediately.
 Explanations are packet-backed: `EvidencePacket` is schema-versioned and
 includes structured caveats, limitations, claims, and next-experiment guidance.
 `explain_evidence_report()` / `assert_claims_grounded()` ensure every displayed
-numeric claim cites an evidence path and exact value. Grid ranking-metric claims
+numeric claim cites an evidence path and exact value. Optional LLM paraphrase
+(`explain_packet_with_llm` / `AssistantOrchestrator.explain_run_with_llm`) is a
+separate fail-closed gate: provider JSON must be exactly
+`{summary, caveats, claims}` with claim `{text, path}` objects; the server
+resolves `path` against the immutable packet, attaches the packet value, and
+`assert_llm_explanation_grounded()` rejects any numeric token not present in
+cited claim values (packet caveat message numbers may be echoed). The LLM never
+executes tools, mutates confirmed specs, or bypasses confirmation. Without a
+provider, deterministic explain/compare/export remains the default path.
+`audit_capability_registry()` is the machine-readable release audit over
+`FEATURE_PARITY_REGISTRY` × `HANDLER_REGISTRY`. Grid ranking-metric claims
 ground to `assumptions.grid.ranking_metric` when `best_grid_result` omits that
 field (typical grid row snapshots), and printed commission/slippage values are
 claimed at `assumptions.costs_exposure.*`. Failure diagnostics claim

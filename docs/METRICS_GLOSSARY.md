@@ -419,3 +419,24 @@ selected data/model could distinguish event order.
 R13 diagnostics count BE exits, TRAIL exits, trades with exit management armed,
 and average stop adjustments per trade. All R values still use initial bracket
 risk (`stop_loss_ticks * tick_size * point_value`) as denominator.
+
+## Assistant evidence-claim paths
+
+Assistant explanations (deterministic and optional LLM) may display a metric only
+when it is cited to an `EvidencePacket` path whose value matches the printed
+number. Common leaves:
+
+| Claim path | Metric / value source |
+|---|---|
+| `results.trade_summary.trade_count` | Realized trade count |
+| `results.trade_summary.expectancy_r` | Mean net R (`r_multiple`) |
+| `results.trade_summary.win_rate` | Win rate on realized R |
+| `results.trade_summary.profit_factor` | Profit factor on realized R |
+| `assumptions.costs_exposure.commission_per_side` | Commission assumption |
+| `assumptions.costs_exposure.slippage_ticks` | Slippage assumption |
+| `assumptions.grid.ranking_metric` | Grid ranking metric label |
+| `results.walk_forward_summary.valid_fold_count` | Valid OOS fold count |
+
+Uncited numeric tokens in LLM narrative are rejected before render. Glossary
+formulas above remain the definitional source; packet paths are the citation
+addresses used by the assistant release gate.

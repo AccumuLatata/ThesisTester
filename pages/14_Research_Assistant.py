@@ -24,6 +24,7 @@ from thesistester.assistant.llm import (
     create_openai_client,
     load_llm_settings,
 )
+from thesistester.assistant.llm_explainer import LLMEvidenceError
 from thesistester.assistant.workspace import (
     CONFLUENCE_MODES,
     DIRECTIONS,
@@ -951,13 +952,20 @@ else:
                         st.session_state["assistant_llm_attempts"][run.run_id] = result.payload.get(
                             "provider_attempts"
                         )
-                    except (LLMConfigurationError, LLMProviderError, ValueError) as exc:
+                    except (
+                        LLMConfigurationError,
+                        LLMProviderError,
+                        LLMEvidenceError,
+                        ValueError,
+                    ) as exc:
                         st.error(f"Unable to generate AI explanation: {exc}")
                 llm_explanation = st.session_state["assistant_llm_run_explanations"].get(run.run_id)
                 if llm_explanation:
                     st.write(llm_explanation.summary)
                     for caveat in llm_explanation.caveats:
                         st.caption(f"Caveat: {caveat}")
+                    for claim in getattr(llm_explanation, "claims", ()) or ():
+                        st.caption(f"Claim `{claim.path}` = {claim.value}")
                     attempts = st.session_state["assistant_llm_attempts"].get(run.run_id)
                     if attempts:
                         st.caption(f"Provider attempts: {attempts}")

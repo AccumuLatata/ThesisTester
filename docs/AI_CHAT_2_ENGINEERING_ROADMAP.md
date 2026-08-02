@@ -267,14 +267,36 @@ coordinator between UI, repository, compiler, tools, and explainer.
 - Tool request/output schemas are evaluated with realistic multi-step fixtures.
 - LLM-free deterministic fallback remains usable.
 
-**Implementation status:** C2-6.1 through C2-6.3 provide the provider,
-strict intent adapter, and persisted non-executing turns. C2-6.4 adds the
-Streamlit transcript/input integration; tool execution remains unavailable from
-chat until the explicit confirmation/run lifecycle is wired.
+**Implementation status (release gate closed):** C2-6.1–C2-6.4 cover provider,
+intent adapter, persisted non-executing turns, and Streamlit transcript input.
+C2-6.5–C2-6.7 (PR6) enforce the release gate:
+
+- Chat turns never call `dispatch` / `execute_confirmed_run`; compute stays on
+  the explicit confirmation lifecycle.
+- `explain_packet_with_llm` requires structured `{summary, caveats, claims}`
+  where each claim cites an existing evidence-packet path; the server resolves
+  claim values and rejects any numeric token not grounded in cited values
+  (or echoed packet-caveat messages) before UI render (`LLMEvidenceError`).
+- Credentials: `OPENAI_API_KEY` only (env). Placeholder
+  `REPLACE_WITH_ROTATED_OPENAI_API_KEY` is rejected. Non-secret settings live in
+  `config/assistant.toml` (`evidence_only = true`, retries, history trim).
+- Provider timeout/retry/failure, history trimming, confirmation bypass, and
+  multi-step explain/compare fixtures live in
+  `tests/test_assistant_llm_evaluations.py`.
+- Deterministic no-provider explain/compare/export workflow remains fully usable.
 
 ## C2-7 — Feature-parity completion
 
-Implement remaining registry capabilities in this order:
+**Release audit (PR6):** `audit_capability_registry()` classifies every
+`FEATURE_PARITY_REGISTRY` row as `routed` (handler present) or `unsupported`
+(non-empty user-visible limitation, no handler). Invalid rows fail CI via
+`tests/test_assistant_registry_audit.py`. Remaining unsupported rows are
+intentional funnels through routed compute (`PIPELINE.run_experiment`,
+bundle evidence, export/portfolio) rather than silent gaps; expand only when a
+dedicated public facade and evidence contract exist.
+
+Implement remaining registry capabilities in this order when product work
+resumes:
 
 1. Align time analysis with a public API facade; expose costs, exposure,
    intrabar, exits, grids, and session analysis.
@@ -310,10 +332,12 @@ Add an agent evaluation suite before enabling an LLM provider: realistic
 read-only tasks, deterministic expected outputs, tool-call assertions,
 confirmation-gate tests, and adversarial prompt-injection cases.
 
-**C2-6.7 implementation status:** adversarial fixtures cover malformed intent,
-tool-request injection, duplicate/blank choices, and unexpected explanation
-fields. Extend this suite with provider-failure and UI confirmation scenarios as
-each execution path is connected.
+**C2-6.7 / PR6 evaluation suite (complete):** `tests/test_assistant_llm_evaluations.py`
+covers prompt injection and malicious tool requests, malformed structured
+output, uncited numerical claims, missing claim paths, provider timeout/retry
+success and exhaustion, conversation history trimming, chat confirmation
+bypass (no dispatch/execute), and multi-step explain/compare evidence backing.
+Capability audit: `tests/test_assistant_registry_audit.py`.
 
 ## External design inputs
 

@@ -384,6 +384,31 @@ other than the last bar in the dataset.
 - For `segmented_contracts`, roll gaps can remain in backtest metrics unless users pre-adjust data externally before upload.
 - Declared roll policy and roll-validation diagnostics are exported in research artifacts for auditability.
 
+## AI Research Assistant / optional LLM (PR6 release gate)
+- The assistant is a research orchestration UI over the existing engine. It does
+  not introduce a second backtest path, broker connectivity, or live trading.
+- Deterministic explain/compare/export works without any LLM provider. When a
+  provider is configured, it may only propose non-executing draft choices or
+  paraphrase an immutable evidence packet.
+- LLM explanations must cite packet paths; uncited numerical tokens are rejected
+  before render. The model cannot execute tools, mutate confirmed RunSpecs,
+  bypass confirmation, or invent metrics.
+- Credentials: set a rotated `OPENAI_API_KEY` in the environment only. The
+  placeholder `REPLACE_WITH_ROTATED_OPENAI_API_KEY` is rejected. Non-secret
+  knobs (`provider`, `model`, retries, history trim, `evidence_only`) live in
+  `config/assistant.toml`.
+- Provider timeouts retry per `max_retries`; exhaustion surfaces as a provider
+  error and leaves the deterministic packet intact. Cancel/recovery of compute
+  uses orchestrator `cancel_run` and terminal run states, not chat turns.
+- Provenance: completed-run explanations and comparisons require a readable
+  research bundle whose `canonical_bundle_hash` matches reported provenance.
+- Statistical honesty: sample-size, zero-cost, intrabar ambiguity, OOS, and
+  multiple-testing caveats from the evidence packet remain mandatory framing;
+  LLM narrative must not soften or omit them into trade advice.
+- Registry rows that remain `unsupported` expose a user-visible limitation and
+  funnel through routed capabilities (typically `PIPELINE.run_experiment` plus
+  evidence/export). They are audited by `audit_capability_registry()`.
+
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
 - With non-zero cost settings, expectancy and downstream KPIs become net-of-cost.
