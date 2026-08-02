@@ -232,3 +232,49 @@ def test_failed_tool_dispatch_records_structured_error(tmp_path, monkeypatch):
         thesis.thesis_id, conversation.conversation_id
     ).tool_transcript
     assert transcript[-1]["status"] == "failed"
+
+
+def test_portfolio_analyze_requires_matching_expected_hashes(tmp_path, monkeypatch):
+    tools = AssistantTools(data_roots=(Path(tmp_path),))
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    orchestrator = AssistantOrchestrator(tools=tools, repository=repository)
+    captured = {}
+
+    def fake_analyze(bundle_paths, *, instrument, config=None, expected_hashes=None):
+        captured["bundle_paths"] = list(bundle_paths)
+        captured["expected_hashes"] = list(expected_hashes or [])
+        captured["instrument"] = instrument
+        return {"portfolio": {"trade_count": 2}}
+
+    monkeypatch.setattr(tools, "analyze_bundle_portfolio", fake_analyze)
+
+    missing = orchestrator.dispatch(
+        AssistantRequest(
+            capability_id="PORTFOLIO.analyze",
+            payload={
+                "bundle_paths": ["a.research.zip", "b.research.zip"],
+                "instrument": "ES",
+            },
+        ),
+        confirmed=True,
+    )
+    assert missing.status == "failed"
+    assert "expected_hashes" in missing.payload["error"]["message"]
+
+    completed = orchestrator.dispatch(
+        AssistantRequest(
+            capability_id="PORTFOLIO.analyze",
+            payload={
+                "bundle_paths": ["a.research.zip", "b.research.zip"],
+                "expected_hashes": ["a" * 64, "b" * 64],
+                "instrument": "ES",
+            },
+        ),
+        confirmed=True,
+    )
+    assert completed.status == "completed"
+    assert captured == {
+        "bundle_paths": ["a.research.zip", "b.research.zip"],
+        "expected_hashes": ["a" * 64, "b" * 64],
+        "instrument": "ES",
+    }

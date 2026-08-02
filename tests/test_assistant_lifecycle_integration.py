@@ -216,3 +216,33 @@ def test_unconfirmed_or_failed_run_has_safe_terminal_state(tmp_path):
         thesis.thesis_id, conversation.conversation_id
     ).tool_transcript
     assert transcript[-1]["status"] == "failed"
+
+
+def test_completed_run_survives_conversation_audit_failure(tmp_path, monkeypatch):
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    thesis = repository.create_thesis(name="Audit race")
+    conversation = repository.create_conversation(thesis.thesis_id)
+    draft = repository.create_spec_version(
+        thesis.thesis_id,
+        normalized_run_spec=_canonical_choices(thesis.name),
+        status="ready_for_confirmation",
+    )
+    confirmed = repository.confirm_spec_version(thesis.thesis_id, draft.version)
+    orchestrator = AssistantOrchestrator(tools=_BundleTools(), repository=repository)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("stale conversation revision")
+
+    monkeypatch.setattr(repository, "append_conversation_message", boom)
+
+    result = orchestrator.execute_confirmed_run(
+        thesis_id=thesis.thesis_id,
+        spec_version=confirmed.version,
+        output_path=tmp_path / "bundles" / "audit.research.zip",
+        conversation_id=conversation.conversation_id,
+    )
+
+    restored = repository.get_run(thesis.thesis_id, result.payload["run_id"])
+    assert result.status == "completed"
+    assert restored.status == "completed"
+    assert restored.provenance["canonical_bundle_hash"] == "a" * 64

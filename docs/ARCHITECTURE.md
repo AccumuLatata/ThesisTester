@@ -91,7 +91,11 @@ rather than being stored as executable assumptions.
 capabilities. It validates the registry request, enforces confirmation and
 resource envelopes, invokes a typed handler, and writes one transcript audit
 entry for each gated or terminal outcome. Page code must not call
-`AssistantTools` or public compute APIs directly.
+`AssistantTools` or public compute APIs directly. `PORTFOLIO.analyze` requires
+`expected_hashes` aligned with `bundle_paths` so on-disk bundles are checked
+against recorded run provenance before portfolio metrics are computed.
+Completed/cancelled run lifecycle outcomes keep their terminal repository
+state even if conversation-audit append races.
 
 Research ZIP bytes include archive timestamps and are not deterministic.
 `canonical_bundle_hash()` projects JSON with sorted keys (excluding

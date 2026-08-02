@@ -362,6 +362,7 @@ class AssistantOrchestrator:
                 request=request,
                 thesis_id=thesis_id,
                 conversation_id=conversation_id,
+                best_effort=True,
             )
             raise
         completed_result = OrchestrationResult(
@@ -369,6 +370,8 @@ class AssistantOrchestrator:
             capability_id="PIPELINE.run_experiment",
             payload={"run_id": completed.run_id, **result},
         )
+        # Terminal run provenance is already persisted. A conversation-audit
+        # race must not convert a completed execution into a UI failure.
         self._record_audit(
             completed_result,
             request=request,
@@ -378,6 +381,7 @@ class AssistantOrchestrator:
                 "run_id": completed.run_id,
                 "canonical_bundle_hash": result["canonical_bundle_hash"],
             },
+            best_effort=True,
         )
         return completed_result
 
@@ -420,6 +424,7 @@ class AssistantOrchestrator:
             thesis_id=thesis_id,
             conversation_id=conversation_id,
             extra={"run_id": cancelled.run_id},
+            best_effort=True,
         )
         return result
 
@@ -442,26 +447,31 @@ class AssistantOrchestrator:
         thesis_id: str | None,
         conversation_id: str | None,
         extra: dict[str, Any] | None = None,
+        best_effort: bool = False,
     ) -> None:
         if thesis_id is None or conversation_id is None:
             return
-        conversation = self.repository.get_conversation(thesis_id, conversation_id)
-        tool_entry = {
-            "capability_id": result.capability_id,
-            "request": request.to_dict(),
-            "status": result.status,
-        }
-        if extra:
-            tool_entry.update(extra)
-        if "error" in result.payload:
-            tool_entry["error"] = result.payload["error"]
-        self.repository.append_conversation_message(
-            thesis_id,
-            conversation_id,
-            expected_revision=conversation.revision,
-            message={
-                "role": "tool",
-                "content": f"{result.status} {result.capability_id}.",
-            },
-            tool_entry=tool_entry,
-        )
+        try:
+            conversation = self.repository.get_conversation(thesis_id, conversation_id)
+            tool_entry = {
+                "capability_id": result.capability_id,
+                "request": request.to_dict(),
+                "status": result.status,
+            }
+            if extra:
+                tool_entry.update(extra)
+            if "error" in result.payload:
+                tool_entry["error"] = result.payload["error"]
+            self.repository.append_conversation_message(
+                thesis_id,
+                conversation_id,
+                expected_revision=conversation.revision,
+                message={
+                    "role": "tool",
+                    "content": f"{result.status} {result.capability_id}.",
+                },
+                tool_entry=tool_entry,
+            )
+        except Exception:
+            if not best_effort:
+                raise

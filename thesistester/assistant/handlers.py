@@ -232,15 +232,23 @@ def _handle_bundle_import(request: AssistantRequest, context: HandlerContext) ->
 def _handle_portfolio_analyze(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
     bundle_paths = request.payload.get("bundle_paths")
     instrument = request.payload.get("instrument")
+    expected_hashes = request.payload.get("expected_hashes")
     if not isinstance(bundle_paths, list) or not bundle_paths:
         raise ValueError("bundle_paths must be a non-empty list.")
     if not isinstance(instrument, str) or not instrument.strip():
         raise ValueError("instrument must be a non-empty string.")
+    if (
+        not isinstance(expected_hashes, list)
+        or len(expected_hashes) != len(bundle_paths)
+        or any(not isinstance(item, str) or not item.strip() for item in expected_hashes)
+    ):
+        raise ValueError("expected_hashes must be non-empty strings matching bundle_paths.")
     config = request.payload.get("config")
     return context.tools.analyze_bundle_portfolio(
         bundle_paths,
         instrument=instrument,
         config=config if isinstance(config, dict) else None,
+        expected_hashes=expected_hashes,
     )
 
 

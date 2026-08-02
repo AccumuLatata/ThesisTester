@@ -1078,10 +1078,17 @@ if len(completed_runs) >= 2:
     if st.button("Analyze portfolio") and len(portfolio_ids) >= 2:
         selected = {run.run_id: run for run in completed_runs}
         bundle_paths = [selected[run_id].provenance["bundle_path"] for run_id in portfolio_ids]
+        expected_hashes = [
+            selected[run_id].provenance["canonical_bundle_hash"] for run_id in portfolio_ids
+        ]
         result = _dispatch(
             orchestrator,
             capability_id="PORTFOLIO.analyze",
-            payload={"bundle_paths": bundle_paths, "instrument": instrument},
+            payload={
+                "bundle_paths": bundle_paths,
+                "expected_hashes": expected_hashes,
+                "instrument": instrument,
+            },
             confirmed=True,
             thesis_id=thesis_id,
             conversation_id=conversation_id,

@@ -442,13 +442,26 @@ class AssistantTools:
         *,
         instrument: str,
         config: dict[str, Any] | None = None,
+        expected_hashes: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Analyze explicitly selected completed-run bundles as a portfolio."""
+        """Analyze explicitly selected completed-run bundles as a portfolio.
+
+        When ``expected_hashes`` is provided it must align 1:1 with
+        ``bundle_paths`` and each digest is checked against recorded provenance
+        before trades are admitted into portfolio metrics.
+        """
         if len(bundle_paths) < 2:
             raise AssistantToolError("Portfolio analysis requires at least two bundles.")
+        if expected_hashes is not None and len(expected_hashes) != len(bundle_paths):
+            raise AssistantToolError("expected_hashes must match bundle_paths.")
         setup_trades = {}
         for index, bundle_path in enumerate(bundle_paths, start=1):
-            _path, _raw, session_values = _read_verified_bundle(bundle_path, self.data_roots)
+            expected_hash = None if expected_hashes is None else expected_hashes[index - 1]
+            _path, _raw, session_values = _read_verified_bundle(
+                bundle_path,
+                self.data_roots,
+                expected_hash=expected_hash,
+            )
             trades = session_values.get("trades")
             if trades is None or trades.empty:
                 raise AssistantToolError("Each bundle requires completed trades.")

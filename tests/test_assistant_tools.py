@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import pandas as pd
 import pytest
 
 from thesistester.assistant.tools import AssistantToolError, AssistantTools, ToolLimits
@@ -150,3 +153,44 @@ def test_bundle_execution_records_canonical_provenance(tmp_path, monkeypatch):
 
     assert (root / "run.research.zip").read_bytes() == b"bundle"
     assert result["canonical_bundle_hash"] == "hash"
+
+
+def test_analyze_bundle_portfolio_verifies_expected_hashes(tmp_path, monkeypatch):
+    root = tmp_path / "allowed"
+    root.mkdir()
+    left = root / "left.research.zip"
+    right = root / "right.research.zip"
+    left.write_bytes(b"left")
+    right.write_bytes(b"right")
+    tools = AssistantTools(data_roots=(root,))
+    calls = []
+
+    def fake_read(bundle_path, roots, *, expected_hash=None):
+        calls.append((Path(bundle_path).name, expected_hash))
+        trades = pd.DataFrame({"r_multiple": [1.0, -0.5]})
+        return Path(bundle_path), b"raw", {"trades": trades}
+
+    monkeypatch.setattr("thesistester.assistant.tools._read_verified_bundle", fake_read)
+    monkeypatch.setattr(
+        "thesistester.assistant.tools.run_portfolio_analysis",
+        lambda setup_trades, instrument, config=None: {"count": len(setup_trades)},
+    )
+
+    with pytest.raises(AssistantToolError, match="expected_hashes"):
+        tools.analyze_bundle_portfolio(
+            [left, right],
+            instrument="ES",
+            expected_hashes=["only-one"],
+        )
+
+    result = tools.analyze_bundle_portfolio(
+        [left, right],
+        instrument="ES",
+        expected_hashes=["hash-left", "hash-right"],
+    )
+
+    assert result == {"count": 2}
+    assert calls == [
+        ("left.research.zip", "hash-left"),
+        ("right.research.zip", "hash-right"),
+    ]
