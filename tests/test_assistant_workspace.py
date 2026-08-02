@@ -117,6 +117,8 @@ def test_page_is_orchestrator_only_and_keeps_json_advanced():
     assert "dict(spec.normalized_run_spec)" in source
     assert "safe_int(" in source
     assert "safe_float(" in source
+    assert 'plan["ready_for_confirmation"]' in source
+    assert "WFA matrix is available only for session fold mode." in source
     restore_idx = source.index("Restore bundle into research pages")
     assert "st.rerun()" in source[restore_idx : restore_idx + 700]
 
@@ -272,7 +274,29 @@ def test_structured_merges_cover_setup_levels_execution_grid_validation_wfa():
     assert choices["grid"]["max_grid_cells"] == 50
     assert choices["walk_forward"]["fold_mode"] == "bars"
     assert choices["walk_forward"]["train_bars"] == 100
-    assert choices["walk_forward"]["matrix"]["enabled"] is True
+    # Bars fold mode cannot enable the session-scoped WFA matrix.
+    assert choices["walk_forward"]["matrix"]["enabled"] is False
+    sessions = merge_walk_forward_controls(
+        choices,
+        enabled=True,
+        fold_mode="sessions",
+        window_mode="rolling",
+        overlap_policy="reject",
+        train_size=20,
+        test_size=5,
+        step_size=5,
+        ranking_metric="expectancy_r",
+        min_train_trades=5,
+        stop_values_raw="8",
+        target_values_raw="16",
+        matrix_enabled=True,
+        matrix_train_raw="20,40",
+        matrix_test_raw="5",
+        matrix_metric="median_test_expectancy_r",
+        max_matrix_cells=20,
+    )
+    assert sessions["walk_forward"]["matrix"]["enabled"] is True
+    assert sessions["walk_forward"]["matrix"]["train_session_values"] == [20, 40]
     assert parse_positive_number_list("1, 2.5") == [1.0, 2.5]
     assert parse_json_choices('{"dataset": {"path": "x.csv"}}')["dataset"]["path"] == "x.csv"
 
@@ -286,6 +310,15 @@ def test_plan_review_ready_flag_requires_validated_spec():
     )
     assert plan["ready_for_confirmation"] is False
     assert plan["unresolved_assumptions"] == ["Define costs."]
+
+    blocked = build_plan_review(
+        thesis_name="Demo",
+        choices={"dataset": {"path": "bars.csv", "instrument": "ES"}},
+        validated_spec={"name": "Demo", "setup": {}},
+        unresolved_assumptions=("Define costs.",),
+    )
+    assert blocked["validated_spec"] is not None
+    assert blocked["ready_for_confirmation"] is False
 
 
 def test_latest_unresolved_assumptions_only_from_newest_spec():

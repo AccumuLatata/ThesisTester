@@ -124,7 +124,9 @@ reruns so the Active handoff caption refreshes immediately.
 immutable comparison persistence fails (`persistence_error`), so the UI is not
 blocked by a save race. Report and research-artifact export remain independent
 UI actions. Untouched execution drafts default `exposure_policy` to
-`allow_all`. Page code must not construct
+`allow_all`. Confirm stays gated on `plan["ready_for_confirmation"]` so a
+validated RunSpec cannot be confirmed while clarifications remain. WFA matrix
+controls are sessions-fold-only (parity with Validation). Page code must not construct
 `AssistantTools`, mutate `LocalThesisRepository`, compile RunSpecs, explain
 evidence, or read bundle bytes directly. Provenance-gated bundle loads
 (`BUNDLE.import`, `EXPORT.build_research_artifact`, `PORTFOLIO.analyze`) require

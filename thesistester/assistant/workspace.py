@@ -430,7 +430,8 @@ def merge_walk_forward_controls(
         if enabled and target_values_raw.strip()
         else None,
     )
-    if enabled and matrix_enabled:
+    # WFA matrix is session-scoped only (parity with pages/10_Validation.py).
+    if enabled and matrix_enabled and fold_mode == "sessions":
         walk_forward["matrix"] = {
             "enabled": True,
             "train_session_values": parse_positive_int_list(matrix_train_raw),

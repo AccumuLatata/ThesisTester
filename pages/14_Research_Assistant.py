@@ -628,25 +628,38 @@ with st.expander("Structured walk-forward controls"):
             "Walk-forward target ticks",
             value=", ".join(str(v) for v in (walk_forward.get("take_profit_ticks_values") or [16])),
         )
-        matrix_enabled = st.checkbox("Enable WFA matrix", value=bool(matrix.get("enabled", False)))
-        matrix_train_raw = st.text_input(
-            "Matrix train session values",
-            value=", ".join(str(v) for v in (matrix.get("train_session_values") or [20, 40])),
+        matrix_enabled = False
+        matrix_train_raw = ", ".join(
+            str(v) for v in (matrix.get("train_session_values") or [20, 40])
         )
-        matrix_test_raw = st.text_input(
-            "Matrix test session values",
-            value=", ".join(str(v) for v in (matrix.get("test_session_values") or [5, 10])),
-        )
-        matrix_metric = st.selectbox(
-            "Matrix metric",
-            list(WFA_MATRIX_METRICS),
-            index=option_index(WFA_MATRIX_METRICS, matrix.get("matrix_metric")),
-        )
-        max_matrix_cells = st.number_input(
-            "Max matrix cells",
-            min_value=1,
-            value=safe_int(matrix.get("max_matrix_cells"), 100),
-        )
+        matrix_test_raw = ", ".join(str(v) for v in (matrix.get("test_session_values") or [5, 10]))
+        matrix_metric = str(matrix.get("matrix_metric") or WFA_MATRIX_METRICS[0])
+        max_matrix_cells = safe_int(matrix.get("max_matrix_cells"), 100)
+        if fold_mode == "sessions":
+            matrix_enabled = st.checkbox(
+                "Enable WFA matrix",
+                value=bool(matrix.get("enabled", False)),
+            )
+            matrix_train_raw = st.text_input(
+                "Matrix train session values",
+                value=matrix_train_raw,
+            )
+            matrix_test_raw = st.text_input(
+                "Matrix test session values",
+                value=matrix_test_raw,
+            )
+            matrix_metric = st.selectbox(
+                "Matrix metric",
+                list(WFA_MATRIX_METRICS),
+                index=option_index(WFA_MATRIX_METRICS, matrix_metric),
+            )
+            max_matrix_cells = st.number_input(
+                "Max matrix cells",
+                min_value=1,
+                value=safe_int(max_matrix_cells, 100),
+            )
+        else:
+            st.caption("WFA matrix is available only for session fold mode.")
         if st.form_submit_button("Apply walk-forward controls"):
             try:
                 st.session_state["assistant_draft_choices"] = merge_walk_forward_controls(
@@ -825,13 +838,16 @@ if plan["validated_spec"] is not None:
             st.error(saved.payload.get("error", {}).get("message", "Unable to save setup."))
         else:
             st.success(f"Saved setup {saved.payload['setup']['setup_id']}.")
-    if st.button("Confirm validated RunSpec", type="primary"):
-        orchestrator.confirm_validated_spec(
-            thesis_id=thesis_id,
-            validated_spec=plan["validated_spec"],
-        )
-        st.session_state["assistant_validated_run_spec"] = None
-        st.rerun()
+    if plan["ready_for_confirmation"]:
+        if st.button("Confirm validated RunSpec", type="primary"):
+            orchestrator.confirm_validated_spec(
+                thesis_id=thesis_id,
+                validated_spec=plan["validated_spec"],
+            )
+            st.session_state["assistant_validated_run_spec"] = None
+            st.rerun()
+    elif plan["unresolved_assumptions"]:
+        st.caption("Resolve clarifications before confirming the validated RunSpec.")
 
 st.subheader("Specifications")
 for spec in reversed(spec_versions):

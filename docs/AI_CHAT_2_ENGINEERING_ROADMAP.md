@@ -198,7 +198,8 @@ coordinator between UI, repository, compiler, tools, and explainer.
   across theses. Bundle restore clears validated RunSpecs and reruns the page.
 - Compare persistence is best-effort: computed evidence remains available when
   `save_comparison` fails. Report and artifact export are independent actions.
-  Untouched drafts keep the `allow_all` exposure-policy default.
+  Untouched drafts keep the `allow_all` exposure-policy default. Confirm is
+  gated on `ready_for_confirmation`, and WFA matrix is sessions-fold-only.
 - Helper/page-contract tests live in `tests/test_assistant_workspace.py`.
 
 ## C2-5 — Evidence and comparison expansion
