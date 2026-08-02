@@ -42,6 +42,7 @@ from thesistester.assistant.explainer import (
     explain_evidence,
 )
 from thesistester.assistant.orchestrator import AssistantOrchestrator, OrchestrationResult
+from thesistester.assistant.comparison import COMPARISON_SCHEMA_VERSION, Comparison
 
 __all__ = [
     "ASSISTANT_CONTRACT_SCHEMA_VERSION",
@@ -55,6 +56,8 @@ __all__ = [
     "Capability",
     "CapabilityMode",
     "COMPILER_VERSION",
+    "COMPARISON_SCHEMA_VERSION",
+    "Comparison",
     "EvidencePacket",
     "ConfirmationLevel",
     "Conversation",
