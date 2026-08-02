@@ -135,10 +135,17 @@ def test_canonical_compiler_accepts_minimal_disabled_walk_forward():
     choices = {
         "dataset": {"path": "bars.csv", "instrument": "ES"},
         "setup": {
+            "name": "Disabled walk-forward",
+            "description": "",
             "instrument": "ES",
+            "selected_levels": ["dVWAP_RTH"],
             "trigger": "touch",
             "tolerance_ticks": 0,
-            "selected_levels": ["dVWAP_RTH"],
+            "min_confluences": 1,
+            "max_confluences": 1,
+            "naked_only": False,
+            "naked_requirement": "any",
+            "direction": "both",
         },
         "backtest": {
             "commission_per_side": 0.0,
