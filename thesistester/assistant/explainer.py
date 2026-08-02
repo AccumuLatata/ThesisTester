@@ -94,3 +94,23 @@ def explain_evidence(packet: EvidencePacket) -> str:
     ]
     lines.extend(f"Caveat: {warning}" for warning in packet.warnings)
     return "\n".join(lines)
+
+
+def compare_evidence(left: EvidencePacket, right: EvidencePacket) -> dict[str, Any]:
+    """Return an evidence-only comparison of two explicitly selected runs."""
+
+    def metrics(packet: EvidencePacket) -> dict[str, Any]:
+        summary = packet.results.get("trade_summary")
+        return dict(summary) if isinstance(summary, Mapping) else {}
+
+    left_metrics = metrics(left)
+    right_metrics = metrics(right)
+    keys = ("trade_count", "expectancy_r", "total_r", "max_drawdown_r", "win_rate")
+    return {
+        "left_provenance": _thaw(left.provenance),
+        "right_provenance": _thaw(right.provenance),
+        "metrics": {
+            key: {"left": left_metrics.get(key), "right": right_metrics.get(key)} for key in keys
+        },
+        "warnings": list(dict.fromkeys((*left.warnings, *right.warnings))),
+    }
