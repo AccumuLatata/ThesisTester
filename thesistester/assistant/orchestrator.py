@@ -122,6 +122,7 @@ class AssistantOrchestrator:
         thesis_id: str,
         spec_version: int,
         output_path: str | Path,
+        conversation_id: str | None = None,
     ) -> OrchestrationResult:
         """Execute one confirmed spec and persist its terminal provenance."""
         spec = self.repository.get_spec_version(thesis_id, spec_version)
@@ -168,6 +169,20 @@ class AssistantOrchestrator:
                 },
                 warnings=warnings,
             )
+            if conversation_id is not None:
+                conversation = self.repository.get_conversation(thesis_id, conversation_id)
+                self.repository.append_conversation_message(
+                    thesis_id,
+                    conversation_id,
+                    expected_revision=conversation.revision,
+                    message={"role": "tool", "content": "Executed confirmed research run."},
+                    tool_entry={
+                        "capability_id": "PIPELINE.run_experiment",
+                        "run_id": completed.run_id,
+                        "canonical_bundle_hash": result["canonical_bundle_hash"],
+                        "status": "completed",
+                    },
+                )
         except BaseException as exc:
             self.repository.fail_run(
                 thesis_id,
