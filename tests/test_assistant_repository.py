@@ -111,6 +111,70 @@ def test_specs_are_immutable_and_runs_require_confirmation(repository):
         )
 
 
+def test_cancelled_run_can_receive_late_provenance(repository):
+    thesis = repository.create_thesis(name="Late provenance")
+    draft = repository.create_spec_version(
+        thesis.thesis_id,
+        normalized_run_spec={
+            "dataset": {"path": "bars.csv", "instrument": "ES"},
+            "levels": {},
+            "setup": {
+                "name": "Late provenance",
+                "description": "",
+                "instrument": "ES",
+                "selected_levels": ["dVWAP_RTH"],
+                "tolerance_ticks": 0,
+                "min_confluences": 1,
+                "max_confluences": 1,
+                "naked_only": False,
+                "naked_requirement": "any",
+                "trigger": "touch",
+                "direction": "both",
+            },
+            "backtest": {
+                "commission_per_side": 0,
+                "slippage_ticks": 0,
+                "exposure_policy": "single_position",
+                "intrabar_model": "sl_first",
+                "flat_by_session_close": True,
+                "session_close_time": "16:00",
+                "session_timezone": "America/New_York",
+                "no_new_entries_after": "15:45",
+            },
+        },
+        status="ready_for_confirmation",
+        compiler_version="runspec-2",
+    )
+    confirmed = repository.confirm_spec_version(thesis.thesis_id, draft.version)
+    run = repository.start_run(
+        thesis.thesis_id, spec_version=confirmed.version, request={"request_id": "late"}
+    )
+    cancelled = repository.cancel_run(
+        thesis.thesis_id,
+        run.run_id,
+        expected_revision=run.revision,
+        reason="Stopped mid-flight.",
+    )
+    updated = repository.attach_cancelled_run_provenance(
+        thesis.thesis_id,
+        cancelled.run_id,
+        expected_revision=cancelled.revision,
+        provenance={"bundle_path": "runs/late.research.zip", "canonical_bundle_hash": "b" * 64},
+        warnings=("cancelled after compute",),
+    )
+
+    assert updated.status == "cancelled"
+    assert updated.error["reason"] == "Stopped mid-flight."
+    assert updated.provenance["canonical_bundle_hash"] == "b" * 64
+    with pytest.raises(InvalidStateTransitionError, match="immutable"):
+        repository.attach_cancelled_run_provenance(
+            thesis.thesis_id,
+            updated.run_id,
+            expected_revision=updated.revision,
+            provenance={"bundle_path": "other.zip", "canonical_bundle_hash": "c" * 64},
+        )
+
+
 def test_confirmation_rejects_unresolved_or_invalid_content_and_is_idempotent(repository):
     thesis = repository.create_thesis(name="Canonical thesis")
     unresolved = repository.create_spec_version(

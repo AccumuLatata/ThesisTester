@@ -97,7 +97,10 @@ non-empty expected hashes and fail closed when they are missing or blank; they
 never silently skip digest verification. Completed/cancelled run lifecycle
 outcomes keep their terminal repository state even if conversation-audit
 append races. `cancel_run()` returns a structured lifecycle failure when the
-target run is no longer `running`, so stale Cancel clicks do not raise.
+target run is no longer `running`, so stale Cancel clicks do not raise. If
+cancel wins while execution is still finishing, the orchestrator keeps the
+cancelled terminal state, attaches late bundle provenance when available, and
+does not attempt `fail_run` against the already-terminal record.
 
 Research ZIP bytes include archive timestamps and are not deterministic.
 `canonical_bundle_hash()` projects JSON with sorted keys (excluding

@@ -246,3 +246,48 @@ def test_completed_run_survives_conversation_audit_failure(tmp_path, monkeypatch
     assert result.status == "completed"
     assert restored.status == "completed"
     assert restored.provenance["canonical_bundle_hash"] == "a" * 64
+
+
+def test_cancel_during_execution_keeps_cancel_and_bundle_provenance(tmp_path):
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    thesis = repository.create_thesis(name="Cancel race")
+    conversation = repository.create_conversation(thesis.thesis_id)
+    draft = repository.create_spec_version(
+        thesis.thesis_id,
+        normalized_run_spec=_canonical_choices(thesis.name),
+        status="ready_for_confirmation",
+    )
+    confirmed = repository.confirm_spec_version(thesis.thesis_id, draft.version)
+    tools = _BundleTools()
+    original = tools.run_experiment_to_bundle
+
+    def cancel_then_write(spec, *, output_path):
+        running = repository.list_runs(thesis.thesis_id)[0]
+        repository.cancel_run(
+            thesis.thesis_id,
+            running.run_id,
+            expected_revision=running.revision,
+            reason="Cancelled from another session.",
+        )
+        return original(spec, output_path=output_path)
+
+    tools.run_experiment_to_bundle = cancel_then_write
+    orchestrator = AssistantOrchestrator(tools=tools, repository=repository)
+
+    result = orchestrator.execute_confirmed_run(
+        thesis_id=thesis.thesis_id,
+        spec_version=confirmed.version,
+        output_path=tmp_path / "bundles" / "race.research.zip",
+        conversation_id=conversation.conversation_id,
+    )
+
+    restored = repository.get_run(thesis.thesis_id, result.payload["run_id"])
+    assert result.status == "cancelled"
+    assert restored.status == "cancelled"
+    assert restored.error["reason"] == "Cancelled from another session."
+    assert restored.provenance["canonical_bundle_hash"] == "a" * 64
+    assert Path(restored.provenance["bundle_path"]).read_bytes() == b"bundle"
+    transcript = repository.get_conversation(
+        thesis.thesis_id, conversation.conversation_id
+    ).tool_transcript
+    assert transcript[-1]["status"] == "cancelled"

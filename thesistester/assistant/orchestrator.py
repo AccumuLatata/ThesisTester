@@ -313,6 +313,9 @@ class AssistantOrchestrator:
                 },
             },
         )
+        result: dict[str, Any] | None = None
+        warnings: tuple[str, ...] = ()
+        provenance: dict[str, Any] | None = None
         try:
             result = bounded_tools.run_experiment_to_bundle(run_spec, output_path=output_path)
             warning_data = result.get("summary", {}).get("warnings", {})
@@ -325,50 +328,36 @@ class AssistantOrchestrator:
                 if isinstance(warning_data, dict)
                 else ()
             )
+            provenance = {
+                "bundle_path": result["bundle_path"],
+                "canonical_bundle_hash": result["canonical_bundle_hash"],
+                "dataset_fingerprint": result["dataset_fingerprint"],
+                "tool_version": result["tool_version"],
+                "summary": result["summary"],
+                "warnings": list(warnings),
+                "effective_configuration": result.get("effective_configuration"),
+                "resolved_paths": result.get("resolved_paths"),
+                "resource_limits": result.get("resource_limits"),
+                "seeds": result.get("seeds"),
+            }
             completed = self.repository.complete_run(
                 thesis_id,
                 run.run_id,
                 expected_revision=run.revision,
-                provenance={
-                    "bundle_path": result["bundle_path"],
-                    "canonical_bundle_hash": result["canonical_bundle_hash"],
-                    "dataset_fingerprint": result["dataset_fingerprint"],
-                    "tool_version": result["tool_version"],
-                    "summary": result["summary"],
-                    "warnings": list(warnings),
-                    "effective_configuration": result.get("effective_configuration"),
-                    "resolved_paths": result.get("resolved_paths"),
-                    "resource_limits": result.get("resource_limits"),
-                    "seeds": result.get("seeds"),
-                },
+                provenance=provenance,
                 warnings=warnings,
             )
         except BaseException as exc:
-            error = structured_error(
-                category="execution",
-                retryable=False,
-                remediation="Inspect the failed run error, correct the specification, and retry.",
-                message=f"{type(exc).__name__}: {exc}",
-            ).to_dict()
-            self.repository.fail_run(
-                thesis_id,
-                run.run_id,
-                expected_revision=run.revision,
-                error=error,
-            )
-            failed = OrchestrationResult(
-                status=OrchestrationStatus.FAILED.value,
-                capability_id="PIPELINE.run_experiment",
-                payload={"run_id": run.run_id, "error": error},
-            )
-            self._record_audit(
-                failed,
+            return self._finalize_raced_or_failed_run(
+                exc,
                 request=request,
                 thesis_id=thesis_id,
+                run_id=run.run_id,
                 conversation_id=conversation_id,
-                best_effort=True,
+                result=result,
+                provenance=provenance,
+                warnings=warnings,
             )
-            raise
         completed_result = OrchestrationResult(
             status=OrchestrationStatus.COMPLETED.value,
             capability_id="PIPELINE.run_experiment",
@@ -462,6 +451,109 @@ class AssistantOrchestrator:
             best_effort=True,
         )
         return result
+
+    def _finalize_raced_or_failed_run(
+        self,
+        exc: BaseException,
+        *,
+        request: AssistantRequest,
+        thesis_id: str,
+        run_id: str,
+        conversation_id: str | None,
+        result: dict[str, Any] | None,
+        provenance: dict[str, Any] | None,
+        warnings: tuple[str, ...],
+    ) -> OrchestrationResult:
+        """Resolve cancel/complete races without overturning terminal cancel state."""
+        current = self.repository.get_run(thesis_id, run_id)
+        if current.status == "cancelled":
+            if provenance is not None and current.provenance is None:
+                try:
+                    current = self.repository.attach_cancelled_run_provenance(
+                        thesis_id,
+                        run_id,
+                        expected_revision=current.revision,
+                        provenance=provenance,
+                        warnings=warnings,
+                    )
+                except (InvalidStateTransitionError, RepositoryConflictError):
+                    current = self.repository.get_run(thesis_id, run_id)
+            reason = "Cancelled during execution."
+            if isinstance(current.error, dict) and current.error.get("reason"):
+                reason = str(current.error["reason"])
+            payload: dict[str, Any] = {
+                "run_id": current.run_id,
+                "error": structured_error(
+                    category="cancellation",
+                    retryable=False,
+                    remediation="Start a new confirmed run if the research should continue.",
+                    message=reason,
+                ).to_dict(),
+            }
+            if result is not None:
+                payload.update(result)
+            cancelled_result = OrchestrationResult(
+                status=OrchestrationStatus.CANCELLED.value,
+                capability_id="PIPELINE.run_experiment",
+                payload=payload,
+            )
+            self._record_audit(
+                cancelled_result,
+                request=request,
+                thesis_id=thesis_id,
+                conversation_id=conversation_id,
+                extra={
+                    "run_id": current.run_id,
+                    **(
+                        {"canonical_bundle_hash": result["canonical_bundle_hash"]}
+                        if result is not None
+                        else {}
+                    ),
+                },
+                best_effort=True,
+            )
+            return cancelled_result
+
+        error = structured_error(
+            category="execution",
+            retryable=False,
+            remediation="Inspect the failed run error, correct the specification, and retry.",
+            message=f"{type(exc).__name__}: {exc}",
+        ).to_dict()
+        if current.status == "running":
+            try:
+                self.repository.fail_run(
+                    thesis_id,
+                    run_id,
+                    expected_revision=current.revision,
+                    error=error,
+                )
+            except (InvalidStateTransitionError, RepositoryConflictError):
+                current = self.repository.get_run(thesis_id, run_id)
+                if current.status == "cancelled":
+                    return self._finalize_raced_or_failed_run(
+                        exc,
+                        request=request,
+                        thesis_id=thesis_id,
+                        run_id=run_id,
+                        conversation_id=conversation_id,
+                        result=result,
+                        provenance=provenance,
+                        warnings=warnings,
+                    )
+        failed = OrchestrationResult(
+            status=OrchestrationStatus.FAILED.value,
+            capability_id="PIPELINE.run_experiment",
+            payload={"run_id": run_id, "error": error},
+        )
+        self._record_audit(
+            failed,
+            request=request,
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+            best_effort=True,
+        )
+        raise exc
 
     def _requires_confirmation(self, level: ConfirmationLevel, request: AssistantRequest) -> bool:
         if level is ConfirmationLevel.NONE:
