@@ -100,6 +100,7 @@ if conversation_ids.get(thesis_id) not in {
 conversation_id = conversation_ids[thesis_id]
 active_conversation = repository.get_conversation(thesis_id, conversation_id)
 if st.session_state["assistant_hydrated_conversation_id"] != conversation_id:
+    st.session_state["assistant_draft_choices"] = {}
     for message in reversed(active_conversation.messages):
         if message.get("role") == "assistant" and isinstance(message.get("choices"), dict):
             st.session_state["assistant_draft_choices"] = message["choices"]
