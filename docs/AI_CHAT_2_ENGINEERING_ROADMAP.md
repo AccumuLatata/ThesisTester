@@ -95,8 +95,9 @@ coordinator between UI, repository, compiler, tools, and explainer.
 - Confirmation recompiles and calls `validate_run_spec()` before its immutable
   child record is written. Confirmed content is revalidated before execution.
 - Costs, exposure, intrabar behavior, session close/timezone/entry cutoff,
-  validation seed, enabled-grid selection, and walk-forward protocol are
-  explicit inputs; the compiler supplies none of them.
+  validation seed, enabled-grid selection, and walk-forward protocol (including
+  fold sizes for the selected `fold_mode`) are explicit inputs; the compiler
+  supplies none of them.
 
 ## C2-3 — Bundle-backed run lifecycle
 
