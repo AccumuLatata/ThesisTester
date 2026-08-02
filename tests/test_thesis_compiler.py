@@ -59,6 +59,7 @@ def test_canonical_compiler_rejects_implicit_execution_assumptions(monkeypatch):
     )
     choices = {
         "dataset": {"path": "bars.csv", "instrument": "ES"},
+        "levels": {},
         "setup": {"trigger": "touch", "tolerance_ticks": 0, "selected_levels": ["dVWAP_RTH"]},
         "backtest": {
             "commission_per_side": 0.0,
