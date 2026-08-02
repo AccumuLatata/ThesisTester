@@ -325,7 +325,7 @@ class AssistantTools:
         for index, bundle_path in enumerate(bundle_paths, start=1):
             path = _resolve_within(bundle_path, self.data_roots)
             trades = load_research_bundle(path.read_bytes())["session_values"].get("trades")
-            if trades is None:
+            if trades is None or trades.empty:
                 raise AssistantToolError("Each bundle requires completed trades.")
             setup_trades[f"run_{index}"] = trades
         return to_jsonable(
