@@ -55,13 +55,13 @@ def parse_llm_intent(payload: Mapping[str, Any]) -> LLMIntent:
         for item in choices
     ):
         raise LLMIntentError("LLM choices must be key/value string objects.")
-    keys = [item["key"] for item in choices]
+    keys = [item["key"].strip() for item in choices]
     if len(set(keys)) != len(keys):
         raise LLMIntentError("LLM choice keys must be unique.")
     if any(not isinstance(item, str) or not item.strip() for item in clarifications):
         raise LLMIntentError("LLM clarifications must be non-empty strings.")
     return LLMIntent(
-        choices={item["key"]: item["value"].strip() for item in choices},
+        choices={item["key"].strip(): item["value"].strip() for item in choices},
         clarifications=tuple(clarifications),
     )
 
