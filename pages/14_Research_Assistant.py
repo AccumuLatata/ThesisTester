@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import math
 from pathlib import Path
 from uuid import uuid4
 
@@ -80,7 +81,7 @@ def _choices_from_editor(raw: str) -> dict:
 
 def _positive_number_list(raw: str) -> list[float]:
     values = [float(item.strip()) for item in raw.split(",") if item.strip()]
-    if not values or any(value <= 0 for value in values):
+    if not values or any(not math.isfinite(value) or value <= 0 for value in values):
         raise ValueError("Provide one or more positive comma-separated values.")
     return values
 
