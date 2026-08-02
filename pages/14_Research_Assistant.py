@@ -248,9 +248,11 @@ with st.expander("Structured execution controls"):
         stop_loss_ticks = st.number_input("Stop loss ticks", min_value=1, value=stop_default)
         take_profit_ticks = st.number_input("Take profit ticks", min_value=1, value=target_default)
         if st.form_submit_button("Apply execution controls"):
+            setup = current.get("setup") if isinstance(current.get("setup"), dict) else None
             st.session_state["assistant_draft_choices"] = {
                 **current,
                 "dataset": {**dataset, "path": dataset_path, "instrument": instrument},
+                **({"setup": {**setup, "instrument": instrument}} if setup is not None else {}),
                 "backtest": {
                     **backtest,
                     "stop_loss_ticks": stop_loss_ticks,
