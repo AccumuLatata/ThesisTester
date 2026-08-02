@@ -107,6 +107,46 @@ def test_comparison_reports_metrics_assumptions_and_conclusions():
     assert comparison["next_experiments"]
 
 
+def test_grid_ranking_claim_grounds_to_assumptions_when_absent_from_best_row():
+    """Real best_grid_result rows omit ranking_metric; claim the config path instead."""
+    packet = EvidencePacket.from_dict(
+        {
+            "schema_version": 1,
+            "provenance": {},
+            "assumptions": {
+                "grid": {"enabled": True, "ranking_metric": "expectancy_r"},
+                "costs_exposure": {
+                    "commission_per_side": 1.25,
+                    "slippage_ticks": 0.5,
+                },
+            },
+            "results": {
+                "trade_summary": {"trade_count": 40, "expectancy_r": 0.1},
+                "best_grid_result": {
+                    "stop_loss_ticks": 8,
+                    "take_profit_ticks": 16,
+                    "trade_count": 40,
+                    "expectancy_r": 0.1,
+                },
+            },
+            "warnings": [],
+            "caveats": [],
+            "limitations": [],
+            "claims": [],
+            "next_experiments": [],
+        }
+    )
+    report = explain_evidence_report(packet)
+    assert "Best grid candidate by expectancy_r" in report["narrative"]
+    metric_claims = [
+        claim for claim in report["claims"] if claim["path"].endswith("ranking_metric")
+    ]
+    assert len(metric_claims) == 1
+    assert metric_claims[0]["path"] == "assumptions.grid.ranking_metric"
+    assert metric_claims[0]["value"] == "expectancy_r"
+    assert_claims_grounded(packet, report)
+
+
 def test_explanation_flags_grid_selection_and_walk_forward_scope():
     rich = EvidencePacket.from_dict(
         {
@@ -114,6 +154,7 @@ def test_explanation_flags_grid_selection_and_walk_forward_scope():
             "provenance": {},
             "assumptions": {
                 "otf_filter": {"available": True},
+                "grid": {"ranking_metric": "expectancy_r"},
                 "costs_exposure": {
                     "commission_per_side": 0,
                     "slippage_ticks": 0,
@@ -124,10 +165,10 @@ def test_explanation_flags_grid_selection_and_walk_forward_scope():
             "results": {
                 "trade_summary": {"trade_count": 40, "expectancy_r": 0.1},
                 "best_grid_result": {
-                    "ranking_metric": "expectancy_r",
                     "trade_count": 40,
                     "stop_loss_ticks": 8,
                     "take_profit_ticks": 16,
+                    "expectancy_r": 0.1,
                 },
                 "validation_summary": {"status": "present"},
                 "walk_forward_summary": {

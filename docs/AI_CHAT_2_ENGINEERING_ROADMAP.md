@@ -229,7 +229,9 @@ coordinator between UI, repository, compiler, tools, and explainer.
 - Deterministic templates cover baseline, failure, candidate SL/TP, validation,
   Monte Carlo/noise/sensitivity/overfitting, WFA/OOS, time/session, OTF,
   portfolio, and run comparison. `assert_claims_grounded()` requires every
-  numeric claim path/value to exist in the packet.
+  numeric claim path/value to exist in the packet. SL/TP grid ranking claims
+  prefer `assumptions.grid.ranking_metric` because typical `best_grid_result`
+  rows do not store `ranking_metric`.
 - Mandatory caveat codes include low sample, zero costs, overlapping exposure,
   intrabar ambiguity, grid selection, missing/failed OOS, failed robustness,
   and multiple testing. Cost/exposure caveats prefer

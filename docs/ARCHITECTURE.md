@@ -123,7 +123,9 @@ reruns so the Active handoff caption refreshes immediately.
 Explanations are packet-backed: `EvidencePacket` is schema-versioned and
 includes structured caveats, limitations, claims, and next-experiment guidance.
 `explain_evidence_report()` / `assert_claims_grounded()` ensure every displayed
-numeric claim cites an evidence path and exact value. `compare_evidence()`
+numeric claim cites an evidence path and exact value. Grid ranking-metric claims
+ground to `assumptions.grid.ranking_metric` when `best_grid_result` omits that
+field (typical grid row snapshots). `compare_evidence()`
 returns versioned nested evidence covering metrics, executable-spec diffs,
 data comparability, conclusions, and next experiments. Persisted `Comparison`
 records are schema v2 (`created_at`, `conclusions`); v1 records migrate on

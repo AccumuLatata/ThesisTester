@@ -504,6 +504,23 @@ def _template_failure(
         _claim(claims, text, "provenance.error", error)
 
 
+def _resolve_grid_ranking_metric(packet: EvidencePacket) -> tuple[Any, str]:
+    """Resolve ranking metric from a path that actually exists on the packet.
+
+    Real ``best_grid_result`` rows are metric-column snapshots and do not store
+    ``ranking_metric``; the configured metric lives on ``assumptions.grid``.
+    """
+    grid_result = _as_mapping(packet.results.get("best_grid_result")) or {}
+    metric = grid_result.get("ranking_metric")
+    if isinstance(metric, str) and metric.strip():
+        return metric, "results.best_grid_result.ranking_metric"
+    grid_cfg = _as_mapping(packet.assumptions.get("grid")) or {}
+    metric = grid_cfg.get("ranking_metric")
+    if isinstance(metric, str) and metric.strip():
+        return metric, "assumptions.grid.ranking_metric"
+    return None, "assumptions.grid.ranking_metric"
+
+
 def _template_sl_tp(packet: EvidencePacket, claims: list[EvidenceClaim], lines: list[str]) -> None:
     grid_result = _as_mapping(packet.results.get("best_grid_result"))
     costs = _as_mapping(packet.assumptions.get("costs_exposure")) or {}
@@ -520,8 +537,10 @@ def _template_sl_tp(packet: EvidencePacket, claims: list[EvidenceClaim], lines: 
         _claim(claims, text, "assumptions.costs_exposure.stop_loss_ticks", stop)
         _claim(claims, text, "assumptions.costs_exposure.take_profit_ticks", target)
         return
-    metric = grid_result.get("ranking_metric", "the configured ranking metric")
-    trade_count = grid_result.get("trade_count", "an unavailable trade count")
+    metric, metric_path = _resolve_grid_ranking_metric(packet)
+    metric_display = metric if metric is not None else "unavailable ranking metric"
+    trade_count = grid_result.get("trade_count")
+    trade_display = trade_count if trade_count is not None else "unavailable trade count"
     stop = grid_result.get("stop_loss_ticks")
     target = grid_result.get("take_profit_ticks")
     commission = costs.get("commission_per_side")
@@ -529,12 +548,13 @@ def _template_sl_tp(packet: EvidencePacket, claims: list[EvidenceClaim], lines: 
     wfa = _as_mapping(packet.results.get("walk_forward_summary"))
     oos_status = "present" if wfa is not None else "missing"
     text = (
-        f"Best grid candidate by {metric} uses SL={stop}, TP={target} with {trade_count} trades "
-        f"in the selection sample; costs commission_per_side={commission}, "
-        f"slippage_ticks={slippage}; OOS/WFA status={oos_status}."
+        f"Best grid candidate by {metric_display} uses SL={stop}, TP={target} with "
+        f"{trade_display} trades in the selection sample; costs "
+        f"commission_per_side={commission}, slippage_ticks={slippage}; "
+        f"OOS/WFA status={oos_status}."
     )
     lines.append(text)
-    _claim(claims, text, "results.best_grid_result.ranking_metric", metric)
+    _claim(claims, text, metric_path, metric)
     _claim(claims, text, "results.best_grid_result.trade_count", trade_count)
     _claim(claims, text, "results.best_grid_result.stop_loss_ticks", stop)
     _claim(claims, text, "results.best_grid_result.take_profit_ticks", target)
