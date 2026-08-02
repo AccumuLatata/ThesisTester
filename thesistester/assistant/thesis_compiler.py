@@ -171,7 +171,9 @@ def map_thesis_choices_to_run_spec(*, name: str, choices: Mapping[str, Any]) -> 
 
     This boundary deliberately rejects narrative-only fields.  A value either
     maps to the public API schema or remains a clarification; it is never
-    persisted as an executable-looking but ignored "ghost" assumption.
+    persisted as an executable-looking but ignored "ghost" assumption.  The
+    explicit ``name`` argument is authoritative so a previously confirmed
+    RunSpec can be safely recompiled after its thesis is renamed.
     """
     if not isinstance(choices, Mapping):
         raise ValueError("Research choices must be an object.")
@@ -182,9 +184,6 @@ def map_thesis_choices_to_run_spec(*, name: str, choices: Mapping[str, Any]) -> 
             + ", ".join(unknown)
             + ". Use structured executable controls instead."
         )
-    supplied_name = choices.get("name")
-    if supplied_name is not None and supplied_name != name.strip():
-        raise ValueError("Research choices name must match the selected thesis name.")
     canonical_choices = {
         key: deepcopy(choices[key])
         for key in ("dataset", "levels", "setup", "backtest", "grid", "validation", "walk_forward")

@@ -134,6 +134,7 @@ def test_dvwap_sma_structured_choices_compile_canonically(monkeypatch):
         "thesistester.assistant.thesis_compiler.validate_run_spec", lambda spec: None
     )
     choices = {
+        "name": "Prior thesis title",
         "dataset": {"path": "bars.csv", "instrument": "ES"},
         "levels": {
             "session_vwap_enabled": True,
@@ -162,6 +163,7 @@ def test_dvwap_sma_structured_choices_compile_canonically(monkeypatch):
     second = map_thesis_choices_to_run_spec(name="dVWAP SMA", choices=choices)
 
     assert first == second
+    assert first["name"] == "dVWAP SMA"
     assert first["setup"]["instrument"] == "ES"
     assert first["setup"]["selected_levels"] == ["dVWAP_RTH"]
 

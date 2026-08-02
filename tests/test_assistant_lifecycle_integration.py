@@ -6,7 +6,11 @@ from thesistester.assistant import AssistantOrchestrator, LocalThesisRepository
 
 
 class _BundleTools:
+    def __init__(self):
+        self.run_specs = []
+
     def run_experiment_to_bundle(self, spec, *, output_path):
+        self.run_specs.append(spec)
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         Path(output_path).write_bytes(b"bundle")
         return {
@@ -70,6 +74,38 @@ def test_confirmed_spec_runs_and_persists_bundle_provenance(tmp_path):
     assert restored.provenance["canonical_bundle_hash"] == "a" * 64
     assert restored.warnings == ("intrabar: assumption",)
     assert Path(restored.provenance["bundle_path"]).read_bytes() == b"bundle"
+
+
+def test_confirmed_spec_executes_after_thesis_rename(tmp_path):
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    thesis = repository.create_thesis(name="Original title")
+    draft = repository.create_spec_version(
+        thesis.thesis_id,
+        normalized_run_spec=_canonical_choices(thesis.name),
+        status="ready_for_confirmation",
+    )
+    confirmed = repository.confirm_spec_version(thesis.thesis_id, draft.version)
+    repository.rename_thesis(
+        thesis.thesis_id,
+        name="Renamed title",
+        expected_revision=thesis.revision,
+    )
+    tools = _BundleTools()
+    orchestrator = AssistantOrchestrator(tools=tools, repository=repository)
+
+    result = orchestrator.execute_confirmed_run(
+        thesis_id=thesis.thesis_id,
+        spec_version=confirmed.version,
+        output_path=tmp_path / "bundles" / "renamed.research.zip",
+    )
+
+    assert result.status == "completed"
+    assert tools.run_specs == [
+        {
+            **confirmed.normalized_run_spec,
+            "name": "Renamed title",
+        }
+    ]
 
 
 def test_unconfirmed_or_failed_run_has_safe_terminal_state(tmp_path):
