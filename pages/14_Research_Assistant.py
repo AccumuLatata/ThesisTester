@@ -203,6 +203,21 @@ if (
 ):
     with st.expander("Validated executable RunSpec"):
         st.json(validated_state["spec"])
+    if st.button("Confirm validated RunSpec", type="primary"):
+        executable = repository.create_spec_version(
+            thesis_id,
+            normalized_run_spec=validated_state["spec"],
+            status="ready_for_confirmation",
+            unresolved_assumptions=(),
+            compiler_version="runspec-1",
+        )
+        repository.confirm_spec_version(
+            thesis_id,
+            executable.version,
+            confirmation_note="Confirmed validated executable RunSpec in UI",
+        )
+        st.session_state["assistant_validated_run_spec"] = None
+        st.rerun()
 
 specifications = repository.list_spec_versions(thesis_id)
 confirmed_parents = {spec.parent_version for spec in specifications if spec.status == "confirmed"}
@@ -217,6 +232,7 @@ for spec in reversed(specifications):
             spec.status != "confirmed"
             and spec.version not in confirmed_parents
             and not spec.unresolved_assumptions
+            and {"dataset", "setup", "backtest"}.issubset(spec.normalized_run_spec)
         ):
             if st.button("Confirm specification", key=f"confirm-{spec.version}"):
                 repository.confirm_spec_version(
