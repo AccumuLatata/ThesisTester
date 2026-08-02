@@ -183,4 +183,28 @@ class AssistantOrchestrator:
             return self.tools.validate_experiment(request.payload["run_spec"])
         if request.capability_id == "PIPELINE.run_experiment":
             return self.tools.run_experiment(request.payload["run_spec"])
+        if request.capability_id == "BACKTEST.manage_execution_defaults":
+            action = request.payload.get("action", "save")
+            if action == "get":
+                return {"defaults": self.tools.get_execution_defaults()["backtest"]}
+            if action == "clear":
+                self.tools.clear_backtest_execution_defaults()
+                return {"cleared": True}
+            defaults = request.payload.get("defaults")
+            if not isinstance(defaults, dict):
+                raise ValueError("Backtest defaults request requires an object.")
+            self.tools.save_backtest_execution_defaults(defaults)
+            return {"saved": True}
+        if request.capability_id == "GRID.manage_execution_defaults":
+            action = request.payload.get("action", "save")
+            if action == "get":
+                return {"defaults": self.tools.get_execution_defaults()["grid"]}
+            if action == "clear":
+                self.tools.clear_grid_execution_defaults()
+                return {"cleared": True}
+            defaults = request.payload.get("defaults")
+            if not isinstance(defaults, dict):
+                raise ValueError("Grid defaults request requires an object.")
+            self.tools.save_grid_execution_defaults(defaults)
+            return {"saved": True}
         raise ValueError(f"No orchestrator handler for {request.capability_id}.")

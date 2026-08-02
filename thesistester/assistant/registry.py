@@ -222,9 +222,8 @@ FEATURE_PARITY_REGISTRY = _validate_registry(
             "Backtest",
             "Save, restore, or reset execution defaults",
             "thesistester.persistence.local_store",
-            CapabilityMode.UNSUPPORTED,
-            ConfirmationLevel.NONE,
-            limitation="Execution-default persistence has no assistant repository contract yet.",
+            CapabilityMode.EXECUTABLE,
+            ConfirmationLevel.EXPLICIT_CONFIRMATION,
         ),
         _capability(
             "BACKTEST.inspect_results",
@@ -264,9 +263,8 @@ FEATURE_PARITY_REGISTRY = _validate_registry(
             "Grid Search",
             "Save, restore, or reset grid execution defaults",
             "thesistester.persistence.local_store",
-            CapabilityMode.UNSUPPORTED,
-            ConfirmationLevel.NONE,
-            limitation="Grid-default persistence has no assistant repository contract yet.",
+            CapabilityMode.EXECUTABLE,
+            ConfirmationLevel.EXPLICIT_CONFIRMATION,
         ),
         _capability(
             "TIME.analyze",
