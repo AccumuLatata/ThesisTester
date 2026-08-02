@@ -254,6 +254,8 @@ class AssistantTools:
                 stop_loss_ticks=stop_loss_ticks,
                 take_profit_ticks=take_profit_ticks,
                 train_fraction=train_fraction,
+                session_timezone=state.get("exchange_timezone"),
+                eth_start=state.get("eth_start"),
                 setup_config=state.get("setup_config"),
                 signal_settings=state.get("signal_settings"),
             ).to_dict("records")
