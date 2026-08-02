@@ -252,8 +252,53 @@ with st.expander("Structured execution controls"):
         target_default = (
             int(raw_target) if isinstance(raw_target, (int, float)) and raw_target > 0 else 16
         )
+        raw_commission = backtest.get("commission_per_side", 0)
+        raw_slippage = backtest.get("slippage_ticks", 0)
+        commission_default = (
+            float(raw_commission)
+            if isinstance(raw_commission, (int, float)) and raw_commission >= 0
+            else 0.0
+        )
+        slippage_default = (
+            float(raw_slippage)
+            if isinstance(raw_slippage, (int, float)) and raw_slippage >= 0
+            else 0.0
+        )
         stop_loss_ticks = st.number_input("Stop loss ticks", min_value=1, value=stop_default)
         take_profit_ticks = st.number_input("Take profit ticks", min_value=1, value=target_default)
+        commission_per_side = st.number_input(
+            "Commission per side",
+            min_value=0.0,
+            value=commission_default,
+        )
+        slippage_ticks = st.number_input(
+            "Slippage ticks",
+            min_value=0.0,
+            value=slippage_default,
+        )
+        exposure_policy = st.selectbox(
+            "Exposure policy",
+            ["allow_all", "single_position", "single_direction", "single_setup"],
+            index=["allow_all", "single_position", "single_direction", "single_setup"].index(
+                str(backtest.get("exposure_policy") or "allow_all")
+            )
+            if str(backtest.get("exposure_policy") or "allow_all")
+            in ["allow_all", "single_position", "single_direction", "single_setup"]
+            else 0,
+        )
+        intrabar_model = st.selectbox(
+            "Intrabar model",
+            ["sl_first", "path_open_proximity", "subtimeframe", "subtimeframe_conservative"],
+            index=[
+                "sl_first",
+                "path_open_proximity",
+                "subtimeframe",
+                "subtimeframe_conservative",
+            ].index(str(backtest.get("intrabar_model") or "sl_first"))
+            if str(backtest.get("intrabar_model") or "sl_first")
+            in ["sl_first", "path_open_proximity", "subtimeframe", "subtimeframe_conservative"]
+            else 0,
+        )
         if st.form_submit_button("Apply execution controls"):
             st.session_state["assistant_draft_choices"] = {
                 **current,
@@ -263,6 +308,10 @@ with st.expander("Structured execution controls"):
                     **backtest,
                     "stop_loss_ticks": stop_loss_ticks,
                     "take_profit_ticks": take_profit_ticks,
+                    "commission_per_side": commission_per_side,
+                    "slippage_ticks": slippage_ticks,
+                    "exposure_policy": exposure_policy,
+                    "intrabar_model": intrabar_model,
                 },
             }
             st.session_state["assistant_validated_run_spec"] = None
