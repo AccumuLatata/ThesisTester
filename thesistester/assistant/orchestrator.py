@@ -17,6 +17,7 @@ from thesistester.assistant.llm_intent import propose_thesis_draft
 from thesistester.assistant.registry import validate_capability_request
 from thesistester.assistant.repository import LocalThesisRepository
 from thesistester.assistant.thesis_compiler import ThesisDraft
+from thesistester.api import validate_run_spec
 from thesistester.assistant.tools import AssistantTools
 
 
@@ -128,6 +129,7 @@ class AssistantOrchestrator:
         spec = self.repository.get_spec_version(thesis_id, spec_version)
         if spec.status != "confirmed":
             raise ValueError("Only confirmed specifications may execute.")
+        validate_run_spec(spec.normalized_run_spec)
         request = AssistantRequest(
             capability_id="PIPELINE.run_experiment",
             payload={"run_spec": spec.normalized_run_spec},

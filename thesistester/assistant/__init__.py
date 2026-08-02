@@ -34,6 +34,7 @@ from thesistester.assistant.thesis_compiler import (
     StructuredThesisChoices,
     ThesisDraft,
     compile_canonical_run_spec,
+    map_thesis_choices_to_run_spec,
     compile_run_spec,
     compile_thesis,
 )
@@ -83,6 +84,7 @@ __all__ = [
     "compile_thesis",
     "compile_run_spec",
     "compile_canonical_run_spec",
+    "map_thesis_choices_to_run_spec",
     "build_evidence_packet",
     "compare_evidence",
     "explain_evidence",

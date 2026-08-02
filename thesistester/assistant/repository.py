@@ -19,6 +19,7 @@ from typing import Any, Mapping
 from uuid import uuid4
 
 from thesistester.assistant.comparison import Comparison
+from thesistester.api import validate_run_spec
 from thesistester.persistence.local_store import get_store_root
 
 ASSISTANT_REPOSITORY_SCHEMA_VERSION = 1
@@ -783,6 +784,16 @@ class LocalThesisRepository:
         source = self.get_spec_version(thesis_id, version)
         if source.status == "confirmed":
             raise InvalidStateTransitionError("Specification version is already confirmed.")
+        if source.unresolved_assumptions:
+            raise InvalidStateTransitionError(
+                "Cannot confirm a specification with unresolved assumptions."
+            )
+        try:
+            validate_run_spec(source.normalized_run_spec)
+        except ValueError as exc:
+            raise InvalidStateTransitionError(
+                "Cannot confirm an invalid executable RunSpec."
+            ) from exc
         return self._create_confirmed_copy(source, confirmation_note=confirmation_note)
 
     def _create_confirmed_copy(

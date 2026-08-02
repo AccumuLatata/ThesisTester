@@ -135,6 +135,50 @@ def compile_canonical_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict
     return spec
 
 
+def map_thesis_choices_to_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict[str, Any]:
+    """Map supported structured thesis fields into canonical public API sections."""
+    if all(
+        isinstance(choices.get(key), Mapping) for key in ("dataset", "levels", "setup", "backtest")
+    ):
+        return compile_canonical_run_spec(name=name, choices=choices)
+    required = ("dataset_path", "instrument", "selected_levels", "trigger", "tolerance_ticks")
+    missing = [key for key in required if not choices.get(key)]
+    if missing:
+        raise ValueError(f"Thesis choices require: {', '.join(missing)}.")
+    instrument = str(choices["instrument"])
+    selected_levels = list(choices["selected_levels"])
+    setup = {
+        "name": name,
+        "description": str(choices.get("description", "")),
+        "instrument": instrument,
+        "selected_levels": selected_levels,
+        "tolerance_ticks": choices["tolerance_ticks"],
+        "min_confluences": choices.get("min_confluences", 1),
+        "max_confluences": choices.get("max_confluences", max(1, len(selected_levels))),
+        "naked_only": choices.get("naked_only", False),
+        "naked_requirement": choices.get("naked_requirement", "any"),
+        "trigger": choices["trigger"],
+        "trigger_timeframe": choices.get("trigger_timeframe", "base"),
+        "direction": choices.get("direction", "both"),
+        "confluence_mode": choices.get("confluence_mode", "global_cluster"),
+        "anchor_level": choices.get("anchor_level"),
+        "confluence_rules": choices.get("confluence_rules", []),
+        "min_valid_confluences": choices.get("min_valid_confluences", 1),
+        "trigger_params": choices.get("trigger_params", {}),
+        "otf_filter": choices.get("otf_filter"),
+    }
+    canonical = {
+        "dataset": {"path": choices["dataset_path"], "instrument": instrument},
+        "levels": dict(choices.get("levels", {})),
+        "setup": setup,
+        "backtest": dict(choices.get("backtest", {})),
+    }
+    for key in ("grid", "validation", "walk_forward"):
+        if key in choices:
+            canonical[key] = dict(choices[key])
+    return compile_canonical_run_spec(name=name, choices=canonical)
+
+
 def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> ThesisDraft:
     """Create a deterministic draft and name missing executable definitions."""
     if not isinstance(prompt, str) or not prompt.strip():
