@@ -136,9 +136,13 @@ def compile_canonical_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict
 
 
 def map_thesis_choices_to_run_spec(*, name: str, choices: Mapping[str, Any]) -> dict[str, Any]:
-    """Map supported structured thesis fields into canonical public API sections."""
+    """Map supported thesis fields into canonical public API sections.
+
+    Canonical choices require ``dataset``, ``setup``, and ``backtest`` mappings;
+    ``levels`` is optional and normalizes to an empty mapping.
+    """
     if all(
-        isinstance(choices.get(key), Mapping) for key in ("dataset", "levels", "setup", "backtest")
+        isinstance(choices.get(key), Mapping) for key in ("dataset", "setup", "backtest")
     ):
         return compile_canonical_run_spec(name=name, choices=choices)
     required = ("dataset_path", "instrument", "selected_levels", "trigger", "tolerance_ticks")

@@ -5,6 +5,7 @@ from thesistester.assistant import (
     compile_canonical_run_spec,
     compile_run_spec,
     compile_thesis,
+    map_thesis_choices_to_run_spec,
 )
 
 
@@ -95,6 +96,27 @@ def test_canonical_compiler_normalizes_omitted_levels_to_empty_mapping(monkeypat
     compiled = compile_canonical_run_spec(name="No levels", choices=choices)
 
     assert structured.levels == {}
+    assert compiled["levels"] == {}
+
+
+def test_choice_mapper_routes_canonical_choices_with_omitted_levels(monkeypatch):
+    monkeypatch.setattr(
+        "thesistester.assistant.thesis_compiler.validate_run_spec", lambda spec: None
+    )
+    choices = {
+        "dataset": {"path": "bars.csv", "instrument": "ES"},
+        "setup": {"trigger": "touch", "tolerance_ticks": 0, "selected_levels": ["dVWAP_RTH"]},
+        "backtest": {
+            "commission_per_side": 0.0,
+            "slippage_ticks": 0.0,
+            "exposure_policy": "single_position",
+            "intrabar_model": "sl_first",
+        },
+    }
+
+    compiled = map_thesis_choices_to_run_spec(name="No levels", choices=choices)
+
+    assert compiled["name"] == "No levels"
     assert compiled["levels"] == {}
 
 
