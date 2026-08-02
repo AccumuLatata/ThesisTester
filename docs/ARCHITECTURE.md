@@ -87,6 +87,12 @@ confirmed child. The orchestrator repeats that validation immediately before
 execution. Narrative fields that have no public-pipeline mapping are rejected,
 rather than being stored as executable assumptions.
 
+`AssistantOrchestrator.dispatch()` is the only compute router for assistant
+capabilities. It validates the registry request, enforces confirmation and
+resource envelopes, invokes a typed handler, and writes one transcript audit
+entry for each gated or terminal outcome. Page code must not call
+`AssistantTools` or public compute APIs directly.
+
 Research ZIP bytes include archive timestamps and are not deterministic.
 `canonical_bundle_hash()` projects JSON with sorted keys (excluding
 `manifest.created_at`) and parquet members through the repository DataFrame

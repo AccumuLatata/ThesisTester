@@ -16,18 +16,16 @@ import streamlit as st
 
 from thesistester.assistant import (
     AssistantOrchestrator,
+    AssistantRequest,
     Comparison,
+    EvidencePacket,
     LocalThesisRepository,
     compile_thesis,
     map_thesis_choices_to_run_spec,
     normalize_setup_level_selection,
     normalize_walk_forward_controls,
 )
-from thesistester.assistant.explainer import (
-    build_evidence_packet,
-    compare_evidence,
-    explain_evidence,
-)
+from thesistester.assistant.explainer import compare_evidence, explain_evidence
 from thesistester.assistant.llm import (
     LLMConfigurationError,
     LLMProviderError,
@@ -36,18 +34,45 @@ from thesistester.assistant.llm import (
 )
 from thesistester.assistant.llm_explainer import explain_packet_with_llm
 from thesistester.assistant.tools import AssistantTools
-from thesistester.persistence.local_store import (
-    get_store_root,
-    list_saved_setups,
-    load_setup,
-    save_setup,
-)
-from thesistester.reporting import build_research_artifact, to_jsonable
-from thesistester.research_bundle import canonical_bundle_hash, load_research_bundle
+from thesistester.persistence.local_store import get_store_root
 
 
 def _repository() -> LocalThesisRepository:
     return LocalThesisRepository()
+
+
+def _orchestrator(repository: LocalThesisRepository) -> AssistantOrchestrator:
+    return AssistantOrchestrator(
+        tools=AssistantTools(data_roots=(Path.cwd(), get_store_root())),
+        repository=repository,
+    )
+
+
+def _dispatch(
+    orchestrator: AssistantOrchestrator,
+    *,
+    capability_id: str,
+    payload: dict,
+    confirmed: bool = False,
+    thesis_id: str | None = None,
+    conversation_id: str | None = None,
+):
+    return orchestrator.dispatch(
+        AssistantRequest(capability_id=capability_id, payload=payload),
+        confirmed=confirmed,
+        thesis_id=thesis_id,
+        conversation_id=conversation_id,
+    )
+
+
+def _evidence_packet(payload: dict) -> EvidencePacket:
+    evidence = payload["evidence"]
+    return EvidencePacket(
+        provenance=evidence["provenance"],
+        assumptions=evidence["assumptions"],
+        results=evidence["results"],
+        warnings=tuple(evidence["warnings"]),
+    )
 
 
 def _init_state() -> None:
@@ -93,6 +118,7 @@ SETUP_TRIGGER_OPTIONS = ["touch", "reject", "break", "reclaim", "3c"]
 
 _init_state()
 repository = _repository()
+orchestrator = _orchestrator(repository)
 
 st.title("Research Assistant")
 st.caption("Draft explicit research theses. Execution remains confirmation- and schema-gated.")
@@ -192,10 +218,6 @@ if chat_message := st.chat_input("Describe or refine this thesis"):
     try:
         settings = load_llm_settings()
         client = create_openai_client(settings)
-        orchestrator = AssistantOrchestrator(
-            tools=AssistantTools(data_roots=(Path.cwd(),)),
-            repository=repository,
-        )
         draft = orchestrator.handle_chat_turn(
             client,
             thesis_id=thesis_id,
@@ -636,10 +658,16 @@ with st.expander("Structured setup controls"):
                 st.error(str(exc))
 
 with st.expander("Reuse saved setup"):
-    saved_setups = list_saved_setups()
+    listed = _dispatch(
+        orchestrator,
+        capability_id="SETUP.manage_saved_setups",
+        payload={"action": "list"},
+    )
+    saved_setups = listed.payload.get("setups", []) if listed.status == "completed" else []
     setup_options = {
         setup["setup_id"]: f"{setup.get('name', 'Unnamed')} ({setup['setup_id'][-8:]})"
         for setup in saved_setups
+        if isinstance(setup, dict) and isinstance(setup.get("setup_id"), str)
     }
     selected_setup_id = st.selectbox(
         "Saved setup",
@@ -649,7 +677,17 @@ with st.expander("Reuse saved setup"):
         key=f"assistant_saved_setup_{thesis_id}",
     )
     if selected_setup_id and st.button("Apply saved setup"):
-        setup = load_setup(selected_setup_id)
+        loaded = _dispatch(
+            orchestrator,
+            capability_id="SETUP.manage_saved_setups",
+            payload={"action": "load", "setup_id": selected_setup_id},
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+        )
+        if loaded.status != "completed":
+            st.error(loaded.payload.get("error", {}).get("message", "Unable to load setup."))
+            st.stop()
+        setup = loaded.payload.get("setup", {})
         setup_config = setup.get("setup_config")
         if not isinstance(setup_config, dict):
             st.error("Saved setup does not contain a valid setup configuration.")
@@ -696,6 +734,17 @@ if st.button("Validate executable RunSpec"):
     try:
         current_choices = _choices_from_editor(choices_raw)
         validated = map_thesis_choices_to_run_spec(name=thesis.name, choices=current_choices)
+        validation = _dispatch(
+            orchestrator,
+            capability_id="PIPELINE.validate_run_spec",
+            payload={"run_spec": validated},
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+        )
+        if validation.status != "completed":
+            raise ValueError(
+                validation.payload.get("error", {}).get("message", "Validation failed.")
+            )
         st.session_state["assistant_draft_choices"] = current_choices
         st.session_state["assistant_validated_run_spec"] = {
             "choices": current_choices,
@@ -714,11 +763,22 @@ if (
     with st.expander("Validated executable RunSpec"):
         st.json(validated_state["spec"])
     if st.button("Save validated setup to library"):
-        saved = save_setup(
-            validated_state["spec"]["setup"],
-            instrument=validated_state["spec"]["setup"].get("instrument"),
+        saved = _dispatch(
+            orchestrator,
+            capability_id="SETUP.manage_saved_setups",
+            payload={
+                "action": "save",
+                "setup": validated_state["spec"]["setup"],
+                "instrument": validated_state["spec"]["setup"].get("instrument"),
+            },
+            confirmed=True,
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
         )
-        st.success(f"Saved setup {saved['setup_id']}.")
+        if saved.status != "completed":
+            st.error(saved.payload.get("error", {}).get("message", "Unable to save setup."))
+        else:
+            st.success(f"Saved setup {saved.payload['setup']['setup_id']}.")
     if st.button("Confirm validated RunSpec", type="primary"):
         executable = repository.create_spec_version(
             thesis_id,
@@ -757,10 +817,6 @@ for spec in reversed(specifications):
                         / "bundles"
                         / f"{uuid4().hex}.research.zip"
                     )
-                    orchestrator = AssistantOrchestrator(
-                        tools=AssistantTools(data_roots=(Path.cwd(), get_store_root())),
-                        repository=repository,
-                    )
                     orchestrator.execute_confirmed_run(
                         thesis_id=thesis_id,
                         spec_version=spec.version,
@@ -788,27 +844,44 @@ else:
                     "error": run.error,
                 }
             )
+            if run.status == "running" and st.button("Cancel run", key=f"cancel-{run.run_id}"):
+                cancelled = orchestrator.cancel_run(
+                    thesis_id=thesis_id,
+                    run_id=run.run_id,
+                    conversation_id=conversation_id,
+                )
+                if cancelled.status == "cancelled":
+                    st.warning("Research run cancelled.")
+                    st.rerun()
             if run.status == "completed" and isinstance(run.provenance, dict):
                 bundle_path = run.provenance.get("bundle_path")
+                expected_hash = run.provenance.get("canonical_bundle_hash")
                 if isinstance(bundle_path, str) and st.button(
                     "Explain run", key=f"explain-{run.run_id}"
                 ):
-                    try:
-                        raw_bundle = Path(bundle_path).read_bytes()
-                        if canonical_bundle_hash(raw_bundle) != run.provenance.get(
-                            "canonical_bundle_hash"
-                        ):
-                            raise ValueError("Bundle hash does not match recorded run provenance.")
-                        bundle = load_research_bundle(raw_bundle)
-                        packet = build_evidence_packet(
-                            bundle["session_values"],
-                            provenance=run.provenance,
+                    result = _dispatch(
+                        orchestrator,
+                        capability_id="BUNDLE.import",
+                        payload={
+                            "action": "evidence",
+                            "bundle_path": bundle_path,
+                            "expected_hash": expected_hash,
+                            "provenance": run.provenance,
+                        },
+                        thesis_id=thesis_id,
+                        conversation_id=conversation_id,
+                    )
+                    if result.status != "completed":
+                        st.error(
+                            result.payload.get("error", {}).get(
+                                "message", "Unable to load evidence."
+                            )
                         )
+                    else:
+                        packet = _evidence_packet(result.payload)
                         st.session_state["assistant_run_explanations"][run.run_id] = (
                             explain_evidence(packet)
                         )
-                    except (OSError, ValueError) as exc:
-                        st.error(f"Unable to load run evidence: {exc}")
                 explanation = st.session_state["assistant_run_explanations"].get(run.run_id)
                 if explanation:
                     st.write(explanation)
@@ -816,14 +889,25 @@ else:
                     "Generate evidence-only AI explanation", key=f"llm-explain-{run.run_id}"
                 ):
                     try:
-                        raw = Path(bundle_path).read_bytes()
-                        if canonical_bundle_hash(raw) != run.provenance.get(
-                            "canonical_bundle_hash"
-                        ):
-                            raise ValueError("Bundle hash does not match recorded run provenance.")
-                        packet = build_evidence_packet(
-                            load_research_bundle(raw)["session_values"], provenance=run.provenance
+                        result = _dispatch(
+                            orchestrator,
+                            capability_id="BUNDLE.import",
+                            payload={
+                                "action": "evidence",
+                                "bundle_path": bundle_path,
+                                "expected_hash": expected_hash,
+                                "provenance": run.provenance,
+                            },
+                            thesis_id=thesis_id,
+                            conversation_id=conversation_id,
                         )
+                        if result.status != "completed":
+                            raise ValueError(
+                                result.payload.get("error", {}).get(
+                                    "message", "Unable to load evidence."
+                                )
+                            )
+                        packet = _evidence_packet(result.payload)
                         client = create_openai_client(load_llm_settings())
                         st.session_state["assistant_llm_run_explanations"][run.run_id] = (
                             explain_packet_with_llm(client, packet=packet)
@@ -831,7 +915,7 @@ else:
                         st.session_state["assistant_llm_attempts"][run.run_id] = (
                             client.last_attempt_count
                         )
-                    except (LLMConfigurationError, LLMProviderError, OSError, ValueError) as exc:
+                    except (LLMConfigurationError, LLMProviderError, ValueError) as exc:
                         st.error(f"Unable to generate AI explanation: {exc}")
                 llm_explanation = st.session_state["assistant_llm_run_explanations"].get(run.run_id)
                 if llm_explanation:
@@ -844,17 +928,27 @@ else:
                 if isinstance(bundle_path, str) and st.button(
                     "Render markdown report", key=f"report-{run.run_id}"
                 ):
-                    try:
-                        raw = Path(bundle_path).read_bytes()
-                        if canonical_bundle_hash(raw) != run.provenance.get(
-                            "canonical_bundle_hash"
-                        ):
-                            raise ValueError("Bundle hash does not match recorded run provenance.")
-                        st.session_state["assistant_run_reports"][run.run_id] = AssistantTools(
-                            data_roots=(Path.cwd(), get_store_root())
-                        ).render_bundle_markdown_report(bundle_path)
-                    except (OSError, ValueError) as exc:
-                        st.error(f"Unable to render report: {exc}")
+                    result = _dispatch(
+                        orchestrator,
+                        capability_id="EXPORT.build_research_artifact",
+                        payload={
+                            "bundle_path": bundle_path,
+                            "expected_hash": expected_hash,
+                        },
+                        confirmed=True,
+                        thesis_id=thesis_id,
+                        conversation_id=conversation_id,
+                    )
+                    if result.status != "completed":
+                        st.error(
+                            result.payload.get("error", {}).get(
+                                "message", "Unable to render report."
+                            )
+                        )
+                    else:
+                        st.session_state["assistant_run_reports"][run.run_id] = result.payload[
+                            "markdown_report"
+                        ]
                 report = st.session_state["assistant_run_reports"].get(run.run_id)
                 if report:
                     st.markdown(report)
@@ -868,18 +962,27 @@ else:
                 if isinstance(bundle_path, str) and st.button(
                     "Build research artifact", key=f"artifact-{run.run_id}"
                 ):
-                    try:
-                        raw = Path(bundle_path).read_bytes()
-                        if canonical_bundle_hash(raw) != run.provenance.get(
-                            "canonical_bundle_hash"
-                        ):
-                            raise ValueError("Bundle hash does not match recorded run provenance.")
-                        state = load_research_bundle(raw)["session_values"]
-                        st.session_state["assistant_run_artifacts"][run.run_id] = to_jsonable(
-                            build_research_artifact(state)
+                    result = _dispatch(
+                        orchestrator,
+                        capability_id="EXPORT.build_research_artifact",
+                        payload={
+                            "bundle_path": bundle_path,
+                            "expected_hash": expected_hash,
+                        },
+                        confirmed=True,
+                        thesis_id=thesis_id,
+                        conversation_id=conversation_id,
+                    )
+                    if result.status != "completed":
+                        st.error(
+                            result.payload.get("error", {}).get(
+                                "message", "Unable to build research artifact."
+                            )
                         )
-                    except (OSError, ValueError) as exc:
-                        st.error(f"Unable to build research artifact: {exc}")
+                    else:
+                        st.session_state["assistant_run_artifacts"][run.run_id] = result.payload[
+                            "artifact"
+                        ]
                 artifact = st.session_state["assistant_run_artifacts"].get(run.run_id)
                 if artifact:
                     st.download_button(
@@ -918,14 +1021,23 @@ if len(completed_runs) >= 2:
             packets = []
             for run_id in (left_id, right_id):
                 run = selected[run_id]
-                raw = Path(run.provenance["bundle_path"]).read_bytes()
-                if canonical_bundle_hash(raw) != run.provenance["canonical_bundle_hash"]:
-                    raise ValueError("Bundle hash does not match recorded run provenance.")
-                packets.append(
-                    build_evidence_packet(
-                        load_research_bundle(raw)["session_values"], provenance=run.provenance
-                    )
+                result = _dispatch(
+                    orchestrator,
+                    capability_id="BUNDLE.import",
+                    payload={
+                        "action": "evidence",
+                        "bundle_path": run.provenance["bundle_path"],
+                        "expected_hash": run.provenance["canonical_bundle_hash"],
+                        "provenance": run.provenance,
+                    },
+                    thesis_id=thesis_id,
+                    conversation_id=conversation_id,
                 )
+                if result.status != "completed":
+                    raise ValueError(
+                        result.payload.get("error", {}).get("message", "Unable to load evidence.")
+                    )
+                packets.append(_evidence_packet(result.payload))
             comparison = compare_evidence(*packets)
             st.session_state["assistant_run_comparisons"][thesis_id] = {
                 "run_ids": [left_id, right_id],
@@ -944,7 +1056,7 @@ if len(completed_runs) >= 2:
                 )
             except ValueError as exc:
                 st.warning(f"Comparison was calculated but could not be saved: {exc}")
-        except (OSError, ValueError) as exc:
+        except ValueError as exc:
             st.error(f"Unable to compare runs: {exc}")
     comparison_state = st.session_state["assistant_run_comparisons"].get(thesis_id)
     if comparison_state and comparison_state.get("run_ids") == [left_id, right_id]:
@@ -964,23 +1076,22 @@ if len(completed_runs) >= 2:
         key=f"assistant_portfolio_instrument_{thesis_id}",
     )
     if st.button("Analyze portfolio") and len(portfolio_ids) >= 2:
-        try:
-            selected = {run.run_id: run for run in completed_runs}
-            bundle_paths = []
-            for run_id in portfolio_ids:
-                run = selected[run_id]
-                raw = Path(run.provenance["bundle_path"]).read_bytes()
-                if canonical_bundle_hash(raw) != run.provenance["canonical_bundle_hash"]:
-                    raise ValueError("Bundle hash does not match recorded run provenance.")
-                bundle_paths.append(run.provenance["bundle_path"])
+        selected = {run.run_id: run for run in completed_runs}
+        bundle_paths = [selected[run_id].provenance["bundle_path"] for run_id in portfolio_ids]
+        result = _dispatch(
+            orchestrator,
+            capability_id="PORTFOLIO.analyze",
+            payload={"bundle_paths": bundle_paths, "instrument": instrument},
+            confirmed=True,
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+        )
+        if result.status != "completed":
+            st.error(result.payload.get("error", {}).get("message", "Unable to analyze portfolio."))
+        else:
             st.json(
-                AssistantTools(data_roots=(Path.cwd(), get_store_root())).analyze_bundle_portfolio(
-                    bundle_paths,
-                    instrument=instrument,
-                )
+                {key: value for key, value in result.payload.items() if key != "resource_limits"}
             )
-        except (OSError, ValueError) as exc:
-            st.error(f"Unable to analyze portfolio: {exc}")
 
 with st.expander("Saved comparisons"):
     for record in repository.list_comparisons(thesis_id):

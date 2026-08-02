@@ -9,6 +9,8 @@ from thesistester.assistant import AssistantOrchestrator, LocalThesisRepository,
 class _BundleTools:
     def __init__(self):
         self.run_specs = []
+        self.data_roots = ()
+        self.limits = None
 
     def run_experiment_to_bundle(self, spec, *, output_path):
         self.run_specs.append(spec)
@@ -20,6 +22,14 @@ class _BundleTools:
             "dataset_fingerprint": {"rows": 10},
             "tool_version": "test",
             "summary": {"warnings": {"intrabar": "assumption"}},
+            "effective_configuration": dict(spec),
+            "resolved_paths": {"dataset.path": "bars.csv"},
+            "resource_limits": {
+                "max_grid_cells": 500,
+                "max_simulations": 5000,
+                "max_walk_forward_matrix_cells": 100,
+            },
+            "seeds": {},
         }
 
 
@@ -75,6 +85,10 @@ def test_confirmed_spec_runs_and_persists_bundle_provenance(tmp_path):
     assert restored.provenance["canonical_bundle_hash"] == "a" * 64
     assert restored.warnings == ("intrabar: assumption",)
     assert Path(restored.provenance["bundle_path"]).read_bytes() == b"bundle"
+    assert "resource_limits" in restored.request
+    assert restored.provenance["effective_configuration"]["dataset"]["path"] == "bars.csv"
+    assert restored.provenance["resolved_paths"]["dataset.path"] == "bars.csv"
+    assert restored.provenance["resource_limits"]["max_grid_cells"] == 500
 
 
 def test_confirmed_spec_executes_after_thesis_rename(tmp_path):
@@ -163,11 +177,15 @@ def test_legacy_confirmed_spec_without_session_controls_executes(tmp_path):
 
 def test_unconfirmed_or_failed_run_has_safe_terminal_state(tmp_path):
     class FailingTools:
+        data_roots = ()
+        limits = None
+
         def run_experiment_to_bundle(self, spec, *, output_path):
             raise RuntimeError("fixture execution failure")
 
     repository = LocalThesisRepository(tmp_path / "assistant")
     thesis = repository.create_thesis(name="Failure")
+    conversation = repository.create_conversation(thesis.thesis_id)
     draft = repository.create_spec_version(
         thesis.thesis_id,
         normalized_run_spec=_canonical_choices(thesis.name),
@@ -188,7 +206,13 @@ def test_unconfirmed_or_failed_run_has_safe_terminal_state(tmp_path):
             thesis_id=thesis.thesis_id,
             spec_version=confirmed.version,
             output_path=tmp_path / "run.zip",
+            conversation_id=conversation.conversation_id,
         )
     failed = repository.list_runs(thesis.thesis_id)[0]
     assert failed.status == "failed"
-    assert failed.error["type"] == "RuntimeError"
+    assert failed.error["category"] == "execution"
+    assert "RuntimeError" in failed.error["message"]
+    transcript = repository.get_conversation(
+        thesis.thesis_id, conversation.conversation_id
+    ).tool_transcript
+    assert transcript[-1]["status"] == "failed"
