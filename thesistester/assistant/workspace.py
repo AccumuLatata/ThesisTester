@@ -96,9 +96,7 @@ def init_assistant_session_state(session_state: MutableMapping[str, Any]) -> Non
         session_state.setdefault(key, deepcopy(value) if isinstance(value, (dict, list)) else value)
 
 
-def clear_failed_llm_run_explanation(
-    session_state: MutableMapping[str, Any], run_id: str
-) -> None:
+def clear_failed_llm_run_explanation(session_state: MutableMapping[str, Any], run_id: str) -> None:
     """Drop cached LLM paraphrase after a failed regen for ``run_id``.
 
     Fail-closed: a grounding/provider/config error must not leave a prior
