@@ -231,9 +231,12 @@ with st.expander("Structured execution controls"):
         current = st.session_state["assistant_draft_choices"]
         dataset = current.get("dataset") if isinstance(current.get("dataset"), dict) else {}
         backtest = current.get("backtest") if isinstance(current.get("backtest"), dict) else {}
+        setup = current.get("setup") if isinstance(current.get("setup"), dict) else None
         dataset_path = st.text_input("Dataset CSV path", value=str(dataset.get("path", "")))
         instruments = ["ES", "NQ", "MES", "MNQ"]
-        current_instrument = str(dataset.get("instrument", "ES"))
+        current_instrument = str(
+            dataset.get("instrument") or (setup or {}).get("instrument") or "ES"
+        )
         instrument = st.selectbox(
             "Instrument",
             instruments,
@@ -248,7 +251,6 @@ with st.expander("Structured execution controls"):
         stop_loss_ticks = st.number_input("Stop loss ticks", min_value=1, value=stop_default)
         take_profit_ticks = st.number_input("Take profit ticks", min_value=1, value=target_default)
         if st.form_submit_button("Apply execution controls"):
-            setup = current.get("setup") if isinstance(current.get("setup"), dict) else None
             st.session_state["assistant_draft_choices"] = {
                 **current,
                 "dataset": {**dataset, "path": dataset_path, "instrument": instrument},
