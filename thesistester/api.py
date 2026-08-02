@@ -33,6 +33,7 @@ from thesistester.analytics.time_analysis import add_time_buckets, summarize_by_
 from thesistester.analytics.otf_validation import run_otf_validation_matrix
 from thesistester.config import INSTRUMENTS
 from thesistester.data.loader import format_interval, load_ohlcv, validate_ohlcv
+from thesistester.data.resample import resample_ohlcv
 from thesistester.data.sessions import tag_session
 from thesistester.engine import (
     VALID_INTRABAR_MODELS,
@@ -1995,6 +1996,15 @@ def run_time_analysis(
     """Return descriptive grouped time analysis without re-simulating trades."""
     bucketed = add_time_buckets(trades, bucket_tz=bucket_timezone)
     return summarize_by_group(bucketed, group_col, min_trades=min_trades)
+
+
+def preview_resampled_ohlcv(
+    df: pd.DataFrame, *, timeframe: str, max_rows: int = 200
+) -> pd.DataFrame:
+    """Return a bounded read-only OHLCV resample preview."""
+    if not isinstance(max_rows, int) or isinstance(max_rows, bool) or not 1 <= max_rows <= 1000:
+        raise ValueError("max_rows must be an integer from 1 to 1000.")
+    return resample_ohlcv(df, timeframe).head(max_rows).reset_index(drop=True)
 
 
 def run_otf_validation(

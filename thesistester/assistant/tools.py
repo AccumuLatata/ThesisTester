@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from thesistester import __version__
-from thesistester.api import _GRID_DEFAULTS, run_otf_validation, run_time_analysis
+from thesistester.api import (
+    _GRID_DEFAULTS,
+    preview_resampled_ohlcv,
+    run_otf_validation,
+    run_time_analysis,
+)
 from thesistester.api import _VALIDATION_DEFAULTS
 from thesistester.api import run_experiment as _run_experiment
 from thesistester.api import validate_run_spec
@@ -259,4 +264,16 @@ class AssistantTools:
                 setup_config=state.get("setup_config"),
                 signal_settings=state.get("signal_settings"),
             ).to_dict("records")
+        )
+
+    def preview_bundle_resample(
+        self, bundle_path: str | Path, *, timeframe: str, max_rows: int = 200
+    ) -> list[dict[str, Any]]:
+        """Return a bounded resample preview for a selected bundle dataset."""
+        path = _resolve_within(bundle_path, self.data_roots)
+        data = load_research_bundle(path.read_bytes())["session_values"].get("data")
+        if data is None:
+            raise AssistantToolError("Bundle does not include a dataset.")
+        return to_jsonable(
+            preview_resampled_ohlcv(data, timeframe=timeframe, max_rows=max_rows).to_dict("records")
         )

@@ -98,10 +98,9 @@ FEATURE_PARITY_REGISTRY = _validate_registry(
             "DATA.preview_resampled_timeframes",
             "Data",
             "Preview resampled OHLCV timeframes",
-            "thesistester.data.resample.resample_ohlcv",
-            CapabilityMode.UNSUPPORTED,
+            "thesistester.api.preview_resampled_ohlcv",
+            CapabilityMode.EXECUTABLE,
             ConfirmationLevel.NONE,
-            limitation="No bounded JSON-safe headless preview adapter exists.",
         ),
         _capability(
             "DATA.manage_saved_datasets",
