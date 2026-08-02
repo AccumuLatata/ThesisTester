@@ -71,6 +71,28 @@ def confirmed_run_feedback(result: OrchestrationResult) -> tuple[str, str]:
     return "error", message
 
 
+def list_payload_or_error(
+    result: OrchestrationResult,
+    *,
+    items_key: str,
+    default_error: str,
+) -> tuple[list[Any], str | None]:
+    """Return list items from a completed dispatch, else an error message.
+
+    Failed/gated outcomes must not be coerced into an empty success list.
+    """
+    if result.status == OrchestrationStatus.COMPLETED.value:
+        items = result.payload.get(items_key, []) if isinstance(result.payload, dict) else []
+        if not isinstance(items, list):
+            return [], default_error
+        return items, None
+    error = result.payload.get("error") if isinstance(result.payload, dict) else None
+    message = error.get("message") if isinstance(error, Mapping) else None
+    if not isinstance(message, str) or not message.strip():
+        message = default_error
+    return [], message
+
+
 def _assert_handler_coverage() -> None:
     missing = sorted(
         capability.capability_id

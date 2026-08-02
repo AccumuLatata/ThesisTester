@@ -8,6 +8,7 @@ from thesistester.assistant import (
     LocalThesisRepository,
     OrchestrationResult,
     confirmed_run_feedback,
+    list_payload_or_error,
 )
 from thesistester.assistant.handlers import HANDLER_REGISTRY
 from thesistester.assistant.tools import AssistantTools
@@ -208,6 +209,33 @@ def test_confirmed_run_feedback_distinguishes_cancelled_from_completed():
         "warning",
         "Cancelled from another session.",
     )
+
+
+def test_list_payload_or_error_does_not_hide_dispatch_failures():
+    completed = OrchestrationResult(
+        status="completed",
+        capability_id="SETUP.manage_saved_setups",
+        payload={"setups": [{"setup_id": "setup_1"}]},
+    )
+    failed = OrchestrationResult(
+        status="failed",
+        capability_id="SETUP.manage_saved_setups",
+        payload={
+            "error": {
+                "category": "tool",
+                "retryable": False,
+                "remediation": "Retry",
+                "message": "Store unavailable.",
+            }
+        },
+    )
+
+    assert list_payload_or_error(
+        completed, items_key="setups", default_error="Unable to list saved setups."
+    ) == ([{"setup_id": "setup_1"}], None)
+    assert list_payload_or_error(
+        failed, items_key="setups", default_error="Unable to list saved setups."
+    ) == ([], "Store unavailable.")
 
 
 def test_cancel_run_returns_structured_error_when_no_longer_running(tmp_path):

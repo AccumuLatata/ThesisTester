@@ -56,6 +56,7 @@ from thesistester.assistant.orchestrator import (
     AssistantOrchestrator,
     OrchestrationResult,
     confirmed_run_feedback,
+    list_payload_or_error,
 )
 from thesistester.assistant.comparison import COMPARISON_SCHEMA_VERSION, Comparison
 
@@ -84,6 +85,7 @@ __all__ = [
     "OrchestrationResult",
     "OrchestrationStatus",
     "confirmed_run_feedback",
+    "list_payload_or_error",
     "RepositoryConflictError",
     "RepositoryCorruptionError",
     "RepositoryReadOnlyError",

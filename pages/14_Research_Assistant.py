@@ -22,6 +22,7 @@ from thesistester.assistant import (
     LocalThesisRepository,
     compile_thesis,
     confirmed_run_feedback,
+    list_payload_or_error,
     map_thesis_choices_to_run_spec,
     normalize_setup_level_selection,
     normalize_walk_forward_controls,
@@ -671,7 +672,13 @@ with st.expander("Reuse saved setup"):
         capability_id="SETUP.manage_saved_setups",
         payload={"action": "list"},
     )
-    saved_setups = listed.payload.get("setups", []) if listed.status == "completed" else []
+    saved_setups, list_error = list_payload_or_error(
+        listed,
+        items_key="setups",
+        default_error="Unable to list saved setups.",
+    )
+    if list_error is not None:
+        st.error(list_error)
     setup_options = {
         setup["setup_id"]: f"{setup.get('name', 'Unnamed')} ({setup['setup_id'][-8:]})"
         for setup in saved_setups
@@ -683,6 +690,7 @@ with st.expander("Reuse saved setup"):
         format_func=setup_options.get,
         index=None,
         key=f"assistant_saved_setup_{thesis_id}",
+        disabled=list_error is not None,
     )
     if selected_setup_id and st.button("Apply saved setup"):
         loaded = _dispatch(
