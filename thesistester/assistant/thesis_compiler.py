@@ -35,7 +35,9 @@ def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> 
 
     def has_choice(key: str) -> bool:
         value = selected.get(key)
-        return value is not None and (not isinstance(value, str) or bool(value.strip()))
+        if isinstance(value, str):
+            return bool(value.strip())
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
 
     unresolved: list[str] = []
     required = {
