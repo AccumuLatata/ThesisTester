@@ -34,7 +34,7 @@ from thesistester.analytics.otf_validation import run_otf_validation_matrix
 from thesistester.config import INSTRUMENTS
 from thesistester.data.loader import format_interval, load_ohlcv, validate_ohlcv
 from thesistester.data.resample import resample_ohlcv
-from thesistester.data.rolls import validate_roll_metadata
+from thesistester.data.rolls import detect_contract_column, validate_roll_metadata
 from thesistester.data.sessions import tag_session
 from thesistester.engine import (
     VALID_INTRABAR_MODELS,
@@ -2012,7 +2012,10 @@ def validate_roll_assumptions(
     df: pd.DataFrame, *, contract_column: str = "contract", roll_method: str = "single_contract"
 ) -> dict[str, Any]:
     """Return read-only futures-roll metadata diagnostics."""
-    return validate_roll_metadata(df, contract_column=contract_column, roll_method=roll_method)
+    resolved_column = contract_column
+    if contract_column == "contract" and contract_column not in df.columns:
+        resolved_column = detect_contract_column(df) or contract_column
+    return validate_roll_metadata(df, contract_column=resolved_column, roll_method=roll_method)
 
 
 def run_otf_validation(
