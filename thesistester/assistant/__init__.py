@@ -30,6 +30,7 @@ from thesistester.assistant.repository import (
 )
 from thesistester.assistant.tools import AssistantToolError, AssistantTools, ToolLimits
 from thesistester.assistant.thesis_compiler import COMPILER_VERSION, ThesisDraft, compile_thesis
+from thesistester.assistant.explainer import EvidencePacket, build_evidence_packet, explain_evidence
 
 __all__ = [
     "ASSISTANT_CONTRACT_SCHEMA_VERSION",
@@ -42,6 +43,7 @@ __all__ = [
     "Capability",
     "CapabilityMode",
     "COMPILER_VERSION",
+    "EvidencePacket",
     "ConfirmationLevel",
     "Conversation",
     "FEATURE_PARITY_REGISTRY",
@@ -60,4 +62,6 @@ __all__ = [
     "get_capability",
     "validate_capability_request",
     "compile_thesis",
+    "build_evidence_packet",
+    "explain_evidence",
 ]
