@@ -101,6 +101,11 @@ conversation_id = conversation_ids[thesis_id]
 active_conversation = repository.get_conversation(thesis_id, conversation_id)
 if st.session_state["assistant_hydrated_conversation_id"] != conversation_id:
     st.session_state["assistant_draft_choices"] = {}
+    st.session_state["assistant_draft_prompt"] = "\n".join(
+        str(message.get("content", ""))
+        for message in active_conversation.messages
+        if message.get("role") == "user"
+    )
     for message in reversed(active_conversation.messages):
         if message.get("role") == "assistant" and isinstance(message.get("choices"), dict):
             st.session_state["assistant_draft_choices"] = message["choices"]
@@ -126,7 +131,16 @@ if chat_message := st.chat_input("Describe or refine this thesis"):
             conversation_id=conversation_id,
             user_message=chat_message,
         )
-        st.session_state["assistant_draft_prompt"] = chat_message
+        st.session_state["assistant_draft_prompt"] = "\n".join(
+            [
+                *(
+                    str(message.get("content", ""))
+                    for message in active_conversation.messages
+                    if message.get("role") == "user"
+                ),
+                chat_message,
+            ]
+        )
         st.session_state["assistant_draft_choices"] = draft.normalized_run_spec
         st.rerun()
     except LLMConfigurationError as exc:
