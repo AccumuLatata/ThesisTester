@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Mapping
 
 from thesistester.assistant.explainer import EvidencePacket
 from thesistester.assistant.llm import StructuredLLMClient
