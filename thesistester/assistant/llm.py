@@ -64,6 +64,7 @@ class LLMSettings:
     model: str
     max_tool_rounds: int
     max_history_messages: int
+    max_retries: int = 2
 
 
 @dataclass
@@ -74,6 +75,7 @@ class OpenAIStructuredClient:
     api_key: str
     transport: OpenAITransport
     endpoint: str = "https://api.openai.com/v1/responses"
+    last_attempt_count: int = 0
 
     def complete_structured(
         self, *, system: str, user: str, schema: dict[str, Any]
@@ -93,9 +95,19 @@ class OpenAIStructuredClient:
                 }
             },
         }
-        response = self.transport.post_json(
-            url=self.endpoint, api_key=self.api_key, payload=payload
-        )
+        response = None
+        for attempt in range(1, self.settings.max_retries + 2):
+            try:
+                response = self.transport.post_json(
+                    url=self.endpoint, api_key=self.api_key, payload=payload
+                )
+                self.last_attempt_count = attempt
+                break
+            except LLMProviderError:
+                self.last_attempt_count = attempt
+                if attempt == self.settings.max_retries + 1:
+                    raise
+        assert response is not None
         text = response.get("output_text")
         if not isinstance(text, str) or not text.strip():
             output = response.get("output")
@@ -150,6 +162,7 @@ def load_llm_settings(path: str | Path = "config/assistant.toml") -> LLMSettings
         model=str(assistant.get("model", "")),
         max_tool_rounds=int(assistant.get("max_tool_rounds", 0)),
         max_history_messages=int(assistant.get("max_history_messages", 0)),
+        max_retries=int(assistant.get("max_retries", 2)),
     )
 
 
