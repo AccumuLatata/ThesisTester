@@ -80,7 +80,9 @@ def build_evidence_packet(
 def explain_evidence(packet: EvidencePacket) -> str:
     """Render a concise explanation containing only packet-backed claims."""
     summary = packet.results.get("trade_summary") or {}
-    trades = summary.get("trade_count", "unknown") if isinstance(summary, Mapping) else "unknown"
+    trades = summary.get("trade_count") if isinstance(summary, Mapping) else None
+    if not isinstance(trades, (int, float)) or isinstance(trades, bool):
+        trades = "unknown"
     expectancy = (
         summary.get("expectancy_r", "unavailable")
         if isinstance(summary, Mapping)
