@@ -229,17 +229,17 @@ with st.expander("Structured research clarifications"):
 
 with st.expander("Structured execution controls"):
     current = st.session_state["assistant_draft_choices"]
+    dataset = current.get("dataset") if isinstance(current.get("dataset"), dict) else {}
+    backtest = current.get("backtest") if isinstance(current.get("backtest"), dict) else {}
+    setup = current.get("setup") if isinstance(current.get("setup"), dict) else None
     controls_fingerprint = hashlib.sha256(
         json.dumps(current, sort_keys=True, default=str).encode("utf-8")
     ).hexdigest()[:12]
     with st.form(f"assistant_execution_{thesis_id}_{controls_fingerprint}"):
-        dataset = current.get("dataset") if isinstance(current.get("dataset"), dict) else {}
-        backtest = current.get("backtest") if isinstance(current.get("backtest"), dict) else {}
-        setup = current.get("setup") if isinstance(current.get("setup"), dict) else None
         dataset_path = st.text_input("Dataset CSV path", value=str(dataset.get("path", "")))
         instruments = ["ES", "NQ", "MES", "MNQ"]
         current_instrument = str(
-            dataset.get("instrument") or (setup or {}).get("instrument") or "ES"
+            (setup or {}).get("instrument") or dataset.get("instrument") or "ES"
         )
         instrument = st.selectbox(
             "Instrument",
