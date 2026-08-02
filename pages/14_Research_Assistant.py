@@ -44,6 +44,9 @@ from thesistester.reporting import build_research_artifact, to_jsonable
 from thesistester.research_bundle import canonical_bundle_hash, load_research_bundle
 
 
+SETUP_TRIGGER_OPTIONS = ["touch", "reject", "break", "reclaim", "3c"]
+
+
 def _repository() -> LocalThesisRepository:
     return LocalThesisRepository()
 
@@ -496,11 +499,11 @@ with st.expander("Structured setup controls"):
         )
         trigger = st.selectbox(
             "Trigger",
-            ["touch", "reject", "break", "reclaim"],
-            index=["touch", "reject", "break", "reclaim"].index(
+            SETUP_TRIGGER_OPTIONS,
+            index=SETUP_TRIGGER_OPTIONS.index(
                 str(setup.get("trigger") or "touch")
             )
-            if str(setup.get("trigger") or "touch") in ["touch", "reject", "break", "reclaim"]
+            if str(setup.get("trigger") or "touch") in SETUP_TRIGGER_OPTIONS
             else 0,
         )
         direction_options = ["both", "long", "short"]
