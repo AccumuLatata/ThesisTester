@@ -226,6 +226,44 @@ with st.expander("Structured research clarifications"):
             st.session_state["assistant_validated_run_spec"] = None
             st.rerun()
 
+with st.expander("Structured execution controls"):
+    current = st.session_state["assistant_draft_choices"]
+    dataset = current.get("dataset") if isinstance(current.get("dataset"), dict) else {}
+    backtest = current.get("backtest") if isinstance(current.get("backtest"), dict) else {}
+    setup = current.get("setup") if isinstance(current.get("setup"), dict) else None
+    with st.form(f"assistant_execution_{thesis_id}"):
+        dataset_path = st.text_input("Dataset CSV path", value=str(dataset.get("path", "")))
+        instruments = ["ES", "NQ", "MES", "MNQ"]
+        current_instrument = str(
+            dataset.get("instrument") or (setup or {}).get("instrument") or "ES"
+        )
+        instrument = st.selectbox(
+            "Instrument",
+            instruments,
+            index=instruments.index(current_instrument) if current_instrument in instruments else 0,
+        )
+        raw_stop = backtest.get("stop_loss_ticks", 8)
+        raw_target = backtest.get("take_profit_ticks", 16)
+        stop_default = int(raw_stop) if isinstance(raw_stop, (int, float)) and raw_stop > 0 else 8
+        target_default = (
+            int(raw_target) if isinstance(raw_target, (int, float)) and raw_target > 0 else 16
+        )
+        stop_loss_ticks = st.number_input("Stop loss ticks", min_value=1, value=stop_default)
+        take_profit_ticks = st.number_input("Take profit ticks", min_value=1, value=target_default)
+        if st.form_submit_button("Apply execution controls"):
+            st.session_state["assistant_draft_choices"] = {
+                **current,
+                "dataset": {**dataset, "path": dataset_path, "instrument": instrument},
+                **({"setup": {**setup, "instrument": instrument}} if setup is not None else {}),
+                "backtest": {
+                    **backtest,
+                    "stop_loss_ticks": stop_loss_ticks,
+                    "take_profit_ticks": take_profit_ticks,
+                },
+            }
+            st.session_state["assistant_validated_run_spec"] = None
+            st.rerun()
+
 with st.expander("Reuse saved setup"):
     saved_setups = list_saved_setups()
     setup_options = {
