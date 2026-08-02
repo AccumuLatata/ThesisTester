@@ -14,6 +14,7 @@ import streamlit as st
 
 from thesistester.assistant import (
     AssistantOrchestrator,
+    Comparison,
     LocalThesisRepository,
     compile_run_spec,
     compile_thesis,
@@ -362,15 +363,33 @@ if len(completed_runs) >= 2:
                         load_research_bundle(raw)["session_values"], provenance=run.provenance
                     )
                 )
+            comparison = compare_evidence(*packets)
             st.session_state["assistant_run_comparisons"][thesis_id] = {
                 "run_ids": [left_id, right_id],
-                "comparison": compare_evidence(*packets),
+                "comparison": comparison,
             }
+            try:
+                repository.save_comparison(
+                    Comparison.create(
+                        thesis_id=thesis_id,
+                        left_run_id=left_id,
+                        right_run_id=right_id,
+                        left_bundle_hash=selected[left_id].provenance["canonical_bundle_hash"],
+                        right_bundle_hash=selected[right_id].provenance["canonical_bundle_hash"],
+                        evidence=comparison,
+                    )
+                )
+            except ValueError as exc:
+                st.warning(f"Comparison was calculated but could not be saved: {exc}")
         except (OSError, ValueError) as exc:
             st.error(f"Unable to compare runs: {exc}")
     comparison_state = st.session_state["assistant_run_comparisons"].get(thesis_id)
     if comparison_state and comparison_state.get("run_ids") == [left_id, right_id]:
         st.json(comparison_state["comparison"])
+
+with st.expander("Saved comparisons"):
+    for record in repository.list_comparisons(thesis_id):
+        st.json(record.to_dict())
 
 st.subheader("Conversation audit")
 conversations = repository.list_conversations(thesis_id)
