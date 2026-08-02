@@ -99,14 +99,20 @@ if st.button("Draft research plan", type="primary"):
     except (ValueError, json.JSONDecodeError) as exc:
         st.error(str(exc))
 
-for spec in reversed(repository.list_spec_versions(thesis_id)):
+specifications = repository.list_spec_versions(thesis_id)
+confirmed_parents = {spec.parent_version for spec in specifications if spec.status == "confirmed"}
+for spec in reversed(specifications):
     with st.expander(f"Specification v{spec.version} · {spec.status}", expanded=spec.version == 1):
         st.json(spec.normalized_run_spec)
         if spec.unresolved_assumptions:
             st.warning("Clarifications required")
             for assumption in spec.unresolved_assumptions:
                 st.write(f"- {assumption}")
-        if spec.status != "confirmed" and not spec.unresolved_assumptions:
+        if (
+            spec.status != "confirmed"
+            and spec.version not in confirmed_parents
+            and not spec.unresolved_assumptions
+        ):
             if st.button("Confirm specification", key=f"confirm-{spec.version}"):
                 repository.confirm_spec_version(
                     thesis_id, spec.version, confirmation_note="Confirmed in UI"
