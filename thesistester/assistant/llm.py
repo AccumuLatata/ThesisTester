@@ -97,7 +97,7 @@ class OpenAIStructuredClient:
             url=self.endpoint, api_key=self.api_key, payload=payload
         )
         text = response.get("output_text")
-        if not isinstance(text, str):
+        if not isinstance(text, str) or not text.strip():
             output = response.get("output")
             if isinstance(output, list):
                 for item in output:
@@ -109,10 +109,10 @@ class OpenAIStructuredClient:
                     for part in content:
                         if isinstance(part, dict) and part.get("type") == "output_text":
                             candidate = part.get("text")
-                            if isinstance(candidate, str):
+                            if isinstance(candidate, str) and candidate.strip():
                                 text = candidate
                                 break
-                    if isinstance(text, str):
+                    if isinstance(text, str) and text.strip():
                         break
         if not isinstance(text, str):
             raise LLMProviderError("OpenAI response did not contain output_text.")
