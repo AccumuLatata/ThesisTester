@@ -232,7 +232,8 @@ coordinator between UI, repository, compiler, tools, and explainer.
   numeric claim path/value to exist in the packet. SL/TP grid ranking claims
   prefer `assumptions.grid.ranking_metric` because typical `best_grid_result`
   rows do not store `ranking_metric`; narrated commission/slippage values are
-  claimed under `assumptions.costs_exposure`.
+  claimed under `assumptions.costs_exposure`. Failure narratives claim
+  `results.error` when provenance has no error field.
 - Mandatory caveat codes include low sample, zero costs, overlapping exposure,
   intrabar ambiguity, grid selection, missing/failed OOS, failed robustness,
   and multiple testing. Cost/exposure caveats prefer

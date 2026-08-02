@@ -490,7 +490,16 @@ def _template_baseline(
 def _template_failure(
     packet: EvidencePacket, claims: list[EvidenceClaim], lines: list[str]
 ) -> None:
-    error = packet.provenance.get("error") or packet.results.get("error")
+    provenance_error = packet.provenance.get("error")
+    results_error = packet.results.get("error")
+    error = provenance_error if provenance_error not in (None, "") else results_error
+    error_path = (
+        "provenance.error"
+        if provenance_error not in (None, "")
+        else "results.error"
+        if results_error not in (None, "")
+        else None
+    )
     if not error and packet.provenance.get("status") not in {"failed", "cancelled"}:
         summary = _as_mapping(packet.results.get("trade_summary")) or {}
         if _numeric(summary.get("trade_count")) == 0:
@@ -498,10 +507,10 @@ def _template_failure(
             lines.append(text)
             _claim(claims, text, "results.trade_summary.trade_count", 0)
         return
-    if error:
+    if error and error_path is not None:
         text = f"Failure diagnosis: {error}."
         lines.append(text)
-        _claim(claims, text, "provenance.error", error)
+        _claim(claims, text, error_path, error)
 
 
 def _resolve_grid_ranking_metric(packet: EvidencePacket) -> tuple[Any, str]:

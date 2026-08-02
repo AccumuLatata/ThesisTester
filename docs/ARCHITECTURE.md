@@ -126,7 +126,9 @@ includes structured caveats, limitations, claims, and next-experiment guidance.
 numeric claim cites an evidence path and exact value. Grid ranking-metric claims
 ground to `assumptions.grid.ranking_metric` when `best_grid_result` omits that
 field (typical grid row snapshots), and printed commission/slippage values are
-claimed at `assumptions.costs_exposure.*`. `compare_evidence()`
+claimed at `assumptions.costs_exposure.*`. Failure diagnostics claim
+`provenance.error` or `results.error` according to where the message lives.
+`compare_evidence()`
 returns versioned nested evidence covering metrics, executable-spec diffs,
 data comparability, conclusions, and next experiments. Persisted `Comparison`
 records are schema v2 (`created_at`, `conclusions`); v1 records migrate on

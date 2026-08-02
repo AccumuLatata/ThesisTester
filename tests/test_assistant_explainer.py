@@ -37,6 +37,33 @@ def test_evidence_packet_and_explanation_are_grounded(monkeypatch):
     assert_claims_grounded(packet, report)
 
 
+def test_failure_claim_grounds_to_results_error_when_provenance_lacks_it():
+    packet = EvidencePacket.from_dict(
+        {
+            "schema_version": 1,
+            "provenance": {"status": "failed"},
+            "assumptions": {},
+            "results": {"error": "bundle write failed"},
+            "warnings": [],
+            "caveats": [],
+            "limitations": [],
+            "claims": [],
+            "next_experiments": [],
+        }
+    )
+    report = explain_evidence_report(packet)
+    assert "Failure diagnosis: bundle write failed." in report["narrative"]
+    error_claims = [claim for claim in report["claims"] if "error" in claim["path"]]
+    assert error_claims == [
+        {
+            "text": "Failure diagnosis: bundle write failed.",
+            "path": "results.error",
+            "value": "bundle write failed",
+        }
+    ]
+    assert_claims_grounded(packet, report)
+
+
 def test_missing_or_null_trade_count_is_safe_and_warns(monkeypatch):
     monkeypatch.setattr(
         "thesistester.assistant.explainer.build_research_artifact",
