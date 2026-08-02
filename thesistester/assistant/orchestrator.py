@@ -85,12 +85,16 @@ class AssistantOrchestrator:
         thesis_id: str,
         conversation_id: str,
         user_message: str,
+        max_history_messages: int = 12,
     ) -> ThesisDraft:
         """Persist a non-executing chat turn and return its deterministic draft."""
         conversation = self.repository.get_conversation(thesis_id, conversation_id)
-        history = "\n".join(
-            json.dumps(message, sort_keys=True) for message in conversation.messages
+        if not isinstance(max_history_messages, int) or max_history_messages < 0:
+            raise ValueError("max_history_messages must be a non-negative integer.")
+        history_messages = (
+            conversation.messages[-max_history_messages:] if max_history_messages else ()
         )
+        history = "\n".join(json.dumps(message, sort_keys=True) for message in history_messages)
         prompt = f"{history}\nuser: {user_message}" if history else user_message
         draft = propose_thesis_draft(client, prompt=prompt)
         user_record = self.repository.append_conversation_message(

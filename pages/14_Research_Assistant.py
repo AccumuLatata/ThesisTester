@@ -177,6 +177,7 @@ if chat_message := st.chat_input("Describe or refine this thesis"):
             thesis_id=thesis_id,
             conversation_id=conversation_id,
             user_message=chat_message,
+            max_history_messages=settings.max_history_messages,
         )
         st.session_state["assistant_draft_prompt"] = "\n".join(
             [
