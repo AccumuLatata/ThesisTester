@@ -229,13 +229,15 @@ with st.expander("Structured research clarifications"):
 with st.expander("Structured execution controls"):
     with st.form(f"assistant_execution_{thesis_id}"):
         current = st.session_state["assistant_draft_choices"]
-        dataset = current.get("dataset", {})
-        backtest = current.get("backtest", {})
+        dataset = current.get("dataset") if isinstance(current.get("dataset"), dict) else {}
+        backtest = current.get("backtest") if isinstance(current.get("backtest"), dict) else {}
         dataset_path = st.text_input("Dataset CSV path", value=str(dataset.get("path", "")))
+        instruments = ["ES", "NQ", "MES", "MNQ"]
+        current_instrument = str(dataset.get("instrument", "ES"))
         instrument = st.selectbox(
             "Instrument",
-            ["ES", "NQ", "MES", "MNQ"],
-            index=["ES", "NQ", "MES", "MNQ"].index(str(dataset.get("instrument", "ES"))),
+            instruments,
+            index=instruments.index(current_instrument) if current_instrument in instruments else 0,
         )
         stop_loss_ticks = st.number_input(
             "Stop loss ticks", min_value=1, value=int(backtest.get("stop_loss_ticks", 8))
