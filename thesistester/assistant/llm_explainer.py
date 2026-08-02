@@ -105,7 +105,11 @@ def _extract_number_tokens(text: str) -> list[str]:
 
 
 def assert_llm_explanation_grounded(
-    packet: EvidencePacket, *, summary: str, caveats: tuple[str, ...], claims: tuple[EvidenceClaim, ...]
+    packet: EvidencePacket,
+    *,
+    summary: str,
+    caveats: tuple[str, ...],
+    claims: tuple[EvidenceClaim, ...],
 ) -> None:
     """Reject uncited numerical claims before any UI rendering."""
     allowed = _allowed_number_tokens([claim.value for claim in claims])
@@ -162,9 +166,7 @@ def explain_packet_with_llm(
             raise LLMEvidenceError("LLM claims must be non-empty text/path objects.")
         path = item["path"].strip()
         if not _path_exists(packet_dict, path):
-            raise LLMEvidenceError(
-                f"LLM claim path {path!r} is missing from the evidence packet."
-            )
+            raise LLMEvidenceError(f"LLM claim path {path!r} is missing from the evidence packet.")
         claims.append(
             EvidenceClaim(
                 text=item["text"].strip(),
