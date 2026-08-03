@@ -202,6 +202,7 @@ executable page settings or recording runs.
 - Protected classic producer keys retain value/type across link/exit/dataset
   switch.
 - Dataset switch clears thesis-scoped classic keys (no cross-dataset leak).
+  An unset bound (link before data) adopts the first observed `dataset_id`.
 - Linking never starts runs or creates specification versions.
 - Recording policy default remains `manual` (CAI-0); `all_executions` deferred
   to CAI-7.
