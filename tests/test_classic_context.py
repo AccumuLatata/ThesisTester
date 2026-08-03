@@ -259,6 +259,24 @@ def test_recording_policy_validation():
     assert get_recording_policy(session) == "manual"
 
 
+def test_set_recording_policy_syncs_shared_and_legacy_widget_keys():
+    """Policy changes must align Streamlit widget keys (no stale page revert)."""
+    from thesistester.classic_context import CLASSIC_RECORDING_POLICY_WIDGET_KEY
+
+    session: dict = {
+        "classic_recording_policy_widget_backtest": "manual",
+        "classic_recording_policy_widget_signals": "manual",
+    }
+    init_classic_session_state(session)
+    set_recording_policy(session, "all_executions")
+    assert session[CLASSIC_RECORDING_POLICY_WIDGET_KEY] == "all_executions"
+    assert session["classic_recording_policy_widget_backtest"] == "all_executions"
+    assert session["classic_recording_policy_widget_signals"] == "all_executions"
+    set_recording_policy(session, "manual")
+    assert session[CLASSIC_RECORDING_POLICY_WIDGET_KEY] == "manual"
+    assert session["classic_recording_policy_widget_backtest"] == "manual"
+
+
 def test_flash_and_pending_navigation_helpers():
     session: dict = {}
     set_classic_flash(session, level="info", message=" hello ")

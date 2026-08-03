@@ -164,9 +164,7 @@ def test_failed_bundle_write_preserves_request_not_completed(
         origin_page="backtest",
         store_root=tmp_path / "store",
     )
-    request_before = deepcopy(
-        repository.get_run(thesis.thesis_id, handle.run_id).request
-    )
+    request_before = deepcopy(repository.get_run(thesis.thesis_id, handle.run_id).request)
 
     def _boom(_session):
         raise OSError("disk full")
@@ -189,9 +187,7 @@ def test_failed_bundle_write_preserves_request_not_completed(
     assert terminal.provenance is None
 
 
-def test_cancelled_ledger_run_is_not_completed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_cancelled_ledger_run_is_not_completed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
     pre = _classic_pre_exec_state(tmp_path)
     orchestrator, repository = _orchestrator(tmp_path)
@@ -215,6 +211,43 @@ def test_cancelled_ledger_run_is_not_completed(
     assert cancelled.error["reason"]
 
 
+def test_complete_run_failure_fails_ledger_not_left_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """complete_run errors must terminalize via fail_run (never stay running)."""
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    pre = _classic_pre_exec_state(tmp_path)
+    completed = _classic_completed_state(tmp_path)
+    orchestrator, repository = _orchestrator(tmp_path)
+    thesis = repository.create_thesis(name="complete fail")
+    handle = begin_classic_execution_ledger(
+        orchestrator,
+        thesis_id=thesis.thesis_id,
+        session_state=pre,
+        origin_page="backtest",
+        store_root=tmp_path / "store",
+    )
+    request_before = deepcopy(repository.get_run(thesis.thesis_id, handle.run_id).request)
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("repository unavailable")
+
+    monkeypatch.setattr(repository, "complete_run", _boom)
+    terminal = complete_classic_execution_ledger(
+        orchestrator,
+        handle,
+        session_state=completed,
+        store_root=tmp_path / "store",
+    )
+    assert terminal.status == "failed"
+    assert terminal.status != "completed"
+    assert terminal.status != "running"
+    assert terminal.error["phase"] == "complete_run"
+    assert terminal.error.get("simulation_succeeded") is True
+    assert terminal.request == request_before
+    assert terminal.provenance is None
+
+
 def test_manual_policy_does_not_require_ledger_helpers():
     """Sanity: Backtest path gates on should_record_all_executions only."""
     from thesistester.classic_context import get_recording_policy
@@ -232,6 +265,10 @@ def test_pages_wire_ledger_and_context_forbids_ledger_calls():
     assert "begin_classic_execution_ledger" in backtest
     assert "render_classic_execution_ledger" in backtest
     assert "ledger_run_label" in assistant
+    # Post-begin failures must hit a broad except that calls fail_* (CAI-7).
+    assert "except Exception" in backtest
+    assert "fail_classic_execution_ledger" in backtest
+    assert "_ledger_phase" in backtest
     context = (root / "thesistester" / "classic_context.py").read_text(encoding="utf-8")
     assert "begin_classic_execution_ledger" not in context
     assert "complete_classic_execution_ledger" not in context

@@ -130,9 +130,7 @@ def begin_classic_execution_ledger(
     confirmed = orchestrator.confirm_validated_spec(
         thesis_id=thesis_id,
         validated_spec=dict(run_spec),
-        confirmation_note=(
-            f"Classic all_executions ledger request from {page} (CAI-7)"
-        ),
+        confirmation_note=(f"Classic all_executions ledger request from {page} (CAI-7)"),
     )
     run = orchestrator.repository.start_run(
         thesis_id,
@@ -211,9 +209,7 @@ def complete_classic_execution_ledger(
             extra={"simulation_succeeded": True},
         )
 
-    output_path = orchestrator.default_bundle_output_path(
-        handle.thesis_id, store_root=root
-    )
+    output_path = orchestrator.default_bundle_output_path(handle.thesis_id, store_root=root)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         bundle_bytes = build_research_bundle(session_state)
@@ -263,13 +259,20 @@ def complete_classic_execution_ledger(
             provenance=provenance,
             warnings=warning_tuple,
         )
-    except Exception:
-        # Keep the request record; do not leave a silent orphan zip as completed.
+    except Exception as exc:
+        # Keep the request record; do not leave a silent orphan zip or a
+        # permanently ``running`` ResearchRun after complete_run fails.
         try:
             output_path.unlink(missing_ok=True)
         except OSError:
             pass
-        raise
+        return fail_classic_execution_ledger(
+            orchestrator,
+            handle,
+            message=f"complete_run failed after classic execution: {exc}",
+            phase="complete_run",
+            extra={"simulation_succeeded": True},
+        )
 
 
 def list_classic_ledger_runs(
@@ -322,9 +325,7 @@ def render_classic_execution_ledger(
         provenance = run.provenance if isinstance(run.provenance, Mapping) else {}
         error = run.error if isinstance(run.error, Mapping) else {}
         bundle_hash = provenance.get("canonical_bundle_hash")
-        config_hash = request.get("classic_config_hash") or provenance.get(
-            "classic_config_hash"
-        )
+        config_hash = request.get("classic_config_hash") or provenance.get("classic_config_hash")
         rows.append(
             {
                 "Run": run.run_id[-8:],

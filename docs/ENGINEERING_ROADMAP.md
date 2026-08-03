@@ -267,14 +267,18 @@ cancelled — preventing selective preservation of only favorable outcomes.
 
 ### Regression safety
 
-- Failed/cancelled never appear as completed.
-- Bundle-write failure after simulation → `failed` with request retained.
+- Failed/cancelled never appear as completed or left `running`.
+- Bundle-write or `complete_run` failure after simulation → `failed` with
+  request retained (orphan zip removed).
+- Backtest post-begin exceptions always call `fail_classic_execution_ledger`.
+- Shared policy widget key synced from session (no stale per-page revert).
 - `manual` policy or no thesis context: classic Backtest path unchanged.
 - Ledger APIs stay out of `classic_context` (link/create non-recording).
 
 ### Tests
 
-- `tests/test_classic_ledger.py`.
+- `tests/test_classic_ledger.py` (incl. `complete_run` failure terminalization).
+- `tests/test_classic_context.py` (policy widget key sync).
 
 ---
 

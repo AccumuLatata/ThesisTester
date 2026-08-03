@@ -782,10 +782,8 @@ def build_provenance_card(run: Mapping[str, Any]) -> dict[str, Any]:
         "origin_page": request.get("origin_page") or provenance.get("origin_page"),
         "classic_config_hash": request.get("classic_config_hash")
         or provenance.get("classic_config_hash"),
-        "recording_policy": request.get("recording_policy")
-        or provenance.get("recording_policy"),
-        "execution_origin": provenance.get("execution_origin")
-        or request.get("execution_origin"),
+        "recording_policy": request.get("recording_policy") or provenance.get("recording_policy"),
+        "execution_origin": provenance.get("execution_origin") or request.get("execution_origin"),
         "bundle_path": provenance.get("bundle_path"),
         "canonical_bundle_hash": provenance.get("canonical_bundle_hash"),
         "dataset_fingerprint": provenance.get("dataset_fingerprint"),

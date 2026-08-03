@@ -211,11 +211,15 @@ history under an active thesis:
   (materializing a lineage CSV when needed), confirms it, and `start_run` with
   `request.action="classic_execution_ledger"`, `origin_page`, and
   `classic_config_hash`.
-- On OTF/simulate `ValueError`: `fail_classic_execution_ledger` → status
-  `failed` (never `completed`).
+- On any post-begin Backtest failure (OTF/simulate/`ValueError` or other
+  exceptions during session persist/complete): `fail_classic_execution_ledger`
+  → status `failed` (never left `running`, never `completed` on failure).
 - After successful session writes: `complete_classic_execution_ledger` builds a
   research bundle and `complete_run` with `execution_origin="classic"`. A
-  bundle-write failure fails the run while retaining the original request.
+  bundle-write or `complete_run` failure fails the run while retaining the
+  original request (orphan zip removed).
+- Recording-policy selectbox uses a shared Streamlit widget key synced from
+  session policy so a stale per-page widget cannot silently revert policy.
 - Surfaces: Backtest ledger table; Assistant Research runs labels
   (`ledger:backtest` / `recorded:manual` / `assistant`);
   `build_provenance_card` includes origin/config/policy/execution_origin.

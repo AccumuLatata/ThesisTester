@@ -33,6 +33,9 @@ CLASSIC_THESIS_SCOPED_KEYS: tuple[str, ...] = (
 # CAI-0 default is manual; all_executions remains deferred to CAI-7.
 RECORDING_POLICIES: tuple[str, ...] = ("manual", "all_executions")
 DEFAULT_RECORDING_POLICY: str = "manual"
+# Shared across classic pages so a policy change on one page cannot be reverted
+# by a stale per-page selectbox value on another.
+CLASSIC_RECORDING_POLICY_WIDGET_KEY: str = "classic_recording_policy_widget"
 
 # Allowlisted page script paths for classic_pending_navigation → st.switch_page.
 CLASSIC_PENDING_NAVIGATION_PAGES: frozenset[str] = frozenset(
@@ -135,12 +138,23 @@ def get_recording_policy(session_state: Mapping[str, Any]) -> str:
     return DEFAULT_RECORDING_POLICY
 
 
+def _sync_recording_policy_widgets(session_state: MutableMapping[str, Any], policy: str) -> None:
+    """Align Streamlit selectbox keys with the canonical recording policy."""
+    session_state[CLASSIC_RECORDING_POLICY_WIDGET_KEY] = policy
+    # Legacy per-page keys from earlier CAI-7 drafts — keep them aligned so a
+    # stale page cannot silently undo a policy set elsewhere.
+    for key in list(session_state.keys()):
+        if isinstance(key, str) and key.startswith("classic_recording_policy_widget_"):
+            session_state[key] = policy
+
+
 def set_recording_policy(session_state: MutableMapping[str, Any], policy: str) -> None:
     """Persist a recording policy (``manual`` or ``all_executions``, CAI-7)."""
     if policy not in RECORDING_POLICIES:
         raise ValueError(f"recording policy must be one of {RECORDING_POLICIES}, got {policy!r}.")
     init_classic_session_state(session_state)
     session_state["classic_recording_policy"] = policy
+    _sync_recording_policy_widgets(session_state, policy)
 
 
 def is_research_mode(session_state: Mapping[str, Any]) -> bool:
@@ -375,23 +389,35 @@ def render_classic_thesis_chrome(
                 "manual": "Manual — Record and discuss after a run",
                 "all_executions": "All executions — ledger every Backtest attempt",
             }
-            selected_policy = st.selectbox(
+            # Shared key (not per-page) + session-authoritative sync:
+            # on_change updates policy before the script reruns, so syncing a
+            # divergent widget from session here cannot clobber a user click.
+            # Without this, a stale widget value would write back and undo a
+            # policy change made on another classic page.
+            widget_key = CLASSIC_RECORDING_POLICY_WIDGET_KEY
+
+            def _on_recording_policy_change() -> None:
+                chosen = st.session_state.get(widget_key)
+                if chosen in RECORDING_POLICIES and chosen != get_recording_policy(
+                    st.session_state
+                ):
+                    set_recording_policy(st.session_state, chosen)
+
+            if st.session_state.get(widget_key) != policy:
+                st.session_state[widget_key] = policy
+            st.selectbox(
                 "Recording policy",
                 options=list(RECORDING_POLICIES),
-                index=list(RECORDING_POLICIES).index(policy)
-                if policy in RECORDING_POLICIES
-                else 0,
+                index=list(RECORDING_POLICIES).index(policy) if policy in RECORDING_POLICIES else 0,
                 format_func=lambda value: policy_labels.get(value, value),
-                key=f"classic_recording_policy_widget_{page}",
+                key=widget_key,
+                on_change=_on_recording_policy_change,
                 help=(
                     "Manual keeps exploration untracked until you click "
                     "Record and discuss. All executions records completed, "
                     "failed, and cancelled Backtest attempts under this thesis."
                 ),
             )
-            if selected_policy != policy:
-                set_recording_policy(st.session_state, selected_policy)
-                st.rerun()
         if st.session_state.get(f"_classic_relink_open_{page}"):
             _render_link_thesis_form(
                 st,
