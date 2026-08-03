@@ -76,13 +76,21 @@ The Research Assistant page stages only these additive `assistant_*` keys
 | `assistant_run_artifacts` | Research artifact cache by run_id |
 | `assistant_run_comparisons` | In-session comparison by thesis_id |
 | `assistant_bundle_handoff` | Last hash-verified restore into research pages |
+| `assistant_flash` | One-shot `{level, message}` UI notice consumed after `st.rerun()` |
 
 Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_draft_choices`, `assistant_hydrated_conversation_id`,
-`assistant_validated_run_spec`, `assistant_bundle_handoff`) so
-draft/validation/hydration/handoff cannot leak. The Active handoff caption is
+`assistant_validated_run_spec`, `assistant_bundle_handoff`, `assistant_flash`) so
+draft/validation/hydration/handoff/flash cannot leak. The Active handoff caption is
 further gated by `active_bundle_handoff()` so a stale handoff never displays for
 a different thesis.
+Apply/Draft/Confirm/Run success notices use `set_assistant_flash` /
+`consume_assistant_flash` so Streamlit reruns do not silently drop feedback.
+Specification list labels use `format_spec_status` /
+`spec_status_next_step`; `ready_for_confirmation` means “ready to confirm under
+Plan review after Validate”, not “waiting on a button inside the list”.
+Versions are created only by Draft research plan and Confirm — Apply controls
+stage session draft choices only.
 `assistant_draft_choices` contains only supported structured RunSpec sections;
 narrative LLM hints stay in conversation history and never become execution
 candidates. Clarification checks trust only structured sections
@@ -159,8 +167,10 @@ immutable comparison persistence fails (`persistence_error`), so the UI is not
 blocked by a save race. Report and research-artifact export remain independent
 UI actions. Untouched execution drafts default `exposure_policy` to
 `allow_all`. Confirm stays gated on `plan["ready_for_confirmation"]` so a
-validated RunSpec cannot be confirmed while clarifications remain. WFA matrix
-controls are sessions-fold-only (parity with Validation). Page code must not construct
+validated RunSpec cannot be confirmed while clarifications remain.
+`build_plan_review()` also returns `next_action` so Plan review always states
+the concrete next gate (validate, resolve clarifications, or confirm+run).
+WFA matrix controls are sessions-fold-only (parity with Validation). Page code must not construct
 `AssistantTools`, mutate `LocalThesisRepository`, compile RunSpecs, explain
 evidence, or read bundle bytes directly. Provenance-gated bundle loads
 (`BUNDLE.import`, `EXPORT.build_research_artifact`, `PORTFOLIO.analyze`) require

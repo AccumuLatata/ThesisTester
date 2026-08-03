@@ -119,6 +119,13 @@ def test_page_is_orchestrator_only_and_keeps_json_advanced():
     assert "safe_float(" in source
     assert 'plan["ready_for_confirmation"]' in source
     assert "WFA matrix is available only for session fold mode." in source
+    assert "set_assistant_flash(" in source
+    assert "consume_assistant_flash(" in source
+    assert "How to start a research run" in source
+    assert "format_spec_status(" in source
+    assert "spec_status_next_step(" in source
+    assert "plan['next_action']" in source or 'plan["next_action"]' in source
+    assert "_apply_draft_and_rerun(" in source
     restore_idx = source.index("Restore bundle into research pages")
     assert "st.rerun()" in source[restore_idx : restore_idx + 700]
 
@@ -128,7 +135,9 @@ def test_assistant_session_keys_cover_documented_staging_surface():
     assert "assistant_validated_run_spec" in ASSISTANT_SESSION_KEYS
     assert "assistant_llm_run_explanations" in ASSISTANT_SESSION_KEYS
     assert "assistant_bundle_handoff" in ASSISTANT_SESSION_KEYS
+    assert "assistant_flash" in ASSISTANT_SESSION_KEYS
     assert "assistant_bundle_handoff" in THESIS_SCOPED_STAGING_KEYS
+    assert "assistant_flash" in THESIS_SCOPED_STAGING_KEYS
     assert set(THESIS_SCOPED_STAGING_KEYS).issubset(ASSISTANT_SESSION_KEYS)
 
 
@@ -164,6 +173,7 @@ def test_thesis_switch_clears_draft_validation_and_hydration():
         "run_id": "run_old",
         "restored_count": 3,
     }
+    state["assistant_flash"] = {"level": "success", "message": "stale"}
     state["assistant_run_comparisons"] = {"th_a": {"run_ids": ["r1", "r2"]}}
 
     changed = select_thesis(state, "th_b")
@@ -174,6 +184,7 @@ def test_thesis_switch_clears_draft_validation_and_hydration():
     assert state["assistant_validated_run_spec"] is None
     assert state["assistant_hydrated_conversation_id"] is None
     assert state["assistant_bundle_handoff"] is None
+    assert state["assistant_flash"] is None
     # Persisted comparison cache is thesis-keyed and intentionally retained.
     assert state["assistant_run_comparisons"]["th_a"]["run_ids"] == ["r1", "r2"]
     assert select_thesis(state, "th_b") is False
@@ -329,6 +340,7 @@ def test_plan_review_ready_flag_requires_validated_spec():
     )
     assert plan["ready_for_confirmation"] is False
     assert plan["unresolved_assumptions"] == ["Define costs."]
+    assert "Resolve clarifications" in plan["next_action"]
 
     blocked = build_plan_review(
         thesis_name="Demo",
@@ -338,6 +350,53 @@ def test_plan_review_ready_flag_requires_validated_spec():
     )
     assert blocked["validated_spec"] is not None
     assert blocked["ready_for_confirmation"] is False
+
+    needs_validate = build_plan_review(
+        thesis_name="Demo",
+        choices={"dataset": {"path": "bars.csv", "instrument": "ES"}},
+        validated_spec=None,
+        unresolved_assumptions=(),
+    )
+    assert needs_validate["ready_for_confirmation"] is False
+    assert "Validate executable RunSpec" in needs_validate["next_action"]
+
+    ready = build_plan_review(
+        thesis_name="Demo",
+        choices={"dataset": {"path": "bars.csv", "instrument": "ES"}},
+        validated_spec={"name": "Demo", "setup": {}},
+        unresolved_assumptions=(),
+    )
+    assert ready["ready_for_confirmation"] is True
+    assert "Confirm validated RunSpec" in ready["next_action"]
+
+
+def test_assistant_flash_survives_until_consumed():
+    from thesistester.assistant.workspace import (
+        consume_assistant_flash,
+        set_assistant_flash,
+    )
+
+    state = {}
+    init_assistant_session_state(state)
+    set_assistant_flash(state, level="success", message="Execution controls applied.")
+    assert state["assistant_flash"]["level"] == "success"
+    flash = consume_assistant_flash(state)
+    assert flash == {"level": "success", "message": "Execution controls applied."}
+    assert consume_assistant_flash(state) is None
+
+
+def test_spec_status_labels_and_next_steps_are_explicit():
+    from thesistester.assistant.workspace import (
+        RESEARCH_WORKFLOW_STEPS,
+        format_spec_status,
+        spec_status_next_step,
+    )
+
+    assert format_spec_status("ready_for_confirmation") == "Ready to confirm"
+    assert format_spec_status("confirmed") == "Confirmed — can run"
+    assert "Plan review" in spec_status_next_step("ready_for_confirmation")
+    assert "Run confirmed research" in spec_status_next_step("confirmed")
+    assert any("Apply structured controls" in step for step in RESEARCH_WORKFLOW_STEPS)
 
 
 def test_latest_unresolved_assumptions_only_from_newest_spec():

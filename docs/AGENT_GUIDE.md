@@ -148,7 +148,9 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   The Research Assistant page must remain presentation-only. Every
   non-unsupported registry capability must have a `HANDLER_REGISTRY` entry;
   otherwise mark it `unsupported` with a limitation. Structured errors must
-  include `category`, `retryable`, and `remediation`.
+  include `category`, `retryable`, and `remediation`. Apply controls stage
+  session draft only and must flash via `assistant_flash`; Confirm lives under
+  Plan review after Validate; Run lives on a `confirmed` specification version.
 - Completed runs require a readable on-disk research bundle whose
   `canonical_bundle_hash` matches reported provenance before `complete_run`.
   Provenance-gated explanation, comparison, export, and portfolio paths must
