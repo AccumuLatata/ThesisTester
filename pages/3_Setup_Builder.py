@@ -28,6 +28,7 @@ from thesistester.setup import (
     validate_setup_config,
 )
 from thesistester.classic_context import render_classic_thesis_chrome
+from thesistester.classic_nav import render_classic_nav_prefill_caption
 from thesistester.engine.otf import OTF_ALGORITHM_VERSION
 
 
@@ -642,6 +643,7 @@ render_classic_thesis_chrome(
     allow_create_link=True,
     dataset_id=st.session_state.get("dataset_id"),
 )
+render_classic_nav_prefill_caption(target_page="pages/3_Setup_Builder.py")
 
 if "levels" not in st.session_state:
     st.warning(

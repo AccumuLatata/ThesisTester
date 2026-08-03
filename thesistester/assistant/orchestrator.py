@@ -444,6 +444,9 @@ class AssistantOrchestrator:
                 # CAI-3: persist cold/warm cache outcome for provenance cards.
                 "cache_provenance": result.get("cache_provenance"),
                 "execution_origin": result.get("execution_origin"),
+                # CAI-8: additive identities for badges without full bundle load.
+                "data_identity": result.get("data_identity"),
+                "levels_identity": result.get("levels_identity"),
             }
             # Never mark a run completed before its portable bundle is readable
             # and the reported canonical hash verifies against those bytes.
@@ -592,8 +595,39 @@ class AssistantOrchestrator:
         )
         session_values = verified.get("session_values")
         fingerprint = None
+        data_identity = None
+        levels_identity = None
         if isinstance(session_values, Mapping):
             fingerprint = to_jsonable(session_values.get("levels_data_fingerprint"))
+            data_identity = to_jsonable(session_values.get("data_identity"))
+            levels_identity = to_jsonable(session_values.get("levels_identity"))
+        if data_identity is None or levels_identity is None:
+            from thesistester.research_bundle import peek_research_identity
+            from thesistester.research_identity import (
+                identities_from_payload,
+                try_page_data_identity,
+                try_page_levels_identity,
+            )
+
+            peeked_data, peeked_levels = identities_from_payload(
+                peek_research_identity(resolved_path)
+            )
+            if data_identity is None and peeked_data is not None:
+                data_identity = peeked_data.to_dict()
+            if levels_identity is None and peeked_levels is not None:
+                levels_identity = peeked_levels.to_dict()
+            # Classic page bundles may omit research_identity.json; stamp
+            # provenance from loaded session frames for CAI-8 badges (metadata
+            # only — does not rewrite the verified zip).
+            if isinstance(session_values, Mapping):
+                if data_identity is None:
+                    page_data = try_page_data_identity(session_values)
+                    if page_data is not None:
+                        data_identity = page_data.to_dict()
+                if levels_identity is None:
+                    page_levels = try_page_levels_identity(session_values)
+                    if page_levels is not None:
+                        levels_identity = page_levels.to_dict()
 
         run = self.repository.start_run(
             thesis_id,
@@ -620,6 +654,8 @@ class AssistantOrchestrator:
             },
             "execution_origin": normalize_execution_origin("classic"),
             "registration_source": "classic_workspace",
+            "data_identity": data_identity,
+            "levels_identity": levels_identity,
         }
         try:
             completed = self.repository.complete_run(
@@ -855,6 +891,10 @@ class AssistantOrchestrator:
     def list_runs(self, thesis_id: str) -> tuple[ResearchRun, ...]:
         """List research runs through the repository façade."""
         return self.repository.list_runs(thesis_id)
+
+    def get_run(self, thesis_id: str, run_id: str) -> ResearchRun:
+        """Fetch one thesis run through the repository façade (CAI-8 nav)."""
+        return self.repository.get_run(thesis_id, run_id)
 
     def list_comparisons(self, thesis_id: str) -> tuple[Comparison, ...]:
         """List persisted comparisons through the repository façade."""

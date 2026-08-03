@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** proposed implementation contract; `CAI-0` through `CAI-7` implemented.
+**Status:** proposed implementation contract; `CAI-0` through `CAI-8` implemented.
 
 **Owner model:** one trusted local user, local datasets, local execution.
 
@@ -638,7 +638,7 @@ works under a thesis.
 - An opted-in thesis has a complete attempt history suitable for evidence-based
   discussion and avoids selective preservation of only favorable outcomes.
 
-### CAI-8 — Bidirectional navigation and identity-aware UI
+### CAI-8 — Bidirectional navigation and identity-aware UI ✅ Implemented
 
 **Goal:** make the shared graph visible without duplicating application pages.
 
@@ -655,6 +655,25 @@ works under a thesis.
 - Add a direct path from Assistant clarification/proposal to the relevant
   classic page. Initial behavior is navigation plus prefilled draft only, not
   automatic page mutation.
+
+**Implemented contract**
+
+- `thesistester/classic_nav.py`: discuss / open-exact / clarification-nav
+  helpers; identity badge resolution via immutable
+  `classify_identity_relation` codes.
+- Session keys: `classic_active_run_id`, `classic_focus_run_id`,
+  `classic_nav_prefill` (thesis-scoped; cleared on thesis switch / exit /
+  dataset switch).
+- Metadata-only identity: provenance fields and/or
+  `peek_research_identity` (zip member) — full bundle load only on open /
+  restore / explain / compare.
+- UI: Discuss on Backtest + Research Bundles; Open exact + clarification
+  Open buttons on Research Assistant; prefill caption on Data / Levels /
+  Setup Builder / Backtest; active-run breadcrumb + badge in classic chrome.
+- Clarification → classic page is navigation + caption prefill only (no
+  automatic widget / settings mutation).
+- `AssistantOrchestrator.get_run` façade for thesis-scoped run fetch.
+- Tests: `tests/test_classic_nav.py`.
 
 **Regression gates**
 

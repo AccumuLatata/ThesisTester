@@ -234,6 +234,20 @@ def complete_classic_execution_ledger(
     if isinstance(current.request, Mapping):
         request_run_spec = current.request.get("run_spec")
 
+    from thesistester.research_identity import (
+        try_page_data_identity,
+        try_page_levels_identity,
+    )
+
+    page_data = try_page_data_identity(session_state)
+    page_levels = try_page_levels_identity(session_state)
+    data_identity = to_jsonable(session_state.get("data_identity"))
+    levels_identity = to_jsonable(session_state.get("levels_identity"))
+    if data_identity is None and page_data is not None:
+        data_identity = page_data.to_dict()
+    if levels_identity is None and page_levels is not None:
+        levels_identity = page_levels.to_dict()
+
     provenance = {
         "bundle_path": str(output_path),
         "canonical_bundle_hash": digest,
@@ -250,6 +264,8 @@ def complete_classic_execution_ledger(
         "execution_origin": normalize_execution_origin("classic"),
         "registration_source": "classic_execution_ledger",
         "recording_policy": RECORDING_POLICY_ALL_EXECUTIONS,
+        "data_identity": data_identity,
+        "levels_identity": levels_identity,
     }
     try:
         return orchestrator.repository.complete_run(

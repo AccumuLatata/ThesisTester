@@ -784,6 +784,8 @@ def build_provenance_card(run: Mapping[str, Any]) -> dict[str, Any]:
         or provenance.get("classic_config_hash"),
         "recording_policy": request.get("recording_policy") or provenance.get("recording_policy"),
         "execution_origin": provenance.get("execution_origin") or request.get("execution_origin"),
+        "data_identity": provenance.get("data_identity"),
+        "levels_identity": provenance.get("levels_identity"),
         "bundle_path": provenance.get("bundle_path"),
         "canonical_bundle_hash": provenance.get("canonical_bundle_hash"),
         "dataset_fingerprint": provenance.get("dataset_fingerprint"),

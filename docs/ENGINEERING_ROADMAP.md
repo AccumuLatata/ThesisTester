@@ -282,6 +282,34 @@ cancelled — preventing selective preservation of only favorable outcomes.
 
 ---
 
+## CAI-8 — Bidirectional Navigation and Identity-Aware UI ✅ Implemented
+
+Makes the classic ↔ Assistant research graph visible without duplicating pages.
+
+### Features
+
+- `thesistester/classic_nav.py`: Discuss this run, Open exact run in Backtest,
+  clarification→classic navigation + caption prefill, identity badge helpers.
+- Session: `classic_active_run_id`, `classic_focus_run_id`, `classic_nav_prefill`.
+- Identity relation codes from immutable identities (metadata/peek only until
+  open/restore/explain/compare).
+- Surfaces: Backtest/Bundles Discuss; Assistant Open exact + clarification
+  Open; Data/Levels/Setup/Backtest prefill captions; chrome active-run badge.
+
+### Regression safety
+
+- Badge tests assert relation codes, not display labels.
+- Thesis switch clears run/focus/prefill; cross-thesis run selection fails closed.
+- Open exact remains hash-verified bundle restore.
+- Clarification path does not auto-mutate classic page settings.
+- Recording APIs stay out of `classic_context`.
+
+### Tests
+
+- `tests/test_classic_nav.py`.
+
+---
+
 ## R1 — Execution Realism ✅ Implemented
 
 Adds optional commission and slippage to `simulate_trades`. Defaults preserve legacy

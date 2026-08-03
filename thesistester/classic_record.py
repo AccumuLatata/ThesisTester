@@ -272,6 +272,11 @@ def render_record_and_discuss(
         short_run = str(run_id)[-8:] if isinstance(run_id, str) else "?"
         short_hash = str(digest)[:12] if isinstance(digest, str) else "?"
         verb = "Reused existing" if idempotent else "Recorded"
+        if isinstance(run_id, str) and run_id.strip():
+            from thesistester.classic_nav import set_classic_active_run, set_classic_focus_run
+
+            set_classic_active_run(state, run_id=run_id, thesis_id=thesis_id)
+            set_classic_focus_run(state, run_id)
         set_classic_flash(
             state,
             level="success",

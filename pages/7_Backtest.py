@@ -22,6 +22,10 @@ from thesistester.classic_ledger import (
     render_classic_execution_ledger,
     should_record_all_executions,
 )
+from thesistester.classic_nav import (
+    render_classic_nav_prefill_caption,
+    render_discuss_this_run,
+)
 from thesistester.classic_record import render_record_and_discuss
 from thesistester.analytics import equity_curve, summarize_trades, summarize_trades_by_direction
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
@@ -550,7 +554,9 @@ if trades is None:
     st.info("Configure settings in the sidebar and click **▶ Run backtest**.")
     st.stop()
 
+render_classic_nav_prefill_caption(target_page="pages/7_Backtest.py")
 render_record_and_discuss(page_key="backtest")
+render_discuss_this_run(page_key="backtest")
 render_classic_execution_ledger(page_key="backtest")
 
 st.caption(timezone_contract_caption(st.session_state))

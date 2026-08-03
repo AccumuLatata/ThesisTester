@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from thesistester.app_state import bootstrap_active_saved_dataset
+from thesistester.classic_nav import render_classic_nav_prefill_caption
 from thesistester.data.sessions import tag_session
 from thesistester.levels import compute_all_levels, compute_session_levels
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
@@ -366,6 +367,7 @@ st.title("📏 Levels")
 st.caption(
     "Compute session, indicator, profile, and advanced level families for the active dataset."
 )
+render_classic_nav_prefill_caption(target_page="pages/2_Levels.py")
 
 bootstrap_active_saved_dataset()
 

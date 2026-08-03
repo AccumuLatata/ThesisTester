@@ -75,6 +75,14 @@ from thesistester.assistant.workspace import (
     spec_status_next_step,
 )
 from thesistester.classic_ledger import is_classic_ledger_run, ledger_run_label
+from thesistester.classic_nav import (
+    clarification_target_page,
+    consume_classic_focus_run,
+    identity_badge_label,
+    navigate_clarification_to_classic,
+    open_exact_run_in_backtest,
+    page_vs_run_identity_relation,
+)
 from thesistester.setup import available_level_columns
 
 
@@ -170,6 +178,11 @@ with st.expander("How to start a research run", expanded=False):
         "Apply controls never start compute. Only Run confirmed research on a Confirmed "
         "specification version executes the pipeline."
     )
+focus_run_id = consume_classic_focus_run(st.session_state)
+if focus_run_id:
+    st.info(f"Focused classic-discussed run: …{focus_run_id[-8:]}")
+    st.session_state["assistant_focused_run_id"] = focus_run_id
+
 handoff = active_bundle_handoff(st.session_state, thesis_id=thesis_id)
 if handoff is not None:
     st.caption(
@@ -177,6 +190,29 @@ if handoff is not None:
         f"run {str(handoff['run_id'])[-8:]} · "
         f"restored {handoff.get('restored_count', 0)} session keys."
     )
+    try:
+        handoff_run = orchestrator.get_run(thesis_id, str(handoff["run_id"]))
+        relation = page_vs_run_identity_relation(st.session_state, handoff_run)
+        st.caption(
+            f"Identity vs handoff run: **{identity_badge_label(relation)}** (`{relation}`)"
+        )
+    except Exception:
+        st.caption("Identity vs handoff run: **identity unavailable**")
+    if st.button(
+        "Open exact run in Backtest",
+        key="assistant_open_handoff_backtest",
+        type="primary",
+    ):
+        try:
+            open_exact_run_in_backtest(
+                st.session_state,
+                thesis_id=thesis_id,
+                run_id=str(handoff["run_id"]),
+                orchestrator=orchestrator,
+            )
+            st.switch_page("pages/7_Backtest.py")
+        except Exception as exc:
+            st.error(f"Unable to open exact run: {exc}")
 with st.expander("Manage thesis"):
     renamed = st.text_input("Rename thesis", value=thesis.name, key=f"assistant_rename_{thesis_id}")
     if st.button("Save thesis name", key=f"rename-{thesis_id}"):
@@ -1020,8 +1056,20 @@ st.caption(
 st.info(f"Next: {plan['next_action']}")
 if plan["unresolved_assumptions"]:
     st.warning("Clarifications still required before confirmation.")
-    for item in plan["unresolved_assumptions"]:
+    for index, item in enumerate(plan["unresolved_assumptions"]):
         st.write(f"- {item}")
+        target = clarification_target_page(str(item))
+        if target and st.button(
+            f"Open on classic page ({target.split('/')[-1]})",
+            key=f"clarify-nav-plan-{index}",
+        ):
+            try:
+                navigate_clarification_to_classic(
+                    st.session_state, clarification=str(item)
+                )
+                st.switch_page(target)
+            except ValueError as exc:
+                st.error(str(exc))
 if plan["validated_spec"] is not None:
     with st.expander("Validated executable RunSpec", expanded=True):
         st.json(plan["validated_spec"])
@@ -1088,8 +1136,20 @@ for spec in reversed(spec_versions):
         st.json(spec.normalized_run_spec)
         if spec.unresolved_assumptions:
             st.warning("Clarifications required")
-            for assumption in spec.unresolved_assumptions:
+            for assumption_index, assumption in enumerate(spec.unresolved_assumptions):
                 st.write(f"- {assumption}")
+                target = clarification_target_page(str(assumption))
+                if target and st.button(
+                    f"Open on classic page ({target.split('/')[-1]})",
+                    key=f"clarify-nav-spec-{spec.version}-{assumption_index}",
+                ):
+                    try:
+                        navigate_clarification_to_classic(
+                            st.session_state, clarification=str(assumption)
+                        )
+                        st.switch_page(target)
+                    except ValueError as exc:
+                        st.error(str(exc))
         if spec.status == "confirmed" and {"dataset", "setup", "backtest"}.issubset(
             spec.normalized_run_spec
         ):
@@ -1268,21 +1328,49 @@ else:
                         mime="application/json",
                         key=f"download-artifact-{run.run_id}",
                     )
-                if st.button("Restore bundle into research pages", key=f"handoff-{run.run_id}"):
-                    try:
-                        handoff_result = orchestrator.restore_run_bundle_to_session(
-                            thesis_id=thesis_id,
-                            run_id=run.run_id,
-                            session_state=st.session_state,
-                        )
-                        st.success(
-                            "Restored "
-                            f"{handoff_result['restored_count']} research keys from "
-                            f"run {run.run_id[-8:]}."
-                        )
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"Unable to restore bundle: {exc}")
+                try:
+                    relation = page_vs_run_identity_relation(st.session_state, run)
+                    st.caption(
+                        f"Identity vs session: **{identity_badge_label(relation)}** "
+                        f"(`{relation}`)"
+                    )
+                except Exception:
+                    st.caption("Identity vs session: **identity unavailable**")
+                open_col, restore_col = st.columns(2)
+                with open_col:
+                    if st.button(
+                        "Open exact run in Backtest",
+                        key=f"open-backtest-{run.run_id}",
+                    ):
+                        try:
+                            open_exact_run_in_backtest(
+                                st.session_state,
+                                thesis_id=thesis_id,
+                                run_id=run.run_id,
+                                orchestrator=orchestrator,
+                            )
+                            st.switch_page("pages/7_Backtest.py")
+                        except Exception as exc:
+                            st.error(f"Unable to open exact run: {exc}")
+                with restore_col:
+                    if st.button(
+                        "Restore bundle into research pages",
+                        key=f"handoff-{run.run_id}",
+                    ):
+                        try:
+                            handoff_result = orchestrator.restore_run_bundle_to_session(
+                                thesis_id=thesis_id,
+                                run_id=run.run_id,
+                                session_state=st.session_state,
+                            )
+                            st.success(
+                                "Restored "
+                                f"{handoff_result['restored_count']} research keys from "
+                                f"run {run.run_id[-8:]}."
+                            )
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Unable to restore bundle: {exc}")
 
 completed_runs = [
     run
