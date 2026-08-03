@@ -418,6 +418,7 @@ def merge_walk_forward_controls(
     matrix_test_raw: str,
     matrix_metric: str,
     max_matrix_cells: int,
+    otf_history_policy: str = "fold_local",
 ) -> dict[str, Any]:
     """Merge structured walk-forward controls into staged research choices."""
     current = deepcopy(dict(choices))
@@ -426,6 +427,7 @@ def merge_walk_forward_controls(
         fold_mode=fold_mode,
         window_mode=window_mode,
         overlap_policy=overlap_policy,
+        otf_history_policy=otf_history_policy,
         train_sessions=train_size if fold_mode == "sessions" else 20,
         test_sessions=test_size if fold_mode == "sessions" else 5,
         step_sessions=step_size if fold_mode == "sessions" else 5,

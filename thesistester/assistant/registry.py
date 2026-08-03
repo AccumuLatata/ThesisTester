@@ -353,7 +353,11 @@ FEATURE_PARITY_REGISTRY = _validate_registry(
         _capability(
             "VALIDATION.run_walk_forward",
             "Validation",
-            "Run bar/session walk-forward and WFA matrix research",
+            (
+                "Run bar/session walk-forward and WFA matrix research "
+                "(optional walk_forward.otf_history_policy: fold_local default, "
+                "or causal_prefix for prior-bar OTF state)"
+            ),
             "thesistester.api.run_walk_forward",
             CapabilityMode.UNSUPPORTED,
             ConfirmationLevel.EXPLICIT_CONFIRMATION,

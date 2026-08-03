@@ -629,6 +629,7 @@ if run_wfo:
                                 "otf_config_hash": compute_otf_config_hash(_wfo_otf_config),
                                 "session_timezone": _wfo_session_tz,
                                 "eth_start": _wfo_eth_start,
+                                "otf_history_policy": wfo_otf_history_policy,
                             }
                             st.success("Walk-forward diagnostics complete.")
 
