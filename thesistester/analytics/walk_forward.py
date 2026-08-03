@@ -30,6 +30,23 @@ _EXPECTED_OTF_INSUFFICIENT_HISTORY_PATTERNS: tuple[str, ...] = (
 )
 
 
+def resolve_otf_session_timezone(
+    session_timezone: str | None,
+    exchange_timezone: str | None = None,
+) -> str | None:
+    """Return the timezone fold-level OTF filtering actually uses.
+
+    Session-exit policy may omit ``session_timezone``. Fold OTF then falls back
+    to ``exchange_timezone`` so filter execution and recorded OTF metadata stay
+    aligned (Streamlit Validation WFO summaries, research exports).
+    """
+    if isinstance(session_timezone, str) and session_timezone.strip():
+        return session_timezone
+    if isinstance(exchange_timezone, str) and exchange_timezone.strip():
+        return exchange_timezone
+    return None
+
+
 def _filter_fold_signals_with_otf(
     fold_df: pd.DataFrame,
     fold_signals: pd.DataFrame,
@@ -495,6 +512,9 @@ def run_walk_forward_sl_tp(
     _otf_enabled = otf_normalized_config is not None and bool(
         otf_normalized_config.get("enabled", False)
     )
+    # OTF session alignment may fall back to exchange_timezone when session-exit
+    # policy omits a timezone; session-exit simulation keeps session_timezone as-is.
+    otf_session_timezone = resolve_otf_session_timezone(session_timezone, exchange_timezone)
 
     fold_rows: list[dict[str, Any]] = []
     oos_trade_frames: list[pd.DataFrame] = []
@@ -539,7 +559,7 @@ def run_walk_forward_sl_tp(
                 fold_df=train_df,
                 fold_signals=train_signals,
                 otf_config=otf_normalized_config,
-                session_timezone=session_timezone,
+                session_timezone=otf_session_timezone,
                 eth_start=eth_start,
             )
             train_otf_accepted = int(len(train_signals))
@@ -549,7 +569,7 @@ def run_walk_forward_sl_tp(
                 fold_df=test_df,
                 fold_signals=test_signals,
                 otf_config=otf_normalized_config,
-                session_timezone=session_timezone,
+                session_timezone=otf_session_timezone,
                 eth_start=eth_start,
             )
             test_otf_accepted = int(len(test_signals))

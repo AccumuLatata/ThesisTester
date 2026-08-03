@@ -593,12 +593,20 @@ if run_wfo:
                             else:
                                 st.session_state.pop("wfa_matrix", None)
                                 st.session_state.pop("wfa_matrix_config", None)
-                            # Store OTF summary for reporting
+                            # Store OTF summary for reporting. Timezone must match
+                            # fold-level OTF resolution (session-exit tz, else exchange).
+                            from thesistester.analytics.walk_forward import (
+                                resolve_otf_session_timezone,
+                            )
                             from thesistester.persistence.local_store import compute_otf_config_hash
                             from thesistester.engine.otf import OTF_ALGORITHM_VERSION
 
-                            _wfo_session_tz = session_policy.get("session_timezone") or (
+                            _wfo_exchange_tz = (
                                 st.session_state.get("exchange_timezone") or "America/New_York"
+                            )
+                            _wfo_session_tz = resolve_otf_session_timezone(
+                                session_policy.get("session_timezone"),
+                                _wfo_exchange_tz,
                             )
                             _wfo_eth_start = inst.eth_start if inst else "18:00"
                             st.session_state["walk_forward_otf_filter"] = {

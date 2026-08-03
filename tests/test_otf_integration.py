@@ -11,6 +11,8 @@ Covers:
 
 from __future__ import annotations
 
+import pathlib
+
 import pandas as pd
 import pytest
 
@@ -2206,3 +2208,49 @@ class TestEthStartSessionPropagation:
         assert meta["available"] is True
         assert meta["eth_start"] == "18:00"
         assert meta["session_timezone"] == TZ
+
+    def test_wfo_otf_falls_back_to_exchange_timezone_when_session_tz_missing(self):
+        """Fold OTF must use exchange_timezone when session-exit tz is omitted."""
+        from thesistester.analytics.walk_forward import (
+            resolve_otf_session_timezone,
+            run_walk_forward_sl_tp,
+        )
+        from thesistester.config import INSTRUMENTS
+
+        assert resolve_otf_session_timezone(None, TZ) == TZ
+        assert resolve_otf_session_timezone("UTC", TZ) == "UTC"
+        assert resolve_otf_session_timezone(None, None) is None
+
+        source = _overnight_1m_source()
+        sigs = _overnight_signals(source)
+        inst = INSTRUMENTS["ES"]
+        otf_cfg = _enabled_config(["5m"], minimum_consecutive_bars=1)
+        common = dict(
+            df=source,
+            signals=sigs,
+            tick_size=inst.tick_size,
+            point_value=inst.point_value,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=40,
+            test_bars=20,
+            step_bars=20,
+            otf_config=otf_cfg,
+            exchange_timezone=inst.exchange_tz,
+            eth_start=inst.eth_start,
+            return_result=True,
+        )
+        missing_session_tz = run_walk_forward_sl_tp(session_timezone=None, **common)
+        explicit_exchange_tz = run_walk_forward_sl_tp(session_timezone=inst.exchange_tz, **common)
+        assert list(missing_session_tz.folds["test_otf_accepted_count"]) == list(
+            explicit_exchange_tz.folds["test_otf_accepted_count"]
+        )
+        assert list(missing_session_tz.folds["test_otf_rejected_count"]) == list(
+            explicit_exchange_tz.folds["test_otf_rejected_count"]
+        )
+        # Validation page records the same resolved timezone used by fold OTF.
+        assert resolve_otf_session_timezone(None, inst.exchange_tz) == inst.exchange_tz
+        page_path = pathlib.Path(__file__).parent.parent / "pages" / "10_Validation.py"
+        source_text = page_path.read_text(encoding="utf-8")
+        assert "resolve_otf_session_timezone(" in source_text
+        assert '"session_timezone": _wfo_session_tz' in source_text

@@ -219,6 +219,9 @@ Add tests that prove:
   `session_timezone`/`eth_start` parity.
 - OTF summaries / artifact metadata expose the effective `eth_start` and
   session timezone used for filtering.
+- WFO fold OTF and Validation `walk_forward_otf_filter` share
+  `resolve_otf_session_timezone()` so omitted session-exit timezone falls
+  back to exchange timezone in both filter execution and recorded metadata.
 - The regression suite proves both the corrected overnight path and unchanged
   disabled path.
 - The PR `Regression safety` section explicitly records that enabled Streamlit
