@@ -10,6 +10,7 @@ from thesistester.persistence import (
     get_active_dataset_id,
     load_dataset,
     load_raw_dataset,
+    load_subtimeframe_dataset,
 )
 from thesistester.timezone_display import ensure_display_timezone
 
@@ -18,7 +19,7 @@ BOOTSTRAP_MESSAGE_KEY = "_data_bootstrap_message"
 
 
 def restore_saved_dataset_provenance(dataset_id: str, metadata: dict[str, object]) -> None:
-    """Restore saved ingestion provenance and its optional raw capture sidecar."""
+    """Restore saved ingestion provenance and optional sidecars."""
     st.session_state["format_profile"] = metadata.get("format_profile", "canonical")
     raw_interval = metadata.get("raw_interval")
     if raw_interval is None:
@@ -39,6 +40,43 @@ def restore_saved_dataset_provenance(dataset_id: str, metadata: dict[str, object
         st.session_state.pop("raw_data", None)
     else:
         st.session_state["raw_data"] = raw_data
+
+    try:
+        subtimeframe_data = load_subtimeframe_dataset(dataset_id)
+    except (OSError, ValueError):
+        subtimeframe_data = None
+        st.session_state["subtimeframe_restore_warning"] = (
+            "Saved subtimeframe sidecar could not be read; canonical bars remain available."
+        )
+    else:
+        st.session_state.pop("subtimeframe_restore_warning", None)
+
+    if subtimeframe_data is None:
+        st.session_state.pop("subtimeframe_data", None)
+        st.session_state.pop("subtimeframe_interval", None)
+        st.session_state.pop("subtimeframe_format_profile", None)
+        st.session_state.pop("subtimeframe_fallback_parent_bars", None)
+    else:
+        st.session_state["subtimeframe_data"] = subtimeframe_data
+        interval = metadata.get("subtimeframe_interval")
+        if interval is None:
+            st.session_state.pop("subtimeframe_interval", None)
+        else:
+            st.session_state["subtimeframe_interval"] = interval
+        profile = metadata.get("subtimeframe_format_profile")
+        if profile is None:
+            st.session_state.pop("subtimeframe_format_profile", None)
+        else:
+            st.session_state["subtimeframe_format_profile"] = profile
+        st.session_state["subtimeframe_fallback_parent_bars"] = []
+
+    # Derive-mode provenance must not latch without a usable lower frame —
+    # otherwise the UI hides dual-upload while strict R12 has no source bars.
+    provenance = metadata.get("ingestion_provenance")
+    if isinstance(provenance, dict) and subtimeframe_data is not None:
+        st.session_state["ingestion_provenance"] = dict(provenance)
+    else:
+        st.session_state.pop("ingestion_provenance", None)
 
 
 def bootstrap_active_saved_dataset() -> bool:

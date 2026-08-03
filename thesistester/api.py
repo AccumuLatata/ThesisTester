@@ -32,10 +32,17 @@ from thesistester.analytics import (
 from thesistester.analytics.time_analysis import add_time_buckets, summarize_by_group
 from thesistester.analytics.otf_validation import run_otf_validation_matrix
 from thesistester.config import INSTRUMENTS
+from thesistester.data.derive import (
+    DERIVATION_POLICY_COMPLETE_ALIGNED_15S_TO_1M_V1,
+    INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+    build_derivation_provenance,
+    derive_complete_parent_ohlcv,
+)
 from thesistester.data.loader import format_interval, load_ohlcv, validate_ohlcv
 from thesistester.data.resample import resample_ohlcv
 from thesistester.data.rolls import detect_contract_column, validate_roll_metadata
 from thesistester.data.sessions import tag_session
+from thesistester.engine.intrabar import prepare_subtimeframe_context
 from thesistester.engine import (
     VALID_INTRABAR_MODELS,
     apply_configured_otf_filter,
@@ -262,10 +269,13 @@ _DATASET_KEYS = {
     "exchange_timezone",
     "format_profile",
     "subtimeframe_format_profile",
+    "ingestion_mode",
     # CAI-4 additive classic-export / artifact provenance (optional).
     "data_artifact_key",
     "data_identity",
 }
+_SUPPORTED_INGESTION_MODES = frozenset({"primary", INGESTION_MODE_15S_PRIMARY_DERIVE_1M})
+_DERIVE_15S_SUPPORTED_PROFILES = frozenset({"quantower_history_exporter"})
 _EXCURSION_KEYS = {
     "enabled",
     "group_cols",
@@ -500,6 +510,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         "exchange_timezone",
         "format_profile",
         "subtimeframe_format_profile",
+        "ingestion_mode",
     ):
         if key in dataset and dataset[key] is not None and not isinstance(dataset[key], str):
             raise ValueError(f"dataset.{key} must be a string or null")
@@ -518,6 +529,25 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         "quantower_history_exporter",
     }:
         raise ValueError("dataset.subtimeframe_format_profile is unsupported")
+    ingestion_mode = str(dataset.get("ingestion_mode") or "primary")
+    if ingestion_mode not in _SUPPORTED_INGESTION_MODES:
+        raise ValueError(
+            "dataset.ingestion_mode must be one of "
+            f"{sorted(_SUPPORTED_INGESTION_MODES)!r}, got {ingestion_mode!r}"
+        )
+    if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
+        if "subtimeframe_path" in dataset:
+            raise ValueError(
+                "dataset.subtimeframe_path cannot be combined with "
+                f"ingestion_mode={INGESTION_MODE_15S_PRIMARY_DERIVE_1M!r}"
+            )
+        format_profile = str(dataset.get("format_profile", "canonical"))
+        if format_profile not in _DERIVE_15S_SUPPORTED_PROFILES:
+            raise ValueError(
+                "dataset.format_profile must be one of "
+                f"{sorted(_DERIVE_15S_SUPPORTED_PROFILES)!r} when "
+                f"ingestion_mode={INGESTION_MODE_15S_PRIMARY_DERIVE_1M!r}"
+            )
     instrument = str(dataset.get("instrument", "ES"))
     _instrument(instrument)
 
@@ -869,11 +899,16 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     requested_intrabar_models = {backtest.get("intrabar_model", "sl_first")}
     if isinstance(grid, Mapping) and grid.get("enabled", True):
         requested_intrabar_models.add(grid.get("intrabar_model", "sl_first"))
-    if "subtimeframe" in requested_intrabar_models and "subtimeframe_path" not in dataset:
-        raise ValueError(
-            "dataset.subtimeframe_path is required when an enabled run section "
-            "uses intrabar_model='subtimeframe'"
+    if "subtimeframe" in requested_intrabar_models:
+        has_lower_source = (
+            "subtimeframe_path" in dataset or ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
         )
+        if not has_lower_source:
+            raise ValueError(
+                "dataset.subtimeframe_path is required when an enabled run section "
+                "uses intrabar_model='subtimeframe', unless dataset.ingestion_mode="
+                f"{INGESTION_MODE_15S_PRIMARY_DERIVE_1M!r}"
+            )
     walk_forward = run.get("walk_forward")
     if walk_forward is not None:
         walk_forward = _require_mapping(walk_forward, section="walk_forward")
@@ -2145,10 +2180,13 @@ def _load_experiment_data(
     dataset_config: Mapping[str, Any],
     cache_policy: str,
     store_root: str | Path | None,
+    ingestion_mode: str = "primary",
+    derivation_policy: str | None = None,
 ) -> tuple[pd.DataFrame, DataIdentity, dict[str, Any]]:
     """Load canonical data with optional verified artifact reuse."""
     policy = normalize_cache_policy(cache_policy)
     data_stage: dict[str, Any] = {"status": "bypassed", "policy": policy}
+    mode = str(ingestion_mode or "primary")
 
     if policy != "off":
         binding = read_source_data_binding(
@@ -2157,6 +2195,8 @@ def _load_experiment_data(
             source_timezone=source_timezone,
             exchange_timezone=exchange_timezone,
             format_profile=format_profile,
+            ingestion_mode=mode,
+            derivation_policy=derivation_policy,
             store_root=store_root,
         )
         if isinstance(binding, SourceDataBinding):
@@ -2183,6 +2223,8 @@ def _load_experiment_data(
                 source_timezone=source_timezone,
                 exchange_timezone=exchange_timezone,
                 format_profile=format_profile,
+                ingestion_mode=mode,
+                derivation_policy=derivation_policy,
                 store_root=store_root,
             )
         elif isinstance(binding, ArtifactMiss):
@@ -2216,6 +2258,8 @@ def _load_experiment_data(
             ingestion_meta={
                 "source_path": str(dataset_path),
                 "format_profile": format_profile,
+                "ingestion_mode": mode,
+                "derivation_policy": derivation_policy,
             },
             store_root=store_root,
         )
@@ -2226,6 +2270,8 @@ def _load_experiment_data(
             source_timezone=source_timezone,
             exchange_timezone=exchange_timezone,
             format_profile=format_profile,
+            ingestion_mode=mode,
+            derivation_policy=derivation_policy,
             store_root=store_root,
         )
         data_stage = {
@@ -2237,6 +2283,158 @@ def _load_experiment_data(
     elif policy == "read" and data_stage.get("status") == "bypassed":
         data_stage = {"status": "miss", "policy": policy, "reason": "missing"}
     return data, data_identity, data_stage
+
+
+def _load_15s_primary_experiment_data(
+    *,
+    dataset_path: Path,
+    instrument: str,
+    source_timezone: str | None,
+    exchange_timezone: str | None,
+    format_profile: str,
+    dataset_config: Mapping[str, Any],
+    cache_policy: str,
+    store_root: str | Path | None,
+) -> tuple[pd.DataFrame, pd.DataFrame, DataIdentity, dict[str, Any], dict[str, Any]]:
+    """Load a 15s source, derive complete 1m parents, and retain R12 source bars.
+
+    Always re-derives from the source file so incomplete minutes stay dropped and
+    provenance stays source-truthful. Source-index bindings include
+    ``ingestion_mode`` / ``derivation_policy`` so a legacy primary binding for
+    the same bytes cannot warm-cross into this path (or the reverse).
+    """
+    policy = normalize_cache_policy(cache_policy)
+    ingestion_mode = INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    derivation_policy = DERIVATION_POLICY_COMPLETE_ALIGNED_15S_TO_1M_V1
+    data_stage: dict[str, Any] = {"status": "bypassed", "policy": policy}
+    inst = _instrument(instrument)
+
+    source_raw = load_ohlcv(
+        Path(dataset_path),
+        source_tz=source_timezone,
+        target_tz=exchange_timezone or inst.exchange_tz,
+        format_profile=format_profile,
+    )
+    source_report = validate_ohlcv(source_raw)
+    fatal_codes = {
+        "duplicate_timestamps",
+        "missing_values",
+        "high_below_low",
+        "open_close_outside_range",
+        "negative_volume",
+    }
+    fatal_messages = [issue.message for issue in source_report.issues if issue.code in fatal_codes]
+    if fatal_messages:
+        raise ValueError("15-second source validation failed: " + "; ".join(fatal_messages))
+
+    derived = derive_complete_parent_ohlcv(source_raw)
+    parent_report = validate_ohlcv(derived.parent_data)
+    parent_fatal = [issue.message for issue in parent_report.issues if issue.code in fatal_codes]
+    if parent_fatal:
+        raise ValueError("Derived one-minute validation failed: " + "; ".join(parent_fatal))
+
+    parent = tag_session(derived.parent_data, instrument)
+    source = tag_session(derived.source_data, instrument)
+    prepare_subtimeframe_context(
+        parent,
+        source,
+        tick_size=inst.tick_size,
+    )
+    provenance = build_derivation_provenance(derived, format_profile=format_profile)
+    base_interval = format_interval(derived.parent_interval)
+    data_identity = DataIdentity.from_run_spec(
+        parent,
+        dataset_config=dataset_config,
+        base_interval=base_interval,
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
+    )
+
+    if policy != "off":
+        binding = read_source_data_binding(
+            source_path=dataset_path,
+            instrument=instrument,
+            source_timezone=source_timezone,
+            exchange_timezone=exchange_timezone,
+            format_profile=format_profile,
+            ingestion_mode=ingestion_mode,
+            derivation_policy=derivation_policy,
+            store_root=store_root,
+        )
+        if isinstance(binding, SourceDataBinding):
+            artifact = read_verified_data_artifact(binding.identity, store_root=store_root)
+            if isinstance(artifact, DataArtifact):
+                data_stage = {
+                    "status": "hit",
+                    "policy": policy,
+                    "binding_key": binding.binding_key,
+                    "artifact_key": artifact.artifact_key,
+                }
+                # Prefer the verified artifact frame when identity matches; the
+                # freshly derived parent remains the R12 reconcile authority.
+                if binding.identity.dataset_id() == data_identity.dataset_id():
+                    parent = artifact.data
+                    data_identity = binding.identity
+                return parent, source, data_identity, data_stage, provenance
+            data_stage = {
+                "status": "miss",
+                "policy": policy,
+                "reason": artifact.reason
+                if isinstance(artifact, ArtifactMiss)
+                else "artifact_miss",
+                "binding_key": binding.binding_key,
+            }
+            invalidate_source_data_binding(
+                source_path=dataset_path,
+                instrument=instrument,
+                source_timezone=source_timezone,
+                exchange_timezone=exchange_timezone,
+                format_profile=format_profile,
+                ingestion_mode=ingestion_mode,
+                derivation_policy=derivation_policy,
+                store_root=store_root,
+            )
+        elif isinstance(binding, ArtifactMiss):
+            data_stage = {
+                "status": "miss",
+                "policy": policy,
+                "reason": binding.reason,
+                "detail": binding.detail,
+            }
+
+    if policy == "read_write":
+        write_data_artifact(
+            data_identity,
+            parent,
+            ingestion_meta={
+                "source_path": str(dataset_path),
+                "format_profile": format_profile,
+                "ingestion_mode": ingestion_mode,
+                "derivation_policy": derivation_policy,
+                "ingestion_provenance": provenance,
+            },
+            store_root=store_root,
+        )
+        write_source_data_binding(
+            source_path=dataset_path,
+            identity=data_identity,
+            instrument=instrument,
+            source_timezone=source_timezone,
+            exchange_timezone=exchange_timezone,
+            format_profile=format_profile,
+            ingestion_mode=ingestion_mode,
+            derivation_policy=derivation_policy,
+            store_root=store_root,
+        )
+        data_stage = {
+            "status": "written",
+            "policy": policy,
+            "reason": data_stage.get("reason"),
+            "detail": data_stage.get("detail"),
+        }
+    elif policy == "read" and data_stage.get("status") == "bypassed":
+        data_stage = {"status": "miss", "policy": policy, "reason": "missing"}
+    return parent, source, data_identity, data_stage, provenance
 
 
 def run_experiment(
@@ -2268,30 +2466,48 @@ def run_experiment(
     format_profile = str(dataset_config.get("format_profile", "canonical"))
     origin = normalize_execution_origin(execution_origin)
     policy = normalize_cache_policy(cache_policy)
+    ingestion_mode = str(dataset_config.get("ingestion_mode") or "primary")
+    ingestion_provenance: dict[str, Any] | None = None
 
-    data, data_identity, data_stage = _load_experiment_data(
-        dataset_path=dataset_path,
-        instrument=instrument,
-        source_timezone=source_timezone,
-        exchange_timezone=exchange_timezone,
-        format_profile=format_profile,
-        dataset_config=dataset_config,
-        cache_policy=policy,
-        store_root=store_root,
-    )
     subtimeframe_data: pd.DataFrame | None = None
-    subtimeframe_path_value = dataset_config.get("subtimeframe_path")
-    if subtimeframe_path_value is not None:
-        subtimeframe_path = Path(subtimeframe_path_value)
-        if not subtimeframe_path.is_absolute():
-            subtimeframe_path = Path(base_directory) / subtimeframe_path
-        subtimeframe_data = load_dataset(
-            subtimeframe_path,
+    if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
+        data, subtimeframe_data, data_identity, data_stage, ingestion_provenance = (
+            _load_15s_primary_experiment_data(
+                dataset_path=dataset_path,
+                instrument=instrument,
+                source_timezone=source_timezone,
+                exchange_timezone=exchange_timezone,
+                format_profile=format_profile,
+                dataset_config=dataset_config,
+                cache_policy=policy,
+                store_root=store_root,
+            )
+        )
+    else:
+        data, data_identity, data_stage = _load_experiment_data(
+            dataset_path=dataset_path,
             instrument=instrument,
             source_timezone=source_timezone,
             exchange_timezone=exchange_timezone,
-            format_profile=str(dataset_config.get("subtimeframe_format_profile", "canonical")),
+            format_profile=format_profile,
+            dataset_config=dataset_config,
+            cache_policy=policy,
+            store_root=store_root,
+            ingestion_mode="primary",
+            derivation_policy=None,
         )
+        subtimeframe_path_value = dataset_config.get("subtimeframe_path")
+        if subtimeframe_path_value is not None:
+            subtimeframe_path = Path(subtimeframe_path_value)
+            if not subtimeframe_path.is_absolute():
+                subtimeframe_path = Path(base_directory) / subtimeframe_path
+            subtimeframe_data = load_dataset(
+                subtimeframe_path,
+                instrument=instrument,
+                source_timezone=source_timezone,
+                exchange_timezone=exchange_timezone,
+                format_profile=str(dataset_config.get("subtimeframe_format_profile", "canonical")),
+            )
     base_interval = data_identity.base_interval or format_interval(
         validate_ohlcv(data).inferred_interval
     )
@@ -2404,9 +2620,14 @@ def run_experiment(
         subtimeframe_report = validate_ohlcv(subtimeframe_data)
         state["subtimeframe_data"] = subtimeframe_data
         state["subtimeframe_interval"] = format_interval(subtimeframe_report.inferred_interval)
-        state["subtimeframe_format_profile"] = str(
-            dataset_config.get("subtimeframe_format_profile", "canonical")
-        )
+        if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
+            state["subtimeframe_format_profile"] = format_profile
+        else:
+            state["subtimeframe_format_profile"] = str(
+                dataset_config.get("subtimeframe_format_profile", "canonical")
+            )
+    if ingestion_provenance is not None:
+        state["ingestion_provenance"] = dict(ingestion_provenance)
 
     grid_config = run.get("grid")
     grid_settings: dict[str, Any] = {}

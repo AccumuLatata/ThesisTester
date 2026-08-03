@@ -67,7 +67,9 @@ _MANAGED_RESEARCH_KEYS = {
     "data",
     "subtimeframe_data",
     "subtimeframe_interval",
+    "subtimeframe_format_profile",
     "subtimeframe_fallback_parent_bars",
+    "ingestion_provenance",
     "dataset_id",
     "instrument",
     "base_interval",
@@ -351,18 +353,31 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
         subtimeframe_data = session_state.get("subtimeframe_data")
         if _is_dataframe(subtimeframe_data):
             files["subtimeframe_data.parquet"] = _to_parquet_bytes(subtimeframe_data)
-            files["subtimeframe_meta.json"] = _to_json_bytes(
+            subtimeframe_meta: dict[str, Any] = {
+                "subtimeframe_interval": session_state.get("subtimeframe_interval"),
+                "subtimeframe_fallback_parent_bars": session_state.get(
+                    "subtimeframe_fallback_parent_bars"
+                ),
+                "subtimeframe_duplicate_resolution": session_state.get(
+                    "subtimeframe_duplicate_resolution"
+                ),
+            }
+            if session_state.get("subtimeframe_format_profile") is not None:
+                subtimeframe_meta["subtimeframe_format_profile"] = session_state.get(
+                    "subtimeframe_format_profile"
+                )
+            provenance = session_state.get("ingestion_provenance")
+            if isinstance(provenance, Mapping):
+                subtimeframe_meta["ingestion_provenance"] = dict(provenance)
+            files["subtimeframe_meta.json"] = _to_json_bytes(subtimeframe_meta)
+            included_keys.update(
                 {
-                    "subtimeframe_interval": session_state.get("subtimeframe_interval"),
-                    "subtimeframe_fallback_parent_bars": session_state.get(
-                        "subtimeframe_fallback_parent_bars"
-                    ),
-                    "subtimeframe_duplicate_resolution": session_state.get(
-                        "subtimeframe_duplicate_resolution"
-                    ),
+                    "subtimeframe_data",
+                    "subtimeframe_interval",
+                    "subtimeframe_format_profile",
+                    "ingestion_provenance",
                 }
             )
-            included_keys.update({"subtimeframe_data", "subtimeframe_interval"})
 
     levels = session_state.get("levels")
     session_levels = session_state.get("session_levels")
@@ -660,6 +675,13 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
                     session_values["subtimeframe_duplicate_resolution"] = subtimeframe_meta[
                         "subtimeframe_duplicate_resolution"
                     ]
+                if "subtimeframe_format_profile" in subtimeframe_meta:
+                    session_values["subtimeframe_format_profile"] = subtimeframe_meta[
+                        "subtimeframe_format_profile"
+                    ]
+                provenance = subtimeframe_meta.get("ingestion_provenance")
+                if isinstance(provenance, Mapping):
+                    session_values["ingestion_provenance"] = dict(provenance)
 
         # Older CAI-1 bundles may omit format_profile from dataset_meta while
         # still carrying it on data_identity (top-level or nested-promoted).
