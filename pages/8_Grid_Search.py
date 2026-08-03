@@ -523,6 +523,30 @@ if grid_costs.get("commission_per_side", 0.0) > 0.0 or grid_costs.get("slippage_
 else:
     st.caption("Grid metrics are gross with zero execution costs.")
 
+_grid_otf = st.session_state.get("grid_otf_filter") or {}
+_grid_otf_enabled = bool(_grid_otf.get("otf_filter_enabled", False))
+_grid_otf_config = _grid_otf.get("otf_filter_config") or {}
+_grid_otf_tfs = (
+    _grid_otf_config.get("timeframes", []) if isinstance(_grid_otf_config, dict) else []
+)
+if _grid_otf_enabled:
+    st.info(
+        "🔎 **OTF filter applied once before the SL/TP grid** — "
+        f"timeframes: {', '.join(_grid_otf_tfs) or '—'} · "
+        f"session tz: {_grid_otf.get('session_timezone') or '—'} · "
+        f"eth_start: {_grid_otf.get('eth_start') or '—'} · "
+        f"candidates: {_grid_otf.get('candidate_signal_count', '—')} · "
+        f"accepted: {_grid_otf.get('otf_accepted_signal_count', '—')} · "
+        f"rejected: {_grid_otf.get('otf_rejected_signal_count', '—')}. "
+        "Every grid cell uses the same accepted signal set. "
+        "Config provenance follows signal-run → setup snapshot → last setup → active setup."
+    )
+else:
+    st.caption(
+        "OTF filter: **disabled** for this grid — all candidate signals passed through "
+        "to every SL/TP cell."
+    )
+
 
 def _fmt(v, fmt=".2f", fallback="—"):
     if v is None:
