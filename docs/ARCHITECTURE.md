@@ -81,6 +81,7 @@ content-addressed artifact namespace under
 |---|---|
 | `execution_artifacts/v1/data/<data_key>/` | `data.parquet`, `identity.json`, `ingestion_meta.json`, `manifest.json` |
 | `execution_artifacts/v1/levels/<levels_key>/` | `levels.parquet`, `session_levels.parquet`, `levels_settings.json`, `identity.json`, `manifest.json` |
+| `execution_artifacts/v1/source_index/<binding_key>.json` | Source-bytes → data-artifact binding (CAI-3 warm CSV skip) |
 | `execution_artifacts/v1/locks/` | Per-identity exclusive lock files |
 
 Keys derive from `DataIdentity` / `LevelsIdentity` (data keys include
@@ -91,8 +92,27 @@ artifact. `read_verified_*` returns `ArtifactMiss` for missing, corrupt
 incomplete, schema-drift, engine-incompatible, or path-escape cases and never
 raises those conditions into a cold compute path.
 
-CAI-2 does **not** wire the store into `run_experiment`, Streamlit pages, CLI,
-or Assistant tools. CAI-3 adds explicit cache policy and verified reuse.
+### Cached headless reuse (CAI-3)
+
+`run_experiment` / `compute_levels` accept keyword-only `cache_policy`
+(`off` default, `read`, `read_write`) and optional `store_root`.
+CLI and Assistant opt into `read_write`.
+
+Warm data reuse resolves
+`execution_artifacts/v1/source_index/<binding_key>.json` from
+`(source file SHA-256, instrument, source/exchange timezone, format_profile)`,
+then `read_verified_data_artifact`. Warm levels reuse
+`read_verified_levels_artifact` for the normalized `LevelsIdentity`.
+Misses (corrupt, incomplete, schema/engine drift, stale source, settings
+change) fall through to cold load/compute and, under `read_write`, republish.
+
+Run state and Assistant provenance expose `cache_provenance`
+(`outcome`: `bypassed|cold|data_hit|levels_hit`). Confirmed Assistant runs
+persist it on the thesis run record so provenance cards can show cold vs warm
+outcomes. It is a managed session/provenance key cleared on bundle import and
+is **not** written into hashed bundle members, so cold and warm runs keep equal
+canonical bundle hashes. Classic Streamlit session DataFrames are never a cache
+source.
 
 ## AI Research Assistant contract boundary (AIA-0)
 
@@ -541,7 +561,7 @@ Signals robustness notes:
 - Levels: `.thesistester_store/levels/<dataset_id>/<levels_settings_hash>/`
 - Signal runs: `.thesistester_store/signals/<dataset_id>/<levels_settings_hash>/<signal_settings_hash>/`
 - Setups: `.thesistester_store/setups/<setup_id>/meta.json`
-- Execution artifacts (CAI-2, internal): `.thesistester_store/execution_artifacts/v1/{data,levels,locks}/`
+- Execution artifacts (CAI-2/3, internal): `.thesistester_store/execution_artifacts/v1/{data,levels,source_index,locks}/`
 - UI state (active dataset, execution defaults): `.thesistester_store/ui_state.json`
 
 ### `ui_state.json` namespaces

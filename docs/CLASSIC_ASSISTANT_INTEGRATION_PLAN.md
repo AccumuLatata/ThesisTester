@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** proposed implementation contract; `CAI-0` through `CAI-2` implemented.
+**Status:** proposed implementation contract; `CAI-0` through `CAI-3` implemented.
 
 **Owner model:** one trusted local user, local datasets, local execution.
 
@@ -354,7 +354,7 @@ These rules are non-negotiable for every milestone.
 - No page or pipeline consumes the artifact store automatically yet.
 - Failure to read an artifact never fails a valid cold computation.
 
-### CAI-3 — Cached headless pipeline parity
+### CAI-3 — Cached headless pipeline parity ✅ Implemented
 
 **Goal:** let the public API reuse verified data/levels artifacts without
 changing research semantics.
@@ -370,6 +370,22 @@ changing research semantics.
   3. execute signals/backtest/validation exactly as today.
 - Include cache outcome and identities in bundle provenance.
 - Do not use the classic session DataFrames as a cache source.
+
+**Implemented contract**
+
+- `run_experiment(..., cache_policy="off"|"read"|"read_write", store_root=...)`
+  and `compute_levels(..., cache_policy=..., data_identity=..., store_root=...)`.
+  Public default remains ``off`` (legacy cold).
+- CLI and Assistant pass ``cache_policy="read_write"``.
+- Source binding index under
+  `execution_artifacts/v1/source_index/<binding_key>.json` maps
+  `(source_bytes_hash, instrument, timezones, format_profile)` →
+  `DataIdentity` / data artifact key so warm runs skip CSV parsing.
+- State/provenance field `cache_provenance` reports
+  `{policy, outcome, data, levels}` with outcomes
+  `bypassed|cold|data_hit|levels_hit`. It is cleared on bundle import and
+  excluded from hashed bundle members so cold/warm hashes match.
+- Tests: `tests/test_cai3_cached_pipeline.py`.
 
 **Regression gates**
 

@@ -79,18 +79,21 @@ def _execute_run(
         run_spec,
         base_directory=base_directory,
         execution_origin="cli",
+        cache_policy="read_write",
     )
     bundle = build_research_bundle(state)
     summary = state.get("trade_summary") or {}
     best = state.get("best_grid_result") or {}
     validation = state.get("validation_summary") or {}
     walk_forward = state.get("walk_forward_summary") or {}
+    cache_provenance = state.get("cache_provenance") or {}
     index_row = {
         "run_name": name,
         "bundle_hash": canonical_bundle_hash(bundle),
         "dataset_id": state.get("dataset_id"),
         "instrument": state.get("instrument"),
         "execution_origin": state.get("execution_origin", "cli"),
+        "cache_outcome": cache_provenance.get("outcome"),
         "trade_count": summary.get("trade_count"),
         "expectancy_r": summary.get("expectancy_r"),
         "total_r": summary.get("total_r"),

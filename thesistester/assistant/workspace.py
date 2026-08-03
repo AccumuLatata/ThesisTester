@@ -787,6 +787,10 @@ def build_provenance_card(run: Mapping[str, Any]) -> dict[str, Any]:
         "seeds": provenance.get("seeds"),
         "resource_limits": provenance.get("resource_limits"),
         "resolved_paths": provenance.get("resolved_paths"),
+        "cache_provenance": provenance.get("cache_provenance"),
+        "cache_outcome": (provenance.get("cache_provenance") or {}).get("outcome")
+        if isinstance(provenance.get("cache_provenance"), Mapping)
+        else provenance.get("cache_outcome"),
     }
 
 

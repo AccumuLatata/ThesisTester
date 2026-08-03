@@ -1,8 +1,8 @@
-"""Internal execution-artifact store for canonical data and levels (CAI-2).
+"""Internal execution-artifact store for canonical data and levels (CAI-2/3).
 
 This namespace is separate from user-facing datasets/ and levels/ snapshots.
-Nothing in the headless API or Streamlit pages consumes it automatically yet;
-CAI-3 wires verified reuse into ``run_experiment`` / ``compute_levels``.
+CAI-3 wires verified reuse into ``run_experiment`` / ``compute_levels`` behind
+an explicit cache policy (default off).
 
 Read APIs never raise for corrupt or incompatible artifacts — they return
 :class:`ArtifactMiss` so callers can fall through to a cold computation.
@@ -53,9 +53,12 @@ LEVELS_PARQUET_FILENAME = "levels.parquet"
 SESSION_LEVELS_PARQUET_FILENAME = "session_levels.parquet"
 LEVELS_SETTINGS_FILENAME = "levels_settings.json"
 INGESTION_META_FILENAME = "ingestion_meta.json"
+SOURCE_BINDING_KIND = "execution_source_binding"
 
 _DATA_KIND = "execution_data_artifact"
 _LEVELS_KIND = "execution_levels_artifact"
+CACHE_POLICIES = frozenset({"off", "read", "read_write"})
+CACHE_OUTCOMES = frozenset({"bypassed", "cold", "data_hit", "levels_hit"})
 
 _MISS_MISSING = "missing"
 _MISS_CORRUPT_MANIFEST = "corrupt_manifest"
@@ -682,3 +685,244 @@ def resolve_contained_artifact_path(
     if contained is None:
         return ArtifactMiss(_MISS_PATH_ESCAPE, detail=str(candidate))
     return contained
+
+
+def normalize_cache_policy(policy: str | None) -> str:
+    """Return a supported cache policy; unknown values become ``off``."""
+    if policy is None:
+        return "off"
+    text = str(policy).strip().lower()
+    if text in {"legacy", "none", "bypass", "disabled"}:
+        return "off"
+    if text in CACHE_POLICIES:
+        return text
+    return "off"
+
+
+def source_content_hash(path: str | Path) -> str:
+    """Return a SHA-256 digest of raw source file bytes."""
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def source_binding_key(
+    *,
+    source_content_hash_value: str,
+    instrument: str,
+    source_timezone: str | None,
+    exchange_timezone: str | None,
+    format_profile: str,
+) -> str:
+    """Key for mapping source bytes + ingest contract → data artifact."""
+    payload = {
+        "kind": SOURCE_BINDING_KIND,
+        "artifact_schema_version": DATA_ARTIFACT_SCHEMA_VERSION,
+        "source_content_hash": source_content_hash_value,
+        "instrument": instrument,
+        "source_timezone": source_timezone,
+        "exchange_timezone": exchange_timezone,
+        "format_profile": format_profile,
+    }
+    return hashlib.sha256(_stable_json_bytes(payload)).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class SourceDataBinding:
+    """Resolved source-file binding to a canonical data artifact identity."""
+
+    binding_key: str
+    source_content_hash: str
+    identity: DataIdentity
+    data_artifact_key: str
+
+
+def _source_binding_path(binding_key: str, *, artifacts_root: Path) -> Path:
+    return artifacts_root / "source_index" / f"{binding_key}.json"
+
+
+def read_source_data_binding(
+    *,
+    source_path: str | Path,
+    instrument: str,
+    source_timezone: str | None,
+    exchange_timezone: str | None,
+    format_profile: str = "canonical",
+    store_root: str | Path | None = None,
+) -> SourceDataBinding | ArtifactMiss:
+    """Resolve a verified source binding, or miss when absent/corrupt/stale."""
+    path = Path(source_path)
+    if not path.is_file():
+        return ArtifactMiss(_MISS_MISSING, detail="source_path")
+    try:
+        content_hash = source_content_hash(path)
+    except OSError as exc:
+        return ArtifactMiss(_MISS_INCOMPLETE, detail=str(exc))
+
+    artifacts_root = get_execution_artifacts_root(store_root)
+    key = source_binding_key(
+        source_content_hash_value=content_hash,
+        instrument=instrument,
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
+        format_profile=format_profile,
+    )
+    binding_path = _source_binding_path(key, artifacts_root=artifacts_root)
+    contained = _contain_path(binding_path, root=artifacts_root)
+    if contained is None:
+        return ArtifactMiss(_MISS_PATH_ESCAPE, detail=str(binding_path))
+    if not contained.exists():
+        return ArtifactMiss(_MISS_MISSING, detail="source_binding")
+
+    lock = _lock_path("source", key, artifacts_root=artifacts_root)
+    with _identity_lock(lock):
+        try:
+            payload = _read_json(contained)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            return ArtifactMiss(_MISS_CORRUPT_MANIFEST, detail=str(exc))
+        if payload.get("kind") != SOURCE_BINDING_KIND:
+            return ArtifactMiss(_MISS_CORRUPT_MANIFEST, detail="kind")
+        schema_version = _try_int(payload.get("artifact_schema_version", -1))
+        if schema_version is None:
+            return ArtifactMiss(
+                _MISS_CORRUPT_MANIFEST,
+                detail=f"artifact_schema_version={payload.get('artifact_schema_version')!r}",
+            )
+        if schema_version != DATA_ARTIFACT_SCHEMA_VERSION:
+            return ArtifactMiss(
+                _MISS_SCHEMA_DRIFT,
+                detail=f"artifact_schema_version={payload.get('artifact_schema_version')}",
+            )
+        if payload.get("source_content_hash") != content_hash:
+            return ArtifactMiss(_MISS_CONTENT_MISMATCH, detail="source_content_hash")
+        identity = DataIdentity.from_dict(payload.get("identity"))
+        artifact_key = payload.get("data_artifact_key")
+        if identity is None or not isinstance(artifact_key, str) or not artifact_key:
+            return ArtifactMiss(_MISS_CORRUPT_MANIFEST, detail="identity")
+        if data_artifact_key(identity) != artifact_key:
+            return ArtifactMiss(_MISS_IDENTITY_MISMATCH, detail="data_artifact_key")
+        return SourceDataBinding(
+            binding_key=key,
+            source_content_hash=content_hash,
+            identity=identity,
+            data_artifact_key=artifact_key,
+        )
+
+
+def write_source_data_binding(
+    *,
+    source_path: str | Path,
+    identity: DataIdentity,
+    instrument: str,
+    source_timezone: str | None,
+    exchange_timezone: str | None,
+    format_profile: str = "canonical",
+    store_root: str | Path | None = None,
+) -> SourceDataBinding:
+    """Persist a source-bytes → data-artifact binding for warm CSV skip."""
+    path = Path(source_path)
+    content_hash = source_content_hash(path)
+    artifacts_root = get_execution_artifacts_root(store_root)
+    key = source_binding_key(
+        source_content_hash_value=content_hash,
+        instrument=instrument,
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
+        format_profile=format_profile,
+    )
+    artifact_key = data_artifact_key(identity)
+    binding_path = _source_binding_path(key, artifacts_root=artifacts_root)
+    contained_parent = _contain_path(binding_path.parent, root=artifacts_root)
+    if contained_parent is None:
+        raise ValueError(f"Source binding path escapes artifact root: {binding_path}")
+
+    payload = {
+        "kind": SOURCE_BINDING_KIND,
+        "artifact_schema_version": DATA_ARTIFACT_SCHEMA_VERSION,
+        "binding_key": key,
+        "source_content_hash": content_hash,
+        "instrument": instrument,
+        "source_timezone": source_timezone,
+        "exchange_timezone": exchange_timezone,
+        "format_profile": format_profile,
+        "data_artifact_key": artifact_key,
+        "identity": identity.to_dict(),
+        "created_at": _utcnow_iso(),
+        "app_version": __version__,
+    }
+    lock = _lock_path("source", key, artifacts_root=artifacts_root)
+    with _identity_lock(lock):
+        binding_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = binding_path.with_suffix(f".tmp.{os.getpid()}.json")
+        try:
+            _write_json(temp_path, payload)
+            _fsync_file(temp_path)
+            os.replace(temp_path, binding_path)
+            _fsync_dir(binding_path.parent)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink(missing_ok=True)
+    return SourceDataBinding(
+        binding_key=key,
+        source_content_hash=content_hash,
+        identity=identity,
+        data_artifact_key=artifact_key,
+    )
+
+
+def invalidate_source_data_binding(
+    *,
+    source_path: str | Path,
+    instrument: str,
+    source_timezone: str | None,
+    exchange_timezone: str | None,
+    format_profile: str = "canonical",
+    store_root: str | Path | None = None,
+) -> bool:
+    """Remove a source binding when present."""
+    path = Path(source_path)
+    if not path.is_file():
+        return False
+    try:
+        content_hash = source_content_hash(path)
+    except OSError:
+        return False
+    artifacts_root = get_execution_artifacts_root(store_root)
+    key = source_binding_key(
+        source_content_hash_value=content_hash,
+        instrument=instrument,
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
+        format_profile=format_profile,
+    )
+    binding_path = _source_binding_path(key, artifacts_root=artifacts_root)
+    contained = _contain_path(binding_path, root=artifacts_root)
+    if contained is None:
+        return False
+    lock = _lock_path("source", key, artifacts_root=artifacts_root)
+    with _identity_lock(lock):
+        if not contained.exists():
+            return False
+        contained.unlink()
+        return True
+
+
+def summarize_cache_outcome(
+    *,
+    policy: str,
+    data_status: str,
+    levels_status: str,
+) -> str:
+    """Aggregate per-stage cache statuses into a provenance outcome."""
+    if normalize_cache_policy(policy) == "off":
+        return "bypassed"
+    if levels_status == "hit":
+        return "levels_hit"
+    if data_status == "hit":
+        return "data_hit"
+    return "cold"
