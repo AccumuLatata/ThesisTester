@@ -102,6 +102,28 @@ def test_missing_source_path_is_explicit_gap_even_with_artifact(tmp_path: Path):
         classic_state_to_run_spec(state, name="x", store_root=store)
 
 
+def test_corrupt_artifact_falls_back_to_verified_source_path(tmp_path: Path):
+    store = tmp_path / "store"
+    state = _classic_state_from_parity(tmp_path)
+    identity = DataIdentity.from_loaded_data(
+        state["data"],
+        instrument="ES",
+        base_interval="1min",
+        source_timezone="America/New_York",
+        exchange_timezone="America/New_York",
+    )
+    written = write_data_artifact(identity, state["data"], store_root=store)
+    (written.path / "manifest.json").write_text("{not-json", encoding="utf-8")
+
+    gaps = classic_state_export_gaps(state, store_root=store)
+    codes = {gap.code for gap in gaps}
+    assert "data_artifact_unusable" not in codes
+    exported = classic_state_to_run_spec(state, name="fallback", store_root=store)
+    assert exported["dataset"]["path"] == str(tmp_path / "bars.csv")
+    assert "data_artifact_key" not in exported["dataset"]
+    assert exported["dataset"]["data_identity"]["dataset_id"] == state["dataset_id"]
+
+
 def test_source_path_identity_mismatch_is_gap(tmp_path: Path):
     state = _classic_state_from_parity(tmp_path)
     other = tmp_path / "other.csv"

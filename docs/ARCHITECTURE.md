@@ -129,8 +129,9 @@ snapshots or `backtest_config`). Missing parameters are never invented.
 Source strategy: prefer a verified execution data artifact
 (`dataset.data_artifact_key`); always require an explicit CSV path
 (`source_path` / `dataset_source_path` / `source_csv_path`) verified against
-classic `DataIdentity`. CAI-4 does not wire UI buttons or thesis attachment
-(CAI-5/CAI-6).
+classic `DataIdentity`. Corrupt/incomplete preferred artifacts are omitted and
+export falls back to the verified CSV path rather than blocking. CAI-4 does not
+wire UI buttons or thesis attachment (CAI-5/CAI-6).
 
 ## AI Research Assistant contract boundary (AIA-0)
 

@@ -352,17 +352,14 @@ def _dataset_section(
         dataset["exchange_timezone"] = identity.exchange_timezone
 
     artifact = read_verified_data_artifact(identity, store_root=store_root)
+    artifact_unusable: ArtifactMiss | None = None
     if isinstance(artifact, DataArtifact):
         dataset[DATASET_ARTIFACT_KEY] = artifact.artifact_key
         dataset[DATASET_IDENTITY_KEY] = identity.to_dict()
     elif isinstance(artifact, ArtifactMiss) and artifact.reason not in {"missing"}:
-        gaps.append(
-            _gap(
-                "data_artifact_unusable",
-                f"Preferred data artifact is present but not verified ({artifact.reason}).",
-                DATASET_ARTIFACT_KEY,
-            )
-        )
+        # Corrupt/incomplete preferred artifacts must not block export when a
+        # verified CSV source_path can satisfy CAI-4's required path fallback.
+        artifact_unusable = artifact
 
     if source_path is None:
         if DATASET_ARTIFACT_KEY in dataset:
@@ -376,6 +373,15 @@ def _dataset_section(
                 )
             )
         else:
+            if artifact_unusable is not None:
+                gaps.append(
+                    _gap(
+                        "data_artifact_unusable",
+                        "Preferred data artifact is present but not verified "
+                        f"({artifact_unusable.reason}), and no source CSV path was provided.",
+                        DATASET_ARTIFACT_KEY,
+                    )
+                )
             gaps.append(
                 _gap(
                     "missing_source_reference",
@@ -391,6 +397,8 @@ def _dataset_section(
         gaps.append(path_gap)
         return None, gaps
 
+    # Valid CSV path: export proceeds. Omit unusable artifact metadata rather
+    # than failing the whole classic→RunSpec handoff.
     dataset["path"] = source_path
     dataset[DATASET_IDENTITY_KEY] = identity.to_dict()
 
