@@ -21,6 +21,7 @@ from thesistester.assistant import (
 )
 from thesistester.assistant.tools import AssistantTools
 from thesistester.assistant.workspace import (
+    build_provenance_card,
     merge_execution_controls,
     merge_grid_controls,
     merge_level_controls,
@@ -722,6 +723,17 @@ def test_orchestrator_facade_restores_failed_cancelled_and_bundle_handoff(tmp_pa
     )
     assert completed.status == "completed"
     run = repository.get_run(thesis.thesis_id, completed.payload["run_id"])
+    assert isinstance(run.provenance, dict)
+    assert isinstance(run.provenance.get("cache_provenance"), dict)
+    assert run.provenance["cache_provenance"].get("outcome") in {
+        "bypassed",
+        "cold",
+        "data_hit",
+        "levels_hit",
+    }
+    card = build_provenance_card(run.to_dict())
+    assert card["cache_provenance"] == run.provenance["cache_provenance"]
+    assert card["cache_outcome"] == run.provenance["cache_provenance"]["outcome"]
     session_state: dict = {"stale": 1}
     session_state["assistant_validated_run_spec"] = {
         "choices": {"dataset": {"path": "stale.csv"}},

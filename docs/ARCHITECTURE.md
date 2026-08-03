@@ -107,10 +107,12 @@ Misses (corrupt, incomplete, schema/engine drift, stale source, settings
 change) fall through to cold load/compute and, under `read_write`, republish.
 
 Run state and Assistant provenance expose `cache_provenance`
-(`outcome`: `bypassed|cold|data_hit|levels_hit`). It is a managed
-session/provenance key cleared on bundle import and is **not** written into
-hashed bundle members, so cold and warm runs keep equal canonical bundle
-hashes. Classic Streamlit session DataFrames are never a cache source.
+(`outcome`: `bypassed|cold|data_hit|levels_hit`). Confirmed Assistant runs
+persist it on the thesis run record so provenance cards can show cold vs warm
+outcomes. It is a managed session/provenance key cleared on bundle import and
+is **not** written into hashed bundle members, so cold and warm runs keep equal
+canonical bundle hashes. Classic Streamlit session DataFrames are never a cache
+source.
 
 ## AI Research Assistant contract boundary (AIA-0)
 

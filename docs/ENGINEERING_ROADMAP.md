@@ -131,7 +131,8 @@ explicit cache policy without changing research semantics.
 - CLI and Assistant use ``read_write``.
 - Source-bytes binding index enables warm CSV skip; levels artifacts skip
   recomputation on exact `LevelsIdentity` hit.
-- `cache_provenance` on run state / Assistant provenance
+- `cache_provenance` on run state / Assistant tool results and persisted thesis
+  run provenance (for provenance cards)
   (`bypassed|cold|data_hit|levels_hit`); excluded from canonical bundle hash.
 
 ### Regression safety

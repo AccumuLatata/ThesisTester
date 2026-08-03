@@ -146,6 +146,10 @@ def test_bundle_execution_records_canonical_provenance(tmp_path, monkeypatch):
         "thesistester.assistant.tools._run_experiment",
         lambda value, base_directory, **kwargs: {
             "execution_origin": kwargs.get("execution_origin", "assistant"),
+            "cache_provenance": {
+                "policy": kwargs.get("cache_policy", "read_write"),
+                "outcome": "cold",
+            },
         },
     )
     monkeypatch.setattr(
@@ -162,6 +166,7 @@ def test_bundle_execution_records_canonical_provenance(tmp_path, monkeypatch):
     assert (root / "run.research.zip").read_bytes() == b"bundle"
     assert result["canonical_bundle_hash"] == "hash"
     assert result["execution_origin"] == "assistant"
+    assert result["cache_provenance"]["outcome"] == "cold"
 
 
 def test_analyze_bundle_portfolio_verifies_expected_hashes(tmp_path, monkeypatch):

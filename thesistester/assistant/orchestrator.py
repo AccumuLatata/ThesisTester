@@ -435,6 +435,9 @@ class AssistantOrchestrator:
                 "resolved_paths": result.get("resolved_paths"),
                 "resource_limits": result.get("resource_limits"),
                 "seeds": result.get("seeds"),
+                # CAI-3: persist cold/warm cache outcome for provenance cards.
+                "cache_provenance": result.get("cache_provenance"),
+                "execution_origin": result.get("execution_origin"),
             }
             # Never mark a run completed before its portable bundle is readable
             # and the reported canonical hash verifies against those bytes.
