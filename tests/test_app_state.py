@@ -129,6 +129,72 @@ def test_restore_saved_dataset_provenance_keeps_canonical_state_when_raw_is_corr
     assert "raw_capture_warning" in session_state
 
 
+def test_bootstrap_restores_subtimeframe_sidecar_and_ingestion_provenance(monkeypatch):
+    df = pd.DataFrame(
+        {"timestamp": [1], "open": [1.0], "high": [1.0], "low": [1.0], "close": [1.0]}
+    )
+    sub = pd.DataFrame(
+        {"timestamp": [1], "open": [1.0], "high": [1.0], "low": [1.0], "close": [1.0]}
+    )
+    provenance = {
+        "ingestion_mode": "15s_primary_derive_1m",
+        "derivation_policy": "complete_aligned_15s_to_1m_v1",
+        "dropped_parent_bucket_count": 0,
+    }
+    meta = {
+        "name": "Derived sample",
+        "instrument": "ES",
+        "base_interval": "1min",
+        "source_timezone": "America/New_York",
+        "exchange_timezone": "America/New_York",
+        "format_profile": "quantower_history_exporter",
+        "has_subtimeframe": True,
+        "subtimeframe_interval": "15s",
+        "subtimeframe_format_profile": "quantower_history_exporter",
+        "ingestion_provenance": provenance,
+    }
+    session_state: dict = {}
+    _stub_streamlit_state(monkeypatch, session_state)
+
+    monkeypatch.setattr(app_state, "get_active_dataset_id", lambda: "dataset-derived")
+    monkeypatch.setattr(app_state, "load_dataset", lambda dataset_id: (df, meta))
+    monkeypatch.setattr(app_state, "load_raw_dataset", lambda dataset_id: None)
+    monkeypatch.setattr(app_state, "load_subtimeframe_dataset", lambda dataset_id: sub)
+
+    restored = app_state.bootstrap_active_saved_dataset()
+
+    assert restored is True
+    assert session_state["subtimeframe_data"] is sub
+    assert session_state["subtimeframe_interval"] == "15s"
+    assert session_state["subtimeframe_format_profile"] == "quantower_history_exporter"
+    assert session_state["ingestion_provenance"] == provenance
+    assert session_state["subtimeframe_fallback_parent_bars"] == []
+
+
+def test_restore_saved_dataset_provenance_clears_absent_subtimeframe_sidecar(monkeypatch):
+    session_state = {
+        "subtimeframe_data": pd.DataFrame({"timestamp": [1]}),
+        "subtimeframe_interval": "15s",
+        "subtimeframe_format_profile": "quantower_history_exporter",
+        "ingestion_provenance": {"ingestion_mode": "15s_primary_derive_1m"},
+        "subtimeframe_fallback_parent_bars": [],
+    }
+    _stub_streamlit_state(monkeypatch, session_state)
+    monkeypatch.setattr(app_state, "load_raw_dataset", lambda dataset_id: None)
+    monkeypatch.setattr(app_state, "load_subtimeframe_dataset", lambda dataset_id: None)
+
+    app_state.restore_saved_dataset_provenance(
+        "dataset-abc",
+        {"format_profile": "canonical"},
+    )
+
+    assert "subtimeframe_data" not in session_state
+    assert "subtimeframe_interval" not in session_state
+    assert "subtimeframe_format_profile" not in session_state
+    assert "ingestion_provenance" not in session_state
+    assert "subtimeframe_fallback_parent_bars" not in session_state
+
+
 def test_bootstrap_clears_stale_saved_dataset_pointer(monkeypatch):
     session_state: dict = {}
     _stub_streamlit_state(monkeypatch, session_state)

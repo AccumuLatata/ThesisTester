@@ -100,11 +100,18 @@ CLI and Assistant opt into `read_write`.
 
 Warm data reuse resolves
 `execution_artifacts/v1/source_index/<binding_key>.json` from
-`(source file SHA-256, instrument, source/exchange timezone, format_profile)`,
-then `read_verified_data_artifact`. Warm levels reuse
+`(source file SHA-256, instrument, source/exchange timezone, format_profile,
+ingestion_mode, derivation_policy)`,
+then `read_verified_data_artifact`. Legacy primary runs use
+`ingestion_mode="primary"` with `derivation_policy=null`;
+`15s_primary_derive_1m` bindings carry
+`derivation_policy=complete_aligned_15s_to_1m_v1` so the same source bytes
+cannot warm-cross across contracts. Warm levels reuse
 `read_verified_levels_artifact` for the normalized `LevelsIdentity`.
 Misses (corrupt, incomplete, schema/engine drift, stale source, settings
 change) fall through to cold load/compute and, under `read_write`, republish.
+Derive-mode warm hits still re-read the 15-second source CSV for R12
+`subtimeframe_data`; they do not skip the lower-frame file.
 
 Run state and Assistant provenance expose `cache_provenance`
 (`outcome`: `bypassed|cold|data_hit|levels_hit`). Confirmed Assistant runs
@@ -555,9 +562,17 @@ drops an active 15s-primary session even when `compute_dataset_id` is
 unchanged, so the UI cannot stay latched in 15s-primary while the
 selector shows primary. Legacy one-minute primary upload and optional
 dual-upload lower data remain unchanged.
-Local-store schema, API/CLI RunSpec fields, R12 resolvers, and engine
-defaults are unchanged in this PR; durable save/restore of the attached
-15-second source is deferred. See
+Local persistence stores the derived one-minute frame as
+`canonical.parquet` and the retained 15-second source as
+`subtimeframe.parquet` under dataset schema v2, with
+`ingestion_provenance` in `meta.json`. Bootstrap restores both sidecars
+before dependent pages render. Headless API/CLI RunSpecs accept
+`dataset.ingestion_mode: 15s_primary_derive_1m` (Quantower History Exporter
+only); that mode derives the parent, supplies `subtimeframe_data`
+internally, and rejects pairing with `dataset.subtimeframe_path`.
+Execution-artifact source bindings include `ingestion_mode` and
+`derivation_policy` so primary vs derived contracts cannot warm-cross.
+R12 resolvers and engine defaults are unchanged. See
 `docs/15s_primary_derived_1m_implementation_plan.md`.
 
 ## End-to-end data flow
@@ -596,7 +611,7 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `subtimeframe_data` | Data page, R18 API/CLI, or Research Bundle import | Backtest/Grid/Walk-forward, Research Bundles | Optional strictly finer canonical `pd.DataFrame` OHLCV/session rows for R12 replay; Data-page uploads validate against the active primary frame, and `dataset.subtimeframe_path` never inherits the primary dataset vendor profile. In `15s_primary_derive_1m` mode this is the retained upload source. |
 | `subtimeframe_interval` | Data page, R18 API/CLI, or Research Bundle import | Research Bundles/report provenance | `str \| None` inferred lower interval |
 | `subtimeframe_format_profile` | Data page or R18 API/CLI | Research Bundles/report provenance | Explicit lower CSV parser profile; defaults to `canonical` and never inherits the primary profile. In `15s_primary_derive_1m` mode it equals the selected source profile. |
-| `ingestion_provenance` | Data page (`15s_primary_derive_1m` mode) | Data-page diagnostics / future persistence | JSON-safe derivation provenance (`ingestion_mode`, source/parent intervals, `derivation_policy`, `source_format_profile`, `source_content_hash`, dropped-minute count) |
+| `ingestion_provenance` | Data page / R18 API (`15s_primary_derive_1m`), local-store restore, Research Bundle import | Data-page diagnostics, local `meta.json`, research-bundle `subtimeframe_meta.json` | JSON-safe derivation provenance (`ingestion_mode`, source/parent intervals, `derivation_policy`, `source_format_profile`, `source_content_hash`, dropped-minute count) |
 | `derived_parent_diagnostics` | Data page (`15s_primary_derive_1m` mode) | Data-page diagnostics download | Read-only dropped-minute frame (`incomplete_coverage` / `timestamp_misalignment`); never used to patch source or parent bars |
 | `resampled_data` | Data (`pages/1_Data.py:115`) | Data summary (`pages/1_Data.py:341`) | `dict[str, pd.DataFrame]` |
 | `instrument` | Data (`pages/1_Data.py:116`) | Levels/Setup/Signals/Backtest/Grid/Time (`pages/5_Levels.py:207`, `pages/2_Setup_Builder.py:67`, `pages/6_Signals.py`, `pages/7_Backtest.py:70`, `pages/8_Grid_Search.py:42`, `pages/9_Time_Analysis.py:30`) | `str` (e.g., `ES`, `NQ`) |
@@ -706,6 +721,9 @@ Signals robustness notes:
 
 - Root: `.thesistester_store/` (or `$THESISTESTER_STORE_DIR`)
 - Datasets: `.thesistester_store/datasets/<dataset_id>/`
+  (`canonical.parquet`, optional `raw.parquet`, optional
+  `subtimeframe.parquet`, `meta.json` with dataset schema v2 fields
+  `has_subtimeframe` / `ingestion_provenance`; schema v1 remains readable)
 - Levels: `.thesistester_store/levels/<dataset_id>/<levels_settings_hash>/`
 - Signal runs: `.thesistester_store/signals/<dataset_id>/<levels_settings_hash>/<signal_settings_hash>/`
 - Setups: `.thesistester_store/setups/<setup_id>/meta.json`

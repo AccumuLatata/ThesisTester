@@ -28,7 +28,9 @@ from thesistester.persistence.local_store import (
     list_saved_signal_runs,
     load_dataset,
     load_raw_dataset,
+    load_subtimeframe_dataset,
     load_levels,
+    DATASET_SCHEMA_VERSION,
     load_setup,
     load_signal_run,
     save_dataset,
@@ -294,6 +296,170 @@ def test_dataset_rejects_conflicting_raw_capture_for_same_canonical_bars():
             raw_data=second_raw,
             format_profile="tick_capture",
         )
+
+
+def _subtimeframe_dataset() -> pd.DataFrame:
+    timestamps = pd.date_range("2026-06-02 09:30:00", periods=4, freq="15s", tz=TZ)
+    return pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "open": [100.0, 100.0, 102.0, 103.0],
+            "high": [101.0, 103.0, 104.0, 103.0],
+            "low": [99.0, 100.0, 101.0, 102.0],
+            "close": [100.0, 102.0, 103.0, 102.0],
+            "volume": [2, 3, 2, 3],
+        }
+    )
+
+
+def test_dataset_subtimeframe_sidecar_roundtrip_schema_v2():
+    df = _base_dataset()
+    sub = _subtimeframe_dataset()
+    provenance = {
+        "ingestion_mode": "15s_primary_derive_1m",
+        "derivation_policy": "complete_aligned_15s_to_1m_v1",
+        "source_interval": "15s",
+        "derived_parent_interval": "1min",
+        "source_format_profile": "quantower_history_exporter",
+        "source_content_hash": "abc123",
+        "dropped_parent_bucket_count": 0,
+    }
+    saved = save_dataset(
+        df,
+        name="Derived ES",
+        instrument="ES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+        format_profile="quantower_history_exporter",
+        subtimeframe_data=sub,
+        subtimeframe_interval="15s",
+        subtimeframe_format_profile="quantower_history_exporter",
+        ingestion_provenance=provenance,
+    )
+    loaded_df, loaded_meta = load_dataset(saved["dataset_id"])
+    restored_sub = load_subtimeframe_dataset(saved["dataset_id"])
+
+    assert saved["schema_version"] == DATASET_SCHEMA_VERSION
+    assert saved["has_subtimeframe"] is True
+    assert saved["subtimeframe_interval"] == "15s"
+    assert saved["subtimeframe_rows"] == len(sub)
+    assert saved["ingestion_provenance"] == provenance
+    pd.testing.assert_frame_equal(loaded_df, df.reset_index(drop=True))
+    assert restored_sub is not None
+    pd.testing.assert_frame_equal(restored_sub, sub)
+    assert loaded_meta["has_subtimeframe"] is True
+    assert loaded_meta["ingestion_provenance"] == provenance
+
+
+def test_dataset_resave_preserves_existing_subtimeframe_sidecar_metadata():
+    df = _base_dataset()
+    sub = _subtimeframe_dataset()
+    provenance = {"ingestion_mode": "15s_primary_derive_1m", "dropped_parent_bucket_count": 0}
+    initial = save_dataset(
+        df,
+        name="Derived ES",
+        instrument="ES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+        format_profile="quantower_history_exporter",
+        subtimeframe_data=sub,
+        subtimeframe_interval="15s",
+        subtimeframe_format_profile="quantower_history_exporter",
+        ingestion_provenance=provenance,
+    )
+    resaved = save_dataset(
+        df,
+        name="Renamed derived ES",
+        instrument="ES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+    )
+    assert resaved["dataset_id"] == initial["dataset_id"]
+    assert resaved["has_subtimeframe"] is True
+    assert resaved["subtimeframe_interval"] == "15s"
+    assert resaved["ingestion_provenance"] == provenance
+    pd.testing.assert_frame_equal(load_subtimeframe_dataset(resaved["dataset_id"]), sub)
+
+
+def test_dataset_rejects_conflicting_subtimeframe_for_same_canonical_bars():
+    df = _base_dataset()
+    first = _subtimeframe_dataset()
+    second = first.copy()
+    second.loc[1, "close"] = 999.0
+    save_dataset(
+        df,
+        name="First sub",
+        instrument="ES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+        subtimeframe_data=first,
+        subtimeframe_interval="15s",
+        subtimeframe_format_profile="quantower_history_exporter",
+        ingestion_provenance={"ingestion_mode": "15s_primary_derive_1m"},
+    )
+    with pytest.raises(ValueError, match="Refusing to overwrite subtimeframe provenance"):
+        save_dataset(
+            df,
+            name="Conflicting sub",
+            instrument="ES",
+            base_interval="1min",
+            source_timezone=TZ,
+            exchange_timezone=TZ,
+            subtimeframe_data=second,
+            subtimeframe_interval="15s",
+            subtimeframe_format_profile="quantower_history_exporter",
+            ingestion_provenance={"ingestion_mode": "15s_primary_derive_1m"},
+        )
+
+
+def test_dataset_v1_without_subtimeframe_remains_readable(tmp_path, monkeypatch):
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store_v1"))
+    df = _base_dataset()
+    saved = save_dataset(
+        df,
+        name="Legacy ES",
+        instrument="ES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+    )
+    meta_path = Path(saved["path"]) / "meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta["schema_version"] = 1
+    meta.pop("has_subtimeframe", None)
+    meta.pop("subtimeframe_interval", None)
+    meta.pop("subtimeframe_format_profile", None)
+    meta.pop("subtimeframe_rows", None)
+    meta.pop("ingestion_provenance", None)
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+
+    loaded_df, loaded_meta = load_dataset(saved["dataset_id"])
+    assert loaded_meta["schema_version"] == 1
+    assert load_subtimeframe_dataset(saved["dataset_id"]) is None
+    pd.testing.assert_frame_equal(loaded_df, df.reset_index(drop=True))
+
+
+def test_dataset_fail_closed_when_declared_subtimeframe_missing():
+    df = _base_dataset()
+    sub = _subtimeframe_dataset()
+    saved = save_dataset(
+        df,
+        name="Derived ES",
+        instrument="ES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+        subtimeframe_data=sub,
+        subtimeframe_interval="15s",
+        subtimeframe_format_profile="quantower_history_exporter",
+    )
+    (Path(saved["path"]) / "subtimeframe.parquet").unlink()
+    with pytest.raises(ValueError, match="subtimeframe.parquet is missing"):
+        load_dataset(saved["dataset_id"])
 
 
 def test_dataset_id_content_sensitivity():

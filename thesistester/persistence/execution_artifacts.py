@@ -718,6 +718,8 @@ def source_binding_key(
     source_timezone: str | None,
     exchange_timezone: str | None,
     format_profile: str,
+    ingestion_mode: str = "primary",
+    derivation_policy: str | None = None,
 ) -> str:
     """Key for mapping source bytes + ingest contract → data artifact."""
     payload = {
@@ -728,6 +730,8 @@ def source_binding_key(
         "source_timezone": source_timezone,
         "exchange_timezone": exchange_timezone,
         "format_profile": format_profile,
+        "ingestion_mode": str(ingestion_mode or "primary"),
+        "derivation_policy": derivation_policy,
     }
     return hashlib.sha256(_stable_json_bytes(payload)).hexdigest()
 
@@ -753,6 +757,8 @@ def read_source_data_binding(
     source_timezone: str | None,
     exchange_timezone: str | None,
     format_profile: str = "canonical",
+    ingestion_mode: str = "primary",
+    derivation_policy: str | None = None,
     store_root: str | Path | None = None,
 ) -> SourceDataBinding | ArtifactMiss:
     """Resolve a verified source binding, or miss when absent/corrupt/stale."""
@@ -771,6 +777,8 @@ def read_source_data_binding(
         source_timezone=source_timezone,
         exchange_timezone=exchange_timezone,
         format_profile=format_profile,
+        ingestion_mode=ingestion_mode,
+        derivation_policy=derivation_policy,
     )
     binding_path = _source_binding_path(key, artifacts_root=artifacts_root)
     contained = _contain_path(binding_path, root=artifacts_root)
@@ -822,6 +830,8 @@ def write_source_data_binding(
     source_timezone: str | None,
     exchange_timezone: str | None,
     format_profile: str = "canonical",
+    ingestion_mode: str = "primary",
+    derivation_policy: str | None = None,
     store_root: str | Path | None = None,
 ) -> SourceDataBinding:
     """Persist a source-bytes → data-artifact binding for warm CSV skip."""
@@ -834,6 +844,8 @@ def write_source_data_binding(
         source_timezone=source_timezone,
         exchange_timezone=exchange_timezone,
         format_profile=format_profile,
+        ingestion_mode=ingestion_mode,
+        derivation_policy=derivation_policy,
     )
     artifact_key = data_artifact_key(identity)
     binding_path = _source_binding_path(key, artifacts_root=artifacts_root)
@@ -850,6 +862,8 @@ def write_source_data_binding(
         "source_timezone": source_timezone,
         "exchange_timezone": exchange_timezone,
         "format_profile": format_profile,
+        "ingestion_mode": str(ingestion_mode or "primary"),
+        "derivation_policy": derivation_policy,
         "data_artifact_key": artifact_key,
         "identity": identity.to_dict(),
         "created_at": _utcnow_iso(),
@@ -882,6 +896,8 @@ def invalidate_source_data_binding(
     source_timezone: str | None,
     exchange_timezone: str | None,
     format_profile: str = "canonical",
+    ingestion_mode: str = "primary",
+    derivation_policy: str | None = None,
     store_root: str | Path | None = None,
 ) -> bool:
     """Remove a source binding when present."""
@@ -899,6 +915,8 @@ def invalidate_source_data_binding(
         source_timezone=source_timezone,
         exchange_timezone=exchange_timezone,
         format_profile=format_profile,
+        ingestion_mode=ingestion_mode,
+        derivation_policy=derivation_policy,
     )
     binding_path = _source_binding_path(key, artifacts_root=artifacts_root)
     contained = _contain_path(binding_path, root=artifacts_root)

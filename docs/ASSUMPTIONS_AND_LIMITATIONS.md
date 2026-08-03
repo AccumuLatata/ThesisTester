@@ -77,12 +77,14 @@ This engine is for **research screening**, not proof of a durable edge.
   identities.
 - Derivation does not change R12 residual ambiguity: stop/target ties inside
   one 15-second bar remain pessimistic SL-first under the existing contract.
-- The 15-second-primary Data-page path is currently session-scoped for the
-  attached lower source (same limitation as manual lower uploads): local
-  dataset save/restore does not yet persist `subtimeframe_data` or derivation
-  provenance. Re-upload or use a research bundle / future persistence PR for
-  durable reproducibility. Headless `ingestion_mode` RunSpec support is also
-  deferred.
+- The 15-second-primary path persists the retained 15-second source as a local
+  `subtimeframe.parquet` sidecar (dataset schema v2) with
+  `ingestion_provenance` in `meta.json`. Research bundles restore the same
+  members. Headless runs accept
+  `dataset.ingestion_mode: 15s_primary_derive_1m` on a single Quantower 15s
+  CSV and must not also set `dataset.subtimeframe_path`. Manual dual-upload
+  lower files that are never saved remain session-scoped unless exported in a
+  research bundle.
 - Lower-upload duplicate timestamps remain fail-closed. The Data page can
   export a read-only duplicate report that distinguishes exact duplicate rows
   from conflicting same-timestamp bars; it never deduplicates automatically.

@@ -150,6 +150,8 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         "levels": pd.DataFrame({"level": [1.0]}),
         "subtimeframe_data": _dataset_df(),
         "subtimeframe_interval": "1min",
+        "subtimeframe_format_profile": "quantower_history_exporter",
+        "ingestion_provenance": {"ingestion_mode": "15s_primary_derive_1m"},
         "signals": pd.DataFrame({"signal_id": [1]}),
         "trades": pd.DataFrame({"trade_id": [1]}),
         "backtest_intrabar_policy": {"intrabar_model": "path_open_proximity"},
@@ -207,6 +209,8 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         "levels",
         "subtimeframe_data",
         "subtimeframe_interval",
+        "subtimeframe_format_profile",
+        "ingestion_provenance",
         "signals",
         "trades",
         "backtest_intrabar_policy",
@@ -247,7 +251,13 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
     source_state = {
         "data": base,
         "subtimeframe_data": base.copy(),
-        "subtimeframe_interval": "1min",
+        "subtimeframe_interval": "15s",
+        "subtimeframe_format_profile": "quantower_history_exporter",
+        "ingestion_provenance": {
+            "ingestion_mode": "15s_primary_derive_1m",
+            "derivation_policy": "complete_aligned_15s_to_1m_v1",
+            "dropped_parent_bucket_count": 0,
+        },
         "subtimeframe_fallback_parent_bars": [
             {
                 "bar_index": 1,
@@ -423,7 +433,13 @@ def test_full_bundle_roundtrip_restores_all_supported_artifacts():
     assert restored_state["signal_settings"] == {"trigger": "touch"}
     assert restored_state["signal_settings_hash"] == "sig-hash"
     assert restored_state["trade_summary"] == {"trade_count": 1}
-    assert restored_state["subtimeframe_interval"] == "1min"
+    assert restored_state["subtimeframe_interval"] == "15s"
+    assert restored_state["subtimeframe_format_profile"] == "quantower_history_exporter"
+    assert restored_state["ingestion_provenance"] == {
+        "ingestion_mode": "15s_primary_derive_1m",
+        "derivation_policy": "complete_aligned_15s_to_1m_v1",
+        "dropped_parent_bucket_count": 0,
+    }
     assert restored_state["subtimeframe_fallback_parent_bars"] == [
         {
             "bar_index": 1,

@@ -1401,6 +1401,10 @@ if current_df is not None:
             raw_data=st.session_state.get("raw_data"),
             format_profile=st.session_state.get("format_profile", "canonical"),
             raw_interval=st.session_state.get("raw_interval"),
+            subtimeframe_data=st.session_state.get("subtimeframe_data"),
+            subtimeframe_interval=st.session_state.get("subtimeframe_interval"),
+            subtimeframe_format_profile=st.session_state.get("subtimeframe_format_profile"),
+            ingestion_provenance=st.session_state.get("ingestion_provenance"),
         )
         st.session_state["dataset_id"] = saved_meta["dataset_id"]
         set_active_dataset_id(saved_meta["dataset_id"])

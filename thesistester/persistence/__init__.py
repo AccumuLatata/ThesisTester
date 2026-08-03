@@ -23,10 +23,12 @@ from .execution_artifacts import (
     write_source_data_binding,
 )
 from .local_store import (
+    DATASET_SCHEMA_VERSION,
     LEVEL_ENGINE_VERSION,
     PERSISTENCE_SCHEMA_VERSION,
     SIGNAL_RUN_SCHEMA_VERSION,
     SETUP_SCHEMA_VERSION,
+    SUPPORTED_DATASET_SCHEMA_VERSIONS,
     BACKTEST_DEFAULTS_SCHEMA_VERSION,
     GRID_DEFAULTS_SCHEMA_VERSION,
     clear_active_dataset_id,
@@ -55,6 +57,7 @@ from .local_store import (
     list_saved_signal_runs,
     load_dataset,
     load_raw_dataset,
+    load_subtimeframe_dataset,
     load_levels,
     load_setup,
     load_signal_run,
@@ -70,6 +73,8 @@ from .local_store import (
 
 __all__ = [
     "PERSISTENCE_SCHEMA_VERSION",
+    "DATASET_SCHEMA_VERSION",
+    "SUPPORTED_DATASET_SCHEMA_VERSIONS",
     "LEVEL_ENGINE_VERSION",
     "SIGNAL_RUN_SCHEMA_VERSION",
     "SETUP_SCHEMA_VERSION",
@@ -114,6 +119,7 @@ __all__ = [
     "list_datasets",
     "load_dataset",
     "load_raw_dataset",
+    "load_subtimeframe_dataset",
     "delete_dataset",
     "compute_levels_settings_hash",
     "compute_otf_config_hash",

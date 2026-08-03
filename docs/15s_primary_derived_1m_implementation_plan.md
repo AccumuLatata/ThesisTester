@@ -396,6 +396,10 @@ keeping legacy uploads intact.
 
 ### PR 3 — Durable and headless reproducibility
 
+**Status:** Implemented (local-store schema v2 sidecar, `app_state` restore,
+RunSpec `ingestion_mode`, execution-artifact binding separation, research-bundle
+provenance)
+
 **Title:** `Data: persist and reproduce 15-second-derived datasets`
 
 **Purpose:** Ensure the one-upload workflow remains reproducible after a local

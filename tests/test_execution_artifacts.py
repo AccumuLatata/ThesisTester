@@ -11,6 +11,10 @@ import pandas as pd
 import pytest
 
 from thesistester.api import compute_levels
+from thesistester.data.derive import (
+    DERIVATION_POLICY_COMPLETE_ALIGNED_15S_TO_1M_V1,
+    INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+)
 from thesistester.persistence.execution_artifacts import (
     DATA_ARTIFACT_SCHEMA_VERSION,
     MANIFEST_FILENAME,
@@ -25,6 +29,7 @@ from thesistester.persistence.execution_artifacts import (
     read_verified_data_artifact,
     read_verified_levels_artifact,
     resolve_contained_artifact_path,
+    source_binding_key,
     write_data_artifact,
     write_levels_artifact,
 )
@@ -367,3 +372,27 @@ def test_invalidate_levels_artifact(tmp_path: Path):
     miss = read_verified_levels_artifact(levels_identity, store_root=store)
     assert isinstance(miss, ArtifactMiss)
     assert miss.reason == "missing"
+
+
+def test_source_binding_key_separates_ingestion_mode_and_derivation_policy():
+    common = {
+        "source_content_hash_value": "deadbeef",
+        "instrument": "ES",
+        "source_timezone": "America/New_York",
+        "exchange_timezone": "America/New_York",
+        "format_profile": "quantower_history_exporter",
+    }
+    primary = source_binding_key(**common, ingestion_mode="primary", derivation_policy=None)
+    derive = source_binding_key(
+        **common,
+        ingestion_mode=INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+        derivation_policy=DERIVATION_POLICY_COMPLETE_ALIGNED_15S_TO_1M_V1,
+    )
+    other_policy = source_binding_key(
+        **common,
+        ingestion_mode=INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+        derivation_policy="different_policy",
+    )
+    assert primary != derive
+    assert derive != other_policy
+    assert primary == source_binding_key(**common)

@@ -42,7 +42,9 @@ the canonical bundle hash and key metrics. `--workers N` uses isolated spawned
 processes across runs only. Each individual levels/signals/backtest/grid/
 validation pipeline stays single-threaded, and output order follows YAML order.
 R12 adds optional `dataset.subtimeframe_path`; it is required when an enabled
-backtest/grid section selects `intrabar_model: subtimeframe`.
+backtest/grid section selects `intrabar_model: subtimeframe` unless
+`dataset.ingestion_mode: 15s_primary_derive_1m` supplies the lower frame from
+the same 15-second CSV.
 For interactive Streamlit research, the Data page can:
 1. load a one-minute primary CSV and optionally attach a lower-timeframe CSV; or
 2. select the explicit `15s_primary_derive_1m` ingestion mode (Quantower History
@@ -56,9 +58,10 @@ primary data on the next rerun. While the radio selects
 even if stale one-minute `data` remains and provenance has not been installed
 yet.
 
-Both interactive lower-data paths are session-scoped producers of the same
-`subtimeframe_data` contract today; YAML `dataset.subtimeframe_path` remains
-the reproducible headless contract until a later persistence/RunSpec PR.
+Local save/restore persists the attached 15-second source and
+`ingestion_provenance` (dataset schema v2). Headless YAML may use either
+legacy dual-file `dataset.subtimeframe_path` or one-file
+`dataset.ingestion_mode: 15s_primary_derive_1m` (not both).
 
 Minimal complete shape:
 
@@ -113,6 +116,52 @@ runs:
         enabled: true
         n_simulations: 2000
         random_state: 42
+```
+
+One-file 15-second-primary shape (derives complete one-minute parents; do not
+also set `subtimeframe_path`):
+
+```yaml
+schema_version: 1
+output_dir: results
+runs:
+  - name: nq_15s_primary_r12
+    dataset:
+      path: data/nq_15s.csv
+      instrument: NQ
+      source_timezone: America/New_York
+      format_profile: quantower_history_exporter
+      ingestion_mode: 15s_primary_derive_1m
+    levels:
+      opening_range_minutes: 30
+    setup:
+      name: NQ 15s primary
+      description: Derived 1m with retained 15s R12 source
+      instrument: NQ
+      selected_levels: [dOpen, RTH_Open]
+      tolerance_ticks: 0
+      min_confluences: 2
+      max_confluences: 2
+      naked_only: false
+      naked_requirement: any
+      trigger: touch
+      trigger_timeframe: base
+      direction: both
+      confluence_mode: global_cluster
+      anchor_level: null
+      confluence_rules: []
+      min_valid_confluences: 1
+      trigger_params: {}
+      otf_filter: null
+    backtest:
+      stop_loss_ticks: 8
+      take_profit_ticks: 16
+      exposure_policy: single_position
+      intrabar_model: subtimeframe
+    grid:
+      enabled: false
+    validation:
+      enabled: false
 ```
 
 Agent safety requirements:
@@ -325,7 +374,10 @@ When OTF is enabled in walk-forward:
 - Keep `dataset.format_profile` explicit in API/CLI specifications; canonical
   remains the default and no format auto-detection is permitted.
 - `dataset.subtimeframe_path` is always canonical OHLCV for R12 replay; it
-  never inherits the primary dataset's vendor `format_profile`.
+  never inherits the primary dataset's vendor `format_profile`. Prefer
+  `dataset.ingestion_mode: 15s_primary_derive_1m` when the primary file is
+  itself the 15-second Quantower export; do not combine that mode with
+  `subtimeframe_path`.
 - Preserve captured raw rows only as provenance; use canonical one-minute bars
   for current engine work and do not treat raw ticks as R12 subtimeframe data.
 - Confirm the canonical sample CSV remains byte-identical after loader edits.
