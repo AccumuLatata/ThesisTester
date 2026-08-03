@@ -126,6 +126,12 @@ def test_page_is_orchestrator_only_and_keeps_json_advanced():
     assert "spec_status_next_step(" in source
     assert "plan['next_action']" in source or 'plan["next_action"]' in source
     assert "_apply_draft_and_rerun(" in source
+    assert "build_confluence_level_options(" in source
+    assert "TIMEZONE_OPTIONS" in source
+    assert '"Confluence levels"' in source
+    assert "st.multiselect(" in source
+    assert "VWAP_WINDOW_OPTIONS" in source
+    assert "available_level_columns(" in source
     restore_idx = source.index("Restore bundle into research pages")
     assert "st.rerun()" in source[restore_idx : restore_idx + 700]
 
@@ -231,7 +237,7 @@ def test_structured_merges_cover_setup_levels_execution_grid_validation_wfa():
         choices,
         setup_name="Touch",
         description="dVWAP touch",
-        selected_levels_raw="dVWAP_RTH, SMA_50_30min",
+        selected_levels_raw=["dVWAP_RTH", "SMA_50_30min"],
         trigger="touch",
         direction="both",
         tolerance_ticks=0.0,
@@ -248,12 +254,12 @@ def test_structured_merges_cover_setup_levels_execution_grid_validation_wfa():
         choices,
         session_vwap_enabled=True,
         opening_range_minutes=30,
-        sma_lengths_raw="50,200",
+        sma_lengths_raw=[50, 200],
         sma_timeframes=["30min"],
-        ema_lengths_raw="20",
+        ema_lengths_raw=[20],
         ema_timeframes=["5min"],
-        vwap_windows_raw="",
-        poc_windows_raw="",
+        vwap_windows_raw=["30min", "4h"],
+        poc_windows_raw=["30min"],
     )
     choices = merge_validation_controls(
         choices,
@@ -300,6 +306,8 @@ def test_structured_merges_cover_setup_levels_execution_grid_validation_wfa():
 
     assert choices["setup"]["selected_levels"] == ["dVWAP_RTH", "SMA_50_30min"]
     assert choices["levels"]["ema_lengths"] == [20]
+    assert choices["levels"]["vwap_windows"] == ["30min", "4h"]
+    assert choices["levels"]["poc_windows"] == ["30min"]
     assert choices["validation"]["monte_carlo"]["enabled"] is True
     assert choices["grid"]["max_grid_cells"] == 50
     assert choices["walk_forward"]["fold_mode"] == "bars"
@@ -397,6 +405,36 @@ def test_spec_status_labels_and_next_steps_are_explicit():
     assert "Plan review" in spec_status_next_step("ready_for_confirmation")
     assert "Run confirmed research" in spec_status_next_step("confirmed")
     assert any("Apply structured controls" in step for step in RESEARCH_WORKFLOW_STEPS)
+
+
+def test_confluence_and_timezone_catalogs_support_searchable_widgets():
+    from thesistester.assistant.workspace import (
+        TIMEZONE_OPTIONS,
+        VWAP_WINDOW_OPTIONS,
+        build_confluence_level_options,
+        coerce_multiselect_defaults,
+        option_index,
+    )
+
+    assert "America/New_York" in TIMEZONE_OPTIONS
+    assert "30min" in VWAP_WINDOW_OPTIONS
+    options = build_confluence_level_options(
+        selected_levels=["Custom_Level_X"],
+        levels_settings={
+            "sma_lengths": [50],
+            "sma_timeframes": ["30min"],
+            "vwap_windows": ["1h"],
+        },
+        available_columns=["Live_From_Levels"],
+    )
+    assert "dVWAP_RTH" in options
+    assert "SMA_50_30min" in options
+    assert "VWAP_rolling_1h" in options
+    assert "Live_From_Levels" in options
+    assert "Custom_Level_X" in options
+    assert coerce_multiselect_defaults(["dVWAP_RTH", "missing"], options) == ["dVWAP_RTH"]
+    assert option_index((5, 15, 30), 30) == 2
+    assert option_index((5, 15, 30), "15") == 1
 
 
 def test_latest_unresolved_assumptions_only_from_newest_spec():
