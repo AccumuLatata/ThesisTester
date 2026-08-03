@@ -1,7 +1,7 @@
 # 15-Second Primary Data → Derived 1-Minute Canonical Plan
 
-**Status:** Proposed implementation plan  
-**Scope:** Explicit 15-second-primary ingestion for Quantower-style OHLCV exports  
+**Status:** Proposed implementation plan
+**Scope:** Explicit 15-second-primary ingestion for Quantower-style OHLCV exports
 **Decision:** Build 1-minute canonical bars internally from uploaded 15-second
 bars, and retain the uploaded 15-second bars as the only R12 intrabar source.
 
