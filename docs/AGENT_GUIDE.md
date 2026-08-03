@@ -174,6 +174,10 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   rotated `OPENAI_API_KEY` (env). Reject the placeholder
   `REPLACE_WITH_ROTATED_OPENAI_API_KEY`. Recovery/cancellation stays on
   orchestrator `cancel_run` / confirmation lifecycle, not the LLM.
+- Optional voice transport and optional xAI/Grok text provider are specified in
+  `docs/AI_ASSISTANT_VOICE_AND_PROVIDER_ROADMAP.md`. Until those AV/AP PRs land,
+  the assistant remains OpenAI text-only; do not add ad-hoc mic/WebSocket paths
+  that bypass `handle_chat_turn` or confirmation.
 - Document every additive `assistant_*` session key in `ARCHITECTURE.md` and
   `ASSISTANT_SESSION_KEYS`. Thesis switches must clear
   `THESIS_SCOPED_STAGING_KEYS` (including `assistant_bundle_handoff`).

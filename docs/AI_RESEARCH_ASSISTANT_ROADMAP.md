@@ -5,6 +5,12 @@
 **Status:** proposed implementation plan.
 **Owner model:** one trusted local user, local datasets, and local execution.
 
+Implementation sequencing for the conversational product continues in
+`docs/AI_CHAT_2_ENGINEERING_ROADMAP.md`. Optional voice transport and optional
+xAI/Grok text-provider work are scoped separately in
+`docs/AI_ASSISTANT_VOICE_AND_PROVIDER_ROADMAP.md` and must not weaken the
+chat confirmation or evidence-only explanation gates.
+
 This document is the implementation contract for an AI Research Assistant in
 ThesisTester. It is designed to prevent scope, architecture, and statistical
 drift while adding a conversational workflow for hypothesis-driven futures

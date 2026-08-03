@@ -7,6 +7,11 @@ The proposed AI Research Assistant has a separate, regression-safe implementatio
 plan in `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md`. Its AIA-series milestones are
 additive to this R-series and must follow its stated regression gates.
 
+Optional Research Assistant voice transport and multi-provider LLM support are
+tracked separately in
+`docs/AI_ASSISTANT_VOICE_AND_PROVIDER_ROADMAP.md` (AV/AP-series). Those PRs are
+additive to AI Chat 2.0 and must preserve its confirmation and evidence gates.
+
 ---
 
 ## R1 — Execution Realism ✅ Implemented

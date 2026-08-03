@@ -287,6 +287,17 @@ C2-6.5–C2-6.7 (PR6) enforce the release gate:
   `tests/test_assistant_llm_evaluations.py`.
 - Deterministic no-provider explain/compare/export workflow remains fully usable.
 
+## Follow-on tracks (separate roadmaps)
+
+Optional voice input/output and an optional xAI/Grok structured-text provider
+are **not** part of C2-6/C2-7. They are scoped in
+[`AI_ASSISTANT_VOICE_AND_PROVIDER_ROADMAP.md`](AI_ASSISTANT_VOICE_AND_PROVIDER_ROADMAP.md)
+as AV/AP-series PRs so they cannot weaken the PR6 chat confirmation gate.
+
+Deferred there as well: realtime duplex voice and any conversational
+confirm-and-run bridge. Those require explicit product approval beyond AI Chat
+2.0.
+
 ## C2-7 — Feature-parity completion
 
 **Release audit (PR6):** `audit_capability_registry()` classifies every
