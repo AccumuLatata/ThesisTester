@@ -488,7 +488,9 @@ records `ingestion_provenance` / `derived_parent_diagnostics`, and runs
 commit. The separate lower-timeframe uploader is hidden while this mode is
 active. Switching the ingestion-mode radio clears dataset-dependent state
 (including provenance, attached 15s source, diagnostics, and execution
-results). The one-minute primary upload path also drops an active 15s-primary
+results) and invalidates the primary CSV uploader widget so a file chosen
+under one mode cannot be re-ingested on the other path on the same rerun.
+The one-minute primary upload path also drops an active 15s-primary
 session even when `compute_dataset_id` is unchanged, so the UI cannot stay
 latched in 15s-primary while the selector shows primary. Legacy one-minute
 primary upload and optional dual-upload lower data remain unchanged.

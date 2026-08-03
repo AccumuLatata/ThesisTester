@@ -63,7 +63,10 @@ This engine is for **research screening**, not proof of a durable edge.
 - In that mode the derived one-minute frame is the canonical `data` used for
   levels/signals, and the original 15-second bars are attached as
   `subtimeframe_data` for R12. The separate lower-timeframe uploader is hidden
-  while the mode is active. Legacy one-minute primary + optional lower upload
+  while the mode is active. Switching away from the mode keeps the derived
+  one-minute `data` but clears provenance/subtimeframe artifacts and drops the
+  in-widget CSV so the legacy primary path cannot re-parse the 15-second
+  export as raw bars. Legacy one-minute primary + optional lower upload
   remains available.
 - Derived one-minute volume is the sum of retained 15-second volumes. That
   volume, and therefore VWAP/profile levels computed from it, can differ from

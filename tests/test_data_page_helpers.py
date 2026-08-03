@@ -483,6 +483,7 @@ def test_on_ingestion_mode_change_clears_15s_primary_session(monkeypatch):
         "ingestion_provenance": {"ingestion_mode": "15s_primary_derive_1m"},
         "derived_parent_diagnostics": "diag",
         "trades": "stale",
+        "_primary_csv_uploader_nonce": 3,
     }
     data_page = _import_data_page_module(session_state)
     monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
@@ -503,6 +504,20 @@ def test_on_ingestion_mode_change_clears_15s_primary_session(monkeypatch):
     ):
         assert key not in session_state
     assert "data_source_timezone_selector" in session_state
+    # Stale uploader widget value must be invalidated so a Quantower 15s CSV
+    # cannot be re-ingested on the legacy one-minute primary path.
+    assert session_state[data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY] == 4
+
+
+def test_invalidate_primary_csv_uploader_bumps_nonce(monkeypatch):
+    session_state = {}
+    data_page = _import_data_page_module(session_state)
+    monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
+
+    data_page._invalidate_primary_csv_uploader()
+    assert session_state[data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY] == 1
+    data_page._invalidate_primary_csv_uploader()
+    assert session_state[data_page.PRIMARY_CSV_UPLOADER_NONCE_KEY] == 2
 
 
 def test_leave_15s_primary_session_if_active_clears_when_latched(monkeypatch):
@@ -545,3 +560,5 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert data_page.INGESTION_MODE_PRIMARY == "primary"
     assert "on_change=_on_ingestion_mode_change" in page_text
     assert "_leave_15s_primary_session_if_active()" in page_text
+    assert "_invalidate_primary_csv_uploader()" in page_text
+    assert 'key=f"primary_csv_upload_{primary_uploader_nonce}"' in page_text

@@ -49,6 +49,10 @@ For interactive Streamlit research, the Data page can:
    Exporter) to derive complete one-minute canonical bars from a single
    15-second upload and attach that 15-second source as `subtimeframe_data`.
 
+Switching ingestion modes clears 15s-primary artifacts and invalidates the
+primary CSV uploader so a 15-second export cannot be re-parsed as one-minute
+primary data on the next rerun.
+
 Both interactive lower-data paths are session-scoped producers of the same
 `subtimeframe_data` contract today; YAML `dataset.subtimeframe_path` remains
 the reproducible headless contract until a later persistence/RunSpec PR.

@@ -78,6 +78,7 @@ INGESTION_PROVENANCE_KEY = "ingestion_provenance"
 DERIVED_PARENT_DIAGNOSTICS_KEY = "derived_parent_diagnostics"
 SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY = "_subtimeframe_upload_signature"
 SUBTIMEFRAME_UPLOADER_NONCE_KEY = "_subtimeframe_uploader_nonce"
+PRIMARY_CSV_UPLOADER_NONCE_KEY = "_primary_csv_uploader_nonce"
 SUBTIMEFRAME_FALLBACK_BARS_KEY = "subtimeframe_fallback_parent_bars"
 SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY = "_subtimeframe_compatibility_report"
 SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY = "_subtimeframe_compatibility_signature"
@@ -171,12 +172,28 @@ def _leave_15s_primary_session_if_active() -> None:
         _clear_dataset_dependent_state()
 
 
+def _invalidate_primary_csv_uploader() -> None:
+    """Force Streamlit to drop the current primary CSV upload widget value.
+
+    Mode switches must not re-ingest a file chosen under a different ingestion
+    mode. A Quantower 15-second export left in the uploader after leaving
+    ``15s_primary_derive_1m`` would otherwise hit the legacy primary path and
+    replace derived one-minute ``data`` with raw 15-second bars.
+    """
+    st.session_state[PRIMARY_CSV_UPLOADER_NONCE_KEY] = (
+        int(st.session_state.get(PRIMARY_CSV_UPLOADER_NONCE_KEY, 0)) + 1
+    )
+
+
 def _on_ingestion_mode_change() -> None:
     """Reset import defaults and clear mode-bound dataset dependent state."""
     _reset_source_timezone_for_import()
     # Mode switches must not leave stale provenance, attached 15s source,
     # diagnostics, or execution results (plan §4.2 / PR2 acceptance).
     _clear_dataset_dependent_state()
+    # Drop the in-widget CSV so the next run cannot re-parse it under the
+    # newly selected mode (legacy primary vs 15s-derive).
+    _invalidate_primary_csv_uploader()
 
 
 def _fatal_validation_messages(report: ValidationReport) -> list[str]:
@@ -1198,7 +1215,12 @@ source_tz = st.selectbox(
 
 file = None
 if source == "Upload CSV":
-    file = st.file_uploader("CSV file for the selected explicit profile", type=["csv", "txt"])
+    primary_uploader_nonce = int(st.session_state.get(PRIMARY_CSV_UPLOADER_NONCE_KEY, 0))
+    file = st.file_uploader(
+        "CSV file for the selected explicit profile",
+        type=["csv", "txt"],
+        key=f"primary_csv_upload_{primary_uploader_nonce}",
+    )
 else:
     sample = REPO_ROOT / "sample_data" / "ES_sample_1m.csv"
     file = sample if sample.exists() else None
