@@ -526,9 +526,7 @@ else:
 _grid_otf = st.session_state.get("grid_otf_filter") or {}
 _grid_otf_enabled = bool(_grid_otf.get("otf_filter_enabled", False))
 _grid_otf_config = _grid_otf.get("otf_filter_config") or {}
-_grid_otf_tfs = (
-    _grid_otf_config.get("timeframes", []) if isinstance(_grid_otf_config, dict) else []
-)
+_grid_otf_tfs = _grid_otf_config.get("timeframes", []) if isinstance(_grid_otf_config, dict) else []
 if _grid_otf_enabled:
     st.info(
         "🔎 **OTF filter applied once before the SL/TP grid** — "

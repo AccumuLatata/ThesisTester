@@ -1005,7 +1005,7 @@ with st.sidebar:
             st.caption(
                 "Signals keep the complete candidate population. "
                 "OTF admission is applied later in Backtest, Grid, and Walk-forward. "
-                "Config provenance: a saved signal run’s `signal_settings[\"otf_filter\"]` "
+                'Config provenance: a saved signal run’s `signal_settings["otf_filter"]` '
                 "wins over later Setup Builder edits — regenerate signals to pick up "
                 "changed OTF settings."
             )
