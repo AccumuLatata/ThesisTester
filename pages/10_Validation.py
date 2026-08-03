@@ -602,6 +602,7 @@ if run_wfo:
                                         matrix_test_raw
                                     ),
                                     "matrix_metric": "median_test_expectancy_r",
+                                    "otf_history_policy": wfo_otf_history_policy,
                                 }
                             else:
                                 st.session_state.pop("wfa_matrix", None)

@@ -599,3 +599,65 @@ def test_walk_forward_defaults_otf_history_policy_to_fold_local(tmp_path):
     )
     assert result["walk_forward_config"]["otf_history_policy"] == "fold_local"
     assert result["walk_forward_summary"]["otf_history_policy"] == "fold_local"
+
+
+def test_walk_forward_matrix_forwards_otf_history_policy(tmp_path, monkeypatch):
+    """WFA matrix cells must inherit the primary WFO otf_history_policy."""
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path, instrument="ES")
+    levels = compute_levels(data, instrument="ES", config=_levels_config())["levels"]
+    setup = _setup()
+    signals = generate_signals(levels, setup)["signals"]
+
+    captured: dict = {}
+
+    def _fake_matrix(**kwargs):
+        captured.update(kwargs)
+        return pd.DataFrame(
+            [
+                {
+                    "train_sessions": 2,
+                    "test_sessions": 1,
+                    "fold_count": 0,
+                    "valid_fold_count": 0,
+                    "median_test_expectancy_r": None,
+                    "median_retention_ratio_expectancy": None,
+                    "stitched_oos_trade_count": 0,
+                    "stitched_oos_total_r": None,
+                    "matrix_metric": "median_test_expectancy_r",
+                    "matrix_value": None,
+                    "status": "empty",
+                }
+            ]
+        )
+
+    monkeypatch.setattr("thesistester.api.run_wfa_matrix", _fake_matrix)
+    result = run_walk_forward(
+        levels,
+        signals,
+        instrument="ES",
+        config={
+            "fold_mode": "sessions",
+            "window_mode": "rolling",
+            "train_sessions": 2,
+            "test_sessions": 1,
+            "step_sessions": 1,
+            "ranking_metric": "expectancy_r",
+            "min_train_trades": 1,
+            "stop_loss_ticks_values": [2],
+            "take_profit_ticks_values": [2],
+            "overlap_policy": "reject",
+            "otf_history_policy": "causal_prefix",
+            "matrix": {
+                "enabled": True,
+                "train_session_values": [2],
+                "test_session_values": [1],
+                "matrix_metric": "median_test_expectancy_r",
+            },
+        },
+        otf_config=setup.get("otf_filter"),
+    )
+    assert captured.get("otf_history_policy") == "causal_prefix"
+    assert result["wfa_matrix_config"]["otf_history_policy"] == "causal_prefix"
+    assert result["walk_forward_summary"]["otf_history_policy"] == "causal_prefix"

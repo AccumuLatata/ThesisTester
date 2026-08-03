@@ -1789,9 +1789,14 @@ def run_walk_forward(
             ),
             max_grid_cells=int(execution.get("max_grid_cells", 500)),
             overlap_policy=str(settings.get("overlap_policy", "reject")),
+            # Matrix cells must use the same OTF history policy as the primary WFO.
+            otf_history_policy=settings.get("otf_history_policy"),
         )
         output["wfa_matrix"] = matrix
-        output["wfa_matrix_config"] = dict(matrix_config)
+        output["wfa_matrix_config"] = {
+            **dict(matrix_config),
+            "otf_history_policy": detailed.config.get("otf_history_policy"),
+        }
     return output
 
 

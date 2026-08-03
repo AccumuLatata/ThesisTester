@@ -2545,3 +2545,38 @@ class TestOtfHistoryPolicy:
         a = run_walk_forward_sl_tp(**kwargs)
         b = run_walk_forward_sl_tp(**kwargs)
         pd.testing.assert_frame_equal(a.folds, b.folds)
+
+    def test_wfa_matrix_forwards_otf_history_policy(self, monkeypatch):
+        from thesistester.analytics import walk_forward as walk_forward_mod
+        from thesistester.analytics.walk_forward import run_wfa_matrix
+
+        ohlcv = self._rising_ohlcv(120)
+        sigs = _signals_df(
+            _signal(signal_id=1, timestamp="2026-01-05 22:40:00", direction="long", bar_index=40)
+        )
+        seen: list[str | None] = []
+        original = walk_forward_mod.run_walk_forward_sl_tp
+
+        def _spy(*args, **kwargs):
+            seen.append(kwargs.get("otf_history_policy"))
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(walk_forward_mod, "run_walk_forward_sl_tp", _spy)
+        matrix = run_wfa_matrix(
+            df=ohlcv,
+            signals=sigs,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_session_values=[2],
+            test_session_values=[1],
+            otf_config=self._enabled_otf(),
+            otf_history_policy="causal_prefix",
+            session_timezone=TZ,
+            eth_start="18:00",
+            exchange_timezone=TZ,
+        )
+        assert not matrix.empty
+        assert seen
+        assert all(policy == "causal_prefix" for policy in seen)
