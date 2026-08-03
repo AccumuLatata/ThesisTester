@@ -538,6 +538,10 @@ def _identity_payload_from_state(session_state: Mapping[str, Any]) -> dict[str, 
         if isinstance(session_state.get("levels_identity"), Mapping)
         else None
     )
+    # levels_identity embeds data_identity; promote it so research_identity.json
+    # always restores a top-level data_identity when levels identity is present.
+    if data_identity is None and levels_identity is not None:
+        data_identity = levels_identity.data_identity
     if data_identity is None and levels_identity is None:
         return None
     return build_identity_metadata(
@@ -622,6 +626,14 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
             for key in ("data_identity", "levels_identity"):
                 if key in identity_meta:
                     session_values[key] = identity_meta[key]
+            # Older/odd identity members may nest data_identity only under
+            # levels_identity; promote so session restore stays complete.
+            if "data_identity" not in session_values:
+                levels_identity = session_values.get("levels_identity")
+                if isinstance(levels_identity, Mapping):
+                    nested = levels_identity.get("data_identity")
+                    if isinstance(nested, Mapping):
+                        session_values["data_identity"] = nested
 
         if included.get("dataset"):
             session_values["data"] = _read_parquet_from_zip(zf, "dataset.parquet")
@@ -629,12 +641,6 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
             for key in _DATASET_META_KEYS:
                 if key in dataset_meta:
                     session_values[key] = dataset_meta[key]
-            # Older CAI-1 bundles may omit format_profile from dataset_meta
-            # while still carrying it on data_identity.
-            if "format_profile" not in session_values:
-                data_identity = session_values.get("data_identity")
-                if isinstance(data_identity, Mapping) and data_identity.get("format_profile"):
-                    session_values["format_profile"] = str(data_identity["format_profile"])
             if "subtimeframe_data.parquet" in names:
                 session_values["subtimeframe_data"] = _read_parquet_from_zip(
                     zf, "subtimeframe_data.parquet"
@@ -652,6 +658,13 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
                     session_values["subtimeframe_duplicate_resolution"] = subtimeframe_meta[
                         "subtimeframe_duplicate_resolution"
                     ]
+
+        # Older CAI-1 bundles may omit format_profile from dataset_meta while
+        # still carrying it on data_identity (top-level or nested-promoted).
+        if "format_profile" not in session_values:
+            data_identity = session_values.get("data_identity")
+            if isinstance(data_identity, Mapping) and data_identity.get("format_profile"):
+                session_values["format_profile"] = str(data_identity["format_profile"])
 
         if included.get("levels"):
             session_values["levels"] = _read_parquet_from_zip(zf, "levels.parquet")

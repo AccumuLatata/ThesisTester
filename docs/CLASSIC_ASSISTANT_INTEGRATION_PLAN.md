@@ -281,6 +281,10 @@ These rules are non-negotiable for every milestone.
 - Bundle restore also manages `format_profile` (via `dataset_meta.json`, with
   fallback from `data_identity`) and clears stale `experiment_identity` /
   `execution_origin` so a prior session cannot leak provenance into an import.
+- `normalize_levels_config` ignores inbound `instrument` keys (classic
+  page/bundle settings carry them) and binds from the explicit parameter.
+- Identity write/load promotes nested `levels_identity.data_identity` to a
+  top-level `data_identity` when the top-level key is absent.
 - Tests: `tests/test_research_identity.py`.
 
 **Regression gates**

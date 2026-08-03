@@ -160,6 +160,20 @@ def test_levels_identity_from_equivalent_api_and_page_inputs():
     assert api_identity.to_dict() == page_identity.to_dict()
     assert api_identity.level_engine_version == LEVEL_ENGINE_VERSION
     assert api_identity.artifact_schema_version == LEVELS_ARTIFACT_SCHEMA_VERSION
+    # Classic page/bundle settings always include bound instrument metadata.
+    classic_settings = {**unordered, "instrument": "ES"}
+    assert normalize_levels_config(classic_settings, instrument="ES")["instrument"] == "ES"
+    classic_page = LevelsIdentity.from_page_state(
+        {
+            "data": data,
+            "instrument": "ES",
+            "base_interval": "1min",
+            "source_timezone": "America/New_York",
+            "exchange_timezone": "America/New_York",
+            "levels_settings": classic_settings,
+        }
+    )
+    assert classic_page.levels_settings_hash == api_identity.levels_settings_hash
 
 
 def test_experiment_identity_from_run_spec_is_stable():
@@ -269,6 +283,56 @@ def test_bundle_roundtrip_restores_identities_and_old_bundles_omit_them(tmp_path
     assert "levels_identity" not in legacy_restored
     assert "experiment_identity" not in legacy_restored
     assert "execution_origin" not in legacy_restored
+
+
+def test_nested_data_identity_is_promoted_on_bundle_write_and_load(tmp_path: Path):
+    write_parity_bars(tmp_path / "bars.csv")
+    state = run_experiment(parity_run_spec(dataset_path="bars.csv"), base_directory=tmp_path)
+    # Session with only levels_identity (no top-level data_identity) must still
+    # emit a top-level data_identity in research_identity.json.
+    sparse = {
+        "data": state["data"],
+        "dataset_id": state["dataset_id"],
+        "instrument": state["instrument"],
+        "base_interval": state["base_interval"],
+        "source_timezone": state["source_timezone"],
+        "exchange_timezone": state["exchange_timezone"],
+        "levels": state["levels"],
+        "session_levels": state["session_levels"],
+        "levels_settings": state["levels_settings"],
+        "levels_data_fingerprint": state["levels_data_fingerprint"],
+        "levels_identity": state["levels_identity"],
+    }
+    bundle = build_research_bundle(sparse)
+    with zipfile.ZipFile(io.BytesIO(bundle), "r") as zf:
+        identity_meta = json.loads(zf.read("research_identity.json").decode("utf-8"))
+    assert "data_identity" in identity_meta
+    assert identity_meta["data_identity"]["dataset_id"] == state["dataset_id"]
+
+    # Import path also promotes nested-only identity members from older zips.
+    nested_only = {
+        "identity_schema_version": identity_meta["identity_schema_version"],
+        "levels_identity": identity_meta["levels_identity"],
+    }
+    assert "data_identity" not in nested_only
+    buffer = io.BytesIO()
+    with (
+        zipfile.ZipFile(io.BytesIO(bundle), "r") as source,
+        zipfile.ZipFile(buffer, "w") as target,
+    ):
+        for info in source.infolist():
+            payload = source.read(info.filename)
+            if info.filename == "research_identity.json":
+                payload = json.dumps(nested_only, sort_keys=True).encode("utf-8")
+            target.writestr(info, payload)
+    loaded = load_research_bundle(buffer.getvalue())
+    restored: dict = {}
+    apply_research_bundle_to_session(loaded, restored)
+    assert restored["data_identity"]["dataset_id"] == state["dataset_id"]
+    assert (
+        restored["levels_identity"]["levels_settings_hash"]
+        == state["levels_identity"]["levels_settings_hash"]
+    )
 
 
 def test_format_profile_falls_back_from_data_identity_when_dataset_meta_omits_it(tmp_path: Path):

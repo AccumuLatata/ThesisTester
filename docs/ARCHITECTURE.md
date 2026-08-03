@@ -44,7 +44,8 @@ order and summarized in `results_index.csv`.
 `thesistester/research_identity.py` is the Streamlit-free source of truth for:
 
 - `normalize_levels_config(config, *, instrument)` — product defaults, instrument
-  binding, unknown-key rejection, and sorted unordered list fields; and
+  binding (inbound `instrument` keys are ignored; the parameter wins),
+  unknown-key rejection, and sorted unordered list fields; and
 - frozen `DataIdentity` / `LevelsIdentity` / `ExperimentIdentity` constructors
   used by the headless API, CLI, classic page state, and bundle restore.
 
@@ -55,11 +56,12 @@ additive state fields `data_identity`, `levels_identity`,
 
 Research bundles may include optional `research_identity.json` with
 `data_identity` and `levels_identity`. Pre-CAI-1 bundles omit it and restore
-without those keys. `execution_origin` is run provenance and is excluded from
-the identity member so it cannot change canonical bundle hashes.
-`experiment_identity` remains on run state/provenance until path-canonical
-RunSpec hashing is introduced. No production cache lookup is performed in
-CAI-1.
+without those keys. When only `levels_identity` is present, its nested
+`data_identity` is promoted to the top level on write and load.
+`execution_origin` is run provenance and is excluded from the identity member
+so it cannot change canonical bundle hashes. `experiment_identity` remains on
+run state/provenance until path-canonical RunSpec hashing is introduced. No
+production cache lookup is performed in CAI-1.
 
 Managed research restore keys include `data_identity`, `levels_identity`,
 `format_profile`, `experiment_identity`, and `execution_origin` (the latter two

@@ -57,6 +57,10 @@ def normalize_levels_config(
     if not isinstance(instrument, str) or not instrument.strip():
         raise ValueError("instrument must be a non-empty string")
     raw = dict(config or {})
+    # Classic page/bundle levels_settings and compute_levels outputs carry
+    # instrument as bound metadata. Instrument is always taken from the
+    # explicit parameter, so ignore any inbound copy before unknown-key checks.
+    raw.pop("instrument", None)
     unknown = sorted(set(raw) - set(DEFAULT_LEVELS_SETTINGS))
     if unknown:
         raise ValueError(f"Unknown levels configuration keys: {unknown}")
