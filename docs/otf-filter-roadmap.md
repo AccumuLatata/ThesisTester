@@ -1,7 +1,7 @@
 # OTF Filter Implementation Roadmap
 
 **Project:** ThesisTester  
-**Status:** Hardening PR 1–3 merged; hardening PR 4 (`otf_history_policy`) implemented; PR 6 real-dataset OOS/drift/release gate still open  
+**Status:** Hardening PR 1–5 complete for engineering release; real-dataset OOS statistical release still open (protocol published; no in-repo user dataset)  
 **Owner:** ThesisTester engineering  
 **Last updated:** 2026-08-03  
 **Feature:** Directional One Timeframing (OTF) market-condition filter
@@ -31,9 +31,10 @@ This document is the living implementation plan for adding an optional OTF filte
 - [x] UI/docs honesty: no stale pre-PR-5 “metadata only” copy; README/ARCHITECTURE/ASSUMPTIONS/METRICS/PIT describe live OTF composition (hardening PR 2)
 - [x] Enabled-OTF additive golden / drift gate with overnight ETH fixture, future-shock tests, and legacy isolation (hardening PR 3)
 - [x] Opt-in WFO `otf_history_policy` (`fold_local` default / `causal_prefix`) with API/UI/assistant parity (hardening PR 4)
-- [ ] Out-of-sample validation on a real user dataset (PR 6 DoD)
-- [ ] Regression and drift-safety review sign-off (PR 6 DoD)
-- [ ] Release approved (pending real user dataset validation)
+- [x] OTF research methodology + engineering release evidence recorded (hardening PR 5; see `docs/research-methodology.md`, `docs/OTF_RELEASE_EVIDENCE.md`)
+- [ ] Out-of-sample validation on a real user dataset (user-executed; protocol ready)
+- [x] Regression and drift-safety engineering review sign-off (hardening PR 5 evidence doc)
+- [ ] Statistical / business release approved (pending real user dataset validation)
 
 ## Objective
 
@@ -860,8 +861,8 @@ python3 -m pytest tests/ -q
 - [x] Legacy saved setups load successfully.
 - [x] Reports identify the complete OTF configuration and algorithm version.
 - [x] Documentation describes the exact methodology.
-- [ ] Out-of-sample validation is complete. (PR 6)
-- [ ] Regression and drift-safety reviews are complete. (PR 6)
+- [ ] Out-of-sample validation is complete on a real user dataset. (protocol in `docs/research-methodology.md`; not executable in-repo)
+- [x] Regression and drift-safety engineering reviews are complete. (hardening PR 5 / `docs/OTF_RELEASE_EVIDENCE.md`)
 
 ## Progress log
 
@@ -886,6 +887,7 @@ python3 -m pytest tests/ -q
 | 2026-08-03 | Hardening PR 2 — UI and documentation honesty | `pages/2_Setup_Builder.py`, `pages/6_Signals.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `README.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/METRICS_GLOSSARY.md`, `docs/POINT_IN_TIME_GUARANTEES.md`, `docs/otf-filter.md`, `docs/otf-filter-roadmap.md`, `docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md` | Removed stale “until PR 5 / metadata only” UI copy; documented live OTF composition, config provenance, eth_start/session limitations, OTF session_state keys, and glossary terms. No engine/filtering logic changes. See `docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md` §6. |
 | 2026-08-03 | Hardening PR 3 — enabled OTF golden / drift gate | `tests/fixtures/golden/generate_otf_enabled.py`, `pipeline_otf_enabled.py`, `record_otf_enabled_golden.py`, `otf_enabled_*` artifacts, `tests/test_otf_golden.py`, `.github/workflows/ci.yml`, `tests/fixtures/golden/README.md`, roadmaps | Additive overnight ETH enabled-OTF golden family with accepted/rejected/trade projections, future-shock tests, and legacy-isolation assertions. Legacy golden files unchanged. CI golden-guard narrowed to legacy artifact filenames. See `docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md` §7. |
 | 2026-08-03 | Hardening PR 4 — opt-in WFO `otf_history_policy` | `thesistester/analytics/walk_forward.py`, `thesistester/api.py`, `pages/10_Validation.py`, `pages/14_Research_Assistant.py`, assistant compiler/workspace/explainer/registry, reporting, docs, tests | Added `fold_local` (default) and `causal_prefix` OTF history policies for walk-forward; prefix∪fold-local source; PIT/future-shock coverage; API/UI/AI parity; policy recorded in WFO metadata. See `docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md` §8. |
+| 2026-08-03 | Hardening PR 5 — research methodology + engineering sign-off | `docs/research-methodology.md`, `docs/OTF_RELEASE_EVIDENCE.md`, `docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md`, `docs/otf-filter-roadmap.md`, `docs/otf-filter.md`, `README.md` | Published OTF OOS protocol; recorded engineering verification (1852 passed); honest release posture: research-ready / engineering-signed / real-data statistical release still open. No engine changes. |
 | 2026-08-03 | Hardening PR 4 follow-up — explainer/compiler policy honesty | `thesistester/assistant/explainer.py`, `thesistester/assistant/thesis_compiler.py`, tests | Explainer reads `walk_forward_summary.otf_history_policy` even when assumptions lack `walk_forward`; compiler delegates validation to `normalize_otf_history_policy`. |
 | 2026-08-03 | Hardening PR 4 follow-up — WFA matrix policy parity | `thesistester/api.py`, `pages/10_Validation.py`, tests | API `run_wfa_matrix` now receives the same `otf_history_policy` as the primary WFO run; matrix config records the effective policy. |
 | 2026-08-03 | Hardening PR 4 follow-up — report WFO policy when backtest/grid primary | `thesistester/reporting.py`, tests | `build_otf_filter_metadata` falls back to `walk_forward_otf_filter` / WFO config/summary for `otf_history_policy` so a prior backtest/grid primary cannot blank the WFO policy. |

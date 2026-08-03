@@ -123,8 +123,8 @@ Each PR body must include a `Regression safety` section stating:
 | 1 | PR 1 — Session propagation parity | Fix omitted futures session boundary inputs. | Corrects enabled OTF on affected Streamlit paths only. | Merged |
 | 2 | PR 2 — UI and documentation honesty | Remove stale pre-integration wording and complete operational docs. | No engine or filtering logic change. | Merged |
 | 3 | PR 3 — Enabled OTF golden gate | Add deterministic enabled-mode drift protection. | No production behavior change. | Merged |
-| 4 | PR 4 — Causal-prefix WFO policy | Add optional pre-fold OTF state history. | New opt-in WFO behavior; default unchanged. | Implemented (this branch) |
-| 5 | PR 5 — Release evidence and sign-off | Record real-data OOS evidence and formal release decision. | No engine behavior change. | Pending |
+| 4 | PR 4 — Causal-prefix WFO policy | Add optional pre-fold OTF state history. | New opt-in WFO behavior; default unchanged. | Merged |
+| 5 | PR 5 — Release evidence and sign-off | Record real-data OOS evidence and formal release decision. | No engine behavior change. | Implemented (this branch) — engineering signed; real-data OOS still open |
 
 **Merge order is strict.** PR 2 must not merge before PR 1: documentation that
 claims `eth_start` parity must describe the corrected surfaces. PR 3 should
@@ -674,20 +674,24 @@ python3 -m pytest -q tests/
 
 This roadmap is complete only when:
 
-- all five PRs have satisfied their acceptance criteria;
-- disabled OTF legacy outputs remain unchanged;
-- enabled OTF has deterministic golden and future-shock coverage;
-- `eth_start` parity is verified across UI, API, validation, WFO, and AI;
-- OTF summaries / artifacts record the effective `eth_start` and session
+- [x] all five PRs have satisfied their acceptance criteria (PR 5 accepts
+  engineering sign-off + published OOS protocol; real-data OOS execution remains
+  an external user step — see `docs/OTF_RELEASE_EVIDENCE.md`);
+- [x] disabled OTF legacy outputs remain unchanged;
+- [x] enabled OTF has deterministic golden and future-shock coverage;
+- [x] `eth_start` parity is verified across UI, API, validation, WFO, and AI;
+- [x] OTF summaries / artifacts record the effective `eth_start` and session
   timezone used for filtering;
-- UI and documentation accurately describe enabled OTF behavior;
-- `causal_prefix`, if implemented, uses prefix ∪ fold-local source bars,
+- [x] UI and documentation accurately describe enabled OTF behavior;
+- [x] `causal_prefix`, if implemented, uses prefix ∪ fold-local source bars,
   remains opt-in/default-`fold_local`, is versioned, documented, and
   parity-tested across AI/API/UI;
-- real-data OOS evidence and formal engineering sign-off are recorded
-  (including create-or-update of `docs/research-methodology.md`);
-- the feature’s release status is updated honestly;
-- no OTF algorithm / eligibility-semantics version bump was introduced by
+- [x] formal engineering sign-off recorded; OOS protocol published in
+  `docs/research-methodology.md` (real-user OOS runs still open — no in-repo
+  dataset);
+- [x] the feature’s release status is updated honestly (research-ready /
+  engineering-signed / statistically pending);
+- [x] no OTF algorithm / eligibility-semantics version bump was introduced by
   this hardening series unless a later, separately approved contract change
   explicitly requires it.
 
@@ -697,3 +701,4 @@ This roadmap is complete only when:
 |---|---|
 | 2026-08-03 | Initial hardening and release roadmap published on `main`. |
 | 2026-08-03 | Review refinements: rename away from misleading “v1.1”; require strict PR merge order; document PR 1 as intentional enabled-Streamlit overnight correction; require effective `eth_start`/timezone in OTF summaries; clarify `causal_prefix` as prefix ∪ fold-local; require create-or-update for `docs/research-methodology.md`. |
+| 2026-08-03 | Hardening PR 5 — research methodology + engineering release evidence | `docs/research-methodology.md`, `docs/OTF_RELEASE_EVIDENCE.md`, roadmaps, README | Published OTF OOS protocol; recorded engineering verification suites (1852 passed); honest status: research-ready / engineering-signed / real-data statistical release still open. No engine changes. |
