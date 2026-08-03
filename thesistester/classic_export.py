@@ -488,12 +488,53 @@ def _dataset_section(
     return dataset, gaps
 
 
+def _optional_section_gaps(
+    state: Mapping[str, Any],
+    *,
+    include_grid: bool,
+    include_validation: bool,
+    include_walk_forward: bool,
+) -> list[ClassicExportGap]:
+    """Blocking gaps for optional RunSpec sections requested at export time."""
+    gaps: list[ClassicExportGap] = []
+    if include_grid and _as_mapping(state.get("grid_config")) is None:
+        gaps.append(
+            _gap(
+                "incomplete_grid",
+                "include_grid requires explicit grid_config; defaults are not injected.",
+                "grid",
+            )
+        )
+    if include_validation and _as_mapping(state.get("validation_config")) is None:
+        gaps.append(
+            _gap(
+                "incomplete_validation",
+                "include_validation requires explicit validation_config; "
+                "defaults are not injected.",
+                "validation",
+            )
+        )
+    if include_walk_forward and _as_mapping(state.get("walk_forward_config")) is None:
+        gaps.append(
+            _gap(
+                "incomplete_walk_forward",
+                "include_walk_forward requires explicit walk_forward_config; "
+                "defaults are not injected.",
+                "walk_forward",
+            )
+        )
+    return gaps
+
+
 def classic_state_export_gaps(
     state: Mapping[str, Any],
     *,
     name: str | None = None,
     source_path: str | Path | None = None,
     store_root: str | Path | None = None,
+    include_grid: bool = False,
+    include_validation: bool = False,
+    include_walk_forward: bool = False,
 ) -> list[ClassicExportGap]:
     """Return blocking gaps for exporting classic page state to a RunSpec."""
     if not isinstance(state, Mapping):
@@ -542,6 +583,14 @@ def classic_state_export_gaps(
             )
         )
 
+    gaps.extend(
+        _optional_section_gaps(
+            state,
+            include_grid=include_grid,
+            include_validation=include_validation,
+            include_walk_forward=include_walk_forward,
+        )
+    )
     return gaps
 
 
@@ -561,7 +610,13 @@ def classic_state_to_run_spec(
     executable parameters.
     """
     gaps = classic_state_export_gaps(
-        state, name=name, source_path=source_path, store_root=store_root
+        state,
+        name=name,
+        source_path=source_path,
+        store_root=store_root,
+        include_grid=include_grid,
+        include_validation=include_validation,
+        include_walk_forward=include_walk_forward,
     )
     if gaps:
         rendered = "; ".join(f"{gap.code}: {gap.message}" for gap in gaps)
@@ -600,29 +655,15 @@ def classic_state_to_run_spec(
 
     if include_grid:
         grid = _as_mapping(state.get("grid_config"))
-        if grid is None:
-            raise ValueError(
-                "Classic state is not exportable: incomplete_grid: "
-                "include_grid requires explicit grid_config; defaults are not injected."
-            )
+        assert grid is not None
         spec["grid"] = deepcopy(dict(grid))
     if include_validation:
         validation = _as_mapping(state.get("validation_config"))
-        if validation is None:
-            raise ValueError(
-                "Classic state is not exportable: incomplete_validation: "
-                "include_validation requires explicit validation_config; "
-                "defaults are not injected."
-            )
+        assert validation is not None
         spec["validation"] = deepcopy(dict(validation))
     if include_walk_forward:
         walk_forward = _as_mapping(state.get("walk_forward_config"))
-        if walk_forward is None:
-            raise ValueError(
-                "Classic state is not exportable: incomplete_walk_forward: "
-                "include_walk_forward requires explicit walk_forward_config; "
-                "defaults are not injected."
-            )
+        assert walk_forward is not None
         spec["walk_forward"] = deepcopy(dict(walk_forward))
 
     validate_run_spec(spec)

@@ -429,7 +429,10 @@ not a live Assistant execution input.
 **Implemented contract**
 
 - Module: `thesistester/classic_export.py` (Streamlit-free).
-- `classic_state_export_gaps(state, *, source_path=..., store_root=...)`
+- `classic_state_export_gaps(state, *, source_path=..., store_root=...,
+  include_grid=..., include_validation=..., include_walk_forward=...)`
+  — same optional-section flags as `classic_state_to_run_spec` so gap discovery
+  and export agree
   returns structured gaps (`missing_*`, `stale_levels`,
   `source_path_identity_mismatch`, etc.).
 - `classic_state_to_run_spec(...)` raises when gaps remain; otherwise returns a

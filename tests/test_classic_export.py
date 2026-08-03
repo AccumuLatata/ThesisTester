@@ -315,9 +315,24 @@ def test_explicit_backtest_config_clears_session_when_flat_disabled(tmp_path: Pa
 
 def test_include_grid_requires_explicit_config(tmp_path: Path):
     state = _classic_state_from_parity(tmp_path)
+    gaps = classic_state_export_gaps(state, include_grid=True)
+    assert any(gap.code == "incomplete_grid" for gap in gaps)
+    # Flags default off: complete classic state reports no optional-section gaps.
+    assert not any(gap.code.startswith("incomplete_") for gap in classic_state_export_gaps(state))
     with pytest.raises(ValueError, match="incomplete_grid"):
         classic_state_to_run_spec(state, name="x", include_grid=True)
     state["grid_config"] = deepcopy(parity_run_spec(dataset_path="bars.csv")["grid"])
+    assert classic_state_export_gaps(state, include_grid=True) == []
     spec = classic_state_to_run_spec(state, name="with_grid", include_grid=True)
     assert "grid" in spec
     validate_run_spec(spec)
+
+
+def test_include_validation_and_walk_forward_gaps(tmp_path: Path):
+    state = _classic_state_from_parity(tmp_path)
+    gaps = classic_state_export_gaps(state, include_validation=True, include_walk_forward=True)
+    codes = {gap.code for gap in gaps}
+    assert "incomplete_validation" in codes
+    assert "incomplete_walk_forward" in codes
+    with pytest.raises(ValueError, match="incomplete_validation"):
+        classic_state_to_run_spec(state, name="x", include_validation=True)

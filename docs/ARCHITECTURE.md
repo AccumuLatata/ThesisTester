@@ -119,8 +119,11 @@ source.
 `thesistester/classic_export.py` is a Streamlit-free exporter from canonical
 classic page state to a public RunSpec draft:
 
-- `classic_state_export_gaps(state, ...)` — structured blocking clarifications
-- `classic_state_to_run_spec(state, *, name, source_path=..., store_root=...)`
+- `classic_state_export_gaps(state, ..., include_grid=..., include_validation=...,
+  include_walk_forward=...)` — structured blocking clarifications (same optional
+  section flags as export)
+- `classic_state_to_run_spec(state, *, name, source_path=..., store_root=...,
+  include_grid=..., include_validation=..., include_walk_forward=...)`
   — validated RunSpec or `ValueError` when gaps remain
 
 It reads only page-produced mappings/frames (`data`, provenance,
