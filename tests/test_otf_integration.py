@@ -1242,6 +1242,37 @@ class TestReportingOtfMetadata:
         assert "backtest" in meta["applied_scopes"]
         assert "grid" in meta["applied_scopes"]
 
+    def test_build_otf_filter_metadata_keeps_wfo_history_policy_when_backtest_primary(self):
+        """Backtest/grid primary scope must not blank walk-forward otf_history_policy."""
+        state = {
+            "otf_filter_summary": {
+                "otf_filter_enabled": True,
+                "otf_algorithm_version": OTF_ALGORITHM_VERSION,
+                "otf_config_hash": "d" * 64,
+                "otf_filter_config": _enabled_config(["5m"]),
+                "candidate_signal_count": 5,
+                "otf_accepted_signal_count": 4,
+                "otf_rejected_signal_count": 1,
+                "rejection_rate": 0.2,
+                "session_timezone": TZ,
+                "eth_start": "18:00",
+            },
+            "walk_forward_otf_filter": {
+                "otf_filter_enabled": True,
+                "otf_algorithm_version": OTF_ALGORITHM_VERSION,
+                "otf_config_hash": "e" * 64,
+                "otf_filter_config": _enabled_config(["5m"]),
+                "otf_history_policy": "causal_prefix",
+                "session_timezone": TZ,
+                "eth_start": "18:00",
+            },
+        }
+        meta = build_otf_filter_metadata(state)
+        assert meta["applied_scopes"] == ["backtest", "walk_forward"]
+        assert meta["otf_history_policy"] == "causal_prefix"
+        # Counts still come from the primary (backtest) summary.
+        assert meta["candidate_signal_count"] == 5
+
 
 # ---------------------------------------------------------------------------
 # 38–43. Regression boundaries

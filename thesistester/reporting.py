@@ -192,6 +192,21 @@ def build_otf_filter_metadata(session_state: Mapping[str, Any]) -> dict[str, Any
     ):
         rejection_rate = float(rejected_count) / float(candidate_count)
 
+    # otf_history_policy is WFO-only. Backtest/grid summaries are preferred for
+    # counts/config but never carry this field — fall back to walk-forward scopes
+    # so a prior backtest/grid run cannot blank a completed WFO policy.
+    history_policy = primary.get("otf_history_policy")
+    if history_policy is None and isinstance(wf_summary, Mapping):
+        history_policy = wf_summary.get("otf_history_policy")
+    if history_policy is None:
+        wf_config = session_state.get("walk_forward_config")
+        if isinstance(wf_config, Mapping):
+            history_policy = wf_config.get("otf_history_policy")
+    if history_policy is None:
+        wf_run_summary = session_state.get("walk_forward_summary")
+        if isinstance(wf_run_summary, Mapping):
+            history_policy = wf_run_summary.get("otf_history_policy")
+
     return {
         "available": True,
         "enabled": enabled,
@@ -204,7 +219,7 @@ def build_otf_filter_metadata(session_state: Mapping[str, Any]) -> dict[str, Any
         "rejection_rate": rejection_rate,
         "session_timezone": primary.get("session_timezone"),
         "eth_start": primary.get("eth_start"),
-        "otf_history_policy": primary.get("otf_history_policy"),
+        "otf_history_policy": history_policy,
         "applied_scopes": applied_scopes,
     }
 
