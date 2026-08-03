@@ -298,6 +298,21 @@ def test_live_widgets_override_stale_backtest_snapshots(tmp_path: Path):
     validate_run_spec(spec)
 
 
+def test_explicit_backtest_config_clears_session_when_flat_disabled(tmp_path: Path):
+    state = _classic_state_from_parity(tmp_path)
+    state["backtest_config"] = {
+        **deepcopy(state["backtest_config"]),
+        "flat_by_session_close": False,
+        "session_timezone": "America/Chicago",
+        "no_new_entries_after": "15:30",
+    }
+    spec = classic_state_to_run_spec(state, name="explicit_session_clear")
+    assert spec["backtest"]["flat_by_session_close"] is False
+    assert spec["backtest"]["session_timezone"] is None
+    assert spec["backtest"]["no_new_entries_after"] is None
+    validate_run_spec(spec)
+
+
 def test_include_grid_requires_explicit_config(tmp_path: Path):
     state = _classic_state_from_parity(tmp_path)
     with pytest.raises(ValueError, match="incomplete_grid"):

@@ -312,7 +312,6 @@ def _backtest_section(state: Mapping[str, Any]) -> dict[str, Any] | ClassicExpor
             )
             if value is not _MISSING:
                 backtest[key] = value
-        _normalize_session_exit_fields(backtest)
 
         # Exit management: live enable toggles override snapshot values.
         if "backtest_enable_be" in state:
@@ -338,6 +337,9 @@ def _backtest_section(state: Mapping[str, Any]) -> dict[str, Any] | ClassicExpor
             backtest["max_holding_bars"] = state["backtest_max_bars"]
         elif state.get("backtest_use_max_bars") is False:
             backtest["max_holding_bars"] = None
+
+    # Apply to explicit backtest_config and assembled widgets/snapshots alike.
+    _normalize_session_exit_fields(backtest)
 
     missing = [key for key in _BACKTEST_REQUIRED if key not in backtest]
     if missing:

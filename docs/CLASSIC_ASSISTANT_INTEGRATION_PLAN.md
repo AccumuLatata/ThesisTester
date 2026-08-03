@@ -442,7 +442,8 @@ not a live Assistant execution input.
 - Backtest may come from explicit `backtest_config` or assembled from page
   widget keys (preferred) with post-run policy snapshots as fallback, without
   inventing SL/TP/session fields. Disabled `flat_by_session_close` clears
-  session timezone / entry cutoff to match Backtest page persistence.
+  session timezone / entry cutoff on both paths to match Backtest page
+  persistence.
 - Optional grid/validation/walk-forward export only when explicit `*_config`
   mappings are present (`include_grid` / `include_validation` /
   `include_walk_forward`).

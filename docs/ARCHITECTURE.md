@@ -128,9 +128,9 @@ It reads only page-produced mappings/frames (`data`, provenance,
 snapshots or `backtest_config`). A stored `data_identity` alone is not enough —
 the canonical in-memory `data` frame is required so fingerprint/stale checks
 can run. When assembling backtest without `backtest_config`, live Backtest
-widget keys win over post-run policy snapshots, and disabled session-flat
-clears timezone/cutoff like the Backtest page. Missing parameters are never
-invented.
+widget keys win over post-run policy snapshots. Disabled session-flat clears
+timezone/cutoff for both assembled and explicit `backtest_config` paths,
+matching the Backtest page. Missing parameters are never invented.
 Source strategy: prefer a verified execution data artifact
 (`dataset.data_artifact_key`); always require an explicit CSV path
 (`source_path` / `dataset_source_path` / `source_csv_path`) verified against
