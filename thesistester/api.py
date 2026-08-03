@@ -51,7 +51,6 @@ from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.levels.sessions import compute_session_levels
 from thesistester.persistence.local_store import (
     _normalize_signal_settings_for_hash,
-    compute_dataset_id,
     compute_signal_settings_hash,
 )
 from thesistester.research_identity import (
@@ -2119,9 +2118,7 @@ def run_experiment(
     dataset_id = data_identity.dataset_id()
 
     level_result = compute_levels(data, instrument=instrument, config=run.get("levels"))
-    levels_identity = LevelsIdentity.from_normalized(
-        data_identity, level_result["levels_settings"]
-    )
+    levels_identity = LevelsIdentity.from_normalized(data_identity, level_result["levels_settings"])
     experiment_identity = ExperimentIdentity.from_run_spec(levels_identity, run)
     setup = build_setup(dict(run.get("setup") or {}))
     signal_result = generate_signals(level_result["levels"], setup, instrument=instrument)

@@ -64,6 +64,9 @@ content-addressed data/levels/experiment identity before any cache lookup.
 - Optional bundle member `research_identity.json` restores `data_identity` /
   `levels_identity` when present; pre-CAI-1 bundles remain loadable without
   those fields.
+- Bundle restore writes/reads `format_profile` in `dataset_meta.json` (with
+  `data_identity` fallback) and clears stale `experiment_identity` /
+  `execution_origin` on import.
 
 ### Regression safety
 

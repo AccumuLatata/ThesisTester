@@ -61,8 +61,11 @@ the identity member so it cannot change canonical bundle hashes.
 RunSpec hashing is introduced. No production cache lookup is performed in
 CAI-1.
 
-Managed research restore keys include `data_identity` and `levels_identity`
-(cleared when absent from an imported bundle).
+Managed research restore keys include `data_identity`, `levels_identity`,
+`format_profile`, `experiment_identity`, and `execution_origin` (the latter two
+are cleared on import and not restored from the identity member).
+`format_profile` is also written to `dataset_meta.json`; when an older CAI-1
+bundle omits it there, restore falls back to `data_identity.format_profile`.
 
 ## AI Research Assistant contract boundary (AIA-0)
 

@@ -31,6 +31,8 @@ _DATASET_META_KEYS = (
     "base_interval",
     "source_timezone",
     "exchange_timezone",
+    # Additive parser provenance; restored so exporters match imported identity.
+    "format_profile",
 )
 _LEVELS_META_KEYS = ("levels_settings", "levels_data_fingerprint")
 _SIGNALS_META_KEYS = (
@@ -71,6 +73,7 @@ _MANAGED_RESEARCH_KEYS = {
     "base_interval",
     "source_timezone",
     "exchange_timezone",
+    "format_profile",
     "levels",
     "session_levels",
     "levels_settings",
@@ -130,8 +133,10 @@ _MANAGED_RESEARCH_KEYS = {
     # CAI-1 additive identity fields (optional; absent on pre-CAI-1 bundles).
     "data_identity",
     "levels_identity",
-    # experiment_identity is run-state/provenance only until path-canonical
-    # RunSpec hashing lands; see _identity_payload_from_state.
+    # Run-state/provenance only — cleared on import; not restored from
+    # research_identity.json until path-canonical RunSpec hashing lands.
+    "experiment_identity",
+    "execution_origin",
 }
 
 _KNOWN_FILES = {
@@ -619,6 +624,12 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
             for key in _DATASET_META_KEYS:
                 if key in dataset_meta:
                     session_values[key] = dataset_meta[key]
+            # Older CAI-1 bundles may omit format_profile from dataset_meta
+            # while still carrying it on data_identity.
+            if "format_profile" not in session_values:
+                data_identity = session_values.get("data_identity")
+                if isinstance(data_identity, Mapping) and data_identity.get("format_profile"):
+                    session_values["format_profile"] = str(data_identity["format_profile"])
             if "subtimeframe_data.parquet" in names:
                 session_values["subtimeframe_data"] = _read_parquet_from_zip(
                     zf, "subtimeframe_data.parquet"

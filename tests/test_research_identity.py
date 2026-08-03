@@ -217,19 +217,30 @@ def test_bundle_roundtrip_restores_identities_and_old_bundles_omit_them(tmp_path
     with zipfile.ZipFile(io.BytesIO(bundle), "r") as zf:
         assert "research_identity.json" in zf.namelist()
         identity_meta = json.loads(zf.read("research_identity.json").decode("utf-8"))
+        dataset_meta = json.loads(zf.read("dataset_meta.json").decode("utf-8"))
     assert "data_identity" in identity_meta
     assert "levels_identity" in identity_meta
     # Origin and experiment_identity must not affect canonical bundle membership.
     assert "execution_origin" not in identity_meta
     assert "experiment_identity" not in identity_meta
+    assert dataset_meta.get("format_profile") == state["format_profile"]
 
     loaded = load_research_bundle(bundle)
-    restored: dict = {}
+    restored: dict = {
+        "experiment_identity": {"stale": True},
+        "execution_origin": "assistant",
+        "format_profile": "ninjatrader",
+    }
     apply_research_bundle_to_session(loaded, restored)
     assert restored["data_identity"]["dataset_id"] == state["dataset_id"]
-    assert restored["levels_identity"]["levels_settings_hash"] == state["levels_identity"][
-        "levels_settings_hash"
-    ]
+    assert (
+        restored["levels_identity"]["levels_settings_hash"]
+        == state["levels_identity"]["levels_settings_hash"]
+    )
+    assert restored["format_profile"] == state["format_profile"]
+    # Provenance keys are cleared and not restored from the identity member.
+    assert "experiment_identity" not in restored
+    assert "execution_origin" not in restored
 
     legacy_state = {
         "data": state["data"],
@@ -247,10 +258,47 @@ def test_bundle_roundtrip_restores_identities_and_old_bundles_omit_them(tmp_path
     with zipfile.ZipFile(io.BytesIO(legacy_bundle), "r") as zf:
         assert "research_identity.json" not in zf.namelist()
     legacy_loaded = load_research_bundle(legacy_bundle)
-    legacy_restored: dict = {"data_identity": {"stale": True}, "levels_identity": {"stale": True}}
+    legacy_restored: dict = {
+        "data_identity": {"stale": True},
+        "levels_identity": {"stale": True},
+        "experiment_identity": {"stale": True},
+        "execution_origin": "cli",
+    }
     apply_research_bundle_to_session(legacy_loaded, legacy_restored)
     assert "data_identity" not in legacy_restored
     assert "levels_identity" not in legacy_restored
+    assert "experiment_identity" not in legacy_restored
+    assert "execution_origin" not in legacy_restored
+
+
+def test_format_profile_falls_back_from_data_identity_when_dataset_meta_omits_it(tmp_path: Path):
+    write_parity_bars(tmp_path / "bars.csv")
+    state = run_experiment(parity_run_spec(dataset_path="bars.csv"), base_directory=tmp_path)
+    # Stamp a non-default profile on session + identity without reloading vendor data.
+    state["format_profile"] = "databento_trades"
+    state["data_identity"] = {
+        **state["data_identity"],
+        "format_profile": "databento_trades",
+    }
+    bundle = build_research_bundle(state)
+    # Simulate an older CAI-1 zip that had identity but not dataset_meta.format_profile.
+    buffer = io.BytesIO()
+    with (
+        zipfile.ZipFile(io.BytesIO(bundle), "r") as source,
+        zipfile.ZipFile(buffer, "w") as target,
+    ):
+        for info in source.infolist():
+            payload = source.read(info.filename)
+            if info.filename == "dataset_meta.json":
+                meta = json.loads(payload.decode("utf-8"))
+                meta.pop("format_profile", None)
+                payload = json.dumps(meta, sort_keys=True).encode("utf-8")
+            target.writestr(info, payload)
+    loaded = load_research_bundle(buffer.getvalue())
+    restored: dict = {}
+    apply_research_bundle_to_session(loaded, restored)
+    assert restored["format_profile"] == "databento_trades"
+    assert restored["data_identity"]["format_profile"] == "databento_trades"
 
 
 def test_execution_origin_does_not_change_canonical_bundle_hash(tmp_path: Path):

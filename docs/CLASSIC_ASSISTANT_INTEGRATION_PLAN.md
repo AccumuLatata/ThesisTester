@@ -278,6 +278,9 @@ These rules are non-negotiable for every milestone.
   and is excluded from that member so origin cannot change canonical bundle
   hashes. `experiment_identity` remains on run state/provenance until
   path-canonical RunSpec hashing lands (relative vs absolute dataset paths).
+- Bundle restore also manages `format_profile` (via `dataset_meta.json`, with
+  fallback from `data_identity`) and clears stale `experiment_identity` /
+  `execution_origin` so a prior session cannot leak provenance into an import.
 - Tests: `tests/test_research_identity.py`.
 
 **Regression gates**
