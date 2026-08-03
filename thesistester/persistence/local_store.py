@@ -15,6 +15,7 @@ from uuid import uuid4
 import pandas as pd
 
 from thesistester import __version__
+from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
 from thesistester.engine.otf import OTF_ALGORITHM_VERSION
 from thesistester.setup import (
     get_effective_otf_filter_config,
@@ -512,6 +513,18 @@ def save_dataset(
                 "Refusing to overwrite subtimeframe provenance."
             )
 
+    if (
+        isinstance(metadata_ingestion_provenance, dict)
+        and metadata_ingestion_provenance.get("ingestion_mode")
+        == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+        and not metadata_has_subtimeframe
+    ):
+        raise ValueError(
+            f"ingestion_provenance for {INGESTION_MODE_15S_PRIMARY_DERIVE_1M!r} "
+            "requires a subtimeframe sidecar; refusing to save derive-mode "
+            "provenance without subtimeframe data."
+        )
+
     metadata = _dataset_metadata(
         canonical,
         dataset_id=dataset_id,
@@ -703,6 +716,14 @@ def load_dataset(dataset_id: str) -> tuple[pd.DataFrame, dict[str, Any]]:
                 "Saved dataset declares a subtimeframe sidecar, but "
                 f"{SUBTIMEFRAME_PARQUET_NAME} is missing."
             )
+        # PR3 fail-closed: declared sidecars must be parseable, not merely present.
+        try:
+            pd.read_parquet(subtimeframe_path)
+        except (OSError, ValueError) as exc:
+            raise ValueError(
+                "Saved dataset declares a subtimeframe sidecar, but "
+                f"{SUBTIMEFRAME_PARQUET_NAME} is unreadable or corrupt."
+            ) from exc
 
     df = pd.read_parquet(parquet_path)
     metadata["path"] = str(dataset_dir)

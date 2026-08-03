@@ -229,8 +229,11 @@ Requirements:
   parsed; missing/corrupt declared sidecars fail closed with a clear message.
 - Save refuses to overwrite a different existing subtimeframe sidecar for the
   same canonical dataset ID, mirroring the raw-sidecar provenance guard.
+- Save refuses `ingestion_mode=15s_primary_derive_1m` provenance without a
+  subtimeframe sidecar (`has_subtimeframe` must be true after preserve logic).
 - Restore repopulates `subtimeframe_data`, its interval/profile, and
-  `ingestion_provenance` before dependent pages render.
+  `ingestion_provenance` before dependent pages render — and never latches
+  derive provenance when the lower frame is absent or unreadable.
 - Legacy saves without a lower frame stay valid v2 records or remain readable
   v1 according to the narrowest migration that preserves existing data.
 

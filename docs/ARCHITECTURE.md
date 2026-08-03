@@ -565,8 +565,11 @@ dual-upload lower data remain unchanged.
 Local persistence stores the derived one-minute frame as
 `canonical.parquet` and the retained 15-second source as
 `subtimeframe.parquet` under dataset schema v2, with
-`ingestion_provenance` in `meta.json`. Bootstrap restores both sidecars
-before dependent pages render. Headless API/CLI RunSpecs accept
+`ingestion_provenance` in `meta.json`. Loads fail closed when a declared
+sidecar is missing or unreadable; saves refuse derive-mode provenance
+without a subtimeframe sidecar; restore never latches
+`ingestion_provenance` without usable `subtimeframe_data`. Bootstrap
+restores both sidecars before dependent pages render. Headless API/CLI RunSpecs accept
 `dataset.ingestion_mode: 15s_primary_derive_1m` (Quantower History Exporter
 only); that mode derives the parent, supplies `subtimeframe_data`
 internally, and rejects pairing with `dataset.subtimeframe_path`.

@@ -195,6 +195,56 @@ def test_restore_saved_dataset_provenance_clears_absent_subtimeframe_sidecar(mon
     assert "subtimeframe_fallback_parent_bars" not in session_state
 
 
+def test_restore_does_not_latch_derive_provenance_without_subtimeframe(monkeypatch):
+    """Broken/partial restores must not hide dual-upload via orphan provenance."""
+    session_state: dict = {}
+    _stub_streamlit_state(monkeypatch, session_state)
+    monkeypatch.setattr(app_state, "load_raw_dataset", lambda dataset_id: None)
+    monkeypatch.setattr(app_state, "load_subtimeframe_dataset", lambda dataset_id: None)
+
+    app_state.restore_saved_dataset_provenance(
+        "dataset-abc",
+        {
+            "format_profile": "quantower_history_exporter",
+            "has_subtimeframe": False,
+            "ingestion_provenance": {
+                "ingestion_mode": "15s_primary_derive_1m",
+                "derivation_policy": "complete_aligned_15s_to_1m_v1",
+            },
+        },
+    )
+
+    assert "subtimeframe_data" not in session_state
+    assert "ingestion_provenance" not in session_state
+
+
+def test_restore_clears_provenance_when_subtimeframe_sidecar_unreadable(monkeypatch):
+    session_state = {
+        "ingestion_provenance": {"ingestion_mode": "15s_primary_derive_1m"},
+    }
+    _stub_streamlit_state(monkeypatch, session_state)
+    monkeypatch.setattr(app_state, "load_raw_dataset", lambda dataset_id: None)
+    monkeypatch.setattr(
+        app_state,
+        "load_subtimeframe_dataset",
+        lambda dataset_id: (_ for _ in ()).throw(ValueError("corrupt parquet")),
+    )
+
+    app_state.restore_saved_dataset_provenance(
+        "dataset-abc",
+        {
+            "format_profile": "quantower_history_exporter",
+            "has_subtimeframe": True,
+            "subtimeframe_interval": "15s",
+            "ingestion_provenance": {"ingestion_mode": "15s_primary_derive_1m"},
+        },
+    )
+
+    assert "subtimeframe_data" not in session_state
+    assert "ingestion_provenance" not in session_state
+    assert "subtimeframe_restore_warning" in session_state
+
+
 def test_bootstrap_clears_stale_saved_dataset_pointer(monkeypatch):
     session_state: dict = {}
     _stub_streamlit_state(monkeypatch, session_state)

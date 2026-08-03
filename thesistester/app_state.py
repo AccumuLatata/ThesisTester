@@ -70,8 +70,10 @@ def restore_saved_dataset_provenance(dataset_id: str, metadata: dict[str, object
             st.session_state["subtimeframe_format_profile"] = profile
         st.session_state["subtimeframe_fallback_parent_bars"] = []
 
+    # Derive-mode provenance must not latch without a usable lower frame —
+    # otherwise the UI hides dual-upload while strict R12 has no source bars.
     provenance = metadata.get("ingestion_provenance")
-    if isinstance(provenance, dict):
+    if isinstance(provenance, dict) and subtimeframe_data is not None:
         st.session_state["ingestion_provenance"] = dict(provenance)
     else:
         st.session_state.pop("ingestion_provenance", None)

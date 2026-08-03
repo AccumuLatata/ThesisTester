@@ -462,6 +462,43 @@ def test_dataset_fail_closed_when_declared_subtimeframe_missing():
         load_dataset(saved["dataset_id"])
 
 
+def test_dataset_fail_closed_when_declared_subtimeframe_corrupt():
+    df = _base_dataset()
+    sub = _subtimeframe_dataset()
+    saved = save_dataset(
+        df,
+        name="Derived ES",
+        instrument="ES",
+        base_interval="1min",
+        source_timezone=TZ,
+        exchange_timezone=TZ,
+        subtimeframe_data=sub,
+        subtimeframe_interval="15s",
+        subtimeframe_format_profile="quantower_history_exporter",
+        ingestion_provenance={"ingestion_mode": "15s_primary_derive_1m"},
+    )
+    (Path(saved["path"]) / "subtimeframe.parquet").write_bytes(b"not-a-parquet-file")
+    with pytest.raises(ValueError, match="unreadable or corrupt"):
+        load_dataset(saved["dataset_id"])
+
+
+def test_dataset_rejects_derive_provenance_without_subtimeframe_sidecar():
+    df = _base_dataset()
+    with pytest.raises(ValueError, match="requires a subtimeframe sidecar"):
+        save_dataset(
+            df,
+            name="Broken derive meta",
+            instrument="ES",
+            base_interval="1min",
+            source_timezone=TZ,
+            exchange_timezone=TZ,
+            ingestion_provenance={
+                "ingestion_mode": "15s_primary_derive_1m",
+                "derivation_policy": "complete_aligned_15s_to_1m_v1",
+            },
+        )
+
+
 def test_dataset_id_content_sensitivity():
     df_one = _base_dataset()
     df_two = _base_dataset()

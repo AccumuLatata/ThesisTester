@@ -79,7 +79,9 @@ This engine is for **research screening**, not proof of a durable edge.
   one 15-second bar remain pessimistic SL-first under the existing contract.
 - The 15-second-primary path persists the retained 15-second source as a local
   `subtimeframe.parquet` sidecar (dataset schema v2) with
-  `ingestion_provenance` in `meta.json`. Research bundles restore the same
+  `ingestion_provenance` in `meta.json`. Declared sidecars that are missing
+  or corrupt fail closed on load; derive-mode provenance cannot be saved or
+  session-restored without a usable lower frame. Research bundles restore the same
   members. Headless runs accept
   `dataset.ingestion_mode: 15s_primary_derive_1m` on a single Quantower 15s
   CSV and must not also set `dataset.subtimeframe_path`. Manual dual-upload
