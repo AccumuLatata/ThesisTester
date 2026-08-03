@@ -632,7 +632,10 @@ def _build_current_editor_config(
 
 
 st.title("🧩 Setup Builder")
-st.caption("Configure and save reusable setup parameters for the Signals → Backtest workflow.")
+st.caption(
+    "Configure and save reusable setup parameters for the "
+    "Signals → Backtest / Grid / Validation workflow."
+)
 
 if "levels" not in st.session_state:
     st.warning(
@@ -1000,12 +1003,13 @@ if trigger == "3c":
         ),
     )
     trigger_timeframe = TRIGGER_TIMEFRAME_LABELS[trigger_timeframe_label]
-    st.info(
-        "3c with non-base trigger timeframe: arrival, muted, SFP, and reversal "
-        "are evaluated on trigger-timeframe candles. "
-        "Retrace entry fill is evaluated on canonical/base bars after reversal candle completes. "
-        "max_entry_wait_bars_after_reversal counts trigger-timeframe bars."
-    )
+    if trigger_timeframe != "base":
+        st.info(
+            "3c with non-base trigger timeframe: arrival, muted, SFP, and reversal "
+            "are evaluated on trigger-timeframe candles. "
+            "Retrace entry fill is evaluated on canonical/base bars after reversal candle completes. "
+            "max_entry_wait_bars_after_reversal counts trigger-timeframe bars."
+        )
 else:
     trigger_timeframe_label = st.selectbox(
         "Trigger timeframe",
@@ -1069,16 +1073,17 @@ if trigger == "3c":
 
 st.subheader("OTF filter configuration")
 st.caption(
-    "OTF defaults to **disabled** so legacy research behavior is unchanged until you enable it. "
-    "This page persists the setup’s `otf_filter` block. "
+    "OTF defaults to **disabled** so existing research behavior is unchanged until you enable it. "
+    "This page saves the setup’s OTF filter settings. "
     "Signal generation keeps the full candidate population; "
     "Backtest, Grid, and Walk-forward apply OTF admission before execution when enabled. "
     "Rejected candidates remain available for audit/export."
 )
 st.caption(
-    "OTF v1 always uses completed HTF bars only (intentional decision lag). "
-    "Futures session boundaries follow instrument `eth_start` (e.g. 18:00 ET for ES/NQ); "
-    "midnight is not a reset. Source bars must be strictly finer than selected OTF timeframes. "
+    "OTF v1 always uses completed higher-timeframe bars only (intentional decision lag). "
+    "Futures session boundaries follow the instrument overnight session start "
+    "(e.g. 18:00 ET for ES/NQ); midnight is not a reset. "
+    "Source bars must be strictly finer than selected OTF timeframes. "
     "Alignment mode is `all` — every selected timeframe must agree, which can shrink sample size."
 )
 otf_enabled = st.toggle(
@@ -1114,7 +1119,7 @@ if otf_minimum_fallback:
     st.session_state[WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS] = otf_minimum_default
 otf_minimum_consecutive_bars = int(
     st.number_input(
-        "OTF minimum consecutive comparisons",
+        "OTF minimum consecutive completed HTF bars",
         min_value=1,
         value=otf_minimum_default,
         step=1,

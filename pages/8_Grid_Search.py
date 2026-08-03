@@ -111,8 +111,10 @@ with st.sidebar:
         value=True,
         key="grid_allow_same_bar",
         help=(
-            "SL/TP checks begin on the entry bar. "
-            "Uses SL-first pessimistic rule when both are reachable in the same bar."
+            "If enabled, SL/TP checks begin on the entry bar. "
+            "When both SL and TP are reachable in the same bar, resolution follows "
+            "the selected Intrabar resolution model "
+            "(SL-first only when that model is selected)."
         ),
     )
     intrabar_model = st.selectbox(
@@ -134,10 +136,10 @@ with st.sidebar:
     ):
         st.warning(
             "Subtimeframe replay requires strictly finer data. Upload it on the "
-            "Data page, load it through a research bundle, or use the R18 API/CLI "
-            "`dataset.subtimeframe_path` contract."
+            "Data page or load it through a research bundle. "
+            "Headless runs can also set `dataset.subtimeframe_path`."
         )
-    with st.expander("Exit management (R13)", expanded=False):
+    with st.expander("Exit management (break-even / trailing)", expanded=False):
         enable_breakeven = st.toggle("Enable break-even move", value=False, key="grid_enable_be")
         grid_breakeven_after_r = None
         if enable_breakeven:

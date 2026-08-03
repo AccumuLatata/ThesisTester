@@ -363,6 +363,9 @@ def _load_saved_levels_into_session(dataset_id: str, settings_hash: str) -> bool
 
 
 st.title("📏 Levels")
+st.caption(
+    "Compute session, indicator, profile, and advanced level families for the active dataset."
+)
 
 bootstrap_active_saved_dataset()
 

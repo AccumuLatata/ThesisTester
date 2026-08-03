@@ -15,7 +15,7 @@ from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 
 
 # ---------------------------------------------------------------------------
-# Import helpers from pages/5_Levels.py without running the Streamlit app
+# Import helpers from pages/2_Levels.py without running the Streamlit app
 # ---------------------------------------------------------------------------
 
 
@@ -74,7 +74,7 @@ def _import_levels_helpers():
     previous_streamlit = sys.modules.get("streamlit")
     sys.modules["streamlit"] = stub
 
-    page_path = pathlib.Path(__file__).parent.parent / "pages" / "5_Levels.py"
+    page_path = pathlib.Path(__file__).parent.parent / "pages" / "2_Levels.py"
     spec = importlib.util.spec_from_file_location("levels_page_stage6", page_path)
     mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
 

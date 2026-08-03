@@ -220,8 +220,9 @@ with st.sidebar:
         key="backtest_allow_same_bar",
         help=(
             "If enabled, SL/TP checks begin on the entry bar (recommended for "
-            "confirm_3bar filled entries). Uses SL-first pessimistic rule when "
-            "both are reachable in the same bar."
+            "filled 3c entries). When both SL and TP are reachable in the same bar, "
+            "resolution follows the selected Intrabar resolution model "
+            "(SL-first only when that model is selected)."
         ),
     )
     intrabar_model = st.selectbox(
@@ -247,10 +248,10 @@ with st.sidebar:
     ):
         st.warning(
             "Subtimeframe replay requires lower-timeframe data. Upload it on the "
-            "Data page, load it through a research bundle, or use the R18 API/CLI "
-            "`dataset.subtimeframe_path` contract."
+            "Data page or load it through a research bundle. "
+            "Headless runs can also set `dataset.subtimeframe_path`."
         )
-    with st.expander("Exit management (R13)", expanded=False):
+    with st.expander("Exit management (break-even / trailing)", expanded=False):
         enable_breakeven = st.toggle(
             "Enable break-even move", value=False, key="backtest_enable_be"
         )
@@ -532,7 +533,7 @@ if _otf_enabled:
     )
     st.info(
         f"🔎 **OTF filter enabled** — timeframes: {', '.join(_otf_tfs) or '—'} · "
-        f"min consecutive bars: {_otf_min_bars} · "
+        f"min consecutive completed HTF bars: {_otf_min_bars} · "
         f"session tz: {_otf_session_tz or '—'} · eth_start: {_otf_eth_start or '—'} · "
         f"candidates: {_otf_candidate_count} · accepted: {_otf_accepted_count} · "
         f"rejected: {_otf_rejected_count}"
@@ -802,7 +803,7 @@ if has_trades:
     ]
     st.dataframe(trades[display_cols], width="stretch", hide_index=True)
 
-    with st.expander("Trade review (R20 replay-lite)", expanded=False):
+    with st.expander("Trade review (per-trade inspection)", expanded=False):
         st.caption(
             "Visualization only. MAE/MFE shading is the terminal parent-bar excursion envelope, "
             "not a reconstructed intrabar path or proof of fill ordering."

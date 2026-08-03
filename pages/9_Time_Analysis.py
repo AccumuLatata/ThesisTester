@@ -20,6 +20,10 @@ from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.timezone_display import ensure_display_timezone
 
 st.title("🕐 Time Analysis")
+st.caption(
+    "Descriptive time-of-day and session-window breakdown of completed trades. "
+    "No trade re-simulation is performed."
+)
 
 # ── Require trades ────────────────────────────────────────────────────────────
 trades_raw = st.session_state.get("trades")

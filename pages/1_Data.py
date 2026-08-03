@@ -398,7 +398,7 @@ def _render_subtimeframe_upload(
     exchange_timezone: str,
 ) -> None:
     """Render the optional interactive R12 lower-timeframe import."""
-    with st.expander("Lower-timeframe R12 replay (optional)", expanded=False):
+    with st.expander("Lower-timeframe replay (optional)", expanded=False):
         st.caption(
             "Upload lower OHLCV bars for observed lower-timeframe replay. "
             "They must cover and reconcile exactly to every main-chart bar."
@@ -443,11 +443,11 @@ def _render_subtimeframe_upload(
             )
             if bool(duplicate_report["ohlc_identical_group"].all()):
                 st.info(
-                    "All duplicate groups share identical OHLC. R12 does not use "
+                    "All duplicate groups share identical OHLC. Lower-timeframe replay does not use "
                     "lower-bar volume for event ordering; one lowest-volume row per "
                     "timestamp can be retained with a recorded audit trail."
                 )
-                if st.button("Use OHLC-identical duplicates for R12 only"):
+                if st.button("Use OHLC-identical duplicates for lower-timeframe replay only"):
                     source = st.session_state.get(SUBTIMEFRAME_DUPLICATE_SOURCE_KEY)
                     if not isinstance(source, pd.DataFrame):
                         st.error("Duplicate source data is unavailable; re-upload the lower CSV.")
@@ -473,7 +473,7 @@ def _render_subtimeframe_upload(
                             }
                             st.success(
                                 f"Resolved {len(audit):,} OHLC-identical duplicate groups "
-                                "for R12 only."
+                                "for lower-timeframe replay only."
                             )
                             st.rerun()
                         except (DataValidationError, ValueError) as exc:
@@ -490,7 +490,7 @@ def _render_subtimeframe_upload(
                                 }
                                 st.warning(
                                     "Resolved lower data is retained for primary-volume "
-                                    "diagnostics only. R12 remains unavailable until "
+                                    "diagnostics only. Lower-timeframe replay remains unavailable until "
                                     "primary duplicate timestamps are resolved."
                                 )
                                 st.rerun()
@@ -501,12 +501,12 @@ def _render_subtimeframe_upload(
             compatibility_report, pd.DataFrame
         ) and upload_signature == st.session_state.get(SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY):
             st.warning(
-                f"R12 compatibility report: {len(compatibility_report):,} parent bars "
+                f"Lower-timeframe compatibility report: {len(compatibility_report):,} parent bars "
                 "cannot be replayed from this lower CSV."
             )
             st.dataframe(compatibility_report, width="stretch")
             st.download_button(
-                "Download R12 compatibility report CSV",
+                "Download lower-timeframe compatibility report CSV",
                 data=compatibility_report.to_csv(index=False).encode("utf-8"),
                 file_name="r12_compatibility_report.csv",
                 mime="text/csv",
@@ -541,7 +541,7 @@ def _render_subtimeframe_upload(
                     )
                 else:
                     st.success(
-                        f"R12 data ready: {len(subtimeframe_df):,} {interval} bars "
+                        f"Lower-timeframe data ready: {len(subtimeframe_df):,} {interval} bars "
                         f"reconcile to the main chart."
                     )
             except SubtimeframeDuplicateTimestampError as exc:
@@ -564,11 +564,11 @@ def _render_subtimeframe_upload(
         subtimeframe_df = st.session_state.get("subtimeframe_data")
         if isinstance(subtimeframe_df, pd.DataFrame):
             interval = st.session_state.get("subtimeframe_interval", "unknown interval")
-            st.info(f"R12 data loaded: {len(subtimeframe_df):,} bars at {interval}.")
+            st.info(f"Lower-timeframe data loaded: {len(subtimeframe_df):,} bars at {interval}.")
             fallback_bars = st.session_state.get(SUBTIMEFRAME_FALLBACK_BARS_KEY, [])
             if fallback_bars:
                 st.caption(
-                    f"Conservative R12 fallback is required for {len(fallback_bars):,} "
+                    f"Conservative lower-timeframe fallback is required for {len(fallback_bars):,} "
                     "parent bars; the strict model remains unavailable."
                 )
             if st.button("Remove lower-timeframe data"):
@@ -691,7 +691,7 @@ def _render_dataset_summary(
                     if diagnostic_only:
                         st.caption(
                             "Lower data is retained for this comparison only and is not active "
-                            "for R12 execution."
+                            "for lower-timeframe execution."
                         )
                     st.dataframe(volume_comparison, width="stretch")
                     st.download_button(
@@ -828,6 +828,10 @@ def _render_roll_assumptions(df, *, instrument: str) -> None:
 
 
 st.title("\U0001f4e5 Data")
+st.caption(
+    "Load and validate OHLCV data for the active instrument. "
+    "Optionally attach lower-timeframe bars for observed replay, and manage local saved datasets."
+)
 
 bootstrap_active_saved_dataset()
 

@@ -184,6 +184,18 @@ if uploaded is not None:
                 "Artifact": "Noise test",
                 "Included in bundle": "✅" if included.get("noise") else "❌",
             },
+            {
+                "Artifact": "Overfitting diagnostics",
+                "Included in bundle": "✅" if included.get("overfitting") else "❌",
+            },
+            {
+                "Artifact": "Parameter sensitivity",
+                "Included in bundle": "✅" if included.get("sensitivity") else "❌",
+            },
+            {
+                "Artifact": "Portfolio",
+                "Included in bundle": "✅" if included.get("portfolio") else "❌",
+            },
         ]
 
         st.caption("Bundle validated. Review contents before importing.")
@@ -197,6 +209,7 @@ if uploaded is not None:
             else:
                 st.success(f"Imported {result.get('restored_count', 0)} session keys from bundle.")
                 st.info(
-                    "Import complete. Navigate to Data, Levels, Signals, Backtest, Time Analysis, "
-                    "or Report / Export pages to continue."
+                    "Import complete. Navigate to Data, Levels, Setup Builder, Signals, "
+                    "Backtest, Grid Search, Time Analysis, Validation, Report / Export, "
+                    "or Portfolio pages to continue."
                 )

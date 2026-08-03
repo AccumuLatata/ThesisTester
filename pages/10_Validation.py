@@ -30,7 +30,11 @@ from thesistester.api import run_noise_test, run_sensitivity_profile
 from thesistester.config import INSTRUMENTS
 
 st.title("📊 Statistical Validation")
-st.caption("Diagnostic only — not proof of edge.")
+st.caption(
+    "Diagnostic only — not proof of edge. Covers bootstrap/permutation, walk-forward, "
+    "optional overfitting/noise/sensitivity batteries, excursion/Monte Carlo analytics, "
+    "and the OTF validation matrix."
+)
 
 
 def _fmt_value(v, fmt=".4f", fallback="—"):
@@ -676,13 +680,13 @@ if isinstance(wfa_matrix, pd.DataFrame) and not wfa_matrix.empty:
     st.dataframe(wfa_matrix, width="stretch", hide_index=True)
 
 st.divider()
-st.subheader("R15 overfitting-detection battery")
+st.subheader("Overfitting-detection battery")
 st.caption(
     "Diagnostic only — CSCV/PBO, DSR, and vs-random quantify specified historical "
     "selection risks; they do not prove a future edge."
 )
 if grid_raw is None or grid_raw.empty:
-    st.info("Run Grid Search first. R15 needs multiple grid cells.")
+    st.info("Run Grid Search first. This battery needs multiple grid cells.")
 else:
     r15c1, r15c2, r15c3 = st.columns(3)
     r15_partitions = int(
@@ -706,7 +710,7 @@ else:
     )
     r15_min_trades = int(
         r15c3.number_input(
-            "R15 min trades per cell",
+            "Min trades per cell",
             min_value=1,
             max_value=1_000,
             value=1,
@@ -717,7 +721,7 @@ else:
         f"Cost estimate: {len(grid_raw)} grid replays + {r15_random_replicas} "
         "random-entry replays. This is opt-in and can be computationally expensive."
     )
-    if st.button("▶ Run R15 overfitting battery", type="secondary"):
+    if st.button("▶ Run overfitting battery", type="secondary"):
         instrument_r15 = st.session_state.get("instrument", "ES")
         inst_r15 = INSTRUMENTS.get(instrument_r15)
         data_r15 = st.session_state.get("levels")
@@ -785,7 +789,7 @@ else:
                         >= int(grid_context_r15.get("min_short_trades", 1))
                     ]
                 if eligible_sequences.empty:
-                    st.error("No R15 grid cell passes the recorded selection rule.")
+                    st.error("No grid cell passes the recorded selection rule.")
                     st.stop()
                 selected = best_grid_result(
                     eligible_sequences,
@@ -793,7 +797,7 @@ else:
                     min_trades=selection_min_trades,
                 )
                 if selected is None:
-                    st.error("No R15 grid cell passes the recorded selection rule.")
+                    st.error("No grid cell passes the recorded selection rule.")
                     st.stop()
                 key = (
                     float(selected["stop_loss_ticks"]),
@@ -825,7 +829,7 @@ else:
                 )
             st.session_state["overfitting_summary"] = summary_r15
             st.session_state["overfitting_config"] = summary_r15["config"]
-            st.success("R15 overfitting battery complete.")
+            st.success("Overfitting battery complete.")
 overfit_summary = st.session_state.get("overfitting_summary")
 if isinstance(overfit_summary, dict):
     pbo = overfit_summary.get("pbo") or {}
@@ -843,7 +847,7 @@ if isinstance(overfit_summary, dict):
         st.dataframe(pd.DataFrame(split_rows), width="stretch", hide_index=True)
 
 st.divider()
-st.subheader("R16 price-series noise test")
+st.subheader("Price-series noise test")
 st.caption(
     "Diagnostic only — perturbs parent OHLC bars, then recomputes levels, signals, and trades. "
     "It measures local input sensitivity, not future edge."
@@ -855,7 +859,7 @@ if (
     or noise_data.empty
     or not isinstance(noise_setup, dict)
 ):
-    st.info("R16 requires the loaded OHLC dataset and a saved setup configuration.")
+    st.info("Noise test requires the loaded OHLC dataset and a saved setup configuration.")
 else:
     n1, n2, n3, n4 = st.columns(4)
     noise_replicas = int(
@@ -877,9 +881,9 @@ else:
     )
     st.warning(
         f"Cost estimate: {noise_replicas} complete levels → signals → backtest replays. "
-        "R16 is opt-in; 1,000 replicas can be expensive on long datasets."
+        "This noise test is opt-in; 1,000 replicas can be expensive on long datasets."
     )
-    if st.button("▶ Run R16 noise test", type="secondary"):
+    if st.button("▶ Run noise test", type="secondary"):
         backtest_policy_noise = st.session_state.get("backtest_session_exit_policy") or {}
         backtest_costs_noise = st.session_state.get("backtest_execution_costs") or {}
         exposure_noise = st.session_state.get("exposure_policy") or {}
@@ -934,7 +938,7 @@ else:
                 )
             st.session_state["noise_summary"] = noise_result
             st.session_state["noise_config"] = noise_result["config"]
-            st.success("R16 noise test complete.")
+            st.success("Noise test complete.")
         except ValueError as exc:
             st.error(str(exc))
 noise_result = st.session_state.get("noise_summary")
@@ -959,13 +963,13 @@ if isinstance(noise_result, dict) and noise_result.get("available"):
     st.caption(noise_result.get("caveat", ""))
 
 st.divider()
-st.subheader("R19 parameter sensitivity (SPP-lite)")
+st.subheader("Parameter sensitivity (one-at-a-time)")
 st.caption(
     "Diagnostic only — changes one selected execution parameter at a time while holding "
     "signals and every other parameter fixed. It measures local flatness, not future edge."
 )
 if grid_raw is None or grid_raw.empty:
-    st.info("Run Grid Search first. R19 profiles the selected grid cell.")
+    st.info("Run Grid Search first. Sensitivity profiles the selected grid cell.")
 else:
     sensitivity_columns = [
         column
@@ -980,22 +984,23 @@ else:
     ]
     s1, s2, s3 = st.columns(3)
     sensitivity_fraction = float(
-        s1.slider("R19 perturbation fraction (±)", 0.05, 0.50, 0.20, 0.05, format="%.2f")
+        s1.slider("Perturbation fraction (±)", 0.05, 0.50, 0.20, 0.05, format="%.2f")
     )
     sensitivity_steps = int(
-        s2.number_input("R19 steps per side", min_value=1, max_value=20, value=5, step=1)
+        s2.number_input("Steps per side", min_value=1, max_value=20, value=5, step=1)
     )
     sensitivity_parameters = s3.multiselect(
-        "R19 parameters",
+        "Parameters",
         options=sensitivity_columns,
         default=sensitivity_columns,
     )
     replay_count = len(sensitivity_parameters) * (2 * sensitivity_steps + 1) + 1
     st.warning(
-        f"Cost estimate: {replay_count} `simulate_trades` replays. R19 is opt-in; "
-        "R22 parallel acceleration is not yet available."
+        f"Cost estimate: {replay_count} `simulate_trades` replays. "
+        "This sensitivity profile is opt-in and can be computationally expensive; "
+        "no parallel acceleration is available."
     )
-    if st.button("▶ Run R19 sensitivity profile", type="secondary"):
+    if st.button("▶ Run sensitivity profile", type="secondary"):
         instrument_r19 = st.session_state.get("instrument", "ES")
         inst_r19 = INSTRUMENTS.get(instrument_r19)
         data_r19 = st.session_state.get("levels")
@@ -1049,7 +1054,7 @@ else:
                 )
             st.session_state["sensitivity_summary"] = summary_r19
             st.session_state["sensitivity_config"] = summary_r19["config"]
-            st.success("R19 sensitivity profile complete.")
+            st.success("Sensitivity profile complete.")
 sensitivity_result = st.session_state.get("sensitivity_summary")
 if isinstance(sensitivity_result, dict) and sensitivity_result.get("available"):
     r19a, r19b = st.columns(2)

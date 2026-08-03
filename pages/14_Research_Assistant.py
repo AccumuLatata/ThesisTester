@@ -72,7 +72,11 @@ orchestrator = AssistantOrchestrator.for_local_workspace()
 
 st.title("Research Assistant")
 st.caption("Draft explicit research theses. Execution remains confirmation- and schema-gated.")
-with st.expander("Open detailed research views"):
+with st.expander("Open research pages"):
+    st.page_link("pages/1_Data.py", label="Data")
+    st.page_link("pages/2_Levels.py", label="Levels")
+    st.page_link("pages/3_Setup_Builder.py", label="Setup Builder")
+    st.page_link("pages/6_Signals.py", label="Signals")
     st.page_link("pages/7_Backtest.py", label="Backtest")
     st.page_link("pages/8_Grid_Search.py", label="Grid Search")
     st.page_link("pages/9_Time_Analysis.py", label="Time Analysis")

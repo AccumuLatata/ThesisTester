@@ -3,38 +3,44 @@ import streamlit as st
 st.set_page_config(page_title="ThesisTester", page_icon="\U0001f4c8", layout="wide")
 
 st.title("\U0001f4c8 ThesisTester")
-st.caption("Intraday confluence-setup research and backtesting workbench for ES/NQ futures.")
+st.caption(
+    "Intraday confluence-setup research and backtesting workbench for ES/NQ/MES/MNQ futures."
+)
 
 st.markdown(
     """
 ThesisTester is a multipage research workflow for intraday confluence setups.
 
 **Recommended workflow**
-1. Load and validate OHLCV data.
-2. Configure a setup.
-3. Compute levels.
-4. Generate confluence-based signals.
-5. Backtest fixed SL/TP assumptions.
-6. Run SL/TP grid search.
-7. Analyze time/session performance.
-8. Run statistical validation diagnostics.
-9. Export research artifacts.
+1. Load and validate OHLCV data (optional lower-timeframe bars for observed replay).
+2. Compute levels.
+3. Configure a setup in Setup Builder (optional OTF filter).
+4. Generate confluence-based candidate signals.
+5. Backtest a fixed SL/TP assumption and/or run an SL/TP grid search.
+6. Analyze time/session performance.
+7. Run validation diagnostics (bootstrap, walk-forward, optional batteries, OTF matrix).
+8. Export artifacts, research bundles, or portfolio composites.
+9. Optionally orchestrate theses in Research Assistant.
 
 **Implemented now**
-- **Data**: CSV OHLCV ingestion and validation with ES/NQ session handling.
-- **Setup Builder**: save and reuse setup configuration.
-- **Levels**: session, structural, indicator, and profile level computation.
-- **Signals**: confluence zone detection and trigger generation.
-- **Backtest**: fixed SL/TP simulation (core execution page).
-- **Grid Search**: SL/TP sweep and ranking (core execution page).
-- **Time Analysis**: time-of-day/session-window diagnostics.
-- **Validation**: bootstrap/permutation and overfit-oriented diagnostics.
+- **Data**: CSV OHLCV ingestion/validation, vendor profiles, local saved datasets, optional lower-timeframe replay.
+- **Levels**: session, structural, indicator, profile, and advanced opt-in level families.
+- **Setup Builder**: reusable setup library with global-cluster or anchor-based confluence and optional OTF filter.
+- **Signals**: confluence zone detection, naked flags, and trigger generation (OTF is not applied here).
+- **Backtest**: fixed SL/TP simulation with costs, session exits, exposure policy, intrabar models, and exit management.
+- **Grid Search**: SL/TP sweep and ranking over the same execution assumptions.
+- **Time Analysis**: time-of-day/session-window diagnostics on completed trades.
+- **Validation**: bootstrap/permutation, walk-forward, overfitting/noise/sensitivity batteries, OTF validation matrix.
 - **Report / Export**: research artifact and report export for reproducibility.
+- **Research Bundles**: portable session snapshot export/import.
+- **Portfolio**: diagnostic multi-setup trade composition (not a capital simulator).
+- **Research Assistant**: confirmation-gated thesis orchestration over the same research pipeline.
 
 **Research assumptions / caveats**
 - Outputs are research diagnostics only, not trading advice.
 - Validation diagnostics do not prove a durable trading edge.
-- Backtests use assumptions including next-bar entries and pessimistic SL-first handling when SL and TP are both reachable intrabar.
+- Backtests use configurable assumptions (entry timing, intrabar resolution, costs, session exits, exposure). The default intrabar model is pessimistic SL-first when SL and TP are both reachable in the same bar; other models are opt-in.
+- OTF is disabled by default. When enabled, admission is applied at Backtest, Grid, and Walk-forward — not during signal generation.
 """
 )
 
