@@ -701,6 +701,8 @@ def test_all_required_columns_present():
         "otf_timeframes",
         "otf_algorithm_version",
         "otf_config_hash",
+        "session_timezone",
+        "eth_start",
         "candidate_signal_count",
         "accepted_signal_count",
         "rejected_signal_count",
@@ -737,6 +739,28 @@ def test_all_required_columns_present():
 
 
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Session boundary metadata is recorded
+# ---------------------------------------------------------------------------
+
+
+def test_matrix_records_session_timezone_and_eth_start():
+    source, sigs = _source_and_signals_for_validation()
+    result = run_otf_validation_matrix(
+        source_df=source,
+        candidate_signals=sigs,
+        tick_size=TICK,
+        point_value=PV,
+        stop_loss_ticks=SL_TICKS,
+        take_profit_ticks=TP_TICKS,
+        session_timezone=TZ,
+        eth_start="18:00",
+    )
+    assert (result["session_timezone"] == TZ).all()
+    assert (result["eth_start"] == "18:00").all()
+
+
 # OTF algorithm version is correct
 # ---------------------------------------------------------------------------
 

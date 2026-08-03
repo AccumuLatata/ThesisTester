@@ -597,11 +597,17 @@ if run_wfo:
                             from thesistester.persistence.local_store import compute_otf_config_hash
                             from thesistester.engine.otf import OTF_ALGORITHM_VERSION
 
+                            _wfo_session_tz = session_policy.get("session_timezone") or (
+                                st.session_state.get("exchange_timezone") or "America/New_York"
+                            )
+                            _wfo_eth_start = inst.eth_start if inst else "18:00"
                             st.session_state["walk_forward_otf_filter"] = {
                                 "otf_filter_enabled": _wfo_otf_enabled,
                                 "otf_filter_config": _wfo_otf_config,
                                 "otf_algorithm_version": OTF_ALGORITHM_VERSION,
                                 "otf_config_hash": compute_otf_config_hash(_wfo_otf_config),
+                                "session_timezone": _wfo_session_tz,
+                                "eth_start": _wfo_eth_start,
                             }
                             st.success("Walk-forward diagnostics complete.")
 
