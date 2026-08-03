@@ -114,6 +114,37 @@ is **not** written into hashed bundle members, so cold and warm runs keep equal
 canonical bundle hashes. Classic Streamlit session DataFrames are never a cache
 source.
 
+## Classic → RunSpec export boundary (CAI-4)
+
+`thesistester/classic_export.py` is a Streamlit-free exporter from canonical
+classic page state to a public RunSpec draft:
+
+- `classic_state_export_gaps(state, ..., include_grid=..., include_validation=...,
+  include_walk_forward=...)` — structured blocking clarifications (same optional
+  section flags as export)
+- `classic_state_to_run_spec(state, *, name, source_path=..., store_root=...,
+  include_grid=..., include_validation=..., include_walk_forward=...)`
+  — validated RunSpec or `ValueError` when gaps remain
+
+It reads only page-produced mappings/frames (`data`, provenance,
+`levels_settings`, `setup_config` / `last_signal_setup`, backtest policy
+snapshots or `backtest_config`). A stored `data_identity` alone is not enough —
+the canonical in-memory `data` frame is required so fingerprint/stale checks
+can run. Non-integer `levels_data_fingerprint.rows` yields a `stale_levels`
+gap instead of crashing. When assembling backtest without `backtest_config`, live Backtest
+widget keys win over post-run policy snapshots. Disabled session-flat clears
+timezone/cutoff for both assembled and explicit `backtest_config` paths,
+matching the Backtest page. Unpaired or invalid exit-management trailing/BE
+fields are `incomplete_exit_management` gaps (not deferred to
+`validate_run_spec`). Missing parameters are never invented.
+Source strategy: prefer a verified execution data artifact
+(`dataset.data_artifact_key`); always require an explicit CSV path
+(`source_path` / `dataset_source_path` / `source_csv_path`) verified against
+classic `DataIdentity`; blank/whitespace `source_path` kwargs fall through to
+state path keys. Corrupt/incomplete preferred artifacts are omitted and
+export falls back to the verified CSV path rather than blocking. CAI-4 does not
+wire UI buttons or thesis attachment (CAI-5/CAI-6).
+
 ## AI Research Assistant contract boundary (AIA-0)
 
 `thesistester.assistant` is a Streamlit-free metadata boundary for the proposed

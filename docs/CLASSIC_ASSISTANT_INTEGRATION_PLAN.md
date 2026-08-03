@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** proposed implementation contract; `CAI-0` through `CAI-3` implemented.
+**Status:** proposed implementation contract; `CAI-0` through `CAI-4` implemented.
 
 **Owner model:** one trusted local user, local datasets, local execution.
 
@@ -404,7 +404,7 @@ changing research semantics.
 - Cache use is observable in provenance and UI status, never inferred from
   timing alone.
 
-### CAI-4 — Classic-state-to-RunSpec export
+### CAI-4 — Classic-state-to-RunSpec export ✅ Implemented
 
 **Goal:** transform canonical classic workflow state into a reproducible draft,
 not a live Assistant execution input.
@@ -414,16 +414,50 @@ not a live Assistant execution input.
 - Add pure `classic_state_to_run_spec()` and
   `classic_state_export_gaps()` helpers.
 - Consume only canonical page-produced state:
-  `dataset_id`, data provenance, `levels_settings`, `setup_config`,
-  signal settings, and backtest execution policy.
+  `data` DataFrame, `dataset_id`, data provenance, `levels_settings`,
+  `setup_config`, signal settings, and backtest execution policy.
 - Reject incomplete, stale, or internally inconsistent state with explicit
-  gaps; never invent missing parameters.
+  gaps; never invent missing parameters. A stored `data_identity` without the
+  in-memory frame is a `missing_data` gap.
 - Map page state to the current public RunSpec schema and validate it through
   `validate_run_spec()`.
 - Include a stable source reference strategy:
   - preferred: a verified local canonical data artifact reference;
   - fallback: an explicit source CSV path supplied by the user and verified
     against the classic `DataIdentity`.
+
+**Implemented contract**
+
+- Module: `thesistester/classic_export.py` (Streamlit-free).
+- `classic_state_export_gaps(state, *, source_path=..., store_root=...,
+  include_grid=..., include_validation=..., include_walk_forward=...)`
+  — same optional-section flags as `classic_state_to_run_spec` so gap discovery
+  and export agree
+  returns structured gaps (`missing_*`, `stale_levels`,
+  `source_path_identity_mismatch`, etc.). Non-integer
+  `levels_data_fingerprint.rows` is a `stale_levels` gap (not an uncaught
+  `ValueError`).
+- `classic_state_to_run_spec(...)` raises when gaps remain; otherwise returns a
+  `validate_run_spec`-validated RunSpec.
+- Source resolution: verified data artifact (`dataset.data_artifact_key`) is
+  preferred metadata; executable `dataset.path` still required and verified
+  against classic `DataIdentity` (from `source_path` kwarg or
+  `dataset_source_path` / `source_csv_path` state). Blank/whitespace
+  `source_path` kwargs fall through to those state keys. Corrupt/incomplete
+  preferred artifacts are omitted so a verified CSV path can still complete
+  the export.
+- Backtest may come from explicit `backtest_config` or assembled from page
+  widget keys (preferred) with post-run policy snapshots as fallback, without
+  inventing SL/TP/session fields. Disabled `flat_by_session_close` clears
+  session timezone / entry cutoff on both paths to match Backtest page
+  persistence. Unpaired trailing fields (or invalid BE/trail values) yield
+  `incomplete_exit_management` gaps before `validate_run_spec`.
+- Optional grid/validation/walk-forward export only when explicit `*_config`
+  mappings are present (`include_grid` / `include_validation` /
+  `include_walk_forward`).
+- Additive dataset keys `data_artifact_key` / `data_identity` allowed by
+  `validate_run_spec`.
+- Tests: `tests/test_classic_export.py`.
 
 **Regression gates**
 
