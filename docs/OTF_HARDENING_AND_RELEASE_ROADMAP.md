@@ -1,4 +1,4 @@
-# OTF v1.1 Hardening and Release Roadmap
+# OTF Hardening and Release Roadmap
 
 **Project:** ThesisTester  
 **Feature:** Directional One Timeframing (OTF) market-condition filter  
@@ -6,6 +6,11 @@
 **Document owner:** ThesisTester engineering  
 **Last updated:** 2026-08-03  
 **Related documents:** [`otf-filter.md`](otf-filter.md), [`otf-filter-roadmap.md`](otf-filter-roadmap.md), [`ENGINEERING_PROPOSAL.md`](ENGINEERING_PROPOSAL.md), [`ARCHITECTURE.md`](ARCHITECTURE.md)
+
+> Naming note: this roadmap hardens and release-gates **OTF v1**. It does **not**
+> introduce an OTF v1.1 algorithm or eligibility-semantics change. Any future
+> semantic expansion (for example `any` / hierarchical alignment) would require a
+> separate contract version bump and is out of scope here.
 
 ## 1. Purpose
 
@@ -121,8 +126,11 @@ Each PR body must include a `Regression safety` section stating:
 | 4 | PR 4 — Causal-prefix WFO policy | Add optional pre-fold OTF state history. | New opt-in WFO behavior; default unchanged. |
 | 5 | PR 5 — Release evidence and sign-off | Record real-data OOS evidence and formal release decision. | No engine behavior change. |
 
-PRs 1–3 may be independently reviewed and merged in order. PR 4 depends on
-PRs 1–3. PR 5 depends on all preceding PRs.
+**Merge order is strict.** PR 2 must not merge before PR 1: documentation that
+claims `eth_start` parity must describe the corrected surfaces. PR 3 should
+follow PR 1 so the enabled golden fixture captures correct futures-session
+boundaries. PRs 1–3 may be reviewed in parallel but must land in order.
+PR 4 depends on PRs 1–3. PR 5 depends on all preceding PRs.
 
 ## 5. PR 1 — Futures-session propagation parity
 
@@ -137,6 +145,13 @@ The OTF engine supports `eth_start`, and the public API already forwards
 `inst.eth_start`. Streamlit Backtest, Grid, and the validation matrix currently
 omit it. Consequently, UI users running overnight futures data can obtain OTF
 states that differ from the API and the documented session contract.
+
+**This is a deliberate behavior correction for already-enabled Streamlit
+users.** With OTF enabled on Backtest, Grid, or the validation matrix,
+overnight accepted/rejected populations and rejection reasons may change after
+this PR because session boundaries become ETH-correct. The disabled OTF path
+must remain unchanged. The PR body must state this intentional correction
+explicitly under `Regression safety`.
 
 ### 5.3 In scope
 
@@ -159,7 +174,12 @@ states that differ from the API and the documented session contract.
 4. A known instrument always uses its configured `eth_start`.
 5. An unknown instrument uses an explicit existing fallback only; the PR must
    not infer a new session template.
-6. Do not modify:
+6. OTF result summaries and research-facing metadata record the **effective**
+   `eth_start` and session timezone used for the filter application (Backtest,
+   Grid, validation matrix, and any shared summary helper touched by this PR).
+   This makes UI vs API session-boundary parity inspectable in artifacts
+   without requiring readers to infer instrument defaults.
+7. Do not modify:
    - OTF state-machine rules;
    - `OTF_ALGORITHM_VERSION`;
    - OTF configuration precedence;
@@ -197,8 +217,12 @@ Add tests that prove:
 - No known futures execution surface resets OTF at midnight.
 - API, Backtest, Grid, WFO, and validation paths have verified
   `session_timezone`/`eth_start` parity.
+- OTF summaries / artifact metadata expose the effective `eth_start` and
+  session timezone used for filtering.
 - The regression suite proves both the corrected overnight path and unchanged
   disabled path.
+- The PR `Regression safety` section explicitly records that enabled Streamlit
+  overnight results may change and that disabled-path equality is preserved.
 
 ### 5.7 Regression commands
 
@@ -389,7 +413,11 @@ Allowed values:
 | Value | Meaning | Default |
 |---|---|---|
 | `fold_local` | Compute OTF from source bars inside each fold only. | Yes |
-| `causal_prefix` | Use source bars strictly before fold start to establish OTF state; evaluate only fold-local signals. | No |
+| `causal_prefix` | Compute OTF from **prefix ∪ fold-local** source bars: bars strictly before fold start establish prior OTF state, and fold-local bars continue the state machine during the fold. Evaluate and score only fold-local signals. | No |
+
+`causal_prefix` is **not** prefix-only. Prior bars seed state; intra-fold
+completed HTF bars remain required for ongoing OTF updates. Signal admission
+still uses only HTF bars with `availability_timestamp <= decision_timestamp`.
 
 ### 8.4 In scope
 
@@ -429,23 +457,26 @@ Documentation:
 
 ### 8.5 Causal-prefix contract
 
-1. Prefix source bars are market-state input only.
-2. Prefix bars must have timestamps strictly before a fold’s evaluation start.
-3. Prefix bars may establish OTF state but may not contribute:
+1. The OTF source series for a fold is **prefix ∪ fold-local bars** (not
+   prefix alone). Prefix bars seed prior state; fold-local bars continue the
+   state machine for decisions inside the fold.
+2. Prefix source bars are market-state input only.
+3. Prefix bars must have timestamps strictly before a fold’s evaluation start.
+4. Prefix bars may establish OTF state but may not contribute:
    - candidate signals;
    - accepted/rejected signal counts for the fold;
    - simulated trades;
    - training metrics;
    - OOS metrics;
    - ranking or model-selection evidence.
-4. Signals in a fold may use only OTF HTF bars whose availability timestamp is
+5. Signals in a fold may use only OTF HTF bars whose availability timestamp is
    at or before that signal’s decision timestamp.
-5. A source bar after the fold start must not alter a decision for an earlier
+6. A source bar after the fold start must not alter a decision for an earlier
    signal.
-6. A source bar after the end of a fold must not affect any result in that
+7. A source bar after the end of a fold must not affect any result in that
    fold.
-7. `fold_local` remains the default and must preserve current results.
-8. `causal_prefix` must be visible in:
+8. `fold_local` remains the default and must preserve current results.
+9. `causal_prefix` must be visible in:
    - WFO rows;
    - WFO summary;
    - report/export metadata;
@@ -526,7 +557,8 @@ synthetic fixture behavior or in-sample results.
 ### 9.2 In scope
 
 - `docs/otf-filter-roadmap.md`
-- `docs/research-methodology.md`
+- `docs/research-methodology.md` — **create or update** (this file may not
+  yet exist in the repository; do not assume it is present)
 - this document, if release status changes
 - a structured release-evidence/checklist document, if needed
 
@@ -534,7 +566,9 @@ This PR makes no engine behavior changes.
 
 ### 9.3 Required research protocol
 
-For each selected ES/NQ dataset and distinct market regime:
+Document the protocol in `docs/research-methodology.md` (create the file if
+absent) and execute it for each selected ES/NQ dataset and distinct market
+regime:
 
 1. Use chronological train/OOS separation only.
 2. Evaluate the fixed matrix:
@@ -551,7 +585,7 @@ For each selected ES/NQ dataset and distinct market regime:
    - instrument;
    - source interval;
    - exchange/session timezone;
-   - `eth_start`;
+   - effective `eth_start` used for OTF;
    - OTF algorithm version;
    - OTF config hash;
    - OTF timeframes and minimum consecutive comparisons;
@@ -641,8 +675,22 @@ This roadmap is complete only when:
 - disabled OTF legacy outputs remain unchanged;
 - enabled OTF has deterministic golden and future-shock coverage;
 - `eth_start` parity is verified across UI, API, validation, WFO, and AI;
+- OTF summaries / artifacts record the effective `eth_start` and session
+  timezone used for filtering;
 - UI and documentation accurately describe enabled OTF behavior;
-- `causal_prefix`, if implemented, is opt-in, versioned, documented, and
+- `causal_prefix`, if implemented, uses prefix ∪ fold-local source bars,
+  remains opt-in/default-`fold_local`, is versioned, documented, and
   parity-tested across AI/API/UI;
-- real-data OOS evidence and formal engineering sign-off are recorded;
-- the feature’s release status is updated honestly.
+- real-data OOS evidence and formal engineering sign-off are recorded
+  (including create-or-update of `docs/research-methodology.md`);
+- the feature’s release status is updated honestly;
+- no OTF algorithm / eligibility-semantics version bump was introduced by
+  this hardening series unless a later, separately approved contract change
+  explicitly requires it.
+
+## 12. Document change log
+
+| Date | Change |
+|---|---|
+| 2026-08-03 | Initial hardening and release roadmap published on `main`. |
+| 2026-08-03 | Review refinements: rename away from misleading “v1.1”; require strict PR merge order; document PR 1 as intentional enabled-Streamlit overnight correction; require effective `eth_start`/timezone in OTF summaries; clarify `causal_prefix` as prefix ∪ fold-local; require create-or-update for `docs/research-methodology.md`. |
