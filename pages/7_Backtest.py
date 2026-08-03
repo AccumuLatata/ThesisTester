@@ -13,6 +13,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from thesistester.app_state import bootstrap_active_saved_dataset
+from thesistester.classic_context import render_classic_thesis_chrome
 from thesistester.analytics import equity_curve, summarize_trades, summarize_trades_by_direction
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
@@ -46,6 +47,10 @@ from thesistester.visualization import (
 
 st.title("📊 Backtest")
 bootstrap_active_saved_dataset()
+render_classic_thesis_chrome(
+    page_key="backtest",
+    dataset_id=st.session_state.get("dataset_id"),
+)
 
 
 def _signal_setup_context(signals, signal_context: dict | None) -> str | None:

@@ -13,6 +13,7 @@ import pandas as pd
 import streamlit as st
 
 from thesistester.app_state import bootstrap_active_saved_dataset
+from thesistester.classic_context import render_classic_thesis_chrome
 from thesistester.config import INSTRUMENTS
 from thesistester.engine import (
     detect_anchor_confluence_zones,
@@ -58,6 +59,10 @@ st.caption(
     "OTF admission is applied later in Backtest, Grid, and Walk-forward — not on this page."
 )
 bootstrap_active_saved_dataset()
+render_classic_thesis_chrome(
+    page_key="signals",
+    dataset_id=st.session_state.get("dataset_id"),
+)
 
 
 ANCHOR_DIAGNOSTIC_COLUMNS = [

@@ -8,6 +8,11 @@ import pandas as pd
 import streamlit as st
 
 from thesistester.app_state import bootstrap_active_saved_dataset
+from thesistester.classic_context import (
+    render_classic_thesis_chrome,
+    set_classic_flash,
+    sync_classic_context_for_dataset,
+)
 from thesistester.research_bundle import (
     apply_research_bundle_to_session,
     build_research_bundle,
@@ -17,6 +22,10 @@ from thesistester.research_bundle import (
 st.title("🧳 Research Bundles")
 st.caption("Export and import portable research state snapshots for this session.")
 bootstrap_active_saved_dataset()
+render_classic_thesis_chrome(
+    page_key="research_bundles",
+    dataset_id=st.session_state.get("dataset_id"),
+)
 
 
 def _is_dataframe(value: object) -> bool:
@@ -207,9 +216,22 @@ if uploaded is not None:
             except ValueError as exc:
                 st.error(str(exc))
             else:
-                st.success(f"Imported {result.get('restored_count', 0)} session keys from bundle.")
-                st.info(
-                    "Import complete. Navigate to Data, Levels, Setup Builder, Signals, "
-                    "Backtest, Grid Search, Time Analysis, Validation, Report / Export, "
-                    "or Portfolio pages to continue."
+                # Chrome already ran with the pre-import dataset_id; sync now so a
+                # changed bundle dataset cannot leave research mode bound to the old id.
+                imported_dataset_id = st.session_state.get("dataset_id")
+                sync_classic_context_for_dataset(
+                    st.session_state,
+                    imported_dataset_id if isinstance(imported_dataset_id, str) else None,
                 )
+                set_classic_flash(
+                    st.session_state,
+                    level="success",
+                    message=(
+                        f"Imported {result.get('restored_count', 0)} session keys from "
+                        "bundle. Classic research context was re-checked against the "
+                        "imported dataset. Navigate to Data, Levels, Setup Builder, "
+                        "Signals, Backtest, Grid Search, Time Analysis, Validation, "
+                        "Report / Export, or Portfolio pages to continue."
+                    ),
+                )
+                st.rerun()

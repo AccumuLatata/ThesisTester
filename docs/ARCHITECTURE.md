@@ -145,6 +145,30 @@ state path keys. Corrupt/incomplete preferred artifacts are omitted and
 export falls back to the verified CSV path rather than blocking. CAI-4 does not
 wire UI buttons or thesis attachment (CAI-5/CAI-6).
 
+## Classic thesis research context (CAI-5)
+
+`thesistester/classic_context.py` owns additive classic research-mode session
+keys and chrome. Helpers are Streamlit-free; `render_classic_thesis_chrome`
+imports Streamlit lazily for Setup Builder / Signals / Backtest / Research
+Bundles only.
+
+| Key | Role |
+|---|---|
+| `classic_active_thesis_id` | Active thesis in classic research mode |
+| `classic_active_thesis_name` | Cached display name for the breadcrumb |
+| `classic_recording_policy` | `manual` (default, CAI-0) or `all_executions` (CAI-7) |
+| `classic_pending_navigation` | Optional one-shot allowlisted page target (`st.switch_page`) |
+| `classic_bound_dataset_id` | Dataset identity that must match or context clears; unset binds on first observed `dataset_id` |
+| `classic_flash` | One-shot `{level, message}` UI notice |
+
+`link_thesis` syncs `assistant_selected_thesis_id` via `select_thesis` and does
+**not** record a run or mutate executable classic producer keys. Create/link UI
+lives on Setup Builder; other classic pages show breadcrumb + exit/relink only.
+Exit and dataset-switch clears also reset `_classic_relink_open_*` UI flags so
+the relink form does not reopen after re-entry. Research Bundles import
+re-syncs classic context against the imported `dataset_id` before rerun.
+Thesis prose remains Assistant-owned; executable settings remain page-owned.
+
 ## AI Research Assistant contract boundary (AIA-0)
 
 `thesistester.assistant` is a Streamlit-free metadata boundary for the proposed

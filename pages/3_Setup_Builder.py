@@ -27,6 +27,7 @@ from thesistester.setup import (
     normalize_otf_filter_config,
     validate_setup_config,
 )
+from thesistester.classic_context import render_classic_thesis_chrome
 from thesistester.engine.otf import OTF_ALGORITHM_VERSION
 
 
@@ -635,6 +636,11 @@ st.title("🧩 Setup Builder")
 st.caption(
     "Configure and save reusable setup parameters for the "
     "Signals → Backtest / Grid / Validation workflow."
+)
+render_classic_thesis_chrome(
+    page_key="setup_builder",
+    allow_create_link=True,
+    dataset_id=st.session_state.get("dataset_id"),
 )
 
 if "levels" not in st.session_state:

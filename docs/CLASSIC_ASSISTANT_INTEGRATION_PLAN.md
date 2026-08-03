@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** proposed implementation contract; `CAI-0` through `CAI-4` implemented.
+**Status:** proposed implementation contract; `CAI-0` through `CAI-5` implemented.
 
 **Owner model:** one trusted local user, local datasets, local execution.
 
@@ -472,7 +472,7 @@ not a live Assistant execution input.
 - The exporter remains Streamlit-free and is usable by bundle import and
   future non-UI callers.
 
-### CAI-5 — Thesis research context lifecycle
+### CAI-5 — Thesis research context lifecycle ✅ Implemented
 
 **Goal:** allow the classic workspace to enter/leave an explicit thesis context.
 
@@ -485,6 +485,33 @@ not a live Assistant execution input.
   Signals, Backtest, and Research Bundles.
 - Keep thesis prose separate from executable settings. Prose is recorded in the
   thesis conversation; executable settings come only from canonical page state.
+
+**Implemented contract**
+
+- Module: `thesistester/classic_context.py` (helpers are Streamlit-free;
+  `render_classic_thesis_chrome` imports Streamlit lazily for page chrome only).
+- Additive session keys (`CLASSIC_SESSION_KEYS`):
+  `classic_active_thesis_id`, `classic_active_thesis_name`,
+  `classic_recording_policy` (default `manual` per CAI-0;
+  `all_executions` storable for CAI-7), `classic_pending_navigation`,
+  `classic_bound_dataset_id`, `classic_flash`.
+- `link_thesis(...)` enters research mode and syncs
+  `assistant_selected_thesis_id` via `select_thesis`; it does not create specs,
+  start runs, or mutate protected classic producer keys.
+- `sync_classic_context_for_dataset(...)` clears thesis-scoped classic keys when
+  the active `dataset_id` diverges from a concrete `classic_bound_dataset_id`.
+  An unset bound (link before data/bootstrap) adopts the first observed
+  `dataset_id` instead of clearing research mode. Clearing context also resets
+  per-page `_classic_relink_open_*` UI flags.
+- `classic_pending_navigation` is consumed by chrome via allowlisted
+  `st.switch_page` targets (`resolve_pending_navigation_target`); invalid
+  targets are warned and dropped.
+- Research Bundles import calls `sync_classic_context_for_dataset` after restore
+  and reruns so a changed imported `dataset_id` cannot leave research mode
+  bound to the pre-import dataset.
+- Setup Builder: create/link expander. Signals, Backtest, Research Bundles:
+  breadcrumb + exit/relink only.
+- Tests: `tests/test_classic_context.py`.
 
 **Regression gates**
 
