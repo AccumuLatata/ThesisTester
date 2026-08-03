@@ -3,8 +3,8 @@
 **Project:** ThesisTester  
 **Feature:** Directional One Timeframing (OTF) market-condition filter  
 **Contract version:** v1  
-**Status:** Approved — contract implemented through PR 5 (research-mode integration)  
-**Last updated:** 2026-07-26
+**Status:** Approved — contract implemented through research-mode integration; Streamlit/API `eth_start` parity landed (hardening PR 1); UI/docs honesty landed (hardening PR 2)  
+**Last updated:** 2026-08-03
 
 ## Purpose
 
@@ -547,11 +547,15 @@ Research-artifact fingerprint integration is complete as of PR 5.
 The contract version identifier (`v1`) remains the behavior-spec version for this
 document/fixtures and is distinct from `OTF_ALGORITHM_VERSION`.
 
-### PR 4 non-integration boundary
+### Historical PR 4 boundary (superseded by research-mode integration)
 
-Setup Builder and Signals surfaces may display stored OTF configuration metadata,
-algorithm version, and config hash, but PR 4 did **not** wire OTF into standard
-signal generation/backtest/grid/walk-forward/report/export execution paths.
+PR 4 originally shipped setup persistence / identity / UI metadata **without**
+execution wiring. That boundary is historical. Current product behavior is:
+
+- Signals remain candidate-only (by design).
+- Backtest, Grid, Walk-forward, API, and reporting apply or record OTF via the
+  shared integration helper (`§13b`).
+- Setup Builder / Signals copy must not claim “metadata only until PR 5.”
 
 Persistence compatibility note:
 

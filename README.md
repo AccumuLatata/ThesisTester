@@ -103,11 +103,25 @@ In **Saved signal runs**, you can copy a run’s setup snapshot back into Setup 
 
 Manual Signals controls remain unchanged and backtest behavior is unchanged.
 
+## OTF filter (One Timeframing)
+
+Optional directional market-condition filter for ES/NQ-style research. **Disabled by default.**
+
+- Configure under **Setup Builder → OTF filter configuration**.
+- **Signals** still emit the full candidate population.
+- **Backtest**, **Grid**, and **Walk-forward** apply OTF admission before execution when enabled; rejected candidates remain available for audit/export.
+- Config provenance: a saved signal run’s `signal_settings["otf_filter"]` wins over later Setup Builder edits — regenerate signals to pick up OTF changes.
+- Futures session boundaries use instrument `eth_start` (e.g. 18:00 ET); midnight is not a reset.
+- Behavioral contract: [`docs/otf-filter.md`](docs/otf-filter.md). Hardening / release tracker: [`docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md`](docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md).
+
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Assumptions & limitations](docs/ASSUMPTIONS_AND_LIMITATIONS.md)
 - [Metrics glossary](docs/METRICS_GLOSSARY.md)
+- [Point-in-time guarantees](docs/POINT_IN_TIME_GUARANTEES.md)
+- [OTF filter contract](docs/otf-filter.md)
+- [OTF hardening roadmap](docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md)
 - [Agent guide](docs/AGENT_GUIDE.md)
 - Research & planning:
   - [SOTA backtesting landscape](docs/SOTA_BACKTESTING_LANDSCAPE.md)

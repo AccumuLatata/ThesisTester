@@ -201,6 +201,23 @@ bar on date D; do not use the final row value.
 
 ---
 
+## OTF filter point-in-time rules
+
+- OTF state for a signal at decision timestamp `T` may use only completed HTF
+  bars with `availability_timestamp <= T` (equal to `bar_close_timestamp`).
+- Decision timestamp selection: `trigger_timestamp` when present and non-null,
+  otherwise `timestamp`.
+- Alignment is backward/`merge_asof` only; future HTF bars never fill past
+  decisions. Append-data / future-shock tests cover the pure engine and filter.
+- Futures session reset uses `trading_session_date(..., eth_start)`. For ES/NQ,
+  `eth_start="18:00"` means midnight is **not** a boundary. UI Backtest, Grid,
+  validation matrix, API, and WFO forward the instrument `eth_start`.
+- Walk-forward default history is **fold-local**: each fold’s OTF source is that
+  fold’s OHLCV slice only (no future-fold leakage; early-fold cold starts may
+  yield `unknown`). Causal-prefix history is a separate opt-in hardening item.
+
+Contract reference: `docs/otf-filter.md` §6 / §13b.
+
 ## Unresolved limitations
 
 1. **Bar-level volume-at-price approximation.** Prior profile levels use bar typical

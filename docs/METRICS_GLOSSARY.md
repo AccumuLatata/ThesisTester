@@ -420,6 +420,24 @@ R13 diagnostics count BE exits, TRAIL exits, trades with exit management armed,
 and average stop adjustments per trade. All R values still use initial bracket
 risk (`stop_loss_ticks * tick_size * point_value`) as denominator.
 
+## OTF filter metrics
+
+| Term | Definition |
+|---|---|
+| **OTF state** | Controlled vocabulary from the OTF engine: `up`, `down`, `neutral`, or `unknown`. Computed on completed higher-timeframe bars only. |
+| **OTF accepted signal count** | Candidate signals that passed directional OTF eligibility (`otf_filter_passed=True`). Passed to `simulate_trades` / grid / fold execution. |
+| **OTF rejected signal count** | Candidate signals that failed OTF eligibility. Retained for audit with `otf_filter_reason` and per-timeframe state columns; not deleted. |
+| **OTF rejection rate** | `rejected / candidates` for a filter application. `None` when candidate count is zero. |
+| **OTF config hash** | Deterministic SHA-256 of the normalized `otf_filter` block plus `OTF_ALGORITHM_VERSION`. |
+| **OTF algorithm version** | Integer semantic version of the OTF state machine (`OTF_ALGORITHM_VERSION`). Distinct from the contract document version. |
+| **no_otf** | Validation-matrix baseline row with OTF disabled. |
+| **otf_15m / otf_30m / otf_15m_30m / otf_5m_15m_30m** | Fixed train/OOS matrix configuration labels (enabled OTF with those timeframes). Selection uses train metrics only; OOS is evaluation-only. |
+| **train_rank / is_train_selected** | Matrix ranking by train expectancy; exactly one row is train-selected. Not a production recommendation. |
+
+Related session / artifact fields: `candidate_signal_count`,
+`otf_accepted_signal_count`, `otf_rejected_signal_count`, `session_timezone`,
+`eth_start` on OTF summaries.
+
 ## Assistant evidence-claim paths
 
 Assistant explanations (deterministic and optional LLM) may display a metric only

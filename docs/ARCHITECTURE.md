@@ -424,6 +424,32 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `excursion_quadrant_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report CSV, Research Bundles | `pd.DataFrame` MAE×MFE threshold quadrant counts |
 | `monte_carlo_summary` | Validation (`pages/10_Validation.py`) | Validation display, Report, Research Bundles | `dict` R11 schema version 1 (`observed_equity`, per-method percentile bands, drawdown probabilities, config, caveat) |
 | `monte_carlo_config` | Validation (`pages/10_Validation.py`) | Research Bundles | `dict` copied from `monte_carlo_summary["config"]` |
+| `otf_filter_result` | Backtest (`pages/7_Backtest.py`) | Backtest display helpers | Frozen `OtfFilterResult` from `apply_configured_otf_filter` |
+| `otf_filter_summary` | Backtest | Report (`build_otf_filter_metadata`), Bundles | JSON-safe OTF summary incl. config hash, counts, `session_timezone`, `eth_start` |
+| `otf_candidate_signals` | Backtest | Audit / export | Deep copy of pre-filter candidates (`signals` is never overwritten) |
+| `otf_accepted_signals` | Backtest | Audit | OTF-accepted candidates passed to `simulate_trades` |
+| `otf_rejected_signals` | Backtest, Report Export | Audit / CSV download | OTF-rejected candidates with reasons; distinct from exposure skips / 3c voids |
+| `backtest_otf_filter` | Backtest | Report / Bundles | Alias of backtest OTF summary for research artifacts |
+| `grid_otf_filter` | Grid (`pages/8_Grid_Search.py`) | Report / Bundles | OTF summary for the single pre-grid filter application |
+| `grid_accepted_signals` | Grid | Grid reuse / audit | Accepted signal set shared by all SL/TP cells |
+| `walk_forward_otf_filter` | Validation WFO | Report / Bundles | Fold-run OTF identity summary (`enabled`, config, hash, `session_timezone`, `eth_start`) |
+| `otf_validation_matrix` | Validation | Report / Bundles | Fixed five-config train/OOS OTF comparison DataFrame |
+| `otf_validation_config` | Validation | Report / Bundles | Matrix train fraction, SL/TP, `session_timezone`, `eth_start` |
+| `otf_validation_summary` | Validation | Report / assistant evidence | Train-selected label + OOS expectancy + diagnostic caveat |
+
+### OTF composition notes
+
+- Setup Builder persists `setup_config["otf_filter"]` (default disabled).
+- Signals generation remains candidate-only; OTF is not applied on the Signals page.
+- Backtest and Grid call `apply_configured_otf_filter()` once before execution.
+  Config precedence: `signal_settings["otf_filter"]` → setup snapshot →
+  `last_signal_setup` → `setup_config` → disabled defaults.
+- Walk-forward applies OTF per fold with fold-local OHLCV by default.
+- Research artifacts project OTF via `build_otf_filter_metadata()` into
+  `assumptions.otf_filter` / top-level `otf_filter`, and optional
+  `otf_validation` from the matrix.
+- Contract: `docs/otf-filter.md`. Hardening tracker:
+  `docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md`.
 
 Signals robustness notes:
 - Non-base trigger-timeframe grouping in `thesistester/engine/signals.py` uses DST-safe
