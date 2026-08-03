@@ -49,6 +49,21 @@ from thesistester.engine import (
 from thesistester.levels.all import compute_all_levels
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.levels.sessions import compute_session_levels
+from thesistester.persistence.execution_artifacts import (
+    ArtifactMiss,
+    DataArtifact,
+    LevelsArtifact,
+    SourceDataBinding,
+    invalidate_source_data_binding,
+    normalize_cache_policy,
+    read_source_data_binding,
+    read_verified_data_artifact,
+    read_verified_levels_artifact,
+    summarize_cache_outcome,
+    write_data_artifact,
+    write_levels_artifact,
+    write_source_data_binding,
+)
 from thesistester.persistence.local_store import (
     _normalize_signal_settings_for_hash,
     compute_signal_settings_hash,
@@ -1278,10 +1293,40 @@ def compute_levels(
     *,
     instrument: str = "ES",
     config: Mapping[str, Any] | None = None,
+    cache_policy: str = "off",
+    data_identity: DataIdentity | Mapping[str, Any] | None = None,
+    store_root: str | Path | None = None,
 ) -> LevelsResult:
-    """Compute UI-equivalent levels without reading or writing session state."""
+    """Compute UI-equivalent levels without reading or writing session state.
+
+    ``cache_policy`` defaults to ``off`` (legacy cold). ``read`` / ``read_write``
+    reuse verified levels artifacts when a ``data_identity`` is supplied or can
+    be derived. Cache misses never raise; they fall through to cold compute.
+    """
     _instrument(instrument)
     settings = normalize_levels_config(config, instrument=instrument)
+    policy = normalize_cache_policy(cache_policy)
+    cache_status = "bypassed"
+    cache_detail: str | None = None
+
+    resolved_identity: DataIdentity | None = None
+    if isinstance(data_identity, DataIdentity):
+        resolved_identity = data_identity
+    elif isinstance(data_identity, Mapping):
+        resolved_identity = DataIdentity.from_dict(data_identity)
+
+    if policy != "off" and resolved_identity is not None:
+        levels_identity = LevelsIdentity.from_normalized(resolved_identity, settings)
+        cached = read_verified_levels_artifact(levels_identity, store_root=store_root)
+        if isinstance(cached, LevelsArtifact):
+            return {
+                "levels": cached.levels,
+                "session_levels": cached.session_levels,
+                "levels_settings": dict(cached.levels_settings),
+                "cache_status": "hit",
+            }
+        cache_status = "miss"
+        cache_detail = cached.reason if isinstance(cached, ArtifactMiss) else None
 
     kwargs = {
         _LEVEL_ARGUMENT_MAP.get(key, key): value
@@ -1294,11 +1339,27 @@ def compute_levels(
         instrument=instrument,
         opening_range_minutes=int(settings["opening_range_minutes"]),
     )
-    return {
+    if policy == "read_write" and resolved_identity is not None:
+        levels_identity = LevelsIdentity.from_normalized(resolved_identity, settings)
+        write_levels_artifact(
+            levels_identity,
+            levels,
+            session_levels,
+            levels_settings=settings,
+            store_root=store_root,
+        )
+        cache_status = "written" if cache_status == "miss" else "written"
+
+    result: dict[str, Any] = {
         "levels": levels,
         "session_levels": session_levels,
         "levels_settings": settings,
     }
+    if policy != "off":
+        result["cache_status"] = cache_status
+        if cache_detail is not None:
+            result["cache_detail"] = cache_detail
+    return result  # type: ignore[return-value]
 
 
 def build_setup(config: Mapping[str, Any]) -> dict[str, Any]:
@@ -2065,13 +2126,122 @@ def run_otf_validation(
     )
 
 
+def _load_experiment_data(
+    *,
+    dataset_path: Path,
+    instrument: str,
+    source_timezone: str | None,
+    exchange_timezone: str | None,
+    format_profile: str,
+    dataset_config: Mapping[str, Any],
+    cache_policy: str,
+    store_root: str | Path | None,
+) -> tuple[pd.DataFrame, DataIdentity, dict[str, Any]]:
+    """Load canonical data with optional verified artifact reuse."""
+    policy = normalize_cache_policy(cache_policy)
+    data_stage: dict[str, Any] = {"status": "bypassed", "policy": policy}
+
+    if policy != "off":
+        binding = read_source_data_binding(
+            source_path=dataset_path,
+            instrument=instrument,
+            source_timezone=source_timezone,
+            exchange_timezone=exchange_timezone,
+            format_profile=format_profile,
+            store_root=store_root,
+        )
+        if isinstance(binding, SourceDataBinding):
+            artifact = read_verified_data_artifact(binding.identity, store_root=store_root)
+            if isinstance(artifact, DataArtifact):
+                data_stage = {
+                    "status": "hit",
+                    "policy": policy,
+                    "binding_key": binding.binding_key,
+                    "artifact_key": artifact.artifact_key,
+                }
+                return artifact.data, binding.identity, data_stage
+            data_stage = {
+                "status": "miss",
+                "policy": policy,
+                "reason": artifact.reason if isinstance(artifact, ArtifactMiss) else "artifact_miss",
+                "binding_key": binding.binding_key,
+            }
+            invalidate_source_data_binding(
+                source_path=dataset_path,
+                instrument=instrument,
+                source_timezone=source_timezone,
+                exchange_timezone=exchange_timezone,
+                format_profile=format_profile,
+                store_root=store_root,
+            )
+        elif isinstance(binding, ArtifactMiss):
+            data_stage = {
+                "status": "miss",
+                "policy": policy,
+                "reason": binding.reason,
+                "detail": binding.detail,
+            }
+
+    data = load_dataset(
+        dataset_path,
+        instrument=instrument,
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
+        format_profile=format_profile,
+    )
+    validation_report = validate_ohlcv(data)
+    base_interval = format_interval(validation_report.inferred_interval)
+    data_identity = DataIdentity.from_run_spec(
+        data,
+        dataset_config=dataset_config,
+        base_interval=base_interval,
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
+    )
+    if policy == "read_write":
+        write_data_artifact(
+            data_identity,
+            data,
+            ingestion_meta={
+                "source_path": str(dataset_path),
+                "format_profile": format_profile,
+            },
+            store_root=store_root,
+        )
+        write_source_data_binding(
+            source_path=dataset_path,
+            identity=data_identity,
+            instrument=instrument,
+            source_timezone=source_timezone,
+            exchange_timezone=exchange_timezone,
+            format_profile=format_profile,
+            store_root=store_root,
+        )
+        data_stage = {
+            "status": "written",
+            "policy": policy,
+            "reason": data_stage.get("reason"),
+            "detail": data_stage.get("detail"),
+        }
+    elif policy == "read" and data_stage.get("status") == "bypassed":
+        data_stage = {"status": "miss", "policy": policy, "reason": "missing"}
+    return data, data_identity, data_stage
+
+
 def run_experiment(
     spec: Mapping[str, Any],
     *,
     base_directory: str | Path = ".",
     execution_origin: str = "api",
+    cache_policy: str = "off",
+    store_root: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Execute one version-1 experiment and return a bundle-ready plain dict."""
+    """Execute one version-1 experiment and return a bundle-ready plain dict.
+
+    ``cache_policy`` defaults to ``off`` (legacy cold path). Pass ``read_write``
+    to reuse/publish verified data and levels artifacts. Cache provenance is
+    attached to the returned state but must not affect canonical bundle hashes.
+    """
     validate_run_spec(spec)
     run = dict(spec)
     dataset_config = dict(run.get("dataset") or {})
@@ -2086,12 +2256,17 @@ def run_experiment(
     exchange_timezone = dataset_config.get("exchange_timezone") or inst.exchange_tz
     format_profile = str(dataset_config.get("format_profile", "canonical"))
     origin = normalize_execution_origin(execution_origin)
-    data = load_dataset(
-        dataset_path,
+    policy = normalize_cache_policy(cache_policy)
+
+    data, data_identity, data_stage = _load_experiment_data(
+        dataset_path=dataset_path,
         instrument=instrument,
         source_timezone=source_timezone,
         exchange_timezone=exchange_timezone,
         format_profile=format_profile,
+        dataset_config=dataset_config,
+        cache_policy=policy,
+        store_root=store_root,
     )
     subtimeframe_data: pd.DataFrame | None = None
     subtimeframe_path_value = dataset_config.get("subtimeframe_path")
@@ -2106,25 +2281,49 @@ def run_experiment(
             exchange_timezone=exchange_timezone,
             format_profile=str(dataset_config.get("subtimeframe_format_profile", "canonical")),
         )
-    validation_report = validate_ohlcv(data)
-    base_interval = format_interval(validation_report.inferred_interval)
-    data_identity = DataIdentity.from_run_spec(
-        data,
-        dataset_config=dataset_config,
-        base_interval=base_interval,
-        source_timezone=source_timezone,
-        exchange_timezone=exchange_timezone,
+    base_interval = data_identity.base_interval or format_interval(
+        validate_ohlcv(data).inferred_interval
     )
     dataset_id = data_identity.dataset_id()
 
-    level_result = compute_levels(data, instrument=instrument, config=run.get("levels"))
-    levels_identity = LevelsIdentity.from_normalized(data_identity, level_result["levels_settings"])
+    level_result = compute_levels(
+        data,
+        instrument=instrument,
+        config=run.get("levels"),
+        cache_policy=policy,
+        data_identity=data_identity,
+        store_root=store_root,
+    )
+    levels_status = str(level_result.get("cache_status", "bypassed"))
+    levels_stage: dict[str, Any] = {
+        "status": levels_status,
+        "policy": policy,
+    }
+    if "cache_detail" in level_result:
+        levels_stage["reason"] = level_result["cache_detail"]
+    level_payload = {
+        "levels": level_result["levels"],
+        "session_levels": level_result["session_levels"],
+        "levels_settings": level_result["levels_settings"],
+    }
+    levels_identity = LevelsIdentity.from_normalized(data_identity, level_payload["levels_settings"])
     experiment_identity = ExperimentIdentity.from_run_spec(levels_identity, run)
+    cache_provenance = {
+        "policy": policy,
+        "outcome": summarize_cache_outcome(
+            policy=policy,
+            data_status=str(data_stage.get("status", "bypassed")),
+            levels_status=levels_status,
+        ),
+        "data": data_stage,
+        "levels": levels_stage,
+        "store_root": str(store_root) if store_root is not None else None,
+    }
     setup = build_setup(dict(run.get("setup") or {}))
-    signal_result = generate_signals(level_result["levels"], setup, instrument=instrument)
+    signal_result = generate_signals(level_payload["levels"], setup, instrument=instrument)
     backtest_config = dict(run.get("backtest") or {})
     backtest_result = run_backtest(
-        level_result["levels"],
+        level_payload["levels"],
         signal_result["signals"],
         instrument=instrument,
         config=backtest_config,
@@ -2142,7 +2341,7 @@ def run_experiment(
         "source_timezone": source_timezone,
         "exchange_timezone": exchange_timezone,
         "format_profile": format_profile,
-        **level_result,
+        **level_payload,
         "levels_data_fingerprint": {
             "instrument": instrument,
             "rows": len(data),
@@ -2157,6 +2356,7 @@ def run_experiment(
         "levels_identity": levels_identity.to_dict(),
         "experiment_identity": experiment_identity.to_dict(),
         "execution_origin": origin,
+        "cache_provenance": cache_provenance,
         "setup_config": setup,
         **signal_result,
         "last_signal_setup": setup,
@@ -2200,7 +2400,7 @@ def run_experiment(
     if isinstance(grid_config, Mapping) and grid_config.get("enabled", True):
         grid_settings = {key: value for key, value in grid_config.items() if key != "enabled"}
         grid_result = run_grid(
-            level_result["levels"],
+            level_payload["levels"],
             signal_result["signals"],
             instrument=instrument,
             config=grid_settings,
@@ -2257,7 +2457,7 @@ def run_experiment(
         }
         state.update(
             run_walk_forward(
-                level_result["levels"],
+                level_payload["levels"],
                 signal_result["signals"],
                 instrument=instrument,
                 config=wfa_settings,
@@ -2278,7 +2478,7 @@ def run_experiment(
                 grid=state.get("grid_results"),
                 tick_size=inst.tick_size,
                 config=validation_settings,
-                df=level_result["levels"],
+                df=level_payload["levels"],
                 signals=state.get("grid_accepted_signals", signal_result["signals"]),
                 point_value=inst.point_value,
                 execution_kwargs={

@@ -137,6 +137,8 @@ _MANAGED_RESEARCH_KEYS = {
     # research_identity.json until path-canonical RunSpec hashing lands.
     "experiment_identity",
     "execution_origin",
+    # CAI-3 cache status is provenance-only and must not enter bundle hashes.
+    "cache_provenance",
 }
 
 _KNOWN_FILES = {

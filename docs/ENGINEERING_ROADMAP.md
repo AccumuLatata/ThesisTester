@@ -118,6 +118,38 @@ user-facing dataset/levels snapshots.
 
 ---
 
+## CAI-3 — Cached Headless Pipeline Parity ✅ Implemented
+
+Wires verified execution artifacts into the public headless API behind an
+explicit cache policy without changing research semantics.
+
+### Features
+
+- `run_experiment(..., cache_policy=..., store_root=...)` and
+  `compute_levels(..., cache_policy=..., data_identity=..., store_root=...)`.
+- Default policy ``off`` preserves the legacy cold path.
+- CLI and Assistant use ``read_write``.
+- Source-bytes binding index enables warm CSV skip; levels artifacts skip
+  recomputation on exact `LevelsIdentity` hit.
+- `cache_provenance` on run state / Assistant provenance
+  (`bypassed|cold|data_hit|levels_hit`); excluded from canonical bundle hash.
+
+### Regression safety
+
+- Cold vs warm equal canonical bundle hashes and frame/diagnostic values.
+- Corrupt/missing artifacts, stale source bytes, and changed levels settings
+  fall back to cold compute and never fail a valid run.
+- Golden-master legacy pipeline unchanged (does not enable cache).
+- Classic session DataFrames are never used as a cache source.
+
+### Tests
+
+- `tests/test_cai3_cached_pipeline.py` covers bypassed default, cold/warm
+  parity, CSV-skip warm path, corrupt levels fallback, settings/source drift,
+  and provenance exclusion from bundles.
+
+---
+
 ## R1 — Execution Realism ✅ Implemented
 
 Adds optional commission and slippage to `simulate_trades`. Defaults preserve legacy

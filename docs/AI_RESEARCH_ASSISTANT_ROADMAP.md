@@ -10,9 +10,11 @@ defines the regression-safe roadmap for joining the classic Streamlit workflow
 and this thesis/run model through immutable artifacts and bundle provenance.
 `CAI-0` baseline timings and the manual record-after-run policy decision are
 recorded in `docs/CAI_BASELINE.md`. `CAI-1` shared identity/normalization lives
-in `thesistester/research_identity.py`. `CAI-2` internal execution artifacts
-live in `thesistester/persistence/execution_artifacts.py` (not yet consumed by
-the pipeline).
+in `thesistester/research_identity.py`. `CAI-2`/`CAI-3` execution artifacts and
+cached headless reuse live in
+`thesistester/persistence/execution_artifacts.py` with explicit
+`cache_policy` on `run_experiment` / `compute_levels` (Assistant/CLI use
+`read_write`; public default remains `off`).
 
 This document is the implementation contract for an AI Research Assistant in
 ThesisTester. It is designed to prevent scope, architecture, and statistical

@@ -278,11 +278,13 @@ class AssistantTools:
             normalized,
             base_directory=dataset_path.parent,
             execution_origin="assistant",
+            cache_policy="read_write",
         )
         return {
             "summary": _state_summary(state),
             "tool_version": __version__,
             "execution_origin": state.get("execution_origin", "assistant"),
+            "cache_provenance": to_jsonable(state.get("cache_provenance")),
         }
 
     def run_experiment_to_bundle(
@@ -298,6 +300,7 @@ class AssistantTools:
             normalized,
             base_directory=Path(normalized["dataset"]["path"]).parent,
             execution_origin="assistant",
+            cache_policy="read_write",
         )
         bundle = build_research_bundle(state)
         path.write_bytes(bundle)
@@ -309,6 +312,7 @@ class AssistantTools:
             "data_identity": to_jsonable(state.get("data_identity")),
             "levels_identity": to_jsonable(state.get("levels_identity")),
             "execution_origin": state.get("execution_origin", "assistant"),
+            "cache_provenance": to_jsonable(state.get("cache_provenance")),
             "tool_version": __version__,
             "effective_configuration": to_jsonable(normalized),
             "resolved_paths": _resolved_paths(normalized),
