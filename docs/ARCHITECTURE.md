@@ -157,7 +157,7 @@ Bundles only.
 | `classic_active_thesis_id` | Active thesis in classic research mode |
 | `classic_active_thesis_name` | Cached display name for the breadcrumb |
 | `classic_recording_policy` | `manual` (default, CAI-0) or `all_executions` (CAI-7) |
-| `classic_pending_navigation` | Optional one-shot page target |
+| `classic_pending_navigation` | Optional one-shot allowlisted page target (`st.switch_page`) |
 | `classic_bound_dataset_id` | Dataset identity that must match or context clears; unset binds on first observed `dataset_id` |
 | `classic_flash` | One-shot `{level, message}` UI notice |
 
@@ -165,8 +165,9 @@ Bundles only.
 **not** record a run or mutate executable classic producer keys. Create/link UI
 lives on Setup Builder; other classic pages show breadcrumb + exit/relink only.
 Exit and dataset-switch clears also reset `_classic_relink_open_*` UI flags so
-the relink form does not reopen after re-entry. Thesis prose remains
-Assistant-owned; executable settings remain page-owned.
+the relink form does not reopen after re-entry. Research Bundles import
+re-syncs classic context against the imported `dataset_id` before rerun.
+Thesis prose remains Assistant-owned; executable settings remain page-owned.
 
 ## AI Research Assistant contract boundary (AIA-0)
 

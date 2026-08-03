@@ -204,6 +204,8 @@ executable page settings or recording runs.
 - Dataset switch clears thesis-scoped classic keys (no cross-dataset leak).
   An unset bound (link before data) adopts the first observed `dataset_id`.
   Context clear also resets `_classic_relink_open_*` UI flags.
+- Pending navigation uses allowlisted `st.switch_page` targets.
+- Bundle import re-syncs classic context against the imported dataset.
 - Linking never starts runs or creates specification versions.
 - Recording policy default remains `manual` (CAI-0); `all_executions` deferred
   to CAI-7.

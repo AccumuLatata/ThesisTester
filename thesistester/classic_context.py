@@ -34,6 +34,24 @@ CLASSIC_THESIS_SCOPED_KEYS: tuple[str, ...] = (
 RECORDING_POLICIES: tuple[str, ...] = ("manual", "all_executions")
 DEFAULT_RECORDING_POLICY: str = "manual"
 
+# Allowlisted page script paths for classic_pending_navigation → st.switch_page.
+CLASSIC_PENDING_NAVIGATION_PAGES: frozenset[str] = frozenset(
+    {
+        "pages/1_Data.py",
+        "pages/2_Levels.py",
+        "pages/3_Setup_Builder.py",
+        "pages/6_Signals.py",
+        "pages/7_Backtest.py",
+        "pages/8_Grid_Search.py",
+        "pages/9_Time_Analysis.py",
+        "pages/10_Validation.py",
+        "pages/11_Report_Export.py",
+        "pages/12_Research_Bundles.py",
+        "pages/13_Portfolio.py",
+        "pages/14_Research_Assistant.py",
+    }
+)
+
 # Canonical classic producer keys that must retain value and type across
 # thesis link/create/exit (session-state contract gate).
 PROTECTED_CLASSIC_SESSION_KEYS: tuple[str, ...] = (
@@ -163,6 +181,16 @@ def consume_pending_navigation(session_state: MutableMapping[str, Any]) -> str |
     session_state["classic_pending_navigation"] = None
     if isinstance(target, str) and target.strip():
         return target.strip()
+    return None
+
+
+def resolve_pending_navigation_target(target: str | None) -> str | None:
+    """Return an allowlisted page path for ``st.switch_page``, or None."""
+    if not isinstance(target, str):
+        return None
+    text = target.strip().replace("\\", "/")
+    if text in CLASSIC_PENDING_NAVIGATION_PAGES:
+        return text
     return None
 
 
@@ -306,7 +334,11 @@ def render_classic_thesis_chrome(
 
     pending = consume_pending_navigation(st.session_state)
     if pending is not None:
-        st.caption(f"Pending navigation cleared: `{pending}`")
+        resolved = resolve_pending_navigation_target(pending)
+        if resolved is None:
+            st.warning(f"Ignored invalid pending navigation target: `{pending}`")
+        else:
+            st.switch_page(resolved)
 
     if is_research_mode(st.session_state):
         thesis_id = get_active_thesis_id(st.session_state) or ""

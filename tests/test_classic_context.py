@@ -11,6 +11,7 @@ import pytest
 from thesistester.assistant import AssistantOrchestrator, LocalThesisRepository
 from thesistester.assistant.workspace import THESIS_SCOPED_STAGING_KEYS
 from thesistester.classic_context import (
+    CLASSIC_PENDING_NAVIGATION_PAGES,
     CLASSIC_SESSION_KEYS,
     CLASSIC_THESIS_SCOPED_KEYS,
     DEFAULT_RECORDING_POLICY,
@@ -27,6 +28,7 @@ from thesistester.classic_context import (
     init_classic_session_state,
     is_research_mode,
     link_thesis,
+    resolve_pending_navigation_target,
     set_classic_flash,
     set_pending_navigation,
     set_recording_policy,
@@ -271,6 +273,15 @@ def test_flash_and_pending_navigation_helpers():
         set_pending_navigation(session, "  ")
 
 
+def test_resolve_pending_navigation_target_allowlist():
+    assert resolve_pending_navigation_target("pages/7_Backtest.py") == "pages/7_Backtest.py"
+    assert resolve_pending_navigation_target("  pages/6_Signals.py  ") == "pages/6_Signals.py"
+    assert resolve_pending_navigation_target("pages/not_a_page.py") is None
+    assert resolve_pending_navigation_target("../secrets") is None
+    assert resolve_pending_navigation_target(None) is None
+    assert "pages/3_Setup_Builder.py" in CLASSIC_PENDING_NAVIGATION_PAGES
+
+
 def test_clear_preserves_recording_policy():
     session: dict = {}
     init_classic_session_state(session)
@@ -317,11 +328,31 @@ def test_pages_wire_classic_chrome_and_setup_allows_create_link():
     bundles = (root / "pages" / "12_Research_Bundles.py").read_text(encoding="utf-8")
     for source in (setup, signals, backtest, bundles):
         assert "render_classic_thesis_chrome" in source
-        assert "from thesistester.classic_context import render_classic_thesis_chrome" in source
+        assert "thesistester.classic_context import" in source
+        assert "render_classic_thesis_chrome" in source
     assert "allow_create_link=True" in setup
     assert "allow_create_link" not in signals
     assert "allow_create_link" not in backtest
     assert "allow_create_link" not in bundles
+    assert "sync_classic_context_for_dataset" in bundles
+    assert "st.rerun()" in bundles
+
+
+def test_bundle_import_syncs_classic_context_after_dataset_change(tmp_path: Path):
+    """Import path must re-check bound dataset after session keys are restored."""
+    repo = LocalThesisRepository(tmp_path / "assistant")
+    thesis = repo.create_thesis(name="Bundle sync")
+    session = _seed_classic_page_state()
+    link_thesis(
+        session,
+        thesis_id=thesis.thesis_id,
+        thesis_name=thesis.name,
+        dataset_id="ds_test_aaa",
+    )
+    # Simulate post-import session with a different dataset_id (chrome already ran).
+    session["dataset_id"] = "ds_imported_bbb"
+    assert sync_classic_context_for_dataset(session, session["dataset_id"]) is True
+    assert not is_research_mode(session)
 
 
 def test_link_thesis_source_has_no_run_recording_calls():

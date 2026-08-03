@@ -503,6 +503,12 @@ not a live Assistant execution input.
   An unset bound (link before data/bootstrap) adopts the first observed
   `dataset_id` instead of clearing research mode. Clearing context also resets
   per-page `_classic_relink_open_*` UI flags.
+- `classic_pending_navigation` is consumed by chrome via allowlisted
+  `st.switch_page` targets (`resolve_pending_navigation_target`); invalid
+  targets are warned and dropped.
+- Research Bundles import calls `sync_classic_context_for_dataset` after restore
+  and reruns so a changed imported `dataset_id` cannot leave research mode
+  bound to the pre-import dataset.
 - Setup Builder: create/link expander. Signals, Backtest, Research Bundles:
   breadcrumb + exit/relink only.
 - Tests: `tests/test_classic_context.py`.
