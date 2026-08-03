@@ -613,11 +613,16 @@ class LocalThesisRepository:
             if exclusive and path.exists():
                 raise RepositoryConflictError(f"Immutable record already exists: {path.name}")
             os.replace(temporary_path, path)
-            directory_fd = os.open(path.parent, os.O_DIRECTORY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
+            # Directory fsync is a POSIX durability aid after rename. Windows does
+            # not expose os.O_DIRECTORY; the replace above already committed the
+            # record, so skip rather than raise AttributeError mid-create.
+            directory_flag = getattr(os, "O_DIRECTORY", None)
+            if directory_flag is not None:
+                directory_fd = os.open(path.parent, directory_flag)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
         finally:
             if temporary_path.exists():
                 temporary_path.unlink()

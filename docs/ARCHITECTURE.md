@@ -100,7 +100,10 @@ it does not bypass existing research-page producers for new compute.
 `LocalThesisRepository` stores schema-versioned thesis metadata, immutable
 specification versions, requested/terminal run provenance, and append-only
 conversations under `.thesistester_store/assistant/`. It writes assistant
-documents atomically and fails closed on corrupt or newer schema records.
+documents atomically (temp file → `fsync` → `os.replace`) and fails closed on
+corrupt or newer schema records. Directory `fsync` after rename runs only when
+`os.O_DIRECTORY` exists (POSIX); Windows skips that step so thesis creation does
+not raise after the record is already committed.
 It does not read or modify research bundles or existing local-store namespaces.
 Confirmation is an atomic compiler boundary: it accepts only a resolved
 ready-for-confirmation draft, recompiles the typed structured choices into an
