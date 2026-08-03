@@ -7,6 +7,44 @@ The proposed AI Research Assistant has a separate, regression-safe implementatio
 plan in `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md`. Its AIA-series milestones are
 additive to this R-series and must follow its stated regression gates.
 
+Classic workspace ↔ Assistant unification follows
+`docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` (CAI-series). CAI milestones are
+also additive and must preserve engine/golden-master semantics.
+
+---
+
+## CAI-0 — Classic/Assistant Cold-Path Baseline ✅ Implemented
+
+Freezes the current headless cold path before shared data/levels artifacts are
+introduced.
+
+### Features
+
+- Deterministic fixtures in `tests/fixtures/cai_baseline.py`:
+  - `small` (60 bars, no rolling POC) for CI harness smoke;
+  - `realistic` (780 bars / two RTH sessions, `poc_windows=["30min"]`) for
+    informational timing only.
+- Informational stage harness:
+  `python3 -m tests.benchmarks.cai_cold_path --fixture both --repeats 5`
+- Baseline record and recording-policy decision in `docs/CAI_BASELINE.md`.
+- Initial classic-to-thesis recording policy: **manual record-after-run**.
+
+### Regression safety
+
+- No production cache, UI, API default, or engine behavior change.
+- Wall time is informational only and is not a CI threshold.
+- Existing API/CLI/Assistant canonical-hash parity remains the correctness gate.
+
+### Tests
+
+- `tests/benchmarks/test_cai_cold_path.py` asserts small-fixture harness
+  structure and keeps the assistant parity fixture green.
+
+### Observed baseline implication
+
+On the realistic fixture, `compute_levels` dominated end-to-end cold median
+time (~71%). CAI-2/CAI-3 therefore target verified levels-artifact reuse first.
+
 ---
 
 ## R1 — Execution Realism ✅ Implemented
