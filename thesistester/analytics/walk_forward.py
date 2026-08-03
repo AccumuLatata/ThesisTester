@@ -44,14 +44,12 @@ def normalize_otf_history_policy(value: Any = None) -> str:
         return DEFAULT_OTF_HISTORY_POLICY
     if not isinstance(value, str):
         raise ValueError(
-            "otf_history_policy must be 'fold_local' or 'causal_prefix', "
-            f"got {value!r}."
+            f"otf_history_policy must be 'fold_local' or 'causal_prefix', got {value!r}."
         )
     policy = value.strip()
     if policy not in OTF_HISTORY_POLICIES:
         raise ValueError(
-            "otf_history_policy must be 'fold_local' or 'causal_prefix', "
-            f"got {value!r}."
+            f"otf_history_policy must be 'fold_local' or 'causal_prefix', got {value!r}."
         )
     return policy
 
@@ -92,8 +90,7 @@ def _otf_source_for_fold(
     if otf_history_policy == "causal_prefix":
         return df.iloc[:fold_end_exclusive].reset_index(drop=True)
     raise ValueError(
-        "otf_history_policy must be 'fold_local' or 'causal_prefix', "
-        f"got {otf_history_policy!r}."
+        f"otf_history_policy must be 'fold_local' or 'causal_prefix', got {otf_history_policy!r}."
     )
 
 

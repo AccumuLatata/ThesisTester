@@ -252,6 +252,18 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
 - Run `pytest -q tests/test_golden_master.py tests/test_exit_management.py tests/test_intrabar.py`
   after any BE/trailing or intrabar interaction edit.
 
+## WFO OTF history policy
+
+When OTF is enabled in walk-forward:
+
+- Default `otf_history_policy=fold_local` (legacy-preserving).
+- Opt-in `causal_prefix` allows prior bars before each fold start to establish
+  OTF state; only fold-local signals are scored; never use future bars.
+- Missing policy must resolve to `fold_local`; invalid values must raise on
+  API / compiler / UI boundaries (never silently coerce).
+- Record the effective policy on WFO config, summary, fold rows, and
+  `walk_forward_otf_filter` metadata.
+
 ## R14 walk-forward research safety
 
 - Keep `fold_mode="bars"` and `window_mode="rolling"` as backward-compatible

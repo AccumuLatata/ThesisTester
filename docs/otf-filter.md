@@ -3,7 +3,7 @@
 **Project:** ThesisTester  
 **Feature:** Directional One Timeframing (OTF) market-condition filter  
 **Contract version:** v1  
-**Status:** Approved — contract implemented through research-mode integration; Streamlit/API `eth_start` parity landed (hardening PR 1); UI/docs honesty landed (hardening PR 2)  
+**Status:** Approved — research-mode integration complete; hardening PR 1–4 landed (`eth_start` parity, UI/docs honesty, enabled golden gate, WFO `otf_history_policy`)  
 **Last updated:** 2026-08-03
 
 ## Purpose
@@ -668,7 +668,19 @@ When OTF is disabled, grid output is identical to pre-PR 5 output.
 
 ### Walk-forward integration
 
-Walk-forward OTF filtering is fold-local to prevent future-data leakage.
+Walk-forward OTF history policy (hardening PR 4):
+
+| Policy | Default | OTF source for a fold |
+|---|---|---|
+| `fold_local` | Yes | Fold OHLCV slice only |
+| `causal_prefix` | No | Prefix∪fold-local bars (`df.iloc[:fold_end]`); prefix bars are strictly before fold start |
+
+Only fold-local signals are scored under either policy. Bars after the fold end
+never influence that fold. The effective policy is recorded on WFO
+config/summary/rows and research metadata. Missing policy resolves to
+`fold_local`; unsupported values raise.
+
+Walk-forward OTF filtering defaults to fold-local to prevent future-data leakage.
 
 **Config validation before fold processing:**
 `run_walk_forward_sl_tp()` validates and normalizes the configured OTF block via

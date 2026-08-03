@@ -444,7 +444,9 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 - Backtest and Grid call `apply_configured_otf_filter()` once before execution.
   Config precedence: `signal_settings["otf_filter"]` → setup snapshot →
   `last_signal_setup` → `setup_config` → disabled defaults.
-- Walk-forward applies OTF per fold with fold-local OHLCV by default.
+- Walk-forward applies OTF per fold. Default `otf_history_policy=fold_local`
+  uses fold-local OHLCV only; opt-in `causal_prefix` uses prefix∪fold-local
+  bars and records the policy on WFO config/summary/`walk_forward_otf_filter`.
 - Research artifacts project OTF via `build_otf_filter_metadata()` into
   `assumptions.otf_filter` / top-level `otf_filter`, and optional
   `otf_validation` from the matrix.

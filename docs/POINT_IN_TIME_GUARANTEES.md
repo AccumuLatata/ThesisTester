@@ -212,9 +212,14 @@ bar on date D; do not use the final row value.
 - Futures session reset uses `trading_session_date(..., eth_start)`. For ES/NQ,
   `eth_start="18:00"` means midnight is **not** a boundary. UI Backtest, Grid,
   validation matrix, API, and WFO forward the instrument `eth_start`.
-- Walk-forward default history is **fold-local**: each fold’s OTF source is that
-  fold’s OHLCV slice only (no future-fold leakage; early-fold cold starts may
-  yield `unknown`). Causal-prefix history is a separate opt-in hardening item.
+- Walk-forward OTF history:
+  - **`fold_local` (default):** each fold’s OTF source is that fold’s OHLCV
+    slice only (no future-fold leakage; early-fold cold starts may yield
+    `unknown`).
+  - **`causal_prefix` (opt-in):** source is prefix∪fold-local bars ending at
+    the fold end; prefix bars are strictly before fold start and are
+    market-state only. Append-future / future-shock tests cover historical
+    fold invariance.
 
 Contract reference: `docs/otf-filter.md` §6 / §13b.
 

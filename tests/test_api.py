@@ -541,3 +541,61 @@ def test_backtest_preserves_ui_otf_precedence_for_signal_producing_setup(tmp_pat
         signal_settings={},
     )
     assert result["otf_filter_summary"]["otf_filter_enabled"] is False
+
+
+def test_walk_forward_rejects_invalid_otf_history_policy(tmp_path):
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path, instrument="ES")
+    levels = compute_levels(data, instrument="ES", config=_levels_config())["levels"]
+    setup = _setup()
+    signals = generate_signals(levels, setup)["signals"]
+    with pytest.raises(ValueError, match="otf_history_policy"):
+        run_walk_forward(
+            levels,
+            signals,
+            instrument="ES",
+            config={
+                "fold_mode": "bars",
+                "window_mode": "rolling",
+                "train_bars": 30,
+                "test_bars": 10,
+                "step_bars": 10,
+                "ranking_metric": "expectancy_r",
+                "min_train_trades": 1,
+                "stop_loss_ticks_values": [2],
+                "take_profit_ticks_values": [2],
+                "overlap_policy": "reject",
+                "otf_history_policy": "not_a_policy",
+            },
+            otf_config=setup.get("otf_filter"),
+        )
+
+
+def test_walk_forward_defaults_otf_history_policy_to_fold_local(tmp_path):
+    csv_path = tmp_path / "bars.csv"
+    _write_dataset(csv_path)
+    data = load_dataset(csv_path, instrument="ES")
+    levels = compute_levels(data, instrument="ES", config=_levels_config())["levels"]
+    setup = _setup()
+    signals = generate_signals(levels, setup)["signals"]
+    result = run_walk_forward(
+        levels,
+        signals,
+        instrument="ES",
+        config={
+            "fold_mode": "bars",
+            "window_mode": "rolling",
+            "train_bars": 30,
+            "test_bars": 10,
+            "step_bars": 10,
+            "ranking_metric": "expectancy_r",
+            "min_train_trades": 1,
+            "stop_loss_ticks_values": [2],
+            "take_profit_ticks_values": [2],
+            "overlap_policy": "reject",
+        },
+        otf_config=setup.get("otf_filter"),
+    )
+    assert result["walk_forward_config"]["otf_history_policy"] == "fold_local"
+    assert result["walk_forward_summary"]["otf_history_policy"] == "fold_local"
