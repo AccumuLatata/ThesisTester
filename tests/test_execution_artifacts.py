@@ -205,6 +205,41 @@ def test_schema_drift_and_engine_version_drift_are_misses(tmp_path: Path):
     assert engine_miss.reason == "engine_incompatible"
 
 
+def test_non_numeric_manifest_version_fields_are_misses_not_raises(tmp_path: Path):
+    store = tmp_path / "store"
+    data = _bars()
+    data_identity = _data_identity(data)
+    levels_identity, settings, levels, session_levels = _levels_bundle(data, data_identity)
+
+    data_artifact = write_data_artifact(data_identity, data, store_root=store)
+    data_manifest = json.loads((data_artifact.path / MANIFEST_FILENAME).read_text(encoding="utf-8"))
+    data_manifest["artifact_schema_version"] = "not-an-int"
+    (data_artifact.path / MANIFEST_FILENAME).write_text(
+        json.dumps(data_manifest, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    data_miss = read_verified_data_artifact(data_identity, store_root=store)
+    assert isinstance(data_miss, ArtifactMiss)
+    assert data_miss.reason == "corrupt_manifest"
+
+    levels_artifact = write_levels_artifact(
+        levels_identity,
+        levels,
+        session_levels,
+        levels_settings=settings,
+        store_root=store,
+    )
+    levels_manifest = json.loads(
+        (levels_artifact.path / MANIFEST_FILENAME).read_text(encoding="utf-8")
+    )
+    levels_manifest["level_engine_version"] = None
+    (levels_artifact.path / MANIFEST_FILENAME).write_text(
+        json.dumps(levels_manifest, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    levels_miss = read_verified_levels_artifact(levels_identity, store_root=store)
+    assert isinstance(levels_miss, ArtifactMiss)
+    assert levels_miss.reason == "corrupt_manifest"
+
+
 def test_write_reuses_completed_artifact(tmp_path: Path):
     store = tmp_path / "store"
     data = _bars()

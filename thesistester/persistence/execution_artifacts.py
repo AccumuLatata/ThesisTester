@@ -220,6 +220,22 @@ def _contain_path(path: Path, *, root: Path) -> Path | None:
     return resolved
 
 
+def _try_int(value: Any) -> int | None:
+    """Coerce a manifest version field without raising.
+
+    Verified reads must return :class:`ArtifactMiss` for corrupt manifests, so
+    bare ``int(...)`` on JSON null / non-numeric strings is not allowed.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _data_dir(key: str, *, artifacts_root: Path) -> Path:
     return artifacts_root / "data" / key
 
@@ -282,7 +298,13 @@ def _verify_data_dir(
         return ArtifactMiss(_MISS_CORRUPT_MANIFEST, detail="identity")
     if manifest.get("kind") != _DATA_KIND:
         return ArtifactMiss(_MISS_CORRUPT_MANIFEST, detail="kind")
-    if int(manifest.get("artifact_schema_version", -1)) != DATA_ARTIFACT_SCHEMA_VERSION:
+    schema_version = _try_int(manifest.get("artifact_schema_version", -1))
+    if schema_version is None:
+        return ArtifactMiss(
+            _MISS_CORRUPT_MANIFEST,
+            detail=f"artifact_schema_version={manifest.get('artifact_schema_version')!r}",
+        )
+    if schema_version != DATA_ARTIFACT_SCHEMA_VERSION:
         return ArtifactMiss(
             _MISS_SCHEMA_DRIFT,
             detail=f"artifact_schema_version={manifest.get('artifact_schema_version')}",
@@ -351,12 +373,24 @@ def _verify_levels_dir(
         return ArtifactMiss(_MISS_CORRUPT_MANIFEST, detail="identity")
     if manifest.get("kind") != _LEVELS_KIND:
         return ArtifactMiss(_MISS_CORRUPT_MANIFEST, detail="kind")
-    if int(manifest.get("artifact_schema_version", -1)) != LEVELS_ARTIFACT_SCHEMA_VERSION:
+    schema_version = _try_int(manifest.get("artifact_schema_version", -1))
+    if schema_version is None:
+        return ArtifactMiss(
+            _MISS_CORRUPT_MANIFEST,
+            detail=f"artifact_schema_version={manifest.get('artifact_schema_version')!r}",
+        )
+    if schema_version != LEVELS_ARTIFACT_SCHEMA_VERSION:
         return ArtifactMiss(
             _MISS_SCHEMA_DRIFT,
             detail=f"artifact_schema_version={manifest.get('artifact_schema_version')}",
         )
-    if int(manifest.get("level_engine_version", -1)) != LEVEL_ENGINE_VERSION:
+    engine_version = _try_int(manifest.get("level_engine_version", -1))
+    if engine_version is None:
+        return ArtifactMiss(
+            _MISS_CORRUPT_MANIFEST,
+            detail=f"level_engine_version={manifest.get('level_engine_version')!r}",
+        )
+    if engine_version != LEVEL_ENGINE_VERSION:
         return ArtifactMiss(
             _MISS_ENGINE_INCOMPATIBLE,
             detail=f"level_engine_version={manifest.get('level_engine_version')}",

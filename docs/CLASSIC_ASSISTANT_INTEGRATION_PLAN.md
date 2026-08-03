@@ -333,8 +333,9 @@ These rules are non-negotiable for every milestone.
   legacy `dataset_id` still excludes it.
 - Levels artifact keys bind data-artifact key + settings hash + engine +
   artifact schema versions.
-- `read_verified_*` returns `ArtifactMiss` (never raises) for missing, corrupt,
-  incomplete, schema-drift, engine-incompatible, identity/content mismatch, or
+- `read_verified_*` returns `ArtifactMiss` (never raises) for missing, corrupt
+  (including non-numeric schema/engine version fields), incomplete,
+  schema-drift, engine-incompatible, identity/content mismatch, or
   path-escape cases.
 - `write_*` publishes under per-identity `fcntl` locks with temp-dir + rename;
   a concurrent writer reuses a verified completed artifact.
@@ -344,7 +345,8 @@ These rules are non-negotiable for every milestone.
 **Regression gates**
 
 - Unit tests: cold miss, valid hit, corrupt manifest, missing parquet, schema
-  drift, engine-version drift, concurrent publish, and path containment.
+  drift, engine-version drift, non-numeric version fields, concurrent publish,
+  and path containment.
 - Existing `save_levels` / `find_matching_levels` UX remains unchanged.
 
 **Acceptance**
