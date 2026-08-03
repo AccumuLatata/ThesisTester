@@ -582,6 +582,17 @@ with st.expander("Structured walk-forward controls"):
             list(OVERLAP_POLICIES),
             index=option_index(OVERLAP_POLICIES, walk_forward.get("overlap_policy")),
         )
+        otf_history_policies = ("fold_local", "causal_prefix")
+        otf_history_policy = st.selectbox(
+            "OTF history policy",
+            list(otf_history_policies),
+            index=option_index(otf_history_policies, walk_forward.get("otf_history_policy")),
+            help=(
+                "fold_local (default): OTF uses only each fold’s OHLCV. "
+                "causal_prefix: earlier bars may establish OTF state; only fold-local "
+                "signals are scored. Never uses future bars."
+            ),
+        )
         train_default = (
             walk_forward.get("train_sessions")
             if fold_mode == "sessions"
@@ -682,6 +693,7 @@ with st.expander("Structured walk-forward controls"):
                     matrix_test_raw=matrix_test_raw,
                     matrix_metric=matrix_metric,
                     max_matrix_cells=int(max_matrix_cells),
+                    otf_history_policy=str(otf_history_policy),
                 )
                 invalidate_validation(st.session_state)
                 st.rerun()

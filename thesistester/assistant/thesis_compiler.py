@@ -12,6 +12,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, ClassVar, Mapping
 
+from thesistester.analytics.walk_forward import normalize_otf_history_policy
 from thesistester.api import validate_run_spec
 
 COMPILER_VERSION = "2"
@@ -295,6 +296,7 @@ def normalize_walk_forward_controls(
     fold_mode: str = "sessions",
     window_mode: str = "rolling",
     overlap_policy: str = "reject",
+    otf_history_policy: str | None = None,
     ranking_metric: str | None = None,
     min_train_trades: Any = None,
     stop_loss_ticks_values: list[float] | None = None,
@@ -305,6 +307,8 @@ def normalize_walk_forward_controls(
     Disabled walk-forward persists only the opt-out flag. Enabled walk-forward
     requires every canonical assumption field so UI drafts remain confirmation-
     eligible without silent API defaults. Fold sizes follow ``fold_mode``.
+    Missing ``otf_history_policy`` resolves to ``fold_local``; unsupported
+    values raise and are never silently replaced.
     """
     if not enabled:
         return {"enabled": False}
@@ -314,11 +318,18 @@ def normalize_walk_forward_controls(
         raise ValueError("walk_forward.window_mode must be 'rolling' or 'anchored'.")
     if overlap_policy not in _WALK_FORWARD_OVERLAP_POLICIES:
         raise ValueError("walk_forward.overlap_policy must be 'reject', 'first', or 'last'.")
+    try:
+        resolved_otf_history_policy = normalize_otf_history_policy(otf_history_policy)
+    except ValueError as exc:
+        raise ValueError(
+            "walk_forward.otf_history_policy must be 'fold_local' or 'causal_prefix'."
+        ) from exc
     payload: dict[str, Any] = {
         "enabled": True,
         "fold_mode": fold_mode,
         "window_mode": window_mode,
         "overlap_policy": overlap_policy,
+        "otf_history_policy": resolved_otf_history_policy,
     }
     size_label = "session counts" if fold_mode == "sessions" else "bar counts"
     try:

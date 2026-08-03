@@ -303,6 +303,7 @@ _WALK_FORWARD_KEYS = {
     "stop_loss_ticks_values",
     "take_profit_ticks_values",
     "overlap_policy",
+    "otf_history_policy",
     "matrix",
 }
 _WFA_MATRIX_KEYS = {
@@ -854,7 +855,13 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         _validate_bool_fields(walk_forward, {"enabled"}, section="walk_forward")
         _validate_string_fields(
             walk_forward,
-            {"fold_mode", "window_mode", "ranking_metric", "overlap_policy"},
+            {
+                "fold_mode",
+                "window_mode",
+                "ranking_metric",
+                "overlap_policy",
+                "otf_history_policy",
+            },
             section="walk_forward",
         )
         if walk_forward.get("fold_mode", "bars") not in {"bars", "sessions"}:
@@ -867,6 +874,13 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             "last",
         }:
             raise ValueError("walk_forward.overlap_policy must be 'reject', 'first', or 'last'")
+        if "otf_history_policy" in walk_forward:
+            from thesistester.analytics.walk_forward import normalize_otf_history_policy
+
+            try:
+                normalize_otf_history_policy(walk_forward.get("otf_history_policy"))
+            except ValueError as exc:
+                raise ValueError(f"walk_forward.otf_history_policy: {exc}") from exc
         _validate_number_fields(
             walk_forward,
             {
@@ -1726,6 +1740,7 @@ def run_walk_forward(
         exchange_timezone=inst.exchange_tz,
         eth_start=inst.eth_start,
         overlap_policy=str(settings.get("overlap_policy", "reject")),
+        otf_history_policy=settings.get("otf_history_policy"),
         return_result=True,
     )
     output: WalkForwardAnalysisResult = {
@@ -1774,9 +1789,14 @@ def run_walk_forward(
             ),
             max_grid_cells=int(execution.get("max_grid_cells", 500)),
             overlap_policy=str(settings.get("overlap_policy", "reject")),
+            # Matrix cells must use the same OTF history policy as the primary WFO.
+            otf_history_policy=settings.get("otf_history_policy"),
         )
         output["wfa_matrix"] = matrix
-        output["wfa_matrix_config"] = dict(matrix_config)
+        output["wfa_matrix_config"] = {
+            **dict(matrix_config),
+            "otf_history_policy": detailed.config.get("otf_history_policy"),
+        }
     return output
 
 

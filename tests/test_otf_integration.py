@@ -1242,6 +1242,37 @@ class TestReportingOtfMetadata:
         assert "backtest" in meta["applied_scopes"]
         assert "grid" in meta["applied_scopes"]
 
+    def test_build_otf_filter_metadata_keeps_wfo_history_policy_when_backtest_primary(self):
+        """Backtest/grid primary scope must not blank walk-forward otf_history_policy."""
+        state = {
+            "otf_filter_summary": {
+                "otf_filter_enabled": True,
+                "otf_algorithm_version": OTF_ALGORITHM_VERSION,
+                "otf_config_hash": "d" * 64,
+                "otf_filter_config": _enabled_config(["5m"]),
+                "candidate_signal_count": 5,
+                "otf_accepted_signal_count": 4,
+                "otf_rejected_signal_count": 1,
+                "rejection_rate": 0.2,
+                "session_timezone": TZ,
+                "eth_start": "18:00",
+            },
+            "walk_forward_otf_filter": {
+                "otf_filter_enabled": True,
+                "otf_algorithm_version": OTF_ALGORITHM_VERSION,
+                "otf_config_hash": "e" * 64,
+                "otf_filter_config": _enabled_config(["5m"]),
+                "otf_history_policy": "causal_prefix",
+                "session_timezone": TZ,
+                "eth_start": "18:00",
+            },
+        }
+        meta = build_otf_filter_metadata(state)
+        assert meta["applied_scopes"] == ["backtest", "walk_forward"]
+        assert meta["otf_history_policy"] == "causal_prefix"
+        # Counts still come from the primary (backtest) summary.
+        assert meta["candidate_signal_count"] == 5
+
 
 # ---------------------------------------------------------------------------
 # 38–43. Regression boundaries
@@ -1431,7 +1462,7 @@ class TestWalkForwardShortFoldRobustness:
         )
         # Should not raise even though 1 bar is insufficient for OTF
         accepted, rejected_count, candidate_count = _filter_fold_signals_with_otf(
-            fold_df=fold_df,
+            source_df=fold_df,
             fold_signals=fold_signals,
             otf_config=self._make_enabled_config(),
             session_timezone=TZ,
@@ -1453,7 +1484,7 @@ class TestWalkForwardShortFoldRobustness:
             _signal(signal_id=3, timestamp="2026-01-02 09:30:00", bar_index=0),
         )
         accepted, rejected_count, candidate_count = _filter_fold_signals_with_otf(
-            fold_df=fold_df,
+            source_df=fold_df,
             fold_signals=fold_signals,
             otf_config=self._make_enabled_config(),
             session_timezone=TZ,
@@ -1472,7 +1503,7 @@ class TestWalkForwardShortFoldRobustness:
             _signal(signal_id=2, timestamp="2026-01-02 09:30:00", bar_index=0),
         )
         accepted, rejected_count, candidate_count = _filter_fold_signals_with_otf(
-            fold_df=fold_df,
+            source_df=fold_df,
             fold_signals=fold_signals,
             otf_config=self._make_enabled_config(),
             session_timezone=TZ,
@@ -1809,7 +1840,7 @@ class TestWalkForwardOtfConfigValidation:
             }
         )
         accepted, rejected_count, candidate_count = _filter_fold_signals_with_otf(
-            fold_df=fold_df,
+            source_df=fold_df,
             fold_signals=fold_signals,
             otf_config=valid_config,
             session_timezone=TZ,
@@ -1858,7 +1889,7 @@ class TestWalkForwardOtfConfigValidation:
                 ValueError, match="Completely unexpected internal programming error XYZ"
             ):
                 _filter_fold_signals_with_otf(
-                    fold_df=fold_df,
+                    source_df=fold_df,
                     fold_signals=fold_signals,
                     otf_config=valid_config,
                     session_timezone=TZ,
@@ -2254,3 +2285,329 @@ class TestEthStartSessionPropagation:
         source_text = page_path.read_text(encoding="utf-8")
         assert "resolve_otf_session_timezone(" in source_text
         assert '"session_timezone": _wfo_session_tz' in source_text
+
+
+# ---------------------------------------------------------------------------
+# Hardening PR4 — WFO otf_history_policy (fold_local / causal_prefix)
+# ---------------------------------------------------------------------------
+
+
+class TestOtfHistoryPolicy:
+    """Opt-in causal-prefix WFO OTF history policy."""
+
+    def _rising_ohlcv(self, n_bars: int = 120) -> pd.DataFrame:
+        start = pd.Timestamp("2026-01-05 22:00:00", tz=TZ)
+        rows = []
+        price = 100.0
+        for i in range(n_bars):
+            ts = start + pd.Timedelta(minutes=i)
+            rows.append(
+                {
+                    "timestamp": ts,
+                    "open": price + 0.2,
+                    "high": price + 1.0,
+                    "low": price,
+                    "close": price + 0.6,
+                    "volume": 100.0,
+                }
+            )
+            price += 0.05
+        return pd.DataFrame(rows)
+
+    def _enabled_otf(self, minimum_consecutive_bars: int = 3) -> dict:
+        return _enabled_config(["5m"], minimum_consecutive_bars=minimum_consecutive_bars)
+
+    def test_normalize_defaults_and_rejects_invalid(self):
+        from thesistester.analytics.walk_forward import normalize_otf_history_policy
+
+        assert normalize_otf_history_policy(None) == "fold_local"
+        assert normalize_otf_history_policy("fold_local") == "fold_local"
+        assert normalize_otf_history_policy("causal_prefix") == "causal_prefix"
+        with pytest.raises(ValueError, match="causal_prefix"):
+            normalize_otf_history_policy("any")
+        with pytest.raises(ValueError):
+            normalize_otf_history_policy(1)
+
+    def test_missing_policy_defaults_to_fold_local_and_matches_explicit(self):
+        ohlcv = self._rising_ohlcv(80)
+        # One long candidate late enough that both policies can evaluate.
+        sigs = _signals_df(
+            _signal(signal_id=1, timestamp="2026-01-05 22:40:00", direction="long", bar_index=40)
+        )
+        otf = self._enabled_otf()
+        implicit = run_walk_forward_sl_tp(
+            df=ohlcv,
+            signals=sigs,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=20,
+            test_bars=20,
+            step_bars=20,
+            otf_config=otf,
+            session_timezone=TZ,
+            eth_start="18:00",
+            return_result=True,
+        )
+        explicit = run_walk_forward_sl_tp(
+            df=ohlcv,
+            signals=sigs,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=20,
+            test_bars=20,
+            step_bars=20,
+            otf_config=otf,
+            otf_history_policy="fold_local",
+            session_timezone=TZ,
+            eth_start="18:00",
+            return_result=True,
+        )
+        assert implicit.config["otf_history_policy"] == "fold_local"
+        assert explicit.config["otf_history_policy"] == "fold_local"
+        pd.testing.assert_frame_equal(implicit.folds, explicit.folds)
+
+    def test_causal_prefix_rescues_cold_start_candidate(self):
+        """A signal at the start of a late fold is unknown under fold_local but
+        accepted under causal_prefix using prior completed HTF history."""
+        from thesistester.analytics.walk_forward import (
+            _otf_source_for_fold,
+            _filter_fold_signals_with_otf,
+        )
+
+        ohlcv = self._rising_ohlcv(90)
+        # Fold covering bars 40..60 — signal at bar 40 (first minute of fold).
+        fold_start, fold_end = 40, 60
+        fold_signals = _signals_df(
+            _signal(
+                signal_id=7,
+                timestamp="2026-01-05 22:40:00",
+                direction="long",
+                bar_index=0,
+            )
+        )
+        otf = self._enabled_otf(minimum_consecutive_bars=3)
+        local_source = _otf_source_for_fold(
+            ohlcv,
+            fold_start=fold_start,
+            fold_end_exclusive=fold_end,
+            otf_history_policy="fold_local",
+        )
+        prefix_source = _otf_source_for_fold(
+            ohlcv,
+            fold_start=fold_start,
+            fold_end_exclusive=fold_end,
+            otf_history_policy="causal_prefix",
+        )
+        assert len(prefix_source) > len(local_source)
+        assert len(local_source) == fold_end - fold_start
+
+        local_accepted, local_rejected, _ = _filter_fold_signals_with_otf(
+            source_df=local_source,
+            fold_signals=fold_signals,
+            otf_config=otf,
+            session_timezone=TZ,
+            eth_start="18:00",
+        )
+        prefix_accepted, prefix_rejected, _ = _filter_fold_signals_with_otf(
+            source_df=prefix_source,
+            fold_signals=fold_signals,
+            otf_config=otf,
+            session_timezone=TZ,
+            eth_start="18:00",
+        )
+        # fold_local cold-start rejects; causal_prefix accepts using prior history.
+        assert local_accepted.empty
+        assert local_rejected == 1
+        assert len(prefix_accepted) == 1
+        assert prefix_rejected == 0
+        assert int(prefix_accepted.iloc[0]["signal_id"]) == 7
+
+    def test_causal_prefix_does_not_score_prefix_signals_or_future_bars(self):
+        ohlcv = self._rising_ohlcv(100)
+        # Signal in fold 1 test window only.
+        sigs = _signals_df(
+            _signal(signal_id=1, timestamp="2026-01-05 22:45:00", direction="long", bar_index=45),
+            # Prefix-era signal must never be scored in a later fold's OTF counts.
+            _signal(signal_id=99, timestamp="2026-01-05 22:10:00", direction="long", bar_index=10),
+        )
+        result = run_walk_forward_sl_tp(
+            df=ohlcv,
+            signals=sigs,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=20,
+            test_bars=20,
+            step_bars=20,
+            otf_config=self._enabled_otf(),
+            otf_history_policy="causal_prefix",
+            session_timezone=TZ,
+            eth_start="18:00",
+            return_result=True,
+        )
+        assert (result.folds["otf_history_policy"] == "causal_prefix").all()
+        # OOS trades / fold scoring never invent prefix signal_id 99 as a fold test trade.
+        if not result.oos_trades.empty and "signal_id" in result.oos_trades.columns:
+            assert 99 not in set(result.oos_trades["signal_id"].tolist())
+
+        # Future shock: append extreme future bars; historical fold outputs unchanged.
+        shocked = ohlcv.copy()
+        last = shocked["timestamp"].max() + pd.Timedelta(minutes=1)
+        future = []
+        price = float(shocked["close"].iloc[-1]) + 100
+        for i in range(30):
+            ts = last + pd.Timedelta(minutes=i)
+            future.append(
+                {
+                    "timestamp": ts,
+                    "open": price,
+                    "high": price + 50,
+                    "low": price - 50,
+                    "close": price,
+                    "volume": 1.0,
+                }
+            )
+        shocked = pd.concat([shocked, pd.DataFrame(future)], ignore_index=True)
+        shocked_result = run_walk_forward_sl_tp(
+            df=shocked,
+            signals=sigs,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=20,
+            test_bars=20,
+            step_bars=20,
+            otf_config=self._enabled_otf(),
+            otf_history_policy="causal_prefix",
+            session_timezone=TZ,
+            eth_start="18:00",
+            return_result=True,
+        )
+        # Compare OTF counts on folds that exist in both (same fold boundaries on shared prefix).
+        shared = min(len(result.folds), len(shocked_result.folds))
+        left = result.folds.iloc[:shared][
+            ["fold_id", "test_otf_accepted_count", "test_otf_rejected_count", "status"]
+        ].reset_index(drop=True)
+        right = shocked_result.folds.iloc[:shared][
+            ["fold_id", "test_otf_accepted_count", "test_otf_rejected_count", "status"]
+        ].reset_index(drop=True)
+        pd.testing.assert_frame_equal(left, right)
+
+    def test_disabled_otf_unchanged_under_both_policies(self):
+        ohlcv = self._rising_ohlcv(60)
+        sigs = _signals_df(
+            _signal(signal_id=1, timestamp="2026-01-05 22:30:00", direction="long", bar_index=30)
+        )
+        local = run_walk_forward_sl_tp(
+            df=ohlcv,
+            signals=sigs,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=20,
+            test_bars=10,
+            otf_config=_disabled_config(),
+            otf_history_policy="fold_local",
+            return_result=True,
+        )
+        prefix = run_walk_forward_sl_tp(
+            df=ohlcv,
+            signals=sigs,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=20,
+            test_bars=10,
+            otf_config=_disabled_config(),
+            otf_history_policy="causal_prefix",
+            return_result=True,
+        )
+        none = run_walk_forward_sl_tp(
+            df=ohlcv,
+            signals=sigs,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=20,
+            test_bars=10,
+            otf_config=None,
+            return_result=True,
+        )
+        assert local.folds["otf_filter_enabled"].eq(False).all()
+        assert prefix.folds["otf_filter_enabled"].eq(False).all()
+        pd.testing.assert_series_equal(
+            local.folds["test_trade_count"].reset_index(drop=True),
+            prefix.folds["test_trade_count"].reset_index(drop=True),
+        )
+        pd.testing.assert_series_equal(
+            local.folds["test_trade_count"].reset_index(drop=True),
+            none.folds["test_trade_count"].reset_index(drop=True),
+        )
+
+    def test_repeated_runs_are_deterministic(self):
+        ohlcv = self._rising_ohlcv(80)
+        sigs = _signals_df(
+            _signal(signal_id=1, timestamp="2026-01-05 22:40:00", direction="long", bar_index=40)
+        )
+        kwargs = dict(
+            df=ohlcv,
+            signals=sigs,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=20,
+            test_bars=20,
+            otf_config=self._enabled_otf(),
+            otf_history_policy="causal_prefix",
+            session_timezone=TZ,
+            eth_start="18:00",
+            return_result=True,
+        )
+        a = run_walk_forward_sl_tp(**kwargs)
+        b = run_walk_forward_sl_tp(**kwargs)
+        pd.testing.assert_frame_equal(a.folds, b.folds)
+
+    def test_wfa_matrix_forwards_otf_history_policy(self, monkeypatch):
+        from thesistester.analytics import walk_forward as walk_forward_mod
+        from thesistester.analytics.walk_forward import run_wfa_matrix
+
+        ohlcv = self._rising_ohlcv(120)
+        sigs = _signals_df(
+            _signal(signal_id=1, timestamp="2026-01-05 22:40:00", direction="long", bar_index=40)
+        )
+        seen: list[str | None] = []
+        original = walk_forward_mod.run_walk_forward_sl_tp
+
+        def _spy(*args, **kwargs):
+            seen.append(kwargs.get("otf_history_policy"))
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(walk_forward_mod, "run_walk_forward_sl_tp", _spy)
+        matrix = run_wfa_matrix(
+            df=ohlcv,
+            signals=sigs,
+            tick_size=TICK,
+            point_value=POINT_VALUE,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_session_values=[2],
+            test_session_values=[1],
+            otf_config=self._enabled_otf(),
+            otf_history_policy="causal_prefix",
+            session_timezone=TZ,
+            eth_start="18:00",
+            exchange_timezone=TZ,
+        )
+        assert not matrix.empty
+        assert seen
+        assert all(policy == "causal_prefix" for policy in seen)

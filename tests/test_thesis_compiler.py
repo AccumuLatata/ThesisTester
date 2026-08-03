@@ -108,6 +108,7 @@ def test_normalize_walk_forward_controls_requires_modes_when_enabled():
         "fold_mode": "sessions",
         "window_mode": "anchored",
         "overlap_policy": "first",
+        "otf_history_policy": "fold_local",
         "train_sessions": 20,
         "test_sessions": 5,
         "step_sessions": 5,
@@ -126,8 +127,30 @@ def test_normalize_walk_forward_controls_requires_modes_when_enabled():
     assert bars["train_bars"] == 100
     assert bars["ranking_metric"] == "expectancy_r"
     assert bars["stop_loss_ticks_values"] == [8]
+    assert bars["otf_history_policy"] == "fold_local"
+    causal = normalize_walk_forward_controls(
+        enabled=True,
+        fold_mode="bars",
+        train_bars=100,
+        test_bars=20,
+        step_bars=20,
+        otf_history_policy="causal_prefix",
+    )
+    assert causal["otf_history_policy"] == "causal_prefix"
+    # Whitespace handling must match walk_forward.normalize_otf_history_policy.
+    padded = normalize_walk_forward_controls(
+        enabled=True,
+        fold_mode="bars",
+        train_bars=100,
+        test_bars=20,
+        step_bars=20,
+        otf_history_policy=" causal_prefix ",
+    )
+    assert padded["otf_history_policy"] == "causal_prefix"
     with pytest.raises(ValueError, match="window_mode"):
         normalize_walk_forward_controls(enabled=True, window_mode="diagonal")
+    with pytest.raises(ValueError, match="otf_history_policy"):
+        normalize_walk_forward_controls(enabled=True, otf_history_policy="any")
 
 
 def test_enabled_walk_forward_controls_compile_canonically():

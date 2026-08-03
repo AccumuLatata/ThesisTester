@@ -430,11 +430,13 @@ other than the last bar in the dataset.
   OTF timeframe and must divide it exactly.
 - **Sample-size impact.** Multi-timeframe `all` alignment can materially reduce
   accepted trade counts; lower frequency is not evidence of edge by itself.
-- **Walk-forward `fold_local` cold starts.** Default WFO OTF history uses only
-  each fold’s OHLCV slice, so early fold candidates may be rejected as
-  `unknown` even when prior bars were causally available. This is conservative
-  against leakage; an opt-in causal-prefix policy is tracked separately in
-  `docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md`.
+- **Walk-forward OTF history policy.** Default `otf_history_policy=fold_local`
+  uses only each fold’s OHLCV slice, so early fold candidates may be rejected
+  as `unknown` even when prior bars were causally available (leakage-safe cold
+  start). Opt-in `causal_prefix` uses prefix∪fold-local bars
+  (`df.iloc[:fold_end]`) so prior completed HTF history may establish OTF
+  state; only fold-local signals are scored, and bars after the fold end are
+  never used. The effective policy is recorded on WFO config/summary/rows.
 - **Validation matrix is diagnostic.** Train-only ranking / OOS evaluation
   tooling does not prove durable edge and must not auto-select a production
   OTF configuration.

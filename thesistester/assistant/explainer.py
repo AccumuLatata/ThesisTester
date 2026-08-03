@@ -685,11 +685,21 @@ def _template_time(packet: EvidencePacket, claims: list[EvidenceClaim], lines: l
 
 def _template_otf(packet: EvidencePacket, claims: list[EvidenceClaim], lines: list[str]) -> None:
     otf = _as_mapping(packet.assumptions.get("otf_filter")) or {}
+    walk_forward = _as_mapping(packet.assumptions.get("walk_forward")) or {}
+    wfa_summary = _as_mapping(packet.results.get("walk_forward_summary")) or {}
     otf_validation = _as_mapping(packet.results.get("otf_validation")) or {}
     otf_summary = packet.results.get("otf_validation_summary")
     if otf_summary is None and otf_validation:
         otf_summary = otf_validation.get("summary")
-    if not otf and otf_summary is None and not otf_validation:
+    # Keep going when only walk_forward_summary carries otf_history_policy —
+    # assumptions.walk_forward may be absent on completed WFO evidence packets.
+    if (
+        not otf
+        and otf_summary is None
+        and not otf_validation
+        and not walk_forward
+        and "otf_history_policy" not in wfa_summary
+    ):
         return
     # Availability must be claimed at the path that actually stores it.
     if "available" in otf:
@@ -697,6 +707,30 @@ def _template_otf(packet: EvidencePacket, claims: list[EvidenceClaim], lines: li
         text = f"OTF filter evidence available={available}."
         lines.append(text)
         _claim(claims, text, "assumptions.otf_filter.available", available)
+    history_policy = walk_forward.get("otf_history_policy")
+    if history_policy is None:
+        history_policy = wfa_summary.get("otf_history_policy")
+    if history_policy is not None:
+        text = (
+            f"Walk-forward OTF history policy={history_policy} "
+            "(fold_local is conservative cold-start; causal_prefix may use "
+            "prior bars before each fold start; never future bars)."
+        )
+        lines.append(text)
+        if "otf_history_policy" in walk_forward:
+            _claim(
+                claims,
+                text,
+                "assumptions.walk_forward.otf_history_policy",
+                history_policy,
+            )
+        else:
+            _claim(
+                claims,
+                text,
+                "results.walk_forward_summary.otf_history_policy",
+                history_policy,
+            )
     if otf_summary is not None:
         text = "OTF validation summary evidence is present."
         lines.append(text)

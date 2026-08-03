@@ -29,6 +29,30 @@ _EXPECTED_OTF_INSUFFICIENT_HISTORY_PATTERNS: tuple[str, ...] = (
     "must be exactly divisible by the inferred source bar interval",
 )
 
+#: Allowed WFO OTF history policies (hardening PR 4).
+OTF_HISTORY_POLICIES: frozenset[str] = frozenset({"fold_local", "causal_prefix"})
+DEFAULT_OTF_HISTORY_POLICY: str = "fold_local"
+
+
+def normalize_otf_history_policy(value: Any = None) -> str:
+    """Return a canonical OTF history policy.
+
+    Missing / ``None`` resolves to ``fold_local``. Unsupported values raise
+    ``ValueError`` and are never silently coerced.
+    """
+    if value is None:
+        return DEFAULT_OTF_HISTORY_POLICY
+    if not isinstance(value, str):
+        raise ValueError(
+            f"otf_history_policy must be 'fold_local' or 'causal_prefix', got {value!r}."
+        )
+    policy = value.strip()
+    if policy not in OTF_HISTORY_POLICIES:
+        raise ValueError(
+            f"otf_history_policy must be 'fold_local' or 'causal_prefix', got {value!r}."
+        )
+    return policy
+
 
 def resolve_otf_session_timezone(
     session_timezone: str | None,
@@ -47,16 +71,43 @@ def resolve_otf_session_timezone(
     return None
 
 
+def _otf_source_for_fold(
+    df: pd.DataFrame,
+    *,
+    fold_start: int,
+    fold_end_exclusive: int,
+    otf_history_policy: str,
+) -> pd.DataFrame:
+    """Select the OHLCV source used for OTF state in one fold.
+
+    ``fold_local`` uses only the fold slice. ``causal_prefix`` uses
+    ``prefix ∪ fold-local`` bars (``df.iloc[:fold_end_exclusive]``), where
+    prefix bars are strictly before ``fold_start``. Future bars after the fold
+    end are never included.
+    """
+    if otf_history_policy == "fold_local":
+        return df.iloc[fold_start:fold_end_exclusive].reset_index(drop=True)
+    if otf_history_policy == "causal_prefix":
+        return df.iloc[:fold_end_exclusive].reset_index(drop=True)
+    raise ValueError(
+        f"otf_history_policy must be 'fold_local' or 'causal_prefix', got {otf_history_policy!r}."
+    )
+
+
 def _filter_fold_signals_with_otf(
-    fold_df: pd.DataFrame,
+    source_df: pd.DataFrame,
     fold_signals: pd.DataFrame,
     otf_config: dict[str, Any],
     session_timezone: str | None,
     eth_start: str | None = None,
 ) -> tuple[pd.DataFrame, int, int]:
-    """Apply OTF filter to a fold's signals using fold-local OHLCV only.
+    """Apply OTF filter to a fold's signals using the provided OHLCV source.
 
-    If the fold slice has insufficient history for OTF evaluation (e.g.,
+    ``source_df`` may be fold-local only or prefix∪fold-local under
+    ``causal_prefix``. Only fold-local *signals* are scored; prefix bars are
+    market-state input for OTF establishment.
+
+    If the source slice has insufficient history for OTF evaluation (e.g.,
     too few bars to complete an OTF state), all candidate signals are
     treated as OTF ``unknown`` and therefore rejected.  This prevents
     crashes on short folds without leaking future OTF state.
@@ -66,8 +117,8 @@ def _filter_fold_signals_with_otf(
 
     Parameters
     ----------
-    fold_df:
-        Fold-local OHLCV slice (already reset-indexed).
+    source_df:
+        OHLCV used for OTF state (fold-local or causal-prefix slice).
     fold_signals:
         Fold-local candidate signals (already sliced and reset-indexed).
     otf_config:
@@ -98,12 +149,12 @@ def _filter_fold_signals_with_otf(
     }
 
     try:
-        accepted, rejected = _apply_otf(fold_df, fold_signals, **_otf_kwargs)
+        accepted, rejected = _apply_otf(source_df, fold_signals, **_otf_kwargs)
         return accepted, int(len(rejected)), candidate_count
     except ValueError as exc:
         msg = str(exc)
         if any(pattern in msg for pattern in _EXPECTED_OTF_INSUFFICIENT_HISTORY_PATTERNS):
-            # Insufficient fold-local OTF history — reject all as unknown.
+            # Insufficient OTF history — reject all as unknown.
             # Return an empty accepted DataFrame preserving the schema.
             empty_accepted = fold_signals.iloc[0:0].copy()
             return empty_accepted, candidate_count, candidate_count
@@ -162,6 +213,7 @@ _RESULT_COLUMNS = [
     "trailing_distance_ticks",
     # OTF metadata columns — present only when OTF is enabled
     "otf_filter_enabled",
+    "otf_history_policy",
     "train_otf_candidate_count",
     "train_otf_accepted_count",
     "train_otf_rejected_count",
@@ -421,6 +473,7 @@ def run_walk_forward_sl_tp(
     cooldown_bars_after_exit: int = 0,
     otf_config: dict[str, Any] | None = None,
     *,
+    otf_history_policy: str | None = None,
     intrabar_model: str = "sl_first",
     subtimeframe_data: pd.DataFrame | None = None,
     breakeven_after_r_values: list[float | None] | None = None,
@@ -440,13 +493,16 @@ def run_walk_forward_sl_tp(
     """Run deterministic bar-window walk-forward diagnostics for SL/TP selection.
 
     When *otf_config* is provided and ``otf_config["enabled"]`` is ``True``,
-    OTF filtering is applied fold-locally: each fold's training signals are
-    filtered against the training OHLCV slice, and each fold's test signals
-    are filtered against the test OHLCV slice.  This prevents future OTF
-    state from leaking into earlier folds.
+    OTF filtering is applied per fold. History policy:
 
-    OTF configuration is fixed across all folds; this function does not
-    optimize OTF parameters.
+    - ``fold_local`` (default): train/test signals are filtered against only
+      their respective OHLCV slices.
+    - ``causal_prefix``: each fold uses prefix∪fold-local OHLCV
+      (``df.iloc[:fold_end]``) so prior completed HTF history can establish
+      OTF state, while only fold-local signals are scored.
+
+    Future bars after a fold end never influence that fold. OTF configuration
+    is fixed across all folds; this function does not optimize OTF parameters.
 
     Parameters
     ----------
@@ -455,6 +511,9 @@ def run_walk_forward_sl_tp(
         ``normalize_otf_filter_config`` or ``get_effective_otf_filter_config``).
         When ``None`` or ``{"enabled": False, ...}``, OTF filtering is
         disabled and legacy behavior is preserved exactly.
+    otf_history_policy:
+        ``fold_local`` or ``causal_prefix``. Missing / ``None`` defaults to
+        ``fold_local``. Unsupported values raise ``ValueError``.
     """
     if fold_mode not in {"bars", "sessions"}:
         raise ValueError("fold_mode must be 'bars' or 'sessions'.")
@@ -462,6 +521,7 @@ def run_walk_forward_sl_tp(
         raise ValueError("window_mode must be 'rolling' or 'anchored'.")
     if overlap_policy not in {"reject", "first", "last"}:
         raise ValueError("overlap_policy must be 'reject', 'first', or 'last'.")
+    otf_history_policy_normalized = normalize_otf_history_policy(otf_history_policy)
     _validate_timeline(df)
 
     if fold_mode == "bars":
@@ -554,9 +614,21 @@ def run_walk_forward_sl_tp(
         test_otf_rejected = 0
 
         if _otf_enabled and otf_normalized_config is not None:
-            # Apply OTF to train signals using train OHLCV only
+            train_otf_source = _otf_source_for_fold(
+                df,
+                fold_start=train_start,
+                fold_end_exclusive=train_end_exclusive,
+                otf_history_policy=otf_history_policy_normalized,
+            )
+            test_otf_source = _otf_source_for_fold(
+                df,
+                fold_start=test_start,
+                fold_end_exclusive=test_end_exclusive,
+                otf_history_policy=otf_history_policy_normalized,
+            )
+            # Apply OTF to train/test fold signals using the selected history policy.
             train_signals, train_otf_rejected, train_otf_candidate = _filter_fold_signals_with_otf(
-                fold_df=train_df,
+                source_df=train_otf_source,
                 fold_signals=train_signals,
                 otf_config=otf_normalized_config,
                 session_timezone=otf_session_timezone,
@@ -564,9 +636,8 @@ def run_walk_forward_sl_tp(
             )
             train_otf_accepted = int(len(train_signals))
 
-            # Apply OTF to test signals using test OHLCV only
             test_signals, test_otf_rejected, test_otf_candidate = _filter_fold_signals_with_otf(
-                fold_df=test_df,
+                source_df=test_otf_source,
                 fold_signals=test_signals,
                 otf_config=otf_normalized_config,
                 session_timezone=otf_session_timezone,
@@ -654,6 +725,7 @@ def run_walk_forward_sl_tp(
             "trailing_distance_ticks": None,
             # OTF fold metadata
             "otf_filter_enabled": _otf_enabled,
+            "otf_history_policy": otf_history_policy_normalized,
             "train_otf_candidate_count": train_otf_candidate,
             "train_otf_accepted_count": train_otf_accepted,
             "train_otf_rejected_count": train_otf_rejected,
@@ -852,6 +924,9 @@ def run_walk_forward_sl_tp(
             ),
         }
     )
+    summary = dict(summary)
+    summary["otf_history_policy"] = otf_history_policy_normalized
+    summary["otf_filter_enabled"] = _otf_enabled
     return WalkForwardResult(
         schema_version=2,
         config={
@@ -866,6 +941,8 @@ def run_walk_forward_sl_tp(
             "exchange_timezone": exchange_timezone,
             "eth_start": eth_start,
             "overlap_policy": overlap_policy,
+            "otf_history_policy": otf_history_policy_normalized,
+            "otf_filter_enabled": _otf_enabled,
         },
         folds=results,
         oos_trades=returned_oos_trades,
