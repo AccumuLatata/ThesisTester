@@ -287,6 +287,37 @@ def test_otf_template_does_not_claim_availability_on_empty_filter():
     assert_claims_grounded(packet, report)
 
 
+def test_otf_template_reads_history_policy_from_wfa_summary_without_assumptions():
+    """Completed WFO packets may only expose otf_history_policy on the summary."""
+    packet = EvidencePacket.from_dict(
+        {
+            "schema_version": 1,
+            "provenance": {},
+            "assumptions": {},
+            "results": {
+                "walk_forward_summary": {
+                    "fold_count": 2,
+                    "valid_fold_count": 2,
+                    "otf_history_policy": "causal_prefix",
+                }
+            },
+            "warnings": [],
+            "caveats": [],
+            "limitations": [],
+            "claims": [],
+            "next_experiments": [],
+        }
+    )
+    report = explain_evidence_report(packet)
+    assert "Walk-forward OTF history policy=causal_prefix" in report["narrative"]
+    assert any(
+        claim["path"] == "results.walk_forward_summary.otf_history_policy"
+        and claim["value"] == "causal_prefix"
+        for claim in report["claims"]
+    )
+    assert_claims_grounded(packet, report)
+
+
 def test_intrabar_ambiguity_caveat_from_costs_model_without_diagnostic():
     """Non-sl_first models must caveat even when diagnostic evidence is absent."""
     packet = EvidencePacket.from_dict(

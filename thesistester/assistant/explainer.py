@@ -691,7 +691,15 @@ def _template_otf(packet: EvidencePacket, claims: list[EvidenceClaim], lines: li
     otf_summary = packet.results.get("otf_validation_summary")
     if otf_summary is None and otf_validation:
         otf_summary = otf_validation.get("summary")
-    if not otf and otf_summary is None and not otf_validation and not walk_forward:
+    # Keep going when only walk_forward_summary carries otf_history_policy —
+    # assumptions.walk_forward may be absent on completed WFO evidence packets.
+    if (
+        not otf
+        and otf_summary is None
+        and not otf_validation
+        and not walk_forward
+        and "otf_history_policy" not in wfa_summary
+    ):
         return
     # Availability must be claimed at the path that actually stores it.
     if "available" in otf:

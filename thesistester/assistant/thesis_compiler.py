@@ -12,6 +12,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, ClassVar, Mapping
 
+from thesistester.analytics.walk_forward import normalize_otf_history_policy
 from thesistester.api import validate_run_spec
 
 COMPILER_VERSION = "2"
@@ -39,8 +40,6 @@ _LEGACY_BACKTEST_SESSION_DEFAULTS = {
 _WALK_FORWARD_FOLD_MODES = frozenset({"bars", "sessions"})
 _WALK_FORWARD_WINDOW_MODES = frozenset({"rolling", "anchored"})
 _WALK_FORWARD_OVERLAP_POLICIES = frozenset({"reject", "first", "last"})
-_WALK_FORWARD_OTF_HISTORY_POLICIES = frozenset({"fold_local", "causal_prefix"})
-_DEFAULT_OTF_HISTORY_POLICY = "fold_local"
 
 
 @dataclass(frozen=True)
@@ -319,15 +318,12 @@ def normalize_walk_forward_controls(
         raise ValueError("walk_forward.window_mode must be 'rolling' or 'anchored'.")
     if overlap_policy not in _WALK_FORWARD_OVERLAP_POLICIES:
         raise ValueError("walk_forward.overlap_policy must be 'reject', 'first', or 'last'.")
-    if otf_history_policy is None:
-        resolved_otf_history_policy = _DEFAULT_OTF_HISTORY_POLICY
-    elif (
-        not isinstance(otf_history_policy, str)
-        or otf_history_policy not in _WALK_FORWARD_OTF_HISTORY_POLICIES
-    ):
-        raise ValueError("walk_forward.otf_history_policy must be 'fold_local' or 'causal_prefix'.")
-    else:
-        resolved_otf_history_policy = otf_history_policy
+    try:
+        resolved_otf_history_policy = normalize_otf_history_policy(otf_history_policy)
+    except ValueError as exc:
+        raise ValueError(
+            "walk_forward.otf_history_policy must be 'fold_local' or 'causal_prefix'."
+        ) from exc
     payload: dict[str, Any] = {
         "enabled": True,
         "fold_mode": fold_mode,

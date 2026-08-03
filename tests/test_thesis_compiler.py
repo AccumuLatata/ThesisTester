@@ -137,6 +137,16 @@ def test_normalize_walk_forward_controls_requires_modes_when_enabled():
         otf_history_policy="causal_prefix",
     )
     assert causal["otf_history_policy"] == "causal_prefix"
+    # Whitespace handling must match walk_forward.normalize_otf_history_policy.
+    padded = normalize_walk_forward_controls(
+        enabled=True,
+        fold_mode="bars",
+        train_bars=100,
+        test_bars=20,
+        step_bars=20,
+        otf_history_policy=" causal_prefix ",
+    )
+    assert padded["otf_history_policy"] == "causal_prefix"
     with pytest.raises(ValueError, match="window_mode"):
         normalize_walk_forward_controls(enabled=True, window_mode="diagonal")
     with pytest.raises(ValueError, match="otf_history_policy"):
