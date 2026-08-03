@@ -130,18 +130,24 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HAS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'GOLDEN_REGEN') }}
         run: |
-          changed="$(git diff --name-only --diff-filter=ACMRD "$BASE_SHA" "$HEAD_SHA" \
-            -- tests/fixtures/golden \
-            ':(exclude)tests/fixtures/golden/README.md')"
+          # Guard only the legacy-mode golden artifacts. Additive families
+          # (e.g. otf_enabled_*) may land without GOLDEN_REGEN; rewriting the
+          # recorded legacy outputs still requires the label.
+          changed="$(git diff --name-only --diff-filter=ACMRD "$BASE_SHA" "$HEAD_SHA" -- \
+            tests/fixtures/golden/dataset_nq_1m_small.parquet \
+            tests/fixtures/golden/trades_legacy.parquet \
+            tests/fixtures/golden/trades_legacy.csv \
+            tests/fixtures/golden/legacy_bundle_hash.txt \
+            tests/fixtures/golden/fixture_manifest.json)"
           if [ -z "$changed" ]; then
-            echo "No golden-fixture changes."
+            echo "No legacy golden-fixture changes."
             exit 0
           fi
-          echo "Golden fixtures changed:"
+          echo "Legacy golden fixtures changed:"
           echo "$changed"
           if [ "$HAS_LABEL" = "true" ]; then
             echo "::notice title=Golden regeneration approved::GOLDEN_REGEN label present."
             exit 0
           fi
-          echo "::error title=Golden fixtures changed without GOLDEN_REGEN::Recorded legacy-mode outputs may only change in a dedicated PR labelled GOLDEN_REGEN (see tests/fixtures/golden/README.md)."
+          echo "::error title=Legacy golden fixtures changed without GOLDEN_REGEN::Recorded legacy-mode outputs may only change in a dedicated PR labelled GOLDEN_REGEN (see tests/fixtures/golden/README.md)."
           exit 1
