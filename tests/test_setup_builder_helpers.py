@@ -45,7 +45,7 @@ def _import_setup_builder_module():
     stub = _make_streamlit_stub()
     sys.modules.setdefault("streamlit", stub)
 
-    page_path = pathlib.Path(__file__).parent.parent / "pages" / "2_Setup_Builder.py"
+    page_path = pathlib.Path(__file__).parent.parent / "pages" / "3_Setup_Builder.py"
     spec = importlib.util.spec_from_file_location("setup_builder_page", page_path)
     mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
     try:
@@ -453,7 +453,7 @@ def test_seed_editor_config_does_not_mutate_active_setup():
 
 
 def test_setup_builder_page_has_no_stale_pre_pr5_otf_copy():
-    page_path = pathlib.Path(__file__).parent.parent / "pages" / "2_Setup_Builder.py"
+    page_path = pathlib.Path(__file__).parent.parent / "pages" / "3_Setup_Builder.py"
     text = page_path.read_text(encoding="utf-8")
     stale_snippets = (
         "saved for PR 5",
