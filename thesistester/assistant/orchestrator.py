@@ -538,6 +538,8 @@ class AssistantOrchestrator:
             if existing is not None:
                 stored = existing.provenance if isinstance(existing.provenance, Mapping) else {}
                 stored_path = str(stored.get("bundle_path"))
+                # Report the stored origin; do not rewrite a non-classic run as classic.
+                stored_origin = normalize_execution_origin(stored.get("execution_origin"))
                 result = OrchestrationResult(
                     status=OrchestrationStatus.COMPLETED.value,
                     capability_id="BUNDLE.register_external_run",
@@ -546,7 +548,7 @@ class AssistantOrchestrator:
                         "spec_version": existing.spec_version,
                         "bundle_path": stored_path,
                         "canonical_bundle_hash": digest,
-                        "execution_origin": "classic",
+                        "execution_origin": stored_origin,
                         "idempotent": True,
                         "summary": verified["summary"],
                     },
@@ -905,16 +907,17 @@ class AssistantOrchestrator:
             confirmation_note=confirmation_note,
         )
 
-    def default_bundle_output_path(self, thesis_id: str) -> Path:
+    def default_bundle_output_path(
+        self,
+        thesis_id: str,
+        *,
+        store_root: str | Path | None = None,
+    ) -> Path:
         """Return a thesis-scoped portable bundle path under the local store."""
-        return (
-            get_store_root()
-            / "assistant"
-            / "theses"
-            / thesis_id
-            / "bundles"
-            / f"{uuid4().hex}.research.zip"
+        root = (
+            Path(store_root).expanduser().resolve() if store_root is not None else get_store_root()
         )
+        return root / "assistant" / "theses" / thesis_id / "bundles" / f"{uuid4().hex}.research.zip"
 
     def explain_run(
         self,

@@ -196,6 +196,53 @@ def test_idempotent_reuse_requires_readable_stored_bundle(tmp_path: Path, monkey
     assert explained.status == "completed"
 
 
+def test_idempotent_reuse_reports_stored_execution_origin(tmp_path: Path, monkeypatch):
+    """Reuse must not rewrite a non-classic run's origin as classic."""
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    state = _classic_completed_state(tmp_path)
+    orchestrator, repository = _orchestrator(tmp_path)
+    thesis = repository.create_thesis(name="origin reuse")
+    bundle_bytes = build_research_bundle(state)
+    digest = canonical_bundle_hash(bundle_bytes)
+    path = tmp_path / "assistant_origin.research.zip"
+    path.write_bytes(bundle_bytes)
+    run_spec = classic_state_to_run_spec(
+        state, name=thesis.name, source_path=state["dataset_source_path"]
+    )
+    confirmed = orchestrator.confirm_validated_spec(
+        thesis_id=thesis.thesis_id,
+        validated_spec=run_spec,
+        confirmation_note="assistant fixture",
+    )
+    run = repository.start_run(
+        thesis.thesis_id,
+        spec_version=confirmed.version,
+        request={"action": "assistant_fixture"},
+    )
+    repository.complete_run(
+        thesis.thesis_id,
+        run.run_id,
+        expected_revision=run.revision,
+        provenance={
+            "bundle_path": str(path),
+            "canonical_bundle_hash": digest,
+            "execution_origin": "assistant",
+        },
+    )
+
+    reused = orchestrator.register_external_bundle_run(
+        thesis_id=thesis.thesis_id,
+        bundle_path=path,
+        run_spec=run_spec,
+        expected_hash=digest,
+    )
+    assert reused.payload["idempotent"] is True
+    assert reused.payload["run_id"] == run.run_id
+    assert reused.payload["execution_origin"] == "assistant"
+    stored = repository.get_run(thesis.thesis_id, run.run_id)
+    assert stored.provenance["execution_origin"] == "assistant"
+
+
 def test_idempotent_reuse_skips_stale_match_for_readable_twin(tmp_path: Path, monkeypatch):
     """A stale oldest match must not block reuse of a later readable twin."""
     monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
@@ -241,6 +288,27 @@ def test_idempotent_reuse_skips_stale_match_for_readable_twin(tmp_path: Path, mo
     assert third.payload["run_id"] == second.payload["run_id"]
     assert third.payload["bundle_path"] == second.payload["bundle_path"]
     assert len(repository.list_runs(thesis.thesis_id)) == 2
+
+
+def test_record_classic_session_run_honors_store_root(tmp_path: Path, monkeypatch):
+    """Bundle writes must use the same store_root as export/staging."""
+    env_store = tmp_path / "env_store"
+    explicit_store = tmp_path / "explicit_store"
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(env_store))
+    state = _classic_completed_state(tmp_path)
+    orchestrator, repository = _orchestrator(tmp_path)
+    thesis = repository.create_thesis(name="store root")
+
+    result = record_classic_session_run(
+        orchestrator,
+        thesis_id=thesis.thesis_id,
+        session_state=state,
+        store_root=explicit_store,
+    )
+    bundle_path = Path(result.payload["bundle_path"]).resolve()
+    assert explicit_store.resolve() in bundle_path.parents
+    assert env_store.resolve() not in bundle_path.parents
+    assert bundle_path.is_file()
 
 
 def test_record_classic_session_run_cleans_orphan_zip_on_idempotent_reuse(

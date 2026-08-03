@@ -559,8 +559,10 @@ without recomputing it.
 - Idempotency: same `canonical_bundle_hash` returns a completed run with a
   readable/hash-valid stored `bundle_path` unless `force_new=True`. Stale
   (missing) matches are skipped in favor of a later readable twin; if none
-  remain, a new registration is created. Classic session recording deletes the
-  newly written zip when reuse wins.
+  remain, a new registration is created. Reuse reports the stored
+  `execution_origin` (does not rewrite non-classic runs as classic). Classic
+  session recording deletes the newly written zip when reuse wins and writes
+  bundles under the same `store_root` used for export/staging.
 - `thesistester/classic_record.py`: `record_classic_session_run` builds the
   bundle + exported RunSpec (materializes a lineage CSV when classic pages
   omit `dataset_source_path`); UI `render_record_and_discuss` on Backtest and

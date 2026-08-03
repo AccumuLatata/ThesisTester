@@ -124,7 +124,8 @@ def record_classic_session_run(
     )
     bundle_bytes = build_research_bundle(session_state)
     digest = canonical_bundle_hash(bundle_bytes)
-    output_path = orchestrator.default_bundle_output_path(thesis_id)
+    # Keep bundle writes under the same store_root used for export/staging.
+    output_path = orchestrator.default_bundle_output_path(thesis_id, store_root=root)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(bundle_bytes)
 

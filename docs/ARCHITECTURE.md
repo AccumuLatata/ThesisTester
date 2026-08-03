@@ -183,8 +183,9 @@ research bundle as a completed thesis run without recomputing:
 - Lifecycle: confirm RunSpec → `start_run` → `complete_run` with
   `provenance.execution_origin="classic"`. Same hash reuses a completed run
   whose stored provenance `bundle_path` remains readable/hash-valid (stale
-  matches are skipped). Classic session recording removes orphan UUID zips
-  after idempotent reuse.
+  matches are skipped) and reports that run’s stored `execution_origin`.
+  Classic session recording removes orphan UUID zips after idempotent reuse
+  and honors an explicit `store_root` for bundle writes.
 - UI helper: `thesistester/classic_record.py` (`record_classic_session_run`,
   `render_record_and_discuss`) on Backtest and Research Bundles. When classic
   pages omit a source CSV path, a lineage OHLCV CSV is materialized under the
