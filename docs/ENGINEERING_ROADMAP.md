@@ -85,6 +85,39 @@ content-addressed data/levels/experiment identity before any cache lookup.
 
 ---
 
+## CAI-2 — Durable Execution-Artifact Store ✅ Implemented
+
+Internal content-addressed cache for canonical data and levels, separate from
+user-facing dataset/levels snapshots.
+
+### Features
+
+- `thesistester/persistence/execution_artifacts.py`:
+  - `read_verified_data_artifact` / `read_verified_levels_artifact`
+  - `write_data_artifact` / `write_levels_artifact`
+  - `invalidate_data_artifact` / `invalidate_levels_artifact`
+- Schema-versioned root:
+  `.thesistester_store/execution_artifacts/v1/{data,levels,locks}/`
+- Atomic temp-dir publish with fsync + per-identity exclusive locks.
+- Manifests store identity payloads, engine/artifact schema versions, and
+  `created_at` / `accessed_at` for later retention (CAI-10).
+
+### Regression safety
+
+- No automatic consumption by `run_experiment`, pages, CLI, or Assistant.
+- Verified reads return `ArtifactMiss` instead of raising on corrupt or
+  incompatible artifacts.
+- UX `save_levels` / `find_matching_levels` namespace and behavior unchanged.
+- Data artifact keys include `format_profile`; legacy `dataset_id` unchanged.
+
+### Tests
+
+- `tests/test_execution_artifacts.py`: cold miss, hit, corrupt manifest,
+  missing parquet, schema/engine drift, concurrent publish, path containment,
+  invalidation, and UX snapshot isolation.
+
+---
+
 ## R1 — Execution Realism ✅ Implemented
 
 Adds optional commission and slippage to `simulate_trades`. Defaults preserve legacy
