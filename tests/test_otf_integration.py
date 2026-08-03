@@ -2026,9 +2026,7 @@ class TestEthStartSessionPropagation:
         # Probe shortly after midnight: calendar-session mode is still in the
         # first HTF bars of the new day (often unknown), while ETH mode continues
         # the prior evening session and can already be directional.
-        sigs = _signals_df(
-            _signal(signal_id=1, timestamp="2026-01-06 00:05:00", direction="long")
-        )
+        sigs = _signals_df(_signal(signal_id=1, timestamp="2026-01-06 00:05:00", direction="long"))
         with_eth = apply_configured_otf_filter(
             source_df=source,
             candidate_signals=sigs,
