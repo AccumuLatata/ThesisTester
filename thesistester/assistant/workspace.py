@@ -165,7 +165,9 @@ def spec_status_next_step(status: str | None) -> str:
             "Under Plan review: Validate executable RunSpec, then click Confirm validated RunSpec."
         )
     if key == "confirmed":
-        return "Click Run confirmed research below to start compute for this immutable specification."
+        return (
+            "Click Run confirmed research below to start compute for this immutable specification."
+        )
     if key == "draft":
         return "Draft or validate from Plan review to advance this specification."
     return "Use Plan review to validate and confirm before running."
@@ -639,9 +641,7 @@ def build_plan_review(
     if unresolved_assumptions:
         next_action = "Resolve clarifications before confirming the validated RunSpec."
     elif validated_spec is None:
-        next_action = (
-            "Click Validate executable RunSpec. Confirm appears here only after a successful validate."
-        )
+        next_action = "Click Validate executable RunSpec. Confirm appears here only after a successful validate."
     elif ready:
         next_action = (
             "Click Confirm validated RunSpec, then open the new Confirmed specification and run it."
