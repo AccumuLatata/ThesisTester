@@ -51,7 +51,10 @@ For interactive Streamlit research, the Data page can:
 
 Switching ingestion modes clears 15s-primary artifacts and invalidates the
 primary CSV uploader so a 15-second export cannot be re-parsed as one-minute
-primary data on the next rerun.
+primary data on the next rerun. While the radio selects
+`15s_primary_derive_1m`, the separate lower-timeframe uploader stays hidden
+even if stale one-minute `data` remains and provenance has not been installed
+yet.
 
 Both interactive lower-data paths are session-scoped producers of the same
 `subtimeframe_data` contract today; YAML `dataset.subtimeframe_path` remains

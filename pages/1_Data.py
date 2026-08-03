@@ -159,6 +159,21 @@ def _is_15s_primary_session(session_state=None) -> bool:
     )
 
 
+def _hide_legacy_subtimeframe_uploader(
+    ingestion_mode: str, session_state=None
+) -> bool:
+    """Hide dual-upload lower path when 15s-primary is selected or active.
+
+    Visibility must follow the ingestion-mode radio, not only
+    ``ingestion_provenance``. After a mode switch (or with stale one-minute
+    ``data`` and no new CSV), provenance is cleared while the selector still
+    says derive-from-15s — the legacy uploader must stay hidden in that case.
+    """
+    if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
+        return True
+    return _is_15s_primary_session(session_state)
+
+
 def _leave_15s_primary_session_if_active() -> None:
     """Drop 15s-primary artifacts when leaving that ingestion session.
 
@@ -1344,14 +1359,23 @@ elif "data" in st.session_state:
 current_df = st.session_state.get("data")
 if current_df is not None:
     st.divider()
-    if _is_15s_primary_session():
-        interval = st.session_state.get("subtimeframe_interval", "15s")
-        source_rows = st.session_state.get("subtimeframe_data")
-        source_count = len(source_rows) if isinstance(source_rows, pd.DataFrame) else 0
-        st.info(
-            f"15-second source attached from primary upload: {source_count:,} bars at "
-            f"{interval}. Separate lower-timeframe upload is hidden in this mode."
-        )
+    if _hide_legacy_subtimeframe_uploader(ingestion_mode):
+        if _is_15s_primary_session():
+            interval = st.session_state.get("subtimeframe_interval", "15s")
+            source_rows = st.session_state.get("subtimeframe_data")
+            source_count = len(source_rows) if isinstance(source_rows, pd.DataFrame) else 0
+            st.info(
+                f"15-second source attached from primary upload: {source_count:,} bars at "
+                f"{interval}. Separate lower-timeframe upload is hidden in this mode."
+            )
+        else:
+            # Mode selected but no active 15s-primary provenance yet (e.g. stale
+            # one-minute data after a mode switch, before a new 15s CSV upload).
+            st.info(
+                "Separate lower-timeframe upload is hidden in 15-second primary mode. "
+                "Upload a 15-second CSV above to derive one-minute bars and attach "
+                "the 15-second source for R12."
+            )
     else:
         _render_subtimeframe_upload(
             current_df,

@@ -485,15 +485,19 @@ The Data page exposes an explicit opt-in ingestion mode,
 `data` frame, attaches the original 15-second bars as `subtimeframe_data`,
 records `ingestion_provenance` / `derived_parent_diagnostics`, and runs
 `prepare_subtimeframe_context()` as a fail-closed postcondition before state
-commit. The separate lower-timeframe uploader is hidden while this mode is
-active. Switching the ingestion-mode radio clears dataset-dependent state
-(including provenance, attached 15s source, diagnostics, and execution
-results) and invalidates the primary CSV uploader widget so a file chosen
-under one mode cannot be re-ingested on the other path on the same rerun.
-The one-minute primary upload path also drops an active 15s-primary
-session even when `compute_dataset_id` is unchanged, so the UI cannot stay
-latched in 15s-primary while the selector shows primary. Legacy one-minute
-primary upload and optional dual-upload lower data remain unchanged.
+commit. The separate lower-timeframe uploader is hidden whenever the
+ingestion-mode radio selects `15s_primary_derive_1m` (not only after
+`ingestion_provenance` marks an active derived session), so stale
+one-minute `data` cannot resurface the legacy dual-upload path while the
+selector says derive-from-15s. Switching the ingestion-mode radio clears
+dataset-dependent state (including provenance, attached 15s source,
+diagnostics, and execution results) and invalidates the primary CSV
+uploader widget so a file chosen under one mode cannot be re-ingested on
+the other path on the same rerun. The one-minute primary upload path also
+drops an active 15s-primary session even when `compute_dataset_id` is
+unchanged, so the UI cannot stay latched in 15s-primary while the
+selector shows primary. Legacy one-minute primary upload and optional
+dual-upload lower data remain unchanged.
 Local-store schema, API/CLI RunSpec fields, R12 resolvers, and engine
 defaults are unchanged in this PR; durable save/restore of the attached
 15-second source is deferred. See

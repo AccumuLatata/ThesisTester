@@ -551,6 +551,37 @@ def test_leave_15s_primary_session_if_active_clears_when_latched(monkeypatch):
     assert session_state["trades"] == "keep"
 
 
+def test_hide_legacy_subtimeframe_uploader_follows_mode_not_only_provenance():
+    """Dual-upload must hide when the radio says 15s-primary, even without provenance.
+
+    Repro: switch to derive-from-15s (clears provenance) while stale one-minute
+    ``data`` remains — the mode selector and uploader visibility must agree.
+    """
+    data_page = _import_data_page_module({})
+
+    # Selected mode alone is enough (stale 1m data, no active 15s session).
+    assert data_page._hide_legacy_subtimeframe_uploader(
+        data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M, session_state={}
+    )
+    assert data_page._hide_legacy_subtimeframe_uploader(
+        data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+        session_state={"data": "stale-one-minute"},
+    )
+
+    # Legacy primary keeps dual-upload unless a latched 15s-primary session.
+    assert not data_page._hide_legacy_subtimeframe_uploader(
+        data_page.INGESTION_MODE_PRIMARY, session_state={}
+    )
+    assert data_page._hide_legacy_subtimeframe_uploader(
+        data_page.INGESTION_MODE_PRIMARY,
+        session_state={
+            "ingestion_provenance": {
+                "ingestion_mode": data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+            }
+        },
+    )
+
+
 def test_data_page_exposes_15s_primary_mode_labels():
     data_page = _import_data_page_module({})
     page_text = pathlib.Path(data_page.__file__).read_text(encoding="utf-8")
@@ -562,3 +593,4 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert "_leave_15s_primary_session_if_active()" in page_text
     assert "_invalidate_primary_csv_uploader()" in page_text
     assert 'key=f"primary_csv_upload_{primary_uploader_nonce}"' in page_text
+    assert "_hide_legacy_subtimeframe_uploader(ingestion_mode)" in page_text
