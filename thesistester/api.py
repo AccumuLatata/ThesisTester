@@ -901,8 +901,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         requested_intrabar_models.add(grid.get("intrabar_model", "sl_first"))
     if "subtimeframe" in requested_intrabar_models:
         has_lower_source = (
-            "subtimeframe_path" in dataset
-            or ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+            "subtimeframe_path" in dataset or ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
         )
         if not has_lower_source:
             raise ValueError(
@@ -2324,17 +2323,13 @@ def _load_15s_primary_experiment_data(
         "open_close_outside_range",
         "negative_volume",
     }
-    fatal_messages = [
-        issue.message for issue in source_report.issues if issue.code in fatal_codes
-    ]
+    fatal_messages = [issue.message for issue in source_report.issues if issue.code in fatal_codes]
     if fatal_messages:
         raise ValueError("15-second source validation failed: " + "; ".join(fatal_messages))
 
     derived = derive_complete_parent_ohlcv(source_raw)
     parent_report = validate_ohlcv(derived.parent_data)
-    parent_fatal = [
-        issue.message for issue in parent_report.issues if issue.code in fatal_codes
-    ]
+    parent_fatal = [issue.message for issue in parent_report.issues if issue.code in fatal_codes]
     if parent_fatal:
         raise ValueError("Derived one-minute validation failed: " + "; ".join(parent_fatal))
 
@@ -2511,9 +2506,7 @@ def run_experiment(
                 instrument=instrument,
                 source_timezone=source_timezone,
                 exchange_timezone=exchange_timezone,
-                format_profile=str(
-                    dataset_config.get("subtimeframe_format_profile", "canonical")
-                ),
+                format_profile=str(dataset_config.get("subtimeframe_format_profile", "canonical")),
             )
     base_interval = data_identity.base_interval or format_interval(
         validate_ohlcv(data).inferred_interval

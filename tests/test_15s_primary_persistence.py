@@ -20,9 +20,7 @@ from thesistester.persistence.execution_artifacts import (
 )
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
 
-VENDOR_15S = (
-    Path(__file__).parent / "fixtures" / "vendor" / "quantower_history_exporter_15s.csv"
-)
+VENDOR_15S = Path(__file__).parent / "fixtures" / "vendor" / "quantower_history_exporter_15s.csv"
 
 
 def _minimal_derive_spec(dataset_path: str, *, intrabar_model: str = "subtimeframe") -> dict:
