@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -45,6 +46,15 @@ def test_list_theses_reads_records_when_store_marker_is_absent(repository):
 
     assert repository.get_thesis(thesis.thesis_id) == thesis
     assert repository.list_theses() == (thesis,)
+
+
+def test_atomic_writes_succeed_when_os_o_directory_is_unavailable(repository, monkeypatch):
+    """Windows lacks os.O_DIRECTORY; create must not raise after a successful replace."""
+    monkeypatch.delattr(os, "O_DIRECTORY", raising=False)
+
+    thesis = repository.create_thesis(name="Windows-safe thesis")
+    assert repository.get_thesis(thesis.thesis_id).name == "Windows-safe thesis"
+    assert (repository._thesis_dir(thesis.thesis_id) / "meta.json").exists()
 
 
 def test_specs_are_immutable_and_runs_require_confirmation(repository):
