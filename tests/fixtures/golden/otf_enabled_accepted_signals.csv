@@ -1,0 +1,4 @@
+signal_id,timestamp,direction,notes,otf_filter_enabled,otf_filter_passed,otf_filter_reason,otf_5m_state,otf_5m_sequence_length
+1,2026-01-06T03:45:00.000000Z,long,up_accept,True,True,,up,8
+3,2026-01-06T04:45:00.000000Z,short,down_accept,True,True,,down,3
+5,2026-01-06T05:20:00.000000Z,short,down_after_midnight_accept,True,True,,down,10

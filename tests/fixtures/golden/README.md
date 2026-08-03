@@ -24,6 +24,8 @@ must follow the regeneration policy in §4.
 
 ## 2. Files
 
+### 2.1 Legacy-mode family (default-off / OTF-disabled gate)
+
 | File | Role |
 |---|---|
 | `dataset_nq_1m_small.parquet` | Input fixture: synthetic NQ 1-minute OHLCV covering a few RTH sessions. Written by the recorder; never edited by hand. |
@@ -35,6 +37,30 @@ must follow the regeneration policy in §4.
 The deterministic generator in `tests/fixtures/golden/generate.py` produces
 the input fixture, and `record_golden.py` runs the frozen pipeline, so every
 artifact can be rebuilt from source rather than trusted as an opaque blob.
+
+### 2.2 Enabled-OTF family (hardening PR 3)
+
+Additive drift gate for **enabled** OTF behavior. Isolated from the legacy
+family: these files never rewrite legacy artifacts, and `tests/test_otf_golden.py`
+asserts legacy trades remain reproducible.
+
+| File | Role |
+|---|---|
+| `generate_otf_enabled.py` | Overnight 1-minute NQ generator + fixed long/short candidates (up/down/unknown-or-neutral regimes; crosses midnight and 18:00 ET). |
+| `pipeline_otf_enabled.py` | Shared enabled-OTF composition (`apply_configured_otf_filter` → `simulate_trades`). |
+| `record_otf_enabled_golden.py` | Recorder (`--confirm-regenerate` required). |
+| `otf_enabled_dataset.parquet` | Recorded overnight source frame. |
+| `otf_enabled_accepted_signals.csv` | Canonical accepted-signal projection. |
+| `otf_enabled_rejected_signals.csv` | Canonical rejected-signal projection with reasons. |
+| `otf_enabled_trades.csv` | Canonical accepted-trade projection. |
+| `otf_enabled_projection.json` | Reviewable identity projection (config, hash, IDs, reasons, counts). |
+| `otf_enabled_manifest.json` | Provenance for the enabled-OTF family. |
+
+Regenerate enabled-OTF artifacts with:
+
+```bash
+python -m tests.fixtures.golden.record_otf_enabled_golden --confirm-regenerate
+```
 
 ## 3. Determinism contract (measured, not assumed)
 
@@ -99,17 +125,23 @@ Golden outputs are **never** silently re-recorded.
 
 1. Intentional behavior changes land behind a new default-off flag; legacy goldens stay
    byte-for-byte valid, so no regeneration is needed.
-2. If a golden genuinely must change, that change lands in its **own PR** containing:
+2. If a **legacy** golden genuinely must change, that change lands in its **own PR** containing:
    - the reason and the regression justification;
    - the readable `trades_legacy.csv` diff (never only the parquet);
    - the updated `fixture_manifest.json` recording environment;
    - nothing else — no feature work in a regeneration PR.
-3. That PR must carry the **`GOLDEN_REGEN`** label and reviewer approval. The
-   `golden-master regeneration guard` job in `.github/workflows/ci.yml` fails any PR that
-   modifies files in this directory (other than this README) without the label.
-4. Regeneration command:
-   `python -m tests.fixtures.golden.record_golden --confirm-regenerate`. It refuses to
-   write any files without the flag.
+3. That legacy-regeneration PR must carry the **`GOLDEN_REGEN`** label and reviewer
+   approval. The `golden-master regeneration guard` job in `.github/workflows/ci.yml`
+   fails any PR that modifies the **legacy** artifact set
+   (`dataset_nq_1m_small.parquet`, `trades_legacy.*`, `legacy_bundle_hash.txt`,
+   `fixture_manifest.json`) without the label. Additive families such as
+   `otf_enabled_*` are not blocked by that label requirement, but still require an
+   explicit `--confirm-regenerate` recorder run and a readable projection diff.
+4. Regeneration commands:
+   - Legacy: `python -m tests.fixtures.golden.record_golden --confirm-regenerate`
+   - Enabled OTF: `python -m tests.fixtures.golden.record_otf_enabled_golden --confirm-regenerate`
+
+   Both refuse to write any files without the flag.
 
 ## 5. Repository plumbing
 
@@ -128,3 +160,6 @@ committed.
 - [x] Fixture deliberately exercises six same-bar both-hit trades resolved by
       legacy SL-first behavior, so perturbing that rule makes the value gate red.
 - [x] `docs/ENGINEERING_ROADMAP.md` and `docs/AGENT_GUIDE.md` reference the active gate.
+- [x] Enabled-OTF additive family recorded (`otf_enabled_*`) with overnight ETH
+      session coverage, accepted/rejected populations, rejection reasons, trades,
+      future-shock tests, and legacy-isolation assertions (`tests/test_otf_golden.py`).

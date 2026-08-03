@@ -1,0 +1,4 @@
+signal_id,timestamp,direction,notes,otf_filter_enabled,otf_filter_passed,otf_filter_reason,otf_5m_state,otf_5m_sequence_length
+2,2026-01-06T03:45:00.000000Z,short,up_reject_opposing,True,False,5m OTF state is up; all selected timeframes must be down for short,up,8
+4,2026-01-06T04:45:00.000000Z,long,down_reject_opposing,True,False,5m OTF state is down; all selected timeframes must be up for long,down,3
+6,2026-01-06T23:10:00.000000Z,long,post_boundary_reject,True,False,5m OTF state is neutral; all selected timeframes must be up for long,neutral,0

@@ -121,8 +121,8 @@ Each PR body must include a `Regression safety` section stating:
 | Order | PR | Purpose | Runtime behavior change | Status |
 |---|---|---|---|---|
 | 1 | PR 1 — Session propagation parity | Fix omitted futures session boundary inputs. | Corrects enabled OTF on affected Streamlit paths only. | Merged |
-| 2 | PR 2 — UI and documentation honesty | Remove stale pre-integration wording and complete operational docs. | No engine or filtering logic change. | Implemented (this branch) |
-| 3 | PR 3 — Enabled OTF golden gate | Add deterministic enabled-mode drift protection. | No production behavior change. | Pending |
+| 2 | PR 2 — UI and documentation honesty | Remove stale pre-integration wording and complete operational docs. | No engine or filtering logic change. | Merged |
+| 3 | PR 3 — Enabled OTF golden gate | Add deterministic enabled-mode drift protection. | No production behavior change. | Implemented (this branch) |
 | 4 | PR 4 — Causal-prefix WFO policy | Add optional pre-fold OTF state history. | New opt-in WFO behavior; default unchanged. | Pending |
 | 5 | PR 5 — Release evidence and sign-off | Record real-data OOS evidence and formal release decision. | No engine behavior change. | Pending |
 
