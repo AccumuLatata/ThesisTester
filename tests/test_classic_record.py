@@ -389,6 +389,41 @@ def test_record_failed_register_removes_orphan_zip(tmp_path: Path, monkeypatch):
     assert not bundles.exists() or list(bundles.glob("*.research.zip")) == []
 
 
+def test_record_cancelled_register_keeps_attached_bundle(tmp_path: Path, monkeypatch):
+    """Cancel races may attach provenance; do not delete that zip."""
+    from thesistester.assistant import OrchestrationResult
+
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    state = _classic_completed_state(tmp_path)
+    orchestrator, repository = _orchestrator(tmp_path)
+    thesis = repository.create_thesis(name="cancelled keep")
+    store = tmp_path / "store"
+    bundles = store / "assistant" / "theses" / thesis.thesis_id / "bundles"
+    captured: dict[str, Path] = {}
+
+    def _cancel(**kwargs):
+        captured["path"] = Path(kwargs["bundle_path"]).resolve()
+        return OrchestrationResult(
+            status="cancelled",
+            capability_id="BUNDLE.register_external_run",
+            payload={
+                "run_id": "run_cancelled",
+                "error": {"message": "Cancelled during execution."},
+            },
+        )
+
+    monkeypatch.setattr(orchestrator, "register_external_bundle_run", _cancel)
+    result = record_classic_session_run(
+        orchestrator,
+        thesis_id=thesis.thesis_id,
+        session_state=state,
+        store_root=store,
+    )
+    assert result.status == "cancelled"
+    assert captured["path"].is_file()
+    assert captured["path"].parent == bundles.resolve()
+
+
 def test_idempotent_reuse_rejects_run_spec_drift(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
     state = _classic_completed_state(tmp_path)

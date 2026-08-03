@@ -171,13 +171,31 @@ def record_classic_session_run(
         _unlink_quiet(output_path)
         raise
 
-    # Drop the newly written zip when it was not adopted as provenance.
-    keep_path = False
-    if result.status == "completed" and not bool(result.payload.get("idempotent")):
-        keep_path = True
-    if not keep_path:
+    # Drop the newly written zip only when it was not adopted as provenance.
+    # Cancel races may attach this path without echoing it in the payload.
+    if not _registration_adopted_bundle_path(result, output_path):
         _unlink_quiet(output_path)
     return result
+
+
+def _registration_adopted_bundle_path(
+    result: OrchestrationResult,
+    output_path: Path,
+) -> bool:
+    """True when ``output_path`` must be retained for run provenance."""
+    payload = result.payload if isinstance(result.payload, Mapping) else {}
+    if bool(payload.get("idempotent")):
+        return False
+    adopted = payload.get("bundle_path")
+    if isinstance(adopted, str) and adopted.strip():
+        try:
+            if Path(adopted).resolve() == output_path.resolve():
+                return True
+        except OSError:
+            pass
+    # Cancelled registrations can attach provenance with this path even when the
+    # orchestration payload omits bundle_path.
+    return result.status == "cancelled"
 
 
 def render_record_and_discuss(

@@ -230,7 +230,8 @@ recomputing the experiment. Explicit **Record and discuss this run** only.
 - Idempotent by `canonical_bundle_hash` + matching stored RunSpec (`force_new`
   opt-in); reuse skips stale/drifted matches, reports stored
   `execution_origin`, and classic recording preflights required sections,
-  honors `store_root`, and deletes orphan UUID zips on failure or reuse.
+  honors `store_root`, and deletes orphan UUID zips on failure or reuse
+  (retaining cancelled-run provenance bundles).
 - `thesistester/classic_record.py` + Backtest / Research Bundles UI button.
 - Opens Research Assistant via classic pending navigation after success.
 

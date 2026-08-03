@@ -563,7 +563,8 @@ without recomputing it.
   stored `execution_origin`. Classic session recording preflights required
   bundle sections (`dataset`/`levels`/`signals`/`backtest`), writes under the
   same `store_root` as export/staging, deletes orphan zips on failure or
-  idempotent reuse, and flashes the stored origin label.
+  idempotent reuse (but keeps zips for cancelled registrations that may have
+  attached provenance), and flashes the stored origin label.
 - `thesistester/classic_record.py`: `record_classic_session_run` builds the
   bundle + exported RunSpec (materializes a lineage CSV when classic pages
   omit `dataset_source_path`); UI `render_record_and_discuss` on Backtest and
