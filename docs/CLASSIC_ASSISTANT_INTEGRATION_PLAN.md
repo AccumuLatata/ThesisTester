@@ -440,7 +440,9 @@ not a live Assistant execution input.
   `dataset_source_path` / `source_csv_path` state). Corrupt/incomplete preferred
   artifacts are omitted so a verified CSV path can still complete the export.
 - Backtest may come from explicit `backtest_config` or assembled from page
-  policy snapshots / widget keys without inventing SL/TP/session fields.
+  widget keys (preferred) with post-run policy snapshots as fallback, without
+  inventing SL/TP/session fields. Disabled `flat_by_session_close` clears
+  session timezone / entry cutoff to match Backtest page persistence.
 - Optional grid/validation/walk-forward export only when explicit `*_config`
   mappings are present (`include_grid` / `include_validation` /
   `include_walk_forward`).

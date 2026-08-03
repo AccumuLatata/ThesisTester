@@ -212,44 +212,90 @@ def _setup_section(state: Mapping[str, Any]) -> dict[str, Any] | ClassicExportGa
     return setup
 
 
+_MISSING = object()
+
+
+def _widget_or_snapshot(
+    state: Mapping[str, Any],
+    *,
+    widget_key: str,
+    snapshot: Mapping[str, Any] | None,
+    snapshot_key: str,
+    empty_as_none: bool = False,
+) -> Any:
+    """Prefer live Backtest widget keys over post-run policy snapshots.
+
+    Mixing live SL/TP widgets with stale cost/session snapshots produced RunSpecs
+    that matched neither the current UI nor the last completed backtest. Widgets
+    win when present; snapshots are fallback for restored/bundle state.
+    """
+    if widget_key in state:
+        value = state[widget_key]
+        if empty_as_none and value == "":
+            return None
+        return value
+    if snapshot is not None and snapshot_key in snapshot:
+        return snapshot[snapshot_key]
+    return _MISSING
+
+
+def _normalize_session_exit_fields(backtest: dict[str, Any]) -> None:
+    """Match Backtest page persistence when session-flat is disabled."""
+    if backtest.get("flat_by_session_close") is False:
+        backtest["session_timezone"] = None
+        backtest["no_new_entries_after"] = None
+
+
 def _backtest_section(state: Mapping[str, Any]) -> dict[str, Any] | ClassicExportGap:
     explicit = _as_mapping(state.get("backtest_config"))
     if explicit is not None:
         backtest = deepcopy(dict(explicit))
     else:
-        costs = _as_mapping(state.get("backtest_execution_costs")) or {}
-        session = _as_mapping(state.get("backtest_session_exit_policy")) or {}
-        intrabar = _as_mapping(state.get("backtest_intrabar_policy")) or {}
-        exit_mgmt = _as_mapping(state.get("backtest_exit_management_policy")) or {}
-        exposure = _as_mapping(state.get("exposure_policy")) or {}
+        costs = _as_mapping(state.get("backtest_execution_costs"))
+        session = _as_mapping(state.get("backtest_session_exit_policy"))
+        intrabar = _as_mapping(state.get("backtest_intrabar_policy"))
+        exit_mgmt = _as_mapping(state.get("backtest_exit_management_policy"))
+        exposure = _as_mapping(state.get("exposure_policy"))
 
-        backtest = {}
-        if "backtest_sl_ticks" in state:
-            backtest["stop_loss_ticks"] = state["backtest_sl_ticks"]
-        if "backtest_tp_ticks" in state:
-            backtest["take_profit_ticks"] = state["backtest_tp_ticks"]
-        if "commission_per_side" in costs:
-            backtest["commission_per_side"] = costs["commission_per_side"]
-        elif "backtest_commission_per_side" in state:
-            backtest["commission_per_side"] = state["backtest_commission_per_side"]
-        if "slippage_ticks" in costs:
-            backtest["slippage_ticks"] = costs["slippage_ticks"]
-        elif "backtest_slippage_ticks" in state:
-            backtest["slippage_ticks"] = state["backtest_slippage_ticks"]
+        backtest: dict[str, Any] = {}
+        for dest, widget_key in (
+            ("stop_loss_ticks", "backtest_sl_ticks"),
+            ("take_profit_ticks", "backtest_tp_ticks"),
+        ):
+            value = _widget_or_snapshot(
+                state, widget_key=widget_key, snapshot=None, snapshot_key=dest
+            )
+            if value is not _MISSING:
+                backtest[dest] = value
 
-        if "exposure_policy" in exposure:
-            backtest["exposure_policy"] = exposure["exposure_policy"]
-        elif "backtest_exposure_policy" in state:
-            backtest["exposure_policy"] = state["backtest_exposure_policy"]
-        if "cooldown_bars_after_exit" in exposure:
-            backtest["cooldown_bars_after_exit"] = exposure["cooldown_bars_after_exit"]
-        elif "backtest_cooldown_bars" in state:
-            backtest["cooldown_bars_after_exit"] = state["backtest_cooldown_bars"]
+        for dest, widget_key, snap_key in (
+            ("commission_per_side", "backtest_commission_per_side", "commission_per_side"),
+            ("slippage_ticks", "backtest_slippage_ticks", "slippage_ticks"),
+        ):
+            value = _widget_or_snapshot(
+                state, widget_key=widget_key, snapshot=costs, snapshot_key=snap_key
+            )
+            if value is not _MISSING:
+                backtest[dest] = value
 
-        if "intrabar_model" in intrabar:
-            backtest["intrabar_model"] = intrabar["intrabar_model"]
-        elif "backtest_intrabar_model" in state:
-            backtest["intrabar_model"] = state["backtest_intrabar_model"]
+        for dest, widget_key, snap_key in (
+            ("exposure_policy", "backtest_exposure_policy", "exposure_policy"),
+            ("cooldown_bars_after_exit", "backtest_cooldown_bars", "cooldown_bars_after_exit"),
+        ):
+            value = _widget_or_snapshot(
+                state, widget_key=widget_key, snapshot=exposure, snapshot_key=snap_key
+            )
+            if value is not _MISSING:
+                backtest[dest] = value
+
+        value = _widget_or_snapshot(
+            state,
+            widget_key="backtest_intrabar_model",
+            snapshot=intrabar,
+            snapshot_key="intrabar_model",
+        )
+        if value is not _MISSING:
+            backtest["intrabar_model"] = value
 
         for key in (
             "flat_by_session_close",
@@ -257,17 +303,34 @@ def _backtest_section(state: Mapping[str, Any]) -> dict[str, Any] | ClassicExpor
             "session_timezone",
             "no_new_entries_after",
         ):
-            if key in session:
-                backtest[key] = session[key]
-            else:
-                widget_key = f"backtest_{key}"
-                if widget_key in state:
-                    value = state[widget_key]
-                    backtest[key] = None if value == "" else value
+            value = _widget_or_snapshot(
+                state,
+                widget_key=f"backtest_{key}",
+                snapshot=session,
+                snapshot_key=key,
+                empty_as_none=True,
+            )
+            if value is not _MISSING:
+                backtest[key] = value
+        _normalize_session_exit_fields(backtest)
 
-        for key in ("breakeven_after_r", "trailing_after_r", "trailing_distance_ticks"):
-            if key in exit_mgmt and exit_mgmt[key] is not None:
-                backtest[key] = exit_mgmt[key]
+        # Exit management: live enable toggles override snapshot values.
+        if "backtest_enable_be" in state:
+            if state.get("backtest_enable_be") and "backtest_breakeven_after_r" in state:
+                backtest["breakeven_after_r"] = state["backtest_breakeven_after_r"]
+        elif exit_mgmt is not None and exit_mgmt.get("breakeven_after_r") is not None:
+            backtest["breakeven_after_r"] = exit_mgmt["breakeven_after_r"]
+
+        if "backtest_enable_trail" in state:
+            if state.get("backtest_enable_trail"):
+                if "backtest_trailing_after_r" in state:
+                    backtest["trailing_after_r"] = state["backtest_trailing_after_r"]
+                if "backtest_trailing_distance_ticks" in state:
+                    backtest["trailing_distance_ticks"] = state["backtest_trailing_distance_ticks"]
+        elif exit_mgmt is not None:
+            for key in ("trailing_after_r", "trailing_distance_ticks"):
+                if exit_mgmt.get(key) is not None:
+                    backtest[key] = exit_mgmt[key]
 
         if "backtest_allow_same_bar" in state:
             backtest["allow_same_bar_exit"] = state["backtest_allow_same_bar"]

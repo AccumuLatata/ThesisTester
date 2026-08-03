@@ -253,6 +253,51 @@ def test_backtest_assembled_from_policy_snapshots(tmp_path: Path):
     validate_run_spec(spec)
 
 
+def test_live_widgets_override_stale_backtest_snapshots(tmp_path: Path):
+    state = _classic_state_from_parity(tmp_path)
+    backtest = state.pop("backtest_config")
+    state.update(
+        {
+            "backtest_sl_ticks": 12,
+            "backtest_tp_ticks": 24,
+            "backtest_commission_per_side": 2.5,
+            "backtest_slippage_ticks": 1.0,
+            "backtest_flat_by_session_close": False,
+            "backtest_session_close_time": "16:00",
+            "backtest_session_timezone": "America/Chicago",
+            "backtest_no_new_entries_after": "15:30",
+            "backtest_exposure_policy": "single_position",
+            "backtest_intrabar_model": backtest["intrabar_model"],
+            # Stale post-run snapshots that must not win over live widgets.
+            "backtest_execution_costs": {
+                "commission_per_side": 0.0,
+                "slippage_ticks": 0.0,
+            },
+            "backtest_session_exit_policy": {
+                "flat_by_session_close": True,
+                "session_close_time": "16:00",
+                "session_timezone": "America/New_York",
+                "no_new_entries_after": "15:45",
+            },
+            "exposure_policy": {
+                "exposure_policy": "allow_all",
+                "cooldown_bars_after_exit": 0,
+            },
+        }
+    )
+    spec = classic_state_to_run_spec(state, name="live_widgets")
+    assert spec["backtest"]["stop_loss_ticks"] == 12
+    assert spec["backtest"]["take_profit_ticks"] == 24
+    assert spec["backtest"]["commission_per_side"] == 2.5
+    assert spec["backtest"]["slippage_ticks"] == 1.0
+    assert spec["backtest"]["exposure_policy"] == "single_position"
+    assert spec["backtest"]["flat_by_session_close"] is False
+    # Match Backtest page: disabled session-flat clears timezone/cutoff.
+    assert spec["backtest"]["session_timezone"] is None
+    assert spec["backtest"]["no_new_entries_after"] is None
+    validate_run_spec(spec)
+
+
 def test_include_grid_requires_explicit_config(tmp_path: Path):
     state = _classic_state_from_parity(tmp_path)
     with pytest.raises(ValueError, match="incomplete_grid"):
