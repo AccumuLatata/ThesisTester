@@ -65,7 +65,10 @@ from thesistester.research_bundle import (
     apply_research_bundle_to_session,
     canonical_bundle_hash,
 )
-from thesistester.research_identity import normalize_execution_origin
+from thesistester.research_identity import (
+    compute_run_spec_hash,
+    normalize_execution_origin,
+)
 
 
 _READ_ONLY_ACTIONS = frozenset({"get", "list", "describe", "load", "summary", "evidence"})
@@ -502,8 +505,9 @@ class AssistantOrchestrator:
         boundary for registration. This does **not** bypass confirmation for
         future ``execute_confirmed_run`` recomputation of the linked specification.
         When ``force_new`` is False, a completed run with the same
-        ``canonical_bundle_hash`` and a readable stored provenance bundle is
-        returned idempotently (stale/missing stored paths are skipped).
+        ``canonical_bundle_hash``, a readable stored provenance bundle, and a
+        matching stored RunSpec is returned idempotently (stale/missing stored
+        paths and RunSpec-drifted matches are skipped).
         """
         if not isinstance(run_spec, Mapping):
             raise ValueError("run_spec must be an object.")
@@ -534,7 +538,11 @@ class AssistantOrchestrator:
         )
 
         if not force_new:
-            existing = self._find_reusable_completed_run_by_bundle_hash(thesis_id, digest)
+            existing = self._find_reusable_completed_run_by_bundle_hash(
+                thesis_id,
+                digest,
+                run_spec=run_spec,
+            )
             if existing is not None:
                 stored = existing.provenance if isinstance(existing.provenance, Mapping) else {}
                 stored_path = str(stored.get("bundle_path"))
@@ -660,14 +668,37 @@ class AssistantOrchestrator:
         )
         return completed_result
 
+    def _stored_run_spec_for_idempotency(self, run: ResearchRun) -> Mapping[str, Any] | None:
+        """Return the RunSpec snapshot used when the run was registered, if any."""
+        if isinstance(run.provenance, Mapping):
+            config = run.provenance.get("effective_configuration")
+            if isinstance(config, Mapping):
+                return config
+        if isinstance(run.request, Mapping):
+            request_spec = run.request.get("run_spec")
+            if isinstance(request_spec, Mapping):
+                return request_spec
+        return None
+
     def _find_reusable_completed_run_by_bundle_hash(
-        self, thesis_id: str, digest: str
+        self,
+        thesis_id: str,
+        digest: str,
+        *,
+        run_spec: Mapping[str, Any] | None = None,
     ) -> ResearchRun | None:
         """Return a completed run with matching hash and a readable stored bundle.
 
         Skips stale matches whose provenance ``bundle_path`` is missing or
-        hash-invalid so a later readable twin can still be reused.
+        hash-invalid so a later readable twin can still be reused. When
+        ``run_spec`` is provided, also skips matches whose stored executable
+        settings drifted from the incoming RunSpec.
         """
+        incoming_hash = (
+            compute_run_spec_hash(to_jsonable(dict(run_spec)))
+            if isinstance(run_spec, Mapping)
+            else None
+        )
         for run in self.repository.list_runs(thesis_id):
             if run.status != "completed" or not isinstance(run.provenance, Mapping):
                 continue
@@ -682,6 +713,12 @@ class AssistantOrchestrator:
                 )
             except AssistantToolError:
                 continue
+            if incoming_hash is not None:
+                stored_spec = self._stored_run_spec_for_idempotency(run)
+                if stored_spec is not None:
+                    stored_hash = compute_run_spec_hash(to_jsonable(dict(stored_spec)))
+                    if stored_hash != incoming_hash:
+                        continue
             return run
         return None
 

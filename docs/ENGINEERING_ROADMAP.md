@@ -227,10 +227,10 @@ recomputing the experiment. Explicit **Record and discuss this run** only.
 - `AssistantTools.verify_external_research_bundle(...)`.
 - `AssistantOrchestrator.register_external_bundle_run(...)` with
   `execution_origin="classic"`, CAI-4 RunSpec confirmation, audit transcript.
-- Idempotent by `canonical_bundle_hash` (`force_new` opt-in for a new record);
-  reuse picks a readable stored provenance bundle (skips stale matches),
-  reports stored `execution_origin`, and classic recording deletes orphan UUID
-  zips after reuse while honoring `store_root` for bundle paths.
+- Idempotent by `canonical_bundle_hash` + matching stored RunSpec (`force_new`
+  opt-in); reuse skips stale/drifted matches, reports stored
+  `execution_origin`, and classic recording preflights required sections,
+  honors `store_root`, and deletes orphan UUID zips on failure or reuse.
 - `thesistester/classic_record.py` + Backtest / Research Bundles UI button.
 - Opens Research Assistant via classic pending navigation after success.
 

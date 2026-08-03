@@ -557,12 +557,13 @@ without recomputing it.
   RunSpec, `start_run` → `complete_run` with `execution_origin="classic"`,
   audited transcript. Does not call `run_experiment_to_bundle`.
 - Idempotency: same `canonical_bundle_hash` returns a completed run with a
-  readable/hash-valid stored `bundle_path` unless `force_new=True`. Stale
-  (missing) matches are skipped in favor of a later readable twin; if none
-  remain, a new registration is created. Reuse reports the stored
-  `execution_origin` (does not rewrite non-classic runs as classic). Classic
-  session recording deletes the newly written zip when reuse wins and writes
-  bundles under the same `store_root` used for export/staging.
+  readable/hash-valid stored `bundle_path` and matching stored RunSpec unless
+  `force_new=True`. Stale (missing) matches and RunSpec-drifted matches are
+  skipped; if none remain, a new registration is created. Reuse reports the
+  stored `execution_origin`. Classic session recording preflights required
+  bundle sections (`dataset`/`levels`/`signals`/`backtest`), writes under the
+  same `store_root` as export/staging, deletes orphan zips on failure or
+  idempotent reuse, and flashes the stored origin label.
 - `thesistester/classic_record.py`: `record_classic_session_run` builds the
   bundle + exported RunSpec (materializes a lineage CSV when classic pages
   omit `dataset_source_path`); UI `render_record_and_discuss` on Backtest and

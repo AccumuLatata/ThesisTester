@@ -28,15 +28,35 @@ from thesistester.classic_export import (
 )
 from thesistester.persistence.local_store import get_store_root
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
+from thesistester.research_identity import normalize_execution_origin
 
 _OHLCV_COLUMNS = ("timestamp", "open", "high", "low", "close", "volume")
 
+# Mirrors AssistantTools.verify_external_research_bundle required sections.
+_REQUIRED_BUNDLE_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("dataset", ("data",)),
+    ("levels", ("levels", "session_levels")),
+    ("signals", ("signals", "confluence_zones", "naked_flags")),
+    ("backtest", ("trades", "equity_curve")),
+)
+
+
+def _is_dataframe(value: Any) -> bool:
+    return isinstance(value, pd.DataFrame)
+
+
+def classic_session_registration_gaps(session_state: Mapping[str, Any]) -> list[str]:
+    """Return missing required bundle sections for classic registration."""
+    missing: list[str] = []
+    for section, keys in _REQUIRED_BUNDLE_SECTIONS:
+        if not all(_is_dataframe(session_state.get(key)) for key in keys):
+            missing.append(section)
+    return missing
+
 
 def classic_session_ready_for_record(session_state: Mapping[str, Any]) -> bool:
-    """True when classic session has a completed backtest suitable for recording."""
-    return isinstance(session_state.get("trades"), pd.DataFrame) and isinstance(
-        session_state.get("equity_curve"), pd.DataFrame
-    )
+    """True when classic session can build a CAI-6-complete research bundle."""
+    return not classic_session_registration_gaps(session_state)
 
 
 def materialize_classic_source_csv(
@@ -78,6 +98,13 @@ def resolve_classic_record_source_path(
     return str(materialize_classic_source_csv(session_state, output_dir=materialize_dir))
 
 
+def _unlink_quiet(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def record_classic_session_run(
     orchestrator: AssistantOrchestrator,
     *,
@@ -93,9 +120,11 @@ def record_classic_session_run(
     Does not recompute the experiment. Raises ``ValueError`` when classic export
     gaps remain after source-path resolution.
     """
-    if not classic_session_ready_for_record(session_state):
+    section_gaps = classic_session_registration_gaps(session_state)
+    if section_gaps:
         raise ValueError(
-            "Record and discuss requires a completed classic backtest (trades and equity_curve)."
+            "Record and discuss requires complete classic research sections: "
+            "dataset, levels, signals, backtest. Missing: " + ", ".join(section_gaps) + "."
         )
     thesis = orchestrator.get_thesis(thesis_id)
     root = Path(store_root) if store_root is not None else get_store_root()
@@ -129,26 +158,25 @@ def record_classic_session_run(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(bundle_bytes)
 
-    result = orchestrator.register_external_bundle_run(
-        thesis_id=thesis_id,
-        bundle_path=output_path,
-        run_spec=run_spec,
-        expected_hash=digest,
-        conversation_id=conversation_id,
-        force_new=force_new,
-    )
-    # Idempotent reuse keeps the existing provenance path; drop the orphan zip.
-    if bool(result.payload.get("idempotent")):
-        stored = result.payload.get("bundle_path")
-        try:
-            if (
-                isinstance(stored, str)
-                and stored.strip()
-                and output_path.resolve() != Path(stored).resolve()
-            ):
-                output_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+    try:
+        result = orchestrator.register_external_bundle_run(
+            thesis_id=thesis_id,
+            bundle_path=output_path,
+            run_spec=run_spec,
+            expected_hash=digest,
+            conversation_id=conversation_id,
+            force_new=force_new,
+        )
+    except Exception:
+        _unlink_quiet(output_path)
+        raise
+
+    # Drop the newly written zip when it was not adopted as provenance.
+    keep_path = False
+    if result.status == "completed" and not bool(result.payload.get("idempotent")):
+        keep_path = True
+    if not keep_path:
+        _unlink_quiet(output_path)
     return result
 
 
@@ -222,6 +250,7 @@ def render_record_and_discuss(
         run_id = result.payload.get("run_id")
         digest = result.payload.get("canonical_bundle_hash")
         idempotent = bool(result.payload.get("idempotent"))
+        origin = normalize_execution_origin(result.payload.get("execution_origin"))
         short_run = str(run_id)[-8:] if isinstance(run_id, str) else "?"
         short_hash = str(digest)[:12] if isinstance(digest, str) else "?"
         verb = "Reused existing" if idempotent else "Recorded"
@@ -229,7 +258,7 @@ def render_record_and_discuss(
             state,
             level="success",
             message=(
-                f"{verb} classic run …{short_run} (bundle {short_hash}…). "
+                f"{verb} {origin} run …{short_run} (bundle {short_hash}…). "
                 "Opening Research Assistant."
             ),
         )

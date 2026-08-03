@@ -21,6 +21,7 @@ from thesistester.assistant.explainer import build_evidence_packet
 from thesistester.classic_export import classic_state_to_run_spec
 from thesistester.classic_record import (
     classic_session_ready_for_record,
+    classic_session_registration_gaps,
     materialize_classic_source_csv,
     record_classic_session_run,
 )
@@ -342,6 +343,85 @@ def test_record_classic_session_run_cleans_orphan_zip_on_idempotent_reuse(
     assert after == before
     assert first_path.resolve() in after
     assert len(repository.list_runs(thesis.thesis_id)) == 1
+
+
+def test_record_preflight_requires_complete_bundle_sections(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    state = _classic_completed_state(tmp_path)
+    assert classic_session_registration_gaps(state) == []
+    assert classic_session_ready_for_record(state)
+
+    incomplete = deepcopy(state)
+    del incomplete["signals"]
+    assert "signals" in classic_session_registration_gaps(incomplete)
+    assert not classic_session_ready_for_record(incomplete)
+
+    orchestrator, _repository = _orchestrator(tmp_path)
+    thesis = _repository.create_thesis(name="preflight")
+    with pytest.raises(ValueError, match="Missing: signals"):
+        record_classic_session_run(
+            orchestrator,
+            thesis_id=thesis.thesis_id,
+            session_state=incomplete,
+            store_root=tmp_path / "store",
+        )
+
+
+def test_record_failed_register_removes_orphan_zip(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    state = _classic_completed_state(tmp_path)
+    orchestrator, repository = _orchestrator(tmp_path)
+    thesis = repository.create_thesis(name="failed register")
+    store = tmp_path / "store"
+    bundles = store / "assistant" / "theses" / thesis.thesis_id / "bundles"
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("registration exploded")
+
+    monkeypatch.setattr(orchestrator, "register_external_bundle_run", _boom)
+    with pytest.raises(RuntimeError, match="registration exploded"):
+        record_classic_session_run(
+            orchestrator,
+            thesis_id=thesis.thesis_id,
+            session_state=state,
+            store_root=store,
+        )
+    assert not bundles.exists() or list(bundles.glob("*.research.zip")) == []
+
+
+def test_idempotent_reuse_rejects_run_spec_drift(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    state = _classic_completed_state(tmp_path)
+    orchestrator, repository = _orchestrator(tmp_path)
+    thesis = repository.create_thesis(name="spec drift")
+    bundle_bytes = build_research_bundle(state)
+    digest = canonical_bundle_hash(bundle_bytes)
+    path = tmp_path / "drift.research.zip"
+    path.write_bytes(bundle_bytes)
+    run_spec = classic_state_to_run_spec(
+        state, name=thesis.name, source_path=state["dataset_source_path"]
+    )
+
+    first = orchestrator.register_external_bundle_run(
+        thesis_id=thesis.thesis_id,
+        bundle_path=path,
+        run_spec=run_spec,
+        expected_hash=digest,
+    )
+    drifted = deepcopy(run_spec)
+    drifted["backtest"] = {
+        **dict(drifted["backtest"]),
+        "stop_loss_ticks": int(drifted["backtest"]["stop_loss_ticks"]) + 1,
+    }
+    second = orchestrator.register_external_bundle_run(
+        thesis_id=thesis.thesis_id,
+        bundle_path=path,
+        run_spec=drifted,
+        expected_hash=digest,
+    )
+    assert second.payload["idempotent"] is False
+    assert second.payload["run_id"] != first.payload["run_id"]
+    assert len(repository.list_runs(thesis.thesis_id)) == 2
 
 
 def test_register_fails_closed_on_tamper_missing_and_out_of_root(tmp_path: Path, monkeypatch):
