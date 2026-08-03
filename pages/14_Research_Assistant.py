@@ -35,6 +35,7 @@ from thesistester.assistant.workspace import (
     NAKED_REQUIREMENTS,
     OVERLAP_POLICIES,
     RANKING_METRICS,
+    RESEARCH_WORKFLOW_STEPS,
     SETUP_TRIGGER_OPTIONS,
     SMA_TIMEFRAMES,
     TRIGGER_TIMEFRAMES,
@@ -44,6 +45,8 @@ from thesistester.assistant.workspace import (
     build_plan_review,
     build_provenance_card,
     clear_failed_llm_run_explanation,
+    consume_assistant_flash,
+    format_spec_status,
     init_assistant_session_state,
     invalidate_validation,
     latest_unresolved_assumptions,
@@ -58,6 +61,8 @@ from thesistester.assistant.workspace import (
     safe_float,
     safe_int,
     select_thesis,
+    set_assistant_flash,
+    spec_status_next_step,
 )
 
 
@@ -65,6 +70,29 @@ def _fingerprint(value: object) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, default=str).encode("utf-8")
     ).hexdigest()[:12]
+
+
+def _render_assistant_flash() -> None:
+    flash = consume_assistant_flash(st.session_state)
+    if flash is None:
+        return
+    level = flash["level"]
+    message = flash["message"]
+    if level == "success":
+        st.success(message)
+    elif level == "warning":
+        st.warning(message)
+    elif level == "error":
+        st.error(message)
+    else:
+        st.info(message)
+
+
+def _apply_draft_and_rerun(*, message: str) -> None:
+    """Invalidate staged validation, flash success, and rerun so Apply feels responsive."""
+    invalidate_validation(st.session_state)
+    set_assistant_flash(st.session_state, level="success", message=message)
+    st.rerun()
 
 
 init_assistant_session_state(st.session_state)
@@ -118,9 +146,18 @@ if not thesis_id:
     st.info("Create or select a thesis to begin.")
     st.stop()
 
+_render_assistant_flash()
+
 thesis = orchestrator.get_thesis(thesis_id)
 st.subheader(thesis.name)
 st.caption(f"Revision {thesis.revision} · {thesis.lifecycle}")
+with st.expander("How to start a research run", expanded=False):
+    for index, step in enumerate(RESEARCH_WORKFLOW_STEPS, start=1):
+        st.write(f"{index}. {step}")
+    st.caption(
+        "Apply controls never start compute. Only Run confirmed research on a Confirmed "
+        "specification version executes the pipeline."
+    )
 handoff = active_bundle_handoff(st.session_state, thesis_id=thesis_id)
 if handoff is not None:
     st.caption(
@@ -310,8 +347,12 @@ with st.expander("Structured execution controls", expanded=True):
                 allow_same_bar_exit=allow_same_bar_exit,
                 cooldown_bars_after_exit=int(cooldown_bars_after_exit),
             )
-            invalidate_validation(st.session_state)
-            st.rerun()
+            _apply_draft_and_rerun(
+                message=(
+                    "Execution controls applied to the session draft. "
+                    "This does not create a specification version or start a run."
+                )
+            )
 
 with st.expander("Structured setup and confluence controls", expanded=True):
     with st.form(f"assistant_setup_{thesis_id}_{_fingerprint(setup)}"):
@@ -390,8 +431,12 @@ with st.expander("Structured setup and confluence controls", expanded=True):
                     anchor_level=anchor_level,
                     min_valid_confluences=int(min_valid_confluences),
                 )
-                invalidate_validation(st.session_state)
-                st.rerun()
+                _apply_draft_and_rerun(
+                    message=(
+                        "Setup controls applied to the session draft. "
+                        "This does not create a specification version or start a run."
+                    )
+                )
             except ValueError as exc:
                 st.error(str(exc))
 
@@ -448,8 +493,12 @@ with st.expander("Structured level controls"):
                     vwap_windows_raw=vwap_windows_raw,
                     poc_windows_raw=poc_windows_raw,
                 )
-                invalidate_validation(st.session_state)
-                st.rerun()
+                _apply_draft_and_rerun(
+                    message=(
+                        "Level controls applied to the session draft. "
+                        "This does not create a specification version or start a run."
+                    )
+                )
             except ValueError as exc:
                 st.error(str(exc))
 
@@ -522,8 +571,12 @@ with st.expander("Structured validation controls"):
                 min_trades_soft=int(min_trades_soft),
                 min_trades_hard=int(min_trades_hard),
             )
-            invalidate_validation(st.session_state)
-            st.rerun()
+            _apply_draft_and_rerun(
+                message=(
+                    "Validation controls applied to the session draft. "
+                    "This does not create a specification version or start a run."
+                )
+            )
 
 with st.expander("Structured grid controls"):
     with st.form(f"assistant_grid_{thesis_id}_{_fingerprint(grid)}"):
@@ -562,8 +615,12 @@ with st.expander("Structured grid controls"):
                     min_trades=int(min_trades),
                     max_grid_cells=int(max_grid_cells),
                 )
-                invalidate_validation(st.session_state)
-                st.rerun()
+                _apply_draft_and_rerun(
+                    message=(
+                        "Grid controls applied to the session draft. "
+                        "This does not create a specification version or start a run."
+                    )
+                )
             except ValueError as exc:
                 st.error(str(exc))
 
@@ -699,8 +756,12 @@ with st.expander("Structured walk-forward controls"):
                     max_matrix_cells=int(max_matrix_cells),
                     otf_history_policy=str(otf_history_policy),
                 )
-                invalidate_validation(st.session_state)
-                st.rerun()
+                _apply_draft_and_rerun(
+                    message=(
+                        "Walk-forward controls applied to the session draft. "
+                        "This does not create a specification version or start a run."
+                    )
+                )
             except ValueError as exc:
                 st.error(str(exc))
 
@@ -748,8 +809,12 @@ with st.expander("Reuse saved setup"):
                     **st.session_state["assistant_draft_choices"],
                     "setup": setup_config,
                 }
-                invalidate_validation(st.session_state)
-                st.rerun()
+                _apply_draft_and_rerun(
+                    message=(
+                        "Saved setup applied to the session draft. "
+                        "This does not create a specification version or start a run."
+                    )
+                )
 
 prompt = st.text_area(
     "Describe the setup thesis",
@@ -767,8 +832,12 @@ with st.expander("Advanced: edit complete research choices as JSON"):
     if st.button("Apply JSON audit edits"):
         try:
             st.session_state["assistant_draft_choices"] = parse_json_choices(choices_raw)
-            invalidate_validation(st.session_state)
-            st.rerun()
+            _apply_draft_and_rerun(
+                message=(
+                    "JSON audit edits applied to the session draft. "
+                    "This does not create a specification version or start a run."
+                )
+            )
         except (ValueError, json.JSONDecodeError) as exc:
             st.error(str(exc))
 
@@ -784,7 +853,15 @@ with draft_col:
             # Keep staged session choices aligned with the persisted compiler output.
             st.session_state["assistant_draft_choices"] = dict(spec.normalized_run_spec)
             invalidate_validation(st.session_state)
-            st.success(f"Saved specification version {spec.version}.")
+            set_assistant_flash(
+                st.session_state,
+                level="success",
+                message=(
+                    f"Saved specification version {spec.version} "
+                    f"({format_spec_status(spec.status)}). "
+                    "Next: Validate executable RunSpec, then Confirm under Plan review."
+                ),
+            )
             st.rerun()
         except ValueError as exc:
             st.error(str(exc))
@@ -806,7 +883,10 @@ with validate_col:
                 "choices": validation_result.payload["choices"],
                 "spec": validation_result.payload["spec"],
             }
-            st.success("Executable RunSpec is valid and ready for explicit confirmation.")
+            st.success(
+                "Executable RunSpec is valid. "
+                "Confirm validated RunSpec appears under Plan review when clarifications are clear."
+            )
 
 validated_state = st.session_state["assistant_validated_run_spec"]
 spec_versions = orchestrator.list_spec_versions(thesis_id)
@@ -831,6 +911,7 @@ st.caption(
     f"validation={'on' if plan['has_validation'] else 'off'} · "
     f"WFA={'on' if plan['has_walk_forward'] else 'off'}"
 )
+st.info(f"Next: {plan['next_action']}")
 if plan["unresolved_assumptions"]:
     st.warning("Clarifications still required before confirmation.")
     for item in plan["unresolved_assumptions"]:
@@ -858,18 +939,46 @@ if plan["validated_spec"] is not None:
             st.success(f"Saved setup {saved.payload['setup']['setup_id']}.")
     if plan["ready_for_confirmation"]:
         if st.button("Confirm validated RunSpec", type="primary"):
-            orchestrator.confirm_validated_spec(
+            confirmed = orchestrator.confirm_validated_spec(
                 thesis_id=thesis_id,
                 validated_spec=plan["validated_spec"],
             )
             st.session_state["assistant_validated_run_spec"] = None
+            set_assistant_flash(
+                st.session_state,
+                level="success",
+                message=(
+                    f"Confirmed specification version {confirmed.version}. "
+                    "Open it under Specifications and click Run confirmed research."
+                ),
+            )
             st.rerun()
     elif plan["unresolved_assumptions"]:
         st.caption("Resolve clarifications before confirming the validated RunSpec.")
+else:
+    st.caption(
+        "Confirm validated RunSpec appears here only after Validate succeeds on the current draft."
+    )
 
 st.subheader("Specifications")
+st.caption(
+    "Each version is an immutable snapshot created by Draft research plan or Confirm — "
+    "not by Apply controls. Apply only stages the session draft."
+)
+if not spec_versions:
+    st.info("No specification versions yet. Draft research plan to create the first version.")
 for spec in reversed(spec_versions):
-    with st.expander(f"Specification v{spec.version} · {spec.status}", expanded=False):
+    status_label = format_spec_status(spec.status)
+    expanded = spec.status == "confirmed" and spec.version == max(
+        item.version for item in spec_versions
+    )
+    with st.expander(
+        f"Specification v{spec.version} · {status_label}",
+        expanded=expanded,
+    ):
+        st.caption(spec_status_next_step(spec.status))
+        if spec.parent_version is not None:
+            st.caption(f"Parent version: v{spec.parent_version}")
         st.json(spec.normalized_run_spec)
         if spec.unresolved_assumptions:
             st.warning("Clarifications required")
@@ -878,7 +987,7 @@ for spec in reversed(spec_versions):
         if spec.status == "confirmed" and {"dataset", "setup", "backtest"}.issubset(
             spec.normalized_run_spec
         ):
-            if st.button("Run confirmed research", key=f"run-{spec.version}"):
+            if st.button("Run confirmed research", type="primary", key=f"run-{spec.version}"):
                 try:
                     run_result = orchestrator.execute_confirmed_run(
                         thesis_id=thesis_id,
@@ -887,15 +996,16 @@ for spec in reversed(spec_versions):
                         conversation_id=conversation_id,
                     )
                     level, message = confirmed_run_feedback(run_result)
-                    if level == "success":
-                        st.success(message)
-                    elif level == "warning":
-                        st.warning(message)
-                    else:
-                        st.error(message)
+                    set_assistant_flash(st.session_state, level=level, message=message)
                     st.rerun()
                 except Exception as exc:
                     st.error(f"Research run failed: {exc}")
+        elif spec.status == "ready_for_confirmation":
+            st.warning(
+                "Ready to confirm means the draft compiled cleanly. "
+                "There is no confirm button inside this list — use Plan review above: "
+                "Validate executable RunSpec, then Confirm validated RunSpec."
+            )
 
 st.subheader("Research runs")
 runs = orchestrator.list_runs(thesis_id)

@@ -32,6 +32,7 @@ ASSISTANT_SESSION_KEYS: tuple[str, ...] = (
     "assistant_run_artifacts",
     "assistant_run_comparisons",
     "assistant_bundle_handoff",
+    "assistant_flash",
 )
 
 # Cleared whenever the active thesis changes so drafts/validation/handoff
@@ -42,6 +43,22 @@ THESIS_SCOPED_STAGING_KEYS: tuple[str, ...] = (
     "assistant_hydrated_conversation_id",
     "assistant_validated_run_spec",
     "assistant_bundle_handoff",
+    "assistant_flash",
+)
+
+# Human labels for persisted SpecVersion.status values shown in the UI.
+SPEC_STATUS_LABELS: dict[str, str] = {
+    "draft": "Draft",
+    "needs_clarification": "Needs clarification",
+    "ready_for_confirmation": "Ready to confirm",
+    "confirmed": "Confirmed — can run",
+}
+
+RESEARCH_WORKFLOW_STEPS: tuple[str, ...] = (
+    "Apply structured controls — stages draft choices in this session only; does not create a specification version.",
+    "Draft research plan (optional) — persists a specification version from the current draft.",
+    "Validate executable RunSpec, then Confirm validated RunSpec under Plan review.",
+    "Open a Confirmed specification and click Run confirmed research.",
 )
 
 SETUP_TRIGGER_OPTIONS: tuple[str, ...] = ("touch", "reject", "break", "reclaim", "3c")
@@ -91,9 +108,69 @@ def init_assistant_session_state(session_state: MutableMapping[str, Any]) -> Non
         "assistant_run_artifacts": {},
         "assistant_run_comparisons": {},
         "assistant_bundle_handoff": None,
+        "assistant_flash": None,
     }
     for key, value in defaults.items():
         session_state.setdefault(key, deepcopy(value) if isinstance(value, (dict, list)) else value)
+
+
+def set_assistant_flash(
+    session_state: MutableMapping[str, Any],
+    *,
+    level: str,
+    message: str,
+) -> None:
+    """Stage a one-shot UI notice that survives the next ``st.rerun()``."""
+    if level not in {"success", "info", "warning", "error"}:
+        raise ValueError("flash level must be success, info, warning, or error.")
+    text = str(message).strip()
+    if not text:
+        raise ValueError("flash message must be a non-empty string.")
+    session_state["assistant_flash"] = {"level": level, "message": text}
+
+
+def consume_assistant_flash(
+    session_state: MutableMapping[str, Any],
+) -> dict[str, str] | None:
+    """Pop and return the staged flash payload, if any."""
+    flash = session_state.get("assistant_flash")
+    session_state["assistant_flash"] = None
+    if not isinstance(flash, Mapping):
+        return None
+    level = flash.get("level")
+    message = flash.get("message")
+    if level not in {"success", "info", "warning", "error"}:
+        return None
+    if not isinstance(message, str) or not message.strip():
+        return None
+    return {"level": str(level), "message": message.strip()}
+
+
+def format_spec_status(status: str | None) -> str:
+    """Return a user-facing label for a persisted specification status."""
+    key = str(status or "").strip()
+    return SPEC_STATUS_LABELS.get(key, key or "unknown")
+
+
+def spec_status_next_step(status: str | None) -> str:
+    """Return the concrete next action for a listed specification version."""
+    key = str(status or "").strip()
+    if key == "needs_clarification":
+        return (
+            "Resolve clarifications in structured controls or chat, then Draft research plan again."
+        )
+    if key == "ready_for_confirmation":
+        return (
+            "This version is not waiting on a hidden button. "
+            "Under Plan review: Validate executable RunSpec, then click Confirm validated RunSpec."
+        )
+    if key == "confirmed":
+        return (
+            "Click Run confirmed research below to start compute for this immutable specification."
+        )
+    if key == "draft":
+        return "Draft or validate from Plan review to advance this specification."
+    return "Use Plan review to validate and confirm before running."
 
 
 def clear_failed_llm_run_explanation(session_state: MutableMapping[str, Any], run_id: str) -> None:
@@ -133,6 +210,7 @@ def clear_thesis_scoped_state(session_state: MutableMapping[str, Any]) -> None:
     session_state["assistant_hydrated_conversation_id"] = None
     session_state["assistant_validated_run_spec"] = None
     session_state["assistant_bundle_handoff"] = None
+    session_state["assistant_flash"] = None
 
 
 def active_bundle_handoff(
@@ -559,9 +637,21 @@ def build_plan_review(
     setup = choices.get("setup") if isinstance(choices.get("setup"), Mapping) else {}
     backtest = choices.get("backtest") if isinstance(choices.get("backtest"), Mapping) else {}
     dataset = choices.get("dataset") if isinstance(choices.get("dataset"), Mapping) else {}
+    ready = validated_spec is not None and not unresolved_assumptions
+    if unresolved_assumptions:
+        next_action = "Resolve clarifications before confirming the validated RunSpec."
+    elif validated_spec is None:
+        next_action = "Click Validate executable RunSpec. Confirm appears here only after a successful validate."
+    elif ready:
+        next_action = (
+            "Click Confirm validated RunSpec, then open the new Confirmed specification and run it."
+        )
+    else:
+        next_action = "Validate again after editing draft choices."
     return {
         "thesis_name": thesis_name,
-        "ready_for_confirmation": validated_spec is not None and not unresolved_assumptions,
+        "ready_for_confirmation": ready,
+        "next_action": next_action,
         "dataset_path": dataset.get("path"),
         "instrument": dataset.get("instrument") or setup.get("instrument"),
         "selected_levels": list(setup.get("selected_levels") or []),
