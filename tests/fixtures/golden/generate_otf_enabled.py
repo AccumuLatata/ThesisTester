@@ -78,8 +78,15 @@ def generate_otf_enabled_dataset() -> pd.DataFrame:
     return tag_session(pd.DataFrame(rows), INSTRUMENT)
 
 
-def generate_otf_enabled_signals() -> pd.DataFrame:
-    """Fixed candidates covering accept/reject paths for long and short."""
+def generate_otf_enabled_signals(
+    data: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Fixed candidates covering accept/reject paths for long and short.
+
+    ``bar_index`` is the positional index of ``timestamp`` in the overnight
+    dataset so OTF decisions (timestamp-based) and ``simulate_trades`` entries
+    (``bar_index + 1`` next-bar open) stay aligned.
+    """
     # Decision times chosen after enough completed 5m history in each regime.
     specs = (
         # Established OTF up (long accepts, short rejects).
@@ -94,14 +101,22 @@ def generate_otf_enabled_signals() -> pd.DataFrame:
         # Fresh session after 18:00 ET → insufficient directional history reject.
         (6, "2026-01-06 18:10:00", "long", "post_boundary_reject"),
     )
+    source = generate_otf_enabled_dataset() if data is None else data
+    timestamp_to_bar = {
+        pd.Timestamp(ts): int(index) for index, ts in enumerate(source["timestamp"].tolist())
+    }
     rows: list[dict[str, object]] = []
     for signal_id, ts, direction, note in specs:
         timestamp = pd.Timestamp(ts, tz=TIMEZONE)
+        if timestamp not in timestamp_to_bar:
+            raise ValueError(
+                f"OTF golden signal timestamp {timestamp} is missing from the dataset."
+            )
         rows.append(
             {
                 "signal_id": signal_id,
                 "timestamp": timestamp,
-                "bar_index": signal_id - 1,
+                "bar_index": timestamp_to_bar[timestamp],
                 "trigger": "touch",
                 "direction": direction,
                 "zone_low": 20999.75,

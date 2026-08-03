@@ -73,6 +73,29 @@ def test_otf_enabled_generator_rebuilds_recorded_dataset():
     pd.testing.assert_frame_equal(recorded, generated, check_dtype=False, check_exact=True)
 
 
+def test_otf_enabled_signal_bar_index_matches_timestamp():
+    """bar_index must point at the decision timestamp bar for next-bar entry."""
+    data = generate_otf_enabled_dataset()
+    signals = generate_otf_enabled_signals(data)
+    for row in signals.itertuples(index=False):
+        bar_ts = pd.Timestamp(data["timestamp"].iloc[int(row.bar_index)])
+        assert bar_ts == pd.Timestamp(row.timestamp)
+
+
+def test_otf_enabled_trades_enter_on_bar_after_decision_timestamp():
+    result = run_otf_enabled_pipeline()
+    accepted = result["accepted_signals"].set_index("signal_id")
+    data = result["data"]
+    for trade in result["trades"].itertuples(index=False):
+        decision_bar = int(accepted.loc[int(trade.signal_id), "bar_index"])
+        decision_ts = pd.Timestamp(accepted.loc[int(trade.signal_id), "timestamp"])
+        assert pd.Timestamp(data["timestamp"].iloc[decision_bar]) == decision_ts
+        assert int(trade.entry_bar_index) == decision_bar + 1
+        assert pd.Timestamp(trade.entry_timestamp) == pd.Timestamp(
+            data["timestamp"].iloc[decision_bar + 1]
+        )
+
+
 def test_enabled_fixture_reproduces_accepted_and_rejected_populations():
     result = run_otf_enabled_pipeline()
     projection = _load_projection()

@@ -139,6 +139,6 @@
     },
     "entrypoint": "tests.fixtures.golden.pipeline_otf_enabled.run_otf_enabled_pipeline"
   },
-  "recorded_at_utc": "2026-08-03T10:02:04.817561+00:00",
+  "recorded_at_utc": "2026-08-03T10:22:47.444753+00:00",
   "thesistester_version": "0.2.0"
 }

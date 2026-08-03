@@ -50,7 +50,7 @@ def run_otf_enabled_pipeline(
     guarantee (this pipeline still does not mutate legacy artifacts).
     """
     source = generate_otf_enabled_dataset() if data is None else data
-    candidates = generate_otf_enabled_signals() if signals is None else signals
+    candidates = generate_otf_enabled_signals(source) if signals is None else signals
     setup = otf_enabled_setup_config()
     if not enabled:
         setup = {

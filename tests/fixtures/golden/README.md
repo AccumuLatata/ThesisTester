@@ -46,7 +46,7 @@ asserts legacy trades remain reproducible.
 
 | File | Role |
 |---|---|
-| `generate_otf_enabled.py` | Overnight 1-minute NQ generator + fixed long/short candidates (up/down/unknown-or-neutral regimes; crosses midnight and 18:00 ET). |
+| `generate_otf_enabled.py` | Overnight 1-minute NQ generator + fixed long/short candidates (up/down/unknown-or-neutral regimes; crosses midnight and 18:00 ET). Candidate `bar_index` is the dataset positional index of `timestamp` so OTF decisions and next-bar entries stay aligned. |
 | `pipeline_otf_enabled.py` | Shared enabled-OTF composition (`apply_configured_otf_filter` → `simulate_trades`). |
 | `record_otf_enabled_golden.py` | Recorder (`--confirm-regenerate` required). |
 | `otf_enabled_dataset.parquet` | Recorded overnight source frame. |
