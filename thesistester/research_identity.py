@@ -8,7 +8,6 @@ Research Assistant. No production cache lookup occurs here.
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Mapping
@@ -478,13 +477,3 @@ def assert_dataset_id_parity(
 def identity_meta_filename() -> str:
     """Return the optional research-bundle identity member name."""
     return _IDENTITY_META_FILENAME
-
-
-def dumps_identity_metadata(payload: Mapping[str, Any]) -> bytes:
-    """Stable JSON bytes for optional bundle membership."""
-    return json.dumps(
-        dict(payload),
-        indent=2,
-        sort_keys=True,
-        ensure_ascii=False,
-    ).encode("utf-8")
