@@ -181,12 +181,19 @@ def test_invalid_levels_fingerprint_rows_is_gap(tmp_path: Path):
     }
     gaps = classic_state_export_gaps(state)
     assert any(
-        gap.code == "stale_levels"
-        and "rows is not a valid integer" in gap.message
-        for gap in gaps
+        gap.code == "stale_levels" and "rows is not a valid integer" in gap.message for gap in gaps
     )
     with pytest.raises(ValueError, match="stale_levels"):
         classic_state_to_run_spec(state, name="bad-fingerprint-rows")
+
+
+def test_blank_source_path_arg_falls_back_to_state(tmp_path: Path):
+    state = _classic_state_from_parity(tmp_path)
+    expected = str(tmp_path / "bars.csv")
+    gaps = classic_state_export_gaps(state, source_path="   ")
+    assert "missing_source_path" not in {gap.code for gap in gaps}
+    exported = classic_state_to_run_spec(state, name="blank-arg", source_path="")
+    assert exported["dataset"]["path"] == expected
 
 
 def test_exported_spec_matches_hand_authored_bundle_hash(tmp_path: Path):

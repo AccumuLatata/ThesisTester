@@ -140,7 +140,8 @@ fields are `incomplete_exit_management` gaps (not deferred to
 Source strategy: prefer a verified execution data artifact
 (`dataset.data_artifact_key`); always require an explicit CSV path
 (`source_path` / `dataset_source_path` / `source_csv_path`) verified against
-classic `DataIdentity`. Corrupt/incomplete preferred artifacts are omitted and
+classic `DataIdentity`; blank/whitespace `source_path` kwargs fall through to
+state path keys. Corrupt/incomplete preferred artifacts are omitted and
 export falls back to the verified CSV path rather than blocking. CAI-4 does not
 wire UI buttons or thesis attachment (CAI-5/CAI-6).
 

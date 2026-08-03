@@ -383,9 +383,11 @@ def _resolve_source_path(
     *,
     source_path: str | Path | None,
 ) -> str | None:
+    # Blank/whitespace source_path args must fall through to classic state keys.
     if source_path is not None:
         text = str(source_path).strip()
-        return text or None
+        if text:
+            return text
     for key in ("dataset_source_path", "source_csv_path"):
         value = state.get(key)
         if isinstance(value, (str, Path)) and str(value).strip():

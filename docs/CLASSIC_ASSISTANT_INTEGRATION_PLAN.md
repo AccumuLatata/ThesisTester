@@ -442,8 +442,10 @@ not a live Assistant execution input.
 - Source resolution: verified data artifact (`dataset.data_artifact_key`) is
   preferred metadata; executable `dataset.path` still required and verified
   against classic `DataIdentity` (from `source_path` kwarg or
-  `dataset_source_path` / `source_csv_path` state). Corrupt/incomplete preferred
-  artifacts are omitted so a verified CSV path can still complete the export.
+  `dataset_source_path` / `source_csv_path` state). Blank/whitespace
+  `source_path` kwargs fall through to those state keys. Corrupt/incomplete
+  preferred artifacts are omitted so a verified CSV path can still complete
+  the export.
 - Backtest may come from explicit `backtest_config` or assembled from page
   widget keys (preferred) with post-run policy snapshots as fallback, without
   inventing SL/TP/session fields. Disabled `flat_by_session_close` clears

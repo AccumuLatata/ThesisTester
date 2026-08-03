@@ -164,7 +164,7 @@ draft. Does not execute research or invent missing parameters.
 - Consumes `data` / provenance, `levels_settings`, `setup_config` /
   `last_signal_setup`, and backtest policy snapshots (or `backtest_config`).
 - Preferred verified data artifact reference plus required path verified
-  against `DataIdentity`.
+  against `DataIdentity` (blank `source_path` kwargs falls through to state).
 - Additive `dataset.data_artifact_key` / `dataset.data_identity` on RunSpec.
 
 ### Regression safety
