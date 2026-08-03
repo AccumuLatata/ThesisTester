@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** proposed implementation contract; `CAI-0` through `CAI-5` implemented.
+**Status:** proposed implementation contract; `CAI-0` through `CAI-6` implemented.
 
 **Owner model:** one trusted local user, local datasets, local execution.
 
@@ -525,7 +525,7 @@ not a live Assistant execution input.
 - A user can create a thesis while building a setup and still run classic pages
   exactly as before.
 
-### CAI-6 — Attach a completed classic run to a thesis
+### CAI-6 — Attach a completed classic run to a thesis ✅ Implemented
 
 **Goal:** turn a completed classic Backtest into a discussable thesis run
 without recomputing it.
@@ -545,6 +545,32 @@ without recomputing it.
   it, records it, and opens the linked thesis.
 - Add a registry capability and structured audit transcript. This action is
   explicit; it must not bypass Assistant confirmation for future recomputation.
+
+**Implemented contract**
+
+- Registry capability `BUNDLE.register_external_run`
+  (`IMPORT_EXPORT` + `EXPLICIT_CONFIRMATION`); handler verifies only.
+- `AssistantTools.verify_external_research_bundle(...)` — containment, hash,
+  required `dataset`/`levels`/`signals`/`backtest` sections, optional RunSpec
+  compatibility (instrument/trigger + required frames).
+- `AssistantOrchestrator.register_external_bundle_run(...)` — confirms a CAI-4
+  RunSpec, `start_run` → `complete_run` with `execution_origin="classic"`,
+  audited transcript. Does not call `run_experiment_to_bundle`.
+- Idempotency: same `canonical_bundle_hash` returns a completed run with a
+  readable/hash-valid stored `bundle_path` and matching stored RunSpec unless
+  `force_new=True`. Stale (missing) matches and RunSpec-drifted matches are
+  skipped; if none remain, a new registration is created. Reuse reports the
+  stored `execution_origin`. Classic session recording preflights required
+  bundle sections (`dataset`/`levels`/`signals`/`backtest`), writes under the
+  same `store_root` as export/staging, deletes orphan zips on failure or
+  idempotent reuse (but keeps zips for cancelled registrations that may have
+  attached provenance), and flashes the stored origin label.
+- `thesistester/classic_record.py`: `record_classic_session_run` builds the
+  bundle + exported RunSpec (materializes a lineage CSV when classic pages
+  omit `dataset_source_path`); UI `render_record_and_discuss` on Backtest and
+  Research Bundles. Kept out of `classic_context` so link/create stay
+  non-recording.
+- Tests: `tests/test_classic_record.py`.
 
 **Regression gates**
 

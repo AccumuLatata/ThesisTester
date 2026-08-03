@@ -21,7 +21,8 @@ Initial classic-to-thesis attachment uses **manual record-after-run**:
 
 - Exploration on classic pages remains untracked by default.
 - After a completed Backtest, the user explicitly chooses
-  **Record and discuss this run** (implemented in later milestones).
+  **Record and discuss this run** (CAI-6:
+  `AssistantOrchestrator.register_external_bundle_run`).
 - Automatic `all_executions` ledger recording remains deferred to CAI-7 and
   stays opt-in.
 

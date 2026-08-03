@@ -58,10 +58,16 @@ from thesistester.assistant.workspace import (
     evidence_packet_from_payload,
     require_run_bundle_hash,
 )
+from thesistester import __version__
 from thesistester.persistence.local_store import get_store_root
+from thesistester.reporting import to_jsonable
 from thesistester.research_bundle import (
     apply_research_bundle_to_session,
     canonical_bundle_hash,
+)
+from thesistester.research_identity import (
+    compute_run_spec_hash,
+    normalize_execution_origin,
 )
 
 
@@ -480,6 +486,242 @@ class AssistantOrchestrator:
         )
         return completed_result
 
+    def register_external_bundle_run(
+        self,
+        *,
+        thesis_id: str,
+        bundle_path: str | Path,
+        run_spec: Mapping[str, Any],
+        expected_hash: str | None = None,
+        conversation_id: str | None = None,
+        force_new: bool = False,
+        confirmation_note: str = (
+            "Registered classic research bundle as immutable thesis run (CAI-6)"
+        ),
+    ) -> OrchestrationResult:
+        """Attach a verified classic bundle as a completed thesis run without recompute.
+
+        The UI button (or an explicit ``confirmed`` dispatch) is the confirmation
+        boundary for registration. This does **not** bypass confirmation for
+        future ``execute_confirmed_run`` recomputation of the linked specification.
+        When ``force_new`` is False, a completed run with the same
+        ``canonical_bundle_hash``, a readable stored provenance bundle, and a
+        matching stored RunSpec is returned idempotently (stale/missing stored
+        paths and RunSpec-drifted matches are skipped).
+        """
+        if not isinstance(run_spec, Mapping):
+            raise ValueError("run_spec must be an object.")
+        request = AssistantRequest(
+            capability_id="BUNDLE.register_external_run",
+            payload={
+                "bundle_path": str(bundle_path),
+                "expected_hash": expected_hash,
+                "run_spec": dict(run_spec),
+                "force_new": bool(force_new),
+            },
+        )
+        capability = validate_capability_request(request)
+        if capability.confirmation is not ConfirmationLevel.EXPLICIT_CONFIRMATION:
+            raise ValueError("External bundle registration must require explicit confirmation.")
+        if not isinstance(self.tools, AssistantTools):
+            raise AssistantToolError("External bundle registration requires AssistantTools.")
+
+        verified = self.tools.verify_external_research_bundle(
+            bundle_path,
+            expected_hash=expected_hash,
+            run_spec=run_spec,
+        )
+        digest = str(verified["canonical_bundle_hash"])
+        resolved_path = str(verified["bundle_path"])
+        _assert_readable_bundle_provenance(
+            {"bundle_path": resolved_path, "canonical_bundle_hash": digest}
+        )
+
+        if not force_new:
+            existing = self._find_reusable_completed_run_by_bundle_hash(
+                thesis_id,
+                digest,
+                run_spec=run_spec,
+            )
+            if existing is not None:
+                stored = existing.provenance if isinstance(existing.provenance, Mapping) else {}
+                stored_path = str(stored.get("bundle_path"))
+                # Report the stored origin; do not rewrite a non-classic run as classic.
+                stored_origin = normalize_execution_origin(stored.get("execution_origin"))
+                result = OrchestrationResult(
+                    status=OrchestrationStatus.COMPLETED.value,
+                    capability_id="BUNDLE.register_external_run",
+                    payload={
+                        "run_id": existing.run_id,
+                        "spec_version": existing.spec_version,
+                        "bundle_path": stored_path,
+                        "canonical_bundle_hash": digest,
+                        "execution_origin": stored_origin,
+                        "idempotent": True,
+                        "summary": verified["summary"],
+                    },
+                )
+                self._record_audit(
+                    result,
+                    request=request,
+                    thesis_id=thesis_id,
+                    conversation_id=conversation_id,
+                    extra={
+                        "run_id": existing.run_id,
+                        "canonical_bundle_hash": digest,
+                        "idempotent": True,
+                    },
+                    best_effort=True,
+                )
+                return result
+
+        confirmed = self.confirm_validated_spec(
+            thesis_id=thesis_id,
+            validated_spec=dict(run_spec),
+            confirmation_note=confirmation_note,
+        )
+        warning_data = verified["summary"].get("warnings", {})
+        warnings = (
+            tuple(
+                f"{key}: {value}"
+                for key, value in warning_data.items()
+                if value not in (None, [], {}, "")
+            )
+            if isinstance(warning_data, dict)
+            else ()
+        )
+        session_values = verified.get("session_values")
+        fingerprint = None
+        if isinstance(session_values, Mapping):
+            fingerprint = to_jsonable(session_values.get("levels_data_fingerprint"))
+
+        run = self.repository.start_run(
+            thesis_id,
+            spec_version=confirmed.version,
+            request={
+                "action": "register_external_bundle",
+                "bundle_path": resolved_path,
+                "canonical_bundle_hash": digest,
+                "execution_origin": "classic",
+                "run_spec": dict(run_spec),
+            },
+        )
+        provenance = {
+            "bundle_path": resolved_path,
+            "canonical_bundle_hash": digest,
+            "dataset_fingerprint": fingerprint,
+            "tool_version": __version__,
+            "summary": verified["summary"],
+            "warnings": list(warnings),
+            "effective_configuration": to_jsonable(dict(run_spec)),
+            "resolved_paths": {
+                "bundle_path": resolved_path,
+                "dataset.path": str(run_spec.get("dataset", {}).get("path", "")),
+            },
+            "execution_origin": normalize_execution_origin("classic"),
+            "registration_source": "classic_workspace",
+        }
+        try:
+            completed = self.repository.complete_run(
+                thesis_id,
+                run.run_id,
+                expected_revision=run.revision,
+                provenance=provenance,
+                warnings=warnings,
+            )
+        except BaseException as exc:
+            return self._finalize_raced_or_failed_run(
+                exc,
+                request=request,
+                thesis_id=thesis_id,
+                run_id=run.run_id,
+                conversation_id=conversation_id,
+                result=None,
+                provenance=provenance,
+                warnings=warnings,
+            )
+
+        completed_result = OrchestrationResult(
+            status=OrchestrationStatus.COMPLETED.value,
+            capability_id="BUNDLE.register_external_run",
+            payload={
+                "run_id": completed.run_id,
+                "spec_version": confirmed.version,
+                "bundle_path": resolved_path,
+                "canonical_bundle_hash": digest,
+                "execution_origin": "classic",
+                "idempotent": False,
+                "summary": verified["summary"],
+            },
+        )
+        self._record_audit(
+            completed_result,
+            request=request,
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+            extra={
+                "run_id": completed.run_id,
+                "canonical_bundle_hash": digest,
+                "execution_origin": "classic",
+            },
+            best_effort=True,
+        )
+        return completed_result
+
+    def _stored_run_spec_for_idempotency(self, run: ResearchRun) -> Mapping[str, Any] | None:
+        """Return the RunSpec snapshot used when the run was registered, if any."""
+        if isinstance(run.provenance, Mapping):
+            config = run.provenance.get("effective_configuration")
+            if isinstance(config, Mapping):
+                return config
+        if isinstance(run.request, Mapping):
+            request_spec = run.request.get("run_spec")
+            if isinstance(request_spec, Mapping):
+                return request_spec
+        return None
+
+    def _find_reusable_completed_run_by_bundle_hash(
+        self,
+        thesis_id: str,
+        digest: str,
+        *,
+        run_spec: Mapping[str, Any] | None = None,
+    ) -> ResearchRun | None:
+        """Return a completed run with matching hash and a readable stored bundle.
+
+        Skips stale matches whose provenance ``bundle_path`` is missing or
+        hash-invalid so a later readable twin can still be reused. When
+        ``run_spec`` is provided, also skips matches whose stored executable
+        settings drifted from the incoming RunSpec.
+        """
+        incoming_hash = (
+            compute_run_spec_hash(to_jsonable(dict(run_spec)))
+            if isinstance(run_spec, Mapping)
+            else None
+        )
+        for run in self.repository.list_runs(thesis_id):
+            if run.status != "completed" or not isinstance(run.provenance, Mapping):
+                continue
+            if run.provenance.get("canonical_bundle_hash") != digest:
+                continue
+            try:
+                _assert_readable_bundle_provenance(
+                    {
+                        "bundle_path": run.provenance.get("bundle_path"),
+                        "canonical_bundle_hash": digest,
+                    }
+                )
+            except AssistantToolError:
+                continue
+            if incoming_hash is not None:
+                stored_spec = self._stored_run_spec_for_idempotency(run)
+                if stored_spec is not None:
+                    stored_hash = compute_run_spec_hash(to_jsonable(dict(stored_spec)))
+                    if stored_hash != incoming_hash:
+                        continue
+            return run
+        return None
+
     def cancel_run(
         self,
         *,
@@ -702,16 +944,17 @@ class AssistantOrchestrator:
             confirmation_note=confirmation_note,
         )
 
-    def default_bundle_output_path(self, thesis_id: str) -> Path:
+    def default_bundle_output_path(
+        self,
+        thesis_id: str,
+        *,
+        store_root: str | Path | None = None,
+    ) -> Path:
         """Return a thesis-scoped portable bundle path under the local store."""
-        return (
-            get_store_root()
-            / "assistant"
-            / "theses"
-            / thesis_id
-            / "bundles"
-            / f"{uuid4().hex}.research.zip"
+        root = (
+            Path(store_root).expanduser().resolve() if store_root is not None else get_store_root()
         )
+        return root / "assistant" / "theses" / thesis_id / "bundles" / f"{uuid4().hex}.research.zip"
 
     def explain_run(
         self,

@@ -426,6 +426,14 @@ FEATURE_PARITY_REGISTRY = _validate_registry(
             ConfirmationLevel.EXPLICIT_CONFIRMATION,
         ),
         _capability(
+            "BUNDLE.register_external_run",
+            "Research Bundles",
+            "Register a verified classic research bundle as an immutable thesis run",
+            "thesistester.assistant.orchestrator.AssistantOrchestrator.register_external_bundle_run",
+            CapabilityMode.IMPORT_EXPORT,
+            ConfirmationLevel.EXPLICIT_CONFIRMATION,
+        ),
+        _capability(
             "PORTFOLIO.import_trades",
             "Portfolio",
             "Add current or imported completed-trade series",
