@@ -824,9 +824,7 @@ def build_confluence_level_options(
         if safe_int(value, 0) > 0
     ]
     sma_timeframes = [
-        str(value)
-        for value in (settings.get("sma_timeframes") or ("30min",))
-        if str(value).strip()
+        str(value) for value in (settings.get("sma_timeframes") or ("30min",)) if str(value).strip()
     ] or ["30min"]
     ema_timeframes = [
         str(value) for value in (settings.get("ema_timeframes") or ()) if str(value).strip()
