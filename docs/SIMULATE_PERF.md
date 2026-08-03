@@ -8,6 +8,10 @@ pandas, and browser-independent system load. Any future acceleration PR must
 repeat these scenarios, report its environment, and prove exact serial parity
 on golden and feature fixtures.
 
+For classic/Assistant cold-path stage timings (CSV load, levels, signals,
+backtest, bundle), see `docs/CAI_BASELINE.md` (`CAI-0`). That baseline also is
+informational only and must not become a CI performance gate.
+
 ## Method
 
 Command:
