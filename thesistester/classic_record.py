@@ -54,9 +54,7 @@ def materialize_classic_source_csv(
         raise ValueError("Classic session is missing a data DataFrame.")
     missing = [column for column in _OHLCV_COLUMNS if column not in data.columns]
     if missing:
-        raise ValueError(
-            "Classic data is missing required OHLCV columns: " + ", ".join(missing)
-        )
+        raise ValueError("Classic data is missing required OHLCV columns: " + ", ".join(missing))
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "classic_source.csv"
@@ -97,19 +95,11 @@ def record_classic_session_run(
     """
     if not classic_session_ready_for_record(session_state):
         raise ValueError(
-            "Record and discuss requires a completed classic backtest "
-            "(trades and equity_curve)."
+            "Record and discuss requires a completed classic backtest (trades and equity_curve)."
         )
     thesis = orchestrator.get_thesis(thesis_id)
     root = Path(store_root) if store_root is not None else get_store_root()
-    staging = (
-        root
-        / "assistant"
-        / "theses"
-        / thesis_id
-        / "classic_registration"
-        / "staging"
-    )
+    staging = root / "assistant" / "theses" / thesis_id / "classic_registration" / "staging"
     resolved_source = resolve_classic_record_source_path(
         session_state,
         materialize_dir=staging,

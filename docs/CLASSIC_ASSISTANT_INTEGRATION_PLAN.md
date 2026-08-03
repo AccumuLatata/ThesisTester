@@ -557,7 +557,8 @@ without recomputing it.
   RunSpec, `start_run` → `complete_run` with `execution_origin="classic"`,
   audited transcript. Does not call `run_experiment_to_bundle`.
 - Idempotency: same `canonical_bundle_hash` returns the existing completed run
-  unless `force_new=True`.
+  unless `force_new=True`, and only when that run’s stored `bundle_path` is
+  still present and hash-valid; otherwise a new registration is created.
 - `thesistester/classic_record.py`: `record_classic_session_run` builds the
   bundle + exported RunSpec (materializes a lineage CSV when classic pages
   omit `dataset_source_path`); UI `render_record_and_discuss` on Backtest and

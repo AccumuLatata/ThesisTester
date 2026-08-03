@@ -237,9 +237,7 @@ def _assert_bundle_compatible_with_run_spec(
     if not isinstance(page_setup, Mapping):
         page_setup = session_values.get("setup_config")
     if not isinstance(page_setup, Mapping):
-        raise AssistantToolError(
-            "Classic registration bundle is missing setup provenance."
-        )
+        raise AssistantToolError("Classic registration bundle is missing setup provenance.")
 
     spec_instrument = dataset.get("instrument")
     page_instrument = session_values.get("instrument") or page_setup.get("instrument")
@@ -421,9 +419,7 @@ class AssistantTools:
         if expected_hash is not None:
             expected = _require_expected_hash(expected_hash)
             if digest != expected:
-                raise AssistantToolError(
-                    "Bundle hash does not match recorded run provenance."
-                )
+                raise AssistantToolError("Bundle hash does not match recorded run provenance.")
         try:
             loaded = load_research_bundle(raw)
         except ValueError as exc:

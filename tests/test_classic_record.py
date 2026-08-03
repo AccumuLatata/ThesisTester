@@ -136,6 +136,7 @@ def test_register_external_bundle_is_idempotent_by_hash(tmp_path: Path, monkeypa
     )
     assert second.payload["idempotent"] is True
     assert second.payload["run_id"] == first.payload["run_id"]
+    assert second.payload["bundle_path"] == first.payload["bundle_path"]
     assert len(repository.list_runs(thesis.thesis_id)) == 1
 
     forced = orchestrator.register_external_bundle_run(
@@ -148,6 +149,51 @@ def test_register_external_bundle_is_idempotent_by_hash(tmp_path: Path, monkeypa
     assert forced.payload["idempotent"] is False
     assert forced.payload["run_id"] != first.payload["run_id"]
     assert len(repository.list_runs(thesis.thesis_id)) == 2
+
+
+def test_idempotent_reuse_requires_readable_stored_bundle(tmp_path: Path, monkeypatch):
+    """Missing stored provenance must not return a hollow idempotent reuse."""
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    state = _classic_completed_state(tmp_path)
+    orchestrator, repository = _orchestrator(tmp_path)
+    thesis = repository.create_thesis(name="missing stored")
+    bundle_bytes = build_research_bundle(state)
+    digest = canonical_bundle_hash(bundle_bytes)
+    first_path = tmp_path / "first.research.zip"
+    first_path.write_bytes(bundle_bytes)
+    run_spec = classic_state_to_run_spec(
+        state, name=thesis.name, source_path=state["dataset_source_path"]
+    )
+
+    first = orchestrator.register_external_bundle_run(
+        thesis_id=thesis.thesis_id,
+        bundle_path=first_path,
+        run_spec=run_spec,
+        expected_hash=digest,
+    )
+    stored = Path(first.payload["bundle_path"])
+    assert stored.is_file()
+    stored.unlink()
+
+    replacement = tmp_path / "replacement.research.zip"
+    replacement.write_bytes(bundle_bytes)
+    recovered = orchestrator.register_external_bundle_run(
+        thesis_id=thesis.thesis_id,
+        bundle_path=replacement,
+        run_spec=run_spec,
+        expected_hash=digest,
+    )
+    assert recovered.payload["idempotent"] is False
+    assert recovered.payload["run_id"] != first.payload["run_id"]
+    assert Path(recovered.payload["bundle_path"]).is_file()
+    assert len(repository.list_runs(thesis.thesis_id)) == 2
+
+    explained = orchestrator.explain_run(
+        thesis_id=thesis.thesis_id,
+        conversation_id=None,
+        run=repository.get_run(thesis.thesis_id, recovered.payload["run_id"]),
+    )
+    assert explained.status == "completed"
 
 
 def test_register_fails_closed_on_tamper_missing_and_out_of_root(tmp_path: Path, monkeypatch):
