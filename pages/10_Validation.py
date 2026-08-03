@@ -1717,9 +1717,13 @@ else:
     _tp_ticks = st.session_state.get("take_profit_ticks") or 16
     _session_tz = st.session_state.get("exchange_timezone") or "America/New_York"
 
+    # Match the Validation WFO surface: known instruments use configured
+    # eth_start; unknown instruments use the existing explicit "18:00" fallback.
+    _eth_start = _inst.eth_start if _inst else "18:00"
+
     st.caption(
         f"Using SL={_sl_ticks} ticks, TP={_tp_ticks} ticks, "
-        f"session timezone={_session_tz}, "
+        f"session timezone={_session_tz}, eth_start={_eth_start}, "
         f"train/OOS split={_train_fraction:.0%}/{1 - _train_fraction:.0%}."
     )
 
@@ -1737,6 +1741,7 @@ else:
                     take_profit_ticks=float(_tp_ticks),
                     train_fraction=_train_fraction,
                     session_timezone=_session_tz,
+                    eth_start=_eth_start,
                     execution_kwargs={
                         "commission_per_side": float(
                             _backtest_exec.get("commission_per_side", 0.0) or 0.0
@@ -1751,6 +1756,7 @@ else:
                     "sl_ticks": float(_sl_ticks),
                     "tp_ticks": float(_tp_ticks),
                     "session_timezone": _session_tz,
+                    "eth_start": _eth_start,
                     "tick_size": float(_tick_size),
                     "point_value": float(_point_value),
                 }

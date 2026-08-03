@@ -382,6 +382,7 @@ if run_btn:
                 candidate_signals=signals,
                 setup_config=st.session_state.get("setup_config"),
                 session_timezone=exchange_tz,
+                eth_start=(inst.eth_start if inst else None),
                 signal_settings=st.session_state.get("signal_settings"),
                 last_signal_setup=st.session_state.get("last_signal_setup"),
             )

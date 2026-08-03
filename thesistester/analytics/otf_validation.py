@@ -418,6 +418,8 @@ def run_otf_validation_matrix(
                 "otf_timeframes": ",".join(timeframes) if timeframes else "",
                 "otf_algorithm_version": OTF_ALGORITHM_VERSION,
                 "otf_config_hash": cfg_hash,
+                "session_timezone": session_timezone,
+                "eth_start": eth_start,
                 # Full-period counts
                 "candidate_signal_count": n_candidates,
                 "accepted_signal_count": n_accepted,
