@@ -1003,8 +1003,11 @@ with st.sidebar:
         try:
             otf_config = get_effective_otf_filter_config(saved_setup)
             st.caption(
-                "OTF configuration is stored as setup metadata only in PR 4; "
-                "signal generation/backtests are not filtered by OTF until PR 5."
+                "Signals keep the complete candidate population. "
+                "OTF admission is applied later in Backtest, Grid, and Walk-forward. "
+                'Config provenance: a saved signal run’s `signal_settings["otf_filter"]` '
+                "wins over later Setup Builder edits — regenerate signals to pick up "
+                "changed OTF settings."
             )
             st.caption(
                 f"OTF v{OTF_ALGORITHM_VERSION} · hash={compute_otf_config_hash(otf_config)[:12]}… · "

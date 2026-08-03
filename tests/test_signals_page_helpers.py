@@ -1189,3 +1189,19 @@ def test_regression_valid_alias_and_canonical_still_equivalent():
     alias = _base_signal_settings()
     alias["otf_filter"] = {**base_otf, "timeframes": ["15min"]}
     assert compute_signal_settings_hash(canonical) == compute_signal_settings_hash(alias)
+
+
+def test_signals_page_has_no_stale_pre_pr5_otf_copy():
+    import pathlib
+
+    page_path = pathlib.Path(__file__).parent.parent / "pages" / "6_Signals.py"
+    text = page_path.read_text(encoding="utf-8")
+    stale_snippets = (
+        "metadata only in PR 4",
+        "not filtered by OTF until PR 5",
+        "until PR 5",
+    )
+    for snippet in stale_snippets:
+        assert snippet not in text, f"Stale OTF copy still present: {snippet!r}"
+    assert "complete candidate population" in text
+    assert "signal_settings" in text

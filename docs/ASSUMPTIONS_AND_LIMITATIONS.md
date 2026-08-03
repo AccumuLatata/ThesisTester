@@ -409,6 +409,44 @@ other than the last bar in the dataset.
   funnel through routed capabilities (typically `PIPELINE.run_experiment` plus
   evidence/export). They are audited by `audit_capability_registry()`.
 
+## OTF filter (One Timeframing)
+
+- **Default-off.** When OTF is disabled or absent from a setup, candidate
+  signals, trades, grid cells, and walk-forward folds match legacy behavior.
+- **Admission layer, not signal generation.** `generate_signals()` remains
+  candidate-only. Backtest, Grid, and Walk-forward apply
+  `apply_configured_otf_filter()` before execution. Rejected candidates are
+  retained for audit and are distinct from exposure-policy skips and 3c voids.
+- **Completed HTF bars only.** OTF state uses bars whose
+  `availability_timestamp` is at or before the signal decision timestamp.
+  This introduces intentional decision lag versus an in-progress HTF bar.
+- **Directional rejection.** `unknown`, `neutral`, and opposing OTF states
+  reject directional candidates under v1 `all` alignment.
+- **Futures session boundaries.** Session reset uses instrument `eth_start`
+  (e.g. `"18:00"` for ES/NQ) in the exchange timezone. Midnight is **not** a
+  session boundary. UI Backtest/Grid/validation matrix forward `eth_start` in
+  parity with the API and walk-forward surfaces.
+- **Source interval.** Source bars must be strictly finer than each selected
+  OTF timeframe and must divide it exactly.
+- **Sample-size impact.** Multi-timeframe `all` alignment can materially reduce
+  accepted trade counts; lower frequency is not evidence of edge by itself.
+- **Walk-forward `fold_local` cold starts.** Default WFO OTF history uses only
+  each fold’s OHLCV slice, so early fold candidates may be rejected as
+  `unknown` even when prior bars were causally available. This is conservative
+  against leakage; an opt-in causal-prefix policy is tracked separately in
+  `docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md`.
+- **Validation matrix is diagnostic.** Train-only ranking / OOS evaluation
+  tooling does not prove durable edge and must not auto-select a production
+  OTF configuration.
+- **Config provenance.** Resolution precedence is signal-run
+  `signal_settings["otf_filter"]` → setup snapshot → last signal setup →
+  active setup → disabled defaults. Later Setup Builder edits do not rewrite
+  an existing signal run; regenerate signals to adopt new OTF settings.
+- **Incomparable results.** Changing `OTF_ALGORITHM_VERSION`, OTF config hash,
+  `eth_start` / session timezone, selected timeframes, minimum consecutive
+  bars, or WFO history policy makes OTF-enabled runs incomparable without
+  explicit re-baselining.
+
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.
 - With non-zero cost settings, expectancy and downstream KPIs become net-of-cost.

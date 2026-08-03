@@ -1067,14 +1067,22 @@ if trigger == "3c":
         "max_entry_wait_bars_after_reversal": int(max_entry_wait_bars),
     }
 
-st.subheader("OTF filter configuration (saved for PR 5)")
+st.subheader("OTF filter configuration")
 st.caption(
-    "OTF defaults to disabled to preserve current behavior. "
-    "This page stores OTF setup metadata only; standard signal generation/backtests are not filtered by OTF until PR 5."
+    "OTF defaults to **disabled** so legacy research behavior is unchanged until you enable it. "
+    "This page persists the setup’s `otf_filter` block. "
+    "Signal generation keeps the full candidate population; "
+    "Backtest, Grid, and Walk-forward apply OTF admission before execution when enabled. "
+    "Rejected candidates remain available for audit/export."
 )
-st.caption("OTF v1 always uses completed HTF bars only; incomplete HTF bars are never used.")
+st.caption(
+    "OTF v1 always uses completed HTF bars only (intentional decision lag). "
+    "Futures session boundaries follow instrument `eth_start` (e.g. 18:00 ET for ES/NQ); "
+    "midnight is not a reset. Source bars must be strictly finer than selected OTF timeframes. "
+    "Alignment mode is `all` — every selected timeframe must agree, which can shrink sample size."
+)
 otf_enabled = st.toggle(
-    "Enable OTF filter configuration",
+    "Enable OTF filter",
     value=bool(st.session_state.get(WIDGET_KEY_OTF_ENABLED, False)),
     key=WIDGET_KEY_OTF_ENABLED,
 )

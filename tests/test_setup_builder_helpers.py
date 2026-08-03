@@ -450,3 +450,28 @@ def test_seed_editor_config_does_not_mutate_active_setup():
         dataset_id="dataset-a",
     )
     assert active == original_active
+
+
+def test_setup_builder_page_has_no_stale_pre_pr5_otf_copy():
+    page_path = pathlib.Path(__file__).parent.parent / "pages" / "2_Setup_Builder.py"
+    text = page_path.read_text(encoding="utf-8")
+    stale_snippets = (
+        "saved for PR 5",
+        "not filtered by OTF until PR 5",
+        "metadata only",
+    )
+    for snippet in stale_snippets:
+        assert snippet not in text, f"Stale OTF copy still present: {snippet!r}"
+    assert "OTF filter configuration" in text
+    assert "candidate population" in text
+
+
+def test_backtest_and_grid_pages_describe_live_otf_admission():
+    root = pathlib.Path(__file__).parent.parent / "pages"
+    backtest = (root / "7_Backtest.py").read_text(encoding="utf-8")
+    grid = (root / "8_Grid_Search.py").read_text(encoding="utf-8")
+    for text in (backtest, grid):
+        assert "until PR 5" not in text
+        assert "metadata only" not in text
+    assert "before** trade simulation" in backtest or "before trade simulation" in backtest
+    assert "before the SL/TP grid" in grid

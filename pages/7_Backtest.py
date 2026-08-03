@@ -514,6 +514,15 @@ _otf_enabled = bool(_otf_summary.get("otf_filter_enabled", False))
 _otf_candidate_count = _otf_summary.get("candidate_signal_count", len(signals))
 _otf_accepted_count = _otf_summary.get("otf_accepted_signal_count", len(signals))
 _otf_rejected_count = _otf_summary.get("otf_rejected_signal_count", 0)
+_otf_eth_start = _otf_summary.get("eth_start")
+_otf_session_tz = _otf_summary.get("session_timezone")
+st.caption(
+    "OTF is applied **before** trade simulation. "
+    "Candidate signals in session state are never overwritten. "
+    "Config resolution precedence: signal-run `otf_filter` → setup snapshot → "
+    "last signal setup → active setup → disabled defaults. "
+    "Rejected rows are distinct from exposure-policy skips and 3c voids."
+)
 
 if _otf_enabled:
     _otf_config = _otf_summary.get("otf_filter_config") or {}
@@ -524,6 +533,7 @@ if _otf_enabled:
     st.info(
         f"🔎 **OTF filter enabled** — timeframes: {', '.join(_otf_tfs) or '—'} · "
         f"min consecutive bars: {_otf_min_bars} · "
+        f"session tz: {_otf_session_tz or '—'} · eth_start: {_otf_eth_start or '—'} · "
         f"candidates: {_otf_candidate_count} · accepted: {_otf_accepted_count} · "
         f"rejected: {_otf_rejected_count}"
     )
