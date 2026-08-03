@@ -112,7 +112,10 @@ Optional directional market-condition filter for ES/NQ-style research. **Disable
 - **Backtest**, **Grid**, and **Walk-forward** apply OTF admission before execution when enabled; rejected candidates remain available for audit/export.
 - Config provenance: a saved signal run’s `signal_settings["otf_filter"]` wins over later Setup Builder edits — regenerate signals to pick up OTF changes.
 - Futures session boundaries use instrument `eth_start` (e.g. 18:00 ET); midnight is not a reset.
-- Behavioral contract: [`docs/otf-filter.md`](docs/otf-filter.md). Hardening / release tracker: [`docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md`](docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md).
+- Behavioral contract: [`docs/otf-filter.md`](docs/otf-filter.md).
+- Hardening / release tracker: [`docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md`](docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md).
+- OOS evaluation protocol: [`docs/research-methodology.md`](docs/research-methodology.md).
+- Engineering release evidence: [`docs/OTF_RELEASE_EVIDENCE.md`](docs/OTF_RELEASE_EVIDENCE.md).
 
 ## Documentation
 

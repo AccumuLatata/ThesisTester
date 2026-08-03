@@ -789,11 +789,12 @@ or signal inspection.
 
 ---
 
-## §15 — PR 6 Release-Gate Documentation
+## §15 — Release-Gate Documentation
 
-**Status:** PR 6 — OTF statistical validation diagnostic tooling and release-gate documentation.
-Real-dataset OOS confirmation, drift-review sign-off, and release approval remain open
-(see `docs/otf-filter-roadmap.md` Definition of done).
+**Status:** Diagnostic matrix tooling shipped; hardening PR 1–5 engineering
+sign-off recorded in `docs/OTF_RELEASE_EVIDENCE.md`. Real-dataset OOS
+statistical release remains **open** (protocol in `docs/research-methodology.md`;
+no in-repo user dataset).
 
 ### OTF default state
 
@@ -872,8 +873,8 @@ Release approval requires that all of the following are true:
 | OTF config / version / hash present in artifacts | ✅ `otf_config_hash`, `otf_algorithm_version` in all results |
 | Legacy setups load | ✅ Backward-compatible persistence; no schema bump required |
 | OOS validation tooling available and diagnostic | ✅ `run_otf_validation_matrix()` in `otf_validation.py` |
-| OOS validation complete on real user dataset | ⏳ Open — no real user dataset in repo |
-| Regression / drift-safety review sign-off | ⏳ Open — prior engine tests exist; formal PR 6 sign-off pending |
+| OOS validation complete on real user dataset | ⏳ Open — protocol in `docs/research-methodology.md`; no in-repo user dataset |
+| Regression / drift-safety engineering sign-off | ✅ `docs/OTF_RELEASE_EVIDENCE.md` (hardening PR 5) |
 | No unsupported OTF mode enabled | ✅ Only `alignment_mode: all`, `session_reset: session` in v1 |
 
 ---
@@ -883,6 +884,9 @@ Release approval requires that all of the following are true:
 | File | Purpose |
 |---|---|
 | `docs/otf-filter-roadmap.md` | Implementation tracker with progress log and PR sequence |
+| `docs/research-methodology.md` | User OTF OOS evaluation protocol |
+| `docs/OTF_RELEASE_EVIDENCE.md` | Engineering sign-off + OOS evidence log template |
+| `docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md` | Hardening PR 1–5 implementation roadmap |
 | `tests/fixtures/otf_fixtures.py` | Deterministic OHLCV fixtures and expected-state test vectors |
 | `tests/test_otf_contract.py` | Fixture-integrity and contract-consistency tests |
 | `tests/test_otf_baseline.py` | Regression baseline tests (OTF absent/disabled) |
