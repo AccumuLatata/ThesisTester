@@ -347,6 +347,8 @@ any UI or persistence integration.
 
 ### PR 2 — Data-page single-upload workflow
 
+**Status:** Implemented (`pages/1_Data.py` helpers + session contract)
+
 **Title:** `Data: add explicit 15-second primary upload mode`
 
 **Purpose:** Make the coherent one-file workflow usable in Streamlit while

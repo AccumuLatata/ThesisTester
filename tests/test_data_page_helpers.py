@@ -78,6 +78,9 @@ def _make_streamlit_stub(session_state: dict) -> types.ModuleType:
         "text_input",
         "columns",
         "divider",
+        "expander",
+        "download_button",
+        "write",
     ):
         setattr(st, name, _noop)
     st.cache_data = _cache_data  # type: ignore[assignment]
@@ -334,3 +337,141 @@ def test_failed_subtimeframe_upload_clears_stale_loaded_data(monkeypatch):
         "grid_results",
     ):
         assert key not in session_state
+
+
+def test_prepare_15s_primary_dataset_installs_atomic_parent_and_source(tmp_path, monkeypatch):
+    from thesistester.engine.intrabar import prepare_subtimeframe_context
+
+    data_page = _import_data_page_module({})
+    monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
+    vendor = (
+        pathlib.Path(__file__).resolve().parent
+        / "fixtures"
+        / "vendor"
+        / "quantower_history_exporter_15s.csv"
+    )
+
+    prepared = data_page._prepare_15s_primary_dataset(
+        vendor,
+        instrument="ES",
+        source_timezone="America/New_York",
+        exchange_timezone="America/New_York",
+        format_profile="quantower_history_exporter",
+    )
+
+    assert prepared.base_interval == "1min"
+    assert prepared.subtimeframe_interval == "15s"
+    assert len(prepared.parent_df) == 2
+    assert len(prepared.source_df) == 8
+    assert prepared.dropped_buckets.empty
+    assert prepared.provenance["ingestion_mode"] == data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    prepare_subtimeframe_context(
+        prepared.parent_df,
+        prepared.source_df,
+        tick_size=0.25,
+    )
+
+    session_state = sys.modules["streamlit"].session_state
+    session_state.clear()
+    data_page = _import_data_page_module(session_state)
+    monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
+    monkeypatch.setattr(data_page, "ensure_display_timezone", lambda *a, **k: None)
+    monkeypatch.setattr(data_page, "clear_active_dataset_id", lambda *a, **k: None)
+    monkeypatch.setattr(data_page, "set_active_dataset_id", lambda *a, **k: None)
+
+    data_page._install_15s_primary_dataset(
+        prepared,
+        instrument="ES",
+        source_timezone="America/New_York",
+        exchange_timezone="America/New_York",
+        resampled_data={},
+    )
+
+    assert session_state["base_interval"] == "1min"
+    assert session_state["subtimeframe_interval"] == "15s"
+    assert session_state["subtimeframe_format_profile"] == "quantower_history_exporter"
+    assert len(session_state["data"]) == 2
+    assert len(session_state["subtimeframe_data"]) == 8
+    assert session_state[data_page.INGESTION_PROVENANCE_KEY]["derivation_policy"]
+    assert data_page._is_15s_primary_session(session_state)
+
+
+def test_prepare_15s_primary_dataset_drops_partial_minutes(tmp_path):
+    data_page = _import_data_page_module({})
+    path = tmp_path / "partial_quantower_15s.csv"
+    path.write_text(
+        "Time left;Time right;Open;High;Low;Close;Volume;\n"
+        "2026-06-02 09:30:00.000;2026-06-02 09:30:14.999;100;101;99;100;2;\n"
+        "2026-06-02 09:30:15.000;2026-06-02 09:30:29.999;100;103;100;102;3;\n"
+        "2026-06-02 09:30:30.000;2026-06-02 09:30:44.999;102;104;101;103;2;\n"
+        # Missing 09:30:45 — incomplete first minute.
+        "2026-06-02 09:31:00.000;2026-06-02 09:31:14.999;102;103;101;102;3;\n"
+        "2026-06-02 09:31:15.000;2026-06-02 09:31:29.999;102;105;102;104;4;\n"
+        "2026-06-02 09:31:30.000;2026-06-02 09:31:44.999;104;106;103;105;2;\n"
+        "2026-06-02 09:31:45.000;2026-06-02 09:31:59.999;105;105;101;105;3;\n"
+        "2026-06-02 09:32:00.000;2026-06-02 09:32:14.999;105;106;104;105;1;\n"
+        "2026-06-02 09:32:15.000;2026-06-02 09:32:29.999;105;107;105;106;1;\n"
+        "2026-06-02 09:32:30.000;2026-06-02 09:32:44.999;106;108;105;107;1;\n"
+        "2026-06-02 09:32:45.000;2026-06-02 09:32:59.999;107;107;106;107;1;\n"
+    )
+
+    prepared = data_page._prepare_15s_primary_dataset(
+        path,
+        instrument="ES",
+        source_timezone="America/New_York",
+        exchange_timezone="America/New_York",
+        format_profile="quantower_history_exporter",
+    )
+
+    assert [ts.isoformat() for ts in prepared.parent_df["timestamp"]] == [
+        "2026-06-02T09:31:00-04:00",
+        "2026-06-02T09:32:00-04:00",
+    ]
+    assert list(prepared.dropped_buckets["reason"]) == ["incomplete_coverage"]
+    assert prepared.provenance["dropped_parent_bucket_count"] == 1
+    assert "09:30" not in ",".join(prepared.parent_df["timestamp"].astype(str))
+
+    with pytest.raises(ValueError, match="supports only these explicit"):
+        data_page._prepare_15s_primary_dataset(
+            path,
+            instrument="ES",
+            source_timezone="America/New_York",
+            exchange_timezone="America/New_York",
+            format_profile="canonical",
+        )
+
+
+def test_clear_dataset_dependent_state_clears_15s_primary_keys(monkeypatch):
+    session_state = {
+        "levels": "x",
+        "subtimeframe_data": "lower",
+        "subtimeframe_interval": "15s",
+        "subtimeframe_format_profile": "quantower_history_exporter",
+        "ingestion_provenance": {"ingestion_mode": "15s_primary_derive_1m"},
+        "derived_parent_diagnostics": "diag",
+        "trades": "stale",
+    }
+    data_page = _import_data_page_module(session_state)
+    monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
+
+    data_page._clear_dataset_dependent_state()
+
+    for key in (
+        "levels",
+        "subtimeframe_data",
+        "subtimeframe_interval",
+        "subtimeframe_format_profile",
+        "ingestion_provenance",
+        "derived_parent_diagnostics",
+        "trades",
+    ):
+        assert key not in session_state
+
+
+def test_data_page_exposes_15s_primary_mode_labels():
+    data_page = _import_data_page_module({})
+    page_text = pathlib.Path(data_page.__file__).read_text(encoding="utf-8")
+
+    assert "15-second primary — derive one-minute canonical" in page_text
+    assert "quantower_history_exporter" in data_page.DERIVE_15S_SUPPORTED_PROFILES
+    assert data_page.INGESTION_MODE_PRIMARY == "primary"
