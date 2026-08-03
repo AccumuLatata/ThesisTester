@@ -53,6 +53,18 @@ This engine is for **research screening**, not proof of a durable edge.
   `Time left`/OHLCV bars to canonical data. Parser success does not establish
   that separately exported 1m and 15s files reconcile; R12 remains the
   authority for that check.
+- Complete 15s→1m derivation (`thesistester.data.derive`) is an additive
+  foundation helper, not yet a Data-page/API ingestion mode. When used, it
+  treats the 15-second frame as source truth and emits a one-minute parent
+  only for minutes with exactly four aligned opens (`:00/:15/:30/:45`).
+  Incomplete or misaligned minutes are dropped rather than repaired.
+- Derived one-minute volume is the sum of retained 15-second volumes. That
+  volume, and therefore VWAP/profile levels computed from it, can differ from
+  a separately exported vendor one-minute file even when timestamps overlap.
+  Derived-1m and vendor-native-1m datasets are not interchangeable research
+  identities.
+- Derivation does not change R12 residual ambiguity: stop/target ties inside
+  one 15-second bar remain pessimistic SL-first under the existing contract.
 - Lower-upload duplicate timestamps remain fail-closed. The Data page can
   export a read-only duplicate report that distinguishes exact duplicate rows
   from conflicting same-timestamp bars; it never deduplicates automatically.

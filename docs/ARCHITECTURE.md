@@ -469,6 +469,22 @@ downstream engine surfaces still receive only canonical bars. Local persistence
 may retain a `raw.parquet` capture sidecar, but canonical data alone determines
 the dataset ID and research pipeline identity.
 
+## Complete 15s→1m derivation boundary (foundation)
+
+`thesistester.data.derive.derive_complete_parent_ohlcv()` is a Streamlit-free
+helper that derives one-minute OHLCV parents from an explicit 15-second source
+frame. It emits a parent minute only when exactly four exchange-local opens
+exist at `:00`, `:15`, `:30`, and `:45`. Incomplete or misaligned minutes are
+dropped into a read-only diagnostic frame; no interpolation or partial parents
+are produced. This is stricter than `resample_ohlcv(..., "1min")`, which may
+retain non-empty partial buckets for preview use.
+
+The helper does not change Data-page upload UX, local-store schema, API/CLI
+RunSpec fields, R12 resolvers, or engine defaults. Later PRs may wire the typed
+`DerivedParentResult` into an explicit 15-second-primary ingestion mode while
+keeping legacy one-minute upload paths unchanged. See
+`docs/15s_primary_derived_1m_implementation_plan.md`.
+
 ## End-to-end data flow
 
 ```mermaid

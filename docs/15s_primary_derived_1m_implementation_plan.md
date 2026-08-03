@@ -299,6 +299,8 @@ to implement and verify without mixing engine changes.
 
 ### PR 1 — Complete 15s→1m derivation foundation
 
+**Status:** Implemented (`thesistester/data/derive.py`, `tests/test_derive.py`)
+
 **Title:** `Data: derive complete one-minute parents from 15-second OHLCV`
 
 **Purpose:** Establish the tested, Streamlit-free source/parent contract before
