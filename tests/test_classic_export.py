@@ -73,6 +73,24 @@ def test_export_gaps_for_missing_required_sections(tmp_path: Path):
     assert format_classic_export_gaps(gaps)[0]["code"]
 
 
+def test_stored_data_identity_without_frame_is_missing_data(tmp_path: Path):
+    state = _classic_state_from_parity(tmp_path)
+    identity = DataIdentity.from_loaded_data(
+        state["data"],
+        instrument="ES",
+        base_interval="1min",
+        source_timezone="America/New_York",
+        exchange_timezone="America/New_York",
+    )
+    state["data_identity"] = identity.to_dict()
+    del state["data"]
+    gaps = classic_state_export_gaps(state)
+    codes = {gap.code for gap in gaps}
+    assert "missing_data" in codes
+    with pytest.raises(ValueError, match="missing_data"):
+        classic_state_to_run_spec(state, name="no-frame")
+
+
 def test_export_is_deterministic(tmp_path: Path):
     state = _classic_state_from_parity(tmp_path)
     first = classic_state_to_run_spec(state, name="classic_export")

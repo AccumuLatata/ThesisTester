@@ -86,13 +86,18 @@ def _as_mapping(value: Any) -> Mapping[str, Any] | None:
 
 
 def _data_identity_from_state(state: Mapping[str, Any]) -> DataIdentity | ClassicExportGap:
+    """Derive DataIdentity from classic page state.
+
+    CAI-4 requires the canonical in-memory ``data`` frame. A stored
+    ``data_identity`` mapping alone is not enough — without the frame, stale
+    fingerprint checks cannot run and export would skip the page-produced
+    dataset contract.
+    """
     existing = DataIdentity.from_dict(
         state.get("data_identity") if isinstance(state.get("data_identity"), Mapping) else None
     )
     data = state.get("data")
     if not isinstance(data, pd.DataFrame):
-        if existing is not None:
-            return existing
         return _gap("missing_data", "Classic state requires a canonical data DataFrame.", "data")
 
     instrument = state.get("instrument")
@@ -153,7 +158,14 @@ def _levels_section(state: Mapping[str, Any]) -> dict[str, Any] | ClassicExportG
         )
     fingerprint = _as_mapping(state.get("levels_data_fingerprint"))
     data = state.get("data")
-    if fingerprint is not None and isinstance(data, pd.DataFrame):
+    if fingerprint is not None:
+        if not isinstance(data, pd.DataFrame):
+            return _gap(
+                "missing_data",
+                "levels_data_fingerprint is present, but classic state has no "
+                "canonical data DataFrame to verify against.",
+                "data",
+            )
         expected_rows = fingerprint.get("rows")
         if expected_rows is not None and int(expected_rows) != len(data):
             return _gap(

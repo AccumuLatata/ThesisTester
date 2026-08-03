@@ -414,10 +414,11 @@ not a live Assistant execution input.
 - Add pure `classic_state_to_run_spec()` and
   `classic_state_export_gaps()` helpers.
 - Consume only canonical page-produced state:
-  `dataset_id`, data provenance, `levels_settings`, `setup_config`,
-  signal settings, and backtest execution policy.
+  `data` DataFrame, `dataset_id`, data provenance, `levels_settings`,
+  `setup_config`, signal settings, and backtest execution policy.
 - Reject incomplete, stale, or internally inconsistent state with explicit
-  gaps; never invent missing parameters.
+  gaps; never invent missing parameters. A stored `data_identity` without the
+  in-memory frame is a `missing_data` gap.
 - Map page state to the current public RunSpec schema and validate it through
   `validate_run_spec()`.
 - Include a stable source reference strategy:
