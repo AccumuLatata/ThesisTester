@@ -486,10 +486,15 @@ The Data page exposes an explicit opt-in ingestion mode,
 records `ingestion_provenance` / `derived_parent_diagnostics`, and runs
 `prepare_subtimeframe_context()` as a fail-closed postcondition before state
 commit. The separate lower-timeframe uploader is hidden while this mode is
-active. Legacy one-minute primary upload and optional dual-upload lower data
-remain unchanged. Local-store schema, API/CLI RunSpec fields, R12 resolvers,
-and engine defaults are unchanged in this PR; durable save/restore of the
-attached 15-second source is deferred. See
+active. Switching the ingestion-mode radio clears dataset-dependent state
+(including provenance, attached 15s source, diagnostics, and execution
+results). The one-minute primary upload path also drops an active 15s-primary
+session even when `compute_dataset_id` is unchanged, so the UI cannot stay
+latched in 15s-primary while the selector shows primary. Legacy one-minute
+primary upload and optional dual-upload lower data remain unchanged.
+Local-store schema, API/CLI RunSpec fields, R12 resolvers, and engine
+defaults are unchanged in this PR; durable save/restore of the attached
+15-second source is deferred. See
 `docs/15s_primary_derived_1m_implementation_plan.md`.
 
 ## End-to-end data flow

@@ -468,6 +468,74 @@ def test_clear_dataset_dependent_state_clears_15s_primary_keys(monkeypatch):
         assert key not in session_state
 
 
+def test_on_ingestion_mode_change_clears_15s_primary_session(monkeypatch):
+    session_state = {
+        "data_source_selector": "Upload CSV",
+        "data_format_profile_selector": "quantower_history_exporter",
+        "data_instrument_selector": "ES",
+        "data_ingestion_mode_selector": "primary",
+        "data": "keep-primary-frame",
+        "dataset_id": "same-id",
+        "levels": "x",
+        "subtimeframe_data": "lower",
+        "subtimeframe_interval": "15s",
+        "subtimeframe_format_profile": "quantower_history_exporter",
+        "ingestion_provenance": {"ingestion_mode": "15s_primary_derive_1m"},
+        "derived_parent_diagnostics": "diag",
+        "trades": "stale",
+    }
+    data_page = _import_data_page_module(session_state)
+    monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
+
+    data_page._on_ingestion_mode_change()
+
+    assert session_state["data"] == "keep-primary-frame"
+    assert session_state["dataset_id"] == "same-id"
+    assert not data_page._is_15s_primary_session(session_state)
+    for key in (
+        "levels",
+        "subtimeframe_data",
+        "subtimeframe_interval",
+        "subtimeframe_format_profile",
+        "ingestion_provenance",
+        "derived_parent_diagnostics",
+        "trades",
+    ):
+        assert key not in session_state
+    assert "data_source_timezone_selector" in session_state
+
+
+def test_leave_15s_primary_session_if_active_clears_when_latched(monkeypatch):
+    session_state = {
+        "data": "parent",
+        "dataset_id": "unchanged-id",
+        "subtimeframe_data": "lower",
+        "subtimeframe_interval": "15s",
+        "ingestion_provenance": {"ingestion_mode": "15s_primary_derive_1m"},
+        "derived_parent_diagnostics": "diag",
+        "trades": "stale",
+    }
+    data_page = _import_data_page_module(session_state)
+    monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
+
+    data_page._leave_15s_primary_session_if_active()
+
+    assert session_state["data"] == "parent"
+    assert session_state["dataset_id"] == "unchanged-id"
+    assert not data_page._is_15s_primary_session(session_state)
+    assert "ingestion_provenance" not in session_state
+    assert "subtimeframe_data" not in session_state
+    assert "derived_parent_diagnostics" not in session_state
+    assert "trades" not in session_state
+
+    # Idempotent when not in a 15s-primary session (legacy lower upload stays).
+    session_state["subtimeframe_data"] = "legacy-lower"
+    session_state["trades"] = "keep"
+    data_page._leave_15s_primary_session_if_active()
+    assert session_state["subtimeframe_data"] == "legacy-lower"
+    assert session_state["trades"] == "keep"
+
+
 def test_data_page_exposes_15s_primary_mode_labels():
     data_page = _import_data_page_module({})
     page_text = pathlib.Path(data_page.__file__).read_text(encoding="utf-8")
@@ -475,3 +543,5 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert "15-second primary — derive one-minute canonical" in page_text
     assert "quantower_history_exporter" in data_page.DERIVE_15S_SUPPORTED_PROFILES
     assert data_page.INGESTION_MODE_PRIMARY == "primary"
+    assert "on_change=_on_ingestion_mode_change" in page_text
+    assert "_leave_15s_primary_session_if_active()" in page_text

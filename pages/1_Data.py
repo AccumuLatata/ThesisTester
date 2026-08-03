@@ -158,6 +158,27 @@ def _is_15s_primary_session(session_state=None) -> bool:
     )
 
 
+def _leave_15s_primary_session_if_active() -> None:
+    """Drop 15s-primary artifacts when leaving that ingestion session.
+
+    ``_set_active_dataset_state`` only clears dependent keys when
+    ``compute_dataset_id`` changes. Primary uploads that keep the same
+    derived parent identity would otherwise leave ``ingestion_provenance``
+    and attached 15-second source latched, so ``_is_15s_primary_session()``
+    stays true while the selector shows one-minute primary.
+    """
+    if _is_15s_primary_session():
+        _clear_dataset_dependent_state()
+
+
+def _on_ingestion_mode_change() -> None:
+    """Reset import defaults and clear mode-bound dataset dependent state."""
+    _reset_source_timezone_for_import()
+    # Mode switches must not leave stale provenance, attached 15s source,
+    # diagnostics, or execution results (plan §4.2 / PR2 acceptance).
+    _clear_dataset_dependent_state()
+
+
 def _fatal_validation_messages(report: ValidationReport) -> list[str]:
     return [issue.message for issue in report.issues if issue.code in FATAL_OHLCV_CODES]
 
@@ -1117,7 +1138,7 @@ if source == "Upload CSV":
             "15-second primary derives complete one-minute bars from the upload and "
             "retains the 15-second bars for R12. One-minute primary keeps the legacy path."
         ),
-        on_change=_reset_source_timezone_for_import,
+        on_change=_on_ingestion_mode_change,
     )
 else:
     ingestion_mode = INGESTION_MODE_PRIMARY
@@ -1233,6 +1254,9 @@ if use_source_dataset:
                 resampled_data=resampled_data,
             )
         else:
+            # Leaving 15s-primary must drop provenance/subtimeframe even when
+            # the new primary shares the prior derived parent dataset_id.
+            _leave_15s_primary_session_if_active()
             raw_df, captured_raw = load_ohlcv(
                 file,
                 source_tz=source_tz,
