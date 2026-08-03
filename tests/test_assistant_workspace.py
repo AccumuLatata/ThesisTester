@@ -414,6 +414,8 @@ def test_confluence_and_timezone_catalogs_support_searchable_widgets():
         VWAP_WINDOW_OPTIONS,
         build_confluence_level_options,
         coerce_multiselect_defaults,
+        coerce_window_label,
+        merge_level_controls,
         option_index,
         options_with_current,
         options_with_currents,
@@ -471,10 +473,34 @@ def test_confluence_and_timezone_catalogs_support_searchable_widgets():
     assert coerce_multiselect_defaults(["2h", "30min"], vwap_options) == ["2h", "30min"]
     poc_options = options_with_currents(POC_WINDOW_OPTIONS, ["90min"])
     assert "90min" in poc_options
+    # Legacy numeric minute drafts must coerce to Levels labels, not "30".
+    assert coerce_window_label(30) == "30min"
+    assert coerce_window_label("30") == "30min"
+    assert coerce_window_label(60) == "1h"
+    assert coerce_window_label("30min") == "30min"
+    legacy = merge_level_controls(
+        {},
+        session_vwap_enabled=True,
+        opening_range_minutes=30,
+        sma_lengths_raw=[50],
+        sma_timeframes=["30min"],
+        ema_lengths_raw=[],
+        ema_timeframes=[],
+        vwap_windows_raw=[30, 60],
+        poc_windows_raw=["30"],
+    )
+    assert legacy["levels"]["vwap_windows"] == ["30min", "1h"]
+    assert legacy["levels"]["poc_windows"] == ["30min"]
+    legacy_confluence = build_confluence_level_options(
+        levels_settings={"vwap_windows": [30], "sma_lengths": [], "ema_lengths": []}
+    )
+    assert "VWAP_rolling_30min" in legacy_confluence
+    assert "VWAP_rolling_30" not in legacy_confluence
     page_path = pathlib.Path(__file__).parent.parent / "pages" / "14_Research_Assistant.py"
     source = page_path.read_text(encoding="utf-8")
     assert "options_with_current(" in source
     assert "options_with_currents(" in source
+    assert "coerce_window_label(" in source
     assert "vwap_window_options" in source
     assert "poc_window_options" in source
 

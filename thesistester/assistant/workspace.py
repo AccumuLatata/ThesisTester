@@ -603,12 +603,43 @@ def _normalize_int_selection(values: Any, *, allow_empty: bool) -> list[int]:
     raise ValueError("Integer selections must be a list or comma-separated string.")
 
 
+def coerce_window_label(value: Any) -> str | None:
+    """Normalize a VWAP/POC window to a Levels catalog label.
+
+    Legacy drafts may still store bare minute integers (from the old
+    ``parse_positive_int_list`` merge). Those become ``\"30min\"`` / ``\"1h\"``
+    so confluence names match computed columns (``VWAP_rolling_30min``).
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        minutes = int(value)
+        if minutes <= 0:
+            return None
+        if minutes % 60 == 0:
+            return f"{minutes // 60}h"
+        return f"{minutes}min"
+    text = str(value).strip().lower().replace(" ", "")
+    if not text:
+        return None
+    if text.isdigit():
+        return coerce_window_label(int(text))
+    return text
+
+
 def _normalize_window_selection(values: Any) -> list[str]:
     if isinstance(values, str):
-        return [item.strip() for item in values.split(",") if item.strip()]
-    if isinstance(values, Iterable) and not isinstance(values, (bytes, bytearray)):
-        return [str(item).strip() for item in values if str(item).strip()]
-    raise ValueError("Window selections must be a list or comma-separated string.")
+        raw_items: list[Any] = [item for item in values.split(",") if item.strip()]
+    elif isinstance(values, Iterable) and not isinstance(values, (bytes, bytearray)):
+        raw_items = list(values)
+    else:
+        raise ValueError("Window selections must be a list or comma-separated string.")
+    labels: list[str] = []
+    for item in raw_items:
+        label = coerce_window_label(item)
+        if label and label not in labels:
+            labels.append(label)
+    return labels
 
 
 def merge_level_controls(
@@ -901,11 +932,11 @@ def build_confluence_level_options(
         for timeframe in ema_timeframes:
             _add((f"EMA_{int(length)}_{timeframe}",))
     for window in _levels_setting_sequence(settings, "vwap_windows", default=VWAP_WINDOW_OPTIONS):
-        label = str(window).strip().lower().replace(" ", "")
+        label = coerce_window_label(window)
         if label:
             _add((f"VWAP_rolling_{label}",))
     for window in _levels_setting_sequence(settings, "poc_windows", default=POC_WINDOW_OPTIONS):
-        label = str(window).strip().lower().replace(" ", "")
+        label = coerce_window_label(window)
         if label:
             _add((f"POC_rolling_{label}",))
     _add(available_columns)

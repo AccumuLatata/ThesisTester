@@ -63,6 +63,7 @@ from thesistester.assistant.workspace import (
     merge_setup_controls,
     merge_validation_controls,
     merge_walk_forward_controls,
+    coerce_window_label,
     option_index,
     options_with_current,
     options_with_currents,
@@ -559,7 +560,11 @@ with st.expander("Structured level controls"):
             default=coerce_multiselect_defaults(draft_ema_timeframes, ema_timeframe_options),
         )
         draft_vwap_windows = [
-            str(value).strip() for value in (levels.get("vwap_windows") or []) if str(value).strip()
+            label
+            for label in (
+                coerce_window_label(value) for value in (levels.get("vwap_windows") or [])
+            )
+            if label
         ]
         vwap_window_options = options_with_currents(VWAP_WINDOW_OPTIONS, draft_vwap_windows)
         vwap_windows = st.multiselect(
@@ -569,7 +574,9 @@ with st.expander("Structured level controls"):
             help="Same searchable window catalog as the Levels page; draft values outside the catalog stay selectable.",
         )
         draft_poc_windows = [
-            str(value).strip() for value in (levels.get("poc_windows") or []) if str(value).strip()
+            label
+            for label in (coerce_window_label(value) for value in (levels.get("poc_windows") or []))
+            if label
         ]
         poc_window_options = options_with_currents(POC_WINDOW_OPTIONS, draft_poc_windows)
         poc_windows = st.multiselect(
