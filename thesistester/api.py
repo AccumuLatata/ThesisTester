@@ -2163,7 +2163,9 @@ def _load_experiment_data(
             data_stage = {
                 "status": "miss",
                 "policy": policy,
-                "reason": artifact.reason if isinstance(artifact, ArtifactMiss) else "artifact_miss",
+                "reason": artifact.reason
+                if isinstance(artifact, ArtifactMiss)
+                else "artifact_miss",
                 "binding_key": binding.binding_key,
             }
             invalidate_source_data_binding(
@@ -2306,7 +2308,9 @@ def run_experiment(
         "session_levels": level_result["session_levels"],
         "levels_settings": level_result["levels_settings"],
     }
-    levels_identity = LevelsIdentity.from_normalized(data_identity, level_payload["levels_settings"])
+    levels_identity = LevelsIdentity.from_normalized(
+        data_identity, level_payload["levels_settings"]
+    )
     experiment_identity = ExperimentIdentity.from_run_spec(levels_identity, run)
     cache_provenance = {
         "policy": policy,

@@ -65,16 +65,16 @@ def test_cold_and_warm_read_write_match_bundle_and_frames(tmp_path: Path):
     )
     pd.testing.assert_frame_equal(cold["data"], warm["data"], check_dtype=False)
     pd.testing.assert_frame_equal(cold["levels"], warm["levels"], check_dtype=False)
-    pd.testing.assert_frame_equal(
-        cold["session_levels"], warm["session_levels"], check_dtype=False
-    )
+    pd.testing.assert_frame_equal(cold["session_levels"], warm["session_levels"], check_dtype=False)
     pd.testing.assert_frame_equal(cold["signals"], warm["signals"], check_dtype=False)
     pd.testing.assert_frame_equal(cold["trades"], warm["trades"], check_dtype=False)
     assert cold["trade_summary"] == warm["trade_summary"]
     assert cold.get("validation_summary") == warm.get("validation_summary")
 
 
-def test_warm_path_skips_csv_when_source_deleted_after_bind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_warm_path_skips_csv_when_source_deleted_after_bind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     """Warm data hits must not require re-parsing the source CSV."""
     store = tmp_path / "store"
     cold = _run(tmp_path, cache_policy="read_write", store_root=store)
@@ -126,9 +126,10 @@ def test_changed_levels_settings_cold_recomputes_levels(tmp_path: Path):
     assert second["cache_provenance"]["data"]["status"] == "hit"
     assert second["cache_provenance"]["levels"]["status"] == "written"
     assert second["cache_provenance"]["outcome"] == "data_hit"
-    assert first["levels_identity"]["levels_settings_hash"] != second["levels_identity"][
-        "levels_settings_hash"
-    ]
+    assert (
+        first["levels_identity"]["levels_settings_hash"]
+        != second["levels_identity"]["levels_settings_hash"]
+    )
 
 
 def test_stale_source_content_misses_data_cache(tmp_path: Path):
@@ -148,9 +149,9 @@ def test_stale_source_content_misses_data_cache(tmp_path: Path):
     )
     assert second["cache_provenance"]["data"]["status"] == "written"
     assert second["cache_provenance"]["outcome"] == "cold"
-    assert first["data_identity"]["data_content_hash"] != second["data_identity"][
-        "data_content_hash"
-    ]
+    assert (
+        first["data_identity"]["data_content_hash"] != second["data_identity"]["data_content_hash"]
+    )
 
 
 def test_off_and_read_write_bundle_hashes_match(tmp_path: Path):
