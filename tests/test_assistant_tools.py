@@ -111,7 +111,11 @@ def test_run_experiment_uses_public_facade_and_returns_compact_summary(tmp_path,
     monkeypatch.setattr("thesistester.assistant.tools.validate_run_spec", lambda value: None)
     monkeypatch.setattr(
         "thesistester.assistant.tools._run_experiment",
-        lambda value, base_directory: {"instrument": "ES", "trade_summary": {"trade_count": 2}},
+        lambda value, base_directory, **kwargs: {
+            "instrument": "ES",
+            "trade_summary": {"trade_count": 2},
+            "execution_origin": kwargs.get("execution_origin", "assistant"),
+        },
     )
     monkeypatch.setattr(
         "thesistester.assistant.tools.build_research_artifact",
@@ -129,6 +133,7 @@ def test_run_experiment_uses_public_facade_and_returns_compact_summary(tmp_path,
 
     assert result["summary"]["instrument"] == "ES"
     assert result["summary"]["results"]["trade_summary"]["trade_count"] == 2
+    assert result["execution_origin"] == "assistant"
 
 
 def test_bundle_execution_records_canonical_provenance(tmp_path, monkeypatch):
@@ -138,7 +143,10 @@ def test_bundle_execution_records_canonical_provenance(tmp_path, monkeypatch):
     spec = _spec(root / "bars.csv")
     monkeypatch.setattr("thesistester.assistant.tools.validate_run_spec", lambda value: None)
     monkeypatch.setattr(
-        "thesistester.assistant.tools._run_experiment", lambda value, base_directory: {}
+        "thesistester.assistant.tools._run_experiment",
+        lambda value, base_directory, **kwargs: {
+            "execution_origin": kwargs.get("execution_origin", "assistant"),
+        },
     )
     monkeypatch.setattr(
         "thesistester.assistant.tools.build_research_bundle", lambda state: b"bundle"
@@ -153,6 +161,7 @@ def test_bundle_execution_records_canonical_provenance(tmp_path, monkeypatch):
 
     assert (root / "run.research.zip").read_bytes() == b"bundle"
     assert result["canonical_bundle_hash"] == "hash"
+    assert result["execution_origin"] == "assistant"
 
 
 def test_analyze_bundle_portfolio_verifies_expected_hashes(tmp_path, monkeypatch):

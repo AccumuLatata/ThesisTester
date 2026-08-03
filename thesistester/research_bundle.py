@@ -13,10 +13,17 @@ import pandas as pd
 
 from thesistester import __version__
 from thesistester.persistence.local_store import _hash_dataframe
+from thesistester.research_identity import (
+    DataIdentity,
+    LevelsIdentity,
+    build_identity_metadata,
+    identity_meta_filename,
+)
 
 BUNDLE_SCHEMA_VERSION = 1
 BUNDLE_KIND = "thesistester_research_bundle"
 MANIFEST_FILENAME = "manifest.json"
+IDENTITY_META_FILENAME = identity_meta_filename()
 
 _DATASET_META_KEYS = (
     "dataset_id",
@@ -24,6 +31,8 @@ _DATASET_META_KEYS = (
     "base_interval",
     "source_timezone",
     "exchange_timezone",
+    # Additive parser provenance; restored so exporters match imported identity.
+    "format_profile",
 )
 _LEVELS_META_KEYS = ("levels_settings", "levels_data_fingerprint")
 _SIGNALS_META_KEYS = (
@@ -64,6 +73,7 @@ _MANAGED_RESEARCH_KEYS = {
     "base_interval",
     "source_timezone",
     "exchange_timezone",
+    "format_profile",
     "levels",
     "session_levels",
     "levels_settings",
@@ -120,6 +130,13 @@ _MANAGED_RESEARCH_KEYS = {
     "portfolio_correlation",
     "portfolio_drawdown_correlation",
     "portfolio_marginal_contribution",
+    # CAI-1 additive identity fields (optional; absent on pre-CAI-1 bundles).
+    "data_identity",
+    "levels_identity",
+    # Run-state/provenance only — cleared on import; not restored from
+    # research_identity.json until path-canonical RunSpec hashing lands.
+    "experiment_identity",
+    "execution_origin",
 }
 
 _KNOWN_FILES = {
@@ -131,6 +148,7 @@ _KNOWN_FILES = {
     "levels.parquet",
     "session_levels.parquet",
     "levels_meta.json",
+    IDENTITY_META_FILENAME,
     "signals.parquet",
     "confluence_zones.parquet",
     "naked_flags.parquet",
@@ -318,11 +336,16 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
     data = session_state.get("data")
     if _is_dataframe(data):
         files["dataset.parquet"] = _to_parquet_bytes(data)
-        files["dataset_meta.json"] = _to_json_bytes(
-            {key: session_state.get(key) for key in _DATASET_META_KEYS}
-        )
+        # format_profile is additive: omit when absent so pre-CAI-1 / golden
+        # dataset_meta projections (and their canonical hashes) stay unchanged.
+        dataset_meta = {
+            key: session_state.get(key)
+            for key in _DATASET_META_KEYS
+            if key != "format_profile" or session_state.get("format_profile") is not None
+        }
+        files["dataset_meta.json"] = _to_json_bytes(dataset_meta)
         manifest["included"]["dataset"] = True
-        included_keys.update({"data", *_DATASET_META_KEYS})
+        included_keys.update({"data", *dataset_meta.keys()})
         subtimeframe_data = session_state.get("subtimeframe_data")
         if _is_dataframe(subtimeframe_data):
             files["subtimeframe_data.parquet"] = _to_parquet_bytes(subtimeframe_data)
@@ -480,6 +503,13 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
         manifest["included"]["portfolio"] = True
         included_keys.update(_PORTFOLIO_META_KEYS)
 
+    identity_payload = _identity_payload_from_state(session_state)
+    if identity_payload is not None:
+        files[IDENTITY_META_FILENAME] = _to_json_bytes(identity_payload)
+        for key in ("data_identity", "levels_identity"):
+            if key in identity_payload:
+                included_keys.add(key)
+
     manifest["session_keys"] = sorted(included_keys)
     files[MANIFEST_FILENAME] = _to_json_bytes(manifest)
 
@@ -488,6 +518,36 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
         for name in sorted(files):
             zf.writestr(name, files[name])
     return output.getvalue()
+
+
+def _identity_payload_from_state(session_state: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Build optional CAI-1 identity metadata; omit when no identity fields exist.
+
+    ``experiment_identity`` stays on run state/provenance only for CAI-1: its
+    RunSpec hash currently includes dataset path strings, which differ between
+    relative API/CLI specs and absolute Assistant specs. Bundling it would break
+    canonical-hash parity. Data/levels identities remain path-independent.
+    """
+    data_identity = DataIdentity.from_dict(
+        session_state.get("data_identity")
+        if isinstance(session_state.get("data_identity"), Mapping)
+        else None
+    )
+    levels_identity = LevelsIdentity.from_dict(
+        session_state.get("levels_identity")
+        if isinstance(session_state.get("levels_identity"), Mapping)
+        else None
+    )
+    # levels_identity embeds data_identity; promote it so research_identity.json
+    # always restores a top-level data_identity when levels identity is present.
+    if data_identity is None and levels_identity is not None:
+        data_identity = levels_identity.data_identity
+    if data_identity is None and levels_identity is None:
+        return None
+    return build_identity_metadata(
+        data_identity=data_identity,
+        levels_identity=levels_identity,
+    )
 
 
 def _read_uploaded_bytes(uploaded_file: Any) -> bytes:
@@ -561,6 +621,20 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
 
         session_values: dict[str, Any] = {}
 
+        if IDENTITY_META_FILENAME in names:
+            identity_meta = _read_json_from_zip(zf, IDENTITY_META_FILENAME)
+            for key in ("data_identity", "levels_identity"):
+                if key in identity_meta:
+                    session_values[key] = identity_meta[key]
+            # Older/odd identity members may nest data_identity only under
+            # levels_identity; promote so session restore stays complete.
+            if "data_identity" not in session_values:
+                levels_identity = session_values.get("levels_identity")
+                if isinstance(levels_identity, Mapping):
+                    nested = levels_identity.get("data_identity")
+                    if isinstance(nested, Mapping):
+                        session_values["data_identity"] = nested
+
         if included.get("dataset"):
             session_values["data"] = _read_parquet_from_zip(zf, "dataset.parquet")
             dataset_meta = _read_json_from_zip(zf, "dataset_meta.json")
@@ -584,6 +658,13 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
                     session_values["subtimeframe_duplicate_resolution"] = subtimeframe_meta[
                         "subtimeframe_duplicate_resolution"
                     ]
+
+        # Older CAI-1 bundles may omit format_profile from dataset_meta while
+        # still carrying it on data_identity (top-level or nested-promoted).
+        if "format_profile" not in session_values:
+            data_identity = session_values.get("data_identity")
+            if isinstance(data_identity, Mapping) and data_identity.get("format_profile"):
+                session_values["format_profile"] = str(data_identity["format_profile"])
 
         if included.get("levels"):
             session_values["levels"] = _read_parquet_from_zip(zf, "levels.parquet")

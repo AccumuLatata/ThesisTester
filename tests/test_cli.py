@@ -21,6 +21,7 @@ from thesistester.cli import load_experiment_file, run_batch
 from thesistester.data.loader import format_interval, validate_ohlcv
 from thesistester.persistence.local_store import compute_dataset_id
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
+from thesistester.research_identity import DataIdentity, LevelsIdentity
 
 
 def _write_dataset(path) -> None:
@@ -108,14 +109,27 @@ def _manual_ui_equivalent_state(run: dict, base_directory) -> dict:
     )
     report = validate_ohlcv(data)
     base_interval = format_interval(report.inferred_interval)
-    dataset_id = compute_dataset_id(
+    source_timezone = dataset["source_timezone"]
+    exchange_timezone = "America/New_York"
+    format_profile = str(dataset.get("format_profile", "canonical"))
+    data_identity = DataIdentity.from_loaded_data(
         data,
         instrument=instrument,
         base_interval=base_interval,
-        source_timezone=dataset["source_timezone"],
-        exchange_timezone="America/New_York",
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
+        format_profile=format_profile,
+    )
+    dataset_id = data_identity.dataset_id()
+    assert dataset_id == compute_dataset_id(
+        data,
+        instrument=instrument,
+        base_interval=base_interval,
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
     )
     level_result = compute_levels(data, instrument=instrument, config=run["levels"])
+    levels_identity = LevelsIdentity.from_normalized(data_identity, level_result["levels_settings"])
     setup = build_setup(run["setup"])
     signal_result = generate_signals(level_result["levels"], setup, instrument=instrument)
     backtest = run_backtest(
@@ -147,8 +161,9 @@ def _manual_ui_equivalent_state(run: dict, base_directory) -> dict:
         "dataset_id": dataset_id,
         "instrument": instrument,
         "base_interval": base_interval,
-        "source_timezone": dataset["source_timezone"],
-        "exchange_timezone": "America/New_York",
+        "source_timezone": source_timezone,
+        "exchange_timezone": exchange_timezone,
+        "format_profile": format_profile,
         **level_result,
         "levels_data_fingerprint": {
             "instrument": instrument,
@@ -157,9 +172,11 @@ def _manual_ui_equivalent_state(run: dict, base_directory) -> dict:
             "timestamp_max": str(data["timestamp"].max()),
             "columns": sorted(data.columns),
             "base_interval": base_interval,
-            "source_timezone": dataset["source_timezone"],
-            "exchange_timezone": "America/New_York",
+            "source_timezone": source_timezone,
+            "exchange_timezone": exchange_timezone,
         },
+        "data_identity": data_identity.to_dict(),
+        "levels_identity": levels_identity.to_dict(),
         "setup_config": setup,
         **signal_result,
         "last_signal_setup": setup,
