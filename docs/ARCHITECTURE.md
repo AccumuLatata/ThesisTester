@@ -130,7 +130,8 @@ It reads only page-produced mappings/frames (`data`, provenance,
 `levels_settings`, `setup_config` / `last_signal_setup`, backtest policy
 snapshots or `backtest_config`). A stored `data_identity` alone is not enough —
 the canonical in-memory `data` frame is required so fingerprint/stale checks
-can run. When assembling backtest without `backtest_config`, live Backtest
+can run. Non-integer `levels_data_fingerprint.rows` yields a `stale_levels`
+gap instead of crashing. When assembling backtest without `backtest_config`, live Backtest
 widget keys win over post-run policy snapshots. Disabled session-flat clears
 timezone/cutoff for both assembled and explicit `backtest_config` paths,
 matching the Backtest page. Unpaired or invalid exit-management trailing/BE

@@ -173,6 +173,22 @@ def test_stale_levels_fingerprint_is_gap(tmp_path: Path):
     assert any(gap.code == "stale_levels" for gap in gaps)
 
 
+def test_invalid_levels_fingerprint_rows_is_gap(tmp_path: Path):
+    state = _classic_state_from_parity(tmp_path)
+    state["levels_data_fingerprint"] = {
+        **state["levels_data_fingerprint"],
+        "rows": "not-an-int",
+    }
+    gaps = classic_state_export_gaps(state)
+    assert any(
+        gap.code == "stale_levels"
+        and "rows is not a valid integer" in gap.message
+        for gap in gaps
+    )
+    with pytest.raises(ValueError, match="stale_levels"):
+        classic_state_to_run_spec(state, name="bad-fingerprint-rows")
+
+
 def test_exported_spec_matches_hand_authored_bundle_hash(tmp_path: Path):
     store = tmp_path / "store"
     state = _classic_state_from_parity(tmp_path)

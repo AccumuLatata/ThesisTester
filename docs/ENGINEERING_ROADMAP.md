@@ -170,7 +170,8 @@ draft. Does not execute research or invent missing parameters.
 ### Regression safety
 
 - Streamlit-free; no page wiring or thesis recording yet (CAI-5/CAI-6).
-- Missing/stale/mismatched state yields explicit gaps; no default injection.
+- Missing/stale/mismatched state yields explicit gaps; no default injection
+  (including non-integer `levels_data_fingerprint.rows` → `stale_levels`).
 - Exported vs equivalent hand-authored RunSpec: equal canonical bundle hashes.
 
 ### Tests

@@ -434,7 +434,9 @@ not a live Assistant execution input.
   — same optional-section flags as `classic_state_to_run_spec` so gap discovery
   and export agree
   returns structured gaps (`missing_*`, `stale_levels`,
-  `source_path_identity_mismatch`, etc.).
+  `source_path_identity_mismatch`, etc.). Non-integer
+  `levels_data_fingerprint.rows` is a `stale_levels` gap (not an uncaught
+  `ValueError`).
 - `classic_state_to_run_spec(...)` raises when gaps remain; otherwise returns a
   `validate_run_spec`-validated RunSpec.
 - Source resolution: verified data artifact (`dataset.data_artifact_key`) is

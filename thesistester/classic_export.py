@@ -168,12 +168,21 @@ def _levels_section(state: Mapping[str, Any]) -> dict[str, Any] | ClassicExportG
                 "data",
             )
         expected_rows = fingerprint.get("rows")
-        if expected_rows is not None and int(expected_rows) != len(data):
-            return _gap(
-                "stale_levels",
-                "levels_data_fingerprint does not match the current data frame.",
-                "levels_data_fingerprint",
-            )
+        if expected_rows is not None:
+            try:
+                expected_rows_int = int(expected_rows)
+            except (TypeError, ValueError):
+                return _gap(
+                    "stale_levels",
+                    "levels_data_fingerprint.rows is not a valid integer.",
+                    "levels_data_fingerprint",
+                )
+            if expected_rows_int != len(data):
+                return _gap(
+                    "stale_levels",
+                    "levels_data_fingerprint does not match the current data frame.",
+                    "levels_data_fingerprint",
+                )
         for key in ("instrument", "base_interval", "source_timezone", "exchange_timezone"):
             if key not in fingerprint or state.get(key) is None:
                 continue
