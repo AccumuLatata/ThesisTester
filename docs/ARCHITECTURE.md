@@ -95,6 +95,9 @@ Assistant structured controls use searchable Streamlit `selectbox` /
 `multiselect` catalogs (shared `TIMEZONE_OPTIONS`, confluence level catalog via
 `build_confluence_level_options()`, VWAP/POC windows, opening-range sizes)
 rather than free-text comma lists, matching Setup Builder / Data / Levels UX.
+Draft values outside a fixed catalog are appended via `options_with_current()`
+so Apply cannot silently remap unknown timezones or opening-range minutes.
+Explicit empty VWAP/POC/indicator lists do not expand back into full catalogs.
 `assistant_draft_choices` contains only supported structured RunSpec sections;
 narrative LLM hints stay in conversation history and never become execution
 candidates. Clarification checks trust only structured sections

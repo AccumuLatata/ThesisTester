@@ -414,6 +414,7 @@ def test_confluence_and_timezone_catalogs_support_searchable_widgets():
         build_confluence_level_options,
         coerce_multiselect_defaults,
         option_index,
+        options_with_current,
     )
 
     assert "America/New_York" in TIMEZONE_OPTIONS
@@ -435,6 +436,36 @@ def test_confluence_and_timezone_catalogs_support_searchable_widgets():
     assert coerce_multiselect_defaults(["dVWAP_RTH", "missing"], options) == ["dVWAP_RTH"]
     assert option_index((5, 15, 30), 30) == 2
     assert option_index((5, 15, 30), "15") == 1
+    # Explicit empty windows/lengths must not expand into the full catalogs.
+    # (Static SUGGESTED_DEFAULT_LEVELS may still include VWAP_rolling_1h.)
+    cleared = build_confluence_level_options(
+        selected_levels=["dVWAP_RTH"],
+        levels_settings={
+            "sma_lengths": [],
+            "ema_lengths": [],
+            "vwap_windows": [],
+            "poc_windows": [],
+        },
+    )
+    assert "dVWAP_RTH" in cleared
+    assert "VWAP_rolling_15min" not in cleared
+    assert "VWAP_rolling_30min" not in cleared
+    assert "VWAP_rolling_4h" not in cleared
+    assert "POC_rolling_30min" not in cleared
+    assert not any(name.startswith("SMA_") for name in cleared)
+    assert not any(name.startswith("EMA_") for name in cleared)
+    # Draft values outside fixed catalogs must remain selectable.
+    tz_options = options_with_current(TIMEZONE_OPTIONS, "America/Los_Angeles")
+    assert "America/Los_Angeles" in tz_options
+    assert option_index(tz_options, "America/Los_Angeles") == tz_options.index(
+        "America/Los_Angeles"
+    )
+    or_options = options_with_current((5, 15, 30), 20)
+    assert 20 in or_options
+    assert option_index(or_options, 20) == or_options.index(20)
+    page_path = pathlib.Path(__file__).parent.parent / "pages" / "14_Research_Assistant.py"
+    source = page_path.read_text(encoding="utf-8")
+    assert "options_with_current(" in source
 
 
 def test_latest_unresolved_assumptions_only_from_newest_spec():

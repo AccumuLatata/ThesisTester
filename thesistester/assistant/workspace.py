@@ -777,6 +777,27 @@ def option_index(
     return default
 
 
+def options_with_current(catalog: Sequence[Any], current: Any) -> list[Any]:
+    """Return catalog options, appending ``current`` when it is outside the catalog.
+
+    Prevents fixed selectboxes from silently remapping unknown draft values to
+    the catalog default via ``option_index``.
+    """
+    options = list(catalog)
+    if current is None:
+        return options
+    if current in options:
+        return options
+    text = str(current).strip() if isinstance(current, str) else current
+    if text == "" or text is None:
+        return options
+    text_options = [str(item) for item in options]
+    if str(text) in text_options:
+        return options
+    options.append(text if isinstance(current, str) else current)
+    return options
+
+
 def coerce_multiselect_defaults(
     selected: Iterable[Any] | None,
     options: Sequence[Any],
@@ -790,6 +811,27 @@ def coerce_multiselect_defaults(
     return values
 
 
+def _levels_setting_sequence(
+    settings: Mapping[str, Any],
+    key: str,
+    *,
+    default: Sequence[Any],
+) -> list[Any]:
+    """Return a levels-settings sequence.
+
+    Missing / ``None`` uses ``default``. An explicit empty list/tuple is preserved
+    so cleared windows/lengths do not expand back into the full catalog.
+    """
+    if key not in settings:
+        return list(default)
+    raw = settings.get(key)
+    if raw is None:
+        return list(default)
+    if isinstance(raw, (list, tuple)):
+        return list(raw)
+    return list(default)
+
+
 def build_confluence_level_options(
     *,
     selected_levels: Iterable[Any] | None = None,
@@ -800,7 +842,9 @@ def build_confluence_level_options(
 
     Prefers live Levels-page columns when available, then static session/profile
     names, then indicator names implied by the staged levels settings, and
-    always retains any already-selected draft levels.
+    always retains any already-selected draft levels. Explicit empty
+    ``vwap_windows`` / ``poc_windows`` / indicator-length lists stay empty —
+    they do not fall back to the full default catalogs.
     """
     options: list[str] = []
 
@@ -815,19 +859,27 @@ def build_confluence_level_options(
     settings = levels_settings if isinstance(levels_settings, Mapping) else {}
     sma_lengths = [
         value
-        for value in (settings.get("sma_lengths") or INDICATOR_LENGTH_OPTIONS)
+        for value in _levels_setting_sequence(
+            settings, "sma_lengths", default=INDICATOR_LENGTH_OPTIONS
+        )
         if safe_int(value, 0) > 0
-    ] or list(INDICATOR_LENGTH_OPTIONS)
+    ]
     ema_lengths = [
         value
-        for value in (settings.get("ema_lengths") or INDICATOR_LENGTH_OPTIONS)
+        for value in _levels_setting_sequence(
+            settings, "ema_lengths", default=INDICATOR_LENGTH_OPTIONS
+        )
         if safe_int(value, 0) > 0
     ]
     sma_timeframes = [
-        str(value) for value in (settings.get("sma_timeframes") or ("30min",)) if str(value).strip()
-    ] or ["30min"]
+        str(value).strip()
+        for value in _levels_setting_sequence(settings, "sma_timeframes", default=("30min",))
+        if str(value).strip()
+    ]
     ema_timeframes = [
-        str(value) for value in (settings.get("ema_timeframes") or ()) if str(value).strip()
+        str(value).strip()
+        for value in _levels_setting_sequence(settings, "ema_timeframes", default=())
+        if str(value).strip()
     ]
     for length in sma_lengths:
         for timeframe in sma_timeframes:
@@ -835,11 +887,11 @@ def build_confluence_level_options(
     for length in ema_lengths:
         for timeframe in ema_timeframes:
             _add((f"EMA_{int(length)}_{timeframe}",))
-    for window in settings.get("vwap_windows") or VWAP_WINDOW_OPTIONS:
+    for window in _levels_setting_sequence(settings, "vwap_windows", default=VWAP_WINDOW_OPTIONS):
         label = str(window).strip().lower().replace(" ", "")
         if label:
             _add((f"VWAP_rolling_{label}",))
-    for window in settings.get("poc_windows") or POC_WINDOW_OPTIONS:
+    for window in _levels_setting_sequence(settings, "poc_windows", default=POC_WINDOW_OPTIONS):
         label = str(window).strip().lower().replace(" ", "")
         if label:
             _add((f"POC_rolling_{label}",))

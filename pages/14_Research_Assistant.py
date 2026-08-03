@@ -64,6 +64,7 @@ from thesistester.assistant.workspace import (
     merge_validation_controls,
     merge_walk_forward_controls,
     option_index,
+    options_with_current,
     parse_json_choices,
     safe_float,
     safe_int,
@@ -263,12 +264,16 @@ with st.expander("Structured execution controls", expanded=True):
                 (setup or {}).get("instrument") or dataset.get("instrument") or "ES",
             ),
         )
+        draft_source_timezone = str(dataset.get("source_timezone") or "America/New_York").strip()
+        source_timezone_options = options_with_current(
+            TIMEZONE_OPTIONS, draft_source_timezone or None
+        )
         source_timezone = st.selectbox(
             "Source timezone",
-            list(TIMEZONE_OPTIONS),
+            source_timezone_options,
             index=option_index(
-                TIMEZONE_OPTIONS,
-                dataset.get("source_timezone") or "America/New_York",
+                source_timezone_options,
+                draft_source_timezone or "America/New_York",
             ),
             help="Same searchable timezone catalog as the Data page.",
         )
@@ -317,12 +322,16 @@ with st.expander("Structured execution controls", expanded=True):
             "Session close time (exchange time)",
             value=str(backtest.get("session_close_time") or "16:00"),
         )
+        draft_session_timezone = str(backtest.get("session_timezone") or "America/New_York").strip()
+        session_timezone_options = options_with_current(
+            TIMEZONE_OPTIONS, draft_session_timezone or None
+        )
         session_timezone = st.selectbox(
             "Session timezone",
-            list(TIMEZONE_OPTIONS),
+            session_timezone_options,
             index=option_index(
-                TIMEZONE_OPTIONS,
-                backtest.get("session_timezone") or "America/New_York",
+                session_timezone_options,
+                draft_session_timezone or "America/New_York",
             ),
             help="Same searchable timezone catalog as Backtest / Grid Search.",
         )
@@ -492,14 +501,16 @@ with st.expander("Structured level controls"):
             "Enable developing RTH VWAP",
             value=bool(levels.get("session_vwap_enabled", True)),
         )
+        draft_opening_range = safe_int(levels.get("opening_range_minutes"), 30)
+        opening_range_options = options_with_current(
+            OPENING_RANGE_MINUTES_OPTIONS,
+            draft_opening_range if draft_opening_range > 0 else None,
+        )
         opening_range_minutes = st.selectbox(
             "Opening range minutes",
-            list(OPENING_RANGE_MINUTES_OPTIONS),
-            index=option_index(
-                OPENING_RANGE_MINUTES_OPTIONS,
-                safe_int(levels.get("opening_range_minutes"), 30),
-            ),
-            help="Matches Levels-page supported opening-range sizes (5 / 15 / 30).",
+            opening_range_options,
+            index=option_index(opening_range_options, draft_opening_range),
+            help="Common Levels sizes are 5 / 15 / 30; draft values outside that set stay selectable.",
         )
         length_options = list(INDICATOR_LENGTH_OPTIONS)
         for value in list(levels.get("sma_lengths") or []) + list(levels.get("ema_lengths") or []):
