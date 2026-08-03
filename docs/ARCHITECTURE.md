@@ -164,7 +164,9 @@ Bundles only.
 `link_thesis` syncs `assistant_selected_thesis_id` via `select_thesis` and does
 **not** record a run or mutate executable classic producer keys. Create/link UI
 lives on Setup Builder; other classic pages show breadcrumb + exit/relink only.
-Thesis prose remains Assistant-owned; executable settings remain page-owned.
+Exit and dataset-switch clears also reset `_classic_relink_open_*` UI flags so
+the relink form does not reopen after re-entry. Thesis prose remains
+Assistant-owned; executable settings remain page-owned.
 
 ## AI Research Assistant contract boundary (AIA-0)
 

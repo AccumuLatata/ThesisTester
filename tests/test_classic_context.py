@@ -282,6 +282,33 @@ def test_clear_preserves_recording_policy():
     assert not is_research_mode(session)
 
 
+def test_clear_and_dataset_switch_reset_relink_flags(tmp_path: Path):
+    repo = LocalThesisRepository(tmp_path / "assistant")
+    thesis = repo.create_thesis(name="Relink flag")
+    session = _seed_classic_page_state()
+    link_thesis(
+        session,
+        thesis_id=thesis.thesis_id,
+        thesis_name=thesis.name,
+        dataset_id="ds_test_aaa",
+    )
+    session["_classic_relink_open_signals"] = True
+    session["_classic_relink_open_backtest"] = True
+    assert sync_classic_context_for_dataset(session, "ds_other") is True
+    assert session["_classic_relink_open_signals"] is False
+    assert session["_classic_relink_open_backtest"] is False
+
+    link_thesis(
+        session,
+        thesis_id=thesis.thesis_id,
+        thesis_name=thesis.name,
+        dataset_id="ds_test_aaa",
+    )
+    session["_classic_relink_open_signals"] = True
+    exit_research_mode(session)
+    assert session["_classic_relink_open_signals"] is False
+
+
 def test_pages_wire_classic_chrome_and_setup_allows_create_link():
     root = Path(__file__).resolve().parents[1]
     setup = (root / "pages" / "3_Setup_Builder.py").read_text(encoding="utf-8")

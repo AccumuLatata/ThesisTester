@@ -166,6 +166,13 @@ def consume_pending_navigation(session_state: MutableMapping[str, Any]) -> str |
     return None
 
 
+def _clear_classic_relink_flags(session_state: MutableMapping[str, Any]) -> None:
+    """Reset per-page relink UI toggles after exit or dataset switch."""
+    for key in list(session_state.keys()):
+        if isinstance(key, str) and key.startswith("_classic_relink_open_"):
+            session_state[key] = False
+
+
 def clear_classic_thesis_context(session_state: MutableMapping[str, Any]) -> None:
     """Drop thesis-scoped classic research context without touching page state."""
     init_classic_session_state(session_state)
@@ -174,6 +181,7 @@ def clear_classic_thesis_context(session_state: MutableMapping[str, Any]) -> Non
     session_state["classic_pending_navigation"] = None
     session_state["classic_bound_dataset_id"] = None
     session_state["classic_flash"] = None
+    _clear_classic_relink_flags(session_state)
 
 
 def exit_research_mode(session_state: MutableMapping[str, Any]) -> None:

@@ -501,7 +501,8 @@ not a live Assistant execution input.
 - `sync_classic_context_for_dataset(...)` clears thesis-scoped classic keys when
   the active `dataset_id` diverges from a concrete `classic_bound_dataset_id`.
   An unset bound (link before data/bootstrap) adopts the first observed
-  `dataset_id` instead of clearing research mode.
+  `dataset_id` instead of clearing research mode. Clearing context also resets
+  per-page `_classic_relink_open_*` UI flags.
 - Setup Builder: create/link expander. Signals, Backtest, Research Bundles:
   breadcrumb + exit/relink only.
 - Tests: `tests/test_classic_context.py`.
