@@ -65,6 +65,7 @@ from thesistester.assistant.workspace import (
     merge_walk_forward_controls,
     option_index,
     options_with_current,
+    options_with_currents,
     parse_json_choices,
     safe_float,
     safe_int,
@@ -526,13 +527,17 @@ with st.expander("Structured level controls"):
             )
             or [50, 200],
         )
+        draft_sma_timeframes = [
+            str(value).strip()
+            for value in (levels.get("sma_timeframes") or ["30min"])
+            if str(value).strip()
+        ]
+        sma_timeframe_options = options_with_currents(SMA_TIMEFRAMES, draft_sma_timeframes)
         sma_timeframes = st.multiselect(
             "SMA timeframes",
-            list(SMA_TIMEFRAMES),
-            default=[
-                tf for tf in (levels.get("sma_timeframes") or ["30min"]) if tf in SMA_TIMEFRAMES
-            ]
-            or ["30min"],
+            options=sma_timeframe_options,
+            default=coerce_multiselect_defaults(draft_sma_timeframes, sma_timeframe_options)
+            or coerce_multiselect_defaults(["30min"], sma_timeframe_options),
         )
         ema_lengths = st.multiselect(
             "EMA lengths",
@@ -542,28 +547,36 @@ with st.expander("Structured level controls"):
                 length_options,
             ),
         )
+        draft_ema_timeframes = [
+            str(value).strip()
+            for value in (levels.get("ema_timeframes") or [])
+            if str(value).strip()
+        ]
+        ema_timeframe_options = options_with_currents(SMA_TIMEFRAMES, draft_ema_timeframes)
         ema_timeframes = st.multiselect(
             "EMA timeframes",
-            list(SMA_TIMEFRAMES),
-            default=[tf for tf in (levels.get("ema_timeframes") or []) if tf in SMA_TIMEFRAMES],
+            options=ema_timeframe_options,
+            default=coerce_multiselect_defaults(draft_ema_timeframes, ema_timeframe_options),
         )
+        draft_vwap_windows = [
+            str(value).strip() for value in (levels.get("vwap_windows") or []) if str(value).strip()
+        ]
+        vwap_window_options = options_with_currents(VWAP_WINDOW_OPTIONS, draft_vwap_windows)
         vwap_windows = st.multiselect(
             "VWAP windows",
-            options=list(VWAP_WINDOW_OPTIONS),
-            default=coerce_multiselect_defaults(
-                levels.get("vwap_windows") or [],
-                VWAP_WINDOW_OPTIONS,
-            ),
-            help="Same searchable window catalog as the Levels page.",
+            options=vwap_window_options,
+            default=coerce_multiselect_defaults(draft_vwap_windows, vwap_window_options),
+            help="Same searchable window catalog as the Levels page; draft values outside the catalog stay selectable.",
         )
+        draft_poc_windows = [
+            str(value).strip() for value in (levels.get("poc_windows") or []) if str(value).strip()
+        ]
+        poc_window_options = options_with_currents(POC_WINDOW_OPTIONS, draft_poc_windows)
         poc_windows = st.multiselect(
             "POC windows",
-            options=list(POC_WINDOW_OPTIONS),
-            default=coerce_multiselect_defaults(
-                levels.get("poc_windows") or [],
-                POC_WINDOW_OPTIONS,
-            ),
-            help="Same searchable window catalog as the Levels page.",
+            options=poc_window_options,
+            default=coerce_multiselect_defaults(draft_poc_windows, poc_window_options),
+            help="Same searchable window catalog as the Levels page; draft values outside the catalog stay selectable.",
         )
         if st.form_submit_button("Apply level controls"):
             try:

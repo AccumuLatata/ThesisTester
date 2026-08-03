@@ -409,12 +409,14 @@ def test_spec_status_labels_and_next_steps_are_explicit():
 
 def test_confluence_and_timezone_catalogs_support_searchable_widgets():
     from thesistester.assistant.workspace import (
+        POC_WINDOW_OPTIONS,
         TIMEZONE_OPTIONS,
         VWAP_WINDOW_OPTIONS,
         build_confluence_level_options,
         coerce_multiselect_defaults,
         option_index,
         options_with_current,
+        options_with_currents,
     )
 
     assert "America/New_York" in TIMEZONE_OPTIONS
@@ -463,9 +465,18 @@ def test_confluence_and_timezone_catalogs_support_searchable_widgets():
     or_options = options_with_current((5, 15, 30), 20)
     assert 20 in or_options
     assert option_index(or_options, 20) == or_options.index(20)
+    # Draft VWAP/POC windows outside the fixed catalogs must remain selectable.
+    vwap_options = options_with_currents(VWAP_WINDOW_OPTIONS, ["2h", "30min"])
+    assert "2h" in vwap_options
+    assert coerce_multiselect_defaults(["2h", "30min"], vwap_options) == ["2h", "30min"]
+    poc_options = options_with_currents(POC_WINDOW_OPTIONS, ["90min"])
+    assert "90min" in poc_options
     page_path = pathlib.Path(__file__).parent.parent / "pages" / "14_Research_Assistant.py"
     source = page_path.read_text(encoding="utf-8")
     assert "options_with_current(" in source
+    assert "options_with_currents(" in source
+    assert "vwap_window_options" in source
+    assert "poc_window_options" in source
 
 
 def test_latest_unresolved_assumptions_only_from_newest_spec():

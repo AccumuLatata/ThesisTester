@@ -783,18 +783,31 @@ def options_with_current(catalog: Sequence[Any], current: Any) -> list[Any]:
     Prevents fixed selectboxes from silently remapping unknown draft values to
     the catalog default via ``option_index``.
     """
+    return options_with_currents(catalog, (current,) if current is not None else ())
+
+
+def options_with_currents(
+    catalog: Sequence[Any],
+    current_values: Iterable[Any] | None,
+) -> list[Any]:
+    """Return catalog options, appending any draft values outside the catalog.
+
+    Used by multiselects so Apply cannot drop previously staged windows/lengths
+    that are not in the fixed default catalog.
+    """
     options = list(catalog)
-    if current is None:
-        return options
-    if current in options:
-        return options
-    text = str(current).strip() if isinstance(current, str) else current
-    if text == "" or text is None:
-        return options
-    text_options = [str(item) for item in options]
-    if str(text) in text_options:
-        return options
-    options.append(text if isinstance(current, str) else current)
+    text_options = {str(item) for item in options}
+    for current in current_values or ():
+        if current is None or current in options:
+            continue
+        text = str(current).strip() if isinstance(current, str) else current
+        if text == "" or text is None:
+            continue
+        if str(text) in text_options:
+            continue
+        appended = text if isinstance(current, str) else current
+        options.append(appended)
+        text_options.add(str(appended))
     return options
 
 
