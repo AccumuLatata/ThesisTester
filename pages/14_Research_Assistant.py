@@ -30,21 +30,28 @@ from thesistester.assistant.workspace import (
     DIRECTIONS,
     EXPOSURE_POLICIES,
     FOLD_MODES,
+    INDICATOR_LENGTH_OPTIONS,
     INSTRUMENTS,
     INTRABAR_MODELS,
     NAKED_REQUIREMENTS,
+    OPENING_RANGE_MINUTES_OPTIONS,
     OVERLAP_POLICIES,
+    POC_WINDOW_OPTIONS,
     RANKING_METRICS,
     RESEARCH_WORKFLOW_STEPS,
     SETUP_TRIGGER_OPTIONS,
     SMA_TIMEFRAMES,
+    TIMEZONE_OPTIONS,
     TRIGGER_TIMEFRAMES,
+    VWAP_WINDOW_OPTIONS,
     WFA_MATRIX_METRICS,
     WINDOW_MODES,
     active_bundle_handoff,
+    build_confluence_level_options,
     build_plan_review,
     build_provenance_card,
     clear_failed_llm_run_explanation,
+    coerce_multiselect_defaults,
     consume_assistant_flash,
     format_spec_status,
     init_assistant_session_state,
@@ -56,7 +63,10 @@ from thesistester.assistant.workspace import (
     merge_setup_controls,
     merge_validation_controls,
     merge_walk_forward_controls,
+    coerce_window_label,
     option_index,
+    options_with_current,
+    options_with_currents,
     parse_json_choices,
     safe_float,
     safe_int,
@@ -64,6 +74,7 @@ from thesistester.assistant.workspace import (
     set_assistant_flash,
     spec_status_next_step,
 )
+from thesistester.setup import available_level_columns
 
 
 def _fingerprint(value: object) -> str:
@@ -255,9 +266,18 @@ with st.expander("Structured execution controls", expanded=True):
                 (setup or {}).get("instrument") or dataset.get("instrument") or "ES",
             ),
         )
-        source_timezone = st.text_input(
+        draft_source_timezone = str(dataset.get("source_timezone") or "America/New_York").strip()
+        source_timezone_options = options_with_current(
+            TIMEZONE_OPTIONS, draft_source_timezone or None
+        )
+        source_timezone = st.selectbox(
             "Source timezone",
-            value=str(dataset.get("source_timezone") or "America/New_York"),
+            source_timezone_options,
+            index=option_index(
+                source_timezone_options,
+                draft_source_timezone or "America/New_York",
+            ),
+            help="Same searchable timezone catalog as the Data page.",
         )
         subtimeframe_path = st.text_input(
             "Subtimeframe CSV path (optional)",
@@ -304,9 +324,18 @@ with st.expander("Structured execution controls", expanded=True):
             "Session close time (exchange time)",
             value=str(backtest.get("session_close_time") or "16:00"),
         )
-        session_timezone = st.text_input(
+        draft_session_timezone = str(backtest.get("session_timezone") or "America/New_York").strip()
+        session_timezone_options = options_with_current(
+            TIMEZONE_OPTIONS, draft_session_timezone or None
+        )
+        session_timezone = st.selectbox(
             "Session timezone",
-            value=str(backtest.get("session_timezone") or "America/New_York"),
+            session_timezone_options,
+            index=option_index(
+                session_timezone_options,
+                draft_session_timezone or "America/New_York",
+            ),
+            help="Same searchable timezone catalog as Backtest / Grid Search.",
         )
         no_new_entries_after = st.text_input(
             "No new entries after (exchange time)",
@@ -358,9 +387,30 @@ with st.expander("Structured setup and confluence controls", expanded=True):
     with st.form(f"assistant_setup_{thesis_id}_{_fingerprint(setup)}"):
         setup_name = st.text_input("Setup name", value=str(setup.get("name") or thesis.name))
         description = st.text_input("Setup description", value=str(setup.get("description") or ""))
-        selected_levels = st.text_input(
-            "Confluence levels (comma-separated)",
-            value=", ".join(setup.get("selected_levels") or ["dVWAP_RTH", "SMA_50_30min"]),
+        levels_df = st.session_state.get("levels")
+        live_level_columns = (
+            available_level_columns(levels_df) if hasattr(levels_df, "columns") else None
+        )
+        current_selected_levels = list(
+            setup.get("selected_levels") or ["dVWAP_RTH", "SMA_50_30min"]
+        )
+        confluence_options = build_confluence_level_options(
+            selected_levels=current_selected_levels,
+            levels_settings=levels if isinstance(levels, dict) else {},
+            available_columns=live_level_columns,
+        )
+        selected_levels = st.multiselect(
+            "Confluence levels",
+            options=confluence_options,
+            default=coerce_multiselect_defaults(current_selected_levels, confluence_options)
+            or coerce_multiselect_defaults(
+                ["dVWAP_RTH", "SMA_50_30min"],
+                confluence_options,
+            ),
+            help=(
+                "Searchable multiselect, same interaction pattern as Setup Builder / Signals. "
+                "Includes live Levels columns when present, plus the common catalog."
+            ),
         )
         trigger = st.selectbox(
             "Trigger",
@@ -403,9 +453,16 @@ with st.expander("Structured setup and confluence controls", expanded=True):
             list(CONFLUENCE_MODES),
             index=option_index(CONFLUENCE_MODES, setup.get("confluence_mode")),
         )
-        anchor_level = st.text_input(
+        current_anchor = str(setup.get("anchor_level") or "")
+        anchor_options = [""] + list(confluence_options)
+        if current_anchor and current_anchor not in anchor_options:
+            anchor_options.append(current_anchor)
+        anchor_level = st.selectbox(
             "Anchor level (anchor_rules mode)",
-            value=str(setup.get("anchor_level") or ""),
+            options=anchor_options,
+            index=option_index(anchor_options, current_anchor),
+            format_func=lambda value: "—" if value == "" else value,
+            help="Searchable selectbox over the same confluence catalog.",
         )
         min_valid_confluences = st.number_input(
             "Minimum valid confluences",
@@ -446,39 +503,87 @@ with st.expander("Structured level controls"):
             "Enable developing RTH VWAP",
             value=bool(levels.get("session_vwap_enabled", True)),
         )
-        opening_range_minutes = st.number_input(
+        draft_opening_range = safe_int(levels.get("opening_range_minutes"), 30)
+        opening_range_options = options_with_current(
+            OPENING_RANGE_MINUTES_OPTIONS,
+            draft_opening_range if draft_opening_range > 0 else None,
+        )
+        opening_range_minutes = st.selectbox(
             "Opening range minutes",
-            min_value=1,
-            value=safe_int(levels.get("opening_range_minutes"), 30),
+            opening_range_options,
+            index=option_index(opening_range_options, draft_opening_range),
+            help="Common Levels sizes are 5 / 15 / 30; draft values outside that set stay selectable.",
         )
-        sma_lengths_raw = st.text_input(
+        length_options = list(INDICATOR_LENGTH_OPTIONS)
+        for value in list(levels.get("sma_lengths") or []) + list(levels.get("ema_lengths") or []):
+            parsed = safe_int(value, 0)
+            if parsed > 0 and parsed not in length_options:
+                length_options.append(parsed)
+        sma_lengths = st.multiselect(
             "SMA lengths",
-            value=", ".join(str(v) for v in (levels.get("sma_lengths") or [50, 200])),
+            options=length_options,
+            default=coerce_multiselect_defaults(
+                [safe_int(v, 0) for v in (levels.get("sma_lengths") or [50, 200])],
+                length_options,
+            )
+            or [50, 200],
         )
+        draft_sma_timeframes = [
+            str(value).strip()
+            for value in (levels.get("sma_timeframes") or ["30min"])
+            if str(value).strip()
+        ]
+        sma_timeframe_options = options_with_currents(SMA_TIMEFRAMES, draft_sma_timeframes)
         sma_timeframes = st.multiselect(
             "SMA timeframes",
-            list(SMA_TIMEFRAMES),
-            default=[
-                tf for tf in (levels.get("sma_timeframes") or ["30min"]) if tf in SMA_TIMEFRAMES
-            ]
-            or ["30min"],
+            options=sma_timeframe_options,
+            default=coerce_multiselect_defaults(draft_sma_timeframes, sma_timeframe_options)
+            or coerce_multiselect_defaults(["30min"], sma_timeframe_options),
         )
-        ema_lengths_raw = st.text_input(
+        ema_lengths = st.multiselect(
             "EMA lengths",
-            value=", ".join(str(v) for v in (levels.get("ema_lengths") or [])),
+            options=length_options,
+            default=coerce_multiselect_defaults(
+                [safe_int(v, 0) for v in (levels.get("ema_lengths") or [])],
+                length_options,
+            ),
         )
+        draft_ema_timeframes = [
+            str(value).strip()
+            for value in (levels.get("ema_timeframes") or [])
+            if str(value).strip()
+        ]
+        ema_timeframe_options = options_with_currents(SMA_TIMEFRAMES, draft_ema_timeframes)
         ema_timeframes = st.multiselect(
             "EMA timeframes",
-            list(SMA_TIMEFRAMES),
-            default=[tf for tf in (levels.get("ema_timeframes") or []) if tf in SMA_TIMEFRAMES],
+            options=ema_timeframe_options,
+            default=coerce_multiselect_defaults(draft_ema_timeframes, ema_timeframe_options),
         )
-        vwap_windows_raw = st.text_input(
+        draft_vwap_windows = [
+            label
+            for label in (
+                coerce_window_label(value) for value in (levels.get("vwap_windows") or [])
+            )
+            if label
+        ]
+        vwap_window_options = options_with_currents(VWAP_WINDOW_OPTIONS, draft_vwap_windows)
+        vwap_windows = st.multiselect(
             "VWAP windows",
-            value=", ".join(str(v) for v in (levels.get("vwap_windows") or [])),
+            options=vwap_window_options,
+            default=coerce_multiselect_defaults(draft_vwap_windows, vwap_window_options),
+            help="Same searchable window catalog as the Levels page; draft values outside the catalog stay selectable.",
         )
-        poc_windows_raw = st.text_input(
+        draft_poc_windows = [
+            label
+            for label in (coerce_window_label(value) for value in (levels.get("poc_windows") or []))
+            if label
+        ]
+        poc_window_options = options_with_currents(POC_WINDOW_OPTIONS, draft_poc_windows)
+        poc_windows = st.multiselect(
             "POC windows",
-            value=", ".join(str(v) for v in (levels.get("poc_windows") or [])),
+            options=poc_window_options,
+            default=coerce_multiselect_defaults(draft_poc_windows, poc_window_options),
+            help="Same searchable window catalog as the Levels page; draft values outside the catalog stay selectable.",
         )
         if st.form_submit_button("Apply level controls"):
             try:
@@ -486,12 +591,12 @@ with st.expander("Structured level controls"):
                     current,
                     session_vwap_enabled=session_vwap_enabled,
                     opening_range_minutes=int(opening_range_minutes),
-                    sma_lengths_raw=sma_lengths_raw,
+                    sma_lengths_raw=sma_lengths,
                     sma_timeframes=sma_timeframes,
-                    ema_lengths_raw=ema_lengths_raw,
+                    ema_lengths_raw=ema_lengths,
                     ema_timeframes=ema_timeframes,
-                    vwap_windows_raw=vwap_windows_raw,
-                    poc_windows_raw=poc_windows_raw,
+                    vwap_windows_raw=vwap_windows,
+                    poc_windows_raw=poc_windows,
                 )
                 _apply_draft_and_rerun(
                     message=(

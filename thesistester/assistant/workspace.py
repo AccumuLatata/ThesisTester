@@ -9,13 +9,15 @@ from __future__ import annotations
 import json
 import math
 from copy import deepcopy
-from typing import Any, Iterable, Mapping, MutableMapping
+from typing import Any, Iterable, Mapping, MutableMapping, Sequence
 
 from thesistester.assistant.explainer import EvidencePacket
 from thesistester.assistant.thesis_compiler import (
     normalize_setup_level_selection,
     normalize_walk_forward_controls,
 )
+from thesistester.config import TIMEZONE_OPTIONS as _CONFIG_TIMEZONE_OPTIONS
+from thesistester.setup import SUGGESTED_DEFAULT_LEVELS
 
 # Additive Streamlit staging keys owned by the Research Assistant page.
 ASSISTANT_SESSION_KEYS: tuple[str, ...] = (
@@ -76,7 +78,12 @@ INTRABAR_MODELS: tuple[str, ...] = (
 )
 RANKING_METRICS: tuple[str, ...] = ("expectancy_r", "total_r", "profit_factor", "win_rate")
 INSTRUMENTS: tuple[str, ...] = ("ES", "NQ", "MES", "MNQ")
+TIMEZONE_OPTIONS: tuple[str, ...] = tuple(_CONFIG_TIMEZONE_OPTIONS)
 SMA_TIMEFRAMES: tuple[str, ...] = ("1min", "5min", "15min", "30min", "1h", "4h")
+INDICATOR_LENGTH_OPTIONS: tuple[int, ...] = (9, 20, 21, 50, 100, 200)
+OPENING_RANGE_MINUTES_OPTIONS: tuple[int, ...] = (5, 15, 30)
+VWAP_WINDOW_OPTIONS: tuple[str, ...] = ("15min", "30min", "1h", "4h")
+POC_WINDOW_OPTIONS: tuple[str, ...] = ("30min", "1h", "4h")
 CONFLUENCE_MODES: tuple[str, ...] = ("global_cluster", "anchor_rules")
 NAKED_REQUIREMENTS: tuple[str, ...] = ("any", "all")
 DIRECTIONS: tuple[str, ...] = ("both", "long", "short")
@@ -89,6 +96,49 @@ WFA_MATRIX_METRICS: tuple[str, ...] = (
     "median_retention_ratio_expectancy",
     "stitched_oos_total_r",
     "oos_profitable_fold_rate",
+)
+# Static session/profile/opt-in level names used when no Levels dataframe is loaded.
+SESSION_LEVEL_CATALOG: tuple[str, ...] = (
+    "ONH",
+    "ONL",
+    "pONH",
+    "pONL",
+    "OR_High",
+    "OR_Low",
+    "RTH_Open",
+    "pRTH_Open",
+    "prevSettlement",
+    "dOpen",
+    "wOpen",
+    "mOpen",
+    "pdOpen",
+    "pwOpen",
+    "pmOpen",
+    "pdHigh",
+    "pdLow",
+    "pwHigh",
+    "pwLow",
+    "pmHigh",
+    "pmLow",
+    "pdEQ",
+    "pwEQ",
+    "pmEQ",
+    "pdPOC",
+    "dVWAP_RTH",
+    "APOC",
+    "pAPOC",
+    "dSinglePrint_30m_NearestAbove",
+    "dSinglePrint_30m_NearestBelow",
+    "pSinglePrint_30m_NearestAbove",
+    "pSinglePrint_30m_NearestBelow",
+    "Pivot_1min_High",
+    "Pivot_1min_Low",
+    "Pivot_5min_High",
+    "Pivot_5min_Low",
+    "Pivot_30min_High",
+    "Pivot_30min_Low",
+    "Pivot_4h_High",
+    "Pivot_4h_Low",
 )
 
 
@@ -536,17 +586,73 @@ def merge_walk_forward_controls(
     return current
 
 
+def _normalize_int_selection(values: Any, *, allow_empty: bool) -> list[int]:
+    if isinstance(values, str):
+        text = values.strip()
+        if not text:
+            if allow_empty:
+                return []
+            raise ValueError("Provide one or more positive comma-separated integers.")
+        return parse_positive_int_list(text)
+    if isinstance(values, Iterable) and not isinstance(values, (bytes, bytearray)):
+        parsed = [safe_int(item, 0) for item in values]
+        cleaned = [value for value in parsed if value > 0]
+        if not cleaned and not allow_empty:
+            raise ValueError("Provide one or more positive integers.")
+        return cleaned
+    raise ValueError("Integer selections must be a list or comma-separated string.")
+
+
+def coerce_window_label(value: Any) -> str | None:
+    """Normalize a VWAP/POC window to a Levels catalog label.
+
+    Legacy drafts may still store bare minute integers (from the old
+    ``parse_positive_int_list`` merge). Those become ``\"30min\"`` / ``\"1h\"``
+    so confluence names match computed columns (``VWAP_rolling_30min``).
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        minutes = int(value)
+        if minutes <= 0:
+            return None
+        if minutes % 60 == 0:
+            return f"{minutes // 60}h"
+        return f"{minutes}min"
+    text = str(value).strip().lower().replace(" ", "")
+    if not text:
+        return None
+    if text.isdigit():
+        return coerce_window_label(int(text))
+    return text
+
+
+def _normalize_window_selection(values: Any) -> list[str]:
+    if isinstance(values, str):
+        raw_items: list[Any] = [item for item in values.split(",") if item.strip()]
+    elif isinstance(values, Iterable) and not isinstance(values, (bytes, bytearray)):
+        raw_items = list(values)
+    else:
+        raise ValueError("Window selections must be a list or comma-separated string.")
+    labels: list[str] = []
+    for item in raw_items:
+        label = coerce_window_label(item)
+        if label and label not in labels:
+            labels.append(label)
+    return labels
+
+
 def merge_level_controls(
     choices: Mapping[str, Any],
     *,
     session_vwap_enabled: bool,
     opening_range_minutes: int,
-    sma_lengths_raw: str,
+    sma_lengths_raw: Any,
     sma_timeframes: list[str],
-    ema_lengths_raw: str,
+    ema_lengths_raw: Any,
     ema_timeframes: list[str],
-    vwap_windows_raw: str,
-    poc_windows_raw: str,
+    vwap_windows_raw: Any,
+    poc_windows_raw: Any,
 ) -> dict[str, Any]:
     """Merge structured level controls into staged research choices."""
     current = deepcopy(dict(choices))
@@ -555,18 +661,12 @@ def merge_level_controls(
         {
             "session_vwap_enabled": bool(session_vwap_enabled),
             "opening_range_minutes": int(opening_range_minutes),
-            "sma_lengths": parse_positive_int_list(sma_lengths_raw),
+            "sma_lengths": _normalize_int_selection(sma_lengths_raw, allow_empty=False),
             "sma_timeframes": list(sma_timeframes) or ["30min"],
-            "ema_lengths": parse_positive_int_list(ema_lengths_raw)
-            if ema_lengths_raw.strip()
-            else [],
+            "ema_lengths": _normalize_int_selection(ema_lengths_raw, allow_empty=True),
             "ema_timeframes": list(ema_timeframes),
-            "vwap_windows": parse_positive_int_list(vwap_windows_raw)
-            if vwap_windows_raw.strip()
-            else [],
-            "poc_windows": parse_positive_int_list(poc_windows_raw)
-            if poc_windows_raw.strip()
-            else [],
+            "vwap_windows": _normalize_window_selection(vwap_windows_raw),
+            "poc_windows": _normalize_window_selection(poc_windows_raw),
         }
     )
     current["levels"] = levels
@@ -578,7 +678,7 @@ def merge_setup_controls(
     *,
     setup_name: str,
     description: str,
-    selected_levels_raw: str,
+    selected_levels_raw: Any,
     trigger: str,
     direction: str,
     tolerance_ticks: float,
@@ -617,7 +717,7 @@ def merge_setup_controls(
         "trigger_timeframe": trigger_timeframe,
         "direction": direction,
         "confluence_mode": confluence_mode,
-        "anchor_level": anchor_level.strip() or None,
+        "anchor_level": str(anchor_level or "").strip() or None,
         "confluence_rules": list(setup.get("confluence_rules") or []),
         "min_valid_confluences": int(min_valid_confluences),
         "trigger_params": dict(setup.get("trigger_params") or {}),
@@ -690,9 +790,155 @@ def build_provenance_card(run: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def option_index(options: tuple[str, ...] | list[str], value: Any, default: int = 0) -> int:
+def option_index(
+    options: Sequence[Any],
+    value: Any,
+    default: int = 0,
+) -> int:
     """Return a safe selectbox index for a current value."""
+    options_list = list(options)
+    if not options_list:
+        return default
+    if value in options_list:
+        return options_list.index(value)
     text = str(value) if value is not None else ""
-    if text in options:
-        return list(options).index(text)
+    text_options = [str(item) for item in options_list]
+    if text in text_options:
+        return text_options.index(text)
     return default
+
+
+def options_with_current(catalog: Sequence[Any], current: Any) -> list[Any]:
+    """Return catalog options, appending ``current`` when it is outside the catalog.
+
+    Prevents fixed selectboxes from silently remapping unknown draft values to
+    the catalog default via ``option_index``.
+    """
+    return options_with_currents(catalog, (current,) if current is not None else ())
+
+
+def options_with_currents(
+    catalog: Sequence[Any],
+    current_values: Iterable[Any] | None,
+) -> list[Any]:
+    """Return catalog options, appending any draft values outside the catalog.
+
+    Used by multiselects so Apply cannot drop previously staged windows/lengths
+    that are not in the fixed default catalog.
+    """
+    options = list(catalog)
+    text_options = {str(item) for item in options}
+    for current in current_values or ():
+        if current is None or current in options:
+            continue
+        text = str(current).strip() if isinstance(current, str) else current
+        if text == "" or text is None:
+            continue
+        if str(text) in text_options:
+            continue
+        appended = text if isinstance(current, str) else current
+        options.append(appended)
+        text_options.add(str(appended))
+    return options
+
+
+def coerce_multiselect_defaults(
+    selected: Iterable[Any] | None,
+    options: Sequence[Any],
+) -> list[Any]:
+    """Keep only selected values that exist in ``options`` (Streamlit-safe defaults)."""
+    option_set = set(options)
+    values: list[Any] = []
+    for item in selected or ():
+        if item in option_set and item not in values:
+            values.append(item)
+    return values
+
+
+def _levels_setting_sequence(
+    settings: Mapping[str, Any],
+    key: str,
+    *,
+    default: Sequence[Any],
+) -> list[Any]:
+    """Return a levels-settings sequence.
+
+    Missing / ``None`` uses ``default``. An explicit empty list/tuple is preserved
+    so cleared windows/lengths do not expand back into the full catalog.
+    """
+    if key not in settings:
+        return list(default)
+    raw = settings.get(key)
+    if raw is None:
+        return list(default)
+    if isinstance(raw, (list, tuple)):
+        return list(raw)
+    return list(default)
+
+
+def build_confluence_level_options(
+    *,
+    selected_levels: Iterable[Any] | None = None,
+    levels_settings: Mapping[str, Any] | None = None,
+    available_columns: Iterable[str] | None = None,
+) -> list[str]:
+    """Build a searchable confluence catalog for Assistant multiselects.
+
+    Prefers live Levels-page columns when available, then static session/profile
+    names, then indicator names implied by the staged levels settings, and
+    always retains any already-selected draft levels. Explicit empty
+    ``vwap_windows`` / ``poc_windows`` / indicator-length lists stay empty —
+    they do not fall back to the full default catalogs.
+    """
+    options: list[str] = []
+
+    def _add(items: Iterable[Any] | None) -> None:
+        for item in items or ():
+            text = str(item).strip()
+            if text and text not in options:
+                options.append(text)
+
+    _add(SUGGESTED_DEFAULT_LEVELS)
+    _add(SESSION_LEVEL_CATALOG)
+    settings = levels_settings if isinstance(levels_settings, Mapping) else {}
+    sma_lengths = [
+        value
+        for value in _levels_setting_sequence(
+            settings, "sma_lengths", default=INDICATOR_LENGTH_OPTIONS
+        )
+        if safe_int(value, 0) > 0
+    ]
+    ema_lengths = [
+        value
+        for value in _levels_setting_sequence(
+            settings, "ema_lengths", default=INDICATOR_LENGTH_OPTIONS
+        )
+        if safe_int(value, 0) > 0
+    ]
+    sma_timeframes = [
+        str(value).strip()
+        for value in _levels_setting_sequence(settings, "sma_timeframes", default=("30min",))
+        if str(value).strip()
+    ]
+    ema_timeframes = [
+        str(value).strip()
+        for value in _levels_setting_sequence(settings, "ema_timeframes", default=())
+        if str(value).strip()
+    ]
+    for length in sma_lengths:
+        for timeframe in sma_timeframes:
+            _add((f"SMA_{int(length)}_{timeframe}",))
+    for length in ema_lengths:
+        for timeframe in ema_timeframes:
+            _add((f"EMA_{int(length)}_{timeframe}",))
+    for window in _levels_setting_sequence(settings, "vwap_windows", default=VWAP_WINDOW_OPTIONS):
+        label = coerce_window_label(window)
+        if label:
+            _add((f"VWAP_rolling_{label}",))
+    for window in _levels_setting_sequence(settings, "poc_windows", default=POC_WINDOW_OPTIONS):
+        label = coerce_window_label(window)
+        if label:
+            _add((f"POC_rolling_{label}",))
+    _add(available_columns)
+    _add(selected_levels)
+    return options

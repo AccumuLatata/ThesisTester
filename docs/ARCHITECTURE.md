@@ -91,6 +91,15 @@ Specification list labels use `format_spec_status` /
 Plan review after Validate”, not “waiting on a button inside the list”.
 Versions are created only by Draft research plan and Confirm — Apply controls
 stage session draft choices only.
+Assistant structured controls use searchable Streamlit `selectbox` /
+`multiselect` catalogs (shared `TIMEZONE_OPTIONS`, confluence level catalog via
+`build_confluence_level_options()`, VWAP/POC windows, opening-range sizes)
+rather than free-text comma lists, matching Setup Builder / Data / Levels UX.
+Draft values outside a fixed catalog are appended via `options_with_current()` /
+`options_with_currents()` so Apply cannot silently remap unknown timezones,
+opening-range minutes, or VWAP/POC windows. Legacy numeric VWAP/POC drafts
+(`30`) coerce to Levels labels (`30min`) via `coerce_window_label()`. Explicit
+empty VWAP/POC/indicator lists do not expand back into full catalogs.
 `assistant_draft_choices` contains only supported structured RunSpec sections;
 narrative LLM hints stay in conversation history and never become execution
 candidates. Clarification checks trust only structured sections
