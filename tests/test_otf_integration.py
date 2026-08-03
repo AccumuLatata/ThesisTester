@@ -1431,7 +1431,7 @@ class TestWalkForwardShortFoldRobustness:
         )
         # Should not raise even though 1 bar is insufficient for OTF
         accepted, rejected_count, candidate_count = _filter_fold_signals_with_otf(
-            fold_df=fold_df,
+            source_df=fold_df,
             fold_signals=fold_signals,
             otf_config=self._make_enabled_config(),
             session_timezone=TZ,
@@ -1453,7 +1453,7 @@ class TestWalkForwardShortFoldRobustness:
             _signal(signal_id=3, timestamp="2026-01-02 09:30:00", bar_index=0),
         )
         accepted, rejected_count, candidate_count = _filter_fold_signals_with_otf(
-            fold_df=fold_df,
+            source_df=fold_df,
             fold_signals=fold_signals,
             otf_config=self._make_enabled_config(),
             session_timezone=TZ,
@@ -1472,7 +1472,7 @@ class TestWalkForwardShortFoldRobustness:
             _signal(signal_id=2, timestamp="2026-01-02 09:30:00", bar_index=0),
         )
         accepted, rejected_count, candidate_count = _filter_fold_signals_with_otf(
-            fold_df=fold_df,
+            source_df=fold_df,
             fold_signals=fold_signals,
             otf_config=self._make_enabled_config(),
             session_timezone=TZ,
@@ -1809,7 +1809,7 @@ class TestWalkForwardOtfConfigValidation:
             }
         )
         accepted, rejected_count, candidate_count = _filter_fold_signals_with_otf(
-            fold_df=fold_df,
+            source_df=fold_df,
             fold_signals=fold_signals,
             otf_config=valid_config,
             session_timezone=TZ,
@@ -1858,7 +1858,7 @@ class TestWalkForwardOtfConfigValidation:
                 ValueError, match="Completely unexpected internal programming error XYZ"
             ):
                 _filter_fold_signals_with_otf(
-                    fold_df=fold_df,
+                    source_df=fold_df,
                     fold_signals=fold_signals,
                     otf_config=valid_config,
                     session_timezone=TZ,

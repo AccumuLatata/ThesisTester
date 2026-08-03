@@ -284,7 +284,7 @@ if run_wfo:
                 value=f"{test_sessions},{test_sessions + 1}",
             )
 
-        c4, c5 = st.columns(2)
+        c4, c5, c6 = st.columns(3)
         wfo_ranking_metric = c4.selectbox(
             "WFO ranking metric",
             options=["expectancy_r", "total_r", "profit_factor", "win_rate"],
@@ -298,6 +298,16 @@ if run_wfo:
                 value=1,
                 step=1,
             )
+        )
+        wfo_otf_history_policy = c6.selectbox(
+            "OTF history policy",
+            options=["fold_local", "causal_prefix"],
+            index=0,
+            help=(
+                "fold_local (default): OTF uses only each fold’s OHLCV. "
+                "causal_prefix: prior bars before the fold start may establish OTF state; "
+                "only fold-local signals are scored. Never uses future bars."
+            ),
         )
 
         grid_results = st.session_state.get("grid_results")
@@ -437,6 +447,7 @@ if run_wfo:
                                     exposure_policy_state.get("cooldown_bars_after_exit", 0) or 0
                                 ),
                                 otf_config=_wfo_otf_config,
+                                otf_history_policy=wfo_otf_history_policy,
                                 intrabar_model=str(
                                     intrabar_policy.get("intrabar_model", "sl_first")
                                 ),
@@ -511,6 +522,7 @@ if run_wfo:
                                 "step_sessions": step_sessions,
                                 "overlap_policy": overlap_policy,
                                 "otf_filter_config": _wfo_otf_config,
+                                "otf_history_policy": wfo_otf_history_policy,
                             }
                             st.session_state["walk_forward_results"] = results_df
                             st.session_state["walk_forward_summary"] = wfo_summary
@@ -562,6 +574,7 @@ if run_wfo:
                                         or 0
                                     ),
                                     otf_config=_wfo_otf_config,
+                                    otf_history_policy=wfo_otf_history_policy,
                                     intrabar_model=str(
                                         intrabar_policy.get("intrabar_model", "sl_first")
                                     ),
