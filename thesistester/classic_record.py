@@ -128,7 +128,7 @@ def record_classic_session_run(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(bundle_bytes)
 
-    return orchestrator.register_external_bundle_run(
+    result = orchestrator.register_external_bundle_run(
         thesis_id=thesis_id,
         bundle_path=output_path,
         run_spec=run_spec,
@@ -136,6 +136,19 @@ def record_classic_session_run(
         conversation_id=conversation_id,
         force_new=force_new,
     )
+    # Idempotent reuse keeps the existing provenance path; drop the orphan zip.
+    if bool(result.payload.get("idempotent")):
+        stored = result.payload.get("bundle_path")
+        try:
+            if (
+                isinstance(stored, str)
+                and stored.strip()
+                and output_path.resolve() != Path(stored).resolve()
+            ):
+                output_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+    return result
 
 
 def render_record_and_discuss(

@@ -196,6 +196,86 @@ def test_idempotent_reuse_requires_readable_stored_bundle(tmp_path: Path, monkey
     assert explained.status == "completed"
 
 
+def test_idempotent_reuse_skips_stale_match_for_readable_twin(tmp_path: Path, monkeypatch):
+    """A stale oldest match must not block reuse of a later readable twin."""
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    state = _classic_completed_state(tmp_path)
+    orchestrator, repository = _orchestrator(tmp_path)
+    thesis = repository.create_thesis(name="stale then readable")
+    bundle_bytes = build_research_bundle(state)
+    digest = canonical_bundle_hash(bundle_bytes)
+    run_spec = classic_state_to_run_spec(
+        state, name=thesis.name, source_path=state["dataset_source_path"]
+    )
+
+    first_path = tmp_path / "stale.research.zip"
+    first_path.write_bytes(bundle_bytes)
+    first = orchestrator.register_external_bundle_run(
+        thesis_id=thesis.thesis_id,
+        bundle_path=first_path,
+        run_spec=run_spec,
+        expected_hash=digest,
+    )
+    Path(first.payload["bundle_path"]).unlink()
+
+    second_path = tmp_path / "readable.research.zip"
+    second_path.write_bytes(bundle_bytes)
+    second = orchestrator.register_external_bundle_run(
+        thesis_id=thesis.thesis_id,
+        bundle_path=second_path,
+        run_spec=run_spec,
+        expected_hash=digest,
+    )
+    assert second.payload["idempotent"] is False
+    assert second.payload["run_id"] != first.payload["run_id"]
+
+    third_path = tmp_path / "again.research.zip"
+    third_path.write_bytes(bundle_bytes)
+    third = orchestrator.register_external_bundle_run(
+        thesis_id=thesis.thesis_id,
+        bundle_path=third_path,
+        run_spec=run_spec,
+        expected_hash=digest,
+    )
+    assert third.payload["idempotent"] is True
+    assert third.payload["run_id"] == second.payload["run_id"]
+    assert third.payload["bundle_path"] == second.payload["bundle_path"]
+    assert len(repository.list_runs(thesis.thesis_id)) == 2
+
+
+def test_record_classic_session_run_cleans_orphan_zip_on_idempotent_reuse(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    state = _classic_completed_state(tmp_path)
+    orchestrator, repository = _orchestrator(tmp_path)
+    thesis = repository.create_thesis(name="orphan cleanup")
+    store = tmp_path / "store"
+
+    first = record_classic_session_run(
+        orchestrator,
+        thesis_id=thesis.thesis_id,
+        session_state=state,
+        store_root=store,
+    )
+    first_path = Path(first.payload["bundle_path"])
+    assert first_path.is_file()
+    before = {path.resolve() for path in first_path.parent.glob("*.research.zip")}
+
+    again = record_classic_session_run(
+        orchestrator,
+        thesis_id=thesis.thesis_id,
+        session_state=state,
+        store_root=store,
+    )
+    assert again.payload["idempotent"] is True
+    assert again.payload["run_id"] == first.payload["run_id"]
+    after = {path.resolve() for path in first_path.parent.glob("*.research.zip")}
+    assert after == before
+    assert first_path.resolve() in after
+    assert len(repository.list_runs(thesis.thesis_id)) == 1
+
+
 def test_register_fails_closed_on_tamper_missing_and_out_of_root(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
     state = _classic_completed_state(tmp_path)

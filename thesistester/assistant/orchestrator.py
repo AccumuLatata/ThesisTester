@@ -502,7 +502,8 @@ class AssistantOrchestrator:
         boundary for registration. This does **not** bypass confirmation for
         future ``execute_confirmed_run`` recomputation of the linked specification.
         When ``force_new`` is False, a completed run with the same
-        ``canonical_bundle_hash`` is returned idempotently.
+        ``canonical_bundle_hash`` and a readable stored provenance bundle is
+        returned idempotently (stale/missing stored paths are skipped).
         """
         if not isinstance(run_spec, Mapping):
             raise ValueError("run_spec must be an object.")
@@ -533,48 +534,36 @@ class AssistantOrchestrator:
         )
 
         if not force_new:
-            existing = self._find_completed_run_by_bundle_hash(thesis_id, digest)
+            existing = self._find_reusable_completed_run_by_bundle_hash(thesis_id, digest)
             if existing is not None:
                 stored = existing.provenance if isinstance(existing.provenance, Mapping) else {}
-                stored_path = stored.get("bundle_path")
-                try:
-                    # Idempotent reuse must keep explain_run/import workable from the
-                    # run's stored provenance path — not only the newly verified zip.
-                    _assert_readable_bundle_provenance(
-                        {
-                            "bundle_path": stored_path,
-                            "canonical_bundle_hash": digest,
-                        }
-                    )
-                except AssistantToolError:
-                    existing = None
-                else:
-                    result = OrchestrationResult(
-                        status=OrchestrationStatus.COMPLETED.value,
-                        capability_id="BUNDLE.register_external_run",
-                        payload={
-                            "run_id": existing.run_id,
-                            "spec_version": existing.spec_version,
-                            "bundle_path": str(stored_path),
-                            "canonical_bundle_hash": digest,
-                            "execution_origin": "classic",
-                            "idempotent": True,
-                            "summary": verified["summary"],
-                        },
-                    )
-                    self._record_audit(
-                        result,
-                        request=request,
-                        thesis_id=thesis_id,
-                        conversation_id=conversation_id,
-                        extra={
-                            "run_id": existing.run_id,
-                            "canonical_bundle_hash": digest,
-                            "idempotent": True,
-                        },
-                        best_effort=True,
-                    )
-                    return result
+                stored_path = str(stored.get("bundle_path"))
+                result = OrchestrationResult(
+                    status=OrchestrationStatus.COMPLETED.value,
+                    capability_id="BUNDLE.register_external_run",
+                    payload={
+                        "run_id": existing.run_id,
+                        "spec_version": existing.spec_version,
+                        "bundle_path": stored_path,
+                        "canonical_bundle_hash": digest,
+                        "execution_origin": "classic",
+                        "idempotent": True,
+                        "summary": verified["summary"],
+                    },
+                )
+                self._record_audit(
+                    result,
+                    request=request,
+                    thesis_id=thesis_id,
+                    conversation_id=conversation_id,
+                    extra={
+                        "run_id": existing.run_id,
+                        "canonical_bundle_hash": digest,
+                        "idempotent": True,
+                    },
+                    best_effort=True,
+                )
+                return result
 
         confirmed = self.confirm_validated_spec(
             thesis_id=thesis_id,
@@ -669,13 +658,29 @@ class AssistantOrchestrator:
         )
         return completed_result
 
-    def _find_completed_run_by_bundle_hash(self, thesis_id: str, digest: str) -> ResearchRun | None:
-        """Return the first completed run whose provenance hash matches ``digest``."""
+    def _find_reusable_completed_run_by_bundle_hash(
+        self, thesis_id: str, digest: str
+    ) -> ResearchRun | None:
+        """Return a completed run with matching hash and a readable stored bundle.
+
+        Skips stale matches whose provenance ``bundle_path`` is missing or
+        hash-invalid so a later readable twin can still be reused.
+        """
         for run in self.repository.list_runs(thesis_id):
             if run.status != "completed" or not isinstance(run.provenance, Mapping):
                 continue
-            if run.provenance.get("canonical_bundle_hash") == digest:
-                return run
+            if run.provenance.get("canonical_bundle_hash") != digest:
+                continue
+            try:
+                _assert_readable_bundle_provenance(
+                    {
+                        "bundle_path": run.provenance.get("bundle_path"),
+                        "canonical_bundle_hash": digest,
+                    }
+                )
+            except AssistantToolError:
+                continue
+            return run
         return None
 
     def cancel_run(
