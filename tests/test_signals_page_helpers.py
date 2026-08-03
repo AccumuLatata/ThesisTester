@@ -1204,4 +1204,4 @@ def test_signals_page_has_no_stale_pre_pr5_otf_copy():
     for snippet in stale_snippets:
         assert snippet not in text, f"Stale OTF copy still present: {snippet!r}"
     assert "complete candidate population" in text
-    assert "signal_settings" in text
+    assert "OTF admission is applied later" in text

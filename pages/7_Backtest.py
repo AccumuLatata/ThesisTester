@@ -533,7 +533,7 @@ if _otf_enabled:
     )
     st.info(
         f"🔎 **OTF filter enabled** — timeframes: {', '.join(_otf_tfs) or '—'} · "
-        f"min consecutive bars: {_otf_min_bars} · "
+        f"min consecutive completed HTF bars: {_otf_min_bars} · "
         f"session tz: {_otf_session_tz or '—'} · eth_start: {_otf_eth_start or '—'} · "
         f"candidates: {_otf_candidate_count} · accepted: {_otf_accepted_count} · "
         f"rejected: {_otf_rejected_count}"

@@ -53,6 +53,10 @@ from thesistester.visualization import (
 )
 
 st.title("🎯 Signals")
+st.caption(
+    "Detect confluence zones and generate candidate entry signals. "
+    "OTF admission is applied later in Backtest, Grid, and Walk-forward — not on this page."
+)
 bootstrap_active_saved_dataset()
 
 
@@ -68,8 +72,8 @@ ANCHOR_DIAGNOSTIC_COLUMNS = [
 ]
 
 CONFLUENCE_MODE_OPTIONS = {
-    "Global Cluster": "global_cluster",
-    "Anchor Rules / User Anchor": "anchor_rules",
+    "Global cluster": "global_cluster",
+    "Anchor-based rules": "anchor_rules",
 }
 TRIGGER_TIMEFRAME_LABELS = {
     "Base/current timeframe": "base",
@@ -1005,9 +1009,8 @@ with st.sidebar:
             st.caption(
                 "Signals keep the complete candidate population. "
                 "OTF admission is applied later in Backtest, Grid, and Walk-forward. "
-                'Config provenance: a saved signal run’s `signal_settings["otf_filter"]` '
-                "wins over later Setup Builder edits — regenerate signals to pick up "
-                "changed OTF settings."
+                "Config provenance: a saved signal run’s OTF settings win over later "
+                "Setup Builder edits — regenerate signals to pick up changed OTF settings."
             )
             st.caption(
                 f"OTF v{OTF_ALGORITHM_VERSION} · hash={compute_otf_config_hash(otf_config)[:12]}… · "

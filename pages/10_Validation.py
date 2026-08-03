@@ -1054,7 +1054,7 @@ else:
                 )
             st.session_state["sensitivity_summary"] = summary_r19
             st.session_state["sensitivity_config"] = summary_r19["config"]
-            st.success("R19 sensitivity profile complete.")
+            st.success("Sensitivity profile complete.")
 sensitivity_result = st.session_state.get("sensitivity_summary")
 if isinstance(sensitivity_result, dict) and sensitivity_result.get("available"):
     r19a, r19b = st.columns(2)

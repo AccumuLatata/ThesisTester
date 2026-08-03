@@ -115,7 +115,11 @@ status_rows = [
     {"Item": item, "Session state key": key, "Available": "✅" if _has_value(key) else "❌"}
     for item, key in REQUIRED_ITEMS
 ]
-st.subheader("Run completeness checklist")
+st.subheader("Session artifacts checklist")
+st.caption(
+    "Shows which research artifacts are present in this session. "
+    "Core path items are Setup, Signals, and Trades; the rest are optional diagnostics."
+)
 st.dataframe(pd.DataFrame(status_rows), width="stretch", hide_index=True)
 
 # OTF filter checklist
