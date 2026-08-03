@@ -120,9 +120,7 @@ def get_recording_policy(session_state: Mapping[str, Any]) -> str:
 def set_recording_policy(session_state: MutableMapping[str, Any], policy: str) -> None:
     """Persist a recording policy. ``all_executions`` is stored for CAI-7 readiness."""
     if policy not in RECORDING_POLICIES:
-        raise ValueError(
-            f"recording policy must be one of {RECORDING_POLICIES}, got {policy!r}."
-        )
+        raise ValueError(f"recording policy must be one of {RECORDING_POLICIES}, got {policy!r}.")
     init_classic_session_state(session_state)
     session_state["classic_recording_policy"] = policy
 
@@ -189,6 +187,11 @@ def sync_classic_context_for_dataset(
 ) -> bool:
     """Clear classic thesis context when the active dataset diverges.
 
+    Linking before a dataset exists stores ``classic_bound_dataset_id=None``.
+    When a dataset later appears, adopt that id rather than treating unset→set
+    as a switch. Only a concrete bound that disagrees with the current id
+    clears research mode.
+
     Returns True when context was cleared due to a dataset switch.
     """
     init_classic_session_state(session_state)
@@ -198,6 +201,9 @@ def sync_classic_context_for_dataset(
     current = dataset_id if isinstance(dataset_id, str) and dataset_id.strip() else None
     bound_norm = bound if isinstance(bound, str) and bound.strip() else None
     if bound_norm == current:
+        return False
+    if bound_norm is None and current is not None:
+        session_state["classic_bound_dataset_id"] = current
         return False
     clear_classic_thesis_context(session_state)
     return True
@@ -299,10 +305,7 @@ def render_classic_thesis_chrome(
         thesis_name = get_active_thesis_name(st.session_state) or thesis_id
         policy = get_recording_policy(st.session_state)
         short_id = thesis_id[-8:] if len(thesis_id) >= 8 else thesis_id
-        st.caption(
-            f"Research mode · **{thesis_name}** (`…{short_id}`) · "
-            f"recording: `{policy}`"
-        )
+        st.caption(f"Research mode · **{thesis_name}** (`…{short_id}`) · recording: `{policy}`")
         col_exit, col_relink, col_policy = st.columns([1, 1, 2])
         with col_exit:
             if st.button(
@@ -329,10 +332,7 @@ def render_classic_thesis_chrome(
                 st.rerun()
         with col_policy:
             # CAI-7 will enable all_executions; CAI-5 surfaces the stored policy only.
-            st.caption(
-                "Recording policy is manual (CAI-0). "
-                "`all_executions` arrives in CAI-7."
-            )
+            st.caption("Recording policy is manual (CAI-0). `all_executions` arrives in CAI-7.")
         if st.session_state.get(f"_classic_relink_open_{page}"):
             _render_link_thesis_form(
                 st,
@@ -375,8 +375,7 @@ def render_classic_thesis_chrome(
                         st.session_state,
                         level="success",
                         message=(
-                            f"Created and linked thesis “{thesis.name}”. "
-                            "No run was recorded."
+                            f"Created and linked thesis “{thesis.name}”. No run was recorded."
                         ),
                     )
                     st.rerun()
@@ -404,9 +403,7 @@ def _render_link_thesis_form(
     if not theses:
         st.info("No active theses yet. Create one first.")
         return
-    labels = {
-        thesis.thesis_id: f"{thesis.name} ({thesis.thesis_id[-8:]})" for thesis in theses
-    }
+    labels = {thesis.thesis_id: f"{thesis.name} ({thesis.thesis_id[-8:]})" for thesis in theses}
     thesis_ids = [thesis.thesis_id for thesis in theses]
     selected_id = st.selectbox(
         "Existing thesis",

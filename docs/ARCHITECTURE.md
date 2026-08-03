@@ -158,7 +158,7 @@ Bundles only.
 | `classic_active_thesis_name` | Cached display name for the breadcrumb |
 | `classic_recording_policy` | `manual` (default, CAI-0) or `all_executions` (CAI-7) |
 | `classic_pending_navigation` | Optional one-shot page target |
-| `classic_bound_dataset_id` | Dataset identity that must match or context clears |
+| `classic_bound_dataset_id` | Dataset identity that must match or context clears; unset binds on first observed `dataset_id` |
 | `classic_flash` | One-shot `{level, message}` UI notice |
 
 `link_thesis` syncs `assistant_selected_thesis_id` via `select_thesis` and does

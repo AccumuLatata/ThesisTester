@@ -147,14 +147,17 @@ def test_link_thesis_does_not_call_repository_run_writers(
     monkeypatch.setattr(
         LocalThesisRepository,
         "start_run",
-        lambda *a, **k: calls.append("start_run")
-        or (_ for _ in ()).throw(AssertionError("start_run")),
+        lambda *a, **k: (
+            calls.append("start_run") or (_ for _ in ()).throw(AssertionError("start_run"))
+        ),
     )
     monkeypatch.setattr(
         LocalThesisRepository,
         "create_spec_version",
-        lambda *a, **k: calls.append("create_spec_version")
-        or (_ for _ in ()).throw(AssertionError("create_spec_version")),
+        lambda *a, **k: (
+            calls.append("create_spec_version")
+            or (_ for _ in ()).throw(AssertionError("create_spec_version"))
+        ),
     )
 
     link_thesis(
@@ -217,6 +220,29 @@ def test_same_dataset_sync_is_noop(tmp_path: Path):
     )
     assert sync_classic_context_for_dataset(session, "ds_test_aaa") is False
     assert get_active_thesis_id(session) == thesis.thesis_id
+
+
+def test_unset_bound_adopts_first_dataset_without_clearing(tmp_path: Path):
+    """Linking before data loads must not drop research mode on first dataset."""
+    repo = LocalThesisRepository(tmp_path / "assistant")
+    thesis = repo.create_thesis(name="Pre-data link")
+    session = _seed_classic_page_state()
+    before = snapshot_protected_classic_keys(session)
+    link_thesis(
+        session,
+        thesis_id=thesis.thesis_id,
+        thesis_name=thesis.name,
+        dataset_id=None,
+    )
+    assert session["classic_bound_dataset_id"] is None
+    assert sync_classic_context_for_dataset(session, "ds_test_aaa") is False
+    assert is_research_mode(session)
+    assert get_active_thesis_id(session) == thesis.thesis_id
+    assert session["classic_bound_dataset_id"] == "ds_test_aaa"
+    # A later real switch still clears.
+    assert sync_classic_context_for_dataset(session, "ds_other") is True
+    assert not is_research_mode(session)
+    assert_protected_classic_keys_unchanged(before, session)
 
 
 def test_recording_policy_validation():
