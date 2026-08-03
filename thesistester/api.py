@@ -54,6 +54,13 @@ from thesistester.persistence.local_store import (
     compute_dataset_id,
     compute_signal_settings_hash,
 )
+from thesistester.research_identity import (
+    DataIdentity,
+    ExperimentIdentity,
+    LevelsIdentity,
+    normalize_execution_origin,
+    normalize_levels_config,
+)
 from thesistester.setup import (
     build_setup_config,
     get_effective_otf_filter_config,
@@ -1275,18 +1282,7 @@ def compute_levels(
 ) -> LevelsResult:
     """Compute UI-equivalent levels without reading or writing session state."""
     _instrument(instrument)
-    settings = _merge_known(_LEVEL_DEFAULTS, config, section="levels")
-    settings["instrument"] = instrument
-    for key in (
-        "sma_lengths",
-        "ema_lengths",
-        "sma_timeframes",
-        "ema_timeframes",
-        "vwap_windows",
-        "poc_windows",
-        "pivot_timeframes",
-    ):
-        settings[key] = sorted(list(settings[key]))
+    settings = normalize_levels_config(config, instrument=instrument)
 
     kwargs = {
         _LEVEL_ARGUMENT_MAP.get(key, key): value
@@ -2074,6 +2070,7 @@ def run_experiment(
     spec: Mapping[str, Any],
     *,
     base_directory: str | Path = ".",
+    execution_origin: str = "api",
 ) -> dict[str, Any]:
     """Execute one version-1 experiment and return a bundle-ready plain dict."""
     validate_run_spec(spec)
@@ -2089,6 +2086,7 @@ def run_experiment(
     source_timezone = dataset_config.get("source_timezone") or inst.exchange_tz
     exchange_timezone = dataset_config.get("exchange_timezone") or inst.exchange_tz
     format_profile = str(dataset_config.get("format_profile", "canonical"))
+    origin = normalize_execution_origin(execution_origin)
     data = load_dataset(
         dataset_path,
         instrument=instrument,
@@ -2111,15 +2109,20 @@ def run_experiment(
         )
     validation_report = validate_ohlcv(data)
     base_interval = format_interval(validation_report.inferred_interval)
-    dataset_id = compute_dataset_id(
+    data_identity = DataIdentity.from_run_spec(
         data,
-        instrument=instrument,
+        dataset_config=dataset_config,
         base_interval=base_interval,
         source_timezone=source_timezone,
         exchange_timezone=exchange_timezone,
     )
+    dataset_id = data_identity.dataset_id()
 
     level_result = compute_levels(data, instrument=instrument, config=run.get("levels"))
+    levels_identity = LevelsIdentity.from_normalized(
+        data_identity, level_result["levels_settings"]
+    )
+    experiment_identity = ExperimentIdentity.from_run_spec(levels_identity, run)
     setup = build_setup(dict(run.get("setup") or {}))
     signal_result = generate_signals(level_result["levels"], setup, instrument=instrument)
     backtest_config = dict(run.get("backtest") or {})
@@ -2153,6 +2156,10 @@ def run_experiment(
             "source_timezone": source_timezone,
             "exchange_timezone": exchange_timezone,
         },
+        "data_identity": data_identity.to_dict(),
+        "levels_identity": levels_identity.to_dict(),
+        "experiment_identity": experiment_identity.to_dict(),
+        "execution_origin": origin,
         "setup_config": setup,
         **signal_result,
         "last_signal_setup": setup,

@@ -47,6 +47,41 @@ time (~71%). CAI-2/CAI-3 therefore target verified levels-artifact reuse first.
 
 ---
 
+## CAI-1 — Shared Research Identity ✅ Implemented
+
+Creates one Streamlit-free source of truth for levels normalization and
+content-addressed data/levels/experiment identity before any cache lookup.
+
+### Features
+
+- `thesistester/research_identity.py`:
+  - `normalize_levels_config(config, *, instrument)`
+  - frozen `DataIdentity`, `LevelsIdentity`, `ExperimentIdentity`
+  - constructors from loaded data, RunSpec, classic page state, and bundle meta
+- `api.compute_levels` uses the shared normalizer.
+- `run_experiment` adds additive `data_identity`, `levels_identity`,
+  `experiment_identity`, and `execution_origin`.
+- Optional bundle member `research_identity.json` restores `data_identity` /
+  `levels_identity` when present; pre-CAI-1 bundles remain loadable without
+  those fields.
+
+### Regression safety
+
+- No production cache lookup.
+- `DataIdentity.dataset_id()` preserves `compute_dataset_id` semantics
+  (`format_profile` is additive metadata only).
+- `execution_origin` is provenance-only and does not enter the hashed identity
+  bundle member.
+- Engine/golden-master outputs unchanged; classic Levels UX normalizer for
+  stale checks is untouched.
+
+### Tests
+
+- `tests/test_research_identity.py` covers normalization/hash parity, identity
+  constructors, old-bundle compatibility, and origin-independent bundle hashes.
+
+---
+
 ## R1 — Execution Realism ✅ Implemented
 
 Adds optional commission and slippage to `simulate_trades`. Defaults preserve legacy

@@ -13,10 +13,17 @@ import pandas as pd
 
 from thesistester import __version__
 from thesistester.persistence.local_store import _hash_dataframe
+from thesistester.research_identity import (
+    DataIdentity,
+    LevelsIdentity,
+    build_identity_metadata,
+    identity_meta_filename,
+)
 
 BUNDLE_SCHEMA_VERSION = 1
 BUNDLE_KIND = "thesistester_research_bundle"
 MANIFEST_FILENAME = "manifest.json"
+IDENTITY_META_FILENAME = identity_meta_filename()
 
 _DATASET_META_KEYS = (
     "dataset_id",
@@ -120,6 +127,11 @@ _MANAGED_RESEARCH_KEYS = {
     "portfolio_correlation",
     "portfolio_drawdown_correlation",
     "portfolio_marginal_contribution",
+    # CAI-1 additive identity fields (optional; absent on pre-CAI-1 bundles).
+    "data_identity",
+    "levels_identity",
+    # experiment_identity is run-state/provenance only until path-canonical
+    # RunSpec hashing lands; see _identity_payload_from_state.
 }
 
 _KNOWN_FILES = {
@@ -131,6 +143,7 @@ _KNOWN_FILES = {
     "levels.parquet",
     "session_levels.parquet",
     "levels_meta.json",
+    IDENTITY_META_FILENAME,
     "signals.parquet",
     "confluence_zones.parquet",
     "naked_flags.parquet",
@@ -480,6 +493,13 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
         manifest["included"]["portfolio"] = True
         included_keys.update(_PORTFOLIO_META_KEYS)
 
+    identity_payload = _identity_payload_from_state(session_state)
+    if identity_payload is not None:
+        files[IDENTITY_META_FILENAME] = _to_json_bytes(identity_payload)
+        for key in ("data_identity", "levels_identity"):
+            if key in identity_payload:
+                included_keys.add(key)
+
     manifest["session_keys"] = sorted(included_keys)
     files[MANIFEST_FILENAME] = _to_json_bytes(manifest)
 
@@ -488,6 +508,32 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
         for name in sorted(files):
             zf.writestr(name, files[name])
     return output.getvalue()
+
+
+def _identity_payload_from_state(session_state: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Build optional CAI-1 identity metadata; omit when no identity fields exist.
+
+    ``experiment_identity`` stays on run state/provenance only for CAI-1: its
+    RunSpec hash currently includes dataset path strings, which differ between
+    relative API/CLI specs and absolute Assistant specs. Bundling it would break
+    canonical-hash parity. Data/levels identities remain path-independent.
+    """
+    data_identity = DataIdentity.from_dict(
+        session_state.get("data_identity")
+        if isinstance(session_state.get("data_identity"), Mapping)
+        else None
+    )
+    levels_identity = LevelsIdentity.from_dict(
+        session_state.get("levels_identity")
+        if isinstance(session_state.get("levels_identity"), Mapping)
+        else None
+    )
+    if data_identity is None and levels_identity is None:
+        return None
+    return build_identity_metadata(
+        data_identity=data_identity,
+        levels_identity=levels_identity,
+    )
 
 
 def _read_uploaded_bytes(uploaded_file: Any) -> bytes:
@@ -560,6 +606,12 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
                         )
 
         session_values: dict[str, Any] = {}
+
+        if IDENTITY_META_FILENAME in names:
+            identity_meta = _read_json_from_zip(zf, IDENTITY_META_FILENAME)
+            for key in ("data_identity", "levels_identity"):
+                if key in identity_meta:
+                    session_values[key] = identity_meta[key]
 
         if included.get("dataset"):
             session_values["data"] = _read_parquet_from_zip(zf, "dataset.parquet")

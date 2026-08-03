@@ -75,7 +75,11 @@ def _execute_run(
 ) -> tuple[str, bytes, dict[str, Any]]:
     run_spec, base_directory = task
     name = str(run_spec["name"])
-    state = run_experiment(run_spec, base_directory=base_directory)
+    state = run_experiment(
+        run_spec,
+        base_directory=base_directory,
+        execution_origin="cli",
+    )
     bundle = build_research_bundle(state)
     summary = state.get("trade_summary") or {}
     best = state.get("best_grid_result") or {}
@@ -86,6 +90,7 @@ def _execute_run(
         "bundle_hash": canonical_bundle_hash(bundle),
         "dataset_id": state.get("dataset_id"),
         "instrument": state.get("instrument"),
+        "execution_origin": state.get("execution_origin", "cli"),
         "trade_count": summary.get("trade_count"),
         "expectancy_r": summary.get("expectancy_r"),
         "total_r": summary.get("total_r"),

@@ -39,6 +39,31 @@ and sends its bundle-ready mapping to `build_research_bundle()`.
 parallelism inside a single engine pipeline. Results are collected in YAML
 order and summarized in `results_index.csv`.
 
+## Classic/Assistant research identity boundary (CAI-1)
+
+`thesistester/research_identity.py` is the Streamlit-free source of truth for:
+
+- `normalize_levels_config(config, *, instrument)` — product defaults, instrument
+  binding, unknown-key rejection, and sorted unordered list fields; and
+- frozen `DataIdentity` / `LevelsIdentity` / `ExperimentIdentity` constructors
+  used by the headless API, CLI, classic page state, and bundle restore.
+
+`api.compute_levels` calls the shared normalizer. `run_experiment` stamps
+additive state fields `data_identity`, `levels_identity`,
+`experiment_identity`, and `execution_origin` (keyword-only origin; default
+`api`; CLI/Assistant pass `cli` / `assistant`).
+
+Research bundles may include optional `research_identity.json` with
+`data_identity` and `levels_identity`. Pre-CAI-1 bundles omit it and restore
+without those keys. `execution_origin` is run provenance and is excluded from
+the identity member so it cannot change canonical bundle hashes.
+`experiment_identity` remains on run state/provenance until path-canonical
+RunSpec hashing is introduced. No production cache lookup is performed in
+CAI-1.
+
+Managed research restore keys include `data_identity` and `levels_identity`
+(cleared when absent from an imported bundle).
+
 ## AI Research Assistant contract boundary (AIA-0)
 
 `thesistester.assistant` is a Streamlit-free metadata boundary for the proposed

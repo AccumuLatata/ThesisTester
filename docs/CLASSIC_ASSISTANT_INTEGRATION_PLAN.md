@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** proposed implementation contract; `CAI-0` implemented.
+**Status:** proposed implementation contract; `CAI-0` and `CAI-1` implemented.
 
 **Owner model:** one trusted local user, local datasets, local execution.
 
@@ -240,7 +240,7 @@ These rules are non-negotiable for every milestone.
 
 **Non-goals:** no production cache or UI behavior.
 
-### CAI-1 — Shared canonical configuration and identity module
+### CAI-1 — Shared canonical configuration and identity module ✅ Implemented
 
 **Goal:** create one pure source of truth for identity derivation.
 
@@ -259,6 +259,26 @@ These rules are non-negotiable for every milestone.
   - bundle manifest/provenance.
 - Add only additive bundle/run metadata fields:
   `data_identity`, `levels_identity`, and `execution_origin`.
+
+**Implemented contract**
+
+- Module: `thesistester/research_identity.py`.
+- `api.compute_levels` and identity derivation call
+  `normalize_levels_config` (product defaults + instrument + sorted unordered
+  lists; unknown keys rejected). Classic page sparse
+  `_normalize_levels_settings` remains a legacy UX stale-check path only.
+- `DataIdentity.dataset_id()` matches `compute_dataset_id` and **excludes**
+  `format_profile` (carried as additive metadata until an explicit dataset-id
+  version bump).
+- `LevelsIdentity` includes `LEVEL_ENGINE_VERSION` and
+  `LEVELS_ARTIFACT_SCHEMA_VERSION` (artifact schema, not UX snapshot schema).
+- `run_experiment(..., execution_origin=...)` stamps additive state fields.
+  Optional bundle member `research_identity.json` carries `data_identity` and
+  `levels_identity` only when present. `execution_origin` is run provenance
+  and is excluded from that member so origin cannot change canonical bundle
+  hashes. `experiment_identity` remains on run state/provenance until
+  path-canonical RunSpec hashing lands (relative vs absolute dataset paths).
+- Tests: `tests/test_research_identity.py`.
 
 **Regression gates**
 

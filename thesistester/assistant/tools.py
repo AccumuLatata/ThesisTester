@@ -274,8 +274,16 @@ class AssistantTools:
         normalized = _normalize_dataset_paths(bounded, self.data_roots)
         validate_run_spec(normalized)
         dataset_path = Path(normalized["dataset"]["path"])
-        state = _run_experiment(normalized, base_directory=dataset_path.parent)
-        return {"summary": _state_summary(state), "tool_version": __version__}
+        state = _run_experiment(
+            normalized,
+            base_directory=dataset_path.parent,
+            execution_origin="assistant",
+        )
+        return {
+            "summary": _state_summary(state),
+            "tool_version": __version__,
+            "execution_origin": state.get("execution_origin", "assistant"),
+        }
 
     def run_experiment_to_bundle(
         self, spec: Mapping[str, Any], *, output_path: str | Path
@@ -287,7 +295,9 @@ class AssistantTools:
         path = _resolve_within(output_path, self.data_roots)
         path.parent.mkdir(parents=True, exist_ok=True)
         state = _run_experiment(
-            normalized, base_directory=Path(normalized["dataset"]["path"]).parent
+            normalized,
+            base_directory=Path(normalized["dataset"]["path"]).parent,
+            execution_origin="assistant",
         )
         bundle = build_research_bundle(state)
         path.write_bytes(bundle)
@@ -296,6 +306,9 @@ class AssistantTools:
             "bundle_path": str(path),
             "canonical_bundle_hash": canonical_bundle_hash(bundle),
             "dataset_fingerprint": to_jsonable(state.get("levels_data_fingerprint")),
+            "data_identity": to_jsonable(state.get("data_identity")),
+            "levels_identity": to_jsonable(state.get("levels_identity")),
+            "execution_origin": state.get("execution_origin", "assistant"),
             "tool_version": __version__,
             "effective_configuration": to_jsonable(normalized),
             "resolved_paths": _resolved_paths(normalized),
