@@ -313,6 +313,42 @@ def test_explicit_backtest_config_clears_session_when_flat_disabled(tmp_path: Pa
     validate_run_spec(spec)
 
 
+def test_unpaired_trailing_is_export_gap(tmp_path: Path):
+    state = _classic_state_from_parity(tmp_path)
+    backtest = state.pop("backtest_config")
+    state.update(
+        {
+            "backtest_sl_ticks": backtest["stop_loss_ticks"],
+            "backtest_tp_ticks": backtest["take_profit_ticks"],
+            "backtest_commission_per_side": backtest["commission_per_side"],
+            "backtest_slippage_ticks": backtest["slippage_ticks"],
+            "backtest_flat_by_session_close": backtest["flat_by_session_close"],
+            "backtest_session_close_time": backtest["session_close_time"],
+            "backtest_session_timezone": backtest["session_timezone"],
+            "backtest_no_new_entries_after": backtest["no_new_entries_after"],
+            "backtest_exposure_policy": backtest["exposure_policy"],
+            "backtest_intrabar_model": backtest["intrabar_model"],
+            "backtest_enable_trail": True,
+            "backtest_trailing_after_r": 1.0,
+            # Intentionally omit paired distance — must be a structured gap.
+        }
+    )
+    gaps = classic_state_export_gaps(state)
+    assert any(gap.code == "incomplete_exit_management" for gap in gaps)
+    with pytest.raises(ValueError, match="incomplete_exit_management"):
+        classic_state_to_run_spec(state, name="unpaired_trail")
+
+    # Explicit backtest_config with only one trailing field also gaps.
+    state = _classic_state_from_parity(tmp_path)
+    state["backtest_config"] = {
+        **deepcopy(state["backtest_config"]),
+        "trailing_after_r": None,
+        "trailing_distance_ticks": 8.0,
+    }
+    gaps = classic_state_export_gaps(state)
+    assert any(gap.code == "incomplete_exit_management" for gap in gaps)
+
+
 def test_include_grid_requires_explicit_config(tmp_path: Path):
     state = _classic_state_from_parity(tmp_path)
     gaps = classic_state_export_gaps(state, include_grid=True)

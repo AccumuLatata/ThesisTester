@@ -133,7 +133,9 @@ the canonical in-memory `data` frame is required so fingerprint/stale checks
 can run. When assembling backtest without `backtest_config`, live Backtest
 widget keys win over post-run policy snapshots. Disabled session-flat clears
 timezone/cutoff for both assembled and explicit `backtest_config` paths,
-matching the Backtest page. Missing parameters are never invented.
+matching the Backtest page. Unpaired or invalid exit-management trailing/BE
+fields are `incomplete_exit_management` gaps (not deferred to
+`validate_run_spec`). Missing parameters are never invented.
 Source strategy: prefer a verified execution data artifact
 (`dataset.data_artifact_key`); always require an explicit CSV path
 (`source_path` / `dataset_source_path` / `source_csv_path`) verified against

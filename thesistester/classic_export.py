@@ -16,6 +16,7 @@ import pandas as pd
 
 from thesistester.api import load_dataset, validate_run_spec
 from thesistester.data.loader import format_interval, validate_ohlcv
+from thesistester.engine.exit_management import validate_exit_management_config
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.persistence.execution_artifacts import (
     ArtifactMiss,
@@ -348,6 +349,21 @@ def _backtest_section(state: Mapping[str, Any]) -> dict[str, Any] | ClassicExpor
             "Backtest execution policy is incomplete; missing: "
             + ", ".join(missing)
             + ". Defaults are not injected.",
+            "backtest",
+        )
+
+    # Trailing fields must be paired (and BE/trail values valid) before export;
+    # surface as a structured gap instead of failing only inside validate_run_spec.
+    try:
+        validate_exit_management_config(
+            breakeven_after_r=backtest.get("breakeven_after_r"),
+            trailing_after_r=backtest.get("trailing_after_r"),
+            trailing_distance_ticks=backtest.get("trailing_distance_ticks"),
+        )
+    except ValueError as exc:
+        return _gap(
+            "incomplete_exit_management",
+            str(exc),
             "backtest",
         )
     return backtest

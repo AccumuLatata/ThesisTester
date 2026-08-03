@@ -446,7 +446,8 @@ not a live Assistant execution input.
   widget keys (preferred) with post-run policy snapshots as fallback, without
   inventing SL/TP/session fields. Disabled `flat_by_session_close` clears
   session timezone / entry cutoff on both paths to match Backtest page
-  persistence.
+  persistence. Unpaired trailing fields (or invalid BE/trail values) yield
+  `incomplete_exit_management` gaps before `validate_run_spec`.
 - Optional grid/validation/walk-forward export only when explicit `*_config`
   mappings are present (`include_grid` / `include_validation` /
   `include_walk_forward`).
