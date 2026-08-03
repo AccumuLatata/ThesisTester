@@ -118,13 +118,13 @@ Each PR body must include a `Regression safety` section stating:
 
 ## 4. Delivery sequence
 
-| Order | PR | Purpose | Runtime behavior change |
-|---|---|---|---|
-| 1 | PR 1 — Session propagation parity | Fix omitted futures session boundary inputs. | Corrects enabled OTF on affected Streamlit paths only. |
-| 2 | PR 2 — UI and documentation honesty | Remove stale pre-integration wording and complete operational docs. | No engine or filtering logic change. |
-| 3 | PR 3 — Enabled OTF golden gate | Add deterministic enabled-mode drift protection. | No production behavior change. |
-| 4 | PR 4 — Causal-prefix WFO policy | Add optional pre-fold OTF state history. | New opt-in WFO behavior; default unchanged. |
-| 5 | PR 5 — Release evidence and sign-off | Record real-data OOS evidence and formal release decision. | No engine behavior change. |
+| Order | PR | Purpose | Runtime behavior change | Status |
+|---|---|---|---|---|
+| 1 | PR 1 — Session propagation parity | Fix omitted futures session boundary inputs. | Corrects enabled OTF on affected Streamlit paths only. | Implemented (this branch) |
+| 2 | PR 2 — UI and documentation honesty | Remove stale pre-integration wording and complete operational docs. | No engine or filtering logic change. | Pending |
+| 3 | PR 3 — Enabled OTF golden gate | Add deterministic enabled-mode drift protection. | No production behavior change. | Pending |
+| 4 | PR 4 — Causal-prefix WFO policy | Add optional pre-fold OTF state history. | New opt-in WFO behavior; default unchanged. | Pending |
+| 5 | PR 5 — Release evidence and sign-off | Record real-data OOS evidence and formal release decision. | No engine behavior change. | Pending |
 
 **Merge order is strict.** PR 2 must not merge before PR 1: documentation that
 claims `eth_start` parity must describe the corrected surfaces. PR 3 should
@@ -219,6 +219,9 @@ Add tests that prove:
   `session_timezone`/`eth_start` parity.
 - OTF summaries / artifact metadata expose the effective `eth_start` and
   session timezone used for filtering.
+- WFO fold OTF and Validation `walk_forward_otf_filter` share
+  `resolve_otf_session_timezone()` so omitted session-exit timezone falls
+  back to exchange timezone in both filter execution and recorded metadata.
 - The regression suite proves both the corrected overnight path and unchanged
   disabled path.
 - The PR `Regression safety` section explicitly records that enabled Streamlit

@@ -593,15 +593,29 @@ if run_wfo:
                             else:
                                 st.session_state.pop("wfa_matrix", None)
                                 st.session_state.pop("wfa_matrix_config", None)
-                            # Store OTF summary for reporting
+                            # Store OTF summary for reporting. Timezone must match
+                            # fold-level OTF resolution (session-exit tz, else exchange).
+                            from thesistester.analytics.walk_forward import (
+                                resolve_otf_session_timezone,
+                            )
                             from thesistester.persistence.local_store import compute_otf_config_hash
                             from thesistester.engine.otf import OTF_ALGORITHM_VERSION
 
+                            _wfo_exchange_tz = (
+                                st.session_state.get("exchange_timezone") or "America/New_York"
+                            )
+                            _wfo_session_tz = resolve_otf_session_timezone(
+                                session_policy.get("session_timezone"),
+                                _wfo_exchange_tz,
+                            )
+                            _wfo_eth_start = inst.eth_start if inst else "18:00"
                             st.session_state["walk_forward_otf_filter"] = {
                                 "otf_filter_enabled": _wfo_otf_enabled,
                                 "otf_filter_config": _wfo_otf_config,
                                 "otf_algorithm_version": OTF_ALGORITHM_VERSION,
                                 "otf_config_hash": compute_otf_config_hash(_wfo_otf_config),
+                                "session_timezone": _wfo_session_tz,
+                                "eth_start": _wfo_eth_start,
                             }
                             st.success("Walk-forward diagnostics complete.")
 
@@ -1717,9 +1731,13 @@ else:
     _tp_ticks = st.session_state.get("take_profit_ticks") or 16
     _session_tz = st.session_state.get("exchange_timezone") or "America/New_York"
 
+    # Match the Validation WFO surface: known instruments use configured
+    # eth_start; unknown instruments use the existing explicit "18:00" fallback.
+    _eth_start = _inst.eth_start if _inst else "18:00"
+
     st.caption(
         f"Using SL={_sl_ticks} ticks, TP={_tp_ticks} ticks, "
-        f"session timezone={_session_tz}, "
+        f"session timezone={_session_tz}, eth_start={_eth_start}, "
         f"train/OOS split={_train_fraction:.0%}/{1 - _train_fraction:.0%}."
     )
 
@@ -1737,6 +1755,7 @@ else:
                     take_profit_ticks=float(_tp_ticks),
                     train_fraction=_train_fraction,
                     session_timezone=_session_tz,
+                    eth_start=_eth_start,
                     execution_kwargs={
                         "commission_per_side": float(
                             _backtest_exec.get("commission_per_side", 0.0) or 0.0
@@ -1751,6 +1770,7 @@ else:
                     "sl_ticks": float(_sl_ticks),
                     "tp_ticks": float(_tp_ticks),
                     "session_timezone": _session_tz,
+                    "eth_start": _eth_start,
                     "tick_size": float(_tick_size),
                     "point_value": float(_point_value),
                 }

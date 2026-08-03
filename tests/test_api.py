@@ -212,6 +212,9 @@ def test_headless_facade_matches_ui_backtest_composition(tmp_path):
         session_timezone="America/New_York",
         eth_start="18:00",
     )
+    assert facade["otf_filter_summary"]["eth_start"] == "18:00"
+    assert facade["otf_filter_summary"]["session_timezone"] == "America/New_York"
+    assert otf.eth_start == "18:00"
     expected_trades, expected_skipped = simulate_trades(
         df=level_result["levels"],
         signals=otf.accepted_signals,

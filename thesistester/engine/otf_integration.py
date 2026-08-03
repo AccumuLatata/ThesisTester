@@ -73,6 +73,13 @@ class OtfFilterResult:
         Row count of ``accepted_signals``.
     otf_rejected_signal_count:
         Row count of ``rejected_signals``.
+    session_timezone:
+        Effective session timezone forwarded to the OTF engine (may be
+        ``None`` when not supplied by the caller).
+    eth_start:
+        Effective ETH session-start string forwarded to the OTF engine
+        (may be ``None`` when not supplied; ``None`` means calendar-date
+        session boundaries in the pure engine).
     """
 
     candidate_signals: pd.DataFrame
@@ -85,6 +92,8 @@ class OtfFilterResult:
     candidate_signal_count: int
     otf_accepted_signal_count: int
     otf_rejected_signal_count: int
+    session_timezone: str | None = None
+    eth_start: str | None = None
 
     @property
     def rejection_rate(self) -> float | None:
@@ -104,6 +113,8 @@ class OtfFilterResult:
             "otf_accepted_signal_count": self.otf_accepted_signal_count,
             "otf_rejected_signal_count": self.otf_rejected_signal_count,
             "rejection_rate": self.rejection_rate,
+            "session_timezone": self.session_timezone,
+            "eth_start": self.eth_start,
         }
 
 
@@ -288,6 +299,8 @@ def apply_configured_otf_filter(
         candidate_signal_count=candidate_count,
         otf_accepted_signal_count=accepted_count,
         otf_rejected_signal_count=rejected_count,
+        session_timezone=session_timezone,
+        eth_start=eth_start,
     )
 
 

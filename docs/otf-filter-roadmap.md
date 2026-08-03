@@ -1,9 +1,9 @@
 # OTF Filter Implementation Roadmap
 
 **Project:** ThesisTester  
-**Status:** PR 6 diagnostic tooling in progress — train/OOS matrix available; real-dataset OOS/drift/release gate still open  
+**Status:** Hardening PR 1 (eth_start session propagation parity) implemented; PR 6 real-dataset OOS/drift/release gate still open  
 **Owner:** ThesisTester engineering  
-**Last updated:** 2026-07-26  
+**Last updated:** 2026-08-03  
 **Feature:** Directional One Timeframing (OTF) market-condition filter
 
 ## Document purpose
@@ -27,6 +27,7 @@ This document is the living implementation plan for adding an optional OTF filte
 - [x] Reporting and export completed
 - [x] Documentation completed
 - [x] Statistical validation diagnostic tooling implemented (see Phase 10)
+- [x] Futures-session `eth_start` propagation parity across Streamlit Backtest, Grid, validation matrix, API, and WFO summaries (hardening PR 1; see `docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md`)
 - [ ] Out-of-sample validation on a real user dataset (PR 6 DoD)
 - [ ] Regression and drift-safety review sign-off (PR 6 DoD)
 - [ ] Release approved (pending real user dataset validation)
@@ -878,6 +879,8 @@ python3 -m pytest tests/ -q
 | 2026-07-26 | PR 5 final fix — strict OTF config validation before walk-forward folds | `thesistester/analytics/walk_forward.py`, `tests/test_otf_integration.py`, `docs/otf-filter.md`, `docs/otf-filter-roadmap.md` | `run_walk_forward_sl_tp()` now calls `normalize_otf_filter_config()` before the fold loop; invalid explicit config (e.g. `enabled=True` with no timeframes, unsupported timeframe) raises `ValueError` immediately and no fold results are produced. `_filter_fold_signals_with_otf()` now catches `ValueError` only when the message matches `_EXPECTED_OTF_INSUFFICIENT_HISTORY_PATTERNS`; all other `ValueError` instances are re-raised. 7 new focused tests added (TestWalkForwardOtfConfigValidation; 83 integration tests total). Full suite: 1477 passed in 31.90s. |
 | 2026-07-26 | Phase 10 partially complete (PR 6) — OTF statistical validation diagnostic tooling + release-gate docs | `thesistester/analytics/otf_validation.py`, `tests/test_otf_validation.py`, `pages/10_Validation.py`, `thesistester/reporting.py`, `pages/11_Report_Export.py`, `docs/otf-filter.md §15`, `docs/otf-filter-roadmap.md` | Added `run_otf_validation_matrix()` — fixed five-configuration matrix on chronological train/OOS split (default 70/30); train-only ranking; reporting/UI/docs. OTF remains disabled by default. DoD items for real-dataset OOS validation, drift-review sign-off, and release approval remain open. Session/time-of-day/time-in-market metrics deferred to existing Time Analysis diagnostics. |
 | 2026-07-26 | PR 6 follow-up — train/OOS split identity fix + honest roadmap status | `thesistester/analytics/otf_validation.py`, `tests/test_otf_validation.py`, `thesistester/reporting.py`, `docs/otf-filter-roadmap.md`, `docs/otf-filter.md` | Fixed enabled-path train/OOS period assignment to use a stamped row-id column that survives `apply_otf_filter()` `reset_index`; added non-default-index regression test; strip reserved `execution_kwargs`; omit artifact/markdown OTF validation section when not run; corrected Phase 10 / PR 6 status overclaims. |
+| 2026-08-03 | Hardening PR 1 — futures-session `eth_start` propagation parity | `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/10_Validation.py`, `thesistester/engine/otf_integration.py`, `thesistester/analytics/otf_validation.py`, `thesistester/reporting.py`, `tests/test_otf_integration.py`, `tests/test_otf_validation.py`, `tests/test_api.py`, `docs/otf-filter-roadmap.md` | Streamlit Backtest/Grid/OTF validation matrix now forward instrument `eth_start` (matching API/WFO). `OtfFilterResult` summaries, research OTF metadata, WFO OTF summary, and validation-matrix rows record effective `session_timezone`/`eth_start`. Intentional enabled-Streamlit overnight correction; disabled path unchanged. See `docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md` §5. |
+| 2026-08-03 | Hardening PR 1 follow-up — WFO OTF timezone honesty | `thesistester/analytics/walk_forward.py`, `pages/10_Validation.py`, `tests/test_otf_integration.py` | Fold-level OTF uses `resolve_otf_session_timezone(session_timezone, exchange_timezone)` so omitted session-exit timezone falls back to exchange timezone; Validation `walk_forward_otf_filter` records that same resolved value. |
 
 ## Open questions
 

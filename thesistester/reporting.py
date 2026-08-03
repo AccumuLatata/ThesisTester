@@ -202,6 +202,8 @@ def build_otf_filter_metadata(session_state: Mapping[str, Any]) -> dict[str, Any
         "accepted_signal_count": accepted_count,
         "rejected_signal_count": rejected_count,
         "rejection_rate": rejection_rate,
+        "session_timezone": primary.get("session_timezone"),
+        "eth_start": primary.get("eth_start"),
         "applied_scopes": applied_scopes,
     }
 

@@ -11,6 +11,8 @@ Covers:
 
 from __future__ import annotations
 
+import pathlib
+
 import pandas as pd
 import pytest
 
@@ -108,13 +110,17 @@ def _disabled_config() -> dict:
     return _default_otf_filter_config()
 
 
-def _enabled_config(timeframes: list[str] | None = None) -> dict:
+def _enabled_config(
+    timeframes: list[str] | None = None,
+    *,
+    minimum_consecutive_bars: int = 3,
+) -> dict:
     return normalize_otf_filter_config(
         {
             "enabled": True,
             "timeframes": timeframes or ["5m"],
             "alignment_mode": "all",
-            "minimum_consecutive_bars": 3,
+            "minimum_consecutive_bars": minimum_consecutive_bars,
             "directional": True,
             "use_completed_bars_only": True,
             "session_reset": "session",
@@ -497,6 +503,8 @@ class TestOtfFilterResultSummary:
             "otf_accepted_signal_count",
             "otf_rejected_signal_count",
             "rejection_rate",
+            "session_timezone",
+            "eth_start",
         }
         assert required_keys.issubset(set(summary.keys()))
 
@@ -1938,3 +1946,311 @@ class TestWalkForwardOtfConfigValidation:
         except ValueError:
             raised = True
         assert raised, "Invalid OTF config must raise ValueError, not produce fold results"
+
+
+# ---------------------------------------------------------------------------
+# PR1 — Futures-session eth_start propagation parity
+# ---------------------------------------------------------------------------
+
+
+def _overnight_1m_source(*, minutes: int = 180) -> pd.DataFrame:
+    """1-minute OHLCV spanning Mon 22:00 ET through the next 18:00 ET boundary.
+
+    Bars make progressively higher lows so a short HTF OTF sequence can
+    establish ``up`` across midnight when eth_start="18:00".
+    """
+    start = pd.Timestamp("2026-01-05 22:00:00", tz=TZ)
+    overnight = pd.date_range(start, periods=minutes, freq="1min")
+    # Extend through Tuesday 18:30 so the next-session boundary is present.
+    boundary = pd.date_range("2026-01-06 18:00:00", periods=30, freq="1min", tz=TZ)
+    timestamps = overnight.union(boundary)
+    rows = []
+    price = 100.0
+    for ts in timestamps:
+        low = price
+        high = price + 1.0
+        rows.append(
+            {
+                "timestamp": ts,
+                "open": price + 0.2,
+                "high": high,
+                "low": low,
+                "close": price + 0.6,
+                "volume": 100.0,
+            }
+        )
+        price += 0.05  # higher lows over time
+    return pd.DataFrame(rows)
+
+
+def _overnight_signals(source: pd.DataFrame) -> pd.DataFrame:
+    """Long candidates before midnight, after midnight, and after 18:00 ET."""
+    picks = [
+        pd.Timestamp("2026-01-05 22:45:00", tz=TZ),
+        pd.Timestamp("2026-01-06 00:15:00", tz=TZ),
+        pd.Timestamp("2026-01-06 18:20:00", tz=TZ),
+    ]
+    rows = []
+    for i, ts in enumerate(picks):
+        # Map to nearest source bar index for bar_index realism.
+        idx = int((source["timestamp"] - ts).abs().idxmin())
+        rows.append(
+            _signal(
+                signal_id=i + 1,
+                timestamp=str(ts.strftime("%Y-%m-%d %H:%M:%S")),
+                direction="long",
+                bar_index=idx,
+            )
+        )
+    return _signals_df(*rows)
+
+
+class TestEthStartSessionPropagation:
+    """PR1: Streamlit-equivalent OTF composition must forward eth_start."""
+
+    def test_summary_records_effective_session_fields(self):
+        source = _overnight_1m_source()
+        sigs = _overnight_signals(source)
+        result = apply_configured_otf_filter(
+            source_df=source,
+            candidate_signals=sigs,
+            setup_config={"otf_filter": _enabled_config(["5m"], minimum_consecutive_bars=1)},
+            session_timezone=TZ,
+            eth_start="18:00",
+        )
+        summary = result.to_summary_dict()
+        assert summary["session_timezone"] == TZ
+        assert summary["eth_start"] == "18:00"
+
+    def test_eth_start_keeps_otf_continuous_across_midnight(self):
+        """With eth_start=18:00, midnight is not a session reset."""
+        source = _overnight_1m_source()
+        # Probe shortly after midnight: calendar-session mode is still in the
+        # first HTF bars of the new day (often unknown), while ETH mode continues
+        # the prior evening session and can already be directional.
+        sigs = _signals_df(_signal(signal_id=1, timestamp="2026-01-06 00:05:00", direction="long"))
+        with_eth = apply_configured_otf_filter(
+            source_df=source,
+            candidate_signals=sigs,
+            setup_config={"otf_filter": _enabled_config(["5m"], minimum_consecutive_bars=3)},
+            session_timezone=TZ,
+            eth_start="18:00",
+        )
+        without_eth = apply_configured_otf_filter(
+            source_df=source,
+            candidate_signals=sigs,
+            setup_config={"otf_filter": _enabled_config(["5m"], minimum_consecutive_bars=3)},
+            session_timezone=TZ,
+            eth_start=None,
+        )
+        with_state = pd.concat(
+            [with_eth.accepted_signals, with_eth.rejected_signals], ignore_index=True
+        )["otf_5m_state"].iloc[0]
+        without_state = pd.concat(
+            [without_eth.accepted_signals, without_eth.rejected_signals], ignore_index=True
+        )["otf_5m_state"].iloc[0]
+        assert with_eth.eth_start == "18:00"
+        assert without_eth.eth_start is None
+        assert with_state == "up"
+        assert without_state in {"unknown", "neutral"}
+        assert with_state != without_state
+
+    def test_ui_equivalent_backtest_matches_api_otf_populations(self):
+        from thesistester.api import run_backtest
+        from thesistester.config import INSTRUMENTS
+
+        source = _overnight_1m_source()
+        sigs = _overnight_signals(source)
+        setup = {
+            "name": "otf-eth-parity",
+            "instrument": "ES",
+            "otf_filter": _enabled_config(["5m"], minimum_consecutive_bars=1),
+        }
+        inst = INSTRUMENTS["ES"]
+        ui = apply_configured_otf_filter(
+            source_df=source,
+            candidate_signals=sigs,
+            setup_config=setup,
+            session_timezone=inst.exchange_tz,
+            eth_start=inst.eth_start,
+            signal_settings={"otf_filter": setup["otf_filter"]},
+        )
+        api = run_backtest(
+            source,
+            sigs,
+            instrument="ES",
+            config={"stop_loss_ticks": 4, "take_profit_ticks": 8},
+            setup_config=setup,
+            signal_settings={"otf_filter": setup["otf_filter"]},
+        )
+        assert api["otf_filter_summary"]["eth_start"] == inst.eth_start
+        assert api["otf_filter_summary"]["session_timezone"] == inst.exchange_tz
+        assert list(ui.accepted_signals["signal_id"]) == list(api["accepted_signals"]["signal_id"])
+        assert list(ui.rejected_signals["signal_id"]) == list(api["rejected_signals"]["signal_id"])
+        if not ui.rejected_signals.empty:
+            assert list(ui.rejected_signals["otf_filter_reason"]) == list(
+                api["rejected_signals"]["otf_filter_reason"]
+            )
+
+    def test_ui_equivalent_grid_matches_api_otf_populations(self):
+        from thesistester.api import run_grid
+        from thesistester.config import INSTRUMENTS
+
+        source = _overnight_1m_source()
+        sigs = _overnight_signals(source)
+        setup = {
+            "name": "otf-eth-grid-parity",
+            "instrument": "ES",
+            "otf_filter": _enabled_config(["5m"], minimum_consecutive_bars=1),
+        }
+        inst = INSTRUMENTS["ES"]
+        ui = apply_configured_otf_filter(
+            source_df=source,
+            candidate_signals=sigs,
+            setup_config=setup,
+            session_timezone=inst.exchange_tz,
+            eth_start=inst.eth_start,
+            signal_settings={"otf_filter": setup["otf_filter"]},
+        )
+        api = run_grid(
+            source,
+            sigs,
+            instrument="ES",
+            config={
+                "stop_loss_ticks_values": [4],
+                "take_profit_ticks_values": [8],
+            },
+            setup_config=setup,
+            signal_settings={"otf_filter": setup["otf_filter"]},
+        )
+        assert api["otf_filter_summary"]["eth_start"] == inst.eth_start
+        assert list(ui.accepted_signals["signal_id"]) == list(api["accepted_signals"]["signal_id"])
+        assert list(ui.rejected_signals["signal_id"]) == list(api["rejected_signals"]["signal_id"])
+
+    def test_validation_matrix_records_eth_start_and_matches_headless(self):
+        from thesistester.analytics.otf_validation import run_otf_validation_matrix
+        from thesistester.api import run_otf_validation
+        from thesistester.config import INSTRUMENTS
+
+        source = _overnight_1m_source()
+        sigs = _overnight_signals(source)
+        inst = INSTRUMENTS["ES"]
+        ui_matrix = run_otf_validation_matrix(
+            source_df=source,
+            candidate_signals=sigs,
+            tick_size=inst.tick_size,
+            point_value=inst.point_value,
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
+            train_fraction=0.7,
+            session_timezone=inst.exchange_tz,
+            eth_start=inst.eth_start,
+        )
+        api_matrix = run_otf_validation(
+            source,
+            sigs,
+            instrument="ES",
+            stop_loss_ticks=4,
+            take_profit_ticks=8,
+            train_fraction=0.7,
+            session_timezone=inst.exchange_tz,
+            eth_start=inst.eth_start,
+        )
+        assert "eth_start" in ui_matrix.columns
+        assert "session_timezone" in ui_matrix.columns
+        assert (ui_matrix["eth_start"] == inst.eth_start).all()
+        assert (ui_matrix["session_timezone"] == inst.exchange_tz).all()
+        pd.testing.assert_frame_equal(
+            ui_matrix.reset_index(drop=True),
+            api_matrix.reset_index(drop=True),
+            check_dtype=False,
+        )
+
+    def test_disabled_otf_ignores_eth_start_and_preserves_candidates(self):
+        source = _overnight_1m_source()
+        sigs = _overnight_signals(source)
+        with_eth = apply_configured_otf_filter(
+            source_df=source,
+            candidate_signals=sigs,
+            setup_config={"otf_filter": _disabled_config()},
+            session_timezone=TZ,
+            eth_start="18:00",
+        )
+        without_eth = apply_configured_otf_filter(
+            source_df=source,
+            candidate_signals=sigs,
+            setup_config={"otf_filter": _disabled_config()},
+            session_timezone=TZ,
+            eth_start=None,
+        )
+        assert with_eth.otf_filter_enabled is False
+        assert without_eth.otf_filter_enabled is False
+        assert len(with_eth.accepted_signals) == len(sigs)
+        assert len(without_eth.accepted_signals) == len(sigs)
+        assert with_eth.rejected_signals.empty
+        assert without_eth.rejected_signals.empty
+        pd.testing.assert_series_equal(
+            with_eth.accepted_signals["signal_id"].reset_index(drop=True),
+            without_eth.accepted_signals["signal_id"].reset_index(drop=True),
+        )
+
+    def test_reporting_metadata_exposes_eth_start(self):
+        source = _overnight_1m_source()
+        sigs = _overnight_signals(source)
+        result = apply_configured_otf_filter(
+            source_df=source,
+            candidate_signals=sigs,
+            setup_config={"otf_filter": _enabled_config(["5m"], minimum_consecutive_bars=1)},
+            session_timezone=TZ,
+            eth_start="18:00",
+        )
+        meta = build_otf_filter_metadata({"otf_filter_summary": result.to_summary_dict()})
+        assert meta["available"] is True
+        assert meta["eth_start"] == "18:00"
+        assert meta["session_timezone"] == TZ
+
+    def test_wfo_otf_falls_back_to_exchange_timezone_when_session_tz_missing(self):
+        """Fold OTF must use exchange_timezone when session-exit tz is omitted."""
+        from thesistester.analytics.walk_forward import (
+            resolve_otf_session_timezone,
+            run_walk_forward_sl_tp,
+        )
+        from thesistester.config import INSTRUMENTS
+
+        assert resolve_otf_session_timezone(None, TZ) == TZ
+        assert resolve_otf_session_timezone("UTC", TZ) == "UTC"
+        assert resolve_otf_session_timezone(None, None) is None
+
+        source = _overnight_1m_source()
+        sigs = _overnight_signals(source)
+        inst = INSTRUMENTS["ES"]
+        otf_cfg = _enabled_config(["5m"], minimum_consecutive_bars=1)
+        common = dict(
+            df=source,
+            signals=sigs,
+            tick_size=inst.tick_size,
+            point_value=inst.point_value,
+            stop_loss_ticks_values=[4],
+            take_profit_ticks_values=[8],
+            train_bars=40,
+            test_bars=20,
+            step_bars=20,
+            otf_config=otf_cfg,
+            exchange_timezone=inst.exchange_tz,
+            eth_start=inst.eth_start,
+            return_result=True,
+        )
+        missing_session_tz = run_walk_forward_sl_tp(session_timezone=None, **common)
+        explicit_exchange_tz = run_walk_forward_sl_tp(session_timezone=inst.exchange_tz, **common)
+        assert list(missing_session_tz.folds["test_otf_accepted_count"]) == list(
+            explicit_exchange_tz.folds["test_otf_accepted_count"]
+        )
+        assert list(missing_session_tz.folds["test_otf_rejected_count"]) == list(
+            explicit_exchange_tz.folds["test_otf_rejected_count"]
+        )
+        # Validation page records the same resolved timezone used by fold OTF.
+        assert resolve_otf_session_timezone(None, inst.exchange_tz) == inst.exchange_tz
+        page_path = pathlib.Path(__file__).parent.parent / "pages" / "10_Validation.py"
+        source_text = page_path.read_text(encoding="utf-8")
+        assert "resolve_otf_session_timezone(" in source_text
+        assert '"session_timezone": _wfo_session_tz' in source_text
