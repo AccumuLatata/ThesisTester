@@ -115,9 +115,7 @@ def _data_identity_from_state(state: Mapping[str, Any]) -> DataIdentity | Classi
             str(state["source_timezone"]) if state.get("source_timezone") is not None else None
         ),
         exchange_timezone=(
-            str(state["exchange_timezone"])
-            if state.get("exchange_timezone") is not None
-            else None
+            str(state["exchange_timezone"]) if state.get("exchange_timezone") is not None else None
         ),
         format_profile=str(state.get("format_profile") or "canonical"),
     )
