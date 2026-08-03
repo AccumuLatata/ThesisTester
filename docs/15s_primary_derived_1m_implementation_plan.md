@@ -202,8 +202,11 @@ is a programming/data-contract error because every emitted parent must already
 reconcile; it must fail closed rather than silently load the parent without
 R12 data.
 
-The legacy lower-timeframe expander is hidden in this mode because its source
-is already attached. It remains unchanged for legacy one-minute primary mode.
+The legacy lower-timeframe expander is hidden whenever this mode is selected
+in the ingestion-mode radio — including before a 15-second CSV installs
+`ingestion_provenance` — because dual upload must not appear while the
+selector says derive-from-15s. After a successful upload its source is already
+attached. The expander remains unchanged for legacy one-minute primary mode.
 Changing modes or replacing the upload clears all dependent dataset state,
 including intrabar provenance and execution results.
 
@@ -346,6 +349,8 @@ any UI or persistence integration.
   rows from the result/diagnostic contract.
 
 ### PR 2 — Data-page single-upload workflow
+
+**Status:** Implemented (`pages/1_Data.py` helpers + session contract)
 
 **Title:** `Data: add explicit 15-second primary upload mode`
 

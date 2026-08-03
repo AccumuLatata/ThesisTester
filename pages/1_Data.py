@@ -2,6 +2,7 @@ from pathlib import Path
 import sys
 import os
 import hashlib
+from dataclasses import dataclass
 
 import pandas as pd
 import streamlit as st
@@ -11,8 +12,15 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
+from thesistester.data.derive import (
+    INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+    build_derivation_provenance,
+    derive_complete_parent_ohlcv,
+    hash_source_frame,
+)
 from thesistester.data.loader import (
     DataValidationError,
+    ValidationReport,
     duplicate_timestamp_report,
     format_interval,
     infer_base_interval,
@@ -31,6 +39,7 @@ from thesistester.data.sessions import tag_session
 from thesistester.engine.intrabar import (
     inspect_subtimeframe_compatibility,
     prepare_subtimeframe_conservative_context,
+    prepare_subtimeframe_context,
 )
 from thesistester.app_state import (
     ACTIVE_SAVED_DATASET_KEY,
@@ -59,8 +68,17 @@ PENDING_SOURCE_TZ_SELECTOR_KEY = "_pending_data_source_timezone_selector"
 RAW_CAPTURE_PROFILES = frozenset(
     {"ninjatrader", "databento_trades", "tick_capture", "second_capture"}
 )
+INGESTION_MODE_PRIMARY = "primary"
+INGESTION_MODE_LABELS = {
+    INGESTION_MODE_PRIMARY: "One-minute primary (existing)",
+    INGESTION_MODE_15S_PRIMARY_DERIVE_1M: ("15-second primary — derive one-minute canonical"),
+}
+DERIVE_15S_SUPPORTED_PROFILES = frozenset({"quantower_history_exporter"})
+INGESTION_PROVENANCE_KEY = "ingestion_provenance"
+DERIVED_PARENT_DIAGNOSTICS_KEY = "derived_parent_diagnostics"
 SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY = "_subtimeframe_upload_signature"
 SUBTIMEFRAME_UPLOADER_NONCE_KEY = "_subtimeframe_uploader_nonce"
+PRIMARY_CSV_UPLOADER_NONCE_KEY = "_primary_csv_uploader_nonce"
 SUBTIMEFRAME_FALLBACK_BARS_KEY = "subtimeframe_fallback_parent_bars"
 SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY = "_subtimeframe_compatibility_report"
 SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY = "_subtimeframe_compatibility_signature"
@@ -79,6 +97,22 @@ FATAL_OHLCV_CODES = frozenset(
         "negative_volume",
     }
 )
+
+
+@dataclass(frozen=True)
+class Prepared15sPrimaryDataset:
+    """Atomic parent/source package for the 15-second-primary Data-page mode."""
+
+    parent_df: pd.DataFrame
+    source_df: pd.DataFrame
+    source_report: ValidationReport
+    parent_report: ValidationReport
+    base_interval: str
+    subtimeframe_interval: str
+    format_profile: str
+    provenance: dict
+    dropped_buckets: pd.DataFrame
+    upload_signature: str
 
 
 class SubtimeframeCompatibilityError(ValueError):
@@ -115,6 +149,193 @@ def _reset_source_timezone_for_import() -> None:
     )
 
 
+def _is_15s_primary_session(session_state=None) -> bool:
+    """Return True when the active session was built from 15s-primary derivation."""
+    state = st.session_state if session_state is None else session_state
+    provenance = state.get(INGESTION_PROVENANCE_KEY)
+    return (
+        isinstance(provenance, dict)
+        and provenance.get("ingestion_mode") == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    )
+
+
+def _hide_legacy_subtimeframe_uploader(ingestion_mode: str, session_state=None) -> bool:
+    """Hide dual-upload lower path when 15s-primary is selected or active.
+
+    Visibility must follow the ingestion-mode radio, not only
+    ``ingestion_provenance``. After a mode switch (or with stale one-minute
+    ``data`` and no new CSV), provenance is cleared while the selector still
+    says derive-from-15s — the legacy uploader must stay hidden in that case.
+    """
+    if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
+        return True
+    return _is_15s_primary_session(session_state)
+
+
+def _leave_15s_primary_session_if_active() -> None:
+    """Drop 15s-primary artifacts when leaving that ingestion session.
+
+    ``_set_active_dataset_state`` only clears dependent keys when
+    ``compute_dataset_id`` changes. Primary uploads that keep the same
+    derived parent identity would otherwise leave ``ingestion_provenance``
+    and attached 15-second source latched, so ``_is_15s_primary_session()``
+    stays true while the selector shows one-minute primary.
+    """
+    if _is_15s_primary_session():
+        _clear_dataset_dependent_state()
+
+
+def _invalidate_primary_csv_uploader() -> None:
+    """Force Streamlit to drop the current primary CSV upload widget value.
+
+    Mode switches must not re-ingest a file chosen under a different ingestion
+    mode. A Quantower 15-second export left in the uploader after leaving
+    ``15s_primary_derive_1m`` would otherwise hit the legacy primary path and
+    replace derived one-minute ``data`` with raw 15-second bars.
+    """
+    st.session_state[PRIMARY_CSV_UPLOADER_NONCE_KEY] = (
+        int(st.session_state.get(PRIMARY_CSV_UPLOADER_NONCE_KEY, 0)) + 1
+    )
+
+
+def _on_ingestion_mode_change() -> None:
+    """Reset import defaults and clear mode-bound dataset dependent state."""
+    _reset_source_timezone_for_import()
+    # Mode switches must not leave stale provenance, attached 15s source,
+    # diagnostics, or execution results (plan §4.2 / PR2 acceptance).
+    _clear_dataset_dependent_state()
+    # Drop the in-widget CSV so the next run cannot re-parse it under the
+    # newly selected mode (legacy primary vs 15s-derive).
+    _invalidate_primary_csv_uploader()
+
+
+def _fatal_validation_messages(report: ValidationReport) -> list[str]:
+    return [issue.message for issue in report.issues if issue.code in FATAL_OHLCV_CODES]
+
+
+def _prepare_15s_primary_dataset(
+    uploaded_file,
+    *,
+    instrument: str,
+    source_timezone: str | None,
+    exchange_timezone: str,
+    format_profile: str,
+) -> Prepared15sPrimaryDataset:
+    """Parse, derive, tag, and R12-validate a 15-second-primary upload."""
+    if format_profile not in DERIVE_15S_SUPPORTED_PROFILES:
+        supported = ", ".join(sorted(DERIVE_15S_SUPPORTED_PROFILES))
+        raise ValueError(
+            "15-second primary derivation currently supports only these explicit "
+            f"format profiles: {supported}. Selected {format_profile!r}."
+        )
+    raw_df = load_ohlcv(
+        uploaded_file,
+        source_tz=source_timezone,
+        target_tz=exchange_timezone,
+        format_profile=format_profile,
+    )
+    source_report = validate_ohlcv(raw_df)
+    fatal_messages = _fatal_validation_messages(source_report)
+    if fatal_messages:
+        raise ValueError("15-second source validation failed: " + "; ".join(fatal_messages))
+
+    derived = derive_complete_parent_ohlcv(raw_df)
+    parent_report = validate_ohlcv(derived.parent_data)
+    parent_fatal = _fatal_validation_messages(parent_report)
+    if parent_fatal:
+        raise ValueError("Derived one-minute validation failed: " + "; ".join(parent_fatal))
+
+    parent_df = tag_session(derived.parent_data, instrument)
+    source_df = tag_session(derived.source_data, instrument)
+    try:
+        prepare_subtimeframe_context(
+            parent_df,
+            source_df,
+            tick_size=INSTRUMENTS[instrument].tick_size,
+        )
+    except ValueError as exc:
+        raise ValueError(
+            f"Derived one-minute bars failed the strict R12 reconciliation postcondition: {exc}"
+        ) from exc
+
+    provenance = build_derivation_provenance(derived, format_profile=format_profile)
+    upload_signature = (
+        f"{INGESTION_MODE_15S_PRIMARY_DERIVE_1M}:{format_profile}:"
+        f"{hash_source_frame(derived.source_data)}"
+    )
+    return Prepared15sPrimaryDataset(
+        parent_df=parent_df,
+        source_df=source_df,
+        source_report=source_report,
+        parent_report=parent_report,
+        base_interval="1min",
+        subtimeframe_interval=format_interval(derived.source_interval),
+        format_profile=format_profile,
+        provenance=provenance,
+        dropped_buckets=derived.dropped_buckets.copy(),
+        upload_signature=upload_signature,
+    )
+
+
+def _install_15s_primary_dataset(
+    prepared: Prepared15sPrimaryDataset,
+    *,
+    instrument: str,
+    source_timezone: str | None,
+    exchange_timezone: str,
+    resampled_data: dict | None,
+) -> None:
+    """Install derived parent + retained 15s source into session state."""
+    _set_active_dataset_state(
+        prepared.parent_df,
+        instrument=instrument,
+        base_interval=prepared.base_interval,
+        source_timezone=source_timezone,
+        exchange_timezone=exchange_timezone,
+        resampled_data=resampled_data or {},
+        saved_dataset_id=None,
+    )
+    st.session_state["format_profile"] = prepared.format_profile
+    st.session_state["subtimeframe_data"] = prepared.source_df
+    st.session_state["subtimeframe_interval"] = prepared.subtimeframe_interval
+    st.session_state["subtimeframe_format_profile"] = prepared.format_profile
+    st.session_state[INGESTION_PROVENANCE_KEY] = dict(prepared.provenance)
+    st.session_state[DERIVED_PARENT_DIAGNOSTICS_KEY] = prepared.dropped_buckets
+    st.session_state[SUBTIMEFRAME_FALLBACK_BARS_KEY] = []
+    st.session_state[SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY] = prepared.upload_signature
+    st.session_state.pop("raw_data", None)
+    st.session_state.pop("raw_interval", None)
+    st.session_state.pop(SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY, None)
+    st.session_state.pop(SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY, None)
+    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_REPORT_KEY, None)
+    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_SIGNATURE_KEY, None)
+    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_SOURCE_KEY, None)
+    st.session_state.pop(SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY, None)
+    st.session_state.pop(SUBTIMEFRAME_DIAGNOSTIC_DATA_KEY, None)
+
+
+def _render_derived_parent_diagnostics(dropped_buckets: pd.DataFrame) -> None:
+    """Show retained/dropped minute diagnostics for 15-second-primary uploads."""
+    dropped_count = 0 if dropped_buckets is None else int(len(dropped_buckets))
+    if dropped_count == 0:
+        st.info(
+            "All source minutes had complete aligned 15-second coverage; "
+            "no parent minutes were dropped."
+        )
+        return
+    st.warning(
+        f"Dropped {dropped_count:,} incomplete or misaligned source minute(s). "
+        "Those minutes are absent from the derived one-minute canonical data."
+    )
+    st.dataframe(dropped_buckets, width="stretch")
+    st.download_button(
+        "Download dropped-minute diagnostics CSV",
+        data=dropped_buckets.to_csv(index=False).encode("utf-8"),
+        file_name="derived_1m_dropped_minutes.csv",
+        mime="text/csv",
+    )
+
+
 @st.cache_data(show_spinner=False)
 def cached_resample_and_tag(raw_df, instrument: str, timeframe: str):
     """Cache and return session-tagged resampled OHLCV data for preview."""
@@ -146,6 +367,9 @@ def _clear_dataset_dependent_state() -> None:
         "levels",
         "subtimeframe_data",
         "subtimeframe_interval",
+        "subtimeframe_format_profile",
+        INGESTION_PROVENANCE_KEY,
+        DERIVED_PARENT_DIAGNOSTICS_KEY,
         SUBTIMEFRAME_FALLBACK_BARS_KEY,
         SUBTIMEFRAME_COMPATIBILITY_REPORT_KEY,
         SUBTIMEFRAME_COMPATIBILITY_SIGNATURE_KEY,
@@ -830,7 +1054,9 @@ def _render_roll_assumptions(df, *, instrument: str) -> None:
 st.title("\U0001f4e5 Data")
 st.caption(
     "Load and validate OHLCV data for the active instrument. "
-    "Optionally attach lower-timeframe bars for observed replay, and manage local saved datasets."
+    "Upload a one-minute primary CSV, or use the explicit 15-second-primary mode "
+    "to derive one-minute canonical bars and attach the 15-second source for R12 replay. "
+    "Legacy dual-upload lower-timeframe attachment remains available for one-minute primaries."
 )
 
 bootstrap_active_saved_dataset()
@@ -929,7 +1155,25 @@ source = st.radio(
     key="data_source_selector",
     on_change=_reset_source_timezone_for_import,
 )
-profile_options = {
+if source == "Upload CSV":
+    if "data_ingestion_mode_selector" not in st.session_state:
+        st.session_state["data_ingestion_mode_selector"] = INGESTION_MODE_PRIMARY
+    ingestion_mode = st.radio(
+        "Ingestion mode",
+        options=list(INGESTION_MODE_LABELS),
+        format_func=INGESTION_MODE_LABELS.get,
+        horizontal=True,
+        key="data_ingestion_mode_selector",
+        help=(
+            "15-second primary derives complete one-minute bars from the upload and "
+            "retains the 15-second bars for R12. One-minute primary keeps the legacy path."
+        ),
+        on_change=_on_ingestion_mode_change,
+    )
+else:
+    ingestion_mode = INGESTION_MODE_PRIMARY
+
+all_profile_options = {
     "canonical": "Canonical / Quantower OHLCV",
     "quantower_history_exporter": "Quantower History Exporter (semicolon)",
     "ninjatrader": "NinjaTrader export",
@@ -938,6 +1182,16 @@ profile_options = {
     "tick_capture": "Generic tick capture CSV",
     "second_capture": "Generic second capture CSV",
 }
+if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
+    profile_options = {
+        key: label
+        for key, label in all_profile_options.items()
+        if key in DERIVE_15S_SUPPORTED_PROFILES
+    }
+    if st.session_state.get("data_format_profile_selector") not in profile_options:
+        st.session_state["data_format_profile_selector"] = next(iter(profile_options))
+else:
+    profile_options = all_profile_options
 format_profile = (
     st.selectbox(
         "CSV format profile",
@@ -974,7 +1228,12 @@ source_tz = st.selectbox(
 
 file = None
 if source == "Upload CSV":
-    file = st.file_uploader("CSV file for the selected explicit profile", type=["csv", "txt"])
+    primary_uploader_nonce = int(st.session_state.get(PRIMARY_CSV_UPLOADER_NONCE_KEY, 0))
+    file = st.file_uploader(
+        "CSV file for the selected explicit profile",
+        type=["csv", "txt"],
+        key=f"primary_csv_upload_{primary_uploader_nonce}",
+    )
 else:
     sample = REPO_ROOT / "sample_data" / "ES_sample_1m.csv"
     file = sample if sample.exists() else None
@@ -987,58 +1246,98 @@ use_source_dataset = file is not None and (
 
 if use_source_dataset:
     try:
-        raw_df, captured_raw = load_ohlcv(
-            file,
-            source_tz=source_tz,
-            target_tz=meta.exchange_tz,
-            format_profile=format_profile,
-            return_raw=True,
-        )
-        report = validate_ohlcv(raw_df)
-        base_interval = format_interval(report.inferred_interval)
-        df = tag_session(raw_df, inst)
-
         selected_timeframes = st.multiselect(
             "Preview resampled timeframes",
             options=list(SUPPORTED_TIMEFRAMES),
             default=["5min", "15min"],
         )
-
-        resampled_data = {}
-        for timeframe in selected_timeframes:
-            out = cached_resample_and_tag(raw_df, inst, timeframe)
-            resampled_data[timeframe] = out
-        _set_active_dataset_state(
-            df,
-            instrument=inst,
-            base_interval=base_interval,
-            source_timezone=source_tz,
-            exchange_timezone=meta.exchange_tz,
-            resampled_data=resampled_data,
-            saved_dataset_id=None,
-        )
-        st.session_state["format_profile"] = format_profile
-        if format_profile in RAW_CAPTURE_PROFILES:
-            st.session_state["raw_data"] = captured_raw
-            st.session_state["raw_interval"] = format_interval(
-                infer_base_interval(captured_raw["timestamp"])
+        if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
+            prepared = _prepare_15s_primary_dataset(
+                file,
+                instrument=inst,
+                source_timezone=source_tz,
+                exchange_timezone=meta.exchange_tz,
+                format_profile=format_profile,
+            )
+            resampled_data = {}
+            for timeframe in selected_timeframes:
+                out = cached_resample_and_tag(prepared.parent_df, inst, timeframe)
+                resampled_data[timeframe] = out
+            _install_15s_primary_dataset(
+                prepared,
+                instrument=inst,
+                source_timezone=source_tz,
+                exchange_timezone=meta.exchange_tz,
+                resampled_data=resampled_data,
+            )
+            st.success(
+                f"Derived {len(prepared.parent_df):,} one-minute bars from "
+                f"{len(prepared.source_df):,} 15-second source bars."
             )
             st.caption(
-                f"Captured {len(captured_raw):,} raw rows; the engine uses the resampled 1-minute bars."
+                "Canonical research data is the derived one-minute frame. "
+                "The original 15-second bars are attached for R12 replay."
+            )
+            _render_derived_parent_diagnostics(prepared.dropped_buckets)
+            _render_dataset_summary(
+                prepared.parent_df,
+                instrument=inst,
+                base_interval=prepared.base_interval,
+                source_timezone=source_tz,
+                exchange_timezone=meta.exchange_tz,
+                report=prepared.parent_report,
+                resampled_data=resampled_data,
             )
         else:
-            st.session_state.pop("raw_data", None)
-            st.session_state.pop("raw_interval", None)
-        _render_dataset_summary(
-            df,
-            instrument=inst,
-            base_interval=base_interval,
-            source_timezone=source_tz,
-            exchange_timezone=meta.exchange_tz,
-            report=report,
-            resampled_data=resampled_data,
-        )
-    except DataValidationError as exc:
+            # Leaving 15s-primary must drop provenance/subtimeframe even when
+            # the new primary shares the prior derived parent dataset_id.
+            _leave_15s_primary_session_if_active()
+            raw_df, captured_raw = load_ohlcv(
+                file,
+                source_tz=source_tz,
+                target_tz=meta.exchange_tz,
+                format_profile=format_profile,
+                return_raw=True,
+            )
+            report = validate_ohlcv(raw_df)
+            base_interval = format_interval(report.inferred_interval)
+            df = tag_session(raw_df, inst)
+
+            resampled_data = {}
+            for timeframe in selected_timeframes:
+                out = cached_resample_and_tag(raw_df, inst, timeframe)
+                resampled_data[timeframe] = out
+            _set_active_dataset_state(
+                df,
+                instrument=inst,
+                base_interval=base_interval,
+                source_timezone=source_tz,
+                exchange_timezone=meta.exchange_tz,
+                resampled_data=resampled_data,
+                saved_dataset_id=None,
+            )
+            st.session_state["format_profile"] = format_profile
+            if format_profile in RAW_CAPTURE_PROFILES:
+                st.session_state["raw_data"] = captured_raw
+                st.session_state["raw_interval"] = format_interval(
+                    infer_base_interval(captured_raw["timestamp"])
+                )
+                st.caption(
+                    f"Captured {len(captured_raw):,} raw rows; the engine uses the resampled 1-minute bars."
+                )
+            else:
+                st.session_state.pop("raw_data", None)
+                st.session_state.pop("raw_interval", None)
+            _render_dataset_summary(
+                df,
+                instrument=inst,
+                base_interval=base_interval,
+                source_timezone=source_tz,
+                exchange_timezone=meta.exchange_tz,
+                report=report,
+                resampled_data=resampled_data,
+            )
+    except (DataValidationError, ValueError) as exc:
         st.error(str(exc))
 elif "data" in st.session_state:
     _render_dataset_summary(
@@ -1050,16 +1349,38 @@ elif "data" in st.session_state:
         resampled_data=st.session_state.get("resampled_data"),
         saved_dataset_loaded=ACTIVE_SAVED_DATASET_KEY in st.session_state,
     )
+    if _is_15s_primary_session():
+        diagnostics = st.session_state.get(DERIVED_PARENT_DIAGNOSTICS_KEY)
+        if isinstance(diagnostics, pd.DataFrame):
+            _render_derived_parent_diagnostics(diagnostics)
 
 current_df = st.session_state.get("data")
 if current_df is not None:
     st.divider()
-    _render_subtimeframe_upload(
-        current_df,
-        instrument=st.session_state.get("instrument", inst),
-        source_timezone=st.session_state.get("source_timezone"),
-        exchange_timezone=st.session_state.get("exchange_timezone", meta.exchange_tz),
-    )
+    if _hide_legacy_subtimeframe_uploader(ingestion_mode):
+        if _is_15s_primary_session():
+            interval = st.session_state.get("subtimeframe_interval", "15s")
+            source_rows = st.session_state.get("subtimeframe_data")
+            source_count = len(source_rows) if isinstance(source_rows, pd.DataFrame) else 0
+            st.info(
+                f"15-second source attached from primary upload: {source_count:,} bars at "
+                f"{interval}. Separate lower-timeframe upload is hidden in this mode."
+            )
+        else:
+            # Mode selected but no active 15s-primary provenance yet (e.g. stale
+            # one-minute data after a mode switch, before a new 15s CSV upload).
+            st.info(
+                "Separate lower-timeframe upload is hidden in 15-second primary mode. "
+                "Upload a 15-second CSV above to derive one-minute bars and attach "
+                "the 15-second source for R12."
+            )
+    else:
+        _render_subtimeframe_upload(
+            current_df,
+            instrument=st.session_state.get("instrument", inst),
+            source_timezone=st.session_state.get("source_timezone"),
+            exchange_timezone=st.session_state.get("exchange_timezone", meta.exchange_tz),
+        )
     st.divider()
     _render_roll_assumptions(
         current_df,

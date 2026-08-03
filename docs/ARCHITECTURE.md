@@ -499,7 +499,7 @@ downstream engine surfaces still receive only canonical bars. Local persistence
 may retain a `raw.parquet` capture sidecar, but canonical data alone determines
 the dataset ID and research pipeline identity.
 
-## Complete 15s→1m derivation boundary (foundation)
+## Complete 15s→1m derivation boundary
 
 `thesistester.data.derive.derive_complete_parent_ohlcv()` is a Streamlit-free
 helper that derives one-minute OHLCV parents from an explicit 15-second source
@@ -509,10 +509,28 @@ dropped into a read-only diagnostic frame; no interpolation or partial parents
 are produced. This is stricter than `resample_ohlcv(..., "1min")`, which may
 retain non-empty partial buckets for preview use.
 
-The helper does not change Data-page upload UX, local-store schema, API/CLI
-RunSpec fields, R12 resolvers, or engine defaults. Later PRs may wire the typed
-`DerivedParentResult` into an explicit 15-second-primary ingestion mode while
-keeping legacy one-minute upload paths unchanged. See
+The Data page exposes an explicit opt-in ingestion mode,
+`15s_primary_derive_1m`, currently limited to
+`quantower_history_exporter`. That mode derives the canonical one-minute
+`data` frame, attaches the original 15-second bars as `subtimeframe_data`,
+records `ingestion_provenance` / `derived_parent_diagnostics`, and runs
+`prepare_subtimeframe_context()` as a fail-closed postcondition before state
+commit. The separate lower-timeframe uploader is hidden whenever the
+ingestion-mode radio selects `15s_primary_derive_1m` (not only after
+`ingestion_provenance` marks an active derived session), so stale
+one-minute `data` cannot resurface the legacy dual-upload path while the
+selector says derive-from-15s. Switching the ingestion-mode radio clears
+dataset-dependent state (including provenance, attached 15s source,
+diagnostics, and execution results) and invalidates the primary CSV
+uploader widget so a file chosen under one mode cannot be re-ingested on
+the other path on the same rerun. The one-minute primary upload path also
+drops an active 15s-primary session even when `compute_dataset_id` is
+unchanged, so the UI cannot stay latched in 15s-primary while the
+selector shows primary. Legacy one-minute primary upload and optional
+dual-upload lower data remain unchanged.
+Local-store schema, API/CLI RunSpec fields, R12 resolvers, and engine
+defaults are unchanged in this PR; durable save/restore of the attached
+15-second source is deferred. See
 `docs/15s_primary_derived_1m_implementation_plan.md`.
 
 ## End-to-end data flow
@@ -548,9 +566,11 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `format_profile` | Data / saved-dataset bootstrap | Local dataset provenance | Explicit R17 parser profile; restored from saved metadata and defaults to `canonical` |
 | `raw_data` | NinjaTrader capture, data capture profiles / saved-dataset bootstrap | Local persistence only | Optional unaggregated NinjaTrader 3/5-field capture or tick/trade rows restored from `raw.parquet`; never consumed by the bar engine. A canonical-only resave preserves an existing sidecar and its provenance. |
 | `raw_interval` | Data capture profiles / saved-dataset bootstrap | Local dataset provenance | Inferred raw capture interval restored from saved metadata and preserved with an existing raw sidecar |
-| `subtimeframe_data` | Data page, R18 API/CLI, or Research Bundle import | Backtest/Grid/Walk-forward, Research Bundles | Optional strictly finer canonical `pd.DataFrame` OHLCV/session rows for R12 replay; Data-page uploads validate against the active primary frame, and `dataset.subtimeframe_path` never inherits the primary dataset vendor profile |
+| `subtimeframe_data` | Data page, R18 API/CLI, or Research Bundle import | Backtest/Grid/Walk-forward, Research Bundles | Optional strictly finer canonical `pd.DataFrame` OHLCV/session rows for R12 replay; Data-page uploads validate against the active primary frame, and `dataset.subtimeframe_path` never inherits the primary dataset vendor profile. In `15s_primary_derive_1m` mode this is the retained upload source. |
 | `subtimeframe_interval` | Data page, R18 API/CLI, or Research Bundle import | Research Bundles/report provenance | `str \| None` inferred lower interval |
-| `subtimeframe_format_profile` | Data page or R18 API/CLI | Research Bundles/report provenance | Explicit lower CSV parser profile; defaults to `canonical` and never inherits the primary profile |
+| `subtimeframe_format_profile` | Data page or R18 API/CLI | Research Bundles/report provenance | Explicit lower CSV parser profile; defaults to `canonical` and never inherits the primary profile. In `15s_primary_derive_1m` mode it equals the selected source profile. |
+| `ingestion_provenance` | Data page (`15s_primary_derive_1m` mode) | Data-page diagnostics / future persistence | JSON-safe derivation provenance (`ingestion_mode`, source/parent intervals, `derivation_policy`, `source_format_profile`, `source_content_hash`, dropped-minute count) |
+| `derived_parent_diagnostics` | Data page (`15s_primary_derive_1m` mode) | Data-page diagnostics download | Read-only dropped-minute frame (`incomplete_coverage` / `timestamp_misalignment`); never used to patch source or parent bars |
 | `resampled_data` | Data (`pages/1_Data.py:115`) | Data summary (`pages/1_Data.py:341`) | `dict[str, pd.DataFrame]` |
 | `instrument` | Data (`pages/1_Data.py:116`) | Levels/Setup/Signals/Backtest/Grid/Time (`pages/5_Levels.py:207`, `pages/2_Setup_Builder.py:67`, `pages/6_Signals.py`, `pages/7_Backtest.py:70`, `pages/8_Grid_Search.py:42`, `pages/9_Time_Analysis.py:30`) | `str` (e.g., `ES`, `NQ`) |
 | `base_interval` | Data (`pages/1_Data.py:117`) | Levels fingerprint (`pages/5_Levels.py:84`), dataset persistence (`pages/1_Data.py:357`) | `str \| None` |

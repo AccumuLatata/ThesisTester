@@ -43,10 +43,22 @@ processes across runs only. Each individual levels/signals/backtest/grid/
 validation pipeline stays single-threaded, and output order follows YAML order.
 R12 adds optional `dataset.subtimeframe_path`; it is required when an enabled
 backtest/grid section selects `intrabar_model: subtimeframe`.
-For interactive Streamlit research, the Data page can instead load an optional
-canonical lower-timeframe CSV after the primary dataset is loaded. This is a
-session-scoped producer of the same `subtimeframe_data` contract; YAML remains
-the reproducible headless contract.
+For interactive Streamlit research, the Data page can:
+1. load a one-minute primary CSV and optionally attach a lower-timeframe CSV; or
+2. select the explicit `15s_primary_derive_1m` ingestion mode (Quantower History
+   Exporter) to derive complete one-minute canonical bars from a single
+   15-second upload and attach that 15-second source as `subtimeframe_data`.
+
+Switching ingestion modes clears 15s-primary artifacts and invalidates the
+primary CSV uploader so a 15-second export cannot be re-parsed as one-minute
+primary data on the next rerun. While the radio selects
+`15s_primary_derive_1m`, the separate lower-timeframe uploader stays hidden
+even if stale one-minute `data` remains and provenance has not been installed
+yet.
+
+Both interactive lower-data paths are session-scoped producers of the same
+`subtimeframe_data` contract today; YAML `dataset.subtimeframe_path` remains
+the reproducible headless contract until a later persistence/RunSpec PR.
 
 Minimal complete shape:
 
