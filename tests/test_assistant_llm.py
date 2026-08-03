@@ -23,9 +23,7 @@ def test_load_llm_settings_from_tracked_config(tmp_path):
 
 def test_key_must_be_environment_injected(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr(
-        "thesistester.assistant.llm._read_streamlit_openai_api_key", lambda: None
-    )
+    monkeypatch.setattr("thesistester.assistant.llm._read_streamlit_openai_api_key", lambda: None)
     with pytest.raises(LLMConfigurationError, match="rotated"):
         require_openai_api_key()
 
@@ -66,7 +64,10 @@ def test_api_key_from_secrets_mapping_flat_and_nested_precedence():
         )
         == "flat-key"
     )
-    assert _api_key_from_secrets_mapping({"OPENAI_API_KEY": "REPLACE_WITH_ROTATED_OPENAI_API_KEY"}) is None
+    assert (
+        _api_key_from_secrets_mapping({"OPENAI_API_KEY": "REPLACE_WITH_ROTATED_OPENAI_API_KEY"})
+        is None
+    )
     assert _api_key_from_secrets_mapping({"openai": {"api_key": ""}}) is None
     assert _api_key_from_secrets_mapping(None) is None
 
