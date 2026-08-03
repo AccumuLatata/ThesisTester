@@ -773,10 +773,17 @@ def build_plan_review(
 def build_provenance_card(run: Mapping[str, Any]) -> dict[str, Any]:
     """Build a presentation-only provenance card for one research run."""
     provenance = run.get("provenance") if isinstance(run.get("provenance"), Mapping) else {}
+    request = run.get("request") if isinstance(run.get("request"), Mapping) else {}
     return {
         "run_id": run.get("run_id"),
         "status": run.get("status"),
         "spec_version": run.get("spec_version"),
+        "request_action": request.get("action"),
+        "origin_page": request.get("origin_page") or provenance.get("origin_page"),
+        "classic_config_hash": request.get("classic_config_hash")
+        or provenance.get("classic_config_hash"),
+        "recording_policy": request.get("recording_policy") or provenance.get("recording_policy"),
+        "execution_origin": provenance.get("execution_origin") or request.get("execution_origin"),
         "bundle_path": provenance.get("bundle_path"),
         "canonical_bundle_hash": provenance.get("canonical_bundle_hash"),
         "dataset_fingerprint": provenance.get("dataset_fingerprint"),

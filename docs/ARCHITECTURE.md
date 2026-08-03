@@ -156,7 +156,7 @@ Bundles only.
 |---|---|
 | `classic_active_thesis_id` | Active thesis in classic research mode |
 | `classic_active_thesis_name` | Cached display name for the breadcrumb |
-| `classic_recording_policy` | `manual` (default, CAI-0) or `all_executions` (CAI-7) |
+| `classic_recording_policy` | `manual` (default) or `all_executions` (CAI-7 ledger); chrome selectbox |
 | `classic_pending_navigation` | Optional one-shot allowlisted page target (`st.switch_page`) |
 | `classic_bound_dataset_id` | Dataset identity that must match or context clears; unset binds on first observed `dataset_id` |
 | `classic_flash` | One-shot `{level, message}` UI notice |
@@ -198,6 +198,33 @@ After registration, `explain_run` / `compare_completed_runs` /
 `restore_run_bundle_to_session` work from the verified bundle like any other
 completed run. Future recomputation still requires
 `execute_confirmed_run` on a confirmed specification.
+
+## Classic research-mode execution ledger (CAI-7)
+
+`thesistester/classic_ledger.py` implements opt-in `all_executions` attempt
+history under an active thesis:
+
+- Gating: `should_record_all_executions` — research mode **and**
+  `classic_recording_policy == "all_executions"`. Manual policy or no thesis
+  leaves the classic Backtest path unchanged.
+- Before OTF/simulate: `begin_classic_execution_ledger` exports a CAI-4 RunSpec
+  (materializing a lineage CSV when needed), confirms it, and `start_run` with
+  `request.action="classic_execution_ledger"`, `origin_page`, and
+  `classic_config_hash`.
+- On any post-begin Backtest failure (OTF/simulate/`ValueError` or other
+  exceptions during session persist/complete): `fail_classic_execution_ledger`
+  → status `failed` (never left `running`, never `completed` on failure).
+- After successful session writes: `complete_classic_execution_ledger` builds a
+  research bundle and `complete_run` with `execution_origin="classic"`. A
+  bundle-write or `complete_run` failure fails the run while retaining the
+  original request (orphan zip removed).
+- Recording-policy selectbox uses a shared Streamlit widget key synced from
+  session policy so a stale per-page widget cannot silently revert policy.
+- Surfaces: Backtest ledger table; Assistant Research runs labels
+  (`ledger:backtest` / `recorded:manual` / `assistant`);
+  `build_provenance_card` includes origin/config/policy/execution_origin.
+- Ledger APIs stay out of `classic_context.py` so link/create remain
+  non-recording.
 
 ## AI Research Assistant contract boundary (AIA-0)
 

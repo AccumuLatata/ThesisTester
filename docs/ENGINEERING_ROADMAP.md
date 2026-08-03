@@ -207,8 +207,8 @@ executable page settings or recording runs.
 - Pending navigation uses allowlisted `st.switch_page` targets.
 - Bundle import re-syncs classic context against the imported dataset.
 - Linking never starts runs or creates specification versions.
-- Recording policy default remains `manual` (CAI-0); `all_executions` deferred
-  to CAI-7.
+- Recording policy default remains `manual` (CAI-0); `all_executions` behavior
+  is implemented in CAI-7.
 
 ### Tests
 
@@ -246,6 +246,39 @@ recomputing the experiment. Explicit **Record and discuss this run** only.
 ### Tests
 
 - `tests/test_classic_record.py`.
+
+---
+
+## CAI-7 — Research-Mode Execution Ledger ✅ Implemented
+
+Opt-in `all_executions` recording under an active thesis so Backtest attempts
+are persisted before execution and terminalized as completed, failed, or
+cancelled — preventing selective preservation of only favorable outcomes.
+
+### Features
+
+- Classic chrome policy selectbox: `manual` (default) or `all_executions`.
+- `thesistester/classic_ledger.py`: begin / complete / fail helpers over
+  `ResearchRun` with `request.action="classic_execution_ledger"`.
+- Backtest wraps `▶ Run backtest` when research mode + `all_executions`;
+  surfaces thesis run ledger table.
+- Assistant Research runs labels ledger vs manual-record vs assistant runs;
+  provenance card includes origin page, config hash, recording policy.
+
+### Regression safety
+
+- Failed/cancelled never appear as completed or left `running`.
+- Bundle-write or `complete_run` failure after simulation → `failed` with
+  request retained (orphan zip removed).
+- Backtest post-begin exceptions always call `fail_classic_execution_ledger`.
+- Shared policy widget key synced from session (no stale per-page revert).
+- `manual` policy or no thesis context: classic Backtest path unchanged.
+- Ledger APIs stay out of `classic_context` (link/create non-recording).
+
+### Tests
+
+- `tests/test_classic_ledger.py` (incl. `complete_run` failure terminalization).
+- `tests/test_classic_context.py` (policy widget key sync).
 
 ---
 

@@ -13,7 +13,15 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from thesistester.app_state import bootstrap_active_saved_dataset
-from thesistester.classic_context import render_classic_thesis_chrome
+from thesistester.assistant import AssistantOrchestrator
+from thesistester.classic_context import get_active_thesis_id, render_classic_thesis_chrome
+from thesistester.classic_ledger import (
+    begin_classic_execution_ledger,
+    complete_classic_execution_ledger,
+    fail_classic_execution_ledger,
+    render_classic_execution_ledger,
+    should_record_all_executions,
+)
 from thesistester.classic_record import render_record_and_discuss
 from thesistester.analytics import equity_curve, summarize_trades, summarize_trades_by_direction
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
@@ -381,8 +389,29 @@ with st.sidebar:
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 if run_btn:
-    with st.spinner("Simulating trades…"):
+    _ledger_handle = None
+    if should_record_all_executions(st.session_state):
+        _thesis_id = get_active_thesis_id(st.session_state)
+        if not isinstance(_thesis_id, str) or not _thesis_id.strip():
+            st.error("all_executions recording requires an active thesis.")
+            st.stop()
         try:
+            _ledger_handle = begin_classic_execution_ledger(
+                AssistantOrchestrator.for_local_workspace(),
+                thesis_id=_thesis_id,
+                session_state=st.session_state,
+                origin_page="backtest",
+            )
+        except ValueError as exc:
+            st.error(f"Thesis ledger could not start before execution: {exc}")
+            st.stop()
+
+    with st.spinner("Simulating trades…"):
+        # Any post-begin failure must terminalize the ledger (never leave
+        # ResearchRun stuck in ``running``). Track phase for fail provenance.
+        _ledger_phase = "execution"
+        try:
+            _ledger_phase = "otf_filter"
             # Apply OTF filter before simulation
             _otf_result = apply_configured_otf_filter(
                 source_df=ohlcv_df,
@@ -394,11 +423,8 @@ if run_btn:
                 last_signal_setup=st.session_state.get("last_signal_setup"),
             )
             signals_for_backtest = _otf_result.accepted_signals
-        except ValueError as e:
-            st.error(f"OTF filter configuration error: {e}")
-            st.stop()
 
-        try:
+            _ledger_phase = "simulate"
             simulation = simulate_trades(
                 df=ohlcv_df,
                 signals=signals_for_backtest,
@@ -425,58 +451,94 @@ if run_btn:
             )
             trades = simulation.trades
             skipped_signals = simulation.skipped_signals
-        except ValueError as e:
-            st.error(f"Backtest error: {e}")
-            st.stop()
 
-        summary = summarize_trades(trades)
-        curve = equity_curve(trades)
+            _ledger_phase = "session_persist"
+            summary = summarize_trades(trades)
+            curve = equity_curve(trades)
 
-        st.session_state["trades"] = trades
-        st.session_state["trade_summary"] = summary
-        st.session_state["equity_curve"] = curve
-        st.session_state["skipped_signals"] = skipped_signals
-        st.session_state["exposure_policy"] = {
-            "exposure_policy": exposure_policy,
-            "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
-        }
-        st.session_state["backtest_execution_costs"] = {
-            "commission_per_side": float(commission_per_side),
-            "slippage_ticks": float(slippage_ticks),
-            "metrics_basis": (
-                "net-of-cost"
-                if (float(commission_per_side) > 0.0 or float(slippage_ticks) > 0.0)
-                else "gross==net (zero costs)"
-            ),
-        }
-        st.session_state["backtest_session_exit_policy"] = {
-            "flat_by_session_close": bool(flat_by_session_close),
-            "session_close_time": session_close_time or None,
-            "session_timezone": session_timezone if flat_by_session_close else None,
-            "no_new_entries_after": effective_no_new_entries_after,
-        }
-        # OTF filter session state — preserve originals, store filter results
-        st.session_state["otf_filter_result"] = _otf_result
-        st.session_state["otf_filter_summary"] = _otf_result.to_summary_dict()
-        st.session_state["otf_candidate_signals"] = _otf_result.candidate_signals
-        st.session_state["otf_accepted_signals"] = _otf_result.accepted_signals
-        st.session_state["otf_rejected_signals"] = _otf_result.rejected_signals
-        st.session_state["backtest_otf_filter"] = _otf_result.to_summary_dict()
-        st.session_state["backtest_intrabar_policy"] = {
-            "schema_version": 1,
-            "intrabar_model": intrabar_model,
-            "subtimeframe_data_supplied": isinstance(subtimeframe_data, pd.DataFrame),
-        }
-        st.session_state["backtest_intrabar_diagnostic"] = simulation.intrabar_diagnostic
-        st.session_state["backtest_exit_management_policy"] = {
-            "schema_version": 1,
-            "breakeven_after_r": breakeven_after_r,
-            "trailing_after_r": trailing_after_r,
-            "trailing_distance_ticks": trailing_distance_ticks,
-        }
-        st.session_state["backtest_exit_management_diagnostic"] = (
-            simulation.exit_management_diagnostic
-        )
+            st.session_state["trades"] = trades
+            st.session_state["trade_summary"] = summary
+            st.session_state["equity_curve"] = curve
+            st.session_state["skipped_signals"] = skipped_signals
+            st.session_state["exposure_policy"] = {
+                "exposure_policy": exposure_policy,
+                "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
+            }
+            st.session_state["backtest_execution_costs"] = {
+                "commission_per_side": float(commission_per_side),
+                "slippage_ticks": float(slippage_ticks),
+                "metrics_basis": (
+                    "net-of-cost"
+                    if (float(commission_per_side) > 0.0 or float(slippage_ticks) > 0.0)
+                    else "gross==net (zero costs)"
+                ),
+            }
+            st.session_state["backtest_session_exit_policy"] = {
+                "flat_by_session_close": bool(flat_by_session_close),
+                "session_close_time": session_close_time or None,
+                "session_timezone": session_timezone if flat_by_session_close else None,
+                "no_new_entries_after": effective_no_new_entries_after,
+            }
+            # OTF filter session state — preserve originals, store filter results
+            st.session_state["otf_filter_result"] = _otf_result
+            st.session_state["otf_filter_summary"] = _otf_result.to_summary_dict()
+            st.session_state["otf_candidate_signals"] = _otf_result.candidate_signals
+            st.session_state["otf_accepted_signals"] = _otf_result.accepted_signals
+            st.session_state["otf_rejected_signals"] = _otf_result.rejected_signals
+            st.session_state["backtest_otf_filter"] = _otf_result.to_summary_dict()
+            st.session_state["backtest_intrabar_policy"] = {
+                "schema_version": 1,
+                "intrabar_model": intrabar_model,
+                "subtimeframe_data_supplied": isinstance(subtimeframe_data, pd.DataFrame),
+            }
+            st.session_state["backtest_intrabar_diagnostic"] = simulation.intrabar_diagnostic
+            st.session_state["backtest_exit_management_policy"] = {
+                "schema_version": 1,
+                "breakeven_after_r": breakeven_after_r,
+                "trailing_after_r": trailing_after_r,
+                "trailing_distance_ticks": trailing_distance_ticks,
+            }
+            st.session_state["backtest_exit_management_diagnostic"] = (
+                simulation.exit_management_diagnostic
+            )
+
+            if _ledger_handle is not None:
+                _ledger_phase = "complete"
+                _ledger_run = complete_classic_execution_ledger(
+                    AssistantOrchestrator.for_local_workspace(),
+                    _ledger_handle,
+                    session_state=st.session_state,
+                )
+                # complete_* terminalizes (completed or failed); clear handle so
+                # the broad except below does not double-fail a finished run.
+                _ledger_handle = None
+                if _ledger_run.status == "completed":
+                    st.caption(f"Thesis ledger: recorded completed run …{_ledger_run.run_id[-8:]}.")
+                else:
+                    _err = (
+                        _ledger_run.error.get("message")
+                        if isinstance(_ledger_run.error, dict)
+                        else None
+                    )
+                    st.warning(
+                        "Thesis ledger: execution attempt retained as "
+                        f"`{_ledger_run.status}`" + (f" — {_err}" if _err else ".")
+                    )
+        except Exception as e:
+            if _ledger_handle is not None:
+                fail_classic_execution_ledger(
+                    AssistantOrchestrator.for_local_workspace(),
+                    _ledger_handle,
+                    message=str(e),
+                    phase=_ledger_phase,
+                )
+            if isinstance(e, ValueError) and _ledger_phase == "otf_filter":
+                st.error(f"OTF filter configuration error: {e}")
+                st.stop()
+            if isinstance(e, ValueError) and _ledger_phase == "simulate":
+                st.error(f"Backtest error: {e}")
+                st.stop()
+            raise
 
 # ── Display ───────────────────────────────────────────────────────────────────
 trades = st.session_state.get("trades")
@@ -489,6 +551,7 @@ if trades is None:
     st.stop()
 
 render_record_and_discuss(page_key="backtest")
+render_classic_execution_ledger(page_key="backtest")
 
 st.caption(timezone_contract_caption(st.session_state))
 costs = st.session_state.get("backtest_execution_costs") or {}
