@@ -14,7 +14,8 @@ in `thesistester/research_identity.py`. `CAI-2`/`CAI-3` execution artifacts and
 cached headless reuse live in
 `thesistester/persistence/execution_artifacts.py` with explicit
 `cache_policy` on `run_experiment` / `compute_levels` (Assistant/CLI use
-`read_write`; public default remains `off`).
+`read_write`; public default remains `off`). `CAI-4` classic→RunSpec export
+lives in `thesistester/classic_export.py`.
 
 This document is the implementation contract for an AI Research Assistant in
 ThesisTester. It is designed to prevent scope, architecture, and statistical

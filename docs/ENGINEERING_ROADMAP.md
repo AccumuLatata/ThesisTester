@@ -151,6 +151,34 @@ explicit cache policy without changing research semantics.
 
 ---
 
+## CAI-4 — Classic-State-to-RunSpec Export ✅ Implemented
+
+Pure exporter from canonical classic page state to a validated public RunSpec
+draft. Does not execute research or invent missing parameters.
+
+### Features
+
+- `thesistester/classic_export.py`:
+  - `classic_state_export_gaps(...)`
+  - `classic_state_to_run_spec(...)`
+- Consumes `data` / provenance, `levels_settings`, `setup_config` /
+  `last_signal_setup`, and backtest policy snapshots (or `backtest_config`).
+- Preferred verified data artifact reference plus required path verified
+  against `DataIdentity`.
+- Additive `dataset.data_artifact_key` / `dataset.data_identity` on RunSpec.
+
+### Regression safety
+
+- Streamlit-free; no page wiring or thesis recording yet (CAI-5/CAI-6).
+- Missing/stale/mismatched state yields explicit gaps; no default injection.
+- Exported vs equivalent hand-authored RunSpec: equal canonical bundle hashes.
+
+### Tests
+
+- `tests/test_classic_export.py`.
+
+---
+
 ## R1 — Execution Realism ✅ Implemented
 
 Adds optional commission and slippage to `simulate_trades`. Defaults preserve legacy

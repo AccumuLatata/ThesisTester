@@ -262,6 +262,9 @@ _DATASET_KEYS = {
     "exchange_timezone",
     "format_profile",
     "subtimeframe_format_profile",
+    # CAI-4 additive classic-export / artifact provenance (optional).
+    "data_artifact_key",
+    "data_identity",
 }
 _EXCURSION_KEYS = {
     "enabled",
@@ -485,6 +488,12 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         raise ValueError("dataset.path must be a path string")
     if "subtimeframe_path" in dataset and not isinstance(dataset["subtimeframe_path"], (str, Path)):
         raise ValueError("dataset.subtimeframe_path must be a path string")
+    if "data_artifact_key" in dataset and dataset["data_artifact_key"] is not None:
+        if not isinstance(dataset["data_artifact_key"], str) or not dataset["data_artifact_key"]:
+            raise ValueError("dataset.data_artifact_key must be a non-empty string or null")
+    if "data_identity" in dataset and dataset["data_identity"] is not None:
+        if not isinstance(dataset["data_identity"], Mapping):
+            raise ValueError("dataset.data_identity must be a mapping or null")
     for key in (
         "instrument",
         "source_timezone",

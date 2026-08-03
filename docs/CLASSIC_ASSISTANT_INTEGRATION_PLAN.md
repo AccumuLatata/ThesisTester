@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** proposed implementation contract; `CAI-0` through `CAI-3` implemented.
+**Status:** proposed implementation contract; `CAI-0` through `CAI-4` implemented.
 
 **Owner model:** one trusted local user, local datasets, local execution.
 
@@ -404,7 +404,7 @@ changing research semantics.
 - Cache use is observable in provenance and UI status, never inferred from
   timing alone.
 
-### CAI-4 — Classic-state-to-RunSpec export
+### CAI-4 — Classic-state-to-RunSpec export ✅ Implemented
 
 **Goal:** transform canonical classic workflow state into a reproducible draft,
 not a live Assistant execution input.
@@ -424,6 +424,27 @@ not a live Assistant execution input.
   - preferred: a verified local canonical data artifact reference;
   - fallback: an explicit source CSV path supplied by the user and verified
     against the classic `DataIdentity`.
+
+**Implemented contract**
+
+- Module: `thesistester/classic_export.py` (Streamlit-free).
+- `classic_state_export_gaps(state, *, source_path=..., store_root=...)`
+  returns structured gaps (`missing_*`, `stale_levels`,
+  `source_path_identity_mismatch`, etc.).
+- `classic_state_to_run_spec(...)` raises when gaps remain; otherwise returns a
+  `validate_run_spec`-validated RunSpec.
+- Source resolution: verified data artifact (`dataset.data_artifact_key`) is
+  preferred metadata; executable `dataset.path` still required and verified
+  against classic `DataIdentity` (from `source_path` kwarg or
+  `dataset_source_path` / `source_csv_path` state).
+- Backtest may come from explicit `backtest_config` or assembled from page
+  policy snapshots / widget keys without inventing SL/TP/session fields.
+- Optional grid/validation/walk-forward export only when explicit `*_config`
+  mappings are present (`include_grid` / `include_validation` /
+  `include_walk_forward`).
+- Additive dataset keys `data_artifact_key` / `data_identity` allowed by
+  `validate_run_spec`.
+- Tests: `tests/test_classic_export.py`.
 
 **Regression gates**
 
