@@ -67,7 +67,9 @@ def _data_identity(data: pd.DataFrame, *, format_profile: str = "canonical") -> 
     )
 
 
-def _levels_bundle(data: pd.DataFrame, identity: DataIdentity) -> tuple[LevelsIdentity, dict, pd.DataFrame, pd.DataFrame]:
+def _levels_bundle(
+    data: pd.DataFrame, identity: DataIdentity
+) -> tuple[LevelsIdentity, dict, pd.DataFrame, pd.DataFrame]:
     result = compute_levels(data, instrument=identity.instrument, config={"poc_windows": []})
     levels_identity = LevelsIdentity.from_normalized(identity, result["levels_settings"])
     return levels_identity, result["levels_settings"], result["levels"], result["session_levels"]
@@ -271,7 +273,9 @@ def test_invalidate_removes_artifact(tmp_path: Path):
     assert invalidate_data_artifact(identity, store_root=store) is False
 
 
-def test_execution_artifacts_do_not_affect_ux_saved_levels(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_execution_artifacts_do_not_affect_ux_saved_levels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     store = tmp_path / "store"
     monkeypatch.setenv("THESISTESTER_STORE_DIR", str(store))
     data = _bars()

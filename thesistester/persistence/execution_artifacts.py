@@ -411,9 +411,7 @@ def read_verified_data_artifact(
     with _identity_lock(lock):
         if not artifact_dir.exists():
             return ArtifactMiss(_MISS_MISSING)
-        return _verify_data_dir(
-            artifact_dir, expected=identity, artifacts_root=artifacts_root
-        )
+        return _verify_data_dir(artifact_dir, expected=identity, artifacts_root=artifacts_root)
 
 
 def read_verified_levels_artifact(
@@ -429,9 +427,7 @@ def read_verified_levels_artifact(
     with _identity_lock(lock):
         if not artifact_dir.exists():
             return ArtifactMiss(_MISS_MISSING)
-        return _verify_levels_dir(
-            artifact_dir, expected=identity, artifacts_root=artifacts_root
-        )
+        return _verify_levels_dir(artifact_dir, expected=identity, artifacts_root=artifacts_root)
 
 
 def write_data_artifact(
@@ -460,9 +456,7 @@ def write_data_artifact(
             shutil.rmtree(artifact_dir, ignore_errors=True)
 
         artifact_dir.parent.mkdir(parents=True, exist_ok=True)
-        temp_dir = Path(
-            tempfile.mkdtemp(prefix=f".{key}.tmp.", dir=str(artifact_dir.parent))
-        )
+        temp_dir = Path(tempfile.mkdtemp(prefix=f".{key}.tmp.", dir=str(artifact_dir.parent)))
         try:
             canonical = _canonicalize_dataframe(data)
             data_path = temp_dir / DATA_PARQUET_FILENAME
@@ -471,9 +465,7 @@ def write_data_artifact(
             _write_json(temp_dir / IDENTITY_FILENAME, identity_payload)
             ingestion = dict(ingestion_meta or {})
             ingestion.setdefault("rows", int(len(canonical)))
-            ingestion.setdefault(
-                "columns", [str(column) for column in canonical.columns]
-            )
+            ingestion.setdefault("columns", [str(column) for column in canonical.columns])
             _write_json(temp_dir / INGESTION_META_FILENAME, ingestion)
             created_at = _utcnow_iso()
             manifest = {
@@ -509,13 +501,9 @@ def write_data_artifact(
             _cleanup_temp(temp_dir)
             raise
 
-        verified = _verify_data_dir(
-            artifact_dir, expected=identity, artifacts_root=artifacts_root
-        )
+        verified = _verify_data_dir(artifact_dir, expected=identity, artifacts_root=artifacts_root)
         if isinstance(verified, ArtifactMiss):
-            raise RuntimeError(
-                f"Published data artifact failed verification: {verified.reason}"
-            )
+            raise RuntimeError(f"Published data artifact failed verification: {verified.reason}")
         return verified
 
 
@@ -551,9 +539,7 @@ def write_levels_artifact(
             shutil.rmtree(artifact_dir, ignore_errors=True)
 
         artifact_dir.parent.mkdir(parents=True, exist_ok=True)
-        temp_dir = Path(
-            tempfile.mkdtemp(prefix=f".{key}.tmp.", dir=str(artifact_dir.parent))
-        )
+        temp_dir = Path(tempfile.mkdtemp(prefix=f".{key}.tmp.", dir=str(artifact_dir.parent)))
         try:
             levels_path = temp_dir / LEVELS_PARQUET_FILENAME
             session_path = temp_dir / SESSION_LEVELS_PARQUET_FILENAME
@@ -605,9 +591,7 @@ def write_levels_artifact(
             artifact_dir, expected=identity, artifacts_root=artifacts_root
         )
         if isinstance(verified, ArtifactMiss):
-            raise RuntimeError(
-                f"Published levels artifact failed verification: {verified.reason}"
-            )
+            raise RuntimeError(f"Published levels artifact failed verification: {verified.reason}")
         return verified
 
 
