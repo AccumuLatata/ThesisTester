@@ -159,9 +159,7 @@ def _is_15s_primary_session(session_state=None) -> bool:
     )
 
 
-def _hide_legacy_subtimeframe_uploader(
-    ingestion_mode: str, session_state=None
-) -> bool:
+def _hide_legacy_subtimeframe_uploader(ingestion_mode: str, session_state=None) -> bool:
     """Hide dual-upload lower path when 15s-primary is selected or active.
 
     Visibility must follow the ingestion-mode radio, not only
