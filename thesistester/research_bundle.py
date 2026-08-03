@@ -336,11 +336,16 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
     data = session_state.get("data")
     if _is_dataframe(data):
         files["dataset.parquet"] = _to_parquet_bytes(data)
-        files["dataset_meta.json"] = _to_json_bytes(
-            {key: session_state.get(key) for key in _DATASET_META_KEYS}
-        )
+        # format_profile is additive: omit when absent so pre-CAI-1 / golden
+        # dataset_meta projections (and their canonical hashes) stay unchanged.
+        dataset_meta = {
+            key: session_state.get(key)
+            for key in _DATASET_META_KEYS
+            if key != "format_profile" or session_state.get("format_profile") is not None
+        }
+        files["dataset_meta.json"] = _to_json_bytes(dataset_meta)
         manifest["included"]["dataset"] = True
-        included_keys.update({"data", *_DATASET_META_KEYS})
+        included_keys.update({"data", *dataset_meta.keys()})
         subtimeframe_data = session_state.get("subtimeframe_data")
         if _is_dataframe(subtimeframe_data):
             files["subtimeframe_data.parquet"] = _to_parquet_bytes(subtimeframe_data)

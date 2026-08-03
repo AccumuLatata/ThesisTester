@@ -129,9 +129,7 @@ def _manual_ui_equivalent_state(run: dict, base_directory) -> dict:
         exchange_timezone=exchange_timezone,
     )
     level_result = compute_levels(data, instrument=instrument, config=run["levels"])
-    levels_identity = LevelsIdentity.from_normalized(
-        data_identity, level_result["levels_settings"]
-    )
+    levels_identity = LevelsIdentity.from_normalized(data_identity, level_result["levels_settings"])
     setup = build_setup(run["setup"])
     signal_result = generate_signals(level_result["levels"], setup, instrument=instrument)
     backtest = run_backtest(
