@@ -74,6 +74,7 @@ from thesistester.assistant.workspace import (
     set_assistant_flash,
     spec_status_next_step,
 )
+from thesistester.classic_ledger import is_classic_ledger_run, ledger_run_label
 from thesistester.setup import available_level_columns
 
 
@@ -1113,16 +1114,30 @@ for spec in reversed(spec_versions):
             )
 
 st.subheader("Research runs")
+st.caption(
+    "Thesis-recorded runs only. Classic exploration without research mode is never "
+    "listed. CAI-7 ledger attempts (`all_executions`) appear alongside manual "
+    "Record-and-discuss and Assistant executions."
+)
 runs = orchestrator.list_runs(thesis_id)
 if not runs:
     st.info("No research runs are recorded for this thesis yet.")
 else:
     for run in reversed(runs):
         provenance_card = build_provenance_card(run.to_dict())
-        with st.expander(f"Run {run.run_id[-8:]} · {run.status}"):
+        kind = ledger_run_label(run)
+        title = f"Run {run.run_id[-8:]} · {run.status} · {kind}"
+        with st.expander(title):
+            if is_classic_ledger_run(run):
+                st.caption(
+                    "Classic execution ledger attempt (opt-in all_executions). "
+                    "Failed/cancelled rows are retained for statistically honest history."
+                )
             st.caption(
                 f"Specification v{run.spec_version} · revision {run.revision} · "
-                f"hash `{str(provenance_card.get('canonical_bundle_hash') or '—')[:16]}`"
+                f"origin `{provenance_card.get('origin_page') or '—'}` · "
+                f"config `{str(provenance_card.get('classic_config_hash') or '—')[:16]}` · "
+                f"bundle `{str(provenance_card.get('canonical_bundle_hash') or '—')[:16]}`"
             )
             st.json(provenance_card)
             if run.status == "running" and st.button("Cancel run", key=f"cancel-{run.run_id}"):

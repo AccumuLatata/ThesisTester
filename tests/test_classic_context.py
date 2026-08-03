@@ -367,6 +367,10 @@ def test_link_thesis_source_has_no_run_recording_calls():
         "run_experiment",
         "build_research_bundle",
         "cancel_run",
+        "begin_classic_execution_ledger",
+        "complete_classic_execution_ledger",
+        "fail_classic_execution_ledger",
+        "record_classic_session_run",
     }
     found: set[str] = set()
     for node in ast.walk(tree):

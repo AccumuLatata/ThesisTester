@@ -136,7 +136,7 @@ def get_recording_policy(session_state: Mapping[str, Any]) -> str:
 
 
 def set_recording_policy(session_state: MutableMapping[str, Any], policy: str) -> None:
-    """Persist a recording policy. ``all_executions`` is stored for CAI-7 readiness."""
+    """Persist a recording policy (``manual`` or ``all_executions``, CAI-7)."""
     if policy not in RECORDING_POLICIES:
         raise ValueError(f"recording policy must be one of {RECORDING_POLICIES}, got {policy!r}.")
     init_classic_session_state(session_state)
@@ -371,8 +371,27 @@ def render_classic_thesis_chrome(
                 st.session_state[open_key] = not bool(st.session_state.get(open_key))
                 st.rerun()
         with col_policy:
-            # CAI-7 will enable all_executions; CAI-5 surfaces the stored policy only.
-            st.caption("Recording policy is manual (CAI-0). `all_executions` arrives in CAI-7.")
+            policy_labels = {
+                "manual": "Manual — Record and discuss after a run",
+                "all_executions": "All executions — ledger every Backtest attempt",
+            }
+            selected_policy = st.selectbox(
+                "Recording policy",
+                options=list(RECORDING_POLICIES),
+                index=list(RECORDING_POLICIES).index(policy)
+                if policy in RECORDING_POLICIES
+                else 0,
+                format_func=lambda value: policy_labels.get(value, value),
+                key=f"classic_recording_policy_widget_{page}",
+                help=(
+                    "Manual keeps exploration untracked until you click "
+                    "Record and discuss. All executions records completed, "
+                    "failed, and cancelled Backtest attempts under this thesis."
+                ),
+            )
+            if selected_policy != policy:
+                set_recording_policy(st.session_state, selected_policy)
+                st.rerun()
         if st.session_state.get(f"_classic_relink_open_{page}"):
             _render_link_thesis_form(
                 st,

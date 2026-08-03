@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** proposed implementation contract; `CAI-0` through `CAI-6` implemented.
+**Status:** proposed implementation contract; `CAI-0` through `CAI-7` implemented.
 
 **Owner model:** one trusted local user, local datasets, local execution.
 
@@ -586,7 +586,7 @@ without recomputing it.
 - The Assistant can explain and compare a classic-origin run immediately after
   registration, with no CSV load or level computation.
 
-### CAI-7 — Research-mode execution ledger
+### CAI-7 — Research-mode execution ledger ✅ Implemented
 
 **Goal:** make the history statistically honest once a user intentionally
 works under a thesis.
@@ -600,6 +600,25 @@ works under a thesis.
   available, timestamps, warnings, and terminal error information.
 - Surface a thesis run ledger in Backtest and Assistant, including a clear
   distinction between exploratory/unrecorded runs and thesis-recorded runs.
+
+**Implemented contract**
+
+- Policy toggle in classic research-mode chrome (`set_recording_policy`).
+- `thesistester/classic_ledger.py`:
+  - `should_record_all_executions` / `begin_classic_execution_ledger` /
+    `complete_classic_execution_ledger` / `fail_classic_execution_ledger`
+  - Persists `ResearchRun` rows with `request.action="classic_execution_ledger"`,
+    `origin_page`, `classic_config_hash` (CAI-4 RunSpec hash), and
+    `execution_origin="classic"`.
+  - Begin confirms a CAI-4 RunSpec then `start_run` **before** OTF/simulate.
+  - Complete attaches a bundle when sections are ready; bundle-write failure
+    → `failed` (request retained, never `completed`).
+- Backtest wraps `▶ Run backtest` when policy is `all_executions` + research
+  mode; ledger table via `render_classic_execution_ledger`.
+- Assistant Research runs list labels ledger vs manual-record vs assistant;
+  `build_provenance_card` includes origin/config/policy/origin fields.
+- Kept out of `classic_context` (link/create remain non-recording).
+- Tests: `tests/test_classic_ledger.py`.
 
 **Regression gates**
 

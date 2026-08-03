@@ -13,7 +13,15 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from thesistester.app_state import bootstrap_active_saved_dataset
-from thesistester.classic_context import render_classic_thesis_chrome
+from thesistester.assistant import AssistantOrchestrator
+from thesistester.classic_context import get_active_thesis_id, render_classic_thesis_chrome
+from thesistester.classic_ledger import (
+    begin_classic_execution_ledger,
+    complete_classic_execution_ledger,
+    fail_classic_execution_ledger,
+    render_classic_execution_ledger,
+    should_record_all_executions,
+)
 from thesistester.classic_record import render_record_and_discuss
 from thesistester.analytics import equity_curve, summarize_trades, summarize_trades_by_direction
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
@@ -381,6 +389,23 @@ with st.sidebar:
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 if run_btn:
+    _ledger_handle = None
+    if should_record_all_executions(st.session_state):
+        _thesis_id = get_active_thesis_id(st.session_state)
+        if not isinstance(_thesis_id, str) or not _thesis_id.strip():
+            st.error("all_executions recording requires an active thesis.")
+            st.stop()
+        try:
+            _ledger_handle = begin_classic_execution_ledger(
+                AssistantOrchestrator.for_local_workspace(),
+                thesis_id=_thesis_id,
+                session_state=st.session_state,
+                origin_page="backtest",
+            )
+        except ValueError as exc:
+            st.error(f"Thesis ledger could not start before execution: {exc}")
+            st.stop()
+
     with st.spinner("Simulating trades…"):
         try:
             # Apply OTF filter before simulation
@@ -395,6 +420,13 @@ if run_btn:
             )
             signals_for_backtest = _otf_result.accepted_signals
         except ValueError as e:
+            if _ledger_handle is not None:
+                fail_classic_execution_ledger(
+                    AssistantOrchestrator.for_local_workspace(),
+                    _ledger_handle,
+                    message=str(e),
+                    phase="otf_filter",
+                )
             st.error(f"OTF filter configuration error: {e}")
             st.stop()
 
@@ -426,6 +458,13 @@ if run_btn:
             trades = simulation.trades
             skipped_signals = simulation.skipped_signals
         except ValueError as e:
+            if _ledger_handle is not None:
+                fail_classic_execution_ledger(
+                    AssistantOrchestrator.for_local_workspace(),
+                    _ledger_handle,
+                    message=str(e),
+                    phase="simulate",
+                )
             st.error(f"Backtest error: {e}")
             st.stop()
 
@@ -478,6 +517,28 @@ if run_btn:
             simulation.exit_management_diagnostic
         )
 
+        if _ledger_handle is not None:
+            _ledger_run = complete_classic_execution_ledger(
+                AssistantOrchestrator.for_local_workspace(),
+                _ledger_handle,
+                session_state=st.session_state,
+            )
+            if _ledger_run.status == "completed":
+                st.caption(
+                    f"Thesis ledger: recorded completed run …{_ledger_run.run_id[-8:]}."
+                )
+            else:
+                _err = (
+                    _ledger_run.error.get("message")
+                    if isinstance(_ledger_run.error, dict)
+                    else None
+                )
+                st.warning(
+                    "Thesis ledger: execution attempt retained as "
+                    f"`{_ledger_run.status}`"
+                    + (f" — {_err}" if _err else ".")
+                )
+
 # ── Display ───────────────────────────────────────────────────────────────────
 trades = st.session_state.get("trades")
 summary = st.session_state.get("trade_summary")
@@ -489,6 +550,7 @@ if trades is None:
     st.stop()
 
 render_record_and_discuss(page_key="backtest")
+render_classic_execution_ledger(page_key="backtest")
 
 st.caption(timezone_contract_caption(st.session_state))
 costs = st.session_state.get("backtest_execution_costs") or {}
