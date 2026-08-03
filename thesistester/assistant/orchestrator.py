@@ -58,11 +58,14 @@ from thesistester.assistant.workspace import (
     evidence_packet_from_payload,
     require_run_bundle_hash,
 )
+from thesistester import __version__
 from thesistester.persistence.local_store import get_store_root
+from thesistester.reporting import to_jsonable
 from thesistester.research_bundle import (
     apply_research_bundle_to_session,
     canonical_bundle_hash,
 )
+from thesistester.research_identity import normalize_execution_origin
 
 
 _READ_ONLY_ACTIONS = frozenset({"get", "list", "describe", "load", "summary", "evidence"})
@@ -479,6 +482,191 @@ class AssistantOrchestrator:
             best_effort=True,
         )
         return completed_result
+
+    def register_external_bundle_run(
+        self,
+        *,
+        thesis_id: str,
+        bundle_path: str | Path,
+        run_spec: Mapping[str, Any],
+        expected_hash: str | None = None,
+        conversation_id: str | None = None,
+        force_new: bool = False,
+        confirmation_note: str = (
+            "Registered classic research bundle as immutable thesis run (CAI-6)"
+        ),
+    ) -> OrchestrationResult:
+        """Attach a verified classic bundle as a completed thesis run without recompute.
+
+        The UI button (or an explicit ``confirmed`` dispatch) is the confirmation
+        boundary for registration. This does **not** bypass confirmation for
+        future ``execute_confirmed_run`` recomputation of the linked specification.
+        When ``force_new`` is False, a completed run with the same
+        ``canonical_bundle_hash`` is returned idempotently.
+        """
+        if not isinstance(run_spec, Mapping):
+            raise ValueError("run_spec must be an object.")
+        request = AssistantRequest(
+            capability_id="BUNDLE.register_external_run",
+            payload={
+                "bundle_path": str(bundle_path),
+                "expected_hash": expected_hash,
+                "run_spec": dict(run_spec),
+                "force_new": bool(force_new),
+            },
+        )
+        capability = validate_capability_request(request)
+        if capability.confirmation is not ConfirmationLevel.EXPLICIT_CONFIRMATION:
+            raise ValueError("External bundle registration must require explicit confirmation.")
+        if not isinstance(self.tools, AssistantTools):
+            raise AssistantToolError(
+                "External bundle registration requires AssistantTools."
+            )
+
+        verified = self.tools.verify_external_research_bundle(
+            bundle_path,
+            expected_hash=expected_hash,
+            run_spec=run_spec,
+        )
+        digest = str(verified["canonical_bundle_hash"])
+        resolved_path = str(verified["bundle_path"])
+        _assert_readable_bundle_provenance(
+            {"bundle_path": resolved_path, "canonical_bundle_hash": digest}
+        )
+
+        if not force_new:
+            existing = self._find_completed_run_by_bundle_hash(thesis_id, digest)
+            if existing is not None:
+                result = OrchestrationResult(
+                    status=OrchestrationStatus.COMPLETED.value,
+                    capability_id="BUNDLE.register_external_run",
+                    payload={
+                        "run_id": existing.run_id,
+                        "spec_version": existing.spec_version,
+                        "bundle_path": resolved_path,
+                        "canonical_bundle_hash": digest,
+                        "execution_origin": "classic",
+                        "idempotent": True,
+                        "summary": verified["summary"],
+                    },
+                )
+                self._record_audit(
+                    result,
+                    request=request,
+                    thesis_id=thesis_id,
+                    conversation_id=conversation_id,
+                    extra={
+                        "run_id": existing.run_id,
+                        "canonical_bundle_hash": digest,
+                        "idempotent": True,
+                    },
+                    best_effort=True,
+                )
+                return result
+
+        confirmed = self.confirm_validated_spec(
+            thesis_id=thesis_id,
+            validated_spec=dict(run_spec),
+            confirmation_note=confirmation_note,
+        )
+        warning_data = verified["summary"].get("warnings", {})
+        warnings = (
+            tuple(
+                f"{key}: {value}"
+                for key, value in warning_data.items()
+                if value not in (None, [], {}, "")
+            )
+            if isinstance(warning_data, dict)
+            else ()
+        )
+        session_values = verified.get("session_values")
+        fingerprint = None
+        if isinstance(session_values, Mapping):
+            fingerprint = to_jsonable(session_values.get("levels_data_fingerprint"))
+
+        run = self.repository.start_run(
+            thesis_id,
+            spec_version=confirmed.version,
+            request={
+                "action": "register_external_bundle",
+                "bundle_path": resolved_path,
+                "canonical_bundle_hash": digest,
+                "execution_origin": "classic",
+                "run_spec": dict(run_spec),
+            },
+        )
+        provenance = {
+            "bundle_path": resolved_path,
+            "canonical_bundle_hash": digest,
+            "dataset_fingerprint": fingerprint,
+            "tool_version": __version__,
+            "summary": verified["summary"],
+            "warnings": list(warnings),
+            "effective_configuration": to_jsonable(dict(run_spec)),
+            "resolved_paths": {
+                "bundle_path": resolved_path,
+                "dataset.path": str(run_spec.get("dataset", {}).get("path", "")),
+            },
+            "execution_origin": normalize_execution_origin("classic"),
+            "registration_source": "classic_workspace",
+        }
+        try:
+            completed = self.repository.complete_run(
+                thesis_id,
+                run.run_id,
+                expected_revision=run.revision,
+                provenance=provenance,
+                warnings=warnings,
+            )
+        except BaseException as exc:
+            return self._finalize_raced_or_failed_run(
+                exc,
+                request=request,
+                thesis_id=thesis_id,
+                run_id=run.run_id,
+                conversation_id=conversation_id,
+                result=None,
+                provenance=provenance,
+                warnings=warnings,
+            )
+
+        completed_result = OrchestrationResult(
+            status=OrchestrationStatus.COMPLETED.value,
+            capability_id="BUNDLE.register_external_run",
+            payload={
+                "run_id": completed.run_id,
+                "spec_version": confirmed.version,
+                "bundle_path": resolved_path,
+                "canonical_bundle_hash": digest,
+                "execution_origin": "classic",
+                "idempotent": False,
+                "summary": verified["summary"],
+            },
+        )
+        self._record_audit(
+            completed_result,
+            request=request,
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+            extra={
+                "run_id": completed.run_id,
+                "canonical_bundle_hash": digest,
+                "execution_origin": "classic",
+            },
+            best_effort=True,
+        )
+        return completed_result
+
+    def _find_completed_run_by_bundle_hash(
+        self, thesis_id: str, digest: str
+    ) -> ResearchRun | None:
+        """Return the first completed run whose provenance hash matches ``digest``."""
+        for run in self.repository.list_runs(thesis_id):
+            if run.status != "completed" or not isinstance(run.provenance, Mapping):
+                continue
+            if run.provenance.get("canonical_bundle_hash") == digest:
+                return run
+        return None
 
     def cancel_run(
         self,

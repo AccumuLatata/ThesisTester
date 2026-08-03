@@ -13,6 +13,7 @@ from thesistester.classic_context import (
     set_classic_flash,
     sync_classic_context_for_dataset,
 )
+from thesistester.classic_record import render_record_and_discuss
 from thesistester.research_bundle import (
     apply_research_bundle_to_session,
     build_research_bundle,
@@ -135,6 +136,9 @@ else:
         file_name=file_name,
         mime="application/zip",
     )
+
+if _will_include_backtest():
+    render_record_and_discuss(page_key="research_bundles")
 
 st.divider()
 st.subheader("Import bundle")

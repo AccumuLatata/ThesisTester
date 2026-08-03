@@ -14,6 +14,7 @@ import streamlit as st
 
 from thesistester.app_state import bootstrap_active_saved_dataset
 from thesistester.classic_context import render_classic_thesis_chrome
+from thesistester.classic_record import render_record_and_discuss
 from thesistester.analytics import equity_curve, summarize_trades, summarize_trades_by_direction
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
@@ -486,6 +487,8 @@ skipped_signals = st.session_state.get("skipped_signals")
 if trades is None:
     st.info("Configure settings in the sidebar and click **▶ Run backtest**.")
     st.stop()
+
+render_record_and_discuss(page_key="backtest")
 
 st.caption(timezone_contract_caption(st.session_state))
 costs = st.session_state.get("backtest_execution_costs") or {}

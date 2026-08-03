@@ -143,7 +143,7 @@ Source strategy: prefer a verified execution data artifact
 classic `DataIdentity`; blank/whitespace `source_path` kwargs fall through to
 state path keys. Corrupt/incomplete preferred artifacts are omitted and
 export falls back to the verified CSV path rather than blocking. CAI-4 does not
-wire UI buttons or thesis attachment (CAI-5/CAI-6).
+wire UI buttons or thesis attachment (those land in CAI-5/CAI-6).
 
 ## Classic thesis research context (CAI-5)
 
@@ -168,6 +168,31 @@ Exit and dataset-switch clears also reset `_classic_relink_open_*` UI flags so
 the relink form does not reopen after re-entry. Research Bundles import
 re-syncs classic context against the imported `dataset_id` before rerun.
 Thesis prose remains Assistant-owned; executable settings remain page-owned.
+
+## Classic → thesis run registration (CAI-6)
+
+`AssistantOrchestrator.register_external_bundle_run(...)` attaches a verified
+research bundle as a completed thesis run without recomputing:
+
+- Capability: `BUNDLE.register_external_run` (`import_export`,
+  `explicit_confirmation`). The handler verifies only; persistence is owned by
+  the orchestrator façade.
+- Verification: path containment under assistant data roots, canonical bundle
+  hash, required sections `dataset` / `levels` / `signals` / `backtest`, and
+  compatibility with a CAI-4 exported RunSpec.
+- Lifecycle: confirm RunSpec → `start_run` → `complete_run` with
+  `provenance.execution_origin="classic"`. Same hash returns the existing run
+  unless `force_new=True`.
+- UI helper: `thesistester/classic_record.py` (`record_classic_session_run`,
+  `render_record_and_discuss`) on Backtest and Research Bundles. When classic
+  pages omit a source CSV path, a lineage OHLCV CSV is materialized under the
+  thesis store for RunSpec `dataset.path` only — levels/trades are never
+  recomputed. Recording stays out of `classic_context.py`.
+
+After registration, `explain_run` / `compare_completed_runs` /
+`restore_run_bundle_to_session` work from the verified bundle like any other
+completed run. Future recomputation still requires
+`execute_confirmed_run` on a confirmed specification.
 
 ## AI Research Assistant contract boundary (AIA-0)
 

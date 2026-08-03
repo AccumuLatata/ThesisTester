@@ -205,6 +205,68 @@ def _state_summary(state: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _assert_bundle_compatible_with_run_spec(
+    session_values: Mapping[str, Any],
+    run_spec: Mapping[str, Any],
+) -> None:
+    """Fail closed when a verified bundle cannot serve the exported RunSpec lineage."""
+    if not isinstance(run_spec, Mapping):
+        raise AssistantToolError("run_spec must be an object.")
+    dataset = run_spec.get("dataset")
+    setup = run_spec.get("setup")
+    backtest = run_spec.get("backtest")
+    if not isinstance(dataset, Mapping) or not isinstance(setup, Mapping):
+        raise AssistantToolError("run_spec requires dataset and setup objects.")
+    if not isinstance(backtest, Mapping):
+        raise AssistantToolError("run_spec requires a backtest object.")
+
+    import pandas as pd
+
+    for key in ("data", "levels", "session_levels", "trades", "equity_curve"):
+        frame = session_values.get(key)
+        if not isinstance(frame, pd.DataFrame):
+            raise AssistantToolError(
+                f"Classic registration bundle is missing required frame '{key}'."
+            )
+    levels_settings = session_values.get("levels_settings")
+    if not isinstance(levels_settings, Mapping):
+        raise AssistantToolError(
+            "Classic registration bundle is missing levels_settings provenance."
+        )
+    page_setup = session_values.get("last_signal_setup")
+    if not isinstance(page_setup, Mapping):
+        page_setup = session_values.get("setup_config")
+    if not isinstance(page_setup, Mapping):
+        raise AssistantToolError(
+            "Classic registration bundle is missing setup provenance."
+        )
+
+    spec_instrument = dataset.get("instrument")
+    page_instrument = session_values.get("instrument") or page_setup.get("instrument")
+    if (
+        isinstance(spec_instrument, str)
+        and isinstance(page_instrument, str)
+        and spec_instrument.strip()
+        and page_instrument.strip()
+        and spec_instrument != page_instrument
+    ):
+        raise AssistantToolError(
+            "Bundle instrument does not match the exported RunSpec dataset.instrument."
+        )
+    spec_trigger = setup.get("trigger")
+    page_trigger = page_setup.get("trigger")
+    if (
+        isinstance(spec_trigger, str)
+        and isinstance(page_trigger, str)
+        and spec_trigger.strip()
+        and page_trigger.strip()
+        and spec_trigger != page_trigger
+    ):
+        raise AssistantToolError(
+            "Bundle setup trigger does not match the exported RunSpec setup.trigger."
+        )
+
+
 class AssistantTools:
     """Narrow tool surface; no arbitrary Python, shell, or filesystem access."""
 
@@ -336,6 +398,61 @@ class AssistantTools:
             "bundle_path": str(path),
             "canonical_bundle_hash": canonical_bundle_hash(raw),
             "summary": _state_summary(session_values),
+        }
+
+    def verify_external_research_bundle(
+        self,
+        bundle_path: str | Path,
+        *,
+        expected_hash: str | None = None,
+        run_spec: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Verify a classic-origin bundle for thesis registration (CAI-6).
+
+        Fail-closed on path containment, zip/schema load errors, hash mismatch,
+        missing required research sections, or RunSpec incompatibility.
+        Does not execute research or mutate thesis records.
+        """
+        path = _resolve_within(bundle_path, self.data_roots)
+        if not path.is_file():
+            raise AssistantToolError("Research bundle path does not exist.")
+        raw = path.read_bytes()
+        digest = canonical_bundle_hash(raw)
+        if expected_hash is not None:
+            expected = _require_expected_hash(expected_hash)
+            if digest != expected:
+                raise AssistantToolError(
+                    "Bundle hash does not match recorded run provenance."
+                )
+        try:
+            loaded = load_research_bundle(raw)
+        except ValueError as exc:
+            raise AssistantToolError(f"Research bundle is corrupt or invalid: {exc}") from exc
+        session_values = loaded.get("session_values")
+        if not isinstance(session_values, dict):
+            raise AssistantToolError("Bundle payload is missing session values.")
+        manifest = loaded.get("manifest")
+        if not isinstance(manifest, Mapping):
+            raise AssistantToolError("Bundle payload is missing a manifest.")
+        included = manifest.get("included")
+        if not isinstance(included, Mapping):
+            raise AssistantToolError("Bundle manifest is missing included sections.")
+        required_sections = ("dataset", "levels", "signals", "backtest")
+        missing = [section for section in required_sections if not included.get(section)]
+        if missing:
+            raise AssistantToolError(
+                "Classic registration requires bundle sections: "
+                + ", ".join(required_sections)
+                + f". Missing: {', '.join(missing)}."
+            )
+        if run_spec is not None:
+            _assert_bundle_compatible_with_run_spec(session_values, run_spec)
+        return {
+            "bundle_path": str(path),
+            "canonical_bundle_hash": digest,
+            "summary": _state_summary(session_values),
+            "included": {key: bool(included.get(key)) for key in included},
+            "session_values": session_values,
         }
 
     def load_verified_bundle_session(

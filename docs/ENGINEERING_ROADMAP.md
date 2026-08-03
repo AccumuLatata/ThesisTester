@@ -216,6 +216,35 @@ executable page settings or recording runs.
 
 ---
 
+## CAI-6 — Attach Completed Classic Run to Thesis ✅ Implemented
+
+Register a completed classic research bundle as an immutable thesis run without
+recomputing the experiment. Explicit **Record and discuss this run** only.
+
+### Features
+
+- Registry: `BUNDLE.register_external_run` (import/export, explicit confirmation).
+- `AssistantTools.verify_external_research_bundle(...)`.
+- `AssistantOrchestrator.register_external_bundle_run(...)` with
+  `execution_origin="classic"`, CAI-4 RunSpec confirmation, audit transcript.
+- Idempotent by `canonical_bundle_hash` (`force_new` opt-in for a new record).
+- `thesistester/classic_record.py` + Backtest / Research Bundles UI button.
+- Opens Research Assistant via classic pending navigation after success.
+
+### Regression safety
+
+- Hash and evidence packet match the original bundle; no
+  `run_experiment_to_bundle` during registration.
+- Tampered / missing / corrupt / out-of-root bundles fail closed.
+- Does not bypass confirmation for future `execute_confirmed_run` recompute.
+- Classic link/create path remains non-recording (`classic_context` unchanged).
+
+### Tests
+
+- `tests/test_classic_record.py`.
+
+---
+
 ## R1 — Execution Realism ✅ Implemented
 
 Adds optional commission and slippage to `simulate_trades`. Defaults preserve legacy

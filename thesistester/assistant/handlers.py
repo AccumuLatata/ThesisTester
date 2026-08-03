@@ -235,6 +235,34 @@ def _handle_bundle_import(request: AssistantRequest, context: HandlerContext) ->
     )
 
 
+def _handle_register_external_run(
+    request: AssistantRequest, context: HandlerContext
+) -> dict[str, Any]:
+    """Verify an external classic bundle. Persistence lives on the orchestrator façade."""
+    bundle_path = request.payload.get("bundle_path")
+    if not isinstance(bundle_path, str) or not bundle_path.strip():
+        raise ValueError("bundle_path must be a non-empty string.")
+    expected_hash = request.payload.get("expected_hash")
+    if expected_hash is not None:
+        expected_hash = _require_expected_hash(expected_hash)
+    run_spec = request.payload.get("run_spec")
+    if run_spec is not None and not isinstance(run_spec, Mapping):
+        raise ValueError("run_spec must be an object when provided.")
+    verified = context.tools.verify_external_research_bundle(
+        bundle_path,
+        expected_hash=expected_hash,
+        run_spec=run_spec if isinstance(run_spec, Mapping) else None,
+    )
+    # Session frames are verification-only; do not return them through dispatch.
+    return {
+        "bundle_path": verified["bundle_path"],
+        "canonical_bundle_hash": verified["canonical_bundle_hash"],
+        "summary": verified["summary"],
+        "included": verified["included"],
+        "verified": True,
+    }
+
+
 def _handle_portfolio_analyze(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
     bundle_paths = request.payload.get("bundle_paths")
     instrument = request.payload.get("instrument")
@@ -281,6 +309,7 @@ HANDLER_REGISTRY: dict[str, CapabilityHandler] = {
     "VALIDATION.run_otf_matrix": _handle_otf_matrix,
     "EXPORT.build_research_artifact": _handle_export_artifact,
     "BUNDLE.import": _handle_bundle_import,
+    "BUNDLE.register_external_run": _handle_register_external_run,
     "PORTFOLIO.analyze": _handle_portfolio_analyze,
     "PIPELINE.validate_run_spec": _handle_validate_run_spec,
     "PIPELINE.run_experiment": _handle_run_experiment,
