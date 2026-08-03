@@ -166,9 +166,70 @@ def load_llm_settings(path: str | Path = "config/assistant.toml") -> LLMSettings
     )
 
 
-def require_openai_api_key() -> str:
-    """Return only an environment-injected key; never read tracked configuration."""
-    key = os.environ.get("OPENAI_API_KEY")
-    if not key or key == "REPLACE_WITH_ROTATED_OPENAI_API_KEY":
-        raise LLMConfigurationError("Set OPENAI_API_KEY to a rotated credential.")
+_OPENAI_API_KEY_PLACEHOLDER = "REPLACE_WITH_ROTATED_OPENAI_API_KEY"
+
+
+def _usable_openai_api_key(value: Any) -> str | None:
+    """Return a non-empty, non-placeholder key string; otherwise None."""
+    if not isinstance(value, str):
+        return None
+    key = value.strip()
+    if not key or key == _OPENAI_API_KEY_PLACEHOLDER:
+        return None
     return key
+
+
+def _api_key_from_secrets_mapping(secrets: Any) -> str | None:
+    """Resolve OPENAI_API_KEY from a Streamlit-like secrets mapping.
+
+    Precedence inside secrets:
+    1. top-level ``OPENAI_API_KEY`` (canonical Community Cloud shape)
+    2. nested ``[openai].api_key`` (compatibility only)
+    """
+    if secrets is None or not hasattr(secrets, "get"):
+        return None
+    try:
+        flat = _usable_openai_api_key(secrets.get("OPENAI_API_KEY"))
+    except Exception:
+        flat = None
+    if flat is not None:
+        return flat
+    try:
+        section = secrets.get("openai")
+    except Exception:
+        return None
+    if section is None or not hasattr(section, "get"):
+        return None
+    try:
+        return _usable_openai_api_key(section.get("api_key"))
+    except Exception:
+        return None
+
+
+def _read_streamlit_openai_api_key() -> str | None:
+    """Best-effort Streamlit Secrets fallback; never reads tracked config files."""
+    try:
+        import streamlit as st
+
+        return _api_key_from_secrets_mapping(st.secrets)
+    except Exception:
+        return None
+
+
+def require_openai_api_key() -> str:
+    """Return a rotated OpenAI key from env, else Streamlit Secrets.
+
+    Resolution order:
+    1. ``OPENAI_API_KEY`` environment variable
+    2. Streamlit Secrets ``OPENAI_API_KEY``
+    3. Streamlit Secrets ``[openai].api_key``
+
+    Never reads tracked configuration (for example ``config/assistant.toml``).
+    """
+    key = _usable_openai_api_key(os.environ.get("OPENAI_API_KEY"))
+    if key is not None:
+        return key
+    key = _usable_openai_api_key(_read_streamlit_openai_api_key())
+    if key is not None:
+        return key
+    raise LLMConfigurationError("Set OPENAI_API_KEY to a rotated credential.")

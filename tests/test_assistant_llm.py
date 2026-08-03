@@ -4,6 +4,7 @@ from thesistester.assistant.llm import (
     LLMConfigurationError,
     LLMSettings,
     OpenAIStructuredClient,
+    _api_key_from_secrets_mapping,
     create_openai_client,
     load_llm_settings,
     require_openai_api_key,
@@ -22,8 +23,53 @@ def test_load_llm_settings_from_tracked_config(tmp_path):
 
 def test_key_must_be_environment_injected(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr("thesistester.assistant.llm._read_streamlit_openai_api_key", lambda: None)
     with pytest.raises(LLMConfigurationError, match="rotated"):
         require_openai_api_key()
+
+
+def test_require_openai_api_key_prefers_environment_over_secrets(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "env-rotated")
+    monkeypatch.setattr(
+        "thesistester.assistant.llm._read_streamlit_openai_api_key",
+        lambda: "secrets-rotated",
+    )
+    assert require_openai_api_key() == "env-rotated"
+
+
+def test_require_openai_api_key_falls_back_to_streamlit_secrets(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "thesistester.assistant.llm._read_streamlit_openai_api_key",
+        lambda: "secrets-rotated",
+    )
+    assert require_openai_api_key() == "secrets-rotated"
+
+
+def test_require_openai_api_key_env_placeholder_falls_through_to_secrets(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "REPLACE_WITH_ROTATED_OPENAI_API_KEY")
+    monkeypatch.setattr(
+        "thesistester.assistant.llm._read_streamlit_openai_api_key",
+        lambda: "secrets-rotated",
+    )
+    assert require_openai_api_key() == "secrets-rotated"
+
+
+def test_api_key_from_secrets_mapping_flat_and_nested_precedence():
+    assert _api_key_from_secrets_mapping({"OPENAI_API_KEY": "flat-key"}) == "flat-key"
+    assert _api_key_from_secrets_mapping({"openai": {"api_key": "nested-key"}}) == "nested-key"
+    assert (
+        _api_key_from_secrets_mapping(
+            {"OPENAI_API_KEY": "flat-key", "openai": {"api_key": "nested-key"}}
+        )
+        == "flat-key"
+    )
+    assert (
+        _api_key_from_secrets_mapping({"OPENAI_API_KEY": "REPLACE_WITH_ROTATED_OPENAI_API_KEY"})
+        is None
+    )
+    assert _api_key_from_secrets_mapping({"openai": {"api_key": ""}}) is None
+    assert _api_key_from_secrets_mapping(None) is None
 
 
 def test_openai_client_requires_strict_json_object_output():

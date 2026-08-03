@@ -279,7 +279,8 @@ C2-6.5–C2-6.7 (PR6) enforce the release gate:
   before UI render (`LLMEvidenceError`). Percent forms (`50%`) ground to
   fractional claim values (`0.5`); packet-caveat numbers are allowlisted only
   on LLM caveat lines that echo that caveat message.
-- Credentials: `OPENAI_API_KEY` only (env). Placeholder
+- Credentials: `OPENAI_API_KEY` from env first, else Streamlit Secrets
+  (`OPENAI_API_KEY`, nested `[openai].api_key` compatibility only). Placeholder
   `REPLACE_WITH_ROTATED_OPENAI_API_KEY` is rejected. Non-secret settings live in
   `config/assistant.toml` (`evidence_only = true`, retries, history trim).
 - Provider timeout/retry/failure, history trimming, confirmation bypass, and

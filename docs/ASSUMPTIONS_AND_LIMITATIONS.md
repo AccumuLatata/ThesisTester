@@ -393,10 +393,12 @@ other than the last bar in the dataset.
 - LLM explanations must cite packet paths; uncited numerical tokens are rejected
   before render. The model cannot execute tools, mutate confirmed RunSpecs,
   bypass confirmation, or invent metrics.
-- Credentials: set a rotated `OPENAI_API_KEY` in the environment only. The
-  placeholder `REPLACE_WITH_ROTATED_OPENAI_API_KEY` is rejected. Non-secret
-  knobs (`provider`, `model`, retries, history trim, `evidence_only`) live in
-  `config/assistant.toml`.
+- Credentials: set a rotated `OPENAI_API_KEY` in the environment first, or via
+  Streamlit Secrets on Community Cloud (`OPENAI_API_KEY`, with nested
+  `[openai].api_key` accepted as compatibility only). The placeholder
+  `REPLACE_WITH_ROTATED_OPENAI_API_KEY` is rejected. Never store the key in
+  tracked configuration. Non-secret knobs (`provider`, `model`, retries,
+  history trim, `evidence_only`) live in `config/assistant.toml`.
 - Provider timeouts retry per `max_retries`; exhaustion surfaces as a provider
   error and leaves the deterministic packet intact. Cancel/recovery of compute
   uses orchestrator `cancel_run` and terminal run states, not chat turns.

@@ -172,8 +172,9 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   `execute_confirmed_run`. Keep `tests/test_assistant_llm_evaluations.py` and
   `tests/test_assistant_registry_audit.py` green when changing the provider
   boundary or registry audit.
-- Provider setup: non-secret settings in `config/assistant.toml`; secret only via
-  rotated `OPENAI_API_KEY` (env). Reject the placeholder
+- Provider setup: non-secret settings in `config/assistant.toml`; secret via
+  rotated `OPENAI_API_KEY` (env first, then Streamlit Secrets
+  `OPENAI_API_KEY` / nested `[openai].api_key`). Reject the placeholder
   `REPLACE_WITH_ROTATED_OPENAI_API_KEY`. Recovery/cancellation stays on
   orchestrator `cancel_run` / confirmation lifecycle, not the LLM.
 - Document every additive `assistant_*` session key in `ARCHITECTURE.md` and
