@@ -70,6 +70,30 @@ are cleared on import and not restored from the identity member).
 / golden projections stay hash-stable); when an older bundle omits it there,
 restore falls back to `data_identity.format_profile`.
 
+## Classic/Assistant execution-artifact store (CAI-2)
+
+`thesistester/persistence/execution_artifacts.py` owns an **internal**
+content-addressed artifact namespace under
+`{store}/execution_artifacts/v1/`. It is distinct from user-facing
+`datasets/` and `levels/` snapshot trees.
+
+| Path | Contents |
+|---|---|
+| `execution_artifacts/v1/data/<data_key>/` | `data.parquet`, `identity.json`, `ingestion_meta.json`, `manifest.json` |
+| `execution_artifacts/v1/levels/<levels_key>/` | `levels.parquet`, `session_levels.parquet`, `levels_settings.json`, `identity.json`, `manifest.json` |
+| `execution_artifacts/v1/locks/` | Per-identity exclusive lock files |
+
+Keys derive from `DataIdentity` / `LevelsIdentity` (data keys include
+`format_profile` for cache correctness). Writes use temp-dir + fsync + atomic
+rename under `fcntl` locks; concurrent writers reuse a verified completed
+artifact. `read_verified_*` returns `ArtifactMiss` for missing, corrupt
+(including non-numeric schema/engine version fields),
+incomplete, schema-drift, engine-incompatible, or path-escape cases and never
+raises those conditions into a cold compute path.
+
+CAI-2 does **not** wire the store into `run_experiment`, Streamlit pages, CLI,
+or Assistant tools. CAI-3 adds explicit cache policy and verified reuse.
+
 ## AI Research Assistant contract boundary (AIA-0)
 
 `thesistester.assistant` is a Streamlit-free metadata boundary for the proposed
@@ -517,6 +541,7 @@ Signals robustness notes:
 - Levels: `.thesistester_store/levels/<dataset_id>/<levels_settings_hash>/`
 - Signal runs: `.thesistester_store/signals/<dataset_id>/<levels_settings_hash>/<signal_settings_hash>/`
 - Setups: `.thesistester_store/setups/<setup_id>/meta.json`
+- Execution artifacts (CAI-2, internal): `.thesistester_store/execution_artifacts/v1/{data,levels,locks}/`
 - UI state (active dataset, execution defaults): `.thesistester_store/ui_state.json`
 
 ### `ui_state.json` namespaces

@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** proposed implementation contract; `CAI-0` and `CAI-1` implemented.
+**Status:** proposed implementation contract; `CAI-0` through `CAI-2` implemented.
 
 **Owner model:** one trusted local user, local datasets, local execution.
 
@@ -300,7 +300,7 @@ These rules are non-negotiable for every milestone.
 - The same normalized levels settings always hash identically regardless of
   input key order or list ordering where order is not semantically meaningful.
 
-### CAI-2 — Durable execution-artifact store
+### CAI-2 — Durable execution-artifact store ✅ Implemented
 
 **Goal:** establish a safe, internal cache for canonical data and levels.
 
@@ -322,10 +322,31 @@ These rules are non-negotiable for every milestone.
 - Add `read_verified_*`, `write_*`, and `invalidate_*` APIs. They must return a
   miss for corrupt, incomplete, unknown-version, or engine-incompatible data.
 
+**Implemented contract**
+
+- Module: `thesistester/persistence/execution_artifacts.py`.
+- Namespace:
+  `{store}/execution_artifacts/v1/data/<key>/` and
+  `{store}/execution_artifacts/v1/levels/<key>/` (separate from
+  `datasets/` and UX `levels/`).
+- Data artifact keys include `format_profile` (cache correctness) even though
+  legacy `dataset_id` still excludes it.
+- Levels artifact keys bind data-artifact key + settings hash + engine +
+  artifact schema versions.
+- `read_verified_*` returns `ArtifactMiss` (never raises) for missing, corrupt
+  (including non-numeric schema/engine version fields), incomplete,
+  schema-drift, engine-incompatible, identity/content mismatch, or
+  path-escape cases.
+- `write_*` publishes under per-identity `fcntl` locks with temp-dir + rename;
+  a concurrent writer reuses a verified completed artifact.
+- Tests: `tests/test_execution_artifacts.py`.
+- No API/page wiring yet (CAI-3).
+
 **Regression gates**
 
 - Unit tests: cold miss, valid hit, corrupt manifest, missing parquet, schema
-  drift, engine-version drift, concurrent publish, and path containment.
+  drift, engine-version drift, non-numeric version fields, concurrent publish,
+  and path containment.
 - Existing `save_levels` / `find_matching_levels` UX remains unchanged.
 
 **Acceptance**
