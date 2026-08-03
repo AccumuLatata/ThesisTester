@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from thesistester.app_state import bootstrap_active_saved_dataset
+from thesistester.classic_context import render_classic_thesis_chrome
 from thesistester.research_bundle import (
     apply_research_bundle_to_session,
     build_research_bundle,
@@ -17,6 +18,10 @@ from thesistester.research_bundle import (
 st.title("🧳 Research Bundles")
 st.caption("Export and import portable research state snapshots for this session.")
 bootstrap_active_saved_dataset()
+render_classic_thesis_chrome(
+    page_key="research_bundles",
+    dataset_id=st.session_state.get("dataset_id"),
+)
 
 
 def _is_dataframe(value: object) -> bool:

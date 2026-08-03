@@ -180,6 +180,38 @@ draft. Does not execute research or invent missing parameters.
 
 ---
 
+## CAI-5 — Thesis Research Context Lifecycle ✅ Implemented
+
+Additive classic-workspace thesis context so Setup Builder / Signals /
+Backtest / Research Bundles can enter or leave research mode without changing
+executable page settings or recording runs.
+
+### Features
+
+- `thesistester/classic_context.py`:
+  - session helpers (`init_classic_session_state`, `link_thesis`,
+    `exit_research_mode`, `sync_classic_context_for_dataset`, recording policy,
+    pending navigation, flash)
+  - `render_classic_thesis_chrome(...)` (lazy Streamlit import)
+- Setup Builder: **Create thesis** / **Link existing thesis**
+- Signals, Backtest, Research Bundles: compact breadcrumb + exit/relink
+- Links sync `assistant_selected_thesis_id` via `select_thesis`
+
+### Regression safety
+
+- Protected classic producer keys retain value/type across link/exit/dataset
+  switch.
+- Dataset switch clears thesis-scoped classic keys (no cross-dataset leak).
+- Linking never starts runs or creates specification versions.
+- Recording policy default remains `manual` (CAI-0); `all_executions` deferred
+  to CAI-7.
+
+### Tests
+
+- `tests/test_classic_context.py`.
+
+---
+
 ## R1 — Execution Realism ✅ Implemented
 
 Adds optional commission and slippage to `simulate_trades`. Defaults preserve legacy
