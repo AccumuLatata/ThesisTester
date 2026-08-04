@@ -221,8 +221,9 @@ pages:
   Only completed runs with hash-verified bundle provenance are discussable;
   non-discussable active breadcrumbs fall back to latest discussable.
 - **Open exact run in Backtest** (Assistant): hash-verified
-  `restore_run_bundle_to_session`, re-links thesis, sets active run, navigates
-  to Backtest.
+  `restore_run_bundle_to_session`, re-links thesis, clears staged
+  `classic_page_proposal` (restored widgets must not be overwritten by a
+  prior draft), sets active run, navigates to Backtest.
 - **Clarification → classic page**: allowlisted `st.switch_page` plus
   `classic_nav_prefill` caption only — never auto-mutates page widgets and
   does not stage `classic_pending_navigation` (Data/Levels have no chrome

@@ -1244,22 +1244,26 @@ else:
                 for col, (label, capability_id) in zip(summary_cols, summary_caps, strict=True):
                     with col:
                         if st.button(label, key=f"page-sum-{capability_id}-{run.run_id}"):
-                            result = orchestrator.inspect_run_page_summary(
-                                thesis_id=thesis_id,
-                                conversation_id=conversation_id,
-                                run=run,
-                                capability_id=capability_id,
-                            )
-                            if result.status != "completed":
-                                st.error(
-                                    result.payload.get("error", {}).get(
-                                        "message", "Unable to load page summary."
-                                    )
+                            try:
+                                result = orchestrator.inspect_run_page_summary(
+                                    thesis_id=thesis_id,
+                                    conversation_id=conversation_id,
+                                    run=run,
+                                    capability_id=capability_id,
                                 )
+                            except ValueError as exc:
+                                st.error(str(exc))
                             else:
-                                st.session_state.setdefault("assistant_page_summaries", {})[
-                                    f"{run.run_id}:{capability_id}"
-                                ] = result.payload
+                                if result.status != "completed":
+                                    st.error(
+                                        result.payload.get("error", {}).get(
+                                            "message", "Unable to load page summary."
+                                        )
+                                    )
+                                else:
+                                    st.session_state.setdefault("assistant_page_summaries", {})[
+                                        f"{run.run_id}:{capability_id}"
+                                    ] = result.payload
                 for label, capability_id in summary_caps:
                     cached = st.session_state.get("assistant_page_summaries", {}).get(
                         f"{run.run_id}:{capability_id}"

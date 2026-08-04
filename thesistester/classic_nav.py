@@ -320,6 +320,11 @@ def open_exact_run_in_backtest(
         thesis_name=thesis.name,
         dataset_id=dataset_id if isinstance(dataset_id, str) else None,
     )
+    # Same-thesis link preserves proposals; open-exact restores a different run's
+    # widgets, so drop any staged draft that would overwrite the restored state.
+    from thesistester.classic_proposal import clear_classic_proposal
+
+    clear_classic_proposal(session_state)
     set_classic_active_run(session_state, run_id=run.run_id, thesis_id=thesis.thesis_id)
     # Prefer identities already restored into session; else peek without full reload.
     if not isinstance(session_state.get("data_identity"), Mapping) or not isinstance(

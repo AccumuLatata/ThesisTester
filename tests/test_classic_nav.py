@@ -28,6 +28,11 @@ from thesistester.classic_nav import (
     resolve_run_identities,
     set_classic_active_run,
 )
+from thesistester.classic_proposal import (
+    get_classic_proposal,
+    stage_classic_proposal,
+    validate_classic_proposal,
+)
 from thesistester.classic_record import record_classic_session_run
 from thesistester.research_bundle import build_research_bundle, peek_research_identity
 from thesistester.research_identity import (
@@ -244,6 +249,23 @@ def test_open_exact_run_restores_and_blocks_cross_thesis(
     run_id = result.payload["run_id"]
     session: dict = {"assistant_selected_thesis_id": None}
     init_classic_session_state(session)
+    # Staged proposal must not survive open-exact restore (would overwrite widgets).
+    link_thesis(
+        session,
+        thesis_id=thesis.thesis_id,
+        thesis_name=thesis.name,
+        dataset_id=state["dataset_id"],
+    )
+    stage_classic_proposal(
+        session,
+        validate_classic_proposal(
+            target_page="pages/7_Backtest.py",
+            draft_patch={"stop_loss_ticks": 99.0, "take_profit_ticks": 199.0},
+            note="Stale draft before open exact",
+        ),
+        navigate=False,
+    )
+    assert get_classic_proposal(session) is not None
     handoff = open_exact_run_in_backtest(
         session,
         thesis_id=thesis.thesis_id,
@@ -255,6 +277,7 @@ def test_open_exact_run_restores_and_blocks_cross_thesis(
     assert session["classic_active_thesis_id"] == thesis.thesis_id
     assert session["classic_pending_navigation"] == "pages/7_Backtest.py"
     assert isinstance(session.get("trades"), type(state["trades"]))
+    assert get_classic_proposal(session) is None
 
     other = repository.create_thesis(name="blocked")
     with pytest.raises(Exception):
