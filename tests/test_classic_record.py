@@ -669,6 +669,61 @@ def test_export_overlay_normalizes_whitespace_format_profile(tmp_path: Path):
     assert state["format_profile"] == "  canonical  "
 
 
+def test_materialized_ns_timestamp_session_roundtrips_identity(tmp_path: Path):
+    """15s-derive parents may be datetime64[ns]; lineage CSV reloads as [us].
+
+    Reproduces source_path_identity_mismatch after the Quantower delimiter fix.
+    """
+    from thesistester.persistence.local_store import _hash_dataframe
+
+    state = _classic_completed_state(tmp_path)
+    state["format_profile"] = "quantower_history_exporter"
+    state.pop("dataset_source_path", None)
+    state.pop("source_csv_path", None)
+
+    # Simulate a live 15s-primary session whose parent bars still carry ns units.
+    ns_data = state["data"].copy()
+    ns_data["timestamp"] = ns_data["timestamp"].dt.as_unit("ns")
+    assert getattr(ns_data["timestamp"].dtype, "unit", None) == "ns"
+    state["data"] = ns_data
+    state["data_identity"] = DataIdentity.from_loaded_data(
+        ns_data,
+        instrument="ES",
+        base_interval="1min",
+        source_timezone="America/New_York",
+        exchange_timezone="America/New_York",
+        format_profile="quantower_history_exporter",
+    ).to_dict()
+    state["dataset_id"] = state["data_identity"]["dataset_id"]
+
+    source = resolve_classic_record_source(state, materialize_dir=tmp_path / "staging")
+    export_state = classic_export_session_state(state, source)
+    assert getattr(export_state["data"]["timestamp"].dtype, "unit", None) == "us"
+    assert "dataset_id" not in export_state
+    assert "data_identity" not in export_state
+    # Live session unchanged for bundle/badge provenance.
+    assert getattr(state["data"]["timestamp"].dtype, "unit", None) == "ns"
+    assert state["format_profile"] == "quantower_history_exporter"
+
+    run_spec = classic_state_to_run_spec(
+        export_state,
+        name="ns materialize",
+        source_path=source.path,
+        store_root=tmp_path / "store",
+    )
+    assert run_spec["dataset"]["format_profile"] == "canonical"
+    from thesistester.api import load_dataset
+
+    reloaded = load_dataset(
+        source.path,
+        instrument="ES",
+        source_timezone="America/New_York",
+        exchange_timezone="America/New_York",
+        format_profile="canonical",
+    )
+    assert _hash_dataframe(export_state["data"]) == _hash_dataframe(reloaded)
+
+
 def test_record_quantower_session_without_source_path(tmp_path: Path, monkeypatch):
     """Record and discuss must succeed for Quantower sessions with no source path.
 

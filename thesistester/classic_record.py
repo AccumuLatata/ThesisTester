@@ -152,6 +152,24 @@ def resolve_classic_record_source_path(
     ).path
 
 
+def _timestamps_for_canonical_csv_roundtrip(values: pd.Series) -> pd.Series:
+    """Normalize timestamps to the unit ``load_ohlcv`` emits after CSV reload.
+
+    15s→1m derivation historically rebuilt parents as ``datetime64[ns, tz]``
+    while the canonical loader round-trips to ``datetime64[us, tz]``. Content
+    hashes include dtype, so materialize→verify fails with
+    ``source_path_identity_mismatch`` unless the export frame matches the
+    reloaded lineage CSV.
+    """
+    parsed = pd.to_datetime(values)
+    if hasattr(parsed.dt, "as_unit"):
+        return parsed.dt.as_unit("us")
+    tz = getattr(parsed.dtype, "tz", None)
+    if tz is not None:
+        return parsed.astype(f"datetime64[us, {tz}]")
+    return parsed.astype("datetime64[us]")
+
+
 def classic_export_session_state(
     session_state: Mapping[str, Any],
     source: ClassicRecordSource,
@@ -169,10 +187,27 @@ def classic_export_session_state(
     """
     # Compare the raw session value (not a normalized default) so whitespace or
     # missing keys still receive an explicit lineage profile for export.
-    if session_state.get("format_profile") == source.format_profile:
+    needs_profile_overlay = session_state.get("format_profile") != source.format_profile
+    needs_timestamp_overlay = False
+    data = session_state.get("data")
+    if source.materialized and isinstance(data, pd.DataFrame) and "timestamp" in data.columns:
+        unit = getattr(data["timestamp"].dtype, "unit", None)
+        needs_timestamp_overlay = unit is not None and unit != "us"
+
+    if not needs_profile_overlay and not needs_timestamp_overlay:
         return session_state
+
     overlay = dict(session_state)
-    overlay["format_profile"] = source.format_profile
+    if needs_profile_overlay:
+        overlay["format_profile"] = source.format_profile
+    if needs_timestamp_overlay:
+        normalized = data.copy()
+        normalized["timestamp"] = _timestamps_for_canonical_csv_roundtrip(normalized["timestamp"])
+        overlay["data"] = normalized
+        # Live session dataset_id / data_identity hash the ingest frame (possibly
+        # ns-resolution). Lineage verification uses the normalized export frame.
+        overlay.pop("dataset_id", None)
+        overlay.pop("data_identity", None)
     return overlay
 
 
