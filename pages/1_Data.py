@@ -70,11 +70,17 @@ RAW_CAPTURE_PROFILES = frozenset(
     {"ninjatrader", "databento_trades", "tick_capture", "second_capture"}
 )
 INGESTION_MODE_PRIMARY = "primary"
+# Presentation order: recommended 15s-primary first; legacy one-minute second.
+# API/CLI defaults remain absent→primary; this widget default is Upload-CSV only.
+DEFAULT_UPLOAD_INGESTION_MODE = INGESTION_MODE_15S_PRIMARY_DERIVE_1M
 INGESTION_MODE_LABELS = {
-    INGESTION_MODE_PRIMARY: "One-minute primary (existing)",
-    INGESTION_MODE_15S_PRIMARY_DERIVE_1M: ("15-second primary — derive one-minute canonical"),
+    INGESTION_MODE_15S_PRIMARY_DERIVE_1M: (
+        "Recommended: 15-second primary — derive one-minute canonical"
+    ),
+    INGESTION_MODE_PRIMARY: "Legacy: one-minute primary (advanced)",
 }
 DERIVE_15S_SUPPORTED_PROFILES = frozenset({"quantower_history_exporter"})
+LEGACY_SUBTIMEFRAME_EXPANDER_TITLE = "Legacy dual-upload (optional)"
 INGESTION_PROVENANCE_KEY = "ingestion_provenance"
 DERIVED_PARENT_DIAGNOSTICS_KEY = "derived_parent_diagnostics"
 SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY = "_subtimeframe_upload_signature"
@@ -623,10 +629,12 @@ def _render_subtimeframe_upload(
     exchange_timezone: str,
 ) -> None:
     """Render the optional interactive R12 lower-timeframe import."""
-    with st.expander("Lower-timeframe replay (optional)", expanded=False):
+    with st.expander(LEGACY_SUBTIMEFRAME_EXPANDER_TITLE, expanded=False):
         st.caption(
-            "Upload lower OHLCV bars for observed lower-timeframe replay. "
-            "They must cover and reconcile exactly to every main-chart bar."
+            "Legacy path: upload separately exported lower OHLCV bars for R12 "
+            "replay. They must cover and reconcile exactly to every main-chart "
+            "bar. For Quantower 15-second exports, prefer Recommended "
+            "15-second primary ingestion instead."
         )
         subtimeframe_format_profile = st.selectbox(
             "Lower CSV format profile",
@@ -1159,7 +1167,7 @@ source = st.radio(
 )
 if source == "Upload CSV":
     if "data_ingestion_mode_selector" not in st.session_state:
-        st.session_state["data_ingestion_mode_selector"] = INGESTION_MODE_PRIMARY
+        st.session_state["data_ingestion_mode_selector"] = DEFAULT_UPLOAD_INGESTION_MODE
     ingestion_mode = st.radio(
         "Ingestion mode",
         options=list(INGESTION_MODE_LABELS),
@@ -1167,12 +1175,14 @@ if source == "Upload CSV":
         horizontal=True,
         key="data_ingestion_mode_selector",
         help=(
-            "15-second primary derives complete one-minute bars from the upload and "
-            "retains the 15-second bars for R12. One-minute primary keeps the legacy path."
+            "Recommended for Quantower 15-second exports: derive complete "
+            "one-minute bars and retain the 15-second source for R12. "
+            "Legacy one-minute primary keeps dual-upload available."
         ),
         on_change=_on_ingestion_mode_change,
     )
 else:
+    # Sample data remains the legacy one-minute fixture path.
     ingestion_mode = INGESTION_MODE_PRIMARY
 
 all_profile_options = {

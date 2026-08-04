@@ -568,8 +568,8 @@ dropped into a read-only diagnostic frame; no interpolation or partial parents
 are produced. This is stricter than `resample_ohlcv(..., "1min")`, which may
 retain non-empty partial buckets for preview use.
 
-The Data page exposes an explicit opt-in ingestion mode,
-`15s_primary_derive_1m`, currently limited to
+The Data page recommends `15s_primary_derive_1m` for Upload CSV (first-visit
+widget default; labeled/ordered first), currently limited to
 `quantower_history_exporter`. That mode derives the canonical one-minute
 `data` frame, attaches the original 15-second bars as `subtimeframe_data`,
 records `ingestion_provenance` / `derived_parent_diagnostics`, and runs
@@ -585,8 +585,9 @@ uploader widget so a file chosen under one mode cannot be re-ingested on
 the other path on the same rerun. The one-minute primary upload path also
 drops an active 15s-primary session even when `compute_dataset_id` is
 unchanged, so the UI cannot stay latched in 15s-primary while the
-selector shows primary. Legacy one-minute primary upload and optional
-dual-upload lower data remain unchanged.
+selector shows primary. Legacy one-minute primary + dual-upload remains
+available as an advanced path; Sample data stays on the one-minute fixture.
+API/CLI runs that omit `ingestion_mode` remain primary.
 Local persistence stores the derived one-minute frame as
 `canonical.parquet` and the retained 15-second source as
 `subtimeframe.parquet` under dataset schema v2, with

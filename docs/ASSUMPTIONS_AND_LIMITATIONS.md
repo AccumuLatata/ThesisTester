@@ -53,13 +53,14 @@ This engine is for **research screening**, not proof of a durable edge.
   `Time left`/OHLCV bars to canonical data. Parser success does not establish
   that separately exported 1m and 15s files reconcile; R12 remains the
   authority for that check.
-- Complete 15s→1m derivation (`thesistester.data.derive`) powers an explicit
-  Data-page ingestion mode (`15s_primary_derive_1m`, currently
-  `quantower_history_exporter` only). The mode treats the 15-second frame as
-  source truth and emits a one-minute parent only for minutes with exactly
-  four aligned opens (`:00/:15/:30/:45`). Incomplete or misaligned minutes are
-  dropped rather than repaired; dropped-minute diagnostics are session-scoped
-  and downloadable.
+- Complete 15s→1m derivation (`thesistester.data.derive`) powers the
+  Data-page **recommended** Upload-CSV ingestion mode
+  (`15s_primary_derive_1m`, currently `quantower_history_exporter` only).
+  The mode treats the 15-second frame as source truth and emits a one-minute
+  parent only for minutes with exactly four aligned opens
+  (`:00/:15/:30/:45`). Incomplete or misaligned minutes are dropped rather
+  than repaired; dropped-minute diagnostics are session-scoped and
+  downloadable.
 - In that mode the derived one-minute frame is the canonical `data` used for
   levels/signals, and the original 15-second bars are attached as
   `subtimeframe_data` for R12. The separate lower-timeframe uploader is hidden
@@ -68,8 +69,9 @@ This engine is for **research screening**, not proof of a durable edge.
   must not reopen the dual-upload path). Switching away from the mode keeps
   the derived one-minute `data` but clears provenance/subtimeframe artifacts
   and drops the in-widget CSV so the legacy primary path cannot re-parse the
-  15-second export as raw bars. Legacy one-minute primary + optional lower
-  upload remains available.
+  15-second export as raw bars. Legacy one-minute primary + optional
+  dual-upload remains available as an advanced path; omitting
+  `dataset.ingestion_mode` in API/CLI keeps the primary contract.
 - Derived one-minute volume is the sum of retained 15-second volumes. That
   volume, and therefore VWAP/profile levels computed from it, can differ from
   a separately exported vendor one-minute file even when timestamps overlap.

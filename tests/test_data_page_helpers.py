@@ -586,7 +586,23 @@ def test_data_page_exposes_15s_primary_mode_labels():
     data_page = _import_data_page_module({})
     page_text = pathlib.Path(data_page.__file__).read_text(encoding="utf-8")
 
-    assert "15-second primary — derive one-minute canonical" in page_text
+    assert (
+        data_page.INGESTION_MODE_LABELS[data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M]
+        == "Recommended: 15-second primary — derive one-minute canonical"
+    )
+    assert (
+        data_page.INGESTION_MODE_LABELS[data_page.INGESTION_MODE_PRIMARY]
+        == "Legacy: one-minute primary (advanced)"
+    )
+    assert list(data_page.INGESTION_MODE_LABELS) == [
+        data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+        data_page.INGESTION_MODE_PRIMARY,
+    ]
+    assert data_page.DEFAULT_UPLOAD_INGESTION_MODE == data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    assert data_page.LEGACY_SUBTIMEFRAME_EXPANDER_TITLE == "Legacy dual-upload (optional)"
+    assert "DEFAULT_UPLOAD_INGESTION_MODE" in page_text
+    assert "Legacy dual-upload (optional)" in page_text
+    assert "Sample data remains the legacy one-minute fixture path." in page_text
     assert "quantower_history_exporter" in data_page.DERIVE_15S_SUPPORTED_PROFILES
     assert data_page.INGESTION_MODE_PRIMARY == "primary"
     assert "on_change=_on_ingestion_mode_change" in page_text
@@ -594,3 +610,57 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert "_invalidate_primary_csv_uploader()" in page_text
     assert 'key=f"primary_csv_upload_{primary_uploader_nonce}"' in page_text
     assert "_hide_legacy_subtimeframe_uploader(ingestion_mode)" in page_text
+
+
+def test_upload_csv_default_ingestion_mode_is_15s_primary_not_api_default():
+    """Streamlit Upload-CSV recommends 15s-primary; API absent mode stays primary."""
+    data_page = _import_data_page_module({})
+    from thesistester.api import validate_run_spec
+
+    assert data_page.DEFAULT_UPLOAD_INGESTION_MODE == data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    # Headless RunSpec without ingestion_mode remains the legacy primary contract.
+    validate_run_spec(
+        {
+            "name": "legacy_default",
+            "dataset": {
+                "path": "bars.csv",
+                "instrument": "ES",
+                "source_timezone": "America/New_York",
+            },
+            "levels": {
+                "sma_lengths": [2],
+                "ema_lengths": [2],
+                "sma_timeframes": ["1min"],
+                "ema_timeframes": ["1min"],
+                "vwap_windows": [],
+                "poc_windows": [],
+            },
+            "setup": {
+                "name": "legacy_default",
+                "description": "API default remains primary",
+                "instrument": "ES",
+                "selected_levels": ["dOpen", "RTH_Open"],
+                "tolerance_ticks": 0,
+                "min_confluences": 2,
+                "max_confluences": 2,
+                "naked_only": False,
+                "naked_requirement": "any",
+                "trigger": "touch",
+                "trigger_timeframe": "base",
+                "direction": "both",
+                "confluence_mode": "global_cluster",
+                "anchor_level": None,
+                "confluence_rules": [],
+                "min_valid_confluences": 1,
+                "trigger_params": {},
+                "otf_filter": None,
+            },
+            "backtest": {
+                "stop_loss_ticks": 2,
+                "take_profit_ticks": 3,
+                "exposure_policy": "single_position",
+            },
+            "grid": {"enabled": False},
+            "validation": {"enabled": False},
+        }
+    )

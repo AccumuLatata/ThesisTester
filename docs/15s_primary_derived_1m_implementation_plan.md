@@ -1,6 +1,6 @@
 # 15-Second Primary Data → Derived 1-Minute Canonical Plan
 
-**Status:** Proposed implementation plan
+**Status:** Delivered (PRs 1–3); PR4 recommend-only UX/docs complete
 **Scope:** Explicit 15-second-primary ingestion for Quantower-style OHLCV exports
 **Decision:** Build 1-minute canonical bars internally from uploaded 15-second
 bars, and retain the uploaded 15-second bars as the only R12 intrabar source.
@@ -451,23 +451,36 @@ reuse.
 - A one-file YAML run is reproducible and exports derivation provenance.
 - Legacy datasets, bundles, and RunSpecs remain readable/executable.
 
-### Optional PR 4 — Product-default transition
+### PR 4 — Recommend 15s-primary (regression-safe)
 
-**Title:** `Data: promote the 15-second primary workflow`
+**Status:** Implemented (`pages/1_Data.py` presentation + docs; no API/engine
+removal)
 
-Do **not** schedule this until production usage of PRs 1–3 demonstrates the
-mode and persistence contract. Its scope is a product decision, not a technical
-requirement:
+**Title:** `Data: recommend 15-second-primary without removing legacy paths`
 
-- Make 15-second-primary the recommended/default visible workflow for the
-  supported vendor profile.
-- Either retain the legacy dual-upload path under an advanced/legacy section or
-  remove it from the Streamlit page while preserving API backward compatibility.
-- Update samples, screenshots, and user docs.
+Focused product-surface promotion only. Engine, loaders, derive policy,
+persistence schema, RunSpec semantics, cache bindings, and goldens stay
+untouched.
 
-Removal is only safe after confirming there is no supported use case requiring
-other lower intervals or independently sourced primary data. It is not part of
-the minimum viable fix.
+**In scope**
+
+- Streamlit Upload-CSV radio: 15s-primary labeled/ordered first as
+  **Recommended**; one-minute primary labeled **Legacy / advanced**.
+- Upload-CSV widget default selects `15s_primary_derive_1m` on first visit;
+  Sample data remains the legacy one-minute fixture path.
+- Dual-upload expander retitled **Legacy dual-upload (optional)** with
+  prefer-15s-primary copy; hide rules unchanged.
+- Docs mark 15s-primary as the recommended Streamlit Quantower path; legacy
+  dual-file / `subtimeframe_path` remain supported.
+
+**Out of scope (intentionally deferred)**
+
+- Removing or disabling dual-upload / `subtimeframe_path`
+- Changing API/CLI default (`ingestion_mode` absent ⇒ still `primary`)
+- Auto-detecting interval/profile or expanding beyond
+  `quantower_history_exporter`
+- Sample-data path, engine, R12 resolvers, derive policy, dataset schema,
+  cache keys, research-bundle schema, golden regeneration
 
 ## 7. Verification matrix
 
