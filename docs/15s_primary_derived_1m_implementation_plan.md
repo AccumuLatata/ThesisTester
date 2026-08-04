@@ -471,7 +471,9 @@ untouched.
 - Upload-CSV entry realigns `data_ingestion_mode_selector` for legacy
   one-minute sessions (Sample/saved) so dual-upload stays reachable, without
   writing the selector from the Sample render branch (which would clobber the
-  recommended default). Explicit radio choices are preserved.
+  recommended default). Explicit radio choices are preserved. Post-radio CSV
+  install sync skips rewriting the selector key when the value already
+  matches (Streamlit forbids mutating a bound widget key on the same run).
 - Dual-upload expander retitled **Legacy dual-upload (optional)** with
   prefer-15s-primary copy; hide rules unchanged.
 - Docs mark 15s-primary as the recommended Streamlit Quantower path; legacy

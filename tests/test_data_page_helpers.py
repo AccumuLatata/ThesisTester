@@ -371,9 +371,25 @@ def test_prepare_15s_primary_dataset_installs_atomic_parent_and_source(tmp_path,
         tick_size=0.25,
     )
 
-    session_state = sys.modules["streamlit"].session_state
-    session_state.clear()
-    data_page = _import_data_page_module(session_state)
+    # Mimic Upload-CSV: radio already bound to 15s-primary before install.
+    # Streamlit raises if that widget key is rewritten on the same run.
+    class _WidgetBoundSessionState(dict):
+        def __setitem__(self, key, value):  # noqa: ANN001
+            if key == "data_ingestion_mode_selector" and key in self:
+                raise RuntimeError(
+                    "st.session_state.data_ingestion_mode_selector cannot be "
+                    "modified after the widget with key "
+                    "data_ingestion_mode_selector is instantiated."
+                )
+            super().__setitem__(key, value)
+
+    bound_state = _WidgetBoundSessionState(
+        {
+            "data_ingestion_mode_selector": data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+        }
+    )
+    sys.modules["streamlit"].session_state = bound_state
+    data_page = _import_data_page_module(bound_state)
     monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
     monkeypatch.setattr(data_page, "ensure_display_timezone", lambda *a, **k: None)
     monkeypatch.setattr(data_page, "clear_active_dataset_id", lambda *a, **k: None)
@@ -387,13 +403,18 @@ def test_prepare_15s_primary_dataset_installs_atomic_parent_and_source(tmp_path,
         resampled_data={},
     )
 
-    assert session_state["base_interval"] == "1min"
-    assert session_state["subtimeframe_interval"] == "15s"
-    assert session_state["subtimeframe_format_profile"] == "quantower_history_exporter"
-    assert len(session_state["data"]) == 2
-    assert len(session_state["subtimeframe_data"]) == 8
-    assert session_state[data_page.INGESTION_PROVENANCE_KEY]["derivation_policy"]
-    assert data_page._is_15s_primary_session(session_state)
+    assert bound_state["base_interval"] == "1min"
+    assert bound_state["subtimeframe_interval"] == "15s"
+    assert bound_state["subtimeframe_format_profile"] == "quantower_history_exporter"
+    assert len(bound_state["data"]) == 2
+    assert len(bound_state["subtimeframe_data"]) == 8
+    assert bound_state[data_page.INGESTION_PROVENANCE_KEY]["derivation_policy"]
+    assert data_page._is_15s_primary_session(bound_state)
+    assert (
+        bound_state["data_ingestion_mode_selector"]
+        == data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    )
+    assert bound_state[data_page.UPLOAD_INGESTION_MODE_EXPLICIT_KEY] is True
 
 
 def test_prepare_15s_primary_dataset_drops_partial_minutes(tmp_path):
@@ -660,6 +681,49 @@ def test_align_upload_ingestion_mode_with_legacy_and_empty_sessions(monkeypatch)
     assert "Do not write data_ingestion_mode_selector here" in page_text
     with pytest.raises(ValueError, match="Unsupported ingestion mode"):
         data_page._sync_upload_ingestion_mode_selector("bogus", session_state={})
+
+
+def test_sync_upload_ingestion_mode_selector_skips_redundant_widget_write(monkeypatch):
+    """Post-radio CSV install must not rewrite a bound equal selector key."""
+    data_page = _import_data_page_module({})
+    monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
+
+    class _WidgetBoundSessionState(dict):
+        def __setitem__(self, key, value):  # noqa: ANN001
+            if key == "data_ingestion_mode_selector" and key in self:
+                raise RuntimeError(
+                    "cannot be modified after the widget with key "
+                    "data_ingestion_mode_selector is instantiated."
+                )
+            super().__setitem__(key, value)
+
+    bound = _WidgetBoundSessionState(
+        {
+            "data_ingestion_mode_selector": data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+        }
+    )
+    data_page._sync_upload_ingestion_mode_selector(
+        data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+        session_state=bound,
+        explicit=True,
+    )
+    assert (
+        bound["data_ingestion_mode_selector"]
+        == data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    )
+    assert bound[data_page.UPLOAD_INGESTION_MODE_EXPLICIT_KEY] is True
+
+    # Pre-widget / differing value still writes the selector key.
+    mutable: dict = {
+        "data_ingestion_mode_selector": data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+    }
+    data_page._sync_upload_ingestion_mode_selector(
+        data_page.INGESTION_MODE_PRIMARY,
+        session_state=mutable,
+        explicit=False,
+    )
+    assert mutable["data_ingestion_mode_selector"] == data_page.INGESTION_MODE_PRIMARY
+    assert mutable[data_page.UPLOAD_INGESTION_MODE_EXPLICIT_KEY] is False
 
 
 def test_upload_csv_default_ingestion_mode_is_15s_primary_not_api_default():
