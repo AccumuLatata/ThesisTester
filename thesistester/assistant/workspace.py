@@ -196,6 +196,98 @@ def consume_assistant_flash(
     return {"level": str(level), "message": message.strip()}
 
 
+def format_assistant_draft_reply(clarifications: Sequence[str] | None = None) -> str:
+    """Build the user-visible assistant chat body for a thesis-draft turn.
+
+    Chat persists structured ``clarifications`` separately for Plan review /
+    audit consumers; this helper folds them into readable ``content`` so the
+    Streamlit chat bubble is never an opaque status line alone.
+    """
+    items = [
+        str(item).strip()
+        for item in (clarifications or ())
+        if isinstance(item, str) and str(item).strip()
+    ]
+    if items:
+        bullets = "\n".join(f"- {item}" for item in items)
+        return (
+            "I need a few clarifications before this thesis draft can run:\n"
+            f"{bullets}\n\n"
+            "Answer here, or fill Structured execution controls below, then "
+            "Draft research plan."
+        )
+    return (
+        "Drafted non-executing research choices. Review Structured execution "
+        "controls, then Draft research plan when ready."
+    )
+
+
+def _clarification_visible_in_content(item: str, content: str) -> bool:
+    """True when ``item`` is already rendered as a clarification in ``content``.
+
+    Uses bullet/line presence rather than raw substring checks so a short
+    clarification like ``research choices`` is not treated as satisfied by the
+    opaque legacy status line ``Drafted non-executing research choices.``.
+    """
+    if not item or not content:
+        return False
+    if f"- {item}" in content:
+        return True
+    if content == item:
+        return True
+    return f"\n{item}\n" in f"\n{content}\n"
+
+
+def format_chat_message_body(message: Mapping[str, Any]) -> str:
+    """Return the text shown inside one Assistant chat bubble.
+
+    Prefer persisted ``content`` when it already surfaces every structured
+    clarification. When older turns stored clarifications only on the structured
+    field (pre-UX fix), or when ``content`` is an opaque status line that only
+    accidentally overlaps a short clarification substring, fold missing items
+    into the body so Assistant chat never drops structured questions.
+    """
+    if not isinstance(message, Mapping):
+        return ""
+    content = str(message.get("content") or "").strip()
+    clarifications = message.get("clarifications")
+    items: list[str] = []
+    if isinstance(clarifications, Sequence) and not isinstance(clarifications, (str, bytes)):
+        items = [
+            str(item).strip()
+            for item in clarifications
+            if isinstance(item, str) and str(item).strip()
+        ]
+    if not items:
+        return content
+    # New turns persist clarifications inside content via
+    # format_assistant_draft_reply — trust that body when complete.
+    if content and all(_clarification_visible_in_content(item, content) for item in items):
+        return content
+    missing = [item for item in items if not _clarification_visible_in_content(item, content)]
+    if content and missing:
+        bullets = "\n".join(f"- {item}" for item in missing)
+        return f"{content}\n\nClarifications still needed:\n{bullets}"
+    return format_assistant_draft_reply(items)
+
+
+def chat_message_display_role(message: Mapping[str, Any]) -> str | None:
+    """Map a persisted conversation message to a Streamlit chat role.
+
+    Tool/audit lines are omitted from the friendly chat (they remain in
+    Conversation audit). Returns ``None`` when the message should not render
+    as a chat bubble.
+    """
+    if not isinstance(message, Mapping):
+        return None
+    role = str(message.get("role") or "").strip().lower()
+    if role in {"user", "human"}:
+        return "user"
+    if role in {"assistant", "ai"}:
+        return "assistant"
+    return None
+
+
 def format_spec_status(status: str | None) -> str:
     """Return a user-facing label for a persisted specification status."""
     key = str(status or "").strip()

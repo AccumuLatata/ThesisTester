@@ -343,6 +343,75 @@ def test_structured_merges_cover_setup_levels_execution_grid_validation_wfa():
     assert parse_json_choices('{"dataset": {"path": "x.csv"}}')["dataset"]["path"] == "x.csv"
 
 
+def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
+    from thesistester.assistant.workspace import (
+        chat_message_display_role,
+        format_assistant_draft_reply,
+        format_chat_message_body,
+    )
+
+    with_questions = format_assistant_draft_reply(
+        ("Select a dataset and instrument.", "Define setup levels.")
+    )
+    assert "clarifications before this thesis draft can run" in with_questions
+    assert "- Select a dataset and instrument." in with_questions
+    assert format_assistant_draft_reply(()).startswith("Drafted non-executing")
+
+    legacy = {
+        "role": "assistant",
+        "content": "Drafted non-executing research choices.",
+        "clarifications": ["What test would you like explained?"],
+    }
+    body = format_chat_message_body(legacy)
+    assert "Drafted non-executing research choices." in body
+    assert "What test would you like explained?" in body
+    assert chat_message_display_role(legacy) == "assistant"
+    assert chat_message_display_role({"role": "user", "content": "hi"}) == "user"
+    assert (
+        chat_message_display_role({"role": "tool", "content": "completed BUNDLE.import."}) is None
+    )
+
+    # A short clarification that is a substring of the opaque status line must
+    # not suppress merging the remaining structured questions into chat.
+    overlapping = {
+        "role": "assistant",
+        "content": "Drafted non-executing research choices.",
+        "clarifications": [
+            "research choices",
+            "What instrument and dataset should this thesis use?",
+        ],
+    }
+    overlapping_body = format_chat_message_body(overlapping)
+    assert "- research choices" in overlapping_body
+    assert "- What instrument and dataset should this thesis use?" in overlapping_body
+    assert "Clarifications still needed:" in overlapping_body
+
+    # New turns already embed every clarification in content — do not duplicate.
+    embedded = format_assistant_draft_reply(
+        ("Select a dataset and instrument.", "Define setup levels.")
+    )
+    assert (
+        format_chat_message_body(
+            {
+                "role": "assistant",
+                "content": embedded,
+                "clarifications": [
+                    "Select a dataset and instrument.",
+                    "Define setup levels.",
+                ],
+            }
+        )
+        == embedded
+    )
+
+    page_path = pathlib.Path(__file__).parent.parent / "pages" / "14_Research_Assistant.py"
+    source = page_path.read_text(encoding="utf-8")
+    assert "format_chat_message_body(" in source
+    assert "chat_message_display_role(" in source
+    assert "Thesis drafting only" in source
+    assert "Raw append-only transcript" in source
+
+
 def test_plan_review_ready_flag_requires_validated_spec():
     plan = build_plan_review(
         thesis_name="Demo",

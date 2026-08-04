@@ -235,11 +235,16 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   comparison contracts.
 - Optional LLM paraphrase (`llm_explainer.explain_packet_with_llm`) is
   evidence-only: structured claims with packet paths, server-resolved values,
-  and rejection of uncited numbers (`LLMEvidenceError`) before render. Chat
+  and rejection of uncited numbers (`LLMEvidenceError`) before render.   Chat
   (`handle_chat_turn`) drafts non-executing choices only—never `dispatch` or
-  `execute_confirmed_run`. Keep `tests/test_assistant_llm_evaluations.py` and
+  `execute_confirmed_run`. Persist clarifications in both structured
+  `clarifications` and readable `content` (`format_assistant_draft_reply`);
+  the Research Assistant page must render `format_chat_message_body` and must
+  not present Conversation audit JSON as the primary chat surface. Keep
+  `tests/test_assistant_llm_evaluations.py`,
+  `tests/test_assistant_workspace.py`, and
   `tests/test_assistant_registry_audit.py` green when changing the provider
-  boundary or registry audit.
+  boundary, chat UX, or registry audit.
 - Provider setup: non-secret settings in `config/assistant.toml`; secret via
   rotated `OPENAI_API_KEY` (env first, then Streamlit Secrets
   `OPENAI_API_KEY` / nested `[openai].api_key`). Reject the placeholder

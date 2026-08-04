@@ -56,6 +56,7 @@ from thesistester.assistant.thesis_compiler import (
 from thesistester.assistant.tools import AssistantToolError, AssistantTools, ToolLimits
 from thesistester.assistant.workspace import (
     evidence_packet_from_payload,
+    format_assistant_draft_reply,
     require_run_bundle_hash,
 )
 from thesistester import __version__
@@ -368,7 +369,7 @@ class AssistantOrchestrator:
             expected_revision=user_record.revision,
             message={
                 "role": "assistant",
-                "content": "Drafted non-executing research choices.",
+                "content": format_assistant_draft_reply(draft.unresolved_assumptions),
                 "choices": draft.normalized_run_spec,
                 "clarifications": list(draft.unresolved_assumptions),
             },
