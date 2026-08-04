@@ -1026,6 +1026,8 @@ class AssistantOrchestrator:
                 payload={
                     "bundle_path": bundle_path,
                     "expected_hash": expected_hash,
+                    # Provenance lets backtest inspect reuse evidence cost assumptions.
+                    "provenance": dict(run.provenance),
                 },
             ),
             thesis_id=thesis_id,

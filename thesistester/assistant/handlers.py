@@ -315,7 +315,12 @@ def _handle_inspect_signals(request: AssistantRequest, context: HandlerContext) 
 
 def _handle_inspect_backtest(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
     bundle_path, expected_hash = _bundle_path_and_hash(request)
-    return context.tools.summarize_bundle_backtest(bundle_path, expected_hash=expected_hash)
+    provenance = request.payload.get("provenance")
+    return context.tools.summarize_bundle_backtest(
+        bundle_path,
+        expected_hash=expected_hash,
+        provenance=provenance if isinstance(provenance, Mapping) else None,
+    )
 
 
 def _handle_inspect_grid(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:

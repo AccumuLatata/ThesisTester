@@ -248,7 +248,10 @@ validation/OOS scalars). Registry capabilities
 remain classic-page owned.
 
 `build_evidence_packet` embeds the same page summaries under
-`results.*_summary` paths so explanation templates stay claim-grounded.
+`results.levels_summary` / `signals_summary` / `backtest_page_summary` /
+`grid_summary` / `validation_page_summary` so inspect payloads and explanation
+templates share claim paths. Backtest inspect passes run provenance so cost
+caveats match evidence assumptions.
 
 Controlled proposals use `CLASSIC.propose_page_change` and
 `thesistester/classic_proposal.py`: validate → stage into

@@ -121,6 +121,15 @@ def test_inspect_capabilities_routed_and_hash_gated(
         )
         assert ok.status == "completed"
         _assert_json_safe_no_frames(ok.payload)
+        # Inspect payload keys must match evidence-packet results.* paths.
+        expected_keys = {
+            "LEVELS.inspect_and_chart": "levels_summary",
+            "SIGNALS.inspect_and_chart": "signals_summary",
+            "BACKTEST.inspect_results": "backtest_page_summary",
+            "GRID.inspect_results": "grid_summary",
+            "VALIDATION.inspect_results": "validation_page_summary",
+        }
+        assert expected_keys[capability_id] in ok.payload
         bad = orchestrator.dispatch(
             AssistantRequest(
                 capability_id=capability_id,
@@ -269,6 +278,38 @@ def test_proposal_rejects_zero_stop_loss_ticks():
             draft_patch={"stop_loss_ticks": 2.0, "take_profit_ticks": 0},
             note="Invalid zero target",
         )
+
+
+def test_backtest_inspect_matches_evidence_cost_assumptions(tmp_path: Path):
+    state = _completed_state(tmp_path)
+    # Strip session cost keys so only provenance effective_configuration carries them.
+    state = dict(state)
+    state["backtest_execution_costs"] = {}
+    state["backtest_config"] = {}
+    bundle_path, digest = _bundle_on_disk(tmp_path, state)
+    provenance = {
+        "bundle_path": str(bundle_path),
+        "canonical_bundle_hash": digest,
+        "effective_configuration": {
+            "backtest": {
+                "commission_per_side": 1.5,
+                "slippage_ticks": 0.25,
+                "stop_loss_ticks": 8.0,
+                "take_profit_ticks": 16.0,
+            }
+        },
+    }
+    packet = build_evidence_packet(state, provenance=provenance)
+    tools = AssistantTools(data_roots=(tmp_path,))
+    inspected = tools.summarize_bundle_backtest(
+        bundle_path, expected_hash=digest, provenance=provenance
+    )
+    evidence_costs = packet.results["backtest_page_summary"]["costs"]
+    inspect_costs = inspected["backtest_page_summary"]["costs"]
+    assert inspect_costs["commission_per_side"] == evidence_costs["commission_per_side"] == 1.5
+    assert inspect_costs["slippage_ticks"] == evidence_costs["slippage_ticks"] == 0.25
+    assert "zero_costs" not in inspected["backtest_page_summary"]["caveats"]
+    assert "zero_costs" not in packet.results["backtest_page_summary"]["caveats"]
 
 
 def test_backtest_summary_cost_caveat_matches_assumptions():

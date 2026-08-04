@@ -421,15 +421,35 @@ class AssistantTools:
         expected_hash: str,
         summarizer,
         summary_key: str,
+        summarizer_kwargs: Mapping[str, Any] | None = None,
+        provenance: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Hash-verified bundle load → bounded page summary (CAI-9)."""
+        """Hash-verified bundle load → bounded page summary (CAI-9).
+
+        Summary keys match evidence-packet ``results.*`` paths so inspect and
+        Explain share the same hierarchy for proposal evidence_paths.
+        """
         path, raw, session_values = _read_verified_bundle(
             bundle_path,
             self.data_roots,
             expected_hash=expected_hash,
             require_hash=True,
         )
-        summary = summarizer(session_values)
+        kwargs: dict[str, Any] = dict(summarizer_kwargs or {})
+        if (
+            provenance is not None
+            and summary_key == "backtest_page_summary"
+            and "cost_assumptions" not in kwargs
+        ):
+            # Align backtest caveats with build_evidence_packet cost exposure.
+            from thesistester.assistant.explainer import (
+                _cost_exposure_assumptions,
+                _effective_configuration,
+            )
+
+            config = _effective_configuration(dict(provenance), session_values)
+            kwargs["cost_assumptions"] = _cost_exposure_assumptions(config, session_values)
+        summary = summarizer(session_values, **kwargs)
         if not isinstance(summary, dict):
             raise AssistantToolError("Page summary must be a JSON object.")
         # Fail closed if a summarizer accidentally embeds a DataFrame at any depth.
@@ -467,7 +487,11 @@ class AssistantTools:
         )
 
     def summarize_bundle_backtest(
-        self, bundle_path: str | Path, *, expected_hash: str
+        self,
+        bundle_path: str | Path,
+        *,
+        expected_hash: str,
+        provenance: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Bounded backtest KPI/cost/intrabar summary from one verified bundle."""
         from thesistester.assistant.page_summaries import summarize_backtest_state
@@ -476,7 +500,9 @@ class AssistantTools:
             bundle_path,
             expected_hash=expected_hash,
             summarizer=summarize_backtest_state,
-            summary_key="backtest_summary",
+            # Match evidence packet results.backtest_page_summary path.
+            summary_key="backtest_page_summary",
+            provenance=provenance,
         )
 
     def summarize_bundle_grid(
@@ -502,7 +528,8 @@ class AssistantTools:
             bundle_path,
             expected_hash=expected_hash,
             summarizer=summarize_validation_state,
-            summary_key="validation_summary",
+            # Avoid colliding with classic analytics validation_summary key.
+            summary_key="validation_page_summary",
         )
 
     def validate_classic_page_proposal(self, payload: Mapping[str, Any]) -> dict[str, Any]:
