@@ -430,6 +430,17 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     success_pos = source.index('st.success("Comparison ready.")')
     debug_compare_pos = source.index('with st.expander("Debug: comparison JSON", expanded=False)')
     assert success_pos < debug_compare_pos
+    # Validate/Cancel must hub-flash so chat-first reruns do not hide outcomes.
+    validate_idx = source.index('if st.button("Validate executable RunSpec")')
+    validate_chunk = source[validate_idx : validate_idx + 2200]
+    assert "set_assistant_flash(" in validate_chunk
+    assert "st.rerun()" in validate_chunk
+    assert "Executable RunSpec is valid." in validate_chunk
+    cancel_idx = source.index('st.button("Cancel run"')
+    cancel_chunk = source[cancel_idx : cancel_idx + 1200]
+    assert "set_assistant_flash(" in cancel_chunk
+    assert 'message="Research run cancelled."' in cancel_chunk
+    assert "st.rerun()" in cancel_chunk
     # Hot JSON surfaces must not open by default on the hub.
     assert 'with st.expander("Structured execution controls", expanded=True)' not in source
     assert 'with st.expander("Validated executable RunSpec", expanded=True)' not in source

@@ -1028,18 +1028,29 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
             )
             if validation_result.status != "completed":
                 st.session_state["assistant_validated_run_spec"] = None
-                st.error(
-                    validation_result.payload.get("error", {}).get("message", "Validation failed.")
+                set_assistant_flash(
+                    st.session_state,
+                    level="error",
+                    message=str(
+                        validation_result.payload.get("error", {}).get(
+                            "message", "Validation failed."
+                        )
+                    ),
                 )
             else:
                 st.session_state["assistant_validated_run_spec"] = {
                     "choices": validation_result.payload["choices"],
                     "spec": validation_result.payload["spec"],
                 }
-                st.success(
-                    "Executable RunSpec is valid. "
-                    "Confirm validated RunSpec appears under Plan review when clarifications are clear."
+                set_assistant_flash(
+                    st.session_state,
+                    level="success",
+                    message=(
+                        "Executable RunSpec is valid. Open Advanced → Plan review and "
+                        "Confirm validated RunSpec when clarifications are clear."
+                    ),
                 )
+            st.rerun()
 
     validated_state = st.session_state["assistant_validated_run_spec"]
     spec_versions = orchestrator.list_spec_versions(thesis_id)
@@ -1216,13 +1227,21 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                         conversation_id=conversation_id,
                     )
                     if cancelled.status == "cancelled":
-                        st.warning("Research run cancelled.")
+                        set_assistant_flash(
+                            st.session_state,
+                            level="warning",
+                            message="Research run cancelled.",
+                        )
                     else:
-                        st.error(
-                            cancelled.payload.get("error", {}).get(
-                                "message",
-                                "Unable to cancel this run because it is no longer running.",
-                            )
+                        set_assistant_flash(
+                            st.session_state,
+                            level="error",
+                            message=str(
+                                cancelled.payload.get("error", {}).get(
+                                    "message",
+                                    "Unable to cancel this run because it is no longer running.",
+                                )
+                            ),
                         )
                     st.rerun()
                 if run.status == "completed" and isinstance(run.provenance, dict):
