@@ -1,22 +1,37 @@
 # Realtime Voice Agent — Implementation Contract
 
-**Document type:** Implementation contract (VA-series)
-**Status:** proposed — not shipped; codebase reassessment amendments applied
+**Document type:** Implementation contract (VA-series) — **single source of truth**
+**Status:** proposed — not shipped
 **Date:** 2026-08-04
 **Owner surface:** `thesistester/assistant/` + Research Assistant page only
 **Provider:** xAI Grok Voice (`grok-voice-think-fast-2.0`; see §4)
 **Depends on:** C2 complete (`docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` through PR6),
 `docs/ENGINEERING_PROPOSAL.md` §4 / §4.1 / §4.2
 
-**Codebase reassessment (binding):**
-`docs/REALTIME_VOICE_AGENT_REASSESSMENT.md`. Amendments from that review are
-already folded into this contract. Treat both docs as the VA series source of
-truth; if they conflict, prefer this file and amend the reassessment.
+This is the **only** binding VA-series document. Do not create parallel voice
+roadmaps or reassessment files; amend this contract in the same PR that
+changes a freeze. Every VA PR must stay inside its scope table. If a change
+is not listed under **In scope**, it belongs in a later PR or is rejected.
 
-This is the binding implementation contract for realtime voice review of
-**completed** research runs. Every VA PR must stay inside its scope table.
-If a change is not listed under **In scope**, it belongs in a later PR or is
-rejected.
+---
+
+## 0. Frozen design decisions (do not re-litigate in implementation PRs)
+
+These were locked against the live assistant codebase before VA-0:
+
+| Freeze | Rule |
+|---|---|
+| Results load path | `handle_results_turn` / voice may use RO `BUNDLE.import` (evidence) via `explain_run`; never `execute_confirmed_run` / `PIPELINE.*` |
+| Secrets | `XAI_API_KEY`: env → Secrets top-level → `[xai].api_key` (mirror OpenAI) |
+| Persistence | Voice sessions = sibling `voice_sessions/vs_[0-9a-f]{32}.json`; do not widen `Conversation` or reuse `_ID_RE` |
+| Compare tool | Pure `compare_evidence` only — no `save_comparison` |
+| UI attach | Completed-run expander only; thesis `st.chat_input` untouched |
+| Draft hydration | Results/voice messages must **omit** `choices` |
+| Grounding | Reuse C2-6 token/percent/caveat rules; digit-token audit only for speech |
+| VA-4 path | Deterministic intent → VA-3 tool → template → TTS; **no OpenAI**, no free-form spoken NL |
+| VA-5 path | Browser ↔ localhost FastAPI sidecar ↔ xAI; component deferred |
+| Model / cost | Pin `grok-voice-think-fast-2.0`; budget ~$0.08/min S2S; no rolling `latest` in evals |
+| Default | `assistant.voice.enabled = false` through VA-6 |
 
 ---
 
@@ -207,7 +222,6 @@ thesistester/assistant/voice/contracts.py
 thesistester/assistant/voice/settings.py
 tests/test_assistant_voice_contracts.py
 docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
-docs/REALTIME_VOICE_AGENT_REASSESSMENT.md
 docs/ENGINEERING_ROADMAP.md
 docs/ASSUMPTIONS_AND_LIMITATIONS.md
 docs/ARCHITECTURE.md
@@ -617,12 +631,12 @@ Changing these defaults requires a docs amendment in the PR that changes them.
 
 When implementing any VA PR:
 
-1. Read this document’s section for that VA ID end-to-end (and the
-   reassessment for rationale).
+1. Read **only** this document’s section for that VA ID (plus §0 freezes).
 2. Touch **only** files in **Files allowed to touch** (plus test fixtures they
    need). Ask for a contract amendment PR before expanding the file list.
 3. Keep work regression-safe per §2 and `docs/ENGINEERING_PROPOSAL.md` §4.
-4. Update documentation in the **same** PR.
+4. Update documentation in the **same** PR — amend this file, do not add a
+   second voice roadmap.
 5. Do not enable voice by default.
 6. Do not add search tools or compute tools “for convenience.”
 7. Results/voice may use RO `BUNDLE.import` (evidence); never
@@ -634,7 +648,6 @@ When implementing any VA PR:
 
 ## 13. References
 
-- Codebase reassessment (amendments): `docs/REALTIME_VOICE_AGENT_REASSESSMENT.md`
 - xAI Voice: https://docs.x.ai/developers/model-capabilities/audio/voice
 - Speech-to-speech: https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech
 - Ephemeral tokens: https://docs.x.ai/developers/model-capabilities/audio/ephemeral-tokens

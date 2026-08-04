@@ -248,12 +248,12 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
 - Document every additive `assistant_*` session key in `ARCHITECTURE.md` and
   `ASSISTANT_SESSION_KEYS`. Thesis switches must clear
   `THESIS_SCOPED_STAGING_KEYS` (including `assistant_bundle_handoff`).
-- Realtime voice review (VA-series) is specified in
-  `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`, as amended by
-  `docs/REALTIME_VOICE_AGENT_REASSESSMENT.md`. Implement only the active VA
-  PR’s **Files allowed to touch** list; keep `assistant.voice.enabled` default
-  false; never expose compute/`web_search`/`x_search`/`file_search`/`mcp` tools
-  on voice sessions; results/voice may use RO `BUNDLE.import` but never
+- Realtime voice review (VA-series) has a **single** contract:
+  `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Do not add parallel voice
+  roadmap/reassessment docs. Implement only the active VA PR’s **Files
+  allowed to touch** list; keep `assistant.voice.enabled` default false;
+  never expose compute/`web_search`/`x_search`/`file_search`/`mcp` tools on
+  voice sessions; results/voice may use RO `BUNDLE.import` but never
   `execute_confirmed_run` / `PIPELINE.*`; reuse C2-6 grounding token rules;
   results/voice messages must not include `choices` (draft hydration hazard).
   Document any new `assistant_voice_*` keys in `ARCHITECTURE.md` and
