@@ -223,9 +223,16 @@ def _identity_lock(lock_path: Path) -> Iterator[None]:
 
 
 def _contain_path(path: Path, *, root: Path) -> Path | None:
+    """Return ``path`` if it resolves inside ``root``; else ``None``.
+
+    On Windows, ``Path.resolve()`` may strip the ``\\\\?\\`` extended-length
+    prefix. Re-apply :func:`_fs_path` so nested artifact verify/read/delete/
+    evict I/O stays under the Win32 long-path limit.
+    """
     try:
-        resolved = path.resolve()
-        resolved.relative_to(root.resolve())
+        resolved_root = _fs_path(root.resolve())
+        resolved = _fs_path(path.resolve())
+        resolved.relative_to(resolved_root)
     except (OSError, ValueError):
         return None
     return resolved
@@ -1311,9 +1318,9 @@ def _assert_path_under_execution_artifacts(path: Path, *, artifacts_root: Path) 
     # Extra fail-closed guard against store-root siblings.
     store_root = artifacts_root.parent.parent  # .../execution_artifacts/v1 → store
     for name in _PROTECTED_STORE_DIRNAMES:
-        protected = (store_root / name).resolve()
+        protected = _fs_path((store_root / name).resolve())
         try:
-            contained.resolve().relative_to(protected)
+            _fs_path(contained.resolve()).relative_to(protected)
         except ValueError:
             continue
         raise ValueError(f"Refusing to mutate protected store namespace: {name}")

@@ -837,6 +837,9 @@ can exceed Win32 `MAX_PATH` (260), and `Path.mkdir` fails with
 `FileNotFoundError: [WinError 3]`. `get_store_root()` therefore returns a
 Windows extended-length path (`\\?\...` / `\\?\UNC\...`) so nested store I/O
 stays creatable. `display_store_path()` strips that prefix for UI/metadata.
+`Path.resolve()` can strip `\\?\`; execution-artifact helpers
+(`get_execution_artifacts_root`, `_contain_path`, eviction guards) re-apply
+`_fs_path` after resolve so verify/read/delete/evict stay long-path safe.
 Override `$THESISTESTER_STORE_DIR` to a short absolute path if needed.
 
 ### `ui_state.json` namespaces

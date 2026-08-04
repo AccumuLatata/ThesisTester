@@ -295,10 +295,37 @@ def test_path_containment_rejects_escape(tmp_path: Path):
     assert isinstance(escaped, ArtifactMiss)
     assert escaped.reason == "path_escape"
 
+    from thesistester.persistence.execution_artifacts import _fs_path
+
     root = get_execution_artifacts_root(store)
     ok = resolve_contained_artifact_path(("data", "abc"), store_root=store)
     assert isinstance(ok, Path)
-    assert ok == (root / "data" / "abc").resolve()
+    assert ok == _fs_path((root / "data" / "abc").resolve())
+
+
+def test_contain_path_reapplies_fs_path_after_resolve(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Windows resolve() can strip \\\\?\\; containment must re-prefix for I/O."""
+    from thesistester.persistence import execution_artifacts as ea
+
+    store = tmp_path / "store"
+    root = get_execution_artifacts_root(store)
+    child = root / "data" / "abc"
+    child.mkdir(parents=True)
+
+    calls: list[Path] = []
+    real_fs_path = ea._fs_path
+
+    def _track(path: Path) -> Path:
+        calls.append(path)
+        return real_fs_path(path)
+
+    monkeypatch.setattr(ea, "_fs_path", _track)
+    contained = ea._contain_path(child, root=root)
+    assert contained is not None
+    assert len(calls) >= 2  # root + path after resolve
+    assert contained == real_fs_path(child.resolve())
 
 
 def test_invalidate_removes_artifact(tmp_path: Path):

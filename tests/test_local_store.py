@@ -1251,6 +1251,25 @@ def test_get_store_root_uses_fs_path_on_windows(monkeypatch, tmp_path):
     assert root == real_fs_path(seen[-1])
 
 
+def test_execution_artifacts_root_reapplies_fs_path_after_resolve(monkeypatch, tmp_path: Path):
+    """get_execution_artifacts_root must not leave resolve()-stripped paths."""
+    from thesistester.persistence import execution_artifacts as ea
+
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    calls: list[Path] = []
+    real_fs_path = ea._fs_path
+
+    def _track(path: Path) -> Path:
+        calls.append(path)
+        return real_fs_path(path)
+
+    monkeypatch.setattr(ea, "_fs_path", _track)
+    root = ea.get_execution_artifacts_root()
+    assert calls
+    assert root == real_fs_path(calls[-1])
+    assert root.name.startswith("v")
+
+
 def test_save_signal_run_under_deep_store_prefix(tmp_path, monkeypatch):
     """Signal runs remain writable when the store root itself is deeply nested."""
     deep_store = tmp_path.joinpath(
