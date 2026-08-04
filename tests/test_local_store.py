@@ -17,6 +17,7 @@ from thesistester.persistence.local_store import (
     delete_levels,
     delete_setup,
     delete_signal_run,
+    display_store_path,
     find_matching_levels,
     find_matching_signal_run,
     get_active_dataset_id,
@@ -653,7 +654,7 @@ def test_env_override_stable(tmp_path, monkeypatch):
 
     assert len(datasets) == 1
     assert datasets[0]["name"] == "env-override"
-    assert str(get_store_root()).startswith(str(custom_store))
+    assert display_store_path(get_store_root()).startswith(str(custom_store.resolve()))
 
 
 def test_list_rescans_from_disk(tmp_path, monkeypatch):
@@ -1208,7 +1209,93 @@ def test_default_store_root_stable(monkeypatch):
     from thesistester.persistence import local_store
 
     persistence_dir = Path(local_store.__file__).resolve().parent
-    assert not str(root).startswith(str(persistence_dir))
+    assert not display_store_path(root).startswith(str(persistence_dir))
+
+
+def test_windows_extended_path_str_and_display():
+    """Win32 extended-length prefix covering drive, UNC, and idempotent cases."""
+    drive = local_store._windows_extended_path_str(
+        r"C:\Users\frich\OneDrive\Dokumente\GitHub\ThesisTester\.thesistester_store"
+    )
+    assert drive.startswith("\\\\?\\C:\\Users\\frich\\")
+    assert "\\\\?\\" not in display_store_path(drive)
+
+    unc = local_store._windows_extended_path_str(r"\\server\share\ThesisTester")
+    assert unc == r"\\?\UNC\server\share\ThesisTester"
+    assert display_store_path(unc) == r"\\server\share\ThesisTester"
+
+    already = r"\\?\C:\already\extended"
+    assert local_store._windows_extended_path_str(already) == already
+    assert display_store_path(already) == r"C:\already\extended"
+
+
+def test_fs_path_noop_on_posix():
+    """Non-Windows hosts keep Path objects unchanged."""
+    path = Path("/tmp/thesistester-store-test").resolve()
+    assert local_store._fs_path(path) == path
+
+
+def test_get_store_root_uses_fs_path_on_windows(monkeypatch, tmp_path):
+    """get_store_root() routes through _fs_path so Windows long paths are enabled."""
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    seen: list[Path] = []
+    real_fs_path = local_store._fs_path
+
+    def _track(path: Path) -> Path:
+        seen.append(path)
+        return real_fs_path(path)
+
+    monkeypatch.setattr(local_store, "_fs_path", _track)
+    root = get_store_root()
+    assert seen
+    assert root == real_fs_path(seen[-1])
+
+
+def test_save_signal_run_under_deep_store_prefix(tmp_path, monkeypatch):
+    """Signal runs remain writable when the store root itself is deeply nested."""
+    deep_store = tmp_path.joinpath(
+        "Users",
+        "frich",
+        "OneDrive",
+        "Dokumente",
+        "GitHub",
+        "ThesisTester",
+        ".thesistester_store",
+    )
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(deep_store))
+
+    dataset_id = "81c5c895f183fe1839f4fd1613dbeaeb002d8560655f1036f47c0824a3b844c3"
+    levels_hash = "60d1047d1ead034eea976edb789f985cadcad8522ea26caf6e3f8004f716ee37"
+    saved = save_signal_run(
+        dataset_id=dataset_id,
+        levels_settings_hash=levels_hash,
+        signal_settings=_signal_settings(),
+        signals=_signals_frame(),
+        confluence_zones=_confluence_zones_frame(),
+        naked_flags=_naked_flags_frame(),
+        signal_context={},
+        last_signal_setup={},
+    )
+
+    signal_hash = saved["signal_settings_hash"]
+    run_dir = get_store_root() / "signals" / dataset_id / levels_hash / signal_hash
+    assert (run_dir / "signals.parquet").exists()
+    assert (run_dir / "confluence_zones.parquet").exists()
+    assert (run_dir / "naked_flags.parquet").exists()
+    assert (run_dir / "meta.json").exists()
+    assert "\\\\?\\" not in saved["path"]
+    expected_suffix = str(Path("signals") / dataset_id / levels_hash / signal_hash)
+    assert saved["path"].endswith(expected_suffix)
+
+    loaded_signals, loaded_zones, loaded_naked, loaded_meta = load_signal_run(
+        dataset_id,
+        levels_hash,
+        signal_hash,
+    )
+    assert len(loaded_signals) == len(_signals_frame())
+    assert len(loaded_zones) == len(_confluence_zones_frame())
+    assert len(loaded_naked) == len(_naked_flags_frame())
+    assert loaded_meta["signal_settings_hash"] == signal_hash
 
 
 def _setup_config(**overrides) -> dict:

@@ -829,6 +829,16 @@ Signals robustness notes:
 - Execution artifacts (CAI-2/3, internal): `.thesistester_store/execution_artifacts/v1/{data,levels,source_index,locks}/`
 - UI state (active dataset, execution defaults): `.thesistester_store/ui_state.json`
 
+### Windows path length
+
+Signal-run directories nest three SHA-256 hex digests (64 chars each). On deep
+install bases (common with `OneDrive\Dokumente\GitHub\...`) the absolute path
+can exceed Win32 `MAX_PATH` (260), and `Path.mkdir` fails with
+`FileNotFoundError: [WinError 3]`. `get_store_root()` therefore returns a
+Windows extended-length path (`\\?\...` / `\\?\UNC\...`) so nested store I/O
+stays creatable. `display_store_path()` strips that prefix for UI/metadata.
+Override `$THESISTESTER_STORE_DIR` to a short absolute path if needed.
+
 ### `ui_state.json` namespaces
 
 | Key | Purpose |

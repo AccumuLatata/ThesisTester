@@ -11,6 +11,11 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+Local persistence defaults to `.thesistester_store/` under the repo root (override with
+`THESISTESTER_STORE_DIR`). On Windows, the store root uses Win32 extended-length paths so
+nested signal-run directories remain creatable when the absolute path would exceed `MAX_PATH`
+(common under deep OneDrive/Documents bases).
+
 ## Run tests
 
 ```bash
