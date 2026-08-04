@@ -152,22 +152,47 @@ def resolve_classic_record_source_path(
     ).path
 
 
-def _timestamps_for_canonical_csv_roundtrip(values: pd.Series) -> pd.Series:
-    """Normalize timestamps to the unit ``load_ohlcv`` emits after CSV reload.
+def _lineage_csv_timestamp_dtype(
+    path: str | Path,
+    session_state: Mapping[str, Any],
+) -> Any:
+    """Return the timestamp dtype ``load_dataset`` emits for a lineage CSV.
 
-    15s→1m derivation historically rebuilt parents as ``datetime64[ns, tz]``
-    while the canonical loader round-trips to ``datetime64[us, tz]``. Content
-    hashes include dtype, so materialize→verify fails with
-    ``source_path_identity_mismatch`` unless the export frame matches the
-    reloaded lineage CSV.
+    Pandas 2.x typically reloads tz-aware CSV timestamps as ``datetime64[ns, tz]``;
+    pandas 3.x uses ``datetime64[us, tz]``. Hardcoding either unit breaks the
+    other matrix entry because ``DataIdentity`` hashes include dtype.
     """
+    # Local import keeps Streamlit-free unit tests from pulling the full API
+    # surface at module import time.
+    from thesistester.api import load_dataset
+
+    instrument = session_state.get("instrument") or "ES"
+    source_timezone = session_state.get("source_timezone")
+    exchange_timezone = session_state.get("exchange_timezone")
+    loaded = load_dataset(
+        path,
+        instrument=str(instrument),
+        source_timezone=str(source_timezone) if source_timezone is not None else None,
+        exchange_timezone=str(exchange_timezone) if exchange_timezone is not None else None,
+        format_profile=_MATERIALIZED_FORMAT_PROFILE,
+    )
+    return loaded["timestamp"].dtype
+
+
+def _coerce_timestamps_to_dtype(values: pd.Series, target_dtype: Any) -> pd.Series:
+    """Coerce timestamps to ``target_dtype`` for lineage identity verification."""
     parsed = pd.to_datetime(values)
-    if hasattr(parsed.dt, "as_unit"):
-        return parsed.dt.as_unit("us")
-    tz = getattr(parsed.dtype, "tz", None)
-    if tz is not None:
-        return parsed.astype(f"datetime64[us, {tz}]")
-    return parsed.astype("datetime64[us]")
+    try:
+        return parsed.astype(target_dtype)
+    except (TypeError, ValueError):
+        unit = getattr(target_dtype, "unit", None)
+        if unit is not None and hasattr(parsed.dt, "as_unit"):
+            coerced = parsed.dt.as_unit(unit)
+            tz = getattr(target_dtype, "tz", None)
+            if tz is not None and getattr(coerced.dtype, "tz", None) is None:
+                return coerced.dt.tz_localize(tz)
+            return coerced
+        return parsed
 
 
 def classic_export_session_state(
@@ -180,6 +205,11 @@ def classic_export_session_state(
     profile (e.g. Quantower semicolon) fails path verification and would produce
     a non-reloadable RunSpec ``dataset.path``.
 
+    When the live session timestamp unit differs from the unit the materialized
+    lineage CSV reloads as (pandas 2 ``ns`` vs pandas 3 ``us``, or historical
+    15s→1m ``ns`` parents), the overlay coerces export ``data`` timestamps to the
+    reloaded dtype so ``DataIdentity`` hashes match path verification.
+
     The overlay is export-only: the live session keeps its ingest profile so
     research-bundle ``dataset_meta`` / CAI-8 provenance identities still describe
     how bars were originally loaded. RunSpec ``dataset.format_profile`` is the
@@ -189,10 +219,15 @@ def classic_export_session_state(
     # missing keys still receive an explicit lineage profile for export.
     needs_profile_overlay = session_state.get("format_profile") != source.format_profile
     needs_timestamp_overlay = False
+    target_dtype: Any | None = None
     data = session_state.get("data")
     if source.materialized and isinstance(data, pd.DataFrame) and "timestamp" in data.columns:
-        unit = getattr(data["timestamp"].dtype, "unit", None)
-        needs_timestamp_overlay = unit is not None and unit != "us"
+        try:
+            target_dtype = _lineage_csv_timestamp_dtype(source.path, session_state)
+        except (OSError, TypeError, ValueError):
+            target_dtype = None
+        if target_dtype is not None:
+            needs_timestamp_overlay = str(data["timestamp"].dtype) != str(target_dtype)
 
     if not needs_profile_overlay and not needs_timestamp_overlay:
         return session_state
@@ -200,12 +235,13 @@ def classic_export_session_state(
     overlay = dict(session_state)
     if needs_profile_overlay:
         overlay["format_profile"] = source.format_profile
-    if needs_timestamp_overlay:
+    if needs_timestamp_overlay and target_dtype is not None:
         normalized = data.copy()
-        normalized["timestamp"] = _timestamps_for_canonical_csv_roundtrip(normalized["timestamp"])
+        normalized["timestamp"] = _coerce_timestamps_to_dtype(normalized["timestamp"], target_dtype)
         overlay["data"] = normalized
         # Live session dataset_id / data_identity hash the ingest frame (possibly
-        # ns-resolution). Lineage verification uses the normalized export frame.
+        # a different datetime unit). Lineage verification uses the normalized
+        # export frame that matches the reloaded CSV dtype.
         overlay.pop("dataset_id", None)
         overlay.pop("data_identity", None)
     return overlay

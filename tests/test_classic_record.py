@@ -670,10 +670,13 @@ def test_export_overlay_normalizes_whitespace_format_profile(tmp_path: Path):
 
 
 def test_materialized_ns_timestamp_session_roundtrips_identity(tmp_path: Path):
-    """15s-derive parents may be datetime64[ns]; lineage CSV reloads as [us].
+    """Session ns timestamps must coerce to the lineage CSV reload dtype.
 
     Reproduces source_path_identity_mismatch after the Quantower delimiter fix.
+    Pandas 2 reloads as ns and pandas 3 as us — the overlay must probe the
+    materialized path rather than hardcode either unit.
     """
+    from thesistester.api import load_dataset
     from thesistester.persistence.local_store import _hash_dataframe
 
     state = _classic_completed_state(tmp_path)
@@ -697,10 +700,18 @@ def test_materialized_ns_timestamp_session_roundtrips_identity(tmp_path: Path):
     state["dataset_id"] = state["data_identity"]["dataset_id"]
 
     source = resolve_classic_record_source(state, materialize_dir=tmp_path / "staging")
+    reloaded = load_dataset(
+        source.path,
+        instrument="ES",
+        source_timezone="America/New_York",
+        exchange_timezone="America/New_York",
+        format_profile="canonical",
+    )
     export_state = classic_export_session_state(state, source)
-    assert getattr(export_state["data"]["timestamp"].dtype, "unit", None) == "us"
-    assert "dataset_id" not in export_state
-    assert "data_identity" not in export_state
+    assert str(export_state["data"]["timestamp"].dtype) == str(reloaded["timestamp"].dtype)
+    if str(ns_data["timestamp"].dtype) != str(reloaded["timestamp"].dtype):
+        assert "dataset_id" not in export_state
+        assert "data_identity" not in export_state
     # Live session unchanged for bundle/badge provenance.
     assert getattr(state["data"]["timestamp"].dtype, "unit", None) == "ns"
     assert state["format_profile"] == "quantower_history_exporter"
@@ -712,15 +723,6 @@ def test_materialized_ns_timestamp_session_roundtrips_identity(tmp_path: Path):
         store_root=tmp_path / "store",
     )
     assert run_spec["dataset"]["format_profile"] == "canonical"
-    from thesistester.api import load_dataset
-
-    reloaded = load_dataset(
-        source.path,
-        instrument="ES",
-        source_timezone="America/New_York",
-        exchange_timezone="America/New_York",
-        format_profile="canonical",
-    )
     assert _hash_dataframe(export_state["data"]) == _hash_dataframe(reloaded)
 
 

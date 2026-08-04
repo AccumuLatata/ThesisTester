@@ -241,9 +241,10 @@ research bundle as a completed thesis run without recomputing:
   recomputed. Materialized lineage files are always comma-separated canonical
   OHLCV, so export/verification forces `dataset.format_profile="canonical"`
   even when the session still carries a vendor ingest profile (e.g. Quantower
-  History Exporter semicolon). The export overlay also normalizes timestamp
-  units to `datetime64[us, tz]` so 15s→1m derived parents (historically `ns`)
-  round-trip to the same `DataIdentity` hash as the reloaded lineage CSV.
+  History Exporter semicolon). The export overlay also coerces timestamp
+  units to whatever dtype the materialized lineage CSV reloads as (pandas 2
+  `ns` vs pandas 3 `us`) so 15s→1m derived parents round-trip to the same
+  `DataIdentity` hash as path verification.
   That overlay is export-only: research-bundle `dataset_meta` and CAI-8
   provenance `data_identity.format_profile` keep the ingest profile so page
   badges stay exact while RunSpec re-exec uses the lineage parser. Recording

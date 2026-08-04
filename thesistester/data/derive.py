@@ -172,15 +172,13 @@ def derive_complete_parent_ohlcv(
 def _timestamps_matching_source_dtype(values: pd.Series, source_dtype: Any) -> pd.Series:
     """Parse timestamps while preserving the source/loader datetime unit.
 
-    ``pd.to_datetime`` on reconstructed Timestamp rows defaults to nanosecond
-    resolution. Canonical ``load_ohlcv`` emits microsecond-aware timestamps, so
-    derived parents must keep that unit or CSV lineage round-trips diverge in
+    ``pd.to_datetime`` on reconstructed Timestamp rows may default to a different
+    resolution than the loader frame (pandas 2 ``ns`` vs pandas 3 ``us``). Derived
+    parents must keep the source unit or CSV lineage round-trips diverge in
     ``DataIdentity.data_content_hash`` (dtype is part of the hash).
     """
     parsed = pd.to_datetime(values, errors="coerce")
-    if getattr(source_dtype, "tz", None) is not None or str(source_dtype).startswith(
-        "datetime64"
-    ):
+    if getattr(source_dtype, "tz", None) is not None or str(source_dtype).startswith("datetime64"):
         try:
             return parsed.astype(source_dtype)
         except (TypeError, ValueError):
@@ -200,7 +198,7 @@ def _normalize_source_frame(source: pd.DataFrame) -> pd.DataFrame:
     frame = source.loc[:, list(REQUIRED_COLUMNS)].copy()
     source_dtype = frame["timestamp"].dtype
     frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
-    # Keep loader unit when present (typically datetime64[us, tz]).
+    # Keep loader unit when present (datetime64[ns|us, tz] depending on pandas).
     if getattr(source_dtype, "tz", None) is not None or getattr(source_dtype, "unit", None):
         try:
             frame["timestamp"] = frame["timestamp"].astype(source_dtype)
