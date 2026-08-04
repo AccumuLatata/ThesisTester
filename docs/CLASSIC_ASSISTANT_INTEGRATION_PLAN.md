@@ -880,10 +880,10 @@ Every implementation PR must state:
 | Cache default | Legacy cold default in public API; explicit `read_write` for Assistant/CLI after CAI-3 parity | Cold/warm operational evidence is stable |
 | Classic recording | Manual record-after-run (**CAI-0 decision**; see `docs/CAI_BASELINE.md`) | After users accept thesis research mode |
 | Automatic all-run ledger | Opt-in only | CAI-7 |
-| Signal cache | Defer | CAI-0/CAI-3 benchmarks show levels no longer dominate |
-| Assistant page mutation | Proposal + user apply on owning page | Read-only parity is proven |
-| Missing source path | Prefer verified internal canonical data artifact; otherwise require user-provided path | Source relocation requirements emerge |
-| Retention/eviction | No automatic deletion before CAI-10 | Artifact usage and disk profile measured |
+| Signal cache | Defer (CAI-10: measure warm `generate_signals` share first) | Warm levels hits routine and signals still dominate |
+| Assistant page mutation | Proposal + user apply on owning page (CAI-9) | Further pages beyond Setup/Backtest need proposals |
+| Missing source path | Prefer verified internal canonical data artifact; `rebind_source_path` after content identity (CAI-10) | Multi-path binding indexes if needed |
+| Retention/eviction | Bounded eviction for `execution_artifacts` only (CAI-10); never auto-delete user/thesis assets | Disk-profile tuning of max_entries/bytes/age |
 
 ## Explicitly rejected approaches
 
