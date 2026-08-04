@@ -636,9 +636,7 @@ def test_materialized_vendor_session_exports_canonical_format_profile(tmp_path: 
     state.pop("dataset_source_path", None)
     state.pop("source_csv_path", None)
 
-    source = resolve_classic_record_source(
-        state, materialize_dir=tmp_path / "staging"
-    )
+    source = resolve_classic_record_source(state, materialize_dir=tmp_path / "staging")
     assert source.materialized is True
     assert source.format_profile == "canonical"
     assert Path(source.path).read_text(encoding="utf-8").splitlines()[0] == (
@@ -659,11 +657,53 @@ def test_materialized_vendor_session_exports_canonical_format_profile(tmp_path: 
     assert run_spec["dataset"]["path"] == source.path
 
 
+def test_export_overlay_normalizes_whitespace_format_profile(tmp_path: Path):
+    """Raw session profile must be rewritten when it only matches after strip."""
+    state = _classic_completed_state(tmp_path)
+    state["format_profile"] = "  canonical  "
+    state.pop("dataset_source_path", None)
+    source = resolve_classic_record_source(state, materialize_dir=tmp_path / "staging")
+    assert source.format_profile == "canonical"
+    export_state = classic_export_session_state(state, source)
+    assert export_state["format_profile"] == "canonical"
+    assert state["format_profile"] == "  canonical  "
+
+
 def test_record_quantower_session_without_source_path(tmp_path: Path, monkeypatch):
-    """Record and discuss must succeed for Quantower sessions with no source path."""
+    """Record and discuss must succeed for Quantower sessions with no source path.
+
+    Dual provenance is intentional after materialization:
+    - RunSpec ``dataset.format_profile`` is canonical (lineage CSV parser)
+    - Bundle / provenance ``data_identity.format_profile`` keep the ingest profile
+      so CAI-8 page badges stay ``exact_match``
+    """
+    from zipfile import ZipFile
+    import json
+
+    from thesistester.api import load_dataset
+    from thesistester.research_identity import (
+        classify_identity_relation,
+        identities_from_payload,
+        try_page_data_identity,
+        try_page_levels_identity,
+    )
+
     monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
     state = _classic_completed_state(tmp_path)
+    vendor_identity = DataIdentity.from_loaded_data(
+        state["data"],
+        instrument="ES",
+        base_interval="1min",
+        source_timezone="America/New_York",
+        exchange_timezone="America/New_York",
+        format_profile="quantower_history_exporter",
+    )
     state["format_profile"] = "quantower_history_exporter"
+    state["data_identity"] = vendor_identity.to_dict()
+    state["dataset_id"] = vendor_identity.dataset_id()
+    page_levels = try_page_levels_identity(state)
+    if page_levels is not None:
+        state["levels_identity"] = page_levels.to_dict()
     state.pop("dataset_source_path", None)
     state.pop("source_csv_path", None)
 
@@ -681,7 +721,33 @@ def test_record_quantower_session_without_source_path(tmp_path: Path, monkeypatc
     run_spec = request.get("run_spec") or {}
     dataset = run_spec.get("dataset") if isinstance(run_spec, dict) else {}
     assert dataset.get("format_profile") == "canonical"
-    assert Path(str(dataset.get("path", ""))).name == "classic_source.csv"
+    lineage_path = Path(str(dataset.get("path", "")))
+    assert lineage_path.name == "classic_source.csv"
+    load_dataset(
+        lineage_path,
+        instrument="ES",
+        source_timezone="America/New_York",
+        exchange_timezone="America/New_York",
+        format_profile="canonical",
+    )
+
+    # Ingest profile preserved for badges / bundle meta.
+    assert (run.provenance.get("data_identity") or {}).get(
+        "format_profile"
+    ) == "quantower_history_exporter"
+    with ZipFile(run.provenance["bundle_path"]) as zf:
+        meta = json.loads(zf.read("dataset_meta.json"))
+    assert meta.get("format_profile") == "quantower_history_exporter"
+    run_data, run_levels = identities_from_payload(run.provenance)
+    assert (
+        classify_identity_relation(
+            try_page_levels_identity(state),
+            run_levels,
+            page_data=try_page_data_identity(state),
+            run_data=run_data,
+        )
+        == "exact_match"
+    )
 
 
 def test_pages_wire_record_and_discuss():

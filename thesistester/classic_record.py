@@ -50,6 +50,7 @@ class ClassicRecordSource:
     format_profile: str
     materialized: bool
 
+
 # Mirrors AssistantTools.verify_external_research_bundle required sections.
 _REQUIRED_BUNDLE_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("dataset", ("data",)),
@@ -155,13 +156,20 @@ def classic_export_session_state(
     session_state: Mapping[str, Any],
     source: ClassicRecordSource,
 ) -> Mapping[str, Any]:
-    """Align session ``format_profile`` with the lineage CSV used for export.
+    """Return an export overlay whose ``format_profile`` matches the lineage CSV.
 
     Materialized paths are always canonical OHLCV. Exporting them under a vendor
     profile (e.g. Quantower semicolon) fails path verification and would produce
     a non-reloadable RunSpec ``dataset.path``.
+
+    The overlay is export-only: the live session keeps its ingest profile so
+    research-bundle ``dataset_meta`` / CAI-8 provenance identities still describe
+    how bars were originally loaded. RunSpec ``dataset.format_profile`` is the
+    parser for ``dataset.path`` and may therefore differ after materialization.
     """
-    if source.format_profile == _session_format_profile(session_state):
+    # Compare the raw session value (not a normalized default) so whitespace or
+    # missing keys still receive an explicit lineage profile for export.
+    if session_state.get("format_profile") == source.format_profile:
         return session_state
     overlay = dict(session_state)
     overlay["format_profile"] = source.format_profile

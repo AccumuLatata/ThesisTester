@@ -573,7 +573,9 @@ without recomputing it.
   `resolve_classic_record_source` / `classic_export_session_state` force
   `format_profile="canonical"` for path verification and RunSpec export so
   vendor session profiles (Quantower semicolon, etc.) cannot mis-parse the
-  lineage file.
+  lineage file. Bundle/provenance ingest identities remain on the session
+  profile (CAI-8 badges); only RunSpec `dataset.format_profile` follows the
+  lineage CSV.
 - Tests: `tests/test_classic_record.py`.
 
 **Regression gates**
