@@ -488,5 +488,5 @@ def test_pages_wire_proposal_and_summaries():
     assert "propose_classic_page_change" in assistant
     assert "render_classic_proposal_card" in setup
     assert "render_classic_proposal_card" in backtest
-    nav = (root / "thesistester" / "classic_nav.py").read_text(encoding="utf-8")
-    assert "clear_classic_proposal" in nav
+    orch = (root / "thesistester" / "assistant" / "orchestrator.py").read_text(encoding="utf-8")
+    assert "clear_classic_proposal" in orch

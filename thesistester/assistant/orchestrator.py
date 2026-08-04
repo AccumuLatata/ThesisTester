@@ -1320,6 +1320,10 @@ class AssistantOrchestrator:
         # choices after a hash-verified research-page restore.
         session_state["assistant_validated_run_spec"] = None
         session_state["assistant_bundle_handoff"] = handoff
+        # Restored widgets must not be overwritten by a prior Assistant draft.
+        from thesistester.classic_proposal import clear_classic_proposal
+
+        clear_classic_proposal(session_state)
         return handoff
 
     def _finalize_raced_or_failed_run(

@@ -679,8 +679,8 @@ works under a thesis.
 - Discuss syncs `assistant_selected_thesis_id` to the classic thesis and falls
   back to the latest discussable run when `classic_active_run_id` is stale or
   non-discussable (incomplete / missing hash-verified bundle).
-- Open exact clears staged `classic_page_proposal` after restore so Apply cannot
-  overwrite restored Backtest/Setup widgets.
+- Hash-verified bundle restore (Open exact and Restore) clears staged
+  `classic_page_proposal` so Apply cannot overwrite restored widgets.
 - `AssistantOrchestrator.get_run` façade for thesis-scoped run fetch.
 - Tests: `tests/test_classic_nav.py`.
 
