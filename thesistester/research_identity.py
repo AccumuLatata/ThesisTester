@@ -481,3 +481,86 @@ def assert_dataset_id_parity(
 def identity_meta_filename() -> str:
     """Return the optional research-bundle identity member name."""
     return _IDENTITY_META_FILENAME
+
+
+# CAI-8 identity-relation codes (tests assert these, not display labels).
+IDENTITY_RELATIONS: tuple[str, ...] = (
+    "exact_match",
+    "same_data_different_levels",
+    "different_data",
+    "identity_unavailable",
+)
+
+IDENTITY_RELATION_LABELS: dict[str, str] = {
+    "exact_match": "exact match",
+    "same_data_different_levels": "same data/different levels",
+    "different_data": "different data",
+    "identity_unavailable": "identity unavailable",
+}
+
+
+def classify_identity_relation(
+    page_levels: LevelsIdentity | None,
+    run_levels: LevelsIdentity | None,
+    *,
+    page_data: DataIdentity | None = None,
+    run_data: DataIdentity | None = None,
+) -> str:
+    """Classify page vs run identity for CAI-8 badges.
+
+    Uses immutable DataIdentity / LevelsIdentity equality only. Partial or
+    missing identities are ``identity_unavailable`` — never a soft match.
+    """
+    page_data_id = page_data or (page_levels.data_identity if page_levels is not None else None)
+    run_data_id = run_data or (run_levels.data_identity if run_levels is not None else None)
+
+    if page_data_id is None or run_data_id is None:
+        return "identity_unavailable"
+    if page_data_id.dataset_id() != run_data_id.dataset_id():
+        return "different_data"
+    # Same dataset_id but full DataIdentity mismatch (e.g. format_profile) is
+    # unavailable rather than a false exact/same-levels claim.
+    if page_data_id != run_data_id:
+        return "identity_unavailable"
+    if page_levels is None or run_levels is None:
+        return "identity_unavailable"
+    if page_levels == run_levels:
+        return "exact_match"
+    if page_levels.data_identity != run_levels.data_identity:
+        return "identity_unavailable"
+    return "same_data_different_levels"
+
+
+def try_page_levels_identity(state: Mapping[str, Any]) -> LevelsIdentity | None:
+    """Best-effort LevelsIdentity from classic page state; None when unavailable."""
+    try:
+        return LevelsIdentity.from_page_state(state)
+    except (TypeError, ValueError):
+        return None
+
+
+def try_page_data_identity(state: Mapping[str, Any]) -> DataIdentity | None:
+    """Best-effort DataIdentity from classic page state; None when unavailable."""
+    try:
+        return DataIdentity.from_page_state(state)
+    except (TypeError, ValueError):
+        return None
+
+
+def identities_from_payload(
+    payload: Mapping[str, Any] | None,
+) -> tuple[DataIdentity | None, LevelsIdentity | None]:
+    """Extract data/levels identities from provenance or research_identity.json."""
+    if not isinstance(payload, Mapping):
+        return None, None
+    levels = LevelsIdentity.from_dict(
+        payload.get("levels_identity")
+        if isinstance(payload.get("levels_identity"), Mapping)
+        else None
+    )
+    data = DataIdentity.from_dict(
+        payload.get("data_identity") if isinstance(payload.get("data_identity"), Mapping) else None
+    )
+    if data is None and levels is not None:
+        data = levels.data_identity
+    return data, levels

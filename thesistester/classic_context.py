@@ -11,7 +11,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Mapping, MutableMapping, Sequence
 
-# Additive Streamlit keys owned by classic research-mode chrome (CAI-5).
+# Additive Streamlit keys owned by classic research-mode chrome (CAI-5/CAI-8).
 CLASSIC_SESSION_KEYS: tuple[str, ...] = (
     "classic_active_thesis_id",
     "classic_active_thesis_name",
@@ -19,6 +19,9 @@ CLASSIC_SESSION_KEYS: tuple[str, ...] = (
     "classic_pending_navigation",
     "classic_bound_dataset_id",
     "classic_flash",
+    "classic_active_run_id",
+    "classic_focus_run_id",
+    "classic_nav_prefill",
 )
 
 # Cleared when exiting research mode or when the bound dataset changes.
@@ -28,6 +31,9 @@ CLASSIC_THESIS_SCOPED_KEYS: tuple[str, ...] = (
     "classic_pending_navigation",
     "classic_bound_dataset_id",
     "classic_flash",
+    "classic_active_run_id",
+    "classic_focus_run_id",
+    "classic_nav_prefill",
 )
 
 # CAI-0 default is manual; all_executions remains deferred to CAI-7.
@@ -91,6 +97,9 @@ def init_classic_session_state(session_state: MutableMapping[str, Any]) -> None:
         "classic_pending_navigation": None,
         "classic_bound_dataset_id": None,
         "classic_flash": None,
+        "classic_active_run_id": None,
+        "classic_focus_run_id": None,
+        "classic_nav_prefill": None,
     }
     for key, value in defaults.items():
         session_state.setdefault(key, deepcopy(value) if isinstance(value, (dict, list)) else value)
@@ -223,6 +232,9 @@ def clear_classic_thesis_context(session_state: MutableMapping[str, Any]) -> Non
     session_state["classic_pending_navigation"] = None
     session_state["classic_bound_dataset_id"] = None
     session_state["classic_flash"] = None
+    session_state["classic_active_run_id"] = None
+    session_state["classic_focus_run_id"] = None
+    session_state["classic_nav_prefill"] = None
     _clear_classic_relink_flags(session_state)
 
 
@@ -279,10 +291,16 @@ def link_thesis(
         raise ValueError("thesis_name must be a non-empty string.")
 
     init_classic_session_state(session_state)
+    prior_thesis = session_state.get("classic_active_thesis_id")
     bound = dataset_id if isinstance(dataset_id, str) and dataset_id.strip() else None
     session_state["classic_active_thesis_id"] = thesis_id.strip()
     session_state["classic_active_thesis_name"] = name
     session_state["classic_bound_dataset_id"] = bound
+    # Thesis switch must not keep another thesis's run breadcrumb/focus (CAI-8).
+    if prior_thesis != thesis_id.strip():
+        session_state["classic_active_run_id"] = None
+        session_state["classic_focus_run_id"] = None
+        session_state["classic_nav_prefill"] = None
 
     # Keep Assistant page selection consistent; staging clears on thesis change.
     from thesistester.assistant.workspace import (
@@ -359,7 +377,32 @@ def render_classic_thesis_chrome(
         thesis_name = get_active_thesis_name(st.session_state) or thesis_id
         policy = get_recording_policy(st.session_state)
         short_id = thesis_id[-8:] if len(thesis_id) >= 8 else thesis_id
-        st.caption(f"Research mode · **{thesis_name}** (`…{short_id}`) · recording: `{policy}`")
+        active_run = st.session_state.get("classic_active_run_id")
+        run_bit = ""
+        if isinstance(active_run, str) and active_run.strip():
+            run_bit = f" · run `…{active_run.strip()[-8:]}`"
+        st.caption(
+            f"Research mode · **{thesis_name}** (`…{short_id}`){run_bit} · recording: `{policy}`"
+        )
+        # Identity badge vs active run (metadata/peek only — no full bundle load).
+        if isinstance(active_run, str) and active_run.strip() and thesis_id:
+            try:
+                from thesistester.classic_nav import (
+                    identity_badge_label,
+                    page_vs_run_identity_relation,
+                )
+
+                run = AssistantOrchestrator.for_local_workspace().get_run(
+                    thesis_id, active_run.strip()
+                )
+                if run.thesis_id == thesis_id:
+                    relation = page_vs_run_identity_relation(st.session_state, run)
+                    st.caption(
+                        f"Identity vs active run: **{identity_badge_label(relation)}** "
+                        f"(`{relation}`)"
+                    )
+            except Exception:
+                st.caption("Identity vs active run: **identity unavailable**")
         col_exit, col_relink, col_policy = st.columns([1, 1, 2])
         with col_exit:
             if st.button(

@@ -7,6 +7,7 @@ import hashlib
 import json
 import zipfile
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Mapping
 
 import pandas as pd
@@ -544,6 +545,11 @@ def _identity_payload_from_state(session_state: Mapping[str, Any]) -> dict[str, 
     RunSpec hash currently includes dataset path strings, which differ between
     relative API/CLI specs and absolute Assistant specs. Bundling it would break
     canonical-hash parity. Data/levels identities remain path-independent.
+
+    Do not derive identities from live page frames here: legacy classic bundles
+    without session identity maps must keep omitting ``research_identity.json``.
+    CAI-8 badges use provenance stamps and/or ``peek_research_identity`` when
+    the optional member is present.
     """
     data_identity = DataIdentity.from_dict(
         session_state.get("data_identity")
@@ -565,6 +571,37 @@ def _identity_payload_from_state(session_state: Mapping[str, Any]) -> dict[str, 
         data_identity=data_identity,
         levels_identity=levels_identity,
     )
+
+
+def peek_research_identity(bundle: Any) -> dict[str, Any] | None:
+    """Read ``research_identity.json`` only — no parquet / full bundle load (CAI-8).
+
+    Accepts bytes, a filesystem path, or a file-like object. Returns None when
+    the member is absent or unreadable.
+    """
+    try:
+        raw = _read_uploaded_bytes(bundle) if not isinstance(bundle, (str, Path)) else None
+    except ValueError:
+        return None
+    if isinstance(bundle, (str, Path)):
+        path = Path(bundle)
+        if not path.is_file():
+            return None
+        try:
+            raw = path.read_bytes()
+        except OSError:
+            return None
+    if not isinstance(raw, bytes):
+        return None
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw), mode="r") as zf:
+            names = set(zf.namelist())
+            if IDENTITY_META_FILENAME not in names:
+                return None
+            payload = _read_json_from_zip(zf, IDENTITY_META_FILENAME)
+    except (OSError, zipfile.BadZipFile, ValueError, KeyError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _read_uploaded_bytes(uploaded_file: Any) -> bytes:

@@ -167,6 +167,9 @@ Bundles only.
 | `classic_pending_navigation` | Optional one-shot allowlisted page target (`st.switch_page`) |
 | `classic_bound_dataset_id` | Dataset identity that must match or context clears; unset binds on first observed `dataset_id` |
 | `classic_flash` | One-shot `{level, message}` UI notice |
+| `classic_active_run_id` | Thesis-scoped run breadcrumb after record/discuss/open-exact (CAI-8) |
+| `classic_focus_run_id` | One-shot Assistant focus staged by Discuss this run (CAI-8) |
+| `classic_nav_prefill` | One-shot `{target_page, note}` clarification caption (CAI-8; no page mutation) |
 
 `link_thesis` syncs `assistant_selected_thesis_id` via `select_thesis` and does
 **not** record a run or mutate executable classic producer keys. Create/link UI
@@ -205,6 +208,28 @@ After registration, `explain_run` / `compare_completed_runs` /
 `restore_run_bundle_to_session` work from the verified bundle like any other
 completed run. Future recomputation still requires
 `execute_confirmed_run` on a confirmed specification.
+
+## Classic ↔ Assistant navigation and identity badges (CAI-8)
+
+`thesistester/classic_nav.py` owns bidirectional navigation without duplicating
+pages:
+
+- **Discuss this run** (Backtest / Research Bundles): sets active + focus run
+  and navigates to Research Assistant; does not re-register.
+- **Open exact run in Backtest** (Assistant): hash-verified
+  `restore_run_bundle_to_session`, re-links thesis, sets active run, navigates
+  to Backtest.
+- **Clarification → classic page**: allowlisted `st.switch_page` plus
+  `classic_nav_prefill` caption only — never auto-mutates page widgets and
+  does not stage `classic_pending_navigation` (Data/Levels have no chrome
+  consumer). Backtest shows the prefill before signals/trades `st.stop()`.
+- Identity badges use relation codes `exact_match` /
+  `same_data_different_levels` / `different_data` / `identity_unavailable`
+  from immutable `DataIdentity` / `LevelsIdentity` (provenance or
+  `peek_research_identity`; full bundle load deferred until open/explain/
+  restore/compare).
+- Thesis switch / exit / dataset switch clears run breadcrumb, focus, and
+  prefill; cross-thesis run selection fails closed.
 
 ## Classic research-mode execution ledger (CAI-7)
 

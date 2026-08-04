@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from thesistester.classic_nav import render_classic_nav_prefill_caption
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.data.derive import (
     INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
@@ -1058,6 +1059,7 @@ st.caption(
     "to derive one-minute canonical bars and attach the 15-second source for R12 replay. "
     "Legacy dual-upload lower-timeframe attachment remains available for one-minute primaries."
 )
+render_classic_nav_prefill_caption(target_page="pages/1_Data.py")
 
 bootstrap_active_saved_dataset()
 
