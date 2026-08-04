@@ -1586,8 +1586,10 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                 right_run=selected[right_id],
             )
             if result.status != "completed":
-                # Drop stale success UI that would otherwise match the same run pair.
-                st.session_state["assistant_run_comparisons"].pop(thesis_id, None)
+                # Only clear cache that would re-render as success for this pair.
+                cached = st.session_state["assistant_run_comparisons"].get(thesis_id)
+                if cached and cached.get("run_ids") == [left_id, right_id]:
+                    st.session_state["assistant_run_comparisons"].pop(thesis_id, None)
                 set_assistant_flash(
                     st.session_state,
                     level="error",
@@ -1665,8 +1667,14 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                 instrument=instrument,
             )
             if result.status != "completed":
-                # Drop stale portfolio summary that would contradict the hub error.
-                st.session_state["assistant_portfolio_analyses"].pop(thesis_id, None)
+                # Only clear cache that would re-render as success for this selection.
+                cached = st.session_state["assistant_portfolio_analyses"].get(thesis_id)
+                if (
+                    cached
+                    and cached.get("run_ids") == list(portfolio_ids)
+                    and cached.get("instrument") == instrument
+                ):
+                    st.session_state["assistant_portfolio_analyses"].pop(thesis_id, None)
                 set_assistant_flash(
                     st.session_state,
                     level="error",

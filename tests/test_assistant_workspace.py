@@ -461,12 +461,14 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "st.rerun()" in compare_chunk
     assert 'st.error(result.payload.get("error"' not in compare_chunk
     assert 'assistant_run_comparisons"].pop(thesis_id, None)' in compare_chunk
+    assert 'cached.get("run_ids") == [left_id, right_id]' in compare_chunk
     portfolio_idx = source.index('if st.button("Analyze portfolio")')
-    portfolio_chunk = source[portfolio_idx : portfolio_idx + 2800]
+    portfolio_chunk = source[portfolio_idx : portfolio_idx + 3200]
     assert "set_assistant_flash(" in portfolio_chunk
     assert "assistant_portfolio_analyses" in portfolio_chunk
     assert "st.rerun()" in portfolio_chunk
     assert 'assistant_portfolio_analyses"].pop(thesis_id, None)' in portfolio_chunk
+    assert 'cached.get("run_ids") == list(portfolio_ids)' in portfolio_chunk
     assert "portfolio_state =" in source[portfolio_idx:]
     # Hot JSON surfaces must not open by default on the hub.
     assert 'with st.expander("Structured execution controls", expanded=True)' not in source
