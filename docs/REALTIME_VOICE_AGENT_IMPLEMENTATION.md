@@ -1,0 +1,604 @@
+# Realtime Voice Agent — Implementation Contract
+
+**Document type:** Implementation contract (VA-series)
+**Status:** proposed — not shipped
+**Date:** 2026-08-04
+**Owner surface:** `thesistester/assistant/` + Research Assistant page only
+**Provider:** xAI Grok Voice Agent API (`grok-voice-latest`)
+**Depends on:** C2 complete (`docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` through PR6),
+`docs/ENGINEERING_PROPOSAL.md` §4 / §4.1 / §4.2
+
+This is the binding implementation contract for realtime voice review of
+**completed** research runs. Every VA PR must stay inside its scope table.
+If a change is not listed under **In scope**, it belongs in a later PR or is
+rejected.
+
+---
+
+## 1. Definition of done
+
+The series is done when a local user can:
+
+1. Select a completed, hash-verified research run.
+2. Opt in to voice (`assistant.voice.enabled = true` + `XAI_API_KEY` set).
+3. Hold a multi-turn spoken discussion of that run’s evidence.
+4. Hear only numbers that resolve to the `EvidencePacket` or to values
+   returned by allowlisted read-only tools in that session.
+5. See a persisted transcript + tool audit on the thesis conversation.
+6. Fall back to deterministic explain + text results Q&A if voice fails.
+
+Voice remains **default-off** after VA-6 unless a separate, explicit enable
+decision lands later.
+
+---
+
+## 2. Non-negotiable invariants
+
+1. **No engine touch.** Do not modify `simulate_trades`, levels, signals,
+   validation math, or golden fixtures in any VA PR.
+2. **Additive only.** New modules under `thesistester/assistant/voice/` and
+   narrow orchestrator/page additions. Legacy chat/explain paths keep current
+   semantics when voice is disabled.
+3. **Evidence-bound.** A voice session binds exactly one `run_id` + expected
+   `canonical_bundle_hash`. Hash mismatch fails closed (same as `BUNDLE.import`).
+4. **Read-only tools.** Voice may call only the VA-3 allowlist. Never
+   `PIPELINE.*`, `execute_confirmed_run`, `dispatch` of compute, filesystem,
+   shell, broker, `web_search`, or `x_search` (search stays config-locked off).
+5. **Grounding.** Numeric tokens in structured results-Q&A output and in
+   audited voice transcripts must resolve to packet paths or tool-returned
+   values; else fail/flag before trusted UI render (C2-6 parity).
+6. **Secrets.** `XAI_API_KEY` server-side only. Browser uses ephemeral tokens.
+7. **Default off.** `assistant.voice.enabled = false` in `config/assistant.toml`.
+8. **Same-PR docs.** Every PR that adds behavior updates the docs listed in
+   that PR’s scope. New `assistant_voice_*` session keys are documented in
+   `ARCHITECTURE.md` in the same PR.
+9. **CI green.** `ruff check .`, `ruff format --check .`, `pytest -q`.
+10. **PR body.** Every VA PR includes a **Regression safety** paragraph stating
+    what is untouched (engine/goldens/C2 chat) and which tests gate the change.
+
+---
+
+## 3. Architecture (frozen)
+
+```text
+Research Assistant (opt-in Voice panel)
+        │
+        ▼
+VoiceSessionService          # create/end; bind run+hash; instructions
+        │
+        ├── xai_realtime     # ephemeral token mint (server)
+        ├── voice tools      # allowlisted JSON functions → orchestrator RO APIs
+        ├── grounding        # transcript / claim numeric audit
+        └── results_qa       # shared text multi-turn over EvidencePacket
+                │
+                ▼
+AssistantOrchestrator (existing)
+  explain_run / compare / BUNDLE.import → EvidencePacket
+```
+
+| Path | Role | Forbidden |
+|---|---|---|
+| `thesistester/assistant/results_qa.py` | Multi-turn grounded text Q&A | Audio, xAI, compute dispatch |
+| `thesistester/assistant/voice/contracts.py` | Schema-versioned records | I/O, Streamlit, network |
+| `thesistester/assistant/voice/settings.py` | Load voice config + key resolution | UI |
+| `thesistester/assistant/voice/session.py` | Session lifecycle + instruction build | Tool execution side effects beyond allowlist |
+| `thesistester/assistant/voice/xai_realtime.py` | Token mint / optional WS helpers | Embedding keys in page code |
+| `thesistester/assistant/voice/tools.py` | Tool schemas + router | Widening to write/compute |
+| `thesistester/assistant/voice/grounding.py` | Numeric audit helpers | Trusting raw model speech |
+| `pages/14_Research_Assistant.py` | Presentation only | Packet construction, secrets |
+
+**Provider note:** Pin `grok-voice-latest` (or a dated snapshot when published).
+There is no separate “Grok 4.5 realtime” model ID. Thesis-drafting chat stays
+on the existing OpenAI structured client for this series.
+
+---
+
+## 4. Config contract (lands in VA-0)
+
+Additive block only; do not reorder or rename existing `[assistant]` keys.
+
+```toml
+[assistant.voice]
+enabled = false
+provider = "xai"
+model = "grok-voice-latest"
+voice = "eve"
+mode = "push_to_talk"              # VA-4; "realtime" added in VA-5
+max_session_minutes = 15
+store_audio = false
+allow_web_search = false
+require_tool_for_numbers = true
+ephemeral_token_ttl_seconds = 300
+max_history_messages = 12
+```
+
+Secret: `XAI_API_KEY` (env first, else Streamlit Secrets `[xai].api_key`).
+Reject placeholder strings (mirror OpenAI key rejection in `llm.py`).
+
+---
+
+## 5. PR sequence overview
+
+| PR | ID | Title | Merge blocks if… |
+|---|---|---|---|
+| 1 | VA-0 | Contracts + flag + docs freeze | Any network/UI/orchestrator behavior |
+| 2 | VA-1 | Text results Q&A | Audio or xAI dependencies |
+| 3 | VA-2 | xAI token + session service | Tool router or Streamlit mic |
+| 4 | VA-3 | Read-only voice tools | UI enablement or realtime WS client |
+| 5 | VA-4 | Push-to-talk half-duplex UI | Full-duplex / custom component |
+| 6 | VA-5 | Full-duplex realtime mode | Telephony, multi-tenant, audio blob store |
+| 7 | VA-6 | Evals + release gate | Flipping default `enabled=true` |
+
+**Do not collapse VA-1 into VA-4.** Text grounding must land and pass before
+speech. **Do not collapse VA-5 into VA-4.** Half-duplex proves value first.
+
+Dependency graph:
+
+```text
+VA-0 ──► VA-1 ──► VA-4 ──► VA-5 ──► VA-6
+         │         ▲
+         └──► VA-2 ──► VA-3 ──┘
+```
+
+VA-1 and VA-2 may proceed in parallel after VA-0. VA-3 requires VA-2
+(session bind) and VA-1 (shared results semantics). VA-4 requires VA-1+VA-3.
+VA-5 requires VA-4. VA-6 requires VA-5 (or VA-4 if product stops at half-duplex;
+still run the full eval file against whatever mode shipped).
+
+---
+
+## 6. Detailed PR scopes
+
+### VA-0 — Contracts, flag, docs freeze
+
+**Goal:** Freeze schemas and defaults with zero runtime behavior change for
+users.
+
+#### In scope
+| Item | Detail |
+|---|---|
+| Docs | This file is canonical; keep index pointer in `ENGINEERING_ROADMAP.md`; assumptions note in `ASSUMPTIONS_AND_LIMITATIONS.md`; architecture note that `assistant_voice_*` keys are reserved for later PRs |
+| Config | Add `[assistant.voice]` to `config/assistant.toml` exactly as §4 |
+| Code | `thesistester/assistant/voice/__init__.py` (exports only) |
+| Code | `thesistester/assistant/voice/contracts.py` — frozen dataclasses / typed dicts: `VoiceSessionRecord` (schema_version, session_id, thesis_id, run_id, canonical_bundle_hash, mode, created_at, ended_at, status), `VoiceTranscriptTurn`, `VoiceToolInvocation`, `GroundingVerdict` |
+| Code | `thesistester/assistant/voice/settings.py` — `load_voice_settings()` reading toml; returns dataclass; ignores missing section with safe defaults (`enabled=False`) |
+| Tests | `tests/test_assistant_voice_contracts.py` — schema round-trip, default settings, enabled=false |
+
+#### Out of scope
+- Any call to xAI / OpenAI / WebSocket
+- Any change to `orchestrator.py`, `llm.py`, `llm_explainer.py`, pages
+- Session_state keys (none yet)
+- Enabling UI affordances
+
+#### Acceptance
+- [ ] `load_voice_settings().enabled is False` on current config
+- [ ] Existing `tests/test_assistant_llm*.py` unchanged and green
+- [ ] No new third-party dependency
+- [ ] `ruff` + `pytest -q` green
+
+#### Regression safety
+Additive package + config defaults. No engine, no golden, no C2 path edits.
+If `assistant.voice` is absent, settings loader must behave as disabled.
+
+#### Files allowed to touch
+```
+config/assistant.toml
+thesistester/assistant/voice/__init__.py
+thesistester/assistant/voice/contracts.py
+thesistester/assistant/voice/settings.py
+tests/test_assistant_voice_contracts.py
+docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
+docs/ENGINEERING_ROADMAP.md
+docs/ASSUMPTIONS_AND_LIMITATIONS.md
+docs/ARCHITECTURE.md
+```
+
+---
+
+### VA-1 — Multi-turn results Q&A (text substrate)
+
+**Goal:** Add grounded multi-turn discussion of a completed run **in text**.
+Voice later reuses this path; this PR ships user value without audio.
+
+#### In scope
+| Item | Detail |
+|---|---|
+| Code | New `thesistester/assistant/results_qa.py` — `propose_results_reply(client, *, packet, history, user_message) -> ResultsQAReply` with schema `{summary, caveats, claims[{text,path}], followups}` |
+| Code | Grounding: reuse / share helpers with `llm_explainer.py` (extract shared numeric grounding into a small private helper **only if** needed; prefer calling existing validators to avoid drift) |
+| Code | `AssistantOrchestrator.handle_results_turn(thesis_id, run_id, message, *, conversation_id=...)` — load run, `BUNDLE.import` with expected hash, build packet, call results_qa, persist user+assistant messages tagged `results_qa` |
+| Code | Persistence: conversation messages gain an additive optional field/tag; schema version bump only if repository requires it — document in same PR |
+| UI | On completed run section in `pages/14_Research_Assistant.py`: expander “Discuss results” with `st.chat_input` scoped to that run — **no mic** |
+| Tests | `tests/test_assistant_results_qa.py` + extend `tests/test_assistant_llm_evaluations.py`: injection→no dispatch; uncited numbers rejected; missing run; hash mismatch; history trim; `handle_chat_turn` still never loads bundles |
+
+#### Out of scope
+- xAI, audio, STT/TTS, WebSockets
+- New registry compute capabilities
+- Changing thesis-drafting `handle_chat_turn` prompt/schema
+- Changing deterministic `explain_evidence_report` templates (call them; don’t rewrite)
+
+#### Acceptance
+- [ ] `handle_results_turn` never calls `dispatch` / `execute_confirmed_run` (asserted)
+- [ ] Uncited numeric token → error before UI persistence/render
+- [ ] Hash mismatch → structured failure; no packet leak
+- [ ] Without provider key, deterministic explain still works; results Q&A surfaces clear remediation
+- [ ] `handle_chat_turn` behavior fixtures remain green unchanged
+
+#### Regression safety
+New orchestrator method + optional UI block. Thesis drafting and one-shot
+`explain_run_with_llm` keep prior contracts. No engine/golden changes.
+
+#### Files allowed to touch
+```
+thesistester/assistant/results_qa.py
+thesistester/assistant/orchestrator.py          # additive method only
+thesistester/assistant/repository.py            # only if message tag/schema needs additive field
+thesistester/assistant/llm_explainer.py         # shared grounding helper extract only if required
+thesistester/assistant/__init__.py              # exports
+pages/14_Research_Assistant.py                  # expander only
+tests/test_assistant_results_qa.py
+tests/test_assistant_llm_evaluations.py
+docs/ARCHITECTURE.md                            # any new assistant_* keys
+docs/ASSUMPTIONS_AND_LIMITATIONS.md
+docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md     # mark VA-1 implemented contract
+docs/AGENT_GUIDE.md                             # results_qa rule
+```
+
+#### Implemented contract (fill when merged)
+_Pending implementation._
+
+---
+
+### VA-2 — xAI ephemeral token + session service
+
+**Goal:** Server-side session + credential primitives. No mic UI.
+
+#### In scope
+| Item | Detail |
+|---|---|
+| Code | `voice/xai_realtime.py` — `mint_ephemeral_token(*, api_key, expires_after_seconds) -> EphemeralToken` via `POST https://api.x.ai/v1/realtime/client_secrets`; stdlib/`urllib` or existing HTTP style from `llm.py`; 30s timeout; retries from settings |
+| Code | `voice/session.py` — `VoiceSessionService.create_session(thesis_id, run_id, *, expected_hash, mode)` loads packet via orchestrator/bundle import, persists `VoiceSessionRecord`, builds system instructions (honesty preamble + tool-number policy + caveats summary) |
+| Code | `VoiceSessionService.end_session(session_id)` marks ended; best-effort |
+| Code | Key resolution in `voice/settings.py`: env `XAI_API_KEY` → secrets; reject placeholders |
+| Tests | `tests/test_assistant_voice_session.py` — mock HTTP; no key; placeholder key; bad hash; missing run; instruction contains required policy strings |
+
+#### Out of scope
+- Tool JSON schemas / execution (VA-3)
+- Streamlit widgets
+- Browser WebSocket client
+- Live network in CI
+
+#### Acceptance
+- [ ] Mint without key → structured fail closed
+- [ ] Create session without verified bundle → fail closed
+- [ ] Instructions always include: evidence-only, no trade advice, numbers only from tools/packet, sample-size/OOS caveats
+- [ ] No `XAI_API_KEY` appears in any page module
+- [ ] OpenAI `llm.py` untouched
+
+#### Regression safety
+New modules only. Flag still false → no user-visible change. C2 OpenAI path
+untouched.
+
+#### Files allowed to touch
+```
+thesistester/assistant/voice/xai_realtime.py
+thesistester/assistant/voice/session.py
+thesistester/assistant/voice/settings.py
+thesistester/assistant/voice/contracts.py       # only if session fields need additive tweak
+thesistester/assistant/voice/__init__.py
+thesistester/assistant/repository.py            # only if persisting sessions needs store helpers
+tests/test_assistant_voice_session.py
+docs/ASSUMPTIONS_AND_LIMITATIONS.md             # XAI_API_KEY note
+docs/ARCHITECTURE.md
+docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
+```
+
+#### Implemented contract (fill when merged)
+_Pending implementation._
+
+---
+
+### VA-3 — Read-only voice tool surface
+
+**Goal:** Freeze the only functions the voice model may invoke.
+
+#### In scope
+| Item | Detail |
+|---|---|
+| Code | `voice/tools.py` — `VOICE_TOOL_SCHEMAS` + `execute_voice_tool(name, args, *, session) -> dict` |
+| Tools (exact v1 set) | `get_run_overview` → deterministic explain summary + caveats from bound packet |
+| | `get_metric` → `{path}` → typed value from packet; unknown path fails |
+| | `list_caveats` → packet caveats list |
+| | `compare_two_runs` → `{other_run_id}` → existing compare; **both** hashes verified |
+| Deny | Anything else, including `web_search`, `x_search`, `PIPELINE.*`, `execute_confirmed_run`, export mutators |
+| Audit | Each call → one `tool_transcript` entry (args digest + ok/error + result digest) |
+| Grounding helper | `voice/grounding.py` — `audit_transcript_numbers(text, *, allowed_values) -> GroundingVerdict` for later VA-4/5 (unit-tested now) |
+| Tests | `tests/test_assistant_voice_tools.py` — allowlist, deny, path traversal, compare missing hash, injection names, grounding helper cases |
+
+#### Out of scope
+- Enabling `assistant.voice.enabled`
+- UI / mic / WebSocket client
+- Adding `get_claim_safe_narration` (defer post-VA-6 unless needed for latency)
+- Registry expansion beyond calling existing orchestrator read APIs
+
+#### Acceptance
+- [ ] Unknown tool name → fail; no side effects
+- [ ] Model-requested `execute_confirmed_run` / `web_search` never execute
+- [ ] `get_metric` rejects unknown/empty paths
+- [ ] `compare_two_runs` fails closed if other run hash missing/mismatch
+- [ ] Exactly one transcript audit row per invocation attempt
+
+#### Regression safety
+Thin adapters over existing explain/compare/packet. No public API semantic
+change. No page behavior change while flag is false.
+
+#### Files allowed to touch
+```
+thesistester/assistant/voice/tools.py
+thesistester/assistant/voice/grounding.py
+thesistester/assistant/voice/session.py         # wire execute_voice_tool only
+thesistester/assistant/voice/__init__.py
+tests/test_assistant_voice_tools.py
+docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
+docs/AGENT_GUIDE.md
+```
+
+#### Implemented contract (fill when merged)
+_Pending implementation._
+
+---
+
+### VA-4 — Push-to-talk half-duplex UI
+
+**Goal:** First user-visible voice loop using Streamlit-native audio, reusing
+VA-1 text grounding on transcripts.
+
+#### In scope
+| Item | Detail |
+|---|---|
+| UI | Opt-in panel on `pages/14_Research_Assistant.py` when `voice.enabled` **and** completed run selected |
+| Flow | `st.audio_input` → xAI STT (`POST /v1/stt` or equivalent helper in `xai_realtime.py`) → `handle_results_turn` **or** voice-tool-assisted reply → xAI TTS → `st.audio` playback |
+| UI | Show transcript text + `GroundingVerdict` status; block mic while thesis has a running compute |
+| Session | Create/end `VoiceSessionRecord` with `mode="push_to_talk"` |
+| Session keys | Additive `assistant_voice_*` only; document in `ARCHITECTURE.md` same PR (e.g. `assistant_voice_active_session_id`, `assistant_voice_last_error`) — clear on thesis switch if staged |
+| Config | Keep default `mode = "push_to_talk"` |
+| Tests | Flag-off: page/orchestrator paths do not mint tokens (unit/integration) |
+| | Flag-on without key: remediation error, no crash |
+| | Mocked STT→results_qa→TTS pipeline asserts grounding still applied to transcript text |
+
+#### Out of scope
+- Full-duplex, barge-in, server VAD streaming
+- Custom Streamlit components / `components.html` WebSocket
+- LiveKit / Twilio / telephony
+- `store_audio=true` implementation (keep false; ignore flag or reject true)
+- Changing VA-3 allowlist
+
+#### Acceptance
+- [ ] `enabled=false` → no token mint, no STT/TTS calls (asserted)
+- [ ] Grounding failure surfaces warning; does not present uncited numbers as trusted
+- [ ] Running compute disables mic control
+- [ ] Session end writes transcript turns to conversation store
+- [ ] Manual checklist (not CI): record → ask trade count → hear answer → see caveat
+
+#### Regression safety
+Presentation + VA-1/VA-3 calls only. Engine untouched. Thesis draft chat
+layout unchanged aside from additive expander/panel. Document all new
+session keys.
+
+#### Files allowed to touch
+```
+pages/14_Research_Assistant.py
+thesistester/assistant/workspace.py             # ASSISTANT_SESSION_KEYS additive
+thesistester/assistant/voice/xai_realtime.py    # STT/TTS helpers
+thesistester/assistant/voice/session.py
+thesistester/assistant/orchestrator.py          # only if a thin voice_turn façade is needed
+tests/test_assistant_voice_ui.py
+tests/test_assistant_workspace.py               # key list expectations
+docs/ARCHITECTURE.md
+docs/ASSUMPTIONS_AND_LIMITATIONS.md
+docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
+```
+
+#### Implemented contract (fill when merged)
+_Pending implementation._
+
+---
+
+### VA-5 — Full-duplex realtime (Grok Voice WebSocket)
+
+**Goal:** Sub-second duplex review with server VAD and barge-in, still
+allowlist-bound.
+
+#### In scope
+| Item | Detail |
+|---|---|
+| Transport | Browser client via Streamlit **custom component** (preferred) or minimal `components.html` bootstrap; connect `wss://api.x.ai/v1/realtime?model=<configured>` using ephemeral token protocol `xai-client-secret.<token>` |
+| Session | `session.update` with voice, instructions from `VoiceSessionService`, `turn_detection: server_vad`, **custom function tools only** (VA-3 schemas); `allow_web_search` must remain false → do not register search tools |
+| Tool bridge | On `function_call` → server `execute_voice_tool` → `function_call_output` |
+| Audio | PCM 24 kHz as required by xAI; no raw audio persistence (`store_audio` stays false) |
+| Config | Allow `mode = "realtime"`; push-to-talk remains available |
+| Transcript | Sync assistant/user text + tool audits to repository on session end; periodic flush best-effort |
+| TTL | Enforce `max_session_minutes`; token refresh only via server mint |
+| Tests | Mocked WS event fixtures for tool bridge; TTL; deny search tools in session payload; tab-end best-effort audit |
+| Escape hatch | Localhost FastAPI sidecar **only if** component path is blocked — must be single-user, documented, and still use same `VoiceSessionService` (no second business logic) |
+
+#### Out of scope
+- Phone/Twilio
+- Multi-user auth
+- Default `enabled=true`
+- Widening tool allowlist
+- Replacing VA-4 (keep as fallback)
+
+#### Acceptance
+- [ ] Session payload never includes `web_search` / `x_search` when `allow_web_search=false`
+- [ ] Tool bridge cannot invoke names outside VA-3 allowlist
+- [ ] Token never logged; key never sent to browser
+- [ ] Exceeding `max_session_minutes` ends session
+- [ ] Manual QA: barge-in, silence, “what’s win rate?”, injection “run a grid” → refused
+
+#### Regression safety
+New transport/UI only. VA-1 remains source of truth for text channel. VA-3
+allowlist unchanged. Engine/golden untouched.
+
+#### Files allowed to touch
+```
+thesistester/assistant/voice/xai_realtime.py
+thesistester/assistant/voice/session.py
+thesistester/assistant/voice/tools.py           # schema export for session.update only
+pages/14_Research_Assistant.py
+# optional component package, e.g.:
+thesistester/assistant/voice/frontend/          # or components/voice_realtime/
+tests/test_assistant_voice_realtime.py
+docs/ARCHITECTURE.md
+docs/ASSUMPTIONS_AND_LIMITATIONS.md
+docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
+docs/ENGINEERING.md                             # only if sidecar run instructions needed
+```
+
+#### Implemented contract (fill when merged)
+_Pending implementation._
+
+---
+
+### VA-6 — Evaluation suite + release gate
+
+**Goal:** Close the research-integrity gate. Do **not** flip default-on.
+
+#### In scope
+| Item | Detail |
+|---|---|
+| Tests | `tests/test_assistant_voice_evaluations.py` covering: forbidden tool/injection; uncited transcript numbers; hash mismatch on session create; token mint failures; max session duration; results_qa ↔ voice tool parity; voice cannot execute/confirm runs; flag-off no side effects |
+| Docs | `ASSUMPTIONS_AND_LIMITATIONS.md` (shipped limitations), `METRICS_GLOSSARY.md` (spoken metric display rules), `AGENT_GUIDE.md` (VA PR rules), `ENGINEERING_ROADMAP.md` (VA status), this file (mark release gate closed) |
+| Ops note | Cost $0.05/min; `max_session_minutes` guidance in assumptions |
+| Flag | Leave `enabled=false`; document opt-in steps for local user |
+
+#### Out of scope
+- New features / extra tools
+- Provider swap for thesis chat
+- Default enable
+
+#### Acceptance
+- [ ] Full suite green including C2-6 evals
+- [ ] Voice eval file fails CI if allowlist or grounding regresses
+- [ ] Deterministic explain/compare usable with zero voice/xAI config
+- [ ] Release checklist in PR body completed
+
+#### Regression safety
+Tests + docs + policy only. No engine semantics. No golden regen.
+
+#### Files allowed to touch
+```
+tests/test_assistant_voice_evaluations.py
+docs/ASSUMPTIONS_AND_LIMITATIONS.md
+docs/METRICS_GLOSSARY.md
+docs/AGENT_GUIDE.md
+docs/ENGINEERING_ROADMAP.md
+docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
+# bugfix only if evals expose defects in voice modules — no feature creep
+```
+
+#### Release checklist (PR body)
+- [ ] §4.2 items for assistant-surface PR
+- [ ] No golden file diffs
+- [ ] `enabled` still false
+- [ ] Manual duplex/half-duplex smoke recorded in PR notes
+- [ ] Cost/privacy assumptions updated
+
+#### Implemented contract (fill when merged)
+_Pending implementation._
+
+---
+
+## 7. Per-PR regression-safety template (copy into every VA PR body)
+
+```markdown
+## Regression safety
+- Engine / levels / signals / goldens: untouched
+- C2 thesis chat (`handle_chat_turn`): untouched unless this is VA-1 (additive only)
+- Voice flag default: false
+- New behavior requires: <flag / completed run / key>
+- Tests gating this PR: <list>
+- Docs updated this PR: <list>
+```
+
+---
+
+## 8. Explicit non-goals (series-wide)
+
+- Voice-driven strategy generation or autonomous grid/WFA
+- Live trading / broker commands
+- Replacing classic Streamlit workflows
+- Multi-tenant auth / cloud sync
+- Persisting raw microphone audio by default
+- Enabling xAI web/X search on results sessions
+- Migrating drafting chat off OpenAI
+- Any `simulate_trades` / levels / golden change
+
+---
+
+## 9. Testing matrix
+
+| Gate | VA-0 | VA-1 | VA-2 | VA-3 | VA-4 | VA-5 | VA-6 |
+|---|---|---|---|---|---|---|---|
+| ruff + pytest | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| No golden diffs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Schema/unit | ✓ | | | | | | |
+| Grounding / no dispatch | | ✓ | | ✓ | ✓ | | ✓ |
+| Mocked HTTP token | | | ✓ | | | | ✓ |
+| Tool allowlist | | | | ✓ | | ✓ | ✓ |
+| Flag-off no mint | | | | | ✓ | ✓ | ✓ |
+| Mocked WS tool bridge | | | | | | ✓ | ✓ |
+| Full voice eval file | | | | | | | ✓ |
+
+---
+
+## 10. Cost, privacy, failure
+
+| Topic | Policy |
+|---|---|
+| Cost | ~$0.05 × audio minutes; hard cap `max_session_minutes` |
+| Keys | Server `XAI_API_KEY`; browser ephemeral ≤ TTL |
+| Audio blobs | Not persisted (`store_audio=false`) |
+| Transcripts | Schema-versioned text + tool audit in assistant store |
+| Failure | Deterministic explain + VA-1 text Q&A remain available |
+
+---
+
+## 11. Open decisions (resolve during VA-0 review; then freeze)
+
+| # | Decision | Default if no objection |
+|---|---|---|
+| 1 | VA-4 STT: xAI batch STT vs short Voice manual commit | xAI batch STT |
+| 2 | VA-5 transport: custom component vs localhost sidecar | custom component |
+| 3 | Default voice id | `eve` |
+| 4 | `compare_two_runs` in v1 allowlist | **include** |
+| 5 | Model pin string | `grok-voice-latest` |
+
+After VA-0 merges, changing these defaults requires a docs amendment in the
+PR that changes them.
+
+---
+
+## 12. Agent instructions (for implementers)
+
+When implementing any VA PR:
+
+1. Read this document’s section for that VA ID end-to-end.
+2. Touch **only** files in **Files allowed to touch** (plus test fixtures they
+   need). Ask for a contract amendment PR before expanding the file list.
+3. Keep work regression-safe per §2 and `docs/ENGINEERING_PROPOSAL.md` §4.
+4. Update documentation in the **same** PR.
+5. Do not enable voice by default.
+6. Do not add search tools or compute tools “for convenience.”
+7. Fill **Implemented contract** under that VA section when merging.
+
+---
+
+## 13. References
+
+- xAI Voice: https://docs.x.ai/developers/model-capabilities/audio/voice
+- Speech-to-speech: https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech
+- Ephemeral tokens: https://docs.x.ai/developers/model-capabilities/audio/ephemeral-tokens
+- Launch note: https://x.ai/news/grok-voice-agent-api
+- `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2-6 grounding gate)
+- `docs/ENGINEERING_PROPOSAL.md` §4
+- `thesistester/assistant/llm_explainer.py`

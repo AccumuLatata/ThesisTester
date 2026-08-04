@@ -12,7 +12,7 @@ Classic workspace ↔ Assistant unification follows
 also additive and must preserve engine/golden-master semantics.
 
 Realtime voice review of completed runs follows
-`docs/VOICE_AGENT_ENGINEERING_ROADMAP.md` (VA-series). VA milestones are
+`docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (VA-series). VA milestones are
 additive presentation/session adapters over the assistant evidence path; they
 must not alter engine, levels, signals, or golden-master semantics.
 

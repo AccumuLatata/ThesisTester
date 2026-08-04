@@ -375,7 +375,7 @@ The Research Assistant page stages only these additive `assistant_*` keys
 
 Proposed realtime voice review (VA-series) must add only namespaced
 `assistant_voice_*` keys in the same PR that introduces them; see
-`docs/VOICE_AGENT_ENGINEERING_ROADMAP.md`. Until that series lands, no voice
+`docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Until that series lands, no voice
 session keys exist and the Research Assistant remains text-only.
 
 Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
