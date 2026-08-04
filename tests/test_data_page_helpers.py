@@ -612,49 +612,54 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert "_hide_legacy_subtimeframe_uploader(ingestion_mode)" in page_text
 
 
-def test_sample_and_saved_legacy_sync_upload_ingestion_selector(monkeypatch):
-    """Sample/saved one-minute loads must not leave Upload radio on 15s-primary."""
-    session_state = {
-        "data_ingestion_mode_selector": "15s_primary_derive_1m",
-        "data": "one-minute-frame",
-    }
-    data_page = _import_data_page_module(session_state)
+def test_align_upload_ingestion_mode_with_legacy_and_empty_sessions(monkeypatch):
+    """Upload-CSV align: recommend 15s when empty; primary after Sample/legacy."""
+    data_page = _import_data_page_module({})
     monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
 
-    # First-visit Upload default remains recommended 15s-primary.
-    empty = {}
-    data_page._sync_upload_ingestion_mode_selector(
-        data_page.DEFAULT_UPLOAD_INGESTION_MODE, session_state=empty
+    # Empty session keeps the recommended Upload-CSV default.
+    empty: dict = {}
+    assert (
+        data_page._align_upload_ingestion_mode_with_session(empty)
+        == data_page.DEFAULT_UPLOAD_INGESTION_MODE
     )
     assert empty["data_ingestion_mode_selector"] == data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    assert empty[data_page.UPLOAD_INGESTION_MODE_EXPLICIT_KEY] is False
 
-    # Sample / legacy primary path realigns the radio so dual-upload can show.
-    data_page._sync_upload_ingestion_mode_selector(
-        data_page.INGESTION_MODE_PRIMARY, session_state=session_state
-    )
-    assert session_state["data_ingestion_mode_selector"] == data_page.INGESTION_MODE_PRIMARY
-    assert not data_page._hide_legacy_subtimeframe_uploader(
-        session_state["data_ingestion_mode_selector"],
-        session_state=session_state,
-    )
-
-    # Restored / installed 15s-primary sessions keep the recommended radio.
-    session_state["ingestion_provenance"] = {
-        "ingestion_mode": data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    # Legacy one-minute session (e.g. after Sample) realigns off the default.
+    legacy = {
+        "data": "one-minute-frame",
+        "data_ingestion_mode_selector": data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+        data_page.UPLOAD_INGESTION_MODE_EXPLICIT_KEY: False,
     }
-    data_page._sync_upload_ingestion_mode_selector(
-        data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M, session_state=session_state
-    )
     assert (
-        session_state["data_ingestion_mode_selector"]
+        data_page._align_upload_ingestion_mode_with_session(legacy)
+        == data_page.INGESTION_MODE_PRIMARY
+    )
+    assert legacy["data_ingestion_mode_selector"] == data_page.INGESTION_MODE_PRIMARY
+    assert not data_page._hide_legacy_subtimeframe_uploader(
+        legacy["data_ingestion_mode_selector"], session_state=legacy
+    )
+
+    # Explicit user choice of 15s-primary is preserved even with stale 1m data.
+    explicit = {
+        "data": "stale-one-minute",
+        "data_ingestion_mode_selector": data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
+        data_page.UPLOAD_INGESTION_MODE_EXPLICIT_KEY: True,
+    }
+    assert (
+        data_page._align_upload_ingestion_mode_with_session(explicit)
         == data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M
     )
     assert data_page._hide_legacy_subtimeframe_uploader(
-        session_state["data_ingestion_mode_selector"],
-        session_state=session_state,
+        explicit["data_ingestion_mode_selector"], session_state=explicit
     )
+
+    # Sample render must not write the Upload selector (Source defaults to Sample).
+    page_text = pathlib.Path(data_page.__file__).read_text(encoding="utf-8")
+    assert "Do not write data_ingestion_mode_selector here" in page_text
     with pytest.raises(ValueError, match="Unsupported ingestion mode"):
-        data_page._sync_upload_ingestion_mode_selector("bogus", session_state=session_state)
+        data_page._sync_upload_ingestion_mode_selector("bogus", session_state={})
 
 
 def test_upload_csv_default_ingestion_mode_is_15s_primary_not_api_default():

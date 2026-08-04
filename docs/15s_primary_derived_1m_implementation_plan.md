@@ -468,9 +468,10 @@ untouched.
   **Recommended**; one-minute primary labeled **Legacy / advanced**.
 - Upload-CSV widget default selects `15s_primary_derive_1m` on first visit;
   Sample data remains the legacy one-minute fixture path.
-- Sample / saved legacy loads and 15s-primary installs sync
-  `data_ingestion_mode_selector` so dual-upload hide rules match the active
-  session (returning from Sample does not leave the radio stuck on 15s).
+- Upload-CSV entry realigns `data_ingestion_mode_selector` for legacy
+  one-minute sessions (Sample/saved) so dual-upload stays reachable, without
+  writing the selector from the Sample render branch (which would clobber the
+  recommended default). Explicit radio choices are preserved.
 - Dual-upload expander retitled **Legacy dual-upload (optional)** with
   prefer-15s-primary copy; hide rules unchanged.
 - Docs mark 15s-primary as the recommended Streamlit Quantower path; legacy
