@@ -1,16 +1,17 @@
 # Realtime Voice Agent — Implementation Contract
 
 **Document type:** Implementation contract (VA-series)
-**Status:** proposed — not shipped (pending VA-0 must-fix amendments)
+**Status:** proposed — not shipped; codebase reassessment amendments applied
 **Date:** 2026-08-04
 **Owner surface:** `thesistester/assistant/` + Research Assistant page only
-**Provider:** xAI Grok Voice Agent API (`grok-voice-latest`)
+**Provider:** xAI Grok Voice (`grok-voice-think-fast-2.0`; see §4)
 **Depends on:** C2 complete (`docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` through PR6),
 `docs/ENGINEERING_PROPOSAL.md` §4 / §4.1 / §4.2
 
-**Codebase reassessment (binding amendments):**
-`docs/REALTIME_VOICE_AGENT_REASSESSMENT.md`. VA-0 must incorporate that
-document’s §7 must-fix list before any VA-1+ implementation starts.
+**Codebase reassessment (binding):**
+`docs/REALTIME_VOICE_AGENT_REASSESSMENT.md`. Amendments from that review are
+already folded into this contract. Treat both docs as the VA series source of
+truth; if they conflict, prefer this file and amend the reassessment.
 
 This is the binding implementation contract for realtime voice review of
 **completed** research runs. Every VA PR must stay inside its scope table.
@@ -91,9 +92,9 @@ AssistantOrchestrator (existing)
 | `thesistester/assistant/voice/grounding.py` | Numeric audit helpers | Trusting raw model speech |
 | `pages/14_Research_Assistant.py` | Presentation only | Packet construction, secrets |
 
-**Provider note:** Pin `grok-voice-latest` (or a dated snapshot when published).
-There is no separate “Grok 4.5 realtime” model ID. Thesis-drafting chat stays
-on the existing OpenAI structured client for this series.
+**Provider note:** There is no separate “Grok 4.5 realtime” model ID. Pin
+`grok-voice-think-fast-2.0` in config (§4). Thesis-drafting chat and text
+results Q&A stay on the existing OpenAI structured client for this series.
 
 ---
 
@@ -105,7 +106,7 @@ Additive block only; do not reorder or rename existing `[assistant]` keys.
 [assistant.voice]
 enabled = false
 provider = "xai"
-model = "grok-voice-latest"
+model = "grok-voice-think-fast-2.0"   # pin dated id; do not use rolling latest in CI/evals
 voice = "eve"
 mode = "push_to_talk"              # VA-4; "realtime" added in VA-5
 max_session_minutes = 15
@@ -116,6 +117,12 @@ ephemeral_token_ttl_seconds = 300
 max_history_messages = 12
 max_retries = 2
 ```
+
+**Model pin policy:** Prefer dated `grok-voice-think-fast-2.0` (post 2026-08-05
+alias cutover). Do not ship evals against rolling `grok-voice-latest`. Budget
+for Think Fast 2.0 speech-to-speech at about **$0.08 / audio minute** (1.0 was
+~$0.05). STT/TTS unary endpoints are billed separately per xAI docs when used
+in VA-4.
 
 Secret resolution (mirror `llm.py` / `require_openai_api_key`):
 1. env `XAI_API_KEY`
@@ -361,24 +368,29 @@ _Pending implementation._
 
 ### VA-4 — Push-to-talk half-duplex UI
 
-**Goal:** First user-visible voice loop using Streamlit-native audio, reusing
-VA-1 text grounding on transcripts.
+**Goal:** First user-visible voice loop: speak an allowlisted evidence-tool
+command, hear a template-rendered tool result. Free-form NL discussion stays
+on VA-1 (text) and VA-5 (realtime model tool-calling).
 
 #### In scope
 | Item | Detail |
 |---|---|
 | UI | Opt-in panel inside completed-run expander on `pages/14_Research_Assistant.py` when `voice.enabled` **and** completed run selected |
-| Provider policy | **Default (A):** PTT answer path = VA-3 tools + deterministic overview text → xAI TTS (no OpenAI required for voice). Text “Discuss results” remains OpenAI `handle_results_turn`. Document dual-key only if product later chooses Option B (STT → results_qa → TTS) |
-| Flow | `st.audio_input` (note default 16 kHz) → xAI STT (`POST /v1/stt`) → voice-tool-assisted grounded reply → xAI TTS (`POST /v1/tts`) → `st.audio` playback |
-| UI | Show transcript text + `GroundingVerdict` status; block mic while any thesis run has `status=="running"` (`list_runs`) |
+| Provider policy | **XAI-only for PTT.** No OpenAI key required for voice. Text “Discuss results” remains OpenAI `handle_results_turn` (VA-1). Dual-key STT→`results_qa`→TTS is explicitly **out of series** |
+| Intent→tool (frozen) | After STT, `VoiceIntentRouter` maps transcript → **exactly one** VA-3 tool via deterministic allowlisted patterns (overview/summarize/default → `get_run_overview`; caveats → `list_caveats`; metric aliases/paths → `get_metric`; compare + `run_…` id → `compare_two_runs`). Unrecognized speech → `get_run_overview` plus a fixed spoken note that free-form Q&A is text Discuss results or realtime mode. **No LLM intent step in VA-4** |
+| Speak path | Template-render tool JSON/text to a speakable string (numbers only from tool return) → xAI TTS → `st.audio`. Run `GroundingVerdict` on that string vs tool-returned values |
+| Flow | `st.audio_input` (document sample_rate; Streamlit default 16 kHz ≠ VA-5 PCM 24 kHz) → xAI STT (`POST /v1/stt`) → intent router → `execute_voice_tool` → template → TTS (`POST /v1/tts`) → playback |
+| UI | Show STT text, chosen tool, tool result, grounding status; block mic while any thesis run has `status=="running"` (`list_runs`) |
 | Session | Create/end `VoiceSessionRecord` with `mode="push_to_talk"` |
 | Session keys | Additive `assistant_voice_*` in `ASSISTANT_SESSION_KEYS` + `THESIS_SCOPED_STAGING_KEYS`; document in `ARCHITECTURE.md` same PR; clear on thesis switch. Extend `tests/test_assistant_workspace.py` Streamlit stub with `audio_input` / `audio` |
 | Config | Keep default `mode = "push_to_talk"` |
-| Tests | Flag-off: page/orchestrator paths do not mint tokens (unit/integration) |
-| | Flag-on without key: remediation error, no crash |
-| | Mocked STT→results_qa→TTS pipeline asserts grounding still applied to transcript text |
+| Tests | Flag-off: no token mint / no STT/TTS (asserted) |
+| | Flag-on without `XAI_API_KEY`: remediation error, no crash |
+| | Mocked STT → intent → tool → template → TTS; assert spoken text numbers ⊆ tool values; unrecognized intent falls back safely |
 
 #### Out of scope
+- Free-form NL spoken Q&A (that is VA-5 / text VA-1)
+- LLM-based intent classification
 - Full-duplex, barge-in, server VAD streaming
 - Custom Streamlit components / `components.html` WebSocket
 - LiveKit / Twilio / telephony
@@ -387,10 +399,11 @@ VA-1 text grounding on transcripts.
 
 #### Acceptance
 - [ ] `enabled=false` → no token mint, no STT/TTS calls (asserted)
-- [ ] Grounding failure surfaces warning; does not present uncited numbers as trusted
+- [ ] Spoken reply numbers come only from the executed tool’s return (grounding pass)
+- [ ] Unrecognized transcript does not invent metrics
 - [ ] Running compute disables mic control
-- [ ] Session end writes transcript turns to conversation store
-- [ ] Manual checklist (not CI): record → ask trade count → hear answer → see caveat
+- [ ] Session end writes transcript turns + tool audits to conversation store
+- [ ] Manual checklist (not CI): record “caveats” → hear caveat list; record gibberish → overview + fallback note
 
 #### Regression safety
 Presentation + VA-1/VA-3 calls only. Engine untouched. Thesis draft chat
@@ -424,14 +437,16 @@ allowlist-bound.
 #### In scope
 | Item | Detail |
 |---|---|
-| Transport (frozen) | **Localhost FastAPI sidecar** owns the WebSocket + tool bridge; Streamlit mints ephemeral token / session id and embeds the audio UI. Custom Streamlit component is deferred (spike-only) — Streamlit’s rerun model makes in-page duplex+tools a stall risk |
+| Transport topology (frozen) | **Browser mic/speaker ↔ localhost FastAPI sidecar ↔ xAI Realtime WS.** Sidecar holds `XAI_API_KEY` (or mints ephemeral tokens server-side for its own upstream WS). Streamlit only starts/shows session controls and never opens the xAI socket. Custom Streamlit component / browser-direct-to-xAI is deferred (spike-only) |
+| Why sidecar | Streamlit’s rerun model cannot host a long-lived duplex tool bridge reliably; one local process owns WS + `execute_voice_tool` |
 | Session | Sidecar applies `session.update` with voice, instructions from `VoiceSessionService`, `turn_detection: server_vad`, **custom function tools only** (VA-3 schemas); payload must omit `web_search`, `x_search`, `file_search`, `mcp` |
-| Tool bridge | On `function_call` → sidecar calls `execute_voice_tool` → `function_call_output` (same process as `VoiceSessionService`; no duplicated business logic) |
+| Tool bridge | On `function_call` → sidecar calls `execute_voice_tool` → `function_call_output` (same Python package / no duplicated business logic) |
+| Auth | Sidecar binds to `127.0.0.1` only; single trusted local user; document that it is not a multi-tenant server |
 | Audio | PCM 24 kHz as required by xAI; no raw audio persistence (`store_audio` stays false) |
 | Config | Allow `mode = "realtime"`; push-to-talk remains available as fallback |
 | Transcript | Sync assistant/user text + tool audits to repository on session end; periodic flush best-effort |
-| TTL | Enforce `max_session_minutes`; token refresh only via server mint |
-| Tests | Mocked WS event fixtures for tool bridge; TTL; deny search/`file_search`/`mcp` tools in session payload; tab-end best-effort audit |
+| TTL | Enforce `max_session_minutes`; token/session refresh only via sidecar |
+| Tests | Mocked WS event fixtures for tool bridge; TTL; deny search/`file_search`/`mcp` tools in session payload; non-localhost bind rejected |
 | Docs | `ENGINEERING.md` localhost sidecar run instructions in the same PR |
 
 #### Out of scope
@@ -480,7 +495,7 @@ _Pending implementation._
 |---|---|
 | Tests | `tests/test_assistant_voice_evaluations.py` covering: forbidden tool/injection; uncited transcript numbers; hash mismatch on session create; token mint failures; max session duration; results_qa ↔ voice tool parity; voice cannot execute/confirm runs; flag-off no side effects |
 | Docs | `ASSUMPTIONS_AND_LIMITATIONS.md` (shipped limitations), `METRICS_GLOSSARY.md` (spoken metric display rules), `AGENT_GUIDE.md` (VA PR rules), `ENGINEERING_ROADMAP.md` (VA status), this file (mark release gate closed) |
-| Ops note | Cost $0.05/min; `max_session_minutes` guidance in assumptions |
+| Ops note | Budget ~$0.08/min for Think Fast 2.0 S2S (+ STT/TTS for VA-4); `max_session_minutes` guidance in assumptions |
 | Flag | Leave `enabled=false`; document opt-in steps for local user |
 
 #### Out of scope
@@ -567,7 +582,7 @@ _Pending implementation._
 
 | Topic | Policy |
 |---|---|
-| Cost | ~$0.05 × audio minutes; hard cap `max_session_minutes` |
+| Cost | ~$0.08 × S2S audio minutes (Think Fast 2.0); hard cap `max_session_minutes`; VA-4 also incurs unary STT/TTS |
 | Keys | Server `XAI_API_KEY`; browser ephemeral ≤ TTL |
 | Audio blobs | Not persisted (`store_audio=false`) |
 | Transcripts | Schema-versioned text + tool audit in assistant store |
@@ -577,18 +592,18 @@ _Pending implementation._
 
 ## 11. Open decisions (resolve during VA-0 review; then freeze)
 
-| # | Decision | Default if no objection |
+| # | Decision | Frozen default |
 |---|---|---|
-| 1 | VA-4 STT: xAI batch STT vs short Voice manual commit | xAI batch STT |
-| 2 | VA-5 transport | **localhost FastAPI sidecar** (component deferred) |
+| 1 | VA-4 STT | xAI batch STT |
+| 2 | VA-5 transport | Browser ↔ **localhost FastAPI sidecar** ↔ xAI (component deferred) |
 | 3 | Default voice id | `eve` |
 | 4 | `compare_two_runs` in v1 allowlist | **include** (pure `compare_evidence`; no persist) |
-| 5 | Model pin string | Prefer dated `grok-voice-think-fast-*` for evals; `grok-voice-latest` alias rolls 2026-08-05 |
-| 6 | VA-4 answer path | Tools + TTS (no OpenAI) vs STT→results_qa→TTS (dual key) → **tools + TTS** |
+| 5 | Model pin string | `grok-voice-think-fast-2.0` (not rolling `latest`) |
+| 6 | VA-4 answer path | Deterministic intent → VA-3 tool → template → TTS (**no OpenAI**, no free-form NL) |
 | 7 | Voice session persistence | Sibling `voice_sessions/` docs with `vs_` ids |
+| 8 | Free-form spoken NL | **VA-5 only** (model tool-calling); VA-1 covers free-form **text** |
 
-After VA-0 merges, changing these defaults requires a docs amendment in the
-PR that changes them.
+Changing these defaults requires a docs amendment in the PR that changes them.
 
 ---
 
@@ -596,14 +611,18 @@ PR that changes them.
 
 When implementing any VA PR:
 
-1. Read this document’s section for that VA ID end-to-end.
+1. Read this document’s section for that VA ID end-to-end (and the
+   reassessment for rationale).
 2. Touch **only** files in **Files allowed to touch** (plus test fixtures they
    need). Ask for a contract amendment PR before expanding the file list.
 3. Keep work regression-safe per §2 and `docs/ENGINEERING_PROPOSAL.md` §4.
 4. Update documentation in the **same** PR.
 5. Do not enable voice by default.
 6. Do not add search tools or compute tools “for convenience.”
-7. Fill **Implemented contract** under that VA section when merging.
+7. Results/voice may use RO `BUNDLE.import` (evidence); never
+   `execute_confirmed_run` / `PIPELINE.*`.
+8. Results/voice messages must not include `choices` (draft hydration hazard).
+9. Fill **Implemented contract** under that VA section when merging.
 
 ---
 
