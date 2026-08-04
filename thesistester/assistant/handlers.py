@@ -296,6 +296,53 @@ def _handle_home_guide(request: AssistantRequest, context: HandlerContext) -> di
     }
 
 
+def _bundle_path_and_hash(request: AssistantRequest) -> tuple[str, str]:
+    bundle_path = request.payload.get("bundle_path")
+    if not isinstance(bundle_path, str) or not bundle_path.strip():
+        raise ValueError("bundle_path must be a non-empty string.")
+    return bundle_path.strip(), _require_expected_hash(request.payload.get("expected_hash"))
+
+
+def _handle_inspect_levels(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
+    bundle_path, expected_hash = _bundle_path_and_hash(request)
+    return context.tools.summarize_bundle_levels(bundle_path, expected_hash=expected_hash)
+
+
+def _handle_inspect_signals(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
+    bundle_path, expected_hash = _bundle_path_and_hash(request)
+    return context.tools.summarize_bundle_signals(bundle_path, expected_hash=expected_hash)
+
+
+def _handle_inspect_backtest(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
+    bundle_path, expected_hash = _bundle_path_and_hash(request)
+    provenance = request.payload.get("provenance")
+    return context.tools.summarize_bundle_backtest(
+        bundle_path,
+        expected_hash=expected_hash,
+        provenance=provenance if isinstance(provenance, Mapping) else None,
+    )
+
+
+def _handle_inspect_grid(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
+    bundle_path, expected_hash = _bundle_path_and_hash(request)
+    return context.tools.summarize_bundle_grid(bundle_path, expected_hash=expected_hash)
+
+
+def _handle_inspect_validation(
+    request: AssistantRequest, context: HandlerContext
+) -> dict[str, Any]:
+    bundle_path, expected_hash = _bundle_path_and_hash(request)
+    return context.tools.summarize_bundle_validation(bundle_path, expected_hash=expected_hash)
+
+
+def _handle_propose_classic_page_change(
+    request: AssistantRequest, context: HandlerContext
+) -> dict[str, Any]:
+    """Validate a classic draft proposal. Staging/apply are classic-page owned."""
+    proposal = context.tools.validate_classic_page_proposal(request.payload)
+    return {"proposal": proposal, "staged": False, "applied": False}
+
+
 HANDLER_REGISTRY: dict[str, CapabilityHandler] = {
     "HOME.workflow_guide": _handle_home_guide,
     "DATA.inspect_dataset": _handle_inspect_dataset,
@@ -303,10 +350,16 @@ HANDLER_REGISTRY: dict[str, CapabilityHandler] = {
     "DATA.preview_resampled_timeframes": _handle_preview_resample,
     "DATA.configure_roll_assumptions": _handle_roll_assumptions,
     "SETUP.manage_saved_setups": _handle_manage_setups,
+    "LEVELS.inspect_and_chart": _handle_inspect_levels,
+    "SIGNALS.inspect_and_chart": _handle_inspect_signals,
     "BACKTEST.manage_execution_defaults": _handle_backtest_defaults,
+    "BACKTEST.inspect_results": _handle_inspect_backtest,
     "GRID.manage_execution_defaults": _handle_grid_defaults,
+    "GRID.inspect_results": _handle_inspect_grid,
     "TIME.analyze": _handle_time_analyze,
     "VALIDATION.run_otf_matrix": _handle_otf_matrix,
+    "VALIDATION.inspect_results": _handle_inspect_validation,
+    "CLASSIC.propose_page_change": _handle_propose_classic_page_change,
     "EXPORT.build_research_artifact": _handle_export_artifact,
     "BUNDLE.import": _handle_bundle_import,
     "BUNDLE.register_external_run": _handle_register_external_run,

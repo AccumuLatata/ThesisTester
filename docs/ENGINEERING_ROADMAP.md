@@ -314,6 +314,36 @@ Makes the classic ↔ Assistant research graph visible without duplicating pages
 
 ---
 
+## CAI-9 — Evidence-Backed Page Capability Expansion ✅ Implemented
+
+Closes the “second application” gap with bounded, hash-verified page summaries
+and controlled classic proposals (charts stay on classic pages).
+
+### Features
+
+- `thesistester/assistant/page_summaries.py` + inspect handlers for Levels,
+  Signals, Backtest, Grid, Validation.
+- Evidence packet page-summary paths + grounded templates.
+- `CLASSIC.propose_page_change` / `classic_proposal.py`: draft stage + explicit
+  Apply on Setup Builder / Backtest (`classic_page_proposal` with `thesis_id`);
+  same-thesis re-link preserves staged proposals; SL/TP drafts require `>= 1`.
+- Assistant UI: per-run page summary buttons + proposal staging.
+
+### Regression safety
+
+- Numeric claims grounded in evidence paths; handlers never return DataFrames.
+- Hash mismatch fails closed on inspect.
+- Proposals do not mutate classic settings until Apply; thesis-scoped apply.
+- Thesis switch clears staged proposals; apply/stage stay out of
+  `classic_context`.
+- Discuss requires completed hash-verified bundle provenance.
+
+### Tests
+
+- `tests/test_cai9_page_capabilities.py`.
+
+---
+
 ## R1 — Execution Realism ✅ Implemented
 
 Adds optional commission and slippage to `simulate_trades`. Defaults preserve legacy

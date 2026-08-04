@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** proposed implementation contract; `CAI-0` through `CAI-8` implemented.
+**Status:** proposed implementation contract; `CAI-0` through `CAI-9` implemented.
 
 **Owner model:** one trusted local user, local datasets, local execution.
 
@@ -672,11 +672,15 @@ works under a thesis.
   Setup Builder / Backtest; active-run breadcrumb + badge in classic chrome.
 - Clarification → classic page is direct `st.switch_page` + caption prefill
   only (no automatic widget / settings mutation; does not stage
-  `classic_pending_navigation`, which Data/Levels would not consume).
+  `classic_pending_navigation` or `classic_flash`, which Data/Levels would
+  not consume).
 - Backtest renders clarification prefill before signals/trades `st.stop()`
   guards so empty pages still show the Assistant note.
 - Discuss syncs `assistant_selected_thesis_id` to the classic thesis and falls
-  back to the latest discussable run when `classic_active_run_id` is stale.
+  back to the latest discussable run when `classic_active_run_id` is stale or
+  non-discussable (incomplete / missing hash-verified bundle).
+- Hash-verified bundle restore (Open exact and Restore) clears staged
+  `classic_page_proposal` so Apply cannot overwrite restored widgets.
 - `AssistantOrchestrator.get_run` façade for thesis-scoped run fetch.
 - Tests: `tests/test_classic_nav.py`.
 
@@ -692,7 +696,7 @@ works under a thesis.
 - A user always knows whether the currently visible classic data/levels match
   the run being discussed.
 
-### CAI-9 — Evidence-backed page capability expansion
+### CAI-9 — Evidence-backed page capability expansion ✅ Implemented
 
 **Goal:** close the “second application” gap progressively without giving the
 Assistant unbounded access.
@@ -712,6 +716,31 @@ Each capability must add a registry entry, bounded handler output, evidence
 packet paths, grounded explanation templates, limits, documentation, and tests.
 Charts remain owned by classic pages; the Assistant links to/restores the exact
 recorded run rather than rendering unconstrained DataFrames.
+
+**Implemented contract**
+
+- `thesistester/assistant/page_summaries.py`: bounded JSON summarizers
+  (no DataFrames).
+- Registry flipped to `inspect_only` with handlers:
+  `LEVELS.inspect_and_chart`, `SIGNALS.inspect_and_chart`,
+  `BACKTEST.inspect_results`, `GRID.inspect_results`,
+  `VALIDATION.inspect_results` (hash-verified bundle input).
+- Evidence packet projects `levels_summary` / `signals_summary` /
+  `backtest_page_summary` / `grid_summary` / `validation_page_summary` with
+  grounded explanation templates.
+- `CLASSIC.propose_page_change` + `thesistester/classic_proposal.py`:
+  validate → stage (`classic_page_proposal` with `thesis_id`) → user Apply on
+  Setup Builder / Backtest only. Apply/get fail closed on thesis mismatch;
+  real thesis switch clears staged proposals; same-thesis re-link does not.
+  Backtest SL/TP draft fields require `>= 1` (widget floor). Setup
+  `confluence_mode` uses `global_cluster` / `anchor_rules` labels matching
+  Setup Builder. Backtest page-summary `zero_costs` matches evidence
+  assumptions (explicit zeros; provenance cost hints).
+- Orchestrator façades: `inspect_run_page_summary`,
+  `propose_classic_page_change`.
+- UI: Assistant page-summary buttons + proposal staging; classic proposal
+  cards on Setup Builder and Backtest.
+- Tests: `tests/test_cai9_page_capabilities.py`.
 
 **Regression gates**
 

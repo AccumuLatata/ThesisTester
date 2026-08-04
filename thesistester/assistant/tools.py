@@ -205,6 +205,22 @@ def _state_summary(state: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _assert_summary_has_no_dataframes(value: Any, *, path: str = "<root>") -> None:
+    """Fail closed when a page summary embeds a DataFrame at any depth."""
+    import pandas as pd
+
+    if isinstance(value, pd.DataFrame):
+        raise AssistantToolError(f"Page summary path {path!r} must not contain a DataFrame.")
+    if isinstance(value, Mapping):
+        for key, nested in value.items():
+            child = f"{path}.{key}" if path != "<root>" else str(key)
+            _assert_summary_has_no_dataframes(nested, path=child)
+        return
+    if isinstance(value, (list, tuple)):
+        for index, nested in enumerate(value):
+            _assert_summary_has_no_dataframes(nested, path=f"{path}[{index}]")
+
+
 def _assert_bundle_compatible_with_run_spec(
     session_values: Mapping[str, Any],
     run_spec: Mapping[str, Any],
@@ -397,6 +413,137 @@ class AssistantTools:
             "canonical_bundle_hash": canonical_bundle_hash(raw),
             "summary": _state_summary(session_values),
         }
+
+    def _page_summary_from_bundle(
+        self,
+        bundle_path: str | Path,
+        *,
+        expected_hash: str,
+        summarizer,
+        summary_key: str,
+        summarizer_kwargs: Mapping[str, Any] | None = None,
+        provenance: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Hash-verified bundle load → bounded page summary (CAI-9).
+
+        Summary keys match evidence-packet ``results.*`` paths so inspect and
+        Explain share the same hierarchy for proposal evidence_paths.
+        """
+        path, raw, session_values = _read_verified_bundle(
+            bundle_path,
+            self.data_roots,
+            expected_hash=expected_hash,
+            require_hash=True,
+        )
+        kwargs: dict[str, Any] = dict(summarizer_kwargs or {})
+        if (
+            provenance is not None
+            and summary_key == "backtest_page_summary"
+            and "cost_assumptions" not in kwargs
+        ):
+            # Align backtest caveats with build_evidence_packet cost exposure.
+            from thesistester.assistant.explainer import (
+                _cost_exposure_assumptions,
+                _effective_configuration,
+            )
+
+            config = _effective_configuration(dict(provenance), session_values)
+            kwargs["cost_assumptions"] = _cost_exposure_assumptions(config, session_values)
+        summary = summarizer(session_values, **kwargs)
+        if not isinstance(summary, dict):
+            raise AssistantToolError("Page summary must be a JSON object.")
+        # Fail closed if a summarizer accidentally embeds a DataFrame at any depth.
+        _assert_summary_has_no_dataframes(summary)
+        return {
+            "bundle_path": str(path),
+            "canonical_bundle_hash": canonical_bundle_hash(raw),
+            summary_key: to_jsonable(summary),
+        }
+
+    def summarize_bundle_levels(
+        self, bundle_path: str | Path, *, expected_hash: str
+    ) -> dict[str, Any]:
+        """Bounded levels summary from one hash-verified research bundle."""
+        from thesistester.assistant.page_summaries import summarize_levels_state
+
+        return self._page_summary_from_bundle(
+            bundle_path,
+            expected_hash=expected_hash,
+            summarizer=summarize_levels_state,
+            summary_key="levels_summary",
+        )
+
+    def summarize_bundle_signals(
+        self, bundle_path: str | Path, *, expected_hash: str
+    ) -> dict[str, Any]:
+        """Bounded signals summary from one hash-verified research bundle."""
+        from thesistester.assistant.page_summaries import summarize_signals_state
+
+        return self._page_summary_from_bundle(
+            bundle_path,
+            expected_hash=expected_hash,
+            summarizer=summarize_signals_state,
+            summary_key="signals_summary",
+        )
+
+    def summarize_bundle_backtest(
+        self,
+        bundle_path: str | Path,
+        *,
+        expected_hash: str,
+        provenance: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Bounded backtest KPI/cost/intrabar summary from one verified bundle."""
+        from thesistester.assistant.page_summaries import summarize_backtest_state
+
+        return self._page_summary_from_bundle(
+            bundle_path,
+            expected_hash=expected_hash,
+            summarizer=summarize_backtest_state,
+            # Match evidence packet results.backtest_page_summary path.
+            summary_key="backtest_page_summary",
+            provenance=provenance,
+        )
+
+    def summarize_bundle_grid(
+        self, bundle_path: str | Path, *, expected_hash: str
+    ) -> dict[str, Any]:
+        """Bounded grid selection summary from one hash-verified research bundle."""
+        from thesistester.assistant.page_summaries import summarize_grid_state
+
+        return self._page_summary_from_bundle(
+            bundle_path,
+            expected_hash=expected_hash,
+            summarizer=summarize_grid_state,
+            summary_key="grid_summary",
+        )
+
+    def summarize_bundle_validation(
+        self, bundle_path: str | Path, *, expected_hash: str
+    ) -> dict[str, Any]:
+        """Bounded validation/OOS summary from one hash-verified research bundle."""
+        from thesistester.assistant.page_summaries import summarize_validation_state
+
+        return self._page_summary_from_bundle(
+            bundle_path,
+            expected_hash=expected_hash,
+            summarizer=summarize_validation_state,
+            # Avoid colliding with classic analytics validation_summary key.
+            summary_key="validation_page_summary",
+        )
+
+    def validate_classic_page_proposal(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Validate a classic page proposal draft without applying it."""
+        from thesistester.classic_proposal import validate_classic_proposal
+
+        draft = payload.get("draft_patch")
+        evidence_paths = payload.get("evidence_paths")
+        return validate_classic_proposal(
+            target_page=str(payload.get("target_page", "")),
+            draft_patch=draft if isinstance(draft, Mapping) else {},
+            note=str(payload.get("note", "")),
+            evidence_paths=evidence_paths if isinstance(evidence_paths, (list, tuple)) else None,
+        )
 
     def verify_external_research_bundle(
         self,

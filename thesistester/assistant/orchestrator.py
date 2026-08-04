@@ -996,6 +996,95 @@ class AssistantOrchestrator:
         )
         return root / "assistant" / "theses" / thesis_id / "bundles" / f"{uuid4().hex}.research.zip"
 
+    def inspect_run_page_summary(
+        self,
+        *,
+        thesis_id: str,
+        conversation_id: str | None,
+        run: ResearchRun,
+        capability_id: str,
+    ) -> OrchestrationResult:
+        """Dispatch a CAI-9 page inspect capability for one completed run."""
+        allowed = {
+            "LEVELS.inspect_and_chart",
+            "SIGNALS.inspect_and_chart",
+            "BACKTEST.inspect_results",
+            "GRID.inspect_results",
+            "VALIDATION.inspect_results",
+        }
+        if capability_id not in allowed:
+            raise ValueError(f"capability_id must be one of {sorted(allowed)}.")
+        if run.status != "completed" or not isinstance(run.provenance, Mapping):
+            raise ValueError("Only completed runs with provenance can be inspected.")
+        bundle_path = run.provenance.get("bundle_path")
+        expected_hash = require_run_bundle_hash(run.provenance)
+        if not isinstance(bundle_path, str) or not bundle_path.strip():
+            raise ValueError("Completed run is missing bundle_path provenance.")
+        return self.dispatch(
+            AssistantRequest(
+                capability_id=capability_id,
+                payload={
+                    "bundle_path": bundle_path,
+                    "expected_hash": expected_hash,
+                    # Provenance lets backtest inspect reuse evidence cost assumptions.
+                    "provenance": dict(run.provenance),
+                },
+            ),
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+        )
+
+    def propose_classic_page_change(
+        self,
+        *,
+        thesis_id: str,
+        conversation_id: str | None = None,
+        target_page: str,
+        draft_patch: Mapping[str, Any],
+        note: str,
+        evidence_paths: list[str] | tuple[str, ...] | None = None,
+        session_state: MutableMapping[str, Any] | None = None,
+        navigate: bool = True,
+    ) -> OrchestrationResult:
+        """Validate a classic proposal and optionally stage it for page Apply."""
+        result = self.dispatch(
+            AssistantRequest(
+                capability_id="CLASSIC.propose_page_change",
+                payload={
+                    "target_page": target_page,
+                    "draft_patch": dict(draft_patch),
+                    "note": note,
+                    "evidence_paths": list(evidence_paths or ()),
+                },
+            ),
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+        )
+        if result.status != OrchestrationStatus.COMPLETED.value:
+            return result
+        proposal = result.payload.get("proposal")
+        if session_state is not None and isinstance(proposal, Mapping):
+            from thesistester.classic_proposal import stage_classic_proposal
+
+            staged = stage_classic_proposal(
+                session_state,
+                proposal,
+                navigate=navigate,
+                thesis_id=thesis_id,
+            )
+            return OrchestrationResult(
+                status=result.status,
+                capability_id=result.capability_id,
+                payload={
+                    **result.payload,
+                    "proposal": staged,
+                    "staged": True,
+                    "applied": False,
+                    "resource_limits": result.payload.get("resource_limits"),
+                },
+            )
+        return result
+
     def explain_run(
         self,
         *,
@@ -1231,6 +1320,10 @@ class AssistantOrchestrator:
         # choices after a hash-verified research-page restore.
         session_state["assistant_validated_run_spec"] = None
         session_state["assistant_bundle_handoff"] = handoff
+        # Restored widgets must not be overwritten by a prior Assistant draft.
+        from thesistester.classic_proposal import clear_classic_proposal
+
+        clear_classic_proposal(session_state)
         return handoff
 
     def _finalize_raced_or_failed_run(

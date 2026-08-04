@@ -8,7 +8,6 @@ bundle restore (Open exact). Streamlit UI imports are lazy.
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import Any, Mapping, MutableMapping
 
 from thesistester.assistant import AssistantOrchestrator, ResearchRun
@@ -189,6 +188,20 @@ def identity_badge_label(relation: str) -> str:
     return IDENTITY_RELATION_LABELS.get(relation, IDENTITY_RELATION_LABELS["identity_unavailable"])
 
 
+def is_discussable_run(run: ResearchRun) -> bool:
+    """True when a run can be explained/inspected (completed + hash-verified bundle)."""
+    if run.status != "completed" or not isinstance(run.provenance, Mapping):
+        return False
+    path = run.provenance.get("bundle_path")
+    digest = run.provenance.get("canonical_bundle_hash")
+    return (
+        isinstance(path, str)
+        and bool(path.strip())
+        and isinstance(digest, str)
+        and bool(digest.strip())
+    )
+
+
 def latest_discussable_run(
     orchestrator: AssistantOrchestrator,
     *,
@@ -196,11 +209,7 @@ def latest_discussable_run(
 ) -> ResearchRun | None:
     """Newest completed thesis run with a bundle path (metadata only)."""
     for run in reversed(orchestrator.list_runs(thesis_id)):
-        if run.status != "completed" or not isinstance(run.provenance, Mapping):
-            continue
-        path = run.provenance.get("bundle_path")
-        digest = run.provenance.get("canonical_bundle_hash")
-        if isinstance(path, str) and path.strip() and isinstance(digest, str) and digest.strip():
+        if is_discussable_run(run):
             return run
     return None
 
@@ -215,6 +224,7 @@ def discuss_run(
 
     Returns the focused run_id. Aligns ``assistant_selected_thesis_id`` with the
     classic active thesis so Discuss cannot land on a divergent Assistant picker.
+    Only completed runs with hash-verified bundle provenance are discussable.
     """
     if not is_research_mode(session_state):
         raise ValueError("Discuss this run requires an active thesis (research mode).")
@@ -234,6 +244,14 @@ def discuss_run(
                 raise ValueError(f"Focused run is not available on this thesis: {exc}") from exc
             # Stale classic_active_run_id breadcrumb — fall back like the Discuss UI.
             run = None
+        if run is not None and not is_discussable_run(run):
+            if explicit_run:
+                raise ValueError(
+                    "Focused run is not discussable "
+                    "(requires a completed hash-verified research bundle)."
+                )
+            # Non-discussable active breadcrumb — fall back to latest discussable.
+            run = None
     if run is None:
         run = latest_discussable_run(orch, thesis_id=thesis_id)
     if run is None:
@@ -243,6 +261,10 @@ def discuss_run(
         )
     if run.thesis_id != thesis_id:
         raise ValueError("Cannot discuss a run from another thesis.")
+    if not is_discussable_run(run):
+        raise ValueError(
+            "Focused run is not discussable (requires a completed hash-verified research bundle)."
+        )
 
     from thesistester.assistant.workspace import (
         init_assistant_session_state,
@@ -297,6 +319,7 @@ def open_exact_run_in_backtest(
         thesis_name=thesis.name,
         dataset_id=dataset_id if isinstance(dataset_id, str) else None,
     )
+    # restore_run_bundle_to_session already clears classic_page_proposal.
     set_classic_active_run(session_state, run_id=run.run_id, thesis_id=thesis.thesis_id)
     # Prefer identities already restored into session; else peek without full reload.
     if not isinstance(session_state.get("data_identity"), Mapping) or not isinstance(
@@ -339,11 +362,9 @@ def navigate_clarification_to_classic(
         target_page=target,
         note=clarification.strip(),
     )
-    set_classic_flash(
-        session_state,
-        level="info",
-        message=f"Opening classic page for clarification ({Path(target).name}).",
-    )
+    # Caption prefill only — do not stage classic_flash. Data/Levels lack thesis
+    # chrome ``consume_classic_flash``, so a leftover flash would later surface
+    # as a misleading notice on Backtest/Setup/Bundles.
     return target
 
 
@@ -352,17 +373,20 @@ def render_discuss_this_run(
     page_key: str,
     session_state: MutableMapping[str, Any] | None = None,
 ) -> None:
-    """Render **Discuss this run** (navigate-only) under thesis recording."""
+    """Render **Discuss this run** (navigate-only) under an active thesis.
+
+    Discuss needs a thesis-recorded completed run, not live session trades —
+    so this chrome stays visible on empty Backtest / Bundles pages.
+    """
     import streamlit as st
 
     from thesistester.classic_context import get_active_thesis_name
-    from thesistester.classic_record import classic_session_ready_for_record
 
     if not isinstance(page_key, str) or not page_key.strip():
         raise ValueError("page_key must be a non-empty string.")
     page = page_key.strip()
     state = session_state if session_state is not None else st.session_state
-    if not classic_session_ready_for_record(state) or not is_research_mode(state):
+    if not is_research_mode(state):
         return
 
     thesis_name = get_active_thesis_name(state) or get_active_thesis_id(state)

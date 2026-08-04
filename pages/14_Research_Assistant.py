@@ -1232,6 +1232,122 @@ else:
                 explanation = st.session_state["assistant_run_explanations"].get(run.run_id)
                 if explanation:
                     st.write(explanation)
+                st.caption("Page summaries (bounded JSON; charts stay on classic pages)")
+                summary_caps = (
+                    ("Levels", "LEVELS.inspect_and_chart"),
+                    ("Signals", "SIGNALS.inspect_and_chart"),
+                    ("Backtest", "BACKTEST.inspect_results"),
+                    ("Grid", "GRID.inspect_results"),
+                    ("Validation", "VALIDATION.inspect_results"),
+                )
+                summary_cols = st.columns(len(summary_caps))
+                for col, (label, capability_id) in zip(summary_cols, summary_caps, strict=True):
+                    with col:
+                        if st.button(label, key=f"page-sum-{capability_id}-{run.run_id}"):
+                            try:
+                                result = orchestrator.inspect_run_page_summary(
+                                    thesis_id=thesis_id,
+                                    conversation_id=conversation_id,
+                                    run=run,
+                                    capability_id=capability_id,
+                                )
+                            except ValueError as exc:
+                                st.error(str(exc))
+                            else:
+                                if result.status != "completed":
+                                    st.error(
+                                        result.payload.get("error", {}).get(
+                                            "message", "Unable to load page summary."
+                                        )
+                                    )
+                                else:
+                                    st.session_state.setdefault("assistant_page_summaries", {})[
+                                        f"{run.run_id}:{capability_id}"
+                                    ] = result.payload
+                for label, capability_id in summary_caps:
+                    cached = st.session_state.get("assistant_page_summaries", {}).get(
+                        f"{run.run_id}:{capability_id}"
+                    )
+                    if cached:
+                        with st.expander(f"{label} summary", expanded=False):
+                            st.json(cached)
+                with st.expander("Propose classic page change", expanded=False):
+                    propose_target = st.selectbox(
+                        "Target page",
+                        options=[
+                            "pages/7_Backtest.py",
+                            "pages/3_Setup_Builder.py",
+                        ],
+                        key=f"propose-target-{run.run_id}",
+                    )
+                    propose_note = st.text_input(
+                        "Proposal note",
+                        value="Review suggested settings from this run.",
+                        key=f"propose-note-{run.run_id}",
+                    )
+                    if propose_target == "pages/7_Backtest.py":
+                        sl = st.number_input(
+                            "Proposed stop loss (ticks)",
+                            min_value=1.0,
+                            value=8.0,
+                            key=f"propose-sl-{run.run_id}",
+                        )
+                        tp = st.number_input(
+                            "Proposed take profit (ticks)",
+                            min_value=1.0,
+                            value=16.0,
+                            key=f"propose-tp-{run.run_id}",
+                        )
+                        draft_patch = {
+                            "stop_loss_ticks": float(sl),
+                            "take_profit_ticks": float(tp),
+                        }
+                        evidence_paths = [
+                            "results.backtest_page_summary.kpis.trade_count",
+                            "results.grid_summary.best_cell.stop_loss_ticks",
+                        ]
+                    else:
+                        tol = st.number_input(
+                            "Proposed tolerance ticks",
+                            min_value=0.0,
+                            value=4.0,
+                            key=f"propose-tol-{run.run_id}",
+                        )
+                        draft_patch = {"tolerance_ticks": float(tol)}
+                        evidence_paths = [
+                            "results.signals_summary.signal_count",
+                            "assumptions.setup_config.tolerance_ticks",
+                        ]
+                    if st.button(
+                        "Stage proposal for classic review",
+                        key=f"propose-stage-{run.run_id}",
+                        type="primary",
+                    ):
+                        try:
+                            result = orchestrator.propose_classic_page_change(
+                                thesis_id=thesis_id,
+                                conversation_id=conversation_id,
+                                target_page=propose_target,
+                                draft_patch=draft_patch,
+                                note=propose_note,
+                                evidence_paths=evidence_paths,
+                                session_state=st.session_state,
+                                navigate=True,
+                            )
+                            if result.status != "completed":
+                                st.error(
+                                    result.payload.get("error", {}).get(
+                                        "message", "Unable to stage proposal."
+                                    )
+                                )
+                            else:
+                                st.success(
+                                    "Proposal staged. Open the owning classic page and Apply."
+                                )
+                                if st.session_state.get("classic_pending_navigation"):
+                                    st.switch_page(st.session_state["classic_pending_navigation"])
+                        except Exception as exc:
+                            st.error(f"Unable to stage proposal: {exc}")
                 if st.button(
                     "Generate evidence-only AI explanation", key=f"llm-explain-{run.run_id}"
                 ):

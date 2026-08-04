@@ -28,6 +28,11 @@ from thesistester.classic_nav import (
     resolve_run_identities,
     set_classic_active_run,
 )
+from thesistester.classic_proposal import (
+    get_classic_proposal,
+    stage_classic_proposal,
+    validate_classic_proposal,
+)
 from thesistester.classic_record import record_classic_session_run
 from thesistester.research_bundle import build_research_bundle, peek_research_identity
 from thesistester.research_identity import (
@@ -153,6 +158,48 @@ def test_discuss_and_thesis_switch_clears_run_context(
     assert get_classic_active_run_id(state) is None
 
 
+def test_discuss_rejects_non_discussable_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    state = _completed_state(tmp_path)
+    orchestrator, repository = _orchestrator(tmp_path)
+    thesis = repository.create_thesis(name="incomplete discuss")
+    init_classic_session_state(state)
+    link_thesis(
+        state,
+        thesis_id=thesis.thesis_id,
+        thesis_name=thesis.name,
+        dataset_id=state["dataset_id"],
+    )
+    draft = repository.create_spec_version(
+        thesis.thesis_id,
+        normalized_run_spec=absolute_parity_run_spec(tmp_path),
+        status="ready_for_confirmation",
+        compiler_version="runspec-2",
+    )
+    confirmed = repository.confirm_spec_version(
+        thesis.thesis_id, draft.version, confirmation_note="approved"
+    )
+    running = repository.start_run(
+        thesis.thesis_id,
+        spec_version=confirmed.version,
+        request={"request_id": "running-discuss"},
+    )
+    with pytest.raises(ValueError, match="not discussable"):
+        discuss_run(state, orchestrator=orchestrator, run_id=running.run_id)
+
+    # Incomplete active breadcrumb falls back to latest discussable completed run.
+    completed = record_classic_session_run(
+        orchestrator,
+        thesis_id=thesis.thesis_id,
+        session_state=state,
+        store_root=tmp_path / "store",
+    )
+    completed_id = completed.payload["run_id"]
+    set_classic_active_run(state, run_id=running.run_id, thesis_id=thesis.thesis_id)
+    focused = discuss_run(state, orchestrator=orchestrator)
+    assert focused == completed_id
+
+
 def test_discuss_syncs_assistant_thesis_and_skips_stale_active_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -202,6 +249,23 @@ def test_open_exact_run_restores_and_blocks_cross_thesis(
     run_id = result.payload["run_id"]
     session: dict = {"assistant_selected_thesis_id": None}
     init_classic_session_state(session)
+    # Staged proposal must not survive open-exact restore (would overwrite widgets).
+    link_thesis(
+        session,
+        thesis_id=thesis.thesis_id,
+        thesis_name=thesis.name,
+        dataset_id=state["dataset_id"],
+    )
+    stage_classic_proposal(
+        session,
+        validate_classic_proposal(
+            target_page="pages/7_Backtest.py",
+            draft_patch={"stop_loss_ticks": 99.0, "take_profit_ticks": 199.0},
+            note="Stale draft before open exact",
+        ),
+        navigate=False,
+    )
+    assert get_classic_proposal(session) is not None
     handoff = open_exact_run_in_backtest(
         session,
         thesis_id=thesis.thesis_id,
@@ -213,6 +277,7 @@ def test_open_exact_run_restores_and_blocks_cross_thesis(
     assert session["classic_active_thesis_id"] == thesis.thesis_id
     assert session["classic_pending_navigation"] == "pages/7_Backtest.py"
     assert isinstance(session.get("trades"), type(state["trades"]))
+    assert get_classic_proposal(session) is None
 
     other = repository.create_thesis(name="blocked")
     with pytest.raises(Exception):
@@ -244,6 +309,7 @@ def test_clarification_navigation_prefill_only(tmp_path: Path):
     # Callers switch_page directly; pending must stay clear so Data/Levels
     # (no thesis chrome) cannot leave a stale redirect for later pages.
     assert session.get("classic_pending_navigation") in (None, "")
+    assert session.get("classic_flash") in (None, {})
     assert session["classic_nav_prefill"]["target_page"] == "pages/1_Data.py"
     assert session["classic_nav_prefill"]["note"]
     # Prefill is caption-only staging — no widget keys mutated.
@@ -257,12 +323,23 @@ def test_backtest_prefill_caption_before_trades_stop():
     prefill_idx = source.index(
         'render_classic_nav_prefill_caption(target_page="pages/7_Backtest.py")'
     )
+    discuss_idx = source.index('render_discuss_this_run(page_key="backtest")')
     trades_stop_idx = source.index(
         'st.info("Configure settings in the sidebar and click **▶ Run backtest**.")'
     )
     assert prefill_idx < trades_stop_idx
+    assert discuss_idx < trades_stop_idx
     signals_stop_idx = source.index("No signals found.")
     assert prefill_idx < signals_stop_idx
+
+
+def test_bundles_discuss_not_gated_on_live_backtest_artifacts():
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "pages" / "12_Research_Bundles.py").read_text(encoding="utf-8")
+    discuss_idx = source.index('render_discuss_this_run(page_key="research_bundles")')
+    gated_prefix = source[source.index("if _will_include_backtest():") : discuss_idx]
+    assert "render_discuss_this_run" not in gated_prefix
+    assert discuss_idx > 0
 
 
 def test_resolve_run_identities_from_provenance_or_peek(

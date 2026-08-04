@@ -22,6 +22,7 @@ CLASSIC_SESSION_KEYS: tuple[str, ...] = (
     "classic_active_run_id",
     "classic_focus_run_id",
     "classic_nav_prefill",
+    "classic_page_proposal",
 )
 
 # Cleared when exiting research mode or when the bound dataset changes.
@@ -34,6 +35,7 @@ CLASSIC_THESIS_SCOPED_KEYS: tuple[str, ...] = (
     "classic_active_run_id",
     "classic_focus_run_id",
     "classic_nav_prefill",
+    "classic_page_proposal",
 )
 
 # CAI-0 default is manual; all_executions remains deferred to CAI-7.
@@ -100,6 +102,7 @@ def init_classic_session_state(session_state: MutableMapping[str, Any]) -> None:
         "classic_active_run_id": None,
         "classic_focus_run_id": None,
         "classic_nav_prefill": None,
+        "classic_page_proposal": None,
     }
     for key, value in defaults.items():
         session_state.setdefault(key, deepcopy(value) if isinstance(value, (dict, list)) else value)
@@ -235,6 +238,7 @@ def clear_classic_thesis_context(session_state: MutableMapping[str, Any]) -> Non
     session_state["classic_active_run_id"] = None
     session_state["classic_focus_run_id"] = None
     session_state["classic_nav_prefill"] = None
+    session_state["classic_page_proposal"] = None
     _clear_classic_relink_flags(session_state)
 
 
@@ -296,11 +300,24 @@ def link_thesis(
     session_state["classic_active_thesis_id"] = thesis_id.strip()
     session_state["classic_active_thesis_name"] = name
     session_state["classic_bound_dataset_id"] = bound
-    # Thesis switch must not keep another thesis's run breadcrumb/focus (CAI-8).
-    if prior_thesis != thesis_id.strip():
+    # Real thesis switch only — first link (prior unset) must not drop a staged
+    # CAI-8 prefill or CAI-9 proposal before the user reaches the owning page.
+    prior_norm = prior_thesis.strip() if isinstance(prior_thesis, str) else ""
+    target_thesis = thesis_id.strip()
+    if prior_norm and prior_norm != target_thesis:
         session_state["classic_active_run_id"] = None
         session_state["classic_focus_run_id"] = None
         session_state["classic_nav_prefill"] = None
+        # Preserve a staged proposal when re-linking its own thesis_id (e.g.
+        # Assistant staged for A, classic briefly linked to B, then to A).
+        proposal = session_state.get("classic_page_proposal")
+        proposal_thesis = (
+            str(proposal.get("thesis_id")).strip()
+            if isinstance(proposal, Mapping) and isinstance(proposal.get("thesis_id"), str)
+            else ""
+        )
+        if proposal_thesis != target_thesis:
+            session_state["classic_page_proposal"] = None
 
     # Keep Assistant page selection consistent; staging clears on thesis change.
     from thesistester.assistant.workspace import (

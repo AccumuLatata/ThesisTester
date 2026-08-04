@@ -170,6 +170,7 @@ Bundles only.
 | `classic_active_run_id` | Thesis-scoped run breadcrumb after record/discuss/open-exact (CAI-8) |
 | `classic_focus_run_id` | One-shot Assistant focus staged by Discuss this run (CAI-8) |
 | `classic_nav_prefill` | One-shot `{target_page, note}` clarification caption (CAI-8; no page mutation) |
+| `classic_page_proposal` | Staged classic draft `{thesis_id, target_page, draft_patch, note, evidence_paths}` (CAI-9; Apply on owning page only) |
 
 `link_thesis` syncs `assistant_selected_thesis_id` via `select_thesis` and does
 **not** record a run or mutate executable classic producer keys. Create/link UI
@@ -215,10 +216,14 @@ completed run. Future recomputation still requires
 pages:
 
 - **Discuss this run** (Backtest / Research Bundles): sets active + focus run
-  and navigates to Research Assistant; does not re-register.
-- **Open exact run in Backtest** (Assistant): hash-verified
-  `restore_run_bundle_to_session`, re-links thesis, sets active run, navigates
-  to Backtest.
+  and navigates to Research Assistant; does not re-register. Visible under
+  research mode even without live session trades (uses thesis-recorded runs).
+  Only completed runs with hash-verified bundle provenance are discussable;
+  non-discussable active breadcrumbs fall back to latest discussable.
+- **Open exact / Restore bundle** (Assistant): hash-verified
+  `restore_run_bundle_to_session` clears staged `classic_page_proposal`
+  (restored widgets must not be overwritten by a prior draft). Open exact
+  also re-links thesis, sets active run, and navigates to Backtest.
 - **Clarification → classic page**: allowlisted `st.switch_page` plus
   `classic_nav_prefill` caption only — never auto-mutates page widgets and
   does not stage `classic_pending_navigation` (Data/Levels have no chrome
@@ -230,6 +235,36 @@ pages:
   restore/compare).
 - Thesis switch / exit / dataset switch clears run breadcrumb, focus, and
   prefill; cross-thesis run selection fails closed.
+
+## Evidence-backed page capabilities (CAI-9)
+
+`thesistester/assistant/page_summaries.py` projects hash-verified research
+bundles into bounded JSON summaries (configuration/identity/families/columns,
+signal distributions, backtest KPIs/costs/intrabar caveats, grid selection,
+validation/OOS scalars). Registry capabilities
+`LEVELS.inspect_and_chart`, `SIGNALS.inspect_and_chart`,
+`BACKTEST.inspect_results`, `GRID.inspect_results`, and
+`VALIDATION.inspect_results` are `inspect_only` with typed handlers; charts
+remain classic-page owned.
+
+`build_evidence_packet` embeds the same page summaries under
+`results.levels_summary` / `signals_summary` / `backtest_page_summary` /
+`grid_summary` / `validation_page_summary` so inspect payloads and explanation
+templates share claim paths. Backtest inspect passes run provenance so cost
+caveats match evidence assumptions.
+
+Controlled proposals use `CLASSIC.propose_page_change` and
+`thesistester/classic_proposal.py`: validate → stage into
+`classic_page_proposal` (thesis-scoped) → user Apply on Setup Builder or
+Backtest. Staging does not mutate widgets; Apply/get fail closed when the
+active thesis does not match the staged `thesis_id`; a real thesis switch
+clears the proposal unless the new thesis matches the proposal's
+`thesis_id` (same-thesis re-link / return-to-proposing-thesis). Backtest
+SL/TP proposal fields require `>= 1` to match page widgets. Page summaries are recursively
+DataFrame-free and key-canonicalized; backtest `zero_costs` caveats follow
+evidence-packet cost assumptions (explicit zeros only). Research bundles
+persist `backtest_execution_costs` / exposure for hash-verified inspect.
+Apply/stage helpers stay out of `classic_context`.
 
 ## Classic research-mode execution ledger (CAI-7)
 

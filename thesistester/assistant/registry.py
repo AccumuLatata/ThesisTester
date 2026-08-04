@@ -186,11 +186,11 @@ FEATURE_PARITY_REGISTRY = _validate_registry(
         _capability(
             "LEVELS.inspect_and_chart",
             "Levels",
-            "Inspect level tables and render a levels chart",
-            "thesistester.visualization.build_levels_chart",
-            CapabilityMode.UNSUPPORTED,
+            "Inspect level configuration, identity, families, and columns from a verified bundle",
+            "thesistester.assistant.page_summaries.summarize_levels_state",
+            CapabilityMode.INSPECT_ONLY,
             ConfirmationLevel.NONE,
-            limitation="Levels charting remains on the Levels page.",
+            limitation="Levels charts remain on the Levels page; Assistant returns bounded summary JSON only.",
         ),
         _capability(
             "SIGNALS.generate",
@@ -213,11 +213,11 @@ FEATURE_PARITY_REGISTRY = _validate_registry(
         _capability(
             "SIGNALS.inspect_and_chart",
             "Signals",
-            "Inspect signal diagnostics, tables, and charts",
-            "thesistester.visualization.build_signals_chart",
-            CapabilityMode.UNSUPPORTED,
+            "Inspect signal counts, zones, and trigger/direction distributions from a verified bundle",
+            "thesistester.assistant.page_summaries.summarize_signals_state",
+            CapabilityMode.INSPECT_ONLY,
             ConfirmationLevel.NONE,
-            limitation="Signal charting remains on the Signals page.",
+            limitation="Signal charts remain on the Signals page; Assistant returns bounded summary JSON only.",
         ),
         _capability(
             "BACKTEST.configure_and_run",
@@ -240,11 +240,11 @@ FEATURE_PARITY_REGISTRY = _validate_registry(
         _capability(
             "BACKTEST.inspect_results",
             "Backtest",
-            "Inspect KPIs, equity, skipped signals, OTF rejections, and trade charts",
-            "thesistester.api.run_backtest",
-            CapabilityMode.UNSUPPORTED,
+            "Inspect KPIs, costs, intrabar policy, and caveats from a verified bundle",
+            "thesistester.assistant.page_summaries.summarize_backtest_state",
+            CapabilityMode.INSPECT_ONLY,
             ConfirmationLevel.NONE,
-            limitation="Inspect completed assistant runs through bundle evidence and reports.",
+            limitation="Equity/trade charts remain on the Backtest page; Assistant returns bounded summary JSON only.",
         ),
         _capability(
             "BACKTEST.export_trade_review",
@@ -268,11 +268,11 @@ FEATURE_PARITY_REGISTRY = _validate_registry(
         _capability(
             "GRID.inspect_results",
             "Grid Search",
-            "Inspect best cells, directional rankings, heatmaps, and grid tables",
-            "thesistester.analytics.grid.best_grid_result",
-            CapabilityMode.UNSUPPORTED,
+            "Inspect best-cell selection evidence from a verified bundle",
+            "thesistester.assistant.page_summaries.summarize_grid_state",
+            CapabilityMode.INSPECT_ONLY,
             ConfirmationLevel.NONE,
-            limitation="Inspect grid results from completed research bundles.",
+            limitation="Grid heatmaps/tables remain on the Grid Search page; Assistant returns bounded summary JSON only.",
         ),
         _capability(
             "GRID.manage_execution_defaults",
@@ -376,11 +376,23 @@ FEATURE_PARITY_REGISTRY = _validate_registry(
         _capability(
             "VALIDATION.inspect_results",
             "Validation",
-            "Inspect validation diagnostics, folds, distributions, and result tables",
-            "thesistester.api.run_validation",
-            CapabilityMode.UNSUPPORTED,
+            "Inspect validation and OOS evidence scalars from a verified bundle",
+            "thesistester.assistant.page_summaries.summarize_validation_state",
+            CapabilityMode.INSPECT_ONLY,
             ConfirmationLevel.NONE,
-            limitation="Inspect validation results from completed research bundles.",
+            limitation="Validation charts/tables remain on the Validation page; Assistant returns bounded summary JSON only.",
+        ),
+        _capability(
+            "CLASSIC.propose_page_change",
+            "Classic workspace",
+            "Propose a draft change for classic-page review (user applies on the owning page)",
+            "thesistester.classic_proposal.validate_classic_proposal",
+            CapabilityMode.IMPORT_EXPORT,
+            ConfirmationLevel.NONE,
+            limitation=(
+                "Proposals are draft-only. Classic settings mutate only when the user "
+                "explicitly clicks Apply on the owning page."
+            ),
         ),
         _capability(
             "EXPORT.build_research_artifact",
