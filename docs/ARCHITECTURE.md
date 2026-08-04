@@ -437,14 +437,22 @@ rather than being stored as executable assumptions.
 `dispatch()` remains the only compute router for registry capabilities. Workspace
 façade methods wrap thesis/spec/run/conversation/comparison lifecycle,
 validate/confirm, explain/compare/export/portfolio, and bundle handoff so the
-Research Assistant page stays presentation-only. Assistant chat is
-**thesis-drafting only** (`handle_chat_turn` → choices + clarifications); it
-never narrates completed runs. Chat bubbles render via
+Research Assistant page stays presentation-only. Default open surface is
+**chat-first**: active thesis identity, Manage thesis (collapsed), and Assistant
+chat (plus flash/focus/handoff banners when present). Classic Streamlit
+navigation remains the primary research path; the page does **not** duplicate an
+Open-research-pages link strip. Optional Assistant draft → validate → confirm →
+run, linked runs, and compare/portfolio live under collapsed
+`Advanced: draft, runs & compare`. Raw JSON editors and Conversation audit live
+under collapsed `Debug: raw JSON & conversation audit`. Structured execution /
+setup controls and Validated executable RunSpec default to `expanded=False`.
+Assistant chat is **thesis-drafting only** (`handle_chat_turn` → choices +
+clarifications); it never narrates completed runs. Chat bubbles render via
 `format_chat_message_body` / `chat_message_display_role` (tool audit lines stay
-out of the friendly chat and remain under Conversation audit). Draft replies
-persist readable clarification text in `content` as well as the structured
-`clarifications` field. Post-run narratives use Explain run /
-`explain_run_with_llm` on a completed run expander. Plan review surfaces
+out of the friendly chat and remain under Debug → Conversation audit). Draft
+replies persist readable clarification text in `content` as well as the
+structured `clarifications` field. Post-run narratives use Explain run /
+`explain_run_with_llm` under Advanced → Linked runs. Plan review surfaces
 clarifications only when the newest specification is still
 `needs_clarification` (`latest_unresolved_assumptions()`). Drafting syncs
 `normalized_run_spec` back into `assistant_draft_choices`. Numeric widget

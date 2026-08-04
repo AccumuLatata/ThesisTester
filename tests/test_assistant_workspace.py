@@ -409,7 +409,31 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "format_chat_message_body(" in source
     assert "chat_message_display_role(" in source
     assert "Thesis drafting only" in source
-    assert "Raw append-only transcript" in source
+    assert "Advanced → Linked runs" in source
+    assert "Raw transcripts and JSON for audit only" in source
+    assert "Open research pages" not in source
+    assert "st.page_link(" not in source
+    assert 'with st.expander("Advanced: draft, runs & compare", expanded=False)' in source
+    assert 'with st.expander("Debug: raw JSON & conversation audit", expanded=False)' in source
+    assert (
+        'with st.expander("Structured execution controls", expanded=False)' in source
+    )
+    assert (
+        'with st.expander("Structured setup and confluence controls", expanded=False)'
+        in source
+    )
+    assert 'with st.expander("Validated executable RunSpec", expanded=False)' in source
+    assert "Debug: provenance" in source
+    assert "Debug: specification JSON" in source
+    assert "Page summaries (JSON)" in source
+    assert "Linked research runs" in source
+    # Hot JSON surfaces must not open by default on the hub.
+    assert (
+        'with st.expander("Structured execution controls", expanded=True)' not in source
+    )
+    assert (
+        'with st.expander("Validated executable RunSpec", expanded=True)' not in source
+    )
 
 
 def test_plan_review_ready_flag_requires_validated_spec():

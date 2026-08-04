@@ -240,9 +240,13 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   `execute_confirmed_run`. Persist clarifications in both structured
   `clarifications` and readable `content` (`format_assistant_draft_reply`);
   the Research Assistant page must render `format_chat_message_body` and must
-  not present Conversation audit JSON as the primary chat surface. Keep
+  not present Conversation audit JSON as the primary chat surface. Default RA
+  UX is chat-first (thesis + chat); Advanced draft/runs/compare and Debug
+  JSON/audit stay collapsed; do not reintroduce an Open-research-pages strip
+  (classic nav is enough). Keep
   `tests/test_assistant_llm_evaluations.py`,
-  `tests/test_assistant_workspace.py`, and
+  `tests/test_assistant_workspace.py`,
+  `tests/test_ui_copy_guards.py`, and
   `tests/test_assistant_registry_audit.py` green when changing the provider
   boundary, chat UX, or registry audit.
 - Provider setup: non-secret settings in `config/assistant.toml`; secret via
