@@ -545,6 +545,118 @@ class AssistantTools:
             evidence_paths=evidence_paths if isinstance(evidence_paths, (list, tuple)) else None,
         )
 
+    def inspect_execution_cache(
+        self,
+        *,
+        kind: str | None = None,
+        limit: int = 200,
+        store_root: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Return bounded execution-artifact inspection + store-level stats (CAI-10)."""
+        from thesistester.persistence import (
+            get_execution_cache_stats,
+            list_execution_artifacts,
+        )
+
+        try:
+            artifacts = list_execution_artifacts(
+                store_root=store_root, kind=kind, limit=limit
+            )
+            stats = get_execution_cache_stats(store_root)
+        except ValueError as exc:
+            raise AssistantToolError(str(exc)) from exc
+        return to_jsonable({"stats": stats, "artifacts": artifacts})
+
+    def delete_execution_cache_artifact(
+        self,
+        *,
+        kind: str,
+        artifact_key: str,
+        store_root: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Delete one internal execution artifact; next read is a cold miss."""
+        from thesistester.persistence import delete_execution_artifact
+
+        try:
+            return to_jsonable(
+                delete_execution_artifact(
+                    kind=kind, artifact_key=artifact_key, store_root=store_root
+                )
+            )
+        except ValueError as exc:
+            raise AssistantToolError(str(exc)) from exc
+
+    def evict_execution_cache(
+        self,
+        *,
+        max_entries: int | None = None,
+        max_total_bytes: int | None = None,
+        max_age_seconds: int | None = None,
+        store_root: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Bounded eviction of internal execution artifacts only."""
+        from thesistester.persistence import evict_execution_artifacts
+
+        try:
+            return to_jsonable(
+                evict_execution_artifacts(
+                    store_root=store_root,
+                    max_entries=max_entries,
+                    max_total_bytes=max_total_bytes,
+                    max_age_seconds=max_age_seconds,
+                )
+            )
+        except ValueError as exc:
+            raise AssistantToolError(str(exc)) from exc
+
+    def rebind_execution_source_path(
+        self,
+        *,
+        new_source_path: str | Path,
+        expected_identity: Mapping[str, Any],
+        store_root: str | Path | None = None,
+        instrument: str | None = None,
+        source_timezone: str | None = None,
+        exchange_timezone: str | None = None,
+        format_profile: str | None = None,
+    ) -> dict[str, Any]:
+        """Rebind a source path after content-identity verification."""
+        from thesistester.persistence import rebind_source_path
+        from thesistester.research_identity import DataIdentity
+
+        path = Path(new_source_path).expanduser().resolve()
+        # Require the new source to live under an allowed data root.
+        try:
+            _resolve_within(path, self.data_roots)
+        except Exception as exc:
+            raise AssistantToolError(
+                f"new_source_path must be inside assistant data roots: {exc}"
+            ) from exc
+        identity = DataIdentity.from_dict(expected_identity)
+        if identity is None:
+            raise AssistantToolError("expected_identity is invalid.")
+        try:
+            binding = rebind_source_path(
+                new_source_path=path,
+                expected_identity=identity,
+                instrument=instrument,
+                source_timezone=source_timezone,
+                exchange_timezone=exchange_timezone,
+                format_profile=format_profile,
+                store_root=store_root,
+            )
+        except ValueError as exc:
+            raise AssistantToolError(str(exc)) from exc
+        return to_jsonable(
+            {
+                "binding_key": binding.binding_key,
+                "source_content_hash": binding.source_content_hash,
+                "data_artifact_key": binding.data_artifact_key,
+                "identity": binding.identity.to_dict(),
+                "new_source_path": str(path),
+            }
+        )
+
     def verify_external_research_bundle(
         self,
         bundle_path: str | Path,

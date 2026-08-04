@@ -35,6 +35,7 @@ def test_feature_parity_registry_covers_every_product_area():
         "TIME",
         "VALIDATION",
         "CLASSIC",
+        "CACHE",
         "EXPORT",
         "BUNDLE",
         "PORTFOLIO",

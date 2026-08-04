@@ -96,6 +96,31 @@ per stage; median and nearest-rank p95.
 4. Any warm-path optimization must prove equal canonical bundle hashes against
    this cold path; timing improvements alone are never acceptance criteria.
 
+## CAI-10 warm-path measurement and signal-cache decision
+
+Harness: `tests/benchmarks/cai_warm_path.py` (smoke:
+`tests/benchmarks/test_cai_warm_path.py`).
+
+**Decision (CAI-10):** do **not** add a second signal-artifact cache layer yet.
+
+Rationale:
+
+- Levels remain the dominant cold cost on the realistic fixture (~71% of
+  end-to-end in the table above). CAI-3 data/levels reuse is the correct first
+  cache surface.
+- Warm-path harness proves cold↔warm canonical bundle-hash equality and reports
+  end-to-end speedup informationally. A signal second layer is warranted only
+  after warm runs still show a large `generate_signals` share once levels hits
+  are routine.
+- Recommendation string from the harness:
+  `measure_warm_signal_share_before_second_layer` (or
+  `prioritize_levels_cache_effectiveness_first` when warm is not yet clearly
+  faster). Neither is a CI gate.
+
+Retention/ops for the existing levels/data cache land in
+`thesistester/persistence/execution_artifacts.py` (inspect/evict/rebind) and
+must never auto-delete user snapshots, bundles, or thesis records.
+
 ## Non-goals of CAI-0
 
 - No production cache read/write.

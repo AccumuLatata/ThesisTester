@@ -395,6 +395,54 @@ FEATURE_PARITY_REGISTRY = _validate_registry(
             ),
         ),
         _capability(
+            "CACHE.inspect_artifacts",
+            "Execution cache",
+            "Inspect internal execution artifacts (identity, size, age, hit/miss)",
+            "thesistester.persistence.list_execution_artifacts",
+            CapabilityMode.INSPECT_ONLY,
+            ConfirmationLevel.NONE,
+            limitation=(
+                "Inspection covers internal execution_artifacts only; user snapshots, "
+                "bundles, thesis records, and source datasets are never listed for deletion."
+            ),
+        ),
+        _capability(
+            "CACHE.delete_artifact",
+            "Execution cache",
+            "Safely delete one internal execution artifact (forces cold recompute)",
+            "thesistester.persistence.delete_execution_artifact",
+            CapabilityMode.IMPORT_EXPORT,
+            ConfirmationLevel.EXPLICIT_CONFIRMATION,
+            limitation=(
+                "Deletes only execution_artifacts entries. Never deletes user-saved "
+                "snapshots, research bundles, thesis records, or source datasets."
+            ),
+        ),
+        _capability(
+            "CACHE.evict_artifacts",
+            "Execution cache",
+            "Bounded retention/eviction for internal execution artifacts",
+            "thesistester.persistence.evict_execution_artifacts",
+            CapabilityMode.IMPORT_EXPORT,
+            ConfirmationLevel.EXPLICIT_CONFIRMATION,
+            limitation=(
+                "Eviction is bounded to execution_artifacts/v1. Retained research bundles "
+                "remain self-contained; cache miss triggers cold recompute."
+            ),
+        ),
+        _capability(
+            "CACHE.rebind_source_path",
+            "Execution cache",
+            "Rebind a missing source path after content-identity verification",
+            "thesistester.persistence.rebind_source_path",
+            CapabilityMode.IMPORT_EXPORT,
+            ConfirmationLevel.EXPLICIT_CONFIRMATION,
+            limitation=(
+                "Rebind fails closed unless the new CSV matches the expected DataIdentity "
+                "content hash; path-only rebinds are rejected."
+            ),
+        ),
+        _capability(
             "EXPORT.build_research_artifact",
             "Report / Export",
             "Build and inspect research artifact and markdown report",

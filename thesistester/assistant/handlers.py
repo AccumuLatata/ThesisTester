@@ -343,6 +343,75 @@ def _handle_propose_classic_page_change(
     return {"proposal": proposal, "staged": False, "applied": False}
 
 
+def _handle_cache_inspect(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
+    kind = request.payload.get("kind")
+    limit = request.payload.get("limit", 200)
+    store_root = request.payload.get("store_root")
+    return context.tools.inspect_execution_cache(
+        kind=kind if isinstance(kind, str) else None,
+        limit=int(limit) if isinstance(limit, int) else 200,
+        store_root=store_root if isinstance(store_root, str) else None,
+    )
+
+
+def _handle_cache_delete(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
+    kind = request.payload.get("kind")
+    artifact_key = request.payload.get("artifact_key")
+    if not isinstance(kind, str) or not kind.strip():
+        raise ValueError("kind must be a non-empty string.")
+    if not isinstance(artifact_key, str) or not artifact_key.strip():
+        raise ValueError("artifact_key must be a non-empty string.")
+    store_root = request.payload.get("store_root")
+    return context.tools.delete_execution_cache_artifact(
+        kind=kind.strip(),
+        artifact_key=artifact_key.strip(),
+        store_root=store_root if isinstance(store_root, str) else None,
+    )
+
+
+def _handle_cache_evict(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
+    store_root = request.payload.get("store_root")
+    return context.tools.evict_execution_cache(
+        max_entries=request.payload.get("max_entries")
+        if isinstance(request.payload.get("max_entries"), int)
+        else None,
+        max_total_bytes=request.payload.get("max_total_bytes")
+        if isinstance(request.payload.get("max_total_bytes"), int)
+        else None,
+        max_age_seconds=request.payload.get("max_age_seconds")
+        if isinstance(request.payload.get("max_age_seconds"), int)
+        else None,
+        store_root=store_root if isinstance(store_root, str) else None,
+    )
+
+
+def _handle_cache_rebind(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
+    new_source_path = request.payload.get("new_source_path")
+    expected_identity = request.payload.get("expected_identity")
+    if not isinstance(new_source_path, str) or not new_source_path.strip():
+        raise ValueError("new_source_path must be a non-empty string.")
+    if not isinstance(expected_identity, Mapping):
+        raise ValueError("expected_identity must be an object.")
+    store_root = request.payload.get("store_root")
+    return context.tools.rebind_execution_source_path(
+        new_source_path=new_source_path.strip(),
+        expected_identity=dict(expected_identity),
+        store_root=store_root if isinstance(store_root, str) else None,
+        instrument=request.payload.get("instrument")
+        if isinstance(request.payload.get("instrument"), str)
+        else None,
+        source_timezone=request.payload.get("source_timezone")
+        if isinstance(request.payload.get("source_timezone"), str)
+        else None,
+        exchange_timezone=request.payload.get("exchange_timezone")
+        if isinstance(request.payload.get("exchange_timezone"), str)
+        else None,
+        format_profile=request.payload.get("format_profile")
+        if isinstance(request.payload.get("format_profile"), str)
+        else None,
+    )
+
+
 HANDLER_REGISTRY: dict[str, CapabilityHandler] = {
     "HOME.workflow_guide": _handle_home_guide,
     "DATA.inspect_dataset": _handle_inspect_dataset,
@@ -360,6 +429,10 @@ HANDLER_REGISTRY: dict[str, CapabilityHandler] = {
     "VALIDATION.run_otf_matrix": _handle_otf_matrix,
     "VALIDATION.inspect_results": _handle_inspect_validation,
     "CLASSIC.propose_page_change": _handle_propose_classic_page_change,
+    "CACHE.inspect_artifacts": _handle_cache_inspect,
+    "CACHE.delete_artifact": _handle_cache_delete,
+    "CACHE.evict_artifacts": _handle_cache_evict,
+    "CACHE.rebind_source_path": _handle_cache_rebind,
     "EXPORT.build_research_artifact": _handle_export_artifact,
     "BUNDLE.import": _handle_bundle_import,
     "BUNDLE.register_external_run": _handle_register_external_run,

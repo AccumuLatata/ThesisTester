@@ -252,11 +252,88 @@ def _lock_path(kind: str, key: str, *, artifacts_root: Path) -> Path:
 
 
 def _touch_accessed_at(manifest_path: Path) -> dict[str, Any]:
+    """Update access timestamp and per-artifact hit counter (CAI-10)."""
     manifest = _read_json(manifest_path)
     manifest["accessed_at"] = _utcnow_iso()
+    hit_count = _try_int(manifest.get("hit_count"))
+    manifest["hit_count"] = 0 if hit_count is None else hit_count + 1
     _write_json(manifest_path, manifest)
     _fsync_file(manifest_path)
     return manifest
+
+
+def _cache_stats_path(artifacts_root: Path) -> Path:
+    return artifacts_root / "cache_stats.json"
+
+
+def _record_cache_event(artifacts_root: Path, *, hit: bool = False, miss: bool = False) -> None:
+    """Best-effort store-level hit/miss counters (CAI-10 inspection)."""
+    if not hit and not miss:
+        return
+    stats_path = _cache_stats_path(artifacts_root)
+    try:
+        artifacts_root.mkdir(parents=True, exist_ok=True)
+        lock = artifacts_root / "locks" / "cache_stats.lock"
+        with _identity_lock(lock):
+            if stats_path.exists():
+                try:
+                    stats = _read_json(stats_path)
+                except (OSError, ValueError, json.JSONDecodeError):
+                    stats = {}
+            else:
+                stats = {}
+            if not isinstance(stats, dict):
+                stats = {}
+            hits = _try_int(stats.get("hit_count")) or 0
+            misses = _try_int(stats.get("miss_count")) or 0
+            if hit:
+                hits += 1
+            if miss:
+                misses += 1
+            payload = {
+                "kind": "execution_cache_stats",
+                "hit_count": hits,
+                "miss_count": misses,
+                "updated_at": _utcnow_iso(),
+                "app_version": __version__,
+            }
+            _write_json(stats_path, payload)
+            _fsync_file(stats_path)
+    except OSError:
+        return
+
+
+def _directory_size_bytes(path: Path) -> int:
+    total = 0
+    if not path.exists():
+        return 0
+    if path.is_file():
+        try:
+            return int(path.stat().st_size)
+        except OSError:
+            return 0
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            try:
+                total += int((Path(root) / name).stat().st_size)
+            except OSError:
+                continue
+    return total
+
+
+def _parse_iso_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 def _publish_directory(temp_dir: Path, final_dir: Path) -> None:
@@ -447,8 +524,14 @@ def read_verified_data_artifact(
     lock = _lock_path("data", key, artifacts_root=artifacts_root)
     with _identity_lock(lock):
         if not artifact_dir.exists():
+            _record_cache_event(artifacts_root, miss=True)
             return ArtifactMiss(_MISS_MISSING)
-        return _verify_data_dir(artifact_dir, expected=identity, artifacts_root=artifacts_root)
+        result = _verify_data_dir(artifact_dir, expected=identity, artifacts_root=artifacts_root)
+    if isinstance(result, ArtifactMiss):
+        _record_cache_event(artifacts_root, miss=True)
+    else:
+        _record_cache_event(artifacts_root, hit=True)
+    return result
 
 
 def read_verified_levels_artifact(
@@ -463,8 +546,14 @@ def read_verified_levels_artifact(
     lock = _lock_path("levels", key, artifacts_root=artifacts_root)
     with _identity_lock(lock):
         if not artifact_dir.exists():
+            _record_cache_event(artifacts_root, miss=True)
             return ArtifactMiss(_MISS_MISSING)
-        return _verify_levels_dir(artifact_dir, expected=identity, artifacts_root=artifacts_root)
+        result = _verify_levels_dir(artifact_dir, expected=identity, artifacts_root=artifacts_root)
+    if isinstance(result, ArtifactMiss):
+        _record_cache_event(artifacts_root, miss=True)
+    else:
+        _record_cache_event(artifacts_root, hit=True)
+    return result
 
 
 def write_data_artifact(
@@ -522,6 +611,8 @@ def write_data_artifact(
                 "ingestion": ingestion,
                 "created_at": created_at,
                 "accessed_at": created_at,
+                "hit_count": 0,
+                "producer": "execution_artifacts.write_data_artifact",
                 "app_version": __version__,
             }
             _write_json(temp_dir / MANIFEST_FILENAME, manifest)
@@ -607,6 +698,8 @@ def write_levels_artifact(
                 },
                 "created_at": created_at,
                 "accessed_at": created_at,
+                "hit_count": 0,
+                "producer": "execution_artifacts.write_levels_artifact",
                 "app_version": __version__,
             }
             _write_json(temp_dir / MANIFEST_FILENAME, manifest)
@@ -814,6 +907,16 @@ def read_source_data_binding(
             return ArtifactMiss(_MISS_CORRUPT_MANIFEST, detail="identity")
         if data_artifact_key(identity) != artifact_key:
             return ArtifactMiss(_MISS_IDENTITY_MISMATCH, detail="data_artifact_key")
+        # Best-effort access accounting for CAI-10 inspection.
+        try:
+            payload["accessed_at"] = _utcnow_iso()
+            hit_count = _try_int(payload.get("hit_count"))
+            payload["hit_count"] = 0 if hit_count is None else hit_count + 1
+            _write_json(contained, payload)
+            _fsync_file(contained)
+        except OSError:
+            pass
+        _record_cache_event(artifacts_root, hit=True)
         return SourceDataBinding(
             binding_key=key,
             source_content_hash=content_hash,
@@ -866,7 +969,11 @@ def write_source_data_binding(
         "derivation_policy": derivation_policy,
         "data_artifact_key": artifact_key,
         "identity": identity.to_dict(),
+        "last_source_path": str(path.resolve()),
         "created_at": _utcnow_iso(),
+        "accessed_at": _utcnow_iso(),
+        "hit_count": 0,
+        "producer": "execution_artifacts.write_source_data_binding",
         "app_version": __version__,
     }
     lock = _lock_path("source", key, artifacts_root=artifacts_root)
@@ -944,3 +1051,421 @@ def summarize_cache_outcome(
     if data_status == "hit":
         return "data_hit"
     return "cold"
+
+
+# ── CAI-10: inspection, safe deletion, eviction, source relocation ───────────
+
+EXECUTION_ARTIFACT_KINDS = frozenset({"data", "levels", "source_binding"})
+# User-facing / thesis namespaces that eviction must never touch.
+_PROTECTED_STORE_DIRNAMES = frozenset({"datasets", "levels", "signals", "setups", "assistant"})
+
+
+def get_execution_cache_stats(store_root: str | Path | None = None) -> dict[str, Any]:
+    """Return store-level hit/miss counters and total execution-artifact bytes."""
+    artifacts_root = get_execution_artifacts_root(store_root)
+    stats: dict[str, Any] = {
+        "kind": "execution_cache_stats",
+        "hit_count": 0,
+        "miss_count": 0,
+        "updated_at": None,
+        "total_bytes": _directory_size_bytes(artifacts_root),
+        "artifacts_root": str(artifacts_root),
+    }
+    stats_path = _cache_stats_path(artifacts_root)
+    if stats_path.is_file():
+        try:
+            payload = _read_json(stats_path)
+            if isinstance(payload, dict):
+                stats["hit_count"] = _try_int(payload.get("hit_count")) or 0
+                stats["miss_count"] = _try_int(payload.get("miss_count")) or 0
+                stats["updated_at"] = payload.get("updated_at")
+                stats["app_version"] = payload.get("app_version")
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
+    return stats
+
+
+def _inspect_dir_artifact(
+    artifact_dir: Path,
+    *,
+    kind: str,
+    artifacts_root: Path,
+) -> dict[str, Any] | None:
+    contained = _contain_path(artifact_dir, root=artifacts_root)
+    if contained is None or not contained.is_dir():
+        return None
+    # Skip incomplete temp publish directories.
+    if contained.name.startswith("."):
+        return None
+    manifest_path = contained / MANIFEST_FILENAME
+    identity_path = contained / IDENTITY_FILENAME
+    if not manifest_path.is_file():
+        return None
+    try:
+        manifest = _read_json(manifest_path)
+        identity = _read_json(identity_path) if identity_path.is_file() else None
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {
+            "kind": kind,
+            "artifact_key": contained.name,
+            "path": str(contained),
+            "size_bytes": _directory_size_bytes(contained),
+            "corrupt": True,
+        }
+    created = manifest.get("created_at")
+    accessed = manifest.get("accessed_at")
+    age_seconds = None
+    created_dt = _parse_iso_timestamp(created)
+    if created_dt is not None:
+        age_seconds = max(
+            0,
+            int((datetime.now(timezone.utc) - created_dt.astimezone(timezone.utc)).total_seconds()),
+        )
+    return {
+        "kind": kind,
+        "artifact_key": str(manifest.get("artifact_key") or contained.name),
+        "path": str(contained),
+        "size_bytes": _directory_size_bytes(contained),
+        "created_at": created,
+        "accessed_at": accessed,
+        "age_seconds": age_seconds,
+        "hit_count": _try_int(manifest.get("hit_count")) or 0,
+        "producer": manifest.get("producer") or manifest.get("kind"),
+        "app_version": manifest.get("app_version"),
+        "artifact_schema_version": manifest.get("artifact_schema_version"),
+        "level_engine_version": manifest.get("level_engine_version"),
+        "identity": identity if isinstance(identity, dict) else manifest.get("identity"),
+        "corrupt": False,
+    }
+
+
+def _inspect_source_binding(binding_path: Path, *, artifacts_root: Path) -> dict[str, Any] | None:
+    contained = _contain_path(binding_path, root=artifacts_root)
+    if contained is None or not contained.is_file():
+        return None
+    if contained.name.startswith(".") or not contained.name.endswith(".json"):
+        return None
+    try:
+        payload = _read_json(contained)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {
+            "kind": "source_binding",
+            "artifact_key": contained.stem,
+            "path": str(contained),
+            "size_bytes": _directory_size_bytes(contained),
+            "corrupt": True,
+        }
+    created = payload.get("created_at")
+    created_dt = _parse_iso_timestamp(created)
+    age_seconds = None
+    if created_dt is not None:
+        age_seconds = max(
+            0,
+            int((datetime.now(timezone.utc) - created_dt.astimezone(timezone.utc)).total_seconds()),
+        )
+    return {
+        "kind": "source_binding",
+        "artifact_key": str(payload.get("binding_key") or contained.stem),
+        "path": str(contained),
+        "size_bytes": _directory_size_bytes(contained),
+        "created_at": created,
+        "accessed_at": payload.get("accessed_at"),
+        "age_seconds": age_seconds,
+        "hit_count": _try_int(payload.get("hit_count")) or 0,
+        "producer": payload.get("producer") or SOURCE_BINDING_KIND,
+        "app_version": payload.get("app_version"),
+        "artifact_schema_version": payload.get("artifact_schema_version"),
+        "level_engine_version": None,
+        "identity": payload.get("identity"),
+        "source_content_hash": payload.get("source_content_hash"),
+        "last_source_path": payload.get("last_source_path"),
+        "data_artifact_key": payload.get("data_artifact_key"),
+        "corrupt": False,
+    }
+
+
+def list_execution_artifacts(
+    store_root: str | Path | None = None,
+    *,
+    kind: str | None = None,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """List bounded inspection records for internal execution artifacts (CAI-10)."""
+    if kind is not None and kind not in EXECUTION_ARTIFACT_KINDS:
+        raise ValueError(f"kind must be one of {sorted(EXECUTION_ARTIFACT_KINDS)} or None.")
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        raise ValueError("limit must be a positive integer.")
+    limit = min(limit, 1000)
+    artifacts_root = get_execution_artifacts_root(store_root)
+    records: list[dict[str, Any]] = []
+    kinds = (kind,) if kind is not None else ("data", "levels", "source_binding")
+    for artifact_kind in kinds:
+        if artifact_kind == "data":
+            root = artifacts_root / "data"
+            if root.is_dir():
+                for child in sorted(root.iterdir()):
+                    record = _inspect_dir_artifact(
+                        child, kind="data", artifacts_root=artifacts_root
+                    )
+                    if record is not None:
+                        records.append(record)
+        elif artifact_kind == "levels":
+            root = artifacts_root / "levels"
+            if root.is_dir():
+                for child in sorted(root.iterdir()):
+                    record = _inspect_dir_artifact(
+                        child, kind="levels", artifacts_root=artifacts_root
+                    )
+                    if record is not None:
+                        records.append(record)
+        else:
+            root = artifacts_root / "source_index"
+            if root.is_dir():
+                for child in sorted(root.iterdir()):
+                    record = _inspect_source_binding(child, artifacts_root=artifacts_root)
+                    if record is not None:
+                        records.append(record)
+    # Newest accessed/created first for operability.
+    records.sort(
+        key=lambda item: str(item.get("accessed_at") or item.get("created_at") or ""),
+        reverse=True,
+    )
+    return records[:limit]
+
+
+def delete_execution_artifact(
+    *,
+    kind: str,
+    artifact_key: str,
+    store_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Safely delete one internal execution artifact by kind + key.
+
+    Never deletes user datasets, saved levels snapshots, signal runs, setups,
+    thesis records, or research bundles. After deletion, the next cache read
+    misses and the pipeline recomputes cold.
+    """
+    if kind not in EXECUTION_ARTIFACT_KINDS:
+        raise ValueError(f"kind must be one of {sorted(EXECUTION_ARTIFACT_KINDS)}.")
+    if not isinstance(artifact_key, str) or not artifact_key.strip():
+        raise ValueError("artifact_key must be a non-empty string.")
+    key = artifact_key.strip()
+    if "/" in key or "\\" in key or key in {".", ".."}:
+        raise ValueError("artifact_key must be a flat store key.")
+    artifacts_root = get_execution_artifacts_root(store_root)
+    deleted = False
+    if kind == "data":
+        target = _data_dir(key, artifacts_root=artifacts_root)
+        contained = _contain_path(target, root=artifacts_root)
+        if contained is not None:
+            lock = _lock_path("data", key, artifacts_root=artifacts_root)
+            with _identity_lock(lock):
+                if contained.exists():
+                    shutil.rmtree(contained)
+                    deleted = True
+    elif kind == "levels":
+        target = _levels_dir(key, artifacts_root=artifacts_root)
+        contained = _contain_path(target, root=artifacts_root)
+        if contained is not None:
+            lock = _lock_path("levels", key, artifacts_root=artifacts_root)
+            with _identity_lock(lock):
+                if contained.exists():
+                    shutil.rmtree(contained)
+                    deleted = True
+    else:
+        target = _source_binding_path(key, artifacts_root=artifacts_root)
+        contained = _contain_path(target, root=artifacts_root)
+        if contained is not None:
+            lock = _lock_path("source", key, artifacts_root=artifacts_root)
+            with _identity_lock(lock):
+                if contained.exists():
+                    contained.unlink()
+                    deleted = True
+    return {
+        "kind": kind,
+        "artifact_key": key,
+        "deleted": deleted,
+        "cold_recompute_required": True,
+    }
+
+
+def _assert_path_under_execution_artifacts(path: Path, *, artifacts_root: Path) -> Path:
+    contained = _contain_path(path, root=artifacts_root)
+    if contained is None:
+        raise ValueError("Refusing to mutate a path outside execution_artifacts.")
+    # Extra fail-closed guard against store-root siblings.
+    store_root = artifacts_root.parent.parent  # .../execution_artifacts/v1 → store
+    for name in _PROTECTED_STORE_DIRNAMES:
+        protected = (store_root / name).resolve()
+        try:
+            contained.resolve().relative_to(protected)
+        except ValueError:
+            continue
+        raise ValueError(f"Refusing to mutate protected store namespace: {name}")
+    return contained
+
+
+def evict_execution_artifacts(
+    *,
+    store_root: str | Path | None = None,
+    max_entries: int | None = None,
+    max_total_bytes: int | None = None,
+    max_age_seconds: int | None = None,
+) -> dict[str, Any]:
+    """Bounded LRU/age eviction for internal execution artifacts only (CAI-10).
+
+    Never touches user-saved snapshots, bundles, thesis records, or datasets.
+    Research bundles independently contain required data, so eviction is
+    cold-recompute-safe for retained completed runs.
+    """
+    if max_entries is None and max_total_bytes is None and max_age_seconds is None:
+        raise ValueError(
+            "Provide at least one of max_entries, max_total_bytes, or max_age_seconds."
+        )
+    if max_entries is not None and (not isinstance(max_entries, int) or max_entries < 0):
+        raise ValueError("max_entries must be a non-negative integer.")
+    if max_total_bytes is not None and (
+        not isinstance(max_total_bytes, int) or max_total_bytes < 0
+    ):
+        raise ValueError("max_total_bytes must be a non-negative integer.")
+    if max_age_seconds is not None and (
+        not isinstance(max_age_seconds, int) or max_age_seconds < 0
+    ):
+        raise ValueError("max_age_seconds must be a non-negative integer.")
+
+    artifacts_root = get_execution_artifacts_root(store_root)
+    records = list_execution_artifacts(store_root=store_root, limit=1000)
+    # Evict oldest accessed first (LRU); missing accessed_at falls back to created_at.
+    records.sort(key=lambda item: str(item.get("accessed_at") or item.get("created_at") or ""))
+    now = datetime.now(timezone.utc)
+    to_delete: list[dict[str, Any]] = []
+    if max_age_seconds is not None:
+        for record in records:
+            created_dt = _parse_iso_timestamp(record.get("created_at"))
+            if created_dt is None:
+                continue
+            age = (now - created_dt.astimezone(timezone.utc)).total_seconds()
+            if age > max_age_seconds:
+                to_delete.append(record)
+
+    remaining = [r for r in records if r not in to_delete]
+    if max_entries is not None and len(remaining) > max_entries:
+        overflow = len(remaining) - max_entries
+        to_delete.extend(remaining[:overflow])
+        remaining = remaining[overflow:]
+
+    if max_total_bytes is not None:
+        total = sum(int(r.get("size_bytes") or 0) for r in remaining)
+        idx = 0
+        while total > max_total_bytes and idx < len(remaining):
+            victim = remaining[idx]
+            to_delete.append(victim)
+            total -= int(victim.get("size_bytes") or 0)
+            idx += 1
+        remaining = remaining[idx:]
+
+    deleted: list[dict[str, Any]] = []
+    for record in to_delete:
+        kind = str(record.get("kind"))
+        key = str(record.get("artifact_key"))
+        # Containment guard before delete.
+        path = Path(str(record.get("path")))
+        _assert_path_under_execution_artifacts(path, artifacts_root=artifacts_root)
+        result = delete_execution_artifact(kind=kind, artifact_key=key, store_root=store_root)
+        if result["deleted"]:
+            deleted.append(result)
+
+    return {
+        "deleted_count": len(deleted),
+        "deleted": deleted,
+        "remaining_count": len(list_execution_artifacts(store_root=store_root, limit=1000)),
+        "total_bytes": get_execution_cache_stats(store_root)["total_bytes"],
+        "cold_recompute_required": True,
+        "protected_namespaces": sorted(_PROTECTED_STORE_DIRNAMES),
+    }
+
+
+def rebind_source_path(
+    *,
+    new_source_path: str | Path,
+    expected_identity: DataIdentity | Mapping[str, Any],
+    instrument: str | None = None,
+    source_timezone: str | None = None,
+    exchange_timezone: str | None = None,
+    format_profile: str | None = None,
+    ingestion_mode: str = "primary",
+    derivation_policy: str | None = None,
+    store_root: str | Path | None = None,
+) -> SourceDataBinding:
+    """Rebind a source CSV path after content-identity verification (CAI-10).
+
+    Loads the new path with the expected ingest contract and fails closed unless
+    the resulting ``DataIdentity.data_content_hash`` matches. Then writes/updates
+    the source binding with ``last_source_path``.
+    """
+    if isinstance(expected_identity, DataIdentity):
+        identity = expected_identity
+    else:
+        parsed = DataIdentity.from_dict(expected_identity)
+        if parsed is None:
+            raise ValueError("expected_identity must be a DataIdentity or mapping.")
+        identity = parsed
+
+    path = Path(new_source_path).expanduser().resolve()
+    if not path.is_file():
+        raise ValueError(f"new_source_path does not exist: {path}")
+
+    inst = instrument or identity.instrument
+    src_tz = source_timezone if source_timezone is not None else identity.source_timezone
+    exch_tz = exchange_timezone if exchange_timezone is not None else identity.exchange_timezone
+    profile = format_profile or identity.format_profile
+
+    # Lazy import avoids api ↔ persistence import cycles at module load.
+    from thesistester.api import load_dataset
+
+    try:
+        loaded = load_dataset(
+            path,
+            instrument=inst,
+            source_timezone=src_tz,
+            exchange_timezone=exch_tz,
+            format_profile=profile,
+        )
+    except (OSError, ValueError) as exc:
+        raise ValueError(
+            f"Unable to load new_source_path for identity verification: {exc}"
+        ) from exc
+
+    loaded_identity = DataIdentity.from_loaded_data(
+        loaded,
+        instrument=inst,
+        base_interval=identity.base_interval,
+        source_timezone=src_tz,
+        exchange_timezone=exch_tz,
+        format_profile=profile,
+    )
+    if loaded_identity.data_content_hash != identity.data_content_hash:
+        raise ValueError(
+            "Source CSV content does not match expected DataIdentity; refusing rebind."
+        )
+    if loaded_identity.dataset_id() != identity.dataset_id():
+        raise ValueError(
+            "Source CSV dataset_id does not match expected DataIdentity; refusing rebind."
+        )
+
+    # Ensure the data artifact exists or can be published for warm reuse.
+    existing = read_verified_data_artifact(identity, store_root=store_root)
+    if isinstance(existing, ArtifactMiss):
+        write_data_artifact(identity, loaded, store_root=store_root)
+
+    return write_source_data_binding(
+        source_path=path,
+        identity=identity,
+        instrument=inst,
+        source_timezone=src_tz,
+        exchange_timezone=exch_tz,
+        format_profile=profile,
+        ingestion_mode=ingestion_mode,
+        derivation_policy=derivation_policy,
+        store_root=store_root,
+    )

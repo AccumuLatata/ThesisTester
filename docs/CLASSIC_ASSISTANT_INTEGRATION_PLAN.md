@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** proposed implementation contract; `CAI-0` through `CAI-9` implemented.
+**Status:** proposed implementation contract; `CAI-0` through `CAI-10` implemented.
 
 **Owner model:** one trusted local user, local datasets, local execution.
 
@@ -748,7 +748,7 @@ recorded run rather than rendering unconstrained DataFrames.
 - Handlers return bounded JSON, never raw arbitrary DataFrames.
 - Unsupported capabilities stay explicitly unsupported until their PR lands.
 
-### CAI-10 — Artifact operations, retention, and performance hardening
+### CAI-10 — Artifact operations, retention, and performance hardening ✅ Implemented
 
 **Goal:** make shared artifacts observable and operable over long research use.
 
@@ -765,6 +765,25 @@ recorded run rather than rendering unconstrained DataFrames.
   cache benchmarks are available.
 - Document disk growth, data-retention, cache invalidation, and cold/warm
   performance behavior.
+
+**Implemented contract**
+
+- `execution_artifacts.py`: `list_execution_artifacts`,
+  `get_execution_cache_stats`, `delete_execution_artifact`,
+  `evict_execution_artifacts`, `rebind_source_path`; per-artifact `hit_count`
+  + store-level hit/miss stats; manifests carry `producer` / schema / engine.
+- Eviction allowlists only `execution_artifacts/v1`; protected namespaces:
+  `datasets`, `levels`, `signals`, `setups`, `assistant`.
+- Source rebind verifies loaded CSV `DataIdentity` before rewriting the binding
+  (`last_source_path`).
+- Assistant capabilities: `CACHE.inspect_artifacts`, `CACHE.delete_artifact`,
+  `CACHE.evict_artifacts`, `CACHE.rebind_source_path`.
+- Warm-path harness: `tests/benchmarks/cai_warm_path.py` (informational);
+  signal second-layer cache remains deferred pending warm signal-share
+  measurement (`docs/CAI_BASELINE.md`).
+- Docs: architecture retention/invalidation/cold-warm section;
+  `docs/ENGINEERING_ROADMAP.md` CAI-10.
+- Tests: `tests/test_cai10_artifact_ops.py`.
 
 **Regression gates**
 
