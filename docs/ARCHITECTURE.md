@@ -92,6 +92,41 @@ artifact. `read_verified_*` returns `ArtifactMiss` for missing, corrupt
 incomplete, schema-drift, engine-incompatible, or path-escape cases and never
 raises those conditions into a cold compute path.
 
+### Artifact operations and retention (CAI-10)
+
+Internal execution artifacts are operable without exposing user-owned research
+assets to automatic deletion:
+
+| API | Role |
+|---|---|
+| `list_execution_artifacts` / `get_execution_cache_stats` | Inspection: identity, size, age, producer, schema/engine, hit/miss (`limit=None` for unbounded eviction scans) |
+| `delete_execution_artifact` | Safe single-key delete → next read is a cold miss |
+| `evict_execution_artifacts` | Full-store LRU/age/bytes eviction under `execution_artifacts/v1` only (`max_age` ages from `accessed_at`) |
+| `rebind_source_path` | Relocate a source CSV only after `DataIdentity` content verification |
+
+Store-level hit/miss counters increment on verified data/levels artifact reads
+only (source-binding lookups do not double-count a warm data hit).
+
+Protected namespaces (never auto-deleted): `datasets/`, `levels/`, `signals/`,
+`setups/`, `assistant/`. Completed research bundles independently contain
+dataset/levels/signals/backtest frames, so cache eviction cannot break
+hash-verified restore/explain of retained runs. Disk growth is therefore
+bounded by eviction policy on the internal cache while user snapshots and
+thesis history remain explicit-action-only.
+
+Cache invalidation semantics: delete/evict remove store entries only; the next
+`read_write` pipeline miss recomputes cold and may republish. Stale or corrupt
+artifacts already fail closed as `ArtifactMiss` (CAI-2).
+
+Cold vs warm performance is characterized by
+`tests/benchmarks/cai_cold_path.py` and `tests/benchmarks/cai_warm_path.py`
+(informational). A second signal-artifact cache layer stays deferred until warm
+`generate_signals` share is measured after levels-cache hits
+(`docs/CAI_BASELINE.md`).
+
+Assistant capabilities: `CACHE.inspect_artifacts`, `CACHE.delete_artifact`,
+`CACHE.evict_artifacts`, `CACHE.rebind_source_path`.
+
 ### Cached headless reuse (CAI-3)
 
 `run_experiment` / `compute_levels` accept keyword-only `cache_policy`

@@ -344,6 +344,40 @@ and controlled classic proposals (charts stay on classic pages).
 
 ---
 
+## CAI-10 — Artifact Operations, Retention, and Performance Hardening ✅ Implemented
+
+Makes internal execution artifacts observable and operable for long research use
+without auto-deleting user-owned research assets.
+
+### Features
+
+- Inspect/list: identity, size, age, producer, schema/engine, hit counts;
+  store-level hit/miss stats (`list_execution_artifacts`,
+  `get_execution_cache_stats`).
+- Safe delete + full-store bounded eviction (`max_entries` /
+  `max_total_bytes` / `max_age_seconds` from `accessed_at`) under
+  `execution_artifacts/v1` only.
+- Source relocation: `rebind_source_path` after content-identity verification.
+- Assistant: `CACHE.inspect_artifacts`, `CACHE.delete_artifact`,
+  `CACHE.evict_artifacts`, `CACHE.rebind_source_path`.
+- Warm-path informational harness (`tests/benchmarks/cai_warm_path.py`);
+  signal second-layer cache remains deferred.
+
+### Regression safety
+
+- Eviction never touches `datasets` / `levels` / `signals` / `setups` /
+  `assistant`.
+- Retained research bundles remain self-contained after eviction.
+- Cache deletion → cold miss → equal canonical bundle hash on recompute.
+- Benchmarks are non-gating; correctness stays hash/golden-master based.
+
+### Tests
+
+- `tests/test_cai10_artifact_ops.py`
+- `tests/benchmarks/test_cai_warm_path.py`
+
+---
+
 ## R1 — Execution Realism ✅ Implemented
 
 Adds optional commission and slippage to `simulate_trades`. Defaults preserve legacy

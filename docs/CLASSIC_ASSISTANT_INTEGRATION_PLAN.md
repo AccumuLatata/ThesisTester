@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** proposed implementation contract; `CAI-0` through `CAI-9` implemented.
+**Status:** proposed implementation contract; `CAI-0` through `CAI-10` implemented.
 
 **Owner model:** one trusted local user, local datasets, local execution.
 
@@ -748,7 +748,7 @@ recorded run rather than rendering unconstrained DataFrames.
 - Handlers return bounded JSON, never raw arbitrary DataFrames.
 - Unsupported capabilities stay explicitly unsupported until their PR lands.
 
-### CAI-10 — Artifact operations, retention, and performance hardening
+### CAI-10 — Artifact operations, retention, and performance hardening ✅ Implemented
 
 **Goal:** make shared artifacts observable and operable over long research use.
 
@@ -765,6 +765,27 @@ recorded run rather than rendering unconstrained DataFrames.
   cache benchmarks are available.
 - Document disk growth, data-retention, cache invalidation, and cold/warm
   performance behavior.
+
+**Implemented contract**
+
+- `execution_artifacts.py`: `list_execution_artifacts`,
+  `get_execution_cache_stats`, `delete_execution_artifact`,
+  `evict_execution_artifacts`, `rebind_source_path`; per-artifact `hit_count`
+  + store-level hit/miss stats (data/levels reads only); manifests carry
+  `producer` / schema / engine.
+- Eviction scans the full artifact set (`limit=None`), ages by `accessed_at`,
+  and allowlists only `execution_artifacts/v1`; protected namespaces:
+  `datasets`, `levels`, `signals`, `setups`, `assistant`.
+- Source rebind verifies loaded CSV `DataIdentity` before rewriting the binding
+  (`last_source_path`).
+- Assistant capabilities: `CACHE.inspect_artifacts`, `CACHE.delete_artifact`,
+  `CACHE.evict_artifacts`, `CACHE.rebind_source_path`.
+- Warm-path harness: `tests/benchmarks/cai_warm_path.py` (informational);
+  signal second-layer cache remains deferred pending warm signal-share
+  measurement (`docs/CAI_BASELINE.md`).
+- Docs: architecture retention/invalidation/cold-warm section;
+  `docs/ENGINEERING_ROADMAP.md` CAI-10.
+- Tests: `tests/test_cai10_artifact_ops.py`.
 
 **Regression gates**
 
@@ -861,10 +882,10 @@ Every implementation PR must state:
 | Cache default | Legacy cold default in public API; explicit `read_write` for Assistant/CLI after CAI-3 parity | Cold/warm operational evidence is stable |
 | Classic recording | Manual record-after-run (**CAI-0 decision**; see `docs/CAI_BASELINE.md`) | After users accept thesis research mode |
 | Automatic all-run ledger | Opt-in only | CAI-7 |
-| Signal cache | Defer | CAI-0/CAI-3 benchmarks show levels no longer dominate |
-| Assistant page mutation | Proposal + user apply on owning page | Read-only parity is proven |
-| Missing source path | Prefer verified internal canonical data artifact; otherwise require user-provided path | Source relocation requirements emerge |
-| Retention/eviction | No automatic deletion before CAI-10 | Artifact usage and disk profile measured |
+| Signal cache | Defer (CAI-10: measure warm `generate_signals` share first) | Warm levels hits routine and signals still dominate |
+| Assistant page mutation | Proposal + user apply on owning page (CAI-9) | Further pages beyond Setup/Backtest need proposals |
+| Missing source path | Prefer verified internal canonical data artifact; `rebind_source_path` after content identity (CAI-10) | Multi-path binding indexes if needed |
+| Retention/eviction | Bounded eviction for `execution_artifacts` only (CAI-10); never auto-delete user/thesis assets | Disk-profile tuning of max_entries/bytes/age |
 
 ## Explicitly rejected approaches
 
