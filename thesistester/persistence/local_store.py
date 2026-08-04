@@ -38,18 +38,64 @@ CONFLUENCE_ZONES_PARQUET_NAME = "confluence_zones.parquet"
 NAKED_FLAGS_PARQUET_NAME = "naked_flags.parquet"
 SUBTIMEFRAME_PARQUET_NAME = "subtimeframe.parquet"
 _SETUP_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+# Win32 MAX_PATH is 260. Signal runs nest three SHA-256 hex digests under the
+# store root; on deep bases (e.g. OneDrive\Dokumente\GitHub\...) that exceeds
+# 260 and mkdir raises FileNotFoundError (WinError 3). Extended-length paths
+# (\\?\ / \\?\UNC\) raise the limit to ~32K characters.
+_WIN_EXT_PREFIX = "\\\\?\\"
+_WIN_EXT_UNC_PREFIX = "\\\\?\\UNC\\"
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _windows_extended_path_str(raw: str) -> str:
+    """Add a Win32 extended-length prefix to an absolute path string."""
+    if raw.startswith(_WIN_EXT_PREFIX):
+        return raw
+    if raw.startswith("\\\\"):
+        # UNC \\server\share\... -> \\?\UNC\server\share\...
+        return _WIN_EXT_UNC_PREFIX + raw[2:]
+    return _WIN_EXT_PREFIX + raw
+
+
+def _fs_path(path: Path) -> Path:
+    """Return a filesystem Path that supports Windows long paths when needed."""
+    if os.name != "nt":
+        return path
+    raw = os.fspath(path)
+    if raw.startswith(_WIN_EXT_PREFIX):
+        return path
+    absolute = path if path.is_absolute() else path.resolve()
+    return Path(_windows_extended_path_str(os.fspath(absolute)))
+
+
+def display_store_path(path: Path | str | None = None) -> str:
+    """Human-readable store path (strips Windows ``\\\\?\\`` prefix)."""
+    if path is None:
+        path = get_store_root()
+    raw = os.fspath(path)
+    if raw.startswith(_WIN_EXT_UNC_PREFIX):
+        return "\\\\" + raw[len(_WIN_EXT_UNC_PREFIX) :]
+    if raw.startswith(_WIN_EXT_PREFIX):
+        return raw[len(_WIN_EXT_PREFIX) :]
+    return raw
+
+
 def get_store_root() -> Path:
-    """Return the local persistence root directory."""
+    """Return the local persistence root directory.
+
+    On Windows the returned path uses the ``\\\\?\\`` extended-length prefix so
+    nested content-addressed signal/level directories remain creatable when the
+    absolute path would otherwise exceed Win32 MAX_PATH (260).
+    """
     raw_path = os.environ.get(STORE_ENV_VAR)
     if raw_path:
-        return Path(raw_path).expanduser().resolve()
-    return (_repo_root() / DEFAULT_STORE_DIR_NAME).resolve()
+        root = Path(raw_path).expanduser().resolve()
+    else:
+        root = (_repo_root() / DEFAULT_STORE_DIR_NAME).resolve()
+    return _fs_path(root)
 
 
 def _datasets_root() -> Path:
@@ -387,7 +433,7 @@ def _scan_dataset_metadata() -> list[dict[str, Any]]:
         dataset_dir = meta_path.parent
         if not (dataset_dir / "canonical.parquet").exists():
             continue
-        meta["path"] = str(dataset_dir)
+        meta["path"] = display_store_path(dataset_dir)
         items.append(meta)
     items.sort(key=lambda item: item.get("created_at") or "", reverse=True)
     return items
@@ -549,7 +595,7 @@ def save_dataset(
         _canonicalize_dataframe(subtimeframe_data).to_parquet(subtimeframe_path, index=False)
     _write_json(metadata_path, metadata)
     _refresh_dataset_manifest()
-    metadata["path"] = str(dataset_dir)
+    metadata["path"] = display_store_path(dataset_dir)
     return metadata
 
 
@@ -619,7 +665,7 @@ def save_setup(
         ),
     }
     _write_json(meta_path, metadata)
-    metadata["path"] = str(setup_dir)
+    metadata["path"] = display_store_path(setup_dir)
     return metadata
 
 
@@ -649,7 +695,7 @@ def list_saved_setups(dataset_id: str | None = None) -> list[dict[str, Any]]:
         setup_config = meta.get("setup_config")
         if not isinstance(setup_config, dict):
             continue
-        meta["path"] = str(meta_path.parent)
+        meta["path"] = display_store_path(meta_path.parent)
         items.append(meta)
 
     items.sort(
@@ -681,7 +727,7 @@ def load_setup(setup_id: str) -> dict[str, Any]:
             normalize_otf_filter_config(setup_config.get("otf_filter"))
         except ValueError as exc:
             raise ValueError(f"Saved setup OTF configuration is invalid: {exc}") from exc
-    metadata["path"] = str(meta_path.parent)
+    metadata["path"] = display_store_path(meta_path.parent)
     return metadata
 
 
@@ -726,7 +772,7 @@ def load_dataset(dataset_id: str) -> tuple[pd.DataFrame, dict[str, Any]]:
             ) from exc
 
     df = pd.read_parquet(parquet_path)
-    metadata["path"] = str(dataset_dir)
+    metadata["path"] = display_store_path(dataset_dir)
     return df, metadata
 
 
@@ -847,7 +893,7 @@ def save_levels(
         index=False,
     )
     _write_json(levels_dir / "meta.json", metadata)
-    metadata["path"] = str(levels_dir)
+    metadata["path"] = display_store_path(levels_dir)
     return metadata
 
 
@@ -873,7 +919,7 @@ def list_saved_levels(dataset_id: str | None = None) -> list[dict[str, Any]]:
                 continue
             if not (levels_dir / "session_levels.parquet").exists():
                 continue
-            meta["path"] = str(levels_dir)
+            meta["path"] = display_store_path(levels_dir)
             items.append(meta)
     items.sort(key=lambda item: item.get("created_at") or "", reverse=True)
     return items
@@ -895,7 +941,7 @@ def find_matching_levels(
         return None
     if metadata.get("engine_version") != LEVEL_ENGINE_VERSION:
         return None
-    metadata["path"] = str(meta_path.parent)
+    metadata["path"] = display_store_path(meta_path.parent)
     return metadata
 
 
@@ -920,7 +966,7 @@ def load_levels(
 
     levels_df = pd.read_parquet(levels_path)
     session_levels_df = pd.read_parquet(session_levels_path)
-    metadata["path"] = str(levels_dir)
+    metadata["path"] = display_store_path(levels_dir)
     return levels_df, session_levels_df, metadata
 
 
@@ -990,7 +1036,7 @@ def save_signal_run(
         index=False,
     )
     _write_json(meta_path, metadata)
-    metadata["path"] = str(signal_run_dir)
+    metadata["path"] = display_store_path(signal_run_dir)
     return metadata
 
 
@@ -1024,7 +1070,7 @@ def list_saved_signal_runs(
                 signal_run_dir = meta_path.parent
                 if not _signal_run_files_exist(signal_run_dir):
                     continue
-                meta["path"] = str(signal_run_dir)
+                meta["path"] = display_store_path(signal_run_dir)
                 items.append(meta)
 
     items.sort(key=lambda item: item.get("created_at") or "", reverse=True)
@@ -1053,7 +1099,7 @@ def find_matching_signal_run(
         return None
     if metadata.get("kind") != "signal_run":
         return None
-    metadata["path"] = str(meta_path.parent)
+    metadata["path"] = display_store_path(meta_path.parent)
     return metadata
 
 
@@ -1084,7 +1130,7 @@ def load_signal_run(
     signals_df = pd.read_parquet(signals_path)
     confluence_df = pd.read_parquet(confluence_path)
     naked_df = pd.read_parquet(naked_path)
-    metadata["path"] = str(signal_run_dir)
+    metadata["path"] = display_store_path(signal_run_dir)
     return signals_df, confluence_df, naked_df, metadata
 
 

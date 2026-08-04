@@ -27,6 +27,7 @@ from thesistester import __version__
 from thesistester.persistence.local_store import (
     LEVEL_ENGINE_VERSION,
     _canonicalize_dataframe,
+    _fs_path,
     _hash_dataframe,
     _stable_json_bytes,
     compute_levels_settings_hash,
@@ -113,8 +114,15 @@ class LevelsArtifact:
 
 def get_execution_artifacts_root(store_root: str | Path | None = None) -> Path:
     """Return the internal execution-artifact root (schema-versioned)."""
-    root = Path(store_root).expanduser().resolve() if store_root is not None else get_store_root()
-    return (root / EXECUTION_ARTIFACTS_DIRNAME / f"v{DATA_ARTIFACT_SCHEMA_VERSION}").resolve()
+    if store_root is not None:
+        root = _fs_path(Path(store_root).expanduser().resolve())
+    else:
+        root = get_store_root()
+    # Re-apply extended-length prefix after resolve(): on Windows, Path.resolve()
+    # may strip \\?\ which would re-expose nested artifact paths to MAX_PATH.
+    return _fs_path(
+        (root / EXECUTION_ARTIFACTS_DIRNAME / f"v{DATA_ARTIFACT_SCHEMA_VERSION}").resolve()
+    )
 
 
 def data_artifact_key(identity: DataIdentity) -> str:
@@ -215,9 +223,16 @@ def _identity_lock(lock_path: Path) -> Iterator[None]:
 
 
 def _contain_path(path: Path, *, root: Path) -> Path | None:
+    """Return ``path`` if it resolves inside ``root``; else ``None``.
+
+    On Windows, ``Path.resolve()`` may strip the ``\\\\?\\`` extended-length
+    prefix. Re-apply :func:`_fs_path` so nested artifact verify/read/delete/
+    evict I/O stays under the Win32 long-path limit.
+    """
     try:
-        resolved = path.resolve()
-        resolved.relative_to(root.resolve())
+        resolved_root = _fs_path(root.resolve())
+        resolved = _fs_path(path.resolve())
+        resolved.relative_to(resolved_root)
     except (OSError, ValueError):
         return None
     return resolved
@@ -1303,9 +1318,9 @@ def _assert_path_under_execution_artifacts(path: Path, *, artifacts_root: Path) 
     # Extra fail-closed guard against store-root siblings.
     store_root = artifacts_root.parent.parent  # .../execution_artifacts/v1 → store
     for name in _PROTECTED_STORE_DIRNAMES:
-        protected = (store_root / name).resolve()
+        protected = _fs_path((store_root / name).resolve())
         try:
-            contained.resolve().relative_to(protected)
+            _fs_path(contained.resolve()).relative_to(protected)
         except ValueError:
             continue
         raise ValueError(f"Refusing to mutate protected store namespace: {name}")

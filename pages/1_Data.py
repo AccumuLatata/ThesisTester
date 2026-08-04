@@ -52,6 +52,7 @@ from thesistester.persistence import (
     clear_active_dataset_id,
     compute_dataset_id,
     delete_dataset,
+    display_store_path,
     get_store_root,
     list_datasets,
     load_dataset,
@@ -1147,7 +1148,7 @@ if raw_capture_warning:
     st.warning(raw_capture_warning)
 
 st.subheader("Local saved datasets")
-st.caption(f"Local store: `{get_store_root()}`")
+st.caption(f"Local store: `{display_store_path(get_store_root())}`")
 if not os.environ.get("THESISTESTER_STORE_DIR"):
     st.warning(
         "THESISTESTER_STORE_DIR is not set. Saved datasets are stored in a local repo folder "
@@ -1208,7 +1209,7 @@ if saved_datasets:
     if action_cols[2].button("Refresh saved datasets", width="stretch"):
         st.rerun()
 else:
-    st.caption(f"No saved datasets found in `{get_store_root()}`.")
+    st.caption(f"No saved datasets found in `{display_store_path(get_store_root())}`.")
     if st.button("Refresh saved datasets"):
         st.rerun()
 
