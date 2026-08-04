@@ -443,8 +443,10 @@ chat (plus flash/focus/handoff banners when present). Classic Streamlit
 navigation remains the primary research path; the page does **not** duplicate an
 Open-research-pages link strip. Optional Assistant draft → validate → confirm →
 run, linked runs, and compare/portfolio live under collapsed
-`Advanced: draft, runs & compare`. Raw JSON editors and Conversation audit live
-under collapsed `Debug: raw JSON & conversation audit`. Structured execution /
+`Advanced: draft, runs & compare`. Compare/portfolio keep conclusions and
+summary feedback visible; only raw result JSON is nested under collapsed
+`Debug:` expanders. Raw JSON editors and Conversation audit live under
+collapsed `Debug: raw JSON & conversation audit`. Structured execution /
 setup controls and Validated executable RunSpec default to `expanded=False`.
 Assistant chat is **thesis-drafting only** (`handle_chat_turn` → choices +
 clarifications); it never narrates completed runs. Chat bubbles render via
