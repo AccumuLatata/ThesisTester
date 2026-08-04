@@ -672,7 +672,8 @@ works under a thesis.
   Setup Builder / Backtest; active-run breadcrumb + badge in classic chrome.
 - Clarification → classic page is direct `st.switch_page` + caption prefill
   only (no automatic widget / settings mutation; does not stage
-  `classic_pending_navigation`, which Data/Levels would not consume).
+  `classic_pending_navigation` or `classic_flash`, which Data/Levels would
+  not consume).
 - Backtest renders clarification prefill before signals/trades `st.stop()`
   guards so empty pages still show the Assistant note.
 - Discuss syncs `assistant_selected_thesis_id` to the classic thesis and falls

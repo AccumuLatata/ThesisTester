@@ -303,11 +303,21 @@ def link_thesis(
     # Real thesis switch only — first link (prior unset) must not drop a staged
     # CAI-8 prefill or CAI-9 proposal before the user reaches the owning page.
     prior_norm = prior_thesis.strip() if isinstance(prior_thesis, str) else ""
-    if prior_norm and prior_norm != thesis_id.strip():
+    target_thesis = thesis_id.strip()
+    if prior_norm and prior_norm != target_thesis:
         session_state["classic_active_run_id"] = None
         session_state["classic_focus_run_id"] = None
         session_state["classic_nav_prefill"] = None
-        session_state["classic_page_proposal"] = None
+        # Preserve a staged proposal when re-linking its own thesis_id (e.g.
+        # Assistant staged for A, classic briefly linked to B, then to A).
+        proposal = session_state.get("classic_page_proposal")
+        proposal_thesis = (
+            str(proposal.get("thesis_id")).strip()
+            if isinstance(proposal, Mapping) and isinstance(proposal.get("thesis_id"), str)
+            else ""
+        )
+        if proposal_thesis != target_thesis:
+            session_state["classic_page_proposal"] = None
 
     # Keep Assistant page selection consistent; staging clears on thesis change.
     from thesistester.assistant.workspace import (

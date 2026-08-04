@@ -8,7 +8,6 @@ bundle restore (Open exact). Streamlit UI imports are lazy.
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import Any, Mapping, MutableMapping
 
 from thesistester.assistant import AssistantOrchestrator, ResearchRun
@@ -367,11 +366,9 @@ def navigate_clarification_to_classic(
         target_page=target,
         note=clarification.strip(),
     )
-    set_classic_flash(
-        session_state,
-        level="info",
-        message=f"Opening classic page for clarification ({Path(target).name}).",
-    )
+    # Caption prefill only — do not stage classic_flash. Data/Levels lack thesis
+    # chrome ``consume_classic_flash``, so a leftover flash would later surface
+    # as a misleading notice on Backtest/Setup/Bundles.
     return target
 
 

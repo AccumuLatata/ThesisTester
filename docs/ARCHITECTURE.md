@@ -258,8 +258,9 @@ Controlled proposals use `CLASSIC.propose_page_change` and
 `classic_page_proposal` (thesis-scoped) → user Apply on Setup Builder or
 Backtest. Staging does not mutate widgets; Apply/get fail closed when the
 active thesis does not match the staged `thesis_id`; a real thesis switch
-clears the proposal (same-thesis re-link does not). Backtest SL/TP proposal
-fields require `>= 1` to match page widgets. Page summaries are recursively
+clears the proposal unless the new thesis matches the proposal's
+`thesis_id` (same-thesis re-link / return-to-proposing-thesis). Backtest
+SL/TP proposal fields require `>= 1` to match page widgets. Page summaries are recursively
 DataFrame-free and key-canonicalized; backtest `zero_costs` caveats follow
 evidence-packet cost assumptions (explicit zeros only). Research bundles
 persist `backtest_execution_costs` / exposure for hash-verified inspect.

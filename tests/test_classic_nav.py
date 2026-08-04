@@ -309,6 +309,7 @@ def test_clarification_navigation_prefill_only(tmp_path: Path):
     # Callers switch_page directly; pending must stay clear so Data/Levels
     # (no thesis chrome) cannot leave a stale redirect for later pages.
     assert session.get("classic_pending_navigation") in (None, "")
+    assert session.get("classic_flash") in (None, {})
     assert session["classic_nav_prefill"]["target_page"] == "pages/1_Data.py"
     assert session["classic_nav_prefill"]["note"]
     # Prefill is caption-only staging — no widget keys mutated.

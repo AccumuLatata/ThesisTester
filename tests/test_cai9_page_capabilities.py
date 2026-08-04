@@ -265,6 +265,30 @@ def test_proposal_apply_rejects_cross_thesis_scope():
         )
 
 
+def test_proposal_survives_relink_to_its_own_thesis():
+    session: dict = {"backtest_sl_ticks": 8.0, "backtest_tp_ticks": 16.0}
+    init_classic_session_state(session)
+    # Stage for A before classic research mode is linked.
+    stage_classic_proposal(
+        session,
+        validate_classic_proposal(
+            target_page="pages/7_Backtest.py",
+            draft_patch={"stop_loss_ticks": 12.0, "take_profit_ticks": 24.0},
+            note="From thesis A",
+        ),
+        navigate=False,
+        thesis_id="thesis-a",
+    )
+    link_thesis(session, thesis_id="thesis-b", thesis_name="B", dataset_id="ds-1")
+    assert get_classic_proposal(session) is None  # hidden while B is active
+    assert session["classic_page_proposal"]["thesis_id"] == "thesis-a"  # still staged
+    link_thesis(session, thesis_id="thesis-a", thesis_name="A", dataset_id="ds-1")
+    assert get_classic_proposal(session)["thesis_id"] == "thesis-a"
+    link_thesis(session, thesis_id="thesis-c", thesis_name="C", dataset_id="ds-1")
+    assert get_classic_proposal(session) is None
+    assert session.get("classic_page_proposal") is None
+
+
 def test_proposal_rejects_zero_stop_loss_ticks():
     with pytest.raises(ValueError, match="stop_loss_ticks must be >= 1"):
         validate_classic_proposal(
