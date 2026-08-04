@@ -26,6 +26,7 @@ from thesistester.classic_nav import (
     render_classic_nav_prefill_caption,
     render_discuss_this_run,
 )
+from thesistester.classic_proposal import render_classic_proposal_card
 from thesistester.classic_record import render_record_and_discuss
 from thesistester.analytics import equity_curve, summarize_trades, summarize_trades_by_direction
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
@@ -67,6 +68,7 @@ render_classic_thesis_chrome(
 # Prefill must render before any st.stop() guard (signals/trades missing) so
 # Assistant clarification navigation remains visible on an empty Backtest page.
 render_classic_nav_prefill_caption(target_page="pages/7_Backtest.py")
+render_classic_proposal_card(target_page="pages/7_Backtest.py")
 
 
 def _signal_setup_context(signals, signal_context: dict | None) -> str | None:

@@ -2,7 +2,7 @@
 
 ## Status
 
-**Status:** proposed implementation contract; `CAI-0` through `CAI-8` implemented.
+**Status:** proposed implementation contract; `CAI-0` through `CAI-9` implemented.
 
 **Owner model:** one trusted local user, local datasets, local execution.
 
@@ -692,7 +692,7 @@ works under a thesis.
 - A user always knows whether the currently visible classic data/levels match
   the run being discussed.
 
-### CAI-9 — Evidence-backed page capability expansion
+### CAI-9 — Evidence-backed page capability expansion ✅ Implemented
 
 **Goal:** close the “second application” gap progressively without giving the
 Assistant unbounded access.
@@ -712,6 +712,26 @@ Each capability must add a registry entry, bounded handler output, evidence
 packet paths, grounded explanation templates, limits, documentation, and tests.
 Charts remain owned by classic pages; the Assistant links to/restores the exact
 recorded run rather than rendering unconstrained DataFrames.
+
+**Implemented contract**
+
+- `thesistester/assistant/page_summaries.py`: bounded JSON summarizers
+  (no DataFrames).
+- Registry flipped to `inspect_only` with handlers:
+  `LEVELS.inspect_and_chart`, `SIGNALS.inspect_and_chart`,
+  `BACKTEST.inspect_results`, `GRID.inspect_results`,
+  `VALIDATION.inspect_results` (hash-verified bundle input).
+- Evidence packet projects `levels_summary` / `signals_summary` /
+  `backtest_page_summary` / `grid_summary` / `validation_page_summary` with
+  grounded explanation templates.
+- `CLASSIC.propose_page_change` + `thesistester/classic_proposal.py`:
+  validate → stage (`classic_page_proposal`) → user Apply on Setup Builder /
+  Backtest only. Thesis switch clears staged proposals.
+- Orchestrator façades: `inspect_run_page_summary`,
+  `propose_classic_page_change`.
+- UI: Assistant page-summary buttons + proposal staging; classic proposal
+  cards on Setup Builder and Backtest.
+- Tests: `tests/test_cai9_page_capabilities.py`.
 
 **Regression gates**
 

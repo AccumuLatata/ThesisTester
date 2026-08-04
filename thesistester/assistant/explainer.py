@@ -453,6 +453,30 @@ def build_evidence_packet(
         results["otf_validation"] = otf_validation
         if results.get("otf_validation_summary") is None:
             results["otf_validation_summary"] = otf_validation.get("summary")
+    # CAI-9 page-shaped summaries (bounded; never raw frames).
+    from thesistester.assistant.page_summaries import (
+        summarize_backtest_state,
+        summarize_grid_state,
+        summarize_levels_state,
+        summarize_signals_state,
+        summarize_validation_state,
+    )
+
+    levels_summary = summarize_levels_state(state)
+    signals_summary = summarize_signals_state(state)
+    backtest_summary = summarize_backtest_state(state)
+    grid_summary = summarize_grid_state(state)
+    validation_page_summary = summarize_validation_state(state)
+    if levels_summary.get("available"):
+        results["levels_summary"] = to_jsonable(levels_summary)
+    if signals_summary.get("available"):
+        results["signals_summary"] = to_jsonable(signals_summary)
+    if backtest_summary.get("available"):
+        results["backtest_page_summary"] = to_jsonable(backtest_summary)
+    if grid_summary.get("available"):
+        results["grid_summary"] = to_jsonable(grid_summary)
+    if validation_page_summary.get("available"):
+        results["validation_page_summary"] = to_jsonable(validation_page_summary)
     provenance_data = to_jsonable(dict(provenance))
     config = _effective_configuration(provenance_data, state)
     costs_exposure = _cost_exposure_assumptions(config, state)
@@ -469,6 +493,8 @@ def build_evidence_packet(
         "costs_exposure": to_jsonable(costs_exposure),
         "dataset_fingerprint": to_jsonable(provenance_data.get("dataset_fingerprint")),
         "seeds": to_jsonable(provenance_data.get("seeds") or {}),
+        "levels_settings": to_jsonable(levels_summary.get("configuration") or {}),
+        "levels_identity": to_jsonable(levels_summary.get("identity")),
     }
     caveats, limitations = _derive_caveats(
         results=results,
@@ -755,14 +781,121 @@ def _template_portfolio(
     _claim(claims, text, "results.portfolio_summary.trade_count", trade_count)
 
 
+def _template_levels(packet: EvidencePacket, claims: list[EvidenceClaim], lines: list[str]) -> None:
+    summary = _as_mapping(packet.results.get("levels_summary")) or {}
+    if summary.get("available") is not True:
+        return
+    column_count = summary.get("level_column_count")
+    text = f"Levels evidence: {column_count} level columns in the recorded run."
+    lines.append(text)
+    _claim(claims, text, "results.levels_summary.level_column_count", column_count)
+    identity = _as_mapping(summary.get("identity")) or _as_mapping(
+        packet.assumptions.get("levels_identity")
+    )
+    if identity and identity.get("levels_settings_hash"):
+        digest = identity.get("levels_settings_hash")
+        id_text = f"Levels settings hash: {digest}."
+        lines.append(id_text)
+        _claim(claims, id_text, "results.levels_summary.identity.levels_settings_hash", digest)
+
+
+def _template_signals(
+    packet: EvidencePacket, claims: list[EvidenceClaim], lines: list[str]
+) -> None:
+    summary = _as_mapping(packet.results.get("signals_summary")) or {}
+    if summary.get("available") is not True:
+        return
+    signal_count = summary.get("signal_count")
+    zone_count = summary.get("zone_count")
+    text = f"Signals evidence: {signal_count} signals across {zone_count} confluence zones."
+    lines.append(text)
+    _claim(claims, text, "results.signals_summary.signal_count", signal_count)
+    _claim(claims, text, "results.signals_summary.zone_count", zone_count)
+    trigger_dist = _as_mapping(summary.get("trigger_distribution")) or {}
+    if trigger_dist:
+        # Prefer a single grounded trigger key when present.
+        for key, count in trigger_dist.items():
+            if key.startswith("_"):
+                continue
+            trig_text = f"Trigger `{key}` count: {count}."
+            lines.append(trig_text)
+            _claim(
+                claims,
+                trig_text,
+                f"results.signals_summary.trigger_distribution.{key}",
+                count,
+            )
+            break
+
+
+def _template_backtest_page(
+    packet: EvidencePacket, claims: list[EvidenceClaim], lines: list[str]
+) -> None:
+    summary = _as_mapping(packet.results.get("backtest_page_summary")) or {}
+    if summary.get("available") is not True:
+        return
+    kpis = _as_mapping(summary.get("kpis")) or {}
+    trade_count = kpis.get("trade_count")
+    expectancy = kpis.get("expectancy_r")
+    text = f"Backtest page summary: trade_count={trade_count}, expectancy_r={expectancy}."
+    lines.append(text)
+    _claim(claims, text, "results.backtest_page_summary.kpis.trade_count", trade_count)
+    _claim(claims, text, "results.backtest_page_summary.kpis.expectancy_r", expectancy)
+    costs = _as_mapping(summary.get("costs")) or {}
+    if "commission_per_side" in costs:
+        cost_text = f"Commission per side: {costs.get('commission_per_side')}."
+        lines.append(cost_text)
+        _claim(
+            claims,
+            cost_text,
+            "results.backtest_page_summary.costs.commission_per_side",
+            costs.get("commission_per_side"),
+        )
+
+
+def _template_grid_page(
+    packet: EvidencePacket, claims: list[EvidenceClaim], lines: list[str]
+) -> None:
+    summary = _as_mapping(packet.results.get("grid_summary")) or {}
+    if summary.get("available") is not True:
+        return
+    best = _as_mapping(summary.get("best_cell")) or {}
+    if not best:
+        return
+    stop = best.get("stop_loss_ticks")
+    target = best.get("take_profit_ticks")
+    text = f"Grid selection evidence: SL={stop}, TP={target}."
+    lines.append(text)
+    _claim(claims, text, "results.grid_summary.best_cell.stop_loss_ticks", stop)
+    _claim(claims, text, "results.grid_summary.best_cell.take_profit_ticks", target)
+
+
+def _template_validation_page(
+    packet: EvidencePacket, claims: list[EvidenceClaim], lines: list[str]
+) -> None:
+    summary = _as_mapping(packet.results.get("validation_page_summary")) or {}
+    if summary.get("available") is not True:
+        return
+    oos = _as_mapping(summary.get("oos_evidence")) or {}
+    present = oos.get("present")
+    text = f"OOS evidence present: {present}."
+    lines.append(text)
+    _claim(claims, text, "results.validation_page_summary.oos_evidence.present", present)
+
+
 def explain_evidence_report(packet: EvidencePacket) -> dict[str, Any]:
     """Render a structured explanation with claims, caveats, and next experiments."""
     claims: list[EvidenceClaim] = []
     lines: list[str] = []
     _template_baseline(packet, claims, lines)
+    _template_levels(packet, claims, lines)
+    _template_signals(packet, claims, lines)
+    _template_backtest_page(packet, claims, lines)
     _template_failure(packet, claims, lines)
     _template_sl_tp(packet, claims, lines)
+    _template_grid_page(packet, claims, lines)
     _template_validation(packet, claims, lines)
+    _template_validation_page(packet, claims, lines)
     _template_robustness(packet, claims, lines)
     _template_wfa(packet, claims, lines)
     _template_time(packet, claims, lines)
