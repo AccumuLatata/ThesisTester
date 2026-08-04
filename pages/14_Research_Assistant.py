@@ -1586,6 +1586,8 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                 right_run=selected[right_id],
             )
             if result.status != "completed":
+                # Drop stale success UI that would otherwise match the same run pair.
+                st.session_state["assistant_run_comparisons"].pop(thesis_id, None)
                 set_assistant_flash(
                     st.session_state,
                     level="error",
@@ -1663,6 +1665,8 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                 instrument=instrument,
             )
             if result.status != "completed":
+                # Drop stale portfolio summary that would contradict the hub error.
+                st.session_state["assistant_portfolio_analyses"].pop(thesis_id, None)
                 set_assistant_flash(
                     st.session_state,
                     level="error",
