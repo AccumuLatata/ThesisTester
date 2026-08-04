@@ -25,8 +25,9 @@ from thesistester.classic_export import (
     format_classic_export_gaps,
 )
 from thesistester.classic_record import (
+    classic_export_session_state,
     classic_session_ready_for_record,
-    resolve_classic_record_source_path,
+    resolve_classic_record_source,
 )
 from thesistester.persistence.local_store import get_store_root
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
@@ -103,13 +104,14 @@ def begin_classic_execution_ledger(
     thesis = orchestrator.get_thesis(thesis_id)
     root = Path(store_root) if store_root is not None else get_store_root()
     staging = root / "assistant" / "theses" / thesis_id / "classic_ledger" / "staging"
-    resolved_source = resolve_classic_record_source_path(
+    resolved_source = resolve_classic_record_source(
         session_state,
         materialize_dir=staging,
     )
+    export_state = classic_export_session_state(session_state, resolved_source)
     gaps = classic_state_export_gaps(
-        session_state,
-        source_path=resolved_source,
+        export_state,
+        source_path=resolved_source.path,
         store_root=root,
     )
     if gaps:
@@ -121,9 +123,9 @@ def begin_classic_execution_ledger(
             f"execution: {rendered}"
         )
     run_spec = classic_state_to_run_spec(
-        session_state,
+        export_state,
         name=thesis.name,
-        source_path=resolved_source,
+        source_path=resolved_source.path,
         store_root=root,
     )
     config_hash = compute_run_spec_hash(to_jsonable(dict(run_spec)))

@@ -238,7 +238,10 @@ research bundle as a completed thesis run without recomputing:
   `render_record_and_discuss`) on Backtest and Research Bundles. When classic
   pages omit a source CSV path, a lineage OHLCV CSV is materialized under the
   thesis store for RunSpec `dataset.path` only — levels/trades are never
-  recomputed. Recording stays out of `classic_context.py`.
+  recomputed. Materialized lineage files are always comma-separated canonical
+  OHLCV, so export/verification forces `dataset.format_profile="canonical"`
+  even when the session still carries a vendor ingest profile (e.g. Quantower
+  History Exporter semicolon). Recording stays out of `classic_context.py`.
 
 After registration, `explain_run` / `compare_completed_runs` /
 `restore_run_bundle_to_session` work from the verified bundle like any other

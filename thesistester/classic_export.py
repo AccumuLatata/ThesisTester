@@ -15,7 +15,7 @@ from typing import Any, Mapping, Sequence
 import pandas as pd
 
 from thesistester.api import load_dataset, validate_run_spec
-from thesistester.data.loader import format_interval, validate_ohlcv
+from thesistester.data.loader import DataValidationError, format_interval, validate_ohlcv
 from thesistester.engine.exit_management import validate_exit_management_config
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
 from thesistester.persistence.execution_artifacts import (
@@ -415,7 +415,7 @@ def _verify_source_path(
             exchange_timezone=identity.exchange_timezone,
             format_profile=identity.format_profile,
         )
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, DataValidationError) as exc:
         return _gap(
             "source_path_unreadable",
             f"Unable to load source path for identity verification: {exc}",

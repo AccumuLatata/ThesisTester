@@ -20,10 +20,12 @@ from thesistester.assistant import (
 from thesistester.assistant.explainer import build_evidence_packet
 from thesistester.classic_export import classic_state_to_run_spec
 from thesistester.classic_record import (
+    classic_export_session_state,
     classic_session_ready_for_record,
     classic_session_registration_gaps,
     materialize_classic_source_csv,
     record_classic_session_run,
+    resolve_classic_record_source,
 )
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
 from thesistester.research_identity import DataIdentity
@@ -621,6 +623,65 @@ def test_record_classic_session_run_end_to_end(tmp_path: Path, monkeypatch):
         force_new=True,
     )
     assert again.status == OrchestrationStatus.COMPLETED.value
+
+
+def test_materialized_vendor_session_exports_canonical_format_profile(tmp_path: Path):
+    """Streamlit vendor uploads leave no durable path; lineage CSV is always canonical.
+
+    Reproduces the Quantower Record-and-discuss failure where a materialized
+    comma-separated classic_source.csv was verified with sep=';'.
+    """
+    state = _classic_completed_state(tmp_path)
+    state["format_profile"] = "quantower_history_exporter"
+    state.pop("dataset_source_path", None)
+    state.pop("source_csv_path", None)
+
+    source = resolve_classic_record_source(
+        state, materialize_dir=tmp_path / "staging"
+    )
+    assert source.materialized is True
+    assert source.format_profile == "canonical"
+    assert Path(source.path).read_text(encoding="utf-8").splitlines()[0] == (
+        "timestamp,open,high,low,close,volume"
+    )
+
+    export_state = classic_export_session_state(state, source)
+    assert export_state["format_profile"] == "canonical"
+    assert state["format_profile"] == "quantower_history_exporter"
+
+    run_spec = classic_state_to_run_spec(
+        export_state,
+        name="vendor materialize",
+        source_path=source.path,
+        store_root=tmp_path / "store",
+    )
+    assert run_spec["dataset"]["format_profile"] == "canonical"
+    assert run_spec["dataset"]["path"] == source.path
+
+
+def test_record_quantower_session_without_source_path(tmp_path: Path, monkeypatch):
+    """Record and discuss must succeed for Quantower sessions with no source path."""
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    state = _classic_completed_state(tmp_path)
+    state["format_profile"] = "quantower_history_exporter"
+    state.pop("dataset_source_path", None)
+    state.pop("source_csv_path", None)
+
+    orchestrator, repository = _orchestrator(tmp_path)
+    thesis = repository.create_thesis(name="quantower record")
+    result = record_classic_session_run(
+        orchestrator,
+        thesis_id=thesis.thesis_id,
+        session_state=state,
+        store_root=tmp_path / "store",
+    )
+    assert result.status == OrchestrationStatus.COMPLETED.value
+    run = repository.get_run(thesis.thesis_id, result.payload["run_id"])
+    request = run.request if isinstance(run.request, dict) else {}
+    run_spec = request.get("run_spec") or {}
+    dataset = run_spec.get("dataset") if isinstance(run_spec, dict) else {}
+    assert dataset.get("format_profile") == "canonical"
+    assert Path(str(dataset.get("path", ""))).name == "classic_source.csv"
 
 
 def test_pages_wire_record_and_discuss():
