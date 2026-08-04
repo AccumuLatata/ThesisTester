@@ -707,10 +707,7 @@ def test_sync_upload_ingestion_mode_selector_skips_redundant_widget_write(monkey
         session_state=bound,
         explicit=True,
     )
-    assert (
-        bound["data_ingestion_mode_selector"]
-        == data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M
-    )
+    assert bound["data_ingestion_mode_selector"] == data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M
     assert bound[data_page.UPLOAD_INGESTION_MODE_EXPLICIT_KEY] is True
 
     # Pre-widget / differing value still writes the selector key.
