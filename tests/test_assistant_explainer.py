@@ -264,6 +264,34 @@ def test_build_evidence_packet_wires_top_level_otf_validation(monkeypatch):
     assert_claims_grounded(packet, report)
 
 
+def test_build_evidence_packet_nests_dataset_fingerprint_under_dataset(monkeypatch):
+    """Fingerprint must resolve at both nested and sibling assumption paths."""
+    monkeypatch.setattr(
+        "thesistester.assistant.explainer.build_research_artifact",
+        lambda state: {
+            "configuration": {"setup_config": {}, "instrument": "ES"},
+            "intrabar": {"backtest_policy": {}},
+            "otf_filter": {},
+            "results": {"trade_summary": {"trade_count": 12, "expectancy_r": 0.1}},
+        },
+    )
+    fingerprint = {"rows": 10, "hash": "abc"}
+    packet = build_evidence_packet(
+        {},
+        provenance={
+            "dataset_fingerprint": fingerprint,
+            "effective_configuration": {
+                "dataset": {"path": "bars.csv", "instrument": "ES"},
+            },
+        },
+    )
+    assert packet.assumptions["dataset_fingerprint"] == fingerprint
+    assert packet.assumptions["dataset"]["path"] == "bars.csv"
+    assert packet.assumptions["dataset"]["dataset_fingerprint"] == fingerprint
+    # Provenance remains authoritative; nested copy must not invent a second identity.
+    assert packet.provenance["dataset_fingerprint"] == fingerprint
+
+
 def test_otf_template_does_not_claim_availability_on_empty_filter():
     packet = EvidencePacket.from_dict(
         {

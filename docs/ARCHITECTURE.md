@@ -468,7 +468,11 @@ reruns so the Active handoff caption refreshes immediately.
 Explanations are packet-backed: `EvidencePacket` is schema-versioned and
 includes structured caveats, limitations, claims, and next-experiment guidance.
 `explain_evidence_report()` / `assert_claims_grounded()` ensure every displayed
-numeric claim cites an evidence path and exact value. Optional LLM paraphrase
+numeric claim cites an evidence path and exact value. Dataset identity is
+exposed at both `assumptions.dataset.dataset_fingerprint` (nested under the
+dataset object for LLM claim discoverability) and the sibling
+`assumptions.dataset_fingerprint` (kept for `compare_evidence` / older
+consumers). Optional LLM paraphrase
 (`explain_packet_with_llm` / `AssistantOrchestrator.explain_run_with_llm`) is a
 separate fail-closed gate: provider JSON must be exactly
 `{summary, caveats, claims}` with claim `{text, path}` objects; the server

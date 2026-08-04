@@ -233,6 +233,51 @@ def test_explanation_rejects_missing_claim_paths():
         explain_packet_with_llm(Client(), packet=packet)
 
 
+def test_explanation_accepts_nested_dataset_fingerprint_claim_path(monkeypatch):
+    """Regression: LLM commonly cites assumptions.dataset.dataset_fingerprint."""
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Dataset identity is present in the packet.",
+                "caveats": ["Identity is diagnostic only."],
+                "claims": [
+                    {
+                        "text": "Dataset fingerprint is present.",
+                        "path": "assumptions.dataset.dataset_fingerprint",
+                    },
+                    {
+                        "text": "Dataset fingerprint rows is 10.",
+                        "path": "assumptions.dataset.dataset_fingerprint.rows",
+                    },
+                ],
+            }
+
+    monkeypatch.setattr(
+        "thesistester.assistant.explainer.build_research_artifact",
+        lambda state: {
+            "configuration": {"setup_config": {}, "instrument": "ES"},
+            "intrabar": {"backtest_policy": {}},
+            "otf_filter": {},
+            "results": {"trade_summary": {"trade_count": 12, "expectancy_r": 0.1}},
+        },
+    )
+    packet = build_evidence_packet(
+        {},
+        provenance={
+            "dataset_fingerprint": {"rows": 10, "hash": "abc"},
+            "effective_configuration": {
+                "dataset": {"path": "bars.csv", "instrument": "ES"},
+            },
+        },
+    )
+    explanation = explain_packet_with_llm(Client(), packet=packet)
+    assert explanation.claims[0].path == "assumptions.dataset.dataset_fingerprint"
+    assert explanation.claims[0].value == {"rows": 10, "hash": "abc"}
+    assert explanation.claims[1].path == "assumptions.dataset.dataset_fingerprint.rows"
+    assert explanation.claims[1].value == 10
+
+
 def test_provider_retries_then_succeeds():
     class Transport:
         def __init__(self):
