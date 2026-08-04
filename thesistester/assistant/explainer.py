@@ -481,18 +481,33 @@ def build_evidence_packet(
         results["grid_summary"] = grid_summary
     if validation_page_summary.get("available"):
         results["validation_page_summary"] = validation_page_summary
+    # Nest fingerprint under assumptions.dataset so LLM claim paths like
+    # assumptions.dataset.dataset_fingerprint resolve. Keep the top-level
+    # assumptions.dataset_fingerprint sibling for compare_evidence and older
+    # packet consumers. Nest only when provenance has a fingerprint so a null
+    # key cannot make a missing identity look citable; strip any config-sourced
+    # dataset_fingerprint so only provenance identity is claimable.
+    dataset_assumptions = to_jsonable(config.get("dataset") or {})
+    if not isinstance(dataset_assumptions, dict):
+        dataset_assumptions = {}
+    else:
+        dataset_assumptions = dict(dataset_assumptions)
+    dataset_assumptions.pop("dataset_fingerprint", None)
+    dataset_fingerprint = to_jsonable(provenance_data.get("dataset_fingerprint"))
+    if dataset_fingerprint is not None:
+        dataset_assumptions["dataset_fingerprint"] = dataset_fingerprint
     assumptions = {
         "setup_config": artifact["configuration"]["setup_config"],
         "instrument": artifact["configuration"]["instrument"],
         "intrabar": artifact["intrabar"]["backtest_policy"],
         "otf_filter": artifact["otf_filter"],
-        "dataset": to_jsonable(config.get("dataset") or {}),
+        "dataset": dataset_assumptions,
         "backtest": to_jsonable(config.get("backtest") or {}),
         "grid": to_jsonable(config.get("grid") or {}),
         "validation": to_jsonable(config.get("validation") or {}),
         "walk_forward": to_jsonable(config.get("walk_forward") or {}),
         "costs_exposure": to_jsonable(costs_exposure),
-        "dataset_fingerprint": to_jsonable(provenance_data.get("dataset_fingerprint")),
+        "dataset_fingerprint": dataset_fingerprint,
         "seeds": to_jsonable(provenance_data.get("seeds") or {}),
         "levels_settings": to_jsonable(levels_summary.get("configuration") or {}),
         "levels_identity": to_jsonable(levels_summary.get("identity")),

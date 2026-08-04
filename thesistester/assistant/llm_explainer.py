@@ -168,8 +168,10 @@ def explain_packet_with_llm(
         system=(
             "Explain only the supplied evidence JSON using structured claims. "
             "Each claim.text that includes a number must cite claim.path to an existing "
-            "packet field. Do not add calculations, forecasts, trade advice, tools, or "
-            "facts absent from the packet. Preserve uncertainty and caveats."
+            "packet field. claim.path must be an exact dotted key path already present "
+            "in the supplied JSON; do not invent nested keys. Do not add calculations, "
+            "forecasts, trade advice, tools, or facts absent from the packet. "
+            "Preserve uncertainty and caveats."
         ),
         user=json.dumps(packet_dict, sort_keys=True),
         schema=_EXPLANATION_SCHEMA,
