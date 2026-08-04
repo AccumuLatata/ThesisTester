@@ -11,6 +11,11 @@ Classic workspace ↔ Assistant unification follows
 `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` (CAI-series). CAI milestones are
 also additive and must preserve engine/golden-master semantics.
 
+Realtime voice review of completed runs follows
+`docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (VA-series). VA milestones are
+additive presentation/session adapters over the assistant evidence path; they
+must not alter engine, levels, signals, or golden-master semantics.
+
 ---
 
 ## CAI-0 — Classic/Assistant Cold-Path Baseline ✅ Implemented
