@@ -1544,8 +1544,27 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                     )
         comparison_state = st.session_state["assistant_run_comparisons"].get(thesis_id)
         if comparison_state and comparison_state.get("run_ids") == [left_id, right_id]:
+            comparison = comparison_state.get("comparison")
+            # Keep conclusions visible — raw JSON stays under Debug so Compare
+            # does not look like a no-op inside the collapsed Advanced section.
+            st.success("Comparison ready.")
+            if isinstance(comparison, dict):
+                conclusions = comparison.get("conclusions")
+                if isinstance(conclusions, list) and conclusions:
+                    st.markdown("**Conclusions**")
+                    for item in conclusions:
+                        text = str(item).strip()
+                        if text:
+                            st.write(f"- {text}")
+                warnings = comparison.get("warnings")
+                if isinstance(warnings, list) and warnings:
+                    st.markdown("**Warnings**")
+                    for item in warnings:
+                        text = str(item).strip()
+                        if text:
+                            st.caption(text)
             with st.expander("Debug: comparison JSON", expanded=False):
-                st.json(comparison_state["comparison"])
+                st.json(comparison)
 
         st.subheader("Portfolio analysis")
         portfolio_ids = st.multiselect(
@@ -1568,16 +1587,27 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                 instrument=instrument,
             )
             if result.status != "completed":
-                st.error(result.payload.get("error", {}).get("message", "Unable to analyze portfolio."))
+                st.error(
+                    result.payload.get("error", {}).get("message", "Unable to analyze portfolio.")
+                )
             else:
+                payload_view = {
+                    key: value
+                    for key, value in result.payload.items()
+                    if key != "resource_limits"
+                }
+                st.success(
+                    f"Portfolio analysis ready for {len(portfolio_ids)} runs ({instrument})."
+                )
+                summary = payload_view.get("portfolio")
+                if summary is None:
+                    summary = payload_view.get("portfolio_summary")
+                if isinstance(summary, dict) and summary:
+                    st.markdown("**Portfolio summary**")
+                    for key, value in summary.items():
+                        st.write(f"- `{key}`: {value}")
                 with st.expander("Debug: portfolio JSON", expanded=False):
-                    st.json(
-                        {
-                            key: value
-                            for key, value in result.payload.items()
-                            if key != "resource_limits"
-                        }
-                    )
+                    st.json(payload_view)
 
     with st.expander("Saved comparisons", expanded=False):
         for record in orchestrator.list_comparisons(thesis_id):
