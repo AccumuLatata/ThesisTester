@@ -1,12 +1,16 @@
 # Realtime Voice Agent — Implementation Contract
 
 **Document type:** Implementation contract (VA-series)
-**Status:** proposed — not shipped
+**Status:** proposed — not shipped (pending VA-0 must-fix amendments)
 **Date:** 2026-08-04
 **Owner surface:** `thesistester/assistant/` + Research Assistant page only
 **Provider:** xAI Grok Voice Agent API (`grok-voice-latest`)
 **Depends on:** C2 complete (`docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` through PR6),
 `docs/ENGINEERING_PROPOSAL.md` §4 / §4.1 / §4.2
+
+**Codebase reassessment (binding amendments):**
+`docs/REALTIME_VOICE_AGENT_REASSESSMENT.md`. VA-0 must incorporate that
+document’s §7 must-fix list before any VA-1+ implementation starts.
 
 This is the binding implementation contract for realtime voice review of
 **completed** research runs. Every VA PR must stay inside its scope table.
@@ -110,10 +114,14 @@ allow_web_search = false
 require_tool_for_numbers = true
 ephemeral_token_ttl_seconds = 300
 max_history_messages = 12
+max_retries = 2
 ```
 
-Secret: `XAI_API_KEY` (env first, else Streamlit Secrets `[xai].api_key`).
-Reject placeholder strings (mirror OpenAI key rejection in `llm.py`).
+Secret resolution (mirror `llm.py` / `require_openai_api_key`):
+1. env `XAI_API_KEY`
+2. Streamlit Secrets top-level `XAI_API_KEY`
+3. Streamlit Secrets nested `[xai].api_key`
+Reject placeholder strings (define `_XAI_API_KEY_PLACEHOLDER`).
 
 ---
 
@@ -188,9 +196,11 @@ thesistester/assistant/voice/contracts.py
 thesistester/assistant/voice/settings.py
 tests/test_assistant_voice_contracts.py
 docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
+docs/REALTIME_VOICE_AGENT_REASSESSMENT.md
 docs/ENGINEERING_ROADMAP.md
 docs/ASSUMPTIONS_AND_LIMITATIONS.md
 docs/ARCHITECTURE.md
+docs/AGENT_GUIDE.md
 ```
 
 ---
@@ -205,10 +215,10 @@ Voice later reuses this path; this PR ships user value without audio.
 |---|---|
 | Code | New `thesistester/assistant/results_qa.py` — `propose_results_reply(client, *, packet, history, user_message) -> ResultsQAReply` with schema `{summary, caveats, claims[{text,path}], followups}` |
 | Code | Grounding: reuse / share helpers with `llm_explainer.py` (extract shared numeric grounding into a small private helper **only if** needed; prefer calling existing validators to avoid drift) |
-| Code | `AssistantOrchestrator.handle_results_turn(thesis_id, run_id, message, *, conversation_id=...)` — load run, `BUNDLE.import` with expected hash, build packet, call results_qa, persist user+assistant messages tagged `results_qa` |
-| Code | Persistence: conversation messages gain an additive optional field/tag; schema version bump only if repository requires it — document in same PR |
-| UI | On completed run section in `pages/14_Research_Assistant.py`: expander “Discuss results” with `st.chat_input` scoped to that run — **no mic** |
-| Tests | `tests/test_assistant_results_qa.py` + extend `tests/test_assistant_llm_evaluations.py`: injection→no dispatch; uncited numbers rejected; missing run; hash mismatch; history trim; `handle_chat_turn` still never loads bundles |
+| Code | `AssistantOrchestrator.handle_results_turn(thesis_id, run_id, message, *, conversation_id=...)` — load run via `get_run`, hash-verified evidence via existing `explain_run` / `BUNDLE.import` evidence path, call results_qa, persist user+assistant messages with additive `"channel": "results_qa"` and `"run_id"` (no Conversation schema bump; message dicts are not field-locked) |
+| Code | Grounding: call `assert_llm_explanation_grounded` or extracted shared helpers from `llm_explainer.py` — do not fork token/percent/caveat rules |
+| UI | Inside each completed-run expander in `pages/14_Research_Assistant.py` (beside Explain / LLM explain): “Discuss results” with keyed nested `st.chat_input` or `st.text_input`+button — **no mic**; do not replace thesis-draft `st.chat_input` |
+| Tests | `tests/test_assistant_results_qa.py` + extend `tests/test_assistant_llm_evaluations.py`: injection→no `execute_confirmed_run` / no `PIPELINE.*`; RO `BUNDLE.import` allowed; uncited numbers rejected; missing run; hash mismatch; history trim filtered by `channel`+`run_id`; `handle_chat_turn` still never loads bundles; results messages must not include `choices` (draft hydration hazard at page L242–253) |
 
 #### Out of scope
 - xAI, audio, STT/TTS, WebSockets
@@ -217,11 +227,12 @@ Voice later reuses this path; this PR ships user value without audio.
 - Changing deterministic `explain_evidence_report` templates (call them; don’t rewrite)
 
 #### Acceptance
-- [ ] `handle_results_turn` never calls `dispatch` / `execute_confirmed_run` (asserted)
+- [ ] `handle_results_turn` never calls `execute_confirmed_run` and never dispatches `PIPELINE.*` / mutators (asserted). RO `BUNDLE.import` (action `evidence`) is allowed — unlike `handle_chat_turn`
 - [ ] Uncited numeric token → error before UI persistence/render
 - [ ] Hash mismatch → structured failure; no packet leak
 - [ ] Without provider key, deterministic explain still works; results Q&A surfaces clear remediation
 - [ ] `handle_chat_turn` behavior fixtures remain green unchanged
+- [ ] Persisted results assistant messages omit `choices` so thesis draft hydration cannot adopt them
 
 #### Regression safety
 New orchestrator method + optional UI block. Thesis drafting and one-shot
@@ -256,10 +267,11 @@ _Pending implementation._
 | Item | Detail |
 |---|---|
 | Code | `voice/xai_realtime.py` — `mint_ephemeral_token(*, api_key, expires_after_seconds) -> EphemeralToken` via `POST https://api.x.ai/v1/realtime/client_secrets`; stdlib/`urllib` or existing HTTP style from `llm.py`; 30s timeout; retries from settings |
-| Code | `voice/session.py` — `VoiceSessionService.create_session(thesis_id, run_id, *, expected_hash, mode)` loads packet via orchestrator/bundle import, persists `VoiceSessionRecord`, builds system instructions (honesty preamble + tool-number policy + caveats summary) |
-| Code | `VoiceSessionService.end_session(session_id)` marks ended; best-effort |
-| Code | Key resolution in `voice/settings.py`: env `XAI_API_KEY` → secrets; reject placeholders |
-| Tests | `tests/test_assistant_voice_session.py` — mock HTTP; no key; placeholder key; bad hash; missing run; instruction contains required policy strings |
+| Code | `voice/session.py` — `VoiceSessionService.create_session(thesis_id, run_id, *, expected_hash, mode)` loads packet via orchestrator evidence import, caches bound packet, persists `VoiceSessionRecord`, builds system instructions (honesty preamble + tool-number policy + caveats summary) |
+| Persistence | Store under `assistant/theses/{thesis_id}/voice_sessions/{session_id}.json` with `kind: "voice_session"` and `session_id` matching `vs_[0-9a-f]{32}`. Do **not** widen `Conversation` fields or reuse `_ID_RE` (only `th_/run_/conv_`). Conversation schema stays v1; voice sessions are sibling docs |
+| Code | `VoiceSessionService.end_session(session_id)` marks ended; flush transcript turns via `append_conversation_message` / `tool_entry` (best-effort) |
+| Code | Key resolution in `voice/settings.py`: env → Secrets `XAI_API_KEY` → `[xai].api_key`; reject placeholders; mint retries from `assistant.voice.max_retries` |
+| Tests | `tests/test_assistant_voice_session.py` — mock HTTP; no key; placeholder key; bad hash; missing run; instruction contains required policy strings; session id format |
 
 #### Out of scope
 - Tool JSON schemas / execution (VA-3)
@@ -305,13 +317,13 @@ _Pending implementation._
 | Item | Detail |
 |---|---|
 | Code | `voice/tools.py` — `VOICE_TOOL_SCHEMAS` + `execute_voice_tool(name, args, *, session) -> dict` |
-| Tools (exact v1 set) | `get_run_overview` → deterministic explain summary + caveats from bound packet |
-| | `get_metric` → `{path}` → typed value from packet; unknown path fails |
+| Tools (exact v1 set) | `get_run_overview` → `explain_evidence_report` / caveats from **cached bound packet** (no re-import) |
+| | `get_metric` → `{path}` → typed value from bound packet; unknown/empty/`..` paths fail |
 | | `list_caveats` → packet caveats list |
-| | `compare_two_runs` → `{other_run_id}` → existing compare; **both** hashes verified |
-| Deny | Anything else, including `web_search`, `x_search`, `PIPELINE.*`, `execute_confirmed_run`, export mutators |
-| Audit | Each call → one `tool_transcript` entry (args digest + ok/error + result digest) |
-| Grounding helper | `voice/grounding.py` — `audit_transcript_numbers(text, *, allowed_values) -> GroundingVerdict` for later VA-4/5 (unit-tested now) |
+| | `compare_two_runs` → `{other_run_id}` → load other run, hash-verify, `compare_evidence` on packets; **must not** call `repository.save_comparison` (stay read-only) |
+| Deny | Anything else, including `web_search`, `x_search`, `file_search`, `mcp`, `PIPELINE.*`, `execute_confirmed_run`, export mutators |
+| Audit | Each call → one conversation `tool_transcript` entry via `append_conversation_message(..., tool_entry=...)` (args digest + ok/error + result digest) |
+| Grounding helper | `voice/grounding.py` — reuse C2-6 token normalization/percent rules from `llm_explainer` (extract shared helpers if needed); digit-token audit only (spoken-word numbers out of scope) |
 | Tests | `tests/test_assistant_voice_tools.py` — allowlist, deny, path traversal, compare missing hash, injection names, grounding helper cases |
 
 #### Out of scope
@@ -355,11 +367,12 @@ VA-1 text grounding on transcripts.
 #### In scope
 | Item | Detail |
 |---|---|
-| UI | Opt-in panel on `pages/14_Research_Assistant.py` when `voice.enabled` **and** completed run selected |
-| Flow | `st.audio_input` → xAI STT (`POST /v1/stt` or equivalent helper in `xai_realtime.py`) → `handle_results_turn` **or** voice-tool-assisted reply → xAI TTS → `st.audio` playback |
-| UI | Show transcript text + `GroundingVerdict` status; block mic while thesis has a running compute |
+| UI | Opt-in panel inside completed-run expander on `pages/14_Research_Assistant.py` when `voice.enabled` **and** completed run selected |
+| Provider policy | **Default (A):** PTT answer path = VA-3 tools + deterministic overview text → xAI TTS (no OpenAI required for voice). Text “Discuss results” remains OpenAI `handle_results_turn`. Document dual-key only if product later chooses Option B (STT → results_qa → TTS) |
+| Flow | `st.audio_input` (note default 16 kHz) → xAI STT (`POST /v1/stt`) → voice-tool-assisted grounded reply → xAI TTS (`POST /v1/tts`) → `st.audio` playback |
+| UI | Show transcript text + `GroundingVerdict` status; block mic while any thesis run has `status=="running"` (`list_runs`) |
 | Session | Create/end `VoiceSessionRecord` with `mode="push_to_talk"` |
-| Session keys | Additive `assistant_voice_*` only; document in `ARCHITECTURE.md` same PR (e.g. `assistant_voice_active_session_id`, `assistant_voice_last_error`) — clear on thesis switch if staged |
+| Session keys | Additive `assistant_voice_*` in `ASSISTANT_SESSION_KEYS` + `THESIS_SCOPED_STAGING_KEYS`; document in `ARCHITECTURE.md` same PR; clear on thesis switch. Extend `tests/test_assistant_workspace.py` Streamlit stub with `audio_input` / `audio` |
 | Config | Keep default `mode = "push_to_talk"` |
 | Tests | Flag-off: page/orchestrator paths do not mint tokens (unit/integration) |
 | | Flag-on without key: remediation error, no crash |
@@ -411,15 +424,15 @@ allowlist-bound.
 #### In scope
 | Item | Detail |
 |---|---|
-| Transport | Browser client via Streamlit **custom component** (preferred) or minimal `components.html` bootstrap; connect `wss://api.x.ai/v1/realtime?model=<configured>` using ephemeral token protocol `xai-client-secret.<token>` |
-| Session | `session.update` with voice, instructions from `VoiceSessionService`, `turn_detection: server_vad`, **custom function tools only** (VA-3 schemas); `allow_web_search` must remain false → do not register search tools |
-| Tool bridge | On `function_call` → server `execute_voice_tool` → `function_call_output` |
+| Transport (frozen) | **Localhost FastAPI sidecar** owns the WebSocket + tool bridge; Streamlit mints ephemeral token / session id and embeds the audio UI. Custom Streamlit component is deferred (spike-only) — Streamlit’s rerun model makes in-page duplex+tools a stall risk |
+| Session | Sidecar applies `session.update` with voice, instructions from `VoiceSessionService`, `turn_detection: server_vad`, **custom function tools only** (VA-3 schemas); payload must omit `web_search`, `x_search`, `file_search`, `mcp` |
+| Tool bridge | On `function_call` → sidecar calls `execute_voice_tool` → `function_call_output` (same process as `VoiceSessionService`; no duplicated business logic) |
 | Audio | PCM 24 kHz as required by xAI; no raw audio persistence (`store_audio` stays false) |
-| Config | Allow `mode = "realtime"`; push-to-talk remains available |
+| Config | Allow `mode = "realtime"`; push-to-talk remains available as fallback |
 | Transcript | Sync assistant/user text + tool audits to repository on session end; periodic flush best-effort |
 | TTL | Enforce `max_session_minutes`; token refresh only via server mint |
-| Tests | Mocked WS event fixtures for tool bridge; TTL; deny search tools in session payload; tab-end best-effort audit |
-| Escape hatch | Localhost FastAPI sidecar **only if** component path is blocked — must be single-user, documented, and still use same `VoiceSessionService` (no second business logic) |
+| Tests | Mocked WS event fixtures for tool bridge; TTL; deny search/`file_search`/`mcp` tools in session payload; tab-end best-effort audit |
+| Docs | `ENGINEERING.md` localhost sidecar run instructions in the same PR |
 
 #### Out of scope
 - Phone/Twilio
@@ -444,14 +457,13 @@ allowlist unchanged. Engine/golden untouched.
 thesistester/assistant/voice/xai_realtime.py
 thesistester/assistant/voice/session.py
 thesistester/assistant/voice/tools.py           # schema export for session.update only
+thesistester/assistant/voice/sidecar.py         # localhost FastAPI entry (single-user)
 pages/14_Research_Assistant.py
-# optional component package, e.g.:
-thesistester/assistant/voice/frontend/          # or components/voice_realtime/
 tests/test_assistant_voice_realtime.py
 docs/ARCHITECTURE.md
 docs/ASSUMPTIONS_AND_LIMITATIONS.md
 docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
-docs/ENGINEERING.md                             # only if sidecar run instructions needed
+docs/ENGINEERING.md                             # sidecar run instructions (required)
 ```
 
 #### Implemented contract (fill when merged)
@@ -568,10 +580,12 @@ _Pending implementation._
 | # | Decision | Default if no objection |
 |---|---|---|
 | 1 | VA-4 STT: xAI batch STT vs short Voice manual commit | xAI batch STT |
-| 2 | VA-5 transport: custom component vs localhost sidecar | custom component |
+| 2 | VA-5 transport | **localhost FastAPI sidecar** (component deferred) |
 | 3 | Default voice id | `eve` |
-| 4 | `compare_two_runs` in v1 allowlist | **include** |
-| 5 | Model pin string | `grok-voice-latest` |
+| 4 | `compare_two_runs` in v1 allowlist | **include** (pure `compare_evidence`; no persist) |
+| 5 | Model pin string | Prefer dated `grok-voice-think-fast-*` for evals; `grok-voice-latest` alias rolls 2026-08-05 |
+| 6 | VA-4 answer path | Tools + TTS (no OpenAI) vs STT→results_qa→TTS (dual key) → **tools + TTS** |
+| 7 | Voice session persistence | Sibling `voice_sessions/` docs with `vs_` ids |
 
 After VA-0 merges, changing these defaults requires a docs amendment in the
 PR that changes them.
@@ -595,6 +609,7 @@ When implementing any VA PR:
 
 ## 13. References
 
+- Codebase reassessment (amendments): `docs/REALTIME_VOICE_AGENT_REASSESSMENT.md`
 - xAI Voice: https://docs.x.ai/developers/model-capabilities/audio/voice
 - Speech-to-speech: https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech
 - Ephemeral tokens: https://docs.x.ai/developers/model-capabilities/audio/ephemeral-tokens
@@ -602,3 +617,6 @@ When implementing any VA PR:
 - `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2-6 grounding gate)
 - `docs/ENGINEERING_PROPOSAL.md` §4
 - `thesistester/assistant/llm_explainer.py`
+- `thesistester/assistant/orchestrator.py` (`handle_chat_turn`, `explain_run`, `compare_completed_runs`)
+- `thesistester/assistant/repository.py` (conversation append / exact schema fields)
+- `pages/14_Research_Assistant.py` (UI attach point: completed-run expander)
