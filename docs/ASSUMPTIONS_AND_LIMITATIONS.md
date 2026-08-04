@@ -447,6 +447,19 @@ other than the last bar in the dataset.
   funnel through routed capabilities (typically `PIPELINE.run_experiment` plus
   evidence/export). They are audited by `audit_capability_registry()`.
 
+## Voice agent (VA-series — proposed, not shipped)
+- Realtime voice review of completed runs is specified in
+  `docs/VOICE_AGENT_ENGINEERING_ROADMAP.md`. It is not implemented yet.
+- When shipped, voice will be opt-in (`assistant.voice.enabled = false` by
+  default), bind only to hash-verified evidence packets, and expose read-only
+  tools. It must not dispatch compute, mutate RunSpecs, or invent metrics.
+- Spoken numeric claims inherit the C2-6 grounding contract via transcript /
+  tool-result audit; provider failure must fall back to deterministic explain
+  and text results Q&A.
+- Planned provider: xAI Grok Voice Agent API (`grok-voice-latest`) with
+  server-side `XAI_API_KEY` and ephemeral client tokens. Raw audio is not
+  stored by default.
+
 ## OTF filter (One Timeframing)
 
 - **Default-off.** When OTF is disabled or absent from a setup, candidate

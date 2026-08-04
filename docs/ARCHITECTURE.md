@@ -373,6 +373,11 @@ The Research Assistant page stages only these additive `assistant_*` keys
 | `assistant_bundle_handoff` | Last hash-verified restore into research pages |
 | `assistant_flash` | One-shot `{level, message}` UI notice consumed after `st.rerun()` |
 
+Proposed realtime voice review (VA-series) must add only namespaced
+`assistant_voice_*` keys in the same PR that introduces them; see
+`docs/VOICE_AGENT_ENGINEERING_ROADMAP.md`. Until that series lands, no voice
+session keys exist and the Research Assistant remains text-only.
+
 Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_draft_choices`, `assistant_hydrated_conversation_id`,
 `assistant_validated_run_spec`, `assistant_bundle_handoff`, `assistant_flash`) so
