@@ -296,9 +296,7 @@ def test_chat_turn_persists_user_and_nonexecuting_assistant_draft(tmp_path):
     )
 
     assert not draft.ready_for_confirmation
-    messages = repository.get_conversation(
-        thesis.thesis_id, conversation.conversation_id
-    ).messages
+    messages = repository.get_conversation(thesis.thesis_id, conversation.conversation_id).messages
     assert len(messages) == 2
     assert messages[0]["role"] == "user"
     assert messages[1]["role"] == "assistant"

@@ -222,12 +222,30 @@ def format_assistant_draft_reply(clarifications: Sequence[str] | None = None) ->
     )
 
 
+def _clarification_visible_in_content(item: str, content: str) -> bool:
+    """True when ``item`` is already rendered as a clarification in ``content``.
+
+    Uses bullet/line presence rather than raw substring checks so a short
+    clarification like ``research choices`` is not treated as satisfied by the
+    opaque legacy status line ``Drafted non-executing research choices.``.
+    """
+    if not item or not content:
+        return False
+    if f"- {item}" in content:
+        return True
+    if content == item:
+        return True
+    return f"\n{item}\n" in f"\n{content}\n"
+
+
 def format_chat_message_body(message: Mapping[str, Any]) -> str:
     """Return the text shown inside one Assistant chat bubble.
 
-    Prefer persisted ``content``. When older turns stored clarifications only
-    on the structured field (pre-UX fix), fold them into the body so audit JSON
-    and the chat surface stay aligned.
+    Prefer persisted ``content`` when it already surfaces every structured
+    clarification. When older turns stored clarifications only on the structured
+    field (pre-UX fix), or when ``content`` is an opaque status line that only
+    accidentally overlaps a short clarification substring, fold missing items
+    into the body so Assistant chat never drops structured questions.
     """
     if not isinstance(message, Mapping):
         return ""
@@ -240,14 +258,17 @@ def format_chat_message_body(message: Mapping[str, Any]) -> str:
             for item in clarifications
             if isinstance(item, str) and str(item).strip()
         ]
-    if items:
-        bullets = "\n".join(f"- {item}" for item in items)
-        if content and all(item not in content for item in items):
-            return f"{content}\n\nClarifications still needed:\n{bullets}"
-        if content:
-            return content
-        return format_assistant_draft_reply(items)
-    return content
+    if not items:
+        return content
+    # New turns persist clarifications inside content via
+    # format_assistant_draft_reply — trust that body when complete.
+    if content and all(_clarification_visible_in_content(item, content) for item in items):
+        return content
+    missing = [item for item in items if not _clarification_visible_in_content(item, content)]
+    if content and missing:
+        bullets = "\n".join(f"- {item}" for item in missing)
+        return f"{content}\n\nClarifications still needed:\n{bullets}"
+    return format_assistant_draft_reply(items)
 
 
 def chat_message_display_role(message: Mapping[str, Any]) -> str | None:

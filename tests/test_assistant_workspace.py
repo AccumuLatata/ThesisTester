@@ -367,7 +367,42 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "What test would you like explained?" in body
     assert chat_message_display_role(legacy) == "assistant"
     assert chat_message_display_role({"role": "user", "content": "hi"}) == "user"
-    assert chat_message_display_role({"role": "tool", "content": "completed BUNDLE.import."}) is None
+    assert (
+        chat_message_display_role({"role": "tool", "content": "completed BUNDLE.import."}) is None
+    )
+
+    # A short clarification that is a substring of the opaque status line must
+    # not suppress merging the remaining structured questions into chat.
+    overlapping = {
+        "role": "assistant",
+        "content": "Drafted non-executing research choices.",
+        "clarifications": [
+            "research choices",
+            "What instrument and dataset should this thesis use?",
+        ],
+    }
+    overlapping_body = format_chat_message_body(overlapping)
+    assert "- research choices" in overlapping_body
+    assert "- What instrument and dataset should this thesis use?" in overlapping_body
+    assert "Clarifications still needed:" in overlapping_body
+
+    # New turns already embed every clarification in content — do not duplicate.
+    embedded = format_assistant_draft_reply(
+        ("Select a dataset and instrument.", "Define setup levels.")
+    )
+    assert (
+        format_chat_message_body(
+            {
+                "role": "assistant",
+                "content": embedded,
+                "clarifications": [
+                    "Select a dataset and instrument.",
+                    "Define setup levels.",
+                ],
+            }
+        )
+        == embedded
+    )
 
     page_path = pathlib.Path(__file__).parent.parent / "pages" / "14_Research_Assistant.py"
     source = page_path.read_text(encoding="utf-8")
