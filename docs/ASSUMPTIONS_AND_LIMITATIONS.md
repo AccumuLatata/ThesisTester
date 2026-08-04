@@ -427,10 +427,11 @@ other than the last bar in the dataset.
   provider is configured, it may only propose non-executing draft choices or
   paraphrase an immutable evidence packet.
 - LLM explanations must cite packet paths; uncited numerical tokens are rejected
-  before render. Dataset identity is available at
-  `assumptions.dataset.dataset_fingerprint` (and mirrored at
-  `assumptions.dataset_fingerprint`). The model cannot execute tools, mutate
-  confirmed RunSpecs, bypass confirmation, or invent metrics.
+  before render. When provenance includes a fingerprint, dataset identity is
+  available at `assumptions.dataset.dataset_fingerprint` (and mirrored at
+  `assumptions.dataset_fingerprint`); the nested key is omitted when fingerprint
+  is absent. The model cannot execute tools, mutate confirmed RunSpecs, bypass
+  confirmation, or invent metrics.
 - Credentials: set a rotated `OPENAI_API_KEY` in the environment first, or via
   Streamlit Secrets on Community Cloud (`OPENAI_API_KEY`, with nested
   `[openai].api_key` accepted as compatibility only). The placeholder

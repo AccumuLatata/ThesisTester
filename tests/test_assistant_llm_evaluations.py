@@ -278,6 +278,86 @@ def test_explanation_accepts_nested_dataset_fingerprint_claim_path(monkeypatch):
     assert explanation.claims[1].value == 10
 
 
+def test_explanation_rejects_nested_fingerprint_when_provenance_missing(monkeypatch):
+    """Missing provenance identity must fail closed for nested claim paths."""
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Dataset identity appears present.",
+                "caveats": ["Identity is diagnostic only."],
+                "claims": [
+                    {
+                        "text": "Dataset fingerprint is present.",
+                        "path": "assumptions.dataset.dataset_fingerprint",
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(
+        "thesistester.assistant.explainer.build_research_artifact",
+        lambda state: {
+            "configuration": {"setup_config": {}, "instrument": "ES"},
+            "intrabar": {"backtest_policy": {}},
+            "otf_filter": {},
+            "results": {"trade_summary": {"trade_count": 12, "expectancy_r": 0.1}},
+        },
+    )
+    packet = build_evidence_packet(
+        {},
+        provenance={
+            "effective_configuration": {
+                "dataset": {
+                    "path": "bars.csv",
+                    "instrument": "ES",
+                    "dataset_fingerprint": {"rows": 99},
+                },
+            },
+        },
+    )
+    with pytest.raises(LLMEvidenceError, match="missing from the evidence packet"):
+        explain_packet_with_llm(Client(), packet=packet)
+
+
+def test_explanation_still_accepts_sibling_dataset_fingerprint_claim(monkeypatch):
+    """Sibling assumptions.dataset_fingerprint remains valid for older consumers."""
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Sibling dataset identity is present.",
+                "caveats": ["Identity is diagnostic only."],
+                "claims": [
+                    {
+                        "text": "Dataset fingerprint rows is 10.",
+                        "path": "assumptions.dataset_fingerprint.rows",
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(
+        "thesistester.assistant.explainer.build_research_artifact",
+        lambda state: {
+            "configuration": {"setup_config": {}, "instrument": "ES"},
+            "intrabar": {"backtest_policy": {}},
+            "otf_filter": {},
+            "results": {"trade_summary": {"trade_count": 12, "expectancy_r": 0.1}},
+        },
+    )
+    packet = build_evidence_packet(
+        {},
+        provenance={
+            "dataset_fingerprint": {"rows": 10, "hash": "abc"},
+            "effective_configuration": {
+                "dataset": {"path": "bars.csv", "instrument": "ES"},
+            },
+        },
+    )
+    explanation = explain_packet_with_llm(Client(), packet=packet)
+    assert explanation.claims[0].path == "assumptions.dataset_fingerprint.rows"
+    assert explanation.claims[0].value == 10
+
+
 def test_provider_retries_then_succeeds():
     class Transport:
         def __init__(self):

@@ -454,7 +454,7 @@ number. Common leaves:
 | `assumptions.costs_exposure.slippage_ticks` | Slippage assumption |
 | `assumptions.grid.ranking_metric` | Grid ranking metric label |
 | `results.walk_forward_summary.valid_fold_count` | Valid OOS fold count |
-| `assumptions.dataset.dataset_fingerprint` | Dataset identity fingerprint (also mirrored at `assumptions.dataset_fingerprint`) |
+| `assumptions.dataset.dataset_fingerprint` | Dataset identity fingerprint when provenance provides one (also mirrored at `assumptions.dataset_fingerprint`; nested key omitted if fingerprint absent) |
 
 Uncited numeric tokens in LLM narrative are rejected before render. Glossary
 formulas above remain the definitional source; packet paths are the citation
