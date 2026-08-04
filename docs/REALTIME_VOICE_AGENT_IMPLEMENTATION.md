@@ -25,12 +25,16 @@ rejected.
 The series is done when a local user can:
 
 1. Select a completed, hash-verified research run.
-2. Opt in to voice (`assistant.voice.enabled = true` + `XAI_API_KEY` set).
-3. Hold a multi-turn spoken discussion of that run’s evidence.
-4. Hear only numbers that resolve to the `EvidencePacket` or to values
+2. Discuss that run in **text** via grounded multi-turn results Q&A (VA-1).
+3. Opt in to voice (`assistant.voice.enabled = true` + `XAI_API_KEY` set).
+4. Use **push-to-talk** to invoke allowlisted evidence tools and hear
+   template-spoken results (VA-4).
+5. Optionally use **realtime** free-form spoken Q&A with model tool-calling
+   via the localhost sidecar (VA-5).
+6. Hear/see only numbers that resolve to the `EvidencePacket` or to values
    returned by allowlisted read-only tools in that session.
-5. See a persisted transcript + tool audit on the thesis conversation.
-6. Fall back to deterministic explain + text results Q&A if voice fails.
+7. See a persisted transcript + tool audit on the thesis conversation.
+8. Fall back to deterministic explain + text results Q&A if voice fails.
 
 Voice remains **default-off** after VA-6 unless a separate, explicit enable
 decision lands later.
@@ -414,10 +418,12 @@ session keys.
 ```
 pages/14_Research_Assistant.py
 thesistester/assistant/workspace.py             # ASSISTANT_SESSION_KEYS additive
+thesistester/assistant/voice/intent.py          # deterministic VoiceIntentRouter
 thesistester/assistant/voice/xai_realtime.py    # STT/TTS helpers
 thesistester/assistant/voice/session.py
 thesistester/assistant/orchestrator.py          # only if a thin voice_turn façade is needed
 tests/test_assistant_voice_ui.py
+tests/test_assistant_voice_intent.py
 tests/test_assistant_workspace.py               # key list expectations
 docs/ARCHITECTURE.md
 docs/ASSUMPTIONS_AND_LIMITATIONS.md

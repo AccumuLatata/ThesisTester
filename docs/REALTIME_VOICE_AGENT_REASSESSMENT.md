@@ -291,20 +291,39 @@ From `ENGINEERING_PROPOSAL.md` §4 / §4.2 and `AGENT_GUIDE.md` assistant rules:
 
 ---
 
-## 9. Recommended implementer prompt (copy)
+## 9. Second-pass fixes applied (2026-08-04 follow-up)
+
+After the first reassessment was folded into the implementation contract, a
+second pass closed remaining executable holes:
+
+1. **VA-4 intent→tool gap:** “tools + TTS” without an intent step was not
+   executable. Frozen: deterministic `VoiceIntentRouter` only; no LLM intent;
+   free-form spoken NL deferred to VA-5; free-form text stays VA-1.
+2. **VA-4 test contradiction:** removed leftover “STT→results_qa→TTS” wording.
+3. **Model/cost:** pin `grok-voice-think-fast-2.0`; budget ~$0.08/min S2S;
+   do not eval against rolling `grok-voice-latest`.
+4. **VA-5 topology:** Browser ↔ localhost sidecar ↔ xAI (sidecar owns key/WS);
+   not “mint ephemeral in Streamlit + ambiguous browser socket.”
+5. **Definition of done:** split text Q&A / PTT tool-voice / realtime NL so
+   product value is honest per milestone.
+
+---
+
+## 10. Recommended implementer prompt (copy)
 
 ```markdown
-Implement only <VA-ID> from docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md,
-as amended by docs/REALTIME_VOICE_AGENT_REASSESSMENT.md (must-fix §7).
+Implement only <VA-ID> from docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
+(reassessment rationale: docs/REALTIME_VOICE_AGENT_REASSESSMENT.md).
 
 Hard rules:
 - Touch only that VA’s Files allowed to touch (+ fixtures).
 - Regression-safe: no engine/levels/signals/golden changes.
 - assistant.voice.enabled stays false.
 - Results/voice paths may dispatch BUNDLE.import (evidence) only; never
-  execute_confirmed_run / PIPELINE.* / web_search / x_search.
+  execute_confirmed_run / PIPELINE.* / web_search / x_search / file_search / mcp.
 - Reuse C2-6 numeric grounding rules; do not fork token semantics.
 - Results/voice messages must not include `choices` (draft hydration hazard).
+- VA-4: deterministic intent router only — no OpenAI, no free-form spoken NL.
 - Document assistant_voice_* keys in ARCHITECTURE.md + ASSISTANT_SESSION_KEYS.
 - Update docs in the same PR; fill Implemented contract section when done.
 - PR body must include Regression safety paragraph per the contract template.
