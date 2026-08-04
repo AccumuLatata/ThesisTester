@@ -676,7 +676,8 @@ works under a thesis.
 - Backtest renders clarification prefill before signals/trades `st.stop()`
   guards so empty pages still show the Assistant note.
 - Discuss syncs `assistant_selected_thesis_id` to the classic thesis and falls
-  back to the latest discussable run when `classic_active_run_id` is stale.
+  back to the latest discussable run when `classic_active_run_id` is stale or
+  non-discussable (incomplete / missing hash-verified bundle).
 - `AssistantOrchestrator.get_run` façade for thesis-scoped run fetch.
 - Tests: `tests/test_classic_nav.py`.
 
@@ -725,11 +726,13 @@ recorded run rather than rendering unconstrained DataFrames.
   `backtest_page_summary` / `grid_summary` / `validation_page_summary` with
   grounded explanation templates.
 - `CLASSIC.propose_page_change` + `thesistester/classic_proposal.py`:
-  validate → stage (`classic_page_proposal`) → user Apply on Setup Builder /
-  Backtest only. Real thesis switch clears staged proposals; first link does
-  not. Backtest SL/TP draft fields require `>= 1` (widget floor). Setup
+  validate → stage (`classic_page_proposal` with `thesis_id`) → user Apply on
+  Setup Builder / Backtest only. Apply/get fail closed on thesis mismatch;
+  real thesis switch clears staged proposals; same-thesis re-link does not.
+  Backtest SL/TP draft fields require `>= 1` (widget floor). Setup
   `confluence_mode` uses `global_cluster` / `anchor_rules` labels matching
-  Setup Builder.
+  Setup Builder. Backtest page-summary `zero_costs` matches evidence
+  assumptions (explicit zeros; provenance cost hints).
 - Orchestrator façades: `inspect_run_page_summary`,
   `propose_classic_page_change`.
 - UI: Assistant page-summary buttons + proposal staging; classic proposal

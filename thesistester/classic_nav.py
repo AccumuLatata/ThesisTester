@@ -189,6 +189,20 @@ def identity_badge_label(relation: str) -> str:
     return IDENTITY_RELATION_LABELS.get(relation, IDENTITY_RELATION_LABELS["identity_unavailable"])
 
 
+def is_discussable_run(run: ResearchRun) -> bool:
+    """True when a run can be explained/inspected (completed + hash-verified bundle)."""
+    if run.status != "completed" or not isinstance(run.provenance, Mapping):
+        return False
+    path = run.provenance.get("bundle_path")
+    digest = run.provenance.get("canonical_bundle_hash")
+    return (
+        isinstance(path, str)
+        and bool(path.strip())
+        and isinstance(digest, str)
+        and bool(digest.strip())
+    )
+
+
 def latest_discussable_run(
     orchestrator: AssistantOrchestrator,
     *,
@@ -196,11 +210,7 @@ def latest_discussable_run(
 ) -> ResearchRun | None:
     """Newest completed thesis run with a bundle path (metadata only)."""
     for run in reversed(orchestrator.list_runs(thesis_id)):
-        if run.status != "completed" or not isinstance(run.provenance, Mapping):
-            continue
-        path = run.provenance.get("bundle_path")
-        digest = run.provenance.get("canonical_bundle_hash")
-        if isinstance(path, str) and path.strip() and isinstance(digest, str) and digest.strip():
+        if is_discussable_run(run):
             return run
     return None
 
@@ -215,6 +225,7 @@ def discuss_run(
 
     Returns the focused run_id. Aligns ``assistant_selected_thesis_id`` with the
     classic active thesis so Discuss cannot land on a divergent Assistant picker.
+    Only completed runs with hash-verified bundle provenance are discussable.
     """
     if not is_research_mode(session_state):
         raise ValueError("Discuss this run requires an active thesis (research mode).")
@@ -234,6 +245,14 @@ def discuss_run(
                 raise ValueError(f"Focused run is not available on this thesis: {exc}") from exc
             # Stale classic_active_run_id breadcrumb — fall back like the Discuss UI.
             run = None
+        if run is not None and not is_discussable_run(run):
+            if explicit_run:
+                raise ValueError(
+                    "Focused run is not discussable "
+                    "(requires a completed hash-verified research bundle)."
+                )
+            # Non-discussable active breadcrumb — fall back to latest discussable.
+            run = None
     if run is None:
         run = latest_discussable_run(orch, thesis_id=thesis_id)
     if run is None:
@@ -243,6 +262,10 @@ def discuss_run(
         )
     if run.thesis_id != thesis_id:
         raise ValueError("Cannot discuss a run from another thesis.")
+    if not is_discussable_run(run):
+        raise ValueError(
+            "Focused run is not discussable (requires a completed hash-verified research bundle)."
+        )
 
     from thesistester.assistant.workspace import (
         init_assistant_session_state,

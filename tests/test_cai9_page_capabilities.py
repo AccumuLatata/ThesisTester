@@ -151,7 +151,14 @@ def test_classic_proposal_stages_without_mutation_until_apply(tmp_path: Path):
         "backtest_tp_ticks": 16.0,
     }
     init_classic_session_state(session)
-    # Stage before first link — first link must not wipe the proposal.
+    # Proposals are thesis-scoped: link first, then stage. First link must not
+    # wipe a proposal once the same thesis is already active.
+    link_thesis(
+        session,
+        thesis_id="thesis-a",
+        thesis_name="A",
+        dataset_id="ds-1",
+    )
     stage_classic_proposal(
         session,
         validate_classic_proposal(
@@ -162,6 +169,7 @@ def test_classic_proposal_stages_without_mutation_until_apply(tmp_path: Path):
         ),
         navigate=False,
     )
+    # Re-link same thesis must preserve the staged proposal.
     link_thesis(
         session,
         thesis_id="thesis-a",
@@ -169,6 +177,7 @@ def test_classic_proposal_stages_without_mutation_until_apply(tmp_path: Path):
         dataset_id="ds-1",
     )
     assert get_classic_proposal(session) is not None
+    assert get_classic_proposal(session)["thesis_id"] == "thesis-a"
     assert session["backtest_sl_ticks"] == 8.0  # not applied yet
 
     # Re-stage with navigation for the apply path.
@@ -183,6 +192,7 @@ def test_classic_proposal_stages_without_mutation_until_apply(tmp_path: Path):
         navigate=True,
     )
     assert staged["target_page"] == "pages/7_Backtest.py"
+    assert staged["thesis_id"] == "thesis-a"
     assert session["classic_pending_navigation"] == "pages/7_Backtest.py"
 
     applied = apply_classic_proposal(session, target_page="pages/7_Backtest.py")
@@ -210,6 +220,42 @@ def test_classic_proposal_stages_without_mutation_until_apply(tmp_path: Path):
     assert get_classic_proposal(session) is None
 
 
+def test_proposal_apply_rejects_cross_thesis_scope():
+    session: dict = {
+        "backtest_sl_ticks": 8.0,
+        "backtest_tp_ticks": 16.0,
+    }
+    init_classic_session_state(session)
+    link_thesis(session, thesis_id="thesis-a", thesis_name="A", dataset_id="ds-1")
+    stage_classic_proposal(
+        session,
+        validate_classic_proposal(
+            target_page="pages/7_Backtest.py",
+            draft_patch={"stop_loss_ticks": 12.0, "take_profit_ticks": 24.0},
+            note="From thesis A",
+        ),
+        navigate=False,
+        thesis_id="thesis-a",
+    )
+    # Simulate a stale payload that still points at thesis A after a soft switch
+    # that did not clear (get_classic_proposal must fail closed).
+    session["classic_active_thesis_id"] = "thesis-b"
+    assert get_classic_proposal(session) is None
+    session["classic_active_thesis_id"] = "thesis-a"
+    assert get_classic_proposal(session)["thesis_id"] == "thesis-a"
+    with pytest.raises(ValueError, match="active thesis"):
+        stage_classic_proposal(
+            session,
+            validate_classic_proposal(
+                target_page="pages/7_Backtest.py",
+                draft_patch={"stop_loss_ticks": 14.0, "take_profit_ticks": 28.0},
+                note="Wrong thesis",
+            ),
+            navigate=False,
+            thesis_id="thesis-other",
+        )
+
+
 def test_proposal_rejects_zero_stop_loss_ticks():
     with pytest.raises(ValueError, match="stop_loss_ticks must be >= 1"):
         validate_classic_proposal(
@@ -223,6 +269,35 @@ def test_proposal_rejects_zero_stop_loss_ticks():
             draft_patch={"stop_loss_ticks": 2.0, "take_profit_ticks": 0},
             note="Invalid zero target",
         )
+
+
+def test_backtest_summary_cost_caveat_matches_assumptions():
+    state = {
+        "trade_summary": {"trade_count": 50, "win_rate": 0.5},
+        # Session keys look zeroed / missing — provenance assumptions win.
+        "backtest_execution_costs": {},
+        "backtest_config": {},
+    }
+    summary_missing = summarize_backtest_state(state)
+    assert "zero_costs" not in summary_missing["caveats"]
+    summary_nonzero = summarize_backtest_state(
+        state,
+        cost_assumptions={"commission_per_side": 1.25, "slippage_ticks": 0.5},
+    )
+    assert summary_nonzero["costs"]["commission_per_side"] == 1.25
+    assert "zero_costs" not in summary_nonzero["caveats"]
+    summary_zero = summarize_backtest_state(
+        state,
+        cost_assumptions={"commission_per_side": 0.0, "slippage_ticks": 0.0},
+    )
+    assert "zero_costs" in summary_zero["caveats"]
+    nested = {
+        "trade_summary": {"trade_count": 50},
+        "backtest": {"commission_per_side": 2.0, "slippage_ticks": 1.0},
+    }
+    nested_summary = summarize_backtest_state(nested)
+    assert nested_summary["costs"]["commission_per_side"] == 2.0
+    assert "zero_costs" not in nested_summary["caveats"]
 
 
 def test_backtest_apply_syncs_backtest_config_and_costs():
@@ -244,6 +319,7 @@ def test_backtest_apply_syncs_backtest_config_and_costs():
         },
     }
     init_classic_session_state(session)
+    link_thesis(session, thesis_id="thesis-a", thesis_name="A", dataset_id="ds-1")
     stage_classic_proposal(
         session,
         validate_classic_proposal(
@@ -270,6 +346,7 @@ def test_backtest_apply_syncs_backtest_config_and_costs():
 def test_setup_proposal_maps_anchor_rules_label():
     session: dict = {"setup_config": {"confluence_mode": "global_cluster"}}
     init_classic_session_state(session)
+    link_thesis(session, thesis_id="thesis-a", thesis_name="A", dataset_id="ds-1")
     stage_classic_proposal(
         session,
         validate_classic_proposal(
@@ -298,6 +375,12 @@ def test_propose_capability_via_orchestrator(tmp_path: Path, monkeypatch: pytest
     thesis = repository.create_thesis(name="propose")
     session: dict = {}
     init_classic_session_state(session)
+    link_thesis(
+        session,
+        thesis_id=thesis.thesis_id,
+        thesis_name=thesis.name,
+        dataset_id="ds-1",
+    )
     result = orchestrator.propose_classic_page_change(
         thesis_id=thesis.thesis_id,
         target_page="pages/7_Backtest.py",
@@ -311,6 +394,7 @@ def test_propose_capability_via_orchestrator(tmp_path: Path, monkeypatch: pytest
     assert result.payload["staged"] is True
     assert result.payload["applied"] is False
     assert session["classic_page_proposal"]["draft_patch"]["stop_loss_ticks"] == 10.0
+    assert session["classic_page_proposal"]["thesis_id"] == thesis.thesis_id
 
 
 def test_classic_context_forbids_proposal_apply_calls():

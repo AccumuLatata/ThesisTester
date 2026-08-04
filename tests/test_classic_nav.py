@@ -153,6 +153,48 @@ def test_discuss_and_thesis_switch_clears_run_context(
     assert get_classic_active_run_id(state) is None
 
 
+def test_discuss_rejects_non_discussable_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    state = _completed_state(tmp_path)
+    orchestrator, repository = _orchestrator(tmp_path)
+    thesis = repository.create_thesis(name="incomplete discuss")
+    init_classic_session_state(state)
+    link_thesis(
+        state,
+        thesis_id=thesis.thesis_id,
+        thesis_name=thesis.name,
+        dataset_id=state["dataset_id"],
+    )
+    draft = repository.create_spec_version(
+        thesis.thesis_id,
+        normalized_run_spec=absolute_parity_run_spec(tmp_path),
+        status="ready_for_confirmation",
+        compiler_version="runspec-2",
+    )
+    confirmed = repository.confirm_spec_version(
+        thesis.thesis_id, draft.version, confirmation_note="approved"
+    )
+    running = repository.start_run(
+        thesis.thesis_id,
+        spec_version=confirmed.version,
+        request={"request_id": "running-discuss"},
+    )
+    with pytest.raises(ValueError, match="not discussable"):
+        discuss_run(state, orchestrator=orchestrator, run_id=running.run_id)
+
+    # Incomplete active breadcrumb falls back to latest discussable completed run.
+    completed = record_classic_session_run(
+        orchestrator,
+        thesis_id=thesis.thesis_id,
+        session_state=state,
+        store_root=tmp_path / "store",
+    )
+    completed_id = completed.payload["run_id"]
+    set_classic_active_run(state, run_id=running.run_id, thesis_id=thesis.thesis_id)
+    focused = discuss_run(state, orchestrator=orchestrator)
+    assert focused == completed_id
+
+
 def test_discuss_syncs_assistant_thesis_and_skips_stale_active_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

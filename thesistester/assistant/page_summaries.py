@@ -270,8 +270,16 @@ def summarize_signals_state(state: Mapping[str, Any]) -> dict[str, Any]:
     )
 
 
-def summarize_backtest_state(state: Mapping[str, Any]) -> dict[str, Any]:
-    """Read-only backtest summary: KPIs, costs, intrabar policy, caveats."""
+def summarize_backtest_state(
+    state: Mapping[str, Any],
+    *,
+    cost_assumptions: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Read-only backtest summary: KPIs, costs, intrabar policy, caveats.
+
+    ``cost_assumptions`` (e.g. evidence-packet ``costs_exposure``) overrides
+    session/bundle keys so inspect and evidence caveats stay parity-aligned.
+    """
     trade_summary = _as_mapping(state.get("trade_summary"))
     trades = state.get("trades")
     if trade_summary is None and not _is_dataframe(trades):
@@ -300,6 +308,8 @@ def summarize_backtest_state(state: Mapping[str, Any]) -> dict[str, Any]:
 
     costs = _as_mapping(state.get("backtest_execution_costs")) or {}
     backtest_config = _as_mapping(state.get("backtest_config")) or {}
+    nested_backtest = _as_mapping(state.get("backtest")) or {}
+    hints = _as_mapping(cost_assumptions) or {}
     intrabar_policy = _as_mapping(state.get("backtest_intrabar_policy")) or {}
     intrabar_diag = _as_mapping(state.get("backtest_intrabar_diagnostic")) or {}
     exposure = _as_mapping(state.get("exposure_policy")) or {}
@@ -308,9 +318,27 @@ def summarize_backtest_state(state: Mapping[str, Any]) -> dict[str, Any]:
     trade_count = kpis.get("trade_count")
     if isinstance(trade_count, (int, float)) and trade_count < 30:
         caveats.append("low_sample")
-    commission = costs.get("commission_per_side", backtest_config.get("commission_per_side"))
-    slippage = costs.get("slippage_ticks", backtest_config.get("slippage_ticks"))
-    if commission in (None, 0, 0.0) and slippage in (None, 0, 0.0):
+
+    def _first_cost(*values: Any) -> Any:
+        for value in values:
+            if value is not None:
+                return value
+        return None
+
+    commission = _first_cost(
+        hints.get("commission_per_side"),
+        costs.get("commission_per_side"),
+        backtest_config.get("commission_per_side"),
+        nested_backtest.get("commission_per_side"),
+    )
+    slippage = _first_cost(
+        hints.get("slippage_ticks"),
+        costs.get("slippage_ticks"),
+        backtest_config.get("slippage_ticks"),
+        nested_backtest.get("slippage_ticks"),
+    )
+    # Match explainer caveats: only explicit zeros (missing costs ≠ zero_costs).
+    if commission == 0 and slippage == 0:
         caveats.append("zero_costs")
     ambiguous = intrabar_diag.get("ambiguous") or intrabar_diag.get("intrabar_ambiguous_count")
     if isinstance(ambiguous, (int, float)) and ambiguous > 0:

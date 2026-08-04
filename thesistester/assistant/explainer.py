@@ -462,9 +462,13 @@ def build_evidence_packet(
         summarize_validation_state,
     )
 
+    provenance_data = to_jsonable(dict(provenance))
+    config = _effective_configuration(provenance_data, state)
+    costs_exposure = _cost_exposure_assumptions(config, state)
     levels_summary = summarize_levels_state(state)
     signals_summary = summarize_signals_state(state)
-    backtest_summary = summarize_backtest_state(state)
+    # Pass provenance-derived costs so page-summary caveats match assumptions.
+    backtest_summary = summarize_backtest_state(state, cost_assumptions=costs_exposure)
     grid_summary = summarize_grid_state(state)
     validation_page_summary = summarize_validation_state(state)
     if levels_summary.get("available"):
@@ -477,9 +481,6 @@ def build_evidence_packet(
         results["grid_summary"] = grid_summary
     if validation_page_summary.get("available"):
         results["validation_page_summary"] = validation_page_summary
-    provenance_data = to_jsonable(dict(provenance))
-    config = _effective_configuration(provenance_data, state)
-    costs_exposure = _cost_exposure_assumptions(config, state)
     assumptions = {
         "setup_config": artifact["configuration"]["setup_config"],
         "instrument": artifact["configuration"]["instrument"],

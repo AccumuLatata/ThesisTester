@@ -170,7 +170,7 @@ Bundles only.
 | `classic_active_run_id` | Thesis-scoped run breadcrumb after record/discuss/open-exact (CAI-8) |
 | `classic_focus_run_id` | One-shot Assistant focus staged by Discuss this run (CAI-8) |
 | `classic_nav_prefill` | One-shot `{target_page, note}` clarification caption (CAI-8; no page mutation) |
-| `classic_page_proposal` | Staged classic draft `{target_page, draft_patch, note, evidence_paths}` (CAI-9; Apply on owning page only) |
+| `classic_page_proposal` | Staged classic draft `{thesis_id, target_page, draft_patch, note, evidence_paths}` (CAI-9; Apply on owning page only) |
 
 `link_thesis` syncs `assistant_selected_thesis_id` via `select_thesis` and does
 **not** record a run or mutate executable classic producer keys. Create/link UI
@@ -218,6 +218,8 @@ pages:
 - **Discuss this run** (Backtest / Research Bundles): sets active + focus run
   and navigates to Research Assistant; does not re-register. Visible under
   research mode even without live session trades (uses thesis-recorded runs).
+  Only completed runs with hash-verified bundle provenance are discussable;
+  non-discussable active breadcrumbs fall back to latest discussable.
 - **Open exact run in Backtest** (Assistant): hash-verified
   `restore_run_bundle_to_session`, re-links thesis, sets active run, navigates
   to Backtest.
@@ -249,13 +251,15 @@ remain classic-page owned.
 
 Controlled proposals use `CLASSIC.propose_page_change` and
 `thesistester/classic_proposal.py`: validate → stage into
-`classic_page_proposal` → user Apply on Setup Builder or Backtest. Staging does
-not mutate widgets; a real thesis switch clears the proposal (first link does
-not). Backtest SL/TP proposal fields require `>= 1` to match page widgets.
-Page summaries are recursively DataFrame-free and key-canonicalized; research
-bundles persist `backtest_execution_costs` / exposure for hash-verified inspect.
-Apply/stage helpers stay
-out of `classic_context`.
+`classic_page_proposal` (thesis-scoped) → user Apply on Setup Builder or
+Backtest. Staging does not mutate widgets; Apply/get fail closed when the
+active thesis does not match the staged `thesis_id`; a real thesis switch
+clears the proposal (same-thesis re-link does not). Backtest SL/TP proposal
+fields require `>= 1` to match page widgets. Page summaries are recursively
+DataFrame-free and key-canonicalized; backtest `zero_costs` caveats follow
+evidence-packet cost assumptions (explicit zeros only). Research bundles
+persist `backtest_execution_costs` / exposure for hash-verified inspect.
+Apply/stage helpers stay out of `classic_context`.
 
 ## Classic research-mode execution ledger (CAI-7)
 

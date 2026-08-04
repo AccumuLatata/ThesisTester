@@ -1064,7 +1064,12 @@ class AssistantOrchestrator:
         if session_state is not None and isinstance(proposal, Mapping):
             from thesistester.classic_proposal import stage_classic_proposal
 
-            staged = stage_classic_proposal(session_state, proposal, navigate=navigate)
+            staged = stage_classic_proposal(
+                session_state,
+                proposal,
+                navigate=navigate,
+                thesis_id=thesis_id,
+            )
             return OrchestrationResult(
                 status=result.status,
                 capability_id=result.capability_id,

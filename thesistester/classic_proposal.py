@@ -165,11 +165,30 @@ def validate_classic_proposal(
     }
 
 
+def _resolve_proposal_thesis_id(
+    session_state: Mapping[str, Any],
+    *,
+    thesis_id: str | None = None,
+) -> str:
+    """Resolve and validate the thesis scope for a staged proposal."""
+    active = get_active_thesis_id(session_state)
+    explicit = thesis_id.strip() if isinstance(thesis_id, str) and thesis_id.strip() else None
+    if explicit and active and explicit != active:
+        raise ValueError(
+            "Cannot stage a proposal for a different thesis than the classic active thesis."
+        )
+    scoped = explicit or active
+    if not isinstance(scoped, str) or not scoped.strip():
+        raise ValueError("Classic proposals require an active thesis.")
+    return scoped.strip()
+
+
 def stage_classic_proposal(
     session_state: MutableMapping[str, Any],
     proposal: Mapping[str, Any],
     *,
     navigate: bool = True,
+    thesis_id: str | None = None,
 ) -> dict[str, Any]:
     """Stage a validated proposal for classic review (does not apply settings)."""
     validated = validate_classic_proposal(
@@ -183,27 +202,42 @@ def stage_classic_proposal(
         else None,
     )
     init_classic_session_state(session_state)
-    session_state[CLASSIC_PROPOSAL_SESSION_KEY] = deepcopy(validated)
+    scoped_thesis = _resolve_proposal_thesis_id(
+        session_state,
+        thesis_id=thesis_id
+        if thesis_id is not None
+        else (str(proposal["thesis_id"]) if isinstance(proposal.get("thesis_id"), str) else None),
+    )
+    staged = {**validated, "thesis_id": scoped_thesis}
+    session_state[CLASSIC_PROPOSAL_SESSION_KEY] = deepcopy(staged)
     # Keep thesis-scoped clear contract: also mirror into classic_* clear set via helper.
     set_classic_flash(
         session_state,
         level="info",
         message=(
-            f"Assistant proposal staged for {validated['target_page'].split('/')[-1]} — "
+            f"Assistant proposal staged for {staged['target_page'].split('/')[-1]} — "
             "review and Apply on the owning page."
         ),
     )
     if navigate:
-        set_pending_navigation(session_state, validated["target_page"])
-    return validated
+        set_pending_navigation(session_state, staged["target_page"])
+    return staged
 
 
 def get_classic_proposal(session_state: Mapping[str, Any]) -> dict[str, Any] | None:
     payload = session_state.get(CLASSIC_PROPOSAL_SESSION_KEY)
     if not isinstance(payload, Mapping):
         return None
+    thesis_id = payload.get("thesis_id")
+    if not isinstance(thesis_id, str) or not thesis_id.strip():
+        # Unscoped / legacy staged proposals fail closed.
+        return None
+    thesis_id = thesis_id.strip()
+    active = get_active_thesis_id(session_state)
+    if active is not None and active != thesis_id:
+        return None
     try:
-        return validate_classic_proposal(
+        validated = validate_classic_proposal(
             target_page=str(payload.get("target_page", "")),
             draft_patch=payload.get("draft_patch")
             if isinstance(payload.get("draft_patch"), Mapping)
@@ -215,6 +249,7 @@ def get_classic_proposal(session_state: Mapping[str, Any]) -> dict[str, Any] | N
         )
     except ValueError:
         return None
+    return {**validated, "thesis_id": thesis_id}
 
 
 def clear_classic_proposal(session_state: MutableMapping[str, Any]) -> None:
@@ -231,6 +266,11 @@ def apply_classic_proposal(
     proposal = get_classic_proposal(session_state)
     if proposal is None:
         raise ValueError("No classic page proposal is staged.")
+    active_thesis = require_active_thesis_for_proposal(session_state)
+    if proposal.get("thesis_id") != active_thesis:
+        raise ValueError(
+            "Staged proposal belongs to another thesis; re-link the proposing thesis to Apply."
+        )
     if proposal["target_page"] != target_page:
         raise ValueError(f"Staged proposal targets {proposal['target_page']}, not {target_page}.")
     patch = proposal["draft_patch"]
