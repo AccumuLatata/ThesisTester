@@ -301,7 +301,11 @@ Makes the classic ↔ Assistant research graph visible without duplicating pages
 - Badge tests assert relation codes, not display labels.
 - Thesis switch clears run/focus/prefill; cross-thesis run selection fails closed.
 - Open exact remains hash-verified bundle restore.
-- Clarification path does not auto-mutate classic page settings.
+- Clarification path does not auto-mutate classic page settings and does not
+  stage `classic_pending_navigation` (Data/Levels lack chrome consumers).
+- Backtest clarification prefill renders before signals/trades `st.stop()`.
+- Discuss realigns Assistant thesis selection; stale active-run breadcrumb
+  falls back to latest discussable run.
 - Recording APIs stay out of `classic_context`.
 
 ### Tests

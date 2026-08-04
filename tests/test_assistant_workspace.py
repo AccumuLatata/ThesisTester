@@ -134,7 +134,10 @@ def test_page_is_orchestrator_only_and_keeps_json_advanced():
     assert "VWAP_WINDOW_OPTIONS" in source
     assert "available_level_columns(" in source
     restore_idx = source.index("Restore bundle into research pages")
-    assert "st.rerun()" in source[restore_idx : restore_idx + 700]
+    # CAI-8 adds Open-exact controls beside restore; keep a durable window for
+    # the restore path's post-success st.rerun().
+    assert "st.rerun()" in source[restore_idx : restore_idx + 1200]
+    assert "restore_run_bundle_to_session(" in source[restore_idx : restore_idx + 1200]
 
 
 def test_assistant_session_keys_cover_documented_staging_surface():

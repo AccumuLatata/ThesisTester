@@ -213,21 +213,27 @@ def discuss_run(
 ) -> str:
     """Focus a thesis run in Research Assistant without recording.
 
-    Returns the focused run_id.
+    Returns the focused run_id. Aligns ``assistant_selected_thesis_id`` with the
+    classic active thesis so Discuss cannot land on a divergent Assistant picker.
     """
     if not is_research_mode(session_state):
         raise ValueError("Discuss this run requires an active thesis (research mode).")
     thesis_id = get_active_thesis_id(session_state)
     if not isinstance(thesis_id, str) or not thesis_id.strip():
         raise ValueError("No active thesis is linked.")
+    thesis_id = thesis_id.strip()
     orch = orchestrator or AssistantOrchestrator.for_local_workspace()
-    target_run_id = run_id or get_classic_active_run_id(session_state)
+    explicit_run = isinstance(run_id, str) and bool(run_id.strip())
+    target_run_id = run_id.strip() if explicit_run else get_classic_active_run_id(session_state)
     run: ResearchRun | None = None
     if isinstance(target_run_id, str) and target_run_id.strip():
         try:
             run = orch.get_run(thesis_id, target_run_id.strip())
         except Exception as exc:
-            raise ValueError(f"Focused run is not available on this thesis: {exc}") from exc
+            if explicit_run:
+                raise ValueError(f"Focused run is not available on this thesis: {exc}") from exc
+            # Stale classic_active_run_id breadcrumb — fall back like the Discuss UI.
+            run = None
     if run is None:
         run = latest_discussable_run(orch, thesis_id=thesis_id)
     if run is None:
@@ -237,6 +243,14 @@ def discuss_run(
         )
     if run.thesis_id != thesis_id:
         raise ValueError("Cannot discuss a run from another thesis.")
+
+    from thesistester.assistant.workspace import (
+        init_assistant_session_state,
+        select_thesis,
+    )
+
+    init_assistant_session_state(session_state)
+    select_thesis(session_state, thesis_id)
     set_classic_active_run(session_state, run_id=run.run_id, thesis_id=thesis_id)
     set_classic_focus_run(session_state, run.run_id)
     set_classic_flash(
@@ -310,7 +324,13 @@ def navigate_clarification_to_classic(
     *,
     clarification: str,
 ) -> str:
-    """Navigate to a classic page for one clarification; prefill note only."""
+    """Stage caption prefill for a classic clarification page.
+
+    Callers must ``st.switch_page`` to the returned target. Do **not** stage
+    ``classic_pending_navigation`` here: Data/Levels do not run thesis chrome
+    to consume it, so a leftover pending target would later hijack navigation
+    on Backtest/Setup/Bundles.
+    """
     target = clarification_target_page(clarification)
     if target is None:
         raise ValueError("No classic page mapping for this clarification.")
@@ -319,7 +339,6 @@ def navigate_clarification_to_classic(
         target_page=target,
         note=clarification.strip(),
     )
-    set_pending_navigation(session_state, target)
     set_classic_flash(
         session_state,
         level="info",

@@ -134,6 +134,7 @@ def test_discuss_and_thesis_switch_clears_run_context(
     assert focused == run_id
     assert consume_classic_focus_run(state) == run_id
     assert state["classic_pending_navigation"] == "pages/14_Research_Assistant.py"
+    assert state["assistant_selected_thesis_id"] == thesis.thesis_id
 
     other = repository.create_thesis(name="other")
     link_thesis(
@@ -150,6 +151,39 @@ def test_discuss_and_thesis_switch_clears_run_context(
 
     clear_classic_thesis_context(state)
     assert get_classic_active_run_id(state) is None
+
+
+def test_discuss_syncs_assistant_thesis_and_skips_stale_active_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    state = _completed_state(tmp_path)
+    orchestrator, repository = _orchestrator(tmp_path)
+    thesis = repository.create_thesis(name="discuss sync")
+    other = repository.create_thesis(name="assistant picker")
+    init_classic_session_state(state)
+    link_thesis(
+        state,
+        thesis_id=thesis.thesis_id,
+        thesis_name=thesis.name,
+        dataset_id=state["dataset_id"],
+    )
+    result = record_classic_session_run(
+        orchestrator,
+        thesis_id=thesis.thesis_id,
+        session_state=state,
+        store_root=tmp_path / "store",
+    )
+    run_id = result.payload["run_id"]
+    # Divergent Assistant picker must be realigned by Discuss.
+    state["assistant_selected_thesis_id"] = other.thesis_id
+    set_classic_active_run(state, run_id="run_missing_stale", thesis_id=thesis.thesis_id)
+
+    focused = discuss_run(state, orchestrator=orchestrator)
+    assert focused == run_id
+    assert state["assistant_selected_thesis_id"] == thesis.thesis_id
+    assert get_classic_active_run_id(state) == run_id
+    assert consume_classic_focus_run(state) == run_id
 
 
 def test_open_exact_run_restores_and_blocks_cross_thesis(
@@ -207,10 +241,28 @@ def test_clarification_navigation_prefill_only(tmp_path: Path):
         session, clarification="Select a dataset and instrument"
     )
     assert target == "pages/1_Data.py"
-    assert session["classic_pending_navigation"] == "pages/1_Data.py"
+    # Callers switch_page directly; pending must stay clear so Data/Levels
+    # (no thesis chrome) cannot leave a stale redirect for later pages.
+    assert session.get("classic_pending_navigation") in (None, "")
+    assert session["classic_nav_prefill"]["target_page"] == "pages/1_Data.py"
     assert session["classic_nav_prefill"]["note"]
     # Prefill is caption-only staging — no widget keys mutated.
     assert "backtest_sl_ticks" not in session
+
+
+def test_backtest_prefill_caption_before_trades_stop():
+    """Empty Backtest must still surface Assistant clarification prefills."""
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "pages" / "7_Backtest.py").read_text(encoding="utf-8")
+    prefill_idx = source.index(
+        'render_classic_nav_prefill_caption(target_page="pages/7_Backtest.py")'
+    )
+    trades_stop_idx = source.index(
+        'st.info("Configure settings in the sidebar and click **▶ Run backtest**.")'
+    )
+    assert prefill_idx < trades_stop_idx
+    signals_stop_idx = source.index("No signals found.")
+    assert prefill_idx < signals_stop_idx
 
 
 def test_resolve_run_identities_from_provenance_or_peek(

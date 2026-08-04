@@ -382,8 +382,7 @@ def render_classic_thesis_chrome(
         if isinstance(active_run, str) and active_run.strip():
             run_bit = f" · run `…{active_run.strip()[-8:]}`"
         st.caption(
-            f"Research mode · **{thesis_name}** (`…{short_id}`){run_bit} · "
-            f"recording: `{policy}`"
+            f"Research mode · **{thesis_name}** (`…{short_id}`){run_bit} · recording: `{policy}`"
         )
         # Identity badge vs active run (metadata/peek only — no full bundle load).
         if isinstance(active_run, str) and active_run.strip() and thesis_id:

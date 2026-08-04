@@ -670,8 +670,13 @@ works under a thesis.
 - UI: Discuss on Backtest + Research Bundles; Open exact + clarification
   Open buttons on Research Assistant; prefill caption on Data / Levels /
   Setup Builder / Backtest; active-run breadcrumb + badge in classic chrome.
-- Clarification → classic page is navigation + caption prefill only (no
-  automatic widget / settings mutation).
+- Clarification → classic page is direct `st.switch_page` + caption prefill
+  only (no automatic widget / settings mutation; does not stage
+  `classic_pending_navigation`, which Data/Levels would not consume).
+- Backtest renders clarification prefill before signals/trades `st.stop()`
+  guards so empty pages still show the Assistant note.
+- Discuss syncs `assistant_selected_thesis_id` to the classic thesis and falls
+  back to the latest discussable run when `classic_active_run_id` is stale.
 - `AssistantOrchestrator.get_run` façade for thesis-scoped run fetch.
 - Tests: `tests/test_classic_nav.py`.
 

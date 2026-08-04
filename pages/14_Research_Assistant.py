@@ -193,9 +193,7 @@ if handoff is not None:
     try:
         handoff_run = orchestrator.get_run(thesis_id, str(handoff["run_id"]))
         relation = page_vs_run_identity_relation(st.session_state, handoff_run)
-        st.caption(
-            f"Identity vs handoff run: **{identity_badge_label(relation)}** (`{relation}`)"
-        )
+        st.caption(f"Identity vs handoff run: **{identity_badge_label(relation)}** (`{relation}`)")
     except Exception:
         st.caption("Identity vs handoff run: **identity unavailable**")
     if st.button(
@@ -1064,9 +1062,7 @@ if plan["unresolved_assumptions"]:
             key=f"clarify-nav-plan-{index}",
         ):
             try:
-                navigate_clarification_to_classic(
-                    st.session_state, clarification=str(item)
-                )
+                navigate_clarification_to_classic(st.session_state, clarification=str(item))
                 st.switch_page(target)
             except ValueError as exc:
                 st.error(str(exc))
@@ -1331,8 +1327,7 @@ else:
                 try:
                     relation = page_vs_run_identity_relation(st.session_state, run)
                     st.caption(
-                        f"Identity vs session: **{identity_badge_label(relation)}** "
-                        f"(`{relation}`)"
+                        f"Identity vs session: **{identity_badge_label(relation)}** (`{relation}`)"
                     )
                 except Exception:
                     st.caption("Identity vs session: **identity unavailable**")

@@ -220,7 +220,9 @@ pages:
   `restore_run_bundle_to_session`, re-links thesis, sets active run, navigates
   to Backtest.
 - **Clarification → classic page**: allowlisted `st.switch_page` plus
-  `classic_nav_prefill` caption only — never auto-mutates page widgets.
+  `classic_nav_prefill` caption only — never auto-mutates page widgets and
+  does not stage `classic_pending_navigation` (Data/Levels have no chrome
+  consumer). Backtest shows the prefill before signals/trades `st.stop()`.
 - Identity badges use relation codes `exact_match` /
   `same_data_different_levels` / `different_data` / `identity_unavailable`
   from immutable `DataIdentity` / `LevelsIdentity` (provenance or
