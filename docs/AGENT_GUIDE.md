@@ -216,9 +216,10 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   The Research Assistant page must remain presentation-only. Every
   non-unsupported registry capability must have a `HANDLER_REGISTRY` entry;
   otherwise mark it `unsupported` with a limitation. Structured errors must
-  include `category`, `retryable`, and `remediation`. Apply controls stage
-  session draft only and must flash via `assistant_flash`; Confirm lives under
-  Plan review after Validate; Run lives on a `confirmed` specification version.
+  include `category`, `retryable`, and `remediation`. Apply/Draft/Validate/
+  Cancel/Compare/Portfolio outcomes must flash via `assistant_flash` (Advanced
+  defaults closed on the chat-first hub). Confirm lives under Plan review after
+  Validate; Run lives on a `confirmed` specification version.
 - Completed runs require a readable on-disk research bundle whose
   `canonical_bundle_hash` matches reported provenance before `complete_run`.
   Provenance-gated explanation, comparison, export, and portfolio paths must
@@ -240,9 +241,13 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   `execute_confirmed_run`. Persist clarifications in both structured
   `clarifications` and readable `content` (`format_assistant_draft_reply`);
   the Research Assistant page must render `format_chat_message_body` and must
-  not present Conversation audit JSON as the primary chat surface. Keep
+  not present Conversation audit JSON as the primary chat surface. Default RA
+  UX is chat-first (thesis + chat); Advanced draft/runs/compare and Debug
+  JSON/audit stay collapsed; do not reintroduce an Open-research-pages strip
+  (classic nav is enough). Keep
   `tests/test_assistant_llm_evaluations.py`,
-  `tests/test_assistant_workspace.py`, and
+  `tests/test_assistant_workspace.py`,
+  `tests/test_ui_copy_guards.py`, and
   `tests/test_assistant_registry_audit.py` green when changing the provider
   boundary, chat UX, or registry audit.
 - Provider setup: non-secret settings in `config/assistant.toml`; secret via

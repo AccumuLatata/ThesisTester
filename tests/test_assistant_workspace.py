@@ -146,6 +146,8 @@ def test_assistant_session_keys_cover_documented_staging_surface():
     assert "assistant_llm_run_explanations" in ASSISTANT_SESSION_KEYS
     assert "assistant_bundle_handoff" in ASSISTANT_SESSION_KEYS
     assert "assistant_flash" in ASSISTANT_SESSION_KEYS
+    assert "assistant_run_comparisons" in ASSISTANT_SESSION_KEYS
+    assert "assistant_portfolio_analyses" in ASSISTANT_SESSION_KEYS
     assert "assistant_bundle_handoff" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_flash" in THESIS_SCOPED_STAGING_KEYS
     assert set(THESIS_SCOPED_STAGING_KEYS).issubset(ASSISTANT_SESSION_KEYS)
@@ -185,6 +187,9 @@ def test_thesis_switch_clears_draft_validation_and_hydration():
     }
     state["assistant_flash"] = {"level": "success", "message": "stale"}
     state["assistant_run_comparisons"] = {"th_a": {"run_ids": ["r1", "r2"]}}
+    state["assistant_portfolio_analyses"] = {
+        "th_a": {"run_ids": ["r1", "r2"], "instrument": "ES", "payload": {}}
+    }
 
     changed = select_thesis(state, "th_b")
     assert changed is True
@@ -195,8 +200,9 @@ def test_thesis_switch_clears_draft_validation_and_hydration():
     assert state["assistant_hydrated_conversation_id"] is None
     assert state["assistant_bundle_handoff"] is None
     assert state["assistant_flash"] is None
-    # Persisted comparison cache is thesis-keyed and intentionally retained.
+    # Persisted comparison/portfolio caches are thesis-keyed and retained.
     assert state["assistant_run_comparisons"]["th_a"]["run_ids"] == ["r1", "r2"]
+    assert state["assistant_portfolio_analyses"]["th_a"]["instrument"] == "ES"
     assert select_thesis(state, "th_b") is False
 
 
@@ -409,7 +415,64 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "format_chat_message_body(" in source
     assert "chat_message_display_role(" in source
     assert "Thesis drafting only" in source
-    assert "Raw append-only transcript" in source
+    assert "Advanced → Linked runs" in source
+    assert "Raw transcripts and JSON for audit only" in source
+    assert "Open research pages" not in source
+    assert "st.page_link(" not in source
+    assert 'with st.expander("Advanced: draft, runs & compare", expanded=False)' in source
+    assert 'with st.expander("Debug: raw JSON & conversation audit", expanded=False)' in source
+    assert 'with st.expander("Structured execution controls", expanded=False)' in source
+    assert 'with st.expander("Structured setup and confluence controls", expanded=False)' in source
+    assert 'with st.expander("Validated executable RunSpec", expanded=False)' in source
+    assert "Debug: provenance" in source
+    assert "Debug: specification JSON" in source
+    assert "Page summaries (JSON)" in source
+    assert "Linked research runs" in source
+    # Compare/portfolio success feedback must stay visible (not Debug-only).
+    assert 'st.success("Comparison ready.")' in source
+    assert "Portfolio analysis ready for" in source
+    assert 'with st.expander("Debug: comparison JSON", expanded=False)' in source
+    assert 'with st.expander("Debug: portfolio JSON", expanded=False)' in source
+    assert "assistant_portfolio_analyses" in source
+    success_pos = source.index('st.success("Comparison ready.")')
+    debug_compare_pos = source.index('with st.expander("Debug: comparison JSON", expanded=False)')
+    assert success_pos < debug_compare_pos
+    # Validate/Cancel/Draft-error/Compare/Portfolio must hub-flash so chat-first
+    # reruns (Advanced defaults closed) do not hide outcomes.
+    validate_idx = source.index('if st.button("Validate executable RunSpec")')
+    validate_chunk = source[validate_idx : validate_idx + 2200]
+    assert "set_assistant_flash(" in validate_chunk
+    assert "st.rerun()" in validate_chunk
+    assert "Executable RunSpec is valid." in validate_chunk
+    cancel_idx = source.index('st.button("Cancel run"')
+    cancel_chunk = source[cancel_idx : cancel_idx + 1200]
+    assert "set_assistant_flash(" in cancel_chunk
+    assert 'message="Research run cancelled."' in cancel_chunk
+    assert "st.rerun()" in cancel_chunk
+    draft_idx = source.index('if st.button("Draft research plan", type="primary")')
+    draft_chunk = source[draft_idx : draft_idx + 1600]
+    assert "except ValueError as exc:" in draft_chunk
+    draft_error = draft_chunk[draft_chunk.index("except ValueError") :]
+    assert "set_assistant_flash(" in draft_error
+    assert "st.rerun()" in draft_error
+    compare_idx = source.index('if st.button("Compare runs")')
+    compare_chunk = source[compare_idx : compare_idx + 2200]
+    assert "set_assistant_flash(" in compare_chunk
+    assert "st.rerun()" in compare_chunk
+    assert 'st.error(result.payload.get("error"' not in compare_chunk
+    assert 'assistant_run_comparisons"].pop(thesis_id, None)' in compare_chunk
+    assert 'cached.get("run_ids") == [left_id, right_id]' in compare_chunk
+    portfolio_idx = source.index('if st.button("Analyze portfolio")')
+    portfolio_chunk = source[portfolio_idx : portfolio_idx + 3200]
+    assert "set_assistant_flash(" in portfolio_chunk
+    assert "assistant_portfolio_analyses" in portfolio_chunk
+    assert "st.rerun()" in portfolio_chunk
+    assert 'assistant_portfolio_analyses"].pop(thesis_id, None)' in portfolio_chunk
+    assert 'cached.get("run_ids") == list(portfolio_ids)' in portfolio_chunk
+    assert "portfolio_state =" in source[portfolio_idx:]
+    # Hot JSON surfaces must not open by default on the hub.
+    assert 'with st.expander("Structured execution controls", expanded=True)' not in source
+    assert 'with st.expander("Validated executable RunSpec", expanded=True)' not in source
 
 
 def test_plan_review_ready_flag_requires_validated_spec():
