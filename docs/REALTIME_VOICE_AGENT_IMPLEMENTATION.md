@@ -159,7 +159,7 @@ Reject placeholder strings (define `_XAI_API_KEY_PLACEHOLDER`).
 |---|---|---|---|
 | 1 | VA-0 | Contracts + flag + docs freeze | Any network/UI/orchestrator behavior |
 | 2 | VA-1 | Text results Q&A | Audio or xAI dependencies |
-| 3 | VA-2 | xAI token + session service | Tool router or Streamlit mic |
+| 3 | VA-2 | xAI credentials + session service | Tool router or Streamlit mic |
 | 4 | VA-3 | Read-only voice tools | UI enablement or realtime WS client |
 | 5 | VA-4 | Push-to-talk half-duplex UI | Full-duplex / custom component |
 | 6 | VA-5 | Full-duplex realtime mode | Telephony, multi-tenant, audio blob store |
