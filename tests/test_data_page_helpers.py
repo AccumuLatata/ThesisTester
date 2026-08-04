@@ -612,6 +612,51 @@ def test_data_page_exposes_15s_primary_mode_labels():
     assert "_hide_legacy_subtimeframe_uploader(ingestion_mode)" in page_text
 
 
+def test_sample_and_saved_legacy_sync_upload_ingestion_selector(monkeypatch):
+    """Sample/saved one-minute loads must not leave Upload radio on 15s-primary."""
+    session_state = {
+        "data_ingestion_mode_selector": "15s_primary_derive_1m",
+        "data": "one-minute-frame",
+    }
+    data_page = _import_data_page_module(session_state)
+    monkeypatch.setattr(data_page, "st", sys.modules["streamlit"])
+
+    # First-visit Upload default remains recommended 15s-primary.
+    empty = {}
+    data_page._sync_upload_ingestion_mode_selector(
+        data_page.DEFAULT_UPLOAD_INGESTION_MODE, session_state=empty
+    )
+    assert empty["data_ingestion_mode_selector"] == data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+
+    # Sample / legacy primary path realigns the radio so dual-upload can show.
+    data_page._sync_upload_ingestion_mode_selector(
+        data_page.INGESTION_MODE_PRIMARY, session_state=session_state
+    )
+    assert session_state["data_ingestion_mode_selector"] == data_page.INGESTION_MODE_PRIMARY
+    assert not data_page._hide_legacy_subtimeframe_uploader(
+        session_state["data_ingestion_mode_selector"],
+        session_state=session_state,
+    )
+
+    # Restored / installed 15s-primary sessions keep the recommended radio.
+    session_state["ingestion_provenance"] = {
+        "ingestion_mode": data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    }
+    data_page._sync_upload_ingestion_mode_selector(
+        data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M, session_state=session_state
+    )
+    assert (
+        session_state["data_ingestion_mode_selector"]
+        == data_page.INGESTION_MODE_15S_PRIMARY_DERIVE_1M
+    )
+    assert data_page._hide_legacy_subtimeframe_uploader(
+        session_state["data_ingestion_mode_selector"],
+        session_state=session_state,
+    )
+    with pytest.raises(ValueError, match="Unsupported ingestion mode"):
+        data_page._sync_upload_ingestion_mode_selector("bogus", session_state=session_state)
+
+
 def test_upload_csv_default_ingestion_mode_is_15s_primary_not_api_default():
     """Streamlit Upload-CSV recommends 15s-primary; API absent mode stays primary."""
     data_page = _import_data_page_module({})

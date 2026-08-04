@@ -166,6 +166,21 @@ def _is_15s_primary_session(session_state=None) -> bool:
     )
 
 
+def _sync_upload_ingestion_mode_selector(mode: str, session_state=None) -> None:
+    """Keep Upload-CSV radio aligned with the active session ingestion path.
+
+    Sample data and restored legacy datasets force one-minute primary locally
+    without touching ``data_ingestion_mode_selector``. After PR4's recommended
+    15s default, returning to Upload CSV would otherwise keep the radio on
+    15s-primary and hide Legacy dual-upload even when the session has no
+    derivation provenance.
+    """
+    if mode not in INGESTION_MODE_LABELS:
+        raise ValueError(f"Unsupported ingestion mode for selector sync: {mode!r}")
+    state = st.session_state if session_state is None else session_state
+    state["data_ingestion_mode_selector"] = mode
+
+
 def _hide_legacy_subtimeframe_uploader(ingestion_mode: str, session_state=None) -> bool:
     """Hide dual-upload lower path when 15s-primary is selected or active.
 
@@ -319,6 +334,7 @@ def _install_15s_primary_dataset(
     st.session_state.pop(SUBTIMEFRAME_DUPLICATE_SOURCE_KEY, None)
     st.session_state.pop(SUBTIMEFRAME_DUPLICATE_RESOLUTION_KEY, None)
     st.session_state.pop(SUBTIMEFRAME_DIAGNOSTIC_DATA_KEY, None)
+    _sync_upload_ingestion_mode_selector(INGESTION_MODE_15S_PRIMARY_DERIVE_1M)
 
 
 def _render_derived_parent_diagnostics(dropped_buckets: pd.DataFrame) -> None:
@@ -1115,6 +1131,12 @@ if saved_datasets:
             loaded_meta["dataset_id"],
             loaded_meta,
         )
+        # Align Upload-CSV radio with restored provenance so dual-upload /
+        # 15s-primary hide rules match the loaded session.
+        if _is_15s_primary_session():
+            _sync_upload_ingestion_mode_selector(INGESTION_MODE_15S_PRIMARY_DERIVE_1M)
+        else:
+            _sync_upload_ingestion_mode_selector(INGESTION_MODE_PRIMARY)
         st.session_state[FLASH_MESSAGE_KEY] = (
             f"Loaded saved dataset '{loaded_meta['name']}' ({loaded_meta['dataset_id'][:12]}...)."
         )
@@ -1184,6 +1206,9 @@ if source == "Upload CSV":
 else:
     # Sample data remains the legacy one-minute fixture path.
     ingestion_mode = INGESTION_MODE_PRIMARY
+    # Sync Upload-CSV radio so returning to Upload CSV keeps dual-upload
+    # available for sample / other one-minute-primary sessions.
+    _sync_upload_ingestion_mode_selector(INGESTION_MODE_PRIMARY)
 
 all_profile_options = {
     "canonical": "Canonical / Quantower OHLCV",
@@ -1329,6 +1354,7 @@ if use_source_dataset:
                 saved_dataset_id=None,
             )
             st.session_state["format_profile"] = format_profile
+            _sync_upload_ingestion_mode_selector(INGESTION_MODE_PRIMARY)
             if format_profile in RAW_CAPTURE_PROFILES:
                 st.session_state["raw_data"] = captured_raw
                 st.session_state["raw_interval"] = format_interval(

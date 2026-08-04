@@ -50,7 +50,9 @@ For interactive Streamlit research, the Data page **recommends**
 (Upload-CSV default). That mode derives complete one-minute canonical bars
 from a single 15-second file and attaches the source as `subtimeframe_data`.
 Legacy one-minute primary + optional dual-upload remains available under
-**Legacy / advanced**.
+**Legacy / advanced**. Sample data and restored one-minute saved datasets sync
+the Upload-CSV radio back to legacy primary so dual-upload stays reachable
+after returning from those paths.
 
 Switching ingestion modes clears 15s-primary artifacts and invalidates the
 primary CSV uploader so a 15-second export cannot be re-parsed as one-minute
