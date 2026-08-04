@@ -184,11 +184,19 @@ def _sync_upload_ingestion_mode_selector(
     Do **not** call this from the Sample-data render branch on every rerun —
     Source defaults to Sample and would clobber the Upload-CSV recommended
     default before the user ever opens Upload CSV.
+
+    Streamlit forbids mutating a widget-bound session key after the radio is
+    instantiated on the same run. CSV install paths call this *after*
+    ``st.radio(..., key="data_ingestion_mode_selector")``; skip the selector
+    write when the value already matches and only refresh the explicit flag.
     """
     if mode not in INGESTION_MODE_LABELS:
         raise ValueError(f"Unsupported ingestion mode for selector sync: {mode!r}")
     state = st.session_state if session_state is None else session_state
-    state["data_ingestion_mode_selector"] = mode
+    # No-op the widget key when unchanged — required for post-radio install
+    # (15s-primary / legacy primary CSV) which already selected ``mode``.
+    if state.get("data_ingestion_mode_selector") != mode:
+        state["data_ingestion_mode_selector"] = mode
     if explicit is not None:
         state[UPLOAD_INGESTION_MODE_EXPLICIT_KEY] = bool(explicit)
 

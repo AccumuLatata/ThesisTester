@@ -53,7 +53,9 @@ Legacy one-minute primary + optional dual-upload remains available under
 **Legacy / advanced**. Entering Upload CSV with an active one-minute session
 (e.g. after Sample) realigns the radio to legacy primary so dual-upload stays
 reachable; an empty Upload-CSV visit keeps the recommended 15s default.
-Explicit radio choices are preserved.
+Explicit radio choices are preserved. After a CSV install, selector sync must
+not rewrite `data_ingestion_mode_selector` when it already matches — Streamlit
+rejects mutating that key after the ingestion-mode radio is instantiated.
 
 Switching ingestion modes clears 15s-primary artifacts and invalidates the
 primary CSV uploader so a 15-second export cannot be re-parsed as one-minute
