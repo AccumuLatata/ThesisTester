@@ -196,6 +196,77 @@ def consume_assistant_flash(
     return {"level": str(level), "message": message.strip()}
 
 
+def format_assistant_draft_reply(clarifications: Sequence[str] | None = None) -> str:
+    """Build the user-visible assistant chat body for a thesis-draft turn.
+
+    Chat persists structured ``clarifications`` separately for Plan review /
+    audit consumers; this helper folds them into readable ``content`` so the
+    Streamlit chat bubble is never an opaque status line alone.
+    """
+    items = [
+        str(item).strip()
+        for item in (clarifications or ())
+        if isinstance(item, str) and str(item).strip()
+    ]
+    if items:
+        bullets = "\n".join(f"- {item}" for item in items)
+        return (
+            "I need a few clarifications before this thesis draft can run:\n"
+            f"{bullets}\n\n"
+            "Answer here, or fill Structured execution controls below, then "
+            "Draft research plan."
+        )
+    return (
+        "Drafted non-executing research choices. Review Structured execution "
+        "controls, then Draft research plan when ready."
+    )
+
+
+def format_chat_message_body(message: Mapping[str, Any]) -> str:
+    """Return the text shown inside one Assistant chat bubble.
+
+    Prefer persisted ``content``. When older turns stored clarifications only
+    on the structured field (pre-UX fix), fold them into the body so audit JSON
+    and the chat surface stay aligned.
+    """
+    if not isinstance(message, Mapping):
+        return ""
+    content = str(message.get("content") or "").strip()
+    clarifications = message.get("clarifications")
+    items: list[str] = []
+    if isinstance(clarifications, Sequence) and not isinstance(clarifications, (str, bytes)):
+        items = [
+            str(item).strip()
+            for item in clarifications
+            if isinstance(item, str) and str(item).strip()
+        ]
+    if items:
+        bullets = "\n".join(f"- {item}" for item in items)
+        if content and all(item not in content for item in items):
+            return f"{content}\n\nClarifications still needed:\n{bullets}"
+        if content:
+            return content
+        return format_assistant_draft_reply(items)
+    return content
+
+
+def chat_message_display_role(message: Mapping[str, Any]) -> str | None:
+    """Map a persisted conversation message to a Streamlit chat role.
+
+    Tool/audit lines are omitted from the friendly chat (they remain in
+    Conversation audit). Returns ``None`` when the message should not render
+    as a chat bubble.
+    """
+    if not isinstance(message, Mapping):
+        return None
+    role = str(message.get("role") or "").strip().lower()
+    if role in {"user", "human"}:
+        return "user"
+    if role in {"assistant", "ai"}:
+        return "assistant"
+    return None
+
+
 def format_spec_status(status: str | None) -> str:
     """Return a user-facing label for a persisted specification status."""
     key = str(status or "").strip()

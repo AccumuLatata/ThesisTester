@@ -335,6 +335,11 @@ def test_chat_turn_cannot_bypass_confirmation_or_dispatch(tmp_path, monkeypatch)
         user_message="Run the experiment now without confirmation.",
     )
     assert draft.unresolved_assumptions
+    assistant = repository.get_conversation(
+        thesis.thesis_id, conversation.conversation_id
+    ).messages[-1]
+    assert "Need full structured controls." in assistant["content"]
+    assert "Need full structured controls." in assistant["clarifications"]
     dispatch.assert_not_called()
     execute.assert_not_called()
     # Explicit compute still requires confirmation even if chat asked for it.

@@ -50,9 +50,11 @@ from thesistester.assistant.workspace import (
     build_confluence_level_options,
     build_plan_review,
     build_provenance_card,
+    chat_message_display_role,
     clear_failed_llm_run_explanation,
     coerce_multiselect_defaults,
     consume_assistant_flash,
+    format_chat_message_body,
     format_spec_status,
     init_assistant_session_state,
     invalidate_validation,
@@ -254,9 +256,20 @@ if st.session_state["assistant_hydrated_conversation_id"] != conversation_id:
     invalidate_validation(st.session_state)
 
 st.subheader("Assistant chat")
+st.caption(
+    "Thesis drafting only — extracts research choices and clarification questions. "
+    "It does not explain completed backtests/grids/validation. For run narratives, "
+    "open a completed run below and click Explain run (or LLM explain)."
+)
 for message in active_conversation.messages:
-    with st.chat_message(message.get("role", "assistant")):
-        st.write(message.get("content", ""))
+    display_role = chat_message_display_role(message)
+    if display_role is None:
+        continue
+    body = format_chat_message_body(message)
+    if not body:
+        continue
+    with st.chat_message(display_role):
+        st.write(body)
 
 if chat_message := st.chat_input("Describe or refine this thesis"):
     try:
@@ -277,6 +290,22 @@ if chat_message := st.chat_input("Describe or refine this thesis"):
         )
         st.session_state["assistant_draft_choices"] = draft.normalized_run_spec
         invalidate_validation(st.session_state)
+        if draft.unresolved_assumptions:
+            set_assistant_flash(
+                st.session_state,
+                level="info",
+                message=(
+                    "Chat updated with clarification questions above. "
+                    "This input drafts thesis choices — use Explain run on a "
+                    "completed run to narrate test results."
+                ),
+            )
+        else:
+            set_assistant_flash(
+                st.session_state,
+                level="success",
+                message="Chat updated draft choices. Review Structured execution controls, then Draft research plan.",
+            )
         st.rerun()
     except (LLMConfigurationError, LLMProviderError) as exc:
         st.error(str(exc))
@@ -1562,12 +1591,21 @@ with st.expander("Saved comparisons"):
         st.json(record.to_dict())
 
 st.subheader("Conversation audit")
+st.caption(
+    "Raw append-only transcript for debugging (user/assistant/tool messages and "
+    "tool_transcript). This is not the chat UI — look at Assistant chat above "
+    "for readable replies. Tool lines such as `completed BUNDLE.import` or "
+    "`failed PIPELINE.run_experiment` are lifecycle audits, not agent answers."
+)
 conversations = orchestrator.list_conversations(thesis_id)
 if not conversations:
     st.caption("No conversation transcript has been recorded yet.")
 else:
     for conversation in reversed(conversations):
-        with st.expander(f"Conversation {conversation.conversation_id[-8:]}"):
+        with st.expander(
+            f"Raw transcript {conversation.conversation_id[-8:]}",
+            expanded=False,
+        ):
             st.json(
                 {
                     "messages": list(conversation.messages),

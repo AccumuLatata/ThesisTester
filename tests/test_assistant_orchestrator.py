@@ -296,10 +296,18 @@ def test_chat_turn_persists_user_and_nonexecuting_assistant_draft(tmp_path):
     )
 
     assert not draft.ready_for_confirmation
-    assert (
-        len(repository.get_conversation(thesis.thesis_id, conversation.conversation_id).messages)
-        == 2
-    )
+    messages = repository.get_conversation(
+        thesis.thesis_id, conversation.conversation_id
+    ).messages
+    assert len(messages) == 2
+    assert messages[0]["role"] == "user"
+    assert messages[1]["role"] == "assistant"
+    assert messages[1]["content"]
+    assert isinstance(messages[1].get("clarifications"), list)
+    if messages[1]["clarifications"]:
+        assert messages[1]["clarifications"][0] in messages[1]["content"]
+    else:
+        assert "Drafted non-executing research choices" in messages[1]["content"]
 
 
 def test_failed_tool_dispatch_records_structured_error(tmp_path, monkeypatch):
