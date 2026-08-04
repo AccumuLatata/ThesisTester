@@ -319,7 +319,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
     levels = current.get("levels") if isinstance(current.get("levels"), dict) else {}
     validation = current.get("validation") if isinstance(current.get("validation"), dict) else {}
     grid = current.get("grid") if isinstance(current.get("grid"), dict) else {}
-    walk_forward = current.get("walk_forward") if isinstance(current.get("walk_forward"), dict) else {}
+    walk_forward = (
+        current.get("walk_forward") if isinstance(current.get("walk_forward"), dict) else {}
+    )
 
     with st.expander("Structured execution controls", expanded=False):
         with st.form(f"assistant_execution_{thesis_id}_{_fingerprint(current)}"):
@@ -332,7 +334,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                     (setup or {}).get("instrument") or dataset.get("instrument") or "ES",
                 ),
             )
-            draft_source_timezone = str(dataset.get("source_timezone") or "America/New_York").strip()
+            draft_source_timezone = str(
+                dataset.get("source_timezone") or "America/New_York"
+            ).strip()
             source_timezone_options = options_with_current(
                 TIMEZONE_OPTIONS, draft_source_timezone or None
             )
@@ -390,7 +394,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                 "Session close time (exchange time)",
                 value=str(backtest.get("session_close_time") or "16:00"),
             )
-            draft_session_timezone = str(backtest.get("session_timezone") or "America/New_York").strip()
+            draft_session_timezone = str(
+                backtest.get("session_timezone") or "America/New_York"
+            ).strip()
             session_timezone_options = options_with_current(
                 TIMEZONE_OPTIONS, draft_session_timezone or None
             )
@@ -452,7 +458,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
     with st.expander("Structured setup and confluence controls", expanded=False):
         with st.form(f"assistant_setup_{thesis_id}_{_fingerprint(setup)}"):
             setup_name = st.text_input("Setup name", value=str(setup.get("name") or thesis.name))
-            description = st.text_input("Setup description", value=str(setup.get("description") or ""))
+            description = st.text_input(
+                "Setup description", value=str(setup.get("description") or "")
+            )
             levels_df = st.session_state.get("levels")
             live_level_columns = (
                 available_level_columns(levels_df) if hasattr(levels_df, "columns") else None
@@ -503,7 +511,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                 min_value=1,
                 value=safe_int(setup.get("max_confluences"), 1),
             )
-            naked_only = st.checkbox("Naked levels only", value=bool(setup.get("naked_only", False)))
+            naked_only = st.checkbox(
+                "Naked levels only", value=bool(setup.get("naked_only", False))
+            )
             naked_requirement = st.selectbox(
                 "Naked requirement",
                 list(NAKED_REQUIREMENTS),
@@ -581,7 +591,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                 help="Common Levels sizes are 5 / 15 / 30; draft values outside that set stay selectable.",
             )
             length_options = list(INDICATOR_LENGTH_OPTIONS)
-            for value in list(levels.get("sma_lengths") or []) + list(levels.get("ema_lengths") or []):
+            for value in list(levels.get("sma_lengths") or []) + list(
+                levels.get("ema_lengths") or []
+            ):
                 parsed = safe_int(value, 0)
                 if parsed > 0 and parsed not in length_options:
                     length_options.append(parsed)
@@ -641,7 +653,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
             )
             draft_poc_windows = [
                 label
-                for label in (coerce_window_label(value) for value in (levels.get("poc_windows") or []))
+                for label in (
+                    coerce_window_label(value) for value in (levels.get("poc_windows") or [])
+                )
                 if label
             ]
             poc_window_options = options_with_currents(POC_WINDOW_OPTIONS, draft_poc_windows)
@@ -758,7 +772,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
             )
             target_values = st.text_input(
                 "Grid target ticks",
-                value=", ".join(str(v) for v in (grid.get("take_profit_ticks_values") or [8, 16, 24])),
+                value=", ".join(
+                    str(v) for v in (grid.get("take_profit_ticks_values") or [8, 16, 24])
+                ),
             )
             ranking_metric = st.selectbox(
                 "Grid ranking metric",
@@ -798,7 +814,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
     with st.expander("Structured walk-forward controls"):
         matrix = walk_forward.get("matrix") if isinstance(walk_forward.get("matrix"), dict) else {}
         with st.form(f"assistant_walk_forward_{thesis_id}_{_fingerprint(walk_forward)}"):
-            enabled = st.checkbox("Enable walk-forward", value=bool(walk_forward.get("enabled", False)))
+            enabled = st.checkbox(
+                "Enable walk-forward", value=bool(walk_forward.get("enabled", False))
+            )
             fold_mode = st.selectbox(
                 "Fold mode",
                 list(FOLD_MODES),
@@ -867,17 +885,23 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
             )
             wfa_stops = st.text_input(
                 "Walk-forward stop ticks",
-                value=", ".join(str(v) for v in (walk_forward.get("stop_loss_ticks_values") or [8])),
+                value=", ".join(
+                    str(v) for v in (walk_forward.get("stop_loss_ticks_values") or [8])
+                ),
             )
             wfa_targets = st.text_input(
                 "Walk-forward target ticks",
-                value=", ".join(str(v) for v in (walk_forward.get("take_profit_ticks_values") or [16])),
+                value=", ".join(
+                    str(v) for v in (walk_forward.get("take_profit_ticks_values") or [16])
+                ),
             )
             matrix_enabled = False
             matrix_train_raw = ", ".join(
                 str(v) for v in (matrix.get("train_session_values") or [20, 40])
             )
-            matrix_test_raw = ", ".join(str(v) for v in (matrix.get("test_session_values") or [5, 10]))
+            matrix_test_raw = ", ".join(
+                str(v) for v in (matrix.get("test_session_values") or [5, 10])
+            )
             matrix_metric = str(matrix.get("matrix_metric") or WFA_MATRIX_METRICS[0])
             max_matrix_cells = safe_int(matrix.get("max_matrix_cells"), 100)
             if fold_mode == "sessions":
@@ -1017,7 +1041,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                 )
                 st.rerun()
             except ValueError as exc:
-                st.error(str(exc))
+                # Hub-flash: Advanced defaults closed after rerun.
+                set_assistant_flash(st.session_state, level="error", message=str(exc))
+                st.rerun()
     with validate_col:
         if st.button("Validate executable RunSpec"):
             validation_result = orchestrator.validate_choices(
@@ -1258,9 +1284,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                                 )
                             )
                         else:
-                            st.session_state["assistant_run_explanations"][run.run_id] = result.payload[
-                                "explanation"
-                            ]
+                            st.session_state["assistant_run_explanations"][run.run_id] = (
+                                result.payload["explanation"]
+                            )
                     explanation = st.session_state["assistant_run_explanations"].get(run.run_id)
                     if explanation:
                         st.write(explanation)
@@ -1274,7 +1300,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                             ("Validation", "VALIDATION.inspect_results"),
                         )
                         summary_cols = st.columns(len(summary_caps))
-                        for col, (label, capability_id) in zip(summary_cols, summary_caps, strict=True):
+                        for col, (label, capability_id) in zip(
+                            summary_cols, summary_caps, strict=True
+                        ):
                             with col:
                                 if st.button(label, key=f"page-sum-{capability_id}-{run.run_id}"):
                                     try:
@@ -1294,9 +1322,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                                                 )
                                             )
                                         else:
-                                            st.session_state.setdefault("assistant_page_summaries", {})[
-                                                f"{run.run_id}:{capability_id}"
-                                            ] = result.payload
+                                            st.session_state.setdefault(
+                                                "assistant_page_summaries", {}
+                                            )[f"{run.run_id}:{capability_id}"] = result.payload
                         for label, capability_id in summary_caps:
                             cached = st.session_state.get("assistant_page_summaries", {}).get(
                                 f"{run.run_id}:{capability_id}"
@@ -1378,7 +1406,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                                         "Proposal staged. Open the owning classic page and Apply."
                                     )
                                     if st.session_state.get("classic_pending_navigation"):
-                                        st.switch_page(st.session_state["classic_pending_navigation"])
+                                        st.switch_page(
+                                            st.session_state["classic_pending_navigation"]
+                                        )
                             except Exception as exc:
                                 st.error(f"Unable to stage proposal: {exc}")
                     if st.button(
@@ -1401,8 +1431,8 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                             st.session_state["assistant_llm_run_explanations"][run.run_id] = (
                                 result.payload["llm_explanation"]
                             )
-                            st.session_state["assistant_llm_attempts"][run.run_id] = result.payload.get(
-                                "provider_attempts"
+                            st.session_state["assistant_llm_attempts"][run.run_id] = (
+                                result.payload.get("provider_attempts")
                             )
                         except (
                             LLMConfigurationError,
@@ -1412,7 +1442,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                         ) as exc:
                             clear_failed_llm_run_explanation(st.session_state, run.run_id)
                             st.error(f"Unable to generate AI explanation: {exc}")
-                    llm_explanation = st.session_state["assistant_llm_run_explanations"].get(run.run_id)
+                    llm_explanation = st.session_state["assistant_llm_run_explanations"].get(
+                        run.run_id
+                    )
                     if llm_explanation:
                         st.write(llm_explanation.summary)
                         for caveat in llm_explanation.caveats:
@@ -1461,9 +1493,9 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                                 )
                             )
                         else:
-                            st.session_state["assistant_run_artifacts"][run.run_id] = result.payload[
-                                "artifact"
-                            ]
+                            st.session_state["assistant_run_artifacts"][run.run_id] = (
+                                result.payload["artifact"]
+                            )
                     artifact = st.session_state["assistant_run_artifacts"].get(run.run_id)
                     if artifact:
                         st.download_button(
@@ -1530,10 +1562,14 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
     if len(completed_runs) >= 2:
         st.subheader("Compare completed runs")
         labels = {
-            run.run_id: f"Run {run.run_id[-8:]} · spec v{run.spec_version}" for run in completed_runs
+            run.run_id: f"Run {run.run_id[-8:]} · spec v{run.spec_version}"
+            for run in completed_runs
         }
         left_id = st.selectbox(
-            "Left run", list(labels), format_func=labels.get, key=f"assistant_compare_left_{thesis_id}"
+            "Left run",
+            list(labels),
+            format_func=labels.get,
+            key=f"assistant_compare_left_{thesis_id}",
         )
         right_id = st.selectbox(
             "Right run",
@@ -1550,17 +1586,38 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                 right_run=selected[right_id],
             )
             if result.status != "completed":
-                st.error(result.payload.get("error", {}).get("message", "Unable to compare runs."))
+                set_assistant_flash(
+                    st.session_state,
+                    level="error",
+                    message=str(
+                        result.payload.get("error", {}).get("message", "Unable to compare runs.")
+                    ),
+                )
             else:
                 st.session_state["assistant_run_comparisons"][thesis_id] = {
                     "run_ids": result.payload["run_ids"],
                     "comparison": result.payload["comparison"],
                 }
                 if result.payload.get("persistence_error"):
-                    st.warning(
-                        "Comparison computed but could not be persisted: "
-                        f"{result.payload['persistence_error']}"
+                    set_assistant_flash(
+                        st.session_state,
+                        level="warning",
+                        message=(
+                            "Comparison computed but could not be persisted: "
+                            f"{result.payload['persistence_error']}. "
+                            "Open Advanced → Compare completed runs for conclusions."
+                        ),
                     )
+                else:
+                    set_assistant_flash(
+                        st.session_state,
+                        level="success",
+                        message=(
+                            "Comparison ready. Open Advanced → Compare completed runs "
+                            "for conclusions."
+                        ),
+                    )
+            st.rerun()
         comparison_state = st.session_state["assistant_run_comparisons"].get(thesis_id)
         if comparison_state and comparison_state.get("run_ids") == [left_id, right_id]:
             comparison = comparison_state.get("comparison")
@@ -1606,18 +1663,44 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                 instrument=instrument,
             )
             if result.status != "completed":
-                st.error(
-                    result.payload.get("error", {}).get("message", "Unable to analyze portfolio.")
+                set_assistant_flash(
+                    st.session_state,
+                    level="error",
+                    message=str(
+                        result.payload.get("error", {}).get(
+                            "message", "Unable to analyze portfolio."
+                        )
+                    ),
                 )
             else:
                 payload_view = {
-                    key: value
-                    for key, value in result.payload.items()
-                    if key != "resource_limits"
+                    key: value for key, value in result.payload.items() if key != "resource_limits"
                 }
-                st.success(
-                    f"Portfolio analysis ready for {len(portfolio_ids)} runs ({instrument})."
+                st.session_state["assistant_portfolio_analyses"][thesis_id] = {
+                    "run_ids": list(portfolio_ids),
+                    "instrument": instrument,
+                    "payload": payload_view,
+                }
+                set_assistant_flash(
+                    st.session_state,
+                    level="success",
+                    message=(
+                        f"Portfolio analysis ready for {len(portfolio_ids)} runs "
+                        f"({instrument}). Open Advanced → Portfolio analysis for the summary."
+                    ),
                 )
+            st.rerun()
+        portfolio_state = st.session_state["assistant_portfolio_analyses"].get(thesis_id)
+        if (
+            portfolio_state
+            and portfolio_state.get("run_ids") == list(portfolio_ids)
+            and portfolio_state.get("instrument") == instrument
+        ):
+            payload_view = portfolio_state.get("payload")
+            # Persist + re-render outside the button handler so later hub
+            # reruns (chat, thesis sidebar) do not erase portfolio feedback.
+            st.success(f"Portfolio analysis ready for {len(portfolio_ids)} runs ({instrument}).")
+            if isinstance(payload_view, dict):
                 summary = payload_view.get("portfolio")
                 if summary is None:
                     summary = payload_view.get("portfolio_summary")

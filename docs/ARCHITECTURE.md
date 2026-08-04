@@ -374,6 +374,7 @@ The Research Assistant page stages only these additive `assistant_*` keys
 | `assistant_run_reports` | Markdown report cache by run_id |
 | `assistant_run_artifacts` | Research artifact cache by run_id |
 | `assistant_run_comparisons` | In-session comparison by thesis_id |
+| `assistant_portfolio_analyses` | In-session portfolio analysis by thesis_id |
 | `assistant_bundle_handoff` | Last hash-verified restore into research pages |
 | `assistant_flash` | One-shot `{level, message}` UI notice consumed after `st.rerun()` |
 
@@ -388,8 +389,11 @@ Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 draft/validation/hydration/handoff/flash cannot leak. The Active handoff caption is
 further gated by `active_bundle_handoff()` so a stale handoff never displays for
 a different thesis.
-Apply/Draft/Confirm/Run success notices use `set_assistant_flash` /
-`consume_assistant_flash` so Streamlit reruns do not silently drop feedback.
+Apply/Draft/Validate/Cancel/Confirm/Run and Compare/Portfolio outcome notices
+use `set_assistant_flash` / `consume_assistant_flash` so chat-first hub reruns
+(and collapsed Advanced defaults) do not silently drop feedback. Compare and
+portfolio also cache results in `assistant_run_comparisons` /
+`assistant_portfolio_analyses` so conclusions remain when Advanced is reopened.
 Specification list labels use `format_spec_status` /
 `spec_status_next_step`; `ready_for_confirmation` means “ready to confirm under
 Plan review after Validate”, not “waiting on a button inside the list”.
@@ -443,9 +447,9 @@ chat (plus flash/focus/handoff banners when present). Classic Streamlit
 navigation remains the primary research path; the page does **not** duplicate an
 Open-research-pages link strip. Optional Assistant draft → validate → confirm →
 run, linked runs, and compare/portfolio live under collapsed
-`Advanced: draft, runs & compare`. Compare/portfolio keep conclusions and
-summary feedback visible; only raw result JSON is nested under collapsed
-`Debug:` expanders. Raw JSON editors and Conversation audit live under
+`Advanced: draft, runs & compare`. Compare/portfolio hub-flash outcomes and
+keep conclusions/summary visible under Advanced when reopened; only raw result
+JSON is nested under collapsed `Debug:` expanders. Raw JSON editors and Conversation audit live under
 collapsed `Debug: raw JSON & conversation audit`. Structured execution /
 setup controls and Validated executable RunSpec default to `expanded=False`.
 Assistant chat is **thesis-drafting only** (`handle_chat_turn` → choices +

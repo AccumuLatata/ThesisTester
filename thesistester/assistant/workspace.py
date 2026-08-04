@@ -33,6 +33,7 @@ ASSISTANT_SESSION_KEYS: tuple[str, ...] = (
     "assistant_run_reports",
     "assistant_run_artifacts",
     "assistant_run_comparisons",
+    "assistant_portfolio_analyses",
     "assistant_bundle_handoff",
     "assistant_flash",
 )
@@ -157,6 +158,7 @@ def init_assistant_session_state(session_state: MutableMapping[str, Any]) -> Non
         "assistant_run_reports": {},
         "assistant_run_artifacts": {},
         "assistant_run_comparisons": {},
+        "assistant_portfolio_analyses": {},
         "assistant_bundle_handoff": None,
         "assistant_flash": None,
     }
