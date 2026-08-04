@@ -248,6 +248,12 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
 - Document every additive `assistant_*` session key in `ARCHITECTURE.md` and
   `ASSISTANT_SESSION_KEYS`. Thesis switches must clear
   `THESIS_SCOPED_STAGING_KEYS` (including `assistant_bundle_handoff`).
+- Realtime voice review (VA-series) is specified in
+  `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Implement only the active VA
+  PR’s **Files allowed to touch** list; keep `assistant.voice.enabled` default
+  false; never expose compute/`web_search` tools on voice sessions; preserve
+  evidence grounding and engine/golden untouched. Document any new
+  `assistant_voice_*` keys in `ARCHITECTURE.md` in the same PR.
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned
