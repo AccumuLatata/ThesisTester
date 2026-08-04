@@ -140,7 +140,8 @@ else:
 
 if _will_include_backtest():
     render_record_and_discuss(page_key="research_bundles")
-    render_discuss_this_run(page_key="research_bundles")
+# Discuss needs a thesis-recorded run, not live session trades/equity.
+render_discuss_this_run(page_key="research_bundles")
 
 st.divider()
 st.subheader("Import bundle")

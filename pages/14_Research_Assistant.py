@@ -1341,9 +1341,7 @@ else:
                                     "Proposal staged. Open the owning classic page and Apply."
                                 )
                                 if st.session_state.get("classic_pending_navigation"):
-                                    st.switch_page(
-                                        st.session_state["classic_pending_navigation"]
-                                    )
+                                    st.switch_page(st.session_state["classic_pending_navigation"])
                         except Exception as exc:
                             st.error(f"Unable to stage proposal: {exc}")
                 if st.button(

@@ -257,12 +257,23 @@ def test_backtest_prefill_caption_before_trades_stop():
     prefill_idx = source.index(
         'render_classic_nav_prefill_caption(target_page="pages/7_Backtest.py")'
     )
+    discuss_idx = source.index('render_discuss_this_run(page_key="backtest")')
     trades_stop_idx = source.index(
         'st.info("Configure settings in the sidebar and click **▶ Run backtest**.")'
     )
     assert prefill_idx < trades_stop_idx
+    assert discuss_idx < trades_stop_idx
     signals_stop_idx = source.index("No signals found.")
     assert prefill_idx < signals_stop_idx
+
+
+def test_bundles_discuss_not_gated_on_live_backtest_artifacts():
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "pages" / "12_Research_Bundles.py").read_text(encoding="utf-8")
+    discuss_idx = source.index('render_discuss_this_run(page_key="research_bundles")')
+    gated_prefix = source[source.index("if _will_include_backtest():") : discuss_idx]
+    assert "render_discuss_this_run" not in gated_prefix
+    assert discuss_idx > 0
 
 
 def test_resolve_run_identities_from_provenance_or_peek(

@@ -65,10 +65,11 @@ render_classic_thesis_chrome(
     page_key="backtest",
     dataset_id=st.session_state.get("dataset_id"),
 )
-# Prefill must render before any st.stop() guard (signals/trades missing) so
-# Assistant clarification navigation remains visible on an empty Backtest page.
+# Prefill / proposal / Discuss must render before any st.stop() guard so empty
+# Backtest pages still surface Assistant navigation and thesis-run discussion.
 render_classic_nav_prefill_caption(target_page="pages/7_Backtest.py")
 render_classic_proposal_card(target_page="pages/7_Backtest.py")
+render_discuss_this_run(page_key="backtest")
 
 
 def _signal_setup_context(signals, signal_context: dict | None) -> str | None:
@@ -560,7 +561,6 @@ if trades is None:
     st.stop()
 
 render_record_and_discuss(page_key="backtest")
-render_discuss_this_run(page_key="backtest")
 render_classic_execution_ledger(page_key="backtest")
 
 st.caption(timezone_contract_caption(st.session_state))

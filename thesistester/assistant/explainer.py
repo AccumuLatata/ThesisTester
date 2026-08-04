@@ -468,15 +468,15 @@ def build_evidence_packet(
     grid_summary = summarize_grid_state(state)
     validation_page_summary = summarize_validation_state(state)
     if levels_summary.get("available"):
-        results["levels_summary"] = to_jsonable(levels_summary)
+        results["levels_summary"] = levels_summary
     if signals_summary.get("available"):
-        results["signals_summary"] = to_jsonable(signals_summary)
+        results["signals_summary"] = signals_summary
     if backtest_summary.get("available"):
-        results["backtest_page_summary"] = to_jsonable(backtest_summary)
+        results["backtest_page_summary"] = backtest_summary
     if grid_summary.get("available"):
-        results["grid_summary"] = to_jsonable(grid_summary)
+        results["grid_summary"] = grid_summary
     if validation_page_summary.get("available"):
-        results["validation_page_summary"] = to_jsonable(validation_page_summary)
+        results["validation_page_summary"] = validation_page_summary
     provenance_data = to_jsonable(dict(provenance))
     config = _effective_configuration(provenance_data, state)
     costs_exposure = _cost_exposure_assumptions(config, state)

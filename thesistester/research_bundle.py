@@ -48,6 +48,11 @@ _BACKTEST_META_KEYS = (
     "backtest_intrabar_diagnostic",
     "backtest_exit_management_policy",
     "backtest_exit_management_diagnostic",
+    # CAI-9 page summaries need costs/exposure/config from hash-verified bundles.
+    "backtest_execution_costs",
+    "exposure_policy",
+    "backtest_session_exit_policy",
+    "backtest_config",
 )
 _GRID_META_KEYS = ("best_grid_result", "grid_intrabar_policy", "grid_exit_management_policy")
 _VALIDATION_META_KEYS = ("validation_summary",)
@@ -94,6 +99,10 @@ _MANAGED_RESEARCH_KEYS = {
     "backtest_intrabar_diagnostic",
     "backtest_exit_management_policy",
     "backtest_exit_management_diagnostic",
+    "backtest_execution_costs",
+    "exposure_policy",
+    "backtest_session_exit_policy",
+    "backtest_config",
     "equity_curve",
     "grid_results",
     "best_grid_result",

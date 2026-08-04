@@ -205,6 +205,22 @@ def _state_summary(state: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _assert_summary_has_no_dataframes(value: Any, *, path: str = "<root>") -> None:
+    """Fail closed when a page summary embeds a DataFrame at any depth."""
+    import pandas as pd
+
+    if isinstance(value, pd.DataFrame):
+        raise AssistantToolError(f"Page summary path {path!r} must not contain a DataFrame.")
+    if isinstance(value, Mapping):
+        for key, nested in value.items():
+            child = f"{path}.{key}" if path != "<root>" else str(key)
+            _assert_summary_has_no_dataframes(nested, path=child)
+        return
+    if isinstance(value, (list, tuple)):
+        for index, nested in enumerate(value):
+            _assert_summary_has_no_dataframes(nested, path=f"{path}[{index}]")
+
+
 def _assert_bundle_compatible_with_run_spec(
     session_values: Mapping[str, Any],
     run_spec: Mapping[str, Any],
@@ -407,8 +423,6 @@ class AssistantTools:
         summary_key: str,
     ) -> dict[str, Any]:
         """Hash-verified bundle load → bounded page summary (CAI-9)."""
-        import pandas as pd
-
         path, raw, session_values = _read_verified_bundle(
             bundle_path,
             self.data_roots,
@@ -418,10 +432,8 @@ class AssistantTools:
         summary = summarizer(session_values)
         if not isinstance(summary, dict):
             raise AssistantToolError("Page summary must be a JSON object.")
-        # Fail closed if a summarizer accidentally embeds a DataFrame.
-        for key, value in summary.items():
-            if isinstance(value, pd.DataFrame):
-                raise AssistantToolError(f"Page summary key {key!r} must not contain a DataFrame.")
+        # Fail closed if a summarizer accidentally embeds a DataFrame at any depth.
+        _assert_summary_has_no_dataframes(summary)
         return {
             "bundle_path": str(path),
             "canonical_bundle_hash": canonical_bundle_hash(raw),

@@ -62,10 +62,12 @@ _BACKTEST_WIDGET_MAP: dict[str, str] = {
     "slippage_ticks": "backtest_slippage_ticks",
 }
 
+# Must match Setup Builder CONFLUENCE_MODE_DISPLAY / selectbox labels.
 _CONFLUENCE_MODE_DISPLAY = {
     "global_cluster": "Global cluster",
-    "anchor_confluence": "Anchor confluence",
+    "anchor_rules": "Anchor-based rules",
 }
+_ALLOWED_CONFLUENCE_MODES = frozenset(_CONFLUENCE_MODE_DISPLAY)
 
 
 def validate_classic_proposal(
@@ -113,9 +115,13 @@ def validate_classic_proposal(
         }:
             if not isinstance(value, (int, float)) or isinstance(value, bool):
                 raise ValueError(f"{field} must be a number.")
-            if float(value) < 0:
+            number = float(value)
+            # Match Backtest widget floors: SL/TP min_value=1; costs may be 0.
+            if field in {"stop_loss_ticks", "take_profit_ticks"} and number < 1.0:
+                raise ValueError(f"{field} must be >= 1.")
+            if field in {"tolerance_ticks", "commission_per_side", "slippage_ticks"} and number < 0:
                 raise ValueError(f"{field} must be >= 0.")
-            normalized[field] = float(value)
+            normalized[field] = number
             continue
         if field in {"min_confluences", "max_confluences"}:
             if not isinstance(value, int) or isinstance(value, bool):
@@ -132,7 +138,13 @@ def validate_classic_proposal(
         if field in {"trigger", "direction", "confluence_mode"}:
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{field} must be a non-empty string.")
-            normalized[field] = value.strip()
+            text_value = value.strip()
+            if field == "confluence_mode" and text_value not in _ALLOWED_CONFLUENCE_MODES:
+                raise ValueError(
+                    "confluence_mode must be one of "
+                    f"{sorted(_ALLOWED_CONFLUENCE_MODES)}, got {text_value!r}."
+                )
+            normalized[field] = text_value
             continue
         raise ValueError(f"Unsupported draft field: {field}")
 
@@ -244,6 +256,17 @@ def apply_classic_proposal(
                 continue
             session_state[widget_key] = patch[field]
             applied[field] = patch[field]
+        # Keep producer key in sync when present — classic_state_to_run_spec /
+        # CAI-7 ledger prefer backtest_config over widget keys when set.
+        backtest_config = session_state.get("backtest_config")
+        if isinstance(backtest_config, MutableMapping):
+            for field, value in applied.items():
+                backtest_config[field] = deepcopy(value)
+        costs = session_state.get("backtest_execution_costs")
+        if isinstance(costs, MutableMapping):
+            for field in ("commission_per_side", "slippage_ticks"):
+                if field in applied:
+                    costs[field] = deepcopy(applied[field])
     else:
         raise ValueError(f"Apply is not implemented for {target_page}.")
 

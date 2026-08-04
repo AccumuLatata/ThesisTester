@@ -151,22 +151,38 @@ def test_classic_proposal_stages_without_mutation_until_apply(tmp_path: Path):
         "backtest_tp_ticks": 16.0,
     }
     init_classic_session_state(session)
+    # Stage before first link — first link must not wipe the proposal.
+    stage_classic_proposal(
+        session,
+        validate_classic_proposal(
+            target_page="pages/7_Backtest.py",
+            draft_patch={"stop_loss_ticks": 12.0, "take_profit_ticks": 24.0},
+            note="Widen stops from evidence",
+            evidence_paths=["results.backtest_page_summary.kpis.trade_count"],
+        ),
+        navigate=False,
+    )
     link_thesis(
         session,
         thesis_id="thesis-a",
         thesis_name="A",
         dataset_id="ds-1",
     )
-    validated = validate_classic_proposal(
-        target_page="pages/7_Backtest.py",
-        draft_patch={"stop_loss_ticks": 12.0, "take_profit_ticks": 24.0},
-        note="Widen stops from evidence",
-        evidence_paths=["results.backtest_page_summary.kpis.trade_count"],
-    )
-    staged = stage_classic_proposal(session, validated, navigate=True)
-    assert staged["target_page"] == "pages/7_Backtest.py"
-    assert session["backtest_sl_ticks"] == 8.0  # not applied yet
     assert get_classic_proposal(session) is not None
+    assert session["backtest_sl_ticks"] == 8.0  # not applied yet
+
+    # Re-stage with navigation for the apply path.
+    staged = stage_classic_proposal(
+        session,
+        validate_classic_proposal(
+            target_page="pages/7_Backtest.py",
+            draft_patch={"stop_loss_ticks": 12.0, "take_profit_ticks": 24.0},
+            note="Widen stops from evidence",
+            evidence_paths=["results.backtest_page_summary.kpis.trade_count"],
+        ),
+        navigate=True,
+    )
+    assert staged["target_page"] == "pages/7_Backtest.py"
     assert session["classic_pending_navigation"] == "pages/7_Backtest.py"
 
     applied = apply_classic_proposal(session, target_page="pages/7_Backtest.py")
@@ -192,6 +208,86 @@ def test_classic_proposal_stages_without_mutation_until_apply(tmp_path: Path):
         dataset_id="ds-1",
     )
     assert get_classic_proposal(session) is None
+
+
+def test_proposal_rejects_zero_stop_loss_ticks():
+    with pytest.raises(ValueError, match="stop_loss_ticks must be >= 1"):
+        validate_classic_proposal(
+            target_page="pages/7_Backtest.py",
+            draft_patch={"stop_loss_ticks": 0.0, "take_profit_ticks": 2.0},
+            note="Invalid zero stop",
+        )
+    with pytest.raises(ValueError, match="take_profit_ticks must be >= 1"):
+        validate_classic_proposal(
+            target_page="pages/7_Backtest.py",
+            draft_patch={"stop_loss_ticks": 2.0, "take_profit_ticks": 0},
+            note="Invalid zero target",
+        )
+
+
+def test_backtest_apply_syncs_backtest_config_and_costs():
+    session: dict = {
+        "backtest_sl_ticks": 8.0,
+        "backtest_tp_ticks": 16.0,
+        "backtest_commission_per_side": 0.0,
+        "backtest_slippage_ticks": 0.0,
+        "backtest_config": {
+            "stop_loss_ticks": 8.0,
+            "take_profit_ticks": 16.0,
+            "commission_per_side": 0.0,
+            "slippage_ticks": 0.0,
+            "exposure_policy": "single_position",
+        },
+        "backtest_execution_costs": {
+            "commission_per_side": 0.0,
+            "slippage_ticks": 0.0,
+        },
+    }
+    init_classic_session_state(session)
+    stage_classic_proposal(
+        session,
+        validate_classic_proposal(
+            target_page="pages/7_Backtest.py",
+            draft_patch={
+                "stop_loss_ticks": 12.0,
+                "take_profit_ticks": 24.0,
+                "commission_per_side": 1.25,
+                "slippage_ticks": 0.5,
+            },
+            note="Sync producer keys",
+        ),
+        navigate=False,
+    )
+    apply_classic_proposal(session, target_page="pages/7_Backtest.py")
+    assert session["backtest_sl_ticks"] == 12.0
+    assert session["backtest_config"]["stop_loss_ticks"] == 12.0
+    assert session["backtest_config"]["take_profit_ticks"] == 24.0
+    assert session["backtest_config"]["commission_per_side"] == 1.25
+    assert session["backtest_execution_costs"]["commission_per_side"] == 1.25
+    assert session["backtest_execution_costs"]["slippage_ticks"] == 0.5
+
+
+def test_setup_proposal_maps_anchor_rules_label():
+    session: dict = {"setup_config": {"confluence_mode": "global_cluster"}}
+    init_classic_session_state(session)
+    stage_classic_proposal(
+        session,
+        validate_classic_proposal(
+            target_page="pages/3_Setup_Builder.py",
+            draft_patch={"confluence_mode": "anchor_rules"},
+            note="Switch to anchor rules",
+        ),
+        navigate=False,
+    )
+    apply_classic_proposal(session, target_page="pages/3_Setup_Builder.py")
+    assert session["_setup_builder_confluence_mode"] == "Anchor-based rules"
+    assert session["setup_config"]["confluence_mode"] == "anchor_rules"
+    with pytest.raises(ValueError, match="confluence_mode must be one of"):
+        validate_classic_proposal(
+            target_page="pages/3_Setup_Builder.py",
+            draft_patch={"confluence_mode": "anchor_confluence"},
+            note="Legacy bad mode",
+        )
 
 
 def test_propose_capability_via_orchestrator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

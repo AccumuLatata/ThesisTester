@@ -352,17 +352,20 @@ def render_discuss_this_run(
     page_key: str,
     session_state: MutableMapping[str, Any] | None = None,
 ) -> None:
-    """Render **Discuss this run** (navigate-only) under thesis recording."""
+    """Render **Discuss this run** (navigate-only) under an active thesis.
+
+    Discuss needs a thesis-recorded completed run, not live session trades —
+    so this chrome stays visible on empty Backtest / Bundles pages.
+    """
     import streamlit as st
 
     from thesistester.classic_context import get_active_thesis_name
-    from thesistester.classic_record import classic_session_ready_for_record
 
     if not isinstance(page_key, str) or not page_key.strip():
         raise ValueError("page_key must be a non-empty string.")
     page = page_key.strip()
     state = session_state if session_state is not None else st.session_state
-    if not classic_session_ready_for_record(state) or not is_research_mode(state):
+    if not is_research_mode(state):
         return
 
     thesis_name = get_active_thesis_name(state) or get_active_thesis_id(state)

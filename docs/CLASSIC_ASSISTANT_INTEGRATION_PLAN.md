@@ -726,7 +726,10 @@ recorded run rather than rendering unconstrained DataFrames.
   grounded explanation templates.
 - `CLASSIC.propose_page_change` + `thesistester/classic_proposal.py`:
   validate → stage (`classic_page_proposal`) → user Apply on Setup Builder /
-  Backtest only. Thesis switch clears staged proposals.
+  Backtest only. Real thesis switch clears staged proposals; first link does
+  not. Backtest SL/TP draft fields require `>= 1` (widget floor). Setup
+  `confluence_mode` uses `global_cluster` / `anchor_rules` labels matching
+  Setup Builder.
 - Orchestrator façades: `inspect_run_page_summary`,
   `propose_classic_page_change`.
 - UI: Assistant page-summary buttons + proposal staging; classic proposal

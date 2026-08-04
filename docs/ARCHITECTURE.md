@@ -216,7 +216,8 @@ completed run. Future recomputation still requires
 pages:
 
 - **Discuss this run** (Backtest / Research Bundles): sets active + focus run
-  and navigates to Research Assistant; does not re-register.
+  and navigates to Research Assistant; does not re-register. Visible under
+  research mode even without live session trades (uses thesis-recorded runs).
 - **Open exact run in Backtest** (Assistant): hash-verified
   `restore_run_bundle_to_session`, re-links thesis, sets active run, navigates
   to Backtest.
@@ -249,7 +250,11 @@ remain classic-page owned.
 Controlled proposals use `CLASSIC.propose_page_change` and
 `thesistester/classic_proposal.py`: validate → stage into
 `classic_page_proposal` → user Apply on Setup Builder or Backtest. Staging does
-not mutate widgets; thesis switch clears the proposal. Apply/stage helpers stay
+not mutate widgets; a real thesis switch clears the proposal (first link does
+not). Backtest SL/TP proposal fields require `>= 1` to match page widgets.
+Page summaries are recursively DataFrame-free and key-canonicalized; research
+bundles persist `backtest_execution_costs` / exposure for hash-verified inspect.
+Apply/stage helpers stay
 out of `classic_context`.
 
 ## Classic research-mode execution ledger (CAI-7)

@@ -325,7 +325,8 @@ and controlled classic proposals (charts stay on classic pages).
   Signals, Backtest, Grid, Validation.
 - Evidence packet page-summary paths + grounded templates.
 - `CLASSIC.propose_page_change` / `classic_proposal.py`: draft stage + explicit
-  Apply on Setup Builder / Backtest (`classic_page_proposal` session key).
+  Apply on Setup Builder / Backtest (`classic_page_proposal` session key);
+  first thesis link preserves staged proposals; SL/TP drafts require `>= 1`.
 - Assistant UI: per-run page summary buttons + proposal staging.
 
 ### Regression safety

@@ -300,8 +300,10 @@ def link_thesis(
     session_state["classic_active_thesis_id"] = thesis_id.strip()
     session_state["classic_active_thesis_name"] = name
     session_state["classic_bound_dataset_id"] = bound
-    # Thesis switch must not keep another thesis's run/proposal context (CAI-8/9).
-    if prior_thesis != thesis_id.strip():
+    # Real thesis switch only — first link (prior unset) must not drop a staged
+    # CAI-8 prefill or CAI-9 proposal before the user reaches the owning page.
+    prior_norm = prior_thesis.strip() if isinstance(prior_thesis, str) else ""
+    if prior_norm and prior_norm != thesis_id.strip():
         session_state["classic_active_run_id"] = None
         session_state["classic_focus_run_id"] = None
         session_state["classic_nav_prefill"] = None
