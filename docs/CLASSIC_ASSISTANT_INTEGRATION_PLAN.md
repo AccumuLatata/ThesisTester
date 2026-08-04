@@ -573,9 +573,12 @@ without recomputing it.
   `resolve_classic_record_source` / `classic_export_session_state` force
   `format_profile="canonical"` for path verification and RunSpec export so
   vendor session profiles (Quantower semicolon, etc.) cannot mis-parse the
-  lineage file. Bundle/provenance ingest identities remain on the session
-  profile (CAI-8 badges); only RunSpec `dataset.format_profile` follows the
-  lineage CSV.
+  lineage file. The export overlay also coerces timestamp units to the dtype
+  the materialized lineage CSV reloads as (pandas 2 `ns` / pandas 3 `us`) so
+  15s→1m derived parents do not fail `source_path_identity_mismatch` on
+  dtype-only hash drift.
+  Bundle/provenance ingest identities remain on the session profile (CAI-8
+  badges); only RunSpec `dataset.format_profile` follows the lineage CSV.
 - Tests: `tests/test_classic_record.py`.
 
 **Regression gates**

@@ -150,10 +150,14 @@ def derive_complete_parent_ohlcv(
         )
 
     parent_data = pd.DataFrame(parent_rows, columns=list(REQUIRED_COLUMNS))
-    parent_data["timestamp"] = pd.to_datetime(parent_data["timestamp"])
+    parent_data["timestamp"] = _timestamps_matching_source_dtype(
+        parent_data["timestamp"], source_frame["timestamp"].dtype
+    )
     dropped_buckets = pd.DataFrame(dropped_rows, columns=list(_DROPPED_COLUMNS))
     if not dropped_buckets.empty:
-        dropped_buckets["timestamp"] = pd.to_datetime(dropped_buckets["timestamp"])
+        dropped_buckets["timestamp"] = _timestamps_matching_source_dtype(
+            dropped_buckets["timestamp"], source_frame["timestamp"].dtype
+        )
 
     return DerivedParentResult(
         parent_data=parent_data.reset_index(drop=True),
@@ -165,6 +169,26 @@ def derive_complete_parent_ohlcv(
     )
 
 
+def _timestamps_matching_source_dtype(values: pd.Series, source_dtype: Any) -> pd.Series:
+    """Parse timestamps while preserving the source/loader datetime unit.
+
+    ``pd.to_datetime`` on reconstructed Timestamp rows may default to a different
+    resolution than the loader frame (pandas 2 ``ns`` vs pandas 3 ``us``). Derived
+    parents must keep the source unit or CSV lineage round-trips diverge in
+    ``DataIdentity.data_content_hash`` (dtype is part of the hash).
+    """
+    parsed = pd.to_datetime(values, errors="coerce")
+    if getattr(source_dtype, "tz", None) is not None or str(source_dtype).startswith("datetime64"):
+        try:
+            return parsed.astype(source_dtype)
+        except (TypeError, ValueError):
+            pass
+    unit = getattr(source_dtype, "unit", None)
+    if unit is not None and hasattr(parsed.dt, "as_unit"):
+        return parsed.dt.as_unit(unit)
+    return parsed
+
+
 def _normalize_source_frame(source: pd.DataFrame) -> pd.DataFrame:
     if not isinstance(source, pd.DataFrame):
         raise TypeError("source must be a pandas DataFrame")
@@ -172,7 +196,14 @@ def _normalize_source_frame(source: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise ValueError(f"source data missing required columns: {missing}")
     frame = source.loc[:, list(REQUIRED_COLUMNS)].copy()
+    source_dtype = frame["timestamp"].dtype
     frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
+    # Keep loader unit when present (datetime64[ns|us, tz] depending on pandas).
+    if getattr(source_dtype, "tz", None) is not None or getattr(source_dtype, "unit", None):
+        try:
+            frame["timestamp"] = frame["timestamp"].astype(source_dtype)
+        except (TypeError, ValueError):
+            pass
     for column in ("open", "high", "low", "close", "volume"):
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
     return frame.reset_index(drop=True)

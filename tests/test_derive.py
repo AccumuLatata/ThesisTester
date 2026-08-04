@@ -225,6 +225,13 @@ def test_quantower_vendor_15s_derives_and_reconciles_with_r12():
         check_dtype=False,
     )
     prepare_subtimeframe_context(result.parent_data, result.source_data, tick_size=0.25)
+    # Parent timestamps must keep the loader unit so CSV lineage round-trips
+    # match DataIdentity hashes (dtype is part of the content hash). The unit
+    # itself varies by pandas major (2.x → ns, 3.x → us).
+    assert str(result.parent_data["timestamp"].dtype) == str(source["timestamp"].dtype)
+    assert getattr(result.parent_data["timestamp"].dtype, "unit", None) == getattr(
+        source["timestamp"].dtype, "unit", None
+    )
 
 
 def test_future_shock_append_does_not_change_prior_parents_or_diagnostics():
