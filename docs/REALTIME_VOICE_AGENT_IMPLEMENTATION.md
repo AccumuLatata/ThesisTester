@@ -67,11 +67,13 @@ decision lands later.
    `canonical_bundle_hash`. Hash mismatch fails closed (same as `BUNDLE.import`).
 4. **Read-only tools.** Voice may call only the VA-3 allowlist. Never
    `PIPELINE.*`, `execute_confirmed_run`, `dispatch` of compute, filesystem,
-   shell, broker, `web_search`, or `x_search` (search stays config-locked off).
+   shell, broker, `web_search`, `x_search`, `file_search`, or `mcp`.
 5. **Grounding.** Numeric tokens in structured results-Q&A output and in
    audited voice transcripts must resolve to packet paths or tool-returned
    values; else fail/flag before trusted UI render (C2-6 parity).
-6. **Secrets.** `XAI_API_KEY` server-side only. Browser uses ephemeral tokens.
+6. **Secrets.** `XAI_API_KEY` server-side / sidecar only. The Streamlit page
+   never embeds the long-lived key. Realtime (VA-5) browser traffic goes to
+   the localhost sidecar; the sidecar owns the upstream xAI connection.
 7. **Default off.** `assistant.voice.enabled = false` in `config/assistant.toml`.
 8. **Same-PR docs.** Every PR that adds behavior updates the docs listed in
    that PR’s scope. New `assistant_voice_*` session keys are documented in
@@ -87,17 +89,15 @@ decision lands later.
 ```text
 Research Assistant (opt-in Voice panel)
         │
-        ▼
-VoiceSessionService          # create/end; bind run+hash; instructions
-        │
-        ├── xai_realtime     # ephemeral token mint (server)
-        ├── voice tools      # allowlisted JSON functions → orchestrator RO APIs
-        ├── grounding        # transcript / claim numeric audit
-        └── results_qa       # shared text multi-turn over EvidencePacket
-                │
-                ▼
-AssistantOrchestrator (existing)
-  explain_run / compare / BUNDLE.import → EvidencePacket
+        ├── VA-1 text results_qa ─────────────────────────────┐
+        ├── VA-4 PTT: STT → intent → tools → TTS (xAI unary) │
+        └── VA-5 realtime: browser ↔ localhost sidecar ↔ xAI │
+                │                                            │
+                ▼                                            ▼
+        VoiceSessionService / voice tools              AssistantOrchestrator
+          bind run+hash; allowlisted RO tools            explain_run /
+                                                         BUNDLE.import(evidence)
+                                                         → EvidencePacket
 ```
 
 | Path | Role | Forbidden |
@@ -106,9 +106,11 @@ AssistantOrchestrator (existing)
 | `thesistester/assistant/voice/contracts.py` | Schema-versioned records | I/O, Streamlit, network |
 | `thesistester/assistant/voice/settings.py` | Load voice config + key resolution | UI |
 | `thesistester/assistant/voice/session.py` | Session lifecycle + instruction build | Tool execution side effects beyond allowlist |
-| `thesistester/assistant/voice/xai_realtime.py` | Token mint / optional WS helpers | Embedding keys in page code |
+| `thesistester/assistant/voice/xai_realtime.py` | STT/TTS + sidecar upstream xAI helpers | Embedding keys in page code |
+| `thesistester/assistant/voice/intent.py` | Deterministic VA-4 intent router | LLM intent / free-form NL |
 | `thesistester/assistant/voice/tools.py` | Tool schemas + router | Widening to write/compute |
 | `thesistester/assistant/voice/grounding.py` | Numeric audit helpers | Trusting raw model speech |
+| `thesistester/assistant/voice/sidecar.py` | Localhost realtime WS + tool bridge (VA-5) | Non-localhost bind / multi-tenant auth |
 | `pages/14_Research_Assistant.py` | Presentation only | Packet construction, secrets |
 
 **Provider note:** There is no separate “Grok 4.5 realtime” model ID. Pin
@@ -206,6 +208,7 @@ users.
 
 #### Acceptance
 - [ ] `load_voice_settings().enabled is False` on current config
+- [ ] `load_llm_settings()` still succeeds with `[assistant.voice]` present
 - [ ] Existing `tests/test_assistant_llm*.py` unchanged and green
 - [ ] No new third-party dependency
 - [ ] `ruff` + `pytest -q` green
@@ -284,9 +287,11 @@ _Pending implementation._
 
 ---
 
-### VA-2 — xAI ephemeral token + session service
+### VA-2 — xAI credentials + session service
 
 **Goal:** Server-side session + credential primitives. No mic UI.
+Ephemeral-token helpers may land here for later sidecar use, but the Streamlit
+page must not depend on browser-held xAI tokens.
 
 #### In scope
 | Item | Detail |
@@ -603,7 +608,7 @@ _Pending implementation._
 | Topic | Policy |
 |---|---|
 | Cost | ~$0.08 × S2S audio minutes (Think Fast 2.0); hard cap `max_session_minutes`; VA-4 also incurs unary STT/TTS |
-| Keys | Server `XAI_API_KEY`; browser ephemeral ≤ TTL |
+| Keys | Server/sidecar `XAI_API_KEY` only; browser never holds the long-lived key |
 | Audio blobs | Not persisted (`store_audio=false`) |
 | Transcripts | Schema-versioned text + tool audit in assistant store |
 | Failure | Deterministic explain + VA-1 text Q&A remain available |

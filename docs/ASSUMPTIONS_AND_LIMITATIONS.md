@@ -449,16 +449,18 @@ other than the last bar in the dataset.
 
 ## Voice agent (VA-series — proposed, not shipped)
 - Realtime voice review of completed runs is specified in
-  `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. It is not implemented yet.
+  `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (single VA-series contract).
+  It is not implemented yet.
 - When shipped, voice will be opt-in (`assistant.voice.enabled = false` by
   default), bind only to hash-verified evidence packets, and expose read-only
   tools. It must not dispatch compute, mutate RunSpecs, or invent metrics.
 - Spoken numeric claims inherit the C2-6 grounding contract via transcript /
   tool-result audit; provider failure must fall back to deterministic explain
   and text results Q&A.
-- Planned provider: xAI Grok Voice Agent API (`grok-voice-latest`) with
-  server-side `XAI_API_KEY` and ephemeral client tokens. Raw audio is not
-  stored by default.
+- Planned provider: xAI Grok Voice pinned to `grok-voice-think-fast-2.0` with
+  server-side `XAI_API_KEY`. Push-to-talk uses unary STT/TTS; realtime mode
+  uses a localhost sidecar that owns the xAI WebSocket (browser never holds
+  the long-lived key). Raw audio is not stored by default.
 
 ## OTF filter (One Timeframing)
 
