@@ -153,6 +153,16 @@ def test_source_path_identity_mismatch_is_gap(tmp_path: Path):
     assert any(gap.code == "source_path_identity_mismatch" for gap in gaps)
 
 
+def test_vendor_profile_on_canonical_csv_is_unreadable_gap(tmp_path: Path):
+    """DataValidationError from profile/delimiter mismatch must surface as a gap."""
+    state = _classic_state_from_parity(tmp_path)
+    state["format_profile"] = "quantower_history_exporter"
+    gaps = classic_state_export_gaps(state, source_path=state["dataset_source_path"])
+    assert any(gap.code == "source_path_unreadable" for gap in gaps)
+    message = next(gap.message for gap in gaps if gap.code == "source_path_unreadable")
+    assert "Quantower History Exporter" in message
+
+
 def test_no_default_levels_or_backtest_injection(tmp_path: Path):
     state = _classic_state_from_parity(tmp_path)
     del state["levels_settings"]

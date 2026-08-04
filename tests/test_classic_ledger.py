@@ -92,6 +92,32 @@ def test_should_record_requires_research_mode_and_policy():
     assert should_record_all_executions(session) is False
 
 
+def test_begin_ledger_materializes_quantower_session_as_canonical(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """CAI-7 begin must not verify materialized lineage CSV with a vendor profile."""
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    pre = _classic_pre_exec_state(tmp_path)
+    pre["format_profile"] = "quantower_history_exporter"
+    pre.pop("dataset_source_path", None)
+    pre.pop("source_csv_path", None)
+    orchestrator, repository = _orchestrator(tmp_path)
+    thesis = repository.create_thesis(name="quantower ledger")
+
+    handle = begin_classic_execution_ledger(
+        orchestrator,
+        thesis_id=thesis.thesis_id,
+        session_state=pre,
+        origin_page="backtest",
+        store_root=tmp_path / "store",
+    )
+    running = repository.get_run(thesis.thesis_id, handle.run_id)
+    run_spec = running.request.get("run_spec") or {}
+    dataset = run_spec.get("dataset") if isinstance(run_spec, dict) else {}
+    assert dataset.get("format_profile") == "canonical"
+    assert Path(str(dataset.get("path", ""))).name == "classic_source.csv"
+
+
 def test_begin_fail_complete_ledger_lifecycle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
     pre = _classic_pre_exec_state(tmp_path)

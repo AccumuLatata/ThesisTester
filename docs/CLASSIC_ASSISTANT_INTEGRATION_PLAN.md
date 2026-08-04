@@ -569,7 +569,13 @@ without recomputing it.
   bundle + exported RunSpec (materializes a lineage CSV when classic pages
   omit `dataset_source_path`); UI `render_record_and_discuss` on Backtest and
   Research Bundles. Kept out of `classic_context` so link/create stay
-  non-recording.
+  non-recording. Materialized `classic_source.csv` is always canonical OHLCV;
+  `resolve_classic_record_source` / `classic_export_session_state` force
+  `format_profile="canonical"` for path verification and RunSpec export so
+  vendor session profiles (Quantower semicolon, etc.) cannot mis-parse the
+  lineage file. Bundle/provenance ingest identities remain on the session
+  profile (CAI-8 badges); only RunSpec `dataset.format_profile` follows the
+  lineage CSV.
 - Tests: `tests/test_classic_record.py`.
 
 **Regression gates**

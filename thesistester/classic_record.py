@@ -8,6 +8,7 @@ lazy-imported so unit tests stay Streamlit-free. Recording must never live in
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, MutableMapping
 
@@ -31,6 +32,24 @@ from thesistester.research_bundle import build_research_bundle, canonical_bundle
 from thesistester.research_identity import normalize_execution_origin
 
 _OHLCV_COLUMNS = ("timestamp", "open", "high", "low", "close", "volume")
+_MATERIALIZED_FORMAT_PROFILE = "canonical"
+
+
+@dataclass(frozen=True, slots=True)
+class ClassicRecordSource:
+    """Resolved lineage CSV for classic RunSpec ``dataset.path`` export.
+
+    ``materialized`` is True when the path was written from in-memory canonical
+    OHLCV (Streamlit uploads omit a durable vendor path). Those files are always
+    comma-separated canonical bars, so ``format_profile`` is ``canonical`` even
+    when the session still carries a vendor ingest profile such as
+    ``quantower_history_exporter``.
+    """
+
+    path: str
+    format_profile: str
+    materialized: bool
+
 
 # Mirrors AssistantTools.verify_external_research_bundle required sections.
 _REQUIRED_BUNDLE_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -67,7 +86,8 @@ def materialize_classic_source_csv(
     """Write a canonical OHLCV CSV from in-memory classic data for RunSpec lineage.
 
     Used only when the session lacks ``dataset_source_path`` / ``source_csv_path``.
-    Does not recompute levels or trades.
+    The written file is always comma-separated canonical OHLCV regardless of the
+    session's vendor ``format_profile``. Does not recompute levels or trades.
     """
     data = session_state.get("data")
     if not isinstance(data, pd.DataFrame):
@@ -82,6 +102,42 @@ def materialize_classic_source_csv(
     return path.resolve()
 
 
+def _session_format_profile(session_state: Mapping[str, Any]) -> str:
+    profile = session_state.get("format_profile")
+    if isinstance(profile, str) and profile.strip():
+        return profile.strip()
+    return _MATERIALIZED_FORMAT_PROFILE
+
+
+def resolve_classic_record_source(
+    session_state: Mapping[str, Any],
+    *,
+    materialize_dir: str | Path,
+    source_path: str | Path | None = None,
+) -> ClassicRecordSource:
+    """Resolve a lineage CSV path and the format profile that loads it."""
+    if source_path is not None and str(source_path).strip():
+        return ClassicRecordSource(
+            path=str(Path(source_path).expanduser().resolve()),
+            format_profile=_session_format_profile(session_state),
+            materialized=False,
+        )
+    for key in ("dataset_source_path", "source_csv_path"):
+        value = session_state.get(key)
+        if isinstance(value, (str, Path)) and str(value).strip():
+            return ClassicRecordSource(
+                path=str(Path(value).expanduser().resolve()),
+                format_profile=_session_format_profile(session_state),
+                materialized=False,
+            )
+    materialized = materialize_classic_source_csv(session_state, output_dir=materialize_dir)
+    return ClassicRecordSource(
+        path=str(materialized),
+        format_profile=_MATERIALIZED_FORMAT_PROFILE,
+        materialized=True,
+    )
+
+
 def resolve_classic_record_source_path(
     session_state: Mapping[str, Any],
     *,
@@ -89,13 +145,35 @@ def resolve_classic_record_source_path(
     source_path: str | Path | None = None,
 ) -> str:
     """Return an existing source path or materialize one under ``materialize_dir``."""
-    if source_path is not None and str(source_path).strip():
-        return str(Path(source_path).expanduser().resolve())
-    for key in ("dataset_source_path", "source_csv_path"):
-        value = session_state.get(key)
-        if isinstance(value, (str, Path)) and str(value).strip():
-            return str(Path(value).expanduser().resolve())
-    return str(materialize_classic_source_csv(session_state, output_dir=materialize_dir))
+    return resolve_classic_record_source(
+        session_state,
+        materialize_dir=materialize_dir,
+        source_path=source_path,
+    ).path
+
+
+def classic_export_session_state(
+    session_state: Mapping[str, Any],
+    source: ClassicRecordSource,
+) -> Mapping[str, Any]:
+    """Return an export overlay whose ``format_profile`` matches the lineage CSV.
+
+    Materialized paths are always canonical OHLCV. Exporting them under a vendor
+    profile (e.g. Quantower semicolon) fails path verification and would produce
+    a non-reloadable RunSpec ``dataset.path``.
+
+    The overlay is export-only: the live session keeps its ingest profile so
+    research-bundle ``dataset_meta`` / CAI-8 provenance identities still describe
+    how bars were originally loaded. RunSpec ``dataset.format_profile`` is the
+    parser for ``dataset.path`` and may therefore differ after materialization.
+    """
+    # Compare the raw session value (not a normalized default) so whitespace or
+    # missing keys still receive an explicit lineage profile for export.
+    if session_state.get("format_profile") == source.format_profile:
+        return session_state
+    overlay = dict(session_state)
+    overlay["format_profile"] = source.format_profile
+    return overlay
 
 
 def _unlink_quiet(path: Path) -> None:
@@ -129,14 +207,15 @@ def record_classic_session_run(
     thesis = orchestrator.get_thesis(thesis_id)
     root = Path(store_root) if store_root is not None else get_store_root()
     staging = root / "assistant" / "theses" / thesis_id / "classic_registration" / "staging"
-    resolved_source = resolve_classic_record_source_path(
+    resolved_source = resolve_classic_record_source(
         session_state,
         materialize_dir=staging,
         source_path=source_path,
     )
+    export_state = classic_export_session_state(session_state, resolved_source)
     gaps = classic_state_export_gaps(
-        session_state,
-        source_path=resolved_source,
+        export_state,
+        source_path=resolved_source.path,
         store_root=root,
     )
     if gaps:
@@ -146,9 +225,9 @@ def record_classic_session_run(
         raise ValueError(f"Classic state is not exportable: {rendered}")
 
     run_spec = classic_state_to_run_spec(
-        session_state,
+        export_state,
         name=thesis.name,
-        source_path=resolved_source,
+        source_path=resolved_source.path,
         store_root=root,
     )
     bundle_bytes = build_research_bundle(session_state)
