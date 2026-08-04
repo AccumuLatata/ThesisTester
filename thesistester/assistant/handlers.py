@@ -52,6 +52,26 @@ def _require_mapping(value: Any, *, field: str) -> Mapping[str, Any]:
     return value
 
 
+def _optional_nonneg_int(value: Any, *, field: str) -> int | None:
+    """Coerce JSON ints / numeric strings to a non-negative int (CAI-10)."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be a non-negative integer.")
+    if isinstance(value, int):
+        number = value
+    elif isinstance(value, str) and value.strip():
+        try:
+            number = int(value.strip())
+        except ValueError as exc:
+            raise ValueError(f"{field} must be a non-negative integer.") from exc
+    else:
+        raise ValueError(f"{field} must be a non-negative integer.")
+    if number < 0:
+        raise ValueError(f"{field} must be a non-negative integer.")
+    return number
+
+
 def _handle_validate_run_spec(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
     run_spec = _require_mapping(request.payload.get("run_spec"), field="run_spec")
     return context.tools.validate_experiment(run_spec)
@@ -345,11 +365,14 @@ def _handle_propose_classic_page_change(
 
 def _handle_cache_inspect(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
     kind = request.payload.get("kind")
-    limit = request.payload.get("limit", 200)
+    limit_raw = request.payload.get("limit", 200)
+    limit = _optional_nonneg_int(limit_raw, field="limit")
+    if limit is None or limit < 1:
+        limit = 200
     store_root = request.payload.get("store_root")
     return context.tools.inspect_execution_cache(
         kind=kind if isinstance(kind, str) else None,
-        limit=int(limit) if isinstance(limit, int) else 200,
+        limit=limit,
         store_root=store_root if isinstance(store_root, str) else None,
     )
 
@@ -372,15 +395,13 @@ def _handle_cache_delete(request: AssistantRequest, context: HandlerContext) -> 
 def _handle_cache_evict(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
     store_root = request.payload.get("store_root")
     return context.tools.evict_execution_cache(
-        max_entries=request.payload.get("max_entries")
-        if isinstance(request.payload.get("max_entries"), int)
-        else None,
-        max_total_bytes=request.payload.get("max_total_bytes")
-        if isinstance(request.payload.get("max_total_bytes"), int)
-        else None,
-        max_age_seconds=request.payload.get("max_age_seconds")
-        if isinstance(request.payload.get("max_age_seconds"), int)
-        else None,
+        max_entries=_optional_nonneg_int(request.payload.get("max_entries"), field="max_entries"),
+        max_total_bytes=_optional_nonneg_int(
+            request.payload.get("max_total_bytes"), field="max_total_bytes"
+        ),
+        max_age_seconds=_optional_nonneg_int(
+            request.payload.get("max_age_seconds"), field="max_age_seconds"
+        ),
         store_root=store_root if isinstance(store_root, str) else None,
     )
 

@@ -559,9 +559,7 @@ class AssistantTools:
         )
 
         try:
-            artifacts = list_execution_artifacts(
-                store_root=store_root, kind=kind, limit=limit
-            )
+            artifacts = list_execution_artifacts(store_root=store_root, kind=kind, limit=limit)
             stats = get_execution_cache_stats(store_root)
         except ValueError as exc:
             raise AssistantToolError(str(exc)) from exc

@@ -907,7 +907,9 @@ def read_source_data_binding(
             return ArtifactMiss(_MISS_CORRUPT_MANIFEST, detail="identity")
         if data_artifact_key(identity) != artifact_key:
             return ArtifactMiss(_MISS_IDENTITY_MISMATCH, detail="data_artifact_key")
-        # Best-effort access accounting for CAI-10 inspection.
+        # Best-effort per-binding access accounting. Do not record a store-level
+        # cache hit here — warm loads also call read_verified_data_artifact, and
+        # double-counting would inflate CAI-10 hit_rate.
         try:
             payload["accessed_at"] = _utcnow_iso()
             hit_count = _try_int(payload.get("hit_count"))
@@ -916,7 +918,6 @@ def read_source_data_binding(
             _fsync_file(contained)
         except OSError:
             pass
-        _record_cache_event(artifacts_root, hit=True)
         return SourceDataBinding(
             binding_key=key,
             source_content_hash=content_hash,
@@ -1188,14 +1189,18 @@ def list_execution_artifacts(
     store_root: str | Path | None = None,
     *,
     kind: str | None = None,
-    limit: int = 200,
+    limit: int | None = 200,
 ) -> list[dict[str, Any]]:
-    """List bounded inspection records for internal execution artifacts (CAI-10)."""
+    """List inspection records for internal execution artifacts (CAI-10).
+
+    ``limit`` defaults to 200 and is capped at 1000 for inspect UIs. Pass
+    ``limit=None`` for an unbounded scan (eviction / retention only).
+    """
     if kind is not None and kind not in EXECUTION_ARTIFACT_KINDS:
         raise ValueError(f"kind must be one of {sorted(EXECUTION_ARTIFACT_KINDS)} or None.")
-    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
-        raise ValueError("limit must be a positive integer.")
-    limit = min(limit, 1000)
+    if limit is not None and (not isinstance(limit, int) or isinstance(limit, bool) or limit < 1):
+        raise ValueError("limit must be a positive integer or None.")
+    capped = None if limit is None else min(limit, 1000)
     artifacts_root = get_execution_artifacts_root(store_root)
     records: list[dict[str, Any]] = []
     kinds = (kind,) if kind is not None else ("data", "levels", "source_binding")
@@ -1230,7 +1235,9 @@ def list_execution_artifacts(
         key=lambda item: str(item.get("accessed_at") or item.get("created_at") or ""),
         reverse=True,
     )
-    return records[:limit]
+    if capped is None:
+        return records
+    return records[:capped]
 
 
 def delete_execution_artifact(
@@ -1334,17 +1341,21 @@ def evict_execution_artifacts(
         raise ValueError("max_age_seconds must be a non-negative integer.")
 
     artifacts_root = get_execution_artifacts_root(store_root)
-    records = list_execution_artifacts(store_root=store_root, limit=1000)
+    # Unbounded scan so max_entries / bytes / age can bound the full store.
+    records = list_execution_artifacts(store_root=store_root, limit=None)
     # Evict oldest accessed first (LRU); missing accessed_at falls back to created_at.
     records.sort(key=lambda item: str(item.get("accessed_at") or item.get("created_at") or ""))
     now = datetime.now(timezone.utc)
     to_delete: list[dict[str, Any]] = []
     if max_age_seconds is not None:
         for record in records:
-            created_dt = _parse_iso_timestamp(record.get("created_at"))
-            if created_dt is None:
+            # LRU age: prefer last access so hot artifacts are retained.
+            age_dt = _parse_iso_timestamp(record.get("accessed_at")) or _parse_iso_timestamp(
+                record.get("created_at")
+            )
+            if age_dt is None:
                 continue
-            age = (now - created_dt.astimezone(timezone.utc)).total_seconds()
+            age = (now - age_dt.astimezone(timezone.utc)).total_seconds()
             if age > max_age_seconds:
                 to_delete.append(record)
 
@@ -1375,10 +1386,11 @@ def evict_execution_artifacts(
         if result["deleted"]:
             deleted.append(result)
 
+    remaining_after = list_execution_artifacts(store_root=store_root, limit=None)
     return {
         "deleted_count": len(deleted),
         "deleted": deleted,
-        "remaining_count": len(list_execution_artifacts(store_root=store_root, limit=1000)),
+        "remaining_count": len(remaining_after),
         "total_bytes": get_execution_cache_stats(store_root)["total_bytes"],
         "cold_recompute_required": True,
         "protected_namespaces": sorted(_PROTECTED_STORE_DIRNAMES),

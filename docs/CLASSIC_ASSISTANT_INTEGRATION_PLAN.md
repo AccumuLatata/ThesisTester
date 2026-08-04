@@ -771,8 +771,10 @@ recorded run rather than rendering unconstrained DataFrames.
 - `execution_artifacts.py`: `list_execution_artifacts`,
   `get_execution_cache_stats`, `delete_execution_artifact`,
   `evict_execution_artifacts`, `rebind_source_path`; per-artifact `hit_count`
-  + store-level hit/miss stats; manifests carry `producer` / schema / engine.
-- Eviction allowlists only `execution_artifacts/v1`; protected namespaces:
+  + store-level hit/miss stats (data/levels reads only); manifests carry
+  `producer` / schema / engine.
+- Eviction scans the full artifact set (`limit=None`), ages by `accessed_at`,
+  and allowlists only `execution_artifacts/v1`; protected namespaces:
   `datasets`, `levels`, `signals`, `setups`, `assistant`.
 - Source rebind verifies loaded CSV `DataIdentity` before rewriting the binding
   (`last_source_path`).

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -58,8 +59,11 @@ def _warm_state(tmp_path: Path, store: Path) -> dict:
 def test_list_inspect_and_hit_counts(tmp_path: Path):
     store = tmp_path / "store"
     state = _warm_state(tmp_path, store)
-    # Second warm run should hit cache.
+    cold_hits = get_execution_cache_stats(store_root=store)["hit_count"]
+    # Second warm run should hit cache (data/levels reads only — not binding).
     _warm_state(tmp_path, store)
+    warm_hits = get_execution_cache_stats(store_root=store)["hit_count"]
+    assert warm_hits > cold_hits
     artifacts = list_execution_artifacts(store_root=store, limit=50)
     kinds = {item["kind"] for item in artifacts}
     assert "data" in kinds
@@ -71,10 +75,17 @@ def test_list_inspect_and_hit_counts(tmp_path: Path):
     assert stats["hit_count"] >= 1
     identity = DataIdentity.from_dict(state["data_identity"])
     assert identity is not None
+    before = get_execution_cache_stats(store_root=store)["hit_count"]
     hit = read_verified_data_artifact(identity, store_root=store)
     assert isinstance(hit, DataArtifact)
+    after = get_execution_cache_stats(store_root=store)["hit_count"]
+    assert after == before + 1  # one store-level hit per data artifact read
     records = list_execution_artifacts(store_root=store, kind="data")
     assert any((r.get("hit_count") or 0) >= 1 for r in records)
+    capped = list_execution_artifacts(store_root=store, limit=1)
+    unbounded = list_execution_artifacts(store_root=store, limit=None)
+    assert len(capped) == 1
+    assert len(unbounded) >= 2
 
 
 def test_delete_forces_cold_recompute_and_equal_hash(tmp_path: Path):
@@ -93,6 +104,62 @@ def test_delete_forces_cold_recompute_and_equal_hash(tmp_path: Path):
     second = _warm_state(tmp_path, store)
     second_hash = canonical_bundle_hash(build_research_bundle(second))
     assert second_hash == first_hash
+
+
+def test_eviction_scans_unbounded_and_ages_by_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    store = tmp_path / "store"
+    _warm_state(tmp_path, store)
+    calls: list[dict] = []
+    real_list = list_execution_artifacts
+
+    def _tracking_list(*args, **kwargs):
+        calls.append(dict(kwargs))
+        return real_list(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "thesistester.persistence.execution_artifacts.list_execution_artifacts",
+        _tracking_list,
+    )
+    # Also patch the public re-export path used if imported via persistence.
+    monkeypatch.setattr(
+        "thesistester.persistence.list_execution_artifacts",
+        _tracking_list,
+    )
+    from thesistester.persistence.execution_artifacts import (
+        evict_execution_artifacts as evict_direct,
+    )
+
+    def _rewrite_timestamps(record: dict, *, accessed_at: str, created_at: str) -> None:
+        path = Path(record["path"])
+        target = path if path.is_file() else path / "manifest.json"
+        payload = json.loads(target.read_text(encoding="utf-8"))
+        payload["accessed_at"] = accessed_at
+        payload["created_at"] = created_at
+        target.write_text(json.dumps(payload), encoding="utf-8")
+
+    # Make one artifact look hot (recent access) and another cold.
+    records = real_list(store_root=store, limit=None)
+    assert len(records) >= 2
+    cold, hot = records[0], records[1]
+    _rewrite_timestamps(
+        cold,
+        accessed_at="2000-01-01T00:00:00+00:00",
+        created_at="2026-01-01T00:00:00+00:00",
+    )
+    _rewrite_timestamps(
+        hot,
+        accessed_at="2099-01-01T00:00:00+00:00",
+        created_at="2000-01-01T00:00:00+00:00",
+    )
+
+    # Age threshold between cold access and hot access.
+    result = evict_direct(store_root=store, max_age_seconds=10_000_000)
+    assert any(call.get("limit") is None for call in calls)
+    deleted_keys = {(item["kind"], item["artifact_key"]) for item in result["deleted"]}
+    assert (cold["kind"], cold["artifact_key"]) in deleted_keys
+    assert (hot["kind"], hot["artifact_key"]) not in deleted_keys
 
 
 def test_eviction_never_touches_user_or_bundle_namespaces(
@@ -216,6 +283,26 @@ def test_cache_capabilities_routed(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     )
     assert evicted.status == "completed"
     assert evicted.payload["cold_recompute_required"] is True
+
+    # Numeric strings must coerce (JSON-friendly payloads).
+    string_evict = orchestrator.dispatch(
+        AssistantRequest(
+            capability_id="CACHE.evict_artifacts",
+            payload={"store_root": str(store), "max_entries": "0"},
+        ),
+        thesis_id=thesis.thesis_id,
+        confirmed=True,
+    )
+    assert string_evict.status == "completed"
+    string_inspect = orchestrator.dispatch(
+        AssistantRequest(
+            capability_id="CACHE.inspect_artifacts",
+            payload={"store_root": str(store), "limit": "5"},
+        ),
+        thesis_id=thesis.thesis_id,
+    )
+    assert string_inspect.status == "completed"
+    assert len(string_inspect.payload["artifacts"]) <= 5
 
 
 def test_invalidate_alias_still_cold_safe(tmp_path: Path):

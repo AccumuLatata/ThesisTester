@@ -354,8 +354,9 @@ without auto-deleting user-owned research assets.
 - Inspect/list: identity, size, age, producer, schema/engine, hit counts;
   store-level hit/miss stats (`list_execution_artifacts`,
   `get_execution_cache_stats`).
-- Safe delete + bounded eviction (`max_entries` / `max_total_bytes` /
-  `max_age_seconds`) under `execution_artifacts/v1` only.
+- Safe delete + full-store bounded eviction (`max_entries` /
+  `max_total_bytes` / `max_age_seconds` from `accessed_at`) under
+  `execution_artifacts/v1` only.
 - Source relocation: `rebind_source_path` after content-identity verification.
 - Assistant: `CACHE.inspect_artifacts`, `CACHE.delete_artifact`,
   `CACHE.evict_artifacts`, `CACHE.rebind_source_path`.

@@ -99,10 +99,13 @@ assets to automatic deletion:
 
 | API | Role |
 |---|---|
-| `list_execution_artifacts` / `get_execution_cache_stats` | Inspection: identity, size, age, producer, schema/engine, hit/miss |
+| `list_execution_artifacts` / `get_execution_cache_stats` | Inspection: identity, size, age, producer, schema/engine, hit/miss (`limit=None` for unbounded eviction scans) |
 | `delete_execution_artifact` | Safe single-key delete → next read is a cold miss |
-| `evict_execution_artifacts` | Bounded LRU/age/bytes eviction under `execution_artifacts/v1` only |
+| `evict_execution_artifacts` | Full-store LRU/age/bytes eviction under `execution_artifacts/v1` only (`max_age` ages from `accessed_at`) |
 | `rebind_source_path` | Relocate a source CSV only after `DataIdentity` content verification |
+
+Store-level hit/miss counters increment on verified data/levels artifact reads
+only (source-binding lookups do not double-count a warm data hit).
 
 Protected namespaces (never auto-deleted): `datasets/`, `levels/`, `signals/`,
 `setups/`, `assistant/`. Completed research bundles independently contain
