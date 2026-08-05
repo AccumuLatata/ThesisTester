@@ -633,6 +633,73 @@ def test_london_levels_equal_start_end_raise(monkeypatch):
         assert "london_start and london_end must differ" in str(exc)
 
 
+def test_london_levels_rejects_eth_start_at_or_before_window_end(monkeypatch):
+    """eth_start <= london_end splits/shifts session_date and would silently all-NaN."""
+    monkeypatch.setitem(
+        INSTRUMENTS,
+        "ES",
+        SimpleNamespace(
+            exchange_tz=TZ,
+            eth_start="03:00",
+            rth_start="09:30",
+            rth_end="16:00",
+            asia_start="",
+            asia_end="",
+            london_start="02:00",
+            london_end="05:00",
+            tick_size=0.25,
+            point_value=50.0,
+        ),
+    )
+    df = _build_df(
+        [
+            ("2026-06-03 02:00:00", 110.0, 120.0, 109.0, 115.0),
+            ("2026-06-03 03:30:00", 115.0, 125.0, 105.0, 118.0),
+            ("2026-06-03 05:00:00", 119.0, 121.0, 118.0, 120.0),
+        ]
+    )
+    tagged = tag_session(df, "ES")
+    try:
+        compute_session_levels(tagged, instrument="ES")
+        raise AssertionError("expected ValueError for eth_start inside London window")
+    except ValueError as exc:
+        assert "eth_start" in str(exc)
+        assert "05:00" in str(exc)
+
+
+def test_london_levels_empty_eth_start_emits_after_close(monkeypatch):
+    monkeypatch.setitem(
+        INSTRUMENTS,
+        "ES",
+        SimpleNamespace(
+            exchange_tz=TZ,
+            eth_start="",
+            rth_start="09:30",
+            rth_end="16:00",
+            asia_start="",
+            asia_end="",
+            london_start="02:00",
+            london_end="05:00",
+            tick_size=0.25,
+            point_value=50.0,
+        ),
+    )
+    df = _build_df(
+        [
+            ("2026-06-03 02:00:00", 110.0, 120.0, 109.0, 115.0),
+            ("2026-06-03 03:30:00", 115.0, 125.0, 105.0, 118.0),
+            ("2026-06-03 05:00:00", 119.0, 121.0, 118.0, 120.0),
+            ("2026-06-03 09:30:00", 125.0, 126.0, 124.0, 125.0),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+    during = levels["timestamp"] < pd.Timestamp("2026-06-03 05:00:00", tz=TZ)
+    assert levels.loc[during, "LondonHigh"].isna().all()
+    after = levels[levels["timestamp"] >= pd.Timestamp("2026-06-03 05:00:00", tz=TZ)]
+    assert np.allclose(after["LondonHigh"].to_numpy(), [125.0] * len(after))
+    assert np.allclose(after["LondonLow"].to_numpy(), [105.0] * len(after))
+
+
 def test_previous_session_levels_map_to_all_rows_of_next_session():
     df = _build_df(
         [

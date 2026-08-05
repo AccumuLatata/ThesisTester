@@ -196,6 +196,8 @@ def _session_window_high_low(
     overnight-key pattern used by ``ONH``/``ONL`` — so the gate and aggregate
     share the post-midnight / RTH session. Wrapping windows require
     ``window_end < eth_start <= window_start`` (or empty ``eth_start``).
+    Non-wrapping windows require ``eth_start > window_end`` (or empty
+    ``eth_start``) so window bars keep a session date on the close calendar day.
     """
     out = pd.DataFrame(
         {
@@ -213,14 +215,25 @@ def _session_window_high_low(
 
     wraps_midnight = end_time < start_time
     eth_time = pd.to_datetime(eth_start).time() if str(eth_start).strip() else None
-    if wraps_midnight and eth_time is not None and not (end_time < eth_time <= start_time):
-        # eth_start must sit in the non-window gap after window_end and at/before
-        # window_start so evening + early-AM bars share one session_date.
-        raise ValueError(
-            f"eth_start ({eth_start!r}) must satisfy "
-            f"{window_end!r} < eth_start <= {window_start!r} "
-            f"when the {label} window wraps midnight (or leave eth_start empty)."
-        )
+    if eth_time is not None:
+        if wraps_midnight:
+            # eth_start must sit in the non-window gap after window_end and at/before
+            # window_start so evening + early-AM bars share one session_date.
+            if not (end_time < eth_time <= start_time):
+                raise ValueError(
+                    f"eth_start ({eth_start!r}) must satisfy "
+                    f"{window_end!r} < eth_start <= {window_start!r} "
+                    f"when the {label} window wraps midnight "
+                    "(or leave eth_start empty)."
+                )
+        elif eth_time <= end_time:
+            # eth_start at/before window_end shifts session_date for window and/or
+            # close bars, silently dropping the level (all-NaN) or delaying the gate.
+            raise ValueError(
+                f"eth_start ({eth_start!r}) must be > {window_end!r} "
+                f"when the {label} window does not wrap midnight "
+                "(or leave eth_start empty)."
+            )
 
     t = local_ts.dt.time
     mask_eth = df["session"].eq("ETH")
@@ -261,9 +274,7 @@ def _session_window_high_low(
     out[high_name] = (
         window_key.map(window_levels[high_name]).where(available_mask).astype("float64")
     )
-    out[low_name] = (
-        window_key.map(window_levels[low_name]).where(available_mask).astype("float64")
-    )
+    out[low_name] = window_key.map(window_levels[low_name]).where(available_mask).astype("float64")
     return out
 
 

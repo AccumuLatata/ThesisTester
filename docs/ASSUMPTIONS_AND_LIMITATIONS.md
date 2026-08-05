@@ -274,13 +274,16 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   or overnight data can change ETH-bar values.
 - `AsiaHigh`/`AsiaLow` aggregate only ETH bars in the instrument Asia window
   (default `20:00–00:00` ET) and remain NaN until the Asia close clock gate; they are
-  not rolling during Asia and are distinct from overnight ONH/ONL.
-- `LondonHigh`/`LondonLow` aggregate only ETH bars in the instrument London window
-  (default `02:00–05:00` ET) and remain NaN until the London close clock gate; they are
-  not rolling during London and are distinct from Asia and overnight ONH/ONL. Empty
+  not rolling during Asia and are distinct from overnight ONH/ONL. Empty
   `asia_start`/`asia_end` fail closed (all-NaN). Empty `eth_start` remaps evening
   Asia bars to the next calendar day so the gate/aggregate share the post-midnight
   session. Wrapping Asia with `eth_start` outside `(asia_end, asia_start]` raises.
+- `LondonHigh`/`LondonLow` aggregate only ETH bars in the instrument London window
+  (default `02:00–05:00` ET) and remain NaN until the London close clock gate; they are
+  not rolling during London and are distinct from Asia and overnight ONH/ONL. Empty
+  `london_start`/`london_end` fail closed (all-NaN). Non-wrapping London with
+  `eth_start <= london_end` fails closed with `ValueError` (would otherwise
+  silently all-NaN via session_date split/shift).
 - Opening range (OR_High/OR_Low) is NaN until the clock-based OR window closes.
 - Naked (`<level>_naked`) flags are produced by a pure forward scan; future bars cannot
   retroactively clear a prior bar's naked status.
@@ -299,8 +302,9 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   generally differs from ONH/ONL.
 - LondonHigh/LondonLow are unavailable during the London window (by design; not a
   rolling extreme). Pre-London ETH (e.g. 00:00–02:00 under the default window) and
-  Asia extremes are excluded from the London aggregate. Empty Asia window strings disable the level
-  (all-NaN); equal `asia_start`/`asia_end` fails closed with `ValueError`.
+  Asia extremes are excluded from the London aggregate. Empty London window strings
+  disable the level (all-NaN); equal `london_start`/`london_end` fails closed with
+  `ValueError`.
 - Rolling VWAP/POC/SMA/EMA at bar `i` include bar `i` close/volume. Signals treated
   as bar-close confirmed; this is documented intent, not a bug.
 - `dOpen/wOpen/mOpen` are current-period (live) opens, not prior-period references.
