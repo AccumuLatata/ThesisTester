@@ -30,6 +30,8 @@ from thesistester.classic_proposal import render_classic_proposal_card
 from thesistester.classic_record import render_record_and_discuss
 from thesistester.analytics import equity_curve, summarize_trades, summarize_trades_by_direction
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
+from thesistester.analytics.prev30m_vwap_hit import prev30m_hit_r_summary
+from thesistester.levels.prev30m_vwap import COL_HIT_M1, COL_HIT_M5
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.engine.backtest import simulate_trades
 from thesistester.engine.otf_integration import apply_configured_otf_filter
@@ -770,6 +772,38 @@ if has_trades:
         if not grouped.empty:
             st.subheader("3c outcome summary by variant/source")
             st.dataframe(grouped, width="stretch", hide_index=True)
+
+# Optional prev30mVWAP early-window hit R diagnostics (Phase 2; read-only).
+_levels_for_prev30m = st.session_state.get("levels")
+if (
+    has_trades
+    and isinstance(_levels_for_prev30m, pd.DataFrame)
+    and (COL_HIT_M1 in _levels_for_prev30m.columns or COL_HIT_M5 in _levels_for_prev30m.columns)
+):
+    prev30m_summary = prev30m_hit_r_summary(
+        trades,
+        _levels_for_prev30m,
+        instrument=str(instrument),
+    )
+    if prev30m_summary.get("available") and int(prev30m_summary.get("trade_count", 0)) > 0:
+        with st.expander("prev30mVWAP early-window hit R diagnostics", expanded=False):
+            st.caption(
+                "R-multiples conditioned on finalized first-1m / first-5m touches of "
+                "`prev30mVWAP` in the trade's entry 30m bracket. Diagnostic only — "
+                "does not change fills."
+            )
+            st.metric("Scoped trades", int(prev30m_summary["trade_count"]))
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("**By hit_m1**")
+                st.dataframe(prev30m_summary["by_hit_m1"], width="stretch", hide_index=True)
+            with c2:
+                st.markdown("**By hit_m5**")
+                st.dataframe(prev30m_summary["by_hit_m5"], width="stretch", hide_index=True)
+            contingency = prev30m_summary["contingency"]
+            if not contingency.empty:
+                st.markdown("**Joint (hit_m1, hit_m5) contingency**")
+                st.dataframe(contingency, width="stretch", hide_index=True)
 
 # Equity curve
 st.subheader("Equity curve (cumulative R)")

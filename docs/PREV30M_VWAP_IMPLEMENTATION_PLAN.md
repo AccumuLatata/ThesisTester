@@ -1,6 +1,7 @@
 # Regression-Safe Implementation Plan: `prev30mVWAP`
 
-**Status:** Phase 1 implemented (level engine + wiring + tests §10.1–10.6); Phase 2 analytics not started  
+**Status:** Phase 1 + Phase 2 implemented (level engine + early-window R analytics); Phase 3 stack optional  
+
 
 **Document type:** Focused level-family implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
@@ -624,13 +625,13 @@ Acceptance:
 - PIT future-shock green.
 - CI green.
 
-### Phase 2 — Early-window R analytics (same PR if small; else follow-up)
+### Phase 2 — Early-window R analytics — **implemented**
 
 Scope:
 
-- Pure analytics helper + optional diagnostics panel for `m1` and `m5`.
+- Pure analytics helper `thesistester/analytics/prev30m_vwap_hit.py` + Backtest diagnostics expander for `m1` and `m5`.
 - No `simulate_trades` changes.
-- Tests §10.7.
+- Tests §10.7 in `tests/test_prev30m_vwap_hit_analytics.py`.
 - Glossary entries for conditional R stats.
 
 ### Phase 3 — Optional multi-period stack (future)

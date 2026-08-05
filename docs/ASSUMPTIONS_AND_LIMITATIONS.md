@@ -216,6 +216,7 @@ This engine is for **research screening**, not proof of a durable edge.
 - Missing/empty `eth_start` fails closed with `ValueError` when enabled. Bracket open preserves `eth_start` seconds/microseconds.
 - Enabled compute fails closed on NaT timestamps after exchange-timezone conversion.
 - `prev30m_vwap_enabled=False` is a true no-op: no validation, no new columns.
+- Phase 2 R analytics (`prev30m_hit_r_summary`) join **finalized** bracket hit flags onto trades by entry bracket; they do not change fills. When `level_names` is present, only trades referencing `prev30mVWAP` are scoped. Empty-trade safe.
 
 ### 5f) Stage 6 UI and Persistence — opt-in level controls (Levels page)
 
