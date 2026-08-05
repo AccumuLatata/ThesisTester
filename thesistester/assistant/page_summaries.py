@@ -50,6 +50,8 @@ _FAMILY_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "ONL",
             "AsiaHigh",
             "AsiaLow",
+            "LondonHigh",
+            "LondonLow",
             "OR_",
             "RTH_",
             "dOpen",
