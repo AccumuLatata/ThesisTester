@@ -251,7 +251,15 @@ def _saved_levels_label(meta: dict) -> str:
     if settings.get("apoc_enabled"):
         opt_in_parts.append("APOC")
     if settings.get("prev30m_vwap_enabled"):
-        opt_in_parts.append("prev30mVWAP")
+        validity = settings.get("prev30m_vwap_validity_periods", 1)
+        try:
+            validity_n = int(validity)
+        except (TypeError, ValueError):
+            validity_n = 1
+        if validity_n > 1:
+            opt_in_parts.append(f"prev30mVWAP(N={validity_n})")
+        else:
+            opt_in_parts.append("prev30mVWAP")
     opt_in_suffix = f" · Opt-in: {','.join(opt_in_parts)}" if opt_in_parts else ""
     return (
         f"{str(meta.get('settings_hash', 'unknown'))[:12]}… · OR {opening_range}m · "
@@ -555,15 +563,19 @@ with st.expander("Advanced opt-in levels", expanded=True):
         ),
     )
     if prev30m_vwap_enabled:
+        from thesistester.levels.prev30m_vwap import MAX_VALIDITY_PERIODS
+
         prev30m_vwap_validity_periods = st.number_input(
             "prev30mVWAP validity / stack depth (30m periods)",
             min_value=1,
+            max_value=int(MAX_VALIDITY_PERIODS),
             value=int(DEFAULT_LEVELS_SETTINGS["prev30m_vwap_validity_periods"]),
             step=1,
             key=_PREV30M_VWAP_VALIDITY_KEY,
             help=(
                 "Each freeze remains valid for this many subsequent 30m periods. "
-                "Also sets stack depth: N>1 adds prev30mVWAP_2…prev30mVWAP_N."
+                "Also sets stack depth: N>1 adds prev30mVWAP_2…prev30mVWAP_N. "
+                f"Maximum {MAX_VALIDITY_PERIODS}."
             ),
         )
     else:

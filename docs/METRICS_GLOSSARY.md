@@ -446,7 +446,7 @@ Related session / artifact fields: `candidate_signal_count`,
 | `prev30mVWAP_2` … `prev30mVWAP_N` | Phase 3 stack: older completed-period VWAPs still inside TTL (age = 2..N). Emitted only when `prev30m_vwap_validity_periods > 1`. Setup-selectable confluence levels; no per-age hit diagnostics. |
 | `prev30mVWAP_hit_m1` | Diagnostic: `1`/`0` after the first minute of the bracket if price range-touched age-1 `prev30mVWAP` in that minute; `NaN` until the window completes. Not setup-selectable. |
 | `prev30mVWAP_hit_m5` | Same pattern for the first 5 minutes. Nesting: when both non-NaN, `m1=1 ⇒ m5=1`. |
-| `prev30m_vwap_validity_periods` | Integer ≥ 1 TTL in subsequent 30m periods **and** Phase 3 stack depth; newer freeze replaces age-1 and resets that freeze's TTL. |
+| `prev30m_vwap_validity_periods` | Integer 1..48 TTL in subsequent 30m periods **and** Phase 3 stack depth; newer freeze replaces age-1 and resets that freeze's TTL. Cross-session seed keeps only still-valid freezes. |
 | `prev30mVWAP_hit_m1_at_entry` / `prev30mVWAP_hit_m5_at_entry` | Finalized bracket hit flags joined onto trades by entry-bracket `(session_date, bracket_idx)` for R analytics (not raw in-window level rows). |
 | R by `hit_m1` / `hit_m5` | Post-trade grouped `trade_count`, `avg_r`, `median_r`, `total_r`, `win_rate` conditioned on each finalized flag; plus joint `(m1, m5)` contingency counts. |
 

@@ -706,9 +706,7 @@ def test_phase3_age1_identical_to_n1_when_continuous():
     df = _three_bracket_fixture()
     out_n1 = compute_prev30m_vwap_levels(df, enabled=True, validity_periods=1)
     out_n3 = compute_prev30m_vwap_levels(df, enabled=True, validity_periods=3)
-    pd.testing.assert_series_equal(
-        out_n1["prev30mVWAP"], out_n3["prev30mVWAP"], check_names=True
-    )
+    pd.testing.assert_series_equal(out_n1["prev30mVWAP"], out_n3["prev30mVWAP"], check_names=True)
 
 
 def test_phase3_cross_session_seeds_stack():
@@ -744,6 +742,55 @@ def test_phase3_cross_session_seeds_stack():
     seed_row = out.iloc[-1]
     assert seed_row["prev30mVWAP"] == pytest.approx(303.0)
     assert seed_row["prev30mVWAP_2"] == pytest.approx(202.0)
+
+
+def test_phase3_seed_does_not_resurrect_expired_stack_ages():
+    """Expired ages at session end must not reappear as stack columns at S+1 open."""
+    from thesistester.levels.prev30m_vwap import MAX_VALIDITY_PERIODS
+
+    rows = []
+    # Bracket 0 freeze ~101
+    for i in range(30):
+        ts = pd.Timestamp("2026-06-01 18:00", tz=TZ) + pd.Timedelta(minutes=i)
+        rows.append(_bar(ts, high=101, low=100, close=100.5, volume=10))
+    # Bracket 1 freeze ~202
+    for i in range(30):
+        ts = pd.Timestamp("2026-06-01 18:30", tz=TZ) + pd.Timedelta(minutes=i)
+        rows.append(_bar(ts, high=202, low=201, close=201.5, volume=10))
+    # Zero-volume gap through brackets 2..6 (no freezes; ages expire for N=3)
+    for b in range(2, 7):
+        for i in range(30):
+            ts = pd.Timestamp("2026-06-01 18:00", tz=TZ) + pd.Timedelta(minutes=b * 30 + i)
+            rows.append(_bar(ts, high=50, low=49, close=49.5, volume=0))
+    # Bracket 7 freeze ~303
+    for i in range(30):
+        ts = pd.Timestamp("2026-06-01 18:00", tz=TZ) + pd.Timedelta(minutes=7 * 30 + i)
+        rows.append(_bar(ts, high=303, low=302, close=302.5, volume=10))
+    # Enter bracket 8 so ages 2/3 are expired in-session
+    for i in range(5):
+        ts = pd.Timestamp("2026-06-01 18:00", tz=TZ) + pd.Timedelta(minutes=8 * 30 + i)
+        rows.append(_bar(ts, high=10, low=9, close=9.5, volume=0))
+    # Session B open
+    for i in range(5):
+        ts = pd.Timestamp("2026-06-02 18:00", tz=TZ) + pd.Timedelta(minutes=i)
+        rows.append(_bar(ts, high=10, low=9, close=9.5, volume=10))
+
+    df = _df(rows)
+    out = compute_prev30m_vwap_levels(df, enabled=True, validity_periods=3)
+    sess1_end = out.loc[df["timestamp"] < pd.Timestamp("2026-06-02 18:00", tz=TZ)].iloc[-1]
+    assert sess1_end["prev30mVWAP"] == pytest.approx(302.5)
+    assert np.isnan(sess1_end["prev30mVWAP_2"])
+    assert np.isnan(sess1_end["prev30mVWAP_3"])
+
+    seed_row = out.loc[df["timestamp"] >= pd.Timestamp("2026-06-02 18:00", tz=TZ)].iloc[0]
+    assert seed_row["prev30mVWAP"] == pytest.approx(302.5)
+    assert np.isnan(seed_row["prev30mVWAP_2"])
+    assert np.isnan(seed_row["prev30mVWAP_3"])
+
+    with pytest.raises(ValueError, match="validity_periods"):
+        compute_prev30m_vwap_levels(
+            df.iloc[:2], enabled=True, validity_periods=MAX_VALIDITY_PERIODS + 1
+        )
 
 
 def test_phase3_stack_columns_setup_eligible_hits_not():

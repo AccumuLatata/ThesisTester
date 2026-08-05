@@ -53,6 +53,8 @@ from .common import require_tz_aware_timestamp
 from .session_date import trading_session_date
 
 BRACKET_MINUTES: int = 30
+# Cap stack/TTL depth near one full CME equity-index session (~23h / 30m).
+MAX_VALIDITY_PERIODS: int = 48
 COL_PREV30M_VWAP = "prev30mVWAP"
 COL_HIT_M1 = "prev30mVWAP_hit_m1"
 COL_HIT_M5 = "prev30mVWAP_hit_m5"
@@ -216,14 +218,21 @@ def _seed_freezes_for_next_session(
     *,
     validity_periods: int,
 ) -> list[tuple[int, float]]:
-    """Carry up to N prior-session freezes with fresh synthetic formed indices.
+    """Carry still-valid prior-session freezes with fresh synthetic formed indices.
 
-    Most recent prior freeze becomes ``formed=-1`` (age-1 seed); older kept
-    freezes become ``-2 .. -N`` so stack ages remain available at session open.
+    Only freezes that would still emit at ``last_formed + 1`` under the TTL
+    window are kept — expired ages must not be resurrected as stack columns at
+    the next session open.  The most recent kept freeze becomes ``formed=-1``
+    (age-1 seed); older kept freezes become ``-2 .. -K``.
     """
     if not freezes:
         return []
-    kept = freezes[-validity_periods:]
+    last_formed = int(freezes[-1][0])
+    ref = last_formed + 1
+    valid = [
+        (formed, value) for formed, value in freezes if formed < ref <= formed + validity_periods
+    ]
+    kept = valid[-validity_periods:]
     k = len(kept)
     return [(-(k - i), float(value)) for i, (_formed, value) in enumerate(kept)]
 
@@ -360,6 +369,11 @@ def compute_prev30m_vwap_levels(
     validity_periods = int(validity_periods)
     if validity_periods < 1:
         raise ValueError("validity_periods must be an integer >= 1")
+    if validity_periods > MAX_VALIDITY_PERIODS:
+        raise ValueError(
+            f"validity_periods must be <= {MAX_VALIDITY_PERIODS} "
+            "(approx. one full CME session of 30m brackets)."
+        )
 
     inst = INSTRUMENTS[instrument]
     eth_start_raw = getattr(inst, "eth_start", "") or ""

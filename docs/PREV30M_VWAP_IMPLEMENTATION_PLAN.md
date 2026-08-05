@@ -641,7 +641,8 @@ Confluence of `V_(k-1) … V_(k-N)` simultaneously when `prev30m_vwap_validity_p
 - Additive columns `prev30mVWAP_2 … prev30mVWAP_N` (emitted only when `N > 1`)
 - Reuses `prev30m_vwap_validity_periods` as stack depth (no separate gate)
 - Age-1 `prev30mVWAP` semantics unchanged vs Phase 1 (replace + TTL); hits stay on age-1 only
-- Cross-session seed carries up to `N` prior freezes
+- Cross-session seed carries up to `N` **still-valid** prior freezes (TTL-filtered at transition; no resurrected expired ages)
+- `prev30m_vwap_validity_periods` capped at `MAX_VALIDITY_PERIODS` (48)
 - Engine version bump `4 → 5` for additive vocabulary
 - Tests: Phase 3 block in `tests/test_prev30m_vwap.py` (column parity, ages, TTL, seed, eligibility, future-shock)
 
