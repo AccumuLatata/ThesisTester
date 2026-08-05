@@ -14,6 +14,7 @@ from thesistester.assistant import (
 )
 from thesistester.assistant.explainer import EvidencePacket
 from thesistester.assistant.llm_explainer import LLMEvidenceError
+from thesistester.assistant.results_projections import build_ephemeral_results_context
 from thesistester.assistant.results_qa import (
     RESULTS_QA_CHANNEL,
     filter_results_qa_history,
@@ -203,6 +204,52 @@ def test_propose_results_reply_accepts_cited_expectancy_and_best_sl_tp():
     assert "`results.trade_summary.expectancy_r` = 0.25" in formatted
     assert "`results.best_grid_result.stop_loss_ticks` = 8" in formatted
     assert "`results.best_grid_result.take_profit_ticks` = 16" in formatted
+
+
+def test_propose_results_reply_accepts_ephemeral_projection_paths():
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={"grid": {"ranking_metric": "expectancy_r", "min_trades": 1}},
+        results={
+            "best_grid_result": {
+                "stop_loss_ticks": 8,
+                "take_profit_ticks": 16,
+                "trade_count": 40,
+                "expectancy_r": 0.3,
+            }
+        },
+        warnings=(),
+    )
+    context = build_ephemeral_results_context(packet)
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            assert "results.projections" in kwargs["user"] or "projections" in kwargs["user"]
+            return {
+                "summary": "Best SL is 8 under the cited expectancy_r ranking metric.",
+                "caveats": ["In-sample only."],
+                "claims": [
+                    {
+                        "text": "Best SL is 8.",
+                        "path": "results.projections.grid_rankings.best.stop_loss_ticks",
+                    },
+                    {
+                        "text": "Metric is expectancy_r.",
+                        "path": "results.projections.grid_rankings.metric",
+                    },
+                ],
+                "followups": ["Ask about OOS next."],
+            }
+
+    reply = propose_results_reply(
+        Client(),
+        packet=packet,
+        history=(),
+        user_message="Best SL?",
+        turn_context=context,
+    )
+    assert reply.claims[0].value == 8
+    assert reply.claims[1].value == "expectancy_r"
 
 
 def test_handle_results_turn_persists_without_choices_and_allows_bundle_import(

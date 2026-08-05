@@ -33,9 +33,18 @@ from thesistester.assistant.handlers import (
     get_handler,
     tool_limits_from_envelope,
 )
-from thesistester.assistant.llm import StructuredLLMClient, is_draft_channel_message
+from thesistester.assistant.llm import (
+    StructuredLLMClient,
+    is_draft_channel_message,
+    load_results_qa_settings,
+)
 from thesistester.assistant.llm_explainer import explain_packet_with_llm
 from thesistester.assistant.llm_intent import propose_thesis_draft
+from thesistester.assistant.results_projections import (
+    DEFAULT_TIME_BUCKET_COL,
+    DEFAULT_TIME_MIN_TRADES,
+    build_ephemeral_results_context,
+)
 from thesistester.assistant.results_qa import (
     RESULTS_QA_CHANNEL,
     filter_results_qa_history,
@@ -391,6 +400,92 @@ class AssistantOrchestrator:
         )
         return draft
 
+    def _load_bundle_tables_for_results(
+        self,
+        *,
+        bundle_path: str,
+        expected_hash: str,
+    ) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None]:
+        """Hash-verify a bound bundle and return grid/time table records if present."""
+        if not isinstance(self.tools, AssistantTools):
+            return None, None
+        try:
+            artifact = self.tools.build_bundle_research_artifact(
+                bundle_path, expected_hash=expected_hash
+            )
+        except (AssistantToolError, ValueError, TypeError, OSError):
+            return None, None
+        if not isinstance(artifact, Mapping):
+            return None, None
+        tables = artifact.get("tables")
+        if not isinstance(tables, Mapping):
+            return None, None
+        grid_rows = tables.get("grid_results")
+        time_rows = tables.get("time_grouped_summary")
+        return (
+            [dict(row) for row in grid_rows if isinstance(row, Mapping)]
+            if isinstance(grid_rows, list)
+            else None,
+            [dict(row) for row in time_rows if isinstance(row, Mapping)]
+            if isinstance(time_rows, list) and time_rows
+            else None,
+        )
+
+    def _enrich_time_summary_for_results(
+        self,
+        *,
+        thesis_id: str,
+        conversation_id: str | None,
+        bundle_path: str,
+        expected_hash: str,
+    ) -> OrchestrationResult:
+        """RO ``TIME.analyze`` enrichment after provenance hash verification.
+
+        Fail closed on hash/provenance errors. Audits one tool-transcript entry
+        via ``dispatch``. Never mutates bundle bytes.
+        """
+        if not isinstance(self.tools, AssistantTools):
+            return OrchestrationResult(
+                status=OrchestrationStatus.FAILED.value,
+                capability_id="TIME.analyze",
+                payload={
+                    "error": structured_error(
+                        category="tool",
+                        retryable=False,
+                        remediation="Use the production AssistantTools workspace.",
+                        message="Time enrichment requires AssistantTools.",
+                    ).to_dict()
+                },
+            )
+        try:
+            self.tools.load_bundle_summary(bundle_path, expected_hash=expected_hash)
+        except AssistantToolError as exc:
+            return OrchestrationResult(
+                status=OrchestrationStatus.FAILED.value,
+                capability_id="TIME.analyze",
+                payload={
+                    "error": structured_error(
+                        category="tool",
+                        retryable=False,
+                        remediation="Re-export or restore the hash-verified research bundle.",
+                        message=str(exc),
+                    ).to_dict()
+                },
+            )
+        return self.dispatch(
+            AssistantRequest(
+                capability_id="TIME.analyze",
+                payload={
+                    "bundle_path": bundle_path,
+                    "expected_hash": expected_hash,
+                    "group_col": DEFAULT_TIME_BUCKET_COL,
+                    "min_trades": DEFAULT_TIME_MIN_TRADES,
+                },
+            ),
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+        )
+
     def handle_results_turn(
         self,
         client: StructuredLLMClient,
@@ -401,11 +496,14 @@ class AssistantOrchestrator:
         conversation_id: str | None = None,
         max_history_messages: int = 12,
     ) -> OrchestrationResult:
-        """Discuss one completed run via grounded multi-turn results Q&A (RQ-1).
+        """Discuss one completed run via grounded multi-turn results Q&A.
 
         Loads hash-verified evidence through the existing ``explain_run`` /
-        ``BUNDLE.import`` (evidence) path. Never calls ``execute_confirmed_run``
-        or ``PIPELINE.*``. Persists messages with ``channel=results_qa`` and
+        ``BUNDLE.import`` (evidence) path, merges ephemeral
+        ``results.projections.*`` rankings (RQ-2), and optionally runs RO
+        ``TIME.analyze`` when ``allow_time_enrichment`` is enabled and time
+        summary is missing. Never calls ``execute_confirmed_run`` or
+        ``PIPELINE.*``. Persists messages with ``channel=results_qa`` and
         ``run_id``; assistant messages omit ``choices``.
         """
         if not isinstance(run_id, str) or not run_id.strip():
@@ -421,6 +519,66 @@ class AssistantOrchestrator:
         if evidence.status != OrchestrationStatus.COMPLETED.value:
             return evidence
         packet = evidence_packet_from_payload(evidence.payload)
+        settings = load_results_qa_settings()
+        bundle_path: str | None = None
+        expected_hash: str | None = None
+        if isinstance(run.provenance, Mapping):
+            raw_path = run.provenance.get("bundle_path")
+            if isinstance(raw_path, str) and raw_path.strip():
+                bundle_path = raw_path.strip()
+            try:
+                expected_hash = require_run_bundle_hash(run.provenance)
+            except ValueError:
+                expected_hash = None
+
+        grid_rows: list[dict[str, Any]] | None = None
+        time_summary: list[dict[str, Any]] | None = None
+        if bundle_path is not None and expected_hash is not None:
+            grid_rows, time_summary = self._load_bundle_tables_for_results(
+                bundle_path=bundle_path,
+                expected_hash=expected_hash,
+            )
+        packet_time = packet.results.get("time_grouped_summary")
+        if time_summary is None and isinstance(packet_time, (list, tuple)):
+            time_summary = [dict(row) for row in packet_time if isinstance(row, Mapping)]
+
+        time_enrichment: dict[str, Any] | None = None
+        if (
+            time_summary is None
+            and settings.allow_time_enrichment
+            and bundle_path is not None
+            and expected_hash is not None
+        ):
+            enrichment = self._enrich_time_summary_for_results(
+                thesis_id=thesis_id,
+                conversation_id=conversation_id,
+                bundle_path=bundle_path,
+                expected_hash=expected_hash,
+            )
+            if enrichment.status == OrchestrationStatus.COMPLETED.value:
+                groups = enrichment.payload.get("groups")
+                if isinstance(groups, list):
+                    time_summary = [dict(row) for row in groups if isinstance(row, Mapping)]
+                time_enrichment = {
+                    "status": enrichment.status,
+                    "capability_id": enrichment.capability_id,
+                    "group_col": DEFAULT_TIME_BUCKET_COL,
+                    "min_trades": DEFAULT_TIME_MIN_TRADES,
+                }
+            else:
+                # Hash/provenance failures fail closed for enrichment: do not
+                # invent time buckets. Continue the turn with packet evidence.
+                time_enrichment = {
+                    "status": enrichment.status,
+                    "capability_id": enrichment.capability_id,
+                    "error": enrichment.payload.get("error"),
+                }
+
+        turn_context = build_ephemeral_results_context(
+            packet,
+            grid_rows=grid_rows,
+            time_grouped_summary=time_summary,
+        )
         conversation = None
         if isinstance(conversation_id, str) and conversation_id.strip():
             conversation = self.repository.get_conversation(thesis_id, conversation_id.strip())
@@ -436,6 +594,7 @@ class AssistantOrchestrator:
             packet=packet,
             history=history,
             user_message=message.strip(),
+            turn_context=turn_context,
         )
         if conversation is not None and isinstance(conversation_id, str):
             user_record = self.repository.append_conversation_message(
@@ -464,14 +623,20 @@ class AssistantOrchestrator:
                     "followups": list(reply.followups),
                 },
             )
+        payload: dict[str, Any] = {
+            **evidence.payload,
+            "results_reply": reply,
+            "results_turn_context": {
+                "projections": (turn_context.get("results") or {}).get("projections"),
+            },
+            "provider_attempts": getattr(client, "last_attempt_count", None),
+        }
+        if time_enrichment is not None:
+            payload["time_enrichment"] = time_enrichment
         return OrchestrationResult(
             status=OrchestrationStatus.COMPLETED.value,
             capability_id=RESULTS_QA_CHANNEL,
-            payload={
-                **evidence.payload,
-                "results_reply": reply,
-                "provider_attempts": getattr(client, "last_attempt_count", None),
-            },
+            payload=payload,
         )
 
     def execute_confirmed_run(

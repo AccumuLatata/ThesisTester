@@ -406,6 +406,14 @@ key `classic_focus_channel="results_qa"` beside string `classic_focus_run_id`
 `thesistester/assistant/help_corpus.py`. **RQ-1 landed:**
 `thesistester/assistant/results_qa.py` + `handle_results_turn`; Discuss results
 UI under Advanced → Linked runs; `assistant_results_qa_drafts` session key.
+**RQ-2 landed:** `thesistester/assistant/results_projections.py` builds
+ephemeral `results.projections.grid_rankings.*` /
+`results.projections.time_rankings.*` for each Discuss turn (never persisted
+into bundles). Ranking metric defaults from
+`results.best_grid_result.ranking_metric` else `assumptions.grid.ranking_metric`
+else `expectancy_r`. Optional RO `TIME.analyze` enrichment runs only when
+`assistant.results_qa.allow_time_enrichment=true` (default `false`) and
+`time_grouped_summary` is missing, after hash verification.
 Thesis chat remains draft-only; Help reply loops remain RQ-3; one-shot Explain /
 LLM explain remain available beside Discuss results.
 

@@ -481,7 +481,10 @@ other than the last bar in the dataset.
   `[assistant.product_help]` and ships the inert §7.1 Help corpus allowlist
   (`thesistester/assistant/help_corpus.py`). **RQ-1** ships multi-turn
   Discuss results (`handle_results_turn` / `results_qa`) on hash-verified
-  evidence; product Help reply loops remain RQ-3. Thesis switches clear
+  evidence. **RQ-2** adds ephemeral `results.projections.*` grid/time rankings
+  and optional RO `TIME.analyze` enrichment when
+  `assistant.results_qa.allow_time_enrichment=true` (default `false`);
+  product Help reply loops remain RQ-3. Thesis switches clear
   `assistant_results_qa_drafts` and `results-qa-input-*` widget keys.
   Draft-chat history excludes `results_qa` turns and tool/audit lines so
   multi-turn Discuss results cannot starve thesis context.
