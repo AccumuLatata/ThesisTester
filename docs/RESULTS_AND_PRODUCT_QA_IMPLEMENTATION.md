@@ -688,7 +688,7 @@ without mixing in run performance claims.
 |---|---|
 | Code | `thesistester/assistant/product_help.py` — `propose_help_reply(client, *, corpus_chunks, registry_digest, history, user_message) -> HelpReply` |
 | Code | `AssistantOrchestrator.handle_help_turn(thesis_id, message, *, conversation_id=..., client=...)` — load corpus via `help_corpus.py` (§7.1 only), build registry digest, call product_help, persist with `"channel": "product_help"`, omit `choices` |
-| Code | Intent guard: if message clearly asks for *this run’s* performance numbers (metric nouns / past-tense run asks), return structured remediation pointing to Discuss results (no fabricated metrics). Do **not** remediate possessive product nouns alone (`my grid`, `this run` in workflow questions). |
+| Code | Intent guard: if message clearly asks for *this run’s* performance numbers (metric nouns / past-tense run asks), return structured remediation pointing to Discuss results (no fabricated metrics). Do **not** remediate possessive product nouns alone (`my grid`, `this run` in workflow questions), or definition/docs asks about metric nouns (`How is my expectancy computed?`, `What does this performance metric mean?`). |
 | Code | Enforce §5.2 Help numeric grounding (verbatim substring in attached corpus/registry; fail closed on uncited digit tokens) |
 | UI | Research Assistant Help panel (collapsed expander or tab sibling to chat hub) with keyed `st.text_input` + send button; do not reuse thesis `st.chat_input`; no nested `st.chat_input` |
 | Session keys | Additive help draft/cache keys if needed; document + thesis-scope clear as appropriate |

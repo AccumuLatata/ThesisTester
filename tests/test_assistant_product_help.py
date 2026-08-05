@@ -45,6 +45,14 @@ def test_is_run_performance_question_detects_personal_run_metrics():
     assert not is_run_performance_question("What does this run mean in the thesis hub?")
     assert not is_run_performance_question("What was my confirmation step before running?")
     assert not is_run_performance_question("what was my setup trigger option called?")
+    # Definition / docs asks about metric nouns must not remediate to Discuss results.
+    assert not is_run_performance_question("How is my expectancy computed?")
+    assert not is_run_performance_question(
+        "What does this performance metric mean?"
+    )
+    assert not is_run_performance_question(
+        "How is expectancy_r calculated in the docs?"
+    )
 
 
 def test_remediation_help_reply_has_no_numbers_or_choices():

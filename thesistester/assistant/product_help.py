@@ -59,6 +59,20 @@ _SYSTEM_PROMPT = (
 # Avoid bare product nouns like "grid" / "run" after possessives — those are
 # legitimate Help questions ("how does my grid ranking work?", "how does this
 # run get confirmed?"). Prefer metric/result nouns and past-tense run asks.
+#
+# Definition / docs asks about the *same* metric nouns must stay in Help
+# ("How is my expectancy computed?", "What does this performance metric mean?").
+_DOC_DEFINITION_ESCAPE = re.compile(
+    r"(?:"
+    r"\b(?:comput(?:e|ed|ing|ation)|calculat(?:e|ed|ing|ion)|"
+    r"defin(?:e|ed|ing|ition))\b|"
+    r"\bwhat\s+does\b[\s\S]{0,48}\bmean\b|"
+    r"\bhow\s+(?:is|are)\b[\s\S]{0,48}\b(?:computed|calculated|defined|measured)\b|"
+    r"\b(?:metric|glossary|documentation|docs)\b"
+    r")",
+    re.IGNORECASE,
+)
+
 _RUN_PERF_PATTERNS = (
     re.compile(
         r"\b(my|this|that|our)\s+(best\s+|worst\s+)?"
@@ -143,6 +157,9 @@ def is_run_performance_question(message: str) -> bool:
     if not isinstance(message, str) or not message.strip():
         return False
     text = message.strip()
+    # Docs / definition asks about metric nouns stay in Help (not Discuss results).
+    if _DOC_DEFINITION_ESCAPE.search(text):
+        return False
     return any(pattern.search(text) for pattern in _RUN_PERF_PATTERNS)
 
 
