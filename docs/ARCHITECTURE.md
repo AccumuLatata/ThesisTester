@@ -383,6 +383,14 @@ Proposed realtime voice review (VA-series) must add only namespaced
 `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Until that series lands, no voice
 session keys exist and the Research Assistant remains text-only.
 
+Proposed multi-turn results discussion and product help (RQ-series) must add
+only documented additive `assistant_*` keys and conversation message tags
+(`channel` ∈ {`results_qa`, `product_help`}, plus `run_id` for results) in the
+same PR that introduces them; see
+`docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`. Until RQ-1/RQ-3 land, assistant
+chat remains thesis-drafting only and post-run narratives remain one-shot
+Explain / LLM explain under Advanced → Linked runs.
+
 Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_draft_choices`, `assistant_hydrated_conversation_id`,
 `assistant_validated_run_spec`, `assistant_bundle_handoff`, `assistant_flash`) so

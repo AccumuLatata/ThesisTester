@@ -235,6 +235,12 @@ docs/AGENT_GUIDE.md
 
 ### VA-1 — Multi-turn results Q&A (text substrate)
 
+**Ownership:** Implementation is owned by **RQ-1** in
+`docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`. Do **not** implement VA-1 in a
+parallel PR; land it as RQ-1 and fill this section’s Implemented contract when
+that PR merges. Voice PRs VA-0 / VA-2+ remain on this document and depend on
+RQ-1 for the text substrate.
+
 **Goal:** Add grounded multi-turn discussion of a completed run **in text**.
 Voice later reuses this path; this PR ships user value without audio.
 

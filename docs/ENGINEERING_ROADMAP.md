@@ -16,6 +16,12 @@ Realtime voice review of completed runs follows
 additive presentation/session adapters over the assistant evidence path; they
 must not alter engine, levels, signals, or golden-master semantics.
 
+Multi-turn **results discussion** and **product/how-it-works help** follow
+`docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ-series). RQ-1 implements
+VA-1 (text results Q&A). RQ milestones are additive assistant channels over the
+existing evidence/explain path; they must not alter engine, levels, signals, or
+golden-master semantics.
+
 ---
 
 ## CAI-0 — Classic/Assistant Cold-Path Baseline ✅ Implemented
