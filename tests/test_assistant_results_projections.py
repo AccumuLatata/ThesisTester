@@ -323,9 +323,7 @@ def test_project_grid_rankings_treats_json_null_profit_factor_as_inf_for_all_win
             "short_profit_factor": 2.5,
         },
     ]
-    long_ranked = project_grid_rankings(
-        directional_rows, metric="long_profit_factor", min_trades=1
-    )
+    long_ranked = project_grid_rankings(directional_rows, metric="long_profit_factor", min_trades=1)
     assert long_ranked["best"]["stop_loss_ticks"] == 8
 
 
