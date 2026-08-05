@@ -272,6 +272,10 @@ pages:
   Assistant opens that run’s Discuss results thread; it must not convert
   `classic_focus_run_id` into a dict or invent any other focus-key namespace.
   Both focus keys clear together on consume and on thesis-scoped classic clear.
+  After consume, `assistant_results_qa_deep_link` + `assistant_focused_run_id`
+  keep Advanced/run expanders open across reruns until thesis switch.
+  `discuss_run` syncs `assistant_thesis_picker` so the sidebar cannot land the
+  deep-link on a divergent thesis.
 - **Open exact / Restore bundle** (Assistant): hash-verified
   `restore_run_bundle_to_session` clears staged `classic_page_proposal`
   (restored widgets must not be overwritten by a prior draft). Open exact
@@ -384,6 +388,8 @@ The Research Assistant page stages only these additive `assistant_*` keys
 | `assistant_portfolio_analyses` | In-session portfolio analysis by thesis_id |
 | `assistant_results_qa_drafts` | Per-run Discuss results text-input drafts (`{run_id: str}`) |
 | `assistant_product_help_draft` | Help panel text-input draft string |
+| `assistant_focused_run_id` | Last classic-focused run id (RQ-4 deep-link / banner) |
+| `assistant_results_qa_deep_link` | Sticky Advanced → Linked-run expansion after `results_qa` focus |
 | `assistant_bundle_handoff` | Last hash-verified restore into research pages |
 | `assistant_flash` | One-shot `{level, message}` UI notice consumed after `st.rerun()` |
 
@@ -442,8 +448,9 @@ available beside Discuss results.
 Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_draft_choices`, `assistant_hydrated_conversation_id`,
 `assistant_validated_run_spec`, `assistant_results_qa_drafts`,
-`assistant_product_help_draft`, `assistant_bundle_handoff`, `assistant_flash`)
-so draft/validation/hydration/handoff/flash/results/help drafts cannot leak.
+`assistant_product_help_draft`, `assistant_focused_run_id`,
+`assistant_results_qa_deep_link`, `assistant_bundle_handoff`, `assistant_flash`)
+so draft/validation/hydration/handoff/flash/results/help/deep-link staging cannot leak.
 `clear_thesis_scoped_state` also deletes ephemeral Streamlit widget keys
 prefixed `results-qa-input-` / `product-help-input` so Discuss/Help text-input
 hydration cannot revive a cleared draft after a thesis switch. Discuss results assistant

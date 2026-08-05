@@ -298,6 +298,10 @@ def discuss_run(
 
     init_assistant_session_state(session_state)
     select_thesis(session_state, thesis_id)
+    # Sync the Research Assistant sidebar picker before navigation. A stale
+    # assistant_thesis_picker value would otherwise call select_thesis on load
+    # and consume the deep-link under the wrong thesis.
+    session_state["assistant_thesis_picker"] = thesis_id
     set_classic_active_run(session_state, run_id=run.run_id, thesis_id=thesis_id)
     set_classic_focus_run(session_state, run.run_id)
     set_classic_flash(

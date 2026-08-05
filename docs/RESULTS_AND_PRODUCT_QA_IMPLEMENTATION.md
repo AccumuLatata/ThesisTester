@@ -828,6 +828,12 @@ docs/ENGINEERING_ROADMAP.md
   `consume_classic_focus_run` remains a compatibility wrapper.
 - Research Assistant: `results_qa` expands Advanced → matching Linked run
   (Discuss results visible); absent/`None` channel keeps banner-only.
+- Sticky UI staging: `assistant_results_qa_deep_link` + `assistant_focused_run_id`
+  keep Advanced/run expanders open across `st.rerun()` after the one-shot classic
+  focus keys are consumed; thesis switch clears both.
+- `discuss_run` syncs `assistant_thesis_picker` (and Research Assistant re-aligns
+  the picker when classic focus is still staged) so a stale sidebar thesis cannot
+  burn the deep-link under the wrong thesis.
 
 ---
 

@@ -21,6 +21,7 @@ from thesistester.assistant import (
 )
 from thesistester.assistant.tools import AssistantTools
 from thesistester.assistant.workspace import (
+    apply_consumed_classic_focus,
     build_provenance_card,
     merge_execution_controls,
     merge_grid_controls,
@@ -154,6 +155,8 @@ def test_assistant_session_keys_cover_documented_staging_surface():
     assert "assistant_flash" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_results_qa_drafts" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_product_help_draft" in THESIS_SCOPED_STAGING_KEYS
+    assert "assistant_focused_run_id" in THESIS_SCOPED_STAGING_KEYS
+    assert "assistant_results_qa_deep_link" in THESIS_SCOPED_STAGING_KEYS
     assert set(THESIS_SCOPED_STAGING_KEYS).issubset(ASSISTANT_SESSION_KEYS)
 
 
@@ -448,7 +451,8 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "Raw transcripts and JSON for audit only" in source
     assert "Open research pages" not in source
     assert "st.page_link(" not in source
-    assert 'with st.expander("Advanced: draft, runs & compare", expanded=False)' in source
+    assert "expanded=expand_results_qa_focus" in source
+    assert "apply_consumed_classic_focus(" in source
     assert 'with st.expander("Debug: raw JSON & conversation audit", expanded=False)' in source
     assert 'with st.expander("Structured execution controls", expanded=False)' in source
     assert 'with st.expander("Structured setup and confluence controls", expanded=False)' in source
@@ -960,6 +964,8 @@ def test_clear_thesis_scoped_state_helper():
         "assistant_validated_run_spec": {"spec": {}},
         "assistant_results_qa_drafts": {"run_a": "leaked question"},
         "assistant_product_help_draft": "leaked help",
+        "assistant_focused_run_id": "run_focus",
+        "assistant_results_qa_deep_link": True,
         "results-qa-input-run_a": "leaked question",
         "product-help-input": "leaked help",
         "assistant_bundle_handoff": {"thesis_id": "th_a", "run_id": "r1"},
@@ -972,10 +978,34 @@ def test_clear_thesis_scoped_state_helper():
     assert state["assistant_validated_run_spec"] is None
     assert state["assistant_results_qa_drafts"] == {}
     assert state["assistant_product_help_draft"] == ""
+    assert state["assistant_focused_run_id"] is None
+    assert state["assistant_results_qa_deep_link"] is False
     assert "results-qa-input-run_a" not in state
     assert "product-help-input" not in state
     assert state["assistant_bundle_handoff"] is None
     assert state["assistant_run_explanations"] == {"r1": "keep"}
+
+
+def test_apply_consumed_classic_focus_persists_results_qa_deep_link():
+    state: dict = {}
+    expand, run_id = apply_consumed_classic_focus(state, run_id="run_abc", channel="results_qa")
+    assert expand is True
+    assert run_id == "run_abc"
+    assert state["assistant_focused_run_id"] == "run_abc"
+    assert state["assistant_results_qa_deep_link"] is True
+    # Subsequent "empty" consume (post one-shot clear) must keep expansion.
+    expand2, run_id2 = apply_consumed_classic_focus(state, run_id=None, channel=None)
+    assert expand2 is True
+    assert run_id2 == "run_abc"
+    # Legacy banner focus does not force Advanced open.
+    legacy: dict = {}
+    expand_legacy, run_legacy = apply_consumed_classic_focus(
+        legacy, run_id="run_banner", channel=None
+    )
+    assert expand_legacy is False
+    assert run_legacy is None
+    assert legacy["assistant_focused_run_id"] == "run_banner"
+    assert legacy["assistant_results_qa_deep_link"] is False
 
 
 def test_compare_completed_runs_returns_evidence_when_save_fails(tmp_path):

@@ -38,6 +38,8 @@ ASSISTANT_SESSION_KEYS: tuple[str, ...] = (
     "assistant_portfolio_analyses",
     "assistant_results_qa_drafts",
     "assistant_product_help_draft",
+    "assistant_focused_run_id",
+    "assistant_results_qa_deep_link",
     "assistant_bundle_handoff",
     "assistant_flash",
 )
@@ -51,6 +53,8 @@ THESIS_SCOPED_STAGING_KEYS: tuple[str, ...] = (
     "assistant_validated_run_spec",
     "assistant_results_qa_drafts",
     "assistant_product_help_draft",
+    "assistant_focused_run_id",
+    "assistant_results_qa_deep_link",
     "assistant_bundle_handoff",
     "assistant_flash",
 )
@@ -174,6 +178,8 @@ def init_assistant_session_state(session_state: MutableMapping[str, Any]) -> Non
         "assistant_portfolio_analyses": {},
         "assistant_results_qa_drafts": {},
         "assistant_product_help_draft": "",
+        "assistant_focused_run_id": None,
+        "assistant_results_qa_deep_link": False,
         "assistant_bundle_handoff": None,
         "assistant_flash": None,
     }
@@ -373,6 +379,8 @@ def clear_thesis_scoped_state(session_state: MutableMapping[str, Any]) -> None:
     session_state["assistant_validated_run_spec"] = None
     session_state["assistant_results_qa_drafts"] = {}
     session_state["assistant_product_help_draft"] = ""
+    session_state["assistant_focused_run_id"] = None
+    session_state["assistant_results_qa_deep_link"] = False
     session_state["assistant_bundle_handoff"] = None
     session_state["assistant_flash"] = None
     # Ephemeral Streamlit widget keys for Discuss/Help text inputs. If left
@@ -382,6 +390,35 @@ def clear_thesis_scoped_state(session_state: MutableMapping[str, Any]) -> None:
             key.startswith("results-qa-input-") or key.startswith("product-help-input")
         ):
             del session_state[key]
+
+
+def apply_consumed_classic_focus(
+    session_state: MutableMapping[str, Any],
+    *,
+    run_id: str | None,
+    channel: str | None,
+) -> tuple[bool, str | None]:
+    """Stage Assistant UI for a consumed classic focus pair (RQ-4).
+
+    ``results_qa`` deep-links persist ``assistant_results_qa_deep_link`` +
+    ``assistant_focused_run_id`` across Streamlit reruns (one-shot classic keys
+    are already cleared by ``consume_classic_focus``). Returns
+    ``(expand_results_qa, expand_run_id)`` for Advanced / Linked-run expanders.
+    Legacy ``channel is None`` only records the focused run id for that render's
+    banner path — it does not keep Advanced forced open.
+    """
+    init_assistant_session_state(session_state)
+    cleaned = run_id.strip() if isinstance(run_id, str) and run_id.strip() else None
+    if cleaned is not None:
+        session_state["assistant_focused_run_id"] = cleaned
+    if channel == "results_qa" and cleaned is not None:
+        session_state["assistant_results_qa_deep_link"] = True
+    if not session_state.get("assistant_results_qa_deep_link"):
+        return False, None
+    focused = session_state.get("assistant_focused_run_id")
+    if isinstance(focused, str) and focused.strip():
+        return True, focused.strip()
+    return False, None
 
 
 def active_bundle_handoff(

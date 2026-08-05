@@ -147,6 +147,8 @@ def test_discuss_and_thesis_switch_clears_run_context(
     assert state["classic_focus_channel"] is None
     assert state["classic_pending_navigation"] == "pages/14_Research_Assistant.py"
     assert state["assistant_selected_thesis_id"] == thesis.thesis_id
+    # Sidebar picker must match so Research Assistant cannot overwrite thesis.
+    assert state["assistant_thesis_picker"] == thesis.thesis_id
 
     other = repository.create_thesis(name="other")
     link_thesis(

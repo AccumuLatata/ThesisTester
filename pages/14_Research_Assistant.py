@@ -57,6 +57,7 @@ from thesistester.assistant.workspace import (
     WFA_MATRIX_METRICS,
     WINDOW_MODES,
     active_bundle_handoff,
+    apply_consumed_classic_focus,
     build_confluence_level_options,
     build_plan_review,
     build_provenance_card,
@@ -137,6 +138,18 @@ st.caption(
     "navigation (Data, Levels, Signals, Backtest, Grid, Validation, …). Optional "
     "Assistant draft → validate → confirm → run is under Advanced."
 )
+# Before the sidebar selectbox binds: if a classic Discuss deep-link is staged,
+# force the picker onto discuss_run's thesis so a stale widget value cannot
+# overwrite assistant_selected_thesis_id and burn the one-shot focus.
+_pending_focus_run = st.session_state.get("classic_focus_run_id")
+_pending_thesis = st.session_state.get("assistant_selected_thesis_id")
+if (
+    isinstance(_pending_focus_run, str)
+    and _pending_focus_run.strip()
+    and isinstance(_pending_thesis, str)
+    and _pending_thesis.strip()
+):
+    st.session_state["assistant_thesis_picker"] = _pending_thesis
 with st.sidebar:
     st.subheader("Theses")
     new_name = st.text_input("New thesis name", key="assistant_new_thesis_name")
@@ -178,17 +191,21 @@ st.caption(f"Revision {thesis.revision} · {thesis.lifecycle}")
 _classic_focus = consume_classic_focus(st.session_state)
 focus_run_id = _classic_focus.get("run_id")
 focus_channel = _classic_focus.get("channel")
-# RQ-4: results_qa opens Advanced → Linked runs → that run's Discuss thread.
-# Absent/None channel keeps legacy info-banner-only behavior.
-expand_results_qa_focus = (
+# RQ-4: results_qa stages a sticky Advanced → Linked-run expansion that survives
+# later st.rerun() (classic focus keys are one-shot). Absent/None channel keeps
+# legacy info-banner-only behavior for this render only.
+one_shot_results_qa = (
     focus_channel == CLASSIC_FOCUS_CHANNEL_RESULTS_QA
     and isinstance(focus_run_id, str)
     and bool(focus_run_id)
 )
-if focus_run_id and not expand_results_qa_focus:
+if focus_run_id and not one_shot_results_qa:
     st.info(f"Focused classic-discussed run: …{focus_run_id[-8:]}")
-if focus_run_id:
-    st.session_state["assistant_focused_run_id"] = focus_run_id
+expand_results_qa_focus, expand_focus_run_id = apply_consumed_classic_focus(
+    st.session_state,
+    run_id=focus_run_id if isinstance(focus_run_id, str) else None,
+    channel=focus_channel if isinstance(focus_channel, str) else None,
+)
 
 handoff = active_bundle_handoff(st.session_state, thesis_id=thesis_id)
 if handoff is not None:
@@ -1347,9 +1364,7 @@ with st.expander(
             provenance_card = build_provenance_card(run.to_dict())
             kind = ledger_run_label(run)
             title = f"Run {run.run_id[-8:]} · {run.status} · {kind}"
-            run_focus_expanded = bool(
-                expand_results_qa_focus and focus_run_id == run.run_id
-            )
+            run_focus_expanded = bool(expand_results_qa_focus and expand_focus_run_id == run.run_id)
             with st.expander(title, expanded=run_focus_expanded):
                 if is_classic_ledger_run(run):
                     st.caption(
