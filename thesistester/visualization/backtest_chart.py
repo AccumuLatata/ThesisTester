@@ -5,6 +5,8 @@ from __future__ import annotations
 import pandas as pd
 import plotly.graph_objects as go
 
+from thesistester.setup import NON_LEVEL_OUTPUT_COLUMNS
+
 
 _BASE_COLUMNS = {"timestamp", "open", "high", "low", "close", "volume", "session", "settlement"}
 _DEFAULT_LEVEL_COUNT = 4
@@ -132,7 +134,9 @@ def build_backtest_candlestick_chart(
         candidate_level_columns = [
             column
             for column in level_timeline.columns
-            if column not in _BASE_COLUMNS and pd.api.types.is_numeric_dtype(level_timeline[column])
+            if column not in _BASE_COLUMNS
+            and column not in NON_LEVEL_OUTPUT_COLUMNS
+            and pd.api.types.is_numeric_dtype(level_timeline[column])
         ]
         plotted_level_columns: list[str] = []
         if trades is not None and not trades.empty and "level_names" in trades.columns:

@@ -167,6 +167,11 @@ class TestNormalizeStage6Defaults:
         result = _normalize({"opening_range_minutes": 30})
         assert result["apoc_enabled"] is False
 
+    def test_old_settings_get_prev30m_vwap_disabled(self):
+        result = _normalize({"opening_range_minutes": 30})
+        assert result["prev30m_vwap_enabled"] is False
+        assert result["prev30m_vwap_validity_periods"] == 1
+
     def test_none_input_returns_none(self):
         assert _normalize(None) is None
 
@@ -195,6 +200,8 @@ class TestNormalizeStage6Defaults:
             "session_vwap_anchor": "RTH",
             "single_prints_enabled": True,
             "apoc_enabled": True,
+            "prev30m_vwap_enabled": True,
+            "prev30m_vwap_validity_periods": 1,
         }
 
     def test_empty_dict_gets_all_defaults(self):
@@ -204,6 +211,8 @@ class TestNormalizeStage6Defaults:
         assert result["session_vwap_enabled"] is False
         assert result["single_prints_enabled"] is False
         assert result["apoc_enabled"] is False
+        assert result["prev30m_vwap_enabled"] is False
+        assert result["prev30m_vwap_validity_periods"] == 1
         assert result["pivot_left"] == 2
         assert result["pivot_right"] == 2
 

@@ -126,6 +126,7 @@ SESSION_LEVEL_CATALOG: tuple[str, ...] = (
     "pmEQ",
     "pdPOC",
     "dVWAP_RTH",
+    "prev30mVWAP",
     "APOC",
     "pAPOC",
     "dSinglePrint_30m_NearestAbove",

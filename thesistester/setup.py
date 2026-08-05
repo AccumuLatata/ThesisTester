@@ -18,6 +18,15 @@ BASE_COLUMNS = {
     "settlement",
 }
 
+# Diagnostic / non-price columns that may appear on a levels frame but must not
+# be treated as setup-selectable or auto-plotted price levels.
+NON_LEVEL_OUTPUT_COLUMNS = frozenset(
+    {
+        "prev30mVWAP_hit_m1",
+        "prev30mVWAP_hit_m5",
+    }
+)
+
 VALID_TRIGGERS = frozenset({"touch", "reject", "break", "reclaim", "3c"})
 VALID_DIRECTIONS = frozenset({"long", "short", "both"})
 VALID_CONFLUENCE_MODES = frozenset({"global_cluster", "anchor_rules"})
@@ -222,9 +231,14 @@ def normalize_trigger_timeframe(value: Any) -> str:
     return normalized or DEFAULT_TRIGGER_TIMEFRAME
 
 
+def is_setup_eligible_level_column(column: str) -> bool:
+    """Return True when *column* may be selected as a confluence/setup level."""
+    return column not in BASE_COLUMNS and column not in NON_LEVEL_OUTPUT_COLUMNS
+
+
 def available_level_columns(df: pd.DataFrame) -> list[str]:
     """Return setup-eligible level columns from *df*."""
-    return [column for column in df.columns if column not in BASE_COLUMNS]
+    return [column for column in df.columns if is_setup_eligible_level_column(column)]
 
 
 def default_selected_levels(level_columns: list[str]) -> list[str]:

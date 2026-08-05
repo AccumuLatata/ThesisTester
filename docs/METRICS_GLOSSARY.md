@@ -438,6 +438,17 @@ Related session / artifact fields: `candidate_signal_count`,
 `otf_accepted_signal_count`, `otf_rejected_signal_count`, `session_timezone`,
 `eth_start` on OTF summaries.
 
+## Previous 30m VWAP levels (`prev30mVWAP`)
+
+| Name | Definition |
+|---|---|
+| `prev30mVWAP` | Frozen typical-price VWAP of the prior completed **session-open** 30-minute bracket (`tp=(H+L+C)/3`). Emits on ETH+RTH inside `prev30m_vwap_validity_periods` (default 1). Prior-session last freeze seeds the next session open. |
+| `prev30mVWAP_hit_m1` | Diagnostic: `1`/`0` after the first minute of the bracket if price range-touched `prev30mVWAP` in that minute; `NaN` until the window completes. Not setup-selectable. |
+| `prev30mVWAP_hit_m5` | Same pattern for the first 5 minutes. Nesting: when both non-NaN, `m1=1 ⇒ m5=1`. |
+| `prev30m_vwap_validity_periods` | Integer ≥ 1 TTL in subsequent 30m periods; newer freeze replaces and resets TTL. |
+
+Implementation: `thesistester/levels/prev30m_vwap.py`. Phase 2 may add R-multiple analytics conditioned on finalized `hit_m1` / `hit_m5` bracket flags.
+
 ## Assistant evidence-claim paths
 
 Assistant explanations (deterministic and optional LLM) may display a metric only

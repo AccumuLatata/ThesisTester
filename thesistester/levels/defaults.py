@@ -30,4 +30,6 @@ DEFAULT_LEVELS_SETTINGS: dict[str, Any] = {
     "session_vwap_anchor": "RTH",
     "single_prints_enabled": True,
     "apoc_enabled": True,
+    "prev30m_vwap_enabled": True,
+    "prev30m_vwap_validity_periods": 1,
 }

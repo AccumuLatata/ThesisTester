@@ -1,6 +1,7 @@
 # Regression-Safe Implementation Plan: `prev30mVWAP`
 
-**Status:** Spec / plan only — not implemented  
+**Status:** Phase 1 implemented (level engine + wiring + tests §10.1–10.6); Phase 2 analytics not started  
+
 **Document type:** Focused level-family implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related docs:** `docs/LEVEL_UPGRADE_IMPLEMENTATION_PLAN.md`, `docs/POINT_IN_TIME_GUARANTEES.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`

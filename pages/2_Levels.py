@@ -10,6 +10,7 @@ from thesistester.classic_nav import render_classic_nav_prefill_caption
 from thesistester.data.sessions import tag_session
 from thesistester.levels import compute_all_levels, compute_session_levels
 from thesistester.levels.defaults import DEFAULT_LEVELS_SETTINGS
+from thesistester.setup import is_setup_eligible_level_column
 from thesistester.persistence import (
     clear_active_levels_hash,
     compute_dataset_id,
@@ -53,6 +54,8 @@ _PIVOT_RIGHT_KEY = "levels_pivot_right"
 _SESSION_VWAP_ENABLED_KEY = "levels_session_vwap_enabled"
 _SINGLE_PRINTS_ENABLED_KEY = "levels_single_prints_enabled"
 _APOC_ENABLED_KEY = "levels_apoc_enabled"
+_PREV30M_VWAP_ENABLED_KEY = "levels_prev30m_vwap_enabled"
+_PREV30M_VWAP_VALIDITY_KEY = "levels_prev30m_vwap_validity_periods"
 _PIVOT_TIMEFRAME_OPTIONS = ["1min", "5min", "30min", "4h"]
 _LEVELS_CALCULATION_STATUS_KEY = "levels_calculation_status"
 _LEVELS_COST_WARNING_BARS = 3_000
@@ -91,6 +94,8 @@ def _normalize_levels_settings(settings: dict | None) -> dict | None:
     out.setdefault("session_vwap_anchor", "RTH")
     out.setdefault("single_prints_enabled", False)
     out.setdefault("apoc_enabled", False)
+    out.setdefault("prev30m_vwap_enabled", False)
+    out.setdefault("prev30m_vwap_validity_periods", 1)
     for key in (
         "sma_timeframes",
         "ema_timeframes",
@@ -245,6 +250,8 @@ def _saved_levels_label(meta: dict) -> str:
         opt_in_parts.append("SP")
     if settings.get("apoc_enabled"):
         opt_in_parts.append("APOC")
+    if settings.get("prev30m_vwap_enabled"):
+        opt_in_parts.append("prev30mVWAP")
     opt_in_suffix = f" · Opt-in: {','.join(opt_in_parts)}" if opt_in_parts else ""
     return (
         f"{str(meta.get('settings_hash', 'unknown'))[:12]}… · OR {opening_range}m · "
@@ -339,6 +346,12 @@ def _sync_levels_widget_state(settings: dict) -> None:
         settings.get("single_prints_enabled", False)
     )
     st.session_state[_APOC_ENABLED_KEY] = bool(settings.get("apoc_enabled", False))
+    st.session_state[_PREV30M_VWAP_ENABLED_KEY] = bool(
+        settings.get("prev30m_vwap_enabled", False)
+    )
+    validity = settings.get("prev30m_vwap_validity_periods", 1)
+    if isinstance(validity, int) and validity >= 1:
+        st.session_state[_PREV30M_VWAP_VALIDITY_KEY] = validity
 
 
 def _load_saved_levels_into_session(dataset_id: str, settings_hash: str) -> bool:
@@ -529,6 +542,27 @@ with st.expander("Advanced opt-in levels", expanded=True):
         value=DEFAULT_LEVELS_SETTINGS["apoc_enabled"],
         key=_APOC_ENABLED_KEY,
     )
+    prev30m_vwap_enabled = st.checkbox(
+        "Enable previous 30m VWAP (prev30mVWAP)",
+        value=DEFAULT_LEVELS_SETTINGS["prev30m_vwap_enabled"],
+        key=_PREV30M_VWAP_ENABLED_KEY,
+        help=(
+            "Session-open 30m brackets (ETH+RTH). Freezes the prior bracket VWAP. "
+            "Diagnostics hit_m1 / hit_m5 finalize after the first 1 / 5 minutes."
+        ),
+    )
+    if prev30m_vwap_enabled:
+        prev30m_vwap_validity_periods = st.number_input(
+            "prev30mVWAP validity (30m periods)",
+            min_value=1,
+            value=int(DEFAULT_LEVELS_SETTINGS["prev30m_vwap_validity_periods"]),
+            step=1,
+            key=_PREV30M_VWAP_VALIDITY_KEY,
+        )
+    else:
+        if _PREV30M_VWAP_VALIDITY_KEY not in st.session_state:
+            st.session_state[_PREV30M_VWAP_VALIDITY_KEY] = 1
+        prev30m_vwap_validity_periods = 1
 
 try:
     sma_lengths = _parse_lengths(sma_lengths_raw, "SMA")
@@ -559,6 +593,8 @@ current_settings = _normalize_levels_settings(
         "session_vwap_anchor": "RTH",
         "single_prints_enabled": single_prints_enabled,
         "apoc_enabled": apoc_enabled,
+        "prev30m_vwap_enabled": prev30m_vwap_enabled,
+        "prev30m_vwap_validity_periods": int(prev30m_vwap_validity_periods),
     }
 )
 current_data_fingerprint = _levels_data_fingerprint(st.session_state["data"], instrument)
@@ -702,6 +738,8 @@ if calculate_levels:
                 session_vwap_anchor="RTH",
                 single_prints_enabled=single_prints_enabled,
                 apoc_enabled=apoc_enabled,
+                prev30m_vwap_enabled=prev30m_vwap_enabled,
+                prev30m_vwap_validity_periods=int(prev30m_vwap_validity_periods),
             )
             calculated_session_levels = compute_session_levels(
                 base_df,
@@ -779,7 +817,11 @@ if levels_current:
         st.success("Deleted matching saved levels.")
 
 base_columns = {"timestamp", "open", "high", "low", "close", "volume", "session", "settlement"}
+# Preview may include diagnostic companions; plot options are price-level only.
 level_columns = [col for col in levels_df.columns if col not in base_columns]
+plottable_level_columns = [
+    col for col in level_columns if is_setup_eligible_level_column(col)
+]
 
 st.subheader("Levels preview")
 preview_cols = ["timestamp", "close", "session", *level_columns]
@@ -787,9 +829,11 @@ st.dataframe(levels_df[preview_cols].tail(200), width="stretch")
 
 selected_levels = st.multiselect(
     "Levels to plot",
-    options=level_columns,
+    options=plottable_level_columns,
     default=[
-        col for col in ["RTH_Open", "OR_High", "OR_Low", "ONH", "ONL"] if col in level_columns
+        col
+        for col in ["RTH_Open", "OR_High", "OR_Low", "ONH", "ONL"]
+        if col in plottable_level_columns
     ],
 )
 
