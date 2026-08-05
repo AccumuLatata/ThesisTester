@@ -436,6 +436,9 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "handle_help_turn(" in source
     assert "load_product_help_settings(" in source
     assert "Send help question" in source
+    # Conversation switch must clear Help draft/widget (not only thesis switch).
+    assert 'assistant_product_help_draft"] = ""' in source
+    assert 'pop("product-help-input"' in source
     assert "is_draft_channel_message(" in source
     assert "load_results_qa_settings(" in source
     assert "st.text_input(" in source

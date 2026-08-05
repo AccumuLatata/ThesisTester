@@ -13,7 +13,11 @@ from thesistester.assistant.help_corpus import (
     CorpusChunk,
 )
 from thesistester.assistant.llm import StructuredLLMClient
-from thesistester.assistant.llm_explainer import _NUMBER_RE
+from thesistester.assistant.llm_explainer import (
+    _NUMBER_RE,
+    _extract_number_tokens,
+    _normalize_number_token,
+)
 
 PRODUCT_HELP_CHANNEL = "product_help"
 
@@ -63,7 +67,9 @@ _RUN_PERF_PATTERNS = (
         re.IGNORECASE,
     ),
     re.compile(
-        r"\bwhat\s+was\s+my\b",
+        r"\bwhat\s+was\s+my\s+(best\s+|worst\s+)?"
+        r"(sl|tp|stop(\s+loss)?|take[\s-]?profit|expectancy|win[\s-]?rate|"
+        r"drawdown|pnl|trades?|results?|performance|cell)\b",
         re.IGNORECASE,
     ),
     re.compile(
@@ -220,19 +226,25 @@ def assert_help_reply_grounded(
     corpus_chunks: Sequence[CorpusChunk | Mapping[str, Any]],
     registry_digest: Sequence[Mapping[str, Any]] | str,
 ) -> None:
-    """Reject digit tokens absent as verbatim substrings of corpus/registry."""
+    """Reject digit tokens absent as number tokens in corpus/registry text.
+
+    Uses the same numeric tokenizer as LLM evidence grounding so a reply token
+    like ``1`` cannot ride on a different number such as ``10`` / ``30``.
+    """
     haystack = _grounding_haystack(corpus_chunks, registry_digest)
+    allowed = set(_extract_number_tokens(haystack))
     for field_name, text in (
         ("summary", summary),
         *((f"caveat[{index}]", item) for index, item in enumerate(caveats)),
         *((f"followup[{index}]", item) for index, item in enumerate(followups)),
     ):
         for match in _NUMBER_RE.finditer(text):
-            token = match.group(0)
-            if token not in haystack:
+            token = _normalize_number_token(match.group(0))
+            if token not in allowed:
                 raise HelpEvidenceError(
                     f"Uncited numerical token {token!r} in Help {field_name} "
-                    "is not a verbatim substring of the attached corpus or registry digest."
+                    "is not present as a number token in the attached corpus "
+                    "or registry digest."
                 )
 
 

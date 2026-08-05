@@ -424,7 +424,9 @@ exported. Optional RO `TIME.analyze` enrichment runs only when
 lexical `select_help_corpus_chunks` under §7.1 + registry digest (never
 `AGENT_GUIDE`). Run-performance questions (metric nouns / past-tense run
 asks) remediate to Discuss results; possessive product/workflow questions
-(`my grid ranking`, `how does this run get confirmed`) stay in Help.
+(`my grid ranking`, `how does this run get confirmed`) stay in Help. Help
+digit grounding uses number-token matching (not bare substring). Conversation
+hydration clears `assistant_product_help_draft` / `product-help-input`.
 Thesis chat remains draft-only; one-shot Explain / LLM explain remain
 available beside Discuss results.
 

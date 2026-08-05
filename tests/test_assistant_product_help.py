@@ -43,6 +43,8 @@ def test_is_run_performance_question_detects_personal_run_metrics():
     assert not is_run_performance_question("How does this run get confirmed?")
     assert not is_run_performance_question("Tell me about my grid search settings")
     assert not is_run_performance_question("What does this run mean in the thesis hub?")
+    assert not is_run_performance_question("What was my confirmation step before running?")
+    assert not is_run_performance_question("what was my setup trigger option called?")
 
 
 def test_remediation_help_reply_has_no_numbers_or_choices():
@@ -98,6 +100,15 @@ def test_assert_help_reply_grounded_requires_verbatim_digits():
     with pytest.raises(HelpEvidenceError, match="Uncited numerical token"):
         assert_help_reply_grounded(
             summary="There were 99 mystery trades.",
+            caveats=[],
+            followups=[],
+            corpus_chunks=chunks,
+            registry_digest=digest,
+        )
+    # Reply token "3" must not ride on corpus "30".
+    with pytest.raises(HelpEvidenceError, match="Uncited numerical token"):
+        assert_help_reply_grounded(
+            summary="Always use 3 as the threshold.",
             caveats=[],
             followups=[],
             corpus_chunks=chunks,

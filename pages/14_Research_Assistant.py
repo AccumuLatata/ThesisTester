@@ -249,6 +249,11 @@ if st.session_state["assistant_hydrated_conversation_id"] != conversation_id:
         ):
             st.session_state["assistant_draft_choices"] = message["choices"]
             break
+    # Help draft/widget are conversation-local presentation staging — clear on
+    # conversation switch so an unsent prior Help question cannot leak into a
+    # different conversation's Help thread.
+    st.session_state["assistant_product_help_draft"] = ""
+    st.session_state.pop("product-help-input", None)
     st.session_state["assistant_hydrated_conversation_id"] = conversation_id
     invalidate_validation(st.session_state)
 
