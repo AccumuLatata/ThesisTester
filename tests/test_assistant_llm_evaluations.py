@@ -1094,9 +1094,7 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
 
         def complete_structured(self, **kwargs):
             return {
-                "summary": (
-                    "In-sample expectancy looks robust; walk-forward evidence is missing."
-                ),
+                "summary": ("In-sample expectancy looks robust; walk-forward evidence is missing."),
                 "caveats": [],
                 "claims": [
                     {
