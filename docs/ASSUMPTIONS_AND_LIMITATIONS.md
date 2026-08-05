@@ -483,13 +483,17 @@ other than the last bar in the dataset.
   Discuss results (`handle_results_turn` / `results_qa`) on hash-verified
   evidence. **RQ-2** adds ephemeral `results.projections.*` grid/time rankings
   (empty bundle grid tables fall back to packet `best_grid_result`; unknown
-  ranking-metric names are sanitized via the allowlist preference chain) and
-  optional RO `TIME.analyze` enrichment when
+  ranking-metric names are sanitized via the aggregate/directional allowlist
+  preference chain and synced into the ephemeral metric-source path;
+  JSON-null all-wins profit factors rank as +inf; projection `best` pins
+  packet `best_grid_result` when re-rank disagrees; bundle table load
+  failures warn via `bundle_tables_warning` instead of mimicking an empty
+  grid) and optional RO `TIME.analyze` enrichment when
   `assistant.results_qa.allow_time_enrichment=true` (default `false`).
   **RQ-3** ships documentation-grounded Help (`handle_help_turn` /
   `product_help`) over the §7.1 corpus + registry digest; run-performance
   questions remediate to Discuss results (no fabricated metrics). Help digit
-  tokens must be verbatim substrings of attached corpus/registry text.
+  tokens must match number tokens in attached corpus/registry text.
   Thesis switches clear `assistant_results_qa_drafts`,
   `assistant_product_help_draft`, and related widget keys. Draft-chat history
   excludes `results_qa` / `product_help` turns and tool/audit lines so

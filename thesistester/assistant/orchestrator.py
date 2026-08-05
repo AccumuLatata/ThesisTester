@@ -421,21 +421,27 @@ class AssistantOrchestrator:
         *,
         bundle_path: str,
         expected_hash: str,
-    ) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None]:
-        """Hash-verify a bound bundle and return grid/time table records if present."""
+    ) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None, str | None]:
+        """Hash-verify a bound bundle and return grid/time table records if present.
+
+        Returns ``(grid_rows, time_rows, load_error)``. Empty tables become
+        ``None`` (fall back to packet fields). Artifact/hash/I/O failures set
+        ``load_error`` so callers can warn instead of silently mimicking an
+        empty grid table.
+        """
         if not isinstance(self.tools, AssistantTools):
-            return None, None
+            return None, None, "Time/grid table load requires AssistantTools."
         try:
             artifact = self.tools.build_bundle_research_artifact(
                 bundle_path, expected_hash=expected_hash
             )
-        except (AssistantToolError, ValueError, TypeError, OSError):
-            return None, None
+        except (AssistantToolError, ValueError, TypeError, OSError) as exc:
+            return None, None, str(exc)
         if not isinstance(artifact, Mapping):
-            return None, None
+            return None, None, "Research artifact payload was not a mapping."
         tables = artifact.get("tables")
         if not isinstance(tables, Mapping):
-            return None, None
+            return None, None, None
         grid_rows = tables.get("grid_results")
         time_rows = tables.get("time_grouped_summary")
         # Empty lists mean "no table rows" — treat as absent so ephemeral
@@ -454,7 +460,7 @@ class AssistantOrchestrator:
         )
         if time_list is not None and not time_list:
             time_list = None
-        return grid_list, time_list
+        return grid_list, time_list, None
 
     def _enrich_time_summary_for_results(
         self,
@@ -558,11 +564,22 @@ class AssistantOrchestrator:
 
         grid_rows: list[dict[str, Any]] | None = None
         time_summary: list[dict[str, Any]] | None = None
+        grid_table_status: str | None = None
+        grid_table_warning: str | None = None
         if bundle_path is not None and expected_hash is not None:
-            grid_rows, time_summary = self._load_bundle_tables_for_results(
+            grid_rows, time_summary, table_load_error = self._load_bundle_tables_for_results(
                 bundle_path=bundle_path,
                 expected_hash=expected_hash,
             )
+            if table_load_error:
+                # Do not pretend the full grid table was empty — surface the
+                # load failure while still ranking from packet best_grid_result.
+                grid_table_status = "unavailable"
+                grid_table_warning = (
+                    "Full grid_results table could not be loaded from the bound "
+                    f"bundle ({table_load_error}). Rankings fall back to "
+                    "results.best_grid_result only."
+                )
         packet_time = packet.results.get("time_grouped_summary")
         if time_summary is None:
             if isinstance(packet_time, (list, tuple)):
@@ -611,6 +628,8 @@ class AssistantOrchestrator:
             packet,
             grid_rows=grid_rows,
             time_grouped_summary=time_summary,
+            grid_table_status=grid_table_status,
+            grid_table_warning=grid_table_warning,
         )
         conversation = None
         if isinstance(conversation_id, str) and conversation_id.strip():

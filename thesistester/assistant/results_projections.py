@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Mapping, Sequence
 
 from thesistester.assistant.explainer import EvidencePacket
+from thesistester.execution_defaults import DIRECTIONAL_METRIC_OPTIONS
 from thesistester.reporting import to_jsonable
 
 DEFAULT_GRID_METRIC = "expectancy_r"
@@ -19,9 +20,8 @@ DEFAULT_GRID_MIN_TRADES = 1
 DEFAULT_TIME_MIN_TRADES = 10
 DEFAULT_TIME_BUCKET_COL = "entry_rth_segment"
 
-_GRID_RANKING_METRICS = frozenset(
-    {"expectancy_r", "total_r", "profit_factor", "win_rate", "sharpe_like_r"}
-)
+# Aggregate + directional grid columns (classic Grid Search may record either).
+_GRID_RANKING_METRICS = frozenset(DIRECTIONAL_METRIC_OPTIONS) | {"sharpe_like_r"}
 _TIME_RANKING_METRICS = frozenset(
     {
         "avg_r",
@@ -62,12 +62,86 @@ def _finite_number(value: Any) -> float | None:
     return number
 
 
+def _all_wins_profit_factor_inf(row: Mapping[str, Any], metric: str) -> bool:
+    """True when a JSON-null profit-factor cell is an all-wins +inf sample."""
+    if metric == "profit_factor":
+        win_rate = _finite_number(row.get("win_rate"))
+        trade_count = _finite_number(row.get("trade_count"))
+        return (
+            win_rate is not None and win_rate >= 1.0 and trade_count is not None and trade_count > 0
+        )
+    if metric == "long_profit_factor":
+        win_rate = _finite_number(row.get("long_win_rate"))
+        trade_count = _finite_number(row.get("long_trade_count"))
+        return (
+            win_rate is not None and win_rate >= 1.0 and trade_count is not None and trade_count > 0
+        )
+    if metric == "short_profit_factor":
+        win_rate = _finite_number(row.get("short_win_rate"))
+        trade_count = _finite_number(row.get("short_trade_count"))
+        return (
+            win_rate is not None and win_rate >= 1.0 and trade_count is not None and trade_count > 0
+        )
+    if metric == "min_direction_profit_factor":
+        long_wr = _finite_number(row.get("long_win_rate"))
+        short_wr = _finite_number(row.get("short_win_rate"))
+        long_tc = _finite_number(row.get("long_trade_count"))
+        short_tc = _finite_number(row.get("short_trade_count"))
+        return (
+            long_wr is not None
+            and long_wr >= 1.0
+            and short_wr is not None
+            and short_wr >= 1.0
+            and long_tc is not None
+            and long_tc > 0
+            and short_tc is not None
+            and short_tc > 0
+        )
+    return False
+
+
+def _ranking_metric_value(row: Mapping[str, Any], metric: str) -> float | None:
+    """Return a comparable ranking value, preserving engine +inf profit factors.
+
+    Research bundles JSON-coerce ``float('inf')`` to ``null``. When the metric
+    is a profit-factor column and the matching side/sample is all-wins, treat
+    null as +inf so re-ranking matches ``best_grid_result``.
+    """
+    raw = row.get(metric)
+    if isinstance(raw, float) and raw == float("inf"):
+        return float("inf")
+    number = _finite_number(raw)
+    if number is not None:
+        return number
+    if (
+        raw is None
+        and metric.endswith("profit_factor")
+        and _all_wins_profit_factor_inf(row, metric)
+    ):
+        return float("inf")
+    return None
+
+
+def _jsonable_metric_value(value: float | None) -> Any:
+    if value is None or value == float("inf") or value == float("-inf"):
+        return None
+    return to_jsonable(value)
+
+
 def _positive_int(value: Any, *, default: int) -> int:
     try:
         parsed = int(value)
     except (TypeError, ValueError):
         return default
     return parsed if parsed > 0 else default
+
+
+def _optional_positive_int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 1 else None
 
 
 def _sanitize_grid_metric(metric: Any) -> str | None:
@@ -80,16 +154,29 @@ def _sanitize_grid_metric(metric: Any) -> str | None:
     return None
 
 
+def resolve_grid_side_filters(
+    packet: EvidencePacket | Mapping[str, Any],
+) -> tuple[int | None, int | None]:
+    """Return optional ``(min_long_trades, min_short_trades)`` from assumptions."""
+    payload = _as_packet_dict(packet)
+    assumptions = _as_mapping(payload.get("assumptions")) or {}
+    grid_cfg = _as_mapping(assumptions.get("grid")) or {}
+    return (
+        _optional_positive_int(grid_cfg.get("min_long_trades")),
+        _optional_positive_int(grid_cfg.get("min_short_trades")),
+    )
+
+
 def resolve_grid_ranking_defaults(
     packet: EvidencePacket | Mapping[str, Any],
 ) -> tuple[str, str, int]:
     """Return ``(metric, metric_source_path, min_trades)`` from packet assumptions.
 
     Prefers ``results.best_grid_result.ranking_metric`` when present and
-    allowlisted, else ``assumptions.grid.ranking_metric``, else
-    ``expectancy_r``. Unknown metric names fall through the preference chain
-    so rankings never advertise an unsanitized metric. The model must never
-    choose the ranking metric.
+    allowlisted (aggregate or directional), else
+    ``assumptions.grid.ranking_metric``, else ``expectancy_r``. Unknown metric
+    names fall through the preference chain so rankings never advertise an
+    unsanitized metric. The model must never choose the ranking metric.
     """
     payload = _as_packet_dict(packet)
     results = _as_mapping(payload.get("results")) or {}
@@ -105,6 +192,8 @@ def resolve_grid_ranking_defaults(
         if metric_name is not None:
             metric_path = "assumptions.grid.ranking_metric"
         else:
+            # Default path must not keep pointing at a rejected/bogus assumptions
+            # value — ephemeral context syncs this path to expectancy_r.
             metric_name = DEFAULT_GRID_METRIC
             metric_path = "assumptions.grid.ranking_metric"
 
@@ -144,12 +233,91 @@ def _grid_rows_from_source(
     return [dict(best)]
 
 
+def _project_grid_row(
+    row: Mapping[str, Any],
+    *,
+    rank: int,
+    metric: str,
+    metric_value: float | None,
+) -> dict[str, Any]:
+    return {
+        "rank": rank,
+        "stop_loss_ticks": to_jsonable(row.get("stop_loss_ticks")),
+        "take_profit_ticks": to_jsonable(row.get("take_profit_ticks")),
+        "trade_count": to_jsonable(row.get("trade_count")),
+        "metric_value": _jsonable_metric_value(metric_value),
+        metric: to_jsonable(row.get(metric)),
+    }
+
+
+def _pin_recorded_grid_best(
+    projection: dict[str, Any],
+    packet_dict: Mapping[str, Any],
+    *,
+    metric: str,
+    top_n: int,
+) -> dict[str, Any]:
+    """Ensure ``best`` matches packet ``best_grid_result`` when present.
+
+    Re-ranking JSON grid tables can disagree with the engine-selected winner
+    (infinite profit factors become null; directional filters may be absent).
+    Discuss results must not advertise a different SL/TP as ``best``.
+    """
+    results = _as_mapping(packet_dict.get("results")) or {}
+    recorded = _as_mapping(results.get("best_grid_result"))
+    if recorded is None:
+        return projection
+    stop = to_jsonable(recorded.get("stop_loss_ticks"))
+    target = to_jsonable(recorded.get("take_profit_ticks"))
+    current = projection.get("best")
+    if (
+        isinstance(current, Mapping)
+        and current.get("stop_loss_ticks") == stop
+        and current.get("take_profit_ticks") == target
+    ):
+        return projection
+
+    metric_value = _ranking_metric_value(recorded, metric)
+    pinned = _project_grid_row(
+        recorded,
+        rank=1,
+        metric=metric,
+        metric_value=metric_value,
+    )
+    pinned["recorded_selection"] = True
+    others = [
+        dict(row)
+        for row in projection.get("rows") or ()
+        if not (row.get("stop_loss_ticks") == stop and row.get("take_profit_ticks") == target)
+    ]
+    rows = [pinned]
+    for index, row in enumerate(others, start=2):
+        if index > top_n:
+            break
+        row["rank"] = index
+        rows.append(row)
+    by_rank = {str(row["rank"]): row for row in rows}
+    prior_eligible = int(projection.get("eligible_count") or 0)
+    updated = dict(projection)
+    updated["best"] = pinned
+    updated["rows"] = rows
+    updated["by_rank"] = by_rank
+    updated["recorded_best_pinned"] = True
+    # Recorded winner may sit outside re-rank filters; keep eligible_count honest.
+    updated["eligible_count"] = max(prior_eligible, 1)
+    if prior_eligible == 0:
+        updated["recorded_best_outside_rerank_filter"] = True
+    return updated
+
+
 def project_grid_rankings(
     packet_or_grid: EvidencePacket | Mapping[str, Any] | Sequence[Mapping[str, Any]],
     *,
     top_n: int = DEFAULT_TOP_N,
     metric: str | None = None,
     min_trades: int | None = None,
+    min_long_trades: int | None = None,
+    min_short_trades: int | None = None,
 ) -> dict[str, Any]:
     """Rank SL/TP grid candidates deterministically.
 
@@ -162,12 +330,16 @@ def project_grid_rankings(
     metric_source_path = "assumptions.grid.ranking_metric"
     resolved_min = DEFAULT_GRID_MIN_TRADES
     packet_dict: dict[str, Any] | None = None
+    side_long = _optional_positive_int(min_long_trades)
+    side_short = _optional_positive_int(min_short_trades)
     if _is_packet_like(packet_or_grid):
         packet_dict = _as_packet_dict(packet_or_grid)  # type: ignore[arg-type]
         default_metric, metric_source_path, resolved_min = resolve_grid_ranking_defaults(
             packet_dict
         )
         chosen_metric = _sanitize_grid_metric(metric) or default_metric
+        if side_long is None and side_short is None:
+            side_long, side_short = resolve_grid_side_filters(packet_dict)
     else:
         chosen_metric = _sanitize_grid_metric(metric) or DEFAULT_GRID_METRIC
     if min_trades is not None:
@@ -186,7 +358,15 @@ def project_grid_rankings(
         trade_count = _finite_number(row.get("trade_count"))
         if trade_count is None or trade_count < resolved_min:
             continue
-        metric_value = _finite_number(row.get(chosen_metric))
+        if side_long is not None:
+            long_count = _finite_number(row.get("long_trade_count"))
+            if long_count is None or long_count < side_long:
+                continue
+        if side_short is not None:
+            short_count = _finite_number(row.get("short_trade_count"))
+            if short_count is None or short_count < side_short:
+                continue
+        metric_value = _ranking_metric_value(row, chosen_metric)
         if metric_value is None:
             continue
         stop = _finite_number(row.get("stop_loss_ticks"))
@@ -201,18 +381,16 @@ def project_grid_rankings(
     rows: list[dict[str, Any]] = []
     by_rank: dict[str, dict[str, Any]] = {}
     for index, (metric_value, _stop, _tp, row) in enumerate(ranked, start=1):
-        projected = {
-            "rank": index,
-            "stop_loss_ticks": to_jsonable(row.get("stop_loss_ticks")),
-            "take_profit_ticks": to_jsonable(row.get("take_profit_ticks")),
-            "trade_count": to_jsonable(row.get("trade_count")),
-            "metric_value": to_jsonable(metric_value),
-            chosen_metric: to_jsonable(row.get(chosen_metric)),
-        }
+        projected = _project_grid_row(
+            row,
+            rank=index,
+            metric=chosen_metric,
+            metric_value=metric_value,
+        )
         rows.append(projected)
         by_rank[str(index)] = projected
 
-    return {
+    projection = {
         "metric": chosen_metric,
         "metric_source_path": metric_source_path,
         "min_trades": resolved_min,
@@ -224,6 +402,18 @@ def project_grid_rankings(
         "by_rank": by_rank,
         "rows": rows,
     }
+    if side_long is not None:
+        projection["min_long_trades"] = side_long
+    if side_short is not None:
+        projection["min_short_trades"] = side_short
+    if packet_dict is not None:
+        projection = _pin_recorded_grid_best(
+            projection,
+            packet_dict,
+            metric=chosen_metric,
+            top_n=top,
+        )
+    return projection
 
 
 def _time_rows_from_summary(
@@ -314,6 +504,47 @@ def project_time_rankings(
     }
 
 
+def _sync_ephemeral_ranking_metric_source(
+    context: dict[str, Any],
+    *,
+    metric: str,
+    metric_path: str,
+) -> None:
+    """Align citable ranking-metric fields with the metric actually used.
+
+    Rewrites the resolved source path and any rejected
+    ``results.best_grid_result.ranking_metric`` so grounded replies cannot cite
+    a bogus best-row metric while projections rank by a sanitized value.
+    """
+    assumptions = context.get("assumptions")
+    if not isinstance(assumptions, dict):
+        assumptions = dict(assumptions) if isinstance(assumptions, Mapping) else {}
+        context["assumptions"] = assumptions
+    else:
+        assumptions = dict(assumptions)
+        context["assumptions"] = assumptions
+    grid_cfg = assumptions.get("grid")
+    if not isinstance(grid_cfg, dict):
+        grid_cfg = dict(grid_cfg) if isinstance(grid_cfg, Mapping) else {}
+    else:
+        grid_cfg = dict(grid_cfg)
+    assumptions["grid"] = grid_cfg
+    if metric_path == "assumptions.grid.ranking_metric" or "ranking_metric" in grid_cfg:
+        grid_cfg["ranking_metric"] = metric
+
+    results = context.get("results")
+    if not isinstance(results, dict):
+        return
+    best = results.get("best_grid_result")
+    if not isinstance(best, Mapping):
+        return
+    if "ranking_metric" not in best and metric_path != "results.best_grid_result.ranking_metric":
+        return
+    best_copy = dict(best)
+    best_copy["ranking_metric"] = metric
+    results["best_grid_result"] = best_copy
+
+
 def build_ephemeral_results_context(
     packet: EvidencePacket | Mapping[str, Any],
     *,
@@ -324,6 +555,8 @@ def build_ephemeral_results_context(
     time_bucket_col: str = DEFAULT_TIME_BUCKET_COL,
     time_metric: str = DEFAULT_TIME_METRIC,
     time_min_trades: int = DEFAULT_TIME_MIN_TRADES,
+    grid_table_status: str | None = None,
+    grid_table_warning: str | None = None,
 ) -> dict[str, Any]:
     """Copy a packet dict and attach ``results.projections.*`` for one turn."""
     context = _as_packet_dict(packet)
@@ -336,6 +569,12 @@ def build_ephemeral_results_context(
         context["results"] = results
 
     metric, metric_path, min_trades = resolve_grid_ranking_defaults(context)
+    _sync_ephemeral_ranking_metric_source(
+        context,
+        metric=metric,
+        metric_path=metric_path,
+    )
+    min_long, min_short = resolve_grid_side_filters(context)
     # Empty authoritative grid tables (common when no grid search ran) must not
     # suppress fallback to ``results.best_grid_result`` on the packet.
     usable_grid_rows: list[dict[str, Any]] | None = None
@@ -349,16 +588,31 @@ def build_ephemeral_results_context(
             top_n=grid_top_n,
             metric=metric,
             min_trades=min_trades,
+            min_long_trades=min_long,
+            min_short_trades=min_short,
         )
         grid_projection["metric_source_path"] = metric_path
         grid_projection["oos_status"] = _oos_status(context)
+        grid_projection = _pin_recorded_grid_best(
+            grid_projection,
+            context,
+            metric=metric,
+            top_n=_positive_int(grid_top_n, default=DEFAULT_TOP_N),
+        )
     else:
         grid_projection = project_grid_rankings(
             context,
             top_n=grid_top_n,
             metric=metric,
             min_trades=min_trades,
+            min_long_trades=min_long,
+            min_short_trades=min_short,
         )
+
+    if isinstance(grid_table_status, str) and grid_table_status.strip():
+        grid_projection["bundle_tables_status"] = grid_table_status.strip()
+    if isinstance(grid_table_warning, str) and grid_table_warning.strip():
+        grid_projection["bundle_tables_warning"] = grid_table_warning.strip()
 
     time_source = time_grouped_summary
     if time_source is None:
