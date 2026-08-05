@@ -1,12 +1,27 @@
 # AI Chat 2.0 Engineering Roadmap
 
+## Status
+
+**Status:** ✅ **Implemented** (C2-series through PR6 release gate). This
+roadmap is complete: thesis draft chat, orchestrator, provenance, evidence
+explain/compare, and optional LLM paraphrase are shipped. C2-7 registry notes
+are residual capability inventory, not an open competing series.
+
+**Not an open plan for new work.** Do not extend this file for:
+
+| Surface | Canonical contract |
+|---|---|
+| Multi-turn results discussion + product help | `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ) |
+| Voice review of completed runs | `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (VA; after RQ-1) |
+
 ## Purpose
 
-This is the implementation contract for evolving ThesisTester from assistant
-foundations into a reproducible, single-user conversational research product.
-The assistant translates a trader's thesis into an explicit experiment,
-requires confirmation, runs the existing deterministic pipeline, records
-provenance, and explains only evidence-backed outcomes.
+This document is the completed implementation contract for evolving
+ThesisTester from assistant foundations into a reproducible, single-user
+conversational research product (C2-series). The assistant translates a trader's
+thesis into an explicit experiment, requires confirmation, runs the existing
+deterministic pipeline, records provenance, and explains only evidence-backed
+outcomes.
 
 The LLM is a language interface, never a backtest engine, trading system, or
 source of uncited performance claims.

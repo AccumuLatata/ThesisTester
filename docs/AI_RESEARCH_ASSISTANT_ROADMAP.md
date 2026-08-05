@@ -2,12 +2,22 @@
 
 ## Status and purpose
 
-**Status:** proposed implementation plan.
+**Status:** ✅ **Implemented** (AIA-series). This roadmap is complete; keep it
+as the historical product/architecture contract and invariant record.
+
+**Not an open plan for new work.** Multi-turn results discussion and product
+help are owned exclusively by
+`docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ-series). Voice review is
+owned by `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (VA-series, voice-only
+after RQ-1). Runtime thesis-draft / explain / provenance integration that
+closed this series is recorded in
+`docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2, also implemented).
+
 **Owner model:** one trusted local user, local datasets, and local execution.
 
 **Related integration plan:** `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md`
-defines the regression-safe roadmap for joining the classic Streamlit workflow
-and this thesis/run model through immutable artifacts and bundle provenance.
+(CAI-series, ✅ implemented) joins the classic Streamlit workflow and this
+thesis/run model through immutable artifacts and bundle provenance.
 `CAI-0` baseline timings and the manual record-after-run policy decision are
 recorded in `docs/CAI_BASELINE.md`. `CAI-1` shared identity/normalization lives
 in `thesistester/research_identity.py`. `CAI-2`/`CAI-3` execution artifacts and
@@ -16,11 +26,6 @@ cached headless reuse live in
 `cache_policy` on `run_experiment` / `compute_levels` (Assistant/CLI use
 `read_write`; public default remains `off`). `CAI-4` classic→RunSpec export
 lives in `thesistester/classic_export.py`.
-
-This document is the implementation contract for an AI Research Assistant in
-ThesisTester. It is designed to prevent scope, architecture, and statistical
-drift while adding a conversational workflow for hypothesis-driven futures
-research.
 
 The assistant lets the user describe, create, revise, run, compare, and discuss
 many independent setup theses. It must convert natural-language ideas into

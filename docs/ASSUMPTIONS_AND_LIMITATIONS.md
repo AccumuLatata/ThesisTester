@@ -465,6 +465,12 @@ other than the last bar in the dataset.
 - Deterministic explain/compare/export works without any LLM provider. When a
   provider is configured, it may only propose non-executing draft choices or
   paraphrase an immutable evidence packet.
+- Planned additive channels (not shipped until RQ-series PRs land; contract:
+  `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`): multi-turn **results Q&A**
+  bound to one hash-verified `EvidencePacket`, and **product help** grounded in
+  a curated local docs/registry corpus. Those channels must not merge into
+  thesis-draft chat, must omit draft `choices`, and must not dispatch compute
+  pipelines from the model.
 - LLM explanations must cite packet paths; uncited numerical tokens are rejected
   before render. When provenance includes a fingerprint, dataset identity is
   available at `assumptions.dataset.dataset_fingerprint` (and mirrored at
@@ -491,8 +497,10 @@ other than the last bar in the dataset.
 
 ## Voice agent (VA-series — proposed, not shipped)
 - Realtime voice review of completed runs is specified in
-  `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (single VA-series contract).
-  It is not implemented yet.
+  `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (single VA-series contract for
+  **voice**). Text results Q&A / product help are owned by
+  `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ); VA-1 is an RQ-1 stub.
+  Voice is not implemented yet.
 - When shipped, voice will be opt-in (`assistant.voice.enabled = false` by
   default), bind only to hash-verified evidence packets, and expose read-only
   tools. It must not dispatch compute, mutate RunSpecs, or invent metrics.
