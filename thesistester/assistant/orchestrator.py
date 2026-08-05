@@ -33,9 +33,15 @@ from thesistester.assistant.handlers import (
     get_handler,
     tool_limits_from_envelope,
 )
-from thesistester.assistant.llm import StructuredLLMClient
+from thesistester.assistant.llm import StructuredLLMClient, is_draft_channel_message
 from thesistester.assistant.llm_explainer import explain_packet_with_llm
 from thesistester.assistant.llm_intent import propose_thesis_draft
+from thesistester.assistant.results_qa import (
+    RESULTS_QA_CHANNEL,
+    filter_results_qa_history,
+    format_results_qa_reply_content,
+    propose_results_reply,
+)
 from thesistester.assistant.registry import FEATURE_PARITY_REGISTRY, validate_capability_request
 from thesistester.assistant.repository import (
     AssistantRepositoryError,
@@ -351,8 +357,13 @@ class AssistantOrchestrator:
         conversation = self.repository.get_conversation(thesis_id, conversation_id)
         if not isinstance(max_history_messages, int) or max_history_messages < 0:
             raise ValueError("max_history_messages must be a non-negative integer.")
+        draft_messages = [
+            message
+            for message in conversation.messages
+            if is_draft_channel_message(message)
+        ]
         history_messages = (
-            conversation.messages[-max_history_messages:] if max_history_messages else ()
+            draft_messages[-max_history_messages:] if max_history_messages else ()
         )
         history = "\n".join(json.dumps(message, sort_keys=True) for message in history_messages)
         prompt = f"{history}\nuser: {user_message}" if history else user_message
@@ -375,6 +386,91 @@ class AssistantOrchestrator:
             },
         )
         return draft
+
+    def handle_results_turn(
+        self,
+        client: StructuredLLMClient,
+        *,
+        thesis_id: str,
+        run_id: str,
+        message: str,
+        conversation_id: str | None = None,
+        max_history_messages: int = 12,
+    ) -> OrchestrationResult:
+        """Discuss one completed run via grounded multi-turn results Q&A (RQ-1).
+
+        Loads hash-verified evidence through the existing ``explain_run`` /
+        ``BUNDLE.import`` (evidence) path. Never calls ``execute_confirmed_run``
+        or ``PIPELINE.*``. Persists messages with ``channel=results_qa`` and
+        ``run_id``; assistant messages omit ``choices``.
+        """
+        if not isinstance(run_id, str) or not run_id.strip():
+            raise ValueError("run_id must be a non-empty string.")
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError("Results Q&A message must be a non-empty string.")
+        run = self.repository.get_run(thesis_id, run_id.strip())
+        evidence = self.explain_run(
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+            run=run,
+        )
+        if evidence.status != OrchestrationStatus.COMPLETED.value:
+            return evidence
+        packet = evidence_packet_from_payload(evidence.payload)
+        conversation = None
+        if isinstance(conversation_id, str) and conversation_id.strip():
+            conversation = self.repository.get_conversation(
+                thesis_id, conversation_id.strip()
+            )
+            history = filter_results_qa_history(
+                conversation.messages,
+                run_id=run.run_id,
+                max_history_messages=max_history_messages,
+            )
+        else:
+            history = ()
+        reply = propose_results_reply(
+            client,
+            packet=packet,
+            history=history,
+            user_message=message.strip(),
+        )
+        if conversation is not None and isinstance(conversation_id, str):
+            user_record = self.repository.append_conversation_message(
+                thesis_id,
+                conversation_id.strip(),
+                expected_revision=conversation.revision,
+                message={
+                    "role": "user",
+                    "content": message.strip(),
+                    "channel": RESULTS_QA_CHANNEL,
+                    "run_id": run.run_id,
+                },
+            )
+            self.repository.append_conversation_message(
+                thesis_id,
+                conversation_id.strip(),
+                expected_revision=user_record.revision,
+                message={
+                    "role": "assistant",
+                    "content": format_results_qa_reply_content(reply),
+                    "channel": RESULTS_QA_CHANNEL,
+                    "run_id": run.run_id,
+                    "summary": reply.summary,
+                    "caveats": list(reply.caveats),
+                    "claims": [claim.to_dict() for claim in reply.claims],
+                    "followups": list(reply.followups),
+                },
+            )
+        return OrchestrationResult(
+            status=OrchestrationStatus.COMPLETED.value,
+            capability_id=RESULTS_QA_CHANNEL,
+            payload={
+                **evidence.payload,
+                "results_reply": reply,
+                "provider_attempts": getattr(client, "last_attempt_count", None),
+            },
+        )
 
     def execute_confirmed_run(
         self,

@@ -139,13 +139,20 @@ def assert_llm_explanation_grounded(
     summary: str,
     caveats: tuple[str, ...],
     claims: tuple[EvidenceClaim, ...],
+    followups: tuple[str, ...] = (),
 ) -> None:
-    """Reject uncited numerical claims before any UI rendering."""
+    """Reject uncited numerical claims before any UI rendering.
+
+    ``followups`` (RQ-1 results Q&A) use the same cited-claim allowlist as
+    ``summary`` / claim text. Prefer number-free followups.
+    """
     allowed_from_claims = _allowed_number_tokens([claim.value for claim in claims])
     # Summary and claim text may only use numbers from cited claim values.
     _assert_tokens_grounded(summary, allowed=allowed_from_claims)
     for claim in claims:
         _assert_tokens_grounded(claim.text, allowed=allowed_from_claims)
+    for followup in followups:
+        _assert_tokens_grounded(followup, allowed=allowed_from_claims)
     # Packet caveat numbers are allowlisted only for LLM caveat lines that
     # actually echo that packet caveat message — never for the whole narrative.
     packet_caveat_messages = tuple(

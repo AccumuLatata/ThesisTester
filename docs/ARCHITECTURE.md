@@ -381,6 +381,7 @@ The Research Assistant page stages only these additive `assistant_*` keys
 | `assistant_run_artifacts` | Research artifact cache by run_id |
 | `assistant_run_comparisons` | In-session comparison by thesis_id |
 | `assistant_portfolio_analyses` | In-session portfolio analysis by thesis_id |
+| `assistant_results_qa_drafts` | Per-run Discuss results text-input drafts (`{run_id: str}`) |
 | `assistant_bundle_handoff` | Last hash-verified restore into research pages |
 | `assistant_flash` | One-shot `{level, message}` UI notice consumed after `st.rerun()` |
 
@@ -389,28 +390,30 @@ Proposed realtime voice review (VA-series) must add only namespaced
 `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Until that series lands, no voice
 session keys exist and the Research Assistant remains text-only.
 
-Proposed multi-turn results discussion and product help (RQ-series) must add
-only documented additive `assistant_*` keys and conversation message tags
-(`channel` ∈ {`results_qa`, `product_help`}, plus `run_id` for results) in the
-same PR that introduces them; see
+Multi-turn results discussion and product help (RQ-series) add only documented
+additive `assistant_*` keys and conversation message tags
+(`channel` ∈ {`results_qa`, `product_help`}, plus `run_id` for results); see
 `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`. Contract freezes for that
-series include: draft history isolation (`handle_chat_turn` / draft hydration
-ignore `channel`-tagged messages), v1 Discuss/Help inputs as keyed
-`st.text_input` + send (not nested `st.chat_input`), frozen Help §7.1
+series include: draft history isolation (`handle_chat_turn` / draft hydration /
+thesis chat display ignore `channel`-tagged messages), v1 Discuss/Help inputs as
+keyed `st.text_input` + send (not nested `st.chat_input`), frozen Help §7.1
 path+section allowlist (no `AGENT_GUIDE`; no agent-invented sections), Help
 numeric grounding via verbatim corpus/registry substrings, and RQ-4 companion
 key `classic_focus_channel="results_qa"` beside string `classic_focus_run_id`
 (not a dict focus payload). **RQ-0 landed:** `config/assistant.toml` reserves
 `[assistant.results_qa]` / `[assistant.product_help]`; loaders live in
 `thesistester/assistant/llm.py`; inert corpus allowlist/loaders live in
-`thesistester/assistant/help_corpus.py` (no UI/orchestrator reply loops yet).
-Until RQ-1/RQ-3 land, assistant chat remains thesis-drafting only and post-run
-narratives remain one-shot Explain / LLM explain under Advanced → Linked runs.
+`thesistester/assistant/help_corpus.py`. **RQ-1 landed:**
+`thesistester/assistant/results_qa.py` + `handle_results_turn`; Discuss results
+UI under Advanced → Linked runs; `assistant_results_qa_drafts` session key.
+Thesis chat remains draft-only; Help reply loops remain RQ-3; one-shot Explain /
+LLM explain remain available beside Discuss results.
 
 Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_draft_choices`, `assistant_hydrated_conversation_id`,
-`assistant_validated_run_spec`, `assistant_bundle_handoff`, `assistant_flash`) so
-draft/validation/hydration/handoff/flash cannot leak. The Active handoff caption is
+`assistant_validated_run_spec`, `assistant_results_qa_drafts`,
+`assistant_bundle_handoff`, `assistant_flash`) so
+draft/validation/hydration/handoff/flash/results-drafts cannot leak. The Active handoff caption is
 further gated by `active_bundle_handoff()` so a stale handoff never displays for
 a different thesis.
 Apply/Draft/Validate/Cancel/Confirm/Run and Compare/Portfolio outcome notices

@@ -1,7 +1,7 @@
 # Results Discussion & Product Help — Implementation Contract
 
 **Document type:** Implementation contract (RQ-series) — **single source of truth**
-**Status:** proposed — not shipped
+**Status:** active — RQ-0 and RQ-1 implemented; RQ-2+ pending
 **Date:** 2026-08-05
 **Owner surface:** `thesistester/assistant/` + Research Assistant page (+ narrow classic-nav entry points)
 **Provider (text):** existing OpenAI structured client (`config/assistant.toml` / `OPENAI_API_KEY`)
@@ -565,13 +565,13 @@ This PR **is** VA-1.
 - Nested `st.chat_input` for Discuss results
 
 #### Acceptance
-- [ ] `handle_results_turn` never calls `execute_confirmed_run` and never dispatches `PIPELINE.*` / mutators (asserted). RO `BUNDLE.import` (action `evidence`) allowed
-- [ ] Uncited numeric token (including in `followups`) → error before UI persistence/render
-- [ ] Hash mismatch → structured failure; no packet leak
-- [ ] Without provider key, deterministic explain still works; results Q&A surfaces clear remediation (`enabled=true` alone is insufficient without a key)
-- [ ] `handle_chat_turn` excludes `channel`-tagged messages from history; draft hydration ignores non-draft channels; prior draft fixtures remain green
-- [ ] Persisted results assistant messages omit `choices`
-- [ ] User can ask “best SL/TP?” and “expectancy?” against a fixture packet and receive path-cited claims when those fields exist
+- [x] `handle_results_turn` never calls `execute_confirmed_run` and never dispatches `PIPELINE.*` / mutators (asserted). RO `BUNDLE.import` (action `evidence`) allowed
+- [x] Uncited numeric token (including in `followups`) → error before UI persistence/render
+- [x] Hash mismatch → structured failure; no packet leak
+- [x] Without provider key, deterministic explain still works; results Q&A surfaces clear remediation (`enabled=true` alone is insufficient without a key)
+- [x] `handle_chat_turn` excludes `channel`-tagged messages from history; draft hydration ignores non-draft channels; prior draft fixtures remain green
+- [x] Persisted results assistant messages omit `choices`
+- [x] User can ask “best SL/TP?” and “expectancy?” against a fixture packet and receive path-cited claims when those fields exist
 
 #### Regression safety
 New orchestrator method + optional UI block + additive draft history filter.
@@ -599,8 +599,17 @@ docs/AGENT_GUIDE.md
 docs/ENGINEERING_ROADMAP.md                     # status note
 ```
 
-#### Implemented contract (fill when merged)
-_Pending implementation._
+#### Implemented contract
+- `thesistester/assistant/results_qa.py` — `propose_results_reply`, history filter,
+  reply formatting; channel tag `results_qa`
+- `AssistantOrchestrator.handle_results_turn` — `explain_run` / RO `BUNDLE.import`
+  evidence → grounded reply → persist `channel`+`run_id` messages (no `choices`)
+- `handle_chat_turn` + page hydration / thesis chat display ignore non-draft channels
+- `assert_llm_explanation_grounded(..., followups=())` covers followup digit tokens
+- UI: Discuss results in completed-run expander via keyed `st.text_input` + send
+- Session key: `assistant_results_qa_drafts` (thesis-scoped)
+- Tests: `tests/test_assistant_results_qa.py` + evaluation/workspace extensions
+- VA-1 satisfied by this PR (voice series may proceed to VA-2+)
 
 ---
 
@@ -1008,8 +1017,8 @@ Constraints:
 
 | ID | Status |
 |---|---|
-| RQ-0 | Implemented (this PR) |
-| RQ-1 (VA-1) | Proposed |
+| RQ-0 | Implemented |
+| RQ-1 (VA-1) | Implemented (this PR) |
 | RQ-2 | Proposed |
 | RQ-3 | Proposed |
 | RQ-4 | Proposed |

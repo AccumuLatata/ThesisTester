@@ -254,8 +254,12 @@ Historical VA-1 scope tables previously duplicated here were removed to prevent
 parallel implementation. Sequence diagrams elsewhere in this document that
 mention “VA-1” mean “RQ-1 has shipped.”
 
-#### Implemented contract (fill when RQ-1 merges)
-_Pending implementation via RQ-1._
+#### Implemented contract (via RQ-1)
+- Text substrate lives in `thesistester/assistant/results_qa.py` and
+  `AssistantOrchestrator.handle_results_turn` (RQ-1).
+- UI: Discuss results under Advanced → Linked runs (keyed `st.text_input` + send).
+- Draft history isolation and `choices`-free results messages are enforced.
+- Voice PRs (VA-2+) must call this text path; do not re-implement results Q&A.
 
 ---
 

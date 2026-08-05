@@ -274,7 +274,10 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   the same PR. **RQ-0** shipped config sections +
   `thesistester/assistant/help_corpus.py` (§7.1 allowlist) and
   `load_results_qa_settings` / `load_product_help_settings` /
-  `is_draft_channel_message` in `llm.py` — no Discuss/Help UI loops yet.
+  `is_draft_channel_message` in `llm.py`. **RQ-1** shipped
+  `results_qa.py`, `handle_results_turn`, Discuss results UI
+  (`st.text_input` + send), draft history isolation, and
+  `assistant_results_qa_drafts` — Help UI remains RQ-3.
 - Realtime voice review (VA-series) has a **single** contract for **voice**:
   `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Do not add parallel voice
   roadmap/reassessment docs. Implement only the active VA PR’s **Files
