@@ -50,7 +50,8 @@ future-shock tests and/or code inspection.
 | `dOpen/wOpen/mOpen` | `_current_opens` via `transform("first")` | **Yes** | Available from the very first bar of the current period | These reflect the current (incomplete) period open, not a "prior" level | — |
 | `RTH_Open` | `_rth_open` | **Yes** | Gated by `df["timestamp"] >= first_rth_ts`; NaN until the first RTH bar arrives | None | `test_r3_point_in_time.py::test_rth_open_not_visible_before_rth` |
 | `ONH / ONL` | `_overnight_high_low` | **Yes** | Gated by the first RTH bar timestamp; NaN during ETH | Overnight is computed across all ETH bars of the session; ONH/ONL is the completed overnight high/low, gated until RTH begins | `test_r3_point_in_time.py::test_overnight_levels_gated` |
-| `AsiaHigh / AsiaLow` | `_asia_high_low` | **Yes** | Gated by clock time at Asia close (`asia_end` on the Asia session key date); NaN during the Asia window | Default window `20:00–00:00` ET (instrument `asia_start`/`asia_end`); ETH bars only; not rolling; distinct from ONH/ONL. Empty `asia_start`/`asia_end` → all-NaN. Empty `eth_start` remaps evening bars onto the next calendar day (ONH-style). Wrapping Asia requires `asia_end < eth_start <= asia_start` (or empty `eth_start`) | `tests/test_session_levels.py` Asia suite + `test_r3_point_in_time.py::test_asia_levels_gated_until_close` |
+| `AsiaHigh / AsiaLow` | `_asia_high_low` → `_session_window_high_low` | **Yes** | Gated by clock time at Asia close (`asia_end` on the Asia session key date); NaN during the Asia window | Default window `20:00–00:00` ET (instrument `asia_start`/`asia_end`); ETH bars only; not rolling; distinct from ONH/ONL. Empty `asia_start`/`asia_end` → all-NaN. Empty `eth_start` remaps evening bars onto the next calendar day (ONH-style). Wrapping Asia requires `asia_end < eth_start <= asia_start` (or empty `eth_start`) | `tests/test_session_levels.py` Asia suite + `test_r3_point_in_time.py::test_asia_levels_gated_until_close` |
+| `LondonHigh / LondonLow` | `_london_high_low` → `_session_window_high_low` | **Yes** | Gated by clock time at London close (`london_end` on the session key date); NaN during the London window | Default window `02:00–05:00` ET (instrument `london_start`/`london_end`); ETH bars only; not rolling; distinct from Asia and ONH/ONL. Empty `london_start`/`london_end` → all-NaN. Non-wrapping London requires `eth_start > london_end` (or empty `eth_start`); `eth_start <= london_end` fails closed | `tests/test_session_levels.py` London suite + `test_r3_point_in_time.py::test_london_levels_gated_until_close` |
 | `pONH / pONL / pRTH_Open` | `_previous_session_references` | **Yes** | All bars in the day, via `shift(1)` on per-session aggregates | None | — |
 | `OR_High / OR_Low` | `_opening_range` | **Yes** | Gated by clock time: `start_minute + opening_range_minutes` after session midnight in exchange timezone | OR availability depends on the clock gate, not on whether OR bars exist | `test_r3_point_in_time.py::test_opening_range_not_visible_before_or_end` |
 | `prevSettlement` | `_prev_settlement` | **Yes** | First bar of the new day, via `shift(1)` | Falls back to prior-day final close when no `settlement` column present | — |
@@ -251,38 +252,42 @@ Contract reference: `docs/otf-filter.md` §6 / §13b.
    developing Asia high/low during the window must compute it separately; the engine
    emits only the completed Asia range.
 
-4. **`dOpen/wOpen/mOpen` reflect current-period opens.** These are current-session
+4. **LondonHigh/LondonLow not rolling during London.** London extremes stay NaN until
+   the London close clock gate (`london_end`, default `05:00` ET). Same non-rolling
+   contract as Asia; developing London extremes during the window are out of scope.
+
+5. **`dOpen/wOpen/mOpen` reflect current-period opens.** These are current-session
    (incomplete) opens, not prior-period opens. They are available from the first bar
    of the session but represent a live level, not a historical reference. Do not confuse
    them with `pdOpen/pwOpen/pmOpen` (prior-period opens).
 
-5. **Legacy/internal `confirm_3bar` helper uses intrabar bar-3 fill.** The 3-bar
+6. **Legacy/internal `confirm_3bar` helper uses intrabar bar-3 fill.** The 3-bar
    sequence fill at bar 3 is assumed from bar-3 OHLC. This is an intrabar-fill
    assumption, not a next-bar-open assumption. Results are pessimistic (SL-first) but
    are not independently verified against tick data.
 
-6. **Rolling VWAP / POC at bar `i` include bar `i` close/volume.** If signals trigger
+7. **Rolling VWAP / POC at bar `i` include bar `i` close/volume.** If signals trigger
    intrabar and use same-bar rolling levels, there is a mild look-ahead within the bar
    (close is not known until bar end). The current design treats signals as bar-close
    confirmed, so this is documented intent, not a bug. See assumption 5 in
    `ASSUMPTIONS_AND_LIMITATIONS.md`.
 
-7. **Confirmed pivots are latest-confirmed scalar levels only.** The pivot engine does
+8. **Confirmed pivots are latest-confirmed scalar levels only.** The pivot engine does
    not emit historical pivot-instance columns. It keeps only the most recent confirmed
    high and low per supported timeframe, and it does not yet classify sweeps, SFPs,
    breakers, reclaims, or retests.
 
-8. **`dVWAP_RTH` uses bar-level typical price.** `typical_price = (high + low + close) / 3`
+9. **`dVWAP_RTH` uses bar-level typical price.** `typical_price = (high + low + close) / 3`
    is a bar-level approximation. True intrabar VWAP would require tick data but would not
    introduce look-ahead bias. Bar `i` typical price is unknown until bar `i` closes;
    since signals are treated as bar-close confirmed, this is documented intent, not a bug.
 
-9. **Single Print columns expose only scalar nearest-above/below summaries.** No dynamic
+10. **Single Print columns expose only scalar nearest-above/below summaries.** No dynamic
    list of all Single Print bins is emitted. The four scalar columns are sufficient for
    signal proximity queries but do not provide the full Single Print set for manual
    analysis. APOC / pAPOC are now implemented (Stage 5; see `levels/apoc.py`).
 
-10. **APOC / pAPOC use bar-level typical-price approximation.** `typical_price = (high + low + close) / 3`
+11. **APOC / pAPOC use bar-level typical-price approximation.** `typical_price = (high + low + close) / 3`
    with full bar volume allocated to one tick bin. This is an MVP approximation consistent
    with `profile.py`. True intrabar volume-at-price data would produce different POC values
    but would not introduce look-ahead bias. APOC uses only the first RTH 30-minute bracket;

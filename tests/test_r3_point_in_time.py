@@ -234,6 +234,59 @@ def test_asia_levels_future_shock_append_does_not_change_prior():
     pd.testing.assert_series_equal(base_cut["AsiaLow"], ext_cut["AsiaLow"], check_names=False)
 
 
+def test_london_levels_gated_until_close():
+    """LondonHigh/LondonLow must be NaN during London and available from london_end clock gate."""
+    london_start = pd.Timestamp("2026-06-03 02:00:00", tz=TZ)
+    london_mid = pd.Timestamp("2026-06-03 03:30:00", tz=TZ)
+    london_close = pd.Timestamp("2026-06-03 05:00:00", tz=TZ)
+    pre_rth = pd.Timestamp("2026-06-03 08:00:00", tz=TZ)
+
+    bars = [
+        _ohlcv_bar(london_start, 4000.0, 4050.0, 3990.0, 4010.0, 100.0),
+        _ohlcv_bar(london_mid, 4010.0, 4060.0, 3980.0, 4020.0, 80.0),
+        _ohlcv_bar(london_close, 4020.0, 4025.0, 4015.0, 4022.0, 90.0),
+        _ohlcv_bar(pre_rth, 4022.0, 4030.0, 4010.0, 4028.0, 70.0),
+    ]
+    df = tag_session(_build_df(bars))
+    result = compute_session_levels(df, instrument="ES")
+
+    during = result[result["timestamp"] < london_close]
+    assert during["LondonHigh"].isna().all(), "LondonHigh must be NaN during London"
+    assert during["LondonLow"].isna().all(), "LondonLow must be NaN during London"
+
+    at_close = result[result["timestamp"] == london_close].iloc[0]
+    assert at_close["LondonHigh"] == pytest.approx(4060.0)
+    assert at_close["LondonLow"] == pytest.approx(3980.0)
+
+    later = result[result["timestamp"] == pre_rth].iloc[0]
+    assert later["LondonHigh"] == pytest.approx(4060.0)
+    assert later["LondonLow"] == pytest.approx(3980.0)
+
+
+def test_london_levels_future_shock_append_does_not_change_prior():
+    """Appending extreme post-London bars must not change LondonHigh/LondonLow already emitted."""
+    london_start = pd.Timestamp("2026-06-03 02:00:00", tz=TZ)
+    london_mid = pd.Timestamp("2026-06-03 03:30:00", tz=TZ)
+    london_close = pd.Timestamp("2026-06-03 05:00:00", tz=TZ)
+
+    base_bars = [
+        _ohlcv_bar(london_start, 4000.0, 4050.0, 3990.0, 4010.0, 100.0),
+        _ohlcv_bar(london_mid, 4010.0, 4060.0, 3980.0, 4020.0, 80.0),
+        _ohlcv_bar(london_close, 4020.0, 4025.0, 4015.0, 4022.0, 90.0),
+    ]
+    base = tag_session(_build_df(base_bars))
+    r_base = compute_session_levels(base, instrument="ES")
+
+    shock = _ohlcv_bar(pd.Timestamp("2026-06-03 09:30:00", tz=TZ), 5000.0, 9999.0, 1.0, 5000.0, 1e9)
+    extended = tag_session(_build_df(base_bars + [shock]))
+    r_ext = compute_session_levels(extended, instrument="ES")
+
+    base_cut = r_base[r_base["timestamp"] <= london_close].reset_index(drop=True)
+    ext_cut = r_ext[r_ext["timestamp"] <= london_close].reset_index(drop=True)
+    pd.testing.assert_series_equal(base_cut["LondonHigh"], ext_cut["LondonHigh"], check_names=False)
+    pd.testing.assert_series_equal(base_cut["LondonLow"], ext_cut["LondonLow"], check_names=False)
+
+
 # ---------------------------------------------------------------------------
 # A. Prior session levels — future shock test (pdHigh unchanged when future day added)
 # ---------------------------------------------------------------------------

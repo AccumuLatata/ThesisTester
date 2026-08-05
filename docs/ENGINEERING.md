@@ -48,6 +48,7 @@ them uniformly: each produces a price (or a band) at a given timestamp.
 |---|---|
 | `ONH` / `ONL` | Overnight session High / Low |
 | `AsiaHigh` / `AsiaLow` | Completed Asia-session High / Low (default `20:00–00:00` ET; NaN until Asia close; not rolling; empty Asia window → all-NaN) |
+| `LondonHigh` / `LondonLow` | Completed London Killzone High / Low (default `02:00–05:00` ET; NaN until London close; not rolling; empty London window → all-NaN) |
 | `OR_High` / `OR_Low` | Opening-Range High / Low (configurable OR length, e.g. 5/15/30m) |
 | `RTH_Open` | Regular-Trading-Hours session open |
 | `prevSettlement` | Prior session settlement price |
@@ -185,7 +186,7 @@ One module per level family, each exposing `compute(df, params) -> Series/DataFr
 returns the level price aligned to the base timeline.
 
 - `indicators.py` — SMA, EMA, rolling VWAP.
-- `sessions.py` — d/w/m opens, prior O/H/L, EQ, ON H/L, Asia H/L, OR, RTH_Open, settlement.
+- `sessions.py` — d/w/m opens, prior O/H/L, EQ, ON H/L, Asia H/L, London H/L, OR, RTH_Open, settlement.
 - `profile.py` — market/volume profile → rolling POC + prior POC/VAH/VAL (day/week/month).
 - `session_vwap.py` — developing RTH VWAP (`dVWAP_RTH`).
 - `prev30m_vwap.py` — previous session-open 30m VWAP (`prev30mVWAP`) + early-window hit diagnostics.

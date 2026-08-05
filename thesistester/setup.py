@@ -39,6 +39,8 @@ SUGGESTED_DEFAULT_LEVELS = [
     "ONL",
     "AsiaHigh",
     "AsiaLow",
+    "LondonHigh",
+    "LondonLow",
     "OR_High",
     "OR_Low",
     "RTH_Open",

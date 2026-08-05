@@ -849,7 +849,17 @@ selected_levels = st.multiselect(
     options=plottable_level_columns,
     default=[
         col
-        for col in ["RTH_Open", "OR_High", "OR_Low", "ONH", "ONL", "AsiaHigh", "AsiaLow"]
+        for col in [
+            "RTH_Open",
+            "OR_High",
+            "OR_Low",
+            "ONH",
+            "ONL",
+            "AsiaHigh",
+            "AsiaLow",
+            "LondonHigh",
+            "LondonLow",
+        ]
         if col in plottable_level_columns
     ],
 )

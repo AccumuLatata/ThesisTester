@@ -19,6 +19,9 @@ class Instrument:
     # Default ICT-style Asia: 20:00 → 00:00. Not rolling; levels emit only after close.
     asia_start: str = "20:00"
     asia_end: str = "00:00"
+    # London Killzone window (ICT-style): 02:00 → 05:00. Same non-rolling semantics.
+    london_start: str = "02:00"
+    london_end: str = "05:00"
 
 
 # Confirmed primary instruments (futures).
