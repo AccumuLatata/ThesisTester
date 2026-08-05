@@ -885,6 +885,10 @@ docs/ARCHITECTURE.md                            # only if eval-driven contract c
   (no `PIPELINE.*` / `execute_confirmed_run`), uncited numbers incl.
   followups, draft history isolation, `choices` absence on results/help
   messages, §7.1 section-allowlist corpus refusals (incl. `AGENT_GUIDE`).
+- Eval-driven honesty fix (narrow): `merge_mandatory_packet_caveats` in
+  `llm_explainer` / `results_qa` / one-shot explain so packet caveats cannot
+  be omitted; `assert_llm_explanation_grounded` rejects OOS/WFA soften
+  language when packet codes `missing_oos` / `failed_oos` are present.
 - Release checklist covered in the same eval file: provider-key remediation
   copy (`Set OPENAI_API_KEY to a rotated credential.`), deterministic
   `explain_evidence` offline, `audit_capability_registry` has no `invalid`

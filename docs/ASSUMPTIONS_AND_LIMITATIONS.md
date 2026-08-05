@@ -497,10 +497,11 @@ other than the last bar in the dataset.
   tokens must match number tokens in attached corpus/registry text.
   **RQ-4** binds classic Discuss via companion session key
   `classic_focus_channel="results_qa"` beside string `classic_focus_run_id`
-  (never a dict). **RQ-5** freezes honesty/injection evals in
+  (never a dict).   **RQ-5** freezes honesty/injection evals in
   `tests/test_assistant_llm_evaluations.py` (missing evidence, uncited
-  numbers, pipeline injection, draft isolation, corpus allowlist, provider-key
-  remediation, offline deterministic Explain, registry audit).
+  numbers, WFA caveat merge + OOS anti-soften, pipeline injection, draft
+  isolation, corpus allowlist, provider-key remediation, offline deterministic
+  Explain, registry audit).
   Thesis switches clear `assistant_results_qa_drafts`,
   `assistant_product_help_draft`, and related widget keys. Draft-chat history
   excludes `results_qa` / `product_help` turns and tool/audit lines so

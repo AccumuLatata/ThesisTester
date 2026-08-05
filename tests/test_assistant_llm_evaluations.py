@@ -745,20 +745,24 @@ def _rq5_trade_packet(
                 "sample_warning": False,
             },
         ]
-    caveats: tuple[EvidenceCaveat, ...] = ()
-    if wfa_missing:
-        caveats = (
+    caveats_list: list[EvidenceCaveat] = []
+    if best_grid:
+        caveats_list.append(
             EvidenceCaveat(
                 code="grid_selection",
                 message="Grid selection is in-sample unless confirmed by OOS/WFA evidence.",
                 path="results.best_grid_result",
-            ),
+            )
+        )
+    if wfa_missing:
+        caveats_list.append(
             EvidenceCaveat(
                 code="missing_oos",
                 message="Out-of-sample / walk-forward evidence is missing.",
                 path="results.walk_forward_summary",
-            ),
+            )
         )
+    caveats = tuple(caveats_list)
     return EvidencePacket(
         provenance={"run_id": "run_rq5"},
         assumptions={"grid": {"ranking_metric": "expectancy_r", "min_trades": 10}},
@@ -919,30 +923,57 @@ def test_rq5_missing_grid_rejects_invented_sl_and_allows_limitation():
 
 
 def test_rq5_wfa_caveat_preservation_and_anti_soften():
-    packet = _rq5_trade_packet(wfa_missing=True)
+    # Only the missing-OOS caveat — prove merge + soften gates without grid noise.
+    packet = _rq5_trade_packet(best_grid=False, wfa_missing=True)
     oos_msg = "Out-of-sample / walk-forward evidence is missing."
+    assert any(item.message == oos_msg for item in packet.caveats)
 
-    class EchoCaveat:
+    class OmitsMandatoryCaveat:
+        """Honest numbers only — still must not drop packet OOS caveat."""
+
         def complete_structured(self, **kwargs):
             return {
                 "summary": "Sample has 42 trades.",
-                "caveats": [oos_msg],
+                "caveats": [],
                 "claims": [
                     {
                         "text": "Sample has 42 trades.",
                         "path": "results.trade_summary.trade_count",
                     }
                 ],
-                "followups": ["Ask about robustness batteries next."],
+                "followups": ["Ask about costs next."],
             }
 
     reply = propose_results_reply(
-        EchoCaveat(),
+        OmitsMandatoryCaveat(),
         packet=packet,
         history=(),
-        user_message="Is this robust out of sample?",
+        user_message="Summarize the sample.",
     )
+    # System merges packet caveats — omission cannot produce a caveat-free reply.
     assert oos_msg in reply.caveats
+
+    class SoftenOosWithGroundedCounts:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "OOS is confirmed and the edge looks robust out of sample.",
+                "caveats": [],
+                "claims": [
+                    {
+                        "text": "Sample has 42 trades.",
+                        "path": "results.trade_summary.trade_count",
+                    }
+                ],
+                "followups": ["Ask about costs."],
+            }
+
+    with pytest.raises(LLMEvidenceError, match="OOS/WFA soften"):
+        propose_results_reply(
+            SoftenOosWithGroundedCounts(),
+            packet=packet,
+            history=(),
+            user_message="Is this robust out of sample?",
+        )
 
     class SoftenWithInventedFolds:
         def complete_structured(self, **kwargs):
@@ -953,7 +984,7 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
                 "followups": ["Proceed to live trading."],
             }
 
-    with pytest.raises(LLMEvidenceError, match="Uncited numerical claim"):
+    with pytest.raises(LLMEvidenceError, match="Uncited numerical claim|OOS/WFA soften"):
         propose_results_reply(
             SoftenWithInventedFolds(),
             packet=packet,
