@@ -158,6 +158,11 @@ def test_resolve_grid_ranking_defaults_sanitizes_unknown_metrics():
     ranked = project_grid_rankings(packet2, metric="also_bogus", min_trades=1)
     assert ranked["metric"] == "expectancy_r"
     assert ranked["best"]["stop_loss_ticks"] == 8
+    # Ephemeral context must not leave rejected metric names citable.
+    context = build_ephemeral_results_context(packet2)
+    assert context["assumptions"]["grid"]["ranking_metric"] == "expectancy_r"
+    assert context["results"]["best_grid_result"]["ranking_metric"] == "expectancy_r"
+    assert context["results"]["projections"]["grid_rankings"]["metric"] == "expectancy_r"
 
 
 def test_project_grid_rankings_deterministic_and_respects_min_trades():
@@ -265,6 +270,118 @@ def test_build_ephemeral_context_empty_grid_rows_falls_back_to_best_grid():
     assert best["stop_loss_ticks"] == 8
     assert best["take_profit_ticks"] == 16
     assert context["results"]["projections"]["grid_rankings"]["candidate_count"] == 1
+
+
+def test_project_grid_rankings_treats_json_null_profit_factor_as_inf_for_all_wins():
+    rows = [
+        {
+            "stop_loss_ticks": 8,
+            "take_profit_ticks": 16,
+            "trade_count": 10,
+            "win_rate": 1.0,
+            "profit_factor": None,  # JSON-coerced +inf
+            "expectancy_r": 0.1,
+        },
+        {
+            "stop_loss_ticks": 10,
+            "take_profit_ticks": 20,
+            "trade_count": 10,
+            "win_rate": 0.6,
+            "profit_factor": 2.0,
+            "expectancy_r": 0.5,
+        },
+    ]
+    ranked = project_grid_rankings(rows, metric="profit_factor", min_trades=1)
+    assert ranked["best"]["stop_loss_ticks"] == 8
+    assert ranked["best"]["metric_value"] is None  # JSON-safe
+    assert ranked["rows"][1]["stop_loss_ticks"] == 10
+
+    # Directional PF must use side win_rate, not aggregate.
+    directional_rows = [
+        {
+            "stop_loss_ticks": 8,
+            "take_profit_ticks": 16,
+            "trade_count": 20,
+            "win_rate": 0.5,
+            "long_trade_count": 10,
+            "long_win_rate": 1.0,
+            "long_profit_factor": None,
+            "short_trade_count": 10,
+            "short_win_rate": 0.4,
+            "short_profit_factor": 1.2,
+        },
+        {
+            "stop_loss_ticks": 10,
+            "take_profit_ticks": 20,
+            "trade_count": 20,
+            "win_rate": 0.9,
+            "long_trade_count": 10,
+            "long_win_rate": 0.7,
+            "long_profit_factor": 3.0,
+            "short_trade_count": 10,
+            "short_win_rate": 0.9,
+            "short_profit_factor": 2.5,
+        },
+    ]
+    long_ranked = project_grid_rankings(directional_rows, metric="long_profit_factor", min_trades=1)
+    assert long_ranked["best"]["stop_loss_ticks"] == 8
+
+
+def test_build_ephemeral_pins_recorded_best_when_rerank_disagrees():
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={
+            "grid": {
+                "ranking_metric": "min_direction_expectancy_r",
+                "min_trades": 1,
+                "min_long_trades": 5,
+                "min_short_trades": 5,
+            }
+        },
+        results={
+            "best_grid_result": {
+                "ranking_metric": "min_direction_expectancy_r",
+                "stop_loss_ticks": 6,
+                "take_profit_ticks": 12,
+                "trade_count": 20,
+                "long_trade_count": 8,
+                "short_trade_count": 7,
+                "min_direction_expectancy_r": 0.15,
+                "expectancy_r": 0.10,
+            }
+        },
+        warnings=(),
+    )
+    # Aggregate expectancy would prefer SL=10, but recorded directional winner is 6/12.
+    grid_rows = [
+        {
+            "stop_loss_ticks": 10,
+            "take_profit_ticks": 20,
+            "trade_count": 30,
+            "long_trade_count": 2,
+            "short_trade_count": 2,
+            "expectancy_r": 0.50,
+            "min_direction_expectancy_r": 0.01,
+        },
+        {
+            "stop_loss_ticks": 6,
+            "take_profit_ticks": 12,
+            "trade_count": 20,
+            "long_trade_count": 8,
+            "short_trade_count": 7,
+            "expectancy_r": 0.10,
+            "min_direction_expectancy_r": 0.15,
+        },
+    ]
+    context = build_ephemeral_results_context(packet, grid_rows=grid_rows)
+    ranked = context["results"]["projections"]["grid_rankings"]
+    assert ranked["metric"] == "min_direction_expectancy_r"
+    assert ranked["min_long_trades"] == 5
+    assert ranked["min_short_trades"] == 5
+    assert ranked["best"]["stop_loss_ticks"] == 6
+    assert ranked["best"]["take_profit_ticks"] == 12
+    # Side filters exclude the high aggregate row (long/short counts < 5).
+    assert ranked["eligible_count"] == 1
 
 
 def test_propose_results_reply_grounds_projection_paths():
@@ -389,7 +506,7 @@ def test_handle_results_turn_enrichment_flag_off_skips_time_analyze(tmp_path, mo
     monkeypatch.setattr(
         orchestrator,
         "_load_bundle_tables_for_results",
-        MagicMock(return_value=(None, None)),
+        MagicMock(return_value=(None, None, None)),
     )
     enrich = MagicMock()
     monkeypatch.setattr(orchestrator, "_enrich_time_summary_for_results", enrich)
@@ -454,7 +571,7 @@ def test_handle_results_turn_enrichment_on_calls_time_analyze_once(tmp_path, mon
     monkeypatch.setattr(
         orchestrator,
         "_load_bundle_tables_for_results",
-        MagicMock(return_value=(None, None)),
+        MagicMock(return_value=(None, None, None)),
     )
     monkeypatch.setattr(
         orchestrator,
@@ -526,6 +643,67 @@ def test_handle_results_turn_enrichment_on_calls_time_analyze_once(tmp_path, mon
     assert result.payload["time_enrichment"]["status"] == "completed"
     assert "rth_morning" in captured["user"]
     assert result.payload["results_reply"].claims[0].value == "rth_morning"
+
+
+def test_handle_results_turn_surfaces_grid_table_load_failure(tmp_path, monkeypatch):
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    thesis, conversation, run = _seed_completed_run(repository, name="LoadFail")
+    orchestrator = AssistantOrchestrator(
+        tools=AssistantTools(data_roots=(tmp_path,)),
+        repository=repository,
+    )
+    packet = _packet()
+    monkeypatch.setattr(
+        orchestrator,
+        "explain_run",
+        MagicMock(
+            return_value=OrchestrationResult(
+                status="completed",
+                capability_id="BUNDLE.import",
+                payload={"evidence": packet.to_dict()},
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "_load_bundle_tables_for_results",
+        MagicMock(return_value=(None, None, "Bundle hash does not match recorded run provenance.")),
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.orchestrator.load_results_qa_settings",
+        lambda: type(
+            "S",
+            (),
+            {"enabled": True, "max_history_messages": 12, "allow_time_enrichment": False},
+        )(),
+    )
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Best stop is 8 from the recorded grid winner.",
+                "caveats": ["Full grid table unavailable."],
+                "claims": [
+                    {
+                        "text": "Best stop is 8.",
+                        "path": "results.projections.grid_rankings.best.stop_loss_ticks",
+                    }
+                ],
+                "followups": ["Ask about expectancy."],
+            }
+
+    result = orchestrator.handle_results_turn(
+        Client(),
+        thesis_id=thesis.thesis_id,
+        run_id=run.run_id,
+        message="Best SL/TP?",
+        conversation_id=conversation.conversation_id,
+    )
+    assert result.status == "completed"
+    rankings = result.payload["results_turn_context"]["projections"]["grid_rankings"]
+    assert rankings["bundle_tables_status"] == "unavailable"
+    assert "could not be loaded" in rankings["bundle_tables_warning"]
+    assert rankings["best"]["stop_loss_ticks"] == 8
 
 
 def test_enrich_time_summary_fails_closed_on_hash_mismatch(tmp_path, monkeypatch):
