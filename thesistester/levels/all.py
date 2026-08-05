@@ -7,6 +7,7 @@ import pandas as pd
 from .apoc import compute_apoc_levels
 from .indicators import compute_indicator_levels
 from .pivots import compute_pivot_levels
+from .prev30m_vwap import compute_prev30m_vwap_levels
 from .profile import compute_profile_levels
 from .session_vwap import compute_session_vwap_levels
 from .sessions import compute_session_levels
@@ -36,6 +37,8 @@ def compute_all_levels(
     session_vwap_anchor: str = "RTH",
     single_prints_enabled: bool = False,
     apoc_enabled: bool = False,
+    prev30m_vwap_enabled: bool = False,
+    prev30m_vwap_validity_periods: int = 1,
 ) -> pd.DataFrame:
     """Compute Phase 2 + Phase 3 levels in one timeline-aligned DataFrame.
 
@@ -50,6 +53,8 @@ def compute_all_levels(
     - ``apoc_enabled`` — APOC / pAPOC profile-based levels (Stage 5,
       **implemented**; routes to ``compute_apoc_levels``, independent of
       ``single_prints_enabled``)
+    - ``prev30m_vwap_enabled`` — previous 30m VWAP (``prev30mVWAP``) with
+      early-window hit diagnostics (Stage 8 / Phase 1, **implemented**)
 
     With all new gates at their defaults the output is **identical** to the
     pre-Stage-1 output.
@@ -105,11 +110,25 @@ def compute_all_levels(
         instrument=instrument,
         enabled=apoc_enabled,
     )
+    prev30m_df = compute_prev30m_vwap_levels(
+        df,
+        instrument=instrument,
+        enabled=prev30m_vwap_enabled,
+        validity_periods=prev30m_vwap_validity_periods,
+    )
 
     base_columns = set(df.columns)
     out = session_df.copy()
 
-    for extra_df in (indicator_df, profile_df, pivot_df, session_vwap_df, tpo_df, apoc_df):
+    for extra_df in (
+        indicator_df,
+        profile_df,
+        pivot_df,
+        session_vwap_df,
+        tpo_df,
+        apoc_df,
+        prev30m_df,
+    ):
         new_cols = [
             col for col in extra_df.columns if col not in base_columns and col not in out.columns
         ]

@@ -18,6 +18,15 @@ BASE_COLUMNS = {
     "settlement",
 }
 
+# Diagnostic / non-price columns that may appear on a levels frame but must not
+# be treated as setup-selectable or auto-plotted price levels.
+NON_LEVEL_OUTPUT_COLUMNS = frozenset(
+    {
+        "prev30mVWAP_hit_m1",
+        "prev30mVWAP_hit_m5",
+    }
+)
+
 VALID_TRIGGERS = frozenset({"touch", "reject", "break", "reclaim", "3c"})
 VALID_DIRECTIONS = frozenset({"long", "short", "both"})
 VALID_CONFLUENCE_MODES = frozenset({"global_cluster", "anchor_rules"})
@@ -222,9 +231,14 @@ def normalize_trigger_timeframe(value: Any) -> str:
     return normalized or DEFAULT_TRIGGER_TIMEFRAME
 
 
+def is_setup_eligible_level_column(column: str) -> bool:
+    """Return True when *column* may be selected as a confluence/setup level."""
+    return column not in BASE_COLUMNS and column not in NON_LEVEL_OUTPUT_COLUMNS
+
+
 def available_level_columns(df: pd.DataFrame) -> list[str]:
     """Return setup-eligible level columns from *df*."""
-    return [column for column in df.columns if column not in BASE_COLUMNS]
+    return [column for column in df.columns if is_setup_eligible_level_column(column)]
 
 
 def default_selected_levels(level_columns: list[str]) -> list[str]:
@@ -317,6 +331,15 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
         selected_levels = config.get("selected_levels", [])
         if not isinstance(selected_levels, list) or not selected_levels:
             errors.append("Select at least one level column.")
+        elif isinstance(selected_levels, list):
+            banned = sorted(
+                {str(level) for level in selected_levels if str(level) in NON_LEVEL_OUTPUT_COLUMNS}
+            )
+            if banned:
+                errors.append(
+                    "Selected levels include diagnostic (non-level) columns that "
+                    f"cannot be used for confluence: {banned}."
+                )
 
         try:
             tolerance_ticks = float(config.get("tolerance_ticks", 0.0))
@@ -348,6 +371,11 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
         anchor_level = raw_anchor_level.strip() if isinstance(raw_anchor_level, str) else ""
         if not anchor_level:
             errors.append("Anchor level must be a non-empty string.")
+        elif anchor_level in NON_LEVEL_OUTPUT_COLUMNS:
+            errors.append(
+                f"Anchor level '{anchor_level}' is a diagnostic column and cannot "
+                "be used as a setup level."
+            )
 
         confluence_rules = config.get("confluence_rules", [])
         if not isinstance(confluence_rules, list) or not confluence_rules:
@@ -376,6 +404,11 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
             if not rule_level:
                 errors.append(f"Confluence rule {index} level must be a non-empty string.")
             else:
+                if rule_level in NON_LEVEL_OUTPUT_COLUMNS:
+                    errors.append(
+                        f"Confluence rule {index} level '{rule_level}' is a diagnostic "
+                        "column and cannot be used as a setup level."
+                    )
                 if rule_level == anchor_level:
                     errors.append(f"Confluence rule {index} level must not equal anchor_level.")
                 if rule_level in seen_levels:

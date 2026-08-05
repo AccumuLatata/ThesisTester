@@ -945,6 +945,7 @@ existing profile settings. Controls inside it:
 | Enable developing RTH VWAP (dVWAP_RTH) | `True` | Anchor fixed to RTH |
 | Enable TPO 30m Single Prints | `True` | No additional config exposed |
 | Enable APOC / pAPOC | `True` | Independent of Single Prints |
+| Enable previous 30m VWAP (`prev30mVWAP`) | `True` | Session-open ETH+RTH brackets; validity periods default `1` |
 
 `thesistester/levels/defaults.py` is the canonical product configuration used by both the
 Levels page and the headless API: 15-minute opening range; SMA 50/200 and EMA 9/21 on
@@ -962,6 +963,8 @@ Direct low-level `compute_all_levels` calls retain disabled keyword defaults; th
 product configuration is applied by the page and headless API.
 APOC / pAPOC are independent from Single Prints and are not routed through `compute_tpo_levels`.
 Single Prints are implemented in `thesistester/levels/tpo.py`; APOC / pAPOC are implemented in `thesistester/levels/apoc.py`.
+Previous 30m VWAP is implemented in `thesistester/levels/prev30m_vwap.py` (`prev30m_vwap_enabled`, `prev30m_vwap_validity_periods`).
+Diagnostic companions `prev30mVWAP_hit_m1` / `prev30mVWAP_hit_m5` are excluded from setup/chart eligibility via `NON_LEVEL_OUTPUT_COLUMNS` in `thesistester/setup.py`.
 The Levels page writes these opt-in values into `st.session_state["levels_settings"]`, and saved snapshots include them via the levels settings hash.
 
 The level engine remains scalar-column based: each enabled family contributes deterministic

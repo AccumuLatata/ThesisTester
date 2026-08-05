@@ -556,7 +556,13 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
     _validate_keys(levels, set(_LEVEL_DEFAULTS), section="levels")
     _validate_bool_fields(
         levels,
-        {"pivots_enabled", "session_vwap_enabled", "single_prints_enabled", "apoc_enabled"},
+        {
+            "pivots_enabled",
+            "session_vwap_enabled",
+            "single_prints_enabled",
+            "apoc_enabled",
+            "prev30m_vwap_enabled",
+        },
         section="levels",
     )
     _validate_number_fields(
@@ -573,6 +579,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             "prior_month_profile_aggregation_ticks",
             "pivot_left",
             "pivot_right",
+            "prev30m_vwap_validity_periods",
         },
         section="levels",
         integer=True,
@@ -612,6 +619,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         "prior_month_profile_aggregation_ticks",
         "pivot_left",
         "pivot_right",
+        "prev30m_vwap_validity_periods",
     ):
         _validate_range(levels, key, section="levels", minimum=1)
     setup = _require_mapping(run.get("setup"), section="setup")

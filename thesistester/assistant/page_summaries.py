@@ -17,6 +17,7 @@ from thesistester.research_identity import (
     identities_from_payload,
     try_page_levels_identity,
 )
+from thesistester.setup import is_setup_eligible_level_column
 
 # Hard caps for distribution / column listings in assistant payloads.
 _MAX_COLUMNS = 64
@@ -205,7 +206,12 @@ def summarize_levels_state(state: Mapping[str, Any]) -> dict[str, Any]:
 
     level_columns: list[str] = []
     if _is_dataframe(levels):
-        level_columns = [str(c) for c in levels.columns if str(c) not in _OHLCV_META]
+        # Diagnostics (e.g. prev30mVWAP_hit_m*) are not setup-eligible price levels.
+        level_columns = [
+            str(c)
+            for c in levels.columns
+            if str(c) not in _OHLCV_META and is_setup_eligible_level_column(str(c))
+        ]
     identity = _levels_identity_payload(state)
     return _finalize_summary(
         {

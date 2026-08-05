@@ -203,10 +203,24 @@ This engine is for **research screening**, not proof of a durable edge.
 - `compute_all_levels(..., single_prints_enabled=True, apoc_enabled=True)` produces all six independent columns: four Single Print columns plus `APOC` and `pAPOC`.
 - Known limitations: not true volume-at-price (bar-level approximation), not full-session POC, not Single Print-derived, approximation matches `profile.py` MVP.
 
-### 5e) Stage 6 UI and Persistence — opt-in level controls (Levels page)
+### 5e) Previous 30m VWAP (`prev30mVWAP`) is opt-in (Phase 1)
 
-- The Levels page (`pages/5_Levels.py`) exposes an **"Advanced opt-in levels"** expander below the existing profile settings.
-- Inside the expander: checkboxes for confirmed pivots, developing RTH VWAP, TPO 30m Single Prints, and APOC / pAPOC; all default `True` in the built-in Levels page configuration.
+- The Levels page and headless API enable `prev30mVWAP` in their built-in configuration. Direct `compute_all_levels` calls retain `prev30m_vwap_enabled=False` by default.
+- Bracket clock is **session-open** (`eth_start`), not RTH open. ETH and RTH bars both contribute and emit.
+- Formula is bar typical-price VWAP (`(H+L+C)/3`), not tick VWAP.
+- Freeze completes on clock (`timestamp >= bracket_end`) or on **true session transition** (CME halt). Mid-session dataframe truncation does **not** finalize open brackets.
+- TTL: `prev30m_vwap_validity_periods` (integer ≥ 1, default 1); replace-on-new-freeze.
+- Prior-session last freeze seeds the next session open.
+- Companion diagnostics `prev30mVWAP_hit_m1` / `prev30mVWAP_hit_m5` are **not** setup-selectable or auto-plotted price levels. They stay `NaN` until each early window completes (no rewrite of in-window rows). Each diagnostic requires its window `W` to be an integer multiple of the inferred base interval. `validate_setup_config` rejects them in `selected_levels` / anchor rules; assistant levels summaries omit them from `level_columns`.
+- `prev30m_vwap_validity_periods` accepts integer-compatible values (including `numpy.int64`) and coerces to `int`, matching `validate_run_spec`.
+- Missing/empty `eth_start` fails closed with `ValueError` when enabled. Bracket open preserves `eth_start` seconds/microseconds.
+- Enabled compute fails closed on NaT timestamps after exchange-timezone conversion.
+- `prev30m_vwap_enabled=False` is a true no-op: no validation, no new columns.
+
+### 5f) Stage 6 UI and Persistence — opt-in level controls (Levels page)
+
+- The Levels page (`pages/2_Levels.py`) exposes an **"Advanced opt-in levels"** expander below the existing profile settings.
+- Inside the expander: checkboxes for confirmed pivots, developing RTH VWAP, TPO 30m Single Prints, APOC / pAPOC, and previous 30m VWAP; all default `True` in the built-in Levels page configuration.
 - `thesistester/levels/defaults.py` also sets the shared headless API defaults: 15-minute opening range; SMA 50/200 and EMA 9/21 on `1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min`; 70% value area; and prior day/week/month profile aggregation of 4/8/10 ticks.
 - When pivots are enabled, pivot timeframes (multiselect), pivot left, and pivot right number inputs are shown.
 - `session_vwap_anchor` is fixed to `"RTH"` for Stage 6; no new anchors are exposed.
@@ -214,8 +228,8 @@ This engine is for **research screening**, not proof of a durable edge.
 - APOC / pAPOC remain independent from Single Prints; APOC is not routed through `compute_tpo_levels`.
 - `_normalize_levels_settings` retains disabled defaults for missing Stage 6 keys so old saved snapshots remain compatible without changing their historical calculation contract.
 - `pivot_timeframes` is sorted deterministically in normalization (same treatment as `sma_timeframes`, `ema_timeframes`, `vwap_windows`, `poc_windows`).
-- `_sync_levels_widget_state` restores all four new controls when a saved snapshot is loaded. Old snapshots missing Stage 6 keys load safely and default those controls to disabled.
-- Saved level snapshot labels optionally append a compact `Opt-in: pivots,dVWAP,SP,APOC` suffix when one or more opt-in families are enabled.
+- `_sync_levels_widget_state` restores opt-in controls (including `prev30mVWAP`) when a saved snapshot is loaded. Old snapshots missing newer keys load safely and default those controls to disabled.
+- Saved level snapshot labels optionally append a compact `Opt-in: pivots,dVWAP,SP,APOC,prev30mVWAP` suffix when one or more opt-in families are enabled.
 
 ## 6) Point-in-time correctness (R3 audit)
 

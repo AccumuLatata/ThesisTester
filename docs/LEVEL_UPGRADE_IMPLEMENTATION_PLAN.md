@@ -648,9 +648,9 @@ not Single Print levels.  They are independent of `tpo.py`.
 
 ---
 
-## Stage 8 — `prev30mVWAP` (planned)
+## Stage 8 — `prev30mVWAP` (Phase 1 implemented)
 
-**Status:** Spec only. Full regression-safe plan:
+**Status:** Phase 1 level engine implemented. Full regression-safe plan:
 
 ```text
 docs/PREV30M_VWAP_IMPLEMENTATION_PLAN.md
