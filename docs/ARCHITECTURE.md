@@ -396,10 +396,11 @@ The Research Assistant page stages only these additive `assistant_*` keys
 | `assistant_bundle_handoff` | Last hash-verified restore into research pages |
 | `assistant_flash` | One-shot `{level, message}` UI notice consumed after `st.rerun()` |
 
-Proposed realtime voice review (VA-series) must add only namespaced
-`assistant_voice_*` keys in the same PR that introduces them; see
-`docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Until that series lands, no voice
-session keys exist and the Research Assistant remains text-only.
+Proposed realtime voice review (VA-series; post-RQ rebase) must add only
+namespaced `assistant_voice_*` keys in the same PR that introduces them; see
+`docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Voice is a spoken transport over
+shipped Discuss/Help channels, not a parallel reply stack. Until that series
+lands, no voice session keys exist and the Research Assistant remains text-only.
 
 Multi-turn results discussion and product help (RQ-series) add only documented
 additive `assistant_*` keys and conversation message tags

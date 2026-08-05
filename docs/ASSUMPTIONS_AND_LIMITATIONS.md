@@ -523,21 +523,25 @@ other than the last bar in the dataset.
   evidence/export). They are audited by `audit_capability_registry()`.
 
 ## Voice agent (VA-series — proposed, not shipped)
-- Realtime voice review of completed runs is specified in
-  `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (single VA-series contract for
-  **voice**). Text results Q&A / product help are owned by
-  `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ); VA-1 text substrate is
-  implemented by RQ-1. Voice (VA-2+) is not implemented yet.
-- When shipped, voice will be opt-in (`assistant.voice.enabled = false` by
-  default), bind only to hash-verified evidence packets, and expose read-only
-  tools. It must not dispatch compute, mutate RunSpecs, or invent metrics.
-- Spoken numeric claims inherit the C2-6 grounding contract via transcript /
-  tool-result audit; provider failure must fall back to deterministic explain
-  and text results Q&A.
+- Spoken review of completed runs / product help is specified in
+  `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (single VA-series contract;
+  post-RQ rebase). Text Discuss / Help remain owned by
+  `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`. VA-1 text substrate is RQ-1;
+  voice runtime (VA-0 / VA-2…VA-6) is not implemented yet.
+- Product shape: voice is a spoken transport over the same RQ channels
+  (Discuss results + Help), not a second evidence dialect. It must omit draft
+  `choices`, must not dispatch compute, and must fail closed on ungrounded
+  numbers.
+- When shipped, voice is opt-in (`assistant.voice.enabled = false` by
+  default). Results sessions bind hash-verified evidence; Help sessions reuse
+  the §7.1 corpus path. Provider failure falls back to deterministic Explain
+  and typed Discuss/Help.
 - Planned provider: xAI Grok Voice pinned to `grok-voice-think-fast-2.0` with
-  server-side `XAI_API_KEY`. Push-to-talk uses unary STT/TTS; realtime mode
-  uses a localhost sidecar that owns the xAI WebSocket (browser never holds
-  the long-lived key). Raw audio is not stored by default.
+  server-side `XAI_API_KEY` for STT/TTS/realtime. Primary push-to-talk channel
+  turns still use the OpenAI structured client via `handle_results_turn` /
+  `handle_help_turn`. Realtime mode uses a localhost sidecar that owns the
+  xAI WebSocket (browser never holds the long-lived key). Raw audio is not
+  stored by default.
 
 ## OTF filter (One Timeframing)
 

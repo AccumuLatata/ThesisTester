@@ -281,15 +281,17 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   `handle_help_turn`, Help / how it works UI, corpus retrieval wiring, and
   `assistant_product_help_draft` — never load `AGENT_GUIDE` into Help.
 - Realtime voice review (VA-series) has a **single** contract for **voice**:
-  `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Do not add parallel voice
-  roadmap/reassessment docs. Implement only the active VA PR’s **Files
-  allowed to touch** list; keep `assistant.voice.enabled` default false;
-  never expose compute/`web_search`/`x_search`/`file_search`/`mcp` tools on
-  voice sessions; results/voice may use RO `BUNDLE.import` but never
-  `execute_confirmed_run` / `PIPELINE.*`; reuse C2-6 grounding token rules;
-  results/voice messages must not include `choices` (draft hydration hazard).
-  Document any new `assistant_voice_*` keys in `ARCHITECTURE.md` and
-  `ASSISTANT_SESSION_KEYS` in the same PR.
+  `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (rewritten post-RQ; do not add
+  a parallel voice plan). VA-1 is already satisfied by RQ-1 — start from VA-0 /
+  VA-2+. Implement only the active VA PR’s **Files allowed to touch** list;
+  keep `assistant.voice.enabled` default false; prefer calling shipped
+  `handle_results_turn` / `handle_help_turn` for spoken Discuss/Help rather
+  than forking channel logic; never expose compute/`web_search`/`x_search`/
+  `file_search`/`mcp` tools on voice sessions; results/voice may use RO
+  `BUNDLE.import` but never `execute_confirmed_run` / `PIPELINE.*`; reuse
+  C2-6/RQ grounding token rules; results/help/voice messages must not include
+  `choices`. Document any new `assistant_voice_*` keys in `ARCHITECTURE.md`
+  and `ASSISTANT_SESSION_KEYS` in the same PR.
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned
