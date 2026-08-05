@@ -66,6 +66,13 @@ def test_is_run_performance_question_detects_personal_run_metrics():
         "What was my expectancy metric on this run?"
     )
     assert is_run_performance_question("What were my results on this run?")
+    # Incidental compute/define vocabulary must not block strong run asks.
+    assert is_run_performance_question(
+        "What was my calculated expectancy on this run?"
+    )
+    assert is_run_performance_question(
+        "What were my defined win rate numbers on this run?"
+    )
 
 
 def test_remediation_help_reply_has_no_numbers_or_choices():

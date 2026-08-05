@@ -65,6 +65,7 @@ _SYSTEM_PROMPT = (
 # ("How is my expectancy computed?", "What does this performance metric mean?").
 # Only definition/computation collocates — not bare "docs"/"metric", which
 # would suppress legitimate run-performance asks that mention those words.
+# Applied only when no strong run-performance anchor is present (see below).
 _DOC_DEFINITION_ESCAPE = re.compile(
     r"(?:"
     r"\b(?:comput(?:e|ed|ing|ation)|calculat(?:e|ed|ing|ion)|"
@@ -75,10 +76,28 @@ _DOC_DEFINITION_ESCAPE = re.compile(
     re.IGNORECASE,
 )
 
+# Past-tense / run-anchored asks win over incidental compute/define vocabulary
+# ("What was my calculated expectancy on this run?").
+_STRONG_RUN_PERF_ANCHOR = re.compile(
+    r"(?:"
+    r"\bwhat\s+(?:was|were)\s+my\b|"
+    r"\bhow\s+did\s+(?:this|my|that)\s+run\b|"
+    r"\b(?:on|in|for|from)\s+(?:this|my|that)\s+run\b|"
+    r"\bperformance\s+of\s+(?:this|my|that)\s+run\b|"
+    r"\b(?:this|my|that)\s+(?:completed\s+)?run(?:'?s)?\s+"
+    r")",
+    re.IGNORECASE,
+)
+
+# Optional adjectives between possessive and metric ("my calculated expectancy").
+_METRIC_MODIFIERS = (
+    r"(?:(?:best|worst|calculated|computed|defined|overall|final|latest|net)\s+)*"
+)
+
 _RUN_PERF_PATTERNS = (
     # Concrete personal metrics (definition escape still applies above).
     re.compile(
-        r"\b(my|this|that|our)\s+(best\s+|worst\s+)?"
+        rf"\b(my|this|that|our)\s+{_METRIC_MODIFIERS}"
         r"(sl|tp|stop(\s+loss)?|take[\s-]?profit|expectancy|win[\s-]?rate|"
         r"drawdown|pnl|cell)\b",
         re.IGNORECASE,
@@ -96,7 +115,7 @@ _RUN_PERF_PATTERNS = (
         re.IGNORECASE,
     ),
     re.compile(
-        r"\bwhat\s+(?:was|were)\s+my\s+(best\s+|worst\s+)?"
+        rf"\bwhat\s+(?:was|were)\s+my\s+{_METRIC_MODIFIERS}"
         r"(sl|tp|stop(\s+loss)?|take[\s-]?profit|expectancy|win[\s-]?rate|"
         r"drawdown|pnl|trades?|results?|performance|cell)\b",
         re.IGNORECASE,
@@ -172,10 +191,15 @@ def is_run_performance_question(message: str) -> bool:
     if not isinstance(message, str) or not message.strip():
         return False
     text = message.strip()
-    # Docs / definition asks about metric nouns stay in Help (not Discuss results).
-    if _DOC_DEFINITION_ESCAPE.search(text):
+    if not any(pattern.search(text) for pattern in _RUN_PERF_PATTERNS):
         return False
-    return any(pattern.search(text) for pattern in _RUN_PERF_PATTERNS)
+    # Definition/computation wording stays in Help unless a strong run-performance
+    # anchor is also present (past-tense my-metrics or explicit run phrasing).
+    if _DOC_DEFINITION_ESCAPE.search(text) and not _STRONG_RUN_PERF_ANCHOR.search(
+        text
+    ):
+        return False
+    return True
 
 
 def remediation_help_reply() -> HelpReply:
