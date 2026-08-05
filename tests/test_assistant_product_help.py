@@ -49,30 +49,18 @@ def test_is_run_performance_question_detects_personal_run_metrics():
     assert not is_run_performance_question("what was my setup trigger option called?")
     # Definition / docs asks about metric nouns must not remediate to Discuss results.
     assert not is_run_performance_question("How is my expectancy computed?")
-    assert not is_run_performance_question(
-        "What does this performance metric mean?"
-    )
-    assert not is_run_performance_question(
-        "How is expectancy_r calculated in the docs?"
-    )
+    assert not is_run_performance_question("What does this performance metric mean?")
+    assert not is_run_performance_question("How is expectancy_r calculated in the docs?")
     # Export / workflow asks using vague "results"/"performance" nouns stay in Help.
     assert not is_run_performance_question("Where do I export my results?")
-    assert not is_run_performance_question(
-        "How do I find my performance reports in Classic?"
-    )
+    assert not is_run_performance_question("How do I find my performance reports in Classic?")
     assert not is_run_performance_question("Where are my trades stored?")
     # Mentions of "docs"/"metric" must not suppress true run-performance asks.
-    assert is_run_performance_question(
-        "What was my expectancy metric on this run?"
-    )
+    assert is_run_performance_question("What was my expectancy metric on this run?")
     assert is_run_performance_question("What were my results on this run?")
     # Incidental compute/define vocabulary must not block strong run asks.
-    assert is_run_performance_question(
-        "What was my calculated expectancy on this run?"
-    )
-    assert is_run_performance_question(
-        "What were my defined win rate numbers on this run?"
-    )
+    assert is_run_performance_question("What was my calculated expectancy on this run?")
+    assert is_run_performance_question("What were my defined win rate numbers on this run?")
 
 
 def test_remediation_help_reply_has_no_numbers_or_choices():
