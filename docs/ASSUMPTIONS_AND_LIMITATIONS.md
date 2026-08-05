@@ -308,6 +308,10 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   Asia extremes are excluded from the London aggregate. Empty London window strings
   disable the level (all-NaN); equal `london_start`/`london_end` fails closed with
   `ValueError`.
+- `pRTH_High`/`pRTH_Low` follow the immediately prior *observed* session (same
+  `shift(1)` chain as `pRTH_Open`). If that prior session has no RTH bars, values
+  are NaN even when an older session had RTH. They are RTH-only and therefore
+  generally differ from full-session `pdHigh`/`pdLow`.
 - Rolling VWAP/POC/SMA/EMA at bar `i` include bar `i` close/volume. Signals treated
   as bar-close confirmed; this is documented intent, not a bug.
 - `dOpen/wOpen/mOpen` are current-period (live) opens, not prior-period references.

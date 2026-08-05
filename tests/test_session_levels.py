@@ -835,6 +835,28 @@ def test_prth_high_low_are_rth_only_and_differ_from_pd_high_low():
     assert not np.allclose(next_session["pRTH_Low"], next_session["pdLow"])
 
 
+def test_prth_high_low_nan_mask_matches_prth_open():
+    """pRTH_High/Low availability must stay identical to pRTH_Open (same RTH prior)."""
+    df = _build_df(
+        [
+            ("2026-06-01 18:00:00", 100.0, 110.0, 100.0, 105.0),  # ETH-only prior → NaN pRTH*
+            ("2026-06-02 08:00:00", 101.0, 120.0, 95.0, 110.0),
+            ("2026-06-02 18:00:00", 200.0, 205.0, 199.0, 201.0),
+            ("2026-06-03 09:30:00", 210.0, 212.0, 208.0, 211.0),
+            ("2026-06-03 15:59:00", 211.0, 220.0, 207.0, 215.0),
+            ("2026-06-03 18:00:00", 300.0, 301.0, 299.0, 300.0),
+            ("2026-06-04 09:30:00", 310.0, 320.0, 305.0, 315.0),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+    pd.testing.assert_series_equal(
+        levels["pRTH_High"].isna(), levels["pRTH_Open"].isna(), check_names=False
+    )
+    pd.testing.assert_series_equal(
+        levels["pRTH_Low"].isna(), levels["pRTH_Open"].isna(), check_names=False
+    )
+
+
 def test_prth_high_low_future_shock_after_next_session_does_not_change_prior():
     base_rows = [
         ("2026-06-02 09:30:00", 110.0, 120.0, 109.0, 115.0),

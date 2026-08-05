@@ -140,10 +140,18 @@ def test_prth_high_low_future_shock():
 def test_prth_high_low_available_from_next_session_eth_open():
     """pRTH_High/Low are visible from the first bar of the next session (ungated)."""
     bars = [
-        _ohlcv_bar(pd.Timestamp("2026-06-02 09:30:00", tz=TZ), 4000.0, 4050.0, 3990.0, 4020.0, 100.0),
-        _ohlcv_bar(pd.Timestamp("2026-06-02 15:59:00", tz=TZ), 4020.0, 4060.0, 3980.0, 4030.0, 90.0),
-        _ohlcv_bar(pd.Timestamp("2026-06-02 18:00:00", tz=TZ), 4100.0, 4110.0, 4090.0, 4105.0, 50.0),
-        _ohlcv_bar(pd.Timestamp("2026-06-03 09:30:00", tz=TZ), 4120.0, 4130.0, 4115.0, 4125.0, 80.0),
+        _ohlcv_bar(
+            pd.Timestamp("2026-06-02 09:30:00", tz=TZ), 4000.0, 4050.0, 3990.0, 4020.0, 100.0
+        ),
+        _ohlcv_bar(
+            pd.Timestamp("2026-06-02 15:59:00", tz=TZ), 4020.0, 4060.0, 3980.0, 4030.0, 90.0
+        ),
+        _ohlcv_bar(
+            pd.Timestamp("2026-06-02 18:00:00", tz=TZ), 4100.0, 4110.0, 4090.0, 4105.0, 50.0
+        ),
+        _ohlcv_bar(
+            pd.Timestamp("2026-06-03 09:30:00", tz=TZ), 4120.0, 4130.0, 4115.0, 4125.0, 80.0
+        ),
     ]
     result = compute_session_levels(tag_session(_build_df(bars)), instrument="ES")
 
