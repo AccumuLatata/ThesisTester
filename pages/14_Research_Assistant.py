@@ -1478,37 +1478,27 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                         ]
                         for message in results_thread:
                             role = str(message.get("role") or "").strip().lower()
-                            display = (
-                                "user" if role in {"user", "human"} else "assistant"
-                            )
+                            display = "user" if role in {"user", "human"} else "assistant"
                             body = str(message.get("content") or "").strip()
                             if not body:
                                 continue
                             with st.chat_message(display):
                                 st.write(body)
                         input_key = f"results-qa-input-{run.run_id}"
-                        drafts = st.session_state.setdefault(
-                            "assistant_results_qa_drafts", {}
-                        )
+                        drafts = st.session_state.setdefault("assistant_results_qa_drafts", {})
                         if input_key not in st.session_state:
-                            st.session_state[input_key] = str(
-                                drafts.get(run.run_id, "")
-                            )
+                            st.session_state[input_key] = str(drafts.get(run.run_id, ""))
                         st.text_input(
                             "Ask about this run",
                             key=input_key,
                             placeholder="e.g. What was expectancy? Best SL/TP?",
                         )
-                        drafts[run.run_id] = str(
-                            st.session_state.get(input_key, "")
-                        )
+                        drafts[run.run_id] = str(st.session_state.get(input_key, ""))
                         if st.button(
                             "Send results question",
                             key=f"results-qa-send-{run.run_id}",
                         ):
-                            question = str(
-                                st.session_state.get(input_key, "")
-                            ).strip()
+                            question = str(st.session_state.get(input_key, "")).strip()
                             if not question:
                                 st.error("Enter a question about this run.")
                             else:
@@ -1545,9 +1535,7 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                                     LLMEvidenceError,
                                     ValueError,
                                 ) as exc:
-                                    st.error(
-                                        f"Unable to discuss results: {exc}"
-                                    )
+                                    st.error(f"Unable to discuss results: {exc}")
                     if st.button("Render markdown report", key=f"report-{run.run_id}"):
                         result = orchestrator.export_run(
                             thesis_id=thesis_id,

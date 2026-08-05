@@ -137,9 +137,7 @@ def test_filter_results_qa_history_by_channel_and_run_id():
             "run_id": "run_a",
         },
     ]
-    trimmed = filter_results_qa_history(
-        messages, run_id="run_a", max_history_messages=2
-    )
+    trimmed = filter_results_qa_history(messages, run_id="run_a", max_history_messages=2)
     assert [item["content"] for item in trimmed] == ["a1", "r1-new"]
 
 
@@ -171,9 +169,7 @@ def test_propose_results_reply_accepts_cited_expectancy_and_best_sl_tp():
     class Client:
         def complete_structured(self, **kwargs):
             return {
-                "summary": (
-                    "Expectancy R is 0.25. Best grid cell used stop 8 and take profit 16."
-                ),
+                "summary": ("Expectancy R is 0.25. Best grid cell used stop 8 and take profit 16."),
                 "caveats": ["In-sample grid selection only."],
                 "claims": [
                     {
@@ -252,9 +248,7 @@ def test_handle_results_turn_persists_without_choices_and_allows_bundle_import(
     assert result.capability_id == RESULTS_QA_CHANNEL
     execute.assert_not_called()
     dispatch.assert_not_called()  # explain_run mocked; no PIPELINE dispatch
-    messages = repository.get_conversation(
-        thesis.thesis_id, conversation.conversation_id
-    ).messages
+    messages = repository.get_conversation(thesis.thesis_id, conversation.conversation_id).messages
     assert messages[-2]["channel"] == RESULTS_QA_CHANNEL
     assert messages[-2]["run_id"] == run.run_id
     assert messages[-1]["channel"] == RESULTS_QA_CHANNEL
@@ -262,9 +256,7 @@ def test_handle_results_turn_persists_without_choices_and_allows_bundle_import(
     assert "42" in messages[-1]["content"]
 
 
-def test_handle_results_turn_hash_mismatch_fails_closed_without_persist(
-    tmp_path, monkeypatch
-):
+def test_handle_results_turn_hash_mismatch_fails_closed_without_persist(tmp_path, monkeypatch):
     repository = LocalThesisRepository(tmp_path / "assistant")
     thesis, conversation, run = _seed_completed_run(repository)
     orchestrator = AssistantOrchestrator(
@@ -295,9 +287,7 @@ def test_handle_results_turn_hash_mismatch_fails_closed_without_persist(
             raise AssertionError("LLM must not run after hash mismatch")
 
     before = len(
-        repository.get_conversation(
-            thesis.thesis_id, conversation.conversation_id
-        ).messages
+        repository.get_conversation(thesis.thesis_id, conversation.conversation_id).messages
     )
     result = orchestrator.handle_results_turn(
         Client(),
@@ -308,9 +298,7 @@ def test_handle_results_turn_hash_mismatch_fails_closed_without_persist(
     )
     assert result.status == "failed"
     assert "does not match" in result.payload["error"]["message"]
-    after = repository.get_conversation(
-        thesis.thesis_id, conversation.conversation_id
-    ).messages
+    after = repository.get_conversation(thesis.thesis_id, conversation.conversation_id).messages
     assert len(after) == before
 
 
@@ -337,9 +325,7 @@ def test_handle_results_turn_missing_run_raises(tmp_path):
         )
 
 
-def test_handle_chat_turn_excludes_results_channel_from_draft_history(
-    tmp_path, monkeypatch
-):
+def test_handle_chat_turn_excludes_results_channel_from_draft_history(tmp_path, monkeypatch):
     repository = LocalThesisRepository(tmp_path / "assistant")
     thesis = repository.create_thesis(name="Isolation")
     conversation = repository.create_conversation(thesis.thesis_id)

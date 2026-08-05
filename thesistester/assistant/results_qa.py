@@ -157,9 +157,7 @@ def propose_results_reply(
         raise LLMEvidenceError("Results Q&A reply has invalid field types.")
     if any(not isinstance(caveat, str) or not caveat.strip() for caveat in caveats):
         raise LLMEvidenceError("Results Q&A caveats must be non-empty strings.")
-    if any(
-        not isinstance(followup, str) or not followup.strip() for followup in followups_raw
-    ):
+    if any(not isinstance(followup, str) or not followup.strip() for followup in followups_raw):
         raise LLMEvidenceError("Results Q&A followups must be non-empty strings.")
     claims: list[EvidenceClaim] = []
     for item in claims_raw:

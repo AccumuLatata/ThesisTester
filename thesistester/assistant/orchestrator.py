@@ -358,13 +358,9 @@ class AssistantOrchestrator:
         if not isinstance(max_history_messages, int) or max_history_messages < 0:
             raise ValueError("max_history_messages must be a non-negative integer.")
         draft_messages = [
-            message
-            for message in conversation.messages
-            if is_draft_channel_message(message)
+            message for message in conversation.messages if is_draft_channel_message(message)
         ]
-        history_messages = (
-            draft_messages[-max_history_messages:] if max_history_messages else ()
-        )
+        history_messages = draft_messages[-max_history_messages:] if max_history_messages else ()
         history = "\n".join(json.dumps(message, sort_keys=True) for message in history_messages)
         prompt = f"{history}\nuser: {user_message}" if history else user_message
         draft = propose_thesis_draft(client, prompt=prompt)
@@ -419,9 +415,7 @@ class AssistantOrchestrator:
         packet = evidence_packet_from_payload(evidence.payload)
         conversation = None
         if isinstance(conversation_id, str) and conversation_id.strip():
-            conversation = self.repository.get_conversation(
-                thesis_id, conversation_id.strip()
-            )
+            conversation = self.repository.get_conversation(thesis_id, conversation_id.strip())
             history = filter_results_qa_history(
                 conversation.messages,
                 run_id=run.run_id,
