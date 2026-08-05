@@ -948,6 +948,8 @@ def test_clear_thesis_scoped_state_helper():
         "assistant_draft_choices": {"a": 1},
         "assistant_hydrated_conversation_id": "c",
         "assistant_validated_run_spec": {"spec": {}},
+        "assistant_results_qa_drafts": {"run_a": "leaked question"},
+        "results-qa-input-run_a": "leaked question",
         "assistant_bundle_handoff": {"thesis_id": "th_a", "run_id": "r1"},
         "assistant_run_explanations": {"r1": "keep"},
     }
@@ -956,6 +958,8 @@ def test_clear_thesis_scoped_state_helper():
     assert state["assistant_draft_choices"] == {}
     assert state["assistant_hydrated_conversation_id"] is None
     assert state["assistant_validated_run_spec"] is None
+    assert state["assistant_results_qa_drafts"] == {}
+    assert "results-qa-input-run_a" not in state
     assert state["assistant_bundle_handoff"] is None
     assert state["assistant_run_explanations"] == {"r1": "keep"}
 

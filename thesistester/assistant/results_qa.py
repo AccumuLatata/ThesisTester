@@ -71,8 +71,17 @@ class ResultsQAReply:
 
 
 def format_results_qa_reply_content(reply: ResultsQAReply) -> str:
-    """Build persisted assistant ``content`` for a results Q&A turn."""
+    """Build persisted assistant ``content`` for a results Q&A turn.
+
+    Includes path-cited claims so Discuss results threads remain auditable in
+    plain ``content`` (not only in structured message fields).
+    """
     lines = [reply.summary.strip()]
+    if reply.claims:
+        lines.append("")
+        lines.append("Claims:")
+        for claim in reply.claims:
+            lines.append(f"- `{claim.path}` = {claim.value} — {claim.text}")
     if reply.caveats:
         lines.append("")
         lines.append("Caveats:")

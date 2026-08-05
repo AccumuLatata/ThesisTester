@@ -413,7 +413,15 @@ Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_draft_choices`, `assistant_hydrated_conversation_id`,
 `assistant_validated_run_spec`, `assistant_results_qa_drafts`,
 `assistant_bundle_handoff`, `assistant_flash`) so
-draft/validation/hydration/handoff/flash/results-drafts cannot leak. The Active handoff caption is
+draft/validation/hydration/handoff/flash/results-drafts cannot leak.
+`clear_thesis_scoped_state` also deletes ephemeral Streamlit widget keys
+prefixed `results-qa-input-` so Discuss results text-input hydration cannot
+revive a cleared draft after a thesis switch. Discuss results assistant
+`content` embeds path-cited Claims (via `format_results_qa_reply_content`) for
+plain-text auditability. `handle_chat_turn` draft history excludes
+channel-tagged messages and channel-less `role: tool` audit lines so RO
+evidence loads cannot evict thesis user/assistant turns from the trimmed
+prompt. The Active handoff caption is
 further gated by `active_bundle_handoff()` so a stale handoff never displays for
 a different thesis.
 Apply/Draft/Validate/Cancel/Confirm/Run and Compare/Portfolio outcome notices

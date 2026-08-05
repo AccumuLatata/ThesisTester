@@ -1483,6 +1483,8 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                             if not body:
                                 continue
                             with st.chat_message(display):
+                                # Path-cited claims are embedded in persisted
+                                # content via format_results_qa_reply_content.
                                 st.write(body)
                         input_key = f"results-qa-input-{run.run_id}"
                         drafts = st.session_state.setdefault("assistant_results_qa_drafts", {})

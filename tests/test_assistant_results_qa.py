@@ -197,7 +197,12 @@ def test_propose_results_reply_accepts_cited_expectancy_and_best_sl_tp():
     assert reply.claims[0].value == 0.25
     assert reply.claims[1].value == 8
     assert reply.claims[2].value == 16
-    assert "Follow-ups:" in format_results_qa_reply_content(reply)
+    formatted = format_results_qa_reply_content(reply)
+    assert "Follow-ups:" in formatted
+    assert "Claims:" in formatted
+    assert "`results.trade_summary.expectancy_r` = 0.25" in formatted
+    assert "`results.best_grid_result.stop_loss_ticks` = 8" in formatted
+    assert "`results.best_grid_result.take_profit_ticks` = 16" in formatted
 
 
 def test_handle_results_turn_persists_without_choices_and_allows_bundle_import(
@@ -372,6 +377,53 @@ def test_handle_chat_turn_excludes_results_channel_from_draft_history(tmp_path, 
     assert "draft-seed" in captured["user"]
     assert "results-leak" not in captured["user"]
     execute.assert_not_called()
+
+
+def test_handle_chat_turn_excludes_tool_audits_from_draft_history(tmp_path, monkeypatch):
+    """RO evidence tool audits must not evict thesis draft turns from the window."""
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    thesis = repository.create_thesis(name="ToolIsolation")
+    conversation = repository.create_conversation(thesis.thesis_id)
+    conversation = repository.append_conversation_message(
+        thesis.thesis_id,
+        conversation.conversation_id,
+        expected_revision=conversation.revision,
+        message={"role": "user", "content": "keep-draft-context"},
+    )
+    for index in range(12):
+        conversation = repository.append_conversation_message(
+            thesis.thesis_id,
+            conversation.conversation_id,
+            expected_revision=conversation.revision,
+            message={
+                "role": "tool",
+                "content": f"completed BUNDLE.import audit-{index}.",
+            },
+        )
+    captured: dict[str, str] = {}
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            captured["user"] = kwargs["user"]
+            return {
+                "choices": [{"key": "dataset", "value": "bars.csv"}],
+                "clarifications": ["Need more controls."],
+            }
+
+    orchestrator = AssistantOrchestrator(
+        tools=AssistantTools(data_roots=(tmp_path,)),
+        repository=repository,
+    )
+    orchestrator.handle_chat_turn(
+        Client(),
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+        user_message="continue drafting",
+        max_history_messages=4,
+    )
+    assert "keep-draft-context" in captured["user"]
+    assert "BUNDLE.import" not in captured["user"]
+    assert "audit-" not in captured["user"]
 
 
 def test_results_history_trim_uses_channel_run_filter(tmp_path, monkeypatch):

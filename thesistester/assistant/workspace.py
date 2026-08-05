@@ -368,8 +368,14 @@ def clear_thesis_scoped_state(session_state: MutableMapping[str, Any]) -> None:
     session_state["assistant_draft_choices"] = {}
     session_state["assistant_hydrated_conversation_id"] = None
     session_state["assistant_validated_run_spec"] = None
+    session_state["assistant_results_qa_drafts"] = {}
     session_state["assistant_bundle_handoff"] = None
     session_state["assistant_flash"] = None
+    # Ephemeral Streamlit widget keys for Discuss results text inputs. If left
+    # behind, ``if key not in session_state`` hydration would revive cleared drafts.
+    for key in list(session_state.keys()):
+        if isinstance(key, str) and key.startswith("results-qa-input-"):
+            del session_state[key]
 
 
 def active_bundle_handoff(

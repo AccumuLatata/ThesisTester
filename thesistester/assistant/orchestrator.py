@@ -357,8 +357,16 @@ class AssistantOrchestrator:
         conversation = self.repository.get_conversation(thesis_id, conversation_id)
         if not isinstance(max_history_messages, int) or max_history_messages < 0:
             raise ValueError("max_history_messages must be a non-negative integer.")
+        # Draft history is user/assistant thesis turns only. Channel-tagged
+        # results/help messages are excluded; channel-less tool/audit lines are
+        # also excluded so RO evidence loads from Discuss results (and Explain)
+        # cannot evict prior draft turns from the trimmed prompt window.
         draft_messages = [
-            message for message in conversation.messages if is_draft_channel_message(message)
+            message
+            for message in conversation.messages
+            if is_draft_channel_message(message)
+            and str(message.get("role") or "").strip().lower()
+            in {"user", "human", "assistant", "ai"}
         ]
         history_messages = draft_messages[-max_history_messages:] if max_history_messages else ()
         history = "\n".join(json.dumps(message, sort_keys=True) for message in history_messages)
