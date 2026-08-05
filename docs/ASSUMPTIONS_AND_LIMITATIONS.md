@@ -226,7 +226,7 @@ This engine is for **research screening**, not proof of a durable edge.
 - APOC / pAPOC remain independent from Single Prints; APOC is not routed through `compute_tpo_levels`.
 - `_normalize_levels_settings` retains disabled defaults for missing Stage 6 keys so old saved snapshots remain compatible without changing their historical calculation contract.
 - `pivot_timeframes` is sorted deterministically in normalization (same treatment as `sma_timeframes`, `ema_timeframes`, `vwap_windows`, `poc_windows`).
-- `_sync_levels_widget_state` restores all four new controls when a saved snapshot is loaded. Old snapshots missing Stage 6 keys load safely and default those controls to disabled.
+- `_sync_levels_widget_state` restores opt-in controls (including `prev30mVWAP`) when a saved snapshot is loaded. Old snapshots missing newer keys load safely and default those controls to disabled.
 - Saved level snapshot labels optionally append a compact `Opt-in: pivots,dVWAP,SP,APOC` suffix when one or more opt-in families are enabled.
 
 ## 6) Point-in-time correctness (R3 audit)
