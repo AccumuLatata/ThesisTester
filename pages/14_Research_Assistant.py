@@ -56,9 +56,12 @@ from thesistester.assistant.workspace import (
     VWAP_WINDOW_OPTIONS,
     WFA_MATRIX_METRICS,
     WINDOW_MODES,
+    ASSISTANT_ADVANCED_EXPANDER_KEY,
     active_bundle_handoff,
     apply_consumed_classic_focus,
     build_confluence_level_options,
+    force_results_qa_expanders_open,
+    linked_run_expander_key,
     build_plan_review,
     build_provenance_card,
     chat_message_display_role,
@@ -139,17 +142,26 @@ st.caption(
     "Assistant draft → validate → confirm → run is under Advanced."
 )
 # Before the sidebar selectbox binds: if a classic Discuss deep-link is staged,
-# force the picker onto discuss_run's thesis so a stale widget value cannot
-# overwrite assistant_selected_thesis_id and burn the one-shot focus.
+# align Assistant onto the classic active thesis (then picker). Prefer classic
+# thesis over a stale assistant_selected_thesis_id so Record-and-discuss and
+# discuss_run both land under the linked classic thesis.
 _pending_focus_run = st.session_state.get("classic_focus_run_id")
-_pending_thesis = st.session_state.get("assistant_selected_thesis_id")
-if (
-    isinstance(_pending_focus_run, str)
-    and _pending_focus_run.strip()
-    and isinstance(_pending_thesis, str)
-    and _pending_thesis.strip()
-):
-    st.session_state["assistant_thesis_picker"] = _pending_thesis
+if isinstance(_pending_focus_run, str) and _pending_focus_run.strip():
+    _classic_thesis = st.session_state.get("classic_active_thesis_id")
+    _assistant_thesis = st.session_state.get("assistant_selected_thesis_id")
+    _target_thesis = (
+        _classic_thesis.strip()
+        if isinstance(_classic_thesis, str) and _classic_thesis.strip()
+        else (
+            _assistant_thesis.strip()
+            if isinstance(_assistant_thesis, str) and _assistant_thesis.strip()
+            else None
+        )
+    )
+    if _target_thesis is not None:
+        if st.session_state.get("assistant_selected_thesis_id") != _target_thesis:
+            select_thesis(st.session_state, _target_thesis)
+        st.session_state["assistant_thesis_picker"] = _target_thesis
 with st.sidebar:
     st.subheader("Theses")
     new_name = st.text_input("New thesis name", key="assistant_new_thesis_name")
@@ -205,6 +217,12 @@ expand_results_qa_focus, expand_focus_run_id = apply_consumed_classic_focus(
     st.session_state,
     run_id=focus_run_id if isinstance(focus_run_id, str) else None,
     channel=focus_channel if isinstance(focus_channel, str) else None,
+)
+# Keyed expanders (Streamlit >= 1.55): force-open once on fresh results_qa
+# consume so a previously collapsed Advanced cannot hide Discuss results.
+force_results_qa_expanders_open(
+    st.session_state,
+    run_id=expand_focus_run_id,
 )
 
 handoff = active_bundle_handoff(st.session_state, thesis_id=thesis_id)
@@ -429,6 +447,8 @@ if help_settings.enabled:
 with st.expander(
     "Advanced: draft, runs & compare",
     expanded=expand_results_qa_focus,
+    key=ASSISTANT_ADVANCED_EXPANDER_KEY,
+    on_change="rerun",
 ):
     st.caption(
         "Optional Assistant path. Classic pages remain primary via normal navigation. "
@@ -1365,7 +1385,12 @@ with st.expander(
             kind = ledger_run_label(run)
             title = f"Run {run.run_id[-8:]} · {run.status} · {kind}"
             run_focus_expanded = bool(expand_results_qa_focus and expand_focus_run_id == run.run_id)
-            with st.expander(title, expanded=run_focus_expanded):
+            with st.expander(
+                title,
+                expanded=run_focus_expanded,
+                key=linked_run_expander_key(run.run_id),
+                on_change="rerun",
+            ):
                 if is_classic_ledger_run(run):
                     st.caption(
                         "Classic execution ledger attempt (opt-in all_executions). "

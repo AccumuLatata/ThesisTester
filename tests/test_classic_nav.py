@@ -17,6 +17,7 @@ from thesistester.classic_context import (
 )
 from thesistester.classic_nav import (
     CLASSIC_FOCUS_CHANNEL_RESULTS_QA,
+    align_assistant_thesis_for_discuss,
     clarification_target_page,
     consume_classic_focus,
     consume_classic_focus_run,
@@ -396,6 +397,16 @@ def test_pages_wire_discuss_and_open_exact():
             elif isinstance(func, ast.Attribute) and func.attr in forbidden:
                 found.add(func.attr)
     assert found == set()
+
+
+def test_align_assistant_thesis_for_discuss_syncs_picker():
+    state: dict = {
+        "assistant_selected_thesis_id": "th_stale",
+        "assistant_thesis_picker": "th_stale",
+    }
+    align_assistant_thesis_for_discuss(state, thesis_id="th_classic")
+    assert state["assistant_selected_thesis_id"] == "th_classic"
+    assert state["assistant_thesis_picker"] == "th_classic"
 
 
 def test_rq4_classic_focus_pair_shape_and_atomic_clear():

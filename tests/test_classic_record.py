@@ -816,6 +816,9 @@ def test_pages_wire_record_and_discuss():
     context = (root / "thesistester" / "classic_context.py").read_text(encoding="utf-8")
     assert "register_external_bundle_run" not in context
     assert "record_classic_session_run" not in context
+    record_src = (root / "thesistester" / "classic_record.py").read_text(encoding="utf-8")
+    assert "align_assistant_thesis_for_discuss" in record_src
+    assert "set_classic_focus_run" in record_src
 
 
 def test_registry_routes_register_external_run():

@@ -273,9 +273,11 @@ pages:
   `classic_focus_run_id` into a dict or invent any other focus-key namespace.
   Both focus keys clear together on consume and on thesis-scoped classic clear.
   After consume, `assistant_results_qa_deep_link` + `assistant_focused_run_id`
-  keep Advanced/run expanders open across reruns until thesis switch.
-  `discuss_run` syncs `assistant_thesis_picker` so the sidebar cannot land the
-  deep-link on a divergent thesis.
+  keep Advanced/run expanders open across reruns until thesis switch; a one-shot
+  `assistant_results_qa_force_expand` reopens keyed expanders if Advanced was
+  previously collapsed. `align_assistant_thesis_for_discuss` (Discuss + Record
+  and discuss) syncs thesis/`assistant_thesis_picker`; Assistant also prefers
+  `classic_active_thesis_id` when focus is still staged.
 - **Open exact / Restore bundle** (Assistant): hash-verified
   `restore_run_bundle_to_session` clears staged `classic_page_proposal`
   (restored widgets must not be overwritten by a prior draft). Open exact
@@ -390,6 +392,7 @@ The Research Assistant page stages only these additive `assistant_*` keys
 | `assistant_product_help_draft` | Help panel text-input draft string |
 | `assistant_focused_run_id` | Last classic-focused run id (RQ-4 deep-link / banner) |
 | `assistant_results_qa_deep_link` | Sticky Advanced → Linked-run expansion after `results_qa` focus |
+| `assistant_results_qa_force_expand` | One-shot force-open for keyed Advanced/run expanders |
 | `assistant_bundle_handoff` | Last hash-verified restore into research pages |
 | `assistant_flash` | One-shot `{level, message}` UI notice consumed after `st.rerun()` |
 

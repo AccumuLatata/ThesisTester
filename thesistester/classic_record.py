@@ -423,8 +423,15 @@ def render_record_and_discuss(
         short_hash = str(digest)[:12] if isinstance(digest, str) else "?"
         verb = "Reused existing" if idempotent else "Recorded"
         if isinstance(run_id, str) and run_id.strip():
-            from thesistester.classic_nav import set_classic_active_run, set_classic_focus_run
+            from thesistester.classic_nav import (
+                align_assistant_thesis_for_discuss,
+                set_classic_active_run,
+                set_classic_focus_run,
+            )
 
+            # Same thesis/picker sync as discuss_run — Record and discuss must
+            # not land focus under a divergent Assistant sidebar thesis.
+            align_assistant_thesis_for_discuss(state, thesis_id=thesis_id)
             set_classic_active_run(state, run_id=run_id, thesis_id=thesis_id)
             set_classic_focus_run(state, run_id)
         set_classic_flash(

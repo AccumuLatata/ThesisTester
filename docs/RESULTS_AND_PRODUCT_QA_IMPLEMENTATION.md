@@ -831,9 +831,12 @@ docs/ENGINEERING_ROADMAP.md
 - Sticky UI staging: `assistant_results_qa_deep_link` + `assistant_focused_run_id`
   keep Advanced/run expanders open across `st.rerun()` after the one-shot classic
   focus keys are consumed; thesis switch clears both.
-- `discuss_run` syncs `assistant_thesis_picker` (and Research Assistant re-aligns
-  the picker when classic focus is still staged) so a stale sidebar thesis cannot
-  burn the deep-link under the wrong thesis.
+- Fresh `results_qa` consume sets `assistant_results_qa_force_expand` once so
+  keyed Streamlit expanders (`ra-advanced-expander` / `ra-run-expander-*`) reopen
+  even if the user previously collapsed Advanced.
+- `align_assistant_thesis_for_discuss` (used by `discuss_run` and **Record and
+  discuss**) syncs thesis + `assistant_thesis_picker`; Research Assistant also
+  re-aligns from `classic_active_thesis_id` when classic focus is still staged.
 
 ---
 
