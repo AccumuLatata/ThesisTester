@@ -67,6 +67,24 @@ class LLMSettings:
     max_retries: int = 2
 
 
+@dataclass(frozen=True)
+class ResultsQASettings:
+    """Non-secret settings for the results discussion channel (RQ-series)."""
+
+    enabled: bool
+    max_history_messages: int
+    allow_time_enrichment: bool
+
+
+@dataclass(frozen=True)
+class ProductHelpSettings:
+    """Non-secret settings for the product/help channel (RQ-series)."""
+
+    enabled: bool
+    max_history_messages: int
+    max_corpus_chars: int
+
+
 @dataclass
 class OpenAIStructuredClient:
     """OpenAI Responses client restricted to JSON-schema output."""
@@ -150,10 +168,17 @@ def create_openai_client(
     )
 
 
-def load_llm_settings(path: str | Path = "config/assistant.toml") -> LLMSettings:
-    """Load non-secret assistant settings from tracked TOML."""
+def _load_assistant_toml(path: str | Path) -> dict[str, Any]:
     with Path(path).open("rb") as handle:
         payload = tomllib.load(handle)
+    if not isinstance(payload, dict):
+        raise LLMConfigurationError("Assistant configuration must be a TOML table.")
+    return payload
+
+
+def load_llm_settings(path: str | Path = "config/assistant.toml") -> LLMSettings:
+    """Load non-secret assistant settings from tracked TOML."""
+    payload = _load_assistant_toml(path)
     assistant = payload.get("assistant")
     if not isinstance(assistant, dict):
         raise LLMConfigurationError("Missing [assistant] configuration.")
@@ -164,6 +189,101 @@ def load_llm_settings(path: str | Path = "config/assistant.toml") -> LLMSettings
         max_history_messages=int(assistant.get("max_history_messages", 0)),
         max_retries=int(assistant.get("max_retries", 2)),
     )
+
+
+def _assistant_table(path: str | Path) -> dict[str, Any]:
+    payload = _load_assistant_toml(path)
+    assistant = payload.get("assistant")
+    if not isinstance(assistant, dict):
+        raise LLMConfigurationError("Missing [assistant] configuration.")
+    return assistant
+
+
+def _positive_int(value: Any, *, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _coerce_enabled_flag(value: Any, *, default: bool = False) -> bool:
+    """Parse channel enable flags fail-closed.
+
+    Accepts real booleans and common true/false spellings. Strings like
+    ``\"false\"`` must not enable a channel (``bool(\"false\")`` is True).
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off", ""}:
+            return False
+        return default
+    if value is None:
+        return default
+    return default
+
+
+def load_results_qa_settings(path: str | Path = "config/assistant.toml") -> ResultsQASettings:
+    """Load `[assistant.results_qa]`; missing section → disabled safe defaults."""
+    assistant = _assistant_table(path)
+    top_history = _positive_int(assistant.get("max_history_messages"), default=12)
+    section = assistant.get("results_qa")
+    if not isinstance(section, dict):
+        return ResultsQASettings(
+            enabled=False,
+            max_history_messages=top_history,
+            allow_time_enrichment=False,
+        )
+    return ResultsQASettings(
+        enabled=_coerce_enabled_flag(section.get("enabled", False), default=False),
+        max_history_messages=_positive_int(
+            section.get("max_history_messages"), default=top_history
+        ),
+        allow_time_enrichment=_coerce_enabled_flag(
+            section.get("allow_time_enrichment", False), default=False
+        ),
+    )
+
+
+def load_product_help_settings(path: str | Path = "config/assistant.toml") -> ProductHelpSettings:
+    """Load `[assistant.product_help]`; missing section → disabled safe defaults."""
+    assistant = _assistant_table(path)
+    top_history = _positive_int(assistant.get("max_history_messages"), default=12)
+    section = assistant.get("product_help")
+    if not isinstance(section, dict):
+        return ProductHelpSettings(
+            enabled=False,
+            max_history_messages=top_history,
+            max_corpus_chars=24000,
+        )
+    return ProductHelpSettings(
+        enabled=_coerce_enabled_flag(section.get("enabled", False), default=False),
+        max_history_messages=_positive_int(
+            section.get("max_history_messages"), default=top_history
+        ),
+        max_corpus_chars=_positive_int(section.get("max_corpus_chars"), default=24000),
+    )
+
+
+def is_draft_channel_message(message: Any) -> bool:
+    """Return True when a conversation message belongs to thesis-draft history.
+
+    Additive helper for RQ-1: treat missing/`None` ``channel`` as draft; any
+    message with ``channel`` set (including empty string, ``results_qa``, or
+    ``product_help``) is non-draft so draft history isolation can exclude it.
+    Does not mutate messages or change orchestrator behavior yet.
+    """
+    if not isinstance(message, dict):
+        return True
+    if "channel" not in message:
+        return True
+    return message.get("channel") is None
 
 
 _OPENAI_API_KEY_PLACEHOLDER = "REPLACE_WITH_ROTATED_OPENAI_API_KEY"

@@ -472,12 +472,15 @@ other than the last bar in the dataset.
 - Deterministic explain/compare/export works without any LLM provider. When a
   provider is configured, it may only propose non-executing draft choices or
   paraphrase an immutable evidence packet.
-- Planned additive channels (not shipped until RQ-series PRs land; contract:
+- Planned additive channels (contract:
   `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`): multi-turn **results Q&A**
   bound to one hash-verified `EvidencePacket`, and **product help** grounded in
   a curated local docs/registry corpus. Those channels must not merge into
   thesis-draft chat, must omit draft `choices`, and must not dispatch compute
-  pipelines from the model.
+  pipelines from the model. **RQ-0** reserves `[assistant.results_qa]` /
+  `[assistant.product_help]` and ships the inert §7.1 Help corpus allowlist
+  (`thesistester/assistant/help_corpus.py`); user-visible Discuss/Help reply
+  loops land in later RQ PRs.
 - LLM explanations must cite packet paths; uncited numerical tokens are rejected
   before render. When provenance includes a fingerprint, dataset identity is
   available at `assumptions.dataset.dataset_fingerprint` (and mirrored at

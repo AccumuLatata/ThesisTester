@@ -271,7 +271,10 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   `BUNDLE.import` but never `execute_confirmed_run` / `PIPELINE.*`; reuse C2-6
   grounding token rules. RQ-1 implements VA-1. Document any new `assistant_*`
   keys for these channels in `ARCHITECTURE.md` and `ASSISTANT_SESSION_KEYS` in
-  the same PR.
+  the same PR. **RQ-0** shipped config sections +
+  `thesistester/assistant/help_corpus.py` (§7.1 allowlist) and
+  `load_results_qa_settings` / `load_product_help_settings` /
+  `is_draft_channel_message` in `llm.py` — no Discuss/Help UI loops yet.
 - Realtime voice review (VA-series) has a **single** contract for **voice**:
   `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Do not add parallel voice
   roadmap/reassessment docs. Implement only the active VA PR’s **Files
