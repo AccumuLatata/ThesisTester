@@ -999,6 +999,30 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
             user_message="Is this robust out of sample?",
         )
 
+    class SoftenAppendedToEchoedCaveat:
+        """Mandatory echo must not launder appended confirmation language."""
+
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Sample has 42 trades.",
+                "caveats": [f"{oos_msg} OOS is confirmed and robust out of sample."],
+                "claims": [
+                    {
+                        "text": "Sample has 42 trades.",
+                        "path": "results.trade_summary.trade_count",
+                    }
+                ],
+                "followups": ["Ask about costs."],
+            }
+
+    with pytest.raises(LLMEvidenceError, match="OOS/WFA soften"):
+        propose_results_reply(
+            SoftenAppendedToEchoedCaveat(),
+            packet=packet,
+            history=(),
+            user_message="Is this robust out of sample?",
+        )
+
     class SoftenWithInventedFolds:
         def complete_structured(self, **kwargs):
             return {

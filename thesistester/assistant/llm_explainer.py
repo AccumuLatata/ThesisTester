@@ -222,13 +222,11 @@ def assert_llm_explanation_grounded(
             *((f"claim[{index}]", claim.text) for index, claim in enumerate(claims)),
             *((f"followup[{index}]", item) for index, item in enumerate(followups)),
         ]
-        # Scan LLM caveat lines too, but skip exact packet-echo lines so honesty
-        # text like "…unless confirmed by OOS/WFA evidence" is not false-positive.
+        # Scan LLM caveat lines too. Skip only *exact* packet-echo lines so
+        # honesty text is not false-positive, while "echo + OOS is confirmed"
+        # mashups remain gated.
         for index, llm_caveat in enumerate(caveats):
-            if any(
-                _llm_caveat_echoes_packet_message(llm_caveat, message)
-                for message in packet_caveat_messages
-            ):
+            if any(llm_caveat.strip() == message for message in packet_caveat_messages):
                 continue
             fields.append((f"caveat[{index}]", llm_caveat))
         for field_name, text in fields:
