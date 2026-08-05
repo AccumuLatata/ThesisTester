@@ -47,6 +47,11 @@ _SYSTEM_PROMPT = (
     "in the supplied JSON; do not invent nested keys. Do not add calculations, "
     "forecasts, trade advice, tools, or facts absent from the packet. "
     "Distinguish in-sample observed results from robustness/OOS evidence. "
+    "When answering best SL/TP or best entry-time questions, cite "
+    "results.projections.* (or results.best_grid_result when projections are "
+    "absent) and state the ranking metric, candidate set / eligible count, "
+    "min_trades filter, and in-sample vs OOS status from the evidence. "
+    "Do not invent rankings or choose a ranking metric. "
     "When evidence for the question is missing, say so in caveats and propose "
     "followups. Prefer number-free followups. Preserve uncertainty and caveats."
 )
@@ -125,11 +130,22 @@ def propose_results_reply(
     packet: EvidencePacket,
     history: Sequence[Mapping[str, Any]],
     user_message: str,
+    turn_context: Mapping[str, Any] | None = None,
 ) -> ResultsQAReply:
-    """Request a grounded results reply; the packet remains the sole fact source."""
+    """Request a grounded results reply from the ephemeral turn evidence context.
+
+    ``turn_context`` may include ``results.projections.*`` (RQ-2). Path
+    resolution and numeric grounding audit that same object. When omitted, the
+    immutable packet dict is used (RQ-1 behavior).
+    """
     if not isinstance(user_message, str) or not user_message.strip():
         raise LLMEvidenceError("Results Q&A user message must be a non-empty string.")
-    packet_dict = packet.to_dict()
+    if turn_context is None:
+        evidence_context: dict[str, Any] = packet.to_dict()
+    else:
+        if not isinstance(turn_context, Mapping):
+            raise LLMEvidenceError("Results Q&A turn_context must be a mapping.")
+        evidence_context = dict(turn_context)
     history_lines = [
         {
             "role": message.get("role"),
@@ -139,7 +155,7 @@ def propose_results_reply(
         if isinstance(message, Mapping)
     ]
     user_payload = {
-        "evidence_packet": packet_dict,
+        "evidence_packet": evidence_context,
         "history": history_lines,
         "user_message": user_message.strip(),
     }
@@ -180,7 +196,7 @@ def propose_results_reply(
         ):
             raise LLMEvidenceError("Results Q&A claims must be non-empty text/path objects.")
         path = item["path"].strip()
-        if not _path_exists(packet_dict, path):
+        if not _path_exists(evidence_context, path):
             raise LLMEvidenceError(
                 f"Results Q&A claim path {path!r} is missing from the evidence packet."
             )
@@ -188,7 +204,7 @@ def propose_results_reply(
             EvidenceClaim(
                 text=item["text"].strip(),
                 path=path,
-                value=_path_get(packet_dict, path),
+                value=_path_get(evidence_context, path),
             )
         )
     grounded = tuple(claims)

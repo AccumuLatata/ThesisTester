@@ -7,7 +7,7 @@ Assistant-related contracts:
 
 | Surface | Canonical doc | Status |
 |---|---|---|
-| Results discussion + product help | `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ) | **Active** — RQ-0/RQ-1 implemented (Discuss results); RQ-2+ / Help (RQ-3) pending |
+| Results discussion + product help | `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ) | **Active** — RQ-0…RQ-2 implemented (Discuss + rankings); Help (RQ-3) / classic binding (RQ-4) pending |
 | Voice review | `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (VA) | Proposed (voice-only; VA-1 text substrate satisfied by RQ-1) |
 | Classic ↔ Assistant bridge | `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` (CAI) | ✅ Implemented (CAI-0…CAI-10) |
 | Thesis draft / explain loop | `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2) | ✅ Implemented (through PR6) |

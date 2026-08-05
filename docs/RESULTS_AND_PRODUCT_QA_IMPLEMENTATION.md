@@ -1,7 +1,7 @@
 # Results Discussion & Product Help — Implementation Contract
 
 **Document type:** Implementation contract (RQ-series) — **single source of truth**
-**Status:** active — RQ-0 and RQ-1 implemented; RQ-2+ pending
+**Status:** active — RQ-0…RQ-2 implemented; RQ-3+ pending
 **Date:** 2026-08-05
 **Owner surface:** `thesistester/assistant/` + Research Assistant page (+ narrow classic-nav entry points)
 **Provider (text):** existing OpenAI structured client (`config/assistant.toml` / `OPENAI_API_KEY`)
@@ -83,7 +83,7 @@ Example help questions:
 | Help corpus | Curated, versioned local docs + `FEATURE_PARITY_REGISTRY` summaries only — no web search, no arbitrary filesystem. RQ-0 ships the frozen path + section allowlist in §7.1 exactly (no agent-invented sections). No `AGENT_GUIDE` in v1 user Help. |
 | Help numeric grounding | Digit tokens in Help `summary` / `caveats` / `followups` must appear as **verbatim substrings** in the attached corpus chunk texts and/or registry digest JSON for that turn; else fail closed before persist/render. Prefer number-free Help text. Never answer the user’s run performance from Help (remediate to Discuss results). |
 | History trim | Per-channel `max_history_messages` under `[assistant.results_qa]` / `[assistant.product_help]` **overrides** top-level `[assistant].max_history_messages` when the channel section is present; else fall back to top-level. |
-| Ranking metric (RQ-2) | Default ranking metric comes from the packet / `best_grid_result` recorded ranking metric (else the configured grid metric used when the grid was run). The model must not choose the ranking metric. |
+| Ranking metric (RQ-2) | Default ranking metric comes from the packet / `best_grid_result` recorded ranking metric (else the configured grid metric used when the grid was run), restricted to the allowlisted grid metrics; unknown names fall through to the next preference then `expectancy_r`. The model must not choose the ranking metric. Empty authoritative `grid_results` tables fall back to packet `best_grid_result`. |
 | Provider | Text stays on existing OpenAI structured client; no Anthropic/xAI in RQ PRs |
 | Settings home | Prefer extending existing assistant settings loaders (`llm.py` / colocated style) over a new settings module unless loaders truly diverge |
 | Voice | Out of series except that **RQ-1 satisfies VA-1**. VA-0/VA-2+ stay in the voice contract |
@@ -637,10 +637,10 @@ best entry time and best SL/TP — without letting the LLM invent rankings.
 - Persisting projections into research bundles
 
 #### Acceptance
-- [ ] Fixture with grid → “best SL/TP” cites projection/best_grid paths and the recorded/default ranking metric (not model-chosen)
-- [ ] Fixture with time summary → “best entry window” cites ranked bucket + sample size / warnings
-- [ ] Enrichment default remains `false`; enabling it is explicit
-- [ ] No bundle bytes rewritten; grounding walks the ephemeral extended context only
+- [x] Fixture with grid → “best SL/TP” cites projection/best_grid paths and the recorded/default ranking metric (not model-chosen)
+- [x] Fixture with time summary → “best entry window” cites ranked bucket + sample size / warnings
+- [x] Enrichment default remains `false`; enabling it is explicit
+- [x] No bundle bytes rewritten; grounding walks the ephemeral extended context only
 
 #### Regression safety
 Pure projection helpers + optional RO analyze. Engine/goldens/thesis chat
@@ -660,8 +660,21 @@ docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md
 docs/METRICS_GLOSSARY.md                        # only if new displayed ranking labels need glossary cross-links
 ```
 
-#### Implemented contract (fill when merged)
-_Pending implementation._
+#### Implemented contract
+- `thesistester/assistant/results_projections.py` — `project_grid_rankings`,
+  `project_time_rankings`, `build_ephemeral_results_context`,
+  `resolve_grid_ranking_defaults`
+- Ephemeral paths: `results.projections.grid_rankings.*` /
+  `results.projections.time_rankings.*` (plus optional
+  `results.time_grouped_summary` when enriched/present)
+- Grid metric defaults from `best_grid_result.ranking_metric` else
+  `assumptions.grid.ranking_metric` else `expectancy_r` (never model-chosen)
+- `handle_results_turn` merges projections into turn context; when
+  `allow_time_enrichment=true` and time summary missing, RO `TIME.analyze`
+  once after hash verification (audited); default config remains `false`
+- `propose_results_reply(..., turn_context=)` grounds claims against the
+  ephemeral context; bundles are never rewritten
+- Tests: `tests/test_assistant_results_projections.py` + results_qa extension
 
 ---
 
@@ -1018,8 +1031,8 @@ Constraints:
 | ID | Status |
 |---|---|
 | RQ-0 | Implemented |
-| RQ-1 (VA-1) | Implemented (this PR) |
-| RQ-2 | Proposed |
+| RQ-1 (VA-1) | Implemented |
+| RQ-2 | Implemented (this PR) |
 | RQ-3 | Proposed |
 | RQ-4 | Proposed |
 | RQ-5 | Proposed |
