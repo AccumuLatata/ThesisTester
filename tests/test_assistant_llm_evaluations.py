@@ -1116,6 +1116,31 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
     assert oos_msg in in_sample.caveats
     assert "robust" in in_sample.summary.lower()
 
+    class HedgedConfirmSubstring:
+        """Warn/ask about confirmation must not trip the soften gate."""
+
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Do not assume OOS is confirmed from this sample alone.",
+                "caveats": [],
+                "claims": [
+                    {
+                        "text": "Sample has 42 trades.",
+                        "path": "results.trade_summary.trade_count",
+                    }
+                ],
+                "followups": ["Ask whether walk-forward is confirmed next."],
+            }
+
+    hedged = propose_results_reply(
+        HedgedConfirmSubstring(),
+        packet=packet,
+        history=(),
+        user_message="Can I treat this as OOS confirmed?",
+    )
+    assert oos_msg in hedged.caveats
+    assert "do not assume" in hedged.summary.lower()
+
     # Trivial caveat substrings must not satisfy mandatory merge.
     from thesistester.assistant.llm_explainer import merge_mandatory_packet_caveats
 

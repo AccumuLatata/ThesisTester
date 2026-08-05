@@ -181,20 +181,22 @@ _OOS_SOFTEN_RE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
-# Negation must sit inside the soften span or immediately before it — do not
-# treat earlier-clause words like "missing" as negating a later confirmation.
+# Hedge/negation may sit inside the soften span or in the preceding clause.
+# Deliberately omit "missing"/"absent" so an earlier honesty clause cannot
+# launder a later confirmation ("evidence is missing; OOS is confirmed").
 _OOS_SOFTEN_NEGATION_RE = re.compile(
     r"\b(?:not|never|without|unless|unconfirmed|cannot|can't|"
-    r"isn't|aren't|wasn't|weren't|no longer)\b",
+    r"isn't|aren't|wasn't|weren't|no longer|don't|do not|"
+    r"assume|assuming|whether|verify|check|ask(?:ing)?)\b",
     re.IGNORECASE,
 )
 
 
 def _has_oos_soften_language(text: str) -> bool:
-    """True when text asserts OOS/WFA confirmation without local negation."""
+    """True when text asserts OOS/WFA confirmation without local negation/hedge."""
     for match in _OOS_SOFTEN_RE.finditer(text):
         span = match.group(0)
-        prefix = text[max(0, match.start() - 10) : match.start()]
+        prefix = text[max(0, match.start() - 48) : match.start()]
         if _OOS_SOFTEN_NEGATION_RE.search(span) or _OOS_SOFTEN_NEGATION_RE.search(prefix):
             continue
         return True
