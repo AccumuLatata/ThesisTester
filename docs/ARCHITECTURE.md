@@ -203,7 +203,8 @@ Bundles only.
 | `classic_bound_dataset_id` | Dataset identity that must match or context clears; unset binds on first observed `dataset_id` |
 | `classic_flash` | One-shot `{level, message}` UI notice |
 | `classic_active_run_id` | Thesis-scoped run breadcrumb after record/discuss/open-exact (CAI-8) |
-| `classic_focus_run_id` | One-shot Assistant focus staged by Discuss this run (CAI-8) |
+| `classic_focus_run_id` | One-shot Assistant focus staged by Discuss this run (CAI-8); always a run-id **string**, never a dict |
+| `classic_focus_channel` | RQ-4 companion to focus run; sole legal non-null value `"results_qa"` (`None`/absent = legacy banner-only) |
 | `classic_nav_prefill` | One-shot `{target_page, note}` clarification caption (CAI-8; no page mutation) |
 | `classic_page_proposal` | Staged classic draft `{thesis_id, target_page, draft_patch, note, evidence_paths}` (CAI-9; Apply on owning page only) |
 

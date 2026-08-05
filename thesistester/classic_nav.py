@@ -77,25 +77,50 @@ def get_classic_active_run_id(session_state: Mapping[str, Any]) -> str | None:
     return None
 
 
+# Sole legal non-null classic_focus_channel value (RQ-4). None/absent = legacy.
+CLASSIC_FOCUS_CHANNEL_RESULTS_QA: str = "results_qa"
+
+
 def set_classic_focus_run(session_state: MutableMapping[str, Any], run_id: str) -> None:
-    """Stage Assistant focus for a thesis run (consumed by Research Assistant)."""
+    """Stage Assistant focus for a thesis run (consumed by Research Assistant).
+
+    Sets ``classic_focus_run_id`` (string) and ``classic_focus_channel="results_qa"``
+    together. Does not convert the run id into a dict or invent other focus keys.
+    """
     from thesistester.classic_context import init_classic_session_state
 
     if not isinstance(run_id, str) or not run_id.strip():
         raise ValueError("run_id must be a non-empty string.")
     init_classic_session_state(session_state)
     session_state["classic_focus_run_id"] = run_id.strip()
+    session_state["classic_focus_channel"] = CLASSIC_FOCUS_CHANNEL_RESULTS_QA
 
 
-def consume_classic_focus_run(session_state: MutableMapping[str, Any]) -> str | None:
+def consume_classic_focus(session_state: MutableMapping[str, Any]) -> dict[str, str | None]:
+    """Atomically pop classic focus pair ``{run_id, channel}``.
+
+    Unknown channel values coerce to ``None`` (legacy banner-only path). Both
+    session keys are always cleared, even when one side was already absent.
+    """
     from thesistester.classic_context import init_classic_session_state
 
     init_classic_session_state(session_state)
-    run_id = session_state.get("classic_focus_run_id")
+    run_raw = session_state.get("classic_focus_run_id")
+    channel_raw = session_state.get("classic_focus_channel")
     session_state["classic_focus_run_id"] = None
-    if isinstance(run_id, str) and run_id.strip():
-        return run_id.strip()
-    return None
+    session_state["classic_focus_channel"] = None
+    run_id = run_raw.strip() if isinstance(run_raw, str) and run_raw.strip() else None
+    if channel_raw == CLASSIC_FOCUS_CHANNEL_RESULTS_QA:
+        channel: str | None = CLASSIC_FOCUS_CHANNEL_RESULTS_QA
+    else:
+        # Absent, None, or unsupported → legacy (fail closed to banner-only).
+        channel = None
+    return {"run_id": run_id, "channel": channel}
+
+
+def consume_classic_focus_run(session_state: MutableMapping[str, Any]) -> str | None:
+    """Compatibility wrapper: return focused run id while clearing both focus keys."""
+    return consume_classic_focus(session_state)["run_id"]
 
 
 def set_classic_nav_prefill(

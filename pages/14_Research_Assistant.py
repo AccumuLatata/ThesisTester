@@ -88,8 +88,9 @@ from thesistester.assistant.workspace import (
 )
 from thesistester.classic_ledger import is_classic_ledger_run, ledger_run_label
 from thesistester.classic_nav import (
+    CLASSIC_FOCUS_CHANNEL_RESULTS_QA,
     clarification_target_page,
-    consume_classic_focus_run,
+    consume_classic_focus,
     identity_badge_label,
     navigate_clarification_to_classic,
     open_exact_run_in_backtest,
@@ -174,9 +175,19 @@ _render_assistant_flash()
 thesis = orchestrator.get_thesis(thesis_id)
 st.subheader(thesis.name)
 st.caption(f"Revision {thesis.revision} · {thesis.lifecycle}")
-focus_run_id = consume_classic_focus_run(st.session_state)
-if focus_run_id:
+_classic_focus = consume_classic_focus(st.session_state)
+focus_run_id = _classic_focus.get("run_id")
+focus_channel = _classic_focus.get("channel")
+# RQ-4: results_qa opens Advanced → Linked runs → that run's Discuss thread.
+# Absent/None channel keeps legacy info-banner-only behavior.
+expand_results_qa_focus = (
+    focus_channel == CLASSIC_FOCUS_CHANNEL_RESULTS_QA
+    and isinstance(focus_run_id, str)
+    and bool(focus_run_id)
+)
+if focus_run_id and not expand_results_qa_focus:
     st.info(f"Focused classic-discussed run: …{focus_run_id[-8:]}")
+if focus_run_id:
     st.session_state["assistant_focused_run_id"] = focus_run_id
 
 handoff = active_bundle_handoff(st.session_state, thesis_id=thesis_id)
@@ -398,7 +409,10 @@ if help_settings.enabled:
                     st.error(f"Unable to answer help question: {exc}")
 
 
-with st.expander("Advanced: draft, runs & compare", expanded=False):
+with st.expander(
+    "Advanced: draft, runs & compare",
+    expanded=expand_results_qa_focus,
+):
     st.caption(
         "Optional Assistant path. Classic pages remain primary via normal navigation. "
         "Validate → Confirm → Run stays confirmation- and schema-gated."
@@ -1333,7 +1347,10 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
             provenance_card = build_provenance_card(run.to_dict())
             kind = ledger_run_label(run)
             title = f"Run {run.run_id[-8:]} · {run.status} · {kind}"
-            with st.expander(title):
+            run_focus_expanded = bool(
+                expand_results_qa_focus and focus_run_id == run.run_id
+            )
+            with st.expander(title, expanded=run_focus_expanded):
                 if is_classic_ledger_run(run):
                     st.caption(
                         "Classic execution ledger attempt (opt-in all_executions). "
