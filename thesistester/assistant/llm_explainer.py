@@ -163,14 +163,21 @@ def merge_mandatory_packet_caveats(
     return tuple(merged)
 
 
-# Soften language that contradicts missing/failed OOS packet caveats.
+# Soften language that asserts OOS/WFA confirmation (not mere proximity of
+# "robust" to an honesty disclaimer about missing walk-forward evidence).
 _OOS_SOFTEN_RE = re.compile(
     r"\b("
-    r"(?:oos|out[\s-]*of[\s-]*sample|walk[\s-]*forward|wfa)\b[\s\S]{0,40}\b"
-    r"(?:confirm(?:ed|s)?|robust|proven|validated|successful)"
+    r"(?:oos|out[\s-]*of[\s-]*sample|wfa|walk[\s-]*forward)\s+is\s+"
+    r"(?:confirm(?:ed)?|robust|proven|validated|successful)"
     r"|"
-    r"(?:confirm(?:ed|s)?|robust|proven|validated|successful)\b[\s\S]{0,40}\b"
-    r"(?:oos|out[\s-]*of[\s-]*sample|walk[\s-]*forward|wfa)"
+    r"(?:confirm(?:ed)?|proven|validated)\s+by\s+"
+    r"(?:oos|out[\s-]*of[\s-]*sample|wfa|walk[\s-]*forward)"
+    r"|"
+    r"robust\s+out[\s-]*of[\s-]*sample"
+    r"|"
+    r"(?:oos|out[\s-]*of[\s-]*sample)\s+robust"
+    r"|"
+    r"successful\s+(?:oos|out[\s-]*of[\s-]*sample|wfa|walk[\s-]*forward)\s+folds?"
     r")\b",
     re.IGNORECASE,
 )

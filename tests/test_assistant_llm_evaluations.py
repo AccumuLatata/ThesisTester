@@ -1088,6 +1088,34 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
             history=(),
             user_message="Is this robust out of sample?",
         )
+
+    class InSampleRobustWithMissingWfa:
+        """In-sample 'robust' near a missing-WFA disclaimer must remain allowed."""
+
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": (
+                    "In-sample expectancy looks robust; walk-forward evidence is missing."
+                ),
+                "caveats": [],
+                "claims": [
+                    {
+                        "text": "Sample has 42 trades.",
+                        "path": "results.trade_summary.trade_count",
+                    }
+                ],
+                "followups": ["Ask about gathering OOS folds."],
+            }
+
+    in_sample = propose_results_reply(
+        InSampleRobustWithMissingWfa(),
+        packet=packet,
+        history=(),
+        user_message="How does the sample look?",
+    )
+    assert oos_msg in in_sample.caveats
+    assert "robust" in in_sample.summary.lower()
+
     # Trivial caveat substrings must not satisfy mandatory merge.
     from thesistester.assistant.llm_explainer import merge_mandatory_packet_caveats
 
