@@ -2,12 +2,12 @@
 
 ## Status
 
-**Status:** C2-1 through C2-6 / PR6 release gate **implemented** (thesis draft
-chat, orchestrator, provenance, evidence explain/compare, optional LLM
-paraphrase). Residual registry expansion notes in C2-7 are not an open
-results-Q&A plan.
+**Status:** ✅ **Implemented** (C2-series through PR6 release gate). This
+roadmap is complete: thesis draft chat, orchestrator, provenance, evidence
+explain/compare, and optional LLM paraphrase are shipped. C2-7 registry notes
+are residual capability inventory, not an open competing series.
 
-**Forward work ownership (do not extend this file for these):**
+**Not an open plan for new work.** Do not extend this file for:
 
 | Surface | Canonical contract |
 |---|---|
@@ -16,7 +16,7 @@ results-Q&A plan.
 
 ## Purpose
 
-This document is the historical implementation contract for evolving
+This document is the completed implementation contract for evolving
 ThesisTester from assistant foundations into a reproducible, single-user
 conversational research product (C2-series). The assistant translates a trader's
 thesis into an explicit experiment, requires confirmation, runs the existing

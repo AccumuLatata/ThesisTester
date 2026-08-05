@@ -18,14 +18,14 @@ roadmaps. Amend this file in the same PR that changes a freeze. Every RQ PR must
 stay inside its scope table. If a change is not listed under **In scope**, it
 belongs in a later PR or is rejected.
 
-### Related docs (not competing contracts)
+### Related docs (completed roadmaps — not competing open plans)
 
 | Doc | Role vs this contract |
 |---|---|
-| `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` | Historical AIA foundations — not the results/help implementation surface |
-| `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` | Historical C2 thesis-draft / explain / provenance loop (implemented) |
-| `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` | CAI classic↔assistant artifact bridge (implemented); RQ-4 owns Discuss deep-link polish |
-| `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` | Voice-only after RQ-1; VA-1 text substrate is implemented here as RQ-1 |
+| `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` | ✅ Implemented AIA foundations — keep for invariants; not the results/help surface |
+| `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` | ✅ Implemented C2 thesis-draft / explain / provenance loop |
+| `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` | ✅ Implemented CAI classic↔assistant bridge; RQ-4 owns Discuss deep-link polish |
+| `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` | Proposed voice-only series after RQ-1; VA-1 text substrate is RQ-1 here |
 | `docs/ENGINEERING_ROADMAP.md` | Index / status tracker — points here for RQ work |
 
 ---
