@@ -70,18 +70,24 @@ Example help questions:
 | Freeze | Rule |
 |---|---|
 | Channel separation | Thesis draft, results Q&A, and product help are **separate channels**. Never merge into one prompt that can draft `choices` and cite run metrics in the same turn. |
+| Draft history isolation | Additive history selection only (not a prompt/schema change): `handle_chat_turn` must exclude messages with `channel` set (treat absent/`None` as draft). Page draft hydration (`assistant_draft_prompt` / `choices`) must ignore non-draft channels. Lands in RQ-1 (helpers may land in RQ-0). |
 | Results load path | `handle_results_turn` may use RO `BUNDLE.import` (evidence) via the existing explain/evidence path; never `execute_confirmed_run` / `PIPELINE.*` mutators |
 | Canonical evidence | Hash-verified `EvidencePacket` is the only numeric source for results answers |
-| Grounding | Reuse C2-6 / `llm_explainer` token/percent/caveat rules; uncited numbers fail closed before persist/render |
+| Grounding | Reuse C2-6 / `llm_explainer` token/percent/caveat rules; uncited numbers fail closed before persist/render. `followups` fail closed if they contain digit tokens not present in cited claim values (or omit numbers entirely). |
+| Projection grounding (RQ-2) | Ground against an ephemeral turn context / packet copy that includes `results.projections.*`; never mutate on-disk bundles. Path existence uses the same object the model saw. |
 | Draft hydration | Results and help assistant messages **must omit** `choices` |
-| Message tags | Additive message fields only: `"channel"` ∈ {`results_qa`, `product_help`}, plus `"run_id"` for results turns. No Conversation schema bump |
-| UI attach (results) | Completed-run expander on Research Assistant; do not replace thesis-draft `st.chat_input` |
-| UI attach (help) | Separate Help panel / tab on Research Assistant (not inside a run expander) |
-| Help corpus | Curated, versioned local docs + `FEATURE_PARITY_REGISTRY` summaries only — no web search, no arbitrary filesystem |
+| Message tags | Additive message fields only: `"channel"` ∈ {`results_qa`, `product_help`}, plus `"run_id"` for results turns. No Conversation schema bump. Leave `Conversation.selected_run_id` unused in RQ (binding is message `run_id` + classic focus). |
+| UI attach (results) | Completed-run expander on Research Assistant; do not replace thesis-draft `st.chat_input`. **v1 input widget:** keyed `st.text_input` + send button (page already owns root `st.chat_input`; do not rely on nested `st.chat_input`). |
+| UI attach (help) | Separate Help panel / tab on Research Assistant (not inside a run expander); same `st.text_input` + send button pattern |
+| Classic focus | **Extend** existing `classic_focus_run_id` / `discuss_run` payload — do not invent a parallel focus key. RQ-4 adds `channel=results_qa` (and thesis alignment already present) and consumes focus to open Advanced → Linked runs → that run’s Discuss thread. |
+| Help corpus | Curated, versioned local docs + `FEATURE_PARITY_REGISTRY` summaries only — no web search, no arbitrary filesystem. RQ-0 manifest includes an explicit **section allowlist** per `doc_id`; exclude agent/CI/operator-internals (no full `AGENT_GUIDE` ops surface in v1 user Help). |
+| History trim | Per-channel `max_history_messages` under `[assistant.results_qa]` / `[assistant.product_help]` **overrides** top-level `[assistant].max_history_messages` when the channel section is present; else fall back to top-level. |
+| Ranking metric (RQ-2) | Default ranking metric comes from the packet / `best_grid_result` recorded ranking metric (else the configured grid metric used when the grid was run). The model must not choose the ranking metric. |
 | Provider | Text stays on existing OpenAI structured client; no Anthropic/xAI in RQ PRs |
+| Settings home | Prefer extending existing assistant settings loaders (`llm.py` / colocated style) over a new settings module unless loaders truly diverge |
 | Voice | Out of series except that **RQ-1 satisfies VA-1**. VA-0/VA-2+ stay in the voice contract |
 | Engine | No `simulate_trades`, levels, signals, validation-math, or golden fixture changes |
-| Default availability | Results/help text channels may ship when `OPENAI_API_KEY` is configured; without a key, deterministic Explain remains available and chat surfaces remediation |
+| Default availability | Config may default `enabled = true` for results/help; channels are usable only when `OPENAI_API_KEY` is configured. Without a key, UI remediates and deterministic Explain remains available. |
 
 ---
 
@@ -124,7 +130,9 @@ RQ-1 lands.
    metrics) must resolve to packet paths, allowlisted tool returns, or
    verbatim help-corpus figures; else fail/flag before trusted UI render.
 6. **No draft contamination.** Results/help messages never include `choices`.
-   Thesis draft hydration must ignore non-draft channels.
+   Thesis draft hydration must ignore non-draft channels. `handle_chat_turn`
+   history selection must exclude messages with `channel` set (additive filter
+   only — not a prompt/schema rewrite).
 7. **Honesty framing.** Sample-size, costs, intrabar, OOS, and multiple-testing
    caveats from the packet remain mandatory; the model must not soften them
    into trade advice.
@@ -210,9 +218,13 @@ pages/14_Research_Assistant.py  (presentation only)
 }
 ```
 
-Server resolves each `path` against the bound `EvidencePacket` (or RQ-2
-projection object nested under `results.*`), attaches values, and runs the
-existing numeric grounding audit.
+Server resolves each `path` against the bound `EvidencePacket` (or, from RQ-2,
+an ephemeral turn context / packet copy that includes `results.projections.*`),
+attaches values, and runs the existing numeric grounding audit on that same
+object. Digit tokens in `summary`, `caveats`, `claims[].text`, and `followups`
+must resolve to cited claim values (or packet caveat echo rules for caveat
+lines); otherwise fail closed before persist/render. Prefer number-free
+`followups`.
 
 **Help (`HelpReply`):**
 
@@ -228,12 +240,19 @@ existing numeric grounding audit.
 Help replies must not introduce uncited quantitative performance claims about
 the user’s runs. If the user asks about *their* results inside Help, the UI/orchestrator
 must redirect to Discuss results (structured remediation), not invent numbers.
+Help `followups` should stay number-free unless the figure is a verbatim
+corpus/registry citation already attached to the turn.
 
 ### 5.3 Persistence
 
 - Append to the active thesis conversation (same `Conversation` store).
 - Filter history for each turn by `channel` (and `run_id` for results).
-- Trim with existing `max_history_messages` from `config/assistant.toml`.
+  Draft turns (`handle_chat_turn`) exclude any message with `channel` set.
+- Trim with the channel’s `max_history_messages` when
+  `[assistant.results_qa]` / `[assistant.product_help]` is present; otherwise
+  fall back to top-level `[assistant].max_history_messages`.
+- Do not set or widen `Conversation.selected_run_id` for RQ binding; results
+  binding is message-level `run_id` (+ classic focus for navigation).
 - Tool/transcript audit remains under Debug; friendly chat renders via
   `format_chat_message_body` / role helpers extended for the new channels.
 
@@ -274,23 +293,29 @@ exit-reason breakdown) uses bounded projections only (RQ-2+), never raw frames.
 
 ### 7.1 Allowlisted sources (v1)
 
-Exact allowlist lands in RQ-0 as a manifest; v1 intent:
+Exact path + **section** allowlist lands in RQ-0 as a manifest; v1 intent:
 
 | `doc_id` | Source path | Use |
 |---|---|---|
 | `readme` | `README.md` | Product overview / workflow |
-| `architecture` | `docs/ARCHITECTURE.md` | Page/session contracts (selected sections) |
+| `architecture` | `docs/ARCHITECTURE.md` | Page/session contracts only (section-allowlisted; not CI/agent internals) |
 | `metrics` | `docs/METRICS_GLOSSARY.md` | Metric definitions |
-| `assumptions` | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | Honesty / limitations |
-| `agent_guide` | `docs/AGENT_GUIDE.md` | Operator workflow (selected sections) |
+| `assumptions` | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | Honesty / limitations (user-facing sections) |
 | `research_methodology` | `docs/research-methodology.md` | Research framing |
 | `otf` | `docs/otf-filter.md` | OTF behavior |
 | `registry` | generated digest of `FEATURE_PARITY_REGISTRY` | Supported vs unsupported capabilities |
 
+**Not in v1 user Help corpus:** `docs/AGENT_GUIDE.md` (operator/agent/CI
+instructions). Do not expose PR/agent runbooks through the Help channel.
+If a later PR adds operator docs, it must amend this table and ship a
+section allowlist in the same PR.
+
 ### 7.2 Corpus rules
 
 1. Load only allowlisted paths under the repo root (canonicalized; reject `..`).
-2. Chunk by heading; attach `{doc_id, section, text}` to the model.
+2. Chunk by heading; attach `{doc_id, section, text}` to the model **only**
+   when `section` is on that `doc_id`’s RQ-0 section allowlist (or the
+   manifest marks the whole file as allowed).
 3. Cap total prompt bytes (config knobs in RQ-0/RQ-3).
 4. Prefer registry digests over inventing feature support.
 5. No network retrieval.
@@ -304,18 +329,25 @@ Additive keys only; do not reorder/rename existing `[assistant]` keys.
 ```toml
 [assistant.results_qa]
 # Text results discussion (RQ-1). Uses existing OpenAI client/settings.
+# enabled=true is OK; runtime still requires OPENAI_API_KEY or UI remediates.
 enabled = true
+# Overrides top-level [assistant].max_history_messages for this channel.
 max_history_messages = 12
 # When true (RQ-2), allow RO TIME.analyze if time_grouped_summary missing.
 allow_time_enrichment = false
 
 [assistant.product_help]
+# enabled=true is OK; runtime still requires OPENAI_API_KEY or UI remediates.
 enabled = true
+# Overrides top-level [assistant].max_history_messages for this channel.
 max_history_messages = 12
 max_corpus_chars = 24000
 ```
 
 Secret resolution remains the existing OpenAI path. No new provider keys in RQ.
+When a channel section is absent, loaders use safe defaults (`enabled=false` or
+equivalent disabled behavior + top-level history trim) so missing TOML never
+widens surface area unexpectedly.
 
 ---
 
@@ -362,18 +394,20 @@ VA-1 without changing runtime UX.
 | Docs | This file is canonical; index pointer in `ENGINEERING_ROADMAP.md`; note in `ASSUMPTIONS_AND_LIMITATIONS.md` + `ARCHITECTURE.md` that `results_qa` / `product_help` channels and config blocks are reserved; `AGENT_GUIDE.md` points agents here for results/help work |
 | Docs | Amend `REALTIME_VOICE_AGENT_IMPLEMENTATION.md` § VA-1 with an ownership note: “Implementation owned by RQ-1 in `RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`; do not implement VA-1 in a parallel PR.” |
 | Config | Add `[assistant.results_qa]` and `[assistant.product_help]` to `config/assistant.toml` exactly as §8 |
-| Code | `thesistester/assistant/help_corpus.py` — allowlist manifest + pure loaders/chunkers; **no orchestrator wiring** |
-| Code | Settings loaders for the two new blocks (safe defaults if section missing) colocated with existing assistant settings style |
-| Tests | Manifest path safety (`..` rejected), default settings, `load_llm_settings()` still succeeds with new sections |
+| Code | `thesistester/assistant/help_corpus.py` — path + **section** allowlist manifest + pure loaders/chunkers; **no orchestrator wiring**; refuse `AGENT_GUIDE` and non-allowlisted sections |
+| Code | Settings loaders for the two new blocks (missing section → disabled/safe defaults; present section uses §8 values including per-channel history override) — **prefer extending** `llm.py` / existing assistant settings style; add a separate module only if loaders truly diverge |
+| Code | Optional pure helpers for draft-channel message filtering (e.g. `is_draft_channel_message`) usable by RQ-1; no orchestrator behavior change required in RQ-0 |
+| Tests | Manifest path/section safety (`..` rejected; non-allowlisted section rejected), default settings, `load_llm_settings()` still succeeds with new sections |
 
 #### Out of scope
 - Any call to OpenAI / UI chat widgets / orchestrator methods
 - `results_qa.py` / `product_help.py` reply loops
 - Session_state keys beyond documenting reserved names
+- Loading `docs/AGENT_GUIDE.md` into the Help corpus
 
 #### Acceptance
-- [ ] New config sections parse; missing sections → safe defaults
-- [ ] Help corpus loader refuses non-allowlisted paths
+- [ ] New config sections parse; missing sections → safe defaults (channel disabled)
+- [ ] Help corpus loader refuses non-allowlisted paths and non-allowlisted sections
 - [ ] Existing `tests/test_assistant_llm*.py` unchanged and green
 - [ ] No new third-party dependency
 - [ ] `ruff` + `pytest -q` green
@@ -386,7 +420,7 @@ edits. If new sections are absent, loaders behave as disabled/default.
 ```
 config/assistant.toml
 thesistester/assistant/help_corpus.py
-thesistester/assistant/settings_qa.py          # or extend existing settings module if one already fits; keep additive
+thesistester/assistant/llm.py                  # preferred: additive settings loaders / helpers
 tests/test_assistant_help_corpus.py
 tests/test_assistant_qa_settings.py
 docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md
@@ -412,12 +446,13 @@ This PR **is** VA-1.
 |---|---|
 | Code | `thesistester/assistant/results_qa.py` — `propose_results_reply(client, *, packet, history, user_message) -> ResultsQAReply` with schema in §5.2 |
 | Code | System prompt: evidence-only; no trade advice; no calculations beyond packet; distinguish IS vs robustness; ask follow-ups when evidence missing |
-| Code | Grounding via `assert_llm_explanation_grounded` or shared helper extracted from `llm_explainer.py` (extract only if required; do not fork rules) |
+| Code | Grounding via `assert_llm_explanation_grounded` or shared helper extracted from `llm_explainer.py` (extract only if required; do not fork rules). Extend grounding to cover `followups` digit tokens (§1 / §5.2). |
 | Code | `AssistantOrchestrator.handle_results_turn(thesis_id, run_id, message, *, conversation_id=..., client=...)` — `get_run` → hash-verified evidence (existing explain/`BUNDLE.import` evidence path) → `propose_results_reply` → persist user+assistant messages with `"channel": "results_qa"` and `"run_id"`; assistant message omits `choices` |
-| Code | History trim filtered by `channel` + `run_id` |
-| UI | Inside each completed-run expander in `pages/14_Research_Assistant.py` (beside Explain / LLM explain): **Discuss results** with keyed nested `st.chat_input` or `st.text_input`+button — **no mic**; do not replace thesis-draft `st.chat_input` |
+| Code | History trim filtered by `channel` + `run_id` using the channel’s `max_history_messages` override |
+| Code | **Additive draft history isolation:** `handle_chat_turn` message selection excludes messages with `channel` set; page draft hydration ignores non-draft channels. This is history filtering only — do **not** rewrite the draft prompt text or `choices` schema. |
+| UI | Inside each completed-run expander in `pages/14_Research_Assistant.py` (beside Explain / LLM explain): **Discuss results** with keyed `st.text_input` + send button — **no mic**, no nested `st.chat_input`; do not replace thesis-draft `st.chat_input` |
 | Session keys | Additive cache keys if needed, e.g. `assistant_results_qa_drafts` — document in `ARCHITECTURE.md` + `ASSISTANT_SESSION_KEYS`; clear appropriately on thesis switch |
-| Tests | `tests/test_assistant_results_qa.py` + extend `tests/test_assistant_llm_evaluations.py`: injection → no `execute_confirmed_run` / no `PIPELINE.*`; RO `BUNDLE.import` allowed; uncited numbers rejected; missing run; hash mismatch; history trim by channel+run_id; `handle_chat_turn` still never loads bundles; results messages omit `choices` |
+| Tests | `tests/test_assistant_results_qa.py` + extend `tests/test_assistant_llm_evaluations.py`: injection → no `execute_confirmed_run` / no `PIPELINE.*`; RO `BUNDLE.import` allowed; uncited numbers rejected (incl. followups); missing run; hash mismatch; history trim by channel+run_id; draft history excludes tagged channels; `handle_chat_turn` still never loads bundles; results messages omit `choices` |
 | Docs | Mark VA-1 Implemented contract in the voice doc; mark RQ-1 implemented here; update `ARCHITECTURE.md` / `ASSUMPTIONS_AND_LIMITATIONS.md` / `AGENT_GUIDE.md` |
 
 #### Out of scope
@@ -425,34 +460,37 @@ This PR **is** VA-1.
 - Product help channel
 - `results_projections` / `TIME.analyze` enrichment (RQ-2)
 - Classic deep-link binding (RQ-4)
-- Changing thesis-draft `handle_chat_turn` prompt/schema
+- Rewriting thesis-draft `handle_chat_turn` prompt text or `choices` schema (history filter is in scope)
 - Rewriting deterministic `explain_evidence_report` templates (call them; don’t rewrite)
+- Nested `st.chat_input` for Discuss results
 
 #### Acceptance
 - [ ] `handle_results_turn` never calls `execute_confirmed_run` and never dispatches `PIPELINE.*` / mutators (asserted). RO `BUNDLE.import` (action `evidence`) allowed
-- [ ] Uncited numeric token → error before UI persistence/render
+- [ ] Uncited numeric token (including in `followups`) → error before UI persistence/render
 - [ ] Hash mismatch → structured failure; no packet leak
-- [ ] Without provider key, deterministic explain still works; results Q&A surfaces clear remediation
-- [ ] `handle_chat_turn` behavior fixtures remain green unchanged
+- [ ] Without provider key, deterministic explain still works; results Q&A surfaces clear remediation (`enabled=true` alone is insufficient without a key)
+- [ ] `handle_chat_turn` excludes `channel`-tagged messages from history; draft hydration ignores non-draft channels; prior draft fixtures remain green
 - [ ] Persisted results assistant messages omit `choices`
 - [ ] User can ask “best SL/TP?” and “expectancy?” against a fixture packet and receive path-cited claims when those fields exist
 
 #### Regression safety
-New orchestrator method + optional UI block. Thesis drafting and one-shot
-`explain_run_with_llm` keep prior contracts. No engine/golden changes.
+New orchestrator method + optional UI block + additive draft history filter.
+Thesis drafting semantics and one-shot `explain_run_with_llm` keep prior
+contracts when only draft messages exist. No engine/golden changes.
 
 #### Files allowed to touch
 ```
 thesistester/assistant/results_qa.py
-thesistester/assistant/orchestrator.py          # additive method only
+thesistester/assistant/orchestrator.py          # handle_results_turn + additive draft history filter in handle_chat_turn
 thesistester/assistant/repository.py            # only if message tag helpers needed
-thesistester/assistant/llm_explainer.py         # shared grounding helper extract only if required
-thesistester/assistant/workspace.py             # session keys / formatters only if required
+thesistester/assistant/llm_explainer.py         # shared grounding helper extract only if required (incl. followups)
+thesistester/assistant/llm.py                   # only if channel settings helpers needed
+thesistester/assistant/workspace.py             # session keys / formatters / draft hydration filter
 thesistester/assistant/__init__.py              # exports
-pages/14_Research_Assistant.py                  # expander Discuss results only
+pages/14_Research_Assistant.py                  # expander Discuss results (text_input+button) + draft hydration filter
 tests/test_assistant_results_qa.py
 tests/test_assistant_llm_evaluations.py
-tests/test_assistant_workspace.py               # only if new session keys
+tests/test_assistant_workspace.py               # only if new session keys / hydration filter
 docs/ARCHITECTURE.md
 docs/ASSUMPTIONS_AND_LIMITATIONS.md
 docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md
@@ -475,10 +513,11 @@ best entry time and best SL/TP — without letting the LLM invent rankings.
 | Item | Detail |
 |---|---|
 | Code | `thesistester/assistant/results_projections.py` — pure functions: `project_grid_rankings(packet_or_grid, *, top_n, metric)` and `project_time_rankings(time_grouped_summary, *, bucket_col, metric, min_trades)` returning JSON-safe tables with stable paths |
-| Code | Merge projections into results-turn context under `results.projections.*` (ephemeral turn context and/or packet extension used only for Q&A — must not mutate on-disk bundles) |
+| Code | Default `metric` for grid rankings: packet / `best_grid_result` recorded ranking metric, else the configured grid metric from assumptions when the grid was run. **Do not** let the LLM choose the ranking metric. |
+| Code | Merge projections into an **ephemeral** results-turn context under `results.projections.*` (packet copy / turn-only object). Grounding path resolution and number audit must use that same extended object. Must not mutate on-disk bundles. |
 | Code | When `assistant.results_qa.allow_time_enrichment = true` **and** `time_grouped_summary` missing, `handle_results_turn` may dispatch RO `TIME.analyze` on the bound bundle, then project rankings; audit one tool-transcript entry; fail closed on hash/provenance errors |
 | Code | Prompt/tooling guidance so “best” language must state metric, candidate set, min-trades filter, and IS vs OOS status (mirror explainer honesty) |
-| Tests | Ranking determinism; empty/missing inputs; enrichment flag off → no `TIME.analyze`; flag on + missing time → RO analyze once; never `PIPELINE.*` |
+| Tests | Ranking determinism; empty/missing inputs; metric default source; enrichment flag off → no `TIME.analyze`; flag on + missing time → RO analyze once; never `PIPELINE.*`; grounding accepts projection paths only on the ephemeral context |
 | Docs | Document projection paths + enrichment flag in `ARCHITECTURE.md` / assumptions |
 
 #### Out of scope
@@ -486,12 +525,13 @@ best entry time and best SL/TP — without letting the LLM invent rankings.
 - Sending full `trades` frames to the LLM
 - Changing grid/time analytics formulas
 - UI redesign beyond showing projection-backed claims already returned by RQ-1
+- Persisting projections into research bundles
 
 #### Acceptance
-- [ ] Fixture with grid → “best SL/TP” cites projection/best_grid paths and ranking metric
+- [ ] Fixture with grid → “best SL/TP” cites projection/best_grid paths and the recorded/default ranking metric (not model-chosen)
 - [ ] Fixture with time summary → “best entry window” cites ranked bucket + sample size / warnings
 - [ ] Enrichment default remains `false`; enabling it is explicit
-- [ ] No bundle bytes rewritten
+- [ ] No bundle bytes rewritten; grounding walks the ephemeral extended context only
 
 #### Regression safety
 Pure projection helpers + optional RO analyze. Engine/goldens/thesis chat
@@ -525,11 +565,11 @@ without mixing in run performance claims.
 | Item | Detail |
 |---|---|
 | Code | `thesistester/assistant/product_help.py` — `propose_help_reply(client, *, corpus_chunks, history, user_message) -> HelpReply` |
-| Code | `AssistantOrchestrator.handle_help_turn(thesis_id, message, *, conversation_id=..., client=...)` — load corpus via `help_corpus.py`, build registry digest, call product_help, persist with `"channel": "product_help"`, omit `choices` |
+| Code | `AssistantOrchestrator.handle_help_turn(thesis_id, message, *, conversation_id=..., client=...)` — load corpus via `help_corpus.py` (path + section allowlist), build registry digest, call product_help, persist with `"channel": "product_help"`, omit `choices` |
 | Code | Intent guard: if message clearly asks for *this run’s* performance numbers, return structured remediation pointing to Discuss results (no fabricated metrics) |
-| UI | Research Assistant Help panel (collapsed expander or tab sibling to chat hub) with its own keyed input; do not reuse thesis `st.chat_input` |
+| UI | Research Assistant Help panel (collapsed expander or tab sibling to chat hub) with keyed `st.text_input` + send button; do not reuse thesis `st.chat_input`; no nested `st.chat_input` |
 | Session keys | Additive help draft/cache keys if needed; document + thesis-scope clear as appropriate |
-| Tests | Path allowlist; citation required; performance-question remediation; no bundle import; no `choices`; history trim by channel |
+| Tests | Path + section allowlist; citation required; performance-question remediation; no bundle import; no `choices`; history trim by channel; `AGENT_GUIDE` never loaded |
 | Docs | Assumptions note: help is documentation-grounded, not a second results explainer |
 
 #### Out of scope
@@ -537,11 +577,12 @@ without mixing in run performance claims.
 - Voice
 - Editing product docs for marketing tone (content edits only if a citation target is wrong/ambiguous)
 - Web search / external URLs as required citations
+- Shipping `docs/AGENT_GUIDE.md` (or other agent/CI internals) through Help
 
 #### Acceptance
-- [ ] “How does grid ranking work?” returns citations to glossary/architecture/registry
+- [ ] “How does grid ranking work?” returns citations to glossary/architecture/registry (section-allowlisted only)
 - [ ] “What was my best SL?” in Help → remediation to Discuss results, no numbers
-- [ ] Non-allowlisted doc paths never load
+- [ ] Non-allowlisted doc paths and sections never load
 - [ ] Thesis draft chat fixtures unchanged
 
 #### Regression safety
@@ -578,17 +619,18 @@ correct run binding.
 #### In scope
 | Item | Detail |
 |---|---|
-| Code | Extend `thesistester/classic_nav.py` / discuss-run helpers so “Discuss this run” sets additive focus state: target thesis (ledger if present), `run_id`, and `channel=results_qa` |
-| UI | Research Assistant consumes focus state on load: opens Advanced → Linked runs → that run’s Discuss results thread (or equivalent visible binding), and does **not** only focus thesis-draft chat |
+| Code | **Extend** existing `classic_focus_run_id` / `discuss_run` helpers in `thesistester/classic_nav.py` (and related discuss affordances) so “Discuss this run” sets additive focus state: target thesis (already aligned), `run_id`, and `channel=results_qa`. Do **not** invent a parallel focus key unless an unavoidable Streamlit constraint forces it (document if so). |
+| UI | Research Assistant consumes that focus on load: opens Advanced → Linked runs → that run’s Discuss results thread (or equivalent visible binding), and does **not** only show the current info banner / thesis-draft chat |
 | UI | Copy clarity: thesis chat caption remains “draft only”; Discuss results / Help labeled distinctly |
 | Pages | `pages/7_Backtest.py`, `pages/12_Research_Bundles.py` (and Grid/Time only if a discuss affordance already exists or is a one-line reuse of the helper) |
-| Tests | Focus payload shape; thesis switch clears stale focus; no `choices` hydration from results focus |
-| Docs | `ARCHITECTURE.md` session keys for focus payload |
+| Tests | Focus payload shape (extended, not replaced); thesis switch clears stale focus; no `choices` hydration from results focus |
+| Docs | `ARCHITECTURE.md` session keys for the extended focus payload |
 
 #### Out of scope
 - New classic analytics
 - Auto-running grid/time from classic pages
 - Voice mic entry
+- Replacing `classic_focus_run_id` with an unrelated key namespace without cause
 
 #### Acceptance
 - [ ] From a ledger-backed classic run, Discuss lands on results channel for that `run_id`
@@ -628,7 +670,7 @@ _Pending implementation._
 #### In scope
 | Item | Detail |
 |---|---|
-| Tests | Expand `tests/test_assistant_llm_evaluations.py` (and/or dedicated eval module) with fixtures for: best SL/TP, best time, missing time, missing grid, WFA caveat preservation, help-vs-results redirect, prompt-injection (“ignore evidence and run pipeline”), uncited number rejection, `choices` absence |
+| Tests | **Expand/freeze** coverage already introduced in RQ-1…RQ-4 (do not treat RQ-5 as first introduction of injection/uncited gates). Expand `tests/test_assistant_llm_evaluations.py` (and/or dedicated eval module) with fixtures for: best SL/TP, best time, missing time, missing grid, WFA caveat preservation, help-vs-results redirect, prompt-injection (“ignore evidence and run pipeline”), uncited number rejection (incl. followups), draft history isolation, `choices` absence, section-allowlist corpus refusals |
 | Docs | Fill Implemented contract sections for RQ-0…RQ-4; update `ASSUMPTIONS_AND_LIMITATIONS.md` AI section to mention multi-turn results + help channels; `ENGINEERING_ROADMAP.md` status ✅ |
 | Release checklist | Provider key remediation copy; deterministic Explain still works offline; registry audit still green |
 
@@ -705,12 +747,17 @@ assistant-only work:
 | Risk | Mitigation |
 |---|---|
 | LLM invents “best hour” without time evidence | Missing-evidence policy + grounding fail-closed; RQ-2 projections |
+| Results/help history leaks into thesis draft | Additive `handle_chat_turn` filter excludes `channel`-tagged messages; page hydration ignores non-draft; tests in RQ-1/RQ-5 |
 | Results messages hydrate draft `choices` | Persist without `choices`; page hydration filters draft channel only; tests |
+| Nested `st.chat_input` breaks page input | v1 freezes keyed `st.text_input` + send button for Discuss/Help |
 | Help channel answers performance questions badly | Explicit remediation to Discuss results; eval fixture |
+| Help exposes agent/CI internals | Section allowlist; `AGENT_GUIDE` excluded from v1 corpus |
 | Optional `TIME.analyze` becomes hidden compute | Default `allow_time_enrichment=false`; audit transcript; RO only |
+| Model picks ranking metric | RQ-2 freeze: packet/recorded/configured metric only |
 | Prompt injection (“run the pipeline”) | Eval suite; orchestrator allowlist; no tools exposed to results/help LLM in v1 beyond server-side RO import/enrichment |
-| Corpus drift / wrong citations | Allowlist + section citations; prefer glossary/registry for definitions |
+| Corpus drift / wrong citations | Path + section allowlist; prefer glossary/registry for definitions |
 | Scope creep into voice | VA ownership note; RQ PRs reject audio/xAI files |
+| Parallel classic focus keys | RQ-4 extends `classic_focus_run_id` / `discuss_run` only |
 
 ---
 
@@ -728,23 +775,61 @@ assistant-only work:
 
 ---
 
-## 15. Suggested copy-ready agent prompt (RQ-1 first implementation)
+## 15. Suggested copy-ready agent prompts
 
-Use only after RQ-0 is merged. Agents must work regression-safe and update docs
-in the same PR.
+Agents must work regression-safe and update docs in the same PR.
+
+### 15.1 RQ-0
+
+```markdown
+Implement RQ-0 from docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md exactly.
+
+Constraints:
+- Contracts/config/corpus manifest only. No OpenAI calls, UI chat widgets, or orchestrator reply loops.
+- Follow the PR’s Files allowed to touch list. Prefer extending thesistester/assistant/llm.py for settings loaders.
+- Add help_corpus.py with path + section allowlist; reject `..` and non-allowlisted sections; do not load AGENT_GUIDE.
+- Add [assistant.results_qa] and [assistant.product_help] to config/assistant.toml exactly as §8.
+- Missing TOML sections → channel disabled / safe defaults. Present sections use per-channel max_history_messages override semantics.
+- Optional: pure is_draft_channel_message (or equivalent) helper for RQ-1; no behavior change to handle_chat_turn yet.
+- Same-PR docs per RQ-0 scope, including VA-1 ownership note in REALTIME_VOICE_AGENT_IMPLEMENTATION.md.
+- PR body must include a Regression safety paragraph.
+- Keep ruff + pytest green. No new third-party dependency.
+```
+
+### 15.2 RQ-1 (after RQ-0)
 
 ```markdown
 Implement RQ-1 from docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md exactly.
 
 Constraints:
 - You are implementing VA-1 / RQ-1 only. No voice, no product help, no TIME.analyze enrichment.
-- Follow the PR’s Files allowed to touch list. Do not modify engine, levels, signals, goldens, or handle_chat_turn semantics.
+- Follow the PR’s Files allowed to touch list. Do not modify engine, levels, signals, or goldens.
 - Add thesistester/assistant/results_qa.py and AssistantOrchestrator.handle_results_turn.
-- Ground all numeric claims with existing llm_explainer rules; fail closed on uncited numbers.
-- Persist messages with channel=results_qa and run_id; omit choices on assistant messages.
-- UI: Discuss results inside completed-run expander only; do not replace thesis st.chat_input.
+- Additive draft history isolation: handle_chat_turn must exclude messages with channel set; page draft hydration must ignore non-draft channels. Do not rewrite draft prompt text or choices schema.
+- Ground all numeric claims (including followups) with existing llm_explainer rules; fail closed on uncited numbers.
+- Persist messages with channel=results_qa and run_id; omit choices on assistant messages. Do not set Conversation.selected_run_id for RQ binding.
+- UI: Discuss results inside completed-run expander only; keyed st.text_input + send button; no nested st.chat_input; do not replace thesis st.chat_input.
+- Without OPENAI_API_KEY, remediate clearly; deterministic Explain still works.
 - Tests: tests/test_assistant_results_qa.py + extend test_assistant_llm_evaluations.py per the contract acceptance list.
 - Same-PR docs: ARCHITECTURE.md, ASSUMPTIONS_AND_LIMITATIONS.md, AGENT_GUIDE.md, mark VA-1 + RQ-1 implemented contracts.
+- PR body must include a Regression safety paragraph.
+- Keep ruff + pytest green.
+```
+
+### 15.3 RQ-3 (after RQ-0 + shared channel helpers from RQ-1)
+
+```markdown
+Implement RQ-3 from docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md exactly.
+
+Constraints:
+- Product/help channel only. No results packet loading, no voice, no AGENT_GUIDE corpus.
+- Follow the PR’s Files allowed to touch list. Do not modify engine, levels, signals, or goldens.
+- Add product_help.py and AssistantOrchestrator.handle_help_turn over help_corpus path+section allowlist + registry digest.
+- Intent guard: run-performance questions → structured remediation to Discuss results (no fabricated numbers).
+- UI: Help panel with keyed st.text_input + send button; do not reuse thesis st.chat_input.
+- Persist channel=product_help; omit choices; trim history by channel using product_help max_history_messages.
+- Tests per RQ-3 acceptance; thesis draft fixtures unchanged.
+- Same-PR docs per RQ-3 scope.
 - PR body must include a Regression safety paragraph.
 - Keep ruff + pytest green.
 ```
