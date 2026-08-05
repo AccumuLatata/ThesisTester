@@ -452,7 +452,8 @@ Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_draft_choices`, `assistant_hydrated_conversation_id`,
 `assistant_validated_run_spec`, `assistant_results_qa_drafts`,
 `assistant_product_help_draft`, `assistant_focused_run_id`,
-`assistant_results_qa_deep_link`, `assistant_bundle_handoff`, `assistant_flash`)
+`assistant_results_qa_deep_link`, `assistant_results_qa_force_expand`,
+`assistant_bundle_handoff`, `assistant_flash`)
 so draft/validation/hydration/handoff/flash/results/help/deep-link staging cannot leak.
 `clear_thesis_scoped_state` also deletes ephemeral Streamlit widget keys
 prefixed `results-qa-input-` / `product-help-input` so Discuss/Help text-input
