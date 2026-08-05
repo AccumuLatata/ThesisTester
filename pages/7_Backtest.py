@@ -780,19 +780,22 @@ if (
     and isinstance(_levels_for_prev30m, pd.DataFrame)
     and (COL_HIT_M1 in _levels_for_prev30m.columns or COL_HIT_M5 in _levels_for_prev30m.columns)
 ):
-    prev30m_summary = prev30m_hit_r_summary(
-        trades,
-        _levels_for_prev30m,
-        instrument=str(instrument),
-    )
+    try:
+        prev30m_summary = prev30m_hit_r_summary(
+            trades,
+            _levels_for_prev30m,
+            instrument=str(instrument),
+        )
+    except (ValueError, TypeError, KeyError):
+        prev30m_summary = {"available": False, "trade_count": 0}
     if prev30m_summary.get("available") and int(prev30m_summary.get("trade_count", 0)) > 0:
         with st.expander("prev30mVWAP early-window hit R diagnostics", expanded=False):
             st.caption(
                 "R-multiples conditioned on finalized first-1m / first-5m touches of "
-                "`prev30mVWAP` in the trade's entry 30m bracket. Diagnostic only — "
-                "does not change fills."
+                "`prev30mVWAP` in the trade's entry 30m bracket. Only trades with a "
+                "finalized hit flag are counted. Diagnostic only — does not change fills."
             )
-            st.metric("Scoped trades", int(prev30m_summary["trade_count"]))
+            st.metric("Analyzable trades", int(prev30m_summary["trade_count"]))
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown("**By hit_m1**")

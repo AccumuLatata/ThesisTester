@@ -288,7 +288,7 @@ Worked timing (1-min data, bracket open 18:30):
 MVP placement:
 
 - Phase A (levels PR): ship `prev30mVWAP` + `prev30mVWAP_hit_m1` + `prev30mVWAP_hit_m5`, with eligibility exclusions in §3.8.1 / §5.5.
-- Phase B (analytics PR, same roadmap item, can be same PR if small): add a pure analytics function, e.g. `analytics/prev30m_vwap_hit.py` → grouped R stats by `m1` and by `m5`; UI read-only table on Backtest/Signals diagnostics.
+- Phase B (analytics PR, same roadmap item, can be same PR if small): add a pure analytics function, e.g. `analytics/prev30m_vwap_hit.py` → grouped R stats by `m1` and by `m5`; UI read-only table on Backtest diagnostics (entry-bracket join).
 
 No change to `simulate_trades` fill semantics.
 

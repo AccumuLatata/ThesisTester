@@ -16,7 +16,7 @@ from thesistester.analytics.prev30m_vwap_hit import (
     summarize_r_by_hit_flag,
 )
 from thesistester.levels import compute_prev30m_vwap_levels
-from thesistester.levels.prev30m_vwap import COL_HIT_M1, COL_HIT_M5, COL_PREV30M_VWAP
+from thesistester.levels.prev30m_vwap import COL_HIT_M1, COL_PREV30M_VWAP
 
 
 TZ = "America/New_York"
@@ -218,3 +218,98 @@ def test_no_level_names_column_analyzes_all_trades():
     )
     summary = prev30m_hit_r_summary(trades, levels, instrument="ES")
     assert summary["trade_count"] == 1
+
+
+def test_unavailable_when_no_finalized_flags_attach():
+    """Missing entry timestamps must not look like a successful empty analysis."""
+    levels = _levels_with_hits()
+    trades = _trades(
+        [
+            {
+                "r_multiple": 1.0,
+                "level_names": "prev30mVWAP",
+            }
+        ]
+    )
+    summary = prev30m_hit_r_summary(trades, levels, instrument="ES")
+    assert summary["available"] is False
+    assert summary["trade_count"] == 0
+    assert summary["by_hit_m1"].empty
+    assert summary["by_hit_m5"].empty
+
+
+def test_timezone_naive_entry_is_unavailable_not_crash():
+    levels = _levels_with_hits()
+    trades = _trades(
+        [
+            {
+                "entry_timestamp": pd.Timestamp("2026-06-01 18:36"),  # naive
+                "r_multiple": 1.0,
+                "level_names": "prev30mVWAP",
+            }
+        ]
+    )
+    summary = prev30m_hit_r_summary(trades, levels, instrument="ES")
+    assert summary["available"] is False
+    assert summary["trade_count"] == 0
+
+
+def test_contingency_matches_r_group_universe_when_r_nan():
+    levels = _levels_with_hits()
+    trades = _trades(
+        [
+            {
+                "entry_timestamp": pd.Timestamp("2026-06-01 18:36", tz=TZ),
+                "r_multiple": 1.0,
+                "level_names": "prev30mVWAP",
+            },
+            {
+                "entry_timestamp": pd.Timestamp("2026-06-01 18:37", tz=TZ),
+                "r_multiple": np.nan,
+                "level_names": "prev30mVWAP",
+            },
+            {
+                "entry_timestamp": pd.Timestamp("2026-06-01 18:38", tz=TZ),
+                "r_multiple": -0.5,
+                "level_names": "prev30mVWAP",
+            },
+        ]
+    )
+    summary = prev30m_hit_r_summary(trades, levels, instrument="ES")
+    # Analyzable by flag attachment (all three have finalized flags).
+    assert summary["available"] is True
+    assert summary["trade_count"] == 3
+    # R-group and contingency share the R-valid universe (2 trades).
+    by_m1 = summary["by_hit_m1"]
+    assert by_m1[by_m1[HIT_M1_AT_ENTRY] == 1.0].iloc[0]["trade_count"] == 2
+    assert summary["contingency"]["trade_count"].sum() == 2
+
+
+def test_attach_preserves_trade_index():
+    levels = _levels_with_hits()
+    trades = _trades(
+        [
+            {
+                "entry_timestamp": pd.Timestamp("2026-06-01 18:36", tz=TZ),
+                "r_multiple": 1.0,
+                "level_names": "prev30mVWAP",
+            }
+        ]
+    )
+    trades.index = pd.Index(["trade-A"], name="trade_id")
+    flagged = attach_prev30m_hit_flags(trades, levels, instrument="ES")
+    assert list(flagged.index) == ["trade-A"]
+    assert flagged.index.name == "trade_id"
+
+
+def test_summarize_skips_zero_count_flag_groups():
+    trades = _trades(
+        [
+            {
+                HIT_M1_AT_ENTRY: 1.0,
+                "r_multiple": np.nan,
+            }
+        ]
+    )
+    by_m1 = summarize_r_by_hit_flag(trades, HIT_M1_AT_ENTRY)
+    assert by_m1.empty

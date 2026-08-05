@@ -5,9 +5,16 @@ Pure post-trade helpers.  No fill / signal / level-engine changes.
 Join contract (plan §3.8.2)
 --------------------------
 Attach **finalized** bracket ``hit_m1`` / ``hit_m5`` flags for each trade's
-entry bracket (session-open 30m clock).  In-window ``NaN`` rows on the levels
-frame are ignored; the bracket's finalized ``0.0``/``1.0`` is used once that
-window has completed in-sample.
+**entry** bracket (session-open 30m clock via ``entry_timestamp``).  In-window
+``NaN`` rows on the levels frame are ignored; the bracket's finalized
+``0.0``/``1.0`` is used once that window has completed in-sample.
+
+Availability
+------------
+``prev30m_hit_r_summary`` reports ``available=True`` only when at least one
+scoped trade receives a finalized (non-null) hit flag.  ``trade_count`` is the
+number of such analyzable trades.  Grouped R stats and contingency tables use
+the same trade universe: non-null flags **and** non-null ``r_multiple``.
 """
 
 from __future__ import annotations
@@ -91,7 +98,10 @@ def build_finalized_hit_lookup(
         return empty
 
     work = levels.sort_values("timestamp").copy()
-    keys = session_bracket_keys(work["timestamp"], instrument=instrument)
+    try:
+        keys = session_bracket_keys(work["timestamp"], instrument=instrument)
+    except (ValueError, TypeError):
+        return empty
     work = work.join(keys)
     work = work.dropna(subset=["bracket_idx"])
     if work.empty:
@@ -124,7 +134,11 @@ def attach_prev30m_hit_flags(
     instrument: str = "ES",
     timestamp_col: str = "entry_timestamp",
 ) -> pd.DataFrame:
-    """Return a copy of *trades* with finalized entry-bracket hit flags attached."""
+    """Return a copy of *trades* with finalized entry-bracket hit flags attached.
+
+    Preserves the input index.  Timezone-naive / unkeyable timestamps leave flags
+    as NaN instead of raising (callers treat that as unavailable analytics).
+    """
     if trades is None:
         return pd.DataFrame(columns=[HIT_M1_AT_ENTRY, HIT_M5_AT_ENTRY])
     out = trades.copy()
@@ -139,10 +153,15 @@ def attach_prev30m_hit_flags(
     if lookup.empty:
         return out
 
-    keys = session_bracket_keys(out[timestamp_col], instrument=instrument)
+    try:
+        keys = session_bracket_keys(out[timestamp_col], instrument=instrument)
+    except (ValueError, TypeError):
+        return out
+
     work = out.drop(columns=[HIT_M1_AT_ENTRY, HIT_M5_AT_ENTRY], errors="ignore").copy()
     work["_session_date"] = keys["session_date"].to_numpy()
     work["_bracket_idx"] = keys["bracket_idx"].to_numpy()
+    work["_orig_index"] = work.index
 
     # Align bracket_idx dtype for merge (lookup uses int64; keys may be float NaN).
     lookup_keyed = lookup.copy()
@@ -165,6 +184,8 @@ def attach_prev30m_hit_flags(
         merged[HIT_M1_AT_ENTRY] = np.nan
     if HIT_M5_AT_ENTRY not in merged.columns:
         merged[HIT_M5_AT_ENTRY] = np.nan
+    merged = merged.set_index("_orig_index")
+    merged.index.name = out.index.name
     return merged
 
 
@@ -187,15 +208,17 @@ def summarize_r_by_hit_flag(
     for flag_val, group in work.groupby(flag_col, sort=True):
         r = group["r_multiple"].dropna()
         n = len(r)
+        if n == 0:
+            continue
         wins = r[r > 0]
         rows.append(
             {
                 flag_col: float(flag_val),
                 "trade_count": n,
-                "avg_r": float(r.mean()) if n else None,
-                "median_r": float(r.median()) if n else None,
-                "total_r": float(r.sum()) if n else None,
-                "win_rate": float(len(wins) / n) if n else None,
+                "avg_r": float(r.mean()),
+                "median_r": float(r.median()),
+                "total_r": float(r.sum()),
+                "win_rate": float(len(wins) / n),
             }
         )
     if not rows:
@@ -204,13 +227,20 @@ def summarize_r_by_hit_flag(
 
 
 def prev30m_hit_contingency(trades: pd.DataFrame) -> pd.DataFrame:
-    """Joint ``(hit_m1, hit_m5)`` trade counts when both flags are finalized."""
+    """Joint ``(hit_m1, hit_m5)`` trade counts when both flags and R are present.
+
+    Uses the same universe as ``summarize_r_by_hit_flag``: both finalized flags
+    non-null and ``r_multiple`` non-null (when the column exists).
+    """
     empty = _empty_contingency_frame()
     if trades is None or trades.empty:
         return empty
     if HIT_M1_AT_ENTRY not in trades.columns or HIT_M5_AT_ENTRY not in trades.columns:
         return empty
-    both = trades.dropna(subset=[HIT_M1_AT_ENTRY, HIT_M5_AT_ENTRY])
+    required = [HIT_M1_AT_ENTRY, HIT_M5_AT_ENTRY]
+    if "r_multiple" in trades.columns:
+        required.append("r_multiple")
+    both = trades.dropna(subset=required)
     if both.empty:
         return empty
     grouped = (
@@ -230,8 +260,10 @@ def prev30m_hit_r_summary(
 ) -> dict[str, Any]:
     """Full Phase 2 summary: attach flags, group by m1/m5, joint contingency.
 
-    Empty-trade / missing-column safe.  Filters to trades that reference
-    ``prev30mVWAP`` when ``level_names`` is present.
+    Empty-trade / missing-column / timezone-naive safe.  Filters to trades that
+    reference ``prev30mVWAP`` when ``level_names`` is present.  ``available`` is
+    true only when at least one scoped trade has a finalized hit flag;
+    ``trade_count`` counts those analyzable trades.
     """
     result: dict[str, Any] = {
         "available": False,
@@ -258,8 +290,13 @@ def prev30m_hit_r_summary(
         instrument=instrument,
         timestamp_col=timestamp_col,
     )
+    analyzable = flagged.dropna(subset=[HIT_M1_AT_ENTRY, HIT_M5_AT_ENTRY], how="all")
+    if analyzable.empty:
+        result["trades_with_flags"] = flagged
+        return result
+
     result["available"] = True
-    result["trade_count"] = int(len(flagged))
+    result["trade_count"] = int(len(analyzable))
     result["trades_with_flags"] = flagged
     result["by_hit_m1"] = summarize_r_by_hit_flag(flagged, HIT_M1_AT_ENTRY)
     result["by_hit_m5"] = summarize_r_by_hit_flag(flagged, HIT_M5_AT_ENTRY)
