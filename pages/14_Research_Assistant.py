@@ -56,8 +56,12 @@ from thesistester.assistant.workspace import (
     VWAP_WINDOW_OPTIONS,
     WFA_MATRIX_METRICS,
     WINDOW_MODES,
+    ASSISTANT_ADVANCED_EXPANDER_KEY,
     active_bundle_handoff,
+    apply_consumed_classic_focus,
     build_confluence_level_options,
+    force_results_qa_expanders_open,
+    linked_run_expander_key,
     build_plan_review,
     build_provenance_card,
     chat_message_display_role,
@@ -88,8 +92,9 @@ from thesistester.assistant.workspace import (
 )
 from thesistester.classic_ledger import is_classic_ledger_run, ledger_run_label
 from thesistester.classic_nav import (
+    CLASSIC_FOCUS_CHANNEL_RESULTS_QA,
     clarification_target_page,
-    consume_classic_focus_run,
+    consume_classic_focus,
     identity_badge_label,
     navigate_clarification_to_classic,
     open_exact_run_in_backtest,
@@ -136,6 +141,27 @@ st.caption(
     "navigation (Data, Levels, Signals, Backtest, Grid, Validation, …). Optional "
     "Assistant draft → validate → confirm → run is under Advanced."
 )
+# Before the sidebar selectbox binds: if a classic Discuss deep-link is staged,
+# align Assistant onto the classic active thesis (then picker). Prefer classic
+# thesis over a stale assistant_selected_thesis_id so Record-and-discuss and
+# discuss_run both land under the linked classic thesis.
+_pending_focus_run = st.session_state.get("classic_focus_run_id")
+if isinstance(_pending_focus_run, str) and _pending_focus_run.strip():
+    _classic_thesis = st.session_state.get("classic_active_thesis_id")
+    _assistant_thesis = st.session_state.get("assistant_selected_thesis_id")
+    _target_thesis = (
+        _classic_thesis.strip()
+        if isinstance(_classic_thesis, str) and _classic_thesis.strip()
+        else (
+            _assistant_thesis.strip()
+            if isinstance(_assistant_thesis, str) and _assistant_thesis.strip()
+            else None
+        )
+    )
+    if _target_thesis is not None:
+        if st.session_state.get("assistant_selected_thesis_id") != _target_thesis:
+            select_thesis(st.session_state, _target_thesis)
+        st.session_state["assistant_thesis_picker"] = _target_thesis
 with st.sidebar:
     st.subheader("Theses")
     new_name = st.text_input("New thesis name", key="assistant_new_thesis_name")
@@ -174,10 +200,30 @@ _render_assistant_flash()
 thesis = orchestrator.get_thesis(thesis_id)
 st.subheader(thesis.name)
 st.caption(f"Revision {thesis.revision} · {thesis.lifecycle}")
-focus_run_id = consume_classic_focus_run(st.session_state)
-if focus_run_id:
+_classic_focus = consume_classic_focus(st.session_state)
+focus_run_id = _classic_focus.get("run_id")
+focus_channel = _classic_focus.get("channel")
+# RQ-4: results_qa stages a sticky Advanced → Linked-run expansion that survives
+# later st.rerun() (classic focus keys are one-shot). Absent/None channel keeps
+# legacy info-banner-only behavior for this render only.
+one_shot_results_qa = (
+    focus_channel == CLASSIC_FOCUS_CHANNEL_RESULTS_QA
+    and isinstance(focus_run_id, str)
+    and bool(focus_run_id)
+)
+if focus_run_id and not one_shot_results_qa:
     st.info(f"Focused classic-discussed run: …{focus_run_id[-8:]}")
-    st.session_state["assistant_focused_run_id"] = focus_run_id
+expand_results_qa_focus, expand_focus_run_id = apply_consumed_classic_focus(
+    st.session_state,
+    run_id=focus_run_id if isinstance(focus_run_id, str) else None,
+    channel=focus_channel if isinstance(focus_channel, str) else None,
+)
+# Keyed expanders (Streamlit >= 1.55): force-open once on fresh results_qa
+# consume so a previously collapsed Advanced cannot hide Discuss results.
+force_results_qa_expanders_open(
+    st.session_state,
+    run_id=expand_focus_run_id,
+)
 
 handoff = active_bundle_handoff(st.session_state, thesis_id=thesis_id)
 if handoff is not None:
@@ -398,7 +444,12 @@ if help_settings.enabled:
                     st.error(f"Unable to answer help question: {exc}")
 
 
-with st.expander("Advanced: draft, runs & compare", expanded=False):
+with st.expander(
+    "Advanced: draft, runs & compare",
+    expanded=expand_results_qa_focus,
+    key=ASSISTANT_ADVANCED_EXPANDER_KEY,
+    on_change="rerun",
+):
     st.caption(
         "Optional Assistant path. Classic pages remain primary via normal navigation. "
         "Validate → Confirm → Run stays confirmation- and schema-gated."
@@ -1333,7 +1384,13 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
             provenance_card = build_provenance_card(run.to_dict())
             kind = ledger_run_label(run)
             title = f"Run {run.run_id[-8:]} · {run.status} · {kind}"
-            with st.expander(title):
+            run_focus_expanded = bool(expand_results_qa_focus and expand_focus_run_id == run.run_id)
+            with st.expander(
+                title,
+                expanded=run_focus_expanded,
+                key=linked_run_expander_key(run.run_id),
+                on_change="rerun",
+            ):
                 if is_classic_ledger_run(run):
                     st.caption(
                         "Classic execution ledger attempt (opt-in all_executions). "

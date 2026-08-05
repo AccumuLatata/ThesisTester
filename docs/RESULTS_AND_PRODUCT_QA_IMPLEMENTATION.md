@@ -1,7 +1,7 @@
 # Results Discussion & Product Help — Implementation Contract
 
 **Document type:** Implementation contract (RQ-series) — **single source of truth**
-**Status:** active — RQ-0…RQ-3 implemented; RQ-4+ pending
+**Status:** active — RQ-0…RQ-4 implemented; RQ-5 pending
 **Date:** 2026-08-05
 **Owner surface:** `thesistester/assistant/` + Research Assistant page (+ narrow classic-nav entry points)
 **Provider (text):** existing OpenAI structured client (`config/assistant.toml` / `OPENAI_API_KEY`)
@@ -789,10 +789,10 @@ Rules:
 - Any focus key other than `classic_focus_run_id` + `classic_focus_channel`
 
 #### Acceptance
-- [ ] From a ledger-backed classic run, Discuss sets both keys and Assistant opens results channel for that `run_id`
-- [ ] Absent/`None` `classic_focus_channel` preserves legacy Discuss navigation
-- [ ] Thesis switch/exit clears both focus keys
-- [ ] Draft chat does not absorb results history
+- [x] From a ledger-backed classic run, Discuss sets both keys and Assistant opens results channel for that `run_id`
+- [x] Absent/`None` `classic_focus_channel` preserves legacy Discuss navigation
+- [x] Thesis switch/exit clears both focus keys
+- [x] Draft chat does not absorb results history
 
 #### Regression safety
 Navigation/focus only. Engine and compute paths untouched.
@@ -818,7 +818,25 @@ docs/ENGINEERING_ROADMAP.md
 ```
 
 #### Implemented contract (fill when merged)
-_Pending implementation._
+- `classic_focus_channel` added to `CLASSIC_SESSION_KEYS` /
+  `CLASSIC_THESIS_SCOPED_KEYS`; cleared on thesis switch/exit with
+  `classic_focus_run_id`.
+- `set_classic_focus_run` / `discuss_run` set both keys
+  (`channel="results_qa"`); `classic_focus_run_id` remains a string.
+- `consume_classic_focus()` returns `{run_id, channel}` and nulls both
+  atomically; unknown channel coerces to legacy `None`.
+  `consume_classic_focus_run` remains a compatibility wrapper.
+- Research Assistant: `results_qa` expands Advanced → matching Linked run
+  (Discuss results visible); absent/`None` channel keeps banner-only.
+- Sticky UI staging: `assistant_results_qa_deep_link` + `assistant_focused_run_id`
+  keep Advanced/run expanders open across `st.rerun()` after the one-shot classic
+  focus keys are consumed; thesis switch clears both.
+- Fresh `results_qa` consume sets `assistant_results_qa_force_expand` once so
+  keyed Streamlit expanders (`ra-advanced-expander` / `ra-run-expander-*`) reopen
+  even if the user previously collapsed Advanced.
+- `align_assistant_thesis_for_discuss` (used by `discuss_run` and **Record and
+  discuss**) syncs thesis + `assistant_thesis_picker`; Research Assistant also
+  re-aligns from `classic_active_thesis_id` when classic focus is still staged.
 
 ---
 

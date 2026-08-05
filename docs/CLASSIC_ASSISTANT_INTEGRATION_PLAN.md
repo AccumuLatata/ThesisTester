@@ -6,9 +6,9 @@
 complete; keep it as the classic↔assistant integration contract.
 
 **Not an open plan for new work.** Classic “Discuss this run” → results-channel
-binding is owned by **RQ-4** in
-`docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`. Do not reopen CAI for
-multi-turn results Q&A or product help.
+binding is **RQ-4** in `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`
+(`classic_focus_channel="results_qa"` beside string `classic_focus_run_id`).
+Do not reopen CAI for multi-turn results Q&A or product help.
 
 **Owner model:** one trusted local user, local datasets, local execution.
 

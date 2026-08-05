@@ -203,7 +203,8 @@ Bundles only.
 | `classic_bound_dataset_id` | Dataset identity that must match or context clears; unset binds on first observed `dataset_id` |
 | `classic_flash` | One-shot `{level, message}` UI notice |
 | `classic_active_run_id` | Thesis-scoped run breadcrumb after record/discuss/open-exact (CAI-8) |
-| `classic_focus_run_id` | One-shot Assistant focus staged by Discuss this run (CAI-8) |
+| `classic_focus_run_id` | One-shot Assistant focus staged by Discuss this run (CAI-8); always a run-id **string**, never a dict |
+| `classic_focus_channel` | RQ-4 companion to focus run; sole legal non-null value `"results_qa"` (`None`/absent = legacy banner-only) |
 | `classic_nav_prefill` | One-shot `{target_page, note}` clarification caption (CAI-8; no page mutation) |
 | `classic_page_proposal` | Staged classic draft `{thesis_id, target_page, draft_patch, note, evidence_paths}` (CAI-9; Apply on owning page only) |
 
@@ -271,6 +272,12 @@ pages:
   Assistant opens that run’s Discuss results thread; it must not convert
   `classic_focus_run_id` into a dict or invent any other focus-key namespace.
   Both focus keys clear together on consume and on thesis-scoped classic clear.
+  After consume, `assistant_results_qa_deep_link` + `assistant_focused_run_id`
+  keep Advanced/run expanders open across reruns until thesis switch; a one-shot
+  `assistant_results_qa_force_expand` reopens keyed expanders if Advanced was
+  previously collapsed. `align_assistant_thesis_for_discuss` (Discuss + Record
+  and discuss) syncs thesis/`assistant_thesis_picker`; Assistant also prefers
+  `classic_active_thesis_id` when focus is still staged.
 - **Open exact / Restore bundle** (Assistant): hash-verified
   `restore_run_bundle_to_session` clears staged `classic_page_proposal`
   (restored widgets must not be overwritten by a prior draft). Open exact
@@ -383,6 +390,9 @@ The Research Assistant page stages only these additive `assistant_*` keys
 | `assistant_portfolio_analyses` | In-session portfolio analysis by thesis_id |
 | `assistant_results_qa_drafts` | Per-run Discuss results text-input drafts (`{run_id: str}`) |
 | `assistant_product_help_draft` | Help panel text-input draft string |
+| `assistant_focused_run_id` | Last classic-focused run id (RQ-4 deep-link / banner) |
+| `assistant_results_qa_deep_link` | Sticky Advanced → Linked-run expansion after `results_qa` focus |
+| `assistant_results_qa_force_expand` | One-shot force-open for keyed Advanced/run expanders |
 | `assistant_bundle_handoff` | Last hash-verified restore into research pages |
 | `assistant_flash` | One-shot `{level, message}` UI notice consumed after `st.rerun()` |
 
@@ -441,8 +451,10 @@ available beside Discuss results.
 Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_draft_choices`, `assistant_hydrated_conversation_id`,
 `assistant_validated_run_spec`, `assistant_results_qa_drafts`,
-`assistant_product_help_draft`, `assistant_bundle_handoff`, `assistant_flash`)
-so draft/validation/hydration/handoff/flash/results/help drafts cannot leak.
+`assistant_product_help_draft`, `assistant_focused_run_id`,
+`assistant_results_qa_deep_link`, `assistant_results_qa_force_expand`,
+`assistant_bundle_handoff`, `assistant_flash`)
+so draft/validation/hydration/handoff/flash/results/help/deep-link staging cannot leak.
 `clear_thesis_scoped_state` also deletes ephemeral Streamlit widget keys
 prefixed `results-qa-input-` / `product-help-input` so Discuss/Help text-input
 hydration cannot revive a cleared draft after a thesis switch. Discuss results assistant

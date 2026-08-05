@@ -16,7 +16,10 @@ from thesistester.classic_context import (
     link_thesis,
 )
 from thesistester.classic_nav import (
+    CLASSIC_FOCUS_CHANNEL_RESULTS_QA,
+    align_assistant_thesis_for_discuss,
     clarification_target_page,
+    consume_classic_focus,
     consume_classic_focus_run,
     discuss_run,
     get_classic_active_run_id,
@@ -27,6 +30,7 @@ from thesistester.classic_nav import (
     page_vs_run_identity_relation,
     resolve_run_identities,
     set_classic_active_run,
+    set_classic_focus_run,
 )
 from thesistester.classic_proposal import (
     get_classic_proposal,
@@ -137,9 +141,15 @@ def test_discuss_and_thesis_switch_clears_run_context(
 
     focused = discuss_run(state, orchestrator=orchestrator, run_id=run_id)
     assert focused == run_id
+    assert state["classic_focus_run_id"] == run_id
+    assert state["classic_focus_channel"] == CLASSIC_FOCUS_CHANNEL_RESULTS_QA
     assert consume_classic_focus_run(state) == run_id
+    assert state["classic_focus_run_id"] is None
+    assert state["classic_focus_channel"] is None
     assert state["classic_pending_navigation"] == "pages/14_Research_Assistant.py"
     assert state["assistant_selected_thesis_id"] == thesis.thesis_id
+    # Sidebar picker must match so Research Assistant cannot overwrite thesis.
+    assert state["assistant_thesis_picker"] == thesis.thesis_id
 
     other = repository.create_thesis(name="other")
     link_thesis(
@@ -156,6 +166,8 @@ def test_discuss_and_thesis_switch_clears_run_context(
 
     clear_classic_thesis_context(state)
     assert get_classic_active_run_id(state) is None
+    assert state["classic_focus_run_id"] is None
+    assert state["classic_focus_channel"] is None
 
 
 def test_discuss_rejects_non_discussable_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -370,6 +382,9 @@ def test_pages_wire_discuss_and_open_exact():
     assert "render_discuss_this_run" in bundles
     assert "Open exact run in Backtest" in assistant
     assert "navigate_clarification_to_classic" in assistant
+    assert "consume_classic_focus" in assistant
+    assert "expand_results_qa_focus" in assistant
+    assert "CLASSIC_FOCUS_CHANNEL_RESULTS_QA" in assistant
     context = (root / "thesistester" / "classic_context.py").read_text(encoding="utf-8")
     tree = ast.parse(context)
     forbidden = {"record_classic_session_run", "register_external_bundle_run"}
@@ -382,3 +397,98 @@ def test_pages_wire_discuss_and_open_exact():
             elif isinstance(func, ast.Attribute) and func.attr in forbidden:
                 found.add(func.attr)
     assert found == set()
+
+
+def test_align_assistant_thesis_for_discuss_syncs_picker():
+    state: dict = {
+        "assistant_selected_thesis_id": "th_stale",
+        "assistant_thesis_picker": "th_stale",
+    }
+    align_assistant_thesis_for_discuss(state, thesis_id="th_classic")
+    assert state["assistant_selected_thesis_id"] == "th_classic"
+    assert state["assistant_thesis_picker"] == "th_classic"
+
+
+def test_rq4_classic_focus_pair_shape_and_atomic_clear():
+    """RQ-4: string run_id + results_qa channel; consume clears both."""
+    state: dict = {}
+    init_classic_session_state(state)
+    draft_before = {"setup": {"direction": "long"}}
+    state["assistant_draft_choices"] = draft_before
+
+    set_classic_focus_run(state, "run_focus_abc")
+    assert isinstance(state["classic_focus_run_id"], str)
+    assert state["classic_focus_run_id"] == "run_focus_abc"
+    assert state["classic_focus_channel"] == CLASSIC_FOCUS_CHANNEL_RESULTS_QA
+    assert state["assistant_draft_choices"] is draft_before
+
+    focus = consume_classic_focus(state)
+    assert focus == {
+        "run_id": "run_focus_abc",
+        "channel": CLASSIC_FOCUS_CHANNEL_RESULTS_QA,
+    }
+    assert state["classic_focus_run_id"] is None
+    assert state["classic_focus_channel"] is None
+    assert state["assistant_draft_choices"] is draft_before
+    assert consume_classic_focus(state) == {"run_id": None, "channel": None}
+
+
+def test_rq4_unknown_channel_coerces_to_legacy():
+    state: dict = {"classic_focus_run_id": "run_legacy", "classic_focus_channel": "voice"}
+    init_classic_session_state(state)
+    focus = consume_classic_focus(state)
+    assert focus == {"run_id": "run_legacy", "channel": None}
+    assert state["classic_focus_run_id"] is None
+    assert state["classic_focus_channel"] is None
+
+
+def test_rq4_absent_channel_preserves_legacy_banner_path():
+    """None/absent channel → consume returns channel=None (banner-only UI)."""
+    state: dict = {}
+    init_classic_session_state(state)
+    state["classic_focus_run_id"] = "run_banner_only"
+    # Leave classic_focus_channel at init default None.
+    assert state["classic_focus_channel"] is None
+    focus = consume_classic_focus(state)
+    assert focus["run_id"] == "run_banner_only"
+    assert focus["channel"] is None
+
+
+def test_rq4_thesis_switch_and_exit_clear_both_focus_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", str(tmp_path / "store"))
+    state = _completed_state(tmp_path)
+    orchestrator, repository = _orchestrator(tmp_path)
+    thesis = repository.create_thesis(name="focus clear a")
+    other = repository.create_thesis(name="focus clear b")
+    init_classic_session_state(state)
+    link_thesis(
+        state,
+        thesis_id=thesis.thesis_id,
+        thesis_name=thesis.name,
+        dataset_id=state["dataset_id"],
+    )
+    result = record_classic_session_run(
+        orchestrator,
+        thesis_id=thesis.thesis_id,
+        session_state=state,
+        store_root=tmp_path / "store",
+    )
+    discuss_run(state, orchestrator=orchestrator, run_id=result.payload["run_id"])
+    assert state["classic_focus_run_id"] == result.payload["run_id"]
+    assert state["classic_focus_channel"] == CLASSIC_FOCUS_CHANNEL_RESULTS_QA
+
+    link_thesis(
+        state,
+        thesis_id=other.thesis_id,
+        thesis_name=other.name,
+        dataset_id=state["dataset_id"],
+    )
+    assert state["classic_focus_run_id"] is None
+    assert state["classic_focus_channel"] is None
+
+    set_classic_focus_run(state, "run_exit_clear")
+    clear_classic_thesis_context(state)
+    assert state["classic_focus_run_id"] is None
+    assert state["classic_focus_channel"] is None

@@ -38,6 +38,9 @@ ASSISTANT_SESSION_KEYS: tuple[str, ...] = (
     "assistant_portfolio_analyses",
     "assistant_results_qa_drafts",
     "assistant_product_help_draft",
+    "assistant_focused_run_id",
+    "assistant_results_qa_deep_link",
+    "assistant_results_qa_force_expand",
     "assistant_bundle_handoff",
     "assistant_flash",
 )
@@ -51,9 +54,21 @@ THESIS_SCOPED_STAGING_KEYS: tuple[str, ...] = (
     "assistant_validated_run_spec",
     "assistant_results_qa_drafts",
     "assistant_product_help_draft",
+    "assistant_focused_run_id",
+    "assistant_results_qa_deep_link",
+    "assistant_results_qa_force_expand",
     "assistant_bundle_handoff",
     "assistant_flash",
 )
+
+# Streamlit expander widget keys (1.55+) controlled when forcing RQ-4 open.
+ASSISTANT_ADVANCED_EXPANDER_KEY: str = "ra-advanced-expander"
+
+
+def linked_run_expander_key(run_id: str) -> str:
+    """Session-state key for a Linked research-run expander."""
+    return f"ra-run-expander-{run_id}"
+
 
 # Human labels for persisted SpecVersion.status values shown in the UI.
 SPEC_STATUS_LABELS: dict[str, str] = {
@@ -174,6 +189,9 @@ def init_assistant_session_state(session_state: MutableMapping[str, Any]) -> Non
         "assistant_portfolio_analyses": {},
         "assistant_results_qa_drafts": {},
         "assistant_product_help_draft": "",
+        "assistant_focused_run_id": None,
+        "assistant_results_qa_deep_link": False,
+        "assistant_results_qa_force_expand": False,
         "assistant_bundle_handoff": None,
         "assistant_flash": None,
     }
@@ -373,15 +391,68 @@ def clear_thesis_scoped_state(session_state: MutableMapping[str, Any]) -> None:
     session_state["assistant_validated_run_spec"] = None
     session_state["assistant_results_qa_drafts"] = {}
     session_state["assistant_product_help_draft"] = ""
+    session_state["assistant_focused_run_id"] = None
+    session_state["assistant_results_qa_deep_link"] = False
+    session_state["assistant_results_qa_force_expand"] = False
     session_state["assistant_bundle_handoff"] = None
     session_state["assistant_flash"] = None
     # Ephemeral Streamlit widget keys for Discuss/Help text inputs. If left
     # behind, ``if key not in session_state`` hydration would revive cleared drafts.
     for key in list(session_state.keys()):
         if isinstance(key, str) and (
-            key.startswith("results-qa-input-") or key.startswith("product-help-input")
+            key.startswith("results-qa-input-")
+            or key.startswith("product-help-input")
+            or key.startswith("ra-run-expander-")
+            or key == ASSISTANT_ADVANCED_EXPANDER_KEY
         ):
             del session_state[key]
+
+
+def apply_consumed_classic_focus(
+    session_state: MutableMapping[str, Any],
+    *,
+    run_id: str | None,
+    channel: str | None,
+) -> tuple[bool, str | None]:
+    """Stage Assistant UI for a consumed classic focus pair (RQ-4).
+
+    ``results_qa`` deep-links persist ``assistant_results_qa_deep_link`` +
+    ``assistant_focused_run_id`` across Streamlit reruns (one-shot classic keys
+    are already cleared by ``consume_classic_focus``). Returns
+    ``(expand_results_qa, expand_run_id)`` for Advanced / Linked-run expanders.
+    Legacy ``channel is None`` only records the focused run id for that render's
+    banner path — it does not keep Advanced forced open.
+
+    On a fresh ``results_qa`` consume, also sets
+    ``assistant_results_qa_force_expand`` so keyed Streamlit expanders reopen
+    even when the user previously collapsed Advanced.
+    """
+    init_assistant_session_state(session_state)
+    cleaned = run_id.strip() if isinstance(run_id, str) and run_id.strip() else None
+    if cleaned is not None:
+        session_state["assistant_focused_run_id"] = cleaned
+    if channel == "results_qa" and cleaned is not None:
+        session_state["assistant_results_qa_deep_link"] = True
+        session_state["assistant_results_qa_force_expand"] = True
+    if not session_state.get("assistant_results_qa_deep_link"):
+        return False, None
+    focused = session_state.get("assistant_focused_run_id")
+    if isinstance(focused, str) and focused.strip():
+        return True, focused.strip()
+    return False, None
+
+
+def force_results_qa_expanders_open(
+    session_state: MutableMapping[str, Any],
+    *,
+    run_id: str | None,
+) -> None:
+    """One-shot: set keyed expander widget state open (Streamlit >= 1.55)."""
+    if not session_state.pop("assistant_results_qa_force_expand", False):
+        return
+    session_state[ASSISTANT_ADVANCED_EXPANDER_KEY] = True
+    if isinstance(run_id, str) and run_id.strip():
+        session_state[linked_run_expander_key(run_id.strip())] = True
 
 
 def active_bundle_handoff(

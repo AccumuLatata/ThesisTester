@@ -21,6 +21,7 @@ CLASSIC_SESSION_KEYS: tuple[str, ...] = (
     "classic_flash",
     "classic_active_run_id",
     "classic_focus_run_id",
+    "classic_focus_channel",
     "classic_nav_prefill",
     "classic_page_proposal",
 )
@@ -34,6 +35,7 @@ CLASSIC_THESIS_SCOPED_KEYS: tuple[str, ...] = (
     "classic_flash",
     "classic_active_run_id",
     "classic_focus_run_id",
+    "classic_focus_channel",
     "classic_nav_prefill",
     "classic_page_proposal",
 )
@@ -101,6 +103,7 @@ def init_classic_session_state(session_state: MutableMapping[str, Any]) -> None:
         "classic_flash": None,
         "classic_active_run_id": None,
         "classic_focus_run_id": None,
+        "classic_focus_channel": None,
         "classic_nav_prefill": None,
         "classic_page_proposal": None,
     }
@@ -237,6 +240,7 @@ def clear_classic_thesis_context(session_state: MutableMapping[str, Any]) -> Non
     session_state["classic_flash"] = None
     session_state["classic_active_run_id"] = None
     session_state["classic_focus_run_id"] = None
+    session_state["classic_focus_channel"] = None
     session_state["classic_nav_prefill"] = None
     session_state["classic_page_proposal"] = None
     _clear_classic_relink_flags(session_state)
@@ -307,6 +311,7 @@ def link_thesis(
     if prior_norm and prior_norm != target_thesis:
         session_state["classic_active_run_id"] = None
         session_state["classic_focus_run_id"] = None
+        session_state["classic_focus_channel"] = None
         session_state["classic_nav_prefill"] = None
         # Preserve a staged proposal when re-linking its own thesis_id (e.g.
         # Assistant staged for A, classic briefly linked to B, then to A).

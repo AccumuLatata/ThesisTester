@@ -129,6 +129,11 @@ def test_link_thesis_sets_context_and_syncs_assistant_without_mutating_page_stat
             assert session[key] == ""
         elif key in {"assistant_draft_choices", "assistant_results_qa_drafts"}:
             assert session[key] == {}
+        elif key in {
+            "assistant_results_qa_deep_link",
+            "assistant_results_qa_force_expand",
+        }:
+            assert session[key] is False
         else:
             assert session[key] in (None, {})
     assert_protected_classic_keys_unchanged(before, session)
