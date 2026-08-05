@@ -148,8 +148,10 @@ def test_assistant_session_keys_cover_documented_staging_surface():
     assert "assistant_flash" in ASSISTANT_SESSION_KEYS
     assert "assistant_run_comparisons" in ASSISTANT_SESSION_KEYS
     assert "assistant_portfolio_analyses" in ASSISTANT_SESSION_KEYS
+    assert "assistant_results_qa_drafts" in ASSISTANT_SESSION_KEYS
     assert "assistant_bundle_handoff" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_flash" in THESIS_SCOPED_STAGING_KEYS
+    assert "assistant_results_qa_drafts" in THESIS_SCOPED_STAGING_KEYS
     assert set(THESIS_SCOPED_STAGING_KEYS).issubset(ASSISTANT_SESSION_KEYS)
 
 
@@ -376,6 +378,17 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert (
         chat_message_display_role({"role": "tool", "content": "completed BUNDLE.import."}) is None
     )
+    assert (
+        chat_message_display_role(
+            {
+                "role": "assistant",
+                "content": "results reply",
+                "channel": "results_qa",
+                "run_id": "run_x",
+            }
+        )
+        is None
+    )
 
     # A short clarification that is a substring of the opaque status line must
     # not suppress merging the remaining structured questions into chat.
@@ -415,6 +428,12 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "format_chat_message_body(" in source
     assert "chat_message_display_role(" in source
     assert "Thesis drafting only" in source
+    assert "Discuss results" in source
+    assert "handle_results_turn(" in source
+    assert "is_draft_channel_message(" in source
+    assert "load_results_qa_settings(" in source
+    assert "st.text_input(" in source
+    assert "Send results question" in source
     assert "Advanced → Linked runs" in source
     assert "Raw transcripts and JSON for audit only" in source
     assert "Open research pages" not in source
@@ -929,6 +948,8 @@ def test_clear_thesis_scoped_state_helper():
         "assistant_draft_choices": {"a": 1},
         "assistant_hydrated_conversation_id": "c",
         "assistant_validated_run_spec": {"spec": {}},
+        "assistant_results_qa_drafts": {"run_a": "leaked question"},
+        "results-qa-input-run_a": "leaked question",
         "assistant_bundle_handoff": {"thesis_id": "th_a", "run_id": "r1"},
         "assistant_run_explanations": {"r1": "keep"},
     }
@@ -937,6 +958,8 @@ def test_clear_thesis_scoped_state_helper():
     assert state["assistant_draft_choices"] == {}
     assert state["assistant_hydrated_conversation_id"] is None
     assert state["assistant_validated_run_spec"] is None
+    assert state["assistant_results_qa_drafts"] == {}
+    assert "results-qa-input-run_a" not in state
     assert state["assistant_bundle_handoff"] is None
     assert state["assistant_run_explanations"] == {"r1": "keep"}
 

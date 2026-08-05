@@ -479,8 +479,12 @@ other than the last bar in the dataset.
   thesis-draft chat, must omit draft `choices`, and must not dispatch compute
   pipelines from the model. **RQ-0** reserves `[assistant.results_qa]` /
   `[assistant.product_help]` and ships the inert §7.1 Help corpus allowlist
-  (`thesistester/assistant/help_corpus.py`); user-visible Discuss/Help reply
-  loops land in later RQ PRs.
+  (`thesistester/assistant/help_corpus.py`). **RQ-1** ships multi-turn
+  Discuss results (`handle_results_turn` / `results_qa`) on hash-verified
+  evidence; product Help reply loops remain RQ-3. Thesis switches clear
+  `assistant_results_qa_drafts` and `results-qa-input-*` widget keys.
+  Draft-chat history excludes `results_qa` turns and tool/audit lines so
+  multi-turn Discuss results cannot starve thesis context.
 - LLM explanations must cite packet paths; uncited numerical tokens are rejected
   before render. When provenance includes a fingerprint, dataset identity is
   available at `assumptions.dataset.dataset_fingerprint` (and mirrored at
@@ -509,8 +513,8 @@ other than the last bar in the dataset.
 - Realtime voice review of completed runs is specified in
   `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (single VA-series contract for
   **voice**). Text results Q&A / product help are owned by
-  `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ); VA-1 is an RQ-1 stub.
-  Voice is not implemented yet.
+  `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ); VA-1 text substrate is
+  implemented by RQ-1. Voice (VA-2+) is not implemented yet.
 - When shipped, voice will be opt-in (`assistant.voice.enabled = false` by
   default), bind only to hash-verified evidence packets, and expose read-only
   tools. It must not dispatch compute, mutate RunSpecs, or invent metrics.

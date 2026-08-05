@@ -23,9 +23,12 @@ from thesistester.assistant.llm import (
     LLMConfigurationError,
     LLMProviderError,
     create_openai_client,
+    is_draft_channel_message,
     load_llm_settings,
+    load_results_qa_settings,
 )
 from thesistester.assistant.llm_explainer import LLMEvidenceError
+from thesistester.assistant.results_qa import RESULTS_QA_CHANNEL
 from thesistester.assistant.workspace import (
     CONFLUENCE_MODES,
     DIRECTIONS,
@@ -231,10 +234,14 @@ if st.session_state["assistant_hydrated_conversation_id"] != conversation_id:
     st.session_state["assistant_draft_prompt"] = "\n".join(
         str(message.get("content", ""))
         for message in active_conversation.messages
-        if message.get("role") == "user"
+        if message.get("role") == "user" and is_draft_channel_message(message)
     )
     for message in reversed(active_conversation.messages):
-        if message.get("role") == "assistant" and isinstance(message.get("choices"), dict):
+        if (
+            is_draft_channel_message(message)
+            and message.get("role") == "assistant"
+            and isinstance(message.get("choices"), dict)
+        ):
             st.session_state["assistant_draft_choices"] = message["choices"]
             break
     st.session_state["assistant_hydrated_conversation_id"] = conversation_id
@@ -243,8 +250,8 @@ if st.session_state["assistant_hydrated_conversation_id"] != conversation_id:
 st.subheader("Assistant chat")
 st.caption(
     "Thesis drafting only — extracts research choices and clarification questions. "
-    "It does not explain completed backtests/grids/validation. For run narratives, "
-    "open Advanced → Linked runs → Explain run (or LLM explain)."
+    "It does not discuss completed backtests/grids/validation. For run narratives, "
+    "open Advanced → Linked runs → Explain run, LLM explain, or Discuss results."
 )
 for message in active_conversation.messages:
     display_role = chat_message_display_role(message)
@@ -271,7 +278,7 @@ if chat_message := st.chat_input("Describe or refine this thesis"):
         st.session_state["assistant_draft_prompt"] = "\n".join(
             str(message.get("content", ""))
             for message in refreshed.messages
-            if message.get("role") == "user"
+            if message.get("role") == "user" and is_draft_channel_message(message)
         )
         st.session_state["assistant_draft_choices"] = draft.normalized_run_spec
         invalidate_validation(st.session_state)
@@ -281,8 +288,8 @@ if chat_message := st.chat_input("Describe or refine this thesis"):
                 level="info",
                 message=(
                     "Chat updated with clarification questions above. "
-                    "This input drafts thesis choices — use Explain run under "
-                    "Advanced → Linked runs to narrate test results."
+                    "This input drafts thesis choices — use Explain run or "
+                    "Discuss results under Advanced → Linked runs for test results."
                 ),
             )
         else:
@@ -1454,6 +1461,83 @@ with st.expander("Advanced: draft, runs & compare", expanded=False):
                         attempts = st.session_state["assistant_llm_attempts"].get(run.run_id)
                         if attempts:
                             st.caption(f"Provider attempts: {attempts}")
+                    results_qa_settings = load_results_qa_settings()
+                    if results_qa_settings.enabled:
+                        st.markdown("**Discuss results**")
+                        st.caption(
+                            "Multi-turn Q&A on this completed run only. "
+                            "Grounded in hash-verified evidence — not thesis drafting."
+                        )
+                        results_thread = [
+                            message
+                            for message in active_conversation.messages
+                            if message.get("channel") == RESULTS_QA_CHANNEL
+                            and message.get("run_id") == run.run_id
+                            and str(message.get("role") or "").strip().lower()
+                            in {"user", "human", "assistant", "ai"}
+                        ]
+                        for message in results_thread:
+                            role = str(message.get("role") or "").strip().lower()
+                            display = "user" if role in {"user", "human"} else "assistant"
+                            body = str(message.get("content") or "").strip()
+                            if not body:
+                                continue
+                            with st.chat_message(display):
+                                # Path-cited claims are embedded in persisted
+                                # content via format_results_qa_reply_content.
+                                st.write(body)
+                        input_key = f"results-qa-input-{run.run_id}"
+                        drafts = st.session_state.setdefault("assistant_results_qa_drafts", {})
+                        if input_key not in st.session_state:
+                            st.session_state[input_key] = str(drafts.get(run.run_id, ""))
+                        st.text_input(
+                            "Ask about this run",
+                            key=input_key,
+                            placeholder="e.g. What was expectancy? Best SL/TP?",
+                        )
+                        drafts[run.run_id] = str(st.session_state.get(input_key, ""))
+                        if st.button(
+                            "Send results question",
+                            key=f"results-qa-send-{run.run_id}",
+                        ):
+                            question = str(st.session_state.get(input_key, "")).strip()
+                            if not question:
+                                st.error("Enter a question about this run.")
+                            else:
+                                try:
+                                    client = create_openai_client(load_llm_settings())
+                                    result = orchestrator.handle_results_turn(
+                                        client,
+                                        thesis_id=thesis_id,
+                                        run_id=run.run_id,
+                                        message=question,
+                                        conversation_id=conversation_id,
+                                        max_history_messages=(
+                                            results_qa_settings.max_history_messages
+                                        ),
+                                    )
+                                    if result.status != "completed":
+                                        raise ValueError(
+                                            result.payload.get("error", {}).get(
+                                                "message",
+                                                "Unable to discuss this run.",
+                                            )
+                                        )
+                                    st.session_state[input_key] = ""
+                                    drafts[run.run_id] = ""
+                                    set_assistant_flash(
+                                        st.session_state,
+                                        level="success",
+                                        message="Results discussion updated.",
+                                    )
+                                    st.rerun()
+                                except (
+                                    LLMConfigurationError,
+                                    LLMProviderError,
+                                    LLMEvidenceError,
+                                    ValueError,
+                                ) as exc:
+                                    st.error(f"Unable to discuss results: {exc}")
                     if st.button("Render markdown report", key=f"report-{run.run_id}"):
                         result = orchestrator.export_run(
                             thesis_id=thesis_id,

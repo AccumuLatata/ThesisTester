@@ -79,6 +79,13 @@ from thesistester.assistant.llm_explainer import (
     assert_llm_explanation_grounded,
     explain_packet_with_llm,
 )
+from thesistester.assistant.results_qa import (
+    RESULTS_QA_CHANNEL,
+    ResultsQAReply,
+    filter_results_qa_history,
+    format_results_qa_reply_content,
+    propose_results_reply,
+)
 from thesistester.assistant.registry_audit import (
     CapabilityAuditRow,
     audit_capability_registry,
@@ -154,6 +161,11 @@ __all__ = [
     "LLMExplanation",
     "assert_llm_explanation_grounded",
     "explain_packet_with_llm",
+    "RESULTS_QA_CHANNEL",
+    "ResultsQAReply",
+    "filter_results_qa_history",
+    "format_results_qa_reply_content",
+    "propose_results_reply",
     "CapabilityAuditRow",
     "audit_capability_registry",
     "capability_audit_summary",

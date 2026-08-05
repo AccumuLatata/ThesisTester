@@ -12,6 +12,7 @@ from copy import deepcopy
 from typing import Any, Iterable, Mapping, MutableMapping, Sequence
 
 from thesistester.assistant.explainer import EvidencePacket
+from thesistester.assistant.llm import is_draft_channel_message
 from thesistester.assistant.thesis_compiler import (
     normalize_setup_level_selection,
     normalize_walk_forward_controls,
@@ -35,6 +36,7 @@ ASSISTANT_SESSION_KEYS: tuple[str, ...] = (
     "assistant_run_artifacts",
     "assistant_run_comparisons",
     "assistant_portfolio_analyses",
+    "assistant_results_qa_drafts",
     "assistant_bundle_handoff",
     "assistant_flash",
 )
@@ -46,6 +48,7 @@ THESIS_SCOPED_STAGING_KEYS: tuple[str, ...] = (
     "assistant_draft_choices",
     "assistant_hydrated_conversation_id",
     "assistant_validated_run_spec",
+    "assistant_results_qa_drafts",
     "assistant_bundle_handoff",
     "assistant_flash",
 )
@@ -167,6 +170,7 @@ def init_assistant_session_state(session_state: MutableMapping[str, Any]) -> Non
         "assistant_run_artifacts": {},
         "assistant_run_comparisons": {},
         "assistant_portfolio_analyses": {},
+        "assistant_results_qa_drafts": {},
         "assistant_bundle_handoff": None,
         "assistant_flash": None,
     }
@@ -285,10 +289,13 @@ def chat_message_display_role(message: Mapping[str, Any]) -> str | None:
     """Map a persisted conversation message to a Streamlit chat role.
 
     Tool/audit lines are omitted from the friendly chat (they remain in
-    Conversation audit). Returns ``None`` when the message should not render
-    as a chat bubble.
+    Conversation audit). Non-draft channel messages (``results_qa``,
+    ``product_help``, …) are also omitted so thesis chat stays draft-only.
+    Returns ``None`` when the message should not render as a chat bubble.
     """
     if not isinstance(message, Mapping):
+        return None
+    if not is_draft_channel_message(message):
         return None
     role = str(message.get("role") or "").strip().lower()
     if role in {"user", "human"}:
@@ -361,8 +368,14 @@ def clear_thesis_scoped_state(session_state: MutableMapping[str, Any]) -> None:
     session_state["assistant_draft_choices"] = {}
     session_state["assistant_hydrated_conversation_id"] = None
     session_state["assistant_validated_run_spec"] = None
+    session_state["assistant_results_qa_drafts"] = {}
     session_state["assistant_bundle_handoff"] = None
     session_state["assistant_flash"] = None
+    # Ephemeral Streamlit widget keys for Discuss results text inputs. If left
+    # behind, ``if key not in session_state`` hydration would revive cleared drafts.
+    for key in list(session_state.keys()):
+        if isinstance(key, str) and key.startswith("results-qa-input-"):
+            del session_state[key]
 
 
 def active_bundle_handoff(
