@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from thesistester.assistant.explainer import EvidenceClaim, EvidencePacket
 from thesistester.assistant.llm import StructuredLLMClient
@@ -133,6 +133,76 @@ def _assert_tokens_grounded(text: str, *, allowed: set[str]) -> None:
             )
 
 
+def _llm_caveat_echoes_packet_message(llm_caveat: str, packet_message: str) -> bool:
+    """True when an LLM caveat line contains the full packet caveat message.
+
+    Partial/trivial substrings (e.g. ``\"missing.\"``) do **not** count — the
+    mandatory honesty sentence must actually appear in the LLM line.
+    """
+    if not packet_message or not llm_caveat:
+        return False
+    return packet_message in llm_caveat
+
+
+def merge_mandatory_packet_caveats(
+    packet: EvidencePacket,
+    caveats: Sequence[str],
+) -> tuple[str, ...]:
+    """Append any missing packet caveat messages so honesty framing cannot drop them.
+
+    RQ contract §3.7: sample-size / costs / intrabar / OOS / selection caveats
+    from the packet remain mandatory. Callers must run this before persist/render.
+    """
+    merged = [item.strip() for item in caveats if isinstance(item, str) and item.strip()]
+    for caveat in packet.caveats:
+        message = caveat.message.strip() if isinstance(caveat.message, str) else ""
+        if not message:
+            continue
+        if not any(_llm_caveat_echoes_packet_message(item, message) for item in merged):
+            merged.append(message)
+    return tuple(merged)
+
+
+# Soften language that asserts OOS/WFA confirmation (not mere proximity of
+# "robust" to an honesty disclaimer about missing walk-forward evidence).
+_OOS_SOFTEN_RE = re.compile(
+    r"\b("
+    r"(?:oos|out[\s-]*of[\s-]*sample|wfa|walk[\s-]*forward)\s+is\s+"
+    r"(?:confirm(?:ed)?|robust|proven|validated|successful)"
+    r"|"
+    r"(?:confirm(?:ed)?|proven|validated)\s+by\s+"
+    r"(?:oos|out[\s-]*of[\s-]*sample|wfa|walk[\s-]*forward)"
+    r"|"
+    r"robust\s+out[\s-]*of[\s-]*sample"
+    r"|"
+    r"(?:oos|out[\s-]*of[\s-]*sample)\s+robust"
+    r"|"
+    r"successful\s+(?:oos|out[\s-]*of[\s-]*sample|wfa|walk[\s-]*forward)\s+folds?"
+    r")\b",
+    re.IGNORECASE,
+)
+# Hedge/negation may sit inside the soften span or in the preceding clause.
+# Deliberately omit "missing"/"absent" so an earlier honesty clause cannot
+# launder a later confirmation ("evidence is missing; OOS is confirmed").
+_OOS_SOFTEN_NEGATION_RE = re.compile(
+    r"\b(?:not|never|without|unless|unconfirmed|cannot|can't|"
+    r"isn't|aren't|wasn't|weren't|no longer|don't|do not|"
+    r"assume|assuming|whether|verify|check|ask(?:ing)?)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_oos_soften_language(text: str) -> bool:
+    """True when text asserts OOS/WFA confirmation without local negation/hedge."""
+    for match in _OOS_SOFTEN_RE.finditer(text):
+        span = match.group(0)
+        prefix = text[max(0, match.start() - 48) : match.start()]
+        if _OOS_SOFTEN_NEGATION_RE.search(span) or _OOS_SOFTEN_NEGATION_RE.search(prefix):
+            continue
+        return True
+    return False
+
+
 def assert_llm_explanation_grounded(
     packet: EvidencePacket,
     *,
@@ -141,10 +211,15 @@ def assert_llm_explanation_grounded(
     claims: tuple[EvidenceClaim, ...],
     followups: tuple[str, ...] = (),
 ) -> None:
-    """Reject uncited numerical claims before any UI rendering.
+    """Reject uncited numerical claims and OOS-soften contradictions.
 
     ``followups`` (RQ-1 results Q&A) use the same cited-claim allowlist as
     ``summary`` / claim text. Prefer number-free followups.
+
+    Callers must pass caveats through ``merge_mandatory_packet_caveats`` first so
+    packet honesty caveats cannot be omitted. When the packet carries
+    ``missing_oos`` / ``failed_oos``, summary/claim/followup text must not claim
+    OOS/WFA confirmation.
     """
     allowed_from_claims = _allowed_number_tokens([claim.value for claim in claims])
     # Summary and claim text may only use numbers from cited claim values.
@@ -156,14 +231,41 @@ def assert_llm_explanation_grounded(
     # Packet caveat numbers are allowlisted only for LLM caveat lines that
     # actually echo that packet caveat message — never for the whole narrative.
     packet_caveat_messages = tuple(
-        caveat.message for caveat in packet.caveats if isinstance(caveat.message, str)
+        caveat.message.strip()
+        for caveat in packet.caveats
+        if isinstance(caveat.message, str) and caveat.message.strip()
     )
     for llm_caveat in caveats:
         allowed = set(allowed_from_claims)
         for message in packet_caveat_messages:
-            if message and (message in llm_caveat or llm_caveat in message):
+            if _llm_caveat_echoes_packet_message(llm_caveat, message):
                 allowed |= set(_extract_number_tokens(message))
         _assert_tokens_grounded(llm_caveat, allowed=allowed)
+
+    oos_codes = {
+        caveat.code
+        for caveat in packet.caveats
+        if isinstance(caveat.code, str) and caveat.code in {"missing_oos", "failed_oos"}
+    }
+    if oos_codes:
+        fields: list[tuple[str, str]] = [
+            ("summary", summary),
+            *((f"claim[{index}]", claim.text) for index, claim in enumerate(claims)),
+            *((f"followup[{index}]", item) for index, item in enumerate(followups)),
+        ]
+        # Scan LLM caveat lines too. Skip only *exact* packet-echo lines so
+        # honesty text is not false-positive, while "echo + OOS is confirmed"
+        # mashups remain gated.
+        for index, llm_caveat in enumerate(caveats):
+            if any(llm_caveat.strip() == message for message in packet_caveat_messages):
+                continue
+            fields.append((f"caveat[{index}]", llm_caveat))
+        for field_name, text in fields:
+            if _has_oos_soften_language(text):
+                raise LLMEvidenceError(
+                    f"OOS/WFA soften language in {field_name} contradicts packet "
+                    f"caveat code(s) {sorted(oos_codes)}."
+                )
 
 
 def explain_packet_with_llm(
@@ -220,7 +322,9 @@ def explain_packet_with_llm(
         )
     grounded = tuple(claims)
     summary_text = summary.strip()
-    caveat_texts = tuple(caveat.strip() for caveat in caveats)
+    caveat_texts = merge_mandatory_packet_caveats(
+        packet, tuple(caveat.strip() for caveat in caveats)
+    )
     assert_llm_explanation_grounded(
         packet, summary=summary_text, caveats=caveat_texts, claims=grounded
     )

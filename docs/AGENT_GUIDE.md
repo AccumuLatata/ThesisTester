@@ -271,15 +271,22 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   `BUNDLE.import` but never `execute_confirmed_run` / `PIPELINE.*`; reuse C2-6
   grounding token rules. RQ-1 implements VA-1. Document any new `assistant_*`
   keys for these channels in `ARCHITECTURE.md` and `ASSISTANT_SESSION_KEYS` in
-  the same PR. **RQ-0** shipped config sections +
-  `thesistester/assistant/help_corpus.py` (§7.1 allowlist) and
+  the same PR. **RQ series is complete (RQ-0…RQ-5).** **RQ-0** shipped config
+  sections + `thesistester/assistant/help_corpus.py` (§7.1 allowlist) and
   `load_results_qa_settings` / `load_product_help_settings` /
   `is_draft_channel_message` in `llm.py`. **RQ-1** shipped
   `results_qa.py`, `handle_results_turn`, Discuss results UI
   (`st.text_input` + send), draft history isolation, and
-  `assistant_results_qa_drafts`. **RQ-3** shipped `product_help.py`,
-  `handle_help_turn`, Help / how it works UI, corpus retrieval wiring, and
-  `assistant_product_help_draft` — never load `AGENT_GUIDE` into Help.
+  `assistant_results_qa_drafts`. **RQ-2** shipped
+  `results_projections.py` (`results.projections.*`) and optional RO
+  `TIME.analyze` enrichment (`allow_time_enrichment` default false).
+  **RQ-3** shipped `product_help.py`, `handle_help_turn`, Help / how it works
+  UI, corpus retrieval wiring, and `assistant_product_help_draft` — never load
+  `AGENT_GUIDE` into Help. **RQ-4** shipped
+  `classic_focus_channel="results_qa"` beside string `classic_focus_run_id`.
+  **RQ-5** froze honesty/injection evals in
+  `tests/test_assistant_llm_evaluations.py` (release gate). Do not reopen RQ
+  for new features; voice remains VA-series only.
 - Realtime voice review (VA-series) has a **single** contract for **voice**:
   `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Do not add parallel voice
   roadmap/reassessment docs. Implement only the active VA PR’s **Files
