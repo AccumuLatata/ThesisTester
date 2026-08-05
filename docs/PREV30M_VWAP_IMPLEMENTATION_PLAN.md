@@ -292,6 +292,8 @@ No change to `simulate_trades` fill semantics.
 ## 4. Non-goals
 
 - Do not change `VWAP_rolling_*`, `dVWAP_RTH`, TPO, or APOC formulas/availability.
+- Do not change any other existing level family’s values, availability, or NaN-gating.
+- Do not change signal generation, confluence semantics, naked-flag semantics, or `simulate_trades` fill/exit behavior.
 - Do not implement `dVWAP_ETH` in this workstream.
 - Do not implement multi-period VWAP stack columns in MVP.
 - Do not add new signal triggers specific to prev30mVWAP (use existing touch/reject/break/reclaim/3c).
@@ -465,6 +467,36 @@ Mandatory for every implementation PR:
 - [ ] Docs updated in same PR
 - [ ] PR body contains a short “Regression safety” paragraph
 - [ ] Narrow surface area; no drive-by refactors of TPO/APOC/dVWAP
+
+### 8.2 Non-regression contract (normative — answer to “do not touch anything else”)
+
+**Yes: implementation must not regress other levels or unrelated app behavior.** This is a hard acceptance gate, not aspirational.
+
+| Surface | Required outcome |
+|---|---|
+| Other level families (`sessions`, indicators/SMA-EMA/rolling VWAP, profile, pivots, `dVWAP_RTH`, TPO SP, APOC/pAPOC) | **Value-identical** on all overlapping columns when prev30m is disabled **and** when enabled (new columns only; no mutation of existing columns) |
+| Signal engine / triggers / 3c / OTF | **Untouched** — no code changes; no new trigger semantics |
+| `simulate_trades` / fills / exits / risk | **Untouched** |
+| Confluence / naked / Setup Builder semantics | Unchanged except that `prev30mVWAP` may appear as an additional selectable **price** level when computed; `hit_m*` never selectable |
+| Persistence / research identity | Additive settings keys + `LEVEL_ENGINE_VERSION` 3→4 (intentional cache invalidation only; not a semantic change to other families) |
+| UI outside Levels opt-in controls | Additive keys/widgets only; no layout/behavior changes to unrelated pages |
+| Assistant / CAI / classic export | Catalog may list `prev30mVWAP`; no unrelated contract changes |
+
+**Allowed intentional deltas (not regressions):**
+
+1. New columns when `prev30m_vwap_enabled=True`.
+2. Product defaults may enable the family (same pattern as pivots/dVWAP/SP/APOC).
+3. Engine version bump invalidates old level snapshots so stale caches are not reused.
+4. Shared eligibility denylist may gain `prev30mVWAP_hit_m1` / `hit_m5` entries — must be additive and must not change eligibility of any pre-existing column.
+
+**Forbidden:**
+
+- Editing formulas, availability, or NaN-gating of any other level family “while we’re here”.
+- Refactoring TPO/APOC/session VWAP unless a separate behavior-neutral extraction PR is explicitly scoped and golden-gated first.
+- Changing signal/backtest/analytics semantics unrelated to prev30m diagnostics.
+- Making `hit_m1` / `hit_m5` show up as setup levels or price overlays.
+
+**Proof required in the implementation PR:** disabled isolation tests + overlapping-column equality when enabled + full pytest/ruff green + legacy goldens untouched. Until that PR is green, non-regression is a plan requirement, not yet an empirical claim.
 
 ---
 
