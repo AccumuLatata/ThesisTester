@@ -648,9 +648,9 @@ not Single Print levels.  They are independent of `tpo.py`.
 
 ---
 
-## Stage 8 — `prev30mVWAP` (Phase 1 + Phase 2 implemented)
+## Stage 8 — `prev30mVWAP` (Phases 1–3 implemented)
 
-**Status:** Phase 1 level engine + Phase 2 early-window R analytics implemented. Full plan:
+**Status:** Level engine + early-window R analytics + multi-period stack implemented. Full plan:
 
 ```text
 docs/PREV30M_VWAP_IMPLEMENTATION_PLAN.md
@@ -663,7 +663,24 @@ Summary locks (do not re-derive here):
 - **Session-boundary finalization mandatory** (CME ~17:00 halt often has no in-session `>= bracket_end` bar).
 - TTL: `prev30m_vwap_validity_periods` (default 1); also Phase 3 stack depth (`prev30mVWAP_2`…`_N` when N>1).
 - Early-window hit diagnostics: `prev30mVWAP_hit_m1` + `prev30mVWAP_hit_m5` (not setup/chart-eligible); optional R analytics on finalized bracket flags (age-1 only).
-- Opt-in / default-off at `compute_all_levels`; product defaults may enable; bump `LEVEL_ENGINE_VERSION` on implementation (Phase 3 → 5).
+- Opt-in / default-off at `compute_all_levels`; product defaults may enable; `LEVEL_ENGINE_VERSION` landed at 5 after Phase 3.
+
+---
+
+## Stage 9 — `prev4hVWAP` (plan lock)
+
+**Status:** Phase 0 plan. Exact same family as Stage 8 with **4-hour** session-open brackets. Full plan:
+
+```text
+docs/PREV4H_VWAP_IMPLEMENTATION_PLAN.md
+```
+
+Summary locks (do not re-derive here):
+
+- Inherit every Stage 8 contract; only bracket length / names / settings keys change (`BRACKET_MINUTES=240`).
+- Columns: `prev4hVWAP`, `prev4hVWAP_hit_m1` / `hit_m5`; stack `prev4hVWAP_2`…`_N` when validity N>1.
+- Independent module and gates from prev30m; both may be enabled simultaneously.
+- Opt-in / default-off at `compute_all_levels`; product defaults may enable; bump `LEVEL_ENGINE_VERSION` `5 → 6` on Phase 1.
 
 ---
 
