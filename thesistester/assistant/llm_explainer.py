@@ -217,11 +217,21 @@ def assert_llm_explanation_grounded(
         if isinstance(caveat.code, str) and caveat.code in {"missing_oos", "failed_oos"}
     }
     if oos_codes:
-        for field_name, text in (
+        fields: list[tuple[str, str]] = [
             ("summary", summary),
             *((f"claim[{index}]", claim.text) for index, claim in enumerate(claims)),
             *((f"followup[{index}]", item) for index, item in enumerate(followups)),
-        ):
+        ]
+        # Scan LLM caveat lines too, but skip exact packet-echo lines so honesty
+        # text like "…unless confirmed by OOS/WFA evidence" is not false-positive.
+        for index, llm_caveat in enumerate(caveats):
+            if any(
+                _llm_caveat_echoes_packet_message(llm_caveat, message)
+                for message in packet_caveat_messages
+            ):
+                continue
+            fields.append((f"caveat[{index}]", llm_caveat))
+        for field_name, text in fields:
             if _OOS_SOFTEN_RE.search(text):
                 raise LLMEvidenceError(
                     f"OOS/WFA soften language in {field_name} contradicts packet "

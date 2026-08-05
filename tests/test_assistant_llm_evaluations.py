@@ -975,6 +975,30 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
             user_message="Is this robust out of sample?",
         )
 
+    class SoftenInCaveatsChannel:
+        """Soft confirmation must not hide in the Caveats section either."""
+
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Sample has 42 trades.",
+                "caveats": ["OOS is confirmed and robust out of sample."],
+                "claims": [
+                    {
+                        "text": "Sample has 42 trades.",
+                        "path": "results.trade_summary.trade_count",
+                    }
+                ],
+                "followups": ["Ask about costs."],
+            }
+
+    with pytest.raises(LLMEvidenceError, match="OOS/WFA soften"):
+        propose_results_reply(
+            SoftenInCaveatsChannel(),
+            packet=packet,
+            history=(),
+            user_message="Is this robust out of sample?",
+        )
+
     class SoftenWithInventedFolds:
         def complete_structured(self, **kwargs):
             return {
