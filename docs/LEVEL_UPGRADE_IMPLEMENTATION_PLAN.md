@@ -648,6 +648,24 @@ not Single Print levels.  They are independent of `tpo.py`.
 
 ---
 
+## Stage 8 — `prev30mVWAP` (planned)
+
+**Status:** Spec only. Full regression-safe plan:
+
+```text
+docs/PREV30M_VWAP_IMPLEMENTATION_PLAN.md
+```
+
+Summary locks (do not re-derive here):
+
+- Frozen end-of-bracket 30m VWAP carried into the next period.
+- **Full trading session availability (ETH + RTH)** via session-open (`eth_start`) 30m brackets — not RTH-only.
+- TTL: `prev30m_vwap_validity_periods` (default 1).
+- First-minute hit diagnostic: `prev30mVWAP_hit_m1`, plus optional R-multiple analytics.
+- Opt-in / default-off at `compute_all_levels`; product defaults may enable; bump `LEVEL_ENGINE_VERSION` on implementation.
+
+---
+
 ## Global Acceptance Criteria
 
 The implementation is acceptable only if:
