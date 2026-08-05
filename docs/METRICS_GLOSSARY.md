@@ -446,8 +446,10 @@ Related session / artifact fields: `candidate_signal_count`,
 | `prev30mVWAP_hit_m1` | Diagnostic: `1`/`0` after the first minute of the bracket if price range-touched `prev30mVWAP` in that minute; `NaN` until the window completes. Not setup-selectable. |
 | `prev30mVWAP_hit_m5` | Same pattern for the first 5 minutes. Nesting: when both non-NaN, `m1=1 ⇒ m5=1`. |
 | `prev30m_vwap_validity_periods` | Integer ≥ 1 TTL in subsequent 30m periods; newer freeze replaces and resets TTL. |
+| `prev30mVWAP_hit_m1_at_entry` / `prev30mVWAP_hit_m5_at_entry` | Finalized bracket hit flags joined onto trades by entry-bracket `(session_date, bracket_idx)` for R analytics (not raw in-window level rows). |
+| R by `hit_m1` / `hit_m5` | Post-trade grouped `trade_count`, `avg_r`, `median_r`, `total_r`, `win_rate` conditioned on each finalized flag; plus joint `(m1, m5)` contingency counts. |
 
-Implementation: `thesistester/levels/prev30m_vwap.py`. Phase 2 may add R-multiple analytics conditioned on finalized `hit_m1` / `hit_m5` bracket flags.
+Implementation: levels in `thesistester/levels/prev30m_vwap.py`; Phase 2 R analytics in `thesistester/analytics/prev30m_vwap_hit.py` (`prev30m_hit_r_summary`, entry-bracket finalized flags). Available only when at least one finalized hit flag attaches; contingency shares the R-valid universe. No fill-engine changes.
 
 ## Assistant evidence-claim paths
 

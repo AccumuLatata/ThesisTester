@@ -1,6 +1,7 @@
 # Regression-Safe Implementation Plan: `prev30mVWAP`
 
-**Status:** Phase 1 implemented (level engine + wiring + tests §10.1–10.6); Phase 2 analytics not started  
+**Status:** Phase 1 + Phase 2 implemented (level engine + early-window R analytics); Phase 3 stack optional  
+
 
 **Document type:** Focused level-family implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
@@ -287,7 +288,7 @@ Worked timing (1-min data, bracket open 18:30):
 MVP placement:
 
 - Phase A (levels PR): ship `prev30mVWAP` + `prev30mVWAP_hit_m1` + `prev30mVWAP_hit_m5`, with eligibility exclusions in §3.8.1 / §5.5.
-- Phase B (analytics PR, same roadmap item, can be same PR if small): add a pure analytics function, e.g. `analytics/prev30m_vwap_hit.py` → grouped R stats by `m1` and by `m5`; UI read-only table on Backtest/Signals diagnostics.
+- Phase B (analytics PR, same roadmap item, can be same PR if small): add a pure analytics function, e.g. `analytics/prev30m_vwap_hit.py` → grouped R stats by `m1` and by `m5`; UI read-only table on Backtest diagnostics (entry-bracket join).
 
 No change to `simulate_trades` fill semantics.
 
@@ -624,13 +625,13 @@ Acceptance:
 - PIT future-shock green.
 - CI green.
 
-### Phase 2 — Early-window R analytics (same PR if small; else follow-up)
+### Phase 2 — Early-window R analytics — **implemented**
 
 Scope:
 
-- Pure analytics helper + optional diagnostics panel for `m1` and `m5`.
+- Pure analytics helper `thesistester/analytics/prev30m_vwap_hit.py` + Backtest diagnostics expander for `m1` and `m5`.
 - No `simulate_trades` changes.
-- Tests §10.7.
+- Tests §10.7 in `tests/test_prev30m_vwap_hit_analytics.py`.
 - Glossary entries for conditional R stats.
 
 ### Phase 3 — Optional multi-period stack (future)

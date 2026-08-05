@@ -61,6 +61,55 @@ def _window_resolvable(base: pd.Timedelta | None, window: pd.Timedelta) -> bool:
     return window % base == pd.Timedelta(0)
 
 
+def session_bracket_keys(
+    timestamps: pd.Series,
+    instrument: str = "ES",
+) -> pd.DataFrame:
+    """Return ``session_date`` / ``bracket_idx`` for session-open 30m brackets.
+
+    Used by Phase 2 analytics to join finalized ``hit_m*`` flags without
+    mutating the level engine.  Rows that cannot be keyed (NaT or before
+    session open) emit ``NaN`` ``bracket_idx``.
+    """
+    if instrument not in INSTRUMENTS:
+        raise ValueError(
+            f"Unsupported instrument: {instrument!r}.  Supported instruments: {sorted(INSTRUMENTS)}"
+        )
+    inst = INSTRUMENTS[instrument]
+    eth_start_raw = getattr(inst, "eth_start", "") or ""
+    if not str(eth_start_raw).strip():
+        raise ValueError(
+            f"Instrument {instrument!r} has no eth_start; session bracket keys require it."
+        )
+    eth_time = _parse_eth_start(str(eth_start_raw))
+    exchange_tz = inst.exchange_tz
+
+    ts = pd.to_datetime(timestamps, errors="coerce")
+    if getattr(ts.dt, "tz", None) is None:
+        raise ValueError("timestamps must be timezone-aware")
+    local_ts = ts.dt.tz_convert(exchange_tz)
+    session_dates = trading_session_date(local_ts, str(eth_start_raw))
+
+    opens = {
+        sess: _session_open_ts(sess, eth_time, exchange_tz)
+        for sess in pd.unique(session_dates.dropna())
+    }
+    open_ts = session_dates.map(opens)
+    delta = local_ts - open_ts
+    minutes = (delta / pd.Timedelta(minutes=1)).to_numpy(dtype="float64")
+    bracket = np.full(len(timestamps), np.nan, dtype="float64")
+    valid = np.isfinite(minutes) & (minutes >= 0)
+    bracket[valid] = np.floor(minutes[valid] / BRACKET_MINUTES)
+
+    return pd.DataFrame(
+        {
+            "session_date": session_dates.to_numpy(),
+            "bracket_idx": bracket,
+        },
+        index=timestamps.index,
+    )
+
+
 def _parse_eth_start(eth_start: str) -> datetime.time:
     return pd.to_datetime(str(eth_start).strip()).time()
 

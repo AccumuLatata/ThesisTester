@@ -44,6 +44,16 @@ from .portfolio import (
     setup_correlation_matrices,
     tag_setup_trades,
 )
+from .prev30m_vwap_hit import (
+    HIT_M1_AT_ENTRY,
+    HIT_M5_AT_ENTRY,
+    attach_prev30m_hit_flags,
+    build_finalized_hit_lookup,
+    filter_prev30m_trades,
+    prev30m_hit_contingency,
+    prev30m_hit_r_summary,
+    summarize_r_by_hit_flag,
+)
 from .time_analysis import add_time_buckets, pivot_time_metric, summarize_by_group
 from .validation import (
     bootstrap_expectancy_ci,
@@ -86,6 +96,14 @@ __all__ = [
     "portfolio_equity_curve",
     "setup_correlation_matrices",
     "portfolio_summary",
+    "HIT_M1_AT_ENTRY",
+    "HIT_M5_AT_ENTRY",
+    "attach_prev30m_hit_flags",
+    "build_finalized_hit_lookup",
+    "filter_prev30m_trades",
+    "summarize_r_by_hit_flag",
+    "prev30m_hit_contingency",
+    "prev30m_hit_r_summary",
     "add_excursion_r_columns",
     "edge_ratio_summary",
     "excursion_distribution",
