@@ -520,8 +520,12 @@ docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md    # VA-1 ownership note only
 - `load_results_qa_settings` / `load_product_help_settings` in
   `thesistester/assistant/llm.py`: missing section → `enabled=False` +
   top-level history fallback; present section applies per-channel overrides.
+  Channel `enabled` / `allow_time_enrichment` flags fail closed on non-boolean
+  spellings (e.g. the string `"false"` does not enable a channel).
 - `thesistester/assistant/help_corpus.py` encodes §7.1 / §7.1.1–§7.1.3
   (path + section allowlist, heading match rules, registry digest helper).
+  Whole-file `__preface__` is content before the first H2 (includes H1 title
+  blocks); section-mode docs still omit preface unless explicitly allowlisted.
 - `is_draft_channel_message` helper lands for RQ-1 (no orchestrator wiring yet).
 - Tests: `tests/test_assistant_help_corpus.py`,
   `tests/test_assistant_qa_settings.py`.

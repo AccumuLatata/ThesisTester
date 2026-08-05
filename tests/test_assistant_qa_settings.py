@@ -89,3 +89,29 @@ def test_is_draft_channel_message_helper():
     assert is_draft_channel_message({"role": "user", "channel": "results_qa"}) is False
     assert is_draft_channel_message({"role": "user", "channel": "product_help"}) is False
     assert is_draft_channel_message("not-a-dict") is True
+
+
+def test_enabled_flags_fail_closed_on_string_false(tmp_path):
+    """``bool(\"false\")`` is True — channel flags must not treat that as enabled."""
+    path = tmp_path / "assistant.toml"
+    path.write_text(
+        "[assistant]\n"
+        "provider = 'openai'\n"
+        "model = 'gpt-test'\n"
+        "max_tool_rounds = 8\n"
+        "max_history_messages = 12\n"
+        "\n"
+        "[assistant.results_qa]\n"
+        "enabled = 'false'\n"
+        "allow_time_enrichment = 'false'\n"
+        "\n"
+        "[assistant.product_help]\n"
+        "enabled = 'false'\n"
+        "max_corpus_chars = 1000\n",
+        encoding="utf-8",
+    )
+    results = load_results_qa_settings(path)
+    help_settings = load_product_help_settings(path)
+    assert results.enabled is False
+    assert results.allow_time_enrichment is False
+    assert help_settings.enabled is False

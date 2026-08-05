@@ -157,8 +157,9 @@ def resolve_corpus_path(relative_path: str, *, repo_root: str | Path) -> Path:
 def _parse_atx_sections(markdown: str) -> list[tuple[int, str, str]]:
     """Return ``(level, section_title, body_including_heading)`` chunks.
 
-    H2 sections include nested H3+ until the next H2 or higher. Preface before
-    the first heading is returned as level 0 with ``PREFACE_SECTION``.
+    H2 sections include nested H3+ until the next H2 or higher. Per §7.1 rule 5,
+    ``__preface__`` is everything before the first H2 (including an H1 title and
+    its body). When the file has no H2s, the entire document is ``__preface__``.
     """
     lines = markdown.splitlines(keepends=True)
     entries: list[tuple[int, int, str]] = []  # (line_index, level, title)
@@ -177,18 +178,20 @@ def _parse_atx_sections(markdown: str) -> list[tuple[int, str, str]]:
             chunks.append((0, PREFACE_SECTION, text))
         return chunks
 
-    first_idx = entries[0][0]
-    if first_idx > 0:
-        preface = "".join(lines[:first_idx]).strip()
-        if preface:
-            chunks.append((0, PREFACE_SECTION, preface))
-
-    # Build H2-oriented chunks (or whole-file H2s). Nested deeper headings stay
-    # inside the enclosing H2 body.
+    # Build H2-oriented chunks. Nested deeper headings stay inside the enclosing
+    # H2 body. Preface is strictly "before first H2" (not "before first heading").
     h2_entries = [(i, level, title) for i, level, title in entries if level == 2]
     if not h2_entries:
-        # No H2s: expose only preface (if any); do not invent section keys.
+        text = "".join(lines).strip()
+        if text:
+            chunks.append((0, PREFACE_SECTION, text))
         return chunks
+
+    first_h2_idx = h2_entries[0][0]
+    if first_h2_idx > 0:
+        preface = "".join(lines[:first_h2_idx]).strip()
+        if preface:
+            chunks.append((0, PREFACE_SECTION, preface))
 
     for position, (start_idx, _level, title) in enumerate(h2_entries):
         end_idx = len(lines)

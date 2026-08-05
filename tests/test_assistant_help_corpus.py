@@ -91,6 +91,17 @@ def test_whole_file_includes_preface_and_h2s():
     assert "Documentation" in sections
 
 
+def test_whole_file_preface_includes_h1_before_first_h2():
+    """§7.1 rule 5: __preface__ is content before the first H2, including H1."""
+    chunks = load_corpus_chunks("readme", repo_root=REPO_ROOT)
+    by_section = {chunk.section: chunk.text for chunk in chunks}
+    assert PREFACE_SECTION in by_section
+    preface = by_section[PREFACE_SECTION]
+    assert "# ThesisTester" in preface
+    assert "intraday strategy research" in preface
+    assert "## Run locally" not in preface
+
+
 def test_section_mode_omits_preface():
     chunks = load_corpus_chunks("architecture", repo_root=REPO_ROOT)
     assert all(chunk.section != PREFACE_SECTION for chunk in chunks)

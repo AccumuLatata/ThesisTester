@@ -207,6 +207,28 @@ def _positive_int(value: Any, *, default: int) -> int:
     return parsed if parsed > 0 else default
 
 
+def _coerce_enabled_flag(value: Any, *, default: bool = False) -> bool:
+    """Parse channel enable flags fail-closed.
+
+    Accepts real booleans and common true/false spellings. Strings like
+    ``\"false\"`` must not enable a channel (``bool(\"false\")`` is True).
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off", ""}:
+            return False
+        return default
+    if value is None:
+        return default
+    return default
+
+
 def load_results_qa_settings(path: str | Path = "config/assistant.toml") -> ResultsQASettings:
     """Load `[assistant.results_qa]`; missing section → disabled safe defaults."""
     assistant = _assistant_table(path)
@@ -219,11 +241,13 @@ def load_results_qa_settings(path: str | Path = "config/assistant.toml") -> Resu
             allow_time_enrichment=False,
         )
     return ResultsQASettings(
-        enabled=bool(section.get("enabled", False)),
+        enabled=_coerce_enabled_flag(section.get("enabled", False), default=False),
         max_history_messages=_positive_int(
             section.get("max_history_messages"), default=top_history
         ),
-        allow_time_enrichment=bool(section.get("allow_time_enrichment", False)),
+        allow_time_enrichment=_coerce_enabled_flag(
+            section.get("allow_time_enrichment", False), default=False
+        ),
     )
 
 
@@ -239,7 +263,7 @@ def load_product_help_settings(path: str | Path = "config/assistant.toml") -> Pr
             max_corpus_chars=24000,
         )
     return ProductHelpSettings(
-        enabled=bool(section.get("enabled", False)),
+        enabled=_coerce_enabled_flag(section.get("enabled", False), default=False),
         max_history_messages=_positive_int(
             section.get("max_history_messages"), default=top_history
         ),
