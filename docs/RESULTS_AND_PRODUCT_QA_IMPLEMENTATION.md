@@ -1,7 +1,7 @@
 # Results Discussion & Product Help — Implementation Contract
 
 **Document type:** Implementation contract (RQ-series) — **single source of truth**
-**Status:** active — RQ-0…RQ-4 implemented; RQ-5 pending
+**Status:** ✅ complete — RQ-0…RQ-5 implemented (release gate frozen)
 **Date:** 2026-08-05
 **Owner surface:** `thesistester/assistant/` + Research Assistant page (+ narrow classic-nav entry points)
 **Provider (text):** existing OpenAI structured client (`config/assistant.toml` / `OPENAI_API_KEY`)
@@ -817,7 +817,7 @@ docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md
 docs/ENGINEERING_ROADMAP.md
 ```
 
-#### Implemented contract (fill when merged)
+#### Implemented contract
 - `classic_focus_channel` added to `CLASSIC_SESSION_KEYS` /
   `CLASSIC_THESIS_SCOPED_KEYS`; cleared on thesis switch/exit with
   `classic_focus_run_id`.
@@ -857,10 +857,10 @@ docs/ENGINEERING_ROADMAP.md
 - Default model changes
 
 #### Acceptance
-- [ ] Eval file fails closed on injection and uncited numbers
-- [ ] CI green
-- [ ] Docs mark series complete (or explicitly list deferred items)
-- [ ] No golden/engine drift
+- [x] Eval file fails closed on injection and uncited numbers
+- [x] CI green
+- [x] Docs mark series complete (or explicitly list deferred items)
+- [x] No golden/engine drift
 
 #### Regression safety
 Tests + docs. Behavior changes only if an eval reveals a defect — fix narrowly
@@ -878,8 +878,19 @@ docs/AGENT_GUIDE.md
 docs/ARCHITECTURE.md                            # only if eval-driven contract clarifications
 ```
 
-#### Implemented contract (fill when merged)
-_Pending implementation._
+#### Implemented contract
+- `tests/test_assistant_llm_evaluations.py` freezes RQ honesty/injection
+  gates: best SL/TP, best time, missing time, missing grid, WFA caveat
+  preservation (anti-soften), help→Discuss redirect, pipeline injection
+  (no `PIPELINE.*` / `execute_confirmed_run`), uncited numbers incl.
+  followups, draft history isolation, `choices` absence on results/help
+  messages, §7.1 section-allowlist corpus refusals (incl. `AGENT_GUIDE`).
+- Release checklist covered in the same eval file: provider-key remediation
+  copy (`Set OPENAI_API_KEY to a rotated credential.`), deterministic
+  `explain_evidence` offline, `audit_capability_registry` has no `invalid`
+  rows.
+- Deferred (explicit): voice (VA-series), default model changes, tool
+  allowlist expansion — see §12 non-goals.
 
 ---
 
@@ -1061,6 +1072,6 @@ Constraints:
 | RQ-0 | Implemented |
 | RQ-1 (VA-1) | Implemented |
 | RQ-2 | Implemented |
-| RQ-3 | Implemented (this PR) |
-| RQ-4 | Proposed |
-| RQ-5 | Proposed |
+| RQ-3 | Implemented |
+| RQ-4 | Implemented |
+| RQ-5 | Implemented (series complete) |

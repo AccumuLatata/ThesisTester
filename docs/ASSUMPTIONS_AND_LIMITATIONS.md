@@ -472,28 +472,35 @@ other than the last bar in the dataset.
 - Deterministic explain/compare/export works without any LLM provider. When a
   provider is configured, it may only propose non-executing draft choices or
   paraphrase an immutable evidence packet.
-- Planned additive channels (contract:
-  `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`): multi-turn **results Q&A**
-  bound to one hash-verified `EvidencePacket`, and **product help** grounded in
-  a curated local docs/registry corpus. Those channels must not merge into
-  thesis-draft chat, must omit draft `choices`, and must not dispatch compute
-  pipelines from the model. **RQ-0** reserves `[assistant.results_qa]` /
-  `[assistant.product_help]` and ships the inert §7.1 Help corpus allowlist
-  (`thesistester/assistant/help_corpus.py`). **RQ-1** ships multi-turn
-  Discuss results (`handle_results_turn` / `results_qa`) on hash-verified
-  evidence. **RQ-2** adds ephemeral `results.projections.*` grid/time rankings
-  (empty bundle grid tables fall back to packet `best_grid_result`; unknown
-  ranking-metric names are sanitized via the aggregate/directional allowlist
-  preference chain and synced into the ephemeral metric-source path;
-  JSON-null all-wins profit factors rank as +inf; projection `best` pins
-  packet `best_grid_result` when re-rank disagrees; bundle table load
-  failures warn via `bundle_tables_warning` instead of mimicking an empty
-  grid) and optional RO `TIME.analyze` enrichment when
+- Additive channels (contract complete:
+  `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` RQ-0…RQ-5): multi-turn
+  **results Q&A** bound to one hash-verified `EvidencePacket`, and **product
+  help** grounded in a curated local docs/registry corpus. Those channels must
+  not merge into thesis-draft chat, must omit draft `choices`, and must not
+  dispatch compute pipelines from the model. **RQ-0** reserves
+  `[assistant.results_qa]` / `[assistant.product_help]` and ships the inert
+  §7.1 Help corpus allowlist (`thesistester/assistant/help_corpus.py`).
+  **RQ-1** ships multi-turn Discuss results (`handle_results_turn` /
+  `results_qa`) on hash-verified evidence. **RQ-2** adds ephemeral
+  `results.projections.*` grid/time rankings (empty bundle grid tables fall
+  back to packet `best_grid_result`; unknown ranking-metric names are
+  sanitized via the aggregate/directional allowlist preference chain and
+  synced into the ephemeral metric-source path; JSON-null all-wins profit
+  factors rank as +inf; projection `best` pins packet `best_grid_result`
+  when re-rank disagrees; bundle table load failures warn via
+  `bundle_tables_warning` instead of mimicking an empty grid) and optional RO
+  `TIME.analyze` enrichment when
   `assistant.results_qa.allow_time_enrichment=true` (default `false`).
   **RQ-3** ships documentation-grounded Help (`handle_help_turn` /
   `product_help`) over the §7.1 corpus + registry digest; run-performance
   questions remediate to Discuss results (no fabricated metrics). Help digit
   tokens must match number tokens in attached corpus/registry text.
+  **RQ-4** binds classic Discuss via companion session key
+  `classic_focus_channel="results_qa"` beside string `classic_focus_run_id`
+  (never a dict). **RQ-5** freezes honesty/injection evals in
+  `tests/test_assistant_llm_evaluations.py` (missing evidence, uncited
+  numbers, pipeline injection, draft isolation, corpus allowlist, provider-key
+  remediation, offline deterministic Explain, registry audit).
   Thesis switches clear `assistant_results_qa_drafts`,
   `assistant_product_help_draft`, and related widget keys. Draft-chat history
   excludes `results_qa` / `product_help` turns and tool/audit lines so
