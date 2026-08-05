@@ -2,7 +2,13 @@
 
 ## Status and purpose
 
-**Status:** proposed implementation plan.
+**Status:** historical foundations contract (AIA-series). Runtime assistant
+integration landed via `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2,
+implemented). **Do not use this document as the active implementation plan for
+multi-turn results discussion or product help** — that work is owned exclusively
+by `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ-series). Voice review is
+owned by `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (VA-series, voice-only
+after RQ-1).
 **Owner model:** one trusted local user, local datasets, and local execution.
 
 **Related integration plan:** `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md`
@@ -17,10 +23,10 @@ cached headless reuse live in
 `read_write`; public default remains `off`). `CAI-4` classic→RunSpec export
 lives in `thesistester/classic_export.py`.
 
-This document is the implementation contract for an AI Research Assistant in
-ThesisTester. It is designed to prevent scope, architecture, and statistical
-drift while adding a conversational workflow for hypothesis-driven futures
-research.
+This document records the original AIA product/architecture intent for an AI
+Research Assistant in ThesisTester. Keep it for invariants and terminology; do
+not open new PRs from open-looking AIA milestone text when a newer contract
+owns that surface.
 
 The assistant lets the user describe, create, revise, run, compare, and discuss
 many independent setup theses. It must convert natural-language ideas into

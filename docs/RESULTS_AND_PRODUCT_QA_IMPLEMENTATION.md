@@ -12,10 +12,21 @@ evidence/explain path (`EvidencePacket`, `explain_run`, `explain_run_with_llm`),
 `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Voice PRs VA-0 / VA-2+ remain on
 that document. Do **not** create a parallel voice roadmap.
 
-This is the binding contract for multi-turn **results discussion** and
-**product/how-it-works help**. Amend this file in the same PR that changes a
-freeze. Every RQ PR must stay inside its scope table. If a change is not listed
-under **In scope**, it belongs in a later PR or is rejected.
+This is the **only** binding contract for multi-turn **results discussion** and
+**product/how-it-works help**. Do not create parallel results-Q&A or product-help
+roadmaps. Amend this file in the same PR that changes a freeze. Every RQ PR must
+stay inside its scope table. If a change is not listed under **In scope**, it
+belongs in a later PR or is rejected.
+
+### Related docs (not competing contracts)
+
+| Doc | Role vs this contract |
+|---|---|
+| `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` | Historical AIA foundations — not the results/help implementation surface |
+| `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` | Historical C2 thesis-draft / explain / provenance loop (implemented) |
+| `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` | CAI classic↔assistant artifact bridge (implemented); RQ-4 owns Discuss deep-link polish |
+| `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` | Voice-only after RQ-1; VA-1 text substrate is implemented here as RQ-1 |
+| `docs/ENGINEERING_ROADMAP.md` | Index / status tracker — points here for RQ work |
 
 ---
 

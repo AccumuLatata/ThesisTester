@@ -259,15 +259,18 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   `ASSISTANT_SESSION_KEYS`. Thesis switches must clear
   `THESIS_SCOPED_STAGING_KEYS` (including `assistant_bundle_handoff`).
 - Multi-turn results discussion and product help (RQ-series) have a **single**
-  contract: `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`. Implement only the
-  active RQ PR’s **Files allowed to touch** list. Keep thesis-draft
-  `handle_chat_turn`, results Q&A, and product help as separate channels;
-  results/help messages must omit `choices` (draft hydration hazard); results
-  may use RO `BUNDLE.import` but never `execute_confirmed_run` / `PIPELINE.*`;
-  reuse C2-6 grounding token rules. RQ-1 implements VA-1. Document any new
-  `assistant_*` keys for these channels in `ARCHITECTURE.md` and
-  `ASSISTANT_SESSION_KEYS` in the same PR.
-- Realtime voice review (VA-series) has a **single** contract:
+  contract: `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`. This is the only
+  active implementation surface for those channels — do not implement them from
+  AIA (`AI_RESEARCH_ASSISTANT_ROADMAP.md`), C2 (`AI_CHAT_2_ENGINEERING_ROADMAP.md`),
+  or the VA-1 stub in the voice doc. Implement only the active RQ PR’s
+  **Files allowed to touch** list. Keep thesis-draft `handle_chat_turn`,
+  results Q&A, and product help as separate channels; results/help messages
+  must omit `choices` (draft hydration hazard); results may use RO
+  `BUNDLE.import` but never `execute_confirmed_run` / `PIPELINE.*`; reuse C2-6
+  grounding token rules. RQ-1 implements VA-1. Document any new `assistant_*`
+  keys for these channels in `ARCHITECTURE.md` and `ASSISTANT_SESSION_KEYS` in
+  the same PR.
+- Realtime voice review (VA-series) has a **single** contract for **voice**:
   `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Do not add parallel voice
   roadmap/reassessment docs. Implement only the active VA PR’s **Files
   allowed to touch** list; keep `assistant.voice.enabled` default false;

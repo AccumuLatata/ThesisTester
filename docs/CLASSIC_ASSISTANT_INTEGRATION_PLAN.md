@@ -2,13 +2,17 @@
 
 ## Status
 
-**Status:** proposed implementation contract; `CAI-0` through `CAI-10` implemented.
+**Status:** implementation contract; `CAI-0` through `CAI-10` implemented.
 
 **Owner model:** one trusted local user, local datasets, local execution.
 
 **Implementation rule:** each numbered milestone is a separately reviewable PR.
 
 **Baseline record:** `docs/CAI_BASELINE.md`.
+
+**Forward discuss UX:** classic “Discuss this run” → results-channel binding is
+owned by **RQ-4** in `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`, not by a
+new CAI milestone. Do not reopen CAI for multi-turn results Q&A or product help.
 
 ## Purpose
 

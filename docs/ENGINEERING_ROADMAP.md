@@ -3,24 +3,18 @@
 This document tracks the ThesisTester engineering roadmap milestones in established
 phase order.
 
-The proposed AI Research Assistant has a separate, regression-safe implementation
-plan in `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md`. Its AIA-series milestones are
-additive to this R-series and must follow its stated regression gates.
+Assistant-related contracts (precedence for new work):
 
-Classic workspace ↔ Assistant unification follows
-`docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` (CAI-series). CAI milestones are
-also additive and must preserve engine/golden-master semantics.
+| Surface | Canonical doc | Notes |
+|---|---|---|
+| Results discussion + product help | `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ) | **Active** — sole owner of multi-turn results Q&A and help |
+| Voice review | `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (VA) | Voice-only; VA-1 text substrate = RQ-1 |
+| Classic ↔ Assistant bridge | `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` (CAI) | Implemented (CAI-0…CAI-10) |
+| Thesis draft / explain loop | `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2) | Implemented through PR6 |
+| AIA foundations (historical) | `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` | Do not open new results/help PRs from AIA text |
 
-Realtime voice review of completed runs follows
-`docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (VA-series). VA milestones are
-additive presentation/session adapters over the assistant evidence path; they
-must not alter engine, levels, signals, or golden-master semantics.
-
-Multi-turn **results discussion** and **product/how-it-works help** follow
-`docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ-series). RQ-1 implements
-VA-1 (text results Q&A). RQ milestones are additive assistant channels over the
-existing evidence/explain path; they must not alter engine, levels, signals, or
-golden-master semantics.
+All of the above are additive to this R-series and must preserve
+engine/golden-master semantics.
 
 ---
 

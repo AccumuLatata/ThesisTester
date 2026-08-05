@@ -1,17 +1,23 @@
 # Realtime Voice Agent — Implementation Contract
 
-**Document type:** Implementation contract (VA-series) — **single source of truth**
+**Document type:** Implementation contract (VA-series) — **single source of truth for voice**
 **Status:** proposed — not shipped
 **Date:** 2026-08-04
 **Owner surface:** `thesistester/assistant/` + Research Assistant page only
 **Provider:** xAI Grok Voice (`grok-voice-think-fast-2.0`; see §4)
 **Depends on:** C2 complete (`docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` through PR6),
+RQ-1 text results Q&A (`docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`),
 `docs/ENGINEERING_PROPOSAL.md` §4 / §4.1 / §4.2
 
-This is the **only** binding VA-series document. Do not create parallel voice
-roadmaps or reassessment files; amend this contract in the same PR that
-changes a freeze. Every VA PR must stay inside its scope table. If a change
-is not listed under **In scope**, it belongs in a later PR or is rejected.
+This is the **only** binding VA-series document for **voice** (VA-0, VA-2+).
+Do not create parallel voice roadmaps or reassessment files; amend this
+contract in the same PR that changes a freeze. Every VA PR must stay inside
+its scope table. If a change is not listed under **In scope**, it belongs in a
+later PR or is rejected.
+
+**Text results Q&A and product help are not owned here.** Implement them only
+from `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ-series). VA-1 is a
+dependency stub pointing at RQ-1 — do not open a parallel VA-1 implementation PR.
 
 ---
 
@@ -233,63 +239,23 @@ docs/AGENT_GUIDE.md
 
 ---
 
-### VA-1 — Multi-turn results Q&A (text substrate)
+### VA-1 — Multi-turn results Q&A (text substrate) — **superseded stub**
 
-**Ownership:** Implementation is owned by **RQ-1** in
-`docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`. Do **not** implement VA-1 in a
-parallel PR; land it as RQ-1 and fill this section’s Implemented contract when
-that PR merges. Voice PRs VA-0 / VA-2+ remain on this document and depend on
-RQ-1 for the text substrate.
+**Do not implement from this section.**
 
-**Goal:** Add grounded multi-turn discussion of a completed run **in text**.
-Voice later reuses this path; this PR ships user value without audio.
-
-#### In scope
-| Item | Detail |
+| Item | Pointer |
 |---|---|
-| Code | New `thesistester/assistant/results_qa.py` — `propose_results_reply(client, *, packet, history, user_message) -> ResultsQAReply` with schema `{summary, caveats, claims[{text,path}], followups}` |
-| Code | Grounding: reuse / share helpers with `llm_explainer.py` (extract shared numeric grounding into a small private helper **only if** needed; prefer calling existing validators to avoid drift) |
-| Code | `AssistantOrchestrator.handle_results_turn(thesis_id, run_id, message, *, conversation_id=...)` — load run via `get_run`, hash-verified evidence via existing `explain_run` / `BUNDLE.import` evidence path, call results_qa, persist user+assistant messages with additive `"channel": "results_qa"` and `"run_id"` (no Conversation schema bump; message dicts are not field-locked) |
-| Code | Grounding: call `assert_llm_explanation_grounded` or extracted shared helpers from `llm_explainer.py` — do not fork token/percent/caveat rules |
-| UI | Inside each completed-run expander in `pages/14_Research_Assistant.py` (beside Explain / LLM explain): “Discuss results” with keyed nested `st.chat_input` or `st.text_input`+button — **no mic**; do not replace thesis-draft `st.chat_input` |
-| Tests | `tests/test_assistant_results_qa.py` + extend `tests/test_assistant_llm_evaluations.py`: injection→no `execute_confirmed_run` / no `PIPELINE.*`; RO `BUNDLE.import` allowed; uncited numbers rejected; missing run; hash mismatch; history trim filtered by `channel`+`run_id`; `handle_chat_turn` still never loads bundles; results messages must not include `choices` (draft hydration hazard at page L242–253) |
+| Canonical contract | `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` **RQ-1** |
+| What voice needs | Grounded `handle_results_turn` / `results_qa` text substrate + C2-6 grounding helpers |
+| Product help | **Not** part of VA; see RQ-3 in the RQ contract |
+| When RQ-1 merges | Fill **Implemented contract** below; VA-2+ may then depend on the shipped text path |
 
-#### Out of scope
-- xAI, audio, STT/TTS, WebSockets
-- New registry compute capabilities
-- Changing thesis-drafting `handle_chat_turn` prompt/schema
-- Changing deterministic `explain_evidence_report` templates (call them; don’t rewrite)
+Historical VA-1 scope tables previously duplicated here were removed to prevent
+parallel implementation. Sequence diagrams elsewhere in this document that
+mention “VA-1” mean “RQ-1 has shipped.”
 
-#### Acceptance
-- [ ] `handle_results_turn` never calls `execute_confirmed_run` and never dispatches `PIPELINE.*` / mutators (asserted). RO `BUNDLE.import` (action `evidence`) is allowed — unlike `handle_chat_turn`
-- [ ] Uncited numeric token → error before UI persistence/render
-- [ ] Hash mismatch → structured failure; no packet leak
-- [ ] Without provider key, deterministic explain still works; results Q&A surfaces clear remediation
-- [ ] `handle_chat_turn` behavior fixtures remain green unchanged
-- [ ] Persisted results assistant messages omit `choices` so thesis draft hydration cannot adopt them
-
-#### Regression safety
-New orchestrator method + optional UI block. Thesis drafting and one-shot
-`explain_run_with_llm` keep prior contracts. No engine/golden changes.
-
-#### Files allowed to touch
-```
-thesistester/assistant/results_qa.py
-thesistester/assistant/orchestrator.py          # additive method only
-thesistester/assistant/repository.py            # only if message tag/schema needs additive field
-thesistester/assistant/llm_explainer.py         # shared grounding helper extract only if required
-thesistester/assistant/__init__.py              # exports
-pages/14_Research_Assistant.py                  # expander only
-tests/test_assistant_results_qa.py
-tests/test_assistant_llm_evaluations.py
-docs/ARCHITECTURE.md                            # any new assistant_* keys
-docs/ASSUMPTIONS_AND_LIMITATIONS.md
-docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md     # mark VA-1 implemented contract
-docs/AGENT_GUIDE.md                             # results_qa rule
-```
-
-#### Implemented contract (fill when merged)
-_Pending implementation._
+#### Implemented contract (fill when RQ-1 merges)
+_Pending implementation via RQ-1._
 
 ---
 
