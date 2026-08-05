@@ -105,6 +105,8 @@ SESSION_LEVEL_CATALOG: tuple[str, ...] = (
     "ONL",
     "pONH",
     "pONL",
+    "AsiaHigh",
+    "AsiaLow",
     "OR_High",
     "OR_Low",
     "RTH_Open",

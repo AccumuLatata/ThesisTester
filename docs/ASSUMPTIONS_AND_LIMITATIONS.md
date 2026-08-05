@@ -211,6 +211,7 @@ This engine is for **research screening**, not proof of a durable edge.
 - Freeze completes on clock (`timestamp >= bracket_end`) or on **true session transition** (CME halt). Mid-session dataframe truncation does **not** finalize open brackets.
 - TTL: `prev30m_vwap_validity_periods` (integer ≥ 1, default 1); replace-on-new-freeze for age-1.
 - Phase 3: when validity `N > 1`, additive stack columns `prev30mVWAP_2`…`prev30mVWAP_N` expose older still-valid freezes for confluence. Age-1 semantics match Phase 1; hit diagnostics remain age-1 only. `LEVEL_ENGINE_VERSION` bumped to 5 for the additive vocabulary.
+- `AsiaHigh` / `AsiaLow` are additive completed Asia-session extremes (default `20:00–00:00` ET; clock-gated at Asia close; not rolling). `LEVEL_ENGINE_VERSION` bumped to 6 for the additive vocabulary.
 - Prior-session seed carries only freezes that are still inside the TTL window at session transition (up to `N`); expired stack ages are not resurrected at the next open.
 - Companion diagnostics `prev30mVWAP_hit_m1` / `prev30mVWAP_hit_m5` are **not** setup-selectable or auto-plotted price levels. They stay `NaN` until each early window completes (no rewrite of in-window rows). Each diagnostic requires its window `W` to be an integer multiple of the inferred base interval. `validate_setup_config` rejects them in `selected_levels` / anchor rules; assistant levels summaries omit them from `level_columns`.
 - `prev30m_vwap_validity_periods` accepts integer-compatible values (including `numpy.int64`) and coerces to `int`, matching `validate_run_spec`. Cap is `MAX_VALIDITY_PERIODS` (48).
@@ -270,6 +271,12 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   values. Non-RTH bars always emit `NaN`.
 - RTH_Open and ONH/ONL are NaN until the first RTH bar of the session; no future RTH
   or overnight data can change ETH-bar values.
+- `AsiaHigh`/`AsiaLow` aggregate only ETH bars in the instrument Asia window
+  (default `20:00–00:00` ET) and remain NaN until the Asia close clock gate; they are
+  not rolling during Asia and are distinct from overnight ONH/ONL. Empty
+  `asia_start`/`asia_end` fail closed (all-NaN). Empty `eth_start` remaps evening
+  Asia bars to the next calendar day so the gate/aggregate share the post-midnight
+  session. Wrapping Asia with `eth_start` outside `(asia_end, asia_start]` raises.
 - Opening range (OR_High/OR_Low) is NaN until the clock-based OR window closes.
 - Naked (`<level>_naked`) flags are produced by a pure forward scan; future bars cannot
   retroactively clear a prior bar's naked status.
@@ -282,6 +289,11 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 - Profile levels use a bar-level typical-price approximation. True intrabar
   volume-at-price data would change level values but would not introduce look-ahead.
 - ONH/ONL is not available during ETH (by design; the overnight has not yet closed).
+- AsiaHigh/AsiaLow are unavailable during the Asia window (by design; not a rolling
+  extreme). Pre-Asia ETH (e.g. 18:00–20:00 under the default window) is excluded from
+  the Asia aggregate. Asia ⊂ overnight for typical ES/NQ definitions, so Asia H/L
+  generally differs from ONH/ONL. Empty Asia window strings disable the level
+  (all-NaN); equal `asia_start`/`asia_end` fails closed with `ValueError`.
 - Rolling VWAP/POC/SMA/EMA at bar `i` include bar `i` close/volume. Signals treated
   as bar-close confirmed; this is documented intent, not a bug.
 - `dOpen/wOpen/mOpen` are current-period (live) opens, not prior-period references.

@@ -15,6 +15,10 @@ class Instrument:
     rth_start: str = "09:30"
     rth_end: str = "16:00"
     eth_start: str = ""
+    # Asia session window in exchange_tz wall-clock time (half-open [start, end)).
+    # Default ICT-style Asia: 20:00 → 00:00. Not rolling; levels emit only after close.
+    asia_start: str = "20:00"
+    asia_end: str = "00:00"
 
 
 # Confirmed primary instruments (futures).
