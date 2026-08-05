@@ -423,12 +423,11 @@ def select_help_corpus_chunks(
     total = 0
     for chunk in ranked:
         size = len(chunk.text)
-        # Skip individually oversized chunks so a large H2 cannot block smaller
-        # allowlisted sections from filling the budget.
-        if size > max_chars:
+        # Skip chunks that do not fit the remaining budget (including individually
+        # oversized ones) so later, smaller allowlisted sections can still fill
+        # unused capacity. Do not break early on the first non-fit.
+        if size > max_chars or total + size > max_chars:
             continue
-        if total + size > max_chars:
-            break
         selected.append(chunk)
         total += size
     if not selected:
