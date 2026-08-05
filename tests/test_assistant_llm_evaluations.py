@@ -1065,6 +1065,35 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
     assert oos_msg in honest.caveats
     assert "not confirmed" in honest.summary.lower()
 
+    class MissingThenConfirmed:
+        """Earlier 'missing' wording must not launder a later confirmation."""
+
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Evidence is missing; OOS is confirmed anyway.",
+                "caveats": ["missing."],
+                "claims": [
+                    {
+                        "text": "Sample has 42 trades.",
+                        "path": "results.trade_summary.trade_count",
+                    }
+                ],
+                "followups": ["Ask about costs."],
+            }
+
+    with pytest.raises(LLMEvidenceError, match="OOS/WFA soften"):
+        propose_results_reply(
+            MissingThenConfirmed(),
+            packet=packet,
+            history=(),
+            user_message="Is this robust out of sample?",
+        )
+    # Trivial caveat substrings must not satisfy mandatory merge.
+    from thesistester.assistant.llm_explainer import merge_mandatory_packet_caveats
+
+    merged = merge_mandatory_packet_caveats(packet, ("missing.",))
+    assert oos_msg in merged
+
 
 def test_rq5_help_vs_results_redirect_for_performance_question():
     class Client:

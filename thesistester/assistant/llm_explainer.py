@@ -134,10 +134,14 @@ def _assert_tokens_grounded(text: str, *, allowed: set[str]) -> None:
 
 
 def _llm_caveat_echoes_packet_message(llm_caveat: str, packet_message: str) -> bool:
-    """True when an LLM caveat line echoes (or is echoed by) a packet caveat."""
+    """True when an LLM caveat line contains the full packet caveat message.
+
+    Partial/trivial substrings (e.g. ``\"missing.\"``) do **not** count — the
+    mandatory honesty sentence must actually appear in the LLM line.
+    """
     if not packet_message or not llm_caveat:
         return False
-    return packet_message in llm_caveat or llm_caveat in packet_message
+    return packet_message in llm_caveat
 
 
 def merge_mandatory_packet_caveats(
@@ -170,19 +174,21 @@ _OOS_SOFTEN_RE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+# Negation must sit inside the soften span or immediately before it — do not
+# treat earlier-clause words like "missing" as negating a later confirmation.
 _OOS_SOFTEN_NEGATION_RE = re.compile(
-    r"\b(?:not|no|never|without|lacks?|missing|absent|unconfirmed|cannot|can't|"
-    r"isn't|aren't|wasn't|weren't|unless)\b",
+    r"\b(?:not|never|without|unless|unconfirmed|cannot|can't|"
+    r"isn't|aren't|wasn't|weren't|no longer)\b",
     re.IGNORECASE,
 )
 
 
 def _has_oos_soften_language(text: str) -> bool:
-    """True when text asserts OOS/WFA confirmation without nearby negation."""
+    """True when text asserts OOS/WFA confirmation without local negation."""
     for match in _OOS_SOFTEN_RE.finditer(text):
-        start = max(0, match.start() - 28)
-        end = min(len(text), match.end() + 12)
-        if _OOS_SOFTEN_NEGATION_RE.search(text[start:end]):
+        span = match.group(0)
+        prefix = text[max(0, match.start() - 10) : match.start()]
+        if _OOS_SOFTEN_NEGATION_RE.search(span) or _OOS_SOFTEN_NEGATION_RE.search(prefix):
             continue
         return True
     return False
