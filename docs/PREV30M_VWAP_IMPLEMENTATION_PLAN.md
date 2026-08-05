@@ -425,6 +425,8 @@ Maps to `ENGINEERING_PROPOSAL.md` §4:
 Mandatory for every implementation PR:
 
 - [ ] Unit tests for bracket VWAP, freeze timing, ETH emission, TTL, hit_m1 timing
+- [ ] Session-boundary / halt finalization test (no in-session `>= bracket_end` bar)
+- [ ] Diagnostic eligibility tests (`hit_m1` not in setup columns / catalog / chart overlays)
 - [ ] Future-shock tests (append current-session + next-session bars)
 - [ ] Disabled no-op tests (including naive timestamps accepted when disabled)
 - [ ] `compute_all_levels` isolation: disabled → no new columns; other families unchanged
