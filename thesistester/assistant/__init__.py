@@ -77,6 +77,7 @@ from thesistester.assistant.llm_explainer import (
     LLMEvidenceError,
     LLMExplanation,
     assert_llm_explanation_grounded,
+    merge_mandatory_packet_caveats,
     explain_packet_with_llm,
 )
 from thesistester.assistant.results_qa import (
@@ -172,6 +173,7 @@ __all__ = [
     "LLMExplanation",
     "assert_llm_explanation_grounded",
     "explain_packet_with_llm",
+    "merge_mandatory_packet_caveats",
     "RESULTS_QA_CHANNEL",
     "ResultsQAReply",
     "filter_results_qa_history",

@@ -560,9 +560,12 @@ resolves `path` against the immutable packet, attaches the packet value, and
 cited claim values. Percent-suffixed narration (`50%`) is accepted when the
 matching fractional claim value (`0.5`) is cited. Packet caveat message numbers
 may be echoed only on LLM caveat lines that actually repeat that packet caveat
-— never as a global allowlist for the summary. The LLM never executes tools,
-mutates confirmed specs, or bypasses confirmation. Without a provider,
-deterministic explain/compare/export remains the default path.
+— never as a global allowlist for the summary. `merge_mandatory_packet_caveats`
+re-appends any omitted packet caveat messages before persist/render; when the
+packet carries `missing_oos` / `failed_oos`, OOS/WFA “confirmed/robust”
+soften language in summary/claims/followups fails closed. The LLM never
+executes tools, mutates confirmed specs, or bypasses confirmation. Without a
+provider, deterministic explain/compare/export remains the default path.
 `audit_capability_registry()` is the machine-readable release audit over
 `FEATURE_PARITY_REGISTRY` × `HANDLER_REGISTRY`. Grid ranking-metric claims
 ground to `assumptions.grid.ranking_metric` when `best_grid_result` omits that

@@ -13,6 +13,7 @@ from thesistester.assistant.llm_explainer import (
     _path_exists,
     _path_get,
     assert_llm_explanation_grounded,
+    merge_mandatory_packet_caveats,
 )
 
 RESULTS_QA_CHANNEL = "results_qa"
@@ -209,7 +210,9 @@ def propose_results_reply(
         )
     grounded = tuple(claims)
     summary_text = summary.strip()
-    caveat_texts = tuple(caveat.strip() for caveat in caveats)
+    caveat_texts = merge_mandatory_packet_caveats(
+        packet, tuple(caveat.strip() for caveat in caveats)
+    )
     followup_texts = tuple(followup.strip() for followup in followups_raw)
     assert_llm_explanation_grounded(
         packet,

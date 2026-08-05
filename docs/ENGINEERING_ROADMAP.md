@@ -7,7 +7,7 @@ Assistant-related contracts:
 
 | Surface | Canonical doc | Status |
 |---|---|---|
-| Results discussion + product help | `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ) | ✅ **Complete** when RQ-5 merges (Discuss + rankings + Help + classic focus + honesty eval freeze) |
+| Results discussion + product help | `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ) | ✅ **Complete** — RQ-0…RQ-5 (Discuss + rankings + Help + classic focus + honesty/injection eval freeze) |
 | Voice review | `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (VA) | **Proposed** — post-RQ rebase; VA-1 done via RQ; remaining VA-0→VA-2…VA-6 (spoken transport + realtime) |
 | Classic ↔ Assistant bridge | `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` (CAI) | ✅ Implemented (CAI-0…CAI-10) |
 | Thesis draft / explain loop | `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2) | ✅ Implemented (through PR6) |
