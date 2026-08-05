@@ -203,3 +203,30 @@ def test_select_help_corpus_chunks_fills_budget_after_nonfitting_rank(monkeypatc
     )
     assert [chunk.section for chunk in selected] == ["a", "c"]
     assert sum(len(chunk.text) for chunk in selected) == 95
+
+
+def test_select_help_corpus_chunks_zero_overlap_preserves_allowlist_order(monkeypatch):
+    """Zero lexical overlap must pack the allowlist prefix, not alpha doc_id order."""
+    from thesistester.assistant.help_corpus import CorpusChunk
+
+    fake = (
+        CorpusChunk(doc_id="readme", section="r", text="readme-chunk "),
+        CorpusChunk(doc_id="metrics", section="m", text="metrics-chunk"),
+        CorpusChunk(doc_id="architecture", section="a", text="arch-chunk "),
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.help_corpus.load_allowlisted_corpus",
+        lambda **kwargs: fake,
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.help_corpus.score_corpus_chunk",
+        lambda chunk, query_tokens: 0,
+    )
+    selected = select_help_corpus_chunks(
+        "zzzz-no-overlap-token",
+        repo_root=REPO_ROOT,
+        max_chars=26,
+    )
+    # allowlist order: readme → metrics → architecture (not alpha: architecture first)
+    assert [chunk.doc_id for chunk in selected] == ["readme", "metrics"]
+    assert "architecture" not in {chunk.doc_id for chunk in selected}

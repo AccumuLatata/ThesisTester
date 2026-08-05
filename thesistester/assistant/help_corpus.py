@@ -411,14 +411,22 @@ def select_help_corpus_chunks(
     if not all_chunks:
         return ()
     query_tokens = _tokenize_query(user_message)
-    ranked = sorted(
-        all_chunks,
-        key=lambda chunk: (
-            -score_corpus_chunk(chunk, query_tokens=query_tokens),
-            chunk.doc_id,
-            chunk.section,
-        ),
-    )
+    # Tie-break by allowlist load order (manifest order), not alphabetical
+    # doc_id — zero-overlap fallback must be the budgeted allowlist prefix.
+    ranked = [
+        chunk
+        for _score, _idx, chunk in sorted(
+            (
+                (
+                    score_corpus_chunk(chunk, query_tokens=query_tokens),
+                    idx,
+                    chunk,
+                )
+                for idx, chunk in enumerate(all_chunks)
+            ),
+            key=lambda item: (-item[0], item[1]),
+        )
+    ]
     selected: list[CorpusChunk] = []
     total = 0
     for chunk in ranked:

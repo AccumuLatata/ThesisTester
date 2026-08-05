@@ -53,6 +53,17 @@ def test_is_run_performance_question_detects_personal_run_metrics():
     assert not is_run_performance_question(
         "How is expectancy_r calculated in the docs?"
     )
+    # Export / workflow asks using vague "results"/"performance" nouns stay in Help.
+    assert not is_run_performance_question("Where do I export my results?")
+    assert not is_run_performance_question(
+        "How do I find my performance reports in Classic?"
+    )
+    assert not is_run_performance_question("Where are my trades stored?")
+    # Mentions of "docs"/"metric" must not suppress true run-performance asks.
+    assert is_run_performance_question(
+        "What was my expectancy metric on this run?"
+    )
+    assert is_run_performance_question("What were my results on this run?")
 
 
 def test_remediation_help_reply_has_no_numbers_or_choices():

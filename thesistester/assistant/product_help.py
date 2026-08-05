@@ -62,22 +62,36 @@ _SYSTEM_PROMPT = (
 #
 # Definition / docs asks about the *same* metric nouns must stay in Help
 # ("How is my expectancy computed?", "What does this performance metric mean?").
+# Only definition/computation collocates — not bare "docs"/"metric", which
+# would suppress legitimate run-performance asks that mention those words.
 _DOC_DEFINITION_ESCAPE = re.compile(
     r"(?:"
     r"\b(?:comput(?:e|ed|ing|ation)|calculat(?:e|ed|ing|ion)|"
     r"defin(?:e|ed|ing|ition))\b|"
     r"\bwhat\s+does\b[\s\S]{0,48}\bmean\b|"
-    r"\bhow\s+(?:is|are)\b[\s\S]{0,48}\b(?:computed|calculated|defined|measured)\b|"
-    r"\b(?:metric|glossary|documentation|docs)\b"
+    r"\bhow\s+(?:is|are)\b[\s\S]{0,48}\b(?:computed|calculated|defined|measured)\b"
     r")",
     re.IGNORECASE,
 )
 
 _RUN_PERF_PATTERNS = (
+    # Concrete personal metrics (definition escape still applies above).
     re.compile(
         r"\b(my|this|that|our)\s+(best\s+|worst\s+)?"
         r"(sl|tp|stop(\s+loss)?|take[\s-]?profit|expectancy|win[\s-]?rate|"
-        r"drawdown|pnl|trades?|results?|performance|cell)\b",
+        r"drawdown|pnl|cell)\b",
+        re.IGNORECASE,
+    ),
+    # Vague nouns (results/performance/trades) need best/worst or a run anchor —
+    # otherwise export/workflow Help ("where are my results?") remediates wrongly.
+    re.compile(
+        r"\b(my|this|that|our)\s+(best\s+|worst\s+)"
+        r"(trades?|results?|performance)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(my|this|that|our)\s+(trades?|results?|performance)\b"
+        r"[\s\S]{0,48}\b(?:on|in|for|from)\s+(?:this|my|that)\s+run\b",
         re.IGNORECASE,
     ),
     re.compile(
