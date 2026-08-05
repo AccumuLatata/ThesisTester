@@ -7,7 +7,7 @@ Assistant-related contracts:
 
 | Surface | Canonical doc | Status |
 |---|---|---|
-| Results discussion + product help | `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ) | **Active** — sole owner of multi-turn results Q&A and help (contract freezes clarified: draft history isolation, text_input UI, section-allowlisted help corpus, classic focus extension) |
+| Results discussion + product help | `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ) | **Active** — sole owner of multi-turn results Q&A and help (freezes: draft history isolation, text_input UI, frozen §7.1 help corpus, Help digit grounding, `classic_focus_channel` companion) |
 | Voice review | `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (VA) | Proposed (voice-only; VA-1 text substrate = RQ-1) |
 | Classic ↔ Assistant bridge | `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` (CAI) | ✅ Implemented (CAI-0…CAI-10) |
 | Thesis draft / explain loop | `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2) | ✅ Implemented (through PR6) |
