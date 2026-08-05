@@ -422,14 +422,23 @@ class AssistantOrchestrator:
             return None, None
         grid_rows = tables.get("grid_results")
         time_rows = tables.get("time_grouped_summary")
-        return (
+        # Empty lists mean "no table rows" — treat as absent so ephemeral
+        # projections can fall back to packet ``best_grid_result`` / packet time.
+        grid_list = (
             [dict(row) for row in grid_rows if isinstance(row, Mapping)]
             if isinstance(grid_rows, list)
-            else None,
-            [dict(row) for row in time_rows if isinstance(row, Mapping)]
-            if isinstance(time_rows, list) and time_rows
-            else None,
+            else None
         )
+        if grid_list is not None and not grid_list:
+            grid_list = None
+        time_list = (
+            [dict(row) for row in time_rows if isinstance(row, Mapping)]
+            if isinstance(time_rows, list)
+            else None
+        )
+        if time_list is not None and not time_list:
+            time_list = None
+        return grid_list, time_list
 
     def _enrich_time_summary_for_results(
         self,
@@ -539,8 +548,16 @@ class AssistantOrchestrator:
                 expected_hash=expected_hash,
             )
         packet_time = packet.results.get("time_grouped_summary")
-        if time_summary is None and isinstance(packet_time, (list, tuple)):
-            time_summary = [dict(row) for row in packet_time if isinstance(row, Mapping)]
+        if time_summary is None:
+            if isinstance(packet_time, (list, tuple)):
+                rows = [dict(row) for row in packet_time if isinstance(row, Mapping)]
+                time_summary = rows or None
+            elif isinstance(packet_time, Mapping):
+                # Accept TIME.analyze-shaped {"groups": [...]} already on the packet.
+                groups = packet_time.get("groups")
+                if isinstance(groups, list):
+                    rows = [dict(row) for row in groups if isinstance(row, Mapping)]
+                    time_summary = rows or None
 
         time_enrichment: dict[str, Any] | None = None
         if (

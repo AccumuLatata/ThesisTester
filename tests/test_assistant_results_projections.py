@@ -115,6 +115,51 @@ def test_resolve_grid_ranking_defaults_prefers_best_row_then_assumptions():
     assert min_trades2 == 10
 
 
+def test_resolve_grid_ranking_defaults_sanitizes_unknown_metrics():
+    # Invalid best metric falls through to allowlisted assumptions metric.
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={"grid": {"ranking_metric": "total_r", "min_trades": 2}},
+        results={
+            "best_grid_result": {
+                "ranking_metric": "not_a_real_metric",
+                "stop_loss_ticks": 8,
+                "take_profit_ticks": 16,
+                "trade_count": 10,
+                "total_r": 4.0,
+                "expectancy_r": 0.2,
+            }
+        },
+        warnings=(),
+    )
+    metric, path, min_trades = resolve_grid_ranking_defaults(packet)
+    assert metric == "total_r"
+    assert path == "assumptions.grid.ranking_metric"
+    assert min_trades == 2
+
+    # Both invalid → expectancy_r default.
+    packet2 = EvidencePacket(
+        provenance={},
+        assumptions={"grid": {"ranking_metric": "bogus", "min_trades": 1}},
+        results={
+            "best_grid_result": {
+                "ranking_metric": "also_bogus",
+                "stop_loss_ticks": 8,
+                "take_profit_ticks": 16,
+                "trade_count": 10,
+                "expectancy_r": 0.2,
+            }
+        },
+        warnings=(),
+    )
+    metric2, path2, _min2 = resolve_grid_ranking_defaults(packet2)
+    assert metric2 == "expectancy_r"
+    assert path2 == "assumptions.grid.ranking_metric"
+    ranked = project_grid_rankings(packet2, metric="also_bogus", min_trades=1)
+    assert ranked["metric"] == "expectancy_r"
+    assert ranked["best"]["stop_loss_ticks"] == 8
+
+
 def test_project_grid_rankings_deterministic_and_respects_min_trades():
     ranked = project_grid_rankings(
         _grid_rows(),
@@ -209,6 +254,17 @@ def test_build_ephemeral_context_merges_projections_without_mutating_packet():
     assert context["results"]["projections"]["grid_rankings"]["best"]["stop_loss_ticks"] == 8
     assert context["results"]["projections"]["time_rankings"]["best"]["bucket"] == "rth_morning"
     assert context["results"]["time_grouped_summary"][0]["entry_rth_segment"] == "rth_morning"
+
+
+def test_build_ephemeral_context_empty_grid_rows_falls_back_to_best_grid():
+    """Empty bundle grid_results must not blank out packet best_grid_result."""
+    packet = _packet()
+    context = build_ephemeral_results_context(packet, grid_rows=[])
+    best = context["results"]["projections"]["grid_rankings"]["best"]
+    assert best is not None
+    assert best["stop_loss_ticks"] == 8
+    assert best["take_profit_ticks"] == 16
+    assert context["results"]["projections"]["grid_rankings"]["candidate_count"] == 1
 
 
 def test_propose_results_reply_grounds_projection_paths():

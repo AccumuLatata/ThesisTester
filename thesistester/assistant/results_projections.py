@@ -70,14 +70,26 @@ def _positive_int(value: Any, *, default: int) -> int:
     return parsed if parsed > 0 else default
 
 
+def _sanitize_grid_metric(metric: Any) -> str | None:
+    """Return an allowlisted grid ranking metric, or ``None`` when invalid."""
+    if not isinstance(metric, str):
+        return None
+    name = metric.strip()
+    if name in _GRID_RANKING_METRICS:
+        return name
+    return None
+
+
 def resolve_grid_ranking_defaults(
     packet: EvidencePacket | Mapping[str, Any],
 ) -> tuple[str, str, int]:
     """Return ``(metric, metric_source_path, min_trades)`` from packet assumptions.
 
-    Prefers ``results.best_grid_result.ranking_metric`` when present, else
-    ``assumptions.grid.ranking_metric``, else ``expectancy_r``. The model must
-    never choose the ranking metric.
+    Prefers ``results.best_grid_result.ranking_metric`` when present and
+    allowlisted, else ``assumptions.grid.ranking_metric``, else
+    ``expectancy_r``. Unknown metric names fall through the preference chain
+    so rankings never advertise an unsanitized metric. The model must never
+    choose the ranking metric.
     """
     payload = _as_packet_dict(packet)
     results = _as_mapping(payload.get("results")) or {}
@@ -85,14 +97,12 @@ def resolve_grid_ranking_defaults(
     best = _as_mapping(results.get("best_grid_result")) or {}
     grid_cfg = _as_mapping(assumptions.get("grid")) or {}
 
-    metric = best.get("ranking_metric")
-    if isinstance(metric, str) and metric.strip():
-        metric_name = metric.strip()
+    metric_name = _sanitize_grid_metric(best.get("ranking_metric"))
+    if metric_name is not None:
         metric_path = "results.best_grid_result.ranking_metric"
     else:
-        metric = grid_cfg.get("ranking_metric")
-        if isinstance(metric, str) and metric.strip():
-            metric_name = metric.strip()
+        metric_name = _sanitize_grid_metric(grid_cfg.get("ranking_metric"))
+        if metric_name is not None:
             metric_path = "assumptions.grid.ranking_metric"
         else:
             metric_name = DEFAULT_GRID_METRIC
@@ -157,13 +167,9 @@ def project_grid_rankings(
         default_metric, metric_source_path, resolved_min = resolve_grid_ranking_defaults(
             packet_dict
         )
-        chosen_metric = (
-            metric.strip() if isinstance(metric, str) and metric.strip() else default_metric
-        )
+        chosen_metric = _sanitize_grid_metric(metric) or default_metric
     else:
-        chosen_metric = (
-            metric.strip() if isinstance(metric, str) and metric.strip() else DEFAULT_GRID_METRIC
-        )
+        chosen_metric = _sanitize_grid_metric(metric) or DEFAULT_GRID_METRIC
     if min_trades is not None:
         try:
             resolved_min = int(min_trades)
@@ -171,7 +177,7 @@ def project_grid_rankings(
             resolved_min = DEFAULT_GRID_MIN_TRADES
         if resolved_min < 1:
             resolved_min = DEFAULT_GRID_MIN_TRADES
-    if chosen_metric not in _GRID_RANKING_METRICS and not chosen_metric:
+    if chosen_metric not in _GRID_RANKING_METRICS:
         chosen_metric = DEFAULT_GRID_METRIC
 
     source_rows = _grid_rows_from_source(packet_or_grid)
@@ -330,9 +336,16 @@ def build_ephemeral_results_context(
         context["results"] = results
 
     metric, metric_path, min_trades = resolve_grid_ranking_defaults(context)
+    # Empty authoritative grid tables (common when no grid search ran) must not
+    # suppress fallback to ``results.best_grid_result`` on the packet.
+    usable_grid_rows: list[dict[str, Any]] | None = None
     if grid_rows is not None:
+        usable_grid_rows = [dict(item) for item in grid_rows if isinstance(item, Mapping)]
+        if not usable_grid_rows:
+            usable_grid_rows = None
+    if usable_grid_rows is not None:
         grid_projection = project_grid_rankings(
-            grid_rows,
+            usable_grid_rows,
             top_n=grid_top_n,
             metric=metric,
             min_trades=min_trades,
