@@ -237,9 +237,7 @@ def _asia_high_low(
     if wraps_midnight and eth_time is None:
         # Calendar-day session_date: remap evening Asia bars onto the next
         # calendar day so they share the post-midnight / RTH aggregate key.
-        asia_key = asia_key.where(
-            ~(mask_eth & (t >= start_time)), asia_key + timedelta(days=1)
-        )
+        asia_key = asia_key.where(~(mask_eth & (t >= start_time)), asia_key + timedelta(days=1))
 
     asia_levels = (
         df.loc[in_asia]
@@ -255,9 +253,7 @@ def _asia_high_low(
     available_after = key_midnight + pd.to_timedelta(end_seconds, unit="second")
     available_mask = local_ts >= available_after
 
-    out["AsiaHigh"] = (
-        asia_key.map(asia_levels["AsiaHigh"]).where(available_mask).astype("float64")
-    )
+    out["AsiaHigh"] = asia_key.map(asia_levels["AsiaHigh"]).where(available_mask).astype("float64")
     out["AsiaLow"] = asia_key.map(asia_levels["AsiaLow"]).where(available_mask).astype("float64")
     return out
 
