@@ -1040,6 +1040,31 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
             user_message="Is this robust out of sample?",
         )
 
+    class HonestNegation:
+        """Denying OOS confirmation must remain allowed."""
+
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "OOS is not confirmed; sample has 42 trades only.",
+                "caveats": [],
+                "claims": [
+                    {
+                        "text": "Sample has 42 trades.",
+                        "path": "results.trade_summary.trade_count",
+                    }
+                ],
+                "followups": ["Ask about gathering walk-forward evidence."],
+            }
+
+    honest = propose_results_reply(
+        HonestNegation(),
+        packet=packet,
+        history=(),
+        user_message="Is this robust out of sample?",
+    )
+    assert oos_msg in honest.caveats
+    assert "not confirmed" in honest.summary.lower()
+
 
 def test_rq5_help_vs_results_redirect_for_performance_question():
     class Client:

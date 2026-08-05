@@ -170,6 +170,22 @@ _OOS_SOFTEN_RE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+_OOS_SOFTEN_NEGATION_RE = re.compile(
+    r"\b(?:not|no|never|without|lacks?|missing|absent|unconfirmed|cannot|can't|"
+    r"isn't|aren't|wasn't|weren't|unless)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_oos_soften_language(text: str) -> bool:
+    """True when text asserts OOS/WFA confirmation without nearby negation."""
+    for match in _OOS_SOFTEN_RE.finditer(text):
+        start = max(0, match.start() - 28)
+        end = min(len(text), match.end() + 12)
+        if _OOS_SOFTEN_NEGATION_RE.search(text[start:end]):
+            continue
+        return True
+    return False
 
 
 def assert_llm_explanation_grounded(
@@ -230,7 +246,7 @@ def assert_llm_explanation_grounded(
                 continue
             fields.append((f"caveat[{index}]", llm_caveat))
         for field_name, text in fields:
-            if _OOS_SOFTEN_RE.search(text):
+            if _has_oos_soften_language(text):
                 raise LLMEvidenceError(
                     f"OOS/WFA soften language in {field_name} contradicts packet "
                     f"caveat code(s) {sorted(oos_codes)}."
