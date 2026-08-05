@@ -621,7 +621,18 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         "pivot_right",
         "prev30m_vwap_validity_periods",
     ):
-        _validate_range(levels, key, section="levels", minimum=1)
+        if key == "prev30m_vwap_validity_periods":
+            from thesistester.levels.prev30m_vwap import MAX_VALIDITY_PERIODS
+
+            _validate_range(
+                levels,
+                key,
+                section="levels",
+                minimum=1,
+                maximum=MAX_VALIDITY_PERIODS,
+            )
+        else:
+            _validate_range(levels, key, section="levels", minimum=1)
     setup = _require_mapping(run.get("setup"), section="setup")
     _validate_string_fields(
         setup,

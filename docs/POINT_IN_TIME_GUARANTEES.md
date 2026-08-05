@@ -25,7 +25,7 @@ tested here.
 | `thesistester/levels/session_vwap.py` | Developing session VWAP (`dVWAP_RTH`) |
 | `thesistester/levels/tpo.py` | TPO 30m Single Print scalar levels |
 | `thesistester/levels/apoc.py` | A-Period POC scalar levels (`APOC`, `pAPOC`) |
-| `thesistester/levels/prev30m_vwap.py` | Previous 30m VWAP (`prev30mVWAP`) + early-window hit diagnostics |
+| `thesistester/levels/prev30m_vwap.py` | Previous 30m VWAP (`prev30mVWAP` + Phase 3 stack) + early-window hit diagnostics |
 | `thesistester/engine/naked.py` | Naked/untested level flags |
 | `thesistester/engine/confluence.py` | Global confluence zone detection |
 | `thesistester/engine/anchor_confluence.py` | Anchor-based confluence detection |
@@ -108,6 +108,7 @@ future-shock tests and/or code inspection.
 | Level family | Source | Causal? | Availability timing | Known limitations | Tests |
 |---|---|---|---|---|---|
 | `prev30mVWAP` | Frozen typical-price VWAP of the prior completed session-open 30m bracket; TTL + prior-session seed | **Yes** | First bar of the next bracket after §3.4 completion (clock or true session transition); ETH+RTH emit | Bar typical-price VWAP (not tick); mid-session truncation must not finalize open brackets; requires `eth_start` | `tests/test_prev30m_vwap.py` (future-shock: `test_future_shock_append_in_session`, `test_future_shock_append_next_session`, `test_mid_session_dataset_end_does_not_finalize_future_shock`) |
+| `prev30mVWAP_2`…`_N` | Older still-valid freezes (Phase 3 stack; same freeze history / TTL) | **Yes** | Same availability clock as age-1; emitted only when validity `N>1` | Cross-session seed TTL-filters so expired ages are not resurrected | Same (+ Phase 3 stack / seed tests) |
 | `prev30mVWAP_hit_m1` | Range-touch of `prev30mVWAP` in `[bracket_start, bracket_start+1min)` | **Yes** | `NaN` until first bar with `timestamp >= bracket_start+1min`; then bracket-constant; in-window rows stay `NaN` | Diagnostic only (not setup-eligible); all-NaN unless 1min is an integer multiple of base | Same |
 | `prev30mVWAP_hit_m5` | Range-touch in `[bracket_start, bracket_start+5min)` | **Yes** | Same pattern with 5min window | Diagnostic only; all-NaN unless 5min is an integer multiple of base | Same |
 

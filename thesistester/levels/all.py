@@ -54,7 +54,9 @@ def compute_all_levels(
       **implemented**; routes to ``compute_apoc_levels``, independent of
       ``single_prints_enabled``)
     - ``prev30m_vwap_enabled`` — previous 30m VWAP (``prev30mVWAP``) with
-      early-window hit diagnostics (Stage 8 / Phase 1, **implemented**)
+      early-window hit diagnostics; ``prev30m_vwap_validity_periods > 1``
+      also emits stack columns ``prev30mVWAP_2``…``_N`` (Stage 8 /
+      Phases 1–3, **implemented**)
 
     With all new gates at their defaults the output is **identical** to the
     pre-Stage-1 output.

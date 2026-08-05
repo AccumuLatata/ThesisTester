@@ -1,6 +1,6 @@
 # Regression-Safe Implementation Plan: `prev30mVWAP`
 
-**Status:** Phase 1 + Phase 2 implemented (level engine + early-window R analytics); Phase 3 stack optional  
+**Status:** Phase 1 + Phase 2 + Phase 3 implemented (level engine + early-window R analytics + multi-period stack)  
 
 
 **Document type:** Focused level-family implementation plan  
@@ -173,16 +173,16 @@ Semantics for the MVP **single scalar column**:
 With continuous data and `N >= 1`, the common case is: during bracket `k+1`, `prev30mVWAP == V_k` (classic previous-period VWAP).  
 `N > 1` keeps a freeze alive across thin/gappy stretches where intermediate brackets fail to produce a valid VWAP (zero volume / empty), and documents the research horizon. It does **not** invent a multi-price stack in MVP.
 
-**Out of MVP (optional follow-up, same family):** multi-period stack columns
+**Phase 3 stack (implemented; same family):** multi-period stack columns when `N > 1`
 
 ```text
-prev30mVWAP      # age = 1 (immediate prior)
+prev30mVWAP      # age = 1 (immediate prior; MVP unchanged)
 prev30mVWAP_2    # age = 2
 …
 prev30mVWAP_N    # age = N
 ```
 
-for confluence across the last `N` completed period VWAPs. Do not implement the stack until the scalar MVP is golden-gated.
+for confluence across the last `N` completed period VWAPs. Reuses `prev30m_vwap_validity_periods` as stack depth.
 
 ### 3.7 Cross-session seed — locked
 
@@ -634,13 +634,17 @@ Scope:
 - Tests §10.7 in `tests/test_prev30m_vwap_hit_analytics.py`.
 - Glossary entries for conditional R stats.
 
-### Phase 3 — Optional multi-period stack (future)
+### Phase 3 — Multi-period stack (implemented)
 
-Only if research needs confluence of `V_(k-1) … V_(k-N)` simultaneously.
+Confluence of `V_(k-1) … V_(k-N)` simultaneously when `prev30m_vwap_validity_periods = N > 1`.
 
-- Additive columns `prev30mVWAP_2 … _N`
-- Separate gate or reuse validity setting
-- New tests; no change to MVP column semantics
+- Additive columns `prev30mVWAP_2 … prev30mVWAP_N` (emitted only when `N > 1`)
+- Reuses `prev30m_vwap_validity_periods` as stack depth (no separate gate)
+- Age-1 `prev30mVWAP` semantics unchanged vs Phase 1 (replace + TTL); hits stay on age-1 only
+- Cross-session seed carries up to `N` **still-valid** prior freezes (TTL-filtered at transition; no resurrected expired ages)
+- `prev30m_vwap_validity_periods` capped at `MAX_VALIDITY_PERIODS` (48)
+- Engine version bump `4 → 5` for additive vocabulary
+- Tests: Phase 3 block in `tests/test_prev30m_vwap.py` (column parity, ages, TTL, seed, eligibility, future-shock)
 
 ---
 
@@ -719,7 +723,7 @@ Session open: `18:00` exchange-local.
 | Point 2 meaning? | Diagnostics `prev30mVWAP_hit_m1` **and** `prev30mVWAP_hit_m5` + optional R analytics on finalized bracket flags |
 | Point 3 meaning? | Integer TTL in 30m periods; default 1; replace-on-new-freeze |
 | Cross-session? | Prior-session last freeze seeds next session open |
-| Multi-level stack? | Out of MVP (Phase 3) |
+| Multi-level stack? | Phase 3 implemented (`prev30mVWAP_2…_N` when validity N>1) |
 | Daily halt / missing in-session `bracket_end` bar? | **Session-boundary finalization on true session transition** (§3.4); not dataset-end mid-session |
 | Are hit columns selectable levels? | **No** — diagnostic only (§3.8.1 / §5.5) |
 | Coarse / non-tiling base data? | Level OK; each `hit_m*` only if its `W` is an integer multiple of inferred base |
