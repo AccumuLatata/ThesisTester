@@ -267,6 +267,88 @@ def test_build_ephemeral_context_empty_grid_rows_falls_back_to_best_grid():
     assert context["results"]["projections"]["grid_rankings"]["candidate_count"] == 1
 
 
+def test_project_grid_rankings_treats_json_null_profit_factor_as_inf_for_all_wins():
+    rows = [
+        {
+            "stop_loss_ticks": 8,
+            "take_profit_ticks": 16,
+            "trade_count": 10,
+            "win_rate": 1.0,
+            "profit_factor": None,  # JSON-coerced +inf
+            "expectancy_r": 0.1,
+        },
+        {
+            "stop_loss_ticks": 10,
+            "take_profit_ticks": 20,
+            "trade_count": 10,
+            "win_rate": 0.6,
+            "profit_factor": 2.0,
+            "expectancy_r": 0.5,
+        },
+    ]
+    ranked = project_grid_rankings(rows, metric="profit_factor", min_trades=1)
+    assert ranked["best"]["stop_loss_ticks"] == 8
+    assert ranked["best"]["metric_value"] is None  # JSON-safe
+    assert ranked["rows"][1]["stop_loss_ticks"] == 10
+
+
+def test_build_ephemeral_pins_recorded_best_when_rerank_disagrees():
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={
+            "grid": {
+                "ranking_metric": "min_direction_expectancy_r",
+                "min_trades": 1,
+                "min_long_trades": 5,
+                "min_short_trades": 5,
+            }
+        },
+        results={
+            "best_grid_result": {
+                "ranking_metric": "min_direction_expectancy_r",
+                "stop_loss_ticks": 6,
+                "take_profit_ticks": 12,
+                "trade_count": 20,
+                "long_trade_count": 8,
+                "short_trade_count": 7,
+                "min_direction_expectancy_r": 0.15,
+                "expectancy_r": 0.10,
+            }
+        },
+        warnings=(),
+    )
+    # Aggregate expectancy would prefer SL=10, but recorded directional winner is 6/12.
+    grid_rows = [
+        {
+            "stop_loss_ticks": 10,
+            "take_profit_ticks": 20,
+            "trade_count": 30,
+            "long_trade_count": 2,
+            "short_trade_count": 2,
+            "expectancy_r": 0.50,
+            "min_direction_expectancy_r": 0.01,
+        },
+        {
+            "stop_loss_ticks": 6,
+            "take_profit_ticks": 12,
+            "trade_count": 20,
+            "long_trade_count": 8,
+            "short_trade_count": 7,
+            "expectancy_r": 0.10,
+            "min_direction_expectancy_r": 0.15,
+        },
+    ]
+    context = build_ephemeral_results_context(packet, grid_rows=grid_rows)
+    ranked = context["results"]["projections"]["grid_rankings"]
+    assert ranked["metric"] == "min_direction_expectancy_r"
+    assert ranked["min_long_trades"] == 5
+    assert ranked["min_short_trades"] == 5
+    assert ranked["best"]["stop_loss_ticks"] == 6
+    assert ranked["best"]["take_profit_ticks"] == 12
+    # Side filters exclude the high aggregate row (long/short counts < 5).
+    assert ranked["eligible_count"] == 1
+
+
 def test_propose_results_reply_grounds_projection_paths():
     packet = _packet()
     context = build_ephemeral_results_context(packet, grid_rows=_grid_rows())
