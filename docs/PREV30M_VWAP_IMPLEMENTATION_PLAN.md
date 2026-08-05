@@ -663,9 +663,9 @@ Do not place these controls in the hero/primary SMA-EMA area; keep with other op
 |---|---|
 | Confusing session-open brackets with RTH TPO brackets | Explicit docs + tests that RTH open does **not** reset the clock |
 | Accidental RTH NaN-gating copy-paste from `session_vwap.py` / `tpo.py` | Dedicated ETH emission tests; code review checklist item |
-| Final bracket never freezes across 17:00 halt | Mandatory session-boundary finalization (§3.4); test 19b |
+| Final bracket never freezes across 17:00 halt | Mandatory session-transition finalization (§3.4); tests 19b/19d |
 | `hit_m1` / `hit_m5` selected as confluence/price levels | Eligibility denylist (§3.8.1 / §5.5); test 27f |
-| `hit_m1` on 5min-only data invents minute resolution | `hit_m1` all-NaN on base `>1min`; `hit_m5` still OK on 5min (§3.8.1); tests 27d/27e |
+| `hit_m*` invents finer resolution than base | Compute only when `W` is an integer multiple of base (§3.8.1); tests 27d/27e |
 | Early-window look-ahead | NaN until each window completes; no rewrite of earlier rows; future-shock tests |
 | Broken m1/m5 nesting | Invariant tests (§10.5 / 27c) |
 | TTL ambiguity | Normative §3.6; tests for replace vs expire |
