@@ -64,6 +64,8 @@ def _trade_references_prev30m(level_names: Any) -> bool:
     if not text or text.lower() == "nan":
         return False
     parts = [part.strip() for part in text.replace(",", "|").split("|")]
+    # Phase 3 stack ages (_2…_N) are confluence price levels; hit R analytics
+    # stay scoped to age-1 (`prev30mVWAP`) only — no per-age hit columns.
     return COL_PREV30M_VWAP in parts
 
 

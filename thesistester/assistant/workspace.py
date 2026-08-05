@@ -17,6 +17,7 @@ from thesistester.assistant.thesis_compiler import (
     normalize_walk_forward_controls,
 )
 from thesistester.config import TIMEZONE_OPTIONS as _CONFIG_TIMEZONE_OPTIONS
+from thesistester.levels.prev30m_vwap import prev30m_price_column_names
 from thesistester.setup import SUGGESTED_DEFAULT_LEVELS
 
 # Additive Streamlit staging keys owned by the Research Assistant page.
@@ -1047,6 +1048,9 @@ def build_confluence_level_options(
         label = coerce_window_label(window)
         if label:
             _add((f"POC_rolling_{label}",))
+    if bool(settings.get("prev30m_vwap_enabled", False)):
+        validity = safe_int(settings.get("prev30m_vwap_validity_periods"), 1)
+        _add(prev30m_price_column_names(max(validity, 1)))
     _add(available_columns)
     _add(selected_levels)
     return options

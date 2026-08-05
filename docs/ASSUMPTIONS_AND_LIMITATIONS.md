@@ -209,8 +209,9 @@ This engine is for **research screening**, not proof of a durable edge.
 - Bracket clock is **session-open** (`eth_start`), not RTH open. ETH and RTH bars both contribute and emit.
 - Formula is bar typical-price VWAP (`(H+L+C)/3`), not tick VWAP.
 - Freeze completes on clock (`timestamp >= bracket_end`) or on **true session transition** (CME halt). Mid-session dataframe truncation does **not** finalize open brackets.
-- TTL: `prev30m_vwap_validity_periods` (integer ≥ 1, default 1); replace-on-new-freeze.
-- Prior-session last freeze seeds the next session open.
+- TTL: `prev30m_vwap_validity_periods` (integer ≥ 1, default 1); replace-on-new-freeze for age-1.
+- Phase 3: when validity `N > 1`, additive stack columns `prev30mVWAP_2`…`prev30mVWAP_N` expose older still-valid freezes for confluence. Age-1 semantics match Phase 1; hit diagnostics remain age-1 only. `LEVEL_ENGINE_VERSION` bumped to 5 for the additive vocabulary.
+- Prior-session freeze history (up to `N` freezes) seeds the next session open.
 - Companion diagnostics `prev30mVWAP_hit_m1` / `prev30mVWAP_hit_m5` are **not** setup-selectable or auto-plotted price levels. They stay `NaN` until each early window completes (no rewrite of in-window rows). Each diagnostic requires its window `W` to be an integer multiple of the inferred base interval. `validate_setup_config` rejects them in `selected_levels` / anchor rules; assistant levels summaries omit them from `level_columns`.
 - `prev30m_vwap_validity_periods` accepts integer-compatible values (including `numpy.int64`) and coerces to `int`, matching `validate_run_spec`.
 - Missing/empty `eth_start` fails closed with `ValueError` when enabled. Bracket open preserves `eth_start` seconds/microseconds.

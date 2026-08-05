@@ -550,16 +550,21 @@ with st.expander("Advanced opt-in levels", expanded=True):
         key=_PREV30M_VWAP_ENABLED_KEY,
         help=(
             "Session-open 30m brackets (ETH+RTH). Freezes the prior bracket VWAP. "
-            "Diagnostics hit_m1 / hit_m5 finalize after the first 1 / 5 minutes."
+            "Diagnostics hit_m1 / hit_m5 finalize after the first 1 / 5 minutes. "
+            "Validity > 1 also emits stack columns prev30mVWAP_2…_N for confluence."
         ),
     )
     if prev30m_vwap_enabled:
         prev30m_vwap_validity_periods = st.number_input(
-            "prev30mVWAP validity (30m periods)",
+            "prev30mVWAP validity / stack depth (30m periods)",
             min_value=1,
             value=int(DEFAULT_LEVELS_SETTINGS["prev30m_vwap_validity_periods"]),
             step=1,
             key=_PREV30M_VWAP_VALIDITY_KEY,
+            help=(
+                "Each freeze remains valid for this many subsequent 30m periods. "
+                "Also sets stack depth: N>1 adds prev30mVWAP_2…prev30mVWAP_N."
+            ),
         )
     else:
         if _PREV30M_VWAP_VALIDITY_KEY not in st.session_state:

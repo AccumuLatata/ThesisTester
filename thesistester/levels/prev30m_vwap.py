@@ -3,14 +3,21 @@
 Output columns
 --------------
 ``prev30mVWAP``
-    Frozen end-of-bracket typical-price VWAP of the prior completed session-open
-    30-minute bracket.  Available on ETH and RTH bars inside the TTL window.
-    Seeded into the next trading session from the prior session's last freeze.
+    Frozen end-of-bracket typical-price VWAP of the immediately prior completed
+    session-open 30-minute bracket (stack age = 1).  Available on ETH and RTH
+    bars inside the TTL window.  Seeded into the next trading session from the
+    prior session's freeze history.
+
+``prev30mVWAP_2`` … ``prev30mVWAP_N`` (Phase 3)
+    Older completed-period VWAPs still inside ``validity_periods`` (age = 2..N).
+    Emitted only when ``validity_periods > 1``.  Setup-selectable price levels
+    for multi-period confluence.  MVP ``prev30mVWAP`` semantics are unchanged.
 
 ``prev30mVWAP_hit_m1`` / ``prev30mVWAP_hit_m5``
-    Diagnostic flags (not setup-selectable levels): whether ``prev30mVWAP`` was
-    range-touched in the first 1 / 5 minutes of the current 30m bracket.
-    Finalized only after each window completes; in-window rows stay ``NaN``.
+    Diagnostic flags (not setup-selectable levels): whether ``prev30mVWAP``
+    (age-1) was range-touched in the first 1 / 5 minutes of the current 30m
+    bracket.  Finalized only after each window completes; in-window rows stay
+    ``NaN``.
 
 Bracket clock
 -------------
@@ -52,6 +59,30 @@ COL_HIT_M5 = "prev30mVWAP_hit_m5"
 PREV30M_VWAP_COLUMNS = (COL_PREV30M_VWAP, COL_HIT_M1, COL_HIT_M5)
 HIT_WINDOW_M1 = pd.Timedelta(minutes=1)
 HIT_WINDOW_M5 = pd.Timedelta(minutes=5)
+
+
+def prev30m_stack_column_name(age: int) -> str:
+    """Return the price-level column name for stack *age* (1 = ``prev30mVWAP``)."""
+    if age <= 1:
+        return COL_PREV30M_VWAP
+    return f"prev30mVWAP_{int(age)}"
+
+
+def prev30m_price_column_names(validity_periods: int) -> list[str]:
+    """Return age-1..N price column names for a validity setting."""
+    n = max(int(validity_periods), 1)
+    return [prev30m_stack_column_name(age) for age in range(1, n + 1)]
+
+
+def is_prev30m_price_level_column(name: str) -> bool:
+    """True for ``prev30mVWAP`` / ``prev30mVWAP_k``; false for hit diagnostics."""
+    text = str(name)
+    if text == COL_PREV30M_VWAP:
+        return True
+    if text.startswith("prev30mVWAP_") and "_hit_" not in text:
+        suffix = text[len("prev30mVWAP_") :]
+        return suffix.isdigit() and int(suffix) >= 2
+    return False
 
 
 def _window_resolvable(base: pd.Timedelta | None, window: pd.Timedelta) -> bool:
@@ -139,7 +170,7 @@ def _complete_bracket(
     *,
     active: dict[str, Any],
 ) -> None:
-    """Mark bracket complete; update active freeze when volume > 0."""
+    """Mark bracket complete; append freeze history when volume > 0."""
     st = state[bracket_idx]
     if st["done"]:
         return
@@ -147,9 +178,8 @@ def _complete_bracket(
     vol = float(st["vol"])
     if vol > 0.0:
         vwap = float(st["pv"]) / vol
-        active["value"] = vwap
-        active["formed"] = int(bracket_idx)
-        active["last_freeze"] = vwap
+        freezes: list[tuple[int, float]] = active["freezes"]
+        freezes.append((int(bracket_idx), vwap))
 
 
 def _finalize_due_brackets(
@@ -181,20 +211,46 @@ def _finalize_session_open_brackets(
             st["done"] = True
 
 
-def _emit_level(
+def _seed_freezes_for_next_session(
+    freezes: list[tuple[int, float]],
     *,
-    active: dict[str, Any],
+    validity_periods: int,
+) -> list[tuple[int, float]]:
+    """Carry up to N prior-session freezes with fresh synthetic formed indices.
+
+    Most recent prior freeze becomes ``formed=-1`` (age-1 seed); older kept
+    freezes become ``-2 .. -N`` so stack ages remain available at session open.
+    """
+    if not freezes:
+        return []
+    kept = freezes[-validity_periods:]
+    k = len(kept)
+    return [(-(k - i), float(value)) for i, (_formed, value) in enumerate(kept)]
+
+
+def _emit_stack(
+    *,
+    freezes: list[tuple[int, float]],
     bracket_idx: int,
     validity_periods: int,
-) -> float:
-    value = active["value"]
-    formed = active["formed"]
-    if value is None or formed is None:
-        return np.nan
-    # Active for brackets formed+1 .. formed+N (seed uses formed=-1 → brackets 0..N-1).
-    if formed < bracket_idx <= formed + validity_periods:
-        return float(value)
-    return np.nan
+) -> list[float]:
+    """Return age-1..N values for *bracket_idx* (NaN-padded).
+
+    Age 1 is the most recent freeze still inside its TTL window — identical to
+    the Phase 1 single-column contract.  Ages 2..N are older still-valid freezes.
+    """
+    ages = [np.nan] * validity_periods
+    valid = [
+        (formed, value)
+        for formed, value in freezes
+        if formed < bracket_idx <= formed + validity_periods
+    ]
+    if not valid:
+        return ages
+    valid.sort(key=lambda item: item[0], reverse=True)
+    for i, (_formed, value) in enumerate(valid[:validity_periods]):
+        ages[i] = float(value)
+    return ages
 
 
 def _compute_hit_columns(
@@ -283,7 +339,9 @@ def compute_prev30m_vwap_levels(
     enabled:
         Master gate.  ``False`` returns an empty DataFrame immediately.
     validity_periods:
-        Number of subsequent 30m periods the frozen level remains valid (≥ 1).
+        Number of subsequent 30m periods each freeze remains valid (≥ 1).
+        Also controls Phase 3 stack depth: columns ``prev30mVWAP_2`` …
+        ``prev30mVWAP_N`` are emitted when ``validity_periods > 1``.
     """
     if not enabled:
         return pd.DataFrame(index=df.index)
@@ -328,23 +386,20 @@ def compute_prev30m_vwap_levels(
     hit_m1_ok = _window_resolvable(base_interval, HIT_WINDOW_M1)
     hit_m5_ok = _window_resolvable(base_interval, HIT_WINDOW_M5)
 
+    price_cols = prev30m_price_column_names(validity_periods)
     n = len(work)
-    out_vwap = np.full(n, np.nan, dtype="float64")
+    out_stack = {col: np.full(n, np.nan, dtype="float64") for col in price_cols}
     if n == 0:
-        return pd.DataFrame(
-            {
-                COL_PREV30M_VWAP: out_vwap,
-                COL_HIT_M1: out_vwap.copy(),
-                COL_HIT_M5: out_vwap.copy(),
-            },
-            index=work.index,
-        )
+        empty = {col: out_stack[col] for col in price_cols}
+        empty[COL_HIT_M1] = np.full(0, np.nan, dtype="float64")
+        empty[COL_HIT_M5] = np.full(0, np.nan, dtype="float64")
+        return pd.DataFrame(empty, index=work.index)
 
     typical = (work["high"] + work["low"] + work["close"]) / 3.0
     volumes = work["volume"].astype("float64")
     pv = typical * volumes
 
-    active: dict[str, Any] = {"value": None, "formed": None, "last_freeze": None}
+    active: dict[str, Any] = {"freezes": []}
     bracket_state: dict[int, dict[str, Any]] = {}
     session_opens: dict[datetime.date, pd.Timestamp] = {}
     prev_session: datetime.date | None = None
@@ -355,12 +410,12 @@ def compute_prev30m_vwap_levels(
 
         if prev_session is not None and sess != prev_session:
             _finalize_session_open_brackets(bracket_state, active=active)
-            seed = active["last_freeze"]
+            seeded = _seed_freezes_for_next_session(
+                list(active["freezes"]),
+                validity_periods=validity_periods,
+            )
             bracket_state = {}
-            if seed is not None:
-                active = {"value": float(seed), "formed": -1, "last_freeze": None}
-            else:
-                active = {"value": None, "formed": None, "last_freeze": None}
+            active = {"freezes": seeded}
 
         if sess not in session_opens:
             session_opens[sess] = _session_open_ts(sess, eth_time, exchange_tz)
@@ -368,7 +423,6 @@ def compute_prev30m_vwap_levels(
 
         minutes = int(np.floor((ts - sess_open) / pd.Timedelta(minutes=1)))
         if minutes < 0:
-            out_vwap[i] = np.nan
             prev_session = sess
             continue
 
@@ -391,11 +445,13 @@ def compute_prev30m_vwap_levels(
             st["pv"] += float(pv.iloc[i])
             st["vol"] += float(volumes.iloc[i])
 
-        out_vwap[i] = _emit_level(
-            active=active,
+        ages = _emit_stack(
+            freezes=active["freezes"],
             bracket_idx=bidx,
             validity_periods=validity_periods,
         )
+        for age_i, col in enumerate(price_cols):
+            out_stack[col][i] = ages[age_i]
         prev_session = sess
 
     # Do not finalize open brackets at dataframe end (mid-session truncation / PIT).
@@ -406,16 +462,12 @@ def compute_prev30m_vwap_levels(
         session_dates=session_dates,
         eth_time=eth_time,
         exchange_tz=exchange_tz,
-        out_vwap=out_vwap,
+        out_vwap=out_stack[COL_PREV30M_VWAP],
         hit_m1_ok=hit_m1_ok,
         hit_m5_ok=hit_m5_ok,
     )
 
-    return pd.DataFrame(
-        {
-            COL_PREV30M_VWAP: out_vwap,
-            COL_HIT_M1: out_m1,
-            COL_HIT_M5: out_m5,
-        },
-        index=work.index,
-    )
+    payload = {col: out_stack[col] for col in price_cols}
+    payload[COL_HIT_M1] = out_m1
+    payload[COL_HIT_M5] = out_m5
+    return pd.DataFrame(payload, index=work.index)
