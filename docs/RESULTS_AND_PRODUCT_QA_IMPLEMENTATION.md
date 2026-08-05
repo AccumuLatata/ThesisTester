@@ -1,7 +1,7 @@
 # Results Discussion & Product Help — Implementation Contract
 
 **Document type:** Implementation contract (RQ-series) — **single source of truth**
-**Status:** active — RQ-0…RQ-2 implemented; RQ-3+ pending
+**Status:** active — RQ-0…RQ-3 implemented; RQ-4+ pending
 **Date:** 2026-08-05
 **Owner surface:** `thesistester/assistant/` + Research Assistant page (+ narrow classic-nav entry points)
 **Provider (text):** existing OpenAI structured client (`config/assistant.toml` / `OPENAI_API_KEY`)
@@ -81,7 +81,7 @@ Example help questions:
 | UI attach (help) | Separate Help panel / tab on Research Assistant (not inside a run expander); same `st.text_input` + send button pattern |
 | Classic focus | Keep `classic_focus_run_id` as an optional run-id **string** (do **not** convert it to a dict). RQ-4 adds exactly one companion key `classic_focus_channel` whose only legal non-null v1 value is `"results_qa"` (`None`/absent = legacy). `discuss_run` / `set_classic_focus_run` set both; consume clears both atomically; thesis-scoped clear includes both. No other focus-key namespace. |
 | Help corpus | Curated, versioned local docs + `FEATURE_PARITY_REGISTRY` summaries only — no web search, no arbitrary filesystem. RQ-0 ships the frozen path + section allowlist in §7.1 exactly (no agent-invented sections). No `AGENT_GUIDE` in v1 user Help. |
-| Help numeric grounding | Digit tokens in Help `summary` / `caveats` / `followups` must appear as **verbatim substrings** in the attached corpus chunk texts and/or registry digest JSON for that turn; else fail closed before persist/render. Prefer number-free Help text. Never answer the user’s run performance from Help (remediate to Discuss results). |
+| Help numeric grounding | Digit tokens in Help `summary` / `caveats` / `followups` must appear as **matched number tokens** (same tokenizer as LLM evidence grounding) in the attached corpus chunk texts and/or registry digest JSON for that turn; else fail closed before persist/render. A reply token like `1` must not ride on a different corpus number such as `10`. Prefer number-free Help text. Never answer the user’s run performance from Help (remediate to Discuss results). |
 | History trim | Per-channel `max_history_messages` under `[assistant.results_qa]` / `[assistant.product_help]` **overrides** top-level `[assistant].max_history_messages` when the channel section is present; else fall back to top-level. |
 | Ranking metric (RQ-2) | Default ranking metric comes from the packet / `best_grid_result` recorded ranking metric (else the configured grid metric used when the grid was run), restricted to allowlisted aggregate **and directional** grid metrics; unknown names fall through to the next preference then `expectancy_r`. Optional side trade-count filters from `assumptions.grid` apply when present. JSON-null profit-factor on all-wins rows ranks as +inf; projection `best` pins packet `best_grid_result` when re-rank disagrees. The model must not choose the ranking metric. Empty authoritative `grid_results` tables fall back to packet `best_grid_result`. |
 | Provider | Text stays on existing OpenAI structured client; no Anthropic/xAI in RQ PRs |
@@ -246,12 +246,13 @@ invent numbers.
 **Help numeric grounding (locked):** Before persist/render, scan digit tokens in
 `summary`, `caveats`, and `followups` with the same numeric-token regex family
 as C2-6 / `llm_explainer` (including optional `%` suffixes). Every such token
-must appear as a verbatim substring in the concatenation of (a) corpus chunk
-`text` fields attached to that turn and (b) the registry digest JSON string
-attached to that turn. Tokens that fail are rejected (`HelpEvidenceError` or
-equivalent) — do not silently strip and accept. Prefer number-free `followups`.
-Help has no `claims[{path}]`; corpus/registry substring match is the sole
-numeric ground.
+must appear as a **matched number token** (same tokenizer / normalization) in
+the concatenation of (a) corpus chunk `text` fields attached to that turn and
+(b) the registry digest JSON string attached to that turn. A reply token like
+`1` / `3` must not ride on a different corpus number such as `10` / `30`.
+Tokens that fail are rejected (`HelpEvidenceError` or equivalent) — do not
+silently strip and accept. Prefer number-free `followups`. Help has no
+`claims[{path}]`; corpus/registry number-token match is the sole numeric ground.
 
 ### 5.3 Persistence
 
@@ -688,8 +689,8 @@ without mixing in run performance claims.
 |---|---|
 | Code | `thesistester/assistant/product_help.py` — `propose_help_reply(client, *, corpus_chunks, registry_digest, history, user_message) -> HelpReply` |
 | Code | `AssistantOrchestrator.handle_help_turn(thesis_id, message, *, conversation_id=..., client=...)` — load corpus via `help_corpus.py` (§7.1 only), build registry digest, call product_help, persist with `"channel": "product_help"`, omit `choices` |
-| Code | Intent guard: if message clearly asks for *this run’s* performance numbers, return structured remediation pointing to Discuss results (no fabricated metrics) |
-| Code | Enforce §5.2 Help numeric grounding (verbatim substring in attached corpus/registry; fail closed on uncited digit tokens) |
+| Code | Intent guard: if message clearly asks for *this run’s* performance numbers (concrete metric nouns / past-tense run asks / run-anchored results), return structured remediation pointing to Discuss results (no fabricated metrics). Do **not** remediate possessive product nouns alone (`my grid`, `this run` in workflow questions), vague export/workflow phrasing (`where are my results?`), or definition/computation asks about metric nouns (`How is my expectancy computed?`, `What does this performance metric mean?`). Definition escape uses compute/define/mean collocates only — not bare `docs`/`metric` — and yields to strong run anchors (`what was/were my`, `on this run`). |
+| Code | Enforce §5.2 Help numeric grounding (number-token match in attached corpus/registry; fail closed on uncited digit tokens) |
 | UI | Research Assistant Help panel (collapsed expander or tab sibling to chat hub) with keyed `st.text_input` + send button; do not reuse thesis `st.chat_input`; no nested `st.chat_input` |
 | Session keys | Additive help draft/cache keys if needed; document + thesis-scope clear as appropriate |
 | Tests | §7.1 path/section allowlist; citation must reference attached chunks; digit-token grounding; performance-question remediation; no bundle import; no `choices`; history trim by channel; `AGENT_GUIDE` never loaded |
@@ -704,11 +705,11 @@ without mixing in run performance claims.
 - Widening §7.1 allowlist
 
 #### Acceptance
-- [ ] “How does grid ranking work?” returns citations to §7.1-allowlisted glossary/architecture/registry only
-- [ ] “What was my best SL?” in Help → remediation to Discuss results, no numbers
-- [ ] Uncited digit token in Help summary/caveats/followups → error before persist/render
-- [ ] Non-allowlisted doc paths and sections never load
-- [ ] Thesis draft chat fixtures unchanged
+- [x] “How does grid ranking work?” returns citations to §7.1-allowlisted glossary/architecture/registry only
+- [x] “What was my best SL?” in Help → remediation to Discuss results, no numbers
+- [x] Uncited digit token in Help summary/caveats/followups → error before persist/render
+- [x] Non-allowlisted doc paths and sections never load
+- [x] Thesis draft chat fixtures unchanged
 
 #### Regression safety
 New channel + UI panel. No engine/golden changes. Results path untouched when
@@ -731,8 +732,17 @@ docs/AGENT_GUIDE.md
 docs/ENGINEERING_ROADMAP.md
 ```
 
-#### Implemented contract (fill when merged)
-_Pending implementation._
+#### Implemented contract
+- `thesistester/assistant/product_help.py` — `propose_help_reply`,
+  `is_run_performance_question` / remediation, digit-token grounding,
+  history filter, `channel=product_help`
+- `help_corpus.select_help_corpus_chunks` — lexical retrieval under §7.1 +
+  `max_corpus_chars` (no network; no `AGENT_GUIDE`)
+- `AssistantOrchestrator.handle_help_turn` — corpus + registry digest → reply →
+  persist messages without `choices`; never bundle import / `PIPELINE.*`
+- UI: Help / how it works expander (`st.text_input` + send) sibling to thesis chat
+- Session key: `assistant_product_help_draft` (thesis-scoped)
+- Tests: `tests/test_assistant_product_help.py` + help_corpus/workspace extensions
 
 ---
 
@@ -977,7 +987,7 @@ Constraints:
 - Follow the PR’s Files allowed to touch list. Do not modify engine, levels, signals, or goldens.
 - Add product_help.py and AssistantOrchestrator.handle_help_turn over help_corpus §7.1 allowlist + registry digest.
 - Intent guard: run-performance questions → structured remediation to Discuss results (no fabricated numbers).
-- Enforce Help numeric grounding (§5.2): every digit token in summary/caveats/followups must be a verbatim substring of attached corpus texts or registry digest JSON; else fail closed.
+- Enforce Help numeric grounding (§5.2): every digit token in summary/caveats/followups must be a matched number token in attached corpus texts or registry digest JSON; else fail closed.
 - Citations must reference doc_id/section pairs actually attached (registry uses section="digest").
 - UI: Help panel with keyed st.text_input + send button; do not reuse thesis st.chat_input.
 - Persist channel=product_help; omit choices; trim history by channel using product_help max_history_messages.
@@ -1032,7 +1042,7 @@ Constraints:
 |---|---|
 | RQ-0 | Implemented |
 | RQ-1 (VA-1) | Implemented |
-| RQ-2 | Implemented (this PR) |
-| RQ-3 | Proposed |
+| RQ-2 | Implemented |
+| RQ-3 | Implemented (this PR) |
 | RQ-4 | Proposed |
 | RQ-5 | Proposed |

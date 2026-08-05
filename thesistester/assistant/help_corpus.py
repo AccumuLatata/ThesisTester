@@ -359,3 +359,85 @@ def build_registry_digest(
 def registry_digest_json(rows: Iterable[Mapping[str, Any]] | None = None) -> str:
     """Serialize the registry digest for Help numeric grounding / prompts."""
     return json.dumps(build_registry_digest(rows), sort_keys=True, ensure_ascii=True)
+
+
+def _tokenize_query(text: str) -> set[str]:
+    tokens = {part.lower() for part in re.findall(r"[A-Za-z0-9_./`§-]{2,}", text)}
+    return {token.strip("`'\".,:;!?()[]{}") for token in tokens if token.strip("`'\".,:;!?()[]{}")}
+
+
+def score_corpus_chunk(chunk: CorpusChunk, *, query_tokens: set[str]) -> int:
+    """Cheap lexical score for Help retrieval (local docs only)."""
+    if not query_tokens:
+        return 0
+    haystack = f"{chunk.doc_id} {chunk.section} {chunk.text}".lower()
+    score = 0
+    for token in query_tokens:
+        if token in haystack:
+            score += 1
+            if token in chunk.doc_id.lower() or token in chunk.section.lower():
+                score += 2
+    # Prefer glossary/architecture for ranking/metric questions.
+    if {"grid", "ranking", "metric", "expectancy", "sl", "tp"} & query_tokens:
+        if chunk.doc_id in {"metrics", "architecture", "assumptions"}:
+            score += 3
+    if {"otf", "one", "timeframing", "timeframe"} & query_tokens and chunk.doc_id == "otf":
+        score += 3
+    if {"assistant", "capability", "registry", "confirm"} & query_tokens:
+        if chunk.doc_id in {"architecture", "assumptions"}:
+            score += 2
+    return score
+
+
+def select_help_corpus_chunks(
+    user_message: str,
+    *,
+    repo_root: str | Path,
+    max_chars: int,
+    doc_ids: Sequence[str] | None = None,
+) -> tuple[CorpusChunk, ...]:
+    """Load §7.1 chunks and keep a query-relevant subset within ``max_chars``.
+
+    Retrieval is lexical only (no network). Always fails closed through
+    ``load_allowlisted_corpus`` path/section allowlists. When scoring finds no
+    overlap, returns the budgeted prefix of the allowlisted corpus so Help can
+    still answer general product questions.
+    """
+    if not isinstance(user_message, str) or not user_message.strip():
+        raise HelpCorpusError("Help retrieval requires a non-empty user message.")
+    if not isinstance(max_chars, int) or max_chars <= 0:
+        raise HelpCorpusError("max_chars must be a positive integer.")
+    all_chunks = load_allowlisted_corpus(repo_root=repo_root, doc_ids=doc_ids)
+    if not all_chunks:
+        return ()
+    query_tokens = _tokenize_query(user_message)
+    # Tie-break by allowlist load order (manifest order), not alphabetical
+    # doc_id — zero-overlap fallback must be the budgeted allowlist prefix.
+    ranked = [
+        chunk
+        for _score, _idx, chunk in sorted(
+            (
+                (
+                    score_corpus_chunk(chunk, query_tokens=query_tokens),
+                    idx,
+                    chunk,
+                )
+                for idx, chunk in enumerate(all_chunks)
+            ),
+            key=lambda item: (-item[0], item[1]),
+        )
+    ]
+    selected: list[CorpusChunk] = []
+    total = 0
+    for chunk in ranked:
+        size = len(chunk.text)
+        # Skip chunks that do not fit the remaining budget (including individually
+        # oversized ones) so later, smaller allowlisted sections can still fill
+        # unused capacity. Do not break early on the first non-fit.
+        if size > max_chars or total + size > max_chars:
+            continue
+        selected.append(chunk)
+        total += size
+    if not selected:
+        raise HelpCorpusError(f"No allowlisted Help chunk fits max_corpus_chars ({max_chars}).")
+    return tuple(selected)

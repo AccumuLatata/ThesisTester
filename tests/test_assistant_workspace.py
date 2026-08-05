@@ -149,9 +149,11 @@ def test_assistant_session_keys_cover_documented_staging_surface():
     assert "assistant_run_comparisons" in ASSISTANT_SESSION_KEYS
     assert "assistant_portfolio_analyses" in ASSISTANT_SESSION_KEYS
     assert "assistant_results_qa_drafts" in ASSISTANT_SESSION_KEYS
+    assert "assistant_product_help_draft" in ASSISTANT_SESSION_KEYS
     assert "assistant_bundle_handoff" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_flash" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_results_qa_drafts" in THESIS_SCOPED_STAGING_KEYS
+    assert "assistant_product_help_draft" in THESIS_SCOPED_STAGING_KEYS
     assert set(THESIS_SCOPED_STAGING_KEYS).issubset(ASSISTANT_SESSION_KEYS)
 
 
@@ -430,6 +432,14 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "Thesis drafting only" in source
     assert "Discuss results" in source
     assert "handle_results_turn(" in source
+    assert "Help / how it works" in source
+    assert "handle_help_turn(" in source
+    assert "repo_root=Path(__file__).resolve().parents[1]" in source
+    assert "load_product_help_settings(" in source
+    assert "Send help question" in source
+    # Conversation switch must clear Help draft/widget (not only thesis switch).
+    assert 'assistant_product_help_draft"] = ""' in source
+    assert 'pop("product-help-input"' in source
     assert "is_draft_channel_message(" in source
     assert "load_results_qa_settings(" in source
     assert "st.text_input(" in source
@@ -949,7 +959,9 @@ def test_clear_thesis_scoped_state_helper():
         "assistant_hydrated_conversation_id": "c",
         "assistant_validated_run_spec": {"spec": {}},
         "assistant_results_qa_drafts": {"run_a": "leaked question"},
+        "assistant_product_help_draft": "leaked help",
         "results-qa-input-run_a": "leaked question",
+        "product-help-input": "leaked help",
         "assistant_bundle_handoff": {"thesis_id": "th_a", "run_id": "r1"},
         "assistant_run_explanations": {"r1": "keep"},
     }
@@ -959,7 +971,9 @@ def test_clear_thesis_scoped_state_helper():
     assert state["assistant_hydrated_conversation_id"] is None
     assert state["assistant_validated_run_spec"] is None
     assert state["assistant_results_qa_drafts"] == {}
+    assert state["assistant_product_help_draft"] == ""
     assert "results-qa-input-run_a" not in state
+    assert "product-help-input" not in state
     assert state["assistant_bundle_handoff"] is None
     assert state["assistant_run_explanations"] == {"r1": "keep"}
 

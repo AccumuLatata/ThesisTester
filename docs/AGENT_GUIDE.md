@@ -277,7 +277,9 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   `is_draft_channel_message` in `llm.py`. **RQ-1** shipped
   `results_qa.py`, `handle_results_turn`, Discuss results UI
   (`st.text_input` + send), draft history isolation, and
-  `assistant_results_qa_drafts` — Help UI remains RQ-3.
+  `assistant_results_qa_drafts`. **RQ-3** shipped `product_help.py`,
+  `handle_help_turn`, Help / how it works UI, corpus retrieval wiring, and
+  `assistant_product_help_draft` — never load `AGENT_GUIDE` into Help.
 - Realtime voice review (VA-series) has a **single** contract for **voice**:
   `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Do not add parallel voice
   roadmap/reassessment docs. Implement only the active VA PR’s **Files

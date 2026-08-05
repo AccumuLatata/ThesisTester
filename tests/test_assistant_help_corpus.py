@@ -16,6 +16,7 @@ from thesistester.assistant.help_corpus import (
     load_corpus_chunks,
     manifest_doc_ids,
     resolve_corpus_path,
+    select_help_corpus_chunks,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -160,3 +161,72 @@ def test_build_registry_digest_shape():
             "confirmation",
             "limitation",
         }
+
+
+def test_select_help_corpus_chunks_respects_budget_and_allowlist():
+    chunks = select_help_corpus_chunks(
+        "How does grid ranking and expectancy_r work?",
+        repo_root=REPO_ROOT,
+        max_chars=8_000,
+    )
+    assert chunks
+    assert sum(len(chunk.text) for chunk in chunks) <= 8_000
+    assert all(chunk.doc_id in set(manifest_doc_ids()) - {"registry"} for chunk in chunks)
+    # Grid/metric queries should prefer glossary/architecture when scored.
+    assert any(chunk.doc_id in {"metrics", "architecture", "assumptions"} for chunk in chunks)
+    # Oversized individual chunks are skipped; tiny budgets that fit nothing fail.
+    with pytest.raises(HelpCorpusError, match="No allowlisted Help chunk fits"):
+        select_help_corpus_chunks("ranking", repo_root=REPO_ROOT, max_chars=1)
+
+
+def test_select_help_corpus_chunks_fills_budget_after_nonfitting_rank(monkeypatch):
+    """A non-fitting mid-rank chunk must not block later smaller chunks."""
+    from thesistester.assistant.help_corpus import CorpusChunk
+
+    fake = (
+        CorpusChunk(doc_id="metrics", section="a", text="x" * 80),
+        CorpusChunk(doc_id="metrics", section="b", text="y" * 60),
+        CorpusChunk(doc_id="architecture", section="c", text="z" * 15),
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.help_corpus.load_allowlisted_corpus",
+        lambda **kwargs: fake,
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.help_corpus.score_corpus_chunk",
+        lambda chunk, query_tokens: {"a": 3, "b": 2, "c": 1}[chunk.section],
+    )
+    selected = select_help_corpus_chunks(
+        "ranking",
+        repo_root=REPO_ROOT,
+        max_chars=100,
+    )
+    assert [chunk.section for chunk in selected] == ["a", "c"]
+    assert sum(len(chunk.text) for chunk in selected) == 95
+
+
+def test_select_help_corpus_chunks_zero_overlap_preserves_allowlist_order(monkeypatch):
+    """Zero lexical overlap must pack the allowlist prefix, not alpha doc_id order."""
+    from thesistester.assistant.help_corpus import CorpusChunk
+
+    fake = (
+        CorpusChunk(doc_id="readme", section="r", text="readme-chunk "),
+        CorpusChunk(doc_id="metrics", section="m", text="metrics-chunk"),
+        CorpusChunk(doc_id="architecture", section="a", text="arch-chunk "),
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.help_corpus.load_allowlisted_corpus",
+        lambda **kwargs: fake,
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.help_corpus.score_corpus_chunk",
+        lambda chunk, query_tokens: 0,
+    )
+    selected = select_help_corpus_chunks(
+        "zzzz-no-overlap-token",
+        repo_root=REPO_ROOT,
+        max_chars=26,
+    )
+    # allowlist order: readme → metrics → architecture (not alpha: architecture first)
+    assert [chunk.doc_id for chunk in selected] == ["readme", "metrics"]
+    assert "architecture" not in {chunk.doc_id for chunk in selected}

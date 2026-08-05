@@ -37,6 +37,7 @@ ASSISTANT_SESSION_KEYS: tuple[str, ...] = (
     "assistant_run_comparisons",
     "assistant_portfolio_analyses",
     "assistant_results_qa_drafts",
+    "assistant_product_help_draft",
     "assistant_bundle_handoff",
     "assistant_flash",
 )
@@ -49,6 +50,7 @@ THESIS_SCOPED_STAGING_KEYS: tuple[str, ...] = (
     "assistant_hydrated_conversation_id",
     "assistant_validated_run_spec",
     "assistant_results_qa_drafts",
+    "assistant_product_help_draft",
     "assistant_bundle_handoff",
     "assistant_flash",
 )
@@ -171,6 +173,7 @@ def init_assistant_session_state(session_state: MutableMapping[str, Any]) -> Non
         "assistant_run_comparisons": {},
         "assistant_portfolio_analyses": {},
         "assistant_results_qa_drafts": {},
+        "assistant_product_help_draft": "",
         "assistant_bundle_handoff": None,
         "assistant_flash": None,
     }
@@ -369,12 +372,15 @@ def clear_thesis_scoped_state(session_state: MutableMapping[str, Any]) -> None:
     session_state["assistant_hydrated_conversation_id"] = None
     session_state["assistant_validated_run_spec"] = None
     session_state["assistant_results_qa_drafts"] = {}
+    session_state["assistant_product_help_draft"] = ""
     session_state["assistant_bundle_handoff"] = None
     session_state["assistant_flash"] = None
-    # Ephemeral Streamlit widget keys for Discuss results text inputs. If left
+    # Ephemeral Streamlit widget keys for Discuss/Help text inputs. If left
     # behind, ``if key not in session_state`` hydration would revive cleared drafts.
     for key in list(session_state.keys()):
-        if isinstance(key, str) and key.startswith("results-qa-input-"):
+        if isinstance(key, str) and (
+            key.startswith("results-qa-input-") or key.startswith("product-help-input")
+        ):
             del session_state[key]
 
 
