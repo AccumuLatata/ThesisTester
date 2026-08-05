@@ -514,8 +514,17 @@ docs/AGENT_GUIDE.md
 docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md    # VA-1 ownership note only
 ```
 
-#### Implemented contract (fill when merged)
-_Pending implementation._
+#### Implemented contract
+- `config/assistant.toml` ships `[assistant.results_qa]` and
+  `[assistant.product_help]` per §8.
+- `load_results_qa_settings` / `load_product_help_settings` in
+  `thesistester/assistant/llm.py`: missing section → `enabled=False` +
+  top-level history fallback; present section applies per-channel overrides.
+- `thesistester/assistant/help_corpus.py` encodes §7.1 / §7.1.1–§7.1.3
+  (path + section allowlist, heading match rules, registry digest helper).
+- `is_draft_channel_message` helper lands for RQ-1 (no orchestrator wiring yet).
+- Tests: `tests/test_assistant_help_corpus.py`,
+  `tests/test_assistant_qa_settings.py`.
 
 ---
 
@@ -991,7 +1000,7 @@ Constraints:
 
 | ID | Status |
 |---|---|
-| RQ-0 | Proposed |
+| RQ-0 | Implemented (this PR) |
 | RQ-1 (VA-1) | Proposed |
 | RQ-2 | Proposed |
 | RQ-3 | Proposed |

@@ -400,9 +400,12 @@ ignore `channel`-tagged messages), v1 Discuss/Help inputs as keyed
 path+section allowlist (no `AGENT_GUIDE`; no agent-invented sections), Help
 numeric grounding via verbatim corpus/registry substrings, and RQ-4 companion
 key `classic_focus_channel="results_qa"` beside string `classic_focus_run_id`
-(not a dict focus payload). Until RQ-1/RQ-3 land, assistant chat remains
-thesis-drafting only and post-run narratives remain one-shot Explain / LLM
-explain under Advanced → Linked runs.
+(not a dict focus payload). **RQ-0 landed:** `config/assistant.toml` reserves
+`[assistant.results_qa]` / `[assistant.product_help]`; loaders live in
+`thesistester/assistant/llm.py`; inert corpus allowlist/loaders live in
+`thesistester/assistant/help_corpus.py` (no UI/orchestrator reply loops yet).
+Until RQ-1/RQ-3 land, assistant chat remains thesis-drafting only and post-run
+narratives remain one-shot Explain / LLM explain under Advanced → Linked runs.
 
 Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_draft_choices`, `assistant_hydrated_conversation_id`,

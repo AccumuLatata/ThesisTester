@@ -12,3 +12,19 @@ max_simulations = 5000
 
 [assistant.explanations]
 evidence_only = true
+
+[assistant.results_qa]
+# Text results discussion (RQ-1). Uses existing OpenAI client/settings.
+# enabled=true is OK; runtime still requires OPENAI_API_KEY or UI remediates.
+enabled = true
+# Overrides top-level [assistant].max_history_messages for this channel.
+max_history_messages = 12
+# When true (RQ-2), allow RO TIME.analyze if time_grouped_summary missing.
+allow_time_enrichment = false
+
+[assistant.product_help]
+# enabled=true is OK; runtime still requires OPENAI_API_KEY or UI remediates.
+enabled = true
+# Overrides top-level [assistant].max_history_messages for this channel.
+max_history_messages = 12
+max_corpus_chars = 24000
