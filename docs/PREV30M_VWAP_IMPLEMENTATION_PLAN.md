@@ -125,9 +125,11 @@ bracket_end        = bracket_start + 30min
 A bracket becomes **complete** (may produce a freeze) when either:
 
 1. **Clock completion (primary):** the first in-session bar with `timestamp >= bracket_end` is observed (APOC/TPO-style), or
-2. **Session-boundary finalization (mandatory for ES/NQ):** the session ends — i.e. the next bar belongs to a new `trading_session_date`, or the dataset ends on this session — and the bracket contained at least one bar with `sum(volume) > 0`.
+2. **Session-boundary finalization (mandatory for ES/NQ):** a **true session transition** is observed — the next bar belongs to a new `trading_session_date` — and the still-open bracket in the ending session contained at least one bar with `sum(volume) > 0`.
 
 Why (2) is not optional: CME equity-index futures halt ~17:00–18:00 exchange-local. The final in-session bracket (e.g. 16:30–17:00) often never observes an in-session bar with `timestamp >= bracket_end`; the next print is frequently the following session’s `eth_start`. Without boundary finalization, the last period VWAP never freezes and cross-session seeding is wrong.
+
+**Forbidden:** finalizing an incomplete mid-session bracket merely because the dataframe ends. Mid-session truncation must leave that bracket incomplete so appending later bars cannot rewrite prior freezes (future-shock / PIT). Halt coverage is provided by the session transition in (2), not by dataset-end heuristics.
 
 Only **completed** brackets may produce a freeze. The current incomplete bracket never contributes its developing VWAP to `prev30mVWAP` while that same session is still open.
 
@@ -233,15 +235,18 @@ hit_m5 == 0  ⇒  hit_m1 == 0
 
 (A first-minute touch is also a first-five-minute touch. The converse is not required.)
 
-**Base-resolution lock:**
+**Base-resolution lock** (infer via existing `infer_base_interval()`):
 
-| Inferred base interval | `prev30mVWAP` | `hit_m1` | `hit_m5` |
+Per diagnostic window `W ∈ {1min, 5min}`, that diagnostic is computed only when `W` is an **integer multiple** of the inferred base interval (`W % base == 0` in timestamp units). Otherwise that diagnostic is **all `NaN`** (fail closed). The price level `prev30mVWAP` is unaffected.
+
+| Inferred base interval | `prev30mVWAP` | `hit_m1` (`W=1min`) | `hit_m5` (`W=5min`) |
 |---|---|---|---|
-| `<= 1min` and divides 1min evenly (15s, 1min, …) | computed | computed | computed |
-| `> 1min` and `<= 5min` and divides 5min evenly (e.g. 5min) | computed | **all `NaN`** | computed |
-| `> 5min` | computed | **all `NaN`** | **all `NaN`** |
+| `15s`, `1min` (1min is multiple of base) | computed | computed | computed |
+| `5min` (5min multiple; 1min not) | computed | **all `NaN`** | computed |
+| `2min` (neither 1min nor 5min is a multiple) | computed | **all `NaN`** | **all `NaN`** |
+| `> 5min` or any base that does not evenly tile the window | computed | **all `NaN`** if 1min not multiple | **all `NaN`** if 5min not multiple |
 
-Do not upsample or invent finer bars. Do not hard-fail the whole family on coarse data; only the unresolved diagnostic(s) are unavailable.
+Do not upsample or invent finer bars. Do not hard-fail the whole family on coarse or non-tiling data; only the unresolved diagnostic(s) are unavailable.
 
 Implementation note (PIT-safe):
 
@@ -425,8 +430,8 @@ When disabled: accept anything; return empty frame (no validation).
 
 Normative PIT claims (must be tested):
 
-1. At bar `t`, `prev30mVWAP` uses only completed brackets whose `bracket_end <= t` (plus prior-session seed already finalized before `t`).
-2. Appending future bars must not change any prior row’s `prev30mVWAP`.
+1. At bar `t`, `prev30mVWAP` uses only brackets **finalized under §3.4 completion rules** at or before `t` (clock completion, or session-boundary finalization on a true session transition), plus any prior-session seed already finalized before `t`. Halt brackets may finalize without an in-session bar at `bracket_end`; completeness is defined by §3.4, not by `bracket_end <= t` alone.
+2. Appending future bars must not change any prior row’s `prev30mVWAP` (including mid-session truncation: incomplete brackets must not have been finalized solely because the frame ended).
 3. `prev30mVWAP_hit_m1` / `prev30mVWAP_hit_m5` at bar `t` use only bars at or before `t`; each stays `NaN` until its early window (`1min` / `5min`) has completed.
 4. ETH bars never wait on RTH open for emission; overnight bars emit once a freeze exists.
 5. Current incomplete bracket VWAP never leaks into `prev30mVWAP`.
@@ -552,6 +557,7 @@ tests/test_prev30m_vwap.py
 19. Fixture covering overnight ETH → RTH → post-RTH ETH on ES (`eth_start="18:00"`).
 19b. **Daily halt / session-boundary finalization:** final in-session bracket with volume freezes even when no in-session bar has `timestamp >= bracket_end` (next print is next session open); that freeze seeds `S+1`.
 19c. Enabled + missing `eth_start` → `ValueError`.
+19d. **Mid-session dataset end does not finalize:** truncating the frame inside an open bracket must leave that bracket incomplete (no freeze); appending the remainder later must match a single-pass compute (future-shock).
 
 ### 10.4 TTL
 
@@ -569,8 +575,8 @@ tests/test_prev30m_vwap.py
 27a. Touch in minutes 1–5 → `hit_m5` becomes `1.0` only after minute-5 completion; touch only after minute 5 does **not** count.
 27b. Before minute-5 completion → `NaN` on `hit_m5` (including rows inside the 5-minute window; no rewrite).
 27c. Nesting: whenever both non-NaN, `m1=1 ⇒ m5=1` and `m5=0 ⇒ m1=0`.
-27d. Base interval `> 1min` and `<= 5min` (e.g. 5min) → `hit_m1` all `NaN`; `hit_m5` still computed.
-27e. Base interval `> 5min` → both hit columns all `NaN`; level still emits.
+27d. Base `5min` → `hit_m1` all `NaN`; `hit_m5` still computed (`W` must be an integer multiple of base).
+27e. Base `2min` or `> 5min` (or any base that does not evenly tile the window) → unresolved hit column(s) all `NaN`; level still emits.
 27f. `available_level_columns()` / catalog / chart overlay never expose `hit_m1` or `hit_m5` as levels.
 
 ### 10.6 Future-shock / determinism
@@ -712,9 +718,9 @@ Session open: `18:00` exchange-local.
 | Point 3 meaning? | Integer TTL in 30m periods; default 1; replace-on-new-freeze |
 | Cross-session? | Prior-session last freeze seeds next session open |
 | Multi-level stack? | Out of MVP (Phase 3) |
-| Daily halt / missing in-session `bracket_end` bar? | **Session-boundary finalization is mandatory** (§3.4) |
+| Daily halt / missing in-session `bracket_end` bar? | **Session-boundary finalization on true session transition** (§3.4); not dataset-end mid-session |
 | Are hit columns selectable levels? | **No** — diagnostic only (§3.8.1 / §5.5) |
-| Coarse base data? | Level OK; `hit_m1` needs `≤1min`; `hit_m5` needs `≤5min` |
+| Coarse / non-tiling base data? | Level OK; each `hit_m*` only if its `W` is an integer multiple of inferred base |
 | Missing `eth_start`? | `ValueError` when enabled |
 | Extra windows (`m15`, configurable W)? | Out of MVP |
 
