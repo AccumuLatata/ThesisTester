@@ -154,6 +154,8 @@ def resolve_grid_ranking_defaults(
         if metric_name is not None:
             metric_path = "assumptions.grid.ranking_metric"
         else:
+            # Default path must not keep pointing at a rejected/bogus assumptions
+            # value — ephemeral context syncs this path to expectancy_r.
             metric_name = DEFAULT_GRID_METRIC
             metric_path = "assumptions.grid.ranking_metric"
 
@@ -459,6 +461,46 @@ def project_time_rankings(
     }
 
 
+def _sync_ephemeral_ranking_metric_source(
+    context: dict[str, Any],
+    *,
+    metric: str,
+    metric_path: str,
+) -> None:
+    """Align the cited metric-source path with the metric actually used.
+
+    Prevents grounded replies from citing a rejected/bogus
+    ``assumptions.grid.ranking_metric`` (or best-row metric) while projections
+    rank by ``expectancy_r``.
+    """
+    if metric_path == "assumptions.grid.ranking_metric":
+        assumptions = context.get("assumptions")
+        if not isinstance(assumptions, dict):
+            assumptions = dict(assumptions) if isinstance(assumptions, Mapping) else {}
+            context["assumptions"] = assumptions
+        else:
+            assumptions = dict(assumptions)
+            context["assumptions"] = assumptions
+        grid_cfg = assumptions.get("grid")
+        if not isinstance(grid_cfg, dict):
+            grid_cfg = dict(grid_cfg) if isinstance(grid_cfg, Mapping) else {}
+        else:
+            grid_cfg = dict(grid_cfg)
+        assumptions["grid"] = grid_cfg
+        grid_cfg["ranking_metric"] = metric
+        return
+    if metric_path == "results.best_grid_result.ranking_metric":
+        results = context.get("results")
+        if not isinstance(results, dict):
+            return
+        best = results.get("best_grid_result")
+        if not isinstance(best, Mapping):
+            return
+        best_copy = dict(best)
+        best_copy["ranking_metric"] = metric
+        results["best_grid_result"] = best_copy
+
+
 def build_ephemeral_results_context(
     packet: EvidencePacket | Mapping[str, Any],
     *,
@@ -469,6 +511,8 @@ def build_ephemeral_results_context(
     time_bucket_col: str = DEFAULT_TIME_BUCKET_COL,
     time_metric: str = DEFAULT_TIME_METRIC,
     time_min_trades: int = DEFAULT_TIME_MIN_TRADES,
+    grid_table_status: str | None = None,
+    grid_table_warning: str | None = None,
 ) -> dict[str, Any]:
     """Copy a packet dict and attach ``results.projections.*`` for one turn."""
     context = _as_packet_dict(packet)
@@ -481,6 +525,11 @@ def build_ephemeral_results_context(
         context["results"] = results
 
     metric, metric_path, min_trades = resolve_grid_ranking_defaults(context)
+    _sync_ephemeral_ranking_metric_source(
+        context,
+        metric=metric,
+        metric_path=metric_path,
+    )
     min_long, min_short = resolve_grid_side_filters(context)
     # Empty authoritative grid tables (common when no grid search ran) must not
     # suppress fallback to ``results.best_grid_result`` on the packet.
@@ -515,6 +564,11 @@ def build_ephemeral_results_context(
             min_long_trades=min_long,
             min_short_trades=min_short,
         )
+
+    if isinstance(grid_table_status, str) and grid_table_status.strip():
+        grid_projection["bundle_tables_status"] = grid_table_status.strip()
+    if isinstance(grid_table_warning, str) and grid_table_warning.strip():
+        grid_projection["bundle_tables_warning"] = grid_table_warning.strip()
 
     time_source = time_grouped_summary
     if time_source is None:

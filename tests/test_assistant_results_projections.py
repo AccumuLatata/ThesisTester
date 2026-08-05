@@ -158,6 +158,10 @@ def test_resolve_grid_ranking_defaults_sanitizes_unknown_metrics():
     ranked = project_grid_rankings(packet2, metric="also_bogus", min_trades=1)
     assert ranked["metric"] == "expectancy_r"
     assert ranked["best"]["stop_loss_ticks"] == 8
+    # Ephemeral context must not leave the rejected assumptions metric citable.
+    context = build_ephemeral_results_context(packet2)
+    assert context["assumptions"]["grid"]["ranking_metric"] == "expectancy_r"
+    assert context["results"]["projections"]["grid_rankings"]["metric"] == "expectancy_r"
 
 
 def test_project_grid_rankings_deterministic_and_respects_min_trades():
@@ -471,7 +475,7 @@ def test_handle_results_turn_enrichment_flag_off_skips_time_analyze(tmp_path, mo
     monkeypatch.setattr(
         orchestrator,
         "_load_bundle_tables_for_results",
-        MagicMock(return_value=(None, None)),
+        MagicMock(return_value=(None, None, None)),
     )
     enrich = MagicMock()
     monkeypatch.setattr(orchestrator, "_enrich_time_summary_for_results", enrich)
@@ -536,7 +540,7 @@ def test_handle_results_turn_enrichment_on_calls_time_analyze_once(tmp_path, mon
     monkeypatch.setattr(
         orchestrator,
         "_load_bundle_tables_for_results",
-        MagicMock(return_value=(None, None)),
+        MagicMock(return_value=(None, None, None)),
     )
     monkeypatch.setattr(
         orchestrator,
@@ -608,6 +612,67 @@ def test_handle_results_turn_enrichment_on_calls_time_analyze_once(tmp_path, mon
     assert result.payload["time_enrichment"]["status"] == "completed"
     assert "rth_morning" in captured["user"]
     assert result.payload["results_reply"].claims[0].value == "rth_morning"
+
+
+def test_handle_results_turn_surfaces_grid_table_load_failure(tmp_path, monkeypatch):
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    thesis, conversation, run = _seed_completed_run(repository, name="LoadFail")
+    orchestrator = AssistantOrchestrator(
+        tools=AssistantTools(data_roots=(tmp_path,)),
+        repository=repository,
+    )
+    packet = _packet()
+    monkeypatch.setattr(
+        orchestrator,
+        "explain_run",
+        MagicMock(
+            return_value=OrchestrationResult(
+                status="completed",
+                capability_id="BUNDLE.import",
+                payload={"evidence": packet.to_dict()},
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "_load_bundle_tables_for_results",
+        MagicMock(return_value=(None, None, "Bundle hash does not match recorded run provenance.")),
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.orchestrator.load_results_qa_settings",
+        lambda: type(
+            "S",
+            (),
+            {"enabled": True, "max_history_messages": 12, "allow_time_enrichment": False},
+        )(),
+    )
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Best stop is 8 from the recorded grid winner.",
+                "caveats": ["Full grid table unavailable."],
+                "claims": [
+                    {
+                        "text": "Best stop is 8.",
+                        "path": "results.projections.grid_rankings.best.stop_loss_ticks",
+                    }
+                ],
+                "followups": ["Ask about expectancy."],
+            }
+
+    result = orchestrator.handle_results_turn(
+        Client(),
+        thesis_id=thesis.thesis_id,
+        run_id=run.run_id,
+        message="Best SL/TP?",
+        conversation_id=conversation.conversation_id,
+    )
+    assert result.status == "completed"
+    rankings = result.payload["results_turn_context"]["projections"]["grid_rankings"]
+    assert rankings["bundle_tables_status"] == "unavailable"
+    assert "could not be loaded" in rankings["bundle_tables_warning"]
+    assert rankings["best"]["stop_loss_ticks"] == 8
 
 
 def test_enrich_time_summary_fails_closed_on_hash_mismatch(tmp_path, monkeypatch):
