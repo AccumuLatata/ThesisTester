@@ -44,6 +44,8 @@ SUGGESTED_DEFAULT_LEVELS = [
     "OR_High",
     "OR_Low",
     "RTH_Open",
+    "pRTH_High",
+    "pRTH_Low",
     "pdHigh",
     "pdLow",
     "pdPOC",

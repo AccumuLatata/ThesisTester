@@ -143,11 +143,18 @@ def _previous_session_references(
     rth_start: pd.Timestamp,
     rth_end: pd.Timestamp,
 ) -> pd.DataFrame:
+    """Prior-session overnight and RTH references via ``shift(1)``.
+
+    ``pRTH_High`` / ``pRTH_Low`` are RTH-only extremes of the previous observed
+    trading session (distinct from full-session ``pdHigh`` / ``pdLow``).
+    """
     out = pd.DataFrame(
         {
             "pONH": pd.Series(np.nan, index=df.index, dtype="float64"),
             "pONL": pd.Series(np.nan, index=df.index, dtype="float64"),
             "pRTH_Open": pd.Series(np.nan, index=df.index, dtype="float64"),
+            "pRTH_High": pd.Series(np.nan, index=df.index, dtype="float64"),
+            "pRTH_Low": pd.Series(np.nan, index=df.index, dtype="float64"),
         }
     )
     sessions = pd.Index(sorted(session_date.unique()))
@@ -159,17 +166,26 @@ def _previous_session_references(
     )
     rth = df["session"].eq("RTH")
     rth_open = pd.Series(index=sessions, dtype="float64")
+    rth_high = pd.Series(index=sessions, dtype="float64")
+    rth_low = pd.Series(index=sessions, dtype="float64")
     if rth.any():
-        rth_open = df.loc[rth].groupby(session_date[rth], sort=True)["open"].first()
+        rth_grouped = df.loc[rth].groupby(session_date[rth], sort=True)
+        rth_open = rth_grouped["open"].first()
+        rth_high = rth_grouped["high"].max()
+        rth_low = rth_grouped["low"].min()
 
     previous = pd.DataFrame(index=sessions)
     previous["pONH"] = overnight["ONH"].reindex(sessions).shift(1)
     previous["pONL"] = overnight["ONL"].reindex(sessions).shift(1)
     previous["pRTH_Open"] = rth_open.reindex(sessions).shift(1)
+    previous["pRTH_High"] = rth_high.reindex(sessions).shift(1)
+    previous["pRTH_Low"] = rth_low.reindex(sessions).shift(1)
 
     out["pONH"] = session_date.map(previous["pONH"]).astype("float64")
     out["pONL"] = session_date.map(previous["pONL"]).astype("float64")
     out["pRTH_Open"] = session_date.map(previous["pRTH_Open"]).astype("float64")
+    out["pRTH_High"] = session_date.map(previous["pRTH_High"]).astype("float64")
+    out["pRTH_Low"] = session_date.map(previous["pRTH_Low"]).astype("float64")
     return out
 
 
@@ -405,6 +421,8 @@ def compute_session_levels(
       after the Asia close clock gate.
     - ``LondonHigh`` / ``LondonLow`` use instrument ``london_start`` / ``london_end``
       (default ``02:00`` / ``05:00`` ET). Same non-rolling, post-close semantics.
+    - ``pRTH_High`` / ``pRTH_Low`` are prior-session RTH-only extremes (via
+      ``shift(1)``), distinct from full-session ``pdHigh`` / ``pdLow``.
     """
     _require_tz_aware_timestamp(df)
     if instrument not in INSTRUMENTS:
@@ -511,6 +529,8 @@ def compute_session_levels(
         "OR_Low",
         "RTH_Open",
         "pRTH_Open",
+        "pRTH_High",
+        "pRTH_Low",
         "prevSettlement",
         "dOpen",
         "wOpen",

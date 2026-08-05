@@ -213,6 +213,7 @@ This engine is for **research screening**, not proof of a durable edge.
 - Phase 3: when validity `N > 1`, additive stack columns `prev30mVWAP_2`…`prev30mVWAP_N` expose older still-valid freezes for confluence. Age-1 semantics match Phase 1; hit diagnostics remain age-1 only. `LEVEL_ENGINE_VERSION` bumped to 5 for the additive vocabulary.
 - `AsiaHigh` / `AsiaLow` are additive completed Asia-session extremes (default `20:00–00:00` ET; clock-gated at Asia close; not rolling). `LEVEL_ENGINE_VERSION` bumped to 6 for the additive vocabulary.
 - `LondonHigh` / `LondonLow` are additive completed London Killzone extremes (default `02:00–05:00` ET; clock-gated at London close; not rolling). `LEVEL_ENGINE_VERSION` bumped to 7 for the additive vocabulary.
+- `pRTH_High` / `pRTH_Low` are additive prior-session RTH-only extremes (via `shift(1)`; distinct from full-session `pdHigh`/`pdLow`). `LEVEL_ENGINE_VERSION` bumped to 8 for the additive vocabulary.
 - Prior-session seed carries only freezes that are still inside the TTL window at session transition (up to `N`); expired stack ages are not resurrected at the next open.
 - Companion diagnostics `prev30mVWAP_hit_m1` / `prev30mVWAP_hit_m5` are **not** setup-selectable or auto-plotted price levels. They stay `NaN` until each early window completes (no rewrite of in-window rows). Each diagnostic requires its window `W` to be an integer multiple of the inferred base interval. `validate_setup_config` rejects them in `selected_levels` / anchor rules; assistant levels summaries omit them from `level_columns`.
 - `prev30m_vwap_validity_periods` accepts integer-compatible values (including `numpy.int64`) and coerces to `int`, matching `validate_run_spec`. Cap is `MAX_VALIDITY_PERIODS` (48).
@@ -242,8 +243,10 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 
 **Parts that are point-in-time guaranteed:**
 - All prior-period session levels (pdHigh/pdLow/pdOpen/pdEQ, pwHigh/pwLow/pwOpen/pwEQ,
-  pmHigh/pmLow/pmOpen/pmEQ) use a `shift(1)` on per-period aggregates. Future bars
-  cannot change any prior bar's "prior" level values.
+  pmHigh/pmLow/pmOpen/pmEQ, pONH/pONL, pRTH_Open/pRTH_High/pRTH_Low) use a `shift(1)`
+  on per-period / per-session aggregates. Future bars cannot change any prior bar's
+  "prior" level values. `pRTH_High`/`pRTH_Low` aggregate prior RTH bars only and are
+  distinct from full-session `pdHigh`/`pdLow`.
 - Prior profile levels (pdVAH/pdVAL/pdPOC, pwVAH/pwVAL/pwPOC, pmVAH/pmVAL/pmPOC)
   use the same shift guarantee.
 - Rolling POC uses a strict `timestamps <= now` window. No future data enters.
@@ -305,6 +308,10 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   Asia extremes are excluded from the London aggregate. Empty London window strings
   disable the level (all-NaN); equal `london_start`/`london_end` fails closed with
   `ValueError`.
+- `pRTH_High`/`pRTH_Low` follow the immediately prior *observed* session (same
+  `shift(1)` chain as `pRTH_Open`). If that prior session has no RTH bars, values
+  are NaN even when an older session had RTH. They are RTH-only and therefore
+  generally differ from full-session `pdHigh`/`pdLow`.
 - Rolling VWAP/POC/SMA/EMA at bar `i` include bar `i` close/volume. Signals treated
   as bar-close confirmed; this is documented intent, not a bug.
 - `dOpen/wOpen/mOpen` are current-period (live) opens, not prior-period references.

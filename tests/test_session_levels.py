@@ -718,6 +718,8 @@ def test_previous_session_levels_map_to_all_rows_of_next_session():
     assert first_session["pONH"].isna().all()
     assert first_session["pONL"].isna().all()
     assert first_session["pRTH_Open"].isna().all()
+    assert first_session["pRTH_High"].isna().all()
+    assert first_session["pRTH_Low"].isna().all()
 
     first_session_onh = levels.loc[
         levels["timestamp"] == pd.Timestamp("2026-06-02 09:30:00", tz=TZ), "ONH"
@@ -735,6 +737,8 @@ def test_previous_session_levels_map_to_all_rows_of_next_session():
     assert np.allclose(
         second_session["pRTH_Open"].to_numpy(), [first_session_rth_open] * len(second_session)
     )
+    assert np.allclose(second_session["pRTH_High"].to_numpy(), [123.0] * len(second_session))
+    assert np.allclose(second_session["pRTH_Low"].to_numpy(), [118.0] * len(second_session))
 
 
 def test_previous_session_levels_use_previous_observed_session_across_weekend_gap():
@@ -743,6 +747,7 @@ def test_previous_session_levels_use_previous_observed_session_across_weekend_ga
             ("2026-06-04 18:00:00", 100.0, 105.0, 99.0, 101.0),
             ("2026-06-05 08:00:00", 101.0, 110.0, 98.0, 109.0),
             ("2026-06-05 09:30:00", 120.0, 121.0, 119.0, 120.0),
+            ("2026-06-05 15:59:00", 122.0, 130.0, 115.0, 125.0),
             ("2026-06-07 18:00:00", 200.0, 205.0, 199.0, 201.0),
             ("2026-06-08 09:30:00", 210.0, 212.0, 208.0, 211.0),
         ]
@@ -765,6 +770,8 @@ def test_previous_session_levels_use_previous_observed_session_across_weekend_ga
     assert np.allclose(
         monday_session["pRTH_Open"].to_numpy(), [friday_rth_open] * len(monday_session)
     )
+    assert np.allclose(monday_session["pRTH_High"].to_numpy(), [130.0] * len(monday_session))
+    assert np.allclose(monday_session["pRTH_Low"].to_numpy(), [115.0] * len(monday_session))
 
 
 def test_previous_session_levels_are_nan_for_overnight_when_prior_session_has_no_eth():
@@ -782,6 +789,8 @@ def test_previous_session_levels_are_nan_for_overnight_when_prior_session_has_no
     assert next_session["pONH"].isna().all()
     assert next_session["pONL"].isna().all()
     assert np.allclose(next_session["pRTH_Open"].to_numpy(), [100.0] * len(next_session))
+    assert np.allclose(next_session["pRTH_High"].to_numpy(), [106.0] * len(next_session))
+    assert np.allclose(next_session["pRTH_Low"].to_numpy(), [98.0] * len(next_session))
 
 
 def test_previous_session_levels_are_nan_for_rth_open_when_prior_session_has_no_rth():
@@ -799,6 +808,77 @@ def test_previous_session_levels_are_nan_for_rth_open_when_prior_session_has_no_
     assert np.allclose(next_session["pONH"].to_numpy(), [120.0] * len(next_session))
     assert np.allclose(next_session["pONL"].to_numpy(), [95.0] * len(next_session))
     assert next_session["pRTH_Open"].isna().all()
+    assert next_session["pRTH_High"].isna().all()
+    assert next_session["pRTH_Low"].isna().all()
+
+
+def test_prth_high_low_are_rth_only_and_differ_from_pd_high_low():
+    """pRTH_High/Low exclude ETH extremes that pdHigh/pdLow include."""
+    df = _build_df(
+        [
+            ("2026-06-01 18:00:00", 100.0, 101.0, 99.0, 100.0),  # ETH low 99 → pdLow
+            ("2026-06-02 09:30:00", 110.0, 120.0, 109.0, 115.0),
+            ("2026-06-02 15:59:00", 116.0, 121.0, 108.0, 119.0),  # RTH high 121 / low 108
+            ("2026-06-02 16:30:00", 90.0, 999.0, 1.0, 90.0),  # post-RTH ETH contamination
+            ("2026-06-02 18:00:00", 200.0, 201.0, 198.0, 199.0),
+            ("2026-06-03 09:30:00", 210.0, 220.0, 207.0, 215.0),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+    next_session = levels[levels["timestamp"] >= pd.Timestamp("2026-06-02 18:00:00", tz=TZ)]
+
+    assert np.allclose(next_session["pdHigh"].to_numpy(), [999.0] * len(next_session))
+    assert np.allclose(next_session["pdLow"].to_numpy(), [1.0] * len(next_session))
+    assert np.allclose(next_session["pRTH_High"].to_numpy(), [121.0] * len(next_session))
+    assert np.allclose(next_session["pRTH_Low"].to_numpy(), [108.0] * len(next_session))
+    assert not np.allclose(next_session["pRTH_High"], next_session["pdHigh"])
+    assert not np.allclose(next_session["pRTH_Low"], next_session["pdLow"])
+
+
+def test_prth_high_low_nan_mask_matches_prth_open():
+    """pRTH_High/Low availability must stay identical to pRTH_Open (same RTH prior)."""
+    df = _build_df(
+        [
+            ("2026-06-01 18:00:00", 100.0, 110.0, 100.0, 105.0),  # ETH-only prior → NaN pRTH*
+            ("2026-06-02 08:00:00", 101.0, 120.0, 95.0, 110.0),
+            ("2026-06-02 18:00:00", 200.0, 205.0, 199.0, 201.0),
+            ("2026-06-03 09:30:00", 210.0, 212.0, 208.0, 211.0),
+            ("2026-06-03 15:59:00", 211.0, 220.0, 207.0, 215.0),
+            ("2026-06-03 18:00:00", 300.0, 301.0, 299.0, 300.0),
+            ("2026-06-04 09:30:00", 310.0, 320.0, 305.0, 315.0),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+    pd.testing.assert_series_equal(
+        levels["pRTH_High"].isna(), levels["pRTH_Open"].isna(), check_names=False
+    )
+    pd.testing.assert_series_equal(
+        levels["pRTH_Low"].isna(), levels["pRTH_Open"].isna(), check_names=False
+    )
+
+
+def test_prth_high_low_future_shock_after_next_session_does_not_change_prior():
+    base_rows = [
+        ("2026-06-02 09:30:00", 110.0, 120.0, 109.0, 115.0),
+        ("2026-06-02 15:59:00", 116.0, 121.0, 108.0, 119.0),
+        ("2026-06-02 18:00:00", 200.0, 201.0, 198.0, 199.0),
+        ("2026-06-03 09:30:00", 210.0, 220.0, 207.0, 215.0),
+    ]
+    base = tag_session(_build_df(base_rows), "ES")
+    base_levels = compute_session_levels(base, instrument="ES")
+
+    extended_rows = base_rows + [
+        ("2026-06-03 15:59:00", 300.0, 999.0, 1.0, 300.0),
+        ("2026-06-03 18:00:00", 400.0, 1000.0, 0.5, 400.0),
+    ]
+    extended = tag_session(_build_df(extended_rows), "ES")
+    ext_levels = compute_session_levels(extended, instrument="ES")
+
+    cutoff = pd.Timestamp("2026-06-03 09:30:00", tz=TZ)
+    base_cut = base_levels[base_levels["timestamp"] <= cutoff].reset_index(drop=True)
+    ext_cut = ext_levels[ext_levels["timestamp"] <= cutoff].reset_index(drop=True)
+    pd.testing.assert_series_equal(base_cut["pRTH_High"], ext_cut["pRTH_High"], check_names=False)
+    pd.testing.assert_series_equal(base_cut["pRTH_Low"], ext_cut["pRTH_Low"], check_names=False)
 
 
 def test_previous_session_overnight_levels_exclude_post_rth_pre_eth_contamination():
@@ -885,6 +965,8 @@ def test_batch_vs_incremental_causality_matches_with_eth_session_boundaries():
         "pONH",
         "pONL",
         "pRTH_Open",
+        "pRTH_High",
+        "pRTH_Low",
         "ONH",
         "ONL",
         "AsiaHigh",
