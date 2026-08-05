@@ -537,6 +537,8 @@ def test_compute_all_levels_includes_session_indicator_and_profile_columns():
         "pONH",
         "pONL",
         "pRTH_Open",
+        "pRTH_High",
+        "pRTH_Low",
         "SMA_2",
         "EMA_2",
         "VWAP_rolling_15min",

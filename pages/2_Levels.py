@@ -859,6 +859,8 @@ selected_levels = st.multiselect(
             "AsiaLow",
             "LondonHigh",
             "LondonLow",
+            "pRTH_High",
+            "pRTH_Low",
         ]
         if col in plottable_level_columns
     ],

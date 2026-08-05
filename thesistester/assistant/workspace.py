@@ -113,6 +113,8 @@ SESSION_LEVEL_CATALOG: tuple[str, ...] = (
     "OR_Low",
     "RTH_Open",
     "pRTH_Open",
+    "pRTH_High",
+    "pRTH_Low",
     "prevSettlement",
     "dOpen",
     "wOpen",

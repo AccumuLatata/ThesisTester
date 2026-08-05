@@ -12,6 +12,7 @@ This verifies that no future data leaks backward into historical bars.
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -106,6 +107,53 @@ def test_prior_session_levels_future_shock():
         out_after.reset_index(drop=True),
         check_exact=False,
     )
+
+
+def test_prth_high_low_future_shock():
+    """pRTH_High/pRTH_Low at or before T must not change after future bars are added."""
+    day1_bars = _standard_bars("2026-06-02", 61, base_price=4000.0)
+    day2_bars = _standard_bars("2026-06-03", 61, base_price=4100.0)
+
+    base = tag_session(_build_df(day1_bars + day2_bars))
+    result_base = compute_session_levels(base, instrument="ES")
+
+    T = base["timestamp"].iloc[-1]
+    out_before = result_base[result_base["timestamp"] <= T][
+        ["timestamp", "pRTH_High", "pRTH_Low", "pRTH_Open"]
+    ].copy()
+
+    day3_extreme = _extreme_future_bars(T, n=10)
+    extended = tag_session(_build_df(day1_bars + day2_bars + day3_extreme))
+    result_extended = compute_session_levels(extended, instrument="ES")
+
+    out_after = result_extended[result_extended["timestamp"] <= T][
+        ["timestamp", "pRTH_High", "pRTH_Low", "pRTH_Open"]
+    ].copy()
+
+    pd.testing.assert_frame_equal(
+        out_before.reset_index(drop=True),
+        out_after.reset_index(drop=True),
+        check_exact=False,
+    )
+
+
+def test_prth_high_low_available_from_next_session_eth_open():
+    """pRTH_High/Low are visible from the first bar of the next session (ungated)."""
+    bars = [
+        _ohlcv_bar(pd.Timestamp("2026-06-02 09:30:00", tz=TZ), 4000.0, 4050.0, 3990.0, 4020.0, 100.0),
+        _ohlcv_bar(pd.Timestamp("2026-06-02 15:59:00", tz=TZ), 4020.0, 4060.0, 3980.0, 4030.0, 90.0),
+        _ohlcv_bar(pd.Timestamp("2026-06-02 18:00:00", tz=TZ), 4100.0, 4110.0, 4090.0, 4105.0, 50.0),
+        _ohlcv_bar(pd.Timestamp("2026-06-03 09:30:00", tz=TZ), 4120.0, 4130.0, 4115.0, 4125.0, 80.0),
+    ]
+    result = compute_session_levels(tag_session(_build_df(bars)), instrument="ES")
+
+    during_prior = result[result["timestamp"] <= pd.Timestamp("2026-06-02 15:59:00", tz=TZ)]
+    assert during_prior["pRTH_High"].isna().all()
+    assert during_prior["pRTH_Low"].isna().all()
+
+    next_session = result[result["timestamp"] >= pd.Timestamp("2026-06-02 18:00:00", tz=TZ)]
+    assert np.allclose(next_session["pRTH_High"].to_numpy(), [4060.0] * len(next_session))
+    assert np.allclose(next_session["pRTH_Low"].to_numpy(), [3980.0] * len(next_session))
 
 
 def test_rth_open_not_visible_before_rth():
