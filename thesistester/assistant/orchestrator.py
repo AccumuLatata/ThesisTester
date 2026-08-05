@@ -705,11 +705,7 @@ class AssistantOrchestrator:
         )
         # Prefer an explicit root; otherwise the package-relative repo root
         # (not process cwd — Streamlit may start outside the checkout).
-        root = (
-            Path(repo_root)
-            if repo_root is not None
-            else Path(__file__).resolve().parents[2]
-        )
+        root = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[2]
 
         conversation = None
         history: tuple[dict[str, Any], ...] = ()

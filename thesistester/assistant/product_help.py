@@ -90,9 +90,7 @@ _STRONG_RUN_PERF_ANCHOR = re.compile(
 )
 
 # Optional adjectives between possessive and metric ("my calculated expectancy").
-_METRIC_MODIFIERS = (
-    r"(?:(?:best|worst|calculated|computed|defined|overall|final|latest|net)\s+)*"
-)
+_METRIC_MODIFIERS = r"(?:(?:best|worst|calculated|computed|defined|overall|final|latest|net)\s+)*"
 
 _RUN_PERF_PATTERNS = (
     # Concrete personal metrics (definition escape still applies above).
@@ -195,9 +193,7 @@ def is_run_performance_question(message: str) -> bool:
         return False
     # Definition/computation wording stays in Help unless a strong run-performance
     # anchor is also present (past-tense my-metrics or explicit run phrasing).
-    if _DOC_DEFINITION_ESCAPE.search(text) and not _STRONG_RUN_PERF_ANCHOR.search(
-        text
-    ):
+    if _DOC_DEFINITION_ESCAPE.search(text) and not _STRONG_RUN_PERF_ANCHOR.search(text):
         return False
     return True
 
