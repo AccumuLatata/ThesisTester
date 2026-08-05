@@ -52,10 +52,14 @@ _SYSTEM_PROMPT = (
 )
 
 # Phrases that indicate the user wants *their* completed-run performance.
+# Avoid bare product nouns like "grid" / "run" after possessives — those are
+# legitimate Help questions ("how does my grid ranking work?", "how does this
+# run get confirmed?"). Prefer metric/result nouns and past-tense run asks.
 _RUN_PERF_PATTERNS = (
     re.compile(
-        r"\b(my|this|that|our)\s+(best\s+)?(sl|tp|stop|take[\s-]?profit|"
-        r"expectancy|win[\s-]?rate|drawdown|pnl|trades?|grid|result|run)\b",
+        r"\b(my|this|that|our)\s+(best\s+|worst\s+)?"
+        r"(sl|tp|stop(\s+loss)?|take[\s-]?profit|expectancy|win[\s-]?rate|"
+        r"drawdown|pnl|trades?|results?|performance|cell)\b",
         re.IGNORECASE,
     ),
     re.compile(
@@ -73,8 +77,14 @@ _RUN_PERF_PATTERNS = (
         r"(expectancy|win[\s-]?rate|sl|tp|trades?|results?|performance)\b",
         re.IGNORECASE,
     ),
+    # Past-tense performance of a specific run. Present "how does this run…"
+    # is treated as product/workflow Help (confirmation, lifecycle, etc.).
     re.compile(
-        r"\bhow\s+(did|does)\s+(this|my|that)\s+run\b",
+        r"\bhow\s+did\s+(this|my|that)\s+run\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bperformance\s+of\s+(this|my|that)\s+run\b",
         re.IGNORECASE,
     ),
 )

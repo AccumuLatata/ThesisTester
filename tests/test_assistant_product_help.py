@@ -34,9 +34,15 @@ def test_is_run_performance_question_detects_personal_run_metrics():
     assert is_run_performance_question("What was my best SL?")
     assert is_run_performance_question("How did this run perform?")
     assert is_run_performance_question("What is my expectancy on this run?")
+    assert is_run_performance_question("performance of this run")
     assert not is_run_performance_question("How does grid ranking work?")
     assert not is_run_performance_question("What is expectancy_r?")
     assert not is_run_performance_question("How do I confirm a RunSpec?")
+    # Product/workflow Help — must not remediate to Discuss results.
+    assert not is_run_performance_question("How does my grid ranking work?")
+    assert not is_run_performance_question("How does this run get confirmed?")
+    assert not is_run_performance_question("Tell me about my grid search settings")
+    assert not is_run_performance_question("What does this run mean in the thesis hub?")
 
 
 def test_remediation_help_reply_has_no_numbers_or_choices():
