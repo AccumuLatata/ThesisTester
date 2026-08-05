@@ -134,8 +134,11 @@ def test_load_allowlisted_corpus_excludes_registry_and_respects_max_chars():
     assert chunks
     assert all(chunk.doc_id != "registry" for chunk in chunks)
     assert sum(len(chunk.text) for chunk in chunks) <= 50_000
-    tiny = load_allowlisted_corpus(repo_root=REPO_ROOT, max_chars=1)
-    assert tiny == ()
+    capped = load_allowlisted_corpus(repo_root=REPO_ROOT, max_chars=2_000)
+    assert capped
+    assert sum(len(chunk.text) for chunk in capped) <= 2_000
+    with pytest.raises(HelpCorpusError, match="exceeds max_corpus_chars"):
+        load_allowlisted_corpus(repo_root=REPO_ROOT, max_chars=1)
 
 
 def test_unknown_doc_id_fails_closed():

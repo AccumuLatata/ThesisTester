@@ -294,10 +294,16 @@ def load_allowlisted_corpus(
             continue
         for chunk in load_corpus_chunks(doc_id, repo_root=repo_root):
             if max_chars is not None:
-                if len(chunk.text) > max_chars:
-                    # Never attach a single chunk larger than the budget.
-                    continue
                 if total + len(chunk.text) > max_chars:
+                    # Do not skip past an oversized chunk to attach later ones —
+                    # that silently drops allowlisted §7.1 content. Fail closed
+                    # when even the first chunk cannot fit; otherwise stop.
+                    if total == 0:
+                        raise HelpCorpusError(
+                            f"Corpus chunk exceeds max_corpus_chars ({max_chars}): "
+                            f"{chunk.doc_id!r}/{chunk.section!r} "
+                            f"({len(chunk.text)} chars)"
+                        )
                     return tuple(chunks)
             chunks.append(chunk)
             total += len(chunk.text)
