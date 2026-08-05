@@ -47,7 +47,7 @@ them uniformly: each produces a price (or a band) at a given timestamp.
 | Code | Definition |
 |---|---|
 | `ONH` / `ONL` | Overnight session High / Low |
-| `AsiaHigh` / `AsiaLow` | Completed Asia-session High / Low (default `20:00–00:00` ET; NaN until Asia close; not rolling) |
+| `AsiaHigh` / `AsiaLow` | Completed Asia-session High / Low (default `20:00–00:00` ET; NaN until Asia close; not rolling; empty Asia window → all-NaN) |
 | `OR_High` / `OR_Low` | Opening-Range High / Low (configurable OR length, e.g. 5/15/30m) |
 | `RTH_Open` | Regular-Trading-Hours session open |
 | `prevSettlement` | Prior session settlement price |

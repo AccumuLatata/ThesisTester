@@ -358,6 +358,125 @@ def test_asia_levels_future_shock_after_close_does_not_change_prior():
     pd.testing.assert_series_equal(base_cut["AsiaLow"], ext_cut["AsiaLow"], check_names=False)
 
 
+def test_asia_levels_empty_eth_start_no_lookahead_and_emit_after_close(monkeypatch):
+    """Calendar-day session_date must not leak Asia H/L during the wrapping window."""
+    monkeypatch.setitem(
+        INSTRUMENTS,
+        "ES",
+        SimpleNamespace(
+            exchange_tz=TZ,
+            eth_start="",
+            rth_start="09:30",
+            rth_end="16:00",
+            asia_start="20:00",
+            asia_end="00:00",
+            tick_size=0.25,
+            point_value=50.0,
+        ),
+    )
+    df = _build_df(
+        [
+            ("2026-06-02 20:00:00", 110.0, 120.0, 109.0, 115.0),
+            ("2026-06-02 22:00:00", 115.0, 125.0, 105.0, 118.0),
+            ("2026-06-03 00:00:00", 119.0, 121.0, 118.0, 120.0),
+            ("2026-06-03 09:30:00", 125.0, 126.0, 124.0, 125.0),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+    during = levels["timestamp"] < pd.Timestamp("2026-06-03 00:00:00", tz=TZ)
+    assert levels.loc[during, "AsiaHigh"].isna().all()
+    assert levels.loc[during, "AsiaLow"].isna().all()
+    after = levels[levels["timestamp"] >= pd.Timestamp("2026-06-03 00:00:00", tz=TZ)]
+    assert np.allclose(after["AsiaHigh"].to_numpy(), [125.0] * len(after))
+    assert np.allclose(after["AsiaLow"].to_numpy(), [105.0] * len(after))
+
+
+def test_asia_levels_wrapping_rejects_eth_start_outside_gap(monkeypatch):
+    monkeypatch.setitem(
+        INSTRUMENTS,
+        "ES",
+        SimpleNamespace(
+            exchange_tz=TZ,
+            eth_start="21:00",
+            rth_start="09:30",
+            rth_end="16:00",
+            asia_start="20:00",
+            asia_end="00:00",
+            tick_size=0.25,
+            point_value=50.0,
+        ),
+    )
+    df = _build_df(
+        [
+            ("2026-06-02 20:00:00", 110.0, 120.0, 109.0, 115.0),
+            ("2026-06-03 00:00:00", 119.0, 121.0, 118.0, 120.0),
+        ]
+    )
+    tagged = tag_session(df, "ES")
+    try:
+        compute_session_levels(tagged, instrument="ES")
+        raise AssertionError("expected ValueError for eth_start > asia_start")
+    except ValueError as exc:
+        assert "eth_start" in str(exc)
+
+
+def test_asia_levels_empty_asia_window_config_fail_closed(monkeypatch):
+    monkeypatch.setitem(
+        INSTRUMENTS,
+        "ES",
+        SimpleNamespace(
+            exchange_tz=TZ,
+            eth_start="18:00",
+            rth_start="09:30",
+            rth_end="16:00",
+            asia_start="",
+            asia_end="",
+            tick_size=0.25,
+            point_value=50.0,
+        ),
+    )
+    df = _build_df(
+        [
+            ("2026-06-02 20:00:00", 110.0, 120.0, 109.0, 115.0),
+            ("2026-06-02 22:00:00", 115.0, 125.0, 105.0, 118.0),
+            ("2026-06-03 00:00:00", 119.0, 121.0, 118.0, 120.0),
+            ("2026-06-03 09:30:00", 125.0, 126.0, 124.0, 125.0),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+    assert levels["AsiaHigh"].isna().all()
+    assert levels["AsiaLow"].isna().all()
+
+
+def test_asia_levels_equal_start_end_raise(monkeypatch):
+    monkeypatch.setitem(
+        INSTRUMENTS,
+        "ES",
+        SimpleNamespace(
+            exchange_tz=TZ,
+            eth_start="18:00",
+            rth_start="09:30",
+            rth_end="16:00",
+            asia_start="20:00",
+            asia_end="20:00",
+            tick_size=0.25,
+            point_value=50.0,
+        ),
+    )
+    df = _build_df(
+        [
+            ("2026-06-02 20:00:00", 110.0, 120.0, 109.0, 115.0),
+            ("2026-06-03 00:00:00", 119.0, 121.0, 118.0, 120.0),
+        ]
+    )
+    tagged = tag_session(df, "ES")
+    try:
+        compute_session_levels(tagged, instrument="ES")
+        raise AssertionError("expected ValueError for asia_start == asia_end")
+    except ValueError as exc:
+        assert "asia_start and asia_end must differ" in str(exc)
+
+
 def test_previous_session_levels_map_to_all_rows_of_next_session():
     df = _build_df(
         [

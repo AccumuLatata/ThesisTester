@@ -273,7 +273,10 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   or overnight data can change ETH-bar values.
 - `AsiaHigh`/`AsiaLow` aggregate only ETH bars in the instrument Asia window
   (default `20:00–00:00` ET) and remain NaN until the Asia close clock gate; they are
-  not rolling during Asia and are distinct from overnight ONH/ONL.
+  not rolling during Asia and are distinct from overnight ONH/ONL. Empty
+  `asia_start`/`asia_end` fail closed (all-NaN). Empty `eth_start` remaps evening
+  Asia bars to the next calendar day so the gate/aggregate share the post-midnight
+  session. Wrapping Asia with `eth_start` outside `(asia_end, asia_start]` raises.
 - Opening range (OR_High/OR_Low) is NaN until the clock-based OR window closes.
 - Naked (`<level>_naked`) flags are produced by a pure forward scan; future bars cannot
   retroactively clear a prior bar's naked status.
@@ -289,7 +292,8 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 - AsiaHigh/AsiaLow are unavailable during the Asia window (by design; not a rolling
   extreme). Pre-Asia ETH (e.g. 18:00–20:00 under the default window) is excluded from
   the Asia aggregate. Asia ⊂ overnight for typical ES/NQ definitions, so Asia H/L
-  generally differs from ONH/ONL.
+  generally differs from ONH/ONL. Empty Asia window strings disable the level
+  (all-NaN); equal `asia_start`/`asia_end` fails closed with `ValueError`.
 - Rolling VWAP/POC/SMA/EMA at bar `i` include bar `i` close/volume. Signals treated
   as bar-close confirmed; this is documented intent, not a bug.
 - `dOpen/wOpen/mOpen` are current-period (live) opens, not prior-period references.

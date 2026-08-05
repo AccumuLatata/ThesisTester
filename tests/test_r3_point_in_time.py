@@ -224,9 +224,7 @@ def test_asia_levels_future_shock_append_does_not_change_prior():
     base = tag_session(_build_df(base_bars))
     r_base = compute_session_levels(base, instrument="ES")
 
-    shock = _ohlcv_bar(
-        pd.Timestamp("2026-06-03 09:30:00", tz=TZ), 5000.0, 9999.0, 1.0, 5000.0, 1e9
-    )
+    shock = _ohlcv_bar(pd.Timestamp("2026-06-03 09:30:00", tz=TZ), 5000.0, 9999.0, 1.0, 5000.0, 1e9)
     extended = tag_session(_build_df(base_bars + [shock]))
     r_ext = compute_session_levels(extended, instrument="ES")
 
