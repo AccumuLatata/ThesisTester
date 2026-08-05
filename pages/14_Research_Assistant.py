@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 
 import streamlit as st
 
@@ -366,6 +367,7 @@ if help_settings.enabled:
                         conversation_id=conversation_id,
                         max_history_messages=help_settings.max_history_messages,
                         max_corpus_chars=help_settings.max_corpus_chars,
+                        repo_root=Path(__file__).resolve().parents[1],
                     )
                     if result.status != "completed":
                         raise ValueError(

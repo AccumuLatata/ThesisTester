@@ -246,12 +246,13 @@ invent numbers.
 **Help numeric grounding (locked):** Before persist/render, scan digit tokens in
 `summary`, `caveats`, and `followups` with the same numeric-token regex family
 as C2-6 / `llm_explainer` (including optional `%` suffixes). Every such token
-must appear as a verbatim substring in the concatenation of (a) corpus chunk
-`text` fields attached to that turn and (b) the registry digest JSON string
-attached to that turn. Tokens that fail are rejected (`HelpEvidenceError` or
-equivalent) — do not silently strip and accept. Prefer number-free `followups`.
-Help has no `claims[{path}]`; corpus/registry substring match is the sole
-numeric ground.
+must appear as a **matched number token** (same tokenizer / normalization) in
+the concatenation of (a) corpus chunk `text` fields attached to that turn and
+(b) the registry digest JSON string attached to that turn. A reply token like
+`1` / `3` must not ride on a different corpus number such as `10` / `30`.
+Tokens that fail are rejected (`HelpEvidenceError` or equivalent) — do not
+silently strip and accept. Prefer number-free `followups`. Help has no
+`claims[{path}]`; corpus/registry number-token match is the sole numeric ground.
 
 ### 5.3 Persistence
 
@@ -689,7 +690,7 @@ without mixing in run performance claims.
 | Code | `thesistester/assistant/product_help.py` — `propose_help_reply(client, *, corpus_chunks, registry_digest, history, user_message) -> HelpReply` |
 | Code | `AssistantOrchestrator.handle_help_turn(thesis_id, message, *, conversation_id=..., client=...)` — load corpus via `help_corpus.py` (§7.1 only), build registry digest, call product_help, persist with `"channel": "product_help"`, omit `choices` |
 | Code | Intent guard: if message clearly asks for *this run’s* performance numbers (concrete metric nouns / past-tense run asks / run-anchored results), return structured remediation pointing to Discuss results (no fabricated metrics). Do **not** remediate possessive product nouns alone (`my grid`, `this run` in workflow questions), vague export/workflow phrasing (`where are my results?`), or definition/computation asks about metric nouns (`How is my expectancy computed?`, `What does this performance metric mean?`). Definition escape uses compute/define/mean collocates only — not bare `docs`/`metric`. |
-| Code | Enforce §5.2 Help numeric grounding (verbatim substring in attached corpus/registry; fail closed on uncited digit tokens) |
+| Code | Enforce §5.2 Help numeric grounding (number-token match in attached corpus/registry; fail closed on uncited digit tokens) |
 | UI | Research Assistant Help panel (collapsed expander or tab sibling to chat hub) with keyed `st.text_input` + send button; do not reuse thesis `st.chat_input`; no nested `st.chat_input` |
 | Session keys | Additive help draft/cache keys if needed; document + thesis-scope clear as appropriate |
 | Tests | §7.1 path/section allowlist; citation must reference attached chunks; digit-token grounding; performance-question remediation; no bundle import; no `choices`; history trim by channel; `AGENT_GUIDE` never loaded |
@@ -986,7 +987,7 @@ Constraints:
 - Follow the PR’s Files allowed to touch list. Do not modify engine, levels, signals, or goldens.
 - Add product_help.py and AssistantOrchestrator.handle_help_turn over help_corpus §7.1 allowlist + registry digest.
 - Intent guard: run-performance questions → structured remediation to Discuss results (no fabricated numbers).
-- Enforce Help numeric grounding (§5.2): every digit token in summary/caveats/followups must be a verbatim substring of attached corpus texts or registry digest JSON; else fail closed.
+- Enforce Help numeric grounding (§5.2): every digit token in summary/caveats/followups must be a matched number token in attached corpus texts or registry digest JSON; else fail closed.
 - Citations must reference doc_id/section pairs actually attached (registry uses section="digest").
 - UI: Help panel with keyed st.text_input + send button; do not reuse thesis st.chat_input.
 - Persist channel=product_help; omit choices; trim history by channel using product_help max_history_messages.

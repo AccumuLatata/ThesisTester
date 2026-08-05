@@ -703,7 +703,13 @@ class AssistantOrchestrator:
             if isinstance(max_corpus_chars, int) and max_corpus_chars > 0
             else settings.max_corpus_chars
         )
-        root = Path(repo_root) if repo_root is not None else Path.cwd()
+        # Prefer an explicit root; otherwise the package-relative repo root
+        # (not process cwd — Streamlit may start outside the checkout).
+        root = (
+            Path(repo_root)
+            if repo_root is not None
+            else Path(__file__).resolve().parents[2]
+        )
 
         conversation = None
         history: tuple[dict[str, Any], ...] = ()

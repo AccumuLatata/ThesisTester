@@ -32,6 +32,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def test_is_run_performance_question_detects_personal_run_metrics():
     assert is_run_performance_question("What was my best SL?")
+    assert is_run_performance_question("What were my results?")
+    assert is_run_performance_question("What were my trades?")
     assert is_run_performance_question("How did this run perform?")
     assert is_run_performance_question("What is my expectancy on this run?")
     assert is_run_performance_question("performance of this run")

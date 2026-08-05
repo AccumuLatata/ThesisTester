@@ -51,8 +51,9 @@ _SYSTEM_PROMPT = (
     "features, capabilities, or run metrics. Do not answer the user's backtest "
     "or grid performance for a specific completed run — if asked, say to use "
     "Discuss results under Advanced → Linked runs. Prefer number-free followups. "
-    "Any digit you include in summary/caveats/followups must appear verbatim in "
-    "the attached corpus texts or registry digest JSON."
+    "Any number you include in summary/caveats/followups must appear as the same "
+    "number token in the attached corpus texts or registry digest JSON "
+    "(e.g. reply token 3 is not grounded by corpus 30)."
 )
 
 # Phrases that indicate the user wants *their* completed-run performance.
@@ -95,7 +96,7 @@ _RUN_PERF_PATTERNS = (
         re.IGNORECASE,
     ),
     re.compile(
-        r"\bwhat\s+was\s+my\s+(best\s+|worst\s+)?"
+        r"\bwhat\s+(?:was|were)\s+my\s+(best\s+|worst\s+)?"
         r"(sl|tp|stop(\s+loss)?|take[\s-]?profit|expectancy|win[\s-]?rate|"
         r"drawdown|pnl|trades?|results?|performance|cell)\b",
         re.IGNORECASE,

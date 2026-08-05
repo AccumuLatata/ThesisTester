@@ -434,6 +434,7 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "handle_results_turn(" in source
     assert "Help / how it works" in source
     assert "handle_help_turn(" in source
+    assert "repo_root=Path(__file__).resolve().parents[1]" in source
     assert "load_product_help_settings(" in source
     assert "Send help question" in source
     # Conversation switch must clear Help draft/widget (not only thesis switch).
