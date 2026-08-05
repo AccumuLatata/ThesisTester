@@ -346,12 +346,14 @@ def _sync_levels_widget_state(settings: dict) -> None:
         settings.get("single_prints_enabled", False)
     )
     st.session_state[_APOC_ENABLED_KEY] = bool(settings.get("apoc_enabled", False))
-    st.session_state[_PREV30M_VWAP_ENABLED_KEY] = bool(
-        settings.get("prev30m_vwap_enabled", False)
-    )
+    st.session_state[_PREV30M_VWAP_ENABLED_KEY] = bool(settings.get("prev30m_vwap_enabled", False))
     validity = settings.get("prev30m_vwap_validity_periods", 1)
-    if isinstance(validity, int) and validity >= 1:
-        st.session_state[_PREV30M_VWAP_VALIDITY_KEY] = validity
+    try:
+        validity_int = int(validity)
+    except (TypeError, ValueError):
+        validity_int = None
+    if validity_int is not None and not isinstance(validity, bool) and validity_int >= 1:
+        st.session_state[_PREV30M_VWAP_VALIDITY_KEY] = validity_int
 
 
 def _load_saved_levels_into_session(dataset_id: str, settings_hash: str) -> bool:
@@ -819,9 +821,7 @@ if levels_current:
 base_columns = {"timestamp", "open", "high", "low", "close", "volume", "session", "settlement"}
 # Preview may include diagnostic companions; plot options are price-level only.
 level_columns = [col for col in levels_df.columns if col not in base_columns]
-plottable_level_columns = [
-    col for col in level_columns if is_setup_eligible_level_column(col)
-]
+plottable_level_columns = [col for col in level_columns if is_setup_eligible_level_column(col)]
 
 st.subheader("Levels preview")
 preview_cols = ["timestamp", "close", "session", *level_columns]

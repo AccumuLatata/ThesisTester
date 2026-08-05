@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import datetime
 from dataclasses import replace
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from thesistester.assistant.page_summaries import summarize_levels_state
 from thesistester.config import INSTRUMENTS
 from thesistester.data.sessions import tag_session
 from thesistester.levels import compute_all_levels, compute_prev30m_vwap_levels
-from thesistester.setup import NON_LEVEL_OUTPUT_COLUMNS, available_level_columns
+from thesistester.setup import (
+    NON_LEVEL_OUTPUT_COLUMNS,
+    available_level_columns,
+    validate_setup_config,
+)
 from thesistester.visualization.backtest_chart import _BASE_COLUMNS
 
 
@@ -138,9 +144,13 @@ def test_disabled_returns_empty_no_columns():
 def test_disabled_skips_validation():
     out = compute_prev30m_vwap_levels(_naive_df(), enabled=False)
     assert list(out.columns) == []
-    out2 = compute_prev30m_vwap_levels(_df(_bars_1min("2026-06-01 18:00", 2)), enabled=False, validity_periods=0)
+    out2 = compute_prev30m_vwap_levels(
+        _df(_bars_1min("2026-06-01 18:00", 2)), enabled=False, validity_periods=0
+    )
     assert list(out2.columns) == []
-    out3 = compute_prev30m_vwap_levels(_df(_bars_1min("2026-06-01 18:00", 2)), instrument="NOPE", enabled=False)
+    out3 = compute_prev30m_vwap_levels(
+        _df(_bars_1min("2026-06-01 18:00", 2)), instrument="NOPE", enabled=False
+    )
     assert list(out3.columns) == []
 
 
@@ -151,7 +161,9 @@ def test_enabled_naive_timestamp_raises():
 
 def test_enabled_bad_instrument_raises():
     with pytest.raises(ValueError, match="Unsupported instrument"):
-        compute_prev30m_vwap_levels(_df(_bars_1min("2026-06-01 18:00", 2)), instrument="ZZ", enabled=True)
+        compute_prev30m_vwap_levels(
+            _df(_bars_1min("2026-06-01 18:00", 2)), instrument="ZZ", enabled=True
+        )
 
 
 def test_enabled_validity_zero_raises():
@@ -159,6 +171,29 @@ def test_enabled_validity_zero_raises():
         compute_prev30m_vwap_levels(
             _df(_bars_1min("2026-06-01 18:00", 2)), enabled=True, validity_periods=0
         )
+
+
+def test_enabled_validity_numpy_int64_accepted():
+    """API validate_run_spec accepts Integral; compute must not diverge."""
+    df = _df(_bars_1min("2026-06-01 18:00", 40, high=100, low=99, close=99.5, volume=10))
+    out = compute_prev30m_vwap_levels(df, enabled=True, validity_periods=np.int64(1))
+    assert "prev30mVWAP" in out.columns
+    assert out["prev30mVWAP"].notna().any()
+
+
+def test_enabled_nat_timestamp_raises_clear_error():
+    df = _df(_bars_1min("2026-06-01 18:00", 3))
+    df.loc[1, "timestamp"] = pd.NaT
+    with pytest.raises(ValueError, match="non-NaT"):
+        compute_prev30m_vwap_levels(df, enabled=True)
+
+
+def test_session_open_preserves_eth_start_seconds():
+    from thesistester.levels.prev30m_vwap import _parse_eth_start, _session_open_ts
+
+    eth_time = _parse_eth_start("18:00:30")
+    open_ts = _session_open_ts(datetime.date(2026, 6, 2), eth_time, TZ)
+    assert open_ts == pd.Timestamp("2026-06-01 18:00:30", tz=TZ)
 
 
 def test_compute_all_levels_disabled_adds_no_prev30m_columns():
@@ -262,7 +297,13 @@ def test_eth_emits_when_freeze_exists_unlike_dvwap():
     eth_mask = out["session"].eq("ETH")
     assert eth_mask.any()
     # prev30mVWAP non-NaN on ETH after freeze; dVWAP_RTH stays NaN on ETH
-    assert out.loc[eth_mask & out["timestamp"].ge(pd.Timestamp("2026-06-01 18:30", tz=TZ)), "prev30mVWAP"].notna().all()
+    assert (
+        out.loc[
+            eth_mask & out["timestamp"].ge(pd.Timestamp("2026-06-01 18:30", tz=TZ)), "prev30mVWAP"
+        ]
+        .notna()
+        .all()
+    )
     assert out.loc[eth_mask, "dVWAP_RTH"].isna().all()
 
 
@@ -459,10 +500,16 @@ def test_nesting_invariant():
 
 
 def test_coarse_base_5min_disables_m1_keeps_m5():
-    rows = _bars_1min("2026-06-01 18:00", 6, step_minutes=5, high=100, low=99, close=99.5, volume=10)
+    rows = _bars_1min(
+        "2026-06-01 18:00", 6, step_minutes=5, high=100, low=99, close=99.5, volume=10
+    )
     # 18:00, 18:05, ... 18:25 (bracket0), then 18:30, 18:35 (bracket1)
-    rows.append(_bar(pd.Timestamp("2026-06-01 18:30", tz=TZ), high=100, low=99, close=99.5, volume=10))
-    rows.append(_bar(pd.Timestamp("2026-06-01 18:35", tz=TZ), high=110, low=109, close=109.5, volume=10))
+    rows.append(
+        _bar(pd.Timestamp("2026-06-01 18:30", tz=TZ), high=100, low=99, close=99.5, volume=10)
+    )
+    rows.append(
+        _bar(pd.Timestamp("2026-06-01 18:35", tz=TZ), high=110, low=109, close=109.5, volume=10)
+    )
     df = _df(rows)
     out = compute_prev30m_vwap_levels(df, enabled=True)
     assert out["prev30mVWAP_hit_m1"].isna().all()
@@ -472,7 +519,9 @@ def test_coarse_base_5min_disables_m1_keeps_m5():
 
 
 def test_coarse_base_2min_disables_both_hits():
-    rows = _bars_1min("2026-06-01 18:00", 20, step_minutes=2, high=100, low=99, close=99.5, volume=10)
+    rows = _bars_1min(
+        "2026-06-01 18:00", 20, step_minutes=2, high=100, low=99, close=99.5, volume=10
+    )
     df = _df(rows)
     out = compute_prev30m_vwap_levels(df, enabled=True)
     assert "prev30mVWAP" in out.columns
@@ -500,6 +549,29 @@ def test_hit_columns_not_setup_or_chart_eligible():
     ]
     assert "prev30mVWAP" in chart_candidates
     assert "prev30mVWAP_hit_m1" not in chart_candidates
+    # Headless setup validation must reject diagnostic columns too.
+    errors = validate_setup_config(
+        {
+            "name": "hit diagnostic misuse",
+            "description": "",
+            "instrument": "ES",
+            "selected_levels": ["prev30mVWAP", "prev30mVWAP_hit_m1"],
+            "tolerance_ticks": 4.0,
+            "min_confluences": 1,
+            "max_confluences": 2,
+            "naked_only": False,
+            "naked_requirement": "any",
+            "trigger": "touch",
+            "direction": "both",
+            "confluence_mode": "global_cluster",
+        }
+    )
+    assert any("diagnostic" in err.lower() for err in errors)
+    # Assistant levels summary must not list diagnostics as price levels.
+    summary = summarize_levels_state({"levels": merged, "levels_settings": {}})
+    assert "prev30mVWAP" in summary["level_columns"]
+    assert "prev30mVWAP_hit_m1" not in summary["level_columns"]
+    assert "prev30mVWAP_hit_m5" not in summary["level_columns"]
 
 
 # ---------------------------------------------------------------------------

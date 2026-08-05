@@ -211,8 +211,10 @@ This engine is for **research screening**, not proof of a durable edge.
 - Freeze completes on clock (`timestamp >= bracket_end`) or on **true session transition** (CME halt). Mid-session dataframe truncation does **not** finalize open brackets.
 - TTL: `prev30m_vwap_validity_periods` (integer ≥ 1, default 1); replace-on-new-freeze.
 - Prior-session last freeze seeds the next session open.
-- Companion diagnostics `prev30mVWAP_hit_m1` / `prev30mVWAP_hit_m5` are **not** setup-selectable or auto-plotted price levels. They stay `NaN` until each early window completes (no rewrite of in-window rows). Each diagnostic requires its window `W` to be an integer multiple of the inferred base interval.
-- Missing/empty `eth_start` fails closed with `ValueError` when enabled.
+- Companion diagnostics `prev30mVWAP_hit_m1` / `prev30mVWAP_hit_m5` are **not** setup-selectable or auto-plotted price levels. They stay `NaN` until each early window completes (no rewrite of in-window rows). Each diagnostic requires its window `W` to be an integer multiple of the inferred base interval. `validate_setup_config` rejects them in `selected_levels` / anchor rules; assistant levels summaries omit them from `level_columns`.
+- `prev30m_vwap_validity_periods` accepts integer-compatible values (including `numpy.int64`) and coerces to `int`, matching `validate_run_spec`.
+- Missing/empty `eth_start` fails closed with `ValueError` when enabled. Bracket open preserves `eth_start` seconds/microseconds.
+- Enabled compute fails closed on NaT timestamps after exchange-timezone conversion.
 - `prev30m_vwap_enabled=False` is a true no-op: no validation, no new columns.
 
 ### 5f) Stage 6 UI and Persistence — opt-in level controls (Levels page)

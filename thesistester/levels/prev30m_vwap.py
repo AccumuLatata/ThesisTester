@@ -33,6 +33,7 @@ Disabled behavior (``enabled=False``)
 from __future__ import annotations
 
 import datetime
+import numbers
 from typing import Any
 
 import numpy as np
@@ -77,8 +78,8 @@ def _session_open_ts(
         day=prev_day.day,
         hour=eth_time.hour,
         minute=eth_time.minute,
-        second=0,
-        microsecond=0,
+        second=eth_time.second,
+        microsecond=eth_time.microsecond,
         tz=exchange_tz,
     )
 
@@ -245,8 +246,11 @@ def compute_prev30m_vwap_levels(
             f"Unsupported instrument: {instrument!r}.  Supported instruments: {sorted(INSTRUMENTS)}"
         )
 
-    if isinstance(validity_periods, bool) or not isinstance(validity_periods, int):
+    # Accept Integral (e.g. numpy.int64 from JSON/numpy pipelines) to match
+    # api._validate_number_fields; reject bool (Integral subclass).
+    if isinstance(validity_periods, bool) or not isinstance(validity_periods, numbers.Integral):
         raise ValueError("validity_periods must be an integer >= 1")
+    validity_periods = int(validity_periods)
     if validity_periods < 1:
         raise ValueError("validity_periods must be an integer >= 1")
 
@@ -265,6 +269,10 @@ def compute_prev30m_vwap_levels(
         work = tag_session(work, instrument=instrument)
 
     local_ts = work["timestamp"].dt.tz_convert(exchange_tz)
+    if local_ts.isna().any():
+        raise ValueError(
+            "prev30mVWAP requires non-NaT timestamps after exchange-timezone conversion."
+        )
     session_dates = trading_session_date(local_ts, str(eth_start_raw))
 
     base_interval = infer_base_interval(work["timestamp"])

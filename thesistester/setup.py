@@ -331,6 +331,15 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
         selected_levels = config.get("selected_levels", [])
         if not isinstance(selected_levels, list) or not selected_levels:
             errors.append("Select at least one level column.")
+        elif isinstance(selected_levels, list):
+            banned = sorted(
+                {str(level) for level in selected_levels if str(level) in NON_LEVEL_OUTPUT_COLUMNS}
+            )
+            if banned:
+                errors.append(
+                    "Selected levels include diagnostic (non-level) columns that "
+                    f"cannot be used for confluence: {banned}."
+                )
 
         try:
             tolerance_ticks = float(config.get("tolerance_ticks", 0.0))
@@ -362,6 +371,11 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
         anchor_level = raw_anchor_level.strip() if isinstance(raw_anchor_level, str) else ""
         if not anchor_level:
             errors.append("Anchor level must be a non-empty string.")
+        elif anchor_level in NON_LEVEL_OUTPUT_COLUMNS:
+            errors.append(
+                f"Anchor level '{anchor_level}' is a diagnostic column and cannot "
+                "be used as a setup level."
+            )
 
         confluence_rules = config.get("confluence_rules", [])
         if not isinstance(confluence_rules, list) or not confluence_rules:
@@ -390,6 +404,11 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
             if not rule_level:
                 errors.append(f"Confluence rule {index} level must be a non-empty string.")
             else:
+                if rule_level in NON_LEVEL_OUTPUT_COLUMNS:
+                    errors.append(
+                        f"Confluence rule {index} level '{rule_level}' is a diagnostic "
+                        "column and cannot be used as a setup level."
+                    )
                 if rule_level == anchor_level:
                     errors.append(f"Confluence rule {index} level must not equal anchor_level.")
                 if rule_level in seen_levels:
