@@ -5,6 +5,11 @@
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related docs:** `docs/LEVEL_UPGRADE_IMPLEMENTATION_PLAN.md`, `docs/POINT_IN_TIME_GUARANTEES.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`
 
+**Plan review (2026-08-05):** Core design is sound. Normative amendments below close
+halt/session-boundary completion, diagnostic-column eligibility, base-resolution for
+`hit_m1`, and wiring gaps found against the current engine. Do **not** start Phase 1
+until §3.4, §3.8, §5.2, and §5.5 locks in this revision are followed.
+
 ---
 
 ## 1. Purpose
@@ -94,11 +99,20 @@ Consequence: unlike Stage 3–5 RTH families, overnight ETH testing can select a
 
 Let:
 
-- `session_open_ts` = exchange-local midnight-of-session-date logic is **not** used for the clock; use the session’s ETH start timestamp:
-  - For session date `D`, `session_open_ts = (D - 1 day) @ eth_start` when `eth_start` is evening (e.g. 18:00), consistent with `trading_session_date` (bars at/after 18:00 belong to the next calendar date’s session).
-- Implementation must derive `session_open_ts` from the same `trading_session_date` + `eth_start` contract already used by session levels, not invent a second session model.
+- `session_open_ts` uses the session’s ETH start timestamp — **not** calendar midnight and **not** RTH open.
+- Derive it from the same `trading_session_date` + `eth_start` contract already used by session levels; do not invent a second session model.
+- Instruments in this product all configure evening `eth_start` (ES/NQ/MES/MNQ: `18:00`). **Locked fallback:** if `eth_start` is missing/empty, raise `ValueError` when enabled (fail closed). Do not silently switch to RTH-open or midnight clocks.
 
-For each bar in a session:
+Normative `session_open_ts` for session date `D` with evening `eth_start`:
+
+```text
+# trading_session_date: local_time >= eth_start → session_date = calendar_date + 1 day
+# Therefore bars of session D span [(D-1)@eth_start, D@eth_start)
+session_open_ts = timestamp(date=D - 1 day, time=eth_start, tz=exchange_tz)
+session_end_ts  = timestamp(date=D,         time=eth_start, tz=exchange_tz)
+```
+
+For each bar in a session (timestamp = left-labeled bar open, existing ThesisTester convention):
 
 ```text
 minutes_since_open = floor((bar_ts_local - session_open_ts) / 1 minute)
@@ -107,9 +121,14 @@ bracket_start      = session_open_ts + bracket_idx * 30min
 bracket_end        = bracket_start + 30min
 ```
 
-A bracket is **complete** at the first timestamp `>= bracket_end` (APOC-style clock completion), or when the session ends and the bracket contained at least one bar with positive cumulative volume semantics defined below.
+A bracket becomes **complete** (may produce a freeze) when either:
 
-Only **completed** brackets may produce a freeze. The current incomplete bracket never contributes its developing VWAP to `prev30mVWAP`.
+1. **Clock completion (primary):** the first in-session bar with `timestamp >= bracket_end` is observed (APOC/TPO-style), or
+2. **Session-boundary finalization (mandatory for ES/NQ):** the session ends — i.e. the next bar belongs to a new `trading_session_date`, or the dataset ends on this session — and the bracket contained at least one bar with `sum(volume) > 0`.
+
+Why (2) is not optional: CME equity-index futures halt ~17:00–18:00 exchange-local. The final in-session bracket (e.g. 16:30–17:00) often never observes an in-session bar with `timestamp >= bracket_end`; the next print is frequently the following session’s `eth_start`. Without boundary finalization, the last period VWAP never freezes and cross-session seeding is wrong.
+
+Only **completed** brackets may produce a freeze. The current incomplete bracket never contributes its developing VWAP to `prev30mVWAP` while that same session is still open.
 
 ### 3.5 VWAP formula (normative)
 
@@ -172,31 +191,48 @@ This mirrors `pAPOC` / prior-session carry intent, but the carried value remains
 
 ### 3.8 First-minute hit (point 2) — locked
 
-#### 3.8.1 Level-adjacent diagnostic column
+#### 3.8.1 Companion diagnostic column (not a price level)
 
 ```text
 prev30mVWAP_hit_m1
 ```
 
+**Eligibility lock (mandatory):** `prev30mVWAP_hit_m1` is a diagnostic flag, **not** a setup-selectable price level.
+
+- Add only `prev30mVWAP` to `SESSION_LEVEL_CATALOG` / suggested catalogs.
+- Exclude `prev30mVWAP_hit_m1` from `available_level_columns()` (Setup Builder / Signals).
+- Exclude it from chart level overlays (`visualization/backtest_chart.py` and any Levels preview that auto-plots numeric non-base columns).
+- Prefer a shared denylist helper (e.g. `NON_LEVEL_OUTPUT_COLUMNS` / `is_setup_eligible_level_column`) over one-off string checks so future diagnostics do not regress into confluence members.
+
 Definition:
 
-- Evaluate only at bars belonging to the **first minute** of a 30-minute bracket in which `prev30mVWAP` is non-NaN at bracket open.
+- Evaluate only using bars whose left-labeled opens fall in the **first minute**
+  `[bracket_start, bracket_start + 1min)` of a 30-minute bracket in which
+  `prev30mVWAP` is non-NaN at bracket open.
 - Hit rule (range touch, consistent with engine touch semantics):
 
 ```text
 bar.low <= prev30mVWAP <= bar.high
 ```
 
-- For all bars in that first minute after a hit is observed on any of those bars, the diagnostic may be `1.0` for the remainder of the minute (or emitted as a bracket-constant flag — see implementation note below).
-- For bars outside the first minute: emit `NaN` or `0.0`? **Locked:** emit `0.0` after the first minute of the bracket if the level was valid at bracket open and not hit in minute 1; emit `1.0` for the whole bracket once minute-1 hit is known; emit `NaN` when `prev30mVWAP` is NaN at bracket open.
+- Aggregate with OR across all first-minute bars (relevant for 15s primary data).
+
+**Base-resolution lock:**
+
+| Inferred base interval | `prev30mVWAP` | `prev30mVWAP_hit_m1` |
+|---|---|---|
+| `<= 1min` and divides 1min evenly (1min, 15s, …) | computed | computed per contract below |
+| `> 1min` (e.g. 5min-only dataset) | still computed | **all `NaN`** (cannot resolve minute-1 without lookahead/guessing) |
+
+Do not upsample or invent minute bars. Do not hard-fail the whole family on coarse data; only the diagnostic is unavailable.
 
 Implementation note (PIT-safe):
 
-- Minute-1 hit becomes knowable only after the first-minute bars have been seen.
-- Prefer a **bracket-constant flag finalized at the end of the first minute** and forward-filled for the rest of the bracket (causal: first-minute completion time).
-- Do **not** rewrite earlier bars after later information arrives in a way that breaks future-shock tests; compute in timestamp order.
+- Minute-1 hit becomes knowable only after the first-minute window has completed (`timestamp >= bracket_start + 1min`), even on 1-minute data (one bar late vs same-bar OHLC-at-label convention used elsewhere — intentional for a stable contract across 15s/1min).
+- Emit a **bracket-constant flag finalized at first-minute completion** and forward-filled for later bars of that bracket.
+- Do **not** rewrite first-minute rows after completion (they remain `NaN`); future-shock tests must cover this.
 
-Recommended emission contract (normative for tests):
+Normative emission contract:
 
 | Time within bracket | `prev30mVWAP` valid at open? | Emission |
 |---|---|---|
@@ -204,6 +240,7 @@ Recommended emission contract (normative for tests):
 | At/after first-minute completion | yes, touched in minute 1 | `1.0` for remaining bars of that bracket |
 | At/after first-minute completion | yes, not touched | `0.0` for remaining bars of that bracket |
 | Any | no | `NaN` |
+| Base interval `> 1min` | any | `NaN` |
 
 This keeps point-in-time honesty: the hit flag is not visible before minute 1 completes.
 
@@ -211,13 +248,13 @@ This keeps point-in-time honesty: the hit flag is not visible before minute 1 co
 
 “Measure the R whether the level was hit within the first minute” is implemented as **post-trade analytics**, not as a change to fill logic:
 
-1. When trades are generated against setups that include `prev30mVWAP` (selected level / anchor / confluence member), attach or join:
-   - `prev30mVWAP_hit_m1_at_signal` (or at entry bracket open)
-2. Analytics helpers summarize `r_multiple` conditioned on `hit_m1 ∈ {0,1}`.
+1. When trades are generated against setups that include `prev30mVWAP` (selected level / anchor / confluence member), attach or join a **finalized bracket flag**, not the raw row value at the signal bar.
+2. Join key: trading session + `bracket_idx` of the signal/entry bracket (or equivalent bracket_start). Because first-minute rows stay `NaN` by PIT contract, row-level `hit_m1` at a first-minute signal is undefined — use the bracket’s finalized `0.0`/`1.0` once minute-1 has completed (or leave analytics null if the trade’s bracket never finalized minute-1 in-sample).
+3. Analytics helpers summarize `r_multiple` conditioned on `hit_m1 ∈ {0,1}`.
 
 MVP placement:
 
-- Phase A (levels PR): ship `prev30mVWAP` + `prev30mVWAP_hit_m1` columns only.
+- Phase A (levels PR): ship `prev30mVWAP` + `prev30mVWAP_hit_m1` columns only, with eligibility exclusions in §3.8.1 / §5.5.
 - Phase B (analytics PR, same roadmap item, can be same PR if small): add a pure analytics function, e.g. `analytics/prev30m_vwap_hit.py` → grouped R stats; UI read-only table on Backtest/Signals diagnostics.
 
 No change to `simulate_trades` fill semantics.
@@ -275,10 +312,13 @@ prev30mVWAP_hit_m1
 | `thesistester/levels/defaults.py` | Product defaults: `prev30m_vwap_enabled=True`, `prev30m_vwap_validity_periods=1` |
 | `thesistester/research_identity.py` | Allow new keys via `DEFAULT_LEVELS_SETTINGS` (unknown-key rejection) |
 | `thesistester/persistence/local_store.py` | `LEVEL_ENGINE_VERSION = 4` |
-| `thesistester/assistant/workspace.py` | Add `prev30mVWAP` to `SESSION_LEVEL_CATALOG` / level discovery |
-| `pages/2_Levels.py` (or current Levels page) | Opt-in checkbox + validity integer input under advanced levels |
+| `thesistester/assistant/workspace.py` | Add **`prev30mVWAP` only** to `SESSION_LEVEL_CATALOG` (never `hit_m1`) |
+| `thesistester/setup.py` | Exclude `prev30mVWAP_hit_m1` from `available_level_columns()` |
+| `thesistester/visualization/backtest_chart.py` | Exclude diagnostic from auto-plotted level overlays |
+| `pages/2_Levels.py` | Opt-in checkbox + validity integer; session_state keys; `_normalize` / compute passthrough defaults |
+| `tests/test_stage6_levels_ui_settings.py` | Update exact `DEFAULT_LEVELS_SETTINGS` equality assertion |
 | `thesistester/api.py` | Pass through normalized settings into `compute_all_levels` |
-| `thesistester/analytics/` (Phase B) | Optional R-stats helper by `hit_m1` |
+| `thesistester/analytics/` (Phase B) | Optional R-stats helper by finalized bracket `hit_m1` |
 | Docs listed in §9 | Same-PR documentation |
 
 ### 5.3 Shared helpers (drift control)
@@ -298,11 +338,20 @@ Constraints if extracted:
 
 ### 5.4 Downstream consumption
 
-No confluence/signal/backtest code changes required for the level itself:
+No confluence/signal/backtest code changes required for the **price level** itself:
 
-- `available_level_columns()` picks up non-OHLCV columns.
 - Setup Builder / anchor confluence can select `prev30mVWAP`.
 - Naked flags apply generically if enabled.
+- `prev30mVWAP_hit_m1` must remain non-selectable (§3.8.1 / §5.5).
+
+### 5.5 Diagnostic vs level column contract (normative)
+
+| Column | In levels frame? | Setup / confluence eligible? | Chart overlay? | Catalog? |
+|---|---|---|---|---|
+| `prev30mVWAP` | yes | yes | yes | yes |
+| `prev30mVWAP_hit_m1` | yes (Phase A companion) | **no** | **no** | **no** |
+
+Naming note: `prev30mVWAP` is camelCase by product request. Keep that exact string; do not rename to snake_case in MVP (would break thesis drafts / catalogs once shipped).
 
 ---
 
@@ -435,6 +484,8 @@ tests/test_prev30m_vwap.py
 17. RTH bars continue the same session bracket clock (no reset at RTH open).
 18. Session reset: last value of session `S` does not bleed incorrectly into unrelated dates; seed into `S+1` only via explicit prior-session seed rule.
 19. Fixture covering overnight ETH → RTH → post-RTH ETH on ES (`eth_start="18:00"`).
+19b. **Daily halt / session-boundary finalization:** final in-session bracket with volume freezes even when no in-session bar has `timestamp >= bracket_end` (next print is next session open); that freeze seeds `S+1`.
+19c. Enabled + missing `eth_start` → `ValueError`.
 
 ### 10.4 TTL
 
@@ -446,9 +497,11 @@ tests/test_prev30m_vwap.py
 
 23. Touch in first minute → `hit_m1` becomes `1.0` only after first-minute completion.
 24. No touch in first minute → `0.0` after first-minute completion.
-25. Before first-minute completion → `NaN` on `hit_m1`.
+25. Before first-minute completion → `NaN` on `hit_m1` (including the first-minute rows themselves; no rewrite).
 26. When `prev30mVWAP` is NaN at bracket open → `hit_m1` is `NaN`.
 27. Touch only in minute 2+ does **not** count as minute-1 hit.
+27b. Base interval `> 1min` → `prev30mVWAP` still emits; `hit_m1` all `NaN`.
+27c. `available_level_columns()` / catalog / chart overlay never expose `prev30mVWAP_hit_m1` as a level.
 
 ### 10.6 Future-shock / determinism
 
@@ -532,7 +585,10 @@ Do not place these controls in the hero/primary SMA-EMA area; keep with other op
 |---|---|
 | Confusing session-open brackets with RTH TPO brackets | Explicit docs + tests that RTH open does **not** reset the clock |
 | Accidental RTH NaN-gating copy-paste from `session_vwap.py` / `tpo.py` | Dedicated ETH emission tests; code review checklist item |
-| `hit_m1` look-ahead | NaN until first-minute completion; future-shock tests |
+| Final bracket never freezes across 17:00 halt | Mandatory session-boundary finalization (§3.4); test 19b |
+| `hit_m1` selected as confluence/price level | Eligibility denylist (§3.8.1 / §5.5); test 27c |
+| `hit_m1` on 5min-only data invents minute resolution | Coarse-base → all-NaN diagnostic (§3.8.1); test 27b |
+| `hit_m1` look-ahead | NaN until first-minute completion; no rewrite of earlier rows; future-shock tests |
 | TTL ambiguity | Normative §3.6; tests for replace vs expire |
 | Identity cache reuse after new columns | Engine version bump to 4 |
 | Product default enable surprises headless users | Only product defaults enable; raw `compute_all_levels` stays off |
@@ -550,8 +606,10 @@ Session open: `18:00` exchange-local.
 | 18:30:00 | Bracket 0 completes → freeze `V0` |
 | 18:30 first bar | `prev30mVWAP = V0` (ETH bar emits) |
 | 18:30–18:31 | Evaluate hit vs `V0`; `hit_m1` still NaN until 18:31 |
-| ≥ 18:31 | `hit_m1` = 1/0 for rest of 18:30–19:00 bracket |
+| ≥ 18:31 | `hit_m1` = 1/0 for rest of 18:30–19:00 bracket (18:30 row stays NaN) |
 | 09:30 RTH open | **No reset**; still on session-open clock |
+| ~16:30–17:00 | Final in-session bracket; may finalize at session boundary / halt even without an in-session `>= 17:00` bar |
+| Next session 18:00 | Seed = last valid freeze of prior session; fresh TTL |
 | Next bracket open | Replace with newest completed VWAP; TTL resets |
 
 ---
@@ -576,10 +634,14 @@ Session open: `18:00` exchange-local.
 |---|---|
 | RTH-only or full session? | **Full session (ETH + RTH)** |
 | Bracket anchor? | **Session open (`eth_start`), not RTH open** |
-| Point 2 meaning? | Diagnostic column `prev30mVWAP_hit_m1` + optional R analytics conditioned on it |
+| Point 2 meaning? | Diagnostic column `prev30mVWAP_hit_m1` + optional R analytics conditioned on finalized bracket flag |
 | Point 3 meaning? | Integer TTL in 30m periods; default 1; replace-on-new-freeze |
 | Cross-session? | Prior-session last freeze seeds next session open |
 | Multi-level stack? | Out of MVP (Phase 3) |
+| Daily halt / missing in-session `bracket_end` bar? | **Session-boundary finalization is mandatory** (§3.4) |
+| Is `hit_m1` a selectable level? | **No** — diagnostic only (§3.8.1 / §5.5) |
+| Coarse base data (>1min)? | Level OK; `hit_m1` all NaN |
+| Missing `eth_start`? | `ValueError` when enabled |
 
 ---
 
@@ -588,5 +650,7 @@ Session open: `18:00` exchange-local.
 `prev30mVWAP` is feasible and fits the existing scalar level architecture. Points 2 and 3 are feasible without engine fill changes. The critical design lock versus earlier RTH-family precedents is:
 
 > **Session-open 30-minute brackets with ETH+RTH contribution and emission.**
+
+**Go / no-go after review:** Good to implement **after** this revision’s normative locks are treated as requirements — especially session-boundary freeze (§3.4), diagnostic eligibility (§5.5), and coarse-base `hit_m1` behavior (§3.8.1). The earlier draft was directionally correct but under-specified those three items enough to produce production mislogic on ES/NQ halt boundaries and Setup Builder pollution.
 
 Implement behind `prev30m_vwap_enabled`, prove PIT with future-shock tests, bump `LEVEL_ENGINE_VERSION` to 4, and keep legacy outputs identical when disabled.

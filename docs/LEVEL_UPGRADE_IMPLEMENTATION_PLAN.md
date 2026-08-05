@@ -660,8 +660,9 @@ Summary locks (do not re-derive here):
 
 - Frozen end-of-bracket 30m VWAP carried into the next period.
 - **Full trading session availability (ETH + RTH)** via session-open (`eth_start`) 30m brackets — not RTH-only.
+- **Session-boundary finalization mandatory** (CME ~17:00 halt often has no in-session `>= bracket_end` bar).
 - TTL: `prev30m_vwap_validity_periods` (default 1).
-- First-minute hit diagnostic: `prev30mVWAP_hit_m1`, plus optional R-multiple analytics.
+- First-minute hit diagnostic: `prev30mVWAP_hit_m1` (not setup/chart-eligible); optional R analytics on finalized bracket flag.
 - Opt-in / default-off at `compute_all_levels`; product defaults may enable; bump `LEVEL_ENGINE_VERSION` on implementation.
 
 ---
