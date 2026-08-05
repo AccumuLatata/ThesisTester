@@ -871,6 +871,9 @@ inside already-shipped RQ modules.
 tests/test_assistant_llm_evaluations.py
 tests/test_assistant_results_qa.py
 tests/test_assistant_product_help.py
+thesistester/assistant/llm_explainer.py         # only if eval reveals honesty defect
+thesistester/assistant/results_qa.py            # only if eval reveals honesty defect
+thesistester/assistant/__init__.py              # re-exports only
 docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md
 docs/ASSUMPTIONS_AND_LIMITATIONS.md
 docs/ENGINEERING_ROADMAP.md
