@@ -55,6 +55,15 @@ def test_resolve_corpus_path_rejects_traversal_and_agent_guide():
     assert path == (REPO_ROOT / "README.md").resolve()
 
 
+def test_resolve_corpus_path_rejects_symlink_to_excluded_doc(tmp_path):
+    """Allowlisted path must not resolve through a symlink to excluded content."""
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "AGENT_GUIDE.md").write_text("# secret\n", encoding="utf-8")
+    (tmp_path / "README.md").symlink_to(tmp_path / "docs" / "AGENT_GUIDE.md")
+    with pytest.raises(HelpCorpusError, match="excluded|allowlisted location"):
+        resolve_corpus_path("README.md", repo_root=tmp_path)
+
+
 def test_architecture_rejects_non_allowlisted_h2_and_accepts_frozen_h2():
     with pytest.raises(HelpCorpusError, match="not allowlisted"):
         load_corpus_chunks(
@@ -100,6 +109,18 @@ def test_whole_file_preface_includes_h1_before_first_h2():
     assert "# ThesisTester" in preface
     assert "intraday strategy research" in preface
     assert "## Run locally" not in preface
+
+
+def test_h2_chunk_stops_at_later_h1():
+    """§7.1 rule 4: H2 body ends at the next H2 or higher heading."""
+    from thesistester.assistant.help_corpus import _parse_atx_sections
+
+    parsed = _parse_atx_sections("## Sec A\nbody a\n# Later H1\nbody h1\n## Sec B\nbody b\n")
+    by_title = {title: text for _level, title, text in parsed}
+    assert "Later H1" not in by_title["Sec A"]
+    assert "body h1" not in by_title["Sec A"]
+    assert "body a" in by_title["Sec A"]
+    assert "body b" in by_title["Sec B"]
 
 
 def test_section_mode_omits_preface():

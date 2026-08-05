@@ -525,8 +525,12 @@ docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md    # VA-1 ownership note only
 - `thesistester/assistant/help_corpus.py` encodes §7.1 / §7.1.1–§7.1.3
   (path + section allowlist, heading match rules, registry digest helper).
   Whole-file `__preface__` is content before the first H2 (includes H1 title
-  blocks); section-mode docs still omit preface unless explicitly allowlisted.
-- `is_draft_channel_message` helper lands for RQ-1 (no orchestrator wiring yet).
+  blocks); H2 bodies end at the next H2 or higher; section-mode docs still omit
+  preface unless explicitly allowlisted. Resolved paths must match the
+  allowlisted relative location (symlink smuggling of excluded docs fails closed).
+- `is_draft_channel_message` helper lands for RQ-1 (no orchestrator wiring yet):
+  missing/`None` channel → draft; any set channel value (including `""`) →
+  non-draft.
 - Tests: `tests/test_assistant_help_corpus.py`,
   `tests/test_assistant_qa_settings.py`.
 

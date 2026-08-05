@@ -129,7 +129,12 @@ def get_corpus_doc_spec(doc_id: str) -> CorpusDocSpec:
 
 
 def resolve_corpus_path(relative_path: str, *, repo_root: str | Path) -> Path:
-    """Resolve an allowlisted relative path under ``repo_root``; reject traversal."""
+    """Resolve an allowlisted relative path under ``repo_root``; reject traversal.
+
+    After ``Path.resolve()`` (symlink-aware), the canonical relative path must
+    still be the requested allowlisted path — a symlink at an allowlisted
+    location cannot smuggle excluded content (e.g. ``AGENT_GUIDE``).
+    """
     if not isinstance(relative_path, str) or not relative_path.strip():
         raise HelpCorpusError("Corpus path must be a non-empty relative string.")
     cleaned = relative_path.strip().replace("\\", "/")
@@ -140,17 +145,26 @@ def resolve_corpus_path(relative_path: str, *, repo_root: str | Path) -> Path:
         raise HelpCorpusError(f"Corpus path must not contain '..': {relative_path!r}")
     if cleaned in _EXCLUDED_RELATIVE_PATHS or cleaned.endswith("AGENT_GUIDE.md"):
         raise HelpCorpusError(f"Corpus path is excluded from v1 Help: {relative_path!r}")
-    root = Path(repo_root).resolve()
-    candidate = (root / cleaned).resolve()
-    try:
-        candidate.relative_to(root)
-    except ValueError as exc:
-        raise HelpCorpusError(f"Corpus path escapes repository root: {relative_path!r}") from exc
     allowlisted = {
         spec.relative_path for spec in HELP_CORPUS_MANIFEST if spec.relative_path is not None
     }
     if cleaned not in allowlisted:
         raise HelpCorpusError(f"Corpus path is not allowlisted: {relative_path!r}")
+    root = Path(repo_root).resolve()
+    candidate = (root / cleaned).resolve()
+    try:
+        resolved_relative = candidate.relative_to(root).as_posix()
+    except ValueError as exc:
+        raise HelpCorpusError(f"Corpus path escapes repository root: {relative_path!r}") from exc
+    if resolved_relative in _EXCLUDED_RELATIVE_PATHS or resolved_relative.endswith(
+        "AGENT_GUIDE.md"
+    ):
+        raise HelpCorpusError(f"Corpus path is excluded from v1 Help: {relative_path!r}")
+    if resolved_relative != cleaned:
+        raise HelpCorpusError(
+            f"Corpus path resolves outside its allowlisted location: {relative_path!r} -> "
+            f"{resolved_relative!r}"
+        )
     return candidate
 
 
@@ -193,10 +207,13 @@ def _parse_atx_sections(markdown: str) -> list[tuple[int, str, str]]:
         if preface:
             chunks.append((0, PREFACE_SECTION, preface))
 
-    for position, (start_idx, _level, title) in enumerate(h2_entries):
+    for start_idx, _level, title in h2_entries:
+        # §7.1 rule 4: body runs until the next H2 *or higher* (level <= 2).
         end_idx = len(lines)
-        if position + 1 < len(h2_entries):
-            end_idx = h2_entries[position + 1][0]
+        for later_idx, later_level, _later_title in entries:
+            if later_idx > start_idx and later_level <= 2:
+                end_idx = later_idx
+                break
         body = "".join(lines[start_idx:end_idx]).strip()
         if body:
             chunks.append((2, title, body))

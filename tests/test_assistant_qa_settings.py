@@ -85,7 +85,9 @@ def test_channel_history_override_when_section_present(tmp_path):
 def test_is_draft_channel_message_helper():
     assert is_draft_channel_message({"role": "user", "content": "hi"}) is True
     assert is_draft_channel_message({"role": "user", "channel": None}) is True
-    assert is_draft_channel_message({"role": "user", "channel": ""}) is True
+    # Empty/whitespace channel is still "set" → non-draft (exclude from draft history).
+    assert is_draft_channel_message({"role": "user", "channel": ""}) is False
+    assert is_draft_channel_message({"role": "user", "channel": "  "}) is False
     assert is_draft_channel_message({"role": "user", "channel": "results_qa"}) is False
     assert is_draft_channel_message({"role": "user", "channel": "product_help"}) is False
     assert is_draft_channel_message("not-a-dict") is True

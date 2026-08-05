@@ -275,17 +275,15 @@ def is_draft_channel_message(message: Any) -> bool:
     """Return True when a conversation message belongs to thesis-draft history.
 
     Additive helper for RQ-1: treat missing/`None` ``channel`` as draft; any
-    message with ``channel`` set (including ``results_qa`` / ``product_help``)
-    is non-draft. Does not mutate messages or change orchestrator behavior yet.
+    message with ``channel`` set (including empty string, ``results_qa``, or
+    ``product_help``) is non-draft so draft history isolation can exclude it.
+    Does not mutate messages or change orchestrator behavior yet.
     """
     if not isinstance(message, dict):
         return True
-    channel = message.get("channel")
-    if channel is None:
+    if "channel" not in message:
         return True
-    if not isinstance(channel, str):
-        return False
-    return channel.strip() == ""
+    return message.get("channel") is None
 
 
 _OPENAI_API_KEY_PLACEHOLDER = "REPLACE_WITH_ROTATED_OPENAI_API_KEY"
