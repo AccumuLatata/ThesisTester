@@ -79,8 +79,9 @@ Example help questions:
 | Message tags | Additive message fields only: `"channel"` ∈ {`results_qa`, `product_help`}, plus `"run_id"` for results turns. No Conversation schema bump. Leave `Conversation.selected_run_id` unused in RQ (binding is message `run_id` + classic focus). |
 | UI attach (results) | Completed-run expander on Research Assistant; do not replace thesis-draft `st.chat_input`. **v1 input widget:** keyed `st.text_input` + send button (page already owns root `st.chat_input`; do not rely on nested `st.chat_input`). |
 | UI attach (help) | Separate Help panel / tab on Research Assistant (not inside a run expander); same `st.text_input` + send button pattern |
-| Classic focus | **Extend** existing `classic_focus_run_id` / `discuss_run` payload — do not invent a parallel focus key. RQ-4 adds `channel=results_qa` (and thesis alignment already present) and consumes focus to open Advanced → Linked runs → that run’s Discuss thread. |
-| Help corpus | Curated, versioned local docs + `FEATURE_PARITY_REGISTRY` summaries only — no web search, no arbitrary filesystem. RQ-0 manifest includes an explicit **section allowlist** per `doc_id`; exclude agent/CI/operator-internals (no full `AGENT_GUIDE` ops surface in v1 user Help). |
+| Classic focus | Keep `classic_focus_run_id` as an optional run-id **string** (do **not** convert it to a dict). RQ-4 adds exactly one companion key `classic_focus_channel` whose only legal non-null v1 value is `"results_qa"` (`None`/absent = legacy). `discuss_run` / `set_classic_focus_run` set both; consume clears both atomically; thesis-scoped clear includes both. No other focus-key namespace. |
+| Help corpus | Curated, versioned local docs + `FEATURE_PARITY_REGISTRY` summaries only — no web search, no arbitrary filesystem. RQ-0 ships the frozen path + section allowlist in §7.1 exactly (no agent-invented sections). No `AGENT_GUIDE` in v1 user Help. |
+| Help numeric grounding | Digit tokens in Help `summary` / `caveats` / `followups` must appear as **verbatim substrings** in the attached corpus chunk texts and/or registry digest JSON for that turn; else fail closed before persist/render. Prefer number-free Help text. Never answer the user’s run performance from Help (remediate to Discuss results). |
 | History trim | Per-channel `max_history_messages` under `[assistant.results_qa]` / `[assistant.product_help]` **overrides** top-level `[assistant].max_history_messages` when the channel section is present; else fall back to top-level. |
 | Ranking metric (RQ-2) | Default ranking metric comes from the packet / `best_grid_result` recorded ranking metric (else the configured grid metric used when the grid was run). The model must not choose the ranking metric. |
 | Provider | Text stays on existing OpenAI structured client; no Anthropic/xAI in RQ PRs |
@@ -238,10 +239,19 @@ lines); otherwise fail closed before persist/render. Prefer number-free
 ```
 
 Help replies must not introduce uncited quantitative performance claims about
-the user’s runs. If the user asks about *their* results inside Help, the UI/orchestrator
-must redirect to Discuss results (structured remediation), not invent numbers.
-Help `followups` should stay number-free unless the figure is a verbatim
-corpus/registry citation already attached to the turn.
+the user’s runs. If the user asks about *their* results inside Help, the
+UI/orchestrator must redirect to Discuss results (structured remediation), not
+invent numbers.
+
+**Help numeric grounding (locked):** Before persist/render, scan digit tokens in
+`summary`, `caveats`, and `followups` with the same numeric-token regex family
+as C2-6 / `llm_explainer` (including optional `%` suffixes). Every such token
+must appear as a verbatim substring in the concatenation of (a) corpus chunk
+`text` fields attached to that turn and (b) the registry digest JSON string
+attached to that turn. Tokens that fail are rejected (`HelpEvidenceError` or
+equivalent) — do not silently strip and accept. Prefer number-free `followups`.
+Help has no `claims[{path}]`; corpus/registry substring match is the sole
+numeric ground.
 
 ### 5.3 Persistence
 
@@ -291,34 +301,106 @@ exit-reason breakdown) uses bounded projections only (RQ-2+), never raw frames.
 
 ## 7. Help corpus contract
 
-### 7.1 Allowlisted sources (v1)
+### 7.1 Allowlisted sources (v1) — frozen
 
-Exact path + **section** allowlist lands in RQ-0 as a manifest; v1 intent:
+RQ-0 must encode this table as the machine-readable manifest. Agents must **not**
+add `doc_id`s, paths, or section titles beyond this freeze without amending this
+contract in the same PR.
 
-| `doc_id` | Source path | Use |
-|---|---|---|
-| `readme` | `README.md` | Product overview / workflow |
-| `architecture` | `docs/ARCHITECTURE.md` | Page/session contracts only (section-allowlisted; not CI/agent internals) |
-| `metrics` | `docs/METRICS_GLOSSARY.md` | Metric definitions |
-| `assumptions` | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | Honesty / limitations (user-facing sections) |
-| `research_methodology` | `docs/research-methodology.md` | Research framing |
-| `otf` | `docs/otf-filter.md` | OTF behavior |
-| `registry` | generated digest of `FEATURE_PARITY_REGISTRY` | Supported vs unsupported capabilities |
+**Heading match rule (locked):**
 
-**Not in v1 user Help corpus:** `docs/AGENT_GUIDE.md` (operator/agent/CI
-instructions). Do not expose PR/agent runbooks through the Help channel.
-If a later PR adds operator docs, it must amend this table and ship a
-section allowlist in the same PR.
+1. Parse GitHub-flavored ATX headings (`#`…`######`).
+2. `section` identity = heading text after stripping leading `#` markers and
+   surrounding whitespace (exact string match; case-sensitive).
+3. Allowlist keys below are **H2** titles (`## …`) unless `mode = whole_file`.
+4. When an H2 is allowlisted, the chunk is that heading plus body until the next
+   H2 or higher; nested H3+ content is included under the parent H2 key (H3s are
+   not separately allowlisted).
+5. `mode = whole_file` means every H2 in the file is eligible (plus any
+   preface before the first H2 as `section = "__preface__"`).
+6. Paths are resolved relative to the repository root; reject `..` and any path
+   outside the allowlisted relative path after canonicalization.
+
+| `doc_id` | Source path | Mode | Allowlisted H2 section titles (exact) |
+|---|---|---|---|
+| `readme` | `README.md` | `whole_file` | _(all H2s + `__preface__`)_ |
+| `metrics` | `docs/METRICS_GLOSSARY.md` | `whole_file` | _(all H2s + `__preface__`)_ |
+| `research_methodology` | `docs/research-methodology.md` | `whole_file` | _(all H2s + `__preface__`)_ |
+| `architecture` | `docs/ARCHITECTURE.md` | `sections` | See exact H2 list in §7.1.1 (includes backtick characters in the session_state title) |
+| `assumptions` | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | `sections` | See exact H2 list in §7.1.2 |
+| `otf` | `docs/otf-filter.md` | `sections` | See exact H2 list in §7.1.3 |
+| `registry` | _(generated; not a file path)_ | `digest` | Built at turn time from `FEATURE_PARITY_REGISTRY` / `audit_capability_registry()` as a JSON-safe list of `{capability_id, status, public_symbol?, confirmation?, limitation?}` only — no source files, no handler code |
+
+#### 7.1.1 Exact `architecture` H2 titles (frozen)
+
+Match these strings exactly after stripping the leading `##` and surrounding
+whitespace (backticks around `st.session_state` are part of the heading text):
+
+```text
+AI Research Assistant contract boundary (AIA-0)
+Classic ↔ Assistant navigation and identity badges (CAI-8)
+Evidence-backed page capabilities (CAI-9)
+End-to-end data flow
+`st.session_state` contract (current)
+```
+
+#### 7.1.2 Exact `assumptions` H2 titles (frozen)
+
+```text
+Verified engine assumptions (current implementation)
+6) Point-in-time correctness (R3 audit)
+Validation implications
+Futures roll methodology (R7)
+AI Research Assistant / optional LLM (PR6 release gate)
+Voice agent (VA-series — proposed, not shipped)
+OTF filter (One Timeframing)
+Practical interpretation
+```
+
+#### 7.1.3 Exact `otf` H2 titles (frozen)
+
+```text
+Purpose
+§1 — Concept
+§2 — State vocabulary
+§3 — State-transition rules
+§4 — Configuration parameters
+§5 — Supported higher timeframes
+§6 — Completed-bar availability and look-ahead safety
+§7 — Timezone and session alignment
+§8 — Directional eligibility
+§9 — Rejected signals
+§13b — PR 5 Research-Mode Integration
+§15 — Release-Gate Documentation
+```
+
+**Explicitly excluded from v1 (fail closed if requested):**
+
+- `docs/AGENT_GUIDE.md` and any other operator/agent/CI runbook
+- Architecture: packaging, CAI-1…CAI-7/CAI-10 store/export/ledger internals,
+  R9–R22 engine-boundary sections not listed above
+- OTF: `§10 — Regression safety`; `§11 — Output fields`;
+  `§12 — Algorithm versioning and deterministic identity`;
+  `§13 — Open questions (resolved for v1)`; and any “Historical PR …” /
+  deferred-fingerprint subsections not under an allowlisted H2
+- Assumptions H2s not listed above
+
+If a later PR widens Help, it must amend **this table** and the RQ-0 manifest
+in the same PR.
 
 ### 7.2 Corpus rules
 
-1. Load only allowlisted paths under the repo root (canonicalized; reject `..`).
-2. Chunk by heading; attach `{doc_id, section, text}` to the model **only**
-   when `section` is on that `doc_id`’s RQ-0 section allowlist (or the
-   manifest marks the whole file as allowed).
-3. Cap total prompt bytes (config knobs in RQ-0/RQ-3).
-4. Prefer registry digests over inventing feature support.
+1. Load only §7.1 allowlisted paths under the repo root (canonicalized; reject
+   `..` and non-allowlisted paths).
+2. Chunk by heading using §7.1 match rules; attach
+   `{doc_id, section, text}` **only** for allowlisted sections (or whole_file /
+   `__preface__` as specified).
+3. Cap total prompt bytes (`max_corpus_chars` in `[assistant.product_help]`).
+4. Prefer `registry` digest over inventing feature support.
 5. No network retrieval.
+6. Citations in `HelpReply` must reference `{doc_id, section}` pairs that were
+   actually attached to that turn (or `doc_id = "registry"` with
+   `section = "digest"`).
 
 ---
 
@@ -394,20 +476,21 @@ VA-1 without changing runtime UX.
 | Docs | This file is canonical; index pointer in `ENGINEERING_ROADMAP.md`; note in `ASSUMPTIONS_AND_LIMITATIONS.md` + `ARCHITECTURE.md` that `results_qa` / `product_help` channels and config blocks are reserved; `AGENT_GUIDE.md` points agents here for results/help work |
 | Docs | Amend `REALTIME_VOICE_AGENT_IMPLEMENTATION.md` § VA-1 with an ownership note: “Implementation owned by RQ-1 in `RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`; do not implement VA-1 in a parallel PR.” |
 | Config | Add `[assistant.results_qa]` and `[assistant.product_help]` to `config/assistant.toml` exactly as §8 |
-| Code | `thesistester/assistant/help_corpus.py` — path + **section** allowlist manifest + pure loaders/chunkers; **no orchestrator wiring**; refuse `AGENT_GUIDE` and non-allowlisted sections |
+| Code | `thesistester/assistant/help_corpus.py` — encode §7.1 path + section allowlist + heading match rules as pure loaders/chunkers; **no orchestrator wiring**; refuse `AGENT_GUIDE`, non-allowlisted paths, and non-allowlisted H2s |
 | Code | Settings loaders for the two new blocks (missing section → disabled/safe defaults; present section uses §8 values including per-channel history override) — **prefer extending** `llm.py` / existing assistant settings style; add a separate module only if loaders truly diverge |
 | Code | Optional pure helpers for draft-channel message filtering (e.g. `is_draft_channel_message`) usable by RQ-1; no orchestrator behavior change required in RQ-0 |
-| Tests | Manifest path/section safety (`..` rejected; non-allowlisted section rejected), default settings, `load_llm_settings()` still succeeds with new sections |
+| Tests | Manifest equals §7.1 freeze; path/section safety (`..` rejected; `AGENT_GUIDE` rejected; architecture `Packaging and tooling boundary (R9)` rejected; otf `§10 — Regression safety` rejected; allowlisted H2 accepted); default settings; `load_llm_settings()` still succeeds with new sections |
 
 #### Out of scope
 - Any call to OpenAI / UI chat widgets / orchestrator methods
 - `results_qa.py` / `product_help.py` reply loops
 - Session_state keys beyond documenting reserved names
 - Loading `docs/AGENT_GUIDE.md` into the Help corpus
+- Widening §7.1 beyond the frozen table
 
 #### Acceptance
 - [ ] New config sections parse; missing sections → safe defaults (channel disabled)
-- [ ] Help corpus loader refuses non-allowlisted paths and non-allowlisted sections
+- [ ] Help corpus loader encodes §7.1 exactly; refuses non-allowlisted paths/sections
 - [ ] Existing `tests/test_assistant_llm*.py` unchanged and green
 - [ ] No new third-party dependency
 - [ ] `ruff` + `pytest -q` green
@@ -564,12 +647,13 @@ without mixing in run performance claims.
 #### In scope
 | Item | Detail |
 |---|---|
-| Code | `thesistester/assistant/product_help.py` — `propose_help_reply(client, *, corpus_chunks, history, user_message) -> HelpReply` |
-| Code | `AssistantOrchestrator.handle_help_turn(thesis_id, message, *, conversation_id=..., client=...)` — load corpus via `help_corpus.py` (path + section allowlist), build registry digest, call product_help, persist with `"channel": "product_help"`, omit `choices` |
+| Code | `thesistester/assistant/product_help.py` — `propose_help_reply(client, *, corpus_chunks, registry_digest, history, user_message) -> HelpReply` |
+| Code | `AssistantOrchestrator.handle_help_turn(thesis_id, message, *, conversation_id=..., client=...)` — load corpus via `help_corpus.py` (§7.1 only), build registry digest, call product_help, persist with `"channel": "product_help"`, omit `choices` |
 | Code | Intent guard: if message clearly asks for *this run’s* performance numbers, return structured remediation pointing to Discuss results (no fabricated metrics) |
+| Code | Enforce §5.2 Help numeric grounding (verbatim substring in attached corpus/registry; fail closed on uncited digit tokens) |
 | UI | Research Assistant Help panel (collapsed expander or tab sibling to chat hub) with keyed `st.text_input` + send button; do not reuse thesis `st.chat_input`; no nested `st.chat_input` |
 | Session keys | Additive help draft/cache keys if needed; document + thesis-scope clear as appropriate |
-| Tests | Path + section allowlist; citation required; performance-question remediation; no bundle import; no `choices`; history trim by channel; `AGENT_GUIDE` never loaded |
+| Tests | §7.1 path/section allowlist; citation must reference attached chunks; digit-token grounding; performance-question remediation; no bundle import; no `choices`; history trim by channel; `AGENT_GUIDE` never loaded |
 | Docs | Assumptions note: help is documentation-grounded, not a second results explainer |
 
 #### Out of scope
@@ -578,10 +662,12 @@ without mixing in run performance claims.
 - Editing product docs for marketing tone (content edits only if a citation target is wrong/ambiguous)
 - Web search / external URLs as required citations
 - Shipping `docs/AGENT_GUIDE.md` (or other agent/CI internals) through Help
+- Widening §7.1 allowlist
 
 #### Acceptance
-- [ ] “How does grid ranking work?” returns citations to glossary/architecture/registry (section-allowlisted only)
+- [ ] “How does grid ranking work?” returns citations to §7.1-allowlisted glossary/architecture/registry only
 - [ ] “What was my best SL?” in Help → remediation to Discuss results, no numbers
+- [ ] Uncited digit token in Help summary/caveats/followups → error before persist/render
 - [ ] Non-allowlisted doc paths and sections never load
 - [ ] Thesis draft chat fixtures unchanged
 
@@ -616,33 +702,57 @@ _Pending implementation._
 **Goal:** Make Discuss results reachable from the classic research loop with the
 correct run binding.
 
+#### Frozen focus shape (do not re-litigate)
+
+| Key | Type | Semantics |
+|---|---|---|
+| `classic_focus_run_id` | optional `str` | **Unchanged.** Non-empty run id string to focus; never a dict/object. |
+| `classic_focus_channel` | `"results_qa"` or `None` | **RQ-4 additive companion.** Only legal non-`None` v1 value is `"results_qa"`. `None`/absent = legacy Discuss behavior (thesis alignment + run focus banner only). |
+
+Rules:
+
+1. Do **not** replace `classic_focus_run_id` with a structured payload.
+2. Do **not** invent any other focus-key namespace (`assistant_focus_*`, etc.).
+3. `discuss_run` / `set_classic_focus_run` must set `classic_focus_run_id` and
+   `classic_focus_channel = "results_qa"` together.
+4. Consume must clear **both** keys atomically (extend
+   `consume_classic_focus_run` or add a thin wrapper that returns
+   `{run_id, channel}` while still nulling both).
+5. Add `classic_focus_channel` to `CLASSIC_SESSION_KEYS` and
+   `CLASSIC_THESIS_SCOPED_KEYS` in `classic_context.py` so thesis
+   switch/exit clears it with the existing run focus.
+
 #### In scope
 | Item | Detail |
 |---|---|
-| Code | **Extend** existing `classic_focus_run_id` / `discuss_run` helpers in `thesistester/classic_nav.py` (and related discuss affordances) so “Discuss this run” sets additive focus state: target thesis (already aligned), `run_id`, and `channel=results_qa`. Do **not** invent a parallel focus key unless an unavoidable Streamlit constraint forces it (document if so). |
-| UI | Research Assistant consumes that focus on load: opens Advanced → Linked runs → that run’s Discuss results thread (or equivalent visible binding), and does **not** only show the current info banner / thesis-draft chat |
+| Code | Implement the frozen focus shape above in `classic_nav.py` + `classic_context.py`; wire `discuss_run` to set both keys |
+| UI | Research Assistant consumes `{classic_focus_run_id, classic_focus_channel}` on load: when channel is `results_qa`, open Advanced → Linked runs → that run’s Discuss results thread; when channel is absent/`None`, keep legacy banner/thesis focus behavior |
 | UI | Copy clarity: thesis chat caption remains “draft only”; Discuss results / Help labeled distinctly |
 | Pages | `pages/7_Backtest.py`, `pages/12_Research_Bundles.py` (and Grid/Time only if a discuss affordance already exists or is a one-line reuse of the helper) |
-| Tests | Focus payload shape (extended, not replaced); thesis switch clears stale focus; no `choices` hydration from results focus |
-| Docs | `ARCHITECTURE.md` session keys for the extended focus payload |
+| Tests | Focus pair shape; atomic clear; thesis switch clears both; unknown channel values fail closed or coerce to legacy (`None`); no `choices` hydration from results focus |
+| Docs | `ARCHITECTURE.md` documents `classic_focus_channel` beside `classic_focus_run_id` |
 
 #### Out of scope
 - New classic analytics
 - Auto-running grid/time from classic pages
 - Voice mic entry
-- Replacing `classic_focus_run_id` with an unrelated key namespace without cause
+- Converting `classic_focus_run_id` to a dict/object
+- Any focus key other than `classic_focus_run_id` + `classic_focus_channel`
 
 #### Acceptance
-- [ ] From a ledger-backed classic run, Discuss lands on results channel for that `run_id`
-- [ ] Without a ledger/run id, behavior remains safe (thesis focus + remediation copy)
+- [ ] From a ledger-backed classic run, Discuss sets both keys and Assistant opens results channel for that `run_id`
+- [ ] Absent/`None` `classic_focus_channel` preserves legacy Discuss navigation
+- [ ] Thesis switch/exit clears both focus keys
 - [ ] Draft chat does not absorb results history
 
 #### Regression safety
 Navigation/focus only. Engine and compute paths untouched.
+`classic_focus_run_id` string semantics preserved for existing consumers.
 
 #### Files allowed to touch
 ```
 thesistester/classic_nav.py
+thesistester/classic_context.py                 # CLASSIC_SESSION_KEYS / thesis-scoped clear
 thesistester/classic_ledger.py                  # only if read-only helpers needed
 thesistester/assistant/workspace.py
 pages/14_Research_Assistant.py
@@ -751,13 +861,14 @@ assistant-only work:
 | Results messages hydrate draft `choices` | Persist without `choices`; page hydration filters draft channel only; tests |
 | Nested `st.chat_input` breaks page input | v1 freezes keyed `st.text_input` + send button for Discuss/Help |
 | Help channel answers performance questions badly | Explicit remediation to Discuss results; eval fixture |
-| Help exposes agent/CI internals | Section allowlist; `AGENT_GUIDE` excluded from v1 corpus |
+| Help invents numbers not in docs | §5.2 verbatim corpus/registry digit grounding; fail closed |
+| Help exposes agent/CI internals | Frozen §7.1 section allowlist; `AGENT_GUIDE` excluded |
 | Optional `TIME.analyze` becomes hidden compute | Default `allow_time_enrichment=false`; audit transcript; RO only |
 | Model picks ranking metric | RQ-2 freeze: packet/recorded/configured metric only |
 | Prompt injection (“run the pipeline”) | Eval suite; orchestrator allowlist; no tools exposed to results/help LLM in v1 beyond server-side RO import/enrichment |
-| Corpus drift / wrong citations | Path + section allowlist; prefer glossary/registry for definitions |
+| Corpus drift / wrong citations | Frozen §7.1 table + heading match rules; prefer glossary/registry |
 | Scope creep into voice | VA ownership note; RQ PRs reject audio/xAI files |
-| Parallel classic focus keys | RQ-4 extends `classic_focus_run_id` / `discuss_run` only |
+| Focus shape drift | RQ-4: keep string `classic_focus_run_id`; sole companion `classic_focus_channel` |
 
 ---
 
@@ -787,7 +898,8 @@ Implement RQ-0 from docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md exactly.
 Constraints:
 - Contracts/config/corpus manifest only. No OpenAI calls, UI chat widgets, or orchestrator reply loops.
 - Follow the PR’s Files allowed to touch list. Prefer extending thesistester/assistant/llm.py for settings loaders.
-- Add help_corpus.py with path + section allowlist; reject `..` and non-allowlisted sections; do not load AGENT_GUIDE.
+- Add help_corpus.py encoding §7.1 / §7.1.1–§7.1.3 exactly (paths, whole_file vs sections, exact H2 title strings, heading match rules, registry digest shape). Reject `..`, AGENT_GUIDE, and any H2 not listed (e.g. architecture "Packaging and tooling boundary (R9)"; otf "§10 — Regression safety").
+- Do not invent extra doc_ids or section titles beyond §7.1.
 - Add [assistant.results_qa] and [assistant.product_help] to config/assistant.toml exactly as §8.
 - Missing TOML sections → channel disabled / safe defaults. Present sections use per-channel max_history_messages override semantics.
 - Optional: pure is_draft_channel_message (or equivalent) helper for RQ-1; no behavior change to handle_chat_turn yet.
@@ -822,14 +934,53 @@ Constraints:
 Implement RQ-3 from docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md exactly.
 
 Constraints:
-- Product/help channel only. No results packet loading, no voice, no AGENT_GUIDE corpus.
+- Product/help channel only. No results packet loading, no voice, no AGENT_GUIDE corpus, no §7.1 widening.
 - Follow the PR’s Files allowed to touch list. Do not modify engine, levels, signals, or goldens.
-- Add product_help.py and AssistantOrchestrator.handle_help_turn over help_corpus path+section allowlist + registry digest.
+- Add product_help.py and AssistantOrchestrator.handle_help_turn over help_corpus §7.1 allowlist + registry digest.
 - Intent guard: run-performance questions → structured remediation to Discuss results (no fabricated numbers).
+- Enforce Help numeric grounding (§5.2): every digit token in summary/caveats/followups must be a verbatim substring of attached corpus texts or registry digest JSON; else fail closed.
+- Citations must reference doc_id/section pairs actually attached (registry uses section="digest").
 - UI: Help panel with keyed st.text_input + send button; do not reuse thesis st.chat_input.
 - Persist channel=product_help; omit choices; trim history by channel using product_help max_history_messages.
 - Tests per RQ-3 acceptance; thesis draft fixtures unchanged.
 - Same-PR docs per RQ-3 scope.
+- PR body must include a Regression safety paragraph.
+- Keep ruff + pytest green.
+```
+
+### 15.4 RQ-2 (after RQ-1)
+
+```markdown
+Implement RQ-2 from docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md exactly.
+
+Constraints:
+- Deterministic rankings + optional RO TIME.analyze only. No product help, no voice, no bundle mutation.
+- Follow the PR’s Files allowed to touch list. Do not modify engine, levels, signals, goldens, or grid/time formulas.
+- Add results_projections.py: project_grid_rankings / project_time_rankings with stable JSON-safe paths.
+- Default grid ranking metric = packet/best_grid_result recorded metric, else configured grid metric from assumptions. Model must not choose the metric.
+- Merge projections only into an ephemeral turn context under results.projections.*; grounding audits that same object.
+- allow_time_enrichment default false; when true and time_grouped_summary missing, RO TIME.analyze once + audit transcript; never PIPELINE.*.
+- “Best” language must state metric, candidate set, min-trades, IS vs OOS status.
+- Tests per RQ-2 acceptance.
+- Same-PR docs per RQ-2 scope.
+- PR body must include a Regression safety paragraph.
+- Keep ruff + pytest green.
+```
+
+### 15.5 RQ-4 (after RQ-1; prefer after RQ-2)
+
+```markdown
+Implement RQ-4 from docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md exactly.
+
+Constraints:
+- Classic Discuss → results-channel binding only. No new analytics, no voice, no focus-key invention beyond the freeze.
+- Follow the PR’s Files allowed to touch list.
+- Keep classic_focus_run_id as a string. Add companion classic_focus_channel with only legal non-None value "results_qa".
+- discuss_run / set_classic_focus_run set both keys; consume clears both atomically; add classic_focus_channel to CLASSIC_SESSION_KEYS and CLASSIC_THESIS_SCOPED_KEYS.
+- Research Assistant: when channel is results_qa, open Advanced → Linked runs → that run’s Discuss thread; None/absent channel keeps legacy behavior.
+- Do not convert classic_focus_run_id into a dict. Do not add assistant_focus_* keys.
+- Tests: pair shape, atomic clear, thesis switch clears both, legacy path preserved, no choices hydration.
+- Same-PR docs: ARCHITECTURE.md documents classic_focus_channel.
 - PR body must include a Regression safety paragraph.
 - Keep ruff + pytest green.
 ```

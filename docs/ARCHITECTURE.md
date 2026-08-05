@@ -261,13 +261,16 @@ completed run. Future recomputation still requires
 pages:
 
 - **Discuss this run** (Backtest / Research Bundles): sets active + focus run
-  (`classic_focus_run_id`) and navigates to Research Assistant; does not
-  re-register. Visible under research mode even without live session trades
-  (uses thesis-recorded runs). Only completed runs with hash-verified bundle
-  provenance are discussable; non-discussable active breadcrumbs fall back to
-  latest discussable. RQ-4 (see `RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`)
-  will **extend** this existing focus path with `channel=results_qa` binding
-  so Assistant opens Discuss results for that run — not a parallel focus key.
+  (`classic_focus_run_id`, still a run-id string) and navigates to Research
+  Assistant; does not re-register. Visible under research mode even without
+  live session trades (uses thesis-recorded runs). Only completed runs with
+  hash-verified bundle provenance are discussable; non-discussable active
+  breadcrumbs fall back to latest discussable. RQ-4 (see
+  `RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`) adds companion session key
+  `classic_focus_channel` with sole legal non-null value `"results_qa"` so
+  Assistant opens that run’s Discuss results thread; it must not convert
+  `classic_focus_run_id` into a dict or invent any other focus-key namespace.
+  Both focus keys clear together on consume and on thesis-scoped classic clear.
 - **Open exact / Restore bundle** (Assistant): hash-verified
   `restore_run_bundle_to_session` clears staged `classic_page_proposal`
   (restored widgets must not be overwritten by a prior draft). Open exact
@@ -393,12 +396,13 @@ same PR that introduces them; see
 `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`. Contract freezes for that
 series include: draft history isolation (`handle_chat_turn` / draft hydration
 ignore `channel`-tagged messages), v1 Discuss/Help inputs as keyed
-`st.text_input` + send (not nested `st.chat_input`), Help corpus path+section
-allowlist (no `AGENT_GUIDE` in v1 user Help), and RQ-4 extending existing
-`classic_focus_run_id` / `discuss_run` rather than inventing a parallel focus
-key. Until RQ-1/RQ-3 land, assistant chat remains thesis-drafting only and
-post-run narratives remain one-shot Explain / LLM explain under Advanced →
-Linked runs.
+`st.text_input` + send (not nested `st.chat_input`), frozen Help §7.1
+path+section allowlist (no `AGENT_GUIDE`; no agent-invented sections), Help
+numeric grounding via verbatim corpus/registry substrings, and RQ-4 companion
+key `classic_focus_channel="results_qa"` beside string `classic_focus_run_id`
+(not a dict focus payload). Until RQ-1/RQ-3 land, assistant chat remains
+thesis-drafting only and post-run narratives remain one-shot Explain / LLM
+explain under Advanced → Linked runs.
 
 Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_draft_choices`, `assistant_hydrated_conversation_id`,
