@@ -181,6 +181,61 @@ def test_opening_range_not_visible_before_or_end():
     assert not at_or_after["OR_High"].isna().all(), "OR_High must be available after OR ends"
 
 
+def test_asia_levels_gated_until_close():
+    """AsiaHigh/AsiaLow must be NaN during Asia and available from asia_end clock gate."""
+    asia_start = pd.Timestamp("2026-06-02 20:00:00", tz=TZ)
+    asia_mid = pd.Timestamp("2026-06-02 22:30:00", tz=TZ)
+    asia_close = pd.Timestamp("2026-06-03 00:00:00", tz=TZ)
+    pre_rth = pd.Timestamp("2026-06-03 08:00:00", tz=TZ)
+
+    bars = [
+        _ohlcv_bar(asia_start, 4000.0, 4050.0, 3990.0, 4010.0, 100.0),
+        _ohlcv_bar(asia_mid, 4010.0, 4060.0, 3980.0, 4020.0, 80.0),
+        _ohlcv_bar(asia_close, 4020.0, 4025.0, 4015.0, 4022.0, 90.0),
+        _ohlcv_bar(pre_rth, 4022.0, 4030.0, 4010.0, 4028.0, 70.0),
+    ]
+    df = tag_session(_build_df(bars))
+    result = compute_session_levels(df, instrument="ES")
+
+    during = result[result["timestamp"] < asia_close]
+    assert during["AsiaHigh"].isna().all(), "AsiaHigh must be NaN during Asia"
+    assert during["AsiaLow"].isna().all(), "AsiaLow must be NaN during Asia"
+
+    at_close = result[result["timestamp"] == asia_close].iloc[0]
+    assert at_close["AsiaHigh"] == pytest.approx(4060.0)
+    assert at_close["AsiaLow"] == pytest.approx(3980.0)
+
+    later = result[result["timestamp"] == pre_rth].iloc[0]
+    assert later["AsiaHigh"] == pytest.approx(4060.0)
+    assert later["AsiaLow"] == pytest.approx(3980.0)
+
+
+def test_asia_levels_future_shock_append_does_not_change_prior():
+    """Appending extreme post-Asia bars must not change AsiaHigh/AsiaLow already emitted."""
+    asia_start = pd.Timestamp("2026-06-02 20:00:00", tz=TZ)
+    asia_mid = pd.Timestamp("2026-06-02 22:00:00", tz=TZ)
+    asia_close = pd.Timestamp("2026-06-03 00:00:00", tz=TZ)
+
+    base_bars = [
+        _ohlcv_bar(asia_start, 4000.0, 4050.0, 3990.0, 4010.0, 100.0),
+        _ohlcv_bar(asia_mid, 4010.0, 4060.0, 3980.0, 4020.0, 80.0),
+        _ohlcv_bar(asia_close, 4020.0, 4025.0, 4015.0, 4022.0, 90.0),
+    ]
+    base = tag_session(_build_df(base_bars))
+    r_base = compute_session_levels(base, instrument="ES")
+
+    shock = _ohlcv_bar(
+        pd.Timestamp("2026-06-03 09:30:00", tz=TZ), 5000.0, 9999.0, 1.0, 5000.0, 1e9
+    )
+    extended = tag_session(_build_df(base_bars + [shock]))
+    r_ext = compute_session_levels(extended, instrument="ES")
+
+    base_cut = r_base[r_base["timestamp"] <= asia_close].reset_index(drop=True)
+    ext_cut = r_ext[r_ext["timestamp"] <= asia_close].reset_index(drop=True)
+    pd.testing.assert_series_equal(base_cut["AsiaHigh"], ext_cut["AsiaHigh"], check_names=False)
+    pd.testing.assert_series_equal(base_cut["AsiaLow"], ext_cut["AsiaLow"], check_names=False)
+
+
 # ---------------------------------------------------------------------------
 # A. Prior session levels — future shock test (pdHigh unchanged when future day added)
 # ---------------------------------------------------------------------------

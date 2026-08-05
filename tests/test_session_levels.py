@@ -267,6 +267,97 @@ def test_overnight_levels_exclude_post_rth_contamination_and_stay_hidden_pre_rth
     assert first_rth["ONL"] == 95.0
 
 
+def test_asia_levels_hidden_during_window_and_emit_after_close():
+    """AsiaHigh/AsiaLow stay NaN during Asia; freeze at 00:00 ET close (default window)."""
+    df = _build_df(
+        [
+            # Pre-Asia ETH (same trading session) — must NOT enter Asia aggregate.
+            ("2026-06-02 18:00:00", 100.0, 999.0, 1.0, 100.0),
+            ("2026-06-02 19:59:00", 101.0, 998.0, 2.0, 101.0),
+            # Asia window [20:00, 00:00)
+            ("2026-06-02 20:00:00", 110.0, 120.0, 109.0, 115.0),
+            ("2026-06-02 22:00:00", 115.0, 125.0, 105.0, 118.0),
+            ("2026-06-02 23:59:00", 118.0, 122.0, 108.0, 119.0),
+            # Asia close — first available bar
+            ("2026-06-03 00:00:00", 119.0, 130.0, 100.0, 120.0),
+            ("2026-06-03 08:00:00", 120.0, 140.0, 90.0, 125.0),
+            ("2026-06-03 09:30:00", 125.0, 150.0, 80.0, 130.0),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+
+    during = levels["timestamp"] < pd.Timestamp("2026-06-03 00:00:00", tz=TZ)
+    assert levels.loc[during, "AsiaHigh"].isna().all()
+    assert levels.loc[during, "AsiaLow"].isna().all()
+
+    after = levels[levels["timestamp"] >= pd.Timestamp("2026-06-03 00:00:00", tz=TZ)]
+    assert np.allclose(after["AsiaHigh"].to_numpy(), [125.0] * len(after))
+    assert np.allclose(after["AsiaLow"].to_numpy(), [105.0] * len(after))
+
+
+def test_asia_levels_exclude_pre_asia_eth_and_differ_from_onh_onl():
+    df = _build_df(
+        [
+            ("2026-06-02 18:00:00", 100.0, 200.0, 50.0, 100.0),  # pre-Asia extremes
+            ("2026-06-02 20:00:00", 110.0, 120.0, 109.0, 115.0),
+            ("2026-06-02 22:00:00", 115.0, 125.0, 105.0, 118.0),
+            ("2026-06-03 00:00:00", 119.0, 121.0, 118.0, 120.0),
+            ("2026-06-03 08:00:00", 120.0, 130.0, 95.0, 125.0),  # post-Asia overnight extreme
+            ("2026-06-03 09:30:00", 125.0, 126.0, 124.0, 125.0),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+    at_close = levels[levels["timestamp"] == pd.Timestamp("2026-06-03 00:00:00", tz=TZ)].iloc[0]
+    at_rth = levels[levels["timestamp"] == pd.Timestamp("2026-06-03 09:30:00", tz=TZ)].iloc[0]
+
+    assert at_close["AsiaHigh"] == 125.0
+    assert at_close["AsiaLow"] == 105.0
+    assert at_rth["AsiaHigh"] == 125.0
+    assert at_rth["AsiaLow"] == 105.0
+    # Overnight includes pre-Asia + post-Asia ETH; Asia does not.
+    assert at_rth["ONH"] == 200.0
+    assert at_rth["ONL"] == 50.0
+    assert at_rth["AsiaHigh"] != at_rth["ONH"]
+    assert at_rth["AsiaLow"] != at_rth["ONL"]
+
+
+def test_asia_levels_empty_window_remain_nan():
+    df = _build_df(
+        [
+            ("2026-06-02 18:00:00", 100.0, 101.0, 99.0, 100.0),
+            ("2026-06-03 08:00:00", 102.0, 103.0, 101.0, 102.0),
+            ("2026-06-03 09:30:00", 104.0, 105.0, 103.0, 104.0),
+        ]
+    )
+    levels = compute_session_levels(tag_session(df, "ES"), instrument="ES")
+    assert levels["AsiaHigh"].isna().all()
+    assert levels["AsiaLow"].isna().all()
+
+
+def test_asia_levels_future_shock_after_close_does_not_change_prior():
+    base_rows = [
+        ("2026-06-02 20:00:00", 110.0, 120.0, 109.0, 115.0),
+        ("2026-06-02 22:00:00", 115.0, 125.0, 105.0, 118.0),
+        ("2026-06-03 00:00:00", 119.0, 121.0, 118.0, 120.0),
+        ("2026-06-03 08:00:00", 120.0, 122.0, 119.0, 121.0),
+    ]
+    base = tag_session(_build_df(base_rows), "ES")
+    base_levels = compute_session_levels(base, instrument="ES")
+
+    extended_rows = base_rows + [
+        ("2026-06-03 09:30:00", 200.0, 999.0, 1.0, 200.0),
+        ("2026-06-03 10:00:00", 201.0, 1000.0, 0.5, 201.0),
+    ]
+    extended = tag_session(_build_df(extended_rows), "ES")
+    ext_levels = compute_session_levels(extended, instrument="ES")
+
+    cutoff = pd.Timestamp("2026-06-03 08:00:00", tz=TZ)
+    base_cut = base_levels[base_levels["timestamp"] <= cutoff].reset_index(drop=True)
+    ext_cut = ext_levels[ext_levels["timestamp"] <= cutoff].reset_index(drop=True)
+    pd.testing.assert_series_equal(base_cut["AsiaHigh"], ext_cut["AsiaHigh"], check_names=False)
+    pd.testing.assert_series_equal(base_cut["AsiaLow"], ext_cut["AsiaLow"], check_names=False)
+
+
 def test_previous_session_levels_map_to_all_rows_of_next_session():
     df = _build_df(
         [
@@ -454,6 +545,8 @@ def test_batch_vs_incremental_causality_matches_with_eth_session_boundaries():
         "pRTH_Open",
         "ONH",
         "ONL",
+        "AsiaHigh",
+        "AsiaLow",
         "OR_High",
         "OR_Low",
         "prevSettlement",

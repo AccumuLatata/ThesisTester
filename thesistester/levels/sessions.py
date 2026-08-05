@@ -173,6 +173,68 @@ def _previous_session_references(
     return out
 
 
+def _asia_high_low(
+    df: pd.DataFrame,
+    session_date: pd.Series,
+    local_ts: pd.Series,
+    asia_start: str,
+    asia_end: str,
+) -> pd.DataFrame:
+    """Completed Asia-session high/low, gated until Asia close (not rolling).
+
+    Aggregates ETH bars in the half-open exchange-local window
+    ``[asia_start, asia_end)``. When ``asia_end <= asia_start`` the window wraps
+    midnight (e.g. ``20:00 → 00:00``). Values stay ``NaN`` during the window and
+    become available at the Asia close clock time for that trading session.
+    """
+    out = pd.DataFrame(
+        {
+            "AsiaHigh": pd.Series(np.nan, index=df.index, dtype="float64"),
+            "AsiaLow": pd.Series(np.nan, index=df.index, dtype="float64"),
+        }
+    )
+    if "session" not in df.columns or not asia_start or not asia_end:
+        return out
+
+    start_time = pd.to_datetime(asia_start).time()
+    end_time = pd.to_datetime(asia_end).time()
+    t = local_ts.dt.time
+    mask_eth = df["session"].eq("ETH")
+
+    if end_time <= start_time:
+        # Midnight-wrapping window (e.g. 20:00 → 00:00): end-of-day only when
+        # end is exactly 00:00 (`t < 00:00` is empty); otherwise include early-AM.
+        in_asia_clock = (t >= start_time) | (t < end_time)
+    else:
+        in_asia_clock = (t >= start_time) & (t < end_time)
+
+    in_asia = mask_eth & in_asia_clock
+    if not in_asia.any():
+        return out
+
+    asia_levels = (
+        df.loc[in_asia]
+        .groupby(session_date[in_asia], sort=True)
+        .agg(AsiaHigh=("high", "max"), AsiaLow=("low", "min"))
+    )
+
+    # Clock gate at Asia close on the trading session's calendar date.
+    # For 20:00→00:00, end_minute=0 → available from session_date 00:00 ET.
+    tz = local_ts.dt.tz
+    session_midnight = pd.to_datetime(session_date).dt.tz_localize(tz)
+    end_minute = end_time.hour * 60 + end_time.minute
+    available_after = session_midnight + pd.to_timedelta(end_minute, unit="minute")
+    available_mask = local_ts >= available_after
+
+    out["AsiaHigh"] = (
+        session_date.map(asia_levels["AsiaHigh"]).where(available_mask).astype("float64")
+    )
+    out["AsiaLow"] = (
+        session_date.map(asia_levels["AsiaLow"]).where(available_mask).astype("float64")
+    )
+    return out
+
+
 def _opening_range(
     df: pd.DataFrame,
     session_date: pd.Series,
@@ -251,6 +313,9 @@ def compute_session_levels(
     - ``session`` is optional; when absent, session-dependent levels return NaN.
     - ``prevSettlement`` uses prior-day settlement when a ``settlement`` column exists;
       otherwise it conservatively falls back to prior-day final close.
+    - ``AsiaHigh`` / ``AsiaLow`` use instrument ``asia_start`` / ``asia_end``
+      (default ``20:00`` / ``00:00`` ET). Values are not rolling; they emit only
+      after the Asia close clock gate.
     """
     _require_tz_aware_timestamp(df)
     if instrument not in INSTRUMENTS:
@@ -302,6 +367,8 @@ def compute_session_levels(
 
     rth_start = pd.to_datetime(rth_start_s)
     rth_end = pd.to_datetime(rth_end_s)
+    asia_start = getattr(inst, "asia_start", "20:00") or "20:00"
+    asia_end = getattr(inst, "asia_end", "00:00") or "00:00"
 
     levels["RTH_Open"] = _rth_open(out, session_date)
     levels = levels.join(
@@ -310,6 +377,7 @@ def compute_session_levels(
     levels = levels.join(
         _previous_session_references(out, session_date, local_ts, eth_start, rth_start, rth_end)
     )
+    levels = levels.join(_asia_high_low(out, session_date, local_ts, asia_start, asia_end))
     levels = levels.join(
         _opening_range(out, session_date, local_ts, rth_start, opening_range_minutes)
     )
@@ -320,6 +388,8 @@ def compute_session_levels(
         "ONL",
         "pONH",
         "pONL",
+        "AsiaHigh",
+        "AsiaLow",
         "OR_High",
         "OR_Low",
         "RTH_Open",

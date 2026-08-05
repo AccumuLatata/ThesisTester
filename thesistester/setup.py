@@ -37,6 +37,8 @@ DEFAULT_TRIGGER_TIMEFRAME = "base"
 SUGGESTED_DEFAULT_LEVELS = [
     "ONH",
     "ONL",
+    "AsiaHigh",
+    "AsiaLow",
     "OR_High",
     "OR_Low",
     "RTH_Open",

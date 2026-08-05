@@ -270,6 +270,9 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
   values. Non-RTH bars always emit `NaN`.
 - RTH_Open and ONH/ONL are NaN until the first RTH bar of the session; no future RTH
   or overnight data can change ETH-bar values.
+- `AsiaHigh`/`AsiaLow` aggregate only ETH bars in the instrument Asia window
+  (default `20:00–00:00` ET) and remain NaN until the Asia close clock gate; they are
+  not rolling during Asia and are distinct from overnight ONH/ONL.
 - Opening range (OR_High/OR_Low) is NaN until the clock-based OR window closes.
 - Naked (`<level>_naked`) flags are produced by a pure forward scan; future bars cannot
   retroactively clear a prior bar's naked status.
@@ -282,6 +285,10 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 - Profile levels use a bar-level typical-price approximation. True intrabar
   volume-at-price data would change level values but would not introduce look-ahead.
 - ONH/ONL is not available during ETH (by design; the overnight has not yet closed).
+- AsiaHigh/AsiaLow are unavailable during the Asia window (by design; not a rolling
+  extreme). Pre-Asia ETH (e.g. 18:00–20:00 under the default window) is excluded from
+  the Asia aggregate. Asia ⊂ overnight for typical ES/NQ definitions, so Asia H/L
+  generally differs from ONH/ONL.
 - Rolling VWAP/POC/SMA/EMA at bar `i` include bar `i` close/volume. Signals treated
   as bar-close confirmed; this is documented intent, not a bug.
 - `dOpen/wOpen/mOpen` are current-period (live) opens, not prior-period references.
