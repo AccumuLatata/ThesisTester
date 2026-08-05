@@ -348,7 +348,7 @@ prev30mVWAP_hit_m5
 | `thesistester/visualization/backtest_chart.py` | Exclude both diagnostics from auto-plotted level overlays |
 | `pages/2_Levels.py` | Opt-in checkbox + validity integer; session_state keys; `_normalize` / compute passthrough defaults |
 | `tests/test_stage6_levels_ui_settings.py` | Update exact `DEFAULT_LEVELS_SETTINGS` equality assertion |
-| `thesistester/api.py` | Pass through normalized settings into `compute_all_levels` |
+| `thesistester/api.py` | Pass through normalized settings into `compute_all_levels`; extend `validate_run_spec` bool/int allowlists (`prev30m_vwap_enabled`, `prev30m_vwap_validity_periods`) so headless/agent run specs accept the family like other opt-in levels |
 | `thesistester/analytics/` (Phase B) | Optional R-stats helper by finalized bracket `hit_m1` / `hit_m5` |
 | Docs listed in §9 | Same-PR documentation |
 
@@ -480,6 +480,7 @@ Mandatory for every implementation PR:
 | Confluence / naked / Setup Builder semantics | Unchanged except that `prev30mVWAP` may appear as an additional selectable **price** level when computed; `hit_m*` never selectable |
 | Persistence / research identity | Additive settings keys + `LEVEL_ENGINE_VERSION` 3→4 (intentional cache invalidation only; not a semantic change to other families) |
 | UI outside Levels opt-in controls | Additive keys/widgets only; no layout/behavior changes to unrelated pages |
+| Headless API / agent (`api.compute_levels`, `run_experiment`, run-spec `levels`) | Same path as other opt-in families once keys are in `DEFAULT_LEVELS_SETTINGS` + validate/passthrough wiring; `prev30mVWAP` selectable; `hit_m*` present on the levels frame but not setup-eligible |
 | Assistant / CAI / classic export | Catalog may list `prev30mVWAP`; no unrelated contract changes |
 
 **Allowed intentional deltas (not regressions):**
