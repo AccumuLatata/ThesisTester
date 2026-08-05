@@ -158,9 +158,10 @@ def test_resolve_grid_ranking_defaults_sanitizes_unknown_metrics():
     ranked = project_grid_rankings(packet2, metric="also_bogus", min_trades=1)
     assert ranked["metric"] == "expectancy_r"
     assert ranked["best"]["stop_loss_ticks"] == 8
-    # Ephemeral context must not leave the rejected assumptions metric citable.
+    # Ephemeral context must not leave rejected metric names citable.
     context = build_ephemeral_results_context(packet2)
     assert context["assumptions"]["grid"]["ranking_metric"] == "expectancy_r"
+    assert context["results"]["best_grid_result"]["ranking_metric"] == "expectancy_r"
     assert context["results"]["projections"]["grid_rankings"]["metric"] == "expectancy_r"
 
 
@@ -294,6 +295,38 @@ def test_project_grid_rankings_treats_json_null_profit_factor_as_inf_for_all_win
     assert ranked["best"]["stop_loss_ticks"] == 8
     assert ranked["best"]["metric_value"] is None  # JSON-safe
     assert ranked["rows"][1]["stop_loss_ticks"] == 10
+
+    # Directional PF must use side win_rate, not aggregate.
+    directional_rows = [
+        {
+            "stop_loss_ticks": 8,
+            "take_profit_ticks": 16,
+            "trade_count": 20,
+            "win_rate": 0.5,
+            "long_trade_count": 10,
+            "long_win_rate": 1.0,
+            "long_profit_factor": None,
+            "short_trade_count": 10,
+            "short_win_rate": 0.4,
+            "short_profit_factor": 1.2,
+        },
+        {
+            "stop_loss_ticks": 10,
+            "take_profit_ticks": 20,
+            "trade_count": 20,
+            "win_rate": 0.9,
+            "long_trade_count": 10,
+            "long_win_rate": 0.7,
+            "long_profit_factor": 3.0,
+            "short_trade_count": 10,
+            "short_win_rate": 0.9,
+            "short_profit_factor": 2.5,
+        },
+    ]
+    long_ranked = project_grid_rankings(
+        directional_rows, metric="long_profit_factor", min_trades=1
+    )
+    assert long_ranked["best"]["stop_loss_ticks"] == 8
 
 
 def test_build_ephemeral_pins_recorded_best_when_rerank_disagrees():

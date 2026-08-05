@@ -62,13 +62,50 @@ def _finite_number(value: Any) -> float | None:
     return number
 
 
+def _all_wins_profit_factor_inf(row: Mapping[str, Any], metric: str) -> bool:
+    """True when a JSON-null profit-factor cell is an all-wins +inf sample."""
+    if metric == "profit_factor":
+        win_rate = _finite_number(row.get("win_rate"))
+        trade_count = _finite_number(row.get("trade_count"))
+        return (
+            win_rate is not None and win_rate >= 1.0 and trade_count is not None and trade_count > 0
+        )
+    if metric == "long_profit_factor":
+        win_rate = _finite_number(row.get("long_win_rate"))
+        trade_count = _finite_number(row.get("long_trade_count"))
+        return (
+            win_rate is not None and win_rate >= 1.0 and trade_count is not None and trade_count > 0
+        )
+    if metric == "short_profit_factor":
+        win_rate = _finite_number(row.get("short_win_rate"))
+        trade_count = _finite_number(row.get("short_trade_count"))
+        return (
+            win_rate is not None and win_rate >= 1.0 and trade_count is not None and trade_count > 0
+        )
+    if metric == "min_direction_profit_factor":
+        long_wr = _finite_number(row.get("long_win_rate"))
+        short_wr = _finite_number(row.get("short_win_rate"))
+        long_tc = _finite_number(row.get("long_trade_count"))
+        short_tc = _finite_number(row.get("short_trade_count"))
+        return (
+            long_wr is not None
+            and long_wr >= 1.0
+            and short_wr is not None
+            and short_wr >= 1.0
+            and long_tc is not None
+            and long_tc > 0
+            and short_tc is not None
+            and short_tc > 0
+        )
+    return False
+
+
 def _ranking_metric_value(row: Mapping[str, Any], metric: str) -> float | None:
     """Return a comparable ranking value, preserving engine +inf profit factors.
 
     Research bundles JSON-coerce ``float('inf')`` to ``null``. When the metric
-    is a profit-factor column and the row is an all-wins sample
-    (``win_rate >= 1`` with trades), treat null as +inf so re-ranking matches
-    ``best_grid_result``.
+    is a profit-factor column and the matching side/sample is all-wins, treat
+    null as +inf so re-ranking matches ``best_grid_result``.
     """
     raw = row.get(metric)
     if isinstance(raw, float) and raw == float("inf"):
@@ -76,11 +113,12 @@ def _ranking_metric_value(row: Mapping[str, Any], metric: str) -> float | None:
     number = _finite_number(raw)
     if number is not None:
         return number
-    if raw is None and metric.endswith("profit_factor"):
-        win_rate = _finite_number(row.get("win_rate"))
-        trade_count = _finite_number(row.get("trade_count"))
-        if win_rate is not None and win_rate >= 1.0 and trade_count is not None and trade_count > 0:
-            return float("inf")
+    if (
+        raw is None
+        and metric.endswith("profit_factor")
+        and _all_wins_profit_factor_inf(row, metric)
+    ):
+        return float("inf")
     return None
 
 
@@ -259,11 +297,16 @@ def _pin_recorded_grid_best(
         row["rank"] = index
         rows.append(row)
     by_rank = {str(row["rank"]): row for row in rows}
+    prior_eligible = int(projection.get("eligible_count") or 0)
     updated = dict(projection)
     updated["best"] = pinned
     updated["rows"] = rows
     updated["by_rank"] = by_rank
     updated["recorded_best_pinned"] = True
+    # Recorded winner may sit outside re-rank filters; keep eligible_count honest.
+    updated["eligible_count"] = max(prior_eligible, 1)
+    if prior_eligible == 0:
+        updated["recorded_best_outside_rerank_filter"] = True
     return updated
 
 
@@ -467,38 +510,39 @@ def _sync_ephemeral_ranking_metric_source(
     metric: str,
     metric_path: str,
 ) -> None:
-    """Align the cited metric-source path with the metric actually used.
+    """Align citable ranking-metric fields with the metric actually used.
 
-    Prevents grounded replies from citing a rejected/bogus
-    ``assumptions.grid.ranking_metric`` (or best-row metric) while projections
-    rank by ``expectancy_r``.
+    Rewrites the resolved source path and any rejected
+    ``results.best_grid_result.ranking_metric`` so grounded replies cannot cite
+    a bogus best-row metric while projections rank by a sanitized value.
     """
-    if metric_path == "assumptions.grid.ranking_metric":
-        assumptions = context.get("assumptions")
-        if not isinstance(assumptions, dict):
-            assumptions = dict(assumptions) if isinstance(assumptions, Mapping) else {}
-            context["assumptions"] = assumptions
-        else:
-            assumptions = dict(assumptions)
-            context["assumptions"] = assumptions
-        grid_cfg = assumptions.get("grid")
-        if not isinstance(grid_cfg, dict):
-            grid_cfg = dict(grid_cfg) if isinstance(grid_cfg, Mapping) else {}
-        else:
-            grid_cfg = dict(grid_cfg)
-        assumptions["grid"] = grid_cfg
+    assumptions = context.get("assumptions")
+    if not isinstance(assumptions, dict):
+        assumptions = dict(assumptions) if isinstance(assumptions, Mapping) else {}
+        context["assumptions"] = assumptions
+    else:
+        assumptions = dict(assumptions)
+        context["assumptions"] = assumptions
+    grid_cfg = assumptions.get("grid")
+    if not isinstance(grid_cfg, dict):
+        grid_cfg = dict(grid_cfg) if isinstance(grid_cfg, Mapping) else {}
+    else:
+        grid_cfg = dict(grid_cfg)
+    assumptions["grid"] = grid_cfg
+    if metric_path == "assumptions.grid.ranking_metric" or "ranking_metric" in grid_cfg:
         grid_cfg["ranking_metric"] = metric
+
+    results = context.get("results")
+    if not isinstance(results, dict):
         return
-    if metric_path == "results.best_grid_result.ranking_metric":
-        results = context.get("results")
-        if not isinstance(results, dict):
-            return
-        best = results.get("best_grid_result")
-        if not isinstance(best, Mapping):
-            return
-        best_copy = dict(best)
-        best_copy["ranking_metric"] = metric
-        results["best_grid_result"] = best_copy
+    best = results.get("best_grid_result")
+    if not isinstance(best, Mapping):
+        return
+    if "ranking_metric" not in best and metric_path != "results.best_grid_result.ranking_metric":
+        return
+    best_copy = dict(best)
+    best_copy["ranking_metric"] = metric
+    results["best_grid_result"] = best_copy
 
 
 def build_ephemeral_results_context(
