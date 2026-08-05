@@ -86,6 +86,17 @@ from thesistester.assistant.results_qa import (
     format_results_qa_reply_content,
     propose_results_reply,
 )
+from thesistester.assistant.product_help import (
+    PRODUCT_HELP_CHANNEL,
+    HelpCitation,
+    HelpEvidenceError,
+    HelpReply,
+    filter_product_help_history,
+    format_help_reply_content,
+    is_run_performance_question,
+    propose_help_reply,
+    remediation_help_reply,
+)
 from thesistester.assistant.registry_audit import (
     CapabilityAuditRow,
     audit_capability_registry,
@@ -166,6 +177,15 @@ __all__ = [
     "filter_results_qa_history",
     "format_results_qa_reply_content",
     "propose_results_reply",
+    "PRODUCT_HELP_CHANNEL",
+    "HelpCitation",
+    "HelpEvidenceError",
+    "HelpReply",
+    "filter_product_help_history",
+    "format_help_reply_content",
+    "is_run_performance_question",
+    "propose_help_reply",
+    "remediation_help_reply",
     "CapabilityAuditRow",
     "audit_capability_registry",
     "capability_audit_summary",

@@ -33,13 +33,29 @@ from thesistester.assistant.handlers import (
     get_handler,
     tool_limits_from_envelope,
 )
+from thesistester.assistant.help_corpus import (
+    HelpCorpusError,
+    build_registry_digest,
+    registry_digest_json,
+    select_help_corpus_chunks,
+)
 from thesistester.assistant.llm import (
     StructuredLLMClient,
     is_draft_channel_message,
+    load_product_help_settings,
     load_results_qa_settings,
 )
 from thesistester.assistant.llm_explainer import explain_packet_with_llm
 from thesistester.assistant.llm_intent import propose_thesis_draft
+from thesistester.assistant.product_help import (
+    PRODUCT_HELP_CHANNEL,
+    HelpEvidenceError,
+    filter_product_help_history,
+    format_help_reply_content,
+    is_run_performance_question,
+    propose_help_reply,
+    remediation_help_reply,
+)
 from thesistester.assistant.results_projections import (
     DEFAULT_TIME_BUCKET_COL,
     DEFAULT_TIME_MIN_TRADES,
@@ -654,6 +670,142 @@ class AssistantOrchestrator:
             status=OrchestrationStatus.COMPLETED.value,
             capability_id=RESULTS_QA_CHANNEL,
             payload=payload,
+        )
+
+    def handle_help_turn(
+        self,
+        client: StructuredLLMClient,
+        *,
+        thesis_id: str,
+        message: str,
+        conversation_id: str | None = None,
+        max_history_messages: int = 12,
+        max_corpus_chars: int | None = None,
+        repo_root: str | Path | None = None,
+    ) -> OrchestrationResult:
+        """Answer product/how-it-works questions from the §7.1 Help corpus (RQ-3).
+
+        Loads allowlisted corpus chunks + registry digest only. Never imports
+        research bundles, never dispatches ``PIPELINE.*`` / ``execute_confirmed_run``,
+        and never fabricates run performance numbers. Run-performance questions
+        receive a structured remediation pointing to Discuss results.
+        """
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError("Help message must be a non-empty string.")
+        settings = load_product_help_settings()
+        history_limit = (
+            max_history_messages
+            if isinstance(max_history_messages, int) and max_history_messages >= 0
+            else settings.max_history_messages
+        )
+        corpus_budget = (
+            max_corpus_chars
+            if isinstance(max_corpus_chars, int) and max_corpus_chars > 0
+            else settings.max_corpus_chars
+        )
+        root = Path(repo_root) if repo_root is not None else Path.cwd()
+
+        conversation = None
+        history: tuple[dict[str, Any], ...] = ()
+        if isinstance(conversation_id, str) and conversation_id.strip():
+            conversation = self.repository.get_conversation(thesis_id, conversation_id.strip())
+            history = filter_product_help_history(
+                conversation.messages,
+                max_history_messages=history_limit,
+            )
+
+        if is_run_performance_question(message):
+            reply = remediation_help_reply()
+            chunks: tuple[Any, ...] = ()
+            digest: list[dict[str, Any]] = []
+            provider_attempts = None
+        else:
+            try:
+                chunks = select_help_corpus_chunks(
+                    message.strip(),
+                    repo_root=root,
+                    max_chars=corpus_budget,
+                )
+            except HelpCorpusError as exc:
+                return OrchestrationResult(
+                    status=OrchestrationStatus.FAILED.value,
+                    capability_id=PRODUCT_HELP_CHANNEL,
+                    payload={
+                        "error": structured_error(
+                            category="tool",
+                            retryable=False,
+                            remediation=(
+                                "Ask a documentation question covered by the Help "
+                                "corpus, or open Discuss results for run metrics."
+                            ),
+                            message=str(exc),
+                        ).to_dict()
+                    },
+                )
+            digest = build_registry_digest()
+            digest_json = registry_digest_json(digest)
+            try:
+                reply = propose_help_reply(
+                    client,
+                    corpus_chunks=chunks,
+                    registry_digest=digest_json,
+                    history=history,
+                    user_message=message.strip(),
+                )
+            except HelpEvidenceError as exc:
+                return OrchestrationResult(
+                    status=OrchestrationStatus.FAILED.value,
+                    capability_id=PRODUCT_HELP_CHANNEL,
+                    payload={
+                        "error": structured_error(
+                            category="validation",
+                            retryable=True,
+                            remediation=(
+                                "Retry with a narrower product question, or open "
+                                "Discuss results for run performance."
+                            ),
+                            message=str(exc),
+                        ).to_dict()
+                    },
+                )
+            provider_attempts = getattr(client, "last_attempt_count", None)
+
+        if conversation is not None and isinstance(conversation_id, str):
+            user_record = self.repository.append_conversation_message(
+                thesis_id,
+                conversation_id.strip(),
+                expected_revision=conversation.revision,
+                message={
+                    "role": "user",
+                    "content": message.strip(),
+                    "channel": PRODUCT_HELP_CHANNEL,
+                },
+            )
+            self.repository.append_conversation_message(
+                thesis_id,
+                conversation_id.strip(),
+                expected_revision=user_record.revision,
+                message={
+                    "role": "assistant",
+                    "content": format_help_reply_content(reply),
+                    "channel": PRODUCT_HELP_CHANNEL,
+                    "summary": reply.summary,
+                    "caveats": list(reply.caveats),
+                    "citations": [item.to_dict() for item in reply.citations],
+                    "followups": list(reply.followups),
+                    "remediation": reply.remediation,
+                },
+            )
+        return OrchestrationResult(
+            status=OrchestrationStatus.COMPLETED.value,
+            capability_id=PRODUCT_HELP_CHANNEL,
+            payload={
+                "help_reply": reply,
+                "corpus_chunks": [chunk.to_dict() for chunk in chunks],
+                "registry_digest": digest,
+                "provider_attempts": provider_attempts,
+                "remediation": reply.remediation,
+            },
         )
 
     def execute_confirmed_run(

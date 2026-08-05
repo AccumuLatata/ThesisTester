@@ -485,11 +485,15 @@ other than the last bar in the dataset.
   (empty bundle grid tables fall back to packet `best_grid_result`; unknown
   ranking-metric names are sanitized via the allowlist preference chain) and
   optional RO `TIME.analyze` enrichment when
-  `assistant.results_qa.allow_time_enrichment=true` (default `false`);
-  product Help reply loops remain RQ-3. Thesis switches clear
-  `assistant_results_qa_drafts` and `results-qa-input-*` widget keys.
-  Draft-chat history excludes `results_qa` turns and tool/audit lines so
-  multi-turn Discuss results cannot starve thesis context.
+  `assistant.results_qa.allow_time_enrichment=true` (default `false`).
+  **RQ-3** ships documentation-grounded Help (`handle_help_turn` /
+  `product_help`) over the §7.1 corpus + registry digest; run-performance
+  questions remediate to Discuss results (no fabricated metrics). Help digit
+  tokens must be verbatim substrings of attached corpus/registry text.
+  Thesis switches clear `assistant_results_qa_drafts`,
+  `assistant_product_help_draft`, and related widget keys. Draft-chat history
+  excludes `results_qa` / `product_help` turns and tool/audit lines so
+  multi-turn Discuss/Help cannot starve thesis context.
 - LLM explanations must cite packet paths; uncited numerical tokens are rejected
   before render. When provenance includes a fingerprint, dataset identity is
   available at `assumptions.dataset.dataset_fingerprint` (and mirrored at

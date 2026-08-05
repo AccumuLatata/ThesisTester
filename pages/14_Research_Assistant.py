@@ -25,9 +25,14 @@ from thesistester.assistant.llm import (
     create_openai_client,
     is_draft_channel_message,
     load_llm_settings,
+    load_product_help_settings,
     load_results_qa_settings,
 )
 from thesistester.assistant.llm_explainer import LLMEvidenceError
+from thesistester.assistant.product_help import (
+    PRODUCT_HELP_CHANNEL,
+    HelpEvidenceError,
+)
 from thesistester.assistant.results_qa import RESULTS_QA_CHANNEL
 from thesistester.assistant.workspace import (
     CONFLUENCE_MODES,
@@ -250,8 +255,9 @@ if st.session_state["assistant_hydrated_conversation_id"] != conversation_id:
 st.subheader("Assistant chat")
 st.caption(
     "Thesis drafting only — extracts research choices and clarification questions. "
-    "It does not discuss completed backtests/grids/validation. For run narratives, "
-    "open Advanced → Linked runs → Explain run, LLM explain, or Discuss results."
+    "It does not discuss completed backtests/grids/validation or product docs. "
+    "For run narratives, open Advanced → Linked runs → Discuss results. "
+    "For feature/how-it-works questions, use Help / how it works below."
 )
 for message in active_conversation.messages:
     display_role = chat_message_display_role(message)
@@ -304,6 +310,85 @@ if chat_message := st.chat_input("Describe or refine this thesis"):
         st.rerun()
     except (LLMConfigurationError, LLMProviderError) as exc:
         st.error(str(exc))
+
+help_settings = load_product_help_settings()
+if help_settings.enabled:
+    with st.expander("Help / how it works", expanded=False):
+        st.caption(
+            "Documentation-grounded product help (allowlisted docs + capability "
+            "registry). Not a second results explainer — use Discuss results for "
+            "completed-run metrics."
+        )
+        help_thread = [
+            message
+            for message in active_conversation.messages
+            if message.get("channel") == PRODUCT_HELP_CHANNEL
+            and str(message.get("role") or "").strip().lower()
+            in {"user", "human", "assistant", "ai"}
+        ]
+        for message in help_thread:
+            role = str(message.get("role") or "").strip().lower()
+            display = "user" if role in {"user", "human"} else "assistant"
+            body = str(message.get("content") or "").strip()
+            if not body:
+                continue
+            with st.chat_message(display):
+                st.write(body)
+        help_input_key = "product-help-input"
+        if help_input_key not in st.session_state:
+            st.session_state[help_input_key] = str(
+                st.session_state.get("assistant_product_help_draft", "")
+            )
+        st.text_input(
+            "Ask how ThesisTester works",
+            key=help_input_key,
+            placeholder="e.g. How does grid ranking work?",
+        )
+        st.session_state["assistant_product_help_draft"] = str(
+            st.session_state.get(help_input_key, "")
+        )
+        if st.button("Send help question", key="product-help-send"):
+            question = str(st.session_state.get(help_input_key, "")).strip()
+            if not question:
+                st.error("Enter a product or workflow question.")
+            else:
+                try:
+                    client = create_openai_client(load_llm_settings())
+                    result = orchestrator.handle_help_turn(
+                        client,
+                        thesis_id=thesis_id,
+                        message=question,
+                        conversation_id=conversation_id,
+                        max_history_messages=help_settings.max_history_messages,
+                        max_corpus_chars=help_settings.max_corpus_chars,
+                    )
+                    if result.status != "completed":
+                        raise ValueError(
+                            result.payload.get("error", {}).get(
+                                "message", "Unable to answer this help question."
+                            )
+                        )
+                    st.session_state[help_input_key] = ""
+                    st.session_state["assistant_product_help_draft"] = ""
+                    flash_level = "info" if result.payload.get("remediation") else "success"
+                    flash_message = (
+                        "Help redirected to Discuss results for run performance."
+                        if result.payload.get("remediation")
+                        else "Help answer updated."
+                    )
+                    set_assistant_flash(
+                        st.session_state,
+                        level=flash_level,
+                        message=flash_message,
+                    )
+                    st.rerun()
+                except (
+                    LLMConfigurationError,
+                    LLMProviderError,
+                    HelpEvidenceError,
+                    ValueError,
+                ) as exc:
+                    st.error(f"Unable to answer help question: {exc}")
 
 
 with st.expander("Advanced: draft, runs & compare", expanded=False):

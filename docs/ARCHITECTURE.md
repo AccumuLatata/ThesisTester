@@ -382,6 +382,7 @@ The Research Assistant page stages only these additive `assistant_*` keys
 | `assistant_run_comparisons` | In-session comparison by thesis_id |
 | `assistant_portfolio_analyses` | In-session portfolio analysis by thesis_id |
 | `assistant_results_qa_drafts` | Per-run Discuss results text-input drafts (`{run_id: str}`) |
+| `assistant_product_help_draft` | Help panel text-input draft string |
 | `assistant_bundle_handoff` | Last hash-verified restore into research pages |
 | `assistant_flash` | One-shot `{level, message}` UI notice consumed after `st.rerun()` |
 
@@ -417,17 +418,22 @@ through). Empty bundle `tables.grid_results` falls back to packet
 exported. Optional RO `TIME.analyze` enrichment runs only when
 `assistant.results_qa.allow_time_enrichment=true` (default `false`) and
 `time_grouped_summary` is missing, after hash verification.
-Thesis chat remains draft-only; Help reply loops remain RQ-3; one-shot Explain /
-LLM explain remain available beside Discuss results.
+**RQ-3 landed:** `thesistester/assistant/product_help.py` +
+`handle_help_turn`; Help / how it works panel on Research Assistant
+(`st.text_input` + send); `assistant_product_help_draft` session key;
+lexical `select_help_corpus_chunks` under §7.1 + registry digest (never
+`AGENT_GUIDE`). Run-performance questions remediate to Discuss results.
+Thesis chat remains draft-only; one-shot Explain / LLM explain remain
+available beside Discuss results.
 
 Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_draft_choices`, `assistant_hydrated_conversation_id`,
 `assistant_validated_run_spec`, `assistant_results_qa_drafts`,
-`assistant_bundle_handoff`, `assistant_flash`) so
-draft/validation/hydration/handoff/flash/results-drafts cannot leak.
+`assistant_product_help_draft`, `assistant_bundle_handoff`, `assistant_flash`)
+so draft/validation/hydration/handoff/flash/results/help drafts cannot leak.
 `clear_thesis_scoped_state` also deletes ephemeral Streamlit widget keys
-prefixed `results-qa-input-` so Discuss results text-input hydration cannot
-revive a cleared draft after a thesis switch. Discuss results assistant
+prefixed `results-qa-input-` / `product-help-input` so Discuss/Help text-input
+hydration cannot revive a cleared draft after a thesis switch. Discuss results assistant
 `content` embeds path-cited Claims (via `format_results_qa_reply_content`) for
 plain-text auditability. `handle_chat_turn` draft history excludes
 channel-tagged messages and channel-less `role: tool` audit lines so RO

@@ -16,6 +16,7 @@ from thesistester.assistant.help_corpus import (
     load_corpus_chunks,
     manifest_doc_ids,
     resolve_corpus_path,
+    select_help_corpus_chunks,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -160,3 +161,19 @@ def test_build_registry_digest_shape():
             "confirmation",
             "limitation",
         }
+
+
+def test_select_help_corpus_chunks_respects_budget_and_allowlist():
+    chunks = select_help_corpus_chunks(
+        "How does grid ranking and expectancy_r work?",
+        repo_root=REPO_ROOT,
+        max_chars=8_000,
+    )
+    assert chunks
+    assert sum(len(chunk.text) for chunk in chunks) <= 8_000
+    assert all(chunk.doc_id in set(manifest_doc_ids()) - {"registry"} for chunk in chunks)
+    # Grid/metric queries should prefer glossary/architecture when scored.
+    assert any(chunk.doc_id in {"metrics", "architecture", "assumptions"} for chunk in chunks)
+    # Oversized individual chunks are skipped; tiny budgets that fit nothing fail.
+    with pytest.raises(HelpCorpusError, match="No allowlisted Help chunk fits"):
+        select_help_corpus_chunks("ranking", repo_root=REPO_ROOT, max_chars=1)

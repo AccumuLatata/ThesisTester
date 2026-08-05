@@ -1,7 +1,7 @@
 # Results Discussion & Product Help — Implementation Contract
 
 **Document type:** Implementation contract (RQ-series) — **single source of truth**
-**Status:** active — RQ-0…RQ-2 implemented; RQ-3+ pending
+**Status:** active — RQ-0…RQ-3 implemented; RQ-4+ pending
 **Date:** 2026-08-05
 **Owner surface:** `thesistester/assistant/` + Research Assistant page (+ narrow classic-nav entry points)
 **Provider (text):** existing OpenAI structured client (`config/assistant.toml` / `OPENAI_API_KEY`)
@@ -704,11 +704,11 @@ without mixing in run performance claims.
 - Widening §7.1 allowlist
 
 #### Acceptance
-- [ ] “How does grid ranking work?” returns citations to §7.1-allowlisted glossary/architecture/registry only
-- [ ] “What was my best SL?” in Help → remediation to Discuss results, no numbers
-- [ ] Uncited digit token in Help summary/caveats/followups → error before persist/render
-- [ ] Non-allowlisted doc paths and sections never load
-- [ ] Thesis draft chat fixtures unchanged
+- [x] “How does grid ranking work?” returns citations to §7.1-allowlisted glossary/architecture/registry only
+- [x] “What was my best SL?” in Help → remediation to Discuss results, no numbers
+- [x] Uncited digit token in Help summary/caveats/followups → error before persist/render
+- [x] Non-allowlisted doc paths and sections never load
+- [x] Thesis draft chat fixtures unchanged
 
 #### Regression safety
 New channel + UI panel. No engine/golden changes. Results path untouched when
@@ -731,8 +731,17 @@ docs/AGENT_GUIDE.md
 docs/ENGINEERING_ROADMAP.md
 ```
 
-#### Implemented contract (fill when merged)
-_Pending implementation._
+#### Implemented contract
+- `thesistester/assistant/product_help.py` — `propose_help_reply`,
+  `is_run_performance_question` / remediation, digit-token grounding,
+  history filter, `channel=product_help`
+- `help_corpus.select_help_corpus_chunks` — lexical retrieval under §7.1 +
+  `max_corpus_chars` (no network; no `AGENT_GUIDE`)
+- `AssistantOrchestrator.handle_help_turn` — corpus + registry digest → reply →
+  persist messages without `choices`; never bundle import / `PIPELINE.*`
+- UI: Help / how it works expander (`st.text_input` + send) sibling to thesis chat
+- Session key: `assistant_product_help_draft` (thesis-scoped)
+- Tests: `tests/test_assistant_product_help.py` + help_corpus/workspace extensions
 
 ---
 
@@ -1032,7 +1041,7 @@ Constraints:
 |---|---|
 | RQ-0 | Implemented |
 | RQ-1 (VA-1) | Implemented |
-| RQ-2 | Implemented (this PR) |
-| RQ-3 | Proposed |
+| RQ-2 | Implemented |
+| RQ-3 | Implemented (this PR) |
 | RQ-4 | Proposed |
 | RQ-5 | Proposed |
