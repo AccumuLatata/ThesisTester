@@ -287,6 +287,13 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   **RQ-5** froze honesty/injection evals in
   `tests/test_assistant_llm_evaluations.py` (release gate). Do not reopen RQ
   for new features; voice remains VA-series only.
+- Help **content/allowlist coverage** (making all primary features explainable
+  via Help) has a **single** contract:
+  `docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md` (HC-series). Prefer writing
+  `docs/USER_GUIDE.md` and amending RQ §7.1 + `help_corpus.py` in the same PR;
+  follow HC §1.1 for intent-aware retrieval (do not naively demote glossary);
+  never allowlist stub USER_GUIDE H2s; do not fork `product_help` / merge Help
+  into thesis draft chat; never load `AGENT_GUIDE` into the user Help corpus.
 - Realtime voice review (VA-series) has a **single** contract for **voice**:
   `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (rewritten post-RQ; do not add
   a parallel voice plan). VA-1 is already satisfied by RQ-1 — start from VA-0 /
