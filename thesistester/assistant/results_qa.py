@@ -67,13 +67,22 @@ _CLAIM_PATH_WRAPPER_PREFIXES = ("evidence_packet.", "packet.")
 
 
 def normalize_results_claim_path(path: str) -> str:
-    """Strip accidental evidence-wrapper prefixes from a results claim path."""
+    """Strip accidental evidence-wrapper prefixes from a results claim path.
+
+    Models sometimes stack wrappers (``evidence_packet.packet.*``); strip every
+    leading ``evidence_packet.`` / ``packet.`` segment before resolution.
+    """
     text = path.strip()
-    lowered = text.lower()
-    for prefix in _CLAIM_PATH_WRAPPER_PREFIXES:
-        if lowered.startswith(prefix):
-            return text[len(prefix) :]
-    return text
+    while True:
+        lowered = text.lower()
+        stripped = False
+        for prefix in _CLAIM_PATH_WRAPPER_PREFIXES:
+            if lowered.startswith(prefix):
+                text = text[len(prefix) :].lstrip(".")
+                stripped = True
+                break
+        if not stripped:
+            return text
 
 
 @dataclass(frozen=True)

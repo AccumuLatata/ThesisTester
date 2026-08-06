@@ -457,9 +457,10 @@ back to `entry_30min_bucket` / `entry_hour_bucket` so Time Analysis
 clock-bucket exports still yield a non-null `best.bucket`. Cited `HH:MM`
 bucket labels ground matching clock spans as wholes without allowlisting
 component digits (hash/path strings do not launder digits). Results Q&A
-strips accidental `evidence_packet.` / `packet.` claim-path prefixes and
-resolves JSON array indices; fractional rates accept `%` or word-form
-percent narration. Optional RO `TIME.analyze` enrichment runs only when
+strips stacked accidental `evidence_packet.` / `packet.` claim-path prefixes
+and resolves JSON array indices; fractional rates accept `%` or word-form
+percent narration (clock minutes cannot become synthetic percent tokens).
+Optional RO `TIME.analyze` enrichment runs only when
 `assistant.results_qa.allow_time_enrichment=true` (default `false`) and
 `time_grouped_summary` is missing, after hash verification.
 **RQ-3 landed:** `thesistester/assistant/product_help.py` +

@@ -175,6 +175,12 @@ def test_normalize_results_claim_path_strips_evidence_wrapper_prefix():
     assert normalize_results_claim_path("results.best_grid_result.stop_loss_ticks") == (
         "results.best_grid_result.stop_loss_ticks"
     )
+    assert normalize_results_claim_path(
+        "evidence_packet.packet.results.trade_summary.trade_count"
+    ) == ("results.trade_summary.trade_count")
+    assert normalize_results_claim_path("Evidence_Packet.RESULTS.trade_count") == (
+        "RESULTS.trade_count"
+    )
 
 
 def test_propose_results_reply_accepts_evidence_packet_path_prefix():
@@ -294,6 +300,47 @@ def test_propose_results_reply_rejects_bare_percent_points_without_percent_marke
             packet=packet,
             history=(),
             user_message="What is win rate?",
+        )
+
+
+def test_propose_results_reply_rejects_clock_minutes_as_percent_words():
+    """Clock-like '8:35 percent' must not launder a synthetic 35% from avg_r=0.35."""
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={
+            "time_grouped_summary": [
+                {
+                    "entry_30min_bucket": "08:30",
+                    "trade_count": 20,
+                    "avg_r": 0.35,
+                    "sample_warning": False,
+                }
+            ]
+        },
+        warnings=(),
+    )
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Odd narration says 8:35 percent with avg_r 0.35.",
+                "caveats": ["Clock minutes are not percent points."],
+                "claims": [
+                    {
+                        "text": "avg_r is 0.35.",
+                        "path": "results.time_grouped_summary.0.avg_r",
+                    }
+                ],
+                "followups": ["Ask about the bucket label."],
+            }
+
+    with pytest.raises(LLMEvidenceError, match="Uncited numerical claim"):
+        propose_results_reply(
+            Client(),
+            packet=packet,
+            history=(),
+            user_message="What is avg_r?",
         )
 
 

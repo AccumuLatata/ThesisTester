@@ -227,12 +227,13 @@ Server resolves each `path` against the bound `EvidencePacket` (or, from RQ-2,
 an ephemeral turn context / packet copy that includes `results.projections.*`),
 attaches values, and runs the existing numeric grounding audit on that same
 object. Paths are relative to the packet/turn-context root (not the outer
-user JSON); leading `evidence_packet.` / `packet.` wrappers are stripped,
-and non-negative JSON array indices are valid path segments. Digit tokens in
-`summary`, `caveats`, `claims[].text`, and `followups` must resolve to cited
-claim values (or packet caveat echo rules for caveat lines); otherwise fail
-closed before persist/render. Fractional rates may be narrated as `N%` or
-`N percent` / `N pct`. Prefer number-free `followups`.
+user JSON); leading `evidence_packet.` / `packet.` wrappers are stripped
+repeatedly, and non-negative JSON array indices are valid path segments. Digit
+tokens in `summary`, `caveats`, `claims[].text`, and `followups` must resolve
+to cited claim values (or packet caveat echo rules for caveat lines); otherwise
+fail closed before persist/render. Fractional rates may be narrated as `N%` or
+`N percent` / `N pct` (not as clock-like `H:MM percent`). Prefer number-free
+`followups`.
 
 **Help (`HelpReply`):**
 

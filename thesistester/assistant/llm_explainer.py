@@ -50,8 +50,10 @@ _CLOCK_BUCKET_RE = re.compile(r"^\d{1,2}:\d{2}$")
 _CLOCK_IN_TEXT_RE = re.compile(r"(?<![A-Za-z0-9_/])(\d{1,2}:\d{2})(?![A-Za-z0-9_/])")
 _NUMERIC_STRING_RE = re.compile(r"^[-+]?(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?%?$")
 # Word-form percent narration ("60 percent" / "60 pct") → treat like "60%".
+# Exclude ":" from the lookbehind so clock minutes in "8:35 percent" cannot
+# be rewritten into a synthetic "35%" rate token.
 _PERCENT_WORD_RE = re.compile(
-    r"(?<![A-Za-z0-9_/])([-+]?(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?)\s*"
+    r"(?<![A-Za-z0-9_/:])([-+]?(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?)\s*"
     r"(?:percent|pct)\b",
     re.IGNORECASE,
 )
@@ -234,9 +236,13 @@ def _ungrounded_number_tokens(
     allowed: set[str],
     cited_clocks: set[str] | None = None,
 ) -> list[str]:
-    """Return normalized digit tokens in *text* that are not grounded."""
-    working = _normalize_percent_words(text)
-    working = _mask_cited_clock_spans(working, cited_clocks or set())
+    """Return normalized digit tokens in *text* that are not grounded.
+
+    Cited clock spans are masked before percent-word normalization so a label
+    like ``8:35`` cannot donate its minutes to a synthetic ``35%`` token.
+    """
+    working = _mask_cited_clock_spans(text, cited_clocks or set())
+    working = _normalize_percent_words(working)
     uncited: list[str] = []
     for match in _NUMBER_RE.finditer(working):
         raw = match.group(0)
