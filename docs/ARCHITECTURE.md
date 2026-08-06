@@ -452,11 +452,12 @@ profit-factor on all-wins rows ranks as +inf; when re-rank still disagrees,
 packet `best_grid_result` is pinned as projection `best`. Empty bundle
 `tables.grid_results` falls back to packet `best_grid_result` so
 “best SL/TP” remains answerable when no grid table was exported. Time
-rankings prefer `entry_rth_segment` when present, else fall back to
-`entry_30min_bucket` / `entry_hour_bucket` so Time Analysis clock-bucket
-exports still yield a non-null `best.bucket`. Cited `HH:MM` bucket labels
-are valid grounding sources for their digit tokens (hash/path strings are
-not). Optional RO `TIME.analyze` enrichment runs only when
+rankings prefer `entry_rth_segment` when it has a usable label, else fall
+back to `entry_30min_bucket` / `entry_hour_bucket` so Time Analysis
+clock-bucket exports still yield a non-null `best.bucket`. Cited `HH:MM`
+bucket labels ground matching clock spans as wholes without allowlisting
+component digits (hash/path strings do not launder digits). Optional RO
+`TIME.analyze` enrichment runs only when
 `assistant.results_qa.allow_time_enrichment=true` (default `false`) and
 `time_grouped_summary` is missing, after hash verification.
 **RQ-3 landed:** `thesistester/assistant/product_help.py` +

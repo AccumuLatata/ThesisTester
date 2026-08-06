@@ -498,9 +498,9 @@ other than the last bar in the dataset.
   when re-rank disagrees; bundle table load failures warn via
   `bundle_tables_warning` instead of mimicking an empty grid; time bucket
   column falls back from `entry_rth_segment` to `entry_30min_bucket` /
-  `entry_hour_bucket` when the preferred key is absent; cited `HH:MM`
-  clock labels ground their digit tokens) and optional RO
-  `TIME.analyze` enrichment when
+  `entry_hour_bucket` when the preferred key is absent or has no usable
+  label; cited `HH:MM` clock labels ground matching clock spans as wholes)
+  and optional RO `TIME.analyze` enrichment when
   `assistant.results_qa.allow_time_enrichment=true` (default `false`).
   **RQ-3** ships documentation-grounded Help (`handle_help_turn` /
   `product_help`) over the §7.1 corpus + registry digest; run-performance
@@ -522,14 +522,15 @@ other than the last bar in the dataset.
   excludes `results_qa` / `product_help` turns and tool/audit lines so
   multi-turn Discuss/Help cannot starve thesis context.
 - LLM explanations must cite packet paths; uncited numerical tokens are rejected
-  before render. Cited claim values may be int/float, pure numeric strings, or
-  `HH:MM` / `H:MM` clock bucket labels (digits from those labels are
-  allowlisted); hash/path/column-name strings do not launder digits. When
-  provenance includes a fingerprint, dataset identity is
-  available at `assumptions.dataset.dataset_fingerprint` (and mirrored at
-  `assumptions.dataset_fingerprint`); the nested key is omitted when fingerprint
-  is absent. The model cannot execute tools, mutate confirmed RunSpecs, bypass
-  confirmation, or invent metrics.
+  before render. Cited claim values may be int/float or pure numeric strings.
+  Cited `HH:MM` / `H:MM` clock bucket labels ground matching clock spans in
+  narration as wholes without allowlisting component digits (so citing
+  `"08:30"` does not launder bare `8` / `30`); hash/path/column-name strings
+  do not launder digits. When provenance includes a fingerprint, dataset
+  identity is available at `assumptions.dataset.dataset_fingerprint` (and
+  mirrored at `assumptions.dataset_fingerprint`); the nested key is omitted
+  when fingerprint is absent. The model cannot execute tools, mutate confirmed
+  RunSpecs, bypass confirmation, or invent metrics.
 - Credentials: set a rotated `OPENAI_API_KEY` in the environment first, or via
   Streamlit Secrets on Community Cloud (top-level `OPENAI_API_KEY`; nested
   `[openai].api_key` or `[openai].OPENAI_API_KEY` accepted as compatibility).

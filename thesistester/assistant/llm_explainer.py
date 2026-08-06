@@ -4,8 +4,10 @@ Provider output is untrusted. Structured claims must cite evidence paths; any
 numeric token that is not grounded in a cited packet value is rejected before
 rendering. Percent-suffixed narration maps to fractional claim values; packet
 caveat numbers are scoped to echoing caveat lines only. Cited string values
-contribute digits only for pure numeric tokens or ``HH:MM`` clock bucket
-labels (so ``\"08:30\"`` can be narrated); hashes/paths/column names do not.
+contribute digits only for pure numeric tokens. Cited ``HH:MM`` / ``H:MM``
+clock bucket labels ground matching clock spans in narration as wholes (so
+``\"08:30\"`` can be narrated) without allowlisting their component digits;
+hashes/paths/column names do not launder digits.
 """
 
 from __future__ import annotations
@@ -44,6 +46,8 @@ _EXPLANATION_SCHEMA = {
 _NUMBER_RE = re.compile(r"(?<![A-Za-z0-9_/])[-+]?(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?%?")
 # Safe string claim values that may contribute digit tokens (not hashes/paths).
 _CLOCK_BUCKET_RE = re.compile(r"^\d{1,2}:\d{2}$")
+# Clock spans inside free text (same shape as bucket labels).
+_CLOCK_IN_TEXT_RE = re.compile(r"(?<![A-Za-z0-9_/])(\d{1,2}:\d{2})(?![A-Za-z0-9_/])")
 _NUMERIC_STRING_RE = re.compile(r"^[-+]?(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?%?$")
 
 
@@ -100,13 +104,58 @@ def _extract_number_tokens(text: str) -> list[str]:
     return [_normalize_number_token(match.group(0)) for match in _NUMBER_RE.finditer(text)]
 
 
+def _clock_label_variants(label: str) -> set[str]:
+    """Return equivalent ``H:MM`` / ``HH:MM`` spellings for one clock label."""
+    text = label.strip()
+    if not _CLOCK_BUCKET_RE.fullmatch(text):
+        return set()
+    hour_text, minute = text.split(":", 1)
+    try:
+        hour = int(hour_text)
+    except ValueError:
+        return {text}
+    return {text, f"{hour}:{minute}", f"{hour:02d}:{minute}"}
+
+
+def _cited_clock_labels(values: list[Any]) -> set[str]:
+    """Collect normalized clock-label variants from cited claim values."""
+    clocks: set[str] = set()
+    for value in values:
+        if isinstance(value, str):
+            clocks |= _clock_label_variants(value)
+    return clocks
+
+
+def _mask_cited_clock_spans(text: str, cited_clocks: set[str]) -> str:
+    """Blank out narrated clock spans that match cited bucket labels.
+
+    Component digits inside a grounded ``HH:MM`` span must not be re-checked as
+    free numeric tokens (that would launder ``8`` / ``30`` from ``\"08:30\"``).
+    """
+    if not text or not cited_clocks:
+        return text
+
+    pieces: list[str] = []
+    cursor = 0
+    for match in _CLOCK_IN_TEXT_RE.finditer(text):
+        label = match.group(1)
+        if _clock_label_variants(label).isdisjoint(cited_clocks):
+            continue
+        pieces.append(text[cursor : match.start()])
+        pieces.append(" " * (match.end() - match.start()))
+        cursor = match.end()
+    pieces.append(text[cursor:])
+    return "".join(pieces)
+
+
 def _allowed_number_tokens(values: list[Any]) -> set[str]:
     """Build normalized numeric tokens accepted for cited packet values.
 
     Int/float claim values contribute directly. String claim values contribute
-    only when they are pure numeric tokens or ``HH:MM`` / ``H:MM`` clock bucket
-    labels (so citing ``\"08:30\"`` grounds narration of that bracket). Hash,
-    path, and column-name strings do not launder digits.
+    only when they are pure numeric tokens. ``HH:MM`` clock labels are handled
+    separately as whole spans (see ``_mask_cited_clock_spans``) so citing
+    ``\"08:30\"`` does not allowlist bare ``8`` / ``30``. Hash, path, and
+    column-name strings do not launder digits.
     """
     allowed: set[str] = set()
     for value in values:
@@ -117,9 +166,9 @@ def _allowed_number_tokens(values: list[Any]) -> set[str]:
             continue
         if isinstance(value, str):
             text = value.strip()
-            if not text:
+            if not text or _CLOCK_BUCKET_RE.fullmatch(text):
                 continue
-            if _CLOCK_BUCKET_RE.fullmatch(text) or _NUMERIC_STRING_RE.fullmatch(text):
+            if _NUMERIC_STRING_RE.fullmatch(text):
                 allowed.update(_extract_number_tokens(text))
     return allowed
 
@@ -142,14 +191,33 @@ def _token_grounded(raw_token: str, *, allowed: set[str]) -> bool:
     return _normalize_number_token(str(percent_value / 100.0)) in allowed
 
 
-def _assert_tokens_grounded(text: str, *, allowed: set[str]) -> None:
-    for match in _NUMBER_RE.finditer(text):
+def _ungrounded_number_tokens(
+    text: str,
+    *,
+    allowed: set[str],
+    cited_clocks: set[str] | None = None,
+) -> list[str]:
+    """Return normalized digit tokens in *text* that are not grounded."""
+    working = _mask_cited_clock_spans(text, cited_clocks or set())
+    uncited: list[str] = []
+    for match in _NUMBER_RE.finditer(working):
         raw = match.group(0)
-        if not _token_grounded(raw, allowed=allowed):
-            raise LLMEvidenceError(
-                f"Uncited numerical claim {_normalize_number_token(raw)!r} "
-                "is not grounded in cited evidence."
-            )
+        if _token_grounded(raw, allowed=allowed):
+            continue
+        uncited.append(_normalize_number_token(raw))
+    return uncited
+
+
+def _assert_tokens_grounded(
+    text: str,
+    *,
+    allowed: set[str],
+    cited_clocks: set[str] | None = None,
+) -> None:
+    for token in _ungrounded_number_tokens(text, allowed=allowed, cited_clocks=cited_clocks):
+        raise LLMEvidenceError(
+            f"Uncited numerical claim {token!r} is not grounded in cited evidence."
+        )
 
 
 def _llm_caveat_echoes_packet_message(llm_caveat: str, packet_message: str) -> bool:
@@ -240,13 +308,15 @@ def assert_llm_explanation_grounded(
     ``missing_oos`` / ``failed_oos``, summary/claim/followup text must not claim
     OOS/WFA confirmation.
     """
-    allowed_from_claims = _allowed_number_tokens([claim.value for claim in claims])
+    claim_values = [claim.value for claim in claims]
+    allowed_from_claims = _allowed_number_tokens(claim_values)
+    cited_clocks = _cited_clock_labels(claim_values)
     # Summary and claim text may only use numbers from cited claim values.
-    _assert_tokens_grounded(summary, allowed=allowed_from_claims)
+    _assert_tokens_grounded(summary, allowed=allowed_from_claims, cited_clocks=cited_clocks)
     for claim in claims:
-        _assert_tokens_grounded(claim.text, allowed=allowed_from_claims)
+        _assert_tokens_grounded(claim.text, allowed=allowed_from_claims, cited_clocks=cited_clocks)
     for followup in followups:
-        _assert_tokens_grounded(followup, allowed=allowed_from_claims)
+        _assert_tokens_grounded(followup, allowed=allowed_from_claims, cited_clocks=cited_clocks)
     # Packet caveat numbers are allowlisted only for LLM caveat lines that
     # actually echo that packet caveat message — never for the whole narrative.
     packet_caveat_messages = tuple(
@@ -259,7 +329,7 @@ def assert_llm_explanation_grounded(
         for message in packet_caveat_messages:
             if _llm_caveat_echoes_packet_message(llm_caveat, message):
                 allowed |= set(_extract_number_tokens(message))
-        _assert_tokens_grounded(llm_caveat, allowed=allowed)
+        _assert_tokens_grounded(llm_caveat, allowed=allowed, cited_clocks=cited_clocks)
 
     oos_codes = {
         caveat.code

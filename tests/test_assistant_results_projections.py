@@ -263,6 +263,29 @@ def test_project_time_rankings_falls_back_to_clock_bucket_column():
     assert [row["bucket"] for row in ranked["rows"]] == ["08:30", "09:30"]
 
 
+def test_project_time_rankings_falls_back_when_preferred_labels_are_null():
+    """Preferred key present-but-null must not block clock-bucket fallback."""
+    summary = [
+        {
+            "entry_rth_segment": None,
+            "entry_30min_bucket": "08:30",
+            "trade_count": 20,
+            "avg_r": 0.40,
+            "sample_warning": False,
+        },
+        {
+            "entry_rth_segment": None,
+            "entry_30min_bucket": "09:30",
+            "trade_count": 12,
+            "avg_r": 0.10,
+            "sample_warning": False,
+        },
+    ]
+    ranked = project_time_rankings(summary, min_trades=10)
+    assert ranked["bucket_col"] == "entry_30min_bucket"
+    assert ranked["best"]["bucket"] == "08:30"
+
+
 def test_build_ephemeral_context_merges_projections_without_mutating_packet():
     packet = _packet()
     original = packet.to_dict()

@@ -440,16 +440,33 @@ def _time_rows_from_summary(
     return []
 
 
+def _has_usable_bucket_label(rows: Sequence[Mapping[str, Any]], column: str) -> bool:
+    """True when *column* has at least one non-empty, non-null label on *rows*."""
+    for row in rows:
+        if column not in row:
+            continue
+        value = row.get(column)
+        if value is None:
+            continue
+        if isinstance(value, float) and value != value:  # NaN
+            continue
+        text = str(value).strip()
+        if text and text.lower() not in {"none", "nan", "null"}:
+            return True
+    return False
+
+
 def resolve_time_bucket_col(
     time_grouped_summary: Mapping[str, Any] | Sequence[Mapping[str, Any]],
     *,
     preferred: str = DEFAULT_TIME_BUCKET_COL,
 ) -> str:
-    """Resolve the grouping column present on exported time-summary rows.
+    """Resolve the grouping column with a usable label on exported time rows.
 
-    Prefers ``preferred`` when that key appears on any row. Otherwise falls
+    Prefers ``preferred`` when that column has a non-null label. Otherwise falls
     through ``_TIME_BUCKET_COL_FALLBACKS`` so hour/30m exports from Time
-    Analysis still produce a non-null ``best.bucket`` label.
+    Analysis still produce a non-null ``best.bucket`` label even if a preferred
+    key is present but empty/null on every row.
     """
     preferred_col = (
         preferred.strip()
@@ -459,13 +476,10 @@ def resolve_time_bucket_col(
     source_rows = _time_rows_from_summary(time_grouped_summary)
     if not source_rows:
         return preferred_col
-    present: set[str] = set()
-    for row in source_rows:
-        present.update(str(key) for key in row.keys())
-    if preferred_col in present:
+    if _has_usable_bucket_label(source_rows, preferred_col):
         return preferred_col
     for candidate in _TIME_BUCKET_COL_FALLBACKS:
-        if candidate in present:
+        if _has_usable_bucket_label(source_rows, candidate):
             return candidate
     return preferred_col
 
@@ -512,9 +526,7 @@ def project_time_rankings(
             continue
         eligible.append((metric_value, int(trade_count), row))
 
-    eligible.sort(
-        key=lambda item: (-item[0], -item[1], str(item[2].get(resolved_bucket_col, "")))
-    )
+    eligible.sort(key=lambda item: (-item[0], -item[1], str(item[2].get(resolved_bucket_col, ""))))
     ranked = eligible[:top]
     rows: list[dict[str, Any]] = []
     by_rank: dict[str, dict[str, Any]] = {}

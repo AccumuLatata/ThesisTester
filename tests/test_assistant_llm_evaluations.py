@@ -846,7 +846,7 @@ def test_rq5_best_time_accepts_cited_projection_path():
 
 
 def test_rq5_best_time_accepts_cited_clock_bucket_label():
-    """Regression: HH:MM bucket labels must ground their digit tokens (e.g. '8')."""
+    """Regression: cited HH:MM labels ground matching clock spans as wholes."""
     packet = EvidencePacket(
         provenance={"run_id": "run_rq5_clock"},
         assumptions={},
@@ -871,15 +871,13 @@ def test_rq5_best_time_accepts_cited_clock_bucket_label():
     )
     context = build_ephemeral_results_context(packet)
     assert context["results"]["projections"]["time_rankings"]["best"]["bucket"] == "08:30"
-    assert (
-        context["results"]["projections"]["time_rankings"]["bucket_col"] == "entry_30min_bucket"
-    )
+    assert context["results"]["projections"]["time_rankings"]["bucket_col"] == "entry_30min_bucket"
 
     class Client:
         def complete_structured(self, **kwargs):
             return {
                 "summary": "Best entry bucket is 08:30 under avg_r with 20 trades.",
-                "caveats": ["In-sample 30-minute buckets only."],
+                "caveats": ["In-sample half-hour buckets only."],
                 "claims": [
                     {
                         "text": "Best bucket is 08:30.",
@@ -902,6 +900,50 @@ def test_rq5_best_time_accepts_cited_clock_bucket_label():
     )
     assert reply.claims[0].value == "08:30"
     assert reply.claims[1].value == 20
+
+
+def test_rq5_clock_bucket_does_not_launder_component_digits():
+    """Citing 08:30 must not allow bare '8' / '30' as free numeric claims."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_rq5_clock_launder"},
+        assumptions={},
+        results={
+            "trade_summary": {"trade_count": 42, "expectancy_r": 0.25},
+            "time_grouped_summary": [
+                {
+                    "entry_30min_bucket": "08:30",
+                    "trade_count": 20,
+                    "avg_r": 0.4,
+                    "sample_warning": False,
+                }
+            ],
+        },
+        warnings=(),
+    )
+    context = build_ephemeral_results_context(packet)
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Best bucket is 08:30 and expectancy is 8.",
+                "caveats": ["Invented expectancy from clock digits."],
+                "claims": [
+                    {
+                        "text": "Best bucket is 08:30.",
+                        "path": "results.projections.time_rankings.best.bucket",
+                    }
+                ],
+                "followups": ["Ask about trades."],
+            }
+
+    with pytest.raises(LLMEvidenceError, match="Uncited numerical claim '8'"):
+        propose_results_reply(
+            Client(),
+            packet=packet,
+            history=(),
+            user_message="What is the best time bracket?",
+            turn_context=context,
+        )
 
 
 def test_rq5_clock_bucket_rejects_hash_digit_laundering():
