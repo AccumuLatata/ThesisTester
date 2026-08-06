@@ -148,6 +148,9 @@ def test_session_update_omits_search_and_mcp():
         assert forbidden not in blob
     assert payload["session"]["turn_detection"] == {"type": "server_vad"}
     assert payload["session"]["audio"]["input"]["format"]["rate"] == 24000
+    assert payload["session"]["audio"]["input"]["transport"] == "binary"
+    assert payload["session"]["audio"]["output"]["transport"] == "binary"
+    assert payload["session"]["audio"]["input"]["transcription"]["model"] == "grok-transcribe"
 
 
 def test_assert_realtime_tools_allowlisted_denies_search():
@@ -336,6 +339,56 @@ def test_page_source_realtime_controls_and_no_xai_socket():
     assert "Voice discuss (realtime)" in page
     assert "thesistester.assistant.voice.sidecar" in page
     assert "_register_realtime_session(" in page
+    assert "assert_localhost_bind" in page
+    assert "_client_url_is_localhost" in page
     assert "wss://api.x.ai" not in page
     assert "XAI_API_KEY" not in page
     assert 'mode == "realtime"' in page or "mode == 'realtime'" in page
+
+
+def test_browser_cannot_inject_conversation_item_create():
+    from thesistester.assistant.voice import sidecar as sidecar_mod
+
+    allowed = sidecar_mod._BROWSER_UPSTREAM_EVENT_TYPES
+    assert "input_audio_buffer.append" in allowed
+    assert "input_audio_buffer.commit" in allowed
+    assert "response.cancel" in allowed
+    assert "conversation.item.create" not in allowed
+    assert "response.create" not in allowed
+
+
+def test_function_call_output_requires_call_id():
+    with pytest.raises(SidecarError, match="call_id"):
+        build_function_call_output_events(call_id="", output={"ok": True})
+    with pytest.raises(SidecarError, match="call_id"):
+        build_function_call_output_events(call_id="   ", output={"ok": True})
+
+
+def test_end_session_missing_ok_is_idempotent(tmp_path: Path):
+    repository = _repository(tmp_path)
+    thesis, run, digest, conversation = _completed_run(repository, tmp_path)
+    service = VoiceSessionService(
+        repository,
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        settings=_enabled_realtime_settings(),
+    )
+    runtime = SidecarRuntime(
+        service=service,
+        settings=_enabled_realtime_settings(),
+        host="127.0.0.1",
+        port=8765,
+    )
+    body = runtime.register_session(
+        thesis_id=thesis.thesis_id,
+        run_id=run.run_id,
+        expected_hash=digest,
+        conversation_id=conversation.conversation_id,
+    )
+    first = runtime.end_session(body["session_id"])
+    assert first["status"] == "ended"
+    assert first.get("noop") is not True
+    second = runtime.end_session(body["session_id"], missing_ok=True)
+    assert second["status"] == "ended"
+    assert second.get("noop") is True
+    with pytest.raises(SidecarError, match="not registered"):
+        runtime.end_session(body["session_id"], missing_ok=False)

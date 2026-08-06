@@ -37,7 +37,12 @@ from thesistester.assistant.product_help import (
     HelpEvidenceError,
 )
 from thesistester.assistant.results_qa import RESULTS_QA_CHANNEL
-from thesistester.assistant.voice.sidecar import DEFAULT_SIDECAR_HOST, DEFAULT_SIDECAR_PORT
+from thesistester.assistant.voice.sidecar import (
+    DEFAULT_SIDECAR_HOST,
+    DEFAULT_SIDECAR_PORT,
+    SidecarError,
+    assert_localhost_bind,
+)
 from thesistester.assistant.voice.settings import load_voice_settings
 from thesistester.assistant.voice.xai_realtime import (
     VoiceConfigurationError,
@@ -183,12 +188,33 @@ def _render_voice_last_turn(*, channel: str) -> None:
 
 def _sidecar_base_url() -> str:
     host = str(st.session_state.get("assistant_voice_sidecar_host") or DEFAULT_SIDECAR_HOST)
+    try:
+        host = assert_localhost_bind(host)
+    except SidecarError:
+        host = DEFAULT_SIDECAR_HOST
+        st.session_state["assistant_voice_sidecar_host"] = host
     port = st.session_state.get("assistant_voice_sidecar_port") or DEFAULT_SIDECAR_PORT
     try:
         port_i = int(port)
     except (TypeError, ValueError):
         port_i = DEFAULT_SIDECAR_PORT
+    if port_i < 1 or port_i > 65535:
+        port_i = DEFAULT_SIDECAR_PORT
     return f"http://{host}:{port_i}"
+
+
+def _client_url_is_localhost(client_url: str) -> bool:
+    """Refuse non-loopback sidecar client links (defense in depth)."""
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(client_url)
+    except Exception:
+        return False
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    host = (parsed.hostname or "").strip().lower()
+    return host in {"127.0.0.1", "::1"}
 
 
 def _register_realtime_session(
@@ -225,6 +251,14 @@ def _register_realtime_session(
         return None
     if any(key in decoded for key in ("api_key", "token", "client_secret", "authorization")):
         st.error("Refusing sidecar response that appears to include secrets.")
+        return None
+    client_url = decoded.get("client_url")
+    if (
+        isinstance(client_url, str)
+        and client_url.strip()
+        and not _client_url_is_localhost(client_url)
+    ):
+        st.error("Refusing non-localhost sidecar client_url.")
         return None
     return decoded
 
@@ -1980,17 +2014,20 @@ with st.expander(
                                 )
                                 if isinstance(registered, dict) and registered.get("client_url"):
                                     client_url = str(registered["client_url"])
-                                    st.markdown(f"[Open realtime voice client]({client_url})")
-                                    st.caption(
-                                        f"session `{registered.get('session_id', '')}` · "
-                                        "close the client tab to end/flush the session."
-                                    )
-                                    try:
-                                        import streamlit.components.v1 as components
+                                    if not _client_url_is_localhost(client_url):
+                                        st.error("Stored realtime client_url is not localhost.")
+                                    else:
+                                        st.markdown(f"[Open realtime voice client]({client_url})")
+                                        st.caption(
+                                            f"session `{registered.get('session_id', '')}` · "
+                                            "close the client tab to end/flush the session."
+                                        )
+                                        try:
+                                            import streamlit.components.v1 as components
 
-                                        components.iframe(client_url, height=280)
-                                    except Exception:
-                                        pass
+                                            components.iframe(client_url, height=280)
+                                        except Exception:
+                                            pass
                     if st.button("Render markdown report", key=f"report-{run.run_id}"):
                         result = orchestrator.export_run(
                             thesis_id=thesis_id,

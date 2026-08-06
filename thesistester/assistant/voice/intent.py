@@ -26,6 +26,16 @@ _METRIC_ALIASES: tuple[tuple[tuple[str, ...], str], ...] = (
 )
 _TOTAL_R_RE = re.compile(r"\btotal\s+r\b", re.IGNORECASE)
 
+
+def _alias_matches(alias: str, normalized: str) -> bool:
+    """Match metric aliases without substring false positives (e.g. trades⊂tradesman)."""
+    if not alias:
+        return False
+    if " " in alias or "_" in alias:
+        return alias in normalized
+    return re.search(rf"\b{re.escape(alias)}\b", normalized) is not None
+
+
 _CAVEAT_HINTS = (
     "caveat",
     "caveats",
@@ -96,7 +106,7 @@ class VoiceIntentRouter:
             )
 
         for aliases, path in _METRIC_ALIASES:
-            if any(alias in normalized for alias in aliases):
+            if any(_alias_matches(alias, normalized) for alias in aliases):
                 return VoiceIntent(
                     tool_name="get_metric",
                     arguments={"path": path},

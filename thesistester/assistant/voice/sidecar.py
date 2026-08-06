@@ -68,6 +68,16 @@ _TRANSCRIPT_EVENT_TYPES = frozenset(
         "response.audio_transcript.done",
     }
 )
+# Browser→upstream: audio buffer + barge-in only. Never allow the browser to
+# inject conversation.item.create / response.create (forged tool outputs).
+_BROWSER_UPSTREAM_EVENT_TYPES = frozenset(
+    {
+        "input_audio_buffer.append",
+        "input_audio_buffer.commit",
+        "input_audio_buffer.clear",
+        "response.cancel",
+    }
+)
 
 
 class SidecarError(ValueError):
@@ -132,9 +142,18 @@ def build_realtime_session_update(
         "voice": voice.strip(),
         "instructions": instructions.strip(),
         "turn_detection": {"type": "server_vad"},
+        # Client sends/receives raw PCM16 frames; enable binary transport and
+        # input transcription so user turns flush into the voice session record.
         "audio": {
-            "input": {"format": {"type": "audio/pcm", "rate": 24000}},
-            "output": {"format": {"type": "audio/pcm", "rate": 24000}},
+            "input": {
+                "format": {"type": "audio/pcm", "rate": 24000},
+                "transport": "binary",
+                "transcription": {"model": "grok-transcribe"},
+            },
+            "output": {
+                "format": {"type": "audio/pcm", "rate": 24000},
+                "transport": "binary",
+            },
         },
         "tools": tools,
     }
@@ -281,9 +300,18 @@ class SidecarRuntime:
             raise SidecarError("Realtime session exceeded max_session_minutes.")
         return thesis_id, meta.get("conversation_id")
 
-    def end_session(self, session_id: str) -> dict[str, Any]:
+    def end_session(self, session_id: str, *, missing_ok: bool = False) -> dict[str, Any]:
         meta = self._active.pop(session_id, None)
         if meta is None:
+            # TTL / disconnect races may end the same session twice.
+            if missing_ok:
+                return {
+                    "session_id": session_id,
+                    "status": "ended",
+                    "transcript_turns": 0,
+                    "tool_invocations": 0,
+                    "noop": True,
+                }
             raise SidecarError("Realtime session is not registered in this sidecar process.")
         thesis_id = str(meta["thesis_id"])
         conversation_id = meta.get("conversation_id")
@@ -561,8 +589,7 @@ def create_sidecar_app(runtime: SidecarRuntime):
                 pass
             # Best-effort end/flush when the socket drops.
             try:
-                if session_id in runtime._active:
-                    runtime.end_session(session_id)
+                runtime.end_session(session_id, missing_ok=True)
             except Exception:
                 pass
 
@@ -623,8 +650,12 @@ async def _pump_browser_to_upstream(
                     "message": "Realtime session exceeded max_session_minutes.",
                 }
             )
-            runtime.end_session(session_id)
-            await browser_ws.close()
+            runtime.end_session(session_id, missing_ok=True)
+            await _upstream_close(upstream)
+            try:
+                await browser_ws.close()
+            except Exception:
+                pass
             return
         try:
             message = await browser_ws.receive()
@@ -637,17 +668,15 @@ async def _pump_browser_to_upstream(
             continue
         text = message.get("text")
         if isinstance(text, str) and text:
-            # Browser may send JSON control events; forward only safe audio append shapes.
+            # Browser may send JSON control events; forward only audio/barge-in.
             try:
                 event = json.loads(text)
             except json.JSONDecodeError:
                 continue
-            if isinstance(event, Mapping) and event.get("type") in {
-                "input_audio_buffer.append",
-                "input_audio_buffer.commit",
-                "response.create",
-                "conversation.item.create",
-            }:
+            if (
+                isinstance(event, Mapping)
+                and str(event.get("type") or "") in _BROWSER_UPSTREAM_EVENT_TYPES
+            ):
                 await _upstream_send_json(upstream, event)
 
 
@@ -673,8 +702,12 @@ async def _pump_upstream_to_browser(
                     "message": "Realtime session exceeded max_session_minutes.",
                 }
             )
-            runtime.end_session(session_id)
-            await browser_ws.close()
+            runtime.end_session(session_id, missing_ok=True)
+            await _upstream_close(upstream)
+            try:
+                await browser_ws.close()
+            except Exception:
+                pass
             return
         raw = await upstream.recv()
         if isinstance(raw, (bytes, bytearray)):
@@ -693,8 +726,16 @@ async def _pump_upstream_to_browser(
         event_type = str(event.get("type") or "")
 
         if event_type == "response.function_call_arguments.done":
-            call_id = str(event.get("call_id") or "")
-            name = str(event.get("name") or "")
+            call_id = str(event.get("call_id") or "").strip()
+            name = str(event.get("name") or "").strip()
+            if not call_id:
+                await browser_ws.send_json(
+                    {
+                        "type": "sidecar.error",
+                        "message": "Upstream function_call missing call_id; tool bridge skipped.",
+                    }
+                )
+                continue
             try:
                 result = execute_realtime_tool_bridge(
                     name=name,
@@ -703,10 +744,14 @@ async def _pump_upstream_to_browser(
                 )
             except (VoiceToolError, VoiceSessionError, SidecarError) as exc:
                 result = {"ok": False, "error": str(exc), "tool_name": name}
-            create_item, response_create = build_function_call_output_events(
-                call_id=call_id,
-                output=result,
-            )
+            try:
+                create_item, response_create = build_function_call_output_events(
+                    call_id=call_id,
+                    output=result,
+                )
+            except SidecarError as exc:
+                await browser_ws.send_json({"type": "sidecar.error", "message": str(exc)})
+                continue
             await _upstream_send_json(upstream, create_item)
             await _upstream_send_json(upstream, response_create)
             # Inform browser without tool payload secrets.

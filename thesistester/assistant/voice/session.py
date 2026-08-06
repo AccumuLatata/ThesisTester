@@ -16,6 +16,7 @@ from uuid import uuid4
 
 from thesistester.assistant.explainer import EvidenceClaim, EvidencePacket
 from thesistester.assistant.llm import LLMConfigurationError, LLMProviderError
+from thesistester.assistant.llm_explainer import LLMEvidenceError
 from thesistester.assistant.repository import (
     AssistantRepositoryError,
     LocalThesisRepository,
@@ -403,6 +404,21 @@ def _answer_results_ptt(
             else:
                 message = "Unable to answer this results question."
             speakable = message
+            grounding = audit_spoken_text(speakable, allowed_tokens=())
+            return (
+                "handle_results_turn",
+                speakable,
+                grounding,
+                None,
+                None,
+                True,
+                speakable,
+            )
+        except LLMEvidenceError:
+            # Grounding/schema failure from RQ — never silent-fall to VA-3.
+            speakable = (
+                "I could not ground a spoken results answer. Please use text Discuss results."
+            )
             grounding = audit_spoken_text(speakable, allowed_tokens=())
             return (
                 "handle_results_turn",
@@ -905,31 +921,37 @@ class VoiceSessionService:
             conversation = self.repository.get_conversation(thesis_id, conversation_id)
         except AssistantRepositoryError:
             return
+
+        def _flushed_sets(
+            conv: Any,
+        ) -> tuple[set[tuple[Any, ...]], set[tuple[Any, ...]], int]:
+            turns = {
+                (
+                    message.get("created_at"),
+                    message.get("content"),
+                    message.get("voice_path"),
+                    message.get("role"),
+                )
+                for message in conv.messages
+                if isinstance(message, Mapping)
+                and message.get("voice_session_id") == record.session_id
+                and message.get("voice_path") is not None
+            }
+            tools = {
+                (
+                    entry.get("created_at"),
+                    entry.get("tool_name"),
+                    entry.get("ok"),
+                    entry.get("error"),
+                )
+                for entry in conv.tool_transcript
+                if isinstance(entry, Mapping) and entry.get("voice_session_id") == record.session_id
+            }
+            return turns, tools, conv.revision
+
         # Resume-safe idempotency: skip only entries already present; never treat
         # "any voice_session_id message exists" as a completed flush.
-        flushed_turns = {
-            (
-                message.get("created_at"),
-                message.get("content"),
-                message.get("voice_path"),
-                message.get("role"),
-            )
-            for message in conversation.messages
-            if isinstance(message, Mapping)
-            and message.get("voice_session_id") == record.session_id
-            and message.get("voice_path") is not None
-        }
-        flushed_tools = {
-            (
-                entry.get("created_at"),
-                entry.get("tool_name"),
-                entry.get("ok"),
-                entry.get("error"),
-            )
-            for entry in conversation.tool_transcript
-            if isinstance(entry, Mapping) and entry.get("voice_session_id") == record.session_id
-        }
-        revision = conversation.revision
+        flushed_turns, flushed_tools, revision = _flushed_sets(conversation)
         for turn in record.transcript:
             turn_key = (turn.created_at, turn.text, turn.path, turn.role)
             if turn_key in flushed_turns:
@@ -945,17 +967,31 @@ class VoiceSessionService:
             if record.run_id is not None:
                 message["run_id"] = record.run_id
             # Draft hydration must omit choices — never attach choices here.
-            try:
-                conversation = self.repository.append_conversation_message(
-                    thesis_id,
-                    conversation_id,
-                    expected_revision=revision,
-                    message=message,
-                )
-                revision = conversation.revision
-                flushed_turns.add(turn_key)
-            except (AssistantRepositoryError, VoiceContractError):
-                return
+            for _attempt in range(2):
+                try:
+                    conversation = self.repository.append_conversation_message(
+                        thesis_id,
+                        conversation_id,
+                        expected_revision=revision,
+                        message=message,
+                    )
+                    revision = conversation.revision
+                    flushed_turns.add(turn_key)
+                    break
+                except VoiceContractError:
+                    return
+                except AssistantRepositoryError:
+                    # OCC / concurrent write — refresh and retry once; do not
+                    # abort remaining transcript/tool rows for this session.
+                    try:
+                        conversation = self.repository.get_conversation(thesis_id, conversation_id)
+                    except AssistantRepositoryError:
+                        return
+                    flushed_turns, flushed_tools, revision = _flushed_sets(conversation)
+                    if turn_key in flushed_turns:
+                        break
+            else:
+                continue
         for invocation in record.tool_invocations:
             tool_key = (
                 invocation.created_at,
@@ -985,15 +1021,25 @@ class VoiceSessionService:
             }
             if record.run_id is not None:
                 placeholder["run_id"] = record.run_id
-            try:
-                conversation = self.repository.append_conversation_message(
-                    thesis_id,
-                    conversation_id,
-                    expected_revision=revision,
-                    message=placeholder,
-                    tool_entry=tool_entry,
-                )
-                revision = conversation.revision
-                flushed_tools.add(tool_key)
-            except AssistantRepositoryError:
-                return
+            for _attempt in range(2):
+                try:
+                    conversation = self.repository.append_conversation_message(
+                        thesis_id,
+                        conversation_id,
+                        expected_revision=revision,
+                        message=placeholder,
+                        tool_entry=tool_entry,
+                    )
+                    revision = conversation.revision
+                    flushed_tools.add(tool_key)
+                    break
+                except AssistantRepositoryError:
+                    try:
+                        conversation = self.repository.get_conversation(thesis_id, conversation_id)
+                    except AssistantRepositoryError:
+                        return
+                    flushed_turns, flushed_tools, revision = _flushed_sets(conversation)
+                    if tool_key in flushed_tools:
+                        break
+            else:
+                continue

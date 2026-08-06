@@ -671,14 +671,19 @@ docs/ENGINEERING.md
 - `voice/sidecar.py`: localhost Starlette ASGI sidecar (uvicorn) — browser ↔
   sidecar ↔ xAI Realtime WS. Binds `127.0.0.1` / `::1` only.
 - `session.update` uses honesty instructions + `turn_detection: server_vad` +
-  PCM 24 kHz + **VA-3 function tools only**; `web_search` / `x_search` /
-  `file_search` / `mcp` are rejected by `assert_realtime_tools_allowlisted`.
+  PCM 24 kHz binary transport + input transcription (`grok-transcribe`) +
+  **VA-3 function tools only**; `web_search` / `x_search` / `file_search` /
+  `mcp` are rejected by `assert_realtime_tools_allowlisted`.
 - Tool bridge: `response.function_call_arguments.done` →
-  `execute_voice_tool` → `function_call_output` + `response.create`.
-- TTL: `session_exceeded_ttl` / `max_session_minutes` ends active sessions.
+  `execute_voice_tool` → `function_call_output` + `response.create`; empty
+  `call_id` is skipped (fail closed). Browser→upstream forwards only audio
+  buffer / `response.cancel` events (no forged `conversation.item.create`).
+- TTL: `session_exceeded_ttl` / `max_session_minutes` ends active sessions
+  (idempotent end + upstream close so peer pumps unblock).
 - Streamlit (when `assistant.voice.mode = "realtime"`) registers sessions via
-  `POST /v1/sessions` and opens the sidecar `/client` page; never opens xAI WS
-  and never embeds `XAI_API_KEY`. PTT remains available as fallback.
+  `POST /v1/sessions` and opens the sidecar `/client` page; host/`client_url`
+  must be loopback; never opens xAI WS and never embeds `XAI_API_KEY`. PTT
+  remains available as fallback.
 - Help realtime deferred (results_qa run-bound only in v1).
 - Tests: `tests/test_assistant_voice_realtime.py`.
 - Ops: `docs/ENGINEERING.md` sidecar run instructions.

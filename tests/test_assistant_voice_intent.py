@@ -70,3 +70,14 @@ def test_total_r_alias_does_not_match_total_risk():
     risk = router.route("what is total risk on this setup?")
     assert risk.tool_name == "get_run_overview"
     assert risk.recognized is False
+
+
+def test_trades_alias_uses_word_boundary():
+    router = VoiceIntentRouter()
+    trades = router.route("how many trades?")
+    assert trades.tool_name == "get_metric"
+    assert trades.arguments["path"] == "results.trade_count"
+
+    false_positive = router.route("is this a tradesman setup?")
+    assert false_positive.tool_name == "get_run_overview"
+    assert false_positive.recognized is False

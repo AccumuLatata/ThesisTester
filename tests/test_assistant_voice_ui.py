@@ -9,6 +9,7 @@ import pytest
 
 from thesistester.assistant.explainer import EvidenceClaim
 from thesistester.assistant.llm import LLMConfigurationError
+from thesistester.assistant.llm_explainer import LLMEvidenceError
 from thesistester.assistant.orchestrator import AssistantOrchestrator, OrchestrationResult
 from thesistester.assistant.product_help import HelpReply, remediation_help_reply
 from thesistester.assistant.repository import LocalThesisRepository
@@ -678,6 +679,44 @@ def test_rq_failed_results_turn_does_not_silent_fallback(monkeypatch, tmp_path: 
     assert turn.openai_used is True
     assert turn.tool_name is None
     assert "Evidence packet missing" in turn.speakable_text
+
+
+def test_llm_evidence_error_does_not_silent_fallback(monkeypatch, tmp_path: Path):
+    repository = _repository(tmp_path)
+    thesis, run, digest, conversation = _completed_run(repository, tmp_path)
+    transport = _FakeSTTTTS(transcript="What was expectancy?")
+    monkeypatch.setenv("XAI_API_KEY", "test-xai-key-not-real")
+
+    class _Orch(AssistantOrchestrator):
+        def handle_results_turn(self, client, **kwargs):
+            raise LLMEvidenceError("Uncited numerical claim: 0.99")
+
+    service = VoiceSessionService(
+        repository,
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        settings=_enabled_settings(),
+    )
+    orch = _Orch(
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        repository=repository,
+    )
+    turn = run_push_to_talk_turn(
+        service=service,
+        orchestrator=orch,
+        audio_bytes=b"RIFF....",
+        channel="results_qa",
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+        run_id=run.run_id,
+        expected_hash=digest,
+        openai_client=_FakeOpenAI(ResultsQAReply(summary="unused", caveats=(), claims=())),
+        stt_transport=transport,
+        tts_transport=transport,
+    )
+    assert turn.answer_path == "handle_results_turn"
+    assert turn.tool_name is None
+    assert "could not ground" in turn.speakable_text.lower()
+    assert "0.99" not in turn.speakable_text
 
 
 def test_help_failed_turn_tolerates_non_mapping_error(monkeypatch, tmp_path: Path):
