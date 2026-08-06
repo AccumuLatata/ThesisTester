@@ -526,11 +526,16 @@ other than the last bar in the dataset.
   Cited `HH:MM` / `H:MM` clock bucket labels ground matching clock spans in
   narration as wholes without allowlisting component digits (so citing
   `"08:30"` does not launder bare `8` / `30`); hash/path/column-name strings
-  do not launder digits. When provenance includes a fingerprint, dataset
-  identity is available at `assumptions.dataset.dataset_fingerprint` (and
-  mirrored at `assumptions.dataset_fingerprint`); the nested key is omitted
-  when fingerprint is absent. The model cannot execute tools, mutate confirmed
-  RunSpecs, bypass confirmation, or invent metrics.
+  do not launder digits. Fractional rates accept `%` or word-form
+  (`60 percent` / `60 pct` ↔ `0.6`); bare `60` is not inferred from `0.6`.
+  Results Q&A claim paths are relative to the evidence packet root; accidental
+  `evidence_packet.` / `packet.` prefixes are stripped, and JSON array indices
+  are supported (e.g. `results.time_grouped_summary.0.avg_r`). When provenance
+  includes a fingerprint, dataset identity is available at
+  `assumptions.dataset.dataset_fingerprint` (and mirrored at
+  `assumptions.dataset_fingerprint`); the nested key is omitted when fingerprint
+  is absent. The model cannot execute tools, mutate confirmed RunSpecs, bypass
+  confirmation, or invent metrics.
 - Credentials: set a rotated `OPENAI_API_KEY` in the environment first, or via
   Streamlit Secrets on Community Cloud (top-level `OPENAI_API_KEY`; nested
   `[openai].api_key` or `[openai].OPENAI_API_KEY` accepted as compatibility).
