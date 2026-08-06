@@ -18,10 +18,13 @@ _METRIC_ALIASES: tuple[tuple[tuple[str, ...], str], ...] = (
     (("expectancy", "expectancy_r"), "results.trade_summary.expectancy_r"),
     (("profit factor", "profit_factor"), "results.trade_summary.profit_factor"),
     (("drawdown", "max drawdown", "max_drawdown"), "results.trade_summary.max_drawdown_r"),
-    (("trade count", "trades", "sample size"), "results.trade_summary.trade_count"),
-    (("total r", "total_r"), "results.trade_summary.total_r"),
+    # trade_count lives at results.trade_count (not under trade_summary).
+    (("trade count", "trades", "sample size"), "results.trade_count"),
+    # Word-boundary "total r" — must not match "total risk".
+    (("total_r",), "results.trade_summary.total_r"),
     (("signal count", "signals"), "results.signal_count"),
 )
+_TOTAL_R_RE = re.compile(r"\btotal\s+r\b", re.IGNORECASE)
 
 _CAVEAT_HINTS = (
     "caveat",
@@ -84,6 +87,13 @@ class VoiceIntentRouter:
 
         if any(hint in normalized for hint in _CAVEAT_HINTS):
             return VoiceIntent(tool_name="list_caveats", arguments={}, recognized=True)
+
+        if _TOTAL_R_RE.search(normalized):
+            return VoiceIntent(
+                tool_name="get_metric",
+                arguments={"path": "results.trade_summary.total_r"},
+                recognized=True,
+            )
 
         for aliases, path in _METRIC_ALIASES:
             if any(alias in normalized for alias in aliases):

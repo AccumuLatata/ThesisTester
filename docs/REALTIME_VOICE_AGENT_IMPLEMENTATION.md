@@ -597,8 +597,11 @@ docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
   `handle_results_turn` / `handle_help_turn` → speakable formatting →
   `GroundingVerdict` → xAI unary TTS → `st.audio`.
 - Fallback (results, no OpenAI / RQ unavailable): `VoiceIntentRouter` → exactly
-  one VA-3 tool → template → TTS. Help without OpenAI remediates (no fabricated
-  docs). Perf questions still remediate to Discuss.
+  one VA-3 tool → unwrap `execute_voice_tool` envelope → template → TTS.
+  RQ non-completed responses remediate (no silent fallback). Help without
+  OpenAI remediates (no fabricated docs). Perf questions still remediate to
+  Discuss. Primary RQ calls use `persist_conversation=False` so voice flush
+  owns a single channel history write.
 - Session: short-lived `VoiceSessionRecord` with `mode="push_to_talk"`;
   transcript + audits flush on end. No ephemeral token mint on the PTT path.
 - Session keys: `assistant_voice_results_sessions`,

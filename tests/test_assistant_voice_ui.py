@@ -594,3 +594,232 @@ def test_llm_configuration_error_falls_back_for_results(monkeypatch, tmp_path: P
     )
     assert turn.answer_path == "fallback_tool"
     assert turn.tool_name == "list_caveats"
+
+
+def test_fallback_unwraps_tool_envelope_into_speakable(monkeypatch, tmp_path: Path):
+    repository = _repository(tmp_path)
+    thesis, run, digest, conversation = _completed_run(repository, tmp_path)
+    transport = _FakeSTTTTS(transcript="How many trades?")
+    monkeypatch.setenv("XAI_API_KEY", "test-xai-key-not-real")
+
+    class _Orch(AssistantOrchestrator):
+        def handle_results_turn(self, client, **kwargs):
+            raise AssertionError("fallback must not call results turn without client")
+
+    service = VoiceSessionService(
+        repository,
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        settings=_enabled_settings(),
+    )
+    orch = _Orch(
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        repository=repository,
+    )
+    turn = run_push_to_talk_turn(
+        service=service,
+        orchestrator=orch,
+        audio_bytes=b"RIFF....",
+        channel="results_qa",
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+        run_id=run.run_id,
+        expected_hash=digest,
+        openai_client=None,
+        stt_transport=transport,
+        tts_transport=transport,
+    )
+    assert turn.answer_path == "fallback_tool"
+    assert turn.tool_name == "get_metric"
+    assert "None" not in turn.speakable_text
+    assert "trade_count" in turn.speakable_text
+    assert "0" in turn.speakable_text
+    assert transport.tts_texts
+    assert "None" not in transport.tts_texts[0]
+
+
+def test_rq_failed_results_turn_does_not_silent_fallback(monkeypatch, tmp_path: Path):
+    repository = _repository(tmp_path)
+    thesis, run, digest, conversation = _completed_run(repository, tmp_path)
+    transport = _FakeSTTTTS(transcript="What was expectancy?")
+    monkeypatch.setenv("XAI_API_KEY", "test-xai-key-not-real")
+
+    class _Orch(AssistantOrchestrator):
+        def handle_results_turn(self, client, **kwargs):
+            assert kwargs.get("persist_conversation") is False
+            return OrchestrationResult(
+                status="failed",
+                capability_id="results_qa",
+                payload={"error": {"message": "Evidence packet missing for this run."}},
+            )
+
+    service = VoiceSessionService(
+        repository,
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        settings=_enabled_settings(),
+    )
+    orch = _Orch(
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        repository=repository,
+    )
+    turn = run_push_to_talk_turn(
+        service=service,
+        orchestrator=orch,
+        audio_bytes=b"RIFF....",
+        channel="results_qa",
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+        run_id=run.run_id,
+        expected_hash=digest,
+        openai_client=_FakeOpenAI(ResultsQAReply(summary="unused", caveats=(), claims=())),
+        stt_transport=transport,
+        tts_transport=transport,
+    )
+    assert turn.answer_path == "handle_results_turn"
+    assert turn.openai_used is True
+    assert turn.tool_name is None
+    assert "Evidence packet missing" in turn.speakable_text
+
+
+def test_help_failed_turn_tolerates_non_mapping_error(monkeypatch, tmp_path: Path):
+    repository = _repository(tmp_path)
+    thesis, run, digest, conversation = _completed_run(repository, tmp_path)
+    transport = _FakeSTTTTS(transcript="How do I bind a research bundle?")
+    monkeypatch.setenv("XAI_API_KEY", "test-xai-key-not-real")
+
+    class _Orch(AssistantOrchestrator):
+        def handle_help_turn(self, client, **kwargs):
+            assert kwargs.get("persist_conversation") is False
+            return OrchestrationResult(
+                status="failed",
+                capability_id="help",
+                payload={"error": None},
+            )
+
+    service = VoiceSessionService(
+        repository,
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        settings=_enabled_settings(),
+    )
+    orch = _Orch(
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        repository=repository,
+    )
+    turn = run_push_to_talk_turn(
+        service=service,
+        orchestrator=orch,
+        audio_bytes=b"RIFF....",
+        channel="product_help",
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+        run_id=None,
+        expected_hash=None,
+        openai_client=_FakeOpenAI(HelpReply(summary="unused", caveats=())),
+        stt_transport=transport,
+        tts_transport=transport,
+    )
+    assert turn.answer_path == "remediation"
+    assert "Unable to answer this help question" in turn.speakable_text
+
+
+def test_primary_ptt_does_not_double_write_channel_history(monkeypatch, tmp_path: Path):
+    repository = _repository(tmp_path)
+    thesis, run, digest, conversation = _completed_run(repository, tmp_path)
+    transport = _FakeSTTTTS(transcript="What was expectancy?")
+    monkeypatch.setenv("XAI_API_KEY", "test-xai-key-not-real")
+    reply = ResultsQAReply(
+        summary="Expectancy was 0.42 R on this completed run.",
+        caveats=("Diagnostic only.",),
+        claims=(
+            EvidenceClaim(text="expectancy", path="results.trade_summary.expectancy_r", value=0.42),
+        ),
+    )
+
+    class _Orch(AssistantOrchestrator):
+        def handle_results_turn(self, client, **kwargs):
+            assert kwargs.get("persist_conversation") is False
+            return OrchestrationResult(
+                status="completed",
+                capability_id="results_qa",
+                payload={"results_reply": reply},
+            )
+
+    service = VoiceSessionService(
+        repository,
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        settings=_enabled_settings(),
+    )
+    orch = _Orch(
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        repository=repository,
+    )
+    turn = run_push_to_talk_turn(
+        service=service,
+        orchestrator=orch,
+        audio_bytes=b"RIFF....",
+        channel="results_qa",
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+        run_id=run.run_id,
+        expected_hash=digest,
+        openai_client=_FakeOpenAI(reply),
+        stt_transport=transport,
+        tts_transport=transport,
+    )
+    refreshed = repository.get_conversation(thesis.thesis_id, conversation.conversation_id)
+    voice_msgs = [
+        message
+        for message in refreshed.messages
+        if message.get("voice_session_id") == turn.session_id
+    ]
+    channel_msgs = [
+        message for message in refreshed.messages if message.get("channel") == "results_qa"
+    ]
+    assert len(voice_msgs) == 2
+    assert len(channel_msgs) == 2
+
+
+def test_summary_only_retry_strips_claim_path_markup(monkeypatch, tmp_path: Path):
+    repository = _repository(tmp_path)
+    thesis, run, digest, conversation = _completed_run(repository, tmp_path)
+    transport = _FakeSTTTTS(transcript="What was win rate?")
+    monkeypatch.setenv("XAI_API_KEY", "test-xai-key-not-real")
+    reply = ResultsQAReply(
+        summary="Win rate `results.trade_summary.win_rate` = 0.55 on sample.",
+        caveats=("Needs at least 30 trades for diagnostics.",),
+        claims=(EvidenceClaim(text="win rate", path="results.trade_summary.win_rate", value=0.55),),
+    )
+
+    class _Orch(AssistantOrchestrator):
+        def handle_results_turn(self, client, **kwargs):
+            return OrchestrationResult(
+                status="completed",
+                capability_id="results_qa",
+                payload={"results_reply": reply},
+            )
+
+    service = VoiceSessionService(
+        repository,
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        settings=_enabled_settings(),
+    )
+    orch = _Orch(
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        repository=repository,
+    )
+    turn = run_push_to_talk_turn(
+        service=service,
+        orchestrator=orch,
+        audio_bytes=b"RIFF....",
+        channel="results_qa",
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+        run_id=run.run_id,
+        expected_hash=digest,
+        openai_client=_FakeOpenAI(reply),
+        stt_transport=transport,
+        tts_transport=transport,
+    )
+    assert turn.trusted is True
+    assert "`" not in turn.speakable_text
+    assert "results.trade_summary.win_rate" not in turn.speakable_text
+    assert "0.55" in turn.speakable_text

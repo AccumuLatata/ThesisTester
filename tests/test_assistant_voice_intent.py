@@ -34,7 +34,7 @@ def test_caveats_and_metric_aliases():
 
     trades = router.route("How many trades / sample size?")
     assert trades.tool_name == "get_metric"
-    assert trades.arguments["path"] == "results.trade_summary.trade_count"
+    assert trades.arguments["path"] == "results.trade_count"
 
 
 def test_explicit_path_and_compare_with_run_id():
@@ -59,3 +59,14 @@ def test_empty_text_is_unrecognized_overview():
     empty = router.route("   ")
     assert empty.tool_name == "get_run_overview"
     assert empty.recognized is False
+
+
+def test_total_r_alias_does_not_match_total_risk():
+    router = VoiceIntentRouter()
+    total_r = router.route("what is total r on this run?")
+    assert total_r.tool_name == "get_metric"
+    assert total_r.arguments["path"] == "results.trade_summary.total_r"
+
+    risk = router.route("what is total risk on this setup?")
+    assert risk.tool_name == "get_run_overview"
+    assert risk.recognized is False

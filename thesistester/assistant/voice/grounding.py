@@ -180,10 +180,14 @@ def audit_spoken_text(
     )
 
 
-def _strip_claim_path_markup(text: str) -> str:
+def strip_claim_path_markup(text: str) -> str:
     """Remove backtick path citations so speech does not read raw claim paths."""
     cleaned = _CLAIM_PATH_MARKUP_RE.sub("", text)
     return " ".join(cleaned.split())
+
+
+# Backward-compatible private alias for in-module call sites.
+_strip_claim_path_markup = strip_claim_path_markup
 
 
 def _join_caveats(caveats: Sequence[Any], *, limit: int = _MAX_SPOKEN_CAVEATS) -> str:

@@ -38,6 +38,7 @@ from thesistester.assistant.voice.grounding import (
     format_speakable_help_reply,
     format_speakable_results_reply,
     format_speakable_tool_result,
+    strip_claim_path_markup,
 )
 from thesistester.assistant.voice.intent import VoiceIntentRouter
 from thesistester.assistant.voice.settings import VoiceSettings, load_voice_settings
@@ -328,6 +329,7 @@ def _answer_results_ptt(
                 message=stt_text,
                 conversation_id=conversation_id,
                 max_history_messages=max_history_messages,
+                persist_conversation=False,
             )
             if getattr(result, "status", None) == "completed":
                 reply = (getattr(result, "payload", None) or {}).get("results_reply")
@@ -337,8 +339,10 @@ def _answer_results_ptt(
                     grounding = audit_spoken_text(speakable, claims=claims)
                     if not grounding.grounded:
                         # Caveat free-text digits are not typed claim values —
-                        # retry summary-only before remediating.
-                        summary_only = str(getattr(reply, "summary", "") or "").strip()
+                        # retry summary-only (still strip claim-path markup).
+                        summary_only = strip_claim_path_markup(
+                            str(getattr(reply, "summary", "") or "").strip()
+                        )
                         if summary_only:
                             speakable = summary_only
                             grounding = audit_spoken_text(speakable, claims=claims)
@@ -352,6 +356,25 @@ def _answer_results_ptt(
                         True,
                         remediation,
                     )
+            # OpenAI path attempted but did not complete — surface RQ error.
+            # Do not silent-fall through to VA-3 (would hide the RQ failure).
+            payload = getattr(result, "payload", None) or {}
+            error = payload.get("error") if isinstance(payload, Mapping) else None
+            if isinstance(error, Mapping):
+                message = str(error.get("message") or "Unable to answer this results question.")
+            else:
+                message = "Unable to answer this results question."
+            speakable = message
+            grounding = audit_spoken_text(speakable, allowed_tokens=())
+            return (
+                "handle_results_turn",
+                speakable,
+                grounding,
+                None,
+                None,
+                True,
+                speakable,
+            )
         except (LLMConfigurationError, LLMProviderError, ValueError, AssistantToolError):
             # Fall through to deterministic VA-3 tool path.
             pass
@@ -361,7 +384,7 @@ def _answer_results_ptt(
     from thesistester.assistant.voice.tools import VoiceToolError, execute_voice_tool
 
     try:
-        tool_result = execute_voice_tool(
+        envelope = execute_voice_tool(
             intent.tool_name,
             intent.arguments,
             session=tool_session,
@@ -381,13 +404,35 @@ def _answer_results_ptt(
             speakable,
         )
 
+    if not isinstance(envelope, Mapping) or not envelope.get("ok"):
+        error_text = ""
+        if isinstance(envelope, Mapping):
+            error_text = str(envelope.get("error") or "").strip()
+        speakable = (
+            error_text
+            or "I could not answer from the bound evidence. Please use text Discuss results."
+        )
+        grounding = audit_spoken_text(speakable, allowed_tokens=())
+        return (
+            "fallback_tool",
+            speakable,
+            grounding,
+            intent.tool_name,
+            intent.spoken_note,
+            False,
+            speakable,
+        )
+
+    tool_result = envelope.get("result")
+    if not isinstance(tool_result, Mapping):
+        tool_result = {}
     speakable = format_speakable_tool_result(
         intent.tool_name,
         tool_result,
         spoken_note=intent.spoken_note,
     )
     extra_values: list[Any] = []
-    if intent.tool_name == "list_caveats" and isinstance(tool_result, Mapping):
+    if intent.tool_name == "list_caveats":
         caveats = tool_result.get("caveats") or []
         warnings = tool_result.get("warnings") or []
         extra_values.append(len(caveats) if isinstance(caveats, list) else 0)
@@ -432,6 +477,7 @@ def _answer_help_ptt(
             conversation_id=conversation_id,
             max_history_messages=max_history_messages,
             repo_root=repo_root,
+            persist_conversation=False,
         )
     except (LLMConfigurationError, LLMProviderError, ValueError) as exc:
         speakable = (
@@ -442,12 +488,13 @@ def _answer_help_ptt(
         return ("remediation", speakable, grounding, False, speakable)
 
     if getattr(result, "status", None) != "completed":
-        message = (
-            (getattr(result, "payload", None) or {})
-            .get("error", {})
-            .get("message", "Unable to answer this help question.")
-        )
-        speakable = str(message)
+        payload = getattr(result, "payload", None) or {}
+        error = payload.get("error") if isinstance(payload, Mapping) else None
+        if isinstance(error, Mapping):
+            message = str(error.get("message") or "Unable to answer this help question.")
+        else:
+            message = "Unable to answer this help question."
+        speakable = message
         grounding = audit_spoken_text(speakable, allowed_tokens=())
         return ("remediation", speakable, grounding, True, speakable)
 
@@ -465,7 +512,7 @@ def _answer_help_ptt(
     )
     grounding = audit_spoken_text(speakable, allowed_tokens=allowed)
     if not grounding.grounded:
-        summary_only = str(getattr(reply, "summary", "") or "").strip()
+        summary_only = strip_claim_path_markup(str(getattr(reply, "summary", "") or "").strip())
         if summary_only:
             speakable = summary_only
             grounding = audit_spoken_text(speakable, allowed_tokens=allowed)
