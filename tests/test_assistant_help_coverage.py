@@ -126,10 +126,14 @@ def test_qh6_keeps_grid_search_despite_metric_sl_tp_boosts():
 
 def test_qd1_monte_carlo_retrieves_metrics_or_validation_guide():
     pairs = _selected_pairs("What is Monte Carlo in ThesisTester?")
-    ok = any(doc_id == "metrics" for doc_id, _ in pairs) or (
-        "user_guide",
-        "Validation and robustness",
-    ) in pairs
+    ok = (
+        any(doc_id == "metrics" for doc_id, _ in pairs)
+        or (
+            "user_guide",
+            "Validation and robustness",
+        )
+        in pairs
+    )
     assert ok, f"Q-D1 expected metrics and/or Validation guide; got {sorted(pairs)}"
 
 
@@ -142,10 +146,14 @@ def test_qd4_research_bundle_retrieves_user_guide():
 
 def test_qd5_walk_forward_retrieves_metrics_or_validation_guide():
     pairs = _selected_pairs("What is walk-forward validation here?")
-    ok = any(doc_id == "metrics" for doc_id, _ in pairs) or (
-        "user_guide",
-        "Validation and robustness",
-    ) in pairs
+    ok = (
+        any(doc_id == "metrics" for doc_id, _ in pairs)
+        or (
+            "user_guide",
+            "Validation and robustness",
+        )
+        in pairs
+    )
     assert ok, f"Q-D5 expected metrics and/or Validation guide; got {sorted(pairs)}"
 
 
