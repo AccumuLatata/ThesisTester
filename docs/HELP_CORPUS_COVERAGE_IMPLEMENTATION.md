@@ -20,7 +20,7 @@ changes a freeze. Every HC PR must stay inside its scope table.
 |---|---|---|
 | RQ | Help **channel** (`product_help`, `handle_help_turn`, grounding, UI) | Call it; never fork |
 | RQ §7.1 | Frozen allowlist rules + heading match semantics | **Amend table/manifest only** via HC PRs that add content |
-| VA | Spoken transport over Help | Reuse expanded corpus; no HC voice work |
+| VA | Spoken transport over Help (`docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`) | Spoken Help inherits this corpus + §7.1.4; VA must not reopen HC or widen allowlist |
 | HC (this doc) | User-facing feature/how-to content + allowlist coverage + retrieval acceptance | Content + narrow corpus wiring |
 
 **Do not reopen RQ-3 logic** (intent guard, reply schema, digit grounding,
