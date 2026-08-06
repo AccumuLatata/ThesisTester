@@ -162,9 +162,10 @@ def _require_results_packet(session: VoiceToolSession) -> tuple[Any, EvidencePac
         raise VoiceToolError("Voice tools that read evidence require a results_qa session.")
     if record.status != "active":
         raise VoiceToolError("Cannot execute voice tools on an ended session.")
-    packet = session.service.get_bound_packet(session.session_id)
-    if packet is None:
-        raise VoiceToolError("Results voice session has no bound evidence packet.")
+    try:
+        packet = session.service.require_bound_packet(session.thesis_id, session.session_id)
+    except VoiceSessionError as exc:
+        raise VoiceToolError(str(exc)) from exc
     return record, packet
 
 
@@ -194,11 +195,11 @@ def _tool_get_metric(session: VoiceToolSession, args: Mapping[str, Any]) -> dict
     if not _path_exists(root, path):
         raise VoiceToolError(f"Unknown metric path: {path}")
     value = _path_get(root, path)
+    if isinstance(value, (dict, list)):
+        raise VoiceToolError("get_metric path must resolve to a scalar leaf value.")
     if value is None or value == "":
         raise VoiceToolError(f"Metric path is empty: {path}")
-    if isinstance(value, (dict, list)):
-        value_type = "object" if isinstance(value, dict) else "array"
-    elif isinstance(value, bool):
+    if isinstance(value, bool):
         value_type = "boolean"
     elif isinstance(value, int) and not isinstance(value, bool):
         value_type = "integer"
@@ -305,6 +306,56 @@ _TOOL_IMPLS = {
 }
 
 
+def _flush_tool_audit_to_conversation(
+    session: VoiceToolSession,
+    invocation: VoiceToolInvocation,
+) -> None:
+    """Best-effort per-call conversation tool_transcript entry (VA-3 scope)."""
+    try:
+        record = session.service.repository.get_voice_session(session.thesis_id, session.session_id)
+    except AssistantRepositoryError:
+        return
+    conversation_id = record.conversation_id
+    if not conversation_id:
+        return
+    try:
+        conversation = session.service.repository.get_conversation(
+            session.thesis_id, conversation_id
+        )
+    except AssistantRepositoryError:
+        return
+    tool_entry = {
+        "kind": "voice_tool",
+        "voice_session_id": record.session_id,
+        "tool_name": invocation.tool_name,
+        "arguments": invocation.arguments,
+        "ok": invocation.ok,
+        "result": invocation.result,
+        "error": invocation.error,
+        "created_at": invocation.created_at,
+        "channel": record.channel,
+    }
+    placeholder = {
+        "role": "system",
+        "content": f"voice_tool:{invocation.tool_name}",
+        "channel": record.channel,
+        "voice_session_id": record.session_id,
+        "created_at": invocation.created_at,
+    }
+    if record.run_id is not None:
+        placeholder["run_id"] = record.run_id
+    try:
+        session.service.repository.append_conversation_message(
+            session.thesis_id,
+            conversation_id,
+            expected_revision=conversation.revision,
+            message=placeholder,
+            tool_entry=tool_entry,
+        )
+    except AssistantRepositoryError:
+        return
+
+
 def _audit_invocation(
     session: VoiceToolSession,
     *,
@@ -323,10 +374,16 @@ def _audit_invocation(
         error=error,
     )
     try:
-        session.service.append_tool_invocation(session.thesis_id, session.session_id, invocation)
+        session.service.append_tool_invocation(
+            session.thesis_id,
+            session.session_id,
+            invocation,
+            allow_ended=True,
+        )
     except (VoiceSessionError, AssistantRepositoryError):
         # Still return the in-memory audit row to the caller even if persist fails.
         pass
+    _flush_tool_audit_to_conversation(session, invocation)
     return invocation
 
 
@@ -378,14 +435,23 @@ def execute_voice_tool(
             "error": None,
             "audit": invocation.to_dict(),
         }
-    except (VoiceToolError, VoiceSessionError, AssistantRepositoryError, AssistantToolError) as exc:
+    except Exception as exc:
+        # Broad catch keeps the one-audit-row contract for unexpected failures
+        # (e.g. compare_evidence ValueError) without leaking side effects.
+        if not isinstance(
+            exc,
+            (VoiceToolError, VoiceSessionError, AssistantRepositoryError, AssistantToolError),
+        ):
+            error_text = f"Voice tool failed closed: {exc}"
+        else:
+            error_text = str(exc)
         invocation = _audit_invocation(
             session,
             tool_name=tool_name,
             arguments=arguments,
             ok=False,
             result={},
-            error=str(exc),
+            error=error_text,
         )
         return {
             "ok": False,

@@ -462,6 +462,70 @@ def test_help_session_persists_conversation_id_and_retry_flush(tmp_path):
     assert second_count == first_count
 
 
+def test_partial_flush_resumes_remaining_transcript_turns(tmp_path):
+    repository = _repository(tmp_path)
+    thesis = repository.create_thesis(name="partial flush")
+    conversation = repository.create_conversation(thesis.thesis_id)
+    service = VoiceSessionService(repository, tools=AssistantTools(data_roots=(tmp_path,)))
+    record = service.create_session(
+        thesis.thesis_id,
+        None,
+        mode="push_to_talk",
+        channel="product_help",
+        conversation_id=conversation.conversation_id,
+    )
+    service.append_transcript_turn(
+        thesis.thesis_id,
+        record.session_id,
+        VoiceTranscriptTurn(
+            role="user",
+            text="first",
+            created_at="2026-08-06T12:00:00+00:00",
+            channel="product_help",
+            path="stt",
+        ),
+    )
+    service.append_transcript_turn(
+        thesis.thesis_id,
+        record.session_id,
+        VoiceTranscriptTurn(
+            role="assistant",
+            text="second",
+            created_at="2026-08-06T12:00:01+00:00",
+            channel="product_help",
+            path="tts",
+        ),
+    )
+    # Simulate a partial prior flush: only the first turn is in the conversation.
+    conversation = repository.append_conversation_message(
+        thesis.thesis_id,
+        conversation.conversation_id,
+        expected_revision=conversation.revision,
+        message={
+            "role": "user",
+            "content": "first",
+            "channel": "product_help",
+            "voice_session_id": record.session_id,
+            "voice_path": "stt",
+            "created_at": "2026-08-06T12:00:00+00:00",
+        },
+    )
+    ended = service.end_session(
+        thesis.thesis_id,
+        record.session_id,
+        conversation_id=conversation.conversation_id,
+    )
+    assert ended.status == "ended"
+    refreshed = repository.get_conversation(thesis.thesis_id, conversation.conversation_id)
+    voice_messages = [
+        message
+        for message in refreshed.messages
+        if message.get("voice_session_id") == record.session_id
+    ]
+    assert len(voice_messages) == 2
+    assert {message.get("content") for message in voice_messages} == {"first", "second"}
+
+
 def test_results_session_rejects_bundle_outside_data_roots(tmp_path):
     import json
 

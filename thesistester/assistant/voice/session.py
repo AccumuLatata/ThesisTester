@@ -120,6 +120,25 @@ class VoiceSessionService:
         validate_voice_session_id(session_id)
         return self._bound_packets.get(session_id)
 
+    def require_bound_packet(self, thesis_id: str, session_id: str) -> EvidencePacket:
+        """Return the bound packet, rehydrating from persisted run/hash on miss."""
+        validate_voice_session_id(session_id)
+        cached = self._bound_packets.get(session_id)
+        if cached is not None:
+            return cached
+        record = self.repository.get_voice_session(thesis_id, session_id)
+        if record.channel != "results_qa":
+            raise VoiceSessionError("Bound evidence packets exist only for results_qa sessions.")
+        if not record.run_id or not record.expected_canonical_bundle_hash:
+            raise VoiceSessionError("Results voice session is missing run/hash binding.")
+        packet, _run_id, _digest = self._bind_results_session(
+            thesis_id,
+            run_id=record.run_id,
+            expected_hash=record.expected_canonical_bundle_hash,
+        )
+        self._bound_packets[session_id] = packet
+        return packet
+
     def tool_session(self, thesis_id: str, session_id: str):
         """Return a ``VoiceToolSession`` handle for allowlisted tool execution."""
         # Local import avoids package cycles with voice.tools → session.
@@ -233,9 +252,16 @@ class VoiceSessionService:
         thesis_id: str,
         session_id: str,
         invocation: VoiceToolInvocation,
+        *,
+        allow_ended: bool = False,
     ) -> VoiceSessionRecord:
+        """Append one tool audit row.
+
+        ``allow_ended=True`` keeps fail-closed deny/audit rows durable after
+        ``end_session`` (VA-3: one audit row per invocation attempt).
+        """
         record = self.repository.get_voice_session(thesis_id, session_id)
-        if record.status != "active":
+        if record.status != "active" and not allow_ended:
             raise VoiceSessionError("Cannot append tools to an ended voice session.")
         updated = replace(
             record,
@@ -367,14 +393,35 @@ class VoiceSessionService:
             conversation = self.repository.get_conversation(thesis_id, conversation_id)
         except AssistantRepositoryError:
             return
-        # Idempotent: a prior flush (or retry after end) must not duplicate turns.
-        if any(
-            isinstance(message, Mapping) and message.get("voice_session_id") == record.session_id
+        # Resume-safe idempotency: skip only entries already present; never treat
+        # "any voice_session_id message exists" as a completed flush.
+        flushed_turns = {
+            (
+                message.get("created_at"),
+                message.get("content"),
+                message.get("voice_path"),
+                message.get("role"),
+            )
             for message in conversation.messages
-        ):
-            return
+            if isinstance(message, Mapping)
+            and message.get("voice_session_id") == record.session_id
+            and message.get("voice_path") is not None
+        }
+        flushed_tools = {
+            (
+                entry.get("created_at"),
+                entry.get("tool_name"),
+                entry.get("ok"),
+                entry.get("error"),
+            )
+            for entry in conversation.tool_transcript
+            if isinstance(entry, Mapping) and entry.get("voice_session_id") == record.session_id
+        }
         revision = conversation.revision
         for turn in record.transcript:
+            turn_key = (turn.created_at, turn.text, turn.path, turn.role)
+            if turn_key in flushed_turns:
+                continue
             message: dict[str, Any] = {
                 "role": turn.role,
                 "content": turn.text,
@@ -394,9 +441,18 @@ class VoiceSessionService:
                     message=message,
                 )
                 revision = conversation.revision
+                flushed_turns.add(turn_key)
             except (AssistantRepositoryError, VoiceContractError):
                 return
         for invocation in record.tool_invocations:
+            tool_key = (
+                invocation.created_at,
+                invocation.tool_name,
+                invocation.ok,
+                invocation.error,
+            )
+            if tool_key in flushed_tools:
+                continue
             tool_entry = {
                 "kind": "voice_tool",
                 "voice_session_id": record.session_id,
@@ -413,6 +469,7 @@ class VoiceSessionService:
                 "content": f"voice_tool:{invocation.tool_name}",
                 "channel": record.channel,
                 "voice_session_id": record.session_id,
+                "created_at": invocation.created_at,
             }
             if record.run_id is not None:
                 placeholder["run_id"] = record.run_id
@@ -425,5 +482,6 @@ class VoiceSessionService:
                     tool_entry=tool_entry,
                 )
                 revision = conversation.revision
+                flushed_tools.add(tool_key)
             except AssistantRepositoryError:
                 return

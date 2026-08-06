@@ -2,6 +2,10 @@
 
 Reuses C2-6 / RQ number-token normalization from ``llm_explainer``. Does not
 trust raw model speech; returns a schema-versioned ``GroundingVerdict``.
+
+Allowlist policy mirrors C2 ``assert_llm_explanation_grounded``:
+- claim **values** (int/float) only — not free-text claim/caveat digits
+- tool results contribute int/float leaves only (not hash/run_id strings)
 """
 
 from __future__ import annotations
@@ -31,34 +35,42 @@ def extract_digit_tokens(text: str) -> tuple[str, ...]:
 
 
 def allowed_tokens_from_values(values: Iterable[Any]) -> set[str]:
-    """Build an allowlist of normalized numeric tokens from claim/tool values."""
+    """Build an allowlist from typed numeric claim/tool values (C2 parity).
+
+    Strings are intentionally ignored — caveat/hash/run_id text must not
+    launder inventable spoken metrics.
+    """
     allowed: set[str] = set()
     for value in values:
-        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
-            continue
-        if isinstance(value, str):
-            allowed.update(_extract_number_tokens(value))
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
             continue
         allowed.add(_normalize_number_token(str(value)))
     return allowed
 
 
 def allowed_tokens_from_packet(packet: EvidencePacket) -> set[str]:
-    """Allowlist numbers from packet claims, caveat messages, and typed claim values."""
-    allowed = allowed_tokens_from_values(claim.value for claim in packet.claims)
-    for claim in packet.claims:
-        if isinstance(claim.text, str):
-            allowed.update(_extract_number_tokens(claim.text))
-    for caveat in packet.caveats:
-        if isinstance(caveat.message, str):
-            allowed.update(_extract_number_tokens(caveat.message))
-    return allowed
+    """Allowlist numbers from typed packet claim values only (not caveat text)."""
+    return allowed_tokens_from_values(claim.value for claim in packet.claims)
 
 
 def allowed_tokens_from_tool_result(result: Mapping[str, Any] | None) -> set[str]:
-    """Collect digit tokens from a JSON-safe voice tool result payload."""
+    """Collect int/float digit tokens from a JSON-safe voice tool result.
+
+    Prefers an explicit scalar ``value`` (``get_metric``). Otherwise walks the
+    payload for numeric leaves only — never extracts digits from strings
+    (hashes, run ids, caveat messages).
+    """
     if not isinstance(result, Mapping):
         return set()
+    if "value" in result:
+        value = result.get("value")
+        if isinstance(value, bool):
+            return set()
+        if isinstance(value, (int, float)):
+            return {_normalize_number_token(str(value))}
+        # Non-numeric metric values contribute no spoken digit allowlist.
+        return set()
+
     allowed: set[str] = set()
 
     def walk(value: Any) -> None:
@@ -66,9 +78,6 @@ def allowed_tokens_from_tool_result(result: Mapping[str, Any] | None) -> set[str
             return
         if isinstance(value, (int, float)):
             allowed.add(_normalize_number_token(str(value)))
-            return
-        if isinstance(value, str):
-            allowed.update(_extract_number_tokens(value))
             return
         if isinstance(value, Mapping):
             for item in value.values():
@@ -78,6 +87,14 @@ def allowed_tokens_from_tool_result(result: Mapping[str, Any] | None) -> set[str
             for item in value:
                 walk(item)
 
+    # Prefer claim values when present (overview payloads).
+    claims = result.get("claims")
+    if isinstance(claims, list):
+        for claim in claims:
+            if isinstance(claim, Mapping):
+                walk(claim.get("value"))
+        if allowed:
+            return allowed
     walk(result)
     return allowed
 
@@ -106,9 +123,6 @@ def audit_spoken_text(
         allowed |= allowed_tokens_from_values(allowed_values)
     if claims is not None:
         allowed |= allowed_tokens_from_values(claim.value for claim in claims)
-        for claim in claims:
-            if isinstance(claim.text, str):
-                allowed.update(_extract_number_tokens(claim.text))
     if packet is not None:
         allowed |= allowed_tokens_from_packet(packet)
     if tool_result is not None:

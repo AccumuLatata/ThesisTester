@@ -185,9 +185,16 @@ def test_get_metric_path_guards(tmp_path):
     assert missing["ok"] is False
     assert "Unknown metric path" in (missing["error"] or "")
 
-    empty = execute_voice_tool("get_metric", {"path": "results.trade_summary"}, session=handle)
-    assert empty["ok"] is False
-    assert "empty" in (empty["error"] or "").lower()
+    empty_leaf = execute_voice_tool("get_metric", {"path": "results.trade_summary"}, session=handle)
+    assert empty_leaf["ok"] is False
+    assert "empty" in (empty_leaf["error"] or "").lower()
+
+    root_only = execute_voice_tool("get_metric", {"path": "results"}, session=handle)
+    assert root_only["ok"] is False
+    assert (
+        "scalar" in (root_only["error"] or "").lower()
+        or "leaf" in (root_only["error"] or "").lower()
+    )
 
 
 def test_compare_two_runs_is_pure_and_fails_closed_on_hash(tmp_path):
@@ -301,7 +308,61 @@ def test_spoken_grounding_reuses_digit_token_rules():
     assert "0.99" in ungrounded.uncited_digit_tokens
     assert ungrounded.remediation
 
+    # Caveat message digits must not launder inventable spoken metrics (C2 parity).
+    caveat_launder = audit_spoken_text(
+        "Win rate is 30%.",
+        packet=packet,
+    )
+    assert caveat_launder.grounded is False
+
+    # Tool-result hashes/strings must not allowlist spoken digits.
+    hash_tool = audit_spoken_text(
+        "Hash starts with 05.",
+        tool_result={"canonical_bundle_hash": "05" + "a" * 62, "run_id": "run_" + "1" * 32},
+    )
+    assert hash_tool.grounded is False
+
+    metric_tool = audit_spoken_text(
+        "Trade count is 0.",
+        tool_result={"path": "results.trade_count", "value": 0, "value_type": "integer"},
+    )
+    assert metric_tool.grounded is True
+
     tokens = extract_digit_tokens("SL 8 / TP 16 at 0.25R")
     assert "8" in tokens
     assert "16" in tokens
     assert "0.25" in tokens
+
+
+def test_bound_packet_rehydrates_across_service_instances(tmp_path):
+    repository = _repository(tmp_path)
+    thesis, run, digest, _bundle = _complete_run(repository, tmp_path)
+    tools = AssistantTools(data_roots=(tmp_path,))
+    creator = VoiceSessionService(repository, tools=tools)
+    record = creator.create_session(
+        thesis.thesis_id,
+        run.run_id,
+        expected_hash=digest,
+        mode="push_to_talk",
+        channel="results_qa",
+    )
+    # New service instance (simulates Streamlit rerun / worker) has empty cache.
+    other = VoiceSessionService(repository, tools=tools)
+    handle = other.tool_session(thesis.thesis_id, record.session_id)
+    result = execute_voice_tool("list_caveats", {}, session=handle)
+    assert result["ok"] is True
+    assert result["result"]["caveats"]
+
+
+def test_ended_session_still_persists_deny_audit(tmp_path):
+    service, handle, thesis, _run, _digest = _results_service(tmp_path)
+    service.end_session(thesis.thesis_id, handle.session_id)
+    before = len(
+        service.repository.get_voice_session(thesis.thesis_id, handle.session_id).tool_invocations
+    )
+    denied = execute_voice_tool("web_search", {}, session=handle)
+    assert denied["ok"] is False
+    after = service.repository.get_voice_session(thesis.thesis_id, handle.session_id)
+    assert len(after.tool_invocations) == before + 1
+    assert after.tool_invocations[-1].tool_name == "web_search"
+    assert after.tool_invocations[-1].ok is False

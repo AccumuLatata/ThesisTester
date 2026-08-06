@@ -467,8 +467,8 @@ invoke outside RQ channel handlers.
 | | `list_caveats` → packet caveats |
 | | `compare_two_runs` → `{other_run_id}` hash-verify + `compare_evidence`; **no** `save_comparison` |
 | Deny | Anything else, including search/`mcp`/`PIPELINE.*`/`execute_confirmed_run` |
-| Audit | Each call → one conversation `tool_transcript` entry |
-| Grounding helper | `voice/grounding.py` — reuse C2-6 / RQ token normalization; digit-token audit for spoken strings |
+| Audit | Each call → one session `VoiceToolInvocation` + best-effort conversation `tool_transcript` when `conversation_id` is bound |
+| Grounding helper | `voice/grounding.py` — reuse C2-6 / RQ token normalization; digit-token audit for spoken strings (claim **values** only) |
 | Tests | `tests/test_assistant_voice_tools.py` — allowlist, deny, path traversal, compare hash fail, injection names, grounding cases |
 
 #### Out of scope
@@ -478,11 +478,11 @@ invoke outside RQ channel handlers.
 - Registry expansion beyond calling existing orchestrator read APIs
 
 #### Acceptance
-- [ ] Unknown tool name → fail; no side effects
-- [ ] Model-requested `execute_confirmed_run` / `web_search` never execute
-- [ ] `get_metric` rejects unknown/empty paths
-- [ ] `compare_two_runs` fails closed on hash missing/mismatch
-- [ ] Exactly one transcript audit row per invocation attempt
+- [x] Unknown tool name → fail; no side effects
+- [x] Model-requested `execute_confirmed_run` / `web_search` never execute
+- [x] `get_metric` rejects unknown/empty paths
+- [x] `compare_two_runs` fails closed on hash missing/mismatch
+- [x] Exactly one transcript audit row per invocation attempt
 
 #### Regression safety
 Thin adapters over existing explain/compare/packet. No page behavior while
@@ -507,13 +507,18 @@ docs/AGENT_GUIDE.md
   `execute_confirmed_run`, `PIPELINE.*`, `mcp`, `save_comparison`, …) fail
   closed with no tool side effects beyond one audit row.
 - `get_metric` rejects empty paths, `..` / separators, unknown roots, missing
-  paths, and empty values. `compare_two_runs` hash-verifies the other run via
+  paths, empty values, and non-scalar (object/array) leaves.
+  `compare_two_runs` hash-verifies the other run via
   `build_bundle_evidence_packet` and returns pure `compare_evidence` with
   `persisted=false` (never `save_comparison`).
 - Each invocation attempt appends exactly one `VoiceToolInvocation` on the
-  voice session record (success or failure).
+  voice session record (success or failure; durable after `end_session`) and
+  best-effort flushes one conversation `tool_transcript` entry when a
+  `conversation_id` is bound. Bound packets rehydrate across service instances
+  from persisted run/hash.
 - `voice/grounding.py`: `audit_spoken_text` reuses C2-6 / RQ
-  `_normalize_number_token` / digit-token rules and returns `GroundingVerdict`.
+  `_normalize_number_token` / digit-token rules and returns `GroundingVerdict`
+  with claim-value allowlists (caveat/hash strings do not launder metrics).
 - `tests/test_assistant_voice_tools.py` gates allowlist, deny, path traversal,
   compare hash fail, injection names, and grounding cases.
 - Flag still `enabled=false`; no mic UI (VA-4).
