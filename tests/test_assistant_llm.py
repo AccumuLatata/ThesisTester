@@ -79,6 +79,28 @@ def test_api_key_from_secrets_mapping_flat_and_nested_precedence():
     assert _api_key_from_secrets_mapping(None) is None
 
 
+def test_usable_openai_api_key_strips_wrapping_quotes_and_bom():
+    from thesistester.assistant.llm import _usable_openai_api_key
+
+    assert _usable_openai_api_key('  "sk-abc123"  ') == "sk-abc123"
+    assert _usable_openai_api_key("'sk-abc123'") == "sk-abc123"
+    assert _usable_openai_api_key("\ufeffsk-abc123") == "sk-abc123"
+    assert _usable_openai_api_key('"REPLACE_WITH_ROTATED_OPENAI_API_KEY"') is None
+
+
+def test_api_key_from_secrets_mapping_accepts_nested_openai_api_key_alias():
+    assert (
+        _api_key_from_secrets_mapping({"openai": {"OPENAI_API_KEY": "sk-nested-alias"}})
+        == "sk-nested-alias"
+    )
+    assert (
+        _api_key_from_secrets_mapping(
+            {"openai": {"OPENAI_API_KEY": '"sk-quoted-nested"', "api_key": "sk-preferred"}}
+        )
+        == "sk-preferred"
+    )
+
+
 def test_openai_client_requires_strict_json_object_output():
     class Transport:
         def post_json(self, **kwargs):

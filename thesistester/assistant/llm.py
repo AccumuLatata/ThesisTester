@@ -120,6 +120,7 @@ def _openai_transport_failure_message(exc: BaseException, *, api_key: str | None
         )
         if detail:
             return f"{prefix} ({detail})."
+        return f"{prefix} (network error)."
     return f"{prefix}."
 
 
@@ -384,10 +385,22 @@ _OPENAI_API_KEY_PLACEHOLDER = "REPLACE_WITH_ROTATED_OPENAI_API_KEY"
 
 
 def _usable_openai_api_key(value: Any) -> str | None:
-    """Return a non-empty, non-placeholder key string; otherwise None."""
+    """Return a non-empty, non-placeholder key string; otherwise None.
+
+    Tolerates common Streamlit Secrets / env copy-paste faults: surrounding
+    whitespace, a UTF-8 BOM, and one layer of wrapping quotes
+    (``\"sk-...\"`` / ``'sk-...'``), which otherwise become part of the Bearer
+    token and fail OpenAI auth as HTTP 401.
+    """
     if not isinstance(value, str):
         return None
-    key = value.strip()
+    key = value.strip().lstrip("\ufeff").strip()
+    if (
+        len(key) >= 2
+        and key[0] == key[-1]
+        and key[0] in {"'", '"'}
+    ):
+        key = key[1:-1].strip()
     if not key or key == _OPENAI_API_KEY_PLACEHOLDER:
         return None
     return key
@@ -398,7 +411,8 @@ def _api_key_from_secrets_mapping(secrets: Any) -> str | None:
 
     Precedence inside secrets:
     1. top-level ``OPENAI_API_KEY`` (canonical Community Cloud shape)
-    2. nested ``[openai].api_key`` (compatibility only)
+    2. nested ``[openai].api_key`` (compatibility)
+    3. nested ``[openai].OPENAI_API_KEY`` (common mis-key; accepted only as fallback)
     """
     if secrets is None or not hasattr(secrets, "get"):
         return None
@@ -414,10 +428,14 @@ def _api_key_from_secrets_mapping(secrets: Any) -> str | None:
         return None
     if section is None or not hasattr(section, "get"):
         return None
-    try:
-        return _usable_openai_api_key(section.get("api_key"))
-    except Exception:
-        return None
+    for nested_key in ("api_key", "OPENAI_API_KEY"):
+        try:
+            nested = _usable_openai_api_key(section.get(nested_key))
+        except Exception:
+            nested = None
+        if nested is not None:
+            return nested
+    return None
 
 
 def _read_streamlit_openai_api_key() -> str | None:

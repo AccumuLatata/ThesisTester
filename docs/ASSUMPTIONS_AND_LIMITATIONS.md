@@ -525,11 +525,14 @@ other than the last bar in the dataset.
   is absent. The model cannot execute tools, mutate confirmed RunSpecs, bypass
   confirmation, or invent metrics.
 - Credentials: set a rotated `OPENAI_API_KEY` in the environment first, or via
-  Streamlit Secrets on Community Cloud (`OPENAI_API_KEY`, with nested
-  `[openai].api_key` accepted as compatibility only). The placeholder
-  `REPLACE_WITH_ROTATED_OPENAI_API_KEY` is rejected. Never store the key in
-  tracked configuration. Non-secret knobs (`provider`, `model`, retries,
-  history trim, `evidence_only`) live in `config/assistant.toml`.
+  Streamlit Secrets on Community Cloud (top-level `OPENAI_API_KEY`; nested
+  `[openai].api_key` or `[openai].OPENAI_API_KEY` accepted as compatibility).
+  One layer of wrapping quotes / UTF-8 BOM is stripped so copy-paste into
+  Secrets does not produce a Bearer token that OpenAI rejects as
+  `invalid_api_key`. The placeholder `REPLACE_WITH_ROTATED_OPENAI_API_KEY` is
+  rejected. Never store the key in tracked configuration. Non-secret knobs
+  (`provider`, `model`, retries, history trim, `evidence_only`) live in
+  `config/assistant.toml`.
 - Provider timeouts retry per `max_retries`; exhaustion surfaces as a provider
   error and leaves the deterministic packet intact. Transport failures from
   `UrllibOpenAITransport` keep the stable prefix

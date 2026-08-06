@@ -207,6 +207,28 @@ def test_propose_help_reply_accepts_allowlisted_citations():
     assert reply.remediation is False
 
 
+def test_propose_help_reply_normalizes_registry_digest_citation_alias():
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Discuss uses the capability registry.",
+                "caveats": [],
+                "citations": [{"doc_id": "registry_digest", "section": "digest"}],
+                "followups": ["Ask about Help vs Discuss."],
+            }
+
+    reply = propose_help_reply(
+        Client(),
+        corpus_chunks=(),
+        registry_digest=[{"capability_id": "PIPELINE.run_experiment", "status": "executable"}],
+        history=(),
+        user_message="What is the capability registry?",
+    )
+    assert reply.citations[0].doc_id == "registry"
+    assert reply.citations[0].section == "digest"
+    assert reply.remediation is False
+
+
 def test_propose_help_reply_remediates_performance_without_llm():
     class Client:
         def complete_structured(self, **kwargs):  # pragma: no cover

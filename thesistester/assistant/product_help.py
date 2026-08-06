@@ -393,6 +393,10 @@ def propose_help_reply(
             raise HelpEvidenceError("Help citations must be non-empty doc_id/section objects.")
         doc_id = item["doc_id"].strip()
         section = item["section"].strip()
+        # Models sometimes echo the user-payload key ``registry_digest`` instead
+        # of the attached corpus doc_id ``registry`` (same section ``digest``).
+        if doc_id == "registry_digest":
+            doc_id = REGISTRY_DOC_ID
         if (doc_id, section) not in attached:
             raise HelpEvidenceError(
                 f"Help citation {doc_id!r}/{section!r} was not attached to this turn."
