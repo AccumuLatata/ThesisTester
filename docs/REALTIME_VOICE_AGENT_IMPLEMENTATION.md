@@ -238,13 +238,13 @@ secret, and spoken-grounding series on top of a finished text substrate.
 |---|---|---|
 | VA-1 | ✅ Done via RQ-1 | Text Discuss substrate |
 | VA-0 | ✅ Done | Contracts + flag + docs freeze |
-| VA-2 | Remaining | xAI credentials + session service + STT/TTS helpers |
+| VA-2 | ✅ Done | xAI credentials + session service + STT/TTS helpers |
 | VA-3 | Remaining | Read-only voice tools + grounding helpers |
 | VA-4 | Remaining | Push-to-talk spoken Discuss/Help (first user-visible) |
 | VA-5 | Remaining | Full-duplex realtime sidecar |
 | VA-6 | Remaining | Voice evals + release gate |
 
-**Remaining implementation PRs: 5** (VA-2 → VA-3 → VA-4 → VA-5 → VA-6). VA-0 ✅.
+**Remaining implementation PRs: 4** (VA-3 → VA-4 → VA-5 → VA-6). VA-0 ✅ / VA-2 ✅.
 
 Do **not** collapse VA-4 into VA-5. Half-duplex spoken channels prove value and
 honesty first. Do **not** reopen RQ for voice features.
@@ -398,11 +398,11 @@ docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md     # related-docs / VA↔HC pointer
 - Live network in CI
 
 #### Acceptance
-- [ ] Mint without key → structured fail closed
-- [ ] Results session without verified bundle → fail closed
-- [ ] Instructions always include: evidence/docs-only, no trade advice, numbers only from tools/packet/corpus rules, sample-size/OOS caveats for results
-- [ ] No `XAI_API_KEY` appears in any page module
-- [ ] OpenAI `llm.py` untouched except if a shared HTTP helper extract is required (prefer not)
+- [x] Mint without key → structured fail closed
+- [x] Results session without verified bundle → fail closed
+- [x] Instructions always include: evidence/docs-only, no trade advice, numbers only from tools/packet/corpus rules, sample-size/OOS caveats for results
+- [x] No `XAI_API_KEY` appears in any page module
+- [x] OpenAI `llm.py` untouched except if a shared HTTP helper extract is required (prefer not)
 
 #### Regression safety
 New modules only. Flag still false → no user-visible change. C2/RQ OpenAI
@@ -423,7 +423,33 @@ docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
 ```
 
 #### Implemented contract (fill when merged)
-_Pending implementation._
+- `voice/xai_realtime.py`: `require_xai_api_key()` (env → Secrets
+  `XAI_API_KEY` → `[xai].api_key`; placeholders rejected),
+  `mint_ephemeral_token` (`POST /v1/realtime/client_secrets`), unary
+  `speech_to_text` / `text_to_speech` with stdlib urllib transports, 30s
+  timeout, retries from settings. Injectable transports; no live network in CI.
+- `voice/session.py`: `VoiceSessionService.create_session` /
+  `end_session` / transcript append; results sessions bind hash-verified
+  `EvidencePacket` via `AssistantTools.build_bundle_evidence_packet`; Help
+  sessions omit run/hash. Honesty instructions always include
+  evidence/docs-only, no trade advice, numbers-only-from-tools/packet/corpus,
+  and sample-size/OOS caveats for results.
+- Persistence: `LocalThesisRepository.save_voice_session` /
+  `get_voice_session` under `theses/{thesis_id}/voice_sessions/vs_*.json`
+  (`kind: voice_session`); does not widen `Conversation` or reuse `_ID_RE`.
+  Saves validate via `VoiceSessionRecord.from_dict`, use optimistic
+  ``revision`` concurrency, and map invalid `vs_` ids to
+  `AssistantRepositoryError`. Optional bound `conversation_id` is persisted.
+  `end_session` best-effort flushes transcript/tool audits via
+  `append_conversation_message` (messages omit `choices`; flush is idempotent).
+- xAI helpers fail closed on empty/placeholder explicit `api_key=` and reject
+  CR/LF/`"` tokens in multipart filename/fields.
+- Results bind resolves bundle paths inside `AssistantTools.data_roots` before
+  any byte read; hash verification stays in `build_bundle_evidence_packet`.
+- `tests/test_assistant_voice_session.py` gates key fail-closed, mocked HTTP,
+  bad/missing hash, Help-without-run, instruction policy strings, `vs_` ids,
+  and no `XAI_API_KEY` in page modules.
+- Flag still `enabled=false`; no mic UI / tool router (VA-3/VA-4).
 
 ---
 
@@ -789,7 +815,7 @@ Constraints:
 | RQ help/projections/focus/evals | ✅ Implemented (RQ-2…RQ-5) — voice depends, does not re-own |
 | HC Help corpus coverage | ✅ Implemented (HC-0…HC-4) — spoken Help inherits; VA does not re-own |
 | VA-0 | ✅ Implemented (contracts/flag/docs freeze) |
-| VA-2 | Proposed |
+| VA-2 | ✅ Implemented (credentials + session + STT/TTS helpers) |
 | VA-3 | Proposed |
 | VA-4 | Proposed |
 | VA-5 | Proposed |

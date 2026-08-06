@@ -1138,3 +1138,93 @@ class LocalThesisRepository:
                 raise RepositoryCorruptionError("Comparison is stored under the wrong thesis.")
             records.append(record)
         return tuple(sorted(records, key=lambda record: record.comparison_id))
+
+    def _voice_session_path(self, thesis_id: str, session_id: str) -> Path:
+        # Lazy import avoids repository ↔ voice.session package cycles.
+        from thesistester.assistant.voice.contracts import (
+            VoiceContractError,
+            validate_voice_session_id,
+        )
+
+        # Voice ids use vs_… and must not reuse conversation/run ``_ID_RE``.
+        try:
+            validated = validate_voice_session_id(session_id)
+        except VoiceContractError as exc:
+            raise AssistantRepositoryError("Invalid assistant record identifier.") from exc
+        return self._thesis_dir(thesis_id) / "voice_sessions" / f"{validated}.json"
+
+    def save_voice_session(self, record: Any) -> Any:
+        """Persist a schema-versioned voice session sibling document (VA-2).
+
+        Creates or updates ``voice_sessions/vs_*.json`` with optimistic concurrency
+        on ``revision``. Does not widen ``Conversation`` fields or identity rules.
+        """
+        from dataclasses import replace
+
+        from thesistester.assistant.voice.contracts import (
+            VoiceContractError,
+            VoiceSessionRecord,
+        )
+
+        self._assert_mutable_root()
+        try:
+            validated = VoiceSessionRecord.from_dict(record.to_dict())
+        except (VoiceContractError, AttributeError, TypeError) as exc:
+            raise AssistantRepositoryError("Invalid voice session record.") from exc
+        self._load_thesis(validated.thesis_id)
+        path = self._voice_session_path(validated.thesis_id, validated.session_id)
+        if path.exists():
+            try:
+                existing = VoiceSessionRecord.from_dict(self._read_json(path))
+            except VoiceContractError as exc:
+                raise RepositoryCorruptionError("Invalid voice session document.") from exc
+            if existing.revision != validated.revision:
+                raise RepositoryConflictError("Voice session revision is stale.")
+            to_store = replace(validated, revision=validated.revision + 1)
+            self._write_json_atomic(path, to_store.to_dict(), exclusive=False)
+            return to_store
+        if validated.revision != 1:
+            raise AssistantRepositoryError("New voice sessions must start at revision 1.")
+        self._write_json_atomic(path, validated.to_dict(), exclusive=True)
+        return validated
+
+    def get_voice_session(self, thesis_id: str, session_id: str) -> Any:
+        """Load one persisted voice session for a thesis."""
+        from thesistester.assistant.voice.contracts import (
+            VoiceContractError,
+            VoiceSessionRecord,
+        )
+
+        self._assert_readable_root()
+        path = self._voice_session_path(thesis_id, session_id)
+        if not path.exists():
+            raise AssistantRepositoryError("Voice session does not exist.")
+        try:
+            record = VoiceSessionRecord.from_dict(self._read_json(path))
+        except VoiceContractError as exc:
+            raise RepositoryCorruptionError("Invalid voice session document.") from exc
+        if record.thesis_id != thesis_id:
+            raise RepositoryCorruptionError("Voice session is stored under the wrong thesis.")
+        return record
+
+    def list_voice_sessions(self, thesis_id: str) -> tuple[Any, ...]:
+        """List persisted voice sessions for one thesis."""
+        from thesistester.assistant.voice.contracts import (
+            VoiceContractError,
+            VoiceSessionRecord,
+        )
+
+        self._assert_readable_root()
+        root = self._thesis_dir(thesis_id) / "voice_sessions"
+        if not root.exists():
+            return ()
+        records: list[Any] = []
+        for path in root.glob("vs_*.json"):
+            try:
+                record = VoiceSessionRecord.from_dict(self._read_json(path))
+            except VoiceContractError as exc:
+                raise RepositoryCorruptionError("Invalid voice session document.") from exc
+            if record.thesis_id != thesis_id:
+                raise RepositoryCorruptionError("Voice session is stored under the wrong thesis.")
+            records.append(record)
+        return tuple(sorted(records, key=lambda item: (item.created_at, item.session_id)))

@@ -1,6 +1,7 @@
-"""Load non-secret `[assistant.voice]` settings (VA-0).
+"""Load non-secret `[assistant.voice]` settings (VA-0/VA-2).
 
-No UI, network, or secret resolution. Missing section → disabled safe defaults.
+No UI or network. Secret resolution lives in ``xai_realtime.require_xai_api_key``.
+Missing section → disabled safe defaults.
 """
 
 from __future__ import annotations
