@@ -339,12 +339,12 @@ be merged by the plan PR — do not reopen freezes unless amending this file.
 - Filling full page how-tos (HC-1+)
 
 #### Acceptance
-- [ ] HC contract present; roadmap points here
-- [ ] `docs/USER_GUIDE.md` exists with frozen H2 skeleton from §6.1
-- [ ] No Help allowlist change; existing Help tests green
+- [x] HC contract present; roadmap points here
+- [x] `docs/USER_GUIDE.md` exists with frozen H2 skeleton from §6.1
+- [x] No Help allowlist change; existing Help tests green
 
 #### Regression safety
-Docs (+ optional structure test) only. Help runtime unchanged.
+Docs (+ structure test) only. Help runtime unchanged.
 
 #### Files allowed to touch
 ```
@@ -358,7 +358,13 @@ tests/test_assistant_user_guide_structure.py    # recommended structure gate
 ```
 
 #### Implemented contract (fill when merged)
-_Pending implementation._
+- `docs/USER_GUIDE.md` — §6.1 H2 skeleton + Purpose/honesty preface; remaining
+  feature H2s are explicit `_Stub (HC-0)._` placeholders (not Help-allowlisted).
+- `tests/test_assistant_user_guide_structure.py` — exact §6.1 H2 set/order gate
+  (no extras); stub-marker gate on non-Purpose H2s; asserts `user_guide` /
+  `docs/USER_GUIDE.md` absent from `HELP_CORPUS_MANIFEST`.
+- §5.4 left empty until HC-1+ freezes exact allowlisted titles.
+- No changes to `help_corpus.py`, `product_help.py`, or RQ §7.1 allowlist.
 
 ---
 
@@ -652,7 +658,7 @@ Constraints:
 
 | ID | Status |
 |---|---|
-| HC-0 | Proposed |
+| HC-0 | ✅ Implemented — USER_GUIDE skeleton + structure gate (not allowlisted) |
 | HC-1 | Proposed |
 | HC-2 | Proposed |
 | HC-3 | Proposed |
