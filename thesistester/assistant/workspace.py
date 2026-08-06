@@ -450,12 +450,16 @@ def clear_thesis_scoped_state(session_state: MutableMapping[str, Any]) -> None:
     session_state["assistant_voice_help_session_id"] = None
     session_state["assistant_voice_last_turn"] = None
     session_state["assistant_voice_playback"] = None
-    # Ephemeral Streamlit widget keys for Discuss/Help text inputs. If left
-    # behind, ``if key not in session_state`` hydration would revive cleared drafts.
+    # Ephemeral Streamlit widget keys + deferred-clear flags for Discuss/Help
+    # text inputs. If left behind, ``if key not in session_state`` hydration
+    # would revive cleared drafts, or a stale clear flag would wipe the next
+    # conversation's input.
+    session_state.pop("assistant_clear_product_help_input", None)
     for key in list(session_state.keys()):
         if isinstance(key, str) and (
             key.startswith("results-qa-input-")
             or key.startswith("product-help-input")
+            or key.startswith("assistant_clear_results-qa-input-")
             or key.startswith("ra-run-expander-")
             or key.startswith("voice-results-audio-")
             or key.startswith("voice-help-audio")

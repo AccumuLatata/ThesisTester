@@ -457,6 +457,10 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     # Conversation switch must clear Help draft/widget (not only thesis switch).
     assert 'assistant_product_help_draft"] = ""' in source
     assert 'pop("product-help-input"' in source
+    # Help/Results must not write widget keys after st.text_input in the same run.
+    assert 'assistant_clear_product_help_input"] = True' in source
+    assert 'pop("assistant_clear_product_help_input"' in source
+    assert "assistant_clear_" in source and "results-qa-input-" in source
     assert "is_draft_channel_message(" in source
     assert "load_results_qa_settings(" in source
     assert "st.text_input(" in source
@@ -989,6 +993,8 @@ def test_clear_thesis_scoped_state_helper():
         linked_run_expander_key("run_focus"): True,
         "results-qa-input-run_a": "leaked question",
         "product-help-input": "leaked help",
+        "assistant_clear_product_help_input": True,
+        "assistant_clear_results-qa-input-run_a": True,
         "assistant_bundle_handoff": {"thesis_id": "th_a", "run_id": "r1"},
         "assistant_run_explanations": {"r1": "keep"},
     }
@@ -1006,6 +1012,8 @@ def test_clear_thesis_scoped_state_helper():
     assert linked_run_expander_key("run_focus") not in state
     assert "results-qa-input-run_a" not in state
     assert "product-help-input" not in state
+    assert "assistant_clear_product_help_input" not in state
+    assert "assistant_clear_results-qa-input-run_a" not in state
     assert state["assistant_bundle_handoff"] is None
     assert state["assistant_run_explanations"] == {"r1": "keep"}
 

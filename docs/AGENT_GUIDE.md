@@ -251,10 +251,22 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   `tests/test_assistant_registry_audit.py` green when changing the provider
   boundary, chat UX, or registry audit.
 - Provider setup: non-secret settings in `config/assistant.toml`; secret via
-  rotated `OPENAI_API_KEY` (env first, then Streamlit Secrets
-  `OPENAI_API_KEY` / nested `[openai].api_key`). Reject the placeholder
-  `REPLACE_WITH_ROTATED_OPENAI_API_KEY`. Recovery/cancellation stays on
-  orchestrator `cancel_run` / confirmation lifecycle, not the LLM.
+  rotated `OPENAI_API_KEY` (env first, then Streamlit Secrets top-level
+  `OPENAI_API_KEY`, else nested `[openai].api_key` /
+  `[openai].OPENAI_API_KEY`). Strip one layer of wrapping quotes / BOM.
+  Reject the placeholder `REPLACE_WITH_ROTATED_OPENAI_API_KEY`. When the
+  Responses call fails, raise `LLMProviderError` with prefix
+  `OpenAI structured request failed` plus sanitized HTTP/provider detail
+  (never raw `sk-…`, Bearer tokens, or the exact configured key). Mark HTTP
+  `400`/`401`/`403`/`404` as `retryable=False`. Chat + Help share this
+  client — if both fail with the opaque main-branch message, fix deploy
+  secrets / merge the transport-detail PR before debugging schemas.
+  Help citations must use `doc_id="registry"` (alias `registry_digest` is
+  normalized). Never write Streamlit widget keys (`product-help-input`,
+  `results-qa-input-*`) after `st.text_input` in the same run — set a
+  deferred-clear flag and apply it before the widget on the next run.
+  Recovery/cancellation stays on orchestrator `cancel_run` / confirmation
+  lifecycle, not the LLM.
 - Document every additive `assistant_*` session key in `ARCHITECTURE.md` and
   `ASSISTANT_SESSION_KEYS`. Thesis switches must clear
   `THESIS_SCOPED_STAGING_KEYS` (including `assistant_bundle_handoff`).

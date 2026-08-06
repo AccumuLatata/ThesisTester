@@ -47,7 +47,8 @@ _HELP_SCHEMA = {
 _SYSTEM_PROMPT = (
     "Answer only from the supplied help corpus chunks and registry digest. "
     "Cite every used source with citations[{doc_id, section}] that match "
-    'attached chunks (registry uses section="digest"). Do not invent product '
+    'attached chunks. For the capability registry, cite doc_id="registry" and '
+    'section="digest" (never doc_id="registry_digest"). Do not invent product '
     "features, capabilities, or run metrics. Do not answer the user's backtest "
     "or grid performance for a specific completed run — if asked, say to use "
     "Discuss results under Advanced → Linked runs. Prefer number-free followups. "
@@ -393,6 +394,10 @@ def propose_help_reply(
             raise HelpEvidenceError("Help citations must be non-empty doc_id/section objects.")
         doc_id = item["doc_id"].strip()
         section = item["section"].strip()
+        # Models sometimes echo the user-payload key ``registry_digest`` instead
+        # of the attached corpus doc_id ``registry`` (same section ``digest``).
+        if doc_id == "registry_digest":
+            doc_id = REGISTRY_DOC_ID
         if (doc_id, section) not in attached:
             raise HelpEvidenceError(
                 f"Help citation {doc_id!r}/{section!r} was not attached to this turn."

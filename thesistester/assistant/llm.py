@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import json
+import re
 from urllib import error, request
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,14 @@ class LLMConfigurationError(ValueError):
 class LLMProviderError(RuntimeError):
     """Raised when a provider request fails or returns invalid structured output."""
 
+    def __init__(self, message: str, *, retryable: bool = True) -> None:
+        super().__init__(message)
+        self.retryable = bool(retryable)
+
+
+# Auth / client faults should not burn retry budget (invalid key, bad request, etc.).
+_NON_RETRYABLE_HTTP_CODES = frozenset({400, 401, 403, 404})
+
 
 class StructuredLLMClient(Protocol):
     """Minimal injectable client contract; provider SDKs stay outside engine code."""
@@ -35,6 +44,84 @@ class OpenAITransport(Protocol):
     """Injectable HTTPS transport for deterministic provider tests."""
 
     def post_json(self, *, url: str, api_key: str, payload: dict[str, Any]) -> dict[str, Any]: ...
+
+
+def _sanitize_provider_error_text(text: str, *, api_key: str | None = None) -> str:
+    """Redact credential-shaped tokens from provider/error text before UI display."""
+    cleaned = text
+    if isinstance(api_key, str):
+        key = api_key.strip()
+        # Exact configured key, including non-``sk-`` shapes OpenAI may echo.
+        if len(key) >= 8:
+            cleaned = cleaned.replace(key, "***")
+    cleaned = re.sub(r"sk-[A-Za-z0-9_-]+", "sk-***", cleaned)
+    cleaned = re.sub(r"(?i)\bbearer\s+[A-Za-z0-9._\-]+", "Bearer ***", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned[:300]
+
+
+def _openai_http_error_detail(exc: error.HTTPError, *, api_key: str | None = None) -> str:
+    """Extract a short, non-secret OpenAI error detail from an HTTPError body."""
+    raw = ""
+    try:
+        raw = exc.read().decode("utf-8", errors="replace")
+    except Exception:
+        raw = ""
+    message = ""
+    code: str | None = None
+    if raw.strip():
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            err = payload.get("error")
+            if isinstance(err, dict):
+                if isinstance(err.get("message"), str):
+                    message = err["message"]
+                code_val = err.get("code")
+                if isinstance(code_val, str) and code_val.strip():
+                    code = code_val.strip()
+                elif code_val is not None and not isinstance(code_val, bool):
+                    # Some gateways emit numeric/stringable codes.
+                    code = str(code_val).strip() or None
+            elif isinstance(err, str):
+                message = err
+            elif isinstance(payload.get("message"), str):
+                message = payload["message"]
+        if not message:
+            message = raw
+    parts = [f"HTTP {exc.code}"]
+    if code:
+        parts.append(code)
+    if message:
+        parts.append(_sanitize_provider_error_text(message, api_key=api_key))
+    elif isinstance(exc.reason, str) and exc.reason.strip():
+        parts.append(_sanitize_provider_error_text(exc.reason, api_key=api_key))
+    return ": ".join(parts)
+
+
+def _openai_transport_failure_message(exc: BaseException, *, api_key: str | None = None) -> str:
+    """Build an actionable provider failure message without leaking secrets."""
+    prefix = "OpenAI structured request failed"
+    if isinstance(exc, error.HTTPError):
+        detail = _openai_http_error_detail(exc, api_key=api_key).rstrip(".")
+        return f"{prefix} ({detail})."
+    if isinstance(exc, TimeoutError):
+        return f"{prefix} (timed out)."
+    if isinstance(exc, json.JSONDecodeError):
+        return f"{prefix} (invalid JSON response)."
+    if isinstance(exc, error.URLError):
+        reason = exc.reason
+        detail = (
+            _sanitize_provider_error_text(str(reason), api_key=api_key).rstrip(".")
+            if reason is not None
+            else ""
+        )
+        if detail:
+            return f"{prefix} ({detail})."
+        return f"{prefix} (network error)."
+    return f"{prefix}."
 
 
 class UrllibOpenAITransport:
@@ -52,9 +139,15 @@ class UrllibOpenAITransport:
             with request.urlopen(outbound, timeout=30) as response:
                 decoded = json.loads(response.read().decode("utf-8"))
         except (error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            raise LLMProviderError("OpenAI structured request failed.") from exc
+            retryable = True
+            if isinstance(exc, error.HTTPError) and exc.code in _NON_RETRYABLE_HTTP_CODES:
+                retryable = False
+            raise LLMProviderError(
+                _openai_transport_failure_message(exc, api_key=api_key),
+                retryable=retryable,
+            ) from exc
         if not isinstance(decoded, dict):
-            raise LLMProviderError("OpenAI response must be an object.")
+            raise LLMProviderError("OpenAI response must be an object.", retryable=False)
         return decoded
 
 
@@ -121,9 +214,11 @@ class OpenAIStructuredClient:
                 )
                 self.last_attempt_count = attempt
                 break
-            except LLMProviderError:
+            except LLMProviderError as exc:
                 self.last_attempt_count = attempt
-                if attempt == self.settings.max_retries + 1:
+                if (
+                    not getattr(exc, "retryable", True)
+                ) or attempt == self.settings.max_retries + 1:
                     raise
         assert response is not None
         text = response.get("output_text")
@@ -145,13 +240,13 @@ class OpenAIStructuredClient:
                     if isinstance(text, str) and text.strip():
                         break
         if not isinstance(text, str):
-            raise LLMProviderError("OpenAI response did not contain output_text.")
+            raise LLMProviderError("OpenAI response did not contain output_text.", retryable=False)
         try:
             decoded = json.loads(text)
         except json.JSONDecodeError as exc:
-            raise LLMProviderError("OpenAI response is not valid JSON.") from exc
+            raise LLMProviderError("OpenAI response is not valid JSON.", retryable=False) from exc
         if not isinstance(decoded, dict):
-            raise LLMProviderError("OpenAI structured output must be an object.")
+            raise LLMProviderError("OpenAI structured output must be an object.", retryable=False)
         return decoded
 
 
@@ -290,10 +385,18 @@ _OPENAI_API_KEY_PLACEHOLDER = "REPLACE_WITH_ROTATED_OPENAI_API_KEY"
 
 
 def _usable_openai_api_key(value: Any) -> str | None:
-    """Return a non-empty, non-placeholder key string; otherwise None."""
+    """Return a non-empty, non-placeholder key string; otherwise None.
+
+    Tolerates common Streamlit Secrets / env copy-paste faults: surrounding
+    whitespace, a UTF-8 BOM, and one layer of wrapping quotes
+    (``\"sk-...\"`` / ``'sk-...'``), which otherwise become part of the Bearer
+    token and fail OpenAI auth as HTTP 401.
+    """
     if not isinstance(value, str):
         return None
-    key = value.strip()
+    key = value.strip().lstrip("\ufeff").strip()
+    if len(key) >= 2 and key[0] == key[-1] and key[0] in {"'", '"'}:
+        key = key[1:-1].strip()
     if not key or key == _OPENAI_API_KEY_PLACEHOLDER:
         return None
     return key
@@ -304,7 +407,8 @@ def _api_key_from_secrets_mapping(secrets: Any) -> str | None:
 
     Precedence inside secrets:
     1. top-level ``OPENAI_API_KEY`` (canonical Community Cloud shape)
-    2. nested ``[openai].api_key`` (compatibility only)
+    2. nested ``[openai].api_key`` (compatibility)
+    3. nested ``[openai].OPENAI_API_KEY`` (common mis-key; accepted only as fallback)
     """
     if secrets is None or not hasattr(secrets, "get"):
         return None
@@ -320,10 +424,14 @@ def _api_key_from_secrets_mapping(secrets: Any) -> str | None:
         return None
     if section is None or not hasattr(section, "get"):
         return None
-    try:
-        return _usable_openai_api_key(section.get("api_key"))
-    except Exception:
-        return None
+    for nested_key in ("api_key", "OPENAI_API_KEY"):
+        try:
+            nested = _usable_openai_api_key(section.get(nested_key))
+        except Exception:
+            nested = None
+        if nested is not None:
+            return nested
+    return None
 
 
 def _read_streamlit_openai_api_key() -> str | None:
