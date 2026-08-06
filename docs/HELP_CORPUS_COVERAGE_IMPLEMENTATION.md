@@ -232,8 +232,16 @@ When an HC content PR lands, append rows here (and mirror in test fixtures):
 | Q-H2 | `user_guide` | Levels | — |
 | Q-H3 | `user_guide` | Setup Builder | — |
 | Q-H4 | `user_guide` | Signals | — |
-| Q-H5 | `user_guide` | Backtest | `metrics` secondary presence for cost nouns |
-| Q-D2 | `metrics` | whole_file (`Core formulas` / Expectancy) | — |
+| Q-H5 | `user_guide` | Backtest | `metrics` / Execution cost inputs secondary |
+| Q-H6 | `user_guide` | Grid Search | `metrics` secondary OK; primary USER_GUIDE required |
+| Q-H7 | `user_guide` | Time Analysis | — |
+| Q-H8 | `user_guide` | Validation and robustness | — |
+| Q-H9 | `user_guide` | Report Export and/or Research Bundles | either acceptable |
+| Q-D1 | `metrics` | Monte Carlo H2 / whole_file | `user_guide` / Validation and robustness |
+| Q-D2 | `metrics` | Core formulas (Expectancy) | — |
+| Q-D4 | `user_guide` | Research Bundles | — |
+| Q-D5 | `metrics` | Walk-forward H2 / whole_file | `user_guide` / Validation and robustness |
+| Q-D6 | `metrics` | Execution cost inputs / Core formulas | — |
 
 ---
 
@@ -461,11 +469,6 @@ docs/ASSUMPTIONS_AND_LIMITATIONS.md             # only if a honesty cross-link n
 - Changing Validation page compute
 - Claiming batteries are always present when absent (docs must say “when run”)
 
-#### Acceptance
-- [ ] Q-H6…Q-H9 (+ listed definition Qs) pass retrieval fixtures
-- [ ] Monte Carlo / WFA language stays diagnostic, not proof
-- [ ] Manifest ↔ §7.1 parity test green
-
 #### Regression safety
 Same as HC-1. No analytics formula changes.
 
@@ -475,13 +478,28 @@ docs/USER_GUIDE.md
 docs/METRICS_GLOSSARY.md
 docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md
 docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md
+docs/ENGINEERING_ROADMAP.md                     # status touch-up
 thesistester/assistant/help_corpus.py
 tests/test_assistant_help_corpus.py
 tests/test_assistant_help_coverage.py
+tests/test_assistant_user_guide_structure.py    # filled-vs-stub + manifest parity
 ```
 
+#### Acceptance
+- [x] Q-H6…Q-H9 (+ listed definition Qs) pass retrieval fixtures
+- [x] Monte Carlo / WFA language stays diagnostic, not proof
+- [x] Manifest ↔ §7.1 parity test green
+
 #### Implemented contract (fill when merged)
-_Pending implementation._
+- `docs/USER_GUIDE.md` — filled H2s: Grid Search, Time Analysis, Validation and
+  robustness, Report Export, Research Bundles, Portfolio (Related terms + UI
+  labels; diagnostic honesty). Assistant H2s remain `_Stub (HC-0)._`.
+- RQ §7.1.4 — allowlist extended with those six H2 titles (HC-1 seven retained).
+- `HELP_CORPUS_MANIFEST` `_USER_GUIDE_SECTIONS` mirrors §7.1.4 (13 H2s).
+- Tests: HC-2 bank Q-H6…Q-H9; Q-D1/D4/D5/D6 assert dedicated §5.4 sections
+  (not any leftover metrics chunk); Q-H6 Grid Search presence despite
+  `grid`/`sl`/`tp` metric boosts; USER_GUIDE soft-budget gate; structure gate
+  updated for HC-2 filled set.
 
 ---
 
@@ -686,7 +704,7 @@ Constraints:
 |---|---|
 | HC-0 | ✅ Implemented — USER_GUIDE skeleton + structure gate (not allowlisted) |
 | HC-1 | ✅ Implemented — Data→Backtest how-tos + §7.1.4 allowlist + §1.1 retrieval |
-| HC-2 | Proposed |
+| HC-2 | ✅ Implemented — Grid→Portfolio/Bundles/Report how-tos + allowlist + bank |
 | HC-3 | Proposed |
 | HC-4 | Proposed |
 

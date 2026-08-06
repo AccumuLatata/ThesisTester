@@ -331,7 +331,7 @@ contract in the same PR.
 | `architecture` | `docs/ARCHITECTURE.md` | `sections` | See exact H2 list in §7.1.1 (includes backtick characters in the session_state title) |
 | `assumptions` | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | `sections` | See exact H2 list in §7.1.2 |
 | `otf` | `docs/otf-filter.md` | `sections` | See exact H2 list in §7.1.3 |
-| `user_guide` | `docs/USER_GUIDE.md` | `sections` | See exact H2 list in §7.1.4 (HC-1 filled how-tos only; stubs excluded) |
+| `user_guide` | `docs/USER_GUIDE.md` | `sections` | See exact H2 list in §7.1.4 (HC-1/HC-2 filled how-tos; HC-3 stubs excluded) |
 | `registry` | _(generated; not a file path)_ | `digest` | Built at turn time from `FEATURE_PARITY_REGISTRY` / `audit_capability_registry()` as a JSON-safe list of `{capability_id, status, public_symbol?, confirmation?, limitation?}` only — no source files, no handler code |
 
 #### 7.1.1 Exact `architecture` H2 titles (frozen)
@@ -377,11 +377,11 @@ Purpose
 §15 — Release-Gate Documentation
 ```
 
-#### 7.1.4 Exact `user_guide` H2 titles (HC-1; amend via HC PRs)
+#### 7.1.4 Exact `user_guide` H2 titles (HC-1/HC-2; amend via HC PRs)
 
 Match these strings exactly after stripping the leading `##` and surrounding
-whitespace. Stub USER_GUIDE H2s (Grid Search → Help vs Discuss) remain
-**excluded** until a later HC content PR fills and allowlists them.
+whitespace. Stub USER_GUIDE H2s (Research Assistant → Help vs Discuss) remain
+**excluded** until HC-3 fills and allowlists them.
 
 ```text
 Purpose and honesty
@@ -391,6 +391,12 @@ Levels
 Setup Builder
 Signals
 Backtest
+Grid Search
+Time Analysis
+Validation and robustness
+Report Export
+Research Bundles
+Portfolio
 ```
 
 **Explicitly excluded from v1 (fail closed if requested):**
