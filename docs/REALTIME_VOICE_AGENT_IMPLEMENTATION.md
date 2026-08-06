@@ -239,12 +239,12 @@ secret, and spoken-grounding series on top of a finished text substrate.
 | VA-1 | ✅ Done via RQ-1 | Text Discuss substrate |
 | VA-0 | ✅ Done | Contracts + flag + docs freeze |
 | VA-2 | ✅ Done | xAI credentials + session service + STT/TTS helpers |
-| VA-3 | Remaining | Read-only voice tools + grounding helpers |
+| VA-3 | ✅ Done | Read-only voice tools + grounding helpers |
 | VA-4 | Remaining | Push-to-talk spoken Discuss/Help (first user-visible) |
 | VA-5 | Remaining | Full-duplex realtime sidecar |
 | VA-6 | Remaining | Voice evals + release gate |
 
-**Remaining implementation PRs: 4** (VA-3 → VA-4 → VA-5 → VA-6). VA-0 ✅ / VA-2 ✅.
+**Remaining implementation PRs: 3** (VA-4 → VA-5 → VA-6). VA-0 ✅ / VA-2 ✅ / VA-3 ✅.
 
 Do **not** collapse VA-4 into VA-5. Half-duplex spoken channels prove value and
 honesty first. Do **not** reopen RQ for voice features.
@@ -500,7 +500,23 @@ docs/AGENT_GUIDE.md
 ```
 
 #### Implemented contract (fill when merged)
-_Pending implementation._
+- `voice/tools.py`: frozen `VOICE_TOOL_SCHEMAS` for exact v1 set
+  (`get_run_overview`, `get_metric`, `list_caveats`, `compare_two_runs`) plus
+  `execute_voice_tool(name, args, *, session=VoiceToolSession)`.
+- Deny-by-default: unknown / injection names (`web_search`,
+  `execute_confirmed_run`, `PIPELINE.*`, `mcp`, `save_comparison`, …) fail
+  closed with no tool side effects beyond one audit row.
+- `get_metric` rejects empty paths, `..` / separators, unknown roots, missing
+  paths, and empty values. `compare_two_runs` hash-verifies the other run via
+  `build_bundle_evidence_packet` and returns pure `compare_evidence` with
+  `persisted=false` (never `save_comparison`).
+- Each invocation attempt appends exactly one `VoiceToolInvocation` on the
+  voice session record (success or failure).
+- `voice/grounding.py`: `audit_spoken_text` reuses C2-6 / RQ
+  `_normalize_number_token` / digit-token rules and returns `GroundingVerdict`.
+- `tests/test_assistant_voice_tools.py` gates allowlist, deny, path traversal,
+  compare hash fail, injection names, and grounding cases.
+- Flag still `enabled=false`; no mic UI (VA-4).
 
 ---
 
@@ -816,7 +832,7 @@ Constraints:
 | HC Help corpus coverage | ✅ Implemented (HC-0…HC-4) — spoken Help inherits; VA does not re-own |
 | VA-0 | ✅ Implemented (contracts/flag/docs freeze) |
 | VA-2 | ✅ Implemented (credentials + session + STT/TTS helpers) |
-| VA-3 | Proposed |
+| VA-3 | ✅ Implemented (read-only tools + grounding helpers) |
 | VA-4 | Proposed |
 | VA-5 | Proposed |
 | VA-6 | Proposed |

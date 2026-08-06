@@ -1,7 +1,8 @@
-"""Voice session lifecycle, evidence bind, and honesty instructions (VA-2).
+"""Voice session lifecycle, evidence bind, and honesty instructions (VA-2/VA-3).
 
 Persists sibling ``voice_sessions/vs_*.json`` documents. Does not widen
-``Conversation`` identity rules. Tool execution stays out of scope (VA-3).
+``Conversation`` identity rules. Allowlisted tool execution lives in
+``voice/tools.py`` (VA-3).
 """
 
 from __future__ import annotations
@@ -118,6 +119,15 @@ class VoiceSessionService:
     def get_bound_packet(self, session_id: str) -> EvidencePacket | None:
         validate_voice_session_id(session_id)
         return self._bound_packets.get(session_id)
+
+    def tool_session(self, thesis_id: str, session_id: str):
+        """Return a ``VoiceToolSession`` handle for allowlisted tool execution."""
+        # Local import avoids package cycles with voice.tools → session.
+        from thesistester.assistant.voice.tools import VoiceToolSession
+
+        validate_voice_session_id(session_id)
+        self.repository.get_voice_session(thesis_id, session_id)
+        return VoiceToolSession(service=self, thesis_id=thesis_id, session_id=session_id)
 
     def create_session(
         self,
