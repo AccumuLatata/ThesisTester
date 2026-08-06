@@ -55,19 +55,19 @@ def test_manifest_doc_ids_match_section_7_1_freeze():
             "Setup Builder",
             "Signals",
             "Backtest",
+            "Grid Search",
+            "Time Analysis",
+            "Validation and robustness",
+            "Report Export",
+            "Research Bundles",
+            "Portfolio",
         }
     )
-    assert "Grid Search" not in by_id["user_guide"].sections
+    assert "Research Assistant (draft, Discuss, Help)" not in by_id["user_guide"].sections
 
 
 def test_user_guide_rejects_stub_h2_and_accepts_allowlisted_h2():
     stub_h2s = (
-        "Grid Search",
-        "Time Analysis",
-        "Validation and robustness",
-        "Report Export",
-        "Research Bundles",
-        "Portfolio",
         "Research Assistant (draft, Discuss, Help)",
         "Research mode on classic pages",
         "When to use Help vs Discuss results",
@@ -82,12 +82,12 @@ def test_user_guide_rejects_stub_h2_and_accepts_allowlisted_h2():
     chunks = load_corpus_chunks(
         "user_guide",
         repo_root=REPO_ROOT,
-        sections=["Data"],
+        sections=["Data", "Grid Search"],
     )
-    assert len(chunks) == 1
-    assert chunks[0].doc_id == "user_guide"
-    assert chunks[0].section == "Data"
-    assert "CSV format profile" in chunks[0].text
+    assert {chunk.section for chunk in chunks} == {"Data", "Grid Search"}
+    by_section = {chunk.section: chunk.text for chunk in chunks}
+    assert "CSV format profile" in by_section["Data"]
+    assert "Ranking metric" in by_section["Grid Search"]
 
 
 def test_resolve_corpus_path_rejects_traversal_and_agent_guide():

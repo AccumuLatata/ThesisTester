@@ -1,4 +1,4 @@
-"""HC-1 Help coverage bank: retrieval presence for core workflow how-tos."""
+"""HC Help coverage bank: retrieval presence for workflow how-tos (HC-1/HC-2)."""
 
 from __future__ import annotations
 
@@ -51,6 +51,28 @@ _HC1_HOWTO_BANK = (
     ),
 )
 
+# HC-2 how-tos (Q-H9 accepts Report Export and/or Research Bundles).
+_HC2_HOWTO_BANK = (
+    (
+        "Q-H6",
+        "How do I run a grid search and interpret the best SL/TP?",
+        "user_guide",
+        "Grid Search",
+    ),
+    (
+        "Q-H7",
+        "How do I use Time Analysis?",
+        "user_guide",
+        "Time Analysis",
+    ),
+    (
+        "Q-H8",
+        "How do I run validation / Monte Carlo / WFA?",
+        "user_guide",
+        "Validation and robustness",
+    ),
+)
+
 
 def _selected_chunks(question: str) -> tuple[CorpusChunk, ...]:
     return select_help_corpus_chunks(
@@ -70,6 +92,68 @@ def test_hc1_howto_bank_retrieves_primary_user_guide_sections():
         assert (doc_id, section) in pairs, (
             f"{qid} expected primary {(doc_id, section)} in selected set; got {sorted(pairs)}"
         )
+
+
+def test_hc2_howto_bank_retrieves_primary_user_guide_sections():
+    for qid, question, doc_id, section in _HC2_HOWTO_BANK:
+        pairs = _selected_pairs(question)
+        assert (doc_id, section) in pairs, (
+            f"{qid} expected primary {(doc_id, section)} in selected set; got {sorted(pairs)}"
+        )
+
+
+def test_qh9_export_retrieves_report_or_bundles():
+    """Q-H9 may accept Report Export and/or Research Bundles (§5.2)."""
+    pairs = _selected_pairs("How do I export a report or research bundle?")
+    assert ("user_guide", "Report Export") in pairs or (
+        "user_guide",
+        "Research Bundles",
+    ) in pairs, f"Q-H9 expected Report Export and/or Research Bundles; got {sorted(pairs)}"
+
+
+def test_qh6_keeps_grid_search_despite_metric_sl_tp_boosts():
+    """Q-H6 primary USER_GUIDE must stay present even with grid/sl/tp metric boosts."""
+    question = "How do I run a grid search and interpret the best SL/TP?"
+    chunks = _selected_chunks(question)
+    pairs = {(chunk.doc_id, chunk.section) for chunk in chunks}
+    assert ("user_guide", "Grid Search") in pairs, (
+        f"Q-H6 must include user_guide/Grid Search; got {sorted(pairs)}"
+    )
+    # Metric boosts may still attach glossary chunks — that is fine / preferred.
+    guide = next(c for c in chunks if c.doc_id == "user_guide" and c.section == "Grid Search")
+    assert "Ranking metric" in guide.text or "ranking metric" in guide.text.lower()
+
+
+def test_qd1_monte_carlo_retrieves_metrics_or_validation_guide():
+    pairs = _selected_pairs("What is Monte Carlo in ThesisTester?")
+    ok = any(doc_id == "metrics" for doc_id, _ in pairs) or (
+        "user_guide",
+        "Validation and robustness",
+    ) in pairs
+    assert ok, f"Q-D1 expected metrics and/or Validation guide; got {sorted(pairs)}"
+
+
+def test_qd4_research_bundle_retrieves_user_guide():
+    pairs = _selected_pairs("What is a research bundle?")
+    assert ("user_guide", "Research Bundles") in pairs, (
+        f"Q-D4 expected user_guide/Research Bundles; got {sorted(pairs)}"
+    )
+
+
+def test_qd5_walk_forward_retrieves_metrics_or_validation_guide():
+    pairs = _selected_pairs("What is walk-forward validation here?")
+    ok = any(doc_id == "metrics" for doc_id, _ in pairs) or (
+        "user_guide",
+        "Validation and robustness",
+    ) in pairs
+    assert ok, f"Q-D5 expected metrics and/or Validation guide; got {sorted(pairs)}"
+
+
+def test_qd6_slippage_ticks_retrieves_metrics():
+    pairs = _selected_pairs("What does slippage_ticks mean?")
+    assert any(doc_id == "metrics" for doc_id, _ in pairs), (
+        f"Q-D6 expected metrics presence; got {sorted(pairs)}"
+    )
 
 
 def test_qd2_expectancy_retrieves_core_formulas_definition():

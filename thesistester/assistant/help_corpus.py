@@ -87,7 +87,7 @@ _OTF_SECTIONS = frozenset(
     }
 )
 
-# HC-1 filled USER_GUIDE H2s only (stubs for Grid→Assistant remain excluded).
+# HC-1/HC-2 filled USER_GUIDE H2s (Assistant stubs remain excluded until HC-3).
 _USER_GUIDE_SECTIONS = frozenset(
     {
         "Purpose and honesty",
@@ -97,6 +97,12 @@ _USER_GUIDE_SECTIONS = frozenset(
         "Setup Builder",
         "Signals",
         "Backtest",
+        "Grid Search",
+        "Time Analysis",
+        "Validation and robustness",
+        "Report Export",
+        "Research Bundles",
+        "Portfolio",
     }
 )
 

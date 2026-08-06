@@ -3,9 +3,9 @@
 User-facing how-tos for classic pages and Research Assistant Help.
 This file is the primary Help corpus home for workflow questions (HC-series).
 
-**Help allowlist (HC-1):** only the filled H2 sections listed in RQ §7.1
-`user_guide` are Help-readable. Remaining `_Stub (HC-0)_` sections are structure
-placeholders for HC-2/HC-3 and are **not** allowlisted.
+**Help allowlist (HC-1/HC-2):** only the filled H2 sections listed in RQ §7.1
+`user_guide` are Help-readable. Remaining `_Stub (HC-0)_` Assistant sections are
+structure placeholders for HC-3 and are **not** allowlisted.
 
 Deep metric definitions stay in `docs/METRICS_GLOSSARY.md`. Engine honesty and
 limits stay in `docs/ASSUMPTIONS_AND_LIMITATIONS.md`. Operator/agent runbooks
@@ -265,32 +265,247 @@ Assistant Discuss for performance questions.
 
 ## Grid Search
 
-_Stub (HC-0)._ How to run a grid search, choose ranking metric / min trades, and
-read the best cell without treating IS selection as proof. Filled in HC-2.
+**What it is.** The **SL/TP Grid Search** page sweeps stop-loss × take-profit
+cells over the same Phase-4 candidate signals, ranks cells, and shows heatmaps
+plus a full results table.
+
+**When to use it.** After Signals exist and you want to compare many SL/TP pairs
+under one fixed execution/path assumption (not after treating one lucky cell as
+proof).
+
+**Related terms.** grid search, run grid, SL/TP, stop-loss range, take-profit
+range, ranking metric, expectancy_r, min trade count, best SL/TP pair, heatmap,
+directional ranking, IS selection
+
+**Key settings.**
+
+| Control | Meaning | Common pitfall |
+|---|---|---|
+| `SL start` / `SL stop` / `SL step` | Stop-loss sweep in ticks | Huge grids are slow and easy to overfit |
+| `TP start` / `TP stop` / `TP step` | Take-profit sweep in ticks | Same |
+| Costs / intrabar / session / exposure | Same family as Backtest | One fixed policy applies to **every** cell |
+| `Ranking metric` | Default options include `expectancy_r`, `total_r`, `profit_factor`, `win_rate` | Best cell is in-sample under that metric |
+| `Min trade count` | Drop thin cells before ranking | Too low → noisy “winners” |
+| Advanced directional ranking | Optional long/short / min-direction metrics + min long/short trades | Extra selection degrees of freedom |
+
+**How to use.**
+
+1. Prerequisites: Data → Levels → Signals (non-empty candidates).
+2. Set SL/TP ranges, execution assumptions, `Ranking metric`, and `Min trade
+   count` (optional directional ranking).
+3. Click **Run grid search**.
+4. Read **Best SL/TP pair**, heatmaps, and **Full grid results**.
+5. Treat the winner as a hypothesis to validate — not as OOS proof.
+
+**What it is not.**
+
+- Not proof the best cell will work forward. In-sample selection can overfit.
+- OTF (when enabled) is applied once before the grid; every cell sees the same
+  accepted candidate set.
+- One market-path / exit-management assumption is shared across cells.
+
+**Related pages.** Signals; Backtest (single cell); Validation (overfit / WFA).
 
 ## Time Analysis
 
-_Stub (HC-0)._ How to use time buckets and the limits of “best entry” language.
-Filled in HC-2.
+**What it is.** The **Time Analysis** page is a descriptive breakdown of
+**already completed** trades by time-of-day / session windows. It does **not**
+re-simulate trades.
+
+**When to use it.** After a Backtest has produced a trade list and you want to
+see when trades clustered — with sample-size humility.
+
+**Related terms.** time analysis, time bucket, entry hour, 30min bucket, RTH
+segment, grouping, heatmap, best entry time, session window, no re-simulation
+
+**Key settings.**
+
+| Control | Meaning | Common pitfall |
+|---|---|---|
+| `Display/export timezone` | Labels for display/export | Not the engine’s session clock by itself |
+| `Time bucket timezone` | Exchange/session vs display TZ for buckets | Mixing TZ bases confuses “best hour” stories |
+| `Timestamp basis` | `entry_timestamp` or `exit_timestamp` | Exit-based “entry timing” claims are wrong |
+| `Primary grouping` / optional secondary | How rows are aggregated | Tiny groups look dramatic |
+| `Minimum trades warning threshold` | Soft warning for thin buckets | Ignoring it invites noise |
+| `Metric for chart / heatmap` | Which KPI to plot | Charts ≠ causation |
+
+**How to use.**
+
+1. Run a Backtest first (needs `trades`).
+2. Choose timezone basis, timestamp basis, groupings, and chart metric.
+3. Inspect the grouped table, charts/heatmap, and trade-count distribution.
+4. Use thin-bucket warnings: low `trade_count` groups are not “best entries.”
+
+**What it is not.**
+
+- Not a re-optimization engine and not a signal generator.
+- “Best hour” language is descriptive on this sample only — not a schedule to
+  trade live.
+- RTH segment labeling can stay on exchange/session time even when hourly
+  buckets use display TZ.
+
+**Related pages.** Backtest (prerequisite); Report Export (shared display TZ).
 
 ## Validation and robustness
 
-_Stub (HC-0)._ How to run WFA / Monte Carlo / robustness batteries as
-diagnostics, not proof. Filled in HC-2.
+**What it is.** The **Statistical Validation** page runs optional diagnostic
+batteries (bootstrap/permutation, walk-forward / WFA, overfitting, noise,
+sensitivity, MAE/MFE, Monte Carlo, OTF matrix). Results are **diagnostic only —
+not proof of edge**.
+
+**When to use it.** After Backtest trades exist (and often after Grid Search when
+you care about SL/TP selection risk).
+
+**Related terms.** validation, robustness, walk-forward, WFA, Monte Carlo,
+bootstrap, permutation, overfitting, PBO, DSR, noise test, sensitivity, MAE/MFE,
+OTF validation matrix, diagnostic only
+
+**Key settings / batteries.**
+
+| Control / battery | Meaning | Common pitfall |
+|---|---|---|
+| **Run Validation** | Bootstrap CI, sign-flip permutation, trade-count, grid-overfit checks | CI including zero ≠ “confirmed edge” |
+| Walk-forward / OOS (+ optional WFA matrix) | Folded train/test diagnostics | “Diagnostic only — walk-forward can still overfit” |
+| Overfitting-detection battery | CSCV/PBO, deflated Sharpe, vs-random | Quantifies selection risk, not future profit |
+| Price-series noise test | Local input sensitivity | Not a live-edge certificate |
+| Parameter sensitivity | One-at-a-time local flatness | Flat ≠ durable |
+| MAE/MFE excursion analytics | Bar-level excursion diagnostics | Not true intrabar path order |
+| Monte Carlo path robustness | Resamples the realized R sequence (`reshuffle` / `skip` / `block_resample`) | No trade re-simulation; not future proof |
+| OTF filter validation matrix | Fixed multi-config train/OOS comparison | Do not pick production OTF from one matrix pass |
+
+**How to use.**
+
+1. Have Backtest trades (Grid results help overfit / sensitivity / WFA grids).
+2. Set sidebar seeds, sample counts, and min-trade soft/hard gates.
+3. Run the core **Run Validation**, then opt into WFA / overfit / noise /
+   sensitivity / excursions / Monte Carlo / OTF matrix as needed.
+4. Read each battery’s honesty caption before acting on rankings.
+
+**What it is not.**
+
+- Not a hypothesis test that “proves” a strategy.
+- Batteries appear only **when run** — missing sections mean they were not
+  executed in this session, not that they passed.
+- `allow_all` exposure upstream can inflate trade counts and understate
+  uncertainty.
+
+**Related pages.** Backtest; Grid Search; Report Export / Bundles for artifacts.
 
 ## Report Export
 
-_Stub (HC-0)._ What exports contain and how they relate to research bundles.
-Filled in HC-2.
+**What it is.** The **Report / Export** page downloads reproducible research
+artifacts (JSON, Markdown, CSVs) from the current session state.
+
+**When to use it.** After you have (at least) setup/signals/trades and want a
+portable report or per-table CSV extract.
+
+**Related terms.** report export, download JSON, markdown report, research
+artifact, signals.csv, trades.csv, grid_results, checklist, display timezone
+
+**Key settings.**
+
+| Control | Meaning | Common pitfall |
+|---|---|---|
+| `Display/export timezone` | TZ used in exported labels | Does not rewrite engine session time |
+| Session artifacts checklist | Shows which blocks are present | Optional diagnostics stay empty until run |
+| Download buttons | JSON artifact, Markdown report, per-table CSVs | Incomplete session → sparse files |
+| Inspect previous artifact | Upload `research_artifact.json` read-only | Preview only — does not restore a live session |
+
+**How to use.**
+
+1. Complete upstream research (core path: setup, signals, trades).
+2. Check the session / OTF artifact checklists.
+3. Set display/export timezone.
+4. Download JSON / Markdown / available CSVs.
+
+**What it is not.**
+
+- Not a full session restore tool (see Research Bundles for zip snapshots).
+- Missing checklist rows mean those diagnostics were never run — not a silent
+  pass.
+- Uploaded JSON inspection is read-only preview.
+
+**Related pages.** All upstream analytics pages; Research Bundles for zip
+import/export.
 
 ## Research Bundles
 
-_Stub (HC-0)._ How to import/export bundles, hash identity, and restore vs
-recompute. Filled in HC-2.
+**What it is.** The **Research Bundles** page exports/imports a portable zip
+snapshot of research state for the session (dataset, levels, signals, backtest,
+grid, validation batteries, portfolio, etc. when present).
+
+**When to use it.** To move a research snapshot between machines/sessions, or to
+reload a prior bundle into classic pages.
+
+**Related terms.** research bundle, download bundle, import bundle, zip
+snapshot, hash identity, restore session, record and discuss, portable state
+
+**Key settings.**
+
+| Control | Meaning | Common pitfall |
+|---|---|---|
+| Export preview | Which artifacts will be included | Empty session → nothing meaningful to export |
+| **Download research bundle** | Writes a timestamped zip | Bundle ≠ live broker state |
+| **Upload research bundle** + **Import bundle into session** | Restores included artifacts into session | Re-check classic context after import |
+| Thesis recording actions (when available) | Record/discuss a thesis-bound run | Discuss needs a recorded run, not only live trades |
+
+**How to use.**
+
+1. Build research state across classic pages.
+2. Review **Export preview** → **Download research bundle**.
+3. On another session: upload the zip → review contents → **Import bundle into
+   session** → open the listed pages.
+4. Optionally use thesis **Record and discuss** / **Discuss this run** when a
+   thesis context is active.
+
+**What it is not.**
+
+- Not a substitute for Report Export’s human-readable Markdown/CSV pack (different
+  job).
+- Import restores research artifacts; it does not re-prove metrics or invent
+  missing batteries.
+- Hash/identity checks protect integrity — treat failed checks as fail-closed.
+
+**Related pages.** Report Export; classic pages listed in the import flash
+(Data through Portfolio).
 
 ## Portfolio
 
-_Stub (HC-0)._ Multi-setup portfolio scope and honesty limits. Filled in HC-2.
+**What it is.** The **Portfolio** page merges completed, independently simulated
+setup trade lists under a portfolio exposure policy for diagnostic combined
+equity / contribution / correlation views.
+
+**When to use it.** When you already have the current Backtest trades plus at
+least one additional completed-trade CSV for the same instrument/timeline.
+
+**Related terms.** portfolio, multi-setup, combined equity, marginal
+contribution, correlation, portfolio exposure policy, admitted trades, skipped
+trades, diagnostic merge
+
+**Key settings.**
+
+| Control | Meaning | Common pitfall |
+|---|---|---|
+| `Current setup label` | Name for the in-session trade table | — |
+| `Additional completed-trade CSV exports` | Other setups’ trade CSVs | Need ≥2 setup tables total |
+| `Portfolio exposure policy` | `allow_all` / `single_position` / `single_direction` / `single_setup` | Applied after merge — not a live margin engine |
+| `Cooldown bars after exit` | Portfolio-level spacing | — |
+
+**How to use.**
+
+1. Export/collect completed-trade CSVs (often from Report Export).
+2. Ensure current Backtest `trades` are loaded; add ≥1 CSV.
+3. Set labels, portfolio exposure, cooldown → **Run portfolio analysis**.
+4. Read combined equity, marginal contribution, correlation, and admission skips.
+
+**What it is not.**
+
+- **Not** a capital, margin, liquidity, or fill simulation — post-hoc merge only.
+- Upstream per-setup runs should usually use `allow_all` so the portfolio policy
+  is applied once at merge time.
+- Diagnostic only; combined R/DD is not proof of a deployable book.
+
+**Related pages.** Backtest; Report Export (`trades.csv`).
 
 ## Research Assistant (draft, Discuss, Help)
 

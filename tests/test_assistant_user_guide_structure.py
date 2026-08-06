@@ -1,4 +1,4 @@
-"""USER_GUIDE structure gate: §6.1 H2 skeleton + HC-1 filled vs remaining stubs."""
+"""USER_GUIDE structure gate: §6.1 H2 skeleton + HC-1/HC-2 filled vs HC-3 stubs."""
 
 from __future__ import annotations
 
@@ -30,8 +30,8 @@ REQUIRED_USER_GUIDE_H2S = (
     "When to use Help vs Discuss results",
 )
 
-# HC-1 filled + allowlisted (must match RQ §7.1.4 / HELP_CORPUS_MANIFEST).
-HC1_FILLED_H2S = (
+# HC-1 + HC-2 filled + allowlisted (must match RQ §7.1.4 / HELP_CORPUS_MANIFEST).
+HC_FILLED_H2S = (
     "Purpose and honesty",
     "Classic workflow overview",
     "Data",
@@ -39,7 +39,16 @@ HC1_FILLED_H2S = (
     "Setup Builder",
     "Signals",
     "Backtest",
+    "Grid Search",
+    "Time Analysis",
+    "Validation and robustness",
+    "Report Export",
+    "Research Bundles",
+    "Portfolio",
 )
+
+# Backward-compatible alias for older test names / imports.
+HC1_FILLED_H2S = HC_FILLED_H2S
 
 _STUB_MARKER = "_Stub (HC-0)._"
 _H2_RE = re.compile(r"^##\s+(.*\S)\s*$", re.MULTILINE)
@@ -74,29 +83,29 @@ def test_user_guide_exists_with_exact_h2_skeleton():
     )
 
 
-def test_user_guide_hc1_sections_filled_remaining_stubs():
-    """HC-1 how-tos are real prose; HC-2/HC-3 surfaces stay explicit stubs."""
+def test_user_guide_hc1_hc2_sections_filled_remaining_stubs():
+    """HC-1/HC-2 how-tos are real prose; HC-3 Assistant surfaces stay stubs."""
     bodies = _user_guide_h2_bodies()
-    for title in HC1_FILLED_H2S:
+    for title in HC_FILLED_H2S:
         assert _STUB_MARKER not in bodies[title], (
-            f"USER_GUIDE H2 {title!r} must be filled (no {_STUB_MARKER!r}) after HC-1"
+            f"USER_GUIDE H2 {title!r} must be filled (no {_STUB_MARKER!r}) after HC-2"
         )
         assert len(bodies[title].strip()) > 80, f"USER_GUIDE H2 {title!r} looks empty"
     for title in REQUIRED_USER_GUIDE_H2S:
-        if title in HC1_FILLED_H2S:
+        if title in HC_FILLED_H2S:
             continue
         assert _STUB_MARKER in bodies[title], (
-            f"USER_GUIDE H2 {title!r} must remain {_STUB_MARKER!r} until HC-2/HC-3"
+            f"USER_GUIDE H2 {title!r} must remain {_STUB_MARKER!r} until HC-3"
         )
 
 
-def test_user_guide_manifest_matches_hc1_filled_sections_only():
-    """Allowlist includes only filled HC-1 H2s — never stub Grid→Assistant titles."""
+def test_user_guide_manifest_matches_filled_sections_only():
+    """Allowlist includes only filled HC-1/HC-2 H2s — never Assistant stubs."""
     spec = get_corpus_doc_spec("user_guide")
     assert spec.relative_path == "docs/USER_GUIDE.md"
     assert spec.mode == "sections"
-    assert spec.sections == frozenset(HC1_FILLED_H2S)
+    assert spec.sections == frozenset(HC_FILLED_H2S)
     assert all(
-        entry.doc_id != "user_guide" or entry.sections == frozenset(HC1_FILLED_H2S)
+        entry.doc_id != "user_guide" or entry.sections == frozenset(HC_FILLED_H2S)
         for entry in HELP_CORPUS_MANIFEST
     )
