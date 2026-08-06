@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import json
+import re
 from urllib import error, request
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,6 +38,65 @@ class OpenAITransport(Protocol):
     def post_json(self, *, url: str, api_key: str, payload: dict[str, Any]) -> dict[str, Any]: ...
 
 
+def _sanitize_provider_error_text(text: str) -> str:
+    """Redact credential-shaped tokens from provider/error text before UI display."""
+    cleaned = re.sub(r"sk-[A-Za-z0-9_-]+", "sk-***", text)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned[:300]
+
+
+def _openai_http_error_detail(exc: error.HTTPError) -> str:
+    """Extract a short, non-secret OpenAI error detail from an HTTPError body."""
+    raw = ""
+    try:
+        raw = exc.read().decode("utf-8", errors="replace")
+    except Exception:
+        raw = ""
+    message = ""
+    code: str | None = None
+    if raw.strip():
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            err = payload.get("error")
+            if isinstance(err, dict):
+                if isinstance(err.get("message"), str):
+                    message = err["message"]
+                if isinstance(err.get("code"), str):
+                    code = err["code"]
+            elif isinstance(payload.get("message"), str):
+                message = payload["message"]
+        if not message:
+            message = raw
+    parts = [f"HTTP {exc.code}"]
+    if code:
+        parts.append(code)
+    if message:
+        parts.append(_sanitize_provider_error_text(message))
+    elif isinstance(exc.reason, str) and exc.reason.strip():
+        parts.append(_sanitize_provider_error_text(exc.reason))
+    return ": ".join(parts)
+
+
+def _openai_transport_failure_message(exc: BaseException) -> str:
+    """Build an actionable provider failure message without leaking secrets."""
+    prefix = "OpenAI structured request failed"
+    if isinstance(exc, error.HTTPError):
+        return f"{prefix} ({_openai_http_error_detail(exc)})."
+    if isinstance(exc, TimeoutError):
+        return f"{prefix} (timed out)."
+    if isinstance(exc, json.JSONDecodeError):
+        return f"{prefix} (invalid JSON response)."
+    if isinstance(exc, error.URLError):
+        reason = exc.reason
+        detail = _sanitize_provider_error_text(str(reason)) if reason is not None else ""
+        if detail:
+            return f"{prefix} ({detail})."
+    return f"{prefix}."
+
+
 class UrllibOpenAITransport:
     """Minimal standard-library transport; no provider SDK reaches engine code."""
 
@@ -52,7 +112,7 @@ class UrllibOpenAITransport:
             with request.urlopen(outbound, timeout=30) as response:
                 decoded = json.loads(response.read().decode("utf-8"))
         except (error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            raise LLMProviderError("OpenAI structured request failed.") from exc
+            raise LLMProviderError(_openai_transport_failure_message(exc)) from exc
         if not isinstance(decoded, dict):
             raise LLMProviderError("OpenAI response must be an object.")
         return decoded

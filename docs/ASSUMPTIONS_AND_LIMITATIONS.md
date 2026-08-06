@@ -531,8 +531,13 @@ other than the last bar in the dataset.
   tracked configuration. Non-secret knobs (`provider`, `model`, retries,
   history trim, `evidence_only`) live in `config/assistant.toml`.
 - Provider timeouts retry per `max_retries`; exhaustion surfaces as a provider
-  error and leaves the deterministic packet intact. Cancel/recovery of compute
-  uses orchestrator `cancel_run` and terminal run states, not chat turns.
+  error and leaves the deterministic packet intact. Transport failures from
+  `UrllibOpenAITransport` keep the stable prefix
+  `OpenAI structured request failed` and append a sanitized detail
+  (`HTTP <status>`, OpenAI `code`, redacted message, timeout, or invalid JSON)
+  so chat UI errors are actionable without leaking `sk-…` material. Cancel /
+  recovery of compute uses orchestrator `cancel_run` and terminal run states,
+  not chat turns.
 - Provenance: completed-run explanations and comparisons require a readable
   research bundle whose `canonical_bundle_hash` matches reported provenance.
 - Statistical honesty: sample-size, zero-cost, intrabar ambiguity, OOS, and

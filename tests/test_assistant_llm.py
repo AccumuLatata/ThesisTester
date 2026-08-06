@@ -1,10 +1,17 @@
+import io
+import json
+from urllib import error
+
 import pytest
 
 from thesistester.assistant.llm import (
     LLMConfigurationError,
+    LLMProviderError,
     LLMSettings,
     OpenAIStructuredClient,
+    UrllibOpenAITransport,
     _api_key_from_secrets_mapping,
+    _openai_transport_failure_message,
     create_openai_client,
     load_llm_settings,
     require_openai_api_key,
@@ -107,3 +114,67 @@ def test_openai_client_parses_responses_output_array():
     assert client.complete_structured(system="system", user="user", schema={"type": "object"}) == {
         "ok": True
     }
+
+
+def test_transport_failure_message_includes_http_status_and_redacts_key():
+    body = json.dumps(
+        {
+            "error": {
+                "message": "Incorrect API key provided: sk-abc123def456. Check your key.",
+                "type": "invalid_request_error",
+                "code": "invalid_api_key",
+            }
+        }
+    ).encode("utf-8")
+    exc = error.HTTPError(
+        url="https://api.openai.com/v1/responses",
+        code=401,
+        msg="Unauthorized",
+        hdrs=None,
+        fp=io.BytesIO(body),
+    )
+    message = _openai_transport_failure_message(exc)
+    assert "OpenAI structured request failed" in message
+    assert "HTTP 401" in message
+    assert "invalid_api_key" in message
+    assert "sk-***" in message
+    assert "sk-abc123def456" not in message
+
+
+def test_transport_failure_message_for_timeout_and_bad_json():
+    assert _openai_transport_failure_message(TimeoutError()) == (
+        "OpenAI structured request failed (timed out)."
+    )
+    assert _openai_transport_failure_message(json.JSONDecodeError("Expecting value", "", 0)) == (
+        "OpenAI structured request failed (invalid JSON response)."
+    )
+
+
+def test_urllib_transport_surfaces_http_error_detail(monkeypatch):
+    body = json.dumps(
+        {
+            "error": {
+                "message": "Incorrect API key provided: sk-live-secret-value.",
+                "code": "invalid_api_key",
+            }
+        }
+    ).encode("utf-8")
+
+    def fake_urlopen(req, timeout=30):  # noqa: ARG001
+        raise error.HTTPError(
+            url=req.full_url,
+            code=401,
+            msg="Unauthorized",
+            hdrs=None,
+            fp=io.BytesIO(body),
+        )
+
+    monkeypatch.setattr("thesistester.assistant.llm.request.urlopen", fake_urlopen)
+    with pytest.raises(LLMProviderError, match="HTTP 401") as caught:
+        UrllibOpenAITransport().post_json(
+            url="https://api.openai.com/v1/responses",
+            api_key="sk-test",
+            payload={"model": "gpt-5.6-luna"},
+        )
+    assert "invalid_api_key" in str(caught.value)
+    assert "sk-live-secret-value" not in str(caught.value)

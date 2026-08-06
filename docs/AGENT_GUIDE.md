@@ -253,8 +253,10 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
 - Provider setup: non-secret settings in `config/assistant.toml`; secret via
   rotated `OPENAI_API_KEY` (env first, then Streamlit Secrets
   `OPENAI_API_KEY` / nested `[openai].api_key`). Reject the placeholder
-  `REPLACE_WITH_ROTATED_OPENAI_API_KEY`. Recovery/cancellation stays on
-  orchestrator `cancel_run` / confirmation lifecycle, not the LLM.
+  `REPLACE_WITH_ROTATED_OPENAI_API_KEY`. When the Responses call fails, raise
+  `LLMProviderError` with prefix `OpenAI structured request failed` plus
+  sanitized HTTP/provider detail (never raw `sk-…`). Recovery/cancellation
+  stays on orchestrator `cancel_run` / confirmation lifecycle, not the LLM.
 - Document every additive `assistant_*` session key in `ARCHITECTURE.md` and
   `ASSISTANT_SESSION_KEYS`. Thesis switches must clear
   `THESIS_SCOPED_STAGING_KEYS` (including `assistant_bundle_handoff`).
