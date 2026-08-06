@@ -534,24 +534,28 @@ other than the last bar in the dataset.
   funnel through routed capabilities (typically `PIPELINE.run_experiment` plus
   evidence/export). They are audited by `audit_capability_registry()`.
 
-## Voice agent (VA-series — PTT + realtime sidecar landed; release gate VA-6)
+## Voice agent (VA-series — complete; default off)
 - Spoken review of completed runs / product help is specified in
   `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (single VA-series contract;
   post-RQ / post-HC). Text Discuss / Help remain owned by
   `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`. VA-1 text substrate is RQ-1;
-  Help corpus substrate is HC-complete. **VA-0…VA-5 landed:** contracts/flag,
+  Help corpus substrate is HC-complete. **VA-0…VA-6 complete:** contracts/flag,
   xAI STT/TTS + voice sessions, read-only voice tools + digit grounding,
-  opt-in push-to-talk UI, and the localhost realtime sidecar
-  (`python -m thesistester.assistant.voice.sidecar`). VA-6 is the release gate.
+  opt-in push-to-talk UI, localhost realtime sidecar
+  (`python -m thesistester.assistant.voice.sidecar`), and release-gate evals in
+  `tests/test_assistant_voice_evaluations.py`.
 - Product shape: voice is a spoken transport over the same RQ channels
   (Discuss results + Help), not a second evidence dialect. It must omit draft
   `choices`, must not dispatch compute, and must fail closed on ungrounded
   numbers. Mic controls are hidden while `assistant.voice.enabled=false` and
   blocked while any thesis research run is `status=="running"`.
-- Voice remains opt-in (`assistant.voice.enabled = false` by default through
-  VA-6). Results sessions bind hash-verified evidence; Help sessions reuse
-  the §7.1 / HC corpus path. Missing OpenAI on Discuss falls back to one VA-3
-  tool template; Help without OpenAI remediates (no fabricated docs).
+- **Default remains off** after VA-6 (`assistant.voice.enabled = false`). Opt-in:
+  set `enabled = true` (and optionally `mode = "realtime"`), provide
+  `XAI_API_KEY` (sidecar/STT/TTS) and `OPENAI_API_KEY` (PTT RQ channel turns),
+  then use Discuss/Help voice panels / start the localhost sidecar. Results
+  sessions bind hash-verified evidence; Help sessions reuse the §7.1 / HC
+  corpus path. Missing OpenAI on Discuss falls back to one VA-3 tool template;
+  Help without OpenAI remediates (no fabricated docs).
 - Dual keys: xAI for STT/TTS and realtime (`XAI_API_KEY` env → Secrets
   top-level → `[xai].api_key`; placeholders rejected; never embedded in page
   modules); OpenAI for primary PTT channel turns via `handle_results_turn` /
@@ -560,7 +564,9 @@ other than the last bar in the dataset.
   bound only (Help duplex deferred). Raw audio is not stored by default
   (`store_audio = false`); last PTT TTS bytes may sit ephemerally in
   `assistant_voice_playback` for `st.audio` only. Sessions end at
-  `max_session_minutes`.
+  `max_session_minutes` (default 15). Budget guidance: ~$0.08/min speech-to-
+  speech for Think Fast 2.0, plus unary STT/TTS and OpenAI for VA-4 channel
+  turns.
 
 ## OTF filter (One Timeframing)
 

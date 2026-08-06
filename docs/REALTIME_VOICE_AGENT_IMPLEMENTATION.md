@@ -1,7 +1,7 @@
 # Realtime Voice Agent — Implementation Contract
 
 **Document type:** Implementation contract (VA-series) — **single source of truth for voice**
-**Status:** VA-0…VA-5 landed (PTT + localhost realtime sidecar); release gate is VA-6
+**Status:** VA-0…VA-6 complete — voice release gate closed (`enabled=false` by default)
 **Date:** 2026-08-06
 **Owner surface:** `thesistester/assistant/voice/` + Research Assistant page only
 **Provider (speech):** xAI Grok Voice (`grok-voice-think-fast-2.0`; see §4)
@@ -242,9 +242,9 @@ secret, and spoken-grounding series on top of a finished text substrate.
 | VA-3 | ✅ Done | Read-only voice tools + grounding helpers |
 | VA-4 | ✅ Done | Push-to-talk spoken Discuss/Help (first user-visible) |
 | VA-5 | ✅ Done | Full-duplex realtime sidecar |
-| VA-6 | Remaining | Voice evals + release gate |
+| VA-6 | ✅ Done | Voice evals + release gate |
 
-**Remaining implementation PRs: 1** (VA-6). VA-0 ✅ / VA-2 ✅ / VA-3 ✅ / VA-4 ✅ / VA-5 ✅.
+**Remaining implementation PRs: 0.** VA-0 ✅ / VA-2 ✅ / VA-3 ✅ / VA-4 ✅ / VA-5 ✅ / VA-6 ✅.
 
 Do **not** collapse VA-4 into VA-5. Half-duplex spoken channels prove value and
 honesty first. Do **not** reopen RQ for voice features.
@@ -708,10 +708,10 @@ docs/ENGINEERING.md
 - Default enable
 
 #### Acceptance
-- [ ] Full suite green including RQ-5 / C2-6 evals
-- [ ] Voice eval file fails CI if allowlist or grounding regresses
-- [ ] Deterministic explain/compare usable with zero voice/xAI config
-- [ ] Release checklist in PR body completed
+- [x] Full suite green including RQ-5 / C2-6 evals
+- [x] Voice eval file fails CI if allowlist or grounding regresses
+- [x] Deterministic explain/compare usable with zero voice/xAI config
+- [x] Release checklist in PR body completed
 
 #### Regression safety
 Tests + docs + policy only. No engine semantics. No golden regen.
@@ -728,14 +728,23 @@ docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
 ```
 
 #### Release checklist (PR body)
-- [ ] §4.2 items for assistant-surface PR
-- [ ] No golden file diffs
-- [ ] `enabled` still false
+- [x] §4.2 items for assistant-surface PR
+- [x] No golden file diffs
+- [x] `enabled` still false
 - [ ] Manual half-duplex smoke (and duplex if VA-5 shipped) recorded in PR notes
-- [ ] Cost/privacy assumptions updated
+- [x] Cost/privacy assumptions updated
 
 #### Implemented contract (fill when merged)
-_Pending implementation._
+- `tests/test_assistant_voice_evaluations.py` freezes VA honesty/injection/
+  grounding: forbidden tools, uncited spoken digits, hash-mismatch bind,
+  token-mint fail-closed, TTL, flag-off no STT/mint/sidecar register, spoken
+  Discuss/Help omit `choices`, draft history excludes voice/channel tags,
+  Help performance remediation, deterministic explain/compare with zero xAI.
+- Default remains `assistant.voice.enabled = false` (asserted against
+  `config/assistant.toml`).
+- Docs: Assumptions (shipped limitations + opt-in/budget), AGENT_GUIDE (VA
+  complete), ENGINEERING_ROADMAP (VA ✅), METRICS_GLOSSARY spoken note, this
+  file (release gate closed).
 
 ---
 
@@ -878,4 +887,4 @@ Constraints:
 | VA-3 | ✅ Implemented (read-only tools + grounding helpers) |
 | VA-4 | ✅ Implemented (PTT spoken Discuss/Help) |
 | VA-5 | ✅ Implemented (localhost realtime sidecar) |
-| VA-6 | Proposed |
+| VA-6 | ✅ Implemented (evals + release gate; default remains off) |
