@@ -20,6 +20,7 @@ from thesistester.assistant.llm_explainer import LLMEvidenceError
 from thesistester.assistant.repository import (
     AssistantRepositoryError,
     LocalThesisRepository,
+    RepositoryConflictError,
     ResearchRun,
 )
 from thesistester.assistant.tools import AssistantToolError, AssistantTools
@@ -763,17 +764,28 @@ class VoiceSessionService:
         session_id: str,
         turn: VoiceTranscriptTurn,
     ) -> VoiceSessionRecord:
-        record = self.repository.get_voice_session(thesis_id, session_id)
-        if record.status != "active":
-            raise VoiceSessionError("Cannot append turns to an ended voice session.")
-        if turn.channel != record.channel:
-            raise VoiceSessionError("Transcript turn channel must match the session channel.")
-        updated = replace(
-            record,
-            transcript=record.transcript + (turn,),
-            updated_at=_utcnow(),
-        )
-        return self.repository.save_voice_session(updated)
+        last_conflict: RepositoryConflictError | None = None
+        for _attempt in range(3):
+            record = self.repository.get_voice_session(thesis_id, session_id)
+            if record.status != "active":
+                raise VoiceSessionError("Cannot append turns to an ended voice session.")
+            if turn.channel != record.channel:
+                raise VoiceSessionError("Transcript turn channel must match the session channel.")
+            updated = replace(
+                record,
+                transcript=record.transcript + (turn,),
+                updated_at=_utcnow(),
+            )
+            try:
+                return self.repository.save_voice_session(updated)
+            except RepositoryConflictError as exc:
+                # Concurrent user/assistant realtime turns can race on revision.
+                last_conflict = exc
+                continue
+        assert last_conflict is not None
+        raise VoiceSessionError(
+            "Unable to append transcript turn after concurrent revision conflicts."
+        ) from last_conflict
 
     def append_tool_invocation(
         self,

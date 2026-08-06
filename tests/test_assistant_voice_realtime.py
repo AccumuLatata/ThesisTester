@@ -272,6 +272,14 @@ def test_extract_transcript_events():
     assert extract_transcript_from_event({"type": "session.updated"}) is None
 
 
+def test_client_html_uses_js_null_not_python_none():
+    from thesistester.assistant.voice.sidecar import _html_client_page
+
+    html = _html_client_page(session_id="vs_" + ("cd" * 16))
+    assert "let mediaStream = null;" in html
+    assert "let mediaStream = None;" not in html
+
+
 def test_realtime_websocket_url_pins_model():
     url = realtime_websocket_url(model="grok-voice-think-fast-2.0")
     assert url.startswith("wss://api.x.ai/v1/realtime?model=")

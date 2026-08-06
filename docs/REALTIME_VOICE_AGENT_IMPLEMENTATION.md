@@ -680,6 +680,10 @@ docs/ENGINEERING.md
   buffer / `response.cancel` events (no forged `conversation.item.create`).
 - TTL: `session_exceeded_ttl` / `max_session_minutes` ends active sessions
   (idempotent end + upstream close so peer pumps unblock).
+- Assistant realtime transcript text is digit-audited against the bound packet
+  + tool returns before durable persistence (`realtime_ungrounded` remediation
+  replaces uncited numbers). Live PCM cannot be pre-gated once uttered.
+- Client HTML initializes `mediaStream` with JS `null` (not Python `None`).
 - Streamlit (when `assistant.voice.mode = "realtime"`) registers sessions via
   `POST /v1/sessions` and opens the sidecar `/client` page; host/`client_url`
   must be loopback; never opens xAI WS and never embeds `XAI_API_KEY`. PTT
@@ -736,10 +740,12 @@ docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
 
 #### Implemented contract (fill when merged)
 - `tests/test_assistant_voice_evaluations.py` freezes VA honesty/injection/
-  grounding: forbidden tools, uncited spoken digits, hash-mismatch bind,
-  token-mint fail-closed, TTL, flag-off no STT/mint/sidecar register, spoken
-  Discuss/Help omit `choices`, draft history excludes voice/channel tags,
-  Help performance remediation, deterministic explain/compare with zero xAI.
+  grounding: forbidden tools, uncited spoken digits (PTT + realtime durable
+  assistant transcripts), hash-mismatch bind, token-mint fail-closed, TTL,
+  flag-off no STT/mint/sidecar register, spoken Discuss/Help omit `choices`,
+  draft history excludes voice/channel tags, Help performance remediation,
+  deterministic explain/compare with zero xAI, realtime client HTML has no
+  Python `None` leak.
 - Default remains `assistant.voice.enabled = false` (asserted against
   `config/assistant.toml`).
 - Docs: Assumptions (shipped limitations + opt-in/budget), AGENT_GUIDE (VA

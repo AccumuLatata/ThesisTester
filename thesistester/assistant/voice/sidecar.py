@@ -25,7 +25,12 @@ from urllib.parse import urlencode
 
 from thesistester.assistant.repository import LocalThesisRepository
 from thesistester.assistant.tools import AssistantTools
-from thesistester.assistant.voice.contracts import VoiceTranscriptTurn
+from thesistester.assistant.voice.contracts import GroundingVerdict, VoiceTranscriptTurn
+from thesistester.assistant.voice.grounding import (
+    UNGROUNDED_SPOKEN_REMEDIATION,
+    allowed_tokens_from_tool_result,
+    audit_spoken_text,
+)
 from thesistester.assistant.voice.session import (
     VoiceSessionError,
     VoiceSessionService,
@@ -230,6 +235,69 @@ def extract_transcript_from_event(event: Mapping[str, Any]) -> tuple[str, str] |
     return "assistant", text.strip()
 
 
+def audit_realtime_assistant_transcript(
+    *,
+    service: VoiceSessionService,
+    thesis_id: str,
+    session_id: str,
+    text: str,
+) -> tuple[str, GroundingVerdict, str]:
+    """Digit-audit assistant realtime text against bound packet + tool returns.
+
+    Live PCM cannot be pre-gated once spoken; durable transcript text is still
+    fail-closed so uncited numbers never persist into session/history flush.
+    Returns ``(persist_text, verdict, path)``.
+    """
+    packet = service.require_bound_packet(thesis_id, session_id)
+    record = service.repository.get_voice_session(thesis_id, session_id)
+    allowed_tokens: set[str] = set()
+    for invocation in record.tool_invocations:
+        if not getattr(invocation, "ok", False):
+            continue
+        result = getattr(invocation, "result", None)
+        if isinstance(result, Mapping):
+            allowed_tokens |= allowed_tokens_from_tool_result(result)
+    verdict = audit_spoken_text(
+        text,
+        packet=packet,
+        allowed_tokens=allowed_tokens,
+    )
+    if verdict.grounded:
+        return text, verdict, "realtime"
+    return UNGROUNDED_SPOKEN_REMEDIATION, verdict, "realtime_ungrounded"
+
+
+def persist_realtime_transcript_turn(
+    *,
+    service: VoiceSessionService,
+    thesis_id: str,
+    session_id: str,
+    role: str,
+    text: str,
+) -> VoiceTranscriptTurn:
+    """Append one realtime transcript turn (assistant text digit-audited)."""
+    path = "realtime"
+    grounding: GroundingVerdict | None = None
+    persist_text = text
+    if role == "assistant":
+        persist_text, grounding, path = audit_realtime_assistant_transcript(
+            service=service,
+            thesis_id=thesis_id,
+            session_id=session_id,
+            text=text,
+        )
+    turn = VoiceTranscriptTurn(
+        role=role,
+        text=persist_text,
+        channel="results_qa",
+        path=path,
+        created_at=datetime.now(timezone.utc).isoformat(),
+        grounding=grounding,
+    )
+    service.append_transcript_turn(thesis_id, session_id, turn)
+    return turn
+
+
 @dataclass
 class SidecarRuntime:
     """Process-local registry for active realtime voice sessions."""
@@ -357,7 +425,7 @@ def _html_client_page(*, session_id: str) -> str:
     let audioCtx = null;
     let processor = null;
     let source = null;
-    let mediaStream = None;
+    let mediaStream = null;
     let playTime = 0;
 
     function log(msg) {{
@@ -765,26 +833,51 @@ async def _pump_upstream_to_browser(
             continue
 
         transcript = extract_transcript_from_event(event)
+        persisted: VoiceTranscriptTurn | None = None
         if transcript is not None:
             role, text = transcript
             try:
-                runtime.service.append_transcript_turn(
-                    thesis_id,
-                    session_id,
-                    VoiceTranscriptTurn(
-                        role=role,
-                        text=text,
-                        channel="results_qa",
-                        path="realtime",
-                        created_at=datetime.now(timezone.utc).isoformat(),
-                    ),
+                persisted = persist_realtime_transcript_turn(
+                    service=runtime.service,
+                    thesis_id=thesis_id,
+                    session_id=session_id,
+                    role=role,
+                    text=text,
                 )
-            except (VoiceSessionError, Exception):
-                pass
+            except VoiceSessionError as exc:
+                logger.warning(
+                    "Realtime transcript append failed for %s: %s",
+                    session_id,
+                    type(exc).__name__,
+                )
+            except Exception:
+                logger.exception("Unexpected realtime transcript append failure for %s", session_id)
+            if (
+                persisted is not None
+                and role == "assistant"
+                and persisted.path == "realtime_ungrounded"
+            ):
+                await browser_ws.send_json(
+                    {
+                        "type": "sidecar.error",
+                        "message": UNGROUNDED_SPOKEN_REMEDIATION,
+                    }
+                )
 
         # Forward JSON events to browser (redacted on error diagnostics).
         if event_type.startswith("response.output_audio") or event_type.endswith("transcript.done"):
-            await browser_ws.send_json(dict(event))
+            forward = dict(event)
+            # Do not forward uncited assistant transcript digits to the client log.
+            if (
+                persisted is not None
+                and persisted.role == "assistant"
+                and persisted.path == "realtime_ungrounded"
+            ):
+                if "transcript" in forward:
+                    forward["transcript"] = persisted.text
+                if "text" in forward:
+                    forward["text"] = persisted.text
+            await browser_ws.send_json(forward)
         elif event_type in {"session.updated", "session.created", "error"}:
             await browser_ws.send_json(safe_event if event_type == "error" else dict(event))
 

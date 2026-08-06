@@ -42,8 +42,10 @@ from thesistester.assistant.voice.settings import load_voice_settings
 from thesistester.assistant.voice.sidecar import (
     SidecarError,
     assert_localhost_bind,
+    audit_realtime_assistant_transcript,
     build_realtime_session_update,
     execute_realtime_tool_bridge,
+    persist_realtime_transcript_turn,
 )
 from thesistester.assistant.voice.tools import (
     VOICE_TOOL_SCHEMAS,
@@ -400,6 +402,72 @@ def test_va6_uncited_spoken_digits_fail_grounding():
     )
     assert uncited.grounded is False
     assert set(uncited.uncited_digit_tokens) >= {"0.99", "77"}
+
+
+def test_va6_realtime_assistant_transcript_digits_fail_closed(tmp_path: Path):
+    repository = _repository(tmp_path)
+    thesis, run, digest, conversation = _completed_run(repository, tmp_path)
+    service = VoiceSessionService(
+        repository,
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        settings=_enabled_settings(),
+    )
+    record = service.create_session(
+        thesis.thesis_id,
+        run_id=run.run_id,
+        expected_hash=digest,
+        mode="realtime",
+        channel="results_qa",
+        conversation_id=conversation.conversation_id,
+    )
+    # Empty evidence packet has no claim values — uncited digits must remediate.
+    text, verdict, path = audit_realtime_assistant_transcript(
+        service=service,
+        thesis_id=thesis.thesis_id,
+        session_id=record.session_id,
+        text="Win rate was 0.99 with a secret edge of 77.",
+    )
+    assert verdict.grounded is False
+    assert path == "realtime_ungrounded"
+    assert "0.99" not in text
+    assert "77" not in text
+    turn = persist_realtime_transcript_turn(
+        service=service,
+        thesis_id=thesis.thesis_id,
+        session_id=record.session_id,
+        role="assistant",
+        text="Win rate was 0.99 with a secret edge of 77.",
+    )
+    assert turn.path == "realtime_ungrounded"
+    assert "0.99" not in turn.text
+    ended = repository.get_voice_session(thesis.thesis_id, record.session_id)
+    assert ended.transcript[-1].text == turn.text
+
+    # Successful tool returns contribute typed digits to the allowlist.
+    from thesistester.assistant.voice.tools import execute_voice_tool
+
+    tool_session = service.tool_session(thesis.thesis_id, record.session_id)
+    overview = execute_voice_tool("get_run_overview", {}, session=tool_session)
+    assert overview["ok"] is True
+    # Empty-packet overview has no numeric leaves; still fail closed on free digits.
+    text2, verdict2, path2 = audit_realtime_assistant_transcript(
+        service=service,
+        thesis_id=thesis.thesis_id,
+        session_id=record.session_id,
+        text="There were 999 trades.",
+    )
+    assert verdict2.grounded is False
+    assert path2 == "realtime_ungrounded"
+    assert "999" not in text2
+
+
+def test_va6_realtime_client_html_has_no_python_none_literal():
+    from thesistester.assistant.voice.sidecar import _html_client_page
+
+    html = _html_client_page(session_id="vs_" + ("ab" * 16))
+    assert "mediaStream = null" in html
+    assert "mediaStream = None" not in html
+    assert " = None;" not in html
 
 
 def test_va6_ptt_spoken_digits_subset_of_claim_values(tmp_path: Path, monkeypatch):
