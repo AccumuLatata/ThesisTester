@@ -535,7 +535,9 @@ other than the last bar in the dataset.
   `UrllibOpenAITransport` keep the stable prefix
   `OpenAI structured request failed` and append a sanitized detail
   (`HTTP <status>`, OpenAI `code`, redacted message, timeout, or invalid JSON)
-  so chat UI errors are actionable without leaking `sk-…` material. Cancel /
+  so chat UI errors are actionable without leaking credentials (`sk-…` shapes,
+  `Bearer` tokens, and the exact configured key when echoed). HTTP `400` /
+  `401` / `403` / `404` are non-retryable and fail on the first attempt. Cancel /
   recovery of compute uses orchestrator `cancel_run` and terminal run states,
   not chat turns.
 - Provenance: completed-run explanations and comparisons require a readable
