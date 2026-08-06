@@ -249,6 +249,72 @@ def test_hc3_frozen_qr2_and_qr3_stay_out_of_run_performance_remediation():
     assert not is_run_performance_question("Turn on turbo_alpha_mode in Setup Builder")
 
 
+def test_hc3_frozen_qr3_help_reply_says_not_documented():
+    """Q-R3: Help reply path must be able to ground a not-documented answer."""
+    from thesistester.assistant.help_corpus import select_help_corpus_chunks
+
+    chunks = select_help_corpus_chunks(
+        "Turn on turbo_alpha_mode in Setup Builder",
+        repo_root=REPO_ROOT,
+        max_chars=24_000,
+    )
+    assert chunks
+    assert all("turbo_alpha_mode" not in chunk.text.lower() for chunk in chunks)
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": (
+                    "turbo_alpha_mode is not a documented Setup Builder control "
+                    "in the allowlisted docs."
+                ),
+                "caveats": ["Help must not invent product features absent from docs."],
+                "citations": [{"doc_id": "user_guide", "section": "Setup Builder"}],
+                "followups": ["Ask how to configure confluence or tolerance ticks."],
+            }
+
+    reply = propose_help_reply(
+        Client(),
+        corpus_chunks=chunks,
+        registry_digest=[],
+        history=(),
+        user_message="Turn on turbo_alpha_mode in Setup Builder",
+    )
+    assert reply.remediation is False
+    assert "not a documented" in reply.summary.lower() or "not documented" in reply.summary.lower()
+    assert reply.citations
+    assert all(citation.doc_id == "user_guide" for citation in reply.citations)
+
+
+def test_hc3_frozen_qr3_rejects_ungrounded_numeric_fabrication():
+    """Q-R3: inventing numeric claims about a fake control must fail grounding."""
+    from thesistester.assistant.help_corpus import select_help_corpus_chunks
+
+    chunks = select_help_corpus_chunks(
+        "Turn on turbo_alpha_mode in Setup Builder",
+        repo_root=REPO_ROOT,
+        max_chars=24_000,
+    )
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Enable turbo_alpha_mode to raise expectancy by 3.5R.",
+                "caveats": ["Fabricated."],
+                "citations": [{"doc_id": "user_guide", "section": "Setup Builder"}],
+                "followups": [],
+            }
+
+    with pytest.raises(HelpEvidenceError, match="digit|ground|token|number"):
+        propose_help_reply(
+            Client(),
+            corpus_chunks=chunks,
+            registry_digest=[],
+            history=(),
+            user_message="Turn on turbo_alpha_mode in Setup Builder",
+        )
+
+
 def test_select_help_corpus_never_loads_agent_guide():
     from thesistester.assistant.help_corpus import load_corpus_chunks, resolve_corpus_path
 

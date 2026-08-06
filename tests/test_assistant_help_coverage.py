@@ -133,7 +133,7 @@ def test_hc2_howto_bank_retrieves_primary_user_guide_sections():
 _HC3_BODY_PHRASES = {
     "Q-H10": ("Create and link thesis", "Record and discuss this run"),
     "Q-H11": ("Help / how it works", "Discuss results"),
-    "Q-H12": ("Confirm validated RunSpec", "clarifications"),
+    "Q-H12": ("Confirm validated RunSpec", "Plan review", "clarifications"),
 }
 
 

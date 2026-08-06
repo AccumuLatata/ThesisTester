@@ -547,8 +547,10 @@ confirmed research, linked runs, clarification, specification version
 
 1. Create or select a thesis in the sidebar.
 2. Draft via **Assistant chat** and/or Advanced structured controls.
-3. Optionally **Draft research plan**, then **Validate executable RunSpec**.
-   Resolve clarifications if shown, then **Confirm validated RunSpec**.
+3. Open **Advanced: draft, runs & compare** → **Plan review**. Optionally
+   **Draft research plan**, then **Validate executable RunSpec**. Resolve
+   clarifications if shown, then **Confirm validated RunSpec** (Confirm lives
+   under Plan review, not inside the Specifications list).
 4. Open a Confirmed specification → **Run confirmed research**.
 5. For completed-run questions, open Advanced → Linked runs → **Discuss
    results**. For feature how-tos, open **Help / how it works**.
@@ -622,7 +624,7 @@ best SL, expectancy, remediation, draft chat, documentation-grounded
 | How does a page/setting work? How-to / workflow | **Help / how it works** | Discuss (no run packet) |
 | What was my best SL/TP / expectancy / trades on this run? | **Discuss results** (bound run) | Help (remediates; no invented numbers) |
 | Refine thesis choices / clarifications | **Assistant chat** (draft) | Help or Discuss |
-| Undocumented / invented controls (e.g. fake modes) | Help should refuse / say not documented | Fabricating UI that does not exist |
+| Undocumented / invented controls (e.g. fake modes) | Help must not invent UI absent from allowlisted docs (say not documented) | Fabricating UI that does not exist |
 
 **How to use.**
 
