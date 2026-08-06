@@ -20,6 +20,14 @@ DEFAULT_GRID_MIN_TRADES = 1
 DEFAULT_TIME_MIN_TRADES = 10
 DEFAULT_TIME_BUCKET_COL = "entry_rth_segment"
 
+# When the preferred bucket column is absent from exported time rows (common
+# when Time Analysis grouped by hour/30m), fall through in this order.
+_TIME_BUCKET_COL_FALLBACKS: tuple[str, ...] = (
+    "entry_rth_segment",
+    "entry_30min_bucket",
+    "entry_hour_bucket",
+)
+
 # Aggregate + directional grid columns (classic Grid Search may record either).
 _GRID_RANKING_METRICS = frozenset(DIRECTIONAL_METRIC_OPTIONS) | {"sharpe_like_r"}
 _TIME_RANKING_METRICS = frozenset(
@@ -432,6 +440,50 @@ def _time_rows_from_summary(
     return []
 
 
+def _has_usable_bucket_label(rows: Sequence[Mapping[str, Any]], column: str) -> bool:
+    """True when *column* has at least one non-empty, non-null label on *rows*."""
+    for row in rows:
+        if column not in row:
+            continue
+        value = row.get(column)
+        if value is None:
+            continue
+        if isinstance(value, float) and value != value:  # NaN
+            continue
+        text = str(value).strip()
+        if text and text.lower() not in {"none", "nan", "null"}:
+            return True
+    return False
+
+
+def resolve_time_bucket_col(
+    time_grouped_summary: Mapping[str, Any] | Sequence[Mapping[str, Any]],
+    *,
+    preferred: str = DEFAULT_TIME_BUCKET_COL,
+) -> str:
+    """Resolve the grouping column with a usable label on exported time rows.
+
+    Prefers ``preferred`` when that column has a non-null label. Otherwise falls
+    through ``_TIME_BUCKET_COL_FALLBACKS`` so hour/30m exports from Time
+    Analysis still produce a non-null ``best.bucket`` label even if a preferred
+    key is present but empty/null on every row.
+    """
+    preferred_col = (
+        preferred.strip()
+        if isinstance(preferred, str) and preferred.strip()
+        else DEFAULT_TIME_BUCKET_COL
+    )
+    source_rows = _time_rows_from_summary(time_grouped_summary)
+    if not source_rows:
+        return preferred_col
+    if _has_usable_bucket_label(source_rows, preferred_col):
+        return preferred_col
+    for candidate in _TIME_BUCKET_COL_FALLBACKS:
+        if _has_usable_bucket_label(source_rows, candidate):
+            return candidate
+    return preferred_col
+
+
 def project_time_rankings(
     time_grouped_summary: Mapping[str, Any] | Sequence[Mapping[str, Any]],
     *,
@@ -457,6 +509,10 @@ def project_time_rankings(
         resolved_min = DEFAULT_TIME_MIN_TRADES
 
     source_rows = _time_rows_from_summary(time_grouped_summary)
+    resolved_bucket_col = resolve_time_bucket_col(
+        source_rows,
+        preferred=bucket_col,
+    )
     eligible: list[tuple[float, int, dict[str, Any]]] = []
     for row in source_rows:
         trade_count = _finite_number(row.get("trade_count"))
@@ -470,7 +526,7 @@ def project_time_rankings(
             continue
         eligible.append((metric_value, int(trade_count), row))
 
-    eligible.sort(key=lambda item: (-item[0], -item[1], str(item[2].get(bucket_col, ""))))
+    eligible.sort(key=lambda item: (-item[0], -item[1], str(item[2].get(resolved_bucket_col, ""))))
     ranked = eligible[:top]
     rows: list[dict[str, Any]] = []
     by_rank: dict[str, dict[str, Any]] = {}
@@ -481,8 +537,8 @@ def project_time_rankings(
             sample_warning = trade_count < resolved_min
         projected = {
             "rank": index,
-            "bucket": to_jsonable(row.get(bucket_col)),
-            "bucket_col": bucket_col,
+            "bucket": to_jsonable(row.get(resolved_bucket_col)),
+            "bucket_col": resolved_bucket_col,
             "trade_count": to_jsonable(row.get("trade_count")),
             "metric_value": to_jsonable(metric_value),
             chosen_metric: to_jsonable(row.get(chosen_metric)),
@@ -492,7 +548,7 @@ def project_time_rankings(
         by_rank[str(index)] = projected
 
     return {
-        "bucket_col": bucket_col,
+        "bucket_col": resolved_bucket_col,
         "metric": chosen_metric,
         "min_trades": resolved_min,
         "candidate_count": len(source_rows),
