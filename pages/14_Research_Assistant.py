@@ -35,6 +35,11 @@ from thesistester.assistant.product_help import (
     HelpEvidenceError,
 )
 from thesistester.assistant.results_qa import RESULTS_QA_CHANNEL
+from thesistester.assistant.voice.settings import load_voice_settings
+from thesistester.assistant.voice.xai_realtime import (
+    VoiceConfigurationError,
+    VoiceProviderError,
+)
 from thesistester.assistant.workspace import (
     CONFLUENCE_MODES,
     DIRECTIONS,
@@ -84,11 +89,14 @@ from thesistester.assistant.workspace import (
     options_with_current,
     options_with_currents,
     parse_json_choices,
+    read_audio_input_bytes,
+    require_run_bundle_hash,
     safe_float,
     safe_int,
     select_thesis,
     set_assistant_flash,
     spec_status_next_step,
+    thesis_has_running_run,
 )
 from thesistester.classic_ledger import is_classic_ledger_run, ledger_run_label
 from thesistester.classic_nav import (
@@ -129,6 +137,102 @@ def _apply_draft_and_rerun(*, message: str) -> None:
     """Invalidate staged validation, flash success, and rerun so Apply feels responsive."""
     invalidate_validation(st.session_state)
     set_assistant_flash(st.session_state, level="success", message=message)
+    st.rerun()
+
+
+def _stage_voice_turn(turn) -> None:
+    """Persist last PTT diagnostics + optional playback bytes (not store_audio)."""
+    st.session_state["assistant_voice_last_turn"] = turn.to_public_dict()
+    if turn.channel == "product_help":
+        st.session_state["assistant_voice_help_session_id"] = turn.session_id
+    if turn.audio_bytes:
+        st.session_state["assistant_voice_playback"] = {
+            "mime": turn.audio_mime,
+            "bytes": turn.audio_bytes,
+            "channel": turn.channel,
+            "session_id": turn.session_id,
+        }
+    else:
+        st.session_state["assistant_voice_playback"] = None
+
+
+def _render_voice_last_turn(*, channel: str) -> None:
+    last = st.session_state.get("assistant_voice_last_turn")
+    if not isinstance(last, dict) or last.get("channel") != channel:
+        return
+    st.caption(
+        f"Voice STT: {last.get('stt_text') or '—'} · path={last.get('answer_path')} · "
+        f"grounded={last.get('grounded')} · trusted={last.get('trusted')}"
+    )
+    if last.get("speakable_text"):
+        st.write(last["speakable_text"])
+    if last.get("remediation") and not last.get("trusted"):
+        st.info(str(last["remediation"]))
+    playback = st.session_state.get("assistant_voice_playback")
+    if (
+        isinstance(playback, dict)
+        and playback.get("channel") == channel
+        and isinstance(playback.get("bytes"), (bytes, bytearray))
+        and playback.get("bytes")
+    ):
+        st.audio(bytes(playback["bytes"]), format=str(playback.get("mime") or "audio/mpeg"))
+
+
+def _run_voice_ptt(
+    *,
+    channel: str,
+    audio_value,
+    run_id: str | None = None,
+    expected_hash: str | None = None,
+    max_history_messages: int = 12,
+) -> None:
+    """STT → RQ channel / fallback → TTS via orchestrator façade (VA-4)."""
+    audio_bytes = read_audio_input_bytes(audio_value)
+    if not audio_bytes:
+        st.error("Record a short push-to-talk clip before sending.")
+        return
+    openai_client = None
+    try:
+        openai_client = create_openai_client(load_llm_settings())
+    except LLMConfigurationError:
+        openai_client = None
+    filename = "audio.wav"
+    content_type = None
+    name = getattr(audio_value, "name", None)
+    if isinstance(name, str) and name.strip():
+        filename = name.strip()
+    ctype = getattr(audio_value, "type", None)
+    if isinstance(ctype, str) and ctype.strip():
+        content_type = ctype.strip()
+    try:
+        turn = orchestrator.handle_voice_ptt_turn(
+            audio_bytes=audio_bytes,
+            channel=channel,
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+            run_id=run_id,
+            expected_hash=expected_hash,
+            openai_client=openai_client,
+            repo_root=Path(__file__).resolve().parents[1],
+            max_history_messages=max_history_messages,
+            filename=filename,
+            content_type=content_type,
+        )
+    except (VoiceConfigurationError, VoiceProviderError, ValueError) as exc:
+        st.error(f"Unable to complete voice turn: {exc}")
+        return
+    if channel == "results_qa" and run_id:
+        sessions = st.session_state.setdefault("assistant_voice_results_sessions", {})
+        if isinstance(sessions, dict):
+            sessions[run_id] = turn.session_id
+    _stage_voice_turn(turn)
+    flash_level = "success" if turn.trusted else "info"
+    flash_message = (
+        "Voice reply ready."
+        if turn.trusted
+        else "Voice replied with remediation (ungrounded or fallback)."
+    )
+    set_assistant_flash(st.session_state, level=flash_level, message=flash_message)
     st.rerun()
 
 
@@ -444,6 +548,29 @@ if help_settings.enabled:
                     ValueError,
                 ) as exc:
                     st.error(f"Unable to answer help question: {exc}")
+        voice_settings = load_voice_settings()
+        if voice_settings.enabled:
+            st.markdown("**Voice help (push-to-talk)**")
+            st.caption(
+                "Spoken product Help over the same corpus path. Requires an "
+                "xAI key for STT/TTS and an OpenAI key for Help answers. "
+                "Mic is disabled while a research run is in progress."
+            )
+            help_voice_blocked = thesis_has_running_run(orchestrator.list_runs(thesis_id))
+            if help_voice_blocked:
+                st.warning("Voice is paused while a research run is running.")
+            else:
+                help_audio = st.audio_input(
+                    "Ask Help by voice",
+                    key="voice-help-audio",
+                )
+                if st.button("Send voice help question", key="voice-help-send"):
+                    _run_voice_ptt(
+                        channel=PRODUCT_HELP_CHANNEL,
+                        audio_value=help_audio,
+                        max_history_messages=help_settings.max_history_messages,
+                    )
+            _render_voice_last_turn(channel=PRODUCT_HELP_CHANNEL)
 
 
 with st.expander(
@@ -1689,6 +1816,55 @@ with st.expander(
                                     ValueError,
                                 ) as exc:
                                     st.error(f"Unable to discuss results: {exc}")
+                        voice_settings = load_voice_settings()
+                        if voice_settings.enabled:
+                            st.markdown("**Voice discuss (push-to-talk)**")
+                            st.caption(
+                                "Spoken Discuss results for this completed run. "
+                                "Requires an xAI key for STT/TTS; OpenAI powers "
+                                "the primary channel path (VA-3 tool fallback if missing)."
+                            )
+                            results_voice_blocked = thesis_has_running_run(runs)
+                            if results_voice_blocked:
+                                st.warning("Voice is paused while a research run is running.")
+                            else:
+                                results_audio = st.audio_input(
+                                    "Ask about this run by voice",
+                                    key=f"voice-results-audio-{run.run_id}",
+                                )
+                                if st.button(
+                                    "Send voice results question",
+                                    key=f"voice-results-send-{run.run_id}",
+                                ):
+                                    try:
+                                        expected_hash = (
+                                            require_run_bundle_hash(run.provenance)
+                                            if isinstance(run.provenance, dict)
+                                            else None
+                                        )
+                                    except ValueError as exc:
+                                        st.error(str(exc))
+                                        expected_hash = None
+                                    if expected_hash:
+                                        _run_voice_ptt(
+                                            channel=RESULTS_QA_CHANNEL,
+                                            audio_value=results_audio,
+                                            run_id=run.run_id,
+                                            expected_hash=expected_hash,
+                                            max_history_messages=(
+                                                results_qa_settings.max_history_messages
+                                            ),
+                                        )
+                            last = st.session_state.get("assistant_voice_last_turn")
+                            if (
+                                isinstance(last, dict)
+                                and last.get("channel") == RESULTS_QA_CHANNEL
+                                and st.session_state.get(
+                                    "assistant_voice_results_sessions", {}
+                                ).get(run.run_id)
+                                == last.get("session_id")
+                            ):
+                                _render_voice_last_turn(channel=RESULTS_QA_CHANNEL)
                     if st.button("Render markdown report", key=f"report-{run.run_id}"):
                         result = orchestrator.export_run(
                             thesis_id=thesis_id,

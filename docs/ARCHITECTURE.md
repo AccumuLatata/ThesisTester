@@ -395,6 +395,10 @@ The Research Assistant page stages only these additive `assistant_*` keys
 | `assistant_results_qa_force_expand` | One-shot force-open for keyed Advanced/run expanders |
 | `assistant_bundle_handoff` | Last hash-verified restore into research pages |
 | `assistant_flash` | One-shot `{level, message}` UI notice consumed after `st.rerun()` |
+| `assistant_voice_results_sessions` | `{run_id: voice_session_id}` map for last Discuss PTT session |
+| `assistant_voice_help_session_id` | Last Help PTT `voice_session_id` |
+| `assistant_voice_last_turn` | Last PTT public diagnostics (`stt_text`, path, grounding, …) |
+| `assistant_voice_playback` | Ephemeral last TTS `{mime, bytes, channel, session_id}` for `st.audio` (not durable `store_audio`) |
 
 Realtime voice review (VA-series; post-RQ / post-HC) must add only namespaced
 `assistant_voice_*` keys in the same PR that introduces them; see
@@ -408,8 +412,11 @@ schema-versioned contracts + `load_voice_settings()` under
 `assistant/theses/{thesis_id}/voice_sessions/vs_[0-9a-f]{32}.json` via
 `LocalThesisRepository` (does not widen `Conversation` or reuse `_ID_RE`).
 Results sessions bind one hash-verified `EvidencePacket`; Help sessions omit
-run/hash. No `assistant_voice_*` session keys yet (reserved for VA-4+); the
-Research Assistant remains text-only until mic UI ships.
+run/hash. **VA-3 landed:** read-only voice tools + `audit_spoken_text`.
+**VA-4 landed:** push-to-talk mic UI (Discuss results + Help) calling
+`handle_voice_ptt_turn` → RQ handlers (OpenAI) with VA-3 tool fallback;
+`assistant_voice_*` keys above; mic blocked while any thesis run is
+`status=="running"`. Default remains `enabled=false`. Realtime sidecar is VA-5.
 
 Multi-turn results discussion and product help (RQ-series) add only documented
 additive `assistant_*` keys and conversation message tags
@@ -463,11 +470,14 @@ Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_validated_run_spec`, `assistant_results_qa_drafts`,
 `assistant_product_help_draft`, `assistant_focused_run_id`,
 `assistant_results_qa_deep_link`, `assistant_results_qa_force_expand`,
-`assistant_bundle_handoff`, `assistant_flash`)
-so draft/validation/hydration/handoff/flash/results/help/deep-link staging cannot leak.
+`assistant_bundle_handoff`, `assistant_flash`,
+`assistant_voice_results_sessions`, `assistant_voice_help_session_id`,
+`assistant_voice_last_turn`, `assistant_voice_playback`)
+so draft/validation/hydration/handoff/flash/results/help/deep-link/voice staging cannot leak.
 `clear_thesis_scoped_state` also deletes ephemeral Streamlit widget keys
-prefixed `results-qa-input-` / `product-help-input` so Discuss/Help text-input
-hydration cannot revive a cleared draft after a thesis switch. Discuss results assistant
+prefixed `results-qa-input-` / `product-help-input` /
+`voice-results-audio-` / `voice-help-audio` so Discuss/Help text-input and
+PTT audio widgets cannot revive a cleared draft after a thesis switch. Discuss results assistant
 `content` embeds path-cited Claims (via `format_results_qa_reply_content`) for
 plain-text auditability. `handle_chat_turn` draft history excludes
 channel-tagged messages and channel-less `role: tool` audit lines so RO

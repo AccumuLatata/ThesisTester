@@ -526,6 +526,7 @@ class AssistantOrchestrator:
         message: str,
         conversation_id: str | None = None,
         max_history_messages: int = 12,
+        persist_conversation: bool = True,
     ) -> OrchestrationResult:
         """Discuss one completed run via grounded multi-turn results Q&A.
 
@@ -536,6 +537,9 @@ class AssistantOrchestrator:
         summary is missing. Never calls ``execute_confirmed_run`` or
         ``PIPELINE.*``. Persists messages with ``channel=results_qa`` and
         ``run_id``; assistant messages omit ``choices``.
+
+        VA-4 push-to-talk passes ``persist_conversation=False`` so the voice
+        session flush owns the single channel history write.
         """
         if not isinstance(run_id, str) or not run_id.strip():
             raise ValueError("run_id must be a non-empty string.")
@@ -648,7 +652,7 @@ class AssistantOrchestrator:
             user_message=message.strip(),
             turn_context=turn_context,
         )
-        if conversation is not None and isinstance(conversation_id, str):
+        if persist_conversation and conversation is not None and isinstance(conversation_id, str):
             user_record = self.repository.append_conversation_message(
                 thesis_id,
                 conversation_id.strip(),
@@ -691,6 +695,58 @@ class AssistantOrchestrator:
             payload=payload,
         )
 
+    def handle_voice_ptt_turn(
+        self,
+        *,
+        audio_bytes: bytes,
+        channel: str,
+        thesis_id: str,
+        conversation_id: str | None = None,
+        run_id: str | None = None,
+        expected_hash: str | None = None,
+        openai_client: StructuredLLMClient | None = None,
+        stt_transport: Any | None = None,
+        tts_transport: Any | None = None,
+        repo_root: str | Path | None = None,
+        max_history_messages: int = 12,
+        filename: str = "audio.wav",
+        content_type: str | None = None,
+    ):
+        """Thin VA-4 façade: push-to-talk spoken Discuss/Help over RQ handlers.
+
+        Presentation code should call this instead of constructing
+        ``VoiceSessionService`` / STT / TTS itself. Does not mint ephemeral
+        realtime tokens and never dispatches ``PIPELINE.*``.
+        """
+        from thesistester.assistant.voice.session import (
+            VoiceSessionService,
+            run_push_to_talk_turn,
+        )
+        from thesistester.assistant.voice.settings import load_voice_settings
+
+        service = VoiceSessionService(
+            self.repository,
+            tools=self.tools if isinstance(self.tools, AssistantTools) else None,
+            settings=load_voice_settings(),
+        )
+        return run_push_to_talk_turn(
+            service=service,
+            orchestrator=self,
+            audio_bytes=audio_bytes,
+            channel=channel,
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+            run_id=run_id,
+            expected_hash=expected_hash,
+            openai_client=openai_client,
+            stt_transport=stt_transport,
+            tts_transport=tts_transport,
+            repo_root=repo_root,
+            max_history_messages=max_history_messages,
+            filename=filename,
+            content_type=content_type,
+        )
+
     def handle_help_turn(
         self,
         client: StructuredLLMClient,
@@ -701,6 +757,7 @@ class AssistantOrchestrator:
         max_history_messages: int = 12,
         max_corpus_chars: int | None = None,
         repo_root: str | Path | None = None,
+        persist_conversation: bool = True,
     ) -> OrchestrationResult:
         """Answer product/how-it-works questions from the §7.1 Help corpus (RQ-3).
 
@@ -708,6 +765,9 @@ class AssistantOrchestrator:
         research bundles, never dispatches ``PIPELINE.*`` / ``execute_confirmed_run``,
         and never fabricates run performance numbers. Run-performance questions
         receive a structured remediation pointing to Discuss results.
+
+        VA-4 push-to-talk passes ``persist_conversation=False`` so the voice
+        session flush owns the single channel history write.
         """
         if not isinstance(message, str) or not message.strip():
             raise ValueError("Help message must be a non-empty string.")
@@ -791,7 +851,7 @@ class AssistantOrchestrator:
                 )
             provider_attempts = getattr(client, "last_attempt_count", None)
 
-        if conversation is not None and isinstance(conversation_id, str):
+        if persist_conversation and conversation is not None and isinstance(conversation_id, str):
             user_record = self.repository.append_conversation_message(
                 thesis_id,
                 conversation_id.strip(),

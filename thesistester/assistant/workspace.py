@@ -43,6 +43,11 @@ ASSISTANT_SESSION_KEYS: tuple[str, ...] = (
     "assistant_results_qa_force_expand",
     "assistant_bundle_handoff",
     "assistant_flash",
+    # VA-4 push-to-talk staging (ephemeral; not a second evidence store).
+    "assistant_voice_results_sessions",
+    "assistant_voice_help_session_id",
+    "assistant_voice_last_turn",
+    "assistant_voice_playback",
 )
 
 # Cleared whenever the active thesis changes so drafts/validation/handoff
@@ -59,6 +64,10 @@ THESIS_SCOPED_STAGING_KEYS: tuple[str, ...] = (
     "assistant_results_qa_force_expand",
     "assistant_bundle_handoff",
     "assistant_flash",
+    "assistant_voice_results_sessions",
+    "assistant_voice_help_session_id",
+    "assistant_voice_last_turn",
+    "assistant_voice_playback",
 )
 
 # Streamlit expander widget keys (1.55+) controlled when forcing RQ-4 open.
@@ -171,6 +180,36 @@ SESSION_LEVEL_CATALOG: tuple[str, ...] = (
 )
 
 
+def thesis_has_running_run(runs: Iterable[Any]) -> bool:
+    """True when any thesis research run is mid-compute (blocks VA-4 mic)."""
+    return any(getattr(run, "status", None) == "running" for run in runs)
+
+
+def read_audio_input_bytes(audio_value: Any) -> bytes | None:
+    """Normalize Streamlit ``st.audio_input`` / UploadedFile-like values to bytes."""
+    if audio_value is None:
+        return None
+    if isinstance(audio_value, (bytes, bytearray)):
+        return bytes(audio_value) if audio_value else None
+    read = getattr(audio_value, "read", None)
+    if callable(read):
+        try:
+            data = read()
+        except Exception:
+            data = None
+        if isinstance(data, (bytes, bytearray)) and data:
+            return bytes(data)
+    getvalue = getattr(audio_value, "getvalue", None)
+    if callable(getvalue):
+        try:
+            data = getvalue()
+        except Exception:
+            data = None
+        if isinstance(data, (bytes, bytearray)) and data:
+            return bytes(data)
+    return None
+
+
 def init_assistant_session_state(session_state: MutableMapping[str, Any]) -> None:
     """Ensure every documented assistant_* staging key exists."""
     defaults: dict[str, Any] = {
@@ -194,6 +233,10 @@ def init_assistant_session_state(session_state: MutableMapping[str, Any]) -> Non
         "assistant_results_qa_force_expand": False,
         "assistant_bundle_handoff": None,
         "assistant_flash": None,
+        "assistant_voice_results_sessions": {},
+        "assistant_voice_help_session_id": None,
+        "assistant_voice_last_turn": None,
+        "assistant_voice_playback": None,
     }
     for key, value in defaults.items():
         session_state.setdefault(key, deepcopy(value) if isinstance(value, (dict, list)) else value)
@@ -396,6 +439,10 @@ def clear_thesis_scoped_state(session_state: MutableMapping[str, Any]) -> None:
     session_state["assistant_results_qa_force_expand"] = False
     session_state["assistant_bundle_handoff"] = None
     session_state["assistant_flash"] = None
+    session_state["assistant_voice_results_sessions"] = {}
+    session_state["assistant_voice_help_session_id"] = None
+    session_state["assistant_voice_last_turn"] = None
+    session_state["assistant_voice_playback"] = None
     # Ephemeral Streamlit widget keys for Discuss/Help text inputs. If left
     # behind, ``if key not in session_state`` hydration would revive cleared drafts.
     for key in list(session_state.keys()):
@@ -403,6 +450,8 @@ def clear_thesis_scoped_state(session_state: MutableMapping[str, Any]) -> None:
             key.startswith("results-qa-input-")
             or key.startswith("product-help-input")
             or key.startswith("ra-run-expander-")
+            or key.startswith("voice-results-audio-")
+            or key.startswith("voice-help-audio")
             or key == ASSISTANT_ADVANCED_EXPANDER_KEY
         ):
             del session_state[key]

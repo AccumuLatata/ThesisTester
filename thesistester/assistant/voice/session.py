@@ -1,19 +1,21 @@
-"""Voice session lifecycle, evidence bind, and honesty instructions (VA-2/VA-3).
+"""Voice session lifecycle, evidence bind, honesty instructions, and PTT (VA-2…4).
 
 Persists sibling ``voice_sessions/vs_*.json`` documents. Does not widen
 ``Conversation`` identity rules. Allowlisted tool execution lives in
-``voice/tools.py`` (VA-3).
+``voice/tools.py`` (VA-3). Push-to-talk spoken Discuss/Help lives in
+``run_push_to_talk_turn`` (VA-4).
 """
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Protocol
 from uuid import uuid4
 
-from thesistester.assistant.explainer import EvidencePacket
+from thesistester.assistant.explainer import EvidenceClaim, EvidencePacket
+from thesistester.assistant.llm import LLMConfigurationError, LLMProviderError
 from thesistester.assistant.repository import (
     AssistantRepositoryError,
     LocalThesisRepository,
@@ -21,21 +23,86 @@ from thesistester.assistant.repository import (
 )
 from thesistester.assistant.tools import AssistantToolError, AssistantTools
 from thesistester.assistant.voice.contracts import (
+    GroundingVerdict,
     VoiceContractError,
     VoiceSessionRecord,
     VoiceToolInvocation,
     VoiceTranscriptTurn,
     validate_voice_session_id,
 )
+from thesistester.assistant.voice.grounding import (
+    HELP_NO_OPENAI_REMEDIATION,
+    UNGROUNDED_SPOKEN_REMEDIATION,
+    allowed_tokens_from_help_corpus,
+    audit_spoken_text,
+    format_speakable_help_reply,
+    format_speakable_results_reply,
+    format_speakable_tool_result,
+    strip_claim_path_markup,
+)
+from thesistester.assistant.voice.intent import VoiceIntentRouter
 from thesistester.assistant.voice.settings import VoiceSettings, load_voice_settings
+from thesistester.assistant.voice.xai_realtime import (
+    VoiceConfigurationError,
+    VoiceProviderError,
+    speech_to_text,
+    text_to_speech,
+)
 from thesistester.assistant.workspace import require_run_bundle_hash
 
 _VOICE_CHANNELS = frozenset({"results_qa", "product_help"})
 _VOICE_MODES = frozenset({"push_to_talk", "realtime"})
+_TTS_MIME = "audio/mpeg"
+
+
+class _ResultsHelpOrchestrator(Protocol):
+    """Minimal orchestrator surface used by push-to-talk channel turns."""
+
+    def handle_results_turn(self, client: Any, **kwargs: Any) -> Any: ...
+
+    def handle_help_turn(self, client: Any, **kwargs: Any) -> Any: ...
 
 
 class VoiceSessionError(ValueError):
     """Raised when a voice session cannot be created or updated safely."""
+
+
+@dataclass(frozen=True)
+class PushToTalkTurnResult:
+    """One VA-4 half-duplex spoken turn (STT → channel/fallback → grounding → TTS)."""
+
+    session_id: str
+    channel: str
+    answer_path: str
+    stt_text: str
+    speakable_text: str
+    grounding: GroundingVerdict
+    trusted: bool
+    audio_bytes: bytes | None
+    audio_mime: str = _TTS_MIME
+    tool_name: str | None = None
+    spoken_note: str | None = None
+    remediation: str | None = None
+    openai_used: bool = False
+
+    def to_public_dict(self) -> dict[str, Any]:
+        """UI-safe view (no raw audio bytes)."""
+        return {
+            "session_id": self.session_id,
+            "channel": self.channel,
+            "answer_path": self.answer_path,
+            "stt_text": self.stt_text,
+            "speakable_text": self.speakable_text,
+            "trusted": self.trusted,
+            "grounded": self.grounding.grounded,
+            "uncited_digit_tokens": list(self.grounding.uncited_digit_tokens),
+            "tool_name": self.tool_name,
+            "spoken_note": self.spoken_note,
+            "remediation": self.remediation,
+            "openai_used": self.openai_used,
+            "has_audio": bool(self.audio_bytes),
+            "audio_mime": self.audio_mime,
+        }
 
 
 def _utcnow() -> str:
@@ -44,6 +111,413 @@ def _utcnow() -> str:
 
 def _new_voice_session_id() -> str:
     return f"vs_{uuid4().hex}"
+
+
+def _stt_text_from_response(response: Mapping[str, Any]) -> str:
+    text = response.get("text")
+    if isinstance(text, str) and text.strip():
+        return text.strip()
+    raise VoiceProviderError("xAI STT response missing text.")
+
+
+def _claims_from_results_reply(reply: Any) -> tuple[EvidenceClaim, ...]:
+    claims = getattr(reply, "claims", ()) or ()
+    out: list[EvidenceClaim] = []
+    for claim in claims:
+        if isinstance(claim, EvidenceClaim):
+            out.append(claim)
+        elif isinstance(claim, Mapping):
+            out.append(
+                EvidenceClaim(
+                    text=str(claim.get("text") or ""),
+                    path=str(claim.get("path") or ""),
+                    value=claim.get("value"),
+                )
+            )
+    return tuple(out)
+
+
+def run_push_to_talk_turn(
+    *,
+    service: VoiceSessionService,
+    orchestrator: _ResultsHelpOrchestrator,
+    audio_bytes: bytes,
+    channel: str,
+    thesis_id: str,
+    conversation_id: str | None = None,
+    run_id: str | None = None,
+    expected_hash: str | None = None,
+    openai_client: Any | None = None,
+    stt_transport: Any | None = None,
+    tts_transport: Any | None = None,
+    intent_router: VoiceIntentRouter | None = None,
+    repo_root: str | Path | None = None,
+    max_history_messages: int = 12,
+    filename: str = "audio.wav",
+    content_type: str | None = None,
+) -> PushToTalkTurnResult:
+    """STT → RQ channel (or VA-3 fallback) → digit grounding → TTS.
+
+    Creates a short-lived ``mode="push_to_talk"`` voice session, appends
+    transcript turns, and ends/flushes the session before returning.
+    Never mints ephemeral realtime tokens (VA-5). Never dispatches compute.
+    """
+    if channel not in _VOICE_CHANNELS:
+        raise VoiceSessionError(f"Unsupported voice channel: {channel}.")
+    if not service.settings.enabled:
+        raise VoiceSessionError(
+            "Voice is disabled (assistant.voice.enabled=false). "
+            "Enable it in config/assistant.toml to use push-to-talk."
+        )
+    if not isinstance(audio_bytes, (bytes, bytearray)) or not audio_bytes:
+        raise VoiceConfigurationError("Push-to-talk requires non-empty audio bytes.")
+
+    # STT first — fail closed without XAI; never mint ephemeral tokens here.
+    stt_response = speech_to_text(
+        bytes(audio_bytes),
+        filename=filename,
+        content_type=content_type,
+        settings=service.settings,
+        transport=stt_transport,
+    )
+    stt_text = _stt_text_from_response(stt_response)
+    if not stt_text:
+        raise VoiceProviderError("STT produced empty transcript text.")
+
+    record = service.create_session(
+        thesis_id,
+        run_id=run_id if channel == "results_qa" else None,
+        expected_hash=expected_hash if channel == "results_qa" else None,
+        mode="push_to_talk",
+        channel=channel,
+        conversation_id=conversation_id,
+    )
+    session_id = record.session_id
+    created_at = _utcnow()
+    try:
+        service.append_transcript_turn(
+            thesis_id,
+            session_id,
+            VoiceTranscriptTurn(
+                role="user",
+                text=stt_text,
+                channel=channel,
+                path="stt",
+                created_at=created_at,
+            ),
+        )
+
+        answer_path: str
+        speakable: str
+        tool_name: str | None = None
+        spoken_note: str | None = None
+        openai_used = False
+        grounding: GroundingVerdict
+        remediation: str | None = None
+
+        if channel == "results_qa":
+            (
+                answer_path,
+                speakable,
+                grounding,
+                tool_name,
+                spoken_note,
+                openai_used,
+                remediation,
+            ) = _answer_results_ptt(
+                service=service,
+                orchestrator=orchestrator,
+                thesis_id=thesis_id,
+                session_id=session_id,
+                run_id=run_id,
+                conversation_id=conversation_id,
+                stt_text=stt_text,
+                openai_client=openai_client,
+                intent_router=intent_router or VoiceIntentRouter(),
+                max_history_messages=max_history_messages,
+            )
+        else:
+            (
+                answer_path,
+                speakable,
+                grounding,
+                openai_used,
+                remediation,
+            ) = _answer_help_ptt(
+                orchestrator=orchestrator,
+                thesis_id=thesis_id,
+                conversation_id=conversation_id,
+                stt_text=stt_text,
+                openai_client=openai_client,
+                repo_root=repo_root,
+                max_history_messages=max_history_messages,
+            )
+
+        trusted = bool(grounding.grounded) and not remediation
+        tts_text = speakable if trusted else (remediation or UNGROUNDED_SPOKEN_REMEDIATION)
+        # Re-audit the actual TTS payload when degraded so UI reflects playback text.
+        if not trusted:
+            grounding = audit_spoken_text(tts_text, allowed_tokens=())
+            # Remediation copy is intentionally number-free; treat as playable degraded.
+            if not grounding.grounded:
+                tts_text = UNGROUNDED_SPOKEN_REMEDIATION
+                grounding = audit_spoken_text(tts_text, allowed_tokens=())
+            speakable = tts_text
+            trusted = False
+
+        audio_out: bytes | None = None
+        try:
+            audio_out = text_to_speech(
+                tts_text,
+                settings=service.settings,
+                transport=tts_transport,
+            )
+        except (VoiceConfigurationError, VoiceProviderError):
+            # Still persist transcript; UI can show text without audio.
+            audio_out = None
+
+        service.append_transcript_turn(
+            thesis_id,
+            session_id,
+            VoiceTranscriptTurn(
+                role="assistant",
+                text=speakable,
+                channel=channel,
+                path=answer_path,
+                created_at=_utcnow(),
+                grounding=grounding,
+            ),
+        )
+        return PushToTalkTurnResult(
+            session_id=session_id,
+            channel=channel,
+            answer_path=answer_path,
+            stt_text=stt_text,
+            speakable_text=speakable,
+            grounding=grounding,
+            trusted=bool(trusted and grounding.grounded),
+            audio_bytes=audio_out,
+            audio_mime=_TTS_MIME,
+            tool_name=tool_name,
+            spoken_note=spoken_note,
+            remediation=remediation,
+            openai_used=openai_used,
+        )
+    finally:
+        service.end_session(thesis_id, session_id, conversation_id=conversation_id)
+
+
+def _answer_results_ptt(
+    *,
+    service: VoiceSessionService,
+    orchestrator: _ResultsHelpOrchestrator,
+    thesis_id: str,
+    session_id: str,
+    run_id: str | None,
+    conversation_id: str | None,
+    stt_text: str,
+    openai_client: Any | None,
+    intent_router: VoiceIntentRouter,
+    max_history_messages: int,
+) -> tuple[str, str, GroundingVerdict, str | None, str | None, bool, str | None]:
+    if openai_client is not None:
+        try:
+            result = orchestrator.handle_results_turn(
+                openai_client,
+                thesis_id=thesis_id,
+                run_id=run_id or "",
+                message=stt_text,
+                conversation_id=conversation_id,
+                max_history_messages=max_history_messages,
+                persist_conversation=False,
+            )
+            if getattr(result, "status", None) == "completed":
+                reply = (getattr(result, "payload", None) or {}).get("results_reply")
+                if reply is not None:
+                    claims = _claims_from_results_reply(reply)
+                    speakable = format_speakable_results_reply(reply)
+                    grounding = audit_spoken_text(speakable, claims=claims)
+                    if not grounding.grounded:
+                        # Caveat free-text digits are not typed claim values —
+                        # retry summary-only (still strip claim-path markup).
+                        summary_only = strip_claim_path_markup(
+                            str(getattr(reply, "summary", "") or "").strip()
+                        )
+                        if summary_only:
+                            speakable = summary_only
+                            grounding = audit_spoken_text(speakable, claims=claims)
+                    remediation = None if grounding.grounded else UNGROUNDED_SPOKEN_REMEDIATION
+                    return (
+                        "handle_results_turn",
+                        speakable,
+                        grounding,
+                        None,
+                        None,
+                        True,
+                        remediation,
+                    )
+            # OpenAI path attempted but did not complete — surface RQ error.
+            # Do not silent-fall through to VA-3 (would hide the RQ failure).
+            payload = getattr(result, "payload", None) or {}
+            error = payload.get("error") if isinstance(payload, Mapping) else None
+            if isinstance(error, Mapping):
+                message = str(error.get("message") or "Unable to answer this results question.")
+            else:
+                message = "Unable to answer this results question."
+            speakable = message
+            grounding = audit_spoken_text(speakable, allowed_tokens=())
+            return (
+                "handle_results_turn",
+                speakable,
+                grounding,
+                None,
+                None,
+                True,
+                speakable,
+            )
+        except (LLMConfigurationError, LLMProviderError, ValueError, AssistantToolError):
+            # Fall through to deterministic VA-3 tool path.
+            pass
+
+    intent = intent_router.route(stt_text)
+    tool_session = service.tool_session(thesis_id, session_id)
+    from thesistester.assistant.voice.tools import VoiceToolError, execute_voice_tool
+
+    try:
+        envelope = execute_voice_tool(
+            intent.tool_name,
+            intent.arguments,
+            session=tool_session,
+        )
+    except (VoiceToolError, VoiceSessionError, VoiceContractError) as exc:
+        speakable = (
+            f"I could not answer from the bound evidence ({exc}). Please use text Discuss results."
+        )
+        grounding = audit_spoken_text(speakable, allowed_tokens=())
+        return (
+            "fallback_tool",
+            speakable,
+            grounding,
+            intent.tool_name,
+            intent.spoken_note,
+            False,
+            speakable,
+        )
+
+    if not isinstance(envelope, Mapping) or not envelope.get("ok"):
+        error_text = ""
+        if isinstance(envelope, Mapping):
+            error_text = str(envelope.get("error") or "").strip()
+        speakable = (
+            error_text
+            or "I could not answer from the bound evidence. Please use text Discuss results."
+        )
+        grounding = audit_spoken_text(speakable, allowed_tokens=())
+        return (
+            "fallback_tool",
+            speakable,
+            grounding,
+            intent.tool_name,
+            intent.spoken_note,
+            False,
+            speakable,
+        )
+
+    tool_result = envelope.get("result")
+    if not isinstance(tool_result, Mapping):
+        tool_result = {}
+    speakable = format_speakable_tool_result(
+        intent.tool_name,
+        tool_result,
+        spoken_note=intent.spoken_note,
+    )
+    extra_values: list[Any] = []
+    if intent.tool_name == "list_caveats":
+        caveats = tool_result.get("caveats") or []
+        warnings = tool_result.get("warnings") or []
+        extra_values.append(len(caveats) if isinstance(caveats, list) else 0)
+        extra_values.append(len(warnings) if isinstance(warnings, list) else 0)
+    grounding = audit_spoken_text(
+        speakable,
+        tool_result=tool_result,
+        allowed_values=extra_values or None,
+    )
+    remediation = None if grounding.grounded else UNGROUNDED_SPOKEN_REMEDIATION
+    return (
+        "fallback_tool",
+        speakable,
+        grounding,
+        intent.tool_name,
+        intent.spoken_note,
+        False,
+        remediation,
+    )
+
+
+def _answer_help_ptt(
+    *,
+    orchestrator: _ResultsHelpOrchestrator,
+    thesis_id: str,
+    conversation_id: str | None,
+    stt_text: str,
+    openai_client: Any | None,
+    repo_root: str | Path | None,
+    max_history_messages: int,
+) -> tuple[str, str, GroundingVerdict, bool, str | None]:
+    if openai_client is None:
+        speakable = HELP_NO_OPENAI_REMEDIATION
+        grounding = audit_spoken_text(speakable, allowed_tokens=())
+        return ("remediation", speakable, grounding, False, speakable)
+
+    try:
+        result = orchestrator.handle_help_turn(
+            openai_client,
+            thesis_id=thesis_id,
+            message=stt_text,
+            conversation_id=conversation_id,
+            max_history_messages=max_history_messages,
+            repo_root=repo_root,
+            persist_conversation=False,
+        )
+    except (LLMConfigurationError, LLMProviderError, ValueError) as exc:
+        speakable = (
+            f"Spoken Help could not complete ({exc}). "
+            "Use the text Help panel, or set OPENAI_API_KEY."
+        )
+        grounding = audit_spoken_text(speakable, allowed_tokens=())
+        return ("remediation", speakable, grounding, False, speakable)
+
+    if getattr(result, "status", None) != "completed":
+        payload = getattr(result, "payload", None) or {}
+        error = payload.get("error") if isinstance(payload, Mapping) else None
+        if isinstance(error, Mapping):
+            message = str(error.get("message") or "Unable to answer this help question.")
+        else:
+            message = "Unable to answer this help question."
+        speakable = message
+        grounding = audit_spoken_text(speakable, allowed_tokens=())
+        return ("remediation", speakable, grounding, True, speakable)
+
+    payload = getattr(result, "payload", None) or {}
+    reply = payload.get("help_reply")
+    if reply is None:
+        speakable = HELP_NO_OPENAI_REMEDIATION
+        grounding = audit_spoken_text(speakable, allowed_tokens=())
+        return ("remediation", speakable, grounding, True, speakable)
+
+    speakable = format_speakable_help_reply(reply)
+    allowed = allowed_tokens_from_help_corpus(
+        payload.get("corpus_chunks"),
+        payload.get("registry_digest"),
+    )
+    grounding = audit_spoken_text(speakable, allowed_tokens=allowed)
+    if not grounding.grounded:
+        summary_only = strip_claim_path_markup(str(getattr(reply, "summary", "") or "").strip())
+        if summary_only:
+            speakable = summary_only
+            grounding = audit_spoken_text(speakable, allowed_tokens=allowed)
+    remediation = None if grounding.grounded else UNGROUNDED_SPOKEN_REMEDIATION
+    return ("handle_help_turn", speakable, grounding, True, remediation)
 
 
 def build_honesty_instructions(

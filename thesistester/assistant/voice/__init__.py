@@ -1,7 +1,7 @@
 """Realtime voice agent package (VA-series).
 
-VA-0 contracts/settings, VA-2 xAI helpers + sessions, VA-3 read-only tools.
-No mic UI yet (VA-4).
+VA-0 contracts/settings, VA-2 xAI helpers + sessions, VA-3 read-only tools,
+VA-4 push-to-talk spoken Discuss/Help. Realtime sidecar is VA-5.
 """
 
 from thesistester.assistant.voice.contracts import (
@@ -16,14 +16,22 @@ from thesistester.assistant.voice.contracts import (
     validate_voice_session_id,
 )
 from thesistester.assistant.voice.grounding import (
+    HELP_NO_OPENAI_REMEDIATION,
+    UNGROUNDED_SPOKEN_REMEDIATION,
     audit_spoken_text,
     extract_digit_tokens,
+    format_speakable_help_reply,
+    format_speakable_results_reply,
+    format_speakable_tool_result,
     normalize_number_token,
 )
+from thesistester.assistant.voice.intent import VoiceIntent, VoiceIntentRouter
 from thesistester.assistant.voice.session import (
+    PushToTalkTurnResult,
     VoiceSessionError,
     VoiceSessionService,
     build_honesty_instructions,
+    run_push_to_talk_turn,
 )
 from thesistester.assistant.voice.settings import (
     VoiceSettings,
@@ -47,13 +55,18 @@ from thesistester.assistant.voice.xai_realtime import (
 )
 
 __all__ = [
+    "HELP_NO_OPENAI_REMEDIATION",
+    "UNGROUNDED_SPOKEN_REMEDIATION",
     "VOICE_CONTRACT_SCHEMA_VERSION",
     "VOICE_SESSION_KIND",
     "VOICE_TOOL_SCHEMAS",
     "EphemeralToken",
     "GroundingVerdict",
+    "PushToTalkTurnResult",
     "VoiceConfigurationError",
     "VoiceContractError",
+    "VoiceIntent",
+    "VoiceIntentRouter",
     "VoiceProviderError",
     "VoiceSessionError",
     "VoiceSessionRecord",
@@ -69,10 +82,14 @@ __all__ = [
     "coerce_transcript",
     "execute_voice_tool",
     "extract_digit_tokens",
+    "format_speakable_help_reply",
+    "format_speakable_results_reply",
+    "format_speakable_tool_result",
     "load_voice_settings",
     "mint_ephemeral_token",
     "normalize_number_token",
     "require_xai_api_key",
+    "run_push_to_talk_turn",
     "speech_to_text",
     "text_to_speech",
     "validate_voice_session_id",
