@@ -177,6 +177,7 @@ This engine is for **research screening**, not proof of a durable edge.
 - Zero cumulative volume in the active group emits `NaN` (safe divide-by-zero handling).
 - If the input DataFrame lacks a `session` column, RTH membership for `dVWAP_RTH` is derived from the instrument configuration and the timestamp timezone.
 - `session_vwap_enabled=False` is a true no-op: no validation, no new columns, no timestamp checks.
+- `LEVEL_ENGINE_VERSION` bumped to 9 for the additive `dVWAP` vocabulary (cache invalidation when product defaults enable the family).
 
 ### 5c) TPO 30m Single Prints are opt-in scalar levels
 - The Levels page and headless API enable Single Prints in their built-in configuration. Direct `compute_all_levels` calls retain `single_prints_enabled=False` by default.
@@ -228,7 +229,7 @@ This engine is for **research screening**, not proof of a durable edge.
 ### 5f) Stage 6 UI and Persistence — opt-in level controls (Levels page)
 
 - The Levels page (`pages/2_Levels.py`) exposes an **"Advanced opt-in levels"** expander below the existing profile settings.
-- Inside the expander: checkboxes for confirmed pivots, developing RTH VWAP, TPO 30m Single Prints, APOC / pAPOC, and previous 30m VWAP; all default `True` in the built-in Levels page configuration.
+- Inside the expander: checkboxes for confirmed pivots, developing session VWAPs (`dVWAP_RTH` + `dVWAP`), TPO 30m Single Prints, APOC / pAPOC, and previous 30m VWAP; all default `True` in the built-in Levels page configuration.
 - `thesistester/levels/defaults.py` also sets the shared headless API defaults: 15-minute opening range; SMA 50/200 and EMA 9/21 on `1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min`; 70% value area; and prior day/week/month profile aggregation of 4/8/10 ticks.
 - When pivots are enabled, pivot timeframes (multiselect), pivot left, and pivot right number inputs are shown.
 - `session_vwap_anchor` is fixed to `"RTH"` for the RTH column gate; full-session `dVWAP` is emitted alongside when the session-VWAP gate is enabled.
@@ -263,6 +264,10 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 - `dVWAP_RTH` accumulates only RTH bars in the current RTH session using a causal
   cumulative sum. Appending future bars cannot retroactively change any prior bar's
   value. Non-RTH bars always emit `NaN`. Resets at each new RTH session.
+- `dVWAP` accumulates all bars in the current CME trading session
+  (`trading_session_date` / `eth_start`) using a causal cumulative sum. ETH and RTH
+  bars both contribute and emit. Appending future bars cannot retroactively change
+  any prior bar's value. Resets at each CME session open.
 - `dSinglePrint_30m_NearestAbove/Below` use only completed 30-minute RTH brackets at
   or before the current bar's timestamp. The current incomplete bracket is excluded.
   ETH bars do not contribute. Non-RTH bars always emit `NaN`. Appending future bars
@@ -322,9 +327,9 @@ findings are recorded in `docs/POINT_IN_TIME_GUARANTEES.md`.
 - Confirmed pivots require enough left/right candles to become knowable and expose only
   the latest confirmed scalar levels. Historical pivot-instance columns and higher-order
   classifications (SFP, breaker, reclaim, retest) are not implemented yet.
-- `dVWAP_RTH` uses bar-level typical price `(H+L+C)/3`. True intrabar VWAP would
-  require tick data. Since signals are treated as bar-close confirmed, this is
-  documented intent, not a bug.
+- `dVWAP_RTH` and `dVWAP` use bar-level typical price `(H+L+C)/3`. True intrabar
+  VWAP would require tick data. Since signals are treated as bar-close confirmed,
+  this is documented intent, not a bug.
 - Single Print columns (`dSinglePrint_30m_*`, `pSinglePrint_30m_*`) expose only scalar
   nearest-above/below summaries. A full list of all Single Print bins is not emitted.
   No volume-at-price or full market profile object is available.

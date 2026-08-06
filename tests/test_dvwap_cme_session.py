@@ -18,6 +18,7 @@ import pytest
 from thesistester.data.sessions import tag_session
 from thesistester.levels import compute_all_levels, compute_session_vwap_levels
 from thesistester.levels.session_vwap import COL_DVWAP, COL_DVWAP_RTH
+from thesistester.persistence import LEVEL_ENGINE_VERSION
 
 
 TZ = "America/New_York"
@@ -273,9 +274,7 @@ def test_existing_columns_unchanged_when_session_vwap_enabled():
     df = tag_session(
         pd.DataFrame(
             {
-                "timestamp": pd.date_range(
-                    "2026-06-02 09:30", periods=10, freq="1min", tz=TZ
-                ),
+                "timestamp": pd.date_range("2026-06-02 09:30", periods=10, freq="1min", tz=TZ),
                 "open": np.ones(10) * 100,
                 "high": np.ones(10) * 101,
                 "low": np.ones(10) * 99,
@@ -311,3 +310,8 @@ def test_nq_instrument_emits_dvwap():
     result = compute_session_vwap_levels(df, instrument="NQ", enabled=True)
     assert COL_DVWAP in result.columns
     assert result[COL_DVWAP].notna().all()
+
+
+def test_level_engine_version_bumped_for_additive_dvwap():
+    """Additive dVWAP vocabulary must invalidate stale persisted level snapshots."""
+    assert LEVEL_ENGINE_VERSION >= 9
