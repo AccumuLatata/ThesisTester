@@ -302,7 +302,10 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   VA-1 is RQ-1; VA-0…VA-5 shipped contracts/session/tools/PTT/realtime sidecar;
   **VA-6** froze honesty/injection/grounding evals in
   `tests/test_assistant_voice_evaluations.py` (release gate; default remains
-  `assistant.voice.enabled=false`). Do not reopen VA/RQ/HC for voice features
+  `assistant.voice.enabled=false` in tracked TOML). Operators enable/switch
+  modes from Research Assistant sidebar Voice controls
+  (`config/assistant.voice.override.toml`, gitignored). Do not reopen VA/RQ/HC
+  for voice features
   without a new contract amendment. Spoken Help inherits the HC-complete
   USER_GUIDE corpus + RQ §7.1.4 allowlist — do not widen §7.1 from voice work.
   Prefer calling shipped `handle_results_turn` / `handle_help_turn` for spoken

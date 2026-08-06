@@ -43,7 +43,10 @@ from thesistester.assistant.voice.sidecar import (
     SidecarError,
     assert_localhost_bind,
 )
-from thesistester.assistant.voice.settings import load_voice_settings
+from thesistester.assistant.voice.settings import (
+    resolve_voice_settings,
+    save_voice_ui_overrides,
+)
 from thesistester.assistant.voice.xai_realtime import (
     VoiceConfigurationError,
     VoiceProviderError,
@@ -263,6 +266,52 @@ def _register_realtime_session(
     return decoded
 
 
+def _effective_voice_settings():
+    """Tracked TOML + local Voice UI override (sidebar enable/mode)."""
+    return resolve_voice_settings()
+
+
+def _render_voice_controls() -> None:
+    """Sidebar: toggle voice on/off and switch push-to-talk vs realtime."""
+    current = _effective_voice_settings()
+    st.session_state.setdefault("assistant_voice_ui_enabled", current.enabled)
+    st.session_state.setdefault("assistant_voice_ui_mode", current.mode)
+    # Keep widgets aligned with the override file when first shown this session.
+    if "assistant_voice_ui_hydrated" not in st.session_state:
+        st.session_state["assistant_voice_ui_enabled"] = current.enabled
+        st.session_state["assistant_voice_ui_mode"] = current.mode
+        st.session_state["assistant_voice_ui_hydrated"] = True
+
+    st.subheader("Voice")
+    st.caption(
+        "Opt-in spoken Discuss/Help. Requires an xAI key (STT/TTS/sidecar) "
+        "and an OpenAI key for channel answers. Tracked config stays "
+        "default-off; choices save to a local override file."
+    )
+    enabled = st.toggle(
+        "Enable voice",
+        key="assistant_voice_ui_enabled",
+        help="Shows mic controls in Discuss results and Help when on.",
+    )
+    mode = st.radio(
+        "Mode",
+        options=["push_to_talk", "realtime"],
+        format_func=lambda value: (
+            "Push-to-talk" if value == "push_to_talk" else "Realtime (sidecar)"
+        ),
+        key="assistant_voice_ui_mode",
+        disabled=not enabled,
+        horizontal=True,
+    )
+    if enabled != current.enabled or mode != current.mode:
+        save_voice_ui_overrides(enabled=bool(enabled), mode=str(mode))
+        st.rerun()
+    if enabled and mode == "realtime":
+        st.caption(
+            "Realtime needs the localhost sidecar: `python -m thesistester.assistant.voice.sidecar`"
+        )
+
+
 def _run_voice_ptt(
     *,
     channel: str,
@@ -302,6 +351,7 @@ def _run_voice_ptt(
             max_history_messages=max_history_messages,
             filename=filename,
             content_type=content_type,
+            settings=_effective_voice_settings(),
         )
     except (VoiceConfigurationError, VoiceProviderError, ValueError) as exc:
         st.error(f"Unable to complete voice turn: {exc}")
@@ -378,6 +428,8 @@ with st.sidebar:
     if selected_id:
         if select_thesis(st.session_state, selected_id):
             st.rerun()
+    st.divider()
+    _render_voice_controls()
 
 thesis_id = st.session_state["assistant_selected_thesis_id"]
 if not thesis_id:
@@ -633,7 +685,7 @@ if help_settings.enabled:
                     ValueError,
                 ) as exc:
                     st.error(f"Unable to answer help question: {exc}")
-        voice_settings = load_voice_settings()
+        voice_settings = _effective_voice_settings()
         if voice_settings.enabled:
             st.markdown("**Voice help (push-to-talk)**")
             st.caption(
@@ -1901,7 +1953,7 @@ with st.expander(
                                     ValueError,
                                 ) as exc:
                                     st.error(f"Unable to discuss results: {exc}")
-                        voice_settings = load_voice_settings()
+                        voice_settings = _effective_voice_settings()
                         if voice_settings.enabled:
                             st.markdown("**Voice discuss (push-to-talk)**")
                             st.caption(

@@ -19,8 +19,12 @@ from thesistester.assistant.voice import (
     VoiceSessionRecord,
     VoiceToolInvocation,
     VoiceTranscriptTurn,
+    clear_voice_ui_overrides,
     load_voice_settings,
+    resolve_voice_settings,
+    save_voice_ui_overrides,
     validate_voice_session_id,
+    with_voice_overrides,
 )
 
 TRACKED = Path("config/assistant.toml")
@@ -107,6 +111,26 @@ def test_enabled_flag_fails_closed_on_non_boolean(tmp_path):
     assert settings.store_audio is True
     assert settings.allow_web_search is True
     assert settings.require_tool_for_numbers is False
+
+
+def test_voice_ui_override_file_toggles_enabled_and_mode(tmp_path):
+    config = tmp_path / "assistant.toml"
+    config.write_text(TRACKED.read_text(encoding="utf-8"), encoding="utf-8")
+    override = tmp_path / "assistant.voice.override.toml"
+    base = load_voice_settings(config)
+    assert base.enabled is False
+    assert base.mode == "push_to_talk"
+
+    save_voice_ui_overrides(enabled=True, mode="realtime", path=override)
+    resolved = resolve_voice_settings(config, ui_override_path=override)
+    assert resolved.enabled is True
+    assert resolved.mode == "realtime"
+    # Tracked loader remains default-off (release gate).
+    assert load_voice_settings(config).enabled is False
+    assert with_voice_overrides(base, enabled=True).enabled is True
+
+    assert clear_voice_ui_overrides(override) is True
+    assert resolve_voice_settings(config, ui_override_path=override).enabled is False
 
 
 def test_voice_session_record_round_trip_results_channel():

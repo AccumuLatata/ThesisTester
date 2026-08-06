@@ -312,6 +312,39 @@ class SidecarRuntime:
     def public_base_url(self) -> str:
         return f"http://{self.host}:{self.port}"
 
+    def refresh_settings(self, settings: VoiceSettings | None = None) -> VoiceSettings:
+        """Replace runtime settings (tests / explicit reload)."""
+        from thesistester.assistant.voice.settings import resolve_voice_settings
+
+        resolved = settings or resolve_voice_settings()
+        self.settings = resolved
+        self.service.settings = resolved
+        return resolved
+
+    def apply_ui_override(self) -> VoiceSettings:
+        """Merge local Voice UI ``enabled`` / ``mode`` onto current settings.
+
+        Preserves explicitly injected runtime settings when no override file
+        exists (unit tests). Production sidecars pick up sidebar toggles
+        without a uvicorn restart.
+        """
+        from thesistester.assistant.voice.settings import (
+            load_voice_ui_overrides,
+            with_voice_overrides,
+        )
+
+        overrides = load_voice_ui_overrides()
+        if not overrides:
+            return self.settings
+        resolved = with_voice_overrides(
+            self.settings,
+            enabled=overrides.get("enabled"),
+            mode=overrides.get("mode"),
+        )
+        self.settings = resolved
+        self.service.settings = resolved
+        return resolved
+
     def register_session(
         self,
         *,
@@ -320,10 +353,12 @@ class SidecarRuntime:
         expected_hash: str,
         conversation_id: str | None = None,
     ) -> dict[str, Any]:
+        self.apply_ui_override()
         if not self.settings.enabled:
             raise SidecarError(
                 "Voice is disabled (assistant.voice.enabled=false). "
-                "Enable it before starting the realtime sidecar."
+                "Enable Voice in the Research Assistant sidebar (or config) "
+                "before starting a realtime session."
             )
         record = self.service.create_session(
             thesis_id,
@@ -895,7 +930,9 @@ def build_default_runtime(
     bind_host = assert_localhost_bind(host)
     if not isinstance(port, int) or isinstance(port, bool) or port < 1 or port > 65535:
         raise SidecarError("Sidecar port must be an integer in 1..65535.")
-    resolved_settings = settings or load_voice_settings()
+    from thesistester.assistant.voice.settings import resolve_voice_settings
+
+    resolved_settings = settings or resolve_voice_settings()
     roots = (Path.cwd().resolve(), get_store_root().resolve())
     resolved_tools = tools or AssistantTools(data_roots=roots)
     resolved_repo = repository or LocalThesisRepository()

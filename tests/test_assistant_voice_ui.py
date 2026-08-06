@@ -487,7 +487,7 @@ def test_orchestrator_facade_wires_session(monkeypatch, tmp_path: Path):
     transport = _FakeSTTTTS(transcript="summarize")
     monkeypatch.setenv("XAI_API_KEY", "test-xai-key-not-real")
     monkeypatch.setattr(
-        "thesistester.assistant.voice.settings.load_voice_settings",
+        "thesistester.assistant.voice.settings.resolve_voice_settings",
         _enabled_settings,
     )
 
@@ -528,7 +528,10 @@ def test_orchestrator_facade_wires_session(monkeypatch, tmp_path: Path):
 
 def test_page_source_gates_voice_ui_and_dual_keys():
     page = Path("pages/14_Research_Assistant.py").read_text(encoding="utf-8")
-    assert "load_voice_settings()" in page
+    assert "resolve_voice_settings()" in page
+    assert "_render_voice_controls()" in page
+    assert "Enable voice" in page
+    assert "save_voice_ui_overrides(" in page
     assert "st.audio_input(" in page
     assert "handle_voice_ptt_turn(" in page
     assert "Voice discuss (push-to-talk)" in page

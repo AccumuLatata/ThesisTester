@@ -549,13 +549,17 @@ other than the last bar in the dataset.
   `choices`, must not dispatch compute, and must fail closed on ungrounded
   numbers. Mic controls are hidden while `assistant.voice.enabled=false` and
   blocked while any thesis research run is `status=="running"`.
-- **Default remains off** after VA-6 (`assistant.voice.enabled = false`). Opt-in:
-  set `enabled = true` (and optionally `mode = "realtime"`), provide
-  `XAI_API_KEY` (sidecar/STT/TTS) and `OPENAI_API_KEY` (PTT RQ channel turns),
-  then use Discuss/Help voice panels / start the localhost sidecar. Results
-  sessions bind hash-verified evidence; Help sessions reuse the §7.1 / HC
-  corpus path. Missing OpenAI on Discuss falls back to one VA-3 tool template;
-  Help without OpenAI remediates (no fabricated docs).
+- **Default remains off** after VA-6 (`assistant.voice.enabled = false` in
+  tracked `config/assistant.toml`). Opt-in from the Research Assistant
+  **sidebar Voice controls** (Enable + Push-to-talk / Realtime) — choices
+  persist to gitignored `config/assistant.voice.override.toml` so Streamlit
+  and the realtime sidecar share them without dirtying tracked config — or
+  set `enabled` / `mode` in TOML. Provide `XAI_API_KEY` (sidecar/STT/TTS) and
+  `OPENAI_API_KEY` (PTT RQ channel turns), then use Discuss/Help voice panels /
+  start the localhost sidecar. Results sessions bind hash-verified evidence;
+  Help sessions reuse the §7.1 / HC corpus path. Missing OpenAI on Discuss
+  falls back to one VA-3 tool template; Help without OpenAI remediates (no
+  fabricated docs).
 - Dual keys: xAI for STT/TTS and realtime (`XAI_API_KEY` env → Secrets
   top-level → `[xai].api_key`; placeholders rejected; never embedded in page
   modules); OpenAI for primary PTT channel turns via `handle_results_turn` /

@@ -4,6 +4,8 @@ __pycache__/
 venv/
 .env
 .streamlit/secrets.toml
+# Local Voice UI enable/mode overrides (tracked assistant.toml stays default-off).
+config/assistant.voice.override.toml
 .pytest_cache/
 .ruff_cache/
 # The app deploys from declared constraints; UV lockfiles produced by newer UV

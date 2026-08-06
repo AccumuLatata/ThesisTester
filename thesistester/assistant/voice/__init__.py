@@ -36,7 +36,12 @@ from thesistester.assistant.voice.session import (
 from thesistester.assistant.voice.settings import (
     VoiceSettings,
     VoiceSettingsError,
+    clear_voice_ui_overrides,
     load_voice_settings,
+    load_voice_ui_overrides,
+    resolve_voice_settings,
+    save_voice_ui_overrides,
+    with_voice_overrides,
 )
 from thesistester.assistant.voice.tools import (
     VOICE_TOOL_SCHEMAS,
@@ -85,8 +90,13 @@ __all__ = [
     "format_speakable_help_reply",
     "format_speakable_results_reply",
     "format_speakable_tool_result",
+    "clear_voice_ui_overrides",
     "load_voice_settings",
+    "load_voice_ui_overrides",
     "mint_ephemeral_token",
+    "resolve_voice_settings",
+    "save_voice_ui_overrides",
+    "with_voice_overrides",
     "normalize_number_token",
     "require_xai_api_key",
     "run_push_to_talk_turn",
