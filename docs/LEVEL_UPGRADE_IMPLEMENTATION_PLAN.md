@@ -101,7 +101,8 @@ Important constraints:
 
 - Do not modify existing rolling VWAP behavior.
 - Keep the session anchor explicit.
-- A later extension may add `dVWAP_ETH` if the session model supports it cleanly.
+- Full CME-session developing VWAP is implemented as column `dVWAP`
+  (ETH+RTH; reset via `trading_session_date` / `eth_start`).
 
 ---
 
@@ -294,24 +295,28 @@ Implements:
 
 ```text
 dVWAP_RTH
+dVWAP
 ```
 
 Rules:
 
-- reset every RTH session,
+- `dVWAP_RTH`: reset every RTH session; emit `NaN` on non-RTH bars.
+- `dVWAP`: reset every CME trading session (`eth_start` → next `eth_start`);
+  ETH and RTH bars both contribute and emit.
 - compute cumulatively and causally,
-- emit `NaN` on non-RTH bars (pre-open and post-close),
 - handle zero cumulative volume safely (emit `NaN`),
 - do not modify existing rolling VWAP columns.
 
-Output column:
+Output columns:
 - `dVWAP_RTH` — developing VWAP from RTH session start.
+- `dVWAP` — developing VWAP from CME session open across the full session.
 
 Formula:
 
 ```text
 typical_price = (high + low + close) / 3
-dVWAP_RTH[t] = cumsum(typical_price * volume) / cumsum(volume)
+dVWAP_RTH[t] = cumsum(typical_price * volume) / cumsum(volume)   # RTH bars only
+dVWAP[t]     = cumsum(typical_price * volume) / cumsum(volume)   # all session bars
 ```
 
 Session `session` column:
@@ -351,7 +356,9 @@ Acceptance criteria:
 - `dVWAP_RTH` starts only at RTH session open.
 - It updates causally bar by bar.
 - It resets correctly at the next RTH session.
-- Non-RTH bars always emit `NaN`.
+- Non-RTH bars always emit `NaN` for `dVWAP_RTH`.
+- `dVWAP` starts at CME session open, includes ETH+RTH, and resets at the next CME open.
+- Enabling the gate does not mutate existing non-VWAP level columns; `dVWAP_RTH` math is unchanged.
 
 ---
 

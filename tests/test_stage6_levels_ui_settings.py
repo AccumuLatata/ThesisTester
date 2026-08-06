@@ -371,6 +371,7 @@ class TestComputeAllLevelsWiring:
         df = _make_tz_df()
         result = compute_all_levels(df)
         assert "dVWAP_RTH" not in result.columns
+        assert "dVWAP" not in result.columns
 
     def test_all_gates_disabled_no_single_print_columns(self):
         df = _make_tz_df()
@@ -388,6 +389,7 @@ class TestComputeAllLevelsWiring:
         result = compute_all_levels(df, pivots_enabled=True, pivot_timeframes=["1min"])
         assert any(col.startswith("Pivot_") for col in result.columns)
         assert "dVWAP_RTH" not in result.columns
+        assert "dVWAP" not in result.columns
         assert not any("SinglePrint" in col for col in result.columns)
         assert "APOC" not in result.columns
 
@@ -395,6 +397,7 @@ class TestComputeAllLevelsWiring:
         df = _make_tz_df(200)
         result = compute_all_levels(df, session_vwap_enabled=True, session_vwap_anchor="RTH")
         assert "dVWAP_RTH" in result.columns
+        assert "dVWAP" in result.columns
         assert not any(col.startswith("Pivot_") for col in result.columns)
         assert not any("SinglePrint" in col for col in result.columns)
         assert "APOC" not in result.columns
@@ -437,6 +440,7 @@ class TestComputeAllLevelsWiring:
         )
         assert any(col.startswith("Pivot_") for col in result.columns)
         assert "dVWAP_RTH" in result.columns
+        assert "dVWAP" in result.columns
         assert "dSinglePrint_30m_NearestAbove" in result.columns
         assert "APOC" in result.columns
 

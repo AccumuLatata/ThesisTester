@@ -167,12 +167,15 @@ This engine is for **research screening**, not proof of a durable edge.
 - Confirmed pivots are delayed by right-side confirmation and are not real-time swing predictions.
 - Confirmed pivots do not encode SFP, liquidity sweep, breaker, reclaim, or retest semantics.
 
-### 5b) Developing session VWAP (`dVWAP_RTH`) is opt-in
-- The Levels page and headless API enable `dVWAP_RTH` in their built-in configuration. Direct `compute_all_levels` calls retain `session_vwap_enabled=False` by default.
-- Only `anchor="RTH"` is supported in current implementation (`dVWAP_ETH` is not implemented).
-- `dVWAP_RTH` resets at each RTH session open; non-RTH bars always emit `NaN`.
-- Zero cumulative RTH volume emits `NaN` (safe divide-by-zero handling).
-- If the input DataFrame lacks a `session` column, RTH membership is derived from the instrument configuration and the timestamp timezone.
+### 5b) Developing session VWAPs (`dVWAP_RTH`, `dVWAP`) are opt-in
+- The Levels page and headless API enable session VWAPs in their built-in configuration. Direct `compute_all_levels` calls retain `session_vwap_enabled=False` by default.
+- When enabled, both columns are emitted under the same gate:
+  - `dVWAP_RTH` — developing VWAP from RTH open; non-RTH bars always emit `NaN`.
+  - `dVWAP` — developing VWAP over the entire CME trading session (`eth_start` → next `eth_start` via `trading_session_date`); ETH and RTH bars both contribute and both emit values.
+- `session_vwap_anchor` remains `"RTH"` for the RTH column gate only; full-session `dVWAP` does not use the anchor parameter.
+- Instruments without `eth_start` fall back to calendar-date session grouping (same helper as other session-date levels).
+- Zero cumulative volume in the active group emits `NaN` (safe divide-by-zero handling).
+- If the input DataFrame lacks a `session` column, RTH membership for `dVWAP_RTH` is derived from the instrument configuration and the timestamp timezone.
 - `session_vwap_enabled=False` is a true no-op: no validation, no new columns, no timestamp checks.
 
 ### 5c) TPO 30m Single Prints are opt-in scalar levels
@@ -228,7 +231,7 @@ This engine is for **research screening**, not proof of a durable edge.
 - Inside the expander: checkboxes for confirmed pivots, developing RTH VWAP, TPO 30m Single Prints, APOC / pAPOC, and previous 30m VWAP; all default `True` in the built-in Levels page configuration.
 - `thesistester/levels/defaults.py` also sets the shared headless API defaults: 15-minute opening range; SMA 50/200 and EMA 9/21 on `1min`/`5min`/`30min`; rolling VWAP `30min`/`4h`; rolling POC `30min`; 70% value area; and prior day/week/month profile aggregation of 4/8/10 ticks.
 - When pivots are enabled, pivot timeframes (multiselect), pivot left, and pivot right number inputs are shown.
-- `session_vwap_anchor` is fixed to `"RTH"` for Stage 6; no new anchors are exposed.
+- `session_vwap_anchor` is fixed to `"RTH"` for the RTH column gate; full-session `dVWAP` is emitted alongside when the session-VWAP gate is enabled.
 - No Single Print or APOC configuration controls are exposed beyond the enable checkbox.
 - APOC / pAPOC remain independent from Single Prints; APOC is not routed through `compute_tpo_levels`.
 - `_normalize_levels_settings` retains disabled defaults for missing Stage 6 keys so old saved snapshots remain compatible without changing their historical calculation contract.

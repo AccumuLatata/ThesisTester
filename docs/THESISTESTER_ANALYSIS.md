@@ -83,7 +83,7 @@ State flows between pages through a documented `st.session_state` contract (24 k
 
 - Session/structural levels: overnight high/low, opening range, RTH open, prior day/week/month O/H/L/EQ, settlement preview (`thesistester/levels/sessions.py`).
 - Indicator/profile levels: SMA/EMA (multi-timeframe), rolling VWAP, rolling POC windows, prior day/week/month VAH/VAL/POC with 70% value area on tick-bucketed bins (`thesistester/levels/indicators.py`, `profile.py`).
-- Opt-in advanced families (all default **disabled**, regression-safe): confirmed pivots (`pivots.py`), developing RTH VWAP (`session_vwap.py`), TPO 30m Single Prints (`tpo.py`), APOC/pAPOC (`apoc.py`).
+- Opt-in advanced families (all default **disabled**, regression-safe): confirmed pivots (`pivots.py`), developing session VWAPs (`session_vwap.py`: `dVWAP_RTH` + `dVWAP`), TPO 30m Single Prints (`tpo.py`), APOC/pAPOC (`apoc.py`).
 - Orchestration via `compute_all_levels()` emitting scalar columns onto the shared DataFrame (`thesistester/levels/all.py`); a smoke run produced **52 level columns** on 3 days of synthetic 1-minute NQ data.
 - Known approximation: profile bins use bar-level typical price `(H+L+C)/3`, not true volume-at-price (documented in `docs/ASSUMPTIONS_AND_LIMITATIONS.md` §5d).
 

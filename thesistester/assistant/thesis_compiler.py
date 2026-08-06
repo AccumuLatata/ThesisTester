@@ -403,7 +403,7 @@ def compile_thesis(prompt: str, *, choices: Mapping[str, Any] | None = None) -> 
     if re.search(r"\bdvwap\b", text):
         levels = selected.get("levels")
         if not isinstance(levels, Mapping) or not levels.get("session_vwap_enabled"):
-            unresolved.append("Enable developing RTH VWAP for the dVWAP thesis.")
+            unresolved.append("Enable developing session VWAPs for the dVWAP thesis.")
     if re.search(r"\bsma\b", text) or "moving average" in text:
         setup = selected.get("setup")
         if not isinstance(setup, Mapping) or "tolerance_ticks" not in setup:

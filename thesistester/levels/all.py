@@ -46,8 +46,9 @@ def compute_all_levels(
     wired in here but controlled by the following gates, all disabled by default:
 
     - ``pivots_enabled`` — fractal pivot levels (Stage 2, **implemented**)
-    - ``session_vwap_enabled`` — developing session VWAP (Stage 3,
-      **implemented** for ``session_vwap_anchor="RTH"``)
+    - ``session_vwap_enabled`` — developing session VWAPs (Stage 3):
+      ``dVWAP_RTH`` (RTH-anchored) and ``dVWAP`` (full CME session);
+      ``session_vwap_anchor`` remains ``"RTH"`` for the RTH column gate
     - ``single_prints_enabled`` — TPO single print nearest-above/below
       (Stage 4, **implemented**)
     - ``apoc_enabled`` — APOC / pAPOC profile-based levels (Stage 5,

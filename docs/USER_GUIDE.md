@@ -111,7 +111,7 @@ saved snapshots, regenerate
 | `SMA lengths` / `EMA lengths` + timeframes | Indicator levels on chosen TFs | Comma-separated lengths must parse |
 | `Rolling VWAP windows` / `Rolling POC windows` | Intraday rolling anchors | Large data + rolling POC can be slow |
 | `Value area (%)` + prior D/W/M VA aggregation ticks | Profile VA/POC binning | Aggregation ticks ≠ instrument tick size |
-| **Advanced opt-in levels** | Pivots, dVWAP_RTH, TPO single prints, APOC, prev30mVWAP | Built-in defaults enable all families; uncheck a box to omit |
+| **Advanced opt-in levels** | Pivots, dVWAP_RTH, dVWAP (CME session), TPO single prints, APOC, prev30mVWAP | Built-in defaults enable all families; uncheck a box to omit |
 | **Calculate levels** / **Recalculate levels** | Build or refresh level artifacts | Stale after data/settings change |
 
 **How to use.**
