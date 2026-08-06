@@ -239,12 +239,12 @@ secret, and spoken-grounding series on top of a finished text substrate.
 | VA-1 | ✅ Done via RQ-1 | Text Discuss substrate |
 | VA-0 | ✅ Done | Contracts + flag + docs freeze |
 | VA-2 | ✅ Done | xAI credentials + session service + STT/TTS helpers |
-| VA-3 | Remaining | Read-only voice tools + grounding helpers |
+| VA-3 | ✅ Done | Read-only voice tools + grounding helpers |
 | VA-4 | Remaining | Push-to-talk spoken Discuss/Help (first user-visible) |
 | VA-5 | Remaining | Full-duplex realtime sidecar |
 | VA-6 | Remaining | Voice evals + release gate |
 
-**Remaining implementation PRs: 4** (VA-3 → VA-4 → VA-5 → VA-6). VA-0 ✅ / VA-2 ✅.
+**Remaining implementation PRs: 3** (VA-4 → VA-5 → VA-6). VA-0 ✅ / VA-2 ✅ / VA-3 ✅.
 
 Do **not** collapse VA-4 into VA-5. Half-duplex spoken channels prove value and
 honesty first. Do **not** reopen RQ for voice features.
@@ -467,8 +467,8 @@ invoke outside RQ channel handlers.
 | | `list_caveats` → packet caveats |
 | | `compare_two_runs` → `{other_run_id}` hash-verify + `compare_evidence`; **no** `save_comparison` |
 | Deny | Anything else, including search/`mcp`/`PIPELINE.*`/`execute_confirmed_run` |
-| Audit | Each call → one conversation `tool_transcript` entry |
-| Grounding helper | `voice/grounding.py` — reuse C2-6 / RQ token normalization; digit-token audit for spoken strings |
+| Audit | Each call → one session `VoiceToolInvocation` + best-effort conversation `tool_transcript` when `conversation_id` is bound |
+| Grounding helper | `voice/grounding.py` — reuse C2-6 / RQ token normalization; digit-token audit for spoken strings (claim **values** only) |
 | Tests | `tests/test_assistant_voice_tools.py` — allowlist, deny, path traversal, compare hash fail, injection names, grounding cases |
 
 #### Out of scope
@@ -478,11 +478,11 @@ invoke outside RQ channel handlers.
 - Registry expansion beyond calling existing orchestrator read APIs
 
 #### Acceptance
-- [ ] Unknown tool name → fail; no side effects
-- [ ] Model-requested `execute_confirmed_run` / `web_search` never execute
-- [ ] `get_metric` rejects unknown/empty paths
-- [ ] `compare_two_runs` fails closed on hash missing/mismatch
-- [ ] Exactly one transcript audit row per invocation attempt
+- [x] Unknown tool name → fail; no side effects
+- [x] Model-requested `execute_confirmed_run` / `web_search` never execute
+- [x] `get_metric` rejects unknown/empty paths
+- [x] `compare_two_runs` fails closed on hash missing/mismatch
+- [x] Exactly one transcript audit row per invocation attempt
 
 #### Regression safety
 Thin adapters over existing explain/compare/packet. No page behavior while
@@ -500,7 +500,28 @@ docs/AGENT_GUIDE.md
 ```
 
 #### Implemented contract (fill when merged)
-_Pending implementation._
+- `voice/tools.py`: frozen `VOICE_TOOL_SCHEMAS` for exact v1 set
+  (`get_run_overview`, `get_metric`, `list_caveats`, `compare_two_runs`) plus
+  `execute_voice_tool(name, args, *, session=VoiceToolSession)`.
+- Deny-by-default: unknown / injection names (`web_search`,
+  `execute_confirmed_run`, `PIPELINE.*`, `mcp`, `save_comparison`, …) fail
+  closed with no tool side effects beyond one audit row.
+- `get_metric` rejects empty paths, `..` / separators, unknown roots, missing
+  paths, empty values, and non-scalar (object/array) leaves.
+  `compare_two_runs` hash-verifies the other run via
+  `build_bundle_evidence_packet` and returns pure `compare_evidence` with
+  `persisted=false` (never `save_comparison`).
+- Each invocation attempt appends exactly one `VoiceToolInvocation` on the
+  voice session record (success or failure; durable after `end_session`) and
+  best-effort flushes one conversation `tool_transcript` entry when a
+  `conversation_id` is bound. Bound packets rehydrate across service instances
+  from persisted run/hash.
+- `voice/grounding.py`: `audit_spoken_text` reuses C2-6 / RQ
+  `_normalize_number_token` / digit-token rules and returns `GroundingVerdict`
+  with claim-value allowlists (caveat/hash strings do not launder metrics).
+- `tests/test_assistant_voice_tools.py` gates allowlist, deny, path traversal,
+  compare hash fail, injection names, and grounding cases.
+- Flag still `enabled=false`; no mic UI (VA-4).
 
 ---
 
@@ -816,7 +837,7 @@ Constraints:
 | HC Help corpus coverage | ✅ Implemented (HC-0…HC-4) — spoken Help inherits; VA does not re-own |
 | VA-0 | ✅ Implemented (contracts/flag/docs freeze) |
 | VA-2 | ✅ Implemented (credentials + session + STT/TTS helpers) |
-| VA-3 | Proposed |
+| VA-3 | ✅ Implemented (read-only tools + grounding helpers) |
 | VA-4 | Proposed |
 | VA-5 | Proposed |
 | VA-6 | Proposed |
