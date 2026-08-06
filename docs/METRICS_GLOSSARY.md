@@ -487,3 +487,10 @@ number. Common leaves:
 Uncited numeric tokens in LLM narrative are rejected before render. Glossary
 formulas above remain the definitional source; packet paths are the citation
 addresses used by the assistant release gate.
+
+**Spoken / voice display (VA):** Push-to-talk and realtime trusted speech use the
+same digit-token grounding rules (`voice/grounding.audit_spoken_text`) against
+typed claim/tool values (or Help corpus/registry tokens). Spoken replies prefer
+summary + short caveats and must not invent metrics absent from the bound
+packet or allowlisted tool returns; uncited digits remediate instead of playing
+as trusted audio.
