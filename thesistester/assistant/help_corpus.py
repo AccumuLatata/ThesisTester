@@ -1,7 +1,8 @@
-"""Frozen Help corpus allowlist and pure loaders (RQ-0).
+"""Frozen Help corpus allowlist and pure loaders (RQ-0 / HC amends).
 
-Encodes ``docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`` §7.1 exactly.
-No orchestrator wiring, network I/O, or OpenAI calls.
+Encodes ``docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`` §7.1 exactly
+(including HC-1 ``user_guide`` §7.1.4). No orchestrator wiring, network I/O,
+or OpenAI calls.
 """
 
 from __future__ import annotations
@@ -86,6 +87,61 @@ _OTF_SECTIONS = frozenset(
     }
 )
 
+# HC-1 filled USER_GUIDE H2s only (stubs for Grid→Assistant remain excluded).
+_USER_GUIDE_SECTIONS = frozenset(
+    {
+        "Purpose and honesty",
+        "Classic workflow overview",
+        "Data",
+        "Levels",
+        "Setup Builder",
+        "Signals",
+        "Backtest",
+    }
+)
+
+# How-to / workflow cues for HC §1.1 intent-aware user_guide boost.
+_HOW_TO_QUERY_TOKENS = frozenset(
+    {
+        "how",
+        "configure",
+        "import",
+        "generate",
+        "export",
+        "link",
+        "record",
+        "steps",
+        "setup",  # "set up" tokenizes oddly; "setup" covers Setup Builder how-tos
+        "where",
+        "upload",
+        "build",
+        "run",
+        "use",
+        "enable",
+        "save",
+        "load",
+    }
+)
+_DEFINITION_QUERY_TOKENS = frozenset(
+    {
+        "what",
+        "define",
+        "definition",
+        "meaning",
+        "mean",
+    }
+)
+_COST_QUERY_TOKENS = frozenset(
+    {
+        "cost",
+        "costs",
+        "commission",
+        "slippage",
+        "slippage_ticks",
+        "exposure",
+    }
+)
+
 HELP_CORPUS_MANIFEST: tuple[CorpusDocSpec, ...] = (
     CorpusDocSpec("readme", "README.md", "whole_file", frozenset()),
     CorpusDocSpec("metrics", "docs/METRICS_GLOSSARY.md", "whole_file", frozenset()),
@@ -108,6 +164,12 @@ HELP_CORPUS_MANIFEST: tuple[CorpusDocSpec, ...] = (
         _ASSUMPTIONS_SECTIONS,
     ),
     CorpusDocSpec("otf", "docs/otf-filter.md", "sections", _OTF_SECTIONS),
+    CorpusDocSpec(
+        "user_guide",
+        "docs/USER_GUIDE.md",
+        "sections",
+        _USER_GUIDE_SECTIONS,
+    ),
     CorpusDocSpec(REGISTRY_DOC_ID, None, "digest", frozenset()),
 )
 
@@ -362,12 +424,19 @@ def registry_digest_json(rows: Iterable[Mapping[str, Any]] | None = None) -> str
 
 
 def _tokenize_query(text: str) -> set[str]:
-    tokens = {part.lower() for part in re.findall(r"[A-Za-z0-9_./`§-]{2,}", text)}
+    # Exclude `/` so compounds like ``costs/exposure`` become separate tokens
+    # (needed for HC §1.1 cost-noun boosts). Paths are not query syntax here.
+    tokens = {part.lower() for part in re.findall(r"[A-Za-z0-9_.`§-]{2,}", text)}
     return {token.strip("`'\".,:;!?()[]{}") for token in tokens if token.strip("`'\".,:;!?()[]{}")}
 
 
 def score_corpus_chunk(chunk: CorpusChunk, *, query_tokens: set[str]) -> int:
-    """Cheap lexical score for Help retrieval (local docs only)."""
+    """Cheap lexical score for Help retrieval (local docs only).
+
+    HC §1.1: additive intent-aware ``user_guide`` how-to boost. Existing
+    metrics/OTF/architecture boosts remain; definition queries are not forced
+    onto USER_GUIDE.
+    """
     if not query_tokens:
         return 0
     haystack = f"{chunk.doc_id} {chunk.section} {chunk.text}".lower()
@@ -381,11 +450,28 @@ def score_corpus_chunk(chunk: CorpusChunk, *, query_tokens: set[str]) -> int:
     if {"grid", "ranking", "metric", "expectancy", "sl", "tp"} & query_tokens:
         if chunk.doc_id in {"metrics", "architecture", "assumptions"}:
             score += 3
+    if query_tokens & _COST_QUERY_TOKENS and chunk.doc_id == "metrics":
+        # Mixed how-to + cost nouns (Q-H5): keep glossary in the selected set.
+        score += 3
     if {"otf", "one", "timeframing", "timeframe"} & query_tokens and chunk.doc_id == "otf":
         score += 3
     if {"assistant", "capability", "registry", "confirm"} & query_tokens:
         if chunk.doc_id in {"architecture", "assumptions"}:
             score += 2
+    # HC-1 §1.1: how-to cues prefer user_guide without removing other boosts.
+    # Strong boost only for title-overlapping sections so template phrases like
+    # "How to use" do not flood max_corpus_chars with every USER_GUIDE H2.
+    how_to = bool(query_tokens & _HOW_TO_QUERY_TOKENS)
+    definitional = bool(query_tokens & _DEFINITION_QUERY_TOKENS)
+    if how_to and chunk.doc_id == "user_guide":
+        section_tokens = _tokenize_query(chunk.section)
+        if query_tokens & section_tokens:
+            score += 5
+        else:
+            score += 1
+    elif definitional and not how_to and chunk.doc_id == "user_guide":
+        # Soft preference away from forcing USER_GUIDE on pure definitions.
+        score -= 1
     return score
 
 

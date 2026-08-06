@@ -228,7 +228,12 @@ When an HC content PR lands, append rows here (and mirror in test fixtures):
 
 | Question ID | Primary `doc_id` | Primary exact H2 (or whole_file note) | Alternates |
 |---|---|---|---|
-| _(filled by HC-1+)_ | | | |
+| Q-H1 | `user_guide` | Data | — |
+| Q-H2 | `user_guide` | Levels | — |
+| Q-H3 | `user_guide` | Setup Builder | — |
+| Q-H4 | `user_guide` | Signals | — |
+| Q-H5 | `user_guide` | Backtest | `metrics` secondary presence for cost nouns |
+| Q-D2 | `metrics` | whole_file (`Core formulas` / Expectancy) | — |
 
 ---
 
@@ -389,13 +394,6 @@ tests/test_assistant_user_guide_structure.py    # recommended structure gate
 - Engine/UI page rewrites
 - Embeddings / re-ranking models
 
-#### Acceptance
-- [ ] Q-H1…Q-H5 retrieve the intended `user_guide` sections (presence, not sole rank-1)
-- [ ] Definition Q-D2 still retrieves `metrics` under §5 pass rule
-- [ ] Help still remediates Q-R1
-- [ ] RQ §7.1 and manifest H2 sets match exactly; no stub H2s allowlisted
-- [ ] No golden/engine diffs
-
 #### Regression safety
 Additive corpus + narrow §1.1 scoring only. Existing allowlisted docs remain.
 Fail closed on non-listed USER_GUIDE H2s. Oversized H2s split before allowlist.
@@ -406,14 +404,37 @@ docs/USER_GUIDE.md
 docs/METRICS_GLOSSARY.md                        # gap-fill only
 docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md   # §7.1 amend + HC pointer/status
 docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md
+docs/ENGINEERING_ROADMAP.md                     # status touch-up
 thesistester/assistant/help_corpus.py
 tests/test_assistant_help_corpus.py
 tests/test_assistant_help_coverage.py           # new bank tests OK
+tests/test_assistant_user_guide_structure.py    # filled-vs-stub + manifest parity
 docs/ASSUMPTIONS_AND_LIMITATIONS.md             # only if a honesty cross-link needs a sentence
 ```
 
+#### Acceptance
+- [x] Q-H1…Q-H5 retrieve the intended `user_guide` sections (presence, not sole rank-1)
+- [x] Definition Q-D2 still retrieves `metrics` under §5 pass rule
+- [x] Help still remediates Q-R1
+- [x] RQ §7.1 and manifest H2 sets match exactly; no stub H2s allowlisted
+- [x] No golden/engine diffs
+
 #### Implemented contract (fill when merged)
-_Pending implementation._
+- `docs/USER_GUIDE.md` — filled H2s: Purpose and honesty, Classic workflow
+  overview, Data, Levels, Setup Builder, Signals, Backtest (Related terms +
+  UI labels). Grid→Assistant H2s remain `_Stub (HC-0)_` and are **not**
+  allowlisted.
+- RQ §7.1 + §7.1.4 — `user_guide` / `docs/USER_GUIDE.md` mode=`sections` with
+  the seven filled H2 titles above.
+- `HELP_CORPUS_MANIFEST` — `user_guide` entry mirrors §7.1.4.
+- `score_corpus_chunk` — HC §1.1 intent-aware how-to boost (title-overlap
+  strong / other guide H2s mild); cost-noun boost for `metrics`; `/` removed
+  from query tokenization so `costs/exposure` splits.
+- `docs/METRICS_GLOSSARY.md` — gap-fill H3 for `commission_per_side` /
+  `slippage_ticks`.
+- Tests: `tests/test_assistant_help_coverage.py` (Q-H1…Q-H5, Q-D2, Q-H5
+  glossary presence); corpus allowlist reject for stub `Grid Search`;
+  structure gate updated for HC-1 filled vs remaining stubs.
 
 ---
 
@@ -659,7 +680,7 @@ Constraints:
 | ID | Status |
 |---|---|
 | HC-0 | ✅ Implemented — USER_GUIDE skeleton + structure gate (not allowlisted) |
-| HC-1 | Proposed |
+| HC-1 | ✅ Implemented — Data→Backtest how-tos + §7.1.4 allowlist + §1.1 retrieval |
 | HC-2 | Proposed |
 | HC-3 | Proposed |
 | HC-4 | Proposed |

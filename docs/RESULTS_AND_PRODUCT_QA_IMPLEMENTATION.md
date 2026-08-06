@@ -331,6 +331,7 @@ contract in the same PR.
 | `architecture` | `docs/ARCHITECTURE.md` | `sections` | See exact H2 list in §7.1.1 (includes backtick characters in the session_state title) |
 | `assumptions` | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | `sections` | See exact H2 list in §7.1.2 |
 | `otf` | `docs/otf-filter.md` | `sections` | See exact H2 list in §7.1.3 |
+| `user_guide` | `docs/USER_GUIDE.md` | `sections` | See exact H2 list in §7.1.4 (HC-1 filled how-tos only; stubs excluded) |
 | `registry` | _(generated; not a file path)_ | `digest` | Built at turn time from `FEATURE_PARITY_REGISTRY` / `audit_capability_registry()` as a JSON-safe list of `{capability_id, status, public_symbol?, confirmation?, limitation?}` only — no source files, no handler code |
 
 #### 7.1.1 Exact `architecture` H2 titles (frozen)
@@ -376,6 +377,22 @@ Purpose
 §15 — Release-Gate Documentation
 ```
 
+#### 7.1.4 Exact `user_guide` H2 titles (HC-1; amend via HC PRs)
+
+Match these strings exactly after stripping the leading `##` and surrounding
+whitespace. Stub USER_GUIDE H2s (Grid Search → Help vs Discuss) remain
+**excluded** until a later HC content PR fills and allowlists them.
+
+```text
+Purpose and honesty
+Classic workflow overview
+Data
+Levels
+Setup Builder
+Signals
+Backtest
+```
+
 **Explicitly excluded from v1 (fail closed if requested):**
 
 - `docs/AGENT_GUIDE.md` and any other operator/agent/CI runbook
@@ -386,6 +403,7 @@ Purpose
   `§13 — Open questions (resolved for v1)`; and any “Historical PR …” /
   deferred-fingerprint subsections not under an allowlisted H2
 - Assumptions H2s not listed above
+- USER_GUIDE H2s not listed in §7.1.4 (including all `_Stub (HC-0)_` sections)
 
 If a later PR widens Help, it must amend **this table** and the RQ-0 manifest
 in the same PR.

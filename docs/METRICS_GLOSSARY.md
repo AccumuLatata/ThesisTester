@@ -30,6 +30,19 @@ Per trade:
   - `pnl_points == gross_pnl_points`
   - `pnl_currency == net_pnl_currency`
 
+### Execution cost inputs (`commission_per_side`, `slippage_ticks`)
+
+Backtest / grid UI and engine inputs (defaults are typically `0.0` — gross-era
+behavior unless you set non-zero costs):
+
+- `commission_per_side`: currency fee charged once per side (entry and exit each
+  pay it). Round-trip commission on a completed trade is
+  `commission_cost = 2 * commission_per_side`.
+- `slippage_ticks`: adverse ticks applied per side at entry and exit (UI label
+  **Slippage (ticks per side)**). Converted with instrument `tick_size` /
+  `point_value` into `slippage_cost`. Non-zero slippage makes fills worse than
+  the signal price; it is an assumption, not measured exchange slippage.
+
 ### Win rate
 \[
 \text{win\_rate} = \frac{\#\{R_i > 0\}}{n}
