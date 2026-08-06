@@ -25,7 +25,7 @@ belongs in a later PR or is rejected.
 | `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` | ✅ Implemented AIA foundations — keep for invariants; not the results/help surface |
 | `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` | ✅ Implemented C2 thesis-draft / explain / provenance loop |
 | `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` | ✅ Implemented CAI classic↔assistant bridge; RQ-4 owns Discuss deep-link polish |
-| `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` | Proposed voice-only series after RQ-1; VA-1 text substrate is RQ-1 here |
+| `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` | Voice-only series (post-RQ rebase); VA-1 text substrate is RQ-1 here; VA-0/VA-2+ remain there |
 | `docs/ENGINEERING_ROADMAP.md` | Index / status tracker — points here for RQ work |
 
 ---
