@@ -452,6 +452,17 @@ Related session / artifact fields: `candidate_signal_count`,
 `otf_accepted_signal_count`, `otf_rejected_signal_count`, `session_timezone`,
 `eth_start` on OTF summaries.
 
+## Developing session VWAPs (`dVWAP_RTH`, `dVWAP`)
+
+| Name | Definition |
+|---|---|
+| `dVWAP_RTH` | Developing typical-price VWAP from RTH open (`tp=(H+L+C)/3`). Resets each RTH session. `NaN` on ETH bars and when cumulative RTH volume is zero. |
+| `dVWAP` | Developing typical-price VWAP over the entire CME trading session (`eth_start` → next `eth_start` via `trading_session_date`). ETH and RTH bars both contribute and emit. Resets at each CME session open. `NaN` when cumulative session volume is zero. |
+| `session_vwap_enabled` | Gate for both columns. Product/API defaults enable; low-level `compute_all_levels` defaults off. |
+| `session_vwap_anchor` | RTH-column gate only (`"RTH"`). Does not change `dVWAP` anchoring. |
+
+Implementation: `thesistester/levels/session_vwap.py`.
+
 ## Previous 30m VWAP levels (`prev30mVWAP`)
 
 | Name | Definition |

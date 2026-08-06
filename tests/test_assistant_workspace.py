@@ -619,6 +619,7 @@ def test_confluence_and_timezone_catalogs_support_searchable_widgets():
         available_columns=["Live_From_Levels"],
     )
     assert "dVWAP_RTH" in options
+    assert "dVWAP" in options
     assert "SMA_50_30min" in options
     assert "VWAP_rolling_1h" in options
     assert "Live_From_Levels" in options

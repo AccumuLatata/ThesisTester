@@ -22,7 +22,7 @@ tested here.
 | `thesistester/levels/profile.py` | Rolling POC and prior day/week/month profile levels |
 | `thesistester/levels/indicators.py` | SMA, EMA, rolling VWAP |
 | `thesistester/levels/pivots.py` | Confirmed 1min / 5min / 30min / 4h pivot levels |
-| `thesistester/levels/session_vwap.py` | Developing session VWAP (`dVWAP_RTH`) |
+| `thesistester/levels/session_vwap.py` | Developing session VWAPs (`dVWAP_RTH`, `dVWAP`) |
 | `thesistester/levels/tpo.py` | TPO 30m Single Print scalar levels |
 | `thesistester/levels/apoc.py` | A-Period POC scalar levels (`APOC`, `pAPOC`) |
 | `thesistester/levels/prev30m_vwap.py` | Previous 30m VWAP (`prev30mVWAP` + Phase 3 stack) + early-window hit diagnostics |
@@ -86,6 +86,7 @@ future-shock tests and/or code inspection.
 | Level family | Source | Causal? | Availability timing | Known limitations | Tests |
 |---|---|---|---|---|---|
 | `dVWAP_RTH` | cumulative `cumsum(typical_price * volume) / cumsum(volume)` over RTH bars in the current RTH session | **Yes** | First RTH bar of each session; `NaN` on all non-RTH bars | Only RTH bars contribute; resets at each new RTH session; zero cumulative volume emits `NaN`; if session column is absent it is derived from instrument config | `tests/test_stage3_session_vwap.py` (future-shock tests: `test_dvwap_rth_future_shock`, `test_dvwap_rth_future_shock_across_sessions`) |
+| `dVWAP` | cumulative `cumsum(typical_price * volume) / cumsum(volume)` over **all** bars in the current CME trading session (`trading_session_date` / `eth_start`) | **Yes** | First bar of each CME session; emits on ETH and RTH | ETH+RTH bars contribute; resets at each CME session open; zero cumulative volume emits `NaN`; calendar-date fallback when instrument has no `eth_start` | `tests/test_dvwap_cme_session.py` (future-shock tests: `test_dvwap_future_shock_within_session`, `test_dvwap_future_shock_across_sessions`) |
 
 ### TPO 30m Single Prints — `levels/tpo.py`
 
@@ -277,7 +278,7 @@ Contract reference: `docs/otf-filter.md` §6 / §13b.
    high and low per supported timeframe, and it does not yet classify sweeps, SFPs,
    breakers, reclaims, or retests.
 
-9. **`dVWAP_RTH` uses bar-level typical price.** `typical_price = (high + low + close) / 3`
+9. **`dVWAP_RTH` and `dVWAP` use bar-level typical price.** `typical_price = (high + low + close) / 3`
    is a bar-level approximation. True intrabar VWAP would require tick data but would not
    introduce look-ahead bias. Bar `i` typical price is unknown until bar `i` closes;
    since signals are treated as bar-close confirmed, this is documented intent, not a bug.

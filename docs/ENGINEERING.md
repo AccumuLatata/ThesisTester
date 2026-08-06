@@ -189,7 +189,7 @@ returns the level price aligned to the base timeline.
 - `indicators.py` — SMA, EMA, rolling VWAP.
 - `sessions.py` — d/w/m opens, prior O/H/L, EQ, ON H/L, Asia H/L, London H/L, OR, RTH_Open, pRTH_Open/High/Low, settlement.
 - `profile.py` — market/volume profile → rolling POC + prior POC/VAH/VAL (day/week/month).
-- `session_vwap.py` — developing RTH VWAP (`dVWAP_RTH`).
+- `session_vwap.py` — developing session VWAPs (`dVWAP_RTH` RTH-anchored; `dVWAP` full CME session).
 - `prev30m_vwap.py` — previous session-open 30m VWAP (`prev30mVWAP`) + early-window hit diagnostics.
 - `tpo.py` / `apoc.py` — TPO single prints and A-period POC.
 - `naked.py` — given a level series + price path, flag whether each level is still untested.

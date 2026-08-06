@@ -101,7 +101,8 @@ Important constraints:
 
 - Do not modify existing rolling VWAP behavior.
 - Keep the session anchor explicit.
-- A later extension may add `dVWAP_ETH` if the session model supports it cleanly.
+- Full CME-session developing VWAP is implemented as column `dVWAP`
+  (ETH+RTH; reset via `trading_session_date` / `eth_start`).
 
 ---
 
@@ -294,43 +295,49 @@ Implements:
 
 ```text
 dVWAP_RTH
+dVWAP
 ```
 
 Rules:
 
-- reset every RTH session,
+- `dVWAP_RTH`: reset every RTH session; emit `NaN` on non-RTH bars.
+- `dVWAP`: reset every CME trading session (`eth_start` → next `eth_start`);
+  ETH and RTH bars both contribute and emit.
 - compute cumulatively and causally,
-- emit `NaN` on non-RTH bars (pre-open and post-close),
 - handle zero cumulative volume safely (emit `NaN`),
 - do not modify existing rolling VWAP columns.
 
-Output column:
+Output columns:
 - `dVWAP_RTH` — developing VWAP from RTH session start.
+- `dVWAP` — developing VWAP from CME session open across the full session.
 
 Formula:
 
 ```text
 typical_price = (high + low + close) / 3
-dVWAP_RTH[t] = cumsum(typical_price * volume) / cumsum(volume)
+dVWAP_RTH[t] = cumsum(typical_price * volume) / cumsum(volume)   # RTH bars only
+dVWAP[t]     = cumsum(typical_price * volume) / cumsum(volume)   # all session bars
 ```
 
 Session `session` column:
 - If present, used directly.
 - If absent, derived from timestamp and instrument config via `tag_session`.
 
-Implemented tests in `tests/test_stage3_session_vwap.py` (28 tests):
+Implemented tests in `tests/test_stage3_session_vwap.py` (RTH column) and
+`tests/test_dvwap_cme_session.py` (full-session `dVWAP`):
 
 - disabled returns empty DataFrame (no validation),
 - disabled accepts naive timestamps,
-- `compute_all_levels` with `session_vwap_enabled=False` produces no `dVWAP_RTH`,
-- exact bar-by-bar cumulative VWAP values,
-- output column name is `dVWAP_RTH`,
+- `compute_all_levels` with `session_vwap_enabled=False` produces neither
+  `dVWAP_RTH` nor `dVWAP`,
+- exact bar-by-bar cumulative VWAP values for `dVWAP_RTH` and for `dVWAP`
+  across ETH+RTH,
+- output column names are `dVWAP_RTH` and `dVWAP`,
 - index length matches input,
-- session reset across two RTH sessions,
+- `dVWAP_RTH` session reset across two RTH sessions,
 - session 1 last value does not carry to session 2,
-- ETH bars before RTH emit NaN,
-- ETH bars after RTH close emit NaN,
-- only RTH bars have non-NaN dVWAP,
+- ETH bars before/after RTH emit `NaN` for `dVWAP_RTH` and non-`NaN` for `dVWAP`,
+- only RTH bars have non-NaN `dVWAP_RTH`,
 - zero-volume single bar emits NaN,
 - zero-volume then positive volume: NaN then valid VWAP,
 - multiple zero-volume bars then valid VWAP,
@@ -338,10 +345,13 @@ Implemented tests in `tests/test_stage3_session_vwap.py` (28 tests):
 - unsupported instrument raises ValueError,
 - naive timestamp raises ValueError,
 - disabled mode accepts naive timestamps / unsupported anchor / unsupported instrument,
-- existing level columns unchanged when VWAP disabled,
-- no dVWAP column without explicit enable,
-- dVWAP column present when enabled,
-- future-shock: appending future RTH bars does not change prior values,
+- existing level columns unchanged when VWAP disabled or when VWAP enabled
+  (additive only),
+- no session-VWAP columns without explicit enable,
+- both columns present when enabled,
+- `dVWAP_RTH` math unchanged vs RTH-only cumulative baseline,
+- future-shock: appending future bars does not change prior `dVWAP_RTH` /
+  `dVWAP` values,
 - future-shock across sessions,
 - session column derived from instrument config when absent,
 - NQ instrument supported.
@@ -351,7 +361,9 @@ Acceptance criteria:
 - `dVWAP_RTH` starts only at RTH session open.
 - It updates causally bar by bar.
 - It resets correctly at the next RTH session.
-- Non-RTH bars always emit `NaN`.
+- Non-RTH bars always emit `NaN` for `dVWAP_RTH`.
+- `dVWAP` starts at CME session open, includes ETH+RTH, and resets at the next CME open.
+- Enabling the gate does not mutate existing non-VWAP level columns; `dVWAP_RTH` math is unchanged.
 
 ---
 
@@ -634,7 +646,7 @@ PR breakdown, which was a planning artefact and is no longer maintained):
 ```
 Stage 1 — Level plumbing / stubs (PR #68)
 Stage 2 — Pivots (PR #69)
-Stage 3 — Developing session VWAP (dVWAP_RTH)
+Stage 3 — Developing session VWAPs (dVWAP_RTH + dVWAP)
 Stage 4 — Single Prints (TPO 30m, four scalar columns)
 Stage 5 — APOC / pAPOC (profile-based, A-period POC)
 Stage 6 — UI and Persistence
