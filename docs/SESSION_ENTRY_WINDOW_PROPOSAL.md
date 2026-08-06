@@ -600,7 +600,7 @@ Mandatory (from `ENGINEERING_PROPOSAL.md` §4.2), plus feature-specific items:
 
 | Milestone | Status | PR |
 |---|---|---|
-| SW0 Proposal + golden confirmation | Proposal landed; legacy + OTF golden gate green (`23 passed` on `test_golden_master` + `test_otf_golden`) | this PR |
+| SW0 Proposal + golden confirmation | Proposal landed; legacy + OTF golden gate green (`23 passed` on `test_golden_master` + `test_otf_golden`) | [#286](https://github.com/AccumuLatata/ThesisTester/pull/286) |
 | SW1 Post-hoc Focus | Not started | — |
 | SW2 Engine admission + golden | Not started | — |
 | SW3 API + Backtest UI | Not started | — |
