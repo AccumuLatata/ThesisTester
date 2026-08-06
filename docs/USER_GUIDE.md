@@ -38,8 +38,9 @@ Signals, Backtest, research path, how to start
 4. **Signals** — generate confluence zones and candidate entries (OTF is not
    applied on this page).
 5. **Backtest** — set SL/TP, costs, exposure, intrabar model; **Run backtest**.
-6. Later pages (Grid, Time, Validation, Report, Bundles, Portfolio) refine and
-   export — covered in later Help sections.
+6. **Grid Search** / **Time Analysis** / **Validation and robustness** refine
+   diagnostics; **Report Export** / **Research Bundles** / **Portfolio** export
+   or combine results (see those Help sections).
 
 **What it is not.** Completing the path does not prove an edge. In-sample KPIs
 are diagnostics. Ask Help for how-tos; use Discuss results for run metrics.
@@ -408,7 +409,8 @@ artifact, signals.csv, trades.csv, grid_results, checklist, display timezone
 |---|---|---|
 | `Display/export timezone` | TZ used in exported labels | Does not rewrite engine session time |
 | Session artifacts checklist | Shows which blocks are present | Optional diagnostics stay empty until run |
-| Download buttons | JSON artifact, Markdown report, per-table CSVs | Incomplete session → sparse files |
+| **Download JSON artifact** / **Download Markdown report** | Primary report downloads | Incomplete session → sparse files |
+| Per-table CSV downloads | Optional extracts when tables exist | — |
 | Inspect previous artifact | Upload `research_artifact.json` read-only | Preview only — does not restore a live session |
 
 **How to use.**
@@ -416,7 +418,8 @@ artifact, signals.csv, trades.csv, grid_results, checklist, display timezone
 1. Complete upstream research (core path: setup, signals, trades).
 2. Check the session / OTF artifact checklists.
 3. Set display/export timezone.
-4. Download JSON / Markdown / available CSVs.
+4. Use **Download JSON artifact**, **Download Markdown report**, and any
+   available CSV downloads.
 
 **What it is not.**
 
@@ -444,10 +447,10 @@ snapshot, hash identity, restore session, record and discuss, portable state
 
 | Control | Meaning | Common pitfall |
 |---|---|---|
-| Export preview | Which artifacts will be included | Empty session → nothing meaningful to export |
+| **Export preview** | Which artifacts will be included | Empty session → nothing meaningful to export |
 | **Download research bundle** | Writes a timestamped zip | Bundle ≠ live broker state |
 | **Upload research bundle** + **Import bundle into session** | Restores included artifacts into session | Re-check classic context after import |
-| Thesis recording actions (when available) | Record/discuss a thesis-bound run | Discuss needs a recorded run, not only live trades |
+| **Thesis recording** (when available) | **Record and discuss this run** / **Discuss this run** | Discuss needs a recorded run, not only live trades |
 
 **How to use.**
 
@@ -455,7 +458,7 @@ snapshot, hash identity, restore session, record and discuss, portable state
 2. Review **Export preview** → **Download research bundle**.
 3. On another session: upload the zip → review contents → **Import bundle into
    session** → open the listed pages.
-4. Optionally use thesis **Record and discuss** / **Discuss this run** when a
+4. Optionally use **Record and discuss this run** / **Discuss this run** when a
    thesis context is active.
 
 **What it is not.**
@@ -464,7 +467,9 @@ snapshot, hash identity, restore session, record and discuss, portable state
   job).
 - Import restores research artifacts; it does not re-prove metrics or invent
   missing batteries.
-- Hash/identity checks protect integrity — treat failed checks as fail-closed.
+- Classic zip import validates manifest/schema/members. `canonical_bundle_hash`
+  fail-closed checks apply when recording/discussing a thesis-bound run — not as
+  a re-hash gate on zip restore itself.
 
 **Related pages.** Report Export; classic pages listed in the import flash
 (Data through Portfolio).

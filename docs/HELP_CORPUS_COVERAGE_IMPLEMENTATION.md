@@ -493,11 +493,13 @@ tests/test_assistant_user_guide_structure.py    # filled-vs-stub + manifest pari
 #### Implemented contract (fill when merged)
 - `docs/USER_GUIDE.md` — filled H2s: Grid Search, Time Analysis, Validation and
   robustness, Report Export, Research Bundles, Portfolio (Related terms + UI
-  labels; diagnostic honesty). Assistant H2s remain `_Stub (HC-0)_`.
+  labels; diagnostic honesty). Assistant H2s remain `_Stub (HC-0)._`.
 - RQ §7.1.4 — allowlist extended with those six H2 titles (HC-1 seven retained).
 - `HELP_CORPUS_MANIFEST` `_USER_GUIDE_SECTIONS` mirrors §7.1.4 (13 H2s).
-- Tests: HC-2 bank Q-H6…Q-H9; Q-D1/D4/D5/D6; Q-H6 Grid Search presence despite
-  `grid`/`sl`/`tp` metric boosts; structure gate updated for HC-2 filled set.
+- Tests: HC-2 bank Q-H6…Q-H9; Q-D1/D4/D5/D6 assert dedicated §5.4 sections
+  (not any leftover metrics chunk); Q-H6 Grid Search presence despite
+  `grid`/`sl`/`tp` metric boosts; USER_GUIDE soft-budget gate; structure gate
+  updated for HC-2 filled set.
 
 ---
 

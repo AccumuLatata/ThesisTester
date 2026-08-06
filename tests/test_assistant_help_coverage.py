@@ -124,17 +124,16 @@ def test_qh6_keeps_grid_search_despite_metric_sl_tp_boosts():
     assert "Ranking metric" in guide.text or "ranking metric" in guide.text.lower()
 
 
-def test_qd1_monte_carlo_retrieves_metrics_or_validation_guide():
+def test_qd1_monte_carlo_retrieves_dedicated_section():
+    """§5.4: Monte Carlo H2 and/or Validation guide — not any leftover metrics chunk."""
     pairs = _selected_pairs("What is Monte Carlo in ThesisTester?")
-    ok = (
-        any(doc_id == "metrics" for doc_id, _ in pairs)
-        or (
-            "user_guide",
-            "Validation and robustness",
-        )
-        in pairs
+    ok = ("metrics", "Monte Carlo path robustness diagnostics (R11)") in pairs or (
+        "user_guide",
+        "Validation and robustness",
+    ) in pairs
+    assert ok, (
+        f"Q-D1 expected metrics/Monte Carlo H2 and/or user_guide/Validation; got {sorted(pairs)}"
     )
-    assert ok, f"Q-D1 expected metrics and/or Validation guide; got {sorted(pairs)}"
 
 
 def test_qd4_research_bundle_retrieves_user_guide():
@@ -144,24 +143,32 @@ def test_qd4_research_bundle_retrieves_user_guide():
     )
 
 
-def test_qd5_walk_forward_retrieves_metrics_or_validation_guide():
+def test_qd5_walk_forward_retrieves_dedicated_section():
+    """§5.4: Walk-forward H2 and/or Validation guide — not any leftover metrics chunk."""
     pairs = _selected_pairs("What is walk-forward validation here?")
-    ok = (
-        any(doc_id == "metrics" for doc_id, _ in pairs)
-        or (
-            "user_guide",
-            "Validation and robustness",
-        )
-        in pairs
+    ok = ("metrics", "Walk-forward / OOS diagnostics metrics") in pairs or (
+        "user_guide",
+        "Validation and robustness",
+    ) in pairs
+    assert ok, (
+        f"Q-D5 expected metrics/Walk-forward H2 and/or user_guide/Validation; got {sorted(pairs)}"
     )
-    assert ok, f"Q-D5 expected metrics and/or Validation guide; got {sorted(pairs)}"
 
 
-def test_qd6_slippage_ticks_retrieves_metrics():
+def test_qd6_slippage_ticks_retrieves_execution_cost_inputs():
+    """§5.4: slippage_ticks definition must hit Execution cost inputs (or Core formulas)."""
     pairs = _selected_pairs("What does slippage_ticks mean?")
-    assert any(doc_id == "metrics" for doc_id, _ in pairs), (
-        f"Q-D6 expected metrics presence; got {sorted(pairs)}"
-    )
+    ok = ("metrics", "Execution cost inputs") in pairs or (
+        "metrics",
+        "Core formulas",
+    ) in pairs
+    assert ok, f"Q-D6 expected metrics/Execution cost inputs or Core formulas; got {sorted(pairs)}"
+    if ("metrics", "Execution cost inputs") in pairs:
+        chunks = _selected_chunks("What does slippage_ticks mean?")
+        text = next(
+            c.text for c in chunks if c.doc_id == "metrics" and c.section == "Execution cost inputs"
+        )
+        assert "slippage_ticks" in text
 
 
 def test_qd2_expectancy_retrieves_core_formulas_definition():
@@ -244,6 +251,17 @@ def test_metrics_h2_bodies_respect_soft_chunk_budget():
         if chunk.section != "__preface__" and len(chunk.text) > 4500
     ]
     assert oversized == [], f"metrics H2 bodies exceed soft budget: {oversized}"
+
+
+def test_user_guide_h2_bodies_respect_soft_chunk_budget():
+    """HC chunk-fit: allowlisted USER_GUIDE H2 bodies stay near ≤ ~4500 chars."""
+    chunks = load_allowlisted_corpus(repo_root=REPO_ROOT, doc_ids=["user_guide"])
+    oversized = [
+        (chunk.section, len(chunk.text))
+        for chunk in chunks
+        if chunk.section != "__preface__" and len(chunk.text) > 4500
+    ]
+    assert oversized == [], f"user_guide H2 bodies exceed soft budget: {oversized}"
 
 
 def test_exposure_definition_prefers_backtest_guide_not_cost_glossary():
