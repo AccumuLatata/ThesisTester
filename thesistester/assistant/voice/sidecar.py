@@ -259,8 +259,7 @@ class SidecarRuntime:
             "mode": record.mode,
             "ws_path": f"/v1/realtime/{record.session_id}",
             "client_url": (
-                f"{self.public_base_url()}/client?"
-                + urlencode({"session_id": record.session_id})
+                f"{self.public_base_url()}/client?" + urlencode({"session_id": record.session_id})
             ),
             "max_session_minutes": self.settings.max_session_minutes,
             # Never include API keys / tokens in public responses.
@@ -441,9 +440,7 @@ def create_sidecar_app(runtime: SidecarRuntime):
         from starlette.routing import Route, WebSocketRoute
         from starlette.websockets import WebSocket as StarletteWebSocket
     except ImportError as exc:  # pragma: no cover - starlette ships with Streamlit stack
-        raise SidecarError(
-            "Starlette is required to run the realtime voice sidecar."
-        ) from exc
+        raise SidecarError("Starlette is required to run the realtime voice sidecar.") from exc
 
     async def health(_: Request) -> JSONResponse:
         return JSONResponse(

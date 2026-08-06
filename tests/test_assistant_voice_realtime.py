@@ -185,9 +185,11 @@ def test_tool_bridge_allowlist_and_injection(tmp_path: Path):
         tool_session=tool_session,
     )
     assert denied["ok"] is False
-    assert "PIPELINE" in (denied.get("error") or "") or "denied" in (
-        denied.get("error") or ""
-    ).lower() or "Unknown" in (denied.get("error") or "")
+    assert (
+        "PIPELINE" in (denied.get("error") or "")
+        or "denied" in (denied.get("error") or "").lower()
+        or "Unknown" in (denied.get("error") or "")
+    )
     denied2 = execute_realtime_tool_bridge(
         name="execute_confirmed_run",
         arguments={},
@@ -336,4 +338,4 @@ def test_page_source_realtime_controls_and_no_xai_socket():
     assert "_register_realtime_session(" in page
     assert "wss://api.x.ai" not in page
     assert "XAI_API_KEY" not in page
-    assert "mode == \"realtime\"" in page or "mode == 'realtime'" in page
+    assert 'mode == "realtime"' in page or "mode == 'realtime'" in page

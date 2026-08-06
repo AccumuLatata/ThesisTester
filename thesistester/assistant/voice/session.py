@@ -144,7 +144,9 @@ def session_exceeded_ttl(
     if not isinstance(created_at, str):
         raise VoiceSessionError("Voice session is missing created_at.")
     created = parse_iso_utc(created_at)
-    current = now.astimezone(timezone.utc) if isinstance(now, datetime) else datetime.now(timezone.utc)
+    current = (
+        now.astimezone(timezone.utc) if isinstance(now, datetime) else datetime.now(timezone.utc)
+    )
     elapsed = current - created
     return elapsed.total_seconds() >= (max_session_minutes * 60)
 

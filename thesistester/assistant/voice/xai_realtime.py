@@ -130,7 +130,9 @@ def _read_streamlit_xai_api_key() -> str | None:
         return None
 
 
-def realtime_websocket_url(*, model: str | None = None, settings: VoiceSettings | None = None) -> str:
+def realtime_websocket_url(
+    *, model: str | None = None, settings: VoiceSettings | None = None
+) -> str:
     """Return the pinned xAI realtime WebSocket URL (server-side only)."""
     resolved = settings or load_voice_settings()
     model_id = (model or resolved.model or "").strip()
