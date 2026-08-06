@@ -291,8 +291,9 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   via Help) has a **single** contract:
   `docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md` (HC-series). Prefer writing
   `docs/USER_GUIDE.md` and amending RQ §7.1 + `help_corpus.py` in the same PR;
-  do not fork `product_help` / merge Help into thesis draft chat; never load
-  `AGENT_GUIDE` into the user Help corpus.
+  follow HC §1.1 for intent-aware retrieval (do not naively demote glossary);
+  never allowlist stub USER_GUIDE H2s; do not fork `product_help` / merge Help
+  into thesis draft chat; never load `AGENT_GUIDE` into the user Help corpus.
 - Realtime voice review (VA-series) has a **single** contract for **voice**:
   `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (rewritten post-RQ; do not add
   a parallel voice plan). VA-1 is already satisfied by RQ-1 — start from VA-0 /
