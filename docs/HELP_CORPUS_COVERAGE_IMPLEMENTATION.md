@@ -2,8 +2,8 @@
 
 **Document type:** Implementation contract (HC-series) — **single source of truth**
 for making product Help explain features and how to use them
-**Status:** proposed — not shipped
-**Date:** 2026-08-06
+**Status:** ✅ complete — HC-0…HC-4 shipped
+**Date:** 2026-08-06 (HC-4 freeze)
 **Owner surface:** Help corpus content + narrow `help_corpus` allowlist/tests
 **Depends on:** RQ series complete
 (`docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` RQ-0…RQ-5), especially RQ-3
@@ -237,8 +237,9 @@ When an HC content PR lands, append rows here (and mirror in test fixtures):
 | Q-H7 | `user_guide` | Time Analysis | — |
 | Q-H8 | `user_guide` | Validation and robustness | — |
 | Q-H9 | `user_guide` | Report Export and/or Research Bundles | either acceptable |
-| Q-D1 | `metrics` | Monte Carlo H2 / whole_file | `user_guide` / Validation and robustness |
+| Q-D1 | `metrics` | Monte Carlo path robustness diagnostics (R11) | `user_guide` / Validation and robustness |
 | Q-D2 | `metrics` | Core formulas (Expectancy) | — |
+| Q-D3 | `otf` | Purpose or §1 — Concept | — |
 | Q-D4 | `user_guide` | Research Bundles | — |
 | Q-D5 | `metrics` | Walk-forward H2 / whole_file | `user_guide` / Validation and robustness |
 | Q-D6 | `metrics` | Execution cost inputs / Core formulas | — |
@@ -593,12 +594,6 @@ thesistester/classic_nav.py                     # optional one-line Help pointer
 - Default-enable Help
 - Corpus sources beyond §7.1
 
-#### Acceptance
-- [ ] Full §5 bank green in CI
-- [ ] Manifest/§7.1 parity gate green
-- [ ] No engine/golden diffs
-- [ ] Series status ✅ in roadmap
-
 #### Regression safety
 Tests + docs (+ tiny parity helpers if needed). No feature creep.
 
@@ -615,8 +610,33 @@ docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md
 # bugfix only if coverage evals expose Help defects — no feature creep
 ```
 
+#### Acceptance
+- [x] Full §5 bank green in CI
+- [x] Manifest/§7.1 parity gate green
+- [x] No engine/golden diffs
+- [x] Series status ✅ in roadmap
+
 #### Implemented contract (fill when merged)
-_Pending implementation._
+- `tests/test_assistant_help_coverage.py` — HC-4 frozen `_HC4_RETRIEVAL_BANK`
+  for every §5 Q-D*/Q-H* question (incl. Q-D3); parametrized fixtures;
+  `_HC4_USER_GUIDE_H2_FREEZE` parity across RQ §7.1.4, HC §6.1, and
+  `HELP_CORPUS_MANIFEST`; Q-R* named-gate inventory check.
+- `tests/test_assistant_llm_evaluations.py` — pointer to HC-4 coverage bank
+  (RQ-5 honesty gates unchanged).
+- Docs: series status ✅; roadmap ✅; ASSUMPTIONS USER_GUIDE-backed Help note;
+  AGENT_GUIDE maintenance pointer; manual release smoke checklist below.
+
+#### Manual release smoke checklist (UI)
+Ask in Research Assistant **Help / how it works** (with Help enabled):
+
+1. How do I import data and set instrument/timezone?
+2. How do I configure a setup in Setup Builder?
+3. How do I run a grid search and interpret the best SL/TP?
+4. How do I run validation / Monte Carlo / WFA?
+5. When should I use Help vs Discuss results?
+6. What is expectancy_r?
+7. What is a research bundle?
+8. What was my best SL on this run? → must remediate to Discuss results
 
 ---
 
@@ -726,7 +746,7 @@ Constraints:
 | HC-1 | ✅ Implemented — Data→Backtest how-tos + §7.1.4 allowlist + §1.1 retrieval |
 | HC-2 | ✅ Implemented — Grid→Portfolio/Bundles/Report how-tos + allowlist + bank |
 | HC-3 | ✅ Implemented — Assistant/research-mode how-tos + allowlist + discoverability |
-| HC-4 | Proposed |
+| HC-4 | ✅ Implemented — full §5 bank freeze + §7.1.4↔manifest parity + release gate |
 
 ---
 

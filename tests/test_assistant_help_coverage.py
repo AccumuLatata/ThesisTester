@@ -1,12 +1,16 @@
-"""HC Help coverage bank: retrieval presence for workflow how-tos (HC-1/HC-2)."""
+"""HC Help coverage bank: frozen §5 retrieval + allowlist parity (HC-1…HC-4)."""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+import pytest
 
 from thesistester.assistant.help_corpus import (
     CorpusChunk,
     _tokenize_query,
+    get_corpus_doc_spec,
     load_allowlisted_corpus,
     score_corpus_chunk,
     select_help_corpus_chunks,
@@ -370,3 +374,275 @@ def test_exposure_definition_prefers_backtest_guide_not_cost_glossary():
     cost = next(c for c in corpus if c.doc_id == "metrics" and c.section == "Execution cost inputs")
     q = _tokenize_query(question)
     assert score_corpus_chunk(backtest, query_tokens=q) > score_corpus_chunk(cost, query_tokens=q)
+
+
+# ---------------------------------------------------------------------------
+# HC-4 — full §5 bank freeze + §7.1.4 ↔ manifest parity
+# ---------------------------------------------------------------------------
+
+# Exact USER_GUIDE H2 freeze (RQ §7.1.4 / HC §6.1 / HELP_CORPUS_MANIFEST).
+_HC4_USER_GUIDE_H2_FREEZE = (
+    "Purpose and honesty",
+    "Classic workflow overview",
+    "Data",
+    "Levels",
+    "Setup Builder",
+    "Signals",
+    "Backtest",
+    "Grid Search",
+    "Time Analysis",
+    "Validation and robustness",
+    "Report Export",
+    "Research Bundles",
+    "Portfolio",
+    "Research Assistant (draft, Discuss, Help)",
+    "Research mode on classic pages",
+    "When to use Help vs Discuss results",
+)
+
+# Every §5 question ID must appear in the freeze (retrieval or behavior).
+_HC4_ALL_QUESTION_IDS = frozenset(
+    {
+        "Q-D1",
+        "Q-D2",
+        "Q-D3",
+        "Q-D4",
+        "Q-D5",
+        "Q-D6",
+        "Q-H1",
+        "Q-H2",
+        "Q-H3",
+        "Q-H4",
+        "Q-H5",
+        "Q-H6",
+        "Q-H7",
+        "Q-H8",
+        "Q-H9",
+        "Q-H10",
+        "Q-H11",
+        "Q-H12",
+        "Q-R1",
+        "Q-R2",
+        "Q-R3",
+    }
+)
+
+# Retrieval fixtures: pass if ANY acceptable (doc_id, section) is in the selected set.
+_HC4_RETRIEVAL_BANK: tuple[tuple[str, str, frozenset[tuple[str, str]]], ...] = (
+    (
+        "Q-D1",
+        "What is Monte Carlo in ThesisTester?",
+        frozenset(
+            {
+                ("metrics", "Monte Carlo path robustness diagnostics (R11)"),
+                ("user_guide", "Validation and robustness"),
+            }
+        ),
+    ),
+    (
+        "Q-D2",
+        "What is expectancy_r?",
+        frozenset({("metrics", "Core formulas")}),
+    ),
+    (
+        "Q-D3",
+        "What is an OTF filter?",
+        frozenset(
+            {
+                ("otf", "Purpose"),
+                ("otf", "§1 — Concept"),
+            }
+        ),
+    ),
+    (
+        "Q-D4",
+        "What is a research bundle?",
+        frozenset({("user_guide", "Research Bundles")}),
+    ),
+    (
+        "Q-D5",
+        "What is walk-forward validation here?",
+        frozenset(
+            {
+                ("metrics", "Walk-forward / OOS diagnostics metrics"),
+                ("user_guide", "Validation and robustness"),
+            }
+        ),
+    ),
+    (
+        "Q-D6",
+        "What does slippage_ticks mean?",
+        frozenset(
+            {
+                ("metrics", "Execution cost inputs"),
+                ("metrics", "Core formulas"),
+            }
+        ),
+    ),
+    (
+        "Q-H1",
+        "How do I import data and set instrument/timezone?",
+        frozenset({("user_guide", "Data")}),
+    ),
+    (
+        "Q-H2",
+        "How do I build levels for a session?",
+        frozenset({("user_guide", "Levels")}),
+    ),
+    (
+        "Q-H3",
+        "How do I configure a setup in Setup Builder?",
+        frozenset({("user_guide", "Setup Builder")}),
+    ),
+    (
+        "Q-H4",
+        "How do I generate signals?",
+        frozenset({("user_guide", "Signals")}),
+    ),
+    (
+        "Q-H5",
+        "How do I run a backtest and what do costs/exposure mean?",
+        frozenset({("user_guide", "Backtest")}),
+    ),
+    (
+        "Q-H6",
+        "How do I run a grid search and interpret the best SL/TP?",
+        frozenset({("user_guide", "Grid Search")}),
+    ),
+    (
+        "Q-H7",
+        "How do I use Time Analysis?",
+        frozenset({("user_guide", "Time Analysis")}),
+    ),
+    (
+        "Q-H8",
+        "How do I run validation / Monte Carlo / WFA?",
+        frozenset({("user_guide", "Validation and robustness")}),
+    ),
+    (
+        "Q-H9",
+        "How do I export a report or research bundle?",
+        frozenset(
+            {
+                ("user_guide", "Report Export"),
+                ("user_guide", "Research Bundles"),
+            }
+        ),
+    ),
+    (
+        "Q-H10",
+        "How do I link a thesis and record/discuss a classic run?",
+        frozenset(
+            {
+                ("user_guide", "Research mode on classic pages"),
+                ("user_guide", "Research Assistant (draft, Discuss, Help)"),
+            }
+        ),
+    ),
+    (
+        "Q-H11",
+        "When should I use Help vs Discuss results?",
+        frozenset(
+            {
+                ("user_guide", "When to use Help vs Discuss results"),
+                ("user_guide", "Research Assistant (draft, Discuss, Help)"),
+            }
+        ),
+    ),
+    (
+        "Q-H12",
+        "How do I confirm a RunSpec before running research?",
+        frozenset({("user_guide", "Research Assistant (draft, Discuss, Help)")}),
+    ),
+)
+
+
+def _parse_fenced_h2_list(markdown: str, *, heading_prefix: str) -> tuple[str, ...]:
+    """Parse a ```text fenced H2 list that follows ``heading_prefix``."""
+    heading_idx = markdown.find(heading_prefix)
+    assert heading_idx >= 0, f"missing heading {heading_prefix!r}"
+    fence_match = re.search(
+        r"```text\n(.*?)```",
+        markdown[heading_idx:],
+        flags=re.DOTALL,
+    )
+    assert fence_match is not None, f"missing ```text fence after {heading_prefix!r}"
+    titles: list[str] = []
+    for raw_line in fence_match.group(1).splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("## "):
+            line = line[3:].strip()
+        titles.append(line)
+    return tuple(titles)
+
+
+def test_hc4_full_section_5_retrieval_bank_freeze():
+    """HC-4: every §5 definition/how-to question has a deterministic retrieval fixture."""
+    bank_ids = {qid for qid, _question, _accept in _HC4_RETRIEVAL_BANK}
+    expected_retrieval_ids = {qid for qid in _HC4_ALL_QUESTION_IDS if not qid.startswith("Q-R")}
+    assert bank_ids == expected_retrieval_ids, (
+        f"HC-4 retrieval bank IDs drifted.\n"
+        f"missing={sorted(expected_retrieval_ids - bank_ids)}\n"
+        f"extra={sorted(bank_ids - expected_retrieval_ids)}"
+    )
+    for qid, question, acceptable in _HC4_RETRIEVAL_BANK:
+        pairs = _selected_pairs(question)
+        assert pairs & acceptable, (
+            f"{qid} expected one of {sorted(acceptable)} in selected set; got {sorted(pairs)}"
+        )
+
+
+@pytest.mark.parametrize(
+    ("qid", "question", "acceptable"),
+    _HC4_RETRIEVAL_BANK,
+    ids=[row[0] for row in _HC4_RETRIEVAL_BANK],
+)
+def test_hc4_parametrized_retrieval_bank(qid: str, question: str, acceptable: frozenset):
+    pairs = _selected_pairs(question)
+    assert pairs & acceptable, (
+        f"{qid} expected one of {sorted(acceptable)} in selected set; got {sorted(pairs)}"
+    )
+
+
+def test_hc4_behavior_question_ids_have_named_gates():
+    """Q-R* honesty IDs must remain covered by named product_help/coverage tests."""
+    product_help = (REPO_ROOT / "tests" / "test_assistant_product_help.py").read_text(
+        encoding="utf-8"
+    )
+    coverage = (REPO_ROOT / "tests" / "test_assistant_help_coverage.py").read_text(encoding="utf-8")
+    assert "test_hc3_frozen_qr1_prompt_remediates_to_discuss" in product_help
+    assert _QR1_FROZEN in product_help
+    assert "test_handle_help_turn_qr2_frozen_prompt_never_dispatches" in product_help
+    assert _QR2_FROZEN in product_help
+    assert "test_qr3_fabricated_setting_absent_from_allowlisted_corpus" in coverage
+    assert _QR3_FROZEN in coverage
+    # Ensure the full §5 ID set is exactly retrieval ∪ behavior.
+    behavior_ids = frozenset({"Q-R1", "Q-R2", "Q-R3"})
+    retrieval_ids = {qid for qid, _q, _a in _HC4_RETRIEVAL_BANK}
+    assert retrieval_ids | behavior_ids == _HC4_ALL_QUESTION_IDS
+
+
+def test_user_guide_manifest_matches_rq_7_1_4_and_hc_6_1():
+    """Fail closed on allowlist drift: manifest == RQ §7.1.4 == HC §6.1."""
+    rq = (REPO_ROOT / "docs" / "RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md").read_text(
+        encoding="utf-8"
+    )
+    hc = (REPO_ROOT / "docs" / "HELP_CORPUS_COVERAGE_IMPLEMENTATION.md").read_text(encoding="utf-8")
+    rq_titles = _parse_fenced_h2_list(rq, heading_prefix="#### 7.1.4 Exact `user_guide`")
+    hc_titles = _parse_fenced_h2_list(hc, heading_prefix="### 6.1 Required shape")
+    assert rq_titles == _HC4_USER_GUIDE_H2_FREEZE
+    assert hc_titles == _HC4_USER_GUIDE_H2_FREEZE
+    spec = get_corpus_doc_spec("user_guide")
+    assert spec.mode == "sections"
+    assert spec.relative_path == "docs/USER_GUIDE.md"
+    assert spec.sections == frozenset(_HC4_USER_GUIDE_H2_FREEZE)
+
+
+def test_qd3_otf_filter_retrieves_otf_purpose_or_concept():
+    """§5.1 Q-D3 — previously uncovered in the unified freeze."""
+    pairs = _selected_pairs("What is an OTF filter?")
+    assert ("otf", "Purpose") in pairs or ("otf", "§1 — Concept") in pairs, (
+        f"Q-D3 expected otf/Purpose or otf/§1 — Concept; got {sorted(pairs)}"
+    )
