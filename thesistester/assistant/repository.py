@@ -1141,32 +1141,52 @@ class LocalThesisRepository:
 
     def _voice_session_path(self, thesis_id: str, session_id: str) -> Path:
         # Lazy import avoids repository ↔ voice.session package cycles.
-        from thesistester.assistant.voice.contracts import validate_voice_session_id
-
-        # Voice ids use vs_… and must not reuse conversation/run ``_ID_RE``.
-        validated = validate_voice_session_id(session_id)
-        return self._thesis_dir(thesis_id) / "voice_sessions" / f"{validated}.json"
-
-    def save_voice_session(self, record: Any) -> Any:
-        """Persist a schema-versioned voice session sibling document (VA-2).
-
-        Creates or overwrites ``voice_sessions/vs_*.json``. Does not widen
-        ``Conversation`` fields or identity rules.
-        """
         from thesistester.assistant.voice.contracts import (
             VoiceContractError,
             validate_voice_session_id,
         )
 
-        self._assert_mutable_root()
-        self._load_thesis(record.thesis_id)
+        # Voice ids use vs_… and must not reuse conversation/run ``_ID_RE``.
         try:
-            validate_voice_session_id(record.session_id)
+            validated = validate_voice_session_id(session_id)
         except VoiceContractError as exc:
-            raise AssistantRepositoryError(str(exc)) from exc
-        path = self._voice_session_path(record.thesis_id, record.session_id)
-        self._write_json_atomic(path, record.to_dict(), exclusive=False)
-        return record
+            raise AssistantRepositoryError("Invalid assistant record identifier.") from exc
+        return self._thesis_dir(thesis_id) / "voice_sessions" / f"{validated}.json"
+
+    def save_voice_session(self, record: Any) -> Any:
+        """Persist a schema-versioned voice session sibling document (VA-2).
+
+        Creates or updates ``voice_sessions/vs_*.json`` with optimistic concurrency
+        on ``revision``. Does not widen ``Conversation`` fields or identity rules.
+        """
+        from dataclasses import replace
+
+        from thesistester.assistant.voice.contracts import (
+            VoiceContractError,
+            VoiceSessionRecord,
+        )
+
+        self._assert_mutable_root()
+        try:
+            validated = VoiceSessionRecord.from_dict(record.to_dict())
+        except (VoiceContractError, AttributeError, TypeError) as exc:
+            raise AssistantRepositoryError("Invalid voice session record.") from exc
+        self._load_thesis(validated.thesis_id)
+        path = self._voice_session_path(validated.thesis_id, validated.session_id)
+        if path.exists():
+            try:
+                existing = VoiceSessionRecord.from_dict(self._read_json(path))
+            except VoiceContractError as exc:
+                raise RepositoryCorruptionError("Invalid voice session document.") from exc
+            if existing.revision != validated.revision:
+                raise RepositoryConflictError("Voice session revision is stale.")
+            to_store = replace(validated, revision=validated.revision + 1)
+            self._write_json_atomic(path, to_store.to_dict(), exclusive=False)
+            return to_store
+        if validated.revision != 1:
+            raise AssistantRepositoryError("New voice sessions must start at revision 1.")
+        self._write_json_atomic(path, validated.to_dict(), exclusive=True)
+        return validated
 
     def get_voice_session(self, thesis_id: str, session_id: str) -> Any:
         """Load one persisted voice session for a thesis."""

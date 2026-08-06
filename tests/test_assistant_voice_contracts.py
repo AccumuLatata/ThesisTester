@@ -177,6 +177,28 @@ def test_voice_session_record_rejects_bad_id_and_results_without_hash():
             created_at="2026-08-06T12:00:00+00:00",
             updated_at="2026-08-06T12:00:00+00:00",
         )
+    with pytest.raises(VoiceContractError, match="thesis_id"):
+        VoiceSessionRecord(
+            session_id=_SESSION_ID,
+            thesis_id="../escape",
+            mode="push_to_talk",
+            channel="product_help",
+            status="active",
+            created_at="2026-08-06T12:00:00+00:00",
+            updated_at="2026-08-06T12:00:00+00:00",
+        )
+    with pytest.raises(VoiceContractError, match="run_"):
+        VoiceSessionRecord(
+            session_id=_SESSION_ID,
+            thesis_id="th_" + "c" * 32,
+            run_id="not-a-run-id",
+            expected_canonical_bundle_hash=_HASH,
+            mode="push_to_talk",
+            channel="results_qa",
+            status="active",
+            created_at="2026-08-06T12:00:00+00:00",
+            updated_at="2026-08-06T12:00:00+00:00",
+        )
     with pytest.raises(VoiceContractError, match="expected_canonical_bundle_hash"):
         VoiceSessionRecord(
             session_id=_SESSION_ID,

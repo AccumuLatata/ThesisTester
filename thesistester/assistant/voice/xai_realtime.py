@@ -143,12 +143,33 @@ def require_xai_api_key() -> str:
     key = _usable_xai_api_key(os.environ.get("XAI_API_KEY"))
     if key is not None:
         return key
-    key = _usable_xai_api_key(_read_streamlit_xai_api_key())
+    key = _read_streamlit_xai_api_key()
     if key is not None:
         return key
     raise VoiceConfigurationError(
         "Set XAI_API_KEY to a rotated credential (env or Streamlit Secrets)."
     )
+
+
+def _resolve_api_key(api_key: str | None) -> str:
+    """Resolve caller-supplied or ambient xAI key; empty/placeholder fail closed."""
+    if api_key is None:
+        return require_xai_api_key()
+    key = _usable_xai_api_key(api_key)
+    if key is None:
+        raise VoiceConfigurationError(
+            "Set XAI_API_KEY to a rotated credential (env or Streamlit Secrets)."
+        )
+    return key
+
+
+def _safe_multipart_token(value: str, *, field_name: str) -> str:
+    """Reject CR/LF/quote tokens that would break multipart framing."""
+    if not isinstance(value, str) or not value.strip():
+        raise VoiceConfigurationError(f"{field_name} must be a non-empty string.")
+    if any(ch in value for ch in ("\r", "\n", '"', "\x00")):
+        raise VoiceConfigurationError(f"{field_name} contains illegal multipart characters.")
+    return value
 
 
 def _encode_multipart(
@@ -159,20 +180,25 @@ def _encode_multipart(
     content_type: str,
     file_bytes: bytes,
 ) -> tuple[bytes, str]:
+    safe_file_field = _safe_multipart_token(file_field, field_name="file_field")
+    safe_filename = _safe_multipart_token(filename, field_name="filename")
+    safe_content_type = _safe_multipart_token(content_type, field_name="content_type")
     boundary = f"----ThesisTesterVoiceBoundary{uuid.uuid4().hex}"
     lines: list[bytes] = []
     for name, value in fields:
+        safe_name = _safe_multipart_token(name, field_name="multipart field name")
+        safe_value = _safe_multipart_token(value, field_name=f"multipart field {safe_name}")
         lines.append(f"--{boundary}\r\n".encode("utf-8"))
-        lines.append(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"))
-        lines.append(value.encode("utf-8"))
+        lines.append(f'Content-Disposition: form-data; name="{safe_name}"\r\n\r\n'.encode("utf-8"))
+        lines.append(safe_value.encode("utf-8"))
         lines.append(b"\r\n")
     # File field last — xAI ignores option fields after the file part.
     lines.append(f"--{boundary}\r\n".encode("utf-8"))
     lines.append(
         (
-            f'Content-Disposition: form-data; name="{file_field}"; '
-            f'filename="{filename}"\r\n'
-            f"Content-Type: {content_type}\r\n\r\n"
+            f'Content-Disposition: form-data; name="{safe_file_field}"; '
+            f'filename="{safe_filename}"\r\n'
+            f"Content-Type: {safe_content_type}\r\n\r\n"
         ).encode("utf-8")
     )
     lines.append(file_bytes)
@@ -328,7 +354,7 @@ def mint_ephemeral_token(
     )
     if not isinstance(ttl, int) or isinstance(ttl, bool) or ttl < 1:
         raise VoiceConfigurationError("expires_after_seconds must be a positive integer.")
-    key = api_key if api_key is not None else require_xai_api_key()
+    key = _resolve_api_key(api_key)
     client = transport or UrllibXAITransport()
     payload = {"expires_after": {"seconds": ttl}}
     last_error: Exception | None = None
@@ -369,9 +395,12 @@ def speech_to_text(
     if not isinstance(audio_bytes, (bytes, bytearray)) or not audio_bytes:
         raise VoiceConfigurationError("STT requires non-empty audio bytes.")
     resolved_settings = settings or load_voice_settings()
-    key = api_key if api_key is not None else require_xai_api_key()
+    key = _resolve_api_key(api_key)
     client = transport or UrllibXAITransport()
-    resolved_type = content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    safe_filename = _safe_multipart_token(filename, field_name="filename")
+    resolved_type = (
+        content_type or mimetypes.guess_type(safe_filename)[0] or "application/octet-stream"
+    )
     fields: list[tuple[str, str]] = []
     if format_text:
         fields.append(("format", "true"))
@@ -388,7 +417,7 @@ def speech_to_text(
                 api_key=key,
                 fields=fields,
                 file_field="file",
-                filename=filename,
+                filename=safe_filename,
                 content_type=resolved_type,
                 file_bytes=bytes(audio_bytes),
                 timeout=timeout,
@@ -420,7 +449,7 @@ def text_to_speech(
     if not isinstance(text, str) or not text.strip():
         raise VoiceConfigurationError("TTS requires non-empty text.")
     resolved_settings = settings or load_voice_settings()
-    key = api_key if api_key is not None else require_xai_api_key()
+    key = _resolve_api_key(api_key)
     client = transport or UrllibXAITransport()
     payload = {
         "text": text,

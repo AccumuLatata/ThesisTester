@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from thesistester.assistant.repository import LocalThesisRepository
+from thesistester.assistant.repository import (
+    AssistantRepositoryError,
+    LocalThesisRepository,
+    RepositoryConflictError,
+)
 from thesistester.assistant.tools import AssistantTools
 from thesistester.assistant.voice.contracts import VoiceTranscriptTurn
 from thesistester.assistant.voice.session import (
@@ -19,6 +23,7 @@ from thesistester.assistant.voice.xai_realtime import (
     VoiceConfigurationError,
     VoiceProviderError,
     _api_key_from_secrets_mapping,
+    _encode_multipart,
     mint_ephemeral_token,
     require_xai_api_key,
     speech_to_text,
@@ -342,3 +347,156 @@ def test_page_modules_do_not_embed_xai_api_key():
         if "XAI_API_KEY" in text:
             offenders.append(path.name)
     assert offenders == []
+
+
+def test_explicit_api_key_empty_or_placeholder_fails_closed(monkeypatch):
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.xai_realtime._read_streamlit_xai_api_key",
+        lambda: None,
+    )
+
+    class JSONTransport:
+        def post_json(self, **kwargs):
+            raise AssertionError("transport must not run for unusable keys")
+
+    for bad in ("", "   ", "REPLACE_WITH_ROTATED_XAI_API_KEY"):
+        with pytest.raises(VoiceConfigurationError, match="XAI_API_KEY"):
+            mint_ephemeral_token(api_key=bad, transport=JSONTransport())
+
+
+def test_multipart_rejects_header_injection_tokens():
+    with pytest.raises(VoiceConfigurationError, match="filename"):
+        _encode_multipart(
+            fields=[("language", "en")],
+            file_field="file",
+            filename='clip.wav"\r\nX-Injected: 1',
+            content_type="audio/wav",
+            file_bytes=b"x",
+        )
+    with pytest.raises(VoiceConfigurationError, match="multipart field"):
+        _encode_multipart(
+            fields=[("language", "en\r\nContent-Disposition: form-data; name=x")],
+            file_field="file",
+            filename="clip.wav",
+            content_type="audio/wav",
+            file_bytes=b"x",
+        )
+
+
+def test_invalid_voice_session_id_raises_repository_error(tmp_path):
+    repository = _repository(tmp_path)
+    thesis = repository.create_thesis(name="bad voice id")
+    with pytest.raises(AssistantRepositoryError, match="Invalid assistant record identifier"):
+        repository.get_voice_session(thesis.thesis_id, "vs_nothex")
+
+
+def test_voice_session_revision_conflict(tmp_path):
+    repository = _repository(tmp_path)
+    thesis = repository.create_thesis(name="occ voice")
+    service = VoiceSessionService(repository, tools=AssistantTools(data_roots=(tmp_path,)))
+    record = service.create_session(
+        thesis.thesis_id,
+        None,
+        mode="push_to_talk",
+        channel="product_help",
+    )
+    assert record.revision == 1
+    stale = record
+    service.append_transcript_turn(
+        thesis.thesis_id,
+        record.session_id,
+        VoiceTranscriptTurn(
+            role="user",
+            text="hello",
+            created_at="2026-08-06T12:00:00+00:00",
+            channel="product_help",
+            path="stt",
+        ),
+    )
+    with pytest.raises(RepositoryConflictError, match="revision"):
+        repository.save_voice_session(stale)
+
+
+def test_help_session_persists_conversation_id_and_retry_flush(tmp_path):
+    repository = _repository(tmp_path)
+    thesis = repository.create_thesis(name="bound conv")
+    conversation = repository.create_conversation(thesis.thesis_id)
+    service = VoiceSessionService(repository, tools=AssistantTools(data_roots=(tmp_path,)))
+    record = service.create_session(
+        thesis.thesis_id,
+        None,
+        mode="push_to_talk",
+        channel="product_help",
+        conversation_id=conversation.conversation_id,
+    )
+    assert record.conversation_id == conversation.conversation_id
+    service.append_transcript_turn(
+        thesis.thesis_id,
+        record.session_id,
+        VoiceTranscriptTurn(
+            role="user",
+            text="What is Help?",
+            created_at="2026-08-06T12:00:00+00:00",
+            channel="product_help",
+            path="stt",
+        ),
+    )
+    ended = service.end_session(thesis.thesis_id, record.session_id)
+    assert ended.status == "ended"
+    refreshed = repository.get_conversation(thesis.thesis_id, conversation.conversation_id)
+    first_count = sum(
+        1 for message in refreshed.messages if message.get("voice_session_id") == record.session_id
+    )
+    assert first_count >= 1
+    # Retry flush must stay idempotent (no duplicate voice messages).
+    service.end_session(
+        thesis.thesis_id,
+        record.session_id,
+        conversation_id=conversation.conversation_id,
+    )
+    again = repository.get_conversation(thesis.thesis_id, conversation.conversation_id)
+    second_count = sum(
+        1 for message in again.messages if message.get("voice_session_id") == record.session_id
+    )
+    assert second_count == first_count
+
+
+def test_results_session_rejects_bundle_outside_data_roots(tmp_path):
+    import json
+
+    repository = _repository(tmp_path)
+    thesis, run, digest, bundle_path = _completed_run_with_bundle(repository, tmp_path)
+    outside = tmp_path.parent / f"outside-voice-{bundle_path.name}"
+    outside.write_bytes(bundle_path.read_bytes())
+    run_path = repository.root / "theses" / thesis.thesis_id / "runs" / f"{run.run_id}.json"
+    payload = json.loads(run_path.read_text(encoding="utf-8"))
+    payload["provenance"] = {
+        "bundle_path": str(outside),
+        "canonical_bundle_hash": digest,
+    }
+    run_path.write_text(json.dumps(payload), encoding="utf-8")
+    service = VoiceSessionService(repository, tools=AssistantTools(data_roots=(tmp_path,)))
+    with pytest.raises(VoiceSessionError, match="outside assistant data roots"):
+        service.create_session(
+            thesis.thesis_id,
+            run.run_id,
+            expected_hash=digest,
+            mode="push_to_talk",
+            channel="results_qa",
+        )
+
+
+def test_save_voice_session_rejects_non_contract_payload(tmp_path):
+    repository = _repository(tmp_path)
+    thesis = repository.create_thesis(name="corrupt voice")
+
+    class Fake:
+        thesis_id = thesis.thesis_id
+        session_id = "vs_" + "a" * 32
+
+        def to_dict(self):
+            return {"not": "a voice session"}
+
+    with pytest.raises(AssistantRepositoryError, match="Invalid voice session record"):
+        repository.save_voice_session(Fake())

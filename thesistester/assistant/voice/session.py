@@ -28,7 +28,6 @@ from thesistester.assistant.voice.contracts import (
 )
 from thesistester.assistant.voice.settings import VoiceSettings, load_voice_settings
 from thesistester.assistant.workspace import require_run_bundle_hash
-from thesistester.research_bundle import canonical_bundle_hash
 
 _VOICE_CHANNELS = frozenset({"results_qa", "product_help"})
 _VOICE_MODES = frozenset({"push_to_talk", "realtime"})
@@ -172,6 +171,7 @@ class VoiceSessionService:
             thesis_id=thesis_id,
             run_id=bound_run_id,
             expected_canonical_bundle_hash=bound_hash,
+            conversation_id=conversation_id,
             mode=mode,
             channel=channel,
             status="active",
@@ -180,6 +180,7 @@ class VoiceSessionService:
             provider=self.settings.provider,
             model=self.settings.model,
             voice=self.settings.voice,
+            revision=1,
         )
         instructions = self.build_honesty_instructions(record)
         required = (
@@ -242,7 +243,17 @@ class VoiceSessionService:
     ) -> VoiceSessionRecord:
         """Mark the session ended and best-effort flush transcript/tool audits."""
         record = self.repository.get_voice_session(thesis_id, session_id)
+        flush_conversation_id = (
+            conversation_id if conversation_id is not None else record.conversation_id
+        )
         if record.status == "ended":
+            if flush_conversation_id is not None:
+                self._flush_to_conversation_best_effort(
+                    thesis_id,
+                    flush_conversation_id,
+                    record,
+                )
+            self._bound_packets.pop(session_id, None)
             return record
         ended_at = _utcnow()
         ended = replace(
@@ -252,10 +263,10 @@ class VoiceSessionService:
             updated_at=ended_at,
         )
         saved = self.repository.save_voice_session(ended)
-        if conversation_id is not None:
+        if flush_conversation_id is not None:
             self._flush_to_conversation_best_effort(
                 thesis_id,
-                conversation_id,
+                flush_conversation_id,
                 saved,
             )
         self._bound_packets.pop(session_id, None)
@@ -295,15 +306,22 @@ class VoiceSessionService:
         bundle_path = run.provenance.get("bundle_path")
         if not isinstance(bundle_path, str) or not bundle_path.strip():
             raise VoiceSessionError("Completed run is missing bundle_path provenance.")
-        path = Path(bundle_path.strip())
-        if not path.is_file():
+        if self.tools is None:
+            raise VoiceSessionError(
+                "AssistantTools is required to bind a hash-verified evidence packet."
+            )
+        # Containment/existence checks before any byte read (tools also re-verify hash).
+        try:
+            resolved = Path(bundle_path.strip()).expanduser().resolve()
+        except OSError as exc:
+            raise VoiceSessionError("Bound research bundle path is invalid.") from exc
+        if not any(resolved.is_relative_to(root.resolve()) for root in self.tools.data_roots):
+            raise VoiceSessionError("Bound research bundle path is outside assistant data roots.")
+        if not resolved.is_file():
             raise VoiceSessionError("Bound research bundle file is missing.")
-        digest = canonical_bundle_hash(path.read_bytes())
-        if digest != normalized_hash:
-            raise VoiceSessionError("Bundle hash does not match recorded run provenance.")
         packet = self._load_evidence_packet(
             run,
-            bundle_path=str(path),
+            bundle_path=str(resolved),
             expected_hash=normalized_hash,
         )
         return packet, normalized_run_id, normalized_hash
@@ -325,7 +343,7 @@ class VoiceSessionService:
                 expected_hash=expected_hash,
                 provenance=dict(run.provenance or {}),
             )
-        except AssistantToolError as exc:
+        except (AssistantToolError, OSError) as exc:
             raise VoiceSessionError(str(exc)) from exc
         return EvidencePacket.from_dict(payload)
 
@@ -338,6 +356,12 @@ class VoiceSessionService:
         try:
             conversation = self.repository.get_conversation(thesis_id, conversation_id)
         except AssistantRepositoryError:
+            return
+        # Idempotent: a prior flush (or retry after end) must not duplicate turns.
+        if any(
+            isinstance(message, Mapping) and message.get("voice_session_id") == record.session_id
+            for message in conversation.messages
+        ):
             return
         revision = conversation.revision
         for turn in record.transcript:

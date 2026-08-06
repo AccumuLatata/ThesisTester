@@ -13,6 +13,9 @@ from typing import Any, Mapping, Sequence
 VOICE_CONTRACT_SCHEMA_VERSION = 1
 VOICE_SESSION_KIND = "voice_session"
 _VOICE_SESSION_ID_RE = re.compile(r"^vs_[0-9a-f]{32}$")
+_THESIS_ID_RE = re.compile(r"^th_[0-9a-f]{32}$")
+_RUN_ID_RE = re.compile(r"^run_[0-9a-f]{32}$")
+_CONVERSATION_ID_RE = re.compile(r"^conv_[0-9a-f]{32}$")
 _VOICE_MODES = frozenset({"push_to_talk", "realtime"})
 _VOICE_CHANNELS = frozenset({"results_qa", "product_help"})
 _VOICE_SESSION_STATUSES = frozenset({"active", "ended"})
@@ -296,12 +299,14 @@ class VoiceSessionRecord:
     updated_at: str
     run_id: str | None = None
     expected_canonical_bundle_hash: str | None = None
+    conversation_id: str | None = None
     ended_at: str | None = None
     provider: str = "xai"
     model: str = "grok-voice-think-fast-2.0"
     voice: str = "eve"
     transcript: tuple[VoiceTranscriptTurn, ...] = ()
     tool_invocations: tuple[VoiceToolInvocation, ...] = ()
+    revision: int = 1
     schema_version: int = VOICE_CONTRACT_SCHEMA_VERSION
     kind: str = VOICE_SESSION_KIND
 
@@ -313,7 +318,8 @@ class VoiceSessionRecord:
             self.session_id
         ):
             raise VoiceContractError("session_id must match vs_[0-9a-f]{32}.")
-        _require_nonempty_str(self.thesis_id, field_name="thesis_id")
+        if not isinstance(self.thesis_id, str) or not _THESIS_ID_RE.fullmatch(self.thesis_id):
+            raise VoiceContractError("thesis_id must match th_[0-9a-f]{32}.")
         if self.mode not in _VOICE_MODES:
             raise VoiceContractError(f"Unsupported voice mode: {self.mode}.")
         if self.channel not in _VOICE_CHANNELS:
@@ -327,10 +333,21 @@ class VoiceSessionRecord:
             self.expected_canonical_bundle_hash,
             field_name="expected_canonical_bundle_hash",
         )
+        conversation_id = _optional_str(self.conversation_id, field_name="conversation_id")
         ended_at = _optional_str(self.ended_at, field_name="ended_at")
+        if conversation_id is not None and not _CONVERSATION_ID_RE.fullmatch(conversation_id):
+            raise VoiceContractError("conversation_id must match conv_[0-9a-f]{32}.")
+        if (
+            not isinstance(self.revision, int)
+            or isinstance(self.revision, bool)
+            or self.revision < 1
+        ):
+            raise VoiceContractError("revision must be a positive integer.")
         if self.channel == "results_qa":
-            if not run_id or not run_id.strip():
-                raise VoiceContractError("results_qa voice sessions require a non-empty run_id.")
+            if not isinstance(run_id, str) or not _RUN_ID_RE.fullmatch(run_id):
+                raise VoiceContractError(
+                    "results_qa voice sessions require run_id matching run_[0-9a-f]{32}."
+                )
             if not isinstance(expected_hash, str) or not _SHA256_RE.fullmatch(expected_hash):
                 raise VoiceContractError(
                     "results_qa voice sessions require expected_canonical_bundle_hash "
@@ -373,6 +390,7 @@ class VoiceSessionRecord:
             "thesis_id",
             "run_id",
             "expected_canonical_bundle_hash",
+            "conversation_id",
             "mode",
             "channel",
             "status",
@@ -384,6 +402,7 @@ class VoiceSessionRecord:
             "voice",
             "transcript",
             "tool_invocations",
+            "revision",
         }
         unknown = sorted(set(payload) - allowed)
         if unknown:
@@ -411,6 +430,7 @@ class VoiceSessionRecord:
             thesis_id=payload["thesis_id"],
             run_id=payload.get("run_id"),
             expected_canonical_bundle_hash=payload.get("expected_canonical_bundle_hash"),
+            conversation_id=payload.get("conversation_id"),
             mode=payload["mode"],
             channel=payload["channel"],
             status=payload["status"],
@@ -424,6 +444,7 @@ class VoiceSessionRecord:
             voice=_require_nonempty_str(payload.get("voice", "eve"), field_name="voice"),
             transcript=tuple(VoiceTranscriptTurn.from_dict(item) for item in transcript_raw),
             tool_invocations=tuple(VoiceToolInvocation.from_dict(item) for item in tools_raw),
+            revision=payload.get("revision", 1),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -434,6 +455,7 @@ class VoiceSessionRecord:
             "thesis_id": self.thesis_id,
             "run_id": self.run_id,
             "expected_canonical_bundle_hash": self.expected_canonical_bundle_hash,
+            "conversation_id": self.conversation_id,
             "mode": self.mode,
             "channel": self.channel,
             "status": self.status,
@@ -445,6 +467,7 @@ class VoiceSessionRecord:
             "voice": self.voice,
             "transcript": [item.to_dict() for item in self.transcript],
             "tool_invocations": [item.to_dict() for item in self.tool_invocations],
+            "revision": self.revision,
         }
 
 

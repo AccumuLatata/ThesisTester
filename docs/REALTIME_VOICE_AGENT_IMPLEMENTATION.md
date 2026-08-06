@@ -398,11 +398,11 @@ docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md     # related-docs / VA↔HC pointer
 - Live network in CI
 
 #### Acceptance
-- [ ] Mint without key → structured fail closed
-- [ ] Results session without verified bundle → fail closed
-- [ ] Instructions always include: evidence/docs-only, no trade advice, numbers only from tools/packet/corpus rules, sample-size/OOS caveats for results
-- [ ] No `XAI_API_KEY` appears in any page module
-- [ ] OpenAI `llm.py` untouched except if a shared HTTP helper extract is required (prefer not)
+- [x] Mint without key → structured fail closed
+- [x] Results session without verified bundle → fail closed
+- [x] Instructions always include: evidence/docs-only, no trade advice, numbers only from tools/packet/corpus rules, sample-size/OOS caveats for results
+- [x] No `XAI_API_KEY` appears in any page module
+- [x] OpenAI `llm.py` untouched except if a shared HTTP helper extract is required (prefer not)
 
 #### Regression safety
 New modules only. Flag still false → no user-visible change. C2/RQ OpenAI
@@ -437,8 +437,15 @@ docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
 - Persistence: `LocalThesisRepository.save_voice_session` /
   `get_voice_session` under `theses/{thesis_id}/voice_sessions/vs_*.json`
   (`kind: voice_session`); does not widen `Conversation` or reuse `_ID_RE`.
+  Saves validate via `VoiceSessionRecord.from_dict`, use optimistic
+  ``revision`` concurrency, and map invalid `vs_` ids to
+  `AssistantRepositoryError`. Optional bound `conversation_id` is persisted.
   `end_session` best-effort flushes transcript/tool audits via
-  `append_conversation_message` (messages omit `choices`).
+  `append_conversation_message` (messages omit `choices`; flush is idempotent).
+- xAI helpers fail closed on empty/placeholder explicit `api_key=` and reject
+  CR/LF/`"` tokens in multipart filename/fields.
+- Results bind resolves bundle paths inside `AssistantTools.data_roots` before
+  any byte read; hash verification stays in `build_bundle_evidence_packet`.
 - `tests/test_assistant_voice_session.py` gates key fail-closed, mocked HTTP,
   bad/missing hash, Help-without-run, instruction policy strings, `vs_` ids,
   and no `XAI_API_KEY` in page modules.
