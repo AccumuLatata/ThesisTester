@@ -129,12 +129,26 @@ def test_hc2_howto_bank_retrieves_primary_user_guide_sections():
         )
 
 
+# Instructional phrases that must appear in the primary HC-3 how-to body.
+_HC3_BODY_PHRASES = {
+    "Q-H10": ("Create and link thesis", "Record and discuss this run"),
+    "Q-H11": ("Help / how it works", "Discuss results"),
+    "Q-H12": ("Confirm validated RunSpec", "clarifications"),
+}
+
+
 def test_hc3_howto_bank_retrieves_primary_user_guide_sections():
     for qid, question, doc_id, section in _HC3_HOWTO_BANK:
-        pairs = _selected_pairs(question)
+        chunks = _selected_chunks(question)
+        pairs = {(chunk.doc_id, chunk.section) for chunk in chunks}
         assert (doc_id, section) in pairs, (
             f"{qid} expected primary {(doc_id, section)} in selected set; got {sorted(pairs)}"
         )
+        primary = next(c for c in chunks if c.doc_id == doc_id and c.section == section)
+        for phrase in _HC3_BODY_PHRASES[qid]:
+            assert phrase in primary.text, (
+                f"{qid} primary body must include {phrase!r}; section={section!r}"
+            )
 
 
 def test_qr3_fabricated_setting_absent_from_allowlisted_corpus():
@@ -142,7 +156,11 @@ def test_qr3_fabricated_setting_absent_from_allowlisted_corpus():
     chunks = load_allowlisted_corpus(repo_root=REPO_ROOT)
     haystack = "\n".join(chunk.text for chunk in chunks).lower()
     assert "turbo_alpha_mode" not in haystack
-    pairs = _selected_pairs(_QR3_FROZEN)
+    # Selected corpus for the frozen prompt also must not introduce the setting.
+    selected = _selected_chunks(_QR3_FROZEN)
+    selected_haystack = "\n".join(chunk.text for chunk in selected).lower()
+    assert "turbo_alpha_mode" not in selected_haystack
+    pairs = {(chunk.doc_id, chunk.section) for chunk in selected}
     assert ("user_guide", "Setup Builder") in pairs or (
         "user_guide",
         "When to use Help vs Discuss results",

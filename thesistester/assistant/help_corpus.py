@@ -1,8 +1,8 @@
 """Frozen Help corpus allowlist and pure loaders (RQ-0 / HC amends).
 
 Encodes ``docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`` §7.1 exactly
-(including HC-1 ``user_guide`` §7.1.4). No orchestrator wiring, network I/O,
-or OpenAI calls.
+(including HC-1…HC-3 ``user_guide`` §7.1.4 full §6.1 set). No orchestrator
+wiring, network I/O, or OpenAI calls.
 """
 
 from __future__ import annotations

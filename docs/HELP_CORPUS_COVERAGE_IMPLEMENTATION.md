@@ -554,21 +554,25 @@ thesistester/classic_nav.py                     # optional one-line Help pointer
 ```
 
 #### Acceptance
-- [x] Q-H10…Q-H12 pass
-- [x] Q-R1 still remediates to Discuss; Q-R3 refuses fabricated settings
+- [x] Q-H10…Q-H12 pass (primary section present + instructional body phrases)
+- [x] Q-R1 still remediates to Discuss; Q-R2 never dispatches; Q-R3 fabricated
+  setting absent from allowlisted corpus (no deterministic Help refuse path in
+  HC-3 — grounding/prompt honesty only)
 - [x] Draft chat still ignores Help history
 - [x] Help remains discoverable from Research Assistant without UI redesign
 
 #### Implemented contract (fill when merged)
 - `docs/USER_GUIDE.md` — filled H2s: Research Assistant (draft, Discuss, Help),
-  Research mode on classic pages, When to use Help vs Discuss results.
+  Research mode on classic pages, When to use Help vs Discuss results (exact UI
+  labels; Draft optional; Confirm after Validate + clarifications clear).
 - RQ §7.1.4 — full §6.1 H2 set allowlisted (16 sections).
 - `HELP_CORPUS_MANIFEST` mirrors §7.1.4.
 - Discoverability: Research Assistant Help expander caption lists example
   topics + USER_GUIDE-backed note; README Documentation links USER_GUIDE.
-- Tests: Q-H10…Q-H12 bank; Q-R1 frozen remediation; Q-R2 no dispatch; Q-R3
-  fabricated setting absent from corpus; draft chat ignores `product_help`
-  history; Help expander caption gate.
+- Tests: Q-H10…Q-H12 bank with body-phrase asserts; Q-R1 frozen remediation;
+  Q-R2 no dispatch + refuse content; Q-R3 fabricated setting absent from
+  corpus; draft chat ignores `product_help` history; Help expander caption
+  gate.
 
 ---
 

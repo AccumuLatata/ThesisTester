@@ -538,8 +538,8 @@ confirmed research, linked runs, clarification, specification version
 | `Assistant chat` | Thesis drafting only — choices + clarifications | Not for run metrics or product docs |
 | `Help / how it works` | Allowlisted docs + capability registry | Not a second results explainer |
 | `Advanced: draft, runs & compare` | Optional draft → validate → confirm → run path | Classic pages remain the primary workflow |
-| `Draft research plan` | Persists an immutable specification version | `Apply` controls only stage the session draft |
-| `Validate executable RunSpec` → `Confirm validated RunSpec` | Confirmation-/schema-gated | Confirm appears only after Validate succeeds |
+| `Draft research plan` (optional) | Persists an immutable specification version | `Apply` controls only stage the session draft |
+| `Validate executable RunSpec` → `Confirm validated RunSpec` | Confirmation-/schema-gated | Confirm appears only after Validate succeeds **and** clarifications are clear |
 | `Run confirmed research` | Executes only a **Confirmed** spec version | Apply/Draft alone never start compute |
 | **Discuss results** (under Linked runs) | Multi-turn Q&A on one completed run | Needs a thesis-recorded run; hash-verified evidence |
 
@@ -547,8 +547,8 @@ confirmed research, linked runs, clarification, specification version
 
 1. Create or select a thesis in the sidebar.
 2. Draft via **Assistant chat** and/or Advanced structured controls.
-3. **Draft research plan** → **Validate executable RunSpec** → **Confirm
-   validated RunSpec**.
+3. Optionally **Draft research plan**, then **Validate executable RunSpec**.
+   Resolve clarifications if shown, then **Confirm validated RunSpec**.
 4. Open a Confirmed specification → **Run confirmed research**.
 5. For completed-run questions, open Advanced → Linked runs → **Discuss
    results**. For feature how-tos, open **Help / how it works**.
@@ -566,7 +566,7 @@ via Help.
 ## Research mode on classic pages
 
 **What it is.** Classic **research mode** links a thesis on classic pages so you
-can **Record and discuss** or **Discuss this run** without leaving the
+can **Record and discuss this run** or **Discuss this run** without leaving the
 Data → … → Backtest path.
 
 **When to use it.** When you want classic exploration under a thesis identity
@@ -588,8 +588,9 @@ policy, manual record, all executions, exit research mode, identity badge
 
 **How to use.**
 
-1. On Setup Builder, open **Thesis research context** → Create and link / Link
-   existing (enters research mode).
+1. On Setup Builder, open **Thesis research context** → tabs **Create thesis** /
+   **Link existing** → **Create and link thesis** or **Link thesis** (enters
+   research mode).
 2. Run the classic path (Data → Levels → Signals → Backtest, etc.).
 3. After a completed backtest (or bundle with backtest artifacts): **Record and
    discuss this run**, or **Discuss this run** if already recorded.

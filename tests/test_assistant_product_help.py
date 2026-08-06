@@ -417,6 +417,14 @@ def test_handle_help_turn_qr2_frozen_prompt_never_dispatches(tmp_path, monkeypat
     execute.assert_not_called()
     dispatch.assert_not_called()
     assert result.payload.get("remediation") is not True
+    assistant = repository.get_conversation(
+        thesis.thesis_id, conversation.conversation_id
+    ).messages[-1]
+    assert assistant["channel"] == PRODUCT_HELP_CHANNEL
+    content = str(assistant.get("content", "")).lower()
+    assert "cannot run" in content or "docs only" in content or "no compute" in content
+    assert "pipeline started" not in content
+    assert "running the research pipeline" not in content
 
 
 def test_handle_chat_turn_excludes_help_channel(tmp_path, monkeypatch):
