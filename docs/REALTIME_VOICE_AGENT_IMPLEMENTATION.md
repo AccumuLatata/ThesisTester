@@ -237,7 +237,7 @@ secret, and spoken-grounding series on top of a finished text substrate.
 | ID | Status | Role |
 |---|---|---|
 | VA-1 | ✅ Done via RQ-1 | Text Discuss substrate |
-| VA-0 | Remaining | Contracts + flag + docs freeze |
+| VA-0 | ✅ Done | Contracts + flag + docs freeze |
 | VA-2 | Remaining | xAI credentials + session service + STT/TTS helpers |
 | VA-3 | Remaining | Read-only voice tools + grounding helpers |
 | VA-4 | Remaining | Push-to-talk spoken Discuss/Help (first user-visible) |
@@ -337,7 +337,16 @@ docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md     # related-docs / VA↔HC pointer
 ```
 
 #### Implemented contract (fill when merged)
-_Pending implementation._
+- `config/assistant.toml` ships `[assistant.voice]` exactly as §4 with
+  `enabled = false`.
+- Package `thesistester/assistant/voice/` exports schema-versioned
+  `VoiceSessionRecord`, `VoiceTranscriptTurn`, `VoiceToolInvocation`,
+  `GroundingVerdict` plus `load_voice_settings()` (missing section → disabled
+  safe defaults; non-boolean `enabled` fails closed).
+- `tests/test_assistant_voice_contracts.py` gates schema round-trip, tracked
+  defaults, and RQ/LLM loader coexistence with the new section.
+- No network, UI, orchestrator, session_state, or third-party dependency
+  changes. Runtime STT/TTS/session/tools remain VA-2+.
 
 ---
 
@@ -775,7 +784,7 @@ Constraints:
 | VA-1 (text Discuss via RQ-1) | ✅ Implemented (RQ) |
 | RQ help/projections/focus/evals | ✅ Implemented (RQ-2…RQ-5) — voice depends, does not re-own |
 | HC Help corpus coverage | ✅ Implemented (HC-0…HC-4) — spoken Help inherits; VA does not re-own |
-| VA-0 | Proposed |
+| VA-0 | ✅ Implemented (contracts/flag/docs freeze) |
 | VA-2 | Proposed |
 | VA-3 | Proposed |
 | VA-4 | Proposed |

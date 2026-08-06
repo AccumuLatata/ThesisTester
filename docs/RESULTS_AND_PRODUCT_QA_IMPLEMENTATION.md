@@ -28,7 +28,7 @@ belongs in a later PR or is rejected.
 | `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` | ✅ Implemented AIA foundations — keep for invariants; not the results/help surface |
 | `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` | ✅ Implemented C2 thesis-draft / explain / provenance loop |
 | `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` | ✅ Implemented CAI classic↔assistant bridge; RQ-4 owns Discuss deep-link polish |
-| `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` | Voice-only series (post-RQ / post-HC); VA-1 text substrate is RQ-1 here; Help corpus substrate is HC-complete; VA-0/VA-2+ remain there |
+| `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` | Voice-only series (post-RQ / post-HC); VA-1 text substrate is RQ-1 here; Help corpus substrate is HC-complete; VA-0 contracts/flag freeze landed there; VA-2+ remain there |
 | `docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md` | ✅ HC-0…HC-4 Help **content/allowlist** coverage (USER_GUIDE + §7.1.4 + §5 bank); amends §7.1 only via HC maintenance PRs — does not reopen RQ-3 channel logic |
 | `docs/ENGINEERING_ROADMAP.md` | Index / status tracker — points here for RQ work |
 

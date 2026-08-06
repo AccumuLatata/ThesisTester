@@ -534,26 +534,30 @@ other than the last bar in the dataset.
   funnel through routed capabilities (typically `PIPELINE.run_experiment` plus
   evidence/export). They are audited by `audit_capability_registry()`.
 
-## Voice agent (VA-series — proposed, not shipped)
+## Voice agent (VA-series — contracts frozen; runtime not shipped)
 - Spoken review of completed runs / product help is specified in
   `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (single VA-series contract;
-  post-RQ rebase). Text Discuss / Help remain owned by
+  post-RQ / post-HC). Text Discuss / Help remain owned by
   `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`. VA-1 text substrate is RQ-1;
-  voice runtime (VA-0 / VA-2…VA-6) is not implemented yet.
+  Help corpus substrate is HC-complete. **VA-0 landed:**
+  `[assistant.voice]` defaults (`enabled = false`) in `config/assistant.toml`
+  plus schema-versioned records / `load_voice_settings()` under
+  `thesistester/assistant/voice/`. No STT/TTS, mic UI, tools, or sidecar yet
+  (VA-2…VA-6).
 - Product shape: voice is a spoken transport over the same RQ channels
   (Discuss results + Help), not a second evidence dialect. It must omit draft
   `choices`, must not dispatch compute, and must fail closed on ungrounded
   numbers.
-- When shipped, voice is opt-in (`assistant.voice.enabled = false` by
-  default). Results sessions bind hash-verified evidence; Help sessions reuse
-  the §7.1 corpus path. Provider failure falls back to deterministic Explain
-  and typed Discuss/Help.
+- Voice remains opt-in (`assistant.voice.enabled = false` by default through
+  VA-6). Results sessions bind hash-verified evidence; Help sessions reuse
+  the §7.1 / HC corpus path. Provider failure falls back to deterministic
+  Explain and typed Discuss/Help.
 - Planned provider: xAI Grok Voice pinned to `grok-voice-think-fast-2.0` with
   server-side `XAI_API_KEY` for STT/TTS/realtime. Primary push-to-talk channel
   turns still use the OpenAI structured client via `handle_results_turn` /
   `handle_help_turn`. Realtime mode uses a localhost sidecar that owns the
   xAI WebSocket (browser never holds the long-lived key). Raw audio is not
-  stored by default.
+  stored by default (`store_audio = false`).
 
 ## OTF filter (One Timeframing)
 

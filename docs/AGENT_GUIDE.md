@@ -298,19 +298,19 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   corpus.
 - Realtime voice review (VA-series) has a **single** contract for **voice**:
   `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (rewritten post-RQ / post-HC;
-  do not add a parallel voice plan). VA-1 is already satisfied by RQ-1 — start
-  from VA-0 / VA-2+. Spoken Help inherits the HC-complete USER_GUIDE corpus +
-  RQ §7.1.4 allowlist — do not reopen HC or widen §7.1 from VA. Implement only
-  the active VA PR’s **Files allowed to touch** list; keep
-  `assistant.voice.enabled` default false; prefer calling shipped
-  `handle_results_turn` / `handle_help_turn` for spoken Discuss/Help rather
-  than forking channel or corpus logic; never expose compute/`web_search`/
-  `x_search`/`file_search`/`mcp` tools on voice sessions; results/voice may
-  use RO `BUNDLE.import` but never `execute_confirmed_run` / `PIPELINE.*`;
-  reuse C2-6/RQ grounding token rules; results/help/voice messages must not
-  include `choices`. Document any new `assistant_voice_*` keys in
-  `ARCHITECTURE.md` and `ASSISTANT_SESSION_KEYS` in the same PR. Keep HC
-  coverage gates green (`tests/test_assistant_help_coverage.py`).
+  do not add a parallel voice plan). VA-1 is already satisfied by RQ-1; **VA-0
+  contracts/flag freeze is landed** — continue from VA-2+. Spoken Help inherits
+  the HC-complete USER_GUIDE corpus + RQ §7.1.4 allowlist — do not reopen HC or
+  widen §7.1 from VA. Implement only the active VA PR’s **Files allowed to
+  touch** list; keep `assistant.voice.enabled` default false; prefer calling
+  shipped `handle_results_turn` / `handle_help_turn` for spoken Discuss/Help
+  rather than forking channel or corpus logic; never expose compute/
+  `web_search`/`x_search`/`file_search`/`mcp` tools on voice sessions;
+  results/voice may use RO `BUNDLE.import` but never `execute_confirmed_run` /
+  `PIPELINE.*`; reuse C2-6/RQ grounding token rules; results/help/voice
+  messages must not include `choices`. Document any new `assistant_voice_*`
+  keys in `ARCHITECTURE.md` and `ASSISTANT_SESSION_KEYS` in the same PR. Keep
+  HC coverage gates green (`tests/test_assistant_help_coverage.py`).
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned

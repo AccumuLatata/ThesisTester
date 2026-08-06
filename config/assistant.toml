@@ -28,3 +28,19 @@ enabled = true
 # Overrides top-level [assistant].max_history_messages for this channel.
 max_history_messages = 12
 max_corpus_chars = 24000
+
+[assistant.voice]
+# Spoken Discuss/Help transport (VA-series). Default remains false through VA-6.
+enabled = false
+provider = "xai"
+model = "grok-voice-think-fast-2.0"   # pin dated id; do not use rolling latest in CI/evals
+voice = "eve"
+mode = "push_to_talk"              # VA-4; "realtime" added in VA-5
+channels = ["results_qa", "product_help"]
+max_session_minutes = 15
+store_audio = false
+allow_web_search = false
+require_tool_for_numbers = true
+ephemeral_token_ttl_seconds = 300
+max_history_messages = 12
+max_retries = 2
