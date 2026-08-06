@@ -13,7 +13,7 @@ Assistant-related contracts:
 | Classic ↔ Assistant bridge | `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` (CAI) | ✅ Implemented (CAI-0…CAI-10) |
 | Thesis draft / explain loop | `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2) | ✅ Implemented (through PR6) |
 | AIA Research Assistant foundations | `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` (AIA) | ✅ Implemented — do not open new results/help PRs from AIA text |
-| Session entry window research loop | `docs/SESSION_ENTRY_WINDOW_PROPOSAL.md` (SW) | 📋 **Proposed** — SW0–SW7 (Focus → Admit → Grid/WFA inherit); opt-in; golden-gated per `ENGINEERING_PROPOSAL.md` §4 |
+| Session entry window research loop | `docs/SESSION_ENTRY_WINDOW_PROPOSAL.md` (SW) | 📋 **Proposed** — SW0–SW7 (+ optional SW2b); Focus → Admit → Grid/WFA/sensitivity inherit; normative contracts C1–C9; opt-in; golden-gated per `ENGINEERING_PROPOSAL.md` §4 |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
 new results/help/voice work must not reopen them. All are additive to this
@@ -1144,18 +1144,20 @@ Closes the Discover → Scope → Re-sim → Optimize → Prove loop when Time A
 shows a strong RTH segment (e.g. `rth_open_30m`) while the all-day Performance
 Summary looks poor.
 
-**Canonical spec:** `docs/SESSION_ENTRY_WINDOW_PROPOSAL.md`
+**Canonical spec:** `docs/SESSION_ENTRY_WINDOW_PROPOSAL.md` (normative contracts **C1–C9**)
 
 | Milestone | Intent |
 |---|---|
 | SW0 | Proposal lock + legacy golden gate confirmation |
-| SW1 | Post-hoc Focus summary (no re-sim) |
-| SW2 | Opt-in `entry_window` engine admission + enabled golden |
+| SW1 | Post-hoc Focus summary (no re-sim); shared RTH export if first |
+| SW2 | Opt-in `entry_window` admission + enabled golden + Focus≡Admit (C7) |
+| SW2b | Optional: audit `no_new_entries_after` → `after_entry_cutoff` |
 | SW3 | API + Backtest Admit controls |
 | SW4 | Time Analysis Focus + Promote handoff |
-| SW5 | Grid + Validation/WFA inherit window (fixed constraint) |
+| SW5 | Grid + Validation/WFA/sensitivity inherit window (fixed constraint) |
 | SW6 | Setup persistence, export, assistant honesty |
 | SW7 | Hardening + release evidence |
 
 **Regression posture:** additive, default-off; legacy `trades_legacy` golden
-must stay value-identical; Focus and Admit must never be conflated in UI copy.
+must stay value-identical; Focus and Admit must never be conflated in UI copy;
+C7 identity required when engine-touched.
