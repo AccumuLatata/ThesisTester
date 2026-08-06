@@ -467,7 +467,12 @@ about metric nouns (`How is my expectancy computed?`) stay in Help.
 Zero-overlap Help retrieval packs the allowlist prefix (manifest order), not
 alphabetical `doc_id`. Help digit grounding uses number-token matching (not
 bare substring); the Help system prompt matches that contract. Conversation
-hydration clears `assistant_product_help_draft` / `product-help-input`.
+hydration clears `assistant_product_help_draft` / `product-help-input` /
+`assistant_clear_product_help_input`. Help and Discuss results clear their
+text inputs via deferred flags (`assistant_clear_product_help_input`,
+`assistant_clear_results-qa-input-*`) applied only before `st.text_input`
+on the next run — never by writing the widget key after bind in the same
+run (StreamlitAPIException).
 Thesis chat remains draft-only; one-shot Explain / LLM explain remain
 available beside Discuss results.
 
@@ -482,8 +487,10 @@ Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 so draft/validation/hydration/handoff/flash/results/help/deep-link/voice staging cannot leak.
 `clear_thesis_scoped_state` also deletes ephemeral Streamlit widget keys
 prefixed `results-qa-input-` / `product-help-input` /
-`voice-results-audio-` / `voice-help-audio` so Discuss/Help text-input and
-PTT audio widgets cannot revive a cleared draft after a thesis switch. Discuss results assistant
+`assistant_clear_results-qa-input-` / `voice-results-audio-` /
+`voice-help-audio`, plus `assistant_clear_product_help_input`, so
+Discuss/Help text-input clear flags and PTT audio widgets cannot revive a
+cleared draft after a thesis switch. Discuss results assistant
 `content` embeds path-cited Claims (via `format_results_qa_reply_content`) for
 plain-text auditability. `handle_chat_turn` draft history excludes
 channel-tagged messages and channel-less `role: tool` audit lines so RO

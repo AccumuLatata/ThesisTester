@@ -395,11 +395,7 @@ def _usable_openai_api_key(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
     key = value.strip().lstrip("\ufeff").strip()
-    if (
-        len(key) >= 2
-        and key[0] == key[-1]
-        and key[0] in {"'", '"'}
-    ):
+    if len(key) >= 2 and key[0] == key[-1] and key[0] in {"'", '"'}:
         key = key[1:-1].strip()
     if not key or key == _OPENAI_API_KEY_PLACEHOLDER:
         return None
