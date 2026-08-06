@@ -113,6 +113,10 @@ class GroundingVerdict:
         unknown = sorted(set(payload) - allowed)
         if unknown:
             raise VoiceContractError(f"Unknown GroundingVerdict keys: {unknown}")
+        required = {"grounded", "audited_text"}
+        missing = sorted(required - set(payload))
+        if missing:
+            raise VoiceContractError(f"Missing GroundingVerdict keys: {missing}")
         allowed_tokens = payload.get("allowed_digit_tokens", [])
         uncited_tokens = payload.get("uncited_digit_tokens", [])
         if not isinstance(allowed_tokens, list) or not isinstance(uncited_tokens, list):
@@ -178,6 +182,10 @@ class VoiceTranscriptTurn:
         unknown = sorted(set(payload) - allowed)
         if unknown:
             raise VoiceContractError(f"Unknown VoiceTranscriptTurn keys: {unknown}")
+        required = {"role", "text", "created_at", "channel", "path"}
+        missing = sorted(required - set(payload))
+        if missing:
+            raise VoiceContractError(f"Missing VoiceTranscriptTurn keys: {missing}")
         grounding_raw = payload.get("grounding")
         grounding = None if grounding_raw is None else GroundingVerdict.from_dict(grounding_raw)
         return cls(
@@ -245,6 +253,10 @@ class VoiceToolInvocation:
         unknown = sorted(set(payload) - allowed)
         if unknown:
             raise VoiceContractError(f"Unknown VoiceToolInvocation keys: {unknown}")
+        required = {"tool_name", "arguments", "ok", "result", "created_at"}
+        missing = sorted(required - set(payload))
+        if missing:
+            raise VoiceContractError(f"Missing VoiceToolInvocation keys: {missing}")
         arguments = payload.get("arguments")
         result = payload.get("result")
         if not isinstance(arguments, dict) or not isinstance(result, dict):
@@ -339,6 +351,12 @@ class VoiceSessionRecord:
             not isinstance(item, VoiceTranscriptTurn) for item in self.transcript
         ):
             raise VoiceContractError("transcript must be a tuple of VoiceTranscriptTurn.")
+        for index, turn in enumerate(self.transcript):
+            if turn.channel != self.channel:
+                raise VoiceContractError(
+                    f"transcript[{index}].channel must match session channel "
+                    f"{self.channel!r} (do not mix histories)."
+                )
         if not isinstance(self.tool_invocations, tuple) or any(
             not isinstance(item, VoiceToolInvocation) for item in self.tool_invocations
         ):
@@ -399,9 +417,11 @@ class VoiceSessionRecord:
             created_at=payload["created_at"],
             updated_at=payload["updated_at"],
             ended_at=payload.get("ended_at"),
-            provider=str(payload.get("provider", "xai")),
-            model=str(payload.get("model", "grok-voice-think-fast-2.0")),
-            voice=str(payload.get("voice", "eve")),
+            provider=_require_nonempty_str(payload.get("provider", "xai"), field_name="provider"),
+            model=_require_nonempty_str(
+                payload.get("model", "grok-voice-think-fast-2.0"), field_name="model"
+            ),
+            voice=_require_nonempty_str(payload.get("voice", "eve"), field_name="voice"),
             transcript=tuple(VoiceTranscriptTurn.from_dict(item) for item in transcript_raw),
             tool_invocations=tuple(VoiceToolInvocation.from_dict(item) for item in tools_raw),
         )

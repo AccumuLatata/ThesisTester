@@ -1,7 +1,7 @@
 # Realtime Voice Agent — Implementation Contract
 
 **Document type:** Implementation contract (VA-series) — **single source of truth for voice**
-**Status:** proposed — not shipped (post-RQ / post-HC rebase)
+**Status:** VA-0 landed (contracts/flag/docs freeze); runtime voice not shipped (post-RQ / post-HC)
 **Date:** 2026-08-06
 **Owner surface:** `thesistester/assistant/voice/` + Research Assistant page only
 **Provider (speech):** xAI Grok Voice (`grok-voice-think-fast-2.0`; see §4)
@@ -311,10 +311,10 @@ stops at half-duplex.
 - Enabling UI affordances
 
 #### Acceptance
-- [ ] `load_voice_settings().enabled is False` on current config
-- [ ] `load_llm_settings()` / RQ settings loaders still succeed with `[assistant.voice]` present
-- [ ] Existing RQ/C2 tests green; no new third-party dependency
-- [ ] `ruff` + `pytest -q` green
+- [x] `load_voice_settings().enabled is False` on current config
+- [x] `load_llm_settings()` / RQ settings loaders still succeed with `[assistant.voice]` present
+- [x] Existing RQ/C2 tests green; no new third-party dependency
+- [x] `ruff` + `pytest -q` green
 
 #### Regression safety
 Additive package + config defaults. No engine, no golden, no C2/RQ path edits.
@@ -343,8 +343,12 @@ docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md     # related-docs / VA↔HC pointer
   `VoiceSessionRecord`, `VoiceTranscriptTurn`, `VoiceToolInvocation`,
   `GroundingVerdict` plus `load_voice_settings()` (missing section → disabled
   safe defaults; non-boolean `enabled` fails closed).
+- Contract `from_dict` paths fail closed: missing required keys raise
+  `VoiceContractError` (not bare `KeyError`); `provider`/`model`/`voice` reject
+  null/non-string values; transcript turn `channel` must match the session
+  channel (no mixed histories).
 - `tests/test_assistant_voice_contracts.py` gates schema round-trip, tracked
-  defaults, and RQ/LLM loader coexistence with the new section.
+  defaults, RQ/LLM loader coexistence, and the fail-closed parse rules above.
 - No network, UI, orchestrator, session_state, or third-party dependency
   changes. Runtime STT/TTS/session/tools remain VA-2+.
 

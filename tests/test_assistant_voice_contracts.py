@@ -206,3 +206,57 @@ def test_validate_voice_session_id_helper():
     assert validate_voice_session_id(_SESSION_ID) == _SESSION_ID
     with pytest.raises(VoiceContractError, match="vs_"):
         validate_voice_session_id("vs_nothex")
+
+
+def test_voice_session_from_dict_rejects_null_provider_model_voice():
+    base = {
+        "session_id": _SESSION_ID,
+        "thesis_id": "th_" + "c" * 32,
+        "mode": "push_to_talk",
+        "channel": "product_help",
+        "status": "active",
+        "created_at": "2026-08-06T12:00:00+00:00",
+        "updated_at": "2026-08-06T12:00:00+00:00",
+    }
+    for field in ("provider", "model", "voice"):
+        payload = {**base, field: None}
+        with pytest.raises(VoiceContractError, match=field):
+            VoiceSessionRecord.from_dict(payload)
+    with pytest.raises(VoiceContractError, match="provider"):
+        VoiceSessionRecord.from_dict({**base, "provider": 123})
+
+
+def test_nested_contract_from_dict_missing_keys_raise_voice_contract_error():
+    with pytest.raises(VoiceContractError, match="Missing GroundingVerdict keys"):
+        GroundingVerdict.from_dict({"audited_text": "x"})
+    with pytest.raises(VoiceContractError, match="Missing VoiceTranscriptTurn keys"):
+        VoiceTranscriptTurn.from_dict(
+            {"text": "hi", "created_at": "t", "channel": "results_qa", "path": "p"}
+        )
+    with pytest.raises(VoiceContractError, match="Missing VoiceToolInvocation keys"):
+        VoiceToolInvocation.from_dict(
+            {"arguments": {}, "ok": True, "result": {}, "created_at": "t"}
+        )
+
+
+def test_voice_session_rejects_transcript_channel_mismatch():
+    turn = VoiceTranscriptTurn(
+        role="user",
+        text="help me",
+        created_at="2026-08-06T12:00:00+00:00",
+        channel="product_help",
+        path="handle_help_turn",
+    )
+    with pytest.raises(VoiceContractError, match="do not mix histories"):
+        VoiceSessionRecord(
+            session_id=_SESSION_ID,
+            thesis_id="th_" + "c" * 32,
+            run_id="run_" + "d" * 32,
+            expected_canonical_bundle_hash=_HASH,
+            mode="push_to_talk",
+            channel="results_qa",
+            status="active",
+            created_at="2026-08-06T12:00:00+00:00",
+            updated_at="2026-08-06T12:00:00+00:00",
+            transcript=(turn,),
+        )
