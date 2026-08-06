@@ -32,6 +32,37 @@ _VOICE_TOOL_NAMES = frozenset(
         "compare_two_runs",
     }
 )
+# Server-side xAI tool types that must never appear on ThesisTester voice sessions.
+_FORBIDDEN_REALTIME_TOOL_TYPES = frozenset({"web_search", "x_search", "file_search", "mcp"})
+
+
+def realtime_function_tool_schemas() -> tuple[dict[str, Any], ...]:
+    """Return VA-3 function tool schemas safe for xAI ``session.update``."""
+    return tuple(dict(schema) for schema in VOICE_TOOL_SCHEMAS)
+
+
+def assert_realtime_tools_allowlisted(tools: list[Any] | tuple[Any, ...] | None) -> None:
+    """Fail closed if a session tool list includes search/mcp or unknown functions."""
+    if tools is None:
+        return
+    if not isinstance(tools, (list, tuple)):
+        raise VoiceToolError("Realtime tools payload must be a list.")
+    for index, tool in enumerate(tools):
+        if not isinstance(tool, Mapping):
+            raise VoiceToolError(f"Realtime tools[{index}] must be an object.")
+        tool_type = str(tool.get("type") or "").strip()
+        if tool_type in _FORBIDDEN_REALTIME_TOOL_TYPES:
+            raise VoiceToolError(
+                f"Forbidden realtime tool type {tool_type!r} is not allowed on voice sessions."
+            )
+        if tool_type != "function":
+            raise VoiceToolError(
+                f"Realtime tools may only include custom function tools; got type={tool_type!r}."
+            )
+        name = str(tool.get("name") or "").strip()
+        if name not in _VOICE_TOOL_NAMES:
+            raise VoiceToolError(f"Realtime function tool not in VA-3 allowlist: {name!r}.")
+
 
 VOICE_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
     {
