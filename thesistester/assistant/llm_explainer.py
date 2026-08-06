@@ -3,7 +3,9 @@
 Provider output is untrusted. Structured claims must cite evidence paths; any
 numeric token that is not grounded in a cited packet value is rejected before
 rendering. Percent-suffixed narration maps to fractional claim values; packet
-caveat numbers are scoped to echoing caveat lines only.
+caveat numbers are scoped to echoing caveat lines only. Cited string values
+contribute digits only for pure numeric tokens or ``HH:MM`` clock bucket
+labels (so ``\"08:30\"`` can be narrated); hashes/paths/column names do not.
 """
 
 from __future__ import annotations
@@ -40,6 +42,9 @@ _EXPLANATION_SCHEMA = {
 
 # Capture standalone numeric tokens, including optional percent suffixes.
 _NUMBER_RE = re.compile(r"(?<![A-Za-z0-9_/])[-+]?(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?%?")
+# Safe string claim values that may contribute digit tokens (not hashes/paths).
+_CLOCK_BUCKET_RE = re.compile(r"^\d{1,2}:\d{2}$")
+_NUMERIC_STRING_RE = re.compile(r"^[-+]?(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?%?$")
 
 
 class LLMEvidenceError(ValueError):
@@ -91,18 +96,32 @@ def _normalize_number_token(token: str) -> str:
     return format(value, ".12g")
 
 
-def _allowed_number_tokens(values: list[Any]) -> set[str]:
-    """Build normalized numeric tokens accepted for cited packet values."""
-    allowed: set[str] = set()
-    for value in values:
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            continue
-        allowed.add(_normalize_number_token(str(value)))
-    return allowed
-
-
 def _extract_number_tokens(text: str) -> list[str]:
     return [_normalize_number_token(match.group(0)) for match in _NUMBER_RE.finditer(text)]
+
+
+def _allowed_number_tokens(values: list[Any]) -> set[str]:
+    """Build normalized numeric tokens accepted for cited packet values.
+
+    Int/float claim values contribute directly. String claim values contribute
+    only when they are pure numeric tokens or ``HH:MM`` / ``H:MM`` clock bucket
+    labels (so citing ``\"08:30\"`` grounds narration of that bracket). Hash,
+    path, and column-name strings do not launder digits.
+    """
+    allowed: set[str] = set()
+    for value in values:
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            allowed.add(_normalize_number_token(str(value)))
+            continue
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                continue
+            if _CLOCK_BUCKET_RE.fullmatch(text) or _NUMERIC_STRING_RE.fullmatch(text):
+                allowed.update(_extract_number_tokens(text))
+    return allowed
 
 
 def _token_grounded(raw_token: str, *, allowed: set[str]) -> bool:

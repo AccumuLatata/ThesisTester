@@ -4,7 +4,8 @@ Reuses C2-6 / RQ number-token normalization from ``llm_explainer``. Does not
 trust raw model speech; returns a schema-versioned ``GroundingVerdict``.
 
 Allowlist policy mirrors C2 ``assert_llm_explanation_grounded``:
-- claim **values** (int/float) only — not free-text claim/caveat digits
+- claim **values**: int/float, plus safe string forms (pure numeric /
+  ``HH:MM`` clock bucket labels) — not free-text claim/caveat/hash digits
 - tool results contribute int/float leaves only (not hash/run_id strings)
 
 VA-4 also formats speakable text (summary + short caveats; no claim-path
@@ -20,6 +21,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from thesistester.assistant.explainer import EvidenceClaim, EvidencePacket
 from thesistester.assistant.llm_explainer import (
     _NUMBER_RE,
+    _allowed_number_tokens,
     _extract_number_tokens,
     _normalize_number_token,
     _token_grounded,
@@ -55,17 +57,13 @@ def extract_digit_tokens(text: str) -> tuple[str, ...]:
 
 
 def allowed_tokens_from_values(values: Iterable[Any]) -> set[str]:
-    """Build an allowlist from typed numeric claim/tool values (C2 parity).
+    """Build an allowlist from cited claim/tool values (C2 / RQ parity).
 
-    Strings are intentionally ignored — caveat/hash/run_id text must not
-    launder inventable spoken metrics.
+    Delegates to ``llm_explainer._allowed_number_tokens`` so spoken grounding
+    accepts the same safe string forms (pure numeric / clock buckets) while
+    still ignoring hashes, paths, and column-name strings.
     """
-    allowed: set[str] = set()
-    for value in values:
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            continue
-        allowed.add(_normalize_number_token(str(value)))
-    return allowed
+    return _allowed_number_tokens(list(values))
 
 
 def allowed_tokens_from_packet(packet: EvidencePacket) -> set[str]:

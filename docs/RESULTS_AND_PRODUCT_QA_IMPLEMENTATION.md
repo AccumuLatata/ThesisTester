@@ -77,7 +77,7 @@ Example help questions:
 | Draft history isolation | Additive history selection only (not a prompt/schema change): `handle_chat_turn` must exclude messages with `channel` set (treat absent/`None` as draft). Page draft hydration (`assistant_draft_prompt` / `choices`) must ignore non-draft channels. Lands in RQ-1 (helpers may land in RQ-0). |
 | Results load path | `handle_results_turn` may use RO `BUNDLE.import` (evidence) via the existing explain/evidence path; never `execute_confirmed_run` / `PIPELINE.*` mutators |
 | Canonical evidence | Hash-verified `EvidencePacket` is the only numeric source for results answers |
-| Grounding | Reuse C2-6 / `llm_explainer` token/percent/caveat rules; uncited numbers fail closed before persist/render. `followups` fail closed if they contain digit tokens not present in cited claim values (or omit numbers entirely). |
+| Grounding | Reuse C2-6 / `llm_explainer` token/percent/caveat rules; uncited numbers fail closed before persist/render. `followups` fail closed if they contain digit tokens not present in cited claim values (or omit numbers entirely). Cited claim values include int/float plus safe string forms: pure numeric tokens and `HH:MM` / `H:MM` clock bucket labels (so narrating a cited `08:30` bracket is grounded); hash/path/column-name strings do not contribute digits. |
 | Projection grounding (RQ-2) | Ground against an ephemeral turn context / packet copy that includes `results.projections.*`; never mutate on-disk bundles. Path existence uses the same object the model saw. |
 | Draft hydration | Results and help assistant messages **must omit** `choices` |
 | Message tags | Additive message fields only: `"channel"` ∈ {`results_qa`, `product_help`}, plus `"run_id"` for results turns. No Conversation schema bump. Leave `Conversation.selected_run_id` unused in RQ (binding is message `run_id` + classic focus). |
@@ -653,7 +653,7 @@ best entry time and best SL/TP — without letting the LLM invent rankings.
 #### In scope
 | Item | Detail |
 |---|---|
-| Code | `thesistester/assistant/results_projections.py` — pure functions: `project_grid_rankings(packet_or_grid, *, top_n, metric)` and `project_time_rankings(time_grouped_summary, *, bucket_col, metric, min_trades)` returning JSON-safe tables with stable paths |
+| Code | `thesistester/assistant/results_projections.py` — pure functions: `project_grid_rankings(packet_or_grid, *, top_n, metric)` and `project_time_rankings(time_grouped_summary, *, bucket_col, metric, min_trades)` returning JSON-safe tables with stable paths. `resolve_time_bucket_col` prefers the requested bucket column when present on rows, else falls back through `entry_rth_segment` → `entry_30min_bucket` → `entry_hour_bucket` so Time Analysis clock-bucket exports still produce a non-null `best.bucket`. |
 | Code | Default `metric` for grid rankings: packet / `best_grid_result` recorded ranking metric, else the configured grid metric from assumptions when the grid was run. **Do not** let the LLM choose the ranking metric. |
 | Code | Merge projections into an **ephemeral** results-turn context under `results.projections.*` (packet copy / turn-only object). Grounding path resolution and number audit must use that same extended object. Must not mutate on-disk bundles. |
 | Code | When `assistant.results_qa.allow_time_enrichment = true` **and** `time_grouped_summary` missing, `handle_results_turn` may dispatch RO `TIME.analyze` on the bound bundle, then project rankings; audit one tool-transcript entry; fail closed on hash/provenance errors |

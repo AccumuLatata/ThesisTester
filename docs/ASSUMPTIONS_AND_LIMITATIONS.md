@@ -489,14 +489,17 @@ other than the last bar in the dataset.
   `[assistant.results_qa]` / `[assistant.product_help]` and ships the inert
   §7.1 Help corpus allowlist (`thesistester/assistant/help_corpus.py`).
   **RQ-1** ships multi-turn Discuss results (`handle_results_turn` /
-  `results_qa`) on hash-verified evidence. **RQ-2** adds ephemeral
+  `results_qa`) on hash-verified evidence.   **RQ-2** adds ephemeral
   `results.projections.*` grid/time rankings (empty bundle grid tables fall
   back to packet `best_grid_result`; unknown ranking-metric names are
   sanitized via the aggregate/directional allowlist preference chain and
   synced into the ephemeral metric-source path; JSON-null all-wins profit
   factors rank as +inf; projection `best` pins packet `best_grid_result`
   when re-rank disagrees; bundle table load failures warn via
-  `bundle_tables_warning` instead of mimicking an empty grid) and optional RO
+  `bundle_tables_warning` instead of mimicking an empty grid; time bucket
+  column falls back from `entry_rth_segment` to `entry_30min_bucket` /
+  `entry_hour_bucket` when the preferred key is absent; cited `HH:MM`
+  clock labels ground their digit tokens) and optional RO
   `TIME.analyze` enrichment when
   `assistant.results_qa.allow_time_enrichment=true` (default `false`).
   **RQ-3** ships documentation-grounded Help (`handle_help_turn` /
@@ -519,7 +522,10 @@ other than the last bar in the dataset.
   excludes `results_qa` / `product_help` turns and tool/audit lines so
   multi-turn Discuss/Help cannot starve thesis context.
 - LLM explanations must cite packet paths; uncited numerical tokens are rejected
-  before render. When provenance includes a fingerprint, dataset identity is
+  before render. Cited claim values may be int/float, pure numeric strings, or
+  `HH:MM` / `H:MM` clock bucket labels (digits from those labels are
+  allowlisted); hash/path/column-name strings do not launder digits. When
+  provenance includes a fingerprint, dataset identity is
   available at `assumptions.dataset.dataset_fingerprint` (and mirrored at
   `assumptions.dataset_fingerprint`); the nested key is omitted when fingerprint
   is absent. The model cannot execute tools, mutate confirmed RunSpecs, bypass
