@@ -47,7 +47,8 @@ _HELP_SCHEMA = {
 _SYSTEM_PROMPT = (
     "Answer only from the supplied help corpus chunks and registry digest. "
     "Cite every used source with citations[{doc_id, section}] that match "
-    'attached chunks (registry uses section="digest"). Do not invent product '
+    'attached chunks. For the capability registry, cite doc_id="registry" and '
+    'section="digest" (never doc_id="registry_digest"). Do not invent product '
     "features, capabilities, or run metrics. Do not answer the user's backtest "
     "or grid performance for a specific completed run — if asked, say to use "
     "Discuss results under Advanced → Linked runs. Prefer number-free followups. "

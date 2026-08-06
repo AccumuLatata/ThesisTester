@@ -542,6 +542,7 @@ if st.session_state["assistant_hydrated_conversation_id"] != conversation_id:
     # different conversation's Help thread.
     st.session_state["assistant_product_help_draft"] = ""
     st.session_state.pop("product-help-input", None)
+    st.session_state.pop("assistant_clear_product_help_input", None)
     st.session_state["assistant_hydrated_conversation_id"] = conversation_id
     invalidate_validation(st.session_state)
 
@@ -630,6 +631,11 @@ if help_settings.enabled:
             with st.chat_message(display):
                 st.write(body)
         help_input_key = "product-help-input"
+        # Clear only before the widget is bound — Streamlit forbids writing a
+        # widget key after st.text_input(..., key=...) in the same run.
+        if st.session_state.pop("assistant_clear_product_help_input", False):
+            st.session_state[help_input_key] = ""
+            st.session_state["assistant_product_help_draft"] = ""
         if help_input_key not in st.session_state:
             st.session_state[help_input_key] = str(
                 st.session_state.get("assistant_product_help_draft", "")
@@ -664,7 +670,7 @@ if help_settings.enabled:
                                 "message", "Unable to answer this help question."
                             )
                         )
-                    st.session_state[help_input_key] = ""
+                    st.session_state["assistant_clear_product_help_input"] = True
                     st.session_state["assistant_product_help_draft"] = ""
                     flash_level = "info" if result.payload.get("remediation") else "success"
                     flash_message = (
@@ -1902,7 +1908,12 @@ with st.expander(
                                 # content via format_results_qa_reply_content.
                                 st.write(body)
                         input_key = f"results-qa-input-{run.run_id}"
+                        clear_flag = f"assistant_clear_{input_key}"
                         drafts = st.session_state.setdefault("assistant_results_qa_drafts", {})
+                        # Clear only before the widget is bound — same rule as Help.
+                        if st.session_state.pop(clear_flag, False):
+                            st.session_state[input_key] = ""
+                            drafts[run.run_id] = ""
                         if input_key not in st.session_state:
                             st.session_state[input_key] = str(drafts.get(run.run_id, ""))
                         st.text_input(
@@ -1938,7 +1949,7 @@ with st.expander(
                                                 "Unable to discuss this run.",
                                             )
                                         )
-                                    st.session_state[input_key] = ""
+                                    st.session_state[clear_flag] = True
                                     drafts[run.run_id] = ""
                                     set_assistant_flash(
                                         st.session_state,

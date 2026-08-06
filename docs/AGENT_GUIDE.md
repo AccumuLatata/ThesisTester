@@ -261,6 +261,10 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   `400`/`401`/`403`/`404` as `retryable=False`. Chat + Help share this
   client — if both fail with the opaque main-branch message, fix deploy
   secrets / merge the transport-detail PR before debugging schemas.
+  Help citations must use `doc_id="registry"` (alias `registry_digest` is
+  normalized). Never write Streamlit widget keys (`product-help-input`,
+  `results-qa-input-*`) after `st.text_input` in the same run — set a
+  deferred-clear flag and apply it before the widget on the next run.
   Recovery/cancellation stays on orchestrator `cancel_run` / confirmation
   lifecycle, not the LLM.
 - Document every additive `assistant_*` session key in `ARCHITECTURE.md` and
