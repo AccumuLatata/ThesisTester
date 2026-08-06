@@ -9,7 +9,7 @@ Assistant-related contracts:
 |---|---|---|
 | Results discussion + product help | `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ) | ✅ **Complete** — RQ-0…RQ-5 (Discuss + rankings + Help + classic focus + honesty/injection eval freeze) |
 | Help corpus coverage (feature/how-to docs) | `docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md` (HC) | ✅ **Complete** — HC-0…HC-4 (USER_GUIDE how-tos + §7.1.4 allowlist + §1.1 retrieval + §5 bank freeze) |
-| Voice review | `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (VA) | **Proposed** — post-RQ rebase; VA-1 done via RQ; remaining VA-0→VA-2…VA-6 (spoken transport + realtime) |
+| Voice review | `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (VA) | **Proposed** — post-RQ / post-HC; VA-1 done via RQ; Help substrate = RQ channel + HC corpus (both ✅); remaining VA-0→VA-2…VA-6 (spoken transport + realtime; do not reopen HC) |
 | Classic ↔ Assistant bridge | `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` (CAI) | ✅ Implemented (CAI-0…CAI-10) |
 | Thesis draft / explain loop | `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2) | ✅ Implemented (through PR6) |
 | AIA Research Assistant foundations | `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` (AIA) | ✅ Implemented — do not open new results/help PRs from AIA text |

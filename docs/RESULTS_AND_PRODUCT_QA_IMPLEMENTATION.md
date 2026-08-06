@@ -9,8 +9,11 @@
 evidence/explain path (`EvidencePacket`, `explain_run`, `explain_run_with_llm`),
 `docs/ENGINEERING_PROPOSAL.md` §4 / §4.1 / §4.2
 **Voice relationship:** This series **implements VA-1** from
-`docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Voice PRs VA-0 / VA-2+ remain on
-that document. Do **not** create a parallel voice roadmap.
+`docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (channel substrate). Help
+**corpus** substrate for spoken Help is HC-complete
+(`docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md`). Voice PRs VA-0 / VA-2+ remain
+on the VA document. Do **not** create a parallel voice roadmap or reopen HC
+from VA.
 
 This is the **only** binding contract for multi-turn **results discussion** and
 **product/how-it-works help**. Do not create parallel results-Q&A or product-help
@@ -25,7 +28,7 @@ belongs in a later PR or is rejected.
 | `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` | ✅ Implemented AIA foundations — keep for invariants; not the results/help surface |
 | `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` | ✅ Implemented C2 thesis-draft / explain / provenance loop |
 | `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` | ✅ Implemented CAI classic↔assistant bridge; RQ-4 owns Discuss deep-link polish |
-| `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` | Voice-only series (post-RQ rebase); VA-1 text substrate is RQ-1 here; VA-0/VA-2+ remain there |
+| `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` | Voice-only series (post-RQ / post-HC); VA-1 text substrate is RQ-1 here; Help corpus substrate is HC-complete; VA-0/VA-2+ remain there |
 | `docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md` | ✅ HC-0…HC-4 Help **content/allowlist** coverage (USER_GUIDE + §7.1.4 + §5 bank); amends §7.1 only via HC maintenance PRs — does not reopen RQ-3 channel logic |
 | `docs/ENGINEERING_ROADMAP.md` | Index / status tracker — points here for RQ work |
 

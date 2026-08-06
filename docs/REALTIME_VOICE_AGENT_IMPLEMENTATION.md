@@ -1,8 +1,8 @@
 # Realtime Voice Agent — Implementation Contract
 
 **Document type:** Implementation contract (VA-series) — **single source of truth for voice**
-**Status:** proposed — not shipped (post-RQ rebase)
-**Date:** 2026-08-05
+**Status:** proposed — not shipped (post-RQ / post-HC rebase)
+**Date:** 2026-08-06
 **Owner surface:** `thesistester/assistant/voice/` + Research Assistant page only
 **Provider (speech):** xAI Grok Voice (`grok-voice-think-fast-2.0`; see §4)
 **Provider (text channel logic):** existing OpenAI structured client for spoken
@@ -10,6 +10,9 @@ Discuss / Help turns that reuse `handle_results_turn` / `handle_help_turn`
 **Depends on:**
 - C2 complete (`docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` through PR6)
 - RQ series complete (`docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` RQ-0…RQ-5)
+- HC series complete (`docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md` HC-0…HC-4)
+  — Help **content/allowlist** substrate (`USER_GUIDE` + RQ §7.1.4); voice does
+  not own or reopen HC
 - `docs/ENGINEERING_PROPOSAL.md` §4 / §4.1 / §4.2
 
 This is the **only** binding VA-series document for voice. Do **not** create a
@@ -23,11 +26,19 @@ The previous VA contract was written **before** the RQ text substrate shipped.
 Leaving it unchanged would drift against:
 
 1. VA-1 / text Discuss results — **already implemented** as RQ-1.
-2. Product help — **already implemented** as RQ-3 (voice should speak it too).
+2. Product help **channel** — **already implemented** as RQ-3 (voice should
+   speak it too).
 3. Classic Discuss deep-link — **already implemented** as RQ-4.
 4. Honesty/injection eval freeze — **already implemented** as RQ-5.
 5. Product intent clarified: voice should feel like **the same channels in
    speech**, not a second evidence dialect.
+
+**Post-HC note (2026-08-06):** HC-0…HC-4 later widened Help **content**
+(`docs/USER_GUIDE.md` + RQ §7.1.4 allowlist + §1.1 retrieval + §5 bank). That
+does **not** reopen RQ-3 channel logic and does **not** change VA freezes —
+spoken Help still calls `handle_help_turn` and inherits the expanded corpus.
+VA must not fork corpus rules, invent parallel how-to docs, or weaken
+`tests/test_assistant_help_coverage.py` parity/bank gates.
 
 **Decision:** keep the same path (`docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`)
 and rewrite in place. Do **not** add a second voice plan file. Prior freezes
@@ -40,9 +51,11 @@ channels” are amended explicitly in §0 / §11.
 |---|---|---|
 | Multi-turn results Q&A | RQ-1 `results_qa` / `handle_results_turn` | Call it; never fork reply logic |
 | Grid/time projections | RQ-2 `results_projections` | Inherit via results turns |
-| Product help | RQ-3 `product_help` / `handle_help_turn` | Call it; never fork corpus rules |
+| Product help **channel** | RQ-3 `product_help` / `handle_help_turn` | Call it; never fork channel/grounding |
+| Help **corpus content/allowlist** | HC (`USER_GUIDE` + RQ §7.1.4 / `help_corpus.py`) | Inherit via Help turns; never widen §7.1 or add voice-only corpus sources |
 | Classic Discuss focus | RQ-4 `classic_focus_*` | Reuse navigation; no new focus keys |
 | Honesty eval freeze | RQ-5 `test_assistant_llm_evaluations.py` | Extend with voice-specific gates only |
+| Help coverage bank / parity | HC-4 `tests/test_assistant_help_coverage.py` | Keep green; do not bypass or duplicate |
 
 VA-1 in this series is a **completed stub**. Do not open a parallel VA-1 PR.
 
@@ -104,7 +117,8 @@ decision lands later.
    `file_search`, or `mcp`.
 5. **Channel reuse.** Spoken Discuss must call `handle_results_turn` (or a
    thin façade that does). Spoken Help must call `handle_help_turn`. Do not
-   re-implement packet grounding, projections, or corpus allowlists.
+   re-implement packet grounding, projections, or corpus allowlists. Do not
+   amend RQ §7.1 / HC USER_GUIDE coverage from VA PRs — corpus widen stays HC.
 6. **Grounding.** Numeric tokens in spoken trusted output must resolve under
    the same RQ rules as text for that channel; else fail/flag before playback
    of a “trusted” answer (degraded remediation copy is allowed).
@@ -319,6 +333,7 @@ docs/ASSUMPTIONS_AND_LIMITATIONS.md
 docs/ARCHITECTURE.md
 docs/AGENT_GUIDE.md
 docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md   # ownership pointer only
+docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md     # related-docs / VA↔HC pointer only
 ```
 
 #### Implemented contract (fill when merged)
@@ -326,7 +341,7 @@ _Pending implementation._
 
 ---
 
-### VA-1 — Text substrate — **completed via RQ**
+### VA-1 — Text substrate — **completed via RQ (+ HC Help corpus)**
 
 **Do not implement from this section.**
 
@@ -334,13 +349,17 @@ _Pending implementation._
 |---|---|
 | Discuss results | RQ-1 (`results_qa` / `handle_results_turn`) |
 | Projections | RQ-2 (`results_projections`) |
-| Product help | RQ-3 (`product_help` / `handle_help_turn`) |
+| Product help **channel** | RQ-3 (`product_help` / `handle_help_turn`) |
+| Help **corpus content** | HC-0…HC-4 (`docs/USER_GUIDE.md` + RQ §7.1.4) |
 | Classic focus | RQ-4 (`classic_focus_channel`) |
 | Honesty evals | RQ-5 (`test_assistant_llm_evaluations.py`) |
+| Help coverage freeze | HC-4 (`tests/test_assistant_help_coverage.py`) |
 
-#### Implemented contract (via RQ-1…RQ-5)
-- Text Discuss + Help + classic deep-link + honesty freeze are shipped.
-- Voice PRs must call these paths; do not re-implement results/help logic.
+#### Implemented contract (via RQ-1…RQ-5 + HC-0…HC-4)
+- Text Discuss + Help channel + classic deep-link + honesty freeze are shipped
+  (RQ). Help feature/how-to corpus coverage is shipped (HC).
+- Voice PRs must call RQ handlers; spoken Help inherits HC corpus via
+  `handle_help_turn`. Do not re-implement results/help logic or corpus rules.
 - Voice series proceeds from VA-0 / VA-2+.
 
 ---
@@ -705,7 +724,8 @@ When implementing any VA PR:
    `execute_confirmed_run` / `PIPELINE.*`.
 8. Results/help/voice messages must not include `choices`.
 9. Prefer calling shipped RQ handlers over inventing parallel spoken dialects.
-10. Fill **Implemented contract** under that VA section when merging.
+10. Keep HC Help coverage/parity gates green; do not widen §7.1 from VA PRs.
+11. Fill **Implemented contract** under that VA section when merging.
 
 ### Copy-ready kickoff prompt (VA-0)
 
@@ -721,6 +741,7 @@ Constraints:
 - Do not implement STT/TTS, tools, or page widgets.
 - Same-PR docs: ENGINEERING_ROADMAP voice status, ASSUMPTIONS note, ARCHITECTURE
   reserved assistant_voice_* keys, AGENT_GUIDE pointer, fill VA-0 Implemented.
+- Keep HC Help coverage/parity gates green; do not widen §7.1 or reopen HC.
 - PR body must include a Regression safety paragraph.
 - Keep ruff + pytest green. No new third-party dependency.
 ```
@@ -733,14 +754,17 @@ Constraints:
 - Speech-to-speech: https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech
 - Ephemeral tokens: https://docs.x.ai/developers/model-capabilities/audio/ephemeral-tokens
 - Launch / Think Fast 2.0: https://x.ai/news/grok-voice-think-fast-2
-- RQ contract (text substrate): `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`
+- RQ contract (text channel substrate): `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`
+- HC contract (Help corpus content/allowlist): `docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md`
 - C2 grounding gate: `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md`
 - Regression framework: `docs/ENGINEERING_PROPOSAL.md` §4
 - `thesistester/assistant/results_qa.py`
 - `thesistester/assistant/product_help.py`
+- `thesistester/assistant/help_corpus.py`
 - `thesistester/assistant/llm_explainer.py`
 - `thesistester/assistant/orchestrator.py`
 - `pages/14_Research_Assistant.py`
+- Help coverage freeze: `tests/test_assistant_help_coverage.py`
 
 ---
 
@@ -750,6 +774,7 @@ Constraints:
 |---|---|
 | VA-1 (text Discuss via RQ-1) | ✅ Implemented (RQ) |
 | RQ help/projections/focus/evals | ✅ Implemented (RQ-2…RQ-5) — voice depends, does not re-own |
+| HC Help corpus coverage | ✅ Implemented (HC-0…HC-4) — spoken Help inherits; VA does not re-own |
 | VA-0 | Proposed |
 | VA-2 | Proposed |
 | VA-3 | Proposed |

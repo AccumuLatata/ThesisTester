@@ -163,7 +163,8 @@ The series is done when:
 ### 4.3 Explicitly out of HC v1
 
 - Agent/CI operator runbooks (`AGENT_GUIDE`)
-- Voice mic UX (VA-series)
+- Voice mic UX / Realtime transport (VA-series — spoken Help **inherits** this
+  HC-complete corpus + RQ §7.1.4 allowlist; do not reopen HC from VA)
 - Merging Help into thesis draft chat
 - Auto-generating docs from code/docstrings as a substitute for curated prose
 - Web search / browsing tools / embedding retrieval
@@ -667,7 +668,7 @@ Ask in Research Assistant **Help / how it works** (with Help enabled):
 | Auto-doc from code as sole source | Unstable, over-internal, unreviewed honesty |
 | Web search / embeddings retrieval | Local-first, fail-closed lexical corpus |
 | Explaining unimplemented future features as shipped | Honesty |
-| Voice content track | VA-series |
+| Voice content track | VA-series (spoken Help inherits this corpus; do not reopen HC) |
 | Replacing metrics glossary with USER_GUIDE | Keep definitions centralized |
 | Whole-UI page-local “?” tooltip rewrite | Optional later product work; HC uses USER_GUIDE + light captions |
 | Default-enable flips / provider changes | Out of series; leave RQ config semantics |
