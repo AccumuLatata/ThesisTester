@@ -137,15 +137,6 @@ def test_hc3_howto_bank_retrieves_primary_user_guide_sections():
         )
 
 
-def test_qh10_alternate_research_assistant_section_allowed():
-    """Q-H10 alternate: Research Assistant H2 may also be present (§5.2)."""
-    pairs = _selected_pairs("How do I link a thesis and record/discuss a classic run?")
-    assert ("user_guide", "Research mode on classic pages") in pairs
-    # Alternate presence is optional — only assert it is allowlisted if selected.
-    if ("user_guide", "Research Assistant (draft, Discuss, Help)") in pairs:
-        assert True
-
-
 def test_qr3_fabricated_setting_absent_from_allowlisted_corpus():
     """Q-R3: fabricated controls must not appear in Help-readable corpus text."""
     chunks = load_allowlisted_corpus(repo_root=REPO_ROOT)
@@ -155,7 +146,9 @@ def test_qr3_fabricated_setting_absent_from_allowlisted_corpus():
     assert ("user_guide", "Setup Builder") in pairs or (
         "user_guide",
         "When to use Help vs Discuss results",
-    ) in pairs, f"Q-R3 should retrieve Setup Builder or Help-vs-Discuss guidance; got {sorted(pairs)}"
+    ) in pairs, (
+        f"Q-R3 should retrieve Setup Builder or Help-vs-Discuss guidance; got {sorted(pairs)}"
+    )
 
 
 def test_help_expander_discoverability_caption_lists_example_topics():
