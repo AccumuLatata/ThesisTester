@@ -294,8 +294,9 @@ directional ranking, IS selection
 
 1. Prerequisites: Data → Levels → Signals (non-empty candidates).
 2. Set SL/TP ranges, execution assumptions, `Ranking metric`, and `Min trade
-   count`. If **Enable directional ranking** is on, the directional metric and
-   min long/short trades override the aggregate ranking controls.
+   count` (still applied to every cell). If **Enable directional ranking** is
+   on, ranking uses **Directional ranking metric** plus `Min long trades` /
+   `Min short trades` instead of the aggregate `Ranking metric`.
 3. Click **Run grid search**.
 4. Read **Best SL/TP pair**, heatmaps, and **Full grid results**.
 5. Treat the winner as a hypothesis to validate — not as OOS proof.
