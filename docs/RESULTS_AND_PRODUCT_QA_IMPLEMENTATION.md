@@ -331,7 +331,7 @@ contract in the same PR.
 | `architecture` | `docs/ARCHITECTURE.md` | `sections` | See exact H2 list in §7.1.1 (includes backtick characters in the session_state title) |
 | `assumptions` | `docs/ASSUMPTIONS_AND_LIMITATIONS.md` | `sections` | See exact H2 list in §7.1.2 |
 | `otf` | `docs/otf-filter.md` | `sections` | See exact H2 list in §7.1.3 |
-| `user_guide` | `docs/USER_GUIDE.md` | `sections` | See exact H2 list in §7.1.4 (HC-1/HC-2 filled how-tos; HC-3 stubs excluded) |
+| `user_guide` | `docs/USER_GUIDE.md` | `sections` | See exact H2 list in §7.1.4 (HC-1…HC-3 filled how-tos; full §6.1 skeleton) |
 | `registry` | _(generated; not a file path)_ | `digest` | Built at turn time from `FEATURE_PARITY_REGISTRY` / `audit_capability_registry()` as a JSON-safe list of `{capability_id, status, public_symbol?, confirmation?, limitation?}` only — no source files, no handler code |
 
 #### 7.1.1 Exact `architecture` H2 titles (frozen)
@@ -377,11 +377,11 @@ Purpose
 §15 — Release-Gate Documentation
 ```
 
-#### 7.1.4 Exact `user_guide` H2 titles (HC-1/HC-2; amend via HC PRs)
+#### 7.1.4 Exact `user_guide` H2 titles (HC-1…HC-3; amend via HC PRs)
 
 Match these strings exactly after stripping the leading `##` and surrounding
-whitespace. Stub USER_GUIDE H2s (Research Assistant → Help vs Discuss) remain
-**excluded** until HC-3 fills and allowlists them.
+whitespace. HC-3 completed the §6.1 skeleton — every USER_GUIDE H2 below is
+filled and Help-readable.
 
 ```text
 Purpose and honesty
@@ -397,6 +397,9 @@ Validation and robustness
 Report Export
 Research Bundles
 Portfolio
+Research Assistant (draft, Discuss, Help)
+Research mode on classic pages
+When to use Help vs Discuss results
 ```
 
 **Explicitly excluded from v1 (fail closed if requested):**
@@ -409,7 +412,7 @@ Portfolio
   `§13 — Open questions (resolved for v1)`; and any “Historical PR …” /
   deferred-fingerprint subsections not under an allowlisted H2
 - Assumptions H2s not listed above
-- USER_GUIDE H2s not listed in §7.1.4 (including all `_Stub (HC-0)_` sections)
+- USER_GUIDE H2s not listed in §7.1.4
 
 If a later PR widens Help, it must amend **this table** and the RQ-0 manifest
 in the same PR.

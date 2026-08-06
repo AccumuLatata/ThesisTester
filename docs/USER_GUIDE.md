@@ -3,9 +3,8 @@
 User-facing how-tos for classic pages and Research Assistant Help.
 This file is the primary Help corpus home for workflow questions (HC-series).
 
-**Help allowlist (HC-1/HC-2):** only the filled H2 sections listed in RQ §7.1
-`user_guide` are Help-readable. Remaining `_Stub (HC-0)_` Assistant sections are
-structure placeholders for HC-3 and are **not** allowlisted.
+**Help allowlist (HC-1…HC-3):** the filled H2 sections listed in RQ §7.1
+`user_guide` are Help-readable (full classic + Assistant how-to coverage).
 
 Deep metric definitions stay in `docs/METRICS_GLOSSARY.md`. Engine honesty and
 limits stay in `docs/ASSUMPTIONS_AND_LIMITATIONS.md`. Operator/agent runbooks
@@ -520,15 +519,127 @@ trades, diagnostic merge
 
 ## Research Assistant (draft, Discuss, Help)
 
-_Stub (HC-0)._ Thesis draft vs Discuss results vs Help; confirm/run gates.
-Filled in HC-3.
+**What it is.** The **Research Assistant** page manages theses and three
+separated chat surfaces: thesis **Assistant chat** (draft), **Discuss results**
+(completed-run Q&A), and **Help / how it works** (docs-grounded product help).
+
+**When to use it.** To draft/confirm an Assistant research plan, discuss a
+thesis-recorded run, or ask how product features work — without mixing those
+jobs into one thread.
+
+**Related terms.** thesis, Assistant chat, draft, Discuss results, Help / how it
+works, Advanced, Validate executable RunSpec, Confirm validated RunSpec, Run
+confirmed research, linked runs, clarification, specification version
+
+**Key settings / surfaces.**
+
+| Control / surface | Meaning | Common pitfall |
+|---|---|---|
+| `Assistant chat` | Thesis drafting only — choices + clarifications | Not for run metrics or product docs |
+| `Help / how it works` | Allowlisted docs + capability registry | Not a second results explainer |
+| `Advanced: draft, runs & compare` | Optional draft → validate → confirm → run path | Classic pages remain the primary workflow |
+| `Draft research plan` (optional) | Persists an immutable specification version | `Apply` controls only stage the session draft |
+| `Validate executable RunSpec` → `Confirm validated RunSpec` | Confirmation-/schema-gated | Confirm appears only after Validate succeeds **and** clarifications are clear |
+| `Run confirmed research` | Executes only a **Confirmed** spec version | Apply/Draft alone never start compute |
+| **Discuss results** (under Linked runs) | Multi-turn Q&A on one completed run | Needs a thesis-recorded run; hash-verified evidence |
+
+**How to use (Assistant confirm/run path).**
+
+1. Create or select a thesis in the sidebar.
+2. Draft via **Assistant chat** and/or Advanced structured controls.
+3. Open **Advanced: draft, runs & compare** → **Plan review**. Optionally
+   **Draft research plan**, then **Validate executable RunSpec**. Resolve
+   clarifications if shown, then **Confirm validated RunSpec** (Confirm lives
+   under Plan review, not inside the Specifications list).
+4. Open a Confirmed specification → **Run confirmed research**.
+5. For completed-run questions, open Advanced → Linked runs → **Discuss
+   results**. For feature how-tos, open **Help / how it works**.
+
+**What it is not.**
+
+- Draft chat does not show Help or Discuss history (channel isolation).
+- Help does not invent run metrics or undocumented settings.
+- Linked runs list **thesis-recorded** runs only — classic exploration without
+  research mode is never listed.
+
+**Related pages.** Classic research mode (record/discuss); USER_GUIDE how-tos
+via Help.
 
 ## Research mode on classic pages
 
-_Stub (HC-0)._ How to link a thesis and record/discuss a classic run. Filled in
-HC-3.
+**What it is.** Classic **research mode** links a thesis on classic pages so you
+can **Record and discuss this run** or **Discuss this run** without leaving the
+Data → … → Backtest path.
+
+**When to use it.** When you want classic exploration under a thesis identity
+and later Discuss results in Research Assistant.
+
+**Related terms.** research mode, Thesis research context, create and link
+thesis, link thesis, Record and discuss this run, Discuss this run, recording
+policy, manual record, all executions, exit research mode, identity badge
+
+**Key settings.**
+
+| Control | Meaning | Common pitfall |
+|---|---|---|
+| Setup Builder → `Thesis research context` | Create/link a thesis (optional) | Linking does **not** record a run |
+| Research-mode breadcrumb | Shows thesis + recording policy | Exit research mode leaves page settings unchanged |
+| `Recording policy` | `Manual — Record and discuss after a run` or `All executions — ledger every Backtest attempt` | Manual leaves exploration untracked until you record |
+| **Record and discuss this run** | Attaches the current research bundle under the thesis | Needs research mode + completed artifacts |
+| **Discuss this run** | Opens Assistant focused on a recorded run | Does not re-register; errors if nothing recorded yet |
+
+**How to use.**
+
+1. On Setup Builder, open **Thesis research context** → tabs **Create thesis** /
+   **Link existing** → **Create and link thesis** or **Link thesis** (enters
+   research mode).
+2. Run the classic path (Data → Levels → Signals → Backtest, etc.).
+3. After a completed backtest (or bundle with backtest artifacts): **Record and
+   discuss this run**, or **Discuss this run** if already recorded.
+4. Research Assistant opens Advanced → that Linked run → **Discuss results**.
+
+**What it is not.**
+
+- Research mode is not automatic live trading and not a substitute for Help.
+- Exploratory runs without research mode never appear in Linked runs.
+- Record attaches the current bundle without recomputing metrics.
+
+**Related pages.** Research Assistant (Discuss); Research Bundles (export +
+record/discuss entry).
 
 ## When to use Help vs Discuss results
 
-_Stub (HC-0)._ Help = product/how-to from docs; Discuss = bound run metrics.
-Filled in HC-3.
+**What it is.** A trust-boundary guide for choosing the right Assistant surface.
+
+**When to use it.** Anytime you are unsure whether to ask in Help, Discuss, or
+draft chat.
+
+**Related terms.** Help vs Discuss, product help, how it works, run metrics,
+best SL, expectancy, remediation, draft chat, documentation-grounded
+
+**Decision table.**
+
+| Question type | Use | Do not |
+|---|---|---|
+| How does a page/setting work? How-to / workflow | **Help / how it works** | Discuss (no run packet) |
+| What was my best SL/TP / expectancy / trades on this run? | **Discuss results** (bound run) | Help (remediates; no invented numbers) |
+| Refine thesis choices / clarifications | **Assistant chat** (draft) | Help or Discuss |
+| Undocumented / invented controls (e.g. fake modes) | Help must not invent UI absent from allowlisted docs (say not documented) | Fabricating UI that does not exist |
+
+**How to use.**
+
+1. Open Research Assistant with a thesis selected.
+2. For feature how-tos: expander **Help / how it works** → ask → **Send help
+   question** (examples: import data, Setup Builder, grid ranking, validation).
+3. For completed-run metrics: Advanced → Linked runs → **Discuss results**.
+4. If Help redirects you to Discuss, open the linked run thread — do not expect
+   Help to invent performance numbers.
+
+**What it is not.**
+
+- Help is not a second results explainer.
+- Discuss is not thesis drafting and not general product docs.
+- Draft chat ignores Help/Discuss history on purpose (trust boundary).
+
+**Related pages.** Research Assistant surfaces above; classic research mode for
+recording runs to discuss.

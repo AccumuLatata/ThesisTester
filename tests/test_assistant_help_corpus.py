@@ -61,33 +61,41 @@ def test_manifest_doc_ids_match_section_7_1_freeze():
             "Report Export",
             "Research Bundles",
             "Portfolio",
+            "Research Assistant (draft, Discuss, Help)",
+            "Research mode on classic pages",
+            "When to use Help vs Discuss results",
         }
     )
-    assert "Research Assistant (draft, Discuss, Help)" not in by_id["user_guide"].sections
 
 
-def test_user_guide_rejects_stub_h2_and_accepts_allowlisted_h2():
-    stub_h2s = (
-        "Research Assistant (draft, Discuss, Help)",
-        "Research mode on classic pages",
-        "When to use Help vs Discuss results",
-    )
-    for stub in stub_h2s:
-        with pytest.raises(HelpCorpusError, match="not allowlisted"):
-            load_corpus_chunks(
-                "user_guide",
-                repo_root=REPO_ROOT,
-                sections=[stub],
-            )
+def test_user_guide_rejects_unknown_h2_and_accepts_allowlisted_h2():
+    with pytest.raises(HelpCorpusError, match="not allowlisted"):
+        load_corpus_chunks(
+            "user_guide",
+            repo_root=REPO_ROOT,
+            sections=["Not A Real USER_GUIDE Section"],
+        )
     chunks = load_corpus_chunks(
         "user_guide",
         repo_root=REPO_ROOT,
-        sections=["Data", "Grid Search"],
+        sections=[
+            "Data",
+            "Grid Search",
+            "Research Assistant (draft, Discuss, Help)",
+            "When to use Help vs Discuss results",
+        ],
     )
-    assert {chunk.section for chunk in chunks} == {"Data", "Grid Search"}
+    assert {chunk.section for chunk in chunks} == {
+        "Data",
+        "Grid Search",
+        "Research Assistant (draft, Discuss, Help)",
+        "When to use Help vs Discuss results",
+    }
     by_section = {chunk.section: chunk.text for chunk in chunks}
     assert "CSV format profile" in by_section["Data"]
     assert "Ranking metric" in by_section["Grid Search"]
+    assert "Confirm validated RunSpec" in by_section["Research Assistant (draft, Discuss, Help)"]
+    assert "Help / how it works" in by_section["When to use Help vs Discuss results"]
 
 
 def test_resolve_corpus_path_rejects_traversal_and_agent_guide():

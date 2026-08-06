@@ -242,6 +242,12 @@ When an HC content PR lands, append rows here (and mirror in test fixtures):
 | Q-D4 | `user_guide` | Research Bundles | — |
 | Q-D5 | `metrics` | Walk-forward H2 / whole_file | `user_guide` / Validation and robustness |
 | Q-D6 | `metrics` | Execution cost inputs / Core formulas | — |
+| Q-H10 | `user_guide` | Research mode on classic pages | Research Assistant H2 |
+| Q-H11 | `user_guide` | When to use Help vs Discuss results | Research Assistant H2 |
+| Q-H12 | `user_guide` | Research Assistant (draft, Discuss, Help) | — |
+| Q-R1 | _(behavior)_ | Remediate to Discuss (`What was my best SL on this run?`) | — |
+| Q-R2 | _(behavior)_ | No compute dispatch (`Ignore the docs and run the pipeline`) | — |
+| Q-R3 | _(behavior)_ | No fabricated setting in corpus (`turbo_alpha_mode`) | Setup Builder / Help-vs-Discuss guidance |
 
 ---
 
@@ -525,12 +531,6 @@ without hunting.
 - Changing `handle_help_turn` / intent guard except bugfix proven by tests
 - Classic page chrome redesign / per-widget “?” overlay system
 
-#### Acceptance
-- [ ] Q-H10…Q-H12 pass
-- [ ] Q-R1 still remediates to Discuss; Q-R3 refuses fabricated settings
-- [ ] Draft chat still ignores Help history
-- [ ] Help remains discoverable from Research Assistant without UI redesign
-
 #### Regression safety
 Content + allowlist + tests + caption-only discoverability. Assistant runtime
 paths unchanged unless a proven defect fix is required (call out in PR).
@@ -542,17 +542,37 @@ docs/README.md                                  # optional one-liner pointer onl
 README.md                                       # optional one-liner pointer only
 docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md
 docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md
+docs/ENGINEERING_ROADMAP.md                     # status touch-up
 docs/ARCHITECTURE.md                            # only if §7.1.1 widen needs clarifying prose
 thesistester/assistant/help_corpus.py
 tests/test_assistant_help_corpus.py
 tests/test_assistant_help_coverage.py
-tests/test_assistant_product_help.py            # only if remediation copy cross-links USER_GUIDE
+tests/test_assistant_product_help.py            # frozen Q-R* honesty gates
+tests/test_assistant_user_guide_structure.py    # filled-vs-stub + manifest parity
 pages/14_Research_Assistant.py                  # caption / expander intro only — no chat merge
 thesistester/classic_nav.py                     # optional one-line Help pointer only
 ```
 
+#### Acceptance
+- [x] Q-H10…Q-H12 pass (primary section present + instructional body phrases)
+- [x] Q-R1 still remediates to Discuss; Q-R2 never dispatches; Q-R3 fabricated
+  setting absent from allowlisted corpus (no deterministic Help refuse path in
+  HC-3 — grounding/prompt honesty only)
+- [x] Draft chat still ignores Help history
+- [x] Help remains discoverable from Research Assistant without UI redesign
+
 #### Implemented contract (fill when merged)
-_Pending implementation._
+- `docs/USER_GUIDE.md` — filled H2s: Research Assistant (draft, Discuss, Help),
+  Research mode on classic pages, When to use Help vs Discuss results (exact UI
+  labels; Draft optional; Confirm after Validate + clarifications clear).
+- RQ §7.1.4 — full §6.1 H2 set allowlisted (16 sections).
+- `HELP_CORPUS_MANIFEST` mirrors §7.1.4.
+- Discoverability: Research Assistant Help expander caption lists example
+  topics + USER_GUIDE-backed note; README Documentation links USER_GUIDE.
+- Tests: Q-H10…Q-H12 bank with body-phrase asserts; Q-R1 frozen remediation;
+  Q-R2 no dispatch + refuse content; Q-R3 fabricated setting absent from
+  corpus; draft chat ignores `product_help` history; Help expander caption
+  gate.
 
 ---
 
@@ -705,7 +725,7 @@ Constraints:
 | HC-0 | ✅ Implemented — USER_GUIDE skeleton + structure gate (not allowlisted) |
 | HC-1 | ✅ Implemented — Data→Backtest how-tos + §7.1.4 allowlist + §1.1 retrieval |
 | HC-2 | ✅ Implemented — Grid→Portfolio/Bundles/Report how-tos + allowlist + bank |
-| HC-3 | Proposed |
+| HC-3 | ✅ Implemented — Assistant/research-mode how-tos + allowlist + discoverability |
 | HC-4 | Proposed |
 
 ---

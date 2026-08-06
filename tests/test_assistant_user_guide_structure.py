@@ -1,4 +1,4 @@
-"""USER_GUIDE structure gate: §6.1 H2 skeleton + HC-1/HC-2 filled vs HC-3 stubs."""
+"""USER_GUIDE structure gate: §6.1 H2 skeleton + HC-1…HC-3 filled allowlist."""
 
 from __future__ import annotations
 
@@ -30,22 +30,8 @@ REQUIRED_USER_GUIDE_H2S = (
     "When to use Help vs Discuss results",
 )
 
-# HC-1 + HC-2 filled + allowlisted (must match RQ §7.1.4 / HELP_CORPUS_MANIFEST).
-HC_FILLED_H2S = (
-    "Purpose and honesty",
-    "Classic workflow overview",
-    "Data",
-    "Levels",
-    "Setup Builder",
-    "Signals",
-    "Backtest",
-    "Grid Search",
-    "Time Analysis",
-    "Validation and robustness",
-    "Report Export",
-    "Research Bundles",
-    "Portfolio",
-)
+# Full §6.1 set after HC-3 (must match RQ §7.1.4 / HELP_CORPUS_MANIFEST).
+HC_FILLED_H2S = REQUIRED_USER_GUIDE_H2S
 
 # Backward-compatible alias for older test names / imports.
 HC1_FILLED_H2S = HC_FILLED_H2S
@@ -83,24 +69,18 @@ def test_user_guide_exists_with_exact_h2_skeleton():
     )
 
 
-def test_user_guide_hc1_hc2_sections_filled_remaining_stubs():
-    """HC-1/HC-2 how-tos are real prose; HC-3 Assistant surfaces stay stubs."""
+def test_user_guide_all_sections_filled_no_stubs():
+    """HC-3 completes the skeleton — no stub placeholders remain."""
     bodies = _user_guide_h2_bodies()
     for title in HC_FILLED_H2S:
         assert _STUB_MARKER not in bodies[title], (
-            f"USER_GUIDE H2 {title!r} must be filled (no {_STUB_MARKER!r}) after HC-2"
+            f"USER_GUIDE H2 {title!r} must be filled (no {_STUB_MARKER!r}) after HC-3"
         )
         assert len(bodies[title].strip()) > 80, f"USER_GUIDE H2 {title!r} looks empty"
-    for title in REQUIRED_USER_GUIDE_H2S:
-        if title in HC_FILLED_H2S:
-            continue
-        assert _STUB_MARKER in bodies[title], (
-            f"USER_GUIDE H2 {title!r} must remain {_STUB_MARKER!r} until HC-3"
-        )
 
 
 def test_user_guide_manifest_matches_filled_sections_only():
-    """Allowlist includes only filled HC-1/HC-2 H2s — never Assistant stubs."""
+    """Allowlist includes the full filled §6.1 H2 set."""
     spec = get_corpus_doc_spec("user_guide")
     assert spec.relative_path == "docs/USER_GUIDE.md"
     assert spec.mode == "sections"

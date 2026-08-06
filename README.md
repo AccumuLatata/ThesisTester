@@ -124,6 +124,7 @@ Optional directional market-condition filter for ES/NQ-style research. **Disable
 
 ## Documentation
 
+- [User guide](docs/USER_GUIDE.md) — feature/how-to docs (also powers Research Assistant **Help / how it works**)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Assumptions & limitations](docs/ASSUMPTIONS_AND_LIMITATIONS.md)
 - [Metrics glossary](docs/METRICS_GLOSSARY.md)
