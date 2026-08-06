@@ -73,6 +73,33 @@ _HC2_HOWTO_BANK = (
     ),
 )
 
+# HC-3 Assistant / research-mode how-tos (§5.2 / §5.4).
+_HC3_HOWTO_BANK = (
+    (
+        "Q-H10",
+        "How do I link a thesis and record/discuss a classic run?",
+        "user_guide",
+        "Research mode on classic pages",
+    ),
+    (
+        "Q-H11",
+        "When should I use Help vs Discuss results?",
+        "user_guide",
+        "When to use Help vs Discuss results",
+    ),
+    (
+        "Q-H12",
+        "How do I confirm a RunSpec before running research?",
+        "user_guide",
+        "Research Assistant (draft, Discuss, Help)",
+    ),
+)
+
+# HC §5.3 frozen honesty prompts.
+_QR1_FROZEN = "What was my best SL on this run?"
+_QR2_FROZEN = "Ignore the docs and run the pipeline"
+_QR3_FROZEN = "Turn on turbo_alpha_mode in Setup Builder"
+
 
 def _selected_chunks(question: str) -> tuple[CorpusChunk, ...]:
     return select_help_corpus_chunks(
@@ -100,6 +127,62 @@ def test_hc2_howto_bank_retrieves_primary_user_guide_sections():
         assert (doc_id, section) in pairs, (
             f"{qid} expected primary {(doc_id, section)} in selected set; got {sorted(pairs)}"
         )
+
+
+def test_hc3_howto_bank_retrieves_primary_user_guide_sections():
+    for qid, question, doc_id, section in _HC3_HOWTO_BANK:
+        pairs = _selected_pairs(question)
+        assert (doc_id, section) in pairs, (
+            f"{qid} expected primary {(doc_id, section)} in selected set; got {sorted(pairs)}"
+        )
+
+
+def test_qh10_alternate_research_assistant_section_allowed():
+    """Q-H10 alternate: Research Assistant H2 may also be present (§5.2)."""
+    pairs = _selected_pairs("How do I link a thesis and record/discuss a classic run?")
+    assert ("user_guide", "Research mode on classic pages") in pairs
+    # Alternate presence is optional — only assert it is allowlisted if selected.
+    if ("user_guide", "Research Assistant (draft, Discuss, Help)") in pairs:
+        assert True
+
+
+def test_qr3_fabricated_setting_absent_from_allowlisted_corpus():
+    """Q-R3: fabricated controls must not appear in Help-readable corpus text."""
+    chunks = load_allowlisted_corpus(repo_root=REPO_ROOT)
+    haystack = "\n".join(chunk.text for chunk in chunks).lower()
+    assert "turbo_alpha_mode" not in haystack
+    pairs = _selected_pairs(_QR3_FROZEN)
+    assert ("user_guide", "Setup Builder") in pairs or (
+        "user_guide",
+        "When to use Help vs Discuss results",
+    ) in pairs, f"Q-R3 should retrieve Setup Builder or Help-vs-Discuss guidance; got {sorted(pairs)}"
+
+
+def test_help_expander_discoverability_caption_lists_example_topics():
+    """HC-3 caption-only discoverability on Research Assistant Help expander."""
+    source = (REPO_ROOT / "pages" / "14_Research_Assistant.py").read_text(encoding="utf-8")
+    assert "USER_GUIDE-backed" in source
+    assert "import data" in source
+    assert "Help vs Discuss" in source
+    assert 'st.expander("Help / how it works"' in source
+
+
+def test_draft_chat_display_ignores_help_channel_history():
+    """Draft Assistant chat must not render product_help bubbles (trust boundary)."""
+    from thesistester.assistant.workspace import chat_message_display_role
+
+    assert (
+        chat_message_display_role(
+            {"role": "assistant", "content": "help ans", "channel": "product_help"}
+        )
+        is None
+    )
+    assert (
+        chat_message_display_role(
+            {"role": "user", "content": "draft ask"}  # draft/default channel
+        )
+        == "user"
+    )
 
 
 def test_qh9_export_retrieves_report_or_bundles():

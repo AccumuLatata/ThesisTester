@@ -87,7 +87,7 @@ _OTF_SECTIONS = frozenset(
     }
 )
 
-# HC-1/HC-2 filled USER_GUIDE H2s (Assistant stubs remain excluded until HC-3).
+# HC-1…HC-3 filled USER_GUIDE H2s (full §6.1 skeleton allowlisted).
 _USER_GUIDE_SECTIONS = frozenset(
     {
         "Purpose and honesty",
@@ -103,6 +103,9 @@ _USER_GUIDE_SECTIONS = frozenset(
         "Report Export",
         "Research Bundles",
         "Portfolio",
+        "Research Assistant (draft, Discuss, Help)",
+        "Research mode on classic pages",
+        "When to use Help vs Discuss results",
     }
 )
 

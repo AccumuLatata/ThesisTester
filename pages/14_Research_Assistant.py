@@ -367,8 +367,10 @@ help_settings = load_product_help_settings()
 if help_settings.enabled:
     with st.expander("Help / how it works", expanded=False):
         st.caption(
-            "Documentation-grounded product help (allowlisted docs + capability "
-            "registry). Not a second results explainer — use Discuss results for "
+            "Documentation-grounded product help (USER_GUIDE-backed allowlisted "
+            "docs + capability registry). Ask how-tos such as import data, "
+            "Setup Builder, grid ranking, validation, or Help vs Discuss. "
+            "Not a second results explainer — use Discuss results for "
             "completed-run metrics."
         )
         help_thread = [
