@@ -359,10 +359,10 @@ tests/test_assistant_user_guide_structure.py    # recommended structure gate
 
 #### Implemented contract (fill when merged)
 - `docs/USER_GUIDE.md` — §6.1 H2 skeleton + Purpose/honesty preface; remaining
-  feature H2s are explicit `_Stub (HC-0)_` placeholders (not Help-allowlisted).
-- `tests/test_assistant_user_guide_structure.py` — required H2 presence/order
-  gate; asserts `user_guide` / `docs/USER_GUIDE.md` absent from
-  `HELP_CORPUS_MANIFEST`.
+  feature H2s are explicit `_Stub (HC-0)._` placeholders (not Help-allowlisted).
+- `tests/test_assistant_user_guide_structure.py` — exact §6.1 H2 set/order gate
+  (no extras); stub-marker gate on non-Purpose H2s; asserts `user_guide` /
+  `docs/USER_GUIDE.md` absent from `HELP_CORPUS_MANIFEST`.
 - §5.4 left empty until HC-1+ freezes exact allowlisted titles.
 - No changes to `help_corpus.py`, `product_help.py`, or RQ §7.1 allowlist.
 
