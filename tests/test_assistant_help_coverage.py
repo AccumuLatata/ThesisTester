@@ -574,6 +574,11 @@ _HC4_DEFINITION_BODY_PHRASES = {
     "Q-D6": ("slippage_ticks",),
 }
 
+# Mixed how-tos that must keep a secondary section in the selected set (§1.1 / §5.4).
+_HC4_REQUIRED_SECONDARIES = {
+    "Q-H5": frozenset({("metrics", "Execution cost inputs")}),
+}
+
 
 def _parse_section5_question_rows(markdown: str) -> dict[str, str]:
     """Parse HC §5.1–5.3 table rows into ``{Q-ID: question/prompt text}``."""
@@ -623,6 +628,12 @@ def test_hc4_full_section_5_retrieval_bank_freeze():
             primary = next(c for c in chunks if (c.doc_id, c.section) in hits)
             assert any(phrase in primary.text for phrase in phrases), (
                 f"{qid} primary body must include one of {phrases!r}; section={primary.section!r}"
+            )
+        required_secondary = _HC4_REQUIRED_SECONDARIES.get(qid)
+        if required_secondary:
+            assert pairs & required_secondary, (
+                f"{qid} must keep secondary {sorted(required_secondary)} "
+                f"in selected set; got {sorted(pairs)}"
             )
 
 
