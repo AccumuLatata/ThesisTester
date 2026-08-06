@@ -546,8 +546,18 @@ def score_corpus_chunk(chunk: CorpusChunk, *, query_tokens: set[str]) -> int:
             # Prefer the dedicated Execution cost inputs H2 over incidental
             # cost mentions inside Core formulas / other metrics sections.
             score += 4
-    if {"otf", "one", "timeframing", "timeframe"} & query_tokens and chunk.doc_id == "otf":
+    if {
+        "otf",
+        "one",
+        "timeframing",
+        "timeframe",
+        "filter",
+    } & query_tokens and chunk.doc_id == "otf":
         score += 3
+        # Prefer the definitional §1 — Concept chunk over Purpose meta-spec text
+        # for "what is an OTF filter?" style questions (HC-4 Q-D3).
+        if "concept" in chunk.section.lower():
+            score += 2
     if {"assistant", "capability", "registry", "confirm"} & query_tokens:
         if chunk.doc_id in {"architecture", "assumptions"}:
             score += 2

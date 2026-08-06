@@ -4,9 +4,10 @@ Covers C2-6.7 / PR6 thesis-draft + explain honesty gates, plus the RQ-5 freeze
 for multi-turn results Q&A and product help (injection, uncited numbers,
 missing-evidence, draft isolation, corpus allowlist, release checklist).
 
-HC-4 Help feature/how-to coverage bank (USER_GUIDE §5 questions + §7.1.4
-manifest parity) lives in ``tests/test_assistant_help_coverage.py`` — keep RQ-5
-honesty gates green when amending Help retrieval.
+HC-4 Help feature/how-to coverage bank
+(``docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md`` §5 questions + §7.1.4 manifest
+parity) lives in ``tests/test_assistant_help_coverage.py`` — keep RQ-5 honesty
+gates green when amending Help retrieval.
 """
 
 from __future__ import annotations

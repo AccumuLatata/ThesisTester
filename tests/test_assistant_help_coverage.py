@@ -254,19 +254,16 @@ def test_qd5_walk_forward_retrieves_dedicated_section():
 
 
 def test_qd6_slippage_ticks_retrieves_execution_cost_inputs():
-    """§5.4: slippage_ticks definition must hit Execution cost inputs (or Core formulas)."""
-    pairs = _selected_pairs("What does slippage_ticks mean?")
-    ok = ("metrics", "Execution cost inputs") in pairs or (
-        "metrics",
-        "Core formulas",
-    ) in pairs
-    assert ok, f"Q-D6 expected metrics/Execution cost inputs or Core formulas; got {sorted(pairs)}"
-    if ("metrics", "Execution cost inputs") in pairs:
-        chunks = _selected_chunks("What does slippage_ticks mean?")
-        text = next(
-            c.text for c in chunks if c.doc_id == "metrics" and c.section == "Execution cost inputs"
-        )
-        assert "slippage_ticks" in text
+    """§5.4: slippage_ticks definition must hit Execution cost inputs (not Core formulas alone)."""
+    chunks = _selected_chunks("What does slippage_ticks mean?")
+    pairs = {(chunk.doc_id, chunk.section) for chunk in chunks}
+    assert ("metrics", "Execution cost inputs") in pairs, (
+        f"Q-D6 expected metrics/Execution cost inputs; got {sorted(pairs)}"
+    )
+    text = next(
+        c.text for c in chunks if c.doc_id == "metrics" and c.section == "Execution cost inputs"
+    )
+    assert "slippage_ticks" in text
 
 
 def test_qd2_expectancy_retrieves_core_formulas_definition():
@@ -447,12 +444,8 @@ _HC4_RETRIEVAL_BANK: tuple[tuple[str, str, frozenset[tuple[str, str]]], ...] = (
     (
         "Q-D3",
         "What is an OTF filter?",
-        frozenset(
-            {
-                ("otf", "Purpose"),
-                ("otf", "§1 — Concept"),
-            }
-        ),
+        # Purpose is meta-spec only — definition lives in §1 — Concept.
+        frozenset({("otf", "§1 — Concept")}),
     ),
     (
         "Q-D4",
@@ -472,12 +465,8 @@ _HC4_RETRIEVAL_BANK: tuple[tuple[str, str, frozenset[tuple[str, str]]], ...] = (
     (
         "Q-D6",
         "What does slippage_ticks mean?",
-        frozenset(
-            {
-                ("metrics", "Execution cost inputs"),
-                ("metrics", "Core formulas"),
-            }
-        ),
+        # Core formulas mentions slippage_cost only — definition is Execution cost inputs.
+        frozenset({("metrics", "Execution cost inputs")}),
     ),
     (
         "Q-H1",
@@ -578,6 +567,41 @@ def _parse_fenced_h2_list(markdown: str, *, heading_prefix: str) -> tuple[str, .
     return tuple(titles)
 
 
+# Definitional body phrases that must appear in the primary retrieved chunk.
+_HC4_DEFINITION_BODY_PHRASES = {
+    "Q-D2": ("expectancy_r", "Expectancy (R)"),
+    "Q-D3": ("One Timeframing", "OTF up"),
+    "Q-D6": ("slippage_ticks",),
+}
+
+
+def _parse_section5_question_rows(markdown: str) -> dict[str, str]:
+    """Parse HC §5.1–5.3 table rows into ``{Q-ID: question/prompt text}``."""
+    section_idx = markdown.find("## 5. Acceptance question bank")
+    assert section_idx >= 0, "missing HC §5 acceptance bank heading"
+    # Stop before §5.4 (coverage matrix) which reuses Q-IDs with different columns.
+    end_marker = markdown.find("### 5.4", section_idx)
+    if end_marker < 0:
+        next_section = re.search(r"\n## [0-9]", markdown[section_idx + 1 :])
+        end_marker = section_idx + 1 + next_section.start() if next_section else len(markdown)
+    block = markdown[section_idx:end_marker]
+    rows: dict[str, str] = {}
+    for match in re.finditer(
+        r"^\|\s*(Q-[DHR]\d+)\s*\|\s*(.*?)\s*\|",
+        block,
+        flags=re.MULTILINE,
+    ):
+        qid = match.group(1)
+        question = match.group(2).strip().strip("`")
+        if (
+            qid.startswith("Q-")
+            and question
+            and question not in {"Question", "Frozen prompt", "Primary"}
+        ):
+            rows[qid] = question
+    return rows
+
+
 def test_hc4_full_section_5_retrieval_bank_freeze():
     """HC-4: every §5 definition/how-to question has a deterministic retrieval fixture."""
     bank_ids = {qid for qid, _question, _accept in _HC4_RETRIEVAL_BANK}
@@ -588,10 +612,18 @@ def test_hc4_full_section_5_retrieval_bank_freeze():
         f"extra={sorted(bank_ids - expected_retrieval_ids)}"
     )
     for qid, question, acceptable in _HC4_RETRIEVAL_BANK:
-        pairs = _selected_pairs(question)
-        assert pairs & acceptable, (
+        chunks = _selected_chunks(question)
+        pairs = {(chunk.doc_id, chunk.section) for chunk in chunks}
+        hits = pairs & acceptable
+        assert hits, (
             f"{qid} expected one of {sorted(acceptable)} in selected set; got {sorted(pairs)}"
         )
+        phrases = _HC4_DEFINITION_BODY_PHRASES.get(qid)
+        if phrases:
+            primary = next(c for c in chunks if (c.doc_id, c.section) in hits)
+            assert any(phrase in primary.text for phrase in phrases), (
+                f"{qid} primary body must include one of {phrases!r}; section={primary.section!r}"
+            )
 
 
 @pytest.mark.parametrize(
@@ -616,12 +648,34 @@ def test_hc4_behavior_question_ids_have_named_gates():
     assert _QR1_FROZEN in product_help
     assert "test_handle_help_turn_qr2_frozen_prompt_never_dispatches" in product_help
     assert _QR2_FROZEN in product_help
+    # Q-R3: corpus absence + Help reply honesty (not-documented / digit reject).
     assert "test_qr3_fabricated_setting_absent_from_allowlisted_corpus" in coverage
-    assert _QR3_FROZEN in coverage
+    assert _QR3_FROZEN in product_help
+    assert "test_hc3_frozen_qr3_help_reply_says_not_documented" in product_help
+    assert "test_hc3_frozen_qr3_rejects_ungrounded_numeric_fabrication" in product_help
     # Ensure the full §5 ID set is exactly retrieval ∪ behavior.
     behavior_ids = frozenset({"Q-R1", "Q-R2", "Q-R3"})
     retrieval_ids = {qid for qid, _q, _a in _HC4_RETRIEVAL_BANK}
     assert retrieval_ids | behavior_ids == _HC4_ALL_QUESTION_IDS
+
+
+def test_hc4_section5_contract_prompts_match_frozen_bank():
+    """Fail closed if HC §5 table IDs/prompts drift from the CI freeze bank."""
+    hc = (REPO_ROOT / "docs" / "HELP_CORPUS_COVERAGE_IMPLEMENTATION.md").read_text(encoding="utf-8")
+    contract_rows = _parse_section5_question_rows(hc)
+    assert set(contract_rows) == _HC4_ALL_QUESTION_IDS, (
+        "HC §5 question IDs drifted from _HC4_ALL_QUESTION_IDS.\n"
+        f"missing={sorted(_HC4_ALL_QUESTION_IDS - set(contract_rows))}\n"
+        f"extra={sorted(set(contract_rows) - _HC4_ALL_QUESTION_IDS)}"
+    )
+    bank_questions = {qid: question for qid, question, _accept in _HC4_RETRIEVAL_BANK}
+    for qid, question in bank_questions.items():
+        assert contract_rows[qid] == question, (
+            f"{qid} prompt drifted: contract={contract_rows[qid]!r} bank={question!r}"
+        )
+    assert contract_rows["Q-R1"] == _QR1_FROZEN
+    assert contract_rows["Q-R2"] == _QR2_FROZEN
+    assert contract_rows["Q-R3"] == _QR3_FROZEN
 
 
 def test_user_guide_manifest_matches_rq_7_1_4_and_hc_6_1():
@@ -640,9 +694,11 @@ def test_user_guide_manifest_matches_rq_7_1_4_and_hc_6_1():
     assert spec.sections == frozenset(_HC4_USER_GUIDE_H2_FREEZE)
 
 
-def test_qd3_otf_filter_retrieves_otf_purpose_or_concept():
-    """§5.1 Q-D3 — previously uncovered in the unified freeze."""
-    pairs = _selected_pairs("What is an OTF filter?")
-    assert ("otf", "Purpose") in pairs or ("otf", "§1 — Concept") in pairs, (
-        f"Q-D3 expected otf/Purpose or otf/§1 — Concept; got {sorted(pairs)}"
-    )
+def test_qd3_otf_filter_retrieves_concept_definition():
+    """§5.1 Q-D3 — must retrieve the definitional §1 — Concept chunk, not Purpose meta-text."""
+    chunks = _selected_chunks("What is an OTF filter?")
+    pairs = {(chunk.doc_id, chunk.section) for chunk in chunks}
+    assert ("otf", "§1 — Concept") in pairs, f"Q-D3 expected otf/§1 — Concept; got {sorted(pairs)}"
+    concept = next(c.text for c in chunks if c.doc_id == "otf" and c.section == "§1 — Concept")
+    assert "One Timeframing" in concept
+    assert "OTF up" in concept

@@ -2,7 +2,7 @@
 
 **Document type:** Implementation contract (HC-series) — **single source of truth**
 for making product Help explain features and how to use them
-**Status:** ✅ complete — HC-0…HC-4 shipped
+**Status:** ✅ Implemented — HC-0…HC-4 complete
 **Date:** 2026-08-06 (HC-4 freeze)
 **Owner surface:** Help corpus content + narrow `help_corpus` allowlist/tests
 **Depends on:** RQ series complete
@@ -190,7 +190,7 @@ mentions the term.
 |---|---|---|---|
 | Q-D1 | What is Monte Carlo in ThesisTester? | `metrics` (MC H2/whole_file chunk) | `user_guide` / Validation and robustness |
 | Q-D2 | What is expectancy_r? | `metrics` | — |
-| Q-D3 | What is an OTF filter? | `otf` / Purpose (or §1) | `user_guide` summary H2 if added |
+| Q-D3 | What is an OTF filter? | `otf` / §1 — Concept | — |
 | Q-D4 | What is a research bundle? | `user_guide` / Research Bundles | — |
 | Q-D5 | What is walk-forward validation here? | `metrics` | `user_guide` / Validation and robustness |
 | Q-D6 | What does slippage_ticks mean? | `metrics` | `user_guide` / Backtest |
@@ -239,10 +239,10 @@ When an HC content PR lands, append rows here (and mirror in test fixtures):
 | Q-H9 | `user_guide` | Report Export and/or Research Bundles | either acceptable |
 | Q-D1 | `metrics` | Monte Carlo path robustness diagnostics (R11) | `user_guide` / Validation and robustness |
 | Q-D2 | `metrics` | Core formulas (Expectancy) | — |
-| Q-D3 | `otf` | Purpose or §1 — Concept | — |
+| Q-D3 | `otf` | §1 — Concept (definition; not Purpose meta-spec) | — |
 | Q-D4 | `user_guide` | Research Bundles | — |
 | Q-D5 | `metrics` | Walk-forward H2 / whole_file | `user_guide` / Validation and robustness |
-| Q-D6 | `metrics` | Execution cost inputs / Core formulas | — |
+| Q-D6 | `metrics` | Execution cost inputs | — |
 | Q-H10 | `user_guide` | Research mode on classic pages | Research Assistant H2 |
 | Q-H11 | `user_guide` | When to use Help vs Discuss results | Research Assistant H2 |
 | Q-H12 | `user_guide` | Research Assistant (draft, Discuss, Help) | — |
@@ -618,9 +618,11 @@ docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md
 
 #### Implemented contract (fill when merged)
 - `tests/test_assistant_help_coverage.py` — HC-4 frozen `_HC4_RETRIEVAL_BANK`
-  for every §5 Q-D*/Q-H* question (incl. Q-D3); parametrized fixtures;
-  `_HC4_USER_GUIDE_H2_FREEZE` parity across RQ §7.1.4, HC §6.1, and
-  `HELP_CORPUS_MANIFEST`; Q-R* named-gate inventory check.
+  for every §5 Q-D*/Q-H* question (incl. Q-D3 → `otf/§1 — Concept` with
+  definitional body phrases; Q-D6 → Execution cost inputs); parametrized
+  fixtures; `_HC4_USER_GUIDE_H2_FREEZE` parity across RQ §7.1.4, HC §6.1, and
+  `HELP_CORPUS_MANIFEST`; §5 contract prompt sync; Q-R* named-gate inventory
+  (incl. Q-R3 Help reply honesty tests).
 - `tests/test_assistant_llm_evaluations.py` — pointer to HC-4 coverage bank
   (RQ-5 honesty gates unchanged).
 - Docs: series status ✅; roadmap ✅; ASSUMPTIONS USER_GUIDE-backed Help note;
@@ -635,8 +637,9 @@ Ask in Research Assistant **Help / how it works** (with Help enabled):
 4. How do I run validation / Monte Carlo / WFA?
 5. When should I use Help vs Discuss results?
 6. What is expectancy_r?
-7. What is a research bundle?
-8. What was my best SL on this run? → must remediate to Discuss results
+7. What is an OTF filter?
+8. What is a research bundle?
+9. What was my best SL on this run? → must remediate to Discuss results
 
 ---
 
