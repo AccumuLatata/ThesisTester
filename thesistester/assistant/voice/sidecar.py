@@ -307,6 +307,10 @@ class SidecarRuntime:
     host: str = DEFAULT_SIDECAR_HOST
     port: int = DEFAULT_SIDECAR_PORT
     upstream_connect: UpstreamConnect | None = None
+    # Production ``build_default_runtime`` sets the default override path so
+    # sidebar toggles apply without a restart. Unit tests leave this ``None``
+    # so injected settings are not polluted by a developer-local override file.
+    ui_override_path: str | Path | None = None
     _active: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def public_base_url(self) -> str:
@@ -316,7 +320,9 @@ class SidecarRuntime:
         """Replace runtime settings (tests / explicit reload)."""
         from thesistester.assistant.voice.settings import resolve_voice_settings
 
-        resolved = settings or resolve_voice_settings()
+        resolved = settings or resolve_voice_settings(
+            ui_override_path=self.ui_override_path,
+        )
         self.settings = resolved
         self.service.settings = resolved
         return resolved
@@ -324,16 +330,17 @@ class SidecarRuntime:
     def apply_ui_override(self) -> VoiceSettings:
         """Merge local Voice UI ``enabled`` / ``mode`` onto current settings.
 
-        Preserves explicitly injected runtime settings when no override file
-        exists (unit tests). Production sidecars pick up sidebar toggles
-        without a uvicorn restart.
+        No-op when ``ui_override_path`` is ``None`` (unit tests inject settings).
+        Production sidecars pick up sidebar toggles without a uvicorn restart.
         """
         from thesistester.assistant.voice.settings import (
             load_voice_ui_overrides,
             with_voice_overrides,
         )
 
-        overrides = load_voice_ui_overrides()
+        if self.ui_override_path is None:
+            return self.settings
+        overrides = load_voice_ui_overrides(self.ui_override_path)
         if not overrides:
             return self.settings
         resolved = with_voice_overrides(
@@ -868,11 +875,33 @@ async def _pump_upstream_to_browser(
             continue
 
         transcript = extract_transcript_from_event(event)
-        persisted: VoiceTranscriptTurn | None = None
+        # Audit assistant text even when durable append fails so the browser
+        # never receives uncited digits in transcript JSON.
+        forward_role: str | None = None
+        forward_text: str | None = None
+        forward_path: str | None = None
         if transcript is not None:
             role, text = transcript
+            forward_role = role
+            forward_text = text
+            forward_path = "realtime"
+            if role == "assistant":
+                try:
+                    forward_text, _verdict, forward_path = audit_realtime_assistant_transcript(
+                        service=runtime.service,
+                        thesis_id=thesis_id,
+                        session_id=session_id,
+                        text=text,
+                    )
+                except (VoiceSessionError, Exception):
+                    forward_text = UNGROUNDED_SPOKEN_REMEDIATION
+                    forward_path = "realtime_ungrounded"
+                    logger.warning(
+                        "Realtime assistant transcript audit failed for %s; remediating.",
+                        session_id,
+                    )
             try:
-                persisted = persist_realtime_transcript_turn(
+                persist_realtime_transcript_turn(
                     service=runtime.service,
                     thesis_id=thesis_id,
                     session_id=session_id,
@@ -887,11 +916,7 @@ async def _pump_upstream_to_browser(
                 )
             except Exception:
                 logger.exception("Unexpected realtime transcript append failure for %s", session_id)
-            if (
-                persisted is not None
-                and role == "assistant"
-                and persisted.path == "realtime_ungrounded"
-            ):
+            if forward_role == "assistant" and forward_path == "realtime_ungrounded":
                 await browser_ws.send_json(
                     {
                         "type": "sidecar.error",
@@ -904,14 +929,14 @@ async def _pump_upstream_to_browser(
             forward = dict(event)
             # Do not forward uncited assistant transcript digits to the client log.
             if (
-                persisted is not None
-                and persisted.role == "assistant"
-                and persisted.path == "realtime_ungrounded"
+                forward_role == "assistant"
+                and forward_path == "realtime_ungrounded"
+                and isinstance(forward_text, str)
             ):
                 if "transcript" in forward:
-                    forward["transcript"] = persisted.text
+                    forward["transcript"] = forward_text
                 if "text" in forward:
-                    forward["text"] = persisted.text
+                    forward["text"] = forward_text
             await browser_ws.send_json(forward)
         elif event_type in {"session.updated", "session.created", "error"}:
             await browser_ws.send_json(safe_event if event_type == "error" else dict(event))
@@ -930,7 +955,10 @@ def build_default_runtime(
     bind_host = assert_localhost_bind(host)
     if not isinstance(port, int) or isinstance(port, bool) or port < 1 or port > 65535:
         raise SidecarError("Sidecar port must be an integer in 1..65535.")
-    from thesistester.assistant.voice.settings import resolve_voice_settings
+    from thesistester.assistant.voice.settings import (
+        DEFAULT_VOICE_UI_OVERRIDE_PATH,
+        resolve_voice_settings,
+    )
 
     resolved_settings = settings or resolve_voice_settings()
     roots = (Path.cwd().resolve(), get_store_root().resolve())
@@ -947,6 +975,7 @@ def build_default_runtime(
         host=bind_host,
         port=port,
         upstream_connect=upstream_connect,
+        ui_override_path=DEFAULT_VOICE_UI_OVERRIDE_PATH,
     )
 
 

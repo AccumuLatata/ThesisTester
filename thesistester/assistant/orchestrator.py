@@ -731,7 +731,12 @@ class AssistantOrchestrator:
             resolve_voice_settings,
         )
 
-        resolved_settings: VoiceSettings = settings or resolve_voice_settings()
+        if settings is None:
+            resolved_settings = resolve_voice_settings()
+        elif isinstance(settings, VoiceSettings):
+            resolved_settings = settings
+        else:
+            raise TypeError("settings must be a VoiceSettings instance or None.")
         service = VoiceSessionService(
             self.repository,
             tools=self.tools if isinstance(self.tools, AssistantTools) else None,

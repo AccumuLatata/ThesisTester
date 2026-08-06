@@ -16,6 +16,8 @@ try:
     import tomllib
 except ModuleNotFoundError:  # Python 3.10 compatibility
     import tomli as tomllib
+import os
+import tempfile
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -137,12 +139,18 @@ def with_voice_overrides(
     enabled: bool | None = None,
     mode: str | None = None,
 ) -> VoiceSettings:
-    """Return a copy with optional ``enabled`` / ``mode`` overrides applied."""
+    """Return a copy with optional ``enabled`` / ``mode`` overrides applied.
+
+    ``enabled`` is fail-closed via ``_coerce_enabled_flag`` so strings like
+    ``\"false\"`` cannot enable voice (``bool(\"false\")`` is True in Python).
+    """
     updates: dict[str, Any] = {}
     if enabled is not None:
-        updates["enabled"] = bool(enabled)
+        updates["enabled"] = _coerce_enabled_flag(enabled, default=False)
     if mode is not None:
-        updates["mode"] = _coerce_mode(mode)
+        if not isinstance(mode, str) or mode.strip() not in _ALLOWED_MODES:
+            raise VoiceSettingsError(f"Unsupported voice mode: {mode!r}.")
+        updates["mode"] = mode.strip()
     return replace(settings, **updates) if updates else settings
 
 
@@ -164,7 +172,10 @@ def load_voice_ui_overrides(
     if "enabled" in payload:
         out["enabled"] = _coerce_enabled_flag(payload.get("enabled"), default=False)
     if "mode" in payload:
-        out["mode"] = _coerce_mode(payload.get("mode"))
+        raw_mode = payload.get("mode")
+        if isinstance(raw_mode, str) and raw_mode.strip() in _ALLOWED_MODES:
+            out["mode"] = raw_mode.strip()
+        # Invalid mode keys are ignored (fail closed to tracked mode).
     return out
 
 
@@ -176,16 +187,34 @@ def save_voice_ui_overrides(
 ) -> Path:
     """Persist operator Voice UI choices (enabled + mode only) for Streamlit/sidecar."""
     override_path = Path(path)
-    resolved_mode = _coerce_mode(mode)
-    if resolved_mode not in _ALLOWED_MODES:
+    if not isinstance(mode, str) or mode.strip() not in _ALLOWED_MODES:
         raise VoiceSettingsError(f"Unsupported voice mode: {mode!r}.")
+    resolved_mode = mode.strip()
+    resolved_enabled = _coerce_enabled_flag(enabled, default=False)
     override_path.parent.mkdir(parents=True, exist_ok=True)
     text = (
         "# Local Voice UI overrides (gitignored). Tracked assistant.toml stays default-off.\n"
-        f"enabled = {'true' if bool(enabled) else 'false'}\n"
+        f"enabled = {'true' if resolved_enabled else 'false'}\n"
         f'mode = "{resolved_mode}"\n'
     )
-    override_path.write_text(text, encoding="utf-8")
+    # Atomic replace so Streamlit + sidecar cannot read a partial TOML write.
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=override_path.name + ".",
+        suffix=".tmp",
+        dir=str(override_path.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, override_path)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
     return override_path
 
 
