@@ -1,7 +1,8 @@
-"""Frozen Help corpus allowlist and pure loaders (RQ-0).
+"""Frozen Help corpus allowlist and pure loaders (RQ-0 / HC amends).
 
-Encodes ``docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`` §7.1 exactly.
-No orchestrator wiring, network I/O, or OpenAI calls.
+Encodes ``docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`` §7.1 exactly
+(including HC-1 ``user_guide`` §7.1.4). No orchestrator wiring, network I/O,
+or OpenAI calls.
 """
 
 from __future__ import annotations
@@ -86,6 +87,126 @@ _OTF_SECTIONS = frozenset(
     }
 )
 
+# HC-1 filled USER_GUIDE H2s only (stubs for Grid→Assistant remain excluded).
+_USER_GUIDE_SECTIONS = frozenset(
+    {
+        "Purpose and honesty",
+        "Classic workflow overview",
+        "Data",
+        "Levels",
+        "Setup Builder",
+        "Signals",
+        "Backtest",
+    }
+)
+
+# How-to / workflow cues for HC §1.1 intent-aware user_guide boost.
+# Keep aligned with HELP_CORPUS_COVERAGE_IMPLEMENTATION.md §1.1 cue table —
+# avoid ultra-common tokens (`use`, bare `setup`) that flip definition queries
+# into how-to mode.
+_HOW_TO_QUERY_TOKENS = frozenset(
+    {
+        "how",
+        "configure",
+        "import",
+        "generate",
+        "export",
+        "link",
+        "record",
+        "steps",
+        "where",
+        "upload",
+        "build",
+        "run",
+        "enable",
+        "save",
+        "load",
+    }
+)
+_DEFINITION_QUERY_TOKENS = frozenset(
+    {
+        "what",
+        "define",
+        "definition",
+        "meaning",
+        "mean",
+    }
+)
+_COST_QUERY_TOKENS = frozenset(
+    {
+        "cost",
+        "costs",
+        "commission",
+        "commission_per_side",
+        "slippage",
+        "slippage_ticks",
+        # Note: ``exposure`` is intentionally omitted — Backtest exposure policy
+        # lives in USER_GUIDE, not the Execution cost inputs glossary H2.
+    }
+)
+# Stopwords ignored when matching query tokens to USER_GUIDE H2 titles so
+# titles like "Purpose and honesty" do not get a strong boost from bare "and".
+_SECTION_TITLE_STOPWORDS = frozenset(
+    {
+        "and",
+        "or",
+        "the",
+        "to",
+        "of",
+        "a",
+        "an",
+        "in",
+        "on",
+        "for",
+        "vs",
+        "with",
+        "via",
+    }
+)
+# Intent/function words excluded from substring lexical scoring. They still
+# participate in how-to / definitional cue detection via the sets above.
+# Without this, ``is`` matches inside ``Assistant`` section titles and crowds
+# out glossary definitions under max_corpus_chars.
+_LEXICAL_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "been",
+        "by",
+        "did",
+        "do",
+        "does",
+        "for",
+        "how",
+        "i",
+        "if",
+        "in",
+        "is",
+        "it",
+        "me",
+        "my",
+        "of",
+        "on",
+        "or",
+        "the",
+        "to",
+        "use",
+        "was",
+        "we",
+        "were",
+        "what",
+        "when",
+        "where",
+        "why",
+        "you",
+    }
+)
+
 HELP_CORPUS_MANIFEST: tuple[CorpusDocSpec, ...] = (
     CorpusDocSpec("readme", "README.md", "whole_file", frozenset()),
     CorpusDocSpec("metrics", "docs/METRICS_GLOSSARY.md", "whole_file", frozenset()),
@@ -108,6 +229,12 @@ HELP_CORPUS_MANIFEST: tuple[CorpusDocSpec, ...] = (
         _ASSUMPTIONS_SECTIONS,
     ),
     CorpusDocSpec("otf", "docs/otf-filter.md", "sections", _OTF_SECTIONS),
+    CorpusDocSpec(
+        "user_guide",
+        "docs/USER_GUIDE.md",
+        "sections",
+        _USER_GUIDE_SECTIONS,
+    ),
     CorpusDocSpec(REGISTRY_DOC_ID, None, "digest", frozenset()),
 )
 
@@ -362,17 +489,38 @@ def registry_digest_json(rows: Iterable[Mapping[str, Any]] | None = None) -> str
 
 
 def _tokenize_query(text: str) -> set[str]:
-    tokens = {part.lower() for part in re.findall(r"[A-Za-z0-9_./`§-]{2,}", text)}
-    return {token.strip("`'\".,:;!?()[]{}") for token in tokens if token.strip("`'\".,:;!?()[]{}")}
+    # Exclude `/` so compounds like ``costs/exposure`` become separate tokens
+    # (needed for HC §1.1 cost-noun boosts). Paths are not query syntax here.
+    # Also expand ``snake_case`` identifiers so ``expectancy_r`` / ``commission_per_side``
+    # match glossary prose that uses the stem nouns.
+    tokens = {part.lower() for part in re.findall(r"[A-Za-z0-9_.`§-]{2,}", text)}
+    cleaned = {
+        token.strip("`'\".,:;!?()[]{}") for token in tokens if token.strip("`'\".,:;!?()[]{}")
+    }
+    expanded: set[str] = set()
+    for token in cleaned:
+        expanded.add(token)
+        if "_" in token:
+            for part in token.split("_"):
+                if len(part) >= 2:
+                    expanded.add(part)
+    return expanded
 
 
 def score_corpus_chunk(chunk: CorpusChunk, *, query_tokens: set[str]) -> int:
-    """Cheap lexical score for Help retrieval (local docs only)."""
+    """Cheap lexical score for Help retrieval (local docs only).
+
+    HC §1.1: additive intent-aware ``user_guide`` how-to boost. Existing
+    metrics/OTF/architecture boosts remain; definition queries are not forced
+    onto USER_GUIDE.
+    """
     if not query_tokens:
         return 0
     haystack = f"{chunk.doc_id} {chunk.section} {chunk.text}".lower()
     score = 0
     for token in query_tokens:
+        if token in _LEXICAL_STOPWORDS:
+            continue
         if token in haystack:
             score += 1
             if token in chunk.doc_id.lower() or token in chunk.section.lower():
@@ -381,11 +529,31 @@ def score_corpus_chunk(chunk: CorpusChunk, *, query_tokens: set[str]) -> int:
     if {"grid", "ranking", "metric", "expectancy", "sl", "tp"} & query_tokens:
         if chunk.doc_id in {"metrics", "architecture", "assumptions"}:
             score += 3
+    if query_tokens & _COST_QUERY_TOKENS and chunk.doc_id == "metrics":
+        # Mixed how-to + cost nouns (Q-H5): keep glossary in the selected set.
+        score += 3
+        section_l = chunk.section.lower()
+        if any(marker in section_l for marker in ("cost", "commission", "slippage")):
+            # Prefer the dedicated Execution cost inputs H2 over incidental
+            # cost mentions inside Core formulas / other metrics sections.
+            score += 4
     if {"otf", "one", "timeframing", "timeframe"} & query_tokens and chunk.doc_id == "otf":
         score += 3
     if {"assistant", "capability", "registry", "confirm"} & query_tokens:
         if chunk.doc_id in {"architecture", "assumptions"}:
             score += 2
+    # HC-1 §1.1: how-to cues prefer user_guide without removing other boosts.
+    # Boost only title-overlapping sections (non-stopword tokens) so template
+    # phrases like "How to use" do not flood max_corpus_chars with every H2.
+    how_to = bool(query_tokens & _HOW_TO_QUERY_TOKENS)
+    definitional = bool(query_tokens & _DEFINITION_QUERY_TOKENS)
+    if how_to and chunk.doc_id == "user_guide":
+        section_tokens = _tokenize_query(chunk.section) - _SECTION_TITLE_STOPWORDS
+        if query_tokens & section_tokens:
+            score += 5
+    elif definitional and not how_to and chunk.doc_id == "user_guide":
+        # Soft preference away from forcing USER_GUIDE on pure definitions.
+        score -= 1
     return score
 
 

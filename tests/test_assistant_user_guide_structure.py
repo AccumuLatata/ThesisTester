@@ -1,11 +1,11 @@
-"""HC-0 structure gate: USER_GUIDE skeleton H2 titles (not Help-allowlisted yet)."""
+"""USER_GUIDE structure gate: §6.1 H2 skeleton + HC-1 filled vs remaining stubs."""
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-from thesistester.assistant.help_corpus import HELP_CORPUS_MANIFEST, manifest_doc_ids
+from thesistester.assistant.help_corpus import HELP_CORPUS_MANIFEST, get_corpus_doc_spec
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 USER_GUIDE_PATH = REPO_ROOT / "docs" / "USER_GUIDE.md"
@@ -30,10 +30,18 @@ REQUIRED_USER_GUIDE_H2S = (
     "When to use Help vs Discuss results",
 )
 
-# Filled in HC-0; remaining surfaces stay explicit stubs until HC-1+.
-_PURPOSE_H2 = "Purpose and honesty"
-_STUB_MARKER = "_Stub (HC-0)._"
+# HC-1 filled + allowlisted (must match RQ §7.1.4 / HELP_CORPUS_MANIFEST).
+HC1_FILLED_H2S = (
+    "Purpose and honesty",
+    "Classic workflow overview",
+    "Data",
+    "Levels",
+    "Setup Builder",
+    "Signals",
+    "Backtest",
+)
 
+_STUB_MARKER = "_Stub (HC-0)._"
 _H2_RE = re.compile(r"^##\s+(.*\S)\s*$", re.MULTILINE)
 
 
@@ -57,7 +65,7 @@ def _user_guide_h2_bodies() -> dict[str, str]:
 
 def test_user_guide_exists_with_exact_h2_skeleton():
     """§6.1 freeze: exact H2 set and order — no extras, no omissions."""
-    assert USER_GUIDE_PATH.is_file(), "docs/USER_GUIDE.md must exist (HC-0)"
+    assert USER_GUIDE_PATH.is_file(), "docs/USER_GUIDE.md must exist"
     titles = _user_guide_h2_titles()
     assert titles == list(REQUIRED_USER_GUIDE_H2S), (
         "USER_GUIDE H2 titles must match §6.1 exactly (presence, order, no extras).\n"
@@ -66,22 +74,29 @@ def test_user_guide_exists_with_exact_h2_skeleton():
     )
 
 
-def test_user_guide_feature_h2s_remain_explicit_stubs():
-    """HC-0 stubs must stay marked so they are never mistaken for shipped how-tos."""
+def test_user_guide_hc1_sections_filled_remaining_stubs():
+    """HC-1 how-tos are real prose; HC-2/HC-3 surfaces stay explicit stubs."""
     bodies = _user_guide_h2_bodies()
-    assert _PURPOSE_H2 in bodies
-    assert _STUB_MARKER not in bodies[_PURPOSE_H2], (
-        "Purpose and honesty is the HC-0 preface — not a stub placeholder"
-    )
+    for title in HC1_FILLED_H2S:
+        assert _STUB_MARKER not in bodies[title], (
+            f"USER_GUIDE H2 {title!r} must be filled (no {_STUB_MARKER!r}) after HC-1"
+        )
+        assert len(bodies[title].strip()) > 80, f"USER_GUIDE H2 {title!r} looks empty"
     for title in REQUIRED_USER_GUIDE_H2S:
-        if title == _PURPOSE_H2:
+        if title in HC1_FILLED_H2S:
             continue
         assert _STUB_MARKER in bodies[title], (
-            f"USER_GUIDE H2 {title!r} must contain {_STUB_MARKER!r} until filled in HC-1+"
+            f"USER_GUIDE H2 {title!r} must remain {_STUB_MARKER!r} until HC-2/HC-3"
         )
 
 
-def test_user_guide_not_in_help_corpus_manifest_yet():
-    """HC-0 must not widen Help allowlist; user_guide lands in HC-1+."""
-    assert "user_guide" not in manifest_doc_ids()
-    assert all(spec.relative_path != "docs/USER_GUIDE.md" for spec in HELP_CORPUS_MANIFEST)
+def test_user_guide_manifest_matches_hc1_filled_sections_only():
+    """Allowlist includes only filled HC-1 H2s — never stub Grid→Assistant titles."""
+    spec = get_corpus_doc_spec("user_guide")
+    assert spec.relative_path == "docs/USER_GUIDE.md"
+    assert spec.mode == "sections"
+    assert spec.sections == frozenset(HC1_FILLED_H2S)
+    assert all(
+        entry.doc_id != "user_guide" or entry.sections == frozenset(HC1_FILLED_H2S)
+        for entry in HELP_CORPUS_MANIFEST
+    )

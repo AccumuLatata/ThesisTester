@@ -30,6 +30,7 @@ def test_manifest_doc_ids_match_section_7_1_freeze():
         "architecture",
         "assumptions",
         "otf",
+        "user_guide",
         "registry",
     )
     by_id = {spec.doc_id: spec for spec in HELP_CORPUS_MANIFEST}
@@ -39,10 +40,54 @@ def test_manifest_doc_ids_match_section_7_1_freeze():
     assert by_id["architecture"].mode == "sections"
     assert by_id["assumptions"].mode == "sections"
     assert by_id["otf"].mode == "sections"
+    assert by_id["user_guide"].mode == "sections"
+    assert by_id["user_guide"].relative_path == "docs/USER_GUIDE.md"
     assert by_id["registry"].mode == "digest"
     assert "`st.session_state` contract (current)" in by_id["architecture"].sections
     assert "§10 — Regression safety" not in by_id["otf"].sections
     assert "Packaging and tooling boundary (R9)" not in by_id["architecture"].sections
+    assert by_id["user_guide"].sections == frozenset(
+        {
+            "Purpose and honesty",
+            "Classic workflow overview",
+            "Data",
+            "Levels",
+            "Setup Builder",
+            "Signals",
+            "Backtest",
+        }
+    )
+    assert "Grid Search" not in by_id["user_guide"].sections
+
+
+def test_user_guide_rejects_stub_h2_and_accepts_allowlisted_h2():
+    stub_h2s = (
+        "Grid Search",
+        "Time Analysis",
+        "Validation and robustness",
+        "Report Export",
+        "Research Bundles",
+        "Portfolio",
+        "Research Assistant (draft, Discuss, Help)",
+        "Research mode on classic pages",
+        "When to use Help vs Discuss results",
+    )
+    for stub in stub_h2s:
+        with pytest.raises(HelpCorpusError, match="not allowlisted"):
+            load_corpus_chunks(
+                "user_guide",
+                repo_root=REPO_ROOT,
+                sections=[stub],
+            )
+    chunks = load_corpus_chunks(
+        "user_guide",
+        repo_root=REPO_ROOT,
+        sections=["Data"],
+    )
+    assert len(chunks) == 1
+    assert chunks[0].doc_id == "user_guide"
+    assert chunks[0].section == "Data"
+    assert "CSV format profile" in chunks[0].text
 
 
 def test_resolve_corpus_path_rejects_traversal_and_agent_guide():
