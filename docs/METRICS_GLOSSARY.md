@@ -30,19 +30,6 @@ Per trade:
   - `pnl_points == gross_pnl_points`
   - `pnl_currency == net_pnl_currency`
 
-### Execution cost inputs (`commission_per_side`, `slippage_ticks`)
-
-Backtest / grid UI and engine inputs (defaults are typically `0.0` — gross-era
-behavior unless you set non-zero costs):
-
-- `commission_per_side`: currency fee charged once per side (entry and exit each
-  pay it). Round-trip commission on a completed trade is
-  `commission_cost = 2 * commission_per_side`.
-- `slippage_ticks`: adverse ticks applied per side at entry and exit (UI label
-  **Slippage (ticks per side)**). Converted with instrument `tick_size` /
-  `point_value` into `slippage_cost`. Non-zero slippage makes fills worse than
-  the signal price; it is an assumption, not measured exchange slippage.
-
 ### Win rate
 \[
 \text{win\_rate} = \frac{\#\{R_i > 0\}}{n}
@@ -65,6 +52,7 @@ Implementation: `gross_win`, `gross_loss`, and branches in `thesistester/analyti
 \mathbb{E}[R] = \text{win\_rate} \cdot \overline{R}_{win} + \text{loss\_rate} \cdot \overline{R}_{loss}
 \]
 Fallback: when one side is missing (all-win/all-loss), code uses `avg_r`.
+Alias in packets / UI: `expectancy_r` (same quantity as Expectancy (R) above).
 Implementation: `thesistester/analytics/metrics.py`.
 
 ### Institutional / advanced trade diagnostics
@@ -105,6 +93,19 @@ Implementation: `thesistester/analytics/metrics.py`.
 \text{max\_drawdown\_r} = \max_t(\text{drawdown}_t)
 \]
 Implementation: `cum_r`, `cummax().clip(lower=0.0)`, and drawdown in `thesistester/analytics/metrics.py:82-85` (and same anchor logic in equity curve at `thesistester/analytics/metrics.py:203-206`).
+
+## Execution cost inputs
+
+Backtest / grid UI and engine inputs (`commission_per_side`, `slippage_ticks`).
+Defaults are typically `0.0` — gross-era behavior unless you set non-zero costs:
+
+- `commission_per_side`: currency fee charged once per side (entry and exit each
+  pay it). Round-trip commission on a completed trade is
+  `commission_cost = 2 * commission_per_side`.
+- `slippage_ticks`: adverse ticks applied per side at entry and exit (UI label
+  **Slippage (ticks per side)**). Converted with instrument `tick_size` /
+  `point_value` into `slippage_cost`. Non-zero slippage makes fills worse than
+  the signal price; it is an assumption, not measured exchange slippage.
 
 ## MAE/MFE excursion analytics (R10)
 

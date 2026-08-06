@@ -61,12 +61,24 @@ def test_manifest_doc_ids_match_section_7_1_freeze():
 
 
 def test_user_guide_rejects_stub_h2_and_accepts_allowlisted_h2():
-    with pytest.raises(HelpCorpusError, match="not allowlisted"):
-        load_corpus_chunks(
-            "user_guide",
-            repo_root=REPO_ROOT,
-            sections=["Grid Search"],
-        )
+    stub_h2s = (
+        "Grid Search",
+        "Time Analysis",
+        "Validation and robustness",
+        "Report Export",
+        "Research Bundles",
+        "Portfolio",
+        "Research Assistant (draft, Discuss, Help)",
+        "Research mode on classic pages",
+        "When to use Help vs Discuss results",
+    )
+    for stub in stub_h2s:
+        with pytest.raises(HelpCorpusError, match="not allowlisted"):
+            load_corpus_chunks(
+                "user_guide",
+                repo_root=REPO_ROOT,
+                sections=[stub],
+            )
     chunks = load_corpus_chunks(
         "user_guide",
         repo_root=REPO_ROOT,

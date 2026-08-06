@@ -111,7 +111,7 @@ saved snapshots, regenerate
 | `SMA lengths` / `EMA lengths` + timeframes | Indicator levels on chosen TFs | Comma-separated lengths must parse |
 | `Rolling VWAP windows` / `Rolling POC windows` | Intraday rolling anchors | Large data + rolling POC can be slow |
 | `Value area (%)` + prior D/W/M VA aggregation ticks | Profile VA/POC binning | Aggregation ticks ≠ instrument tick size |
-| **Advanced opt-in levels** | Pivots, dVWAP_RTH, TPO single prints, APOC, prev30mVWAP | Off unless enabled |
+| **Advanced opt-in levels** | Pivots, dVWAP_RTH, TPO single prints, APOC, prev30mVWAP | Built-in defaults enable all families; uncheck a box to omit |
 | **Calculate levels** / **Recalculate levels** | Build or refresh level artifacts | Stale after data/settings change |
 
 **How to use.**
@@ -192,7 +192,7 @@ active setup, saved setup, naked levels, trigger, signal table, signal runs
 
 | Control | Meaning | Common pitfall |
 |---|---|---|
-| `Setup source` | Manual / active setup / library setup | Library OTF snapshot is whatever was saved |
+| `Setup source` | `Configure manually` / `Use active setup` / `Use saved setup from library` | Library OTF snapshot is whatever was saved |
 | Manual confluence + trigger controls | Same concepts as Setup Builder | Easy to drift from the saved setup |
 | **Generate signals** | Build zones + candidate entries | Does **not** apply OTF admission |
 | Saved signal runs | Load/save/delete generated artifacts | Needs trusted dataset + levels identity |

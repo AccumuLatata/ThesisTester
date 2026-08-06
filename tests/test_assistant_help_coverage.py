@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from thesistester.assistant.help_corpus import select_help_corpus_chunks
+from thesistester.assistant.help_corpus import (
+    CorpusChunk,
+    _tokenize_query,
+    load_allowlisted_corpus,
+    score_corpus_chunk,
+    select_help_corpus_chunks,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -46,13 +52,16 @@ _HC1_HOWTO_BANK = (
 )
 
 
-def _selected_pairs(question: str) -> set[tuple[str, str]]:
-    chunks = select_help_corpus_chunks(
+def _selected_chunks(question: str) -> tuple[CorpusChunk, ...]:
+    return select_help_corpus_chunks(
         question,
         repo_root=REPO_ROOT,
         max_chars=_MAX_CHARS,
     )
-    return {(chunk.doc_id, chunk.section) for chunk in chunks}
+
+
+def _selected_pairs(question: str) -> set[tuple[str, str]]:
+    return {(chunk.doc_id, chunk.section) for chunk in _selected_chunks(question)}
 
 
 def test_hc1_howto_bank_retrieves_primary_user_guide_sections():
@@ -63,39 +72,61 @@ def test_hc1_howto_bank_retrieves_primary_user_guide_sections():
         )
 
 
-def test_qd2_expectancy_still_retrieves_metrics():
-    """Definition Q-D2 must keep glossary present under §5 pass rule."""
-    pairs = _selected_pairs("What is expectancy_r?")
-    assert any(doc_id == "metrics" for doc_id, _section in pairs), (
-        f"Q-D2 must include metrics chunks; got {sorted(pairs)}"
+def test_qd2_expectancy_retrieves_core_formulas_definition():
+    """Definition Q-D2 must retrieve the Expectancy glossary section, not any metrics chunk."""
+    chunks = _selected_chunks("What is expectancy_r?")
+    pairs = {(chunk.doc_id, chunk.section) for chunk in chunks}
+    assert ("metrics", "Core formulas") in pairs, (
+        f"Q-D2 must include metrics/Core formulas; got {sorted(pairs)}"
     )
+    core = next(c.text for c in chunks if c.doc_id == "metrics" and c.section == "Core formulas")
+    assert "expectancy_r" in core.lower() or "expectancy (r)" in core.lower()
 
 
-def test_qh5_keeps_glossary_cost_chunks_with_user_guide():
-    """Mixed how-to + cost nouns: USER_GUIDE primary must not drop glossary."""
+def test_qh5_keeps_execution_cost_glossary_with_user_guide():
+    """Mixed how-to + cost nouns: USER_GUIDE primary must not drop cost gap-fill."""
     question = "How do I run a backtest and what do costs/exposure mean?"
-    chunks = select_help_corpus_chunks(
-        question,
-        repo_root=REPO_ROOT,
-        max_chars=_MAX_CHARS,
-    )
+    chunks = _selected_chunks(question)
     pairs = {(chunk.doc_id, chunk.section) for chunk in chunks}
     assert ("user_guide", "Backtest") in pairs
-    assert any(chunk.doc_id == "metrics" for chunk in chunks), (
-        "Q-H5 selected set must still include metrics (cost/slippage definitions)"
+    assert ("metrics", "Execution cost inputs") in pairs, (
+        f"Q-H5 must keep metrics/Execution cost inputs; got {sorted(pairs)}"
     )
-    # Glossary gap-fill from HC-1 should be loadable in the metrics whole_file set.
-    metrics_text = "\n".join(chunk.text for chunk in chunks if chunk.doc_id == "metrics")
-    assert "slippage_ticks" in metrics_text or "slippage" in metrics_text.lower()
+    cost_text = next(
+        c.text for c in chunks if c.doc_id == "metrics" and c.section == "Execution cost inputs"
+    )
+    assert "commission_per_side" in cost_text
+    assert "slippage_ticks" in cost_text
+
+
+def test_commission_per_side_definition_retrieves_execution_cost_inputs():
+    pairs = _selected_pairs("What is commission_per_side?")
+    assert ("metrics", "Execution cost inputs") in pairs, (
+        f"commission_per_side definition must retrieve Execution cost inputs; got {sorted(pairs)}"
+    )
+
+
+def test_howto_title_overlap_ignores_stopwords_like_and():
+    """'Purpose and honesty' must not get +5 merely because the query contains 'and'."""
+    purpose = CorpusChunk(
+        doc_id="user_guide",
+        section="Purpose and honesty",
+        text="Help answers from allowlisted docs only",
+    )
+    data = CorpusChunk(
+        doc_id="user_guide",
+        section="Data",
+        text="import csv timezone instrument",
+    )
+    how_tokens = _tokenize_query("How do I import data and set instrument/timezone?")
+    purpose_score = score_corpus_chunk(purpose, query_tokens=how_tokens)
+    data_score = score_corpus_chunk(data, query_tokens=how_tokens)
+    assert data_score > purpose_score
+    # Stopword-only title overlap must not apply the strong +5 how-to boost.
+    assert purpose_score < 5 + 3  # base lexical hits without title +5
 
 
 def test_howto_scoring_prefers_user_guide_without_killing_definition_metrics():
-    from thesistester.assistant.help_corpus import (
-        CorpusChunk,
-        _tokenize_query,
-        score_corpus_chunk,
-    )
-
     guide = CorpusChunk(doc_id="user_guide", section="Data", text="import csv timezone")
     metrics = CorpusChunk(
         doc_id="metrics",
@@ -110,3 +141,14 @@ def test_howto_scoring_prefers_user_guide_without_killing_definition_metrics():
     assert score_corpus_chunk(metrics, query_tokens=def_tokens) >= score_corpus_chunk(
         guide, query_tokens=def_tokens
     )
+
+
+def test_metrics_h2_bodies_respect_soft_chunk_budget():
+    """HC chunk-fit: Help-readable metrics H2 bodies stay near ≤ ~4500 chars."""
+    chunks = load_allowlisted_corpus(repo_root=REPO_ROOT, doc_ids=["metrics"])
+    oversized = [
+        (chunk.section, len(chunk.text))
+        for chunk in chunks
+        if chunk.section != "__preface__" and len(chunk.text) > 4500
+    ]
+    assert oversized == [], f"metrics H2 bodies exceed soft budget: {oversized}"

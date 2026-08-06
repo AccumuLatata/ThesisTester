@@ -422,19 +422,23 @@ docs/ASSUMPTIONS_AND_LIMITATIONS.md             # only if a honesty cross-link n
 #### Implemented contract (fill when merged)
 - `docs/USER_GUIDE.md` — filled H2s: Purpose and honesty, Classic workflow
   overview, Data, Levels, Setup Builder, Signals, Backtest (Related terms +
-  UI labels). Grid→Assistant H2s remain `_Stub (HC-0)_` and are **not**
+  UI labels). Grid→Assistant H2s remain `_Stub (HC-0)._` and are **not**
   allowlisted.
 - RQ §7.1 + §7.1.4 — `user_guide` / `docs/USER_GUIDE.md` mode=`sections` with
   the seven filled H2 titles above.
 - `HELP_CORPUS_MANIFEST` — `user_guide` entry mirrors §7.1.4.
-- `score_corpus_chunk` — HC §1.1 intent-aware how-to boost (title-overlap
-  strong / other guide H2s mild); cost-noun boost for `metrics`; `/` removed
-  from query tokenization so `costs/exposure` splits.
-- `docs/METRICS_GLOSSARY.md` — gap-fill H3 for `commission_per_side` /
-  `slippage_ticks`.
-- Tests: `tests/test_assistant_help_coverage.py` (Q-H1…Q-H5, Q-D2, Q-H5
-  glossary presence); corpus allowlist reject for stub `Grid Search`;
-  structure gate updated for HC-1 filled vs remaining stubs.
+- `score_corpus_chunk` — HC §1.1 intent-aware how-to boost (non-stopword
+  title-overlap only; no universal mild +1); cost-noun boost for `metrics`
+  including `commission_per_side`; `/` removed from query tokenization so
+  `costs/exposure` splits; `snake_case` query tokens expand to stem parts.
+- `docs/METRICS_GLOSSARY.md` — gap-fill H2 `Execution cost inputs` for
+  `commission_per_side` / `slippage_ticks` (keeps Core formulas under soft
+  chunk budget); `expectancy_r` alias under Expectancy (R).
+- Tests: `tests/test_assistant_help_coverage.py` (Q-H1…Q-H5, Q-D2 Core
+  formulas, Q-H5 Execution cost inputs, commission_per_side retrieval,
+  stopword title-overlap, soft budget); corpus allowlist reject for all
+  remaining stub H2s; structure gate updated for HC-1 filled vs remaining
+  stubs.
 
 ---
 
