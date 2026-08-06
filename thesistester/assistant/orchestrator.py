@@ -691,6 +691,58 @@ class AssistantOrchestrator:
             payload=payload,
         )
 
+    def handle_voice_ptt_turn(
+        self,
+        *,
+        audio_bytes: bytes,
+        channel: str,
+        thesis_id: str,
+        conversation_id: str | None = None,
+        run_id: str | None = None,
+        expected_hash: str | None = None,
+        openai_client: StructuredLLMClient | None = None,
+        stt_transport: Any | None = None,
+        tts_transport: Any | None = None,
+        repo_root: str | Path | None = None,
+        max_history_messages: int = 12,
+        filename: str = "audio.wav",
+        content_type: str | None = None,
+    ):
+        """Thin VA-4 façade: push-to-talk spoken Discuss/Help over RQ handlers.
+
+        Presentation code should call this instead of constructing
+        ``VoiceSessionService`` / STT / TTS itself. Does not mint ephemeral
+        realtime tokens and never dispatches ``PIPELINE.*``.
+        """
+        from thesistester.assistant.voice.session import (
+            VoiceSessionService,
+            run_push_to_talk_turn,
+        )
+        from thesistester.assistant.voice.settings import load_voice_settings
+
+        service = VoiceSessionService(
+            self.repository,
+            tools=self.tools if isinstance(self.tools, AssistantTools) else None,
+            settings=load_voice_settings(),
+        )
+        return run_push_to_talk_turn(
+            service=service,
+            orchestrator=self,
+            audio_bytes=audio_bytes,
+            channel=channel,
+            thesis_id=thesis_id,
+            conversation_id=conversation_id,
+            run_id=run_id,
+            expected_hash=expected_hash,
+            openai_client=openai_client,
+            stt_transport=stt_transport,
+            tts_transport=tts_transport,
+            repo_root=repo_root,
+            max_history_messages=max_history_messages,
+            filename=filename,
+            content_type=content_type,
+        )
+
     def handle_help_turn(
         self,
         client: StructuredLLMClient,

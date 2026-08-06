@@ -80,6 +80,8 @@ def _make_streamlit_stub() -> types.ModuleType:
         "chat_input",
         "chat_message",
         "form_submit_button",
+        "audio_input",
+        "audio",
     ):
         setattr(st, name, _noop)
     st.expander = lambda *args, **kwargs: _Ctx()
@@ -154,6 +156,10 @@ def test_assistant_session_keys_cover_documented_staging_surface():
     assert "assistant_portfolio_analyses" in ASSISTANT_SESSION_KEYS
     assert "assistant_results_qa_drafts" in ASSISTANT_SESSION_KEYS
     assert "assistant_product_help_draft" in ASSISTANT_SESSION_KEYS
+    assert "assistant_voice_results_sessions" in ASSISTANT_SESSION_KEYS
+    assert "assistant_voice_help_session_id" in ASSISTANT_SESSION_KEYS
+    assert "assistant_voice_last_turn" in ASSISTANT_SESSION_KEYS
+    assert "assistant_voice_playback" in ASSISTANT_SESSION_KEYS
     assert "assistant_bundle_handoff" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_flash" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_results_qa_drafts" in THESIS_SCOPED_STAGING_KEYS
@@ -161,6 +167,10 @@ def test_assistant_session_keys_cover_documented_staging_surface():
     assert "assistant_focused_run_id" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_results_qa_deep_link" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_results_qa_force_expand" in THESIS_SCOPED_STAGING_KEYS
+    assert "assistant_voice_results_sessions" in THESIS_SCOPED_STAGING_KEYS
+    assert "assistant_voice_help_session_id" in THESIS_SCOPED_STAGING_KEYS
+    assert "assistant_voice_last_turn" in THESIS_SCOPED_STAGING_KEYS
+    assert "assistant_voice_playback" in THESIS_SCOPED_STAGING_KEYS
     assert set(THESIS_SCOPED_STAGING_KEYS).issubset(ASSISTANT_SESSION_KEYS)
 
 

@@ -1,7 +1,7 @@
 # Realtime Voice Agent — Implementation Contract
 
 **Document type:** Implementation contract (VA-series) — **single source of truth for voice**
-**Status:** VA-0 landed (contracts/flag/docs freeze); runtime voice not shipped (post-RQ / post-HC)
+**Status:** VA-0…VA-4 landed (PTT spoken Discuss/Help); realtime sidecar not shipped (VA-5)
 **Date:** 2026-08-06
 **Owner surface:** `thesistester/assistant/voice/` + Research Assistant page only
 **Provider (speech):** xAI Grok Voice (`grok-voice-think-fast-2.0`; see §4)
@@ -240,11 +240,11 @@ secret, and spoken-grounding series on top of a finished text substrate.
 | VA-0 | ✅ Done | Contracts + flag + docs freeze |
 | VA-2 | ✅ Done | xAI credentials + session service + STT/TTS helpers |
 | VA-3 | ✅ Done | Read-only voice tools + grounding helpers |
-| VA-4 | Remaining | Push-to-talk spoken Discuss/Help (first user-visible) |
+| VA-4 | ✅ Done | Push-to-talk spoken Discuss/Help (first user-visible) |
 | VA-5 | Remaining | Full-duplex realtime sidecar |
 | VA-6 | Remaining | Voice evals + release gate |
 
-**Remaining implementation PRs: 3** (VA-4 → VA-5 → VA-6). VA-0 ✅ / VA-2 ✅ / VA-3 ✅.
+**Remaining implementation PRs: 2** (VA-5 → VA-6). VA-0 ✅ / VA-2 ✅ / VA-3 ✅ / VA-4 ✅.
 
 Do **not** collapse VA-4 into VA-5. Half-duplex spoken channels prove value and
 honesty first. Do **not** reopen RQ for voice features.
@@ -559,12 +559,12 @@ channels, spoken**. Free-form duplex remains VA-5.
 - Thesis-draft voice
 
 #### Acceptance
-- [ ] `enabled=false` → no token mint, no STT/TTS (asserted)
-- [ ] Spoken Discuss replies come from `handle_results_turn` (or documented fallback) and omit `choices`
-- [ ] Spoken Help replies come from `handle_help_turn` and omit `choices`
-- [ ] Spoken trusted numbers pass digit-token grounding
-- [ ] Running compute disables mic control
-- [ ] Session end writes transcript turns + audits
+- [x] `enabled=false` → no token mint, no STT/TTS (asserted)
+- [x] Spoken Discuss replies come from `handle_results_turn` (or documented fallback) and omit `choices`
+- [x] Spoken Help replies come from `handle_help_turn` and omit `choices`
+- [x] Spoken trusted numbers pass digit-token grounding
+- [x] Running compute disables mic control
+- [x] Session end writes transcript turns + audits
 - [ ] Manual checklist: ask best SL by voice → hear grounded answer or limitation; ask Help “how does grid ranking work?” → docs answer; ask Help “what was my best SL?” → Discuss remediation
 
 #### Regression safety
@@ -590,7 +590,24 @@ docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
 ```
 
 #### Implemented contract (fill when merged)
-_Pending implementation._
+- UI: opt-in Voice controls inside completed-run **Discuss results** and the
+  Help panel when `assistant.voice.enabled=true` (still default `false`).
+- Primary path: `st.audio_input` → xAI unary STT →
+  `AssistantOrchestrator.handle_voice_ptt_turn` →
+  `handle_results_turn` / `handle_help_turn` → speakable formatting →
+  `GroundingVerdict` → xAI unary TTS → `st.audio`.
+- Fallback (results, no OpenAI / RQ unavailable): `VoiceIntentRouter` → exactly
+  one VA-3 tool → template → TTS. Help without OpenAI remediates (no fabricated
+  docs). Perf questions still remediate to Discuss.
+- Session: short-lived `VoiceSessionRecord` with `mode="push_to_talk"`;
+  transcript + audits flush on end. No ephemeral token mint on the PTT path.
+- Session keys: `assistant_voice_results_sessions`,
+  `assistant_voice_help_session_id`, `assistant_voice_last_turn`,
+  `assistant_voice_playback` (thesis-scoped clear; documented in ARCHITECTURE).
+- Mic blocked while any thesis run has `status=="running"`.
+- Tests: `tests/test_assistant_voice_intent.py`,
+  `tests/test_assistant_voice_ui.py` (flag-off, missing keys, primary/fallback,
+  Help remediation, injection deny, digit grounding).
 
 ---
 
@@ -838,6 +855,6 @@ Constraints:
 | VA-0 | ✅ Implemented (contracts/flag/docs freeze) |
 | VA-2 | ✅ Implemented (credentials + session + STT/TTS helpers) |
 | VA-3 | ✅ Implemented (read-only tools + grounding helpers) |
-| VA-4 | Proposed |
+| VA-4 | ✅ Implemented (PTT spoken Discuss/Help) |
 | VA-5 | Proposed |
 | VA-6 | Proposed |
