@@ -285,15 +285,17 @@ directional ranking, IS selection
 | `SL start` / `SL stop` / `SL step` | Stop-loss sweep in ticks | Huge grids are slow and easy to overfit |
 | `TP start` / `TP stop` / `TP step` | Take-profit sweep in ticks | Same |
 | Costs / intrabar / session / exposure | Same family as Backtest | One fixed policy applies to **every** cell |
-| `Ranking metric` | Default options include `expectancy_r`, `total_r`, `profit_factor`, `win_rate` | Best cell is in-sample under that metric |
+| `Ranking metric` | Aggregate options include `expectancy_r`, `total_r`, `profit_factor`, `win_rate` | Best cell is in-sample under that metric |
 | `Min trade count` | Drop thin cells before ranking | Too low → noisy “winners” |
-| Advanced directional ranking | Optional long/short / min-direction metrics + min long/short trades | Extra selection degrees of freedom |
+| **Enable directional ranking** | When on, ranks by **Directional ranking metric** instead of `Ranking metric` | Extra selection degrees of freedom |
+| `Directional ranking metric` / `Min long trades` / `Min short trades` | Shown when directional ranking is enabled | Side-specific mins can empty the ranked set |
 
 **How to use.**
 
 1. Prerequisites: Data → Levels → Signals (non-empty candidates).
 2. Set SL/TP ranges, execution assumptions, `Ranking metric`, and `Min trade
-   count` (optional directional ranking).
+   count`. If **Enable directional ranking** is on, the directional metric and
+   min long/short trades override the aggregate ranking controls.
 3. Click **Run grid search**.
 4. Read **Best SL/TP pair**, heatmaps, and **Full grid results**.
 5. Treat the winner as a hypothesis to validate — not as OOS proof.
@@ -409,7 +411,7 @@ artifact, signals.csv, trades.csv, grid_results, checklist, display timezone
 |---|---|---|
 | `Display/export timezone` | TZ used in exported labels | Does not rewrite engine session time |
 | Session artifacts checklist | Shows which blocks are present | Optional diagnostics stay empty until run |
-| **Download JSON artifact** / **Download Markdown report** | Primary report downloads | Incomplete session → sparse files |
+| **⬇️ Download JSON artifact** / **⬇️ Download Markdown report** | Primary report downloads | Incomplete session → sparse files |
 | Per-table CSV downloads | Optional extracts when tables exist | — |
 | Inspect previous artifact | Upload `research_artifact.json` read-only | Preview only — does not restore a live session |
 
@@ -418,7 +420,7 @@ artifact, signals.csv, trades.csv, grid_results, checklist, display timezone
 1. Complete upstream research (core path: setup, signals, trades).
 2. Check the session / OTF artifact checklists.
 3. Set display/export timezone.
-4. Use **Download JSON artifact**, **Download Markdown report**, and any
+4. Use **⬇️ Download JSON artifact**, **⬇️ Download Markdown report**, and any
    available CSV downloads.
 
 **What it is not.**
@@ -480,8 +482,9 @@ snapshot, hash identity, restore session, record and discuss, portable state
 setup trade lists under a portfolio exposure policy for diagnostic combined
 equity / contribution / correlation views.
 
-**When to use it.** When you already have the current Backtest trades plus at
-least one additional completed-trade CSV for the same instrument/timeline.
+**When to use it.** When you have **at least two** completed-trade tables for the
+same instrument/timeline — any mix of in-session Backtest `trades` and uploaded
+CSVs (two CSVs alone is valid if session trades are empty).
 
 **Related terms.** portfolio, multi-setup, combined equity, marginal
 contribution, correlation, portfolio exposure policy, admitted trades, skipped
@@ -491,16 +494,18 @@ trades, diagnostic merge
 
 | Control | Meaning | Common pitfall |
 |---|---|---|
-| `Current setup label` | Name for the in-session trade table | — |
-| `Additional completed-trade CSV exports` | Other setups’ trade CSVs | Need ≥2 setup tables total |
+| `Current setup label` | Name for the in-session trade table (shown when Backtest `trades` exist) | Absent when session trades are empty |
+| `Additional completed-trade CSV exports` | Upload one or more trade CSVs | Need ≥2 setup tables total across session + uploads |
 | `Portfolio exposure policy` | `allow_all` / `single_position` / `single_direction` / `single_setup` | Applied after merge — not a live margin engine |
 | `Cooldown bars after exit` | Portfolio-level spacing | — |
 
 **How to use.**
 
 1. Export/collect completed-trade CSVs (often from Report Export).
-2. Ensure current Backtest `trades` are loaded; add ≥1 CSV.
-3. Set labels, portfolio exposure, cooldown → **Run portfolio analysis**.
+2. Provide ≥2 setup trade tables: use session Backtest `trades` and/or
+   **Additional completed-trade CSV exports**.
+3. Set labels (when shown), portfolio exposure, cooldown → **Run portfolio
+   analysis**.
 4. Read combined equity, marginal contribution, correlation, and admission skips.
 
 **What it is not.**
