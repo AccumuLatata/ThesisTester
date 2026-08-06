@@ -244,7 +244,7 @@ secret, and spoken-grounding series on top of a finished text substrate.
 | VA-5 | Remaining | Full-duplex realtime sidecar |
 | VA-6 | Remaining | Voice evals + release gate |
 
-**Remaining implementation PRs: 6** (VA-0 → VA-2 → VA-3 → VA-4 → VA-5 → VA-6).
+**Remaining implementation PRs: 5** (VA-2 → VA-3 → VA-4 → VA-5 → VA-6). VA-0 ✅.
 
 Do **not** collapse VA-4 into VA-5. Half-duplex spoken channels prove value and
 honesty first. Do **not** reopen RQ for voice features.
