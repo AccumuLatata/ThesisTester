@@ -13,10 +13,15 @@ Assistant-related contracts:
 | Classic ↔ Assistant bridge | `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` (CAI) | ✅ Implemented (CAI-0…CAI-10) |
 | Thesis draft / explain loop | `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2) | ✅ Implemented (through PR6) |
 | AIA Research Assistant foundations | `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` (AIA) | ✅ Implemented — do not open new results/help PRs from AIA text |
+| Session entry window research loop | `docs/SESSION_ENTRY_WINDOW_PROPOSAL.md` (SW) | 📋 **Proposed** — SW0–SW7 (Focus → Admit → Grid/WFA inherit); opt-in; golden-gated per `ENGINEERING_PROPOSAL.md` §4 |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
 new results/help/voice work must not reopen them. All are additive to this
 R-series and must preserve engine/golden-master semantics.
+
+Future session-constraint work is specified in
+`docs/SESSION_ENTRY_WINDOW_PROPOSAL.md` and must not reopen R9–R22 milestone
+text; implement as the SW series with legacy golden identity preserved.
 
 ---
 
@@ -1130,3 +1135,27 @@ canonical/Quantower CSV parser as the unchanged default path.
   verify canonical bar output and raw quote preservation.
 - Canonical sample identity, loader aliases, raw-sidecar round trip, MNQ/MES
   contract values, API validation, and full golden-master gates remain covered.
+
+---
+
+## Future — Session Entry Window (SW0–SW7) 📋 Proposed
+
+Closes the Discover → Scope → Re-sim → Optimize → Prove loop when Time Analysis
+shows a strong RTH segment (e.g. `rth_open_30m`) while the all-day Performance
+Summary looks poor.
+
+**Canonical spec:** `docs/SESSION_ENTRY_WINDOW_PROPOSAL.md`
+
+| Milestone | Intent |
+|---|---|
+| SW0 | Proposal lock + legacy golden gate confirmation |
+| SW1 | Post-hoc Focus summary (no re-sim) |
+| SW2 | Opt-in `entry_window` engine admission + enabled golden |
+| SW3 | API + Backtest Admit controls |
+| SW4 | Time Analysis Focus + Promote handoff |
+| SW5 | Grid + Validation/WFA inherit window (fixed constraint) |
+| SW6 | Setup persistence, export, assistant honesty |
+| SW7 | Hardening + release evidence |
+
+**Regression posture:** additive, default-off; legacy `trades_legacy` golden
+must stay value-identical; Focus and Admit must never be conflated in UI copy.
