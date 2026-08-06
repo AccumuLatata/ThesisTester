@@ -396,11 +396,15 @@ The Research Assistant page stages only these additive `assistant_*` keys
 | `assistant_bundle_handoff` | Last hash-verified restore into research pages |
 | `assistant_flash` | One-shot `{level, message}` UI notice consumed after `st.rerun()` |
 
-Proposed realtime voice review (VA-series; post-RQ rebase) must add only
-namespaced `assistant_voice_*` keys in the same PR that introduces them; see
+Realtime voice review (VA-series; post-RQ / post-HC) must add only namespaced
+`assistant_voice_*` keys in the same PR that introduces them; see
 `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Voice is a spoken transport over
-shipped Discuss/Help channels, not a parallel reply stack. Until that series
-lands, no voice session keys exist and the Research Assistant remains text-only.
+shipped Discuss/Help channels, not a parallel reply stack. **VA-0 landed:**
+`config/assistant.toml` reserves `[assistant.voice]` (`enabled = false`);
+schema-versioned `VoiceSessionRecord` / transcript / tool / grounding contracts
+and `load_voice_settings()` live under `thesistester/assistant/voice/`. No
+`assistant_voice_*` session keys exist yet (reserved for VA-4+); the Research
+Assistant remains text-only until mic UI ships.
 
 Multi-turn results discussion and product help (RQ-series) add only documented
 additive `assistant_*` keys and conversation message tags

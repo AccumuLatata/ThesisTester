@@ -1,7 +1,7 @@
 # Realtime Voice Agent — Implementation Contract
 
 **Document type:** Implementation contract (VA-series) — **single source of truth for voice**
-**Status:** proposed — not shipped (post-RQ / post-HC rebase)
+**Status:** VA-0 landed (contracts/flag/docs freeze); runtime voice not shipped (post-RQ / post-HC)
 **Date:** 2026-08-06
 **Owner surface:** `thesistester/assistant/voice/` + Research Assistant page only
 **Provider (speech):** xAI Grok Voice (`grok-voice-think-fast-2.0`; see §4)
@@ -237,14 +237,14 @@ secret, and spoken-grounding series on top of a finished text substrate.
 | ID | Status | Role |
 |---|---|---|
 | VA-1 | ✅ Done via RQ-1 | Text Discuss substrate |
-| VA-0 | Remaining | Contracts + flag + docs freeze |
+| VA-0 | ✅ Done | Contracts + flag + docs freeze |
 | VA-2 | Remaining | xAI credentials + session service + STT/TTS helpers |
 | VA-3 | Remaining | Read-only voice tools + grounding helpers |
 | VA-4 | Remaining | Push-to-talk spoken Discuss/Help (first user-visible) |
 | VA-5 | Remaining | Full-duplex realtime sidecar |
 | VA-6 | Remaining | Voice evals + release gate |
 
-**Remaining implementation PRs: 6** (VA-0 → VA-2 → VA-3 → VA-4 → VA-5 → VA-6).
+**Remaining implementation PRs: 5** (VA-2 → VA-3 → VA-4 → VA-5 → VA-6). VA-0 ✅.
 
 Do **not** collapse VA-4 into VA-5. Half-duplex spoken channels prove value and
 honesty first. Do **not** reopen RQ for voice features.
@@ -311,10 +311,10 @@ stops at half-duplex.
 - Enabling UI affordances
 
 #### Acceptance
-- [ ] `load_voice_settings().enabled is False` on current config
-- [ ] `load_llm_settings()` / RQ settings loaders still succeed with `[assistant.voice]` present
-- [ ] Existing RQ/C2 tests green; no new third-party dependency
-- [ ] `ruff` + `pytest -q` green
+- [x] `load_voice_settings().enabled is False` on current config
+- [x] `load_llm_settings()` / RQ settings loaders still succeed with `[assistant.voice]` present
+- [x] Existing RQ/C2 tests green; no new third-party dependency
+- [x] `ruff` + `pytest -q` green
 
 #### Regression safety
 Additive package + config defaults. No engine, no golden, no C2/RQ path edits.
@@ -337,7 +337,20 @@ docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md     # related-docs / VA↔HC pointer
 ```
 
 #### Implemented contract (fill when merged)
-_Pending implementation._
+- `config/assistant.toml` ships `[assistant.voice]` exactly as §4 with
+  `enabled = false`.
+- Package `thesistester/assistant/voice/` exports schema-versioned
+  `VoiceSessionRecord`, `VoiceTranscriptTurn`, `VoiceToolInvocation`,
+  `GroundingVerdict` plus `load_voice_settings()` (missing section → disabled
+  safe defaults; non-boolean `enabled` fails closed).
+- Contract `from_dict` paths fail closed: missing required keys raise
+  `VoiceContractError` (not bare `KeyError`); `provider`/`model`/`voice` reject
+  null/non-string values; transcript turn `channel` must match the session
+  channel (no mixed histories).
+- `tests/test_assistant_voice_contracts.py` gates schema round-trip, tracked
+  defaults, RQ/LLM loader coexistence, and the fail-closed parse rules above.
+- No network, UI, orchestrator, session_state, or third-party dependency
+  changes. Runtime STT/TTS/session/tools remain VA-2+.
 
 ---
 
@@ -775,7 +788,7 @@ Constraints:
 | VA-1 (text Discuss via RQ-1) | ✅ Implemented (RQ) |
 | RQ help/projections/focus/evals | ✅ Implemented (RQ-2…RQ-5) — voice depends, does not re-own |
 | HC Help corpus coverage | ✅ Implemented (HC-0…HC-4) — spoken Help inherits; VA does not re-own |
-| VA-0 | Proposed |
+| VA-0 | ✅ Implemented (contracts/flag/docs freeze) |
 | VA-2 | Proposed |
 | VA-3 | Proposed |
 | VA-4 | Proposed |
