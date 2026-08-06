@@ -534,15 +534,15 @@ other than the last bar in the dataset.
   funnel through routed capabilities (typically `PIPELINE.run_experiment` plus
   evidence/export). They are audited by `audit_capability_registry()`.
 
-## Voice agent (VA-series — PTT landed; realtime sidecar not shipped)
+## Voice agent (VA-series — PTT + realtime sidecar landed; release gate VA-6)
 - Spoken review of completed runs / product help is specified in
   `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (single VA-series contract;
   post-RQ / post-HC). Text Discuss / Help remain owned by
   `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`. VA-1 text substrate is RQ-1;
-  Help corpus substrate is HC-complete. **VA-0…VA-4 landed:** contracts/flag,
-  xAI STT/TTS + voice sessions, read-only voice tools + digit grounding, and
-  opt-in push-to-talk UI (Discuss results + Help) via
-  `handle_voice_ptt_turn`. Realtime sidecar remains VA-5.
+  Help corpus substrate is HC-complete. **VA-0…VA-5 landed:** contracts/flag,
+  xAI STT/TTS + voice sessions, read-only voice tools + digit grounding,
+  opt-in push-to-talk UI, and the localhost realtime sidecar
+  (`python -m thesistester.assistant.voice.sidecar`). VA-6 is the release gate.
 - Product shape: voice is a spoken transport over the same RQ channels
   (Discuss results + Help), not a second evidence dialect. It must omit draft
   `choices`, must not dispatch compute, and must fail closed on ungrounded
@@ -552,13 +552,15 @@ other than the last bar in the dataset.
   VA-6). Results sessions bind hash-verified evidence; Help sessions reuse
   the §7.1 / HC corpus path. Missing OpenAI on Discuss falls back to one VA-3
   tool template; Help without OpenAI remediates (no fabricated docs).
-- Dual keys: xAI for unary STT/TTS (`XAI_API_KEY` env → Secrets top-level →
-  `[xai].api_key`; placeholders rejected; never embedded in page modules);
-  OpenAI for primary spoken channel turns via `handle_results_turn` /
-  `handle_help_turn`. Realtime mode will use a localhost sidecar that owns
-  the xAI WebSocket (VA-5). Raw audio is not stored by default
-  (`store_audio = false`); last TTS bytes may sit ephemerally in
-  `assistant_voice_playback` for `st.audio` only.
+- Dual keys: xAI for STT/TTS and realtime (`XAI_API_KEY` env → Secrets
+  top-level → `[xai].api_key`; placeholders rejected; never embedded in page
+  modules); OpenAI for primary PTT channel turns via `handle_results_turn` /
+  `handle_help_turn`. Realtime duplex uses a localhost sidecar that owns the
+  xAI WebSocket (browser never receives the key). Realtime v1 is results-run
+  bound only (Help duplex deferred). Raw audio is not stored by default
+  (`store_audio = false`); last PTT TTS bytes may sit ephemerally in
+  `assistant_voice_playback` for `st.audio` only. Sessions end at
+  `max_session_minutes`.
 
 ## OTF filter (One Timeframing)
 

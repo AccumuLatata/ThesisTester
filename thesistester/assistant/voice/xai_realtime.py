@@ -20,6 +20,7 @@ XAI_API_BASE = "https://api.x.ai/v1"
 XAI_CLIENT_SECRETS_URL = f"{XAI_API_BASE}/realtime/client_secrets"
 XAI_STT_URL = f"{XAI_API_BASE}/stt"
 XAI_TTS_URL = f"{XAI_API_BASE}/tts"
+XAI_REALTIME_WS_BASE = "wss://api.x.ai/v1/realtime"
 _DEFAULT_TIMEOUT_SECONDS = 30.0
 _XAI_API_KEY_PLACEHOLDERS = frozenset(
     {
@@ -127,6 +128,17 @@ def _read_streamlit_xai_api_key() -> str | None:
         return _api_key_from_secrets_mapping(st.secrets)
     except Exception:
         return None
+
+
+def realtime_websocket_url(*, model: str | None = None, settings: VoiceSettings | None = None) -> str:
+    """Return the pinned xAI realtime WebSocket URL (server-side only)."""
+    resolved = settings or load_voice_settings()
+    model_id = (model or resolved.model or "").strip()
+    if not model_id:
+        raise VoiceConfigurationError("Realtime WebSocket requires a non-empty model id.")
+    if any(ch in model_id for ch in ("\r", "\n", " ", "?", "#")):
+        raise VoiceConfigurationError("Realtime model id contains illegal URL characters.")
+    return f"{XAI_REALTIME_WS_BASE}?model={model_id}"
 
 
 def require_xai_api_key() -> str:

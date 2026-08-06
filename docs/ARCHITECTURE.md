@@ -416,7 +416,13 @@ run/hash. **VA-3 landed:** read-only voice tools + `audit_spoken_text`.
 **VA-4 landed:** push-to-talk mic UI (Discuss results + Help) calling
 `handle_voice_ptt_turn` → RQ handlers (OpenAI) with VA-3 tool fallback;
 `assistant_voice_*` keys above; mic blocked while any thesis run is
-`status=="running"`. Default remains `enabled=false`. Realtime sidecar is VA-5.
+`status=="running"`. **VA-5 landed:** localhost realtime sidecar
+(`voice/sidecar.py`, bind `127.0.0.1` only) with VA-3 function-tool bridge;
+Research Assistant registers sessions via `POST /v1/sessions` when
+`assistant.voice.mode = "realtime"` and opens the sidecar `/client` page.
+Ephemeral page staging for realtime includes `assistant_voice_sidecar_host` /
+`assistant_voice_sidecar_port` and `assistant_voice_realtime_{run_id}` (not
+durable thesis keys). Default remains `enabled=false`.
 
 Multi-turn results discussion and product help (RQ-series) add only documented
 additive `assistant_*` keys and conversation message tags

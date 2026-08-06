@@ -11,6 +11,8 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 import streamlit as st
 
@@ -35,6 +37,7 @@ from thesistester.assistant.product_help import (
     HelpEvidenceError,
 )
 from thesistester.assistant.results_qa import RESULTS_QA_CHANNEL
+from thesistester.assistant.voice.sidecar import DEFAULT_SIDECAR_HOST, DEFAULT_SIDECAR_PORT
 from thesistester.assistant.voice.settings import load_voice_settings
 from thesistester.assistant.voice.xai_realtime import (
     VoiceConfigurationError,
@@ -176,6 +179,54 @@ def _render_voice_last_turn(*, channel: str) -> None:
         and playback.get("bytes")
     ):
         st.audio(bytes(playback["bytes"]), format=str(playback.get("mime") or "audio/mpeg"))
+
+
+def _sidecar_base_url() -> str:
+    host = str(st.session_state.get("assistant_voice_sidecar_host") or DEFAULT_SIDECAR_HOST)
+    port = st.session_state.get("assistant_voice_sidecar_port") or DEFAULT_SIDECAR_PORT
+    try:
+        port_i = int(port)
+    except (TypeError, ValueError):
+        port_i = DEFAULT_SIDECAR_PORT
+    return f"http://{host}:{port_i}"
+
+
+def _register_realtime_session(
+    *,
+    run_id: str,
+    expected_hash: str,
+) -> dict | None:
+    """POST a results realtime session to the localhost sidecar (no xAI key in page)."""
+    payload = {
+        "thesis_id": thesis_id,
+        "run_id": run_id,
+        "expected_hash": expected_hash,
+        "conversation_id": conversation_id,
+    }
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib_request.Request(
+        f"{_sidecar_base_url()}/v1/sessions",
+        data=body,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib_request.urlopen(req, timeout=5.0) as response:
+            decoded = json.loads(response.read().decode("utf-8"))
+    except (urllib_error.URLError, TimeoutError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        st.error(
+            "Unable to reach the localhost voice sidecar. Start it with "
+            "`python -m thesistester.assistant.voice.sidecar` (binds 127.0.0.1 only). "
+            f"Detail: {exc}"
+        )
+        return None
+    if not isinstance(decoded, dict) or not decoded.get("session_id"):
+        st.error("Sidecar returned an invalid session payload.")
+        return None
+    if any(key in decoded for key in ("api_key", "token", "client_secret", "authorization")):
+        st.error("Refusing sidecar response that appears to include secrets.")
+        return None
+    return decoded
 
 
 def _run_voice_ptt(
@@ -1865,6 +1916,81 @@ with st.expander(
                                 == last.get("session_id")
                             ):
                                 _render_voice_last_turn(channel=RESULTS_QA_CHANNEL)
+                            # VA-5 realtime duplex (sidecar). PTT remains the fallback.
+                            if voice_settings.mode == "realtime":
+                                st.markdown("**Voice discuss (realtime)**")
+                                st.caption(
+                                    "Full-duplex review via the localhost sidecar "
+                                    "(browser ↔ sidecar ↔ xAI). The page never opens "
+                                    "the xAI socket or embeds the API key. Help realtime "
+                                    "is deferred — use push-to-talk Help."
+                                )
+                                st.session_state.setdefault(
+                                    "assistant_voice_sidecar_host", DEFAULT_SIDECAR_HOST
+                                )
+                                st.session_state.setdefault(
+                                    "assistant_voice_sidecar_port", DEFAULT_SIDECAR_PORT
+                                )
+                                st.text_input(
+                                    "Sidecar host",
+                                    key="assistant_voice_sidecar_host",
+                                    disabled=True,
+                                    help="Realtime sidecar must bind 127.0.0.1 only.",
+                                )
+                                st.number_input(
+                                    "Sidecar port",
+                                    min_value=1,
+                                    max_value=65535,
+                                    key="assistant_voice_sidecar_port",
+                                )
+                                if results_voice_blocked:
+                                    st.warning(
+                                        "Realtime voice is paused while a research run is running."
+                                    )
+                                elif st.button(
+                                    "Start realtime voice session",
+                                    key=f"voice-realtime-start-{run.run_id}",
+                                ):
+                                    try:
+                                        expected_hash = (
+                                            require_run_bundle_hash(run.provenance)
+                                            if isinstance(run.provenance, dict)
+                                            else None
+                                        )
+                                    except ValueError as exc:
+                                        st.error(str(exc))
+                                        expected_hash = None
+                                    if expected_hash:
+                                        registered = _register_realtime_session(
+                                            run_id=run.run_id,
+                                            expected_hash=expected_hash,
+                                        )
+                                        if registered is not None:
+                                            st.session_state[
+                                                f"assistant_voice_realtime_{run.run_id}"
+                                            ] = registered
+                                            set_assistant_flash(
+                                                st.session_state,
+                                                level="success",
+                                                message="Realtime voice session registered.",
+                                            )
+                                            st.rerun()
+                                registered = st.session_state.get(
+                                    f"assistant_voice_realtime_{run.run_id}"
+                                )
+                                if isinstance(registered, dict) and registered.get("client_url"):
+                                    client_url = str(registered["client_url"])
+                                    st.markdown(f"[Open realtime voice client]({client_url})")
+                                    st.caption(
+                                        f"session `{registered.get('session_id', '')}` · "
+                                        "close the client tab to end/flush the session."
+                                    )
+                                    try:
+                                        import streamlit.components.v1 as components
+
+                                        components.iframe(client_url, height=280)
+                                    except Exception:
+                                        pass
                     if st.button("Render markdown report", key=f"report-{run.run_id}"):
                         result = orchestrator.export_run(
                             thesis_id=thesis_id,

@@ -1,7 +1,7 @@
 # Realtime Voice Agent — Implementation Contract
 
 **Document type:** Implementation contract (VA-series) — **single source of truth for voice**
-**Status:** VA-0…VA-4 landed (PTT spoken Discuss/Help); realtime sidecar not shipped (VA-5)
+**Status:** VA-0…VA-5 landed (PTT + localhost realtime sidecar); release gate is VA-6
 **Date:** 2026-08-06
 **Owner surface:** `thesistester/assistant/voice/` + Research Assistant page only
 **Provider (speech):** xAI Grok Voice (`grok-voice-think-fast-2.0`; see §4)
@@ -241,10 +241,10 @@ secret, and spoken-grounding series on top of a finished text substrate.
 | VA-2 | ✅ Done | xAI credentials + session service + STT/TTS helpers |
 | VA-3 | ✅ Done | Read-only voice tools + grounding helpers |
 | VA-4 | ✅ Done | Push-to-talk spoken Discuss/Help (first user-visible) |
-| VA-5 | Remaining | Full-duplex realtime sidecar |
+| VA-5 | ✅ Done | Full-duplex realtime sidecar |
 | VA-6 | Remaining | Voice evals + release gate |
 
-**Remaining implementation PRs: 2** (VA-5 → VA-6). VA-0 ✅ / VA-2 ✅ / VA-3 ✅ / VA-4 ✅.
+**Remaining implementation PRs: 1** (VA-6). VA-0 ✅ / VA-2 ✅ / VA-3 ✅ / VA-4 ✅ / VA-5 ✅.
 
 Do **not** collapse VA-4 into VA-5. Half-duplex spoken channels prove value and
 honesty first. Do **not** reopen RQ for voice features.
@@ -643,10 +643,10 @@ allowlist-bound.
 - Replacing VA-4 (keep as fallback)
 
 #### Acceptance
-- [ ] Session payload never includes search/`mcp` tools when disabled
-- [ ] Tool bridge cannot invoke names outside VA-3 allowlist
-- [ ] Token never logged; key never sent to browser
-- [ ] Exceeding `max_session_minutes` ends session
+- [x] Session payload never includes search/`mcp` tools when disabled
+- [x] Tool bridge cannot invoke names outside VA-3 allowlist
+- [x] Token never logged; key never sent to browser
+- [x] Exceeding `max_session_minutes` ends session
 - [ ] Manual QA: barge-in, silence, “what’s win rate?”, injection “run a grid” → refused
 
 #### Regression safety
@@ -668,7 +668,20 @@ docs/ENGINEERING.md
 ```
 
 #### Implemented contract (fill when merged)
-_Pending implementation._
+- `voice/sidecar.py`: localhost Starlette ASGI sidecar (uvicorn) — browser ↔
+  sidecar ↔ xAI Realtime WS. Binds `127.0.0.1` / `::1` only.
+- `session.update` uses honesty instructions + `turn_detection: server_vad` +
+  PCM 24 kHz + **VA-3 function tools only**; `web_search` / `x_search` /
+  `file_search` / `mcp` are rejected by `assert_realtime_tools_allowlisted`.
+- Tool bridge: `response.function_call_arguments.done` →
+  `execute_voice_tool` → `function_call_output` + `response.create`.
+- TTL: `session_exceeded_ttl` / `max_session_minutes` ends active sessions.
+- Streamlit (when `assistant.voice.mode = "realtime"`) registers sessions via
+  `POST /v1/sessions` and opens the sidecar `/client` page; never opens xAI WS
+  and never embeds `XAI_API_KEY`. PTT remains available as fallback.
+- Help realtime deferred (results_qa run-bound only in v1).
+- Tests: `tests/test_assistant_voice_realtime.py`.
+- Ops: `docs/ENGINEERING.md` sidecar run instructions.
 
 ---
 
@@ -859,5 +872,5 @@ Constraints:
 | VA-2 | ✅ Implemented (credentials + session + STT/TTS helpers) |
 | VA-3 | ✅ Implemented (read-only tools + grounding helpers) |
 | VA-4 | ✅ Implemented (PTT spoken Discuss/Help) |
-| VA-5 | Proposed |
+| VA-5 | ✅ Implemented (localhost realtime sidecar) |
 | VA-6 | Proposed |

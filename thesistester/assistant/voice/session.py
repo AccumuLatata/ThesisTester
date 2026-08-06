@@ -113,6 +113,42 @@ def _new_voice_session_id() -> str:
     return f"vs_{uuid4().hex}"
 
 
+def parse_iso_utc(value: str) -> datetime:
+    """Parse a persisted ISO-8601 timestamp into an aware UTC datetime."""
+    if not isinstance(value, str) or not value.strip():
+        raise VoiceSessionError("Timestamp must be a non-empty ISO-8601 string.")
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise VoiceSessionError("Timestamp is not valid ISO-8601.") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def session_exceeded_ttl(
+    record: VoiceSessionRecord,
+    *,
+    max_session_minutes: int,
+    now: datetime | None = None,
+) -> bool:
+    """True when an active voice session has exceeded ``max_session_minutes``."""
+    if not isinstance(max_session_minutes, int) or isinstance(max_session_minutes, bool):
+        raise VoiceSessionError("max_session_minutes must be an integer.")
+    if max_session_minutes < 1:
+        raise VoiceSessionError("max_session_minutes must be >= 1.")
+    created_at = record.created_at
+    if not isinstance(created_at, str):
+        raise VoiceSessionError("Voice session is missing created_at.")
+    created = parse_iso_utc(created_at)
+    current = now.astimezone(timezone.utc) if isinstance(now, datetime) else datetime.now(timezone.utc)
+    elapsed = current - created
+    return elapsed.total_seconds() >= (max_session_minutes * 60)
+
+
 def _stt_text_from_response(response: Mapping[str, Any]) -> str:
     text = response.get("text")
     if isinstance(text, str) and text.strip():
