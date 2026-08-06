@@ -401,10 +401,15 @@ Realtime voice review (VA-series; post-RQ / post-HC) must add only namespaced
 `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md`. Voice is a spoken transport over
 shipped Discuss/Help channels, not a parallel reply stack. **VA-0 landed:**
 `config/assistant.toml` reserves `[assistant.voice]` (`enabled = false`);
-schema-versioned `VoiceSessionRecord` / transcript / tool / grounding contracts
-and `load_voice_settings()` live under `thesistester/assistant/voice/`. No
-`assistant_voice_*` session keys exist yet (reserved for VA-4+); the Research
-Assistant remains text-only until mic UI ships.
+schema-versioned contracts + `load_voice_settings()` under
+`thesistester/assistant/voice/`. **VA-2 landed:** `voice/xai_realtime.py`
+(server-side `XAI_API_KEY` resolution, ephemeral token mint, unary STT/TTS) and
+`VoiceSessionService` persisting sibling
+`assistant/theses/{thesis_id}/voice_sessions/vs_[0-9a-f]{32}.json` via
+`LocalThesisRepository` (does not widen `Conversation` or reuse `_ID_RE`).
+Results sessions bind one hash-verified `EvidencePacket`; Help sessions omit
+run/hash. No `assistant_voice_*` session keys yet (reserved for VA-4+); the
+Research Assistant remains text-only until mic UI ships.
 
 Multi-turn results discussion and product help (RQ-series) add only documented
 additive `assistant_*` keys and conversation message tags

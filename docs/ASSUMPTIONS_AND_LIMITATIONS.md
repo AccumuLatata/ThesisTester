@@ -534,16 +534,18 @@ other than the last bar in the dataset.
   funnel through routed capabilities (typically `PIPELINE.run_experiment` plus
   evidence/export). They are audited by `audit_capability_registry()`.
 
-## Voice agent (VA-series — contracts frozen; runtime not shipped)
+## Voice agent (VA-series — contracts + session helpers; UI not shipped)
 - Spoken review of completed runs / product help is specified in
   `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (single VA-series contract;
   post-RQ / post-HC). Text Discuss / Help remain owned by
   `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`. VA-1 text substrate is RQ-1;
   Help corpus substrate is HC-complete. **VA-0 landed:**
-  `[assistant.voice]` defaults (`enabled = false`) in `config/assistant.toml`
-  plus schema-versioned records / `load_voice_settings()` under
-  `thesistester/assistant/voice/`. No STT/TTS, mic UI, tools, or sidecar yet
-  (VA-2…VA-6).
+  `[assistant.voice]` defaults (`enabled = false`) plus schema-versioned
+  contracts / `load_voice_settings()`. **VA-2 landed:** server-side
+  `require_xai_api_key` / ephemeral token mint / unary STT+TTS helpers
+  (`voice/xai_realtime.py`) and `VoiceSessionService` with sibling
+  `voice_sessions/vs_*.json` persistence + hash-verified results bind. No mic
+  UI, tool router, or sidecar yet (VA-3…VA-6).
 - Product shape: voice is a spoken transport over the same RQ channels
   (Discuss results + Help), not a second evidence dialect. It must omit draft
   `choices`, must not dispatch compute, and must fail closed on ungrounded
@@ -552,11 +554,12 @@ other than the last bar in the dataset.
   VA-6). Results sessions bind hash-verified evidence; Help sessions reuse
   the §7.1 / HC corpus path. Provider failure falls back to deterministic
   Explain and typed Discuss/Help.
-- Planned provider: xAI Grok Voice pinned to `grok-voice-think-fast-2.0` with
-  server-side `XAI_API_KEY` for STT/TTS/realtime. Primary push-to-talk channel
-  turns still use the OpenAI structured client via `handle_results_turn` /
-  `handle_help_turn`. Realtime mode uses a localhost sidecar that owns the
-  xAI WebSocket (browser never holds the long-lived key). Raw audio is not
+- Provider: xAI Grok Voice pinned to `grok-voice-think-fast-2.0`.
+  `XAI_API_KEY` resolves env → Streamlit Secrets top-level → `[xai].api_key`
+  (placeholders rejected; never embedded in page modules). Primary push-to-talk
+  channel turns still use the OpenAI structured client via
+  `handle_results_turn` / `handle_help_turn` (VA-4). Realtime mode will use a
+  localhost sidecar that owns the xAI WebSocket (VA-5). Raw audio is not
   stored by default (`store_audio = false`).
 
 ## OTF filter (One Timeframing)
