@@ -368,8 +368,7 @@ def _answer_results_ptt(
         )
     except (VoiceToolError, VoiceSessionError, VoiceContractError) as exc:
         speakable = (
-            f"I could not answer from the bound evidence ({exc}). "
-            "Please use text Discuss results."
+            f"I could not answer from the bound evidence ({exc}). Please use text Discuss results."
         )
         grounding = audit_spoken_text(speakable, allowed_tokens=())
         return (

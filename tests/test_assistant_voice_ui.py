@@ -89,7 +89,9 @@ class _FakeOpenAI:
         self.calls = 0
         self.last_attempt_count = 1
 
-    def complete_structured(self, *, system: str, user: str, schema: dict[str, Any]) -> dict[str, Any]:
+    def complete_structured(
+        self, *, system: str, user: str, schema: dict[str, Any]
+    ) -> dict[str, Any]:
         self.calls += 1
         raise AssertionError("PTT tests should stub orchestrator handlers, not LLM.")
 
@@ -376,7 +378,9 @@ def test_help_performance_question_remediates_to_discuss(monkeypatch, tmp_path: 
 
     class _Orch(AssistantOrchestrator):
         def handle_help_turn(self, client, **kwargs):
-            assert "best stop" in kwargs["message"].lower() or "stop loss" in kwargs["message"].lower()
+            assert (
+                "best stop" in kwargs["message"].lower() or "stop loss" in kwargs["message"].lower()
+            )
             return OrchestrationResult(
                 status="completed",
                 capability_id="product_help",
@@ -463,9 +467,7 @@ def test_injection_never_hits_pipeline_or_confirmed_run(monkeypatch, tmp_path: P
         conversation_id=conversation.conversation_id,
         run_id=run.run_id,
         expected_hash=digest,
-        openai_client=_FakeOpenAI(
-            ResultsQAReply(summary="ok", caveats=(), claims=())
-        ),
+        openai_client=_FakeOpenAI(ResultsQAReply(summary="ok", caveats=(), claims=())),
         stt_transport=transport,
         tts_transport=transport,
     )
@@ -513,14 +515,14 @@ def test_orchestrator_facade_wires_session(monkeypatch, tmp_path: Path):
         conversation_id=conversation.conversation_id,
         run_id=run.run_id,
         expected_hash=digest,
-        openai_client=_FakeOpenAI(
-            ResultsQAReply(summary="Overview ready.", caveats=(), claims=())
-        ),
+        openai_client=_FakeOpenAI(ResultsQAReply(summary="Overview ready.", caveats=(), claims=())),
         stt_transport=transport,
         tts_transport=transport,
     )
     assert turn.session_id.startswith("vs_")
-    assert isinstance(repository.get_voice_session(thesis.thesis_id, turn.session_id), VoiceSessionRecord)
+    assert isinstance(
+        repository.get_voice_session(thesis.thesis_id, turn.session_id), VoiceSessionRecord
+    )
 
 
 def test_page_source_gates_voice_ui_and_dual_keys():

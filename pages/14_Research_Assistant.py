@@ -1826,9 +1826,7 @@ with st.expander(
                             )
                             results_voice_blocked = thesis_has_running_run(runs)
                             if results_voice_blocked:
-                                st.warning(
-                                    "Voice is paused while a research run is running."
-                                )
+                                st.warning("Voice is paused while a research run is running.")
                             else:
                                 results_audio = st.audio_input(
                                     "Ask about this run by voice",
