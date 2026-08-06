@@ -55,6 +55,13 @@ def test_tracked_config_keeps_voice_disabled():
     assert settings.max_retries == 2
 
 
+def test_voice_settings_keeps_python310_tomli_fallback():
+    """CI runs pytest on 3.10; tomllib is 3.11+ so settings must mirror llm.py."""
+    source = Path("thesistester/assistant/voice/settings.py").read_text(encoding="utf-8")
+    assert "import tomli as tomllib" in source
+    assert "ModuleNotFoundError" in source
+
+
 def test_existing_settings_loaders_still_succeed_with_voice_section():
     llm = load_llm_settings(TRACKED)
     results = load_results_qa_settings(TRACKED)
