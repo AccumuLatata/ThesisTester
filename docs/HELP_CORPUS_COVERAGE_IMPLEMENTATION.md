@@ -428,8 +428,9 @@ docs/ASSUMPTIONS_AND_LIMITATIONS.md             # only if a honesty cross-link n
   the seven filled H2 titles above.
 - `HELP_CORPUS_MANIFEST` — `user_guide` entry mirrors §7.1.4.
 - `score_corpus_chunk` — HC §1.1 intent-aware how-to boost (non-stopword
-  title-overlap only; no universal mild +1); cost-noun boost for `metrics`
-  including `commission_per_side`; `/` removed from query tokenization so
+  title-overlap only; no universal mild +1); lexical stopwords excluded from
+  substring scoring; cost-noun boost for `metrics` (`commission`/`slippage`/
+  `costs`, not bare `exposure`); `/` removed from query tokenization so
   `costs/exposure` splits; `snake_case` query tokens expand to stem parts.
 - `docs/METRICS_GLOSSARY.md` — gap-fill H2 `Execution cost inputs` for
   `commission_per_side` / `slippage_ticks` (keeps Core formulas under soft

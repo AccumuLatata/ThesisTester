@@ -140,7 +140,8 @@ _COST_QUERY_TOKENS = frozenset(
         "commission_per_side",
         "slippage",
         "slippage_ticks",
-        "exposure",
+        # Note: ``exposure`` is intentionally omitted — Backtest exposure policy
+        # lives in USER_GUIDE, not the Execution cost inputs glossary H2.
     }
 )
 # Stopwords ignored when matching query tokens to USER_GUIDE H2 titles so
@@ -532,7 +533,7 @@ def score_corpus_chunk(chunk: CorpusChunk, *, query_tokens: set[str]) -> int:
         # Mixed how-to + cost nouns (Q-H5): keep glossary in the selected set.
         score += 3
         section_l = chunk.section.lower()
-        if any(marker in section_l for marker in ("cost", "commission", "slippage", "exposure")):
+        if any(marker in section_l for marker in ("cost", "commission", "slippage")):
             # Prefer the dedicated Execution cost inputs H2 over incidental
             # cost mentions inside Core formulas / other metrics sections.
             score += 4

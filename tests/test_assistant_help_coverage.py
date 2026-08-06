@@ -152,3 +152,17 @@ def test_metrics_h2_bodies_respect_soft_chunk_budget():
         if chunk.section != "__preface__" and len(chunk.text) > 4500
     ]
     assert oversized == [], f"metrics H2 bodies exceed soft budget: {oversized}"
+
+
+def test_exposure_definition_prefers_backtest_guide_not_cost_glossary():
+    """Exposure policy is a Backtest concept — must not rank Execution cost inputs first."""
+    question = "What does exposure mean on backtest?"
+    pairs = _selected_pairs(question)
+    assert ("user_guide", "Backtest") in pairs, (
+        f"exposure definition should retrieve user_guide/Backtest; got {sorted(pairs)}"
+    )
+    corpus = load_allowlisted_corpus(repo_root=REPO_ROOT)
+    backtest = next(c for c in corpus if c.doc_id == "user_guide" and c.section == "Backtest")
+    cost = next(c for c in corpus if c.doc_id == "metrics" and c.section == "Execution cost inputs")
+    q = _tokenize_query(question)
+    assert score_corpus_chunk(backtest, query_tokens=q) > score_corpus_chunk(cost, query_tokens=q)
