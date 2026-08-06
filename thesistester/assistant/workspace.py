@@ -48,6 +48,9 @@ ASSISTANT_SESSION_KEYS: tuple[str, ...] = (
     "assistant_voice_help_session_id",
     "assistant_voice_last_turn",
     "assistant_voice_playback",
+    # Voice UI controls (session widgets; persisted via override file).
+    "assistant_voice_ui_enabled",
+    "assistant_voice_ui_mode",
 )
 
 # Cleared whenever the active thesis changes so drafts/validation/handoff
@@ -237,6 +240,9 @@ def init_assistant_session_state(session_state: MutableMapping[str, Any]) -> Non
         "assistant_voice_help_session_id": None,
         "assistant_voice_last_turn": None,
         "assistant_voice_playback": None,
+        # Seeded from load_voice_settings() on first Voice controls render.
+        "assistant_voice_ui_enabled": False,
+        "assistant_voice_ui_mode": "push_to_talk",
     }
     for key, value in defaults.items():
         session_state.setdefault(key, deepcopy(value) if isinstance(value, (dict, list)) else value)

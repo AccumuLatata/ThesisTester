@@ -778,8 +778,10 @@ Local full-duplex spoken Discuss for a completed, hash-verified run uses a
 never embeds `XAI_API_KEY`.
 
 ### Prerequisites
-- `assistant.voice.enabled = true` in `config/assistant.toml`
-- `assistant.voice.mode = "realtime"` (PTT remains available as fallback)
+- Voice enabled via Research Assistant **sidebar → Voice** (writes
+  `config/assistant.voice.override.toml`) **or** `assistant.voice.enabled = true`
+  in tracked `config/assistant.toml`
+- Mode `realtime` from the same sidebar control (or TOML); PTT remains fallback
 - `XAI_API_KEY` in the environment (or Streamlit Secrets) for the **sidecar process**
 - Starlette + uvicorn + websockets (already present in the Streamlit stack)
 
@@ -800,10 +802,12 @@ Non-loopback `--host` values are rejected (`0.0.0.0`, LAN IPs, `localhost` strin
 | `POST /v1/sessions/{id}/end` | End + flush transcript/tool audits |
 
 ### Streamlit flow
-1. Open Research Assistant → Advanced → Linked run → **Voice discuss (realtime)**.
-2. Click **Start realtime voice session** (page POSTs to the sidecar).
-3. Open/iframe the returned `/client` URL; speak to the bound run.
-4. Closing the client ends/flushes the voice session.
+1. Open Research Assistant → sidebar **Voice** → Enable + Mode **Realtime**.
+2. Advanced → Linked run → **Voice discuss (realtime)**.
+3. Click **Start realtime voice session** (page POSTs to the sidecar; sidecar
+   re-reads the local override on register, so a restart is usually unnecessary).
+4. Open/iframe the returned `/client` URL; speak to the bound run.
+5. Closing the client ends/flushes the voice session.
 
 Help realtime is deferred in v1 — use push-to-talk Help. Search/`mcp` tools are
 never attached to `session.update` payloads.

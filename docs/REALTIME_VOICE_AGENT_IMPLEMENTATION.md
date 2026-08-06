@@ -86,12 +86,14 @@ The series is done when a local user can:
 
 1. Select a completed, hash-verified research run (or open Help).
 2. Already discuss that run / ask product questions in **text** (RQ complete).
-3. Opt in to voice (`assistant.voice.enabled = true` + `XAI_API_KEY`; OpenAI
-   key still required for spoken Discuss/Help turns that reuse RQ handlers).
+3. Opt in to voice from Research Assistant **sidebar Voice controls** (or
+   `assistant.voice.enabled = true`) + `XAI_API_KEY`; OpenAI key still required
+   for spoken Discuss/Help turns that reuse RQ handlers. Sidebar choices
+   persist to gitignored `config/assistant.voice.override.toml`.
 4. Use **push-to-talk** to ask the same classes of questions as Discuss results
    / Help and hear a grounded spoken reply (VA-4).
-5. Optionally use **realtime** full-duplex spoken Q&A with model tool-calling
-   via the localhost sidecar (VA-5).
+5. Optionally switch Mode to **realtime** for full-duplex spoken Q&A with model
+   tool-calling via the localhost sidecar (VA-5).
 6. Hear/see only numbers that resolve to the `EvidencePacket`, allowlisted
    tool returns, or Help corpus/registry grounding rules for that turn.
 7. See a persisted transcript + tool/channel audit on the thesis conversation.

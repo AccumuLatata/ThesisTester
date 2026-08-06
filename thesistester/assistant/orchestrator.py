@@ -711,23 +711,36 @@ class AssistantOrchestrator:
         max_history_messages: int = 12,
         filename: str = "audio.wav",
         content_type: str | None = None,
+        settings: Any | None = None,
     ):
         """Thin VA-4 façade: push-to-talk spoken Discuss/Help over RQ handlers.
 
         Presentation code should call this instead of constructing
         ``VoiceSessionService`` / STT / TTS itself. Does not mint ephemeral
         realtime tokens and never dispatches ``PIPELINE.*``.
+
+        ``settings`` accepts an optional ``VoiceSettings`` from the Voice UI
+        controls; when omitted, loads tracked TOML + local UI override file.
         """
         from thesistester.assistant.voice.session import (
             VoiceSessionService,
             run_push_to_talk_turn,
         )
-        from thesistester.assistant.voice.settings import load_voice_settings
+        from thesistester.assistant.voice.settings import (
+            VoiceSettings,
+            resolve_voice_settings,
+        )
 
+        if settings is None:
+            resolved_settings = resolve_voice_settings()
+        elif isinstance(settings, VoiceSettings):
+            resolved_settings = settings
+        else:
+            raise TypeError("settings must be a VoiceSettings instance or None.")
         service = VoiceSessionService(
             self.repository,
             tools=self.tools if isinstance(self.tools, AssistantTools) else None,
-            settings=load_voice_settings(),
+            settings=resolved_settings,
         )
         return run_push_to_talk_turn(
             service=service,

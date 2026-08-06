@@ -799,16 +799,27 @@ class VoiceSessionService:
 
         ``allow_ended=True`` keeps fail-closed deny/audit rows durable after
         ``end_session`` (VA-3: one audit row per invocation attempt).
+        Retries optimistic-concurrency conflicts like transcript appends.
         """
-        record = self.repository.get_voice_session(thesis_id, session_id)
-        if record.status != "active" and not allow_ended:
-            raise VoiceSessionError("Cannot append tools to an ended voice session.")
-        updated = replace(
-            record,
-            tool_invocations=record.tool_invocations + (invocation,),
-            updated_at=_utcnow(),
-        )
-        return self.repository.save_voice_session(updated)
+        last_conflict: RepositoryConflictError | None = None
+        for _attempt in range(3):
+            record = self.repository.get_voice_session(thesis_id, session_id)
+            if record.status != "active" and not allow_ended:
+                raise VoiceSessionError("Cannot append tools to an ended voice session.")
+            updated = replace(
+                record,
+                tool_invocations=record.tool_invocations + (invocation,),
+                updated_at=_utcnow(),
+            )
+            try:
+                return self.repository.save_voice_session(updated)
+            except RepositoryConflictError as exc:
+                last_conflict = exc
+                continue
+        assert last_conflict is not None
+        raise VoiceSessionError(
+            "Unable to append tool invocation after concurrent revision conflicts."
+        ) from last_conflict
 
     def end_session(
         self,

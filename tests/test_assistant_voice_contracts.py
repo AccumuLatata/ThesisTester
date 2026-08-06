@@ -19,8 +19,12 @@ from thesistester.assistant.voice import (
     VoiceSessionRecord,
     VoiceToolInvocation,
     VoiceTranscriptTurn,
+    clear_voice_ui_overrides,
     load_voice_settings,
+    resolve_voice_settings,
+    save_voice_ui_overrides,
     validate_voice_session_id,
+    with_voice_overrides,
 )
 
 TRACKED = Path("config/assistant.toml")
@@ -107,6 +111,84 @@ def test_enabled_flag_fails_closed_on_non_boolean(tmp_path):
     assert settings.store_audio is True
     assert settings.allow_web_search is True
     assert settings.require_tool_for_numbers is False
+
+
+def test_voice_ui_override_file_toggles_enabled_and_mode(tmp_path):
+    config = tmp_path / "assistant.toml"
+    config.write_text(TRACKED.read_text(encoding="utf-8"), encoding="utf-8")
+    override = tmp_path / "assistant.voice.override.toml"
+    base = load_voice_settings(config)
+    assert base.enabled is False
+    assert base.mode == "push_to_talk"
+
+    save_voice_ui_overrides(enabled=True, mode="realtime", path=override)
+    resolved = resolve_voice_settings(config, ui_override_path=override)
+    assert resolved.enabled is True
+    assert resolved.mode == "realtime"
+    # Tracked loader remains default-off (release gate).
+    assert load_voice_settings(config).enabled is False
+    assert with_voice_overrides(base, enabled=True).enabled is True
+
+    assert clear_voice_ui_overrides(override) is True
+    assert resolve_voice_settings(config, ui_override_path=override).enabled is False
+
+
+def test_voice_ui_override_fail_closed_on_string_false_and_bad_mode(tmp_path):
+    from thesistester.assistant.voice import VoiceSettingsError
+
+    base = load_voice_settings(TRACKED)
+    # ``bool("false")`` is True in Python — must not enable voice.
+    assert with_voice_overrides(base, enabled="false").enabled is False
+    assert with_voice_overrides(base, enabled="true").enabled is True
+    with pytest.raises(VoiceSettingsError, match="Unsupported voice mode"):
+        with_voice_overrides(base, mode="bogus")
+    with pytest.raises(VoiceSettingsError, match="Unsupported voice mode"):
+        save_voice_ui_overrides(enabled=True, mode="bogus", path=tmp_path / "bad.toml")
+    # Invalid mode in override file is ignored (tracked mode kept).
+    override = tmp_path / "assistant.voice.override.toml"
+    override.write_text('enabled = true\nmode = "bogus"\n', encoding="utf-8")
+    resolved = resolve_voice_settings(TRACKED, ui_override_path=override)
+    assert resolved.enabled is True
+    assert resolved.mode == "push_to_talk"
+
+
+def test_sidecar_register_ignores_ambient_override_without_path(tmp_path):
+    """Injected disabled settings must not be flipped by a cwd override file."""
+    from thesistester.assistant.repository import LocalThesisRepository
+    from thesistester.assistant.tools import AssistantTools
+    from thesistester.assistant.voice.session import VoiceSessionService
+    from thesistester.assistant.voice.sidecar import SidecarError, SidecarRuntime
+
+    override = tmp_path / "pollute.toml"
+    save_voice_ui_overrides(enabled=True, mode="realtime", path=override)
+    service = VoiceSessionService(
+        LocalThesisRepository(tmp_path / "assistant"),
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        settings=load_voice_settings(TRACKED),
+    )
+    runtime = SidecarRuntime(
+        service=service,
+        settings=load_voice_settings(TRACKED),
+        host="127.0.0.1",
+        port=8765,
+        ui_override_path=None,
+    )
+    with pytest.raises(SidecarError, match="disabled"):
+        runtime.register_session(
+            thesis_id="th_" + ("ab" * 16),
+            run_id="run_" + ("cd" * 16),
+            expected_hash="a" * 64,
+        )
+    # When an override path is wired, sidebar enable applies.
+    runtime.ui_override_path = override
+    # Still fails closed on missing thesis/run — but not on disabled.
+    with pytest.raises(Exception) as excinfo:
+        runtime.register_session(
+            thesis_id="th_" + ("ab" * 16),
+            run_id="run_" + ("cd" * 16),
+            expected_hash="a" * 64,
+        )
+    assert "disabled" not in str(excinfo.value).lower()
 
 
 def test_voice_session_record_round_trip_results_channel():
