@@ -1,0 +1,22 @@
+{
+  "accepted_signal_ids": [
+    1,
+    2
+  ],
+  "accepted_trade_count": 2,
+  "candidate_signal_count": 4,
+  "entry_window": {
+    "enabled": true,
+    "mode": "rth_segments",
+    "rth_segments": [
+      "rth_open_30m"
+    ],
+    "timezone": "America/New_York"
+  },
+  "outside_entry_window_signal_ids": [
+    3,
+    4
+  ],
+  "outside_entry_window_skip_count": 2,
+  "session_timezone": "America/New_York"
+}

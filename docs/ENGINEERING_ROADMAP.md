@@ -1149,8 +1149,8 @@ Summary looks poor.
 | Milestone | Intent |
 |---|---|
 | SW0 | Plan lock + legacy golden gate confirmation + C1–C9 |
-| SW1 | Post-hoc Focus summary (no re-sim); shared RTH export ← next |
-| SW2 | Opt-in `entry_window` admission + enabled golden + Focus≡Admit (C7) |
+| SW1 | Post-hoc Focus summary (no re-sim); shared RTH export ✅ |
+| SW2 | Opt-in `entry_window` admission + enabled golden + Focus≡Admit (C7) ← next |
 | SW2b | Optional: audit `no_new_entries_after` → `after_entry_cutoff` + UI/docs honesty |
 | SW3 | API + Backtest Admit controls |
 | SW4 | Time Analysis Focus + Promote handoff |

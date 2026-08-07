@@ -26,6 +26,11 @@ from zoneinfo import ZoneInfoNotFoundError
 
 import pandas as pd
 
+from thesistester.entry_window_policy import (
+    entry_window_contains,
+    normalize_entry_window,
+)
+
 from .intrabar import (
     prepare_subtimeframe_context,
     prepare_subtimeframe_conservative_context,
@@ -331,6 +336,7 @@ def simulate_trades(
     cooldown_bars_after_exit: int = 0,
     return_skipped_signals: bool = False,
     *,
+    entry_window: dict[str, Any] | None = None,
     intrabar_model: str = "sl_first",
     subtimeframe_data: pd.DataFrame | None = None,
     parent_interval: pd.Timedelta | str | None = None,
@@ -391,7 +397,14 @@ def simulate_trades(
         Optional cooldown bars after a blocking trade exit. Must be >= 0.
     return_skipped_signals:
         If ``True``, returns ``(trades_df, skipped_signals_df)`` where skipped
-        signals include exposure-policy rejections only.
+        signals include exposure-policy rejections and, when enabled,
+        ``outside_entry_window`` admissions rejects.
+    entry_window:
+        Optional opt-in entry-time admission window (SW2). ``None`` /
+        disabled preserves legacy all-day admission. When enabled, membership
+        uses **entry-bar** local time (C2) via
+        :func:`~thesistester.analytics.entry_window.normalize_entry_window`.
+        Rejected candidates never enter exposure competition (C6).
     intrabar_model:
         ``"sl_first"`` preserves legacy pessimistic behavior.
         ``"path_open_proximity"`` walks a deterministic OHLC path beginning
@@ -476,6 +489,13 @@ def simulate_trades(
     parsed_no_new_entries_after = _parse_time_input(
         no_new_entries_after, field_name="no_new_entries_after"
     )
+    exchange_tz_for_window = session_timezone or "America/New_York"
+    try:
+        normalized_entry_window = normalize_entry_window(
+            entry_window, exchange_tz=exchange_tz_for_window
+        )
+    except ValueError as exc:
+        raise ValueError(f"Invalid entry_window: {exc}") from exc
 
     if signals is None or signals.empty:
         empty_trades = _empty_trades_df()
@@ -601,6 +621,34 @@ def simulate_trades(
             parsed_no_new_entries_after is not None
             and entry_local_ts.time() > parsed_no_new_entries_after
         ):
+            continue
+
+        if normalized_entry_window["enabled"] and not entry_window_contains(
+            entry_local_ts,
+            normalized_entry_window,
+            exchange_tz=exchange_tz_for_window,
+        ):
+            if return_skipped_signals or return_result:
+                skipped_signals.append(
+                    {
+                        "signal_id": int(sig["signal_id"]),
+                        "bar_index": bar_idx,
+                        "entry_bar_index": entry_bar_index,
+                        "trigger": trigger,
+                        "direction": direction,
+                        "exposure_policy": exposure_policy,
+                        "exposure_group_key": _exposure_group_key(
+                            sig,
+                            exposure_policy=exposure_policy,
+                            trigger=trigger,
+                            direction=direction,
+                        ),
+                        "skip_reason": "outside_entry_window",
+                        "blocking_trade_id": pd.NA,
+                        "blocking_exit_bar_index": pd.NA,
+                        "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
+                    }
+                )
             continue
 
         candidate_rows.append(

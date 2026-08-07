@@ -783,6 +783,16 @@ MAE/MFE, exit management, costs, record construction, and diagnostics. No
 accelerated execution mode is enabled; `docs/SIMULATE_PERF.md` is the
 informational serial baseline for future parity-gated work.
 
+## SW2 entry-window admission boundary
+
+`thesistester.entry_window_policy` owns shared RTH segment vocabulary (C1) and
+normalize/contains helpers used by both Focus analytics and
+`simulate_trades(..., entry_window=...)`. The parameter is keyword-only and
+defaults to `None` (legacy all-day admission). When enabled, membership uses
+**entry-bar** local time; rejects with `skip_reason="outside_entry_window"` when
+skip capture is on, and never enter exposure competition. Classic UI Admit
+controls are deferred to SW3.
+
 ## R17 ingestion boundary
 
 `thesistester.data.loader.load_ohlcv()` is the sole explicit-profile adapter
