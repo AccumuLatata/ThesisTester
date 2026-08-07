@@ -31,6 +31,36 @@ FOCUS_HONESTY_BANNER = (
     "Post-hoc subset — not re-simulated. Exposure/cooldown still reflect the all-day run."
 )
 FOCUS_EQUITY_CAVEAT = "Equity/drawdown rebuilt from the filtered trade subset only (subset replay)."
+ADMIT_HONESTY_BANNER = "Constrained re-simulation — only in-window entries were admitted."
+OUTSIDE_ENTRY_WINDOW_REASON = "outside_entry_window"
+
+
+def partition_skip_counts(skipped_signals: pd.DataFrame | None) -> dict[str, int]:
+    """Split skip diagnostics into entry-window vs other (exposure) reasons.
+
+    Returns counts suitable for Backtest captions. Unknown/missing
+    ``skip_reason`` values are counted as ``other``.
+    """
+    if skipped_signals is None or not isinstance(skipped_signals, pd.DataFrame):
+        return {
+            "total": 0,
+            "outside_entry_window": 0,
+            "other": 0,
+        }
+    total = int(len(skipped_signals))
+    if total == 0 or "skip_reason" not in skipped_signals.columns:
+        return {
+            "total": total,
+            "outside_entry_window": 0,
+            "other": total,
+        }
+    reasons = skipped_signals["skip_reason"].astype(str)
+    window_n = int((reasons == OUTSIDE_ENTRY_WINDOW_REASON).sum())
+    return {
+        "total": total,
+        "outside_entry_window": window_n,
+        "other": total - window_n,
+    }
 
 
 def filter_trades_by_entry_window(
@@ -137,8 +167,10 @@ def summarize_focused_trades(
 
 
 __all__ = [
+    "ADMIT_HONESTY_BANNER",
     "FOCUS_EQUITY_CAVEAT",
     "FOCUS_HONESTY_BANNER",
+    "OUTSIDE_ENTRY_WINDOW_REASON",
     "RTH_SEGMENT_LABELS",
     "RTH_SEGMENTS",
     "disabled_entry_window",
@@ -148,6 +180,7 @@ __all__ = [
     "focus_provenance",
     "format_entry_window_label",
     "normalize_entry_window",
+    "partition_skip_counts",
     "rth_segment_for_minute",
     "summarize_focused_trades",
 ]

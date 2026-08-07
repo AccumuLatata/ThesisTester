@@ -82,6 +82,7 @@ from thesistester.research_identity import (
     normalize_execution_origin,
     normalize_levels_config,
 )
+from thesistester.entry_window_policy import normalize_entry_window
 from thesistester.setup import (
     build_setup_config,
     get_effective_otf_filter_config,
@@ -120,6 +121,7 @@ class BacktestResult(TypedDict):
     otf_filter_summary: dict[str, Any]
     intrabar_diagnostic: dict[str, Any]
     exit_management_diagnostic: dict[str, Any]
+    entry_window: dict[str, Any]
 
 
 class GridResult(TypedDict):
@@ -220,6 +222,7 @@ _BACKTEST_DEFAULTS: dict[str, Any] = {
     "breakeven_after_r": None,
     "trailing_after_r": None,
     "trailing_distance_ticks": None,
+    "entry_window": None,
 }
 _GRID_DEFAULTS: dict[str, Any] = {
     "stop_loss_ticks_values": [4.0, 8.0, 12.0],
@@ -821,6 +824,13 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             integer=True,
         )
         _validate_range(backtest, "max_holding_bars", section="backtest", minimum=1)
+    if "entry_window" in backtest and backtest["entry_window"] is not None:
+        entry_window = _require_mapping(backtest["entry_window"], section="backtest.entry_window")
+        exchange_tz = _instrument(instrument).exchange_tz
+        try:
+            normalize_entry_window(dict(entry_window), exchange_tz=exchange_tz)
+        except ValueError as exc:
+            raise ValueError(f"Invalid backtest.entry_window: {exc}") from exc
     grid = run.get("grid")
     if grid is not None:
         grid = _require_mapping(grid, section="grid")
@@ -1553,6 +1563,15 @@ def run_backtest(
     inst = _instrument(instrument)
     settings = _merge_known(_BACKTEST_DEFAULTS, config, section="backtest")
     session_timezone = settings["session_timezone"] or inst.exchange_tz
+    try:
+        entry_window = normalize_entry_window(
+            settings.get("entry_window"),
+            exchange_tz=inst.exchange_tz,
+        )
+    except ValueError as exc:
+        raise ValueError(f"Invalid backtest.entry_window: {exc}") from exc
+    # Engine default remains None when disabled (legacy-identical path).
+    simulate_entry_window = entry_window if entry_window.get("enabled") else None
     otf = apply_configured_otf_filter(
         source_df=data,
         candidate_signals=signals,
@@ -1586,6 +1605,8 @@ def run_backtest(
         breakeven_after_r=settings["breakeven_after_r"],
         trailing_after_r=settings["trailing_after_r"],
         trailing_distance_ticks=settings["trailing_distance_ticks"],
+        entry_window=simulate_entry_window,
+        entry_window_exchange_tz=inst.exchange_tz,
         return_result=True,
     )
     trades = simulation.trades
@@ -1600,6 +1621,7 @@ def run_backtest(
         "otf_filter_summary": otf.to_summary_dict(),
         "intrabar_diagnostic": simulation.intrabar_diagnostic,
         "exit_management_diagnostic": simulation.exit_management_diagnostic,
+        "entry_window": entry_window,
     }
 
 

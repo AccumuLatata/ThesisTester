@@ -15,6 +15,7 @@ from datetime import time as _time
 from typing import Any
 
 from thesistester.config import TIMEZONE_OPTIONS
+from thesistester.entry_window_policy import RTH_SEGMENT_LABELS
 
 # ── Constant option sets (must stay in sync with the page widgets) ────────────
 
@@ -23,6 +24,11 @@ EXPOSURE_POLICY_OPTIONS: tuple[str, ...] = (
     "single_position",
     "single_direction",
     "single_setup",
+)
+
+ENTRY_WINDOW_MODE_OPTIONS: tuple[str, ...] = (
+    "rth_segments",
+    "clock_range",
 )
 
 RANKING_METRIC_OPTIONS: tuple[str, ...] = (
@@ -169,6 +175,42 @@ def _valid_optional_positive_float(value: Any) -> float | None:
     return _valid_float(value, lo=0.000001, hi=1000.0)
 
 
+def _valid_entry_window_mode(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return value if value in ENTRY_WINDOW_MODE_OPTIONS else None
+
+
+def _valid_rth_segments(value: Any) -> list[str] | None:
+    """Return a de-duplicated non-empty list of known RTH labels, else None.
+
+    Empty lists are rejected so widgets keep their built-in default
+    (``["rth_open_30m"]``) rather than restoring an invalid Admit config.
+    """
+    if not isinstance(value, (list, tuple)):
+        return None
+    out: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            return None
+        name = item.strip()
+        if name not in RTH_SEGMENT_LABELS:
+            return None
+        if name not in out:
+            out.append(name)
+    return out or None
+
+
+def _valid_entry_window_end_time(value: Any) -> str | None:
+    """Accept HH:MM / HH:MM:SS, or end-of-day ``24:00`` / ``24:00:00`` (C4)."""
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if stripped in {"24:00", "24:00:00"}:
+        return stripped
+    return _valid_time_str(stripped)
+
+
 # ── Backtest sanitisation ─────────────────────────────────────────────────────
 
 #: Maps session-state key → (validator_fn, raw_defaults_key)
@@ -204,6 +246,29 @@ _BACKTEST_FIELD_SPECS: tuple[tuple[str, str, Any], ...] = (
         "backtest_cooldown_bars",
         "cooldown_bars_after_exit",
         lambda v: _valid_int(v, lo=0, hi=10_000),
+    ),
+    # SW3 Admit controls (additive; default-off when absent)
+    ("backtest_entry_window_enabled", "entry_window_enabled", _valid_bool),
+    ("backtest_entry_window_mode", "entry_window_mode", _valid_entry_window_mode),
+    (
+        "backtest_entry_window_rth_segments",
+        "entry_window_rth_segments",
+        _valid_rth_segments,
+    ),
+    (
+        "backtest_entry_window_start_time",
+        "entry_window_start_time",
+        _valid_time_str,
+    ),
+    (
+        "backtest_entry_window_end_time",
+        "entry_window_end_time",
+        _valid_entry_window_end_time,
+    ),
+    (
+        "backtest_entry_window_timezone",
+        "entry_window_timezone",
+        _valid_timezone,
     ),
 )
 

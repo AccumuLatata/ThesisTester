@@ -152,32 +152,38 @@ This engine is for **research screening**, not proof of a durable edge.
 - Default remains `allow_all` for backward compatibility and broad signal screening.
 - `allow_all` can inflate trade counts because overlapping signals are treated independently.
 - Restrictive policies apply deterministic admission ordering and optional cooldown (`cooldown_bars_after_exit`) to model more conservative trade lifecycle assumptions.
-- Optional skipped-signal diagnostics primarily contain exposure-policy
-  rejections. When opt-in `entry_window` admission is enabled (SW2) and skip
-  capture is on, rejects also include `outside_entry_window`. Signals skipped
-  for pre-existing non-executable reasons (e.g., void `3c`, missing future
-  entry bar) and silent `no_new_entries_after` continues are not included
-  unless a later SW2b audit lands.
+- Optional skipped-signal diagnostics may include exposure-policy rejections
+  and, when opt-in `entry_window` admission is enabled (SW2/SW3) with skip
+  capture on, `outside_entry_window`. Backtest captions split window skips from
+  exposure/other. Signals skipped for pre-existing non-executable reasons
+  (e.g., void `3c`, missing future entry bar) and silent `no_new_entries_after`
+  continues are not included unless a later SW2b audit lands.
 - Default `entry_window=None` / disabled preserves legacy all-day admission
-  (golden-identical trades).
+  (golden-identical trades). `api.run_backtest` and classic Backtest Admit
+  controls (SW3) default off.
 
-### 4a) Time Analysis Focus vs Admit (SW1 / SW2)
+### 4a) Time Analysis Focus vs Admit (SW1 / SW2 / SW3)
 - **Focus summary** filters already completed trades by entry time bucket and
   recomputes KPIs / equity. It does **not** call `simulate_trades` and does
   **not** change exposure, cooldown, or which signals were admitted.
 - Focused equity and max drawdown are a **subset replay** of the filtered trade
   list, not path drawdown under the all-day admission set.
-- **Admit** (`simulate_trades(..., entry_window=...)`) is the constrained
-  re-simulation path. Membership uses **entry-bar** local time (not signal-bar
-  time). Window rejects never enter exposure competition.
+- **Admit** (`simulate_trades` / `run_backtest` / Backtest UI `entry_window`) is
+  the constrained re-simulation path. Membership uses **entry-bar** local time
+  (not signal-bar time). Window rejects never enter exposure competition.
+  Constrained runs show: “Constrained re-simulation — only in-window entries
+  were admitted.”
 - Under `exposure_policy="allow_all"` and `cooldown_bars_after_exit=0`, Focus
   and Admit admit the same `signal_id` set (C7). See
   `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md`.
 - TZ law (C5): RTH-segment membership always evaluates in the instrument
-  exchange/session timezone. Clock-range membership uses the window/bucket
-  timezone. Tz-naive timestamps are treated as exchange/session wall clocks
-  (same as `add_time_buckets`), then converted — never localized directly as
-  the bucket/display TZ. Invalid IANA timezone keys fail closed at normalize.
+  exchange/session timezone via `entry_window_exchange_tz` (API/UI pass the
+  instrument exchange TZ). This is distinct from `session_timezone`, which
+  only interprets session-close / `no_new_entries_after` clocks. Clock-range
+  membership uses the window/bucket timezone. Tz-naive timestamps are treated
+  as exchange/session wall clocks (same as `add_time_buckets`), then
+  converted — never localized directly as the bucket/display TZ. Invalid IANA
+  timezone keys fail closed at normalize.
 
 ### 5) Simple-trigger and `3c` timestamp semantics are canonical/base aligned
 - For all triggers, emitted `timestamp` is always the canonical/base dataframe timestamp at `bar_index`.

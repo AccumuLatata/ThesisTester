@@ -30,9 +30,11 @@ from thesistester.classic_proposal import render_classic_proposal_card
 from thesistester.classic_record import render_record_and_discuss
 from thesistester.analytics import equity_curve, summarize_trades, summarize_trades_by_direction
 from thesistester.analytics.entry_window import (
+    ADMIT_HONESTY_BANNER,
     FOCUS_EQUITY_CAVEAT,
     FOCUS_HONESTY_BANNER,
     format_entry_window_label,
+    partition_skip_counts,
 )
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
 from thesistester.analytics.prev30m_vwap_hit import prev30m_hit_r_summary
@@ -40,7 +42,9 @@ from thesistester.levels.prev30m_vwap import COL_HIT_M1, COL_HIT_M5
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.engine.backtest import simulate_trades
 from thesistester.engine.otf_integration import apply_configured_otf_filter
+from thesistester.entry_window_policy import RTH_SEGMENT_LABELS, normalize_entry_window
 from thesistester.execution_defaults import (
+    ENTRY_WINDOW_MODE_OPTIONS,
     INTRABAR_MODEL_OPTIONS,
     apply_backtest_defaults,
     collect_backtest_defaults,
@@ -358,6 +362,79 @@ with st.sidebar:
         (no_new_entries_after.strip() or None) if flat_by_session_close else None
     )
 
+    st.subheader("Entry window (Admit)")
+    st.caption(
+        "Opt-in admission constraint. When enabled, only signals whose "
+        "**entry bar** falls in the window are simulated. Distinct from "
+        "Time Analysis Focus (post-hoc subset)."
+    )
+    enable_entry_window = st.toggle(
+        "Constrain entries to time window",
+        value=False,
+        key="backtest_entry_window_enabled",
+        help=(
+            "Re-simulates under an entry-time constraint (Admit). "
+            "Default off = legacy all-day admission."
+        ),
+    )
+    entry_window_config: dict | None = None
+    if enable_entry_window:
+        entry_window_mode = st.selectbox(
+            "Window mode",
+            options=list(ENTRY_WINDOW_MODE_OPTIONS),
+            index=0,
+            key="backtest_entry_window_mode",
+            format_func=lambda value: {
+                "rth_segments": "RTH segments (exchange/session TZ)",
+                "clock_range": "Clock range [start, end)",
+            }[value],
+        )
+        if entry_window_mode == "rth_segments":
+            selected_segments = st.multiselect(
+                "RTH segments",
+                options=list(RTH_SEGMENT_LABELS),
+                default=["rth_open_30m"],
+                key="backtest_entry_window_rth_segments",
+                help="Multi-segment selection is OR (C3). Membership uses exchange/session TZ (C5).",
+            )
+            entry_window_config = {
+                "enabled": True,
+                "mode": "rth_segments",
+                "rth_segments": list(selected_segments),
+                "timezone": exchange_tz,
+            }
+            if not selected_segments:
+                st.warning("Select at least one RTH segment, or disable the entry window.")
+        else:
+            ew_start = st.text_input(
+                "Start time",
+                value="09:30",
+                key="backtest_entry_window_start_time",
+                help="Half-open range start HH:MM or HH:MM:SS (C4).",
+            )
+            ew_end = st.text_input(
+                "End time",
+                value="10:00",
+                key="backtest_entry_window_end_time",
+                help="Half-open range end (exclusive). Use 24:00 for end-of-day.",
+            )
+            ew_tz = st.selectbox(
+                "Window timezone",
+                options=TIMEZONE_OPTIONS,
+                index=(
+                    TIMEZONE_OPTIONS.index(exchange_tz) if exchange_tz in TIMEZONE_OPTIONS else 0
+                ),
+                key="backtest_entry_window_timezone",
+                help="Clock-range membership uses this TZ (C5). RTH segments always use exchange TZ.",
+            )
+            entry_window_config = {
+                "enabled": True,
+                "mode": "clock_range",
+                "start_time": ew_start.strip(),
+                "end_time": ew_end.strip(),
+                "timezone": ew_tz,
+            }
+
     st.subheader("Exposure policy")
     exposure_policy = st.selectbox(
         "Policy",
@@ -442,6 +519,16 @@ if run_btn:
             signals_for_backtest = _otf_result.accepted_signals
 
             _ledger_phase = "simulate"
+            try:
+                normalized_entry_window = normalize_entry_window(
+                    entry_window_config,
+                    exchange_tz=exchange_tz,
+                )
+            except ValueError as exc:
+                raise ValueError(f"Invalid entry_window: {exc}") from exc
+            simulate_entry_window = (
+                normalized_entry_window if normalized_entry_window.get("enabled") else None
+            )
             simulation = simulate_trades(
                 df=ohlcv_df,
                 signals=signals_for_backtest,
@@ -466,6 +553,8 @@ if run_btn:
                 breakeven_after_r=breakeven_after_r,
                 trailing_after_r=trailing_after_r,
                 trailing_distance_ticks=trailing_distance_ticks,
+                entry_window=simulate_entry_window,
+                entry_window_exchange_tz=exchange_tz,
                 return_result=True,
             )
             trades = simulation.trades
@@ -479,6 +568,7 @@ if run_btn:
             st.session_state["trade_summary"] = summary
             st.session_state["equity_curve"] = curve
             st.session_state["skipped_signals"] = skipped_signals
+            st.session_state["entry_window"] = normalized_entry_window
             st.session_state["exposure_policy"] = {
                 "exposure_policy": exposure_policy,
                 "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
@@ -633,15 +723,27 @@ else:
         f"OTF filter: **disabled** — all {_otf_candidate_count} candidate signals passed through."
     )
 
-skipped_count = 0
-if isinstance(skipped_signals, pd.DataFrame):
-    skipped_count = int(len(skipped_signals))
+_skip_counts = partition_skip_counts(
+    skipped_signals if isinstance(skipped_signals, pd.DataFrame) else None
+)
+_entry_window_state = st.session_state.get("entry_window") or {}
+_entry_window_enabled = bool(
+    isinstance(_entry_window_state, dict) and _entry_window_state.get("enabled")
+)
+if _entry_window_enabled:
+    st.info(f"{ADMIT_HONESTY_BANNER} Window: **{format_entry_window_label(_entry_window_state)}**.")
 st.caption(
     f"Accepted trades: {summary.get('trade_count', 0) if isinstance(summary, dict) else len(trades)} · "
-    f"Skipped by exposure policy: {skipped_count}"
+    f"Skipped (total): {_skip_counts['total']} · "
+    f"outside entry window: {_skip_counts['outside_entry_window']} · "
+    f"exposure / other: {_skip_counts['other']}"
 )
 if isinstance(skipped_signals, pd.DataFrame) and not skipped_signals.empty:
-    st.subheader("Exposure policy skips")
+    st.subheader("Skipped signals")
+    st.caption(
+        "Skip reasons include exposure-policy rejects and, when Admit is enabled, "
+        "`outside_entry_window`. Distinct from OTF rejects and 3c voids."
+    )
     skip_cols = [
         c
         for c in [
