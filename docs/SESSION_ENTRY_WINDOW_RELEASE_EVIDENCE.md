@@ -34,7 +34,7 @@ statistical release approval from in-repo fixtures.
 | SW4 | Promote Focus→Admit handoff | Merged [#295](https://github.com/AccumuLatata/ThesisTester/pull/295) |
 | SW5 | Grid + Validation/WFA/sensitivity inherit | Merged [#296](https://github.com/AccumuLatata/ThesisTester/pull/296) |
 | SW6 | Setup persistence + Report/Bundles + Assistant | Merged [#297](https://github.com/AccumuLatata/ThesisTester/pull/297) |
-| SW7 | Hardening + release evidence | This document |
+| SW7 | Hardening + release evidence | [#298](https://github.com/AccumuLatata/ThesisTester/pull/298) / this document |
 
 ## 3. Formal engineering sign-off checklist
 
