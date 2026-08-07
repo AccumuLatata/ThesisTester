@@ -62,6 +62,28 @@ Regenerate enabled-OTF artifacts with:
 python -m tests.fixtures.golden.record_otf_enabled_golden --confirm-regenerate
 ```
 
+### 2.3 Enabled entry_window family (SW2)
+
+Additive drift gate for **enabled** `entry_window` admission. Isolated from
+legacy and OTF families: these files never rewrite those artifacts.
+
+| File | Role |
+|---|---|
+| `generate_entry_window_enabled.py` | RTH morning fixture + fixed next-bar candidates straddling `rth_open_30m` |
+| `pipeline_entry_window_enabled.py` | `simulate_trades(..., entry_window=..., return_result=True)` |
+| `record_entry_window_enabled_golden.py` | Recorder (`--confirm-regenerate` required) |
+| `entry_window_enabled_dataset.parquet` | Recorded 1m source frame |
+| `entry_window_enabled_trades.csv` | Canonical accepted-trade projection |
+| `entry_window_enabled_skipped.csv` | Canonical `outside_entry_window` skips |
+| `entry_window_enabled_projection.json` | Reviewable IDs/counts/config |
+| `entry_window_enabled_manifest.json` | Provenance |
+
+Regenerate with:
+
+```bash
+python -m tests.fixtures.golden.record_entry_window_enabled_golden --confirm-regenerate
+```
+
 ## 3. Determinism contract (measured, not assumed)
 
 Two properties were verified on this repository before writing this spec. Both shape the

@@ -259,6 +259,9 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
   are counted, not wished away.
 - Help will not invent your best SL/TP — ask **Discuss results** for bound run
   metrics.
+- Engine-level opt-in `entry_window` admission (SW2) exists for headless/
+  constrained re-sims; classic Backtest UI controls for Admit arrive in SW3.
+  Time Analysis **Focus** remains post-hoc only.
 
 **Related pages.** Signals (prerequisite); Grid Search for SL/TP sweeps; Research
 Assistant Discuss for performance questions.

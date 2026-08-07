@@ -1,0 +1,3 @@
+signal_id,bar_index,entry_bar_index,trigger,direction,skip_reason
+3,34,35,touch,long,outside_entry_window
+4,45,46,touch,short,outside_entry_window
