@@ -550,7 +550,7 @@ Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; ho
 | SW4 Promote handoff UX | Merged | [#295](https://github.com/AccumuLatata/ThesisTester/pull/295) |
 | SW5 Grid + Validation inheritance | Merged | [#296](https://github.com/AccumuLatata/ThesisTester/pull/296) |
 | SW6 Persistence + export + assistant | Merged | [#297](https://github.com/AccumuLatata/ThesisTester/pull/297) |
-| SW7 Hardening + release evidence | Open | — |
+| SW7 Hardening + release evidence | Open | [#298](https://github.com/AccumuLatata/ThesisTester/pull/298) |
 
 ---
 
