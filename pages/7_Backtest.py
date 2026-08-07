@@ -30,9 +30,13 @@ from thesistester.classic_proposal import render_classic_proposal_card
 from thesistester.classic_record import render_record_and_discuss
 from thesistester.analytics import equity_curve, summarize_trades, summarize_trades_by_direction
 from thesistester.analytics.entry_window import (
+    ADMIT_APPLIED_STATUS_BADGE,
+    ADMIT_ARMED_STATUS_BADGE,
     ADMIT_HONESTY_BANNER,
     FOCUS_EQUITY_CAVEAT,
     FOCUS_HONESTY_BANNER,
+    FOCUS_STATUS_BADGE,
+    PROMOTE_ARMED_BANNER,
     format_entry_window_label,
     partition_skip_counts,
 )
@@ -368,6 +372,9 @@ with st.sidebar:
         "**entry bar** falls in the window are simulated. Distinct from "
         "Time Analysis Focus (post-hoc subset)."
     )
+    if bool(st.session_state.get("entry_window_armed")):
+        st.caption(f"**{ADMIT_ARMED_STATUS_BADGE}**")
+        st.warning(PROMOTE_ARMED_BANNER)
     enable_entry_window = st.toggle(
         "Constrain entries to time window",
         value=False,
@@ -569,6 +576,14 @@ if run_btn:
             st.session_state["equity_curve"] = curve
             st.session_state["skipped_signals"] = skipped_signals
             st.session_state["entry_window"] = normalized_entry_window
+            # SW4: Promote arming is consumed by a successful re-sim.
+            st.session_state["entry_window_armed"] = False
+            _promote_prov = st.session_state.get("entry_window_promote_provenance")
+            if isinstance(_promote_prov, dict):
+                st.session_state["entry_window_promote_provenance"] = {
+                    **_promote_prov,
+                    "status": "applied" if normalized_entry_window.get("enabled") else "cleared",
+                }
             st.session_state["exposure_policy"] = {
                 "exposure_policy": exposure_policy,
                 "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
@@ -730,7 +745,16 @@ _entry_window_state = st.session_state.get("entry_window") or {}
 _entry_window_enabled = bool(
     isinstance(_entry_window_state, dict) and _entry_window_state.get("enabled")
 )
-if _entry_window_enabled:
+_entry_window_armed = bool(st.session_state.get("entry_window_armed"))
+if _entry_window_armed and _entry_window_enabled:
+    # Pending Promote: do not claim constrained re-sim until Run completes.
+    st.caption(f"**{ADMIT_ARMED_STATUS_BADGE}**")
+    st.warning(
+        f"{PROMOTE_ARMED_BANNER} Window: "
+        f"**{format_entry_window_label(_entry_window_state)}**."
+    )
+elif _entry_window_enabled:
+    st.caption(f"**{ADMIT_APPLIED_STATUS_BADGE}**")
     st.info(f"{ADMIT_HONESTY_BANNER} Window: **{format_entry_window_label(_entry_window_state)}**.")
 st.caption(
     f"Accepted trades: {summary.get('trade_count', 0) if isinstance(summary, dict) else len(trades)} · "
@@ -811,6 +835,7 @@ _has_focus = (
 )
 _show_focused = False
 if _has_focus:
+    st.caption(f"**{FOCUS_STATUS_BADGE}**")
     st.warning(FOCUS_HONESTY_BANNER)
     st.info(FOCUS_EQUITY_CAVEAT)
     st.caption(

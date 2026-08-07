@@ -1152,8 +1152,8 @@ Summary looks poor.
 | SW1 | Post-hoc Focus summary (no re-sim); shared RTH export ✅ |
 | SW2 | Opt-in `entry_window` admission + enabled golden + Focus≡Admit (C7) ✅ |
 | SW2b | Optional: audit `no_new_entries_after` → `after_entry_cutoff` + UI/docs honesty |
-| SW3 | API + Backtest Admit controls ← next |
-| SW4 | Time Analysis Focus + Promote handoff |
+| SW3 | API + Backtest Admit controls ✅ |
+| SW4 | Time Analysis Promote + Focus↔Admit handoff ← next |
 | SW5 | Grid + Validation/WFA/sensitivity inherit window (fixed constraint) |
 | SW6 | Setup persistence, export, assistant honesty |
 | SW7 | Hardening + release evidence |

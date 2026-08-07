@@ -12,10 +12,17 @@ import streamlit as st
 
 from thesistester.analytics import summarize_trades
 from thesistester.analytics.entry_window import (
+    ADMIT_ARMED_STATUS_BADGE,
     FOCUS_EQUITY_CAVEAT,
     FOCUS_HONESTY_BANNER,
+    FOCUS_STATUS_BADGE,
+    PROMOTE_ARMED_BANNER,
+    apply_promote_to_session_state,
+    clear_armed_entry_window,
     entry_window_from_bucket,
+    filter_trades_by_entry_window,
     format_entry_window_label,
+    promote_entry_window,
     summarize_focused_trades,
 )
 from thesistester.analytics.time_analysis import (
@@ -290,7 +297,10 @@ if primary_group in _FOCUSABLE_COLS and not grouped.empty and primary_group in g
             options=focus_values,
             index=(focus_values.index(active_label) if active_label in focus_values else 0),
             key="time_analysis_focus_bucket_value",
-            help="Select a time bucket to Focus. Promote-to-entry-window arrives in SW4.",
+            help=(
+                "Select a time bucket to Focus (post-hoc) or Promote to Admit "
+                "(arms Backtest entry_window; does not auto-run)."
+            ),
         )
     with btn_col:
         st.write("")
@@ -343,11 +353,16 @@ else:
         "Focus is available when primary grouping is "
         "`entry_rth_segment`, `entry_hour_bucket`, or `entry_30min_bucket`."
     )
+    selected_focus_value = None
 
 _focus_summary = st.session_state.get("focused_trade_summary")
 _focus_prov = st.session_state.get("focus_provenance") or {}
 _focus_window = st.session_state.get("focus_entry_window")
-if isinstance(_focus_summary, dict) and _focus_window and _focus_window.get("enabled"):
+_has_focus = bool(
+    isinstance(_focus_summary, dict) and _focus_window and _focus_window.get("enabled")
+)
+if _has_focus:
+    st.caption(f"**{FOCUS_STATUS_BADGE}**")
     st.warning(FOCUS_HONESTY_BANNER)
     st.info(FOCUS_EQUITY_CAVEAT)
     st.caption(
@@ -382,6 +397,113 @@ if isinstance(_focus_summary, dict) and _focus_window and _focus_window.get("ena
     if _focus_curve is not None and not getattr(_focus_curve, "empty", True):
         st.caption("Focused equity curve (subset replay)")
         st.line_chart(_focus_curve.set_index("exit_timestamp")["cum_r"])
+
+# ── Promote → Admit (SW4 — arms entry_window; no auto-run) ────────────────────
+st.subheader("Promote to Admit")
+st.caption(
+    "Arm the selected/Focused bucket as a Backtest **entry_window** constraint. "
+    "Does **not** re-simulate — open Backtest and Run to apply Admit."
+)
+_armed = bool(st.session_state.get("entry_window_armed"))
+_armed_window = st.session_state.get("entry_window") or {}
+_armed_prov = st.session_state.get("entry_window_promote_provenance") or {}
+if _armed and isinstance(_armed_window, dict) and _armed_window.get("enabled"):
+    st.caption(f"**{ADMIT_ARMED_STATUS_BADGE}**")
+    st.warning(PROMOTE_ARMED_BANNER)
+    st.caption(
+        f"Armed window: **{format_entry_window_label(_armed_window)}**"
+        + (
+            f" · sample n={_armed_prov.get('trade_count_after')}"
+            if _armed_prov.get("trade_count_after") is not None
+            else ""
+        )
+    )
+
+_can_promote = primary_group in _FOCUSABLE_COLS and selected_focus_value is not None
+if _can_promote:
+    # Prefer active Focus window; else map the selected bucket (C1/C5).
+    if _has_focus and isinstance(_focus_window, dict) and _focus_window.get("enabled"):
+        _promote_source_window = _focus_window
+        _promote_count_after = int(_focus_prov.get("trade_count_after") or 0)
+        _promote_count_before = int(
+            _focus_prov.get("trade_count_before") or len(trades_raw)
+        )
+        _promote_source = "focus"
+    else:
+        try:
+            _promote_source_window = entry_window_from_bucket(
+                primary_group,
+                selected_focus_value,
+                exchange_tz=exchange_tz,
+                bucket_tz=bucket_tz,
+            )
+            _promote_filtered = filter_trades_by_entry_window(
+                trades_raw,
+                _promote_source_window,
+                exchange_tz=exchange_tz,
+                timestamp_col=timestamp_basis,
+                bucket_tz=bucket_tz,
+            )
+            _promote_count_after = int(len(_promote_filtered))
+            _promote_count_before = int(len(trades_raw))
+            _promote_source = "bucket"
+        except ValueError as exc:
+            _promote_source_window = None
+            st.error(f"Promote source unavailable: {exc}")
+
+    if _promote_source_window is not None:
+        _thin = _promote_count_after < int(min_trades_warn)
+        if _thin:
+            st.warning(
+                f"Thin sample: {_promote_count_after} trades "
+                f"(threshold {min_trades_warn}). Confirm before Promoting."
+            )
+        thin_confirm = st.checkbox(
+            "Promote anyway — I understand this sample is thin",
+            value=False,
+            key="time_analysis_promote_thin_confirm",
+            disabled=not _thin,
+        )
+        promote_col, clear_armed_col = st.columns(2)
+        with promote_col:
+            promote_btn = st.button(
+                "Promote to Admit",
+                type="primary",
+                key="time_analysis_promote_admit",
+                disabled=_thin and not thin_confirm,
+                help="Arms Backtest entry_window widgets. Does not auto-run simulation.",
+            )
+        with clear_armed_col:
+            clear_armed_btn = st.button(
+                "Clear armed Admit",
+                key="time_analysis_clear_armed_admit",
+                disabled=not _armed,
+            )
+
+        if clear_armed_btn:
+            clear_armed_entry_window(st.session_state)
+            st.rerun()
+
+        if promote_btn:
+            try:
+                payload = promote_entry_window(
+                    _promote_source_window,
+                    exchange_tz=exchange_tz,
+                    trade_count_after=_promote_count_after,
+                    trade_count_before=_promote_count_before,
+                    min_trades=min_trades_warn,
+                    source=_promote_source,
+                    thin_sample_confirmed=bool(thin_confirm) if _thin else False,
+                )
+                apply_promote_to_session_state(st.session_state, payload)
+                st.rerun()
+            except ValueError as exc:
+                st.error(f"Promote failed: {exc}")
+else:
+    st.info(
+        "Promote is available when primary grouping is "
+        "`entry_rth_segment`, `entry_hour_bucket`, or `entry_30min_bucket`."
+    )
 
 st.divider()
 

@@ -322,12 +322,11 @@ Summary / equity on one bucket as a **post-hoc subset** (still no re-sim).
 **When to use it.** After a Backtest has produced a trade list and you want to
 see when trades clustered — with sample-size humility. Use Focus when a bucket
 (e.g. `rth_open_30m`) looks strong and you want the full KPI suite on that
-subset before deciding whether to constrain entries (Admit arrives in a later
-release).
+subset before Promoting it into an Admit constraint.
 
 **Related terms.** time analysis, time bucket, entry hour, 30min bucket, RTH
 segment, grouping, heatmap, best entry time, session window, no re-simulation,
-Focus summary, post-hoc subset
+Focus summary, post-hoc subset, Promote to Admit
 
 **Key settings.**
 
@@ -339,6 +338,7 @@ Focus summary, post-hoc subset
 | `Primary grouping` / optional secondary | How rows are aggregated | Tiny groups look dramatic |
 | `Minimum trades warning threshold` | Soft warning for thin buckets | Ignoring it invites noise |
 | `Metric for chart / heatmap` | Which KPI to plot | Charts ≠ causation |
+| `Promote to Admit` | Arms Backtest `entry_window` from Focus/bucket | Does **not** auto-run Backtest |
 
 **How to use.**
 
@@ -348,21 +348,23 @@ Focus summary, post-hoc subset
 4. Use thin-bucket warnings: low `trade_count` groups are not “best entries.”
 5. Optional: with primary grouping `entry_rth_segment` / hour / 30m, select a
    bucket → **Focus summary**. Clear Focus anytime. Backtest can overlay the
-   same Focused KPIs without overwriting the full-run results. To constrain
-   entries, enable **Entry window (Admit)** on Backtest and re-run (Promote
-   handoff arrives in SW4).
+   same Focused KPIs without overwriting the full-run results.
+6. Optional: **Promote to Admit** arms the Focused/selected window on Backtest
+   (thin samples require confirm). Open Backtest and **Run** to re-simulate —
+   Promote never auto-runs.
 
 **What it is not.**
 
 - Not a re-optimization engine and not a signal generator.
 - Focus is **not** an entry constraint and does **not** re-run exposure/cooldown.
 - Focused equity/drawdown is a **subset replay** of filtered trades only.
+- Promote arms a constraint; it is not itself proof of edge.
 - “Best hour” language is descriptive on this sample only — not a schedule to
   trade live.
 - RTH segment labeling can stay on exchange/session time even when hourly
   buckets use display TZ.
 
-**Related pages.** Backtest (prerequisite; Focus overlay); Report Export (shared display TZ).
+**Related pages.** Backtest (prerequisite; Focus overlay; Admit re-sim); Report Export (shared display TZ).
 See `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` for the full Focus→Admit loop.
 
 ## Validation and robustness

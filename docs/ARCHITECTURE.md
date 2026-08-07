@@ -786,7 +786,7 @@ MAE/MFE, exit management, costs, record construction, and diagnostics. No
 accelerated execution mode is enabled; `docs/SIMULATE_PERF.md` is the
 informational serial baseline for future parity-gated work.
 
-## SW2/SW3 entry-window admission boundary
+## SW2–SW4 entry-window admission boundary
 
 `thesistester.entry_window_policy` owns shared RTH segment vocabulary (C1) and
 normalize/contains helpers used by both Focus analytics and
@@ -801,6 +801,10 @@ default `None`/disabled) and classic Backtest Admit controls. Skip captions spli
 honesty banner. RTH membership uses `entry_window_exchange_tz` (instrument exchange
 TZ from API/UI), distinct from `session_timezone` used only for session-close /
 entry-cutoff clocks (C5).
+
+SW4 adds Time Analysis **Promote to Admit**: arms `entry_window` + Backtest widget
+keys without auto-running simulation. `entry_window_armed` distinguishes pending
+Promote from an applied constrained re-sim; Focus overlays remain separate.
 
 ## R17 ingestion boundary
 
@@ -939,7 +943,9 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `focused_trade_summary` | Time Focus (SW1) | Backtest/Time display | Same shape as `trade_summary` on the subset |
 | `focused_equity_curve` | Time Focus (SW1) | Backtest/Time display | Subset-replay equity (C8); same shape as `equity_curve` |
 | `focus_provenance` | Time Focus (SW1) | Banners / export (later) | Counts, `sample_warning`, honesty flags |
-| `entry_window` | Backtest Admit (SW3) | Backtest banner / later Promote+Grid | Normalized Admit window from last constrained (or disabled) run |
+| `entry_window` | Backtest Admit (SW3) / Promote (SW4) | Backtest banner / later Grid | Normalized Admit window (armed or last applied) |
+| `entry_window_armed` | Time Analysis Promote (SW4) | Backtest / Time Analysis | `bool` — pending re-sim after Promote |
+| `entry_window_promote_provenance` | Time Analysis Promote (SW4) | banners / audit | Promote source, counts, `sample_warning`, status |
 | `skipped_signals` | Backtest / `run_backtest` | Backtest skip table | DataFrame of admission skips (`skip_reason` incl. exposure + `outside_entry_window`) |
 | `validation_summary` | Validation (`pages/10_Validation.py:130`) | Validation display/Report/Bundles (`pages/10_Validation.py:134`, `pages/11_Report_Export.py:42,82-83`, `pages/12_Research_Bundles.py:50`) | `dict` (`bootstrap`, `permutation`, `trade_count`, `grid_overfit`) |
 | `walk_forward_results` | Validation/R18 API | Validation display, Report, Research Bundles | R14 per-fold `pd.DataFrame` with bar/session boundaries and IS/OOS metrics |

@@ -32,6 +32,12 @@ FOCUS_HONESTY_BANNER = (
 )
 FOCUS_EQUITY_CAVEAT = "Equity/drawdown rebuilt from the filtered trade subset only (subset replay)."
 ADMIT_HONESTY_BANNER = "Constrained re-simulation — only in-window entries were admitted."
+PROMOTE_ARMED_BANNER = (
+    "Entry window armed. Run Backtest to re-simulate under this constraint."
+)
+FOCUS_STATUS_BADGE = "Focus · post-hoc subset"
+ADMIT_ARMED_STATUS_BADGE = "Admit · armed (pending re-sim)"
+ADMIT_APPLIED_STATUS_BADGE = "Admit · constrained re-sim"
 OUTSIDE_ENTRY_WINDOW_REASON = "outside_entry_window"
 
 
@@ -166,13 +172,123 @@ def summarize_focused_trades(
     return result
 
 
+def backtest_widget_state_from_entry_window(
+    entry_window: dict[str, Any] | None,
+    *,
+    exchange_tz: str = "America/New_York",
+) -> dict[str, Any]:
+    """Map a normalized entry_window to Backtest Admit widget session keys."""
+    window = normalize_entry_window(entry_window, exchange_tz=exchange_tz)
+    if not window["enabled"]:
+        return {"backtest_entry_window_enabled": False}
+    state: dict[str, Any] = {
+        "backtest_entry_window_enabled": True,
+        "backtest_entry_window_mode": window["mode"],
+        "backtest_entry_window_timezone": window["timezone"] or exchange_tz,
+    }
+    if window["mode"] == "rth_segments":
+        state["backtest_entry_window_rth_segments"] = list(window["rth_segments"])
+    else:
+        state["backtest_entry_window_start_time"] = window["start_time"]
+        state["backtest_entry_window_end_time"] = window["end_time"]
+    return state
+
+
+def promote_entry_window(
+    entry_window: dict[str, Any] | None,
+    *,
+    exchange_tz: str = "America/New_York",
+    trade_count_after: int | None = None,
+    trade_count_before: int | None = None,
+    min_trades: int = 10,
+    source: str = "promote",
+    thin_sample_confirmed: bool = False,
+) -> dict[str, Any]:
+    """Build an armed Admit handoff payload (SW4) — no simulation.
+
+    Raises ``ValueError`` when the window is disabled, invalid, or when a
+    thin-sample Promote is attempted without confirmation.
+    """
+    window = normalize_entry_window(entry_window, exchange_tz=exchange_tz)
+    if not window["enabled"]:
+        raise ValueError("Cannot promote a disabled entry_window.")
+    # C5: Promote writes an explicit IANA timezone into the normalized dict.
+    if not window.get("timezone"):
+        raise ValueError("Promoted entry_window must include an explicit timezone (C5).")
+
+    after = 0 if trade_count_after is None else int(trade_count_after)
+    before = after if trade_count_before is None else int(trade_count_before)
+    sample_warning = after < int(min_trades)
+    if sample_warning and not thin_sample_confirmed:
+        raise ValueError(
+            "Thin-sample Promote requires confirmation "
+            f"(trade_count_after={after} < min_trades={int(min_trades)})."
+        )
+
+    provenance = {
+        "source": str(source),
+        "sample_warning": bool(sample_warning),
+        "trade_count_after": after,
+        "trade_count_before": before,
+        "min_trades": int(min_trades),
+        "thin_sample_confirmed": bool(thin_sample_confirmed and sample_warning),
+        "label": format_entry_window_label(window),
+        "armed_banner": PROMOTE_ARMED_BANNER,
+        "status": "armed",
+    }
+    return {
+        "entry_window": window,
+        "backtest_widget_state": backtest_widget_state_from_entry_window(
+            window, exchange_tz=exchange_tz
+        ),
+        "entry_window_armed": True,
+        "entry_window_promote_provenance": provenance,
+    }
+
+
+def apply_promote_to_session_state(session_state: Any, payload: dict[str, Any]) -> None:
+    """Apply a Promote payload onto a session_state-like mapping (overwrite widgets)."""
+    if not isinstance(payload, dict) or "entry_window" not in payload:
+        raise ValueError("Promote payload must include entry_window.")
+    session_state["entry_window"] = payload["entry_window"]
+    session_state["entry_window_armed"] = bool(payload.get("entry_window_armed", True))
+    session_state["entry_window_promote_provenance"] = dict(
+        payload.get("entry_window_promote_provenance") or {}
+    )
+    for key, value in (payload.get("backtest_widget_state") or {}).items():
+        session_state[key] = value
+
+
+def clear_armed_entry_window(session_state: Any) -> None:
+    """Disarm a pending Admit window without clearing Focus overlays.
+
+    Only mutates Admit arming state when a Promote is still pending
+    (``entry_window_armed``). Applied constrained-run windows are left intact.
+    """
+    was_armed = bool(session_state.pop("entry_window_armed", False))
+    session_state.pop("entry_window_promote_provenance", None)
+    if not was_armed:
+        return
+    session_state["backtest_entry_window_enabled"] = False
+    current = session_state.get("entry_window")
+    timezone = current.get("timezone") if isinstance(current, dict) else None
+    session_state["entry_window"] = disabled_entry_window(timezone=timezone)
+
+
 __all__ = [
+    "ADMIT_APPLIED_STATUS_BADGE",
+    "ADMIT_ARMED_STATUS_BADGE",
     "ADMIT_HONESTY_BANNER",
     "FOCUS_EQUITY_CAVEAT",
     "FOCUS_HONESTY_BANNER",
+    "FOCUS_STATUS_BADGE",
     "OUTSIDE_ENTRY_WINDOW_REASON",
+    "PROMOTE_ARMED_BANNER",
     "RTH_SEGMENT_LABELS",
     "RTH_SEGMENTS",
+    "apply_promote_to_session_state",
+    "backtest_widget_state_from_entry_window",
+    "clear_armed_entry_window",
     "disabled_entry_window",
     "entry_window_contains",
     "entry_window_from_bucket",
@@ -181,6 +297,7 @@ __all__ = [
     "format_entry_window_label",
     "normalize_entry_window",
     "partition_skip_counts",
+    "promote_entry_window",
     "rth_segment_for_minute",
     "summarize_focused_trades",
 ]
