@@ -417,7 +417,7 @@ def test_prepare_15s_primary_dataset_installs_atomic_parent_and_source(tmp_path,
     assert bound_state[data_page.UPLOAD_INGESTION_MODE_EXPLICIT_KEY] is True
 
 
-def test_prepare_15s_primary_dataset_drops_partial_minutes(tmp_path):
+def test_prepare_15s_primary_dataset_retains_sparse_minutes(tmp_path):
     data_page = _import_data_page_module({})
     path = tmp_path / "partial_quantower_15s.csv"
     path.write_text(
@@ -425,7 +425,7 @@ def test_prepare_15s_primary_dataset_drops_partial_minutes(tmp_path):
         "2026-06-02 09:30:00.000;2026-06-02 09:30:14.999;100;101;99;100;2;\n"
         "2026-06-02 09:30:15.000;2026-06-02 09:30:29.999;100;103;100;102;3;\n"
         "2026-06-02 09:30:30.000;2026-06-02 09:30:44.999;102;104;101;103;2;\n"
-        # Missing 09:30:45 — incomplete first minute.
+        # Missing 09:30:45 — sparse first minute (Rithmic/Quantower trade-only).
         "2026-06-02 09:31:00.000;2026-06-02 09:31:14.999;102;103;101;102;3;\n"
         "2026-06-02 09:31:15.000;2026-06-02 09:31:29.999;102;105;102;104;4;\n"
         "2026-06-02 09:31:30.000;2026-06-02 09:31:44.999;104;106;103;105;2;\n"
@@ -445,12 +445,15 @@ def test_prepare_15s_primary_dataset_drops_partial_minutes(tmp_path):
     )
 
     assert [ts.isoformat() for ts in prepared.parent_df["timestamp"]] == [
+        "2026-06-02T09:30:00-04:00",
         "2026-06-02T09:31:00-04:00",
         "2026-06-02T09:32:00-04:00",
     ]
-    assert list(prepared.dropped_buckets["reason"]) == ["incomplete_coverage"]
-    assert prepared.provenance["dropped_parent_bucket_count"] == 1
-    assert "09:30" not in ",".join(prepared.parent_df["timestamp"].astype(str))
+    assert prepared.dropped_buckets.empty
+    assert list(prepared.sparse_buckets["reason"]) == ["incomplete_coverage"]
+    assert prepared.provenance["sparse_parent_bucket_count"] == 1
+    assert prepared.provenance["dropped_parent_bucket_count"] == 0
+    assert "09:30" in ",".join(prepared.parent_df["timestamp"].astype(str))
 
     with pytest.raises(ValueError, match="supports only these explicit"):
         data_page._prepare_15s_primary_dataset(

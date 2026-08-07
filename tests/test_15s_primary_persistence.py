@@ -10,7 +10,7 @@ import pytest
 
 from thesistester.api import run_experiment, validate_run_spec
 from thesistester.data.derive import (
-    DERIVATION_POLICY_COMPLETE_ALIGNED_15S_TO_1M_V1,
+    DERIVATION_POLICY_DEFAULT,
     INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
 )
 from thesistester.persistence.execution_artifacts import (
@@ -106,14 +106,39 @@ def test_api_one_file_15s_primary_reaches_strict_r12_without_subtimeframe_path(
     assert state["subtimeframe_interval"] == "15s"
     assert state["subtimeframe_format_profile"] == "quantower_history_exporter"
     assert state["ingestion_provenance"]["ingestion_mode"] == INGESTION_MODE_15S_PRIMARY_DERIVE_1M
-    assert (
-        state["ingestion_provenance"]["derivation_policy"]
-        == DERIVATION_POLICY_COMPLETE_ALIGNED_15S_TO_1M_V1
-    )
+    assert state["ingestion_provenance"]["derivation_policy"] == DERIVATION_POLICY_DEFAULT
     assert state["backtest_intrabar_policy"]["intrabar_model"] == "subtimeframe"
     assert state["backtest_intrabar_policy"]["subtimeframe_data_supplied"] is True
     assert len(state["data"]) == 2
     assert len(state["subtimeframe_data"]) == 8
+
+
+def test_api_sparse_15s_primary_persists_declared_subtimeframe_interval(tmp_path: Path):
+    """One print/minute gap-infers as 1min; state must still expose declared 15s."""
+    path = tmp_path / "sparse_15s.csv"
+    rows = ["Time left;Time right;Open;High;Low;Close;Volume;"]
+    for minute in range(30, 40):
+        rows.append(
+            f"2026-06-02 09:{minute}:00.000;2026-06-02 09:{minute}:14.999;"
+            f"{100 + minute};{101 + minute};{99 + minute};{100.5 + minute};1;"
+        )
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    state = run_experiment(
+        _minimal_derive_spec(
+            "sparse_15s.csv",
+            intrabar_model="subtimeframe_conservative",
+        ),
+        base_directory=tmp_path,
+        cache_policy="off",
+    )
+
+    assert state["base_interval"] == "1min"
+    assert state["subtimeframe_interval"] == "15s"
+    assert state["ingestion_provenance"]["source_interval"] == "15s"
+    assert state["ingestion_provenance"]["sparse_parent_bucket_count"] == 10
+    assert len(state["data"]) == 10
+    assert len(state["subtimeframe_data"]) == 10
 
 
 def test_api_15s_primary_cache_write_does_not_warm_cross_primary_mode(tmp_path: Path):
@@ -152,7 +177,7 @@ def test_api_15s_primary_cache_write_does_not_warm_cross_primary_mode(tmp_path: 
         exchange_timezone="America/New_York",
         format_profile="quantower_history_exporter",
         ingestion_mode=INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
-        derivation_policy=DERIVATION_POLICY_COMPLETE_ALIGNED_15S_TO_1M_V1,
+        derivation_policy=DERIVATION_POLICY_DEFAULT,
     )
     primary_key = source_binding_key(
         source_content_hash_value=content_hash,

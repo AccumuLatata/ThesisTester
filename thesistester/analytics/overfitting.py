@@ -29,6 +29,8 @@ _SIMULATION_KWARGS = {
     "cooldown_bars_after_exit",
     "intrabar_model",
     "subtimeframe_data",
+    "parent_interval",
+    "sub_interval",
 }
 
 

@@ -124,6 +124,26 @@ def format_interval(interval: pd.Timedelta | None) -> str:
     return str(interval)
 
 
+def parse_interval(label: str | pd.Timedelta | None) -> pd.Timedelta | None:
+    """Parse compact labels from :func:`format_interval` back to ``Timedelta``."""
+    if label is None:
+        return None
+    if isinstance(label, pd.Timedelta):
+        return label
+    text = str(label).strip()
+    if not text or text == "unknown":
+        return None
+    if text.endswith("min"):
+        return pd.Timedelta(minutes=int(text[:-3]))
+    if text.endswith("h"):
+        return pd.Timedelta(hours=int(text[:-1]))
+    if text.endswith("D"):
+        return pd.Timedelta(days=int(text[:-1]))
+    if text.endswith("s"):
+        return pd.Timedelta(seconds=int(text[:-1]))
+    raise ValueError(f"unrecognized interval label: {label!r}")
+
+
 def _normalize_profile_columns(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     columns = [normalize_column_name(column) for column in out.columns]

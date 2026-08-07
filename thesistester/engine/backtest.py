@@ -333,6 +333,8 @@ def simulate_trades(
     *,
     intrabar_model: str = "sl_first",
     subtimeframe_data: pd.DataFrame | None = None,
+    parent_interval: pd.Timedelta | str | None = None,
+    sub_interval: pd.Timedelta | str | None = None,
     breakeven_after_r: float | None = None,
     trailing_after_r: float | None = None,
     trailing_distance_ticks: float | None = None,
@@ -398,6 +400,11 @@ def simulate_trades(
     subtimeframe_data:
         Strictly finer OHLC data covering and reconciling every parent bar.
         Required only by ``intrabar_model="subtimeframe"``.
+    parent_interval / sub_interval:
+        Optional declared bar intervals (``Timedelta`` or compact labels like
+        ``1min`` / ``15s``). When omitted, intervals are inferred from
+        timestamp gaps. Sparse 15s-primary sources should pass the derivation
+        intervals so quiet minutes do not coarsen the sub-bar grid.
     breakeven_after_r:
         Optional completed-bar favorable excursion threshold that moves the
         active stop to the slipped entry price on the next bar.
@@ -516,12 +523,16 @@ def simulate_trades(
             df_reset,
             subtimeframe_data,
             tick_size=float(tick_size),
+            parent_interval=parent_interval,
+            sub_interval=sub_interval,
         )
     elif intrabar_model == "subtimeframe_conservative":
         subtimeframe_context = prepare_subtimeframe_conservative_context(
             df_reset,
             subtimeframe_data,
             tick_size=float(tick_size),
+            parent_interval=parent_interval,
+            sub_interval=sub_interval,
         )
     else:
         subtimeframe_context = None

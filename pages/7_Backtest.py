@@ -456,6 +456,8 @@ if run_btn:
                 cooldown_bars_after_exit=cooldown_bars_after_exit,
                 intrabar_model=intrabar_model,
                 subtimeframe_data=subtimeframe_data,
+                parent_interval=st.session_state.get("base_interval"),
+                sub_interval=st.session_state.get("subtimeframe_interval"),
                 breakeven_after_r=breakeven_after_r,
                 trailing_after_r=trailing_after_r,
                 trailing_distance_ticks=trailing_distance_ticks,

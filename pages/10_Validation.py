@@ -456,6 +456,8 @@ if run_wfo:
                                     intrabar_policy.get("intrabar_model", "sl_first")
                                 ),
                                 subtimeframe_data=st.session_state.get("subtimeframe_data"),
+                                parent_interval=st.session_state.get("base_interval"),
+                                sub_interval=st.session_state.get("subtimeframe_interval"),
                                 breakeven_after_r_values=exit_management_policy.get(
                                     "breakeven_after_r_values", [None]
                                 ),
@@ -583,6 +585,8 @@ if run_wfo:
                                         intrabar_policy.get("intrabar_model", "sl_first")
                                     ),
                                     subtimeframe_data=st.session_state.get("subtimeframe_data"),
+                                    parent_interval=st.session_state.get("base_interval"),
+                                    sub_interval=st.session_state.get("subtimeframe_interval"),
                                     breakeven_after_r_values=exit_management_policy.get(
                                         "breakeven_after_r_values", [None]
                                     ),
@@ -763,6 +767,8 @@ else:
                     or {}
                 ).get("intrabar_model", "sl_first"),
                 "subtimeframe_data": st.session_state.get("subtimeframe_data"),
+                "parent_interval": st.session_state.get("base_interval"),
+                "sub_interval": st.session_state.get("subtimeframe_interval"),
             }
             grid_context_r15 = st.session_state.get("grid_execution_context") or {}
             with st.spinner("Running CSCV/PBO, DSR, and vs-random diagnostics…"):
@@ -935,6 +941,8 @@ else:
                         "random_state": random_seed,
                     },
                     subtimeframe_data=st.session_state.get("subtimeframe_data"),
+                    parent_interval=st.session_state.get("base_interval"),
+                    sub_interval=st.session_state.get("subtimeframe_interval"),
                 )
             st.session_state["noise_summary"] = noise_result
             st.session_state["noise_config"] = noise_result["config"]
@@ -1042,6 +1050,8 @@ else:
                             "intrabar_model", "sl_first"
                         ),
                         "subtimeframe_data": st.session_state.get("subtimeframe_data"),
+                        "parent_interval": st.session_state.get("base_interval"),
+                        "sub_interval": st.session_state.get("subtimeframe_interval"),
                     },
                     selected_grid_metric=context_r19.get("ranking_metric", "expectancy_r"),
                     selected_min_trades=int(context_r19.get("min_trades", 1)),
