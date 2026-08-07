@@ -39,8 +39,9 @@ Every RUX PR must stay inside its scope table. If a change is not listed under
 
 The Research Assistant page is one Streamlit page hosting three isolated AI
 channels plus an optional second research pipeline. Measured from source
-(`pages/14_Research_Assistant.py`, 2293 lines) and verified by rendering the page
-under `streamlit.testing.v1.AppTest`, today's prominence order is:
+(`pages/14_Research_Assistant.py`, ~2412 lines as of RUX-0) and verified by
+rendering the page under `streamlit.testing.v1.AppTest`, today's prominence
+order is:
 
 | Rank in viewport | Surface | Current placement |
 |---|---|---|
@@ -392,7 +393,7 @@ their internals.
 | `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` | Amend the two §1 UI-attach freezes per §1.2 and the §RQ-4 UI note (channel logic untouched) |
 | `docs/ENGINEERING.md` | Update the realtime-voice navigation line |
 | `app.py` | One-line pointer refresh (Research Assistant = discuss runs + product help) |
-| `tests/test_assistant_page_render.py` | Rewrite structural assertions to the new layout (modes, default = Discuss, Discuss thread/input at top level, Help mode, Advanced/Debug still collapsed, channel isolation preserved, deep-link → Discuss mode + preselected run **and** still force-opens the Advanced/run expanders) |
+| `tests/test_assistant_page_render.py` | Rewrite structural assertions to the new layout (modes, default = Discuss, Discuss thread/input at top level, Help mode, Advanced/Debug still collapsed, channel isolation preserved, deep-link → Discuss mode + preselected run **and** still force-opens the Advanced/run expanders). **First addition in RUX-2:** seed at least one completed discussable run (status `completed` + dict provenance) so AppTest can assert Discuss thread/input visibility and catch duplicate widget keys — RUX-0's deep-link baseline uses an orphan `run_id` and only proves expander force-open session keys |
 | `tests/test_assistant_workspace.py` | Update the `Advanced → Linked runs` source guard and any placement-dependent ordering assertions |
 | `tests/test_assistant_help_coverage.py` | Update `test_help_expander_discoverability_caption_lists_example_topics` (Help is a mode, not an expander); keep the caption-content assertions |
 | `tests/test_ui_copy_guards.py` | Rename `test_assistant_page_is_chat_first_...` → discuss-first; keep the no-`page_link` / no-nav-strip guards |
@@ -404,6 +405,7 @@ their internals.
 | Discuss results caption + thread + `results-qa-input-{run_id}` + `results-qa-send-{run_id}` + `handle_results_turn` call + clear-flag logic | inside Linked-run expander, inside `if run.status == "completed" and isinstance(run.provenance, dict)` | Discuss mode surface, guarded by the identical predicate via `discussable_runs` | Widget keys, session keys, filters, and error handling copied verbatim; only indentation/container changes |
 | Voice discuss PTT + realtime blocks | same run expander | Discuss mode, directly under the Discuss input | Same keys, same `thesis_has_running_run` gate, same `require_run_bundle_hash` check, same copy |
 | `Explain run` + explanation display, `Open exact run in Backtest`, `Restore bundle into research pages` | run expander | **Duplicated intent, single render:** rendered in Discuss mode for the selected run; removed from the run expander to avoid duplicate widget keys | Keys stay unique because each is rendered exactly once per run per rerun |
+| `Generate evidence-only AI explanation` (+ LLM explanation display) | run expander | **Stays in Advanced → Linked run expander** (explicit decision) | Deterministic Explain moves with Discuss; LLM explain remains an Advanced secondary action so RUX-2 does not invent a fourth Discuss-mode AI surface. Document this asymmetry in the RUX-2 PR body. |
 | Help block (caption, thread, `product-help-input`, `product-help-send`, voice help) | `st.expander("Help / how it works")` | Help mode container, same order | Copy and keys verbatim |
 | Assistant chat (caption, bubbles, `st.chat_input`) | page hero | Draft mode | `st.chat_input` stays page-level and is rendered **only** in Draft mode → still exactly one per rerun |
 | Everything else under Advanced/Debug | unchanged | unchanged | No edits beyond the removed Discuss/voice/explain blocks and the hoisted `runs` variable |
@@ -522,18 +524,22 @@ bullet; suite green.
 
 ## 6. Regression-safety framework mapping (`ENGINEERING_PROPOSAL.md` §4)
 
+Map to the **numbered rules 1–10 under `ENGINEERING_PROPOSAL.md` §4** (not to
+§4.1 / §4.2 — those subsections are the golden-master operational spec and the
+per-milestone PR acceptance checklist).
+
 | Rule | How RUX complies |
 |---|---|
-| §4.1 Additive-only engine changes | No engine file is touched by any RUX PR. Enforced by the §5 scope tables and a diff review of `thesistester/` |
-| §4.2 Golden-master before engine change | Not applicable (no engine change); `tests/test_golden_master.py` and `tests/fixtures/golden/` must be **unmodified** in every RUX diff — this is the stated gate |
-| §4.3 Opt-in, default-off features | No new behavior flag. The one new setting (`[assistant.ux].default_mode`) only preselects an existing surface, so there is a single layout code path (a "legacy layout" flag would create the drift this rule guards against) |
-| §4.4 Schema-versioned persistence | No persisted artifact changes; no store schema bump |
-| §4.5 Point-in-time proof | Not applicable (no new computation) |
-| §4.6 `st.session_state` contract stability | Existing keys keep producer/consumer/schema. Two additive keys, documented in `ARCHITECTURE.md` in the same PR. RUX-3's key retirement is an explicit, documented contract change with test updates |
-| §4.7 Determinism | Mode/run resolution is pure and order-deterministic; run picker default derives from the existing run list order; no wall-clock or dict-order dependence |
-| §4.8 Same-PR documentation | Every PR's scope table names its doc edits. Navigation phrases that become false are fixed in the PR that makes them false |
-| §4.9 CI gate | Full pytest + ruff green per PR; no merge on red |
-| §4.10 Honesty framing | Unchanged: Discuss stays evidence-only, Help stays corpus-grounded with remediation |
+| §4 rule 1 — Additive-only engine changes | No engine file is touched by any RUX PR. Enforced by the §5 scope tables and a diff review of `thesistester/` |
+| §4 rule 2 — Golden-master before engine change | Not applicable (no engine change); `tests/test_golden_master.py` and `tests/fixtures/golden/` must be **unmodified** in every RUX diff — this is the stated gate |
+| §4 rule 3 — Opt-in, default-off features | No new behavior flag. The one new setting (`[assistant.ux].default_mode`) only preselects an existing surface, so there is a single layout code path (a "legacy layout" flag would create the drift this rule guards against) |
+| §4 rule 4 — Schema-versioned persistence | No persisted artifact changes; no store schema bump |
+| §4 rule 5 — Point-in-time proof | Not applicable (no new computation) |
+| §4 rule 6 — `st.session_state` contract stability | Existing keys keep producer/consumer/schema. Two additive keys, documented in `ARCHITECTURE.md` in the same PR. RUX-3's key retirement is an explicit, documented contract change with test updates |
+| §4 rule 7 — Determinism | Mode/run resolution is pure and order-deterministic; run picker default derives from the existing run list order; no wall-clock or dict-order dependence |
+| §4 rule 8 — Same-PR documentation | Every PR's scope table names its doc edits. Navigation phrases that become false are fixed in the PR that makes them false |
+| §4 rule 9 — CI gate | Full pytest + ruff green per PR; no merge on red |
+| §4 rule 10 — Honesty framing | Unchanged: Discuss stays evidence-only, Help stays corpus-grounded with remediation |
 
 ### 6.1 Golden-master equivalent for this series
 
@@ -542,8 +548,11 @@ There is no engine output to freeze, so RUX's load-bearing control is the
 in RUX-0 against current `main`. It replaces brittle source-string greps with
 assertions on what the page actually renders, and the two behavioral assertions
 (channel isolation, deep-link force-open) are the invariants RUX-2 is judged
-against. Regeneration policy mirrors §4.1(3): baseline assertions change only in
-a PR that states why, and never silently.
+against. Regeneration policy mirrors `ENGINEERING_PROPOSAL.md` §4.1 item 3:
+baseline assertions change only in a PR that states why, and never silently.
+RUX-0 does **not** seed a completed discussable run (deep-link uses an orphan
+`run_id` to prove force-open keys only); RUX-2 must add that fixture before
+rewriting prominence assertions.
 
 ---
 
@@ -581,7 +590,7 @@ frozen by §1.1).
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| Duplicate Streamlit widget keys after moving Discuss/voice/explain blocks | Medium | Page crash (`StreamlitDuplicateElementId`) | §5.3 rule 1 (render once per rerun); RUX-0 AppTest renders every mode with an eligible run, so a duplicate key fails CI, not the user |
+| Duplicate Streamlit widget keys after moving Discuss/voice/explain blocks | Medium | Page crash (`StreamlitDuplicateElementId`) | §5.3 rule 1 (render once per rerun); RUX-2 AppTest must seed a completed discussable run and render Discuss/Help/Draft modes so a duplicate key fails CI, not the user (RUX-0 baseline has no eligible run and cannot catch this) |
 | Classic `Discuss this run` deep-link regresses | Medium | Primary workflow broken | Deep-link is a **superset**: preselect mode + run *and* keep `force_results_qa_expanders_open`; asserted in RUX-0 baseline and re-asserted in RUX-2 |
 | Confirm/Run becomes unreachable | Low | Second pipeline unusable | Advanced stays rendered in all modes; explicit RUX-2 acceptance bullet |
 | Help answers give stale navigation for a release window | Medium | Trust erosion in the Help channel | Nav phrases are one constant after RUX-1 and flip inside RUX-2; `USER_GUIDE` bodies fixed in the same PR |
