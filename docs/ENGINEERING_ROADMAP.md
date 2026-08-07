@@ -1153,7 +1153,7 @@ Summary looks poor. Optional SW2b (cutoff skip audit) remains deferred.
 | SW0 | Plan lock + legacy golden gate confirmation + C1–C9 ✅ |
 | SW1 | Post-hoc Focus summary (no re-sim); shared RTH export ✅ |
 | SW2 | Opt-in `entry_window` admission + enabled golden + Focus≡Admit (C7) ✅ |
-| SW2b | Audit `no_new_entries_after` → `after_entry_cutoff` + UI/docs honesty ← next |
+| SW2b | Audit `no_new_entries_after` → `after_entry_cutoff` + UI/docs honesty ← next ([#299](https://github.com/AccumuLatata/ThesisTester/pull/299)) |
 | SW3 | API + Backtest Admit controls ✅ |
 | SW4 | Time Analysis Promote + Focus↔Admit handoff ✅ |
 | SW5 | Grid + Validation/WFA/sensitivity inherit window (fixed constraint) ✅ |
