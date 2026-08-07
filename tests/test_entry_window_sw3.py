@@ -201,6 +201,43 @@ def test_run_backtest_enabled_entry_window_admits_and_skips():
     assert counts["other"] == 0
 
 
+def test_run_backtest_rth_uses_exchange_tz_not_session_close_tz():
+    """C5/C7: session-close TZ must not hijack RTH Admit membership."""
+    from thesistester.analytics.entry_window import filter_trades_by_entry_window
+
+    df = _rth_morning_frame()
+    signals = _open_and_morning_signals(df)
+    window = {
+        "enabled": True,
+        "mode": "rth_segments",
+        "rth_segments": ["rth_open_30m"],
+        "timezone": TZ,
+    }
+    # Chicago session-close TZ would misclassify 09:45 NY as pre_rth if reused
+    # for RTH membership (09:45 ET == 08:45 CT).
+    config = {
+        "stop_loss_ticks": 8,
+        "take_profit_ticks": 16,
+        "max_holding_bars": 5,
+        "flat_by_session_close": True,
+        "session_close_time": "16:00",
+        "session_timezone": "America/Chicago",
+        "exposure_policy": "allow_all",
+        "cooldown_bars_after_exit": 0,
+    }
+    all_day = run_backtest(df, signals, instrument="ES", config=config)
+    admit = run_backtest(
+        df,
+        signals,
+        instrument="ES",
+        config={**config, "entry_window": window},
+    )
+    focused = filter_trades_by_entry_window(all_day["trades"], window, exchange_tz=TZ)
+    assert list(admit["trades"]["signal_id"]) == [1]
+    assert set(admit["trades"]["signal_id"]) == set(focused["signal_id"])
+    assert admit["entry_window"]["timezone"] == TZ
+
+
 def test_validate_run_spec_accepts_entry_window():
     validate_run_spec(
         _minimal_spec(
@@ -237,6 +274,9 @@ def test_sanitize_collect_entry_window_defaults():
     assert sanitized["backtest_entry_window_enabled"] is True
     assert sanitized["backtest_entry_window_mode"] == "rth_segments"
     assert "backtest_entry_window_rth_segments" not in sanitized
+    # Empty segment lists are invalid for restore (C3); omit so widget default applies.
+    empty_segs = sanitize_backtest_defaults({"entry_window_rth_segments": []})
+    assert "backtest_entry_window_rth_segments" not in empty_segs
 
     raw_ok = {
         "entry_window_enabled": True,

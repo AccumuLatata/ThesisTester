@@ -182,7 +182,11 @@ def _valid_entry_window_mode(value: Any) -> str | None:
 
 
 def _valid_rth_segments(value: Any) -> list[str] | None:
-    """Return a de-duplicated list of known RTH segment labels, else None."""
+    """Return a de-duplicated non-empty list of known RTH labels, else None.
+
+    Empty lists are rejected so widgets keep their built-in default
+    (``["rth_open_30m"]``) rather than restoring an invalid Admit config.
+    """
     if not isinstance(value, (list, tuple)):
         return None
     out: list[str] = []
@@ -194,7 +198,7 @@ def _valid_rth_segments(value: Any) -> list[str] | None:
             return None
         if name not in out:
             out.append(name)
-    return out
+    return out or None
 
 
 def _valid_entry_window_end_time(value: Any) -> str | None:

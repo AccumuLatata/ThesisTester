@@ -337,6 +337,7 @@ def simulate_trades(
     return_skipped_signals: bool = False,
     *,
     entry_window: dict[str, Any] | None = None,
+    entry_window_exchange_tz: str | None = None,
     intrabar_model: str = "sl_first",
     subtimeframe_data: pd.DataFrame | None = None,
     parent_interval: pd.Timedelta | str | None = None,
@@ -406,6 +407,11 @@ def simulate_trades(
         :func:`~thesistester.entry_window_policy.normalize_entry_window`
         (also re-exported from :mod:`thesistester.analytics.entry_window`).
         Rejected candidates never enter exposure competition (C6).
+    entry_window_exchange_tz:
+        Instrument exchange/session timezone used for RTH-segment membership
+        and naive-timestamp localization (C5). Distinct from
+        ``session_timezone`` (session-close / cutoff clocks). When omitted,
+        falls back to ``session_timezone`` or ``America/New_York``.
     intrabar_model:
         ``"sl_first"`` preserves legacy pessimistic behavior.
         ``"path_open_proximity"`` walks a deterministic OHLC path beginning
@@ -490,7 +496,8 @@ def simulate_trades(
     parsed_no_new_entries_after = _parse_time_input(
         no_new_entries_after, field_name="no_new_entries_after"
     )
-    exchange_tz_for_window = session_timezone or "America/New_York"
+    # C5: RTH / naive basis is instrument exchange TZ, not session-close TZ.
+    exchange_tz_for_window = entry_window_exchange_tz or session_timezone or "America/New_York"
     try:
         normalized_entry_window = normalize_entry_window(
             entry_window, exchange_tz=exchange_tz_for_window

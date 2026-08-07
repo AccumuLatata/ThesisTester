@@ -825,9 +825,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         )
         _validate_range(backtest, "max_holding_bars", section="backtest", minimum=1)
     if "entry_window" in backtest and backtest["entry_window"] is not None:
-        entry_window = _require_mapping(
-            backtest["entry_window"], section="backtest.entry_window"
-        )
+        entry_window = _require_mapping(backtest["entry_window"], section="backtest.entry_window")
         exchange_tz = _instrument(instrument).exchange_tz
         try:
             normalize_entry_window(dict(entry_window), exchange_tz=exchange_tz)
@@ -1608,6 +1606,7 @@ def run_backtest(
         trailing_after_r=settings["trailing_after_r"],
         trailing_distance_ticks=settings["trailing_distance_ticks"],
         entry_window=simulate_entry_window,
+        entry_window_exchange_tz=inst.exchange_tz,
         return_result=True,
     )
     trades = simulation.trades

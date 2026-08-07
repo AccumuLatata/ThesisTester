@@ -422,9 +422,7 @@ with st.sidebar:
                 "Window timezone",
                 options=TIMEZONE_OPTIONS,
                 index=(
-                    TIMEZONE_OPTIONS.index(exchange_tz)
-                    if exchange_tz in TIMEZONE_OPTIONS
-                    else 0
+                    TIMEZONE_OPTIONS.index(exchange_tz) if exchange_tz in TIMEZONE_OPTIONS else 0
                 ),
                 key="backtest_entry_window_timezone",
                 help="Clock-range membership uses this TZ (C5). RTH segments always use exchange TZ.",
@@ -556,6 +554,7 @@ if run_btn:
                 trailing_after_r=trailing_after_r,
                 trailing_distance_ticks=trailing_distance_ticks,
                 entry_window=simulate_entry_window,
+                entry_window_exchange_tz=exchange_tz,
                 return_result=True,
             )
             trades = simulation.trades
@@ -732,10 +731,7 @@ _entry_window_enabled = bool(
     isinstance(_entry_window_state, dict) and _entry_window_state.get("enabled")
 )
 if _entry_window_enabled:
-    st.info(
-        f"{ADMIT_HONESTY_BANNER} Window: "
-        f"**{format_entry_window_label(_entry_window_state)}**."
-    )
+    st.info(f"{ADMIT_HONESTY_BANNER} Window: **{format_entry_window_label(_entry_window_state)}**.")
 st.caption(
     f"Accepted trades: {summary.get('trade_count', 0) if isinstance(summary, dict) else len(trades)} · "
     f"Skipped (total): {_skip_counts['total']} · "

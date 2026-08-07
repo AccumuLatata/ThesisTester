@@ -798,7 +798,9 @@ skip capture is on, and never enter exposure competition.
 SW3 wires the same opt-in window through `api.run_backtest` (`backtest.entry_window`,
 default `None`/disabled) and classic Backtest Admit controls. Skip captions split
 `outside_entry_window` from exposure/other reasons; constrained runs show the Admit
-honesty banner.
+honesty banner. RTH membership uses `entry_window_exchange_tz` (instrument exchange
+TZ from API/UI), distinct from `session_timezone` used only for session-close /
+entry-cutoff clocks (C5).
 
 ## R17 ingestion boundary
 

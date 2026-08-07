@@ -225,6 +225,38 @@ def test_invalid_entry_window_timezone_raises_value_error():
         )
 
 
+def test_entry_window_exchange_tz_overrides_session_timezone_for_rth():
+    """C5: session-close TZ must not redefine RTH segment membership."""
+    df = _rth_morning_frame()
+    idx_open = int(df.index[df["timestamp"] == pd.Timestamp("2026-06-02 09:45", tz=TZ)][0])
+    signals = pd.DataFrame([_signal(1, idx_open)])
+    window = entry_window_from_bucket("entry_rth_segment", "rth_open_30m", exchange_tz=TZ)
+    # Without override, Chicago session TZ misclassifies 09:45 NY as pre_rth.
+    wrong = simulate_trades(
+        df,
+        signals,
+        **_base_kwargs(
+            entry_window=window,
+            flat_by_session_close=True,
+            session_close_time="16:00",
+            session_timezone="America/Chicago",
+        ),
+    )
+    assert wrong.empty
+    fixed = simulate_trades(
+        df,
+        signals,
+        **_base_kwargs(
+            entry_window=window,
+            flat_by_session_close=True,
+            session_close_time="16:00",
+            session_timezone="America/Chicago",
+            entry_window_exchange_tz=TZ,
+        ),
+    )
+    assert list(fixed["signal_id"]) == [1]
+
+
 def test_c7_focus_equals_admit_under_allow_all():
     df = _rth_morning_frame()
     idxs = [

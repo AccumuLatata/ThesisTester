@@ -55,12 +55,14 @@ from .prev30m_vwap_hit import (
     summarize_r_by_hit_flag,
 )
 from .entry_window import (
+    ADMIT_HONESTY_BANNER,
     FOCUS_EQUITY_CAVEAT,
     FOCUS_HONESTY_BANNER,
     entry_window_from_bucket,
     filter_trades_by_entry_window,
     format_entry_window_label,
     normalize_entry_window,
+    partition_skip_counts,
     summarize_focused_trades,
 )
 from .time_analysis import (
@@ -139,8 +141,10 @@ __all__ = [
     "filter_trades_by_entry_window",
     "summarize_focused_trades",
     "format_entry_window_label",
+    "partition_skip_counts",
     "FOCUS_HONESTY_BANNER",
     "FOCUS_EQUITY_CAVEAT",
+    "ADMIT_HONESTY_BANNER",
     "bootstrap_expectancy_ci",
     "permutation_test_expectancy",
     "trade_count_diagnostics",

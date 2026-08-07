@@ -177,10 +177,13 @@ This engine is for **research screening**, not proof of a durable edge.
   and Admit admit the same `signal_id` set (C7). See
   `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md`.
 - TZ law (C5): RTH-segment membership always evaluates in the instrument
-  exchange/session timezone. Clock-range membership uses the window/bucket
-  timezone. Tz-naive timestamps are treated as exchange/session wall clocks
-  (same as `add_time_buckets`), then converted — never localized directly as
-  the bucket/display TZ. Invalid IANA timezone keys fail closed at normalize.
+  exchange/session timezone via `entry_window_exchange_tz` (API/UI pass the
+  instrument exchange TZ). This is distinct from `session_timezone`, which
+  only interprets session-close / `no_new_entries_after` clocks. Clock-range
+  membership uses the window/bucket timezone. Tz-naive timestamps are treated
+  as exchange/session wall clocks (same as `add_time_buckets`), then
+  converted — never localized directly as the bucket/display TZ. Invalid IANA
+  timezone keys fail closed at normalize.
 
 ### 5) Simple-trigger and `3c` timestamp semantics are canonical/base aligned
 - For all triggers, emitted `timestamp` is always the canonical/base dataframe timestamp at `bar_index`.
