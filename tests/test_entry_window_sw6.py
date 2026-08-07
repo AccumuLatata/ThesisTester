@@ -65,9 +65,7 @@ def test_get_effective_entry_window_enabled_rth_segments():
         "mode": "rth_segments",
         "rth_segments": ["rth_open_30m"],
     }
-    effective = get_effective_entry_window_config(
-        {"instrument": "ES", "entry_window": raw}
-    )
+    effective = get_effective_entry_window_config({"instrument": "ES", "entry_window": raw})
     assert effective["enabled"] is True
     assert effective["mode"] == "rth_segments"
     assert effective["rth_segments"] == ["rth_open_30m"]
@@ -170,6 +168,52 @@ def test_build_entry_window_metadata_and_artifact_export_focus_honesty():
     assert "not proof of deployable edge" in markdown
 
 
+def test_build_entry_window_metadata_disabled_placeholders_not_available():
+    """Routine all-day runs leave disabled dicts — not export 'available' evidence."""
+    meta = build_entry_window_metadata(
+        {
+            "entry_window": {"enabled": False, "timezone": TZ},
+            "grid_entry_window": {"enabled": False, "timezone": TZ},
+            "entry_window_armed": False,
+        }
+    )
+    assert meta["available"] is False
+    assert meta["admit"]["enabled"] is False
+    assert meta["grid"]["enabled"] is False
+
+
+def test_build_entry_window_metadata_invalid_window_fail_closed():
+    meta = build_entry_window_metadata(
+        {
+            "entry_window": {
+                "enabled": True,
+                "mode": "rth_segments",
+                "rth_segments": [],
+                "timezone": TZ,
+            }
+        }
+    )
+    assert meta["available"] is False
+    assert meta["admit"]["entry_window"] is None
+    assert meta["admit"]["enabled"] is None
+
+
+def test_incomplete_setup_entry_window_draft_fails_closed_on_save():
+    """Setup Builder may attach a raw invalid draft; validate must block Save."""
+    draft = {
+        "enabled": True,
+        "mode": "rth_segments",
+        "rth_segments": [],
+        "timezone": TZ,
+    }
+    # Editor scaffolding builds with disabled placeholder (no normalize crash).
+    scaffold = _base_setup(entry_window={"enabled": False})
+    scaffold["entry_window"] = draft
+    errors = validate_setup_config(scaffold)
+    assert any("Entry window" in error or "rth_segments" in error for error in errors)
+    assert validate_entry_window_config(draft, exchange_tz=TZ)
+
+
 def test_research_bundle_roundtrips_entry_window_provenance():
     window = normalize_entry_window(
         {
@@ -217,14 +261,26 @@ def test_research_bundle_roundtrips_entry_window_provenance():
         "grid_results": pd.DataFrame({"stop_loss_ticks": [8.0], "expectancy_r": [0.1]}),
         "best_grid_result": {"stop_loss_ticks": 8.0},
     }
+    # Stale Admit widgets from a prior session must not survive import.
+    prior_session = {
+        "backtest_entry_window_enabled": False,
+        "backtest_entry_window_mode": "rth_segments",
+        "backtest_entry_window_rth_segments": ["rth_lunch"],
+    }
     bundle_bytes = build_research_bundle(source)
     loaded = load_research_bundle(bundle_bytes)
-    restored: dict = {}
+    restored: dict = dict(prior_session)
     apply_research_bundle_to_session(loaded, restored)
     assert restored["entry_window"]["enabled"] is True
     assert restored["focus_provenance"]["trade_count_after"] == 12
     assert restored["focus_entry_window"]["mode"] == "clock_range"
     assert restored["grid_entry_window"]["enabled"] is True
+    # Backtest Run builds Admit from widgets — must match imported entry_window.
+    assert restored["backtest_entry_window_enabled"] is True
+    assert restored["backtest_entry_window_mode"] == "clock_range"
+    assert restored["backtest_entry_window_start_time"] == "09:30"
+    assert restored["backtest_entry_window_end_time"] == "10:00"
+    assert restored["backtest_entry_window_timezone"] == TZ
 
 
 def test_assistant_focus_post_hoc_caveat_from_evidence_packet():

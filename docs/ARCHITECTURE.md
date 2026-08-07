@@ -820,7 +820,10 @@ SW6 persists an additive optional setup `entry_window` (OTF-style
 `SETUP_SCHEMA_VERSION` bump), exports Admit + Focus/Promote provenance in
 research artifacts and bundles (`build_entry_window_metadata`), and forces
 assistant Focus honesty (`focus_post_hoc` caveat — Focus alone is not deployable
-edge).
+edge). Bundle import clears stale `backtest_entry_window_*` widgets and
+rehydrates them from the restored Admit `entry_window` so Backtest Run applies
+the imported constraint. Report checklist / metadata `available` requires an
+enabled Focus/Admit/grid window (or Promote provenance) — not a disabled dict.
 
 ## R17 ingestion boundary
 

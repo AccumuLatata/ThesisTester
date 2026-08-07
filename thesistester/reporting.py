@@ -149,30 +149,34 @@ def build_entry_window_metadata(session_state: Mapping[str, Any]) -> dict[str, A
     armed = session_state.get("entry_window_armed")
 
     def _as_window(raw: Any) -> dict[str, Any] | None:
+        """Normalize or fail closed — never export an invalid window as enabled."""
         if not isinstance(raw, Mapping) or not raw:
             return None
         try:
             return normalize_entry_window(dict(raw))
         except ValueError:
-            return dict(raw)
+            return None
 
     admit = _as_window(admit_raw)
     focus_window = _as_window(focus_raw)
     grid_window = _as_window(grid_raw)
     focus_prov = dict(focus_provenance) if isinstance(focus_provenance, Mapping) else None
-    promote_prov = (
-        dict(promote_provenance) if isinstance(promote_provenance, Mapping) else None
-    )
-
-    available = any(
-        value is not None
-        for value in (admit, focus_window, focus_prov, promote_prov, grid_window)
-    ) or armed is not None
+    promote_prov = dict(promote_provenance) if isinstance(promote_provenance, Mapping) else None
 
     admit_enabled = bool(admit.get("enabled")) if isinstance(admit, Mapping) else False
-    focus_enabled = bool(focus_window.get("enabled")) if isinstance(focus_window, Mapping) else False
+    focus_enabled = (
+        bool(focus_window.get("enabled")) if isinstance(focus_window, Mapping) else False
+    )
     if focus_prov is not None and isinstance(focus_prov.get("entry_window"), Mapping):
         focus_enabled = focus_enabled or bool(focus_prov["entry_window"].get("enabled"))
+    grid_enabled = bool(grid_window.get("enabled")) if isinstance(grid_window, Mapping) else False
+    armed_pending = bool(armed)
+
+    # Disabled placeholder dicts alone are not "available" evidence — avoid
+    # showing an Entry Window checklist green for routine all-day runs.
+    available = bool(
+        admit_enabled or focus_enabled or grid_enabled or promote_prov is not None or armed_pending
+    )
 
     honesty_notes = [
         FOCUS_HONESTY_BANNER,
@@ -192,7 +196,9 @@ def build_entry_window_metadata(session_state: Mapping[str, Any]) -> dict[str, A
             "honesty_banner": ADMIT_HONESTY_BANNER if admit_enabled else None,
         },
         "focus": {
-            "enabled": focus_enabled if (focus_window is not None or focus_prov is not None) else None,
+            "enabled": focus_enabled
+            if (focus_window is not None or focus_prov is not None)
+            else None,
             "entry_window": to_jsonable(focus_window),
             "label": format_entry_window_label(focus_window) if focus_enabled else None,
             "provenance": to_jsonable(focus_prov),
@@ -206,13 +212,9 @@ def build_entry_window_metadata(session_state: Mapping[str, Any]) -> dict[str, A
             "provenance": to_jsonable(promote_prov),
         },
         "grid": {
-            "enabled": bool(grid_window.get("enabled")) if isinstance(grid_window, Mapping) else None,
+            "enabled": grid_enabled if grid_window is not None else None,
             "entry_window": to_jsonable(grid_window),
-            "label": (
-                format_entry_window_label(grid_window)
-                if isinstance(grid_window, Mapping) and grid_window.get("enabled")
-                else None
-            ),
+            "label": (format_entry_window_label(grid_window) if grid_enabled else None),
         },
         "honesty_notes": honesty_notes,
     }

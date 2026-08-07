@@ -42,6 +42,16 @@ _SIGNALS_META_KEYS = (
     "signal_settings",
     "signal_settings_hash",
 )
+# Backtest page builds Admit from these Streamlit widget keys (not session
+# ``entry_window`` alone). Cleared + rehydrated on bundle import (SW6).
+_BACKTEST_ENTRY_WINDOW_WIDGET_KEYS = (
+    "backtest_entry_window_enabled",
+    "backtest_entry_window_mode",
+    "backtest_entry_window_rth_segments",
+    "backtest_entry_window_start_time",
+    "backtest_entry_window_end_time",
+    "backtest_entry_window_timezone",
+)
 _BACKTEST_META_KEYS = (
     "trade_summary",
     "backtest_intrabar_policy",
@@ -893,14 +903,47 @@ def apply_research_bundle_to_session(
             cleared_keys.append(key)
         session_state.pop(key, None)
 
+    # Drop stale Admit widgets before restore so a prior session cannot keep
+    # an enabled toggle when the imported bundle has no / disabled Admit.
+    for key in _BACKTEST_ENTRY_WINDOW_WIDGET_KEYS:
+        if key in session_state:
+            cleared_keys.append(key)
+        session_state.pop(key, None)
+
     restored_keys: list[str] = []
     for key, value in session_values.items():
         session_state[key] = value
         restored_keys.append(key)
 
+    # Backtest Run reads Admit from sidebar widgets. Rehydrate widgets from the
+    # restored ``entry_window`` so import round-trips the constrained window
+    # (Promote writes the same mapping via backtest_widget_state_from_entry_window).
+    entry_window = session_state.get("entry_window")
+    if isinstance(entry_window, Mapping):
+        from thesistester.analytics.entry_window import (
+            backtest_widget_state_from_entry_window,
+        )
+
+        exchange_tz = session_state.get("exchange_timezone") or "America/New_York"
+        try:
+            widget_state = backtest_widget_state_from_entry_window(
+                dict(entry_window),
+                exchange_tz=str(exchange_tz),
+            )
+        except ValueError:
+            widget_state = {"backtest_entry_window_enabled": False}
+        for key, value in widget_state.items():
+            session_state[key] = value
+            if key not in restored_keys:
+                restored_keys.append(key)
+    else:
+        session_state["backtest_entry_window_enabled"] = False
+        if "backtest_entry_window_enabled" not in restored_keys:
+            restored_keys.append("backtest_entry_window_enabled")
+
     return {
-        "cleared_keys": sorted(cleared_keys),
-        "cleared_count": len(cleared_keys),
+        "cleared_keys": sorted(set(cleared_keys)),
+        "cleared_count": len(set(cleared_keys)),
         "restored_keys": restored_keys,
         "restored_count": len(restored_keys),
     }

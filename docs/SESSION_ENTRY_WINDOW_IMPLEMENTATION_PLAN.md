@@ -456,8 +456,10 @@ Additive setup key + normalize/default (OTF pattern). Export provenance. Assista
 - [x] Setup `entry_window` via `get_effective_entry_window_config` / `build_setup_config` (disabled default; no `SETUP_SCHEMA_VERSION` bump).
 - [x] Setup Builder hydrate/save + API `_SETUP_EXECUTION_KEYS` / `validate_run_spec`.
 - [x] Report artifact + markdown via `build_entry_window_metadata`; Report Export checklist.
-- [x] Research bundles export/import Admit + Focus/Promote provenance keys.
+- [x] Research bundles export/import Admit + Focus/Promote provenance keys;
+  import rehydrates Backtest Admit widgets from `entry_window`.
 - [x] Assistant `focus_post_hoc` caveat + Results Q&A honesty (Focus ≠ Admit).
+- [x] Setup Builder incomplete Admit drafts fail closed without crashing the page.
 - [x] Docs + `tests/test_entry_window_sw6.py`.
 
 **Out of scope.** Auto-wire setup library window into every Backtest Run; sweeping time as a grid axis; SW2b cutoff audit; SW7 release evidence pack.

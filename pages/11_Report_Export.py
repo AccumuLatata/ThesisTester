@@ -85,6 +85,26 @@ def _has_value(key: str) -> bool:
     return True
 
 
+def _entry_window_item_available(key: str, entry_meta: dict[str, Any]) -> bool:
+    """Checklist honesty: disabled Admit/Focus/grid placeholders are not ✅."""
+    if key == "entry_window":
+        admit = entry_meta.get("admit") if isinstance(entry_meta.get("admit"), dict) else {}
+        return bool(admit.get("enabled"))
+    if key == "focus_entry_window":
+        focus = entry_meta.get("focus") if isinstance(entry_meta.get("focus"), dict) else {}
+        return bool(focus.get("enabled")) and focus.get("entry_window") is not None
+    if key == "grid_entry_window":
+        grid = entry_meta.get("grid") if isinstance(entry_meta.get("grid"), dict) else {}
+        return bool(grid.get("enabled"))
+    if key == "focus_provenance":
+        focus = entry_meta.get("focus") if isinstance(entry_meta.get("focus"), dict) else {}
+        return bool(focus.get("enabled")) and bool(focus.get("provenance"))
+    if key == "entry_window_promote_provenance":
+        promote = entry_meta.get("promote") if isinstance(entry_meta.get("promote"), dict) else {}
+        return bool(promote.get("available"))
+    return _has_value(key)
+
+
 def _fmt(v: Any, fmt: str = ".2f", fallback: str = "—") -> str:
     if v is None:
         return fallback
@@ -135,7 +155,11 @@ st.dataframe(pd.DataFrame(status_rows), width="stretch", hide_index=True)
 _entry_meta = build_entry_window_metadata(st.session_state)
 if _entry_meta.get("available"):
     entry_status_rows = [
-        {"Item": item, "Session state key": key, "Available": "✅" if _has_value(key) else "❌"}
+        {
+            "Item": item,
+            "Session state key": key,
+            "Available": ("✅" if _entry_window_item_available(key, _entry_meta) else "❌"),
+        }
         for item, key in ENTRY_WINDOW_ITEMS
     ]
     st.subheader("Entry window checklist (Focus / Admit)")
@@ -149,9 +173,7 @@ if _entry_meta.get("available"):
         )
     if _admit.get("enabled"):
         armed = "armed (pending re-sim)" if _admit.get("armed") else "constrained re-sim applied"
-        st.caption(
-            f"Admit {armed}. Window: {_dash_if_none(_admit.get('label'))}."
-        )
+        st.caption(f"Admit {armed}. Window: {_dash_if_none(_admit.get('label'))}.")
     elif not _focus.get("enabled"):
         st.caption("Entry window: disabled — legacy all-day admission.")
 

@@ -28,6 +28,7 @@ from thesistester.setup import (
     get_effective_otf_filter_config,
     normalize_trigger_timeframe,
     normalize_otf_filter_config,
+    validate_entry_window_config,
     validate_setup_config,
 )
 from thesistester.classic_context import render_classic_thesis_chrome
@@ -1324,6 +1325,22 @@ if entry_window_enabled:
 else:
     entry_window = normalize_entry_window(None, exchange_tz=_exchange_tz)
 
+# Incomplete Admit drafts (empty RTH segments, bad clock range, …) must not
+# crash the editor: normalize_entry_window raises inside build_setup_config.
+# Build with a disabled placeholder, then attach the raw draft so Save still
+# fails closed via validate_setup_config / validate_entry_window_config.
+entry_window_errors = validate_entry_window_config(entry_window, exchange_tz=_exchange_tz)
+empty_rth_draft = bool(
+    entry_window.get("enabled")
+    and entry_window.get("mode") == "rth_segments"
+    and not list(entry_window.get("rth_segments") or [])
+)
+if entry_window_errors and not empty_rth_draft:
+    # Empty-RTH already has a friendly warning above; surface other normalize errors.
+    for error in entry_window_errors:
+        st.warning(error)
+
+candidate_entry_window: dict[str, Any] = {"enabled": False} if entry_window_errors else entry_window
 candidate_config = _build_current_editor_config(
     editor_seed=editor_seed,
     instrument=instrument,
@@ -1343,10 +1360,12 @@ candidate_config = _build_current_editor_config(
     min_valid_confluences=min_valid_confluences,
     trigger_params=trigger_params,
     otf_filter=otf_filter,
-    entry_window=entry_window,
+    entry_window=candidate_entry_window,
     setup_name=setup_name,
     description=description,
 )
+if entry_window_errors:
+    candidate_config["entry_window"] = dict(entry_window)
 editor_missing_refs = _unavailable_level_references(candidate_config, all_level_columns)
 requires_missing_level_ack = _has_unavailable_level_references(editor_missing_refs)
 if requires_missing_level_ack:

@@ -753,9 +753,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         )
     setup_entry_window = setup.get("entry_window")
     if setup_entry_window is not None:
-        setup_entry_window = _require_mapping(
-            setup_entry_window, section="setup.entry_window"
-        )
+        setup_entry_window = _require_mapping(setup_entry_window, section="setup.entry_window")
         try:
             normalize_entry_window(
                 dict(setup_entry_window),
