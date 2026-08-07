@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -1200,16 +1201,68 @@ def test_list_saved_signal_runs_ignores_missing_or_corrupt_entries():
 def test_default_store_root_stable(monkeypatch):
     """get_store_root() without env override is absolute and repo-root-relative."""
     monkeypatch.delenv("THESISTESTER_STORE_DIR", raising=False)
+    monkeypatch.setattr(local_store, "_DOTENV_LOADED", True)
 
     root = get_store_root()
 
     assert root.is_absolute()
     assert root.name == ".thesistester_store"
     # Must not be inside the thesistester/persistence package directory.
-    from thesistester.persistence import local_store
+    from thesistester.persistence import local_store as local_store_mod
 
-    persistence_dir = Path(local_store.__file__).resolve().parent
+    persistence_dir = Path(local_store_mod.__file__).resolve().parent
     assert not display_store_path(root).startswith(str(persistence_dir))
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ("THESISTESTER_STORE_DIR=C:\\dev\\ThesisTester\\.thesistester_store",
+         ("THESISTESTER_STORE_DIR", r"C:\dev\ThesisTester\.thesistester_store")),
+        ('THESISTESTER_STORE_DIR="C:\\data\\store"',
+         ("THESISTESTER_STORE_DIR", r"C:\data\store")),
+        ("export FOO=bar", ("FOO", "bar")),
+        ("# comment", None),
+        ("", None),
+        ("NOT A KEY", None),
+    ],
+)
+def test_parse_dotenv_line(line, expected):
+    assert local_store._parse_dotenv_line(line) == expected
+
+
+def test_load_repo_dotenv_sets_store_dir_without_overriding(monkeypatch, tmp_path):
+    """Repo-root .env populates missing keys only; process env wins."""
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "THESISTESTER_STORE_DIR=C:\\dev\\ThesisTester\\.thesistester_store\n"
+        "OTHER_KEY=from-dotenv\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(local_store, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(local_store, "_DOTENV_LOADED", False)
+    monkeypatch.delenv("THESISTESTER_STORE_DIR", raising=False)
+    monkeypatch.setenv("OTHER_KEY", "already-set")
+
+    loaded = local_store.load_repo_dotenv(force=True)
+
+    assert loaded == env_file
+    assert os.environ["THESISTESTER_STORE_DIR"] == r"C:\dev\ThesisTester\.thesistester_store"
+    assert os.environ["OTHER_KEY"] == "already-set"
+
+
+def test_get_store_root_respects_dotenv(monkeypatch, tmp_path):
+    """get_store_root() uses THESISTESTER_STORE_DIR from repo-root .env when unset."""
+    store = tmp_path / "custom_store"
+    store.mkdir()
+    (tmp_path / ".env").write_text(f"THESISTESTER_STORE_DIR={store}\n", encoding="utf-8")
+    monkeypatch.setattr(local_store, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(local_store, "_DOTENV_LOADED", False)
+    monkeypatch.delenv("THESISTESTER_STORE_DIR", raising=False)
+
+    root = get_store_root()
+
+    assert Path(display_store_path(root)).resolve() == store.resolve()
 
 
 def test_windows_extended_path_str_and_display():

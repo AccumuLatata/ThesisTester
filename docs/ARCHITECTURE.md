@@ -981,16 +981,25 @@ Signals robustness notes:
 
 ## Local persistence topology (filesystem)
 
-- Root: `.thesistester_store/` (or `$THESISTESTER_STORE_DIR`)
-- Datasets: `.thesistester_store/datasets/<dataset_id>/`
+- Root: `$THESISTESTER_STORE_DIR` when set, else `.thesistester_store/` under the repo root
+- Resolution: process env `THESISTESTER_STORE_DIR` → repo-root `.env` (non-overriding load
+  via `load_repo_dotenv()`) → `<repo>/.thesistester_store`
+- Datasets: `<store>/datasets/<dataset_id>/`
   (`canonical.parquet`, optional `raw.parquet`, optional
   `subtimeframe.parquet`, `meta.json` with dataset schema v2 fields
   `has_subtimeframe` / `ingestion_provenance`; schema v1 remains readable)
-- Levels: `.thesistester_store/levels/<dataset_id>/<levels_settings_hash>/`
-- Signal runs: `.thesistester_store/signals/<dataset_id>/<levels_settings_hash>/<signal_settings_hash>/`
-- Setups: `.thesistester_store/setups/<setup_id>/meta.json`
-- Execution artifacts (CAI-2/3, internal): `.thesistester_store/execution_artifacts/v1/{data,levels,source_index,locks}/`
-- UI state (active dataset, execution defaults): `.thesistester_store/ui_state.json`
+- Levels: `<store>/levels/<dataset_id>/<levels_settings_hash>/`
+- Signal runs: `<store>/signals/<dataset_id>/<levels_settings_hash>/<signal_settings_hash>/`
+- Setups: `<store>/setups/<setup_id>/meta.json`
+- Execution artifacts (CAI-2/3, internal): `<store>/execution_artifacts/v1/{data,levels,source_index,locks}/`
+- UI state (active dataset, execution defaults): `<store>/ui_state.json`
+
+### Configuring the store root
+
+- Copy `.env.example` → `.env` and set `THESISTESTER_STORE_DIR`, or on Windows run
+  `scripts/set_store_dir.ps1` (optional `-UserEnv` for a permanent User env var).
+- Recommended local Windows path when the repo lives at `C:\dev\ThesisTester`:
+  `C:\dev\ThesisTester\.thesistester_store`.
 
 ### Windows path length
 

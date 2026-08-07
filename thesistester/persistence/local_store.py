@@ -33,6 +33,7 @@ BACKTEST_DEFAULTS_SCHEMA_VERSION = 1
 GRID_DEFAULTS_SCHEMA_VERSION = 1
 STORE_ENV_VAR = "THESISTESTER_STORE_DIR"
 DEFAULT_STORE_DIR_NAME = ".thesistester_store"
+DOTENV_FILENAME = ".env"
 SIGNALS_PARQUET_NAME = "signals.parquet"
 CONFLUENCE_ZONES_PARQUET_NAME = "confluence_zones.parquet"
 NAKED_FLAGS_PARQUET_NAME = "naked_flags.parquet"
@@ -44,10 +45,57 @@ _SETUP_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 # (\\?\ / \\?\UNC\) raise the limit to ~32K characters.
 _WIN_EXT_PREFIX = "\\\\?\\"
 _WIN_EXT_UNC_PREFIX = "\\\\?\\UNC\\"
+_DOTENV_LOADED = False
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def _parse_dotenv_line(line: str) -> tuple[str, str] | None:
+    """Parse one ``KEY=VALUE`` dotenv line; return None for comments/blank/invalid."""
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    if stripped.startswith("export "):
+        stripped = stripped[len("export ") :].lstrip()
+    if "=" not in stripped:
+        return None
+    key, _, value = stripped.partition("=")
+    key = key.strip()
+    if not key or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+        return None
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        value = value[1:-1]
+    return key, value
+
+
+def load_repo_dotenv(*, force: bool = False) -> Path | None:
+    """Load repo-root ``.env`` into ``os.environ`` without overriding existing keys.
+
+    Returns the ``.env`` path when the file exists, otherwise ``None``. Safe to call
+    repeatedly; loads at most once unless ``force=True`` (tests).
+    """
+    global _DOTENV_LOADED
+    if _DOTENV_LOADED and not force:
+        return _repo_root() / DOTENV_FILENAME if (_repo_root() / DOTENV_FILENAME).is_file() else None
+    env_path = _repo_root() / DOTENV_FILENAME
+    _DOTENV_LOADED = True
+    if not env_path.is_file():
+        return None
+    try:
+        text = env_path.read_text(encoding="utf-8")
+    except OSError:
+        return env_path
+    for line in text.splitlines():
+        parsed = _parse_dotenv_line(line)
+        if parsed is None:
+            continue
+        key, value = parsed
+        if key not in os.environ:
+            os.environ[key] = value
+    return env_path
 
 
 def _windows_extended_path_str(raw: str) -> str:
@@ -86,10 +134,15 @@ def display_store_path(path: Path | str | None = None) -> str:
 def get_store_root() -> Path:
     """Return the local persistence root directory.
 
+    Resolution order:
+    1. Process env ``THESISTESTER_STORE_DIR`` (after optional repo-root ``.env`` load)
+    2. Default ``<repo>/.thesistester_store``
+
     On Windows the returned path uses the ``\\\\?\\`` extended-length prefix so
     nested content-addressed signal/level directories remain creatable when the
     absolute path would otherwise exceed Win32 MAX_PATH (260).
     """
+    load_repo_dotenv()
     raw_path = os.environ.get(STORE_ENV_VAR)
     if raw_path:
         root = Path(raw_path).expanduser().resolve()

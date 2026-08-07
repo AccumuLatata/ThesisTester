@@ -1152,7 +1152,8 @@ st.caption(f"Local store: `{display_store_path(get_store_root())}`")
 if not os.environ.get("THESISTESTER_STORE_DIR"):
     st.warning(
         "THESISTESTER_STORE_DIR is not set. Saved datasets are stored in a local repo folder "
-        "and may not persist across environments."
+        "and may not persist across environments. Set it via a repo-root `.env` "
+        "(see `.env.example`) or `scripts/set_store_dir.ps1` on Windows."
     )
 saved_datasets = list_datasets()
 saved_dataset_options = {item["dataset_id"]: item for item in saved_datasets}
