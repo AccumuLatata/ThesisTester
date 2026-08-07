@@ -1613,6 +1613,8 @@ def run_noise_test(
     backtest_config: Mapping[str, Any] | None = None,
     noise_config: Mapping[str, Any] | None = None,
     subtimeframe_data: pd.DataFrame | None = None,
+    parent_interval: pd.Timedelta | str | None = None,
+    sub_interval: pd.Timedelta | str | None = None,
 ) -> dict[str, Any]:
     """Run R16 replicas through the canonical levels-to-backtest composition.
 
@@ -1642,6 +1644,8 @@ def run_noise_test(
             signal_settings=signals["signal_settings"],
             last_signal_setup=setup,
             subtimeframe_data=subtimeframe_data,
+            parent_interval=parent_interval,
+            sub_interval=sub_interval,
         )
         return backtest["trades"]
 
@@ -1913,6 +1917,8 @@ def run_walk_forward(
             otf_config=dict(otf_config or {}),
             intrabar_model=str(execution.get("intrabar_model", "sl_first")),
             subtimeframe_data=subtimeframe_data,
+            parent_interval=parent_interval,
+            sub_interval=sub_interval,
             breakeven_after_r_values=list(execution.get("breakeven_after_r_values", [None])),
             trailing_after_r_values=list(execution.get("trailing_after_r_values", [None])),
             trailing_distance_ticks_values=list(
@@ -1948,6 +1954,8 @@ def run_validation(
     setup_config: Mapping[str, Any] | None = None,
     backtest_config: Mapping[str, Any] | None = None,
     subtimeframe_data: pd.DataFrame | None = None,
+    parent_interval: pd.Timedelta | str | None = None,
+    sub_interval: pd.Timedelta | str | None = None,
 ) -> ValidationResult:
     """Run deterministic validation plus optional R10/R11 diagnostics."""
     raw = dict(config or {})
@@ -2028,6 +2036,8 @@ def run_validation(
             backtest_config=backtest_config,
             noise_config=noise_settings,
             subtimeframe_data=subtimeframe_data,
+            parent_interval=parent_interval,
+            sub_interval=sub_interval,
         )
         result.update({"noise_summary": summary, "noise_config": summary["config"]})
     if sensitivity_config is not None and not isinstance(sensitivity_config, Mapping):
@@ -2770,6 +2780,8 @@ def run_experiment(
                 execution_kwargs={
                     **grid_settings,
                     "subtimeframe_data": subtimeframe_data,
+                    "parent_interval": declared_parent_interval,
+                    "sub_interval": declared_sub_interval,
                 },
                 selected_grid_metric=grid_settings.get("ranking_metric", "expectancy_r"),
                 selected_min_trades=int(grid_settings.get("min_trades", 1)),
@@ -2778,6 +2790,8 @@ def run_experiment(
                 setup_config=setup,
                 backtest_config=backtest_config,
                 subtimeframe_data=subtimeframe_data,
+                parent_interval=declared_parent_interval,
+                sub_interval=declared_sub_interval,
             )
         )
     return state
