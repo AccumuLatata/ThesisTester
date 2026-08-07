@@ -436,6 +436,9 @@ The assistant must apply these rules in user-facing results:
    model and any lower-timeframe fallback are part of the result.
 7. It must state when a requested conclusion needs unavailable data or an
    unsupported feature.
+8. Focus (post-hoc entry-window subset) is not Admit (constrained re-sim). It
+   must not claim deployable edge from Focus alone; when Focus evidence is
+   present, keep the `focus_post_hoc` caveat and prefer Admit evidence.
 
 ## Regression-safety and documentation gates
 

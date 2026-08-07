@@ -133,7 +133,8 @@ not trade signals by themselves.
 
 **What it is.** The **Setup Builder** page defines a reusable setup: which levels
 participate, confluence rules, naked-level filters, trigger logic, direction,
-and optional OTF filter settings for later simulation pages.
+optional OTF filter settings, and an optional Admit `entry_window` for later
+simulation pages.
 
 **When to use it.** After Levels exist; before or alongside Signals when you
 want a saved/active setup instead of one-off manual signal config.
@@ -155,6 +156,7 @@ setup, save setup, thesis link
 | `Trigger timeframe` | Base or higher TF for trigger logic | Non-base 3c splits work across TFs |
 | `Direction` | `long`, `short`, or `both` | — |
 | `Enable OTF filter` + OTF TFs / min bars | Higher-TF one-timeframing gate | Default off; applied later, not on Signals |
+| `Save Admit entry window on setup` | Persists normalized Admit `entry_window` | Default off; distinct from Time Analysis Focus |
 
 **How to use.**
 
@@ -162,7 +164,7 @@ setup, save setup, thesis link
 2. Optionally load from **Local setup library** → **Load to editor** /
    **Set active**.
 3. Edit **Setup name**, confluence mode, naked, trigger, timeframe, direction,
-   and optional OTF block.
+   optional OTF block, and optional Admit entry window.
 4. **Save setup** (becomes active) or clear with **Clear active setup**.
 5. Use the active/saved setup on **Signals**, then Backtest / Grid / Validation.
 
@@ -440,7 +442,7 @@ artifact, signals.csv, trades.csv, grid_results, checklist, display timezone
 **How to use.**
 
 1. Complete upstream research (core path: setup, signals, trades).
-2. Check the session / OTF artifact checklists.
+2. Check the session / entry-window (Focus/Admit) / OTF artifact checklists.
 3. Set display/export timezone.
 4. Use **⬇️ Download JSON artifact**, **⬇️ Download Markdown report**, and any
    available CSV downloads.
@@ -450,6 +452,8 @@ artifact, signals.csv, trades.csv, grid_results, checklist, display timezone
 - Not a full session restore tool (see Research Bundles for zip snapshots).
 - Missing checklist rows mean those diagnostics were never run — not a silent
   pass.
+- Focus checklist rows are post-hoc provenance — not Admit constrained-re-sim
+  evidence.
 - Uploaded JSON inspection is read-only preview.
 
 **Related pages.** All upstream analytics pages; Research Bundles for zip

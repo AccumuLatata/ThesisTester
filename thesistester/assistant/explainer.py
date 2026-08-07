@@ -29,6 +29,11 @@ _CAVEAT_CODES = {
     "failed_oos": "Walk-forward / OOS diagnostics report failed or empty folds.",
     "failed_robustness": "One or more robustness diagnostics failed or are unavailable.",
     "multiple_testing": "Multiple candidate trials increase selection bias risk.",
+    "focus_post_hoc": (
+        "Focus results are a post-hoc trade subset — not a constrained re-simulation "
+        "and not proof of deployable edge. Promote and re-simulate (Admit) before "
+        "treating a window as constrained evidence."
+    ),
 }
 
 
@@ -368,6 +373,17 @@ def _derive_caveats(
     if grid_result is not None or (trial_count is not None and trial_count > 1):
         _append_caveat(caveats, "multiple_testing", path="results.best_grid_result")
 
+    entry_window = _as_mapping(assumptions.get("entry_window")) or {}
+    focus = _as_mapping(entry_window.get("focus")) or {}
+    focus_enabled = focus.get("enabled") is True
+    focus_prov = _as_mapping(focus.get("provenance")) or {}
+    if focus_enabled or focus_prov:
+        _append_caveat(
+            caveats,
+            "focus_post_hoc",
+            path="assumptions.entry_window.focus",
+        )
+
     return caveats, limitations
 
 
@@ -501,6 +517,7 @@ def build_evidence_packet(
         "instrument": artifact["configuration"]["instrument"],
         "intrabar": artifact["intrabar"]["backtest_policy"],
         "otf_filter": artifact["otf_filter"],
+        "entry_window": artifact.get("entry_window"),
         "dataset": dataset_assumptions,
         "backtest": to_jsonable(config.get("backtest") or {}),
         "grid": to_jsonable(config.get("grid") or {}),

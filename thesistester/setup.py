@@ -6,6 +6,8 @@ from typing import Any
 
 import pandas as pd
 
+from thesistester.entry_window_policy import disabled_entry_window, normalize_entry_window
+
 
 BASE_COLUMNS = {
     "timestamp",
@@ -201,6 +203,64 @@ def get_effective_otf_filter_config(setup_config: dict[str, Any]) -> dict[str, A
     return normalize_otf_filter_config(raw)
 
 
+def _resolve_setup_exchange_tz(
+    setup_config: dict[str, Any] | None,
+    exchange_tz: str | None = None,
+) -> str:
+    """Resolve instrument exchange TZ for setup entry-window normalization (C5)."""
+    if isinstance(exchange_tz, str) and exchange_tz.strip():
+        return exchange_tz.strip()
+    instrument = None
+    if isinstance(setup_config, dict):
+        instrument = setup_config.get("instrument")
+    if isinstance(instrument, str) and instrument.strip():
+        from thesistester.config import INSTRUMENTS
+
+        inst = INSTRUMENTS.get(instrument.strip())
+        if inst is not None:
+            return str(inst.exchange_tz)
+    return "America/New_York"
+
+
+def validate_entry_window_config(
+    config: dict[str, Any] | None,
+    *,
+    exchange_tz: str = "America/New_York",
+) -> list[str]:
+    """Validate setup ``entry_window`` and return user-facing errors (never raises)."""
+    if config is None:
+        return []
+    if not isinstance(config, dict):
+        return ["entry_window must be a dictionary or null."]
+    try:
+        normalize_entry_window(config, exchange_tz=exchange_tz)
+    except ValueError as exc:
+        return [str(exc)]
+    return []
+
+
+def get_effective_entry_window_config(
+    setup_config: dict[str, Any],
+    *,
+    exchange_tz: str | None = None,
+) -> dict[str, Any]:
+    """Return canonical effective entry-window config from any setup payload.
+
+    Missing / null ``entry_window`` → disabled default (legacy all-day). Same
+    additive pattern as ``otf_filter`` — no ``SETUP_SCHEMA_VERSION`` bump.
+    """
+    tz = _resolve_setup_exchange_tz(
+        setup_config if isinstance(setup_config, dict) else None,
+        exchange_tz,
+    )
+    if not isinstance(setup_config, dict):
+        return disabled_entry_window(timezone=tz)
+    raw = setup_config.get("entry_window")
+    if raw is None:
+        return disabled_entry_window(timezone=tz)
+    return normalize_entry_window(raw, exchange_tz=tz)
+
+
 def _normalize_3c_params(params: dict[str, Any] | None) -> dict[str, Any]:
     trigger_params = params or {}
     return {
@@ -275,6 +335,7 @@ def build_setup_config(
     min_valid_confluences: int = 1,
     trigger_params: dict[str, Any] | None = None,
     otf_filter: dict[str, Any] | None = None,
+    entry_window: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a normalized setup configuration dictionary."""
     normalized_trigger_timeframe = normalize_trigger_timeframe(trigger_timeframe)
@@ -282,6 +343,8 @@ def build_setup_config(
     if trigger == "3c":
         normalized_params = _normalize_3c_params(trigger_params)
     normalized_otf_filter = normalize_otf_filter_config(otf_filter)
+    exchange_tz = _resolve_setup_exchange_tz({"instrument": instrument}, None)
+    normalized_entry_window = normalize_entry_window(entry_window, exchange_tz=exchange_tz)
 
     return {
         "name": name.strip(),
@@ -302,6 +365,7 @@ def build_setup_config(
         "min_valid_confluences": int(min_valid_confluences),
         "trigger_params": normalized_params,
         "otf_filter": normalized_otf_filter,
+        "entry_window": normalized_entry_window,
     }
 
 
@@ -458,5 +522,13 @@ def validate_setup_config(config: dict[str, Any]) -> list[str]:
     if "otf_filter" in config:
         for error in validate_otf_filter_config(config.get("otf_filter")):
             errors.append(f"OTF filter: {error}")
+
+    if "entry_window" in config:
+        exchange_tz = _resolve_setup_exchange_tz(config, None)
+        for error in validate_entry_window_config(
+            config.get("entry_window"),
+            exchange_tz=exchange_tz,
+        ):
+            errors.append(f"Entry window: {error}")
 
     return errors

@@ -11,6 +11,7 @@ import streamlit as st
 from thesistester.config import TIMEZONE_OPTIONS
 from thesistester.reporting import (
     _dash_if_none,
+    build_entry_window_metadata,
     build_execution_cost_assumptions,
     build_exposure_policy_assumptions,
     build_markdown_report,
@@ -64,6 +65,14 @@ OTF_ITEMS = [
     ("OTF validation matrix", "otf_validation_matrix"),
 ]
 
+ENTRY_WINDOW_ITEMS = [
+    ("Admit entry window", "entry_window"),
+    ("Focus entry window", "focus_entry_window"),
+    ("Focus provenance", "focus_provenance"),
+    ("Promote provenance", "entry_window_promote_provenance"),
+    ("Grid inherited window", "grid_entry_window"),
+]
+
 
 def _has_value(key: str) -> bool:
     value = st.session_state.get(key)
@@ -74,6 +83,26 @@ def _has_value(key: str) -> bool:
     if isinstance(value, (list, dict, tuple, set)):
         return len(value) > 0
     return True
+
+
+def _entry_window_item_available(key: str, entry_meta: dict[str, Any]) -> bool:
+    """Checklist honesty: disabled Admit/Focus/grid placeholders are not ✅."""
+    if key == "entry_window":
+        admit = entry_meta.get("admit") if isinstance(entry_meta.get("admit"), dict) else {}
+        return bool(admit.get("enabled"))
+    if key == "focus_entry_window":
+        focus = entry_meta.get("focus") if isinstance(entry_meta.get("focus"), dict) else {}
+        return bool(focus.get("enabled")) and focus.get("entry_window") is not None
+    if key == "grid_entry_window":
+        grid = entry_meta.get("grid") if isinstance(entry_meta.get("grid"), dict) else {}
+        return bool(grid.get("enabled"))
+    if key == "focus_provenance":
+        focus = entry_meta.get("focus") if isinstance(entry_meta.get("focus"), dict) else {}
+        return bool(focus.get("enabled")) and bool(focus.get("provenance"))
+    if key == "entry_window_promote_provenance":
+        promote = entry_meta.get("promote") if isinstance(entry_meta.get("promote"), dict) else {}
+        return bool(promote.get("available"))
+    return _has_value(key)
 
 
 def _fmt(v: Any, fmt: str = ".2f", fallback: str = "—") -> str:
@@ -121,6 +150,32 @@ st.caption(
     "Core path items are Setup, Signals, and Trades; the rest are optional diagnostics."
 )
 st.dataframe(pd.DataFrame(status_rows), width="stretch", hide_index=True)
+
+# Entry window (Focus / Admit) checklist
+_entry_meta = build_entry_window_metadata(st.session_state)
+if _entry_meta.get("available"):
+    entry_status_rows = [
+        {
+            "Item": item,
+            "Session state key": key,
+            "Available": ("✅" if _entry_window_item_available(key, _entry_meta) else "❌"),
+        }
+        for item, key in ENTRY_WINDOW_ITEMS
+    ]
+    st.subheader("Entry window checklist (Focus / Admit)")
+    st.dataframe(pd.DataFrame(entry_status_rows), width="stretch", hide_index=True)
+    _focus = _entry_meta.get("focus") if isinstance(_entry_meta.get("focus"), dict) else {}
+    _admit = _entry_meta.get("admit") if isinstance(_entry_meta.get("admit"), dict) else {}
+    if _focus.get("enabled"):
+        st.caption(
+            "Focus is a post-hoc subset — not re-simulated and not proof of deployable edge. "
+            f"Window: {_dash_if_none(_focus.get('label'))}."
+        )
+    if _admit.get("enabled"):
+        armed = "armed (pending re-sim)" if _admit.get("armed") else "constrained re-sim applied"
+        st.caption(f"Admit {armed}. Window: {_dash_if_none(_admit.get('label'))}.")
+    elif not _focus.get("enabled"):
+        st.caption("Entry window: disabled — legacy all-day admission.")
 
 # OTF filter checklist
 _otf_meta = build_otf_filter_metadata(st.session_state)

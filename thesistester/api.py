@@ -205,6 +205,7 @@ _SETUP_EXECUTION_KEYS = {
     "min_valid_confluences",
     "trigger_params",
     "otf_filter",
+    "entry_window",
 }
 _BACKTEST_DEFAULTS: dict[str, Any] = {
     "stop_loss_ticks": 8.0,
@@ -750,6 +751,16 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
             },
             section="setup.otf_filter",
         )
+    setup_entry_window = setup.get("entry_window")
+    if setup_entry_window is not None:
+        setup_entry_window = _require_mapping(setup_entry_window, section="setup.entry_window")
+        try:
+            normalize_entry_window(
+                dict(setup_entry_window),
+                exchange_tz=_instrument(instrument).exchange_tz,
+            )
+        except ValueError as exc:
+            raise ValueError(f"Invalid setup.entry_window: {exc}") from exc
     normalized_setup = build_setup(setup)
     if normalized_setup["instrument"] != instrument:
         raise ValueError(

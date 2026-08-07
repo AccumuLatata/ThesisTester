@@ -8,6 +8,7 @@ from thesistester.setup import (
     DEFAULT_OTF_FILTER_CONFIG,
     available_level_columns,
     build_setup_config,
+    get_effective_entry_window_config,
     get_effective_otf_filter_config,
     normalize_otf_filter_config,
     validate_otf_filter_config,
@@ -338,6 +339,19 @@ def test_otf_missing_block_resolves_to_disabled_defaults():
     config = _base_config()
     config.pop("otf_filter", None)
     assert get_effective_otf_filter_config(config) == DEFAULT_OTF_FILTER_CONFIG
+
+
+def test_entry_window_missing_block_resolves_to_disabled_defaults():
+    config = _base_config()
+    config.pop("entry_window", None)
+    effective = get_effective_entry_window_config(config)
+    assert effective["enabled"] is False
+    assert effective["timezone"] == "America/New_York"
+
+
+def test_build_setup_config_includes_disabled_entry_window():
+    config = _base_config()
+    assert config["entry_window"]["enabled"] is False
 
 
 def test_otf_none_resolves_to_disabled_defaults():

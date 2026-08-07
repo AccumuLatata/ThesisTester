@@ -297,10 +297,10 @@ SW0  Plan lock + golden confirmation
             │         │
             │         ├─► SW4  Promote + Focus↔Admit handoff
             │         │
-            │         ├─► SW5  Grid + Validation/WFA/sensitivity inherit  ← NEXT
+            │         ├─► SW5  Grid + Validation/WFA/sensitivity inherit
             │         │         (incl. overfitting._SIMULATION_KWARGS)
             │         │
-            │         └─► SW6  Setup normalize + Report/Bundles + Assistant
+            │         └─► SW6  Setup normalize + Report/Bundles + Assistant  ← NEXT
             │
             └─► SW7  Hardening + release evidence
 ```
@@ -428,7 +428,7 @@ Promote Focused/selected bucket → `entry_window` armed (no auto-run); thin-sam
 
 ---
 
-### SW5 — Grid + Validation / WFA / sensitivity inheritance  ← **implement next**
+### SW5 — Grid + Validation / WFA / sensitivity inheritance
 
 Keyword-only passthrough on `run_sl_tp_grid`, walk-forward, and **`overfitting._SIMULATION_KWARGS`**. UI warning: not a swept axis. No per-fold segment reselection.
 
@@ -447,9 +447,24 @@ Keyword-only passthrough on `run_sl_tp_grid`, walk-forward, and **`overfitting._
 
 ---
 
-### SW6 — Setup persistence, Report/Bundles, Assistant honesty
+### SW6 — Setup persistence, Report/Bundles, Assistant honesty  ← **implement next**
 
 Additive setup key + normalize/default (OTF pattern). Export provenance. Assistant must not claim edge from Focus alone.
+
+**Scope.**
+
+- [x] Setup `entry_window` via `get_effective_entry_window_config` / `build_setup_config` (disabled default; no `SETUP_SCHEMA_VERSION` bump).
+- [x] Setup Builder hydrate/save + API `_SETUP_EXECUTION_KEYS` / `validate_run_spec`.
+- [x] Report artifact + markdown via `build_entry_window_metadata`; Report Export checklist.
+- [x] Research bundles export/import Admit + Focus/Promote provenance keys;
+  import rehydrates Backtest Admit widgets from `entry_window`.
+- [x] Assistant `focus_post_hoc` caveat + Results Q&A honesty (Focus ≠ Admit).
+- [x] Setup Builder incomplete Admit drafts fail closed without crashing the page.
+- [x] Docs + `tests/test_entry_window_sw6.py`.
+
+**Out of scope.** Auto-wire setup library window into every Backtest Run; sweeping time as a grid axis; SW2b cutoff audit; SW7 release evidence pack.
+
+**Regression safety.** Additive defaults disabled; legacy setups without `entry_window` load as all-day; no engine/golden trade mutation; Focus export labeled post-hoc only.
 
 ---
 
@@ -518,9 +533,9 @@ Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; ho
 | SW2 Engine admission + C7 + golden | Merged | [#293](https://github.com/AccumuLatata/ThesisTester/pull/293) |
 | SW2b Cutoff skip audit + honesty | Optional / not started | — |
 | SW3 API + Backtest Admit UI | Merged | [#294](https://github.com/AccumuLatata/ThesisTester/pull/294) |
-| SW4 Promote handoff UX | Open | [#295](https://github.com/AccumuLatata/ThesisTester/pull/295) |
-| SW5 Grid + Validation inheritance | Open | [#296](https://github.com/AccumuLatata/ThesisTester/pull/296) |
-| SW6 Persistence + export + assistant | Not started | — |
+| SW4 Promote handoff UX | Merged | [#295](https://github.com/AccumuLatata/ThesisTester/pull/295) |
+| SW5 Grid + Validation inheritance | Merged | [#296](https://github.com/AccumuLatata/ThesisTester/pull/296) |
+| SW6 Persistence + export + assistant | Open | [#297](https://github.com/AccumuLatata/ThesisTester/pull/297) |
 | SW7 Hardening + release evidence | Not started | — |
 
 ---
