@@ -13,15 +13,15 @@ Assistant-related contracts:
 | Classic ↔ Assistant bridge | `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` (CAI) | ✅ Implemented (CAI-0…CAI-10) |
 | Thesis draft / explain loop | `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2) | ✅ Implemented (through PR6) |
 | AIA Research Assistant foundations | `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` (AIA) | ✅ Implemented — do not open new results/help PRs from AIA text |
-| Session entry window research loop | `docs/SESSION_ENTRY_WINDOW_PROPOSAL.md` (SW) | 📋 **Proposed** — SW0–SW7 (+ optional SW2b); Focus → Admit → Grid/WFA/sensitivity inherit; normative contracts C1–C9; opt-in; golden-gated per `ENGINEERING_PROPOSAL.md` §4 |
+| Session entry window research loop | `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` (SW) | 📋 **Plan ready** — SW0–SW7 (+ optional SW2b); Focus → Admit → Grid/WFA/sensitivity inherit; C1–C9; golden-gated per `ENGINEERING_PROPOSAL.md` §4 |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
 new results/help/voice work must not reopen them. All are additive to this
 R-series and must preserve engine/golden-master semantics.
 
 Future session-constraint work is specified in
-`docs/SESSION_ENTRY_WINDOW_PROPOSAL.md` and must not reopen R9–R22 milestone
-text; implement as the SW series with legacy golden identity preserved.
+`docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` and must not reopen R9–R22
+milestone text; implement as the SW series with legacy golden identity preserved.
 
 ---
 
@@ -1138,20 +1138,20 @@ canonical/Quantower CSV parser as the unchanged default path.
 
 ---
 
-## Future — Session Entry Window (SW0–SW7) 📋 Proposed
+## Future — Session Entry Window (SW0–SW7) 📋 Plan ready
 
 Closes the Discover → Scope → Re-sim → Optimize → Prove loop when Time Analysis
 shows a strong RTH segment (e.g. `rth_open_30m`) while the all-day Performance
 Summary looks poor.
 
-**Canonical spec:** `docs/SESSION_ENTRY_WINDOW_PROPOSAL.md` (normative contracts **C1–C9**)
+**Canonical spec:** `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` (normative contracts **C1–C9**)
 
 | Milestone | Intent |
 |---|---|
-| SW0 | Proposal lock + legacy golden gate confirmation |
-| SW1 | Post-hoc Focus summary (no re-sim); shared RTH export if first |
+| SW0 | Plan lock + legacy golden gate confirmation + C1–C9 |
+| SW1 | Post-hoc Focus summary (no re-sim); shared RTH export ← next |
 | SW2 | Opt-in `entry_window` admission + enabled golden + Focus≡Admit (C7) |
-| SW2b | Optional: audit `no_new_entries_after` → `after_entry_cutoff` |
+| SW2b | Optional: audit `no_new_entries_after` → `after_entry_cutoff` + UI/docs honesty |
 | SW3 | API + Backtest Admit controls |
 | SW4 | Time Analysis Focus + Promote handoff |
 | SW5 | Grid + Validation/WFA/sensitivity inherit window (fixed constraint) |
