@@ -519,7 +519,7 @@ Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; ho
 | SW2b Cutoff skip audit + honesty | Optional / not started | — |
 | SW3 API + Backtest Admit UI | Merged | [#294](https://github.com/AccumuLatata/ThesisTester/pull/294) |
 | SW4 Promote handoff UX | Open | [#295](https://github.com/AccumuLatata/ThesisTester/pull/295) |
-| SW5 Grid + Validation inheritance | In progress | — |
+| SW5 Grid + Validation inheritance | Open | [#296](https://github.com/AccumuLatata/ThesisTester/pull/296) |
 | SW6 Persistence + export + assistant | Not started | — |
 | SW7 Hardening + release evidence | Not started | — |
 
