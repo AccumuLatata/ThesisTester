@@ -113,6 +113,34 @@ def test_api_one_file_15s_primary_reaches_strict_r12_without_subtimeframe_path(
     assert len(state["subtimeframe_data"]) == 8
 
 
+def test_api_sparse_15s_primary_persists_declared_subtimeframe_interval(tmp_path: Path):
+    """One print/minute gap-infers as 1min; state must still expose declared 15s."""
+    path = tmp_path / "sparse_15s.csv"
+    rows = ["Time left;Time right;Open;High;Low;Close;Volume;"]
+    for minute in range(30, 40):
+        rows.append(
+            f"2026-06-02 09:{minute}:00.000;2026-06-02 09:{minute}:14.999;"
+            f"{100 + minute};{101 + minute};{99 + minute};{100.5 + minute};1;"
+        )
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    state = run_experiment(
+        _minimal_derive_spec(
+            "sparse_15s.csv",
+            intrabar_model="subtimeframe_conservative",
+        ),
+        base_directory=tmp_path,
+        cache_policy="off",
+    )
+
+    assert state["base_interval"] == "1min"
+    assert state["subtimeframe_interval"] == "15s"
+    assert state["ingestion_provenance"]["source_interval"] == "15s"
+    assert state["ingestion_provenance"]["sparse_parent_bucket_count"] == 10
+    assert len(state["data"]) == 10
+    assert len(state["subtimeframe_data"]) == 10
+
+
 def test_api_15s_primary_cache_write_does_not_warm_cross_primary_mode(tmp_path: Path):
     csv_path = tmp_path / "es_15s.csv"
     shutil.copy(VENDOR_15S, csv_path)

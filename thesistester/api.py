@@ -2660,7 +2660,14 @@ def run_experiment(
     if subtimeframe_data is not None:
         subtimeframe_report = validate_ohlcv(subtimeframe_data)
         state["subtimeframe_data"] = subtimeframe_data
-        state["subtimeframe_interval"] = format_interval(subtimeframe_report.inferred_interval)
+        # Prefer declared provenance interval: sparse trade-only 15s frames often
+        # gap-infer as 30s/1min and would poison later UI Backtest/Grid/WFO.
+        declared = (
+            None if ingestion_provenance is None else ingestion_provenance.get("source_interval")
+        )
+        state["subtimeframe_interval"] = (
+            str(declared) if declared else format_interval(subtimeframe_report.inferred_interval)
+        )
         if ingestion_mode == INGESTION_MODE_15S_PRIMARY_DERIVE_1M:
             state["subtimeframe_format_profile"] = format_profile
         else:
