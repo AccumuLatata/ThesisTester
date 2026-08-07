@@ -1155,7 +1155,7 @@ Summary looks poor.
 | SW3 | API + Backtest Admit controls ✅ |
 | SW4 | Time Analysis Promote + Focus↔Admit handoff ✅ |
 | SW5 | Grid + Validation/WFA/sensitivity inherit window (fixed constraint) ✅ |
-| SW6 | Setup persistence, export, assistant honesty ← next |
+| SW6 | Setup persistence, export, assistant honesty ← next ([#297](https://github.com/AccumuLatata/ThesisTester/pull/297)) |
 | SW7 | Hardening + release evidence |
 
 **Regression posture:** additive, default-off; legacy `trades_legacy` golden
