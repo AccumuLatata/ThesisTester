@@ -138,7 +138,12 @@ def test_partition_skip_counts_splits_window_vs_other():
         }
     )
     counts = partition_skip_counts(skipped)
-    assert counts == {"total": 3, "outside_entry_window": 2, "other": 1}
+    assert counts == {
+        "total": 3,
+        "outside_entry_window": 2,
+        "after_entry_cutoff": 0,
+        "other": 1,
+    }
     assert partition_skip_counts(None)["total"] == 0
     assert "Constrained re-simulation" in ADMIT_HONESTY_BANNER
 

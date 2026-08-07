@@ -797,10 +797,15 @@ skip capture is on, and never enter exposure competition.
 
 SW3 wires the same opt-in window through `api.run_backtest` (`backtest.entry_window`,
 default `None`/disabled) and classic Backtest Admit controls. Skip captions split
-`outside_entry_window` from exposure/other reasons; constrained runs show the Admit
-honesty banner. RTH membership uses `entry_window_exchange_tz` (instrument exchange
-TZ from API/UI), distinct from `session_timezone` used only for session-close /
+`outside_entry_window` / `after_entry_cutoff` / exposure-other; constrained runs show
+the Admit honesty banner. RTH membership uses `entry_window_exchange_tz` (instrument
+exchange TZ from API/UI), distinct from `session_timezone` used only for session-close /
 entry-cutoff clocks (C5).
+
+SW2b audits `no_new_entries_after` rejects as `skip_reason="after_entry_cutoff"` when
+skip capture is on. Trades are unchanged vs the prior silent `continue`; only the
+skip frame gains rows. When both Admit window and cutoff would reject, labeling
+prefers `outside_entry_window` (C9 — window evaluated before cutoff).
 
 SW4 adds Time Analysis **Promote to Admit**: arms `entry_window` + Backtest widget
 keys without auto-running simulation. `entry_window_armed` distinguishes pending
@@ -972,7 +977,7 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `entry_window_armed` | Time Analysis Promote (SW4) | Backtest / Time Analysis | `bool` — pending re-sim after Promote |
 | `entry_window_promote_provenance` | Time Analysis Promote (SW4) | banners / audit | Promote source, counts, `sample_warning`, status |
 | `grid_entry_window` | Grid Search (SW5) | Validation inherit / artifacts | Normalized window used for last grid run |
-| `skipped_signals` | Backtest / `run_backtest` | Backtest skip table | DataFrame of admission skips (`skip_reason` incl. exposure + `outside_entry_window`) |
+| `skipped_signals` | Backtest / `run_backtest` | Backtest skip table | DataFrame of admission skips (`skip_reason` incl. exposure + `outside_entry_window` + `after_entry_cutoff`) |
 | `validation_summary` | Validation (`pages/10_Validation.py:130`) | Validation display/Report/Bundles (`pages/10_Validation.py:134`, `pages/11_Report_Export.py:42,82-83`, `pages/12_Research_Bundles.py:50`) | `dict` (`bootstrap`, `permutation`, `trade_count`, `grid_overfit`) |
 | `walk_forward_results` | Validation/R18 API | Validation display, Report, Research Bundles | R14 per-fold `pd.DataFrame` with bar/session boundaries and IS/OOS metrics |
 | `walk_forward_summary` | Validation/R18 API | Validation display, Report, Research Bundles | R14 schema-version-2 summary including retention and stitched OOS status |

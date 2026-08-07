@@ -15,7 +15,7 @@
 | Engineering sign-off (SW7) | **Complete** | Verification suites recorded below; C2 Focus entry-time honesty hardened |
 | Real-dataset OOS statistical release | **Open / not executed in-repo** | No real user dataset in the repository; do not fabricate edge |
 | Product default | **Disabled** | `entry_window` remains opt-in; Focus is post-hoc only |
-| Optional SW2b cutoff skip audit | **Not shipped** | `no_new_entries_after` rejects stay silent; documented in ASSUMPTIONS |
+| Optional SW2b cutoff skip audit | **Shipped (follow-up #299)** | `after_entry_cutoff` when skip capture is on; trades unchanged; dual-fail prefers `outside_entry_window` (C9) |
 
 **Verdict for repository state:** Session entry window is **research-ready and
 engineering-signed**, disabled by default. Focus alone is **not** deployable-edge
@@ -29,7 +29,7 @@ statistical release approval from in-repo fixtures.
 | SW0 | Plan + legacy golden gate | Merged [#286](https://github.com/AccumuLatata/ThesisTester/pull/286) |
 | SW1 | Post-hoc Focus | Merged [#292](https://github.com/AccumuLatata/ThesisTester/pull/292) |
 | SW2 | Engine admission + C7 + enabled golden | Merged [#293](https://github.com/AccumuLatata/ThesisTester/pull/293) |
-| SW2b | Cutoff skip audit + honesty | Optional / not started |
+| SW2b | Cutoff skip audit + honesty | Shipped follow-up [#299](https://github.com/AccumuLatata/ThesisTester/pull/299) |
 | SW3 | API + Backtest Admit UI | Merged [#294](https://github.com/AccumuLatata/ThesisTester/pull/294) |
 | SW4 | Promote Focus→Admit handoff | Merged [#295](https://github.com/AccumuLatata/ThesisTester/pull/295) |
 | SW5 | Grid + Validation/WFA/sensitivity inherit | Merged [#296](https://github.com/AccumuLatata/ThesisTester/pull/296) |
@@ -126,7 +126,9 @@ python3 -m pytest -q tests/
 - Grid/WFA under a fixed window remain **diagnostics**; the window is not a
   swept axis and is not reselected per fold.
 - Absence of real-data OOS rows means statistical release remains **open**.
-- SW2b cutoff skip audit is **not** part of this release.
+- SW2b cutoff skip audit shipped as follow-up (#299): when skip capture is on,
+  cutoff rejects appear as `after_entry_cutoff`; dual window+cutoff failures
+  label as `outside_entry_window` (C9 prefer window for UX).
 
 ## 6. Operational release posture
 
@@ -137,7 +139,8 @@ Until real-dataset OOS evidence exists outside this repository:
    window as a constrained strategy constraint.
 3. Keep Focus/Admit labels distinct in UI, exports, and assistant answers.
 4. Do not auto-wire setup-library `entry_window` into Backtest Run.
-5. Keep SW2b optional; do not imply cutoff rejects are audited skips today.
+5. Treat `after_entry_cutoff` captions as diagnostics only — not a new product
+   admission mode beyond the existing `no_new_entries_after` constraint.
 
 When real-data OOS work is completed, update this document with filled evidence
 blocks and only then reconsider the statistical release line in §1.
