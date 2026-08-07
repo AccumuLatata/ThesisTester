@@ -25,6 +25,10 @@ from thesistester.analytics import (
     run_walk_forward_sl_tp,
     run_wfa_matrix,
 )
+from thesistester.analytics.entry_window import (
+    pick_inherited_entry_window_source,
+    resolve_inherited_entry_window,
+)
 from thesistester.analytics.validation import validation_summary
 from thesistester.api import run_noise_test, run_sensitivity_profile
 from thesistester.config import INSTRUMENTS
@@ -72,6 +76,41 @@ if backtest_exposure_policy == "allow_all":
         "and understate uncertainty. For validation-grade results, consider "
         "`single_position` or another restrictive policy."
     )
+
+_validation_instrument = st.session_state.get("instrument", "ES")
+_validation_inst = INSTRUMENTS.get(_validation_instrument)
+# C5: RTH / naive basis matches API noise→run_backtest (instrument exchange TZ).
+_validation_exchange_tz = (
+    (_validation_inst.exchange_tz if _validation_inst else None)
+    or st.session_state.get("exchange_timezone")
+    or "America/New_York"
+)
+_session_entry_window = st.session_state.get("entry_window")
+_inherited_source = pick_inherited_entry_window_source(
+    _session_entry_window,
+    st.session_state.get("grid_entry_window"),
+)
+# Armed caption only when the pending Promote window is the inherited source.
+_inherited_armed = (
+    bool(st.session_state.get("entry_window_armed"))
+    and isinstance(_session_entry_window, dict)
+    and bool(_session_entry_window.get("enabled"))
+    and _inherited_source is _session_entry_window
+)
+_validation_ew = resolve_inherited_entry_window(
+    _inherited_source,
+    exchange_tz=_validation_exchange_tz,
+    armed=_inherited_armed,
+)
+if _validation_ew["enabled"]:
+    st.warning(_validation_ew["warning"])
+    st.caption(
+        f"Inherited Admit window for WFA / overfitting / sensitivity: "
+        f"**{_validation_ew['label']}**"
+        + (" · armed (pending Backtest re-sim)" if _validation_ew["armed"] else "")
+    )
+else:
+    st.caption("No Admit `entry_window` inherited — validation batteries use all-day admission.")
 
 # ── Optional grid results ─────────────────────────────────────────────────────
 grid_raw = st.session_state.get("grid_results")
@@ -481,6 +520,8 @@ if run_wfo:
                                 eth_start=(inst.eth_start if inst else "18:00"),
                                 overlap_policy=overlap_policy,
                                 return_result=True,
+                                entry_window=_validation_ew["entry_window"],
+                                entry_window_exchange_tz=_validation_ew["entry_window_exchange_tz"],
                             )
                         except ValueError as e:
                             st.error(f"Walk-forward diagnostics error: {e}")
@@ -529,6 +570,8 @@ if run_wfo:
                                 "overlap_policy": overlap_policy,
                                 "otf_filter_config": _wfo_otf_config,
                                 "otf_history_policy": wfo_otf_history_policy,
+                                "entry_window_enabled": bool(_validation_ew["enabled"]),
+                                "entry_window_label": _validation_ew["label"],
                             }
                             st.session_state["walk_forward_results"] = results_df
                             st.session_state["walk_forward_summary"] = wfo_summary
@@ -600,6 +643,10 @@ if run_wfo:
                                         exit_management_policy.get("max_grid_cells", 500)
                                     ),
                                     overlap_policy=overlap_policy,
+                                    entry_window=_validation_ew["entry_window"],
+                                    entry_window_exchange_tz=_validation_ew[
+                                        "entry_window_exchange_tz"
+                                    ],
                                 )
                                 st.session_state["wfa_matrix"] = matrix_df
                                 st.session_state["wfa_matrix_config"] = {
@@ -769,6 +816,8 @@ else:
                 "subtimeframe_data": st.session_state.get("subtimeframe_data"),
                 "parent_interval": st.session_state.get("base_interval"),
                 "sub_interval": st.session_state.get("subtimeframe_interval"),
+                "entry_window": _validation_ew["entry_window"],
+                "entry_window_exchange_tz": _validation_ew["entry_window_exchange_tz"],
             }
             grid_context_r15 = st.session_state.get("grid_execution_context") or {}
             with st.spinner("Running CSCV/PBO, DSR, and vs-random diagnostics…"):
@@ -932,6 +981,9 @@ else:
                         "breakeven_after_r": exit_noise.get("breakeven_after_r"),
                         "trailing_after_r": exit_noise.get("trailing_after_r"),
                         "trailing_distance_ticks": exit_noise.get("trailing_distance_ticks"),
+                        "entry_window": _validation_ew["entry_window_normalized"]
+                        if _validation_ew["enabled"]
+                        else None,
                     },
                     noise_config={
                         "n_replicas": noise_replicas,
@@ -1052,6 +1104,8 @@ else:
                         "subtimeframe_data": st.session_state.get("subtimeframe_data"),
                         "parent_interval": st.session_state.get("base_interval"),
                         "sub_interval": st.session_state.get("subtimeframe_interval"),
+                        "entry_window": _validation_ew["entry_window"],
+                        "entry_window_exchange_tz": _validation_ew["entry_window_exchange_tz"],
                     },
                     selected_grid_metric=context_r19.get("ranking_metric", "expectancy_r"),
                     selected_min_trades=int(context_r19.get("min_trades", 1)),

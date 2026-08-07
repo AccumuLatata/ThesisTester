@@ -287,6 +287,7 @@ directional ranking, IS selection
 | `SL start` / `SL stop` / `SL step` | Stop-loss sweep in ticks | Huge grids are slow and easy to overfit |
 | `TP start` / `TP stop` / `TP step` | Take-profit sweep in ticks | Same |
 | Costs / intrabar / session / exposure | Same family as Backtest | One fixed policy applies to **every** cell |
+| Inherited `entry_window` (Admit) | Fixed constraint from Backtest/Promote | Not a swept axis — all cells share it |
 | `Ranking metric` | Aggregate options include `expectancy_r`, `total_r`, `profit_factor`, `win_rate` | Best cell is in-sample under that metric |
 | `Min trade count` | Drop thin cells before ranking | Too low → noisy “winners” |
 | **Enable directional ranking** | When on, ranks by **Directional ranking metric** instead of `Ranking metric` | Extra selection degrees of freedom |
@@ -294,7 +295,8 @@ directional ranking, IS selection
 
 **How to use.**
 
-1. Prerequisites: Data → Levels → Signals (non-empty candidates).
+1. Prerequisites: Data → Levels → Signals (non-empty candidates). Optionally
+   arm/apply an Admit `entry_window` on Backtest first.
 2. Set SL/TP ranges, execution assumptions, `Ranking metric`, and `Min trade
    count` (still applied to every cell). If **Enable directional ranking** is
    on, ranking uses **Directional ranking metric** plus `Min long trades` /
@@ -309,8 +311,10 @@ directional ranking, IS selection
 - OTF (when enabled) is applied once before the grid; every cell sees the same
   accepted candidate set.
 - One market-path / exit-management assumption is shared across cells.
+- Time-of-day is not optimized here; an inherited Admit window is a fixed
+  constraint, not a fitness axis.
 
-**Related pages.** Signals; Backtest (single cell); Validation (overfit / WFA).
+**Related pages.** Signals; Backtest (single cell / Admit); Validation (overfit / WFA).
 
 ## Time Analysis
 
@@ -322,12 +326,11 @@ Summary / equity on one bucket as a **post-hoc subset** (still no re-sim).
 **When to use it.** After a Backtest has produced a trade list and you want to
 see when trades clustered — with sample-size humility. Use Focus when a bucket
 (e.g. `rth_open_30m`) looks strong and you want the full KPI suite on that
-subset before deciding whether to constrain entries (Admit arrives in a later
-release).
+subset before Promoting it into an Admit constraint.
 
 **Related terms.** time analysis, time bucket, entry hour, 30min bucket, RTH
 segment, grouping, heatmap, best entry time, session window, no re-simulation,
-Focus summary, post-hoc subset
+Focus summary, post-hoc subset, Promote to Admit
 
 **Key settings.**
 
@@ -339,6 +342,7 @@ Focus summary, post-hoc subset
 | `Primary grouping` / optional secondary | How rows are aggregated | Tiny groups look dramatic |
 | `Minimum trades warning threshold` | Soft warning for thin buckets | Ignoring it invites noise |
 | `Metric for chart / heatmap` | Which KPI to plot | Charts ≠ causation |
+| `Promote to Admit` | Arms Backtest `entry_window` from Focus/bucket | Does **not** auto-run Backtest |
 
 **How to use.**
 
@@ -348,21 +352,23 @@ Focus summary, post-hoc subset
 4. Use thin-bucket warnings: low `trade_count` groups are not “best entries.”
 5. Optional: with primary grouping `entry_rth_segment` / hour / 30m, select a
    bucket → **Focus summary**. Clear Focus anytime. Backtest can overlay the
-   same Focused KPIs without overwriting the full-run results. To constrain
-   entries, enable **Entry window (Admit)** on Backtest and re-run (Promote
-   handoff arrives in SW4).
+   same Focused KPIs without overwriting the full-run results.
+6. Optional: **Promote to Admit** arms the Focused/selected window on Backtest
+   (thin samples require confirm). Open Backtest and **Run** to re-simulate —
+   Promote never auto-runs.
 
 **What it is not.**
 
 - Not a re-optimization engine and not a signal generator.
 - Focus is **not** an entry constraint and does **not** re-run exposure/cooldown.
 - Focused equity/drawdown is a **subset replay** of filtered trades only.
+- Promote arms a constraint; it is not itself proof of edge.
 - “Best hour” language is descriptive on this sample only — not a schedule to
   trade live.
 - RTH segment labeling can stay on exchange/session time even when hourly
   buckets use display TZ.
 
-**Related pages.** Backtest (prerequisite; Focus overlay); Report Export (shared display TZ).
+**Related pages.** Backtest (prerequisite; Focus overlay; Admit re-sim); Report Export (shared display TZ).
 See `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` for the full Focus→Admit loop.
 
 ## Validation and robustness

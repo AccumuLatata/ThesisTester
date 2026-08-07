@@ -162,17 +162,30 @@ This engine is for **research screening**, not proof of a durable edge.
   (golden-identical trades). `api.run_backtest` and classic Backtest Admit
   controls (SW3) default off.
 
-### 4a) Time Analysis Focus vs Admit (SW1 / SW2 / SW3)
+### 4a) Time Analysis Focus vs Admit (SW1–SW4)
 - **Focus summary** filters already completed trades by entry time bucket and
   recomputes KPIs / equity. It does **not** call `simulate_trades` and does
   **not** change exposure, cooldown, or which signals were admitted.
 - Focused equity and max drawdown are a **subset replay** of the filtered trade
   list, not path drawdown under the all-day admission set.
+- **Promote** (SW4) arms an Admit `entry_window` from a Focused/selected bucket
+  and pre-fills Backtest widgets. It does **not** auto-run simulation. Thin
+  samples require explicit confirmation. Promote sample counts / thin-sample
+  gating always use **entry** timestamps (C2), even when Time Analysis charts
+  use exit time. Until a constrained Admit re-sim, UI shows: “Entry window
+  armed. Run Backtest to re-simulate under this constraint.” An all-day Run
+  (Admit toggle off) does **not** consume the armed handoff.
 - **Admit** (`simulate_trades` / `run_backtest` / Backtest UI `entry_window`) is
   the constrained re-simulation path. Membership uses **entry-bar** local time
   (not signal-bar time). Window rejects never enter exposure competition.
   Constrained runs show: “Constrained re-simulation — only in-window entries
-  were admitted.”
+  were admitted.” Focus and Admit badges stay distinct.
+- **Grid / WFA / sensitivity (SW5)** inherit the same fixed Admit window when
+  present. Inheritance prefers an *enabled* Backtest/Promote `entry_window`,
+  else an enabled `grid_entry_window` (disabled dicts must not shadow). The
+  window is not a swept axis and is not reselected per fold. Validation uses
+  instrument exchange TZ for Admit membership so noise→`run_backtest` matches
+  WFA/sensitivity (C5). Default-off preserves legacy all-day grid/WFA behavior.
 - Under `exposure_policy="allow_all"` and `cooldown_bars_after_exit=0`, Focus
   and Admit admit the same `signal_id` set (C7). See
   `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md`.
@@ -180,7 +193,8 @@ This engine is for **research screening**, not proof of a durable edge.
   exchange/session timezone via `entry_window_exchange_tz` (API/UI pass the
   instrument exchange TZ). This is distinct from `session_timezone`, which
   only interprets session-close / `no_new_entries_after` clocks. Clock-range
-  membership uses the window/bucket timezone. Tz-naive timestamps are treated
+  membership uses the window/bucket timezone. Promote writes that TZ
+  explicitly into the normalized dict. Tz-naive timestamps are treated
   as exchange/session wall clocks (same as `add_time_buckets`), then
   converted — never localized directly as the bucket/display TZ. Invalid IANA
   timezone keys fail closed at normalize.

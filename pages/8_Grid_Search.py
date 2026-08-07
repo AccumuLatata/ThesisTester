@@ -13,6 +13,7 @@ import streamlit as st
 
 from thesistester.app_state import bootstrap_active_saved_dataset
 from thesistester.analytics import best_grid_result, run_sl_tp_grid
+from thesistester.analytics.entry_window import resolve_inherited_entry_window
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
 from thesistester.engine.otf_integration import apply_configured_otf_filter
 from thesistester.execution_defaults import (
@@ -230,6 +231,29 @@ with st.sidebar:
         (no_new_entries_after.strip() or None) if flat_by_session_close else None
     )
 
+    st.subheader("Entry window (inherited Admit)")
+    # C5: Admit membership uses instrument exchange TZ (matches API run_grid /
+    # Validation WFA), not the session-close / display timezone selector.
+    _grid_admit_exchange_tz = (
+        (inst.exchange_tz if inst else None) or exchange_tz or "America/New_York"
+    )
+    _grid_ew = resolve_inherited_entry_window(
+        st.session_state.get("entry_window"),
+        exchange_tz=_grid_admit_exchange_tz,
+        armed=bool(st.session_state.get("entry_window_armed")),
+    )
+    if _grid_ew["enabled"]:
+        st.warning(_grid_ew["warning"])
+        st.caption(
+            f"Inherited Admit window: **{_grid_ew['label']}**"
+            + (" · armed (pending Backtest re-sim)" if _grid_ew["armed"] else "")
+        )
+    else:
+        st.caption(
+            "No Admit `entry_window` in session — grid uses all-day admission. "
+            "Promote/enable on Backtest first to constrain all cells identically."
+        )
+
     st.subheader("Exposure policy")
     exposure_policy = st.selectbox(
         "Policy",
@@ -429,6 +453,8 @@ if run_btn:
                 breakeven_after_r_values=[grid_breakeven_after_r],
                 trailing_after_r_values=[grid_trailing_after_r],
                 trailing_distance_ticks_values=[grid_trailing_distance_ticks],
+                entry_window=_grid_ew["entry_window"],
+                entry_window_exchange_tz=_grid_ew["entry_window_exchange_tz"],
             )
         except ValueError as e:
             st.error(f"Grid search error: {e}")
@@ -489,6 +515,7 @@ if run_btn:
         "trailing_distance_ticks_values": [grid_trailing_distance_ticks],
         "max_grid_cells": 500,
     }
+    st.session_state["grid_entry_window"] = _grid_ew["entry_window_normalized"]
     st.session_state["grid_execution_context"] = {
         "ranking_metric": active_metric,
         "min_trades": int(min_trades),
@@ -505,6 +532,8 @@ if run_btn:
         "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
         "intrabar_model": intrabar_model,
         "subtimeframe_data_supplied": isinstance(subtimeframe_data, pd.DataFrame),
+        "entry_window_enabled": bool(_grid_ew["enabled"]),
+        "entry_window_label": _grid_ew["label"],
     }
 
 # ── Display ───────────────────────────────────────────────────────────────────
