@@ -3,7 +3,7 @@
 **Document type:** Implementation plan (fully scoped PRs)  
 **Date:** 2026-08-06  
 **Last revised:** 2026-08-07 (pre-implementation audit; renamed from proposal)  
-**Status:** Ready for implementation — **SW1 next** (zero engine risk)  
+**Status:** Engineering-signed through **SW7** (optional SW2b open); see `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`  
 **Inputs:** Time Analysis / Backtest UX gap analysis; design-review contracts C1–C9; codebase audit vs `simulate_trades` / golden / session_state; `docs/ENGINEERING_PROPOSAL.md` §4  
 **Related code:** `thesistester/analytics/time_analysis.py`, `thesistester/engine/backtest.py`, `thesistester/analytics/grid.py`, `thesistester/analytics/walk_forward.py`, `thesistester/analytics/overfitting.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/9_Time_Analysis.py`, `pages/10_Validation.py`, `thesistester/api.py`  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4 (including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist)
@@ -300,9 +300,9 @@ SW0  Plan lock + golden confirmation
             │         ├─► SW5  Grid + Validation/WFA/sensitivity inherit
             │         │         (incl. overfitting._SIMULATION_KWARGS)
             │         │
-            │         └─► SW6  Setup normalize + Report/Bundles + Assistant  ← NEXT
+            │         └─► SW6  Setup normalize + Report/Bundles + Assistant
             │
-            └─► SW7  Hardening + release evidence
+            └─► SW7  Hardening + release evidence  ← NEXT
 ```
 
 SW1 may land in parallel with SW2 design after SW0. SW3+ require SW2. **Do not start SW2 until C7 fixture design is clear; do not merge cutoff audit without SW2b honesty scope.**
@@ -468,9 +468,23 @@ Additive setup key + normalize/default (OTF pattern). Export provenance. Assista
 
 ---
 
-### SW7 — Hardening + release evidence
+### SW7 — Hardening + release evidence  ← **implement next**
 
 Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; honesty review.
+
+**Scope.**
+
+- [x] Parity audit vs C1–C9; harden C2 Focus to always use `entry_timestamp`.
+- [x] C9 joint admission test (`entry_window` AND `no_new_entries_after`; at-cutoff admits).
+- [x] Export honesty micro-fix (Focus label from provenance fallback).
+- [x] Docs honesty (USER_GUIDE setup non-auto-wire; ASSUMPTIONS C2 entry-time Focus).
+- [x] Goldens green + recorded verification suites (legacy / enabled-window / full `tests/`).
+- [x] `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md` engineering sign-off.
+- [x] Status trackers + roadmap posture updated.
+
+**Out of scope.** SW2b cutoff skip audit; auto-wire setup → Backtest; sweeping time as a grid axis; fabricating real-data OOS edge.
+
+**Regression safety.** No golden trade mutation; default-off preserved; Focus/Admit honesty strengthened (not loosened).
 
 ---
 
@@ -535,8 +549,8 @@ Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; ho
 | SW3 API + Backtest Admit UI | Merged | [#294](https://github.com/AccumuLatata/ThesisTester/pull/294) |
 | SW4 Promote handoff UX | Merged | [#295](https://github.com/AccumuLatata/ThesisTester/pull/295) |
 | SW5 Grid + Validation inheritance | Merged | [#296](https://github.com/AccumuLatata/ThesisTester/pull/296) |
-| SW6 Persistence + export + assistant | Open | [#297](https://github.com/AccumuLatata/ThesisTester/pull/297) |
-| SW7 Hardening + release evidence | Not started | — |
+| SW6 Persistence + export + assistant | Merged | [#297](https://github.com/AccumuLatata/ThesisTester/pull/297) |
+| SW7 Hardening + release evidence | Open | — |
 
 ---
 

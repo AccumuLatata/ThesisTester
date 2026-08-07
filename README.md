@@ -134,6 +134,14 @@ Optional directional market-condition filter for ES/NQ-style research. **Disable
 - OOS evaluation protocol: [`docs/research-methodology.md`](docs/research-methodology.md).
 - Engineering release evidence: [`docs/OTF_RELEASE_EVIDENCE.md`](docs/OTF_RELEASE_EVIDENCE.md).
 
+### Session entry window (Focus → Admit)
+
+Optional entry-time Focus / Admit research loop for ES/NQ-style session analysis.
+**Disabled by default.** Focus is post-hoc; Admit is constrained re-simulation.
+
+- Canonical plan: [`docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md`](docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md).
+- Engineering release evidence: [`docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`](docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md).
+
 ## Documentation
 
 - [User guide](docs/USER_GUIDE.md) — feature/how-to docs (also powers Research Assistant **Help / how it works**)
@@ -143,6 +151,8 @@ Optional directional market-condition filter for ES/NQ-style research. **Disable
 - [Point-in-time guarantees](docs/POINT_IN_TIME_GUARANTEES.md)
 - [OTF filter contract](docs/otf-filter.md)
 - [OTF hardening roadmap](docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md)
+- [Session entry window plan](docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md)
+- [Session entry window release evidence](docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md)
 - [Agent guide](docs/AGENT_GUIDE.md)
 - Research & planning:
   - [SOTA backtesting landscape](docs/SOTA_BACKTESTING_LANDSCAPE.md)

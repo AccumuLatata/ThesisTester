@@ -182,6 +182,33 @@ def test_build_entry_window_metadata_disabled_placeholders_not_available():
     assert meta["grid"]["enabled"] is False
 
 
+def test_build_entry_window_metadata_focus_label_from_provenance_fallback():
+    """SW7: when focus_entry_window is missing, provenance.entry_window fills label."""
+    window = normalize_entry_window(
+        {
+            "enabled": True,
+            "mode": "rth_segments",
+            "rth_segments": ["rth_open_30m"],
+        },
+        exchange_tz=TZ,
+    )
+    meta = build_entry_window_metadata(
+        {
+            "focus_provenance": focus_provenance(
+                window,
+                trade_count_before=20,
+                trade_count_after=5,
+                exchange_tz=TZ,
+            )
+        }
+    )
+    assert meta["available"] is True
+    assert meta["focus"]["enabled"] is True
+    assert meta["focus"]["entry_window"]["rth_segments"] == ["rth_open_30m"]
+    assert meta["focus"]["label"] is not None
+    assert "rth_open_30m" in meta["focus"]["label"]
+
+
 def test_build_entry_window_metadata_invalid_window_fail_closed():
     meta = build_entry_window_metadata(
         {

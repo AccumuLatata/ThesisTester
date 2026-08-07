@@ -127,6 +127,31 @@ def test_clock_range_naive_timestamp_localizes_as_exchange_tz():
     )
 
 
+def test_c2_focus_membership_uses_entry_not_exit_timestamps():
+    """C2: Focus/Admit classify by entry-bar time — exit-basis must not redefine membership."""
+    ts_entry = pd.to_datetime(["2026-06-02 09:45"]).tz_localize("America/New_York")
+    # Exit lands in rth_morning while entry is rth_open_30m.
+    trades = pd.DataFrame(
+        {
+            "trade_id": [0],
+            "signal_id": [100],
+            "entry_timestamp": ts_entry,
+            "exit_timestamp": ts_entry + pd.Timedelta(minutes=40),
+            "r_multiple": [1.0],
+            "direction": ["long"],
+        }
+    )
+    window = {
+        "enabled": True,
+        "mode": "rth_segments",
+        "rth_segments": ["rth_open_30m"],
+    }
+    by_entry = filter_trades_by_entry_window(trades, window, timestamp_col="entry_timestamp")
+    by_exit = filter_trades_by_entry_window(trades, window, timestamp_col="exit_timestamp")
+    assert list(by_entry["trade_id"]) == [0]
+    assert by_exit.empty
+
+
 def test_filter_rth_open_30m_and_multi_segment_or():
     trades = _make_trades(
         [

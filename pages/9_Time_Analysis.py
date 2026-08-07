@@ -323,6 +323,14 @@ if primary_group in _FOCUSABLE_COLS and not grouped.empty and primary_group in g
             st.session_state.pop(key, None)
         st.rerun()
 
+    # C2: Focus membership always uses entry timestamps (same as Admit/Promote),
+    # even when Time Analysis charts group by exit time.
+    _FOCUS_TIMESTAMP_COL = "entry_timestamp"
+    if timestamp_basis != _FOCUS_TIMESTAMP_COL:
+        st.caption(
+            "Focus membership uses **entry** timestamps (C2), "
+            f"not the chart basis `{timestamp_basis}`."
+        )
     if apply_focus and selected_focus_value is not None:
         try:
             window = entry_window_from_bucket(
@@ -335,7 +343,7 @@ if primary_group in _FOCUSABLE_COLS and not grouped.empty and primary_group in g
                 trades_raw,
                 window,
                 exchange_tz=exchange_tz,
-                timestamp_col=timestamp_basis,
+                timestamp_col=_FOCUS_TIMESTAMP_COL,
                 bucket_tz=bucket_tz,
                 min_trades=min_trades_warn,
             )

@@ -405,3 +405,42 @@ def test_window_rejects_never_block_exposure():
     assert list(result.trades["signal_id"]) == [2]
     assert "outside_entry_window" in set(result.skipped_signals["skip_reason"])
     assert "overlapping_position" not in set(result.skipped_signals["skip_reason"])
+
+
+def test_c9_entry_window_and_cutoff_both_apply():
+    """C9: entry_window AND no_new_entries_after; entry at cutoff still admits."""
+    df = _rth_morning_frame()
+    window = entry_window_from_bucket("entry_rth_segment", "rth_open_30m", exchange_tz=TZ)
+    idx_in = int(df.index[df["timestamp"] == pd.Timestamp("2026-06-02 09:44", tz=TZ)][0])
+    idx_at = int(df.index[df["timestamp"] == pd.Timestamp("2026-06-02 09:49", tz=TZ)][0])
+    idx_after_cut = int(df.index[df["timestamp"] == pd.Timestamp("2026-06-02 09:50", tz=TZ)][0])
+    idx_out = int(df.index[df["timestamp"] == pd.Timestamp("2026-06-02 10:10", tz=TZ)][0])
+
+    # Joint AND: cutoff after the morning bar so the out-of-window candidate reaches
+    # the entry_window check (cutoff is evaluated first and is silent — SW2b).
+    joint = simulate_trades(
+        df,
+        pd.DataFrame([_signal(1, idx_in), _signal(4, idx_out)]),
+        **_base_kwargs(
+            entry_window=window,
+            no_new_entries_after="10:30",
+            return_result=True,
+        ),
+    )
+    assert list(joint.trades["signal_id"]) == [1]
+    assert list(joint.skipped_signals["signal_id"]) == [4]
+    assert list(joint.skipped_signals["skip_reason"]) == ["outside_entry_window"]
+
+    # Strict `>` cutoff: entry at 09:50 still admits; 09:51 is silent-skipped.
+    cutoff = simulate_trades(
+        df,
+        pd.DataFrame([_signal(2, idx_at), _signal(3, idx_after_cut)]),
+        **_base_kwargs(
+            entry_window=window,
+            no_new_entries_after="09:50",
+            return_result=True,
+        ),
+    )
+    assert list(cutoff.trades["signal_id"]) == [2]
+    assert 3 not in set(cutoff.trades["signal_id"])
+    assert cutoff.skipped_signals.empty  # cutoff rejects are not audited yet (SW2b)

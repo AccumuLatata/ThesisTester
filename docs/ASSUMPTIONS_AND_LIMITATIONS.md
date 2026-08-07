@@ -163,8 +163,9 @@ This engine is for **research screening**, not proof of a durable edge.
   controls (SW3) default off.
 
 ### 4a) Time Analysis Focus vs Admit (SW1–SW4)
-- **Focus summary** filters already completed trades by entry time bucket and
-  recomputes KPIs / equity. It does **not** call `simulate_trades` and does
+- **Focus summary** filters already completed trades by **entry** time bucket
+  (C2 — always `entry_timestamp`, even when Time Analysis charts group by exit)
+  and recomputes KPIs / equity. It does **not** call `simulate_trades` and does
   **not** change exposure, cooldown, or which signals were admitted.
 - Focused equity and max drawdown are a **subset replay** of the filtered trade
   list, not path drawdown under the all-day admission set.

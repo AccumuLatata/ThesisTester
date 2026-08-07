@@ -171,6 +171,8 @@ setup, save setup, thesis link
 **What it is not.**
 
 - Saving a setup does not generate signals or run a backtest.
+- A saved setup `entry_window` does **not** auto-apply Admit on Backtest Run —
+  arm/apply Admit via Backtest controls or Time Analysis **Promote to Admit**.
 - OTF defaults **disabled**. Signals keep the full candidate population; Backtest
   / Grid / Walk-forward apply OTF when enabled (rejected candidates stay for
   audit).
@@ -323,7 +325,8 @@ directional ranking, IS selection
 **What it is.** The **Time Analysis** page is a descriptive breakdown of
 **already completed** trades by time-of-day / session windows. It does **not**
 re-simulate trades. Optional **Focus summary** recomputes the full Performance
-Summary / equity on one bucket as a **post-hoc subset** (still no re-sim).
+Summary / equity on one bucket as a **post-hoc subset** (still no re-sim;
+membership always uses **entry** timestamps even when charts group by exit).
 
 **When to use it.** After a Backtest has produced a trade list and you want to
 see when trades clustered — with sample-size humility. Use Focus when a bucket

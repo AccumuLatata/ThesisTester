@@ -162,6 +162,9 @@ def build_entry_window_metadata(session_state: Mapping[str, Any]) -> dict[str, A
     grid_window = _as_window(grid_raw)
     focus_prov = dict(focus_provenance) if isinstance(focus_provenance, Mapping) else None
     promote_prov = dict(promote_provenance) if isinstance(promote_provenance, Mapping) else None
+    # Prefer session focus_entry_window; fall back to provenance.entry_window (SW7).
+    if focus_window is None and focus_prov is not None:
+        focus_window = _as_window(focus_prov.get("entry_window"))
 
     admit_enabled = bool(admit.get("enabled")) if isinstance(admit, Mapping) else False
     focus_enabled = (
