@@ -1229,6 +1229,10 @@ def test_default_store_root_stable(monkeypatch):
             "THESISTESTER_STORE_DIR=/data/store # local only",
             ("THESISTESTER_STORE_DIR", "/data/store"),
         ),
+        (
+            "\ufeffTHESISTESTER_STORE_DIR=/data/store",
+            ("THESISTESTER_STORE_DIR", "/data/store"),
+        ),
         ("export FOO=bar", ("FOO", "bar")),
         ("# comment", None),
         ("", None),
@@ -1237,6 +1241,39 @@ def test_default_store_root_stable(monkeypatch):
 )
 def test_parse_dotenv_line(line, expected):
     assert local_store._parse_dotenv_line(line) == expected
+
+
+def test_load_repo_dotenv_strips_utf8_bom(monkeypatch, tmp_path):
+    """PowerShell utf8 BOM must not prevent THESISTESTER_STORE_DIR from loading."""
+    store = tmp_path / "bom_store"
+    store.mkdir()
+    env_file = tmp_path / ".env"
+    env_file.write_bytes(
+        b"\xef\xbb\xbfTHESISTESTER_STORE_DIR=" + str(store).encode("utf-8") + b"\n"
+    )
+    monkeypatch.setattr(local_store, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(local_store, "_DOTENV_LOADED", False)
+    monkeypatch.delenv("THESISTESTER_STORE_DIR", raising=False)
+
+    assert local_store.load_repo_dotenv(force=True) == env_file
+    assert os.environ["THESISTESTER_STORE_DIR"] == str(store)
+    assert Path(display_store_path(get_store_root())).resolve() == store.resolve()
+
+
+def test_load_repo_dotenv_retries_after_missing_env(monkeypatch, tmp_path):
+    """Absent .env must not permanently skip a later-created file in-process."""
+    store = tmp_path / "late_store"
+    store.mkdir()
+    monkeypatch.setattr(local_store, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(local_store, "_DOTENV_LOADED", False)
+    monkeypatch.delenv("THESISTESTER_STORE_DIR", raising=False)
+
+    assert local_store.load_repo_dotenv() is None
+    assert "THESISTESTER_STORE_DIR" not in os.environ
+
+    (tmp_path / ".env").write_text(f"THESISTESTER_STORE_DIR={store}\n", encoding="utf-8")
+    assert local_store.load_repo_dotenv() == tmp_path / ".env"
+    assert os.environ["THESISTESTER_STORE_DIR"] == str(store)
 
 
 def test_load_repo_dotenv_sets_store_dir_without_overriding(monkeypatch, tmp_path):

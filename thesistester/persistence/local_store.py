@@ -54,7 +54,7 @@ def _repo_root() -> Path:
 
 def _parse_dotenv_line(line: str) -> tuple[str, str] | None:
     """Parse one ``KEY=VALUE`` dotenv line; return None for comments/blank/invalid."""
-    stripped = line.strip()
+    stripped = line.strip().lstrip("\ufeff")
     if not stripped or stripped.startswith("#"):
         return None
     if stripped.startswith("export "):
@@ -95,10 +95,11 @@ def load_repo_dotenv(*, force: bool = False) -> Path | None:
     if _DOTENV_LOADED and not force:
         return env_path if env_path.is_file() else None
     if not env_path.is_file():
-        _DOTENV_LOADED = True
+        # Do not mark loaded — allow a later call after .env is created.
         return None
     try:
-        text = env_path.read_text(encoding="utf-8")
+        # utf-8-sig strips a leading BOM (PowerShell Set-Content -Encoding utf8).
+        text = env_path.read_text(encoding="utf-8-sig")
     except OSError:
         # Do not mark loaded — allow retry after transient permission/IO errors.
         return env_path
