@@ -899,6 +899,11 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `grid_exit_management_policy` | Grid/R18 API | Validation walk-forward, Report, Research Bundles | R13 schema-versioned grid BE/trailing sweep snapshot |
 | `time_bucketed_trades` | Time (`pages/9_Time_Analysis.py:129`) | Report/Bundles availability checks (`pages/12_Research_Bundles.py:57`) | `pd.DataFrame` trades + time-bucket columns |
 | `time_grouped_summary` | Time (`pages/9_Time_Analysis.py:208`) | Report export (`pages/11_Report_Export.py:41,123`, `thesistester/reporting.py:180-185`) | `pd.DataFrame` grouped diagnostics |
+| `focus_entry_window` | Time Focus (SW1) | Backtest Focus overlay, Time Analysis | Normalized post-hoc window dict (`enabled`/`mode`/…); overlay only |
+| `focused_trades` | Time Focus (SW1) | Backtest/Time display | Filtered trade subset; does not replace `trades` |
+| `focused_trade_summary` | Time Focus (SW1) | Backtest/Time display | Same shape as `trade_summary` on the subset |
+| `focused_equity_curve` | Time Focus (SW1) | Backtest/Time display | Subset-replay equity (C8); same shape as `equity_curve` |
+| `focus_provenance` | Time Focus (SW1) | Banners / export (later) | Counts, `sample_warning`, honesty flags |
 | `validation_summary` | Validation (`pages/10_Validation.py:130`) | Validation display/Report/Bundles (`pages/10_Validation.py:134`, `pages/11_Report_Export.py:42,82-83`, `pages/12_Research_Bundles.py:50`) | `dict` (`bootstrap`, `permutation`, `trade_count`, `grid_overfit`) |
 | `walk_forward_results` | Validation/R18 API | Validation display, Report, Research Bundles | R14 per-fold `pd.DataFrame` with bar/session boundaries and IS/OOS metrics |
 | `walk_forward_summary` | Validation/R18 API | Validation display, Report, Research Bundles | R14 schema-version-2 summary including retention and stitched OOS status |

@@ -35,6 +35,8 @@ import pandas as pd
 
 # Ordered segment definitions as (start_minute_of_day, end_minute_of_day,
 # label) tuples.  ``end_minute_of_day`` is exclusive.
+# Public alias ``RTH_SEGMENTS`` / ``RTH_SEGMENT_LABELS`` (SW C1) — bounds must
+# stay identical; do not redefine elsewhere.
 _RTH_SEGMENTS: list[tuple[int, int, str]] = [
     (0, 570, "pre_rth"),  # < 09:30
     (570, 600, "rth_open_30m"),  # 09:30 – 09:59
@@ -44,6 +46,8 @@ _RTH_SEGMENTS: list[tuple[int, int, str]] = [
     (900, 960, "rth_power_hour"),  # 15:00 – 15:59
     (960, 1440, "post_rth"),  # 16:00+
 ]
+RTH_SEGMENTS: tuple[tuple[int, int, str], ...] = tuple(_RTH_SEGMENTS)
+RTH_SEGMENT_LABELS: tuple[str, ...] = tuple(label for _, _, label in _RTH_SEGMENTS)
 
 # New columns added by add_time_buckets (used for empty-DataFrame guarantees)
 _TIME_BUCKET_COLS: list[str] = [
@@ -84,6 +88,14 @@ def _rth_segment(minute: int) -> str:
         if start <= minute < end:
             return label
     return "post_rth"
+
+
+def rth_segment_for_minute(minute: int) -> str:
+    """Return the RTH segment label for a minute-of-day (0–1439).
+
+    Public C1 helper — same matcher used by :func:`add_time_buckets`.
+    """
+    return _rth_segment(int(minute))
 
 
 def _validate_timezone_string(name: str, value: str) -> str:

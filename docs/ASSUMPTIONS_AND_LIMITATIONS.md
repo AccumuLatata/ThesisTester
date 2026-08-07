@@ -150,6 +150,15 @@ This engine is for **research screening**, not proof of a durable edge.
 - Restrictive policies apply deterministic admission ordering and optional cooldown (`cooldown_bars_after_exit`) to model more conservative trade lifecycle assumptions.
 - Optional skipped-signal diagnostics contain exposure-policy rejections only; signals skipped for pre-existing non-executable reasons (e.g., void `3c`, missing future entry bar) are not included in skipped diagnostics.
 
+### 4a) Time Analysis Focus is post-hoc only (SW1)
+- **Focus summary** filters already completed trades by entry time bucket and
+  recomputes KPIs / equity. It does **not** call `simulate_trades` and does
+  **not** change exposure, cooldown, or which signals were admitted.
+- Focused equity and max drawdown are a **subset replay** of the filtered trade
+  list, not path drawdown under the all-day admission set.
+- Focus is exploratory. Constrained re-simulation (Admit / `entry_window`) is a
+  separate later milestone — see `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md`.
+
 ### 5) Simple-trigger and `3c` timestamp semantics are canonical/base aligned
 - For all triggers, emitted `timestamp` is always the canonical/base dataframe timestamp at `bar_index`.
 - When `trigger_timeframe` is non-base, trigger evaluation is performed on resampled trigger candles, and `trigger_timestamp` stores trigger-candle completion/actionability time.
