@@ -99,7 +99,8 @@ def test_duplicate_timestamps_fail_closed():
         derive_complete_parent_ohlcv(source)
 
 
-def test_invalid_source_cadence_fail_closed():
+def test_on_grid_30s_gaps_retain_sparse_parents():
+    """Trade-only exports may only print :00/:30; that is valid sparse 15s grid."""
     timestamps = pd.date_range("2026-06-02 09:30:00", periods=4, freq="30s", tz="America/New_York")
     source = pd.DataFrame(
         {
@@ -111,8 +112,72 @@ def test_invalid_source_cadence_fail_closed():
             "volume": [1, 1, 1, 1],
         }
     )
-    with pytest.raises(ValueError, match="15-second source interval"):
+    result = derive_complete_parent_ohlcv(source)
+    assert len(result.parent_data) == 2
+    assert result.dropped_buckets.empty
+    assert list(result.sparse_buckets["observed_sub_bars"]) == [2, 2]
+    ctx = prepare_subtimeframe_conservative_context(
+        result.parent_data,
+        result.source_data,
+        tick_size=0.25,
+        parent_interval=result.parent_interval,
+        sub_interval=result.source_interval,
+    )
+    assert ctx.sub_interval == pd.Timedelta(seconds=15)
+    assert ctx.groups == {}
+    assert len(ctx.fallback_reasons) == 2
+
+
+def test_invalid_source_cadence_fail_closed():
+    """Off-grid-only stamps cannot establish a 15-second open grid."""
+    timestamps = pd.date_range("2026-06-02 09:30:05", periods=4, freq="10s", tz="America/New_York")
+    source = pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "open": [100, 101, 102, 103],
+            "high": [101, 102, 103, 104],
+            "low": [99, 100, 101, 102],
+            "close": [100.5, 101.5, 102.5, 103.5],
+            "volume": [1, 1, 1, 1],
+        }
+    )
+    with pytest.raises(ValueError, match="on-grid 15-second timestamps"):
         derive_complete_parent_ohlcv(source)
+
+
+def test_one_print_per_minute_passes_declared_interval_r12_postcondition():
+    """Gap-mode inference sees 1min; declared 15s interval must still prepare R12."""
+    stamps = [
+        pd.Timestamp(f"2026-06-02 09:{minute}:00", tz="America/New_York")
+        for minute in range(30, 40)
+    ]
+    source = pd.DataFrame(
+        {
+            "timestamp": stamps,
+            "open": list(range(100, 110)),
+            "high": list(range(101, 111)),
+            "low": list(range(99, 109)),
+            "close": [value + 0.5 for value in range(100, 110)],
+            "volume": [1] * 10,
+        }
+    )
+    result = derive_complete_parent_ohlcv(source)
+    assert len(result.parent_data) == 10
+    assert len(result.sparse_buckets) == 10
+    with pytest.raises(ValueError, match="strictly finer"):
+        prepare_subtimeframe_conservative_context(
+            result.parent_data, result.source_data, tick_size=0.25
+        )
+    ctx = prepare_subtimeframe_conservative_context(
+        result.parent_data,
+        result.source_data,
+        tick_size=0.25,
+        parent_interval=result.parent_interval,
+        sub_interval=result.source_interval,
+    )
+    assert ctx.sub_interval == pd.Timedelta(seconds=15)
+    assert ctx.groups == {}
+    assert len(ctx.fallback_reasons) == 10
 
 
 def test_middle_gap_retains_sparse_and_complete_adjacent_minutes():
@@ -191,10 +256,15 @@ def test_rithmic_trade_only_sparse_minutes_aggregate_like_vendor_ohlcv():
     assert second["volume"] == 5.0
 
     ctx = prepare_subtimeframe_conservative_context(
-        result.parent_data, result.source_data, tick_size=0.25
+        result.parent_data,
+        result.source_data,
+        tick_size=0.25,
+        parent_interval=result.parent_interval,
+        sub_interval=result.source_interval,
     )
     assert len(ctx.groups) == 1  # only the complete third minute
     assert len(ctx.fallback_reasons) == 2
+    assert ctx.sub_interval == pd.Timedelta(seconds=15)
 
 
 def test_exchange_local_bucketing_across_dst_spring_forward():

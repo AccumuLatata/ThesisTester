@@ -314,6 +314,21 @@ def test_infer_interval_from_irregular_series():
     assert infer_base_interval(ts) == pd.Timedelta(minutes=1)
 
 
+def test_parse_interval_round_trips_format_interval():
+    from thesistester.data.loader import format_interval, parse_interval
+
+    for interval in (
+        pd.Timedelta(seconds=15),
+        pd.Timedelta(minutes=1),
+        pd.Timedelta(hours=1),
+        pd.Timedelta(days=1),
+    ):
+        assert parse_interval(format_interval(interval)) == interval
+    assert parse_interval(None) is None
+    assert parse_interval("unknown") is None
+    assert parse_interval(pd.Timedelta(seconds=15)) == pd.Timedelta(seconds=15)
+
+
 def test_session_tagging_rth():
     df = tag_session(load_ohlcv(SAMPLE), "ES")
     assert "session" in df.columns

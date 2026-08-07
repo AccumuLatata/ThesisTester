@@ -1546,6 +1546,8 @@ def run_backtest(
     signal_settings: Mapping[str, Any] | None = None,
     last_signal_setup: Mapping[str, Any] | None = None,
     subtimeframe_data: pd.DataFrame | None = None,
+    parent_interval: pd.Timedelta | str | None = None,
+    sub_interval: pd.Timedelta | str | None = None,
 ) -> BacktestResult:
     """Run the UI backtest composition, including the shared OTF pre-filter."""
     inst = _instrument(instrument)
@@ -1579,6 +1581,8 @@ def run_backtest(
         cooldown_bars_after_exit=int(settings["cooldown_bars_after_exit"]),
         intrabar_model=str(settings["intrabar_model"]),
         subtimeframe_data=subtimeframe_data,
+        parent_interval=parent_interval,
+        sub_interval=sub_interval,
         breakeven_after_r=settings["breakeven_after_r"],
         trailing_after_r=settings["trailing_after_r"],
         trailing_distance_ticks=settings["trailing_distance_ticks"],
@@ -2359,6 +2363,8 @@ def _load_15s_primary_experiment_data(
         parent,
         source,
         tick_size=inst.tick_size,
+        parent_interval=derived.parent_interval,
+        sub_interval=derived.source_interval,
     )
     provenance = build_derivation_provenance(derived, format_profile=format_profile)
     base_interval = format_interval(derived.parent_interval)
@@ -2571,6 +2577,11 @@ def run_experiment(
     setup = build_setup(dict(run.get("setup") or {}))
     signal_result = generate_signals(level_payload["levels"], setup, instrument=instrument)
     backtest_config = dict(run.get("backtest") or {})
+    declared_parent_interval = None
+    declared_sub_interval = None
+    if ingestion_provenance:
+        declared_parent_interval = ingestion_provenance.get("derived_parent_interval")
+        declared_sub_interval = ingestion_provenance.get("source_interval")
     backtest_result = run_backtest(
         level_payload["levels"],
         signal_result["signals"],
@@ -2580,6 +2591,8 @@ def run_experiment(
         signal_settings=signal_result["signal_settings"],
         last_signal_setup=setup,
         subtimeframe_data=subtimeframe_data,
+        parent_interval=declared_parent_interval,
+        sub_interval=declared_sub_interval,
     )
 
     state: dict[str, Any] = {

@@ -39,7 +39,6 @@ from thesistester.data.sessions import tag_session
 from thesistester.engine.intrabar import (
     inspect_subtimeframe_compatibility,
     prepare_subtimeframe_conservative_context,
-    prepare_subtimeframe_context,
 )
 from thesistester.app_state import (
     ACTIVE_SAVED_DATASET_KEY,
@@ -328,6 +327,8 @@ def _prepare_15s_primary_dataset(
             parent_df,
             source_df,
             tick_size=INSTRUMENTS[instrument].tick_size,
+            parent_interval=derived.parent_interval,
+            sub_interval=derived.source_interval,
         )
     except ValueError as exc:
         raise ValueError(

@@ -799,11 +799,14 @@ frame under policy `observed_aligned_15s_to_1m_v2`. It emits a parent for every
 exchange-local minute that contains one or more on-grid opens among `:00`,
 `:15`, `:30`, and `:45`. Sparse minutes (fewer than four prints) are retained —
 Quantower/Rithmic History Exporter trade-only exports omit empty 15s slots by
-default, and those absences are not treated as corrupt data. Only misaligned
-(off-grid) minutes are dropped. Sparse and dropped diagnostics are separate
-read-only frames; no empty bars are synthesized. Complete minutes still match
-strict R12 OHLC reconciliation; sparse minutes use
-`prepare_subtimeframe_conservative_context()` fallback.
+default, and those absences are not treated as corrupt data. Cadence validation
+accepts on-grid gaps that are exact multiples of 15s (including 30s/60s quiet
+periods). Only misaligned (off-grid) minutes are dropped. Sparse and dropped
+diagnostics are separate read-only frames; no empty bars are synthesized.
+Complete minutes still match strict R12 OHLC reconciliation; sparse minutes use
+`prepare_subtimeframe_conservative_context()` fallback with **declared**
+`parent_interval` / `sub_interval` from the derivation result (gap-mode
+inference alone is insufficient when empty slots dominate).
 
 The Data page recommends `15s_primary_derive_1m` for Upload CSV (first-visit
 widget default; labeled/ordered first), currently limited to

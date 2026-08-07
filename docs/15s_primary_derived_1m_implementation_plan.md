@@ -72,7 +72,7 @@ hold:
 | Condition | Required behavior |
 |---|---|
 | Explicit mode and profile | User chooses `15s_primary_derive_1m`; no interval or header auto-detection. |
-| Source cadence | Inferred interval must be exactly 15 seconds. |
+| Source cadence | On-grid opens among `:00`/`:15`/`:30`/`:45` with consecutive gaps that are exact multiples of 15 seconds (sparse 30s/60s gaps allowed). |
 | Timestamp basis | Timestamps represent bar opens and are exchange-timezone aware after normal loader conversion. |
 | Source validity | Existing fatal OHLCV failures remain fatal: duplicates, missing values, invalid OHLC ranges, and negative volume. |
 | Bucket alignment | A source bar belongs to the exchange-local wall-clock minute containing its open timestamp. Valid expected opens are `:00`, `:15`, `:30`, and `:45`. |

@@ -246,11 +246,12 @@ def _validate_source_frame(frame: pd.DataFrame) -> None:
 
 
 def _validate_15s_cadence(timestamps: pd.Series) -> None:
-    """Require observable 15-second cadence from on-grid adjacent pairs.
+    """Require on-grid 15-second opens with gaps that are exact 15s multiples.
 
     Off-grid timestamps are not fatal here; they make their parent minute
-    misaligned and are reported in ``dropped_buckets``. Sparse gaps between
-    on-grid prints are expected for trade-only Quantower/Rithmic exports.
+    misaligned and are reported in ``dropped_buckets``. Sparse trade-only
+    Quantower/Rithmic exports may omit empty slots, so consecutive on-grid
+    gaps of 30s/45s/60s+ are valid — only non-multiples of 15s fail closed.
     """
     on_grid_mask = (
         (timestamps.dt.microsecond == 0)
@@ -262,23 +263,11 @@ def _validate_15s_cadence(timestamps: pd.Series) -> None:
         raise ValueError("observed aligned 15s→1m derivation requires on-grid 15-second timestamps")
     positive = on_grid.diff().dropna()
     positive = positive[positive > pd.Timedelta(0)]
-    intra_minute = positive[positive < _PARENT_INTERVAL]
-    if intra_minute.empty:
-        # Sparse trade-only exports may only show inter-minute gaps (e.g. one
-        # print per quiet minute). Accept when every on-grid stamp is a valid
-        # 15s open and consecutive on-grid gaps are exact 15s multiples.
-        remainder = positive.mod(_SOURCE_INTERVAL)
-        if (remainder != pd.Timedelta(0)).any():
-            raise ValueError("source cadence must be an exact multiple of 15 seconds")
-        return
-    remainder = intra_minute.mod(_SOURCE_INTERVAL)
+    if positive.empty:
+        raise ValueError("observed aligned 15s→1m derivation requires observable on-grid steps")
+    remainder = positive.mod(_SOURCE_INTERVAL)
     if (remainder != pd.Timedelta(0)).any():
         raise ValueError("source cadence must be an exact multiple of 15 seconds")
-    if intra_minute.min() != _SOURCE_INTERVAL:
-        raise ValueError(
-            "observed aligned 15s→1m derivation requires a 15-second source interval, "
-            f"got {format_interval(intra_minute.min())}"
-        )
 
 
 def _floor_to_local_minute(timestamps: pd.Series) -> pd.Series:

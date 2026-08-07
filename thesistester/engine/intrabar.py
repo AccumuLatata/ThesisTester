@@ -8,7 +8,7 @@ from typing import Literal
 
 import pandas as pd
 
-from thesistester.data.loader import infer_base_interval
+from thesistester.data.loader import infer_base_interval, parse_interval
 
 IntrabarModel = Literal[
     "sl_first",
@@ -188,11 +188,37 @@ def _ohlc_validation_masks(frame: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     return finite, ~invalid_range
 
 
+def _resolve_bar_intervals(
+    parent: pd.DataFrame,
+    subtimeframe: pd.DataFrame,
+    *,
+    parent_interval: pd.Timedelta | str | None = None,
+    sub_interval: pd.Timedelta | str | None = None,
+) -> tuple[pd.Timedelta, pd.Timedelta]:
+    """Resolve parent/sub bar intervals from overrides or timestamp inference."""
+    resolved_parent = parse_interval(parent_interval)
+    if resolved_parent is None:
+        resolved_parent = infer_base_interval(parent["timestamp"])
+    resolved_sub = parse_interval(sub_interval)
+    if resolved_sub is None:
+        resolved_sub = infer_base_interval(subtimeframe["timestamp"])
+    if resolved_parent is None or resolved_sub is None:
+        raise ValueError("parent and subtimeframe data require at least two timestamp intervals")
+    if resolved_sub <= pd.Timedelta(0) or resolved_sub >= resolved_parent:
+        raise ValueError("subtimeframe interval must be strictly finer than parent interval")
+    ratio = resolved_parent / resolved_sub
+    if ratio != int(ratio):
+        raise ValueError("parent interval must be an exact multiple of subtimeframe interval")
+    return resolved_parent, resolved_sub
+
+
 def inspect_subtimeframe_compatibility(
     parent: pd.DataFrame,
     subtimeframe: pd.DataFrame | None,
     *,
     tick_size: float,
+    parent_interval: pd.Timedelta | str | None = None,
+    sub_interval: pd.Timedelta | str | None = None,
 ) -> SubtimeframeCompatibilityReport:
     """Scan every parent bar without changing R12 execution semantics."""
     if subtimeframe is None:
@@ -209,15 +235,13 @@ def inspect_subtimeframe_compatibility(
         if not timestamps.is_monotonic_increasing:
             raise ValueError(f"{label} data timestamps must be sorted")
 
-    parent_interval = infer_base_interval(parent["timestamp"])
-    sub_interval = infer_base_interval(subtimeframe["timestamp"])
-    if parent_interval is None or sub_interval is None:
-        raise ValueError("parent and subtimeframe data require at least two timestamp intervals")
-    if sub_interval <= pd.Timedelta(0) or sub_interval >= parent_interval:
-        raise ValueError("subtimeframe interval must be strictly finer than parent interval")
+    parent_interval, sub_interval = _resolve_bar_intervals(
+        parent,
+        subtimeframe,
+        parent_interval=parent_interval,
+        sub_interval=sub_interval,
+    )
     expected_count = int(parent_interval / sub_interval)
-    if parent_interval / sub_interval != expected_count:
-        raise ValueError("parent interval must be an exact multiple of subtimeframe interval")
 
     parent_reset = parent.reset_index(drop=True)
     sub_reset = subtimeframe.reset_index(drop=True)
@@ -387,6 +411,8 @@ def prepare_subtimeframe_context(
     subtimeframe: pd.DataFrame | None,
     *,
     tick_size: float,
+    parent_interval: pd.Timedelta | str | None = None,
+    sub_interval: pd.Timedelta | str | None = None,
 ) -> SubtimeframeContext:
     """Validate strict lower-timeframe coverage and reconcile parent OHLC."""
     if subtimeframe is None:
@@ -403,16 +429,13 @@ def prepare_subtimeframe_context(
         if not timestamps.is_monotonic_increasing:
             raise ValueError(f"{label} data timestamps must be sorted")
 
-    parent_interval = infer_base_interval(parent["timestamp"])
-    sub_interval = infer_base_interval(subtimeframe["timestamp"])
-    if parent_interval is None or sub_interval is None:
-        raise ValueError("parent and subtimeframe data require at least two timestamp intervals")
-    if sub_interval <= pd.Timedelta(0) or sub_interval >= parent_interval:
-        raise ValueError("subtimeframe interval must be strictly finer than parent interval")
-    ratio = parent_interval / sub_interval
-    expected_count = int(ratio)
-    if ratio != expected_count:
-        raise ValueError("parent interval must be an exact multiple of subtimeframe interval")
+    parent_interval, sub_interval = _resolve_bar_intervals(
+        parent,
+        subtimeframe,
+        parent_interval=parent_interval,
+        sub_interval=sub_interval,
+    )
+    expected_count = int(parent_interval / sub_interval)
 
     parent_reset = parent.reset_index(drop=True)
     sub_reset = subtimeframe.reset_index(drop=True)
@@ -474,12 +497,18 @@ def prepare_subtimeframe_conservative_context(
     subtimeframe: pd.DataFrame | None,
     *,
     tick_size: float,
+    parent_interval: pd.Timedelta | str | None = None,
+    sub_interval: pd.Timedelta | str | None = None,
 ) -> SubtimeframeContext:
     """Prepare replayable groups and retain SL-first fallback reasons.
 
     Unlike :func:`prepare_subtimeframe_context`, incomplete or misaligned
     lower-bar groups are not replayed. Every replayed group still satisfies the
     exact strict R12 contract; invalid OHLC or an OHLC mismatch remains fatal.
+
+    Optional ``parent_interval`` / ``sub_interval`` overrides (Timedelta or
+    compact labels like ``15s`` / ``1min``) are required for sparse 15s-primary
+    sources where gap-mode inference would coarsen to the parent interval.
     """
     if subtimeframe is None:
         raise ValueError("intrabar_model='subtimeframe_conservative' requires subtimeframe_data")
@@ -495,16 +524,13 @@ def prepare_subtimeframe_conservative_context(
         if not timestamps.is_monotonic_increasing:
             raise ValueError(f"{label} data timestamps must be sorted")
 
-    parent_interval = infer_base_interval(parent["timestamp"])
-    sub_interval = infer_base_interval(subtimeframe["timestamp"])
-    if parent_interval is None or sub_interval is None:
-        raise ValueError("parent and subtimeframe data require at least two timestamp intervals")
-    if sub_interval <= pd.Timedelta(0) or sub_interval >= parent_interval:
-        raise ValueError("subtimeframe interval must be strictly finer than parent interval")
-    ratio = parent_interval / sub_interval
-    expected_count = int(ratio)
-    if ratio != expected_count:
-        raise ValueError("parent interval must be an exact multiple of subtimeframe interval")
+    parent_interval, sub_interval = _resolve_bar_intervals(
+        parent,
+        subtimeframe,
+        parent_interval=parent_interval,
+        sub_interval=sub_interval,
+    )
+    expected_count = int(parent_interval / sub_interval)
 
     parent_reset = parent.reset_index(drop=True)
     sub_reset = subtimeframe.reset_index(drop=True)
