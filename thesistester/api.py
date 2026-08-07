@@ -1750,6 +1750,8 @@ def run_grid(
     signal_settings: Mapping[str, Any] | None = None,
     last_signal_setup: Mapping[str, Any] | None = None,
     subtimeframe_data: pd.DataFrame | None = None,
+    parent_interval: pd.Timedelta | str | None = None,
+    sub_interval: pd.Timedelta | str | None = None,
 ) -> GridResult:
     """Run the UI grid composition, including one shared OTF pre-filter."""
     inst = _instrument(instrument)
@@ -1783,6 +1785,8 @@ def run_grid(
         cooldown_bars_after_exit=int(settings["cooldown_bars_after_exit"]),
         intrabar_model=str(settings["intrabar_model"]),
         subtimeframe_data=subtimeframe_data,
+        parent_interval=parent_interval,
+        sub_interval=sub_interval,
         breakeven_after_r_values=list(settings["breakeven_after_r_values"]),
         trailing_after_r_values=list(settings["trailing_after_r_values"]),
         trailing_distance_ticks_values=list(settings["trailing_distance_ticks_values"]),
@@ -1811,6 +1815,8 @@ def run_walk_forward(
     execution_config: Mapping[str, Any] | None = None,
     otf_config: Mapping[str, Any] | None = None,
     subtimeframe_data: pd.DataFrame | None = None,
+    parent_interval: pd.Timedelta | str | None = None,
+    sub_interval: pd.Timedelta | str | None = None,
 ) -> WalkForwardAnalysisResult:
     """Run R14 session/bar WFA with optional robustness matrix."""
     inst = _instrument(instrument)
@@ -1849,6 +1855,8 @@ def run_walk_forward(
         otf_config=dict(otf_config or {}),
         intrabar_model=str(execution.get("intrabar_model", "sl_first")),
         subtimeframe_data=subtimeframe_data,
+        parent_interval=parent_interval,
+        sub_interval=sub_interval,
         breakeven_after_r_values=list(execution.get("breakeven_after_r_values", [None])),
         trailing_after_r_values=list(execution.get("trailing_after_r_values", [None])),
         trailing_distance_ticks_values=list(
@@ -2675,6 +2683,8 @@ def run_experiment(
             signal_settings=signal_result["signal_settings"],
             last_signal_setup=setup,
             subtimeframe_data=subtimeframe_data,
+            parent_interval=declared_parent_interval,
+            sub_interval=declared_sub_interval,
         )
         state.update(
             {
@@ -2731,6 +2741,8 @@ def run_experiment(
                 execution_config=execution_for_wfa,
                 otf_config=setup.get("otf_filter"),
                 subtimeframe_data=subtimeframe_data,
+                parent_interval=declared_parent_interval,
+                sub_interval=declared_sub_interval,
             )
         )
 

@@ -476,6 +476,8 @@ def run_walk_forward_sl_tp(
     otf_history_policy: str | None = None,
     intrabar_model: str = "sl_first",
     subtimeframe_data: pd.DataFrame | None = None,
+    parent_interval: pd.Timedelta | str | None = None,
+    sub_interval: pd.Timedelta | str | None = None,
     breakeven_after_r_values: list[float | None] | None = None,
     trailing_after_r_values: list[float | None] | None = None,
     trailing_distance_ticks_values: list[float | None] | None = None,
@@ -664,6 +666,8 @@ def run_walk_forward_sl_tp(
             cooldown_bars_after_exit=cooldown_bars_after_exit,
             intrabar_model=intrabar_model,
             subtimeframe_data=train_subtimeframe,
+            parent_interval=parent_interval,
+            sub_interval=sub_interval,
             breakeven_after_r_values=breakeven_after_r_values,
             trailing_after_r_values=trailing_after_r_values,
             trailing_distance_ticks_values=trailing_distance_ticks_values,
@@ -784,6 +788,8 @@ def run_walk_forward_sl_tp(
             cooldown_bars_after_exit=cooldown_bars_after_exit,
             intrabar_model=intrabar_model,
             subtimeframe_data=test_subtimeframe,
+            parent_interval=parent_interval,
+            sub_interval=sub_interval,
             breakeven_after_r=(
                 None
                 if pd.isna(best_train.get("breakeven_after_r"))

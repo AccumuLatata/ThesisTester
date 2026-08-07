@@ -456,6 +456,8 @@ if run_wfo:
                                     intrabar_policy.get("intrabar_model", "sl_first")
                                 ),
                                 subtimeframe_data=st.session_state.get("subtimeframe_data"),
+                                parent_interval=st.session_state.get("base_interval"),
+                                sub_interval=st.session_state.get("subtimeframe_interval"),
                                 breakeven_after_r_values=exit_management_policy.get(
                                     "breakeven_after_r_values", [None]
                                 ),
