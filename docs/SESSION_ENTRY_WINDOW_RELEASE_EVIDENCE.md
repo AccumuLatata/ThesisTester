@@ -74,7 +74,7 @@ python3 -m pytest -q \
   tests/test_entry_window_admission.py
 ```
 
-**Result:** `30 passed in 0.42s`
+**Result:** `31 passed in 0.42s` (re-verified after C2 Focus bucket-option fix)
 
 ### 4.2 API / Promote / Grid-WFA inherit / Setup-export-assistant
 
@@ -86,7 +86,7 @@ python3 -m pytest -q \
   tests/test_entry_window_sw6.py
 ```
 
-**Result:** `40 passed in 0.52s`
+**Result:** `41 passed in 0.51s` (re-verified after Focus provenance fail-closed export fix)
 
 ### 4.3 Golden gates (legacy + enabled-window + OTF isolation)
 
