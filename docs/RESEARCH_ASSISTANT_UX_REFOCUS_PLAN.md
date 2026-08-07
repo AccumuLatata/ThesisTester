@@ -2,7 +2,8 @@
 
 **Document type:** Implementation contract (RUX-series) — **single source of truth for Research Assistant page layout/prominence**
 **Status:** 🟡 In progress — RUX-0 implemented (contract + rendered-structure
-baseline); RUX-1…RUX-5 specified, not implemented
+baseline); RUX-1 implemented ([#301](https://github.com/AccumuLatata/ThesisTester/pull/301));
+RUX-2…RUX-5 specified, not implemented
 **Date:** 2026-08-07
 **Owner surface:** `pages/14_Research_Assistant.py` + presentation-only helpers in
 `thesistester/assistant/` (`ux.py` new, `workspace.py`, `llm.py` settings loader)
@@ -382,7 +383,7 @@ enabled, so a local `config/assistant.voice.override.toml` cannot flip results.
 
 ---
 
-### 5.2 RUX-1 — UX foundation *(no visible change)*
+### 5.2 RUX-1 — UX foundation *(no visible change)* — ✅ **Implemented** ([#301](https://github.com/AccumuLatata/ThesisTester/pull/301))
 
 **Goal:** introduce mode/nav plumbing and the navigation-phrase single source of
 truth without changing a single rendered pixel.

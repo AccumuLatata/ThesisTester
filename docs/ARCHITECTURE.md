@@ -399,6 +399,16 @@ The Research Assistant page stages only these additive `assistant_*` keys
 | `assistant_voice_help_session_id` | Last Help PTT `voice_session_id` |
 | `assistant_voice_last_turn` | Last PTT public diagnostics (`stt_text`, path, grounding, …) |
 | `assistant_voice_playback` | Ephemeral last TTS `{mime, bytes, channel, session_id}` for `st.audio` (not durable `store_audio`) |
+| `assistant_ux_mode` | RUX-1 mode preselection (`discuss` \| `help` \| `draft`); doubles as the mode-selector widget key |
+| `assistant_discuss_run_picker` | RUX-1 Discuss-mode run-id selectbox value (`str \| None`); doubles as the picker widget key |
+
+`[assistant.ux]` in `config/assistant.toml` holds `default_mode` (default
+`"discuss"`). `load_assistant_ux_settings()` in
+`thesistester/assistant/llm.py` returns that value; missing section or unknown
+mode → `"discuss"`. Navigation fragments for page / Help remediation captions
+live in `thesistester/assistant/ux.py` (`DISCUSS_NAV_HINT`, `DISCUSS_NAV_SHORT`,
+`HELP_NAV_HINT`, `ADVANCED_*_NAV_HINT`) — see
+`docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` §1.3.
 
 Realtime voice review (VA-series; post-RQ / post-HC) must add only namespaced
 `assistant_voice_*` keys in the same PR that introduces them; see
@@ -495,10 +505,15 @@ Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_results_qa_deep_link`, `assistant_results_qa_force_expand`,
 `assistant_bundle_handoff`, `assistant_flash`,
 `assistant_voice_results_sessions`, `assistant_voice_help_session_id`,
-`assistant_voice_last_turn`, `assistant_voice_playback`)
-so draft/validation/hydration/handoff/flash/results/help/deep-link/voice staging cannot leak.
-`clear_thesis_scoped_state` also deletes ephemeral Streamlit widget keys
-prefixed `results-qa-input-` / `product-help-input` /
+`assistant_voice_last_turn`, `assistant_voice_playback`,
+`assistant_ux_mode`, `assistant_discuss_run_picker`)
+so draft/validation/hydration/handoff/flash/results/help/deep-link/voice/UX staging cannot leak.
+`clear_thesis_scoped_state` hardcodes each reset (it does **not** iterate the
+tuple). For the RUX mode/picker keys it pops the Streamlit widget keys then
+rewrites defaults via `reset_ux_mode_and_picker` (`assistant_ux_mode` ←
+`load_assistant_ux_settings().default_mode`, picker ← `None`) so a stale
+selectbox option cannot survive a thesis switch. It also deletes ephemeral
+Streamlit widget keys prefixed `results-qa-input-` / `product-help-input` /
 `assistant_clear_results-qa-input-` / `voice-results-audio-` /
 `voice-help-audio`, plus `assistant_clear_product_help_input`, so
 Discuss/Help text-input clear flags and PTT audio widgets cannot revive a

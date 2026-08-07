@@ -160,6 +160,8 @@ def test_assistant_session_keys_cover_documented_staging_surface():
     assert "assistant_voice_help_session_id" in ASSISTANT_SESSION_KEYS
     assert "assistant_voice_last_turn" in ASSISTANT_SESSION_KEYS
     assert "assistant_voice_playback" in ASSISTANT_SESSION_KEYS
+    assert "assistant_ux_mode" in ASSISTANT_SESSION_KEYS
+    assert "assistant_discuss_run_picker" in ASSISTANT_SESSION_KEYS
     assert "assistant_bundle_handoff" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_flash" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_results_qa_drafts" in THESIS_SCOPED_STAGING_KEYS
@@ -171,6 +173,8 @@ def test_assistant_session_keys_cover_documented_staging_surface():
     assert "assistant_voice_help_session_id" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_voice_last_turn" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_voice_playback" in THESIS_SCOPED_STAGING_KEYS
+    assert "assistant_ux_mode" in THESIS_SCOPED_STAGING_KEYS
+    assert "assistant_discuss_run_picker" in THESIS_SCOPED_STAGING_KEYS
     assert set(THESIS_SCOPED_STAGING_KEYS).issubset(ASSISTANT_SESSION_KEYS)
 
 
@@ -465,7 +469,13 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "load_results_qa_settings(" in source
     assert "st.text_input(" in source
     assert "Send results question" in source
-    assert "Advanced → Linked runs" in source
+    # RUX-1: nav fragments live in assistant.ux; page imports the constants.
+    assert "DISCUSS_NAV_HINT" in source
+    assert "DISCUSS_NAV_SHORT" in source
+    assert "from thesistester.assistant.ux import" in source
+    from thesistester.assistant.ux import DISCUSS_NAV_SHORT
+
+    assert DISCUSS_NAV_SHORT == "Advanced → Linked runs"
     assert "Raw transcripts and JSON for audit only" in source
     assert "Open research pages" not in source
     assert "st.page_link(" not in source
@@ -1016,6 +1026,8 @@ def test_clear_thesis_scoped_state_helper():
     assert "assistant_clear_results-qa-input-run_a" not in state
     assert state["assistant_bundle_handoff"] is None
     assert state["assistant_run_explanations"] == {"r1": "keep"}
+    assert state["assistant_ux_mode"] == "discuss"
+    assert state["assistant_discuss_run_picker"] is None
 
 
 def test_apply_consumed_classic_focus_persists_results_qa_deep_link():

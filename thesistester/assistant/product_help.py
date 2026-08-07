@@ -18,6 +18,7 @@ from thesistester.assistant.llm_explainer import (
     _extract_number_tokens,
     _normalize_number_token,
 )
+from thesistester.assistant.ux import DISCUSS_NAV_HINT, DISCUSS_NAV_SHORT
 
 PRODUCT_HELP_CHANNEL = "product_help"
 
@@ -51,7 +52,7 @@ _SYSTEM_PROMPT = (
     'section="digest" (never doc_id="registry_digest"). Do not invent product '
     "features, capabilities, or run metrics. Do not answer the user's backtest "
     "or grid performance for a specific completed run — if asked, say to use "
-    "Discuss results under Advanced → Linked runs. Prefer number-free followups. "
+    f"Discuss results under {DISCUSS_NAV_SHORT}. Prefer number-free followups. "
     "Any number you include in summary/caveats/followups must appear as the same "
     "number token in the attached corpus texts or registry digest JSON "
     "(e.g. reply token 3 is not grounded by corpus 30)."
@@ -146,7 +147,7 @@ _REMEDIATION_SUMMARY = (
     "Help answers how ThesisTester features work from documentation and the "
     "capability registry. Questions about a completed run's performance "
     "(best SL/TP, expectancy, entry windows, trade counts) belong in "
-    "Discuss results under Advanced → Linked runs for that run."
+    f"Discuss results under {DISCUSS_NAV_SHORT} for that run."
 )
 
 
@@ -205,7 +206,7 @@ def remediation_help_reply() -> HelpReply:
         summary=_REMEDIATION_SUMMARY,
         caveats=("Help does not load run evidence packets or invent performance numbers.",),
         citations=(),
-        followups=("Open Advanced → Linked runs → Discuss results for a completed run.",),
+        followups=(f"Open {DISCUSS_NAV_HINT} for a completed run.",),
         remediation=True,
     )
 
