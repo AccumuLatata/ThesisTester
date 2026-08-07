@@ -473,7 +473,7 @@ Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; ho
 |---|---|---|
 | SW0 Plan + golden confirmation | Merged | [#286](https://github.com/AccumuLatata/ThesisTester/pull/286) |
 | SW1 Post-hoc Focus | Merged | [#292](https://github.com/AccumuLatata/ThesisTester/pull/292) |
-| SW2 Engine admission + C7 + golden | In progress | — |
+| SW2 Engine admission + C7 + golden | Open | [#293](https://github.com/AccumuLatata/ThesisTester/pull/293) |
 | SW2b Cutoff skip audit + honesty | Optional / not started | — |
 | SW3 API + Backtest Admit UI | Not started | — |
 | SW4 Promote handoff UX | Not started | — |
