@@ -44,7 +44,7 @@ git baseline `2181e53` plus SW7 hardening commits on this branch.
 | Criterion | Result | Evidence |
 |---|---|---|
 | C1 shared RTH vocabulary | ✅ | `entry_window_policy.RTH_SEGMENTS` / `RTH_SEGMENT_LABELS`; `test_c1_shared_rth_vocabulary` |
-| C2 entry-bar membership (Focus + Admit) | ✅ | Engine entry-bar path; Focus UI forces `entry_timestamp`; `test_c2_focus_membership_uses_entry_not_exit_timestamps` |
+| C2 entry-bar membership (Focus + Admit) | ✅ | Engine entry-bar path; Focus UI forces `entry_timestamp`; Focus options via `entry_focus_bucket_values`; `test_c2_focus_membership_uses_entry_not_exit_timestamps`; `test_c2_focus_bucket_values_ignore_exit_chart_partition` |
 | C3 multi-segment OR / empty invalid | ✅ | Normalize + filter tests in `test_session_focus` / admission |
 | C4 half-open clock / no overnight wrap | ✅ | `test_normalize_clock_range_no_wrap`, `test_filter_clock_range_half_open` |
 | C5 TZ law | ✅ | RTH via `entry_window_exchange_tz`; Promote writes TZ; SW3/SW5 C5 tests |
@@ -111,7 +111,7 @@ python3 -m pytest -q tests/
 
 | Surface | Focus (post-hoc) | Admit (re-sim) |
 |---|---|---|
-| Time Analysis | Focus badge + honesty + C8 equity caveat; membership uses **entry** timestamps (C2) | Promote arms only; no auto-run |
+| Time Analysis | Focus badge + honesty + C8 equity caveat; membership **and** bucket options use **entry** timestamps (C2) | Promote arms only; no auto-run |
 | Backtest | Overlay KPIs labeled post-hoc | Admit toggle / armed vs applied badges; skip split |
 | Grid / Validation | Never auto-inherited | Fixed Admit constraint warning |
 | Report / Bundles | Provenance + `is_not_admit` / honesty notes | Admit window + promote provenance exported |

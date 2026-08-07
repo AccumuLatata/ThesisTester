@@ -1158,7 +1158,7 @@ Summary looks poor. Optional SW2b (cutoff skip audit) remains deferred.
 | SW4 | Time Analysis Promote + Focus↔Admit handoff ✅ |
 | SW5 | Grid + Validation/WFA/sensitivity inherit window (fixed constraint) ✅ |
 | SW6 | Setup persistence, export, assistant honesty ✅ |
-| SW7 | Hardening + release evidence ← next ([#298](https://github.com/AccumuLatata/ThesisTester/pull/298)) |
+| SW7 | Hardening + release evidence ✅ ([#298](https://github.com/AccumuLatata/ThesisTester/pull/298)) |
 
 **Regression posture:** additive, default-off; legacy `trades_legacy` golden
 must stay value-identical; Focus and Admit must never be conflated in UI copy;

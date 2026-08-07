@@ -152,6 +152,37 @@ def test_c2_focus_membership_uses_entry_not_exit_timestamps():
     assert by_exit.empty
 
 
+def test_c2_focus_bucket_values_ignore_exit_chart_partition():
+    """Focus options must list entry-time buckets, not exit-grouped chart rows."""
+    from thesistester.analytics.entry_window import entry_focus_bucket_values
+    from thesistester.analytics.time_analysis import add_time_buckets, summarize_by_group
+
+    tz = "America/New_York"
+    trades = pd.DataFrame(
+        {
+            "trade_id": [0, 1],
+            "signal_id": [1, 2],
+            "entry_timestamp": pd.to_datetime(["2026-06-02 09:45", "2026-06-02 10:15"]).tz_localize(
+                tz
+            ),
+            "exit_timestamp": pd.to_datetime(["2026-06-02 10:15", "2026-06-02 10:45"]).tz_localize(
+                tz
+            ),
+            "r_multiple": [1.0, 2.0],
+            "direction": ["long", "long"],
+        }
+    )
+    exit_grouped = summarize_by_group(
+        add_time_buckets(trades, timestamp_col="exit_timestamp", exchange_tz=tz),
+        "entry_rth_segment",
+        min_trades=1,
+    )
+    # Exit chart shows only morning (both exits), hiding the open-30m entry bucket.
+    assert list(exit_grouped["entry_rth_segment"]) == ["rth_morning"]
+    focus_values = entry_focus_bucket_values(trades, "entry_rth_segment", exchange_tz=tz)
+    assert set(focus_values) == {"rth_open_30m", "rth_morning"}
+
+
 def test_filter_rth_open_30m_and_multi_segment_or():
     trades = _make_trades(
         [

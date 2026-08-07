@@ -225,6 +225,29 @@ def test_build_entry_window_metadata_invalid_window_fail_closed():
     assert meta["admit"]["enabled"] is None
 
 
+def test_build_entry_window_metadata_invalid_focus_provenance_fail_closed():
+    """Raw provenance.enabled must not mark Focus available without a valid window."""
+    meta = build_entry_window_metadata(
+        {
+            "focus_provenance": {
+                "mode": "focus",
+                "entry_window": {
+                    "enabled": True,
+                    "mode": "rth_segments",
+                    "rth_segments": [],
+                    "timezone": TZ,
+                },
+                "trade_count_before": 10,
+                "trade_count_after": 0,
+            }
+        }
+    )
+    assert meta["available"] is False
+    assert meta["focus"]["enabled"] is False
+    assert meta["focus"]["entry_window"] is None
+    assert meta["focus"]["label"] is None
+
+
 def test_incomplete_setup_entry_window_draft_fails_closed_on_save():
     """Setup Builder may attach a raw invalid draft; validate must block Save."""
     draft = {

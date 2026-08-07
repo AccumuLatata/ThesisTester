@@ -15,7 +15,7 @@ from thesistester.analytics.metrics import (
     summarize_trades,
     summarize_trades_by_direction,
 )
-from thesistester.analytics.time_analysis import add_time_buckets
+from thesistester.analytics.time_analysis import add_time_buckets, summarize_by_group
 from thesistester.entry_window_policy import (
     RTH_SEGMENT_LABELS,
     RTH_SEGMENTS,
@@ -25,6 +25,13 @@ from thesistester.entry_window_policy import (
     format_entry_window_label,
     normalize_entry_window,
     rth_segment_for_minute,
+)
+
+# Focus / Promote UI may select only these Time Analysis group columns.
+FOCUSABLE_GROUP_COLS = (
+    "entry_rth_segment",
+    "entry_hour_bucket",
+    "entry_30min_bucket",
 )
 
 FOCUS_HONESTY_BANNER = (
@@ -69,6 +76,41 @@ def partition_skip_counts(skipped_signals: pd.DataFrame | None) -> dict[str, int
         "outside_entry_window": window_n,
         "other": total - window_n,
     }
+
+
+def entry_focus_bucket_values(
+    trades: pd.DataFrame | None,
+    group_col: str,
+    *,
+    exchange_tz: str = "America/New_York",
+    bucket_tz: str | None = None,
+) -> list[str]:
+    """Return Focus/Promote bucket labels from **entry**-time bucketing (C2).
+
+    Time Analysis charts may group by ``exit_timestamp`` while still labeling
+    columns ``entry_*``. Focus/Promote options must not reuse that exit
+    partition — membership and Promote sample counts always use entry time.
+    """
+    col = str(group_col).strip()
+    if col not in FOCUSABLE_GROUP_COLS:
+        return []
+    if trades is None or not isinstance(trades, pd.DataFrame) or trades.empty:
+        return []
+    if "entry_timestamp" not in trades.columns:
+        return []
+    bucketed = add_time_buckets(
+        trades,
+        timestamp_col="entry_timestamp",
+        exchange_tz=exchange_tz,
+        bucket_tz=bucket_tz or exchange_tz,
+        session_tz=exchange_tz,
+    )
+    if col not in bucketed.columns:
+        return []
+    grouped = summarize_by_group(bucketed, group_cols=[col], min_trades=1)
+    if grouped.empty or col not in grouped.columns:
+        return []
+    return grouped[col].dropna().astype(str).drop_duplicates().tolist()
 
 
 def filter_trades_by_entry_window(
@@ -360,6 +402,7 @@ __all__ = [
     "ADMIT_ARMED_STATUS_BADGE",
     "ADMIT_HONESTY_BANNER",
     "ENTRY_WINDOW_FIXED_CONSTRAINT_WARNING",
+    "FOCUSABLE_GROUP_COLS",
     "FOCUS_EQUITY_CAVEAT",
     "FOCUS_HONESTY_BANNER",
     "FOCUS_STATUS_BADGE",
@@ -372,6 +415,7 @@ __all__ = [
     "clear_armed_entry_window",
     "consume_armed_entry_window_after_run",
     "disabled_entry_window",
+    "entry_focus_bucket_values",
     "entry_window_contains",
     "entry_window_from_bucket",
     "filter_trades_by_entry_window",

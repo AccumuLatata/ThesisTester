@@ -300,9 +300,9 @@ SW0  Plan lock + golden confirmation
             │         ├─► SW5  Grid + Validation/WFA/sensitivity inherit
             │         │         (incl. overfitting._SIMULATION_KWARGS)
             │         │
-            │         └─► SW6  Setup normalize + Report/Bundles + Assistant
+            │                     └─► SW6  Setup normalize + Report/Bundles + Assistant
             │
-            └─► SW7  Hardening + release evidence  ← NEXT
+            └─► SW7  Hardening + release evidence
 ```
 
 SW1 may land in parallel with SW2 design after SW0. SW3+ require SW2. **Do not start SW2 until C7 fixture design is clear; do not merge cutoff audit without SW2b honesty scope.**
@@ -447,7 +447,7 @@ Keyword-only passthrough on `run_sl_tp_grid`, walk-forward, and **`overfitting._
 
 ---
 
-### SW6 — Setup persistence, Report/Bundles, Assistant honesty  ← **implement next**
+### SW6 — Setup persistence, Report/Bundles, Assistant honesty
 
 Additive setup key + normalize/default (OTF pattern). Export provenance. Assistant must not claim edge from Focus alone.
 
@@ -468,15 +468,16 @@ Additive setup key + normalize/default (OTF pattern). Export provenance. Assista
 
 ---
 
-### SW7 — Hardening + release evidence  ← **implement next**
+### SW7 — Hardening + release evidence
 
 Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; honesty review.
 
 **Scope.**
 
 - [x] Parity audit vs C1–C9; harden C2 Focus to always use `entry_timestamp`.
+- [x] Focus/Promote bucket options derived from entry-time bucketing (not exit chart rows).
 - [x] C9 joint admission test (`entry_window` AND `no_new_entries_after`; at-cutoff admits).
-- [x] Export honesty micro-fix (Focus label from provenance fallback).
+- [x] Export honesty micro-fix (Focus label from provenance fallback; invalid prov fail-closed).
 - [x] Docs honesty (USER_GUIDE setup non-auto-wire; ASSUMPTIONS C2 entry-time Focus).
 - [x] Goldens green + recorded verification suites (legacy / enabled-window / full `tests/`).
 - [x] `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md` engineering sign-off.
@@ -550,7 +551,7 @@ Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; ho
 | SW4 Promote handoff UX | Merged | [#295](https://github.com/AccumuLatata/ThesisTester/pull/295) |
 | SW5 Grid + Validation inheritance | Merged | [#296](https://github.com/AccumuLatata/ThesisTester/pull/296) |
 | SW6 Persistence + export + assistant | Merged | [#297](https://github.com/AccumuLatata/ThesisTester/pull/297) |
-| SW7 Hardening + release evidence | Open | [#298](https://github.com/AccumuLatata/ThesisTester/pull/298) |
+| SW7 Hardening + release evidence | Open (this PR) | [#298](https://github.com/AccumuLatata/ThesisTester/pull/298) |
 
 ---
 

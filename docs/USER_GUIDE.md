@@ -343,7 +343,7 @@ Focus summary, post-hoc subset, Promote to Admit
 |---|---|---|
 | `Display/export timezone` | Labels for display/export | Not the engine’s session clock by itself |
 | `Time bucket timezone` | Exchange/session vs display TZ for buckets | Mixing TZ bases confuses “best hour” stories |
-| `Timestamp basis` | `entry_timestamp` or `exit_timestamp` | Exit-based “entry timing” claims are wrong |
+| `Timestamp basis` | `entry_timestamp` or `exit_timestamp` | Exit basis changes charts only; Focus/Promote still use entry-time buckets (C2) |
 | `Primary grouping` / optional secondary | How rows are aggregated | Tiny groups look dramatic |
 | `Minimum trades warning threshold` | Soft warning for thin buckets | Ignoring it invites noise |
 | `Metric for chart / heatmap` | Which KPI to plot | Charts ≠ causation |

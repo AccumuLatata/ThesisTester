@@ -431,7 +431,8 @@ def test_c9_entry_window_and_cutoff_both_apply():
     assert list(joint.skipped_signals["signal_id"]) == [4]
     assert list(joint.skipped_signals["skip_reason"]) == ["outside_entry_window"]
 
-    # Strict `>` cutoff: entry at 09:50 still admits; 09:51 is silent-skipped.
+    # Strict `>` cutoff: touch signal at 09:49 → entry 09:50 admits;
+    # signal at 09:50 → entry 09:51 is silent-skipped (SW2b: no skip audit yet).
     cutoff = simulate_trades(
         df,
         pd.DataFrame([_signal(2, idx_at), _signal(3, idx_after_cut)]),
@@ -442,5 +443,6 @@ def test_c9_entry_window_and_cutoff_both_apply():
         ),
     )
     assert list(cutoff.trades["signal_id"]) == [2]
+    assert list(cutoff.trades["entry_timestamp"]) == [pd.Timestamp("2026-06-02 09:50", tz=TZ)]
     assert 3 not in set(cutoff.trades["signal_id"])
     assert cutoff.skipped_signals.empty  # cutoff rejects are not audited yet (SW2b)
