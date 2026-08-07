@@ -206,6 +206,25 @@ def test_invalid_entry_window_raises():
         )
 
 
+def test_invalid_entry_window_timezone_raises_value_error():
+    df = _rth_morning_frame()
+    signals = pd.DataFrame([_signal(1, 0)])
+    with pytest.raises(ValueError, match="Invalid entry_window"):
+        simulate_trades(
+            df,
+            signals,
+            **_base_kwargs(
+                entry_window={
+                    "enabled": True,
+                    "mode": "clock_range",
+                    "start_time": "09:00",
+                    "end_time": "10:00",
+                    "timezone": "Not/AZone",
+                }
+            ),
+        )
+
+
 def test_c7_focus_equals_admit_under_allow_all():
     df = _rth_morning_frame()
     idxs = [
@@ -229,6 +248,65 @@ def test_c7_focus_equals_admit_under_allow_all():
 
     assert set(admit["signal_id"]) == set(focused["signal_id"])
     assert set(admit["signal_id"])  # non-empty sanity
+
+
+def test_c7_clock_range_naive_timestamps_use_exchange_tz():
+    """C5/C7: naive bars + session_timezone + non-exchange bucket TZ must agree.
+
+    Trade rows keep the original (possibly naive) ``entry_timestamp``. Admit
+    localizes via ``session_timezone`` before membership; Focus must treat
+    naive stamps as exchange/session wall clocks, not as the bucket TZ.
+    """
+    stamps = pd.date_range("2026-06-02 09:40", periods=90, freq="1min")  # naive
+    rows = []
+    price = 21000.0
+    for ts in stamps:
+        rows.append(
+            {
+                "timestamp": pd.Timestamp(ts),
+                "open": price,
+                "high": price + 2.0,
+                "low": price - 2.0,
+                "close": price + 0.5,
+                "volume": 1000.0,
+            }
+        )
+        price += 0.25
+    df = pd.DataFrame(rows)
+
+    idxs = [
+        int(df.index[df["timestamp"] == pd.Timestamp(ts)][0])
+        for ts in (
+            "2026-06-02 09:44",  # entry 09:45 NY → 08:45 Chicago → outside [09:00,10:00) CHI
+            "2026-06-02 09:59",  # entry 10:00 NY → 09:00 Chicago → inside
+            "2026-06-02 10:14",  # entry 10:15 NY → 09:15 Chicago → inside
+            "2026-06-02 10:59",  # entry 11:00 NY → 10:00 Chicago → exclusive end
+        )
+    ]
+    signals = pd.DataFrame(
+        [
+            {
+                **_signal(i + 1, bar_index),
+                "timestamp": pd.Timestamp(df["timestamp"].iloc[bar_index]),
+            }
+            for i, bar_index in enumerate(idxs)
+        ]
+    )
+    window = entry_window_from_bucket(
+        "entry_hour_bucket",
+        "09:00",
+        exchange_tz=TZ,
+        bucket_tz="America/Chicago",
+    )
+
+    all_day = simulate_trades(df, signals, **_base_kwargs())
+    admit = simulate_trades(df, signals, **_base_kwargs(entry_window=window))
+    focused = filter_trades_by_entry_window(
+        all_day, window, exchange_tz=TZ, timestamp_col="entry_timestamp"
+    )
+
+    assert set(admit["signal_id"]) == set(focused["signal_id"]) == {2, 3}
+    assert all_day["entry_timestamp"].dt.tz is None
 
 
 def test_window_rejects_never_block_exposure():

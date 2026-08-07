@@ -29,10 +29,13 @@ from __future__ import annotations
 
 import pandas as pd
 
+# Explicit re-exports (C1 public vocabulary). Canonical bounds live in
+# ``thesistester.entry_window_policy`` so the engine can import without
+# analytics circular imports; keep these aliases stable for callers.
 from thesistester.entry_window_policy import (
-    RTH_SEGMENT_LABELS,
-    RTH_SEGMENTS,
-    rth_segment_for_minute,
+    RTH_SEGMENT_LABELS as RTH_SEGMENT_LABELS,
+    RTH_SEGMENTS as RTH_SEGMENTS,
+    rth_segment_for_minute as rth_segment_for_minute,
 )
 
 # ---------------------------------------------------------------------------

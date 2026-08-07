@@ -74,6 +74,19 @@ def test_normalize_clock_range_no_wrap():
         )
 
 
+def test_normalize_rejects_invalid_timezone():
+    with pytest.raises(ValueError, match="Invalid entry_window.timezone"):
+        normalize_entry_window(
+            {
+                "enabled": True,
+                "mode": "clock_range",
+                "start_time": "09:00",
+                "end_time": "10:00",
+                "timezone": "Not/AZone",
+            }
+        )
+
+
 def test_entry_window_from_bucket_mappings():
     seg = entry_window_from_bucket("entry_rth_segment", "rth_open_30m")
     assert seg["mode"] == "rth_segments"
@@ -88,6 +101,30 @@ def test_entry_window_from_bucket_mappings():
     half = entry_window_from_bucket("entry_30min_bucket", "09:30")
     assert half["start_time"] == "09:30"
     assert half["end_time"] == "10:00"
+
+
+def test_clock_range_naive_timestamp_localizes_as_exchange_tz():
+    """C5: naive 09:45 is NY wall clock, not Chicago, when bucket TZ differs."""
+    window = entry_window_from_bucket(
+        "entry_hour_bucket",
+        "09:00",
+        exchange_tz="America/New_York",
+        bucket_tz="America/Chicago",
+    )
+    naive = pd.Timestamp("2026-06-02 09:45:00")
+    aware_ny = pd.Timestamp("2026-06-02 09:45:00", tz="America/New_York")
+    # 09:45 NY == 08:45 Chicago → outside [09:00, 10:00) Chicago.
+    assert entry_window_contains(naive, window, exchange_tz="America/New_York") is False
+    assert entry_window_contains(aware_ny, window, exchange_tz="America/New_York") is False
+    # 10:15 NY == 09:15 Chicago → inside.
+    assert (
+        entry_window_contains(
+            pd.Timestamp("2026-06-02 10:15:00"),
+            window,
+            exchange_tz="America/New_York",
+        )
+        is True
+    )
 
 
 def test_filter_rth_open_30m_and_multi_segment_or():

@@ -403,7 +403,8 @@ def simulate_trades(
         Optional opt-in entry-time admission window (SW2). ``None`` /
         disabled preserves legacy all-day admission. When enabled, membership
         uses **entry-bar** local time (C2) via
-        :func:`~thesistester.analytics.entry_window.normalize_entry_window`.
+        :func:`~thesistester.entry_window_policy.normalize_entry_window`
+        (also re-exported from :mod:`thesistester.analytics.entry_window`).
         Rejected candidates never enter exposure competition (C6).
     intrabar_model:
         ``"sl_first"`` preserves legacy pessimistic behavior.

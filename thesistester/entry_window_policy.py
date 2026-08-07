@@ -7,6 +7,7 @@ without circular imports through ``analytics.grid``.
 from __future__ import annotations
 
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pandas as pd
 
@@ -24,6 +25,18 @@ RTH_SEGMENTS: tuple[tuple[int, int, str], ...] = (
 RTH_SEGMENT_LABELS: tuple[str, ...] = tuple(label for _, _, label in RTH_SEGMENTS)
 
 _VALID_MODES = frozenset({"rth_segments", "clock_range"})
+
+
+def _validate_iana_timezone(name: str, *, field_name: str) -> str:
+    """Return a stripped IANA timezone key or raise ``ValueError``."""
+    text = str(name).strip()
+    if not text:
+        raise ValueError(f"{field_name} must be a non-empty IANA timezone string.")
+    try:
+        ZoneInfo(text)
+    except (KeyError, ZoneInfoNotFoundError) as exc:
+        raise ValueError(f"Invalid {field_name} {text!r}.") from exc
+    return text
 
 
 def rth_segment_for_minute(minute: int) -> str:
@@ -81,6 +94,7 @@ def normalize_entry_window(
     exchange_tz: str = "America/New_York",
 ) -> dict[str, Any]:
     """Validate and normalize an entry-window config (C1–C5)."""
+    exchange_tz = _validate_iana_timezone(exchange_tz, field_name="exchange_tz")
     if entry_window is None:
         return disabled_entry_window(timezone=exchange_tz)
 
@@ -91,7 +105,7 @@ def normalize_entry_window(
     timezone = entry_window.get("timezone")
     if timezone is None or (isinstance(timezone, str) and not timezone.strip()):
         timezone = exchange_tz
-    timezone = str(timezone).strip()
+    timezone = _validate_iana_timezone(timezone, field_name="entry_window.timezone")
 
     if not enabled:
         return disabled_entry_window(timezone=timezone)
@@ -214,11 +228,22 @@ def entry_window_from_bucket(
     )
 
 
-def _local_timestamp(ts: Any, timezone: str) -> pd.Timestamp:
+def _as_timezone(ts: Any, timezone: str, *, naive_tz: str) -> pd.Timestamp:
+    """Convert *ts* to *timezone*, treating naive values as *naive_tz* wall clocks.
+
+    Matches ``add_time_buckets`` / C5: tz-naive timestamps are exchange/session
+    local times, never display/bucket TZ. Aware timestamps convert normally.
+    """
     stamp = pd.Timestamp(ts)
-    if stamp.tzinfo is None:
-        return stamp.tz_localize(timezone)
-    return stamp.tz_convert(timezone)
+    try:
+        if stamp.tzinfo is None:
+            stamp = stamp.tz_localize(naive_tz)
+        return stamp.tz_convert(timezone)
+    except (TypeError, ValueError, KeyError, ZoneInfoNotFoundError) as exc:
+        raise ValueError(
+            f"Invalid timezone for entry_window conversion "
+            f"(timezone={timezone!r}, naive_tz={naive_tz!r})."
+        ) from exc
 
 
 def entry_window_contains(
@@ -232,15 +257,16 @@ def entry_window_contains(
     if not window["enabled"]:
         return True
 
-    tz = str(window["timezone"] or exchange_tz)
-    stamp = _local_timestamp(local_ts, tz)
-    minute = int(stamp.hour) * 60 + int(stamp.minute)
-
+    # C5: naive stamps are exchange/session local; RTH always uses exchange TZ;
+    # clock_range uses the window/bucket TZ after that localization.
     if window["mode"] == "rth_segments":
-        session_stamp = _local_timestamp(local_ts, exchange_tz)
+        session_stamp = _as_timezone(local_ts, exchange_tz, naive_tz=exchange_tz)
         session_minute = int(session_stamp.hour) * 60 + int(session_stamp.minute)
         return rth_segment_for_minute(session_minute) in set(window["rth_segments"])
 
+    clock_tz = str(window["timezone"] or exchange_tz)
+    stamp = _as_timezone(local_ts, clock_tz, naive_tz=exchange_tz)
+    minute = int(stamp.hour) * 60 + int(stamp.minute)
     start_m = _parse_clock_to_minutes(str(window["start_time"]), field_name="start_time")
     end_m = _parse_clock_to_minutes(
         str(window["end_time"]), field_name="end_time", allow_end_of_day=True
