@@ -530,10 +530,12 @@ other than the last bar in the dataset.
   Cited `HH:MM` / `H:MM` clock bucket labels ground matching clock spans in
   narration as wholes without allowlisting component digits (so citing
   `"08:30"` does not launder bare `8` / `30`); hash/path/column-name strings
-  do not launder digits. Fractional rates accept `%` or word-form
-  (`60 percent` / `60 pct` ↔ `0.6`); bare `60` is not inferred from `0.6`.
-  Clock-like `H:MM percent` text does not rewrite minutes into a synthetic
-  percent token. Results Q&A claim paths are relative to the evidence packet
+  do not launder digits. Fractional rates accept `%` (including spaced `60 %`)
+  or word-form (`60 percent` / `60 pct` / `60 Prozent` ↔ `0.6`); bare `60` is
+  not inferred from `0.6`. European decimal commas in narration (`0,25`)
+  normalize to the cited float `0.25` as one token (component digits are not
+  allowlisted). Clock-like `H:MM percent` text does not rewrite minutes into a
+  synthetic percent token. Results Q&A claim paths are relative to the evidence packet
   root; accidental leading `evidence_packet.` / `packet.` prefixes are stripped
   repeatedly, and JSON array indices are supported
   (e.g. `results.time_grouped_summary.0.avg_r`). When provenance

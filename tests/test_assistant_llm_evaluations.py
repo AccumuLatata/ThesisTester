@@ -212,6 +212,71 @@ def test_explanation_accepts_percent_narration_of_fractional_claims():
     assert explanation.claims[0].value == 0.5
 
 
+def test_explanation_accepts_german_decimal_comma_and_prozent():
+    """Regression: German narration must not false-fail digit grounding.
+
+    Voice Discuss often mirrors the user's language. European ``0,25`` and
+    ``60 Prozent`` previously split/failed closed even when claims cited
+    ``0.25`` / ``0.6``.
+    """
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": (
+                    "Die Expectancy ist 0,25 und die Winrate beträgt 60 Prozent "
+                    "(auch 60 %)."
+                ),
+                "caveats": ["Nur In-Sample."],
+                "claims": [
+                    {
+                        "text": "Expectancy ist 0,25.",
+                        "path": "results.trade_summary.expectancy_r",
+                    },
+                    {
+                        "text": "Winrate ist 60 Prozent.",
+                        "path": "results.trade_summary.win_rate",
+                    },
+                ],
+            }
+
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={"trade_summary": {"expectancy_r": 0.25, "win_rate": 0.6}},
+        warnings=(),
+    )
+    explanation = explain_packet_with_llm(Client(), packet=packet)
+    assert explanation.claims[0].value == 0.25
+    assert explanation.claims[1].value == 0.6
+
+
+def test_explanation_decimal_comma_does_not_launder_component_digits():
+    """``0,25`` must ground as one token — not allowlist bare ``0`` / ``25``."""
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Expectancy is 0,25 and trade count is 25.",
+                "caveats": ["Invented trade count from decimal digits."],
+                "claims": [
+                    {
+                        "text": "Expectancy is 0,25.",
+                        "path": "results.trade_summary.expectancy_r",
+                    }
+                ],
+            }
+
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={"trade_summary": {"expectancy_r": 0.25, "trade_count": 10}},
+        warnings=(),
+    )
+    with pytest.raises(LLMEvidenceError, match="Uncited numerical claim"):
+        explain_packet_with_llm(Client(), packet=packet)
+
+
 def test_explanation_rejects_packet_caveat_numbers_in_summary():
     """Packet caveat numbers must not globally allowlist the whole narrative."""
 

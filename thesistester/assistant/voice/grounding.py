@@ -7,6 +7,8 @@ Allowlist policy mirrors C2 ``assert_llm_explanation_grounded``:
 - claim **values**: int/float plus pure numeric strings; cited ``HH:MM``
   clock labels ground matching spoken clock spans as wholes (component
   digits are not allowlisted) — not free-text claim/caveat/hash digits
+- European decimal commas (``0,25``) and ``Prozent`` / spaced ``%`` forms
+  follow the same C2 / RQ normalizers
 - tool results contribute int/float leaves only (not hash/run_id strings)
 
 VA-4 also formats speakable text (summary + short caveats; no claim-path

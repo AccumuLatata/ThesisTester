@@ -56,8 +56,9 @@ _SYSTEM_PROMPT = (
     "absent) and state the ranking metric, candidate set / eligible count, "
     "min_trades filter, and in-sample vs OOS status from the evidence. "
     "Do not invent rankings or choose a ranking metric. "
-    "Narrate fractional rates with a % sign or the word percent "
-    "(e.g. 60% for win_rate 0.6); bare 60 is not grounded from 0.6. "
+    "Narrate fractional rates with a % sign or the words percent/pct/Prozent "
+    "(e.g. 60% or 60 Prozent for win_rate 0.6); bare 60 is not grounded from 0.6. "
+    "Decimal commas are accepted for fractional claim values (e.g. 0,25 for 0.25). "
     "When evidence for the question is missing, say so in caveats and propose "
     "followups. Prefer number-free followups. Preserve uncertainty and caveats."
 )
