@@ -53,8 +53,9 @@ order is:
 
 Rendered evidence (AppTest, seeded thesis, no runs): open subheaders are
 `Assistant chat`, `Plan review`, `Specifications`, `Linked research runs`; the
-only unnested chat widget is the draft `st.chat_input`; Help is one of 15
-expanders.
+only unnested chat widget is the draft `st.chat_input`; Help is one of ~15
+expanders in a no-run AppTest render (more nested expanders appear once runs
+exist).
 
 The two jobs the page is actually valued for — **discussing completed runs** and
 **answering questions about the application** — are respectively the deepest and
@@ -117,25 +118,36 @@ classic-focus key shape all stay as frozen.
 
 ### 1.3 Navigation-phrase migration (single source of truth)
 
-The string `Advanced → Linked runs` is duplicated across page captions, the Help
-system prompt, Help remediation text, `USER_GUIDE`, and `ARCHITECTURE`:
+User-facing `Advanced → …` / Help-pointer strings live in page captions, Help
+system/remediation text, and allowlisted docs. **Exact inventory for RUX-1
+extraction** (byte-identical values; line numbers as of RUX-0):
 
-| File | Occurrences | Kind |
+| Constant | Current fragment (verbatim) | Call sites today |
 |---|---|---|
-| `pages/14_Research_Assistant.py` | 5 (lines ~447, 553, 592, plus Advanced→Plan review / Compare / Portfolio variants) | Captions / flash text |
-| `thesistester/assistant/product_help.py` | 3 (system-prompt instruction, `_REMEDIATION_SUMMARY`, remediation `followups`) | LLM-facing text |
-| `docs/USER_GUIDE.md` | 4 (allowlisted Help corpus body text) | User docs + Help evidence |
-| `docs/ARCHITECTURE.md`, `docs/ENGINEERING.md`, `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` | 6 | Engineering docs |
-| `tests/test_assistant_workspace.py` | 1 source guard | Test |
+| `DISCUSS_NAV_HINT` | `Advanced → Linked runs → Discuss results` | page L553; composed into `product_help` remediation `followups` L208 (`Open {hint} for a completed run.`) |
+| `DISCUSS_NAV_SHORT` | `Advanced → Linked runs` | page L592; `product_help` system prompt L54 + `_REMEDIATION_SUMMARY` L149 |
+| `HELP_NAV_HINT` | `Help / how it works below` | page L554 (`use {hint}.` inside the draft-chat caption) |
+| `ADVANCED_PLAN_NAV_HINT` | `Advanced → Plan review` | page L1497 |
+| `ADVANCED_COMPARE_NAV_HINT` | `Advanced → Compare completed runs` | page L2249, L2257 (two flashes, one fragment) |
+| `ADVANCED_PORTFOLIO_NAV_HINT` | `Advanced → Portfolio analysis` | page L2338 |
 
-**Freeze:** RUX-1 extracts these into named constants in a new
-`thesistester/assistant/ux.py` with **byte-identical** current values (pure
-refactor, zero behavior change). RUX-2 flips the constant values and updates
-docs/tests in the same PR. After RUX-1, no RUX PR may hand-write a navigation
-phrase at a call site.
+**Not extracted in RUX-1** (left as-is until RUX-2 docs pass):
 
-`product_help.py` is otherwise off-limits to RUX: only the three string
-constants become imports; prompt structure, grounding, and remediation logic are
+- Page **comment** L447 (`Advanced → Linked-run` — not user-facing)
+- `docs/USER_GUIDE.md` / `ARCHITECTURE.md` / `ENGINEERING.md` /
+  `RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` navigation sentences (updated in
+  RUX-2 when the layout flips; USER_GUIDE bodies are Help corpus evidence)
+- `tests/test_assistant_workspace.py` source guard (rewritten in RUX-2)
+
+**Freeze:** RUX-1 lands the six constants above in `thesistester/assistant/ux.py`
+and substitutes **only** the page + `product_help.py` call sites listed in the
+table. Values stay byte-identical (pure refactor). RUX-2 flips the Discuss/Help
+constant values and updates docs/tests in the same PR. After RUX-1, no RUX PR
+may hand-write a navigation phrase at a page or `product_help` call site —
+import the constant.
+
+`product_help.py` is otherwise off-limits to RUX: only the three Discuss-nav
+strings become imports; prompt structure, grounding, and remediation logic are
 untouched.
 
 ---
@@ -163,7 +175,7 @@ What do you want to do?   [ Discuss runs | Help | Draft thesis ]     ← new, se
    └──────────────────────────────────────────────────────────────┘
    [ Ask about this run                          ] [Send results question]   MOVED, keys identical
    Voice discuss (push-to-talk) / (realtime)                        MOVED, keys identical
-   Secondary: [Explain run] [Open exact run in Backtest] [Restore bundle]    reused callbacks
+   Secondary: [Explain run] [Open exact run in Backtest] [Restore]  MOVED from Linked run
    empty state → "No completed thesis-recorded run yet. Run the classic path and
                   use Record and discuss this run on Backtest."
 
@@ -173,14 +185,17 @@ What do you want to do?   [ Discuss runs | Help | Draft thesis ]     ← new, se
 ── mode = Draft thesis (optional) ───────────────────────────────────
    Assistant chat  (same caption, thread, page-level chat_input)         DEMOTED from hero
 
-▸ Advanced: draft, runs & compare              (collapsed, all modes)  internals unchanged
+▸ Advanced: draft, runs & compare              (collapsed, all modes)
     How to start · Structured controls · Reuse saved setup
     Draft research plan / Validate executable RunSpec
     Plan review → Confirm validated RunSpec
     Specifications → Run confirmed research
-    Linked research runs → Explain · Page summaries (JSON) · Propose classic
-                           page change · report/artifact · open/restore · Debug: provenance
-                           (Discuss + voice-discuss blocks moved out)
+    Linked research runs → Cancel · Page summaries (JSON) · Propose classic
+                           page change · Generate evidence-only AI explanation
+                           (LLM explain stays here) · report/artifact ·
+                           identity caption · Debug: provenance
+                           (Discuss / voice-discuss / Explain / Open exact /
+                            Restore moved out — see §5.3 movement map)
     Compare completed runs · Portfolio analysis · Saved comparisons
 ▸ Debug: raw JSON & conversation audit         (collapsed)             unchanged
 ```
@@ -188,7 +203,8 @@ What do you want to do?   [ Discuss runs | Help | Draft thesis ]     ← new, se
 Rationale for keeping Advanced visible in **every** mode rather than making it a
 fourth mode: the deep-link force-open path (`ASSISTANT_ADVANCED_EXPANDER_KEY`,
 `linked_run_expander_key`) keeps working untouched, and no user can reach a state
-where Confirm/Run is unreachable.
+where Confirm/Run is unreachable. §2 is descriptive; the §5.3 movement map is
+binding when they differ.
 
 ---
 
@@ -219,7 +235,7 @@ Pure functions and constants — no I/O, no LLM, no orchestrator calls:
 | `ASSISTANT_MODE_LABELS` | Mode id → user label (`"Discuss runs"`, `"Help"`, `"Draft thesis"`) |
 | `ASSISTANT_MODE_SESSION_KEY = "assistant_ux_mode"` | Selector widget/session key |
 | `DISCUSS_RUN_PICKER_KEY = "assistant_discuss_run_picker"` | Run selectbox widget key |
-| `DISCUSS_NAV_HINT`, `HELP_NAV_HINT`, `ADVANCED_PLAN_NAV_HINT`, `ADVANCED_COMPARE_NAV_HINT`, `ADVANCED_PORTFOLIO_NAV_HINT` | §1.3 navigation phrases (single source of truth) |
+| `DISCUSS_NAV_HINT`, `DISCUSS_NAV_SHORT`, `HELP_NAV_HINT`, `ADVANCED_PLAN_NAV_HINT`, `ADVANCED_COMPARE_NAV_HINT`, `ADVANCED_PORTFOLIO_NAV_HINT` | §1.3 navigation fragments (single source of truth) |
 | `resolve_mode(session_state, *, default_mode, requested=None)` | Coerce/validate mode; unknown value → default |
 | `discussable_runs(runs, *, results_qa_enabled)` | Frozen eligibility predicate (§1.1) applied in list order |
 | `default_discuss_run_id(runs, *, focused_run_id)` | Focused run if eligible, else newest eligible, else `None` |
@@ -236,6 +252,35 @@ Both are registered in `ASSISTANT_SESSION_KEYS`, added to
 `THESIS_SCOPED_STAGING_KEYS`, and documented in `docs/ARCHITECTURE.md` in the PR
 that introduces them. Widget-key writes happen **before** the widget is
 instantiated, following the existing `assistant_thesis_picker` precedent.
+
+**Clear-path mechanics (binding for RUX-1):** `clear_thesis_scoped_state` does
+**not** iterate `THESIS_SCOPED_STAGING_KEYS` — it hardcodes each reset (see
+`workspace.py`). RUX-1 must therefore:
+
+1. Add both keys to `ASSISTANT_SESSION_KEYS` and `THESIS_SCOPED_STAGING_KEYS`
+   (documentation / inventory).
+2. Set defaults in `init_assistant_session_state`
+   (`assistant_ux_mode` ← `load_assistant_ux_settings().default_mode`,
+   `assistant_discuss_run_picker` ← `None`).
+3. Explicitly reset both inside `clear_thesis_scoped_state` (same pattern as
+   `assistant_focused_run_id` / `assistant_results_qa_deep_link`): mode back to
+   the configured default, picker to `None`.
+4. Also `pop` the Streamlit widget keys `assistant_ux_mode` /
+   `assistant_discuss_run_picker` in the existing widget-key cleanup loop when
+   they are bound as widgets (same hazard as `results-qa-input-*`), **or** write
+   the defaults into those keys before the widgets bind — pick one approach and
+   document it in the RUX-1 PR body; do not leave a stale selectbox option after
+   thesis switch.
+
+**Discussable vs hash-verified (binding for RUX-2 UX, not a predicate change):**
+The frozen UI eligibility predicate stays `status == "completed"` +
+`isinstance(provenance, dict)` + RQ enabled — matching today's Discuss gate.
+Successful `handle_results_turn` / deterministic Explain / Voice still require
+`require_run_bundle_hash` (and typically `bundle_path`). RUX-2 must keep today's
+fail-closed error surfacing on Send/Explain/Voice for hash-less rows; it must
+**not** silently widen the picker predicate to the Compare-style
+hash+`bundle_path` filter. Optionally caption hash-less selected runs with the
+existing provenance/identity messaging — no new error path.
 
 ### 4.3 New config section
 
@@ -346,22 +391,24 @@ truth without changing a single rendered pixel.
 
 | File | Change |
 |---|---|
-| `thesistester/assistant/ux.py` | New module per §4.1. Nav-phrase constants hold **byte-identical current strings**. |
+| `thesistester/assistant/ux.py` | New module per §4.1. Nav-phrase constants hold **byte-identical current fragments** from the §1.3 inventory (six constants). |
 | `thesistester/assistant/__init__.py` | Re-export the new public names (additive) |
 | `thesistester/assistant/llm.py` | `AssistantUxSettings` + `load_assistant_ux_settings()` (§4.3) |
 | `config/assistant.toml` | `[assistant.ux] default_mode = "discuss"` |
-| `thesistester/assistant/workspace.py` | Register `assistant_ux_mode` / `assistant_discuss_run_picker` in `ASSISTANT_SESSION_KEYS`, defaults in `init_assistant_session_state`, membership in `THESIS_SCOPED_STAGING_KEYS` + clear paths |
-| `thesistester/assistant/product_help.py` | **Only** substitute the three navigation strings with the new constants (values unchanged) |
-| `pages/14_Research_Assistant.py` | **Only** substitute the five caption/flash navigation strings with the new constants (values unchanged) |
-| `docs/ARCHITECTURE.md` | Document the two new session keys and the `[assistant.ux]` section |
-| `tests/test_assistant_ux.py` | New: `resolve_mode`, `discussable_runs`, `default_discuss_run_id`, `run_picker_label`, settings loader (missing section, unknown value, valid values) |
-| `tests/test_assistant_page_render.py` | Extend: rendered captions still contain the current nav phrases (proves the refactor is value-preserving) |
+| `thesistester/assistant/workspace.py` | Register `assistant_ux_mode` / `assistant_discuss_run_picker` in `ASSISTANT_SESSION_KEYS` + `THESIS_SCOPED_STAGING_KEYS`; defaults in `init_assistant_session_state`; **explicit** resets in `clear_thesis_scoped_state` per §4.2 (tuple membership alone is not enough) |
+| `thesistester/assistant/product_help.py` | **Only** substitute the three Discuss-nav call sites with `DISCUSS_NAV_HINT` / `DISCUSS_NAV_SHORT` (values unchanged) |
+| `pages/14_Research_Assistant.py` | **Only** substitute the §1.3 page call sites with the six constants (values unchanged; compose around fragments where today's sentence wraps them) |
+| `docs/ARCHITECTURE.md` | Document the two new session keys, clear-path mechanics, and the `[assistant.ux]` section |
+| `tests/test_assistant_ux.py` | New: `resolve_mode`, `discussable_runs`, `default_discuss_run_id`, `run_picker_label`, settings loader (missing section, unknown value, valid values); assert constant values equal today's fragments |
+| `tests/test_assistant_page_render.py` | Extend: rendered captions still contain the current nav fragments (proves the refactor is value-preserving) |
 
 **Implementation notes**
 
 - `discussable_runs` must apply the frozen predicate only — no sorting change; the page's existing `reversed(runs)` display order is preserved by the caller.
 - `resolve_mode` must never raise: unknown/absent → configured default → `"discuss"`.
 - Settings loader must tolerate a missing file and a missing section exactly like the RQ loaders.
+- Nav-constant substitution must keep surrounding sentence text identical (compose `f"…{DISCUSS_NAV_HINT}…"` rather than rewriting captions).
+- Clear-path: follow §4.2 mechanics; do not assume `THESIS_SCOPED_STAGING_KEYS` membership alone clears anything.
 
 **Tests:** new unit tests; `tests/test_assistant_product_help.py`,
 `tests/test_assistant_llm_evaluations.py`, `tests/test_assistant_voice_session.py`,
