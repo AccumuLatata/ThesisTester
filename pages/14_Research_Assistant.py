@@ -483,7 +483,7 @@ expand_results_qa_focus, expand_focus_run_id = apply_consumed_classic_focus(
     channel=focus_channel if isinstance(focus_channel, str) else None,
 )
 # Keyed expanders (Streamlit >= 1.55): force-open once on fresh results_qa
-# consume so a previously collapsed Advanced cannot hide Discuss results.
+# consume (belt-and-braces deep-link; Discuss itself lives in Discuss mode).
 force_results_qa_expanders_open(
     st.session_state,
     run_id=expand_focus_run_id,

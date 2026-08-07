@@ -82,8 +82,8 @@ Example help questions:
 | Projection grounding (RQ-2) | Ground against an ephemeral turn context / packet copy that includes `results.projections.*`; never mutate on-disk bundles. Path existence uses the same object the model saw. |
 | Draft hydration | Results and help assistant messages **must omit** `choices` |
 | Message tags | Additive message fields only: `"channel"` ∈ {`results_qa`, `product_help`}, plus `"run_id"` for results turns. No Conversation schema bump. Leave `Conversation.selected_run_id` unused in RQ (binding is message `run_id` + classic focus). |
-| UI attach (results) | Completed-run expander on Research Assistant; do not replace thesis-draft `st.chat_input`. **v1 input widget:** keyed `st.text_input` + send button (page already owns root `st.chat_input`; do not rely on nested `st.chat_input`). |
-| UI attach (help) | Separate Help panel / tab on Research Assistant (not inside a run expander); same `st.text_input` + send button pattern |
+| UI attach (results) | **Discuss runs** mode on Research Assistant (not inside a Linked-run expander); do not replace thesis-draft `st.chat_input` in RUX-2. **v1 input widget:** keyed `st.text_input` + send button (page already owns root `st.chat_input` in Draft mode; do not rely on nested `st.chat_input`). Placement amended by RUX-2; see `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md`. |
+| UI attach (help) | **Help** mode on Research Assistant (peer to Discuss; not inside a run expander); same `st.text_input` + send button pattern. Placement amended by RUX-2. |
 | Classic focus | Keep `classic_focus_run_id` as an optional run-id **string** (do **not** convert it to a dict). RQ-4 adds exactly one companion key `classic_focus_channel` whose only legal non-null v1 value is `"results_qa"` (`None`/absent = legacy). `discuss_run` / `set_classic_focus_run` set both; consume clears both atomically; thesis-scoped clear includes both. No other focus-key namespace. |
 | Help corpus | Curated, versioned local docs + `FEATURE_PARITY_REGISTRY` summaries only — no web search, no arbitrary filesystem. RQ-0 ships the frozen path + section allowlist in §7.1 exactly (no agent-invented sections). No `AGENT_GUIDE` in v1 user Help. |
 | Help numeric grounding | Digit tokens in Help `summary` / `caveats` / `followups` must appear as **matched number tokens** (same tokenizer as LLM evidence grounding) in the attached corpus chunk texts and/or registry digest JSON for that turn; else fail closed before persist/render. A reply token like `1` must not ride on a different corpus number such as `10`. Prefer number-free Help text. Never answer the user’s run performance from Help (remediate to Discuss results). |
@@ -812,7 +812,7 @@ Rules:
 | Item | Detail |
 |---|---|
 | Code | Implement the frozen focus shape above in `classic_nav.py` + `classic_context.py`; wire `discuss_run` to set both keys |
-| UI | Research Assistant consumes `{classic_focus_run_id, classic_focus_channel}` on load: when channel is `results_qa`, open Advanced → Linked runs → that run’s Discuss results thread; when channel is absent/`None`, keep legacy banner/thesis focus behavior |
+| UI | Research Assistant consumes `{classic_focus_run_id, classic_focus_channel}` on load: when channel is `results_qa`, preselect **Discuss runs** + that run’s Discuss results thread **and** force-open Advanced → Linked-run expanders; when channel is absent/`None`, keep legacy banner/thesis focus behavior |
 | UI | Copy clarity: thesis chat caption remains “draft only”; Discuss results / Help labeled distinctly |
 | Pages | `pages/7_Backtest.py`, `pages/12_Research_Bundles.py` (and Grid/Time only if a discuss affordance already exists or is a one-line reuse of the helper) |
 | Tests | Focus pair shape; atomic clear; thesis switch clears both; unknown channel values fail closed or coerce to legacy (`None`); no `choices` hydration from results focus |
@@ -1099,7 +1099,7 @@ Constraints:
 - Follow the PR’s Files allowed to touch list.
 - Keep classic_focus_run_id as a string. Add companion classic_focus_channel with only legal non-None value "results_qa".
 - discuss_run / set_classic_focus_run set both keys; consume clears both atomically; add classic_focus_channel to CLASSIC_SESSION_KEYS and CLASSIC_THESIS_SCOPED_KEYS.
-- Research Assistant: when channel is results_qa, open Advanced → Linked runs → that run’s Discuss thread; None/absent channel keeps legacy behavior.
+- Research Assistant: when channel is results_qa, preselect Discuss runs + that run’s Discuss thread and keep Advanced/Linked-run force-open; None/absent channel keeps legacy behavior.
 - Do not convert classic_focus_run_id into a dict. Do not add assistant_focus_* keys.
 - Tests: pair shape, atomic clear, thesis switch clears both, legacy path preserved, no choices hydration.
 - Same-PR docs: ARCHITECTURE.md documents classic_focus_channel.

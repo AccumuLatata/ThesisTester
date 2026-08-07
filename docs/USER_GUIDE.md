@@ -549,40 +549,45 @@ trades, diagnostic merge
 ## Research Assistant (draft, Discuss, Help)
 
 **What it is.** The **Research Assistant** page manages theses and three
-separated chat surfaces: thesis **Assistant chat** (draft), **Discuss results**
-(completed-run Q&A), and **Help / how it works** (docs-grounded product help).
+separated chat surfaces as peer modes: **Discuss results** (completed-run Q&A,
+default), **Help / how it works** (docs-grounded product help), and thesis
+**Assistant chat** (draft). Optional validate → confirm → run stays under
+collapsed Advanced.
 
-**When to use it.** To draft/confirm an Assistant research plan, discuss a
-thesis-recorded run, or ask how product features work — without mixing those
-jobs into one thread.
+**When to use it.** To discuss a thesis-recorded run, ask how product features
+work, or draft/confirm an Assistant research plan — without mixing those jobs
+into one thread.
 
-**Related terms.** thesis, Assistant chat, draft, Discuss results, Help / how it
-works, Advanced, Validate executable RunSpec, Confirm validated RunSpec, Run
-confirmed research, linked runs, clarification, specification version
+**Related terms.** thesis, Discuss runs, Discuss results, Help / how it works,
+Assistant chat, draft, Advanced, Validate executable RunSpec, Confirm validated
+RunSpec, Run confirmed research, linked runs, clarification, specification
+version
 
 **Key settings / surfaces.**
 
 | Control / surface | Meaning | Common pitfall |
 |---|---|---|
-| `Assistant chat` | Thesis drafting only — choices + clarifications | Not for run metrics or product docs |
-| `Help / how it works` | Allowlisted docs + capability registry | Not a second results explainer |
+| Mode selector (`Discuss runs` / `Help` / `Draft thesis`) | Chooses which channel surface is open | Modes are navigation only — histories stay isolated |
+| **Discuss results** (`Discuss runs` mode) | Multi-turn Q&A on one completed run | Needs a thesis-recorded run; hash-verified evidence |
+| `Help / how it works` (`Help` mode) | Allowlisted docs + capability registry | Not a second results explainer |
+| `Assistant chat` (`Draft thesis` mode) | Thesis drafting only — choices + clarifications | Not for run metrics or product docs |
 | `Advanced: draft, runs & compare` | Optional draft → validate → confirm → run path | Classic pages remain the primary workflow |
 | `Draft research plan` (optional) | Persists an immutable specification version | `Apply` controls only stage the session draft |
 | `Validate executable RunSpec` → `Confirm validated RunSpec` | Confirmation-/schema-gated | Confirm appears only after Validate succeeds **and** clarifications are clear |
 | `Run confirmed research` | Executes only a **Confirmed** spec version | Apply/Draft alone never start compute |
-| **Discuss results** (under Linked runs) | Multi-turn Q&A on one completed run | Needs a thesis-recorded run; hash-verified evidence |
 
 **How to use (Assistant confirm/run path).**
 
 1. Create or select a thesis in the sidebar.
-2. Draft via **Assistant chat** and/or Advanced structured controls.
+2. Open **Draft thesis** for **Assistant chat** and/or use Advanced structured
+   controls.
 3. Open **Advanced: draft, runs & compare** → **Plan review**. Optionally
    **Draft research plan**, then **Validate executable RunSpec**. Resolve
    clarifications if shown, then **Confirm validated RunSpec** (Confirm lives
    under Plan review, not inside the Specifications list).
 4. Open a Confirmed specification → **Run confirmed research**.
-5. For completed-run questions, open Advanced → Linked runs → **Discuss
-   results**. For feature how-tos, open **Help / how it works**.
+5. For completed-run questions, stay on (or open) **Discuss runs** → **Discuss
+   results**. For feature how-tos, open **Help**.
 
 **What it is not.**
 
@@ -625,7 +630,9 @@ policy, manual record, all executions, exit research mode, identity badge
 2. Run the classic path (Data → Levels → Signals → Backtest, etc.).
 3. After a completed backtest (or bundle with backtest artifacts): **Record and
    discuss this run**, or **Discuss this run** if already recorded.
-4. Research Assistant opens Advanced → that Linked run → **Discuss results**.
+4. Research Assistant opens **Discuss runs** with that run preselected for
+   **Discuss results** (Advanced/Linked-run expanders still force-open for the
+   deep-link).
 
 **What it is not.**
 
@@ -658,11 +665,13 @@ best SL, expectancy, remediation, draft chat, documentation-grounded
 **How to use.**
 
 1. Open Research Assistant with a thesis selected.
-2. For feature how-tos: expander **Help / how it works** → ask → **Send help
-   question** (examples: import data, Setup Builder, grid ranking, validation).
-3. For completed-run metrics: Advanced → Linked runs → **Discuss results**.
-4. If Help redirects you to Discuss, open the linked run thread — do not expect
-   Help to invent performance numbers.
+2. For feature how-tos: mode **Help** → **Help / how it works** → ask →
+   **Send help question** (examples: import data, Setup Builder, grid ranking,
+   validation).
+3. For completed-run metrics: mode **Discuss runs** → select the run →
+   **Discuss results**.
+4. If Help redirects you to Discuss, open **Discuss runs** for that run — do
+   not expect Help to invent performance numbers.
 
 **What it is not.**
 

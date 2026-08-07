@@ -20,7 +20,7 @@ ThesisTester is a multipage research workflow for intraday confluence setups.
 6. Analyze time/session performance.
 7. Run validation diagnostics (bootstrap, walk-forward, optional batteries, OTF matrix).
 8. Export artifacts, research bundles, or portfolio composites.
-9. Optionally orchestrate theses in Research Assistant.
+9. Optionally discuss completed runs and get product help in Research Assistant.
 
 **Implemented now**
 - **Data**: CSV OHLCV ingestion/validation, vendor profiles, local saved datasets, optional lower-timeframe replay.
@@ -34,7 +34,7 @@ ThesisTester is a multipage research workflow for intraday confluence setups.
 - **Report / Export**: research artifact and report export for reproducibility.
 - **Research Bundles**: portable session snapshot export/import.
 - **Portfolio**: diagnostic multi-setup trade composition (not a capital simulator).
-- **Research Assistant**: confirmation-gated thesis orchestration over the same research pipeline.
+- **Research Assistant**: discuss completed runs + product help (draft/validate/confirm optional under Advanced).
 
 **Research assumptions / caveats**
 - Outputs are research diagnostics only, not trading advice.

@@ -173,13 +173,14 @@ def test_qr3_fabricated_setting_absent_from_allowlisted_corpus():
     )
 
 
-def test_help_expander_discoverability_caption_lists_example_topics():
-    """HC-3 caption-only discoverability on Research Assistant Help expander."""
+def test_help_mode_discoverability_caption_lists_example_topics():
+    """HC-3 caption-only discoverability on Research Assistant Help mode."""
     source = (REPO_ROOT / "pages" / "14_Research_Assistant.py").read_text(encoding="utf-8")
     assert "USER_GUIDE-backed" in source
     assert "import data" in source
     assert "Help vs Discuss" in source
-    assert 'st.expander("Help / how it works"' in source
+    assert 'st.subheader("Help / how it works")' in source
+    assert 'st.expander("Help / how it works"' not in source
 
 
 def test_draft_chat_display_ignores_help_channel_history():

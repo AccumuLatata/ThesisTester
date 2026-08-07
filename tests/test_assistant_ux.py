@@ -35,11 +35,11 @@ from thesistester.assistant.workspace import (
 TRACKED = Path("config/assistant.toml")
 
 
-def test_nav_fragments_match_rux0_inventory():
-    """Byte-identical to the §1.3 inventory frozen at RUX-0."""
-    assert DISCUSS_NAV_HINT == "Advanced → Linked runs → Discuss results"
-    assert DISCUSS_NAV_SHORT == "Advanced → Linked runs"
-    assert HELP_NAV_HINT == "Help / how it works below"
+def test_nav_fragments_match_rux2_discuss_first_locations():
+    """RUX-2 flips Discuss/Help navigation fragments to mode locations."""
+    assert DISCUSS_NAV_HINT == "the Discuss runs mode on Research Assistant"
+    assert DISCUSS_NAV_SHORT == "Discuss runs"
+    assert HELP_NAV_HINT == "the Help mode"
     assert ADVANCED_PLAN_NAV_HINT == "Advanced → Plan review"
     assert ADVANCED_COMPARE_NAV_HINT == "Advanced → Compare completed runs"
     assert ADVANCED_PORTFOLIO_NAV_HINT == "Advanced → Portfolio analysis"

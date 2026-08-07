@@ -475,13 +475,33 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "from thesistester.assistant.ux import" in source
     from thesistester.assistant.ux import DISCUSS_NAV_SHORT
 
-    assert DISCUSS_NAV_SHORT == "Advanced → Linked runs"
+    assert DISCUSS_NAV_SHORT == "Discuss runs"
+    assert "st.segmented_control(" in source
+    assert "ASSISTANT_MODE_DISCUSS" in source
+    assert 'st.expander("Help / how it works"' not in source
+    assert 'st.subheader("Help / how it works")' in source
+    # Movement map: Discuss/Explain before Advanced; LLM explain stays in Advanced.
+    discuss_mode_pos = source.index("if mode == ASSISTANT_MODE_DISCUSS:")
+    help_mode_pos = source.index("elif mode == ASSISTANT_MODE_HELP:")
+    draft_mode_pos = source.index("elif mode == ASSISTANT_MODE_DRAFT:")
+    advanced_pos = source.index(
+        'with st.expander(\n    "Advanced: draft, runs & compare"'
+    )
+    explain_pos = source.index('st.button("Explain run"')
+    llm_explain_pos = source.index("Generate evidence-only AI explanation")
+    assert discuss_mode_pos < help_mode_pos < draft_mode_pos < advanced_pos
+    assert discuss_mode_pos < explain_pos < advanced_pos < llm_explain_pos
+    assert source.count('key=f"results-qa-input-{run.run_id}"') == 0
+    assert source.count('f"results-qa-input-{run.run_id}"') == 1
+    assert source.count('key=f"explain-{run.run_id}"') == 1
+    assert source.count('key=f"llm-explain-{run.run_id}"') == 1
     assert "Raw transcripts and JSON for audit only" in source
     assert "Open research pages" not in source
     assert "st.page_link(" not in source
     assert "expanded=expand_results_qa_focus" in source
     assert "apply_consumed_classic_focus(" in source
     assert "force_results_qa_expanders_open(" in source
+    assert "apply_discuss_mode_deep_link(" in source
     assert "ASSISTANT_ADVANCED_EXPANDER_KEY" in source
     assert "linked_run_expander_key(" in source
     assert 'with st.expander("Debug: raw JSON & conversation audit", expanded=False)' in source
@@ -501,7 +521,7 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     success_pos = source.index('st.success("Comparison ready.")')
     debug_compare_pos = source.index('with st.expander("Debug: comparison JSON", expanded=False)')
     assert success_pos < debug_compare_pos
-    # Validate/Cancel/Draft-error/Compare/Portfolio must hub-flash so chat-first
+    # Validate/Cancel/Draft-error/Compare/Portfolio must hub-flash so discuss-first
     # reruns (Advanced defaults closed) do not hide outcomes.
     validate_idx = source.index('if st.button("Validate executable RunSpec")')
     validate_chunk = source[validate_idx : validate_idx + 2200]
