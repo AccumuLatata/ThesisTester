@@ -534,6 +534,27 @@ def force_results_qa_expanders_open(
         session_state[linked_run_expander_key(run_id.strip())] = True
 
 
+def apply_discuss_mode_deep_link(
+    session_state: MutableMapping[str, Any],
+    *,
+    run_id: str | None,
+    channel: str | None,
+) -> None:
+    """RUX-2: preselect Discuss mode + run on a fresh ``results_qa`` focus.
+
+    Additive wrapper around ``ux.apply_discuss_deep_link_preselect``. Existing
+    focus helpers keep their semantics; this only writes mode/picker keys.
+    """
+    from thesistester.assistant.ux import apply_discuss_deep_link_preselect
+
+    init_assistant_session_state(session_state)
+    apply_discuss_deep_link_preselect(
+        session_state,
+        run_id=run_id,
+        channel=channel,
+    )
+
+
 def active_bundle_handoff(
     session_state: Mapping[str, Any], *, thesis_id: str | None
 ) -> dict[str, Any] | None:

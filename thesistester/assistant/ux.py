@@ -29,10 +29,10 @@ ASSISTANT_MODE_LABELS: dict[str, str] = {
 ASSISTANT_MODE_SESSION_KEY = "assistant_ux_mode"
 DISCUSS_RUN_PICKER_KEY = "assistant_discuss_run_picker"
 
-# §1.3 navigation fragments — byte-identical to call-site text as of RUX-0.
-DISCUSS_NAV_HINT = "Advanced → Linked runs → Discuss results"
-DISCUSS_NAV_SHORT = "Advanced → Linked runs"
-HELP_NAV_HINT = "Help / how it works below"
+# §1.3 navigation fragments — RUX-2 discuss-first locations (flipped from RUX-0).
+DISCUSS_NAV_HINT = "the Discuss runs mode on Research Assistant"
+DISCUSS_NAV_SHORT = "Discuss runs"
+HELP_NAV_HINT = "the Help mode"
 ADVANCED_PLAN_NAV_HINT = "Advanced → Plan review"
 ADVANCED_COMPARE_NAV_HINT = "Advanced → Compare completed runs"
 ADVANCED_PORTFOLIO_NAV_HINT = "Advanced → Portfolio analysis"
@@ -139,6 +139,25 @@ def run_picker_label(run: Any) -> str:
     status = str(getattr(run, "status", "") or "")
     kind = _run_kind_token(run)
     return f"Run {suffix} · {status} · {kind}"
+
+
+def apply_discuss_deep_link_preselect(
+    session_state: MutableMapping[str, Any],
+    *,
+    run_id: str | None,
+    channel: str | None,
+) -> None:
+    """On a fresh ``results_qa`` classic focus: preselect Discuss mode + run.
+
+    Writes widget keys **before** the mode selector / run picker bind (RUX-2
+    deep-link superset). Does not replace ``force_results_qa_expanders_open``.
+    """
+    if channel != "results_qa":
+        return
+    if not isinstance(run_id, str) or not run_id.strip():
+        return
+    session_state[ASSISTANT_MODE_SESSION_KEY] = ASSISTANT_MODE_DISCUSS
+    session_state[DISCUSS_RUN_PICKER_KEY] = run_id.strip()
 
 
 def reset_ux_mode_and_picker(
