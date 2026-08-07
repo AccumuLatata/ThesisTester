@@ -388,7 +388,10 @@ def simulate_trades(
         Naive timestamps are localized; aware timestamps are converted.
     no_new_entries_after:
         Optional local-time cutoff (HH:MM or HH:MM:SS). Entries whose local
-        entry timestamp is later than this cutoff are skipped.
+        entry timestamp is later than this cutoff are skipped (strict ``>``;
+        entry **at** cutoff still admits). When skip capture is on, rejects
+        are recorded as ``after_entry_cutoff`` (SW2b). Combined with
+        ``entry_window`` via AND (C9); window is evaluated first for labeling.
 
     exposure_policy:
         Exposure gate applied to executable signals. One of:
@@ -625,6 +628,43 @@ def simulate_trades(
 
         entry_ts = df_reset["timestamp"].iloc[entry_bar_index]
         entry_local_ts = local_timestamps.iloc[entry_bar_index]
+
+        # C9 AND admission: both entry_window and no_new_entries_after apply.
+        # Evaluate window before cutoff so dual-failures label as
+        # outside_entry_window (C9: prefer entry_window for new UX). Trades are
+        # identical either order — only skip_reason labeling differs.
+        #
+        # C5: classify window membership on the raw entry-bar timestamp with
+        # exchange-TZ naive semantics. Do not reuse session-localized clocks —
+        # those are reserved for session-close / no_new_entries_after only.
+        if normalized_entry_window["enabled"] and not entry_window_contains(
+            entry_ts,
+            normalized_entry_window,
+            exchange_tz=exchange_tz_for_window,
+        ):
+            if return_skipped_signals or return_result:
+                skipped_signals.append(
+                    {
+                        "signal_id": int(sig["signal_id"]),
+                        "bar_index": bar_idx,
+                        "entry_bar_index": entry_bar_index,
+                        "trigger": trigger,
+                        "direction": direction,
+                        "exposure_policy": exposure_policy,
+                        "exposure_group_key": _exposure_group_key(
+                            sig,
+                            exposure_policy=exposure_policy,
+                            trigger=trigger,
+                            direction=direction,
+                        ),
+                        "skip_reason": "outside_entry_window",
+                        "blocking_trade_id": pd.NA,
+                        "blocking_exit_bar_index": pd.NA,
+                        "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
+                    }
+                )
+            continue
+
         if (
             parsed_no_new_entries_after is not None
             and entry_local_ts.time() > parsed_no_new_entries_after
@@ -648,37 +688,6 @@ def simulate_trades(
                             direction=direction,
                         ),
                         "skip_reason": "after_entry_cutoff",
-                        "blocking_trade_id": pd.NA,
-                        "blocking_exit_bar_index": pd.NA,
-                        "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
-                    }
-                )
-            continue
-
-        # C5: classify on the raw entry-bar timestamp with exchange-TZ naive
-        # semantics. Do not reuse session-localized clocks here — those are
-        # reserved for session-close / no_new_entries_after only.
-        if normalized_entry_window["enabled"] and not entry_window_contains(
-            entry_ts,
-            normalized_entry_window,
-            exchange_tz=exchange_tz_for_window,
-        ):
-            if return_skipped_signals or return_result:
-                skipped_signals.append(
-                    {
-                        "signal_id": int(sig["signal_id"]),
-                        "bar_index": bar_idx,
-                        "entry_bar_index": entry_bar_index,
-                        "trigger": trigger,
-                        "direction": direction,
-                        "exposure_policy": exposure_policy,
-                        "exposure_group_key": _exposure_group_key(
-                            sig,
-                            exposure_policy=exposure_policy,
-                            trigger=trigger,
-                            direction=direction,
-                        ),
-                        "skip_reason": "outside_entry_window",
                         "blocking_trade_id": pd.NA,
                         "blocking_exit_bar_index": pd.NA,
                         "cooldown_bars_after_exit": int(cooldown_bars_after_exit),

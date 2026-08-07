@@ -6,6 +6,8 @@ import pandas as pd
 
 from thesistester.analytics.entry_window import (
     AFTER_ENTRY_CUTOFF_REASON,
+    OUTSIDE_ENTRY_WINDOW_REASON,
+    entry_window_from_bucket,
     partition_skip_counts,
 )
 from thesistester.engine.backtest import simulate_trades
@@ -48,7 +50,8 @@ def _signal(signal_id: int, bar_index: int) -> dict:
 
 
 def _frame() -> pd.DataFrame:
-    stamps = pd.date_range("2026-06-02 09:29", periods=40, freq="1min", tz=TZ)
+    # Through ~10:20 so joint window+cutoff dual-fail cases have morning bars.
+    stamps = pd.date_range("2026-06-02 09:29", periods=52, freq="1min", tz=TZ)
     rows = []
     price = 21000.0
     for ts in stamps:
@@ -141,3 +144,45 @@ def test_partition_skip_counts_splits_cutoff_from_exposure():
         "after_entry_cutoff": 1,
         "other": 1,
     }
+
+
+def test_c9_dual_fail_labels_outside_entry_window_not_cutoff():
+    """C9: when both window and cutoff fail, prefer outside_entry_window label."""
+    df = _frame()
+    # Entry 10:11 is outside rth_open_30m AND after a 10:00 cutoff.
+    idx_out = int(df.index[df["timestamp"] == pd.Timestamp("2026-06-02 10:10", tz=TZ)][0])
+    window = entry_window_from_bucket("entry_rth_segment", "rth_open_30m", exchange_tz=TZ)
+    result = simulate_trades(
+        df,
+        pd.DataFrame([_signal(4, idx_out)]),
+        **_base_kwargs(
+            entry_window=window,
+            no_new_entries_after="10:00",
+            return_result=True,
+        ),
+    )
+    assert result.trades.empty
+    assert list(result.skipped_signals["signal_id"]) == [4]
+    assert list(result.skipped_signals["skip_reason"]) == [OUTSIDE_ENTRY_WINDOW_REASON]
+    counts = partition_skip_counts(result.skipped_signals)
+    assert counts["outside_entry_window"] == 1
+    assert counts["after_entry_cutoff"] == 0
+
+
+def test_cutoff_only_still_audited_when_inside_window():
+    """In-window entry past cutoff must still audit as after_entry_cutoff."""
+    df = _frame()
+    # Entry 09:51 is inside rth_open_30m but after 09:50 cutoff.
+    idx_after = int(df.index[df["timestamp"] == pd.Timestamp("2026-06-02 09:50", tz=TZ)][0])
+    window = entry_window_from_bucket("entry_rth_segment", "rth_open_30m", exchange_tz=TZ)
+    result = simulate_trades(
+        df,
+        pd.DataFrame([_signal(3, idx_after)]),
+        **_base_kwargs(
+            entry_window=window,
+            no_new_entries_after="09:50",
+            return_result=True,
+        ),
+    )
+    assert result.trades.empty
+    assert list(result.skipped_signals["skip_reason"]) == [AFTER_ENTRY_CUTOFF_REASON]

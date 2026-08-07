@@ -1139,11 +1139,11 @@ canonical/Quantower CSV parser as the unchanged default path.
 
 ---
 
-## Session Entry Window (SW0–SW7) ✅ Engineering-signed
+## Session Entry Window (SW0–SW7 + SW2b) ✅ Engineering-signed
 
 Closes the Discover → Scope → Re-sim → Optimize → Prove loop when Time Analysis
 shows a strong RTH segment (e.g. `rth_open_30m`) while the all-day Performance
-Summary looks poor. Optional SW2b (cutoff skip audit) remains deferred.
+Summary looks poor. SW2b cutoff skip audit shipped as follow-up (#299).
 
 **Canonical spec:** `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` (normative contracts **C1–C9**)  
 **Release evidence:** `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`
@@ -1153,7 +1153,7 @@ Summary looks poor. Optional SW2b (cutoff skip audit) remains deferred.
 | SW0 | Plan lock + legacy golden gate confirmation + C1–C9 ✅ |
 | SW1 | Post-hoc Focus summary (no re-sim); shared RTH export ✅ |
 | SW2 | Opt-in `entry_window` admission + enabled golden + Focus≡Admit (C7) ✅ |
-| SW2b | Audit `no_new_entries_after` → `after_entry_cutoff` + UI/docs honesty ← next ([#299](https://github.com/AccumuLatata/ThesisTester/pull/299)) |
+| SW2b | Audit `no_new_entries_after` → `after_entry_cutoff` + UI/docs honesty ✅ ([#299](https://github.com/AccumuLatata/ThesisTester/pull/299)) |
 | SW3 | API + Backtest Admit controls ✅ |
 | SW4 | Time Analysis Promote + Focus↔Admit handoff ✅ |
 | SW5 | Grid + Validation/WFA/sensitivity inherit window (fixed constraint) ✅ |

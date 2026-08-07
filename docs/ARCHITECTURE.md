@@ -804,7 +804,8 @@ entry-cutoff clocks (C5).
 
 SW2b audits `no_new_entries_after` rejects as `skip_reason="after_entry_cutoff"` when
 skip capture is on. Trades are unchanged vs the prior silent `continue`; only the
-skip frame gains rows.
+skip frame gains rows. When both Admit window and cutoff would reject, labeling
+prefers `outside_entry_window` (C9 — window evaluated before cutoff).
 
 SW4 adds Time Analysis **Promote to Admit**: arms `entry_window` + Backtest widget
 keys without auto-running simulation. `entry_window_armed` distinguishes pending

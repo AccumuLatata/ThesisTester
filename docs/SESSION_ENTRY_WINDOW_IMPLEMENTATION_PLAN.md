@@ -386,6 +386,8 @@ SW1 may land in parallel with SW2 design after SW0. SW3+ require SW2. **Do not s
 **Scope.**
 
 - [x] Engine: when skip capture is on, record cutoff rejects as `skip_reason="after_entry_cutoff"`.
+- [x] C9 labeling: evaluate `entry_window` before cutoff so dual-failures prefer
+  `outside_entry_window` (trades unchanged either order).
 - [x] `partition_skip_counts` splits window / cutoff / exposure-other.
 - [x] Backtest caption + skipped-signals honesty copy.
 - [x] Docs: ASSUMPTIONS, ARCHITECTURE, USER_GUIDE, roadmap/status.
@@ -552,7 +554,7 @@ Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; ho
 | SW0 Plan + golden confirmation | Merged | [#286](https://github.com/AccumuLatata/ThesisTester/pull/286) |
 | SW1 Post-hoc Focus | Merged | [#292](https://github.com/AccumuLatata/ThesisTester/pull/292) |
 | SW2 Engine admission + C7 + golden | Merged | [#293](https://github.com/AccumuLatata/ThesisTester/pull/293) |
-| SW2b Cutoff skip audit + honesty | Open | [#299](https://github.com/AccumuLatata/ThesisTester/pull/299) |
+| SW2b Cutoff skip audit + honesty | Open (this PR) | [#299](https://github.com/AccumuLatata/ThesisTester/pull/299) |
 | SW3 API + Backtest Admit UI | Merged | [#294](https://github.com/AccumuLatata/ThesisTester/pull/294) |
 | SW4 Promote handoff UX | Merged | [#295](https://github.com/AccumuLatata/ThesisTester/pull/295) |
 | SW5 Grid + Validation inheritance | Merged | [#296](https://github.com/AccumuLatata/ThesisTester/pull/296) |

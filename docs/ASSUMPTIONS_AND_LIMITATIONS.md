@@ -156,9 +156,12 @@ This engine is for **research screening**, not proof of a durable edge.
   `after_entry_cutoff` when `no_new_entries_after` rejects with skip capture on
   (SW2b), and `outside_entry_window` when opt-in Admit is enabled (SW2/SW3).
   Backtest captions split window / cutoff / exposure-other counts. Cutoff uses
-  strict `>` (entry **at** cutoff still admits). Signals skipped for
-  pre-existing non-executable reasons (e.g., void `3c`, missing future entry
-  bar) are still not included. Skip capture does not change which trades fill.
+  strict `>` (entry **at** cutoff still admits). When both window and cutoff
+  would reject, skip labeling prefers `outside_entry_window` (C9 — window
+  checked before cutoff; admitted trade set is identical either order).
+  Signals skipped for pre-existing non-executable reasons (e.g., void `3c`,
+  missing future entry bar) are still not included. Skip capture does not
+  change which trades fill.
 - Default `entry_window=None` / disabled preserves legacy all-day admission
   (golden-identical trades). `api.run_backtest` and classic Backtest Admit
   controls (SW3) default off.

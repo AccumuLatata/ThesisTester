@@ -416,8 +416,8 @@ def test_c9_entry_window_and_cutoff_both_apply():
     idx_after_cut = int(df.index[df["timestamp"] == pd.Timestamp("2026-06-02 09:50", tz=TZ)][0])
     idx_out = int(df.index[df["timestamp"] == pd.Timestamp("2026-06-02 10:10", tz=TZ)][0])
 
-    # Joint AND: cutoff after the morning bar so the out-of-window candidate reaches
-    # the entry_window check (cutoff is evaluated first).
+    # Joint AND: out-of-window candidate is labeled outside_entry_window even
+    # when a loose cutoff would also admit (window check runs first for UX/C9).
     joint = simulate_trades(
         df,
         pd.DataFrame([_signal(1, idx_in), _signal(4, idx_out)]),
