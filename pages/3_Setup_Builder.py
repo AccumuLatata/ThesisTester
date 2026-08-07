@@ -6,6 +6,8 @@ from typing import Any
 
 import streamlit as st
 
+from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
+from thesistester.entry_window_policy import RTH_SEGMENT_LABELS, normalize_entry_window
 from thesistester.persistence import (
     compute_otf_config_hash,
     delete_setup,
@@ -22,6 +24,7 @@ from thesistester.setup import (
     available_level_columns,
     build_setup_config,
     default_selected_levels,
+    get_effective_entry_window_config,
     get_effective_otf_filter_config,
     normalize_trigger_timeframe,
     normalize_otf_filter_config,
@@ -31,6 +34,8 @@ from thesistester.classic_context import render_classic_thesis_chrome
 from thesistester.classic_nav import render_classic_nav_prefill_caption
 from thesistester.classic_proposal import render_classic_proposal_card
 from thesistester.engine.otf import OTF_ALGORITHM_VERSION
+
+ENTRY_WINDOW_MODE_OPTIONS = ("rth_segments", "clock_range")
 
 
 CONFLUENCE_MODE_LABELS = {
@@ -74,8 +79,16 @@ WIDGET_KEY_OTF_MIN_CONSECUTIVE_BARS = "_setup_builder_otf_min_consecutive_bars"
 WIDGET_KEY_OTF_DIRECTIONAL = "_setup_builder_otf_directional"
 WIDGET_KEY_OTF_COMPLETED_BARS_ONLY = "_setup_builder_otf_completed_bars_only"
 WIDGET_KEY_OTF_SESSION_RESET = "_setup_builder_otf_session_reset"
+WIDGET_KEY_ENTRY_WINDOW_ENABLED = "_setup_builder_entry_window_enabled"
+WIDGET_KEY_ENTRY_WINDOW_MODE = "_setup_builder_entry_window_mode"
+WIDGET_KEY_ENTRY_WINDOW_RTH_SEGMENTS = "_setup_builder_entry_window_rth_segments"
+WIDGET_KEY_ENTRY_WINDOW_START_TIME = "_setup_builder_entry_window_start_time"
+WIDGET_KEY_ENTRY_WINDOW_END_TIME = "_setup_builder_entry_window_end_time"
+WIDGET_KEY_ENTRY_WINDOW_TIMEZONE = "_setup_builder_entry_window_timezone"
 _OTF_REPAIR_DICT_KEY = "_otf_repair_warning"
+_ENTRY_WINDOW_REPAIR_DICT_KEY = "_entry_window_repair_warning"
 _SETUP_BUILDER_OTF_REPAIR_SESSION_KEY = "_setup_builder_otf_repair_warning"
+_SETUP_BUILDER_ENTRY_WINDOW_REPAIR_SESSION_KEY = "_setup_builder_entry_window_repair_warning"
 
 
 def _anchor_rule_key(prefix: str, level: str) -> str:
@@ -174,6 +187,17 @@ def _resolve_otf_for_ui(config: dict[str, Any]) -> tuple[dict[str, Any], str | N
     except ValueError:
         return normalize_otf_filter_config(None), (
             "OTF filter settings are invalid and were reset to disabled defaults for editing. "
+            "Review and save in Setup Builder to persist the repaired configuration."
+        )
+
+
+def _resolve_entry_window_for_ui(config: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+    """Return (canonical entry_window, warning_or_None) for UI hydration."""
+    try:
+        return get_effective_entry_window_config(config), None
+    except ValueError:
+        return get_effective_entry_window_config({}), (
+            "Entry window settings are invalid and were reset to disabled defaults for editing. "
             "Review and save in Setup Builder to persist the repaired configuration."
         )
 
@@ -304,6 +328,7 @@ def _default_editor_config(
         "otf_filter": normalize_otf_filter_config(DEFAULT_OTF_FILTER_CONFIG),
         "otf_algorithm_version": OTF_ALGORITHM_VERSION,
         "otf_config_hash": compute_otf_config_hash(DEFAULT_OTF_FILTER_CONFIG),
+        "entry_window": get_effective_entry_window_config({"instrument": instrument}),
         "setup_id": None,
         "dataset_id": dataset_id,
     }
@@ -327,6 +352,10 @@ def _seed_editor_config(
         seeded[_OTF_REPAIR_DICT_KEY] = otf_warning
     seeded["otf_algorithm_version"] = OTF_ALGORITHM_VERSION
     seeded["otf_config_hash"] = compute_otf_config_hash(seeded["otf_filter"])
+    entry_window_config, entry_window_warning = _resolve_entry_window_for_ui(seeded)
+    seeded["entry_window"] = entry_window_config
+    if entry_window_warning:
+        seeded[_ENTRY_WINDOW_REPAIR_DICT_KEY] = entry_window_warning
     seeded["dataset_id"] = seeded.get("dataset_id", dataset_id)
     return seeded
 
@@ -579,6 +608,37 @@ def _sync_editor_widget_state(
     _assign(WIDGET_KEY_OTF_COMPLETED_BARS_ONLY, True)
     _assign(WIDGET_KEY_OTF_SESSION_RESET, "session")
 
+    try:
+        entry_window_config = get_effective_entry_window_config(config)
+    except ValueError:
+        entry_window_config = get_effective_entry_window_config({})
+        warnings.append(
+            "Loaded entry window settings are invalid; falling back to disabled defaults."
+        )
+    _assign(WIDGET_KEY_ENTRY_WINDOW_ENABLED, bool(entry_window_config.get("enabled", False)))
+    mode = str(entry_window_config.get("mode") or "rth_segments")
+    if mode not in ENTRY_WINDOW_MODE_OPTIONS:
+        mode = "rth_segments"
+    _assign(WIDGET_KEY_ENTRY_WINDOW_MODE, mode)
+    segments = [
+        segment
+        for segment in list(entry_window_config.get("rth_segments") or [])
+        if segment in RTH_SEGMENT_LABELS
+    ]
+    _assign(WIDGET_KEY_ENTRY_WINDOW_RTH_SEGMENTS, segments or ["rth_open_30m"])
+    _assign(
+        WIDGET_KEY_ENTRY_WINDOW_START_TIME,
+        str(entry_window_config.get("start_time") or "09:30"),
+    )
+    _assign(
+        WIDGET_KEY_ENTRY_WINDOW_END_TIME,
+        str(entry_window_config.get("end_time") or "10:00"),
+    )
+    window_tz = str(entry_window_config.get("timezone") or "America/New_York")
+    if window_tz not in TIMEZONE_OPTIONS:
+        window_tz = "America/New_York"
+    _assign(WIDGET_KEY_ENTRY_WINDOW_TIMEZONE, window_tz)
+
     return warnings
 
 
@@ -602,6 +662,7 @@ def _build_current_editor_config(
     min_valid_confluences: int,
     trigger_params: dict[str, Any],
     otf_filter: dict[str, Any],
+    entry_window: dict[str, Any],
     setup_name: str,
     description: str,
 ) -> dict[str, Any]:
@@ -624,6 +685,7 @@ def _build_current_editor_config(
         min_valid_confluences=min_valid_confluences,
         trigger_params=trigger_params,
         otf_filter=otf_filter,
+        entry_window=entry_window,
     )
     setup_id = editor_seed.get("setup_id")
     if isinstance(setup_id, str) and setup_id:
@@ -674,9 +736,14 @@ if EDITOR_STATE_KEY not in st.session_state:
         dataset_id=current_dataset_id,
     )
     _otf_seed_warning = _seeded.pop(_OTF_REPAIR_DICT_KEY, None)
+    _entry_window_seed_warning = _seeded.pop(_ENTRY_WINDOW_REPAIR_DICT_KEY, None)
     st.session_state[EDITOR_STATE_KEY] = _seeded
     if _otf_seed_warning:
         st.session_state[_SETUP_BUILDER_OTF_REPAIR_SESSION_KEY] = _otf_seed_warning
+    if _entry_window_seed_warning:
+        st.session_state[_SETUP_BUILDER_ENTRY_WINDOW_REPAIR_SESSION_KEY] = (
+            _entry_window_seed_warning
+        )
 
 editor_seed = st.session_state.get(EDITOR_STATE_KEY)
 if not isinstance(editor_seed, dict):
@@ -687,10 +754,15 @@ if not isinstance(editor_seed, dict):
         dataset_id=current_dataset_id,
     )
     _otf_seed_warning = _seeded.pop(_OTF_REPAIR_DICT_KEY, None)
+    _entry_window_seed_warning = _seeded.pop(_ENTRY_WINDOW_REPAIR_DICT_KEY, None)
     editor_seed = _seeded
     st.session_state[EDITOR_STATE_KEY] = editor_seed
     if _otf_seed_warning:
         st.session_state[_SETUP_BUILDER_OTF_REPAIR_SESSION_KEY] = _otf_seed_warning
+    if _entry_window_seed_warning:
+        st.session_state[_SETUP_BUILDER_ENTRY_WINDOW_REPAIR_SESSION_KEY] = (
+            _entry_window_seed_warning
+        )
 
 pending_widget_sync = st.session_state.pop(PENDING_WIDGET_SYNC_KEY, None)
 if isinstance(pending_widget_sync, dict):
@@ -702,6 +774,11 @@ else:
 _pending_otf_repair_warning = st.session_state.pop(_SETUP_BUILDER_OTF_REPAIR_SESSION_KEY, None)
 if _pending_otf_repair_warning:
     st.warning(_pending_otf_repair_warning)
+_pending_entry_window_repair_warning = st.session_state.pop(
+    _SETUP_BUILDER_ENTRY_WINDOW_REPAIR_SESSION_KEY, None
+)
+if _pending_entry_window_repair_warning:
+    st.warning(_pending_entry_window_repair_warning)
 for warning_message in sync_warnings:
     st.warning(warning_message)
 
@@ -1165,6 +1242,88 @@ otf_filter = {
     "session_reset": "session",
 }
 
+st.subheader("Entry window (Admit) configuration")
+st.caption(
+    "Optional Admit window saved on the setup library (SW6). Default **disabled** = "
+    "legacy all-day admission. This stores the constrained window for reuse; "
+    "Backtest still runs Admit only when its Admit toggle / Promote handoff applies "
+    "`entry_window`. Distinct from Time Analysis Focus (post-hoc subset)."
+)
+_exchange_tz = "America/New_York"
+_inst = INSTRUMENTS.get(str(instrument)) if isinstance(instrument, str) else None
+if _inst is not None:
+    _exchange_tz = str(_inst.exchange_tz)
+entry_window_enabled = st.toggle(
+    "Save Admit entry window on setup",
+    value=bool(st.session_state.get(WIDGET_KEY_ENTRY_WINDOW_ENABLED, False)),
+    key=WIDGET_KEY_ENTRY_WINDOW_ENABLED,
+    help="Persists a normalized entry_window on the setup. Default off.",
+)
+entry_window: dict[str, Any]
+if entry_window_enabled:
+    if WIDGET_KEY_ENTRY_WINDOW_MODE not in st.session_state:
+        st.session_state[WIDGET_KEY_ENTRY_WINDOW_MODE] = "rth_segments"
+    entry_window_mode = st.selectbox(
+        "Window mode",
+        options=list(ENTRY_WINDOW_MODE_OPTIONS),
+        key=WIDGET_KEY_ENTRY_WINDOW_MODE,
+        format_func=lambda value: {
+            "rth_segments": "RTH segments (exchange/session TZ)",
+            "clock_range": "Clock range [start, end)",
+        }[value],
+    )
+    if entry_window_mode == "rth_segments":
+        if WIDGET_KEY_ENTRY_WINDOW_RTH_SEGMENTS not in st.session_state:
+            st.session_state[WIDGET_KEY_ENTRY_WINDOW_RTH_SEGMENTS] = ["rth_open_30m"]
+        selected_segments = st.multiselect(
+            "RTH segments",
+            options=list(RTH_SEGMENT_LABELS),
+            key=WIDGET_KEY_ENTRY_WINDOW_RTH_SEGMENTS,
+            help="Multi-segment selection is OR (C3). Membership uses exchange/session TZ (C5).",
+        )
+        entry_window = {
+            "enabled": True,
+            "mode": "rth_segments",
+            "rth_segments": list(selected_segments),
+            "timezone": _exchange_tz,
+        }
+        if not selected_segments:
+            st.warning("Select at least one RTH segment, or disable the entry window.")
+    else:
+        if WIDGET_KEY_ENTRY_WINDOW_START_TIME not in st.session_state:
+            st.session_state[WIDGET_KEY_ENTRY_WINDOW_START_TIME] = "09:30"
+        if WIDGET_KEY_ENTRY_WINDOW_END_TIME not in st.session_state:
+            st.session_state[WIDGET_KEY_ENTRY_WINDOW_END_TIME] = "10:00"
+        if WIDGET_KEY_ENTRY_WINDOW_TIMEZONE not in st.session_state:
+            st.session_state[WIDGET_KEY_ENTRY_WINDOW_TIMEZONE] = (
+                _exchange_tz if _exchange_tz in TIMEZONE_OPTIONS else TIMEZONE_OPTIONS[0]
+            )
+        ew_start = st.text_input(
+            "Start time",
+            key=WIDGET_KEY_ENTRY_WINDOW_START_TIME,
+            help="Half-open range start HH:MM or HH:MM:SS (C4).",
+        )
+        ew_end = st.text_input(
+            "End time",
+            key=WIDGET_KEY_ENTRY_WINDOW_END_TIME,
+            help="Half-open range end (exclusive). Use 24:00 for end-of-day.",
+        )
+        ew_tz = st.selectbox(
+            "Window timezone",
+            options=TIMEZONE_OPTIONS,
+            key=WIDGET_KEY_ENTRY_WINDOW_TIMEZONE,
+            help="Clock-range membership uses this TZ (C5). RTH segments always use exchange TZ.",
+        )
+        entry_window = {
+            "enabled": True,
+            "mode": "clock_range",
+            "start_time": ew_start.strip(),
+            "end_time": ew_end.strip(),
+            "timezone": ew_tz,
+        }
+else:
+    entry_window = normalize_entry_window(None, exchange_tz=_exchange_tz)
+
 candidate_config = _build_current_editor_config(
     editor_seed=editor_seed,
     instrument=instrument,
@@ -1184,6 +1343,7 @@ candidate_config = _build_current_editor_config(
     min_valid_confluences=min_valid_confluences,
     trigger_params=trigger_params,
     otf_filter=otf_filter,
+    entry_window=entry_window,
     setup_name=setup_name,
     description=description,
 )

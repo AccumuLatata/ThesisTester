@@ -186,6 +186,12 @@ This engine is for **research screening**, not proof of a durable edge.
   window is not a swept axis and is not reselected per fold. Validation uses
   instrument exchange TZ for Admit membership so noise→`run_backtest` matches
   WFA/sensitivity (C5). Default-off preserves legacy all-day grid/WFA behavior.
+- **Setup library / Report / Assistant (SW6):** setups may persist an additive
+  optional `entry_window` key (OTF-style normalize/default; no
+  `SETUP_SCHEMA_VERSION` bump). Missing/null → disabled. Research artifacts and
+  bundles export Admit window + Focus/Promote provenance with explicit Focus≠Admit
+  honesty labels. The assistant must not claim deployable edge from Focus alone
+  (`focus_post_hoc` caveat when Focus evidence is present).
 - Under `exposure_policy="allow_all"` and `cooldown_bars_after_exit=0`, Focus
   and Admit admit the same `signal_id` set (C7). See
   `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md`.

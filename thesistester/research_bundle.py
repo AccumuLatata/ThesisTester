@@ -53,8 +53,20 @@ _BACKTEST_META_KEYS = (
     "exposure_policy",
     "backtest_session_exit_policy",
     "backtest_config",
+    # SW6: Admit / Focus provenance (dicts only; focused frames stay session-local).
+    "entry_window",
+    "entry_window_armed",
+    "entry_window_promote_provenance",
+    "focus_entry_window",
+    "focus_provenance",
+    "focused_trade_summary",
 )
-_GRID_META_KEYS = ("best_grid_result", "grid_intrabar_policy", "grid_exit_management_policy")
+_GRID_META_KEYS = (
+    "best_grid_result",
+    "grid_intrabar_policy",
+    "grid_exit_management_policy",
+    "grid_entry_window",
+)
 _VALIDATION_META_KEYS = ("validation_summary",)
 _WFA_META_KEYS = (
     "walk_forward_summary",
@@ -103,11 +115,18 @@ _MANAGED_RESEARCH_KEYS = {
     "exposure_policy",
     "backtest_session_exit_policy",
     "backtest_config",
+    "entry_window",
+    "entry_window_armed",
+    "entry_window_promote_provenance",
+    "focus_entry_window",
+    "focus_provenance",
+    "focused_trade_summary",
     "equity_curve",
     "grid_results",
     "best_grid_result",
     "grid_intrabar_policy",
     "grid_exit_management_policy",
+    "grid_entry_window",
     "time_bucketed_trades",
     "time_grouped_summary",
     "validation_summary",

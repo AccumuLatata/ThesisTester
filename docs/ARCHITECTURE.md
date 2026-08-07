@@ -786,7 +786,7 @@ MAE/MFE, exit management, costs, record construction, and diagnostics. No
 accelerated execution mode is enabled; `docs/SIMULATE_PERF.md` is the
 informational serial baseline for future parity-gated work.
 
-## SW2–SW5 entry-window admission boundary
+## SW2–SW6 entry-window admission boundary
 
 `thesistester.entry_window_policy` owns shared RTH segment vocabulary (C1) and
 normalize/contains helpers used by both Focus analytics and
@@ -814,6 +814,13 @@ an enabled `grid_entry_window`.
 Promote sample counts use entry timestamps (C2). An all-day Backtest Run does not
 consume a pending Promote — only a constrained Admit re-sim does
 (`consume_armed_entry_window_after_run`).
+
+SW6 persists an additive optional setup `entry_window` (OTF-style
+`get_effective_entry_window_config` / disabled default; no required
+`SETUP_SCHEMA_VERSION` bump), exports Admit + Focus/Promote provenance in
+research artifacts and bundles (`build_entry_window_metadata`), and forces
+assistant Focus honesty (`focus_post_hoc` caveat — Focus alone is not deployable
+edge).
 
 ## R17 ingestion boundary
 
@@ -951,7 +958,7 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `focused_trades` | Time Focus (SW1) | Backtest/Time display | Filtered trade subset; does not replace `trades` |
 | `focused_trade_summary` | Time Focus (SW1) | Backtest/Time display | Same shape as `trade_summary` on the subset |
 | `focused_equity_curve` | Time Focus (SW1) | Backtest/Time display | Subset-replay equity (C8); same shape as `equity_curve` |
-| `focus_provenance` | Time Focus (SW1) | Banners / export (later) | Counts, `sample_warning`, honesty flags |
+| `focus_provenance` | Time Focus (SW1) | Banners / Report / Bundles (SW6) | Counts, `sample_warning`, honesty flags |
 | `entry_window` | Backtest Admit (SW3) / Promote (SW4) | Backtest / Grid / Validation | Normalized Admit window (armed or last applied) |
 | `entry_window_armed` | Time Analysis Promote (SW4) | Backtest / Time Analysis | `bool` — pending re-sim after Promote |
 | `entry_window_promote_provenance` | Time Analysis Promote (SW4) | banners / audit | Promote source, counts, `sample_warning`, status |

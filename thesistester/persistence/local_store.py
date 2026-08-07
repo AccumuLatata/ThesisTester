@@ -18,6 +18,7 @@ from thesistester import __version__
 from thesistester.data.derive import INGESTION_MODE_15S_PRIMARY_DERIVE_1M
 from thesistester.engine.otf import OTF_ALGORITHM_VERSION
 from thesistester.setup import (
+    get_effective_entry_window_config,
     get_effective_otf_filter_config,
     normalize_otf_filter_config,
     normalize_trigger_timeframe,
@@ -715,6 +716,9 @@ def save_setup(
     normalized_setup_config["otf_config_hash"] = compute_otf_config_hash(
         normalized_setup_config["otf_filter"]
     )
+    # Additive optional Admit window on the setup library (SW6). Missing key →
+    # disabled default; no SETUP_SCHEMA_VERSION bump (same pattern as otf_filter).
+    normalized_setup_config["entry_window"] = get_effective_entry_window_config(setup_config)
 
     raw_setup_id = setup_id if setup_id is not None else normalized_setup_config.get("setup_id")
     if raw_setup_id is None:
@@ -827,6 +831,11 @@ def load_setup(setup_id: str) -> dict[str, Any]:
             normalize_otf_filter_config(setup_config.get("otf_filter"))
         except ValueError as exc:
             raise ValueError(f"Saved setup OTF configuration is invalid: {exc}") from exc
+    if "entry_window" in setup_config:
+        try:
+            get_effective_entry_window_config(setup_config)
+        except ValueError as exc:
+            raise ValueError(f"Saved setup entry_window configuration is invalid: {exc}") from exc
     metadata["path"] = display_store_path(meta_path.parent)
     return metadata
 

@@ -126,6 +126,98 @@ def _table_count(session_state: Mapping[str, Any], key: str) -> int:
     return 0
 
 
+def build_entry_window_metadata(session_state: Mapping[str, Any]) -> dict[str, Any]:
+    """Build entry-window (Focus / Admit) metadata for research export (SW6).
+
+    Distinguishes post-hoc Focus from constrained Admit re-sim and exports
+    promote / grid inheritance provenance. Focus alone is never framed as
+    deployable edge evidence.
+    """
+    from thesistester.analytics.entry_window import (
+        ADMIT_HONESTY_BANNER,
+        FOCUS_EQUITY_CAVEAT,
+        FOCUS_HONESTY_BANNER,
+        format_entry_window_label,
+    )
+    from thesistester.entry_window_policy import normalize_entry_window
+
+    admit_raw = session_state.get("entry_window")
+    focus_raw = session_state.get("focus_entry_window")
+    focus_provenance = session_state.get("focus_provenance")
+    promote_provenance = session_state.get("entry_window_promote_provenance")
+    grid_raw = session_state.get("grid_entry_window")
+    armed = session_state.get("entry_window_armed")
+
+    def _as_window(raw: Any) -> dict[str, Any] | None:
+        if not isinstance(raw, Mapping) or not raw:
+            return None
+        try:
+            return normalize_entry_window(dict(raw))
+        except ValueError:
+            return dict(raw)
+
+    admit = _as_window(admit_raw)
+    focus_window = _as_window(focus_raw)
+    grid_window = _as_window(grid_raw)
+    focus_prov = dict(focus_provenance) if isinstance(focus_provenance, Mapping) else None
+    promote_prov = (
+        dict(promote_provenance) if isinstance(promote_provenance, Mapping) else None
+    )
+
+    available = any(
+        value is not None
+        for value in (admit, focus_window, focus_prov, promote_prov, grid_window)
+    ) or armed is not None
+
+    admit_enabled = bool(admit.get("enabled")) if isinstance(admit, Mapping) else False
+    focus_enabled = bool(focus_window.get("enabled")) if isinstance(focus_window, Mapping) else False
+    if focus_prov is not None and isinstance(focus_prov.get("entry_window"), Mapping):
+        focus_enabled = focus_enabled or bool(focus_prov["entry_window"].get("enabled"))
+
+    honesty_notes = [
+        FOCUS_HONESTY_BANNER,
+        FOCUS_EQUITY_CAVEAT,
+        ADMIT_HONESTY_BANNER,
+        "Focus is a post-hoc subset — not proof of deployable edge. "
+        "Promote and re-simulate (Admit) before treating a window as constrained evidence.",
+    ]
+
+    return {
+        "available": bool(available),
+        "admit": {
+            "enabled": admit_enabled if admit is not None else None,
+            "armed": bool(armed) if armed is not None else False,
+            "entry_window": to_jsonable(admit),
+            "label": format_entry_window_label(admit) if admit_enabled else None,
+            "honesty_banner": ADMIT_HONESTY_BANNER if admit_enabled else None,
+        },
+        "focus": {
+            "enabled": focus_enabled if (focus_window is not None or focus_prov is not None) else None,
+            "entry_window": to_jsonable(focus_window),
+            "label": format_entry_window_label(focus_window) if focus_enabled else None,
+            "provenance": to_jsonable(focus_prov),
+            "honesty_banner": FOCUS_HONESTY_BANNER if focus_enabled else None,
+            "equity_caveat": FOCUS_EQUITY_CAVEAT if focus_enabled else None,
+            "is_post_hoc": True,
+            "is_not_admit": True,
+        },
+        "promote": {
+            "available": promote_prov is not None,
+            "provenance": to_jsonable(promote_prov),
+        },
+        "grid": {
+            "enabled": bool(grid_window.get("enabled")) if isinstance(grid_window, Mapping) else None,
+            "entry_window": to_jsonable(grid_window),
+            "label": (
+                format_entry_window_label(grid_window)
+                if isinstance(grid_window, Mapping) and grid_window.get("enabled")
+                else None
+            ),
+        },
+        "honesty_notes": honesty_notes,
+    }
+
+
 def build_otf_filter_metadata(session_state: Mapping[str, Any]) -> dict[str, Any]:
     """Build OTF filter metadata section from session state.
 
@@ -291,6 +383,7 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "grid_policy": to_jsonable(session_state.get("grid_exit_management_policy")),
         },
         "otf_filter": to_jsonable(build_otf_filter_metadata(session_state)),
+        "entry_window": to_jsonable(build_entry_window_metadata(session_state)),
         "tables": {
             "signals": _table_records(
                 session_state,
@@ -708,6 +801,63 @@ def exposure_policy_assumptions_markdown(assumptions: Mapping[str, Mapping[str, 
     return section
 
 
+def _entry_window_markdown_section(entry_meta: Mapping[str, Any] | None) -> str:
+    """Render Focus / Admit entry-window metadata as a markdown report section."""
+    if not isinstance(entry_meta, Mapping) or not entry_meta.get("available"):
+        return (
+            "\n## Entry Window (Focus / Admit)\n"
+            "- Status: not available (no Focus/Admit window data in session)\n"
+        )
+
+    admit = entry_meta.get("admit") if isinstance(entry_meta.get("admit"), Mapping) else {}
+    focus = entry_meta.get("focus") if isinstance(entry_meta.get("focus"), Mapping) else {}
+    promote = entry_meta.get("promote") if isinstance(entry_meta.get("promote"), Mapping) else {}
+    grid = entry_meta.get("grid") if isinstance(entry_meta.get("grid"), Mapping) else {}
+
+    lines = [
+        "\n## Entry Window (Focus / Admit)\n",
+        "- **Honesty:** Focus is a post-hoc trade subset — not a constrained "
+        "re-simulation and not proof of deployable edge. Admit requires "
+        "re-simulation under `entry_window`.\n",
+    ]
+
+    if focus.get("enabled"):
+        focus_prov = focus.get("provenance") if isinstance(focus.get("provenance"), Mapping) else {}
+        lines.append("- Focus status: enabled (post-hoc subset)\n")
+        lines.append(f"- Focus window: {_dash_if_none(focus.get('label'))}\n")
+        lines.append(
+            f"- Focus trades: {_dash_if_none(focus_prov.get('trade_count_after'))} / "
+            f"{_dash_if_none(focus_prov.get('trade_count_before'))} "
+            f"(sample_warning={_dash_if_none(focus_prov.get('sample_warning'))})\n"
+        )
+        if focus.get("honesty_banner"):
+            lines.append(f"- Focus banner: {focus.get('honesty_banner')}\n")
+    else:
+        lines.append("- Focus status: disabled / not set\n")
+
+    if admit.get("enabled"):
+        armed = "yes" if admit.get("armed") else "no"
+        lines.append(f"- Admit status: enabled (armed={armed})\n")
+        lines.append(f"- Admit window: {_dash_if_none(admit.get('label'))}\n")
+        if admit.get("honesty_banner"):
+            lines.append(f"- Admit banner: {admit.get('honesty_banner')}\n")
+    else:
+        lines.append("- Admit status: disabled / not set (legacy all-day admission)\n")
+
+    if promote.get("available"):
+        promote_prov = (
+            promote.get("provenance") if isinstance(promote.get("provenance"), Mapping) else {}
+        )
+        lines.append(
+            f"- Promote provenance: source={_dash_if_none(promote_prov.get('source'))}, "
+            f"status={_dash_if_none(promote_prov.get('status'))}\n"
+        )
+    if grid.get("enabled"):
+        lines.append(f"- Grid inherited window: {_dash_if_none(grid.get('label'))}\n")
+
+    return "".join(lines)
+
+
 def _otf_markdown_section(otf_meta: Mapping[str, Any] | None) -> str:
     """Render OTF filter metadata as a markdown report section."""
     if not isinstance(otf_meta, Mapping) or not otf_meta.get("available"):
@@ -829,6 +979,7 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     results = artifact.get("results", {}) if isinstance(artifact, Mapping) else {}
     tables = artifact.get("tables", {}) if isinstance(artifact, Mapping) else {}
     otf_meta = artifact.get("otf_filter") if isinstance(artifact, Mapping) else None
+    entry_window_meta = artifact.get("entry_window") if isinstance(artifact, Mapping) else None
 
     setup = config.get("setup_config") or {}
     trade_summary = results.get("trade_summary") or {}
@@ -1078,6 +1229,10 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
                 "",
             ]
         )
+
+    # Entry window (Focus / Admit) section
+    lines.append(_entry_window_markdown_section(entry_window_meta).strip())
+    lines.append("")
 
     # OTF filter section
     lines.append(_otf_markdown_section(otf_meta).strip())

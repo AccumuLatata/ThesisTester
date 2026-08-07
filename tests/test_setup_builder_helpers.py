@@ -215,6 +215,7 @@ def test_current_editor_config_uses_current_candidate_not_stale_loaded_config():
         min_valid_confluences=1,
         trigger_params={},
         otf_filter={"enabled": False, "timeframes": []},
+        entry_window={"enabled": False},
         setup_name="Edited setup",
         description="",
     )
@@ -246,6 +247,7 @@ def test_current_editor_config_still_reports_missing_levels_when_candidate_is_in
         min_valid_confluences=1,
         trigger_params={},
         otf_filter={"enabled": False, "timeframes": []},
+        entry_window={"enabled": False},
         setup_name="Edited setup",
         description="",
     )
