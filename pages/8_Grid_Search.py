@@ -232,9 +232,14 @@ with st.sidebar:
     )
 
     st.subheader("Entry window (inherited Admit)")
+    # C5: Admit membership uses instrument exchange TZ (matches API run_grid /
+    # Validation WFA), not the session-close / display timezone selector.
+    _grid_admit_exchange_tz = (
+        (inst.exchange_tz if inst else None) or exchange_tz or "America/New_York"
+    )
     _grid_ew = resolve_inherited_entry_window(
         st.session_state.get("entry_window"),
-        exchange_tz=exchange_tz,
+        exchange_tz=_grid_admit_exchange_tz,
         armed=bool(st.session_state.get("entry_window_armed")),
     )
     if _grid_ew["enabled"]:
