@@ -109,6 +109,14 @@ from thesistester.assistant.workspace import (
     spec_status_next_step,
     thesis_has_running_run,
 )
+from thesistester.assistant.ux import (
+    ADVANCED_COMPARE_NAV_HINT,
+    ADVANCED_PLAN_NAV_HINT,
+    ADVANCED_PORTFOLIO_NAV_HINT,
+    DISCUSS_NAV_HINT,
+    DISCUSS_NAV_SHORT,
+    HELP_NAV_HINT,
+)
 from thesistester.classic_ledger import is_classic_ledger_run, ledger_run_label
 from thesistester.classic_nav import (
     CLASSIC_FOCUS_CHANNEL_RESULTS_QA,
@@ -550,8 +558,8 @@ st.subheader("Assistant chat")
 st.caption(
     "Thesis drafting only — extracts research choices and clarification questions. "
     "It does not discuss completed backtests/grids/validation or product docs. "
-    "For run narratives, open Advanced → Linked runs → Discuss results. "
-    "For feature/how-it-works questions, use Help / how it works below."
+    f"For run narratives, open {DISCUSS_NAV_HINT}. "
+    f"For feature/how-it-works questions, use {HELP_NAV_HINT}."
 )
 for message in active_conversation.messages:
     display_role = chat_message_display_role(message)
@@ -589,7 +597,7 @@ if chat_message := st.chat_input("Describe or refine this thesis"):
                 message=(
                     "Chat updated with clarification questions above. "
                     "This input drafts thesis choices — use Explain run or "
-                    "Discuss results under Advanced → Linked runs for test results."
+                    f"Discuss results under {DISCUSS_NAV_SHORT} for test results."
                 ),
             )
         else:
@@ -1494,7 +1502,8 @@ with st.expander(
                     st.session_state,
                     level="success",
                     message=(
-                        "Executable RunSpec is valid. Open Advanced → Plan review and "
+                        "Executable RunSpec is valid. Open "
+                        f"{ADVANCED_PLAN_NAV_HINT} and "
                         "Confirm validated RunSpec when clarifications are clear."
                     ),
                 )
@@ -2246,7 +2255,7 @@ with st.expander(
                         message=(
                             "Comparison computed but could not be persisted: "
                             f"{result.payload['persistence_error']}. "
-                            "Open Advanced → Compare completed runs for conclusions."
+                            f"Open {ADVANCED_COMPARE_NAV_HINT} for conclusions."
                         ),
                     )
                 else:
@@ -2254,8 +2263,7 @@ with st.expander(
                         st.session_state,
                         level="success",
                         message=(
-                            "Comparison ready. Open Advanced → Compare completed runs "
-                            "for conclusions."
+                            f"Comparison ready. Open {ADVANCED_COMPARE_NAV_HINT} for conclusions."
                         ),
                     )
             st.rerun()
@@ -2335,7 +2343,7 @@ with st.expander(
                     level="success",
                     message=(
                         f"Portfolio analysis ready for {len(portfolio_ids)} runs "
-                        f"({instrument}). Open Advanced → Portfolio analysis for the summary."
+                        f"({instrument}). Open {ADVANCED_PORTFOLIO_NAV_HINT} for the summary."
                     ),
                 )
             st.rerun()

@@ -12,7 +12,12 @@ from copy import deepcopy
 from typing import Any, Iterable, Mapping, MutableMapping, Sequence
 
 from thesistester.assistant.explainer import EvidencePacket
-from thesistester.assistant.llm import is_draft_channel_message
+from thesistester.assistant.llm import is_draft_channel_message, load_assistant_ux_settings
+from thesistester.assistant.ux import (
+    ASSISTANT_MODE_SESSION_KEY,
+    DISCUSS_RUN_PICKER_KEY,
+    reset_ux_mode_and_picker,
+)
 from thesistester.assistant.thesis_compiler import (
     normalize_setup_level_selection,
     normalize_walk_forward_controls,
@@ -51,6 +56,9 @@ ASSISTANT_SESSION_KEYS: tuple[str, ...] = (
     # Voice UI controls (session widgets; persisted via override file).
     "assistant_voice_ui_enabled",
     "assistant_voice_ui_mode",
+    # RUX-1 presentation preselection (mode selector / Discuss run picker).
+    "assistant_ux_mode",
+    "assistant_discuss_run_picker",
 )
 
 # Cleared whenever the active thesis changes so drafts/validation/handoff
@@ -71,6 +79,8 @@ THESIS_SCOPED_STAGING_KEYS: tuple[str, ...] = (
     "assistant_voice_help_session_id",
     "assistant_voice_last_turn",
     "assistant_voice_playback",
+    "assistant_ux_mode",
+    "assistant_discuss_run_picker",
 )
 
 # Streamlit expander widget keys (1.55+) controlled when forcing RQ-4 open.
@@ -244,6 +254,9 @@ def init_assistant_session_state(session_state: MutableMapping[str, Any]) -> Non
         # Seeded from load_voice_settings() on first Voice controls render.
         "assistant_voice_ui_enabled": False,
         "assistant_voice_ui_mode": "push_to_talk",
+        # RUX-1: default_mode from [assistant.ux]; picker empty until Discuss mode.
+        ASSISTANT_MODE_SESSION_KEY: load_assistant_ux_settings().default_mode,
+        DISCUSS_RUN_PICKER_KEY: None,
     }
     for key, value in defaults.items():
         session_state.setdefault(key, deepcopy(value) if isinstance(value, (dict, list)) else value)
@@ -450,6 +463,12 @@ def clear_thesis_scoped_state(session_state: MutableMapping[str, Any]) -> None:
     session_state["assistant_voice_help_session_id"] = None
     session_state["assistant_voice_last_turn"] = None
     session_state["assistant_voice_playback"] = None
+    # RUX-1: pop widget keys then restore defaults so a stale mode/picker option
+    # cannot survive a thesis switch (keys double as Streamlit widget keys).
+    reset_ux_mode_and_picker(
+        session_state,
+        default_mode=load_assistant_ux_settings().default_mode,
+    )
     # Ephemeral Streamlit widget keys + deferred-clear flags for Discuss/Help
     # text inputs. If left behind, ``if key not in session_state`` hydration
     # would revive cleared drafts, or a stale clear flag would wipe the next

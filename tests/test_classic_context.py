@@ -134,6 +134,9 @@ def test_link_thesis_sets_context_and_syncs_assistant_without_mutating_page_stat
             "assistant_results_qa_force_expand",
         }:
             assert session[key] is False
+        elif key == "assistant_ux_mode":
+            # RUX-1: thesis switch resets mode to [assistant.ux].default_mode.
+            assert session[key] == "discuss"
         else:
             assert session[key] in (None, {})
     assert_protected_classic_keys_unchanged(before, session)

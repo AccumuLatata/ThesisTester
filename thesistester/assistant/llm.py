@@ -178,6 +178,13 @@ class ProductHelpSettings:
     max_corpus_chars: int
 
 
+@dataclass(frozen=True)
+class AssistantUxSettings:
+    """Non-secret Research Assistant page UX preselection (RUX-series)."""
+
+    default_mode: str
+
+
 @dataclass
 class OpenAIStructuredClient:
     """OpenAI Responses client restricted to JSON-schema output."""
@@ -364,6 +371,20 @@ def load_product_help_settings(path: str | Path = "config/assistant.toml") -> Pr
         ),
         max_corpus_chars=_positive_int(section.get("max_corpus_chars"), default=24000),
     )
+
+
+def load_assistant_ux_settings(path: str | Path = "config/assistant.toml") -> AssistantUxSettings:
+    """Load `[assistant.ux]`; missing section / unknown mode → ``discuss``."""
+    from thesistester.assistant.ux import ASSISTANT_MODE_DISCUSS, ASSISTANT_MODES
+
+    assistant = _assistant_table(path)
+    section = assistant.get("ux")
+    if not isinstance(section, dict):
+        return AssistantUxSettings(default_mode=ASSISTANT_MODE_DISCUSS)
+    raw = section.get("default_mode", ASSISTANT_MODE_DISCUSS)
+    if isinstance(raw, str) and raw.strip() in ASSISTANT_MODES:
+        return AssistantUxSettings(default_mode=raw.strip())
+    return AssistantUxSettings(default_mode=ASSISTANT_MODE_DISCUSS)
 
 
 def is_draft_channel_message(message: Any) -> bool:

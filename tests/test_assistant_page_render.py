@@ -227,6 +227,20 @@ def test_default_prominence_is_draft_chat_with_collapsed_secondary_surfaces(work
     assert {"Plan review", "Specifications", "Linked research runs"} <= advanced_subheaders
 
 
+def test_rendered_captions_still_contain_rux0_nav_fragments(workspace):
+    """RUX-1 nav-constant substitution must be value-preserving on the page."""
+    from thesistester.assistant.ux import DISCUSS_NAV_HINT, HELP_NAV_HINT
+
+    _, thesis = workspace
+    app = _render(thesis.thesis_id)
+
+    assert not app.exception
+    captions = [item.value for item in app.caption]
+    joined = "\n".join(captions)
+    assert DISCUSS_NAV_HINT in joined
+    assert HELP_NAV_HINT in joined
+
+
 def test_page_renders_exactly_one_chat_input_owned_by_the_draft_channel(workspace):
     """One page-level chat input; today it belongs to thesis drafting."""
     _, thesis = workspace

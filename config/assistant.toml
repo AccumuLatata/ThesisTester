@@ -29,6 +29,11 @@ enabled = true
 max_history_messages = 12
 max_corpus_chars = 24000
 
+[assistant.ux]
+# Research Assistant page surface preselection (RUX-series).
+# "discuss" | "help" | "draft". Missing/unknown → discuss.
+default_mode = "discuss"
+
 [assistant.voice]
 # Spoken Discuss/Help transport (VA-series). Default remains false through VA-6.
 enabled = false
