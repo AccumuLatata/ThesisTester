@@ -1217,10 +1217,18 @@ def test_default_store_root_stable(monkeypatch):
 @pytest.mark.parametrize(
     ("line", "expected"),
     [
-        ("THESISTESTER_STORE_DIR=C:\\dev\\ThesisTester\\.thesistester_store",
-         ("THESISTESTER_STORE_DIR", r"C:\dev\ThesisTester\.thesistester_store")),
-        ('THESISTESTER_STORE_DIR="C:\\data\\store"',
-         ("THESISTESTER_STORE_DIR", r"C:\data\store")),
+        (
+            "THESISTESTER_STORE_DIR=C:\\dev\\ThesisTester\\.thesistester_store",
+            ("THESISTESTER_STORE_DIR", r"C:\dev\ThesisTester\.thesistester_store"),
+        ),
+        (
+            'THESISTESTER_STORE_DIR="C:\\data\\store"',
+            ("THESISTESTER_STORE_DIR", r"C:\data\store"),
+        ),
+        (
+            "THESISTESTER_STORE_DIR=/data/store # local only",
+            ("THESISTESTER_STORE_DIR", "/data/store"),
+        ),
         ("export FOO=bar", ("FOO", "bar")),
         ("# comment", None),
         ("", None),
@@ -1232,11 +1240,11 @@ def test_parse_dotenv_line(line, expected):
 
 
 def test_load_repo_dotenv_sets_store_dir_without_overriding(monkeypatch, tmp_path):
-    """Repo-root .env populates missing keys only; process env wins."""
+    """Repo-root .env sets only THESISTESTER_STORE_DIR; process env wins."""
+    store = tmp_path / "from_dotenv_store"
     env_file = tmp_path / ".env"
     env_file.write_text(
-        "THESISTESTER_STORE_DIR=C:\\dev\\ThesisTester\\.thesistester_store\n"
-        "OTHER_KEY=from-dotenv\n",
+        f"THESISTESTER_STORE_DIR={store}\nOTHER_KEY=from-dotenv\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(local_store, "_repo_root", lambda: tmp_path)
@@ -1247,8 +1255,33 @@ def test_load_repo_dotenv_sets_store_dir_without_overriding(monkeypatch, tmp_pat
     loaded = local_store.load_repo_dotenv(force=True)
 
     assert loaded == env_file
-    assert os.environ["THESISTESTER_STORE_DIR"] == r"C:\dev\ThesisTester\.thesistester_store"
+    assert os.environ["THESISTESTER_STORE_DIR"] == str(store)
+    # Narrow scope: non-store keys from .env are not applied.
     assert os.environ["OTHER_KEY"] == "already-set"
+    monkeypatch.delenv("OTHER_KEY", raising=False)
+    local_store.load_repo_dotenv(force=True)
+    assert "OTHER_KEY" not in os.environ
+
+
+def test_load_repo_dotenv_skips_windows_paths_on_posix(monkeypatch, tmp_path):
+    """A copied Windows .env must not set STORE_DIR on Linux/macOS."""
+    if os.name == "nt":
+        pytest.skip("Windows hosts accept drive-letter store paths")
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "THESISTESTER_STORE_DIR=C:\\dev\\ThesisTester\\.thesistester_store\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(local_store, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(local_store, "_DOTENV_LOADED", False)
+    monkeypatch.delenv("THESISTESTER_STORE_DIR", raising=False)
+
+    local_store.load_repo_dotenv(force=True)
+
+    assert "THESISTESTER_STORE_DIR" not in os.environ
+    assert local_store.get_configured_store_dir() is None
+    root = get_store_root()
+    assert root.name == ".thesistester_store"
 
 
 def test_get_store_root_respects_dotenv(monkeypatch, tmp_path):

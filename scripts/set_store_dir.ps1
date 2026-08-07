@@ -31,7 +31,8 @@ $DotEnvPath = Join-Path $RepoRoot ".env"
 $DotEnvLine = "THESISTESTER_STORE_DIR=$StoreDir"
 if (Test-Path $DotEnvPath) {
     $existing = Get-Content -LiteralPath $DotEnvPath -ErrorAction SilentlyContinue
-    $filtered = @($existing | Where-Object { $_ -notmatch '^\s*THESISTESTER_STORE_DIR\s*=' })
+    # Drop both KEY= and export KEY= forms so Python dotenv load cannot keep a stale value.
+    $filtered = @($existing | Where-Object { $_ -notmatch '^\s*(export\s+)?THESISTESTER_STORE_DIR\s*=' })
     $filtered + $DotEnvLine | Set-Content -LiteralPath $DotEnvPath -Encoding utf8
 } else {
     @(

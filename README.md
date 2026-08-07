@@ -14,7 +14,8 @@ streamlit run app.py
 Local persistence defaults to `.thesistester_store/` under the repo root. Set
 `THESISTESTER_STORE_DIR` for a durable absolute store (recommended on Windows and any
 environment where the checkout may be ephemeral). Resolution order: process env →
-repo-root `.env` (see `.env.example`) → `<repo>/.thesistester_store`.
+repo-root `.env` (`THESISTESTER_STORE_DIR` only; see `.env.example`) →
+`<repo>/.thesistester_store`.
 
 On Windows (repo at `C:\dev\ThesisTester`):
 
