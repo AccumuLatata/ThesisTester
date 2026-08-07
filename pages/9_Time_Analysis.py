@@ -13,12 +13,14 @@ import streamlit as st
 from thesistester.analytics import summarize_trades
 from thesistester.analytics.entry_window import (
     ADMIT_ARMED_STATUS_BADGE,
+    FOCUSABLE_GROUP_COLS,
     FOCUS_EQUITY_CAVEAT,
     FOCUS_HONESTY_BANNER,
     FOCUS_STATUS_BADGE,
     PROMOTE_ARMED_BANNER,
     apply_promote_to_session_state,
     clear_armed_entry_window,
+    entry_focus_bucket_values,
     entry_window_from_bucket,
     filter_trades_by_entry_window,
     format_entry_window_label,
@@ -266,16 +268,23 @@ else:
 st.divider()
 
 # ── Focus summary (SW1 — post-hoc subset; no re-sim) ──────────────────────────
-_FOCUSABLE_COLS = ("entry_rth_segment", "entry_hour_bucket", "entry_30min_bucket")
+_FOCUSABLE_COLS = FOCUSABLE_GROUP_COLS
+_FOCUS_TIMESTAMP_COL = "entry_timestamp"
 st.subheader("Focus summary (post-hoc)")
 st.caption(
     "Recompute the full Performance Summary on one time bucket without re-running "
     "the backtest. This is exploratory only — not a live trading schedule."
 )
 
-if primary_group in _FOCUSABLE_COLS and not grouped.empty and primary_group in grouped.columns:
-    focus_values = grouped[primary_group].dropna().astype(str).drop_duplicates().tolist()
-    default_focus = focus_values[0] if focus_values else None
+if primary_group in _FOCUSABLE_COLS:
+    # C2: Focus/Promote options always come from entry-time buckets — never from
+    # an exit_timestamp chart partition (columns stay named entry_* either way).
+    focus_values = entry_focus_bucket_values(
+        trades_raw,
+        primary_group,
+        exchange_tz=exchange_tz,
+        bucket_tz=bucket_tz,
+    )
     active_focus = st.session_state.get("focus_entry_window") or {}
     active_label = None
     if active_focus.get("enabled"):
@@ -290,38 +299,63 @@ if primary_group in _FOCUSABLE_COLS and not grouped.empty and primary_group in g
                     active_label = candidate
                     break
 
-    focus_col, btn_col, clear_col = st.columns([3, 1, 1])
-    with focus_col:
-        selected_focus_value = st.selectbox(
-            f"Bucket ({primary_group})",
-            options=focus_values,
-            index=(focus_values.index(active_label) if active_label in focus_values else 0),
-            key="time_analysis_focus_bucket_value",
-            help=(
-                "Select a time bucket to Focus (post-hoc) or Promote to Admit "
-                "(arms Backtest entry_window; does not auto-run)."
-            ),
+    if timestamp_basis != _FOCUS_TIMESTAMP_COL:
+        st.caption(
+            "Focus / Promote buckets and membership use **entry** timestamps (C2), "
+            f"not the chart basis `{timestamp_basis}`. "
+            "Exit-grouped table rows are not Focus options."
         )
-    with btn_col:
-        st.write("")
-        st.write("")
-        apply_focus = st.button("Focus summary", type="primary", key="time_analysis_apply_focus")
-    with clear_col:
-        st.write("")
-        st.write("")
-        clear_focus = st.button("Clear Focus", key="time_analysis_clear_focus")
 
-    if clear_focus:
-        for key in (
-            "focus_entry_window",
-            "focused_trades",
-            "focused_trade_summary",
-            "focused_equity_curve",
-            "focus_provenance",
-            "focused_direction_summary",
-        ):
-            st.session_state.pop(key, None)
-        st.rerun()
+    if not focus_values:
+        st.info("No entry-time buckets available to Focus for this primary grouping.")
+        selected_focus_value = None
+        apply_focus = False
+        if st.button("Clear Focus", key="time_analysis_clear_focus_empty"):
+            for key in (
+                "focus_entry_window",
+                "focused_trades",
+                "focused_trade_summary",
+                "focused_equity_curve",
+                "focus_provenance",
+                "focused_direction_summary",
+            ):
+                st.session_state.pop(key, None)
+            st.rerun()
+    else:
+        focus_col, btn_col, clear_col = st.columns([3, 1, 1])
+        with focus_col:
+            selected_focus_value = st.selectbox(
+                f"Bucket ({primary_group}, entry time)",
+                options=focus_values,
+                index=(focus_values.index(active_label) if active_label in focus_values else 0),
+                key="time_analysis_focus_bucket_value",
+                help=(
+                    "Select an **entry-time** bucket to Focus (post-hoc) or Promote "
+                    "to Admit (arms Backtest entry_window; does not auto-run)."
+                ),
+            )
+        with btn_col:
+            st.write("")
+            st.write("")
+            apply_focus = st.button(
+                "Focus summary", type="primary", key="time_analysis_apply_focus"
+            )
+        with clear_col:
+            st.write("")
+            st.write("")
+            clear_focus = st.button("Clear Focus", key="time_analysis_clear_focus")
+
+        if clear_focus:
+            for key in (
+                "focus_entry_window",
+                "focused_trades",
+                "focused_trade_summary",
+                "focused_equity_curve",
+                "focus_provenance",
+                "focused_direction_summary",
+            ):
+                st.session_state.pop(key, None)
+            st.rerun()
 
     if apply_focus and selected_focus_value is not None:
         try:
@@ -335,7 +369,7 @@ if primary_group in _FOCUSABLE_COLS and not grouped.empty and primary_group in g
                 trades_raw,
                 window,
                 exchange_tz=exchange_tz,
-                timestamp_col=timestamp_basis,
+                timestamp_col=_FOCUS_TIMESTAMP_COL,
                 bucket_tz=bucket_tz,
                 min_trades=min_trades_warn,
             )
@@ -424,12 +458,8 @@ if _can_promote:
     # Prefer active Focus window; else map the selected bucket (C1/C5).
     # C2: Admit classifies by entry-bar time — Promote sample counts / thin-sample
     # gate always use entry_timestamp, even when Time Analysis charts use exit.
-    _PROMOTE_TIMESTAMP_COL = "entry_timestamp"
-    if timestamp_basis != _PROMOTE_TIMESTAMP_COL:
-        st.caption(
-            "Promote sample counts use **entry** timestamps (Admit / C2), "
-            f"not the chart basis `{timestamp_basis}`."
-        )
+    # (Exit-basis caption is shared with Focus above.)
+    _PROMOTE_TIMESTAMP_COL = _FOCUS_TIMESTAMP_COL
     if _has_focus and isinstance(_focus_window, dict) and _focus_window.get("enabled"):
         _promote_source_window = _focus_window
         _promote_source = "focus"

@@ -13,15 +13,16 @@ Assistant-related contracts:
 | Classic ↔ Assistant bridge | `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` (CAI) | ✅ Implemented (CAI-0…CAI-10) |
 | Thesis draft / explain loop | `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2) | ✅ Implemented (through PR6) |
 | AIA Research Assistant foundations | `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` (AIA) | ✅ Implemented — do not open new results/help PRs from AIA text |
-| Session entry window research loop | `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` (SW) | 📋 **Plan ready** — SW0–SW7 (+ optional SW2b); Focus → Admit → Grid/WFA/sensitivity inherit; C1–C9; golden-gated per `ENGINEERING_PROPOSAL.md` §4 |
+| Session entry window research loop | `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` (SW); evidence `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md` | ✅ **Engineering-signed (SW0–SW7)** — optional SW2b open; Focus → Admit → Grid/WFA inherit; C1–C9; default-off; golden-gated per `ENGINEERING_PROPOSAL.md` §4 |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
 new results/help/voice work must not reopen them. All are additive to this
 R-series and must preserve engine/golden-master semantics.
 
-Future session-constraint work is specified in
-`docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` and must not reopen R9–R22
-milestone text; implement as the SW series with legacy golden identity preserved.
+Session-constraint work is specified in
+`docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` (engineering sign-off in
+`docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`) and must not reopen R9–R22
+milestone text; SW series preserves legacy golden identity.
 
 ---
 
@@ -1138,25 +1139,26 @@ canonical/Quantower CSV parser as the unchanged default path.
 
 ---
 
-## Future — Session Entry Window (SW0–SW7) 📋 Plan ready
+## Session Entry Window (SW0–SW7) ✅ Engineering-signed
 
 Closes the Discover → Scope → Re-sim → Optimize → Prove loop when Time Analysis
 shows a strong RTH segment (e.g. `rth_open_30m`) while the all-day Performance
-Summary looks poor.
+Summary looks poor. Optional SW2b (cutoff skip audit) remains deferred.
 
-**Canonical spec:** `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` (normative contracts **C1–C9**)
+**Canonical spec:** `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` (normative contracts **C1–C9**)  
+**Release evidence:** `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`
 
 | Milestone | Intent |
 |---|---|
-| SW0 | Plan lock + legacy golden gate confirmation + C1–C9 |
+| SW0 | Plan lock + legacy golden gate confirmation + C1–C9 ✅ |
 | SW1 | Post-hoc Focus summary (no re-sim); shared RTH export ✅ |
 | SW2 | Opt-in `entry_window` admission + enabled golden + Focus≡Admit (C7) ✅ |
 | SW2b | Optional: audit `no_new_entries_after` → `after_entry_cutoff` + UI/docs honesty |
 | SW3 | API + Backtest Admit controls ✅ |
 | SW4 | Time Analysis Promote + Focus↔Admit handoff ✅ |
 | SW5 | Grid + Validation/WFA/sensitivity inherit window (fixed constraint) ✅ |
-| SW6 | Setup persistence, export, assistant honesty ← next ([#297](https://github.com/AccumuLatata/ThesisTester/pull/297)) |
-| SW7 | Hardening + release evidence |
+| SW6 | Setup persistence, export, assistant honesty ✅ |
+| SW7 | Hardening + release evidence ✅ ([#298](https://github.com/AccumuLatata/ThesisTester/pull/298)) |
 
 **Regression posture:** additive, default-off; legacy `trades_legacy` golden
 must stay value-identical; Focus and Admit must never be conflated in UI copy;

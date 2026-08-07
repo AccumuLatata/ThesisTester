@@ -162,13 +162,17 @@ def build_entry_window_metadata(session_state: Mapping[str, Any]) -> dict[str, A
     grid_window = _as_window(grid_raw)
     focus_prov = dict(focus_provenance) if isinstance(focus_provenance, Mapping) else None
     promote_prov = dict(promote_provenance) if isinstance(promote_provenance, Mapping) else None
+    # Prefer session focus_entry_window; fall back to provenance.entry_window (SW7).
+    if focus_window is None and focus_prov is not None:
+        focus_window = _as_window(focus_prov.get("entry_window"))
 
     admit_enabled = bool(admit.get("enabled")) if isinstance(admit, Mapping) else False
+    # Fail closed: only a normalized focus_window counts as enabled (SW7 fallback
+    # already hydrates from provenance.entry_window when session key is missing).
+    # Do not OR raw provenance.enabled — invalid drafts must not look like Focus.
     focus_enabled = (
         bool(focus_window.get("enabled")) if isinstance(focus_window, Mapping) else False
     )
-    if focus_prov is not None and isinstance(focus_prov.get("entry_window"), Mapping):
-        focus_enabled = focus_enabled or bool(focus_prov["entry_window"].get("enabled"))
     grid_enabled = bool(grid_window.get("enabled")) if isinstance(grid_window, Mapping) else False
     armed_pending = bool(armed)
 
