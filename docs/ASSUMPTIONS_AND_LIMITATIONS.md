@@ -53,14 +53,18 @@ This engine is for **research screening**, not proof of a durable edge.
   `Time left`/OHLCV bars to canonical data. Parser success does not establish
   that separately exported 1m and 15s files reconcile; R12 remains the
   authority for that check.
-- Complete 15s→1m derivation (`thesistester.data.derive`) powers the
-  Data-page **recommended** Upload-CSV ingestion mode
-  (`15s_primary_derive_1m`, currently `quantower_history_exporter` only).
-  The mode treats the 15-second frame as source truth and emits a one-minute
-  parent only for minutes with exactly four aligned opens
-  (`:00/:15/:30/:45`). Incomplete or misaligned minutes are dropped rather
-  than repaired; dropped-minute diagnostics are session-scoped and
-  downloadable.
+- Observed 15s→1m derivation (`thesistester.data.derive`, policy
+  `observed_aligned_15s_to_1m_v2`) powers the Data-page **recommended**
+  Upload-CSV ingestion mode (`15s_primary_derive_1m`, currently
+  `quantower_history_exporter` only). The mode treats the 15-second frame as
+  source truth and emits a one-minute parent for every minute with one or more
+  on-grid opens (`:00/:15/:30/:45`). Sparse minutes from Quantower/Rithmic
+  trade-only exports (empty 15s slots omitted) are retained and reported as
+  sparse diagnostics; only misaligned (off-grid) minutes are dropped. Empty
+  bars are never synthesized. Strict R12 `intrabar_model=subtimeframe` still
+  requires complete four-bar coverage — use `subtimeframe_conservative` for
+  observed replay plus SL-first fallback on sparse minutes, or enable
+  Quantower Build empty bars for full coverage.
 - In that mode the derived one-minute frame is the canonical `data` used for
   levels/signals, and the original 15-second bars are attached as
   `subtimeframe_data` for R12. The separate lower-timeframe uploader is hidden

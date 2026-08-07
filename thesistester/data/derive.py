@@ -1,10 +1,18 @@
-"""Complete-coverage parent derivation from finer OHLCV source bars.
+"""Parent derivation from finer OHLCV source bars.
 
-PR1 foundation for the 15-second-primary research contract: emit a one-minute
-parent only when exactly four exchange-local, timestamp-aligned 15-second bars
-exist. Incomplete or misaligned minutes are dropped with a diagnostic table.
-This is intentionally stricter than ``resample_ohlcv``, which retains partial
-buckets for preview use.
+PR1 foundation for the 15-second-primary research contract, updated for
+industry-standard Quantower/Rithmic History Exporter semantics: absent 15s
+slots mean no prints (sparse/trade-only export), not corrupt data.
+
+A one-minute parent is emitted for every exchange-local minute that contains
+one or more on-grid 15-second opens (``:00``, ``:15``, ``:30``, ``:45``).
+Minutes with off-grid timestamps are dropped with a diagnostic table.
+Sparse (incomplete) minutes are retained in the canonical parent and reported
+separately so R12 can use observed replay where complete and conservative
+SL-first fallback where sparse.
+
+This remains stricter than ``resample_ohlcv`` for misaligned timestamps, but
+matches vendor aggregation for trade-only 15s exports.
 """
 
 from __future__ import annotations
@@ -19,7 +27,12 @@ import pandas as pd
 from thesistester.config import REQUIRED_COLUMNS
 from thesistester.data.loader import format_interval
 
+# Historical policy: required exactly four aligned sub-bars and dropped sparse
+# minutes. Retained as a constant so old provenance/bindings remain readable.
 DERIVATION_POLICY_COMPLETE_ALIGNED_15S_TO_1M_V1 = "complete_aligned_15s_to_1m_v1"
+# Current policy: retain sparse on-grid minutes; drop only misaligned buckets.
+DERIVATION_POLICY_OBSERVED_ALIGNED_15S_TO_1M_V2 = "observed_aligned_15s_to_1m_v2"
+DERIVATION_POLICY_DEFAULT = DERIVATION_POLICY_OBSERVED_ALIGNED_15S_TO_1M_V2
 INGESTION_MODE_15S_PRIMARY_DERIVE_1M = "15s_primary_derive_1m"
 SUPPORTED_PARENT_INTERVAL = "1min"
 _SOURCE_INTERVAL = pd.Timedelta(seconds=15)
@@ -33,17 +46,19 @@ _DROPPED_COLUMNS = (
     "observed_sub_bars",
     "observed_timestamps",
 )
+_SPARSE_COLUMNS = _DROPPED_COLUMNS
 
 
 @dataclass(frozen=True)
 class DerivedParentResult:
-    """Typed result of complete-coverage parent derivation."""
+    """Typed result of observed-coverage parent derivation."""
 
     parent_data: pd.DataFrame
     source_data: pd.DataFrame
     source_interval: pd.Timedelta
     parent_interval: pd.Timedelta
     dropped_buckets: pd.DataFrame
+    sparse_buckets: pd.DataFrame
     derivation_policy: str
 
 
@@ -78,6 +93,7 @@ def build_derivation_provenance(
             else hash_source_frame(result.source_data)
         ),
         "dropped_parent_bucket_count": int(len(result.dropped_buckets)),
+        "sparse_parent_bucket_count": int(len(result.sparse_buckets)),
     }
 
 
@@ -86,15 +102,17 @@ def derive_complete_parent_ohlcv(
     *,
     parent_interval: str = SUPPORTED_PARENT_INTERVAL,
 ) -> DerivedParentResult:
-    """Derive complete parent OHLCV bars from a finer aligned source frame.
+    """Derive parent OHLCV bars from an aligned 15-second source frame.
 
-    Only ``parent_interval="1min"`` is supported in v1, and the source cadence
-    must be exactly 15 seconds. A parent minute is emitted only when the source
-    contains exactly the opens ``:00``, ``:15``, ``:30``, and ``:45``.
+    Only ``parent_interval="1min"`` is supported. The source cadence must be
+    exactly 15 seconds. A parent minute is emitted when the source contains one
+    or more on-grid opens among ``:00``, ``:15``, ``:30``, and ``:45``. Sparse
+    minutes (fewer than four sub-bars) are retained; off-grid timestamps make
+    the minute misaligned and dropped.
     """
     if parent_interval != SUPPORTED_PARENT_INTERVAL:
         raise ValueError(
-            "complete aligned derivation currently supports only "
+            "observed aligned derivation currently supports only "
             f"parent_interval={SUPPORTED_PARENT_INTERVAL!r}, got {parent_interval!r}"
         )
 
@@ -107,24 +125,15 @@ def derive_complete_parent_ohlcv(
     buckets = _floor_to_local_minute(timestamps)
     parent_rows: list[dict[str, Any]] = []
     dropped_rows: list[dict[str, Any]] = []
+    sparse_rows: list[dict[str, Any]] = []
 
     for bucket_start, group in source_frame.groupby(buckets, sort=True):
         bucket_ts = pd.Timestamp(bucket_start)
         group = group.sort_values("timestamp").reset_index(drop=True)
-        expected = [_add_source_offset(bucket_ts, offset) for offset in range(_EXPECTED_SUB_BARS)]
         observed = list(group["timestamp"])
-        if len(group) != _EXPECTED_SUB_BARS:
+        if not _group_is_on_grid(observed, bucket_ts):
             dropped_rows.append(
-                _dropped_bucket_row(
-                    timestamp=bucket_ts,
-                    reason="incomplete_coverage",
-                    observed=observed,
-                )
-            )
-            continue
-        if observed != expected:
-            dropped_rows.append(
-                _dropped_bucket_row(
+                _coverage_bucket_row(
                     timestamp=bucket_ts,
                     reason="timestamp_misalignment",
                     observed=observed,
@@ -142,11 +151,19 @@ def derive_complete_parent_ohlcv(
                 "volume": float(group["volume"].sum()),
             }
         )
+        if len(group) != _EXPECTED_SUB_BARS:
+            sparse_rows.append(
+                _coverage_bucket_row(
+                    timestamp=bucket_ts,
+                    reason="incomplete_coverage",
+                    observed=observed,
+                )
+            )
 
     if not parent_rows:
         raise ValueError(
-            "complete aligned derivation retained no parent bars; "
-            f"dropped {len(dropped_rows)} incomplete or misaligned minute buckets"
+            "observed aligned derivation retained no parent bars; "
+            f"dropped {len(dropped_rows)} misaligned minute buckets"
         )
 
     parent_data = pd.DataFrame(parent_rows, columns=list(REQUIRED_COLUMNS))
@@ -154,9 +171,14 @@ def derive_complete_parent_ohlcv(
         parent_data["timestamp"], source_frame["timestamp"].dtype
     )
     dropped_buckets = pd.DataFrame(dropped_rows, columns=list(_DROPPED_COLUMNS))
+    sparse_buckets = pd.DataFrame(sparse_rows, columns=list(_SPARSE_COLUMNS))
     if not dropped_buckets.empty:
         dropped_buckets["timestamp"] = _timestamps_matching_source_dtype(
             dropped_buckets["timestamp"], source_frame["timestamp"].dtype
+        )
+    if not sparse_buckets.empty:
+        sparse_buckets["timestamp"] = _timestamps_matching_source_dtype(
+            sparse_buckets["timestamp"], source_frame["timestamp"].dtype
         )
 
     return DerivedParentResult(
@@ -165,7 +187,8 @@ def derive_complete_parent_ohlcv(
         source_interval=_SOURCE_INTERVAL,
         parent_interval=_PARENT_INTERVAL,
         dropped_buckets=dropped_buckets.reset_index(drop=True),
-        derivation_policy=DERIVATION_POLICY_COMPLETE_ALIGNED_15S_TO_1M_V1,
+        sparse_buckets=sparse_buckets.reset_index(drop=True),
+        derivation_policy=DERIVATION_POLICY_DEFAULT,
     )
 
 
@@ -226,7 +249,8 @@ def _validate_15s_cadence(timestamps: pd.Series) -> None:
     """Require observable 15-second cadence from on-grid adjacent pairs.
 
     Off-grid timestamps are not fatal here; they make their parent minute
-    incomplete or misaligned and are reported in ``dropped_buckets``.
+    misaligned and are reported in ``dropped_buckets``. Sparse gaps between
+    on-grid prints are expected for trade-only Quantower/Rithmic exports.
     """
     on_grid_mask = (
         (timestamps.dt.microsecond == 0)
@@ -235,18 +259,24 @@ def _validate_15s_cadence(timestamps: pd.Series) -> None:
     )
     on_grid = timestamps.loc[on_grid_mask]
     if len(on_grid) < 2:
-        raise ValueError("complete aligned 15s→1m derivation requires on-grid 15-second timestamps")
+        raise ValueError("observed aligned 15s→1m derivation requires on-grid 15-second timestamps")
     positive = on_grid.diff().dropna()
     positive = positive[positive > pd.Timedelta(0)]
     intra_minute = positive[positive < _PARENT_INTERVAL]
     if intra_minute.empty:
-        raise ValueError("complete aligned 15s→1m derivation requires observable 15-second steps")
+        # Sparse trade-only exports may only show inter-minute gaps (e.g. one
+        # print per quiet minute). Accept when every on-grid stamp is a valid
+        # 15s open and consecutive on-grid gaps are exact 15s multiples.
+        remainder = positive.mod(_SOURCE_INTERVAL)
+        if (remainder != pd.Timedelta(0)).any():
+            raise ValueError("source cadence must be an exact multiple of 15 seconds")
+        return
     remainder = intra_minute.mod(_SOURCE_INTERVAL)
     if (remainder != pd.Timedelta(0)).any():
         raise ValueError("source cadence must be an exact multiple of 15 seconds")
     if intra_minute.min() != _SOURCE_INTERVAL:
         raise ValueError(
-            "complete aligned 15s→1m derivation requires a 15-second source interval, "
+            "observed aligned 15s→1m derivation requires a 15-second source interval, "
             f"got {format_interval(intra_minute.min())}"
         )
 
@@ -261,6 +291,24 @@ def _floor_to_local_minute(timestamps: pd.Series) -> pd.Series:
 def _add_source_offset(bucket_ts: pd.Timestamp, offset: int) -> pd.Timestamp:
     """Return an expected sub-bar open that preserves the parent minute fold."""
     return pd.Timestamp(bucket_ts) + (offset * _SOURCE_INTERVAL)
+
+
+def _group_is_on_grid(observed: list[pd.Timestamp], bucket_ts: pd.Timestamp) -> bool:
+    """True when every observed stamp is a unique expected 15s open for ``bucket_ts``."""
+    if not observed:
+        return False
+    expected = {_add_source_offset(bucket_ts, offset) for offset in range(_EXPECTED_SUB_BARS)}
+    if len(observed) > _EXPECTED_SUB_BARS:
+        return False
+    seen: set[pd.Timestamp] = set()
+    for stamp in observed:
+        ts = pd.Timestamp(stamp)
+        if ts not in expected or ts in seen:
+            return False
+        if ts.microsecond != 0 or getattr(ts, "nanosecond", 0) != 0:
+            return False
+        seen.add(ts)
+    return True
 
 
 def _validate_group_ohlcv(group: pd.DataFrame, bucket_ts: pd.Timestamp) -> None:
@@ -280,7 +328,7 @@ def _validate_group_ohlcv(group: pd.DataFrame, bucket_ts: pd.Timestamp) -> None:
         raise ValueError(f"source OHLC invariants are invalid for parent minute {bucket_ts}")
 
 
-def _dropped_bucket_row(
+def _coverage_bucket_row(
     *,
     timestamp: pd.Timestamp,
     reason: str,
@@ -293,3 +341,7 @@ def _dropped_bucket_row(
         "observed_sub_bars": len(observed),
         "observed_timestamps": ",".join(ts.isoformat() for ts in observed),
     }
+
+
+# Backward-compatible private alias used by older tests/docs snippets.
+_dropped_bucket_row = _coverage_bucket_row

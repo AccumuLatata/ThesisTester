@@ -33,7 +33,7 @@ from thesistester.analytics.time_analysis import add_time_buckets, summarize_by_
 from thesistester.analytics.otf_validation import run_otf_validation_matrix
 from thesistester.config import INSTRUMENTS
 from thesistester.data.derive import (
-    DERIVATION_POLICY_COMPLETE_ALIGNED_15S_TO_1M_V1,
+    DERIVATION_POLICY_DEFAULT,
     INGESTION_MODE_15S_PRIMARY_DERIVE_1M,
     build_derivation_provenance,
     derive_complete_parent_ohlcv,
@@ -42,7 +42,7 @@ from thesistester.data.loader import format_interval, load_ohlcv, validate_ohlcv
 from thesistester.data.resample import resample_ohlcv
 from thesistester.data.rolls import detect_contract_column, validate_roll_metadata
 from thesistester.data.sessions import tag_session
-from thesistester.engine.intrabar import prepare_subtimeframe_context
+from thesistester.engine.intrabar import prepare_subtimeframe_conservative_context
 from thesistester.engine import (
     VALID_INTRABAR_MODELS,
     apply_configured_otf_filter,
@@ -2315,16 +2315,17 @@ def _load_15s_primary_experiment_data(
     cache_policy: str,
     store_root: str | Path | None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, DataIdentity, dict[str, Any], dict[str, Any]]:
-    """Load a 15s source, derive complete 1m parents, and retain R12 source bars.
+    """Load a 15s source, derive observed 1m parents, and retain R12 source bars.
 
-    Always re-derives from the source file so incomplete minutes stay dropped and
-    provenance stays source-truthful. Source-index bindings include
-    ``ingestion_mode`` / ``derivation_policy`` so a legacy primary binding for
-    the same bytes cannot warm-cross into this path (or the reverse).
+    Always re-derives from the source file so provenance stays source-truthful.
+    Sparse on-grid minutes are retained; only misaligned minutes are dropped.
+    Source-index bindings include ``ingestion_mode`` / ``derivation_policy`` so
+    a legacy primary binding for the same bytes cannot warm-cross into this
+    path (or the reverse).
     """
     policy = normalize_cache_policy(cache_policy)
     ingestion_mode = INGESTION_MODE_15S_PRIMARY_DERIVE_1M
-    derivation_policy = DERIVATION_POLICY_COMPLETE_ALIGNED_15S_TO_1M_V1
+    derivation_policy = DERIVATION_POLICY_DEFAULT
     data_stage: dict[str, Any] = {"status": "bypassed", "policy": policy}
     inst = _instrument(instrument)
 
@@ -2354,7 +2355,7 @@ def _load_15s_primary_experiment_data(
 
     parent = tag_session(derived.parent_data, instrument)
     source = tag_session(derived.source_data, instrument)
-    prepare_subtimeframe_context(
+    prepare_subtimeframe_conservative_context(
         parent,
         source,
         tick_size=inst.tick_size,

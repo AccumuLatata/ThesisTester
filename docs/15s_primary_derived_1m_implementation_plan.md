@@ -55,9 +55,10 @@ volume, VWAP, profile, levels, signals, and trades.
   signal generation, or the legacy `sl_first` default.
 - Do not synthesize, interpolate, forward-fill, or repair missing 15-second
   bars.
-- Do not retain incomplete one-minute parents under the 15-second-primary
-  policy. Conservative R12 fallback is not a substitute for a canonical
-  decision bar with incomplete source coverage.
+- Do not invent off-grid timestamps or silently floor misaligned stamps into
+  valid opens. Sparse on-grid minutes are retained (v2); misaligned minutes
+  are still dropped. Conservative R12 fallback covers sparse parents at
+  simulation time without fabricating empty 15s bars.
 - Do not claim tick-level ordering: a residual SL/TP tie inside a single
   15-second bar remains pessimistic SL-first under the existing R12 contract.
 
@@ -75,29 +76,37 @@ hold:
 | Timestamp basis | Timestamps represent bar opens and are exchange-timezone aware after normal loader conversion. |
 | Source validity | Existing fatal OHLCV failures remain fatal: duplicates, missing values, invalid OHLC ranges, and negative volume. |
 | Bucket alignment | A source bar belongs to the exchange-local wall-clock minute containing its open timestamp. Valid expected opens are `:00`, `:15`, `:30`, and `:45`. |
-| Complete coverage | A derived parent exists only when the bucket contains exactly those four expected timestamps. |
+| Observed coverage (v2) | A derived parent exists when the bucket contains one or more unique on-grid opens. Sparse trade-only minutes are retained; off-grid stamps drop the minute. |
+
+**Amendment (v2):** Historical policy `complete_aligned_15s_to_1m_v1` required
+exactly four sub-bars and dropped sparse minutes. That rejected normal
+Quantower/Rithmic History Exporter trade-only files (empty 15s slots omitted).
+Current policy `observed_aligned_15s_to_1m_v2` retains sparse on-grid minutes
+and drops only misaligned buckets. Empty bars are still never synthesized.
 
 The helper must reject duplicate source timestamps before grouping. A source
 timestamp at an offset such as `:00:05` is not silently floored into a valid
-bucket; that bucket is incomplete/misaligned and yields no parent.
+bucket; that bucket is misaligned and yields no parent.
 
 ### 3.2 Derived OHLCV semantics
 
-For each eligible minute `m`, derive:
+For each eligible minute `m` with observed on-grid opens `S` (a non-empty
+subset of `{0s, 15s, 30s, 45s}`), derive:
 
 ```text
 timestamp = m
-open      = source.open at m + 0s
-high      = max(source.high over m + {0s, 15s, 30s, 45s})
-low       = min(source.low  over m + {0s, 15s, 30s, 45s})
-close     = source.close at m + 45s
-volume    = sum(source.volume over the four bars)
+open      = source.open at first observed stamp in S
+high      = max(source.high over S)
+low       = min(source.low  over S)
+close     = source.close at last observed stamp in S
+volume    = sum(source.volume over S)
 ```
 
+When `|S|=4`, this is identical to the original complete-coverage aggregation.
 The output is sorted and session-tagged through the existing `tag_session()`
-path. It has no partial edge bucket and no parent for a minute containing a
-gap. This is stricter than `resample_ohlcv(..., "1min")`, whose general preview
-contract intentionally retains non-empty partial buckets.
+path. Misaligned minutes produce no parent. Sparse minutes are retained for
+levels/signals research; R12 strict replay still requires `|S|=4`, while
+`subtimeframe_conservative` falls back to SL-first on sparse parents.
 
 ### 3.3 Coverage diagnostics and provenance
 
@@ -111,18 +120,19 @@ class DerivedParentResult:
     source_interval: pd.Timedelta
     parent_interval: pd.Timedelta
     dropped_buckets: pd.DataFrame
-    derivation_policy: str  # "complete_aligned_15s_to_1m_v1"
+    sparse_buckets: pd.DataFrame
+    derivation_policy: str  # "observed_aligned_15s_to_1m_v2"
 ```
 
-`dropped_buckets` is a read-only diagnostic with at least:
+`sparse_buckets` / `dropped_buckets` are read-only diagnostics with at least:
 
 - `timestamp`
-- `reason` (`incomplete_coverage` or `timestamp_misalignment`)
+- `reason` (`incomplete_coverage` in sparse; `timestamp_misalignment` in dropped)
 - `expected_sub_bars`
 - `observed_sub_bars`
 - `observed_timestamps`
 
-It is not used to patch source data. The UI reports counts and offers the CSV
+They are not used to patch source data. The UI reports counts and offers CSVs
 for download. A derived dataset with zero retained parent rows fails clearly.
 
 The following additive provenance mapping must follow all durable paths:
@@ -132,10 +142,11 @@ The following additive provenance mapping must follow all durable paths:
   "ingestion_mode": "15s_primary_derive_1m",
   "source_interval": "15s",
   "derived_parent_interval": "1min",
-  "derivation_policy": "complete_aligned_15s_to_1m_v1",
+  "derivation_policy": "observed_aligned_15s_to_1m_v2",
   "source_format_profile": "quantower_history_exporter",
   "source_content_hash": "<sha256>",
-  "dropped_parent_bucket_count": 0
+  "dropped_parent_bucket_count": 0,
+  "sparse_parent_bucket_count": 0
 }
 ```
 
@@ -195,12 +206,13 @@ other vendor profiles later is a separate contract decision. On success:
 | `subtimeframe_interval` | `"15s"` |
 | `subtimeframe_format_profile` | Selected source profile |
 | `ingestion_provenance` | JSON-safe mapping from §3.3 |
-| `derived_parent_diagnostics` | Read-only dropped-bucket frame / summary |
+| `derived_parent_diagnostics` | Mapping of sparse + dropped diagnostic frames |
 
-The mode invokes `prepare_subtimeframe_context()` as a postcondition. Failure
-is a programming/data-contract error because every emitted parent must already
-reconcile; it must fail closed rather than silently load the parent without
-R12 data.
+The mode invokes `prepare_subtimeframe_conservative_context()` as a
+postcondition. Complete minutes must still reconcile under the strict R12
+contract; sparse minutes record fallback reasons. Failure is a
+programming/data-contract error and must fail closed rather than silently
+load the parent without R12 data.
 
 The legacy lower-timeframe expander is hidden whenever this mode is selected
 in the ingestion-mode radio — including before a 15-second CSV installs
@@ -325,14 +337,16 @@ any UI or persistence integration.
 
 - Four correctly aligned 15-second bars produce one exact one-minute OHLCV bar,
   including summed volume.
-- Missing any one of the four bars drops the parent and reports
-  `incomplete_coverage`.
-- Offset timestamps and a source gap yield deterministic diagnostics; no
-  partial parent is emitted.
+- **v2 amendment:** Missing any one of the four bars retains the parent,
+  reports `incomplete_coverage` in `sparse_buckets`, and leaves
+  `dropped_buckets` empty.
+- Offset / off-grid timestamps drop the minute with `timestamp_misalignment`.
 - Duplicate timestamps and invalid source cadence fail closed.
-- Multi-minute source with a middle gap retains only complete adjacent minutes.
+- Multi-minute source with a middle sparse minute retains all on-grid minutes.
 - Exchange-local bucketing remains correct across DST transition fixtures.
-- Derived parent plus retained source passes `prepare_subtimeframe_context()`.
+- Derived parent plus retained source passes
+  `prepare_subtimeframe_conservative_context()`; fully complete fixtures still
+  pass strict `prepare_subtimeframe_context()`.
 - Future-shock: append future complete 15-second buckets and assert prior
   parent rows and diagnostics are unchanged.
 - Existing `resample_ohlcv`, vendor loader, intrabar, and golden tests remain

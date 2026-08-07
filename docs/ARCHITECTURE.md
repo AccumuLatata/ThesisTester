@@ -140,7 +140,7 @@ ingestion_mode, derivation_policy)`,
 then `read_verified_data_artifact`. Legacy primary runs use
 `ingestion_mode="primary"` with `derivation_policy=null`;
 `15s_primary_derive_1m` bindings carry
-`derivation_policy=complete_aligned_15s_to_1m_v1` so the same source bytes
+`derivation_policy=observed_aligned_15s_to_1m_v2` so the same source bytes
 cannot warm-cross across contracts. Warm levels reuse
 `read_verified_levels_artifact` for the normalized `LevelsIdentity`.
 Misses (corrupt, incomplete, schema/engine drift, stale source, settings
@@ -791,23 +791,27 @@ downstream engine surfaces still receive only canonical bars. Local persistence
 may retain a `raw.parquet` capture sidecar, but canonical data alone determines
 the dataset ID and research pipeline identity.
 
-## Complete 15s→1m derivation boundary
+## Observed 15s→1m derivation boundary
 
 `thesistester.data.derive.derive_complete_parent_ohlcv()` is a Streamlit-free
 helper that derives one-minute OHLCV parents from an explicit 15-second source
-frame. It emits a parent minute only when exactly four exchange-local opens
-exist at `:00`, `:15`, `:30`, and `:45`. Incomplete or misaligned minutes are
-dropped into a read-only diagnostic frame; no interpolation or partial parents
-are produced. This is stricter than `resample_ohlcv(..., "1min")`, which may
-retain non-empty partial buckets for preview use.
+frame under policy `observed_aligned_15s_to_1m_v2`. It emits a parent for every
+exchange-local minute that contains one or more on-grid opens among `:00`,
+`:15`, `:30`, and `:45`. Sparse minutes (fewer than four prints) are retained —
+Quantower/Rithmic History Exporter trade-only exports omit empty 15s slots by
+default, and those absences are not treated as corrupt data. Only misaligned
+(off-grid) minutes are dropped. Sparse and dropped diagnostics are separate
+read-only frames; no empty bars are synthesized. Complete minutes still match
+strict R12 OHLC reconciliation; sparse minutes use
+`prepare_subtimeframe_conservative_context()` fallback.
 
 The Data page recommends `15s_primary_derive_1m` for Upload CSV (first-visit
 widget default; labeled/ordered first), currently limited to
 `quantower_history_exporter`. That mode derives the canonical one-minute
 `data` frame, attaches the original 15-second bars as `subtimeframe_data`,
 records `ingestion_provenance` / `derived_parent_diagnostics`, and runs
-`prepare_subtimeframe_context()` as a fail-closed postcondition before state
-commit. The separate lower-timeframe uploader is hidden whenever the
+`prepare_subtimeframe_conservative_context()` as a fail-closed postcondition
+before state commit. The separate lower-timeframe uploader is hidden whenever the
 ingestion-mode radio selects `15s_primary_derive_1m` (not only after
 `ingestion_provenance` marks an active derived session), so stale
 one-minute `data` cannot resurface the legacy dual-upload path while the
@@ -873,8 +877,8 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `subtimeframe_data` | Data page, R18 API/CLI, or Research Bundle import | Backtest/Grid/Walk-forward, Research Bundles | Optional strictly finer canonical `pd.DataFrame` OHLCV/session rows for R12 replay; Data-page uploads validate against the active primary frame, and `dataset.subtimeframe_path` never inherits the primary dataset vendor profile. In `15s_primary_derive_1m` mode this is the retained upload source. |
 | `subtimeframe_interval` | Data page, R18 API/CLI, or Research Bundle import | Research Bundles/report provenance | `str \| None` inferred lower interval |
 | `subtimeframe_format_profile` | Data page or R18 API/CLI | Research Bundles/report provenance | Explicit lower CSV parser profile; defaults to `canonical` and never inherits the primary profile. In `15s_primary_derive_1m` mode it equals the selected source profile. |
-| `ingestion_provenance` | Data page / R18 API (`15s_primary_derive_1m`), local-store restore, Research Bundle import | Data-page diagnostics, local `meta.json`, research-bundle `subtimeframe_meta.json` | JSON-safe derivation provenance (`ingestion_mode`, source/parent intervals, `derivation_policy`, `source_format_profile`, `source_content_hash`, dropped-minute count) |
-| `derived_parent_diagnostics` | Data page (`15s_primary_derive_1m` mode) | Data-page diagnostics download | Read-only dropped-minute frame (`incomplete_coverage` / `timestamp_misalignment`); never used to patch source or parent bars |
+| `ingestion_provenance` | Data page / R18 API (`15s_primary_derive_1m`), local-store restore, Research Bundle import | Data-page diagnostics, local `meta.json`, research-bundle `subtimeframe_meta.json` | JSON-safe derivation provenance (`ingestion_mode`, source/parent intervals, `derivation_policy`, `source_format_profile`, `source_content_hash`, dropped-minute count, sparse-minute count) |
+| `derived_parent_diagnostics` | Data page (`15s_primary_derive_1m` mode) | Data-page diagnostics download | Mapping with `sparse_buckets` (`incomplete_coverage`, retained) and `dropped_buckets` (`timestamp_misalignment`, absent from canonical); never used to patch source or parent bars |
 | `resampled_data` | Data (`pages/1_Data.py:115`) | Data summary (`pages/1_Data.py:341`) | `dict[str, pd.DataFrame]` |
 | `instrument` | Data (`pages/1_Data.py:116`) | Levels/Setup/Signals/Backtest/Grid/Time (`pages/5_Levels.py:207`, `pages/2_Setup_Builder.py:67`, `pages/6_Signals.py`, `pages/7_Backtest.py:70`, `pages/8_Grid_Search.py:42`, `pages/9_Time_Analysis.py:30`) | `str` (e.g., `ES`, `NQ`) |
 | `base_interval` | Data (`pages/1_Data.py:117`) | Levels fingerprint (`pages/5_Levels.py:84`), dataset persistence (`pages/1_Data.py:357`) | `str \| None` |

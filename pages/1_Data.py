@@ -121,6 +121,7 @@ class Prepared15sPrimaryDataset:
     format_profile: str
     provenance: dict
     dropped_buckets: pd.DataFrame
+    sparse_buckets: pd.DataFrame
     upload_signature: str
 
 
@@ -320,14 +321,17 @@ def _prepare_15s_primary_dataset(
     parent_df = tag_session(derived.parent_data, instrument)
     source_df = tag_session(derived.source_data, instrument)
     try:
-        prepare_subtimeframe_context(
+        # Quantower/Rithmic trade-only 15s exports omit empty slots. Complete
+        # minutes still reconcile under the strict R12 contract; sparse minutes
+        # are retained for research and use conservative SL-first fallback.
+        prepare_subtimeframe_conservative_context(
             parent_df,
             source_df,
             tick_size=INSTRUMENTS[instrument].tick_size,
         )
     except ValueError as exc:
         raise ValueError(
-            f"Derived one-minute bars failed the strict R12 reconciliation postcondition: {exc}"
+            f"Derived one-minute bars failed the R12 reconciliation postcondition: {exc}"
         ) from exc
 
     provenance = build_derivation_provenance(derived, format_profile=format_profile)
@@ -345,6 +349,7 @@ def _prepare_15s_primary_dataset(
         format_profile=format_profile,
         provenance=provenance,
         dropped_buckets=derived.dropped_buckets.copy(),
+        sparse_buckets=derived.sparse_buckets.copy(),
         upload_signature=upload_signature,
     )
 
@@ -372,7 +377,10 @@ def _install_15s_primary_dataset(
     st.session_state["subtimeframe_interval"] = prepared.subtimeframe_interval
     st.session_state["subtimeframe_format_profile"] = prepared.format_profile
     st.session_state[INGESTION_PROVENANCE_KEY] = dict(prepared.provenance)
-    st.session_state[DERIVED_PARENT_DIAGNOSTICS_KEY] = prepared.dropped_buckets
+    st.session_state[DERIVED_PARENT_DIAGNOSTICS_KEY] = {
+        "dropped_buckets": prepared.dropped_buckets,
+        "sparse_buckets": prepared.sparse_buckets,
+    }
     st.session_state[SUBTIMEFRAME_FALLBACK_BARS_KEY] = []
     st.session_state[SUBTIMEFRAME_UPLOAD_SIGNATURE_KEY] = prepared.upload_signature
     st.session_state.pop("raw_data", None)
@@ -387,26 +395,49 @@ def _install_15s_primary_dataset(
     _sync_upload_ingestion_mode_selector(INGESTION_MODE_15S_PRIMARY_DERIVE_1M, explicit=True)
 
 
-def _render_derived_parent_diagnostics(dropped_buckets: pd.DataFrame) -> None:
-    """Show retained/dropped minute diagnostics for 15-second-primary uploads."""
+def _render_derived_parent_diagnostics(
+    dropped_buckets: pd.DataFrame,
+    sparse_buckets: pd.DataFrame | None = None,
+) -> None:
+    """Show sparse/dropped minute diagnostics for 15-second-primary uploads."""
     dropped_count = 0 if dropped_buckets is None else int(len(dropped_buckets))
-    if dropped_count == 0:
+    sparse_count = 0 if sparse_buckets is None else int(len(sparse_buckets))
+    if sparse_count == 0 and dropped_count == 0:
         st.info(
             "All source minutes had complete aligned 15-second coverage; "
-            "no parent minutes were dropped."
+            "no sparse or misaligned parent minutes were reported."
         )
         return
-    st.warning(
-        f"Dropped {dropped_count:,} incomplete or misaligned source minute(s). "
-        "Those minutes are absent from the derived one-minute canonical data."
-    )
-    st.dataframe(dropped_buckets, width="stretch")
-    st.download_button(
-        "Download dropped-minute diagnostics CSV",
-        data=dropped_buckets.to_csv(index=False).encode("utf-8"),
-        file_name="derived_1m_dropped_minutes.csv",
-        mime="text/csv",
-    )
+    if sparse_count > 0:
+        st.info(
+            f"Retained {sparse_count:,} sparse source minute(s) with fewer than four "
+            "on-grid 15-second prints (normal for Quantower/Rithmic trade-only exports "
+            "without Build empty bars). Those minutes remain in canonical one-minute "
+            "data; use R12 model `subtimeframe_conservative` for observed replay plus "
+            "SL-first fallback on sparse minutes. Strict `subtimeframe` requires complete "
+            "coverage (enable Build empty bars in Quantower if you need that)."
+        )
+        st.dataframe(sparse_buckets, width="stretch")
+        st.download_button(
+            "Download sparse-minute diagnostics CSV",
+            data=sparse_buckets.to_csv(index=False).encode("utf-8"),
+            file_name="derived_1m_sparse_minutes.csv",
+            mime="text/csv",
+            key="download_sparse_minute_diagnostics",
+        )
+    if dropped_count > 0:
+        st.warning(
+            f"Dropped {dropped_count:,} misaligned source minute(s). "
+            "Those minutes are absent from the derived one-minute canonical data."
+        )
+        st.dataframe(dropped_buckets, width="stretch")
+        st.download_button(
+            "Download dropped-minute diagnostics CSV",
+            data=dropped_buckets.to_csv(index=False).encode("utf-8"),
+            file_name="derived_1m_dropped_minutes.csv",
+            mime="text/csv",
+            key="download_dropped_minute_diagnostics",
+        )
 
 
 @st.cache_data(show_spinner=False)
@@ -1367,7 +1398,10 @@ if use_source_dataset:
                 "Canonical research data is the derived one-minute frame. "
                 "The original 15-second bars are attached for R12 replay."
             )
-            _render_derived_parent_diagnostics(prepared.dropped_buckets)
+            _render_derived_parent_diagnostics(
+                prepared.dropped_buckets,
+                prepared.sparse_buckets,
+            )
             _render_dataset_summary(
                 prepared.parent_df,
                 instrument=inst,
@@ -1441,7 +1475,16 @@ elif "data" in st.session_state:
     )
     if _is_15s_primary_session():
         diagnostics = st.session_state.get(DERIVED_PARENT_DIAGNOSTICS_KEY)
-        if isinstance(diagnostics, pd.DataFrame):
+        if isinstance(diagnostics, dict):
+            dropped = diagnostics.get("dropped_buckets")
+            sparse = diagnostics.get("sparse_buckets")
+            if isinstance(dropped, pd.DataFrame) or isinstance(sparse, pd.DataFrame):
+                _render_derived_parent_diagnostics(
+                    dropped if isinstance(dropped, pd.DataFrame) else pd.DataFrame(),
+                    sparse if isinstance(sparse, pd.DataFrame) else pd.DataFrame(),
+                )
+        elif isinstance(diagnostics, pd.DataFrame):
+            # Legacy session shape: diagnostics held only dropped/incomplete rows.
             _render_derived_parent_diagnostics(diagnostics)
 
 current_df = st.session_state.get("data")

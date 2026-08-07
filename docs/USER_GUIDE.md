@@ -64,7 +64,7 @@ Databento, timezone, instrument, sample data, format profile, ingestion mode,
 |---|---|---|
 | `Instrument` | Contract metadata (tick size, point value) | Wrong instrument → wrong R and costs |
 | `Source` | `Sample data` or `Upload CSV` | — |
-| `Ingestion mode` | Recommended 15s-primary (derive 1m) vs legacy 1m primary | 15s path still researches on derived 1m bars |
+| `Ingestion mode` | Recommended 15s-primary (derive 1m) vs legacy 1m primary | Sparse Quantower/Rithmic minutes are retained; use R12 `subtimeframe_conservative` unless Build empty bars is on |
 | `CSV format profile` | Explicit vendor layout (no auto-detect) | ThesisTester never auto-detects formats |
 | `Source timestamp timezone` | How source timestamps are interpreted | Wrong TZ shifts sessions/levels |
 | Futures roll controls | `Roll method`, contract/adjustment/rule fields | Validate before trusting continuous history |

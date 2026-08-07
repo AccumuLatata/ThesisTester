@@ -47,8 +47,12 @@ backtest/grid section selects `intrabar_model: subtimeframe` unless
 the same 15-second CSV.
 For interactive Streamlit research, the Data page **recommends**
 `15s_primary_derive_1m` for Quantower History Exporter 15-second uploads
-(Upload-CSV default). That mode derives complete one-minute canonical bars
-from a single 15-second file and attaches the source as `subtimeframe_data`.
+(Upload-CSV default). That mode derives one-minute canonical bars from a
+single 15-second file (policy `observed_aligned_15s_to_1m_v2`: retain sparse
+on-grid minutes; drop only misaligned) and attaches the source as
+`subtimeframe_data`. Prefer `intrabar_model: subtimeframe_conservative` for
+trade-only Rithmic/Quantower exports; strict `subtimeframe` needs complete
+four-bar coverage (Quantower Build empty bars).
 Legacy one-minute primary + optional dual-upload remains available under
 **Legacy / advanced**. Entering Upload CSV with an active one-minute session
 (e.g. after Sample) realigns the radio to legacy primary so dual-upload stays
