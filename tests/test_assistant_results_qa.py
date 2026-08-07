@@ -384,6 +384,87 @@ def test_propose_results_reply_accepts_cited_expectancy_and_best_sl_tp():
     assert "`results.best_grid_result.take_profit_ticks` = 16" in formatted
 
 
+def test_propose_results_reply_accepts_german_overview_decimal_comma_and_prozent():
+    """Voice/text Discuss in German must ground European decimals and Prozent."""
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={
+            "trade_summary": {
+                "trade_count": 42,
+                "expectancy_r": 0.25,
+                "win_rate": 0.6,
+            },
+            "best_grid_result": {
+                "stop_loss_ticks": 8,
+                "take_profit_ticks": 16,
+                "trade_count": 40,
+                "expectancy_r": 0.25,
+            },
+            "time_grouped_summary": [
+                {
+                    "entry_30min_bucket": "08:30",
+                    "trade_count": 20,
+                    "avg_r": 0.4,
+                    "sample_warning": False,
+                }
+            ],
+        },
+        warnings=(),
+    )
+    context = build_ephemeral_results_context(packet)
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": (
+                    "Übersicht: Expectancy 0,25, Winrate 60 Prozent. "
+                    "Bestes Grid mit Stop Loss 8 und Target 16. "
+                    "Beste Tageszeit 08:30."
+                ),
+                "caveats": ["Nur In-Sample Rankings."],
+                "claims": [
+                    {
+                        "text": "Expectancy ist 0,25.",
+                        "path": "results.trade_summary.expectancy_r",
+                    },
+                    {
+                        "text": "Winrate ist 60 Prozent.",
+                        "path": "results.trade_summary.win_rate",
+                    },
+                    {
+                        "text": "Stop Loss ist 8.",
+                        "path": "results.projections.grid_rankings.best.stop_loss_ticks",
+                    },
+                    {
+                        "text": "Target ist 16.",
+                        "path": "results.projections.grid_rankings.best.take_profit_ticks",
+                    },
+                    {
+                        "text": "Beste Tageszeit ist 08:30.",
+                        "path": "results.projections.time_rankings.best.bucket",
+                    },
+                ],
+                "followups": ["Ask about OOS next."],
+            }
+
+    reply = propose_results_reply(
+        Client(),
+        packet=packet,
+        history=(),
+        user_message=(
+            "Gib mir eine Übersicht von diesem Backtest. Was war der beste Grid, "
+            "Stop Loss und Target? Und was war die beste Tageszeit?"
+        ),
+        turn_context=context,
+    )
+    assert reply.claims[0].value == 0.25
+    assert reply.claims[1].value == 0.6
+    assert reply.claims[2].value == 8
+    assert reply.claims[3].value == 16
+    assert reply.claims[4].value == "08:30"
+
+
 def test_propose_results_reply_accepts_ephemeral_projection_paths():
     packet = EvidencePacket(
         provenance={},

@@ -2,12 +2,15 @@
 
 Provider output is untrusted. Structured claims must cite evidence paths; any
 numeric token that is not grounded in a cited packet value is rejected before
-rendering. Percent-suffixed narration maps to fractional claim values; packet
-caveat numbers are scoped to echoing caveat lines only. Cited string values
-contribute digits only for pure numeric tokens. Cited ``HH:MM`` / ``H:MM``
-clock bucket labels ground matching clock spans in narration as wholes (so
-``\"08:30\"`` can be narrated) without allowlisting their component digits;
-hashes/paths/column names do not launder digits.
+rendering. Percent-suffixed narration maps to fractional claim values
+(``50%`` / ``50 %`` / ``50 percent`` / ``50 pct`` / ``50 Prozent``); European
+decimal commas (``0,25``) normalize to the cited float ``0.25`` while
+thousands groups (``25,000``) fail closed. Packet caveat numbers are scoped
+to echoing caveat lines only. Cited string values contribute digits only for
+pure numeric tokens. Cited ``HH:MM`` / ``H:MM`` clock bucket labels ground
+matching clock spans in narration as wholes (so ``\"08:30\"`` can be narrated)
+without allowlisting their component digits; hashes/paths/column names do not
+launder digits.
 """
 
 from __future__ import annotations
@@ -43,20 +46,42 @@ _EXPLANATION_SCHEMA = {
 }
 
 # Capture standalone numeric tokens, including optional percent suffixes.
-_NUMBER_RE = re.compile(r"(?<![A-Za-z0-9_/])[-+]?(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?%?")
+# Decimal forms accept `.` or `,` (European narration such as ``0,25``).
+# Optional whitespace is allowed before a trailing ``%`` (``60 %``).
+_NUMBER_RE = re.compile(
+    r"(?<![A-Za-z0-9_/])[-+]?(?:\d+[.,]\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?(?:\s*%)?"
+)
 # Safe string claim values that may contribute digit tokens (not hashes/paths).
 _CLOCK_BUCKET_RE = re.compile(r"^\d{1,2}:\d{2}$")
 # Clock spans inside free text (same shape as bucket labels).
 _CLOCK_IN_TEXT_RE = re.compile(r"(?<![A-Za-z0-9_/])(\d{1,2}:\d{2})(?![A-Za-z0-9_/])")
-_NUMERIC_STRING_RE = re.compile(r"^[-+]?(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?%?$")
-# Word-form percent narration ("60 percent" / "60 pct") → treat like "60%".
+_NUMERIC_STRING_RE = re.compile(r"^[-+]?(?:\d+[.,]\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?(?:\s*%)?$")
+_DECIMAL_COMMA_RE = re.compile(r"^([-+]?)(\d+),(\d+)([eE][-+]?\d+)?$")
+# Word-form percent narration ("60 percent" / "60 pct" / "60 Prozent") → "60%".
 # Exclude ":" from the lookbehind so clock minutes in "8:35 percent" cannot
 # be rewritten into a synthetic "35%" rate token.
 _PERCENT_WORD_RE = re.compile(
-    r"(?<![A-Za-z0-9_/:])([-+]?(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?)\s*"
-    r"(?:percent|pct)\b",
+    r"(?<![A-Za-z0-9_/:])([-+]?(?:\d+[.,]\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?)\s*"
+    r"(?:percent|pct|prozent)\b",
     re.IGNORECASE,
 )
+
+
+def _european_comma_to_period(text: str) -> str | None:
+    """Convert a European decimal comma to ``.``, or ``None`` if grouping-like.
+
+    Accepts ``0,25`` / ``1,5`` / ``0,125`` / ``1,00``. Rejects thousands-style
+    groups whose fractional side is three or more zeros (``1,000`` /
+    ``25,000`` / ``25,0000``) so citing ``25`` cannot launder a thousand-scale
+    narration.
+    """
+    match = _DECIMAL_COMMA_RE.fullmatch(text.strip())
+    if match is None:
+        return None
+    sign, whole, fraction, exponent = match.group(1, 2, 3, 4)
+    if len(fraction) >= 3 and set(fraction) == {"0"}:
+        return None
+    return f"{sign}{whole}.{fraction}{exponent or ''}"
 
 
 class LLMEvidenceError(ValueError):
@@ -120,7 +145,12 @@ def _path_get(root: Mapping[str, Any], path: str) -> Any:
 
 
 def _normalize_number_token(token: str) -> str:
-    text = token.strip().rstrip("%")
+    text = token.strip()
+    if text.endswith("%"):
+        text = text[:-1].rstrip()
+    european = _european_comma_to_period(text)
+    if european is not None:
+        text = european
     try:
         value = float(text)
     except ValueError:
@@ -206,25 +236,30 @@ def _allowed_number_tokens(values: list[Any]) -> set[str]:
 def _token_grounded(raw_token: str, *, allowed: set[str]) -> bool:
     """Return True when ``raw_token`` is grounded in cited values.
 
-    Percent-suffixed narration (``50%``) is accepted when the matching fractional
-    claim value (``0.5``) is allowlisted. Word forms are normalized to ``%``
-    before audit (``50 percent`` / ``50 pct``). Bare ``50`` is not inferred
-    from ``0.5``.
+    Percent-suffixed narration (``50%`` / ``50 %``) is accepted when the matching
+    fractional claim value (``0.5``) is allowlisted. Word forms are normalized to
+    ``%`` before audit (``50 percent`` / ``50 pct`` / ``50 Prozent``). Bare ``50``
+    is not inferred from ``0.5``.
     """
     token = _normalize_number_token(raw_token)
     if token in allowed:
         return True
-    if not raw_token.rstrip().endswith("%"):
+    stripped = raw_token.strip()
+    if not stripped.endswith("%"):
         return False
+    magnitude = stripped[:-1].rstrip()
+    european = _european_comma_to_period(magnitude)
+    if european is not None:
+        magnitude = european
     try:
-        percent_value = float(raw_token.strip().rstrip("%"))
+        percent_value = float(magnitude)
     except ValueError:
         return False
     return _normalize_number_token(str(percent_value / 100.0)) in allowed
 
 
 def _normalize_percent_words(text: str) -> str:
-    """Rewrite ``N percent`` / ``N pct`` to ``N%`` for fractional grounding."""
+    """Rewrite ``N percent`` / ``N pct`` / ``N Prozent`` to ``N%`` for grounding."""
     if not text:
         return text
     return _PERCENT_WORD_RE.sub(r"\1%", text)

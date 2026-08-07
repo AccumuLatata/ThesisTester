@@ -333,6 +333,29 @@ def test_spoken_grounding_reuses_digit_token_rules():
     assert "16" in tokens
     assert "0.25" in tokens
 
+    german = audit_spoken_text(
+        "Expectancy ist 0,25 und Winrate 60 Prozent. Beste Tageszeit 08:30.",
+        claims=(
+            EvidenceClaim(
+                text="Expectancy 0,25",
+                path="results.trade_summary.expectancy_r",
+                value=0.25,
+            ),
+            EvidenceClaim(
+                text="Winrate 60 Prozent",
+                path="results.trade_summary.win_rate",
+                value=0.6,
+            ),
+            EvidenceClaim(
+                text="Bucket 08:30",
+                path="results.projections.time_rankings.best.bucket",
+                value="08:30",
+            ),
+        ),
+    )
+    assert german.grounded is True
+    assert german.uncited_digit_tokens == ()
+
 
 def test_bound_packet_rehydrates_across_service_instances(tmp_path):
     repository = _repository(tmp_path)
