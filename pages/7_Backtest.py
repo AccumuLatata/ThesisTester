@@ -29,6 +29,11 @@ from thesistester.classic_nav import (
 from thesistester.classic_proposal import render_classic_proposal_card
 from thesistester.classic_record import render_record_and_discuss
 from thesistester.analytics import equity_curve, summarize_trades, summarize_trades_by_direction
+from thesistester.analytics.entry_window import (
+    FOCUS_EQUITY_CAVEAT,
+    FOCUS_HONESTY_BANNER,
+    format_entry_window_label,
+)
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
 from thesistester.analytics.prev30m_vwap_hit import prev30m_hit_r_summary
 from thesistester.levels.prev30m_vwap import COL_HIT_M1, COL_HIT_M5
@@ -691,6 +696,49 @@ if isinstance(_otf_rejected, pd.DataFrame) and not _otf_rejected.empty:
 # KPI cards
 st.subheader("Performance summary")
 
+# SW1 Focus overlay — never mutate full-run session keys.
+_focus_window = st.session_state.get("focus_entry_window")
+_focus_summary = st.session_state.get("focused_trade_summary")
+_focus_curve = st.session_state.get("focused_equity_curve")
+_focus_trades = st.session_state.get("focused_trades")
+_focus_prov = st.session_state.get("focus_provenance") or {}
+_has_focus = (
+    isinstance(_focus_window, dict)
+    and bool(_focus_window.get("enabled"))
+    and isinstance(_focus_summary, dict)
+)
+_show_focused = False
+if _has_focus:
+    st.warning(FOCUS_HONESTY_BANNER)
+    st.info(FOCUS_EQUITY_CAVEAT)
+    st.caption(
+        f"Focused window from Time Analysis: "
+        f"**{format_entry_window_label(_focus_window)}** · "
+        f"{_focus_prov.get('trade_count_after', 0)} / "
+        f"{_focus_prov.get('trade_count_before', 0)} trades. "
+        "Clear Focus on the Time Analysis page to remove this overlay."
+    )
+    if _focus_prov.get("sample_warning"):
+        st.warning(
+            f"Sample-size warning: focused trade_count "
+            f"({_focus_prov.get('trade_count_after', 0)}) is below the "
+            f"{_focus_prov.get('min_trades', 10)} threshold."
+        )
+    _show_focused = st.toggle(
+        "Show Focused summary overlay",
+        value=True,
+        key="backtest_show_focused_overlay",
+        help="Post-hoc subset only. Full-run trades/summary in session state are unchanged.",
+    )
+
+_display_summary = _focus_summary if _show_focused and isinstance(_focus_summary, dict) else summary
+_display_curve = _focus_curve if _show_focused and _focus_curve is not None else curve
+_display_trades = (
+    _focus_trades if _show_focused and isinstance(_focus_trades, pd.DataFrame) else trades
+)
+if not isinstance(_display_summary, dict):
+    _display_summary = summary if isinstance(summary, dict) else {}
+
 
 def _fmt(v, fmt=".2f", fallback="—"):
     if v is None:
@@ -715,29 +763,36 @@ def _fmt_win_rate(v):
     return _fmt(v, ".1%") if v is not None else "—"
 
 
+if _show_focused:
+    st.caption("Showing **Focused** KPIs (post-hoc subset).")
+else:
+    st.caption("Showing **full-run** KPIs.")
+
 col1, col2, col3, col4, col5, col6 = st.columns(6)
-col1.metric("Trades", summary.get("trade_count", 0))
-col2.metric("Win rate", _fmt_win_rate(summary.get("win_rate")))
-col3.metric("Avg R", _fmt(summary.get("avg_r")))
-col4.metric("Total R", _fmt(summary.get("total_r")))
-col5.metric("Profit factor", _fmt(summary.get("profit_factor")))
-col6.metric("Max DD (R)", _fmt(summary.get("max_drawdown_r")))
+col1.metric("Trades", _display_summary.get("trade_count", 0))
+col2.metric("Win rate", _fmt_win_rate(_display_summary.get("win_rate")))
+col3.metric("Avg R", _fmt(_display_summary.get("avg_r")))
+col4.metric("Total R", _fmt(_display_summary.get("total_r")))
+col5.metric("Profit factor", _fmt(_display_summary.get("profit_factor")))
+col6.metric("Max DD (R)", _fmt(_display_summary.get("max_drawdown_r")))
 
 st.subheader("Advanced risk metrics")
 adv_row_1 = st.columns(5)
-adv_row_1[0].metric("Median R", _fmt(summary.get("median_r")))
-adv_row_1[1].metric("Std R", _fmt(summary.get("std_r")))
-adv_row_1[2].metric("Sharpe-like R", _fmt(summary.get("sharpe_like_r")))
-adv_row_1[3].metric("Sortino-like R", _fmt(summary.get("sortino_like_r")))
-adv_row_1[4].metric("Ulcer index R", _fmt(summary.get("ulcer_index_r")))
+adv_row_1[0].metric("Median R", _fmt(_display_summary.get("median_r")))
+adv_row_1[1].metric("Std R", _fmt(_display_summary.get("std_r")))
+adv_row_1[2].metric("Sharpe-like R", _fmt(_display_summary.get("sharpe_like_r")))
+adv_row_1[3].metric("Sortino-like R", _fmt(_display_summary.get("sortino_like_r")))
+adv_row_1[4].metric("Ulcer index R", _fmt(_display_summary.get("ulcer_index_r")))
 
 adv_row_2 = st.columns(4)
-adv_row_2[0].metric("Recovery factor", _fmt(summary.get("recovery_factor")))
-adv_row_2[1].metric("Tail ratio", _fmt(summary.get("tail_ratio")))
-adv_row_2[2].metric("Outlier dependency", _fmt(summary.get("outlier_dependency_ratio")))
-adv_row_2[3].metric("Max consecutive losses", _fmt_int(summary.get("max_consecutive_losses", 0)))
+adv_row_2[0].metric("Recovery factor", _fmt(_display_summary.get("recovery_factor")))
+adv_row_2[1].metric("Tail ratio", _fmt(_display_summary.get("tail_ratio")))
+adv_row_2[2].metric("Outlier dependency", _fmt(_display_summary.get("outlier_dependency_ratio")))
+adv_row_2[3].metric(
+    "Max consecutive losses", _fmt_int(_display_summary.get("max_consecutive_losses", 0))
+)
 
-direction_summary = summarize_trades_by_direction(trades)
+direction_summary = summarize_trades_by_direction(_display_trades)
 st.subheader("Long vs Short KPIs")
 long_col, short_col = st.columns(2)
 
@@ -761,8 +816,11 @@ with short_col:
 
 if trades.empty:
     st.info("No trades were generated with the current signals and SL/TP settings.")
+elif _show_focused and isinstance(_display_trades, pd.DataFrame) and _display_trades.empty:
+    st.info("Focused subset is empty for the selected time window.")
 
 has_trades = not trades.empty
+_display_has_trades = isinstance(_display_trades, pd.DataFrame) and not _display_trades.empty
 
 if has_trades:
     group_cols = [
@@ -812,12 +870,14 @@ if (
 
 # Equity curve
 st.subheader("Equity curve (cumulative R)")
-if curve is not None and not curve.empty:
+if _show_focused:
+    st.caption(FOCUS_EQUITY_CAVEAT)
+if _display_curve is not None and not _display_curve.empty:
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
-            x=curve["exit_timestamp"],
-            y=curve["cum_r"],
+            x=_display_curve["exit_timestamp"],
+            y=_display_curve["cum_r"],
             mode="lines+markers",
             name="Cum R",
             line=dict(color="steelblue", width=2),
@@ -834,14 +894,14 @@ if curve is not None and not curve.empty:
     st.plotly_chart(fig, width="stretch")
 
 # Breakdown tabs
-if has_trades:
+if _display_has_trades:
     st.subheader("Breakdown")
     tab_trigger, tab_dir, tab_reason = st.tabs(["By trigger", "By direction", "By exit reason"])
 
     with tab_trigger:
-        if "trigger" in trades.columns:
+        if "trigger" in _display_trades.columns:
             st.dataframe(
-                trades.groupby("trigger")
+                _display_trades.groupby("trigger")
                 .agg(
                     count=("trade_id", "count"),
                     win_rate=("r_multiple", lambda x: (x > 0).mean()),
@@ -854,9 +914,9 @@ if has_trades:
             )
 
     with tab_dir:
-        if "direction" in trades.columns:
+        if "direction" in _display_trades.columns:
             st.dataframe(
-                trades.groupby("direction")
+                _display_trades.groupby("direction")
                 .agg(
                     count=("trade_id", "count"),
                     win_rate=("r_multiple", lambda x: (x > 0).mean()),
@@ -869,9 +929,9 @@ if has_trades:
             )
 
     with tab_reason:
-        if "exit_reason" in trades.columns:
+        if "exit_reason" in _display_trades.columns:
             st.dataframe(
-                trades.groupby("exit_reason")
+                _display_trades.groupby("exit_reason")
                 .agg(
                     count=("trade_id", "count"),
                     avg_r=("r_multiple", "mean"),
@@ -883,7 +943,7 @@ if has_trades:
             )
 
 # Full trade table
-if has_trades:
+if _display_has_trades:
     st.subheader("Trade table")
     display_cols = [
         c
@@ -919,9 +979,9 @@ if has_trades:
             "mae_points",
             "mfe_points",
         ]
-        if c in trades.columns
+        if c in _display_trades.columns
     ]
-    st.dataframe(trades[display_cols], width="stretch", hide_index=True)
+    st.dataframe(_display_trades[display_cols], width="stretch", hide_index=True)
 
     with st.expander("Trade review (per-trade inspection)", expanded=False):
         st.caption(
@@ -933,7 +993,7 @@ if has_trades:
                 f"#{row.get('trade_id', index)} | {row.get('direction', '—')} | "
                 f"{float(row.get('r_multiple', 0.0)):+.2f}R | {row.get('exit_reason', '—')}"
             )
-            for index, (_, row) in enumerate(trades.iterrows())
+            for index, (_, row) in enumerate(_display_trades.iterrows())
         }
         selected_review_index = st.selectbox(
             "Completed trade",
@@ -956,7 +1016,7 @@ if has_trades:
         review_show_levels = review_options[1].toggle("Levels", value=True)
         review_show_zones = review_options[2].toggle("Zones", value=True)
         review_show_final_stop = review_options[3].toggle("Final managed stop", value=False)
-        selected_trade = trades.iloc[int(selected_review_index)].copy(deep=True)
+        selected_trade = _display_trades.iloc[int(selected_review_index)].copy(deep=True)
         review_start, review_end = selected_trade_time_window(
             selected_trade,
             ohlcv_df=ohlcv_df,

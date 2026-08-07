@@ -313,13 +313,18 @@ directional ranking, IS selection
 
 **What it is.** The **Time Analysis** page is a descriptive breakdown of
 **already completed** trades by time-of-day / session windows. It does **not**
-re-simulate trades.
+re-simulate trades. Optional **Focus summary** recomputes the full Performance
+Summary / equity on one bucket as a **post-hoc subset** (still no re-sim).
 
 **When to use it.** After a Backtest has produced a trade list and you want to
-see when trades clustered — with sample-size humility.
+see when trades clustered — with sample-size humility. Use Focus when a bucket
+(e.g. `rth_open_30m`) looks strong and you want the full KPI suite on that
+subset before deciding whether to constrain entries (Admit arrives in a later
+release).
 
 **Related terms.** time analysis, time bucket, entry hour, 30min bucket, RTH
-segment, grouping, heatmap, best entry time, session window, no re-simulation
+segment, grouping, heatmap, best entry time, session window, no re-simulation,
+Focus summary, post-hoc subset
 
 **Key settings.**
 
@@ -338,16 +343,22 @@ segment, grouping, heatmap, best entry time, session window, no re-simulation
 2. Choose timezone basis, timestamp basis, groupings, and chart metric.
 3. Inspect the grouped table, charts/heatmap, and trade-count distribution.
 4. Use thin-bucket warnings: low `trade_count` groups are not “best entries.”
+5. Optional: with primary grouping `entry_rth_segment` / hour / 30m, select a
+   bucket → **Focus summary**. Clear Focus anytime. Backtest can overlay the
+   same Focused KPIs without overwriting the full-run results.
 
 **What it is not.**
 
 - Not a re-optimization engine and not a signal generator.
+- Focus is **not** an entry constraint and does **not** re-run exposure/cooldown.
+- Focused equity/drawdown is a **subset replay** of filtered trades only.
 - “Best hour” language is descriptive on this sample only — not a schedule to
   trade live.
 - RTH segment labeling can stay on exchange/session time even when hourly
   buckets use display TZ.
 
-**Related pages.** Backtest (prerequisite); Report Export (shared display TZ).
+**Related pages.** Backtest (prerequisite; Focus overlay); Report Export (shared display TZ).
+See `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` for the full Focus→Admit loop.
 
 ## Validation and robustness
 

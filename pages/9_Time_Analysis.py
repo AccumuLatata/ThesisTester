@@ -11,6 +11,13 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from thesistester.analytics import summarize_trades
+from thesistester.analytics.entry_window import (
+    FOCUS_EQUITY_CAVEAT,
+    FOCUS_HONESTY_BANNER,
+    entry_window_from_bucket,
+    format_entry_window_label,
+    summarize_focused_trades,
+)
 from thesistester.analytics.time_analysis import (
     add_time_buckets,
     pivot_time_metric,
@@ -248,6 +255,133 @@ else:
             )
 
     st.dataframe(display_df, width="stretch", hide_index=True)
+
+st.divider()
+
+# ── Focus summary (SW1 — post-hoc subset; no re-sim) ──────────────────────────
+_FOCUSABLE_COLS = ("entry_rth_segment", "entry_hour_bucket", "entry_30min_bucket")
+st.subheader("Focus summary (post-hoc)")
+st.caption(
+    "Recompute the full Performance Summary on one time bucket without re-running "
+    "the backtest. This is exploratory only — not a live trading schedule."
+)
+
+if primary_group in _FOCUSABLE_COLS and not grouped.empty and primary_group in grouped.columns:
+    focus_values = grouped[primary_group].dropna().astype(str).drop_duplicates().tolist()
+    default_focus = focus_values[0] if focus_values else None
+    active_focus = st.session_state.get("focus_entry_window") or {}
+    active_label = None
+    if active_focus.get("enabled"):
+        if active_focus.get("mode") == "rth_segments":
+            segs = active_focus.get("rth_segments") or []
+            active_label = str(segs[0]) if len(segs) == 1 else None
+        elif active_focus.get("mode") == "clock_range":
+            active_label = str(active_focus.get("start_time") or "")
+            # Prefer matching the selectbox value (hour/30m label).
+            for candidate in focus_values:
+                if candidate == active_label or candidate.startswith(active_label):
+                    active_label = candidate
+                    break
+
+    focus_col, btn_col, clear_col = st.columns([3, 1, 1])
+    with focus_col:
+        selected_focus_value = st.selectbox(
+            f"Bucket ({primary_group})",
+            options=focus_values,
+            index=(focus_values.index(active_label) if active_label in focus_values else 0),
+            key="time_analysis_focus_bucket_value",
+            help="Select a time bucket to Focus. Promote-to-entry-window arrives in SW4.",
+        )
+    with btn_col:
+        st.write("")
+        st.write("")
+        apply_focus = st.button("Focus summary", type="primary", key="time_analysis_apply_focus")
+    with clear_col:
+        st.write("")
+        st.write("")
+        clear_focus = st.button("Clear Focus", key="time_analysis_clear_focus")
+
+    if clear_focus:
+        for key in (
+            "focus_entry_window",
+            "focused_trades",
+            "focused_trade_summary",
+            "focused_equity_curve",
+            "focus_provenance",
+            "focused_direction_summary",
+        ):
+            st.session_state.pop(key, None)
+        st.rerun()
+
+    if apply_focus and selected_focus_value is not None:
+        try:
+            window = entry_window_from_bucket(
+                primary_group,
+                selected_focus_value,
+                exchange_tz=exchange_tz,
+                bucket_tz=bucket_tz,
+            )
+            focused = summarize_focused_trades(
+                trades_raw,
+                window,
+                exchange_tz=exchange_tz,
+                timestamp_col=timestamp_basis,
+                bucket_tz=bucket_tz,
+                min_trades=min_trades_warn,
+            )
+            st.session_state["focus_entry_window"] = focused["focus_entry_window"]
+            st.session_state["focused_trades"] = focused["focused_trades"]
+            st.session_state["focused_trade_summary"] = focused["focused_trade_summary"]
+            st.session_state["focused_equity_curve"] = focused["focused_equity_curve"]
+            st.session_state["focus_provenance"] = focused["focus_provenance"]
+            st.session_state["focused_direction_summary"] = focused.get("focused_direction_summary")
+            st.rerun()
+        except ValueError as exc:
+            st.error(f"Focus failed: {exc}")
+else:
+    st.info(
+        "Focus is available when primary grouping is "
+        "`entry_rth_segment`, `entry_hour_bucket`, or `entry_30min_bucket`."
+    )
+
+_focus_summary = st.session_state.get("focused_trade_summary")
+_focus_prov = st.session_state.get("focus_provenance") or {}
+_focus_window = st.session_state.get("focus_entry_window")
+if isinstance(_focus_summary, dict) and _focus_window and _focus_window.get("enabled"):
+    st.warning(FOCUS_HONESTY_BANNER)
+    st.info(FOCUS_EQUITY_CAVEAT)
+    st.caption(
+        f"Focused window: **{format_entry_window_label(_focus_window)}** · "
+        f"{_focus_prov.get('trade_count_after', 0)} / "
+        f"{_focus_prov.get('trade_count_before', 0)} trades"
+    )
+    if _focus_prov.get("sample_warning"):
+        st.warning(
+            f"Sample-size warning: focused trade_count "
+            f"({_focus_prov.get('trade_count_after', 0)}) is below the "
+            f"{_focus_prov.get('min_trades', min_trades_warn)} threshold. "
+            "Treat as a hypothesis, not an edge."
+        )
+
+    f1, f2, f3, f4, f5, f6 = st.columns(6)
+    f1.metric("Trades", _focus_summary.get("trade_count", 0))
+    f2.metric(
+        "Win rate",
+        (
+            _fmt(_focus_summary.get("win_rate"), ".1%")
+            if _focus_summary.get("win_rate") is not None
+            else "—"
+        ),
+    )
+    f3.metric("Avg R", _fmt(_focus_summary.get("avg_r")))
+    f4.metric("Total R", _fmt(_focus_summary.get("total_r")))
+    f5.metric("Profit factor", _fmt(_focus_summary.get("profit_factor")))
+    f6.metric("Max DD (R)", _fmt(_focus_summary.get("max_drawdown_r")))
+
+    _focus_curve = st.session_state.get("focused_equity_curve")
+    if _focus_curve is not None and not getattr(_focus_curve, "empty", True):
+        st.caption("Focused equity curve (subset replay)")
+        st.line_chart(_focus_curve.set_index("exit_timestamp")["cum_r"])
 
 st.divider()
 

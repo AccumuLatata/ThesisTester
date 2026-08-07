@@ -54,7 +54,23 @@ from .prev30m_vwap_hit import (
     prev30m_hit_r_summary,
     summarize_r_by_hit_flag,
 )
-from .time_analysis import add_time_buckets, pivot_time_metric, summarize_by_group
+from .entry_window import (
+    FOCUS_EQUITY_CAVEAT,
+    FOCUS_HONESTY_BANNER,
+    entry_window_from_bucket,
+    filter_trades_by_entry_window,
+    format_entry_window_label,
+    normalize_entry_window,
+    summarize_focused_trades,
+)
+from .time_analysis import (
+    RTH_SEGMENT_LABELS,
+    RTH_SEGMENTS,
+    add_time_buckets,
+    pivot_time_metric,
+    rth_segment_for_minute,
+    summarize_by_group,
+)
 from .validation import (
     bootstrap_expectancy_ci,
     grid_overfit_diagnostics,
@@ -115,6 +131,16 @@ __all__ = [
     "add_time_buckets",
     "summarize_by_group",
     "pivot_time_metric",
+    "RTH_SEGMENTS",
+    "RTH_SEGMENT_LABELS",
+    "rth_segment_for_minute",
+    "normalize_entry_window",
+    "entry_window_from_bucket",
+    "filter_trades_by_entry_window",
+    "summarize_focused_trades",
+    "format_entry_window_label",
+    "FOCUS_HONESTY_BANNER",
+    "FOCUS_EQUITY_CAVEAT",
     "bootstrap_expectancy_ci",
     "permutation_test_expectancy",
     "trade_count_diagnostics",
