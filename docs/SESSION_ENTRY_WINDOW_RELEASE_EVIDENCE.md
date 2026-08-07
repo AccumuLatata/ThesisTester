@@ -15,7 +15,7 @@
 | Engineering sign-off (SW7) | **Complete** | Verification suites recorded below; C2 Focus entry-time honesty hardened |
 | Real-dataset OOS statistical release | **Open / not executed in-repo** | No real user dataset in the repository; do not fabricate edge |
 | Product default | **Disabled** | `entry_window` remains opt-in; Focus is post-hoc only |
-| Optional SW2b cutoff skip audit | **Not shipped** | `no_new_entries_after` rejects stay silent; documented in ASSUMPTIONS |
+| Optional SW2b cutoff skip audit | **Shipped (follow-up)** | `after_entry_cutoff` when skip capture is on; trades unchanged |
 
 **Verdict for repository state:** Session entry window is **research-ready and
 engineering-signed**, disabled by default. Focus alone is **not** deployable-edge

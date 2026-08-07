@@ -756,13 +756,16 @@ st.caption(
     f"Accepted trades: {summary.get('trade_count', 0) if isinstance(summary, dict) else len(trades)} · "
     f"Skipped (total): {_skip_counts['total']} · "
     f"outside entry window: {_skip_counts['outside_entry_window']} · "
+    f"after entry cutoff: {_skip_counts['after_entry_cutoff']} · "
     f"exposure / other: {_skip_counts['other']}"
 )
 if isinstance(skipped_signals, pd.DataFrame) and not skipped_signals.empty:
     st.subheader("Skipped signals")
     st.caption(
-        "Skip reasons include exposure-policy rejects and, when Admit is enabled, "
-        "`outside_entry_window`. Distinct from OTF rejects and 3c voids."
+        "Skip reasons include exposure-policy rejects, `after_entry_cutoff` "
+        "(when `no_new_entries_after` rejects with skip capture on), and "
+        "`outside_entry_window` when Admit is enabled. Distinct from OTF rejects "
+        "and 3c voids."
     )
     skip_cols = [
         c

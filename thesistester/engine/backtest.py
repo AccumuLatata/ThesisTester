@@ -398,8 +398,8 @@ def simulate_trades(
         Optional cooldown bars after a blocking trade exit. Must be >= 0.
     return_skipped_signals:
         If ``True``, returns ``(trades_df, skipped_signals_df)`` where skipped
-        signals include exposure-policy rejections and, when enabled,
-        ``outside_entry_window`` admissions rejects.
+        signals include exposure-policy rejections and, when capture is on,
+        ``outside_entry_window`` / ``after_entry_cutoff`` admission rejects.
     entry_window:
         Optional opt-in entry-time admission window (SW2). ``None`` /
         disabled preserves legacy all-day admission. When enabled, membership
@@ -629,6 +629,30 @@ def simulate_trades(
             parsed_no_new_entries_after is not None
             and entry_local_ts.time() > parsed_no_new_entries_after
         ):
+            # SW2b: audit cutoff rejects when skip capture is on. Admission
+            # outcome is unchanged (still not a trade); golden/default path
+            # with return_result=False stays trades-identical.
+            if return_skipped_signals or return_result:
+                skipped_signals.append(
+                    {
+                        "signal_id": int(sig["signal_id"]),
+                        "bar_index": bar_idx,
+                        "entry_bar_index": entry_bar_index,
+                        "trigger": trigger,
+                        "direction": direction,
+                        "exposure_policy": exposure_policy,
+                        "exposure_group_key": _exposure_group_key(
+                            sig,
+                            exposure_policy=exposure_policy,
+                            trigger=trigger,
+                            direction=direction,
+                        ),
+                        "skip_reason": "after_entry_cutoff",
+                        "blocking_trade_id": pd.NA,
+                        "blocking_exit_bar_index": pd.NA,
+                        "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
+                    }
+                )
             continue
 
         # C5: classify on the raw entry-bar timestamp with exchange-TZ naive

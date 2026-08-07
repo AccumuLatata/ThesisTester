@@ -152,12 +152,13 @@ This engine is for **research screening**, not proof of a durable edge.
 - Default remains `allow_all` for backward compatibility and broad signal screening.
 - `allow_all` can inflate trade counts because overlapping signals are treated independently.
 - Restrictive policies apply deterministic admission ordering and optional cooldown (`cooldown_bars_after_exit`) to model more conservative trade lifecycle assumptions.
-- Optional skipped-signal diagnostics may include exposure-policy rejections
-  and, when opt-in `entry_window` admission is enabled (SW2/SW3) with skip
-  capture on, `outside_entry_window`. Backtest captions split window skips from
-  exposure/other. Signals skipped for pre-existing non-executable reasons
-  (e.g., void `3c`, missing future entry bar) and silent `no_new_entries_after`
-  continues are not included unless a later SW2b audit lands.
+- Optional skipped-signal diagnostics may include exposure-policy rejections,
+  `after_entry_cutoff` when `no_new_entries_after` rejects with skip capture on
+  (SW2b), and `outside_entry_window` when opt-in Admit is enabled (SW2/SW3).
+  Backtest captions split window / cutoff / exposure-other counts. Cutoff uses
+  strict `>` (entry **at** cutoff still admits). Signals skipped for
+  pre-existing non-executable reasons (e.g., void `3c`, missing future entry
+  bar) are still not included. Skip capture does not change which trades fill.
 - Default `entry_window=None` / disabled preserves legacy all-day admission
   (golden-identical trades). `api.run_backtest` and classic Backtest Admit
   controls (SW3) default off.

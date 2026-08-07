@@ -3,7 +3,7 @@
 **Document type:** Implementation plan (fully scoped PRs)  
 **Date:** 2026-08-06  
 **Last revised:** 2026-08-07 (pre-implementation audit; renamed from proposal)  
-**Status:** Engineering-signed through **SW7** (optional SW2b open); see `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`  
+**Status:** Engineering-signed through **SW7**; SW2b cutoff audit shipped as follow-up — see `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`  
 **Inputs:** Time Analysis / Backtest UX gap analysis; design-review contracts C1–C9; codebase audit vs `simulate_trades` / golden / session_state; `docs/ENGINEERING_PROPOSAL.md` §4  
 **Related code:** `thesistester/analytics/time_analysis.py`, `thesistester/engine/backtest.py`, `thesistester/analytics/grid.py`, `thesistester/analytics/walk_forward.py`, `thesistester/analytics/overfitting.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/9_Time_Analysis.py`, `pages/10_Validation.py`, `thesistester/api.py`  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4 (including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist)
@@ -383,9 +383,15 @@ SW1 may land in parallel with SW2 design after SW0. SW3+ require SW2. **Do not s
 
 **Goal.** Audit `no_new_entries_after` skips without lying in the UI.
 
-**Scope.** Engine skip row + Backtest caption/ASSUMPTIONS relabel (“exposure and entry-policy skips” or split counts).
+**Scope.**
 
-**Regression safety.** Trades identical under default kwargs; skip frame only changes when cutoff rejects exist and capture is on.
+- [x] Engine: when skip capture is on, record cutoff rejects as `skip_reason="after_entry_cutoff"`.
+- [x] `partition_skip_counts` splits window / cutoff / exposure-other.
+- [x] Backtest caption + skipped-signals honesty copy.
+- [x] Docs: ASSUMPTIONS, ARCHITECTURE, USER_GUIDE, roadmap/status.
+- [x] Tests: `tests/test_entry_window_sw2b.py` (+ C9 expectation update).
+
+**Regression safety.** Trades identical under default kwargs / vs `return_result=False`; skip frame only grows when cutoff rejects exist and capture is on. No legacy golden trade mutation.
 
 ---
 
@@ -546,7 +552,7 @@ Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; ho
 | SW0 Plan + golden confirmation | Merged | [#286](https://github.com/AccumuLatata/ThesisTester/pull/286) |
 | SW1 Post-hoc Focus | Merged | [#292](https://github.com/AccumuLatata/ThesisTester/pull/292) |
 | SW2 Engine admission + C7 + golden | Merged | [#293](https://github.com/AccumuLatata/ThesisTester/pull/293) |
-| SW2b Cutoff skip audit + honesty | Optional / not started | — |
+| SW2b Cutoff skip audit + honesty | Open | — |
 | SW3 API + Backtest Admit UI | Merged | [#294](https://github.com/AccumuLatata/ThesisTester/pull/294) |
 | SW4 Promote handoff UX | Merged | [#295](https://github.com/AccumuLatata/ThesisTester/pull/295) |
 | SW5 Grid + Validation inheritance | Merged | [#296](https://github.com/AccumuLatata/ThesisTester/pull/296) |
