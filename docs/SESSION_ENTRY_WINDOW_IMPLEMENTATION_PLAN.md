@@ -393,12 +393,12 @@ Wire `entry_window` into `api.run_backtest` + Backtest controls; show window ski
 
 **Scope.**
 
-- [ ] `_BACKTEST_DEFAULTS["entry_window"]=None`; `validate_run_spec` + `run_backtest` normalize/passthrough.
-- [ ] `pages/7_Backtest.py`: Admit toggle (RTH segments / clock range); pass to `simulate_trades`.
-- [ ] Skip captions: split `outside_entry_window` vs exposure/other; Admit honesty banner.
-- [ ] Additive execution-defaults keys for Admit widgets (no schema bump).
-- [ ] Docs: USER_GUIDE, ARCHITECTURE (`entry_window`, `skipped_signals`), ASSUMPTIONS, roadmap/status.
-- [ ] Tests: API default-off parity, enabled admit+skip, validate_run_spec, defaults sanitize, `partition_skip_counts`.
+- [x] `_BACKTEST_DEFAULTS["entry_window"]=None`; `validate_run_spec` + `run_backtest` normalize/passthrough.
+- [x] `pages/7_Backtest.py`: Admit toggle (RTH segments / clock range); pass to `simulate_trades`.
+- [x] Skip captions: split `outside_entry_window` vs exposure/other; Admit honesty banner.
+- [x] Additive execution-defaults keys for Admit widgets (no schema bump).
+- [x] Docs: USER_GUIDE, ARCHITECTURE (`entry_window`, `skipped_signals`), ASSUMPTIONS, roadmap/status.
+- [x] Tests: API default-off parity, enabled admit+skip, validate_run_spec, defaults sanitize, `partition_skip_counts`.
 
 **Out of scope.** SW2b cutoff audit; Promote (SW4); Grid/WFA inherit (SW5); setup library persistence (SW6).
 
