@@ -284,14 +284,14 @@ Every SW PR satisfies `ENGINEERING_PROPOSAL.md` §4 and §4.2. Engine-touching w
 ```text
 SW0  Plan lock + golden confirmation
   │
-  ├─► SW1  Post-hoc Focus analytics + UI overlay          ← NEXT
+  ├─► SW1  Post-hoc Focus analytics + UI overlay
   │         (no engine)
   │
   └─► SW2  Engine entry_window + outside_entry_window + C7 + enabled golden
             │
             ├─► SW2b (optional) after_entry_cutoff audit + skip UI/docs honesty
             │
-            ├─► SW3  API + Backtest Admit controls (+ skip labeling for window)
+            ├─► SW3  API + Backtest Admit controls (+ skip labeling for window)  ← NEXT
             │         │
             │         ├─► SW4  Promote + Focus↔Admit handoff
             │         │
@@ -324,7 +324,7 @@ SW1 may land in parallel with SW2 design after SW0. SW3+ require SW2. **Do not s
 
 ---
 
-### SW1 — Post-hoc Focus analytics + UI overlay  ← **implement next**
+### SW1 — Post-hoc Focus analytics + UI overlay
 
 **Goal.** Focus a Time Analysis bucket and see full Performance Summary / equity / trade list as a labeled post-hoc overlay.
 
@@ -387,9 +387,22 @@ SW1 may land in parallel with SW2 design after SW0. SW3+ require SW2. **Do not s
 
 ---
 
-### SW3 — API + Backtest Admit UI
+### SW3 — API + Backtest Admit UI  ← **implement next**
 
 Wire `entry_window` into `api.run_backtest` + Backtest controls; show window skip counts separately from exposure; constrained-run banner. Defaults disabled → identical behavior.
+
+**Scope.**
+
+- [ ] `_BACKTEST_DEFAULTS["entry_window"]=None`; `validate_run_spec` + `run_backtest` normalize/passthrough.
+- [ ] `pages/7_Backtest.py`: Admit toggle (RTH segments / clock range); pass to `simulate_trades`.
+- [ ] Skip captions: split `outside_entry_window` vs exposure/other; Admit honesty banner.
+- [ ] Additive execution-defaults keys for Admit widgets (no schema bump).
+- [ ] Docs: USER_GUIDE, ARCHITECTURE (`entry_window`, `skipped_signals`), ASSUMPTIONS, roadmap/status.
+- [ ] Tests: API default-off parity, enabled admit+skip, validate_run_spec, defaults sanitize, `partition_skip_counts`.
+
+**Out of scope.** SW2b cutoff audit; Promote (SW4); Grid/WFA inherit (SW5); setup library persistence (SW6).
+
+**Regression safety.** Default-off → legacy-identical trades; engine already gated in SW2; no golden trade mutation.
 
 ---
 
@@ -473,9 +486,9 @@ Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; ho
 |---|---|---|
 | SW0 Plan + golden confirmation | Merged | [#286](https://github.com/AccumuLatata/ThesisTester/pull/286) |
 | SW1 Post-hoc Focus | Merged | [#292](https://github.com/AccumuLatata/ThesisTester/pull/292) |
-| SW2 Engine admission + C7 + golden | Open | [#293](https://github.com/AccumuLatata/ThesisTester/pull/293) |
+| SW2 Engine admission + C7 + golden | Merged | [#293](https://github.com/AccumuLatata/ThesisTester/pull/293) |
 | SW2b Cutoff skip audit + honesty | Optional / not started | — |
-| SW3 API + Backtest Admit UI | Not started | — |
+| SW3 API + Backtest Admit UI | In progress | — |
 | SW4 Promote handoff UX | Not started | — |
 | SW5 Grid + Validation inheritance | Not started | — |
 | SW6 Persistence + export + assistant | Not started | — |

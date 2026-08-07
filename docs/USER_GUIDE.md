@@ -239,17 +239,18 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
 | `Flat by session close` + close time/TZ | Force exits at session boundary | Display TZ ≠ engine session TZ |
 | `Policy` (exposure) | `allow_all`, `single_position`, `single_direction`, `single_setup` | Skips ≠ OTF rejects ≠ 3c voids |
 | `Cooldown bars after exit` | Bars before a new entry is allowed | — |
+| `Constrain entries to time window` (Admit) | Off by default; RTH segments or clock range | Re-sim only — not Time Analysis Focus |
 | Exit management expander | Break-even / trailing after R multiple | Stops update after completed bars |
 
 **How to use.**
 
 1. Confirm Signals are loaded.
-2. Set SL/TP, costs, intrabar model, session exit, and exposure policy in
-   **Backtest settings**.
+2. Set SL/TP, costs, intrabar model, session exit, optional **Entry window
+   (Admit)**, and exposure policy in **Backtest settings**.
 3. Optionally **Save execution settings as default**.
 4. Click **Run backtest**.
-5. Read OTF-rejected / exposure-skip notes, **Performance summary**, equity
-   curve, breakdowns, and trade table. Use Discuss results for run Q&A.
+5. Read OTF-rejected / skip notes (window vs exposure), **Performance summary**,
+   equity curve, breakdowns, and trade table. Use Discuss results for run Q&A.
 
 **What it is not.**
 
@@ -259,9 +260,8 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
   are counted, not wished away.
 - Help will not invent your best SL/TP — ask **Discuss results** for bound run
   metrics.
-- Engine-level opt-in `entry_window` admission (SW2) exists for headless/
-  constrained re-sims; classic Backtest UI controls for Admit arrive in SW3.
-  Time Analysis **Focus** remains post-hoc only.
+- **Admit** (`entry_window`) re-simulates under an entry-time constraint.
+  Time Analysis **Focus** remains post-hoc only and does not change admission.
 
 **Related pages.** Signals (prerequisite); Grid Search for SL/TP sweeps; Research
 Assistant Discuss for performance questions.
@@ -348,7 +348,9 @@ Focus summary, post-hoc subset
 4. Use thin-bucket warnings: low `trade_count` groups are not “best entries.”
 5. Optional: with primary grouping `entry_rth_segment` / hour / 30m, select a
    bucket → **Focus summary**. Clear Focus anytime. Backtest can overlay the
-   same Focused KPIs without overwriting the full-run results.
+   same Focused KPIs without overwriting the full-run results. To constrain
+   entries, enable **Entry window (Admit)** on Backtest and re-run (Promote
+   handoff arrives in SW4).
 
 **What it is not.**
 

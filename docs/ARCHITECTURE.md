@@ -786,15 +786,19 @@ MAE/MFE, exit management, costs, record construction, and diagnostics. No
 accelerated execution mode is enabled; `docs/SIMULATE_PERF.md` is the
 informational serial baseline for future parity-gated work.
 
-## SW2 entry-window admission boundary
+## SW2/SW3 entry-window admission boundary
 
 `thesistester.entry_window_policy` owns shared RTH segment vocabulary (C1) and
 normalize/contains helpers used by both Focus analytics and
 `simulate_trades(..., entry_window=...)`. The parameter is keyword-only and
 defaults to `None` (legacy all-day admission). When enabled, membership uses
 **entry-bar** local time; rejects with `skip_reason="outside_entry_window"` when
-skip capture is on, and never enter exposure competition. Classic UI Admit
-controls are deferred to SW3.
+skip capture is on, and never enter exposure competition.
+
+SW3 wires the same opt-in window through `api.run_backtest` (`backtest.entry_window`,
+default `None`/disabled) and classic Backtest Admit controls. Skip captions split
+`outside_entry_window` from exposure/other reasons; constrained runs show the Admit
+honesty banner.
 
 ## R17 ingestion boundary
 
@@ -933,6 +937,8 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `focused_trade_summary` | Time Focus (SW1) | Backtest/Time display | Same shape as `trade_summary` on the subset |
 | `focused_equity_curve` | Time Focus (SW1) | Backtest/Time display | Subset-replay equity (C8); same shape as `equity_curve` |
 | `focus_provenance` | Time Focus (SW1) | Banners / export (later) | Counts, `sample_warning`, honesty flags |
+| `entry_window` | Backtest Admit (SW3) | Backtest banner / later Promote+Grid | Normalized Admit window from last constrained (or disabled) run |
+| `skipped_signals` | Backtest / `run_backtest` | Backtest skip table | DataFrame of admission skips (`skip_reason` incl. exposure + `outside_entry_window`) |
 | `validation_summary` | Validation (`pages/10_Validation.py:130`) | Validation display/Report/Bundles (`pages/10_Validation.py:134`, `pages/11_Report_Export.py:42,82-83`, `pages/12_Research_Bundles.py:50`) | `dict` (`bootstrap`, `permutation`, `trade_count`, `grid_overfit`) |
 | `walk_forward_results` | Validation/R18 API | Validation display, Report, Research Bundles | R14 per-fold `pd.DataFrame` with bar/session boundaries and IS/OOS metrics |
 | `walk_forward_summary` | Validation/R18 API | Validation display, Report, Research Bundles | R14 schema-version-2 summary including retention and stitched OOS status |
