@@ -105,11 +105,12 @@ def default_discuss_run_id(
     return eligible_ids[-1]
 
 
-def run_picker_label(run: Any) -> str:
-    """Deterministic selectbox label matching Linked-run expander formatting."""
-    run_id = str(getattr(run, "run_id", "") or "")
-    suffix = run_id[-8:] if run_id else "????????"
-    status = str(getattr(run, "status", "") or "")
+def _run_kind_token(run: Any) -> str:
+    """Kind token matching ``classic_ledger.ledger_run_label`` (no import cycle).
+
+    Keep branches byte-identical to ``ledger_run_label`` so Discuss picker titles
+    and Linked-run expander titles stay aligned for the same run.
+    """
     request = getattr(run, "request", None)
     if not isinstance(request, Mapping):
         request = {}
@@ -120,15 +121,23 @@ def run_picker_label(run: Any) -> str:
     origin = provenance.get("execution_origin")
     if action == _CLASSIC_LEDGER_ACTION:
         page = request.get("origin_page") or "classic"
-        kind = f"ledger:{page}"
-    elif action == "register_external_bundle":
-        kind = "recorded:manual"
-    elif origin == "classic":
-        kind = "classic"
-    elif origin == "assistant" or action is None:
-        kind = "assistant"
-    else:
-        kind = str(origin or action or "run")
+        return f"ledger:{page}"
+    if action == "register_external_bundle":
+        return "recorded:manual"
+    if origin == "classic":
+        return "classic"
+    if origin == "assistant" or action is None:
+        return "assistant"
+    # Prefer action (not execution_origin) — matches ledger_run_label.
+    return str(action)
+
+
+def run_picker_label(run: Any) -> str:
+    """Deterministic selectbox label matching Linked-run expander formatting."""
+    run_id = str(getattr(run, "run_id", "") or "")
+    suffix = run_id[-8:] if run_id else "????????"
+    status = str(getattr(run, "status", "") or "")
+    kind = _run_kind_token(run)
     return f"Run {suffix} · {status} · {kind}"
 
 

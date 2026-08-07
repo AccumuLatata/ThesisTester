@@ -95,27 +95,52 @@ def test_default_discuss_run_id_prefers_focus_then_newest():
 
 
 def test_run_picker_label_mirrors_expander_kind_formatting():
-    ledger = SimpleNamespace(
-        run_id="run_abcdefghijklmnop",
-        status="completed",
-        request={"action": "classic_execution_ledger", "origin_page": "7_Backtest"},
-        provenance={"execution_origin": "classic"},
+    from thesistester.classic_ledger import ledger_run_label
+
+    cases = (
+        SimpleNamespace(
+            run_id="run_abcdefghijklmnop",
+            status="completed",
+            request={"action": "classic_execution_ledger", "origin_page": "7_Backtest"},
+            provenance={"execution_origin": "classic"},
+        ),
+        SimpleNamespace(
+            run_id="run_12345678xxxxxxxx",
+            status="completed",
+            request={"action": "register_external_bundle"},
+            provenance={"execution_origin": "classic"},
+        ),
+        SimpleNamespace(
+            run_id="run_aaaaaaaa",
+            status="completed",
+            request={},
+            provenance={"execution_origin": "assistant"},
+        ),
+        # Non-classic/non-assistant origins must use action (ledger_run_label),
+        # not execution_origin — otherwise Discuss picker drifts from expanders.
+        SimpleNamespace(
+            run_id="run_bbbbbbbb",
+            status="completed",
+            request={"action": "run_backtest"},
+            provenance={"execution_origin": "api"},
+        ),
+        SimpleNamespace(
+            run_id="run_cccccccc",
+            status="completed",
+            request={"action": "run_grid"},
+            provenance={"execution_origin": "cli"},
+        ),
+        SimpleNamespace(
+            run_id="run_dddddddd",
+            status="completed",
+            request={"action": "run_walk_forward"},
+            provenance={"execution_origin": "unknown"},
+        ),
     )
-    assert run_picker_label(ledger) == "Run ijklmnop · completed · ledger:7_Backtest"
-    manual = SimpleNamespace(
-        run_id="run_12345678xxxxxxxx",
-        status="completed",
-        request={"action": "register_external_bundle"},
-        provenance={"execution_origin": "classic"},
-    )
-    assert run_picker_label(manual) == "Run xxxxxxxx · completed · recorded:manual"
-    assistant = SimpleNamespace(
-        run_id="run_aaaaaaaa",
-        status="completed",
-        request={},
-        provenance={"execution_origin": "assistant"},
-    )
-    assert run_picker_label(assistant) == "Run aaaaaaaa · completed · assistant"
+    for run in cases:
+        kind = ledger_run_label(run)
+        expected = f"Run {run.run_id[-8:]} · {run.status} · {kind}"
+        assert run_picker_label(run) == expected
 
 
 def test_tracked_config_loads_ux_default_mode():

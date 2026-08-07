@@ -160,6 +160,8 @@ def test_assistant_session_keys_cover_documented_staging_surface():
     assert "assistant_voice_help_session_id" in ASSISTANT_SESSION_KEYS
     assert "assistant_voice_last_turn" in ASSISTANT_SESSION_KEYS
     assert "assistant_voice_playback" in ASSISTANT_SESSION_KEYS
+    assert "assistant_ux_mode" in ASSISTANT_SESSION_KEYS
+    assert "assistant_discuss_run_picker" in ASSISTANT_SESSION_KEYS
     assert "assistant_bundle_handoff" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_flash" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_results_qa_drafts" in THESIS_SCOPED_STAGING_KEYS
