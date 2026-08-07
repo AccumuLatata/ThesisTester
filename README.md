@@ -11,10 +11,22 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Local persistence defaults to `.thesistester_store/` under the repo root (override with
-`THESISTESTER_STORE_DIR`). On Windows, the store root uses Win32 extended-length paths so
-nested signal-run directories remain creatable when the absolute path would exceed `MAX_PATH`
-(common under deep OneDrive/Documents bases).
+Local persistence defaults to `.thesistester_store/` under the repo root. Set
+`THESISTESTER_STORE_DIR` for a durable absolute store (recommended on Windows and any
+environment where the checkout may be ephemeral). Resolution order: process env →
+repo-root `.env` (`THESISTESTER_STORE_DIR` only; see `.env.example`) →
+`<repo>/.thesistester_store`.
+
+On Windows (repo at `C:\dev\ThesisTester`):
+
+```powershell
+.\scripts\set_store_dir.ps1 -UserEnv
+```
+
+That creates `C:\dev\ThesisTester\.thesistester_store`, writes a gitignored `.env`, and
+sets a User-level `THESISTESTER_STORE_DIR` (restart the terminal/IDE afterward). The store
+root uses Win32 extended-length paths so nested signal-run directories remain creatable when
+the absolute path would exceed `MAX_PATH` (common under deep OneDrive/Documents bases).
 
 ## Run tests
 

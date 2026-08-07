@@ -68,7 +68,7 @@ Databento, timezone, instrument, sample data, format profile, ingestion mode,
 | `CSV format profile` | Explicit vendor layout (no auto-detect) | ThesisTester never auto-detects formats |
 | `Source timestamp timezone` | How source timestamps are interpreted | Wrong TZ shifts sessions/levels |
 | Futures roll controls | `Roll method`, contract/adjustment/rule fields | Validate before trusting continuous history |
-| `Local dataset name` + **Save dataset locally** | Persist into the local store | Store may not persist if `THESISTESTER_STORE_DIR` is unset |
+| `Local dataset name` + **Save dataset locally** | Persist into the local store | Set `THESISTESTER_STORE_DIR` (`.env` or `scripts/set_store_dir.ps1`) so the store is explicit and durable |
 
 **How to use.**
 

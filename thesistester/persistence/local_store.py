@@ -33,6 +33,7 @@ BACKTEST_DEFAULTS_SCHEMA_VERSION = 1
 GRID_DEFAULTS_SCHEMA_VERSION = 1
 STORE_ENV_VAR = "THESISTESTER_STORE_DIR"
 DEFAULT_STORE_DIR_NAME = ".thesistester_store"
+DOTENV_FILENAME = ".env"
 SIGNALS_PARQUET_NAME = "signals.parquet"
 CONFLUENCE_ZONES_PARQUET_NAME = "confluence_zones.parquet"
 NAKED_FLAGS_PARQUET_NAME = "naked_flags.parquet"
@@ -44,10 +45,102 @@ _SETUP_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 # (\\?\ / \\?\UNC\) raise the limit to ~32K characters.
 _WIN_EXT_PREFIX = "\\\\?\\"
 _WIN_EXT_UNC_PREFIX = "\\\\?\\UNC\\"
+_DOTENV_LOADED = False
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def _parse_dotenv_line(line: str) -> tuple[str, str] | None:
+    """Parse one ``KEY=VALUE`` dotenv line; return None for comments/blank/invalid."""
+    stripped = line.strip().lstrip("\ufeff")
+    if not stripped or stripped.startswith("#"):
+        return None
+    if stripped.startswith("export "):
+        stripped = stripped[len("export ") :].lstrip()
+    if "=" not in stripped:
+        return None
+    key, _, value = stripped.partition("=")
+    key = key.strip()
+    if not key or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+        return None
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        value = value[1:-1]
+    else:
+        # Unquoted inline comments: ``KEY=/path # note`` → ``/path``.
+        value = re.split(r"\s+#", value, maxsplit=1)[0].rstrip()
+    return key, value
+
+
+def _is_windows_abspath(raw: str) -> bool:
+    """True when *raw* looks like a Windows drive or UNC absolute path."""
+    text = raw.strip()
+    if re.match(r"^[A-Za-z]:[\\/]", text):
+        return True
+    return text.startswith("\\\\") or text.startswith("//")
+
+
+def _usable_store_dir(raw: str | None) -> str | None:
+    """Return a stripped store-dir string, or ``None`` if unset/invalid for this host."""
+    if raw is None:
+        return None
+    candidate = str(raw).strip()
+    if not candidate:
+        return None
+    if os.name != "nt" and _is_windows_abspath(candidate):
+        return None
+    return candidate
+
+
+def load_repo_dotenv(*, force: bool = False) -> Path | None:
+    """Load ``THESISTESTER_STORE_DIR`` from repo-root ``.env`` if unset.
+
+    Narrow scope: only ``STORE_ENV_VAR`` is applied (other ``.env`` keys are
+    ignored). A *usable* process-env value always wins; empty/whitespace and
+    Windows drive/UNC paths on non-Windows do not block ``.env``. Returns the
+    ``.env`` path when the file exists, otherwise ``None``. Safe to call
+    repeatedly; loads at most once unless ``force=True`` (tests).
+    """
+    global _DOTENV_LOADED
+    env_path = _repo_root() / DOTENV_FILENAME
+    if _DOTENV_LOADED and not force:
+        return env_path if env_path.is_file() else None
+    if not env_path.is_file():
+        # Do not mark loaded — allow a later call after .env is created.
+        return None
+    try:
+        # utf-8-sig strips a leading BOM (PowerShell Set-Content -Encoding utf8).
+        text = env_path.read_text(encoding="utf-8-sig")
+    except OSError:
+        # Do not mark loaded — allow retry after transient permission/IO errors.
+        return env_path
+    _DOTENV_LOADED = True
+    for line in text.splitlines():
+        parsed = _parse_dotenv_line(line)
+        if parsed is None:
+            continue
+        key, value = parsed
+        if key != STORE_ENV_VAR:
+            continue
+        if _usable_store_dir(os.environ.get(key)) is not None:
+            continue
+        usable = _usable_store_dir(value)
+        if usable is None:
+            continue
+        os.environ[key] = usable
+    return env_path
+
+
+def get_configured_store_dir() -> str | None:
+    """Return the effective configured store-dir string, or ``None`` if unset/invalid.
+
+    Loads repo-root ``.env`` (store key only). Ignores Windows drive/UNC paths on
+    non-Windows hosts so UI warnings match ``get_store_root()`` resolution.
+    """
+    load_repo_dotenv()
+    return _usable_store_dir(os.environ.get(STORE_ENV_VAR))
 
 
 def _windows_extended_path_str(raw: str) -> str:
@@ -86,13 +179,20 @@ def display_store_path(path: Path | str | None = None) -> str:
 def get_store_root() -> Path:
     """Return the local persistence root directory.
 
+    Resolution order:
+    1. Process env ``THESISTESTER_STORE_DIR`` (after optional repo-root ``.env`` load)
+    2. Default ``<repo>/.thesistester_store``
+
+    On non-Windows hosts, Windows drive/UNC paths are ignored so a copied
+    Windows ``.env`` cannot redirect the store into a bogus relative directory.
+
     On Windows the returned path uses the ``\\\\?\\`` extended-length prefix so
     nested content-addressed signal/level directories remain creatable when the
     absolute path would otherwise exceed Win32 MAX_PATH (260).
     """
-    raw_path = os.environ.get(STORE_ENV_VAR)
-    if raw_path:
-        root = Path(raw_path).expanduser().resolve()
+    configured = get_configured_store_dir()
+    if configured:
+        root = Path(configured).expanduser().resolve()
     else:
         root = (_repo_root() / DEFAULT_STORE_DIR_NAME).resolve()
     return _fs_path(root)
