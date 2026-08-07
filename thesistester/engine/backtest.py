@@ -631,8 +631,11 @@ def simulate_trades(
         ):
             continue
 
+        # C5: classify on the raw entry-bar timestamp with exchange-TZ naive
+        # semantics. Do not reuse session-localized clocks here — those are
+        # reserved for session-close / no_new_entries_after only.
         if normalized_entry_window["enabled"] and not entry_window_contains(
-            entry_local_ts,
+            entry_ts,
             normalized_entry_window,
             exchange_tz=exchange_tz_for_window,
         ):

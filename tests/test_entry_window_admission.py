@@ -257,6 +257,48 @@ def test_entry_window_exchange_tz_overrides_session_timezone_for_rth():
     assert list(fixed["signal_id"]) == [1]
 
 
+def test_c7_naive_bars_ignore_session_timezone_for_admit():
+    """Naive bars + Chicago session-close TZ must still Focus≡Admit (C5/C7)."""
+    stamps = pd.date_range("2026-06-02 09:40", periods=40, freq="1min")  # naive
+    rows = []
+    price = 21000.0
+    for ts in stamps:
+        rows.append(
+            {
+                "timestamp": pd.Timestamp(ts),
+                "open": price,
+                "high": price + 2.0,
+                "low": price - 2.0,
+                "close": price + 0.5,
+                "volume": 1000.0,
+            }
+        )
+        price += 0.25
+    df = pd.DataFrame(rows)
+    idx_open = int(df.index[df["timestamp"] == pd.Timestamp("2026-06-02 09:45")][0])
+    idx_morn = int(df.index[df["timestamp"] == pd.Timestamp("2026-06-02 10:10")][0])
+    signals = pd.DataFrame(
+        [
+            {**_signal(1, idx_open), "timestamp": pd.Timestamp("2026-06-02 09:45")},
+            {**_signal(2, idx_morn), "timestamp": pd.Timestamp("2026-06-02 10:10")},
+        ]
+    )
+    window = entry_window_from_bucket("entry_rth_segment", "rth_open_30m", exchange_tz=TZ)
+    kwargs = _base_kwargs(
+        flat_by_session_close=True,
+        session_close_time="16:00",
+        session_timezone="America/Chicago",
+        entry_window_exchange_tz=TZ,
+    )
+    all_day = simulate_trades(df, signals, **kwargs)
+    admit = simulate_trades(df, signals, **kwargs, entry_window=window)
+    focused = filter_trades_by_entry_window(
+        all_day, window, exchange_tz=TZ, timestamp_col="entry_timestamp"
+    )
+    assert set(admit["signal_id"]) == set(focused["signal_id"]) == {1}
+    assert all_day["entry_timestamp"].dt.tz is None
+
+
 def test_c7_focus_equals_admit_under_allow_all():
     df = _rth_morning_frame()
     idxs = [
