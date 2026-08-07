@@ -312,6 +312,20 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   never allowlist stub/empty USER_GUIDE H2s; do not fork `product_help` / merge
   Help into thesis draft chat; never load `AGENT_GUIDE` into the user Help
   corpus.
+- Research Assistant **page layout / surface prominence** has a **single**
+  contract: `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX-series, 🟡 RUX-0
+  landed). RUX is **presentation-only**: it may change containers, ordering,
+  captions, and additive presentation session keys on
+  `pages/14_Research_Assistant.py`, and must not touch the engine,
+  `thesistester/api.py`, `pages/1..13`, or
+  `thesistester/assistant/{orchestrator,repository,registry,handlers,tools,results_qa,help_corpus,explainer}.py`
+  logic. Channel separation, evidence grounding, confirmation gates, Discuss
+  eligibility, voice gating/keys, and the CAI focus-key shape stay frozen; only
+  the two RQ §1 `UI attach` rows are amendable, in the same PR that moves the
+  widget. Navigation phrases live in one place (`assistant/ux.py` constants from
+  RUX-1) — do not hand-write them at call sites. Keep the rendered-structure
+  baseline `tests/test_assistant_page_render.py` green and rewrite (never
+  delete) its assertions when layout changes.
 - Realtime voice review (VA-series) has a **single** contract for **voice**:
   `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (rewritten post-RQ / post-HC;
   do not add a parallel voice plan). **VA series is complete (VA-0…VA-6).**

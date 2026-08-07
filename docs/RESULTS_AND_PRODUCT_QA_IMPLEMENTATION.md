@@ -30,6 +30,7 @@ belongs in a later PR or is rejected.
 | `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` | ✅ Implemented CAI classic↔assistant bridge; RQ-4 owns Discuss deep-link polish |
 | `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` | Voice-only series (post-RQ / post-HC); VA-1 text substrate is RQ-1 here; Help corpus substrate is HC-complete; VA-0 contracts/flag freeze landed there; VA-2+ remain there |
 | `docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md` | ✅ HC-0…HC-4 Help **content/allowlist** coverage (USER_GUIDE + §7.1.4 + §5 bank); amends §7.1 only via HC maintenance PRs — does not reopen RQ-3 channel logic |
+| `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` | 🟡 RUX series — owns Research Assistant **page layout / surface prominence**. This contract keeps owning Discuss/Help channel logic, grounding, evidence, remediation, message tags, and classic-focus key shape; RUX may amend only the two §1 `UI attach` placement/widget rows, in the same PR that moves the widget. Do not reopen RQ channel logic from RUX. |
 | `docs/ENGINEERING_ROADMAP.md` | Index / status tracker — points here for RQ work |
 
 ---
