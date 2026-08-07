@@ -42,20 +42,47 @@ _RESULTS_QA_SCHEMA = {
 }
 
 _SYSTEM_PROMPT = (
-    "Answer only from the supplied evidence JSON using structured claims. "
+    "Answer only from the supplied evidence_packet JSON using structured claims. "
     "Each claim.text that includes a number must cite claim.path to an existing "
-    "packet field. claim.path must be an exact dotted key path already present "
-    "in the supplied JSON; do not invent nested keys. Do not add calculations, "
-    "forecasts, trade advice, tools, or facts absent from the packet. "
+    "packet field. claim.path is relative to the evidence_packet object root "
+    "(e.g. results.trade_summary.trade_count, results.projections.*, "
+    "limitations, caveats) — never prefix paths with evidence_packet. or packet. "
+    "Array rows may use integer indices (e.g. results.time_grouped_summary.0.avg_r). "
+    "Do not invent nested keys. Do not add calculations, forecasts, trade advice, "
+    "tools, or facts absent from the packet. "
     "Distinguish in-sample observed results from robustness/OOS evidence. "
     "When answering best SL/TP or best entry-time questions, cite "
     "results.projections.* (or results.best_grid_result when projections are "
     "absent) and state the ranking metric, candidate set / eligible count, "
     "min_trades filter, and in-sample vs OOS status from the evidence. "
     "Do not invent rankings or choose a ranking metric. "
+    "Narrate fractional rates with a % sign or the word percent "
+    "(e.g. 60% for win_rate 0.6); bare 60 is not grounded from 0.6. "
     "When evidence for the question is missing, say so in caveats and propose "
     "followups. Prefer number-free followups. Preserve uncertainty and caveats."
 )
+
+# Models often echo the user-payload wrapper key; strip before path resolution.
+_CLAIM_PATH_WRAPPER_PREFIXES = ("evidence_packet.", "packet.")
+
+
+def normalize_results_claim_path(path: str) -> str:
+    """Strip accidental evidence-wrapper prefixes from a results claim path.
+
+    Models sometimes stack wrappers (``evidence_packet.packet.*``); strip every
+    leading ``evidence_packet.`` / ``packet.`` segment before resolution.
+    """
+    text = path.strip()
+    while True:
+        lowered = text.lower()
+        stripped = False
+        for prefix in _CLAIM_PATH_WRAPPER_PREFIXES:
+            if lowered.startswith(prefix):
+                text = text[len(prefix) :].lstrip(".")
+                stripped = True
+                break
+        if not stripped:
+            return text
 
 
 @dataclass(frozen=True)
@@ -196,8 +223,8 @@ def propose_results_reply(
             or not item["path"].strip()
         ):
             raise LLMEvidenceError("Results Q&A claims must be non-empty text/path objects.")
-        path = item["path"].strip()
-        if not _path_exists(evidence_context, path):
+        path = normalize_results_claim_path(item["path"])
+        if not path or not _path_exists(evidence_context, path):
             raise LLMEvidenceError(
                 f"Results Q&A claim path {path!r} is missing from the evidence packet."
             )

@@ -49,6 +49,14 @@ _CLOCK_BUCKET_RE = re.compile(r"^\d{1,2}:\d{2}$")
 # Clock spans inside free text (same shape as bucket labels).
 _CLOCK_IN_TEXT_RE = re.compile(r"(?<![A-Za-z0-9_/])(\d{1,2}:\d{2})(?![A-Za-z0-9_/])")
 _NUMERIC_STRING_RE = re.compile(r"^[-+]?(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?%?$")
+# Word-form percent narration ("60 percent" / "60 pct") → treat like "60%".
+# Exclude ":" from the lookbehind so clock minutes in "8:35 percent" cannot
+# be rewritten into a synthetic "35%" rate token.
+_PERCENT_WORD_RE = re.compile(
+    r"(?<![A-Za-z0-9_/:])([-+]?(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?)\s*"
+    r"(?:percent|pct)\b",
+    re.IGNORECASE,
+)
 
 
 class LLMEvidenceError(ValueError):
@@ -71,22 +79,44 @@ class LLMExplanation:
         }
 
 
-def _path_get(root: Mapping[str, Any], path: str) -> Any:
-    current: Any = root
-    for part in path.split("."):
-        if not isinstance(current, Mapping) or part not in current:
-            return None
-        current = current[part]
-    return current
-
-
 def _path_exists(root: Mapping[str, Any], path: str) -> bool:
+    """True when every dotted segment resolves (mapping key or array index)."""
     current: Any = root
     for part in path.split("."):
-        if not isinstance(current, Mapping) or part not in current:
-            return False
-        current = current[part]
+        if isinstance(current, Mapping):
+            if part not in current:
+                return False
+            current = current[part]
+            continue
+        if isinstance(current, Sequence) and not isinstance(current, (str, bytes)):
+            if not part.isdigit():
+                return False
+            index = int(part)
+            if index < 0 or index >= len(current):
+                return False
+            current = current[index]
+            continue
+        return False
     return True
+
+
+def _path_get(root: Mapping[str, Any], path: str) -> Any:
+    """Return the value at ``path``, or None when the path is missing.
+
+    Supports mapping keys and non-negative integer indices into JSON arrays
+    (e.g. ``results.time_grouped_summary.0.avg_r``). A present JSON-null leaf
+    returns ``None``; callers that need missing-vs-null should use
+    ``_path_exists`` first.
+    """
+    if not _path_exists(root, path):
+        return None
+    current: Any = root
+    for part in path.split("."):
+        if isinstance(current, Mapping):
+            current = current[part]
+        else:
+            current = current[int(part)]
+    return current
 
 
 def _normalize_number_token(token: str) -> str:
@@ -177,7 +207,9 @@ def _token_grounded(raw_token: str, *, allowed: set[str]) -> bool:
     """Return True when ``raw_token`` is grounded in cited values.
 
     Percent-suffixed narration (``50%``) is accepted when the matching fractional
-    claim value (``0.5``) is allowlisted. Bare ``50`` is not inferred from ``0.5``.
+    claim value (``0.5``) is allowlisted. Word forms are normalized to ``%``
+    before audit (``50 percent`` / ``50 pct``). Bare ``50`` is not inferred
+    from ``0.5``.
     """
     token = _normalize_number_token(raw_token)
     if token in allowed:
@@ -191,14 +223,26 @@ def _token_grounded(raw_token: str, *, allowed: set[str]) -> bool:
     return _normalize_number_token(str(percent_value / 100.0)) in allowed
 
 
+def _normalize_percent_words(text: str) -> str:
+    """Rewrite ``N percent`` / ``N pct`` to ``N%`` for fractional grounding."""
+    if not text:
+        return text
+    return _PERCENT_WORD_RE.sub(r"\1%", text)
+
+
 def _ungrounded_number_tokens(
     text: str,
     *,
     allowed: set[str],
     cited_clocks: set[str] | None = None,
 ) -> list[str]:
-    """Return normalized digit tokens in *text* that are not grounded."""
+    """Return normalized digit tokens in *text* that are not grounded.
+
+    Cited clock spans are masked before percent-word normalization so a label
+    like ``8:35`` cannot donate its minutes to a synthetic ``35%`` token.
+    """
     working = _mask_cited_clock_spans(text, cited_clocks or set())
+    working = _normalize_percent_words(working)
     uncited: list[str] = []
     for match in _NUMBER_RE.finditer(working):
         raw = match.group(0)

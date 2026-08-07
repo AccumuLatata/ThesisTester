@@ -19,6 +19,7 @@ from thesistester.assistant.results_qa import (
     RESULTS_QA_CHANNEL,
     filter_results_qa_history,
     format_results_qa_reply_content,
+    normalize_results_claim_path,
     propose_results_reply,
 )
 from thesistester.assistant.tools import AssistantTools
@@ -163,6 +164,183 @@ def test_propose_results_reply_rejects_uncited_followup_digits():
             packet=_packet(),
             history=(),
             user_message="How many trades?",
+        )
+
+
+def test_normalize_results_claim_path_strips_evidence_wrapper_prefix():
+    assert normalize_results_claim_path("evidence_packet.limitations") == "limitations"
+    assert normalize_results_claim_path("packet.results.trade_summary.trade_count") == (
+        "results.trade_summary.trade_count"
+    )
+    assert normalize_results_claim_path("results.best_grid_result.stop_loss_ticks") == (
+        "results.best_grid_result.stop_loss_ticks"
+    )
+    assert normalize_results_claim_path(
+        "evidence_packet.packet.results.trade_summary.trade_count"
+    ) == ("results.trade_summary.trade_count")
+    assert normalize_results_claim_path("Evidence_Packet.RESULTS.trade_count") == (
+        "RESULTS.trade_count"
+    )
+
+
+def test_propose_results_reply_accepts_evidence_packet_path_prefix():
+    """Regression: models echo the user-payload wrapper key in claim.path."""
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={"trade_summary": {"trade_count": 42, "win_rate": 0.6}},
+        warnings=(),
+        limitations=("Time analysis is not present in this evidence packet.",),
+    )
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Sample has 42 trades. Win rate is 60 percent.",
+                "caveats": ["Time analysis is not present in this evidence packet."],
+                "claims": [
+                    {
+                        "text": "Sample has 42 trades.",
+                        "path": "evidence_packet.results.trade_summary.trade_count",
+                    },
+                    {
+                        "text": "Win rate is 60 percent.",
+                        "path": "evidence_packet.results.trade_summary.win_rate",
+                    },
+                    {
+                        "text": "Time analysis limitation is recorded.",
+                        "path": "evidence_packet.limitations",
+                    },
+                ],
+                "followups": ["Ask about SL/TP next."],
+            }
+
+    reply = propose_results_reply(
+        Client(),
+        packet=packet,
+        history=(),
+        user_message="Summarize the run.",
+    )
+    assert reply.claims[0].path == "results.trade_summary.trade_count"
+    assert reply.claims[0].value == 42
+    assert reply.claims[1].value == 0.6
+    assert reply.claims[2].path == "limitations"
+
+
+def test_propose_results_reply_accepts_array_index_claim_paths():
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={
+            "time_grouped_summary": [
+                {
+                    "entry_30min_bucket": "08:30",
+                    "trade_count": 20,
+                    "avg_r": 0.4,
+                    "sample_warning": False,
+                }
+            ]
+        },
+        warnings=(),
+    )
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "First time row bucket is 08:30 with avg_r 0.4.",
+                "caveats": ["Row citation only."],
+                "claims": [
+                    {
+                        "text": "Bucket is 08:30.",
+                        "path": "results.time_grouped_summary.0.entry_30min_bucket",
+                    },
+                    {
+                        "text": "avg_r is 0.4.",
+                        "path": "results.time_grouped_summary.0.avg_r",
+                    },
+                ],
+                "followups": ["Ask about projections next."],
+            }
+
+    reply = propose_results_reply(
+        Client(),
+        packet=packet,
+        history=(),
+        user_message="What is the first time bucket?",
+    )
+    assert reply.claims[0].value == "08:30"
+    assert reply.claims[1].value == 0.4
+
+
+def test_propose_results_reply_rejects_bare_percent_points_without_percent_marker():
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={"trade_summary": {"win_rate": 0.6}},
+        warnings=(),
+    )
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Win rate is 60.",
+                "caveats": ["Bare percent points are not grounded."],
+                "claims": [
+                    {
+                        "text": "Win rate is 60.",
+                        "path": "results.trade_summary.win_rate",
+                    }
+                ],
+                "followups": ["Ask again with a percent sign."],
+            }
+
+    with pytest.raises(LLMEvidenceError, match="Uncited numerical claim '60'"):
+        propose_results_reply(
+            Client(),
+            packet=packet,
+            history=(),
+            user_message="What is win rate?",
+        )
+
+
+def test_propose_results_reply_rejects_clock_minutes_as_percent_words():
+    """Clock-like '8:35 percent' must not launder a synthetic 35% from avg_r=0.35."""
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={
+            "time_grouped_summary": [
+                {
+                    "entry_30min_bucket": "08:30",
+                    "trade_count": 20,
+                    "avg_r": 0.35,
+                    "sample_warning": False,
+                }
+            ]
+        },
+        warnings=(),
+    )
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Odd narration says 8:35 percent with avg_r 0.35.",
+                "caveats": ["Clock minutes are not percent points."],
+                "claims": [
+                    {
+                        "text": "avg_r is 0.35.",
+                        "path": "results.time_grouped_summary.0.avg_r",
+                    }
+                ],
+                "followups": ["Ask about the bucket label."],
+            }
+
+    with pytest.raises(LLMEvidenceError, match="Uncited numerical claim"):
+        propose_results_reply(
+            Client(),
+            packet=packet,
+            history=(),
+            user_message="What is avg_r?",
         )
 
 
