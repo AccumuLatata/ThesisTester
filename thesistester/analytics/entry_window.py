@@ -26,9 +26,7 @@ from thesistester.analytics.time_analysis import (
 FOCUS_HONESTY_BANNER = (
     "Post-hoc subset — not re-simulated. Exposure/cooldown still reflect the all-day run."
 )
-FOCUS_EQUITY_CAVEAT = (
-    "Equity/drawdown rebuilt from the filtered trade subset only (subset replay)."
-)
+FOCUS_EQUITY_CAVEAT = "Equity/drawdown rebuilt from the filtered trade subset only (subset replay)."
 
 _VALID_MODES = frozenset({"rth_segments", "clock_range"})
 
@@ -106,16 +104,14 @@ def normalize_entry_window(
         raw_segments = entry_window.get("rth_segments") or []
         if not isinstance(raw_segments, (list, tuple)) or not raw_segments:
             raise ValueError(
-                "entry_window.rth_segments must be a non-empty list when enabled "
-                "(C3)."
+                "entry_window.rth_segments must be a non-empty list when enabled (C3)."
             )
         segments: list[str] = []
         for label in raw_segments:
             name = str(label).strip()
             if name not in RTH_SEGMENT_LABELS:
                 raise ValueError(
-                    f"Unknown RTH segment {name!r}. "
-                    f"Expected one of {list(RTH_SEGMENT_LABELS)}."
+                    f"Unknown RTH segment {name!r}. Expected one of {list(RTH_SEGMENT_LABELS)}."
                 )
             if name not in segments:
                 segments.append(name)
@@ -132,13 +128,10 @@ def normalize_entry_window(
     end_raw = entry_window.get("end_time")
     if start_raw is None or end_raw is None:
         raise ValueError(
-            "entry_window.start_time and end_time are required when "
-            "mode='clock_range'."
+            "entry_window.start_time and end_time are required when mode='clock_range'."
         )
     start_m = _parse_clock_to_minutes(str(start_raw), field_name="start_time")
-    end_m = _parse_clock_to_minutes(
-        str(end_raw), field_name="end_time", allow_end_of_day=True
-    )
+    end_m = _parse_clock_to_minutes(str(end_raw), field_name="end_time", allow_end_of_day=True)
     if end_m <= start_m:
         raise ValueError(
             "entry_window clock range must be half-open [start, end) with "
@@ -202,9 +195,7 @@ def entry_window_from_bucket(
     if col == "entry_30min_bucket":
         start_m = _parse_clock_to_minutes(label, field_name="entry_30min_bucket")
         if start_m % 30 != 0:
-            raise ValueError(
-                f"entry_30min_bucket must align to 00 or 30 minutes, got {label!r}."
-            )
+            raise ValueError(f"entry_30min_bucket must align to 00 or 30 minutes, got {label!r}.")
         end_m = start_m + 30
         return normalize_entry_window(
             {
@@ -366,9 +357,7 @@ def summarize_focused_trades(
         "focused_trade_summary": summary,
         "focused_equity_curve": curve,
         "focus_provenance": provenance,
-        "focus_entry_window": normalize_entry_window(
-            entry_window, exchange_tz=exchange_tz
-        ),
+        "focus_entry_window": normalize_entry_window(entry_window, exchange_tz=exchange_tz),
     }
     if include_direction:
         result["focused_direction_summary"] = summarize_trades_by_direction(focused)

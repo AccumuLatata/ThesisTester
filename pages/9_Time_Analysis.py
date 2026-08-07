@@ -267,9 +267,7 @@ st.caption(
 )
 
 if primary_group in _FOCUSABLE_COLS and not grouped.empty and primary_group in grouped.columns:
-    focus_values = (
-        grouped[primary_group].dropna().astype(str).drop_duplicates().tolist()
-    )
+    focus_values = grouped[primary_group].dropna().astype(str).drop_duplicates().tolist()
     default_focus = focus_values[0] if focus_values else None
     active_focus = st.session_state.get("focus_entry_window") or {}
     active_label = None
@@ -290,11 +288,7 @@ if primary_group in _FOCUSABLE_COLS and not grouped.empty and primary_group in g
         selected_focus_value = st.selectbox(
             f"Bucket ({primary_group})",
             options=focus_values,
-            index=(
-                focus_values.index(active_label)
-                if active_label in focus_values
-                else 0
-            ),
+            index=(focus_values.index(active_label) if active_label in focus_values else 0),
             key="time_analysis_focus_bucket_value",
             help="Select a time bucket to Focus. Promote-to-entry-window arrives in SW4.",
         )
@@ -340,9 +334,7 @@ if primary_group in _FOCUSABLE_COLS and not grouped.empty and primary_group in g
             st.session_state["focused_trade_summary"] = focused["focused_trade_summary"]
             st.session_state["focused_equity_curve"] = focused["focused_equity_curve"]
             st.session_state["focus_provenance"] = focused["focus_provenance"]
-            st.session_state["focused_direction_summary"] = focused.get(
-                "focused_direction_summary"
-            )
+            st.session_state["focused_direction_summary"] = focused.get("focused_direction_summary")
             st.rerun()
         except ValueError as exc:
             st.error(f"Focus failed: {exc}")

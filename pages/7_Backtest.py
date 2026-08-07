@@ -729,14 +729,10 @@ if _has_focus:
         help="Post-hoc subset only. Full-run trades/summary in session state are unchanged.",
     )
 
-_display_summary = (
-    _focus_summary if _show_focused and isinstance(_focus_summary, dict) else summary
-)
+_display_summary = _focus_summary if _show_focused and isinstance(_focus_summary, dict) else summary
 _display_curve = _focus_curve if _show_focused and _focus_curve is not None else curve
 _display_trades = (
-    _focus_trades
-    if _show_focused and isinstance(_focus_trades, pd.DataFrame)
-    else trades
+    _focus_trades if _show_focused and isinstance(_focus_trades, pd.DataFrame) else trades
 )
 if not isinstance(_display_summary, dict):
     _display_summary = summary if isinstance(summary, dict) else {}
@@ -790,7 +786,9 @@ adv_row_2 = st.columns(4)
 adv_row_2[0].metric("Recovery factor", _fmt(_display_summary.get("recovery_factor")))
 adv_row_2[1].metric("Tail ratio", _fmt(_display_summary.get("tail_ratio")))
 adv_row_2[2].metric("Outlier dependency", _fmt(_display_summary.get("outlier_dependency_ratio")))
-adv_row_2[3].metric("Max consecutive losses", _fmt_int(_display_summary.get("max_consecutive_losses", 0)))
+adv_row_2[3].metric(
+    "Max consecutive losses", _fmt_int(_display_summary.get("max_consecutive_losses", 0))
+)
 
 direction_summary = summarize_trades_by_direction(_display_trades)
 st.subheader("Long vs Short KPIs")
@@ -820,9 +818,7 @@ elif _show_focused and isinstance(_display_trades, pd.DataFrame) and _display_tr
     st.info("Focused subset is empty for the selected time window.")
 
 has_trades = not trades.empty
-_display_has_trades = (
-    isinstance(_display_trades, pd.DataFrame) and not _display_trades.empty
-)
+_display_has_trades = isinstance(_display_trades, pd.DataFrame) and not _display_trades.empty
 
 if has_trades:
     group_cols = [

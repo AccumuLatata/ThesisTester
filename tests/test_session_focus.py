@@ -59,9 +59,7 @@ def test_normalize_rth_segments_or_and_rejects_empty():
     )
     assert window["rth_segments"] == ["rth_open_30m", "rth_power_hour"]
     with pytest.raises(ValueError, match="non-empty"):
-        normalize_entry_window(
-            {"enabled": True, "mode": "rth_segments", "rth_segments": []}
-        )
+        normalize_entry_window({"enabled": True, "mode": "rth_segments", "rth_segments": []})
 
 
 def test_normalize_clock_range_no_wrap():
@@ -81,9 +79,7 @@ def test_entry_window_from_bucket_mappings():
     assert seg["mode"] == "rth_segments"
     assert seg["timezone"] == "America/New_York"
 
-    hour = entry_window_from_bucket(
-        "entry_hour_bucket", "09:00", bucket_tz="America/Chicago"
-    )
+    hour = entry_window_from_bucket("entry_hour_bucket", "09:00", bucket_tz="America/Chicago")
     assert hour["mode"] == "clock_range"
     assert hour["start_time"] == "09:00"
     assert hour["end_time"] == "10:00"
@@ -207,9 +203,7 @@ def test_disabled_window_returns_all_trades():
 
 
 def test_empty_trades_safe():
-    empty = pd.DataFrame(
-        columns=["trade_id", "entry_timestamp", "exit_timestamp", "r_multiple"]
-    )
+    empty = pd.DataFrame(columns=["trade_id", "entry_timestamp", "exit_timestamp", "r_multiple"])
     result = summarize_focused_trades(
         empty,
         {
