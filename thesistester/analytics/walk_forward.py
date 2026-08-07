@@ -12,6 +12,7 @@ from ..levels.session_date import trading_session_date
 from .grid import best_grid_result, run_sl_tp_grid
 from .metrics import equity_curve, summarize_trades
 from ..engine.backtest import simulate_trades
+from ..entry_window_policy import normalize_entry_window
 from ..setup import normalize_otf_filter_config
 
 
@@ -491,6 +492,8 @@ def run_walk_forward_sl_tp(
     eth_start: str = "18:00",
     overlap_policy: str = "reject",
     return_result: bool = False,
+    entry_window: dict | None = None,
+    entry_window_exchange_tz: str | None = None,
 ) -> pd.DataFrame | WalkForwardResult:
     """Run deterministic bar-window walk-forward diagnostics for SL/TP selection.
 
@@ -525,6 +528,16 @@ def run_walk_forward_sl_tp(
         raise ValueError("overlap_policy must be 'reject', 'first', or 'last'.")
     otf_history_policy_normalized = normalize_otf_history_policy(otf_history_policy)
     _validate_timeline(df)
+    exchange_tz_for_window = entry_window_exchange_tz or exchange_timezone
+    try:
+        normalized_entry_window = normalize_entry_window(
+            entry_window, exchange_tz=exchange_tz_for_window
+        )
+    except ValueError as exc:
+        raise ValueError(f"Invalid entry_window: {exc}") from exc
+    simulate_entry_window = (
+        normalized_entry_window if normalized_entry_window.get("enabled") else None
+    )
 
     if fold_mode == "bars":
         if train_bars <= 0:
@@ -672,6 +685,8 @@ def run_walk_forward_sl_tp(
             trailing_after_r_values=trailing_after_r_values,
             trailing_distance_ticks_values=trailing_distance_ticks_values,
             max_grid_cells=max_grid_cells,
+            entry_window=simulate_entry_window,
+            entry_window_exchange_tz=exchange_tz_for_window,
         )
         best_train = best_grid_result(
             train_grid,
@@ -805,6 +820,8 @@ def run_walk_forward_sl_tp(
                 if pd.isna(best_train.get("trailing_distance_ticks"))
                 else float(best_train.get("trailing_distance_ticks"))
             ),
+            entry_window=simulate_entry_window,
+            entry_window_exchange_tz=exchange_tz_for_window,
         )
         test_summary = summarize_trades(test_trades)
         if test_trades is not None and not test_trades.empty:
@@ -949,6 +966,9 @@ def run_walk_forward_sl_tp(
             "overlap_policy": overlap_policy,
             "otf_history_policy": otf_history_policy_normalized,
             "otf_filter_enabled": _otf_enabled,
+            "entry_window": normalized_entry_window,
+            "entry_window_exchange_tz": exchange_tz_for_window,
+            "entry_window_enabled": bool(normalized_entry_window.get("enabled")),
         },
         folds=results,
         oos_trades=returned_oos_trades,

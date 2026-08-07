@@ -180,6 +180,9 @@ This engine is for **research screening**, not proof of a durable edge.
   (not signal-bar time). Window rejects never enter exposure competition.
   Constrained runs show: “Constrained re-simulation — only in-window entries
   were admitted.” Focus and Admit badges stay distinct.
+- **Grid / WFA / sensitivity (SW5)** inherit the same fixed Admit window when
+  present. The window is not a swept axis and is not reselected per fold.
+  Default-off preserves legacy all-day grid/WFA behavior.
 - Under `exposure_policy="allow_all"` and `cooldown_bars_after_exit=0`, Focus
   and Admit admit the same `signal_id` set (C7). See
   `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md`.

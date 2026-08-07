@@ -31,6 +31,9 @@ _SIMULATION_KWARGS = {
     "subtimeframe_data",
     "parent_interval",
     "sub_interval",
+    # SW5: fixed Admit constraint (not a swept axis)
+    "entry_window",
+    "entry_window_exchange_tz",
 }
 
 

@@ -132,6 +132,7 @@ class GridResult(TypedDict):
     accepted_signals: pd.DataFrame
     rejected_signals: pd.DataFrame
     otf_filter_summary: dict[str, Any]
+    entry_window: dict[str, Any]
 
 
 class ValidationResult(TypedDict, total=False):
@@ -244,6 +245,7 @@ _GRID_DEFAULTS: dict[str, Any] = {
     "trailing_after_r_values": [None],
     "trailing_distance_ticks_values": [None],
     "max_grid_cells": 500,
+    "entry_window": None,
 }
 _VALIDATION_DEFAULTS: dict[str, Any] = {
     "n_bootstrap": 2000,
@@ -869,6 +871,16 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         _validate_range(grid, "slippage_ticks", section="grid", minimum=0)
         _validate_range(grid, "cooldown_bars_after_exit", section="grid", minimum=0)
         _validate_range(grid, "min_trades", section="grid", minimum=1)
+        if "entry_window" in grid and grid["entry_window"] is not None:
+            grid_entry_window = _require_mapping(
+                grid["entry_window"], section="grid.entry_window"
+            )
+            try:
+                normalize_entry_window(
+                    dict(grid_entry_window), exchange_tz=_instrument(instrument).exchange_tz
+                )
+            except ValueError as exc:
+                raise ValueError(f"Invalid grid.entry_window: {exc}") from exc
         _validate_string_fields(
             grid,
             {
@@ -1783,6 +1795,14 @@ def run_grid(
     inst = _instrument(instrument)
     settings = _merge_known(_GRID_DEFAULTS, config, section="grid")
     session_timezone = settings["session_timezone"] or inst.exchange_tz
+    try:
+        entry_window = normalize_entry_window(
+            settings.get("entry_window"),
+            exchange_tz=inst.exchange_tz,
+        )
+    except ValueError as exc:
+        raise ValueError(f"Invalid grid.entry_window: {exc}") from exc
+    simulate_entry_window = entry_window if entry_window.get("enabled") else None
     otf = apply_configured_otf_filter(
         source_df=data,
         candidate_signals=signals,
@@ -1817,6 +1837,8 @@ def run_grid(
         trailing_after_r_values=list(settings["trailing_after_r_values"]),
         trailing_distance_ticks_values=list(settings["trailing_distance_ticks_values"]),
         max_grid_cells=int(settings["max_grid_cells"]),
+        entry_window=simulate_entry_window,
+        entry_window_exchange_tz=inst.exchange_tz,
     )
     best = best_grid_result(
         grid,
@@ -1829,6 +1851,7 @@ def run_grid(
         "accepted_signals": otf.accepted_signals,
         "rejected_signals": otf.rejected_signals,
         "otf_filter_summary": otf.to_summary_dict(),
+        "entry_window": entry_window,
     }
 
 
@@ -1856,6 +1879,14 @@ def run_walk_forward(
         settings.pop("take_profit_ticks_values", [execution.get("take_profit_ticks", 16.0)])
     )
     fold_mode = str(settings.get("fold_mode", "bars"))
+    try:
+        walk_entry_window = normalize_entry_window(
+            execution.get("entry_window"),
+            exchange_tz=inst.exchange_tz,
+        )
+    except ValueError as exc:
+        raise ValueError(f"Invalid walk_forward execution entry_window: {exc}") from exc
+    simulate_entry_window = walk_entry_window if walk_entry_window.get("enabled") else None
     detailed = run_walk_forward_sl_tp(
         df=data,
         signals=signals,
@@ -1899,6 +1930,8 @@ def run_walk_forward(
         overlap_policy=str(settings.get("overlap_policy", "reject")),
         otf_history_policy=settings.get("otf_history_policy"),
         return_result=True,
+        entry_window=simulate_entry_window,
+        entry_window_exchange_tz=inst.exchange_tz,
     )
     output: WalkForwardAnalysisResult = {
         "walk_forward_results": detailed.folds,
@@ -1950,6 +1983,8 @@ def run_walk_forward(
             overlap_policy=str(settings.get("overlap_policy", "reject")),
             # Matrix cells must use the same OTF history policy as the primary WFO.
             otf_history_policy=settings.get("otf_history_policy"),
+            entry_window=simulate_entry_window,
+            entry_window_exchange_tz=inst.exchange_tz,
         )
         output["wfa_matrix"] = matrix
         output["wfa_matrix_config"] = {

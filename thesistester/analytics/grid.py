@@ -16,6 +16,7 @@ import pandas as pd
 
 from thesistester.analytics.metrics import summarize_trades, summarize_trades_by_direction
 from thesistester.engine.backtest import simulate_trades
+from thesistester.entry_window_policy import normalize_entry_window
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +126,8 @@ def run_sl_tp_grid(
     trailing_after_r_values: list[float | None] | None = None,
     trailing_distance_ticks_values: list[float | None] | None = None,
     max_grid_cells: int = 500,
+    entry_window: dict | None = None,
+    entry_window_exchange_tz: str | None = None,
 ) -> pd.DataFrame:
     """Run a stop-loss × take-profit grid search.
 
@@ -168,6 +171,11 @@ def run_sl_tp_grid(
         Passed through to ``simulate_trades``.
     cooldown_bars_after_exit:
         Passed through to ``simulate_trades``.
+    entry_window:
+        Optional fixed Admit window applied identically to every cell
+        (SW5). Not a swept axis — default ``None`` preserves legacy behavior.
+    entry_window_exchange_tz:
+        Instrument exchange/session TZ for RTH-segment membership (C5).
 
     Returns
     -------
@@ -247,6 +255,17 @@ def run_sl_tp_grid(
             f"Grid would run {cell_count} cells, exceeding max_grid_cells={max_grid_cells}."
         )
 
+    exchange_tz_for_window = entry_window_exchange_tz or session_timezone or "America/New_York"
+    try:
+        normalized_entry_window = normalize_entry_window(
+            entry_window, exchange_tz=exchange_tz_for_window
+        )
+    except ValueError as exc:
+        raise ValueError(f"Invalid entry_window: {exc}") from exc
+    simulate_entry_window = (
+        normalized_entry_window if normalized_entry_window.get("enabled") else None
+    )
+
     rows: list[dict] = []
     for sl in sl_values:
         for tp in tp_values:
@@ -276,6 +295,8 @@ def run_sl_tp_grid(
                         breakeven_after_r=breakeven_after_r,
                         trailing_after_r=trailing_after_r,
                         trailing_distance_ticks=trailing_distance_ticks,
+                        entry_window=simulate_entry_window,
+                        entry_window_exchange_tz=exchange_tz_for_window,
                         return_result=True,
                     )
                     trades = simulation.trades

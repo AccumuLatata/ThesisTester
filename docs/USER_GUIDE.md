@@ -287,6 +287,7 @@ directional ranking, IS selection
 | `SL start` / `SL stop` / `SL step` | Stop-loss sweep in ticks | Huge grids are slow and easy to overfit |
 | `TP start` / `TP stop` / `TP step` | Take-profit sweep in ticks | Same |
 | Costs / intrabar / session / exposure | Same family as Backtest | One fixed policy applies to **every** cell |
+| Inherited `entry_window` (Admit) | Fixed constraint from Backtest/Promote | Not a swept axis — all cells share it |
 | `Ranking metric` | Aggregate options include `expectancy_r`, `total_r`, `profit_factor`, `win_rate` | Best cell is in-sample under that metric |
 | `Min trade count` | Drop thin cells before ranking | Too low → noisy “winners” |
 | **Enable directional ranking** | When on, ranks by **Directional ranking metric** instead of `Ranking metric` | Extra selection degrees of freedom |
@@ -294,7 +295,8 @@ directional ranking, IS selection
 
 **How to use.**
 
-1. Prerequisites: Data → Levels → Signals (non-empty candidates).
+1. Prerequisites: Data → Levels → Signals (non-empty candidates). Optionally
+   arm/apply an Admit `entry_window` on Backtest first.
 2. Set SL/TP ranges, execution assumptions, `Ranking metric`, and `Min trade
    count` (still applied to every cell). If **Enable directional ranking** is
    on, ranking uses **Directional ranking metric** plus `Min long trades` /
@@ -309,8 +311,10 @@ directional ranking, IS selection
 - OTF (when enabled) is applied once before the grid; every cell sees the same
   accepted candidate set.
 - One market-path / exit-management assumption is shared across cells.
+- Time-of-day is not optimized here; an inherited Admit window is a fixed
+  constraint, not a fitness axis.
 
-**Related pages.** Signals; Backtest (single cell); Validation (overfit / WFA).
+**Related pages.** Signals; Backtest (single cell / Admit); Validation (overfit / WFA).
 
 ## Time Analysis
 

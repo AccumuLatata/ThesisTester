@@ -36,6 +36,10 @@ PROMOTE_ARMED_BANNER = "Entry window armed. Run Backtest to re-simulate under th
 FOCUS_STATUS_BADGE = "Focus · post-hoc subset"
 ADMIT_ARMED_STATUS_BADGE = "Admit · armed (pending re-sim)"
 ADMIT_APPLIED_STATUS_BADGE = "Admit · constrained re-sim"
+ENTRY_WINDOW_FIXED_CONSTRAINT_WARNING = (
+    "Entry window is a fixed Admit constraint across all cells/folds — "
+    "not a swept Grid/WFA axis. No per-fold time-bucket reselection."
+)
 OUTSIDE_ENTRY_WINDOW_REASON = "outside_entry_window"
 
 
@@ -266,6 +270,30 @@ def apply_promote_to_session_state(session_state: Any, payload: dict[str, Any]) 
         session_state[key] = value
 
 
+def resolve_inherited_entry_window(
+    entry_window: dict[str, Any] | None,
+    *,
+    exchange_tz: str = "America/New_York",
+    armed: bool = False,
+) -> dict[str, Any]:
+    """Resolve session/API entry_window for Grid / WFA / sensitivity (SW5).
+
+    Returns a JSON-safe dict with simulate kwargs and UI warning metadata.
+    Disabled / missing windows yield ``simulate_entry_window=None`` (legacy).
+    """
+    window = normalize_entry_window(entry_window, exchange_tz=exchange_tz)
+    enabled = bool(window.get("enabled"))
+    return {
+        "entry_window": window if enabled else None,
+        "entry_window_normalized": window,
+        "entry_window_exchange_tz": exchange_tz,
+        "enabled": enabled,
+        "armed": bool(armed) and enabled,
+        "label": format_entry_window_label(window),
+        "warning": ENTRY_WINDOW_FIXED_CONSTRAINT_WARNING if enabled else None,
+    }
+
+
 def clear_armed_entry_window(session_state: Any) -> None:
     """Disarm a pending Admit window without clearing Focus overlays.
 
@@ -312,6 +340,7 @@ __all__ = [
     "ADMIT_APPLIED_STATUS_BADGE",
     "ADMIT_ARMED_STATUS_BADGE",
     "ADMIT_HONESTY_BANNER",
+    "ENTRY_WINDOW_FIXED_CONSTRAINT_WARNING",
     "FOCUS_EQUITY_CAVEAT",
     "FOCUS_HONESTY_BANNER",
     "FOCUS_STATUS_BADGE",
@@ -332,6 +361,7 @@ __all__ = [
     "normalize_entry_window",
     "partition_skip_counts",
     "promote_entry_window",
+    "resolve_inherited_entry_window",
     "rth_segment_for_minute",
     "summarize_focused_trades",
 ]

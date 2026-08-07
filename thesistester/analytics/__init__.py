@@ -58,6 +58,7 @@ from .entry_window import (
     ADMIT_APPLIED_STATUS_BADGE,
     ADMIT_ARMED_STATUS_BADGE,
     ADMIT_HONESTY_BANNER,
+    ENTRY_WINDOW_FIXED_CONSTRAINT_WARNING,
     FOCUS_EQUITY_CAVEAT,
     FOCUS_HONESTY_BANNER,
     FOCUS_STATUS_BADGE,
@@ -72,6 +73,7 @@ from .entry_window import (
     normalize_entry_window,
     partition_skip_counts,
     promote_entry_window,
+    resolve_inherited_entry_window,
     summarize_focused_trades,
 )
 from .time_analysis import (
@@ -163,6 +165,8 @@ __all__ = [
     "ADMIT_ARMED_STATUS_BADGE",
     "ADMIT_APPLIED_STATUS_BADGE",
     "PROMOTE_ARMED_BANNER",
+    "ENTRY_WINDOW_FIXED_CONSTRAINT_WARNING",
+    "resolve_inherited_entry_window",
     "bootstrap_expectancy_ci",
     "permutation_test_expectancy",
     "trade_count_diagnostics",

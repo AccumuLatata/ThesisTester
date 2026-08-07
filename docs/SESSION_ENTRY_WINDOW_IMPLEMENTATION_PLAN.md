@@ -295,9 +295,9 @@ SW0  Plan lock + golden confirmation
             │
             ├─► SW3  API + Backtest Admit controls (+ skip labeling for window)
             │         │
-            │         ├─► SW4  Promote + Focus↔Admit handoff  ← NEXT
+            │         ├─► SW4  Promote + Focus↔Admit handoff
             │         │
-            │         ├─► SW5  Grid + Validation/WFA/sensitivity inherit
+            │         ├─► SW5  Grid + Validation/WFA/sensitivity inherit  ← NEXT
             │         │         (incl. overfitting._SIMULATION_KWARGS)
             │         │
             │         └─► SW6  Setup normalize + Report/Bundles + Assistant
@@ -408,7 +408,7 @@ Wire `entry_window` into `api.run_backtest` + Backtest controls; show window ski
 
 ---
 
-### SW4 — Promote + Focus↔Admit handoff  ← **implement next**
+### SW4 — Promote + Focus↔Admit handoff
 
 Promote Focused/selected bucket → `entry_window` armed (no auto-run); thin-sample confirm; distinct Focus vs Admit badges.
 
@@ -428,9 +428,22 @@ Promote Focused/selected bucket → `entry_window` armed (no auto-run); thin-sam
 
 ---
 
-### SW5 — Grid + Validation / WFA / sensitivity inheritance
+### SW5 — Grid + Validation / WFA / sensitivity inheritance  ← **implement next**
 
 Keyword-only passthrough on `run_sl_tp_grid`, walk-forward, and **`overfitting._SIMULATION_KWARGS`**. UI warning: not a swept axis. No per-fold segment reselection.
+
+**Scope.**
+
+- [x] `run_sl_tp_grid(..., entry_window=None, entry_window_exchange_tz=None)` keyword-only.
+- [x] `run_walk_forward_sl_tp` / `run_wfa_matrix` same fixed window (no per-fold reselection).
+- [x] `overfitting._SIMULATION_KWARGS` includes `entry_window` + `entry_window_exchange_tz`.
+- [x] API `run_grid` / `run_walk_forward` normalize + passthrough; `_GRID_DEFAULTS["entry_window"]=None`.
+- [x] Grid + Validation UI inherit session `entry_window` with fixed-constraint warning.
+- [x] Docs + `tests/test_entry_window_sw5.py`.
+
+**Out of scope.** Setup persistence (SW6); sweeping time as a grid axis; SW2b cutoff audit.
+
+**Regression safety.** Default-off → legacy grid/WFA trades; Focus never auto-inherited (Admit `entry_window` only).
 
 ---
 
@@ -506,7 +519,7 @@ Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; ho
 | SW2b Cutoff skip audit + honesty | Optional / not started | — |
 | SW3 API + Backtest Admit UI | Merged | [#294](https://github.com/AccumuLatata/ThesisTester/pull/294) |
 | SW4 Promote handoff UX | Open | [#295](https://github.com/AccumuLatata/ThesisTester/pull/295) |
-| SW5 Grid + Validation inheritance | Not started | — |
+| SW5 Grid + Validation inheritance | In progress | — |
 | SW6 Persistence + export + assistant | Not started | — |
 | SW7 Hardening + release evidence | Not started | — |
 
