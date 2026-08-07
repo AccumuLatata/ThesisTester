@@ -48,33 +48,39 @@ ENTRY_WINDOW_FIXED_CONSTRAINT_WARNING = (
     "not a swept Grid/WFA axis. No per-fold time-bucket reselection."
 )
 OUTSIDE_ENTRY_WINDOW_REASON = "outside_entry_window"
+AFTER_ENTRY_CUTOFF_REASON = "after_entry_cutoff"
 
 
 def partition_skip_counts(skipped_signals: pd.DataFrame | None) -> dict[str, int]:
-    """Split skip diagnostics into entry-window vs other (exposure) reasons.
+    """Split skip diagnostics into window / cutoff / other (exposure) reasons.
 
     Returns counts suitable for Backtest captions. Unknown/missing
     ``skip_reason`` values are counted as ``other``.
     """
+    empty = {
+        "total": 0,
+        "outside_entry_window": 0,
+        "after_entry_cutoff": 0,
+        "other": 0,
+    }
     if skipped_signals is None or not isinstance(skipped_signals, pd.DataFrame):
-        return {
-            "total": 0,
-            "outside_entry_window": 0,
-            "other": 0,
-        }
+        return empty
     total = int(len(skipped_signals))
     if total == 0 or "skip_reason" not in skipped_signals.columns:
         return {
             "total": total,
             "outside_entry_window": 0,
+            "after_entry_cutoff": 0,
             "other": total,
         }
     reasons = skipped_signals["skip_reason"].astype(str)
     window_n = int((reasons == OUTSIDE_ENTRY_WINDOW_REASON).sum())
+    cutoff_n = int((reasons == AFTER_ENTRY_CUTOFF_REASON).sum())
     return {
         "total": total,
         "outside_entry_window": window_n,
-        "other": total - window_n,
+        "after_entry_cutoff": cutoff_n,
+        "other": total - window_n - cutoff_n,
     }
 
 
@@ -406,6 +412,7 @@ __all__ = [
     "FOCUS_EQUITY_CAVEAT",
     "FOCUS_HONESTY_BANNER",
     "FOCUS_STATUS_BADGE",
+    "AFTER_ENTRY_CUTOFF_REASON",
     "OUTSIDE_ENTRY_WINDOW_REASON",
     "PROMOTE_ARMED_BANNER",
     "RTH_SEGMENT_LABELS",

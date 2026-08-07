@@ -253,7 +253,7 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
    (Admit)**, and exposure policy in **Backtest settings**.
 3. Optionally **Save execution settings as default**.
 4. Click **Run backtest**.
-5. Read OTF-rejected / skip notes (window vs exposure), **Performance summary**,
+5. Read OTF-rejected / skip notes (window vs cutoff vs exposure), **Performance summary**,
    equity curve, breakdowns, and trade table. Use Discuss results for run Q&A.
 
 **What it is not.**
