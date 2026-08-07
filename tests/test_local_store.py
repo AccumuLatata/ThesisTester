@@ -1321,6 +1321,30 @@ def test_load_repo_dotenv_skips_windows_paths_on_posix(monkeypatch, tmp_path):
     assert root.name == ".thesistester_store"
 
 
+def test_load_repo_dotenv_overrides_unusable_process_env(monkeypatch, tmp_path):
+    """Empty / host-invalid process env must not block a usable .env store path."""
+    store = tmp_path / "from_dotenv"
+    store.mkdir()
+    (tmp_path / ".env").write_text(f"THESISTESTER_STORE_DIR={store}\n", encoding="utf-8")
+    monkeypatch.setattr(local_store, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(local_store, "_DOTENV_LOADED", False)
+    monkeypatch.setenv("THESISTESTER_STORE_DIR", "   ")
+
+    local_store.load_repo_dotenv(force=True)
+    assert os.environ["THESISTESTER_STORE_DIR"] == str(store)
+    assert local_store.get_configured_store_dir() == str(store)
+
+    if os.name != "nt":
+        monkeypatch.setattr(local_store, "_DOTENV_LOADED", False)
+        monkeypatch.setenv(
+            "THESISTESTER_STORE_DIR",
+            r"C:\dev\ThesisTester\.thesistester_store",
+        )
+        local_store.load_repo_dotenv(force=True)
+        assert os.environ["THESISTESTER_STORE_DIR"] == str(store)
+        assert Path(display_store_path(get_store_root())).resolve() == store.resolve()
+
+
 def test_get_store_root_respects_dotenv(monkeypatch, tmp_path):
     """get_store_root() uses THESISTESTER_STORE_DIR from repo-root .env when unset."""
     store = tmp_path / "custom_store"

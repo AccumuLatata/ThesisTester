@@ -82,11 +82,24 @@ def _is_windows_abspath(raw: str) -> bool:
     return text.startswith("\\\\") or text.startswith("//")
 
 
+def _usable_store_dir(raw: str | None) -> str | None:
+    """Return a stripped store-dir string, or ``None`` if unset/invalid for this host."""
+    if raw is None:
+        return None
+    candidate = str(raw).strip()
+    if not candidate:
+        return None
+    if os.name != "nt" and _is_windows_abspath(candidate):
+        return None
+    return candidate
+
+
 def load_repo_dotenv(*, force: bool = False) -> Path | None:
     """Load ``THESISTESTER_STORE_DIR`` from repo-root ``.env`` if unset.
 
     Narrow scope: only ``STORE_ENV_VAR`` is applied (other ``.env`` keys are
-    ignored). Existing process environment values always win. Returns the
+    ignored). A *usable* process-env value always wins; empty/whitespace and
+    Windows drive/UNC paths on non-Windows do not block ``.env``. Returns the
     ``.env`` path when the file exists, otherwise ``None``. Safe to call
     repeatedly; loads at most once unless ``force=True`` (tests).
     """
@@ -111,12 +124,12 @@ def load_repo_dotenv(*, force: bool = False) -> Path | None:
         key, value = parsed
         if key != STORE_ENV_VAR:
             continue
-        if key in os.environ:
+        if _usable_store_dir(os.environ.get(key)) is not None:
             continue
-        # Skip Windows absolute paths on POSIX so a copied .env cannot poison cwd.
-        if os.name != "nt" and _is_windows_abspath(value):
+        usable = _usable_store_dir(value)
+        if usable is None:
             continue
-        os.environ[key] = value
+        os.environ[key] = usable
     return env_path
 
 
@@ -127,13 +140,7 @@ def get_configured_store_dir() -> str | None:
     non-Windows hosts so UI warnings match ``get_store_root()`` resolution.
     """
     load_repo_dotenv()
-    raw = os.environ.get(STORE_ENV_VAR)
-    if not raw or not str(raw).strip():
-        return None
-    candidate = str(raw).strip()
-    if os.name != "nt" and _is_windows_abspath(candidate):
-        return None
-    return candidate
+    return _usable_store_dir(os.environ.get(STORE_ENV_VAR))
 
 
 def _windows_extended_path_str(raw: str) -> str:

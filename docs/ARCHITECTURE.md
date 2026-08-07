@@ -982,10 +982,11 @@ Signals robustness notes:
 ## Local persistence topology (filesystem)
 
 - Root: `$THESISTESTER_STORE_DIR` when set, else `.thesistester_store/` under the repo root
-- Resolution: process env `THESISTESTER_STORE_DIR` → repo-root `.env` key
-  `THESISTESTER_STORE_DIR` only (non-overriding via `load_repo_dotenv()`) →
-  `<repo>/.thesistester_store`. Other `.env` keys are ignored. Windows drive/UNC
-  paths are ignored on non-Windows hosts.
+- Resolution: usable process env `THESISTESTER_STORE_DIR` → repo-root `.env` key
+  `THESISTESTER_STORE_DIR` only (via `load_repo_dotenv()`) →
+  `<repo>/.thesistester_store`. Other `.env` keys are ignored. Empty/whitespace
+  and Windows drive/UNC paths on non-Windows hosts are treated as unset so a
+  valid `.env` path can still apply.
 - Datasets: `<store>/datasets/<dataset_id>/`
   (`canonical.parquet`, optional `raw.parquet`, optional
   `subtimeframe.parquet`, `meta.json` with dataset schema v2 fields
