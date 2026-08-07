@@ -808,7 +808,9 @@ Promote from an applied constrained re-sim; Focus overlays remain separate.
 
 SW5 passes the same fixed Admit window through `run_sl_tp_grid`, walk-forward /
 WFA matrix, and overfitting/sensitivity via `_SIMULATION_KWARGS`. The window is
-never a swept axis and is never reselected per fold.
+never a swept axis and is never reselected per fold. Validation inheritance uses
+`pick_inherited_entry_window_source` so a disabled Backtest window cannot shadow
+an enabled `grid_entry_window`.
 Promote sample counts use entry timestamps (C2). An all-day Backtest Run does not
 consume a pending Promote — only a constrained Admit re-sim does
 (`consume_armed_entry_window_after_run`).

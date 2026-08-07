@@ -25,7 +25,10 @@ from thesistester.analytics import (
     run_walk_forward_sl_tp,
     run_wfa_matrix,
 )
-from thesistester.analytics.entry_window import resolve_inherited_entry_window
+from thesistester.analytics.entry_window import (
+    pick_inherited_entry_window_source,
+    resolve_inherited_entry_window,
+)
 from thesistester.analytics.validation import validation_summary
 from thesistester.api import run_noise_test, run_sensitivity_profile
 from thesistester.config import INSTRUMENTS
@@ -76,14 +79,28 @@ if backtest_exposure_policy == "allow_all":
 
 _validation_instrument = st.session_state.get("instrument", "ES")
 _validation_inst = INSTRUMENTS.get(_validation_instrument)
+# C5: RTH / naive basis matches API noise→run_backtest (instrument exchange TZ).
 _validation_exchange_tz = (
-    st.session_state.get("exchange_timezone")
-    or (_validation_inst.exchange_tz if _validation_inst else "America/New_York")
+    (_validation_inst.exchange_tz if _validation_inst else None)
+    or st.session_state.get("exchange_timezone")
+    or "America/New_York"
+)
+_session_entry_window = st.session_state.get("entry_window")
+_inherited_source = pick_inherited_entry_window_source(
+    _session_entry_window,
+    st.session_state.get("grid_entry_window"),
+)
+# Armed caption only when the pending Promote window is the inherited source.
+_inherited_armed = (
+    bool(st.session_state.get("entry_window_armed"))
+    and isinstance(_session_entry_window, dict)
+    and bool(_session_entry_window.get("enabled"))
+    and _inherited_source is _session_entry_window
 )
 _validation_ew = resolve_inherited_entry_window(
-    st.session_state.get("entry_window") or st.session_state.get("grid_entry_window"),
+    _inherited_source,
     exchange_tz=_validation_exchange_tz,
-    armed=bool(st.session_state.get("entry_window_armed")),
+    armed=_inherited_armed,
 )
 if _validation_ew["enabled"]:
     st.warning(_validation_ew["warning"])
@@ -93,9 +110,7 @@ if _validation_ew["enabled"]:
         + (" · armed (pending Backtest re-sim)" if _validation_ew["armed"] else "")
     )
 else:
-    st.caption(
-        "No Admit `entry_window` inherited — validation batteries use all-day admission."
-    )
+    st.caption("No Admit `entry_window` inherited — validation batteries use all-day admission.")
 
 # ── Optional grid results ─────────────────────────────────────────────────────
 grid_raw = st.session_state.get("grid_results")
@@ -506,9 +521,7 @@ if run_wfo:
                                 overlap_policy=overlap_policy,
                                 return_result=True,
                                 entry_window=_validation_ew["entry_window"],
-                                entry_window_exchange_tz=_validation_ew[
-                                    "entry_window_exchange_tz"
-                                ],
+                                entry_window_exchange_tz=_validation_ew["entry_window_exchange_tz"],
                             )
                         except ValueError as e:
                             st.error(f"Walk-forward diagnostics error: {e}")

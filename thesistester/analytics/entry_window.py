@@ -270,6 +270,25 @@ def apply_promote_to_session_state(session_state: Any, payload: dict[str, Any]) 
         session_state[key] = value
 
 
+def pick_inherited_entry_window_source(
+    *candidates: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Prefer the first *enabled* Admit window among session candidates.
+
+    Disabled dicts are truthy in Python, so ``a or b`` silently prefers a
+    disabled Backtest ``entry_window`` over an enabled ``grid_entry_window``.
+    """
+    fallback: dict[str, Any] | None = None
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        if fallback is None:
+            fallback = candidate
+        if candidate.get("enabled"):
+            return candidate
+    return fallback
+
+
 def resolve_inherited_entry_window(
     entry_window: dict[str, Any] | None,
     *,
@@ -360,6 +379,7 @@ __all__ = [
     "format_entry_window_label",
     "normalize_entry_window",
     "partition_skip_counts",
+    "pick_inherited_entry_window_source",
     "promote_entry_window",
     "resolve_inherited_entry_window",
     "rth_segment_for_minute",

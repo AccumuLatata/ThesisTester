@@ -872,9 +872,7 @@ def validate_run_spec(spec: Mapping[str, Any]) -> None:
         _validate_range(grid, "cooldown_bars_after_exit", section="grid", minimum=0)
         _validate_range(grid, "min_trades", section="grid", minimum=1)
         if "entry_window" in grid and grid["entry_window"] is not None:
-            grid_entry_window = _require_mapping(
-                grid["entry_window"], section="grid.entry_window"
-            )
+            grid_entry_window = _require_mapping(grid["entry_window"], section="grid.entry_window")
             try:
                 normalize_entry_window(
                     dict(grid_entry_window), exchange_tz=_instrument(instrument).exchange_tz

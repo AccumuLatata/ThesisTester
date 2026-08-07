@@ -6,6 +6,7 @@ import pandas as pd
 
 from thesistester.analytics.entry_window import (
     ENTRY_WINDOW_FIXED_CONSTRAINT_WARNING,
+    pick_inherited_entry_window_source,
     resolve_inherited_entry_window,
 )
 from thesistester.analytics.grid import run_sl_tp_grid
@@ -91,6 +92,28 @@ def test_resolve_inherited_entry_window_enabled():
     assert resolved["armed"] is True
     assert resolved["entry_window"]["rth_segments"] == ["rth_open_30m"]
     assert resolved["warning"] == ENTRY_WINDOW_FIXED_CONSTRAINT_WARNING
+
+
+def test_pick_inherited_prefers_enabled_over_disabled_dict():
+    """Disabled Backtest entry_window must not shadow an enabled grid window."""
+    disabled = normalize_entry_window({"enabled": False}, exchange_tz=TZ)
+    enabled = normalize_entry_window(
+        {
+            "enabled": True,
+            "mode": "rth_segments",
+            "rth_segments": ["rth_open_30m"],
+            "timezone": TZ,
+        },
+        exchange_tz=TZ,
+    )
+    # Naive `a or b` would keep the disabled dict (truthy).
+    assert (disabled or enabled)["enabled"] is False
+    picked = pick_inherited_entry_window_source(disabled, enabled)
+    assert picked is not None
+    assert picked["enabled"] is True
+    assert picked["rth_segments"] == ["rth_open_30m"]
+    resolved = resolve_inherited_entry_window(picked, exchange_tz=TZ)
+    assert resolved["enabled"] is True
 
 
 def test_run_sl_tp_grid_default_off_matches_omit():
