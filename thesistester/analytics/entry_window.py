@@ -32,9 +32,7 @@ FOCUS_HONESTY_BANNER = (
 )
 FOCUS_EQUITY_CAVEAT = "Equity/drawdown rebuilt from the filtered trade subset only (subset replay)."
 ADMIT_HONESTY_BANNER = "Constrained re-simulation — only in-window entries were admitted."
-PROMOTE_ARMED_BANNER = (
-    "Entry window armed. Run Backtest to re-simulate under this constraint."
-)
+PROMOTE_ARMED_BANNER = "Entry window armed. Run Backtest to re-simulate under this constraint."
 FOCUS_STATUS_BADGE = "Focus · post-hoc subset"
 ADMIT_ARMED_STATUS_BADGE = "Admit · armed (pending re-sim)"
 ADMIT_APPLIED_STATUS_BADGE = "Admit · constrained re-sim"
@@ -177,14 +175,23 @@ def backtest_widget_state_from_entry_window(
     *,
     exchange_tz: str = "America/New_York",
 ) -> dict[str, Any]:
-    """Map a normalized entry_window to Backtest Admit widget session keys."""
+    """Map a normalized entry_window to Backtest Admit widget session keys.
+
+    Always writes the full Admit widget key set so a mode switch (RTH ↔ clock)
+    cannot leave stale opposite-mode values from a prior Promote.
+    """
     window = normalize_entry_window(entry_window, exchange_tz=exchange_tz)
     if not window["enabled"]:
         return {"backtest_entry_window_enabled": False}
+    # Defaults for the inactive mode keep Streamlit widgets coherent if the
+    # user flips mode after Promote.
     state: dict[str, Any] = {
         "backtest_entry_window_enabled": True,
         "backtest_entry_window_mode": window["mode"],
         "backtest_entry_window_timezone": window["timezone"] or exchange_tz,
+        "backtest_entry_window_rth_segments": ["rth_open_30m"],
+        "backtest_entry_window_start_time": "09:30",
+        "backtest_entry_window_end_time": "10:00",
     }
     if window["mode"] == "rth_segments":
         state["backtest_entry_window_rth_segments"] = list(window["rth_segments"])
@@ -275,6 +282,32 @@ def clear_armed_entry_window(session_state: Any) -> None:
     session_state["entry_window"] = disabled_entry_window(timezone=timezone)
 
 
+def consume_armed_entry_window_after_run(
+    session_state: Any,
+    normalized_entry_window: dict[str, Any],
+) -> None:
+    """Update session Admit state after a successful Backtest Run (SW4).
+
+    A pending Promote is consumed only when the run actually applied Admit
+    (``normalized_entry_window["enabled"]``). An all-day re-sim with the Admit
+    toggle off preserves the armed window and provenance.
+    """
+    was_armed = bool(session_state.get("entry_window_armed"))
+    admit_applied = bool(
+        isinstance(normalized_entry_window, dict) and normalized_entry_window.get("enabled")
+    )
+    if admit_applied or not was_armed:
+        session_state["entry_window"] = normalized_entry_window
+    if was_armed and admit_applied:
+        session_state["entry_window_armed"] = False
+        promote_prov = session_state.get("entry_window_promote_provenance")
+        if isinstance(promote_prov, dict):
+            session_state["entry_window_promote_provenance"] = {
+                **promote_prov,
+                "status": "applied",
+            }
+
+
 __all__ = [
     "ADMIT_APPLIED_STATUS_BADGE",
     "ADMIT_ARMED_STATUS_BADGE",
@@ -289,6 +322,7 @@ __all__ = [
     "apply_promote_to_session_state",
     "backtest_widget_state_from_entry_window",
     "clear_armed_entry_window",
+    "consume_armed_entry_window_after_run",
     "disabled_entry_window",
     "entry_window_contains",
     "entry_window_from_bucket",

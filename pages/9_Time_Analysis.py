@@ -422,12 +422,16 @@ if _armed and isinstance(_armed_window, dict) and _armed_window.get("enabled"):
 _can_promote = primary_group in _FOCUSABLE_COLS and selected_focus_value is not None
 if _can_promote:
     # Prefer active Focus window; else map the selected bucket (C1/C5).
+    # C2: Admit classifies by entry-bar time — Promote sample counts / thin-sample
+    # gate always use entry_timestamp, even when Time Analysis charts use exit.
+    _PROMOTE_TIMESTAMP_COL = "entry_timestamp"
+    if timestamp_basis != _PROMOTE_TIMESTAMP_COL:
+        st.caption(
+            "Promote sample counts use **entry** timestamps (Admit / C2), "
+            f"not the chart basis `{timestamp_basis}`."
+        )
     if _has_focus and isinstance(_focus_window, dict) and _focus_window.get("enabled"):
         _promote_source_window = _focus_window
-        _promote_count_after = int(_focus_prov.get("trade_count_after") or 0)
-        _promote_count_before = int(
-            _focus_prov.get("trade_count_before") or len(trades_raw)
-        )
         _promote_source = "focus"
     else:
         try:
@@ -437,21 +441,21 @@ if _can_promote:
                 exchange_tz=exchange_tz,
                 bucket_tz=bucket_tz,
             )
-            _promote_filtered = filter_trades_by_entry_window(
-                trades_raw,
-                _promote_source_window,
-                exchange_tz=exchange_tz,
-                timestamp_col=timestamp_basis,
-                bucket_tz=bucket_tz,
-            )
-            _promote_count_after = int(len(_promote_filtered))
-            _promote_count_before = int(len(trades_raw))
             _promote_source = "bucket"
         except ValueError as exc:
             _promote_source_window = None
             st.error(f"Promote source unavailable: {exc}")
 
     if _promote_source_window is not None:
+        _promote_filtered = filter_trades_by_entry_window(
+            trades_raw,
+            _promote_source_window,
+            exchange_tz=exchange_tz,
+            timestamp_col=_PROMOTE_TIMESTAMP_COL,
+            bucket_tz=bucket_tz,
+        )
+        _promote_count_after = int(len(_promote_filtered))
+        _promote_count_before = int(len(trades_raw))
         _thin = _promote_count_after < int(min_trades_warn)
         if _thin:
             st.warning(

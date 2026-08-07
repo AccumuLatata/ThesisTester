@@ -37,6 +37,8 @@ from thesistester.analytics.entry_window import (
     FOCUS_HONESTY_BANNER,
     FOCUS_STATUS_BADGE,
     PROMOTE_ARMED_BANNER,
+    clear_armed_entry_window,
+    consume_armed_entry_window_after_run,
     format_entry_window_label,
     partition_skip_counts,
 )
@@ -483,6 +485,9 @@ with st.sidebar:
     if _reset_btn:
         clear_backtest_defaults()
         reset_backtest_session_keys(st.session_state)
+        # SW4: widget reset must also drop a pending Promote handoff; otherwise
+        # Admit widgets revert while entry_window_armed / provenance linger.
+        clear_armed_entry_window(st.session_state)
         st.info("Built-in defaults restored.")
         st.rerun()
 
@@ -575,15 +580,7 @@ if run_btn:
             st.session_state["trade_summary"] = summary
             st.session_state["equity_curve"] = curve
             st.session_state["skipped_signals"] = skipped_signals
-            st.session_state["entry_window"] = normalized_entry_window
-            # SW4: Promote arming is consumed by a successful re-sim.
-            st.session_state["entry_window_armed"] = False
-            _promote_prov = st.session_state.get("entry_window_promote_provenance")
-            if isinstance(_promote_prov, dict):
-                st.session_state["entry_window_promote_provenance"] = {
-                    **_promote_prov,
-                    "status": "applied" if normalized_entry_window.get("enabled") else "cleared",
-                }
+            consume_armed_entry_window_after_run(st.session_state, normalized_entry_window)
             st.session_state["exposure_policy"] = {
                 "exposure_policy": exposure_policy,
                 "cooldown_bars_after_exit": int(cooldown_bars_after_exit),
@@ -750,8 +747,7 @@ if _entry_window_armed and _entry_window_enabled:
     # Pending Promote: do not claim constrained re-sim until Run completes.
     st.caption(f"**{ADMIT_ARMED_STATUS_BADGE}**")
     st.warning(
-        f"{PROMOTE_ARMED_BANNER} Window: "
-        f"**{format_entry_window_label(_entry_window_state)}**."
+        f"{PROMOTE_ARMED_BANNER} Window: **{format_entry_window_label(_entry_window_state)}**."
     )
 elif _entry_window_enabled:
     st.caption(f"**{ADMIT_APPLIED_STATUS_BADGE}**")

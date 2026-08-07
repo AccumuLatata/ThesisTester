@@ -805,6 +805,9 @@ entry-cutoff clocks (C5).
 SW4 adds Time Analysis **Promote to Admit**: arms `entry_window` + Backtest widget
 keys without auto-running simulation. `entry_window_armed` distinguishes pending
 Promote from an applied constrained re-sim; Focus overlays remain separate.
+Promote sample counts use entry timestamps (C2). An all-day Backtest Run does not
+consume a pending Promote — only a constrained Admit re-sim does
+(`consume_armed_entry_window_after_run`).
 
 ## R17 ingestion boundary
 

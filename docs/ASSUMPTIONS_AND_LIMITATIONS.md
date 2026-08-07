@@ -170,8 +170,11 @@ This engine is for **research screening**, not proof of a durable edge.
   list, not path drawdown under the all-day admission set.
 - **Promote** (SW4) arms an Admit `entry_window` from a Focused/selected bucket
   and pre-fills Backtest widgets. It does **not** auto-run simulation. Thin
-  samples require explicit confirmation. Until re-sim, UI shows: “Entry window
-  armed. Run Backtest to re-simulate under this constraint.”
+  samples require explicit confirmation. Promote sample counts / thin-sample
+  gating always use **entry** timestamps (C2), even when Time Analysis charts
+  use exit time. Until a constrained Admit re-sim, UI shows: “Entry window
+  armed. Run Backtest to re-simulate under this constraint.” An all-day Run
+  (Admit toggle off) does **not** consume the armed handoff.
 - **Admit** (`simulate_trades` / `run_backtest` / Backtest UI `entry_window`) is
   the constrained re-simulation path. Membership uses **entry-bar** local time
   (not signal-bar time). Window rejects never enter exposure competition.
