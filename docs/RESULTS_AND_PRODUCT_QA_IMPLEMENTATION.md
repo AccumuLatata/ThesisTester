@@ -233,8 +233,8 @@ tokens in `summary`, `caveats`, `claims[].text`, and `followups` must resolve
 to cited claim values (or packet caveat echo rules for caveat lines); otherwise
 fail closed before persist/render. Fractional rates may be narrated as `N%` /
 `N %` or `N percent` / `N pct` / `N Prozent` (not as clock-like `H:MM percent`).
-European decimal commas (`0,25`) ground as the cited float `0.25`. Prefer
-number-free `followups`.
+European decimal commas (`0,25`) ground as the cited float `0.25`; thousands
+groups (`25,000`) are not treated as decimals. Prefer number-free `followups`.
 
 **Help (`HelpReply`):**
 

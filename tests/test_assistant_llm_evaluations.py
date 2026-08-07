@@ -224,8 +224,7 @@ def test_explanation_accepts_german_decimal_comma_and_prozent():
         def complete_structured(self, **kwargs):
             return {
                 "summary": (
-                    "Die Expectancy ist 0,25 und die Winrate beträgt 60 Prozent "
-                    "(auch 60 %)."
+                    "Die Expectancy ist 0,25 und die Winrate beträgt 60 Prozent (auch 60 %)."
                 ),
                 "caveats": ["Nur In-Sample."],
                 "claims": [
@@ -275,6 +274,63 @@ def test_explanation_decimal_comma_does_not_launder_component_digits():
     )
     with pytest.raises(LLMEvidenceError, match="Uncited numerical claim"):
         explain_packet_with_llm(Client(), packet=packet)
+
+
+@pytest.mark.parametrize("inflated", ["25,000", "25,0000"])
+def test_explanation_thousands_comma_does_not_launder_smaller_cited_int(inflated):
+    """Thousand-scale comma groups must not ground from a cited ``25``."""
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": f"There were {inflated} trades with SL 0,25.",
+                "caveats": ["Thousand-scale count invented from a small cited int."],
+                "claims": [
+                    {
+                        "text": "Trade count is 25.",
+                        "path": "results.trade_summary.trade_count",
+                    },
+                    {
+                        "text": "SL is 0,25.",
+                        "path": "results.trade_summary.stop_loss_ticks",
+                    },
+                ],
+            }
+
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={"trade_summary": {"trade_count": 25, "stop_loss_ticks": 0.25}},
+        warnings=(),
+    )
+    with pytest.raises(LLMEvidenceError, match="Uncited numerical claim"):
+        explain_packet_with_llm(Client(), packet=packet)
+
+
+def test_explanation_accepts_european_decimal_with_three_fraction_digits():
+    """``0,125`` is a real European fraction, not a thousands group."""
+
+    class Client:
+        def complete_structured(self, **kwargs):
+            return {
+                "summary": "Expectancy is 0,125.",
+                "caveats": [],
+                "claims": [
+                    {
+                        "text": "Expectancy is 0,125.",
+                        "path": "results.trade_summary.expectancy_r",
+                    }
+                ],
+            }
+
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={"trade_summary": {"expectancy_r": 0.125}},
+        warnings=(),
+    )
+    explanation = explain_packet_with_llm(Client(), packet=packet)
+    assert explanation.claims[0].value == 0.125
 
 
 def test_explanation_rejects_packet_caveat_numbers_in_summary():
