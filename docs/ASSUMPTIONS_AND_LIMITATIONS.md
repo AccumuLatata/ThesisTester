@@ -600,20 +600,18 @@ other than the last bar in the dataset.
   not invent metrics, alias arbitrary wrong paths onto lookalike leaves,
   serve KPI slices for vetoed specialist asks, amend the RQ auditor, or
   persist ungrounded drafts.
-  **DX-series (follow-on plan):** `docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md`
-  targets VA-5 full-duplex **content** parity with DI overview/KPI
-  intelligence by reusing DI builders inside VA-3 tool envelopes + realtime
-  instructions. DX does not switch providers, does not pre-gate live PCM, and
-  does not call `propose_results_reply` on every duplex turn; text Discuss and
-  VA-4 PTT remain the strongest typed-recovery paths. Planned DX freezes
-  include veto stripping legacy explainer narrative/claims (no topic-swap via
-  leftover `overview` fields), **veto ≠ unmatched** (negative-cue remediation
-  only; unmatched / no-text → neutral `run_overview` so PTT unrecognized
-  fallback stays overview-shaped), `has_overview_negative_cue` export from
-  `results_overview` (no voice-local cue fork), session-record transcript
-  selector with an acknowledged tool-before-transcript race, sample-size
-  intent alias retarget to `results.trade_summary.trade_count`, and speakable
-  preference for DI `summary` when present.
+  **DX-series:** `docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md` targets VA-5
+  full-duplex **content** parity with DI overview/KPI intelligence by reusing
+  DI builders inside VA-3 tool envelopes + realtime instructions. DX does not
+  switch providers, does not pre-gate live PCM, and does not call
+  `propose_results_reply` on every duplex turn; text Discuss and VA-4 PTT
+  remain the strongest typed-recovery paths. **DX-1 landed:**
+  `has_overview_negative_cue` export; `get_run_overview` projects DI
+  deterministic KPI/overview replies (claims policy A; veto strips legacy
+  explainer `overview`/`claims`; unmatched / no-text → neutral
+  `run_overview`); sample-size intent alias →
+  `results.trade_summary.trade_count`; speakable prefers DI `summary` (+
+  digit-free `expert_overlay`). DX-2 instructions + DX-3 eval freeze remain.
   Thesis switches clear mode-scoped chat_input widget keys and other
   thesis-scoped staging. Draft-chat history
   excludes `results_qa` / `product_help` turns and tool/audit lines so
@@ -707,11 +705,12 @@ other than the last bar in the dataset.
   cannot be pre-gated once uttered; assistant transcript text is still
   digit-audited against the bound packet and tool returns before durable
   persistence/flush (uncited numbers are replaced with remediation).
-  Duplex overview/KPI **content** parity with Discuss intelligence is planned
-  under DX (`docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md`) and must not reopen
-  VA transport freezes or DI auditor rules. Until DX lands, voice intent
-  still aliases some sample-size phrases to `results.trade_count` (a
-  distinct leaf from the DI baseline `results.trade_summary.trade_count`).
+  Duplex overview/KPI **content** parity with Discuss intelligence is under
+  DX (`docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md`) and must not reopen VA
+  transport freezes or DI auditor rules. **DX-1 landed:** sample-size voice
+  intent aliases target the DI baseline leaf
+  `results.trade_summary.trade_count` (not the distinct `results.trade_count`
+  leaf). DX-2 instructions + DX-3 eval freeze remain.
 
 ## OTF filter (One Timeframing)
 

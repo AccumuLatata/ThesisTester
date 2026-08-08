@@ -321,13 +321,33 @@ def format_speakable_tool_result(
                 "evidence compare. This comparison is not persisted."
             )
     else:
-        # get_run_overview — speak narrative only; caveat free-text digits are
-        # not typed claim values and must not be laundered into trusted speech.
-        overview = str(payload.get("overview") or "").strip()
-        if overview:
-            body = _strip_claim_path_markup(overview)
+        # get_run_overview — DX-1: prefer DI summary (+ digit-free overlay);
+        # else legacy overview. Caveat free-text digits are not typed claim
+        # values and must not be laundered into trusted speech.
+        summary = str(payload.get("summary") or "").strip()
+        if summary:
+            body = _strip_claim_path_markup(summary)
+            overlay = payload.get("expert_overlay") or ()
+            overlay_lines: list[str] = []
+            if isinstance(overlay, (list, tuple)):
+                for item in overlay:
+                    text = str(item or "").strip()
+                    if not text:
+                        continue
+                    cleaned = _strip_claim_path_markup(text)
+                    # DX §4.2 speakable freeze: append only digit-free overlay
+                    # lines (empty allowlist — overlay must not introduce digits).
+                    if _ungrounded_number_tokens(cleaned, allowed=set()):
+                        continue
+                    overlay_lines.append(cleaned)
+            if overlay_lines:
+                body = f"{body} {' '.join(overlay_lines)}"
         else:
-            body = "Here is the grounded run overview from the bound evidence packet."
+            overview = str(payload.get("overview") or "").strip()
+            if overview:
+                body = _strip_claim_path_markup(overview)
+            else:
+                body = "Here is the grounded run overview from the bound evidence packet."
     if prefix:
         return f"{prefix} {body}".strip()
     return body.strip()

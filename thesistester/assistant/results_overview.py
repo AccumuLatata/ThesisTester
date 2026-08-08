@@ -137,6 +137,19 @@ def _alias_matches(alias: str, normalized: str) -> bool:
     )
 
 
+def has_overview_negative_cue(message: str) -> bool:
+    """Return True when DI §4.1 negative cues veto overview matching.
+
+    Thin export over the frozen ``_NEGATIVE_CUES`` table + boundary-anchored
+    matching. Duplex (DX-1) uses this to distinguish veto from unmatched —
+    do not copy the cue tuple into ``voice/``.
+    """
+    if not isinstance(message, str) or not message.strip():
+        return False
+    normalized = _normalize_message(message)
+    return any(_alias_matches(cue, normalized) for cue in _NEGATIVE_CUES)
+
+
 def match_overview_intent(message: str) -> str | None:
     """Return ``kpi_summary`` / ``run_overview`` or ``None`` when vetoed/unmatched.
 
@@ -145,9 +158,9 @@ def match_overview_intent(message: str) -> str | None:
     """
     if not isinstance(message, str) or not message.strip():
         return None
-    normalized = _normalize_message(message)
-    if any(_alias_matches(cue, normalized) for cue in _NEGATIVE_CUES):
+    if has_overview_negative_cue(message):
         return None
+    normalized = _normalize_message(message)
     if any(_alias_matches(cue, normalized) for cue in _KPI_POSITIVE_CUES):
         return OVERVIEW_INTENT_KPI
     if any(_alias_matches(cue, normalized) for cue in _RUN_OVERVIEW_POSITIVE_CUES):

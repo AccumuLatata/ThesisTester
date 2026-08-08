@@ -603,7 +603,8 @@ def test_llm_configuration_error_falls_back_for_results(monkeypatch, tmp_path: P
 def test_fallback_unwraps_tool_envelope_into_speakable(monkeypatch, tmp_path: Path):
     repository = _repository(tmp_path)
     thesis, run, digest, conversation = _completed_run(repository, tmp_path)
-    transport = _FakeSTTTTS(transcript="How many trades?")
+    # Empty research bundles expose results.signal_count (not trade_summary.*).
+    transport = _FakeSTTTTS(transcript="How many signals?")
     monkeypatch.setenv("XAI_API_KEY", "test-xai-key-not-real")
 
     class _Orch(AssistantOrchestrator):
@@ -635,7 +636,7 @@ def test_fallback_unwraps_tool_envelope_into_speakable(monkeypatch, tmp_path: Pa
     assert turn.answer_path == "fallback_tool"
     assert turn.tool_name == "get_metric"
     assert "None" not in turn.speakable_text
-    assert "trade_count" in turn.speakable_text
+    assert "signal_count" in turn.speakable_text
     assert "0" in turn.speakable_text
     assert transport.tts_texts
     assert "None" not in transport.tts_texts[0]

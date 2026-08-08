@@ -18,8 +18,8 @@ _METRIC_ALIASES: tuple[tuple[tuple[str, ...], str], ...] = (
     (("expectancy", "expectancy_r"), "results.trade_summary.expectancy_r"),
     (("profit factor", "profit_factor"), "results.trade_summary.profit_factor"),
     (("drawdown", "max drawdown", "max_drawdown"), "results.trade_summary.max_drawdown_r"),
-    # trade_count lives at results.trade_count (not under trade_summary).
-    (("trade count", "trades", "sample size"), "results.trade_count"),
+    # Baseline sample size is results.trade_summary.trade_count (DX-1 / DI §4.2).
+    (("trade count", "trades", "sample size"), "results.trade_summary.trade_count"),
     # Word-boundary "total r" — must not match "total risk".
     (("total_r",), "results.trade_summary.total_r"),
     (("signal count", "signals"), "results.signal_count"),
