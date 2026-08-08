@@ -552,6 +552,9 @@ Focus summary, post-hoc subset, Promote to Admit
 **What it is not.**
 
 - Not a re-optimization engine and not a signal generator.
+- Focus is **not** an entry constraint and does **not** re-run
+  `simulate_trades`, exposure, or cooldown — equity/drawdown is a **subset
+  replay** of filtered completed trades (see **Focus vs Admit**).
 - “Best hour” language is descriptive on this sample only — not a schedule to
   trade live.
 - RTH segment labeling can stay on exchange/session time even when hourly

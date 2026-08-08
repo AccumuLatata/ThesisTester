@@ -461,6 +461,47 @@ def test_qd7_exposure_policy_retrieves_dedicated_section():
     assert "cooldown_active" in text or "Cooldown bars after exit" in text
 
 
+def test_hc6_entry_window_asks_retrieve_focus_vs_admit_not_session_close():
+    """HC-6: natural Admit/entry-window asks must not be stolen by Session close."""
+    for question in (
+        "What does entry window mean?",
+        "What does Constrain entries to time window do?",
+    ):
+        chunks = _selected_chunks(question)
+        pairs = {(chunk.doc_id, chunk.section) for chunk in chunks}
+        assert ("user_guide", "Focus vs Admit") in pairs, (
+            f"{question!r} expected Focus vs Admit; got {sorted(pairs)}"
+        )
+
+
+def test_hc6_boosts_do_not_false_match_unrelated_how_tos():
+    """HC-6: bare focus/trailing/session-close must not hijack unrelated asks."""
+    probes = (
+        ("How do I focus on expectancy?", "Focus vs Admit"),
+        ("What is constrained optimization?", "Focus vs Admit"),
+        ("Tell me about trailing vs leading indicators", "Exit management"),
+        ("How do I close a research session?", "Session close and entry cutoff"),
+    )
+    for question, banned_section_substr in probes:
+        chunks = _selected_chunks(question)
+        top = chunks[0] if chunks else None
+        if top is None:
+            continue
+        assert banned_section_substr.lower() not in top.section.lower(), (
+            f"{question!r} wrongly topped by {top.doc_id}/{top.section}"
+        )
+
+
+def test_hc6_time_analysis_keeps_focus_honesty_on_howto_path():
+    """Thinned Time Analysis must still state Focus ≠ re-sim / exposure re-run."""
+    chunks = _selected_chunks("How do I use Time Analysis?")
+    pairs = {(chunk.doc_id, chunk.section) for chunk in chunks}
+    assert ("user_guide", "Time Analysis") in pairs
+    text = next(c.text for c in chunks if c.doc_id == "user_guide" and c.section == "Time Analysis")
+    assert "subset replay" in text.lower() or "does **not** re-run" in text
+    assert "exposure" in text.lower()
+
+
 # ---------------------------------------------------------------------------
 # HC-4 — full §5 bank freeze + §7.1.4 ↔ manifest parity
 # ---------------------------------------------------------------------------
