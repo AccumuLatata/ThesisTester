@@ -1,15 +1,11 @@
 # Research Assistant UX Refocus — Implementation Contract (RUX-series)
 
 **Document type:** Implementation contract (RUX-series) — **single source of truth for Research Assistant page layout/prominence**
-**Status:** 🟡 In progress — RUX-0 implemented (contract + rendered-structure
-baseline); RUX-1 implemented ([#301](https://github.com/AccumuLatata/ThesisTester/pull/301));
-RUX-2 implemented ([#302](https://github.com/AccumuLatata/ThesisTester/pull/302));
-RUX-3 implemented ([#303](https://github.com/AccumuLatata/ThesisTester/pull/303));
-RUX-4 implemented ([#304](https://github.com/AccumuLatata/ThesisTester/pull/304));
-RUX-5 specified, not implemented
-**Date:** 2026-08-07
+**Status:** ✅ **Complete** — RUX-0…RUX-5 (discuss-first layout; evidence in
+`docs/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md`)
+**Date:** 2026-08-07 (contract); closeout 2026-08-08
 **Owner surface:** `pages/14_Research_Assistant.py` + presentation-only helpers in
-`thesistester/assistant/` (`ux.py` new, `workspace.py`, `llm.py` settings loader)
+`thesistester/assistant/` (`ux.py`, `workspace.py`, `llm.py` settings loader)
 **Depends on:** RQ complete (`docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`),
 HC complete (`docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md`), CAI complete
 (`docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md`), VA complete
@@ -123,36 +119,27 @@ classic-focus key shape all stay as frozen.
 ### 1.3 Navigation-phrase migration (single source of truth)
 
 User-facing `Advanced → …` / Help-pointer strings live in page captions, Help
-system/remediation text, and allowlisted docs. **Exact inventory for RUX-1
-extraction** (byte-identical values; line numbers as of RUX-0):
+system/remediation text, and allowlisted docs. **RUX-1 extraction inventory**
+(pre-flip values; line numbers as of RUX-0), then **released values** after
+RUX-2:
 
-| Constant | Current fragment (verbatim) | Call sites today |
+| Constant | Pre-RUX-2 (RUX-1 land) | Released (RUX-2…RUX-5) |
 |---|---|---|
-| `DISCUSS_NAV_HINT` | `Advanced → Linked runs → Discuss results` | page L553; composed into `product_help` remediation `followups` L208 (`Open {hint} for a completed run.`) |
-| `DISCUSS_NAV_SHORT` | `Advanced → Linked runs` | page L592; `product_help` system prompt L54 + `_REMEDIATION_SUMMARY` L149 |
-| `HELP_NAV_HINT` | `Help / how it works below` | page L554 (`use {hint}.` inside the draft-chat caption) |
-| `ADVANCED_PLAN_NAV_HINT` | `Advanced → Plan review` | page L1497 |
-| `ADVANCED_COMPARE_NAV_HINT` | `Advanced → Compare completed runs` | page L2249, L2257 (two flashes, one fragment) |
-| `ADVANCED_PORTFOLIO_NAV_HINT` | `Advanced → Portfolio analysis` | page L2338 |
+| `DISCUSS_NAV_HINT` | `Advanced → Linked runs → Discuss results` | `the Discuss runs mode on Research Assistant` |
+| `DISCUSS_NAV_SHORT` | `Advanced → Linked runs` | `Discuss runs` |
+| `HELP_NAV_HINT` | `Help / how it works below` | `the Help mode` |
+| `ADVANCED_PLAN_NAV_HINT` | `Advanced → Plan review` | unchanged |
+| `ADVANCED_COMPARE_NAV_HINT` | `Advanced → Compare completed runs` | unchanged |
+| `ADVANCED_PORTFOLIO_NAV_HINT` | `Advanced → Portfolio analysis` | unchanged |
 
-**Not extracted in RUX-1** (left as-is until RUX-2 docs pass):
+**Freeze:** RUX-1 landed the six constants in `thesistester/assistant/ux.py`
+with pre-flip values (pure refactor). RUX-2 flipped Discuss/Help values and
+updated docs/tests. After RUX-1, no RUX PR may hand-write a navigation phrase
+at a page or `product_help` call site — import the constant.
 
-- Page **comment** L447 (`Advanced → Linked-run` — not user-facing)
-- `docs/USER_GUIDE.md` / `ARCHITECTURE.md` / `ENGINEERING.md` /
-  `RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` navigation sentences (updated in
-  RUX-2 when the layout flips; USER_GUIDE bodies are Help corpus evidence)
-- `tests/test_assistant_workspace.py` source guard (rewritten in RUX-2)
-
-**Freeze:** RUX-1 lands the six constants above in `thesistester/assistant/ux.py`
-and substitutes **only** the page + `product_help.py` call sites listed in the
-table. Values stay byte-identical (pure refactor). RUX-2 flips the Discuss/Help
-constant values and updates docs/tests in the same PR. After RUX-1, no RUX PR
-may hand-write a navigation phrase at a page or `product_help` call site —
-import the constant.
-
-`product_help.py` is otherwise off-limits to RUX: only the three Discuss-nav
-strings become imports; prompt structure, grounding, and remediation logic are
-untouched.
+`product_help.py` is otherwise off-limits to RUX beyond nav-constant imports
+and RUX-4 docstring/assertion re-anchor; prompt structure, grounding, and
+remediation logic stay untouched.
 
 ---
 
@@ -177,7 +164,6 @@ What do you want to do?   [ Discuss runs | Help | Draft thesis ]     ← new, se
    ┌ thread (st.chat_message bubbles, results_qa + run_id filter) ┐  MOVED, filters identical
    │ …                                                            │
    └──────────────────────────────────────────────────────────────┘
-   [ Ask about this run                          ] [Send results question]   MOVED, keys identical
    Voice discuss (push-to-talk) / (realtime)                        MOVED, keys identical
    Secondary: [Explain run] [Open exact run in Backtest] [Restore]  MOVED from Linked run
    empty state → "No completed thesis-recorded run yet…" when no recorded runs;
@@ -186,11 +172,16 @@ What do you want to do?   [ Discuss runs | Help | Draft thesis ]     ← new, se
                   unavailable (do not hide secondary actions).
 
 ── mode = Help ──────────────────────────────────────────────────────
-   Help / how it works  (same caption, thread, input, send, voice help)  PROMOTED from expander
+   Help / how it works  (caption, thread, voice help)               PROMOTED from expander
    when `[assistant.product_help] enabled = false` → disabled guidance (not blank)
 
 ── mode = Draft thesis (optional) ───────────────────────────────────
-   Assistant chat  (same caption, thread, page-level chat_input)         DEMOTED from hero
+   Assistant chat  (caption, thread)                                 DEMOTED from hero
+
+── page-level (after active mode body; RUX-3) ───────────────────────
+   st.chat_input  (one per rerun; routed by mode; disabled when gated)
+   Placeholders: Ask about this completed run / Ask how ThesisTester works /
+                 Describe or refine this thesis
 
 ▸ Advanced: draft, runs & compare              (collapsed, all modes)
     How to start · Structured controls · Reuse saved setup
@@ -430,7 +421,7 @@ baseline from RUX-0 still passes unchanged.
 
 ---
 
-### 5.3 RUX-2 — Layout inversion: Discuss-first modes *(the substantive PR)*
+### 5.3 RUX-2 — Layout inversion: Discuss-first modes *(the substantive PR)* — ✅ **Implemented** ([#302](https://github.com/AccumuLatata/ThesisTester/pull/302))
 
 **Goal:** deliver the product decision (§0.2). Discuss becomes the default
 surface, Help becomes a peer mode, draft chat is demoted, Advanced/Debug keep
@@ -457,12 +448,12 @@ their internals.
 
 | Block | From | To | Rule |
 |---|---|---|---|
-| Discuss results caption + thread + `results-qa-input-{run_id}` + `results-qa-send-{run_id}` + `handle_results_turn` call + clear-flag logic | inside Linked-run expander, inside `if run.status == "completed" and isinstance(run.provenance, dict)` **and** `results_qa.enabled` | Discuss mode surface: picker/secondary via `recorded_completed_runs`; Q&A/voice additionally gated by `results_qa.enabled` (same sibling split as pre-RUX-2) | Widget keys, session keys, filters, and error handling copied verbatim; only indentation/container changes |
-| Voice discuss PTT + realtime blocks | same run expander | Discuss mode, directly under the Discuss input | Same keys, same `thesis_has_running_run` gate, same `require_run_bundle_hash` check, same copy |
+| Discuss results caption + thread + `handle_results_turn` path (RUX-2 moved keyed `text_input`+send; **RUX-3** replaced that with page-level mode-scoped `st.chat_input`) | inside Linked-run expander, inside `if run.status == "completed" and isinstance(run.provenance, dict)` **and** `results_qa.enabled` | Discuss mode surface: picker/secondary via `recorded_completed_runs`; Q&A/voice additionally gated by `results_qa.enabled` (same sibling split as pre-RUX-2) | Filters/error handling preserved; input widget amended by RUX-3 |
+| Voice discuss PTT + realtime blocks | same run expander | Discuss mode, under the Discuss thread | Same keys, same `thesis_has_running_run` gate, same `require_run_bundle_hash` check, same copy |
 | `Explain run` + explanation display, `Open exact run in Backtest`, `Restore bundle into research pages` | run expander | **Duplicated intent, single render:** rendered in Discuss mode for the selected run; removed from the run expander to avoid duplicate widget keys | Keys stay unique because each is rendered exactly once per run per rerun |
-| `Generate evidence-only AI explanation` (+ LLM explanation display) | run expander | **Stays in Advanced → Linked run expander** (explicit decision) | Deterministic Explain moves with Discuss; LLM explain remains an Advanced secondary action so RUX-2 does not invent a fourth Discuss-mode AI surface. Document this asymmetry in the RUX-2 PR body. |
-| Help block (caption, thread, `product-help-input`, `product-help-send`, voice help) | `st.expander("Help / how it works")` | Help mode container, same order | Copy and keys verbatim |
-| Assistant chat (caption, bubbles, `st.chat_input`) | page hero | Draft mode | `st.chat_input` stays page-level and is rendered **only** in Draft mode → still exactly one per rerun |
+| `Generate evidence-only AI explanation` (+ LLM explanation display) | run expander | **Stays in Advanced → Linked research runs** (explicit decision) | Deterministic Explain moves with Discuss; LLM explain remains an Advanced secondary action so RUX-2 does not invent a fourth Discuss-mode AI surface. Document this asymmetry in the RUX-2 PR body. |
+| Help block (caption, thread, voice help; RUX-2 moved `text_input`+send; **RUX-3** → page-level `st.chat_input`) | `st.expander("Help / how it works")` | Help mode container | Copy preserved; input widget amended by RUX-3 |
+| Assistant chat (caption, bubbles) + page-level `st.chat_input` | page hero owned the sole `st.chat_input` | Draft mode body + **shared** page-level `st.chat_input` routed by active mode (RUX-3) | Exactly one `st.chat_input` per rerun in every mode |
 | Everything else under Advanced/Debug | unchanged | unchanged | No edits beyond the removed Discuss/voice/explain blocks and the hoisted `runs` variable |
 
 **Hard implementation rules**
@@ -493,7 +484,7 @@ harmless (constants revert to their original values with the same commit).
 
 ---
 
-### 5.4 RUX-3 — Chat input for the active mode *(optional, recommended)*
+### 5.4 RUX-3 — Chat input for the active mode *(optional, recommended)* — ✅ **Implemented** ([#303](https://github.com/AccumuLatata/ThesisTester/pull/303))
 
 **Goal:** make Discuss and Help feel like chats rather than forms.
 
@@ -534,7 +525,7 @@ in the same revert).
 
 ---
 
-### 5.5 RUX-4 — Help/remediation and eval-bank re-anchor
+### 5.5 RUX-4 — Help/remediation and eval-bank re-anchor — ✅ **Implemented** ([#304](https://github.com/AccumuLatata/ThesisTester/pull/304))
 
 **Goal:** make the Help channel's own answers describe the new navigation, and
 prove it with the existing coverage machinery.
@@ -560,7 +551,7 @@ diff is empty; RQ-5 honesty/injection evals green.
 
 ---
 
-### 5.6 RUX-5 — Release evidence and closeout
+### 5.6 RUX-5 — Release evidence and closeout — ✅ **Implemented**
 
 **Goal:** record the evidence and flip status, per the SW-series precedent.
 
@@ -568,13 +559,24 @@ diff is empty; RQ-5 honesty/injection evals green.
 
 | File | Change |
 |---|---|
-| `docs/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | New: before/after layout, rendered-assertion inventory, deep-link verification, manual walkthrough screenshots/recording, full-suite result |
+| `docs/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | New: before/after layout, rendered-assertion inventory, deep-link verification, walkthrough matrix, full-suite result |
 | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` | Status → Complete; per-PR outcomes |
 | `docs/ENGINEERING_ROADMAP.md` | Index row → Complete (RUX-0…RUX-5) |
 | `docs/AGENT_GUIDE.md` | "Do not reopen RUX for layout changes; amend this contract instead" |
 
 **Acceptance:** evidence doc contains rendered proof for every §5.3 acceptance
-bullet; suite green.
+bullet; suite green — see `docs/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md`.
+
+**Per-PR outcomes (series)**
+
+| ID | Outcome |
+|---|---|
+| RUX-0 | Contract + AppTest baseline ([#300](https://github.com/AccumuLatata/ThesisTester/pull/300)) |
+| RUX-1 | Invisible foundation: `ux.py`, `[assistant.ux]`, nav constants ([#301](https://github.com/AccumuLatata/ThesisTester/pull/301)) |
+| RUX-2 | Discuss-first mode layout; deep-link superset ([#302](https://github.com/AccumuLatata/ThesisTester/pull/302)) |
+| RUX-3 | One page-level mode-scoped `st.chat_input`; retired text-input draft keys ([#303](https://github.com/AccumuLatata/ThesisTester/pull/303)) |
+| RUX-4 | Help remediation + USER_GUIDE / Q-H13 re-anchor; allowlist unchanged ([#304](https://github.com/AccumuLatata/ThesisTester/pull/304)) |
+| RUX-5 | Evidence + Complete status ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305)) |
 
 ---
 
