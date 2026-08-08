@@ -40,6 +40,8 @@ from thesistester.assistant.ux import (
     DISCUSS_NAV_HINT,
     DISCUSS_RUN_PICKER_KEY,
     HELP_NAV_HINT,
+    chat_input_key,
+    chat_input_placeholder,
 )
 from thesistester.assistant.workspace import (
     ASSISTANT_ADVANCED_EXPANDER_KEY,
@@ -283,11 +285,9 @@ def test_default_prominence_is_discuss_with_collapsed_secondary_surfaces(workspa
     ):
         assert _expander(app, label).proto.expanded is False, f"{label} must default collapsed"
 
-    # Discuss thread + input visible without opening any expander.
-    assert any(item.label == "Ask about this run" for item in app.text_input), (
-        f"Discuss input missing. Labels: {[item.label for item in app.text_input]}"
-    )
-    assert app.chat_input.values == []
+    # Discuss mode owns the page-level chat_input (RUX-3).
+    assert len(app.chat_input) == 1
+    assert app.chat_input[0].placeholder == chat_input_placeholder(ASSISTANT_MODE_DISCUSS)
 
     # Second-pipeline surfaces stay reachable under the collapsed Advanced expander.
     advanced = _expander(app, "Advanced: draft, runs & compare")
@@ -296,7 +296,7 @@ def test_default_prominence_is_discuss_with_collapsed_secondary_surfaces(workspa
 
 
 def test_default_discuss_empty_state_names_record_and_discuss(workspace):
-    """No eligible run → guidance only; no chat input."""
+    """No eligible run → guidance; chat_input still present (RUX-3)."""
     _, thesis = workspace
     app = _render(thesis.thesis_id)
 
@@ -304,8 +304,8 @@ def test_default_discuss_empty_state_names_record_and_discuss(workspace):
     assert _session_value(app, ASSISTANT_MODE_SESSION_KEY) == ASSISTANT_MODE_DISCUSS
     infos = [item.value for item in app.info]
     assert any("Record and discuss this run" in text for text in infos)
-    assert app.chat_input.values == []
-    assert all(item.label != "Ask about this run" for item in app.text_input)
+    assert len(app.chat_input) == 1
+    assert app.chat_input[0].placeholder == chat_input_placeholder(ASSISTANT_MODE_DISCUSS)
 
 
 def test_discuss_mode_reports_disabled_results_qa_not_missing_runs(workspace, monkeypatch):
@@ -329,7 +329,7 @@ def test_discuss_mode_reports_disabled_results_qa_not_missing_runs(workspace, mo
     infos = [item.value for item in app.info]
     assert any("Results Q&A is disabled" in text for text in infos)
     assert all("Record and discuss this run" not in text for text in infos)
-    assert all(item.label != "Ask about this run" for item in app.text_input)
+    assert len(app.chat_input) == 1
     # Pre-RUX-2 sibling gate: secondary actions stay available without RQ.
     assert any(item.label == "Explain run" for item in app.button)
     assert any(item.label == "Open exact run in Backtest" for item in app.button)
@@ -357,7 +357,8 @@ def test_help_mode_shows_disabled_guidance_when_product_help_off(workspace, monk
     assert any(item.value == "Help / how it works" for item in app.subheader)
     infos = [item.value for item in app.info]
     assert any("Product Help is disabled" in text for text in infos)
-    assert all(item.label != "Ask how ThesisTester works" for item in app.text_input)
+    assert len(app.chat_input) == 1
+    assert app.chat_input[0].placeholder == chat_input_placeholder(ASSISTANT_MODE_HELP)
 
 
 def test_rendered_captions_contain_rux2_nav_fragments(workspace):
@@ -372,26 +373,104 @@ def test_rendered_captions_contain_rux2_nav_fragments(workspace):
     assert HELP_NAV_HINT in joined
 
 
-def test_page_renders_exactly_one_chat_input_only_in_draft_mode(workspace):
-    """One page-level chat input, owned by Draft mode only (RUX-2)."""
+def test_page_renders_exactly_one_chat_input_in_every_mode(workspace):
+    """RUX-3: exactly one page-level chat_input per rerun in all three modes."""
+    from thesistester.assistant.ux import chat_input_placeholder as placeholder
+
     orchestrator, thesis = workspace
-    _seed_discussable_run(orchestrator, thesis.thesis_id)
+    completed = _seed_discussable_run(orchestrator, thesis.thesis_id)
 
     discuss = _render(thesis.thesis_id)
     assert not discuss.exception
-    assert discuss.chat_input.values == []
+    assert len(discuss.chat_input) == 1
+    assert discuss.chat_input[0].placeholder == placeholder(ASSISTANT_MODE_DISCUSS)
 
     if load_product_help_settings().enabled:
         help_app = _render(thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_HELP})
         assert not help_app.exception
-        assert help_app.chat_input.values == []
-        help_labels = [item.label for item in help_app.text_input]
-        assert "Ask how ThesisTester works" in help_labels
+        assert len(help_app.chat_input) == 1
+        assert help_app.chat_input[0].placeholder == placeholder(ASSISTANT_MODE_HELP)
 
     draft = _render(thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_DRAFT})
     assert not draft.exception
     assert len(draft.chat_input) == 1
-    assert draft.chat_input[0].placeholder == "Describe or refine this thesis"
+    assert draft.chat_input[0].placeholder == placeholder(ASSISTANT_MODE_DRAFT)
+    assert completed.run_id  # seeded for discuss routing tests below
+
+
+def test_discuss_chat_input_routes_to_handle_results_turn(workspace, monkeypatch):
+    """Submitting Discuss chat_input calls handle_results_turn with selected run_id."""
+    from thesistester.assistant import AssistantOrchestrator, OrchestrationResult
+    from thesistester.assistant.contracts import OrchestrationStatus
+    import thesistester.assistant.llm as llm_mod
+
+    orchestrator, thesis = workspace
+    completed = _seed_discussable_run(orchestrator, thesis.thesis_id)
+    calls: list[dict[str, Any]] = []
+
+    def _fake_results(self, client, **kwargs):
+        calls.append(kwargs)
+        assert "choices" not in kwargs
+        return OrchestrationResult(
+            status=OrchestrationStatus.COMPLETED.value,
+            capability_id="RESULTS.qa",
+            payload={"reply": {"summary": "ok", "claims": (), "caveats": (), "followups": ()}},
+        )
+
+    monkeypatch.setattr(AssistantOrchestrator, "handle_results_turn", _fake_results)
+    monkeypatch.setattr(llm_mod, "create_openai_client", lambda settings: object())
+
+    app = _render(thesis.thesis_id)
+    assert not app.exception
+    assert len(app.chat_input) == 1
+    _run_app(app.chat_input[0].set_value("What was expectancy?"))
+
+    assert not app.exception, app.exception
+    assert len(calls) == 1
+    assert calls[0]["run_id"] == completed.run_id
+    assert calls[0]["message"] == "What was expectancy?"
+    assert calls[0]["thesis_id"] == thesis.thesis_id
+    assert "choices" not in calls[0]
+
+
+def test_help_chat_input_routes_to_handle_help_turn_without_choices(workspace, monkeypatch):
+    """Submitting Help chat_input calls handle_help_turn; no choices on the path."""
+    from thesistester.assistant import AssistantOrchestrator, OrchestrationResult
+    from thesistester.assistant.contracts import OrchestrationStatus
+    import thesistester.assistant.llm as llm_mod
+
+    if not load_product_help_settings().enabled:
+        pytest.skip("product_help disabled in tracked config")
+
+    _, thesis = workspace
+    calls: list[dict[str, Any]] = []
+
+    def _fake_help(self, client, **kwargs):
+        calls.append(kwargs)
+        assert "choices" not in kwargs
+        return OrchestrationResult(
+            status=OrchestrationStatus.COMPLETED.value,
+            capability_id="HELP.qa",
+            payload={
+                "reply": {"summary": "ok", "citations": (), "caveats": (), "followups": ()},
+                "remediation": False,
+            },
+        )
+
+    monkeypatch.setattr(AssistantOrchestrator, "handle_help_turn", _fake_help)
+    monkeypatch.setattr(llm_mod, "create_openai_client", lambda settings: object())
+
+    app = _render(thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_HELP})
+    assert not app.exception
+    assert len(app.chat_input) == 1
+    _run_app(app.chat_input[0].set_value("How does Setup Builder work?"))
+
+    assert not app.exception, app.exception
+    assert len(calls) == 1
+    assert calls[0]["message"] == "How does Setup Builder work?"
+    assert calls[0]["thesis_id"] == thesis.thesis_id
+    assert "run_id" not in calls[0]
+    assert "choices" not in calls[0]
 
 
 def test_results_qa_history_never_renders_in_the_draft_or_help_threads(workspace):
@@ -496,7 +575,9 @@ def test_classic_results_qa_deep_link_preselects_discuss_and_force_opens(workspa
     # RUX-2 superset: Discuss mode + preselected run.
     assert _session_value(app, ASSISTANT_MODE_SESSION_KEY) == ASSISTANT_MODE_DISCUSS
     assert _session_value(app, DISCUSS_RUN_PICKER_KEY) == run_id
-    assert any(item.label == "Ask about this run" for item in app.text_input)
+    assert len(app.chat_input) == 1
+    assert app.chat_input[0].placeholder == chat_input_placeholder(ASSISTANT_MODE_DISCUSS)
+    assert chat_input_key(ASSISTANT_MODE_DISCUSS, run_id=run_id) in app.session_state
 
 
 def test_classic_results_qa_orphan_deep_link_still_force_opens_expanders(workspace):

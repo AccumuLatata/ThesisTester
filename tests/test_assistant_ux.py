@@ -217,3 +217,18 @@ def test_reset_ux_mode_and_picker_pops_then_rewrites():
     assert state["other"] == 1
     reset_ux_mode_and_picker(state, default_mode="bogus")
     assert state[ASSISTANT_MODE_SESSION_KEY] == ASSISTANT_MODE_DISCUSS
+
+
+def test_chat_input_helpers_are_mode_scoped():
+    from thesistester.assistant.ux import chat_input_key, chat_input_placeholder
+
+    assert chat_input_placeholder(ASSISTANT_MODE_DISCUSS) == "Ask about this completed run"
+    assert chat_input_placeholder(ASSISTANT_MODE_HELP) == "Ask how ThesisTester works"
+    assert chat_input_placeholder(ASSISTANT_MODE_DRAFT) == "Describe or refine this thesis"
+    assert chat_input_key(ASSISTANT_MODE_DISCUSS) == "assistant-chat-input-discuss"
+    assert (
+        chat_input_key(ASSISTANT_MODE_DISCUSS, run_id="run_abc")
+        == "assistant-chat-input-discuss-run_abc"
+    )
+    assert chat_input_key(ASSISTANT_MODE_HELP) == "assistant-chat-input-help"
+    assert chat_input_key(ASSISTANT_MODE_DRAFT) == "assistant-chat-input-draft"

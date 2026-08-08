@@ -154,8 +154,8 @@ def test_assistant_session_keys_cover_documented_staging_surface():
     assert "assistant_flash" in ASSISTANT_SESSION_KEYS
     assert "assistant_run_comparisons" in ASSISTANT_SESSION_KEYS
     assert "assistant_portfolio_analyses" in ASSISTANT_SESSION_KEYS
-    assert "assistant_results_qa_drafts" in ASSISTANT_SESSION_KEYS
-    assert "assistant_product_help_draft" in ASSISTANT_SESSION_KEYS
+    assert "assistant_results_qa_drafts" not in ASSISTANT_SESSION_KEYS
+    assert "assistant_product_help_draft" not in ASSISTANT_SESSION_KEYS
     assert "assistant_voice_results_sessions" in ASSISTANT_SESSION_KEYS
     assert "assistant_voice_help_session_id" in ASSISTANT_SESSION_KEYS
     assert "assistant_voice_last_turn" in ASSISTANT_SESSION_KEYS
@@ -164,8 +164,8 @@ def test_assistant_session_keys_cover_documented_staging_surface():
     assert "assistant_discuss_run_picker" in ASSISTANT_SESSION_KEYS
     assert "assistant_bundle_handoff" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_flash" in THESIS_SCOPED_STAGING_KEYS
-    assert "assistant_results_qa_drafts" in THESIS_SCOPED_STAGING_KEYS
-    assert "assistant_product_help_draft" in THESIS_SCOPED_STAGING_KEYS
+    assert "assistant_results_qa_drafts" not in THESIS_SCOPED_STAGING_KEYS
+    assert "assistant_product_help_draft" not in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_focused_run_id" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_results_qa_deep_link" in THESIS_SCOPED_STAGING_KEYS
     assert "assistant_results_qa_force_expand" in THESIS_SCOPED_STAGING_KEYS
@@ -457,18 +457,19 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     assert "handle_help_turn(" in source
     assert "repo_root=Path(__file__).resolve().parents[1]" in source
     assert "load_product_help_settings(" in source
-    assert "Send help question" in source
-    # Conversation switch must clear Help draft/widget (not only thesis switch).
-    assert 'assistant_product_help_draft"] = ""' in source
-    assert 'pop("product-help-input"' in source
-    # Help/Results must not write widget keys after st.text_input in the same run.
-    assert 'assistant_clear_product_help_input"] = True' in source
-    assert 'pop("assistant_clear_product_help_input"' in source
-    assert "assistant_clear_" in source and "results-qa-input-" in source
+    assert "chat_input_placeholder(" in source
+    assert "chat_input_key(" in source
+    assert "st.chat_input(" in source
+    assert source.count("st.chat_input(") == 1
+    assert "Send help question" not in source
+    assert "Send results question" not in source
+    assert "assistant_product_help_draft" not in source
+    assert "product-help-input" not in source
+    assert "assistant_clear_product_help_input" not in source
+    assert "results-qa-input-" not in source
     assert "is_draft_channel_message(" in source
     assert "load_results_qa_settings(" in source
-    assert "st.text_input(" in source
-    assert "Send results question" in source
+    assert "st.text_input(" in source  # Advanced structured controls still use text_input
     # RUX-1: nav fragments live in assistant.ux; page imports the constants.
     assert "DISCUSS_NAV_HINT" in source
     assert "DISCUSS_NAV_SHORT" in source
@@ -484,13 +485,12 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     discuss_mode_pos = source.index("if mode == ASSISTANT_MODE_DISCUSS:")
     help_mode_pos = source.index("elif mode == ASSISTANT_MODE_HELP:")
     draft_mode_pos = source.index("elif mode == ASSISTANT_MODE_DRAFT:")
+    chat_input_pos = source.index("st.chat_input(")
     advanced_pos = source.index('with st.expander(\n    "Advanced: draft, runs & compare"')
     explain_pos = source.index('st.button("Explain run"')
     llm_explain_pos = source.index("Generate evidence-only AI explanation")
-    assert discuss_mode_pos < help_mode_pos < draft_mode_pos < advanced_pos
+    assert discuss_mode_pos < help_mode_pos < draft_mode_pos < chat_input_pos < advanced_pos
     assert discuss_mode_pos < explain_pos < advanced_pos < llm_explain_pos
-    assert source.count('key=f"results-qa-input-{run.run_id}"') == 0
-    assert source.count('f"results-qa-input-{run.run_id}"') == 1
     assert source.count('key=f"explain-{run.run_id}"') == 1
     assert source.count('key=f"llm-explain-{run.run_id}"') == 1
     assert "Raw transcripts and JSON for audit only" in source
@@ -1012,17 +1012,14 @@ def test_clear_thesis_scoped_state_helper():
         "assistant_draft_choices": {"a": 1},
         "assistant_hydrated_conversation_id": "c",
         "assistant_validated_run_spec": {"spec": {}},
-        "assistant_results_qa_drafts": {"run_a": "leaked question"},
-        "assistant_product_help_draft": "leaked help",
         "assistant_focused_run_id": "run_focus",
         "assistant_results_qa_deep_link": True,
         "assistant_results_qa_force_expand": True,
         ASSISTANT_ADVANCED_EXPANDER_KEY: True,
         linked_run_expander_key("run_focus"): True,
-        "results-qa-input-run_a": "leaked question",
-        "product-help-input": "leaked help",
-        "assistant_clear_product_help_input": True,
-        "assistant_clear_results-qa-input-run_a": True,
+        "assistant-chat-input-discuss-run_a": "stale",
+        "assistant-chat-input-help": "stale help",
+        "voice-results-audio-run_a": b"x",
         "assistant_bundle_handoff": {"thesis_id": "th_a", "run_id": "r1"},
         "assistant_run_explanations": {"r1": "keep"},
     }
@@ -1031,17 +1028,14 @@ def test_clear_thesis_scoped_state_helper():
     assert state["assistant_draft_choices"] == {}
     assert state["assistant_hydrated_conversation_id"] is None
     assert state["assistant_validated_run_spec"] is None
-    assert state["assistant_results_qa_drafts"] == {}
-    assert state["assistant_product_help_draft"] == ""
     assert state["assistant_focused_run_id"] is None
     assert state["assistant_results_qa_deep_link"] is False
     assert state["assistant_results_qa_force_expand"] is False
     assert ASSISTANT_ADVANCED_EXPANDER_KEY not in state
     assert linked_run_expander_key("run_focus") not in state
-    assert "results-qa-input-run_a" not in state
-    assert "product-help-input" not in state
-    assert "assistant_clear_product_help_input" not in state
-    assert "assistant_clear_results-qa-input-run_a" not in state
+    assert "assistant-chat-input-discuss-run_a" not in state
+    assert "assistant-chat-input-help" not in state
+    assert "voice-results-audio-run_a" not in state
     assert state["assistant_bundle_handoff"] is None
     assert state["assistant_run_explanations"] == {"r1": "keep"}
     assert state["assistant_ux_mode"] == "discuss"

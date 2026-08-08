@@ -170,6 +170,30 @@ def apply_discuss_deep_link_preselect(
     session_state[DISCUSS_RUN_PICKER_KEY] = run_id.strip()
 
 
+def chat_input_placeholder(mode: str) -> str:
+    """Mode-specific placeholder for the single page-level ``st.chat_input``."""
+    if mode == ASSISTANT_MODE_DISCUSS:
+        return "Ask about this completed run"
+    if mode == ASSISTANT_MODE_HELP:
+        return "Ask how ThesisTester works"
+    return "Describe or refine this thesis"
+
+
+def chat_input_key(mode: str, run_id: str | None = None) -> str:
+    """Stable widget key for the active-mode page-level ``st.chat_input``.
+
+    Discuss keys include ``run_id`` when a run is selected so Streamlit does not
+    reuse draft text across runs. Help/Draft keys are mode-only.
+    """
+    if mode == ASSISTANT_MODE_DISCUSS:
+        if isinstance(run_id, str) and run_id.strip():
+            return f"assistant-chat-input-discuss-{run_id.strip()}"
+        return "assistant-chat-input-discuss"
+    if mode == ASSISTANT_MODE_HELP:
+        return "assistant-chat-input-help"
+    return "assistant-chat-input-draft"
+
+
 def reset_ux_mode_and_picker(
     session_state: MutableMapping[str, Any],
     *,

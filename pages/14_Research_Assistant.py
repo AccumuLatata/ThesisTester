@@ -127,6 +127,8 @@ from thesistester.assistant.ux import (
     DISCUSS_RUN_PICKER_KEY,
     HELP_NAV_HINT,
     default_discuss_run_id,
+    chat_input_key,
+    chat_input_placeholder,
     recorded_completed_runs,
     resolve_mode,
     run_picker_label,
@@ -567,12 +569,6 @@ if st.session_state["assistant_hydrated_conversation_id"] != conversation_id:
         ):
             st.session_state["assistant_draft_choices"] = message["choices"]
             break
-    # Help draft/widget are conversation-local presentation staging — clear on
-    # conversation switch so an unsent prior Help question cannot leak into a
-    # different conversation's Help thread.
-    st.session_state["assistant_product_help_draft"] = ""
-    st.session_state.pop("product-help-input", None)
-    st.session_state.pop("assistant_clear_product_help_input", None)
     st.session_state["assistant_hydrated_conversation_id"] = conversation_id
     invalidate_validation(st.session_state)
 
@@ -592,6 +588,9 @@ mode = st.segmented_control(
     key=ASSISTANT_MODE_SESSION_KEY,
 )
 mode = resolve_mode(st.session_state, default_mode=ux_settings.default_mode)
+
+# Selected Discuss run for RUX-3 chat routing (set inside Discuss mode body).
+discuss_selected_run = None
 
 if mode == ASSISTANT_MODE_DISCUSS:
     # Picker + Explain/Open/Restore use recorded completed runs (RQ-independent).
@@ -638,6 +637,7 @@ if mode == ASSISTANT_MODE_DISCUSS:
             key=DISCUSS_RUN_PICKER_KEY,
         )
         run = _run_by_id[selected_run_id]
+        discuss_selected_run = run
         provenance_card = build_provenance_card(run.to_dict())
         st.caption(
             f"Specification v{run.spec_version} · revision {run.revision} · "
@@ -669,61 +669,6 @@ if mode == ASSISTANT_MODE_DISCUSS:
                     # Path-cited claims are embedded in persisted
                     # content via format_results_qa_reply_content.
                     st.write(body)
-            input_key = f"results-qa-input-{run.run_id}"
-            clear_flag = f"assistant_clear_{input_key}"
-            drafts = st.session_state.setdefault("assistant_results_qa_drafts", {})
-            # Clear only before the widget is bound — same rule as Help.
-            if st.session_state.pop(clear_flag, False):
-                st.session_state[input_key] = ""
-                drafts[run.run_id] = ""
-            if input_key not in st.session_state:
-                st.session_state[input_key] = str(drafts.get(run.run_id, ""))
-            st.text_input(
-                "Ask about this run",
-                key=input_key,
-                placeholder="e.g. What was expectancy? Best SL/TP?",
-            )
-            drafts[run.run_id] = str(st.session_state.get(input_key, ""))
-            if st.button(
-                "Send results question",
-                key=f"results-qa-send-{run.run_id}",
-            ):
-                question = str(st.session_state.get(input_key, "")).strip()
-                if not question:
-                    st.error("Enter a question about this run.")
-                else:
-                    try:
-                        client = create_openai_client(load_llm_settings())
-                        result = orchestrator.handle_results_turn(
-                            client,
-                            thesis_id=thesis_id,
-                            run_id=run.run_id,
-                            message=question,
-                            conversation_id=conversation_id,
-                            max_history_messages=(results_qa_settings.max_history_messages),
-                        )
-                        if result.status != "completed":
-                            raise ValueError(
-                                result.payload.get("error", {}).get(
-                                    "message",
-                                    "Unable to discuss this run.",
-                                )
-                            )
-                        st.session_state[clear_flag] = True
-                        drafts[run.run_id] = ""
-                        set_assistant_flash(
-                            st.session_state,
-                            level="success",
-                            message="Results discussion updated.",
-                        )
-                        st.rerun()
-                    except (
-                        LLMConfigurationError,
-                        LLMProviderError,
-                        LLMEvidenceError,
-                        ValueError,
-                    ) as exc:
-                        st.error(f"Unable to discuss results: {exc}")
             voice_settings = _effective_voice_settings()
             if voice_settings.enabled:
                 st.markdown("**Voice discuss (push-to-talk)**")
@@ -934,67 +879,6 @@ elif mode == ASSISTANT_MODE_HELP:
                 continue
             with st.chat_message(display):
                 st.write(body)
-        help_input_key = "product-help-input"
-        # Clear only before the widget is bound — Streamlit forbids writing a
-        # widget key after st.text_input(..., key=...) in the same run.
-        if st.session_state.pop("assistant_clear_product_help_input", False):
-            st.session_state[help_input_key] = ""
-            st.session_state["assistant_product_help_draft"] = ""
-        if help_input_key not in st.session_state:
-            st.session_state[help_input_key] = str(
-                st.session_state.get("assistant_product_help_draft", "")
-            )
-        st.text_input(
-            "Ask how ThesisTester works",
-            key=help_input_key,
-            placeholder="e.g. How does grid ranking work?",
-        )
-        st.session_state["assistant_product_help_draft"] = str(
-            st.session_state.get(help_input_key, "")
-        )
-        if st.button("Send help question", key="product-help-send"):
-            question = str(st.session_state.get(help_input_key, "")).strip()
-            if not question:
-                st.error("Enter a product or workflow question.")
-            else:
-                try:
-                    client = create_openai_client(load_llm_settings())
-                    result = orchestrator.handle_help_turn(
-                        client,
-                        thesis_id=thesis_id,
-                        message=question,
-                        conversation_id=conversation_id,
-                        max_history_messages=help_settings.max_history_messages,
-                        max_corpus_chars=help_settings.max_corpus_chars,
-                        repo_root=Path(__file__).resolve().parents[1],
-                    )
-                    if result.status != "completed":
-                        raise ValueError(
-                            result.payload.get("error", {}).get(
-                                "message", "Unable to answer this help question."
-                            )
-                        )
-                    st.session_state["assistant_clear_product_help_input"] = True
-                    st.session_state["assistant_product_help_draft"] = ""
-                    flash_level = "info" if result.payload.get("remediation") else "success"
-                    flash_message = (
-                        "Help redirected to Discuss results for run performance."
-                        if result.payload.get("remediation")
-                        else "Help answer updated."
-                    )
-                    set_assistant_flash(
-                        st.session_state,
-                        level=flash_level,
-                        message=flash_message,
-                    )
-                    st.rerun()
-                except (
-                    LLMConfigurationError,
-                    LLMProviderError,
-                    HelpEvidenceError,
-                    ValueError,
-                ) as exc:
-                    st.error(f"Unable to answer help question: {exc}")
         voice_settings = _effective_voice_settings()
         if voice_settings.enabled:
             st.markdown("**Voice help (push-to-talk)**")
@@ -1037,7 +921,107 @@ elif mode == ASSISTANT_MODE_DRAFT:
         with st.chat_message(display_role):
             st.write(body)
 
-    if chat_message := st.chat_input("Describe or refine this thesis"):
+# RUX-3: exactly one page-level chat_input for the active mode (never nested).
+# Unsent draft persistence is intentionally dropped — chat_input is a trigger.
+_chat_run_id = (
+    discuss_selected_run.run_id
+    if discuss_selected_run is not None and isinstance(discuss_selected_run.run_id, str)
+    else None
+)
+if chat_message := st.chat_input(
+    chat_input_placeholder(mode),
+    key=chat_input_key(mode, run_id=_chat_run_id),
+):
+    question = str(chat_message).strip()
+    if not question:
+        st.error("Enter a question.")
+    elif mode == ASSISTANT_MODE_DISCUSS:
+        if discuss_selected_run is None:
+            st.error(
+                "No completed thesis-recorded run selected. Use "
+                "**Record and discuss this run** on Backtest first."
+            )
+        elif not results_qa_settings.enabled:
+            st.error(
+                "Discuss Q&A is unavailable while Results Q&A is disabled in "
+                "`config/assistant.toml` (`[assistant.results_qa] enabled = false`)."
+            )
+        else:
+            try:
+                client = create_openai_client(load_llm_settings())
+                result = orchestrator.handle_results_turn(
+                    client,
+                    thesis_id=thesis_id,
+                    run_id=discuss_selected_run.run_id,
+                    message=question,
+                    conversation_id=conversation_id,
+                    max_history_messages=results_qa_settings.max_history_messages,
+                )
+                if result.status != "completed":
+                    raise ValueError(
+                        result.payload.get("error", {}).get(
+                            "message",
+                            "Unable to discuss this run.",
+                        )
+                    )
+                set_assistant_flash(
+                    st.session_state,
+                    level="success",
+                    message="Results discussion updated.",
+                )
+                st.rerun()
+            except (
+                LLMConfigurationError,
+                LLMProviderError,
+                LLMEvidenceError,
+                ValueError,
+            ) as exc:
+                st.error(f"Unable to discuss results: {exc}")
+    elif mode == ASSISTANT_MODE_HELP:
+        help_settings = load_product_help_settings()
+        if not help_settings.enabled:
+            st.error(
+                "Product Help is disabled in `config/assistant.toml` "
+                "(`[assistant.product_help] enabled = false`)."
+            )
+        else:
+            try:
+                client = create_openai_client(load_llm_settings())
+                result = orchestrator.handle_help_turn(
+                    client,
+                    thesis_id=thesis_id,
+                    message=question,
+                    conversation_id=conversation_id,
+                    max_history_messages=help_settings.max_history_messages,
+                    max_corpus_chars=help_settings.max_corpus_chars,
+                    repo_root=Path(__file__).resolve().parents[1],
+                )
+                if result.status != "completed":
+                    raise ValueError(
+                        result.payload.get("error", {}).get(
+                            "message", "Unable to answer this help question."
+                        )
+                    )
+                flash_level = "info" if result.payload.get("remediation") else "success"
+                flash_message = (
+                    "Help redirected to Discuss results for run performance."
+                    if result.payload.get("remediation")
+                    else "Help answer updated."
+                )
+                set_assistant_flash(
+                    st.session_state,
+                    level=flash_level,
+                    message=flash_message,
+                )
+                st.rerun()
+            except (
+                LLMConfigurationError,
+                LLMProviderError,
+                HelpEvidenceError,
+                ValueError,
+            ) as exc:
+                st.error(f"Unable to answer help question: {exc}")
+    elif mode == ASSISTANT_MODE_DRAFT:
         try:
             settings = load_llm_settings()
             client = create_openai_client(settings)
@@ -1045,7 +1029,7 @@ elif mode == ASSISTANT_MODE_DRAFT:
                 client,
                 thesis_id=thesis_id,
                 conversation_id=conversation_id,
-                user_message=chat_message,
+                user_message=question,
                 max_history_messages=settings.max_history_messages,
             )
             refreshed = orchestrator.get_conversation(thesis_id, conversation_id)
