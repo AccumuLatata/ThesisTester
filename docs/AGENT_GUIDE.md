@@ -378,13 +378,14 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
 - Specialist Discuss intelligence (best SL/TP, time, validation/WFA,
   single-metric, meaning overlays, mixed-ask composition, bounded trade
   projections, duplex specialist envelopes) has a **single** continuation
-  contract: `docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md` (RI-series). Do
-  not reopen DI/DX/RQ wholesale; stay inside RI scope tables. Keep the RQ
-  auditor fail-closed; fail-open only via frozen intent→allowlist builders.
+  contract: `docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md` (RI-series).
+  **RI-1 landed** (`grid_ranking` + residual veto matcher). Do not reopen
+  DI/DX/RQ wholesale; stay inside RI scope tables. Keep the RQ auditor
+  fail-closed; fail-open only via frozen intent→allowlist builders.
   Incremental RI PRs must preserve DI residual negative-cue vetoes (and DX
   veto≠unmatched) until each specialist builder sunsets its cues; never answer
   OOS/WFA asks with in-sample `single_metric` leaves. Keep RQ-5 / DI / DX banks
-  green; add `tests/test_assistant_research_intelligence.py` as RI PRs land.
+  green; extend `tests/test_assistant_research_intelligence.py` as RI PRs land.
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned

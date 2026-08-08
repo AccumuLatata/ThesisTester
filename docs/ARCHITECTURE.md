@@ -489,6 +489,14 @@ deterministic KPI fallback live in
 `thesistester/assistant/results_overview.py` and are applied inside
 `propose_results_reply` / `handle_results_turn` (not page-only). Flags both
 `false` restore pre-DI grounding hard-fail (TLS wrap remains).
+**RI-1 landed:** `assistant.results_qa.deterministic_specialist_fallback`
+(default `true`) enables deterministic `grid_ranking` recovery after LLM/
+repair faults when grid evidence exists. Unified `match_discuss_intent`
+multi-eval + §4.1.1 residual DI veto (grid cues sunsets; other DI negatives
+remain residual) redefine `has_overview_negative_cue` without a voice cue
+fork. Missing-grid and mixed-ask turns short-circuit before any LLM call.
+Flags-off restores pre-RI specialist remediation/hard-fail while overview DI
+flags stay independent.
 **DI-2 landed:** first-pass Results Q&A user payloads include
 `path_catalog.existing_paths` (bounded paths present on the turn context;
 KPI + projections/validation + honesty paths reserved before fat time tables

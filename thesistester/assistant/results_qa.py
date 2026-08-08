@@ -16,13 +16,22 @@ from thesistester.assistant.llm_explainer import (
     merge_mandatory_packet_caveats,
 )
 from thesistester.assistant.results_overview import (
+    INTENT_GRID_RANKING,
+    INTENT_MIXED_ASK,
+    OVERVIEW_INTENT_KPI,
+    OVERVIEW_INTENT_RUN,
+    REASON_GRID_FALLBACK,
     apply_expert_overlay,
+    build_deterministic_grid_ranking_reply,
     build_deterministic_kpi_reply,
+    build_missing_grid_limitation_reply,
+    build_mixed_ask_remediation_reply,
     build_prompt_path_catalog,
     build_structured_remediation_reply,
     classify_recovery_reason,
     failure_class_from_exception,
-    match_overview_intent,
+    has_grid_ranking_evidence,
+    match_discuss_intent,
 )
 
 RESULTS_QA_CHANNEL = "results_qa"
@@ -248,7 +257,7 @@ def _complete_results_structured(
     evidence_context: Mapping[str, Any],
     history: Sequence[Mapping[str, Any]],
     user_message: str,
-    overview_intent: str | None = None,
+    discuss_intent: str | None = None,
     repair: Mapping[str, Any] | None = None,
     include_path_catalog: bool = True,
 ) -> dict[str, Any]:
@@ -265,11 +274,15 @@ def _complete_results_structured(
         "history": history_lines,
         "user_message": user_message.strip(),
     }
-    # DI-2: first-pass (and repair) path catalog — existing paths only.
+    # DI-2 / RI: first-pass (and repair) path catalog — existing paths only.
     if include_path_catalog:
+        overview_intent = (
+            discuss_intent if discuss_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN} else None
+        )
         user_payload["path_catalog"] = build_prompt_path_catalog(
             evidence_context,
             overview_intent=overview_intent,
+            discuss_intent=discuss_intent,
         )
     if repair is not None:
         user_payload["repair"] = dict(repair)
@@ -284,18 +297,32 @@ def _recover_results_reply(
     *,
     packet: EvidencePacket,
     evidence_context: Mapping[str, Any],
-    overview_intent: str | None,
+    discuss_intent: str | None,
     exc: BaseException,
     repaired: bool,
     deterministic_overview_fallback: bool,
+    deterministic_specialist_fallback: bool,
 ) -> ResultsQAReply:
-    """Apply DI-1 overview fallback or §5.3 structured remediation."""
+    """Apply DI/RI deterministic fallback or §5.3 structured remediation."""
     reason = classify_recovery_reason(exc, repaired=repaired)
-    if overview_intent is not None and deterministic_overview_fallback:
+    if (
+        discuss_intent == INTENT_GRID_RANKING
+        and deterministic_specialist_fallback
+        and has_grid_ranking_evidence(evidence_context)
+    ):
+        return build_deterministic_grid_ranking_reply(
+            packet,
+            evidence_context,
+            recovery_reason=reason or REASON_GRID_FALLBACK,
+        )
+    if (
+        discuss_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}
+        and deterministic_overview_fallback
+    ):
         return build_deterministic_kpi_reply(
             packet,
             evidence_context,
-            intent=overview_intent,
+            intent=discuss_intent,
             recovery_reason=reason,
         )
     return build_structured_remediation_reply(
@@ -314,6 +341,7 @@ def propose_results_reply(
     turn_context: Mapping[str, Any] | None = None,
     repair_retry_enabled: bool = True,
     deterministic_overview_fallback: bool = True,
+    deterministic_specialist_fallback: bool = True,
 ) -> ResultsQAReply:
     """Request a grounded results reply from the ephemeral turn evidence context.
 
@@ -323,11 +351,16 @@ def propose_results_reply(
 
     DI-1: on grounding/provider faults, optionally one repair attempt, then
     deterministic overview fallback (matched intents only) or §5.3 structured
-    remediation. Both flags false restores pre-DI hard-fail raises (TLS wrap
+    remediation. Both DI flags false restores pre-DI hard-fail raises (TLS wrap
     still applies in the transport).
 
+    RI-1: unified Discuss matcher; ``grid_ranking`` missing-evidence short-circuit
+    before LLM; deterministic grid fallback when
+    ``deterministic_specialist_fallback`` is true; ``mixed_ask`` narrow
+    remediation until RI-8.
+
     DI-2: first-pass user payload includes ``path_catalog`` (existing paths;
-    plus ``kpi_allowlist`` when an overview intent matches).
+    plus ``kpi_allowlist`` / grid preferred paths when matched).
 
     DI-3: successful overview replies (and deterministic overview fallback)
     append a strictly digit-free expert overlay after mandatory caveats.
@@ -341,7 +374,16 @@ def propose_results_reply(
             raise LLMEvidenceError("Results Q&A turn_context must be a mapping.")
         evidence_context = dict(turn_context)
 
-    overview_intent = match_overview_intent(user_message)
+    discuss_intent = match_discuss_intent(user_message)
+    overview_intent = (
+        discuss_intent if discuss_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN} else None
+    )
+
+    # RI-1 short-circuits: mixed ask / missing grid evidence before any LLM call.
+    if discuss_intent == INTENT_MIXED_ASK:
+        return build_mixed_ask_remediation_reply(packet)
+    if discuss_intent == INTENT_GRID_RANKING and not has_grid_ranking_evidence(evidence_context):
+        return build_missing_grid_limitation_reply(packet)
 
     def _maybe_overlay(reply: ResultsQAReply) -> ResultsQAReply:
         if overview_intent is None:
@@ -360,17 +402,24 @@ def propose_results_reply(
             evidence_context=evidence_context,
             history=history,
             user_message=user_message,
-            overview_intent=overview_intent,
+            discuss_intent=discuss_intent,
         )
         return _maybe_overlay(
             _decode_results_payload(payload, packet=packet, evidence_context=evidence_context)
         )
     except (LLMEvidenceError, LLMProviderError) as first_exc:
-        if not repair_retry_enabled and not deterministic_overview_fallback:
+        specialist_can_recover = (
+            deterministic_specialist_fallback and discuss_intent == INTENT_GRID_RANKING
+        )
+        if (
+            not repair_retry_enabled
+            and not deterministic_overview_fallback
+            and not specialist_can_recover
+        ):
             raise
         # §5: repair is for grounding/auditor faults only. Provider/TLS faults
-        # already exhausted transport retries — go straight to overview fallback
-        # or §5.3 remediation (never a second model call on dead transport).
+        # already exhausted transport retries — go straight to overview/specialist
+        # fallback or §5.3 remediation (never a second model call on dead transport).
         if repair_retry_enabled and isinstance(first_exc, LLMEvidenceError):
             # Path allowlist lives solely on path_catalog (DI-2); repair carries
             # only the prior error + instruction so lists cannot diverge.
@@ -388,7 +437,7 @@ def propose_results_reply(
                     evidence_context=evidence_context,
                     history=history,
                     user_message=user_message,
-                    overview_intent=overview_intent,
+                    discuss_intent=discuss_intent,
                     repair=repair_payload,
                 )
                 return _maybe_overlay(
@@ -400,16 +449,18 @@ def propose_results_reply(
                 return _recover_results_reply(
                     packet=packet,
                     evidence_context=evidence_context,
-                    overview_intent=overview_intent,
+                    discuss_intent=discuss_intent,
                     exc=repair_exc,
                     repaired=True,
                     deterministic_overview_fallback=deterministic_overview_fallback,
+                    deterministic_specialist_fallback=deterministic_specialist_fallback,
                 )
         return _recover_results_reply(
             packet=packet,
             evidence_context=evidence_context,
-            overview_intent=overview_intent,
+            discuss_intent=discuss_intent,
             exc=first_exc,
             repaired=False,
             deterministic_overview_fallback=deterministic_overview_fallback,
+            deterministic_specialist_fallback=deterministic_specialist_fallback,
         )

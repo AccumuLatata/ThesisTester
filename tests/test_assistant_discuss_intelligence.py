@@ -220,6 +220,7 @@ def test_specialist_ask_path_miss_does_not_topic_swap_to_kpi():
 
 
 def test_mixed_ask_full_veto_no_partial_kpi_slice():
+    # RI-1: mixed overview+grid → narrow remediation before LLM (until RI-8).
     client = _FailClient(_bad_path_payload())
     reply = propose_results_reply(
         client,
@@ -228,8 +229,10 @@ def test_mixed_ask_full_veto_no_partial_kpi_slice():
         user_message="KPIs and best SL/TP",
         repair_retry_enabled=False,
     )
+    assert client.calls == 0
     assert reply.claims == ()
-    assert reply.recovery_reason == REASON_PATH_MISS
+    assert reply.recovery_reason == "mixed_ask_narrow"
+    assert not any("trade_summary" in c.path for c in reply.claims)
 
 
 def test_flags_off_hard_fail_still_raises():
@@ -396,6 +399,7 @@ def test_tracked_config_loads_di1_recovery_defaults():
     settings = load_results_qa_settings("config/assistant.toml")
     assert settings.repair_retry_enabled is True
     assert settings.deterministic_overview_fallback is True
+    assert settings.deterministic_specialist_fallback is True
 
 
 class _CaptureClient:

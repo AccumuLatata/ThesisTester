@@ -655,6 +655,9 @@ class AssistantOrchestrator:
             deterministic_overview_fallback=bool(
                 getattr(settings, "deterministic_overview_fallback", True)
             ),
+            deterministic_specialist_fallback=bool(
+                getattr(settings, "deterministic_specialist_fallback", True)
+            ),
         )
         if persist_conversation and conversation is not None and isinstance(conversation_id, str):
             user_record = self.repository.append_conversation_message(
