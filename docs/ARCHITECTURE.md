@@ -269,14 +269,17 @@ pages:
   breadcrumbs fall back to latest discussable. RQ-4 (see
   `RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`) adds companion session key
   `classic_focus_channel` with sole legal non-null value `"results_qa"` so
-  Assistant opens that run’s Discuss results thread; it must not convert
-  `classic_focus_run_id` into a dict or invent any other focus-key namespace.
-  Both focus keys clear together on consume and on thesis-scoped classic clear.
-  After consume, `assistant_results_qa_deep_link` + `assistant_focused_run_id`
-  keep Advanced/run expanders open across reruns until thesis switch; a one-shot
-  `assistant_results_qa_force_expand` reopens keyed expanders if Advanced was
-  previously collapsed. `align_assistant_thesis_for_discuss` (Discuss + Record
-  and discuss) syncs thesis/`assistant_thesis_picker`; Assistant also prefers
+  Assistant preselects mode **Discuss runs** and that run’s **Discuss results**
+  thread; it must not convert `classic_focus_run_id` into a dict or invent any
+  other focus-key namespace. Both focus keys clear together on consume and on
+  thesis-scoped classic clear. After consume, `assistant_results_qa_deep_link`
+  + `assistant_focused_run_id` keep the Discuss preselect sticky and also keep
+  Advanced/Linked research-run expanders open across reruns until thesis switch
+  (diagnostics side effect — Discuss Q&A itself is in **Discuss runs**, not
+  under Advanced); a one-shot `assistant_results_qa_force_expand` reopens keyed
+  expanders if Advanced was previously collapsed.
+  `align_assistant_thesis_for_discuss` (Discuss + Record and discuss) syncs
+  thesis/`assistant_thesis_picker`; Assistant also prefers
   `classic_active_thesis_id` when focus is still staged.
 - **Open exact / Restore bundle** (Assistant): hash-verified
   `restore_run_bundle_to_session` clears staged `classic_page_proposal`
@@ -389,8 +392,8 @@ The Research Assistant page stages only these additive `assistant_*` keys
 | `assistant_run_comparisons` | In-session comparison by thesis_id |
 | `assistant_portfolio_analyses` | In-session portfolio analysis by thesis_id |
 | `assistant_focused_run_id` | Last classic-focused run id (RQ-4 deep-link / banner) |
-| `assistant_results_qa_deep_link` | Sticky Advanced → Linked-run expansion after `results_qa` focus |
-| `assistant_results_qa_force_expand` | One-shot force-open for keyed Advanced/run expanders |
+| `assistant_results_qa_deep_link` | Sticky `results_qa` deep-link: Discuss runs mode + run preselect (also keeps Advanced/Linked research-run expanders open) |
+| `assistant_results_qa_force_expand` | One-shot force-open for keyed Advanced/Linked research-run expanders |
 | `assistant_bundle_handoff` | Last hash-verified restore into research pages |
 | `assistant_flash` | One-shot `{level, message}` UI notice consumed after `st.rerun()` |
 | `assistant_voice_results_sessions` | `{run_id: voice_session_id}` map for last Discuss PTT session |
@@ -494,8 +497,9 @@ page-level `st.chat_input` (trigger widget; unsent draft text is not persisted
 across reruns — intentional UX simplification, not durable store loss). The
 widget stays mounted in every mode for layout stability but is `disabled` when
 Discuss has no selected run / Results Q&A is off, or Product Help is off.
-Thesis chat remains draft-only; deterministic Explain run lives in Discuss
-mode; one-shot LLM explain remains under Advanced → Linked runs.
+Thesis chat remains draft-only; deterministic Explain run lives in **Discuss
+runs** mode; one-shot LLM explain remains under
+`Advanced → Linked research runs` (not the Discuss Q&A surface).
 
 Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_draft_choices`, `assistant_hydrated_conversation_id`,
@@ -593,8 +597,9 @@ clarifications); it never narrates completed runs. Chat bubbles render via
 out of the friendly chat and remain under Debug → Conversation audit). Draft
 replies persist readable clarification text in `content` as well as the
 structured `clarifications` field. Post-run narratives use Explain run in
-Discuss mode; optional `explain_run_with_llm` stays under Advanced → Linked
-runs. Plan review surfaces
+**Discuss runs** mode; optional `explain_run_with_llm` stays under
+`Advanced → Linked research runs` (LLM explain only — not Discuss Q&A). Plan
+review surfaces
 clarifications only when the newest specification is still
 `needs_clarification` (`latest_unresolved_assumptions()`). Drafting syncs
 `normalized_run_spec` back into `assistant_draft_choices`. Numeric widget

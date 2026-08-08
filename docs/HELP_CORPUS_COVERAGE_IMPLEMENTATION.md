@@ -755,7 +755,7 @@ Constraints:
 | HC-2 | ✅ Implemented — Grid→Portfolio/Bundles/Report how-tos + allowlist + bank |
 | HC-3 | ✅ Implemented — Assistant/research-mode how-tos + allowlist + discoverability |
 | HC-4 | ✅ Implemented — full §5 bank freeze + §7.1.4↔manifest parity + release gate |
-| RUX-4 | ✅ Maintenance — USER_GUIDE discuss-first nav bodies + Q-H13; allowlist unchanged |
+| RUX-4 | ✅ Maintenance — USER_GUIDE discuss-first nav bodies + Q-H13; AIA-0/CAI-8 deep-link copy clarifies Discuss runs (not Advanced Q&A); allowlist unchanged |
 
 ---
 

@@ -142,10 +142,32 @@ def test_hc2_howto_bank_retrieves_primary_user_guide_sections():
 # Instructional phrases that must appear in the primary HC-3 how-to body.
 _HC3_BODY_PHRASES = {
     "Q-H10": ("Create and link thesis", "Record and discuss this run"),
-    "Q-H11": ("Help / how it works", "Discuss results", "Discuss runs"),
+    "Q-H11": (
+        "Help / how it works",
+        "Discuss results",
+        "Discuss runs",
+        "Ask about this completed run",
+        "Ask how ThesisTester works",
+    ),
     "Q-H12": ("Confirm validated RunSpec", "Plan review", "clarifications"),
-    "Q-H13": ("How to discuss a completed run", "Discuss runs", "Discuss results"),
+    "Q-H13": (
+        "How to discuss a completed run",
+        "Discuss runs",
+        "Discuss results",
+        "Ask about this completed run",
+        "peer modes",
+    ),
 }
+
+# Stale navigation that must not appear in Help-allowlisted corpus (RUX-4).
+_RUX4_STALE_CORPUS_PHRASES = (
+    "Send help question",
+    "Send results question",
+    "Discuss chat input",
+    "Help chat input",
+    "peer modes: **Discuss results**",
+    "Advanced → Linked runs",
+)
 
 
 def test_hc3_howto_bank_retrieves_primary_user_guide_sections():
@@ -160,6 +182,23 @@ def test_hc3_howto_bank_retrieves_primary_user_guide_sections():
             assert phrase in primary.text, (
                 f"{qid} primary body must include {phrase!r}; section={section!r}"
             )
+
+
+def test_rux4_allowlisted_corpus_rejects_stale_discuss_nav():
+    """RUX-4: Help-readable corpus must not revive retired Discuss navigation."""
+    chunks = load_allowlisted_corpus(repo_root=REPO_ROOT)
+    haystack = "\n".join(chunk.text for chunk in chunks)
+    for phrase in _RUX4_STALE_CORPUS_PHRASES:
+        assert phrase not in haystack, f"stale Help corpus phrase still present: {phrase!r}"
+    # Mode vs surface: Research Assistant body must name the mode selector labels.
+    ra = next(
+        c
+        for c in chunks
+        if c.doc_id == "user_guide" and c.section == "Research Assistant (draft, Discuss, Help)"
+    )
+    assert "`Discuss runs` / `Help` / `Draft thesis`" in ra.text
+    assert "three peer modes" in ra.text
+    assert "Discuss Q&A lives in that mode, not under Advanced" in ra.text
 
 
 def test_qr3_fabricated_setting_absent_from_allowlisted_corpus():
