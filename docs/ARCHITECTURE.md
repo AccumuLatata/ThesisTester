@@ -491,7 +491,9 @@ bare substring); the Help system prompt matches that contract. RUX-3 retires
 `assistant_results_qa_drafts` / `assistant_product_help_draft` and the
 deferred `assistant_clear_*` text-input flags: Discuss/Help/Draft share one
 page-level `st.chat_input` (trigger widget; unsent draft text is not persisted
-across reruns — intentional UX simplification, not durable store loss).
+across reruns — intentional UX simplification, not durable store loss). The
+widget stays mounted in every mode for layout stability but is `disabled` when
+Discuss has no selected run / Results Q&A is off, or Product Help is off.
 Thesis chat remains draft-only; deterministic Explain run lives in Discuss
 mode; one-shot LLM explain remains under Advanced → Linked runs.
 
