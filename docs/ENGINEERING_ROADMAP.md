@@ -14,7 +14,7 @@ Assistant-related contracts:
 | Thesis draft / explain loop | `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2) | ✅ Implemented (through PR6) |
 | AIA Research Assistant foundations | `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` (AIA) | ✅ Implemented — do not open new results/help PRs from AIA text |
 | Session entry window research loop | `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` (SW); evidence `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md` | ✅ **Engineering-signed (SW0–SW7 + SW2b)** — Focus → Admit → Grid/WFA inherit; cutoff skip audit; C1–C9; default-off; golden-gated per `ENGINEERING_PROPOSAL.md` §4 |
-| Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX) | 🟡 **In progress** — RUX-0 + RUX-1 landed ([#301](https://github.com/AccumuLatata/ThesisTester/pull/301): mode/nav plumbing, no layout change); RUX-2…RUX-5 planned. Presentation-only: must not change engine, `thesistester.api`, orchestrator/repository/registry, or RQ channel logic |
+| Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX) | 🟡 **In progress** — RUX-0…RUX-2 landed ([#302](https://github.com/AccumuLatata/ThesisTester/pull/302): Discuss-first modes); RUX-3…RUX-5 planned. Presentation-only: must not change engine, `thesistester.api`, orchestrator/repository/registry, or RQ channel logic |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
 new results/help/voice work must not reopen them. All are additive to this

@@ -21,6 +21,7 @@ from thesistester.assistant.ux import (
     HELP_NAV_HINT,
     default_discuss_run_id,
     discussable_runs,
+    recorded_completed_runs,
     reset_ux_mode_and_picker,
     resolve_mode,
     run_picker_label,
@@ -35,11 +36,11 @@ from thesistester.assistant.workspace import (
 TRACKED = Path("config/assistant.toml")
 
 
-def test_nav_fragments_match_rux0_inventory():
-    """Byte-identical to the §1.3 inventory frozen at RUX-0."""
-    assert DISCUSS_NAV_HINT == "Advanced → Linked runs → Discuss results"
-    assert DISCUSS_NAV_SHORT == "Advanced → Linked runs"
-    assert HELP_NAV_HINT == "Help / how it works below"
+def test_nav_fragments_match_rux2_discuss_first_locations():
+    """RUX-2 flips Discuss/Help navigation fragments to mode locations."""
+    assert DISCUSS_NAV_HINT == "the Discuss runs mode on Research Assistant"
+    assert DISCUSS_NAV_SHORT == "Discuss runs"
+    assert HELP_NAV_HINT == "the Help mode"
     assert ADVANCED_PLAN_NAV_HINT == "Advanced → Plan review"
     assert ADVANCED_COMPARE_NAV_HINT == "Advanced → Compare completed runs"
     assert ADVANCED_PORTFOLIO_NAV_HINT == "Advanced → Portfolio analysis"
@@ -77,9 +78,12 @@ def test_discussable_runs_frozen_predicate_preserves_order():
         SimpleNamespace(run_id="run_d", status="completed", provenance={"h": 1}),
         SimpleNamespace(run_id="run_e", status="running", provenance={}),
     )
+    recorded = recorded_completed_runs(runs)
+    assert [run.run_id for run in recorded] == ["run_b", "run_d"]
     assert discussable_runs(runs, results_qa_enabled=False) == ()
     eligible = discussable_runs(runs, results_qa_enabled=True)
     assert [run.run_id for run in eligible] == ["run_b", "run_d"]
+    assert eligible == recorded
 
 
 def test_default_discuss_run_id_prefers_focus_then_newest():

@@ -449,7 +449,7 @@ key `classic_focus_channel="results_qa"` beside string `classic_focus_run_id`
 `thesistester/assistant/llm.py`; inert corpus allowlist/loaders live in
 `thesistester/assistant/help_corpus.py`. **RQ-1 landed:**
 `thesistester/assistant/results_qa.py` + `handle_results_turn`; Discuss results
-UI under Advanced → Linked runs; `assistant_results_qa_drafts` session key.
+UI in the **Discuss runs** mode (RUX-2); `assistant_results_qa_drafts` session key.
 **RQ-2 landed:** `thesistester/assistant/results_projections.py` builds
 ephemeral `results.projections.grid_rankings.*` /
 `results.projections.time_rankings.*` for each Discuss turn (never persisted
@@ -477,7 +477,7 @@ Optional RO `TIME.analyze` enrichment runs only when
 `assistant.results_qa.allow_time_enrichment=true` (default `false`) and
 `time_grouped_summary` is missing, after hash verification.
 **RQ-3 landed:** `thesistester/assistant/product_help.py` +
-`handle_help_turn`; Help / how it works panel on Research Assistant
+`handle_help_turn`; Help / how it works mode on Research Assistant
 (`st.text_input` + send); `assistant_product_help_draft` session key;
 lexical `select_help_corpus_chunks` under §7.1 + registry digest (never
 `AGENT_GUIDE`). The Help UI passes package-relative `repo_root` (orchestrator
@@ -495,8 +495,8 @@ text inputs via deferred flags (`assistant_clear_product_help_input`,
 `assistant_clear_results-qa-input-*`) applied only before `st.text_input`
 on the next run — never by writing the widget key after bind in the same
 run (StreamlitAPIException).
-Thesis chat remains draft-only; one-shot Explain / LLM explain remain
-available beside Discuss results.
+Thesis chat remains draft-only; deterministic Explain run lives in Discuss
+mode; one-shot LLM explain remains under Advanced → Linked runs.
 
 Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_draft_choices`, `assistant_hydrated_conversation_id`,
@@ -526,7 +526,7 @@ prompt. The Active handoff caption is
 further gated by `active_bundle_handoff()` so a stale handoff never displays for
 a different thesis.
 Apply/Draft/Validate/Cancel/Confirm/Run and Compare/Portfolio outcome notices
-use `set_assistant_flash` / `consume_assistant_flash` so chat-first hub reruns
+use `set_assistant_flash` / `consume_assistant_flash` so discuss-first hub reruns
 (and collapsed Advanced defaults) do not silently drop feedback. Compare and
 portfolio also cache results in `assistant_run_comparisons` /
 `assistant_portfolio_analyses` so conclusions remain when Advanced is reopened.
@@ -578,23 +578,27 @@ rather than being stored as executable assumptions.
 façade methods wrap thesis/spec/run/conversation/comparison lifecycle,
 validate/confirm, explain/compare/export/portfolio, and bundle handoff so the
 Research Assistant page stays presentation-only. Default open surface is
-**chat-first**: active thesis identity, Manage thesis (collapsed), and Assistant
-chat (plus flash/focus/handoff banners when present). Classic Streamlit
-navigation remains the primary research path; the page does **not** duplicate an
-Open-research-pages link strip. Optional Assistant draft → validate → confirm →
-run, linked runs, and compare/portfolio live under collapsed
-`Advanced: draft, runs & compare`. Compare/portfolio hub-flash outcomes and
-keep conclusions/summary visible under Advanced when reopened; only raw result
-JSON is nested under collapsed `Debug:` expanders. Raw JSON editors and Conversation audit live under
-collapsed `Debug: raw JSON & conversation audit`. Structured execution /
+**discuss-first**: active thesis identity, Manage thesis (collapsed), and a mode
+selector (`Discuss runs` / `Help` / `Draft thesis`) with Discuss as the default.
+Classic Streamlit navigation remains the primary research path; the page does
+**not** duplicate an Open-research-pages link strip. Discuss results (run picker
++ thread/input/voice + Explain / Open exact / Restore) and Help / how it works
+render as top-level mode bodies. Thesis **Assistant chat** lives under Draft
+thesis. Optional Assistant draft → validate → confirm → run, linked runs, and
+compare/portfolio live under collapsed `Advanced: draft, runs & compare`.
+Compare/portfolio hub-flash outcomes and keep conclusions/summary visible under
+Advanced when reopened; only raw result JSON is nested under collapsed `Debug:`
+expanders. Raw JSON editors and Conversation audit live under collapsed
+`Debug: raw JSON & conversation audit`. Structured execution /
 setup controls and Validated executable RunSpec default to `expanded=False`.
 Assistant chat is **thesis-drafting only** (`handle_chat_turn` → choices +
 clarifications); it never narrates completed runs. Chat bubbles render via
 `format_chat_message_body` / `chat_message_display_role` (tool audit lines stay
 out of the friendly chat and remain under Debug → Conversation audit). Draft
 replies persist readable clarification text in `content` as well as the
-structured `clarifications` field. Post-run narratives use Explain run /
-`explain_run_with_llm` under Advanced → Linked runs. Plan review surfaces
+structured `clarifications` field. Post-run narratives use Explain run in
+Discuss mode; optional `explain_run_with_llm` stays under Advanced → Linked
+runs. Plan review surfaces
 clarifications only when the newest specification is still
 `needs_clarification` (`latest_unresolved_assumptions()`). Drafting syncs
 `normalized_run_spec` back into `assistant_draft_choices`. Numeric widget

@@ -100,11 +100,13 @@ def test_report_export_uses_session_artifacts_checklist():
     assert "optional diagnostics" in text
 
 
-def test_assistant_page_is_chat_first_without_duplicate_nav_strip():
+def test_assistant_page_is_discuss_first_without_duplicate_nav_strip():
     """Research Assistant relies on Streamlit nav; no Open-research-pages strip."""
     text = _read(PAGES / "14_Research_Assistant.py")
     assert "Open research pages" not in text
     assert "st.page_link(" not in text
+    assert "st.segmented_control(" in text
     assert 'Advanced: draft, runs & compare"' in text or "Advanced: draft, runs & compare" in text
     assert "Debug: raw JSON & conversation audit" in text
     assert "Assistant chat" in text
+    assert "Discuss results" in text

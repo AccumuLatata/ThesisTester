@@ -803,7 +803,7 @@ Non-loopback `--host` values are rejected (`0.0.0.0`, LAN IPs, `localhost` strin
 
 ### Streamlit flow
 1. Open Research Assistant → sidebar **Voice** → Enable + Mode **Realtime**.
-2. Advanced → Linked run → **Voice discuss (realtime)**.
+2. **Discuss runs** mode → select the run → **Voice discuss (realtime)**.
 3. Click **Start realtime voice session** (page POSTs to the sidecar; sidecar
    re-reads the local override on register, so a restart is usually unnecessary).
 4. Open/iframe the returned `/client` URL; speak to the bound run.

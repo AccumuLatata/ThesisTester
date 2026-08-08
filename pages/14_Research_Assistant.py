@@ -1,9 +1,10 @@
 """AI Research Assistant thesis workspace.
 
 Presentation-only Streamlit consumer of ``AssistantOrchestrator``. Default UX is
-chat-first (thesis hub + discuss); Advanced draft/run controls and Debug JSON
-are collapsed. The page never mutates the thesis repository, calls tools, reads
-bundle bytes, or compiles RunSpecs directly.
+discuss-first (Discuss runs + Help modes; Draft thesis optional). Advanced
+draft/run controls and Debug JSON stay collapsed. Classic pages remain the
+primary research pipeline. The page never mutates the thesis repository, calls
+tools, reads bundle bytes, or compiles RunSpecs directly.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from thesistester.assistant.llm import (
     LLMProviderError,
     create_openai_client,
     is_draft_channel_message,
+    load_assistant_ux_settings,
     load_llm_settings,
     load_product_help_settings,
     load_results_qa_settings,
@@ -75,6 +77,7 @@ from thesistester.assistant.workspace import (
     ASSISTANT_ADVANCED_EXPANDER_KEY,
     active_bundle_handoff,
     apply_consumed_classic_focus,
+    apply_discuss_mode_deep_link,
     build_confluence_level_options,
     force_results_qa_expanders_open,
     linked_run_expander_key,
@@ -113,9 +116,20 @@ from thesistester.assistant.ux import (
     ADVANCED_COMPARE_NAV_HINT,
     ADVANCED_PLAN_NAV_HINT,
     ADVANCED_PORTFOLIO_NAV_HINT,
+    ASSISTANT_MODE_DISCUSS,
+    ASSISTANT_MODE_DRAFT,
+    ASSISTANT_MODE_HELP,
+    ASSISTANT_MODE_LABELS,
+    ASSISTANT_MODE_SESSION_KEY,
+    ASSISTANT_MODES,
     DISCUSS_NAV_HINT,
     DISCUSS_NAV_SHORT,
+    DISCUSS_RUN_PICKER_KEY,
     HELP_NAV_HINT,
+    default_discuss_run_id,
+    recorded_completed_runs,
+    resolve_mode,
+    run_picker_label,
 )
 from thesistester.classic_ledger import is_classic_ledger_run, ledger_run_label
 from thesistester.classic_nav import (
@@ -384,9 +398,10 @@ orchestrator = AssistantOrchestrator.for_local_workspace()
 
 st.title("Research Assistant")
 st.caption(
-    "Manage and discuss research theses here. Run research via the normal page "
-    "navigation (Data, Levels, Signals, Backtest, Grid, Validation, …). Optional "
-    "Assistant draft → validate → confirm → run is under Advanced."
+    "Discuss completed runs and ask product Help here. Classic pages "
+    "(Data → Levels → Setup Builder → Signals → Backtest → …) remain the primary "
+    "research pipeline. Optional Assistant draft → validate → confirm → run is "
+    "under Advanced."
 )
 # Before the sidebar selectbox binds: if a classic Discuss deep-link is staged,
 # align Assistant onto the classic active thesis (then picker). Prefer classic
@@ -468,11 +483,18 @@ expand_results_qa_focus, expand_focus_run_id = apply_consumed_classic_focus(
     channel=focus_channel if isinstance(focus_channel, str) else None,
 )
 # Keyed expanders (Streamlit >= 1.55): force-open once on fresh results_qa
-# consume so a previously collapsed Advanced cannot hide Discuss results.
+# consume (belt-and-braces deep-link; Discuss itself lives in Discuss mode).
 force_results_qa_expanders_open(
     st.session_state,
     run_id=expand_focus_run_id,
 )
+# RUX-2 deep-link superset: also preselect Discuss mode + run before widgets bind.
+if one_shot_results_qa:
+    apply_discuss_mode_deep_link(
+        st.session_state,
+        run_id=focus_run_id,
+        channel=focus_channel,
+    )
 
 handoff = active_bundle_handoff(st.session_state, thesis_id=thesis_id)
 if handoff is not None:
@@ -554,68 +576,342 @@ if st.session_state["assistant_hydrated_conversation_id"] != conversation_id:
     st.session_state["assistant_hydrated_conversation_id"] = conversation_id
     invalidate_validation(st.session_state)
 
-st.subheader("Assistant chat")
-st.caption(
-    "Thesis drafting only — extracts research choices and clarification questions. "
-    "It does not discuss completed backtests/grids/validation or product docs. "
-    f"For run narratives, open {DISCUSS_NAV_HINT}. "
-    f"For feature/how-it-works questions, use {HELP_NAV_HINT}."
+# Hoist once: Discuss mode + Advanced linked runs + Help voice (RUX-2).
+runs = orchestrator.list_runs(thesis_id)
+results_qa_settings = load_results_qa_settings()
+
+ux_settings = load_assistant_ux_settings()
+# Ensure mode key exists before widget (Streamlit widget-key write order).
+if ASSISTANT_MODE_SESSION_KEY not in st.session_state:
+    st.session_state[ASSISTANT_MODE_SESSION_KEY] = ux_settings.default_mode
+
+mode = st.segmented_control(
+    "What do you want to do?",
+    options=list(ASSISTANT_MODES),
+    format_func=lambda m: ASSISTANT_MODE_LABELS[m],
+    key=ASSISTANT_MODE_SESSION_KEY,
 )
-for message in active_conversation.messages:
-    display_role = chat_message_display_role(message)
-    if display_role is None:
-        continue
-    body = format_chat_message_body(message)
-    if not body:
-        continue
-    with st.chat_message(display_role):
-        st.write(body)
+mode = resolve_mode(st.session_state, default_mode=ux_settings.default_mode)
 
-if chat_message := st.chat_input("Describe or refine this thesis"):
-    try:
-        settings = load_llm_settings()
-        client = create_openai_client(settings)
-        draft = orchestrator.handle_chat_turn(
-            client,
-            thesis_id=thesis_id,
-            conversation_id=conversation_id,
-            user_message=chat_message,
-            max_history_messages=settings.max_history_messages,
+if mode == ASSISTANT_MODE_DISCUSS:
+    # Picker + Explain/Open/Restore use recorded completed runs (RQ-independent).
+    # Q&A/voice additionally require results_qa enabled (pre-RUX-2 sibling gate).
+    recorded_chrono = recorded_completed_runs(runs)
+    if not recorded_chrono:
+        st.info(
+            "No completed thesis-recorded run yet. Run the classic path and use "
+            "**Record and discuss this run** on Backtest."
         )
-        refreshed = orchestrator.get_conversation(thesis_id, conversation_id)
-        st.session_state["assistant_draft_prompt"] = "\n".join(
-            str(message.get("content", ""))
-            for message in refreshed.messages
-            if message.get("role") == "user" and is_draft_channel_message(message)
-        )
-        st.session_state["assistant_draft_choices"] = draft.normalized_run_spec
-        invalidate_validation(st.session_state)
-        if draft.unresolved_assumptions:
-            set_assistant_flash(
-                st.session_state,
-                level="info",
-                message=(
-                    "Chat updated with clarification questions above. "
-                    "This input drafts thesis choices — use Explain run or "
-                    f"Discuss results under {DISCUSS_NAV_SHORT} for test results."
+    else:
+        eligible_ids = {run.run_id for run in recorded_chrono if isinstance(run.run_id, str)}
+        focused_for_picker = expand_focus_run_id or st.session_state.get("assistant_focused_run_id")
+        if (
+            isinstance(focused_for_picker, str)
+            and focused_for_picker.strip()
+            and focused_for_picker not in eligible_ids
+            and st.session_state.get("assistant_results_qa_deep_link")
+        ):
+            # Deep-link / sticky focus pointed at a missing or non-discussable run
+            # while other recorded runs exist — do not silently imply the focus
+            # landed on the requested thread.
+            st.warning(
+                f"Focused run …{focused_for_picker[-8:]} is not available for "
+                "Discuss (missing, incomplete, or not thesis-recorded). "
+                "Showing another completed run."
+            )
+        if (
+            DISCUSS_RUN_PICKER_KEY not in st.session_state
+            or st.session_state.get(DISCUSS_RUN_PICKER_KEY) not in eligible_ids
+        ):
+            st.session_state[DISCUSS_RUN_PICKER_KEY] = default_discuss_run_id(
+                recorded_chrono,
+                focused_run_id=(
+                    focused_for_picker if isinstance(focused_for_picker, str) else None
                 ),
             )
+        # Newest-first display; default_discuss_run_id expects oldest-first chrono.
+        _run_by_id = {run.run_id: run for run in recorded_chrono}
+        selected_run_id = st.selectbox(
+            "Run",
+            options=[run.run_id for run in reversed(recorded_chrono)],
+            format_func=lambda rid: run_picker_label(_run_by_id[rid]),
+            key=DISCUSS_RUN_PICKER_KEY,
+        )
+        run = _run_by_id[selected_run_id]
+        provenance_card = build_provenance_card(run.to_dict())
+        st.caption(
+            f"Specification v{run.spec_version} · revision {run.revision} · "
+            f"origin `{provenance_card.get('origin_page') or '—'}` · "
+            f"config `{str(provenance_card.get('classic_config_hash') or '—')[:16]}` · "
+            f"bundle `{str(provenance_card.get('canonical_bundle_hash') or '—')[:16]}`"
+        )
+        if results_qa_settings.enabled:
+            st.markdown("**Discuss results**")
+            st.caption(
+                "Multi-turn Q&A on this completed run only. "
+                "Grounded in hash-verified evidence — not thesis drafting."
+            )
+            results_thread = [
+                message
+                for message in active_conversation.messages
+                if message.get("channel") == RESULTS_QA_CHANNEL
+                and message.get("run_id") == run.run_id
+                and str(message.get("role") or "").strip().lower()
+                in {"user", "human", "assistant", "ai"}
+            ]
+            for message in results_thread:
+                role = str(message.get("role") or "").strip().lower()
+                display = "user" if role in {"user", "human"} else "assistant"
+                body = str(message.get("content") or "").strip()
+                if not body:
+                    continue
+                with st.chat_message(display):
+                    # Path-cited claims are embedded in persisted
+                    # content via format_results_qa_reply_content.
+                    st.write(body)
+            input_key = f"results-qa-input-{run.run_id}"
+            clear_flag = f"assistant_clear_{input_key}"
+            drafts = st.session_state.setdefault("assistant_results_qa_drafts", {})
+            # Clear only before the widget is bound — same rule as Help.
+            if st.session_state.pop(clear_flag, False):
+                st.session_state[input_key] = ""
+                drafts[run.run_id] = ""
+            if input_key not in st.session_state:
+                st.session_state[input_key] = str(drafts.get(run.run_id, ""))
+            st.text_input(
+                "Ask about this run",
+                key=input_key,
+                placeholder="e.g. What was expectancy? Best SL/TP?",
+            )
+            drafts[run.run_id] = str(st.session_state.get(input_key, ""))
+            if st.button(
+                "Send results question",
+                key=f"results-qa-send-{run.run_id}",
+            ):
+                question = str(st.session_state.get(input_key, "")).strip()
+                if not question:
+                    st.error("Enter a question about this run.")
+                else:
+                    try:
+                        client = create_openai_client(load_llm_settings())
+                        result = orchestrator.handle_results_turn(
+                            client,
+                            thesis_id=thesis_id,
+                            run_id=run.run_id,
+                            message=question,
+                            conversation_id=conversation_id,
+                            max_history_messages=(results_qa_settings.max_history_messages),
+                        )
+                        if result.status != "completed":
+                            raise ValueError(
+                                result.payload.get("error", {}).get(
+                                    "message",
+                                    "Unable to discuss this run.",
+                                )
+                            )
+                        st.session_state[clear_flag] = True
+                        drafts[run.run_id] = ""
+                        set_assistant_flash(
+                            st.session_state,
+                            level="success",
+                            message="Results discussion updated.",
+                        )
+                        st.rerun()
+                    except (
+                        LLMConfigurationError,
+                        LLMProviderError,
+                        LLMEvidenceError,
+                        ValueError,
+                    ) as exc:
+                        st.error(f"Unable to discuss results: {exc}")
+            voice_settings = _effective_voice_settings()
+            if voice_settings.enabled:
+                st.markdown("**Voice discuss (push-to-talk)**")
+                st.caption(
+                    "Spoken Discuss results for this completed run. "
+                    "Requires an xAI key for STT/TTS; OpenAI powers "
+                    "the primary channel path (VA-3 tool fallback if missing)."
+                )
+                results_voice_blocked = thesis_has_running_run(runs)
+                if results_voice_blocked:
+                    st.warning("Voice is paused while a research run is running.")
+                else:
+                    results_audio = st.audio_input(
+                        "Ask about this run by voice",
+                        key=f"voice-results-audio-{run.run_id}",
+                    )
+                    if st.button(
+                        "Send voice results question",
+                        key=f"voice-results-send-{run.run_id}",
+                    ):
+                        try:
+                            expected_hash = (
+                                require_run_bundle_hash(run.provenance)
+                                if isinstance(run.provenance, dict)
+                                else None
+                            )
+                        except ValueError as exc:
+                            st.error(str(exc))
+                            expected_hash = None
+                        if expected_hash:
+                            _run_voice_ptt(
+                                channel=RESULTS_QA_CHANNEL,
+                                audio_value=results_audio,
+                                run_id=run.run_id,
+                                expected_hash=expected_hash,
+                                max_history_messages=(results_qa_settings.max_history_messages),
+                            )
+                last = st.session_state.get("assistant_voice_last_turn")
+                if (
+                    isinstance(last, dict)
+                    and last.get("channel") == RESULTS_QA_CHANNEL
+                    and st.session_state.get("assistant_voice_results_sessions", {}).get(run.run_id)
+                    == last.get("session_id")
+                ):
+                    _render_voice_last_turn(channel=RESULTS_QA_CHANNEL)
+                # VA-5 realtime duplex (sidecar). PTT remains the fallback.
+                if voice_settings.mode == "realtime":
+                    st.markdown("**Voice discuss (realtime)**")
+                    st.caption(
+                        "Full-duplex review via the localhost sidecar "
+                        "(browser ↔ sidecar ↔ xAI). The page never opens "
+                        "the xAI socket or embeds the API key. Help realtime "
+                        "is deferred — use push-to-talk Help."
+                    )
+                    st.session_state.setdefault(
+                        "assistant_voice_sidecar_host", DEFAULT_SIDECAR_HOST
+                    )
+                    st.session_state.setdefault(
+                        "assistant_voice_sidecar_port", DEFAULT_SIDECAR_PORT
+                    )
+                    st.text_input(
+                        "Sidecar host",
+                        key="assistant_voice_sidecar_host",
+                        disabled=True,
+                        help="Realtime sidecar must bind 127.0.0.1 only.",
+                    )
+                    st.number_input(
+                        "Sidecar port",
+                        min_value=1,
+                        max_value=65535,
+                        key="assistant_voice_sidecar_port",
+                    )
+                    if results_voice_blocked:
+                        st.warning("Realtime voice is paused while a research run is running.")
+                    elif st.button(
+                        "Start realtime voice session",
+                        key=f"voice-realtime-start-{run.run_id}",
+                    ):
+                        try:
+                            expected_hash = (
+                                require_run_bundle_hash(run.provenance)
+                                if isinstance(run.provenance, dict)
+                                else None
+                            )
+                        except ValueError as exc:
+                            st.error(str(exc))
+                            expected_hash = None
+                        if expected_hash:
+                            registered = _register_realtime_session(
+                                run_id=run.run_id,
+                                expected_hash=expected_hash,
+                            )
+                            if registered is not None:
+                                st.session_state[f"assistant_voice_realtime_{run.run_id}"] = (
+                                    registered
+                                )
+                                set_assistant_flash(
+                                    st.session_state,
+                                    level="success",
+                                    message="Realtime voice session registered.",
+                                )
+                                st.rerun()
+                    registered = st.session_state.get(f"assistant_voice_realtime_{run.run_id}")
+                    if isinstance(registered, dict) and registered.get("client_url"):
+                        client_url = str(registered["client_url"])
+                        if not _client_url_is_localhost(client_url):
+                            st.error("Stored realtime client_url is not localhost.")
+                        else:
+                            st.markdown(f"[Open realtime voice client]({client_url})")
+                            st.caption(
+                                f"session `{registered.get('session_id', '')}` · "
+                                "close the client tab to end/flush the session."
+                            )
+                            try:
+                                import streamlit.components.v1 as components
+
+                                components.iframe(client_url, height=280)
+                            except Exception:
+                                pass
         else:
-            set_assistant_flash(
-                st.session_state,
-                level="success",
-                message=(
-                    "Chat updated draft choices. Open Advanced to review Structured "
-                    "execution controls, then Draft research plan."
-                ),
+            st.info(
+                "Discuss Q&A is unavailable while Results Q&A is disabled in "
+                "`config/assistant.toml` (`[assistant.results_qa] enabled = false`). "
+                "Explain run, Open exact, and Restore remain available."
             )
-        st.rerun()
-    except (LLMConfigurationError, LLMProviderError) as exc:
-        st.error(str(exc))
+        if st.button("Explain run", key=f"explain-{run.run_id}"):
+            result = orchestrator.explain_run(
+                thesis_id=thesis_id,
+                conversation_id=conversation_id,
+                run=run,
+            )
+            if result.status != "completed":
+                st.error(result.payload.get("error", {}).get("message", "Unable to load evidence."))
+            else:
+                st.session_state["assistant_run_explanations"][run.run_id] = result.payload[
+                    "explanation"
+                ]
+        explanation = st.session_state["assistant_run_explanations"].get(run.run_id)
+        if explanation:
+            st.write(explanation)
+        open_col, restore_col = st.columns(2)
+        with open_col:
+            if st.button(
+                "Open exact run in Backtest",
+                key=f"open-backtest-{run.run_id}",
+            ):
+                try:
+                    open_exact_run_in_backtest(
+                        st.session_state,
+                        thesis_id=thesis_id,
+                        run_id=run.run_id,
+                        orchestrator=orchestrator,
+                    )
+                    st.switch_page("pages/7_Backtest.py")
+                except Exception as exc:
+                    st.error(f"Unable to open exact run: {exc}")
+        with restore_col:
+            if st.button(
+                "Restore bundle into research pages",
+                key=f"handoff-{run.run_id}",
+            ):
+                try:
+                    handoff_result = orchestrator.restore_run_bundle_to_session(
+                        thesis_id=thesis_id,
+                        run_id=run.run_id,
+                        session_state=st.session_state,
+                    )
+                    st.success(
+                        "Restored "
+                        f"{handoff_result['restored_count']} research keys from "
+                        f"run {run.run_id[-8:]}."
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Unable to restore bundle: {exc}")
 
-help_settings = load_product_help_settings()
-if help_settings.enabled:
-    with st.expander("Help / how it works", expanded=False):
+elif mode == ASSISTANT_MODE_HELP:
+    help_settings = load_product_help_settings()
+    # Surface name preserved from the former expander title (§1.1). Peer mode
+    # is always selectable; when the channel is disabled show guidance instead
+    # of a blank panel (pre-RUX-2 hid the expander entirely).
+    st.subheader("Help / how it works")
+    if not help_settings.enabled:
+        st.info(
+            "Product Help is disabled in `config/assistant.toml` "
+            "(`[assistant.product_help] enabled = false`)."
+        )
+    else:
         st.caption(
             "Documentation-grounded product help (USER_GUIDE-backed allowlisted "
             "docs + capability registry). Ask how-tos such as import data, "
@@ -707,7 +1003,7 @@ if help_settings.enabled:
                 "xAI key for STT/TTS and an OpenAI key for Help answers. "
                 "Mic is disabled while a research run is in progress."
             )
-            help_voice_blocked = thesis_has_running_run(orchestrator.list_runs(thesis_id))
+            help_voice_blocked = thesis_has_running_run(runs)
             if help_voice_blocked:
                 st.warning("Voice is paused while a research run is running.")
             else:
@@ -722,6 +1018,66 @@ if help_settings.enabled:
                         max_history_messages=help_settings.max_history_messages,
                     )
             _render_voice_last_turn(channel=PRODUCT_HELP_CHANNEL)
+
+elif mode == ASSISTANT_MODE_DRAFT:
+    st.subheader("Assistant chat")
+    st.caption(
+        "Thesis drafting only — extracts research choices and clarification questions. "
+        "It does not discuss completed backtests/grids/validation or product docs. "
+        f"For run narratives, open {DISCUSS_NAV_HINT}. "
+        f"For feature/how-it-works questions, use {HELP_NAV_HINT}."
+    )
+    for message in active_conversation.messages:
+        display_role = chat_message_display_role(message)
+        if display_role is None:
+            continue
+        body = format_chat_message_body(message)
+        if not body:
+            continue
+        with st.chat_message(display_role):
+            st.write(body)
+
+    if chat_message := st.chat_input("Describe or refine this thesis"):
+        try:
+            settings = load_llm_settings()
+            client = create_openai_client(settings)
+            draft = orchestrator.handle_chat_turn(
+                client,
+                thesis_id=thesis_id,
+                conversation_id=conversation_id,
+                user_message=chat_message,
+                max_history_messages=settings.max_history_messages,
+            )
+            refreshed = orchestrator.get_conversation(thesis_id, conversation_id)
+            st.session_state["assistant_draft_prompt"] = "\n".join(
+                str(message.get("content", ""))
+                for message in refreshed.messages
+                if message.get("role") == "user" and is_draft_channel_message(message)
+            )
+            st.session_state["assistant_draft_choices"] = draft.normalized_run_spec
+            invalidate_validation(st.session_state)
+            if draft.unresolved_assumptions:
+                set_assistant_flash(
+                    st.session_state,
+                    level="info",
+                    message=(
+                        "Chat updated with clarification questions above. "
+                        "This input drafts thesis choices — use Explain run or "
+                        f"Discuss results under {DISCUSS_NAV_SHORT} for test results."
+                    ),
+                )
+            else:
+                set_assistant_flash(
+                    st.session_state,
+                    level="success",
+                    message=(
+                        "Chat updated draft choices. Open Advanced to review Structured "
+                        "execution controls, then Draft research plan."
+                    ),
+                )
+            st.rerun()
+        except (LLMConfigurationError, LLMProviderError) as exc:
+            st.error(str(exc))
 
 
 with st.expander(
@@ -1657,7 +2013,7 @@ with st.expander(
         "listed. CAI-7 ledger attempts (`all_executions`) appear alongside manual "
         "Record-and-discuss and Assistant executions."
     )
-    runs = orchestrator.list_runs(thesis_id)
+    # Reuse hoisted `runs` from above the mode selector (RUX-2 single list_runs).
     if not runs:
         st.info("No research runs are recorded for this thesis yet.")
     else:
@@ -1708,25 +2064,7 @@ with st.expander(
                         )
                     st.rerun()
                 if run.status == "completed" and isinstance(run.provenance, dict):
-                    if st.button("Explain run", key=f"explain-{run.run_id}"):
-                        result = orchestrator.explain_run(
-                            thesis_id=thesis_id,
-                            conversation_id=conversation_id,
-                            run=run,
-                        )
-                        if result.status != "completed":
-                            st.error(
-                                result.payload.get("error", {}).get(
-                                    "message", "Unable to load evidence."
-                                )
-                            )
-                        else:
-                            st.session_state["assistant_run_explanations"][run.run_id] = (
-                                result.payload["explanation"]
-                            )
-                    explanation = st.session_state["assistant_run_explanations"].get(run.run_id)
-                    if explanation:
-                        st.write(explanation)
+                    # Explain / Discuss / voice / Open exact / Restore live in Discuss mode (RUX-2).
                     with st.expander("Page summaries (JSON)", expanded=False):
                         st.caption("Page summaries (bounded JSON; charts stay on classic pages)")
                         summary_caps = (
@@ -1891,215 +2229,6 @@ with st.expander(
                         attempts = st.session_state["assistant_llm_attempts"].get(run.run_id)
                         if attempts:
                             st.caption(f"Provider attempts: {attempts}")
-                    results_qa_settings = load_results_qa_settings()
-                    if results_qa_settings.enabled:
-                        st.markdown("**Discuss results**")
-                        st.caption(
-                            "Multi-turn Q&A on this completed run only. "
-                            "Grounded in hash-verified evidence — not thesis drafting."
-                        )
-                        results_thread = [
-                            message
-                            for message in active_conversation.messages
-                            if message.get("channel") == RESULTS_QA_CHANNEL
-                            and message.get("run_id") == run.run_id
-                            and str(message.get("role") or "").strip().lower()
-                            in {"user", "human", "assistant", "ai"}
-                        ]
-                        for message in results_thread:
-                            role = str(message.get("role") or "").strip().lower()
-                            display = "user" if role in {"user", "human"} else "assistant"
-                            body = str(message.get("content") or "").strip()
-                            if not body:
-                                continue
-                            with st.chat_message(display):
-                                # Path-cited claims are embedded in persisted
-                                # content via format_results_qa_reply_content.
-                                st.write(body)
-                        input_key = f"results-qa-input-{run.run_id}"
-                        clear_flag = f"assistant_clear_{input_key}"
-                        drafts = st.session_state.setdefault("assistant_results_qa_drafts", {})
-                        # Clear only before the widget is bound — same rule as Help.
-                        if st.session_state.pop(clear_flag, False):
-                            st.session_state[input_key] = ""
-                            drafts[run.run_id] = ""
-                        if input_key not in st.session_state:
-                            st.session_state[input_key] = str(drafts.get(run.run_id, ""))
-                        st.text_input(
-                            "Ask about this run",
-                            key=input_key,
-                            placeholder="e.g. What was expectancy? Best SL/TP?",
-                        )
-                        drafts[run.run_id] = str(st.session_state.get(input_key, ""))
-                        if st.button(
-                            "Send results question",
-                            key=f"results-qa-send-{run.run_id}",
-                        ):
-                            question = str(st.session_state.get(input_key, "")).strip()
-                            if not question:
-                                st.error("Enter a question about this run.")
-                            else:
-                                try:
-                                    client = create_openai_client(load_llm_settings())
-                                    result = orchestrator.handle_results_turn(
-                                        client,
-                                        thesis_id=thesis_id,
-                                        run_id=run.run_id,
-                                        message=question,
-                                        conversation_id=conversation_id,
-                                        max_history_messages=(
-                                            results_qa_settings.max_history_messages
-                                        ),
-                                    )
-                                    if result.status != "completed":
-                                        raise ValueError(
-                                            result.payload.get("error", {}).get(
-                                                "message",
-                                                "Unable to discuss this run.",
-                                            )
-                                        )
-                                    st.session_state[clear_flag] = True
-                                    drafts[run.run_id] = ""
-                                    set_assistant_flash(
-                                        st.session_state,
-                                        level="success",
-                                        message="Results discussion updated.",
-                                    )
-                                    st.rerun()
-                                except (
-                                    LLMConfigurationError,
-                                    LLMProviderError,
-                                    LLMEvidenceError,
-                                    ValueError,
-                                ) as exc:
-                                    st.error(f"Unable to discuss results: {exc}")
-                        voice_settings = _effective_voice_settings()
-                        if voice_settings.enabled:
-                            st.markdown("**Voice discuss (push-to-talk)**")
-                            st.caption(
-                                "Spoken Discuss results for this completed run. "
-                                "Requires an xAI key for STT/TTS; OpenAI powers "
-                                "the primary channel path (VA-3 tool fallback if missing)."
-                            )
-                            results_voice_blocked = thesis_has_running_run(runs)
-                            if results_voice_blocked:
-                                st.warning("Voice is paused while a research run is running.")
-                            else:
-                                results_audio = st.audio_input(
-                                    "Ask about this run by voice",
-                                    key=f"voice-results-audio-{run.run_id}",
-                                )
-                                if st.button(
-                                    "Send voice results question",
-                                    key=f"voice-results-send-{run.run_id}",
-                                ):
-                                    try:
-                                        expected_hash = (
-                                            require_run_bundle_hash(run.provenance)
-                                            if isinstance(run.provenance, dict)
-                                            else None
-                                        )
-                                    except ValueError as exc:
-                                        st.error(str(exc))
-                                        expected_hash = None
-                                    if expected_hash:
-                                        _run_voice_ptt(
-                                            channel=RESULTS_QA_CHANNEL,
-                                            audio_value=results_audio,
-                                            run_id=run.run_id,
-                                            expected_hash=expected_hash,
-                                            max_history_messages=(
-                                                results_qa_settings.max_history_messages
-                                            ),
-                                        )
-                            last = st.session_state.get("assistant_voice_last_turn")
-                            if (
-                                isinstance(last, dict)
-                                and last.get("channel") == RESULTS_QA_CHANNEL
-                                and st.session_state.get(
-                                    "assistant_voice_results_sessions", {}
-                                ).get(run.run_id)
-                                == last.get("session_id")
-                            ):
-                                _render_voice_last_turn(channel=RESULTS_QA_CHANNEL)
-                            # VA-5 realtime duplex (sidecar). PTT remains the fallback.
-                            if voice_settings.mode == "realtime":
-                                st.markdown("**Voice discuss (realtime)**")
-                                st.caption(
-                                    "Full-duplex review via the localhost sidecar "
-                                    "(browser ↔ sidecar ↔ xAI). The page never opens "
-                                    "the xAI socket or embeds the API key. Help realtime "
-                                    "is deferred — use push-to-talk Help."
-                                )
-                                st.session_state.setdefault(
-                                    "assistant_voice_sidecar_host", DEFAULT_SIDECAR_HOST
-                                )
-                                st.session_state.setdefault(
-                                    "assistant_voice_sidecar_port", DEFAULT_SIDECAR_PORT
-                                )
-                                st.text_input(
-                                    "Sidecar host",
-                                    key="assistant_voice_sidecar_host",
-                                    disabled=True,
-                                    help="Realtime sidecar must bind 127.0.0.1 only.",
-                                )
-                                st.number_input(
-                                    "Sidecar port",
-                                    min_value=1,
-                                    max_value=65535,
-                                    key="assistant_voice_sidecar_port",
-                                )
-                                if results_voice_blocked:
-                                    st.warning(
-                                        "Realtime voice is paused while a research run is running."
-                                    )
-                                elif st.button(
-                                    "Start realtime voice session",
-                                    key=f"voice-realtime-start-{run.run_id}",
-                                ):
-                                    try:
-                                        expected_hash = (
-                                            require_run_bundle_hash(run.provenance)
-                                            if isinstance(run.provenance, dict)
-                                            else None
-                                        )
-                                    except ValueError as exc:
-                                        st.error(str(exc))
-                                        expected_hash = None
-                                    if expected_hash:
-                                        registered = _register_realtime_session(
-                                            run_id=run.run_id,
-                                            expected_hash=expected_hash,
-                                        )
-                                        if registered is not None:
-                                            st.session_state[
-                                                f"assistant_voice_realtime_{run.run_id}"
-                                            ] = registered
-                                            set_assistant_flash(
-                                                st.session_state,
-                                                level="success",
-                                                message="Realtime voice session registered.",
-                                            )
-                                            st.rerun()
-                                registered = st.session_state.get(
-                                    f"assistant_voice_realtime_{run.run_id}"
-                                )
-                                if isinstance(registered, dict) and registered.get("client_url"):
-                                    client_url = str(registered["client_url"])
-                                    if not _client_url_is_localhost(client_url):
-                                        st.error("Stored realtime client_url is not localhost.")
-                                    else:
-                                        st.markdown(f"[Open realtime voice client]({client_url})")
-                                        st.caption(
-                                            f"session `{registered.get('session_id', '')}` · "
-                                            "close the client tab to end/flush the session."
-                                        )
-                                        try:
-                                            import streamlit.components.v1 as components
-
-                                            components.iframe(client_url, height=280)
-                                        except Exception:
-                                            pass
                     if st.button("Render markdown report", key=f"report-{run.run_id}"):
                         result = orchestrator.export_run(
                             thesis_id=thesis_id,
@@ -2158,41 +2287,6 @@ with st.expander(
                         )
                     except Exception:
                         st.caption("Identity vs session: **identity unavailable**")
-                    open_col, restore_col = st.columns(2)
-                    with open_col:
-                        if st.button(
-                            "Open exact run in Backtest",
-                            key=f"open-backtest-{run.run_id}",
-                        ):
-                            try:
-                                open_exact_run_in_backtest(
-                                    st.session_state,
-                                    thesis_id=thesis_id,
-                                    run_id=run.run_id,
-                                    orchestrator=orchestrator,
-                                )
-                                st.switch_page("pages/7_Backtest.py")
-                            except Exception as exc:
-                                st.error(f"Unable to open exact run: {exc}")
-                    with restore_col:
-                        if st.button(
-                            "Restore bundle into research pages",
-                            key=f"handoff-{run.run_id}",
-                        ):
-                            try:
-                                handoff_result = orchestrator.restore_run_bundle_to_session(
-                                    thesis_id=thesis_id,
-                                    run_id=run.run_id,
-                                    session_state=st.session_state,
-                                )
-                                st.success(
-                                    "Restored "
-                                    f"{handoff_result['restored_count']} research keys from "
-                                    f"run {run.run_id[-8:]}."
-                                )
-                                st.rerun()
-                            except Exception as exc:
-                                st.error(f"Unable to restore bundle: {exc}")
                 with st.expander("Debug: provenance", expanded=False):
                     st.json(provenance_card)
 

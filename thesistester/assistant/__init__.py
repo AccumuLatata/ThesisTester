@@ -89,6 +89,7 @@ from thesistester.assistant.ux import (
     HELP_NAV_HINT,
     default_discuss_run_id,
     discussable_runs,
+    recorded_completed_runs,
     resolve_mode,
     run_picker_label,
 )
@@ -200,6 +201,7 @@ __all__ = [
     "clear_thesis_scoped_state",
     "default_discuss_run_id",
     "discussable_runs",
+    "recorded_completed_runs",
     "init_assistant_session_state",
     "latest_unresolved_assumptions",
     "resolve_mode",
