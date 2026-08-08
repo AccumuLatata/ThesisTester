@@ -195,9 +195,10 @@ class ResultsQASettings:
     enabled: bool
     max_history_messages: int
     allow_time_enrichment: bool
-    # DI-1 recovery knobs — defaults change Discuss UX; auditor stays identical.
+    # DI-1 / RI-1 recovery knobs — defaults change Discuss UX; auditor stays identical.
     repair_retry_enabled: bool = True
     deterministic_overview_fallback: bool = True
+    deterministic_specialist_fallback: bool = True
 
 
 @dataclass(frozen=True)
@@ -374,6 +375,7 @@ def load_results_qa_settings(path: str | Path = "config/assistant.toml") -> Resu
             allow_time_enrichment=False,
             repair_retry_enabled=True,
             deterministic_overview_fallback=True,
+            deterministic_specialist_fallback=True,
         )
     return ResultsQASettings(
         enabled=_coerce_enabled_flag(section.get("enabled", False), default=False),
@@ -388,6 +390,9 @@ def load_results_qa_settings(path: str | Path = "config/assistant.toml") -> Resu
         ),
         deterministic_overview_fallback=_coerce_enabled_flag(
             section.get("deterministic_overview_fallback", True), default=True
+        ),
+        deterministic_specialist_fallback=_coerce_enabled_flag(
+            section.get("deterministic_specialist_fallback", True), default=True
         ),
     )
 

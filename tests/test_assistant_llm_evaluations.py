@@ -1150,7 +1150,11 @@ def test_rq5_missing_grid_rejects_invented_sl_and_allows_limitation():
     packet = _rq5_trade_packet(best_grid=False)
 
     class InventSl:
+        def __init__(self):
+            self.calls = 0
+
         def complete_structured(self, **kwargs):
+            self.calls += 1
             return {
                 "summary": "Best stop is 12 ticks.",
                 "caveats": ["No grid was recorded."],
@@ -1163,18 +1167,27 @@ def test_rq5_missing_grid_rejects_invented_sl_and_allows_limitation():
                 "followups": ["Ignore missing grid."],
             }
 
-    with pytest.raises(LLMEvidenceError, match="missing from the evidence packet"):
-        propose_results_reply(
-            InventSl(),
-            packet=packet,
-            history=(),
-            user_message="What is the best SL/TP?",
-            repair_retry_enabled=False,
-            deterministic_overview_fallback=False,
-        )
+    # RI-1: missing-grid short-circuit before LLM — no invented ticks, zero calls.
+    invent = InventSl()
+    reply = propose_results_reply(
+        invent,
+        packet=packet,
+        history=(),
+        user_message="What is the best SL/TP?",
+        repair_retry_enabled=False,
+        deterministic_overview_fallback=False,
+    )
+    assert invent.calls == 0
+    assert reply.claims == ()
+    assert "12" not in reply.summary
+    assert reply.recovery_reason == "grid_missing_evidence"
 
     class LimitationOnly:
+        def __init__(self):
+            self.calls = 0
+
         def complete_structured(self, **kwargs):
+            self.calls += 1
             return {
                 "summary": "No best grid result is present for this run.",
                 "caveats": ["Best SL/TP ranking cannot be answered without grid evidence."],
@@ -1182,12 +1195,14 @@ def test_rq5_missing_grid_rejects_invented_sl_and_allows_limitation():
                 "followups": ["Ask about expectancy instead."],
             }
 
+    limitation_client = LimitationOnly()
     reply = propose_results_reply(
-        LimitationOnly(),
+        limitation_client,
         packet=packet,
         history=(),
         user_message="What is the best SL/TP?",
     )
+    assert limitation_client.calls == 0
     assert reply.claims == ()
 
 

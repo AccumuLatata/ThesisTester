@@ -21,9 +21,10 @@ enabled = true
 max_history_messages = 12
 # When true (RQ-2), allow RO TIME.analyze if time_grouped_summary missing.
 allow_time_enrichment = false
-# DI-1 recovery (defaults change Discuss UX; honesty auditor unchanged).
+# DI-1 / RI-1 recovery (defaults change Discuss UX; honesty auditor unchanged).
 repair_retry_enabled = true
 deterministic_overview_fallback = true
+deterministic_specialist_fallback = true
 
 [assistant.product_help]
 # enabled=true is OK; runtime still requires OPENAI_API_KEY or UI remediates.

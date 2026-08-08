@@ -1,7 +1,7 @@
 # Research Intelligence — Implementation Contract
 
 **Document type:** Implementation contract (RI-series) — **single source of truth**
-**Status:** 📋 **RI-0 contract freeze** (series not complete until RI-10)
+**Status:** 🚧 **RI-1 landed** (grid slice); series not complete until RI-10
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/results_overview.py` (intent matching /
 deterministic builders / overlays), `results_qa.py` (recovery wiring),
@@ -721,8 +721,8 @@ complete coverage; duplex last so text builders are stable.
 
 | PR | Status |
 |---|---|
-| RI-0 Contract freeze | 📋 this PR |
-| RI-1 Grid / best SL–TP slice | ⬚ pending |
+| RI-0 Contract freeze | ✅ merged |
+| RI-1 Grid / best SL–TP slice | ✅ landed |
 | RI-2 Time / session ranking slice | ⬚ pending |
 | RI-3 Validation + WFA/OOS slice | ⬚ pending |
 | RI-4 Single-metric router | ⬚ pending |

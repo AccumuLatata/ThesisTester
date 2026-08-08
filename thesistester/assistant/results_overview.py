@@ -1,8 +1,8 @@
-"""DI overview matching, path-catalog hints, and deterministic KPI builders.
+"""DI/RI Discuss matching, path-catalog hints, and deterministic builders.
 
 Fail-closed numbers stay in ``llm_explainer``. This module selects frozen
-overview slices, builds DI-2 first-pass path catalogs, and builds auditor-safe
-replies when the LLM path fails (DI-1).
+overview + specialist slices (RI-1: ``grid_ranking``), builds DI-2 first-pass
+path catalogs, and builds auditor-safe replies when the LLM path fails.
 """
 
 from __future__ import annotations
@@ -22,11 +22,16 @@ from thesistester.assistant.llm_explainer import (
 
 OVERVIEW_INTENT_KPI = "kpi_summary"
 OVERVIEW_INTENT_RUN = "run_overview"
+INTENT_GRID_RANKING = "grid_ranking"
+INTENT_MIXED_ASK = "mixed_ask"
 
 REASON_PATH_MISS = "overview_path_miss"
 REASON_DIGIT_MISS = "overview_digit_miss"
 REASON_PROVIDER_EXHAUSTED = "overview_provider_exhausted"
 REASON_REPAIR_FAILED = "overview_repair_failed"
+REASON_MISSING_GRID = "grid_missing_evidence"
+REASON_MIXED_ASK = "mixed_ask_narrow"
+REASON_GRID_FALLBACK = "grid_deterministic_fallback"
 
 # Frozen §4.2 allowlist (include only when path exists on turn context).
 KPI_CLAIM_PATHS: tuple[str, ...] = (
@@ -86,7 +91,42 @@ _RUN_OVERVIEW_POSITIVE_CUES: tuple[str, ...] = (
     "highlights of this run",
 )
 
-_NEGATIVE_CUES: tuple[str, ...] = (
+# RI-1 landed specialist cues (sunsets matching DI negatives for grid topics).
+_GRID_RANKING_POSITIVE_CUES: tuple[str, ...] = (
+    "best sl",
+    "best tp",
+    "best sl/tp",
+    "best stop",
+    "best target",
+    "stop loss",
+    "take profit",
+    "sl/tp",
+    "grid ranking",
+    "grid rank",
+    "grid",
+    "stop",
+    "target",
+    "sl",
+    "tp",
+)
+
+# ``ranking`` / ``ranking metric`` only count as grid when a grid collocate is present.
+_GRID_RANKING_CONTEXT_CUES: tuple[str, ...] = ("ranking", "ranking metric")
+_GRID_CONTEXT_COLLOCATES: tuple[str, ...] = (
+    "grid",
+    "sl",
+    "tp",
+    "stop",
+    "target",
+    "sl/tp",
+    "stop loss",
+    "take profit",
+    "best sl",
+    "best tp",
+)
+
+# DI §4.1 negatives not yet owned by a landed specialist builder (RI residual veto).
+_RESIDUAL_NEGATIVE_CUES: tuple[str, ...] = (
     "validation",
     "wfa",
     "walk-forward",
@@ -97,19 +137,43 @@ _NEGATIVE_CUES: tuple[str, ...] = (
     "bootstrap",
     "monte carlo",
     "monte-carlo",
-    "grid",
-    "stop",
-    "target",
-    "sl",
-    "tp",
-    "stop loss",
-    "take profit",
-    "ranking",
     "time",
     "hour",
     "bucket",
     "clock",
     "session segment",
+    # Bare ranking stays residual until RI-2; grid-context ranking is handled above.
+    "ranking",
+)
+
+# Frozen RI §4.2 allowlist (include only when path exists on turn context).
+GRID_CLAIM_PATHS: tuple[str, ...] = (
+    "results.projections.grid_rankings.metric",
+    "results.projections.grid_rankings.metric_source_path",
+    "results.projections.grid_rankings.min_trades",
+    "results.projections.grid_rankings.candidate_count",
+    "results.projections.grid_rankings.eligible_count",
+    "results.projections.grid_rankings.selection_scope",
+    "results.projections.grid_rankings.oos_status",
+    "results.projections.grid_rankings.best.stop_loss_ticks",
+    "results.projections.grid_rankings.best.take_profit_ticks",
+    "results.projections.grid_rankings.best.trade_count",
+    "results.projections.grid_rankings.best.metric_value",
+    "results.best_grid_result.stop_loss_ticks",
+    "results.best_grid_result.take_profit_ticks",
+    "results.best_grid_result.trade_count",
+    "assumptions.costs_exposure.commission_per_side",
+    "assumptions.costs_exposure.slippage_ticks",
+    "assumptions.grid.ranking_metric",
+)
+
+_GRID_SL_PATHS: tuple[str, ...] = (
+    "results.projections.grid_rankings.best.stop_loss_ticks",
+    "results.best_grid_result.stop_loss_ticks",
+)
+_GRID_TP_PATHS: tuple[str, ...] = (
+    "results.projections.grid_rankings.best.take_profit_ticks",
+    "results.best_grid_result.take_profit_ticks",
 )
 
 
@@ -137,34 +201,95 @@ def _alias_matches(alias: str, normalized: str) -> bool:
     )
 
 
-def has_overview_negative_cue(message: str) -> bool:
-    """Return True when DI §4.1 negative cues veto overview matching.
+def _any_cue_matches(cues: Sequence[str], normalized: str) -> bool:
+    return any(_alias_matches(cue, normalized) for cue in cues)
 
-    Thin export over the frozen ``_NEGATIVE_CUES`` table + boundary-anchored
-    matching. Duplex (DX-1) uses this to distinguish veto from unmatched —
-    do not copy the cue tuple into ``voice/``.
+
+def _grid_ranking_matches(normalized: str) -> bool:
+    if _any_cue_matches(_GRID_RANKING_POSITIVE_CUES, normalized):
+        return True
+    if _any_cue_matches(_GRID_RANKING_CONTEXT_CUES, normalized) and _any_cue_matches(
+        _GRID_CONTEXT_COLLOCATES, normalized
+    ):
+        return True
+    return False
+
+
+def _residual_negative_matches(normalized: str) -> bool:
+    """True when a not-yet-owned DI negative cue is present.
+
+    Bare ``ranking`` is residual only when grid-context ranking did not already
+    classify the ask as ``grid_ranking`` (caller combines with grid match).
+    """
+    if _any_cue_matches(
+        tuple(cue for cue in _RESIDUAL_NEGATIVE_CUES if cue != "ranking"),
+        normalized,
+    ):
+        return True
+    # Bare ranking without grid collocates remains residual until RI-2.
+    if _alias_matches("ranking", normalized) and not _any_cue_matches(
+        _GRID_CONTEXT_COLLOCATES, normalized
+    ):
+        return True
+    return False
+
+
+def has_overview_negative_cue(message: str) -> bool:
+    """Return True when overview matching must be refused (RI §4.1.1).
+
+    ``overview_refused = landed specialist match OR residual DI negative``.
+    Duplex (DX) uses this to distinguish veto from unmatched — do not copy cue
+    tables into ``voice/``.
     """
     if not isinstance(message, str) or not message.strip():
         return False
     normalized = _normalize_message(message)
-    return any(_alias_matches(cue, normalized) for cue in _NEGATIVE_CUES)
+    return _grid_ranking_matches(normalized) or _residual_negative_matches(normalized)
+
+
+def match_discuss_intent(message: str) -> str | None:
+    """Return one Discuss intent id, ``mixed_ask``, or ``None`` (RI §4.1).
+
+    Multi-eval (no first-match short-circuit): evaluate landed cue tables
+    independently, then apply residual veto / mixed-ask rules.
+    Landed intents in RI-1: ``grid_ranking``, ``kpi_summary``, ``run_overview``.
+    """
+    if not isinstance(message, str) or not message.strip():
+        return None
+    normalized = _normalize_message(message)
+    grid = _grid_ranking_matches(normalized)
+    kpi = _any_cue_matches(_KPI_POSITIVE_CUES, normalized)
+    run = _any_cue_matches(_RUN_OVERVIEW_POSITIVE_CUES, normalized)
+    residual = _residual_negative_matches(normalized)
+
+    specialist = grid
+    overview = kpi or run
+
+    if specialist and overview:
+        return INTENT_MIXED_ASK
+    if specialist and residual:
+        # Unowned specialist topic collocated with a landed specialist → narrow.
+        return INTENT_MIXED_ASK
+    if specialist:
+        return INTENT_GRID_RANKING
+    if residual:
+        # Residual veto: overview must not win; no landed specialist owner.
+        return None
+    if kpi:
+        return OVERVIEW_INTENT_KPI
+    if run:
+        return OVERVIEW_INTENT_RUN
+    return None
 
 
 def match_overview_intent(message: str) -> str | None:
     """Return ``kpi_summary`` / ``run_overview`` or ``None`` when vetoed/unmatched.
 
-    Order: negative-cue veto first, then first positive overview match
-    (``kpi_summary`` before ``run_overview``).
+    Compatibility wrapper over ``match_discuss_intent`` for DI/DX callers.
     """
-    if not isinstance(message, str) or not message.strip():
-        return None
-    if has_overview_negative_cue(message):
-        return None
-    normalized = _normalize_message(message)
-    if any(_alias_matches(cue, normalized) for cue in _KPI_POSITIVE_CUES):
-        return OVERVIEW_INTENT_KPI
-    if any(_alias_matches(cue, normalized) for cue in _RUN_OVERVIEW_POSITIVE_CUES):
-        return OVERVIEW_INTENT_RUN
+    intent = match_discuss_intent(message)
+    if intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}:
+        return intent
     return None
 
 
@@ -192,16 +317,32 @@ def present_kpi_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ...
     return tuple(path for path in KPI_CLAIM_PATHS if _path_exists(evidence_context, path))
 
 
+def present_grid_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return frozen grid claim paths that exist on the turn evidence context."""
+    if not isinstance(evidence_context, Mapping):
+        return ()
+    return tuple(path for path in GRID_CLAIM_PATHS if _path_exists(evidence_context, path))
+
+
+def has_grid_ranking_evidence(evidence_context: Mapping[str, Any]) -> bool:
+    """True when at least one SL and one TP path exist for a numeric best answer."""
+    if not isinstance(evidence_context, Mapping):
+        return False
+    has_sl = any(_path_exists(evidence_context, path) for path in _GRID_SL_PATHS)
+    has_tp = any(_path_exists(evidence_context, path) for path in _GRID_TP_PATHS)
+    return has_sl and has_tp
+
+
 def build_prompt_path_catalog(
     evidence_context: Mapping[str, Any],
     *,
     overview_intent: str | None = None,
+    discuss_intent: str | None = None,
 ) -> dict[str, Any]:
-    """Build the DI-2 first-pass path catalog for the Results Q&A user payload.
+    """Build the DI-2 / RI first-pass path catalog for the Results Q&A user payload.
 
-    Always includes ``existing_paths`` from the turn context. When an overview
-    intent is matched, also includes ``kpi_allowlist`` (present paths only) and
-    an overview instruction — never a must-cite set for non-overview asks.
+    Always includes ``existing_paths`` from the turn context. Overview asks get
+    ``kpi_allowlist``; ``grid_ranking`` asks get grid ``preferred_claim_paths``.
     """
     existing = list(collect_existing_paths(evidence_context))
     catalog: dict[str, Any] = {
@@ -213,9 +354,10 @@ def build_prompt_path_catalog(
             "Narrate fractional rates with % or percent/pct/Prozent."
         ),
     }
-    if overview_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}:
+    intent = discuss_intent if discuss_intent is not None else overview_intent
+    if intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}:
         kpi_paths = list(present_kpi_allowlist(evidence_context))
-        catalog["overview_intent"] = overview_intent
+        catalog["overview_intent"] = intent
         catalog["kpi_allowlist"] = kpi_paths
         catalog["overview_instruction"] = (
             "This is an overview/KPI ask. Prefer citing a subset of "
@@ -224,6 +366,17 @@ def build_prompt_path_catalog(
         )
         # Optional must-cite hint: cite these or a subset (never invent outside).
         catalog["preferred_claim_paths"] = kpi_paths
+    elif intent == INTENT_GRID_RANKING:
+        grid_paths = list(present_grid_allowlist(evidence_context))
+        catalog["discuss_intent"] = INTENT_GRID_RANKING
+        catalog["grid_allowlist"] = grid_paths
+        catalog["specialist_instruction"] = (
+            "This is a best SL/TP / grid-ranking ask. Prefer citing a subset of "
+            "grid_allowlist / preferred_claim_paths. Cite the ranking metric, "
+            "selection_scope, and oos_status when present. Do not invent ranks "
+            "or choose a different metric. Do not answer with trade_summary KPIs."
+        )
+        catalog["preferred_claim_paths"] = grid_paths
     return catalog
 
 
@@ -572,9 +725,25 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
         else:
             display = value
         leaf = path.rsplit(".", 1)[-1]
+        if path.endswith("stop_loss_ticks"):
+            return f"Best stop-loss ticks is {display}."
+        if path.endswith("take_profit_ticks"):
+            return f"Best take-profit ticks is {display}."
+        if path.endswith("metric_value"):
+            return f"Ranked metric value is {display}."
         return f"{leaf} is {display}."
     if isinstance(value, str) and value.strip():
-        # KPI allowlist is numeric; skip non-numeric strings.
+        text = value.strip()
+        # Grid honesty labels (metric / scope / oos) are narratable strings.
+        if path.endswith("selection_scope"):
+            return f"Selection scope is {text}."
+        if path.endswith("oos_status"):
+            return f"OOS status is {text}."
+        if path.endswith("metric") or path.endswith("ranking_metric"):
+            return f"Ranking metric is {text}."
+        if path.endswith("metric_source_path"):
+            return f"Ranking metric source path is {text}."
+        # KPI allowlist is numeric; skip other non-numeric strings.
         return None
     return None
 
@@ -628,6 +797,155 @@ def build_deterministic_kpi_reply(
         summary=summary,
         caveats=caveats,
         claims=grounded,
+        recovery_reason=recovery_reason,
+    )
+
+
+def build_missing_grid_limitation_reply(
+    packet: EvidencePacket,
+    *,
+    recovery_reason: str | None = REASON_MISSING_GRID,
+):
+    """Digit-free missing-grid limitation (RI-1 short-circuit; no invented ticks)."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    summary = (
+        "I cannot answer best stop-loss / take-profit ranking because grid ranking "
+        "evidence is not present on this run."
+    )
+    followups = (
+        "Ask for the key metrics or a summary of this run.",
+        "Ask whether a grid search was recorded for this run.",
+    )
+    caveats = merge_mandatory_packet_caveats(
+        packet,
+        (
+            "No best-grid SL/TP figures were invented for this ask.",
+            "Grid rankings are in-sample selection diagnostics, not out-of-sample proof.",
+        ),
+    )
+    assert_llm_explanation_grounded(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+    )
+    return ResultsQAReply(
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+        recovery_reason=recovery_reason,
+    )
+
+
+def build_mixed_ask_remediation_reply(
+    packet: EvidencePacket,
+    *,
+    recovery_reason: str | None = REASON_MIXED_ASK,
+):
+    """Narrow-ask remediation for mixed intents until RI-8 composition lands."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    summary = (
+        "That ask mixes more than one results topic. Ask about one topic at a time "
+        "(for example key metrics, or best stop and take profit)."
+    )
+    followups = (
+        "Ask for the key metrics or a summary of this run.",
+        "Ask about best stop and take profit ranking if a grid was recorded.",
+    )
+    caveats = merge_mandatory_packet_caveats(
+        packet,
+        ("No partial KPI or specialist slice was shown for a mixed ask.",),
+    )
+    assert_llm_explanation_grounded(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+    )
+    return ResultsQAReply(
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+        recovery_reason=recovery_reason,
+    )
+
+
+def build_deterministic_grid_ranking_reply(
+    packet: EvidencePacket,
+    evidence_context: Mapping[str, Any],
+    *,
+    recovery_reason: str | None = None,
+):
+    """Build an auditor-safe best SL/TP reply from the frozen grid allowlist."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    if not has_grid_ranking_evidence(evidence_context):
+        return build_missing_grid_limitation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MISSING_GRID,
+        )
+
+    claims: list[EvidenceClaim] = []
+    summary_parts: list[str] = []
+    # Prefer projection best SL/TP paths when present; else recorded best_grid_result.
+    preferred_order = list(GRID_CLAIM_PATHS)
+    for path in preferred_order:
+        if not _path_exists(evidence_context, path):
+            continue
+        # Avoid duplicating recorded best when projection best already cited.
+        if path.startswith("results.best_grid_result.") and (
+            _path_exists(
+                evidence_context,
+                "results.projections.grid_rankings.best.stop_loss_ticks",
+            )
+            or _path_exists(
+                evidence_context,
+                "results.projections.grid_rankings.best.take_profit_ticks",
+            )
+        ):
+            continue
+        value = _path_get(evidence_context, path)
+        text = _format_scalar_for_claim(path, value)
+        if text is None:
+            continue
+        claims.append(EvidenceClaim(text=text, path=path, value=value))
+        summary_parts.append(text.rstrip("."))
+
+    if not claims:
+        return build_missing_grid_limitation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MISSING_GRID,
+        )
+
+    summary = "Best SL/TP grid ranking: " + "; ".join(summary_parts) + "."
+    caveat_seed = (
+        "Grid rankings reflect in-sample selection on the recorded grid, not a forecast.",
+        "Do not treat the selected cell as out-of-sample confirmation unless OOS/WFA evidence says so.",
+    )
+    grounded = tuple(claims)
+    caveats = merge_mandatory_packet_caveats(packet, caveat_seed)
+    followups = (
+        "Ask whether walk-forward or validation diagnostics are present on this packet.",
+        "Ask for the key metrics or a summary of this run.",
+    )
+    assert_llm_explanation_grounded(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=grounded,
+        followups=followups,
+    )
+    return ResultsQAReply(
+        summary=summary,
+        caveats=caveats,
+        claims=grounded,
+        followups=followups,
         recovery_reason=recovery_reason,
     )
 
