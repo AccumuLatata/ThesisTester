@@ -92,6 +92,8 @@ _RUN_OVERVIEW_POSITIVE_CUES: tuple[str, ...] = (
 )
 
 # RI-1 landed specialist cues (sunsets matching DI negatives for grid topics).
+# Bare short tokens ``sl``/``tp``/``stop``/``target`` require collocates (§4.1);
+# alone they remain overview-refusing residual (DX veto ≠ unmatched).
 _GRID_RANKING_POSITIVE_CUES: tuple[str, ...] = (
     "best sl",
     "best tp",
@@ -104,10 +106,16 @@ _GRID_RANKING_POSITIVE_CUES: tuple[str, ...] = (
     "grid ranking",
     "grid rank",
     "grid",
-    "stop",
-    "target",
-    "sl",
-    "tp",
+)
+
+# Short tokens match ``grid_ranking`` only with best/pair/grid/ranking collocates.
+_GRID_BARE_TOKEN_CUES: tuple[str, ...] = ("sl", "tp", "stop", "target")
+_GRID_BARE_TOKEN_COLLOCATES: tuple[str, ...] = (
+    "best",
+    "pair",
+    "grid",
+    "ranking",
+    "rank",
 )
 
 # ``ranking`` / ``ranking metric`` only count as grid when a grid collocate is present.
@@ -212,6 +220,11 @@ def _grid_ranking_matches(normalized: str) -> bool:
         _GRID_CONTEXT_COLLOCATES, normalized
     ):
         return True
+    # Bare sl/tp/stop/target only with best/pair/grid/ranking collocates (§4.1).
+    if _any_cue_matches(_GRID_BARE_TOKEN_CUES, normalized) and _any_cue_matches(
+        _GRID_BARE_TOKEN_COLLOCATES, normalized
+    ):
+        return True
     return False
 
 
@@ -220,6 +233,8 @@ def _residual_negative_matches(normalized: str) -> bool:
 
     Bare ``ranking`` is residual only when grid-context ranking did not already
     classify the ask as ``grid_ranking`` (caller combines with grid match).
+    Bare ``sl``/``tp``/``stop``/``target`` without collocates stay residual so
+    overview/DX cannot topic-swap (collocated forms are owned by grid_ranking).
     """
     if _any_cue_matches(
         tuple(cue for cue in _RESIDUAL_NEGATIVE_CUES if cue != "ranking"),
@@ -229,6 +244,11 @@ def _residual_negative_matches(normalized: str) -> bool:
     # Bare ranking without grid collocates remains residual until RI-2.
     if _alias_matches("ranking", normalized) and not _any_cue_matches(
         _GRID_CONTEXT_COLLOCATES, normalized
+    ):
+        return True
+    # Bare short grid tokens without collocates remain overview-refusing.
+    if _any_cue_matches(_GRID_BARE_TOKEN_CUES, normalized) and not _any_cue_matches(
+        _GRID_BARE_TOKEN_COLLOCATES, normalized
     ):
         return True
     return False
@@ -265,16 +285,17 @@ def match_discuss_intent(message: str) -> str | None:
     specialist = grid
     overview = kpi or run
 
+    # §4.1 step 3: residual cue not owned by a landed specialist → None
+    # (includes grid+validation collocates; overview/single_metric must not win).
+    if residual:
+        return None
     if specialist and overview:
-        return INTENT_MIXED_ASK
-    if specialist and residual:
-        # Unowned specialist topic collocated with a landed specialist → narrow.
         return INTENT_MIXED_ASK
     if specialist:
         return INTENT_GRID_RANKING
-    if residual:
-        # Residual veto: overview must not win; no landed specialist owner.
-        return None
+    # Dual overview intents are distinct landed ids → mixed_ask (§4.1 |M|>=2).
+    if kpi and run:
+        return INTENT_MIXED_ASK
     if kpi:
         return OVERVIEW_INTENT_KPI
     if run:
@@ -324,12 +345,24 @@ def present_grid_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ..
     return tuple(path for path in GRID_CLAIM_PATHS if _path_exists(evidence_context, path))
 
 
+def _narratable_grid_scalar(evidence_context: Mapping[str, Any], path: str) -> bool:
+    """True when *path* exists and formats to a claimable scalar (nulls fail)."""
+    if not _path_exists(evidence_context, path):
+        return False
+    value = _path_get(evidence_context, path)
+    return _format_scalar_for_claim(path, value) is not None
+
+
 def has_grid_ranking_evidence(evidence_context: Mapping[str, Any]) -> bool:
-    """True when at least one SL and one TP path exist for a numeric best answer."""
+    """True when at least one narratable SL **and** one narratable TP exist.
+
+    JSON-null / non-scalar leaves do not count — §4.2 requires a numeric best
+    SL/TP pair (or missing-grid limitation), not an SL-only answer.
+    """
     if not isinstance(evidence_context, Mapping):
         return False
-    has_sl = any(_path_exists(evidence_context, path) for path in _GRID_SL_PATHS)
-    has_tp = any(_path_exists(evidence_context, path) for path in _GRID_TP_PATHS)
+    has_sl = any(_narratable_grid_scalar(evidence_context, path) for path in _GRID_SL_PATHS)
+    has_tp = any(_narratable_grid_scalar(evidence_context, path) for path in _GRID_TP_PATHS)
     return has_sl and has_tp
 
 
@@ -893,31 +926,30 @@ def build_deterministic_grid_ranking_reply(
 
     claims: list[EvidenceClaim] = []
     summary_parts: list[str] = []
-    # Prefer projection best SL/TP paths when present; else recorded best_grid_result.
+    claimed_paths: set[str] = set()
+    # Prefer projection best SL/TP paths when narratable; else recorded best.
     preferred_order = list(GRID_CLAIM_PATHS)
     for path in preferred_order:
         if not _path_exists(evidence_context, path):
             continue
-        # Avoid duplicating recorded best when projection best already cited.
-        if path.startswith("results.best_grid_result.") and (
-            _path_exists(
-                evidence_context,
-                "results.projections.grid_rankings.best.stop_loss_ticks",
-            )
-            or _path_exists(
-                evidence_context,
-                "results.projections.grid_rankings.best.take_profit_ticks",
-            )
-        ):
-            continue
+        # Skip recorded best leaf only when the matching projection leaf was cited.
+        if path.startswith("results.best_grid_result."):
+            leaf = path.rsplit(".", 1)[-1]
+            projection_path = f"results.projections.grid_rankings.best.{leaf}"
+            if projection_path in claimed_paths:
+                continue
         value = _path_get(evidence_context, path)
         text = _format_scalar_for_claim(path, value)
         if text is None:
             continue
         claims.append(EvidenceClaim(text=text, path=path, value=value))
+        claimed_paths.add(path)
         summary_parts.append(text.rstrip("."))
 
-    if not claims:
+    claim_paths = {claim.path for claim in claims}
+    has_sl_claim = bool(claim_paths.intersection(_GRID_SL_PATHS))
+    has_tp_claim = bool(claim_paths.intersection(_GRID_TP_PATHS))
+    if not claims or not (has_sl_claim and has_tp_claim):
         return build_missing_grid_limitation_reply(
             packet,
             recovery_reason=recovery_reason or REASON_MISSING_GRID,

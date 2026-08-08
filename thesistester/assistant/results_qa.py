@@ -277,9 +277,7 @@ def _complete_results_structured(
     # DI-2 / RI: first-pass (and repair) path catalog — existing paths only.
     if include_path_catalog:
         overview_intent = (
-            discuss_intent
-            if discuss_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}
-            else None
+            discuss_intent if discuss_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN} else None
         )
         user_payload["path_catalog"] = build_prompt_path_catalog(
             evidence_context,
@@ -378,17 +376,13 @@ def propose_results_reply(
 
     discuss_intent = match_discuss_intent(user_message)
     overview_intent = (
-        discuss_intent
-        if discuss_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}
-        else None
+        discuss_intent if discuss_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN} else None
     )
 
     # RI-1 short-circuits: mixed ask / missing grid evidence before any LLM call.
     if discuss_intent == INTENT_MIXED_ASK:
         return build_mixed_ask_remediation_reply(packet)
-    if discuss_intent == INTENT_GRID_RANKING and not has_grid_ranking_evidence(
-        evidence_context
-    ):
+    if discuss_intent == INTENT_GRID_RANKING and not has_grid_ranking_evidence(evidence_context):
         return build_missing_grid_limitation_reply(packet)
 
     def _maybe_overlay(reply: ResultsQAReply) -> ResultsQAReply:

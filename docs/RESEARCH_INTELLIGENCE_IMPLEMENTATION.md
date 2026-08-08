@@ -243,7 +243,7 @@ has_overview_negative_cue(text) ≡ overview_refused(text)
 
 | Residual DI negative cue(s) | Owner PR that may sunset | Until sunset behavior |
 |---|---|---|
-| `grid`, `stop`, `target`, `sl`, `tp`, `stop loss`, `take profit`, grid-sense `ranking` | RI-1 (`grid_ranking`) | Veto overview + block `single_metric`; after RI-1, landed `grid_ranking` owns them |
+| `grid`, `stop loss`, `take profit`, `sl/tp`, collocated `sl`/`tp`/`stop`/`target` (with best/pair/grid/ranking), grid-sense `ranking` | RI-1 (`grid_ranking`) | Veto overview + block `single_metric`; after RI-1, landed `grid_ranking` owns collocated/multi-word forms. Bare `sl`/`tp`/`stop`/`target` **without** those collocates stay residual overview-refusing (DX veto ≠ unmatched; avoids “full stop” false grid matches) |
 | `time`, `hour`, `bucket`, `clock`, `session segment`, time-sense ranking collocates | RI-2 (`time_ranking`) | Residual veto / block overview + `single_metric` |
 | `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap` | RI-3 (`validation_wfa`) | Residual veto / block overview + `single_metric` |
 | `monte carlo`, `monte-carlo` | RI-5 (`robustness_tier2`) | Residual veto / block overview + `single_metric` |

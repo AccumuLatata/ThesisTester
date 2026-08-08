@@ -15,6 +15,8 @@ from thesistester.assistant.results_overview import (
     REASON_MISSING_GRID,
     REASON_MIXED_ASK,
     REASON_PATH_MISS,
+    build_deterministic_grid_ranking_reply,
+    has_grid_ranking_evidence,
     has_overview_negative_cue,
     match_discuss_intent,
     match_overview_intent,
@@ -90,8 +92,16 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert match_discuss_intent("Give me the KPIs of this run") == OVERVIEW_INTENT_KPI
     assert match_discuss_intent("summarize this run") == OVERVIEW_INTENT_RUN
     assert match_discuss_intent("KPIs and best SL/TP") == INTENT_MIXED_ASK
+    # Dual overview intents → mixed_ask (§4.1 |M|>=2).
+    assert match_discuss_intent("Give me the KPIs and summarize this run") == INTENT_MIXED_ASK
+    # Residual cue not owned by grid → None (not mixed_ask).
+    assert match_discuss_intent("best SL and validation") is None
     assert match_discuss_intent("Summarize the walk-forward results") is None
     assert match_discuss_intent("Give me KPIs and validation stats") is None
+    # Bare short tokens without collocates are residual, not grid.
+    assert match_discuss_intent("What's my stop?") is None
+    assert match_discuss_intent("full stop") is None
+    assert match_discuss_intent("show me the target") is None
     # Overview wrapper stays vetoed for specialist / residual topics.
     assert match_overview_intent("summary of best SL/TP") is None
     assert match_overview_intent("KPIs and best SL/TP") is None
@@ -104,7 +114,14 @@ def test_residual_veto_and_false_friends_for_overview_negative_export():
     assert has_overview_negative_cue("summarize the walk-forward results") is True
     assert has_overview_negative_cue("validation diagnostics please") is True
     assert has_overview_negative_cue("KPIs and best SL/TP") is True
-    assert has_overview_negative_cue("ranking alone without grid") is True
+    # Bare ranking (no grid collocate) stays residual — do not poison with "grid".
+    assert match_discuss_intent("ranking alone") is None
+    assert has_overview_negative_cue("ranking alone") is True
+    assert match_discuss_intent("what is the ranking") is None
+    assert has_overview_negative_cue("what is the ranking") is True
+    # Bare stop/target still refuse overview (DX), but are not grid_ranking.
+    assert has_overview_negative_cue("What's my stop?") is True
+    assert has_overview_negative_cue("full stop") is True
     assert has_overview_negative_cue("runtime of this batch") is False
     assert has_overview_negative_cue("stopwatch only") is False
     assert has_overview_negative_cue("non-stop session") is False
@@ -262,6 +279,79 @@ def test_grid_allowlist_from_projections_context():
 def test_settings_default_specialist_fallback_true():
     settings = load_results_qa_settings("config/assistant.toml")
     assert settings.deterministic_specialist_fallback is True
+
+
+def test_null_tp_leaf_is_missing_grid_not_sl_only_answer():
+    """Narratable SL∧TP required — JSON-null TP must not yield SL-only best answer."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri1_null_tp"},
+        assumptions={},
+        results={
+            "best_grid_result": {
+                "stop_loss_ticks": 8,
+                "take_profit_ticks": None,
+                "trade_count": 40,
+            }
+        },
+        warnings=(),
+        limitations=(),
+    )
+    context = build_ephemeral_results_context(packet)
+    assert has_grid_ranking_evidence(context) is False
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What is the best SL/TP?",
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MISSING_GRID
+    assert "8" not in reply.summary
+
+
+def test_projection_null_tp_falls_back_to_recorded_best_tp():
+    """Per-leaf fallback: narratable recorded TP fills when projection TP is null."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri1_proj_null_tp"},
+        assumptions={"grid": {"ranking_metric": "expectancy_r"}},
+        results={
+            "best_grid_result": {
+                "stop_loss_ticks": 8,
+                "take_profit_ticks": 16,
+                "trade_count": 40,
+            },
+            "projections": {
+                "grid_rankings": {
+                    "metric": "expectancy_r",
+                    "selection_scope": "in_sample_grid",
+                    "oos_status": "not_evaluated",
+                    "best": {
+                        "stop_loss_ticks": 8,
+                        "take_profit_ticks": None,
+                        "trade_count": 40,
+                        "metric_value": 0.3,
+                    },
+                }
+            },
+        },
+        warnings=(),
+        limitations=(),
+    )
+    # Use packet results as turn context (skip ephemeral rebuild overwriting null).
+    context = {
+        "results": packet.results,
+        "assumptions": packet.assumptions,
+        "provenance": packet.provenance,
+    }
+    assert has_grid_ranking_evidence(context) is True
+    reply = build_deterministic_grid_ranking_reply(packet, context)
+    paths = {claim.path for claim in reply.claims}
+    assert "results.projections.grid_rankings.best.stop_loss_ticks" in paths
+    assert "results.best_grid_result.take_profit_ticks" in paths
+    assert any(claim.value == 16 for claim in reply.claims)
+    assert "16" in reply.summary
 
 
 def test_di_flags_off_still_hard_fails_overview():
