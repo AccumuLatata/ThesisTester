@@ -194,7 +194,7 @@ else:
 |---|---|
 | Latest user text matches `kpi_summary` / `run_overview` without negative veto | DI-shaped overview envelope (§4.2 policy A): `kpi_claims` + matching legacy `claims`, DI `summary`, `expert_overlay`, packet caveats; `overview_intent` = matched id |
 | `has_overview_negative_cue(text)` (DI §4.1 veto set) or mixed overview+specialist ask | Full veto: **no** KPI must-cite slice; **no** explainer multi-template `overview`/`claims`; digit-free `remediation` + packet `caveats`/`limitations`; `overview_intent = null` |
-| Unmatched text (no negative cue) — including vague / PTT unrecognized fallback | **Neutral** DI `run_overview` envelope (grounded KPI scalars + digit-free overlay). **Not** remediation. Overview tool does not redirect to `get_metric`; DX-2 instructions tell the model to prefer `get_metric` for single-metric asks. Acceptable DX v1 limitation: a mistooled single-metric ask that still calls `get_run_overview` may receive the full neutral KPI slice. |
+| Unmatched text (no negative cue) — including vague / PTT unrecognized fallback | **Neutral** DI `run_overview` envelope (grounded KPI scalars + digit-free overlay). **Not** remediation. Overview tool does not redirect to `get_metric`. DX-2 §4.3 needles steer the model to prefer DI-shaped overview fields and avoid specialist topic-swap via overview — they do **not** add a single-metric→`get_metric` redirect instruction. Acceptable DX v1 limitation: a mistooled single-metric ask that still calls `get_run_overview` may receive the full neutral KPI slice. |
 | No user transcript text on session yet (race), **or** last user text is stale (an assistant turn already followed it) | Same neutral DI `run_overview` envelope. Stale prior-turn text must not false-veto a later overview call. Topic-swap defense for the pure race is DX-2 instructions + evals, not tool veto. |
 
 **DX-1 freeze for request text:**
@@ -433,14 +433,15 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 
 ## 12. Practical operator guidance (non-normative)
 
-Until DX-1…DX-3 land:
+Until DX-3 lands (eval freeze / release gate):
 
 - **Max honesty / DI recovery:** use text Discuss or VA-4 push-to-talk.
-- **Low-latency duplex review:** VA-5 remains usable for bound-run talk; treat
+- **Low-latency duplex review:** VA-5 + DX-1/DX-2 are usable for bound-run
+  overview/KPI talk (DI-shaped envelopes + §4.3 instruction needles); treat
   numbers as tool-grounded and prefer confirming critical figures in text/PTT
   when precision matters.
 - After DX complete: duplex overview/KPI talk should match DI **content** on
   overview cues; negative-cue specialist asks remediate (no KPI/explainer
-  substitute); unmatched / race paths stay neutral overview-shaped. Text/PTT
-  remain strongest for typed recovery and pre-TTS gating. Confirm specialist
-  asks in text/PTT when the tool-before-transcript race matters.
+  substitute); unmatched / race / stale-text paths stay neutral overview-shaped.
+  Text/PTT remain strongest for typed recovery and pre-TTS gating. Confirm
+  specialist asks in text/PTT when the tool-before-transcript race matters.

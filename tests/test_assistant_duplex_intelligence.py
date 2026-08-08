@@ -1,4 +1,4 @@
-"""DX-1 duplex intelligence: DI envelopes on get_run_overview + path hygiene."""
+"""DX duplex intelligence: DX-1 envelopes + DX-2 realtime instruction needles."""
 
 from __future__ import annotations
 
@@ -19,22 +19,18 @@ from thesistester.assistant.voice.contracts import VoiceTranscriptTurn
 from thesistester.assistant.voice.grounding import format_speakable_tool_result
 from thesistester.assistant.voice.session import (
     VoiceSessionService,
+    _DX2_REALTIME_RESULTS_CONSTRAINT_LINES,
     build_honesty_instructions,
 )
+from thesistester.assistant.voice.sidecar import build_realtime_session_update
 from thesistester.assistant.voice.tools import (
     VOICE_TOOL_SCHEMAS,
     execute_voice_tool,
 )
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
 
-# Frozen DX-2 §4.3 needles (must match DUPLEX_INTELLIGENCE_IMPLEMENTATION.md).
-_DX2_NEEDLES = (
-    "Duplex overview rules: prefer tool fields summary, kpi_claims, expert_overlay, and packet caveats.",
-    "Cite only paths returned by tools; never invent results.trade_count, results.instrument, or results.validation.trade_count.",
-    "When tools return fractional win rates, say them as percent / %.",
-    "Do not answer walk-forward, validation, ranking, or time asks by reading get_run_overview as a substitute; call a specialist-appropriate tool or remediate.",
-    "No trade advice; sample-size and OOS caveats still apply.",
-)
+# Canonical §4.3 needles — same tuple the builder/create validator use.
+_DX2_NEEDLES = _DX2_REALTIME_RESULTS_CONSTRAINT_LINES
 
 _RUN_SPEC = {
     "dataset": {"path": "bars.csv", "instrument": "ES"},
@@ -398,7 +394,25 @@ def test_dx2_needles_absent_from_ptt_and_help():
         expected_hash="2" * 64,
     )
     help_rt = build_honesty_instructions(channel="product_help", mode="realtime")
-    for text in (ptt, help_rt):
+    help_ptt = build_honesty_instructions(channel="product_help", mode="push_to_talk")
+    for text in (ptt, help_rt, help_ptt):
         assert _DX2_NEEDLES[0] not in text
         assert "kpi_claims" not in text
         assert "never invent results.trade_count" not in text
+
+
+def test_dx2_needles_reach_realtime_session_update_payload():
+    """Sidecar session.update must carry the same honesty needles (no parallel builder)."""
+    instructions = build_honesty_instructions(
+        channel="results_qa",
+        mode="realtime",
+        run_id="run_" + "a" * 32,
+        expected_hash="b" * 64,
+    )
+    payload = build_realtime_session_update(instructions=instructions, voice="eve")
+    assert payload["type"] == "session.update"
+    embedded = payload["session"]["instructions"]
+    for needle in _DX2_NEEDLES:
+        assert needle in embedded
+    # Contiguous block (joined with newlines, no reordering/gaps).
+    assert "\n".join(_DX2_NEEDLES) in embedded

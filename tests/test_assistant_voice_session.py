@@ -16,6 +16,7 @@ from thesistester.assistant.voice.contracts import VoiceTranscriptTurn
 from thesistester.assistant.voice.session import (
     VoiceSessionError,
     VoiceSessionService,
+    _DX2_REALTIME_RESULTS_CONSTRAINT_LINES,
     build_honesty_instructions,
 )
 from thesistester.assistant.voice.settings import load_voice_settings
@@ -312,15 +313,9 @@ def test_realtime_results_honesty_includes_dx2_needles():
         run_id="run_" + "c" * 32,
         expected_hash="d" * 64,
     )
-    needles = (
-        "Duplex overview rules: prefer tool fields summary, kpi_claims, expert_overlay, and packet caveats.",
-        "Cite only paths returned by tools; never invent results.trade_count, results.instrument, or results.validation.trade_count.",
-        "When tools return fractional win rates, say them as percent / %.",
-        "Do not answer walk-forward, validation, ranking, or time asks by reading get_run_overview as a substitute; call a specialist-appropriate tool or remediate.",
-        "No trade advice; sample-size and OOS caveats still apply.",
-    )
-    for needle in needles:
+    for needle in _DX2_REALTIME_RESULTS_CONSTRAINT_LINES:
         assert needle in text
+    assert "\n".join(_DX2_REALTIME_RESULTS_CONSTRAINT_LINES) in text
     assert "sample-size/OOS caveats" in text
     assert "Never enable web_search" in text or "web_search" in text
 
