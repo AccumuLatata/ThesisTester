@@ -412,15 +412,18 @@ def _packet_signals_oos_absent(packet: EvidencePacket) -> bool:
             continue
         lowered = line.lower()
         # Phrase markers + boundary-anchored ``oos`` (avoid ``boost`` / ``loose``).
-        mentions_oos = any(
-            marker in lowered
-            for marker in (
-                "walk-forward",
-                "walk forward",
-                "out-of-sample",
-                "out of sample",
+        mentions_oos = (
+            any(
+                marker in lowered
+                for marker in (
+                    "walk-forward",
+                    "walk forward",
+                    "out-of-sample",
+                    "out of sample",
+                )
             )
-        ) or re.search(r"(?<![a-z0-9])oos(?![a-z0-9])", lowered) is not None
+            or re.search(r"(?<![a-z0-9])oos(?![a-z0-9])", lowered) is not None
+        )
         absent = any(
             marker in lowered
             for marker in (
