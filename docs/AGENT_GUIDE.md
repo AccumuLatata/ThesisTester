@@ -375,6 +375,14 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   **DX-0…DX-3 are complete** — do not reopen DX for feature work without a
   contract amendment; keep `tests/test_assistant_duplex_intelligence.py` §9
   bank green alongside VA-6 / DI / RQ honesty suites.
+- Specialist Discuss intelligence (best SL/TP, time, validation/WFA,
+  single-metric, meaning overlays, mixed-ask composition, bounded trade
+  projections, duplex specialist envelopes) has a **single** continuation
+  contract: `docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md` (RI-series). Do
+  not reopen DI/DX/RQ wholesale; stay inside RI scope tables. Keep the RQ
+  auditor fail-closed; fail-open only via frozen intent→allowlist builders.
+  Keep RQ-5 / DI / DX banks green; add `tests/test_assistant_research_intelligence.py`
+  as RI PRs land.
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned

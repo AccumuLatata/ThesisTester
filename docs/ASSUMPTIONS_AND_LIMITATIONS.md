@@ -600,6 +600,12 @@ other than the last bar in the dataset.
   not invent metrics, alias arbitrary wrong paths onto lookalike leaves,
   serve KPI slices for vetoed specialist asks, amend the RQ auditor, or
   persist ungrounded drafts.
+  **RI-series (continuation — RI-0 contract freeze):**
+  `docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md` adds fail-open specialist /
+  single-metric / meaning / mixed-ask slices while keeping the RQ auditor
+  identical. Specialist fragility after DI is intentional quality until each
+  RI slice lands; RI must not invent metrics, remap topics onto KPI overview,
+  soften OOS/selection-bias caveats, or touch engine/golden paths.
   **DX-series:** `docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md` targets VA-5
   full-duplex **content** parity with DI overview/KPI intelligence by reusing
   DI builders inside VA-3 tool envelopes + realtime instructions. DX does not

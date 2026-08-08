@@ -34,6 +34,7 @@ rejected.
 | VA | Spoken transport (PTT + xAI realtime sidecar), tool allowlist names, session bind, digit audit | Call VA tools/session/sidecar; **must not** change provider, topology, TTL, search/mcp deny, or reopen VA broadly |
 | RQ | Discuss channel schema, digit/path honesty, projections | Call; **must not** amend `assert_llm_explanation_grounded` / path-existence rules |
 | HC / Help | Product how-to corpus | Out of DX v1 (Help duplex remains deferred) |
+| RI | Specialist Discuss slices (`docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md`) | Out of DX v1. **RI-10** may project RI builders into duplex envelopes and amend DX characterization only with an explicit relationship note; do not fork cue/path tables |
 | DX (this doc) | **Content parity** for VA-5 full-duplex results talk with DI overview/KPI intelligence — via tool envelopes + session instructions | Tool/instruction substrate only; no live-PCM pre-gate; no provider swap |
 
 **Landing note:** DX-0 freezes this contract alone (plan PR). Do not treat the
