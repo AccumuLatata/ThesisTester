@@ -1,7 +1,8 @@
-"""DI-1 overview intent matching and deterministic KPI / remediation builders.
+"""DI overview matching, path-catalog hints, and deterministic KPI builders.
 
-Fail-closed numbers stay in ``llm_explainer``. This module only selects frozen
-overview slices and builds auditor-safe replies when the LLM path fails.
+Fail-closed numbers stay in ``llm_explainer``. This module selects frozen
+overview slices, builds DI-2 first-pass path catalogs, and builds auditor-safe
+replies when the LLM path fails (DI-1).
 """
 
 from __future__ import annotations
@@ -144,6 +145,48 @@ def classify_recovery_reason(exc: BaseException, *, repaired: bool) -> str:
         return REASON_PATH_MISS
     # Other LLMEvidenceError classes (schema/soften/etc.) are not provider exhaust.
     return REASON_PATH_MISS
+
+
+def present_kpi_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return frozen KPI claim paths that exist on the turn evidence context."""
+    if not isinstance(evidence_context, Mapping):
+        return ()
+    return tuple(path for path in KPI_CLAIM_PATHS if _path_exists(evidence_context, path))
+
+
+def build_prompt_path_catalog(
+    evidence_context: Mapping[str, Any],
+    *,
+    overview_intent: str | None = None,
+) -> dict[str, Any]:
+    """Build the DI-2 first-pass path catalog for the Results Q&A user payload.
+
+    Always includes ``existing_paths`` from the turn context. When an overview
+    intent is matched, also includes ``kpi_allowlist`` (present paths only) and
+    an overview instruction — never a must-cite set for non-overview asks.
+    """
+    existing = list(collect_existing_paths(evidence_context))
+    catalog: dict[str, Any] = {
+        "existing_paths": existing,
+        "instruction": (
+            "Cite claim.path values only from existing_paths. "
+            "Do not invent nested keys (e.g. results.instrument, "
+            "results.validation.trade_count). "
+            "Narrate fractional rates with % or percent/pct/Prozent."
+        ),
+    }
+    if overview_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}:
+        kpi_paths = list(present_kpi_allowlist(evidence_context))
+        catalog["overview_intent"] = overview_intent
+        catalog["kpi_allowlist"] = kpi_paths
+        catalog["overview_instruction"] = (
+            "This is an overview/KPI ask. Prefer citing a subset of "
+            "kpi_allowlist paths that exist. Do not substitute validation, "
+            "instrument, or other specialist paths for the KPI overview."
+        )
+        # Optional must-cite hint: cite these or a subset (never invent outside).
+        catalog["preferred_claim_paths"] = kpi_paths
+    return catalog
 
 
 def collect_existing_paths(

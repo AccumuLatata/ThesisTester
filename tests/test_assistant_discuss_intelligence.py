@@ -1,7 +1,8 @@
-"""DI-1 Discuss Intelligence recovery: matcher, TLS wrap, overview fallback."""
+"""DI Discuss Intelligence: matcher, TLS wrap, overview fallback, path catalog."""
 
 from __future__ import annotations
 
+import json
 import ssl
 from urllib import error as urllib_error
 
@@ -14,7 +15,7 @@ from thesistester.assistant.llm import (
     _is_tls_allowlist_error,
     load_results_qa_settings,
 )
-from thesistester.assistant.llm_explainer import LLMEvidenceError
+from thesistester.assistant.llm_explainer import LLMEvidenceError, _path_exists
 from thesistester.assistant.results_overview import (
     KPI_CLAIM_PATHS,
     OVERVIEW_INTENT_KPI,
@@ -23,9 +24,11 @@ from thesistester.assistant.results_overview import (
     REASON_PATH_MISS,
     REASON_PROVIDER_EXHAUSTED,
     REASON_REPAIR_FAILED,
+    build_prompt_path_catalog,
     collect_existing_paths,
     failure_class_from_exception,
     match_overview_intent,
+    present_kpi_allowlist,
 )
 from thesistester.assistant.results_qa import propose_results_reply
 
@@ -344,3 +347,115 @@ def test_tracked_config_loads_di1_recovery_defaults():
     settings = load_results_qa_settings("config/assistant.toml")
     assert settings.repair_retry_enabled is True
     assert settings.deterministic_overview_fallback is True
+
+
+class _CaptureClient:
+    """Capture complete_structured kwargs; return a grounded overview reply."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def complete_structured(self, **kwargs):
+        self.calls.append(kwargs)
+        return {
+            "summary": "Sample has 42 trades. Win rate is 52 percent.",
+            "caveats": ["Historical sample only."],
+            "claims": [
+                {
+                    "text": "Sample has 42 trades.",
+                    "path": "results.trade_summary.trade_count",
+                },
+                {
+                    "text": "Win rate is 52 percent.",
+                    "path": "results.trade_summary.win_rate",
+                },
+            ],
+            "followups": ["Ask about expectancy next."],
+        }
+
+
+def _user_payload_from_call(call: dict) -> dict:
+    return json.loads(call["user"])
+
+
+def test_di2_overview_ask_includes_path_catalog_and_kpi_allowlist():
+    client = _CaptureClient()
+    packet = _packet()
+    propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="Give me the KPIs of this run",
+    )
+    assert len(client.calls) == 1
+    payload = _user_payload_from_call(client.calls[0])
+    assert "path_catalog" in payload
+    catalog = payload["path_catalog"]
+    existing = catalog["existing_paths"]
+    assert isinstance(existing, list) and existing
+    evidence = packet.to_dict()
+    assert all(_path_exists(evidence, path) for path in existing)
+    assert "results.instrument" not in existing
+    assert "results.validation.trade_count" not in existing
+    assert catalog["overview_intent"] == OVERVIEW_INTENT_KPI
+    assert "kpi_allowlist" in catalog
+    assert "preferred_claim_paths" in catalog
+    assert set(catalog["kpi_allowlist"]) == set(present_kpi_allowlist(evidence))
+    assert "results.trade_summary.trade_count" in catalog["kpi_allowlist"]
+    assert "path_catalog" in client.calls[0]["system"]
+
+
+def test_di2_non_overview_ask_gets_shared_catalog_without_kpi_must_cite():
+    client = _CaptureClient()
+    packet = _packet()
+    propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="How many trades?",
+    )
+    payload = _user_payload_from_call(client.calls[0])
+    catalog = payload["path_catalog"]
+    assert "existing_paths" in catalog
+    assert "kpi_allowlist" not in catalog
+    assert "preferred_claim_paths" not in catalog
+    assert "overview_intent" not in catalog
+    evidence = packet.to_dict()
+    assert all(_path_exists(evidence, path) for path in catalog["existing_paths"])
+
+
+def test_di2_vetoed_specialist_ask_has_catalog_without_kpi_allowlist():
+    class Client:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def complete_structured(self, **kwargs):
+            self.calls.append(kwargs)
+            return {
+                "summary": "Walk-forward evidence is not answered from the KPI slice.",
+                "caveats": ["Ask using validation paths when present."],
+                "claims": [],
+                "followups": ["Ask about key metrics of this run."],
+            }
+
+    client = Client()
+    propose_results_reply(
+        client,
+        packet=_packet(),
+        history=(),
+        user_message="Summarize the walk-forward results",
+    )
+    payload = _user_payload_from_call(client.calls[0])
+    catalog = payload["path_catalog"]
+    assert "existing_paths" in catalog
+    assert "kpi_allowlist" not in catalog
+
+
+def test_di2_build_prompt_path_catalog_helper_overview_vs_none():
+    evidence = _packet().to_dict()
+    overview = build_prompt_path_catalog(evidence, overview_intent=OVERVIEW_INTENT_RUN)
+    plain = build_prompt_path_catalog(evidence, overview_intent=None)
+    assert overview["overview_intent"] == OVERVIEW_INTENT_RUN
+    assert overview["kpi_allowlist"]
+    assert "kpi_allowlist" not in plain
+    assert set(overview["existing_paths"]) >= set(overview["kpi_allowlist"])

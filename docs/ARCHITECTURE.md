@@ -489,6 +489,11 @@ deterministic KPI fallback live in
 `thesistester/assistant/results_overview.py` and are applied inside
 `propose_results_reply` / `handle_results_turn` (not page-only). Flags both
 `false` restore pre-DI grounding hard-fail (TLS wrap remains).
+**DI-2 landed:** first-pass Results Q&A user payloads include
+`path_catalog.existing_paths` (bounded paths present on the turn context).
+Overview/KPI asks (DI-1 matcher) also receive `kpi_allowlist` /
+`preferred_claim_paths`; non-overview asks get the shared catalog only.
+Matcher ownership stays in DI-1; DI-2 does not widen intents.
 **RQ-3 landed:** `thesistester/assistant/product_help.py` +
 `handle_help_turn`; Help / how it works mode on Research Assistant
 (page-level mode-scoped `st.chat_input`; RUX-3);

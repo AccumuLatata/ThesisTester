@@ -589,7 +589,9 @@ other than the last bar in the dataset.
   deterministic KPI/overview fallback with negative-cue veto against topic
   swap; §5.3 structured remediation when fallback does not apply; settings
   `repair_retry_enabled` / `deterministic_overview_fallback` (defaults
-  `true`). Defaults change recovery UX; the auditor stays identical. DI must
+  `true`). **DI-2 landed:** first-pass `path_catalog` (existing paths; plus
+  overview `kpi_allowlist`) constrains claim paths without loosening the
+  auditor. Defaults change recovery UX; the auditor stays identical. DI must
   not invent metrics, alias arbitrary wrong paths onto lookalike leaves,
   serve KPI slices for vetoed specialist asks, amend the RQ auditor, or
   persist ungrounded drafts. DI-3 expert overlay remains pending.
