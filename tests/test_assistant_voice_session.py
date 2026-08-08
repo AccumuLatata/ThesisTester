@@ -16,6 +16,7 @@ from thesistester.assistant.voice.contracts import VoiceTranscriptTurn
 from thesistester.assistant.voice.session import (
     VoiceSessionError,
     VoiceSessionService,
+    _DX2_REALTIME_RESULTS_CONSTRAINT_LINES,
     build_honesty_instructions,
 )
 from thesistester.assistant.voice.settings import load_voice_settings
@@ -300,6 +301,23 @@ def test_honesty_instruction_policy_strings():
         assert "numbers only from tools/packet/corpus rules" in text
     assert "sample-size/OOS caveats" in results
     assert "remediate to Discuss results" in help_text
+    # DX-2 duplex needles are realtime/results-only — not PTT or Help.
+    assert "kpi_claims" not in results
+    assert "kpi_claims" not in help_text
+
+
+def test_realtime_results_honesty_includes_dx2_needles():
+    text = build_honesty_instructions(
+        channel="results_qa",
+        mode="realtime",
+        run_id="run_" + "c" * 32,
+        expected_hash="d" * 64,
+    )
+    for needle in _DX2_REALTIME_RESULTS_CONSTRAINT_LINES:
+        assert needle in text
+    assert "\n".join(_DX2_REALTIME_RESULTS_CONSTRAINT_LINES) in text
+    assert "sample-size/OOS caveats" in text
+    assert "Never enable web_search" in text or "web_search" in text
 
 
 def test_end_session_flushes_transcript_best_effort(tmp_path):

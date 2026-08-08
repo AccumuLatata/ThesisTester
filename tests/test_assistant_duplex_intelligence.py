@@ -1,4 +1,4 @@
-"""DX-1 duplex intelligence: DI envelopes on get_run_overview + path hygiene."""
+"""DX duplex intelligence: DX-1 envelopes + DX-2 realtime instruction needles."""
 
 from __future__ import annotations
 
@@ -17,12 +17,20 @@ from thesistester.assistant.repository import LocalThesisRepository
 from thesistester.assistant.tools import AssistantTools
 from thesistester.assistant.voice.contracts import VoiceTranscriptTurn
 from thesistester.assistant.voice.grounding import format_speakable_tool_result
-from thesistester.assistant.voice.session import VoiceSessionService
+from thesistester.assistant.voice.session import (
+    VoiceSessionService,
+    _DX2_REALTIME_RESULTS_CONSTRAINT_LINES,
+    build_honesty_instructions,
+)
+from thesistester.assistant.voice.sidecar import build_realtime_session_update
 from thesistester.assistant.voice.tools import (
     VOICE_TOOL_SCHEMAS,
     execute_voice_tool,
 )
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
+
+# Canonical §4.3 needles — same tuple the builder/create validator use.
+_DX2_NEEDLES = _DX2_REALTIME_RESULTS_CONSTRAINT_LINES
 
 _RUN_SPEC = {
     "dataset": {"path": "bars.csv", "instrument": "ES"},
@@ -357,3 +365,54 @@ def test_stale_negative_cue_after_assistant_turn_is_neutral(tmp_path: Path):
     assert result["kpi_claims"]
     assert not result.get("remediation")
     assert result["claims"] == result["kpi_claims"]
+
+
+def test_dx2_realtime_results_instructions_contain_frozen_needles(tmp_path: Path):
+    """X8: realtime/results honesty instructions include §4.3 needles."""
+    text = build_honesty_instructions(
+        channel="results_qa",
+        mode="realtime",
+        run_id="run_" + "e" * 32,
+        expected_hash="f" * 64,
+    )
+    for needle in _DX2_NEEDLES:
+        assert needle in text
+    # Session create path also validates these needles for realtime results.
+    service, handle, thesis, _run, digest = _results_session(tmp_path, packet=_kpi_packet())
+    record = service.repository.get_voice_session(thesis.thesis_id, handle.session_id)
+    assert record.mode == "realtime"
+    created_instructions = service.build_honesty_instructions(record)
+    for needle in _DX2_NEEDLES:
+        assert needle in created_instructions
+
+
+def test_dx2_needles_absent_from_ptt_and_help():
+    ptt = build_honesty_instructions(
+        channel="results_qa",
+        mode="push_to_talk",
+        run_id="run_" + "1" * 32,
+        expected_hash="2" * 64,
+    )
+    help_rt = build_honesty_instructions(channel="product_help", mode="realtime")
+    help_ptt = build_honesty_instructions(channel="product_help", mode="push_to_talk")
+    for text in (ptt, help_rt, help_ptt):
+        assert _DX2_NEEDLES[0] not in text
+        assert "kpi_claims" not in text
+        assert "never invent results.trade_count" not in text
+
+
+def test_dx2_needles_reach_realtime_session_update_payload():
+    """Sidecar session.update must carry the same honesty needles (no parallel builder)."""
+    instructions = build_honesty_instructions(
+        channel="results_qa",
+        mode="realtime",
+        run_id="run_" + "a" * 32,
+        expected_hash="b" * 64,
+    )
+    payload = build_realtime_session_update(instructions=instructions, voice="eve")
+    assert payload["type"] == "session.update"
+    embedded = payload["session"]["instructions"]
+    for needle in _DX2_NEEDLES:
+        assert needle in embedded
+    # Contiguous block (joined with newlines, no reordering/gaps).
+    assert "\n".join(_DX2_NEEDLES) in embedded

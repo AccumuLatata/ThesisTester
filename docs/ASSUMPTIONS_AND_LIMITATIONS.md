@@ -611,7 +611,13 @@ other than the last bar in the dataset.
   explainer `overview`/`claims`; unmatched / no-text → neutral
   `run_overview`); sample-size intent alias →
   `results.trade_summary.trade_count`; speakable prefers DI `summary` (+
-  digit-free `expert_overlay`). DX-2 instructions + DX-3 eval freeze remain.
+  digit-free `expert_overlay`). **DX-2 landed:** realtime/results
+  `build_honesty_instructions` appends the frozen §4.3 duplex overview
+  constraint needles (prefer `summary`/`kpi_claims`/`expert_overlay`; forbid
+  inventing `results.trade_count` / `results.instrument` /
+  `results.validation.trade_count`; no KPI-overview topic swap for
+  walk-forward/validation/ranking/time). PTT and Help instructions unchanged.
+  DX-3 eval freeze remains.
   Thesis switches clear mode-scoped chat_input widget keys and other
   thesis-scoped staging. Draft-chat history
   excludes `results_qa` / `product_help` turns and tool/audit lines so
@@ -710,7 +716,8 @@ other than the last bar in the dataset.
   transport freezes or DI auditor rules. **DX-1 landed:** sample-size voice
   intent aliases target the DI baseline leaf
   `results.trade_summary.trade_count` (not the distinct `results.trade_count`
-  leaf). DX-2 instructions + DX-3 eval freeze remain.
+  leaf). **DX-2 landed:** realtime/results honesty instructions include the
+  frozen duplex overview constraint needles. DX-3 eval freeze remains.
 
 ## OTF filter (One Timeframing)
 
