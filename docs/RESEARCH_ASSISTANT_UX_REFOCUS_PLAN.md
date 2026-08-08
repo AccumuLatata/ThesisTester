@@ -581,7 +581,7 @@ bullet; suite green — see `docs/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md`.
 | RUX-2 | Discuss-first mode layout; deep-link superset ([#302](https://github.com/AccumuLatata/ThesisTester/pull/302)) |
 | RUX-3 | One page-level mode-scoped `st.chat_input`; retired text-input draft keys ([#303](https://github.com/AccumuLatata/ThesisTester/pull/303)) |
 | RUX-4 | Help remediation + USER_GUIDE / Q-H13 re-anchor; allowlist unchanged ([#304](https://github.com/AccumuLatata/ThesisTester/pull/304)) |
-| RUX-5 | Evidence + Complete status (this subsection) |
+| RUX-5 | Evidence + Complete status ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305)) |
 
 ---
 
