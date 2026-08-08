@@ -598,6 +598,12 @@ other than the last bar in the dataset.
   not invent metrics, alias arbitrary wrong paths onto lookalike leaves,
   serve KPI slices for vetoed specialist asks, amend the RQ auditor, or
   persist ungrounded drafts.
+  **DX-series (follow-on plan):** `docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md`
+  targets VA-5 full-duplex **content** parity with DI overview/KPI
+  intelligence by reusing DI builders inside VA-3 tool envelopes + realtime
+  instructions. DX does not switch providers, does not pre-gate live PCM, and
+  does not call `propose_results_reply` on every duplex turn; text Discuss and
+  VA-4 PTT remain the strongest typed-recovery paths.
   Thesis switches clear mode-scoped chat_input widget keys and other
   thesis-scoped staging. Draft-chat history
   excludes `results_qa` / `product_help` turns and tool/audit lines so
@@ -687,10 +693,13 @@ other than the last bar in the dataset.
   `assistant_voice_playback` for `st.audio` only. Sessions end at
   `max_session_minutes` (default 15). Budget guidance: ~$0.08/min speech-to-
   speech for Think Fast 2.0, plus unary STT/TTS and OpenAI for VA-4 channel
-  turns. PTT spoken answers are digit-gated before TTS. Realtime live PCM
+  turns. PTT spoken answers are digit-gated before TTS.   Realtime live PCM
   cannot be pre-gated once uttered; assistant transcript text is still
   digit-audited against the bound packet and tool returns before durable
   persistence/flush (uncited numbers are replaced with remediation).
+  Duplex overview/KPI **content** parity with Discuss intelligence is planned
+  under DX (`docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md`) and must not reopen
+  VA transport freezes or DI auditor rules.
 
 ## OTF filter (One Timeframing)
 
