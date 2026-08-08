@@ -10,6 +10,7 @@ import re
 from typing import Any, Mapping, Sequence
 
 from thesistester.assistant.explainer import EvidenceClaim, EvidencePacket
+from thesistester.assistant.llm import LLMProviderError
 from thesistester.assistant.llm_explainer import (
     _path_exists,
     _path_get,
@@ -91,12 +92,23 @@ def _normalize_message(text: str) -> str:
 
 
 def _alias_matches(alias: str, normalized: str) -> bool:
-    """Word-boundary / multi-word alias match (not raw substring for short tokens)."""
+    """Boundary-anchored alias match (single- and multi-word).
+
+    Edges are alnum / underscore / hyphen so cues do not false-match inside
+    compounds (``runtime`` / ``runaway`` / ``passkey metrics``) or hyphenated
+    words (``non-stop`` must not hit negative cue ``stop``; ``off-grid`` must
+    not hit ``grid``). Hyphenated cues such as ``walk-forward`` still match as
+    whole aliases.
+    """
     if not alias:
         return False
-    if " " in alias or "-" in alias:
-        return alias in normalized
-    return re.search(rf"\b{re.escape(alias)}\b", normalized) is not None
+    return (
+        re.search(
+            rf"(?<![A-Za-z0-9_-]){re.escape(alias)}(?![A-Za-z0-9_-])",
+            normalized,
+        )
+        is not None
+    )
 
 
 def match_overview_intent(message: str) -> str | None:
@@ -121,13 +133,17 @@ def classify_recovery_reason(exc: BaseException, *, repaired: bool) -> str:
     """Map a failed model/provider attempt to a DI recovery reason code."""
     if repaired:
         return REASON_REPAIR_FAILED
+    # Prefer typed provider faults over string sniffing of unrelated auditor text.
+    if isinstance(exc, LLMProviderError):
+        return REASON_PROVIDER_EXHAUSTED
     text = str(exc)
     lowered = text.lower()
     if "uncited numerical" in lowered:
         return REASON_DIGIT_MISS
     if "missing from the evidence packet" in lowered or "claim path" in lowered:
         return REASON_PATH_MISS
-    return REASON_PROVIDER_EXHAUSTED
+    # Other LLMEvidenceError classes (schema/soften/etc.) are not provider exhaust.
+    return REASON_PATH_MISS
 
 
 def collect_existing_paths(
@@ -135,8 +151,20 @@ def collect_existing_paths(
     *,
     max_paths: int = 240,
 ) -> tuple[str, ...]:
-    """Collect dotted paths present on the turn evidence context (bounded)."""
+    """Collect dotted paths present on the turn evidence context (bounded).
+
+    Prefers KPI allowlist paths and the ``results.*`` subtree so repair catalogs
+    are not starved by large ``provenance`` / ``assumptions`` maps.
+    """
     paths: list[str] = []
+    seen: set[str] = set()
+
+    def add(path: str) -> bool:
+        if path in seen or len(paths) >= max_paths:
+            return len(paths) < max_paths
+        seen.add(path)
+        paths.append(path)
+        return len(paths) < max_paths
 
     def walk(node: Any, prefix: str) -> None:
         if len(paths) >= max_paths:
@@ -146,21 +174,48 @@ def collect_existing_paths(
                 if not isinstance(key, str) or not key:
                     continue
                 path = f"{prefix}.{key}" if prefix else key
-                paths.append(path)
-                if len(paths) >= max_paths:
+                if not add(path):
                     return
                 walk(value, path)
             return
         if isinstance(node, Sequence) and not isinstance(node, (str, bytes, bytearray)):
             for index, value in enumerate(node):
                 path = f"{prefix}.{index}" if prefix else str(index)
-                paths.append(path)
-                if len(paths) >= max_paths:
+                if not add(path):
                     return
                 walk(value, path)
 
-    walk(root, "")
+    if isinstance(root, Mapping):
+        for path in KPI_CLAIM_PATHS:
+            if _path_exists(root, path):
+                add(path)
+        results = root.get("results")
+        if isinstance(results, Mapping):
+            walk(results, "results")
+        for key, value in root.items():
+            if key == "results":
+                continue
+            if not isinstance(key, str) or not key:
+                continue
+            path = key
+            if not add(path):
+                break
+            walk(value, path)
+    else:
+        walk(root, "")
     return tuple(paths)
+
+
+def _digit_free_lines(lines: Sequence[Any]) -> tuple[str, ...]:
+    """Return stripped lines that introduce no digit tokens (auditor-safe)."""
+    out: list[str] = []
+    for line in lines:
+        if not isinstance(line, str):
+            continue
+        text = line.strip()
+        if text and not any(ch.isdigit() for ch in text):
+            out.append(text)
+    return tuple(out)
 
 
 def _format_scalar_for_claim(path: str, value: Any) -> str | None:
@@ -212,16 +267,21 @@ def build_deterministic_kpi_reply(
         claims.append(EvidenceClaim(text=text, path=path, value=value))
         summary_parts.append(text.rstrip("."))
 
+    limitation_honesty = _digit_free_lines(packet.limitations)
     if not claims:
+        # §4.2: when trade_summary is absent, prefer digit-free packet limitations.
         summary = (
-            "Baseline trade summary KPIs are not present in this evidence packet."
+            limitation_honesty[0]
+            if limitation_honesty
+            else "Baseline trade summary KPIs are not present in this evidence packet."
         )
         followups = (
             "Ask whether validation diagnostics exist on this run.",
             "Ask about best grid result if a grid was recorded.",
         )
-        caveat_seed: tuple[str, ...] = (
+        caveat_seed = (
             "No trade_summary KPI scalars were available for a deterministic overview.",
+            *limitation_honesty[1:2],
         )
     else:
         label = "Key metrics" if intent == OVERVIEW_INTENT_KPI else "Run summary"
@@ -230,8 +290,10 @@ def build_deterministic_kpi_reply(
             "Ask about validation or walk-forward diagnostics if present.",
             "Ask about best stop and take profit ranking next.",
         )
+        # §4.1 run_overview: one-line honesty from digit-free limitations when present.
         caveat_seed = (
             "These figures describe the recorded historical sample, not a forecast.",
+            *limitation_honesty[:1],
         )
 
     grounded = tuple(claims)
@@ -279,7 +341,10 @@ def build_structured_remediation_reply(
         "ungrounded": (
             "I could not produce a grounded answer for that ask from the evidence packet."
         ),
-    }.get(failure_class, "I could not produce a grounded answer for that ask from the evidence packet.")
+    }.get(
+        failure_class,
+        "I could not produce a grounded answer for that ask from the evidence packet.",
+    )
 
     summary = class_text
     # Prefer empty claims for remediation (§5.3). Limitation bodies often contain
@@ -311,7 +376,12 @@ def build_structured_remediation_reply(
 
 
 def failure_class_from_exception(exc: BaseException) -> str:
-    """Map exception text to a §5.3 remediation failure class."""
+    """Map exception / typed provider fault to a §5.3 remediation failure class."""
+    if isinstance(exc, LLMProviderError):
+        text = str(exc).lower()
+        if "tls" in text or "ssl" in text:
+            return "provider_tls"
+        return "provider"
     text = str(exc).lower()
     if "uncited numerical" in text:
         return "uncited_number"
@@ -322,4 +392,3 @@ def failure_class_from_exception(exc: BaseException) -> str:
     if "openai" in text or "provider" in text or "timed out" in text:
         return "provider"
     return "ungrounded"
-

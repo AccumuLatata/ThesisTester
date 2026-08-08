@@ -119,6 +119,12 @@ def _openai_transport_failure_message(exc: BaseException, *, api_key: str | None
         return f"{prefix} (TLS error)."
     if isinstance(exc, error.URLError):
         reason = exc.reason
+        # Common path: urlopen wraps SSL faults as URLError(reason=SSLError).
+        if isinstance(reason, ssl.SSLError):
+            detail = _sanitize_provider_error_text(str(reason), api_key=api_key).rstrip(".")
+            if detail:
+                return f"{prefix} (TLS error: {detail})."
+            return f"{prefix} (TLS error)."
         detail = (
             _sanitize_provider_error_text(str(reason), api_key=api_key).rstrip(".")
             if reason is not None

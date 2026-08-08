@@ -16,11 +16,15 @@ from thesistester.assistant.llm import (
 )
 from thesistester.assistant.llm_explainer import LLMEvidenceError
 from thesistester.assistant.results_overview import (
+    KPI_CLAIM_PATHS,
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
     REASON_DIGIT_MISS,
     REASON_PATH_MISS,
+    REASON_PROVIDER_EXHAUSTED,
     REASON_REPAIR_FAILED,
+    collect_existing_paths,
+    failure_class_from_exception,
     match_overview_intent,
 )
 from thesistester.assistant.results_qa import propose_results_reply
@@ -54,11 +58,7 @@ def _packet(**trade_summary_extra) -> EvidencePacket:
 
 class _FailClient:
     def __init__(self, payload_or_exc):
-        self._items = (
-            list(payload_or_exc)
-            if isinstance(payload_or_exc, list)
-            else [payload_or_exc]
-        )
+        self._items = list(payload_or_exc) if isinstance(payload_or_exc, list) else [payload_or_exc]
         self.calls = 0
 
     def complete_structured(self, **kwargs):
@@ -111,6 +111,13 @@ def test_match_overview_intent_positive_and_veto():
     # Word-boundary false friends must not veto.
     assert match_overview_intent("summary of this run for runtime review") == OVERVIEW_INTENT_RUN
     assert match_overview_intent("key metrics before stopwatch calibration") == OVERVIEW_INTENT_KPI
+    # Multi-word cues must not substring-match false friends.
+    assert match_overview_intent("highlights of this runtime") is None
+    assert match_overview_intent("summarize this runaway") is None
+    assert match_overview_intent("passkey metrics") is None
+    # Hyphen compounds must not trip bare negative cues stop/grid.
+    assert match_overview_intent("non-stop key metrics please") == OVERVIEW_INTENT_KPI
+    assert match_overview_intent("off-grid key metrics") == OVERVIEW_INTENT_KPI
 
 
 def test_tls_allowlist_wraps_ssl_error(monkeypatch):
@@ -125,6 +132,7 @@ def test_tls_allowlist_wraps_ssl_error(monkeypatch):
             payload={"model": "x"},
         )
     assert caught.value.retryable is True
+    assert failure_class_from_exception(caught.value) == "provider_tls"
 
 
 def test_tls_allowlist_wraps_urlerror_ssl_reason(monkeypatch):
@@ -132,13 +140,15 @@ def test_tls_allowlist_wraps_urlerror_ssl_reason(monkeypatch):
         raise urllib_error.URLError(ssl.SSLError("bad record mac"))
 
     monkeypatch.setattr("thesistester.assistant.llm.request.urlopen", boom)
-    with pytest.raises(LLMProviderError) as caught:
+    with pytest.raises(LLMProviderError, match="TLS error") as caught:
         UrllibOpenAITransport().post_json(
             url="https://api.openai.com/v1/responses",
             api_key="sk-test",
             payload={"model": "x"},
         )
     assert caught.value.retryable is True
+    assert "TLS error" in str(caught.value)
+    assert failure_class_from_exception(caught.value) == "provider_tls"
     assert _is_tls_allowlist_error(urllib_error.URLError(ssl.SSLError("x")))
     assert not _is_tls_allowlist_error(OSError("disk full"))
 
@@ -226,7 +236,9 @@ def test_flags_off_hard_fail_still_raises():
 
 
 def test_provider_exhaustion_on_overview_uses_deterministic_fallback():
-    client = _FailClient(LLMProviderError("OpenAI structured request failed (TLS error).", retryable=True))
+    client = _FailClient(
+        LLMProviderError("OpenAI structured request failed (TLS error).", retryable=True)
+    )
     reply = propose_results_reply(
         client,
         packet=_packet(),
@@ -234,6 +246,25 @@ def test_provider_exhaustion_on_overview_uses_deterministic_fallback():
         user_message="key metrics",
         repair_retry_enabled=False,
     )
+    assert reply.recovery_reason == REASON_PROVIDER_EXHAUSTED
+    assert any(c.path.startswith("results.trade_summary.") for c in reply.claims)
+
+
+def test_provider_error_skips_repair_second_model_call():
+    """§5: LLMProviderError must not trigger a repair model call."""
+    client = _FailClient(
+        LLMProviderError("OpenAI structured request failed (TLS error).", retryable=True)
+    )
+    reply = propose_results_reply(
+        client,
+        packet=_packet(),
+        history=(),
+        user_message="key metrics",
+        repair_retry_enabled=True,
+        deterministic_overview_fallback=True,
+    )
+    assert client.calls == 1
+    assert reply.recovery_reason == REASON_PROVIDER_EXHAUSTED
     assert any(c.path.startswith("results.trade_summary.") for c in reply.claims)
 
 
@@ -254,10 +285,35 @@ def test_missing_trade_summary_deterministic_limitation():
         repair_retry_enabled=False,
     )
     assert reply.claims == ()
-    assert "not present" in reply.summary.lower()
-    assert all(
-        not any(ch.isdigit() for ch in followup) for followup in reply.followups
-    )
+    # §4.2: prefer digit-free packet limitation over generic empty-KPI copy.
+    assert "baseline trade_summary is missing from evidence" in reply.summary.lower()
+    assert all(not any(ch.isdigit() for ch in followup) for followup in reply.followups)
+
+
+def test_fat_provenance_repair_catalog_keeps_kpi_paths():
+    """Repair path catalog must not starve KPI leaves behind fat provenance."""
+    fat_provenance = {f"blob_{i}": {"nested": i} for i in range(400)}
+    context = {
+        "provenance": fat_provenance,
+        "assumptions": {"instrument": "NQ"},
+        "results": {
+            "trade_summary": {
+                "trade_count": 42,
+                "expectancy_r": 0.25,
+                "win_rate": 0.52,
+            }
+        },
+        "warnings": [],
+        "limitations": [],
+    }
+    paths = collect_existing_paths(context, max_paths=240)
+    for required in (
+        "results.trade_summary.trade_count",
+        "results.trade_summary.expectancy_r",
+        "results.trade_summary.win_rate",
+    ):
+        assert required in paths
+    assert any(p in paths for p in KPI_CLAIM_PATHS)
 
 
 def test_repair_retry_succeeds_without_fallback():

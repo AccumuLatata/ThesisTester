@@ -331,13 +331,14 @@ def propose_results_reply(
             history=history,
             user_message=user_message,
         )
-        return _decode_results_payload(
-            payload, packet=packet, evidence_context=evidence_context
-        )
+        return _decode_results_payload(payload, packet=packet, evidence_context=evidence_context)
     except (LLMEvidenceError, LLMProviderError) as first_exc:
         if not repair_retry_enabled and not deterministic_overview_fallback:
             raise
-        if repair_retry_enabled:
+        # §5: repair is for grounding/auditor faults only. Provider/TLS faults
+        # already exhausted transport retries — go straight to overview fallback
+        # or §5.3 remediation (never a second model call on dead transport).
+        if repair_retry_enabled and isinstance(first_exc, LLMEvidenceError):
             repair_payload = {
                 "prior_error": str(first_exc),
                 "existing_paths": list(collect_existing_paths(evidence_context)),
