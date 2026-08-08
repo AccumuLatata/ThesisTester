@@ -122,6 +122,8 @@ def test_residual_veto_and_false_friends_for_overview_negative_export():
     # Bare stop/target still refuse overview (DX), but are not grid_ranking.
     assert has_overview_negative_cue("What's my stop?") is True
     assert has_overview_negative_cue("full stop") is True
+    # mixed_ask (incl. dual overview) refuses overview envelopes for DX.
+    assert has_overview_negative_cue("Give me the KPIs and summarize this run") is True
     assert has_overview_negative_cue("runtime of this batch") is False
     assert has_overview_negative_cue("stopwatch only") is False
     assert has_overview_negative_cue("non-stop session") is False
@@ -197,9 +199,9 @@ def test_r16_specialist_flag_off_restores_remediation_on_grounding_miss():
     )
     assert reply.claims == ()
     assert reply.recovery_reason == REASON_PATH_MISS or "could not ground" in reply.summary.lower()
-    assert not any(
-        "stop_loss_ticks" in c.path for c in reply.claims
-    ), "flags-off must not emit deterministic grid claims"
+    assert not any("stop_loss_ticks" in c.path for c in reply.claims), (
+        "flags-off must not emit deterministic grid claims"
+    )
 
 
 def test_r19_pure_overview_unchanged():
@@ -254,7 +256,9 @@ def test_r23_residual_validation_still_refuses_overview_slice():
     assert has_overview_negative_cue("Give me KPIs and validation stats") is True
     # Force LLM failure path:
     client = _FailClient(
-        LLMEvidenceError("Results Q&A claim path 'results.validation.trade_count' is missing from the evidence packet.")
+        LLMEvidenceError(
+            "Results Q&A claim path 'results.validation.trade_count' is missing from the evidence packet."
+        )
     )
     reply = propose_results_reply(
         client,

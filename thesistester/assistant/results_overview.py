@@ -257,14 +257,18 @@ def _residual_negative_matches(normalized: str) -> bool:
 def has_overview_negative_cue(message: str) -> bool:
     """Return True when overview matching must be refused (RI §4.1.1).
 
-    ``overview_refused = landed specialist match OR residual DI negative``.
+    ``overview_refused = landed specialist OR mixed_ask OR residual DI negative``.
     Duplex (DX) uses this to distinguish veto from unmatched — do not copy cue
     tables into ``voice/``.
     """
     if not isinstance(message, str) or not message.strip():
         return False
-    normalized = _normalize_message(message)
-    return _grid_ranking_matches(normalized) or _residual_negative_matches(normalized)
+    intent = match_discuss_intent(message)
+    if intent in {INTENT_GRID_RANKING, INTENT_MIXED_ASK}:
+        return True
+    if intent is None:
+        return _residual_negative_matches(_normalize_message(message))
+    return False
 
 
 def match_discuss_intent(message: str) -> str | None:
