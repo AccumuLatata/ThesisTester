@@ -5,7 +5,8 @@ for making product Help explain features and how to use them
 **Status:** ✅ Implemented — HC-0…HC-4 complete
 **Date:** 2026-08-06 (HC-4 freeze); **RUX-4 (2026-08-08):** USER_GUIDE bodies
 re-anchored to discuss-first / mode navigation; Q-H13 added to the acceptance
-bank. **Corpus allowlist / §7.1 H2 set unchanged** — no new or renamed sections.
+bank. **HC-5 (2026-08-08):** dedicated USER_GUIDE **Exposure policy** H2 +
+retrieval boost; Voice-agent assumptions H2 title realigned to the file.
 **Owner surface:** Help corpus content + narrow `help_corpus` allowlist/tests
 **Depends on:** RQ series complete
 (`docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` RQ-0…RQ-5), especially RQ-3
@@ -197,6 +198,7 @@ mentions the term.
 | Q-D4 | What is a research bundle? | `user_guide` / Research Bundles | — |
 | Q-D5 | What is walk-forward validation here? | `metrics` | `user_guide` / Validation and robustness |
 | Q-D6 | What does slippage_ticks mean? | `metrics` | `user_guide` / Backtest |
+| Q-D7 | What does the exposure policy setting mean on Backtest? | `user_guide` / Exposure policy | `user_guide` / Backtest |
 
 ### 5.2 How-to / workflow
 
@@ -206,7 +208,7 @@ mentions the term.
 | Q-H2 | How do I build levels for a session? | `user_guide` / Levels | — |
 | Q-H3 | How do I configure a setup in Setup Builder? | `user_guide` / Setup Builder | — |
 | Q-H4 | How do I generate signals? | `user_guide` / Signals | — |
-| Q-H5 | How do I run a backtest and what do costs/exposure mean? | `user_guide` / Backtest | — |
+| Q-H5 | How do I run a backtest and what do costs/exposure mean? | `user_guide` / Backtest | `user_guide` / Exposure policy secondary for exposure nouns |
 | Q-H6 | How do I run a grid search and interpret the best SL/TP? | `user_guide` / Grid Search | `metrics` only as secondary presence — primary USER_GUIDE required |
 | Q-H7 | How do I use Time Analysis? | `user_guide` / Time Analysis | — |
 | Q-H8 | How do I run validation / Monte Carlo / WFA? | `user_guide` / Validation and robustness | — |
@@ -236,7 +238,8 @@ When an HC content PR lands, append rows here (and mirror in test fixtures):
 | Q-H2 | `user_guide` | Levels | — |
 | Q-H3 | `user_guide` | Setup Builder | — |
 | Q-H4 | `user_guide` | Signals | — |
-| Q-H5 | `user_guide` | Backtest | `metrics` / Execution cost inputs secondary |
+| Q-H5 | `user_guide` | Backtest | `metrics` / Execution cost inputs + `user_guide` / Exposure policy secondary |
+| Q-D7 | `user_guide` | Exposure policy | Backtest alternate |
 | Q-H6 | `user_guide` | Grid Search | `metrics` secondary OK; primary USER_GUIDE required |
 | Q-H7 | `user_guide` | Time Analysis | — |
 | Q-H8 | `user_guide` | Validation and robustness | — |
@@ -272,6 +275,7 @@ HC-0 / content PRs). Suggested v1 H2 skeleton (amend only via HC PR):
 ## Setup Builder
 ## Signals
 ## Backtest
+## Exposure policy
 ## Grid Search
 ## Time Analysis
 ## Validation and robustness
@@ -644,7 +648,8 @@ Ask in Research Assistant **Help / how it works** (with Help enabled):
 6. What is expectancy_r?
 7. What is an OTF filter?
 8. What is a research bundle?
-9. What was my best SL on this run? → must remediate to Discuss results
+9. What does the exposure policy setting mean on Backtest?
+10. What was my best SL on this run? → must remediate to Discuss results
 
 ---
 
@@ -756,6 +761,32 @@ Constraints:
 | HC-3 | ✅ Implemented — Assistant/research-mode how-tos + allowlist + discoverability |
 | HC-4 | ✅ Implemented — full §5 bank freeze + §7.1.4↔manifest parity + release gate |
 | RUX-4 | ✅ Maintenance — USER_GUIDE discuss-first nav bodies + Q-H13; AIA-0/CAI-8 deep-link copy clarifies Discuss runs (not Advanced Q&A); allowlist unchanged |
+| HC-5 | ✅ Maintenance — USER_GUIDE **Exposure policy** deep how-to + §7.1.4 allowlist + exposure retrieval boost; Q-D7 bank; Voice-agent assumptions H2 title realigned (`complete; default off`) so the section loads again |
+
+### HC-5 — Exposure policy depth + Help retrieval fix (maintenance)
+
+**Problem:** Help answered exposure-policy questions only rudimentarily.
+Deep semantics lived under ASSUMPTIONS `Verified engine assumptions` (H3),
+but that H2 body is **> `max_corpus_chars` (24000)** and is skipped entirely by
+retrieval. USER_GUIDE **Backtest** only listed policy names. Pure definition
+queries also soft-demote `user_guide`, so architecture/readme chunks crowded out
+Backtest.
+
+**In scope**
+
+| Item | Detail |
+|---|---|
+| Content | New USER_GUIDE H2 `Exposure policy` (policy semantics, cooldown, skip reasons, Portfolio/Grid notes); Backtest/Portfolio cross-links |
+| Allowlist | Amend RQ §7.1.4 + `_USER_GUIDE_SECTIONS` with exact title `Exposure policy` |
+| Retrieval | Additive `_EXPOSURE_QUERY_TOKENS` boost for `user_guide` (stronger when section title contains `exposure`); cost boost still omits bare `exposure` |
+| Assumptions | Realign Voice-agent allowlisted H2 title to file (`complete; default off`) — title drift had silently dropped that section |
+| Tests | Q-D7 retrieval + body phrases; Q-H5 keeps Backtest + cost glossary + Exposure policy; structure/§7.1 parity freezes |
+
+**Out of scope:** engine/golden/UI compute; embeddings; splitting the oversized
+ASSUMPTIONS mega-H2 (user-facing exposure prose lands in USER_GUIDE instead).
+
+**Regression safety:** Help-docs + narrow corpus scoring/allowlist only. No
+`simulate_trades` / golden changes. Existing §5 bank remains green; Q-D7 additive.
 
 ---
 

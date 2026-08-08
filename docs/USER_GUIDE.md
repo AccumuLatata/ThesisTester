@@ -3,8 +3,9 @@
 User-facing how-tos for classic pages and Research Assistant Help.
 This file is the primary Help corpus home for workflow questions (HC-series).
 
-**Help allowlist (HC-1…HC-3):** the filled H2 sections listed in RQ §7.1
-`user_guide` are Help-readable (full classic + Assistant how-to coverage).
+**Help allowlist (HC-1…HC-3 + HC-5):** the filled H2 sections listed in RQ §7.1
+`user_guide` are Help-readable (full classic + Assistant how-to coverage,
+including dedicated **Exposure policy** semantics).
 
 Deep metric definitions stay in `docs/METRICS_GLOSSARY.md`. Engine honesty and
 limits stay in `docs/ASSUMPTIONS_AND_LIMITATIONS.md`. Operator/agent runbooks
@@ -244,8 +245,8 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
 | `Slippage (ticks per side)` | Adverse ticks at entry and exit (`slippage_ticks`) | Same — optimistic fills if 0 |
 | `Intrabar resolution` | SL-first, OHLC path, or lower-TF replay variants | Paths are assumptions, not tick truth |
 | `Flat by session close` + close time/TZ | Force exits at session boundary | Display TZ ≠ engine session TZ |
-| `Policy` (exposure) | `allow_all`, `single_position`, `single_direction`, `single_setup` | Skips ≠ OTF rejects ≠ 3c voids |
-| `Cooldown bars after exit` | Bars before a new entry is allowed | — |
+| `Policy` (exposure) | See **Exposure policy** — `allow_all` / `single_position` / `single_direction` / `single_setup` | Skips ≠ OTF rejects ≠ 3c voids |
+| `Cooldown bars after exit` | Bars after a blocking exit before a new entry in that exposure group | `0` = no post-exit spacing |
 | `Constrain entries to time window` (Admit) | Off by default; RTH segments or clock range | Re-sim only — not Time Analysis Focus |
 | Exit management expander | Break-even / trailing after R multiple | Stops update after completed bars |
 
@@ -253,7 +254,8 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
 
 1. Confirm Signals are loaded.
 2. Set SL/TP, costs, intrabar model, session exit, optional **Entry window
-   (Admit)**, and exposure policy in **Backtest settings**.
+   (Admit)**, and exposure **Policy** / cooldown in **Backtest settings**
+   (see **Exposure policy** for what each value admits or skips).
 3. Optionally **Save execution settings as default**.
 4. Click **Run backtest**.
 5. Read OTF-rejected / skip notes (window vs cutoff vs exposure), **Performance summary**,
@@ -271,8 +273,69 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
 - **Admit** (`entry_window`) re-simulates under an entry-time constraint.
   Time Analysis **Focus** remains post-hoc only and does not change admission.
 
-**Related pages.** Signals (prerequisite); Grid Search for SL/TP sweeps; Research
-Assistant mode **Discuss runs** for performance questions.
+**Related pages.** Signals (prerequisite); **Exposure policy**; Grid Search for
+SL/TP sweeps; Research Assistant mode **Discuss runs** for performance questions.
+
+## Exposure policy
+
+**What it is.** Exposure policy is the Backtest (and Portfolio) admission gate
+that decides whether an otherwise-executable signal may open a new trade while
+other trades are still open — or during an optional cooldown after exit. On the
+**Backtest** page the control is labeled **Policy** under the **Exposure policy**
+subheader; the engine field is `exposure_policy`.
+
+**When to use it.** Use restrictive policies when you want path KPIs that
+respect “one book / one direction / one setup at a time.” Keep `allow_all` when
+screening every signal independently (legacy default).
+
+**Related terms.** exposure, exposure policy, Policy, allow_all, single_position,
+single_direction, single_setup, cooldown, cooldown bars after exit,
+overlapping_position, overlapping_direction, overlapping_setup, cooldown_active,
+skipped signals, blocking trade, exposure_group_key
+
+**Key settings.**
+
+| Control / value | Meaning | Common pitfall |
+|---|---|---|
+| `allow_all` (default) | Every executable signal may trade; overlapping signals are independent | Inflates trade count vs a real one-position book |
+| `single_position` | At most one open trade at a time (any direction/setup) | Later signals skip as `overlapping_position` |
+| `single_direction` | At most one open trade per direction (`long` / `short`) | Opposite side can still overlap |
+| `single_setup` | At most one open trade per setup group (`setup_name`, else `zone_id`, else `level_source_label`, else `trigger\|direction`) | Same trigger/direction can collide when setup labels are missing |
+| `Cooldown bars after exit` | After a blocking trade exits, wait this many bars before admitting another in the same exposure group | Skip reason becomes `cooldown_active` when entry is after exit but inside cooldown |
+
+**How admission works.**
+
+1. Window / cutoff rejects (`outside_entry_window`, `after_entry_cutoff`) are
+   evaluated **before** exposure — rejected candidates never compete for a slot.
+2. Under restrictive policies, candidates are ordered by entry bar, signal bar,
+   then `signal_id` (deterministic).
+3. A candidate is blocked when any relevant prior trade still covers
+   `entry_bar_index` through `exit_bar_index + cooldown_bars_after_exit`.
+4. Skips appear in **Skipped signals** with `skip_reason`, `blocking_trade_id`,
+   and `exposure_group_key`. These are **not** OTF rejects and **not** `3c` voids.
+5. Backtest captions split skip counts: outside entry window / after entry
+   cutoff / exposure-other.
+
+**How to use.**
+
+1. Open **Backtest** → **Exposure policy**.
+2. Choose **Policy** and optional **Cooldown bars after exit**.
+3. **Run backtest**, then inspect **Skipped signals** if trade count looks thin.
+4. On **Portfolio**, `Portfolio exposure policy` applies the same four names
+   **after** merging completed per-setup trades (diagnostic merge — not a live
+   margin engine). Prefer upstream `allow_all` so the portfolio gate is applied
+   once at merge time.
+5. Grid / Validation inherit one fixed exposure policy across cells/folds —
+   exposure is not a swept axis.
+
+**What it is not.**
+
+- Not a capital, margin, or broker risk engine.
+- Not OTF filtering and not Focus (Focus never re-runs exposure/cooldown).
+- Default `allow_all` is for screening compatibility — not a claim that
+  overlapping fills are realistic.
+
+**Related pages.** Backtest; Portfolio; Time Analysis (Focus ≠ Admit); Grid Search.
 
 ## Grid Search
 
@@ -529,8 +592,8 @@ trades, diagnostic merge
 |---|---|---|
 | `Current setup label` | Name for the in-session trade table (shown when Backtest `trades` exist) | Absent when session trades are empty |
 | `Additional completed-trade CSV exports` | Upload one or more trade CSVs | Need ≥2 setup tables total across session + uploads |
-| `Portfolio exposure policy` | `allow_all` / `single_position` / `single_direction` / `single_setup` | Applied after merge — not a live margin engine |
-| `Cooldown bars after exit` | Portfolio-level spacing | — |
+| `Portfolio exposure policy` | Same four values as Backtest **Policy** (see **Exposure policy**) | Applied after merge — not a live margin engine |
+| `Cooldown bars after exit` | Portfolio-level spacing after a blocking exit | Same cooldown semantics as Backtest |
 
 **How to use.**
 
@@ -548,7 +611,7 @@ trades, diagnostic merge
   is applied once at merge time.
 - Diagnostic only; combined R/DD is not proof of a deployable book.
 
-**Related pages.** Backtest; Report Export (`trades.csv`).
+**Related pages.** Backtest; **Exposure policy**; Report Export (`trades.csv`).
 
 ## Research Assistant (draft, Discuss, Help)
 

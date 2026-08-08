@@ -55,6 +55,7 @@ def test_manifest_doc_ids_match_section_7_1_freeze():
             "Setup Builder",
             "Signals",
             "Backtest",
+            "Exposure policy",
             "Grid Search",
             "Time Analysis",
             "Validation and robustness",
@@ -66,6 +67,8 @@ def test_manifest_doc_ids_match_section_7_1_freeze():
             "When to use Help vs Discuss results",
         }
     )
+    assert "Voice agent (VA-series — complete; default off)" in by_id["assumptions"].sections
+    assert "Voice agent (VA-series — proposed, not shipped)" not in by_id["assumptions"].sections
 
 
 def test_user_guide_rejects_unknown_h2_and_accepts_allowlisted_h2():

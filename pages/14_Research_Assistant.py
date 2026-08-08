@@ -861,9 +861,9 @@ elif mode == ASSISTANT_MODE_HELP:
         st.caption(
             "Documentation-grounded product help (USER_GUIDE-backed allowlisted "
             "docs + capability registry). Ask how-tos such as import data, "
-            "Setup Builder, grid ranking, validation, or Help vs Discuss. "
-            "Not a second results explainer — use Discuss results for "
-            "completed-run metrics."
+            "Setup Builder, exposure policy, grid ranking, validation, or "
+            "Help vs Discuss. Not a second results explainer — use Discuss "
+            "results for completed-run metrics."
         )
         help_thread = [
             message

@@ -1,4 +1,4 @@
-"""USER_GUIDE structure gate: §6.1 H2 skeleton + HC-1…HC-3 filled allowlist."""
+"""USER_GUIDE structure gate: §6.1 H2 skeleton + HC-1…HC-5 filled allowlist."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ REQUIRED_USER_GUIDE_H2S = (
     "Setup Builder",
     "Signals",
     "Backtest",
+    "Exposure policy",
     "Grid Search",
     "Time Analysis",
     "Validation and robustness",

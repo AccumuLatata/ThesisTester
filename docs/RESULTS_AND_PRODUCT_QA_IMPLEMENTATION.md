@@ -365,7 +365,7 @@ Verified engine assumptions (current implementation)
 Validation implications
 Futures roll methodology (R7)
 AI Research Assistant / optional LLM (PR6 release gate)
-Voice agent (VA-series — proposed, not shipped)
+Voice agent (VA-series — complete; default off)
 OTF filter (One Timeframing)
 Practical interpretation
 ```
@@ -387,11 +387,11 @@ Purpose
 §15 — Release-Gate Documentation
 ```
 
-#### 7.1.4 Exact `user_guide` H2 titles (HC-1…HC-3; amend via HC PRs)
+#### 7.1.4 Exact `user_guide` H2 titles (HC-1…HC-3 + HC-5; amend via HC PRs)
 
 Match these strings exactly after stripping the leading `##` and surrounding
-whitespace. HC-3 completed the §6.1 skeleton — every USER_GUIDE H2 below is
-filled and Help-readable.
+whitespace. HC-3 completed the classic §6.1 skeleton; HC-5 adds the dedicated
+**Exposure policy** H2. Every USER_GUIDE H2 below is filled and Help-readable.
 
 ```text
 Purpose and honesty
@@ -401,6 +401,7 @@ Levels
 Setup Builder
 Signals
 Backtest
+Exposure policy
 Grid Search
 Time Analysis
 Validation and robustness
