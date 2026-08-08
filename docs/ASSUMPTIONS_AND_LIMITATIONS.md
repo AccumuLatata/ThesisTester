@@ -693,7 +693,7 @@ other than the last bar in the dataset.
   `assistant_voice_playback` for `st.audio` only. Sessions end at
   `max_session_minutes` (default 15). Budget guidance: ~$0.08/min speech-to-
   speech for Think Fast 2.0, plus unary STT/TTS and OpenAI for VA-4 channel
-  turns. PTT spoken answers are digit-gated before TTS.   Realtime live PCM
+  turns. PTT spoken answers are digit-gated before TTS. Realtime live PCM
   cannot be pre-gated once uttered; assistant transcript text is still
   digit-audited against the bound packet and tool returns before durable
   persistence/flush (uncited numbers are replaced with remediation).
