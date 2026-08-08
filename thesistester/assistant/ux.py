@@ -60,19 +60,13 @@ def resolve_mode(
     return ASSISTANT_MODE_DISCUSS
 
 
-def discussable_runs(
-    runs: Sequence[Any],
-    *,
-    results_qa_enabled: bool,
-) -> tuple[Any, ...]:
-    """Filter runs with the frozen Discuss UI eligibility predicate.
+def recorded_completed_runs(runs: Sequence[Any]) -> tuple[Any, ...]:
+    """Completed thesis-recorded runs (status + provenance dict), RQ-independent.
 
-    Predicate (RUX §1.1): ``status == "completed"`` and
-    ``isinstance(provenance, dict)``, and results_qa enabled. Preserves input
-    order — callers that want newest-first apply ``reversed`` themselves.
+    Used for the Discuss run picker and secondary actions (Explain / Open /
+    Restore). Q&A/voice additionally require ``results_qa`` enabled — see
+    ``discussable_runs``. Preserves input order.
     """
-    if not results_qa_enabled:
-        return ()
     eligible: list[Any] = []
     for run in runs:
         if getattr(run, "status", None) != "completed":
@@ -81,6 +75,22 @@ def discussable_runs(
             continue
         eligible.append(run)
     return tuple(eligible)
+
+
+def discussable_runs(
+    runs: Sequence[Any],
+    *,
+    results_qa_enabled: bool,
+) -> tuple[Any, ...]:
+    """Filter runs with the frozen Discuss Q&A eligibility predicate.
+
+    Predicate (RUX §1.1): ``status == "completed"`` and
+    ``isinstance(provenance, dict)``, and results_qa enabled. Preserves input
+    order — callers that want newest-first apply ``reversed`` themselves.
+    """
+    if not results_qa_enabled:
+        return ()
+    return recorded_completed_runs(runs)
 
 
 def default_discuss_run_id(

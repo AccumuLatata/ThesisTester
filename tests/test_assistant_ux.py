@@ -21,6 +21,7 @@ from thesistester.assistant.ux import (
     HELP_NAV_HINT,
     default_discuss_run_id,
     discussable_runs,
+    recorded_completed_runs,
     reset_ux_mode_and_picker,
     resolve_mode,
     run_picker_label,
@@ -77,9 +78,12 @@ def test_discussable_runs_frozen_predicate_preserves_order():
         SimpleNamespace(run_id="run_d", status="completed", provenance={"h": 1}),
         SimpleNamespace(run_id="run_e", status="running", provenance={}),
     )
+    recorded = recorded_completed_runs(runs)
+    assert [run.run_id for run in recorded] == ["run_b", "run_d"]
     assert discussable_runs(runs, results_qa_enabled=False) == ()
     eligible = discussable_runs(runs, results_qa_enabled=True)
     assert [run.run_id for run in eligible] == ["run_b", "run_d"]
+    assert eligible == recorded
 
 
 def test_default_discuss_run_id_prefers_focus_then_newest():

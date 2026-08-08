@@ -178,11 +178,14 @@ What do you want to do?   [ Discuss runs | Help | Draft thesis ]     ← new, se
    [ Ask about this run                          ] [Send results question]   MOVED, keys identical
    Voice discuss (push-to-talk) / (realtime)                        MOVED, keys identical
    Secondary: [Explain run] [Open exact run in Backtest] [Restore]  MOVED from Linked run
-   empty state → "No completed thesis-recorded run yet. Run the classic path and
-                  use Record and discuss this run on Backtest."
+   empty state → "No completed thesis-recorded run yet…" when no recorded runs;
+                  when runs exist but `[assistant.results_qa] enabled = false`,
+                  keep picker + Explain/Open/Restore and say Discuss Q&A is
+                  unavailable (do not hide secondary actions).
 
 ── mode = Help ──────────────────────────────────────────────────────
    Help / how it works  (same caption, thread, input, send, voice help)  PROMOTED from expander
+   when `[assistant.product_help] enabled = false` → disabled guidance (not blank)
 
 ── mode = Draft thesis (optional) ───────────────────────────────────
    Assistant chat  (same caption, thread, page-level chat_input)         DEMOTED from hero
@@ -239,7 +242,8 @@ Pure functions and constants — no I/O, no LLM, no orchestrator calls:
 | `DISCUSS_RUN_PICKER_KEY = "assistant_discuss_run_picker"` | Run selectbox widget key |
 | `DISCUSS_NAV_HINT`, `DISCUSS_NAV_SHORT`, `HELP_NAV_HINT`, `ADVANCED_PLAN_NAV_HINT`, `ADVANCED_COMPARE_NAV_HINT`, `ADVANCED_PORTFOLIO_NAV_HINT` | §1.3 navigation fragments (single source of truth) |
 | `resolve_mode(session_state, *, default_mode, requested=None)` | Coerce/validate mode; unknown value → default |
-| `discussable_runs(runs, *, results_qa_enabled)` | Frozen eligibility predicate (§1.1) applied in list order |
+| `recorded_completed_runs(runs)` | Completed + provenance dict (RQ-independent); picker + Explain/Open/Restore |
+| `discussable_runs(runs, *, results_qa_enabled)` | Q&A eligibility: recorded ∩ results_qa enabled (§1.1) |
 | `default_discuss_run_id(runs, *, focused_run_id)` | Focused run if eligible, else newest eligible, else `None` |
 | `run_picker_label(run)` | Deterministic label reusing existing id/spec/kind formatting |
 
@@ -451,7 +455,7 @@ their internals.
 
 | Block | From | To | Rule |
 |---|---|---|---|
-| Discuss results caption + thread + `results-qa-input-{run_id}` + `results-qa-send-{run_id}` + `handle_results_turn` call + clear-flag logic | inside Linked-run expander, inside `if run.status == "completed" and isinstance(run.provenance, dict)` | Discuss mode surface, guarded by the identical predicate via `discussable_runs` | Widget keys, session keys, filters, and error handling copied verbatim; only indentation/container changes |
+| Discuss results caption + thread + `results-qa-input-{run_id}` + `results-qa-send-{run_id}` + `handle_results_turn` call + clear-flag logic | inside Linked-run expander, inside `if run.status == "completed" and isinstance(run.provenance, dict)` **and** `results_qa.enabled` | Discuss mode surface: picker/secondary via `recorded_completed_runs`; Q&A/voice additionally gated by `results_qa.enabled` (same sibling split as pre-RUX-2) | Widget keys, session keys, filters, and error handling copied verbatim; only indentation/container changes |
 | Voice discuss PTT + realtime blocks | same run expander | Discuss mode, directly under the Discuss input | Same keys, same `thesis_has_running_run` gate, same `require_run_bundle_hash` check, same copy |
 | `Explain run` + explanation display, `Open exact run in Backtest`, `Restore bundle into research pages` | run expander | **Duplicated intent, single render:** rendered in Discuss mode for the selected run; removed from the run expander to avoid duplicate widget keys | Keys stay unique because each is rendered exactly once per run per rerun |
 | `Generate evidence-only AI explanation` (+ LLM explanation display) | run expander | **Stays in Advanced → Linked run expander** (explicit decision) | Deterministic Explain moves with Discuss; LLM explain remains an Advanced secondary action so RUX-2 does not invent a fourth Discuss-mode AI surface. Document this asymmetry in the RUX-2 PR body. |

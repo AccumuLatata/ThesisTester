@@ -484,9 +484,7 @@ def test_chat_message_helpers_surface_clarifications_and_hide_tool_noise():
     discuss_mode_pos = source.index("if mode == ASSISTANT_MODE_DISCUSS:")
     help_mode_pos = source.index("elif mode == ASSISTANT_MODE_HELP:")
     draft_mode_pos = source.index("elif mode == ASSISTANT_MODE_DRAFT:")
-    advanced_pos = source.index(
-        'with st.expander(\n    "Advanced: draft, runs & compare"'
-    )
+    advanced_pos = source.index('with st.expander(\n    "Advanced: draft, runs & compare"')
     explain_pos = source.index('st.button("Explain run"')
     llm_explain_pos = source.index("Generate evidence-only AI explanation")
     assert discuss_mode_pos < help_mode_pos < draft_mode_pos < advanced_pos

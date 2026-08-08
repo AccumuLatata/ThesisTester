@@ -27,7 +27,11 @@ from typing import Any
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from thesistester.assistant.llm import load_product_help_settings
+from thesistester.assistant.llm import (
+    ProductHelpSettings,
+    ResultsQASettings,
+    load_product_help_settings,
+)
 from thesistester.assistant.ux import (
     ASSISTANT_MODE_DISCUSS,
     ASSISTANT_MODE_DRAFT,
@@ -280,9 +284,9 @@ def test_default_prominence_is_discuss_with_collapsed_secondary_surfaces(workspa
         assert _expander(app, label).proto.expanded is False, f"{label} must default collapsed"
 
     # Discuss thread + input visible without opening any expander.
-    assert any(
-        item.label == "Ask about this run" for item in app.text_input
-    ), f"Discuss input missing. Labels: {[item.label for item in app.text_input]}"
+    assert any(item.label == "Ask about this run" for item in app.text_input), (
+        f"Discuss input missing. Labels: {[item.label for item in app.text_input]}"
+    )
     assert app.chat_input.values == []
 
     # Second-pipeline surfaces stay reachable under the collapsed Advanced expander.
@@ -302,6 +306,58 @@ def test_default_discuss_empty_state_names_record_and_discuss(workspace):
     assert any("Record and discuss this run" in text for text in infos)
     assert app.chat_input.values == []
     assert all(item.label != "Ask about this run" for item in app.text_input)
+
+
+def test_discuss_mode_reports_disabled_results_qa_not_missing_runs(workspace, monkeypatch):
+    """When RQ is off, keep Explain/Open/Restore; do not claim missing runs."""
+    import thesistester.assistant.llm as llm_mod
+
+    monkeypatch.setattr(
+        llm_mod,
+        "load_results_qa_settings",
+        lambda path="config/assistant.toml": ResultsQASettings(
+            enabled=False,
+            max_history_messages=12,
+            allow_time_enrichment=False,
+        ),
+    )
+    orchestrator, thesis = workspace
+    completed = _seed_discussable_run(orchestrator, thesis.thesis_id)
+    app = _render(thesis.thesis_id)
+
+    assert not app.exception
+    infos = [item.value for item in app.info]
+    assert any("Results Q&A is disabled" in text for text in infos)
+    assert all("Record and discuss this run" not in text for text in infos)
+    assert all(item.label != "Ask about this run" for item in app.text_input)
+    # Pre-RUX-2 sibling gate: secondary actions stay available without RQ.
+    assert any(item.label == "Explain run" for item in app.button)
+    assert any(item.label == "Open exact run in Backtest" for item in app.button)
+    assert any(item.label == "Restore bundle into research pages" for item in app.button)
+    assert _session_value(app, DISCUSS_RUN_PICKER_KEY) == completed.run_id
+
+
+def test_help_mode_shows_disabled_guidance_when_product_help_off(workspace, monkeypatch):
+    """Help peer mode must not render a blank panel when the channel is off."""
+    import thesistester.assistant.llm as llm_mod
+
+    monkeypatch.setattr(
+        llm_mod,
+        "load_product_help_settings",
+        lambda path="config/assistant.toml": ProductHelpSettings(
+            enabled=False,
+            max_history_messages=12,
+            max_corpus_chars=24000,
+        ),
+    )
+    _, thesis = workspace
+    app = _render(thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_HELP})
+
+    assert not app.exception
+    assert any(item.value == "Help / how it works" for item in app.subheader)
+    infos = [item.value for item in app.info]
+    assert any("Product Help is disabled" in text for text in infos)
+    assert all(item.label != "Ask how ThesisTester works" for item in app.text_input)
 
 
 def test_rendered_captions_contain_rux2_nav_fragments(workspace):
@@ -326,17 +382,13 @@ def test_page_renders_exactly_one_chat_input_only_in_draft_mode(workspace):
     assert discuss.chat_input.values == []
 
     if load_product_help_settings().enabled:
-        help_app = _render(
-            thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_HELP}
-        )
+        help_app = _render(thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_HELP})
         assert not help_app.exception
         assert help_app.chat_input.values == []
         help_labels = [item.label for item in help_app.text_input]
         assert "Ask how ThesisTester works" in help_labels
 
-    draft = _render(
-        thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_DRAFT}
-    )
+    draft = _render(thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_DRAFT})
     assert not draft.exception
     assert len(draft.chat_input) == 1
     assert draft.chat_input[0].placeholder == "Describe or refine this thesis"
@@ -370,9 +422,7 @@ def test_results_qa_history_never_renders_in_the_draft_or_help_threads(workspace
         ),
     )
 
-    draft = _render(
-        thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_DRAFT}
-    )
+    draft = _render(thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_DRAFT})
     assert not draft.exception
     draft_texts = [text for _, text in _top_level_bubbles(draft)]
     assert draft_texts == [DRAFT_USER_TEXT, DRAFT_REPLY_TEXT]
@@ -382,9 +432,7 @@ def test_results_qa_history_never_renders_in_the_draft_or_help_threads(workspace
     assert RESULTS_REPLY_TEXT not in draft_texts
 
     if load_product_help_settings().enabled:
-        help_app = _render(
-            thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_HELP}
-        )
+        help_app = _render(thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_HELP})
         assert not help_app.exception
         help_texts = [text for _, text in _top_level_bubbles(help_app)]
         assert help_texts == [HELP_USER_TEXT, HELP_REPLY_TEXT]
@@ -469,3 +517,21 @@ def test_classic_results_qa_orphan_deep_link_still_force_opens_expanders(workspa
     assert _session_value(app, linked_run_expander_key(ORPHAN_RUN_ID)) is True
     assert _expander(app, "Advanced: draft, runs & compare").proto.expanded is True
     assert _session_value(app, ASSISTANT_MODE_SESSION_KEY) == ASSISTANT_MODE_DISCUSS
+
+
+def test_orphan_deep_link_with_other_runs_warns_instead_of_silent_swap(workspace):
+    """Ineligible focus + other recorded runs → warning, not silent wrong thread."""
+    orchestrator, thesis = workspace
+    completed = _seed_discussable_run(orchestrator, thesis.thesis_id)
+    app = _render(
+        thesis.thesis_id,
+        classic_focus_run_id=ORPHAN_RUN_ID,
+        classic_focus_channel="results_qa",
+    )
+
+    assert not app.exception
+    warnings = [item.value for item in app.warning]
+    assert any("not available for Discuss" in text for text in warnings)
+    assert _session_value(app, ASSISTANT_MODE_SESSION_KEY) == ASSISTANT_MODE_DISCUSS
+    assert _session_value(app, DISCUSS_RUN_PICKER_KEY) == completed.run_id
+    assert _session_value(app, "assistant_focused_run_id") == ORPHAN_RUN_ID
