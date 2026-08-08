@@ -663,6 +663,20 @@ def test_di3_overlay_skips_diagnostic_near_duplicate():
     assert len(diagnostic_lines) == 1
 
 
+def test_di3_grid_trade_count_uses_grid_specific_gloss():
+    packet = _packet()
+    claims = (
+        EvidenceClaim(
+            text="trade_count is 40.",
+            path="results.best_grid_result.trade_count",
+            value=40,
+        ),
+    )
+    overlay = build_expert_overlay(packet, claims)
+    assert any("in-sample cell sample size" in line for line in overlay)
+    assert not any("sample size for this run" in line for line in overlay)
+
+
 def test_di3_oos_absent_suppresses_presence_coaching():
     packet = EvidencePacket(
         provenance={},

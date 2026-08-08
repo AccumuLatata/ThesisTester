@@ -330,38 +330,43 @@ def _digit_free_lines(lines: Sequence[Any]) -> tuple[str, ...]:
     return tuple(out)
 
 
-# DI-3: strictly digit-free overlay glosses keyed by cited claim leaf names.
-_OVERLAY_GLOSS_BY_LEAF: tuple[tuple[str, str], ...] = (
+# DI-3: strictly digit-free overlay glosses keyed by full claim paths
+# (leaf-only keys would mis-gloss results.best_grid_result.trade_count).
+_OVERLAY_GLOSS_BY_PATH: tuple[tuple[str, str], ...] = (
     (
-        "expectancy_r",
+        "results.trade_summary.expectancy_r",
         "Expectancy R is mean net R on the recorded sample, not a forecast.",
     ),
     (
-        "win_rate",
+        "results.trade_summary.win_rate",
         "Win rate is the share of winning trades in the recorded sample, not a forward-looking edge.",
     ),
     (
-        "trade_count",
+        "results.trade_summary.trade_count",
         "Trade count is the recorded sample size for this run, not proof of deployable edge.",
     ),
     (
-        "profit_factor",
+        "results.trade_summary.profit_factor",
         "Profit factor summarizes historical wins versus losses on the recorded sample only.",
     ),
     (
-        "max_drawdown_r",
+        "results.trade_summary.max_drawdown_r",
         "Max drawdown R describes historical equity drawdown on the recorded sample, not future risk bounds.",
     ),
     (
-        "total_r",
+        "results.trade_summary.total_r",
         "Total R is the sum of realized R multiples on the recorded sample, not a prediction.",
     ),
     (
-        "stop_loss_ticks",
+        "results.best_grid_result.trade_count",
+        "Best-grid trade count is the in-sample cell sample size when present, not proof of deployable edge.",
+    ),
+    (
+        "results.best_grid_result.stop_loss_ticks",
         "Best-grid stop ticks reflect in-sample grid selection when present, not out-of-sample confirmation.",
     ),
     (
-        "take_profit_ticks",
+        "results.best_grid_result.take_profit_ticks",
         "Best-grid take-profit ticks reflect in-sample grid selection when present, not out-of-sample confirmation.",
     ),
 )
@@ -454,17 +459,17 @@ def build_expert_overlay(
     ``_ungrounded_number_tokens(line, allowed=set()) == []``.
     """
     lines: list[str] = []
-    cited_leaves = {
-        claim.path.rsplit(".", 1)[-1]
+    cited_paths = {
+        claim.path.strip()
         for claim in claims
         if isinstance(getattr(claim, "path", None), str) and claim.path.strip()
     }
-    for leaf, gloss in _OVERLAY_GLOSS_BY_LEAF:
-        if leaf in cited_leaves:
+    for path, gloss in _OVERLAY_GLOSS_BY_PATH:
+        if path in cited_paths:
             lines.append(gloss)
         if len(lines) >= 3:
             break
-    if not cited_leaves:
+    if not cited_paths:
         lines.append(_MISSING_KPI_OVERLAY)
     else:
         # Only when figures were cited — never "these figures" on empty KPI path.
