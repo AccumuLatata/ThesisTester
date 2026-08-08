@@ -323,6 +323,8 @@ def test_fat_provenance_repair_catalog_keeps_kpi_paths():
 def test_fat_time_grouped_catalog_keeps_projections_and_honesty():
     """Fat time tables must not starve projections / limitations in DI-2 catalog."""
     rows = [{f"col_{j}": j for j in range(20)} for _ in range(40)]
+    # Extra uncapped results maps that would starve honesty if ordered first.
+    extra_results = {f"page_block_{i}": {f"k{j}": j for j in range(30)} for i in range(12)}
     context = {
         "provenance": {f"blob_{i}": i for i in range(200)},
         "assumptions": {"instrument": "NQ", "entry_window": {"focus": True}},
@@ -337,6 +339,7 @@ def test_fat_time_grouped_catalog_keeps_projections_and_honesty():
                     "ranking_metric": "expectancy_r",
                 }
             },
+            **extra_results,
         },
         "warnings": ["sample warning"],
         "limitations": ["Time analysis is not present in this evidence packet."],
@@ -354,6 +357,8 @@ def test_fat_time_grouped_catalog_keeps_projections_and_honesty():
     assert "results.time_grouped_summary" in paths
     assert "results.time_grouped_summary.0" in paths
     assert "results.time_grouped_summary.8" not in paths
+    # Honesty must appear before remaining fat results consume the budget.
+    assert paths.index("limitations") < paths.index("results.time_grouped_summary")
 
 
 def test_repair_retry_succeeds_without_fallback():

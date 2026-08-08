@@ -225,6 +225,7 @@ def collect_existing_paths(
     1. frozen KPI allowlist leaves
     2. specialist ``results.*`` keys (trade_summary, projections, validation/WFA)
     3. top-level honesty paths (limitations / caveats / warnings / assumptions)
+       — before remaining fat ``results.*``
     4. remaining ``results.*`` (shallow sample for fat row tables)
     5. remaining top-level maps (provenance, …)
     """
@@ -287,8 +288,11 @@ def collect_existing_paths(
         if isinstance(results, Mapping):
             if not add("results"):
                 return tuple(paths)
+            # Specialist results first (before honesty + fat tables).
             walk_mapping_keys(results, prefix="results", keys=_RESULTS_PRIORITY_KEYS)
-            # Remaining results keys (incl. shallow-capped time tables).
+        # Honesty / framing before fat remaining results.* and provenance.
+        walk_mapping_keys(root, prefix="", keys=_TOP_LEVEL_PRIORITY_KEYS, skip={"results"})
+        if isinstance(results, Mapping):
             for key, value in results.items():
                 if not isinstance(key, str) or not key:
                     continue
@@ -299,7 +303,6 @@ def collect_existing_paths(
                     return tuple(paths)
                 child_cap = _FAT_ARRAY_ROW_CAP if key in _FAT_RESULTS_KEYS else None
                 walk(value, path, sequence_cap=child_cap)
-        walk_mapping_keys(root, prefix="", keys=_TOP_LEVEL_PRIORITY_KEYS, skip={"results"})
         for key, value in root.items():
             if key == "results" or key in _TOP_LEVEL_PRIORITY_KEYS:
                 continue
