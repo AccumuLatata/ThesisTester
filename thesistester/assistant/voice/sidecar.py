@@ -17,10 +17,16 @@ import argparse
 import asyncio
 import json
 import logging
+import os
+import subprocess
+import sys
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Mapping
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 from urllib.parse import urlencode
 
 from thesistester.assistant.repository import LocalThesisRepository
@@ -55,6 +61,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SIDECAR_HOST = "127.0.0.1"
 DEFAULT_SIDECAR_PORT = 8765
+DEFAULT_HEALTH_TIMEOUT_SECONDS = 1.5
+DEFAULT_LAUNCH_READY_SECONDS = 4.0
 _FORBIDDEN_LOG_KEYS = frozenset(
     {
         "authorization",
@@ -102,6 +110,189 @@ def assert_localhost_bind(host: str) -> str:
             "Realtime sidecar must bind 127.0.0.1 (or ::1); non-localhost binds are rejected."
         )
     return host.strip()
+
+
+def sidecar_public_base_url(
+    host: str = DEFAULT_SIDECAR_HOST,
+    port: int = DEFAULT_SIDECAR_PORT,
+) -> str:
+    """Return ``http://{host}:{port}`` after validating loopback bind + port."""
+    bind_host = assert_localhost_bind(host)
+    if not isinstance(port, int) or isinstance(port, bool) or port < 1 or port > 65535:
+        raise SidecarError("Sidecar port must be an integer in 1..65535.")
+    return f"http://{bind_host}:{port}"
+
+
+def probe_sidecar_health(
+    base_url: str,
+    *,
+    timeout_seconds: float = DEFAULT_HEALTH_TIMEOUT_SECONDS,
+) -> dict[str, Any] | None:
+    """GET ``{base_url}/health``. Return JSON dict on success, else ``None``.
+
+    Fail-closed: connection refused, timeouts, non-200, and non-object JSON
+    all return ``None`` (caller treats as unreachable). Never raises for
+    network failures — Streamlit uses this as a preflight before register.
+    """
+    if not isinstance(base_url, str) or not base_url.strip():
+        return None
+    normalized = base_url.strip().rstrip("/")
+    # Defense in depth: only probe loopback URLs from the page helpers.
+    if "://" not in normalized:
+        return None
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(normalized)
+        host = (parsed.hostname or "").strip().lower()
+        if host not in {"127.0.0.1", "::1"}:
+            return None
+    except Exception:
+        return None
+    req = urllib_request.Request(
+        f"{normalized}/health",
+        headers={"Accept": "application/json"},
+        method="GET",
+    )
+    try:
+        with urllib_request.urlopen(req, timeout=float(timeout_seconds)) as response:
+            if getattr(response, "status", 200) != 200:
+                return None
+            decoded = json.loads(response.read().decode("utf-8"))
+    except (
+        urllib_error.URLError,
+        TimeoutError,
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+        ValueError,
+        OSError,
+    ):
+        return None
+    if not isinstance(decoded, dict) or not decoded.get("ok"):
+        return None
+    return decoded
+
+
+def build_sidecar_launch_command(
+    *,
+    host: str = DEFAULT_SIDECAR_HOST,
+    port: int = DEFAULT_SIDECAR_PORT,
+    python_executable: str | None = None,
+) -> list[str]:
+    """Build argv for ``python -m thesistester.assistant.voice.sidecar``."""
+    bind_host = assert_localhost_bind(host)
+    if not isinstance(port, int) or isinstance(port, bool) or port < 1 or port > 65535:
+        raise SidecarError("Sidecar port must be an integer in 1..65535.")
+    exe = python_executable or sys.executable
+    if not isinstance(exe, str) or not exe.strip():
+        raise SidecarError("python_executable must be a non-empty string.")
+    return [
+        exe.strip(),
+        "-m",
+        "thesistester.assistant.voice.sidecar",
+        "--host",
+        bind_host,
+        "--port",
+        str(port),
+    ]
+
+
+def launch_local_sidecar(
+    *,
+    host: str = DEFAULT_SIDECAR_HOST,
+    port: int = DEFAULT_SIDECAR_PORT,
+    python_executable: str | None = None,
+    cwd: str | Path | None = None,
+) -> subprocess.Popen[Any]:
+    """Spawn a detached localhost sidecar process (inherits env for ``XAI_API_KEY``).
+
+    Does not wait for readiness — use :func:`ensure_local_sidecar` or
+    :func:`probe_sidecar_health`. Refuses non-loopback hosts. Stdio is
+    discarded so a Streamlit-spawned child cannot block on pipes.
+    """
+    command = build_sidecar_launch_command(
+        host=host,
+        port=port,
+        python_executable=python_executable,
+    )
+    popen_kwargs: dict[str, Any] = {
+        "args": command,
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "cwd": str(cwd) if cwd is not None else None,
+        "env": os.environ.copy(),
+    }
+    if os.name == "nt":
+        # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP — survive Streamlit reruns.
+        popen_kwargs["creationflags"] = 0x00000008 | 0x00000200
+    else:
+        popen_kwargs["start_new_session"] = True
+    try:
+        return subprocess.Popen(**popen_kwargs)
+    except OSError as exc:
+        raise SidecarError(f"Failed to launch realtime sidecar process: {exc}") from exc
+
+
+def ensure_local_sidecar(
+    *,
+    host: str = DEFAULT_SIDECAR_HOST,
+    port: int = DEFAULT_SIDECAR_PORT,
+    python_executable: str | None = None,
+    cwd: str | Path | None = None,
+    ready_timeout_seconds: float = DEFAULT_LAUNCH_READY_SECONDS,
+    poll_interval_seconds: float = 0.2,
+) -> dict[str, Any]:
+    """Probe health; if unreachable, launch a local sidecar and wait for ``/health``.
+
+    Returns a small status dict (no secrets)::
+
+        {"ok": True, "launched": bool, "base_url": str, "health": dict, "pid": int|None}
+
+    Raises :class:`SidecarError` when launch fails or health never becomes ready.
+    """
+    base_url = sidecar_public_base_url(host, port)
+    health = probe_sidecar_health(base_url)
+    if health is not None:
+        return {
+            "ok": True,
+            "launched": False,
+            "base_url": base_url,
+            "health": health,
+            "pid": None,
+        }
+    process = launch_local_sidecar(
+        host=host,
+        port=port,
+        python_executable=python_executable,
+        cwd=cwd,
+    )
+    deadline = time.monotonic() + float(ready_timeout_seconds)
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise SidecarError(
+                "Realtime sidecar process exited before becoming healthy. "
+                "Confirm XAI_API_KEY is set in the environment and re-run "
+                "`python -m thesistester.assistant.voice.sidecar` in a terminal "
+                "to see startup errors."
+            )
+        health = probe_sidecar_health(base_url)
+        if health is not None:
+            return {
+                "ok": True,
+                "launched": True,
+                "base_url": base_url,
+                "health": health,
+                "pid": process.pid,
+            }
+        time.sleep(float(poll_interval_seconds))
+    raise SidecarError(
+        "Realtime sidecar was launched but /health did not become ready in time. "
+        f"Check that port {port} is free and XAI_API_KEY is available to the "
+        "sidecar process. Manual start: "
+        "`python -m thesistester.assistant.voice.sidecar --host 127.0.0.1 "
+        f"--port {port}`."
+    )
 
 
 def redact_for_logs(payload: Any) -> Any:
