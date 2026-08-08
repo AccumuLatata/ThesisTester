@@ -490,9 +490,11 @@ deterministic KPI fallback live in
 `propose_results_reply` / `handle_results_turn` (not page-only). Flags both
 `false` restore pre-DI grounding hard-fail (TLS wrap remains).
 **DI-2 landed:** first-pass Results Q&A user payloads include
-`path_catalog.existing_paths` (bounded paths present on the turn context).
-Overview/KPI asks (DI-1 matcher) also receive `kpi_allowlist` /
+`path_catalog.existing_paths` (bounded paths present on the turn context;
+KPI + projections/validation + honesty paths reserved before fat time tables
+/ provenance). Overview/KPI asks (DI-1 matcher) also receive `kpi_allowlist` /
 `preferred_claim_paths`; non-overview asks get the shared catalog only.
+Repair retries reuse that catalog (no duplicate `repair.existing_paths` list).
 Matcher ownership stays in DI-1; DI-2 does not widen intents.
 **RQ-3 landed:** `thesistester/assistant/product_help.py` +
 `handle_help_turn`; Help / how it works mode on Research Assistant

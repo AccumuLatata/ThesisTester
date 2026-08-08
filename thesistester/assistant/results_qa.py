@@ -20,7 +20,6 @@ from thesistester.assistant.results_overview import (
     build_prompt_path_catalog,
     build_structured_remediation_reply,
     classify_recovery_reason,
-    collect_existing_paths,
     failure_class_from_exception,
     match_overview_intent,
 )
@@ -355,12 +354,14 @@ def propose_results_reply(
         # already exhausted transport retries — go straight to overview fallback
         # or §5.3 remediation (never a second model call on dead transport).
         if repair_retry_enabled and isinstance(first_exc, LLMEvidenceError):
+            # Path allowlist lives solely on path_catalog (DI-2); repair carries
+            # only the prior error + instruction so lists cannot diverge.
             repair_payload = {
                 "prior_error": str(first_exc),
-                "existing_paths": list(collect_existing_paths(evidence_context)),
                 "instruction": (
-                    "Repair the reply using only existing_paths. Narrate fractional "
-                    "rates with % or percent/pct/Prozent. Do not invent paths or numbers."
+                    "Repair the reply using only path_catalog.existing_paths. "
+                    "Narrate fractional rates with % or percent/pct/Prozent. "
+                    "Do not invent paths or numbers."
                 ),
             }
             try:

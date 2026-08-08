@@ -317,6 +317,43 @@ def test_fat_provenance_repair_catalog_keeps_kpi_paths():
     ):
         assert required in paths
     assert any(p in paths for p in KPI_CLAIM_PATHS)
+    assert "assumptions.instrument" in paths
+
+
+def test_fat_time_grouped_catalog_keeps_projections_and_honesty():
+    """Fat time tables must not starve projections / limitations in DI-2 catalog."""
+    rows = [{f"col_{j}": j for j in range(20)} for _ in range(40)]
+    context = {
+        "provenance": {f"blob_{i}": i for i in range(200)},
+        "assumptions": {"instrument": "NQ", "entry_window": {"focus": True}},
+        "results": {
+            "trade_summary": {"trade_count": 42, "win_rate": 0.52},
+            "time_grouped_summary": rows,
+            "validation_summary": {"status": "ok"},
+            "projections": {
+                "best_stop_take_profit": {
+                    "stop_loss_ticks": 8,
+                    "take_profit_ticks": 16,
+                    "ranking_metric": "expectancy_r",
+                }
+            },
+        },
+        "warnings": ["sample warning"],
+        "limitations": ["Time analysis is not present in this evidence packet."],
+        "caveats": ["Historical sample only."],
+    }
+    paths = collect_existing_paths(context, max_paths=240)
+    assert "results.projections" in paths
+    assert "results.projections.best_stop_take_profit" in paths
+    assert "results.projections.best_stop_take_profit.stop_loss_ticks" in paths
+    assert "results.validation_summary" in paths
+    assert "limitations" in paths
+    assert "caveats" in paths
+    assert "assumptions.instrument" in paths
+    # Shallow sample of the fat table — not the full 40×20 expansion.
+    assert "results.time_grouped_summary" in paths
+    assert "results.time_grouped_summary.0" in paths
+    assert "results.time_grouped_summary.8" not in paths
 
 
 def test_repair_retry_succeeds_without_fallback():
@@ -459,3 +496,30 @@ def test_di2_build_prompt_path_catalog_helper_overview_vs_none():
     assert overview["kpi_allowlist"]
     assert "kpi_allowlist" not in plain
     assert set(overview["existing_paths"]) >= set(overview["kpi_allowlist"])
+
+
+def test_di2_repair_reuses_path_catalog_without_duplicate_path_list():
+    class CaptureFailClient:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def complete_structured(self, **kwargs):
+            self.calls.append(kwargs)
+            # Both passes return an ungrounded payload so repair is exercised.
+            return _bad_path_payload()
+
+    client = CaptureFailClient()
+    propose_results_reply(
+        client,
+        packet=_packet(),
+        history=(),
+        user_message="How many trades?",
+        deterministic_overview_fallback=False,
+    )
+    assert len(client.calls) == 2
+    repair_payload = _user_payload_from_call(client.calls[1])
+    assert "path_catalog" in repair_payload
+    assert "existing_paths" in repair_payload["path_catalog"]
+    assert "repair" in repair_payload
+    assert "existing_paths" not in repair_payload["repair"]
+    assert "path_catalog.existing_paths" in repair_payload["repair"]["instruction"]

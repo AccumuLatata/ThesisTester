@@ -40,6 +40,30 @@ KPI_CLAIM_PATHS: tuple[str, ...] = (
     "results.best_grid_result.trade_count",
 )
 
+# Walk these ``results.*`` keys before fat arrays (e.g. time_grouped_summary).
+_RESULTS_PRIORITY_KEYS: tuple[str, ...] = (
+    "trade_summary",
+    "best_grid_result",
+    "projections",
+    "validation_summary",
+    "walk_forward_summary",
+    "walk_forward_warnings",
+    "otf_validation_summary",
+)
+
+# Honesty / framing paths reserved before provenance and fat tables.
+_TOP_LEVEL_PRIORITY_KEYS: tuple[str, ...] = (
+    "limitations",
+    "caveats",
+    "warnings",
+    "assumptions",
+)
+
+# Large row tables: keep the root + a shallow sample so they cannot exhaust
+# the catalog budget ahead of projections / honesty paths.
+_FAT_RESULTS_KEYS: frozenset[str] = frozenset({"time_grouped_summary"})
+_FAT_ARRAY_ROW_CAP = 8
+
 _KPI_POSITIVE_CUES: tuple[str, ...] = (
     "kpi",
     "kpis",
@@ -196,8 +220,13 @@ def collect_existing_paths(
 ) -> tuple[str, ...]:
     """Collect dotted paths present on the turn evidence context (bounded).
 
-    Prefers KPI allowlist paths and the ``results.*`` subtree so repair catalogs
-    are not starved by large ``provenance`` / ``assumptions`` maps.
+    Priority order so DI-2 / repair catalogs stay useful under fat packets:
+
+    1. frozen KPI allowlist leaves
+    2. specialist ``results.*`` keys (trade_summary, projections, validation/WFA)
+    3. top-level honesty paths (limitations / caveats / warnings / assumptions)
+    4. remaining ``results.*`` (shallow sample for fat row tables)
+    5. remaining top-level maps (provenance, …)
     """
     paths: list[str] = []
     seen: set[str] = set()
@@ -209,7 +238,7 @@ def collect_existing_paths(
         paths.append(path)
         return len(paths) < max_paths
 
-    def walk(node: Any, prefix: str) -> None:
+    def walk(node: Any, prefix: str, *, sequence_cap: int | None = None) -> None:
         if len(paths) >= max_paths:
             return
         if isinstance(node, Mapping):
@@ -219,14 +248,36 @@ def collect_existing_paths(
                 path = f"{prefix}.{key}" if prefix else key
                 if not add(path):
                     return
-                walk(value, path)
+                child_cap = _FAT_ARRAY_ROW_CAP if key in _FAT_RESULTS_KEYS else sequence_cap
+                walk(value, path, sequence_cap=child_cap)
             return
         if isinstance(node, Sequence) and not isinstance(node, (str, bytes, bytearray)):
-            for index, value in enumerate(node):
+            items = list(node)
+            if sequence_cap is not None:
+                items = items[:sequence_cap]
+            for index, value in enumerate(items):
                 path = f"{prefix}.{index}" if prefix else str(index)
                 if not add(path):
                     return
-                walk(value, path)
+                walk(value, path, sequence_cap=None)
+
+    def walk_mapping_keys(
+        mapping: Mapping[str, Any],
+        *,
+        prefix: str,
+        keys: Sequence[str],
+        skip: set[str] | None = None,
+    ) -> None:
+        skipped = skip or set()
+        for key in keys:
+            if key in skipped or key not in mapping:
+                continue
+            value = mapping[key]
+            path = f"{prefix}.{key}" if prefix else key
+            if not add(path):
+                return
+            child_cap = _FAT_ARRAY_ROW_CAP if key in _FAT_RESULTS_KEYS else None
+            walk(value, path, sequence_cap=child_cap)
 
     if isinstance(root, Mapping):
         for path in KPI_CLAIM_PATHS:
@@ -234,9 +285,23 @@ def collect_existing_paths(
                 add(path)
         results = root.get("results")
         if isinstance(results, Mapping):
-            walk(results, "results")
+            if not add("results"):
+                return tuple(paths)
+            walk_mapping_keys(results, prefix="results", keys=_RESULTS_PRIORITY_KEYS)
+            # Remaining results keys (incl. shallow-capped time tables).
+            for key, value in results.items():
+                if not isinstance(key, str) or not key:
+                    continue
+                if key in _RESULTS_PRIORITY_KEYS:
+                    continue
+                path = f"results.{key}"
+                if not add(path):
+                    return tuple(paths)
+                child_cap = _FAT_ARRAY_ROW_CAP if key in _FAT_RESULTS_KEYS else None
+                walk(value, path, sequence_cap=child_cap)
+        walk_mapping_keys(root, prefix="", keys=_TOP_LEVEL_PRIORITY_KEYS, skip={"results"})
         for key, value in root.items():
-            if key == "results":
+            if key == "results" or key in _TOP_LEVEL_PRIORITY_KEYS:
                 continue
             if not isinstance(key, str) or not key:
                 continue

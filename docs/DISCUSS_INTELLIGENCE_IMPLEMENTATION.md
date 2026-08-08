@@ -222,9 +222,10 @@ user message
         yes → build deterministic slice claims (available as fallback)
   → try LLM propose_results_reply (existing schema)
         on LLMEvidenceError (path/digits/soften):
-            if repair_retry_enabled: one repair call with error + allowed paths
-              (path catalog prefers KPI allowlist + results.* so fat provenance
-               cannot starve repair)
+            if repair_retry_enabled: one repair call with prior error
+              (path allowlist is path_catalog only — KPI + projections +
+               validation/WFA + honesty paths before fat time tables /
+               provenance so the catalog cannot starve specialist cites)
             else / repair fails:
                 if overview intent + deterministic_overview_fallback:
                     return deterministic slice (+ expert overlay when DI-3 lands)
@@ -259,11 +260,15 @@ provider-failure message helper (no secrets, no traceback).
 **Do not** blanket-catch `OSError` / `TimeoutError` / unrelated network faults
 beyond what the transport already wraps today.
 
-### 5.2 Repair prompt constraints (DI-1)
+### 5.2 Repair prompt constraints (DI-1 / DI-2)
 
-- Pass only: prior error string, user message, **catalog of existing paths in
-  the turn context** (key listing, not a second full packet dump if already in
-  payload), and instruction to use `%` for fractional rates.
+- Pass only: prior error string + instruction to repair using
+  ``path_catalog.existing_paths`` (and `%` for fractional rates). Do **not**
+  duplicate a second path list under ``repair.existing_paths`` — the DI-2
+  ``path_catalog`` on the same payload is the single allowlist source.
+- Path catalog priority (DI-2): KPI leaves → projections / trade_summary /
+  validation-WFA → limitations/caveats/warnings/assumptions → remaining
+  ``results.*`` (shallow sample for fat ``time_grouped_summary``) → provenance.
 - Still fail closed through the same auditor.
 - Exactly **one** repair attempt (no loops).
 - Repair is separate from transport `max_retries`.
