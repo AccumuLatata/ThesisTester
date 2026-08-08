@@ -56,6 +56,16 @@ _VOICE_CHANNELS = frozenset({"results_qa", "product_help"})
 _VOICE_MODES = frozenset({"push_to_talk", "realtime"})
 _TTS_MIME = "audio/mpeg"
 
+# DX-2 §4.3 verbatim realtime/results constraint needles (test-stable).
+# Amend docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md §4.3 in the same PR if copy changes.
+_DX2_REALTIME_RESULTS_CONSTRAINT_LINES: tuple[str, ...] = (
+    "Duplex overview rules: prefer tool fields summary, kpi_claims, expert_overlay, and packet caveats.",
+    "Cite only paths returned by tools; never invent results.trade_count, results.instrument, or results.validation.trade_count.",
+    "When tools return fractional win rates, say them as percent / %.",
+    "Do not answer walk-forward, validation, ranking, or time asks by reading get_run_overview as a substitute; call a specialist-appropriate tool or remediate.",
+    "No trade advice; sample-size and OOS caveats still apply.",
+)
+
 
 class _ResultsHelpOrchestrator(Protocol):
     """Minimal orchestrator surface used by push-to-talk channel turns."""
@@ -610,6 +620,9 @@ def build_honesty_instructions(
                 "the bound packet or compare_evidence.",
             ]
         )
+        # DX-2: realtime results only — prefer DI-shaped tool fields / no topic swap.
+        if mode == "realtime":
+            shared.extend(_DX2_REALTIME_RESULTS_CONSTRAINT_LINES)
     else:
         shared.extend(
             [
@@ -752,6 +765,12 @@ class VoiceSessionService:
                 raise VoiceSessionError(f"Honesty instructions missing {needle!r}.")
         if channel == "results_qa" and "sample-size/oos caveats" not in lowered:
             raise VoiceSessionError("Results honesty instructions missing sample-size/OOS caveats.")
+        if channel == "results_qa" and mode == "realtime":
+            for line in _DX2_REALTIME_RESULTS_CONSTRAINT_LINES:
+                if line not in instructions:
+                    raise VoiceSessionError(
+                        f"Realtime results honesty instructions missing {line!r}."
+                    )
 
         saved = self.repository.save_voice_session(record)
         if packet is not None:

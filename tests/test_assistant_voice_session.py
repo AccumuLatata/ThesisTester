@@ -300,6 +300,29 @@ def test_honesty_instruction_policy_strings():
         assert "numbers only from tools/packet/corpus rules" in text
     assert "sample-size/OOS caveats" in results
     assert "remediate to Discuss results" in help_text
+    # DX-2 duplex needles are realtime/results-only — not PTT or Help.
+    assert "kpi_claims" not in results
+    assert "kpi_claims" not in help_text
+
+
+def test_realtime_results_honesty_includes_dx2_needles():
+    text = build_honesty_instructions(
+        channel="results_qa",
+        mode="realtime",
+        run_id="run_" + "c" * 32,
+        expected_hash="d" * 64,
+    )
+    needles = (
+        "Duplex overview rules: prefer tool fields summary, kpi_claims, expert_overlay, and packet caveats.",
+        "Cite only paths returned by tools; never invent results.trade_count, results.instrument, or results.validation.trade_count.",
+        "When tools return fractional win rates, say them as percent / %.",
+        "Do not answer walk-forward, validation, ranking, or time asks by reading get_run_overview as a substitute; call a specialist-appropriate tool or remediate.",
+        "No trade advice; sample-size and OOS caveats still apply.",
+    )
+    for needle in needles:
+        assert needle in text
+    assert "sample-size/OOS caveats" in text
+    assert "Never enable web_search" in text or "web_search" in text
 
 
 def test_end_session_flushes_transcript_best_effort(tmp_path):

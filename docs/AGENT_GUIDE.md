@@ -369,7 +369,9 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   unmatched / no-text → neutral `run_overview`, not remediation),
   session-transcript selector (no sidecar buffer peek), intent sample-size
   alias → `results.trade_summary.trade_count`, DI reply→envelope projection,
-  and speakable `summary`-first preference.
+  and speakable `summary`-first preference. DX-2 adds the frozen §4.3 duplex
+  overview constraint needles to realtime/results `build_honesty_instructions`
+  only (not PTT/Help); sidecar must keep consuming that single builder.
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned

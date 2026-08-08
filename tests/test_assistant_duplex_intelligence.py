@@ -17,12 +17,24 @@ from thesistester.assistant.repository import LocalThesisRepository
 from thesistester.assistant.tools import AssistantTools
 from thesistester.assistant.voice.contracts import VoiceTranscriptTurn
 from thesistester.assistant.voice.grounding import format_speakable_tool_result
-from thesistester.assistant.voice.session import VoiceSessionService
+from thesistester.assistant.voice.session import (
+    VoiceSessionService,
+    build_honesty_instructions,
+)
 from thesistester.assistant.voice.tools import (
     VOICE_TOOL_SCHEMAS,
     execute_voice_tool,
 )
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
+
+# Frozen DX-2 §4.3 needles (must match DUPLEX_INTELLIGENCE_IMPLEMENTATION.md).
+_DX2_NEEDLES = (
+    "Duplex overview rules: prefer tool fields summary, kpi_claims, expert_overlay, and packet caveats.",
+    "Cite only paths returned by tools; never invent results.trade_count, results.instrument, or results.validation.trade_count.",
+    "When tools return fractional win rates, say them as percent / %.",
+    "Do not answer walk-forward, validation, ranking, or time asks by reading get_run_overview as a substitute; call a specialist-appropriate tool or remediate.",
+    "No trade advice; sample-size and OOS caveats still apply.",
+)
 
 _RUN_SPEC = {
     "dataset": {"path": "bars.csv", "instrument": "ES"},
@@ -357,3 +369,36 @@ def test_stale_negative_cue_after_assistant_turn_is_neutral(tmp_path: Path):
     assert result["kpi_claims"]
     assert not result.get("remediation")
     assert result["claims"] == result["kpi_claims"]
+
+
+def test_dx2_realtime_results_instructions_contain_frozen_needles(tmp_path: Path):
+    """X8: realtime/results honesty instructions include §4.3 needles."""
+    text = build_honesty_instructions(
+        channel="results_qa",
+        mode="realtime",
+        run_id="run_" + "e" * 32,
+        expected_hash="f" * 64,
+    )
+    for needle in _DX2_NEEDLES:
+        assert needle in text
+    # Session create path also validates these needles for realtime results.
+    service, handle, thesis, _run, digest = _results_session(tmp_path, packet=_kpi_packet())
+    record = service.repository.get_voice_session(thesis.thesis_id, handle.session_id)
+    assert record.mode == "realtime"
+    created_instructions = service.build_honesty_instructions(record)
+    for needle in _DX2_NEEDLES:
+        assert needle in created_instructions
+
+
+def test_dx2_needles_absent_from_ptt_and_help():
+    ptt = build_honesty_instructions(
+        channel="results_qa",
+        mode="push_to_talk",
+        run_id="run_" + "1" * 32,
+        expected_hash="2" * 64,
+    )
+    help_rt = build_honesty_instructions(channel="product_help", mode="realtime")
+    for text in (ptt, help_rt):
+        assert _DX2_NEEDLES[0] not in text
+        assert "kpi_claims" not in text
+        assert "never invent results.trade_count" not in text
