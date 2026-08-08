@@ -266,14 +266,18 @@ def _grid_ranking_matches(normalized: str) -> bool:
 
 
 def _validation_wfa_matches(normalized: str) -> bool:
-    # RI-5 owns ``otf validation`` — bare ``validation`` must not remap it.
-    if _alias_matches("otf", normalized) and _alias_matches("validation", normalized):
-        return False
-    if _any_cue_matches(_VALIDATION_WFA_POSITIVE_CUES, normalized):
+    # Non-``validation`` cues always land validation_wfa (even beside OTF talk).
+    other_cues = tuple(cue for cue in _VALIDATION_WFA_POSITIVE_CUES if cue != "validation")
+    if _any_cue_matches(other_cues, normalized):
         return True
     # ``permutation`` only in validation sense (§4.1).
     if _alias_matches("permutation", normalized) and _any_cue_matches(
         _VALIDATION_PERMUTATION_COLLOCATES, normalized
+    ):
+        return True
+    # Bare ``validation`` — but not the RI-5 phrase ``otf validation``.
+    if _alias_matches("validation", normalized) and not _alias_matches(
+        "otf validation", normalized
     ):
         return True
     return False
@@ -890,10 +894,11 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             return f"Median OOS test expectancy R is {display}."
         if path.endswith("stitched_oos_total_r"):
             return f"Stitched OOS total R is {display}."
-        if path.endswith("fold_count"):
-            return f"Walk-forward fold count is {display}."
+        # ``valid_fold_count`` also endswith ``fold_count`` — check the longer suffix first.
         if path.endswith("valid_fold_count"):
             return f"Valid walk-forward fold count is {display}."
+        if path.endswith("fold_count"):
+            return f"Walk-forward fold count is {display}."
         if path.endswith("ci_lower"):
             return f"Bootstrap CI lower is {display}."
         if path.endswith("ci_upper"):

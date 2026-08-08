@@ -150,6 +150,10 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     # otf validation is RI-5 residual — not owned by bare RI-3 validation.
     assert match_discuss_intent("otf validation") is None
     assert has_overview_negative_cue("otf validation") is True
+    # Other WFA cues still land even when OTF is mentioned in passing.
+    assert (
+        match_discuss_intent("walk-forward validation and otf notes") == INTENT_VALIDATION_WFA
+    )
     # Bare permutation without validation-sense collocates does not match.
     assert match_discuss_intent("a permutation of the thesis") is None
     assert match_discuss_intent("bootstrap permutation test") == INTENT_VALIDATION_WFA
@@ -522,6 +526,38 @@ def test_validation_allowlist_paths_present():
     assert "results.walk_forward_summary.median_test_expectancy_r" in paths
     assert "results.validation_summary.bootstrap.ci_lower" in paths
     assert "results.validation_summary.grid_overfit.risk_level" in paths
+
+
+def test_valid_fold_count_claim_label_not_shadowed_by_fold_count():
+    from thesistester.assistant.results_overview import (
+        _format_scalar_for_claim,
+        build_deterministic_validation_wfa_reply,
+    )
+
+    assert (
+        _format_scalar_for_claim("results.walk_forward_summary.valid_fold_count", 3)
+        == "Valid walk-forward fold count is 3."
+    )
+    assert (
+        _format_scalar_for_claim("results.walk_forward_summary.fold_count", 4)
+        == "Walk-forward fold count is 4."
+    )
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri3_folds"},
+        assumptions={},
+        results={
+            "walk_forward_summary": {
+                "fold_count": 4,
+                "valid_fold_count": 3,
+                "status": "ok",
+            }
+        },
+        warnings=(),
+        limitations=(),
+    )
+    reply = build_deterministic_validation_wfa_reply(packet, packet.to_dict())
+    assert "Valid walk-forward fold count is 3" in reply.summary
+    assert "Walk-forward fold count is 4" in reply.summary
 
 
 def test_validation_allowlist_omits_null_leaves():
