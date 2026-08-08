@@ -429,8 +429,11 @@ def test_exposure_definition_prefers_exposure_policy_guide_not_cost_glossary():
         "single_position",
         "single_direction",
         "single_setup",
+        "level_names",
+        "setup_id",
         "Cooldown bars after exit",
         "overlapping_position",
+        "no-op",
         "OTF",
     ):
         assert phrase in primary.text, f"Exposure policy body missing {phrase!r}"

@@ -297,13 +297,13 @@ skipped signals, blocking trade, exposure_group_key
 
 | Control / value | Meaning | Common pitfall |
 |---|---|---|
-| `allow_all` (default) | Every executable signal may trade; overlapping signals are independent | Inflates trade count vs a real one-position book |
+| `allow_all` (default) | Every executable signal may trade; overlapping signals are independent | Inflates trade count vs a real one-position book; cooldown is a no-op here |
 | `single_position` | At most one open trade at a time (any direction/setup) | Later signals skip as `overlapping_position` |
 | `single_direction` | At most one open trade per direction (`long` / `short`) | Opposite side can still overlap |
-| `single_setup` | At most one open trade per setup group (`setup_name`, else `zone_id`, else `level_source_label`, else `trigger\|direction`) | Same trigger/direction can collide when setup labels are missing |
-| `Cooldown bars after exit` | After a blocking trade exits, wait this many bars before admitting another in the same exposure group | Skip reason becomes `cooldown_active` when entry is after exit but inside cooldown |
+| `single_setup` | At most one open trade per setup group. Backtest key order: `setup_name` → `zone_id` → `level_source_label` → `level_names` → else `trigger\|direction` | Shared `level_names` can collide even when zone labels differ; trigger/direction is last resort |
+| `Cooldown bars after exit` | Under `single_*` only: after a blocking trade exits, wait this many bars before admitting another in the same exposure group | No-op under `allow_all`; skip reason is `cooldown_active` when entry is after exit but inside cooldown |
 
-**How admission works.**
+**How admission works (Backtest).**
 
 1. Window / cutoff rejects (`outside_entry_window`, `after_entry_cutoff`) are
    evaluated **before** exposure — rejected candidates never compete for a slot.
@@ -316,15 +316,22 @@ skipped signals, blocking trade, exposure_group_key
 5. Backtest captions split skip counts: outside entry window / after entry
    cutoff / exposure-other.
 
+**Portfolio note.** Portfolio uses the same four policy **names** after merging
+completed per-setup trades (diagnostic merge — not a live margin engine), but
+grouping differs: Portfolio `single_setup` keys on merged `setup_id` (not the
+Backtest signal-field chain above). Portfolio admission skips show
+`skip_reason` / `blocking_trade_id` in **Portfolio admission skips** and do
+**not** emit `exposure_group_key`. Prefer upstream Backtest `allow_all` so the
+portfolio gate is applied once at merge time. Cooldown is likewise a no-op
+under Portfolio `allow_all`.
+
 **How to use.**
 
 1. Open **Backtest** → **Exposure policy**.
 2. Choose **Policy** and optional **Cooldown bars after exit**.
 3. **Run backtest**, then inspect **Skipped signals** if trade count looks thin.
-4. On **Portfolio**, `Portfolio exposure policy` applies the same four names
-   **after** merging completed per-setup trades (diagnostic merge — not a live
-   margin engine). Prefer upstream `allow_all` so the portfolio gate is applied
-   once at merge time.
+4. On **Portfolio**, set `Portfolio exposure policy` / cooldown → **Run
+   portfolio analysis**, then read **Portfolio admission skips**.
 5. Grid / Validation inherit one fixed exposure policy across cells/folds —
    exposure is not a swept axis.
 
@@ -592,8 +599,8 @@ trades, diagnostic merge
 |---|---|---|
 | `Current setup label` | Name for the in-session trade table (shown when Backtest `trades` exist) | Absent when session trades are empty |
 | `Additional completed-trade CSV exports` | Upload one or more trade CSVs | Need ≥2 setup tables total across session + uploads |
-| `Portfolio exposure policy` | Same four values as Backtest **Policy** (see **Exposure policy**) | Applied after merge — not a live margin engine |
-| `Cooldown bars after exit` | Portfolio-level spacing after a blocking exit | Same cooldown semantics as Backtest |
+| `Portfolio exposure policy` | Same four **names** as Backtest **Policy** (see **Exposure policy**); `single_setup` groups by merged `setup_id` | Applied after merge — not a live margin engine; not the Backtest signal-field group key |
+| `Cooldown bars after exit` | Portfolio-level spacing after a blocking exit under `single_*` | No-op under `allow_all` (same as Backtest) |
 
 **How to use.**
 
