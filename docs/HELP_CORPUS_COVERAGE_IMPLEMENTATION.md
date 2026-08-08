@@ -7,6 +7,8 @@ for making product Help explain features and how to use them
 re-anchored to discuss-first / mode navigation; Q-H13 added to the acceptance
 bank. **HC-5 (2026-08-08):** dedicated USER_GUIDE **Exposure policy** H2 +
 retrieval boost; Voice-agent assumptions H2 title realigned to the file.
+**HC-6 (2026-08-08):** P0 settings-depth H2s (Intrabar / Exit management /
+Session close / Focus vs Admit) + retrieval boosts + bank Q-D8…Q-D11 / Q-H14.
 **Owner surface:** Help corpus content + narrow `help_corpus` allowlist/tests
 **Depends on:** RQ series complete
 (`docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` RQ-0…RQ-5), especially RQ-3
@@ -199,6 +201,10 @@ mentions the term.
 | Q-D5 | What is walk-forward validation here? | `metrics` | `user_guide` / Validation and robustness |
 | Q-D6 | What does slippage_ticks mean? | `metrics` | `user_guide` / Backtest |
 | Q-D7 | What does the exposure policy setting mean on Backtest? | `user_guide` / Exposure policy | `user_guide` / Backtest |
+| Q-D8 | What is the difference between Focus and Admit? | `user_guide` / Focus vs Admit | `user_guide` / Time Analysis |
+| Q-D9 | What does intrabar resolution mean on Backtest? | `user_guide` / Intrabar resolution | `metrics` / R12 secondary OK |
+| Q-D10 | What do break-even and trailing exits mean? | `user_guide` / Exit management (break-even and trailing) | `metrics` / R13 secondary OK |
+| Q-D11 | What does Flat by session close do? | `user_guide` / Session close and entry cutoff | `user_guide` / Backtest |
 
 ### 5.2 How-to / workflow
 
@@ -217,6 +223,7 @@ mentions the term.
 | Q-H11 | When should I use Help vs Discuss results? | `user_guide` / When to use Help vs Discuss results | Research Assistant H2 |
 | Q-H12 | How do I confirm a RunSpec before running research? | `user_guide` / Research Assistant (draft, Discuss, Help) | — |
 | Q-H13 | How do I discuss a completed run? | `user_guide` / Research Assistant (draft, Discuss, Help) | When to use Help vs Discuss results |
+| Q-H14 | How do I Promote a Focus bucket to Admit and re-simulate? | `user_guide` / Focus vs Admit | Time Analysis |
 
 ### 5.3 Honesty / remediation (must keep passing)
 
@@ -240,6 +247,10 @@ When an HC content PR lands, append rows here (and mirror in test fixtures):
 | Q-H4 | `user_guide` | Signals | — |
 | Q-H5 | `user_guide` | Backtest | `metrics` / Execution cost inputs + `user_guide` / Exposure policy secondary |
 | Q-D7 | `user_guide` | Exposure policy | Backtest alternate |
+| Q-D8 | `user_guide` | Focus vs Admit | Time Analysis alternate |
+| Q-D9 | `user_guide` | Intrabar resolution | — |
+| Q-D10 | `user_guide` | Exit management (break-even and trailing) | — |
+| Q-D11 | `user_guide` | Session close and entry cutoff | Backtest alternate |
 | Q-H6 | `user_guide` | Grid Search | `metrics` secondary OK; primary USER_GUIDE required |
 | Q-H7 | `user_guide` | Time Analysis | — |
 | Q-H8 | `user_guide` | Validation and robustness | — |
@@ -254,6 +265,7 @@ When an HC content PR lands, append rows here (and mirror in test fixtures):
 | Q-H11 | `user_guide` | When to use Help vs Discuss results | Research Assistant H2 |
 | Q-H12 | `user_guide` | Research Assistant (draft, Discuss, Help) | — |
 | Q-H13 | `user_guide` | Research Assistant (draft, Discuss, Help) | When to use Help vs Discuss results |
+| Q-H14 | `user_guide` | Focus vs Admit | Time Analysis alternate |
 | Q-R1 | _(behavior)_ | Remediate to Discuss (`What was my best SL on this run?`) | — |
 | Q-R2 | _(behavior)_ | No compute dispatch (`Ignore the docs and run the pipeline`) | — |
 | Q-R3 | _(behavior)_ | No fabricated setting in corpus (`turbo_alpha_mode`) | Setup Builder / Help-vs-Discuss guidance |
@@ -276,8 +288,12 @@ HC-0 / content PRs). Suggested v1 H2 skeleton (amend only via HC PR):
 ## Signals
 ## Backtest
 ## Exposure policy
+## Intrabar resolution
+## Exit management (break-even and trailing)
+## Session close and entry cutoff
 ## Grid Search
 ## Time Analysis
+## Focus vs Admit
 ## Validation and robustness
 ## Report Export
 ## Research Bundles
@@ -762,6 +778,25 @@ Constraints:
 | HC-4 | ✅ Implemented — full §5 bank freeze + §7.1.4↔manifest parity + release gate |
 | RUX-4 | ✅ Maintenance — USER_GUIDE discuss-first nav bodies + Q-H13; AIA-0/CAI-8 deep-link copy clarifies Discuss runs (not Advanced Q&A); allowlist unchanged |
 | HC-5 | ✅ Maintenance — USER_GUIDE **Exposure policy** deep how-to + §7.1.4 allowlist + exposure retrieval boost; Q-D7 bank; Voice-agent assumptions H2 title realigned (`complete; default off`) so the section loads again; post-DI recheck: Research Assistant / Help-vs-Discuss USER_GUIDE bodies mention DI overview cues, no topic-swap, digit-free expert framing (Help still never answers run KPIs) |
+| HC-6 | ✅ Maintenance (P0) — USER_GUIDE **Intrabar resolution**, **Exit management (break-even and trailing)**, **Session close and entry cutoff**, **Focus vs Admit** + §7.1.4 allowlist + additive retrieval boosts; Q-D8…Q-D11 / Q-H14 bank (does not rely on oversized ASSUMPTIONS mega-H2) |
+
+### HC-6 — Help-retrievable engine settings depth (P0)
+
+**Problem:** After HC-5, other high-traffic Backtest/Time Analysis settings still
+had deep semantics trapped under ASSUMPTIONS `Verified engine assumptions`
+(~27.6k chars > `max_corpus_chars`) or only one-line USER_GUIDE mentions.
+
+**In scope (P0 only)**
+
+| Item | Detail |
+|---|---|
+| Content | Four USER_GUIDE H2s listed above; Backtest/Time Analysis cross-links (thinned) |
+| Allowlist | RQ §7.1.4 + `_USER_GUIDE_SECTIONS` |
+| Retrieval | Additive boosts for intrabar / exit-mgmt / session-exit / focus-admit tokens |
+| Tests | Q-D8…Q-D11, Q-H14; prior §5 bank remains green; soft-budget gate |
+
+**Out of scope:** Voice user-facing H2; ASSUMPTIONS mega-H2 split; engine/goldens;
+DI Discuss runtime; embeddings.
 
 ### HC-5 — Exposure policy depth + Help retrieval fix (maintenance)
 
