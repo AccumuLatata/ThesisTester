@@ -5,7 +5,8 @@
 baseline); RUX-1 implemented ([#301](https://github.com/AccumuLatata/ThesisTester/pull/301));
 RUX-2 implemented ([#302](https://github.com/AccumuLatata/ThesisTester/pull/302));
 RUX-3 implemented ([#303](https://github.com/AccumuLatata/ThesisTester/pull/303));
-RUX-4 in progress; RUX-5 specified, not implemented
+RUX-4 implemented ([#304](https://github.com/AccumuLatata/ThesisTester/pull/304));
+RUX-5 specified, not implemented
 **Date:** 2026-08-07
 **Owner surface:** `pages/14_Research_Assistant.py` + presentation-only helpers in
 `thesistester/assistant/` (`ux.py` new, `workspace.py`, `llm.py` settings loader)
