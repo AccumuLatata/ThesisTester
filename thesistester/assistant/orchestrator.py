@@ -651,9 +651,7 @@ class AssistantOrchestrator:
             history=history,
             user_message=message.strip(),
             turn_context=turn_context,
-            repair_retry_enabled=bool(
-                getattr(settings, "repair_retry_enabled", True)
-            ),
+            repair_retry_enabled=bool(getattr(settings, "repair_retry_enabled", True)),
             deterministic_overview_fallback=bool(
                 getattr(settings, "deterministic_overview_fallback", True)
             ),
