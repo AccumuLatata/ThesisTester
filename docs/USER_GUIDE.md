@@ -15,13 +15,15 @@ limits stay in `docs/ASSUMPTIONS_AND_LIMITATIONS.md`. Operator/agent runbooks
 ThesisTester is a research-screening backtester for futures day-trading
 workflows (levels → setups → signals → backtest / grid / validation). Help
 answers from allowlisted docs only; it does not invent run metrics, prove OOS
-edge, or place live trades. Performance questions belong in **Discuss results**.
+edge, or place live trades. Performance questions belong in **Discuss results**
+(Research Assistant mode **Discuss runs**).
 
 ## Classic workflow overview
 
 **What it is.** The classic Streamlit pages are a linear research path for one
-instrument/dataset. Research Assistant sits beside that path for thesis draft,
-Discuss results, and Help.
+instrument/dataset. Research Assistant sits beside that path with modes
+**Discuss runs**, **Help**, and **Draft thesis** (surfaces: Discuss results,
+Help / how it works, Assistant chat).
 
 **Related terms.** workflow, classic pages, Data, Levels, Setup Builder,
 Signals, Backtest, research path, how to start
@@ -42,7 +44,8 @@ Signals, Backtest, research path, how to start
    or combine results (see those Help sections).
 
 **What it is not.** Completing the path does not prove an edge. In-sample KPIs
-are diagnostics. Ask Help for how-tos; use Discuss results for run metrics.
+are diagnostics. Ask Help for how-tos; use **Discuss results** in mode
+**Discuss runs** for run metrics.
 
 **Related pages.** Data → Levels → Setup Builder → Signals → Backtest; Research
 Assistant for thesis / Discuss / Help.
@@ -254,7 +257,8 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
 3. Optionally **Save execution settings as default**.
 4. Click **Run backtest**.
 5. Read OTF-rejected / skip notes (window vs cutoff vs exposure), **Performance summary**,
-   equity curve, breakdowns, and trade table. Use Discuss results for run Q&A.
+   equity curve, breakdowns, and trade table. Use **Discuss results** (mode
+   **Discuss runs**) for run Q&A.
 
 **What it is not.**
 
@@ -262,13 +266,13 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
   assumptions.
 - Intrabar models do not recover the true tick path; residual SL/TP ambiguities
   are counted, not wished away.
-- Help will not invent your best SL/TP — ask **Discuss results** for bound run
-  metrics.
+- Help will not invent your best SL/TP — ask **Discuss results** in mode
+  **Discuss runs** for bound run metrics.
 - **Admit** (`entry_window`) re-simulates under an entry-time constraint.
   Time Analysis **Focus** remains post-hoc only and does not change admission.
 
 **Related pages.** Signals (prerequisite); Grid Search for SL/TP sweeps; Research
-Assistant Discuss for performance questions.
+Assistant mode **Discuss runs** for performance questions.
 
 ## Grid Search
 
@@ -548,11 +552,11 @@ trades, diagnostic merge
 
 ## Research Assistant (draft, Discuss, Help)
 
-**What it is.** The **Research Assistant** page manages theses and three
-separated chat surfaces as peer modes: **Discuss results** (completed-run Q&A,
-default), **Help / how it works** (docs-grounded product help), and thesis
-**Assistant chat** (draft). Optional validate → confirm → run stays under
-collapsed Advanced.
+**What it is.** The **Research Assistant** page manages theses with three peer modes
+(`Discuss runs` / `Help` / `Draft thesis`) hosting separated chat surfaces:
+**Discuss results** (completed-run Q&A; default mode), **Help / how it works**,
+and thesis **Assistant chat** (draft). Optional validate → confirm → run stays
+under collapsed Advanced.
 
 **When to use it.** To discuss a thesis-recorded run, ask how product features
 work, or draft/confirm an Assistant research plan — without mixing those jobs
@@ -588,6 +592,21 @@ version
 4. Open a Confirmed specification → **Run confirmed research**.
 5. For completed-run questions, stay on (or open) **Discuss runs** → **Discuss
    results**. For feature how-tos, open **Help**.
+
+**How to discuss a completed run.**
+
+1. Record the run under a thesis (**Record and discuss this run** on Backtest, or
+   run via a Confirmed Assistant specification).
+2. Open Research Assistant with that thesis selected.
+3. Choose mode **Discuss runs** (the default).
+4. Select the completed run in the run picker.
+5. Ask in the page chat box under **Discuss results**
+   (placeholder: **Ask about this completed run**) — for example expectancy,
+   best SL/TP, or entry windows. Answers stay grounded in hash-verified evidence
+   for that run only.
+
+Classic **Discuss this run** deep-links into the same **Discuss runs** mode with
+the run preselected for **Discuss results**. Discuss Q&A lives in that mode, not under Advanced.
 
 **What it is not.**
 
@@ -630,9 +649,9 @@ policy, manual record, all executions, exit research mode, identity badge
 2. Run the classic path (Data → Levels → Signals → Backtest, etc.).
 3. After a completed backtest (or bundle with backtest artifacts): **Record and
    discuss this run**, or **Discuss this run** if already recorded.
-4. Research Assistant opens **Discuss runs** with that run preselected for
-   **Discuss results** (Advanced/Linked-run expanders still force-open for the
-   deep-link).
+4. Research Assistant opens mode **Discuss runs** with that run preselected for
+   **Discuss results**. Discuss Q&A is in that mode; Advanced may also expand
+   Linked research runs for diagnostics, but that is not where you ask.
 
 **What it is not.**
 
@@ -665,13 +684,18 @@ best SL, expectancy, remediation, draft chat, documentation-grounded
 **How to use.**
 
 1. Open Research Assistant with a thesis selected.
-2. For feature how-tos: mode **Help** → **Help / how it works** → ask →
-   **Send help question** (examples: import data, Setup Builder, grid ranking,
-   validation).
-3. For completed-run metrics: mode **Discuss runs** → select the run →
-   **Discuss results**.
+2. For feature how-tos: mode **Help** → **Help / how it works** → ask in the
+   page chat box (placeholder: **Ask how ThesisTester works**) — examples:
+   import data, Setup Builder, grid ranking, validation.
+3. For completed-run metrics: mode **Discuss runs** → select the run → ask in
+   the page chat box under **Discuss results**
+   (placeholder: **Ask about this completed run**).
 4. If Help redirects you to Discuss, open **Discuss runs** for that run — do
    not expect Help to invent performance numbers.
+
+To discuss a completed run after classic research mode: use **Record and discuss
+this run** (or **Discuss this run**), then stay on Research Assistant **Discuss
+runs** with that run selected.
 
 **What it is not.**
 
