@@ -140,6 +140,7 @@ _GRID_CONTEXT_COLLOCATES: tuple[str, ...] = (
 )
 
 # RI-3 landed specialist cues (sunsets DI validation/WFA/OOS/bootstrap negatives).
+# ``permutation`` requires validation-sense collocates; ``otf validation`` is RI-5.
 _VALIDATION_WFA_POSITIVE_CUES: tuple[str, ...] = (
     "validation",
     "wfa",
@@ -149,11 +150,20 @@ _VALIDATION_WFA_POSITIVE_CUES: tuple[str, ...] = (
     "out of sample",
     "out-of-sample",
     "bootstrap",
-    "permutation",
+)
+_VALIDATION_PERMUTATION_COLLOCATES: tuple[str, ...] = (
+    "bootstrap",
+    "oos",
+    "wfa",
+    "walk-forward",
+    "walk forward",
+    "validation",
+    "test",
 )
 
 # DI §4.1 negatives not yet owned by a landed specialist builder (RI residual veto).
 # RI-3 sunsets validation/wfa/oos/bootstrap into ``validation_wfa``.
+# ``otf validation`` stays residual until RI-5 (must not be owned by bare ``validation``).
 _RESIDUAL_NEGATIVE_CUES: tuple[str, ...] = (
     "monte carlo",
     "monte-carlo",
@@ -162,6 +172,7 @@ _RESIDUAL_NEGATIVE_CUES: tuple[str, ...] = (
     "bucket",
     "clock",
     "session segment",
+    "otf validation",
     # Bare ranking stays residual until RI-2; grid-context ranking is handled above.
     "ranking",
 )
@@ -255,17 +266,21 @@ def _grid_ranking_matches(normalized: str) -> bool:
 
 
 def _validation_wfa_matches(normalized: str) -> bool:
-    return _any_cue_matches(_VALIDATION_WFA_POSITIVE_CUES, normalized)
+    # RI-5 owns ``otf validation`` — bare ``validation`` must not remap it.
+    if _alias_matches("otf", normalized) and _alias_matches("validation", normalized):
+        return False
+    if _any_cue_matches(_VALIDATION_WFA_POSITIVE_CUES, normalized):
+        return True
+    # ``permutation`` only in validation sense (§4.1).
+    if _alias_matches("permutation", normalized) and _any_cue_matches(
+        _VALIDATION_PERMUTATION_COLLOCATES, normalized
+    ):
+        return True
+    return False
 
 
-def _residual_negative_matches(normalized: str) -> bool:
-    """True when a not-yet-owned DI negative cue is present.
-
-    Bare ``ranking`` is residual only when grid-context ranking did not already
-    classify the ask as ``grid_ranking`` (caller combines with grid match).
-    Bare ``sl``/``tp``/``stop``/``target`` without collocates stay residual so
-    overview/DX cannot topic-swap (collocated forms are owned by grid_ranking).
-    """
+def _hard_residual_negative_matches(normalized: str) -> bool:
+    """Residual cues that block landed specialists (time/MC/ranking/otf validation)."""
     if _any_cue_matches(
         tuple(cue for cue in _RESIDUAL_NEGATIVE_CUES if cue != "ranking"),
         normalized,
@@ -276,9 +291,14 @@ def _residual_negative_matches(normalized: str) -> bool:
         _GRID_CONTEXT_COLLOCATES, normalized
     ):
         return True
-    # Bare short tokens without collocates remain overview-refusing — but not
-    # when a multi-word grid positive already owns the ask ("stop loss" contains
-    # bare "stop"; that must not false-residual the landed grid intent).
+    return False
+
+
+def _soft_bare_grid_token_residual(normalized: str) -> bool:
+    """Bare sl/tp/stop/target without collocates — overview-refuse only.
+
+    Must not veto a lone landed ``validation_wfa`` match (e.g. ``tp and oos``).
+    """
     if (
         _any_cue_matches(_GRID_BARE_TOKEN_CUES, normalized)
         and not _any_cue_matches(_GRID_BARE_TOKEN_COLLOCATES, normalized)
@@ -286,6 +306,17 @@ def _residual_negative_matches(normalized: str) -> bool:
     ):
         return True
     return False
+
+
+def _residual_negative_matches(normalized: str) -> bool:
+    """True when a not-yet-owned DI negative cue is present.
+
+    Bare ``ranking`` is residual only when grid-context ranking did not already
+    classify the ask as ``grid_ranking`` (caller combines with grid match).
+    Bare ``sl``/``tp``/``stop``/``target`` without collocates stay residual so
+    overview/DX cannot topic-swap (collocated forms are owned by grid_ranking).
+    """
+    return _hard_residual_negative_matches(normalized) or _soft_bare_grid_token_residual(normalized)
 
 
 def has_overview_negative_cue(message: str) -> bool:
@@ -320,7 +351,6 @@ def match_discuss_intent(message: str) -> str | None:
     validation = _validation_wfa_matches(normalized)
     kpi = _any_cue_matches(_KPI_POSITIVE_CUES, normalized)
     run = _any_cue_matches(_RUN_OVERVIEW_POSITIVE_CUES, normalized)
-    residual = _residual_negative_matches(normalized)
 
     specialists: list[str] = []
     if grid:
@@ -328,9 +358,13 @@ def match_discuss_intent(message: str) -> str | None:
     if validation:
         specialists.append(INTENT_VALIDATION_WFA)
 
-    # §4.1 step 3: residual cue not owned by a landed specialist → None
-    # (e.g. grid+time collocates while time remains residual until RI-2).
-    if residual:
+    hard_residual = _hard_residual_negative_matches(normalized)
+    soft_residual = _soft_bare_grid_token_residual(normalized)
+
+    # §4.1 step 3: hard residual (time/MC/ranking/otf) blocks specialists → None.
+    # Soft bare-grid-token residual only refuses overview; it must not veto a
+    # lone validation_wfa match ("tp and oos" / "validation of my stop").
+    if hard_residual:
         return None
 
     overview_count = (1 if kpi else 0) + (1 if run else 0)
@@ -342,6 +376,9 @@ def match_discuss_intent(message: str) -> str | None:
         return OVERVIEW_INTENT_KPI
     if run:
         return OVERVIEW_INTENT_RUN
+    # Soft residual alone (no landed intent) → None (DX overview refuse).
+    if soft_residual:
+        return None
     return None
 
 
@@ -388,10 +425,22 @@ def present_grid_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ..
 
 
 def present_validation_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ...]:
-    """Return frozen validation/WFA claim paths that exist on the turn context."""
+    """Return frozen validation/WFA claim paths with narratable scalars only.
+
+    JSON-null / non-scalar leaves are omitted (same discipline as
+    ``has_validation_wfa_evidence``) so path catalogs do not prefer dead leaves.
+    """
     if not isinstance(evidence_context, Mapping):
         return ()
-    return tuple(path for path in VALIDATION_CLAIM_PATHS if _path_exists(evidence_context, path))
+    out: list[str] = []
+    for path in VALIDATION_CLAIM_PATHS:
+        if not _path_exists(evidence_context, path):
+            continue
+        value = _path_get(evidence_context, path)
+        if _format_scalar_for_claim(path, value) is None:
+            continue
+        out.append(path)
+    return tuple(out)
 
 
 def _narratable_grid_scalar(evidence_context: Mapping[str, Any], path: str) -> bool:

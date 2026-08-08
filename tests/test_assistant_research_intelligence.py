@@ -143,6 +143,16 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     # Residual cue not owned yet (time) still blocks even with landed specialists.
     assert match_discuss_intent("best SL and best time") is None
     assert match_discuss_intent("walk-forward by hour bucket") is None
+    # Soft bare-grid residual must not veto lone validation_wfa.
+    assert match_discuss_intent("tp and oos") == INTENT_VALIDATION_WFA
+    assert match_discuss_intent("oos for my tp") == INTENT_VALIDATION_WFA
+    assert match_discuss_intent("validation of my stop") == INTENT_VALIDATION_WFA
+    # otf validation is RI-5 residual — not owned by bare RI-3 validation.
+    assert match_discuss_intent("otf validation") is None
+    assert has_overview_negative_cue("otf validation") is True
+    # Bare permutation without validation-sense collocates does not match.
+    assert match_discuss_intent("a permutation of the thesis") is None
+    assert match_discuss_intent("bootstrap permutation test") == INTENT_VALIDATION_WFA
     # Bare short tokens without collocates are residual, not grid.
     assert match_discuss_intent("What's my stop?") is None
     assert match_discuss_intent("full stop") is None
@@ -170,6 +180,9 @@ def test_residual_veto_and_false_friends_for_overview_negative_export():
     assert has_overview_negative_cue("full stop") is True
     # mixed_ask (incl. dual overview) refuses overview envelopes for DX.
     assert has_overview_negative_cue("Give me the KPIs and summarize this run") is True
+    # oos false friends must not fire validation ownership.
+    assert match_discuss_intent("boost the sample") is None
+    assert match_discuss_intent("loose ends only") is None
     assert has_overview_negative_cue("runtime of this batch") is False
     assert has_overview_negative_cue("stopwatch only") is False
     assert has_overview_negative_cue("non-stop session") is False
@@ -509,3 +522,58 @@ def test_validation_allowlist_paths_present():
     assert "results.walk_forward_summary.median_test_expectancy_r" in paths
     assert "results.validation_summary.bootstrap.ci_lower" in paths
     assert "results.validation_summary.grid_overfit.risk_level" in paths
+
+
+def test_validation_allowlist_omits_null_leaves():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri3_null"},
+        assumptions={},
+        results={
+            "walk_forward_summary": {
+                "fold_count": None,
+                "status": None,
+                "median_test_expectancy_r": 0.12,
+            },
+            "validation_summary": {
+                "bootstrap": {"ci_lower": None, "ci_upper": 0.4, "probability_positive": 0.7}
+            },
+        },
+        warnings=(),
+        limitations=(),
+    )
+    paths = present_validation_allowlist(packet.to_dict())
+    assert "results.walk_forward_summary.median_test_expectancy_r" in paths
+    assert "results.validation_summary.bootstrap.ci_upper" in paths
+    assert "results.walk_forward_summary.fold_count" not in paths
+    assert "results.walk_forward_summary.status" not in paths
+    assert "results.validation_summary.bootstrap.ci_lower" not in paths
+
+
+def test_otf_only_packet_does_not_answer_via_validation_wfa():
+    """OTF ask must not remap to WFA missing-validation / WFA leaves."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri3_otf"},
+        assumptions={},
+        results={
+            "otf_validation_summary": {"status": "present", "pass_rate": 0.5},
+            "walk_forward_summary": {
+                "fold_count": 4,
+                "median_test_expectancy_r": 0.2,
+                "status": "ok",
+            },
+        },
+        warnings=(),
+        limitations=(),
+    )
+    assert match_discuss_intent("otf validation") is None
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="otf validation",
+        repair_retry_enabled=False,
+    )
+    # Not the validation_wfa short-circuit / deterministic WFA path.
+    assert reply.recovery_reason != REASON_MISSING_VALIDATION
+    assert not any("walk_forward_summary" in c.path for c in reply.claims)

@@ -603,7 +603,7 @@ other than the last bar in the dataset.
   **RI-series (continuation):**
   `docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md` adds fail-open specialist /
   single-metric / meaning / mixed-ask slices while keeping the RQ auditor
-  identical.   **RI-1 landed:** unified `match_discuss_intent` + residual DI
+  identical. **RI-1 landed:** unified `match_discuss_intent` + residual DI
   veto; deterministic `grid_ranking` builder / missing-grid short-circuit;
   `deterministic_specialist_fallback` (default `true`). **RI-3 landed:**
   `validation_wfa` builder / missing-validation short-circuit; validation/WFA/OOS

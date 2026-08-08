@@ -220,7 +220,9 @@ def test_specialist_ask_path_miss_does_not_topic_swap_to_kpi():
     assert reply.claims == ()
     assert reply.recovery_reason == "validation_missing_evidence"
     assert not any("trade_summary" in c.path for c in reply.claims)
-    assert not any(c.path.endswith("trade_count") and "trade_summary" in c.path for c in reply.claims)
+    assert not any(
+        c.path.endswith("trade_count") and "trade_summary" in c.path for c in reply.claims
+    )
 
 
 def test_mixed_ask_full_veto_no_partial_kpi_slice():

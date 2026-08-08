@@ -177,7 +177,7 @@ the sole-intent tie-break when exactly one landed intent matches; they are
 |---|---|---|---|
 | 1 | `grid_ranking` | RI-1 | `best sl`, `best tp`, `best sl/tp`, `best stop`, `best target`, `stop loss`, `take profit`, `sl/tp`, word-boundary `sl` / `tp` / `stop` / `target` when co-present with best/pair/grid/ranking cues as frozen in tests, bare `grid` (grid-ranking sense), `grid ranking`, `grid rank`, `ranking metric` + grid context per freeze |
 | 2 | `time_ranking` | RI-2 | `best time`, `best entry`, `entry time`, `time bucket`, `session segment`, `hour bucket`, word-boundary `time` / `hour` / `bucket` / `clock` with ranking/best/entry collocates per freeze (bare DI negatives `time`/`hour`/`bucket`/`clock`/`session segment` stay residual until RI-2 sunsets them — §4.1.1) |
-| 3 | `validation_wfa` | RI-3 | `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap`, `permutation` (validation sense) |
+| 3 | `validation_wfa` | RI-3 | `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap`, `permutation` only with validation-sense collocates (`bootstrap`/`oos`/`wfa`/`walk-forward`/`validation`/`test`). **Not** `otf validation` (RI-5). |
 | 4 | `robustness_tier2` | RI-5 | `monte carlo`, `monte-carlo`, `overfitting`, `sensitivity`, `noise test`, `noise summary`, `portfolio summary`, `otf validation` |
 | 5 | `assumptions_costs` | RI-6 | `commission`, `slippage`, `exposure policy`, `intrabar model`, `costs`, `assumptions` (run-assumption sense; not Help how-to) |
 | 6 | `single_metric` | RI-4 | Frozen metric-noun table (§4.5) with define/value collocates (`what is`, `what's`, `whats`, `show`, `give me`) — **not** bare nouns alone; hard-refuse when residual/specialist collocates present (§4.5) |
@@ -245,7 +245,8 @@ has_overview_negative_cue(text) ≡ overview_refused(text)
 |---|---|---|
 | `grid`, `stop loss`, `take profit`, `sl/tp`, collocated `sl`/`tp`/`stop`/`target` (with best/pair/grid/ranking), grid-sense `ranking` | RI-1 (`grid_ranking`) | Veto overview + block `single_metric`; after RI-1, landed `grid_ranking` owns collocated/multi-word forms. Bare `sl`/`tp`/`stop`/`target` **without** those collocates stay residual overview-refusing (DX veto ≠ unmatched; avoids “full stop” false grid matches) |
 | `time`, `hour`, `bucket`, `clock`, `session segment`, time-sense ranking collocates | RI-2 (`time_ranking`) | Residual veto / block overview + `single_metric` |
-| `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap` | RI-3 (`validation_wfa`) | ✅ sunsets in RI-3 — landed `validation_wfa` owns them |
+| `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap`, validation-sense `permutation` (with collocates) | RI-3 (`validation_wfa`) | ✅ sunsets in RI-3 — landed `validation_wfa` owns them. Bare `permutation` without collocates does not match. |
+| `otf validation` | RI-5 (`robustness_tier2`) | Residual veto until RI-5 — must **not** be owned by bare RI-3 `validation` |
 | `monte carlo`, `monte-carlo` | RI-5 (`robustness_tier2`) | Residual veto / block overview + `single_metric` |
 | Bare `ranking` with no grid/time collocate | RI-1 keeps residual until RI-2 also lands; then require grid or time collocate | Never overview |
 
@@ -670,7 +671,7 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 | R20 | Duplex specialist ask (RI-10) | Specialist envelope or limitation; no KPI topic-swap |
 | R21 | Exit-reason ask (RI-9) with/without tables | Capped projection claims or limitation |
 | R22 | Failed raw model draft | Never persisted |
-| R23 | After RI-1 only: “KPIs and validation” / “summarize walk-forward” | Residual veto — **not** `kpi_summary` / `run_overview`; DX `has_overview_negative_cue` true |
+| R23 | “KPIs and validation” / “summarize walk-forward” | After RI-3: mixed narrow-remediation / landed `validation_wfa` (or missing-validation) — **not** `kpi_summary` / `run_overview`; DX `has_overview_negative_cue` true. (Pre-RI-3 characterization was residual veto.) |
 | R24 | “What is the OOS expectancy?” (any time `single_metric` exists) | Must **not** cite `results.trade_summary.expectancy_r` |
 | R25 | Missing grid/time/validation evidence on matched specialist | Limitation builder; **zero** LLM calls for that turn |
 | R26 | Matcher multi-eval: overview cue + specialist cue | `mixed_ask` (not first-match overview) |
