@@ -50,13 +50,15 @@ prominence** release, not a new research capability.
 
 | Rank | Surface | Placement |
 |---|---|---|
-| 1 | **Discuss runs** (default) | Mode body: run picker + Discuss results thread + mode-scoped chat_input + Explain / Open / Restore + voice |
-| 2 | **Help** | Peer mode: Help thread + mode-scoped chat_input + voice |
-| 3 | **Draft thesis** | Demoted mode: Assistant chat + mode-scoped chat_input |
+| 1 | **Discuss runs** (default) | Mode body: run picker + Discuss results thread + Explain / Open / Restore + voice; then page-level mode-scoped `st.chat_input` (after the mode body; one per rerun) |
+| 2 | **Help** | Peer mode body: Help thread + voice; same page-level mode-scoped `st.chat_input` |
+| 3 | **Draft thesis** | Demoted mode body: Assistant chat bubbles; same page-level mode-scoped `st.chat_input` |
 | 4 | Advanced validate → confirm → run / Linked runs / compare | Still collapsed Advanced (LLM explain stays here) |
 | 5 | Debug JSON / audit | Still collapsed Debug |
 
-Navigation is a mode selector only — channel histories stay isolated.
+Navigation is a mode selector only — channel histories stay isolated. The
+`st.chat_input` is mode-**routed** (Discuss/Help/Draft handlers) but always
+page-level after the active mode body (RUX-3), never nested.
 
 ## 4. §5.3 acceptance → rendered proof
 
@@ -69,11 +71,11 @@ assertions (same observables Streamlit would show).
 | Default render with ≥1 eligible run: Discuss mode active; thread + input visible without opening any expander | `test_default_prominence_is_discuss_with_collapsed_secondary_surfaces` — mode `discuss`, picker = seeded run, Advanced/Debug collapsed, exactly one chat_input with Discuss placeholder |
 | Default render with no eligible run: empty state names `Record and discuss this run` | `test_default_discuss_empty_state_names_record_and_discuss` |
 | Help reachable in one click; Draft in one click; Advanced/Debug collapsed by default | Mode session-key switch in chat_input / caption tests; Advanced/Debug `expanded is False` in default prominence test |
-| Confirm / Run reachable via Advanced in every mode | Default prominence asserts Plan review / Specifications / Linked research runs under Advanced; Advanced rendered after every mode body |
+| Confirm / Run reachable via Advanced in every mode | Page source: Advanced expander is after every mode body + page-level `chat_input` (not mode-gated). AppTest proof: `test_default_prominence_is_discuss_with_collapsed_secondary_surfaces` asserts Advanced subheaders `Plan review` / `Specifications` / `Linked research runs` on the default Discuss render; `tests/test_assistant_workspace.py` source-order guard keeps Discuss/Help/Draft/`st.chat_input` before Advanced. Button labels `Confirm validated RunSpec` / `Run confirmed research` are not separately AppTest-asserted in Help/Draft (source placement is the series gate). |
 | Classic `Discuss this run` / Record-and-discuss land on the run's Discuss thread | `test_classic_results_qa_deep_link_preselects_discuss_and_force_opens` — mode Discuss + picker = focused run **and** Advanced/run expander force-open keys |
 | Orphan / ineligible deep-link honesty | `test_classic_results_qa_orphan_deep_link_still_force_opens_expanders`, `test_orphan_deep_link_with_other_runs_warns_instead_of_silent_swap` |
 | Channel isolation preserved | `test_results_qa_history_never_renders_in_the_draft_or_help_threads` |
-| Zero core-module / fixtures drift (series invariant) | Diff review per PR scope tables; `tests/test_golden_master.py` unmodified and green |
+| Zero core-module / fixtures drift (series invariant) | Diff review per PR scope tables (blocklisted orchestrator/repository/registry/handlers/tools/results_qa/help_corpus/explainer + `tests/fixtures/`). Golden master unmodified & green is a separate §4 rule-2 gate (`tests/test_golden_master.py`), not a substitute for that diff review. |
 
 ### 4.1 Additional RUX-3 / RUX-4 proof (post-layout)
 
@@ -81,9 +83,9 @@ assertions (same observables Streamlit would show).
 |---|---|
 | Exactly one page-level chat_input in every mode | `test_page_renders_exactly_one_chat_input_in_every_mode` |
 | Discuss/Help/Draft submit routing; no `choices` on Discuss/Help | `test_discuss_chat_input_routes_to_handle_results_turn`, `test_help_chat_input_routes_to_handle_help_turn_without_choices`, `test_draft_chat_input_routes_to_handle_chat_turn` |
-| Disabled chat_input when channel cannot accept input | `test_disabled_discuss_chat_input_does_not_call_handle_results_turn` (+ Help disabled guidance) |
-| Help remediation names Discuss runs mode | `tests/test_assistant_product_help.py`, `test_rq5_help_vs_results_redirect_for_performance_question` |
-| Q-H13 discuss-a-run corpus retrieval | `tests/test_assistant_help_coverage.py` (Q-H13 in HC §5 bank) |
+| Disabled chat_input when channel cannot accept input | `test_disabled_discuss_chat_input_does_not_call_handle_results_turn` (Discuss empty → `disabled` + no `handle_results_turn`); `test_discuss_mode_reports_disabled_results_qa_not_missing_runs` (RQ-off → `disabled`); `test_help_mode_shows_disabled_guidance_when_product_help_off` (Help-off → `disabled`). There is no Help analogue that submits a disabled input and asserts `handle_help_turn` is not called. |
+| Help remediation names Discuss runs mode | `tests/test_assistant_product_help.py::test_remediation_help_reply_has_no_numbers_or_choices`; `tests/test_assistant_llm_evaluations.py::test_rq5_help_vs_results_redirect_for_performance_question` |
+| Q-H13 discuss-a-run corpus retrieval | `tests/test_assistant_help_coverage.py` (Q-H13 in HC §5 bank + body phrases); `test_rux4_allowlisted_corpus_rejects_stale_discuss_nav` |
 
 ## 5. Deep-link verification
 
@@ -108,7 +110,7 @@ without RUX assertion edits to CAI focus-key shape.
 | Open Research Assistant with thesis + completed run → default Discuss | `test_default_prominence_is_discuss_with_collapsed_secondary_surfaces` |
 | Switch to Help mode | Help mode render + chat_input placeholder / routing tests |
 | Switch to Draft mode | Draft captions + chat_input routing |
-| Open Advanced → Plan review / Confirm / Run still present | Advanced subheader set in default prominence test |
+| Open Advanced → Plan review / Confirm / Run still present | Advanced subheader set in default prominence test; Confirm/Run button labels via page source + workspace order guard (see §4) |
 | Classic Discuss this run deep-link | Deep-link preselect + force-open tests |
 | RQ-off / Help-off empty guidance | `test_discuss_mode_reports_disabled_results_qa_not_missing_runs`, `test_help_mode_shows_disabled_guidance_when_product_help_off` |
 

@@ -293,9 +293,10 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   sections + `thesistester/assistant/help_corpus.py` (§7.1 allowlist) and
   `load_results_qa_settings` / `load_product_help_settings` /
   `is_draft_channel_message` in `llm.py`. **RQ-1** shipped
-  `results_qa.py`, `handle_results_turn`, Discuss results UI
-  (`st.text_input` + send), draft history isolation, and
-  `assistant_results_qa_drafts`. **RQ-2** shipped
+  `results_qa.py`, `handle_results_turn`, Discuss results UI (originally
+  keyed `st.text_input` + send — **superseded by RUX-3** page-level
+  mode-scoped `st.chat_input`), draft history isolation, and
+  `assistant_results_qa_drafts` (retired in RUX-3). **RQ-2** shipped
   `results_projections.py` (`results.projections.*`) and optional RO
   `TIME.analyze` enrichment (`allow_time_enrichment` default false).
   **RQ-3** shipped `product_help.py`, `handle_help_turn`, Help / how it works
