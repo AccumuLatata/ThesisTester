@@ -583,6 +583,11 @@ other than the last bar in the dataset.
   numbers, WFA caveat merge + OOS anti-soften, pipeline injection, draft
   isolation, corpus allowlist, provider-key remediation, offline deterministic
   Explain, registry audit).
+  **DI-series (follow-on):** `docs/DISCUSS_INTELLIGENCE_IMPLEMENTATION.md`
+  keeps RQ digit/path honesty fail-closed while recovering Discuss UX
+  (SSL wrap, one repair retry, deterministic KPI/overview fallback, number-free
+  expert overlay). DI must not invent metrics, alias arbitrary wrong paths onto
+  lookalike leaves, or persist ungrounded drafts.
   Thesis switches clear mode-scoped chat_input widget keys and other
   thesis-scoped staging. Draft-chat history
   excludes `results_qa` / `product_help` turns and tool/audit lines so
