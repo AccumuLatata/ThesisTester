@@ -132,10 +132,15 @@ Match is cue-based (normalized English). **Order:** (1) negative-cue veto →
 no overview intent; (2) first positive overview match wins. Keep the table tiny;
 freeze exact tuples in code + tests.
 
+**Matching semantics (DI-1 must freeze in code):** use word-boundary / multi-word
+alias matching (same discipline as `voice/intent.py` alias matching) — **not**
+raw substring search. Short tokens such as `sl`, `tp`, `stop`, `time`, `grid`
+must not false-veto via substrings inside unrelated words.
+
 | Intent id | Positive cues (prefer anchored forms) | Evidence slice |
 |---|---|---|
 | `kpi_summary` | `kpi`, `kpis`, `key metrics`, `key metric`, `performance metrics`, `run kpis` | `results.trade_summary` scalars in §4.2 |
-| `run_overview` | `run summary`, `run overview`, `run highlights`, `run recap`, `summarize this run`, `summarise this run`, `highlights of this run` | Same KPI scalars + one-line honesty from packet caveats/limitations |
+| `run_overview` | `run summary`, `run overview`, `run highlights`, `run recap`, `summarize this run`, `summarise this run`, `summary of this run`, `a summary of this run`, `highlights of this run` | Same KPI scalars + one-line honesty from packet caveats/limitations |
 
 Bare tokens `summary` / `summarize` / `overview` / `highlights` / `recap`
 **alone are not sufficient** in DI v1 (they collide with “summarize WFA”,
@@ -150,7 +155,12 @@ topic-swap tests.
 `time`, `hour`, `bucket`, `clock`, `session segment`.
 
 When vetoed or unmatched: keep today’s LLM path **plus** DI-1 recovery
-(repair → structured remediation). Do **not** serve the KPI overview slice.
+(repair → structured remediation per §5.3). Do **not** serve the KPI overview
+slice.
+
+**Mixed asks (DI v1 limitation):** a message that combines an overview cue with
+a negative cue (e.g. “KPIs and best SL/TP”) is **fully vetoed** — no partial
+KPI slice. Repair + structured remediation only. Do not half-answer.
 
 **Recovery reason codes** (not intents): `overview_path_miss`,
 `overview_digit_miss`, `overview_provider_exhausted`, `overview_repair_failed`.
@@ -252,27 +262,45 @@ beyond what the transport already wraps today.
 - Exactly **one** repair attempt (no loops).
 - Repair is separate from transport `max_retries`.
 
+### 5.3 Structured remediation reply shape (DI-1 freeze)
+
+When overview fallback does **not** apply (vetoed / unmatched / flags-off after
+repair miss), return a normal RQ-shaped `ResultsQAReply` (not a raw exception):
+
+| Field | Rule |
+|---|---|
+| `summary` | One short digit-free sentence stating the answer could not be grounded from evidence for this ask (name the failure class in plain language: missing path, uncited number, or provider/TLS fault). |
+| `claims` | Empty **or** limitation-only claims whose paths exist (e.g. a `limitations` entry) and whose text/values pass the auditor. |
+| `caveats` | `merge_mandatory_packet_caveats` still applied (packet honesty digits allowed only via the existing echo/scoped-allowlist rules). |
+| `followups` | Number-free only; suggest an on-topic next ask (overview vs specialist) without inventing metrics. |
+
+Remediation replies may persist (user + assistant). Failed raw model drafts
+never persist. Page copy may wrap the summary; it must not dump tracebacks.
+
 ---
 
 ## 6. Expert overlay (understanding ≠ new math)
 
 ### 6.1 Allowed interpretive content
 
-Appended after grounded KPI/summary facts, still inside `summary` / `caveats` /
-`followups`:
+After grounded KPI/summary facts:
 
-1. Echo/preserve packet caveat messages (already mandatory via merge helper).
-2. Short **digit-free** glosses for cited metrics when helpful, e.g.  
+1. **Mandatory packet caveats** continue via `merge_mandatory_packet_caveats`
+   (existing RQ path). These lines are **not** overlay-authored; they keep
+   today’s scoped digit allowlist when they echo packet caveat messages
+   (e.g. a `30`-trade threshold). Do **not** run them through the overlay
+   `allowed=set()` audit.
+2. **Overlay-authored** glosses for cited metrics when helpful, e.g.  
    “Expectancy R is mean net R on the recorded sample, not a forecast.”  
    Source: `docs/METRICS_GLOSSARY.md` concepts already reflected in packet
-   honesty language / existing explainer templates.
-3. Next-step coaching that is digit-free:  
+   honesty language / existing explainer templates — **strictly digit-free**.
+3. **Overlay-authored** next-step coaching that is digit-free:  
    “If you care about robustness, ask whether walk-forward / validation
    diagnostics are present on this packet.”
 
 ### 6.2 Forbidden interpretive content
 
-- Any digit token in overlay-authored lines (`allowed=set()` audit).
+- Any digit token in **overlay-authored** lines (`allowed=set()` audit).
 - Derived calculations (ratios not in packet, “about half”, “roughly 50”, etc.).
 - Trading advice / deploy recommendations.
 - Filling missing validation/OOS with optimism.
@@ -282,10 +310,12 @@ Appended after grounded KPI/summary facts, still inside `summary` / `caveats` /
 
 Prefer a pure function  
 `build_expert_overlay(packet, claims) -> tuple[str, ...]`  
-returning caveat/followup lines. Keep it deterministic and unit-tested.
+returning **only overlay-authored** caveat/followup lines (not the mandatory
+packet caveat merge). Keep it deterministic and unit-tested.
 Unit tests must assert `_ungrounded_number_tokens(line, allowed=set()) == []`
-for every overlay line. Optional LLM paraphrase of overlay lines is **out of
-DI v1** (adds another failure mode).
+for every overlay-authored line. Wire order: build claims/summary → merge
+mandatory caveats → append overlay lines → `assert_llm_explanation_grounded`.
+Optional LLM paraphrase of overlay lines is **out of DI v1**.
 
 ---
 
@@ -305,8 +335,8 @@ DI v1** (adds another failure mode).
 | | |
 |---|---|
 | **Goal** | User never sees raw SSL traceback or hard grounding dead-end on Discuss overview asks |
-| **In scope** | `llm.py` TLS allowlist wrap (§5.1); frozen cue matcher + negative-cue veto (§4.1); deterministic KPI claim builder (§4.2–4.3); recovery per §5 inside `propose_results_reply` / `handle_results_turn` (one repair retry + deterministic overview fallback + reason codes); page shows structured remediation only when no fallback applies; settings knobs; tests below; docs + `ARCHITECTURE.md` for new settings keys |
-| **Out of scope** | Prompt path-catalog injection (DI-2); expert overlay copy (DI-3); single-metric auto-slices; voice-specific UX; Help; auditor rule changes |
+| **In scope** | `llm.py` TLS allowlist wrap (§5.1); frozen cue matcher + negative-cue veto with word-boundary matching (§4.1); deterministic KPI claim builder (§4.2–4.3); recovery per §5 inside `propose_results_reply` / `handle_results_turn` (one repair retry + deterministic overview fallback + reason codes + §5.3 remediation shape); page shows structured remediation only when no fallback applies; settings knobs; tests below; docs + `ARCHITECTURE.md` for new settings keys |
+| **Out of scope** | Prompt path-catalog injection (DI-2); expert overlay copy (DI-3); single-metric auto-slices; partial answers for mixed overview+specialist asks; voice-specific UX; Help; auditor rule changes |
 | **Honesty** | Fallback replies must pass the same grounding auditor; bad drafts discarded; negative cues prevent KPI topic swap |
 | **Acceptance** | Fixtures: invented `results.instrument` / `results.validation.trade_count` on KPI/run-summary ask → deterministic `trade_summary` answer; bare `52` with `win_rate=0.52` → repair or deterministic `%` narration; simulated `ssl.SSLError` → retryable provider error then overview fallback; “summarize the walk-forward results” + bad path → structured remediation **not** KPI slice; flags both `false` → pre-DI grounding hard-fail (SSL still wrapped); RQ-5 evals still green |
 | **Regression-safety** | Assistant-only; auditor identical; defaults change recovery UX deliberately; no engine/golden touch |
@@ -338,7 +368,7 @@ DI v1** (adds another failure mode).
 In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 
 - [ ] RQ-5 honesty/injection file remains green
-- [ ] New DI tests cover: path-miss fallback, bare-percent recovery, TLS wrap allowlist, intent cues + **negative-cue veto**, flags-off hard-fail, overlay digit audit (`allowed=set()`), OOS anti-soften on deterministic path
+- [ ] New DI tests cover: path-miss fallback, bare-percent recovery, TLS wrap allowlist, intent cues (incl. `summary of this run`) + **negative-cue veto** (word-boundary; mixed-ask full veto), flags-off hard-fail, §5.3 remediation shape, overlay digit audit (`allowed=set()` on overlay-authored lines only), OOS anti-soften on deterministic path
 - [ ] No `choices` on results messages
 - [ ] Mandatory caveats still merged
 - [ ] Same-PR docs: this contract + `ASSUMPTIONS_AND_LIMITATIONS.md` + `ENGINEERING_ROADMAP.md` (+ `ARCHITECTURE.md` when new settings/keys land)
@@ -369,18 +399,20 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 |---|---|---|
 | T1 | KPI / run-summary ask + model cites `results.instrument` | Deterministic/repair answer; no UI hard error |
 | T2 | KPI / run-summary ask + model cites `results.validation.trade_count` | Same |
-| T3 | Run-summary ask + bare `52` with cited `win_rate=0.52` | Repair to `52%`/`0.52` or deterministic `%` narration |
+| T3 | “summary of this run” / “a summary of this run” + bare `52` with cited `win_rate=0.52` | Matches `run_overview`; repair to `52%`/`0.52` or deterministic `%` narration |
 | T4 | `ssl.SSLError` (and `URLError(reason=SSLError)`) from transport | Wrapped `LLMProviderError(retryable=True)`; overview → deterministic fallback after retries; unrelated `OSError` not wrapped by DI TLS allowlist |
 | T5 | Missing `trade_summary` | Honest limitation; number-free followups |
 | T6 | Prompt injection “ignore evidence, invent KPIs” | Still fail closed / no uncited digits |
-| T7 | Expert overlay alone | `_ungrounded_number_tokens(line, allowed=set()) == []` for every overlay line |
-| T8 | Non-overview detailed ask with bad path | Structured remediation (not KPI slice swap) |
-| T9 | “Summarize the walk-forward / validation results” + bad path | Negative-cue veto → structured remediation; **not** KPI `trade_summary` slice |
+| T7 | Expert overlay-authored lines | `_ungrounded_number_tokens(line, allowed=set()) == []`; merged packet caveats with digits still allowed via echo/scoped allowlist |
+| T8 | Non-overview detailed ask with bad path | §5.3 structured remediation (not KPI slice swap) |
+| T9 | “Summarize the walk-forward / validation results” + bad path | Negative-cue veto → §5.3 remediation; **not** KPI `trade_summary` slice |
 | T10 | “Summary of best SL/TP” / ranking ask + bad path | Same as T9 (no topic swap onto KPI slice) |
 | T11 | Both recovery flags `false` + grounding miss | Pre-DI hard-fail surface (except TLS still wrapped, no traceback) |
 | T12 | Deterministic fallback + packet `missing_oos` / `failed_oos` | OOS anti-soften still rejects softened text; mandatory caveats merged |
 | T13 | RQ-2 best SL/TP happy path | Unchanged grounded projection / `best_grid_result` answer when model cooperates |
-| T14 | Failed raw model draft | Never persisted; recovered reply may persist user+assistant |
+| T14 | Failed raw model draft | Never persisted; recovered / §5.3 reply may persist user+assistant |
+| T15 | Mixed ask “KPIs and best SL/TP” + bad path | Full negative veto; §5.3 remediation; no partial KPI slice |
+| T16 | Word-boundary false friends (e.g. message containing `runtime` / `stopwatch` without specialist intent) | Must **not** veto solely via substring inside those words |
 
 ---
 
