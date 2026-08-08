@@ -137,9 +137,9 @@ with pre-flip values (pure refactor). RUX-2 flipped Discuss/Help values and
 updated docs/tests. After RUX-1, no RUX PR may hand-write a navigation phrase
 at a page or `product_help` call site — import the constant.
 
-`product_help.py` is otherwise off-limits to RUX: only the three Discuss-nav
-strings become imports; prompt structure, grounding, and remediation logic are
-untouched.
+`product_help.py` is otherwise off-limits to RUX beyond nav-constant imports
+and RUX-4 docstring/assertion re-anchor; prompt structure, grounding, and
+remediation logic stay untouched.
 
 ---
 
