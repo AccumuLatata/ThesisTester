@@ -366,12 +366,19 @@ def match_discuss_intent(message: str) -> str | None:
     soft_residual = _soft_bare_grid_token_residual(normalized)
 
     # §4.1 step 3: hard residual (time/MC/ranking/otf) blocks specialists → None.
-    # Soft bare-grid-token residual only refuses overview; it must not veto a
-    # lone validation_wfa match ("tp and oos" / "validation of my stop").
     if hard_residual:
         return None
 
     overview_count = (1 if kpi else 0) + (1 if run else 0)
+    if soft_residual:
+        # Soft bare-grid residual refuses overview/DX topic-swap, but must not
+        # veto a lone landed specialist ("tp and oos" / "validation of my stop").
+        if len(specialists) >= 2 or (len(specialists) == 1 and overview_count >= 1):
+            return INTENT_MIXED_ASK
+        if len(specialists) == 1:
+            return specialists[0]
+        return None
+
     if len(specialists) + overview_count >= 2:
         return INTENT_MIXED_ASK
     if len(specialists) == 1:
@@ -380,9 +387,6 @@ def match_discuss_intent(message: str) -> str | None:
         return OVERVIEW_INTENT_KPI
     if run:
         return OVERVIEW_INTENT_RUN
-    # Soft residual alone (no landed intent) → None (DX overview refuse).
-    if soft_residual:
-        return None
     return None
 
 

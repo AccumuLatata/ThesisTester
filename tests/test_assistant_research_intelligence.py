@@ -147,13 +147,15 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert match_discuss_intent("tp and oos") == INTENT_VALIDATION_WFA
     assert match_discuss_intent("oos for my tp") == INTENT_VALIDATION_WFA
     assert match_discuss_intent("validation of my stop") == INTENT_VALIDATION_WFA
+    # Soft residual still refuses overview topic-swap (not kpi_summary).
+    assert match_discuss_intent("Give me KPIs and what's my stop?") is None
+    assert has_overview_negative_cue("Give me KPIs and what's my stop?") is True
+    assert match_overview_intent("Give me KPIs and what's my stop?") is None
     # otf validation is RI-5 residual — not owned by bare RI-3 validation.
     assert match_discuss_intent("otf validation") is None
     assert has_overview_negative_cue("otf validation") is True
     # Other WFA cues still land even when OTF is mentioned in passing.
-    assert (
-        match_discuss_intent("walk-forward validation and otf notes") == INTENT_VALIDATION_WFA
-    )
+    assert match_discuss_intent("walk-forward validation and otf notes") == INTENT_VALIDATION_WFA
     # Bare permutation without validation-sense collocates does not match.
     assert match_discuss_intent("a permutation of the thesis") is None
     assert match_discuss_intent("bootstrap permutation test") == INTENT_VALIDATION_WFA
