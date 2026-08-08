@@ -82,7 +82,10 @@ _DX3_SECTION9_COVERAGE: dict[str, tuple[str, ...]] = {
     "X13": ("test_x13_companion_eval_gates_remain_registered",),
     "X14": ("test_x14_false_friends_on_session_text_stay_neutral",),
     "X15": ("test_x15_intent_sample_size_alias_targets_trade_summary",),
-    "X16": ("test_get_run_overview_neutral_no_transcript_policy_a",),
+    "X16": (
+        "test_get_run_overview_neutral_no_transcript_policy_a",
+        "test_stale_negative_cue_after_assistant_turn_is_neutral",
+    ),
     "X17": ("test_get_metric_still_returns_existing_trade_count_leaf",),
     "X18": ("test_x18_negative_cue_export_and_voice_import_pin",),
     "X19": ("test_match_none_alone_does_not_mean_veto",),
@@ -459,7 +462,7 @@ def test_speakable_skips_overlay_lines_with_digits():
 
 
 def test_stale_negative_cue_after_assistant_turn_is_neutral(tmp_path: Path):
-    """Prior specialist ask must not false-veto after the assistant already replied."""
+    """X16: stale prior-turn text (assistant already replied) → neutral, not veto."""
     service, handle, thesis, _run, _digest = _results_session(tmp_path, packet=_kpi_packet())
     _append_user(
         service,

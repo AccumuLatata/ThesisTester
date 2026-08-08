@@ -400,7 +400,7 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 | X13 | VA-6 + DI eval suites | Remain green |
 | X14 | Word-boundary false friends on session user text | Same DI matcher semantics (no substring veto/match drift) |
 | X15 | Intent alias “sample size” / “trades” | Routes to `results.trade_summary.trade_count` (not `results.trade_count`) |
-| X16 | No user transcript on session (race) | Neutral envelope with `overview_intent == "run_overview"`; grounded DI scalars only |
+| X16 | No user transcript on session (race), **or** stale prior-turn user text (assistant already replied) | Neutral envelope with `overview_intent == "run_overview"`; grounded DI scalars only; must not false-veto from a prior specialist cue |
 | X17 | `get_metric("results.trade_count")` when path exists on packet | Still returns the existing leaf (no silent remap); guidance/tests must not *prefer* it as baseline |
 | X18 | `has_overview_negative_cue` export | True for DI negative cues (word-boundary); false for false friends (`runtime` / `stopwatch` / `non-stop` / `off-grid`); voice must import it (no local cue copy) |
 | X19 | `match_overview_intent is None` alone | Must not imply remediation without `has_overview_negative_cue` |
