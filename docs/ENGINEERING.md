@@ -795,14 +795,17 @@ Non-loopback `--host` values are rejected (`0.0.0.0`, LAN IPs, `localhost` strin
 **Connection refused / WinError 10061** means nothing is listening on
 `127.0.0.1:8765` — the Streamlit page does not embed the duplex bridge. Either:
 
-1. Start the process manually (command above), or
+1. Start the process manually (command above — use the same port as the page
+   **Sidecar port** control), or
 2. In **Voice discuss (realtime)** click **Launch local sidecar** (probes
-   `GET /health`, then spawns a detached
-   `python -m thesistester.assistant.voice.sidecar` that inherits the current
-   process environment for `XAI_API_KEY`).
+   `GET /health`, resolves `XAI_API_KEY` from env or Streamlit Secrets, then
+   spawns a detached `python -m thesistester.assistant.voice.sidecar` with that
+   key forwarded into the child env).
 
 Helpers: `probe_sidecar_health`, `launch_local_sidecar`, `ensure_local_sidecar`
-in `thesistester/assistant/voice/sidecar.py` (loopback-only).
+in `thesistester/assistant/voice/sidecar.py` (loopback-only; health requires
+boolean `ok` plus sidecar host/port/mode; child-exit re-probes in case another
+listener already bound the port).
 
 ### Endpoints
 | Path | Role |

@@ -44,6 +44,7 @@ from thesistester.assistant.voice.sidecar import (
     DEFAULT_SIDECAR_PORT,
     SidecarError,
     assert_localhost_bind,
+    build_sidecar_launch_command,
     ensure_local_sidecar,
     probe_sidecar_health,
     sidecar_public_base_url,
@@ -259,6 +260,7 @@ def _client_url_is_localhost(client_url: str) -> bool:
 
 def _render_sidecar_status_controls() -> dict | None:
     """Show /health status and optional local launch. Returns health dict or None."""
+    host, port_i = _sidecar_host_port()
     base_url = _sidecar_base_url()
     health = probe_sidecar_health(base_url)
     if health is not None:
@@ -272,16 +274,17 @@ def _render_sidecar_status_controls() -> dict | None:
         "WinError 10061 / connection refused usually means the process is not running). "
         "Realtime needs a separate localhost process; Streamlit cannot host the duplex bridge."
     )
-    st.code(
-        "python -m thesistester.assistant.voice.sidecar --host 127.0.0.1 --port 8765",
-        language="bash",
+    # Manual command must match the configured loopback port (not a hardcoded default).
+    manual_cmd = " ".join(
+        ["python", "-m", *build_sidecar_launch_command(host=host, port=port_i)[2:]]
     )
+    st.code(manual_cmd, language="bash")
     st.caption(
-        "Requires an xAI key in the sidecar process environment. "
-        "Or use **Launch local sidecar** below (spawns detached; inherits this process env)."
+        "Requires an xAI key in the sidecar process environment "
+        "(or Streamlit Secrets — Launch forwards the resolved key). "
+        "Or use **Launch local sidecar** below (spawns detached)."
     )
     if st.button("Launch local sidecar", key="assistant_voice_sidecar_launch"):
-        host, port_i = _sidecar_host_port()
         try:
             status = ensure_local_sidecar(host=host, port=port_i, cwd=Path.cwd())
         except SidecarError as exc:

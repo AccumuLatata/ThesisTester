@@ -116,11 +116,43 @@ def sidecar_public_base_url(
     host: str = DEFAULT_SIDECAR_HOST,
     port: int = DEFAULT_SIDECAR_PORT,
 ) -> str:
-    """Return ``http://{host}:{port}`` after validating loopback bind + port."""
+    """Return ``http://{host}:{port}`` after validating loopback bind + port.
+
+    IPv6 loopback is bracketed (``http://[::1]:8765``).
+    """
     bind_host = assert_localhost_bind(host)
     if not isinstance(port, int) or isinstance(port, bool) or port < 1 or port > 65535:
         raise SidecarError("Sidecar port must be an integer in 1..65535.")
+    if ":" in bind_host:
+        return f"http://[{bind_host}]:{port}"
     return f"http://{bind_host}:{port}"
+
+
+class _NoRedirectHandler(urllib_request.HTTPRedirectHandler):
+    """Refuse HTTP redirects so loopback probes cannot leave localhost."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None
+
+
+def _loopback_opener() -> urllib_request.OpenerDirector:
+    return urllib_request.build_opener(_NoRedirectHandler)
+
+
+def _health_payload_is_sidecar(decoded: Mapping[str, Any]) -> bool:
+    """True only for the VA-5 ``/health`` shape (boolean ok + loopback host)."""
+    if decoded.get("ok") is not True:
+        return False
+    host = decoded.get("host")
+    if not isinstance(host, str) or host.strip().lower() not in {"127.0.0.1", "::1"}:
+        return False
+    port = decoded.get("port")
+    if not isinstance(port, int) or isinstance(port, bool) or port < 1 or port > 65535:
+        return False
+    mode = decoded.get("mode")
+    if not isinstance(mode, str) or not mode.strip():
+        return False
+    return True
 
 
 def probe_sidecar_health(
@@ -130,9 +162,10 @@ def probe_sidecar_health(
 ) -> dict[str, Any] | None:
     """GET ``{base_url}/health``. Return JSON dict on success, else ``None``.
 
-    Fail-closed: connection refused, timeouts, non-200, and non-object JSON
-    all return ``None`` (caller treats as unreachable). Never raises for
-    network failures — Streamlit uses this as a preflight before register.
+    Fail-closed: connection refused, timeouts, non-200, non-object JSON,
+    redirects off-loopback, and non-sidecar health shapes all return ``None``.
+    Never raises for network failures — Streamlit uses this as a preflight
+    before register.
     """
     if not isinstance(base_url, str) or not base_url.strip():
         return None
@@ -155,12 +188,13 @@ def probe_sidecar_health(
         method="GET",
     )
     try:
-        with urllib_request.urlopen(req, timeout=float(timeout_seconds)) as response:
+        with _loopback_opener().open(req, timeout=float(timeout_seconds)) as response:
             if getattr(response, "status", 200) != 200:
                 return None
             decoded = json.loads(response.read().decode("utf-8"))
     except (
         urllib_error.URLError,
+        urllib_error.HTTPError,
         TimeoutError,
         json.JSONDecodeError,
         UnicodeDecodeError,
@@ -168,7 +202,7 @@ def probe_sidecar_health(
         OSError,
     ):
         return None
-    if not isinstance(decoded, dict) or not decoded.get("ok"):
+    if not isinstance(decoded, dict) or not _health_payload_is_sidecar(decoded):
         return None
     return decoded
 
@@ -203,10 +237,13 @@ def launch_local_sidecar(
     port: int = DEFAULT_SIDECAR_PORT,
     python_executable: str | None = None,
     cwd: str | Path | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> subprocess.Popen[Any]:
-    """Spawn a detached localhost sidecar process (inherits env for ``XAI_API_KEY``).
+    """Spawn a detached localhost sidecar process.
 
-    Does not wait for readiness — use :func:`ensure_local_sidecar` or
+    Inherits the current environment and merges optional ``env`` (used to
+    forward a resolved ``XAI_API_KEY`` from Streamlit Secrets). Does not wait
+    for readiness — use :func:`ensure_local_sidecar` or
     :func:`probe_sidecar_health`. Refuses non-loopback hosts. Stdio is
     discarded so a Streamlit-spawned child cannot block on pipes.
     """
@@ -215,13 +252,18 @@ def launch_local_sidecar(
         port=port,
         python_executable=python_executable,
     )
+    child_env = os.environ.copy()
+    if env is not None:
+        for key, value in env.items():
+            if isinstance(key, str) and isinstance(value, str):
+                child_env[key] = value
     popen_kwargs: dict[str, Any] = {
         "args": command,
         "stdin": subprocess.DEVNULL,
         "stdout": subprocess.DEVNULL,
         "stderr": subprocess.DEVNULL,
         "cwd": str(cwd) if cwd is not None else None,
-        "env": os.environ.copy(),
+        "env": child_env,
     }
     if os.name == "nt":
         # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP — survive Streamlit reruns.
@@ -250,6 +292,8 @@ def ensure_local_sidecar(
         {"ok": True, "launched": bool, "base_url": str, "health": dict, "pid": int|None}
 
     Raises :class:`SidecarError` when launch fails or health never becomes ready.
+    Resolves ``XAI_API_KEY`` (env or Streamlit Secrets) before spawn and forwards
+    it into the child environment — never logs the key value.
     """
     base_url = sidecar_public_base_url(host, port)
     health = probe_sidecar_health(base_url)
@@ -261,18 +305,37 @@ def ensure_local_sidecar(
             "health": health,
             "pid": None,
         }
+    try:
+        api_key = require_xai_api_key()
+    except VoiceConfigurationError as exc:
+        raise SidecarError(
+            "Cannot launch the realtime sidecar without an xAI key. "
+            "Set XAI_API_KEY in the environment or Streamlit Secrets, then retry "
+            "Launch local sidecar (or start the process in a terminal)."
+        ) from exc
     process = launch_local_sidecar(
         host=host,
         port=port,
         python_executable=python_executable,
         cwd=cwd,
+        env={"XAI_API_KEY": api_key},
     )
     deadline = time.monotonic() + float(ready_timeout_seconds)
     while time.monotonic() < deadline:
         if process.poll() is not None:
+            # Child may have lost a bind race while another sidecar is healthy.
+            health = probe_sidecar_health(base_url)
+            if health is not None:
+                return {
+                    "ok": True,
+                    "launched": False,
+                    "base_url": base_url,
+                    "health": health,
+                    "pid": None,
+                }
             raise SidecarError(
                 "Realtime sidecar process exited before becoming healthy. "
-                "Confirm XAI_API_KEY is set in the environment and re-run "
+                f"Confirm port {port} is free, XAI_API_KEY is set, and re-run "
                 "`python -m thesistester.assistant.voice.sidecar` in a terminal "
                 "to see startup errors."
             )
@@ -286,6 +349,16 @@ def ensure_local_sidecar(
                 "pid": process.pid,
             }
         time.sleep(float(poll_interval_seconds))
+    # Final probe after timeout (slow cold start / bind race).
+    health = probe_sidecar_health(base_url)
+    if health is not None:
+        return {
+            "ok": True,
+            "launched": process.poll() is None,
+            "base_url": base_url,
+            "health": health,
+            "pid": process.pid if process.poll() is None else None,
+        }
     raise SidecarError(
         "Realtime sidecar was launched but /health did not become ready in time. "
         f"Check that port {port} is free and XAI_API_KEY is available to the "
@@ -505,7 +578,7 @@ class SidecarRuntime:
     _active: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def public_base_url(self) -> str:
-        return f"http://{self.host}:{self.port}"
+        return sidecar_public_base_url(self.host, self.port)
 
     def refresh_settings(self, settings: VoiceSettings | None = None) -> VoiceSettings:
         """Replace runtime settings (tests / explicit reload)."""
