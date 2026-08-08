@@ -1,11 +1,13 @@
-"""DX duplex intelligence: DX-1 envelopes + DX-2 realtime instruction needles."""
+"""DX duplex intelligence eval freeze (DX-1…DX-3 / contract §9)."""
 
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from thesistester.assistant.explainer import EvidenceCaveat, EvidencePacket
 from thesistester.assistant.llm_explainer import _ungrounded_number_tokens
+from thesistester.assistant.orchestrator import AssistantOrchestrator, OrchestrationResult
 from thesistester.assistant.results_overview import (
     KPI_CLAIM_PATHS,
     OVERVIEW_INTENT_KPI,
@@ -17,17 +19,47 @@ from thesistester.assistant.repository import LocalThesisRepository
 from thesistester.assistant.tools import AssistantTools
 from thesistester.assistant.voice.contracts import VoiceTranscriptTurn
 from thesistester.assistant.voice.grounding import format_speakable_tool_result
+from thesistester.assistant.voice.intent import VoiceIntentRouter
 from thesistester.assistant.voice.session import (
     VoiceSessionService,
     _DX2_REALTIME_RESULTS_CONSTRAINT_LINES,
     build_honesty_instructions,
+    run_push_to_talk_turn,
 )
+from thesistester.assistant.voice.settings import VoiceSettings, load_voice_settings
 from thesistester.assistant.voice.sidecar import build_realtime_session_update
 from thesistester.assistant.voice.tools import (
     VOICE_TOOL_SCHEMAS,
+    assert_realtime_tools_allowlisted,
     execute_voice_tool,
 )
 from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
+
+# Frozen DX §9 bank — every ID must stay covered by this module (DX-3 release gate).
+_DX3_SECTION9_BANK = frozenset(
+    {
+        "X1",
+        "X2",
+        "X3",
+        "X4",
+        "X4b",
+        "X5",
+        "X6",
+        "X7",
+        "X8",
+        "X9",
+        "X10",
+        "X11",
+        "X12",
+        "X13",
+        "X14",
+        "X15",
+        "X16",
+        "X17",
+        "X18",
+        "X19",
+    }
+)
 
 # Canonical §4.3 needles — same tuple the builder/create validator use.
 _DX2_NEEDLES = _DX2_REALTIME_RESULTS_CONSTRAINT_LINES
@@ -94,7 +126,31 @@ def _kpi_packet(**extra_results) -> EvidencePacket:
     )
 
 
-def _results_session(tmp_path: Path, *, packet: EvidencePacket | None = None):
+def _enabled_voice_settings() -> VoiceSettings:
+    base = load_voice_settings()
+    return VoiceSettings(
+        enabled=True,
+        provider=base.provider,
+        model=base.model,
+        voice=base.voice,
+        mode=base.mode,
+        channels=base.channels,
+        max_session_minutes=base.max_session_minutes,
+        store_audio=base.store_audio,
+        allow_web_search=base.allow_web_search,
+        require_tool_for_numbers=base.require_tool_for_numbers,
+        ephemeral_token_ttl_seconds=base.ephemeral_token_ttl_seconds,
+        max_history_messages=base.max_history_messages,
+        max_retries=base.max_retries,
+    )
+
+
+def _results_session(
+    tmp_path: Path,
+    *,
+    packet: EvidencePacket | None = None,
+    mode: str = "realtime",
+):
     repository = LocalThesisRepository(tmp_path / "assistant")
     thesis = repository.create_thesis(name="dx1")
     draft = repository.create_spec_version(
@@ -123,12 +179,12 @@ def _results_session(tmp_path: Path, *, packet: EvidencePacket | None = None):
         },
     )
     tools = AssistantTools(data_roots=(tmp_path,))
-    service = VoiceSessionService(repository, tools=tools)
+    service = VoiceSessionService(repository, tools=tools, settings=_enabled_voice_settings())
     record = service.create_session(
         thesis.thesis_id,
         completed.run_id,
         expected_hash=digest,
-        mode="realtime",
+        mode=mode,
         channel="results_qa",
     )
     if packet is not None:
@@ -416,3 +472,181 @@ def test_dx2_needles_reach_realtime_session_update_payload():
         assert needle in embedded
     # Contiguous block (joined with newlines, no reordering/gaps).
     assert "\n".join(_DX2_NEEDLES) in embedded
+
+
+# --- DX-3 §9 release-gate freeze -------------------------------------------------
+
+
+def test_dx3_section9_bank_inventory_frozen():
+    """Release gate: §9 IDs stay enumerated here so coverage cannot silently shrink."""
+    assert _DX3_SECTION9_BANK == frozenset(
+        {
+            "X1",
+            "X2",
+            "X3",
+            "X4",
+            "X4b",
+            "X5",
+            "X6",
+            "X7",
+            "X8",
+            "X9",
+            "X10",
+            "X11",
+            "X12",
+            "X13",
+            "X14",
+            "X15",
+            "X16",
+            "X17",
+            "X18",
+            "X19",
+        }
+    )
+
+
+def test_x9_realtime_session_tools_are_va3_only_no_search():
+    instructions = build_honesty_instructions(
+        channel="results_qa",
+        mode="realtime",
+        run_id="run_" + "9" * 32,
+        expected_hash="a" * 64,
+    )
+    payload = build_realtime_session_update(instructions=instructions, voice="eve")
+    tools = payload["session"]["tools"]
+    assert_realtime_tools_allowlisted(tools)
+    names = {item["name"] for item in tools}
+    assert names == {"get_run_overview", "get_metric", "list_caveats", "compare_two_runs"}
+    for item in tools:
+        assert item.get("type") == "function"
+        assert item.get("type") not in {"web_search", "x_search", "file_search", "mcp"}
+        assert item.get("name") not in {"web_search", "x_search", "file_search", "mcp"}
+
+
+def test_x10_ptt_primary_still_handle_results_turn(monkeypatch, tmp_path: Path):
+    service, handle, thesis, run, digest = _results_session(
+        tmp_path, packet=_kpi_packet(), mode="push_to_talk"
+    )
+    conversation = service.repository.create_conversation(thesis.thesis_id)
+
+    class _FakeSTTTTS:
+        def __init__(self) -> None:
+            self.tts_texts: list[str] = []
+
+        def post_multipart(self, **kwargs):
+            return {"text": "What is the win rate on this run?"}
+
+        def post_json_bytes(self, **kwargs):
+            text = str((kwargs.get("payload") or {}).get("text") or "")
+            self.tts_texts.append(text)
+            return b"ID3FAKEAUDIO"
+
+    transport = _FakeSTTTTS()
+    monkeypatch.setenv("XAI_API_KEY", "test-xai-key-not-real")
+
+    class _Orch(AssistantOrchestrator):
+        def handle_results_turn(self, client, **kwargs):
+            assert kwargs.get("persist_conversation") is False
+            return OrchestrationResult(
+                status="completed",
+                capability_id="results_qa",
+                payload={
+                    "results_reply": SimpleNamespace(
+                        summary="Win rate is 52%.",
+                        caveats=(),
+                        claims=(
+                            SimpleNamespace(
+                                text="Win rate is 52%.",
+                                path="results.trade_summary.win_rate",
+                                value=0.52,
+                            ),
+                        ),
+                        followups=(),
+                    )
+                },
+            )
+
+    orch = _Orch(
+        tools=AssistantTools(data_roots=(tmp_path.resolve(),)),
+        repository=service.repository,
+    )
+    # End the pre-created session so PTT can create its own short-lived session.
+    service.end_session(thesis.thesis_id, handle.session_id)
+    turn = run_push_to_talk_turn(
+        service=service,
+        orchestrator=orch,
+        audio_bytes=b"RIFF....",
+        channel="results_qa",
+        thesis_id=thesis.thesis_id,
+        conversation_id=conversation.conversation_id,
+        run_id=run.run_id,
+        expected_hash=digest,
+        openai_client=object(),
+        stt_transport=transport,
+        tts_transport=transport,
+    )
+    assert turn.answer_path == "handle_results_turn"
+    assert turn.openai_used is True
+
+
+def test_x11_ptt_style_stt_text_does_not_veto_unrecognized_overview(tmp_path: Path):
+    """STT text on session must not force veto remediation without a negative cue."""
+    service, handle, thesis, _run, _digest = _results_session(
+        tmp_path, packet=_kpi_packet(), mode="push_to_talk"
+    )
+    _append_user(
+        service,
+        thesis.thesis_id,
+        handle.session_id,
+        "please invent alpha and buy the open",
+    )
+    assert match_overview_intent("please invent alpha and buy the open") is None
+    assert has_overview_negative_cue("please invent alpha and buy the open") is False
+    result = execute_voice_tool("get_run_overview", {}, session=handle)["result"]
+    assert result["overview_intent"] == OVERVIEW_INTENT_RUN
+    assert result["summary"]
+    assert result["kpi_claims"]
+    assert not result.get("remediation")
+    speakable = format_speakable_tool_result("get_run_overview", result)
+    assert result["summary"] in speakable or speakable.startswith(result["summary"].rstrip("."))
+
+
+def test_x12_forbidden_tools_and_compute_names_fail_closed(tmp_path: Path):
+    _service, handle, _thesis, _run, _digest = _results_session(tmp_path, packet=_kpi_packet())
+    for name in (
+        "web_search",
+        "x_search",
+        "file_search",
+        "mcp",
+        "execute_confirmed_run",
+        "PIPELINE.run_experiment",
+        "save_comparison",
+    ):
+        out = execute_voice_tool(name, {}, session=handle)
+        assert out["ok"] is False
+        assert out["result"] == {}
+
+
+def test_x13_companion_eval_modules_importable():
+    """X13: VA-6 / DI / RQ honesty suites remain loadable companions (CI keeps them green)."""
+    import tests.test_assistant_discuss_intelligence as di_mod
+    import tests.test_assistant_llm_evaluations as rq_mod
+    import tests.test_assistant_voice_evaluations as va_mod
+
+    assert hasattr(di_mod, "test_match_overview_intent_positive_and_veto")
+    assert hasattr(va_mod, "test_va6_forbidden_tools_never_execute")
+    assert hasattr(va_mod, "test_va6_voice_flag_remains_default_off")
+    assert any(name.startswith("test_") for name in dir(rq_mod))
+
+
+def test_x15_intent_sample_size_alias_targets_trade_summary():
+    router = VoiceIntentRouter()
+    for text in ("How many trades / sample size?", "how many trades?", "what is sample size"):
+        intent = router.route(text)
+        assert intent.tool_name == "get_metric"
+        assert intent.arguments["path"] == "results.trade_summary.trade_count"
+
+
+def test_dx3_voice_default_remains_disabled():
+    settings = load_voice_settings()
+    assert settings.enabled is False

@@ -372,6 +372,9 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   and speakable `summary`-first preference. DX-2 adds the frozen §4.3 duplex
   overview constraint needles to realtime/results `build_honesty_instructions`
   only (not PTT/Help); sidecar must keep consuming that single builder.
+  **DX-0…DX-3 are complete** — do not reopen DX for feature work without a
+  contract amendment; keep `tests/test_assistant_duplex_intelligence.py` §9
+  bank green alongside VA-6 / DI / RQ honesty suites.
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned

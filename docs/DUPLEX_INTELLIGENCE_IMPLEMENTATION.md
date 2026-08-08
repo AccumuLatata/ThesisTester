@@ -1,7 +1,7 @@
 # Duplex Intelligence — Implementation Contract
 
 **Document type:** Implementation contract (DX-series) — **single source of truth**
-**Status:** 🟡 **DX-0…DX-1 ✅ / DX-2 this PR** (DX-3 pending)
+**Status:** ✅ **DX-0…DX-3 complete** (release gate frozen)
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/results_overview.py`
 (`has_overview_negative_cue` export only — no cue-table edits),
@@ -426,22 +426,21 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 |---|---|
 | DX-0 Contract freeze | ✅ merged |
 | DX-1 Tool substrate (DI envelopes) | ✅ merged |
-| DX-2 Realtime instruction parity | 🟡 this PR |
-| DX-3 Eval freeze + release gate | ⬜ pending |
+| DX-2 Realtime instruction parity | ✅ merged |
+| DX-3 Eval freeze + release gate | ✅ merged (series complete) |
 
 ---
 
 ## 12. Practical operator guidance (non-normative)
 
-Until DX-3 lands (eval freeze / release gate):
-
-- **Max honesty / DI recovery:** use text Discuss or VA-4 push-to-talk.
-- **Low-latency duplex review:** VA-5 + DX-1/DX-2 are usable for bound-run
-  overview/KPI talk (DI-shaped envelopes + §4.3 instruction needles); treat
-  numbers as tool-grounded and prefer confirming critical figures in text/PTT
-  when precision matters.
-- After DX complete: duplex overview/KPI talk should match DI **content** on
-  overview cues; negative-cue specialist asks remediate (no KPI/explainer
-  substitute); unmatched / race / stale-text paths stay neutral overview-shaped.
-  Text/PTT remain strongest for typed recovery and pre-TTS gating. Confirm
-  specialist asks in text/PTT when the tool-before-transcript race matters.
+- **Max honesty / DI recovery:** use text Discuss or VA-4 push-to-talk
+  (typed recovery + pre-TTS digit gating).
+- **Low-latency duplex review:** VA-5 + DX content parity — overview/KPI talk
+  reuses DI builders/paths/overlay; negative-cue specialist asks remediate
+  (no KPI/explainer substitute); unmatched / race / stale-text paths stay
+  neutral overview-shaped. Live PCM is still not pre-gated; durable transcript
+  digit audit remains the fail-closed persistence layer. Confirm critical
+  specialist figures in text/PTT when the race window matters.
+- **Default:** `assistant.voice.enabled=false` remains; DX does not flip
+  default-on. §9 characterization is frozen in
+  `tests/test_assistant_duplex_intelligence.py`.

@@ -617,7 +617,12 @@ other than the last bar in the dataset.
   inventing `results.trade_count` / `results.instrument` /
   `results.validation.trade_count`; no KPI-overview topic swap for
   walk-forward/validation/ranking/time). PTT and Help instructions unchanged.
-  DX-3 eval freeze remains.
+  **DX-3 landed (series complete):** §9 characterization frozen in
+  `tests/test_assistant_duplex_intelligence.py`. Shipped limitation: live PCM
+  is still not pre-gated; content parity is via tool envelopes + instructions;
+  the tool-before-transcript race may still return a neutral overview envelope
+  (DX-2 needles + durable transcript audit are the backstop). Voice default
+  remains off.
   Thesis switches clear mode-scoped chat_input widget keys and other
   thesis-scoped staging. Draft-chat history
   excludes `results_qa` / `product_help` turns and tool/audit lines so
@@ -717,7 +722,9 @@ other than the last bar in the dataset.
   intent aliases target the DI baseline leaf
   `results.trade_summary.trade_count` (not the distinct `results.trade_count`
   leaf). **DX-2 landed:** realtime/results honesty instructions include the
-  frozen duplex overview constraint needles. DX-3 eval freeze remains.
+  frozen duplex overview constraint needles. **DX-3 complete:** §9 eval freeze
+  in `tests/test_assistant_duplex_intelligence.py`; live PCM remains
+  post-utterance (not pre-gated).
 
 ## OTF filter (One Timeframing)
 
