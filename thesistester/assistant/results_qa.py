@@ -16,6 +16,7 @@ from thesistester.assistant.llm_explainer import (
     merge_mandatory_packet_caveats,
 )
 from thesistester.assistant.results_overview import (
+    apply_expert_overlay,
     build_deterministic_kpi_reply,
     build_prompt_path_catalog,
     build_structured_remediation_reply,
@@ -327,6 +328,9 @@ def propose_results_reply(
 
     DI-2: first-pass user payload includes ``path_catalog`` (existing paths;
     plus ``kpi_allowlist`` when an overview intent matches).
+
+    DI-3: successful overview replies (and deterministic overview fallback)
+    append a strictly digit-free expert overlay after mandatory caveats.
     """
     if not isinstance(user_message, str) or not user_message.strip():
         raise LLMEvidenceError("Results Q&A user message must be a non-empty string.")
@@ -338,6 +342,18 @@ def propose_results_reply(
         evidence_context = dict(turn_context)
 
     overview_intent = match_overview_intent(user_message)
+
+    def _maybe_overlay(reply: ResultsQAReply) -> ResultsQAReply:
+        if overview_intent is None:
+            return reply
+        return apply_expert_overlay(
+            packet,
+            summary=reply.summary,
+            caveats=reply.caveats,
+            claims=reply.claims,
+            recovery_reason=reply.recovery_reason,
+        )
+
     try:
         payload = _complete_results_structured(
             client,
@@ -346,7 +362,9 @@ def propose_results_reply(
             user_message=user_message,
             overview_intent=overview_intent,
         )
-        return _decode_results_payload(payload, packet=packet, evidence_context=evidence_context)
+        return _maybe_overlay(
+            _decode_results_payload(payload, packet=packet, evidence_context=evidence_context)
+        )
     except (LLMEvidenceError, LLMProviderError) as first_exc:
         if not repair_retry_enabled and not deterministic_overview_fallback:
             raise
@@ -373,8 +391,10 @@ def propose_results_reply(
                     overview_intent=overview_intent,
                     repair=repair_payload,
                 )
-                return _decode_results_payload(
-                    repaired, packet=packet, evidence_context=evidence_context
+                return _maybe_overlay(
+                    _decode_results_payload(
+                        repaired, packet=packet, evidence_context=evidence_context
+                    )
                 )
             except (LLMEvidenceError, LLMProviderError) as repair_exc:
                 return _recover_results_reply(

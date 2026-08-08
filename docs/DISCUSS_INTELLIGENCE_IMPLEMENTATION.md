@@ -1,7 +1,7 @@
 # Discuss Intelligence — Implementation Contract
 
 **Document type:** Implementation contract (DI-series) — **single source of truth**
-**Status:** 🟡 DI-0…DI-1 complete; **DI-2 implemented**; DI-3 not started
+**Status:** ✅ **DI-0…DI-3 complete** (release gate frozen)
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/llm.py` (SSL/TLS wrap),
 `results_qa.py`, `orchestrator.handle_results_turn` (recovery pipeline),
@@ -454,5 +454,5 @@ Document new keys in `ARCHITECTURE.md` in the DI-1 PR that lands them.
 |---|---|
 | DI-0 Contract freeze | ✅ merged |
 | DI-1 Transport + recovery (+ overview matcher) | ✅ merged |
-| DI-2 Prompt path catalog | 🟡 this PR |
-| DI-3 Expert overlay + eval freeze | ⬜ not started |
+| DI-2 Prompt path catalog | ✅ merged |
+| DI-3 Expert overlay + eval freeze | 🟡 this PR / series complete on merge |

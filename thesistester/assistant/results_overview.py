@@ -15,6 +15,7 @@ from thesistester.assistant.llm import LLMProviderError
 from thesistester.assistant.llm_explainer import (
     _path_exists,
     _path_get,
+    _ungrounded_number_tokens,
     assert_llm_explanation_grounded,
     merge_mandatory_packet_caveats,
 )
@@ -329,6 +330,147 @@ def _digit_free_lines(lines: Sequence[Any]) -> tuple[str, ...]:
     return tuple(out)
 
 
+# DI-3: strictly digit-free overlay glosses keyed by cited claim leaf names.
+_OVERLAY_GLOSS_BY_LEAF: tuple[tuple[str, str], ...] = (
+    (
+        "expectancy_r",
+        "Expectancy R is mean net R on the recorded sample, not a forecast.",
+    ),
+    (
+        "win_rate",
+        "Win rate is the share of winning trades in the recorded sample, not a forward-looking edge.",
+    ),
+    (
+        "trade_count",
+        "Trade count is the recorded sample size for this run, not proof of deployable edge.",
+    ),
+    (
+        "profit_factor",
+        "Profit factor summarizes historical wins versus losses on the recorded sample only.",
+    ),
+    (
+        "max_drawdown_r",
+        "Max drawdown R describes historical equity drawdown on the recorded sample, not future risk bounds.",
+    ),
+    (
+        "total_r",
+        "Total R is the sum of realized R multiples on the recorded sample, not a prediction.",
+    ),
+    (
+        "stop_loss_ticks",
+        "Best-grid stop ticks reflect in-sample grid selection when present, not out-of-sample confirmation.",
+    ),
+    (
+        "take_profit_ticks",
+        "Best-grid take-profit ticks reflect in-sample grid selection when present, not out-of-sample confirmation.",
+    ),
+)
+
+_OVERLAY_ALWAYS: tuple[str, ...] = (
+    "These figures are research diagnostics, not trading advice.",
+)
+
+_OVERLAY_NEXT_STEP = (
+    "If you care about robustness, ask whether walk-forward or validation "
+    "diagnostics are present on this packet."
+)
+
+_OVERVIEW_FOLLOWUP_BANK: tuple[str, ...] = (
+    "Ask whether walk-forward or validation diagnostics are present on this packet.",
+    "Ask about best stop and take profit ranking if a grid was recorded.",
+)
+
+_MISSING_KPI_OVERLAY = (
+    "Baseline trade summary KPIs were not available to interpret for this ask."
+)
+
+
+def overview_followup_bank() -> tuple[str, ...]:
+    """Digit-free follow-up bank for overview / KPI replies (DI-3)."""
+    return _OVERVIEW_FOLLOWUP_BANK
+
+
+def build_expert_overlay(
+    packet: EvidencePacket,
+    claims: Sequence[EvidenceClaim],
+) -> tuple[str, ...]:
+    """Return overlay-authored caveat lines that are strictly digit-free.
+
+    Mandatory packet caveats stay on ``merge_mandatory_packet_caveats`` and are
+    **not** returned here. Every line must pass
+    ``_ungrounded_number_tokens(line, allowed=set()) == []``.
+    """
+    del packet  # reserved for future packet-shaped honesty without new digits
+    lines: list[str] = []
+    cited_leaves = {
+        claim.path.rsplit(".", 1)[-1]
+        for claim in claims
+        if isinstance(getattr(claim, "path", None), str) and claim.path.strip()
+    }
+    for leaf, gloss in _OVERLAY_GLOSS_BY_LEAF:
+        if leaf in cited_leaves:
+            lines.append(gloss)
+        if len(lines) >= 3:
+            break
+    if not cited_leaves:
+        lines.append(_MISSING_KPI_OVERLAY)
+    for always in _OVERLAY_ALWAYS:
+        if always not in lines:
+            lines.append(always)
+    if _OVERLAY_NEXT_STEP not in lines:
+        lines.append(_OVERLAY_NEXT_STEP)
+
+    audited: list[str] = []
+    for line in lines:
+        text = line.strip()
+        if not text:
+            continue
+        if _ungrounded_number_tokens(text, allowed=set()):
+            raise ValueError(
+                f"Expert overlay line is not digit-free: {text!r}"
+            )
+        audited.append(text)
+    return tuple(audited)
+
+
+def apply_expert_overlay(
+    packet: EvidencePacket,
+    *,
+    summary: str,
+    caveats: Sequence[str],
+    claims: Sequence[EvidenceClaim],
+    recovery_reason: str | None = None,
+):
+    """Append DI-3 overlay lines and overview followups; re-run the auditor."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    overlay = build_expert_overlay(packet, claims)
+    # Keep mandatory/LLM caveats first; append only new overlay-authored lines.
+    merged_caveats = list(caveats)
+    seen = {item.strip() for item in merged_caveats if isinstance(item, str)}
+    for line in overlay:
+        if line not in seen:
+            merged_caveats.append(line)
+            seen.add(line)
+    followups = overview_followup_bank()
+    caveat_tuple = tuple(merged_caveats)
+    claim_tuple = tuple(claims)
+    assert_llm_explanation_grounded(
+        packet,
+        summary=summary,
+        caveats=caveat_tuple,
+        claims=claim_tuple,
+        followups=followups,
+    )
+    return ResultsQAReply(
+        summary=summary,
+        caveats=caveat_tuple,
+        claims=claim_tuple,
+        followups=followups,
+        recovery_reason=recovery_reason,
+    )
+
+
 def _format_scalar_for_claim(path: str, value: Any) -> str | None:
     """Return claim text for an allowlisted scalar, or None when not narratable."""
     if value is None or isinstance(value, bool):
@@ -363,9 +505,6 @@ def build_deterministic_kpi_reply(
     recovery_reason: str | None = None,
 ):
     """Build an auditor-safe KPI/overview reply from the frozen path allowlist."""
-    # Local import avoids a circular import at module load (results_qa → overview).
-    from thesistester.assistant.results_qa import ResultsQAReply
-
     claims: list[EvidenceClaim] = []
     summary_parts: list[str] = []
     for path in KPI_CLAIM_PATHS:
@@ -386,10 +525,6 @@ def build_deterministic_kpi_reply(
             if limitation_honesty
             else "Baseline trade summary KPIs are not present in this evidence packet."
         )
-        followups = (
-            "Ask whether validation diagnostics exist on this run.",
-            "Ask about best grid result if a grid was recorded.",
-        )
         caveat_seed = (
             "No trade_summary KPI scalars were available for a deterministic overview.",
             *limitation_honesty[1:2],
@@ -397,10 +532,6 @@ def build_deterministic_kpi_reply(
     else:
         label = "Key metrics" if intent == OVERVIEW_INTENT_KPI else "Run summary"
         summary = f"{label}: " + "; ".join(summary_parts) + "."
-        followups = (
-            "Ask about validation or walk-forward diagnostics if present.",
-            "Ask about best stop and take profit ranking next.",
-        )
         # §4.1 run_overview: one-line honesty from digit-free limitations when present.
         caveat_seed = (
             "These figures describe the recorded historical sample, not a forecast.",
@@ -408,19 +539,13 @@ def build_deterministic_kpi_reply(
         )
 
     grounded = tuple(claims)
+    # Wire order (DI-3): claims/summary → mandatory caveats → overlay → auditor.
     caveats = merge_mandatory_packet_caveats(packet, caveat_seed)
-    assert_llm_explanation_grounded(
+    return apply_expert_overlay(
         packet,
         summary=summary,
         caveats=caveats,
         claims=grounded,
-        followups=followups,
-    )
-    return ResultsQAReply(
-        summary=summary,
-        caveats=caveats,
-        claims=grounded,
-        followups=followups,
         recovery_reason=recovery_reason,
     )
 

@@ -496,6 +496,11 @@ KPI + projections/validation + honesty paths reserved before fat time tables
 `preferred_claim_paths`; non-overview asks get the shared catalog only.
 Repair retries reuse that catalog (no duplicate `repair.existing_paths` list).
 Matcher ownership stays in DI-1; DI-2 does not widen intents.
+**DI-3 landed:** overview/KPI replies append a strictly digit-free expert
+overlay (`build_expert_overlay` / `apply_expert_overlay` in
+`results_overview.py`) after mandatory packet caveats; overlay lines are
+audited with `_ungrounded_number_tokens(..., allowed=set())`. Overview
+followups use a digit-free bank. Non-overview replies are unchanged.
 **RQ-3 landed:** `thesistester/assistant/product_help.py` +
 `handle_help_turn`; Help / how it works mode on Research Assistant
 (page-level mode-scoped `st.chat_input`; RUX-3);
