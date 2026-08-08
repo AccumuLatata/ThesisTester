@@ -94,12 +94,19 @@ _STRONG_RUN_PERF_ANCHOR = re.compile(
 # Optional adjectives between possessive and metric ("my calculated expectancy").
 _METRIC_MODIFIERS = r"(?:(?:best|worst|calculated|computed|defined|overall|final|latest|net)\s+)*"
 
+# DI overview cue nouns (Help must remediate these to Discuss, not answer from
+# the Help-vs-Discuss / DI corpus). Keep definition escape for "what does KPI mean?".
+_OVERVIEW_METRIC_NOUNS = (
+    r"(?:kpis?|key\s+metrics?|run\s+summary|run\s+highlights|run\s+overview|"
+    r"run\s+recap)"
+)
+
 _RUN_PERF_PATTERNS = (
     # Concrete personal metrics (definition escape still applies above).
     re.compile(
         rf"\b(my|this|that|our)\s+{_METRIC_MODIFIERS}"
         r"(sl|tp|stop(\s+loss)?|take[\s-]?profit|expectancy|win[\s-]?rate|"
-        r"drawdown|pnl|cell)\b",
+        rf"drawdown|pnl|cell|{_OVERVIEW_METRIC_NOUNS})\b",
         re.IGNORECASE,
     ),
     # Vague nouns (results/performance/trades) need best/worst or a run anchor —
@@ -117,7 +124,7 @@ _RUN_PERF_PATTERNS = (
     re.compile(
         rf"\bwhat\s+(?:was|were)\s+my\s+{_METRIC_MODIFIERS}"
         r"(sl|tp|stop(\s+loss)?|take[\s-]?profit|expectancy|win[\s-]?rate|"
-        r"drawdown|pnl|trades?|results?|performance|cell)\b",
+        rf"drawdown|pnl|trades?|results?|performance|cell|{_OVERVIEW_METRIC_NOUNS})\b",
         re.IGNORECASE,
     ),
     re.compile(
@@ -128,7 +135,19 @@ _RUN_PERF_PATTERNS = (
     ),
     re.compile(
         r"\b(this|my|that)\s+(completed\s+)?run('?s)?\s+"
-        r"(expectancy|win[\s-]?rate|sl|tp|trades?|results?|performance)\b",
+        rf"(expectancy|win[\s-]?rate|sl|tp|trades?|results?|performance|"
+        rf"summary|highlights|overview|{_OVERVIEW_METRIC_NOUNS})\b",
+        re.IGNORECASE,
+    ),
+    # DI overview cues anchored to a specific run (Help → Discuss remediation).
+    # Include ``of`` so “KPIs of this run” / “key metrics of this run” match.
+    re.compile(
+        rf"\b{_OVERVIEW_METRIC_NOUNS}\b"
+        r"[\s\S]{0,48}\b(?:on|in|for|from|of)\s+(?:this|my|that)\s+run\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:highlights|summary|overview|recap)\s+of\s+(?:this|my|that)\s+run\b",
         re.IGNORECASE,
     ),
     # Past-tense performance of a specific run. Present "how does this run…"

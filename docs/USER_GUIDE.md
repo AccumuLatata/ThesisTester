@@ -3,8 +3,9 @@
 User-facing how-tos for classic pages and Research Assistant Help.
 This file is the primary Help corpus home for workflow questions (HC-series).
 
-**Help allowlist (HC-1…HC-3):** the filled H2 sections listed in RQ §7.1
-`user_guide` are Help-readable (full classic + Assistant how-to coverage).
+**Help allowlist (HC-1…HC-3 + HC-5):** the filled H2 sections listed in RQ §7.1
+`user_guide` are Help-readable (full classic + Assistant how-to coverage,
+including dedicated **Exposure policy** semantics).
 
 Deep metric definitions stay in `docs/METRICS_GLOSSARY.md`. Engine honesty and
 limits stay in `docs/ASSUMPTIONS_AND_LIMITATIONS.md`. Operator/agent runbooks
@@ -244,8 +245,8 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
 | `Slippage (ticks per side)` | Adverse ticks at entry and exit (`slippage_ticks`) | Same — optimistic fills if 0 |
 | `Intrabar resolution` | SL-first, OHLC path, or lower-TF replay variants | Paths are assumptions, not tick truth |
 | `Flat by session close` + close time/TZ | Force exits at session boundary | Display TZ ≠ engine session TZ |
-| `Policy` (exposure) | `allow_all`, `single_position`, `single_direction`, `single_setup` | Skips ≠ OTF rejects ≠ 3c voids |
-| `Cooldown bars after exit` | Bars before a new entry is allowed | — |
+| `Policy` (exposure) | See **Exposure policy** — `allow_all` / `single_position` / `single_direction` / `single_setup` | Skips ≠ OTF rejects ≠ 3c voids |
+| `Cooldown bars after exit` | Bars after a blocking exit before a new entry in that exposure group | `0` = no post-exit spacing |
 | `Constrain entries to time window` (Admit) | Off by default; RTH segments or clock range | Re-sim only — not Time Analysis Focus |
 | Exit management expander | Break-even / trailing after R multiple | Stops update after completed bars |
 
@@ -253,7 +254,8 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
 
 1. Confirm Signals are loaded.
 2. Set SL/TP, costs, intrabar model, session exit, optional **Entry window
-   (Admit)**, and exposure policy in **Backtest settings**.
+   (Admit)**, and exposure **Policy** / cooldown in **Backtest settings**
+   (see **Exposure policy** for what each value admits or skips).
 3. Optionally **Save execution settings as default**.
 4. Click **Run backtest**.
 5. Read OTF-rejected / skip notes (window vs cutoff vs exposure), **Performance summary**,
@@ -271,8 +273,76 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
 - **Admit** (`entry_window`) re-simulates under an entry-time constraint.
   Time Analysis **Focus** remains post-hoc only and does not change admission.
 
-**Related pages.** Signals (prerequisite); Grid Search for SL/TP sweeps; Research
-Assistant mode **Discuss runs** for performance questions.
+**Related pages.** Signals (prerequisite); **Exposure policy**; Grid Search for
+SL/TP sweeps; Research Assistant mode **Discuss runs** for performance questions.
+
+## Exposure policy
+
+**What it is.** Exposure policy is the Backtest (and Portfolio) admission gate
+that decides whether an otherwise-executable signal may open a new trade while
+other trades are still open — or during an optional cooldown after exit. On the
+**Backtest** page the control is labeled **Policy** under the **Exposure policy**
+subheader; the engine field is `exposure_policy`.
+
+**When to use it.** Use restrictive policies when you want path KPIs that
+respect “one book / one direction / one setup at a time.” Keep `allow_all` when
+screening every signal independently (legacy default).
+
+**Related terms.** exposure, exposure policy, Policy, allow_all, single_position,
+single_direction, single_setup, cooldown, cooldown bars after exit,
+overlapping_position, overlapping_direction, overlapping_setup, cooldown_active,
+skipped signals, blocking trade, exposure_group_key
+
+**Key settings.**
+
+| Control / value | Meaning | Common pitfall |
+|---|---|---|
+| `allow_all` (default) | Every executable signal may trade; overlapping signals are independent | Inflates trade count vs a real one-position book; cooldown is a no-op here |
+| `single_position` | At most one open trade at a time (any direction/setup) | Later signals skip as `overlapping_position` |
+| `single_direction` | At most one open trade per direction (`long` / `short`) | Opposite side can still overlap |
+| `single_setup` | At most one open trade per setup group. Backtest key order: `setup_name` → `zone_id` → `level_source_label` → `level_names` → else `trigger\|direction` | Shared `level_names` can collide even when zone labels differ; trigger/direction is last resort |
+| `Cooldown bars after exit` | Under `single_*` only: after a blocking trade exits, wait this many bars before admitting another in the same exposure group | No-op under `allow_all`; skip reason is `cooldown_active` when entry is after exit but inside cooldown |
+
+**How admission works (Backtest).**
+
+1. Window / cutoff rejects (`outside_entry_window`, `after_entry_cutoff`) are
+   evaluated **before** exposure — rejected candidates never compete for a slot.
+2. Under restrictive policies, candidates are ordered by entry bar, signal bar,
+   then `signal_id` (deterministic).
+3. A candidate is blocked when any relevant prior trade still covers
+   `entry_bar_index` through `exit_bar_index + cooldown_bars_after_exit`.
+4. Skips appear in **Skipped signals** with `skip_reason`, `blocking_trade_id`,
+   and `exposure_group_key`. These are **not** OTF rejects and **not** `3c` voids.
+5. Backtest captions split skip counts: outside entry window / after entry
+   cutoff / exposure-other.
+
+**Portfolio note.** Portfolio uses the same four policy **names** after merging
+completed per-setup trades (diagnostic merge — not a live margin engine), but
+grouping differs: Portfolio `single_setup` keys on merged `setup_id` (not the
+Backtest signal-field chain above). Portfolio admission skips show
+`skip_reason` / `blocking_trade_id` in **Portfolio admission skips** and do
+**not** emit `exposure_group_key`. Prefer upstream Backtest `allow_all` so the
+portfolio gate is applied once at merge time. Cooldown is likewise a no-op
+under Portfolio `allow_all`.
+
+**How to use.**
+
+1. Open **Backtest** → **Exposure policy**.
+2. Choose **Policy** and optional **Cooldown bars after exit**.
+3. **Run backtest**, then inspect **Skipped signals** if trade count looks thin.
+4. On **Portfolio**, set `Portfolio exposure policy` / cooldown → **Run
+   portfolio analysis**, then read **Portfolio admission skips**.
+5. Grid / Validation inherit one fixed exposure policy across cells/folds —
+   exposure is not a swept axis.
+
+**What it is not.**
+
+- Not a capital, margin, or broker risk engine.
+- Not OTF filtering and not Focus (Focus never re-runs exposure/cooldown).
+- Default `allow_all` is for screening compatibility — not a claim that
+  overlapping fills are realistic.
+
+**Related pages.** Backtest; Portfolio; Time Analysis (Focus ≠ Admit); Grid Search.
 
 ## Grid Search
 
@@ -529,8 +599,8 @@ trades, diagnostic merge
 |---|---|---|
 | `Current setup label` | Name for the in-session trade table (shown when Backtest `trades` exist) | Absent when session trades are empty |
 | `Additional completed-trade CSV exports` | Upload one or more trade CSVs | Need ≥2 setup tables total across session + uploads |
-| `Portfolio exposure policy` | `allow_all` / `single_position` / `single_direction` / `single_setup` | Applied after merge — not a live margin engine |
-| `Cooldown bars after exit` | Portfolio-level spacing | — |
+| `Portfolio exposure policy` | Same four **names** as Backtest **Policy** (see **Exposure policy**); `single_setup` groups by merged `setup_id` | Applied after merge — not a live margin engine; not the Backtest signal-field group key |
+| `Cooldown bars after exit` | Portfolio-level spacing after a blocking exit under `single_*` | No-op under `allow_all` (same as Backtest) |
 
 **How to use.**
 
@@ -548,7 +618,7 @@ trades, diagnostic merge
   is applied once at merge time.
 - Diagnostic only; combined R/DD is not proof of a deployable book.
 
-**Related pages.** Backtest; Report Export (`trades.csv`).
+**Related pages.** Backtest; **Exposure policy**; Report Export (`trades.csv`).
 
 ## Research Assistant (draft, Discuss, Help)
 
@@ -572,7 +642,7 @@ version
 | Control / surface | Meaning | Common pitfall |
 |---|---|---|
 | Mode selector (`Discuss runs` / `Help` / `Draft thesis`) | Chooses which channel surface is open | Modes are navigation only — histories stay isolated |
-| **Discuss results** (`Discuss runs` mode) | Multi-turn Q&A on one completed run | Needs a thesis-recorded run; hash-verified evidence |
+| **Discuss results** (`Discuss runs` mode) | Multi-turn Q&A on one completed run (DI recovery + digit-free expert framing) | Needs a thesis-recorded run; hash-verified evidence |
 | `Help / how it works` (`Help` mode) | Allowlisted docs + capability registry | Not a second results explainer |
 | `Assistant chat` (`Draft thesis` mode) | Thesis drafting only — choices + clarifications | Not for run metrics or product docs |
 | `Advanced: draft, runs & compare` | Optional draft → validate → confirm → run path | Classic pages remain the primary workflow |
@@ -602,8 +672,9 @@ version
 4. Select the completed run in the run picker.
 5. Ask in the page chat box under **Discuss results**
    (placeholder: **Ask about this completed run**) — for example expectancy,
-   best SL/TP, or entry windows. Answers stay grounded in hash-verified evidence
-   for that run only.
+   best SL/TP, entry windows, KPIs / key metrics, or a run summary. Answers stay
+   grounded in hash-verified evidence for that run only (see **When to use Help
+   vs Discuss results** for DI overview vs specialist cues).
 
 Classic **Discuss this run** deep-links into the same **Discuss runs** mode with
 the run preselected for **Discuss results**. Discuss Q&A lives in that mode, not under Advanced.
@@ -670,14 +741,16 @@ record/discuss entry).
 draft chat.
 
 **Related terms.** Help vs Discuss, product help, how it works, run metrics,
-best SL, expectancy, remediation, draft chat, documentation-grounded
+best SL, expectancy, KPIs, key metrics, run summary, remediation, draft chat,
+documentation-grounded, Discuss Intelligence
 
 **Decision table.**
 
 | Question type | Use | Do not |
 |---|---|---|
-| How does a page/setting work? How-to / workflow | **Help / how it works** | Discuss (no run packet) |
-| What was my best SL/TP / expectancy / trades on this run? | **Discuss results** (bound run) | Help (remediates; no invented numbers) |
+| How does a page/setting work? How-to / workflow (incl. exposure policy) | **Help / how it works** | Discuss (no run packet) |
+| What were my KPIs / run summary / expectancy / best SL/TP on this run? | **Discuss results** (bound run) | Help (remediates; no invented numbers) |
+| What does expectancy_r / Monte Carlo mean (definition, no run digits)? | **Help** (glossary/how-to) or Discuss for packet-cited values | Mixing definition asks into invented run figures |
 | Refine thesis choices / clarifications | **Assistant chat** (draft) | Help or Discuss |
 | Undocumented / invented controls (e.g. fake modes) | Help must not invent UI absent from allowlisted docs (say not documented) | Fabricating UI that does not exist |
 
@@ -686,12 +759,29 @@ best SL, expectancy, remediation, draft chat, documentation-grounded
 1. Open Research Assistant with a thesis selected.
 2. For feature how-tos: mode **Help** → **Help / how it works** → ask in the
    page chat box (placeholder: **Ask how ThesisTester works**) — examples:
-   import data, Setup Builder, grid ranking, validation.
+   import data, Setup Builder, exposure policy, grid ranking, validation.
 3. For completed-run metrics: mode **Discuss runs** → select the run → ask in
    the page chat box under **Discuss results**
-   (placeholder: **Ask about this completed run**).
+   (placeholder: **Ask about this completed run**). Prefer clear overview cues
+   (`KPIs`, `key metrics`, `run summary`) or specialist cues (validation /
+   best SL/TP / time) — mixed “KPIs and best SL/TP” asks are not partially
+   answered with a KPI slice.
 4. If Help redirects you to Discuss, open **Discuss runs** for that run — do
    not expect Help to invent performance numbers.
+
+**Discuss Intelligence (DI) cues — user-facing.**
+
+- Overview asks (`KPIs`, `key metrics`, `run summary`, `highlights of this run`)
+  return grounded `trade_summary` scalars (optional best-grid ticks when
+  present). Digits stay fail-closed.
+- Specialist asks (validation / WFA / OOS / grid ranking / best SL/TP / time
+  buckets) stay on-topic — Discuss does **not** silently substitute a KPI
+  overview.
+- On path/digit slips, Discuss may repair once or fall back to a deterministic
+  overview slice (overview asks only) or a structured missing-evidence reply —
+  not a raw traceback.
+- Expert framing after facts is **digit-free** interpretation (metric meaning /
+  caveats). It does not invent new run numbers or trading advice.
 
 To discuss a completed run after classic research mode: use **Record and discuss
 this run** (or **Discuss this run**), then stay on Research Assistant **Discuss
@@ -699,7 +789,7 @@ runs** with that run selected.
 
 **What it is not.**
 
-- Help is not a second results explainer.
+- Help is not a second results explainer (DI recovery/overlay live in Discuss).
 - Discuss is not thesis drafting and not general product docs.
 - Draft chat ignores Help/Discuss history on purpose (trust boundary).
 

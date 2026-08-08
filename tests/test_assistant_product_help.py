@@ -37,6 +37,14 @@ def test_is_run_performance_question_detects_personal_run_metrics():
     assert is_run_performance_question("How did this run perform?")
     assert is_run_performance_question("What is my expectancy on this run?")
     assert is_run_performance_question("performance of this run")
+    # DI overview cues must remediate to Discuss (not answer from Help DI copy).
+    assert is_run_performance_question("What were my KPIs on this run?")
+    assert is_run_performance_question("What were my key metrics on this run?")
+    assert is_run_performance_question("Give me the KPIs of this run")
+    assert is_run_performance_question("key metrics of this run")
+    assert is_run_performance_question("What is my run summary?")
+    assert is_run_performance_question("highlights of this run")
+    assert is_run_performance_question("summary of this run")
     assert not is_run_performance_question("How does grid ranking work?")
     assert not is_run_performance_question("What is expectancy_r?")
     assert not is_run_performance_question("How do I confirm a RunSpec?")
@@ -51,6 +59,8 @@ def test_is_run_performance_question_detects_personal_run_metrics():
     assert not is_run_performance_question("How is my expectancy computed?")
     assert not is_run_performance_question("What does this performance metric mean?")
     assert not is_run_performance_question("How is expectancy_r calculated in the docs?")
+    assert not is_run_performance_question("What do KPIs mean?")
+    assert not is_run_performance_question("How are key metrics computed?")
     # Export / workflow asks using vague "results"/"performance" nouns stay in Help.
     assert not is_run_performance_question("Where do I export my results?")
     assert not is_run_performance_question("How do I find my performance reports in Classic?")

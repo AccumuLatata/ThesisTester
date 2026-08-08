@@ -572,9 +572,10 @@ other than the last bar in the dataset.
   `product_help`) over the §7.1 corpus + registry digest; run-performance
   questions remediate to Discuss results (no fabricated metrics). Help digit
   tokens must match number tokens in attached corpus/registry text.
-  **HC-series (complete):** feature/how-to Help coverage is USER_GUIDE-backed
-  via RQ §7.1.4 (`docs/USER_GUIDE.md` + `HELP_CORPUS_MANIFEST`); frozen
-  acceptance bank and parity gates live in
+  **HC-series (complete; HC-5 maintenance):** feature/how-to Help coverage is
+  USER_GUIDE-backed via RQ §7.1.4 (`docs/USER_GUIDE.md` + `HELP_CORPUS_MANIFEST`),
+  including the dedicated **Exposure policy** H2 for Backtest/Portfolio Policy
+  semantics; frozen acceptance bank and parity gates live in
   `docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md` / `tests/test_assistant_help_coverage.py`.
   **RQ-4** binds classic Discuss via companion session key
   `classic_focus_channel="results_qa"` beside string `classic_focus_run_id`
@@ -583,7 +584,7 @@ other than the last bar in the dataset.
   numbers, WFA caveat merge + OOS anti-soften, pipeline injection, draft
   isolation, corpus allowlist, provider-key remediation, offline deterministic
   Explain, registry audit).
-  **DI-series (follow-on):** `docs/DISCUSS_INTELLIGENCE_IMPLEMENTATION.md`
+  **DI-series (complete — DI-0…DI-3):** `docs/DISCUSS_INTELLIGENCE_IMPLEMENTATION.md`
   keeps RQ digit/path honesty fail-closed while recovering Discuss UX.
   **DI-1 landed:** TLS allowlist wrap in `llm.py`; one repair retry;
   deterministic KPI/overview fallback with negative-cue veto against topic

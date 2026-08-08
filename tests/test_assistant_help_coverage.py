@@ -224,6 +224,7 @@ def test_help_mode_discoverability_caption_lists_example_topics():
     source = (REPO_ROOT / "pages" / "14_Research_Assistant.py").read_text(encoding="utf-8")
     assert "USER_GUIDE-backed" in source
     assert "import data" in source
+    assert "exposure policy" in source
     assert "Help vs Discuss" in source
     assert 'st.subheader("Help / how it works")' in source
     assert 'st.expander("Help / how it works"' not in source
@@ -330,6 +331,9 @@ def test_qh5_keeps_execution_cost_glossary_with_user_guide():
     chunks = _selected_chunks(question)
     pairs = {(chunk.doc_id, chunk.section) for chunk in chunks}
     assert ("user_guide", "Backtest") in pairs
+    assert ("user_guide", "Exposure policy") in pairs, (
+        f"Q-H5 must keep user_guide/Exposure policy for exposure nouns; got {sorted(pairs)}"
+    )
     assert ("metrics", "Execution cost inputs") in pairs, (
         f"Q-H5 must keep metrics/Execution cost inputs; got {sorted(pairs)}"
     )
@@ -338,6 +342,11 @@ def test_qh5_keeps_execution_cost_glossary_with_user_guide():
     )
     assert "commission_per_side" in cost_text
     assert "slippage_ticks" in cost_text
+    exposure_text = next(
+        c.text for c in chunks if c.doc_id == "user_guide" and c.section == "Exposure policy"
+    )
+    assert "single_position" in exposure_text
+    assert "allow_all" in exposure_text
 
 
 def test_commission_per_side_definition_retrieves_execution_cost_inputs():
@@ -406,18 +415,50 @@ def test_user_guide_h2_bodies_respect_soft_chunk_budget():
     assert oversized == [], f"user_guide H2 bodies exceed soft budget: {oversized}"
 
 
-def test_exposure_definition_prefers_backtest_guide_not_cost_glossary():
-    """Exposure policy is a Backtest concept — must not rank Execution cost inputs first."""
-    question = "What does exposure mean on backtest?"
-    pairs = _selected_pairs(question)
-    assert ("user_guide", "Backtest") in pairs, (
-        f"exposure definition should retrieve user_guide/Backtest; got {sorted(pairs)}"
+def test_exposure_definition_prefers_exposure_policy_guide_not_cost_glossary():
+    """HC-5: exposure definition retrieves dedicated Exposure policy — not cost glossary."""
+    question = "What does the exposure policy setting mean on the backtesting page?"
+    chunks = _selected_chunks(question)
+    pairs = {(chunk.doc_id, chunk.section) for chunk in chunks}
+    assert ("user_guide", "Exposure policy") in pairs, (
+        f"exposure definition should retrieve user_guide/Exposure policy; got {sorted(pairs)}"
     )
+    primary = next(c for c in chunks if c.doc_id == "user_guide" and c.section == "Exposure policy")
+    for phrase in (
+        "allow_all",
+        "single_position",
+        "single_direction",
+        "single_setup",
+        "level_names",
+        "setup_id",
+        "Cooldown bars after exit",
+        "overlapping_position",
+        "no-op",
+        "OTF",
+    ):
+        assert phrase in primary.text, f"Exposure policy body missing {phrase!r}"
     corpus = load_allowlisted_corpus(repo_root=REPO_ROOT)
-    backtest = next(c for c in corpus if c.doc_id == "user_guide" and c.section == "Backtest")
+    exposure = next(
+        c for c in corpus if c.doc_id == "user_guide" and c.section == "Exposure policy"
+    )
     cost = next(c for c in corpus if c.doc_id == "metrics" and c.section == "Execution cost inputs")
     q = _tokenize_query(question)
-    assert score_corpus_chunk(backtest, query_tokens=q) > score_corpus_chunk(cost, query_tokens=q)
+    assert score_corpus_chunk(exposure, query_tokens=q) > score_corpus_chunk(cost, query_tokens=q)
+
+
+def test_qd7_exposure_policy_retrieves_dedicated_section():
+    """HC-5 Q-D7: exposure policy definition must hit USER_GUIDE Exposure policy."""
+    question = "What does the exposure policy setting mean on Backtest?"
+    chunks = _selected_chunks(question)
+    pairs = {(chunk.doc_id, chunk.section) for chunk in chunks}
+    assert ("user_guide", "Exposure policy") in pairs, (
+        f"Q-D7 expected user_guide/Exposure policy; got {sorted(pairs)}"
+    )
+    text = next(
+        c.text for c in chunks if c.doc_id == "user_guide" and c.section == "Exposure policy"
+    )
+    assert "single_position" in text
+    assert "cooldown_active" in text or "Cooldown bars after exit" in text
 
 
 # ---------------------------------------------------------------------------
@@ -433,6 +474,7 @@ _HC4_USER_GUIDE_H2_FREEZE = (
     "Setup Builder",
     "Signals",
     "Backtest",
+    "Exposure policy",
     "Grid Search",
     "Time Analysis",
     "Validation and robustness",
@@ -453,6 +495,7 @@ _HC4_ALL_QUESTION_IDS = frozenset(
         "Q-D4",
         "Q-D5",
         "Q-D6",
+        "Q-D7",
         "Q-H1",
         "Q-H2",
         "Q-H3",
@@ -515,6 +558,16 @@ _HC4_RETRIEVAL_BANK: tuple[tuple[str, str, frozenset[tuple[str, str]]], ...] = (
         "What does slippage_ticks mean?",
         # Core formulas mentions slippage_cost only — definition is Execution cost inputs.
         frozenset({("metrics", "Execution cost inputs")}),
+    ),
+    (
+        "Q-D7",
+        "What does the exposure policy setting mean on Backtest?",
+        frozenset(
+            {
+                ("user_guide", "Exposure policy"),
+                ("user_guide", "Backtest"),
+            }
+        ),
     ),
     (
         "Q-H1",
@@ -630,11 +683,17 @@ _HC4_DEFINITION_BODY_PHRASES = {
     "Q-D2": ("expectancy_r", "Expectancy (R)"),
     "Q-D3": ("One Timeframing", "OTF up"),
     "Q-D6": ("slippage_ticks",),
+    "Q-D7": ("allow_all", "single_position", "Cooldown bars after exit"),
 }
 
 # Mixed how-tos that must keep a secondary section in the selected set (§1.1 / §5.4).
 _HC4_REQUIRED_SECONDARIES = {
-    "Q-H5": frozenset({("metrics", "Execution cost inputs")}),
+    "Q-H5": frozenset(
+        {
+            ("metrics", "Execution cost inputs"),
+            ("user_guide", "Exposure policy"),
+        }
+    ),
 }
 
 
@@ -689,8 +748,8 @@ def test_hc4_full_section_5_retrieval_bank_freeze():
             )
         required_secondary = _HC4_REQUIRED_SECONDARIES.get(qid)
         if required_secondary:
-            assert pairs & required_secondary, (
-                f"{qid} must keep secondary {sorted(required_secondary)} "
+            assert required_secondary <= pairs, (
+                f"{qid} must keep all secondaries {sorted(required_secondary)} "
                 f"in selected set; got {sorted(pairs)}"
             )
 

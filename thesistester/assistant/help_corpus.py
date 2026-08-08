@@ -64,7 +64,7 @@ _ASSUMPTIONS_SECTIONS = frozenset(
         "Validation implications",
         "Futures roll methodology (R7)",
         "AI Research Assistant / optional LLM (PR6 release gate)",
-        "Voice agent (VA-series — proposed, not shipped)",
+        "Voice agent (VA-series — complete; default off)",
         "OTF filter (One Timeframing)",
         "Practical interpretation",
     }
@@ -87,7 +87,7 @@ _OTF_SECTIONS = frozenset(
     }
 )
 
-# HC-1…HC-3 filled USER_GUIDE H2s (full §6.1 skeleton allowlisted).
+# HC-1…HC-3 filled USER_GUIDE H2s + HC-5 Exposure policy (exact §7.1.4 titles).
 _USER_GUIDE_SECTIONS = frozenset(
     {
         "Purpose and honesty",
@@ -97,6 +97,7 @@ _USER_GUIDE_SECTIONS = frozenset(
         "Setup Builder",
         "Signals",
         "Backtest",
+        "Exposure policy",
         "Grid Search",
         "Time Analysis",
         "Validation and robustness",
@@ -149,8 +150,28 @@ _COST_QUERY_TOKENS = frozenset(
         "commission_per_side",
         "slippage",
         "slippage_ticks",
-        # Note: ``exposure`` is intentionally omitted — Backtest exposure policy
-        # lives in USER_GUIDE, not the Execution cost inputs glossary H2.
+        # Note: ``exposure`` is intentionally omitted — exposure policy lives in
+        # USER_GUIDE (HC-5 ``Exposure policy`` H2), not Execution cost inputs.
+    }
+)
+# Exposure / admission-policy nouns → USER_GUIDE (dedicated Exposure policy H2).
+# Keep separate from cost boosts so "exposure" never ranks the cost glossary first.
+_EXPOSURE_QUERY_TOKENS = frozenset(
+    {
+        "exposure",
+        "exposure_policy",
+        "allow_all",
+        "single_position",
+        "single_direction",
+        "single_setup",
+        "cooldown",
+        "cooldown_bars",
+        "cooldown_bars_after_exit",
+        "overlapping_position",
+        "overlapping_direction",
+        "overlapping_setup",
+        "cooldown_active",
+        "exposure_group_key",
     }
 )
 # Stopwords ignored when matching query tokens to USER_GUIDE H2 titles so
@@ -546,6 +567,13 @@ def score_corpus_chunk(chunk: CorpusChunk, *, query_tokens: set[str]) -> int:
             # Prefer the dedicated Execution cost inputs H2 over incidental
             # cost mentions inside Core formulas / other metrics sections.
             score += 4
+    if query_tokens & _EXPOSURE_QUERY_TOKENS and chunk.doc_id == "user_guide":
+        # HC-5: definition/how-to asks about Policy / allow_all / single_* must
+        # attach the dedicated Exposure policy H2 (ASSUMPTIONS mega-chunk is
+        # oversized for max_corpus_chars and is skipped entirely).
+        score += 3
+        if "exposure" in chunk.section.lower():
+            score += 5
     if {
         "otf",
         "one",
