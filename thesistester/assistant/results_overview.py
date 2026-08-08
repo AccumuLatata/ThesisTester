@@ -411,6 +411,7 @@ def _packet_signals_oos_absent(packet: EvidencePacket) -> bool:
         if not isinstance(line, str):
             continue
         lowered = line.lower()
+        # Phrase markers + boundary-anchored ``oos`` (avoid ``boost`` / ``loose``).
         mentions_oos = any(
             marker in lowered
             for marker in (
@@ -418,9 +419,8 @@ def _packet_signals_oos_absent(packet: EvidencePacket) -> bool:
                 "walk forward",
                 "out-of-sample",
                 "out of sample",
-                "oos",
             )
-        )
+        ) or re.search(r"(?<![a-z0-9])oos(?![a-z0-9])", lowered) is not None
         absent = any(
             marker in lowered
             for marker in (

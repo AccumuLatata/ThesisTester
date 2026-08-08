@@ -677,6 +677,28 @@ def test_di3_grid_trade_count_uses_grid_specific_gloss():
     assert not any("sample size for this run" in line for line in overlay)
 
 
+def test_di3_oos_marker_ignores_boost_substring():
+    from thesistester.assistant.results_overview import _packet_signals_oos_absent
+
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={"trade_summary": {"trade_count": 42}},
+        warnings=(),
+        limitations=("Loose boost settings are missing from this notebook export.",),
+    )
+    assert _packet_signals_oos_absent(packet) is False
+    claims = (
+        EvidenceClaim(
+            text="Sample has 42 trades.",
+            path="results.trade_summary.trade_count",
+            value=42,
+        ),
+    )
+    overlay = build_expert_overlay(packet, claims)
+    assert any("ask whether walk-forward" in line.lower() for line in overlay)
+
+
 def test_di3_oos_absent_suppresses_presence_coaching():
     packet = EvidencePacket(
         provenance={},
