@@ -18,19 +18,24 @@ from thesistester.assistant.llm_explainer import (
 from thesistester.assistant.results_overview import (
     INTENT_GRID_RANKING,
     INTENT_MIXED_ASK,
+    INTENT_VALIDATION_WFA,
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
     REASON_GRID_FALLBACK,
+    REASON_VALIDATION_FALLBACK,
     apply_expert_overlay,
     build_deterministic_grid_ranking_reply,
     build_deterministic_kpi_reply,
+    build_deterministic_validation_wfa_reply,
     build_missing_grid_limitation_reply,
+    build_missing_validation_limitation_reply,
     build_mixed_ask_remediation_reply,
     build_prompt_path_catalog,
     build_structured_remediation_reply,
     classify_recovery_reason,
     failure_class_from_exception,
     has_grid_ranking_evidence,
+    has_validation_wfa_evidence,
     match_discuss_intent,
 )
 
@@ -316,6 +321,16 @@ def _recover_results_reply(
             recovery_reason=reason or REASON_GRID_FALLBACK,
         )
     if (
+        discuss_intent == INTENT_VALIDATION_WFA
+        and deterministic_specialist_fallback
+        and has_validation_wfa_evidence(evidence_context)
+    ):
+        return build_deterministic_validation_wfa_reply(
+            packet,
+            evidence_context,
+            recovery_reason=reason or REASON_VALIDATION_FALLBACK,
+        )
+    if (
         discuss_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}
         and deterministic_overview_fallback
     ):
@@ -354,13 +369,13 @@ def propose_results_reply(
     remediation. Both DI flags false restores pre-DI hard-fail raises (TLS wrap
     still applies in the transport).
 
-    RI-1: unified Discuss matcher; ``grid_ranking`` missing-evidence short-circuit
-    before LLM; deterministic grid fallback when
-    ``deterministic_specialist_fallback`` is true; ``mixed_ask`` narrow
-    remediation until RI-8.
+    RI-1/RI-3: unified Discuss matcher; ``grid_ranking`` /
+    ``validation_wfa`` missing-evidence short-circuits before LLM; deterministic
+    specialist fallback when ``deterministic_specialist_fallback`` is true;
+    ``mixed_ask`` narrow remediation until RI-8.
 
     DI-2: first-pass user payload includes ``path_catalog`` (existing paths;
-    plus ``kpi_allowlist`` / grid preferred paths when matched).
+    plus ``kpi_allowlist`` / specialist preferred paths when matched).
 
     DI-3: successful overview replies (and deterministic overview fallback)
     append a strictly digit-free expert overlay after mandatory caveats.
@@ -379,11 +394,15 @@ def propose_results_reply(
         discuss_intent if discuss_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN} else None
     )
 
-    # RI-1 short-circuits: mixed ask / missing grid evidence before any LLM call.
+    # RI short-circuits: mixed ask / missing specialist evidence before any LLM call.
     if discuss_intent == INTENT_MIXED_ASK:
         return build_mixed_ask_remediation_reply(packet)
     if discuss_intent == INTENT_GRID_RANKING and not has_grid_ranking_evidence(evidence_context):
         return build_missing_grid_limitation_reply(packet)
+    if discuss_intent == INTENT_VALIDATION_WFA and not has_validation_wfa_evidence(
+        evidence_context
+    ):
+        return build_missing_validation_limitation_reply(packet)
 
     def _maybe_overlay(reply: ResultsQAReply) -> ResultsQAReply:
         if overview_intent is None:
@@ -408,9 +427,10 @@ def propose_results_reply(
             _decode_results_payload(payload, packet=packet, evidence_context=evidence_context)
         )
     except (LLMEvidenceError, LLMProviderError) as first_exc:
-        specialist_can_recover = (
-            deterministic_specialist_fallback and discuss_intent == INTENT_GRID_RANKING
-        )
+        specialist_can_recover = deterministic_specialist_fallback and discuss_intent in {
+            INTENT_GRID_RANKING,
+            INTENT_VALIDATION_WFA,
+        }
         if (
             not repair_retry_enabled
             and not deterministic_overview_fallback

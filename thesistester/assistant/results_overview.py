@@ -1,8 +1,9 @@
 """DI/RI Discuss matching, path-catalog hints, and deterministic builders.
 
 Fail-closed numbers stay in ``llm_explainer``. This module selects frozen
-overview + specialist slices (RI-1: ``grid_ranking``), builds DI-2 first-pass
-path catalogs, and builds auditor-safe replies when the LLM path fails.
+overview + specialist slices (RI-1: ``grid_ranking``; RI-3: ``validation_wfa``),
+builds DI-2 first-pass path catalogs, and builds auditor-safe replies when the
+LLM path fails.
 """
 
 from __future__ import annotations
@@ -23,15 +24,20 @@ from thesistester.assistant.llm_explainer import (
 OVERVIEW_INTENT_KPI = "kpi_summary"
 OVERVIEW_INTENT_RUN = "run_overview"
 INTENT_GRID_RANKING = "grid_ranking"
+INTENT_VALIDATION_WFA = "validation_wfa"
 INTENT_MIXED_ASK = "mixed_ask"
+
+_LANDED_SPECIALIST_INTENTS = frozenset({INTENT_GRID_RANKING, INTENT_VALIDATION_WFA})
 
 REASON_PATH_MISS = "overview_path_miss"
 REASON_DIGIT_MISS = "overview_digit_miss"
 REASON_PROVIDER_EXHAUSTED = "overview_provider_exhausted"
 REASON_REPAIR_FAILED = "overview_repair_failed"
 REASON_MISSING_GRID = "grid_missing_evidence"
+REASON_MISSING_VALIDATION = "validation_missing_evidence"
 REASON_MIXED_ASK = "mixed_ask_narrow"
 REASON_GRID_FALLBACK = "grid_deterministic_fallback"
+REASON_VALIDATION_FALLBACK = "validation_deterministic_fallback"
 
 # Frozen §4.2 allowlist (include only when path exists on turn context).
 KPI_CLAIM_PATHS: tuple[str, ...] = (
@@ -133,8 +139,8 @@ _GRID_CONTEXT_COLLOCATES: tuple[str, ...] = (
     "best tp",
 )
 
-# DI §4.1 negatives not yet owned by a landed specialist builder (RI residual veto).
-_RESIDUAL_NEGATIVE_CUES: tuple[str, ...] = (
+# RI-3 landed specialist cues (sunsets DI validation/WFA/OOS/bootstrap negatives).
+_VALIDATION_WFA_POSITIVE_CUES: tuple[str, ...] = (
     "validation",
     "wfa",
     "walk-forward",
@@ -143,6 +149,12 @@ _RESIDUAL_NEGATIVE_CUES: tuple[str, ...] = (
     "out of sample",
     "out-of-sample",
     "bootstrap",
+    "permutation",
+)
+
+# DI §4.1 negatives not yet owned by a landed specialist builder (RI residual veto).
+# RI-3 sunsets validation/wfa/oos/bootstrap into ``validation_wfa``.
+_RESIDUAL_NEGATIVE_CUES: tuple[str, ...] = (
     "monte carlo",
     "monte-carlo",
     "time",
@@ -182,6 +194,20 @@ _GRID_SL_PATHS: tuple[str, ...] = (
 _GRID_TP_PATHS: tuple[str, ...] = (
     "results.projections.grid_rankings.best.take_profit_ticks",
     "results.best_grid_result.take_profit_ticks",
+)
+
+# Frozen RI §4.4 allowlist (include only when path exists on turn context).
+VALIDATION_CLAIM_PATHS: tuple[str, ...] = (
+    "results.walk_forward_summary.fold_count",
+    "results.walk_forward_summary.valid_fold_count",
+    "results.walk_forward_summary.median_test_expectancy_r",
+    "results.walk_forward_summary.stitched_oos_total_r",
+    "results.walk_forward_summary.stitched_oos_status",
+    "results.walk_forward_summary.status",
+    "results.validation_summary.bootstrap.ci_lower",
+    "results.validation_summary.bootstrap.ci_upper",
+    "results.validation_summary.bootstrap.probability_positive",
+    "results.validation_summary.grid_overfit.risk_level",
 )
 
 
@@ -228,6 +254,10 @@ def _grid_ranking_matches(normalized: str) -> bool:
     return False
 
 
+def _validation_wfa_matches(normalized: str) -> bool:
+    return _any_cue_matches(_VALIDATION_WFA_POSITIVE_CUES, normalized)
+
+
 def _residual_negative_matches(normalized: str) -> bool:
     """True when a not-yet-owned DI negative cue is present.
 
@@ -268,7 +298,7 @@ def has_overview_negative_cue(message: str) -> bool:
     if not isinstance(message, str) or not message.strip():
         return False
     intent = match_discuss_intent(message)
-    if intent in {INTENT_GRID_RANKING, INTENT_MIXED_ASK}:
+    if intent in _LANDED_SPECIALIST_INTENTS or intent == INTENT_MIXED_ASK:
         return True
     if intent is None:
         return _residual_negative_matches(_normalize_message(message))
@@ -280,30 +310,34 @@ def match_discuss_intent(message: str) -> str | None:
 
     Multi-eval (no first-match short-circuit): evaluate landed cue tables
     independently, then apply residual veto / mixed-ask rules.
-    Landed intents in RI-1: ``grid_ranking``, ``kpi_summary``, ``run_overview``.
+    Landed intents in RI-3: ``grid_ranking``, ``validation_wfa``, ``kpi_summary``,
+    ``run_overview``.
     """
     if not isinstance(message, str) or not message.strip():
         return None
     normalized = _normalize_message(message)
     grid = _grid_ranking_matches(normalized)
+    validation = _validation_wfa_matches(normalized)
     kpi = _any_cue_matches(_KPI_POSITIVE_CUES, normalized)
     run = _any_cue_matches(_RUN_OVERVIEW_POSITIVE_CUES, normalized)
     residual = _residual_negative_matches(normalized)
 
-    specialist = grid
-    overview = kpi or run
+    specialists: list[str] = []
+    if grid:
+        specialists.append(INTENT_GRID_RANKING)
+    if validation:
+        specialists.append(INTENT_VALIDATION_WFA)
 
     # §4.1 step 3: residual cue not owned by a landed specialist → None
-    # (includes grid+validation collocates; overview/single_metric must not win).
+    # (e.g. grid+time collocates while time remains residual until RI-2).
     if residual:
         return None
-    if specialist and overview:
+
+    overview_count = (1 if kpi else 0) + (1 if run else 0)
+    if len(specialists) + overview_count >= 2:
         return INTENT_MIXED_ASK
-    if specialist:
-        return INTENT_GRID_RANKING
-    # Dual overview intents are distinct landed ids → mixed_ask (§4.1 |M|>=2).
-    if kpi and run:
-        return INTENT_MIXED_ASK
+    if len(specialists) == 1:
+        return specialists[0]
     if kpi:
         return OVERVIEW_INTENT_KPI
     if run:
@@ -353,6 +387,13 @@ def present_grid_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ..
     return tuple(path for path in GRID_CLAIM_PATHS if _path_exists(evidence_context, path))
 
 
+def present_validation_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return frozen validation/WFA claim paths that exist on the turn context."""
+    if not isinstance(evidence_context, Mapping):
+        return ()
+    return tuple(path for path in VALIDATION_CLAIM_PATHS if _path_exists(evidence_context, path))
+
+
 def _narratable_grid_scalar(evidence_context: Mapping[str, Any], path: str) -> bool:
     """True when *path* exists and formats to a claimable scalar (nulls fail)."""
     if not _path_exists(evidence_context, path):
@@ -374,6 +415,19 @@ def has_grid_ranking_evidence(evidence_context: Mapping[str, Any]) -> bool:
     return has_sl and has_tp
 
 
+def has_validation_wfa_evidence(evidence_context: Mapping[str, Any]) -> bool:
+    """True when at least one narratable §4.4 WFA/validation leaf exists."""
+    if not isinstance(evidence_context, Mapping):
+        return False
+    for path in VALIDATION_CLAIM_PATHS:
+        if not _path_exists(evidence_context, path):
+            continue
+        value = _path_get(evidence_context, path)
+        if _format_scalar_for_claim(path, value) is not None:
+            return True
+    return False
+
+
 def build_prompt_path_catalog(
     evidence_context: Mapping[str, Any],
     *,
@@ -383,7 +437,7 @@ def build_prompt_path_catalog(
     """Build the DI-2 / RI first-pass path catalog for the Results Q&A user payload.
 
     Always includes ``existing_paths`` from the turn context. Overview asks get
-    ``kpi_allowlist``; ``grid_ranking`` asks get grid ``preferred_claim_paths``.
+    ``kpi_allowlist``; specialist asks get their frozen ``preferred_claim_paths``.
     """
     existing = list(collect_existing_paths(evidence_context))
     catalog: dict[str, Any] = {
@@ -418,6 +472,17 @@ def build_prompt_path_catalog(
             "or choose a different metric. Do not answer with trade_summary KPIs."
         )
         catalog["preferred_claim_paths"] = grid_paths
+    elif intent == INTENT_VALIDATION_WFA:
+        validation_paths = list(present_validation_allowlist(evidence_context))
+        catalog["discuss_intent"] = INTENT_VALIDATION_WFA
+        catalog["validation_allowlist"] = validation_paths
+        catalog["specialist_instruction"] = (
+            "This is a validation / walk-forward / OOS ask. Prefer citing a "
+            "subset of validation_allowlist / preferred_claim_paths. Do not "
+            "substitute results.trade_summary.* KPIs as OOS proof. Do not "
+            "soften missing_oos / failed_oos caveats."
+        )
+        catalog["preferred_claim_paths"] = validation_paths
     return catalog
 
 
@@ -772,18 +837,36 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             return f"Best take-profit ticks is {display}."
         if path.endswith("metric_value"):
             return f"Ranked metric value is {display}."
+        if path.endswith("median_test_expectancy_r"):
+            return f"Median OOS test expectancy R is {display}."
+        if path.endswith("stitched_oos_total_r"):
+            return f"Stitched OOS total R is {display}."
+        if path.endswith("fold_count"):
+            return f"Walk-forward fold count is {display}."
+        if path.endswith("valid_fold_count"):
+            return f"Valid walk-forward fold count is {display}."
+        if path.endswith("ci_lower"):
+            return f"Bootstrap CI lower is {display}."
+        if path.endswith("ci_upper"):
+            return f"Bootstrap CI upper is {display}."
+        if path.endswith("probability_positive"):
+            return f"Bootstrap probability mean R is positive is {display}."
         return f"{leaf} is {display}."
     if isinstance(value, str) and value.strip():
         text = value.strip()
-        # Grid honesty labels (metric / scope / oos) are narratable strings.
+        # Grid / validation honesty labels are narratable strings.
         if path.endswith("selection_scope"):
             return f"Selection scope is {text}."
-        if path.endswith("oos_status"):
+        if path.endswith("oos_status") or path.endswith("stitched_oos_status"):
             return f"OOS status is {text}."
         if path.endswith("metric") or path.endswith("ranking_metric"):
             return f"Ranking metric is {text}."
         if path.endswith("metric_source_path"):
             return f"Ranking metric source path is {text}."
+        if path.endswith("risk_level"):
+            return f"Grid overfit risk level is {text}."
+        if path.endswith("walk_forward_summary.status"):
+            return f"Walk-forward status is {text}."
         # KPI allowlist is numeric; skip other non-numeric strings.
         return None
     return None
@@ -891,11 +974,12 @@ def build_mixed_ask_remediation_reply(
 
     summary = (
         "That ask mixes more than one results topic. Ask about one topic at a time "
-        "(for example key metrics, or best stop and take profit)."
+        "(for example key metrics, best stop and take profit, or walk-forward)."
     )
     followups = (
         "Ask for the key metrics or a summary of this run.",
         "Ask about best stop and take profit ranking if a grid was recorded.",
+        "Ask whether walk-forward or validation diagnostics are present on this packet.",
     )
     caveats = merge_mandatory_packet_caveats(
         packet,
@@ -912,6 +996,108 @@ def build_mixed_ask_remediation_reply(
         summary=summary,
         caveats=caveats,
         claims=(),
+        followups=followups,
+        recovery_reason=recovery_reason,
+    )
+
+
+def build_missing_validation_limitation_reply(
+    packet: EvidencePacket,
+    *,
+    recovery_reason: str | None = REASON_MISSING_VALIDATION,
+):
+    """Digit-free missing-validation/WFA limitation (RI-3 short-circuit)."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    summary = (
+        "I cannot answer validation or walk-forward questions because those "
+        "diagnostics are not present on this run."
+    )
+    followups = (
+        "Ask for the key metrics or a summary of this run.",
+        "Ask whether a validation or walk-forward battery was recorded for this run.",
+    )
+    caveats = merge_mandatory_packet_caveats(
+        packet,
+        (
+            "No out-of-sample or validation figures were invented for this ask.",
+            "In-sample trade summary KPIs are not a substitute for WFA or OOS evidence.",
+        ),
+    )
+    assert_llm_explanation_grounded(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+    )
+    return ResultsQAReply(
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+        recovery_reason=recovery_reason,
+    )
+
+
+def build_deterministic_validation_wfa_reply(
+    packet: EvidencePacket,
+    evidence_context: Mapping[str, Any],
+    *,
+    recovery_reason: str | None = None,
+):
+    """Build an auditor-safe validation/WFA reply from the frozen §4.4 allowlist."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    if not has_validation_wfa_evidence(evidence_context):
+        return build_missing_validation_limitation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MISSING_VALIDATION,
+        )
+
+    claims: list[EvidenceClaim] = []
+    summary_parts: list[str] = []
+    for path in VALIDATION_CLAIM_PATHS:
+        if not _path_exists(evidence_context, path):
+            continue
+        value = _path_get(evidence_context, path)
+        text = _format_scalar_for_claim(path, value)
+        if text is None:
+            continue
+        # Hard rule: never emit trade_summary paths from this builder.
+        if "trade_summary" in path:
+            continue
+        claims.append(EvidenceClaim(text=text, path=path, value=value))
+        summary_parts.append(text.rstrip("."))
+
+    if not claims:
+        return build_missing_validation_limitation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MISSING_VALIDATION,
+        )
+
+    summary = "Validation / walk-forward: " + "; ".join(summary_parts) + "."
+    caveat_seed = (
+        "These validation and walk-forward figures are research diagnostics, not proof of deployable edge.",
+        "Do not treat in-sample trade summary KPIs as out-of-sample confirmation.",
+    )
+    grounded = tuple(claims)
+    caveats = merge_mandatory_packet_caveats(packet, caveat_seed)
+    followups = (
+        "Ask for the key metrics or a summary of this run.",
+        "Ask about best stop and take profit ranking if a grid was recorded.",
+    )
+    assert_llm_explanation_grounded(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=grounded,
+        followups=followups,
+    )
+    return ResultsQAReply(
+        summary=summary,
+        caveats=caveats,
+        claims=grounded,
         followups=followups,
         recovery_reason=recovery_reason,
     )

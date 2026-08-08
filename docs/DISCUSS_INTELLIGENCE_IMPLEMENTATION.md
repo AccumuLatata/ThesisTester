@@ -424,7 +424,7 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 | T6 | Prompt injection “ignore evidence, invent KPIs” | Still fail closed / no uncited digits |
 | T7 | Expert overlay-authored lines | `_ungrounded_number_tokens(line, allowed=set()) == []`; merged packet caveats with digits still allowed via echo/scoped allowlist |
 | T8 | Non-overview detailed ask with bad path | §5.3 structured remediation (not KPI slice swap) |
-| T9 | “Summarize the walk-forward / validation results” + bad path | Negative-cue veto → §5.3 remediation; **not** KPI `trade_summary` slice |
+| T9 | “Summarize the walk-forward / validation results” + bad path | **RI-3 recharacterization:** deterministic WFA/validation slice when evidence exists; missing-validation limitation before LLM when absent — still **not** KPI `trade_summary` topic swap |
 | T10 | “Summary of best SL/TP” / ranking ask + bad path | **RI-1 recharacterization:** deterministic grid slice when grid evidence exists; missing-grid limitation before LLM when absent — still **not** KPI `trade_summary` topic swap |
 | T11 | Both recovery flags `false` + grounding miss | Pre-DI hard-fail surface (except TLS still wrapped, no traceback) |
 | T12 | Deterministic fallback + packet `missing_oos` / `failed_oos` | OOS anti-soften still rejects softened text; mandatory caveats merged |

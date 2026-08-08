@@ -1238,7 +1238,11 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
     assert oos_msg in reply.caveats
 
     class SoftenOosWithGroundedCounts:
+        def __init__(self) -> None:
+            self.calls = 0
+
         def complete_structured(self, **kwargs):
+            self.calls += 1
             return {
                 "summary": "OOS is confirmed and the edge looks robust out of sample.",
                 "caveats": [],
@@ -1251,12 +1255,29 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
                 "followups": ["Ask about costs."],
             }
 
+    # RI-3: explicit OOS/WFA ask with missing evidence short-circuits before LLM
+    # (softened drafts never surface).
+    soften_oos = SoftenOosWithGroundedCounts()
+    oos_ask_reply = propose_results_reply(
+        soften_oos,
+        packet=packet,
+        history=(),
+        user_message="Is this robust out of sample?",
+        repair_retry_enabled=False,
+        deterministic_overview_fallback=False,
+    )
+    assert soften_oos.calls == 0
+    assert oos_ask_reply.claims == ()
+    assert oos_ask_reply.recovery_reason == "validation_missing_evidence"
+    assert oos_msg in oos_ask_reply.caveats
+
+    # Anti-soften auditor still raises on non-specialist asks when recovery is off.
     with pytest.raises(LLMEvidenceError, match="OOS/WFA soften"):
         propose_results_reply(
             SoftenOosWithGroundedCounts(),
             packet=packet,
             history=(),
-            user_message="Is this robust out of sample?",
+            user_message="Tell me about this sample.",
             repair_retry_enabled=False,
             deterministic_overview_fallback=False,
         )
@@ -1282,7 +1303,7 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
             SoftenInCaveatsChannel(),
             packet=packet,
             history=(),
-            user_message="Is this robust out of sample?",
+            user_message="Tell me about this sample.",
             repair_retry_enabled=False,
             deterministic_overview_fallback=False,
         )
@@ -1308,7 +1329,7 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
             SoftenAppendedToEchoedCaveat(),
             packet=packet,
             history=(),
-            user_message="Is this robust out of sample?",
+            user_message="Tell me about this sample.",
             repair_retry_enabled=False,
             deterministic_overview_fallback=False,
         )
@@ -1327,7 +1348,7 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
             SoftenWithInventedFolds(),
             packet=packet,
             history=(),
-            user_message="Is this robust out of sample?",
+            user_message="Tell me about this sample.",
             repair_retry_enabled=False,
             deterministic_overview_fallback=False,
         )
@@ -1352,7 +1373,7 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
         HonestNegation(),
         packet=packet,
         history=(),
-        user_message="Is this robust out of sample?",
+        user_message="Tell me about this sample.",
     )
     assert oos_msg in honest.caveats
     assert "not confirmed" in honest.summary.lower()
@@ -1378,7 +1399,7 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
             MissingThenConfirmed(),
             packet=packet,
             history=(),
-            user_message="Is this robust out of sample?",
+            user_message="Tell me about this sample.",
             repair_retry_enabled=False,
             deterministic_overview_fallback=False,
         )
@@ -1428,7 +1449,7 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
         HedgedConfirmSubstring(),
         packet=packet,
         history=(),
-        user_message="Can I treat this as OOS confirmed?",
+        user_message="Tell me about this sample.",
     )
     assert oos_msg in hedged.caveats
     assert "do not assume" in hedged.summary.lower()

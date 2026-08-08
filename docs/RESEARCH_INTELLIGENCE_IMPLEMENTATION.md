@@ -1,7 +1,7 @@
 # Research Intelligence — Implementation Contract
 
 **Document type:** Implementation contract (RI-series) — **single source of truth**
-**Status:** 🚧 **RI-1 landed** (grid slice); series not complete until RI-10
+**Status:** 🚧 **RI-3 landed** (grid + validation/WFA slices); series not complete until RI-10
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/results_overview.py` (intent matching /
 deterministic builders / overlays), `results_qa.py` (recovery wiring),
@@ -245,7 +245,7 @@ has_overview_negative_cue(text) ≡ overview_refused(text)
 |---|---|---|
 | `grid`, `stop loss`, `take profit`, `sl/tp`, collocated `sl`/`tp`/`stop`/`target` (with best/pair/grid/ranking), grid-sense `ranking` | RI-1 (`grid_ranking`) | Veto overview + block `single_metric`; after RI-1, landed `grid_ranking` owns collocated/multi-word forms. Bare `sl`/`tp`/`stop`/`target` **without** those collocates stay residual overview-refusing (DX veto ≠ unmatched; avoids “full stop” false grid matches) |
 | `time`, `hour`, `bucket`, `clock`, `session segment`, time-sense ranking collocates | RI-2 (`time_ranking`) | Residual veto / block overview + `single_metric` |
-| `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap` | RI-3 (`validation_wfa`) | Residual veto / block overview + `single_metric` |
+| `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap` | RI-3 (`validation_wfa`) | ✅ sunsets in RI-3 — landed `validation_wfa` owns them |
 | `monte carlo`, `monte-carlo` | RI-5 (`robustness_tier2`) | Residual veto / block overview + `single_metric` |
 | Bare `ranking` with no grid/time collocate | RI-1 keeps residual until RI-2 also lands; then require grid or time collocate | Never overview |
 
@@ -724,7 +724,7 @@ complete coverage; duplex last so text builders are stable.
 | RI-0 Contract freeze | ✅ merged |
 | RI-1 Grid / best SL–TP slice | ✅ landed |
 | RI-2 Time / session ranking slice | ⬚ pending |
-| RI-3 Validation + WFA/OOS slice | ⬚ pending |
+| RI-3 Validation + WFA/OOS slice | ✅ landed |
 | RI-4 Single-metric router | ⬚ pending |
 | RI-5 Tier-2 robustness slices | ⬚ pending |
 | RI-6 Assumptions & costs slice | ⬚ pending |
