@@ -53,7 +53,7 @@ strictness with a chatty model.
 | DX | Duplex overview envelopes | RI-1…RI-9 text-first; **RI-10** projects new specialist builders into duplex tools without forking cue/path tables |
 | HC / Help | Product how-to | Must not answer run performance from Help; RI does not reopen Help |
 | VA | Spoken transport | Out of RI except RI-10 envelope parity; voice default stays off |
-| RI (this doc) | Specialist (+ single-metric + meaning + mixed-ask) fail-open slices on Discuss | Intent→allowlisted claims→deterministic builders→same auditor→digit-free meaning overlays |
+| RI (this doc) | Specialist (+ single-metric + meaning + mixed-ask) fail-open slices on Discuss | Intent→allowlisted claims→deterministic builders→same auditor→digit-free meaning overlays; residual DI veto migration §4.1.1 until each builder sunsets its cues |
 
 **Landing note:** RI-0 freezes this contract alone (plan PR). Do not treat the
 plan PR as “RI complete.”
@@ -91,16 +91,18 @@ or softening OOS / selection-bias honesty.
 | Honesty core | Existing RQ auditor and path-existence rules stay. No bare-percent laundering. No invented metrics. No trade advice. No forecasts. No computed derived stats absent from the packet/projection allowlist. |
 | Fail-closed numbers / fail-open discussion | Every rendered digit is auditor-grounded (LLM, repair, or deterministic builder). Fail-open means **on-topic deterministic slice or honest missing-evidence**, never an ungrounded draft. |
 | Continuation | DI overview slices remain. RI adds specialist/single-metric/meaning/mixed-ask slices. Do not delete DI recovery; do not serve KPI overview for a matched specialist intent. |
-| Unified intent router | One matcher (`match_discuss_intent` or equivalent) returns exactly one intent id or `None`. **Priority order frozen in §4.1.** First match wins. Word-boundary / hyphen-safe alias matching (same DI semantics) is mandatory. |
-| No silent topic remap | A matched intent may only claim paths from **that** intent’s frozen allowlist (§4.2+). Never answer WFA with `trade_summary` KPIs. Never answer grid with time rankings. |
-| Missing evidence | If the matched intent’s required evidence is absent → digit-free (or claim-free) **limitation reply** naming the missing battery; merge mandatory packet caveats; number-free followups. Do **not** invent SL/TP/time/OOS figures. |
+| Unified intent router | One matcher (`match_discuss_intent` or equivalent) returns exactly one intent id, `mixed_ask`, or `None`. **Cue tables + multi-eval algorithm frozen in §4.1 / §4.1.1.** Word-boundary / hyphen-safe alias matching (same DI semantics) is mandatory. |
+| Residual specialist veto | Until a specialist builder PR lands and sunsets its DI §4.1 negative cues, those cues remain **residual vetoes**: overview/`single_metric` must refuse them (remediation / unmatched specialist path — never KPI overview). See §4.1.1. |
+| No silent topic remap | A matched intent may only claim paths from **that** intent’s frozen allowlist (§4.2+). Never answer WFA with `trade_summary` KPIs. Never answer grid with time rankings. Never answer OOS/WFA collocates with in-sample `single_metric` leaves. |
+| Missing evidence | If the matched intent’s required evidence is absent → digit-free (or claim-free) **limitation reply** naming the missing battery; merge mandatory packet caveats; number-free followups. Do **not** invent SL/TP/time/OOS figures. Short-circuit **before** the LLM call (§4.9). |
 | Projections authority | Grid/time rankings come from RQ-2 `results.projections.*` (and recorded `best_grid_result` where allowlisted). The model must **not** choose ranking metrics or re-rank. |
 | Schema | Keep RQ reply shape: `summary`, `caveats`, `claims`, `followups`. No `choices`. Channel remains `results_qa`. |
 | History | Only grounded / deterministic / structured-remediation / missing-evidence replies persist. Failed raw drafts never persist. |
-| Config | Additive knobs under `[assistant.results_qa]` only. Default **`deterministic_specialist_fallback = true`**. Flags-off restores pre-RI specialist behavior (LLM + repair + §5.3 remediation) while overview DI flags remain independent. |
+| Config | Additive knobs under `[assistant.results_qa]` only. Default **`deterministic_specialist_fallback = true`**. Flags-off restores pre-RI specialist behavior (LLM + repair + §5.3 remediation) while overview DI flags remain independent. **Eng Proposal §4 “default-off” exception:** assistant recovery series inherits DI’s deliberate default-on recovery UX; the honesty auditor stays byte-identical. |
 | Engine | No engine, golden, bundle schema, or metrics-formula changes. |
 | Help / thesis draft | Out of RI. |
 | Auditor ownership | RI must not fork or loosen the auditor. Auditor defects amend RQ (or RI with explicit RQ note in the same PR). |
+| DX residual gate | Every RI-1…RI-9 PR must keep DX §9 green for residual DI negatives: `has_overview_negative_cue` stays true for not-yet-owned specialist cues (veto ≠ unmatched → no neutral `run_overview` topic-swap). Deliberate DX envelope changes wait for RI-10 unless an earlier PR amends DX with an explicit relationship note. |
 
 ---
 
@@ -152,41 +154,54 @@ run, can:
    ranking metric, selection scope / in-sample nature, and OOS status (or
    mandatory caveats that already say so). Never imply out-of-sample proof from
    in-sample rankings alone.
-9. **Regression-safety:** assistant-only; DI overview happy paths stay green;
-   engine/golden untouched; each PR documents a short regression-safety
-   paragraph in the PR body.
+9. **Residual veto until sunset:** not-yet-owned DI specialist negatives must
+   keep refusing overview / `single_metric` (and keep DX veto ≠ unmatched).
+10. **Missing-evidence before LLM:** matched specialist / single-metric with
+    absent required evidence uses the limitation builder with zero LLM calls.
+11. **Regression-safety:** assistant-only; DI overview happy paths stay green;
+    engine/golden untouched; each PR documents a short regression-safety
+    paragraph in the PR body.
 
 ---
 
 ## 4. Intent → evidence slices
 
-### 4.1 Unified matcher (priority order)
+### 4.1 Unified matcher (priority order + multi-eval)
 
 Normalize with DI’s boundary-anchored alias matching (alnum / underscore /
-hyphen edges). **Order — first match wins:**
+hyphen edges). Priority numbers below are **composition / summary order** and
+the sole-intent tie-break when exactly one landed intent matches; they are
+**not** a short-circuit scan.
 
 | Priority | Intent id | Owner PR | Positive cues (freeze exact tuples in code+tests; prefer anchored forms) |
 |---|---|---|---|
-| 1 | `grid_ranking` | RI-1 | `best sl`, `best tp`, `best sl/tp`, `best stop`, `stop loss`, `take profit`, `sl/tp`, word-boundary `sl` / `tp` when co-present with best/pair/grid/ranking cues as frozen in tests, `grid ranking`, `grid rank`, `ranking metric` + grid context per freeze |
-| 2 | `time_ranking` | RI-2 | `best time`, `best entry`, `entry time`, `time bucket`, `session segment`, `hour bucket`, word-boundary `time` / `hour` / `bucket` / `clock` with ranking/best/entry collocates per freeze |
+| 1 | `grid_ranking` | RI-1 | `best sl`, `best tp`, `best sl/tp`, `best stop`, `best target`, `stop loss`, `take profit`, `sl/tp`, word-boundary `sl` / `tp` / `stop` / `target` when co-present with best/pair/grid/ranking cues as frozen in tests, bare `grid` (grid-ranking sense), `grid ranking`, `grid rank`, `ranking metric` + grid context per freeze |
+| 2 | `time_ranking` | RI-2 | `best time`, `best entry`, `entry time`, `time bucket`, `session segment`, `hour bucket`, word-boundary `time` / `hour` / `bucket` / `clock` with ranking/best/entry collocates per freeze (bare DI negatives `time`/`hour`/`bucket`/`clock`/`session segment` stay residual until RI-2 sunsets them — §4.1.1) |
 | 3 | `validation_wfa` | RI-3 | `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap`, `permutation` (validation sense) |
 | 4 | `robustness_tier2` | RI-5 | `monte carlo`, `monte-carlo`, `overfitting`, `sensitivity`, `noise test`, `noise summary`, `portfolio summary`, `otf validation` |
 | 5 | `assumptions_costs` | RI-6 | `commission`, `slippage`, `exposure policy`, `intrabar model`, `costs`, `assumptions` (run-assumption sense; not Help how-to) |
-| 6 | `single_metric` | RI-4 | Frozen metric-noun table (§4.4) with define/value collocates (`what is`, `what's`, `whats`, `show`, `give me`) — **not** bare nouns alone |
+| 6 | `single_metric` | RI-4 | Frozen metric-noun table (§4.5) with define/value collocates (`what is`, `what's`, `whats`, `show`, `give me`) — **not** bare nouns alone; hard-refuse when residual/specialist collocates present (§4.5) |
 | 7 | `kpi_summary` | DI (unchanged cues) | Existing DI KPI positive cues |
 | 8 | `run_overview` | DI (unchanged cues) | Existing DI run-overview positive cues |
 
-**Multi-intent / mixed asks (until RI-8):** if two or more intents from
-priorities 1–8 would match, return intent `mixed_ask` → structured remediation
-asking the user to narrow (**not** KPI slice, **not** partial specialist).
-RI-8 replaces `mixed_ask` remediation with composition (§4.6).
+**Matcher algorithm (frozen — do not short-circuit on first cue hit):**
 
-**Overview negative cues:** after RI-1+, overview matching must still refuse
-specialist topics. Implement by running the unified router (specialists before
-overview). Do **not** keep a divergent second cue table that can drift from
-§4.1. DX `has_overview_negative_cue` may be redefined as “specialist or mixed
-would match” via shared helpers (RI-10 or earlier shared export when needed) —
-amend DX relationship note in the same PR; do not fork cue strings.
+```text
+1) Evaluate every landed intent cue table independently
+   (plus residual DI negatives per §4.1.1 — not intents, veto flags).
+2) Let M = set of matched landed intents from priorities 1–8.
+3) If residual veto applies and no landed specialist in M owns that cue
+   → return None for overview purposes; Discuss uses LLM + repair + §5.3
+     remediation (or specialist limitation only if a landed specialist matched).
+   Overview intents must not win. single_metric must not win (§4.5).
+4) If |M| >= 2 → return mixed_ask
+   - Until RI-8: structured remediation asking the user to narrow
+     (not KPI slice, not partial specialist).
+   - RI-8+: compose_deterministic_replies (§4.7); >3 intents → narrow-ask.
+5) If |M| == 1 → return that intent id.
+6) If |M| == 0 and no residual veto → return None
+   (today’s LLM path + one repair + §5.3 remediation).
+```
 
 **Unmatched:** keep today’s LLM path + one repair + §5.3 remediation (DI).
 No general semantic ML router.
@@ -194,6 +209,50 @@ No general semantic ML router.
 **False friends:** retain DI T16 discipline (`runtime`, `stopwatch`, `non-stop`,
 `off-grid`, `passkey metrics`, etc.). Each specialist PR extends false-friend
 fixtures for its short tokens.
+
+### 4.1.1 Incremental ownership / residual DI veto (regression gate)
+
+DI §4.1 `_NEGATIVE_CUES` currently prevent overview topic-swap. RI must not
+drop that protection when only a subset of specialist builders has landed.
+
+**Rule (from RI-1 onward):**
+
+```text
+overview_refused =
+  (any landed specialist intent or mixed_ask would match)
+  OR (any residual DI §4.1 negative cue whose owner builder PR has not yet
+      merged and sunsets that cue)
+
+has_overview_negative_cue(text) ≡ overview_refused(text)
+```
+
+- Residual vetoes are **not** a forever-divergent second product cue table:
+  they are the DI negative set with an explicit sunset map. Each specialist
+  PR that lands a builder **must** remove only that PR’s cues from the
+  residual set in the same PR (and amend this table + DI/DX characterization
+  tests).
+- Do **not** copy cue strings into `voice/`. Redefine
+  `has_overview_negative_cue` via shared helpers as the formula above.
+- **DX regression gate (every RI-1…RI-9 PR):** residual cues must still make
+  `has_overview_negative_cue` true so duplex keeps veto ≠ unmatched (no
+  neutral `run_overview` envelope for WFA/validation/time/MC/grid asks).
+  Specialist duplex envelopes wait for RI-10 unless an earlier PR amends DX
+  with an explicit relationship note.
+
+**DI §4.1 negative → owner sunset map** (amend when a cue moves):
+
+| Residual DI negative cue(s) | Owner PR that may sunset | Until sunset behavior |
+|---|---|---|
+| `grid`, `stop`, `target`, `sl`, `tp`, `stop loss`, `take profit`, grid-sense `ranking` | RI-1 (`grid_ranking`) | Veto overview + block `single_metric`; after RI-1, landed `grid_ranking` owns them |
+| `time`, `hour`, `bucket`, `clock`, `session segment`, time-sense ranking collocates | RI-2 (`time_ranking`) | Residual veto / block overview + `single_metric` |
+| `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap` | RI-3 (`validation_wfa`) | Residual veto / block overview + `single_metric` |
+| `monte carlo`, `monte-carlo` | RI-5 (`robustness_tier2`) | Residual veto / block overview + `single_metric` |
+| Bare `ranking` with no grid/time collocate | RI-1 keeps residual until RI-2 also lands; then require grid or time collocate | Never overview |
+
+**Acceptance fixtures that must stay green across RI-1…RI-9 (unless the owning
+PR deliberately recharacterizes them):** DI T9 (WFA), DI
+`Give me KPIs and validation stats` veto, DX X4 (WFA veto ≠ unmatched), and
+false-friend T16/X equivalents.
 
 ### 4.2 `grid_ranking` claim allowlist (RI-1)
 
@@ -290,6 +349,13 @@ Rules:
 - Do **not** expand to full KPI overview unless overview cues also uniquely
   match without specialist competition (overview intents remain separate).
 - Win rate narration must use `%` / percent words consistent with DI grounding.
+- **Hard-refuse (not `single_metric`):** if the message also matches any
+  landed specialist cue table **or** any residual DI negative from §4.1.1
+  (validation/WFA/OOS/grid/time/MC/… ), do **not** emit an in-sample
+  `trade_summary` leaf. Return `None` for this intent so residual veto /
+  specialist / mixed_ask / remediation handles the turn. Example blocked:
+  “what is the OOS expectancy?” must never cite
+  `results.trade_summary.expectancy_r`.
 
 ### 4.6 `robustness_tier2` (RI-5) and `assumptions_costs` (RI-6)
 
@@ -299,6 +365,10 @@ Rules:
 `noise_summary`, `portfolio_summary`, `otf_validation_summary` /
 `otf_validation.available`). Prefer “which batteries exist + status” over deep
 nested dumps. Missing all → limitation.
+
+**RI-5 scalar freeze rule:** the exact per-battery scalar paths are **not**
+frozen in RI-0. The RI-5 implementation PR **must amend this subsection** with
+an explicit path table before merge; no undeclared nested dumps.
 
 **RI-6 allowlist:**
 
@@ -355,20 +425,24 @@ Each builder:
 
 For a Discuss turn:
 
-1. `intent = match_discuss_intent(user_message)`
-2. LLM draft (optional) with path catalog; if intent known, include that
+1. `intent = match_discuss_intent(user_message)` (algorithm §4.1 / §4.1.1).
+2. **Missing-evidence short-circuit (frozen):** if `intent` is a landed
+   specialist / `single_metric` / (after RI-8) composable set **and** required
+   evidence for that intent is absent → emit the limitation builder
+   **before any LLM call**. Do not wait for grounding failure. RI-1 freezes
+   the empty-slice detector for grid; later PRs reuse the same short-circuit
+   shape.
+3. Else LLM draft (optional) with path catalog; if intent known, include that
    intent’s allowlist as preferred/must-cite subset (DI-2 pattern).
-3. Auditor → on success, persist (attach RI-7 overlay when enabled).
-4. On grounding/provider fault:
+4. Auditor → on success, persist (attach RI-7 overlay when enabled).
+5. On grounding/provider fault:
    1. One repair if enabled and fault class allows (DI rules).
    2. If `deterministic_specialist_fallback` and intent is a specialist /
       single-metric / composed intent → deterministic builder / composer.
    3. If overview intent → existing DI deterministic overview fallback.
    4. Else §5.3 structured remediation.
-5. Missing required evidence for a matched specialist intent short-circuits to
-   the limitation builder **without** requiring an LLM failure first
-   (recommended) or equivalently after empty-slice detection — freeze one
-   behavior in RI-1 tests and keep it for later PRs.
+6. Residual veto with no landed specialist owner → §5.3 structured remediation
+   (never overview / never `single_metric` IS leaf).
 
 ---
 
@@ -414,10 +488,10 @@ limitation. No engine re-sim.
 
 | | |
 |---|---|
-| **Goal** | Freeze problem, invariants, intent priority, allowlists, PR boundaries, anti-scope |
-| **In scope** | This file; `ENGINEERING_ROADMAP.md` index row; relationship pointers in `RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`, `DISCUSS_INTELLIGENCE_IMPLEMENTATION.md`, `ASSUMPTIONS_AND_LIMITATIONS.md`, `AGENT_GUIDE.md` |
+| **Goal** | Freeze problem, invariants, intent priority, residual-veto migration, allowlists, PR boundaries, anti-scope |
+| **In scope** | This file; `ENGINEERING_ROADMAP.md` index row; relationship pointers in `RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`, `DISCUSS_INTELLIGENCE_IMPLEMENTATION.md`, `DUPLEX_INTELLIGENCE_IMPLEMENTATION.md`, `ASSUMPTIONS_AND_LIMITATIONS.md`, `AGENT_GUIDE.md` |
 | **Out of scope** | Runtime code |
-| **Acceptance** | Contract merged; no behavior change |
+| **Acceptance** | Contract merged; no behavior change; human review of §1 / §3 / §4–§4.1.1 / §7 / §9 freezes before RI-1 code |
 | **Regression-safety** | Docs-only |
 
 ### RI-1 — Grid / best SL–TP fail-open slice
@@ -425,50 +499,50 @@ limitation. No engine re-sim.
 | | |
 |---|---|
 | **Goal** | “Best SL/TP” always grounded when projection/recorded best exists |
-| **In scope** | Unified matcher skeleton with priorities 1 + 7–8 (grid + existing overview); `build_deterministic_grid_ranking_reply`; wire recovery §4.9 for `grid_ranking`; path-catalog preferred paths for grid; settings `deterministic_specialist_fallback`; tests; docs; amend DI T10 characterization for **grid** asks from “remediation” to “deterministic grid slice / missing-grid limitation” |
-| **Out of scope** | Time/WFA/single-metric builders; mixed composition; duplex; auditor changes; engine |
+| **In scope** | Unified matcher skeleton implementing §4.1 multi-eval + §4.1.1 residual veto (grid cues sunset from residual; all other DI negatives remain residual); landed intents = `grid_ranking` + overview; `build_deterministic_grid_ranking_reply`; wire recovery §4.9 (incl. missing-grid short-circuit before LLM); path-catalog preferred paths for grid; settings `deterministic_specialist_fallback`; redefine `has_overview_negative_cue` via shared formula (no voice cue fork); tests; docs; amend DI T10 characterization for **grid** asks from “remediation” to “deterministic grid slice / missing-grid limitation” |
+| **Out of scope** | Time/WFA/single-metric builders; mixed composition; duplex specialist envelopes; auditor changes; engine; sunsetting non-grid residual cues |
 | **Honesty** | Must cite metric + selection_scope/oos_status (or mandatory caveats); no metric shopping |
-| **Acceptance** | Fixture with `grid_rankings.best` + model uncited digits → deterministic SL/TP answer; missing grid → limitation; “summarize this run” still DI overview; “KPIs and best SL/TP” still mixed remediation until RI-8; RQ-5 + DI overview tests green |
-| **Regression-safety** | Assistant-only; overview path unchanged; flags-off restores pre-RI grid fragility |
+| **Acceptance** | Fixture with `grid_rankings.best` + model uncited digits → deterministic SL/TP answer; missing grid → limitation **without LLM**; “summarize this run” still DI overview; “KPIs and best SL/TP” still mixed remediation until RI-8; “KPIs and validation” / WFA asks still refuse overview (residual veto); DX X4/X5 still veto≠unmatched; RQ-5 + DI overview tests green |
+| **Regression-safety** | Assistant-only; residual DI negatives preserved for non-grid topics; DX §9 green; flags-off restores pre-RI grid fragility |
 
 ### RI-2 — Time / session ranking slice
 
 | | |
 |---|---|
 | **Goal** | Fail-open best entry time / bucket answers |
-| **In scope** | `time_ranking` cues + builder §4.3; recovery wiring; tests/false friends; docs |
-| **Out of scope** | New TIME.analyze behavior beyond existing RQ gate; grid changes; duplex |
-| **Acceptance** | Projection present + bad LLM draft → deterministic time best; absent → missing-time limitation; no clock invention |
-| **Regression-safety** | Assistant-only; RI-1 tests stay green |
+| **In scope** | `time_ranking` cues + builder §4.3; sunset RI-2 residual time cues per §4.1.1; recovery wiring + missing-time short-circuit; tests/false friends; docs |
+| **Out of scope** | New TIME.analyze behavior beyond existing RQ gate; grid changes; duplex specialist envelopes |
+| **Acceptance** | Projection present + bad LLM draft → deterministic time best; absent → missing-time limitation before LLM; no clock invention; residual non-time cues still veto overview |
+| **Regression-safety** | Assistant-only; RI-1 tests stay green; DX residual gate holds for non-time cues |
 
 ### RI-3 — Validation + WFA/OOS slice
 
 | | |
 |---|---|
 | **Goal** | Fail-open validation/WFA discussion without IS KPI substitution |
-| **In scope** | `validation_wfa` cues + builder §4.4; OOS anti-soften fixtures; docs |
-| **Out of scope** | Tier-2 MC/overfit batteries (RI-5); changing validation engine outputs |
-| **Acceptance** | WFA ask + bad path → walk_forward leaves; validation ask → validation leaves; missing both → limitation; never answers with `trade_summary` expectancy as OOS proof |
-| **Regression-safety** | Assistant-only; DI “no KPI topic swap” remains true (specialist slice ≠ KPI slice) |
+| **In scope** | `validation_wfa` cues + builder §4.4; sunset RI-3 residual validation/OOS cues per §4.1.1; OOS anti-soften fixtures; missing-validation short-circuit; docs; **amend DI T9** characterization from “veto→remediation” to “deterministic WFA/validation slice / missing-validation limitation” |
+| **Out of scope** | Tier-2 MC/overfit batteries (RI-5); changing validation engine outputs; duplex specialist envelopes |
+| **Acceptance** | WFA ask + bad path → walk_forward leaves; validation ask → validation leaves; missing both → limitation before LLM; never answers with `trade_summary` expectancy as OOS proof; “KPIs and validation” → mixed remediation (until RI-8) not KPI-only |
+| **Regression-safety** | Assistant-only; DI “no KPI topic swap” remains true (specialist slice ≠ KPI slice); DX residual gate holds for non-validation cues |
 
 ### RI-4 — Single-metric router
 
 | | |
 |---|---|
 | **Goal** | Fail-open one-leaf metric answers |
-| **In scope** | `single_metric` cue/collocate table §4.5; one-claim builder; win-rate `%` narration; tests for each noun; docs / `METRICS_GLOSSARY` path note if needed |
+| **In scope** | `single_metric` cue/collocate table §4.5; hard-refuse when residual/specialist collocates present; one-claim builder; win-rate `%` narration; tests for each noun + OOS/WFA/grid/time refuse cases; docs / `METRICS_GLOSSARY` path note if needed |
 | **Out of scope** | Expanding beyond §4.5 without amending this contract; overview rewrite |
-| **Acceptance** | “What is the win rate?” → single grounded claim; unknown metric noun → unmatched (LLM/remediation), not wrong leaf; overview asks unchanged |
-| **Regression-safety** | Assistant-only; no silent remap of wrong paths |
+| **Acceptance** | “What is the win rate?” → single grounded claim; “what is the OOS expectancy?” → **not** IS `expectancy_r` (specialist/residual/mixed path); unknown metric noun → unmatched (LLM/remediation), not wrong leaf; overview asks unchanged |
+| **Regression-safety** | Assistant-only; no silent remap of wrong paths; no OOS→IS laundering |
 
 ### RI-5 — Tier-2 robustness slices
 
 | | |
 |---|---|
 | **Goal** | Presence/status-grounded answers for MC / overfit / sensitivity / noise / portfolio / OTF |
-| **In scope** | `robustness_tier2` cues + presence-first builder §4.6; tests; docs |
-| **Out of scope** | Deep nested battery dumps; new robustness algorithms |
-| **Acceptance** | Ask Monte Carlo when summary present → grounded status/scalars; all absent → limitation |
+| **In scope** | `robustness_tier2` cues + presence-first builder; **amend §4.6 with exact per-battery scalar path table** before merge; sunset RI-5 residual MC cues; tests; docs |
+| **Out of scope** | Deep nested battery dumps beyond the amended table; new robustness algorithms |
+| **Acceptance** | Ask Monte Carlo when summary present → grounded status/scalars from frozen table; all absent → limitation; undeclared nested paths rejected |
 | **Regression-safety** | Assistant-only |
 
 ### RI-6 — Assumptions & costs slice
@@ -519,7 +593,7 @@ limitation. No engine re-sim.
 | **In scope** | Project RI builders into duplex tool envelopes (shared helpers; no cue fork); optional gated RQ-bridge **only if** needed for hard asks and frozen here; `tests/test_assistant_research_intelligence.py` §10 bank; USER_GUIDE “what you can ask”; mark RI complete in this file + roadmap; ASSUMPTIONS pointer update |
 | **Out of scope** | Provider swap; live-PCM pre-gate; default-on voice; Help duplex; OpenAI migration |
 | **Acceptance** | Duplex specialist ask returns grounded specialist envelope or limitation (not KPI topic-swap); RI §10 + RQ-5 + DI + DX banks green; roadmap ✅ |
-| **Regression-safety** | Voice default remains off; DX overview behavior preserved for pure overview asks |
+| **Regression-safety** | Voice default remains off; DX overview behavior preserved for pure overview asks; residual sunset map should be empty (all DI specialist negatives owned or explicitly retired) |
 
 ---
 
@@ -530,17 +604,24 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 - [ ] RQ-5 honesty/injection file remains green
 - [ ] DI overview happy paths remain green (unless a listed characterization
       amendment for an intent now owned by RI)
-- [ ] DX §9 bank remains green (until RI-10 deliberate amendments)
+- [ ] DX §9 bank remains green; residual DI negatives still yield
+      `has_overview_negative_cue` true (veto ≠ unmatched) until the owning
+      specialist PR sunsets those cues; duplex specialist envelopes only via
+      RI-10 or an explicit same-PR DX amendment
+- [ ] §4.1.1 residual sunset map amended in the same PR that lands/removes cues
 - [ ] New RI tests cover: intent cues + false friends, allowlist-only claims,
-      missing-evidence limitation, no topic remap, flags-off pre-RI specialist
-      fragility, OOS anti-soften, overlay digit audit when overlay touched
+      missing-evidence limitation **before LLM**, no topic remap, residual
+      veto for not-yet-owned specialists, `single_metric` hard-refuse on
+      specialist/residual collocates, flags-off pre-RI specialist fragility,
+      OOS anti-soften, overlay digit audit when overlay touched
 - [ ] No `choices` on results messages
 - [ ] Mandatory caveats still merged
 - [ ] Same-PR docs: this contract + touched relationship docs
   (`ASSUMPTIONS_AND_LIMITATIONS.md`, `ENGINEERING_ROADMAP.md`,
   `ARCHITECTURE.md` when settings/keys land, `USER_GUIDE.md` when ask UX lands)
 - [ ] PR body includes a short **regression-safety** paragraph (auditor
-      unchanged; engine untouched; which recovery UX deliberately changes)
+      unchanged; engine untouched; which recovery UX deliberately changes;
+      which residual cues sunsets)
 
 ---
 
@@ -575,7 +656,7 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 | R6 | “Summarize walk-forward” + bad LLM path | WFA allowlist slice — **not** KPI overview |
 | R7 | Validation ask when only IS KPIs exist | Limitation / validation leaves only — no fake OOS |
 | R8 | “What is the win rate?” | Single `win_rate` claim with `%` grounding |
-| R9 | “What is the win rate?” + path null | Missing-leaf limitation |
+| R9 | “What is the win rate?” + path null | Missing-leaf limitation **before LLM** |
 | R10 | Monte Carlo ask when summary present | Tier-2 grounded status/scalars |
 | R11 | “What costs were assumed?” | Assumptions allowlist only |
 | R12 | Overlay-authored lines on grid/KPI replies | `_ungrounded_number_tokens(..., allowed=set()) == []` |
@@ -589,6 +670,10 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 | R20 | Duplex specialist ask (RI-10) | Specialist envelope or limitation; no KPI topic-swap |
 | R21 | Exit-reason ask (RI-9) with/without tables | Capped projection claims or limitation |
 | R22 | Failed raw model draft | Never persisted |
+| R23 | After RI-1 only: “KPIs and validation” / “summarize walk-forward” | Residual veto — **not** `kpi_summary` / `run_overview`; DX `has_overview_negative_cue` true |
+| R24 | “What is the OOS expectancy?” (any time `single_metric` exists) | Must **not** cite `results.trade_summary.expectancy_r` |
+| R25 | Missing grid/time/validation evidence on matched specialist | Limitation builder; **zero** LLM calls for that turn |
+| R26 | Matcher multi-eval: overview cue + specialist cue | `mixed_ask` (not first-match overview) |
 
 ---
 
@@ -608,20 +693,27 @@ Discuss recovery UX** while leaving the honesty auditor byte-identical.
 Setting `deterministic_specialist_fallback = false` restores pre-RI specialist
 fragility (LLM + repair + remediation) without disabling DI overview fallback.
 
+**Eng Proposal §4 “opt-in default-off” note:** like DI recovery flags, this
+assistant-series knob is intentionally default-on for fail-open discussion UX.
+It is not an engine feature flag; honesty gates remain fail-closed and
+byte-identical.
+
 Document the new key in `ARCHITECTURE.md` in the RI-1 PR that lands it.
 
 ---
 
 ## 12. Ship order (product impact)
 
-Recommended merge order (do not skip freezes):
+Required merge order (do not skip freezes; do not reorder past honesty gates):
 
-`RI-0 → RI-1 → RI-4 → RI-3 → RI-2 → RI-7 → RI-8 → RI-5 → RI-6 → RI-9 → RI-10`
+`RI-0 → RI-1 → RI-3 → RI-2 → RI-4 → RI-7 → RI-8 → RI-5 → RI-6 → RI-9 → RI-10`
 
-Rationale: grid + single-metric unlock the most common research chat; WFA/OOS
-next for institutional honesty; time next; meaning + mixed asks make it a
-partner; Tier-2/assumptions/deep-trade complete coverage; duplex last so text
-builders are stable.
+Rationale: grid first (highest-frequency specialist ask) while §4.1.1 residual
+veto protects all other DI negatives; **WFA/OOS (RI-3) before single-metric
+(RI-4)** so “OOS expectancy” cannot land as an in-sample leaf even if a
+hard-refuse bug slips; time next; single-metric after specialist collocates
+exist; meaning + mixed asks make it a partner; Tier-2/assumptions/deep-trade
+complete coverage; duplex last so text builders are stable.
 
 ---
 

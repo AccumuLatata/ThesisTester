@@ -32,7 +32,7 @@ belongs in a later PR or is rejected.
 | `docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md` | ✅ HC-0…HC-4 Help **content/allowlist** coverage (USER_GUIDE + §7.1.4 + §5 bank); amends §7.1 only via HC maintenance PRs — does not reopen RQ-3 channel logic |
 | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` | ✅ RUX series complete (RUX-0…RUX-5; evidence `docs/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md`) — owns Research Assistant **page layout / surface prominence**. This contract keeps owning Discuss/Help channel logic, grounding, evidence, remediation, message tags, and classic-focus key shape. Do not reopen RQ channel logic for layout work; amend the RUX contract instead. |
 | `docs/DISCUSS_INTELLIGENCE_IMPLEMENTATION.md` | ✅ DI-0…DI-3 complete (recovery UX + overview intent slices + path catalog + digit-free expert overlay). **Must not loosen or amend** RQ digit/path honesty gates / `assert_llm_explanation_grounded`; must not silently remap specialist asks onto KPI slices. |
-| `docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md` | 📋 RI-series (continuation of DI) — fail-open specialist / single-metric / meaning / mixed-ask slices on Discuss. **Must not loosen or amend** RQ digit/path honesty gates; consumes RQ-2 projections; no engine recompute from chat. |
+| `docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md` | 📋 RI-series (continuation of DI) — fail-open specialist / single-metric / meaning / mixed-ask slices on Discuss. **Must not loosen or amend** RQ digit/path honesty gates; consumes RQ-2 projections; no engine recompute from chat; keeps residual DI negative-cue vetoes until each specialist builder sunsets them. |
 | `docs/ENGINEERING_ROADMAP.md` | Index / status tracker — points here for RQ work |
 
 ---

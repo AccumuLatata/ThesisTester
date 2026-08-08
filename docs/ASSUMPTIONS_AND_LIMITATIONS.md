@@ -604,8 +604,11 @@ other than the last bar in the dataset.
   `docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md` adds fail-open specialist /
   single-metric / meaning / mixed-ask slices while keeping the RQ auditor
   identical. Specialist fragility after DI is intentional quality until each
-  RI slice lands; RI must not invent metrics, remap topics onto KPI overview,
-  soften OOS/selection-bias caveats, or touch engine/golden paths.
+  RI slice lands. Incremental PRs keep DI residual negative-cue vetoes for
+  not-yet-owned specialist topics (and DX veto≠unmatched) until each builder
+  PR sunsets its cues; RI must not invent metrics, remap topics onto KPI
+  overview, answer OOS asks with in-sample single-metric leaves, soften
+  OOS/selection-bias caveats, or touch engine/golden paths.
   **DX-series:** `docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md` targets VA-5
   full-duplex **content** parity with DI overview/KPI intelligence by reusing
   DI builders inside VA-3 tool envelopes + realtime instructions. DX does not
