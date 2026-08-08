@@ -23,15 +23,13 @@ rejected.
 
 **Duplex discuss-intelligence follow-on:** VA-5 full-duplex **content** parity
 with DI overview/KPI intelligence is owned by
-`docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md` (DX-series). DX may enrich VA-3
-tool envelopes and realtime honesty instructions by **reusing** DI builders; it
-must not reopen VA provider/topology/TTL/default-on freezes or fork DI cue/path
-rules. DX-1 may retarget the PTT-fallback sample-size intent alias to
-`results.trade_summary.trade_count` and must strip legacy explainer
-`overview`/`claims` on DI negative-cue veto — still without widening the VA-3
-tool name allowlist. Do not land duplex intelligence work by casually
-reopening this VA contract — amend DX (and add a VA relationship note here
-only when a VA freeze must change).
+`docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md` (DX-series, ✅ DX-0…DX-3). DX
+enriched VA-3 tool envelopes and realtime honesty instructions by **reusing**
+DI builders; it must not reopen VA provider/topology/TTL/default-on freezes or
+fork DI cue/path rules. Do not reopen DX/VA casually for duplex intelligence —
+amend the DX contract (and add a VA relationship note here only when a VA
+freeze must change). Keep `tests/test_assistant_duplex_intelligence.py` §9
+green beside VA-6.
 
 ### Why this document was rewritten (not left as a stale pre-RQ draft)
 
