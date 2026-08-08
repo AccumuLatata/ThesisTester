@@ -1,4 +1,4 @@
-"""Multi-turn grounded results Q&A over a hash-verified EvidencePacket (RQ-1)."""
+"""Multi-turn grounded results Q&A over a hash-verified EvidencePacket (RQ / DI)."""
 
 from __future__ import annotations
 
@@ -7,13 +7,22 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from thesistester.assistant.explainer import EvidenceClaim, EvidencePacket
-from thesistester.assistant.llm import StructuredLLMClient
+from thesistester.assistant.llm import LLMProviderError, StructuredLLMClient
 from thesistester.assistant.llm_explainer import (
     LLMEvidenceError,
     _path_exists,
     _path_get,
     assert_llm_explanation_grounded,
     merge_mandatory_packet_caveats,
+)
+from thesistester.assistant.results_overview import (
+    apply_expert_overlay,
+    build_deterministic_kpi_reply,
+    build_prompt_path_catalog,
+    build_structured_remediation_reply,
+    classify_recovery_reason,
+    failure_class_from_exception,
+    match_overview_intent,
 )
 
 RESULTS_QA_CHANNEL = "results_qa"
@@ -48,6 +57,9 @@ _SYSTEM_PROMPT = (
     "(e.g. results.trade_summary.trade_count, results.projections.*, "
     "limitations, caveats) — never prefix paths with evidence_packet. or packet. "
     "Array rows may use integer indices (e.g. results.time_grouped_summary.0.avg_r). "
+    "When path_catalog is present, cite only paths listed in "
+    "path_catalog.existing_paths; on overview asks prefer a subset of "
+    "path_catalog.kpi_allowlist / preferred_claim_paths. "
     "Do not invent nested keys. Do not add calculations, forecasts, trade advice, "
     "tools, or facts absent from the packet. "
     "Distinguish in-sample observed results from robustness/OOS evidence. "
@@ -97,14 +109,18 @@ class ResultsQAReply:
     caveats: tuple[str, ...]
     claims: tuple[EvidenceClaim, ...] = ()
     followups: tuple[str, ...] = ()
+    recovery_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "summary": self.summary,
             "caveats": list(self.caveats),
             "claims": [claim.to_dict() for claim in self.claims],
             "followups": list(self.followups),
         }
+        if self.recovery_reason is not None:
+            payload["recovery_reason"] = self.recovery_reason
+        return payload
 
 
 def format_results_qa_reply_content(reply: ResultsQAReply) -> str:
@@ -156,46 +172,12 @@ def filter_results_qa_history(
     return tuple(selected[-max_history_messages:])
 
 
-def propose_results_reply(
-    client: StructuredLLMClient,
+def _decode_results_payload(
+    payload: Mapping[str, Any],
     *,
     packet: EvidencePacket,
-    history: Sequence[Mapping[str, Any]],
-    user_message: str,
-    turn_context: Mapping[str, Any] | None = None,
+    evidence_context: Mapping[str, Any],
 ) -> ResultsQAReply:
-    """Request a grounded results reply from the ephemeral turn evidence context.
-
-    ``turn_context`` may include ``results.projections.*`` (RQ-2). Path
-    resolution and numeric grounding audit that same object. When omitted, the
-    immutable packet dict is used (RQ-1 behavior).
-    """
-    if not isinstance(user_message, str) or not user_message.strip():
-        raise LLMEvidenceError("Results Q&A user message must be a non-empty string.")
-    if turn_context is None:
-        evidence_context: dict[str, Any] = packet.to_dict()
-    else:
-        if not isinstance(turn_context, Mapping):
-            raise LLMEvidenceError("Results Q&A turn_context must be a mapping.")
-        evidence_context = dict(turn_context)
-    history_lines = [
-        {
-            "role": message.get("role"),
-            "content": message.get("content"),
-        }
-        for message in history
-        if isinstance(message, Mapping)
-    ]
-    user_payload = {
-        "evidence_packet": evidence_context,
-        "history": history_lines,
-        "user_message": user_message.strip(),
-    }
-    payload = client.complete_structured(
-        system=_SYSTEM_PROMPT,
-        user=json.dumps(user_payload, sort_keys=True),
-        schema=_RESULTS_QA_SCHEMA,
-    )
     if set(payload) != {"summary", "caveats", "claims", "followups"}:
         raise LLMEvidenceError(
             "Results Q&A reply must contain only summary, caveats, claims, and followups."
@@ -258,3 +240,176 @@ def propose_results_reply(
         claims=grounded,
         followups=followup_texts,
     )
+
+
+def _complete_results_structured(
+    client: StructuredLLMClient,
+    *,
+    evidence_context: Mapping[str, Any],
+    history: Sequence[Mapping[str, Any]],
+    user_message: str,
+    overview_intent: str | None = None,
+    repair: Mapping[str, Any] | None = None,
+    include_path_catalog: bool = True,
+) -> dict[str, Any]:
+    history_lines = [
+        {
+            "role": message.get("role"),
+            "content": message.get("content"),
+        }
+        for message in history
+        if isinstance(message, Mapping)
+    ]
+    user_payload: dict[str, Any] = {
+        "evidence_packet": dict(evidence_context),
+        "history": history_lines,
+        "user_message": user_message.strip(),
+    }
+    # DI-2: first-pass (and repair) path catalog — existing paths only.
+    if include_path_catalog:
+        user_payload["path_catalog"] = build_prompt_path_catalog(
+            evidence_context,
+            overview_intent=overview_intent,
+        )
+    if repair is not None:
+        user_payload["repair"] = dict(repair)
+    return client.complete_structured(
+        system=_SYSTEM_PROMPT,
+        user=json.dumps(user_payload, sort_keys=True),
+        schema=_RESULTS_QA_SCHEMA,
+    )
+
+
+def _recover_results_reply(
+    *,
+    packet: EvidencePacket,
+    evidence_context: Mapping[str, Any],
+    overview_intent: str | None,
+    exc: BaseException,
+    repaired: bool,
+    deterministic_overview_fallback: bool,
+) -> ResultsQAReply:
+    """Apply DI-1 overview fallback or §5.3 structured remediation."""
+    reason = classify_recovery_reason(exc, repaired=repaired)
+    if overview_intent is not None and deterministic_overview_fallback:
+        return build_deterministic_kpi_reply(
+            packet,
+            evidence_context,
+            intent=overview_intent,
+            recovery_reason=reason,
+        )
+    return build_structured_remediation_reply(
+        packet,
+        failure_class=failure_class_from_exception(exc),
+        recovery_reason=reason,
+    )
+
+
+def propose_results_reply(
+    client: StructuredLLMClient,
+    *,
+    packet: EvidencePacket,
+    history: Sequence[Mapping[str, Any]],
+    user_message: str,
+    turn_context: Mapping[str, Any] | None = None,
+    repair_retry_enabled: bool = True,
+    deterministic_overview_fallback: bool = True,
+) -> ResultsQAReply:
+    """Request a grounded results reply from the ephemeral turn evidence context.
+
+    ``turn_context`` may include ``results.projections.*`` (RQ-2). Path
+    resolution and numeric grounding audit that same object. When omitted, the
+    immutable packet dict is used (RQ-1 behavior).
+
+    DI-1: on grounding/provider faults, optionally one repair attempt, then
+    deterministic overview fallback (matched intents only) or §5.3 structured
+    remediation. Both flags false restores pre-DI hard-fail raises (TLS wrap
+    still applies in the transport).
+
+    DI-2: first-pass user payload includes ``path_catalog`` (existing paths;
+    plus ``kpi_allowlist`` when an overview intent matches).
+
+    DI-3: successful overview replies (and deterministic overview fallback)
+    append a strictly digit-free expert overlay after mandatory caveats.
+    """
+    if not isinstance(user_message, str) or not user_message.strip():
+        raise LLMEvidenceError("Results Q&A user message must be a non-empty string.")
+    if turn_context is None:
+        evidence_context: dict[str, Any] = packet.to_dict()
+    else:
+        if not isinstance(turn_context, Mapping):
+            raise LLMEvidenceError("Results Q&A turn_context must be a mapping.")
+        evidence_context = dict(turn_context)
+
+    overview_intent = match_overview_intent(user_message)
+
+    def _maybe_overlay(reply: ResultsQAReply) -> ResultsQAReply:
+        if overview_intent is None:
+            return reply
+        return apply_expert_overlay(
+            packet,
+            summary=reply.summary,
+            caveats=reply.caveats,
+            claims=reply.claims,
+            recovery_reason=reply.recovery_reason,
+        )
+
+    try:
+        payload = _complete_results_structured(
+            client,
+            evidence_context=evidence_context,
+            history=history,
+            user_message=user_message,
+            overview_intent=overview_intent,
+        )
+        return _maybe_overlay(
+            _decode_results_payload(payload, packet=packet, evidence_context=evidence_context)
+        )
+    except (LLMEvidenceError, LLMProviderError) as first_exc:
+        if not repair_retry_enabled and not deterministic_overview_fallback:
+            raise
+        # §5: repair is for grounding/auditor faults only. Provider/TLS faults
+        # already exhausted transport retries — go straight to overview fallback
+        # or §5.3 remediation (never a second model call on dead transport).
+        if repair_retry_enabled and isinstance(first_exc, LLMEvidenceError):
+            # Path allowlist lives solely on path_catalog (DI-2); repair carries
+            # only the prior error + instruction so lists cannot diverge.
+            repair_payload = {
+                "prior_error": str(first_exc),
+                "instruction": (
+                    "Repair the reply using only path_catalog.existing_paths. "
+                    "Narrate fractional rates with % or percent/pct/Prozent. "
+                    "Do not invent paths or numbers."
+                ),
+            }
+            try:
+                repaired = _complete_results_structured(
+                    client,
+                    evidence_context=evidence_context,
+                    history=history,
+                    user_message=user_message,
+                    overview_intent=overview_intent,
+                    repair=repair_payload,
+                )
+                return _maybe_overlay(
+                    _decode_results_payload(
+                        repaired, packet=packet, evidence_context=evidence_context
+                    )
+                )
+            except (LLMEvidenceError, LLMProviderError) as repair_exc:
+                return _recover_results_reply(
+                    packet=packet,
+                    evidence_context=evidence_context,
+                    overview_intent=overview_intent,
+                    exc=repair_exc,
+                    repaired=True,
+                    deterministic_overview_fallback=deterministic_overview_fallback,
+                )
+        return _recover_results_reply(
+            packet=packet,
+            evidence_context=evidence_context,
+            overview_intent=overview_intent,
+            exc=first_exc,
+            repaired=False,
+            deterministic_overview_fallback=deterministic_overview_fallback,
+        )

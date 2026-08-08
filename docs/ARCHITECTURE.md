@@ -478,6 +478,32 @@ tokens).
 Optional RO `TIME.analyze` enrichment runs only when
 `assistant.results_qa.allow_time_enrichment=true` (default `false`) and
 `time_grouped_summary` is missing, after hash verification.
+**DI-1 landed:** Discuss recovery knobs
+`assistant.results_qa.repair_retry_enabled` (default `true`) and
+`assistant.results_qa.deterministic_overview_fallback` (default `true`)
+change recovery UX while leaving the RQ digit/path auditor unchanged.
+`UrllibOpenAITransport` wraps only the TLS allowlist (`ssl.SSLError` /
+`ssl.CertificateError` / `URLError` with those reasons) into retryable
+`LLMProviderError`. Overview cue matching + negative-cue veto and
+deterministic KPI fallback live in
+`thesistester/assistant/results_overview.py` and are applied inside
+`propose_results_reply` / `handle_results_turn` (not page-only). Flags both
+`false` restore pre-DI grounding hard-fail (TLS wrap remains).
+**DI-2 landed:** first-pass Results Q&A user payloads include
+`path_catalog.existing_paths` (bounded paths present on the turn context;
+KPI + projections/validation + honesty paths reserved before fat time tables
+/ provenance). Overview/KPI asks (DI-1 matcher) also receive `kpi_allowlist` /
+`preferred_claim_paths`; non-overview asks get the shared catalog only.
+Repair retries reuse that catalog (no duplicate `repair.existing_paths` list).
+Matcher ownership stays in DI-1; DI-2 does not widen intents.
+**DI-3 landed:** overview/KPI replies append a strictly digit-free expert
+overlay (`build_expert_overlay` / `apply_expert_overlay` in
+`results_overview.py`) after mandatory packet caveats; overlay lines are
+audited with `_ungrounded_number_tokens(..., allowed=set())`. Overview
+followups use a digit-free bank (packet-aware: suppress WFA-presence coaching
+when `missing_oos` / WFA-absent limitations already apply). Empty-KPI overlays
+do not say “these figures,” and diagnostic honesty is near-deduped against
+`diagnostic_only`. Non-overview replies are unchanged.
 **RQ-3 landed:** `thesistester/assistant/product_help.py` +
 `handle_help_turn`; Help / how it works mode on Research Assistant
 (page-level mode-scoped `st.chat_input`; RUX-3);

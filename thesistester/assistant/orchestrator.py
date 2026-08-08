@@ -651,6 +651,10 @@ class AssistantOrchestrator:
             history=history,
             user_message=message.strip(),
             turn_context=turn_context,
+            repair_retry_enabled=bool(getattr(settings, "repair_retry_enabled", True)),
+            deterministic_overview_fallback=bool(
+                getattr(settings, "deterministic_overview_fallback", True)
+            ),
         )
         if persist_conversation and conversation is not None and isinstance(conversation_id, str):
             user_record = self.repository.append_conversation_message(
@@ -664,20 +668,23 @@ class AssistantOrchestrator:
                     "run_id": run.run_id,
                 },
             )
+            assistant_message: dict[str, Any] = {
+                "role": "assistant",
+                "content": format_results_qa_reply_content(reply),
+                "channel": RESULTS_QA_CHANNEL,
+                "run_id": run.run_id,
+                "summary": reply.summary,
+                "caveats": list(reply.caveats),
+                "claims": [claim.to_dict() for claim in reply.claims],
+                "followups": list(reply.followups),
+            }
+            if reply.recovery_reason is not None:
+                assistant_message["recovery_reason"] = reply.recovery_reason
             self.repository.append_conversation_message(
                 thesis_id,
                 conversation_id.strip(),
                 expected_revision=user_record.revision,
-                message={
-                    "role": "assistant",
-                    "content": format_results_qa_reply_content(reply),
-                    "channel": RESULTS_QA_CHANNEL,
-                    "run_id": run.run_id,
-                    "summary": reply.summary,
-                    "caveats": list(reply.caveats),
-                    "claims": [claim.to_dict() for claim in reply.claims],
-                    "followups": list(reply.followups),
-                },
+                message=assistant_message,
             )
         payload: dict[str, Any] = {
             **evidence.payload,
@@ -686,6 +693,7 @@ class AssistantOrchestrator:
                 "projections": (turn_context.get("results") or {}).get("projections"),
             },
             "provider_attempts": getattr(client, "last_attempt_count", None),
+            "results_recovery_reason": reply.recovery_reason,
         }
         if time_enrichment is not None:
             payload["time_enrichment"] = time_enrichment

@@ -44,6 +44,10 @@ from thesistester.assistant.voice.sidecar import (
     DEFAULT_SIDECAR_PORT,
     SidecarError,
     assert_localhost_bind,
+    build_sidecar_launch_command,
+    ensure_local_sidecar,
+    probe_sidecar_health,
+    sidecar_public_base_url,
 )
 from thesistester.assistant.voice.settings import (
     resolve_voice_settings,
@@ -214,7 +218,8 @@ def _render_voice_last_turn(*, channel: str) -> None:
         st.audio(bytes(playback["bytes"]), format=str(playback.get("mime") or "audio/mpeg"))
 
 
-def _sidecar_base_url() -> str:
+def _sidecar_host_port() -> tuple[str, int]:
+    """Resolved loopback host + port for the realtime sidecar controls."""
     host = str(st.session_state.get("assistant_voice_sidecar_host") or DEFAULT_SIDECAR_HOST)
     try:
         host = assert_localhost_bind(host)
@@ -228,7 +233,15 @@ def _sidecar_base_url() -> str:
         port_i = DEFAULT_SIDECAR_PORT
     if port_i < 1 or port_i > 65535:
         port_i = DEFAULT_SIDECAR_PORT
-    return f"http://{host}:{port_i}"
+    return host, port_i
+
+
+def _sidecar_base_url() -> str:
+    host, port_i = _sidecar_host_port()
+    try:
+        return sidecar_public_base_url(host, port_i)
+    except SidecarError:
+        return f"http://{DEFAULT_SIDECAR_HOST}:{DEFAULT_SIDECAR_PORT}"
 
 
 def _client_url_is_localhost(client_url: str) -> bool:
@@ -245,12 +258,69 @@ def _client_url_is_localhost(client_url: str) -> bool:
     return host in {"127.0.0.1", "::1"}
 
 
+def _render_sidecar_status_controls() -> dict | None:
+    """Show /health status and optional local launch. Returns health dict or None."""
+    host, port_i = _sidecar_host_port()
+    base_url = _sidecar_base_url()
+    health = probe_sidecar_health(base_url)
+    if health is not None:
+        st.success(
+            f"Sidecar reachable at `{base_url}` "
+            f"(mode={health.get('mode', '?')}, model={health.get('model', '?')})."
+        )
+        return health
+    st.warning(
+        f"Sidecar not reachable at `{base_url}` (nothing listening — "
+        "WinError 10061 / connection refused usually means the process is not running). "
+        "Realtime needs a separate localhost process; Streamlit cannot host the duplex bridge."
+    )
+    # Manual command must match the configured loopback port (not a hardcoded default).
+    manual_cmd = " ".join(
+        ["python", "-m", *build_sidecar_launch_command(host=host, port=port_i)[2:]]
+    )
+    st.code(manual_cmd, language="bash")
+    st.caption(
+        "Requires an xAI key in the sidecar process environment "
+        "(or Streamlit Secrets — Launch forwards the resolved key). "
+        "Or use **Launch local sidecar** below (spawns detached)."
+    )
+    if st.button("Launch local sidecar", key="assistant_voice_sidecar_launch"):
+        try:
+            status = ensure_local_sidecar(host=host, port=port_i, cwd=Path.cwd())
+        except SidecarError as exc:
+            st.error(str(exc))
+            return None
+        if status.get("launched"):
+            set_assistant_flash(
+                st.session_state,
+                level="success",
+                message=(f"Local sidecar launched (pid={status.get('pid')}) and /health is ready."),
+            )
+        else:
+            set_assistant_flash(
+                st.session_state,
+                level="success",
+                message="Sidecar was already healthy; no new process launched.",
+            )
+        st.rerun()
+    return None
+
+
 def _register_realtime_session(
     *,
     run_id: str,
     expected_hash: str,
 ) -> dict | None:
     """POST a results realtime session to the localhost sidecar (no xAI key in page)."""
+    base_url = _sidecar_base_url()
+    if probe_sidecar_health(base_url) is None:
+        st.error(
+            "Unable to reach the localhost voice sidecar — connection refused usually "
+            "means it is not running. Use **Launch local sidecar** above, or start it "
+            "manually with `python -m thesistester.assistant.voice.sidecar` "
+            "(binds 127.0.0.1 only; needs an xAI key in that process)."
+        )
+        return None
     payload = {
         "thesis_id": thesis_id,
         "run_id": run_id,
@@ -259,7 +329,7 @@ def _register_realtime_session(
     }
     body = json.dumps(payload).encode("utf-8")
     req = urllib_request.Request(
-        f"{_sidecar_base_url()}/v1/sessions",
+        f"{base_url}/v1/sessions",
         data=body,
         headers={"Content-Type": "application/json", "Accept": "application/json"},
         method="POST",
@@ -333,7 +403,8 @@ def _render_voice_controls() -> None:
         st.rerun()
     if enabled and mode == "realtime":
         st.caption(
-            "Realtime needs the localhost sidecar: `python -m thesistester.assistant.voice.sidecar`"
+            "Realtime needs the localhost sidecar "
+            "(`python -m thesistester.assistant.voice.sidecar` or **Launch local sidecar**)."
         )
 
 
@@ -743,6 +814,7 @@ if mode == ASSISTANT_MODE_DISCUSS:
                         max_value=65535,
                         key="assistant_voice_sidecar_port",
                     )
+                    _render_sidecar_status_controls()
                     if results_voice_blocked:
                         st.warning("Realtime voice is paused while a research run is running.")
                     elif st.button(

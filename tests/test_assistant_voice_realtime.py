@@ -22,10 +22,14 @@ from thesistester.assistant.voice.sidecar import (
     assert_localhost_bind,
     build_function_call_output_events,
     build_realtime_session_update,
+    build_sidecar_launch_command,
     create_sidecar_app,
+    ensure_local_sidecar,
     execute_realtime_tool_bridge,
     extract_transcript_from_event,
+    probe_sidecar_health,
     redact_for_logs,
+    sidecar_public_base_url,
 )
 from thesistester.assistant.voice.tools import (
     VoiceToolError,
@@ -347,11 +351,299 @@ def test_page_source_realtime_controls_and_no_xai_socket():
     assert "Voice discuss (realtime)" in page
     assert "thesistester.assistant.voice.sidecar" in page
     assert "_register_realtime_session(" in page
+    assert "_render_sidecar_status_controls" in page
+    assert "Launch local sidecar" in page
+    assert "ensure_local_sidecar" in page
+    assert "probe_sidecar_health" in page
+    assert "build_sidecar_launch_command" in page
     assert "assert_localhost_bind" in page
     assert "_client_url_is_localhost" in page
     assert "wss://api.x.ai" not in page
     assert "XAI_API_KEY" not in page
+    # Manual start command must be built from configured host/port (not hardcoded 8765).
+    assert '--port 8765"' not in page
+    assert "--port 8765'," not in page
     assert 'mode == "realtime"' in page or "mode == 'realtime'" in page
+
+
+def test_sidecar_public_base_url_and_launch_command_loopback_only():
+    assert sidecar_public_base_url("127.0.0.1", 8765) == "http://127.0.0.1:8765"
+    assert sidecar_public_base_url("::1", 8765) == "http://[::1]:8765"
+    with pytest.raises(SidecarError, match="127.0.0.1"):
+        sidecar_public_base_url("0.0.0.0", 8765)
+    with pytest.raises(SidecarError, match="127.0.0.1"):
+        build_sidecar_launch_command(host="localhost", port=8765)
+    with pytest.raises(SidecarError, match="port"):
+        build_sidecar_launch_command(host="127.0.0.1", port=0)
+    cmd = build_sidecar_launch_command(
+        host="127.0.0.1",
+        port=8765,
+        python_executable="/usr/bin/python3",
+    )
+    assert cmd == [
+        "/usr/bin/python3",
+        "-m",
+        "thesistester.assistant.voice.sidecar",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8765",
+    ]
+    cmd_alt = build_sidecar_launch_command(host="127.0.0.1", port=9876)
+    assert cmd_alt[-1] == "9876"
+
+
+def test_probe_sidecar_health_fail_closed(monkeypatch):
+    assert probe_sidecar_health("http://example.com") is None
+    assert probe_sidecar_health("not-a-url") is None
+
+    class _Boom:
+        def __enter__(self):
+            raise ConnectionRefusedError("refused")
+
+        def __exit__(self, *args):
+            return False
+
+    class _Opener:
+        def open(self, *args, **kwargs):
+            return _Boom()
+
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar._loopback_opener",
+        lambda: _Opener(),
+    )
+    assert probe_sidecar_health("http://127.0.0.1:8765") is None
+
+
+def test_probe_sidecar_health_ok(monkeypatch):
+    class _Resp:
+        status = 200
+
+        def read(self):
+            return json.dumps(
+                {"ok": True, "host": "127.0.0.1", "port": 8765, "mode": "realtime"}
+            ).encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    class _Opener:
+        def open(self, *args, **kwargs):
+            return _Resp()
+
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar._loopback_opener",
+        lambda: _Opener(),
+    )
+    health = probe_sidecar_health("http://127.0.0.1:8765")
+    assert health is not None
+    assert health["ok"] is True
+    assert health["mode"] == "realtime"
+
+
+def test_probe_sidecar_health_rejects_truthy_non_bool_ok(monkeypatch):
+    payloads = (
+        {"ok": "yes", "host": "127.0.0.1", "port": 8765, "mode": "realtime"},
+        {"ok": 1, "host": "127.0.0.1", "port": 8765, "mode": "realtime"},
+        {"ok": True, "host": "0.0.0.0", "port": 8765, "mode": "realtime"},
+        {"ok": True, "host": "127.0.0.1", "port": 8765},  # missing mode
+    )
+
+    for payload in payloads:
+
+        class _Resp:
+            status = 200
+
+            def read(self):
+                return json.dumps(payload).encode("utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        class _Opener:
+            def open(self, *args, **kwargs):
+                return _Resp()
+
+        monkeypatch.setattr(
+            "thesistester.assistant.voice.sidecar._loopback_opener",
+            lambda: _Opener(),
+        )
+        assert probe_sidecar_health("http://127.0.0.1:8765") is None
+
+
+def test_ensure_local_sidecar_noop_when_healthy(monkeypatch):
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar.probe_sidecar_health",
+        lambda base_url, **kwargs: {
+            "ok": True,
+            "host": "127.0.0.1",
+            "port": 8765,
+            "mode": "realtime",
+        },
+    )
+
+    def _must_not_launch(**kwargs):
+        raise AssertionError("launch should not run when health is ok")
+
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar.launch_local_sidecar",
+        _must_not_launch,
+    )
+    status = ensure_local_sidecar(host="127.0.0.1", port=8765)
+    assert status["ok"] is True
+    assert status["launched"] is False
+    assert status["pid"] is None
+
+
+def test_ensure_local_sidecar_launches_and_waits(monkeypatch):
+    probes = {"n": 0}
+
+    def _probe(base_url, **kwargs):
+        probes["n"] += 1
+        if probes["n"] < 3:
+            return None
+        return {
+            "ok": True,
+            "host": "127.0.0.1",
+            "port": 8765,
+            "mode": "realtime",
+        }
+
+    class _Proc:
+        pid = 4242
+
+        def poll(self):
+            return None
+
+    launched = {}
+
+    def _launch(**kwargs):
+        launched.update(kwargs)
+        return _Proc()
+
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar.probe_sidecar_health",
+        _probe,
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar.require_xai_api_key",
+        lambda: "xai-test-key",
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar.launch_local_sidecar",
+        _launch,
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar.time.sleep",
+        lambda *_args, **_kwargs: None,
+    )
+    status = ensure_local_sidecar(
+        host="127.0.0.1",
+        port=8765,
+        ready_timeout_seconds=2.0,
+        poll_interval_seconds=0.0,
+    )
+    assert status["launched"] is True
+    assert status["pid"] == 4242
+    assert status["health"]["ok"] is True
+    assert launched.get("env") == {"XAI_API_KEY": "xai-test-key"}
+
+
+def test_ensure_local_sidecar_requires_xai_key_before_launch(monkeypatch):
+    from thesistester.assistant.voice.xai_realtime import VoiceConfigurationError
+
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar.probe_sidecar_health",
+        lambda *args, **kwargs: None,
+    )
+
+    def _missing_key():
+        raise VoiceConfigurationError("missing key")
+
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar.require_xai_api_key",
+        _missing_key,
+    )
+
+    def _must_not_launch(**kwargs):
+        raise AssertionError("launch must not run without an xAI key")
+
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar.launch_local_sidecar",
+        _must_not_launch,
+    )
+    with pytest.raises(SidecarError, match="without an xAI key"):
+        ensure_local_sidecar(host="127.0.0.1", port=8765, ready_timeout_seconds=1.0)
+
+
+def test_ensure_local_sidecar_raises_when_child_exits(monkeypatch):
+    class _Dead:
+        pid = 7
+
+        def poll(self):
+            return 1
+
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar.probe_sidecar_health",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar.require_xai_api_key",
+        lambda: "xai-test-key",
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar.launch_local_sidecar",
+        lambda **kwargs: _Dead(),
+    )
+    with pytest.raises(SidecarError, match="exited before becoming healthy"):
+        ensure_local_sidecar(host="127.0.0.1", port=8765, ready_timeout_seconds=1.0)
+
+
+def test_ensure_local_sidecar_child_exit_still_ok_when_health_ready(monkeypatch):
+    """Bind race: child dies but another listener already serves /health."""
+    probes = {"n": 0}
+
+    def _probe(base_url, **kwargs):
+        probes["n"] += 1
+        # First probe (pre-launch) fails; post-exit probe succeeds.
+        if probes["n"] == 1:
+            return None
+        return {
+            "ok": True,
+            "host": "127.0.0.1",
+            "port": 8765,
+            "mode": "realtime",
+        }
+
+    class _Dead:
+        pid = 9
+
+        def poll(self):
+            return 1
+
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar.probe_sidecar_health",
+        _probe,
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar.require_xai_api_key",
+        lambda: "xai-test-key",
+    )
+    monkeypatch.setattr(
+        "thesistester.assistant.voice.sidecar.launch_local_sidecar",
+        lambda **kwargs: _Dead(),
+    )
+    status = ensure_local_sidecar(host="127.0.0.1", port=8765, ready_timeout_seconds=1.0)
+    assert status["ok"] is True
+    assert status["launched"] is False
+    assert status["pid"] is None
+    assert status["health"]["mode"] == "realtime"
 
 
 def test_browser_cannot_inject_conversation_item_create():

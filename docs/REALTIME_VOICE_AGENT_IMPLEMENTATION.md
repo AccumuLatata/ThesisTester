@@ -690,6 +690,10 @@ docs/ENGINEERING.md
   `POST /v1/sessions` and opens the sidecar `/client` page; host/`client_url`
   must be loopback; never opens xAI WS and never embeds `XAI_API_KEY`. PTT
   remains available as fallback.
+- Streamlit probes `GET /health` before register and exposes **Launch local
+  sidecar** (`ensure_local_sidecar`) so WinError 10061 / connection-refused
+  is recoverable without leaving the page. Launch remains loopback-only and
+  inherits env for `XAI_API_KEY` (never embeds the key in page code).
 - Help realtime deferred (results_qa run-bound only in v1).
 - Tests: `tests/test_assistant_voice_realtime.py`.
 - Ops: `docs/ENGINEERING.md` sidecar run instructions.

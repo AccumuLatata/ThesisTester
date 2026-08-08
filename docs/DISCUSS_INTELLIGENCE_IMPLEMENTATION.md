@@ -1,7 +1,7 @@
 # Discuss Intelligence — Implementation Contract
 
 **Document type:** Implementation contract (DI-series) — **single source of truth**
-**Status:** 🟡 plan frozen (DI-0); DI-1…DI-3 not started
+**Status:** ✅ **DI-0…DI-3 complete** (release gate frozen)
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/llm.py` (SSL/TLS wrap),
 `results_qa.py`, `orchestrator.handle_results_turn` (recovery pipeline),
@@ -132,10 +132,13 @@ Match is cue-based (normalized English). **Order:** (1) negative-cue veto →
 no overview intent; (2) first positive overview match wins. Keep the table tiny;
 freeze exact tuples in code + tests.
 
-**Matching semantics (DI-1 must freeze in code):** use word-boundary / multi-word
-alias matching (same discipline as `voice/intent.py` alias matching) — **not**
-raw substring search. Short tokens such as `sl`, `tp`, `stop`, `time`, `grid`
-must not false-veto via substrings inside unrelated words.
+**Matching semantics (DI-1 must freeze in code):** use boundary-anchored
+single- and multi-word alias matching (alnum / underscore / hyphen edges) —
+**not** raw substring search. Short tokens such as `sl`, `tp`, `stop`, `time`,
+`grid` must not false-veto via substrings inside unrelated words
+(`runtime` / `stopwatch`) or hyphen compounds (`non-stop`, `off-grid`).
+Multi-word positives must not false-match (`highlights of this runtime`,
+`summarize this runaway`, `passkey metrics`).
 
 | Intent id | Positive cues (prefer anchored forms) | Evidence slice |
 |---|---|---|
@@ -219,15 +222,19 @@ user message
         yes → build deterministic slice claims (available as fallback)
   → try LLM propose_results_reply (existing schema)
         on LLMEvidenceError (path/digits/soften):
-            if repair_retry_enabled: one repair call with error + allowed paths
+            if repair_retry_enabled: one repair call with prior error
+              (path allowlist is path_catalog only — KPI + projections +
+               validation/WFA + honesty paths before fat time tables /
+               provenance so the catalog cannot starve specialist cites)
             else / repair fails:
                 if overview intent + deterministic_overview_fallback:
-                    return deterministic slice (+ expert overlay when DI-3 lands)
+                    return deterministic slice (+ digit-free expert overlay)
                     reason_code = overview_path_miss | overview_digit_miss | …
                 else:
                     return structured missing/ungrounded remediation (no traceback)
         on LLMProviderError / TLS wrap:
-            retries per existing max_retries
+            retries per existing max_retries (transport)
+            do **not** spend the DI repair model call on a dead transport
             then same deterministic fallback for overview intents only
   → merge_mandatory_packet_caveats
   → assert_llm_explanation_grounded
@@ -253,11 +260,15 @@ provider-failure message helper (no secrets, no traceback).
 **Do not** blanket-catch `OSError` / `TimeoutError` / unrelated network faults
 beyond what the transport already wraps today.
 
-### 5.2 Repair prompt constraints (DI-1)
+### 5.2 Repair prompt constraints (DI-1 / DI-2)
 
-- Pass only: prior error string, user message, **catalog of existing paths in
-  the turn context** (key listing, not a second full packet dump if already in
-  payload), and instruction to use `%` for fractional rates.
+- Pass only: prior error string + instruction to repair using
+  ``path_catalog.existing_paths`` (and `%` for fractional rates). Do **not**
+  duplicate a second path list under ``repair.existing_paths`` — the DI-2
+  ``path_catalog`` on the same payload is the single allowlist source.
+- Path catalog priority (DI-2): KPI leaves → projections / trade_summary /
+  validation-WFA → limitations/caveats/warnings/assumptions → remaining
+  ``results.*`` (shallow sample for fat ``time_grouped_summary``) → provenance.
 - Still fail closed through the same auditor.
 - Exactly **one** repair attempt (no loops).
 - Repair is separate from transport `max_retries`.
@@ -296,7 +307,12 @@ After grounded KPI/summary facts:
    honesty language / existing explainer templates — **strictly digit-free**.
 3. **Overlay-authored** next-step coaching that is digit-free:  
    “If you care about robustness, ask whether walk-forward / validation
-   diagnostics are present on this packet.”
+   diagnostics are present on this packet.”  
+   Suppress this coaching (and the matching followup) when the packet already
+   signals `missing_oos` / `failed_oos` or a digit-free limitation that WFA/OOS
+   is absent — do not contradict packet honesty or fill with optimism.
+4. Empty-claims / missing `trade_summary` overlays must not say “these figures…”
+   and must not near-duplicate an existing `diagnostic_only` mandatory caveat.
 
 ### 6.2 Forbidden interpretive content
 
@@ -304,6 +320,7 @@ After grounded KPI/summary facts:
 - Derived calculations (ratios not in packet, “about half”, “roughly 50”, etc.).
 - Trading advice / deploy recommendations.
 - Filling missing validation/OOS with optimism.
+- Contradicting packet limitations / `missing_oos` by asking whether WFA is present.
 - Citing Help corpus for run performance numbers.
 
 ### 6.3 Implementation shape
@@ -321,7 +338,7 @@ Optional LLM paraphrase of overlay lines is **out of DI v1**.
 
 ## 7. PR plan (narrow scopes)
 
-### DI-0 — Contract freeze (this document) ✅ this PR
+### DI-0 — Contract freeze (this document) ✅ merged
 
 | | |
 |---|---|
@@ -412,7 +429,9 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 | T13 | RQ-2 best SL/TP happy path | Unchanged grounded projection / `best_grid_result` answer when model cooperates |
 | T14 | Failed raw model draft | Never persisted; recovered / §5.3 reply may persist user+assistant |
 | T15 | Mixed ask “KPIs and best SL/TP” + bad path | Full negative veto; §5.3 remediation; no partial KPI slice |
-| T16 | Word-boundary false friends (e.g. message containing `runtime` / `stopwatch` without specialist intent) | Must **not** veto solely via substring inside those words |
+| T16 | Word-boundary false friends (`runtime` / `stopwatch` / `non-stop` / `off-grid`; multi-word `…runtime` / `runaway` / `passkey metrics`) | Must **not** veto or false-match overview via substring / hyphen-compound edges |
+| T17 | `URLError(reason=SSLError)` message | Contains `TLS error`; §5.3 class `provider_tls` |
+| T18 | Provider/TLS fault with `repair_retry_enabled=true` | Exactly one model call (no repair); overview → deterministic fallback |
 
 ---
 
@@ -439,7 +458,7 @@ Document new keys in `ARCHITECTURE.md` in the DI-1 PR that lands them.
 
 | PR | Status |
 |---|---|
-| DI-0 Contract freeze | 🟡 this PR |
-| DI-1 Transport + recovery (+ overview matcher) | ⬜ not started |
-| DI-2 Prompt path catalog | ⬜ not started |
-| DI-3 Expert overlay + eval freeze | ⬜ not started |
+| DI-0 Contract freeze | ✅ merged |
+| DI-1 Transport + recovery (+ overview matcher) | ✅ merged |
+| DI-2 Prompt path catalog | ✅ merged |
+| DI-3 Expert overlay + eval freeze | 🟡 this PR (series complete on merge) |

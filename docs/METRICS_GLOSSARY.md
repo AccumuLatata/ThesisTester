@@ -489,11 +489,25 @@ number. Common leaves:
 | `results.trade_summary.expectancy_r` | Mean net R (`r_multiple`) |
 | `results.trade_summary.win_rate` | Win rate on realized R |
 | `results.trade_summary.profit_factor` | Profit factor on realized R |
+| `results.trade_summary.max_drawdown_r` | Max drawdown in R |
+| `results.trade_summary.total_r` | Total R |
+| `results.best_grid_result.stop_loss_ticks` | Best-grid stop (when present) |
+| `results.best_grid_result.take_profit_ticks` | Best-grid target (when present) |
 | `assumptions.costs_exposure.commission_per_side` | Commission assumption |
 | `assumptions.costs_exposure.slippage_ticks` | Slippage assumption |
 | `assumptions.grid.ranking_metric` | Grid ranking metric label |
 | `results.walk_forward_summary.valid_fold_count` | Valid OOS fold count |
 | `assumptions.dataset.dataset_fingerprint` | Dataset identity fingerprint when provenance provides one (also mirrored at `assumptions.dataset_fingerprint`; nested key omitted if fingerprint absent) |
+| `assumptions.instrument` | Instrument identity (not under `results.*`) |
+
+**Discuss path catalog (DI-2):** Results Q&A injects `path_catalog.existing_paths`
+(bounded paths that exist on the turn evidence context; KPI + projections /
+validation-WFA + honesty paths reserved before fat `time_grouped_summary` /
+provenance). Overview/KPI asks also receive `path_catalog.kpi_allowlist` /
+`preferred_claim_paths` limited to the frozen `trade_summary` / optional
+`best_grid_result` leaves above. Models must not invent `results.instrument`
+or `results.validation.*` — use `assumptions.instrument` /
+`results.validation_summary` when present.
 
 Uncited numeric tokens in LLM narrative are rejected before render. Glossary
 formulas above remain the definitional source; packet paths are the citation

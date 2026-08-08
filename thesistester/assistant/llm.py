@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import json
 import re
+import ssl
 from urllib import error, request
 from dataclasses import dataclass
 from pathlib import Path
@@ -111,8 +112,19 @@ def _openai_transport_failure_message(exc: BaseException, *, api_key: str | None
         return f"{prefix} (timed out)."
     if isinstance(exc, json.JSONDecodeError):
         return f"{prefix} (invalid JSON response)."
+    if isinstance(exc, ssl.SSLError):
+        detail = _sanitize_provider_error_text(str(exc), api_key=api_key).rstrip(".")
+        if detail:
+            return f"{prefix} (TLS error: {detail})."
+        return f"{prefix} (TLS error)."
     if isinstance(exc, error.URLError):
         reason = exc.reason
+        # Common path: urlopen wraps SSL faults as URLError(reason=SSLError).
+        if isinstance(reason, ssl.SSLError):
+            detail = _sanitize_provider_error_text(str(reason), api_key=api_key).rstrip(".")
+            if detail:
+                return f"{prefix} (TLS error: {detail})."
+            return f"{prefix} (TLS error)."
         detail = (
             _sanitize_provider_error_text(str(reason), api_key=api_key).rstrip(".")
             if reason is not None
@@ -122,6 +134,20 @@ def _openai_transport_failure_message(exc: BaseException, *, api_key: str | None
             return f"{prefix} ({detail})."
         return f"{prefix} (network error)."
     return f"{prefix}."
+
+
+def _is_tls_allowlist_error(exc: BaseException) -> bool:
+    """True for DI-1 TLS faults that must wrap as retryable provider errors.
+
+    Allowlist only: ``ssl.SSLError``, ``ssl.CertificateError``, and
+    ``URLError`` whose ``reason`` is one of those. No blanket ``OSError``.
+    """
+    if isinstance(exc, ssl.SSLError):
+        return True
+    if isinstance(exc, error.URLError):
+        reason = exc.reason
+        return isinstance(reason, ssl.SSLError)
+    return False
 
 
 class UrllibOpenAITransport:
@@ -138,10 +164,12 @@ class UrllibOpenAITransport:
         try:
             with request.urlopen(outbound, timeout=30) as response:
                 decoded = json.loads(response.read().decode("utf-8"))
-        except (error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        except (error.URLError, TimeoutError, json.JSONDecodeError, ssl.SSLError) as exc:
             retryable = True
             if isinstance(exc, error.HTTPError) and exc.code in _NON_RETRYABLE_HTTP_CODES:
                 retryable = False
+            elif _is_tls_allowlist_error(exc):
+                retryable = True
             raise LLMProviderError(
                 _openai_transport_failure_message(exc, api_key=api_key),
                 retryable=retryable,
@@ -162,11 +190,14 @@ class LLMSettings:
 
 @dataclass(frozen=True)
 class ResultsQASettings:
-    """Non-secret settings for the results discussion channel (RQ-series)."""
+    """Non-secret settings for the results discussion channel (RQ/DI-series)."""
 
     enabled: bool
     max_history_messages: int
     allow_time_enrichment: bool
+    # DI-1 recovery knobs — defaults change Discuss UX; auditor stays identical.
+    repair_retry_enabled: bool = True
+    deterministic_overview_fallback: bool = True
 
 
 @dataclass(frozen=True)
@@ -341,6 +372,8 @@ def load_results_qa_settings(path: str | Path = "config/assistant.toml") -> Resu
             enabled=False,
             max_history_messages=top_history,
             allow_time_enrichment=False,
+            repair_retry_enabled=True,
+            deterministic_overview_fallback=True,
         )
     return ResultsQASettings(
         enabled=_coerce_enabled_flag(section.get("enabled", False), default=False),
@@ -349,6 +382,12 @@ def load_results_qa_settings(path: str | Path = "config/assistant.toml") -> Resu
         ),
         allow_time_enrichment=_coerce_enabled_flag(
             section.get("allow_time_enrichment", False), default=False
+        ),
+        repair_retry_enabled=_coerce_enabled_flag(
+            section.get("repair_retry_enabled", True), default=True
+        ),
+        deterministic_overview_fallback=_coerce_enabled_flag(
+            section.get("deterministic_overview_fallback", True), default=True
         ),
     )
 

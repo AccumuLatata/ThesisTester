@@ -635,7 +635,7 @@ version
 | Control / surface | Meaning | Common pitfall |
 |---|---|---|
 | Mode selector (`Discuss runs` / `Help` / `Draft thesis`) | Chooses which channel surface is open | Modes are navigation only — histories stay isolated |
-| **Discuss results** (`Discuss runs` mode) | Multi-turn Q&A on one completed run | Needs a thesis-recorded run; hash-verified evidence |
+| **Discuss results** (`Discuss runs` mode) | Multi-turn Q&A on one completed run (DI recovery + digit-free expert framing) | Needs a thesis-recorded run; hash-verified evidence |
 | `Help / how it works` (`Help` mode) | Allowlisted docs + capability registry | Not a second results explainer |
 | `Assistant chat` (`Draft thesis` mode) | Thesis drafting only — choices + clarifications | Not for run metrics or product docs |
 | `Advanced: draft, runs & compare` | Optional draft → validate → confirm → run path | Classic pages remain the primary workflow |
@@ -665,8 +665,9 @@ version
 4. Select the completed run in the run picker.
 5. Ask in the page chat box under **Discuss results**
    (placeholder: **Ask about this completed run**) — for example expectancy,
-   best SL/TP, or entry windows. Answers stay grounded in hash-verified evidence
-   for that run only.
+   best SL/TP, entry windows, KPIs / key metrics, or a run summary. Answers stay
+   grounded in hash-verified evidence for that run only (see **When to use Help
+   vs Discuss results** for DI overview vs specialist cues).
 
 Classic **Discuss this run** deep-links into the same **Discuss runs** mode with
 the run preselected for **Discuss results**. Discuss Q&A lives in that mode, not under Advanced.
@@ -733,14 +734,16 @@ record/discuss entry).
 draft chat.
 
 **Related terms.** Help vs Discuss, product help, how it works, run metrics,
-best SL, expectancy, remediation, draft chat, documentation-grounded
+best SL, expectancy, KPIs, key metrics, run summary, remediation, draft chat,
+documentation-grounded, Discuss Intelligence
 
 **Decision table.**
 
 | Question type | Use | Do not |
 |---|---|---|
-| How does a page/setting work? How-to / workflow | **Help / how it works** | Discuss (no run packet) |
-| What was my best SL/TP / expectancy / trades on this run? | **Discuss results** (bound run) | Help (remediates; no invented numbers) |
+| How does a page/setting work? How-to / workflow (incl. exposure policy) | **Help / how it works** | Discuss (no run packet) |
+| What were my KPIs / run summary / expectancy / best SL/TP on this run? | **Discuss results** (bound run) | Help (remediates; no invented numbers) |
+| What does expectancy_r / Monte Carlo mean (definition, no run digits)? | **Help** (glossary/how-to) or Discuss for packet-cited values | Mixing definition asks into invented run figures |
 | Refine thesis choices / clarifications | **Assistant chat** (draft) | Help or Discuss |
 | Undocumented / invented controls (e.g. fake modes) | Help must not invent UI absent from allowlisted docs (say not documented) | Fabricating UI that does not exist |
 
@@ -749,12 +752,29 @@ best SL, expectancy, remediation, draft chat, documentation-grounded
 1. Open Research Assistant with a thesis selected.
 2. For feature how-tos: mode **Help** → **Help / how it works** → ask in the
    page chat box (placeholder: **Ask how ThesisTester works**) — examples:
-   import data, Setup Builder, grid ranking, validation.
+   import data, Setup Builder, exposure policy, grid ranking, validation.
 3. For completed-run metrics: mode **Discuss runs** → select the run → ask in
    the page chat box under **Discuss results**
-   (placeholder: **Ask about this completed run**).
+   (placeholder: **Ask about this completed run**). Prefer clear overview cues
+   (`KPIs`, `key metrics`, `run summary`) or specialist cues (validation /
+   best SL/TP / time) — mixed “KPIs and best SL/TP” asks are not partially
+   answered with a KPI slice.
 4. If Help redirects you to Discuss, open **Discuss runs** for that run — do
    not expect Help to invent performance numbers.
+
+**Discuss Intelligence (DI) cues — user-facing.**
+
+- Overview asks (`KPIs`, `key metrics`, `run summary`, `highlights of this run`)
+  return grounded `trade_summary` scalars (optional best-grid ticks when
+  present). Digits stay fail-closed.
+- Specialist asks (validation / WFA / OOS / grid ranking / best SL/TP / time
+  buckets) stay on-topic — Discuss does **not** silently substitute a KPI
+  overview.
+- On path/digit slips, Discuss may repair once or fall back to a deterministic
+  overview slice (overview asks only) or a structured missing-evidence reply —
+  not a raw traceback.
+- Expert framing after facts is **digit-free** interpretation (metric meaning /
+  caveats). It does not invent new run numbers or trading advice.
 
 To discuss a completed run after classic research mode: use **Record and discuss
 this run** (or **Discuss this run**), then stay on Research Assistant **Discuss
@@ -762,7 +782,7 @@ runs** with that run selected.
 
 **What it is not.**
 
-- Help is not a second results explainer.
+- Help is not a second results explainer (DI recovery/overlay live in Discuss).
 - Discuss is not thesis drafting and not general product docs.
 - Draft chat ignores Help/Discuss history on purpose (trust boundary).
 

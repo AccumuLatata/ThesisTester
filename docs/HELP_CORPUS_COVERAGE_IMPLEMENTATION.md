@@ -761,7 +761,7 @@ Constraints:
 | HC-3 | ✅ Implemented — Assistant/research-mode how-tos + allowlist + discoverability |
 | HC-4 | ✅ Implemented — full §5 bank freeze + §7.1.4↔manifest parity + release gate |
 | RUX-4 | ✅ Maintenance — USER_GUIDE discuss-first nav bodies + Q-H13; AIA-0/CAI-8 deep-link copy clarifies Discuss runs (not Advanced Q&A); allowlist unchanged |
-| HC-5 | ✅ Maintenance — USER_GUIDE **Exposure policy** deep how-to + §7.1.4 allowlist + exposure retrieval boost; Q-D7 bank; Voice-agent assumptions H2 title realigned (`complete; default off`) so the section loads again |
+| HC-5 | ✅ Maintenance — USER_GUIDE **Exposure policy** deep how-to + §7.1.4 allowlist + exposure retrieval boost; Q-D7 bank; Voice-agent assumptions H2 title realigned (`complete; default off`) so the section loads again; post-DI recheck: Research Assistant / Help-vs-Discuss USER_GUIDE bodies mention DI overview cues, no topic-swap, digit-free expert framing (Help still never answers run KPIs) |
 
 ### HC-5 — Exposure policy depth + Help retrieval fix (maintenance)
 

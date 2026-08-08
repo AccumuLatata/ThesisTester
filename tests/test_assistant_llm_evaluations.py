@@ -721,6 +721,8 @@ def test_results_qa_rejects_uncited_followup_numbers():
             packet=packet,
             history=(),
             user_message="Summarize without numbers.",
+            repair_retry_enabled=False,
+            deterministic_overview_fallback=False,
         )
 
 
@@ -1064,6 +1066,8 @@ def test_rq5_clock_bucket_does_not_launder_component_digits():
             history=(),
             user_message="What is the best time bracket?",
             turn_context=context,
+            repair_retry_enabled=False,
+            deterministic_overview_fallback=False,
         )
 
 
@@ -1096,6 +1100,8 @@ def test_rq5_clock_bucket_rejects_hash_digit_laundering():
             packet=packet,
             history=(),
             user_message="What is expectancy?",
+            repair_retry_enabled=False,
+            deterministic_overview_fallback=False,
         )
 
 
@@ -1117,6 +1123,8 @@ def test_rq5_missing_time_rejects_invented_hour_and_allows_limitation():
             packet=packet,
             history=(),
             user_message="What is the best entry time?",
+            repair_retry_enabled=False,
+            deterministic_overview_fallback=False,
         )
 
     class LimitationOnly:
@@ -1161,6 +1169,8 @@ def test_rq5_missing_grid_rejects_invented_sl_and_allows_limitation():
             packet=packet,
             history=(),
             user_message="What is the best SL/TP?",
+            repair_retry_enabled=False,
+            deterministic_overview_fallback=False,
         )
 
     class LimitationOnly:
@@ -1232,6 +1242,8 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
             packet=packet,
             history=(),
             user_message="Is this robust out of sample?",
+            repair_retry_enabled=False,
+            deterministic_overview_fallback=False,
         )
 
     class SoftenInCaveatsChannel:
@@ -1256,6 +1268,8 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
             packet=packet,
             history=(),
             user_message="Is this robust out of sample?",
+            repair_retry_enabled=False,
+            deterministic_overview_fallback=False,
         )
 
     class SoftenAppendedToEchoedCaveat:
@@ -1280,6 +1294,8 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
             packet=packet,
             history=(),
             user_message="Is this robust out of sample?",
+            repair_retry_enabled=False,
+            deterministic_overview_fallback=False,
         )
 
     class SoftenWithInventedFolds:
@@ -1297,6 +1313,8 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
             packet=packet,
             history=(),
             user_message="Is this robust out of sample?",
+            repair_retry_enabled=False,
+            deterministic_overview_fallback=False,
         )
 
     class HonestNegation:
@@ -1346,6 +1364,8 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
             packet=packet,
             history=(),
             user_message="Is this robust out of sample?",
+            repair_retry_enabled=False,
+            deterministic_overview_fallback=False,
         )
 
     class InSampleRobustWithMissingWfa:
