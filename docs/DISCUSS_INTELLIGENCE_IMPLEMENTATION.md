@@ -18,13 +18,14 @@ This is the **only** binding DI-series document. Do **not** create a parallel
 changes a freeze. Every DI PR must stay inside its scope table. If a change is
 not listed under **In scope**, it belongs in a later PR or is rejected.
 
-### Relationship to RQ / Help / Voice
+### Relationship to RQ / Help / Voice / Duplex
 
 | Series | Owns | DI may |
 |---|---|---|
 | RQ | Discuss channel, packet load, claim schema, digit grounding rules, projections | Call them; **must not loosen** digit/path honesty gates; **must not amend** `assert_llm_explanation_grounded` / path-existence rules (any auditor change amends RQ, or DI with an explicit RQ relationship note in the same PR) |
 | HC / Help | Product how-to corpus | Optionally cite number-free glossary definitions already allowlisted; **must not** answer run KPIs from Help |
 | VA | Spoken transport | Text recovery in `handle_results_turn` / `propose_results_reply` flows into VA-4 PTT automatically; voice-specific UX remains **out of DI v1** |
+| DX | VA-5 duplex **content** parity with DI overview/KPI intelligence (`docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md`) | DI does not own duplex; DX **reuses** DI pure builders and must not fork cue/path/overlay freezes. DX-1 may add a thin exported `has_overview_negative_cue` helper in `results_overview.py` (same `_NEGATIVE_CUES`; no cue edits) so duplex can distinguish veto from unmatched |
 | DI (this doc) | Recoverable discussion UX + overview intent→evidence slices + expert framing **without new run digits** | Orchestrator / `results_qa` recovery + `llm.py` TLS wrap + narrow page remediation render only |
 
 **Landing note:** DI-0 freezes this contract alone (plan PR). Do not treat the
@@ -75,7 +76,7 @@ time question).
 | History | Only successfully grounded (or deterministic-fallback / structured-remediation) replies persist. Failed raw model drafts never enter history. Persist remains after a successful recovered reply (user + assistant), same as today’s success path. |
 | Config | Additive optional knobs under `[assistant.results_qa]` only. Defaults **`repair_retry_enabled = true`**, **`deterministic_overview_fallback = true`** — these **change Discuss recovery UX on day one** while keeping the honesty auditor identical. Flags-off restores pre-DI hard-fail for grounding (SSL/TLS wrap remains). |
 | Engine | No engine, golden, bundle schema, or metrics-formula changes. |
-| Voice | Voice-specific UX out of DI v1; text recovery substrate is in-scope via orchestrator. |
+| Voice | Voice-specific UX out of DI v1; text recovery substrate is in-scope via orchestrator. VA-5 duplex content parity is the separate DX series (`docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md`), not a DI reopen. |
 | Help | Do not reopen Help intent guards; DI does not answer product how-to. |
 
 ---
@@ -404,7 +405,7 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 | Blanket `OSError` → provider wrap | Misclassifies non-TLS faults as retryable LLM errors |
 | Multi-repair agent loops / tool-calling Discuss | Complexity + injection surface |
 | General semantic intent ML router | Out of narrow series |
-| Voice-specific / Help / thesis-draft product changes | Owned elsewhere |
+| Voice-specific / Help / thesis-draft product changes | Owned elsewhere (VA transport; DX for duplex content parity) |
 | Engine or analytics recomputation from chat | RQ invariant |
 | Trading recommendations | Product honesty |
 
@@ -461,4 +462,4 @@ Document new keys in `ARCHITECTURE.md` in the DI-1 PR that lands them.
 | DI-0 Contract freeze | ✅ merged |
 | DI-1 Transport + recovery (+ overview matcher) | ✅ merged |
 | DI-2 Prompt path catalog | ✅ merged |
-| DI-3 Expert overlay + eval freeze | 🟡 this PR (series complete on merge) |
+| DI-3 Expert overlay + eval freeze | ✅ merged (series complete) |

@@ -331,22 +331,23 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   RUX-1) — do not hand-write them at call sites. Keep the rendered-structure
   baseline `tests/test_assistant_page_render.py` green and rewrite (never
   delete) its assertions when layout changes.
-- Realtime voice review (VA-series) has a **single** contract for **voice**:
-  `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (rewritten post-RQ / post-HC;
-  do not add a parallel voice plan). **VA series is complete (VA-0…VA-6).**
-  VA-1 is RQ-1; VA-0…VA-5 shipped contracts/session/tools/PTT/realtime sidecar;
-  **VA-6** froze honesty/injection/grounding evals in
+- Realtime voice review (VA-series) has a **single** contract for **voice
+  transport**: `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (rewritten
+  post-RQ / post-HC; do not add a parallel voice-transport plan). **VA series
+  is complete (VA-0…VA-6).** VA-1 is RQ-1; VA-0…VA-5 shipped
+  contracts/session/tools/PTT/realtime sidecar; **VA-6** froze
+  honesty/injection/grounding evals in
   `tests/test_assistant_voice_evaluations.py` (release gate; default remains
   `assistant.voice.enabled=false` in tracked TOML). Operators enable/switch
   modes from Research Assistant sidebar Voice controls
   (`config/assistant.voice.override.toml`, gitignored). Do not reopen VA/RQ/HC
-  for voice features
-  without a new contract amendment. Spoken Help inherits the HC-complete
-  USER_GUIDE corpus + RQ §7.1.4 allowlist — do not widen §7.1 from voice work.
-  Prefer calling shipped `handle_results_turn` / `handle_help_turn` for spoken
-  Discuss/Help rather than forking channel or corpus logic; voice tool calling
-  may use only the VA-3 allowlist (`get_run_overview` / `get_metric` /
-  `list_caveats` / `compare_two_runs`) and must never expose
+  for voice features without a new contract amendment. Spoken Help inherits
+  the HC-complete USER_GUIDE corpus + RQ §7.1.4 allowlist — do not widen §7.1
+  from voice work. Prefer calling shipped `handle_results_turn` /
+  `handle_help_turn` for spoken Discuss/Help rather than forking channel or
+  corpus logic; voice tool calling may use only the VA-3 allowlist
+  (`get_run_overview` / `get_metric` / `list_caveats` / `compare_two_runs`)
+  and must never expose
   compute/`web_search`/`x_search`/`file_search`/`mcp`/`save_comparison` on
   voice sessions; results/voice may use RO `BUNDLE.import` but never
   `execute_confirmed_run` / `PIPELINE.*`; reuse C2-6/RQ grounding token rules
@@ -356,6 +357,19 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   coverage gates and VA-6 evals green
   (`tests/test_assistant_help_coverage.py`,
   `tests/test_assistant_voice_evaluations.py`).
+- Full-duplex **discuss intelligence content parity** (making VA-5 overview/KPI
+  talk reuse DI builders/paths/overlay/no-topic-swap without cloning the typed
+  recovery pipeline) has a **single** follow-on contract:
+  `docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md` (DX-series). Do not reopen DI or
+  VA wholesale for this; stay inside DX scope tables. DX must reuse DI pure
+  functions (not fork cue/path tables), must not switch providers, must not
+  pre-gate live PCM, must not default-enable voice, and must keep VA-6 / DI /
+  RQ honesty suites green. DX-1 must honor the contract freezes for veto×legacy
+  narrative strip, **veto ≠ unmatched** (export/use `has_overview_negative_cue`;
+  unmatched / no-text → neutral `run_overview`, not remediation),
+  session-transcript selector (no sidecar buffer peek), intent sample-size
+  alias → `results.trade_summary.trade_count`, DI reply→envelope projection,
+  and speakable `summary`-first preference.
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned

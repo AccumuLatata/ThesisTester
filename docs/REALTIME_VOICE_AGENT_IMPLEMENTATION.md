@@ -15,10 +15,23 @@ Discuss / Help turns that reuse `handle_results_turn` / `handle_help_turn`
   not own or reopen HC
 - `docs/ENGINEERING_PROPOSAL.md` §4 / §4.1 / §4.2
 
-This is the **only** binding VA-series document for voice. Do **not** create a
-parallel voice roadmap. Amend this file in the same PR that changes a freeze.
-Every VA PR must stay inside its scope table. If a change is not listed under
-**In scope**, it belongs in a later PR or is rejected.
+This is the **only** binding VA-series document for **voice transport**. Do
+**not** create a parallel voice-transport roadmap. Amend this file in the same
+PR that changes a freeze. Every VA PR must stay inside its scope table. If a
+change is not listed under **In scope**, it belongs in a later PR or is
+rejected.
+
+**Duplex discuss-intelligence follow-on:** VA-5 full-duplex **content** parity
+with DI overview/KPI intelligence is owned by
+`docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md` (DX-series). DX may enrich VA-3
+tool envelopes and realtime honesty instructions by **reusing** DI builders; it
+must not reopen VA provider/topology/TTL/default-on freezes or fork DI cue/path
+rules. DX-1 may retarget the PTT-fallback sample-size intent alias to
+`results.trade_summary.trade_count` and must strip legacy explainer
+`overview`/`claims` on DI negative-cue veto — still without widening the VA-3
+tool name allowlist. Do not land duplex intelligence work by casually
+reopening this VA contract — amend DX (and add a VA relationship note here
+only when a VA freeze must change).
 
 ### Why this document was rewritten (not left as a stale pre-RQ draft)
 
@@ -56,6 +69,8 @@ channels” are amended explicitly in §0 / §11.
 | Classic Discuss focus | RQ-4 `classic_focus_*` | Reuse navigation; no new focus keys |
 | Honesty eval freeze | RQ-5 `test_assistant_llm_evaluations.py` | Extend with voice-specific gates only |
 | Help coverage bank / parity | HC-4 `tests/test_assistant_help_coverage.py` | Keep green; do not bypass or duplicate |
+| Discuss intelligence (text / PTT inherit) | DI (`docs/DISCUSS_INTELLIGENCE_IMPLEMENTATION.md`) | PTT primary inherits via `handle_results_turn`; do not fork DI recovery into VA |
+| Duplex content parity (VA-5) | DX (`docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md`) | Enrich tool envelopes / realtime instructions only per DX; no provider swap; no live-PCM pre-gate |
 
 VA-1 in this series is a **completed stub**. Do not open a parallel VA-1 PR.
 
