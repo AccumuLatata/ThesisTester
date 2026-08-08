@@ -89,6 +89,9 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert match_discuss_intent("What is the best SL/TP?") == INTENT_GRID_RANKING
     assert match_discuss_intent("summary of best SL/TP") == INTENT_GRID_RANKING
     assert match_discuss_intent("grid ranking please") == INTENT_GRID_RANKING
+    # Multi-word grid positives must not be false-residualled by bare "stop"/"tp".
+    assert match_discuss_intent("stop loss and take profit") == INTENT_GRID_RANKING
+    assert match_discuss_intent("What is the stop loss?") == INTENT_GRID_RANKING
     assert match_discuss_intent("Give me the KPIs of this run") == OVERVIEW_INTENT_KPI
     assert match_discuss_intent("summarize this run") == OVERVIEW_INTENT_RUN
     assert match_discuss_intent("KPIs and best SL/TP") == INTENT_MIXED_ASK

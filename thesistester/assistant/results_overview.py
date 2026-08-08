@@ -246,9 +246,13 @@ def _residual_negative_matches(normalized: str) -> bool:
         _GRID_CONTEXT_COLLOCATES, normalized
     ):
         return True
-    # Bare short grid tokens without collocates remain overview-refusing.
-    if _any_cue_matches(_GRID_BARE_TOKEN_CUES, normalized) and not _any_cue_matches(
-        _GRID_BARE_TOKEN_COLLOCATES, normalized
+    # Bare short tokens without collocates remain overview-refusing — but not
+    # when a multi-word grid positive already owns the ask ("stop loss" contains
+    # bare "stop"; that must not false-residual the landed grid intent).
+    if (
+        _any_cue_matches(_GRID_BARE_TOKEN_CUES, normalized)
+        and not _any_cue_matches(_GRID_BARE_TOKEN_COLLOCATES, normalized)
+        and not _any_cue_matches(_GRID_RANKING_POSITIVE_CUES, normalized)
     ):
         return True
     return False
