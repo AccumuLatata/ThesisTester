@@ -1,7 +1,7 @@
 # Discuss Intelligence — Implementation Contract
 
 **Document type:** Implementation contract (DI-series) — **single source of truth**
-**Status:** 🟡 DI-0…DI-1 complete; **DI-2 implemented**; DI-3 not started
+**Status:** ✅ **DI-0…DI-3 complete** (release gate frozen)
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/llm.py` (SSL/TLS wrap),
 `results_qa.py`, `orchestrator.handle_results_turn` (recovery pipeline),
@@ -228,7 +228,7 @@ user message
                provenance so the catalog cannot starve specialist cites)
             else / repair fails:
                 if overview intent + deterministic_overview_fallback:
-                    return deterministic slice (+ expert overlay when DI-3 lands)
+                    return deterministic slice (+ digit-free expert overlay)
                     reason_code = overview_path_miss | overview_digit_miss | …
                 else:
                     return structured missing/ungrounded remediation (no traceback)
@@ -307,7 +307,12 @@ After grounded KPI/summary facts:
    honesty language / existing explainer templates — **strictly digit-free**.
 3. **Overlay-authored** next-step coaching that is digit-free:  
    “If you care about robustness, ask whether walk-forward / validation
-   diagnostics are present on this packet.”
+   diagnostics are present on this packet.”  
+   Suppress this coaching (and the matching followup) when the packet already
+   signals `missing_oos` / `failed_oos` or a digit-free limitation that WFA/OOS
+   is absent — do not contradict packet honesty or fill with optimism.
+4. Empty-claims / missing `trade_summary` overlays must not say “these figures…”
+   and must not near-duplicate an existing `diagnostic_only` mandatory caveat.
 
 ### 6.2 Forbidden interpretive content
 
@@ -315,6 +320,7 @@ After grounded KPI/summary facts:
 - Derived calculations (ratios not in packet, “about half”, “roughly 50”, etc.).
 - Trading advice / deploy recommendations.
 - Filling missing validation/OOS with optimism.
+- Contradicting packet limitations / `missing_oos` by asking whether WFA is present.
 - Citing Help corpus for run performance numbers.
 
 ### 6.3 Implementation shape
@@ -332,7 +338,7 @@ Optional LLM paraphrase of overlay lines is **out of DI v1**.
 
 ## 7. PR plan (narrow scopes)
 
-### DI-0 — Contract freeze (this document) ✅ this PR
+### DI-0 — Contract freeze (this document) ✅ merged
 
 | | |
 |---|---|
@@ -454,5 +460,5 @@ Document new keys in `ARCHITECTURE.md` in the DI-1 PR that lands them.
 |---|---|
 | DI-0 Contract freeze | ✅ merged |
 | DI-1 Transport + recovery (+ overview matcher) | ✅ merged |
-| DI-2 Prompt path catalog | 🟡 this PR |
-| DI-3 Expert overlay + eval freeze | ⬜ not started |
+| DI-2 Prompt path catalog | ✅ merged |
+| DI-3 Expert overlay + eval freeze | 🟡 this PR (series complete on merge) |

@@ -15,6 +15,7 @@ from thesistester.assistant.llm import LLMProviderError
 from thesistester.assistant.llm_explainer import (
     _path_exists,
     _path_get,
+    _ungrounded_number_tokens,
     assert_llm_explanation_grounded,
     merge_mandatory_packet_caveats,
 )
@@ -329,6 +330,216 @@ def _digit_free_lines(lines: Sequence[Any]) -> tuple[str, ...]:
     return tuple(out)
 
 
+# DI-3: strictly digit-free overlay glosses keyed by full claim paths
+# (leaf-only keys would mis-gloss results.best_grid_result.trade_count).
+_OVERLAY_GLOSS_BY_PATH: tuple[tuple[str, str], ...] = (
+    (
+        "results.trade_summary.expectancy_r",
+        "Expectancy R is mean net R on the recorded sample, not a forecast.",
+    ),
+    (
+        "results.trade_summary.win_rate",
+        "Win rate is the share of winning trades in the recorded sample, not a forward-looking edge.",
+    ),
+    (
+        "results.trade_summary.trade_count",
+        "Trade count is the recorded sample size for this run, not proof of deployable edge.",
+    ),
+    (
+        "results.trade_summary.profit_factor",
+        "Profit factor summarizes historical wins versus losses on the recorded sample only.",
+    ),
+    (
+        "results.trade_summary.max_drawdown_r",
+        "Max drawdown R describes historical equity drawdown on the recorded sample, not future risk bounds.",
+    ),
+    (
+        "results.trade_summary.total_r",
+        "Total R is the sum of realized R multiples on the recorded sample, not a prediction.",
+    ),
+    (
+        "results.best_grid_result.trade_count",
+        "Best-grid trade count is the in-sample cell sample size when present, not proof of deployable edge.",
+    ),
+    (
+        "results.best_grid_result.stop_loss_ticks",
+        "Best-grid stop ticks reflect in-sample grid selection when present, not out-of-sample confirmation.",
+    ),
+    (
+        "results.best_grid_result.take_profit_ticks",
+        "Best-grid take-profit ticks reflect in-sample grid selection when present, not out-of-sample confirmation.",
+    ),
+)
+
+_OVERLAY_ALWAYS = "These figures are research diagnostics, not trading advice."
+
+_OVERLAY_NEXT_STEP = (
+    "If you care about robustness, ask whether walk-forward or validation "
+    "diagnostics are present on this packet."
+)
+
+_OVERVIEW_FOLLOWUP_BANK: tuple[str, ...] = (
+    "Ask whether walk-forward or validation diagnostics are present on this packet.",
+    "Ask about best stop and take profit ranking if a grid was recorded.",
+)
+
+# When OOS/WFA is already known missing, do not coach the user to re-ask presence.
+_OVERVIEW_FOLLOWUP_BANK_OOS_ABSENT: tuple[str, ...] = (
+    "Ask about best stop and take profit ranking if a grid was recorded.",
+    "Ask which evidence paths remain available on this packet.",
+)
+
+_MISSING_KPI_OVERLAY = "Baseline trade summary KPIs were not available to interpret for this ask."
+
+
+def _packet_caveat_codes(packet: EvidencePacket) -> set[str]:
+    return {str(getattr(item, "code", "") or "") for item in getattr(packet, "caveats", ()) or ()}
+
+
+def _is_diagnostic_honesty_line(text: str) -> bool:
+    """True for diagnostic-only honesty lines (packet or overlay-authored)."""
+    lowered = text.lower()
+    return "diagnostic" in lowered and ("trading advice" in lowered or "proof of edge" in lowered)
+
+
+def _packet_signals_oos_absent(packet: EvidencePacket) -> bool:
+    """True when packet already states WFA/OOS evidence is missing or failed."""
+    codes = _packet_caveat_codes(packet)
+    if "missing_oos" in codes or "failed_oos" in codes:
+        return True
+    for line in getattr(packet, "limitations", ()) or ():
+        if not isinstance(line, str):
+            continue
+        lowered = line.lower()
+        # Phrase markers + boundary-anchored ``oos`` (avoid ``boost`` / ``loose``).
+        mentions_oos = (
+            any(
+                marker in lowered
+                for marker in (
+                    "walk-forward",
+                    "walk forward",
+                    "out-of-sample",
+                    "out of sample",
+                )
+            )
+            or re.search(r"(?<![a-z0-9])oos(?![a-z0-9])", lowered) is not None
+        )
+        absent = any(
+            marker in lowered
+            for marker in (
+                "not present",
+                "missing",
+                "absent",
+                "unavailable",
+                "not available",
+                "failed",
+            )
+        )
+        if mentions_oos and absent:
+            return True
+    return False
+
+
+def overview_followup_bank(packet: EvidencePacket | None = None) -> tuple[str, ...]:
+    """Digit-free follow-up bank for overview / KPI replies (DI-3).
+
+    Packet-aware: when OOS/WFA is already known absent, do not suggest asking
+    whether those diagnostics are present (§6.2 no optimistic fill).
+    """
+    if packet is not None and _packet_signals_oos_absent(packet):
+        return _OVERVIEW_FOLLOWUP_BANK_OOS_ABSENT
+    return _OVERVIEW_FOLLOWUP_BANK
+
+
+def build_expert_overlay(
+    packet: EvidencePacket,
+    claims: Sequence[EvidenceClaim],
+) -> tuple[str, ...]:
+    """Return overlay-authored caveat lines that are strictly digit-free.
+
+    Mandatory packet caveats stay on ``merge_mandatory_packet_caveats`` and are
+    **not** returned here. Every line must pass
+    ``_ungrounded_number_tokens(line, allowed=set()) == []``.
+    """
+    lines: list[str] = []
+    cited_paths = {
+        claim.path.strip()
+        for claim in claims
+        if isinstance(getattr(claim, "path", None), str) and claim.path.strip()
+    }
+    for path, gloss in _OVERLAY_GLOSS_BY_PATH:
+        if path in cited_paths:
+            lines.append(gloss)
+        if len(lines) >= 3:
+            break
+    if not cited_paths:
+        lines.append(_MISSING_KPI_OVERLAY)
+    else:
+        # Only when figures were cited — never "these figures" on empty KPI path.
+        # Skip when packet already carries diagnostic_only (near-duplicate).
+        if "diagnostic_only" not in _packet_caveat_codes(packet):
+            if _OVERLAY_ALWAYS not in lines:
+                lines.append(_OVERLAY_ALWAYS)
+    # Do not coach "ask whether WFA is present" when the packet already says no.
+    if not _packet_signals_oos_absent(packet) and _OVERLAY_NEXT_STEP not in lines:
+        lines.append(_OVERLAY_NEXT_STEP)
+
+    audited: list[str] = []
+    for line in lines:
+        text = line.strip()
+        if not text:
+            continue
+        if _ungrounded_number_tokens(text, allowed=set()):
+            raise ValueError(f"Expert overlay line is not digit-free: {text!r}")
+        audited.append(text)
+    return tuple(audited)
+
+
+def apply_expert_overlay(
+    packet: EvidencePacket,
+    *,
+    summary: str,
+    caveats: Sequence[str],
+    claims: Sequence[EvidenceClaim],
+    recovery_reason: str | None = None,
+):
+    """Append DI-3 overlay lines and overview followups; re-run the auditor."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    overlay = build_expert_overlay(packet, claims)
+    # Keep mandatory/LLM caveats first; append only new overlay-authored lines.
+    merged_caveats = list(caveats)
+    seen = {item.strip() for item in merged_caveats if isinstance(item, str)}
+    existing_diagnostic = any(
+        _is_diagnostic_honesty_line(item) for item in merged_caveats if isinstance(item, str)
+    )
+    for line in overlay:
+        if line in seen:
+            continue
+        # Near-dedupe diagnostic honesty vs mandatory diagnostic_only message.
+        if existing_diagnostic and _is_diagnostic_honesty_line(line):
+            continue
+        merged_caveats.append(line)
+        seen.add(line)
+    followups = overview_followup_bank(packet)
+    caveat_tuple = tuple(merged_caveats)
+    claim_tuple = tuple(claims)
+    assert_llm_explanation_grounded(
+        packet,
+        summary=summary,
+        caveats=caveat_tuple,
+        claims=claim_tuple,
+        followups=followups,
+    )
+    return ResultsQAReply(
+        summary=summary,
+        caveats=caveat_tuple,
+        claims=claim_tuple,
+        followups=followups,
+        recovery_reason=recovery_reason,
+    )
+
+
 def _format_scalar_for_claim(path: str, value: Any) -> str | None:
     """Return claim text for an allowlisted scalar, or None when not narratable."""
     if value is None or isinstance(value, bool):
@@ -363,9 +574,6 @@ def build_deterministic_kpi_reply(
     recovery_reason: str | None = None,
 ):
     """Build an auditor-safe KPI/overview reply from the frozen path allowlist."""
-    # Local import avoids a circular import at module load (results_qa → overview).
-    from thesistester.assistant.results_qa import ResultsQAReply
-
     claims: list[EvidenceClaim] = []
     summary_parts: list[str] = []
     for path in KPI_CLAIM_PATHS:
@@ -386,10 +594,6 @@ def build_deterministic_kpi_reply(
             if limitation_honesty
             else "Baseline trade summary KPIs are not present in this evidence packet."
         )
-        followups = (
-            "Ask whether validation diagnostics exist on this run.",
-            "Ask about best grid result if a grid was recorded.",
-        )
         caveat_seed = (
             "No trade_summary KPI scalars were available for a deterministic overview.",
             *limitation_honesty[1:2],
@@ -397,10 +601,6 @@ def build_deterministic_kpi_reply(
     else:
         label = "Key metrics" if intent == OVERVIEW_INTENT_KPI else "Run summary"
         summary = f"{label}: " + "; ".join(summary_parts) + "."
-        followups = (
-            "Ask about validation or walk-forward diagnostics if present.",
-            "Ask about best stop and take profit ranking next.",
-        )
         # §4.1 run_overview: one-line honesty from digit-free limitations when present.
         caveat_seed = (
             "These figures describe the recorded historical sample, not a forecast.",
@@ -408,19 +608,13 @@ def build_deterministic_kpi_reply(
         )
 
     grounded = tuple(claims)
+    # Wire order (DI-3): claims/summary → mandatory caveats → overlay → auditor.
     caveats = merge_mandatory_packet_caveats(packet, caveat_seed)
-    assert_llm_explanation_grounded(
+    return apply_expert_overlay(
         packet,
         summary=summary,
         caveats=caveats,
         claims=grounded,
-        followups=followups,
-    )
-    return ResultsQAReply(
-        summary=summary,
-        caveats=caveats,
-        claims=grounded,
-        followups=followups,
         recovery_reason=recovery_reason,
     )
 

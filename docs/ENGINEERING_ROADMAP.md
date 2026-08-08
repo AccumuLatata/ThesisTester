@@ -8,7 +8,7 @@ Assistant-related contracts:
 | Surface | Canonical doc | Status |
 |---|---|---|
 | Results discussion + product help | `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (RQ) | ✅ **Complete** — RQ-0…RQ-5 (Discuss + rankings + Help + classic focus + honesty/injection eval freeze) |
-| Discuss intelligence (recovery + expert framing) | `docs/DISCUSS_INTELLIGENCE_IMPLEMENTATION.md` (DI) | 🟡 **DI-2 in progress** — DI-0…DI-1 merged; DI-3 open (fail-closed numbers, fail-open discussion with negative-cue no topic-swap; no engine/golden touch) |
+| Discuss intelligence (recovery + expert framing) | `docs/DISCUSS_INTELLIGENCE_IMPLEMENTATION.md` (DI) | ✅ **Complete** — DI-0…DI-3 (fail-closed numbers, fail-open discussion with negative-cue no topic-swap + digit-free expert overlay; no engine/golden touch) |
 | Help corpus coverage (feature/how-to docs) | `docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md` (HC) | ✅ **Complete** — HC-0…HC-4 (USER_GUIDE how-tos + §7.1.4 allowlist + §1.1 retrieval + §5 bank freeze) |
 | Voice review | `docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md` (VA) | ✅ **Complete** — VA-0…VA-6 (contracts → session/STT/TTS → tools → PTT → realtime sidecar → evals/release gate); default `assistant.voice.enabled=false`; do not reopen HC/RQ for voice |
 | Classic ↔ Assistant bridge | `docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md` (CAI) | ✅ Implemented (CAI-0…CAI-10) |

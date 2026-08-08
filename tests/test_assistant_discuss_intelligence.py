@@ -8,14 +8,18 @@ from urllib import error as urllib_error
 
 import pytest
 
-from thesistester.assistant.explainer import EvidencePacket
+from thesistester.assistant.explainer import EvidenceCaveat, EvidenceClaim, EvidencePacket
 from thesistester.assistant.llm import (
     LLMProviderError,
     UrllibOpenAITransport,
     _is_tls_allowlist_error,
     load_results_qa_settings,
 )
-from thesistester.assistant.llm_explainer import LLMEvidenceError, _path_exists
+from thesistester.assistant.llm_explainer import (
+    LLMEvidenceError,
+    _path_exists,
+    _ungrounded_number_tokens,
+)
 from thesistester.assistant.results_overview import (
     KPI_CLAIM_PATHS,
     OVERVIEW_INTENT_KPI,
@@ -24,10 +28,13 @@ from thesistester.assistant.results_overview import (
     REASON_PATH_MISS,
     REASON_PROVIDER_EXHAUSTED,
     REASON_REPAIR_FAILED,
+    apply_expert_overlay,
+    build_expert_overlay,
     build_prompt_path_catalog,
     collect_existing_paths,
     failure_class_from_exception,
     match_overview_intent,
+    overview_followup_bank,
     present_kpi_allowlist,
 )
 from thesistester.assistant.results_qa import propose_results_reply
@@ -528,3 +535,215 @@ def test_di2_repair_reuses_path_catalog_without_duplicate_path_list():
     assert "repair" in repair_payload
     assert "existing_paths" not in repair_payload["repair"]
     assert "path_catalog.existing_paths" in repair_payload["repair"]["instruction"]
+
+
+def test_di3_expert_overlay_lines_are_digit_free():
+    packet = _packet()
+    claims = (
+        EvidenceClaim(
+            text="Expectancy R is 0.25.",
+            path="results.trade_summary.expectancy_r",
+            value=0.25,
+        ),
+        EvidenceClaim(
+            text="Win rate is 52%.",
+            path="results.trade_summary.win_rate",
+            value=0.52,
+        ),
+    )
+    overlay = build_expert_overlay(packet, claims)
+    assert overlay
+    for line in overlay:
+        assert _ungrounded_number_tokens(line, allowed=set()) == []
+    assert any("Expectancy R is mean net R" in line for line in overlay)
+    assert any("research diagnostics" in line for line in overlay)
+    for followup in overview_followup_bank(packet):
+        assert _ungrounded_number_tokens(followup, allowed=set()) == []
+
+
+def test_di3_kpi_ask_includes_overlay_on_successful_llm_reply():
+    client = _CaptureClient()
+    packet = _packet()
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="Give me the KPIs of this run",
+    )
+    assert any("research diagnostics" in caveat for caveat in reply.caveats)
+    assert any(
+        "Expectancy R is mean net R" in caveat or "Win rate is the share" in caveat
+        for caveat in reply.caveats
+    )
+    assert reply.followups == overview_followup_bank(packet)
+
+
+def test_di3_deterministic_fallback_includes_overlay():
+    client = _FailClient(_bad_path_payload("results.instrument"))
+    packet = _packet()
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="summary of this run",
+        repair_retry_enabled=False,
+    )
+    assert any(c.path.startswith("results.trade_summary.") for c in reply.claims)
+    assert any("research diagnostics" in caveat for caveat in reply.caveats)
+    assert reply.followups == overview_followup_bank(packet)
+
+
+def test_di3_missing_trade_summary_overlay_honesty():
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={},
+        warnings=(),
+        limitations=("Baseline trade_summary is missing from evidence.",),
+    )
+    client = _FailClient(_bad_path_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="Give me the KPIs of this run",
+        repair_retry_enabled=False,
+    )
+    assert reply.claims == ()
+    assert any("not available to interpret" in caveat for caveat in reply.caveats)
+    # Empty KPI path must not presuppose "these figures".
+    assert not any("these figures" in caveat.lower() for caveat in reply.caveats)
+    for caveat in reply.caveats:
+        # Overlay-authored lines must be digit-free; merged packet caveats may
+        # still carry honesty digits via the scoped echo allowlist.
+        if "not available to interpret" in caveat:
+            assert _ungrounded_number_tokens(caveat, allowed=set()) == []
+
+
+def test_di3_overlay_skips_diagnostic_near_duplicate():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_di3"},
+        assumptions={"instrument": "NQ"},
+        results={
+            "trade_summary": {
+                "trade_count": 42,
+                "expectancy_r": 0.25,
+                "win_rate": 0.52,
+            }
+        },
+        warnings=(),
+        caveats=(
+            EvidenceCaveat(
+                code="diagnostic_only",
+                message="Research results are diagnostics, not proof of edge or trading advice.",
+            ),
+        ),
+        limitations=(),
+    )
+    claims = (
+        EvidenceClaim(
+            text="Sample has 42 trades.",
+            path="results.trade_summary.trade_count",
+            value=42,
+        ),
+    )
+    overlay = build_expert_overlay(packet, claims)
+    assert not any("these figures are research diagnostics" in line.lower() for line in overlay)
+    reply = apply_expert_overlay(
+        packet,
+        summary="Sample has 42 trades.",
+        caveats=("Research results are diagnostics, not proof of edge or trading advice.",),
+        claims=claims,
+    )
+    diagnostic_lines = [
+        line
+        for line in reply.caveats
+        if "diagnostic" in line.lower() and "trading advice" in line.lower()
+    ]
+    assert len(diagnostic_lines) == 1
+
+
+def test_di3_grid_trade_count_uses_grid_specific_gloss():
+    packet = _packet()
+    claims = (
+        EvidenceClaim(
+            text="trade_count is 40.",
+            path="results.best_grid_result.trade_count",
+            value=40,
+        ),
+    )
+    overlay = build_expert_overlay(packet, claims)
+    assert any("in-sample cell sample size" in line for line in overlay)
+    assert not any("sample size for this run" in line for line in overlay)
+
+
+def test_di3_oos_marker_ignores_boost_substring():
+    from thesistester.assistant.results_overview import _packet_signals_oos_absent
+
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={"trade_summary": {"trade_count": 42}},
+        warnings=(),
+        limitations=("Loose boost settings are missing from this notebook export.",),
+    )
+    assert _packet_signals_oos_absent(packet) is False
+    claims = (
+        EvidenceClaim(
+            text="Sample has 42 trades.",
+            path="results.trade_summary.trade_count",
+            value=42,
+        ),
+    )
+    overlay = build_expert_overlay(packet, claims)
+    assert any("ask whether walk-forward" in line.lower() for line in overlay)
+
+
+def test_di3_oos_absent_suppresses_presence_coaching():
+    packet = EvidencePacket(
+        provenance={},
+        assumptions={},
+        results={
+            "trade_summary": {
+                "trade_count": 42,
+                "expectancy_r": 0.25,
+                "win_rate": 0.52,
+            }
+        },
+        warnings=(),
+        caveats=(
+            EvidenceCaveat(
+                code="missing_oos",
+                message="Out-of-sample / walk-forward evidence is missing.",
+            ),
+        ),
+        limitations=("Walk-forward summary is not present in this evidence packet.",),
+    )
+    claims = (
+        EvidenceClaim(
+            text="Expectancy R is 0.25.",
+            path="results.trade_summary.expectancy_r",
+            value=0.25,
+        ),
+    )
+    overlay = build_expert_overlay(packet, claims)
+    assert not any("ask whether walk-forward" in line.lower() for line in overlay)
+    followups = overview_followup_bank(packet)
+    assert not any(
+        "walk-forward or validation diagnostics are present" in item for item in followups
+    )
+    for followup in followups:
+        assert _ungrounded_number_tokens(followup, allowed=set()) == []
+
+
+def test_di3_non_overview_success_skips_overlay_bank():
+    client = _CaptureClient()
+    reply = propose_results_reply(
+        client,
+        packet=_packet(),
+        history=(),
+        user_message="How many trades?",
+    )
+    # Non-overview keeps model followups; does not force overview bank/overlay.
+    assert reply.followups == ("Ask about expectancy next.",)
+    assert not any("research diagnostics" in caveat for caveat in reply.caveats)
