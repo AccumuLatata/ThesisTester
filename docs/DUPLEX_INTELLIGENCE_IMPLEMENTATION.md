@@ -178,14 +178,16 @@ only to shape **tool outputs** (and DX-2 instruction hints).
 **Decision order when building `get_run_overview` (frozen):**
 
 ```text
-latest_user_text = last role=="user" transcript on session (or missing)
+latest_user_text = last role=="user" transcript on session when it is still
+                   the newest turn (or missing / stale → treat as no-text)
 if text available and has_overview_negative_cue(text):
     → full veto remediation (+ legacy strip); overview_intent = null
 elif text available and match_overview_intent(text) in {kpi_summary, run_overview}:
     → DI overview envelope (policy A) for that intent
 else:
     → neutral DI run_overview envelope
-      (covers: no text / race, unmatched vague asks, PTT unrecognized fallback)
+      (covers: no text / race / stale prior-turn text, unmatched vague asks,
+       PTT unrecognized fallback)
 ```
 
 | Case | Behavior |
@@ -193,13 +195,16 @@ else:
 | Latest user text matches `kpi_summary` / `run_overview` without negative veto | DI-shaped overview envelope (§4.2 policy A): `kpi_claims` + matching legacy `claims`, DI `summary`, `expert_overlay`, packet caveats; `overview_intent` = matched id |
 | `has_overview_negative_cue(text)` (DI §4.1 veto set) or mixed overview+specialist ask | Full veto: **no** KPI must-cite slice; **no** explainer multi-template `overview`/`claims`; digit-free `remediation` + packet `caveats`/`limitations`; `overview_intent = null` |
 | Unmatched text (no negative cue) — including vague / PTT unrecognized fallback | **Neutral** DI `run_overview` envelope (grounded KPI scalars + digit-free overlay). **Not** remediation. Overview tool does not redirect to `get_metric`; DX-2 instructions tell the model to prefer `get_metric` for single-metric asks. Acceptable DX v1 limitation: a mistooled single-metric ask that still calls `get_run_overview` may receive the full neutral KPI slice. |
-| No user transcript text on session yet (race) | Same neutral DI `run_overview` envelope. Topic-swap defense for this race is DX-2 instructions + evals, not tool veto. |
+| No user transcript text on session yet (race), **or** last user text is stale (an assistant turn already followed it) | Same neutral DI `run_overview` envelope. Stale prior-turn text must not false-veto a later overview call. Topic-swap defense for the pure race is DX-2 instructions + evals, not tool veto. |
 
 **DX-1 freeze for request text:**
 
 1. Selector: last `role == "user"` turn on `VoiceSessionRecord.transcript`
-   (via `VoiceToolSession` → session service/repository). Empty/whitespace
-   text does not count.
+   (via `VoiceToolSession` → session service/repository) **only when that
+   turn is still the newest transcript turn**. Empty/whitespace text does
+   not count. If any later turn exists (typically assistant), treat as
+   no-text → neutral (avoids stale specialist/veto cues false-vetoing a
+   subsequent `get_run_overview`).
 2. No new tool argument and no sidecar event-buffer peek in DX-1.
 3. Export `has_overview_negative_cue(message: str) -> bool` from
    `thesistester/assistant/results_overview.py` in DX-1 — thin wrapper over
@@ -207,7 +212,8 @@ else:
    the cue tuple into `voice/`.
 4. Apply the decision order above. Never treat bare
    `match_overview_intent(...) is None` as veto without the negative-cue check.
-5. Neutral / unmatched / no-text paths use `overview_intent = "run_overview"`.
+5. Neutral / unmatched / no-text / stale-text paths use
+   `overview_intent = "run_overview"`.
 
 ### 4.2 Frozen `get_run_overview` envelope (additive)
 
@@ -242,7 +248,8 @@ DX-1 calls DI builders, then projects — no duplicated claim loops:
 | allowlisted `claims` | `kpi_claims` **and** legacy `claims` (identical content) |
 | `build_expert_overlay(packet, claims)` return value | `expert_overlay` only |
 | packet `caveats` / `limitations` | legacy `caveats` / `limitations` |
-| `build_structured_remediation_reply(...).summary` (veto / missing KPI) | `remediation` (+ legacy `overview` may mirror it); `summary`/`kpi_claims`/`expert_overlay` omitted or empty; legacy `claims = []` |
+| `build_structured_remediation_reply(...).summary` (**negative-cue veto**) | `remediation` (+ legacy `overview` mirrors it); `summary` / `kpi_claims` / `expert_overlay` omitted or empty; legacy `claims = []`; `overview_intent = null` |
+| Missing KPI claims on overview-match / neutral path (`claims` empty after DI builder) | Keep DI envelope shape: `summary` / `kpi_claims=[]` / `expert_overlay` / legacy `claims=[]` / `overview_intent` = matched or `"run_overview"`; add additive digit-free `remediation` from `build_structured_remediation_reply` (do **not** collapse to full veto strip) |
 | matched intent string / neutral `"run_overview"` / veto `null` | `overview_intent` |
 | `followups` on `ResultsQAReply` | Out of DX v1 tool envelope (do not require a new field) |
 

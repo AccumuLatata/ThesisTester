@@ -332,8 +332,14 @@ def format_speakable_tool_result(
             if isinstance(overlay, (list, tuple)):
                 for item in overlay:
                     text = str(item or "").strip()
-                    if text:
-                        overlay_lines.append(_strip_claim_path_markup(text))
+                    if not text:
+                        continue
+                    cleaned = _strip_claim_path_markup(text)
+                    # DX §4.2 speakable freeze: append only digit-free overlay
+                    # lines (empty allowlist — overlay must not introduce digits).
+                    if _ungrounded_number_tokens(cleaned, allowed=set()):
+                        continue
+                    overlay_lines.append(cleaned)
             if overlay_lines:
                 body = f"{body} {' '.join(overlay_lines)}"
         else:

@@ -143,6 +143,22 @@ def _append_user(service: VoiceSessionService, thesis_id: str, session_id: str, 
     )
 
 
+def _append_assistant(
+    service: VoiceSessionService, thesis_id: str, session_id: str, text: str
+) -> None:
+    service.append_transcript_turn(
+        thesis_id,
+        session_id,
+        VoiceTranscriptTurn(
+            role="assistant",
+            text=text,
+            channel="results_qa",
+            path="tts",
+            created_at="2026-08-08T00:00:01+00:00",
+        ),
+    )
+
+
 def test_has_overview_negative_cue_export_word_boundary():
     assert has_overview_negative_cue("summarize the walk-forward results") is True
     assert has_overview_negative_cue("validation diagnostics please") is True
@@ -295,3 +311,49 @@ def test_match_none_alone_does_not_mean_veto(tmp_path: Path):
     assert result["overview_intent"] == OVERVIEW_INTENT_RUN
     assert result["kpi_claims"]
     assert not result.get("remediation")
+
+
+def test_speakable_skips_overlay_lines_with_digits():
+    """DX §4.2: speakable may append only digit-free expert_overlay lines."""
+    payload = {
+        "summary": "Win rate is grounded from claims.",
+        "expert_overlay": [
+            "Historical sample is diagnostic only; not proof of edge.",
+            "This line sneaks in 42 trades and must be dropped.",
+        ],
+        "overview": "legacy overview must not win when summary is present",
+    }
+    speakable = format_speakable_tool_result("get_run_overview", payload)
+    assert "Win rate is grounded from claims." in speakable
+    assert "Historical sample is diagnostic only" in speakable
+    assert "42" not in speakable
+    assert "sneaks" not in speakable
+    assert _ungrounded_number_tokens(speakable, allowed=set()) == []
+
+
+def test_stale_negative_cue_after_assistant_turn_is_neutral(tmp_path: Path):
+    """Prior specialist ask must not false-veto after the assistant already replied."""
+    service, handle, thesis, _run, _digest = _results_session(tmp_path, packet=_kpi_packet())
+    _append_user(
+        service,
+        thesis.thesis_id,
+        handle.session_id,
+        "summarize the walk-forward / validation results",
+    )
+    # First call during the user turn still vetoes.
+    veto = execute_voice_tool("get_run_overview", {}, session=handle)["result"]
+    assert veto["overview_intent"] is None
+    assert veto.get("remediation")
+    # After assistant reply, same stale user text must not keep vetoing.
+    _append_assistant(
+        service,
+        thesis.thesis_id,
+        handle.session_id,
+        "I cannot answer that specialist ask from overview alone.",
+    )
+    out = execute_voice_tool("get_run_overview", {}, session=handle)
+    result = out["result"]
+    assert result["overview_intent"] == OVERVIEW_INTENT_RUN
+    assert result["kpi_claims"]
+    assert not result.get("remediation")
+    assert result["claims"] == result["kpi_claims"]

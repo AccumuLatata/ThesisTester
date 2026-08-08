@@ -705,11 +705,12 @@ other than the last bar in the dataset.
   cannot be pre-gated once uttered; assistant transcript text is still
   digit-audited against the bound packet and tool returns before durable
   persistence/flush (uncited numbers are replaced with remediation).
-  Duplex overview/KPI **content** parity with Discuss intelligence is planned
-  under DX (`docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md`) and must not reopen
-  VA transport freezes or DI auditor rules. Until DX lands, voice intent
-  still aliases some sample-size phrases to `results.trade_count` (a
-  distinct leaf from the DI baseline `results.trade_summary.trade_count`).
+  Duplex overview/KPI **content** parity with Discuss intelligence is under
+  DX (`docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md`) and must not reopen VA
+  transport freezes or DI auditor rules. **DX-1 landed:** sample-size voice
+  intent aliases target the DI baseline leaf
+  `results.trade_summary.trade_count` (not the distinct `results.trade_count`
+  leaf). DX-2 instructions + DX-3 eval freeze remain.
 
 ## OTF filter (One Timeframing)
 

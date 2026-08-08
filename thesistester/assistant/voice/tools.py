@@ -212,15 +212,30 @@ def _require_results_packet(session: VoiceToolSession) -> tuple[Any, EvidencePac
 
 
 def _latest_user_transcript_text(session: VoiceToolSession) -> str | None:
-    """Last non-empty user transcript turn on the session record (DX-1 selector)."""
+    """Current-turn user text for DX-1 overview intent selection.
+
+    Uses the last non-empty ``role=="user"`` transcript turn **only when it is
+    still the newest turn on the session** (no assistant turn after it). If an
+    assistant turn already followed that user text, treat as no-text → neutral:
+    otherwise a prior specialist/veto ask would false-veto a later
+    ``get_run_overview`` call that was not tied to a fresh user utterance.
+    """
     record = session.service.repository.get_voice_session(session.thesis_id, session.session_id)
-    for turn in reversed(record.transcript):
+    latest_user_text: str | None = None
+    latest_user_index: int | None = None
+    for index, turn in enumerate(record.transcript):
         if getattr(turn, "role", None) != "user":
             continue
         text = str(getattr(turn, "text", "") or "").strip()
         if text:
-            return text
-    return None
+            latest_user_text = text
+            latest_user_index = index
+    if latest_user_text is None or latest_user_index is None:
+        return None
+    # Stale when any later turn exists (assistant reply, tool-side persist, etc.).
+    if latest_user_index < len(record.transcript) - 1:
+        return None
+    return latest_user_text
 
 
 def _claims_as_json(claims: Any) -> list[dict[str, Any]]:
