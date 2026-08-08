@@ -565,7 +565,7 @@ def test_handle_results_turn_enrichment_flag_off_skips_time_analyze(tmp_path, mo
         lambda: type(
             "S",
             (),
-            {"enabled": True, "max_history_messages": 12, "allow_time_enrichment": False},
+            {"enabled": True, "max_history_messages": 12, "allow_time_enrichment": False, "repair_retry_enabled": True, "deterministic_overview_fallback": True},
         )(),
     )
 
@@ -646,7 +646,7 @@ def test_handle_results_turn_enrichment_on_calls_time_analyze_once(tmp_path, mon
         lambda: type(
             "S",
             (),
-            {"enabled": True, "max_history_messages": 12, "allow_time_enrichment": True},
+            {"enabled": True, "max_history_messages": 12, "allow_time_enrichment": True, "repair_retry_enabled": True, "deterministic_overview_fallback": True},
         )(),
     )
     captured = {}
@@ -720,7 +720,7 @@ def test_handle_results_turn_surfaces_grid_table_load_failure(tmp_path, monkeypa
         lambda: type(
             "S",
             (),
-            {"enabled": True, "max_history_messages": 12, "allow_time_enrichment": False},
+            {"enabled": True, "max_history_messages": 12, "allow_time_enrichment": False, "repair_retry_enabled": True, "deterministic_overview_fallback": True},
         )(),
     )
 

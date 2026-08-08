@@ -478,6 +478,17 @@ tokens).
 Optional RO `TIME.analyze` enrichment runs only when
 `assistant.results_qa.allow_time_enrichment=true` (default `false`) and
 `time_grouped_summary` is missing, after hash verification.
+**DI-1 landed:** Discuss recovery knobs
+`assistant.results_qa.repair_retry_enabled` (default `true`) and
+`assistant.results_qa.deterministic_overview_fallback` (default `true`)
+change recovery UX while leaving the RQ digit/path auditor unchanged.
+`UrllibOpenAITransport` wraps only the TLS allowlist (`ssl.SSLError` /
+`ssl.CertificateError` / `URLError` with those reasons) into retryable
+`LLMProviderError`. Overview cue matching + negative-cue veto and
+deterministic KPI fallback live in
+`thesistester/assistant/results_overview.py` and are applied inside
+`propose_results_reply` / `handle_results_turn` (not page-only). Flags both
+`false` restore pre-DI grounding hard-fail (TLS wrap remains).
 **RQ-3 landed:** `thesistester/assistant/product_help.py` +
 `handle_help_turn`; Help / how it works mode on Research Assistant
 (page-level mode-scoped `st.chat_input`; RUX-3);
