@@ -501,11 +501,13 @@ number. Common leaves:
 | `assumptions.instrument` | Instrument identity (not under `results.*`) |
 
 **Discuss path catalog (DI-2):** Results Q&A injects `path_catalog.existing_paths`
-(paths that exist on the turn evidence context). Overview/KPI asks also receive
-`path_catalog.kpi_allowlist` / `preferred_claim_paths` limited to the frozen
-`trade_summary` / optional `best_grid_result` leaves above. Models must not
-invent `results.instrument` or `results.validation.*` — use
-`assumptions.instrument` / `results.validation_summary` when present.
+(bounded paths that exist on the turn evidence context; KPI + projections /
+validation-WFA + honesty paths reserved before fat `time_grouped_summary` /
+provenance). Overview/KPI asks also receive `path_catalog.kpi_allowlist` /
+`preferred_claim_paths` limited to the frozen `trade_summary` / optional
+`best_grid_result` leaves above. Models must not invent `results.instrument`
+or `results.validation.*` — use `assumptions.instrument` /
+`results.validation_summary` when present.
 
 Uncited numeric tokens in LLM narrative are rejected before render. Glossary
 formulas above remain the definitional source; packet paths are the citation
