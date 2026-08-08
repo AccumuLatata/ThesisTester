@@ -1,7 +1,7 @@
 # Duplex Intelligence — Implementation Contract
 
 **Document type:** Implementation contract (DX-series) — **single source of truth**
-**Status:** 🟡 **DX-0 plan** (this PR freezes the contract only)
+**Status:** 🟡 **DX-0 ✅ / DX-1 this PR** (DX-2…DX-3 pending)
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/results_overview.py`
 (`has_overview_negative_cue` export only — no cue-table edits),
@@ -417,8 +417,8 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 
 | PR | Status |
 |---|---|
-| DX-0 Contract freeze | 🟡 this PR |
-| DX-1 Tool substrate (DI envelopes) | ⬜ pending |
+| DX-0 Contract freeze | ✅ merged |
+| DX-1 Tool substrate (DI envelopes) | 🟡 this PR |
 | DX-2 Realtime instruction parity | ⬜ pending |
 | DX-3 Eval freeze + release gate | ⬜ pending |
 

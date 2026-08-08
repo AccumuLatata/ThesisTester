@@ -11,12 +11,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from thesistester.assistant.explainer import (
-    EvidencePacket,
-    compare_evidence,
-    explain_evidence_report,
-)
+from thesistester.assistant.explainer import EvidencePacket, compare_evidence
 from thesistester.assistant.repository import AssistantRepositoryError
+from thesistester.assistant.results_overview import (
+    OVERVIEW_INTENT_KPI,
+    OVERVIEW_INTENT_RUN,
+    build_deterministic_kpi_reply,
+    build_expert_overlay,
+    build_structured_remediation_reply,
+    has_overview_negative_cue,
+    match_overview_intent,
+)
 from thesistester.assistant.tools import AssistantToolError
 from thesistester.assistant.voice.contracts import VoiceToolInvocation
 from thesistester.assistant.voice.session import VoiceSessionError, VoiceSessionService
@@ -69,8 +74,10 @@ VOICE_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
         "type": "function",
         "name": "get_run_overview",
         "description": (
-            "Return a deterministic overview and caveats from the bound "
-            "hash-verified evidence packet for this results voice session."
+            "Return a DI-shaped grounded overview from the bound hash-verified "
+            "evidence packet (summary, kpi_claims on results.trade_summary.*, "
+            "digit-free expert_overlay, packet caveats). Prefer these fields; "
+            "do not invent results.trade_count or results.instrument."
         ),
         "parameters": {
             "type": "object",
@@ -83,14 +90,18 @@ VOICE_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
         "name": "get_metric",
         "description": (
             "Return one typed metric value from the bound evidence packet by "
-            "dot-path under results, assumptions, or provenance."
+            "dot-path under results, assumptions, or provenance. Prefer "
+            "results.trade_summary.* paths (e.g. win_rate, trade_count)."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Dot-path such as results.trade_summary.win_rate",
+                    "description": (
+                        "Dot-path such as results.trade_summary.win_rate or "
+                        "results.trade_summary.trade_count"
+                    ),
                 }
             },
             "required": ["path"],
@@ -200,20 +211,118 @@ def _require_results_packet(session: VoiceToolSession) -> tuple[Any, EvidencePac
     return record, packet
 
 
+def _latest_user_transcript_text(session: VoiceToolSession) -> str | None:
+    """Last non-empty user transcript turn on the session record (DX-1 selector)."""
+    record = session.service.repository.get_voice_session(session.thesis_id, session.session_id)
+    for turn in reversed(record.transcript):
+        if getattr(turn, "role", None) != "user":
+            continue
+        text = str(getattr(turn, "text", "") or "").strip()
+        if text:
+            return text
+    return None
+
+
+def _claims_as_json(claims: Any) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for claim in claims or ():
+        if hasattr(claim, "to_dict"):
+            payload = claim.to_dict()
+            if isinstance(payload, Mapping):
+                out.append(dict(payload))
+            continue
+        if isinstance(claim, Mapping):
+            out.append(
+                {
+                    "text": claim.get("text"),
+                    "path": claim.get("path"),
+                    "value": _safe_jsonable(claim.get("value")),
+                }
+            )
+    return out
+
+
+def _packet_legacy_framing(packet: EvidencePacket) -> dict[str, Any]:
+    return {
+        "caveats": [caveat.to_dict() for caveat in packet.caveats],
+        "limitations": list(packet.limitations),
+        "next_experiments": list(packet.next_experiments),
+    }
+
+
+def _project_veto_overview_envelope(
+    *,
+    record: Any,
+    packet: EvidencePacket,
+) -> dict[str, Any]:
+    """Negative-cue veto: remediation + legacy strip (no explainer narrative)."""
+    reply = build_structured_remediation_reply(packet, failure_class="ungrounded")
+    remediation = str(reply.summary or "").strip()
+    return {
+        **_packet_legacy_framing(packet),
+        "overview": remediation,
+        "claims": [],
+        "overview_intent": None,
+        "remediation": remediation,
+        "run_id": record.run_id,
+        "canonical_bundle_hash": record.expected_canonical_bundle_hash,
+    }
+
+
+def _project_di_overview_envelope(
+    *,
+    record: Any,
+    packet: EvidencePacket,
+    intent: str,
+) -> dict[str, Any]:
+    """Overview-match / neutral: DI builders → envelope (claims policy A)."""
+    evidence_context = packet.to_dict()
+    reply = build_deterministic_kpi_reply(
+        packet,
+        evidence_context,
+        intent=intent,
+    )
+    overlay = build_expert_overlay(packet, reply.claims)
+    claim_dicts = _claims_as_json(reply.claims)
+    summary = str(reply.summary or "").strip()
+    envelope: dict[str, Any] = {
+        **_packet_legacy_framing(packet),
+        "overview": summary,
+        "claims": claim_dicts,
+        "summary": summary,
+        "kpi_claims": list(claim_dicts),
+        "expert_overlay": list(overlay),
+        "overview_intent": intent,
+        "run_id": record.run_id,
+        "canonical_bundle_hash": record.expected_canonical_bundle_hash,
+    }
+    if not claim_dicts:
+        rem = build_structured_remediation_reply(packet, failure_class="ungrounded")
+        envelope["remediation"] = str(rem.summary or "").strip()
+    return envelope
+
+
 def _tool_get_run_overview(session: VoiceToolSession, args: Mapping[str, Any]) -> dict[str, Any]:
     if args:
         raise VoiceToolError("get_run_overview accepts no arguments.")
-    _record, packet = _require_results_packet(session)
-    report = explain_evidence_report(packet)
-    return {
-        "overview": report.get("narrative"),
-        "claims": report.get("claims") or [],
-        "caveats": [caveat.to_dict() for caveat in packet.caveats],
-        "limitations": list(packet.limitations),
-        "next_experiments": report.get("next_experiments") or list(packet.next_experiments),
-        "run_id": _record.run_id,
-        "canonical_bundle_hash": _record.expected_canonical_bundle_hash,
-    }
+    record, packet = _require_results_packet(session)
+    latest_user = _latest_user_transcript_text(session)
+    # DX §4.1 decision order: veto → match → neutral (unmatched / no-text).
+    if latest_user is not None and has_overview_negative_cue(latest_user):
+        return _project_veto_overview_envelope(record=record, packet=packet)
+    if latest_user is not None:
+        matched = match_overview_intent(latest_user)
+        if matched in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}:
+            return _project_di_overview_envelope(
+                record=record,
+                packet=packet,
+                intent=matched,
+            )
+    return _project_di_overview_envelope(
+        record=record,
+        packet=packet,
+        intent=OVERVIEW_INTENT_RUN,
+    )
 
 
 def _tool_get_metric(session: VoiceToolSession, args: Mapping[str, Any]) -> dict[str, Any]:

@@ -34,7 +34,7 @@ def test_caveats_and_metric_aliases():
 
     trades = router.route("How many trades / sample size?")
     assert trades.tool_name == "get_metric"
-    assert trades.arguments["path"] == "results.trade_count"
+    assert trades.arguments["path"] == "results.trade_summary.trade_count"
 
 
 def test_explicit_path_and_compare_with_run_id():
@@ -76,7 +76,7 @@ def test_trades_alias_uses_word_boundary():
     router = VoiceIntentRouter()
     trades = router.route("how many trades?")
     assert trades.tool_name == "get_metric"
-    assert trades.arguments["path"] == "results.trade_count"
+    assert trades.arguments["path"] == "results.trade_summary.trade_count"
 
     false_positive = router.route("is this a tradesman setup?")
     assert false_positive.tool_name == "get_run_overview"
