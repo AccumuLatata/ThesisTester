@@ -194,6 +194,26 @@ def chat_input_key(mode: str, run_id: str | None = None) -> str:
     return "assistant-chat-input-draft"
 
 
+def chat_input_disabled(
+    mode: str,
+    *,
+    discuss_run_selected: bool,
+    results_qa_enabled: bool,
+    product_help_enabled: bool,
+) -> bool:
+    """Whether the page-level ``st.chat_input`` must refuse composition.
+
+    RUX-3 keeps one chat_input per mode for layout stability, but must not
+    accept input when the channel cannot answer (no Discuss run, Results Q&A
+    off, or Product Help off). Draft is never disabled by these gates.
+    """
+    if mode == ASSISTANT_MODE_DISCUSS:
+        return (not discuss_run_selected) or (not results_qa_enabled)
+    if mode == ASSISTANT_MODE_HELP:
+        return not product_help_enabled
+    return False
+
+
 def reset_ux_mode_and_picker(
     session_state: MutableMapping[str, Any],
     *,

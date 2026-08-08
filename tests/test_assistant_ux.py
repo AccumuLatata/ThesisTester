@@ -220,7 +220,11 @@ def test_reset_ux_mode_and_picker_pops_then_rewrites():
 
 
 def test_chat_input_helpers_are_mode_scoped():
-    from thesistester.assistant.ux import chat_input_key, chat_input_placeholder
+    from thesistester.assistant.ux import (
+        chat_input_disabled,
+        chat_input_key,
+        chat_input_placeholder,
+    )
 
     assert chat_input_placeholder(ASSISTANT_MODE_DISCUSS) == "Ask about this completed run"
     assert chat_input_placeholder(ASSISTANT_MODE_HELP) == "Ask how ThesisTester works"
@@ -232,3 +236,33 @@ def test_chat_input_helpers_are_mode_scoped():
     )
     assert chat_input_key(ASSISTANT_MODE_HELP) == "assistant-chat-input-help"
     assert chat_input_key(ASSISTANT_MODE_DRAFT) == "assistant-chat-input-draft"
+    assert chat_input_disabled(
+        ASSISTANT_MODE_DISCUSS,
+        discuss_run_selected=False,
+        results_qa_enabled=True,
+        product_help_enabled=True,
+    )
+    assert chat_input_disabled(
+        ASSISTANT_MODE_DISCUSS,
+        discuss_run_selected=True,
+        results_qa_enabled=False,
+        product_help_enabled=True,
+    )
+    assert not chat_input_disabled(
+        ASSISTANT_MODE_DISCUSS,
+        discuss_run_selected=True,
+        results_qa_enabled=True,
+        product_help_enabled=False,
+    )
+    assert chat_input_disabled(
+        ASSISTANT_MODE_HELP,
+        discuss_run_selected=False,
+        results_qa_enabled=False,
+        product_help_enabled=False,
+    )
+    assert not chat_input_disabled(
+        ASSISTANT_MODE_DRAFT,
+        discuss_run_selected=False,
+        results_qa_enabled=False,
+        product_help_enabled=False,
+    )

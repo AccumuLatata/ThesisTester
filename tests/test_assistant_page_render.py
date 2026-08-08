@@ -296,7 +296,7 @@ def test_default_prominence_is_discuss_with_collapsed_secondary_surfaces(workspa
 
 
 def test_default_discuss_empty_state_names_record_and_discuss(workspace):
-    """No eligible run → guidance; chat_input still present (RUX-3)."""
+    """No eligible run → guidance; chat_input present but disabled (RUX-3)."""
     _, thesis = workspace
     app = _render(thesis.thesis_id)
 
@@ -306,10 +306,11 @@ def test_default_discuss_empty_state_names_record_and_discuss(workspace):
     assert any("Record and discuss this run" in text for text in infos)
     assert len(app.chat_input) == 1
     assert app.chat_input[0].placeholder == chat_input_placeholder(ASSISTANT_MODE_DISCUSS)
+    assert app.chat_input[0].proto.disabled is True
 
 
 def test_discuss_mode_reports_disabled_results_qa_not_missing_runs(workspace, monkeypatch):
-    """When RQ is off, keep Explain/Open/Restore; do not claim missing runs."""
+    """When RQ is off, keep Explain/Open/Restore; disable Discuss chat_input."""
     import thesistester.assistant.llm as llm_mod
 
     monkeypatch.setattr(
@@ -330,6 +331,7 @@ def test_discuss_mode_reports_disabled_results_qa_not_missing_runs(workspace, mo
     assert any("Results Q&A is disabled" in text for text in infos)
     assert all("Record and discuss this run" not in text for text in infos)
     assert len(app.chat_input) == 1
+    assert app.chat_input[0].proto.disabled is True
     # Pre-RUX-2 sibling gate: secondary actions stay available without RQ.
     assert any(item.label == "Explain run" for item in app.button)
     assert any(item.label == "Open exact run in Backtest" for item in app.button)
@@ -359,6 +361,7 @@ def test_help_mode_shows_disabled_guidance_when_product_help_off(workspace, monk
     assert any("Product Help is disabled" in text for text in infos)
     assert len(app.chat_input) == 1
     assert app.chat_input[0].placeholder == chat_input_placeholder(ASSISTANT_MODE_HELP)
+    assert app.chat_input[0].proto.disabled is True
 
 
 def test_rendered_captions_contain_rux2_nav_fragments(workspace):
@@ -423,6 +426,7 @@ def test_discuss_chat_input_routes_to_handle_results_turn(workspace, monkeypatch
     app = _render(thesis.thesis_id)
     assert not app.exception
     assert len(app.chat_input) == 1
+    assert app.chat_input[0].proto.disabled is False
     _run_app(app.chat_input[0].set_value("What was expectancy?"))
 
     assert not app.exception, app.exception
@@ -463,6 +467,7 @@ def test_help_chat_input_routes_to_handle_help_turn_without_choices(workspace, m
     app = _render(thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_HELP})
     assert not app.exception
     assert len(app.chat_input) == 1
+    assert app.chat_input[0].proto.disabled is False
     _run_app(app.chat_input[0].set_value("How does Setup Builder work?"))
 
     assert not app.exception, app.exception
@@ -471,6 +476,61 @@ def test_help_chat_input_routes_to_handle_help_turn_without_choices(workspace, m
     assert calls[0]["thesis_id"] == thesis.thesis_id
     assert "run_id" not in calls[0]
     assert "choices" not in calls[0]
+
+
+def test_draft_chat_input_routes_to_handle_chat_turn(workspace, monkeypatch):
+    """Submitting Draft chat_input calls handle_chat_turn (RUX-3 §5.4)."""
+    from types import SimpleNamespace
+
+    from thesistester.assistant import AssistantOrchestrator
+    import thesistester.assistant.llm as llm_mod
+
+    _, thesis = workspace
+    calls: list[dict[str, Any]] = []
+
+    def _fake_chat(self, client, **kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            normalized_run_spec={"instrument": "ES"},
+            unresolved_assumptions=(),
+        )
+
+    monkeypatch.setattr(AssistantOrchestrator, "handle_chat_turn", _fake_chat)
+    monkeypatch.setattr(llm_mod, "create_openai_client", lambda settings: object())
+
+    app = _render(thesis.thesis_id, **{ASSISTANT_MODE_SESSION_KEY: ASSISTANT_MODE_DRAFT})
+    assert not app.exception
+    assert len(app.chat_input) == 1
+    assert app.chat_input[0].proto.disabled is False
+    _run_app(app.chat_input[0].set_value("Refine this thesis for ES"))
+
+    assert not app.exception, app.exception
+    assert len(calls) == 1
+    assert calls[0]["user_message"] == "Refine this thesis for ES"
+    assert calls[0]["thesis_id"] == thesis.thesis_id
+
+
+def test_disabled_discuss_chat_input_does_not_call_handle_results_turn(workspace, monkeypatch):
+    """Empty Discuss state: chat_input disabled; handler must not run."""
+    from thesistester.assistant import AssistantOrchestrator
+    import thesistester.assistant.llm as llm_mod
+
+    _, thesis = workspace
+    calls: list[dict[str, Any]] = []
+
+    def _fake_results(self, client, **kwargs):
+        calls.append(kwargs)
+        raise AssertionError("handle_results_turn must not run when chat_input is disabled")
+
+    monkeypatch.setattr(AssistantOrchestrator, "handle_results_turn", _fake_results)
+    monkeypatch.setattr(llm_mod, "create_openai_client", lambda settings: object())
+
+    app = _render(thesis.thesis_id)
+    assert not app.exception
+    assert app.chat_input[0].proto.disabled is True
+    _run_app(app.chat_input[0].set_value("Should not submit"))
+    assert not app.exception, app.exception
+    assert calls == []
 
 
 def test_results_qa_history_never_renders_in_the_draft_or_help_threads(workspace):

@@ -126,9 +126,10 @@ from thesistester.assistant.ux import (
     DISCUSS_NAV_SHORT,
     DISCUSS_RUN_PICKER_KEY,
     HELP_NAV_HINT,
-    default_discuss_run_id,
+    chat_input_disabled,
     chat_input_key,
     chat_input_placeholder,
+    default_discuss_run_id,
     recorded_completed_runs,
     resolve_mode,
     run_picker_label,
@@ -572,9 +573,10 @@ if st.session_state["assistant_hydrated_conversation_id"] != conversation_id:
     st.session_state["assistant_hydrated_conversation_id"] = conversation_id
     invalidate_validation(st.session_state)
 
-# Hoist once: Discuss mode + Advanced linked runs + Help voice (RUX-2).
+# Hoist once: Discuss mode + Advanced linked runs + Help (RUX-2/RUX-3).
 runs = orchestrator.list_runs(thesis_id)
 results_qa_settings = load_results_qa_settings()
+help_settings = load_product_help_settings()
 
 ux_settings = load_assistant_ux_settings()
 # Ensure mode key exists before widget (Streamlit widget-key write order).
@@ -846,7 +848,6 @@ if mode == ASSISTANT_MODE_DISCUSS:
                     st.error(f"Unable to restore bundle: {exc}")
 
 elif mode == ASSISTANT_MODE_HELP:
-    help_settings = load_product_help_settings()
     # Surface name preserved from the former expander title (§1.1). Peer mode
     # is always selectable; when the channel is disabled show guidance instead
     # of a blank panel (pre-RUX-2 hid the expander entirely).
@@ -923,19 +924,30 @@ elif mode == ASSISTANT_MODE_DRAFT:
 
 # RUX-3: exactly one page-level chat_input for the active mode (never nested).
 # Unsent draft persistence is intentionally dropped — chat_input is a trigger.
+# Keep the widget for layout stability, but disable composition when the
+# channel cannot answer (pre-RUX-3 hid those inputs entirely).
 _chat_run_id = (
     discuss_selected_run.run_id
     if discuss_selected_run is not None and isinstance(discuss_selected_run.run_id, str)
     else None
 )
+_chat_disabled = chat_input_disabled(
+    mode,
+    discuss_run_selected=discuss_selected_run is not None,
+    results_qa_enabled=results_qa_settings.enabled,
+    product_help_enabled=help_settings.enabled,
+)
 if chat_message := st.chat_input(
     chat_input_placeholder(mode),
     key=chat_input_key(mode, run_id=_chat_run_id),
+    disabled=_chat_disabled,
 ):
     question = str(chat_message).strip()
     if not question:
         st.error("Enter a question.")
     elif mode == ASSISTANT_MODE_DISCUSS:
+        # Belt-and-braces: disabled= should block submit; keep gates if AppTest
+        # or a future Streamlit quirk delivers a value anyway.
         if discuss_selected_run is None:
             st.error(
                 "No completed thesis-recorded run selected. Use "
@@ -978,7 +990,6 @@ if chat_message := st.chat_input(
             ) as exc:
                 st.error(f"Unable to discuss results: {exc}")
     elif mode == ASSISTANT_MODE_HELP:
-        help_settings = load_product_help_settings()
         if not help_settings.enabled:
             st.error(
                 "Product Help is disabled in `config/assistant.toml` "
