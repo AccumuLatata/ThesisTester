@@ -25,7 +25,7 @@ not listed under **In scope**, it belongs in a later PR or is rejected.
 | RQ | Discuss channel, packet load, claim schema, digit grounding rules, projections | Call them; **must not loosen** digit/path honesty gates; **must not amend** `assert_llm_explanation_grounded` / path-existence rules (any auditor change amends RQ, or DI with an explicit RQ relationship note in the same PR) |
 | HC / Help | Product how-to corpus | Optionally cite number-free glossary definitions already allowlisted; **must not** answer run KPIs from Help |
 | VA | Spoken transport | Text recovery in `handle_results_turn` / `propose_results_reply` flows into VA-4 PTT automatically; voice-specific UX remains **out of DI v1** |
-| DX | VA-5 duplex **content** parity with DI overview/KPI intelligence (`docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md`) | DI does not own duplex; DX **reuses** DI pure builders and must not fork cue/path/overlay freezes |
+| DX | VA-5 duplex **content** parity with DI overview/KPI intelligence (`docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md`) | DI does not own duplex; DX **reuses** DI pure builders and must not fork cue/path/overlay freezes. DX-1 may add a thin exported `has_overview_negative_cue` helper in `results_overview.py` (same `_NEGATIVE_CUES`; no cue edits) so duplex can distinguish veto from unmatched |
 | DI (this doc) | Recoverable discussion UX + overview intent→evidence slices + expert framing **without new run digits** | Orchestrator / `results_qa` recovery + `llm.py` TLS wrap + narrow page remediation render only |
 
 **Landing note:** DI-0 freezes this contract alone (plan PR). Do not treat the

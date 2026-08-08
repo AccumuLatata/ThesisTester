@@ -605,10 +605,13 @@ other than the last bar in the dataset.
   does not call `propose_results_reply` on every duplex turn; text Discuss and
   VA-4 PTT remain the strongest typed-recovery paths. Planned DX freezes
   include veto stripping legacy explainer narrative/claims (no topic-swap via
-  leftover `overview` fields), session-record transcript selector with an
-  acknowledged tool-before-transcript race, sample-size intent alias retarget
-  to `results.trade_summary.trade_count`, and speakable preference for DI
-  `summary` when present.
+  leftover `overview` fields), **veto ≠ unmatched** (negative-cue remediation
+  only; unmatched / no-text → neutral `run_overview` so PTT unrecognized
+  fallback stays overview-shaped), `has_overview_negative_cue` export from
+  `results_overview` (no voice-local cue fork), session-record transcript
+  selector with an acknowledged tool-before-transcript race, sample-size
+  intent alias retarget to `results.trade_summary.trade_count`, and speakable
+  preference for DI `summary` when present.
   Thesis switches clear mode-scoped chat_input widget keys and other
   thesis-scoped staging. Draft-chat history
   excludes `results_qa` / `product_help` turns and tool/audit lines so
