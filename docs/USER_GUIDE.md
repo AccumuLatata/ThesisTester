@@ -3,9 +3,10 @@
 User-facing how-tos for classic pages and Research Assistant Help.
 This file is the primary Help corpus home for workflow questions (HC-series).
 
-**Help allowlist (HC-1…HC-3 + HC-5):** the filled H2 sections listed in RQ §7.1
-`user_guide` are Help-readable (full classic + Assistant how-to coverage,
-including dedicated **Exposure policy** semantics).
+**Help allowlist (HC-1…HC-3 + HC-5/HC-6):** the filled H2 sections listed in RQ
+§7.1 `user_guide` are Help-readable (classic + Assistant how-tos, plus dedicated
+**Exposure policy**, **Intrabar resolution**, **Exit management**, **Session
+close and entry cutoff**, and **Focus vs Admit**).
 
 Deep metric definitions stay in `docs/METRICS_GLOSSARY.md`. Engine honesty and
 limits stay in `docs/ASSUMPTIONS_AND_LIMITATIONS.md`. Operator/agent runbooks
@@ -243,19 +244,19 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
 | `Stop loss (ticks)` / `Take profit (ticks)` | Bracket size in instrument ticks | R is relative to SL distance |
 | `Commission per side (currency/contract)` | Fee each side; round-trip ≈ `2 ×` | Leaving 0 overstates net edge |
 | `Slippage (ticks per side)` | Adverse ticks at entry and exit (`slippage_ticks`) | Same — optimistic fills if 0 |
-| `Intrabar resolution` | SL-first, OHLC path, or lower-TF replay variants | Paths are assumptions, not tick truth |
-| `Flat by session close` + close time/TZ | Force exits at session boundary | Display TZ ≠ engine session TZ |
-| `Policy` (exposure) | See **Exposure policy** — `allow_all` / `single_position` / `single_direction` / `single_setup` | Skips ≠ OTF rejects ≠ 3c voids |
-| `Cooldown bars after exit` | Bars after a blocking exit before a new entry in that exposure group | `0` = no post-exit spacing |
-| `Constrain entries to time window` (Admit) | Off by default; RTH segments or clock range | Re-sim only — not Time Analysis Focus |
-| Exit management expander | Break-even / trailing after R multiple | Stops update after completed bars |
+| `Intrabar resolution` | See **Intrabar resolution** | Paths are assumptions, not tick truth |
+| `Flat by session close` + close time/TZ | See **Session close and entry cutoff** | Display TZ ≠ engine session TZ |
+| `Policy` (exposure) | See **Exposure policy** | Skips ≠ OTF rejects ≠ 3c voids |
+| `Cooldown bars after exit` | See **Exposure policy** | `0` = no post-exit spacing |
+| `Constrain entries to time window` (Admit) | See **Focus vs Admit** | Re-sim only — not Time Analysis Focus |
+| `Exit management (break-even / trailing)` | See **Exit management (break-even and trailing)** | Stops update after completed bars |
 
 **How to use.**
 
 1. Confirm Signals are loaded.
-2. Set SL/TP, costs, intrabar model, session exit, optional **Entry window
-   (Admit)**, and exposure **Policy** / cooldown in **Backtest settings**
-   (see **Exposure policy** for what each value admits or skips).
+2. Set SL/TP, costs, **Intrabar resolution**, session exit, optional **Entry
+   window (Admit)**, exit management, and exposure **Policy** / cooldown in
+   **Backtest settings** (see the dedicated Help sections named above).
 3. Optionally **Save execution settings as default**.
 4. Click **Run backtest**.
 5. Read OTF-rejected / skip notes (window vs cutoff vs exposure), **Performance summary**,
@@ -266,15 +267,12 @@ session close, break-even, trailing stop, win rate, avg R, expectancy
 
 - Not proof of OOS edge; one backtest is an in-sample diagnostic under stated
   assumptions.
-- Intrabar models do not recover the true tick path; residual SL/TP ambiguities
-  are counted, not wished away.
 - Help will not invent your best SL/TP — ask **Discuss results** in mode
   **Discuss runs** for bound run metrics.
-- **Admit** (`entry_window`) re-simulates under an entry-time constraint.
-  Time Analysis **Focus** remains post-hoc only and does not change admission.
 
-**Related pages.** Signals (prerequisite); **Exposure policy**; Grid Search for
-SL/TP sweeps; Research Assistant mode **Discuss runs** for performance questions.
+**Related pages.** Signals; **Exposure policy**; **Intrabar resolution**;
+**Exit management (break-even and trailing)**; **Session close and entry
+cutoff**; **Focus vs Admit**; Grid Search; Research Assistant **Discuss runs**.
 
 ## Exposure policy
 
@@ -342,7 +340,127 @@ under Portfolio `allow_all`.
 - Default `allow_all` is for screening compatibility — not a claim that
   overlapping fills are realistic.
 
-**Related pages.** Backtest; Portfolio; Time Analysis (Focus ≠ Admit); Grid Search.
+**Related pages.** Backtest; Portfolio; **Focus vs Admit**; Grid Search.
+
+## Intrabar resolution
+
+**What it is.** **Intrabar resolution** chooses how Backtest orders stop vs
+target when both are reachable inside one parent OHLC bar (or lower-TF group).
+Control label: `Intrabar resolution`. Engine field: `intrabar_model`.
+
+**When to use it.** Always set deliberately before trusting same-bar SL/TP
+outcomes. Default `sl_first` is the legacy pessimistic path.
+
+**Related terms.** intrabar, intrabar resolution, intrabar_model, sl_first,
+path_open_proximity, subtimeframe, subtimeframe_conservative, both-hit,
+ambiguous resolution, lower timeframe, R12
+
+**Key settings.**
+
+| Value | Meaning | Common pitfall |
+|---|---|---|
+| `sl_first` (default) | If stop and target are both reachable in one bar, stop wins | Pessimistic; not “true path” |
+| `path_open_proximity` | Deterministic O→H→L→C or O→L→H→C from open proximity; equal proximity stays SL-first | Sensitivity assumption, not tick reconstruction |
+| `subtimeframe` | Walk observed lower-TF bars in time order | Fails closed unless lower data is strictly finer, complete, and reconciles to parent OHLC |
+| `subtimeframe_conservative` | Observed replay on complete reconciled groups; SL-first fallback on missing/misaligned groups | Not full observed replay on sparse minutes |
+
+**How to use.**
+
+1. On **Backtest**, open **Intrabar resolution**.
+2. Pick a model. For `subtimeframe*`, ensure lower-TF data is loaded (Data page
+   dual-upload or `15s_primary_derive_1m` provenance).
+3. **Run backtest**, then read intrabar diagnostics (both-hit / ambiguity
+   counts). Glossary: **R12 intrabar diagnostics**.
+
+**What it is not.**
+
+- Not tick-path truth. Residual same-bar / same-sub-bar ambiguity still resolves
+  SL-first and is counted, not wished away.
+- Lower-TF replay only reduces uncertainty to the lower bar size.
+- MAE/MFE parent-bar extremes are separate from R12 event ordering.
+
+**Related pages.** Backtest; Data (lower-TF / derive mode); metrics R12.
+
+## Exit management (break-even and trailing)
+
+**What it is.** Optional completed-bar stop management after a trade is open.
+UI expander: **`Exit management (break-even / trailing)`**. Defaults off keep
+the fixed SL/TP bracket.
+
+**When to use it.** When you want research paths that move/ratchet stops after
+favorable R thresholds — not for broker OCO semantics.
+
+**Related terms.** exit management, break-even, breakeven, trailing stop,
+breakeven_after_r, trailing_after_r, trailing_distance_ticks, BE, TRAIL, R13
+
+**Key settings.**
+
+| Control | Meaning | Common pitfall |
+|---|---|---|
+| `Enable break-even move` + `Move stop to break-even after R` | After a completed bar reaches that favorable R, move stop to slipped entry; active next bar | BE exits can still be slightly negative after costs/slippage |
+| `Enable trailing stop` + `Start trailing after R` | Arms trailing after completed-bar favorable R | Threshold is completed-bar, not intrabar arming |
+| `Trailing distance (ticks)` | Distance from best favorable parent high/low | Trail never loosens; active from next bar |
+
+**How to use.**
+
+1. On **Backtest**, open **Exit management (break-even / trailing)**.
+2. Enable BE and/or trail; set R thresholds (and trail distance).
+3. **Run backtest**; read BE/TRAIL exit captions and R13 diagnostics.
+
+**What it is not.**
+
+- Not proof of edge; opt-in research assumption.
+- Does not change initial risk used for R / MAE/MFE normalization (`stop_price`
+  stays the initial bracket stop).
+- Same-bar conflicts between an active managed stop and the fixed target still
+  follow the selected **Intrabar resolution** model.
+
+**Related pages.** Backtest; **Intrabar resolution**; metrics R13.
+
+## Session close and entry cutoff
+
+**What it is.** Backtest **Session exit policy** controls forced flat at a
+session clock and an optional no-new-entries cutoff. Distinct from Admit
+`entry_window` (see **Focus vs Admit**).
+
+**When to use it.** When you want same-calendar-day RTH-style flattening instead
+of holding to the last bar of the loaded dataset (`EOD`).
+
+**Related terms.** Flat by session close, Session close time, Session timezone,
+No new entries after, no_new_entries_after, SESSION_CLOSE, DATA_END, EOD,
+after_entry_cutoff, session exit policy
+
+**Key settings.**
+
+| Control | Meaning | Common pitfall |
+|---|---|---|
+| `Flat by session close` | When on, exits are capped at the configured close for the entry date | Off → default `EOD` is last bar in the **dataset**, not a session bell |
+| `Session close time` | Local close clock (`HH:MM` / `HH:MM:SS`) | Interpreted in `Session timezone` |
+| `Session timezone` | IANA TZ for close / cutoff clocks | Display/export TZ on other pages is not this clock |
+| `No new entries after (optional)` | When flat-by-close is on, reject entries after this local clock | Skip reason `after_entry_cutoff`; cutoff uses strict `>` (entry **at** cutoff still admits) |
+
+**How exits / skips read.**
+
+- `SESSION_CLOSE`: forced flat at last bar at-or-before close when SL/TP not hit.
+- `DATA_END`: data ended before session close; force-closed at last available bar.
+- Window vs cutoff: if both Admit window and cutoff would reject, skip labeling
+  prefers `outside_entry_window` (admitted set identical either order).
+
+**How to use.**
+
+1. On **Backtest** → **Session exit policy**, enable **Flat by session close**.
+2. Set **Session close time** / **Session timezone**; optionally **No new
+   entries after**.
+3. **Run backtest**; inspect exit reasons and skip captions
+   (outside window / after cutoff / exposure-other).
+
+**What it is not.**
+
+- Not overnight ETH session templates (same-calendar-day RTH-style only today).
+- Not Admit Focus/Promote windows — cutoff clocks ≠ entry-window membership TZ
+  rules (`session_timezone` vs exchange TZ for RTH segments).
+
+**Related pages.** Backtest; **Focus vs Admit**; **Exposure policy**.
 
 ## Grid Search
 
@@ -421,7 +539,7 @@ Focus summary, post-hoc subset, Promote to Admit
 | `Primary grouping` / optional secondary | How rows are aggregated | Tiny groups look dramatic |
 | `Minimum trades warning threshold` | Soft warning for thin buckets | Ignoring it invites noise |
 | `Metric for chart / heatmap` | Which KPI to plot | Charts ≠ causation |
-| `Promote to Admit` | Arms Backtest `entry_window` from Focus/bucket | Does **not** auto-run Backtest |
+| `Promote to Admit` | See **Focus vs Admit** — arms Backtest `entry_window` | Does **not** auto-run Backtest |
 
 **How to use.**
 
@@ -429,26 +547,64 @@ Focus summary, post-hoc subset, Promote to Admit
 2. Choose timezone basis, timestamp basis, groupings, and chart metric.
 3. Inspect the grouped table, charts/heatmap, and trade-count distribution.
 4. Use thin-bucket warnings: low `trade_count` groups are not “best entries.”
-5. Optional: with primary grouping `entry_rth_segment` / hour / 30m, select a
-   bucket → **Focus summary**. Clear Focus anytime. Backtest can overlay the
-   same Focused KPIs without overwriting the full-run results.
-6. Optional: **Promote to Admit** arms the Focused/selected window on Backtest
-   (thin samples require confirm). Open Backtest and **Run** to re-simulate —
-   Promote never auto-runs.
+5. Optional Focus / Promote / Admit loop: see **Focus vs Admit**.
 
 **What it is not.**
 
 - Not a re-optimization engine and not a signal generator.
-- Focus is **not** an entry constraint and does **not** re-run exposure/cooldown.
-- Focused equity/drawdown is a **subset replay** of filtered trades only.
-- Promote arms a constraint; it is not itself proof of edge.
 - “Best hour” language is descriptive on this sample only — not a schedule to
   trade live.
 - RTH segment labeling can stay on exchange/session time even when hourly
   buckets use display TZ.
 
-**Related pages.** Backtest (prerequisite; Focus overlay; Admit re-sim); Report Export (shared display TZ).
-See `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` for the full Focus→Admit loop.
+**Related pages.** Backtest; **Focus vs Admit**; Report Export (shared display TZ).
+
+## Focus vs Admit
+
+**What it is.** Two different time-window tools that must not be confused:
+**Focus summary** (Time Analysis post-hoc subset) vs **Admit** / **Entry window
+(Admit)** (Backtest constrained re-simulation). **Promote to Admit** only arms
+the Backtest widgets.
+
+**When to use it.** Use Focus to inspect one bucket’s completed trades. Use
+Promote + Admit when you want path KPIs under that entry-time constraint.
+
+**Related terms.** Focus, Focus summary, Clear Focus, Promote to Admit, Admit,
+Entry window, Constrain entries to time window, entry_window, post-hoc,
+constrained re-simulation, RTH segments, clock range, outside_entry_window
+
+**Key settings.**
+
+| Control / surface | Meaning | Common pitfall |
+|---|---|---|
+| Time Analysis `Focus summary` | Filters completed trades by **entry** bucket; recomputes KPIs/equity | Does **not** call `simulate_trades`; no exposure/cooldown re-run |
+| `Timestamp basis` on charts | May be entry or exit for display | Focus/Promote membership always uses **entry** timestamps (C2) |
+| `Promote to Admit` | Arms Backtest `entry_window` from Focus/selected bucket | Does **not** auto-run; thin samples need confirm |
+| Backtest `Constrain entries to time window` | Opt-in Admit re-sim (`entry_window`) | Default off = legacy all-day admission |
+| `Window mode` / RTH segments / clock range | Admit membership on **entry-bar** local time | Window rejects never enter exposure competition |
+| Armed vs applied badges | Armed = pending Promote; applied = constrained run done | All-day Run (Admit off) does **not** consume an armed handoff |
+
+**How to use (Promote → Admit).**
+
+1. Complete a Backtest with trades.
+2. On **Time Analysis**, set primary grouping to `entry_rth_segment` /
+   `entry_hour_bucket` / `entry_30min_bucket`.
+3. Select a bucket → **Focus summary** (optional inspect) → **Promote to Admit**.
+4. Open **Backtest**; confirm **Entry window (Admit)** widgets / armed banner.
+5. **Run backtest** for constrained re-sim (“only in-window entries were
+   admitted”). Inspect `outside_entry_window` skips separately from exposure.
+
+**What it is not.**
+
+- Focus equity/drawdown is a **subset replay** of filtered trades — not
+  all-day admission path drawdown.
+- Promote is not proof of edge; Focus alone must not be treated as deployable.
+- Grid / WFA inherit a fixed enabled Admit window when present — not a swept
+  axis. Under `allow_all` + zero cooldown, Focus and Admit can share the same
+  `signal_id` set (C7); restrictive exposure can diverge.
+
+**Related pages.** Time Analysis; Backtest; **Exposure policy**;
+**Session close and entry cutoff**.
 
 ## Validation and robustness
 

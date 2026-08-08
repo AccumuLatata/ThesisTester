@@ -572,10 +572,12 @@ other than the last bar in the dataset.
   `product_help`) over the §7.1 corpus + registry digest; run-performance
   questions remediate to Discuss results (no fabricated metrics). Help digit
   tokens must match number tokens in attached corpus/registry text.
-  **HC-series (complete; HC-5 maintenance):** feature/how-to Help coverage is
+  **HC-series (complete; HC-5/HC-6 maintenance):** feature/how-to Help coverage is
   USER_GUIDE-backed via RQ §7.1.4 (`docs/USER_GUIDE.md` + `HELP_CORPUS_MANIFEST`),
-  including the dedicated **Exposure policy** H2 for Backtest/Portfolio Policy
-  semantics; frozen acceptance bank and parity gates live in
+  including dedicated H2s for **Exposure policy**, **Intrabar resolution**,
+  **Exit management**, **Session close and entry cutoff**, and **Focus vs Admit**
+  (so Help does not depend on this file’s oversized Verified-engine mega-H2);
+  frozen acceptance bank and parity gates live in
   `docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md` / `tests/test_assistant_help_coverage.py`.
   **RQ-4** binds classic Discuss via companion session key
   `classic_focus_channel="results_qa"` beside string `classic_focus_run_id`

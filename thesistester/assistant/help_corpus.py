@@ -87,7 +87,7 @@ _OTF_SECTIONS = frozenset(
     }
 )
 
-# HC-1…HC-3 filled USER_GUIDE H2s + HC-5 Exposure policy (exact §7.1.4 titles).
+# HC-1…HC-3 + HC-5/HC-6 USER_GUIDE H2s (exact §7.1.4 titles).
 _USER_GUIDE_SECTIONS = frozenset(
     {
         "Purpose and honesty",
@@ -98,8 +98,12 @@ _USER_GUIDE_SECTIONS = frozenset(
         "Signals",
         "Backtest",
         "Exposure policy",
+        "Intrabar resolution",
+        "Exit management (break-even and trailing)",
+        "Session close and entry cutoff",
         "Grid Search",
         "Time Analysis",
+        "Focus vs Admit",
         "Validation and robustness",
         "Report Export",
         "Research Bundles",
@@ -131,6 +135,7 @@ _HOW_TO_QUERY_TOKENS = frozenset(
         "enable",
         "save",
         "load",
+        "promote",
     }
 )
 _DEFINITION_QUERY_TOKENS = frozenset(
@@ -172,6 +177,54 @@ _EXPOSURE_QUERY_TOKENS = frozenset(
         "overlapping_setup",
         "cooldown_active",
         "exposure_group_key",
+    }
+)
+# HC-6 P0 setting nouns → dedicated USER_GUIDE H2s (ASSUMPTIONS mega-chunk is
+# oversized for max_corpus_chars and is skipped entirely).
+_INTRABAR_QUERY_TOKENS = frozenset(
+    {
+        "intrabar",
+        "intrabar_model",
+        "sl_first",
+        "path_open_proximity",
+        "subtimeframe",
+        "subtimeframe_conservative",
+        "both-hit",
+        "both_hit",
+    }
+)
+_EXIT_MGMT_QUERY_TOKENS = frozenset(
+    {
+        "break-even",
+        "breakeven",
+        "trailing",
+        "trailing_stop",
+        "breakeven_after_r",
+        "trailing_after_r",
+        "trailing_distance_ticks",
+        "exit_management",
+    }
+)
+_SESSION_EXIT_QUERY_TOKENS = frozenset(
+    {
+        "session_close",
+        "session_close_time",
+        "no_new_entries_after",
+        "no_new_entries",
+        "after_entry_cutoff",
+        "data_end",
+    }
+)
+_FOCUS_ADMIT_QUERY_TOKENS = frozenset(
+    {
+        "admit",
+        "focus",
+        "promote",
+        "entry_window",
+        "outside_entry_window",
+        "post-hoc",
+        "post_hoc",
+        "constrained",
     }
 )
 # Stopwords ignored when matching query tokens to USER_GUIDE H2 titles so
@@ -573,6 +626,32 @@ def score_corpus_chunk(chunk: CorpusChunk, *, query_tokens: set[str]) -> int:
         # oversized for max_corpus_chars and is skipped entirely).
         score += 3
         if "exposure" in chunk.section.lower():
+            score += 5
+    if query_tokens & _INTRABAR_QUERY_TOKENS and chunk.doc_id == "user_guide":
+        score += 3
+        if "intrabar" in chunk.section.lower():
+            score += 5
+    if query_tokens & _EXIT_MGMT_QUERY_TOKENS and chunk.doc_id == "user_guide":
+        score += 3
+        section_l = chunk.section.lower()
+        if "exit management" in section_l or "break-even" in section_l:
+            score += 5
+    # "Flat by session close" tokenizes as separate session/close words — treat
+    # that phrase (or flat+session) as a session-exit ask without bare "flat".
+    session_exit_ask = (
+        bool(query_tokens & _SESSION_EXIT_QUERY_TOKENS)
+        or ({"session", "close"} <= query_tokens)
+        or ("flat" in query_tokens and "session" in query_tokens)
+    )
+    if session_exit_ask and chunk.doc_id == "user_guide":
+        score += 3
+        section_l = chunk.section.lower()
+        if "session close" in section_l or "entry cutoff" in section_l:
+            score += 5
+    if query_tokens & _FOCUS_ADMIT_QUERY_TOKENS and chunk.doc_id == "user_guide":
+        score += 3
+        section_l = chunk.section.lower()
+        if "focus" in section_l and "admit" in section_l:
             score += 5
     if {
         "otf",

@@ -475,8 +475,12 @@ _HC4_USER_GUIDE_H2_FREEZE = (
     "Signals",
     "Backtest",
     "Exposure policy",
+    "Intrabar resolution",
+    "Exit management (break-even and trailing)",
+    "Session close and entry cutoff",
     "Grid Search",
     "Time Analysis",
+    "Focus vs Admit",
     "Validation and robustness",
     "Report Export",
     "Research Bundles",
@@ -496,6 +500,10 @@ _HC4_ALL_QUESTION_IDS = frozenset(
         "Q-D5",
         "Q-D6",
         "Q-D7",
+        "Q-D8",
+        "Q-D9",
+        "Q-D10",
+        "Q-D11",
         "Q-H1",
         "Q-H2",
         "Q-H3",
@@ -509,6 +517,7 @@ _HC4_ALL_QUESTION_IDS = frozenset(
         "Q-H11",
         "Q-H12",
         "Q-H13",
+        "Q-H14",
         "Q-R1",
         "Q-R2",
         "Q-R3",
@@ -565,6 +574,37 @@ _HC4_RETRIEVAL_BANK: tuple[tuple[str, str, frozenset[tuple[str, str]]], ...] = (
         frozenset(
             {
                 ("user_guide", "Exposure policy"),
+                ("user_guide", "Backtest"),
+            }
+        ),
+    ),
+    (
+        "Q-D8",
+        "What is the difference between Focus and Admit?",
+        frozenset(
+            {
+                ("user_guide", "Focus vs Admit"),
+                ("user_guide", "Time Analysis"),
+            }
+        ),
+    ),
+    (
+        "Q-D9",
+        "What does intrabar resolution mean on Backtest?",
+        # Primary USER_GUIDE required for settings depth (R12 glossary is secondary).
+        frozenset({("user_guide", "Intrabar resolution")}),
+    ),
+    (
+        "Q-D10",
+        "What do break-even and trailing exits mean?",
+        frozenset({("user_guide", "Exit management (break-even and trailing)")}),
+    ),
+    (
+        "Q-D11",
+        "What does Flat by session close do?",
+        frozenset(
+            {
+                ("user_guide", "Session close and entry cutoff"),
                 ("user_guide", "Backtest"),
             }
         ),
@@ -654,6 +694,16 @@ _HC4_RETRIEVAL_BANK: tuple[tuple[str, str, frozenset[tuple[str, str]]], ...] = (
             }
         ),
     ),
+    (
+        "Q-H14",
+        "How do I Promote a Focus bucket to Admit and re-simulate?",
+        frozenset(
+            {
+                ("user_guide", "Focus vs Admit"),
+                ("user_guide", "Time Analysis"),
+            }
+        ),
+    ),
 )
 
 
@@ -684,6 +734,10 @@ _HC4_DEFINITION_BODY_PHRASES = {
     "Q-D3": ("One Timeframing", "OTF up"),
     "Q-D6": ("slippage_ticks",),
     "Q-D7": ("allow_all", "single_position", "Cooldown bars after exit"),
+    "Q-D8": ("Focus summary", "Constrain entries to time window", "Promote to Admit"),
+    "Q-D9": ("sl_first", "path_open_proximity", "subtimeframe"),
+    "Q-D10": ("Enable break-even move", "Enable trailing stop", "completed bars"),
+    "Q-D11": ("Flat by session close", "SESSION_CLOSE", "No new entries after"),
 }
 
 # Mixed how-tos that must keep a secondary section in the selected set (§1.1 / §5.4).
