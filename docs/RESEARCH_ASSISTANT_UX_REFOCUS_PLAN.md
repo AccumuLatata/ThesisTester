@@ -1,15 +1,11 @@
 # Research Assistant UX Refocus — Implementation Contract (RUX-series)
 
 **Document type:** Implementation contract (RUX-series) — **single source of truth for Research Assistant page layout/prominence**
-**Status:** 🟡 In progress — RUX-0 implemented (contract + rendered-structure
-baseline); RUX-1 implemented ([#301](https://github.com/AccumuLatata/ThesisTester/pull/301));
-RUX-2 implemented ([#302](https://github.com/AccumuLatata/ThesisTester/pull/302));
-RUX-3 implemented ([#303](https://github.com/AccumuLatata/ThesisTester/pull/303));
-RUX-4 implemented ([#304](https://github.com/AccumuLatata/ThesisTester/pull/304));
-RUX-5 specified, not implemented
-**Date:** 2026-08-07
+**Status:** ✅ **Complete** — RUX-0…RUX-5 (discuss-first layout; evidence in
+`docs/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md`)
+**Date:** 2026-08-07 (contract); closeout 2026-08-08
 **Owner surface:** `pages/14_Research_Assistant.py` + presentation-only helpers in
-`thesistester/assistant/` (`ux.py` new, `workspace.py`, `llm.py` settings loader)
+`thesistester/assistant/` (`ux.py`, `workspace.py`, `llm.py` settings loader)
 **Depends on:** RQ complete (`docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`),
 HC complete (`docs/HELP_CORPUS_COVERAGE_IMPLEMENTATION.md`), CAI complete
 (`docs/CLASSIC_ASSISTANT_INTEGRATION_PLAN.md`), VA complete
@@ -430,7 +426,7 @@ baseline from RUX-0 still passes unchanged.
 
 ---
 
-### 5.3 RUX-2 — Layout inversion: Discuss-first modes *(the substantive PR)*
+### 5.3 RUX-2 — Layout inversion: Discuss-first modes *(the substantive PR)* — ✅ **Implemented** ([#302](https://github.com/AccumuLatata/ThesisTester/pull/302))
 
 **Goal:** deliver the product decision (§0.2). Discuss becomes the default
 surface, Help becomes a peer mode, draft chat is demoted, Advanced/Debug keep
@@ -493,7 +489,7 @@ harmless (constants revert to their original values with the same commit).
 
 ---
 
-### 5.4 RUX-3 — Chat input for the active mode *(optional, recommended)*
+### 5.4 RUX-3 — Chat input for the active mode *(optional, recommended)* — ✅ **Implemented** ([#303](https://github.com/AccumuLatata/ThesisTester/pull/303))
 
 **Goal:** make Discuss and Help feel like chats rather than forms.
 
@@ -534,7 +530,7 @@ in the same revert).
 
 ---
 
-### 5.5 RUX-4 — Help/remediation and eval-bank re-anchor
+### 5.5 RUX-4 — Help/remediation and eval-bank re-anchor — ✅ **Implemented** ([#304](https://github.com/AccumuLatata/ThesisTester/pull/304))
 
 **Goal:** make the Help channel's own answers describe the new navigation, and
 prove it with the existing coverage machinery.
@@ -560,7 +556,7 @@ diff is empty; RQ-5 honesty/injection evals green.
 
 ---
 
-### 5.6 RUX-5 — Release evidence and closeout
+### 5.6 RUX-5 — Release evidence and closeout — ✅ **Implemented**
 
 **Goal:** record the evidence and flip status, per the SW-series precedent.
 
@@ -568,13 +564,24 @@ diff is empty; RQ-5 honesty/injection evals green.
 
 | File | Change |
 |---|---|
-| `docs/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | New: before/after layout, rendered-assertion inventory, deep-link verification, manual walkthrough screenshots/recording, full-suite result |
+| `docs/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | New: before/after layout, rendered-assertion inventory, deep-link verification, walkthrough matrix, full-suite result |
 | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` | Status → Complete; per-PR outcomes |
 | `docs/ENGINEERING_ROADMAP.md` | Index row → Complete (RUX-0…RUX-5) |
 | `docs/AGENT_GUIDE.md` | "Do not reopen RUX for layout changes; amend this contract instead" |
 
 **Acceptance:** evidence doc contains rendered proof for every §5.3 acceptance
-bullet; suite green.
+bullet; suite green — see `docs/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md`.
+
+**Per-PR outcomes (series)**
+
+| ID | Outcome |
+|---|---|
+| RUX-0 | Contract + AppTest baseline ([#300](https://github.com/AccumuLatata/ThesisTester/pull/300)) |
+| RUX-1 | Invisible foundation: `ux.py`, `[assistant.ux]`, nav constants ([#301](https://github.com/AccumuLatata/ThesisTester/pull/301)) |
+| RUX-2 | Discuss-first mode layout; deep-link superset ([#302](https://github.com/AccumuLatata/ThesisTester/pull/302)) |
+| RUX-3 | One page-level mode-scoped `st.chat_input`; retired text-input draft keys ([#303](https://github.com/AccumuLatata/ThesisTester/pull/303)) |
+| RUX-4 | Help remediation + USER_GUIDE / Q-H13 re-anchor; allowlist unchanged ([#304](https://github.com/AccumuLatata/ThesisTester/pull/304)) |
+| RUX-5 | Evidence + Complete status (this subsection) |
 
 ---
 

@@ -315,11 +315,13 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   Help into thesis draft chat; never load `AGENT_GUIDE` into the user Help
   corpus.
 - Research Assistant **page layout / surface prominence** has a **single**
-  contract: `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX-series, 🟡 RUX-0
-  landed). RUX is **presentation-only**: it may change containers, ordering,
-  captions, and additive presentation session keys on
-  `pages/14_Research_Assistant.py`, and must not touch the engine,
-  `thesistester/api.py`, `pages/1..13`, or
+  contract: `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX-series, ✅
+  RUX-0…RUX-5 complete; evidence
+  `docs/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md`). **Do not reopen RUX for
+  layout changes; amend this contract instead.** RUX is **presentation-only**:
+  it may change containers, ordering, captions, and additive presentation
+  session keys on `pages/14_Research_Assistant.py`, and must not touch the
+  engine, `thesistester/api.py`, `pages/1..13`, or
   `thesistester/assistant/{orchestrator,repository,registry,handlers,tools,results_qa,help_corpus,explainer}.py`
   logic. Channel separation, evidence grounding, confirmation gates, Discuss
   eligibility, voice gating/keys, and the CAI focus-key shape stay frozen; only
