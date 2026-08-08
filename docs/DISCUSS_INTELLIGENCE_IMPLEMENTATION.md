@@ -462,4 +462,4 @@ Document new keys in `ARCHITECTURE.md` in the DI-1 PR that lands them.
 | DI-0 Contract freeze | ✅ merged |
 | DI-1 Transport + recovery (+ overview matcher) | ✅ merged |
 | DI-2 Prompt path catalog | ✅ merged |
-| DI-3 Expert overlay + eval freeze | 🟡 this PR (series complete on merge) |
+| DI-3 Expert overlay + eval freeze | ✅ merged (series complete) |

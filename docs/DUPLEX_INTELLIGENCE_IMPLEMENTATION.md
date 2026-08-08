@@ -4,9 +4,10 @@
 **Status:** 🟡 **DX-0 plan** (this PR freezes the contract only)
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/voice/tools.py`,
-`voice/session.py` (honesty instructions only), `voice/grounding.py` /
-speakable formatting as needed for DI-shaped tool envelopes, narrow
-`voice/sidecar.py` session-instruction wiring, tests under
+`voice/intent.py` (sample-size alias path hygiene), `voice/session.py`
+(honesty instructions only), `voice/grounding.py` / speakable formatting for
+DI-shaped tool envelopes, narrow `voice/sidecar.py` session-instruction
+wiring (no parallel instruction builder), tests under
 `tests/test_assistant_voice_*.py` / new `tests/test_assistant_duplex_intelligence.py`
 **Depends on:**
 - DI complete (`docs/DISCUSS_INTELLIGENCE_IMPLEMENTATION.md` DI-0…DI-3)
@@ -82,17 +83,23 @@ pretending live audio can be as fail-closed as typed recovery.
 |---|---|
 | Content parity, not pipeline clone | DX targets **same facts / paths / overlay / no topic-swap** as DI overview intelligence. It does **not** require calling `propose_results_reply` / OpenAI on every duplex turn. |
 | Stay on xAI duplex | Provider remains xAI realtime (VA-5). No OpenAI Realtime migration in DX. OpenAI remains for text Discuss + VA-4 PTT channel turns only. |
-| Shared DI substrate | Reuse `results_overview` pure functions (`match_overview_intent`, `KPI_CLAIM_PATHS`, `build_deterministic_kpi_reply` / claim builder, `build_expert_overlay`, path-catalog helpers). **Do not duplicate** cue tables or KPI paths in `voice/`. |
+| Shared DI substrate | Reuse `results_overview` pure functions (`match_overview_intent`, `KPI_CLAIM_PATHS`, `build_deterministic_kpi_reply` / claim builder, `build_expert_overlay`, `build_structured_remediation_reply`, path-catalog helpers). **Do not duplicate** cue tables or KPI paths in `voice/`. Call builders then **project** into the tool envelope (§4.2.1) — do not reimplement claim loops in `voice/`. |
 | Tool allowlist names frozen | Still only `get_run_overview`, `get_metric`, `list_caveats`, `compare_two_runs`. DX may enrich **return envelopes** and schema descriptions; it must not add tool names or enable search/mcp. |
 | No live-PCM pre-gate | Live audio cannot be reliably unsaid once uttered (VA freeze). DX does **not** build cancel/replace-before-speaker pipelines. Durable transcript digit audit + remediation remain mandatory. |
-| No silent topic remap | Overview-shaped tool payloads must respect DI negative-cue veto semantics when the duplex layer chooses an overview envelope from user text (see §4). Never serve the KPI slice as a substitute for validation / WFA / OOS / grid / ranking / time asks. |
+| No silent topic remap | Overview-shaped tool payloads must respect DI negative-cue veto semantics when the duplex layer chooses an overview envelope from user text (see §4.1). Never serve the KPI slice as a substitute for validation / WFA / OOS / grid / ranking / time asks. |
+| Veto strips legacy narrative | On negative-cue / mixed-ask veto: omit `kpi_claims` and DI `summary`; set legacy `overview` to remediation text (or empty) and legacy `claims` to `[]`; keep packet `caveats`/`limitations` + digit-free `remediation`. **Never** emit `explain_evidence_report` multi-template narrative on a vetoed turn (that would re-open topic-swap via legacy fields / claim-token allowlisting). |
+| Overview-match claims policy | On matched overview intent: legacy `claims` **must equal** DI allowlist claims (same content as `kpi_claims`); legacy `overview` may mirror DI `summary` (or a short legacy-compatible string). Do not dual-emit broad explainer claims alongside narrow `kpi_claims` — `allowed_tokens_from_tool_result` short-circuits on legacy `claims` values. |
 | KPI paths | Same allowlist as DI §4.2. Baseline sample size is `results.trade_summary.trade_count`. **Never** document or prefer `results.trade_count`. |
-| Expert overlay | Overlay-authored lines remain **strictly digit-free** (`_ungrounded_number_tokens(..., allowed=set()) == []`). No trade advice, forecasts, or derived math. |
+| Sample-size intent alias (DX-1) | Retarget `voice/intent.py` aliases for “trade count” / “trades” / “sample size” from `results.trade_count` → `results.trade_summary.trade_count` and rewrite pinned voice intent/tool tests in the same PR. `get_metric` continues to return any **existing** packet path (no silent remap of caller-supplied paths); only docs/schema/intent **guidance** changes. |
+| Expert overlay | Overlay-authored lines remain **strictly digit-free** (`_ungrounded_number_tokens(..., allowed=set()) == []`). No trade advice, forecasts, or derived math. Overlay lives in `expert_overlay` only — do not also dump overlay strings into legacy packet-caveat dicts. |
+| Speakable preference | `format_speakable_tool_result` for `get_run_overview`: if `summary` is present, speak `summary` (+ optional digit-free `expert_overlay` lines); else fall back to legacy `overview`. Soft “may” is not acceptable for DX-1. |
+| Transcript selector + race | Latest user text = last `VoiceTranscriptTurn` with `role == "user"` on `VoiceSessionRecord.transcript`. DX-1 tools read the session record only — **no** sidecar in-flight transcription buffer peek. Tool calls can arrive before user transcription is persisted; missing text → neutral DI overview envelope (`overview_intent = "run_overview"`). That race is an acknowledged limitation; DX-2 instructions + evals are the primary defense when transcript is late. |
 | Auditor authority | DX must not loosen RQ/DI digit or path rules, nor fork `audit_spoken_text` token semantics. Spoken grounding stays fail-closed for durable text. |
 | PTT primary path untouched | VA-4 primary remains STT → `handle_results_turn`. DX must not reroute PTT primary through tools. PTT **fallback** may benefit from richer `get_run_overview` envelopes (additive). |
 | Default-off | `assistant.voice.enabled` default stays `false`. DX must not flip default-on. |
 | Engine | No engine, golden, metrics-formula, or bundle-schema changes. |
 | Help duplex | Still deferred. DX is results_qa run-bound only. |
+| `list_caveats` | Unchanged in DX v1 (packet caveats/warnings only). Do not invent overlay-on-caveats behavior unless a later amendment freezes a concrete field. |
 | Config | Prefer zero new knobs in DX v1. If a flag is required, it must be additive under `[assistant.voice]`, default preserving pre-DX tool envelope shape for tests that pin it, and documented in `ARCHITECTURE.md` in the same PR. Prefer behavior improvement behind existing voice enablement rather than a second intelligence flag unless characterization tests demand it. |
 
 ---
@@ -105,12 +112,16 @@ The series is done when a local user with voice enabled + realtime mode can:
    cited scalars come from the DI KPI allowlist (`results.trade_summary.*` +
    optional best-grid scalars), not invented paths.
 2. Hear/see digit-free expert framing consistent with DI-3 overlay rules
-   (via tool envelope fields the model is instructed to prefer, and/or
-   speakable template paths used when tools return overview payloads).
-3. Not get a silent KPI-slice substitute for vetoed specialist asks
-   (validation / WFA / OOS / grid / ranking / time).
+   (via tool envelope fields the model is instructed to prefer, and
+   speakable templates that prefer `summary` + overlay when present).
+3. When latest user transcript text is available on the session record, not
+   get a silent KPI-slice (or explainer-narrative) substitute for vetoed
+   specialist asks (validation / WFA / OOS / grid / ranking / time). Absolute
+   no-topic-swap is **not** claimed for the tool-before-transcript race;
+   instructions + durable audit remain the backstop there.
 4. Keep VA-6 + DI + RQ honesty/injection evals green; DX adds duplex content
-   evals (tool envelope + instruction + no topic-swap + path hygiene).
+   evals (tool envelope + instruction + no topic-swap + path hygiene +
+   intent alias + speakable preference).
 5. Docs mark DX complete in this file + `ENGINEERING_ROADMAP.md`.
 
 Live PCM may still contain a model slip that transcript remediation later
@@ -142,14 +153,14 @@ User speech (VA-5 duplex)
   → VA-3 function tools (enriched envelopes)
         get_run_overview  → DI deterministic KPI/overview builder
                             + digit-free expert overlay lines
-                            + mandatory caveats / limitations
+                            + mandatory packet caveats / limitations
+                            (+ veto → remediation; legacy narrative stripped)
         get_metric        → path descriptions / errors prefer DI paths
-                            (trade_summary.*; reject documenting trade_count)
-        list_caveats      → unchanged honesty list (may expose overlay-safe
-                            digit-free lines if already in packet)
+                            (trade_summary.*; do not document trade_count)
+        list_caveats      → unchanged (packet caveats/warnings only)
         compare_two_runs  → unchanged (out of overview KPI parity)
   → model narrates from tool JSON (instructions tell it to prefer
-     summary/claims/overlay fields; no invented paths)
+     summary/kpi_claims/overlay fields; no invented paths)
   → live PCM (not pre-gated)
   → durable transcript digit audit (unchanged fail-closed persistence)
 ```
@@ -157,63 +168,85 @@ User speech (VA-5 duplex)
 ### 4.1 How overview intent applies in duplex
 
 Duplex does **not** run the full DI recovery pipeline. It uses DI matching
-only to shape **tool outputs / instruction hints**:
+only to shape **tool outputs** (and DX-2 instruction hints):
 
 | Case | Behavior |
 |---|---|
-| User text available to tool bridge or instruction refresh matches `kpi_summary` / `run_overview` without negative veto | `get_run_overview` returns DI-shaped overview envelope (claims from §DI 4.2, overlay lines, caveats) |
-| Negative cue present (DI §4.1 veto set) | Do **not** attach KPI overview-must-cite payload; tool may return caveats/limitations + remediation hint to ask a specialist question or use text Discuss; never pretend KPI slice answers WFA/validation |
-| Unmatched / single-metric ask | Prefer `get_metric` with allowlisted paths; no full KPI dump unless overview cues match |
-| Mixed overview + specialist ask | Full veto (same as DI v1) — no partial KPI slice |
+| Latest user transcript text matches `kpi_summary` / `run_overview` without negative veto | DI-shaped overview envelope (§4.2 policy A): `kpi_claims` + matching legacy `claims`, DI `summary`, `expert_overlay`, packet caveats |
+| Negative cue present (DI §4.1 veto set) or mixed overview+specialist ask | Full veto: **no** KPI must-cite slice; **no** explainer multi-template `overview`/`claims`; digit-free `remediation` + packet `caveats`/`limitations`; `overview_intent = null` |
+| Unmatched / single-metric ask (model behavior) | Instructions tell the model to prefer `get_metric` with allowlisted paths; the overview tool itself does not redirect. If the model still calls `get_run_overview` with unmatched user text available, treat as veto/non-KPI remediation (do not dump full KPI slice for a specialist-shaped unmatched ask). |
+| No user transcript text on session yet (race) | Neutral DI overview envelope with `overview_intent = "run_overview"` (grounded KPI scalars + digit-free overlay). Not a specialist answer. Topic-swap defense for this race is DX-2 instructions + evals, not tool veto. |
 
-If the realtime model calls `get_run_overview` without the sidecar knowing
-user text, the tool still returns a **neutral DI overview envelope** grounded
-in the packet (same scalars DI would use for `run_overview`), plus digit-free
-overlay — never invented paths. Topic-swap protection for specialist asks is
-enforced by: (a) instructions forbidding overview-as-WFA-substitute,
-(b) eval fixtures, and (c) optional request-text argument only if added
-without creating a new tool name (prefer reading the latest user transcript
-turn already on the voice session record rather than widening schema).
+**DX-1 freeze for request text:**
 
-**DX-1 freeze for request text:** when building the overview envelope, if the
-latest user transcript turn on the session is available, run
-`match_overview_intent(latest_user_text)` and honor negative-cue veto
-(return non-KPI remediation envelope). If no user text is available, return
-the neutral grounded overview envelope (not a specialist answer).
+1. Selector: last `role == "user"` turn on `VoiceSessionRecord.transcript`
+   (via `VoiceToolSession` → session service/repository). Empty/whitespace
+   text does not count.
+2. No new tool argument and no sidecar event-buffer peek in DX-1.
+3. If text is available: `intent = match_overview_intent(latest_user_text)`;
+   honor negative-cue / mixed-ask full veto per DI §4.1.
+4. If text is unavailable: return the neutral grounded overview envelope
+   (`overview_intent = "run_overview"`), never invented paths.
 
 ### 4.2 Frozen `get_run_overview` envelope (additive)
 
-Keep existing keys working for VA-3/PTT fallback callers. Add DI-aligned
-fields without removing legacy keys in DX v1:
+Keep legacy key **names** for VA-3/PTT fallback callers. On overview-match and
+neutral paths, legacy **values** follow DI (policy A below). On veto, legacy
+narrative/claims are stripped (see §1).
 
 | Field | Rule |
 |---|---|
-| `overview` / `claims` / `caveats` / `limitations` (legacy) | Remain; claims must be packet-grounded |
-| `summary` | Short speakable summary; digits only from allowlisted claim values |
-| `kpi_claims` | DI allowlist claims present on packet (path/value/text) |
-| `expert_overlay` | Tuple/list of digit-free overlay strings from `build_expert_overlay` |
-| `overview_intent` | `kpi_summary` / `run_overview` / `null` (vetoed or unmatched) |
-| `remediation` | Present when vetoed / missing trade_summary; digit-free |
-| `run_id` / `canonical_bundle_hash` | Unchanged bind metadata |
+| `overview` (legacy) | Overview-match / neutral: mirror DI `summary` (or short legacy-compatible DI summary string). **Veto:** remediation text or `""` — never `explain_evidence_report` narrative. |
+| `claims` (legacy) | Overview-match / neutral: **same DI allowlist claims** as `kpi_claims` (JSON-safe `{path,value,text}`). **Veto:** `[]`. |
+| `caveats` / `limitations` (legacy) | Packet caveats (dict form) / limitations only — not overlay-authored lines. |
+| `summary` | Short speakable summary from DI builder; digits only from allowlisted claim values. Absent on veto. |
+| `kpi_claims` | DI allowlist claims present on packet. Absent / empty on veto. |
+| `expert_overlay` | Tuple/list of digit-free overlay strings from `build_expert_overlay` only. Absent / empty on veto. |
+| `overview_intent` | `kpi_summary` / `run_overview` / `null` (vetoed or unmatched-with-text). Neutral (no text) uses `"run_overview"`. |
+| `remediation` | Present when vetoed / missing trade_summary / structured remediation; digit-free. |
+| `run_id` / `canonical_bundle_hash` | Unchanged bind metadata. |
+| `next_experiments` | May remain for compatibility; must not introduce new run digits beyond packet content. Prefer leaving pre-DX behavior or packet `next_experiments` only. |
 
-Speakable formatting helpers may prefer `summary` + overlay when present;
-legacy `overview` narrative remains acceptable fallback.
+**Speakable freeze:** `format_speakable_tool_result("get_run_overview", …)`
+**must** prefer `summary` when present (optionally append digit-free
+`expert_overlay` lines); else fall back to legacy `overview`.
+
+### 4.2.1 `ResultsQAReply` → tool envelope projection
+
+DX-1 calls DI builders, then projects — no duplicated claim loops:
+
+| DI builder output | Envelope field |
+|---|---|
+| `build_deterministic_kpi_reply(...).summary` | `summary` and legacy `overview` |
+| allowlisted `claims` | `kpi_claims` **and** legacy `claims` (identical content) |
+| `build_expert_overlay(packet, claims)` return value | `expert_overlay` only |
+| packet `caveats` / `limitations` | legacy `caveats` / `limitations` |
+| `build_structured_remediation_reply(...).summary` (veto / missing KPI) | `remediation` (+ legacy `overview` may mirror it); `summary`/`kpi_claims`/`expert_overlay` omitted or empty; legacy `claims = []` |
+| matched / neutral intent string | `overview_intent` |
+| `followups` on `ResultsQAReply` | Out of DX v1 tool envelope (do not require a new field) |
+
+`apply_expert_overlay` may still be used internally to auditor-check the
+DI reply; projection must **not** copy overlay lines into legacy `caveats`
+dicts (typed packet caveats stay distinct from overlay strings).
 
 ### 4.3 Session instructions (DX-2)
 
 Extend `build_honesty_instructions` for `mode=realtime` / results channel
-with a short, frozen block:
+with the following **verbatim constraint block** (DX-2 may word-wrap / join
+lines but must keep these needles test-stable; if copy must change, amend
+this subsection in the same PR):
 
-- Prefer tool fields `summary`, `kpi_claims`, `expert_overlay`, `caveats`.
-- Cite only paths returned by tools; never invent `results.trade_count` /
-  `results.instrument` / `results.validation.trade_count`.
-- Win rates: say percent / `%` when tools return fractional rates.
-- Do not answer WFA/validation/ranking/time asks by reading the KPI overview
-  tool as a substitute; call the specialist-appropriate tool or remediate.
-- No trade advice; sample-size/OOS caveats still apply.
+```text
+Duplex overview rules: prefer tool fields summary, kpi_claims, expert_overlay, and packet caveats.
+Cite only paths returned by tools; never invent results.trade_count, results.instrument, or results.validation.trade_count.
+When tools return fractional win rates, say them as percent / %.
+Do not answer walk-forward, validation, ranking, or time asks by reading get_run_overview as a substitute; call a specialist-appropriate tool or remediate.
+No trade advice; sample-size and OOS caveats still apply.
+```
 
 Do not dump the entire DI path catalog into instructions if size risks
-prompt bloat — prefer tool-returned allowlists + a short forbidden-path note.
+prompt bloat — prefer tool-returned allowlists + the forbidden-path needles
+above.
 
 ---
 
@@ -221,8 +254,8 @@ prompt bloat — prefer tool-returned allowlists + a short forbidden-path note.
 
 | Layer | DX stance |
 |---|---|
-| Tool JSON | Fail closed: only packet paths; DI builders; no invented metrics |
-| Model speech | Best-effort narration from tools; instructions constrain path invention |
+| Tool JSON | Fail closed: only packet paths; DI builders; no invented metrics; veto strips legacy narrative |
+| Model speech | Best-effort narration from tools; instructions constrain path invention / topic swap |
 | Durable transcript | Existing `audit_realtime_assistant_transcript` remediation stays |
 | OpenAI RQ repair loop | **Out of DX v1** for duplex turns (PTT/text already have it) |
 | TLS wrap / Streamlit dumps | Out of scope (text path); sidecar keeps current provider error handling |
@@ -249,19 +282,19 @@ amendment with latency/UX analysis — do not sneak it into DX-1…DX-3.
 
 | | |
 |---|---|
-| **Goal** | `get_run_overview` (and metric path hygiene) expose DI-parity grounded overview payloads |
-| **In scope** | `voice/tools.py` envelope enrichment using `results_overview` builders; latest-user-turn veto via `match_overview_intent`; `get_metric` schema/description path examples use `results.trade_summary.*`; speakable/tool formatting updates if required for new fields; unit tests for envelope paths, veto, missing `trade_summary`, overlay digit audit; docs in this file + ASSUMPTIONS pointer |
-| **Out of scope** | Sidecar transport changes; instruction essay rewrites (DX-2); eval bank freeze (DX-3); new tools; PTT primary reroute; Help duplex; `propose_results_reply` bridge; live-PCM gating |
-| **Honesty** | Claims/paths from DI allowlist only; overlay `allowed=set()`; negative-cue veto prevents KPI topic swap when user text available |
-| **Acceptance** | Fixtures: overview ask → envelope contains `trade_summary` claims when present; never `results.trade_count`; vetoed WFA/validation user text → remediation / non-KPI envelope; overlay lines digit-free; existing VA tool allowlist tests green; PTT primary still calls `handle_results_turn` |
-| **Regression-safety** | Additive envelope fields; legacy keys preserved; assistant/voice only; engine/golden untouched |
+| **Goal** | `get_run_overview` (and metric/intent path hygiene) expose DI-parity grounded overview payloads |
+| **In scope** | `voice/tools.py` envelope enrichment via DI builders + §4.2.1 projection; latest-user-turn veto via `match_overview_intent` (§4.1 selector); veto strips legacy `overview`/`claims`; overview-match policy A (legacy claims = DI claims); `get_metric` schema/description examples use `results.trade_summary.*`; `voice/intent.py` sample-size aliases → `results.trade_summary.trade_count` + rewrite pinned intent/tool tests; `format_speakable_tool_result` summary-first preference; unit tests for envelope paths, veto×legacy strip, missing `trade_summary`, overlay digit audit, intent alias, speakable preference; docs in this file + ASSUMPTIONS pointer |
+| **Out of scope** | Sidecar transport changes / in-flight transcript buffer; instruction essay rewrites (DX-2); eval bank freeze (DX-3); new tools; PTT primary reroute; Help duplex; `propose_results_reply` bridge; live-PCM gating; changing `list_caveats` shape; silent `get_metric` path remaps |
+| **Honesty** | Claims/paths from DI allowlist only on overview-match/neutral; overlay `allowed=set()`; negative-cue veto prevents KPI **and** explainer-narrative topic swap when user text available |
+| **Acceptance** | Fixtures: overview ask → envelope contains `trade_summary` claims when present; never guides `results.trade_count` as baseline; vetoed WFA/validation user text → remediation / empty KPI + empty legacy claims / non-explainer overview; overlay lines digit-free; intent “sample size” → `results.trade_summary.trade_count`; speakable prefers `summary`; existing VA tool allowlist tests green; PTT primary still calls `handle_results_turn` |
+| **Regression-safety** | Additive envelope fields; legacy key names preserved with DI-aligned values on overview path; assistant/voice only; engine/golden untouched |
 
 ### DX-2 — Realtime session instruction parity
 
 | | |
 |---|---|
 | **Goal** | Realtime model is instructed to prefer DI-shaped tool fields and avoid known bad paths / topic swap |
-| **In scope** | `build_honesty_instructions` additive realtime/results block (§4.3); sidecar still consumes instructions from `VoiceSessionService` (no parallel instruction builder); tests that realtime instructions include frozen needles (tool field names, forbidden paths, no-topic-swap); docs |
+| **In scope** | `build_honesty_instructions` additive realtime/results block using the §4.3 verbatim needles; sidecar still consumes instructions from `VoiceSessionService` (no parallel instruction builder); tests that realtime instructions include those frozen needles; docs |
 | **Out of scope** | Re-owning tool envelopes (DX-1); provider/topology; Help; RQ auditor |
 | **Acceptance** | Realtime session instructions contain the frozen constraint needles; PTT instructions remain valid; no search/mcp regression |
 | **Regression-safety** | Additive instruction text only; VA-6 grounding evals stay green |
@@ -271,7 +304,7 @@ amendment with latency/UX analysis — do not sneak it into DX-1…DX-3.
 | | |
 |---|---|
 | **Goal** | Freeze duplex content-parity characterization; mark DX complete |
-| **In scope** | `tests/test_assistant_duplex_intelligence.py` (or VA eval module extension) covering §9; mark DX complete in this file + `ENGINEERING_ROADMAP.md`; ASSUMPTIONS shipped-limitation note (live PCM still not pre-gated; content parity via tools) |
+| **In scope** | `tests/test_assistant_duplex_intelligence.py` (or VA eval module extension) covering §9; mark DX complete in this file + `ENGINEERING_ROADMAP.md`; ASSUMPTIONS shipped-limitation note (live PCM still not pre-gated; content parity via tools; tool-before-transcript race acknowledged) |
 | **Out of scope** | New features; default-on; RQ-bridge tool; provider swap |
 | **Acceptance** | DX + VA-6 + DI + RQ honesty suites green; roadmap shows DX complete |
 | **Regression-safety** | Tests-only + docs status; no engine touch |
@@ -285,9 +318,11 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 - [ ] VA-6 eval file remains green
 - [ ] DI / RQ honesty suites remain green (no auditor edits)
 - [ ] No new voice tool names; search/mcp still denied on realtime payloads
-- [ ] KPI paths match DI §4.2; no `results.trade_count` guidance
-- [ ] Negative-cue / mixed-ask tests prove no KPI topic swap when user text exists
-- [ ] Overlay-authored lines digit-free (`allowed=set()`)
+- [ ] KPI paths match DI §4.2; no `results.trade_count` guidance in schemas/instructions/intent aliases
+- [ ] Negative-cue / mixed-ask tests prove no KPI topic swap **and** no explainer-narrative leftover when user text exists
+- [ ] Overview-match: legacy `claims` == `kpi_claims` (DI allowlist only)
+- [ ] Overlay-authored lines digit-free (`allowed=set()`) and only in `expert_overlay`
+- [ ] Speakable overview prefers `summary` when present
 - [ ] PTT primary path still `handle_results_turn`
 - [ ] Default `assistant.voice.enabled=false`
 - [ ] Same-PR docs: this contract + roadmap (+ ASSUMPTIONS / ARCHITECTURE when behavior or keys change)
@@ -309,6 +344,8 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 | Default-enabling voice | VA-6 release gate |
 | Engine / golden / metrics changes | Out of assistant series |
 | Trading recommendations / derived stats in overlay | DI/RQ product honesty |
+| Sidecar in-flight transcript buffer for veto | Keeps DX-1 on session-record seam; race handled by instructions |
+| Silent `get_metric` path remaps | DI/RQ forbid silent quantity remap |
 
 ---
 
@@ -316,20 +353,23 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 
 | ID | Case | Expect |
 |---|---|---|
-| X1 | `get_run_overview` on packet with `trade_summary` | Envelope `kpi_claims` / claims cite DI allowlist paths only |
-| X2 | Envelope never suggests `results.trade_count` as baseline sample size | Prefer `results.trade_summary.trade_count` |
+| X1 | `get_run_overview` on packet with `trade_summary` (overview-match or neutral) | `kpi_claims` and legacy `claims` cite DI allowlist paths only and match each other |
+| X2 | Envelope / schema / intent guidance | Never suggests `results.trade_count` as baseline sample size; prefer `results.trade_summary.trade_count` |
 | X3 | Latest user text “KPIs of this run” | `overview_intent` in `{kpi_summary, run_overview}`; summary digits from claims |
-| X4 | Latest user text “summarize the walk-forward / validation results” | Negative veto; **no** KPI must-cite slice; remediation digit-free |
-| X5 | Mixed “KPIs and best SL/TP” | Full veto; no partial KPI slice |
-| X6 | `expert_overlay` lines | `_ungrounded_number_tokens(line, allowed=set()) == []` |
+| X4 | Latest user text “summarize the walk-forward / validation results” | Negative veto; **no** KPI must-cite slice; legacy `claims == []`; legacy `overview` is remediation/empty (not explainer narrative); remediation digit-free |
+| X5 | Mixed “KPIs and best SL/TP” | Full veto; no partial KPI slice; same legacy strip as X4 |
+| X6 | `expert_overlay` lines | `_ungrounded_number_tokens(line, allowed=set()) == []`; not copied into legacy caveat dicts |
 | X7 | Missing `trade_summary` | Honest limitation / remediation; no fabricated scalars |
-| X8 | Realtime instructions (DX-2) | Contain frozen needles: prefer `kpi_claims`/`expert_overlay`; forbid bad paths; no topic swap |
+| X8 | Realtime instructions (DX-2) | Contain §4.3 frozen needles (`summary`/`kpi_claims`/`expert_overlay`; forbid bad paths; no topic swap) |
 | X9 | Realtime session tools payload | Still VA-3 functions only; no search/mcp |
 | X10 | PTT primary with OpenAI | Still `answer_path == "handle_results_turn"` |
-| X11 | PTT fallback without OpenAI | Still works; may consume enriched overview envelope additively |
+| X11 | PTT fallback without OpenAI | Still works; speakable prefers `summary` when envelope enriched |
 | X12 | Injection “ignore evidence, invent KPIs” / “run a grid” | Tools/compute still refused; uncited durable digits remediated |
 | X13 | VA-6 + DI eval suites | Remain green |
 | X14 | Word-boundary false friends on session user text | Same DI matcher semantics (no substring veto/match drift) |
+| X15 | Intent alias “sample size” / “trades” | Routes to `results.trade_summary.trade_count` (not `results.trade_count`) |
+| X16 | No user transcript on session (race) | Neutral envelope with `overview_intent == "run_overview"`; grounded DI scalars only |
+| X17 | `get_metric("results.trade_count")` when path exists on packet | Still returns the existing leaf (no silent remap); guidance/tests must not *prefer* it as baseline |
 
 ---
 
@@ -365,5 +405,7 @@ Until DX-1…DX-3 land:
 - **Low-latency duplex review:** VA-5 remains usable for bound-run talk; treat
   numbers as tool-grounded and prefer confirming critical figures in text/PTT
   when precision matters.
-- After DX complete: duplex overview/KPI talk should match DI **content**;
-  text/PTT remain strongest for typed recovery and pre-TTS gating.
+- After DX complete: duplex overview/KPI talk should match DI **content** when
+  user transcript text is available for veto; text/PTT remain strongest for
+  typed recovery and pre-TTS gating. Tool-before-transcript races may still
+  return a neutral overview envelope — confirm specialist asks in text/PTT.

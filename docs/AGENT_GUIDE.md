@@ -364,7 +364,10 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   VA wholesale for this; stay inside DX scope tables. DX must reuse DI pure
   functions (not fork cue/path tables), must not switch providers, must not
   pre-gate live PCM, must not default-enable voice, and must keep VA-6 / DI /
-  RQ honesty suites green.
+  RQ honesty suites green. DX-1 must honor the contract freezes for veto×legacy
+  narrative strip, session-transcript selector (no sidecar buffer peek),
+  intent sample-size alias → `results.trade_summary.trade_count`, DI
+  reply→envelope projection, and speakable `summary`-first preference.
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned
