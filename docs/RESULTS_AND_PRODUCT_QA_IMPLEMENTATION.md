@@ -387,11 +387,12 @@ Purpose
 §15 — Release-Gate Documentation
 ```
 
-#### 7.1.4 Exact `user_guide` H2 titles (HC-1…HC-3 + HC-5; amend via HC PRs)
+#### 7.1.4 Exact `user_guide` H2 titles (HC-1…HC-3 + HC-5/HC-6; amend via HC PRs)
 
 Match these strings exactly after stripping the leading `##` and surrounding
-whitespace. HC-3 completed the classic §6.1 skeleton; HC-5 adds the dedicated
-**Exposure policy** H2. Every USER_GUIDE H2 below is filled and Help-readable.
+whitespace. HC-3 completed the classic §6.1 skeleton; HC-5 adds **Exposure
+policy**; HC-6 adds P0 settings depth H2s. Every USER_GUIDE H2 below is filled
+and Help-readable.
 
 ```text
 Purpose and honesty
@@ -402,8 +403,12 @@ Setup Builder
 Signals
 Backtest
 Exposure policy
+Intrabar resolution
+Exit management (break-even and trailing)
+Session close and entry cutoff
 Grid Search
 Time Analysis
+Focus vs Admit
 Validation and robustness
 Report Export
 Research Bundles

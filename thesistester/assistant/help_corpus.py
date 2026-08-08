@@ -87,7 +87,7 @@ _OTF_SECTIONS = frozenset(
     }
 )
 
-# HC-1…HC-3 filled USER_GUIDE H2s + HC-5 Exposure policy (exact §7.1.4 titles).
+# HC-1…HC-3 + HC-5/HC-6 USER_GUIDE H2s (exact §7.1.4 titles).
 _USER_GUIDE_SECTIONS = frozenset(
     {
         "Purpose and honesty",
@@ -98,8 +98,12 @@ _USER_GUIDE_SECTIONS = frozenset(
         "Signals",
         "Backtest",
         "Exposure policy",
+        "Intrabar resolution",
+        "Exit management (break-even and trailing)",
+        "Session close and entry cutoff",
         "Grid Search",
         "Time Analysis",
+        "Focus vs Admit",
         "Validation and robustness",
         "Report Export",
         "Research Bundles",
@@ -131,6 +135,7 @@ _HOW_TO_QUERY_TOKENS = frozenset(
         "enable",
         "save",
         "load",
+        "promote",
     }
 )
 _DEFINITION_QUERY_TOKENS = frozenset(
@@ -174,6 +179,97 @@ _EXPOSURE_QUERY_TOKENS = frozenset(
         "exposure_group_key",
     }
 )
+# HC-6 P0 setting nouns → dedicated USER_GUIDE H2s (ASSUMPTIONS mega-chunk is
+# oversized for max_corpus_chars and is skipped entirely).
+_INTRABAR_QUERY_TOKENS = frozenset(
+    {
+        "intrabar",
+        "intrabar_model",
+        "sl_first",
+        "path_open_proximity",
+        "subtimeframe",
+        "subtimeframe_conservative",
+        "both-hit",
+        "both_hit",
+    }
+)
+# Prefer specific compounds — bare ``trailing`` / ``focus`` / ``session``+``close``
+# false-boost unrelated how-tos (see ``_is_*_ask`` gates below).
+_EXIT_MGMT_QUERY_TOKENS = frozenset(
+    {
+        "break-even",
+        "breakeven",
+        "trailing_stop",
+        "breakeven_after_r",
+        "trailing_after_r",
+        "trailing_distance_ticks",
+        "exit_management",
+    }
+)
+_SESSION_EXIT_QUERY_TOKENS = frozenset(
+    {
+        "session_close",
+        "session_close_time",
+        "no_new_entries_after",
+        "no_new_entries",
+        "after_entry_cutoff",
+        "data_end",
+    }
+)
+_FOCUS_ADMIT_QUERY_TOKENS = frozenset(
+    {
+        "admit",
+        "promote",
+        "entry_window",
+        "outside_entry_window",
+        "post-hoc",
+        "post_hoc",
+    }
+)
+
+
+def _is_exit_mgmt_ask(query_tokens: set[str]) -> bool:
+    """True for break-even / trailing-stop asks (not bare ``trailing``)."""
+    if query_tokens & _EXIT_MGMT_QUERY_TOKENS:
+        return True
+    if "trailing" in query_tokens and (
+        {"stop", "stops", "distance", "exit", "exits", "r"} & query_tokens
+    ):
+        return True
+    return False
+
+
+def _is_session_exit_ask(query_tokens: set[str]) -> bool:
+    """True for Flat-by-session-close / cutoff asks (not ``close a research session``)."""
+    if query_tokens & _SESSION_EXIT_QUERY_TOKENS:
+        return True
+    if "flat" in query_tokens and "session" in query_tokens:
+        return True
+    if {"session", "close"} <= query_tokens and (
+        {"flat", "cutoff", "exit", "exits", "entries", "forced", "eod", "timezone"} & query_tokens
+    ):
+        return True
+    return False
+
+
+def _is_focus_admit_ask(query_tokens: set[str]) -> bool:
+    """True for Focus/Admit/entry-window asks (not bare ``focus on expectancy``)."""
+    if query_tokens & _FOCUS_ADMIT_QUERY_TOKENS:
+        return True
+    if {"entry", "window"} <= query_tokens:
+        return True
+    if "focus" in query_tokens and (
+        {"admit", "promote", "summary", "bucket", "constrain", "constrained", "window"}
+        & query_tokens
+    ):
+        return True
+    if ("constrain" in query_tokens or "constrained" in query_tokens) and (
+        {"entries", "entry", "window", "time"} & query_tokens
+    ):
+        return True
+    return False
+
+
 # Stopwords ignored when matching query tokens to USER_GUIDE H2 titles so
 # titles like "Purpose and honesty" do not get a strong boost from bare "and".
 _SECTION_TITLE_STOPWORDS = frozenset(
@@ -574,6 +670,25 @@ def score_corpus_chunk(chunk: CorpusChunk, *, query_tokens: set[str]) -> int:
         score += 3
         if "exposure" in chunk.section.lower():
             score += 5
+    if query_tokens & _INTRABAR_QUERY_TOKENS and chunk.doc_id == "user_guide":
+        score += 3
+        if "intrabar" in chunk.section.lower():
+            score += 5
+    if _is_exit_mgmt_ask(query_tokens) and chunk.doc_id == "user_guide":
+        score += 3
+        section_l = chunk.section.lower()
+        if "exit management" in section_l or "break-even" in section_l:
+            score += 5
+    if _is_session_exit_ask(query_tokens) and chunk.doc_id == "user_guide":
+        score += 3
+        section_l = chunk.section.lower()
+        if "session close" in section_l or "entry cutoff" in section_l:
+            score += 5
+    if _is_focus_admit_ask(query_tokens) and chunk.doc_id == "user_guide":
+        score += 3
+        section_l = chunk.section.lower()
+        if "focus" in section_l and "admit" in section_l:
+            score += 5
     if {
         "otf",
         "one",
@@ -596,8 +711,27 @@ def score_corpus_chunk(chunk: CorpusChunk, *, query_tokens: set[str]) -> int:
     definitional = bool(query_tokens & _DEFINITION_QUERY_TOKENS)
     if how_to and chunk.doc_id == "user_guide":
         section_tokens = _tokenize_query(chunk.section) - _SECTION_TITLE_STOPWORDS
-        if query_tokens & section_tokens:
-            score += 5
+        overlap = query_tokens & section_tokens
+        if overlap:
+            section_l = chunk.section.lower()
+            # HC-6: title tokens like bare ``focus`` / ``trailing`` / ``session``
+            # must not how-to-boost P0 settings H2s without a real settings ask.
+            if (
+                "focus" in section_l
+                and "admit" in section_l
+                and not _is_focus_admit_ask(query_tokens)
+            ):
+                pass
+            elif (
+                "exit management" in section_l or "break-even" in section_l
+            ) and not _is_exit_mgmt_ask(query_tokens):
+                pass
+            elif (
+                "session close" in section_l or "entry cutoff" in section_l
+            ) and not _is_session_exit_ask(query_tokens):
+                pass
+            else:
+                score += 5
     elif definitional and not how_to and chunk.doc_id == "user_guide":
         # Soft preference away from forcing USER_GUIDE on pure definitions.
         score -= 1
