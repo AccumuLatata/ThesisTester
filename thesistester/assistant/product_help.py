@@ -140,9 +140,10 @@ _RUN_PERF_PATTERNS = (
         re.IGNORECASE,
     ),
     # DI overview cues anchored to a specific run (Help → Discuss remediation).
+    # Include ``of`` so “KPIs of this run” / “key metrics of this run” match.
     re.compile(
         rf"\b{_OVERVIEW_METRIC_NOUNS}\b"
-        r"[\s\S]{0,48}\b(?:on|in|for|from)\s+(?:this|my|that)\s+run\b",
+        r"[\s\S]{0,48}\b(?:on|in|for|from|of)\s+(?:this|my|that)\s+run\b",
         re.IGNORECASE,
     ),
     re.compile(

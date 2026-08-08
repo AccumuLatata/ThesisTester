@@ -40,6 +40,8 @@ def test_is_run_performance_question_detects_personal_run_metrics():
     # DI overview cues must remediate to Discuss (not answer from Help DI copy).
     assert is_run_performance_question("What were my KPIs on this run?")
     assert is_run_performance_question("What were my key metrics on this run?")
+    assert is_run_performance_question("Give me the KPIs of this run")
+    assert is_run_performance_question("key metrics of this run")
     assert is_run_performance_question("What is my run summary?")
     assert is_run_performance_question("highlights of this run")
     assert is_run_performance_question("summary of this run")
