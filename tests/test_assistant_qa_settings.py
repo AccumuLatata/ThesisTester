@@ -26,6 +26,8 @@ def test_tracked_config_enables_results_and_help_channels():
     assert results.enabled is True
     assert results.max_history_messages == 12
     assert results.allow_time_enrichment is False
+    assert results.repair_retry_enabled is True
+    assert results.deterministic_overview_fallback is True
     assert help_settings.enabled is True
     assert help_settings.max_history_messages == 12
     assert help_settings.max_corpus_chars == 24000
@@ -46,6 +48,8 @@ def test_missing_channel_sections_are_disabled(tmp_path):
     help_settings = load_product_help_settings(path)
     assert results.enabled is False
     assert results.allow_time_enrichment is False
+    assert results.repair_retry_enabled is True
+    assert results.deterministic_overview_fallback is True
     assert results.max_history_messages == 7
     assert help_settings.enabled is False
     assert help_settings.max_history_messages == 7

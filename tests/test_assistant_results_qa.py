@@ -164,6 +164,8 @@ def test_propose_results_reply_rejects_uncited_followup_digits():
             packet=_packet(),
             history=(),
             user_message="How many trades?",
+            repair_retry_enabled=False,
+            deterministic_overview_fallback=False,
         )
 
 
@@ -300,6 +302,8 @@ def test_propose_results_reply_rejects_bare_percent_points_without_percent_marke
             packet=packet,
             history=(),
             user_message="What is win rate?",
+            repair_retry_enabled=False,
+            deterministic_overview_fallback=False,
         )
 
 
@@ -341,6 +345,8 @@ def test_propose_results_reply_rejects_clock_minutes_as_percent_words():
             packet=packet,
             history=(),
             user_message="What is avg_r?",
+            repair_retry_enabled=False,
+            deterministic_overview_fallback=False,
         )
 
 
