@@ -583,8 +583,8 @@ other than the last bar in the dataset.
   numbers, WFA caveat merge + OOS anti-soften, pipeline injection, draft
   isolation, corpus allowlist, provider-key remediation, offline deterministic
   Explain, registry audit).
-  Thesis switches clear `assistant_results_qa_drafts`,
-  `assistant_product_help_draft`, and related widget keys. Draft-chat history
+  Thesis switches clear mode-scoped chat_input widget keys and other
+  thesis-scoped staging. Draft-chat history
   excludes `results_qa` / `product_help` turns and tool/audit lines so
   multi-turn Discuss/Help cannot starve thesis context.
 - LLM explanations must cite packet paths; uncited numerical tokens are rejected

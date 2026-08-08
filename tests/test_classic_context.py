@@ -125,9 +125,9 @@ def test_link_thesis_sets_context_and_syncs_assistant_without_mutating_page_stat
     assert get_recording_policy(session) == "manual"
     assert session["assistant_selected_thesis_id"] == thesis.thesis_id
     for key in THESIS_SCOPED_STAGING_KEYS:
-        if key in {"assistant_draft_prompt", "assistant_product_help_draft"}:
+        if key in {"assistant_draft_prompt"}:
             assert session[key] == ""
-        elif key in {"assistant_draft_choices", "assistant_results_qa_drafts"}:
+        elif key in {"assistant_draft_choices"}:
             assert session[key] == {}
         elif key in {
             "assistant_results_qa_deep_link",

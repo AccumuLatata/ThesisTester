@@ -170,6 +170,50 @@ def apply_discuss_deep_link_preselect(
     session_state[DISCUSS_RUN_PICKER_KEY] = run_id.strip()
 
 
+def chat_input_placeholder(mode: str) -> str:
+    """Mode-specific placeholder for the single page-level ``st.chat_input``."""
+    if mode == ASSISTANT_MODE_DISCUSS:
+        return "Ask about this completed run"
+    if mode == ASSISTANT_MODE_HELP:
+        return "Ask how ThesisTester works"
+    return "Describe or refine this thesis"
+
+
+def chat_input_key(mode: str, run_id: str | None = None) -> str:
+    """Stable widget key for the active-mode page-level ``st.chat_input``.
+
+    Discuss keys include ``run_id`` when a run is selected so Streamlit does not
+    reuse draft text across runs. Help/Draft keys are mode-only.
+    """
+    if mode == ASSISTANT_MODE_DISCUSS:
+        if isinstance(run_id, str) and run_id.strip():
+            return f"assistant-chat-input-discuss-{run_id.strip()}"
+        return "assistant-chat-input-discuss"
+    if mode == ASSISTANT_MODE_HELP:
+        return "assistant-chat-input-help"
+    return "assistant-chat-input-draft"
+
+
+def chat_input_disabled(
+    mode: str,
+    *,
+    discuss_run_selected: bool,
+    results_qa_enabled: bool,
+    product_help_enabled: bool,
+) -> bool:
+    """Whether the page-level ``st.chat_input`` must refuse composition.
+
+    RUX-3 keeps one chat_input per mode for layout stability, but must not
+    accept input when the channel cannot answer (no Discuss run, Results Q&A
+    off, or Product Help off). Draft is never disabled by these gates.
+    """
+    if mode == ASSISTANT_MODE_DISCUSS:
+        return (not discuss_run_selected) or (not results_qa_enabled)
+    if mode == ASSISTANT_MODE_HELP:
+        return not product_help_enabled
+    return False
+
+
 def reset_ux_mode_and_picker(
     session_state: MutableMapping[str, Any],
     *,

@@ -388,8 +388,6 @@ The Research Assistant page stages only these additive `assistant_*` keys
 | `assistant_run_artifacts` | Research artifact cache by run_id |
 | `assistant_run_comparisons` | In-session comparison by thesis_id |
 | `assistant_portfolio_analyses` | In-session portfolio analysis by thesis_id |
-| `assistant_results_qa_drafts` | Per-run Discuss results text-input drafts (`{run_id: str}`) |
-| `assistant_product_help_draft` | Help panel text-input draft string |
 | `assistant_focused_run_id` | Last classic-focused run id (RQ-4 deep-link / banner) |
 | `assistant_results_qa_deep_link` | Sticky Advanced → Linked-run expansion after `results_qa` focus |
 | `assistant_results_qa_force_expand` | One-shot force-open for keyed Advanced/run expanders |
@@ -439,8 +437,9 @@ additive `assistant_*` keys and conversation message tags
 (`channel` ∈ {`results_qa`, `product_help`}, plus `run_id` for results); see
 `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md`. Contract freezes for that
 series include: draft history isolation (`handle_chat_turn` / draft hydration /
-thesis chat display ignore `channel`-tagged messages), v1 Discuss/Help inputs as
-keyed `st.text_input` + send (not nested `st.chat_input`), frozen Help §7.1
+thesis chat display ignore `channel`-tagged messages), Discuss/Help inputs as a
+single **page-level** mode-scoped `st.chat_input` (RUX-3; never nested; never a
+second page-level input), frozen Help §7.1
 path+section allowlist (no `AGENT_GUIDE`; no agent-invented sections), Help
 numeric grounding via verbatim corpus/registry substrings, and RQ-4 companion
 key `classic_focus_channel="results_qa"` beside string `classic_focus_run_id`
@@ -449,7 +448,7 @@ key `classic_focus_channel="results_qa"` beside string `classic_focus_run_id`
 `thesistester/assistant/llm.py`; inert corpus allowlist/loaders live in
 `thesistester/assistant/help_corpus.py`. **RQ-1 landed:**
 `thesistester/assistant/results_qa.py` + `handle_results_turn`; Discuss results
-UI in the **Discuss runs** mode (RUX-2); `assistant_results_qa_drafts` session key.
+UI in the **Discuss runs** mode (RUX-2/RUX-3 page-level chat_input).
 **RQ-2 landed:** `thesistester/assistant/results_projections.py` builds
 ephemeral `results.projections.grid_rankings.*` /
 `results.projections.time_rankings.*` for each Discuss turn (never persisted
@@ -478,7 +477,7 @@ Optional RO `TIME.analyze` enrichment runs only when
 `time_grouped_summary` is missing, after hash verification.
 **RQ-3 landed:** `thesistester/assistant/product_help.py` +
 `handle_help_turn`; Help / how it works mode on Research Assistant
-(`st.text_input` + send); `assistant_product_help_draft` session key;
+(page-level mode-scoped `st.chat_input`; RUX-3);
 lexical `select_help_corpus_chunks` under §7.1 + registry digest (never
 `AGENT_GUIDE`). The Help UI passes package-relative `repo_root` (orchestrator
 defaults to the same when omitted — not process cwd). Run-performance
@@ -488,36 +487,33 @@ results?`, `how does this run get confirmed`) and definition/computation asks
 about metric nouns (`How is my expectancy computed?`) stay in Help.
 Zero-overlap Help retrieval packs the allowlist prefix (manifest order), not
 alphabetical `doc_id`. Help digit grounding uses number-token matching (not
-bare substring); the Help system prompt matches that contract. Conversation
-hydration clears `assistant_product_help_draft` / `product-help-input` /
-`assistant_clear_product_help_input`. Help and Discuss results clear their
-text inputs via deferred flags (`assistant_clear_product_help_input`,
-`assistant_clear_results-qa-input-*`) applied only before `st.text_input`
-on the next run — never by writing the widget key after bind in the same
-run (StreamlitAPIException).
+bare substring); the Help system prompt matches that contract. RUX-3 retires
+`assistant_results_qa_drafts` / `assistant_product_help_draft` and the
+deferred `assistant_clear_*` text-input flags: Discuss/Help/Draft share one
+page-level `st.chat_input` (trigger widget; unsent draft text is not persisted
+across reruns — intentional UX simplification, not durable store loss). The
+widget stays mounted in every mode for layout stability but is `disabled` when
+Discuss has no selected run / Results Q&A is off, or Product Help is off.
 Thesis chat remains draft-only; deterministic Explain run lives in Discuss
 mode; one-shot LLM explain remains under Advanced → Linked runs.
 
 Thesis switches clear `THESIS_SCOPED_STAGING_KEYS` (`assistant_draft_prompt`,
 `assistant_draft_choices`, `assistant_hydrated_conversation_id`,
-`assistant_validated_run_spec`, `assistant_results_qa_drafts`,
-`assistant_product_help_draft`, `assistant_focused_run_id`,
+`assistant_validated_run_spec`, `assistant_focused_run_id`,
 `assistant_results_qa_deep_link`, `assistant_results_qa_force_expand`,
 `assistant_bundle_handoff`, `assistant_flash`,
 `assistant_voice_results_sessions`, `assistant_voice_help_session_id`,
 `assistant_voice_last_turn`, `assistant_voice_playback`,
 `assistant_ux_mode`, `assistant_discuss_run_picker`)
-so draft/validation/hydration/handoff/flash/results/help/deep-link/voice/UX staging cannot leak.
+so draft/validation/hydration/handoff/flash/deep-link/voice/UX staging cannot leak.
 `clear_thesis_scoped_state` hardcodes each reset (it does **not** iterate the
 tuple). For the RUX mode/picker keys it pops the Streamlit widget keys then
 rewrites defaults via `reset_ux_mode_and_picker` (`assistant_ux_mode` ←
 `load_assistant_ux_settings().default_mode`, picker ← `None`) so a stale
 selectbox option cannot survive a thesis switch. It also deletes ephemeral
-Streamlit widget keys prefixed `results-qa-input-` / `product-help-input` /
-`assistant_clear_results-qa-input-` / `voice-results-audio-` /
-`voice-help-audio`, plus `assistant_clear_product_help_input`, so
-Discuss/Help text-input clear flags and PTT audio widgets cannot revive a
-cleared draft after a thesis switch. Discuss results assistant
+Streamlit widget keys prefixed `assistant-chat-input-` / `voice-results-audio-` /
+`voice-help-audio` / `ra-run-expander-`, plus the Advanced expander key, so
+mode-scoped chat widgets and PTT audio cannot leak across theses. Discuss results assistant
 `content` embeds path-cited Claims (via `format_results_qa_reply_content`) for
 plain-text auditability. `handle_chat_turn` draft history excludes
 channel-tagged messages and channel-less `role: tool` audit lines so RO

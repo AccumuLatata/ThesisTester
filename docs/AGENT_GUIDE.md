@@ -266,9 +266,11 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   client — if both fail with the opaque main-branch message, fix deploy
   secrets / merge the transport-detail PR before debugging schemas.
   Help citations must use `doc_id="registry"` (alias `registry_digest` is
-  normalized). Never write Streamlit widget keys (`product-help-input`,
-  `results-qa-input-*`) after `st.text_input` in the same run — set a
-  deferred-clear flag and apply it before the widget on the next run.
+  normalized). Research Assistant Discuss/Help/Draft share one page-level
+  `st.chat_input` (RUX-3); do not reintroduce nested `text_input` + Send or
+  deferred-clear flags for retired keys (`product-help-input`,
+  `results-qa-input-*`, `assistant_results_qa_drafts`,
+  `assistant_product_help_draft`).
   Recovery/cancellation stays on orchestrator `cancel_run` / confirmation
   lifecycle, not the LLM.
 - Document every additive `assistant_*` session key in `ARCHITECTURE.md` and

@@ -41,8 +41,6 @@ ASSISTANT_SESSION_KEYS: tuple[str, ...] = (
     "assistant_run_artifacts",
     "assistant_run_comparisons",
     "assistant_portfolio_analyses",
-    "assistant_results_qa_drafts",
-    "assistant_product_help_draft",
     "assistant_focused_run_id",
     "assistant_results_qa_deep_link",
     "assistant_results_qa_force_expand",
@@ -68,8 +66,6 @@ THESIS_SCOPED_STAGING_KEYS: tuple[str, ...] = (
     "assistant_draft_choices",
     "assistant_hydrated_conversation_id",
     "assistant_validated_run_spec",
-    "assistant_results_qa_drafts",
-    "assistant_product_help_draft",
     "assistant_focused_run_id",
     "assistant_results_qa_deep_link",
     "assistant_results_qa_force_expand",
@@ -240,8 +236,6 @@ def init_assistant_session_state(session_state: MutableMapping[str, Any]) -> Non
         "assistant_run_artifacts": {},
         "assistant_run_comparisons": {},
         "assistant_portfolio_analyses": {},
-        "assistant_results_qa_drafts": {},
-        "assistant_product_help_draft": "",
         "assistant_focused_run_id": None,
         "assistant_results_qa_deep_link": False,
         "assistant_results_qa_force_expand": False,
@@ -452,8 +446,6 @@ def clear_thesis_scoped_state(session_state: MutableMapping[str, Any]) -> None:
     session_state["assistant_draft_choices"] = {}
     session_state["assistant_hydrated_conversation_id"] = None
     session_state["assistant_validated_run_spec"] = None
-    session_state["assistant_results_qa_drafts"] = {}
-    session_state["assistant_product_help_draft"] = ""
     session_state["assistant_focused_run_id"] = None
     session_state["assistant_results_qa_deep_link"] = False
     session_state["assistant_results_qa_force_expand"] = False
@@ -469,16 +461,13 @@ def clear_thesis_scoped_state(session_state: MutableMapping[str, Any]) -> None:
         session_state,
         default_mode=load_assistant_ux_settings().default_mode,
     )
-    # Ephemeral Streamlit widget keys + deferred-clear flags for Discuss/Help
-    # text inputs. If left behind, ``if key not in session_state`` hydration
-    # would revive cleared drafts, or a stale clear flag would wipe the next
-    # conversation's input.
-    session_state.pop("assistant_clear_product_help_input", None)
+    # Ephemeral Streamlit widget keys for mode-scoped chat_input (RUX-3), Linked
+    # run expanders, Advanced force-open, and PTT audio. chat_input is a trigger
+    # widget (no unsent-draft persistence); clearing keys avoids cross-thesis
+    # widget-state leakage only.
     for key in list(session_state.keys()):
         if isinstance(key, str) and (
-            key.startswith("results-qa-input-")
-            or key.startswith("product-help-input")
-            or key.startswith("assistant_clear_results-qa-input-")
+            key.startswith("assistant-chat-input-")
             or key.startswith("ra-run-expander-")
             or key.startswith("voice-results-audio-")
             or key.startswith("voice-help-audio")

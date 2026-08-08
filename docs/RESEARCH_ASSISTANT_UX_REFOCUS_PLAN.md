@@ -4,7 +4,8 @@
 **Status:** 🟡 In progress — RUX-0 implemented (contract + rendered-structure
 baseline); RUX-1 implemented ([#301](https://github.com/AccumuLatata/ThesisTester/pull/301));
 RUX-2 implemented ([#302](https://github.com/AccumuLatata/ThesisTester/pull/302));
-RUX-3…RUX-5 specified, not implemented
+RUX-3 implemented ([#303](https://github.com/AccumuLatata/ThesisTester/pull/303));
+RUX-4…RUX-5 specified, not implemented
 **Date:** 2026-08-07
 **Owner surface:** `pages/14_Research_Assistant.py` + presentation-only helpers in
 `thesistester/assistant/` (`ux.py` new, `workspace.py`, `llm.py` settings loader)
@@ -499,8 +500,8 @@ harmless (constants revert to their original values with the same commit).
 
 | File | Change |
 |---|---|
-| `pages/14_Research_Assistant.py` | Render exactly one **page-level** `st.chat_input` whose target is the active mode: Discuss → `handle_results_turn` for the selected run, Help → `handle_help_turn`, Draft → `handle_chat_turn` (unchanged). Placeholder text is mode-specific. |
-| `thesistester/assistant/ux.py` | `chat_input_placeholder(mode)` + `chat_input_key(mode, run_id=None)` helpers |
+| `pages/14_Research_Assistant.py` | Render exactly one **page-level** `st.chat_input` whose target is the active mode: Discuss → `handle_results_turn` for the selected run, Help → `handle_help_turn`, Draft → `handle_chat_turn` (unchanged). Placeholder text is mode-specific. Keep the widget for layout stability but set `disabled=True` when Discuss has no selected run / Results Q&A is off, or Help is off. |
+| `thesistester/assistant/ux.py` | `chat_input_placeholder(mode)` + `chat_input_key(mode, run_id=None)` + `chat_input_disabled(...)` helpers |
 | `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` | Amend the two §1 UI-attach widget rows (v1 `text_input` → mode-scoped page-level `chat_input`); note `st.chat_input` remains page-level, never nested |
 | `docs/ARCHITECTURE.md` | Update the Discuss/Help draft-key notes to reflect widget change |
 | `tests/test_assistant_page_render.py` | Assert exactly one `chat_input` per rerun in every mode; submitting in Discuss mode calls `handle_results_turn` with the selected `run_id`; submitting in Help mode calls `handle_help_turn`; no `choices` on either |
@@ -523,7 +524,8 @@ dropped (`chat_input` is a trigger widget). Call this out in the PR body and in
 unsent was ever persisted to the store.
 
 **Acceptance:** exactly one chat input per rerun in all three modes; channel
-routing proven by rendered tests; no nested `chat_input` anywhere (keeps the
+routing proven by rendered tests; gated modes render `disabled` chat_input
+(no-run Discuss / RQ-off / Help-off); no nested `chat_input` anywhere (keeps the
 Streamlit `>=1.56` floor honest).
 
 **Rollback:** revert restores `text_input` + Send (and the keys, if (a) was taken,
