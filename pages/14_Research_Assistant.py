@@ -291,9 +291,7 @@ def _render_sidecar_status_controls() -> dict | None:
             set_assistant_flash(
                 st.session_state,
                 level="success",
-                message=(
-                    f"Local sidecar launched (pid={status.get('pid')}) and /health is ready."
-                ),
+                message=(f"Local sidecar launched (pid={status.get('pid')}) and /health is ready."),
             )
         else:
             set_assistant_flash(
