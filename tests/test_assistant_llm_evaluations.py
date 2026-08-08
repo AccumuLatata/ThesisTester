@@ -1406,6 +1406,8 @@ def test_rq5_wfa_caveat_preservation_and_anti_soften():
 
 
 def test_rq5_help_vs_results_redirect_for_performance_question():
+    from thesistester.assistant.ux import DISCUSS_NAV_HINT, DISCUSS_NAV_SHORT
+
     class Client:
         def complete_structured(self, **kwargs):  # pragma: no cover
             raise AssertionError("LLM must not run for performance remediation")
@@ -1419,6 +1421,9 @@ def test_rq5_help_vs_results_redirect_for_performance_question():
     )
     assert reply.remediation is True
     assert "Discuss results" in reply.summary
+    assert DISCUSS_NAV_SHORT in reply.summary
+    assert reply.followups and DISCUSS_NAV_HINT in reply.followups[0]
+    assert "Advanced → Linked runs" not in reply.summary
     assert reply.to_dict().get("choices") is None or "choices" not in reply.to_dict()
 
 

@@ -64,16 +64,25 @@ def test_is_run_performance_question_detects_personal_run_metrics():
 
 
 def test_remediation_help_reply_has_no_numbers_or_choices():
+    from thesistester.assistant.ux import DISCUSS_NAV_HINT, DISCUSS_NAV_SHORT
+
     reply = remediation_help_reply()
     assert reply.remediation is True
     assert "Discuss results" in reply.summary
+    # RUX-4: remediation names the Discuss runs mode (not Advanced → Linked runs).
+    assert DISCUSS_NAV_SHORT in reply.summary
+    assert reply.followups
+    assert DISCUSS_NAV_HINT in reply.followups[0]
     assert reply.citations == ()
     content = format_help_reply_content(reply)
     assert "choices" not in content
-    # Prefer number-free remediation text.
+    # Prefer number-free remediation text; no invented run-metric values.
     from thesistester.assistant.llm_explainer import _NUMBER_RE
 
     assert _NUMBER_RE.search(reply.summary) is None
+    assert _NUMBER_RE.search(" ".join(reply.followups)) is None
+    assert "Advanced → Linked runs" not in reply.summary
+    assert "Advanced → Linked runs" not in " ".join(reply.followups)
 
 
 def test_filter_product_help_history_by_channel():
@@ -230,6 +239,8 @@ def test_propose_help_reply_normalizes_registry_digest_citation_alias():
 
 
 def test_propose_help_reply_remediates_performance_without_llm():
+    from thesistester.assistant.ux import DISCUSS_NAV_SHORT
+
     class Client:
         def complete_structured(self, **kwargs):  # pragma: no cover
             raise AssertionError("LLM must not run for performance remediation")
@@ -243,10 +254,13 @@ def test_propose_help_reply_remediates_performance_without_llm():
     )
     assert reply.remediation is True
     assert "Discuss results" in reply.summary
+    assert DISCUSS_NAV_SHORT in reply.summary
+    assert "Advanced → Linked runs" not in reply.summary
 
 
 def test_hc3_frozen_qr1_prompt_remediates_to_discuss():
     """HC §5.3 Q-R1 frozen prompt must remediate (no invented numbers / no LLM)."""
+    from thesistester.assistant.ux import DISCUSS_NAV_SHORT
 
     class Client:
         def complete_structured(self, **kwargs):  # pragma: no cover
@@ -263,6 +277,8 @@ def test_hc3_frozen_qr1_prompt_remediates_to_discuss():
     )
     assert reply.remediation is True
     assert "Discuss results" in reply.summary
+    assert DISCUSS_NAV_SHORT in reply.summary
+    assert "Advanced → Linked runs" not in reply.summary
 
 
 def test_hc3_frozen_qr2_and_qr3_stay_out_of_run_performance_remediation():
@@ -449,6 +465,10 @@ def test_handle_help_turn_remediates_best_sl_without_dispatch(tmp_path, monkeypa
     assert assistant["channel"] == PRODUCT_HELP_CHANNEL
     assert "choices" not in assistant
     assert "Discuss results" in assistant["content"]
+    from thesistester.assistant.ux import DISCUSS_NAV_SHORT
+
+    assert DISCUSS_NAV_SHORT in assistant["content"]
+    assert "Advanced → Linked runs" not in assistant["content"]
 
 
 def test_handle_help_turn_qr2_frozen_prompt_never_dispatches(tmp_path, monkeypatch):

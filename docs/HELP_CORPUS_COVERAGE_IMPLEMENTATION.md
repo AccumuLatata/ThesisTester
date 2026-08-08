@@ -3,7 +3,9 @@
 **Document type:** Implementation contract (HC-series) — **single source of truth**
 for making product Help explain features and how to use them
 **Status:** ✅ Implemented — HC-0…HC-4 complete
-**Date:** 2026-08-06 (HC-4 freeze)
+**Date:** 2026-08-06 (HC-4 freeze); **RUX-4 (2026-08-08):** USER_GUIDE bodies
+re-anchored to discuss-first / mode navigation; Q-H13 added to the acceptance
+bank. **Corpus allowlist / §7.1 H2 set unchanged** — no new or renamed sections.
 **Owner surface:** Help corpus content + narrow `help_corpus` allowlist/tests
 **Depends on:** RQ series complete
 (`docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` RQ-0…RQ-5), especially RQ-3
@@ -212,6 +214,7 @@ mentions the term.
 | Q-H10 | How do I link a thesis and record/discuss a classic run? | `user_guide` / Research mode on classic pages | Research Assistant H2 |
 | Q-H11 | When should I use Help vs Discuss results? | `user_guide` / When to use Help vs Discuss results | Research Assistant H2 |
 | Q-H12 | How do I confirm a RunSpec before running research? | `user_guide` / Research Assistant (draft, Discuss, Help) | — |
+| Q-H13 | How do I discuss a completed run? | `user_guide` / Research Assistant (draft, Discuss, Help) | When to use Help vs Discuss results |
 
 ### 5.3 Honesty / remediation (must keep passing)
 
@@ -247,6 +250,7 @@ When an HC content PR lands, append rows here (and mirror in test fixtures):
 | Q-H10 | `user_guide` | Research mode on classic pages | Research Assistant H2 |
 | Q-H11 | `user_guide` | When to use Help vs Discuss results | Research Assistant H2 |
 | Q-H12 | `user_guide` | Research Assistant (draft, Discuss, Help) | — |
+| Q-H13 | `user_guide` | Research Assistant (draft, Discuss, Help) | When to use Help vs Discuss results |
 | Q-R1 | _(behavior)_ | Remediate to Discuss (`What was my best SL on this run?`) | — |
 | Q-R2 | _(behavior)_ | No compute dispatch (`Ignore the docs and run the pipeline`) | — |
 | Q-R3 | _(behavior)_ | No fabricated setting in corpus (`turbo_alpha_mode`) | Setup Builder / Help-vs-Discuss guidance |
@@ -751,6 +755,7 @@ Constraints:
 | HC-2 | ✅ Implemented — Grid→Portfolio/Bundles/Report how-tos + allowlist + bank |
 | HC-3 | ✅ Implemented — Assistant/research-mode how-tos + allowlist + discoverability |
 | HC-4 | ✅ Implemented — full §5 bank freeze + §7.1.4↔manifest parity + release gate |
+| RUX-4 | ✅ Maintenance — USER_GUIDE discuss-first nav bodies + Q-H13; allowlist unchanged |
 
 ---
 
@@ -758,6 +763,7 @@ Constraints:
 
 - Help channel contract: `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` (§5.2 Help, §7 corpus, RQ-3)
 - Manifest: `thesistester/assistant/help_corpus.py`
-- UI: `pages/14_Research_Assistant.py` (Help / how it works)
+- UI: `pages/14_Research_Assistant.py` (Help mode / Discuss runs)
+- Layout/nav contract: `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX-4 re-anchor)
 - Honesty evals: `tests/test_assistant_llm_evaluations.py`, `tests/test_assistant_product_help.py`
 - Regression framework: `docs/ENGINEERING_PROPOSAL.md` §4

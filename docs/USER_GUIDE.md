@@ -589,6 +589,19 @@ version
 5. For completed-run questions, stay on (or open) **Discuss runs** → **Discuss
    results**. For feature how-tos, open **Help**.
 
+**How to discuss a completed run.**
+
+1. Record the run under a thesis (**Record and discuss this run** on Backtest, or
+   run via a Confirmed Assistant specification).
+2. Open Research Assistant with that thesis selected.
+3. Choose mode **Discuss runs** (the default).
+4. Select the completed run in the run picker.
+5. Ask in the Discuss chat input (for example: expectancy, best SL/TP, entry
+   windows). Answers stay grounded in hash-verified evidence for that run only.
+
+Classic **Discuss this run** deep-links into the same **Discuss runs** mode with
+the run preselected.
+
 **What it is not.**
 
 - Draft chat does not show Help or Discuss history (channel isolation).
@@ -665,13 +678,17 @@ best SL, expectancy, remediation, draft chat, documentation-grounded
 **How to use.**
 
 1. Open Research Assistant with a thesis selected.
-2. For feature how-tos: mode **Help** → **Help / how it works** → ask →
-   **Send help question** (examples: import data, Setup Builder, grid ranking,
+2. For feature how-tos: mode **Help** → **Help / how it works** → ask in the
+   Help chat input (examples: import data, Setup Builder, grid ranking,
    validation).
-3. For completed-run metrics: mode **Discuss runs** → select the run →
-   **Discuss results**.
+3. For completed-run metrics: mode **Discuss runs** → select the run → ask in
+   the Discuss chat input under **Discuss results**.
 4. If Help redirects you to Discuss, open **Discuss runs** for that run — do
    not expect Help to invent performance numbers.
+
+To discuss a completed run after classic research mode: use **Record and discuss
+this run** (or **Discuss this run**), then stay on Research Assistant **Discuss
+runs** with that run selected.
 
 **What it is not.**
 

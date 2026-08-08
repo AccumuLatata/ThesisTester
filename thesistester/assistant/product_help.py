@@ -201,7 +201,11 @@ def is_run_performance_question(message: str) -> bool:
 
 
 def remediation_help_reply() -> HelpReply:
-    """Structured redirect to Discuss results (no fabricated metrics)."""
+    """Structured redirect to Discuss results (no fabricated metrics).
+
+    Summary/followups compose ``DISCUSS_NAV_SHORT`` / ``DISCUSS_NAV_HINT`` from
+    ``assistant.ux`` so Help remediates to the Discuss runs mode (RUX-4).
+    """
     return HelpReply(
         summary=_REMEDIATION_SUMMARY,
         caveats=("Help does not load run evidence packets or invent performance numbers.",),
