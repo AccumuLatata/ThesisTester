@@ -500,7 +500,10 @@ Matcher ownership stays in DI-1; DI-2 does not widen intents.
 overlay (`build_expert_overlay` / `apply_expert_overlay` in
 `results_overview.py`) after mandatory packet caveats; overlay lines are
 audited with `_ungrounded_number_tokens(..., allowed=set())`. Overview
-followups use a digit-free bank. Non-overview replies are unchanged.
+followups use a digit-free bank (packet-aware: suppress WFA-presence coaching
+when `missing_oos` / WFA-absent limitations already apply). Empty-KPI overlays
+do not say “these figures,” and diagnostic honesty is near-deduped against
+`diagnostic_only`. Non-overview replies are unchanged.
 **RQ-3 landed:** `thesistester/assistant/product_help.py` +
 `handle_help_turn`; Help / how it works mode on Research Assistant
 (page-level mode-scoped `st.chat_input`; RUX-3);
