@@ -792,6 +792,21 @@ python -m thesistester.assistant.voice.sidecar --host 127.0.0.1 --port 8765
 ```
 Non-loopback `--host` values are rejected (`0.0.0.0`, LAN IPs, `localhost` string).
 
+**Connection refused / WinError 10061** means nothing is listening on
+`127.0.0.1:8765` — the Streamlit page does not embed the duplex bridge. Either:
+
+1. Start the process manually (command above — use the same port as the page
+   **Sidecar port** control), or
+2. In **Voice discuss (realtime)** click **Launch local sidecar** (probes
+   `GET /health`, resolves `XAI_API_KEY` from env or Streamlit Secrets, then
+   spawns a detached `python -m thesistester.assistant.voice.sidecar` with that
+   key forwarded into the child env).
+
+Helpers: `probe_sidecar_health`, `launch_local_sidecar`, `ensure_local_sidecar`
+in `thesistester/assistant/voice/sidecar.py` (loopback-only; health requires
+boolean `ok` plus sidecar host/port/mode; child-exit re-probes in case another
+listener already bound the port).
+
 ### Endpoints
 | Path | Role |
 |---|---|
@@ -804,10 +819,12 @@ Non-loopback `--host` values are rejected (`0.0.0.0`, LAN IPs, `localhost` strin
 ### Streamlit flow
 1. Open Research Assistant → sidebar **Voice** → Enable + Mode **Realtime**.
 2. **Discuss runs** mode → select the run → **Voice discuss (realtime)**.
-3. Click **Start realtime voice session** (page POSTs to the sidecar; sidecar
+3. Confirm sidecar status (green = `/health` ok). If warned, click
+   **Launch local sidecar** or start the process in a terminal.
+4. Click **Start realtime voice session** (page POSTs to the sidecar; sidecar
    re-reads the local override on register, so a restart is usually unnecessary).
-4. Open/iframe the returned `/client` URL; speak to the bound run.
-5. Closing the client ends/flushes the voice session.
+5. Open/iframe the returned `/client` URL; speak to the bound run.
+6. Closing the client ends/flushes the voice session.
 
 Help realtime is deferred in v1 — use push-to-talk Help. Search/`mcp` tools are
 never attached to `session.update` payloads.
