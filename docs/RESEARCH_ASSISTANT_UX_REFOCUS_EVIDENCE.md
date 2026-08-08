@@ -32,7 +32,7 @@ prominence** release, not a new research capability.
 | RUX-2 | Layout inversion: Discuss-first modes | Merged [#302](https://github.com/AccumuLatata/ThesisTester/pull/302) |
 | RUX-3 | Mode-scoped page-level `st.chat_input` | Merged [#303](https://github.com/AccumuLatata/ThesisTester/pull/303) |
 | RUX-4 | Help remediation + USER_GUIDE / Q-H13 re-anchor | Merged [#304](https://github.com/AccumuLatata/ThesisTester/pull/304) |
-| RUX-5 | Evidence + closeout | This document / this PR |
+| RUX-5 | Evidence + closeout | [#305](https://github.com/AccumuLatata/ThesisTester/pull/305) / this document |
 
 ## 3. Before / after layout
 
