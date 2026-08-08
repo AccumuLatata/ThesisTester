@@ -365,9 +365,11 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   functions (not fork cue/path tables), must not switch providers, must not
   pre-gate live PCM, must not default-enable voice, and must keep VA-6 / DI /
   RQ honesty suites green. DX-1 must honor the contract freezes for veto×legacy
-  narrative strip, session-transcript selector (no sidecar buffer peek),
-  intent sample-size alias → `results.trade_summary.trade_count`, DI
-  reply→envelope projection, and speakable `summary`-first preference.
+  narrative strip, **veto ≠ unmatched** (export/use `has_overview_negative_cue`;
+  unmatched / no-text → neutral `run_overview`, not remediation),
+  session-transcript selector (no sidecar buffer peek), intent sample-size
+  alias → `results.trade_summary.trade_count`, DI reply→envelope projection,
+  and speakable `summary`-first preference.
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned
