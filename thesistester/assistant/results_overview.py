@@ -366,9 +366,7 @@ _OVERLAY_GLOSS_BY_LEAF: tuple[tuple[str, str], ...] = (
     ),
 )
 
-_OVERLAY_ALWAYS: tuple[str, ...] = (
-    "These figures are research diagnostics, not trading advice.",
-)
+_OVERLAY_ALWAYS = "These figures are research diagnostics, not trading advice."
 
 _OVERLAY_NEXT_STEP = (
     "If you care about robustness, ask whether walk-forward or validation "
@@ -380,13 +378,68 @@ _OVERVIEW_FOLLOWUP_BANK: tuple[str, ...] = (
     "Ask about best stop and take profit ranking if a grid was recorded.",
 )
 
-_MISSING_KPI_OVERLAY = (
-    "Baseline trade summary KPIs were not available to interpret for this ask."
+# When OOS/WFA is already known missing, do not coach the user to re-ask presence.
+_OVERVIEW_FOLLOWUP_BANK_OOS_ABSENT: tuple[str, ...] = (
+    "Ask about best stop and take profit ranking if a grid was recorded.",
+    "Ask which evidence paths remain available on this packet.",
 )
 
+_MISSING_KPI_OVERLAY = "Baseline trade summary KPIs were not available to interpret for this ask."
 
-def overview_followup_bank() -> tuple[str, ...]:
-    """Digit-free follow-up bank for overview / KPI replies (DI-3)."""
+
+def _packet_caveat_codes(packet: EvidencePacket) -> set[str]:
+    return {str(getattr(item, "code", "") or "") for item in getattr(packet, "caveats", ()) or ()}
+
+
+def _is_diagnostic_honesty_line(text: str) -> bool:
+    """True for diagnostic-only honesty lines (packet or overlay-authored)."""
+    lowered = text.lower()
+    return "diagnostic" in lowered and ("trading advice" in lowered or "proof of edge" in lowered)
+
+
+def _packet_signals_oos_absent(packet: EvidencePacket) -> bool:
+    """True when packet already states WFA/OOS evidence is missing or failed."""
+    codes = _packet_caveat_codes(packet)
+    if "missing_oos" in codes or "failed_oos" in codes:
+        return True
+    for line in getattr(packet, "limitations", ()) or ():
+        if not isinstance(line, str):
+            continue
+        lowered = line.lower()
+        mentions_oos = any(
+            marker in lowered
+            for marker in (
+                "walk-forward",
+                "walk forward",
+                "out-of-sample",
+                "out of sample",
+                "oos",
+            )
+        )
+        absent = any(
+            marker in lowered
+            for marker in (
+                "not present",
+                "missing",
+                "absent",
+                "unavailable",
+                "not available",
+                "failed",
+            )
+        )
+        if mentions_oos and absent:
+            return True
+    return False
+
+
+def overview_followup_bank(packet: EvidencePacket | None = None) -> tuple[str, ...]:
+    """Digit-free follow-up bank for overview / KPI replies (DI-3).
+
+    Packet-aware: when OOS/WFA is already known absent, do not suggest asking
+    whether those diagnostics are present (§6.2 no optimistic fill).
+    """
+    if packet is not None and _packet_signals_oos_absent(packet):
+        return _OVERVIEW_FOLLOWUP_BANK_OOS_ABSENT
     return _OVERVIEW_FOLLOWUP_BANK
 
 
@@ -400,7 +453,6 @@ def build_expert_overlay(
     **not** returned here. Every line must pass
     ``_ungrounded_number_tokens(line, allowed=set()) == []``.
     """
-    del packet  # reserved for future packet-shaped honesty without new digits
     lines: list[str] = []
     cited_leaves = {
         claim.path.rsplit(".", 1)[-1]
@@ -414,10 +466,14 @@ def build_expert_overlay(
             break
     if not cited_leaves:
         lines.append(_MISSING_KPI_OVERLAY)
-    for always in _OVERLAY_ALWAYS:
-        if always not in lines:
-            lines.append(always)
-    if _OVERLAY_NEXT_STEP not in lines:
+    else:
+        # Only when figures were cited — never "these figures" on empty KPI path.
+        # Skip when packet already carries diagnostic_only (near-duplicate).
+        if "diagnostic_only" not in _packet_caveat_codes(packet):
+            if _OVERLAY_ALWAYS not in lines:
+                lines.append(_OVERLAY_ALWAYS)
+    # Do not coach "ask whether WFA is present" when the packet already says no.
+    if not _packet_signals_oos_absent(packet) and _OVERLAY_NEXT_STEP not in lines:
         lines.append(_OVERLAY_NEXT_STEP)
 
     audited: list[str] = []
@@ -426,9 +482,7 @@ def build_expert_overlay(
         if not text:
             continue
         if _ungrounded_number_tokens(text, allowed=set()):
-            raise ValueError(
-                f"Expert overlay line is not digit-free: {text!r}"
-            )
+            raise ValueError(f"Expert overlay line is not digit-free: {text!r}")
         audited.append(text)
     return tuple(audited)
 
@@ -448,11 +502,18 @@ def apply_expert_overlay(
     # Keep mandatory/LLM caveats first; append only new overlay-authored lines.
     merged_caveats = list(caveats)
     seen = {item.strip() for item in merged_caveats if isinstance(item, str)}
+    existing_diagnostic = any(
+        _is_diagnostic_honesty_line(item) for item in merged_caveats if isinstance(item, str)
+    )
     for line in overlay:
-        if line not in seen:
-            merged_caveats.append(line)
-            seen.add(line)
-    followups = overview_followup_bank()
+        if line in seen:
+            continue
+        # Near-dedupe diagnostic honesty vs mandatory diagnostic_only message.
+        if existing_diagnostic and _is_diagnostic_honesty_line(line):
+            continue
+        merged_caveats.append(line)
+        seen.add(line)
+    followups = overview_followup_bank(packet)
     caveat_tuple = tuple(merged_caveats)
     claim_tuple = tuple(claims)
     assert_llm_explanation_grounded(
