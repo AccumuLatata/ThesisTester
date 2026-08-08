@@ -1,7 +1,8 @@
-"""DI-1 Discuss Intelligence recovery: matcher, TLS wrap, overview fallback."""
+"""DI Discuss Intelligence: matcher, TLS wrap, overview fallback, path catalog."""
 
 from __future__ import annotations
 
+import json
 import ssl
 from urllib import error as urllib_error
 
@@ -14,7 +15,7 @@ from thesistester.assistant.llm import (
     _is_tls_allowlist_error,
     load_results_qa_settings,
 )
-from thesistester.assistant.llm_explainer import LLMEvidenceError
+from thesistester.assistant.llm_explainer import LLMEvidenceError, _path_exists
 from thesistester.assistant.results_overview import (
     KPI_CLAIM_PATHS,
     OVERVIEW_INTENT_KPI,
@@ -23,9 +24,11 @@ from thesistester.assistant.results_overview import (
     REASON_PATH_MISS,
     REASON_PROVIDER_EXHAUSTED,
     REASON_REPAIR_FAILED,
+    build_prompt_path_catalog,
     collect_existing_paths,
     failure_class_from_exception,
     match_overview_intent,
+    present_kpi_allowlist,
 )
 from thesistester.assistant.results_qa import propose_results_reply
 
@@ -314,6 +317,48 @@ def test_fat_provenance_repair_catalog_keeps_kpi_paths():
     ):
         assert required in paths
     assert any(p in paths for p in KPI_CLAIM_PATHS)
+    assert "assumptions.instrument" in paths
+
+
+def test_fat_time_grouped_catalog_keeps_projections_and_honesty():
+    """Fat time tables must not starve projections / limitations in DI-2 catalog."""
+    rows = [{f"col_{j}": j for j in range(20)} for _ in range(40)]
+    # Extra uncapped results maps that would starve honesty if ordered first.
+    extra_results = {f"page_block_{i}": {f"k{j}": j for j in range(30)} for i in range(12)}
+    context = {
+        "provenance": {f"blob_{i}": i for i in range(200)},
+        "assumptions": {"instrument": "NQ", "entry_window": {"focus": True}},
+        "results": {
+            "trade_summary": {"trade_count": 42, "win_rate": 0.52},
+            "time_grouped_summary": rows,
+            "validation_summary": {"status": "ok"},
+            "projections": {
+                "best_stop_take_profit": {
+                    "stop_loss_ticks": 8,
+                    "take_profit_ticks": 16,
+                    "ranking_metric": "expectancy_r",
+                }
+            },
+            **extra_results,
+        },
+        "warnings": ["sample warning"],
+        "limitations": ["Time analysis is not present in this evidence packet."],
+        "caveats": ["Historical sample only."],
+    }
+    paths = collect_existing_paths(context, max_paths=240)
+    assert "results.projections" in paths
+    assert "results.projections.best_stop_take_profit" in paths
+    assert "results.projections.best_stop_take_profit.stop_loss_ticks" in paths
+    assert "results.validation_summary" in paths
+    assert "limitations" in paths
+    assert "caveats" in paths
+    assert "assumptions.instrument" in paths
+    # Shallow sample of the fat table — not the full 40×20 expansion.
+    assert "results.time_grouped_summary" in paths
+    assert "results.time_grouped_summary.0" in paths
+    assert "results.time_grouped_summary.8" not in paths
+    # Honesty must appear before remaining fat results consume the budget.
+    assert paths.index("limitations") < paths.index("results.time_grouped_summary")
 
 
 def test_repair_retry_succeeds_without_fallback():
@@ -344,3 +389,142 @@ def test_tracked_config_loads_di1_recovery_defaults():
     settings = load_results_qa_settings("config/assistant.toml")
     assert settings.repair_retry_enabled is True
     assert settings.deterministic_overview_fallback is True
+
+
+class _CaptureClient:
+    """Capture complete_structured kwargs; return a grounded overview reply."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def complete_structured(self, **kwargs):
+        self.calls.append(kwargs)
+        return {
+            "summary": "Sample has 42 trades. Win rate is 52 percent.",
+            "caveats": ["Historical sample only."],
+            "claims": [
+                {
+                    "text": "Sample has 42 trades.",
+                    "path": "results.trade_summary.trade_count",
+                },
+                {
+                    "text": "Win rate is 52 percent.",
+                    "path": "results.trade_summary.win_rate",
+                },
+            ],
+            "followups": ["Ask about expectancy next."],
+        }
+
+
+def _user_payload_from_call(call: dict) -> dict:
+    return json.loads(call["user"])
+
+
+def test_di2_overview_ask_includes_path_catalog_and_kpi_allowlist():
+    client = _CaptureClient()
+    packet = _packet()
+    propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="Give me the KPIs of this run",
+    )
+    assert len(client.calls) == 1
+    payload = _user_payload_from_call(client.calls[0])
+    assert "path_catalog" in payload
+    catalog = payload["path_catalog"]
+    existing = catalog["existing_paths"]
+    assert isinstance(existing, list) and existing
+    evidence = packet.to_dict()
+    assert all(_path_exists(evidence, path) for path in existing)
+    assert "results.instrument" not in existing
+    assert "results.validation.trade_count" not in existing
+    assert catalog["overview_intent"] == OVERVIEW_INTENT_KPI
+    assert "kpi_allowlist" in catalog
+    assert "preferred_claim_paths" in catalog
+    assert set(catalog["kpi_allowlist"]) == set(present_kpi_allowlist(evidence))
+    assert "results.trade_summary.trade_count" in catalog["kpi_allowlist"]
+    assert "path_catalog" in client.calls[0]["system"]
+
+
+def test_di2_non_overview_ask_gets_shared_catalog_without_kpi_must_cite():
+    client = _CaptureClient()
+    packet = _packet()
+    propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="How many trades?",
+    )
+    payload = _user_payload_from_call(client.calls[0])
+    catalog = payload["path_catalog"]
+    assert "existing_paths" in catalog
+    assert "kpi_allowlist" not in catalog
+    assert "preferred_claim_paths" not in catalog
+    assert "overview_intent" not in catalog
+    evidence = packet.to_dict()
+    assert all(_path_exists(evidence, path) for path in catalog["existing_paths"])
+
+
+def test_di2_vetoed_specialist_ask_has_catalog_without_kpi_allowlist():
+    class Client:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def complete_structured(self, **kwargs):
+            self.calls.append(kwargs)
+            return {
+                "summary": "Walk-forward evidence is not answered from the KPI slice.",
+                "caveats": ["Ask using validation paths when present."],
+                "claims": [],
+                "followups": ["Ask about key metrics of this run."],
+            }
+
+    client = Client()
+    propose_results_reply(
+        client,
+        packet=_packet(),
+        history=(),
+        user_message="Summarize the walk-forward results",
+    )
+    payload = _user_payload_from_call(client.calls[0])
+    catalog = payload["path_catalog"]
+    assert "existing_paths" in catalog
+    assert "kpi_allowlist" not in catalog
+
+
+def test_di2_build_prompt_path_catalog_helper_overview_vs_none():
+    evidence = _packet().to_dict()
+    overview = build_prompt_path_catalog(evidence, overview_intent=OVERVIEW_INTENT_RUN)
+    plain = build_prompt_path_catalog(evidence, overview_intent=None)
+    assert overview["overview_intent"] == OVERVIEW_INTENT_RUN
+    assert overview["kpi_allowlist"]
+    assert "kpi_allowlist" not in plain
+    assert set(overview["existing_paths"]) >= set(overview["kpi_allowlist"])
+
+
+def test_di2_repair_reuses_path_catalog_without_duplicate_path_list():
+    class CaptureFailClient:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def complete_structured(self, **kwargs):
+            self.calls.append(kwargs)
+            # Both passes return an ungrounded payload so repair is exercised.
+            return _bad_path_payload()
+
+    client = CaptureFailClient()
+    propose_results_reply(
+        client,
+        packet=_packet(),
+        history=(),
+        user_message="How many trades?",
+        deterministic_overview_fallback=False,
+    )
+    assert len(client.calls) == 2
+    repair_payload = _user_payload_from_call(client.calls[1])
+    assert "path_catalog" in repair_payload
+    assert "existing_paths" in repair_payload["path_catalog"]
+    assert "repair" in repair_payload
+    assert "existing_paths" not in repair_payload["repair"]
+    assert "path_catalog.existing_paths" in repair_payload["repair"]["instruction"]

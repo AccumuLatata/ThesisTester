@@ -1,4 +1,4 @@
-"""Multi-turn grounded results Q&A over a hash-verified EvidencePacket (RQ-1 / DI-1)."""
+"""Multi-turn grounded results Q&A over a hash-verified EvidencePacket (RQ / DI)."""
 
 from __future__ import annotations
 
@@ -17,9 +17,9 @@ from thesistester.assistant.llm_explainer import (
 )
 from thesistester.assistant.results_overview import (
     build_deterministic_kpi_reply,
+    build_prompt_path_catalog,
     build_structured_remediation_reply,
     classify_recovery_reason,
-    collect_existing_paths,
     failure_class_from_exception,
     match_overview_intent,
 )
@@ -56,6 +56,9 @@ _SYSTEM_PROMPT = (
     "(e.g. results.trade_summary.trade_count, results.projections.*, "
     "limitations, caveats) — never prefix paths with evidence_packet. or packet. "
     "Array rows may use integer indices (e.g. results.time_grouped_summary.0.avg_r). "
+    "When path_catalog is present, cite only paths listed in "
+    "path_catalog.existing_paths; on overview asks prefer a subset of "
+    "path_catalog.kpi_allowlist / preferred_claim_paths. "
     "Do not invent nested keys. Do not add calculations, forecasts, trade advice, "
     "tools, or facts absent from the packet. "
     "Distinguish in-sample observed results from robustness/OOS evidence. "
@@ -244,7 +247,9 @@ def _complete_results_structured(
     evidence_context: Mapping[str, Any],
     history: Sequence[Mapping[str, Any]],
     user_message: str,
+    overview_intent: str | None = None,
     repair: Mapping[str, Any] | None = None,
+    include_path_catalog: bool = True,
 ) -> dict[str, Any]:
     history_lines = [
         {
@@ -259,6 +264,12 @@ def _complete_results_structured(
         "history": history_lines,
         "user_message": user_message.strip(),
     }
+    # DI-2: first-pass (and repair) path catalog — existing paths only.
+    if include_path_catalog:
+        user_payload["path_catalog"] = build_prompt_path_catalog(
+            evidence_context,
+            overview_intent=overview_intent,
+        )
     if repair is not None:
         user_payload["repair"] = dict(repair)
     return client.complete_structured(
@@ -313,6 +324,9 @@ def propose_results_reply(
     deterministic overview fallback (matched intents only) or §5.3 structured
     remediation. Both flags false restores pre-DI hard-fail raises (TLS wrap
     still applies in the transport).
+
+    DI-2: first-pass user payload includes ``path_catalog`` (existing paths;
+    plus ``kpi_allowlist`` when an overview intent matches).
     """
     if not isinstance(user_message, str) or not user_message.strip():
         raise LLMEvidenceError("Results Q&A user message must be a non-empty string.")
@@ -330,6 +344,7 @@ def propose_results_reply(
             evidence_context=evidence_context,
             history=history,
             user_message=user_message,
+            overview_intent=overview_intent,
         )
         return _decode_results_payload(payload, packet=packet, evidence_context=evidence_context)
     except (LLMEvidenceError, LLMProviderError) as first_exc:
@@ -339,12 +354,14 @@ def propose_results_reply(
         # already exhausted transport retries — go straight to overview fallback
         # or §5.3 remediation (never a second model call on dead transport).
         if repair_retry_enabled and isinstance(first_exc, LLMEvidenceError):
+            # Path allowlist lives solely on path_catalog (DI-2); repair carries
+            # only the prior error + instruction so lists cannot diverge.
             repair_payload = {
                 "prior_error": str(first_exc),
-                "existing_paths": list(collect_existing_paths(evidence_context)),
                 "instruction": (
-                    "Repair the reply using only existing_paths. Narrate fractional "
-                    "rates with % or percent/pct/Prozent. Do not invent paths or numbers."
+                    "Repair the reply using only path_catalog.existing_paths. "
+                    "Narrate fractional rates with % or percent/pct/Prozent. "
+                    "Do not invent paths or numbers."
                 ),
             }
             try:
@@ -353,6 +370,7 @@ def propose_results_reply(
                     evidence_context=evidence_context,
                     history=history,
                     user_message=user_message,
+                    overview_intent=overview_intent,
                     repair=repair_payload,
                 )
                 return _decode_results_payload(

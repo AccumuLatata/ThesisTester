@@ -1,7 +1,8 @@
-"""DI-1 overview intent matching and deterministic KPI / remediation builders.
+"""DI overview matching, path-catalog hints, and deterministic KPI builders.
 
-Fail-closed numbers stay in ``llm_explainer``. This module only selects frozen
-overview slices and builds auditor-safe replies when the LLM path fails.
+Fail-closed numbers stay in ``llm_explainer``. This module selects frozen
+overview slices, builds DI-2 first-pass path catalogs, and builds auditor-safe
+replies when the LLM path fails (DI-1).
 """
 
 from __future__ import annotations
@@ -38,6 +39,30 @@ KPI_CLAIM_PATHS: tuple[str, ...] = (
     "results.best_grid_result.take_profit_ticks",
     "results.best_grid_result.trade_count",
 )
+
+# Walk these ``results.*`` keys before fat arrays (e.g. time_grouped_summary).
+_RESULTS_PRIORITY_KEYS: tuple[str, ...] = (
+    "trade_summary",
+    "best_grid_result",
+    "projections",
+    "validation_summary",
+    "walk_forward_summary",
+    "walk_forward_warnings",
+    "otf_validation_summary",
+)
+
+# Honesty / framing paths reserved before provenance and fat tables.
+_TOP_LEVEL_PRIORITY_KEYS: tuple[str, ...] = (
+    "limitations",
+    "caveats",
+    "warnings",
+    "assumptions",
+)
+
+# Large row tables: keep the root + a shallow sample so they cannot exhaust
+# the catalog budget ahead of projections / honesty paths.
+_FAT_RESULTS_KEYS: frozenset[str] = frozenset({"time_grouped_summary"})
+_FAT_ARRAY_ROW_CAP = 8
 
 _KPI_POSITIVE_CUES: tuple[str, ...] = (
     "kpi",
@@ -146,6 +171,48 @@ def classify_recovery_reason(exc: BaseException, *, repaired: bool) -> str:
     return REASON_PATH_MISS
 
 
+def present_kpi_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return frozen KPI claim paths that exist on the turn evidence context."""
+    if not isinstance(evidence_context, Mapping):
+        return ()
+    return tuple(path for path in KPI_CLAIM_PATHS if _path_exists(evidence_context, path))
+
+
+def build_prompt_path_catalog(
+    evidence_context: Mapping[str, Any],
+    *,
+    overview_intent: str | None = None,
+) -> dict[str, Any]:
+    """Build the DI-2 first-pass path catalog for the Results Q&A user payload.
+
+    Always includes ``existing_paths`` from the turn context. When an overview
+    intent is matched, also includes ``kpi_allowlist`` (present paths only) and
+    an overview instruction — never a must-cite set for non-overview asks.
+    """
+    existing = list(collect_existing_paths(evidence_context))
+    catalog: dict[str, Any] = {
+        "existing_paths": existing,
+        "instruction": (
+            "Cite claim.path values only from existing_paths. "
+            "Do not invent nested keys (e.g. results.instrument, "
+            "results.validation.trade_count). "
+            "Narrate fractional rates with % or percent/pct/Prozent."
+        ),
+    }
+    if overview_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}:
+        kpi_paths = list(present_kpi_allowlist(evidence_context))
+        catalog["overview_intent"] = overview_intent
+        catalog["kpi_allowlist"] = kpi_paths
+        catalog["overview_instruction"] = (
+            "This is an overview/KPI ask. Prefer citing a subset of "
+            "kpi_allowlist paths that exist. Do not substitute validation, "
+            "instrument, or other specialist paths for the KPI overview."
+        )
+        # Optional must-cite hint: cite these or a subset (never invent outside).
+        catalog["preferred_claim_paths"] = kpi_paths
+    return catalog
+
+
 def collect_existing_paths(
     root: Mapping[str, Any],
     *,
@@ -153,8 +220,14 @@ def collect_existing_paths(
 ) -> tuple[str, ...]:
     """Collect dotted paths present on the turn evidence context (bounded).
 
-    Prefers KPI allowlist paths and the ``results.*`` subtree so repair catalogs
-    are not starved by large ``provenance`` / ``assumptions`` maps.
+    Priority order so DI-2 / repair catalogs stay useful under fat packets:
+
+    1. frozen KPI allowlist leaves
+    2. specialist ``results.*`` keys (trade_summary, projections, validation/WFA)
+    3. top-level honesty paths (limitations / caveats / warnings / assumptions)
+       — before remaining fat ``results.*``
+    4. remaining ``results.*`` (shallow sample for fat row tables)
+    5. remaining top-level maps (provenance, …)
     """
     paths: list[str] = []
     seen: set[str] = set()
@@ -166,7 +239,7 @@ def collect_existing_paths(
         paths.append(path)
         return len(paths) < max_paths
 
-    def walk(node: Any, prefix: str) -> None:
+    def walk(node: Any, prefix: str, *, sequence_cap: int | None = None) -> None:
         if len(paths) >= max_paths:
             return
         if isinstance(node, Mapping):
@@ -176,14 +249,36 @@ def collect_existing_paths(
                 path = f"{prefix}.{key}" if prefix else key
                 if not add(path):
                     return
-                walk(value, path)
+                child_cap = _FAT_ARRAY_ROW_CAP if key in _FAT_RESULTS_KEYS else sequence_cap
+                walk(value, path, sequence_cap=child_cap)
             return
         if isinstance(node, Sequence) and not isinstance(node, (str, bytes, bytearray)):
-            for index, value in enumerate(node):
+            items = list(node)
+            if sequence_cap is not None:
+                items = items[:sequence_cap]
+            for index, value in enumerate(items):
                 path = f"{prefix}.{index}" if prefix else str(index)
                 if not add(path):
                     return
-                walk(value, path)
+                walk(value, path, sequence_cap=None)
+
+    def walk_mapping_keys(
+        mapping: Mapping[str, Any],
+        *,
+        prefix: str,
+        keys: Sequence[str],
+        skip: set[str] | None = None,
+    ) -> None:
+        skipped = skip or set()
+        for key in keys:
+            if key in skipped or key not in mapping:
+                continue
+            value = mapping[key]
+            path = f"{prefix}.{key}" if prefix else key
+            if not add(path):
+                return
+            child_cap = _FAT_ARRAY_ROW_CAP if key in _FAT_RESULTS_KEYS else None
+            walk(value, path, sequence_cap=child_cap)
 
     if isinstance(root, Mapping):
         for path in KPI_CLAIM_PATHS:
@@ -191,9 +286,25 @@ def collect_existing_paths(
                 add(path)
         results = root.get("results")
         if isinstance(results, Mapping):
-            walk(results, "results")
+            if not add("results"):
+                return tuple(paths)
+            # Specialist results first (before honesty + fat tables).
+            walk_mapping_keys(results, prefix="results", keys=_RESULTS_PRIORITY_KEYS)
+        # Honesty / framing before fat remaining results.* and provenance.
+        walk_mapping_keys(root, prefix="", keys=_TOP_LEVEL_PRIORITY_KEYS, skip={"results"})
+        if isinstance(results, Mapping):
+            for key, value in results.items():
+                if not isinstance(key, str) or not key:
+                    continue
+                if key in _RESULTS_PRIORITY_KEYS:
+                    continue
+                path = f"results.{key}"
+                if not add(path):
+                    return tuple(paths)
+                child_cap = _FAT_ARRAY_ROW_CAP if key in _FAT_RESULTS_KEYS else None
+                walk(value, path, sequence_cap=child_cap)
         for key, value in root.items():
-            if key == "results":
+            if key == "results" or key in _TOP_LEVEL_PRIORITY_KEYS:
                 continue
             if not isinstance(key, str) or not key:
                 continue
