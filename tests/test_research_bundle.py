@@ -194,6 +194,11 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         "overfitting_config": {"pbo_partitions": 4},
         "sensitivity_summary": {"schema_version": 1, "available": True},
         "sensitivity_config": {"perturbation_fraction": 0.2},
+        "confluence_combo_summary": {"available": True, "trade_count": 3},
+        "confluence_by_exact_combo": pd.DataFrame({"exact_combo_key": ["A|B"], "trade_count": [2]}),
+        "confluence_by_level_count": pd.DataFrame({"level_count_bucket": ["2"], "trade_count": [2]}),
+        "confluence_by_membership": pd.DataFrame({"level_name": ["A"], "trade_count": [2]}),
+        "confluence_by_pairs": pd.DataFrame({"pair_key": ["A|B"], "trade_count": [2]}),
     }
 
     apply_research_bundle_to_session(loaded, existing_state)
@@ -242,6 +247,11 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         "overfitting_config",
         "sensitivity_summary",
         "sensitivity_config",
+        "confluence_combo_summary",
+        "confluence_by_exact_combo",
+        "confluence_by_level_count",
+        "confluence_by_membership",
+        "confluence_by_pairs",
     ):
         assert key not in existing_state
 
@@ -500,6 +510,159 @@ def test_portfolio_bundle_roundtrip_restores_portfolio_artifacts():
     pd.testing.assert_frame_equal(
         loaded["session_values"]["portfolio_trades"], state["portfolio_trades"]
     )
+
+
+def _confluence_combo_session_state() -> dict:
+    """Session trades with nonempty level_names for on-export combo recompute."""
+    return {
+        "trades": pd.DataFrame(
+            {
+                "trade_id": [1, 2, 3, 4, 5],
+                "entry_timestamp": pd.to_datetime(
+                    [
+                        "2024-01-02 09:31",
+                        "2024-01-02 09:40",
+                        "2024-01-02 10:05",
+                        "2024-01-02 10:20",
+                        "2024-01-02 11:00",
+                    ]
+                ),
+                "r_multiple": [1.0, -1.0, 0.5, None, 0.25],
+                "level_names": [
+                    "pdHigh|VWAP_rolling_1h",
+                    "VWAP_rolling_1h|pdHigh",
+                    "pdHigh|VWAP_rolling_1h|pdPOC",
+                    "",
+                    "pdHigh",
+                ],
+                "trigger": ["touch", "touch", "touch", "touch", "3c"],
+            }
+        ),
+        "signal_settings": {
+            "confluence_mode": "anchor_rules",
+            "anchor_level": "pdHigh",
+        },
+        # Intentionally stale vs signal_settings — export must prefer signal_settings.
+        "setup_config": {
+            "confluence_mode": "global_cluster",
+            "anchor_level": "WRONG",
+        },
+    }
+
+
+def test_confluence_combo_bundle_omitted_without_level_names():
+    """Old / non-combo backtests must not attach the optional section."""
+    state = {
+        "trades": pd.DataFrame({"trade_id": [1], "r_multiple": [1.0]}),
+        "equity_curve": pd.DataFrame({"trade_id": [1], "cum_r": [1.0]}),
+        "trade_summary": {"trade_count": 1},
+    }
+    bundle = build_research_bundle(state)
+    names = _bundle_names(bundle)
+    manifest = _manifest(bundle)
+    assert "confluence_combo_summary.json" not in names
+    assert manifest["included"].get("confluence_combo") is not True
+    assert manifest["bundle_schema_version"] == 1
+
+
+def test_confluence_combo_bundle_roundtrip_json_and_parquets():
+    """Export recomputes from trades; import restores managed research keys."""
+    state = _confluence_combo_session_state()
+    bundle = build_research_bundle(state)
+    names = _bundle_names(bundle)
+    manifest = _manifest(bundle)
+
+    assert manifest["bundle_schema_version"] == 1
+    assert manifest["included"].get("confluence_combo") is True
+    assert "confluence_combo_summary.json" in names
+    assert "confluence_by_exact_combo.parquet" in names
+    assert "confluence_by_level_count.parquet" in names
+    assert "confluence_by_membership.parquet" in names
+    assert "confluence_by_pairs.parquet" in names
+
+    loaded = load_research_bundle(bundle)
+    summary = loaded["session_values"]["confluence_combo_summary"]
+    assert summary["available"] is True
+    assert summary["kind"] == "confluence_combo_summary"
+    assert summary["schema_version"] == 1
+    assert summary["confluence_mode"] == "anchor_rules"
+    assert summary["anchor_level"] == "pdHigh"
+    assert summary["pair_mode"] == "anchor_partner"
+    assert summary["nonempty_combo_trade_count"] == 4
+
+    exact = loaded["session_values"]["confluence_by_exact_combo"]
+    assert isinstance(exact, pd.DataFrame)
+    assert not exact.empty
+    assert "exact_combo_key" in exact.columns
+
+    restored: dict = {}
+    apply_research_bundle_to_session(loaded, restored)
+    assert restored["confluence_combo_summary"]["available"] is True
+    assert "confluence_by_exact_combo" in restored
+
+
+def test_confluence_combo_missing_optional_parquet_does_not_fail_load():
+    """Included section requires JSON only; missing parquet siblings are OK."""
+    state = _confluence_combo_session_state()
+    bundle = build_research_bundle(state)
+    # Drop optional parquet siblings; keep required JSON + manifest.
+    output = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(bundle), "r") as src, zipfile.ZipFile(output, "w") as dst:
+        for name in src.namelist():
+            if name.endswith(".parquet") and name.startswith("confluence_by_"):
+                continue
+            dst.writestr(name, src.read(name))
+
+    loaded = load_research_bundle(output.getvalue())
+    assert loaded["manifest"]["included"]["confluence_combo"] is True
+    assert loaded["session_values"]["confluence_combo_summary"]["available"] is True
+    assert "confluence_by_exact_combo" not in loaded["session_values"]
+    assert "confluence_by_pairs" not in loaded["session_values"]
+
+
+def test_old_bundle_without_confluence_combo_still_imports():
+    """Bundles that never had the section continue to load unchanged."""
+    bundle = build_research_bundle({"data": _dataset_df(), "dataset_id": "old"})
+    loaded = load_research_bundle(bundle)
+    assert loaded["manifest"]["included"].get("confluence_combo") is not True
+    assert "confluence_combo_summary" not in loaded["session_values"]
+    assert "data" in loaded["session_values"]
+
+
+def test_confluence_combo_siblings_excluded_from_canonical_bundle_hash():
+    """Derived combo siblings must not force a GOLDEN_REGEN bundle-hash bump."""
+    trades = _confluence_combo_session_state()["trades"]
+    equity = pd.DataFrame({"trade_id": [1], "cum_r": [1.0]})
+    base_state = {
+        "trades": trades,
+        "equity_curve": equity,
+        "trade_summary": {"trade_count": 4},
+        "signal_settings": {"confluence_mode": "anchor_rules", "anchor_level": "pdHigh"},
+    }
+    with_combo = build_research_bundle(base_state)
+    assert _manifest(with_combo)["included"].get("confluence_combo") is True
+    assert "confluence_combo_summary.json" in _bundle_names(with_combo)
+
+    # Same logical backtest without optional combo files (rewrite zip).
+    stripped = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(with_combo), "r") as src, zipfile.ZipFile(stripped, "w") as dst:
+        for name in src.namelist():
+            if name.startswith("confluence_"):
+                continue
+            if name == "manifest.json":
+                manifest = json.loads(src.read(name).decode("utf-8"))
+                manifest.get("included", {}).pop("confluence_combo", None)
+                keys = [
+                    key
+                    for key in manifest.get("session_keys", [])
+                    if not str(key).startswith("confluence_")
+                ]
+                manifest["session_keys"] = keys
+                dst.writestr(name, json.dumps(manifest))
+            else:
+                dst.writestr(name, src.read(name))
+
+    assert canonical_bundle_hash(with_combo) == canonical_bundle_hash(stripped.getvalue())
 
 
 def test_unknown_zip_files_are_ignored():

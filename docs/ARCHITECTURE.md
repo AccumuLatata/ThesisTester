@@ -1063,6 +1063,13 @@ combo diagnostic block via `build_research_artifact` → `build_confluence_combo
 It recomputes on export from session trades (no Backtest producer combo session key)
 and is omitted entirely when unavailable.
 
+Research Bundles (`pages/12_Research_Bundles.py`) may attach the same diagnostic as
+optional zip siblings via `build_confluence_combo_bundle_artifacts` (on-export
+recompute). `included["confluence_combo"]` is set only when available; old bundles
+without those files still import. Restored managed keys
+(`confluence_combo_summary`, `confluence_by_*`) are cleared when the section is
+absent. `BUNDLE_SCHEMA_VERSION` stays at 1 for these optional siblings.
+
 Grid Search directional note: `pages/8_Grid_Search.py` shows aggregate KPIs by default.
 Enable **Advanced directional ranking** to rank by long/short or balanced weaker-side
 metrics with per-side minimum trade-count gates.  Each grid row includes `long_*`,

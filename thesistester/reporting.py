@@ -540,18 +540,17 @@ def _top_n_by_abs_total_r(frame: pd.DataFrame | None, n: int) -> pd.DataFrame:
     return work.drop(columns=["__abs_total_r__"]).head(max(int(n), 0)).reset_index(drop=True)
 
 
-def build_confluence_combo_report_block(
+def _compute_confluence_combo_export(
     session_state: Mapping[str, Any],
     *,
     min_trades: int = 10,
     top_n: int = _CONFLUENCE_COMBO_TOP_N_DEFAULT,
 ) -> dict[str, Any] | None:
-    """Recompute confluence combo attribution for report export.
+    """Shared on-export recompute for report (5b) and research bundles (5c).
 
-    Resolves mode/anchor from session keys (including ``signal_settings`` when
-    present), matching Backtest. Returns ``None`` when unavailable so callers
-    can omit the block entirely. Fail-closed: unexpected errors omit the
-    optional diagnostic instead of taking down Report / Export.
+    Returns ``None`` when unavailable / fail-closed. When available:
+    ``{"report_block": <jsonable dict>, "frames": {name: DataFrame}}``.
+    Frames are full analytics tables (not top-N truncated) for parquet siblings.
     """
     try:
         trades = session_state.get("trades")
@@ -598,23 +597,16 @@ def build_confluence_combo_report_block(
         level_count = summary.get("by_level_count")
         pairs = summary.get("by_pairs")
 
-        exact_top = _top_n_by_abs_total_r(
-            exact if isinstance(exact, pd.DataFrame) else None,
-            effective_top_n,
+        exact_frame = exact.copy() if isinstance(exact, pd.DataFrame) else pd.DataFrame()
+        membership_frame = (
+            membership.copy() if isinstance(membership, pd.DataFrame) else pd.DataFrame()
         )
-        membership_top = _top_n_by_abs_total_r(
-            membership if isinstance(membership, pd.DataFrame) else None,
-            effective_top_n,
-        )
-        pairs_top = _top_n_by_abs_total_r(
-            pairs if isinstance(pairs, pd.DataFrame) else None,
-            effective_top_n,
-        )
-        level_count_full = (
+        level_count_frame = (
             level_count.copy() if isinstance(level_count, pd.DataFrame) else pd.DataFrame()
         )
+        pairs_frame = pairs.copy() if isinstance(pairs, pd.DataFrame) else pd.DataFrame()
 
-        return {
+        report_block = {
             "available": True,
             "trade_count": int(summary.get("trade_count") or 0),
             "nonempty_combo_trade_count": int(summary.get("nonempty_combo_trade_count") or 0),
@@ -625,15 +617,82 @@ def build_confluence_combo_report_block(
             "warnings": list(summary.get("warnings") or []),
             "top_n": effective_top_n,
             "tables": {
-                "exact_combo": to_jsonable(exact_top),
-                "level_count": to_jsonable(level_count_full),
-                "membership": to_jsonable(membership_top),
-                "pairs": to_jsonable(pairs_top),
+                "exact_combo": to_jsonable(
+                    _top_n_by_abs_total_r(exact_frame, effective_top_n)
+                ),
+                "level_count": to_jsonable(level_count_frame),
+                "membership": to_jsonable(
+                    _top_n_by_abs_total_r(membership_frame, effective_top_n)
+                ),
+                "pairs": to_jsonable(_top_n_by_abs_total_r(pairs_frame, effective_top_n)),
+            },
+        }
+        return {
+            "report_block": report_block,
+            "frames": {
+                "exact_combo": exact_frame,
+                "level_count": level_count_frame,
+                "membership": membership_frame,
+                "pairs": pairs_frame,
             },
         }
     except (TypeError, ValueError, KeyError, AttributeError):
-        # Optional diagnostic must never break the broader research artifact.
+        # Optional diagnostic must never break report / bundle export.
         return None
+
+
+def build_confluence_combo_report_block(
+    session_state: Mapping[str, Any],
+    *,
+    min_trades: int = 10,
+    top_n: int = _CONFLUENCE_COMBO_TOP_N_DEFAULT,
+) -> dict[str, Any] | None:
+    """Recompute confluence combo attribution for report export.
+
+    Resolves mode/anchor from session keys (including ``signal_settings`` when
+    present), matching Backtest. Returns ``None`` when unavailable so callers
+    can omit the block entirely. Fail-closed: unexpected errors omit the
+    optional diagnostic instead of taking down Report / Export.
+    """
+    computed = _compute_confluence_combo_export(
+        session_state,
+        min_trades=min_trades,
+        top_n=top_n,
+    )
+    if computed is None:
+        return None
+    report_block = computed.get("report_block")
+    return report_block if isinstance(report_block, dict) else None
+
+
+def build_confluence_combo_bundle_artifacts(
+    session_state: Mapping[str, Any],
+    *,
+    min_trades: int = 10,
+    top_n: int = _CONFLUENCE_COMBO_TOP_N_DEFAULT,
+) -> dict[str, Any] | None:
+    """On-export recompute for research-bundle optional combo siblings.
+
+    Returns ``None`` when unavailable. When available:
+    ``{"summary": <jsonable dict>, "frames": {name: DataFrame}}``.
+    """
+    computed = _compute_confluence_combo_export(
+        session_state,
+        min_trades=min_trades,
+        top_n=top_n,
+    )
+    if computed is None:
+        return None
+    report_block = computed.get("report_block")
+    frames = computed.get("frames")
+    if not isinstance(report_block, dict) or not isinstance(frames, dict):
+        return None
+    summary = {
+        "schema_version": 1,
+        "kind": "confluence_combo_summary",
+        **report_block,
+    }
+    return {"summary": summary, "frames": frames}
 
 
 def _fmt_number(value: Any, fmt: str = ".4f", fallback: str = "—") -> str:
