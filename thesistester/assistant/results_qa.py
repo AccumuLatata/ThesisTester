@@ -18,6 +18,7 @@ from thesistester.assistant.llm_explainer import (
 from thesistester.assistant.results_overview import (
     INTENT_GRID_RANKING,
     INTENT_MIXED_ASK,
+    INTENT_ROBUSTNESS_TIER2,
     INTENT_SINGLE_METRIC,
     INTENT_TIME_RANKING,
     INTENT_VALIDATION_WFA,
@@ -25,6 +26,7 @@ from thesistester.assistant.results_overview import (
     OVERVIEW_INTENT_RUN,
     REASON_GRID_FALLBACK,
     REASON_METRIC_FALLBACK,
+    REASON_ROBUSTNESS_FALLBACK,
     REASON_TIME_FALLBACK,
     REASON_VALIDATION_FALLBACK,
     _ensure_grid_rankings_context,
@@ -32,11 +34,13 @@ from thesistester.assistant.results_overview import (
     apply_expert_overlay,
     build_deterministic_grid_ranking_reply,
     build_deterministic_kpi_reply,
+    build_deterministic_robustness_reply,
     build_deterministic_single_metric_reply,
     build_deterministic_time_ranking_reply,
     build_deterministic_validation_wfa_reply,
     build_missing_grid_limitation_reply,
     build_missing_metric_limitation_reply,
+    build_missing_robustness_limitation_reply,
     build_missing_time_limitation_reply,
     build_missing_validation_limitation_reply,
     build_prompt_path_catalog,
@@ -45,6 +49,7 @@ from thesistester.assistant.results_overview import (
     compose_deterministic_replies,
     failure_class_from_exception,
     has_grid_ranking_evidence,
+    has_robustness_tier2_evidence,
     has_single_metric_evidence,
     has_time_ranking_evidence,
     has_validation_wfa_evidence,
@@ -352,6 +357,16 @@ def _recover_results_reply(
             recovery_reason=reason or REASON_VALIDATION_FALLBACK,
         )
     if (
+        discuss_intent == INTENT_ROBUSTNESS_TIER2
+        and deterministic_specialist_fallback
+        and has_robustness_tier2_evidence(evidence_context)
+    ):
+        return build_deterministic_robustness_reply(
+            packet,
+            evidence_context,
+            recovery_reason=reason or REASON_ROBUSTNESS_FALLBACK,
+        )
+    if (
         discuss_intent == INTENT_TIME_RANKING
         and deterministic_specialist_fallback
         and has_time_ranking_evidence(evidence_context)
@@ -409,11 +424,12 @@ def propose_results_reply(
     remediation. Both DI flags false restores pre-DI hard-fail raises (TLS wrap
     still applies in the transport).
 
-    RI-1/RI-2/RI-3/RI-4/RI-8: unified Discuss matcher; ``grid_ranking`` /
-    ``time_ranking`` / ``validation_wfa`` / ``single_metric`` missing-evidence
-    short-circuits before LLM; deterministic specialist fallback when
-    ``deterministic_specialist_fallback`` is true; ``mixed_ask`` composes up to
-    three matched intents (narrow remediation when over cap or no evidence).
+    RI-1/RI-2/RI-3/RI-4/RI-5/RI-8: unified Discuss matcher; ``grid_ranking`` /
+    ``time_ranking`` / ``validation_wfa`` / ``robustness_tier2`` /
+    ``single_metric`` missing-evidence short-circuits before LLM; deterministic
+    specialist fallback when ``deterministic_specialist_fallback`` is true;
+    ``mixed_ask`` composes up to three matched intents (narrow remediation when
+    over cap or no evidence).
 
     DI-2: first-pass user payload includes ``path_catalog`` (existing paths;
     plus ``kpi_allowlist`` / specialist preferred paths when matched).
@@ -467,6 +483,10 @@ def propose_results_reply(
         evidence_context
     ):
         return build_missing_validation_limitation_reply(packet)
+    if discuss_intent == INTENT_ROBUSTNESS_TIER2 and not has_robustness_tier2_evidence(
+        evidence_context
+    ):
+        return build_missing_robustness_limitation_reply(packet)
     if discuss_intent == INTENT_SINGLE_METRIC:
         metric_path = resolve_single_metric_path(user_message)
         if metric_path is None or not has_single_metric_evidence(evidence_context, metric_path):
@@ -481,6 +501,7 @@ def propose_results_reply(
             INTENT_GRID_RANKING,
             INTENT_TIME_RANKING,
             INTENT_VALIDATION_WFA,
+            INTENT_ROBUSTNESS_TIER2,
             INTENT_SINGLE_METRIC,
         }:
             return reply
@@ -538,6 +559,7 @@ def propose_results_reply(
             INTENT_GRID_RANKING,
             INTENT_TIME_RANKING,
             INTENT_VALIDATION_WFA,
+            INTENT_ROBUSTNESS_TIER2,
             INTENT_SINGLE_METRIC,
         }
         if (

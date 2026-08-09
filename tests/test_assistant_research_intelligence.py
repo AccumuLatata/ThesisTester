@@ -1,4 +1,4 @@
-"""RI Research Intelligence: grid + time + validation/WFA + single-metric slices."""
+"""RI Research Intelligence: grid + time + validation/WFA + robustness + metric slices."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from thesistester.assistant.llm_explainer import LLMEvidenceError, _ungrounded_n
 from thesistester.assistant.results_overview import (
     INTENT_GRID_RANKING,
     INTENT_MIXED_ASK,
+    INTENT_ROBUSTNESS_TIER2,
     INTENT_SINGLE_METRIC,
     INTENT_TIME_RANKING,
     INTENT_VALIDATION_WFA,
@@ -19,12 +20,15 @@ from thesistester.assistant.results_overview import (
     OVERVIEW_INTENT_RUN,
     REASON_MISSING_GRID,
     REASON_MISSING_METRIC,
+    REASON_MISSING_ROBUSTNESS,
     REASON_MISSING_TIME,
     REASON_MISSING_VALIDATION,
     REASON_MIXED_ASK,
     REASON_PATH_MISS,
+    ROBUSTNESS_CLAIM_PATHS,
     _SINGLE_METRIC_NOUN_PATHS,
     build_deterministic_grid_ranking_reply,
+    build_deterministic_robustness_reply,
     build_deterministic_single_metric_reply,
     build_deterministic_time_ranking_reply,
     build_deterministic_validation_wfa_reply,
@@ -33,12 +37,14 @@ from thesistester.assistant.results_overview import (
     build_mixed_ask_remediation_reply,
     has_grid_ranking_evidence,
     has_overview_negative_cue,
+    has_robustness_tier2_evidence,
     has_single_metric_evidence,
     has_time_ranking_evidence,
     has_validation_wfa_evidence,
     match_discuss_intent,
     match_overview_intent,
     present_grid_allowlist,
+    present_robustness_allowlist,
     present_time_allowlist,
     present_validation_allowlist,
     resolve_single_metric_path,
@@ -196,11 +202,18 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert match_discuss_intent("Give me KPIs and what's my stop?") is None
     assert has_overview_negative_cue("Give me KPIs and what's my stop?") is True
     assert match_overview_intent("Give me KPIs and what's my stop?") is None
-    # otf validation is RI-5 residual — not owned by bare RI-3 validation.
-    assert match_discuss_intent("otf validation") is None
+    # RI-5: otf validation / Monte Carlo are landed robustness_tier2 (not RI-3).
+    assert match_discuss_intent("otf validation") == INTENT_ROBUSTNESS_TIER2
     assert has_overview_negative_cue("otf validation") is True
-    # Other WFA cues still land even when OTF is mentioned in passing.
+    assert match_discuss_intent("monte carlo summary please") == INTENT_ROBUSTNESS_TIER2
+    assert match_discuss_intent("overfitting diagnostics") == INTENT_ROBUSTNESS_TIER2
+    assert match_discuss_intent("sensitivity battery") == INTENT_ROBUSTNESS_TIER2
+    assert match_discuss_intent("noise test results") == INTENT_ROBUSTNESS_TIER2
+    assert match_discuss_intent("portfolio summary please") == INTENT_ROBUSTNESS_TIER2
+    # Other WFA cues still land even when OTF is mentioned in passing (no otf cue).
     assert match_discuss_intent("walk-forward validation and otf notes") == INTENT_VALIDATION_WFA
+    # WFA + otf validation phrase → mixed_ask (both specialists).
+    assert match_discuss_intent("walk-forward and otf validation") == INTENT_MIXED_ASK
     # Bare permutation without validation-sense collocates does not match.
     assert match_discuss_intent("a permutation of the thesis") is None
     assert match_discuss_intent("bootstrap permutation test") == INTENT_VALIDATION_WFA
@@ -929,12 +942,18 @@ def test_validation_allowlist_omits_null_leaves():
 
 
 def test_otf_only_packet_does_not_answer_via_validation_wfa():
-    """OTF ask must not remap to WFA missing-validation / WFA leaves."""
+    """OTF ask must not remap to WFA missing-validation / WFA leaves (RI-5 owns OTF)."""
     packet = EvidencePacket(
-        provenance={"run_id": "run_ri3_otf"},
+        provenance={"run_id": "run_ri5_otf"},
         assumptions={},
         results={
-            "otf_validation_summary": {"status": "present", "pass_rate": 0.5},
+            "otf_validation": {"available": True},
+            "otf_validation_summary": {
+                "status": "present",
+                "selected_oos_expectancy_r": 0.11,
+                "train_fraction": 0.7,
+                "oos_fraction": 0.3,
+            },
             "walk_forward_summary": {
                 "fold_count": 4,
                 "median_test_expectancy_r": 0.2,
@@ -944,7 +963,7 @@ def test_otf_only_packet_does_not_answer_via_validation_wfa():
         warnings=(),
         limitations=(),
     )
-    assert match_discuss_intent("otf validation") is None
+    assert match_discuss_intent("otf validation") == INTENT_ROBUSTNESS_TIER2
     client = _FailClient(_uncited_digits_payload())
     reply = propose_results_reply(
         client,
@@ -953,9 +972,87 @@ def test_otf_only_packet_does_not_answer_via_validation_wfa():
         user_message="otf validation",
         repair_retry_enabled=False,
     )
-    # Not the validation_wfa short-circuit / deterministic WFA path.
     assert reply.recovery_reason != REASON_MISSING_VALIDATION
-    assert not any("walk_forward_summary" in c.path for c in reply.claims)
+    paths = {claim.path for claim in reply.claims}
+    assert not any("walk_forward_summary" in path for path in paths)
+    assert "results.otf_validation.available" in paths or (
+        "results.otf_validation_summary.selected_oos_expectancy_r" in paths
+    )
+
+
+def test_r10_monte_carlo_ask_grounds_frozen_scalars():
+    """R10: Monte Carlo ask with summary present → §4.6 grounded status/scalars."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri5_mc"},
+        assumptions={},
+        results={
+            "trade_summary": {"trade_count": 42, "expectancy_r": 0.25, "win_rate": 0.52},
+            "monte_carlo_summary": {"available": True, "trade_count": 40},
+        },
+        warnings=(),
+        limitations=(),
+    )
+    assert match_discuss_intent("Summarize the Monte Carlo results") == INTENT_ROBUSTNESS_TIER2
+    assert has_robustness_tier2_evidence(packet.to_dict()) is True
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="Summarize the Monte Carlo results",
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "results.monte_carlo_summary.available" in paths
+    assert "results.monte_carlo_summary.trade_count" in paths
+    assert not any("trade_summary" in path for path in paths)
+    assert "99" not in reply.summary
+    # Undeclared nested dumps must not appear.
+    assert not any("methods" in path for path in paths)
+
+
+def test_r10_missing_all_robustness_batteries_limits_without_llm():
+    packet = _packet(best_grid=True)
+    assert has_robustness_tier2_evidence(packet.to_dict()) is False
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What does the Monte Carlo battery say?",
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MISSING_ROBUSTNESS
+    assert "99" not in reply.summary
+
+
+def test_robustness_allowlist_omits_null_and_undeclared_paths():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri5_null"},
+        assumptions={},
+        results={
+            "monte_carlo_summary": {
+                "available": True,
+                "trade_count": None,
+                "methods": {"reshuffle": {"observed": {"final_r": 1.2}}},
+            },
+            "overfitting_summary": {"available": False, "pbo": {"pbo": 0.4}},
+        },
+        warnings=(),
+        limitations=(),
+    )
+    paths = present_robustness_allowlist(packet.to_dict())
+    assert "results.monte_carlo_summary.available" in paths
+    assert "results.overfitting_summary.available" in paths
+    assert "results.overfitting_summary.pbo.pbo" in paths
+    assert "results.monte_carlo_summary.trade_count" not in paths
+    assert not any(path not in ROBUSTNESS_CLAIM_PATHS for path in paths)
+    assert not any("methods" in path for path in paths)
+    reply = build_deterministic_robustness_reply(packet, packet.to_dict())
+    claim_paths = {claim.path for claim in reply.claims}
+    assert "results.monte_carlo_summary.available" in claim_paths
+    assert not any("methods" in path for path in claim_paths)
 
 
 def test_r8_win_rate_single_metric_with_percent_narration():
@@ -1050,9 +1147,11 @@ def test_single_metric_hard_refuse_grid_time_validation_and_residual():
     assert match_discuss_intent("what is the win rate on the grid?") == INTENT_GRID_RANKING
     assert match_discuss_intent("what is expectancy by hour bucket?") == INTENT_TIME_RANKING
     assert match_discuss_intent("what is the OOS expectancy?") == INTENT_VALIDATION_WFA
-    assert match_discuss_intent("what is monte carlo expectancy?") is None
+    # RI-5: Monte Carlo collocates land robustness_tier2 (not IS single_metric).
+    assert match_discuss_intent("what is monte carlo expectancy?") == INTENT_ROBUSTNESS_TIER2
     assert match_discuss_intent("what is expectancy for my stop?") is None
     assert has_overview_negative_cue("what is expectancy for my stop?") is True
+    assert has_overview_negative_cue("what is monte carlo expectancy?") is True
 
 
 def test_metric_over_time_idiom_is_single_metric_not_time_slice():

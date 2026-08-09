@@ -629,6 +629,10 @@ other than the last bar in the dataset.
   priority-ordered summaries; merge/dedupe caveats; followups for unanswered
   topics; auditor once; compose ≤3 intents (>3 → narrow remediation); duplex
   overview still vetoes mixed asks until RI-10.
+  **RI-5 landed:** `robustness_tier2` presence-first builder over frozen §4.6
+  paths (Monte Carlo / overfitting / sensitivity / noise / portfolio / OTF);
+  MC + `otf validation` sunsets from residual; missing-all short-circuit before
+  LLM; no undeclared nested dumps; never substitutes `trade_summary` KPIs.
   Incremental PRs keep DI residual negative-cue vetoes for not-yet-owned
   specialist topics (and DX veto≠unmatched) until each builder PR sunsets its
   cues; RI must not invent metrics, remap topics onto KPI overview, answer OOS

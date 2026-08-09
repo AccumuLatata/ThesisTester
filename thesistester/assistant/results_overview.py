@@ -2,9 +2,10 @@
 
 Fail-closed numbers stay in ``llm_explainer``. This module selects frozen
 overview + specialist slices (RI-1: ``grid_ranking``; RI-2: ``time_ranking``;
-RI-3: ``validation_wfa``; RI-4: ``single_metric``), builds DI-2 first-pass
-path catalogs, builds auditor-safe replies when the LLM path fails, and
-attaches DI-3/RI-7 digit-free meaning overlays after mandatory caveats.
+RI-3: ``validation_wfa``; RI-4: ``single_metric``; RI-5: ``robustness_tier2``),
+builds DI-2 first-pass path catalogs, builds auditor-safe replies when the LLM
+path fails, and attaches DI-3/RI-7 digit-free meaning overlays after mandatory
+caveats.
 """
 
 from __future__ import annotations
@@ -27,11 +28,17 @@ OVERVIEW_INTENT_RUN = "run_overview"
 INTENT_GRID_RANKING = "grid_ranking"
 INTENT_TIME_RANKING = "time_ranking"
 INTENT_VALIDATION_WFA = "validation_wfa"
+INTENT_ROBUSTNESS_TIER2 = "robustness_tier2"
 INTENT_SINGLE_METRIC = "single_metric"
 INTENT_MIXED_ASK = "mixed_ask"
 
 _LANDED_SPECIALIST_INTENTS = frozenset(
-    {INTENT_GRID_RANKING, INTENT_TIME_RANKING, INTENT_VALIDATION_WFA}
+    {
+        INTENT_GRID_RANKING,
+        INTENT_TIME_RANKING,
+        INTENT_VALIDATION_WFA,
+        INTENT_ROBUSTNESS_TIER2,
+    }
 )
 # Intents that refuse overview/DX KPI envelopes (specialists + single-metric).
 _OVERVIEW_REFUSING_INTENTS = frozenset(
@@ -45,12 +52,14 @@ REASON_REPAIR_FAILED = "overview_repair_failed"
 REASON_MISSING_GRID = "grid_missing_evidence"
 REASON_MISSING_TIME = "time_missing_evidence"
 REASON_MISSING_VALIDATION = "validation_missing_evidence"
+REASON_MISSING_ROBUSTNESS = "robustness_missing_evidence"
 REASON_MISSING_METRIC = "metric_missing_leaf"
 REASON_MIXED_ASK = "mixed_ask_narrow"
 REASON_MIXED_COMPOSE = "mixed_ask_compose"
 REASON_GRID_FALLBACK = "grid_deterministic_fallback"
 REASON_TIME_FALLBACK = "time_deterministic_fallback"
 REASON_VALIDATION_FALLBACK = "validation_deterministic_fallback"
+REASON_ROBUSTNESS_FALLBACK = "robustness_deterministic_fallback"
 REASON_METRIC_FALLBACK = "metric_deterministic_fallback"
 
 # §4.1 composition / summary order (sole-intent tie-break + RI-8 compose order).
@@ -58,6 +67,7 @@ _COMPOSE_PRIORITY: tuple[str, ...] = (
     INTENT_GRID_RANKING,
     INTENT_TIME_RANKING,
     INTENT_VALIDATION_WFA,
+    INTENT_ROBUSTNESS_TIER2,
     INTENT_SINGLE_METRIC,
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
@@ -121,6 +131,12 @@ _RESULTS_PRIORITY_KEYS: tuple[str, ...] = (
     "walk_forward_summary",
     "walk_forward_warnings",
     "otf_validation_summary",
+    "otf_validation",
+    "monte_carlo_summary",
+    "overfitting_summary",
+    "sensitivity_summary",
+    "noise_summary",
+    "portfolio_summary",
 )
 
 # Honesty / framing paths reserved before provenance and fat tables.
@@ -257,13 +273,22 @@ _TIME_CONTEXT_COLLOCATES: tuple[str, ...] = (
 # DI §4.1 negatives not yet owned by a landed specialist builder (RI residual veto).
 # RI-2 sunsets time/hour/bucket/clock/session segment into ``time_ranking``.
 # RI-3 sunsets validation/wfa/oos/bootstrap into ``validation_wfa``.
-# ``otf validation`` stays residual until RI-5 (must not be owned by bare ``validation``).
+# RI-5 sunsets monte carlo / otf validation into ``robustness_tier2``.
 _RESIDUAL_NEGATIVE_CUES: tuple[str, ...] = (
-    "monte carlo",
-    "monte-carlo",
-    "otf validation",
     # Bare ranking without grid/time collocates stays residual (never overview).
     "ranking",
+)
+
+# RI-5 landed specialist cues (sunsets DI MC / OTF residual negatives).
+_ROBUSTNESS_TIER2_POSITIVE_CUES: tuple[str, ...] = (
+    "monte carlo",
+    "monte-carlo",
+    "overfitting",
+    "sensitivity",
+    "noise test",
+    "noise summary",
+    "portfolio summary",
+    "otf validation",
 )
 
 # Frozen RI §4.2 allowlist (include only when path exists on turn context).
@@ -320,6 +345,27 @@ VALIDATION_CLAIM_PATHS: tuple[str, ...] = (
     "results.validation_summary.bootstrap.ci_upper",
     "results.validation_summary.bootstrap.probability_positive",
     "results.validation_summary.grid_overfit.risk_level",
+)
+
+# Frozen RI §4.6 robustness_tier2 allowlist (presence-first; no deep nested dumps).
+ROBUSTNESS_CLAIM_PATHS: tuple[str, ...] = (
+    "results.monte_carlo_summary.available",
+    "results.monte_carlo_summary.trade_count",
+    "results.overfitting_summary.available",
+    "results.overfitting_summary.pbo.pbo",
+    "results.overfitting_summary.deflated_sharpe.dsr",
+    "results.sensitivity_summary.available",
+    "results.sensitivity_summary.fragile_parameter_count",
+    "results.noise_summary.available",
+    "results.noise_summary.replicas.n_completed",
+    "results.portfolio_summary.available",
+    "results.portfolio_summary.admission.admitted_trade_count",
+    "results.portfolio_summary.portfolio_metrics.total_r",
+    "results.otf_validation.available",
+    "results.otf_validation_summary.status",
+    "results.otf_validation_summary.selected_oos_expectancy_r",
+    "results.otf_validation_summary.train_fraction",
+    "results.otf_validation_summary.oos_fraction",
 )
 
 
@@ -388,6 +434,10 @@ def _validation_wfa_matches(normalized: str) -> bool:
     return False
 
 
+def _robustness_tier2_matches(normalized: str) -> bool:
+    return _any_cue_matches(_ROBUSTNESS_TIER2_POSITIVE_CUES, normalized)
+
+
 def _mask_time_bare_idioms(normalized: str) -> str:
     """Blank temporal idioms so bare ``time`` does not false-fire inside them."""
     masked = normalized
@@ -423,7 +473,7 @@ def _time_ranking_matches(normalized: str) -> bool:
 
 
 def _hard_residual_negative_matches(normalized: str) -> bool:
-    """Residual cues that block landed specialists (MC/ranking/otf validation)."""
+    """Residual cues that block landed specialists (bare ranking after RI-5)."""
     if _any_cue_matches(
         tuple(cue for cue in _RESIDUAL_NEGATIVE_CUES if cue != "ranking"),
         normalized,
@@ -524,6 +574,7 @@ def _evaluate_discuss_match(message: str) -> dict[str, Any] | None:
     time_strong = _strong_time_ranking_matches(normalized)
     time_bare_only = _bare_time_token_matches(normalized) and not time_strong
     validation = _validation_wfa_matches(normalized)
+    robustness = _robustness_tier2_matches(normalized)
     metric_paths = _matched_single_metric_paths(normalized)
     kpi = _any_cue_matches(_KPI_POSITIVE_CUES, normalized)
     run = _any_cue_matches(_RUN_OVERVIEW_POSITIVE_CUES, normalized)
@@ -535,6 +586,8 @@ def _evaluate_discuss_match(message: str) -> dict[str, Any] | None:
         specialists.append(INTENT_TIME_RANKING)
     if validation:
         specialists.append(INTENT_VALIDATION_WFA)
+    if robustness:
+        specialists.append(INTENT_ROBUSTNESS_TIER2)
 
     hard_residual = _hard_residual_negative_matches(normalized)
     soft_residual = _soft_bare_grid_token_residual(normalized)
@@ -614,14 +667,15 @@ def match_discuss_intent(message: str) -> str | None:
 
     Multi-eval (no first-match short-circuit): evaluate landed cue tables
     independently, then apply residual veto / mixed-ask rules.
-    Landed intents in RI-4+: ``grid_ranking``, ``time_ranking``,
-    ``validation_wfa``, ``single_metric``, ``kpi_summary``, ``run_overview``.
+    Landed intents in RI-5+: ``grid_ranking``, ``time_ranking``,
+    ``validation_wfa``, ``robustness_tier2``, ``single_metric``,
+    ``kpi_summary``, ``run_overview``.
     """
     state = _evaluate_discuss_match(message)
     if state is None:
         return None
 
-    # §4.1 step 3: hard residual (MC/bare-ranking/otf) blocks specialists → None.
+    # §4.1 step 3: hard residual (bare ranking) blocks specialists → None.
     # Also hard-refuses single_metric (§4.5) so IS leaves cannot launder residual asks.
     if state["hard_residual"]:
         return None
@@ -722,6 +776,21 @@ def present_validation_allowlist(evidence_context: Mapping[str, Any]) -> tuple[s
     return tuple(out)
 
 
+def present_robustness_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return frozen §4.6 robustness claim paths with narratable scalars only."""
+    if not isinstance(evidence_context, Mapping):
+        return ()
+    out: list[str] = []
+    for path in ROBUSTNESS_CLAIM_PATHS:
+        if not _path_exists(evidence_context, path):
+            continue
+        value = _path_get(evidence_context, path)
+        if _format_scalar_for_claim(path, value) is None:
+            continue
+        out.append(path)
+    return tuple(out)
+
+
 def _narratable_grid_scalar(evidence_context: Mapping[str, Any], path: str) -> bool:
     """True when *path* exists and formats to a claimable scalar (nulls fail)."""
     if not _path_exists(evidence_context, path):
@@ -778,6 +847,19 @@ def has_validation_wfa_evidence(evidence_context: Mapping[str, Any]) -> bool:
     if not isinstance(evidence_context, Mapping):
         return False
     for path in VALIDATION_CLAIM_PATHS:
+        if not _path_exists(evidence_context, path):
+            continue
+        value = _path_get(evidence_context, path)
+        if _format_scalar_for_claim(path, value) is not None:
+            return True
+    return False
+
+
+def has_robustness_tier2_evidence(evidence_context: Mapping[str, Any]) -> bool:
+    """True when at least one narratable §4.6 tier-2 robustness leaf exists."""
+    if not isinstance(evidence_context, Mapping):
+        return False
+    for path in ROBUSTNESS_CLAIM_PATHS:
         if not _path_exists(evidence_context, path):
             continue
         value = _path_get(evidence_context, path)
@@ -1026,6 +1108,18 @@ def build_prompt_path_catalog(
             "soften missing_oos / failed_oos caveats."
         )
         catalog["preferred_claim_paths"] = validation_paths
+    elif intent == INTENT_ROBUSTNESS_TIER2:
+        robustness_paths = list(present_robustness_allowlist(evidence_context))
+        catalog["discuss_intent"] = INTENT_ROBUSTNESS_TIER2
+        catalog["robustness_allowlist"] = robustness_paths
+        catalog["specialist_instruction"] = (
+            "This is a tier-2 robustness ask (Monte Carlo / overfitting / "
+            "sensitivity / noise / portfolio / OTF). Prefer citing a subset of "
+            "robustness_allowlist / preferred_claim_paths (presence and frozen "
+            "scalars only). Do not dump undeclared nested battery paths. Do not "
+            "substitute results.trade_summary.* KPIs."
+        )
+        catalog["preferred_claim_paths"] = robustness_paths
     elif intent == INTENT_TIME_RANKING:
         # Ensure projected paths are listed when only time_grouped_summary exists.
         working = _ensure_time_rankings_context(evidence_context)
@@ -1305,6 +1399,34 @@ _OVERLAY_GLOSS_BY_PATH: tuple[tuple[str, str], ...] = (
         "results.validation_summary.grid_overfit.risk_level",
         "Grid overfit risk level is a research diagnostic about selection pressure, not a pass/fail trade gate.",
     ),
+    (
+        "results.monte_carlo_summary.available",
+        "Monte Carlo availability is a battery presence flag, not a deployability proof.",
+    ),
+    (
+        "results.monte_carlo_summary.trade_count",
+        "Monte Carlo trade count is the sample size of the reshuffled sequence, not future trade volume.",
+    ),
+    (
+        "results.overfitting_summary.available",
+        "Overfitting-summary availability marks whether PBO/DSR diagnostics were recorded.",
+    ),
+    (
+        "results.overfitting_summary.pbo.pbo",
+        "PBO is an overfitting diagnostic on the recorded grid, not a live edge score.",
+    ),
+    (
+        "results.sensitivity_summary.fragile_parameter_count",
+        "Fragile parameter count summarizes sensitivity diagnostics, not a trading signal.",
+    ),
+    (
+        "results.otf_validation.available",
+        "OTF validation availability is presence framing, not walk-forward fold proof.",
+    ),
+    (
+        "results.otf_validation_summary.selected_oos_expectancy_r",
+        "Selected OTF OOS expectancy is a one-shot train/test diagnostic, not stitched WFA OOS.",
+    ),
 )
 
 _OVERLAY_ALWAYS = "These figures are research diagnostics, not trading advice."
@@ -1320,6 +1442,10 @@ _OVERLAY_NEXT_STEP_VALIDATION = (
 
 _OVERLAY_NEXT_STEP_TIME = (
     "Ask about best stop and take profit ranking if a grid was recorded, or ask for key metrics."
+)
+
+_OVERLAY_NEXT_STEP_ROBUSTNESS = (
+    "Ask for the key metrics or a walk-forward summary if you want the baseline or OOS folds."
 )
 
 _OVERLAY_OOS_ABSENT = (
@@ -1505,6 +1631,8 @@ def _overlay_next_step_line(discuss_intent: str | None, *, oos_absent: bool) -> 
         return None
     if discuss_intent == INTENT_VALIDATION_WFA:
         return _OVERLAY_NEXT_STEP_VALIDATION
+    if discuss_intent == INTENT_ROBUSTNESS_TIER2:
+        return _OVERLAY_NEXT_STEP_ROBUSTNESS
     if discuss_intent == INTENT_TIME_RANKING:
         return _OVERLAY_NEXT_STEP_TIME
     # Overview / grid / single_metric: WFA-presence coaching unless already absent.
@@ -1656,6 +1784,23 @@ def apply_expert_overlay(
     )
 
 
+def _robustness_available_label(path: str) -> str:
+    """Human label for §4.6 ``*.available`` presence claims."""
+    if "monte_carlo_summary" in path:
+        return "Monte Carlo summary available"
+    if "overfitting_summary" in path:
+        return "Overfitting summary available"
+    if "sensitivity_summary" in path:
+        return "Sensitivity summary available"
+    if "noise_summary" in path:
+        return "Noise summary available"
+    if "portfolio_summary" in path:
+        return "Portfolio summary available"
+    if "otf_validation" in path:
+        return "OTF validation available"
+    return "Available"
+
+
 def _format_scalar_for_claim(path: str, value: Any) -> str | None:
     """Return claim text for an allowlisted scalar, or None when not narratable."""
     # RI-2: sample_warning is an explicit allowlisted boolean honesty claim.
@@ -1663,6 +1808,10 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
         return (
             "Sample warning is true (thin bucket sample)." if value else "Sample warning is false."
         )
+    # RI-5: battery ``.available`` presence flags are allowlisted booleans.
+    if path.endswith("available") and isinstance(value, bool):
+        label = _robustness_available_label(path)
+        return f"{label} is {'true' if value else 'false'}."
     if value is None or isinstance(value, bool):
         return None
     if path.endswith("win_rate"):
@@ -1703,6 +1852,26 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             return f"Bootstrap CI upper is {display}."
         if path.endswith("probability_positive"):
             return f"Bootstrap probability mean R is positive is {display}."
+        if path.endswith("selected_oos_expectancy_r"):
+            return f"Selected OTF OOS expectancy R is {display}."
+        if path.endswith("monte_carlo_summary.trade_count"):
+            return f"Monte Carlo trade count is {display}."
+        if path.endswith("pbo.pbo"):
+            return f"PBO is {display}."
+        if path.endswith("deflated_sharpe.dsr"):
+            return f"Deflated Sharpe ratio is {display}."
+        if path.endswith("fragile_parameter_count"):
+            return f"Fragile parameter count is {display}."
+        if path.endswith("replicas.n_completed"):
+            return f"Noise replica completed count is {display}."
+        if path.endswith("admission.admitted_trade_count"):
+            return f"Portfolio admitted trade count is {display}."
+        if path.endswith("portfolio_metrics.total_r"):
+            return f"Portfolio total R is {display}."
+        if path.endswith("train_fraction"):
+            return f"OTF train fraction is {display}."
+        if path.endswith("oos_fraction"):
+            return f"OTF OOS fraction is {display}."
         if path.endswith("trade_count"):
             return f"Trade count is {display}."
         if path.endswith("expectancy_r"):
@@ -1747,6 +1916,8 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             return f"Grid overfit risk level is {text}."
         if path.endswith("walk_forward_summary.status"):
             return f"Walk-forward status is {text}."
+        if path.endswith("otf_validation_summary.status"):
+            return f"OTF validation status is {text}."
         if path.endswith("bucket_col"):
             return f"Time bucket column is {text}."
         if path.endswith("best.bucket"):
@@ -1959,6 +2130,10 @@ def _compose_followups_for_intents(
             suggestions.append(
                 "Ask whether walk-forward or validation diagnostics are present on this packet."
             )
+    if INTENT_ROBUSTNESS_TIER2 not in matched_set:
+        suggestions.append(
+            "Ask about Monte Carlo or other robustness batteries if they were recorded."
+        )
     if not suggestions:
         suggestions.append("Ask which evidence paths remain available on this packet.")
     return tuple(suggestions[:3])
@@ -2084,6 +2259,11 @@ def compose_deterministic_replies(
                 build_deterministic_validation_wfa_reply(packet, working, apply_overlay=False)
             ):
                 _mark(intent)
+        elif intent == INTENT_ROBUSTNESS_TIER2:
+            if not has_robustness_tier2_evidence(working):
+                continue
+            if _absorb(build_deterministic_robustness_reply(packet, working, apply_overlay=False)):
+                _mark(intent)
         elif intent == INTENT_SINGLE_METRIC:
             if not build_metric_slice:
                 # Covered by overview allowlist; count as answered for followups.
@@ -2166,6 +2346,46 @@ def build_missing_validation_limitation_reply(
         (
             "No out-of-sample or validation figures were invented for this ask.",
             "In-sample trade summary KPIs are not a substitute for WFA or OOS evidence.",
+        ),
+    )
+    assert_llm_explanation_grounded(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+    )
+    return ResultsQAReply(
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+        recovery_reason=recovery_reason,
+    )
+
+
+def build_missing_robustness_limitation_reply(
+    packet: EvidencePacket,
+    *,
+    recovery_reason: str | None = REASON_MISSING_ROBUSTNESS,
+):
+    """Digit-free missing tier-2 robustness limitation (RI-5 short-circuit)."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    summary = (
+        "I cannot answer Monte Carlo, overfitting, sensitivity, noise, portfolio, "
+        "or OTF robustness questions because those batteries are not present on "
+        "this run."
+    )
+    followups = (
+        "Ask for the key metrics or a summary of this run.",
+        "Ask whether walk-forward or validation diagnostics are present on this packet.",
+    )
+    caveats = merge_mandatory_packet_caveats(
+        packet,
+        (
+            "No secondary robustness figures were invented for this ask.",
+            "In-sample trade summary KPIs are not a substitute for robustness batteries.",
         ),
     )
     assert_llm_explanation_grounded(
@@ -2449,6 +2669,73 @@ def build_deterministic_validation_wfa_reply(
         recovery_reason=recovery_reason,
         followups=followups,
         discuss_intent=INTENT_VALIDATION_WFA,
+        evidence_context=evidence_context,
+    )
+
+
+def build_deterministic_robustness_reply(
+    packet: EvidencePacket,
+    evidence_context: Mapping[str, Any],
+    *,
+    recovery_reason: str | None = None,
+    apply_overlay: bool = True,
+):
+    """Build an auditor-safe tier-2 robustness reply from the frozen §4.6 allowlist."""
+    if not has_robustness_tier2_evidence(evidence_context):
+        return build_missing_robustness_limitation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MISSING_ROBUSTNESS,
+        )
+
+    claims: list[EvidenceClaim] = []
+    summary_parts: list[str] = []
+    for path in ROBUSTNESS_CLAIM_PATHS:
+        if not _path_exists(evidence_context, path):
+            continue
+        value = _path_get(evidence_context, path)
+        text = _format_scalar_for_claim(path, value)
+        if text is None:
+            continue
+        # Hard rule: never emit trade_summary paths from this builder.
+        if "trade_summary" in path:
+            continue
+        claims.append(EvidenceClaim(text=text, path=path, value=value))
+        summary_parts.append(text.rstrip("."))
+
+    if not claims:
+        return build_missing_robustness_limitation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MISSING_ROBUSTNESS,
+        )
+
+    summary = "Robustness batteries: " + "; ".join(summary_parts) + "."
+    caveat_seed = (
+        "These Monte Carlo / overfitting / sensitivity / noise / portfolio / OTF "
+        "figures are research diagnostics, not proof of deployable edge.",
+        "Do not treat in-sample trade summary KPIs as robustness confirmation.",
+    )
+    grounded = tuple(claims)
+    caveats = merge_mandatory_packet_caveats(packet, caveat_seed)
+    followups = (
+        "Ask for the key metrics or a summary of this run.",
+        "Ask whether walk-forward or validation diagnostics are present on this packet.",
+    )
+    if not apply_overlay:
+        return _reply_without_overlay(
+            summary=summary,
+            caveats=caveats,
+            claims=grounded,
+            followups=followups,
+            recovery_reason=recovery_reason,
+        )
+    return apply_expert_overlay(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=grounded,
+        recovery_reason=recovery_reason,
+        followups=followups,
+        discuss_intent=INTENT_ROBUSTNESS_TIER2,
         evidence_context=evidence_context,
     )
 
