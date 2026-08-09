@@ -471,7 +471,8 @@ def test_di2_non_overview_ask_gets_shared_catalog_without_kpi_must_cite():
         client,
         packet=packet,
         history=(),
-        user_message="How many trades?",
+        # Unmatched ask (not overview / not RI-4 single_metric "How many trades?").
+        user_message="Tell me about this edge qualitatively.",
     )
     payload = _user_payload_from_call(client.calls[0])
     catalog = payload["path_catalog"]

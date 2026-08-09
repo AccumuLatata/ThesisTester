@@ -1079,7 +1079,7 @@ def test_rq5_clock_bucket_rejects_hash_digit_laundering():
     packet = EvidencePacket(
         provenance={"canonical_bundle_hash": "a8b9c0d1e2f3456789"},
         assumptions={},
-        results={"trade_summary": {"trade_count": 10}},
+        results={"trade_summary": {"trade_count": 10, "expectancy_r": 0.25}},
         warnings=(),
     )
 
@@ -1105,6 +1105,9 @@ def test_rq5_clock_bucket_rejects_hash_digit_laundering():
             user_message="What is expectancy?",
             repair_retry_enabled=False,
             deterministic_overview_fallback=False,
+            # RI-4 owns single_metric recovery; disable so this RQ-5 case still
+            # proves the auditor rejects hash-digit laundering.
+            deterministic_specialist_fallback=False,
         )
 
 

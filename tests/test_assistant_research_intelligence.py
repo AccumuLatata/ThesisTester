@@ -1,4 +1,4 @@
-"""RI Research Intelligence: grid + time + validation/WFA slices, residual veto, short-circuits."""
+"""RI Research Intelligence: grid + time + validation/WFA + single-metric slices."""
 
 from __future__ import annotations
 
@@ -12,19 +12,24 @@ from thesistester.assistant.llm_explainer import LLMEvidenceError
 from thesistester.assistant.results_overview import (
     INTENT_GRID_RANKING,
     INTENT_MIXED_ASK,
+    INTENT_SINGLE_METRIC,
     INTENT_TIME_RANKING,
     INTENT_VALIDATION_WFA,
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
     REASON_MISSING_GRID,
+    REASON_MISSING_METRIC,
     REASON_MISSING_TIME,
     REASON_MISSING_VALIDATION,
     REASON_MIXED_ASK,
     REASON_PATH_MISS,
+    _SINGLE_METRIC_NOUN_PATHS,
     build_deterministic_grid_ranking_reply,
+    build_deterministic_single_metric_reply,
     build_deterministic_time_ranking_reply,
     has_grid_ranking_evidence,
     has_overview_negative_cue,
+    has_single_metric_evidence,
     has_time_ranking_evidence,
     has_validation_wfa_evidence,
     match_discuss_intent,
@@ -32,6 +37,7 @@ from thesistester.assistant.results_overview import (
     present_grid_allowlist,
     present_time_allowlist,
     present_validation_allowlist,
+    resolve_single_metric_path,
 )
 from thesistester.assistant.results_projections import build_ephemeral_results_context
 from thesistester.assistant.results_qa import propose_results_reply
@@ -205,6 +211,11 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert match_overview_intent("Summarize the walk-forward results") is None
     assert match_overview_intent("What is the best time?") is None
     assert match_overview_intent("summarize this run") == OVERVIEW_INTENT_RUN
+    # RI-4: single_metric lands with value collocates; bare nouns do not.
+    assert match_discuss_intent("What is the win rate?") == INTENT_SINGLE_METRIC
+    assert match_discuss_intent("win rate") is None
+    assert match_overview_intent("What is the win rate?") is None
+    assert has_overview_negative_cue("What is the win rate?") is True
 
 
 def test_residual_veto_and_false_friends_for_overview_negative_export():
@@ -825,3 +836,146 @@ def test_otf_only_packet_does_not_answer_via_validation_wfa():
     # Not the validation_wfa short-circuit / deterministic WFA path.
     assert reply.recovery_reason != REASON_MISSING_VALIDATION
     assert not any("walk_forward_summary" in c.path for c in reply.claims)
+
+
+def test_r8_win_rate_single_metric_with_percent_narration():
+    packet = _packet()
+    client = _FailClient(
+        {
+            "summary": "Win rate is 99 percent secretly.",
+            "caveats": ["Invented."],
+            "claims": [
+                {
+                    "text": "Win rate is 99%.",
+                    "path": "results.trade_summary.trade_count",
+                }
+            ],
+            "followups": ["Deploy."],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What is the win rate?",
+        repair_retry_enabled=False,
+    )
+    assert len(reply.claims) == 1
+    assert reply.claims[0].path == "results.trade_summary.win_rate"
+    assert reply.claims[0].value == 0.52
+    assert "%" in reply.summary
+    assert "99" not in reply.summary
+    assert client.calls == 1
+
+
+def test_r9_missing_metric_leaf_short_circuits_without_llm():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri4_null"},
+        assumptions={},
+        results={"trade_summary": {"trade_count": 10, "win_rate": None}},
+        warnings=(),
+        limitations=(),
+    )
+    assert has_single_metric_evidence(packet.to_dict(), "results.trade_summary.win_rate") is False
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What is the win rate?",
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MISSING_METRIC
+    assert "99" not in reply.summary
+
+
+def test_r24_oos_expectancy_does_not_cite_in_sample_leaf():
+    packet = _packet(walk_forward=True)
+    assert match_discuss_intent("what is the OOS expectancy?") == INTENT_VALIDATION_WFA
+    # Uncited digits force recovery; deterministic WFA must not launder IS expectancy.
+    client = _FailClient(
+        {
+            "summary": "OOS expectancy is 9.9 from trade summary.",
+            "caveats": ["Soft."],
+            "claims": [
+                {
+                    "text": "Expectancy is 0.25.",
+                    "path": "results.trade_summary.expectancy_r",
+                }
+            ],
+            "followups": ["Deploy."],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="what is the OOS expectancy?",
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "results.trade_summary.expectancy_r" not in paths
+    assert any("walk_forward_summary" in path for path in paths)
+    assert "9.9" not in reply.summary
+    # Lone single_metric path is never chosen for this ask.
+    assert resolve_single_metric_path("what is the OOS expectancy?") == (
+        "results.trade_summary.expectancy_r"
+    )
+    assert match_discuss_intent("what is the OOS expectancy?") != INTENT_SINGLE_METRIC
+
+
+def test_single_metric_hard_refuse_grid_time_validation_and_residual():
+    # Specialist/residual collocates hard-refuse single_metric (§4.5 / R24).
+    assert match_discuss_intent("what is the win rate on the grid?") == INTENT_GRID_RANKING
+    assert match_discuss_intent("what is expectancy by hour bucket?") == INTENT_TIME_RANKING
+    assert match_discuss_intent("what is the OOS expectancy?") == INTENT_VALIDATION_WFA
+    assert match_discuss_intent("what is monte carlo expectancy?") is None
+    assert match_discuss_intent("what is expectancy for my stop?") is None
+    assert has_overview_negative_cue("what is expectancy for my stop?") is True
+
+
+def test_single_metric_noun_table_resolves_each_frozen_path():
+    cases = (
+        ("What is the win rate?", "results.trade_summary.win_rate"),
+        ("What is expectancy?", "results.trade_summary.expectancy_r"),
+        ("What's the expectancy_r?", "results.trade_summary.expectancy_r"),
+        ("Show me the profit factor", "results.trade_summary.profit_factor"),
+        ("Give me the max drawdown", "results.trade_summary.max_drawdown_r"),
+        ("What is the drawdown?", "results.trade_summary.max_drawdown_r"),
+        ("What is total r?", "results.trade_summary.total_r"),
+        ("What is the trade count?", "results.trade_summary.trade_count"),
+        ("What is the number of trades?", "results.trade_summary.trade_count"),
+        ("What is sample size?", "results.trade_summary.trade_count"),
+        ("How many trades?", "results.trade_summary.trade_count"),
+        ("What is avg r?", "results.trade_summary.avg_r"),
+        ("What is average r?", "results.trade_summary.avg_r"),
+        ("What is median r?", "results.trade_summary.median_r"),
+        ("What is the sharpe?", "results.trade_summary.sharpe_like_r"),
+        ("What is the sortino?", "results.trade_summary.sortino_like_r"),
+        ("What is the ulcer?", "results.trade_summary.ulcer_index_r"),
+        ("What is the recovery factor?", "results.trade_summary.recovery_factor"),
+    )
+    covered_paths = {path for _nouns, path in _SINGLE_METRIC_NOUN_PATHS}
+    for message, path in cases:
+        assert match_discuss_intent(message) == INTENT_SINGLE_METRIC, message
+        assert resolve_single_metric_path(message) == path, message
+        covered_paths.discard(path)
+    assert not covered_paths, f"untested §4.5 paths: {covered_paths}"
+
+
+def test_unknown_metric_noun_stays_unmatched():
+    assert match_discuss_intent("What is the frobenius?") is None
+    assert resolve_single_metric_path("What is the frobenius?") is None
+
+
+def test_deterministic_single_metric_builder_one_claim():
+    packet = _packet()
+    reply = build_deterministic_single_metric_reply(
+        packet,
+        packet.to_dict(),
+        path="results.trade_summary.expectancy_r",
+    )
+    assert len(reply.claims) == 1
+    assert reply.claims[0].path == "results.trade_summary.expectancy_r"
+    assert reply.claims[0].value == 0.25

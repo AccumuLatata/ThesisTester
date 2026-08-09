@@ -166,6 +166,8 @@ def test_propose_results_reply_rejects_uncited_followup_digits():
             user_message="How many trades?",
             repair_retry_enabled=False,
             deterministic_overview_fallback=False,
+            # RI-4 owns single_metric recovery; disable to keep this auditor case.
+            deterministic_specialist_fallback=False,
         )
 
 
@@ -304,6 +306,8 @@ def test_propose_results_reply_rejects_bare_percent_points_without_percent_marke
             user_message="What is win rate?",
             repair_retry_enabled=False,
             deterministic_overview_fallback=False,
+            # RI-4 owns single_metric recovery; disable to keep this auditor case.
+            deterministic_specialist_fallback=False,
         )
 
 

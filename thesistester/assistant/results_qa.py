@@ -18,20 +18,24 @@ from thesistester.assistant.llm_explainer import (
 from thesistester.assistant.results_overview import (
     INTENT_GRID_RANKING,
     INTENT_MIXED_ASK,
+    INTENT_SINGLE_METRIC,
     INTENT_TIME_RANKING,
     INTENT_VALIDATION_WFA,
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
     REASON_GRID_FALLBACK,
+    REASON_METRIC_FALLBACK,
     REASON_TIME_FALLBACK,
     REASON_VALIDATION_FALLBACK,
     _ensure_time_rankings_context,
     apply_expert_overlay,
     build_deterministic_grid_ranking_reply,
     build_deterministic_kpi_reply,
+    build_deterministic_single_metric_reply,
     build_deterministic_time_ranking_reply,
     build_deterministic_validation_wfa_reply,
     build_missing_grid_limitation_reply,
+    build_missing_metric_limitation_reply,
     build_missing_time_limitation_reply,
     build_missing_validation_limitation_reply,
     build_mixed_ask_remediation_reply,
@@ -40,9 +44,11 @@ from thesistester.assistant.results_overview import (
     classify_recovery_reason,
     failure_class_from_exception,
     has_grid_ranking_evidence,
+    has_single_metric_evidence,
     has_time_ranking_evidence,
     has_validation_wfa_evidence,
     match_discuss_intent,
+    resolve_single_metric_path,
 )
 
 RESULTS_QA_CHANNEL = "results_qa"
@@ -290,10 +296,16 @@ def _complete_results_structured(
         overview_intent = (
             discuss_intent if discuss_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN} else None
         )
+        metric_path = (
+            resolve_single_metric_path(user_message)
+            if discuss_intent == INTENT_SINGLE_METRIC
+            else None
+        )
         user_payload["path_catalog"] = build_prompt_path_catalog(
             evidence_context,
             overview_intent=overview_intent,
             discuss_intent=discuss_intent,
+            single_metric_path=metric_path,
         )
     if repair is not None:
         user_payload["repair"] = dict(repair)
@@ -309,6 +321,7 @@ def _recover_results_reply(
     packet: EvidencePacket,
     evidence_context: Mapping[str, Any],
     discuss_intent: str | None,
+    user_message: str,
     exc: BaseException,
     repaired: bool,
     deterministic_overview_fallback: bool,
@@ -346,6 +359,15 @@ def _recover_results_reply(
             evidence_context,
             recovery_reason=reason or REASON_TIME_FALLBACK,
         )
+    if discuss_intent == INTENT_SINGLE_METRIC and deterministic_specialist_fallback:
+        metric_path = resolve_single_metric_path(user_message)
+        if metric_path is not None and has_single_metric_evidence(evidence_context, metric_path):
+            return build_deterministic_single_metric_reply(
+                packet,
+                evidence_context,
+                path=metric_path,
+                recovery_reason=reason or REASON_METRIC_FALLBACK,
+            )
     if (
         discuss_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}
         and deterministic_overview_fallback
@@ -385,9 +407,9 @@ def propose_results_reply(
     remediation. Both DI flags false restores pre-DI hard-fail raises (TLS wrap
     still applies in the transport).
 
-    RI-1/RI-2/RI-3: unified Discuss matcher; ``grid_ranking`` /
-    ``time_ranking`` / ``validation_wfa`` missing-evidence short-circuits before
-    LLM; deterministic specialist fallback when
+    RI-1/RI-2/RI-3/RI-4: unified Discuss matcher; ``grid_ranking`` /
+    ``time_ranking`` / ``validation_wfa`` / ``single_metric`` missing-evidence
+    short-circuits before LLM; deterministic specialist fallback when
     ``deterministic_specialist_fallback`` is true; ``mixed_ask`` narrow
     remediation until RI-8.
 
@@ -428,6 +450,10 @@ def propose_results_reply(
         evidence_context
     ):
         return build_missing_validation_limitation_reply(packet)
+    if discuss_intent == INTENT_SINGLE_METRIC:
+        metric_path = resolve_single_metric_path(user_message)
+        if metric_path is None or not has_single_metric_evidence(evidence_context, metric_path):
+            return build_missing_metric_limitation_reply(packet, path=metric_path)
 
     def _maybe_overlay(reply: ResultsQAReply) -> ResultsQAReply:
         if overview_intent is None:
@@ -456,6 +482,7 @@ def propose_results_reply(
             INTENT_GRID_RANKING,
             INTENT_TIME_RANKING,
             INTENT_VALIDATION_WFA,
+            INTENT_SINGLE_METRIC,
         }
         if (
             not repair_retry_enabled
@@ -496,6 +523,7 @@ def propose_results_reply(
                     packet=packet,
                     evidence_context=evidence_context,
                     discuss_intent=discuss_intent,
+                    user_message=user_message,
                     exc=repair_exc,
                     repaired=True,
                     deterministic_overview_fallback=deterministic_overview_fallback,
@@ -505,6 +533,7 @@ def propose_results_reply(
             packet=packet,
             evidence_context=evidence_context,
             discuss_intent=discuss_intent,
+            user_message=user_message,
             exc=first_exc,
             repaired=False,
             deterministic_overview_fallback=deterministic_overview_fallback,
