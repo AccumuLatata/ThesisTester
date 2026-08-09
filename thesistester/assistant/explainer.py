@@ -512,8 +512,16 @@ def build_evidence_packet(
     dataset_fingerprint = to_jsonable(provenance_data.get("dataset_fingerprint"))
     if dataset_fingerprint is not None:
         dataset_assumptions["dataset_fingerprint"] = dataset_fingerprint
+    # PR5d / confluence attribution: carry signal-run identity so Discuss
+    # recomputes use resolve_signal_setup_for_attribution order, not a stale
+    # Setup Builder setup_config alone (artifact embeds last_signal_setup;
+    # signal_settings stay on the session/bundle and are copied when present).
+    configuration = _as_mapping(artifact.get("configuration")) or {}
     assumptions = {
         "setup_config": artifact["configuration"]["setup_config"],
+        "last_signal_setup": to_jsonable(configuration.get("last_signal_setup")),
+        "signal_settings": to_jsonable(state.get("signal_settings")),
+        "signal_context": to_jsonable(state.get("signal_context")),
         "instrument": artifact["configuration"]["instrument"],
         "intrabar": artifact["intrabar"]["backtest_policy"],
         "otf_filter": artifact["otf_filter"],

@@ -3002,9 +3002,7 @@ def _compose_followups_for_intents(
             "Ask about exit reasons or extreme trades if trade tables were recorded."
         )
     if INTENT_CONFLUENCE_COMBO not in matched_set:
-        suggestions.append(
-            "Ask about confluence combo attribution if trades recorded level_names."
-        )
+        suggestions.append("Ask about confluence combo attribution if trades recorded level_names.")
     if not suggestions:
         suggestions.append("Ask which evidence paths remain available on this packet.")
     return tuple(suggestions[:3])
@@ -3190,9 +3188,7 @@ def compose_deterministic_replies(
             if not has_confluence_combo_evidence(working):
                 continue
             if _absorb(
-                build_deterministic_confluence_combo_reply(
-                    packet, working, apply_overlay=False
-                )
+                build_deterministic_confluence_combo_reply(packet, working, apply_overlay=False)
             ):
                 _mark(intent)
         elif intent == INTENT_SINGLE_METRIC:
@@ -3318,9 +3314,7 @@ def build_deterministic_discuss_reply(
         return build_deterministic_deep_trade_reply(packet, working, user_message=user_message)
     if intent == INTENT_CONFLUENCE_COMBO:
         if not has_confluence_combo_evidence(working):
-            return build_missing_confluence_combo_limitation_reply(
-                packet, evidence_context=working
-            )
+            return build_missing_confluence_combo_limitation_reply(packet, evidence_context=working)
         return build_deterministic_confluence_combo_reply(packet, working)
     if intent == INTENT_SINGLE_METRIC:
         metric_path = resolve_single_metric_path(user_message)

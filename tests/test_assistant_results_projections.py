@@ -961,3 +961,60 @@ def test_build_ephemeral_context_attaches_confluence_combo_without_5c_siblings()
     assert projections["confluence_combo"]["available"] is True
     assert "confluence_combo_summary" not in context["results"]
     assert "trades" not in context["results"]
+
+
+def test_project_confluence_combo_prefers_last_signal_setup_over_stale_setup_config():
+    """Stale Setup Builder global_cluster must not beat signal-run anchor_rules."""
+    rows = []
+    for index in range(12):
+        rows.append(
+            {
+                "trade_id": index + 1,
+                "r_multiple": 1.0 if index % 2 == 0 else -0.5,
+                "level_names": ["ANCHOR", "SUP"],
+                "level_source_mode": "anchor_rules",
+            }
+        )
+    packet = EvidencePacket(
+        provenance={"run_id": "run_combo_identity"},
+        assumptions={
+            "setup_config": {
+                "confluence_mode": "global_cluster",
+                "selected_levels": ["A", "B"],
+            },
+            "last_signal_setup": {
+                "confluence_mode": "anchor_rules",
+                "anchor_level": "ANCHOR",
+            },
+        },
+        results={"trade_summary": {"trade_count": 12}},
+        warnings=(),
+        limitations=(),
+    )
+    projection = project_confluence_combo(rows, packet_or_mapping=packet)
+    assert projection is not None
+    assert projection["confluence_mode"] == "anchor_rules"
+    assert projection["anchor_level"] == "ANCHOR"
+
+
+def test_project_confluence_combo_uses_signals_summary_setup_as_identity_fallback():
+    rows = _combo_rows()
+    packet = EvidencePacket(
+        provenance={"run_id": "run_combo_signals_summary"},
+        assumptions={
+            # Deliberately omit confluence_mode on setup_config.
+            "setup_config": {"selected_levels": ["A", "B"]},
+        },
+        results={
+            "trade_summary": {"trade_count": 12},
+            "signals_summary": {
+                "available": True,
+                "setup": {"confluence_mode": "global_cluster"},
+            },
+        },
+        warnings=(),
+        limitations=(),
+    )
+    projection = project_confluence_combo(rows, packet_or_mapping=packet)
+    assert projection is not None
+    assert projection["confluence_mode"] == "global_cluster"

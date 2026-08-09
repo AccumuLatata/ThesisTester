@@ -723,37 +723,91 @@ def project_extreme_trades(
     return {"best": best, "worst": worst, "n": cap}
 
 
+def _first_mapping(*candidates: Any) -> Mapping[str, Any] | None:
+    for candidate in candidates:
+        if isinstance(candidate, Mapping) and candidate:
+            return candidate
+    return None
+
+
 def _session_like_for_confluence_combo(
     trades: Any,
     packet_or_mapping: EvidencePacket | Mapping[str, Any] | None,
 ) -> dict[str, Any]:
-    """Build a session-like mapping for on-export confluence helpers."""
+    """Build a session-like mapping for on-export confluence helpers.
+
+    Identity lookup mirrors Backtest / report order sources: prefer packet
+    ``assumptions`` (EvidencePacket), then top-level session keys, then artifact
+    ``configuration``, then bounded ``results.signals_summary.setup``. Optional
+    5c ``confluence_combo_summary`` remains a mode/anchor fallback only.
+    """
     session_like: dict[str, Any] = {"trades": trades}
     if packet_or_mapping is None:
         return session_like
     context = _as_packet_dict(packet_or_mapping)
-    assumptions = (
-        context.get("assumptions") if isinstance(context.get("assumptions"), Mapping) else {}
+    assumptions = _as_mapping(context.get("assumptions")) or {}
+    results = _as_mapping(context.get("results")) or {}
+    configuration = _as_mapping(context.get("configuration")) or {}
+    signals_summary = _as_mapping(results.get("signals_summary")) or {}
+    signals_setup = _as_mapping(signals_summary.get("setup"))
+
+    setup_config = _first_mapping(
+        assumptions.get("setup_config"),
+        context.get("setup_config"),
+        configuration.get("setup_config"),
     )
-    results = context.get("results") if isinstance(context.get("results"), Mapping) else {}
-    if isinstance(assumptions, Mapping):
-        setup_config = assumptions.get("setup_config")
-        if isinstance(setup_config, Mapping):
-            session_like["setup_config"] = setup_config
-        # Optional identity keys when packet/artifact carried them.
-        for key in ("signal_settings", "last_signal_setup", "signal_context"):
-            value = assumptions.get(key)
-            if isinstance(value, Mapping):
-                session_like[key] = value
-    if isinstance(results, Mapping):
-        # 5c convenience: restored summary may carry mode/anchor when Signals
-        # identity is absent. Not required for projection availability.
-        for key in ("confluence_combo_summary", "confluence_combo"):
-            restored = results.get(key)
-            if isinstance(restored, Mapping) and restored.get("available"):
-                session_like["confluence_combo_summary"] = restored
-                break
+    if setup_config is not None:
+        session_like["setup_config"] = setup_config
+
+    for key in ("signal_settings", "last_signal_setup", "signal_context"):
+        value = _first_mapping(
+            assumptions.get(key),
+            context.get(key),
+            configuration.get(key),
+        )
+        if value is not None:
+            session_like[key] = value
+    # Page-summary setup is a thin last-resort identity (mode, sometimes levels).
+    if "signal_context" not in session_like and signals_setup is not None:
+        session_like["signal_context"] = dict(signals_setup)
+
+    # 5c convenience: restored summary may carry mode/anchor when Signals
+    # identity is absent. Not required for projection availability.
+    for key in ("confluence_combo_summary", "confluence_combo"):
+        restored = _first_mapping(results.get(key), context.get(key))
+        if restored is not None and restored.get("available"):
+            session_like["confluence_combo_summary"] = restored
+            break
     return session_like
+
+
+def _rank_projection_rows_by_abs_total_r(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Cap projection rows with report-style ``|total_r|`` then ``trade_count``."""
+    if limit <= 0:
+        return []
+    materialized = [dict(row) for row in rows if isinstance(row, Mapping)]
+    if len(materialized) <= limit:
+        return materialized
+
+    def _sort_key(row: Mapping[str, Any]) -> tuple[float, float]:
+        total = row.get("total_r")
+        try:
+            abs_total = abs(float(total)) if total is not None else float("-inf")
+        except (TypeError, ValueError):
+            abs_total = float("-inf")
+        count = row.get("trade_count")
+        try:
+            trade_count = float(count) if count is not None else float("-inf")
+        except (TypeError, ValueError):
+            trade_count = float("-inf")
+        return (abs_total, trade_count)
+
+    ranked = sorted(materialized, key=_sort_key, reverse=True)
+    return ranked[:limit]
 
 
 def _projection_rows_from_table(
@@ -839,17 +893,28 @@ def project_confluence_combo(
         return None
 
     tables = block.get("tables") if isinstance(block.get("tables"), Mapping) else {}
-    exact_rows = _projection_rows_from_table(
-        tables.get("exact_combo"),
-        key_fields=("display_combo", "exact_combo_key"),
+    # Report already top-N truncates exact/pairs; level_count ships full (small)
+    # and must be capped here so frozen allowlist indices stay meaningful.
+    exact_rows = _rank_projection_rows_by_abs_total_r(
+        _projection_rows_from_table(
+            tables.get("exact_combo"),
+            key_fields=("display_combo", "exact_combo_key"),
+        ),
+        limit=cap,
     )
-    level_count_rows = _projection_rows_from_table(
-        tables.get("level_count"),
-        key_fields=("level_count_bucket",),
+    level_count_rows = _rank_projection_rows_by_abs_total_r(
+        _projection_rows_from_table(
+            tables.get("level_count"),
+            key_fields=("level_count_bucket",),
+        ),
+        limit=cap,
     )
-    pair_rows = _projection_rows_from_table(
-        tables.get("pairs"),
-        key_fields=("pair_key", "pair_mode"),
+    pair_rows = _rank_projection_rows_by_abs_total_r(
+        _projection_rows_from_table(
+            tables.get("pairs"),
+            key_fields=("pair_key", "pair_mode"),
+        ),
+        limit=cap,
     )
 
     warnings = [str(item) for item in list(block.get("warnings") or []) if item]

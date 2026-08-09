@@ -1082,6 +1082,10 @@ absent; summary identity is reused on recompute when `signal_settings` is missin
 
 Discuss Results Q&A may also project bounded `results.projections.confluence_combo`
 leaves from loaded trades (cite-only allowlist; 5c siblings not required).
+`EvidencePacket.assumptions` carries `last_signal_setup` / `signal_settings` /
+`signal_context` when present so mode/anchor follows the same
+`resolve_signal_setup_for_attribution` order as Backtest/report rather than a
+stale Setup Builder `setup_config` alone.
 
 Grid Search directional note: `pages/8_Grid_Search.py` shows aggregate KPIs by default.
 Enable **Advanced directional ranking** to rank by long/short or balanced weaker-side
