@@ -45,17 +45,31 @@ _GROUP_METRIC_COLS: list[str] = [
     "sample_warning",
 ]
 
+_EXAMPLE_RAW_POSITION_COL = "__cca_example_raw_position__"
+
+
+def _is_nullish(value: Any) -> bool:
+    """True for None / NaN / NaT / pd.NA (scalar nulls only)."""
+    if value is None or value is pd.NA or value is pd.NaT:
+        return True
+    try:
+        result = pd.isna(value)
+    except (TypeError, ValueError):
+        return False
+    # Guard array-like results from non-scalars.
+    return bool(result) if isinstance(result, (bool, np.bool_)) else False
+
 
 def parse_level_names(raw: Any) -> list[str]:
     """Normalize ``|`` / ``,`` delimiters, strip, drop empties, de-dupe in order."""
-    if raw is None:
-        return []
-    if isinstance(raw, float) and np.isnan(raw):
+    if _is_nullish(raw):
         return []
     if isinstance(raw, (list, tuple, set)):
         tokens: list[str] = []
         seen: set[str] = set()
         for item in raw:
+            if _is_nullish(item):
+                continue
             text = str(item).strip()
             if not text or text.lower() == "nan":
                 continue
@@ -99,9 +113,7 @@ def format_display_combo(
     ``anchor|sorted(rest)``. Otherwise render the canonical sorted key.
     Never invents an anchor from token order.
     """
-    if tokens_or_key is None:
-        return EMPTY_LEVEL_NAMES_LABEL
-    if isinstance(tokens_or_key, float) and np.isnan(tokens_or_key):
+    if _is_nullish(tokens_or_key):
         return EMPTY_LEVEL_NAMES_LABEL
 
     if isinstance(tokens_or_key, (list, tuple, set)):
@@ -216,7 +228,12 @@ def _summarize_r(
 
 
 def _sort_for_example_raw(trades: pd.DataFrame) -> pd.DataFrame:
-    """Stable earliest-trade ordering for example raw ``level_names``."""
+    """Stable earliest-trade ordering for example raw ``level_names``.
+
+    Prefer ``entry_timestamp`` then ``trade_id``. When both are absent, use a
+    fresh positional column from ``reset_index(drop=True)`` — never sort a data
+    column named ``index`` or a MultiIndex level.
+    """
     work = trades.copy()
     sort_cols: list[str] = []
     if "entry_timestamp" in work.columns:
@@ -225,9 +242,9 @@ def _sort_for_example_raw(trades: pd.DataFrame) -> pd.DataFrame:
         sort_cols.append("trade_id")
     if sort_cols:
         return work.sort_values(sort_cols, kind="mergesort", na_position="last")
-    work = work.reset_index(drop=False)
-    index_col = "index" if "index" in work.columns else work.columns[0]
-    return work.sort_values([index_col], kind="mergesort")
+    work = work.reset_index(drop=True)
+    work[_EXAMPLE_RAW_POSITION_COL] = np.arange(len(work), dtype="int64")
+    return work.sort_values([_EXAMPLE_RAW_POSITION_COL], kind="mergesort")
 
 
 def summarize_by_exact_combo(
@@ -357,10 +374,22 @@ def confluence_attribution_summary(
     attached = attach_combo_columns(trades)
     analyzable = attached.dropna(subset=["r_multiple"])
     trade_count = int(len(analyzable))
+
+    def _displayed_trigger_warnings() -> list[str]:
+        # Plan §5.4: warn when any trade in the *displayed* set is 3c,
+        # independent of R analyzability / available.
+        if "trigger" not in attached.columns or attached.empty:
+            return []
+        trigger_series = attached["trigger"].astype(str)
+        if (trigger_series == "3c").any():
+            return [TRIGGER_3C_LEVEL_NAMES_WARNING]
+        return []
+
     if trade_count == 0:
         result["by_exact_combo"] = summarize_by_exact_combo(trades, min_trades=min_trades)
         result["by_membership"] = summarize_by_level_membership(trades, min_trades=min_trades)
         result["by_level_count"] = summarize_by_level_count(trades, min_trades=min_trades)
+        result["warnings"] = _displayed_trigger_warnings()
         return result
 
     empty_mask = analyzable[LEVEL_TOKEN_COUNT_COL] <= 0
@@ -374,14 +403,11 @@ def confluence_attribution_summary(
     result["by_membership"] = summarize_by_level_membership(trades, min_trades=min_trades)
     result["by_level_count"] = summarize_by_level_count(trades, min_trades=min_trades)
 
+    trigger_warnings = _displayed_trigger_warnings()
     if nonempty_count <= 0:
+        result["warnings"] = trigger_warnings
         return result
 
     result["available"] = True
-    warnings = [MEMBERSHIP_DOUBLE_COUNT_WARNING]
-    if "trigger" in attached.columns:
-        trigger_series = attached.loc[analyzable.index, "trigger"].astype(str)
-        if (trigger_series == "3c").any():
-            warnings.append(TRIGGER_3C_LEVEL_NAMES_WARNING)
-    result["warnings"] = warnings
+    result["warnings"] = [MEMBERSHIP_DOUBLE_COUNT_WARNING, *trigger_warnings]
     return result

@@ -66,6 +66,8 @@ def _plan_fixture_trades() -> pd.DataFrame:
     [
         (None, []),
         (np.nan, []),
+        (pd.NA, []),
+        (pd.NaT, []),
         ("", []),
         ("nan", []),
         ("NaN", []),
@@ -74,6 +76,7 @@ def _plan_fixture_trades() -> pd.DataFrame:
         (" A|A|B ", ["A", "B"]),
         ("A,,B|,C", ["A", "B", "C"]),
         (["B", "A", "B"], ["B", "A"]),
+        ([pd.NA, "A", None, "B"], ["A", "B"]),
     ],
 )
 def test_parse_level_names(raw, expected):
@@ -85,6 +88,27 @@ def test_exact_combo_key_canonicalizes_and_empties():
     assert exact_combo_key("") == EMPTY_LEVEL_NAMES_KEY
     assert exact_combo_key(None) == EMPTY_LEVEL_NAMES_KEY
     assert exact_combo_key(np.nan) == EMPTY_LEVEL_NAMES_KEY
+    assert exact_combo_key(pd.NA) == EMPTY_LEVEL_NAMES_KEY
+    assert exact_combo_key(pd.NaT) == EMPTY_LEVEL_NAMES_KEY
+
+
+def test_nullable_string_pd_na_does_not_invent_combo_key():
+    """dtype=string nulls must bucket __empty__, not a literal '<NA>' token."""
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -0.5],
+            "level_names": pd.Series([pd.NA, pd.NA], dtype="string"),
+        }
+    )
+    attached = attach_combo_columns(trades)
+    assert list(attached[EXACT_COMBO_KEY_COL]) == [EMPTY_LEVEL_NAMES_KEY, EMPTY_LEVEL_NAMES_KEY]
+    assert list(attached["level_token_count"]) == [0, 0]
+    summary = confluence_attribution_summary(trades, min_trades=1)
+    assert summary["available"] is False
+    assert summary["empty_level_names_count"] == 2
+    assert summary["nonempty_combo_trade_count"] == 0
+    assert summary["by_exact_combo"].iloc[0][EXACT_COMBO_KEY_COL] == EMPTY_LEVEL_NAMES_KEY
+    assert "<NA>" not in set(summary["by_exact_combo"][EXACT_COMBO_KEY_COL].astype(str))
 
 
 def test_format_display_combo_uses_explicit_anchor_only():
@@ -246,6 +270,48 @@ def test_summary_available_with_nonempty_and_warnings():
     assert not summary["by_exact_combo"].empty
     assert not summary["by_membership"].empty
     assert not summary["by_level_count"].empty
+
+
+def test_summary_3c_warning_scans_full_displayed_set():
+    """Plan §5.4: 3c honesty when any displayed trade is 3c (even null-R)."""
+    # 3c only on a null-R row; other nonempty R trades still make available=True.
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, None],
+            "level_names": ["A|B", "A"],
+            "trigger": ["touch", "3c"],
+        }
+    )
+    summary = confluence_attribution_summary(trades, min_trades=1)
+    assert summary["available"] is True
+    assert TRIGGER_3C_LEVEL_NAMES_WARNING in summary["warnings"]
+    assert MEMBERSHIP_DOUBLE_COUNT_WARNING in summary["warnings"]
+
+    # Also emit when attribution is unavailable (only empty names).
+    empty_only = pd.DataFrame(
+        {
+            "r_multiple": [1.0],
+            "level_names": [""],
+            "trigger": ["3c"],
+        }
+    )
+    empty_summary = confluence_attribution_summary(empty_only, min_trades=1)
+    assert empty_summary["available"] is False
+    assert empty_summary["warnings"] == [TRIGGER_3C_LEVEL_NAMES_WARNING]
+
+
+def test_example_raw_positional_fallback_ignores_index_named_column():
+    """Positional fallback must not sort a data column named ``index``."""
+    trades = pd.DataFrame(
+        {
+            "index": [99, 1],
+            "r_multiple": [1.0, 2.0],
+            "level_names": ["B|A", "A|B"],
+        }
+    )
+    summary = summarize_by_exact_combo(trades, min_trades=1)
+    # First row position wins (not the smaller ``index`` data value).
+    assert summary.iloc[0][EXAMPLE_RAW_COL] == "B|A"
 
 
 def test_summary_mixed_null_r_excluded_from_counts():

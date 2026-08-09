@@ -173,7 +173,8 @@ Canonicalization rules (locked):
 2. Strip whitespace; drop empty tokens.
 3. Deduplicate tokens while preserving first-seen order for parsing helpers.
 4. Build **exact_combo_key** = tokens sorted lexicographically, joined by `|`.
-5. Empty / null / `"nan"` → bucket `__empty__` (display label: `(no level names)`).
+5. Empty / null / `pd.NA` / `pd.NaT` / `"nan"` → bucket `__empty__`
+   (display label: `(no level names)`). Never invent a literal `"<NA>"` token.
 
 Why sort: global price-order can emit `A|B` and `B|A` for the same set across
 bars; unsorted grouping would falsely split identical sets.
@@ -422,7 +423,9 @@ Availability contract (mirror prev30m style; tightened):
   "by_exact_combo": DataFrame,
   "by_membership": DataFrame,
   "by_level_count": DataFrame,
-  "warnings": list[str],      # membership double-count; optional 3c note
+  "warnings": list[str],      # membership double-count when available;
+                              # 3c note whenever any *displayed* trade has
+                              # trigger=="3c" (independent of available / R)
 }
 ```
 
@@ -499,7 +502,7 @@ tracked as a named research UX milestone; this plan is sufficient.
 | Case | Required behavior |
 |---|---|
 | `level_names` missing column | `available=False`; no exception |
-| `level_names` null / `""` / `"nan"` | Bucket `__empty__`; does **not** alone make `available=True` |
+| `level_names` null / `pd.NA` / `pd.NaT` / `""` / `"nan"` | Bucket `__empty__`; does **not** alone make `available=True` |
 | Only empty names (all analyzable trades) | `available=False`; report `empty_level_names_count` |
 | Delimiters `,` and `\|` mixed | Normalize both |
 | Duplicate tokens `A\|A\|B` | Treat as `{A,B}` for combo key / membership / token count |
