@@ -923,9 +923,10 @@ documentation-grounded, Discuss Intelligence
    the page chat box under **Discuss results**
    (placeholder: **Ask about this completed run**). Prefer clear overview cues
    (`KPIs`, `key metrics`, `run summary`) or specialist cues (validation /
-   best SL/TP / time / Monte Carlo / overfitting / OTF). Mixed asks such as
-   “KPIs and best SL/TP” return a composed grounded answer from both topics
-   when evidence exists (up to three topics; broader mixes ask you to narrow).
+   best SL/TP / time / Monte Carlo / overfitting / OTF / costs / assumptions).
+   Mixed asks such as “KPIs and best SL/TP” return a composed grounded answer
+   from both topics when evidence exists (up to three topics; broader mixes ask
+   you to narrow).
 4. If Help redirects you to Discuss, open **Discuss runs** for that run — do
    not expect Help to invent performance numbers.
 
@@ -935,10 +936,10 @@ documentation-grounded, Discuss Intelligence
   return grounded `trade_summary` scalars (optional best-grid ticks when
   present). Digits stay fail-closed.
 - Specialist asks (validation / WFA / OOS / grid ranking / best SL/TP / time
-  buckets / Monte Carlo / overfitting / sensitivity / noise / portfolio / OTF)
-  stay on-topic — Discuss does **not** silently substitute a KPI overview.
-  Mixed multi-topic asks compose grounded slices when evidence exists (capped);
-  over-broad mixes ask you to narrow.
+  buckets / Monte Carlo / overfitting / sensitivity / noise / portfolio / OTF /
+  costs / exposure / assumptions) stay on-topic — Discuss does **not** silently
+  substitute a KPI overview. Mixed multi-topic asks compose grounded slices when
+  evidence exists (capped); over-broad mixes ask you to narrow.
 - On path/digit slips, Discuss may repair once or fall back to a deterministic
   overview slice (overview asks only) or a structured missing-evidence reply —
   not a raw traceback.

@@ -533,6 +533,12 @@ portfolio / OTF); MC + `otf validation` / `otf-validation` cues sunset from
 residual; missing-all batteries short-circuit before LLM; catalog
 `existing_paths` + decode hard-reject undeclared nested dumps / KPI
 substitutions; never narrates non-bool `.available` as scalars.
+**RI-6 landed:** deterministic `assumptions_costs` recovery over the frozen §4.6
+costs/exposure/intrabar/focus/instrument/dataset allowlist; missing-all
+short-circuit before LLM; catalog + decode hard-reject `trade_summary` KPI
+substitutions; configured SL/TP ticks narrate as assumption leaves (not grid
+best); how-to/docs false friends stay unmatched; grid×costs compose owns shared
+commission/slippage on the assumptions slice.
 **DI-2 landed:** first-pass Results Q&A user payloads include
 `path_catalog.existing_paths` (bounded paths present on the turn context;
 KPI + projections/validation + honesty paths reserved before fat time tables

@@ -1,4 +1,4 @@
-"""RI Research Intelligence: grid + time + validation/WFA + robustness + metric slices."""
+"""RI Research Intelligence: specialist Discuss slices (grid→assumptions)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ from thesistester.assistant.explainer import EvidenceCaveat, EvidenceClaim, Evid
 from thesistester.assistant.llm import load_results_qa_settings
 from thesistester.assistant.llm_explainer import LLMEvidenceError, _ungrounded_number_tokens
 from thesistester.assistant.results_overview import (
+    ASSUMPTIONS_CLAIM_PATHS,
+    INTENT_ASSUMPTIONS_COSTS,
     INTENT_GRID_RANKING,
     INTENT_MIXED_ASK,
     INTENT_ROBUSTNESS_TIER2,
@@ -18,6 +20,7 @@ from thesistester.assistant.results_overview import (
     INTENT_VALIDATION_WFA,
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
+    REASON_MISSING_ASSUMPTIONS,
     REASON_MISSING_GRID,
     REASON_MISSING_METRIC,
     REASON_MISSING_ROBUSTNESS,
@@ -27,6 +30,7 @@ from thesistester.assistant.results_overview import (
     REASON_PATH_MISS,
     ROBUSTNESS_CLAIM_PATHS,
     _SINGLE_METRIC_NOUN_PATHS,
+    build_deterministic_assumptions_reply,
     build_deterministic_grid_ranking_reply,
     build_deterministic_robustness_reply,
     build_deterministic_single_metric_reply,
@@ -35,6 +39,7 @@ from thesistester.assistant.results_overview import (
     build_expert_overlay,
     build_meaning_overlay,
     build_mixed_ask_remediation_reply,
+    has_assumptions_costs_evidence,
     has_grid_ranking_evidence,
     has_overview_negative_cue,
     has_robustness_tier2_evidence,
@@ -43,6 +48,7 @@ from thesistester.assistant.results_overview import (
     has_validation_wfa_evidence,
     match_discuss_intent,
     match_overview_intent,
+    present_assumptions_allowlist,
     present_grid_allowlist,
     present_robustness_allowlist,
     present_time_allowlist,
@@ -244,6 +250,27 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert match_discuss_intent("win rate") is None
     assert match_overview_intent("What is the win rate?") is None
     assert has_overview_negative_cue("What is the win rate?") is True
+    # RI-6: assumptions/costs specialist.
+    assert match_discuss_intent("What costs were assumed?") == INTENT_ASSUMPTIONS_COSTS
+    assert match_discuss_intent("commission and slippage please") == INTENT_ASSUMPTIONS_COSTS
+    assert match_discuss_intent("exposure policy on this run") == INTENT_ASSUMPTIONS_COSTS
+    assert match_discuss_intent("intrabar model used") == INTENT_ASSUMPTIONS_COSTS
+    assert match_discuss_intent("what assumptions were used?") == INTENT_ASSUMPTIONS_COSTS
+    assert match_discuss_intent("what cost was assumed?") == INTENT_ASSUMPTIONS_COSTS
+    assert match_discuss_intent("what assumption was used?") == INTENT_ASSUMPTIONS_COSTS
+    # Configured SL/TP language is assumptions, not best-grid ranks.
+    assert match_discuss_intent("what stop loss was configured?") == INTENT_ASSUMPTIONS_COSTS
+    assert match_discuss_intent("what take profit was assumed?") == INTENT_ASSUMPTIONS_COSTS
+    # Help-shaped how-to / docs asks stay unmatched (not run-assumption answers).
+    assert match_discuss_intent("how do I set commission?") is None
+    assert match_discuss_intent("how to configure slippage") is None
+    assert match_discuss_intent("explain assumptions in the docs") is None
+    # Value-metric + costs with ``and`` composes; sole metric×grid still grid-only.
+    assert match_discuss_intent("what is the win rate and costs") == INTENT_MIXED_ASK
+    assert match_discuss_intent("ranking and costs") == INTENT_ASSUMPTIONS_COSTS
+    assert has_overview_negative_cue("What costs were assumed?") is True
+    assert match_overview_intent("What costs were assumed?") is None
+    assert match_discuss_intent("KPIs and costs") == INTENT_MIXED_ASK
 
 
 def test_residual_veto_and_false_friends_for_overview_negative_export():
@@ -1066,6 +1093,90 @@ def test_robustness_allowlist_omits_null_and_undeclared_paths():
     assert not any("methods" in path for path in claim_paths)
 
 
+def test_r11_costs_assumed_grounds_assumptions_allowlist_only():
+    """R11: “What costs were assumed?” → §4.6 assumption claims; no expectancy."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri6_costs"},
+        assumptions={
+            "instrument": "NQ",
+            "costs_exposure": {
+                "commission_per_side": 1.25,
+                "slippage_ticks": 0.5,
+                "exposure_policy": "one_trade",
+                "intrabar_model": "sl_first",
+                "stop_loss_ticks": 8,
+                "take_profit_ticks": 16,
+            },
+            "entry_window": {"focus": {"enabled": True}},
+            "dataset": {"dataset_fingerprint": "fp-abc"},
+        },
+        results={
+            "trade_summary": {
+                "trade_count": 42,
+                "expectancy_r": 0.25,
+                "win_rate": 0.52,
+            }
+        },
+        warnings=(),
+        limitations=(),
+    )
+    assert match_discuss_intent("What costs were assumed?") == INTENT_ASSUMPTIONS_COSTS
+    assert has_assumptions_costs_evidence(packet.to_dict()) is True
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What costs were assumed?",
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "assumptions.costs_exposure.commission_per_side" in paths
+    assert "assumptions.costs_exposure.slippage_ticks" in paths
+    assert "assumptions.instrument" in paths
+    assert not any("trade_summary" in path for path in paths)
+    assert "expectancy" not in reply.summary.lower()
+    assert "99" not in reply.summary
+    # Configured SL/TP must not narrate as "Best" grid ranks.
+    assert "Best stop-loss" not in reply.summary
+    assert "Configured stop-loss ticks is 8" in reply.summary
+
+
+def test_r11_missing_assumptions_limits_without_llm():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri6_empty"},
+        assumptions={},
+        results={"trade_summary": {"trade_count": 10, "expectancy_r": 0.1}},
+        warnings=(),
+        limitations=(),
+    )
+    assert has_assumptions_costs_evidence(packet.to_dict()) is False
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What costs were assumed?",
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MISSING_ASSUMPTIONS
+    assert "99" not in reply.summary
+
+
+def test_assumptions_allowlist_rejects_kpi_and_undeclared_paths():
+    packet = _packet()
+    paths = present_assumptions_allowlist(packet.to_dict())
+    assert "assumptions.costs_exposure.commission_per_side" in paths
+    assert "assumptions.instrument" in paths
+    assert not any(path not in ASSUMPTIONS_CLAIM_PATHS for path in paths)
+    assert not any("trade_summary" in path for path in paths)
+    reply = build_deterministic_assumptions_reply(packet, packet.to_dict())
+    claim_paths = {claim.path for claim in reply.claims}
+    assert "assumptions.costs_exposure.slippage_ticks" in claim_paths
+    assert not any("trade_summary" in path for path in claim_paths)
+
+
 def test_r8_win_rate_single_metric_with_percent_narration():
     packet = _packet()
     client = _FailClient(
@@ -1644,3 +1755,170 @@ def test_ri8_compose_keeps_non_kpi_metric_with_overview():
     paths = {claim.path for claim in reply.claims}
     assert "results.trade_summary.sharpe_like_r" in paths
     assert any(path.startswith("results.trade_summary.") for path in paths)
+
+
+def test_ri6_compose_grid_and_commission_does_not_narrow():
+    """Shared cost leaves must not make grid×assumptions fall through to narrow."""
+    from thesistester.assistant.results_overview import REASON_MIXED_COMPOSE
+
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri6_compose_overlap"},
+        assumptions={
+            "costs_exposure": {"commission_per_side": 2.5, "slippage_ticks": 1},
+            "grid": {"ranking_metric": "expectancy_r"},
+        },
+        results={
+            "trade_summary": {"trade_count": 10, "win_rate": 0.5},
+            "best_grid_result": {
+                "stop_loss_ticks": 8,
+                "take_profit_ticks": 16,
+                "trade_count": 10,
+                "ranking_metric": "expectancy_r",
+            },
+        },
+        warnings=(),
+        limitations=(),
+    )
+    context = build_ephemeral_results_context(packet)
+    assert match_discuss_intent("best stop and commission") == INTENT_MIXED_ASK
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="best stop and commission",
+        turn_context=context,
+    )
+    assert client.calls == 0
+    assert reply.recovery_reason == REASON_MIXED_COMPOSE
+    paths = {claim.path for claim in reply.claims}
+    assert (
+        "results.projections.grid_rankings.best.stop_loss_ticks" in paths
+        or "results.best_grid_result.stop_loss_ticks" in paths
+    )
+    assert "assumptions.costs_exposure.commission_per_side" in paths
+    # Cost leaves narrated once (assumptions owns them in the mix).
+    assert reply.summary.lower().count("commission per side") == 1
+
+
+def test_ri6_missing_assumptions_followups_respect_oos_absent():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri6_miss_oos"},
+        assumptions={},
+        results={"trade_summary": {"trade_count": 10}},
+        warnings=(),
+        limitations=("Walk-forward / OOS evidence is missing on this packet.",),
+        caveats=(
+            EvidenceCaveat(
+                code="missing_oos",
+                message="Out-of-sample evidence is missing.",
+                path="results.walk_forward_summary",
+            ),
+        ),
+    )
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What costs were assumed?",
+    )
+    assert client.calls == 0
+    assert reply.recovery_reason == REASON_MISSING_ASSUMPTIONS
+    assert not any("whether walk-forward" in f.lower() for f in reply.followups)
+
+
+def test_ri6_configured_sl_grounds_assumption_leaf_not_best_grid():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri6_configured_sl"},
+        assumptions={
+            "costs_exposure": {
+                "stop_loss_ticks": 8,
+                "take_profit_ticks": 16,
+                "commission_per_side": 1.0,
+            }
+        },
+        results={
+            "best_grid_result": {
+                "stop_loss_ticks": 12,
+                "take_profit_ticks": 24,
+                "trade_count": 10,
+                "ranking_metric": "expectancy_r",
+            }
+        },
+        warnings=(),
+        limitations=(),
+    )
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="what stop loss was configured?",
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "assumptions.costs_exposure.stop_loss_ticks" in paths
+    assert "results.best_grid_result.stop_loss_ticks" not in paths
+    assert "Configured stop-loss ticks is 8" in reply.summary
+    assert "Best stop-loss" not in reply.summary
+
+
+def test_ri6_instrument_dict_and_intrabar_nest_are_narratable():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri6_instr_intrabar"},
+        assumptions={
+            "instrument": {"symbol": "NQ", "name": "Nasdaq"},
+            "intrabar": {"intrabar_model": "ohlc_pessimistic"},
+        },
+        results={},
+        warnings=(),
+        limitations=(),
+    )
+    assert has_assumptions_costs_evidence(packet.to_dict()) is True
+    paths = present_assumptions_allowlist(packet.to_dict())
+    assert "assumptions.instrument" in paths
+    assert "assumptions.intrabar.intrabar_model" in paths
+    reply = build_deterministic_assumptions_reply(packet, packet.to_dict())
+    claim_paths = {claim.path for claim in reply.claims}
+    assert "assumptions.instrument" in claim_paths
+    assert "assumptions.intrabar.intrabar_model" in claim_paths
+    assert "Instrument is NQ" in reply.summary
+    assert "Intrabar model is ohlc_pessimistic" in reply.summary
+
+
+def test_ri6_llm_kpi_substitution_hard_rejects_to_deterministic():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri6_kpi_reject"},
+        assumptions={
+            "instrument": "NQ",
+            "costs_exposure": {"commission_per_side": 1.25, "slippage_ticks": 0.5},
+        },
+        results={"trade_summary": {"trade_count": 42, "expectancy_r": 0.25}},
+        warnings=(),
+        limitations=(),
+    )
+    client = _FailClient(
+        {
+            "summary": "Expectancy is 0.25 under these costs.",
+            "caveats": ["Soft."],
+            "claims": [
+                {
+                    "text": "Expectancy R is 0.25.",
+                    "path": "results.trade_summary.expectancy_r",
+                }
+            ],
+            "followups": ["Deploy."],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What costs were assumed?",
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "assumptions.costs_exposure.commission_per_side" in paths
+    assert not any("trade_summary" in path for path in paths)
+    assert "0.25" not in reply.summary

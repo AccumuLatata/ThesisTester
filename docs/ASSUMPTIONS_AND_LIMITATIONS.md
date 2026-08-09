@@ -634,6 +634,10 @@ other than the last bar in the dataset.
   MC + `otf validation` / `otf-validation` sunsets from residual; missing-all
   short-circuit before LLM; hard-reject undeclared nested dumps via catalog +
   decode allowlist; never substitutes `trade_summary` KPIs.
+  **RI-6 landed:** `assumptions_costs` builder over frozen §4.6 cost/exposure/
+  intrabar/focus/instrument/dataset paths; missing-all short-circuit before LLM;
+  hard-reject performance KPI substitutions; no Help how-to ownership;
+  configured SL/TP + singular cost/assumption cues; OOS-absent missing followups.
   Incremental PRs keep DI residual negative-cue vetoes for not-yet-owned
   specialist topics (and DX veto≠unmatched) until each builder PR sunsets its
   cues; RI must not invent metrics, remap topics onto KPI overview, answer OOS
