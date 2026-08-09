@@ -202,12 +202,13 @@ bars; unsorted grouping would falsely split identical sets.
   never “first row seen” (order-dependent).
   Fallback when `entry_timestamp` is missing/unsortable: `trade_id` only; if
   that is also missing, use a stable `reset_index()` position as last resort.
-- Optional **display_combo** column for UI: when
-  `setup_config.confluence_mode == "anchor_rules"` and session `anchor_level`
-  is known and present in the token set, render
-  `anchor|sorted(remaining tokens)`; otherwise render the canonical sorted key.
-  Never infer anchor from token order in global/unknown mode.
-  Implement as a pure helper (`format_display_combo(...)`) so the page stays thin.
+- Optional **display_combo** column for UI: when signal-run identity resolves
+  to `anchor_rules` (`resolve_signal_setup_for_attribution` →
+  `resolve_confluence_mode`) and `anchor_level` is known and present in the
+  token set, render `anchor|sorted(remaining tokens)`; otherwise render the
+  canonical sorted key. Never infer anchor from token order in global/unknown
+  mode. Implement as a pure helper (`format_display_combo(...)`) so the page
+  stays thin.
 
 **Partition identity (locked):** exact-combo rows form a partition of the
 analyzable trade universe **before any UI sample filter**. Tests must assert:
@@ -578,7 +579,7 @@ level remain in the selected set?”
 | Idea | Status | Note |
 |---|---|---|
 | Soft pairwise **attribution** view | **Shipped (Phase 4)** | Analytics-only; Backtest **Pairs** tab |
-| Time Analysis **opt-in** combo / parsed level-count group dims | **Scoped (Phase 5a)** | Options only when columns present; default primary stays a time bucket |
+| Time Analysis **opt-in** combo / parsed level-count group dims | **Scoped (Phase 5a)** | Appended only when `available=True`; count dim = `level_count_bucket`; default primary stays a time bucket |
 | Report export diagnostic combo section | **Scoped (Phase 5b)** | Omit when unavailable; on-export recompute |
 | Research-bundle optional combo JSON/parquet siblings | **Scoped (Phase 5c)** | On-export recompute; no `BUNDLE_SCHEMA_VERSION` bump |
 | Assistant **cite-bound** combo projections | **Scoped (Phase 5d)** | Bounded `results.projections.confluence_combo` leaves only |
@@ -795,7 +796,7 @@ tests/fixtures/golden/**
 | Input | Pair definition |
 |---|---|
 | Generic / global / unknown | All unordered pairs among distinct tokens |
-| Anchor-aware | Only when signal-run identity resolves `confluence_mode == "anchor_rules"` **and** `anchor_level` is known (`resolve_signal_setup_for_attribution`); emit `anchor\|Li` for each non-anchor token present. Otherwise fall back to generic pairs — **never** guess anchor from first token |
+| Anchor-aware | Only when `resolve_signal_setup_for_attribution` → `resolve_confluence_mode(identity, trades)` yields `anchor_rules` **and** `anchor_level` is known; emit `anchor\|Li` for each non-anchor token present. Otherwise fall back to generic pairs — **never** guess anchor from first token |
 
 **Why reject first-token heuristic:** global price-sort puts cheapest level
 first, not an anchor. Guessing would mislead.
@@ -860,13 +861,16 @@ slice below (not as a Time Analysis group dimension).
 
 1. After time buckets are attached, if trades contain `level_names`, call
    `attach_combo_columns(trades)` so `exact_combo_key` and `level_token_count`
-   exist.
-2. **Append** those two columns to the end of `_PRIMARY_OPTIONS` /
-   `_SECONDARY_OPTIONS` (or the filtered option lists) **only when** at least
-   one trade has `level_token_count > 0` (same nonempty-combo spirit as
-   `available=True`). Do **not** expose combo/count dims when the column exists
-   but every name is empty. Appending (not prepending) keeps Time Analysis
-   `index=0` default on the first existing **time** bucket.
+   exist. Also attach a View-C-aligned **`level_count_bucket`** column
+   (`0 → "(unknown)"`, else the integer count) so Time Analysis count groups
+   match Backtest Level count labels (do not offer raw integer `0` as the
+   user-facing count dim).
+2. **Append** `exact_combo_key` and `level_count_bucket` to the end of
+   `_PRIMARY_OPTIONS` / `_SECONDARY_OPTIONS` (or the filtered option lists)
+   **only when** `confluence_attribution_summary(...).available` would be
+   True — i.e. ≥1 trade with non-null `r_multiple` and nonempty parsed
+   names. Column presence alone is not enough. Appending (not prepending)
+   keeps Time Analysis `index=0` default on the first existing **time** bucket.
 3. Keep current default primary as the first existing **time** bucket
    (`entry_rth_segment` when available). Selecting combo/count is opt-in.
 4. When primary or secondary is a combo/count dim, show a short diagnostic
@@ -889,9 +893,10 @@ slice below (not as a Time Analysis group dimension).
 
 - [ ] Default Time Analysis run looks identical when user leaves primary on a
       time bucket (`index=0` still a time dim).
-- [ ] Combo/count options appear only when nonempty parsed names exist; they
-      are appended after time options.
-- [ ] User can opt into `exact_combo_key` and/or `level_token_count` grouping.
+- [ ] Combo/count options appear only under the `available=True` nonempty
+      analyzable-combo gate; they are appended after time options.
+- [ ] Count dim uses View-C-aligned `level_count_bucket` (not raw `0`).
+- [ ] User can opt into `exact_combo_key` and/or `level_count_bucket` grouping.
 - [ ] Focus/Promote controls still only appear for existing time dims.
 - [ ] No engine/golden files in diff; full suite green.
 
@@ -1283,8 +1288,8 @@ PR 1 analytics helpers + tests
 ### PR 5a
 
 - [ ] Default Time Analysis primary stays a time bucket (`index=0` unchanged)
-- [ ] `attach_combo_columns` used so `exact_combo_key` / `level_token_count` exist
-- [ ] Combo/count dims **appended** only when nonempty parsed names exist
+- [ ] `attach_combo_columns` + View-C-aligned `level_count_bucket` attached
+- [ ] Combo/count dims **appended** only when summary `available=True` gate holds
 - [ ] Pairs / membership are **not** Time Analysis group dimensions
 - [ ] `FOCUSABLE_GROUP_COLS` / Focus/Promote unchanged (time dims only)
 - [ ] Diagnostic caption when combo/count dim selected (observed-only / 3c)
