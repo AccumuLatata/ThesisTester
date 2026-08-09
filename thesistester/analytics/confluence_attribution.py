@@ -6,6 +6,7 @@ Pure helpers for Backtest research views:
 - level membership (double-counting participants)
 - parsed level-count buckets
 - soft pairwise attribution (generic pairs or anchor-partner pairs)
+- optional exact-combo / pair × ``trigger_variant`` cross-views (PR 3)
 
 No zone / signal / fill engine changes. Summaries return **all** groups with
 ``sample_warning``; UI owns hide-below-``min_trades`` presentation filtering.
@@ -31,6 +32,7 @@ LEVEL_COUNT_BUCKET_COL = "level_count_bucket"
 LEVEL_TOKEN_COUNT_COL = "level_token_count"
 PAIR_KEY_COL = "pair_key"
 PAIR_MODE_COL = "pair_mode"
+TRIGGER_VARIANT_COL = "trigger_variant"
 
 # Opt-in Time Analysis group dims (PR 5a). Append-only; never Focus/Promote dims.
 COMBO_TIME_ANALYSIS_GROUP_COLS: tuple[str, ...] = (
@@ -293,6 +295,43 @@ def _empty_group_frame(group_col: str, extra_cols: list[str] | None = None) -> p
     return pd.DataFrame(columns=cols)
 
 
+def _empty_multi_group_frame(group_cols: list[str]) -> pd.DataFrame:
+    return pd.DataFrame(columns=[*group_cols, *_GROUP_METRIC_COLS])
+
+
+def _is_usable_trigger_variant(value: Any) -> bool:
+    """True for non-null, non-empty (strip) trigger_variant labels."""
+    if _is_nullish(value):
+        return False
+    text = str(value).strip()
+    return bool(text) and text.lower() != "nan"
+
+
+def has_usable_trigger_variant(trades: pd.DataFrame) -> bool:
+    """True when ≥1 analyzable trade has a usable ``trigger_variant`` label."""
+    if trades is None or not isinstance(trades, pd.DataFrame) or trades.empty:
+        return False
+    if TRIGGER_VARIANT_COL not in trades.columns or "r_multiple" not in trades.columns:
+        return False
+    work = trades.dropna(subset=["r_multiple"])
+    if work.empty:
+        return False
+    return bool(work[TRIGGER_VARIANT_COL].map(_is_usable_trigger_variant).any())
+
+
+def _filter_usable_trigger_variant(trades: pd.DataFrame) -> pd.DataFrame:
+    """Omit null/empty ``trigger_variant`` rows before cross-view groupby."""
+    if trades is None or not isinstance(trades, pd.DataFrame) or trades.empty:
+        return pd.DataFrame()
+    if TRIGGER_VARIANT_COL not in trades.columns:
+        return pd.DataFrame()
+    mask = trades[TRIGGER_VARIANT_COL].map(_is_usable_trigger_variant)
+    out = trades.loc[mask].copy()
+    # Normalize labels for stable grouping (strip whitespace).
+    out[TRIGGER_VARIANT_COL] = out[TRIGGER_VARIANT_COL].map(lambda v: str(v).strip())
+    return out
+
+
 def _summarize_r(
     trades: pd.DataFrame,
     group_col: str,
@@ -346,6 +385,62 @@ def _summarize_r(
     ).reset_index(drop=True)
     ordered = [group_col, *(extra_cols or []), *_GROUP_METRIC_COLS]
     return out[ordered]
+
+
+def _summarize_r_multi(
+    trades: pd.DataFrame,
+    group_cols: list[str],
+    min_trades: int,
+) -> pd.DataFrame:
+    """Lean multi-axis R metrics; never drops thin groups. Sorted like ``_summarize_r``."""
+    empty = _empty_multi_group_frame(group_cols)
+    if trades is None or not isinstance(trades, pd.DataFrame) or trades.empty:
+        return empty
+    if "r_multiple" not in trades.columns:
+        return empty
+    if any(col not in trades.columns for col in group_cols):
+        return empty
+
+    work = trades.dropna(subset=["r_multiple"]).copy()
+    if work.empty:
+        return empty
+
+    threshold = _clamp_min_trades(min_trades)
+    rows: list[dict[str, Any]] = []
+    for key, group in work.groupby(group_cols, sort=False, dropna=False):
+        r = group["r_multiple"]
+        n = int(len(r))
+        if n == 0:
+            continue
+        if len(group_cols) == 1:
+            key_values: tuple[Any, ...] = (key,)
+        else:
+            key_values = tuple(key)
+        row: dict[str, Any] = {
+            col: key_values[index] for index, col in enumerate(group_cols)
+        }
+        row.update(
+            {
+                "trade_count": n,
+                "win_rate": float((r > 0).mean()),
+                "avg_r": float(r.mean()),
+                "median_r": float(r.median()),
+                "total_r": float(r.sum()),
+                "sample_warning": bool(n < threshold),
+            }
+        )
+        rows.append(row)
+
+    if not rows:
+        return empty
+
+    out = pd.DataFrame(rows)
+    out = out.sort_values(
+        ["total_r", "trade_count"],
+        ascending=[False, False],
+        kind="mergesort",
+    ).reset_index(drop=True)
+    return out[[*group_cols, *_GROUP_METRIC_COLS]]
 
 
 def _sort_for_example_raw(trades: pd.DataFrame) -> pd.DataFrame:
@@ -566,6 +661,141 @@ def summarize_by_level_pairs(
     )
     merged = summarized.merge(mode_by_key, on=PAIR_KEY_COL, how="left")
     return merged[[PAIR_KEY_COL, PAIR_MODE_COL, *_GROUP_METRIC_COLS]]
+
+
+def summarize_by_exact_combo_and_trigger_variant(
+    trades: pd.DataFrame,
+    *,
+    min_trades: int = 10,
+) -> pd.DataFrame:
+    """Group analyzable trades by ``exact_combo_key × trigger_variant``.
+
+    Returns all groups plus ``sample_warning``. Does not drop thin samples.
+    Pre-filters null/empty (strip) ``trigger_variant`` before grouping.
+    Missing ``trigger_variant`` column → empty frame.
+    """
+    empty = _empty_multi_group_frame([EXACT_COMBO_KEY_COL, TRIGGER_VARIANT_COL])
+    if trades is None or not isinstance(trades, pd.DataFrame):
+        return empty
+    if trades.empty or "level_names" not in trades.columns:
+        return empty
+    if "r_multiple" not in trades.columns:
+        return empty
+    if TRIGGER_VARIANT_COL not in trades.columns:
+        return empty
+
+    attached = attach_combo_columns(trades)
+    analyzable = attached.dropna(subset=["r_multiple"]).copy()
+    if analyzable.empty:
+        return empty
+
+    usable = _filter_usable_trigger_variant(analyzable)
+    if usable.empty:
+        return empty
+
+    return _summarize_r_multi(
+        usable,
+        [EXACT_COMBO_KEY_COL, TRIGGER_VARIANT_COL],
+        min_trades,
+    )
+
+
+def summarize_by_pair_and_trigger_variant(
+    trades: pd.DataFrame,
+    *,
+    min_trades: int = 10,
+    anchor_level: str | None = None,
+    confluence_mode: str | None = None,
+) -> pd.DataFrame:
+    """Soft pair_key × trigger_variant attribution (PR 4 pair-mode locks).
+
+    Anchor-partner mode only when ``confluence_mode == "anchor_rules"`` with a
+    known non-empty ``anchor_level``. Pre-filters null/empty variants before
+    explode/groupby. Missing ``trigger_variant`` column → empty frame.
+    """
+    empty = pd.DataFrame(
+        columns=[PAIR_KEY_COL, TRIGGER_VARIANT_COL, PAIR_MODE_COL, *_GROUP_METRIC_COLS]
+    )
+    if trades is None or not isinstance(trades, pd.DataFrame):
+        return empty
+    if trades.empty or "level_names" not in trades.columns:
+        return empty
+    if "r_multiple" not in trades.columns:
+        return empty
+    if TRIGGER_VARIANT_COL not in trades.columns:
+        return empty
+
+    attached = attach_combo_columns(trades)
+    analyzable = attached.dropna(subset=["r_multiple"]).copy()
+    if analyzable.empty:
+        return empty
+
+    usable = _filter_usable_trigger_variant(analyzable)
+    if usable.empty:
+        return empty
+
+    usable = usable.loc[usable[LEVEL_TOKEN_COUNT_COL] >= 2].copy()
+    if usable.empty:
+        return empty
+
+    use_anchor = None
+    if confluence_mode == "anchor_rules" and anchor_level is not None:
+        candidate = str(anchor_level).strip()
+        if candidate:
+            use_anchor = candidate
+
+    pair_rows: list[dict[str, Any]] = []
+    for _, row in usable.iterrows():
+        tokens = parse_level_names(row.get("level_names"))
+        if use_anchor and use_anchor in set(tokens):
+            keys = pair_keys_for_tokens(tokens, anchor_level=use_anchor)
+            mode = PAIR_MODE_ANCHOR_PARTNER
+        else:
+            keys = pair_keys_for_tokens(tokens, anchor_level=None)
+            mode = PAIR_MODE_GENERIC
+        if not keys:
+            continue
+        variant = str(row.get(TRIGGER_VARIANT_COL)).strip()
+        r_multiple = row.get("r_multiple")
+        for key in keys:
+            pair_rows.append(
+                {
+                    PAIR_KEY_COL: key,
+                    TRIGGER_VARIANT_COL: variant,
+                    PAIR_MODE_COL: mode,
+                    "r_multiple": r_multiple,
+                }
+            )
+
+    if not pair_rows:
+        return empty
+
+    exploded = pd.DataFrame(pair_rows)
+    summarized = _summarize_r_multi(
+        exploded,
+        [PAIR_KEY_COL, TRIGGER_VARIANT_COL],
+        min_trades,
+    )
+    if summarized.empty:
+        return empty
+
+    mode_by_key = (
+        exploded.groupby([PAIR_KEY_COL, TRIGGER_VARIANT_COL], sort=False)[PAIR_MODE_COL]
+        .agg(
+            lambda values: (
+                PAIR_MODE_ANCHOR_PARTNER
+                if PAIR_MODE_ANCHOR_PARTNER in set(values.astype(str))
+                else PAIR_MODE_GENERIC
+            )
+        )
+        .reset_index()
+    )
+    merged = summarized.merge(
+        mode_by_key,
+        on=[PAIR_KEY_COL, TRIGGER_VARIANT_COL],
+        how="left",
+    )
+    return merged[[PAIR_KEY_COL, TRIGGER_VARIANT_COL, PAIR_MODE_COL, *_GROUP_METRIC_COLS]]
 
 
 def _empty_summary(min_trades: int = 10) -> dict[str, Any]:

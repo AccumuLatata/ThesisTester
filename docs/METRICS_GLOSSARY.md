@@ -508,6 +508,11 @@ required) with `available`, trade counts, capped `top_exact_combo` /
 `top_level_count`, optional `top_pair` + `pair_mode`, and `warning_flags` /
 `warnings`. Full `by_*` frames are not mounted into the path catalog.
 
+Backtest may optionally open **Combo × 3c variant** (nested expander) for
+`exact_combo_key × trigger_variant` and `pair_key × trigger_variant` lean R
+tables on displayed trades. Null/empty variants are omitted before groupby;
+hide-below-`min_trades` defaults ON (same checkbox as the combo expander).
+
 | Name | Definition |
 |---|---|
 | `exact_combo_key` | Canonical sorted `\|`-joined distinct tokens from trade `level_names`; empty/null/`nan` → `__empty__` |
@@ -518,6 +523,9 @@ required) with `available`, trade counts, capped `top_exact_combo` /
 | `level_count_bucket` | View-C count label for grouping: parsed count `0` → `(unknown)`, else the integer count (`1`, `2`, …) |
 | Soft pair (`pair_key`) | Generic unordered canonical `A\|B`, or anchor-partner `anchor\|support` when signal-run mode is `anchor_rules` with known `anchor_level` |
 | `pair_mode` | `generic` or `anchor_partner` label for the pair row / summary |
+| `trigger_variant` (cross-view) | 3c entry-type label on trades (`3c_long`, muted/SFP variants, …). Combo × variant tables omit null/empty labels; non-3c runs typically have no usable variants |
+| Exact combo × variant | Lean R metrics grouped by `exact_combo_key` and usable `trigger_variant` |
+| Pair × variant | Lean R metrics grouped by soft `pair_key` and usable `trigger_variant` (same pair-mode locks; still double-counts) |
 | `trade_count` | Rows in group with non-null `r_multiple` |
 | `win_rate` | Share of `r_multiple > 0` among non-null `r_multiple` (breakeven `0` is not a win) |
 | `avg_r` / `median_r` / `total_r` | Mean / median / sum of non-null `r_multiple` |
