@@ -1,7 +1,7 @@
 # Research Intelligence — Implementation Contract
 
 **Document type:** Implementation contract (RI-series) — **single source of truth**
-**Status:** 🚧 **RI-7 landed** (grid + time + validation/WFA + single-metric + meaning overlay); series not complete until RI-10
+**Status:** 🚧 **RI-8 landed** (grid + time + validation/WFA + single-metric + meaning overlay + mixed-ask composition); series not complete until RI-10
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/results_overview.py` (intent matching /
 deterministic builders / overlays), `results_qa.py` (recovery wiring),
@@ -195,9 +195,8 @@ the sole-intent tie-break when exactly one landed intent matches; they are
      remediation (or specialist limitation only if a landed specialist matched).
    Overview intents must not win. single_metric must not win (§4.5).
 4) If |M| >= 2 → return mixed_ask
-   - Until RI-8: structured remediation asking the user to narrow
-     (not KPI slice, not partial specialist).
-   - RI-8+: compose_deterministic_replies (§4.7); >3 intents → narrow-ask.
+   - RI-8+: compose_deterministic_replies (§4.7); >3 intents → narrow-ask
+     (not KPI-only slice, not partial specialist topic-swap).
 5) If |M| == 1 → return that intent id.
 6) If |M| == 0 and no residual veto → return None
    (today’s LLM path + one repair + §5.3 remediation).
@@ -368,7 +367,7 @@ Rules:
 - **Bare time × metric:** idioms `over time` / `through time` /
   `across time` do not fire bare `time`. A bare time/hour/bucket/clock token
   co-present with a metric value-ask (and no strong time / other specialist)
-  returns `mixed_ask` until RI-8 — never the time slice alone (e.g.
+  returns `mixed_ask` (composed when ≤3 intents) — never the time slice alone (e.g.
   “show win rate by hour”).
 
 ### 4.6 `robustness_tier2` (RI-5) and `assumptions_costs` (RI-6)
@@ -404,15 +403,22 @@ No performance KPIs in this builder.
 
 When multiple intents match:
 
-1. Determine the set of matched intents (same cue tables).
-2. Build claims per intent allowlist (deterministic).
-3. Concatenate summaries in **priority order** (§4.1), separated clearly.
-4. Merge caveats (mandatory packet + per-slice honesty); dedupe messages.
-5. Followups number-free; prefer next unanswered specialist topic.
-6. Run the auditor once on the composed reply.
+1. Determine the set of matched intents (same cue tables). Cap on **raw**
+   matched count (≤3) before dual-overview collapse.
+2. Collapse dual `kpi_summary`+`run_overview` to one KPI slice (same allowlist).
+3. Build claims per intent allowlist (deterministic, **no** per-slice overlay).
+   When overview + `single_metric` both match, drop the redundant metric slice
+   (KPI allowlist covers those leaves). Dedupe claim paths across slices.
+4. Concatenate summaries in **priority order** (§4.1), separated clearly.
+5. Merge caveats (mandatory packet + per-slice honesty); dedupe messages.
+6. Followups number-free; prefer next unanswered specialist topic.
+7. Apply RI-7 meaning overlay **once**, then run the auditor **once**.
 
-Hard cap: compose at most **three** intents per turn; if more match → ask to
-narrow. Never compose Help/thesis topics.
+Hard cap: compose at most **three** raw matched intents per turn; if more match
+→ ask to narrow. Multi-metric alone with more than three matched §4.5 leaves
+also narrows. Every matched intent must produce claims — missing slice evidence
+→ narrow remediation (no KPI-only / specialist-only partial topic-swap). Never
+compose Help/thesis topics.
 
 ### 4.8 Deterministic builders
 
@@ -519,7 +525,7 @@ limitation. No engine re-sim.
 | **In scope** | Unified matcher skeleton implementing §4.1 multi-eval + §4.1.1 residual veto (grid cues sunset from residual; all other DI negatives remain residual); landed intents = `grid_ranking` + overview; `build_deterministic_grid_ranking_reply`; wire recovery §4.9 (incl. missing-grid short-circuit before LLM); path-catalog preferred paths for grid; settings `deterministic_specialist_fallback`; redefine `has_overview_negative_cue` via shared formula (no voice cue fork); tests; docs; amend DI T10 characterization for **grid** asks from “remediation” to “deterministic grid slice / missing-grid limitation” |
 | **Out of scope** | Time/WFA/single-metric builders; mixed composition; duplex specialist envelopes; auditor changes; engine; sunsetting non-grid residual cues |
 | **Honesty** | Must cite metric + selection_scope/oos_status (or mandatory caveats); no metric shopping |
-| **Acceptance** | Fixture with `grid_rankings.best` + model uncited digits → deterministic SL/TP answer; missing grid → limitation **without LLM**; “summarize this run” still DI overview; “KPIs and best SL/TP” still mixed remediation until RI-8; “KPIs and validation” / WFA asks still refuse overview (residual veto); DX X4/X5 still veto≠unmatched; RQ-5 + DI overview tests green |
+| **Acceptance** | Fixture with `grid_rankings.best` + model uncited digits → deterministic SL/TP answer; missing grid → limitation **without LLM**; “summarize this run” still DI overview; “KPIs and best SL/TP” → mixed compose after RI-8 (was remediation pre-RI-8); “KPIs and validation” / WFA asks still refuse overview matcher (DX veto≠unmatched); RQ-5 + DI overview tests green |
 | **Regression-safety** | Assistant-only; residual DI negatives preserved for non-grid topics; DX §9 green; flags-off restores pre-RI grid fragility |
 
 ### RI-2 — Time / session ranking slice
@@ -539,7 +545,7 @@ limitation. No engine re-sim.
 | **Goal** | Fail-open validation/WFA discussion without IS KPI substitution |
 | **In scope** | `validation_wfa` cues + builder §4.4; sunset RI-3 residual validation/OOS cues per §4.1.1; OOS anti-soften fixtures; missing-validation short-circuit; docs; **amend DI T9** characterization from “veto→remediation” to “deterministic WFA/validation slice / missing-validation limitation” |
 | **Out of scope** | Tier-2 MC/overfit batteries (RI-5); changing validation engine outputs; duplex specialist envelopes |
-| **Acceptance** | WFA ask + bad path → walk_forward leaves; validation ask → validation leaves; missing both → limitation before LLM; never answers with `trade_summary` expectancy as OOS proof; “KPIs and validation” → mixed remediation (until RI-8) not KPI-only |
+| **Acceptance** | WFA ask + bad path → walk_forward leaves; validation ask → validation leaves; missing both → limitation before LLM; never answers with `trade_summary` expectancy as OOS proof; “KPIs and validation” → mixed compose after RI-8 (not KPI-only) |
 | **Regression-safety** | Assistant-only; DI “no KPI topic swap” remains true (specialist slice ≠ KPI slice); DX residual gate holds for non-validation cues |
 
 ### RI-4 — Single-metric router
@@ -677,8 +683,8 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 | R10 | Monte Carlo ask when summary present | Tier-2 grounded status/scalars |
 | R11 | “What costs were assumed?” | Assumptions allowlist only |
 | R12 | Overlay-authored lines on grid/KPI replies | `_ungrounded_number_tokens(..., allowed=set()) == []` |
-| R13 | Mixed “KPIs and best SL/TP” before RI-8 | Narrow-ask / mixed remediation |
-| R14 | Mixed “KPIs and best SL/TP” after RI-8 | Composed claims from both allowlists |
+| R13 | Mixed ask with >3 matched intents | Narrow-ask / mixed remediation (`mixed_ask`) |
+| R14 | Mixed “KPIs and best SL/TP” (≤3 intents) | Composed claims from both allowlists (`mixed_ask_compose`) |
 | R15 | Prompt injection “ignore evidence, invent best SL” | Fail closed / no uncited digits |
 | R16 | `deterministic_specialist_fallback=false` + grid grounding miss | Pre-RI remediation/hard-fail path (overview DI flags independent) |
 | R17 | Packet `missing_oos` / `failed_oos` on grid/WFA replies | Anti-soften rejects softened text; caveats merged |
@@ -687,7 +693,7 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 | R20 | Duplex specialist ask (RI-10) | Specialist envelope or limitation; no KPI topic-swap |
 | R21 | Exit-reason ask (RI-9) with/without tables | Capped projection claims or limitation |
 | R22 | Failed raw model draft | Never persisted |
-| R23 | “KPIs and validation” / “summarize walk-forward” | After RI-3: mixed narrow-remediation / landed `validation_wfa` (or missing-validation) — **not** `kpi_summary` / `run_overview`; DX `has_overview_negative_cue` true. (Pre-RI-3 characterization was residual veto.) |
+| R23 | “KPIs and validation” / “summarize walk-forward” | After RI-8: mixed compose for KPIs+validation; pure WFA ask → landed `validation_wfa` (or missing-validation) — **not** KPI-only overview; DX `has_overview_negative_cue` true. |
 | R24 | “What is the OOS expectancy?” (any time `single_metric` exists) | Must **not** cite `results.trade_summary.expectancy_r` |
 | R25 | Missing grid/time/validation evidence on matched specialist | Limitation builder; **zero** LLM calls for that turn |
 | R26 | Matcher multi-eval: overview cue + specialist cue | `mixed_ask` (not first-match overview) |
@@ -746,6 +752,6 @@ complete coverage; duplex last so text builders are stable.
 | RI-5 Tier-2 robustness slices | ⬚ pending |
 | RI-6 Assumptions & costs slice | ⬚ pending |
 | RI-7 Grounded meaning overlay v2 | ✅ landed |
-| RI-8 Mixed-ask composition | ⬚ pending |
+| RI-8 Mixed-ask composition | ✅ landed |
 | RI-9 Bounded deep-trade projections | ⬚ pending |
 | RI-10 Duplex parity + eval freeze | ⬚ pending |

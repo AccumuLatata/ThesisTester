@@ -521,6 +521,12 @@ intent-aware next-step coaching; missing-OOS honesty line when packet signals
 absence; wire order claims→mandatory caveats→overlay→auditor for overview and
 landed specialist / single-metric replies; overlay lines stay
 `_ungrounded_number_tokens(..., allowed=set()) == []`.
+**RI-8 landed:** `mixed_ask` → `compose_deterministic_replies` (§4.7):
+priority-ordered per-intent deterministic slices (no per-slice overlay),
+concatenated summaries, path-deduped claims, merged/deduped caveats, one RI-7
+overlay + auditor once; compose ≤3 **raw** intents (>3 or missing slice →
+narrow remediation; dual overview collapses after the cap); duplex overview
+envelopes still veto mixed asks until RI-10.
 **DI-2 landed:** first-pass Results Q&A user payloads include
 `path_catalog.existing_paths` (bounded paths present on the turn context;
 KPI + projections/validation + honesty paths reserved before fat time tables

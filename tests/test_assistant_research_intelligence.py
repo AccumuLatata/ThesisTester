@@ -458,8 +458,66 @@ def test_numeric_hour_bucket_claim_label_and_grounding():
     assert any(claim.value == "09:00" for claim in reply.claims)
 
 
-def test_r13_mixed_ask_narrow_remediation_without_llm():
+def test_r13_mixed_ask_over_cap_narrow_remediation_without_llm():
+    """R13 (post RI-8): >3 matched intents still narrow-remediate."""
+    from thesistester.assistant.results_overview import (
+        MIXED_COMPOSE_CAP,
+        list_matched_discuss_intents,
+    )
+
+    packet = _packet(best_grid=True, walk_forward=True, time_summary=True)
+    context = build_ephemeral_results_context(packet)
+    client = _FailClient(_uncited_digits_payload())
+    message = "KPIs and best SL and best time and walk-forward"
+    assert match_discuss_intent(message) == INTENT_MIXED_ASK
+    assert len(list_matched_discuss_intents(message)) > MIXED_COMPOSE_CAP
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message=message,
+        turn_context=context,
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MIXED_ASK
+    assert "mix" in reply.summary.lower() or "one topic" in reply.summary.lower()
+
+
+def test_r14_mixed_kpis_and_best_sl_composes_both_allowlists():
+    from thesistester.assistant.results_overview import REASON_MIXED_COMPOSE
+
     packet = _packet(best_grid=True)
+    context = build_ephemeral_results_context(packet)
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="KPIs and best SL/TP",
+        turn_context=context,
+    )
+    assert client.calls == 0
+    assert reply.recovery_reason == REASON_MIXED_COMPOSE
+    paths = {claim.path for claim in reply.claims}
+    assert any(path.startswith("results.trade_summary.") for path in paths)
+    assert (
+        "results.projections.grid_rankings.best.stop_loss_ticks" in paths
+        or "results.best_grid_result.stop_loss_ticks" in paths
+    )
+    assert (
+        "results.projections.grid_rankings.best.take_profit_ticks" in paths
+        or "results.best_grid_result.take_profit_ticks" in paths
+    )
+    # Compose must not stack per-slice "ask for KPIs" / WFA-presence next-steps
+    # after both topics were answered.
+    assert not any("ask for the key metrics" in c.lower() for c in reply.caveats)
+    assert len(paths) == len(reply.claims), "compose must dedupe claim paths"
+
+
+def test_ri8_missing_grid_slice_does_not_kpi_only_compose():
+    """Partial topic-swap: KPIs + best SL without grid evidence → remediation."""
+    packet = _packet(best_grid=False)
     client = _FailClient(_uncited_digits_payload())
     reply = propose_results_reply(
         client,
@@ -471,7 +529,60 @@ def test_r13_mixed_ask_narrow_remediation_without_llm():
     assert reply.claims == ()
     assert reply.recovery_reason == REASON_MIXED_ASK
     assert "mix" in reply.summary.lower() or "one topic" in reply.summary.lower()
-    assert not any("trade_summary" in c.path for c in reply.claims)
+
+
+def test_ri8_metric_plus_kpi_dedupes_overlapping_paths():
+    from thesistester.assistant.results_overview import REASON_MIXED_COMPOSE
+
+    packet = _packet()
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="what is the win rate and key metrics",
+    )
+    assert client.calls == 0
+    assert reply.recovery_reason == REASON_MIXED_COMPOSE
+    win_rate_claims = [c for c in reply.claims if c.path == "results.trade_summary.win_rate"]
+    assert len(win_rate_claims) == 1
+    assert reply.summary.lower().count("win rate") == 1
+
+
+def test_ri8_raw_cap_before_dual_overview_collapse():
+    """Four raw intents must remediate even if dual overview would collapse."""
+    from thesistester.assistant.results_overview import list_matched_discuss_intents
+
+    packet = _packet(best_grid=True, time_summary=True)
+    context = build_ephemeral_results_context(packet)
+    message = "KPIs and summarize this run and best SL and best time"
+    matched = list_matched_discuss_intents(message)
+    assert len(matched) > 3
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message=message,
+        turn_context=context,
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MIXED_ASK
+
+
+def test_ri8_multi_metric_over_leaf_cap_remediates():
+    packet = _packet()
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="what is the win rate and expectancy and profit factor and drawdown",
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MIXED_ASK
 
 
 def test_r16_specialist_flag_off_restores_remediation_on_grounding_miss():
@@ -518,7 +629,9 @@ def test_r19_pure_overview_unchanged():
     assert any(c.path == "results.trade_summary.win_rate" for c in reply.claims)
 
 
-def test_r23_kpi_plus_validation_is_mixed_ask_not_kpi_slice():
+def test_r23_kpi_plus_validation_composes_not_kpi_only():
+    from thesistester.assistant.results_overview import REASON_MIXED_COMPOSE
+
     packet = _packet(best_grid=True, walk_forward=True)
     client = _FailClient(_uncited_digits_payload())
     assert match_discuss_intent("Give me KPIs and validation stats") == INTENT_MIXED_ASK
@@ -531,9 +644,12 @@ def test_r23_kpi_plus_validation_is_mixed_ask_not_kpi_slice():
         repair_retry_enabled=False,
     )
     assert client.calls == 0
-    assert reply.claims == ()
-    assert reply.recovery_reason == REASON_MIXED_ASK
-    assert not any("trade_summary" in c.path for c in reply.claims)
+    assert reply.recovery_reason == REASON_MIXED_COMPOSE
+    paths = {claim.path for claim in reply.claims}
+    assert any(path.startswith("results.trade_summary.") for path in paths)
+    assert any("walk_forward_summary" in path for path in paths)
+    # Still not a KPI-only overview envelope.
+    assert match_overview_intent("Give me KPIs and validation stats") is None
 
 
 def test_grid_allowlist_from_projections_context():
@@ -1172,7 +1288,27 @@ def test_ri7_mixed_ask_followups_respect_turn_oos_status():
     reply = build_mixed_ask_remediation_reply(packet, evidence_context=context)
     assert not any("whether walk-forward" in f.lower() for f in reply.followups)
     assert any("evidence paths remain available" in f.lower() for f in reply.followups)
-    # End-to-end short-circuit also hydrates and suppresses.
+    # Over-cap mixed remediation still hydrates and suppresses WFA presence coaching.
+    client = _FailClient(_uncited_digits_payload())
+    e2e = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="KPIs, best SL/TP, win rate by hour, and validation status",
+        turn_context=context,
+    )
+    assert client.calls == 0
+    assert e2e.recovery_reason == REASON_MIXED_ASK
+    assert not any("whether walk-forward" in f.lower() for f in e2e.followups)
+
+
+def test_ri8_compose_followups_respect_turn_oos_status():
+    """RI-8: composed KPI+SL/TP answers also suppress WFA presence coaching without oos_status."""
+    from thesistester.assistant.results_overview import REASON_MIXED_COMPOSE
+
+    packet = _packet(best_grid=True, missing_oos=False)
+    context = build_ephemeral_results_context(packet)
+    assert context["results"]["projections"]["grid_rankings"]["oos_status"] == "missing"
     client = _FailClient(_uncited_digits_payload())
     e2e = propose_results_reply(
         client,
@@ -1182,7 +1318,7 @@ def test_ri7_mixed_ask_followups_respect_turn_oos_status():
         turn_context=context,
     )
     assert client.calls == 0
-    assert e2e.recovery_reason == REASON_MIXED_ASK
+    assert e2e.recovery_reason == REASON_MIXED_COMPOSE
     assert not any("whether walk-forward" in f.lower() for f in e2e.followups)
 
 

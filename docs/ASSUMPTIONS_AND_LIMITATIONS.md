@@ -608,7 +608,7 @@ other than the last bar in the dataset.
   `deterministic_specialist_fallback` (default `true`). **RI-3 landed:**
   `validation_wfa` builder / missing-validation short-circuit; validation/WFA/OOS
   cues sunset from residual; never substitutes `trade_summary` as OOS proof;
-  mixed asks (e.g. KPIs+validation) still narrow-remediate until RI-8.
+  mixed asks compose via RI-8 when ≤3 landed intents match.
   **RI-2 landed:** deterministic `time_ranking` builder / missing-time
   short-circuit; time/hour/bucket/clock/session-segment cues sunset from
   residual; no invented clocks; projects from `time_grouped_summary` when
@@ -625,6 +625,10 @@ other than the last bar in the dataset.
   specialist/mixed followups when packet caveats/limitations **or** cited
   `oos_status`/`stitched_oos_status` is missing/failed; overlay audited with
   `allowed=set()`; no LLM paraphrase.
+  **RI-8 landed:** `mixed_ask` → `compose_deterministic_replies` (§4.7);
+  priority-ordered summaries; merge/dedupe caveats; followups for unanswered
+  topics; auditor once; compose ≤3 intents (>3 → narrow remediation); duplex
+  overview still vetoes mixed asks until RI-10.
   Incremental PRs keep DI residual negative-cue vetoes for not-yet-owned
   specialist topics (and DX veto≠unmatched) until each builder PR sunsets its
   cues; RI must not invent metrics, remap topics onto KPI overview, answer OOS

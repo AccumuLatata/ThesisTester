@@ -47,10 +47,22 @@ REASON_MISSING_TIME = "time_missing_evidence"
 REASON_MISSING_VALIDATION = "validation_missing_evidence"
 REASON_MISSING_METRIC = "metric_missing_leaf"
 REASON_MIXED_ASK = "mixed_ask_narrow"
+REASON_MIXED_COMPOSE = "mixed_ask_compose"
 REASON_GRID_FALLBACK = "grid_deterministic_fallback"
 REASON_TIME_FALLBACK = "time_deterministic_fallback"
 REASON_VALIDATION_FALLBACK = "validation_deterministic_fallback"
 REASON_METRIC_FALLBACK = "metric_deterministic_fallback"
+
+# §4.1 composition / summary order (sole-intent tie-break + RI-8 compose order).
+_COMPOSE_PRIORITY: tuple[str, ...] = (
+    INTENT_GRID_RANKING,
+    INTENT_TIME_RANKING,
+    INTENT_VALIDATION_WFA,
+    INTENT_SINGLE_METRIC,
+    OVERVIEW_INTENT_KPI,
+    OVERVIEW_INTENT_RUN,
+)
+MIXED_COMPOSE_CAP = 3
 
 # Frozen RI §4.5 noun → path map (longer phrases first within each row).
 _SINGLE_METRIC_NOUN_PATHS: tuple[tuple[tuple[str, ...], str], ...] = (
@@ -503,14 +515,8 @@ def has_overview_negative_cue(message: str) -> bool:
     return False
 
 
-def match_discuss_intent(message: str) -> str | None:
-    """Return one Discuss intent id, ``mixed_ask``, or ``None`` (RI §4.1).
-
-    Multi-eval (no first-match short-circuit): evaluate landed cue tables
-    independently, then apply residual veto / mixed-ask rules.
-    Landed intents in RI-4+: ``grid_ranking``, ``time_ranking``,
-    ``validation_wfa``, ``single_metric``, ``kpi_summary``, ``run_overview``.
-    """
+def _evaluate_discuss_match(message: str) -> dict[str, Any] | None:
+    """Evaluate landed cue tables; return match state or None for empty input."""
     if not isinstance(message, str) or not message.strip():
         return None
     normalized = _normalize_message(message)
@@ -532,36 +538,107 @@ def match_discuss_intent(message: str) -> str | None:
 
     hard_residual = _hard_residual_negative_matches(normalized)
     soft_residual = _soft_bare_grid_token_residual(normalized)
-
-    # §4.1 step 3: hard residual (MC/bare-ranking/otf) blocks specialists → None.
-    # Also hard-refuses single_metric (§4.5) so IS leaves cannot launder residual asks.
-    if hard_residual:
-        return None
-
     overview_count = (1 if kpi else 0) + (1 if run else 0)
 
-    # Bare time token + metric value-ask: do not serve the time slice alone
-    # (e.g. ``show win rate by hour``). Narrow mixed_ask until RI-8. Idioms
-    # like ``over time`` are already masked out of bare-time matching.
-    # Soft bare-grid residual must not bypass this into lone time_ranking
-    # (e.g. ``show win rate by hour for my stop``).
-    if time_bare_only and metric_paths and not specialists and overview_count == 0:
-        return INTENT_MIXED_ASK
+    # Bare time × metric is a composable mixed set (RI-8); never time-alone.
+    bare_time_metric_mixed = bool(
+        time_bare_only and metric_paths and not specialists and overview_count == 0
+    )
 
-    # Lone bare time (or bare time competing with other landed intents) counts
-    # as the landed time_ranking specialist.
-    if time_bare_only:
+    if time_bare_only and not bare_time_metric_mixed:
         specialists.append(INTENT_TIME_RANKING)
 
     # §4.5 hard-refuse: specialist or residual collocates → never emit single_metric.
-    metric_allowed = not specialists and not soft_residual
+    # Exception: bare-time×metric keeps metric paths for composition.
+    metric_allowed = (not specialists and not soft_residual) or bare_time_metric_mixed
+    if bare_time_metric_mixed:
+        specialists.append(INTENT_TIME_RANKING)
+
     single_metric = metric_allowed and len(metric_paths) == 1
     multi_metric = metric_allowed and len(metric_paths) >= 2
+
+    intents: list[str] = list(specialists)
+    if single_metric or multi_metric:
+        intents.append(INTENT_SINGLE_METRIC)
+    if kpi:
+        intents.append(OVERVIEW_INTENT_KPI)
+    if run:
+        intents.append(OVERVIEW_INTENT_RUN)
+
+    # Stable §4.1 priority order; unique.
+    ordered = tuple(intent for intent in _COMPOSE_PRIORITY if intent in intents)
+    return {
+        "normalized": normalized,
+        "hard_residual": hard_residual,
+        "soft_residual": soft_residual,
+        "specialists": tuple(specialists),
+        "metric_paths": tuple(metric_paths),
+        "single_metric": single_metric,
+        "multi_metric": multi_metric,
+        "kpi": kpi,
+        "run": run,
+        "overview_count": overview_count,
+        "bare_time_metric_mixed": bare_time_metric_mixed,
+        "intents": ordered,
+    }
+
+
+def list_matched_discuss_intents(message: str) -> tuple[str, ...]:
+    """Return priority-ordered matched landed intents for RI-8 composition.
+
+    Empty when unmatched, hard-residual blocked, or soft residual with no
+    landed specialist owner. Does not return the ``mixed_ask`` sentinel.
+    """
+    state = _evaluate_discuss_match(message)
+    if state is None or state["hard_residual"]:
+        return ()
+    if state["soft_residual"] and not state["specialists"] and not state["bare_time_metric_mixed"]:
+        return ()
+    # state["intents"] already includes metric when bare-time×metric mixed
+    # (soft residual must not drop the metric half of that pair).
+    return state["intents"]
+
+
+def list_matched_metric_paths(message: str) -> tuple[str, ...]:
+    """Return §4.5 paths matched for composition (empty when metric hard-refused)."""
+    state = _evaluate_discuss_match(message)
+    if state is None or state["hard_residual"]:
+        return ()
+    if not (state["single_metric"] or state["multi_metric"] or state["bare_time_metric_mixed"]):
+        return ()
+    return state["metric_paths"]
+
+
+def match_discuss_intent(message: str) -> str | None:
+    """Return one Discuss intent id, ``mixed_ask``, or ``None`` (RI §4.1).
+
+    Multi-eval (no first-match short-circuit): evaluate landed cue tables
+    independently, then apply residual veto / mixed-ask rules.
+    Landed intents in RI-4+: ``grid_ranking``, ``time_ranking``,
+    ``validation_wfa``, ``single_metric``, ``kpi_summary``, ``run_overview``.
+    """
+    state = _evaluate_discuss_match(message)
+    if state is None:
+        return None
+
+    # §4.1 step 3: hard residual (MC/bare-ranking/otf) blocks specialists → None.
+    # Also hard-refuses single_metric (§4.5) so IS leaves cannot launder residual asks.
+    if state["hard_residual"]:
+        return None
+
+    specialists = list(state["specialists"])
+    overview_count = state["overview_count"]
+    soft_residual = state["soft_residual"]
+    single_metric = state["single_metric"]
+    multi_metric = state["multi_metric"]
+
+    # Bare time × metric → mixed_ask (RI-8 composes time + metric).
+    if state["bare_time_metric_mixed"]:
+        return INTENT_MIXED_ASK
 
     if soft_residual:
         # Soft bare-grid residual refuses overview/DX topic-swap, but must not
         # veto a lone landed specialist ("tp and oos" / "validation of my stop").
-        # single_metric is hard-refused above (metric_allowed False).
         if len(specialists) >= 2 or (len(specialists) == 1 and overview_count >= 1):
             return INTENT_MIXED_ASK
         if len(specialists) == 1:
@@ -577,9 +654,9 @@ def match_discuss_intent(message: str) -> str | None:
         return INTENT_MIXED_ASK
     if single_metric:
         return INTENT_SINGLE_METRIC
-    if kpi:
+    if state["kpi"]:
         return OVERVIEW_INTENT_KPI
-    if run:
+    if state["run"]:
         return OVERVIEW_INTENT_RUN
     return None
 
@@ -1423,6 +1500,9 @@ def overview_followup_bank(packet: EvidencePacket | None = None) -> tuple[str, .
 
 def _overlay_next_step_line(discuss_intent: str | None, *, oos_absent: bool) -> str | None:
     """Return intent-aware next-step coaching, or None when suppressed."""
+    if discuss_intent == INTENT_MIXED_ASK:
+        # Compose followups already prefer unanswered topics — no next-step line.
+        return None
     if discuss_intent == INTENT_VALIDATION_WFA:
         return _OVERLAY_NEXT_STEP_VALIDATION
     if discuss_intent == INTENT_TIME_RANKING:
@@ -1676,12 +1756,33 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
     return None
 
 
+def _reply_without_overlay(
+    *,
+    summary: str,
+    caveats: Sequence[str],
+    claims: Sequence[EvidenceClaim],
+    followups: Sequence[str] = (),
+    recovery_reason: str | None = None,
+):
+    """Return a ResultsQAReply without overlay/auditor (RI-8 compose ingredient)."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    return ResultsQAReply(
+        summary=summary,
+        caveats=tuple(caveats),
+        claims=tuple(claims),
+        followups=tuple(followups),
+        recovery_reason=recovery_reason,
+    )
+
+
 def build_deterministic_kpi_reply(
     packet: EvidencePacket,
     evidence_context: Mapping[str, Any],
     *,
     intent: str,
     recovery_reason: str | None = None,
+    apply_overlay: bool = True,
 ):
     """Build an auditor-safe KPI/overview reply from the frozen path allowlist."""
     claims: list[EvidenceClaim] = []
@@ -1720,6 +1821,13 @@ def build_deterministic_kpi_reply(
     grounded = tuple(claims)
     # Wire order (DI-3 / RI-7): claims/summary → mandatory caveats → overlay → auditor.
     caveats = merge_mandatory_packet_caveats(packet, caveat_seed)
+    if not apply_overlay:
+        return _reply_without_overlay(
+            summary=summary,
+            caveats=caveats,
+            claims=grounded,
+            recovery_reason=recovery_reason,
+        )
     return apply_expert_overlay(
         packet,
         summary=summary,
@@ -1776,7 +1884,7 @@ def build_mixed_ask_remediation_reply(
     recovery_reason: str | None = REASON_MIXED_ASK,
     evidence_context: Mapping[str, Any] | None = None,
 ):
-    """Narrow-ask remediation for mixed intents until RI-8 composition lands."""
+    """Narrow-ask remediation when mixed intents exceed the compose cap or lack evidence."""
     from thesistester.assistant.results_qa import ResultsQAReply
 
     summary = (
@@ -1814,6 +1922,226 @@ def build_mixed_ask_remediation_reply(
         claims=(),
         followups=followups,
         recovery_reason=recovery_reason,
+    )
+
+
+def _collapse_compose_intents(intents: Sequence[str]) -> tuple[str, ...]:
+    """Collapse dual overview intents to one kpi_summary slice (same allowlist)."""
+    ordered = tuple(intent for intent in _COMPOSE_PRIORITY if intent in set(intents))
+    if OVERVIEW_INTENT_KPI in ordered and OVERVIEW_INTENT_RUN in ordered:
+        return tuple(intent for intent in ordered if intent != OVERVIEW_INTENT_RUN)
+    return ordered
+
+
+def _compose_followups_for_intents(
+    matched: Sequence[str],
+    *,
+    packet: EvidencePacket,
+    evidence_context: Mapping[str, Any] | None,
+) -> tuple[str, ...]:
+    """Digit-free followups preferring topics not already answered in *matched*."""
+    matched_set = set(matched)
+    suggestions: list[str] = []
+    if INTENT_SINGLE_METRIC not in matched_set and OVERVIEW_INTENT_KPI not in matched_set:
+        suggestions.append("Ask for one metric (for example win rate or expectancy).")
+    if OVERVIEW_INTENT_KPI not in matched_set and OVERVIEW_INTENT_RUN not in matched_set:
+        suggestions.append("Ask for the key metrics or a summary of this run.")
+    if INTENT_GRID_RANKING not in matched_set:
+        suggestions.append("Ask about best stop and take profit ranking if a grid was recorded.")
+    if INTENT_TIME_RANKING not in matched_set:
+        suggestions.append(
+            "Ask about the best entry time or session bucket if time analysis was recorded."
+        )
+    if INTENT_VALIDATION_WFA not in matched_set:
+        if _oos_evidence_absent(packet, evidence_context=evidence_context):
+            suggestions.append("Ask which evidence paths remain available on this packet.")
+        else:
+            suggestions.append(
+                "Ask whether walk-forward or validation diagnostics are present on this packet."
+            )
+    if not suggestions:
+        suggestions.append("Ask which evidence paths remain available on this packet.")
+    return tuple(suggestions[:3])
+
+
+def compose_deterministic_replies(
+    packet: EvidencePacket,
+    evidence_context: Mapping[str, Any],
+    *,
+    user_message: str,
+    intents: Sequence[str] | None = None,
+    recovery_reason: str | None = None,
+):
+    """Compose grounded replies for a mixed ask (§4.7 / RI-8).
+
+    Builds claims per matched intent allowlist (priority order), concatenates
+    summaries, merges/dedupes caveats, applies the meaning overlay once, and
+    runs the auditor once. Cap is on **raw** matched intents (≤3); dual overview
+    collapses to one KPI slice after the cap check. Every matched intent must
+    produce claims (no partial topic-swap). Metric×KPI overlap drops the
+    redundant single-metric slice. Multi-metric alone with more than three
+    matched leaves → narrow remediation.
+    """
+    raw_matched = tuple(
+        intents if intents is not None else list_matched_discuss_intents(user_message)
+    )
+    # Cap before dual-overview collapse so four cues cannot sneak through.
+    if len(raw_matched) > MIXED_COMPOSE_CAP:
+        return build_mixed_ask_remediation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MIXED_ASK,
+            evidence_context=evidence_context,
+        )
+    matched = _collapse_compose_intents(raw_matched)
+    metric_paths = list_matched_metric_paths(user_message)
+    multi_metric_alone = (
+        len(matched) == 1 and matched[0] == INTENT_SINGLE_METRIC and len(metric_paths) >= 2
+    )
+    if multi_metric_alone and len(metric_paths) > MIXED_COMPOSE_CAP:
+        return build_mixed_ask_remediation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MIXED_ASK,
+            evidence_context=evidence_context,
+        )
+    # Dual overview collapses to one slice; still a valid composed answer.
+    dual_overview_collapsed = (
+        len(matched) == 1
+        and matched[0] in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}
+        and OVERVIEW_INTENT_KPI in raw_matched
+        and OVERVIEW_INTENT_RUN in raw_matched
+    )
+    if len(matched) < 2 and not multi_metric_alone and not dual_overview_collapsed:
+        return build_mixed_ask_remediation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MIXED_ASK,
+            evidence_context=evidence_context,
+        )
+
+    working = dict(evidence_context) if isinstance(evidence_context, Mapping) else {}
+    if INTENT_GRID_RANKING in matched:
+        working = dict(_ensure_grid_rankings_context(working))
+    if INTENT_TIME_RANKING in matched:
+        working = dict(_ensure_time_rankings_context(working))
+
+    # KPI allowlist already covers §4.5 leaves — skip redundant single_metric.
+    overview_in_matched = any(
+        intent in matched for intent in (OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN)
+    )
+    build_metric_slice = INTENT_SINGLE_METRIC in matched and not overview_in_matched
+
+    summary_parts: list[str] = []
+    claims: list[EvidenceClaim] = []
+    caveat_lines: list[str] = []
+    seen_caveats: set[str] = set()
+    seen_claim_paths: set[str] = set()
+    answered: list[str] = []
+
+    def _absorb(reply) -> bool:
+        if reply is None or not getattr(reply, "claims", ()):
+            return False
+        new_claims = [claim for claim in reply.claims if claim.path not in seen_claim_paths]
+        if not new_claims:
+            return False
+        text = str(getattr(reply, "summary", "") or "").strip()
+        if text:
+            summary_parts.append(text)
+        for claim in new_claims:
+            seen_claim_paths.add(claim.path)
+            claims.append(claim)
+        for line in getattr(reply, "caveats", ()) or ():
+            if not isinstance(line, str):
+                continue
+            key = line.strip()
+            if not key or key in seen_caveats:
+                continue
+            seen_caveats.add(key)
+            caveat_lines.append(key)
+        return True
+
+    def _mark(intent_id: str) -> None:
+        if intent_id not in answered:
+            answered.append(intent_id)
+
+    for intent in matched:
+        if intent == INTENT_GRID_RANKING:
+            if not has_grid_ranking_evidence(working):
+                continue
+            if _absorb(
+                build_deterministic_grid_ranking_reply(packet, working, apply_overlay=False)
+            ):
+                _mark(intent)
+        elif intent == INTENT_TIME_RANKING:
+            if not has_time_ranking_evidence(working):
+                continue
+            if _absorb(
+                build_deterministic_time_ranking_reply(packet, working, apply_overlay=False)
+            ):
+                _mark(intent)
+        elif intent == INTENT_VALIDATION_WFA:
+            if not has_validation_wfa_evidence(working):
+                continue
+            if _absorb(
+                build_deterministic_validation_wfa_reply(packet, working, apply_overlay=False)
+            ):
+                _mark(intent)
+        elif intent == INTENT_SINGLE_METRIC:
+            if not build_metric_slice:
+                # Covered by overview allowlist; count as answered for followups.
+                _mark(intent)
+                continue
+            paths = metric_paths or ()
+            if not paths:
+                continue
+            for path in paths:
+                if not has_single_metric_evidence(working, path):
+                    continue
+                if _absorb(
+                    build_deterministic_single_metric_reply(
+                        packet, working, path=path, apply_overlay=False
+                    )
+                ):
+                    _mark(intent)
+        elif intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}:
+            if _absorb(
+                build_deterministic_kpi_reply(
+                    packet,
+                    working,
+                    intent=intent,
+                    apply_overlay=False,
+                )
+            ):
+                _mark(intent)
+
+    # No partial topic-swap: every matched intent must contribute claims
+    # (except single_metric absorbed into overview).
+    required = [
+        intent
+        for intent in matched
+        if not (intent == INTENT_SINGLE_METRIC and not build_metric_slice)
+    ]
+    if not claims or any(intent not in answered for intent in required):
+        return build_mixed_ask_remediation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MIXED_ASK,
+            evidence_context=working,
+        )
+
+    summary = " ".join(summary_parts)
+    followups = _compose_followups_for_intents(
+        answered,
+        packet=packet,
+        evidence_context=working,
+    )
+    # §4.7: one overlay + one auditor pass on the composed reply.
+    return apply_expert_overlay(
+        packet,
+        summary=summary,
+        caveats=tuple(caveat_lines),
+        claims=tuple(claims),
+        followups=followups,
+        recovery_reason=recovery_reason or REASON_MIXED_COMPOSE,
+        discuss_intent=INTENT_MIXED_ASK,
+        evidence_context=working,
     )
 
 
@@ -1943,6 +2271,7 @@ def build_deterministic_single_metric_reply(
     *,
     path: str,
     recovery_reason: str | None = None,
+    apply_overlay: bool = True,
 ):
     """Build an auditor-safe one-claim reply for a frozen §4.5 metric path."""
     if not has_single_metric_evidence(evidence_context, path):
@@ -1973,6 +2302,14 @@ def build_deterministic_single_metric_reply(
         "Ask for the key metrics or a summary of this run.",
         "Ask whether walk-forward or validation diagnostics are present on this packet.",
     )
+    if not apply_overlay:
+        return _reply_without_overlay(
+            summary=summary,
+            caveats=caveats,
+            claims=grounded,
+            followups=followups,
+            recovery_reason=recovery_reason,
+        )
     return apply_expert_overlay(
         packet,
         summary=summary,
@@ -1990,6 +2327,7 @@ def build_deterministic_time_ranking_reply(
     evidence_context: Mapping[str, Any],
     *,
     recovery_reason: str | None = None,
+    apply_overlay: bool = True,
 ):
     """Build an auditor-safe best-entry-time reply from the frozen §4.3 allowlist."""
     working = _ensure_time_rankings_context(evidence_context)
@@ -2029,6 +2367,14 @@ def build_deterministic_time_ranking_reply(
         "Ask about best stop and take profit ranking if a grid was recorded.",
         "Ask for the key metrics or a summary of this run.",
     )
+    if not apply_overlay:
+        return _reply_without_overlay(
+            summary=summary,
+            caveats=caveats,
+            claims=grounded,
+            followups=followups,
+            recovery_reason=recovery_reason,
+        )
     return apply_expert_overlay(
         packet,
         summary=summary,
@@ -2046,6 +2392,7 @@ def build_deterministic_validation_wfa_reply(
     evidence_context: Mapping[str, Any],
     *,
     recovery_reason: str | None = None,
+    apply_overlay: bool = True,
 ):
     """Build an auditor-safe validation/WFA reply from the frozen §4.4 allowlist."""
     if not has_validation_wfa_evidence(evidence_context):
@@ -2086,6 +2433,14 @@ def build_deterministic_validation_wfa_reply(
         "Ask for the key metrics or a summary of this run.",
         "Ask about best stop and take profit ranking if a grid was recorded.",
     )
+    if not apply_overlay:
+        return _reply_without_overlay(
+            summary=summary,
+            caveats=caveats,
+            claims=grounded,
+            followups=followups,
+            recovery_reason=recovery_reason,
+        )
     return apply_expert_overlay(
         packet,
         summary=summary,
@@ -2103,6 +2458,7 @@ def build_deterministic_grid_ranking_reply(
     evidence_context: Mapping[str, Any],
     *,
     recovery_reason: str | None = None,
+    apply_overlay: bool = True,
 ):
     """Build an auditor-safe best SL/TP reply from the frozen grid allowlist."""
     working = _ensure_grid_rankings_context(evidence_context)
@@ -2154,6 +2510,14 @@ def build_deterministic_grid_ranking_reply(
         "Ask whether walk-forward or validation diagnostics are present on this packet.",
         "Ask for the key metrics or a summary of this run.",
     )
+    if not apply_overlay:
+        return _reply_without_overlay(
+            summary=summary,
+            caveats=caveats,
+            claims=grounded,
+            followups=followups,
+            recovery_reason=recovery_reason,
+        )
     return apply_expert_overlay(
         packet,
         summary=summary,

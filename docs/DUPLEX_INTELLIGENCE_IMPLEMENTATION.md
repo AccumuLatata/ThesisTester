@@ -389,7 +389,7 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 | X2 | Envelope / schema / intent guidance | Never suggests `results.trade_count` as baseline sample size; prefer `results.trade_summary.trade_count` |
 | X3 | Latest user text “KPIs of this run” | `overview_intent` in `{kpi_summary, run_overview}`; summary digits from claims |
 | X4 | Latest user text “summarize the walk-forward / validation results” | `has_overview_negative_cue` true; negative veto; **no** KPI must-cite slice; legacy `claims == []`; legacy `overview` is remediation/empty (not explainer narrative); remediation digit-free; `overview_intent is null` |
-| X5 | Mixed “KPIs and best SL/TP” | Full veto; no partial KPI slice; same legacy strip as X4 |
+| X5 | Mixed “KPIs and best SL/TP” | Full veto; no partial KPI slice; same legacy strip as X4. (Text Discuss may compose via RI-8; duplex overview envelope stays veto until RI-10 specialist envelopes.) |
 | X4b | Latest user text unmatched / vague (“tell me about this”, bare “summary” without DI anchored overview cue) **without** negative cue | Neutral `run_overview` envelope (KPI claims when present); **not** remediation; `overview_intent == "run_overview"` |
 | X6 | `expert_overlay` lines | `_ungrounded_number_tokens(line, allowed=set()) == []`; not copied into legacy caveat dicts |
 | X7 | Missing `trade_summary` | Honest limitation / remediation; no fabricated scalars |
