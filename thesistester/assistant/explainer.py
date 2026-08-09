@@ -472,14 +472,20 @@ def _confluence_combo_identity_for_packet(*candidates: Any) -> dict[str, Any] | 
 
     Prefer the first available mapping among *candidates* (typically baked 5c
     ``confluence_combo_summary``, then artifact ``confluence_combo``). Nested
-    ``tables`` / frames are stripped so the packet stays cite-bound.
+    ``tables`` / frames are stripped so the packet stays cite-bound. Shape is
+    stable across session vs bundle-import builds (always includes ``kind`` /
+    ``schema_version``) so classic attach evidence round-trips compare equal.
     """
     for candidate in candidates:
         if not isinstance(candidate, Mapping) or not candidate.get("available"):
             continue
-        identity: dict[str, Any] = {"available": True}
+        identity: dict[str, Any] = {
+            "available": True,
+            "kind": "confluence_combo_summary",
+            "schema_version": 1,
+        }
         for key in _CONFLUENCE_COMBO_IDENTITY_KEYS:
-            if key == "available" or key not in candidate:
+            if key in {"available", "kind", "schema_version"} or key not in candidate:
                 continue
             identity[key] = to_jsonable(candidate.get(key))
         return identity
