@@ -648,7 +648,7 @@ allowlist-bound.
 | Transcript | Sync user/assistant text + tool audits on session end; periodic flush best-effort |
 | TTL | Enforce `max_session_minutes` |
 | Tests | Mocked WS fixtures for tool bridge; TTL; deny search tools in session payload; non-localhost bind rejected |
-| Docs | `ENGINEERING.md` localhost sidecar run instructions in the same PR |
+| Docs | `docs/VOICE_SIDECAR_OPS.md` localhost sidecar run instructions |
 
 #### Out of scope
 - Phone/Twilio
@@ -679,7 +679,7 @@ tests/test_assistant_voice_realtime.py
 docs/ARCHITECTURE.md
 docs/ASSUMPTIONS_AND_LIMITATIONS.md
 docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
-docs/ENGINEERING.md
+docs/VOICE_SIDECAR_OPS.md
 ```
 
 #### Implemented contract (fill when merged)
@@ -709,7 +709,7 @@ docs/ENGINEERING.md
   inherits env for `XAI_API_KEY` (never embeds the key in page code).
 - Help realtime deferred (results_qa run-bound only in v1).
 - Tests: `tests/test_assistant_voice_realtime.py`.
-- Ops: `docs/ENGINEERING.md` sidecar run instructions.
+- Ops: `docs/VOICE_SIDECAR_OPS.md` sidecar run instructions.
 
 ---
 

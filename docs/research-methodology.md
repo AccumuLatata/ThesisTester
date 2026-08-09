@@ -4,7 +4,7 @@
 **Scope:** Directional One Timeframing (OTF) market-condition filter  
 **Status:** Protocol published (hardening PR 5)  
 **Last updated:** 2026-08-03  
-**Related:** [`otf-filter.md`](otf-filter.md), [`OTF_HARDENING_AND_RELEASE_ROADMAP.md`](OTF_HARDENING_AND_RELEASE_ROADMAP.md), [`OTF_RELEASE_EVIDENCE.md`](OTF_RELEASE_EVIDENCE.md), [`ASSUMPTIONS_AND_LIMITATIONS.md`](ASSUMPTIONS_AND_LIMITATIONS.md)
+**Related:** [`otf-filter.md`](otf-filter.md), [`OTF_HARDENING_AND_RELEASE_ROADMAP.md`](archive/OTF_HARDENING_AND_RELEASE_ROADMAP.md), [`OTF_RELEASE_EVIDENCE.md`](archive/OTF_RELEASE_EVIDENCE.md), [`ASSUMPTIONS_AND_LIMITATIONS.md`](ASSUMPTIONS_AND_LIMITATIONS.md)
 
 ## 1. Purpose
 
@@ -122,7 +122,7 @@ Therefore:
 - This protocol is published and ready to execute.
 - No statistical release recommendation is made from synthetic fixtures alone.
 - Engineering correctness / regression gates are tracked separately in
-  [`OTF_RELEASE_EVIDENCE.md`](OTF_RELEASE_EVIDENCE.md).
+  [`OTF_RELEASE_EVIDENCE.md`](archive/OTF_RELEASE_EVIDENCE.md).
 
 Users should paste completed matrix/WFO evidence into that evidence document
 (or an attached research bundle) when performing a true statistical release

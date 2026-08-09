@@ -1,12 +1,15 @@
 # ThesisTester — In-Depth Repository Analysis
 
+> **Point-in-time research snapshot (2026-07-29).** Not a living status doc. Some scores (e.g. “no CI / unpackaged”) are **stale** vs current `main`. Living status: [`../ENGINEERING_ROADMAP.md`](../ENGINEERING_ROADMAP.md).
+
+
 **Document type:** Repository analysis (feature scope, quality, functionality)
 **Date:** 2026-07-29
 **Method:** Static analysis of the full tree plus runtime verification: `pytest -q` (**1516 passed in ~31 s**), two end-to-end engine smoke runs on synthetic NQ 1-minute data (levels → confluence → signals → backtest → metrics → validation), and manual review of the core engine, analytics, and all 14 documents in `docs/`. No code was modified.
 
 Related documents:
 
-- `docs/SOTA_BACKTESTING_LANDSCAPE.md` — market research this analysis is compared against.
+- `docs/research/SOTA_BACKTESTING_LANDSCAPE.md` — market research this analysis is compared against.
 - `docs/ENGINEERING_PROPOSAL.md` — comparison + regression-safe roadmap built on both.
 
 ---
@@ -30,7 +33,7 @@ Its distinguishing strength is **engineering discipline unusual for a solo resea
 | Analytics depth | 6 | Strong trade-statistics (R6) incl. MAE/MFE capture; MAE/MFE *analytics* not surfaced |
 | Workflow/automation | 3 | Streamlit multipage only; no CLI/headless API, no batch experiments, no replay |
 
-**Comparator note:** the "vs SOTA" scores weight the quantitative-research tier (StrategyQuant X, Build Alpha, RealTest, AmiBroker, VectorBT, LEAN) and the analyzer subsystems of retail platforms more heavily than chart/replay tooling, per the framing in `docs/SOTA_BACKTESTING_LANDSCAPE.md` §1.1. ThesisTester is a quantitative setup-research tool, not a replay platform; "no replay" above is recorded as a workflow fact, not scored as a deficiency against order-flow replay tools.
+**Comparator note:** the "vs SOTA" scores weight the quantitative-research tier (StrategyQuant X, Build Alpha, RealTest, AmiBroker, VectorBT, LEAN) and the analyzer subsystems of retail platforms more heavily than chart/replay tooling, per the framing in `docs/research/SOTA_BACKTESTING_LANDSCAPE.md` §1.1. ThesisTester is a quantitative setup-research tool, not a replay platform; "no replay" above is recorded as a workflow fact, not scored as a deficiency against order-flow replay tools.
 
 ---
 
@@ -120,7 +123,7 @@ State flows between pages through a documented `st.session_state` contract (24 k
 - Setup library with dataset scoping, duplicate/activate/delete, compatibility checks (`pages/2_Setup_Builder.py`).
 - Save-as-default execution settings with independent, schema-versioned `backtest_defaults`/`grid_defaults` namespaces, silent-drop validation of stale values, never auto-saved (R8, `thesistester/execution_defaults.py`).
 - Export: `research_artifact.json`, `research_report.md`, CSV tables; zip research bundles (parquet + JSON) with import (`thesistester/reporting.py`, `research_bundle.py`).
-- Plotly charting for levels/signals/backtest overlays with windowing/payload-reduction work already done (`thesistester/visualization/`, `docs/chart-visualization-engineering-rollout.md`).
+- Plotly charting for levels/signals/backtest overlays with windowing/payload-reduction work already done (`thesistester/visualization/`, `docs/archive/chart-visualization-engineering-rollout.md`).
 
 ---
 

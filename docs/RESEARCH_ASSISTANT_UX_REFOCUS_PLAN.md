@@ -2,7 +2,7 @@
 
 **Document type:** Implementation contract (RUX-series) — **single source of truth for Research Assistant page layout/prominence**
 **Status:** ✅ **Complete** — RUX-0…RUX-5 (discuss-first layout; evidence in
-`docs/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md`)
+`docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md`)
 **Date:** 2026-08-07 (contract); closeout 2026-08-08
 **Owner surface:** `pages/14_Research_Assistant.py` + presentation-only helpers in
 `thesistester/assistant/` (`ux.py`, `workspace.py`, `llm.py` settings loader)
@@ -437,7 +437,7 @@ their internals.
 | `docs/USER_GUIDE.md` | Update navigation steps in the three affected sections (titles unchanged): Research Assistant surfaces table + how-to, Research mode step 4, Help-vs-Discuss steps 2–3 |
 | `docs/ARCHITECTURE.md` | Replace the "chat-first" paragraph with the discuss-first mode layout; update the two `Advanced → Linked runs` references |
 | `docs/RESULTS_AND_PRODUCT_QA_IMPLEMENTATION.md` | Amend the two §1 UI-attach freezes per §1.2 and the §RQ-4 UI note (channel logic untouched) |
-| `docs/ENGINEERING.md` | Update the realtime-voice navigation line |
+| `docs/VOICE_SIDECAR_OPS.md` | Living voice sidecar ops (extracted from archived ENGINEERING.md) |
 | `app.py` | One-line pointer refresh (Research Assistant = discuss runs + product help) |
 | `tests/test_assistant_page_render.py` | Rewrite structural assertions to the new layout (modes, default = Discuss, Discuss thread/input at top level, Help mode, Advanced/Debug still collapsed, channel isolation preserved, deep-link → Discuss mode + preselected run **and** still force-opens the Advanced/run expanders). **First addition in RUX-2:** seed at least one completed discussable run (status `completed` + dict provenance) so AppTest can assert Discuss thread/input visibility and catch duplicate widget keys — RUX-0's deep-link baseline uses an orphan `run_id` and only proves expander force-open session keys |
 | `tests/test_assistant_workspace.py` | Update the `Advanced → Linked runs` source guard and any placement-dependent ordering assertions |
@@ -559,13 +559,13 @@ diff is empty; RQ-5 honesty/injection evals green.
 
 | File | Change |
 |---|---|
-| `docs/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | New: before/after layout, rendered-assertion inventory, deep-link verification, walkthrough matrix, full-suite result |
+| `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | New: before/after layout, rendered-assertion inventory, deep-link verification, walkthrough matrix, full-suite result |
 | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` | Status → Complete; per-PR outcomes |
 | `docs/ENGINEERING_ROADMAP.md` | Index row → Complete (RUX-0…RUX-5) |
 | `docs/AGENT_GUIDE.md` | "Do not reopen RUX for layout changes; amend this contract instead" |
 
 **Acceptance:** evidence doc contains rendered proof for every §5.3 acceptance
-bullet; suite green — see `docs/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md`.
+bullet; suite green — see `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md`.
 
 **Per-PR outcomes (series)**
 

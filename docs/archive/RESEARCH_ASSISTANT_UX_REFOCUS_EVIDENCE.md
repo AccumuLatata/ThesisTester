@@ -1,13 +1,16 @@
 # Research Assistant UX Refocus — Release Evidence and Closeout
 
+> **ARCHIVED closeout evidence.** Living contract: [`../RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md`](../RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md).
+
+
 **Project:** ThesisTester  
 **Feature:** Research Assistant page layout / surface prominence (discuss-first)  
 **Document type:** RUX-5 release evidence / engineering sign-off  
 **Last updated:** 2026-08-08  
 **Baseline commit (main at recording):** `a3e4789` (merge of RUX-4 / #304)  
-**Related:** [`RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md`](RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md),
-[`ARCHITECTURE.md`](ARCHITECTURE.md), [`USER_GUIDE.md`](USER_GUIDE.md),
-[`ENGINEERING_PROPOSAL.md`](ENGINEERING_PROPOSAL.md) §4
+**Related:** [`RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md`](../RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md),
+[`ARCHITECTURE.md`](../ARCHITECTURE.md), [`USER_GUIDE.md`](../USER_GUIDE.md),
+[`ENGINEERING_PROPOSAL.md`](../ENGINEERING_PROPOSAL.md) §4
 
 ## 1. Release framing (honest)
 

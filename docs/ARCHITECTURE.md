@@ -1,5 +1,8 @@
 # ARCHITECTURE
 
+Lean documentation index: [`README.md`](README.md) (living vs contract vs
+`archive/` / `research/`).
+
 ## Packaging and tooling boundary (R9)
 
 | Artifact | Packaged? | Notes |
@@ -939,7 +942,7 @@ edge).
 SW7 hardens C2 so Time Analysis Focus membership **and** Focus/Promote bucket
 options always use `entry_timestamp` (even when charts group by exit — exit
 table rows are not Focus options), adds C9 joint admission coverage, and records
-engineering sign-off in `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`. Bundle
+engineering sign-off in `docs/archive/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`. Bundle
 import clears stale `backtest_entry_window_*` widgets and rehydrates them from
 the restored Admit `entry_window` so Backtest Run applies the imported
 constraint. Report checklist / metadata `available` requires an enabled
@@ -1020,7 +1023,12 @@ flowchart LR
     H --> I[Report / Export]
 ```
 
-Flow basis in app workflow and phase pages: `app.py:12-33`, `pages/1_Data.py`, `pages/5_Levels.py`, `pages/2_Setup_Builder.py`, `pages/6_Signals.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/9_Time_Analysis.py`, `pages/10_Validation.py`, `pages/11_Report_Export.py`.
+Flow basis in app workflow and phase pages: `app.py`, `pages/1_Data.py`,
+`pages/2_Levels.py`, `pages/3_Setup_Builder.py`, `pages/6_Signals.py`,
+`pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/9_Time_Analysis.py`,
+`pages/10_Validation.py`, `pages/11_Report_Export.py`,
+`pages/12_Research_Bundles.py`, `pages/13_Portfolio.py`,
+`pages/14_Research_Assistant.py`.
 
 Backtest UI note: `pages/7_Backtest.py` shows both combined KPIs and a separate directional
 ("Long vs Short KPIs") section sourced from the same `trades` DataFrame.
@@ -1035,7 +1043,7 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 
 | Key | Producing page(s) | Consuming page(s) | Schema (observed) |
 |---|---|---|---|
-| `data` | Data (`pages/1_Data.py:114`) | Levels (`pages/5_Levels.py:203-217,425`), Backtest (`pages/7_Backtest.py:64-68`), Grid (`pages/8_Grid_Search.py:36-40`), Report/Bundles (`pages/12_Research_Bundles.py:26`) | `pd.DataFrame` OHLCV/session columns |
+| `data` | Data (`pages/1_Data.py:114`) | Levels (`pages/2_Levels.py:203-217,425`), Backtest (`pages/7_Backtest.py:64-68`), Grid (`pages/8_Grid_Search.py:36-40`), Report/Bundles (`pages/12_Research_Bundles.py:26`) | `pd.DataFrame` OHLCV/session columns |
 | `format_profile` | Data / saved-dataset bootstrap | Local dataset provenance | Explicit R17 parser profile; restored from saved metadata and defaults to `canonical` |
 | `raw_data` | NinjaTrader capture, data capture profiles / saved-dataset bootstrap | Local persistence only | Optional unaggregated NinjaTrader 3/5-field capture or tick/trade rows restored from `raw.parquet`; never consumed by the bar engine. A canonical-only resave preserves an existing sidecar and its provenance. |
 | `raw_interval` | Data capture profiles / saved-dataset bootstrap | Local dataset provenance | Inferred raw capture interval restored from saved metadata and preserved with an existing raw sidecar |
@@ -1045,18 +1053,18 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 | `ingestion_provenance` | Data page / R18 API (`15s_primary_derive_1m`), local-store restore, Research Bundle import | Data-page diagnostics, local `meta.json`, research-bundle `subtimeframe_meta.json` | JSON-safe derivation provenance (`ingestion_mode`, source/parent intervals, `derivation_policy`, `source_format_profile`, `source_content_hash`, dropped-minute count, sparse-minute count) |
 | `derived_parent_diagnostics` | Data page (`15s_primary_derive_1m` mode) | Data-page diagnostics download | Mapping with `sparse_buckets` (`incomplete_coverage`, retained) and `dropped_buckets` (`timestamp_misalignment`, absent from canonical); never used to patch source or parent bars |
 | `resampled_data` | Data (`pages/1_Data.py:115`) | Data summary (`pages/1_Data.py:341`) | `dict[str, pd.DataFrame]` |
-| `instrument` | Data (`pages/1_Data.py:116`) | Levels/Setup/Signals/Backtest/Grid/Time (`pages/5_Levels.py:207`, `pages/2_Setup_Builder.py:67`, `pages/6_Signals.py`, `pages/7_Backtest.py:70`, `pages/8_Grid_Search.py:42`, `pages/9_Time_Analysis.py:30`) | `str` (e.g., `ES`, `NQ`) |
-| `base_interval` | Data (`pages/1_Data.py:117`) | Levels fingerprint (`pages/5_Levels.py:84`), dataset persistence (`pages/1_Data.py:357`) | `str \| None` |
-| `source_timezone` | Data (`pages/1_Data.py:118`) | Levels fingerprint (`pages/5_Levels.py:85`), dataset persistence (`pages/1_Data.py:358`) | `str \| None` |
-| `exchange_timezone` | Data (`pages/1_Data.py:119`) | Levels fingerprint (`pages/5_Levels.py:86`), Backtest/Report TZ handling (`pages/7_Backtest.py:74-75`, `pages/11_Report_Export.py:24-33`) | `str \| None` |
+| `instrument` | Data (`pages/1_Data.py:116`) | Levels/Setup/Signals/Backtest/Grid/Time (`pages/2_Levels.py:207`, `pages/3_Setup_Builder.py:67`, `pages/6_Signals.py`, `pages/7_Backtest.py:70`, `pages/8_Grid_Search.py:42`, `pages/9_Time_Analysis.py:30`) | `str` (e.g., `ES`, `NQ`) |
+| `base_interval` | Data (`pages/1_Data.py:117`) | Levels fingerprint (`pages/2_Levels.py:84`), dataset persistence (`pages/1_Data.py:357`) | `str \| None` |
+| `source_timezone` | Data (`pages/1_Data.py:118`) | Levels fingerprint (`pages/2_Levels.py:85`), dataset persistence (`pages/1_Data.py:358`) | `str \| None` |
+| `exchange_timezone` | Data (`pages/1_Data.py:119`) | Levels fingerprint (`pages/2_Levels.py:86`), Backtest/Report TZ handling (`pages/7_Backtest.py:74-75`, `pages/11_Report_Export.py:24-33`) | `str \| None` |
 | `display_timezone` | Data/Backtest/Time/Report widgets (`pages/1_Data.py:120-123`, `pages/7_Backtest.py:85-90`, `pages/9_Time_Analysis.py:68-73`, `pages/11_Report_Export.py:26-33`) | Time/Report export conversions (`pages/9_Time_Analysis.py:109`, `pages/11_Report_Export.py:33,129-133`) | `str` |
-| `dataset_id` | Data (`pages/1_Data.py:124,361`) | Levels/Signals persistence (`pages/5_Levels.py:208-217`, `pages/6_Signals.py`) | `str` |
-| `levels` | Levels (`pages/5_Levels.py:186,455`) | Setup/Signals/Backtest/Grid/Report/Bundles (`pages/2_Setup_Builder.py:62-67`, `pages/6_Signals.py`, `pages/7_Backtest.py:62-63`, `pages/8_Grid_Search.py:34-35`, `pages/12_Research_Bundles.py:30`) | `pd.DataFrame` OHLCV + derived level columns |
-| `session_levels` | Levels (`pages/5_Levels.py:187,454`) | Bundles/save (`pages/5_Levels.py:497`, `pages/12_Research_Bundles.py:30`) | `pd.DataFrame` session-level table |
-| `levels_settings` | Levels (`pages/5_Levels.py:188,456`) | Levels stale checks (`pages/5_Levels.py:323`), Signals persistence context (`pages/6_Signals.py`) | `dict` |
-| `levels_data_fingerprint` | Levels (`pages/5_Levels.py:189,457`) | Levels stale checks (`pages/5_Levels.py:324-336`) | `dict` |
-| `setup_config` | Setup Builder (`pages/2_Setup_Builder.py:200`), Signals saved-run copy action (`pages/6_Signals.py`) | Signals setup-source selection (`pages/6_Signals.py`), Report (`pages/11_Report_Export.py:36-43`) | `dict` setup configuration |
-| `setup_configs` | Setup Builder (`pages/2_Setup_Builder.py:201-205`) | Setup Builder only | `list[dict]` |
+| `dataset_id` | Data (`pages/1_Data.py:124,361`) | Levels/Signals persistence (`pages/2_Levels.py:208-217`, `pages/6_Signals.py`) | `str` |
+| `levels` | Levels (`pages/2_Levels.py:186,455`) | Setup/Signals/Backtest/Grid/Report/Bundles (`pages/3_Setup_Builder.py:62-67`, `pages/6_Signals.py`, `pages/7_Backtest.py:62-63`, `pages/8_Grid_Search.py:34-35`, `pages/12_Research_Bundles.py:30`) | `pd.DataFrame` OHLCV + derived level columns |
+| `session_levels` | Levels (`pages/2_Levels.py:187,454`) | Bundles/save (`pages/2_Levels.py:497`, `pages/12_Research_Bundles.py:30`) | `pd.DataFrame` session-level table |
+| `levels_settings` | Levels (`pages/2_Levels.py:188,456`) | Levels stale checks (`pages/2_Levels.py:323`), Signals persistence context (`pages/6_Signals.py`) | `dict` |
+| `levels_data_fingerprint` | Levels (`pages/2_Levels.py:189,457`) | Levels stale checks (`pages/2_Levels.py:324-336`) | `dict` |
+| `setup_config` | Setup Builder (`pages/3_Setup_Builder.py:200`), Signals saved-run copy action (`pages/6_Signals.py`) | Signals setup-source selection (`pages/6_Signals.py`), Report (`pages/11_Report_Export.py:36-43`) | `dict` setup configuration |
+| `setup_configs` | Setup Builder (`pages/3_Setup_Builder.py:201-205`) | Setup Builder only | `list[dict]` |
 | `confluence_zones` | Signals (`pages/6_Signals.py`) | Signals display (`pages/6_Signals.py`), Backtest chart overlay (`pages/7_Backtest.py:294-300`), Bundles (`pages/12_Research_Bundles.py:36`) | `pd.DataFrame` zone rows |
 | `naked_flags` | Signals (`pages/6_Signals.py`) | Signals logic/save (`pages/6_Signals.py`), Bundles (`pages/12_Research_Bundles.py:37`) | `pd.DataFrame` naked-level flags |
 | `signals` | Signals (`pages/6_Signals.py`) | Backtest/Grid/Report/Bundles (`pages/7_Backtest.py:48-56`, `pages/8_Grid_Search.py:21-29`, `pages/11_Report_Export.py:38-39`, `pages/12_Research_Bundles.py:35`) | `pd.DataFrame` candidate/fill signal rows |
@@ -1148,8 +1156,8 @@ metrics with per-side minimum trade-count gates.  Each grid row includes `long_*
 - Research artifacts project OTF via `build_otf_filter_metadata()` into
   `assumptions.otf_filter` / top-level `otf_filter`, and optional
   `otf_validation` from the matrix.
-- Contract: `docs/otf-filter.md`. Hardening tracker:
-  `docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md`.
+- Contract: `docs/otf-filter.md`. Archived hardening tracker:
+  `docs/archive/OTF_HARDENING_AND_RELEASE_ROADMAP.md`.
 
 Signals robustness notes:
 - Non-base trigger-timeframe grouping in `thesistester/engine/signals.py` uses DST-safe
@@ -1248,7 +1256,7 @@ snapshot back into Setup Builder session state for review/edit/save before persi
 
 ## Levels page advanced level controls (Stage 6)
 
-The Levels page (`pages/5_Levels.py`) exposes an **"Advanced opt-in levels"** expander below
+The Levels page (`pages/2_Levels.py`) exposes an **"Advanced opt-in levels"** expander below
 existing profile settings. Controls inside it:
 
 | Control | Default | Notes |
@@ -1287,7 +1295,7 @@ generically without stage-specific workflow changes.
 
 ### Levels calculation observability
 
-`pages/5_Levels.py` treats a calculation as an atomic UI transaction. It computes into local
+`pages/2_Levels.py` treats a calculation as an atomic UI transaction. It computes into local
 frames and installs `levels`, `session_levels`, settings, and the data fingerprint in
 `st.session_state` only after both level calls succeed. A failure retains any prior valid results
 and records `levels_calculation_status` with the dataset id, settings hash, input row count,

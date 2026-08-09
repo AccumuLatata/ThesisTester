@@ -1,5 +1,8 @@
 # Regression-Safe Implementation Plan: Anchor-Based Per-Confluence Model
 
+> **ARCHIVED rollout plan (Phase 8 complete).** Living guide: [`../ANCHOR_CONFLUENCE.md`](../ANCHOR_CONFLUENCE.md).
+
+
 ## Implementation Status
 
 As of Phase 8, the anchor-confluence rollout described in this document has been implemented through the Setup Builder -> Signals -> Backtest workflow.

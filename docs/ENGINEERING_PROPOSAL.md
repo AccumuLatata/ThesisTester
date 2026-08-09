@@ -2,12 +2,20 @@
 
 **Document type:** Proposal + engineering roadmap
 **Date:** 2026-07-29
-**Inputs:** `docs/SOTA_BACKTESTING_LANDSCAPE.md` (market research), `docs/THESISTESTER_ANALYSIS.md` (repository analysis with runtime verification).
+**Inputs:** `docs/research/SOTA_BACKTESTING_LANDSCAPE.md` (market research), `docs/research/THESISTESTER_ANALYSIS.md` (repository analysis with runtime verification).
 **Status of this document:** **R9–R22 are implemented** (see `docs/ENGINEERING_ROADMAP.md`). Each milestone landed as its own PR series following the repo's established regression-safe conventions (`docs/AGENT_GUIDE.md`, R1–R8 precedent).
+
+> **How to read this file:** §§1–3 preserve the **pre-implementation gap snapshot**
+> that justified R9–R22 (worded as “today” at proposal time). They are **not**
+> current capability status. Living status → `docs/ENGINEERING_ROADMAP.md`.
+> **Normative living content here is §4 (Regression-safety framework)**, including
+> §4.1 golden-master ops and §4.2 per-milestone PR checklist.
 
 ---
 
 ## 1. Executive summary
+
+> Historical proposal snapshot (pre-R9). See banner above.
 
 ThesisTester already out-executes most retail tools on **correctness discipline** (point-in-time guarantees, determinism, pessimistic ambiguity resolution, honesty documentation). It under-delivers on four capability axes where state-of-the-art tools concentrate their value for intraday NQ/ES researchers:
 
@@ -24,7 +32,7 @@ The proposal: **do not chase the incumbents' breadth** (replay, live trading, st
 
 ### 2.1 The niche to own
 
-From the landscape research (`docs/SOTA_BACKTESTING_LANDSCAPE.md` §9): **no single product combines** programmatic volume-profile/level primitives, realistic intraday fills, MAE/MFE-driven SL/TP tooling, and modern overfitting batteries. StrategyQuant X + AmiBroker/RealTest lead on validation; Sierra/ATAS own replay realism; LEAN/Nautilus own execution modeling. ThesisTester's defensible position is the intersection: a levels engine + session-aware event studies + statistical validation, purpose-built for the ES/NQ confluence-setups research loop.
+From the landscape research (`docs/research/SOTA_BACKTESTING_LANDSCAPE.md` §9): **no single product combines** programmatic volume-profile/level primitives, realistic intraday fills, MAE/MFE-driven SL/TP tooling, and modern overfitting batteries. StrategyQuant X + AmiBroker/RealTest lead on validation; Sierra/ATAS own replay realism; LEAN/Nautilus own execution modeling. ThesisTester's defensible position is the intersection: a levels engine + session-aware event studies + statistical validation, purpose-built for the ES/NQ confluence-setups research loop.
 
 Benchmark classes follow the landscape's framing (`§1.1`): ThesisTester is a **quantitative setup-research tool**, so every roadmap milestone below is benchmarked against quant engines, robustness specialists, and the *analyzer subsystems* of retail platforms (Strategy Analyzer, WFO, Portfolio Maestro, Bar Magnifier) — never against chart/replay features, which are anti-scope (§2.2).
 

@@ -1,5 +1,8 @@
 # State of the Art — Backtesting Software for Intraday Futures Daytraders (NQ/ES)
 
+> **Research snapshot (2026-07-29).** External landscape input to [`../ENGINEERING_PROPOSAL.md`](../ENGINEERING_PROPOSAL.md). Not product status.
+
+
 **Document type:** Market research / competitive feature inventory
 **Date:** 2026-07-29
 **Method:** 40+ web searches (July 2026), prioritizing vendor documentation and 2024–2026 sources. Load-bearing claims carry inline citations. Capabilities not confirmed in cited sources are marked approximate.
@@ -8,7 +11,7 @@
 
 Related documents:
 
-- `docs/THESISTESTER_ANALYSIS.md` — in-depth analysis of this repository.
+- `docs/research/THESISTESTER_ANALYSIS.md` — in-depth analysis of this repository.
 - `docs/ENGINEERING_PROPOSAL.md` — comparison + regression-safe roadmap built on both.
 
 ---

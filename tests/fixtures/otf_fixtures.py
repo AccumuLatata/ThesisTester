@@ -1,7 +1,7 @@
 """Deterministic OHLCV fixtures and OTF v1 contract test vectors.
 
 These fixtures cover every scenario documented in docs/otf-filter.md and
-docs/otf-filter-roadmap.md (Phase 1).  They are designed to be used by
+docs/archive/otf-filter-roadmap.md (Phase 1).  They are designed to be used by
 tests/test_otf_contract.py to verify fixture integrity and contract
 consistency without implementing a production OTF engine.
 

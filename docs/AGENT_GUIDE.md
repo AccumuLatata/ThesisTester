@@ -194,12 +194,13 @@ Agent safety requirements:
   trading advice. Existing intrabar, execution-cost, roll, and serial-
   dependence limitations remain unchanged.
 
-## AI Research Assistant contracts (AIA-0)
+## AI Research Assistant contracts (AIA-0+)
 
-`thesistester.assistant` is an additive, non-executing contract layer for the
-proposed local AI Research Assistant. `FEATURE_PARITY_REGISTRY` is the source of
-truth for the assistant's present product coverage. Every request must first
-parse as an `AssistantRequest`, then pass `validate_capability_request()`.
+`thesistester.assistant` is the shipped AI Research Assistant stack (AIA/C2/CAI +
+RQ/HC/DI/RI/VA/DX/RUX). Status index: `docs/ENGINEERING_ROADMAP.md`.
+`FEATURE_PARITY_REGISTRY` is the source of truth for present product coverage.
+Every request must first parse as an `AssistantRequest`, then pass
+`validate_capability_request()`.
 
 - Unknown request keys and unknown capability IDs fail closed.
 - Capability IDs classified as `unsupported` cannot be executed; their
@@ -318,7 +319,7 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
 - Research Assistant **page layout / surface prominence** has a **single**
   contract: `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX-series, ✅
   RUX-0…RUX-5 complete; evidence
-  `docs/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md`). **Do not reopen RUX for
+  `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md`). **Do not reopen RUX for
   layout changes; amend this contract instead.** RUX is **presentation-only**:
   it may change containers, ordering, captions, and additive presentation
   session keys on `pages/14_Research_Assistant.py`, and must not touch the
@@ -594,11 +595,16 @@ When OTF is enabled in walk-forward:
 
 ## Where each phase lives
 - **Phase 1 (Data):** `pages/1_Data.py`, data loaders/validators in `thesistester/data/`.
-- **Phase 2/3 (Levels):** `pages/5_Levels.py`, level engines in `thesistester/levels.py`.
-- **Phase 6.5 (Setup Builder):** `pages/2_Setup_Builder.py`, setup helpers in `thesistester/setup.py`.
+- **Phase 2/3 (Levels):** `pages/2_Levels.py`, level engines in `thesistester/levels/`.
+- **Phase 6.5 (Setup Builder):** `pages/3_Setup_Builder.py`, setup helpers in `thesistester/setup.py`.
 - **Phase 4 (Signals):** `pages/6_Signals.py`, signal/confluence functions in `thesistester/engine/`.
 - **Phase 5 (Backtest):** `pages/7_Backtest.py`, simulator in `thesistester/engine/backtest.py`, metrics in `thesistester/analytics/metrics.py`.
 - **Phase 6 (Grid):** `pages/8_Grid_Search.py`, grid analytics in `thesistester/analytics/grid.py`.
 - **Phase 7 (Time):** `pages/9_Time_Analysis.py`, helpers in `thesistester/analytics/time_analysis.py`.
 - **Phase 8 (Validation):** `pages/10_Validation.py`, diagnostics in `thesistester/analytics/validation.py`.
 - **Phase 9 (Report/Export):** `pages/11_Report_Export.py`, artifact builders in `thesistester/reporting.py`.
+- **Research Bundles:** `pages/12_Research_Bundles.py`, bundle helpers in `thesistester/research_bundle.py`.
+- **Portfolio:** `pages/13_Portfolio.py`.
+- **Research Assistant:** `pages/14_Research_Assistant.py`, `thesistester/assistant/`.
+- **Docs index:** `docs/README.md` (living vs contract vs archive/research).
+- **Voice sidecar ops:** `docs/VOICE_SIDECAR_OPS.md`.

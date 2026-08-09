@@ -421,7 +421,7 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 - No required new TOML keys for DX v1.
 - Voice remains opt-in (`assistant.voice.enabled=false` tracked default).
 - Operators use existing sidebar Voice controls / override TOML + localhost
-  sidecar as documented in `docs/ENGINEERING.md` / VA contract.
+  sidecar as documented in `docs/VOICE_SIDECAR_OPS.md` / VA contract.
 - If DX-1 characterization requires a compatibility flag, add
   `duplex_di_overview_envelope = true` under `[assistant.voice]` with default
   `true` only after proving additive legacy keys keep VA tests green; document

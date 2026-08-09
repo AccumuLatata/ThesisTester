@@ -34,7 +34,8 @@ Per trade:
 \[
 \text{win\_rate} = \frac{\#\{R_i > 0\}}{n}
 \]
-Implementation: wins filter and ratio in `thesistester/analytics/metrics.py:51,54`.
+Implementation: wins filter and ratio in `thesistester/analytics/metrics.py`
+(`summarize_trades`, win_rate from `r[r > 0]`).
 
 ### Profit factor
 \[
@@ -45,7 +46,8 @@ Implementation: wins filter and ratio in `thesistester/analytics/metrics.py:51,5
 0, & \text{otherwise}
 \end{cases}
 \]
-Implementation: `gross_win`, `gross_loss`, and branches in `thesistester/analytics/metrics.py:60-67`.
+Implementation: `gross_win`, `gross_loss`, and branches in
+`thesistester/analytics/metrics.py` (`summarize_trades` profit-factor block).
 
 ### Expectancy (R)
 \[
@@ -92,7 +94,9 @@ Implementation: `thesistester/analytics/metrics.py`.
 \[
 \text{max\_drawdown\_r} = \max_t(\text{drawdown}_t)
 \]
-Implementation: `cum_r`, `cummax().clip(lower=0.0)`, and drawdown in `thesistester/analytics/metrics.py:82-85` (and same anchor logic in equity curve at `thesistester/analytics/metrics.py:203-206`).
+Implementation: `cum_r`, `cummax().clip(lower=0.0)`, and drawdown in
+`thesistester/analytics/metrics.py` (`_drawdown_series` / `summarize_trades`;
+same anchor logic in equity-curve helpers).
 
 ## Execution cost inputs
 

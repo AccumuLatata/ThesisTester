@@ -3,7 +3,7 @@
 **Document type:** Implementation plan (fully scoped PRs)  
 **Date:** 2026-08-06  
 **Last revised:** 2026-08-07 (pre-implementation audit; renamed from proposal)  
-**Status:** Engineering-signed through **SW7**; SW2b cutoff audit shipped as follow-up — see `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`  
+**Status:** Engineering-signed through **SW7**; SW2b cutoff audit shipped as follow-up — see `docs/archive/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`  
 **Inputs:** Time Analysis / Backtest UX gap analysis; design-review contracts C1–C9; codebase audit vs `simulate_trades` / golden / session_state; `docs/ENGINEERING_PROPOSAL.md` §4  
 **Related code:** `thesistester/analytics/time_analysis.py`, `thesistester/engine/backtest.py`, `thesistester/analytics/grid.py`, `thesistester/analytics/walk_forward.py`, `thesistester/analytics/overfitting.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/9_Time_Analysis.py`, `pages/10_Validation.py`, `thesistester/api.py`  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4 (including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist)
@@ -478,7 +478,7 @@ Additive setup key + normalize/default (OTF pattern). Export provenance. Assista
 
 ### SW7 — Hardening + release evidence
 
-Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; honesty review.
+Parity audit; goldens green; `docs/archive/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; honesty review.
 
 **Scope.**
 
@@ -488,7 +488,7 @@ Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; ho
 - [x] Export honesty micro-fix (Focus label from provenance fallback; invalid prov fail-closed).
 - [x] Docs honesty (USER_GUIDE setup non-auto-wire; ASSUMPTIONS C2 entry-time Focus).
 - [x] Goldens green + recorded verification suites (legacy / enabled-window / full `tests/`).
-- [x] `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md` engineering sign-off.
+- [x] `docs/archive/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md` engineering sign-off.
 - [x] Status trackers + roadmap posture updated.
 
 **Out of scope.** SW2b cutoff skip audit; auto-wire setup → Backtest; sweeping time as a grid axis; fabricating real-data OOS edge.
@@ -554,12 +554,12 @@ Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; ho
 | SW0 Plan + golden confirmation | Merged | [#286](https://github.com/AccumuLatata/ThesisTester/pull/286) |
 | SW1 Post-hoc Focus | Merged | [#292](https://github.com/AccumuLatata/ThesisTester/pull/292) |
 | SW2 Engine admission + C7 + golden | Merged | [#293](https://github.com/AccumuLatata/ThesisTester/pull/293) |
-| SW2b Cutoff skip audit + honesty | Open (this PR) | [#299](https://github.com/AccumuLatata/ThesisTester/pull/299) |
+| SW2b Cutoff skip audit + honesty | Merged | [#299](https://github.com/AccumuLatata/ThesisTester/pull/299) |
 | SW3 API + Backtest Admit UI | Merged | [#294](https://github.com/AccumuLatata/ThesisTester/pull/294) |
 | SW4 Promote handoff UX | Merged | [#295](https://github.com/AccumuLatata/ThesisTester/pull/295) |
 | SW5 Grid + Validation inheritance | Merged | [#296](https://github.com/AccumuLatata/ThesisTester/pull/296) |
 | SW6 Persistence + export + assistant | Merged | [#297](https://github.com/AccumuLatata/ThesisTester/pull/297) |
-| SW7 Hardening + release evidence | Open (this PR) | [#298](https://github.com/AccumuLatata/ThesisTester/pull/298) |
+| SW7 Hardening + release evidence | Merged | [#298](https://github.com/AccumuLatata/ThesisTester/pull/298) |
 
 ---
 

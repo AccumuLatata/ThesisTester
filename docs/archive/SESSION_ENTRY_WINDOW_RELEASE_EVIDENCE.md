@@ -1,11 +1,14 @@
 # Session Entry Window — Release Evidence and Sign-off
 
+> **ARCHIVED engineering evidence.** Normative contracts: [`../SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md`](../SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md).
+
+
 **Project:** ThesisTester  
 **Feature:** Session entry-window research loop (Focus → Admit → Grid/WFA → export)  
 **Document type:** SW7 hardening / release evidence checklist  
 **Last updated:** 2026-08-07  
 **Baseline commit (main at recording):** `2181e53` (merge of SW6 / #297)  
-**Related:** [`SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md`](SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md), [`ASSUMPTIONS_AND_LIMITATIONS.md`](ASSUMPTIONS_AND_LIMITATIONS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`ENGINEERING_PROPOSAL.md`](ENGINEERING_PROPOSAL.md) §4
+**Related:** [`SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md`](../SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md), [`ASSUMPTIONS_AND_LIMITATIONS.md`](../ASSUMPTIONS_AND_LIMITATIONS.md), [`ARCHITECTURE.md`](../ARCHITECTURE.md), [`ENGINEERING_PROPOSAL.md`](../ENGINEERING_PROPOSAL.md) §4
 
 ## 1. Release framing (honest)
 
