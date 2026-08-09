@@ -527,10 +527,11 @@ Initial freeze (amend to expand):
 | `results.projections.extreme_trades` | Worst/best R trades summary | N≤5 each (caller `n` hard-clamped); claim allowlist is R + exit_reason only; timestamps are **omitted** from the model-facing projection object (ISO digits launder through the auditor) |
 | `results.projections.streak_summary` | Max consecutive wins/losses if not already in trade_summary | Scalars only |
 
-Intent cues + allowlists land in the same RI-9 PR. Exit-reason / extreme-trade
-asks with no table-derived projections → limitation **before LLM** (streak
-scalars from `trade_summary` alone must not answer exit structure). Digit-bearing
-exit-reason labels are not narratable claim leaves. No engine re-sim.
+Intent cues + allowlists land in the same RI-9 PR. Exit-reason asks require
+`exit_reason_counts`; extreme-trade asks require `extreme_trades`; either with
+no matching table projection → limitation **before LLM** (streak scalars or the
+other table family must not answer the wrong topic). Digit-bearing exit-reason
+labels are not narratable claim leaves. No engine re-sim.
 
 ---
 

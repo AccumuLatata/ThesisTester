@@ -2022,8 +2022,8 @@ def test_r21_exit_reason_ask_with_tables_grounds_capped_histogram():
         not in paths
     )
     assert "99" not in reply.summary
-    assert "results.projections.extreme_trades.best.0.r_multiple" in paths
-    # Exit-reason asks are topic-scoped to table projections (not streaks alone).
+    # Exit-reason asks are topic-scoped to exit_reason_counts (not extremes/streaks).
+    assert "results.projections.extreme_trades.best.0.r_multiple" not in paths
     assert "results.projections.streak_summary.max_consecutive_wins" not in paths
 
 
@@ -2070,6 +2070,35 @@ def test_ri9_exit_ask_does_not_use_streak_only_trade_summary():
     )
     context = build_ephemeral_results_context(packet)
     assert has_deep_trade_evidence(context, user_message="win streak") is True
+    assert has_deep_trade_evidence(context, user_message="exit reasons please") is False
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="exit reasons please",
+        turn_context=context,
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MISSING_DEEP_TRADE
+
+
+def test_ri9_exit_ask_does_not_use_extreme_only_projections():
+    """Extreme-trade leaves alone must not answer exit-reason asks."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri9_extreme_only"},
+        assumptions={},
+        results={"trade_summary": {"trade_count": 3}},
+        warnings=(),
+        limitations=(),
+    )
+    # Rows with R but no exit_reason strings → extremes only (no histogram).
+    rows = [{"r_multiple": 1.0}, {"r_multiple": -1.0}, {"r_multiple": 2.0}]
+    context = build_ephemeral_results_context(packet, trade_rows=rows)
+    assert "extreme_trades" in context["results"]["projections"]
+    assert "exit_reason_counts" not in context["results"]["projections"]
+    assert has_deep_trade_evidence(context, user_message="best trade") is True
     assert has_deep_trade_evidence(context, user_message="exit reasons please") is False
     client = _FailClient(_uncited_digits_payload())
     reply = propose_results_reply(

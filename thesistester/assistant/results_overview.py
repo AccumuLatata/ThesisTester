@@ -475,8 +475,8 @@ _DEEP_TRADE_POSITIVE_CUES: tuple[str, ...] = (
     "consecutive losses",
 )
 
-# Exit/extreme cues require table-derived projections (§6: tables absent → limitation).
-_DEEP_TRADE_TABLE_CUES: tuple[str, ...] = (
+# Exit-reason cues require ``exit_reason_counts`` (§6: tables absent → limitation).
+_DEEP_TRADE_EXIT_CUES: tuple[str, ...] = (
     "exit reason",
     "exit reasons",
     "exit-reason",
@@ -485,6 +485,10 @@ _DEEP_TRADE_TABLE_CUES: tuple[str, ...] = (
     "how did trades exit",
     "how many trades exited",
     "trades exited",
+)
+
+# Extreme-trade cues require ``extreme_trades``.
+_DEEP_TRADE_EXTREME_CUES: tuple[str, ...] = (
     "worst trade",
     "worst trades",
     "best trade",
@@ -656,9 +660,21 @@ def _deep_trade_matches(normalized: str) -> bool:
     return _any_cue_matches(_DEEP_TRADE_POSITIVE_CUES, normalized)
 
 
+def _deep_trade_exit_topic_matches(normalized: str) -> bool:
+    """True when the ask needs exit-reason histogram projections."""
+    return _any_cue_matches(_DEEP_TRADE_EXIT_CUES, normalized)
+
+
+def _deep_trade_extreme_topic_matches(normalized: str) -> bool:
+    """True when the ask needs extreme-trade projections."""
+    return _any_cue_matches(_DEEP_TRADE_EXTREME_CUES, normalized)
+
+
 def _deep_trade_table_topic_matches(normalized: str) -> bool:
-    """True when the ask needs exit-reason / extreme-trade table projections."""
-    return _any_cue_matches(_DEEP_TRADE_TABLE_CUES, normalized)
+    """True when the ask needs exit-reason and/or extreme-trade projections."""
+    return _deep_trade_exit_topic_matches(normalized) or _deep_trade_extreme_topic_matches(
+        normalized
+    )
 
 
 def _deep_trade_streak_topic_matches(normalized: str) -> bool:
@@ -1230,25 +1246,37 @@ def has_deep_trade_evidence(
 ) -> bool:
     """True when required §6 deep-trade projection evidence exists for the ask.
 
-    Exit-reason / extreme-trade cues require table-derived projections (§6:
-    tables absent → limitation). Streak-only cues may use ``trade_summary``
-    streak scalars. Without a message, any narratable deep-trade leaf counts.
+    Exit-reason cues require ``exit_reason_counts``; extreme cues require
+    ``extreme_trades`` (§6: tables absent → limitation). Streak-only cues may
+    use ``trade_summary`` streak scalars. Without a message, any narratable
+    deep-trade leaf counts.
     """
     if not isinstance(evidence_context, Mapping):
         return False
-    table_ok = has_deep_trade_table_evidence(evidence_context)
+    exit_ok = _has_narratable_deep_trade_prefix(
+        evidence_context, "results.projections.exit_reason_counts."
+    )
+    extreme_ok = _has_narratable_deep_trade_prefix(
+        evidence_context, "results.projections.extreme_trades."
+    )
     streak_ok = has_deep_trade_streak_evidence(evidence_context)
     if not isinstance(user_message, str) or not user_message.strip():
-        return table_ok or streak_ok
+        return exit_ok or extreme_ok or streak_ok
     normalized = _normalize_message(user_message)
-    needs_table = _deep_trade_table_topic_matches(normalized)
+    needs_exit = _deep_trade_exit_topic_matches(normalized)
+    needs_extreme = _deep_trade_extreme_topic_matches(normalized)
     needs_streak = _deep_trade_streak_topic_matches(normalized)
-    if needs_table:
-        # Exit/extreme structure cannot be answered from streak scalars alone.
-        return table_ok
+    if needs_exit or needs_extreme:
+        # Topic-precise table gates: exit cannot be answered by extremes alone.
+        ok = True
+        if needs_exit:
+            ok = ok and exit_ok
+        if needs_extreme:
+            ok = ok and extreme_ok
+        return ok
     if needs_streak:
-        return streak_ok or table_ok
-    return table_ok or streak_ok
+        return streak_ok or exit_ok or extreme_ok
+    return exit_ok or extreme_ok or streak_ok
 
 
 def _time_grouped_summary_from_context(
@@ -3516,20 +3544,23 @@ def build_deterministic_deep_trade_reply(
             evidence_context=evidence_context,
         )
 
-    # Topic-scope claims: exit/extreme asks must not answer with streaks alone;
-    # streak asks prefer streak leaves (still may include table leaves).
+    # Topic-scope claims: exit/extreme asks must not answer with the wrong
+    # projection family (or streaks alone); streak asks prefer streak leaves.
     path_prefixes: tuple[str, ...] | None = None
     if isinstance(user_message, str) and user_message.strip():
         normalized = _normalize_message(user_message)
-        needs_table = _deep_trade_table_topic_matches(normalized)
+        needs_exit = _deep_trade_exit_topic_matches(normalized)
+        needs_extreme = _deep_trade_extreme_topic_matches(normalized)
         needs_streak = _deep_trade_streak_topic_matches(normalized)
-        if needs_table and not needs_streak:
-            path_prefixes = (
-                "results.projections.exit_reason_counts.",
-                "results.projections.extreme_trades.",
-            )
-        elif needs_streak and not needs_table:
-            path_prefixes = ("results.projections.streak_summary.",)
+        prefixes: list[str] = []
+        if needs_exit:
+            prefixes.append("results.projections.exit_reason_counts.")
+        if needs_extreme:
+            prefixes.append("results.projections.extreme_trades.")
+        if needs_streak and not needs_exit and not needs_extreme:
+            prefixes.append("results.projections.streak_summary.")
+        if prefixes:
+            path_prefixes = tuple(prefixes)
 
     claims: list[EvidenceClaim] = []
     summary_parts: list[str] = []
