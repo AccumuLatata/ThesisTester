@@ -847,3 +847,162 @@ def test_exposure_policy_assumptions_markdown_has_scoped_headings():
     assert "### Backtest" in markdown
     assert "### Grid Search" in markdown
     assert "single_position" in markdown
+
+
+# ---------------------------------------------------------------------------
+# PR 5b — confluence combo report diagnostic (omit-when-unavailable)
+# ---------------------------------------------------------------------------
+
+
+def _confluence_trades_session_state() -> dict:
+    """Session with nonempty level_names combos for report attribution."""
+    state = _sample_session_state()
+    state["trades"] = pd.DataFrame(
+        {
+            "trade_id": [1, 2, 3, 4, 5],
+            "entry_timestamp": pd.to_datetime(
+                [
+                    "2024-01-02 09:31",
+                    "2024-01-02 09:40",
+                    "2024-01-02 10:05",
+                    "2024-01-02 10:20",
+                    "2024-01-02 11:00",
+                ]
+            ),
+            "r_multiple": [1.0, -1.0, 0.5, None, 0.25],
+            "level_count": [2, 2, 3, 1, 3],
+            "level_names": [
+                "pdHigh|VWAP_rolling_1h",
+                "VWAP_rolling_1h|pdHigh",
+                "pdHigh|VWAP_rolling_1h|pdPOC",
+                "",
+                "pdHigh",
+            ],
+            "direction": ["long", "long", "short", "long", "long"],
+            "trigger": ["touch", "touch", "touch", "touch", "3c"],
+        }
+    )
+    state["trade_summary"] = {
+        "trade_count": 4,
+        "win_rate": 0.75,
+        "avg_r": 0.1875,
+        "total_r": 0.75,
+    }
+    return state
+
+
+def test_build_research_artifact_omits_confluence_combo_when_unavailable():
+    artifact = build_research_artifact(_sample_session_state())
+    assert "confluence_combo" not in artifact
+    assert "confluence_exact_combo" not in (artifact.get("tables") or {})
+    markdown = build_markdown_report(artifact)
+    assert "## Confluence Combo Attribution" not in markdown
+
+
+def test_build_research_artifact_includes_confluence_combo_when_available():
+    state = _confluence_trades_session_state()
+    artifact = build_research_artifact(state)
+    block = artifact.get("confluence_combo")
+    assert isinstance(block, dict)
+    assert block.get("available") is True
+    assert block.get("nonempty_combo_trade_count") == 4
+    assert "exact_combo" in (block.get("tables") or {})
+    assert "level_count" in (block.get("tables") or {})
+    assert "membership" in (block.get("tables") or {})
+    assert "pairs" in (block.get("tables") or {})
+    assert "confluence_exact_combo" in (artifact.get("tables") or {})
+
+    markdown = build_markdown_report(artifact)
+    assert "## Confluence Combo Attribution" in markdown
+    assert "Diagnostic only" in markdown
+    assert "### Exact combo" in markdown
+    assert "### Parsed level count" in markdown
+    assert "### Membership" in markdown
+    assert "### Soft pairs" in markdown
+    assert "double-counts" in markdown
+    assert "tested level only" in markdown
+
+
+def test_confluence_combo_report_uses_signal_settings_for_mode_anchor():
+    state = _confluence_trades_session_state()
+    # Stale setup_config alone would not be enough; signal_settings must win.
+    state["setup_config"] = {
+        **state["setup_config"],
+        "confluence_mode": "global_cluster",
+        "anchor_level": "WRONG",
+    }
+    state["signal_settings"] = {
+        "confluence_mode": "anchor_rules",
+        "anchor_level": "pdHigh",
+        "selected_levels": ["pdHigh", "VWAP_rolling_1h", "pdPOC"],
+    }
+    artifact = build_research_artifact(state)
+    block = artifact["confluence_combo"]
+    assert block["confluence_mode"] == "anchor_rules"
+    assert block["anchor_level"] == "pdHigh"
+    assert block["pair_mode"] == "anchor_partner"
+
+
+def test_confluence_combo_report_omits_when_only_empty_level_names():
+    state = _sample_session_state()
+    state["trades"] = pd.DataFrame(
+        {
+            "trade_id": [1, 2],
+            "r_multiple": [1.0, -0.5],
+            "level_names": ["", "nan"],
+        }
+    )
+    artifact = build_research_artifact(state)
+    assert "confluence_combo" not in artifact
+    assert "## Confluence Combo Attribution" not in build_markdown_report(artifact)
+
+
+def test_confluence_combo_markdown_helper_returns_empty_when_unavailable():
+    from thesistester.reporting import _confluence_combo_markdown_section
+
+    assert _confluence_combo_markdown_section(None) == ""
+    assert _confluence_combo_markdown_section({"available": False}) == ""
+    assert _confluence_combo_markdown_section({}) == ""
+
+
+def test_confluence_combo_report_fail_closed_on_unexpected_errors(monkeypatch):
+    """Optional diagnostic must omit rather than take down artifact build."""
+    from thesistester import reporting as reporting_mod
+
+    state = _confluence_trades_session_state()
+
+    def _boom(*_args, **_kwargs):
+        raise AttributeError("simulated attribution failure")
+
+    monkeypatch.setattr(reporting_mod, "confluence_attribution_summary", _boom)
+    assert reporting_mod.build_confluence_combo_report_block(state) is None
+    artifact = build_research_artifact(state)
+    assert "confluence_combo" not in artifact
+    assert "## Confluence Combo Attribution" not in build_markdown_report(artifact)
+
+
+def test_confluence_combo_markdown_preserves_top_n_zero():
+    from thesistester.reporting import _confluence_combo_markdown_section
+
+    markdown = _confluence_combo_markdown_section(
+        {
+            "available": True,
+            "trade_count": 1,
+            "nonempty_combo_trade_count": 1,
+            "empty_level_names_count": 0,
+            "confluence_mode": "unknown",
+            "anchor_level": None,
+            "pair_mode": "generic",
+            "warnings": [],
+            "top_n": 0,
+            "tables": {
+                "exact_combo": [],
+                "level_count": [],
+                "membership": [],
+                "pairs": [],
+            },
+        }
+    )
+    assert "top 0 by |total_r|" in markdown
+    assert "top 15 by |total_r|" not in markdown
+    assert "Empty level_names (analyzable)" in markdown

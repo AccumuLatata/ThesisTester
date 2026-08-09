@@ -1058,6 +1058,11 @@ mixed int/str keys do not TypeError or lex-sort (`10` before `2`).
 Pairs/membership are not Time Analysis group dims; Focus/Promote stay on entry-time
 buckets only.
 
+Report / Export (`pages/11_Report_Export.py`) may include an optional confluence
+combo diagnostic block via `build_research_artifact` → `build_confluence_combo_report_block`.
+It recomputes on export from session trades (no Backtest producer combo session key)
+and is omitted entirely when unavailable.
+
 Grid Search directional note: `pages/8_Grid_Search.py` shows aggregate KPIs by default.
 Enable **Advanced directional ranking** to rank by long/short or balanced weaker-side
 metrics with per-side minimum trade-count gates.  Each grid row includes `long_*`,

@@ -492,6 +492,11 @@ primary/secondary grouping dims when `available` would be true; defaults remain
 time buckets. Time Analysis metrics then use the richer `summarize_by_group`
 contract (not the lean Backtest combo `_summarize_r` tables).
 
+Report / Export may attach `artifact["confluence_combo"]` (and
+`tables["confluence_*"]`) when available. Exact-combo / membership / pairs
+tables are bounded top-N (default 15) by `|total_r|` then `trade_count`; parsed
+level-count is the full small table. Markdown omits the section when unavailable.
+
 | Name | Definition |
 |---|---|
 | `exact_combo_key` | Canonical sorted `\|`-joined distinct tokens from trade `level_names`; empty/null/`nan` → `__empty__` |
