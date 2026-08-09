@@ -1052,6 +1052,9 @@ beyond ordinary widget keys; zone/signal/fill engines are untouched.
 Time Analysis (`pages/9_Time_Analysis.py`) may optionally group by `exact_combo_key`
 or View-C `level_count_bucket` when confluence attribution is available; those dims
 are appended after existing options so the default primary remains a time bucket.
+`level_count_bucket` keeps View-C labels (`0 → "(unknown)"`, else integer count);
+`summarize_by_group` / `pivot_time_metric` use numeric-aware group-label sorting so
+mixed int/str keys do not TypeError or lex-sort (`10` before `2`).
 Pairs/membership are not Time Analysis group dims; Focus/Promote stay on entry-time
 buckets only.
 
