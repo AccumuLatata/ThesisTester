@@ -130,34 +130,33 @@ Optional directional market-condition filter for ES/NQ-style research. **Disable
 - Config provenance: a saved signal run’s `signal_settings["otf_filter"]` wins over later Setup Builder edits — regenerate signals to pick up OTF changes.
 - Futures session boundaries use instrument `eth_start` (e.g. 18:00 ET); midnight is not a reset.
 - Behavioral contract: [`docs/otf-filter.md`](docs/otf-filter.md).
-- Hardening / release tracker: [`docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md`](docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md).
 - OOS evaluation protocol: [`docs/research-methodology.md`](docs/research-methodology.md).
-- Engineering release evidence: [`docs/OTF_RELEASE_EVIDENCE.md`](docs/OTF_RELEASE_EVIDENCE.md).
+- Historical hardening / evidence (archived): [`docs/archive/`](docs/archive/README.md).
 
 ### Session entry window (Focus → Admit)
 
 Optional entry-time Focus / Admit research loop for ES/NQ-style session analysis.
 **Disabled by default.** Focus is post-hoc; Admit is constrained re-simulation.
 
-- Canonical plan: [`docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md`](docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md).
-- Engineering release evidence: [`docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`](docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md).
+- Canonical contracts (C1–C9): [`docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md`](docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md).
+- Engineering release evidence (archived): [`docs/archive/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`](docs/archive/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md).
 
 ## Documentation
 
+Full lean index: [`docs/README.md`](docs/README.md).
+
 - [User guide](docs/USER_GUIDE.md) — feature/how-to docs (also powers Research Assistant **Help / how it works**)
+- [Agent guide](docs/AGENT_GUIDE.md) — contributor / agent runbook
 - [Architecture](docs/ARCHITECTURE.md)
 - [Assumptions & limitations](docs/ASSUMPTIONS_AND_LIMITATIONS.md)
 - [Metrics glossary](docs/METRICS_GLOSSARY.md)
 - [Point-in-time guarantees](docs/POINT_IN_TIME_GUARANTEES.md)
+- [Engineering roadmap](docs/ENGINEERING_ROADMAP.md) — milestone / contract status
 - [OTF filter contract](docs/otf-filter.md)
-- [OTF hardening roadmap](docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md)
 - [Session entry window plan](docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md)
-- [Session entry window release evidence](docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md)
-- [Agent guide](docs/AGENT_GUIDE.md)
-- Research & planning:
-  - [SOTA backtesting landscape](docs/SOTA_BACKTESTING_LANDSCAPE.md)
-  - [ThesisTester repository analysis](docs/THESISTESTER_ANALYSIS.md)
-  - [Engineering proposal & roadmap](docs/ENGINEERING_PROPOSAL.md)
+- [Anchor confluence guide](docs/ANCHOR_CONFLUENCE.md)
+- Research snapshots (demoted): [`docs/research/`](docs/research/README.md)
+- Archived plans / evidence: [`docs/archive/`](docs/archive/README.md)
 
 ## Save-as-default execution settings
 
@@ -172,9 +171,12 @@ The **Backtest** and **Grid Search** pages support saving and restoring executio
 
 ## Level-upgrade status
 
-- The Levels page supports advanced opt-in level families: confirmed pivots, `dVWAP_RTH`, TPO 30m Single Prints, and APOC / pAPOC.
-- All advanced families default to disabled.
-- Existing baseline behavior remains unchanged unless these options are enabled.
+- The Levels page supports advanced level families: confirmed pivots, `dVWAP_RTH`,
+  TPO 30m Single Prints, APOC / pAPOC, and prev30mVWAP.
+- Product defaults enable these advanced families (`thesistester/levels/defaults.py`);
+  users can disable per family on the Levels page.
+- Baseline session/indicator level behavior remains available when advanced families
+  are turned off.
 
 ## Phase status
 
@@ -258,13 +260,14 @@ The **Backtest** and **Grid Search** pages support saving and restoring executio
   display now includes a **Best cell directional breakdown** panel.  Best result and full
   grid are stored in `st.session_state["best_grid_result"]` and
   `st.session_state["grid_results"]`.
-- **Phase 6.5 (workflow cleanup):** **Setup Builder** (`pages/2_Setup_Builder.py`) is now
+- **Phase 6.5 (workflow cleanup):** **Setup Builder** (`pages/3_Setup_Builder.py`) is now
   functional with a local filesystem **Saved setups** library. Setup configs are persisted
   under `.thesistester_store/setups/` and can be loaded to editor, duplicated, set active,
   and deleted. The active setup still mirrors into `st.session_state["setup_config"]`
   (and `st.session_state["setup_configs"]` session history) for **Signals**
-  (`pages/6_Signals.py`) compatibility via `Use saved setup`. Setups are dataset-scoped
-  when `dataset_id` is available, and dataset switches clear incompatible active setups.
+  (`pages/6_Signals.py`) compatibility via `Use saved setup from library`. Setups are
+  dataset-scoped when `dataset_id` is available, and dataset switches clear incompatible
+  active setups.
 - **3c trigger — authoritative 4-rule / 8-variant model:**
 
   The `3c` trigger implements a 3-candle entry sequence with 8 named variants:
@@ -325,3 +328,7 @@ The **Backtest** and **Grid Search** pages support saving and restoring executio
   `time_grouped_summary`). Artifacts are built directly from current `st.session_state`
   without recomputing backtests, exclude full raw `data`/`levels` by default to avoid huge
   files, and include reproducibility caveats emphasizing research-only usage.
+- **Research Bundles / Portfolio / Research Assistant:** `pages/12_Research_Bundles.py`,
+  `pages/13_Portfolio.py`, and `pages/14_Research_Assistant.py` are shipped (classic
+  persistence, portfolio views, and the AI Research Assistant). Status index:
+  [`docs/ENGINEERING_ROADMAP.md`](docs/ENGINEERING_ROADMAP.md).

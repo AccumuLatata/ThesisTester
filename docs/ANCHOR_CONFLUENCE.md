@@ -17,7 +17,8 @@ This guide explains the implemented anchor-confluence workflow in ThesisTester a
 4. Set each rule's `tolerance_ticks` and `required` flag.
 5. Set `min_valid_confluences`.
 6. Save the setup.
-7. In Signals, enable **Use saved setup** to route to `detect_anchor_confluence_zones()`.
+7. In Signals, choose **Use active setup** or **Use saved setup from library**
+   to route to `detect_anchor_confluence_zones()`.
 
 ## Required vs optional confluences
 

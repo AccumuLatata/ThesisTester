@@ -1,5 +1,8 @@
 # Chart Visualization Engineering Rollout
 
+> **ARCHIVED** visualization phases 1–4. Implementation lives under `thesistester/visualization/`.
+
+
 ## Phase 1 foundation (this PR)
 
 This change set introduces a regression-safe visualization foundation only. Trading, signal, confluence, level-computation, persistence/hash behavior, trades/equity semantics, and KPI logic were not changed.

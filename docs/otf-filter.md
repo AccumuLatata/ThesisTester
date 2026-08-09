@@ -3,8 +3,8 @@
 **Project:** ThesisTester  
 **Feature:** Directional One Timeframing (OTF) market-condition filter  
 **Contract version:** v1  
-**Status:** Approved — research-mode integration complete; hardening PR 1–4 landed (`eth_start` parity, UI/docs honesty, enabled golden gate, WFO `otf_history_policy`)  
-**Last updated:** 2026-08-03
+**Status:** Approved — research-mode integration complete; hardening PR 1–5 engineering-signed (`eth_start` parity, UI/docs honesty, enabled golden gate, WFO `otf_history_policy`, OOS protocol + evidence). Real-dataset statistical release remains open (protocol only; no in-repo user dataset).  
+**Last updated:** 2026-08-09
 
 ## Purpose
 
@@ -792,7 +792,7 @@ or signal inspection.
 ## §15 — Release-Gate Documentation
 
 **Status:** Diagnostic matrix tooling shipped; hardening PR 1–5 engineering
-sign-off recorded in `docs/OTF_RELEASE_EVIDENCE.md`. Real-dataset OOS
+sign-off recorded in `docs/archive/OTF_RELEASE_EVIDENCE.md`. Real-dataset OOS
 statistical release remains **open** (protocol in `docs/research-methodology.md`;
 no in-repo user dataset).
 
@@ -874,7 +874,7 @@ Release approval requires that all of the following are true:
 | Legacy setups load | ✅ Backward-compatible persistence; no schema bump required |
 | OOS validation tooling available and diagnostic | ✅ `run_otf_validation_matrix()` in `otf_validation.py` |
 | OOS validation complete on real user dataset | ⏳ Open — protocol in `docs/research-methodology.md`; no in-repo user dataset |
-| Regression / drift-safety engineering sign-off | ✅ `docs/OTF_RELEASE_EVIDENCE.md` (hardening PR 5) |
+| Regression / drift-safety engineering sign-off | ✅ `docs/archive/OTF_RELEASE_EVIDENCE.md` (hardening PR 5) |
 | No unsupported OTF mode enabled | ✅ Only `alignment_mode: all`, `session_reset: session` in v1 |
 
 ---
@@ -883,10 +883,10 @@ Release approval requires that all of the following are true:
 
 | File | Purpose |
 |---|---|
-| `docs/otf-filter-roadmap.md` | Implementation tracker with progress log and PR sequence |
+| `docs/archive/otf-filter-roadmap.md` | **Archived** OTF v1 build log / PR sequence |
 | `docs/research-methodology.md` | User OTF OOS evaluation protocol |
-| `docs/OTF_RELEASE_EVIDENCE.md` | Engineering sign-off + OOS evidence log template |
-| `docs/OTF_HARDENING_AND_RELEASE_ROADMAP.md` | Hardening PR 1–5 implementation roadmap |
+| `docs/archive/OTF_RELEASE_EVIDENCE.md` | **Archived** engineering sign-off + OOS evidence log template |
+| `docs/archive/OTF_HARDENING_AND_RELEASE_ROADMAP.md` | **Archived** hardening PR 1–5 tracker |
 | `tests/fixtures/otf_fixtures.py` | Deterministic OHLCV fixtures and expected-state test vectors |
 | `tests/test_otf_contract.py` | Fixture-integrity and contract-consistency tests |
 | `tests/test_otf_baseline.py` | Regression baseline tests (OTF absent/disabled) |

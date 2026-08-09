@@ -27,7 +27,7 @@ Related files
 - tests/fixtures/otf_fixtures.py  — OTF OHLCV fixtures
 - tests/test_otf_contract.py      — OTF contract vector tests
 - docs/otf-filter.md              — OTF v1 behavioral contract
-- docs/otf-filter-roadmap.md      — implementation roadmap
+- docs/archive/otf-filter-roadmap.md      — implementation roadmap
 """
 
 from __future__ import annotations

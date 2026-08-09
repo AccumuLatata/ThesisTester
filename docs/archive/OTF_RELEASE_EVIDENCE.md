@@ -1,11 +1,14 @@
 # OTF Release Evidence and Sign-off
 
+> **ARCHIVED engineering evidence.** Living OTF contract: [`../otf-filter.md`](../otf-filter.md). OOS protocol: [`../research-methodology.md`](../research-methodology.md).
+
+
 **Project:** ThesisTester  
 **Feature:** Directional One Timeframing (OTF) market-condition filter  
 **Document type:** Hardening PR 5 release evidence / checklist  
 **Last updated:** 2026-08-03  
 **Baseline commit (main at recording):** `6fe8c54` (merge of hardening PR 4 / #212)  
-**Related:** [`OTF_HARDENING_AND_RELEASE_ROADMAP.md`](OTF_HARDENING_AND_RELEASE_ROADMAP.md), [`research-methodology.md`](research-methodology.md), [`otf-filter.md`](otf-filter.md)
+**Related:** [`OTF_HARDENING_AND_RELEASE_ROADMAP.md`](OTF_HARDENING_AND_RELEASE_ROADMAP.md), [`research-methodology.md`](../research-methodology.md), [`otf-filter.md`](../otf-filter.md)
 
 ## 1. Release framing (honest)
 

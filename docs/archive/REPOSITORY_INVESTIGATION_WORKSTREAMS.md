@@ -1,5 +1,8 @@
 # Repository Investigation Workstreams
 
+> **ARCHIVED unused plan.** All workstreams remained **Not started**. Capability snapshot: [`../research/THESISTESTER_ANALYSIS.md`](../research/THESISTESTER_ANALYSIS.md). Living status: [`../ENGINEERING_ROADMAP.md`](../ENGINEERING_ROADMAP.md).
+
+
 **Repository:** `AccumuLatata/ThesisTester`  
 **Investigation mode:** Research only  
 **Status:** Planned  

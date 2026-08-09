@@ -1,5 +1,8 @@
 # Level Upgrade Engineering & Implementation Plan
 
+> **ARCHIVED Stages 1–7 history.** Living levels behavior: ARCHITECTURE / USER_GUIDE. prev30mVWAP contract: [`../PREV30M_VWAP_IMPLEMENTATION_PLAN.md`](../PREV30M_VWAP_IMPLEMENTATION_PLAN.md).
+
+
 ## Purpose
 
 This document defines the regression-safe and drift-safe implementation plan for adding new level families to ThesisTester:

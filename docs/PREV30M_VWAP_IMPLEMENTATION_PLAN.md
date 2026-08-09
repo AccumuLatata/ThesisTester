@@ -5,7 +5,7 @@
 
 **Document type:** Focused level-family implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
-**Related docs:** `docs/LEVEL_UPGRADE_IMPLEMENTATION_PLAN.md`, `docs/POINT_IN_TIME_GUARANTEES.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`
+**Related docs:** `docs/archive/LEVEL_UPGRADE_IMPLEMENTATION_PLAN.md`, `docs/POINT_IN_TIME_GUARANTEES.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`
 
 **Plan review (2026-08-05):** Core design is sound. Normative amendments below close
 halt/session-boundary completion, diagnostic-column eligibility, base-resolution for
@@ -516,8 +516,8 @@ Mandatory for every implementation PR:
 | `docs/POINT_IN_TIME_GUARANTEES.md` | Audit table rows + module list entry |
 | `docs/METRICS_GLOSSARY.md` | Define `prev30mVWAP`, `prev30mVWAP_hit_m1`, `prev30mVWAP_hit_m5`, TTL setting, R-conditional analytics |
 | `docs/ARCHITECTURE.md` | Levels module map + settings keys if contract surface changes |
-| `docs/ENGINEERING.md` | Short level-family mention if the levels catalog section lists families |
-| `docs/LEVEL_UPGRADE_IMPLEMENTATION_PLAN.md` | Add “Stage 8 — prev30mVWAP” pointer to this doc (do not rewrite Stages 1–7 history) |
+| `docs/USER_GUIDE.md` / `docs/ARCHITECTURE.md` | Living level-family catalog mention (do **not** amend archived `docs/archive/ENGINEERING.md`) |
+| `docs/archive/LEVEL_UPGRADE_IMPLEMENTATION_PLAN.md` | Add “Stage 8 — prev30mVWAP” pointer to this doc (do not rewrite Stages 1–7 history) |
 | This doc | Mark status → Implemented when merged |
 
 ---

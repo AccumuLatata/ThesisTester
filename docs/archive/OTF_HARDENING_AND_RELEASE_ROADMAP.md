@@ -1,11 +1,16 @@
 # OTF Hardening and Release Roadmap
 
+> **ARCHIVED.** Hardening PR 1–5 engineering-complete. Living OTF truth:
+> [`../otf-filter.md`](../otf-filter.md), OOS protocol
+> [`../research-methodology.md`](../research-methodology.md). Evidence:
+> [`OTF_RELEASE_EVIDENCE.md`](OTF_RELEASE_EVIDENCE.md).
+
 **Project:** ThesisTester  
 **Feature:** Directional One Timeframing (OTF) market-condition filter  
-**Status:** v1 is implemented and research-ready; hardening and release evidence remain open  
+**Status:** Archived — v1 research-ready; hardening PR 1–5 engineering-signed; real-dataset OOS statistical release still open (protocol only)  
 **Document owner:** ThesisTester engineering  
 **Last updated:** 2026-08-03  
-**Related documents:** [`otf-filter.md`](otf-filter.md), [`otf-filter-roadmap.md`](otf-filter-roadmap.md), [`ENGINEERING_PROPOSAL.md`](ENGINEERING_PROPOSAL.md), [`ARCHITECTURE.md`](ARCHITECTURE.md)
+**Related documents:** [`../otf-filter.md`](../otf-filter.md), [`otf-filter-roadmap.md`](otf-filter-roadmap.md), [`../ENGINEERING_PROPOSAL.md`](../ENGINEERING_PROPOSAL.md), [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
 
 > Naming note: this roadmap hardens and release-gates **OTF v1**. It does **not**
 > introduce an OTF v1.1 algorithm or eligibility-semantics change. Any future
@@ -83,7 +88,7 @@ out-of-sample value.
 ## 3. Global regression-safety contract
 
 Every PR in this roadmap must comply with
-[`ENGINEERING_PROPOSAL.md` §4](ENGINEERING_PROPOSAL.md):
+[`ENGINEERING_PROPOSAL.md` §4](../ENGINEERING_PROPOSAL.md):
 
 1. **Default-off preservation:** OTF remains disabled by default.
 2. **Legacy equality:** With OTF disabled, signals, trades, metrics, grid
@@ -161,7 +166,7 @@ explicitly under `Regression safety`.
 - `tests/test_otf_integration.py`
 - `tests/test_otf_validation.py`
 - `tests/test_api.py`
-- `docs/otf-filter-roadmap.md`
+- `docs/archive/otf-filter-roadmap.md`
 
 ### 5.4 Implementation requirements
 
@@ -255,7 +260,7 @@ limitations describe the OTF implementation that currently runs.
 - `pages/8_Grid_Search.py`
 - `README.md`
 - `docs/otf-filter.md`
-- `docs/otf-filter-roadmap.md`
+- `docs/archive/otf-filter-roadmap.md`
 - `docs/ARCHITECTURE.md`
 - `docs/ASSUMPTIONS_AND_LIMITATIONS.md`
 - `docs/METRICS_GLOSSARY.md`
@@ -324,7 +329,7 @@ weakening or changing the existing legacy golden gate.
 - `tests/test_golden_master.py`
 - `tests/test_otf_golden.py` (new)
 - `tests/fixtures/golden/README.md`
-- `docs/otf-filter-roadmap.md`
+- `docs/archive/otf-filter-roadmap.md`
 
 ### 7.3 Fixture requirements
 
@@ -453,7 +458,7 @@ Tests:
 Documentation:
 
 - `docs/otf-filter.md`
-- `docs/otf-filter-roadmap.md`
+- `docs/archive/otf-filter-roadmap.md`
 - `docs/ARCHITECTURE.md`
 - `docs/ASSUMPTIONS_AND_LIMITATIONS.md`
 - `docs/AGENT_GUIDE.md`
@@ -559,7 +564,7 @@ synthetic fixture behavior or in-sample results.
 
 ### 9.2 In scope
 
-- `docs/otf-filter-roadmap.md`
+- `docs/archive/otf-filter-roadmap.md`
 - `docs/research-methodology.md` — **create or update** (this file may not
   yet exist in the repository; do not assume it is present)
 - this document, if release status changes
@@ -676,7 +681,7 @@ This roadmap is complete only when:
 
 - [x] all five PRs have satisfied their acceptance criteria (PR 5 accepts
   engineering sign-off + published OOS protocol; real-data OOS execution remains
-  an external user step — see `docs/OTF_RELEASE_EVIDENCE.md`);
+  an external user step — see `docs/archive/OTF_RELEASE_EVIDENCE.md`);
 - [x] disabled OTF legacy outputs remain unchanged;
 - [x] enabled OTF has deterministic golden and future-shock coverage;
 - [x] `eth_start` parity is verified across UI, API, validation, WFO, and AI;
@@ -701,4 +706,4 @@ This roadmap is complete only when:
 |---|---|
 | 2026-08-03 | Initial hardening and release roadmap published on `main`. |
 | 2026-08-03 | Review refinements: rename away from misleading “v1.1”; require strict PR merge order; document PR 1 as intentional enabled-Streamlit overnight correction; require effective `eth_start`/timezone in OTF summaries; clarify `causal_prefix` as prefix ∪ fold-local; require create-or-update for `docs/research-methodology.md`. |
-| 2026-08-03 | Hardening PR 5 — research methodology + engineering release evidence | `docs/research-methodology.md`, `docs/OTF_RELEASE_EVIDENCE.md`, roadmaps, README | Published OTF OOS protocol; recorded engineering verification suites (1852 passed); honest status: research-ready / engineering-signed / real-data statistical release still open. No engine changes. |
+| 2026-08-03 | Hardening PR 5 — research methodology + engineering release evidence | `docs/research-methodology.md`, `docs/archive/OTF_RELEASE_EVIDENCE.md`, roadmaps, README | Published OTF OOS protocol; recorded engineering verification suites (1852 passed); honest status: research-ready / engineering-signed / real-data statistical release still open. No engine changes. |

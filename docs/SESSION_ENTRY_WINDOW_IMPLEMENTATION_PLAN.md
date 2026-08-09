@@ -3,12 +3,13 @@
 **Document type:** Implementation plan (fully scoped PRs)  
 **Date:** 2026-08-06  
 **Last revised:** 2026-08-07 (pre-implementation audit; renamed from proposal)  
-**Status:** Engineering-signed through **SW7**; SW2b cutoff audit shipped as follow-up — see `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`  
+**Status:** Engineering-signed through **SW7**; SW2b cutoff audit shipped as follow-up — see `docs/archive/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`  
 **Inputs:** Time Analysis / Backtest UX gap analysis; design-review contracts C1–C9; codebase audit vs `simulate_trades` / golden / session_state; `docs/ENGINEERING_PROPOSAL.md` §4  
 **Related code:** `thesistester/analytics/time_analysis.py`, `thesistester/engine/backtest.py`, `thesistester/analytics/grid.py`, `thesistester/analytics/walk_forward.py`, `thesistester/analytics/overfitting.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/9_Time_Analysis.py`, `pages/10_Validation.py`, `thesistester/api.py`  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4 (including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist)
 
-**Supersedes:** `docs/SESSION_ENTRY_WINDOW_PROPOSAL.md` (renamed).
+**Supersedes:** earlier draft proposal (renamed in-place to this plan; the old
+`SESSION_ENTRY_WINDOW_PROPOSAL.md` path no longer exists).
 
 ---
 
@@ -313,12 +314,14 @@ SW1 may land in parallel with SW2 design after SW0. SW3+ require SW2. **Do not s
 
 **Goal.** Lock this document; prove legacy golden green before engine work.
 
+> Series complete (see §13 Merged). Scope/acceptance boxes below are historical deliverables, now checked.
+
 **Scope.**
 
 - [x] Golden evidence: `pytest tests/test_golden_master.py tests/test_otf_golden.py` → 23 passed.
 - [x] Implementation plan + ENGINEERING_ROADMAP pointer.
 - [x] Pre-implementation audit + C1–C9 + SW2b split.
-- [ ] No production runtime behavior changes in the SW0 docs PR itself.
+- [x] No production runtime behavior changes in the SW0 docs PR itself.
 
 **Regression safety.** Docs-only for SW0 commit series prior to SW1 code.
 
@@ -330,16 +333,18 @@ SW1 may land in parallel with SW2 design after SW0. SW3+ require SW2. **Do not s
 
 **Goal.** Focus a Time Analysis bucket and see full Performance Summary / equity / trade list as a labeled post-hoc overlay.
 
+> Series complete (see §13 Merged). Scope/acceptance boxes below are historical deliverables, now checked.
+
 **Scope.**
 
-- [ ] Public `RTH_SEGMENT_LABELS` (+ bounds helper) from `time_analysis` (C1).
-- [ ] Pure helpers: normalize, `entry_window_from_bucket`, filter, `summarize_focused_trades`, provenance (`sample_warning`).
-- [ ] Unit tests: segments, clock_range, hour/30m mapping, empty trades, TZ law for segments (C5), C8 provenance flag.
-- [ ] `pages/9_Time_Analysis.py`: select bucket → Focus / Clear Focus; focused KPI section + banners.
-- [ ] `pages/7_Backtest.py`: if Focus set, overlay toggle for summary/equity/trades **without** destroying `trade_summary` / `equity_curve` / `trades`.
-- [ ] Honesty banners (Focus + C8).
-- [ ] Docs: USER_GUIDE, ARCHITECTURE keys, ASSUMPTIONS.
-- [ ] **Zero** `simulate_trades` changes.
+- [x] Public `RTH_SEGMENT_LABELS` (+ bounds helper) from `time_analysis` (C1).
+- [x] Pure helpers: normalize, `entry_window_from_bucket`, filter, `summarize_focused_trades`, provenance (`sample_warning`).
+- [x] Unit tests: segments, clock_range, hour/30m mapping, empty trades, TZ law for segments (C5), C8 provenance flag.
+- [x] `pages/9_Time_Analysis.py`: select bucket → Focus / Clear Focus; focused KPI section + banners.
+- [x] `pages/7_Backtest.py`: if Focus set, overlay toggle for summary/equity/trades **without** destroying `trade_summary` / `equity_curve` / `trades`.
+- [x] Honesty banners (Focus + C8).
+- [x] Docs: USER_GUIDE, ARCHITECTURE keys, ASSUMPTIONS.
+- [x] **Zero** `simulate_trades` changes.
 
 **Out of scope.** Engine admission; Promote (SW4); Grid/WFA; setup persistence.
 
@@ -349,10 +354,10 @@ SW1 may land in parallel with SW2 design after SW0. SW3+ require SW2. **Do not s
 
 **Acceptance.**
 
-- [ ] Focus `rth_open_30m` → full `summarize_trades` suite on subset.
-- [ ] Clear Focus restores full-run view without re-sim.
-- [ ] Banner + C8 equity caveat visible when Focus active.
-- [ ] CI green; §4.2.
+- [x] Focus `rth_open_30m` → full `summarize_trades` suite on subset.
+- [x] Clear Focus restores full-run view without re-sim.
+- [x] Banner + C8 equity caveat visible when Focus active.
+- [x] CI green; §4.2.
 
 **Suggested PR title:** `SW1: post-hoc time-bucket Focus summary (no re-sim)`
 
@@ -362,14 +367,16 @@ SW1 may land in parallel with SW2 design after SW0. SW3+ require SW2. **Do not s
 
 **Goal.** Opt-in admission with `outside_entry_window` skips; legacy trades golden-identical; C7 Focus≡Admit gate.
 
+> Series complete (see §13 Merged). Scope/acceptance boxes below are historical deliverables, now checked.
+
 **Scope.**
 
-- [ ] Shared normalize used by engine (import from analytics module or thin engine wrapper).
-- [ ] `simulate_trades(..., *, entry_window=None)`.
-- [ ] Skip rows when capture on.
-- [ ] Enabled-window golden family + legacy isolation.
-- [ ] C7 identity test (`allow_all`, cooldown 0).
-- [ ] Boundary tests (09:30 inclusive / 10:00 exclusive); signal-in-segment / entry-out-of-segment (next-bar-open, C2).
+- [x] Shared normalize used by engine (import from analytics module or thin engine wrapper).
+- [x] `simulate_trades(..., *, entry_window=None)`.
+- [x] Skip rows when capture on.
+- [x] Enabled-window golden family + legacy isolation.
+- [x] C7 identity test (`allow_all`, cooldown 0).
+- [x] Boundary tests (09:30 inclusive / 10:00 exclusive); signal-in-segment / entry-out-of-segment (next-bar-open, C2).
 
 **Out of scope.** `after_entry_cutoff` (SW2b); Streamlit Admit controls (SW3); changing RTH **bounds**.
 
@@ -478,7 +485,7 @@ Additive setup key + normalize/default (OTF pattern). Export provenance. Assista
 
 ### SW7 — Hardening + release evidence
 
-Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; honesty review.
+Parity audit; goldens green; `docs/archive/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; honesty review.
 
 **Scope.**
 
@@ -488,7 +495,7 @@ Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; ho
 - [x] Export honesty micro-fix (Focus label from provenance fallback; invalid prov fail-closed).
 - [x] Docs honesty (USER_GUIDE setup non-auto-wire; ASSUMPTIONS C2 entry-time Focus).
 - [x] Goldens green + recorded verification suites (legacy / enabled-window / full `tests/`).
-- [x] `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md` engineering sign-off.
+- [x] `docs/archive/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md` engineering sign-off.
 - [x] Status trackers + roadmap posture updated.
 
 **Out of scope.** SW2b cutoff skip audit; auto-wire setup → Backtest; sweeping time as a grid axis; fabricating real-data OOS edge.
@@ -554,12 +561,12 @@ Parity audit; goldens green; `docs/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md`; ho
 | SW0 Plan + golden confirmation | Merged | [#286](https://github.com/AccumuLatata/ThesisTester/pull/286) |
 | SW1 Post-hoc Focus | Merged | [#292](https://github.com/AccumuLatata/ThesisTester/pull/292) |
 | SW2 Engine admission + C7 + golden | Merged | [#293](https://github.com/AccumuLatata/ThesisTester/pull/293) |
-| SW2b Cutoff skip audit + honesty | Open (this PR) | [#299](https://github.com/AccumuLatata/ThesisTester/pull/299) |
+| SW2b Cutoff skip audit + honesty | Merged | [#299](https://github.com/AccumuLatata/ThesisTester/pull/299) |
 | SW3 API + Backtest Admit UI | Merged | [#294](https://github.com/AccumuLatata/ThesisTester/pull/294) |
 | SW4 Promote handoff UX | Merged | [#295](https://github.com/AccumuLatata/ThesisTester/pull/295) |
 | SW5 Grid + Validation inheritance | Merged | [#296](https://github.com/AccumuLatata/ThesisTester/pull/296) |
 | SW6 Persistence + export + assistant | Merged | [#297](https://github.com/AccumuLatata/ThesisTester/pull/297) |
-| SW7 Hardening + release evidence | Open (this PR) | [#298](https://github.com/AccumuLatata/ThesisTester/pull/298) |
+| SW7 Hardening + release evidence | Merged | [#298](https://github.com/AccumuLatata/ThesisTester/pull/298) |
 
 ---
 
