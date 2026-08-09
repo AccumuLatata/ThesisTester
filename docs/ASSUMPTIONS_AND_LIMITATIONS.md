@@ -304,6 +304,12 @@ This engine is for **research screening**, not proof of a durable edge.
   Soft pairs and membership are **not** Time Analysis group dimensions (they
   break partition intuition via double-count / many-to-many explode). Focus /
   Promote stay limited to entry-time buckets.
+- Report / Export may include an optional **Confluence Combo Attribution**
+  diagnostic section. It is **recomputed on export** from session trades via the
+  same mode/anchor resolution path as Backtest (`signal_settings` →
+  `last_signal_setup` → `setup_config` → `signal_context`). When attribution is
+  unavailable, the artifact key and markdown section are **omitted entirely**
+  so legacy reports stay unchanged. No Backtest producer session key is required.
 - Rows are **observed traded combinations**, not the theoretical power set of
   selected levels / confluence rules.
 - Exact-combo keys are canonicalized (sorted tokens) so `A|B` and `B|A` merge.

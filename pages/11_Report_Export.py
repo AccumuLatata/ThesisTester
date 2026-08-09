@@ -197,6 +197,31 @@ if _otf_meta.get("available"):
     else:
         st.caption("OTF filter: disabled — all candidate signals passed through to simulation.")
 
+# Optional confluence combo checklist (PR 5b) — recomputed on export; not a
+# required item and not backed by a Backtest producer session key.
+_cca_block = artifact.get("confluence_combo") if isinstance(artifact, dict) else None
+if isinstance(_cca_block, dict) and _cca_block.get("available"):
+    st.subheader("Confluence combo attribution checklist")
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "Item": "Confluence combo diagnostic",
+                    "Source": "on-export recompute from trades",
+                    "Available": "✅",
+                }
+            ]
+        ),
+        width="stretch",
+        hide_index=True,
+    )
+    st.caption(
+        "Optional diagnostic — recomputed on export from session trades "
+        f"(analyzable: {_dash_if_none(_cca_block.get('trade_count'))}; "
+        f"non-empty combos: {_dash_if_none(_cca_block.get('nonempty_combo_trade_count'))}). "
+        "Observed combinations only; not proof of edge."
+    )
+
 if not _has_value("setup_config"):
     st.warning("No setup config found. Export will include empty configuration fields.")
 if not _has_value("signals"):
@@ -305,6 +330,25 @@ for key, filename in csv_exports:
         )
         for warning in conversion_warnings:
             st.warning(warning)
+
+# Optional confluence combo CSV tables from on-export recompute (PR 5b).
+if isinstance(_cca_block, dict) and _cca_block.get("available"):
+    _cca_tables = _cca_block.get("tables") if isinstance(_cca_block.get("tables"), dict) else {}
+    for _cca_name, _cca_filename in (
+        ("exact_combo", "confluence_exact_combo.csv"),
+        ("level_count", "confluence_level_count.csv"),
+        ("membership", "confluence_membership.csv"),
+        ("pairs", "confluence_pairs.csv"),
+    ):
+        _cca_rows = _cca_tables.get(_cca_name)
+        if isinstance(_cca_rows, list) and _cca_rows:
+            st.download_button(
+                f"⬇️ Download {_cca_filename}",
+                data=dataframe_to_csv_bytes(pd.DataFrame(_cca_rows)),
+                file_name=_cca_filename,
+                mime="text/csv",
+                key=f"download_confluence_{_cca_name}",
+            )
 
 st.subheader("Report preview")
 st.markdown(report_markdown)

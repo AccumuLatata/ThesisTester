@@ -8,8 +8,24 @@ from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
+
+from thesistester.analytics.confluence_attribution import (
+    EXACT_COMBO_KEY_COL,
+    LEVEL_COUNT_BUCKET_COL,
+    LEVEL_NAME_COL,
+    MEMBERSHIP_DOUBLE_COUNT_WARNING,
+    PAIR_KEY_COL,
+    PAIR_MODE_COL,
+    PAIRWISE_DOUBLE_COUNT_WARNING,
+    confluence_attribution_summary,
+    prepare_exact_combo_display,
+    resolve_confluence_mode,
+    resolve_signal_setup_for_attribution,
+)
 from .timezone_display import convert_dataframe_timestamps_for_display, timezone_contract
 
+
+_CONFLUENCE_COMBO_TOP_N_DEFAULT = 15
 
 _CAVEATS = [
     "Research output only; not trading advice.",
@@ -489,7 +505,131 @@ def build_research_artifact(session_state: Mapping[str, Any]) -> dict[str, Any]:
             "summary": to_jsonable(otf_val_summary) if otf_val_summary else None,
             "config": to_jsonable(otf_val_config) if otf_val_config else None,
         }
+
+    # PR 5b: confluence combo diagnostic — omit entirely when unavailable so
+    # legacy artifacts/reports stay identical without combo data.
+    confluence_combo = build_confluence_combo_report_block(session_state)
+    if confluence_combo is not None:
+        artifact["confluence_combo"] = confluence_combo
+        tables = artifact.get("tables")
+        if isinstance(tables, dict):
+            combo_tables = confluence_combo.get("tables") or {}
+            if isinstance(combo_tables, Mapping):
+                for name, rows in combo_tables.items():
+                    tables[f"confluence_{name}"] = rows
+
     return to_jsonable(artifact)
+
+
+def _top_n_by_abs_total_r(frame: pd.DataFrame | None, n: int) -> pd.DataFrame:
+    """Presentation sort for report tables: ``|total_r|`` desc, then trade_count."""
+    if frame is None or not isinstance(frame, pd.DataFrame) or frame.empty:
+        return pd.DataFrame()
+    if "total_r" not in frame.columns:
+        return frame.head(max(int(n), 0)).copy()
+    work = frame.copy()
+    work["__abs_total_r__"] = pd.to_numeric(work["total_r"], errors="coerce").abs()
+    if "trade_count" in work.columns:
+        work = work.sort_values(
+            ["__abs_total_r__", "trade_count"],
+            ascending=[False, False],
+            kind="mergesort",
+        )
+    else:
+        work = work.sort_values("__abs_total_r__", ascending=False, kind="mergesort")
+    return work.drop(columns=["__abs_total_r__"]).head(max(int(n), 0)).reset_index(drop=True)
+
+
+def build_confluence_combo_report_block(
+    session_state: Mapping[str, Any],
+    *,
+    min_trades: int = 10,
+    top_n: int = _CONFLUENCE_COMBO_TOP_N_DEFAULT,
+) -> dict[str, Any] | None:
+    """Recompute confluence combo attribution for report export.
+
+    Resolves mode/anchor from session keys (including ``signal_settings`` when
+    present), matching Backtest. Returns ``None`` when unavailable so callers
+    can omit the block entirely.
+    """
+    trades = session_state.get("trades")
+    if not isinstance(trades, pd.DataFrame) or trades.empty:
+        return None
+    if "level_names" not in trades.columns:
+        return None
+
+    identity = resolve_signal_setup_for_attribution(
+        signal_settings=session_state.get("signal_settings"),
+        last_signal_setup=session_state.get("last_signal_setup"),
+        setup_config=session_state.get("setup_config"),
+        signal_context=session_state.get("signal_context"),
+    )
+    mode = resolve_confluence_mode(identity, trades)
+    anchor: str | None = None
+    if mode == "anchor_rules":
+        raw_anchor = identity.get("anchor_level")
+        if isinstance(raw_anchor, str) and raw_anchor.strip():
+            anchor = raw_anchor.strip()
+
+    try:
+        summary = confluence_attribution_summary(
+            trades,
+            min_trades=min_trades,
+            anchor_level=anchor,
+            confluence_mode=mode,
+        )
+    except (TypeError, ValueError, KeyError):
+        return None
+
+    if not summary.get("available"):
+        return None
+
+    exact = summary.get("by_exact_combo")
+    if isinstance(exact, pd.DataFrame):
+        exact = prepare_exact_combo_display(
+            exact,
+            anchor_level=anchor,
+            confluence_mode=mode,
+        )
+    membership = summary.get("by_membership")
+    level_count = summary.get("by_level_count")
+    pairs = summary.get("by_pairs")
+
+    exact_top = _top_n_by_abs_total_r(
+        exact if isinstance(exact, pd.DataFrame) else None,
+        top_n,
+    )
+    membership_top = _top_n_by_abs_total_r(
+        membership if isinstance(membership, pd.DataFrame) else None,
+        top_n,
+    )
+    pairs_top = _top_n_by_abs_total_r(
+        pairs if isinstance(pairs, pd.DataFrame) else None,
+        top_n,
+    )
+    level_count_full = (
+        level_count.copy()
+        if isinstance(level_count, pd.DataFrame)
+        else pd.DataFrame()
+    )
+
+    return {
+        "available": True,
+        "trade_count": int(summary.get("trade_count") or 0),
+        "nonempty_combo_trade_count": int(summary.get("nonempty_combo_trade_count") or 0),
+        "empty_level_names_count": int(summary.get("empty_level_names_count") or 0),
+        "pair_mode": summary.get("pair_mode"),
+        "confluence_mode": mode,
+        "anchor_level": anchor,
+        "warnings": list(summary.get("warnings") or []),
+        "top_n": int(top_n),
+        "tables": {
+            "exact_combo": to_jsonable(exact_top),
+            "level_count": to_jsonable(level_count_full),
+            "membership": to_jsonable(membership_top),
+            "pairs": to_jsonable(pairs_top),
+        },
+    }
 
 
 def _fmt_number(value: Any, fmt: str = ".4f", fallback: str = "—") -> str:
@@ -914,6 +1054,165 @@ def _otf_markdown_section(otf_meta: Mapping[str, Any] | None) -> str:
     )
 
 
+def _markdown_records_table(
+    rows: Any,
+    columns: list[str],
+    *,
+    pct_cols: set[str] | None = None,
+    number_cols: set[str] | None = None,
+) -> str:
+    """Render list-of-dict records as a compact markdown table."""
+    if not isinstance(rows, list) or not rows:
+        return "_No rows._\n"
+    pct_cols = pct_cols or set()
+    number_cols = number_cols or set()
+    header = "| " + " | ".join(columns) + " |"
+    sep = "| " + " | ".join("---" for _ in columns) + " |"
+    lines = [header, sep]
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        cells: list[str] = []
+        for col in columns:
+            val = row.get(col)
+            if val is None:
+                cells.append("—")
+            elif col in pct_cols:
+                cells.append(_fmt_pct(val))
+            elif col in number_cols or isinstance(val, float):
+                cells.append(_fmt_number(val))
+            elif isinstance(val, bool):
+                cells.append("yes" if val else "no")
+            else:
+                cells.append(str(val).replace("|", "\\|"))
+        lines.append("| " + " | ".join(cells) + " |")
+    if len(lines) == 2:
+        return "_No rows._\n"
+    return "\n".join(lines) + "\n"
+
+
+def _confluence_combo_markdown_section(block: Mapping[str, Any] | None) -> str:
+    """Render confluence combo attribution as a markdown report section.
+
+    Returns an empty string when unavailable so existing report output is
+    unchanged (OTF-validation omit style).
+    """
+    if not isinstance(block, Mapping) or not block.get("available"):
+        return ""
+
+    tables = block.get("tables") if isinstance(block.get("tables"), Mapping) else {}
+    warnings = [str(w) for w in list(block.get("warnings") or []) if w]
+    top_n = int(block.get("top_n") or _CONFLUENCE_COMBO_TOP_N_DEFAULT)
+    mode = _dash_if_none(block.get("confluence_mode"))
+    anchor = _dash_if_none(block.get("anchor_level"))
+    pair_mode = _dash_if_none(block.get("pair_mode"))
+
+    metric_number_cols = {"avg_r", "median_r", "total_r"}
+    metric_pct_cols = {"win_rate"}
+
+    lines = [
+        "## Confluence Combo Attribution",
+        "⚠️ **Diagnostic only — observed traded combinations from recorded "
+        "`level_names`, not all theoretical subsets. Sorting by total R invites "
+        "selection effects; not proof of future edge.**",
+        "",
+        f"- Analyzable trades: {_dash_if_none(block.get('trade_count'))}",
+        f"- Non-empty combos: {_dash_if_none(block.get('nonempty_combo_trade_count'))}",
+        f"- Empty level_names rows: {_dash_if_none(block.get('empty_level_names_count'))}",
+        f"- Confluence mode: {mode}",
+        f"- Anchor level: {anchor}",
+        f"- Pair mode: {pair_mode}",
+        "",
+    ]
+
+    if warnings:
+        lines.append("### Warnings")
+        for warning in warnings:
+            lines.append(f"- {warning}")
+        lines.append("")
+
+    lines.extend(
+        [
+            f"### Exact combo (top {top_n} by |total_r|)",
+            "Rows are canonical observed combinations; `A|B` and `B|A` merge.",
+            "",
+            _markdown_records_table(
+                tables.get("exact_combo"),
+                [
+                    "display_combo",
+                    EXACT_COMBO_KEY_COL,
+                    "trade_count",
+                    "win_rate",
+                    "avg_r",
+                    "median_r",
+                    "total_r",
+                    "sample_warning",
+                ],
+                pct_cols=metric_pct_cols,
+                number_cols=metric_number_cols,
+            ).rstrip(),
+            "",
+            "### Parsed level count",
+            "View-C parsed distinct token count from `level_names` "
+            "(not stored zone `level_count`).",
+            "",
+            _markdown_records_table(
+                tables.get("level_count"),
+                [
+                    LEVEL_COUNT_BUCKET_COL,
+                    "trade_count",
+                    "win_rate",
+                    "avg_r",
+                    "median_r",
+                    "total_r",
+                    "sample_warning",
+                ],
+                pct_cols=metric_pct_cols,
+                number_cols=metric_number_cols,
+            ).rstrip(),
+            "",
+            f"### Membership (top {top_n} by |total_r|)",
+            f"⚠️ {MEMBERSHIP_DOUBLE_COUNT_WARNING}",
+            "",
+            _markdown_records_table(
+                tables.get("membership"),
+                [
+                    LEVEL_NAME_COL,
+                    "trade_count",
+                    "win_rate",
+                    "avg_r",
+                    "median_r",
+                    "total_r",
+                    "sample_warning",
+                ],
+                pct_cols=metric_pct_cols,
+                number_cols=metric_number_cols,
+            ).rstrip(),
+            "",
+            f"### Soft pairs (top {top_n} by |total_r|)",
+            f"⚠️ {PAIRWISE_DOUBLE_COUNT_WARNING}",
+            "",
+            _markdown_records_table(
+                tables.get("pairs"),
+                [
+                    PAIR_KEY_COL,
+                    PAIR_MODE_COL,
+                    "trade_count",
+                    "win_rate",
+                    "avg_r",
+                    "median_r",
+                    "total_r",
+                    "sample_warning",
+                ],
+                pct_cols=metric_pct_cols,
+                number_cols=metric_number_cols,
+            ).rstrip(),
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def _otf_validation_markdown_section(otf_val: Mapping[str, Any] | None) -> str:
     """Render OTF validation results as a markdown report section.
 
@@ -1249,6 +1548,15 @@ def build_markdown_report(artifact: dict[str, Any]) -> str:
     otf_val_section = _otf_validation_markdown_section(otf_val).strip()
     if otf_val_section:
         lines.append(otf_val_section)
+        lines.append("")
+
+    # Confluence combo attribution — omit entirely when unavailable.
+    confluence_combo = (
+        artifact.get("confluence_combo") if isinstance(artifact, Mapping) else None
+    )
+    confluence_section = _confluence_combo_markdown_section(confluence_combo).strip()
+    if confluence_section:
+        lines.append(confluence_section)
         lines.append("")
 
     lines.append("## Caveats")
