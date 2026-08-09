@@ -1021,7 +1021,15 @@ flowchart LR
     F --> G[Time Analysis]
     G --> H[Validation]
     H --> I[Report / Export]
+    E --> J[Research Bundles]
+    J --> K[Portfolio]
+    E --> L[Research Assistant]
 ```
+
+Classic research path is Data → … → Report/Export. **Research Bundles**,
+**Portfolio**, and **Research Assistant** are shipped parallel surfaces (not
+strictly post-Validation); Bundles/Portfolio consume run artifacts, and the
+Assistant discusses bound evidence / Help.
 
 Flow basis in app workflow and phase pages: `app.py`, `pages/1_Data.py`,
 `pages/2_Levels.py`, `pages/3_Setup_Builder.py`, `pages/6_Signals.py`,
