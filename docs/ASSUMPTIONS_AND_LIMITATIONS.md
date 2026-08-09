@@ -646,9 +646,13 @@ other than the last bar in the dataset.
   **RI-10 landed (series complete):** duplex `get_run_overview` projects shared
   RI builders into specialist/mixed envelopes (no cue fork); pure overview keeps
   DI KPI envelopes; permanent residuals (bare stop/ranking/monte) stay veto ≠
-  unmatched; voice default remains off. RI must not invent metrics, remap topics
-  onto KPI overview, answer OOS asks with in-sample single-metric leaves, soften
-  OOS/selection-bias caveats, or touch engine/golden paths.
+  unmatched; deep-trade duplex hydrates streak scalars from packet
+  `trade_summary` and topic-scopes exit/extreme/streak like text Discuss —
+  exit/extreme tables still require trade rows in turn context (packet-only
+  duplex returns a limitation, not KPI topic-swap); voice default remains off.
+  RI must not invent metrics, remap topics onto KPI overview, answer OOS asks
+  with in-sample single-metric leaves, soften OOS/selection-bias caveats, or
+  touch engine/golden paths.
   **DX-series:** `docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md` targets VA-5
   full-duplex **content** parity with DI overview/KPI intelligence by reusing
   DI builders inside VA-3 tool envelopes + realtime instructions. DX does not

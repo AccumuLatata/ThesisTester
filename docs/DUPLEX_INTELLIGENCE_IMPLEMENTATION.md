@@ -87,12 +87,12 @@ pretending live audio can be as fail-closed as typed recovery.
 | Content parity, not pipeline clone | DX targets **same facts / paths / overlay / no topic-swap** as DI overview intelligence. It does **not** require calling `propose_results_reply` / OpenAI on every duplex turn. |
 | Stay on xAI duplex | Provider remains xAI realtime (VA-5). No OpenAI Realtime migration in DX. OpenAI remains for text Discuss + VA-4 PTT channel turns only. |
 | Shared DI substrate | Reuse `results_overview` pure functions (`match_overview_intent`, `has_overview_negative_cue` — **export in DX-1**, same `_NEGATIVE_CUES` / `_alias_matches`, no voice-local cue table), `KPI_CLAIM_PATHS`, `build_deterministic_kpi_reply` / claim builder, `build_expert_overlay`, `build_structured_remediation_reply`, path-catalog helpers). **Do not duplicate** cue tables or KPI paths in `voice/`. Call builders then **project** into the tool envelope (§4.2.1) — do not reimplement claim loops in `voice/`. |
-| Veto ≠ unmatched | `match_overview_intent` returns `None` for both negative veto and unmatched text. DX-1 **must** distinguish them via `has_overview_negative_cue(text)` before treating `None` as remediation. **Negative cue / mixed ask →** full veto remediation + legacy strip. **Unmatched (no negative cue) →** neutral DI `run_overview` envelope (same as no-text race). This preserves VA-4 PTT fallback (“unrecognized → overview”) where STT text is always on the session before the tool runs. |
+| Veto ≠ unmatched | `match_overview_intent` returns `None` for both negative veto and unmatched text. DX-1 **must** distinguish them via `has_overview_negative_cue(text)` before treating `None` as remediation. **Permanent residual negative (bare stop/ranking/monte, no landed specialist owner) →** full veto remediation + legacy strip. **Landed specialist / `mixed_ask` / `single_metric` (RI-10) →** specialist envelope (§4.1), not veto. **Unmatched (no negative cue) →** neutral DI `run_overview` envelope (same as no-text race). This preserves VA-4 PTT fallback (“unrecognized → overview”) where STT text is always on the session before the tool runs. |
 | Tool allowlist names frozen | Still only `get_run_overview`, `get_metric`, `list_caveats`, `compare_two_runs`. DX may enrich **return envelopes** and schema descriptions; it must not add tool names or enable search/mcp. |
 | No live-PCM pre-gate | Live audio cannot be reliably unsaid once uttered (VA freeze). DX does **not** build cancel/replace-before-speaker pipelines. Durable transcript digit audit + remediation remain mandatory. |
 | No silent topic remap | Overview-shaped tool payloads must respect DI negative-cue veto semantics when the duplex layer chooses an overview envelope from user text (see §4.1). Never serve the KPI slice as a substitute for validation / WFA / OOS / grid / ranking / time asks. |
-| Veto strips legacy narrative | On negative-cue / mixed-ask veto: omit `kpi_claims` and DI `summary`; set legacy `overview` to remediation text (or empty) and legacy `claims` to `[]`; keep packet `caveats`/`limitations` + digit-free `remediation`. **Never** emit `explain_evidence_report` multi-template narrative on a vetoed turn (that would re-open topic-swap via legacy fields / claim-token allowlisting). |
-| Overview-match claims policy | On matched overview intent: legacy `claims` **must equal** DI allowlist claims (same content as `kpi_claims`); legacy `overview` may mirror DI `summary` (or a short legacy-compatible string). Do not dual-emit broad explainer claims alongside narrow `kpi_claims` — `allowed_tokens_from_tool_result` short-circuits on legacy `claims` values. |
+| Veto strips legacy narrative | On permanent residual veto: omit `kpi_claims` and DI `summary`; set legacy `overview` to remediation text (or empty) and legacy `claims` to `[]`; keep packet `caveats`/`limitations` + digit-free `remediation`. **Never** emit `explain_evidence_report` multi-template narrative on a vetoed turn (that would re-open topic-swap via legacy fields / claim-token allowlisting). Specialist/mixed envelopes use `summary` + `claims` (no `kpi_claims`) instead of this veto strip. |
+| Overview-match claims policy | On matched overview intent: legacy `claims` **must equal** DI allowlist claims (same content as `kpi_claims`); legacy `overview` may mirror DI `summary` (or a short legacy-compatible string). Do not dual-emit broad explainer claims alongside narrow `kpi_claims` — `allowed_tokens_from_tool_result` short-circuits on legacy `claims` values. Specialist envelopes omit `kpi_claims` and set legacy `claims` to the specialist allowlist. |
 | KPI paths | Same allowlist as DI §4.2. Baseline sample size is `results.trade_summary.trade_count`. **Never** document or prefer `results.trade_count`. |
 | Sample-size intent alias (DX-1) | Retarget `voice/intent.py` aliases for “trade count” / “trades” / “sample size” from `results.trade_count` → `results.trade_summary.trade_count` and rewrite pinned voice intent/tool tests in the same PR. `get_metric` continues to return any **existing** packet path (no silent remap of caller-supplied paths); only docs/schema/intent **guidance** changes. |
 | Expert overlay | Overlay-authored lines remain **strictly digit-free** (`_ungrounded_number_tokens(..., allowed=set()) == []`). No trade advice, forecasts, or derived math. Overlay lives in `expert_overlay` only — do not also dump overlay strings into legacy packet-caveat dicts. |
@@ -231,14 +231,14 @@ narrative/claims are stripped (see §1).
 
 | Field | Rule |
 |---|---|
-| `overview` (legacy) | Overview-match / neutral: mirror DI `summary` (or short legacy-compatible DI summary string). **Veto:** remediation text or `""` — never `explain_evidence_report` narrative. |
-| `claims` (legacy) | Overview-match / neutral: **same DI allowlist claims** as `kpi_claims` (JSON-safe `{path,value,text}`). **Veto:** `[]`. |
+| `overview` (legacy) | Overview-match / neutral: mirror DI `summary` (or short legacy-compatible DI summary string). **Specialist/mixed (RI-10):** mirror specialist `summary` (or limitation). **Veto:** remediation text or `""` — never `explain_evidence_report` narrative. |
+| `claims` (legacy) | Overview-match / neutral: **same DI allowlist claims** as `kpi_claims` (JSON-safe `{path,value,text}`). **Specialist/mixed:** specialist/composed allowlist claims (or `[]` on limitation). **Veto:** `[]`. |
 | `caveats` / `limitations` (legacy) | Packet caveats (dict form) / limitations only — not overlay-authored lines. |
-| `summary` | Short speakable summary from DI builder; digits only from allowlisted claim values. Absent on veto. |
-| `kpi_claims` | DI allowlist claims present on packet. Absent / empty on veto. |
+| `summary` | Short speakable summary from DI/RI builder; digits only from allowlisted claim values. Absent on veto. |
+| `kpi_claims` | Overview-match / neutral: DI allowlist claims present on packet. **Absent on specialist/mixed envelopes** (never KPI topic-swap). Absent / empty on veto. |
 | `expert_overlay` | Tuple/list of digit-free overlay strings from `build_expert_overlay` only. Absent / empty on veto. |
-| `overview_intent` | `kpi_summary` / `run_overview` / `null` (**negative-cue veto only**). Neutral, unmatched (no negative cue), and no-text race all use `"run_overview"`. |
-| `remediation` | Present when vetoed / missing trade_summary / structured remediation; digit-free. |
+| `overview_intent` | Overview-match: `kpi_summary` / `run_overview`. Neutral / unmatched / no-text race: `"run_overview"`. **Specialist/mixed (RI-10):** landed intent id (`validation_wfa`, `grid_ranking`, `mixed_ask`, `deep_trade`, …). **Veto:** `null` (permanent residual only). |
+| `remediation` | Present when vetoed / missing trade_summary / specialist limitation / structured remediation; digit-free. |
 | `run_id` / `canonical_bundle_hash` | Unchanged bind metadata. |
 | `next_experiments` | May remain for compatibility; must not introduce new run digits beyond packet content. Prefer leaving pre-DX behavior or packet `next_experiments` only. |
 
@@ -253,12 +253,13 @@ DX-1 calls DI builders, then projects — no duplicated claim loops:
 | DI builder output | Envelope field |
 |---|---|
 | `build_deterministic_kpi_reply(...).summary` | `summary` and legacy `overview` |
-| allowlisted `claims` | `kpi_claims` **and** legacy `claims` (identical content) |
+| allowlisted KPI `claims` (overview-match / neutral) | `kpi_claims` **and** legacy `claims` (identical content) |
+| `build_deterministic_discuss_reply` / compose `summary` + `claims` (RI-10 specialist/mixed) | `summary` + legacy `overview` + legacy `claims`; **no** `kpi_claims`; `overview_intent` = specialist/`mixed_ask` id |
 | `build_expert_overlay(packet, claims)` return value | `expert_overlay` only |
 | packet `caveats` / `limitations` | legacy `caveats` / `limitations` |
-| `build_structured_remediation_reply(...).summary` (**negative-cue veto**) | `remediation` (+ legacy `overview` mirrors it); `summary` / `kpi_claims` / `expert_overlay` omitted or empty; legacy `claims = []`; `overview_intent = null` |
+| `build_structured_remediation_reply(...).summary` (**permanent residual veto**) | `remediation` (+ legacy `overview` mirrors it); `summary` / `kpi_claims` / `expert_overlay` omitted or empty; legacy `claims = []`; `overview_intent = null` |
 | Missing KPI claims on overview-match / neutral path (`claims` empty after DI builder) | Keep DI envelope shape: `summary` / `kpi_claims=[]` / `expert_overlay` / legacy `claims=[]` / `overview_intent` = matched or `"run_overview"`; add additive digit-free `remediation` from `build_structured_remediation_reply` (do **not** collapse to full veto strip) |
-| matched intent string / neutral `"run_overview"` / veto `null` | `overview_intent` |
+| matched overview / specialist intent string / neutral `"run_overview"` / veto `null` | `overview_intent` |
 | `followups` on `ResultsQAReply` | Out of DX v1 tool envelope (do not require a new field) |
 
 `apply_expert_overlay` may still be used internally to auditor-check the

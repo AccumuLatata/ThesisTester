@@ -35,6 +35,7 @@ from thesistester.assistant.results_overview import (
     _SINGLE_METRIC_NOUN_PATHS,
     build_deterministic_assumptions_reply,
     build_deterministic_deep_trade_reply,
+    build_deterministic_discuss_reply,
     build_deterministic_grid_ranking_reply,
     build_deterministic_robustness_reply,
     build_deterministic_single_metric_reply,
@@ -51,6 +52,8 @@ from thesistester.assistant.results_overview import (
     has_single_metric_evidence,
     has_time_ranking_evidence,
     has_validation_wfa_evidence,
+    list_matched_discuss_intents,
+    list_matched_metric_paths,
     match_discuss_intent,
     match_overview_intent,
     present_assumptions_allowlist,
@@ -285,6 +288,18 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert match_discuss_intent("exit reason histogram please") == INTENT_DEEP_TRADE
     assert match_discuss_intent("how many trades exited?") == INTENT_DEEP_TRADE
     assert match_discuss_intent("how many trades?") == INTENT_SINGLE_METRIC
+    # Bare ``exit`` must not black-hole incidental trade_count phrasing.
+    assert match_discuss_intent("how many trades before exit") == INTENT_SINGLE_METRIC
+    assert resolve_single_metric_path("how many trades before exit") == (
+        "results.trade_summary.trade_count"
+    )
+    # deep_trade × trade_count with ``and`` composes (same as win rate × exit).
+    assert match_discuss_intent("exit reasons and how many trades") == INTENT_MIXED_ASK
+    assert match_discuss_intent("how many trades and exit reasons") == INTENT_MIXED_ASK
+    assert "results.trade_summary.trade_count" in list_matched_metric_paths(
+        "exit reasons and how many trades"
+    )
+    assert INTENT_DEEP_TRADE in list_matched_discuss_intents("exit reasons and how many trades")
     assert match_discuss_intent("best trades") == INTENT_DEEP_TRADE
     assert match_discuss_intent("worst trades") == INTENT_DEEP_TRADE
     assert match_discuss_intent("winning streak") == INTENT_DEEP_TRADE
@@ -2082,6 +2097,76 @@ def test_ri9_exit_ask_does_not_use_streak_only_trade_summary():
     assert client.calls == 0
     assert reply.claims == ()
     assert reply.recovery_reason == REASON_MISSING_DEEP_TRADE
+
+
+def test_ri10_shared_helper_topic_scopes_deep_trade_exit_asks():
+    """RI-10 helper must forward user_message (exit ask ≠ streak topic-swap)."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri10_topic_scope"},
+        assumptions={},
+        results={
+            "trade_summary": {
+                "trade_count": 10,
+                "max_consecutive_wins": 3,
+                "max_consecutive_losses": 2,
+            },
+            "projections": {
+                "streak_summary": {
+                    "source": "trade_summary",
+                    "max_consecutive_wins": 3,
+                    "max_consecutive_losses": 2,
+                }
+            },
+        },
+        warnings=(),
+        limitations=(),
+    )
+    ctx = packet.to_dict()
+    # Without topic scope, streak leaves alone would look like evidence.
+    assert has_deep_trade_evidence(ctx) is True
+    assert has_deep_trade_evidence(ctx, user_message="how many trades exited?") is False
+    reply = build_deterministic_discuss_reply(
+        packet,
+        ctx,
+        user_message="how many trades exited?",
+        discuss_intent=INTENT_DEEP_TRADE,
+    )
+    assert reply is not None
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MISSING_DEEP_TRADE
+    assert "consecutive" not in (reply.summary or "").lower()
+
+
+def test_ri10_shared_helper_hydrates_streak_from_trade_summary():
+    """Packet-only duplex path hydrates streak_summary for streak asks."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri10_streak_hydrate"},
+        assumptions={},
+        results={
+            "trade_summary": {
+                "trade_count": 10,
+                "max_consecutive_wins": 4,
+                "max_consecutive_losses": 2,
+            }
+        },
+        warnings=(),
+        limitations=(),
+    )
+    # Bare packet has no projections.streak_summary yet.
+    assert "streak_summary" not in (
+        (packet.to_dict().get("results") or {}).get("projections") or {}
+    )
+    reply = build_deterministic_discuss_reply(
+        packet,
+        packet.to_dict(),
+        user_message="what was the win streak",
+        discuss_intent=INTENT_DEEP_TRADE,
+    )
+    assert reply is not None
+    assert reply.claims
+    paths = {claim.path for claim in reply.claims}
+    assert "results.projections.streak_summary.max_consecutive_wins" in paths
+    assert "4" in reply.summary
 
 
 def test_ri9_exit_ask_does_not_use_extreme_only_projections():

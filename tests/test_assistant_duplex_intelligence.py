@@ -9,7 +9,9 @@ from thesistester.assistant.explainer import EvidenceCaveat, EvidencePacket
 from thesistester.assistant.llm_explainer import _ungrounded_number_tokens
 from thesistester.assistant.orchestrator import AssistantOrchestrator, OrchestrationResult
 from thesistester.assistant.results_overview import (
+    INTENT_DEEP_TRADE,
     INTENT_MIXED_ASK,
+    INTENT_SINGLE_METRIC,
     INTENT_VALIDATION_WFA,
     KPI_CLAIM_PATHS,
     OVERVIEW_INTENT_KPI,
@@ -397,6 +399,49 @@ def test_get_run_overview_residual_bare_stop_still_vetoes(tmp_path: Path):
     assert result.get("remediation")
     assert result["overview"] == result["remediation"]
     assert "0.25" not in (result["overview"] or "")
+
+
+def test_get_run_overview_incidental_exit_keeps_trade_count_specialist(tmp_path: Path):
+    """Bare ``exit`` must not black-hole trade_count into neutral KPI overview."""
+    service, handle, thesis, _run, _digest = _results_session(tmp_path, packet=_kpi_packet())
+    text = "how many trades before exit"
+    assert match_discuss_intent(text) == INTENT_SINGLE_METRIC
+    _append_user(service, thesis.thesis_id, handle.session_id, text)
+    result = execute_voice_tool("get_run_overview", {}, session=handle)["result"]
+    assert result["overview_intent"] == INTENT_SINGLE_METRIC
+    assert result["claims"]
+    assert "kpi_claims" not in result or result.get("kpi_claims") in (None, [])
+    paths = {item["path"] for item in result["claims"]}
+    assert "results.trade_summary.trade_count" in paths
+    assert not any("expectancy" in path for path in paths)
+
+
+def test_get_run_overview_deep_trade_exit_does_not_swap_to_streaks(tmp_path: Path):
+    """Duplex exit ask with streak-only packet → limitation (not streak/KPI swap)."""
+    packet = _kpi_packet(
+        trade_summary={
+            "trade_count": 42,
+            "expectancy_r": 0.25,
+            "win_rate": 0.52,
+            "profit_factor": 1.4,
+            "max_drawdown_r": -2.0,
+            "total_r": 10.5,
+            "max_consecutive_wins": 5,
+            "max_consecutive_losses": 3,
+        }
+    )
+    service, handle, thesis, _run, _digest = _results_session(tmp_path, packet=packet)
+    text = "how many trades exited?"
+    assert match_discuss_intent(text) == INTENT_DEEP_TRADE
+    _append_user(service, thesis.thesis_id, handle.session_id, text)
+    result = execute_voice_tool("get_run_overview", {}, session=handle)["result"]
+    assert result["overview_intent"] == INTENT_DEEP_TRADE
+    assert result["claims"] == []
+    assert "kpi_claims" not in result or result.get("kpi_claims") in (None, [])
+    assert result.get("summary")
+    assert "consecutive" not in result["summary"].lower()
+    assert "0.25" not in result["summary"]
+    assert _ungrounded_number_tokens(result["summary"], allowed=set()) == []
 
 
 def test_x4b_bare_summary_without_negative_cue_is_neutral(tmp_path: Path):

@@ -511,13 +511,11 @@ _DEEP_TRADE_STREAK_CUES: tuple[str, ...] = (
     "consecutive losses",
 )
 
-# ``how many trades`` must not steal exit-structure asks onto trade_count.
-_SINGLE_METRIC_EXIT_FALSE_FRIENDS: tuple[str, ...] = (
-    "exit",
-    "exited",
-    "exits",
-    "exiting",
-)
+# ``how many trades`` is a prefix of the deep_trade cue ``how many trades exited``.
+# Gate only that collision — bare ``exit``/``exited`` must not black-hole
+# incidental phrasing (``how many trades before exit``) or and-mixed asks
+# (``exit reasons and how many trades``).
+_SINGLE_METRIC_EXIT_FALSE_FRIENDS: tuple[str, ...] = ("how many trades exited",)
 
 
 def _build_deep_trade_claim_paths() -> tuple[str, ...]:
@@ -781,10 +779,11 @@ def _matched_single_metric_paths(normalized: str) -> list[str]:
         seen.add(path)
         paths.append(path)
 
-    exit_structure = _any_cue_matches(_SINGLE_METRIC_EXIT_FALSE_FRIENDS, normalized)
+    # Only the deep_trade-owned collocate steals trade_count (not bare ``exit*``).
+    exit_owned_trade_count = _any_cue_matches(_SINGLE_METRIC_EXIT_FALSE_FRIENDS, normalized)
     for form, path in _SINGLE_METRIC_EXPLICIT_FORMS:
         # ``how many trades exited`` belongs to deep_trade, not trade_count.
-        if form == "how many trades" and exit_structure:
+        if form == "how many trades" and exit_owned_trade_count:
             continue
         if _alias_matches(form, normalized):
             _add(path)
@@ -1266,6 +1265,38 @@ def has_deep_trade_streak_evidence(evidence_context: Mapping[str, Any]) -> bool:
     return _has_narratable_deep_trade_prefix(
         evidence_context, "results.projections.streak_summary."
     )
+
+
+def _ensure_deep_trade_context(
+    evidence_context: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Attach ephemeral ``streak_summary`` from packet ``trade_summary`` when absent.
+
+    Exit/extreme table projections still require caller-supplied trade rows
+    (orchestrator turn context). Duplex/packet-only callers get streak parity
+    without inventing exit-reason or extreme-trade leaves.
+    """
+    if not isinstance(evidence_context, Mapping):
+        return {}
+    if _path_exists(evidence_context, "results.projections.streak_summary"):
+        return evidence_context
+    try:
+        from thesistester.assistant.results_projections import project_streak_summary
+
+        streaks = project_streak_summary(evidence_context, None)
+    except Exception:
+        return evidence_context
+    if not isinstance(streaks, Mapping) or not streaks:
+        return evidence_context
+    if "max_consecutive_wins" not in streaks and "max_consecutive_losses" not in streaks:
+        return evidence_context
+    merged = dict(evidence_context)
+    results = dict(merged.get("results") or {})
+    projections = dict(results.get("projections") or {})
+    projections["streak_summary"] = dict(streaks)
+    results["projections"] = projections
+    merged["results"] = results
+    return merged
 
 
 def has_deep_trade_evidence(
@@ -2992,11 +3023,7 @@ def build_deterministic_discuss_reply(
     is overview/unmatched (callers keep the KPI/neutral path). Hydrates grid/time
     projections the same way as ``propose_results_reply``.
     """
-    intent = (
-        discuss_intent
-        if discuss_intent is not None
-        else match_discuss_intent(user_message)
-    )
+    intent = discuss_intent if discuss_intent is not None else match_discuss_intent(user_message)
     if intent not in DUPLEX_SPECIALIST_INTENTS:
         return None
 
@@ -3009,6 +3036,8 @@ def build_deterministic_discuss_reply(
         matched = list_matched_discuss_intents(user_message)
         if INTENT_TIME_RANKING in matched:
             working = dict(_ensure_time_rankings_context(working))
+        if INTENT_DEEP_TRADE in matched:
+            working = dict(_ensure_deep_trade_context(working))
         return compose_deterministic_replies(
             packet,
             working,
@@ -3029,29 +3058,24 @@ def build_deterministic_discuss_reply(
         return build_deterministic_validation_wfa_reply(packet, working)
     if intent == INTENT_ROBUSTNESS_TIER2:
         if not has_robustness_tier2_evidence(working):
-            return build_missing_robustness_limitation_reply(
-                packet, evidence_context=working
-            )
+            return build_missing_robustness_limitation_reply(packet, evidence_context=working)
         return build_deterministic_robustness_reply(packet, working)
     if intent == INTENT_ASSUMPTIONS_COSTS:
         if not has_assumptions_costs_evidence(working):
-            return build_missing_assumptions_limitation_reply(
-                packet, evidence_context=working
-            )
+            return build_missing_assumptions_limitation_reply(packet, evidence_context=working)
         return build_deterministic_assumptions_reply(packet, working)
     if intent == INTENT_DEEP_TRADE:
-        if not has_deep_trade_evidence(working):
-            return build_missing_deep_trade_limitation_reply(
-                packet, evidence_context=working
-            )
-        return build_deterministic_deep_trade_reply(packet, working)
+        # Streak scalars may live on trade_summary; hydrate before §6 gates.
+        working = dict(_ensure_deep_trade_context(working))
+        # Topic-scope (exit/extreme/streak) must match text Discuss / compose.
+        if not has_deep_trade_evidence(working, user_message=user_message):
+            return build_missing_deep_trade_limitation_reply(packet, evidence_context=working)
+        return build_deterministic_deep_trade_reply(packet, working, user_message=user_message)
     if intent == INTENT_SINGLE_METRIC:
         metric_path = resolve_single_metric_path(user_message)
         if metric_path is None or not has_single_metric_evidence(working, metric_path):
             return build_missing_metric_limitation_reply(packet, path=metric_path)
-        return build_deterministic_single_metric_reply(
-            packet, working, path=metric_path
-        )
+        return build_deterministic_single_metric_reply(packet, working, path=metric_path)
     return None
 
 
