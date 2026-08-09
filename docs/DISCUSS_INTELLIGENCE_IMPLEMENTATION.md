@@ -163,9 +163,10 @@ When vetoed or unmatched: keep today’s LLM path **plus** DI-1 recovery
 (repair → structured remediation per §5.3). Do **not** serve the KPI overview
 slice.
 
-**Mixed asks (DI v1 limitation):** a message that combines an overview cue with
-a negative cue (e.g. “KPIs and best SL/TP”) is **fully vetoed** — no partial
-KPI slice. Repair + structured remediation only. Do not half-answer.
+**Mixed asks:** DI v1 fully vetoed overview+specialist mixes. **RI-8** composes
+≤3 raw matched intents via `compose_deterministic_replies` (no KPI-only /
+specialist-only partial topic-swap; missing slice → narrow remediation). Duplex
+overview envelopes still full-veto mixed asks until RI-10 (DX X5).
 
 **Recovery reason codes** (not intents): `overview_path_miss`,
 `overview_digit_miss`, `overview_provider_exhausted`, `overview_repair_failed`.

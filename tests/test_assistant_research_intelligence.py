@@ -509,6 +509,80 @@ def test_r14_mixed_kpis_and_best_sl_composes_both_allowlists():
         "results.projections.grid_rankings.best.take_profit_ticks" in paths
         or "results.best_grid_result.take_profit_ticks" in paths
     )
+    # Compose must not stack per-slice "ask for KPIs" / WFA-presence next-steps
+    # after both topics were answered.
+    assert not any("ask for the key metrics" in c.lower() for c in reply.caveats)
+    assert len(paths) == len(reply.claims), "compose must dedupe claim paths"
+
+
+def test_ri8_missing_grid_slice_does_not_kpi_only_compose():
+    """Partial topic-swap: KPIs + best SL without grid evidence → remediation."""
+    packet = _packet(best_grid=False)
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="KPIs and best SL/TP",
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MIXED_ASK
+    assert "mix" in reply.summary.lower() or "one topic" in reply.summary.lower()
+
+
+def test_ri8_metric_plus_kpi_dedupes_overlapping_paths():
+    from thesistester.assistant.results_overview import REASON_MIXED_COMPOSE
+
+    packet = _packet()
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="what is the win rate and key metrics",
+    )
+    assert client.calls == 0
+    assert reply.recovery_reason == REASON_MIXED_COMPOSE
+    win_rate_claims = [c for c in reply.claims if c.path == "results.trade_summary.win_rate"]
+    assert len(win_rate_claims) == 1
+    assert reply.summary.lower().count("win rate") == 1
+
+
+def test_ri8_raw_cap_before_dual_overview_collapse():
+    """Four raw intents must remediate even if dual overview would collapse."""
+    from thesistester.assistant.results_overview import list_matched_discuss_intents
+
+    packet = _packet(best_grid=True, time_summary=True)
+    context = build_ephemeral_results_context(packet)
+    message = "KPIs and summarize this run and best SL and best time"
+    matched = list_matched_discuss_intents(message)
+    assert len(matched) > 3
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message=message,
+        turn_context=context,
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MIXED_ASK
+
+
+def test_ri8_multi_metric_over_leaf_cap_remediates():
+    packet = _packet()
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="what is the win rate and expectancy and profit factor and drawdown",
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MIXED_ASK
 
 
 def test_r16_specialist_flag_off_restores_remediation_on_grounding_miss():

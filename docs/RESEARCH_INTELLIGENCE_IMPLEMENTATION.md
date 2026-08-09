@@ -403,15 +403,22 @@ No performance KPIs in this builder.
 
 When multiple intents match:
 
-1. Determine the set of matched intents (same cue tables).
-2. Build claims per intent allowlist (deterministic).
-3. Concatenate summaries in **priority order** (§4.1), separated clearly.
-4. Merge caveats (mandatory packet + per-slice honesty); dedupe messages.
-5. Followups number-free; prefer next unanswered specialist topic.
-6. Run the auditor once on the composed reply.
+1. Determine the set of matched intents (same cue tables). Cap on **raw**
+   matched count (≤3) before dual-overview collapse.
+2. Collapse dual `kpi_summary`+`run_overview` to one KPI slice (same allowlist).
+3. Build claims per intent allowlist (deterministic, **no** per-slice overlay).
+   When overview + `single_metric` both match, drop the redundant metric slice
+   (KPI allowlist covers those leaves). Dedupe claim paths across slices.
+4. Concatenate summaries in **priority order** (§4.1), separated clearly.
+5. Merge caveats (mandatory packet + per-slice honesty); dedupe messages.
+6. Followups number-free; prefer next unanswered specialist topic.
+7. Apply RI-7 meaning overlay **once**, then run the auditor **once**.
 
-Hard cap: compose at most **three** intents per turn; if more match → ask to
-narrow. Never compose Help/thesis topics.
+Hard cap: compose at most **three** raw matched intents per turn; if more match
+→ ask to narrow. Multi-metric alone with more than three matched §4.5 leaves
+also narrows. Every matched intent must produce claims — missing slice evidence
+→ narrow remediation (no KPI-only / specialist-only partial topic-swap). Never
+compose Help/thesis topics.
 
 ### 4.8 Deterministic builders
 
