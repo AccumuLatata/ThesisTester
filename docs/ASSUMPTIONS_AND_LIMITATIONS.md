@@ -627,8 +627,7 @@ other than the last bar in the dataset.
   `allowed=set()`; no LLM paraphrase.
   **RI-8 landed:** `mixed_ask` → `compose_deterministic_replies` (§4.7);
   priority-ordered summaries; merge/dedupe caveats; followups for unanswered
-  topics; auditor once; compose ≤3 intents (>3 → narrow remediation); duplex
-  overview still vetoes mixed asks until RI-10.
+  topics; auditor once; compose ≤3 intents (>3 → narrow remediation).
   **RI-5 landed:** `robustness_tier2` presence-first builder over frozen §4.6
   paths (Monte Carlo / overfitting / sensitivity / noise / portfolio / OTF);
   MC + `otf validation` / `otf-validation` sunsets from residual; missing-all
@@ -644,11 +643,16 @@ other than the last bar in the dataset.
   to the model); exit/extreme asks missing tables short-circuit before LLM even
   when streak scalars exist; digit-bearing exit labels skipped; hard-reject
   undeclared / KPI paths via catalog + decode allowlist.
-  Incremental PRs keep DI residual negative-cue vetoes for not-yet-owned
-  specialist topics (and DX veto≠unmatched) until each builder PR sunsets its
-  cues; RI must not invent metrics, remap topics onto KPI overview, answer OOS
-  asks with in-sample single-metric leaves, soften OOS/selection-bias caveats,
-  or touch engine/golden paths.
+  **RI-10 landed (series complete):** duplex `get_run_overview` projects shared
+  RI builders into specialist/mixed envelopes (no cue fork); pure overview keeps
+  DI KPI envelopes; permanent residuals (bare stop/ranking/monte) stay veto ≠
+  unmatched; deep-trade duplex hydrates streak scalars from packet
+  `trade_summary` and topic-scopes exit/extreme/streak like text Discuss —
+  exit/extreme tables still require trade rows in turn context (packet-only
+  duplex returns a limitation, not KPI topic-swap); voice default remains off.
+  RI must not invent metrics, remap topics onto KPI overview, answer OOS asks
+  with in-sample single-metric leaves, soften OOS/selection-bias caveats, or
+  touch engine/golden paths.
   **DX-series:** `docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md` targets VA-5
   full-duplex **content** parity with DI overview/KPI intelligence by reusing
   DI builders inside VA-3 tool envelopes + realtime instructions. DX does not

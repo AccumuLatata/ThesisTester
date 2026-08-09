@@ -525,8 +525,7 @@ landed specialist / single-metric replies; overlay lines stay
 priority-ordered per-intent deterministic slices (no per-slice overlay),
 concatenated summaries, path-deduped claims, merged/deduped caveats, one RI-7
 overlay + auditor once; compose ≤3 **raw** intents (>3 or missing slice →
-narrow remediation; dual overview collapses after the cap); duplex overview
-envelopes still veto mixed asks until RI-10.
+narrow remediation; dual overview collapses after the cap).
 **RI-5 landed:** deterministic `robustness_tier2` recovery over the frozen §4.6
 presence-first path table (Monte Carlo / overfitting / sensitivity / noise /
 portfolio / OTF); MC + `otf validation` / `otf-validation` cues sunset from
@@ -546,6 +545,10 @@ asks require table-derived projections (streak-only cannot answer them);
 digit-bearing exit labels are not narratable; extreme timestamps omitted from
 the model-facing projection; catalog + decode hard-reject undeclared /
 `trade_summary` KPI substitutions; raw trade frames never enter the model path.
+**RI-10 landed (series complete):** duplex `get_run_overview` projects
+`build_deterministic_discuss_reply` / compose into specialist envelopes
+(`summary` + `claims`, no `kpi_claims`); pure overview keeps DI KPI envelopes;
+permanent residual cues still veto ≠ unmatched; voice default remains off.
 **DI-2 landed:** first-pass Results Q&A user payloads include
 `path_catalog.existing_paths` (bounded paths present on the turn context;
 KPI + projections/validation + honesty paths reserved before fat time tables

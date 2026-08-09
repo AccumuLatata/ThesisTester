@@ -9,10 +9,15 @@ from thesistester.assistant.explainer import EvidenceCaveat, EvidencePacket
 from thesistester.assistant.llm_explainer import _ungrounded_number_tokens
 from thesistester.assistant.orchestrator import AssistantOrchestrator, OrchestrationResult
 from thesistester.assistant.results_overview import (
+    INTENT_DEEP_TRADE,
+    INTENT_MIXED_ASK,
+    INTENT_SINGLE_METRIC,
+    INTENT_VALIDATION_WFA,
     KPI_CLAIM_PATHS,
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
     has_overview_negative_cue,
+    match_discuss_intent,
     match_overview_intent,
 )
 from thesistester.assistant.repository import LocalThesisRepository
@@ -46,7 +51,7 @@ _DX2_SECTION43_LITERALS: tuple[str, ...] = (
     "Duplex overview rules: prefer tool fields summary, kpi_claims, expert_overlay, and packet caveats.",
     "Cite only paths returned by tools; never invent results.trade_count, results.instrument, or results.validation.trade_count.",
     "When tools return fractional win rates, say them as percent / %.",
-    "Do not answer walk-forward, validation, ranking, or time asks by reading get_run_overview as a substitute; call a specialist-appropriate tool or remediate.",
+    "When get_run_overview returns specialist claims or a specialist overview_intent, prefer those fields; never substitute kpi_claims for walk-forward, validation, ranking, time, costs, robustness, or deep-trade asks.",
     "No trade advice; sample-size and OOS caveats still apply.",
 )
 _DX2_NEEDLES = _DX2_SECTION43_LITERALS
@@ -59,12 +64,12 @@ _DX3_SECTION9_COVERAGE: dict[str, tuple[str, ...]] = {
         "test_get_metric_still_returns_existing_trade_count_leaf",
     ),
     "X3": ("test_get_run_overview_kpi_match_and_speakable_summary_first",),
-    "X4": ("test_get_run_overview_negative_veto_strips_legacy",),
+    "X4": ("test_get_run_overview_wfa_specialist_envelope_or_limitation",),
     "X4b": (
         "test_get_run_overview_unmatched_is_neutral_not_remediation",
         "test_x4b_bare_summary_without_negative_cue_is_neutral",
     ),
-    "X5": ("test_get_run_overview_mixed_ask_full_veto",),
+    "X5": ("test_get_run_overview_mixed_ask_composes_specialist_envelope",),
     "X6": (
         "test_get_run_overview_neutral_no_transcript_policy_a",
         "test_speakable_skips_overlay_lines_with_digits",
@@ -316,47 +321,54 @@ def test_get_run_overview_kpi_match_and_speakable_summary_first(tmp_path: Path):
     assert _ungrounded_number_tokens(speakable, allowed=allowed) == []
 
 
-def test_get_run_overview_negative_veto_strips_legacy(tmp_path: Path):
-    """X4: negative-cue veto strips KPI/legacy narrative; remediation digit-free."""
+def test_get_run_overview_wfa_specialist_envelope_or_limitation(tmp_path: Path):
+    """X4 (RI-10): WFA ask → validation_wfa envelope or limitation; no KPI swap."""
     service, handle, thesis, _run, _digest = _results_session(tmp_path, packet=_kpi_packet())
-    _append_user(
-        service,
-        thesis.thesis_id,
-        handle.session_id,
-        "summarize the walk-forward / validation results",
-    )
+    text = "summarize the walk-forward / validation results"
+    assert match_discuss_intent(text) == INTENT_VALIDATION_WFA
+    assert has_overview_negative_cue(text) is True
+    _append_user(service, thesis.thesis_id, handle.session_id, text)
     out = execute_voice_tool("get_run_overview", {}, session=handle)
     assert out["ok"] is True
     result = out["result"]
-    assert result["overview_intent"] is None
+    assert result["overview_intent"] == INTENT_VALIDATION_WFA
+    # No WFA leaves on _kpi_packet → missing-validation limitation (not KPI).
     assert result["claims"] == []
     assert "kpi_claims" not in result or result.get("kpi_claims") in (None, [])
-    assert "summary" not in result or not result.get("summary")
-    assert "expert_overlay" not in result or result.get("expert_overlay") in (None, [])
-    assert result.get("remediation")
-    assert _ungrounded_number_tokens(result["remediation"], allowed=set()) == []
-    assert result["overview"] == result["remediation"]
-    # Must not reintroduce explainer multi-template narrative via legacy overview.
+    assert result.get("summary")
+    assert result["overview"] == result["summary"]
+    assert result.get("remediation") == result["summary"]
+    assert _ungrounded_number_tokens(result["summary"], allowed=set()) == []
     assert "Key metrics" not in (result["overview"] or "")
     assert "expectancy_r" not in (result["overview"] or "")
+    assert "0.25" not in (result["overview"] or "")
 
 
-def test_get_run_overview_mixed_ask_full_veto(tmp_path: Path):
-    """X5: mixed overview+specialist ask → full veto; same legacy strip as X4."""
+def test_get_run_overview_mixed_ask_composes_specialist_envelope(tmp_path: Path):
+    """X5 (RI-10): mixed KPIs+SL/TP → composed claims; no kpi_claims topic-swap field."""
     service, handle, thesis, _run, _digest = _results_session(tmp_path, packet=_kpi_packet())
-    _append_user(service, thesis.thesis_id, handle.session_id, "KPIs and best SL/TP")
+    text = "KPIs and best SL/TP"
+    assert match_discuss_intent(text) == INTENT_MIXED_ASK
+    _append_user(service, thesis.thesis_id, handle.session_id, text)
     out = execute_voice_tool("get_run_overview", {}, session=handle)
     result = out["result"]
-    assert result["overview_intent"] is None
-    assert result["claims"] == []
+    assert result["overview_intent"] == INTENT_MIXED_ASK
+    assert result.get("summary")
+    assert result["overview"] == result["summary"]
+    assert result["claims"]
     assert "kpi_claims" not in result or result.get("kpi_claims") in (None, [])
-    assert "summary" not in result or not result.get("summary")
-    assert "expert_overlay" not in result or result.get("expert_overlay") in (None, [])
-    assert result.get("remediation")
-    assert _ungrounded_number_tokens(result["remediation"], allowed=set()) == []
-    assert result["overview"] == result["remediation"]
-    assert "Key metrics" not in (result["overview"] or "")
-    assert "expectancy_r" not in (result["overview"] or "")
+    paths = {item["path"] for item in result["claims"]}
+    assert any(path.startswith("results.trade_summary.") for path in paths)
+    assert any(
+        path.endswith("stop_loss_ticks") or path.endswith("take_profit_ticks") for path in paths
+    )
+    # Must not invent undeclared paths; speakable digits ⊆ claim values.
+    speakable = format_speakable_tool_result("get_run_overview", result)
+    allowed = allowed_tokens_from_values(
+        item.get("value") for item in result["claims"] if "value" in item
+    )
+    assert _ungrounded_number_tokens(result["summary"], allowed=allowed) == []
+    assert _ungrounded_number_tokens(speakable, allowed=allowed) == []
 
 
 def test_get_run_overview_unmatched_is_neutral_not_remediation(tmp_path: Path):
@@ -371,6 +383,65 @@ def test_get_run_overview_unmatched_is_neutral_not_remediation(tmp_path: Path):
     assert result["overview_intent"] == OVERVIEW_INTENT_RUN
     assert result["kpi_claims"]
     assert not result.get("remediation")
+
+
+def test_get_run_overview_residual_bare_stop_still_vetoes(tmp_path: Path):
+    """Permanent residual (bare stop) stays veto ≠ unmatched after RI-10."""
+    service, handle, thesis, _run, _digest = _results_session(tmp_path, packet=_kpi_packet())
+    text = "What's my stop?"
+    assert match_discuss_intent(text) is None
+    assert has_overview_negative_cue(text) is True
+    _append_user(service, thesis.thesis_id, handle.session_id, text)
+    result = execute_voice_tool("get_run_overview", {}, session=handle)["result"]
+    assert result["overview_intent"] is None
+    assert result["claims"] == []
+    assert "kpi_claims" not in result or result.get("kpi_claims") in (None, [])
+    assert result.get("remediation")
+    assert result["overview"] == result["remediation"]
+    assert "0.25" not in (result["overview"] or "")
+
+
+def test_get_run_overview_incidental_exit_keeps_trade_count_specialist(tmp_path: Path):
+    """Bare ``exit`` must not black-hole trade_count into neutral KPI overview."""
+    service, handle, thesis, _run, _digest = _results_session(tmp_path, packet=_kpi_packet())
+    text = "how many trades before exit"
+    assert match_discuss_intent(text) == INTENT_SINGLE_METRIC
+    _append_user(service, thesis.thesis_id, handle.session_id, text)
+    result = execute_voice_tool("get_run_overview", {}, session=handle)["result"]
+    assert result["overview_intent"] == INTENT_SINGLE_METRIC
+    assert result["claims"]
+    assert "kpi_claims" not in result or result.get("kpi_claims") in (None, [])
+    paths = {item["path"] for item in result["claims"]}
+    assert "results.trade_summary.trade_count" in paths
+    assert not any("expectancy" in path for path in paths)
+
+
+def test_get_run_overview_deep_trade_exit_does_not_swap_to_streaks(tmp_path: Path):
+    """Duplex exit ask with streak-only packet → limitation (not streak/KPI swap)."""
+    packet = _kpi_packet(
+        trade_summary={
+            "trade_count": 42,
+            "expectancy_r": 0.25,
+            "win_rate": 0.52,
+            "profit_factor": 1.4,
+            "max_drawdown_r": -2.0,
+            "total_r": 10.5,
+            "max_consecutive_wins": 5,
+            "max_consecutive_losses": 3,
+        }
+    )
+    service, handle, thesis, _run, _digest = _results_session(tmp_path, packet=packet)
+    text = "how many trades exited?"
+    assert match_discuss_intent(text) == INTENT_DEEP_TRADE
+    _append_user(service, thesis.thesis_id, handle.session_id, text)
+    result = execute_voice_tool("get_run_overview", {}, session=handle)["result"]
+    assert result["overview_intent"] == INTENT_DEEP_TRADE
+    assert result["claims"] == []
+    assert "kpi_claims" not in result or result.get("kpi_claims") in (None, [])
+    assert result.get("summary")
+    assert "consecutive" not in result["summary"].lower()
+    assert "0.25" not in result["summary"]
+    assert _ungrounded_number_tokens(result["summary"], allowed=set()) == []
 
 
 def test_x4b_bare_summary_without_negative_cue_is_neutral(tmp_path: Path):
@@ -462,7 +533,7 @@ def test_speakable_skips_overlay_lines_with_digits():
 
 
 def test_stale_negative_cue_after_assistant_turn_is_neutral(tmp_path: Path):
-    """X16: stale prior-turn text (assistant already replied) → neutral, not veto."""
+    """X16: stale prior-turn text (assistant already replied) → neutral, not specialist."""
     service, handle, thesis, _run, _digest = _results_session(tmp_path, packet=_kpi_packet())
     _append_user(
         service,
@@ -470,11 +541,11 @@ def test_stale_negative_cue_after_assistant_turn_is_neutral(tmp_path: Path):
         handle.session_id,
         "summarize the walk-forward / validation results",
     )
-    # First call during the user turn still vetoes.
-    veto = execute_voice_tool("get_run_overview", {}, session=handle)["result"]
-    assert veto["overview_intent"] is None
-    assert veto.get("remediation")
-    # After assistant reply, same stale user text must not keep vetoing.
+    # First call during the user turn projects the specialist/limitation envelope.
+    first = execute_voice_tool("get_run_overview", {}, session=handle)["result"]
+    assert first["overview_intent"] == INTENT_VALIDATION_WFA
+    assert first.get("summary")
+    # After assistant reply, same stale user text must not keep specialist-routing.
     _append_assistant(
         service,
         thesis.thesis_id,

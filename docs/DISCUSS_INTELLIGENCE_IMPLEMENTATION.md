@@ -26,7 +26,7 @@ not listed under **In scope**, it belongs in a later PR or is rejected.
 | HC / Help | Product how-to corpus | Optionally cite number-free glossary definitions already allowlisted; **must not** answer run KPIs from Help |
 | VA | Spoken transport | Text recovery in `handle_results_turn` / `propose_results_reply` flows into VA-4 PTT automatically; voice-specific UX remains **out of DI v1** |
 | DX | VA-5 duplex **content** parity with DI overview/KPI intelligence (`docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md`) | DI does not own duplex; DX **reuses** DI pure builders and must not fork cue/path/overlay freezes. DX-1 may add a thin exported `has_overview_negative_cue` helper in `results_overview.py` (same `_NEGATIVE_CUES`; no cue edits) so duplex can distinguish veto from unmatched |
-| RI | Specialist / single-metric / meaning / mixed-ask fail-open slices (`docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md`) | **Continuation after DI complete** — do not reopen DI wholesale. RI may extend the Discuss intent router and amend DI characterization tests only when a specialist intent now owns a former veto→remediation case (T10→RI-1 grid; T9→RI-3 WFA/validation; T15→RI-8 mixed compose; MC/OTF residual→RI-5 `robustness_tier2`; costs/assumptions→RI-6 `assumptions_costs`; exit/extreme/streak→RI-9 `deep_trade`). Until each builder lands, RI **keeps DI §4.1 residual negatives** so overview/`single_metric` cannot topic-swap. RI **must not** loosen the RQ auditor or serve KPI overview for specialist intents |
+| RI | Specialist / single-metric / meaning / mixed-ask fail-open slices (`docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md`) | ✅ **RI-0…RI-10 complete** — do not reopen DI wholesale. RI extended the Discuss intent router for owned specialists (T10→grid; T9→WFA; T15→mixed compose; MC/OTF→`robustness_tier2`; costs→`assumptions_costs`; exit/extreme/streak→`deep_trade`) and RI-10 duplex envelopes. Permanent residuals (bare stop/ranking/monte) keep overview/`single_metric` refusal. RI **must not** loosen the RQ auditor or serve KPI overview for specialist intents |
 | DI (this doc) | Recoverable discussion UX + overview intent→evidence slices + expert framing **without new run digits** | Orchestrator / `results_qa` recovery + `llm.py` TLS wrap + narrow page remediation render only |
 
 **Landing note:** DI-0 freezes this contract alone (plan PR). Do not treat the
@@ -165,8 +165,9 @@ slice.
 
 **Mixed asks:** DI v1 fully vetoed overview+specialist mixes. **RI-8** composes
 ≤3 raw matched intents via `compose_deterministic_replies` (no KPI-only /
-specialist-only partial topic-swap; missing slice → narrow remediation). Duplex
-overview envelopes still full-veto mixed asks until RI-10 (DX X5).
+specialist-only partial topic-swap; missing slice → narrow remediation).
+**RI-10** projects the same compose into duplex `get_run_overview` specialist
+envelopes (DX X5 recharacterized; no cue fork).
 
 **Recovery reason codes** (not intents): `overview_path_miss`,
 `overview_digit_miss`, `overview_provider_exhausted`, `overview_repair_failed`.

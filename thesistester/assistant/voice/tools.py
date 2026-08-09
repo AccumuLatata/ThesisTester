@@ -14,13 +14,15 @@ from typing import Any, Mapping
 from thesistester.assistant.explainer import EvidencePacket, compare_evidence
 from thesistester.assistant.repository import AssistantRepositoryError
 from thesistester.assistant.results_overview import (
+    DUPLEX_SPECIALIST_INTENTS,
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
+    build_deterministic_discuss_reply,
     build_deterministic_kpi_reply,
     build_expert_overlay,
     build_structured_remediation_reply,
     has_overview_negative_cue,
-    match_overview_intent,
+    match_discuss_intent,
 )
 from thesistester.assistant.tools import AssistantToolError
 from thesistester.assistant.voice.contracts import VoiceToolInvocation
@@ -74,10 +76,15 @@ VOICE_TOOL_SCHEMAS: tuple[dict[str, Any], ...] = (
         "type": "function",
         "name": "get_run_overview",
         "description": (
-            "Return a DI-shaped grounded overview from the bound hash-verified "
-            "evidence packet (summary, kpi_claims on results.trade_summary.*, "
-            "digit-free expert_overlay, packet caveats). Prefer these fields; "
-            "do not invent results.trade_count or results.instrument."
+            "Return a grounded overview or specialist envelope from the bound "
+            "hash-verified evidence packet. Overview/KPI asks expose summary, "
+            "kpi_claims on results.trade_summary.*, digit-free expert_overlay, "
+            "and packet caveats. Specialist / mixed asks (grid, time, WFA, "
+            "robustness, costs, deep-trade, single-metric) expose summary + "
+            "claims for that intent (or a limitation) with overview_intent set "
+            "to the specialist id — never substitute kpi_claims for specialist "
+            "topics. Prefer tool fields; do not invent results.trade_count or "
+            "results.instrument."
         ),
         "parameters": {
             "type": "object",
@@ -317,22 +324,79 @@ def _project_di_overview_envelope(
     return envelope
 
 
+def _project_ri_specialist_envelope(
+    *,
+    record: Any,
+    packet: EvidencePacket,
+    user_message: str,
+    discuss_intent: str,
+) -> dict[str, Any]:
+    """RI-10: project shared specialist/mixed builders into the tool envelope.
+
+    Specialists never populate ``kpi_claims`` (no KPI topic-swap). Missing
+    evidence becomes a limitation summary with empty claims; residual bare
+    cues still use ``_project_veto_overview_envelope`` via the decision order.
+    """
+    evidence_context = packet.to_dict()
+    reply = build_deterministic_discuss_reply(
+        packet,
+        evidence_context,
+        user_message=user_message,
+        discuss_intent=discuss_intent,
+    )
+    if reply is None:
+        # Should not happen for DUPLEX_SPECIALIST_INTENTS; fail closed to veto.
+        return _project_veto_overview_envelope(record=record, packet=packet)
+    claim_dicts = _claims_as_json(reply.claims)
+    summary = str(reply.summary or "").strip()
+    overlay = build_expert_overlay(
+        packet,
+        reply.claims,
+        discuss_intent=discuss_intent,
+        evidence_context=evidence_context,
+    )
+    envelope: dict[str, Any] = {
+        **_packet_legacy_framing(packet),
+        "overview": summary,
+        "claims": claim_dicts,
+        "summary": summary,
+        "expert_overlay": list(overlay),
+        "overview_intent": discuss_intent,
+        "run_id": record.run_id,
+        "canonical_bundle_hash": record.expected_canonical_bundle_hash,
+    }
+    # Limitations / narrow-mixed remediation: expose digit-free remediation text
+    # without inventing kpi_claims.
+    if not claim_dicts:
+        envelope["remediation"] = summary
+    return envelope
+
+
 def _tool_get_run_overview(session: VoiceToolSession, args: Mapping[str, Any]) -> dict[str, Any]:
     if args:
         raise VoiceToolError("get_run_overview accepts no arguments.")
     record, packet = _require_results_packet(session)
     latest_user = _latest_user_transcript_text(session)
-    # DX §4.1 decision order: veto → match → neutral (unmatched / no-text).
-    if latest_user is not None and has_overview_negative_cue(latest_user):
-        return _project_veto_overview_envelope(record=record, packet=packet)
+    # RI-10 / DX §4.1 decision order (relationship note):
+    # specialist|mixed → overview match → residual veto → neutral.
     if latest_user is not None:
-        matched = match_overview_intent(latest_user)
-        if matched in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}:
+        discuss_intent = match_discuss_intent(latest_user)
+        if discuss_intent in DUPLEX_SPECIALIST_INTENTS:
+            return _project_ri_specialist_envelope(
+                record=record,
+                packet=packet,
+                user_message=latest_user,
+                discuss_intent=discuss_intent,
+            )
+        if discuss_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}:
             return _project_di_overview_envelope(
                 record=record,
                 packet=packet,
-                intent=matched,
+                intent=discuss_intent,
             )
+        # Permanent residual cues (bare stop/ranking/monte…): veto ≠ unmatched.
+        if has_overview_negative_cue(latest_user):
+            return _project_veto_overview_envelope(record=record, packet=packet)
     return _project_di_overview_envelope(
         record=record,
         packet=packet,

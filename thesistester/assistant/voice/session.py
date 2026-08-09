@@ -62,7 +62,7 @@ _DX2_REALTIME_RESULTS_CONSTRAINT_LINES: tuple[str, ...] = (
     "Duplex overview rules: prefer tool fields summary, kpi_claims, expert_overlay, and packet caveats.",
     "Cite only paths returned by tools; never invent results.trade_count, results.instrument, or results.validation.trade_count.",
     "When tools return fractional win rates, say them as percent / %.",
-    "Do not answer walk-forward, validation, ranking, or time asks by reading get_run_overview as a substitute; call a specialist-appropriate tool or remediate.",
+    "When get_run_overview returns specialist claims or a specialist overview_intent, prefer those fields; never substitute kpi_claims for walk-forward, validation, ranking, time, costs, robustness, or deep-trade asks.",
     "No trade advice; sample-size and OOS caveats still apply.",
 )
 
