@@ -1343,12 +1343,15 @@ if _display_has_trades:
                     "and not a replacement for the Exact / Membership / Level count / "
                     "Pairs tabs above."
                 )
-                if _show_focused:
+                # Only warn when the overlay actually swapped in focused trades.
+                # Toggle-on with missing/invalid focused_trades still uses full
+                # session trades — same universe as the standalone 3c block.
+                if _show_focused and isinstance(_focus_trades, pd.DataFrame):
                     st.caption(
                         "Focus is active: this cross-view uses the focused displayed "
-                        "trades (`_display_trades`). Counts will not match the "
-                        "standalone “3c outcome summary by variant/source” block, "
-                        "which still uses the full session trade table."
+                        "trades. Counts will not match the standalone “3c outcome "
+                        "summary by variant/source” block, which still uses the full "
+                        "session trade table."
                     )
                 if (
                     isinstance(_display_trades, pd.DataFrame)
