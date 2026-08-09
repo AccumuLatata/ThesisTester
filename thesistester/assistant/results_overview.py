@@ -458,13 +458,58 @@ _DEEP_TRADE_POSITIVE_CUES: tuple[str, ...] = (
     "exit-reasons",
     "why did trades exit",
     "how did trades exit",
+    "how many trades exited",
+    "trades exited",
     "worst trade",
+    "worst trades",
     "best trade",
+    "best trades",
     "extreme trades",
     "win streak",
+    "win streaks",
     "loss streak",
+    "loss streaks",
+    "winning streak",
+    "losing streak",
     "consecutive wins",
     "consecutive losses",
+)
+
+# Exit/extreme cues require table-derived projections (§6: tables absent → limitation).
+_DEEP_TRADE_TABLE_CUES: tuple[str, ...] = (
+    "exit reason",
+    "exit reasons",
+    "exit-reason",
+    "exit-reasons",
+    "why did trades exit",
+    "how did trades exit",
+    "how many trades exited",
+    "trades exited",
+    "worst trade",
+    "worst trades",
+    "best trade",
+    "best trades",
+    "extreme trades",
+)
+
+# Streak cues may use trade_summary streak scalars without loaded trade rows.
+_DEEP_TRADE_STREAK_CUES: tuple[str, ...] = (
+    "win streak",
+    "win streaks",
+    "loss streak",
+    "loss streaks",
+    "winning streak",
+    "losing streak",
+    "consecutive wins",
+    "consecutive losses",
+)
+
+# ``how many trades`` must not steal exit-structure asks onto trade_count.
+_SINGLE_METRIC_EXIT_FALSE_FRIENDS: tuple[str, ...] = (
+    "exit",
+    "exited",
+    "exits",
+    "exiting",
 )
 
 
@@ -611,6 +656,16 @@ def _deep_trade_matches(normalized: str) -> bool:
     return _any_cue_matches(_DEEP_TRADE_POSITIVE_CUES, normalized)
 
 
+def _deep_trade_table_topic_matches(normalized: str) -> bool:
+    """True when the ask needs exit-reason / extreme-trade table projections."""
+    return _any_cue_matches(_DEEP_TRADE_TABLE_CUES, normalized)
+
+
+def _deep_trade_streak_topic_matches(normalized: str) -> bool:
+    """True when the ask is streak-structure (may use trade_summary streaks)."""
+    return _any_cue_matches(_DEEP_TRADE_STREAK_CUES, normalized)
+
+
 def _robustness_near_miss_matches(normalized: str) -> bool:
     """True for bare ``monte`` / ``carlo`` without a full robustness cue."""
     if _robustness_tier2_matches(normalized):
@@ -707,7 +762,11 @@ def _matched_single_metric_paths(normalized: str) -> list[str]:
         seen.add(path)
         paths.append(path)
 
+    exit_structure = _any_cue_matches(_SINGLE_METRIC_EXIT_FALSE_FRIENDS, normalized)
     for form, path in _SINGLE_METRIC_EXPLICIT_FORMS:
+        # ``how many trades exited`` belongs to deep_trade, not trade_count.
+        if form == "how many trades" and exit_structure:
+            continue
         if _alias_matches(form, normalized):
             _add(path)
     if _any_cue_matches(_SINGLE_METRIC_VALUE_COLLOCATES, normalized):
@@ -787,10 +846,11 @@ def _evaluate_discuss_match(message: str) -> dict[str, Any] | None:
         time_bare_only and metric_paths and not specialists and overview_count == 0
     )
     # Specialist × value-metric with explicit ``and`` is composable (e.g. win rate
-    # and costs). Sole metric with specialist collocates still hard-refuses
+    # and costs / exit reasons). Soft residual must not strip the metric half —
+    # sole metric with specialist collocates still hard-refuses without ``and``
     # (``what is the win rate on the grid?`` → grid only).
     specialist_metric_mixed = bool(
-        specialists and metric_paths and _alias_matches("and", normalized) and not soft_residual
+        specialists and metric_paths and _alias_matches("and", normalized)
     )
 
     if time_bare_only and not bare_time_metric_mixed:
@@ -845,8 +905,11 @@ def list_matched_discuss_intents(message: str) -> tuple[str, ...]:
     if state is None:
         return ()
     if state["hard_residual"]:
-        # §4.1 step 3: keep landed specialists; residual still blocks overview/metric.
-        return tuple(intent for intent in state["intents"] if intent in _LANDED_SPECIALIST_INTENTS)
+        # §4.1 step 3: keep landed specialists; keep metric when explicitly mixed.
+        keep = set(_LANDED_SPECIALIST_INTENTS)
+        if state["specialist_metric_mixed"]:
+            keep.add(INTENT_SINGLE_METRIC)
+        return tuple(intent for intent in state["intents"] if intent in keep)
     if state["soft_residual"] and not state["specialists"] and not state["bare_time_metric_mixed"]:
         return ()
     # state["intents"] already includes metric when bare-time×metric mixed
@@ -857,7 +920,9 @@ def list_matched_discuss_intents(message: str) -> tuple[str, ...]:
 def list_matched_metric_paths(message: str) -> tuple[str, ...]:
     """Return §4.5 paths matched for composition (empty when metric hard-refused)."""
     state = _evaluate_discuss_match(message)
-    if state is None or state["hard_residual"]:
+    if state is None:
+        return ()
+    if state["hard_residual"] and not state["specialist_metric_mixed"]:
         return ()
     if not (
         state["single_metric"]
@@ -888,11 +953,12 @@ def match_discuss_intent(message: str) -> str | None:
     single_metric = state["single_metric"]
     multi_metric = state["multi_metric"]
 
-    # §4.1 step 3: hard residual blocks overview / single_metric. A landed
+    # §4.1 step 3: hard residual blocks overview / lone single_metric. A landed
     # specialist that does not own the residual cue may still answer
-    # (e.g. bare ``ranking`` + costs → assumptions_costs).
+    # (e.g. bare ``ranking`` + costs → assumptions_costs). Explicit specialist×
+    # metric ``and`` mixes stay composable.
     if state["hard_residual"]:
-        if len(specialists) >= 2:
+        if state["specialist_metric_mixed"] or len(specialists) >= 2:
             return INTENT_MIXED_ASK
         if len(specialists) == 1:
             return specialists[0]
@@ -904,7 +970,10 @@ def match_discuss_intent(message: str) -> str | None:
 
     if soft_residual:
         # Soft bare-grid residual refuses overview/DX topic-swap, but must not
-        # veto a lone landed specialist ("tp and oos" / "validation of my stop").
+        # veto a lone landed specialist ("tp and oos" / "validation of my stop")
+        # or strip an explicit specialist×metric ``and`` mix.
+        if state["specialist_metric_mixed"]:
+            return INTENT_MIXED_ASK
         if len(specialists) >= 2 or (len(specialists) == 1 and overview_count >= 1):
             return INTENT_MIXED_ASK
         if len(specialists) == 1:
@@ -1123,17 +1192,63 @@ def has_assumptions_costs_evidence(evidence_context: Mapping[str, Any]) -> bool:
     return False
 
 
-def has_deep_trade_evidence(evidence_context: Mapping[str, Any]) -> bool:
-    """True when at least one narratable §6 deep-trade projection leaf exists."""
-    if not isinstance(evidence_context, Mapping):
-        return False
+def _has_narratable_deep_trade_prefix(evidence_context: Mapping[str, Any], prefix: str) -> bool:
+    """True when a narratable allowlisted leaf under *prefix* exists."""
     for path in DEEP_TRADE_CLAIM_PATHS:
+        if not path.startswith(prefix):
+            continue
         if not _path_exists(evidence_context, path):
             continue
         value = _path_get(evidence_context, path)
         if _format_scalar_for_claim(path, value) is not None:
             return True
     return False
+
+
+def has_deep_trade_table_evidence(evidence_context: Mapping[str, Any]) -> bool:
+    """True when exit-reason or extreme-trade table projections are narratable."""
+    if not isinstance(evidence_context, Mapping):
+        return False
+    return _has_narratable_deep_trade_prefix(
+        evidence_context, "results.projections.exit_reason_counts."
+    ) or _has_narratable_deep_trade_prefix(evidence_context, "results.projections.extreme_trades.")
+
+
+def has_deep_trade_streak_evidence(evidence_context: Mapping[str, Any]) -> bool:
+    """True when streak_summary scalars are narratable."""
+    if not isinstance(evidence_context, Mapping):
+        return False
+    return _has_narratable_deep_trade_prefix(
+        evidence_context, "results.projections.streak_summary."
+    )
+
+
+def has_deep_trade_evidence(
+    evidence_context: Mapping[str, Any],
+    *,
+    user_message: str | None = None,
+) -> bool:
+    """True when required §6 deep-trade projection evidence exists for the ask.
+
+    Exit-reason / extreme-trade cues require table-derived projections (§6:
+    tables absent → limitation). Streak-only cues may use ``trade_summary``
+    streak scalars. Without a message, any narratable deep-trade leaf counts.
+    """
+    if not isinstance(evidence_context, Mapping):
+        return False
+    table_ok = has_deep_trade_table_evidence(evidence_context)
+    streak_ok = has_deep_trade_streak_evidence(evidence_context)
+    if not isinstance(user_message, str) or not user_message.strip():
+        return table_ok or streak_ok
+    normalized = _normalize_message(user_message)
+    needs_table = _deep_trade_table_topic_matches(normalized)
+    needs_streak = _deep_trade_streak_topic_matches(normalized)
+    if needs_table:
+        # Exit/extreme structure cannot be answered from streak scalars alone.
+        return table_ok
+    if needs_streak:
+        return streak_ok or table_ok
+    return table_ok or streak_ok
 
 
 def _time_grouped_summary_from_context(
@@ -2294,14 +2409,18 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
         return f"{leaf} is {display}."
     if isinstance(value, str) and value.strip():
         text = value.strip()
-        # RI-9 deep-trade string leaves (exit reasons / timestamps).
-        if path.startswith("results.projections.exit_reason_counts.") and path.endswith(
-            ".exit_reason"
-        ):
-            return f"Exit reason is {text}."
-        if path.startswith("results.projections.extreme_trades.") and path.endswith(".exit_reason"):
-            side = "Best" if ".best." in path else "Worst" if ".worst." in path else "Extreme"
-            return f"{side} trade exit reason is {text}."
+        # RI-9 deep-trade string leaves. Digit-bearing labels are not narratable:
+        # mixed strings do not contribute digits to the auditor allowlist, so
+        # ``SL-12`` / ``TP 2R`` would crash grounding if claimed.
+        if path.startswith("results.projections.") and path.endswith(".exit_reason"):
+            if _ungrounded_number_tokens(text, allowed=set()):
+                return None
+            if path.startswith("results.projections.exit_reason_counts."):
+                return f"Exit reason is {text}."
+            if path.startswith("results.projections.extreme_trades."):
+                side = "Best" if ".best." in path else "Worst" if ".worst." in path else "Extreme"
+                return f"{side} trade exit reason is {text}."
+            return None
         # Grid / validation / time honesty labels are narratable strings.
         if path.endswith("selection_scope"):
             return f"Selection scope is {text}."
@@ -2729,9 +2848,13 @@ def compose_deterministic_replies(
             if _absorb(build_deterministic_assumptions_reply(packet, working, apply_overlay=False)):
                 _mark(intent)
         elif intent == INTENT_DEEP_TRADE:
-            if not has_deep_trade_evidence(working):
+            if not has_deep_trade_evidence(working, user_message=user_message):
                 continue
-            if _absorb(build_deterministic_deep_trade_reply(packet, working, apply_overlay=False)):
+            if _absorb(
+                build_deterministic_deep_trade_reply(
+                    packet, working, apply_overlay=False, user_message=user_message
+                )
+            ):
                 _mark(intent)
         elif intent == INTENT_SINGLE_METRIC:
             paths = tuple(metric_paths or ())
@@ -3383,18 +3506,38 @@ def build_deterministic_deep_trade_reply(
     *,
     recovery_reason: str | None = None,
     apply_overlay: bool = True,
+    user_message: str | None = None,
 ):
     """Build an auditor-safe deep-trade reply from the frozen §6 allowlist."""
-    if not has_deep_trade_evidence(evidence_context):
+    if not has_deep_trade_evidence(evidence_context, user_message=user_message):
         return build_missing_deep_trade_limitation_reply(
             packet,
             recovery_reason=recovery_reason or REASON_MISSING_DEEP_TRADE,
             evidence_context=evidence_context,
         )
 
+    # Topic-scope claims: exit/extreme asks must not answer with streaks alone;
+    # streak asks prefer streak leaves (still may include table leaves).
+    path_prefixes: tuple[str, ...] | None = None
+    if isinstance(user_message, str) and user_message.strip():
+        normalized = _normalize_message(user_message)
+        needs_table = _deep_trade_table_topic_matches(normalized)
+        needs_streak = _deep_trade_streak_topic_matches(normalized)
+        if needs_table and not needs_streak:
+            path_prefixes = (
+                "results.projections.exit_reason_counts.",
+                "results.projections.extreme_trades.",
+            )
+        elif needs_streak and not needs_table:
+            path_prefixes = ("results.projections.streak_summary.",)
+
     claims: list[EvidenceClaim] = []
     summary_parts: list[str] = []
     for path in DEEP_TRADE_CLAIM_PATHS:
+        if path_prefixes is not None and not any(
+            path.startswith(prefix) for prefix in path_prefixes
+        ):
+            continue
         if not _path_exists(evidence_context, path):
             continue
         value = _path_get(evidence_context, path)

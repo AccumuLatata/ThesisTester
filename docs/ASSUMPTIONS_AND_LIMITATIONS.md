@@ -641,7 +641,8 @@ other than the last bar in the dataset.
   **RI-9 landed:** `deep_trade` builder over capped ephemeral §6 projections
   (`exit_reason_counts` top N≤12 + other, `extreme_trades` N≤5 best/worst,
   `streak_summary`); trade tables load into turn context only (never raw frames
-  to the model); missing-projection short-circuit before LLM; hard-reject
+  to the model); exit/extreme asks missing tables short-circuit before LLM even
+  when streak scalars exist; digit-bearing exit labels skipped; hard-reject
   undeclared / KPI paths via catalog + decode allowlist.
   Incremental PRs keep DI residual negative-cue vetoes for not-yet-owned
   specialist topics (and DX veto≠unmatched) until each builder PR sunsets its

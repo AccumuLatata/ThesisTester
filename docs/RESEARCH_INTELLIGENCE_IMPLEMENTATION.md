@@ -180,7 +180,7 @@ the sole-intent tie-break when exactly one landed intent matches; they are
 | 3 | `validation_wfa` | RI-3 | `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap`, `permutation` only with validation-sense collocates (`bootstrap`/`oos`/`wfa`/`walk-forward`/`validation`/`test`). **Not** `otf validation` (RI-5). |
 | 4 | `robustness_tier2` | RI-5 | `monte carlo`, `monte-carlo`, `overfitting`, `overfit`, `sensitivity`, `noise test`, `noise summary`, `portfolio summary`, `otf validation`, `otf-validation`. Near-miss bare `monte` / `carlo` (without a full cue) are hard residual — overview + `single_metric` refuse; never IS laundering. Bare `validation` after masking OTF phrases still lands RI-3 so `validation and otf validation` is `mixed_ask`. |
 | 5 | `assumptions_costs` | RI-6 | `commission`, `slippage`, `exposure policy`, `intrabar model`, `costs`/`cost`, `assumptions`/`assumption` (run-assumption sense). Configured/assumed `stop loss` / `take profit` land here (not best-grid) unless `best`/`grid`/`ranking` ownership collocates are also present. Help how-to / docs collocates (`how to`, `how do i`, `in the docs`, …) stay unmatched. |
-| 6 | `deep_trade` | RI-9 | `exit reason`/`exit reasons`/`exit-reason(s)`, `why did trades exit` / `how did trades exit`, `worst trade` / `best trade` / `extreme trades`, `win streak` / `loss streak`, `consecutive wins` / `consecutive losses`. Answers only from capped ephemeral §6 projections — never raw trade frames. |
+| 6 | `deep_trade` | RI-9 | `exit reason`/`exit reasons`/`exit-reason(s)`, `why/how did trades exit`, `how many trades exited` / `trades exited`, `worst trade(s)` / `best trade(s)` / `extreme trades`, `win/loss streak(s)` / `winning/losing streak`, `consecutive wins/losses`. Answers only from capped ephemeral §6 projections — never raw trade frames. ``how many trades exited`` must not land `single_metric`/`trade_count`. Exit/extreme cues require table-derived projections; streak cues may use `trade_summary` streak scalars. |
 | 7 | `single_metric` | RI-4 | Frozen metric-noun table (§4.5) with define/value collocates (`what is`, `what's`, `whats`, `show`, `give me`) — **not** bare nouns alone; hard-refuse when residual/specialist collocates present (§4.5) |
 | 8 | `kpi_summary` | DI (unchanged cues) | Existing DI KPI positive cues |
 | 9 | `run_overview` | DI (unchanged cues) | Existing DI run-overview positive cues |
@@ -523,12 +523,14 @@ Initial freeze (amend to expand):
 
 | Projection | Purpose | Caps |
 |---|---|---|
-| `results.projections.exit_reason_counts` | Exit-reason histogram | Top N reasons (N≤12) + other |
-| `results.projections.extreme_trades` | Worst/best R trades summary | N≤5 each; claim allowlist is R + exit_reason only (timestamps may exist on the projection object but are not claimable — ISO datetimes launder ungroundable digits) |
+| `results.projections.exit_reason_counts` | Exit-reason histogram | Top N reasons (N≤12) + other; caller `top_n` hard-clamped |
+| `results.projections.extreme_trades` | Worst/best R trades summary | N≤5 each (caller `n` hard-clamped); claim allowlist is R + exit_reason only; timestamps are **omitted** from the model-facing projection object (ISO digits launder through the auditor) |
 | `results.projections.streak_summary` | Max consecutive wins/losses if not already in trade_summary | Scalars only |
 
-Intent cues + allowlists land in the same RI-9 PR. If tables absent →
-limitation. No engine re-sim.
+Intent cues + allowlists land in the same RI-9 PR. Exit-reason / extreme-trade
+asks with no table-derived projections → limitation **before LLM** (streak
+scalars from `trade_summary` alone must not answer exit structure). Digit-bearing
+exit-reason labels are not narratable claim leaves. No engine re-sim.
 
 ---
 

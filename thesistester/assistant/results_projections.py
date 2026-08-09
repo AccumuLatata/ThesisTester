@@ -148,6 +148,46 @@ def _positive_int(value: Any, *, default: int) -> int:
     return parsed if parsed > 0 else default
 
 
+def _capped_positive_int(value: Any, *, default: int, cap: int) -> int:
+    """Parse a positive int and clamp to the frozen §6 upper bound."""
+    return min(_positive_int(value, default=default), cap)
+
+
+_EXIT_REASON_KEYS: tuple[str, ...] = (
+    "exit_reason",
+    "ExitReason",
+    "exitReason",
+    "reason",
+)
+_R_MULTIPLE_KEYS: tuple[str, ...] = (
+    "r_multiple",
+    "r_mult",
+    "R",
+    "r",
+)
+
+
+def _row_exit_reason_label(row: Mapping[str, Any]) -> str | None:
+    """Return a string exit-reason label, or None when absent/non-string."""
+    for key in _EXIT_REASON_KEYS:
+        reason = row.get(key)
+        if isinstance(reason, str) and reason.strip():
+            return reason.strip()
+    return None
+
+
+def _row_r_multiple(row: Mapping[str, Any]) -> float | None:
+    for key in _R_MULTIPLE_KEYS:
+        raw_r = row.get(key)
+        if raw_r is None:
+            continue
+        try:
+            return float(raw_r)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def _optional_positive_int(value: Any) -> int | None:
     try:
         parsed = int(value)
@@ -622,15 +662,19 @@ def project_exit_reason_counts(
     rows = _trade_row_dicts(trade_rows)
     if not rows:
         return None
-    cap = _positive_int(top_n, default=EXIT_REASON_TOP_N)
+    cap = _capped_positive_int(top_n, default=EXIT_REASON_TOP_N, cap=EXIT_REASON_TOP_N)
     counts: dict[str, int] = {}
+    resolved_labels = 0
     for row in rows:
-        reason = row.get("exit_reason")
-        if not isinstance(reason, str) or not reason.strip():
+        label = _row_exit_reason_label(row)
+        if label is None:
             label = "unknown"
         else:
-            label = reason.strip()
+            resolved_labels += 1
         counts[label] = counts.get(label, 0) + 1
+    # No resolvable string labels → not usable exit-structure evidence.
+    if resolved_labels == 0:
+        return None
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     top = ranked[:cap]
     other = ranked[cap:]
@@ -649,31 +693,24 @@ def project_extreme_trades(
     *,
     n: int = EXTREME_TRADES_N,
 ) -> dict[str, Any] | None:
-    """Worst/best R trades summary (RI-9 §6). N≤5 each; R + exit_reason + timestamps."""
+    """Worst/best R trades summary (RI-9 §6). N≤5 each; R + exit_reason only.
+
+    Timestamps are intentionally omitted from the model-facing projection object
+    (ISO datetimes launder ungroundable year/day digits through the auditor).
+    """
     rows = _trade_row_dicts(trade_rows)
     if not rows:
         return None
-    cap = _positive_int(n, default=EXTREME_TRADES_N)
+    cap = _capped_positive_int(n, default=EXTREME_TRADES_N, cap=EXTREME_TRADES_N)
     usable: list[dict[str, Any]] = []
     for row in rows:
-        raw_r = row.get("r_multiple")
-        if raw_r is None:
-            continue
-        try:
-            r_value = float(raw_r)
-        except (TypeError, ValueError):
+        r_value = _row_r_multiple(row)
+        if r_value is None:
             continue
         item: dict[str, Any] = {"r_multiple": r_value}
-        reason = row.get("exit_reason")
-        if isinstance(reason, str) and reason.strip():
-            item["exit_reason"] = reason.strip()
-        for key in ("entry_timestamp", "exit_timestamp"):
-            stamp = row.get(key)
-            if stamp is None:
-                continue
-            text = str(stamp).strip()
-            if text:
-                item[key] = text
+        reason = _row_exit_reason_label(row)
+        if reason is not None:
+            item["exit_reason"] = reason
         usable.append(item)
     if not usable:
         return None
@@ -709,14 +746,8 @@ def project_streak_summary(
     cur_wins = 0
     cur_losses = 0
     for row in rows:
-        raw_r = row.get("r_multiple")
-        if raw_r is None:
-            cur_wins = 0
-            cur_losses = 0
-            continue
-        try:
-            r_value = float(raw_r)
-        except (TypeError, ValueError):
+        r_value = _row_r_multiple(row)
+        if r_value is None:
             cur_wins = 0
             cur_losses = 0
             continue

@@ -541,10 +541,11 @@ best); how-to/docs false friends stay unmatched; grid×costs compose owns shared
 commission/slippage on the assumptions slice.
 **RI-9 landed:** deterministic `deep_trade` recovery over capped ephemeral §6
 projections (`exit_reason_counts`, `extreme_trades`, `streak_summary`) built
-from already-loaded bundle trade tables / trade_summary streaks; missing
-projections short-circuit before LLM; catalog + decode hard-reject undeclared
-and `trade_summary` KPI substitutions; raw trade frames never enter the model
-path.
+from already-loaded bundle trade tables / trade_summary streaks; exit/extreme
+asks require table-derived projections (streak-only cannot answer them);
+digit-bearing exit labels are not narratable; extreme timestamps omitted from
+the model-facing projection; catalog + decode hard-reject undeclared /
+`trade_summary` KPI substitutions; raw trade frames never enter the model path.
 **DI-2 landed:** first-pass Results Q&A user payloads include
 `path_catalog.existing_paths` (bounded paths present on the turn context;
 KPI + projections/validation + honesty paths reserved before fat time tables

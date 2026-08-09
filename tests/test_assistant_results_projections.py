@@ -833,12 +833,18 @@ def test_project_extreme_trades_caps_best_and_worst():
     assert len(projection["worst"]) == EXTREME_TRADES_N
     assert projection["best"][0]["r_multiple"] == float(EXTREME_TRADES_N + 1)
     assert projection["worst"][0]["r_multiple"] == 0.0
-    assert set(projection["best"][0]) <= {
-        "r_multiple",
-        "exit_reason",
-        "entry_timestamp",
-        "exit_timestamp",
-    }
+    # Timestamps stay off the model-facing projection (digit-laundering risk).
+    assert set(projection["best"][0]) <= {"r_multiple", "exit_reason"}
+    assert "entry_timestamp" not in projection["best"][0]
+
+
+def test_project_extreme_trades_hard_caps_oversized_n():
+    rows = [{"exit_reason": "TP", "r_multiple": float(i)} for i in range(20)]
+    projection = project_extreme_trades(rows, n=9)
+    assert projection is not None
+    assert len(projection["best"]) == EXTREME_TRADES_N
+    assert len(projection["worst"]) == EXTREME_TRADES_N
+    assert projection["n"] == EXTREME_TRADES_N
 
 
 def test_project_streak_summary_prefers_trade_summary():

@@ -283,6 +283,16 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     # RI-9: deep-trade specialist (capped projections only).
     assert match_discuss_intent("What were the exit reasons?") == INTENT_DEEP_TRADE
     assert match_discuss_intent("exit reason histogram please") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("how many trades exited?") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("how many trades?") == INTENT_SINGLE_METRIC
+    assert match_discuss_intent("best trades") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("worst trades") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("winning streak") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("losing streak") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("what is the win rate and exit reasons") == INTENT_MIXED_ASK
+    assert match_discuss_intent("what is the win rate and exit reasons ranking") == (
+        INTENT_MIXED_ASK
+    )
     assert match_discuss_intent("why did trades exit") == INTENT_DEEP_TRADE
     assert match_discuss_intent("how did trades exit") == INTENT_DEEP_TRADE
     assert match_discuss_intent("what was the worst trade") == INTENT_DEEP_TRADE
@@ -2013,7 +2023,8 @@ def test_r21_exit_reason_ask_with_tables_grounds_capped_histogram():
     )
     assert "99" not in reply.summary
     assert "results.projections.extreme_trades.best.0.r_multiple" in paths
-    assert "results.projections.streak_summary.max_consecutive_wins" in paths
+    # Exit-reason asks are topic-scoped to table projections (not streaks alone).
+    assert "results.projections.streak_summary.max_consecutive_wins" not in paths
 
 
 def test_r21_exit_reason_ask_without_tables_limits_before_llm():
@@ -2027,7 +2038,7 @@ def test_r21_exit_reason_ask_without_tables_limits_before_llm():
     )
     # No trade_rows and no streak leaves → no deep-trade projections.
     context = build_ephemeral_results_context(packet)
-    assert has_deep_trade_evidence(context) is False
+    assert has_deep_trade_evidence(context, user_message="What were the exit reasons?") is False
     client = _FailClient(_uncited_digits_payload())
     reply = propose_results_reply(
         client,
@@ -2039,6 +2050,70 @@ def test_r21_exit_reason_ask_without_tables_limits_before_llm():
     assert client.calls == 0
     assert reply.claims == ()
     assert reply.recovery_reason == REASON_MISSING_DEEP_TRADE
+    assert "99" not in reply.summary
+
+
+def test_ri9_exit_ask_does_not_use_streak_only_trade_summary():
+    """Streak scalars alone must not answer exit-reason asks (§6 tables gate)."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri9_streak_only"},
+        assumptions={},
+        results={
+            "trade_summary": {
+                "trade_count": 10,
+                "max_consecutive_wins": 3,
+                "max_consecutive_losses": 2,
+            }
+        },
+        warnings=(),
+        limitations=(),
+    )
+    context = build_ephemeral_results_context(packet)
+    assert has_deep_trade_evidence(context, user_message="win streak") is True
+    assert has_deep_trade_evidence(context, user_message="exit reasons please") is False
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="exit reasons please",
+        turn_context=context,
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MISSING_DEEP_TRADE
+
+
+def test_ri9_digit_bearing_exit_labels_do_not_crash_builder():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri9_digit_labels"},
+        assumptions={},
+        results={"trade_summary": {"trade_count": 3}},
+        warnings=(),
+        limitations=(),
+    )
+    rows = [
+        {"exit_reason": "SL-12", "r_multiple": 1.0},
+        {"exit_reason": "SL-12", "r_multiple": -1.0},
+        {"exit_reason": "TP", "r_multiple": 2.0},
+    ]
+    context = build_ephemeral_results_context(packet, trade_rows=rows)
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What were the exit reasons?",
+        turn_context=context,
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "results.projections.exit_reason_counts.total_trades" in paths
+    # Digit-bearing labels are skipped; digit-free TP may still narrate.
+    assert not any(
+        claim.path.endswith(".exit_reason") and claim.value == "SL-12" for claim in reply.claims
+    )
+    assert "12" not in reply.summary
     assert "99" not in reply.summary
 
 

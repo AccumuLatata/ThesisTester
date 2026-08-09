@@ -409,12 +409,13 @@ def _recover_results_reply(
     if (
         discuss_intent == INTENT_DEEP_TRADE
         and deterministic_specialist_fallback
-        and has_deep_trade_evidence(evidence_context)
+        and has_deep_trade_evidence(evidence_context, user_message=user_message)
     ):
         return build_deterministic_deep_trade_reply(
             packet,
             evidence_context,
             recovery_reason=reason or REASON_DEEP_TRADE_FALLBACK,
+            user_message=user_message,
         )
     if (
         discuss_intent == INTENT_TIME_RANKING
@@ -541,7 +542,9 @@ def propose_results_reply(
         evidence_context
     ):
         return build_missing_assumptions_limitation_reply(packet, evidence_context=evidence_context)
-    if discuss_intent == INTENT_DEEP_TRADE and not has_deep_trade_evidence(evidence_context):
+    if discuss_intent == INTENT_DEEP_TRADE and not has_deep_trade_evidence(
+        evidence_context, user_message=user_message
+    ):
         return build_missing_deep_trade_limitation_reply(packet, evidence_context=evidence_context)
     if discuss_intent == INTENT_SINGLE_METRIC:
         metric_path = resolve_single_metric_path(user_message)
@@ -624,9 +627,11 @@ def propose_results_reply(
             if (
                 not ok
                 and deterministic_specialist_fallback
-                and has_deep_trade_evidence(evidence_context)
+                and has_deep_trade_evidence(evidence_context, user_message=user_message)
             ):
-                return build_deterministic_deep_trade_reply(packet, evidence_context)
+                return build_deterministic_deep_trade_reply(
+                    packet, evidence_context, user_message=user_message
+                )
         return _maybe_overlay(reply)
 
     try:
