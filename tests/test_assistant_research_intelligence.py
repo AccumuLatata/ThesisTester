@@ -1,4 +1,4 @@
-"""RI Research Intelligence: specialist Discuss slices (grid→assumptions)."""
+"""RI Research Intelligence: specialist Discuss slices (grid→deep_trade)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,9 @@ from thesistester.assistant.llm import load_results_qa_settings
 from thesistester.assistant.llm_explainer import LLMEvidenceError, _ungrounded_number_tokens
 from thesistester.assistant.results_overview import (
     ASSUMPTIONS_CLAIM_PATHS,
+    DEEP_TRADE_CLAIM_PATHS,
     INTENT_ASSUMPTIONS_COSTS,
+    INTENT_DEEP_TRADE,
     INTENT_GRID_RANKING,
     INTENT_MIXED_ASK,
     INTENT_ROBUSTNESS_TIER2,
@@ -21,6 +23,7 @@ from thesistester.assistant.results_overview import (
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
     REASON_MISSING_ASSUMPTIONS,
+    REASON_MISSING_DEEP_TRADE,
     REASON_MISSING_GRID,
     REASON_MISSING_METRIC,
     REASON_MISSING_ROBUSTNESS,
@@ -31,6 +34,7 @@ from thesistester.assistant.results_overview import (
     ROBUSTNESS_CLAIM_PATHS,
     _SINGLE_METRIC_NOUN_PATHS,
     build_deterministic_assumptions_reply,
+    build_deterministic_deep_trade_reply,
     build_deterministic_grid_ranking_reply,
     build_deterministic_robustness_reply,
     build_deterministic_single_metric_reply,
@@ -40,6 +44,7 @@ from thesistester.assistant.results_overview import (
     build_meaning_overlay,
     build_mixed_ask_remediation_reply,
     has_assumptions_costs_evidence,
+    has_deep_trade_evidence,
     has_grid_ranking_evidence,
     has_overview_negative_cue,
     has_robustness_tier2_evidence,
@@ -49,13 +54,17 @@ from thesistester.assistant.results_overview import (
     match_discuss_intent,
     match_overview_intent,
     present_assumptions_allowlist,
+    present_deep_trade_allowlist,
     present_grid_allowlist,
     present_robustness_allowlist,
     present_time_allowlist,
     present_validation_allowlist,
     resolve_single_metric_path,
 )
-from thesistester.assistant.results_projections import build_ephemeral_results_context
+from thesistester.assistant.results_projections import (
+    EXIT_REASON_TOP_N,
+    build_ephemeral_results_context,
+)
 from thesistester.assistant.results_qa import propose_results_reply
 
 
@@ -271,6 +280,21 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert has_overview_negative_cue("What costs were assumed?") is True
     assert match_overview_intent("What costs were assumed?") is None
     assert match_discuss_intent("KPIs and costs") == INTENT_MIXED_ASK
+    # RI-9: deep-trade specialist (capped projections only).
+    assert match_discuss_intent("What were the exit reasons?") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("exit reason histogram please") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("why did trades exit") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("how did trades exit") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("what was the worst trade") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("show the best trade") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("extreme trades on this run") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("what was the win streak") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("loss streak please") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("consecutive wins") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("consecutive losses") == INTENT_DEEP_TRADE
+    assert has_overview_negative_cue("What were the exit reasons?") is True
+    assert match_overview_intent("What were the exit reasons?") is None
+    assert match_discuss_intent("KPIs and exit reasons") == INTENT_MIXED_ASK
 
 
 def test_residual_veto_and_false_friends_for_overview_negative_export():
@@ -1920,5 +1944,149 @@ def test_ri6_llm_kpi_substitution_hard_rejects_to_deterministic():
     )
     paths = {claim.path for claim in reply.claims}
     assert "assumptions.costs_exposure.commission_per_side" in paths
+    assert not any("trade_summary" in path for path in paths)
+    assert "0.25" not in reply.summary
+
+
+def _trade_rows_for_deep_trade() -> list[dict]:
+    """Small trade table covering exit histogram, extremes, and streaks."""
+    rows: list[dict] = []
+    # 8 TP, 5 SL, 2 TIME, 1 EOD — TP/SL dominate; extremes from R values.
+    for _ in range(8):
+        rows.append({"exit_reason": "TP", "r_multiple": 1.0})
+    for _ in range(5):
+        rows.append({"exit_reason": "SL", "r_multiple": -1.0})
+    rows.append({"exit_reason": "TIME", "r_multiple": -0.2})
+    rows.append({"exit_reason": "TIME", "r_multiple": 0.1})
+    rows.append(
+        {
+            "exit_reason": "EOD",
+            "r_multiple": 3.5,
+            "entry_timestamp": "2024-01-02T14:00:00Z",
+            "exit_timestamp": "2024-01-02T15:00:00Z",
+        }
+    )
+    # Extra unique reasons to exercise top-N + other (beyond EXIT_REASON_TOP_N).
+    for index in range(EXIT_REASON_TOP_N):
+        rows.append({"exit_reason": f"OTHER_{index}", "r_multiple": 0.05})
+    return rows
+
+
+def test_r21_exit_reason_ask_with_tables_grounds_capped_histogram():
+    """R21: exit-reason ask with trade tables → capped §6 projection claims."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri9_trades"},
+        assumptions={"instrument": "NQ"},
+        results={"trade_summary": {"trade_count": 20, "expectancy_r": 0.1}},
+        warnings=(),
+        limitations=(),
+    )
+    context = build_ephemeral_results_context(packet, trade_rows=_trade_rows_for_deep_trade())
+    assert match_discuss_intent("What were the exit reasons?") == INTENT_DEEP_TRADE
+    assert has_deep_trade_evidence(context) is True
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What were the exit reasons?",
+        turn_context=context,
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "results.projections.exit_reason_counts.total_trades" in paths
+    assert "results.projections.exit_reason_counts.reasons.0.exit_reason" in paths
+    assert "results.projections.exit_reason_counts.reasons.0.count" in paths
+    assert "results.projections.exit_reason_counts.other_count" in paths
+    assert not any("trade_summary" in path for path in paths)
+    assert not any(path not in DEEP_TRADE_CLAIM_PATHS for path in paths)
+    # Cap: indexed reasons only through EXIT_REASON_TOP_N - 1.
+    assert (
+        f"results.projections.exit_reason_counts.reasons.{EXIT_REASON_TOP_N}.exit_reason"
+        not in paths
+    )
+    assert "99" not in reply.summary
+    assert "results.projections.extreme_trades.best.0.r_multiple" in paths
+    assert "results.projections.streak_summary.max_consecutive_wins" in paths
+
+
+def test_r21_exit_reason_ask_without_tables_limits_before_llm():
+    """R21: exit-reason ask without trade projections → limitation; zero LLM."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri9_empty"},
+        assumptions={"instrument": "NQ"},
+        results={"trade_summary": {"trade_count": 10, "expectancy_r": 0.1}},
+        warnings=(),
+        limitations=(),
+    )
+    # No trade_rows and no streak leaves → no deep-trade projections.
+    context = build_ephemeral_results_context(packet)
+    assert has_deep_trade_evidence(context) is False
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What were the exit reasons?",
+        turn_context=context,
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MISSING_DEEP_TRADE
+    assert "99" not in reply.summary
+
+
+def test_deep_trade_allowlist_rejects_kpi_and_undeclared_paths():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri9_allow"},
+        assumptions={},
+        results={"trade_summary": {"trade_count": 12, "expectancy_r": 0.2}},
+        warnings=(),
+        limitations=(),
+    )
+    context = build_ephemeral_results_context(packet, trade_rows=_trade_rows_for_deep_trade())
+    paths = present_deep_trade_allowlist(context)
+    assert "results.projections.exit_reason_counts.reasons.0.exit_reason" in paths
+    assert not any(path not in DEEP_TRADE_CLAIM_PATHS for path in paths)
+    assert not any("trade_summary" in path for path in paths)
+    reply = build_deterministic_deep_trade_reply(packet, context)
+    claim_paths = {claim.path for claim in reply.claims}
+    assert "results.projections.exit_reason_counts.total_trades" in claim_paths
+    assert not any("trade_summary" in path for path in claim_paths)
+
+
+def test_ri9_deep_trade_rejects_kpi_substitution_via_fallback():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri9_kpi"},
+        assumptions={},
+        results={"trade_summary": {"trade_count": 12, "expectancy_r": 0.25}},
+        warnings=(),
+        limitations=(),
+    )
+    context = build_ephemeral_results_context(packet, trade_rows=_trade_rows_for_deep_trade())
+    assert has_deep_trade_evidence(context) is True
+    client = _FailClient(
+        {
+            "summary": "Expectancy is 0.25 from exits.",
+            "caveats": ["Soft."],
+            "claims": [
+                {
+                    "text": "Expectancy R is 0.25.",
+                    "path": "results.trade_summary.expectancy_r",
+                }
+            ],
+            "followups": ["Deploy."],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What were the exit reasons?",
+        turn_context=context,
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "results.projections.exit_reason_counts.total_trades" in paths
     assert not any("trade_summary" in path for path in paths)
     assert "0.25" not in reply.summary

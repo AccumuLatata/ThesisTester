@@ -1,7 +1,7 @@
 # Research Intelligence — Implementation Contract
 
 **Document type:** Implementation contract (RI-series) — **single source of truth**
-**Status:** 🚧 **RI-6 landed** (grid + time + validation/WFA + single-metric + meaning overlay + mixed-ask composition + tier-2 robustness + assumptions/costs); series not complete until RI-10
+**Status:** 🚧 **RI-9 landed** (grid + time + validation/WFA + single-metric + meaning overlay + mixed-ask composition + tier-2 robustness + assumptions/costs + bounded deep-trade projections); series not complete until RI-10
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/results_overview.py` (intent matching /
 deterministic builders / overlays), `results_qa.py` (recovery wiring),
@@ -180,16 +180,17 @@ the sole-intent tie-break when exactly one landed intent matches; they are
 | 3 | `validation_wfa` | RI-3 | `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap`, `permutation` only with validation-sense collocates (`bootstrap`/`oos`/`wfa`/`walk-forward`/`validation`/`test`). **Not** `otf validation` (RI-5). |
 | 4 | `robustness_tier2` | RI-5 | `monte carlo`, `monte-carlo`, `overfitting`, `overfit`, `sensitivity`, `noise test`, `noise summary`, `portfolio summary`, `otf validation`, `otf-validation`. Near-miss bare `monte` / `carlo` (without a full cue) are hard residual — overview + `single_metric` refuse; never IS laundering. Bare `validation` after masking OTF phrases still lands RI-3 so `validation and otf validation` is `mixed_ask`. |
 | 5 | `assumptions_costs` | RI-6 | `commission`, `slippage`, `exposure policy`, `intrabar model`, `costs`/`cost`, `assumptions`/`assumption` (run-assumption sense). Configured/assumed `stop loss` / `take profit` land here (not best-grid) unless `best`/`grid`/`ranking` ownership collocates are also present. Help how-to / docs collocates (`how to`, `how do i`, `in the docs`, …) stay unmatched. |
-| 6 | `single_metric` | RI-4 | Frozen metric-noun table (§4.5) with define/value collocates (`what is`, `what's`, `whats`, `show`, `give me`) — **not** bare nouns alone; hard-refuse when residual/specialist collocates present (§4.5) |
-| 7 | `kpi_summary` | DI (unchanged cues) | Existing DI KPI positive cues |
-| 8 | `run_overview` | DI (unchanged cues) | Existing DI run-overview positive cues |
+| 6 | `deep_trade` | RI-9 | `exit reason`/`exit reasons`/`exit-reason(s)`, `why did trades exit` / `how did trades exit`, `worst trade` / `best trade` / `extreme trades`, `win streak` / `loss streak`, `consecutive wins` / `consecutive losses`. Answers only from capped ephemeral §6 projections — never raw trade frames. |
+| 7 | `single_metric` | RI-4 | Frozen metric-noun table (§4.5) with define/value collocates (`what is`, `what's`, `whats`, `show`, `give me`) — **not** bare nouns alone; hard-refuse when residual/specialist collocates present (§4.5) |
+| 8 | `kpi_summary` | DI (unchanged cues) | Existing DI KPI positive cues |
+| 9 | `run_overview` | DI (unchanged cues) | Existing DI run-overview positive cues |
 
 **Matcher algorithm (frozen — do not short-circuit on first cue hit):**
 
 ```text
 1) Evaluate every landed intent cue table independently
    (plus residual DI negatives per §4.1.1 — not intents, veto flags).
-2) Let M = set of matched landed intents from priorities 1–8.
+2) Let M = set of matched landed intents from priorities 1–9.
 3) If residual veto applies and no landed specialist in M owns that cue
    → return None for overview purposes; Discuss uses LLM + repair + §5.3
      remediation (or specialist limitation only if a landed specialist matched).
@@ -779,5 +780,5 @@ complete coverage; duplex last so text builders are stable.
 | RI-6 Assumptions & costs slice | ✅ landed |
 | RI-7 Grounded meaning overlay v2 | ✅ landed |
 | RI-8 Mixed-ask composition | ✅ landed |
-| RI-9 Bounded deep-trade projections | ⬚ pending |
+| RI-9 Bounded deep-trade projections | ✅ landed |
 | RI-10 Duplex parity + eval freeze | ⬚ pending |

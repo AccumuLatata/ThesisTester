@@ -638,6 +638,11 @@ other than the last bar in the dataset.
   intrabar/focus/instrument/dataset paths; missing-all short-circuit before LLM;
   hard-reject performance KPI substitutions; no Help how-to ownership;
   configured SL/TP + singular cost/assumption cues; OOS-absent missing followups.
+  **RI-9 landed:** `deep_trade` builder over capped ephemeral §6 projections
+  (`exit_reason_counts` top N≤12 + other, `extreme_trades` N≤5 best/worst,
+  `streak_summary`); trade tables load into turn context only (never raw frames
+  to the model); missing-projection short-circuit before LLM; hard-reject
+  undeclared / KPI paths via catalog + decode allowlist.
   Incremental PRs keep DI residual negative-cue vetoes for not-yet-owned
   specialist topics (and DX veto≠unmatched) until each builder PR sunsets its
   cues; RI must not invent metrics, remap topics onto KPI overview, answer OOS

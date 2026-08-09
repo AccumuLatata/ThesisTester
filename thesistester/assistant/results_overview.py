@@ -3,9 +3,9 @@
 Fail-closed numbers stay in ``llm_explainer``. This module selects frozen
 overview + specialist slices (RI-1: ``grid_ranking``; RI-2: ``time_ranking``;
 RI-3: ``validation_wfa``; RI-4: ``single_metric``; RI-5: ``robustness_tier2``;
-RI-6: ``assumptions_costs``), builds DI-2 first-pass path catalogs, builds
-auditor-safe replies when the LLM path fails, and attaches DI-3/RI-7 digit-free
-meaning overlays after mandatory caveats.
+RI-6: ``assumptions_costs``; RI-9: ``deep_trade``), builds DI-2 first-pass path
+catalogs, builds auditor-safe replies when the LLM path fails, and attaches
+DI-3/RI-7 digit-free meaning overlays after mandatory caveats.
 """
 
 from __future__ import annotations
@@ -22,6 +22,10 @@ from thesistester.assistant.llm_explainer import (
     assert_llm_explanation_grounded,
     merge_mandatory_packet_caveats,
 )
+from thesistester.assistant.results_projections import (
+    EXIT_REASON_TOP_N,
+    EXTREME_TRADES_N,
+)
 
 OVERVIEW_INTENT_KPI = "kpi_summary"
 OVERVIEW_INTENT_RUN = "run_overview"
@@ -30,6 +34,7 @@ INTENT_TIME_RANKING = "time_ranking"
 INTENT_VALIDATION_WFA = "validation_wfa"
 INTENT_ROBUSTNESS_TIER2 = "robustness_tier2"
 INTENT_ASSUMPTIONS_COSTS = "assumptions_costs"
+INTENT_DEEP_TRADE = "deep_trade"
 INTENT_SINGLE_METRIC = "single_metric"
 INTENT_MIXED_ASK = "mixed_ask"
 
@@ -40,6 +45,7 @@ _LANDED_SPECIALIST_INTENTS = frozenset(
         INTENT_VALIDATION_WFA,
         INTENT_ROBUSTNESS_TIER2,
         INTENT_ASSUMPTIONS_COSTS,
+        INTENT_DEEP_TRADE,
     }
 )
 # Intents that refuse overview/DX KPI envelopes (specialists + single-metric).
@@ -56,6 +62,7 @@ REASON_MISSING_TIME = "time_missing_evidence"
 REASON_MISSING_VALIDATION = "validation_missing_evidence"
 REASON_MISSING_ROBUSTNESS = "robustness_missing_evidence"
 REASON_MISSING_ASSUMPTIONS = "assumptions_missing_evidence"
+REASON_MISSING_DEEP_TRADE = "deep_trade_missing_evidence"
 REASON_MISSING_METRIC = "metric_missing_leaf"
 REASON_MIXED_ASK = "mixed_ask_narrow"
 REASON_MIXED_COMPOSE = "mixed_ask_compose"
@@ -64,6 +71,7 @@ REASON_TIME_FALLBACK = "time_deterministic_fallback"
 REASON_VALIDATION_FALLBACK = "validation_deterministic_fallback"
 REASON_ROBUSTNESS_FALLBACK = "robustness_deterministic_fallback"
 REASON_ASSUMPTIONS_FALLBACK = "assumptions_deterministic_fallback"
+REASON_DEEP_TRADE_FALLBACK = "deep_trade_deterministic_fallback"
 REASON_METRIC_FALLBACK = "metric_deterministic_fallback"
 
 # §4.1 composition / summary order (sole-intent tie-break + RI-8 compose order).
@@ -73,6 +81,7 @@ _COMPOSE_PRIORITY: tuple[str, ...] = (
     INTENT_VALIDATION_WFA,
     INTENT_ROBUSTNESS_TIER2,
     INTENT_ASSUMPTIONS_COSTS,
+    INTENT_DEEP_TRADE,
     INTENT_SINGLE_METRIC,
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
@@ -441,6 +450,55 @@ ASSUMPTIONS_CLAIM_PATHS: tuple[str, ...] = (
     "assumptions.dataset.dataset_fingerprint",
 )
 
+# RI-9 landed specialist cues (trade-structure; never raw trade frames).
+_DEEP_TRADE_POSITIVE_CUES: tuple[str, ...] = (
+    "exit reason",
+    "exit reasons",
+    "exit-reason",
+    "exit-reasons",
+    "why did trades exit",
+    "how did trades exit",
+    "worst trade",
+    "best trade",
+    "extreme trades",
+    "win streak",
+    "loss streak",
+    "consecutive wins",
+    "consecutive losses",
+)
+
+
+def _build_deep_trade_claim_paths() -> tuple[str, ...]:
+    """Frozen §6 deep-trade allowlist (indexed ranks capped at §6 N)."""
+    paths: list[str] = [
+        "results.projections.exit_reason_counts.total_trades",
+        "results.projections.exit_reason_counts.unique_reason_count",
+        "results.projections.exit_reason_counts.other_count",
+        "results.projections.exit_reason_counts.other_unique_count",
+        "results.projections.streak_summary.max_consecutive_wins",
+        "results.projections.streak_summary.max_consecutive_losses",
+    ]
+    for index in range(EXIT_REASON_TOP_N):
+        base = f"results.projections.exit_reason_counts.reasons.{index}"
+        paths.append(f"{base}.exit_reason")
+        paths.append(f"{base}.count")
+    for side in ("best", "worst"):
+        for index in range(EXTREME_TRADES_N):
+            base = f"results.projections.extreme_trades.{side}.{index}"
+            paths.extend(
+                (
+                    f"{base}.r_multiple",
+                    f"{base}.exit_reason",
+                    f"{base}.entry_timestamp",
+                    f"{base}.exit_timestamp",
+                )
+            )
+    return tuple(paths)
+
+
+# Frozen RI §6 deep_trade allowlist (capped projections only; no raw trades).
+DEEP_TRADE_CLAIM_PATHS: tuple[str, ...] = _build_deep_trade_claim_paths()
+
 
 def _normalize_message(text: str) -> str:
     # Map common curly/smart apostrophes so ``what's`` cues still match.
@@ -552,6 +610,10 @@ def _assumptions_costs_matches(normalized: str) -> bool:
     if _configured_sl_tp_assumptions_matches(normalized):
         return True
     return False
+
+
+def _deep_trade_matches(normalized: str) -> bool:
+    return _any_cue_matches(_DEEP_TRADE_POSITIVE_CUES, normalized)
 
 
 def _robustness_near_miss_matches(normalized: str) -> bool:
@@ -702,6 +764,7 @@ def _evaluate_discuss_match(message: str) -> dict[str, Any] | None:
     validation = _validation_wfa_matches(normalized)
     robustness = _robustness_tier2_matches(normalized)
     assumptions = _assumptions_costs_matches(normalized)
+    deep_trade = _deep_trade_matches(normalized)
     metric_paths = _matched_single_metric_paths(normalized)
     kpi = _any_cue_matches(_KPI_POSITIVE_CUES, normalized)
     run = _any_cue_matches(_RUN_OVERVIEW_POSITIVE_CUES, normalized)
@@ -717,6 +780,8 @@ def _evaluate_discuss_match(message: str) -> dict[str, Any] | None:
         specialists.append(INTENT_ROBUSTNESS_TIER2)
     if assumptions:
         specialists.append(INTENT_ASSUMPTIONS_COSTS)
+    if deep_trade:
+        specialists.append(INTENT_DEEP_TRADE)
 
     hard_residual = _hard_residual_negative_matches(normalized)
     soft_residual = _soft_bare_grid_token_residual(normalized)
@@ -814,9 +879,9 @@ def match_discuss_intent(message: str) -> str | None:
 
     Multi-eval (no first-match short-circuit): evaluate landed cue tables
     independently, then apply residual veto / mixed-ask rules.
-    Landed intents in RI-6+: ``grid_ranking``, ``time_ranking``,
+    Landed intents in RI-9+: ``grid_ranking``, ``time_ranking``,
     ``validation_wfa``, ``robustness_tier2``, ``assumptions_costs``,
-    ``single_metric``, ``kpi_summary``, ``run_overview``.
+    ``deep_trade``, ``single_metric``, ``kpi_summary``, ``run_overview``.
     """
     state = _evaluate_discuss_match(message)
     if state is None:
@@ -958,6 +1023,21 @@ def present_assumptions_allowlist(evidence_context: Mapping[str, Any]) -> tuple[
     return tuple(out)
 
 
+def present_deep_trade_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return frozen §6 deep-trade claim paths with narratable scalars only."""
+    if not isinstance(evidence_context, Mapping):
+        return ()
+    out: list[str] = []
+    for path in DEEP_TRADE_CLAIM_PATHS:
+        if not _path_exists(evidence_context, path):
+            continue
+        value = _path_get(evidence_context, path)
+        if _format_scalar_for_claim(path, value) is None:
+            continue
+        out.append(path)
+    return tuple(out)
+
+
 def _narratable_grid_scalar(evidence_context: Mapping[str, Any], path: str) -> bool:
     """True when *path* exists and formats to a claimable scalar (nulls fail)."""
     if not _path_exists(evidence_context, path):
@@ -1040,6 +1120,19 @@ def has_assumptions_costs_evidence(evidence_context: Mapping[str, Any]) -> bool:
     if not isinstance(evidence_context, Mapping):
         return False
     for path in ASSUMPTIONS_CLAIM_PATHS:
+        if not _path_exists(evidence_context, path):
+            continue
+        value = _path_get(evidence_context, path)
+        if _format_scalar_for_claim(path, value) is not None:
+            return True
+    return False
+
+
+def has_deep_trade_evidence(evidence_context: Mapping[str, Any]) -> bool:
+    """True when at least one narratable §6 deep-trade projection leaf exists."""
+    if not isinstance(evidence_context, Mapping):
+        return False
+    for path in DEEP_TRADE_CLAIM_PATHS:
         if not _path_exists(evidence_context, path):
             continue
         value = _path_get(evidence_context, path)
@@ -1316,6 +1409,20 @@ def build_prompt_path_catalog(
         catalog["preferred_claim_paths"] = assumptions_paths
         # §4.6: do not expose performance KPI paths on assumptions asks.
         catalog["existing_paths"] = list(assumptions_paths)
+    elif intent == INTENT_DEEP_TRADE:
+        deep_trade_paths = list(present_deep_trade_allowlist(evidence_context))
+        catalog["discuss_intent"] = INTENT_DEEP_TRADE
+        catalog["deep_trade_allowlist"] = deep_trade_paths
+        catalog["specialist_instruction"] = (
+            "This is a deep-trade / exit-structure ask. Cite only paths from "
+            "deep_trade_allowlist / preferred_claim_paths / existing_paths "
+            "(capped exit-reason histogram, extreme trades, streak scalars). "
+            "Do not dump raw trade frames or invent exits. Do not substitute "
+            "results.trade_summary.* performance KPIs for exit-structure evidence."
+        )
+        catalog["preferred_claim_paths"] = deep_trade_paths
+        # §6: hard-restrict catalog to present deep-trade allowlist only.
+        catalog["existing_paths"] = list(deep_trade_paths)
     elif intent == INTENT_TIME_RANKING:
         # Ensure projected paths are listed when only time_grouped_summary exists.
         working = _ensure_time_rankings_context(evidence_context)
@@ -1643,6 +1750,22 @@ _OVERLAY_GLOSS_BY_PATH: tuple[tuple[str, str], ...] = (
         "assumptions.instrument",
         "Instrument identity labels the researched contract/symbol, not a trade recommendation.",
     ),
+    (
+        "results.projections.exit_reason_counts.total_trades",
+        "Exit-reason totals summarize recorded exits on this sample, not a live exit forecast.",
+    ),
+    (
+        "results.projections.exit_reason_counts.other_count",
+        "Other-exit counts are the capped remainder beyond the top reasons, not missing evidence.",
+    ),
+    (
+        "results.projections.streak_summary.max_consecutive_wins",
+        "Max consecutive wins is a historical streak on the recorded sample, not a persistence claim.",
+    ),
+    (
+        "results.projections.streak_summary.max_consecutive_losses",
+        "Max consecutive losses is a historical streak on the recorded sample, not a risk bound.",
+    ),
 )
 
 _OVERLAY_ALWAYS = "These figures are research diagnostics, not trading advice."
@@ -1669,6 +1792,10 @@ _OVERLAY_NEXT_STEP_ROBUSTNESS_OOS_ABSENT = (
 )
 
 _OVERLAY_NEXT_STEP_ASSUMPTIONS = (
+    "Ask for the key metrics or a summary of this run if you want the recorded performance figures."
+)
+
+_OVERLAY_NEXT_STEP_DEEP_TRADE = (
     "Ask for the key metrics or a summary of this run if you want the recorded performance figures."
 )
 
@@ -1861,6 +1988,8 @@ def _overlay_next_step_line(discuss_intent: str | None, *, oos_absent: bool) -> 
         return _OVERLAY_NEXT_STEP_ROBUSTNESS
     if discuss_intent == INTENT_ASSUMPTIONS_COSTS:
         return _OVERLAY_NEXT_STEP_ASSUMPTIONS
+    if discuss_intent == INTENT_DEEP_TRADE:
+        return _OVERLAY_NEXT_STEP_DEEP_TRADE
     if discuss_intent == INTENT_TIME_RANKING:
         return _OVERLAY_NEXT_STEP_TIME
     # Overview / grid / single_metric: WFA-presence coaching unless already absent.
@@ -2067,6 +2196,26 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
         else:
             display = value
         leaf = path.rsplit(".", 1)[-1]
+        # RI-9 deep-trade projection scalars (before generic trade_count fallthrough).
+        if path.startswith("results.projections.exit_reason_counts."):
+            if path.endswith("total_trades"):
+                return f"Exit-reason total trades is {display}."
+            if path.endswith("unique_reason_count"):
+                return f"Unique exit-reason count is {display}."
+            if path.endswith("other_count"):
+                return f"Other exit-reason count is {display}."
+            if path.endswith("other_unique_count"):
+                return f"Other unique exit-reason count is {display}."
+            if path.endswith(".count"):
+                return f"Exit reason count is {display}."
+        if path.startswith("results.projections.extreme_trades."):
+            side = "Best" if ".best." in path else "Worst" if ".worst." in path else "Extreme"
+            if path.endswith(".r_multiple"):
+                return f"{side} trade R-multiple is {display}."
+        if path.endswith("max_consecutive_wins"):
+            return f"Max consecutive wins is {display}."
+        if path.endswith("max_consecutive_losses"):
+            return f"Max consecutive losses is {display}."
         # Configured assumption SL/TP (not grid best ranks).
         if path.startswith("assumptions.costs_exposure.") and path.endswith("stop_loss_ticks"):
             return f"Configured stop-loss ticks is {display}."
@@ -2150,6 +2299,19 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
         return f"{leaf} is {display}."
     if isinstance(value, str) and value.strip():
         text = value.strip()
+        # RI-9 deep-trade string leaves (exit reasons / timestamps).
+        if path.startswith("results.projections.exit_reason_counts.") and path.endswith(
+            ".exit_reason"
+        ):
+            return f"Exit reason is {text}."
+        if path.startswith("results.projections.extreme_trades."):
+            side = "Best" if ".best." in path else "Worst" if ".worst." in path else "Extreme"
+            if path.endswith(".exit_reason"):
+                return f"{side} trade exit reason is {text}."
+            if path.endswith(".entry_timestamp"):
+                return f"{side} trade entry timestamp is {text}."
+            if path.endswith(".exit_timestamp"):
+                return f"{side} trade exit timestamp is {text}."
         # Grid / validation / time honesty labels are narratable strings.
         if path.endswith("selection_scope"):
             return f"Selection scope is {text}."
@@ -2400,6 +2562,10 @@ def _compose_followups_for_intents(
         )
     if INTENT_ASSUMPTIONS_COSTS not in matched_set:
         suggestions.append("Ask what costs or exposure assumptions were used on this run.")
+    if INTENT_DEEP_TRADE not in matched_set:
+        suggestions.append(
+            "Ask about exit reasons or extreme trades if trade tables were recorded."
+        )
     if not suggestions:
         suggestions.append("Ask which evidence paths remain available on this packet.")
     return tuple(suggestions[:3])
@@ -2572,6 +2738,11 @@ def compose_deterministic_replies(
                 continue
             if _absorb(build_deterministic_assumptions_reply(packet, working, apply_overlay=False)):
                 _mark(intent)
+        elif intent == INTENT_DEEP_TRADE:
+            if not has_deep_trade_evidence(working):
+                continue
+            if _absorb(build_deterministic_deep_trade_reply(packet, working, apply_overlay=False)):
+                _mark(intent)
         elif intent == INTENT_SINGLE_METRIC:
             paths = tuple(metric_paths or ())
             if overview_in_matched:
@@ -2698,6 +2869,52 @@ def build_missing_assumptions_limitation_reply(
         (
             "No cost or assumption figures were invented for this ask.",
             "In-sample trade summary KPIs are not a substitute for cost assumptions.",
+        ),
+    )
+    assert_llm_explanation_grounded(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+    )
+    return ResultsQAReply(
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+        recovery_reason=recovery_reason,
+    )
+
+
+def build_missing_deep_trade_limitation_reply(
+    packet: EvidencePacket,
+    *,
+    recovery_reason: str | None = REASON_MISSING_DEEP_TRADE,
+    evidence_context: Mapping[str, Any] | None = None,
+):
+    """Digit-free missing deep-trade limitation (RI-9 short-circuit)."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    summary = (
+        "I cannot answer exit-reason, extreme-trade, or streak questions because "
+        "bounded deep-trade projections are not present on this run."
+    )
+    followups_list = [
+        "Ask for the key metrics or a summary of this run.",
+    ]
+    if _oos_evidence_absent(packet, evidence_context=evidence_context):
+        followups_list.append("Ask which evidence paths remain available on this packet.")
+    else:
+        followups_list.append(
+            "Ask whether walk-forward or validation diagnostics are present on this packet."
+        )
+    followups = tuple(followups_list)
+    caveats = merge_mandatory_packet_caveats(
+        packet,
+        (
+            "No exit-reason, extreme-trade, or streak figures were invented for this ask.",
+            "In-sample trade summary KPIs are not a substitute for deep-trade projections.",
         ),
     )
     assert_llm_explanation_grounded(
@@ -3166,6 +3383,75 @@ def build_deterministic_assumptions_reply(
         recovery_reason=recovery_reason,
         followups=followups,
         discuss_intent=INTENT_ASSUMPTIONS_COSTS,
+        evidence_context=evidence_context,
+    )
+
+
+def build_deterministic_deep_trade_reply(
+    packet: EvidencePacket,
+    evidence_context: Mapping[str, Any],
+    *,
+    recovery_reason: str | None = None,
+    apply_overlay: bool = True,
+):
+    """Build an auditor-safe deep-trade reply from the frozen §6 allowlist."""
+    if not has_deep_trade_evidence(evidence_context):
+        return build_missing_deep_trade_limitation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MISSING_DEEP_TRADE,
+            evidence_context=evidence_context,
+        )
+
+    claims: list[EvidenceClaim] = []
+    summary_parts: list[str] = []
+    for path in DEEP_TRADE_CLAIM_PATHS:
+        if not _path_exists(evidence_context, path):
+            continue
+        value = _path_get(evidence_context, path)
+        text = _format_scalar_for_claim(path, value)
+        if text is None:
+            continue
+        # Hard rule: never emit trade_summary / performance KPI paths.
+        if "trade_summary" in path:
+            continue
+        claims.append(EvidenceClaim(text=text, path=path, value=value))
+        summary_parts.append(text.rstrip("."))
+
+    if not claims:
+        return build_missing_deep_trade_limitation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MISSING_DEEP_TRADE,
+            evidence_context=evidence_context,
+        )
+
+    summary = "Deep-trade projections: " + "; ".join(summary_parts) + "."
+    caveat_seed = (
+        "These exit-reason, extreme-trade, and streak figures are capped research "
+        "projections from recorded trades, not raw trade frames or live advice.",
+        "Do not treat in-sample trade summary KPIs as deep-trade exit-structure evidence.",
+    )
+    grounded = tuple(claims)
+    caveats = merge_mandatory_packet_caveats(packet, caveat_seed)
+    followups = (
+        "Ask for the key metrics or a summary of this run.",
+        "Ask what costs or exposure assumptions were used on this run.",
+    )
+    if not apply_overlay:
+        return _reply_without_overlay(
+            summary=summary,
+            caveats=caveats,
+            claims=grounded,
+            followups=followups,
+            recovery_reason=recovery_reason,
+        )
+    return apply_expert_overlay(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=grounded,
+        recovery_reason=recovery_reason,
+        followups=followups,
+        discuss_intent=INTENT_DEEP_TRADE,
         evidence_context=evidence_context,
     )
 

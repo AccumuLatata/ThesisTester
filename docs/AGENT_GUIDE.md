@@ -379,11 +379,12 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   single-metric, meaning overlays, mixed-ask composition, bounded trade
   projections, duplex specialist envelopes) has a **single** continuation
   contract: `docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md` (RI-series).
-  **RI-1/RI-2/RI-3/RI-4/RI-5/RI-6/RI-7/RI-8 landed** (`grid_ranking`,
+  **RI-1/RI-2/RI-3/RI-4/RI-5/RI-6/RI-7/RI-8/RI-9 landed** (`grid_ranking`,
   `time_ranking`, `validation_wfa`, `robustness_tier2`, `assumptions_costs`,
-  `single_metric` + residual veto matcher + digit-free meaning overlay +
-  `compose_deterministic_replies` for mixed asks ≤3 intents). Do not reopen
-  DI/DX/RQ wholesale; stay inside RI scope tables.
+  `deep_trade`, `single_metric` + residual veto matcher + digit-free meaning
+  overlay + `compose_deterministic_replies` for mixed asks ≤3 intents + capped
+  ephemeral deep-trade projections). Do not reopen DI/DX/RQ wholesale; stay
+  inside RI scope tables.
   Keep the RQ auditor fail-closed; fail-open only via frozen intent→allowlist
   builders.
   Incremental RI PRs must preserve DI residual negative-cue vetoes (and DX
