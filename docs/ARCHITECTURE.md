@@ -529,9 +529,10 @@ narrow remediation; dual overview collapses after the cap); duplex overview
 envelopes still veto mixed asks until RI-10.
 **RI-5 landed:** deterministic `robustness_tier2` recovery over the frozen §4.6
 presence-first path table (Monte Carlo / overfitting / sensitivity / noise /
-portfolio / OTF); MC + `otf validation` cues sunset from residual; missing-all
-batteries short-circuit before LLM; never dumps undeclared nested method trees
-or substitutes `trade_summary` KPIs.
+portfolio / OTF); MC + `otf validation` / `otf-validation` cues sunset from
+residual; missing-all batteries short-circuit before LLM; catalog
+`existing_paths` + decode hard-reject undeclared nested dumps / KPI
+substitutions; never narrates non-bool `.available` as scalars.
 **DI-2 landed:** first-pass Results Q&A user payloads include
 `path_catalog.existing_paths` (bounded paths present on the turn context;
 KPI + projections/validation + honesty paths reserved before fat time tables

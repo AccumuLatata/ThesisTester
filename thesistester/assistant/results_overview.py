@@ -284,12 +284,21 @@ _ROBUSTNESS_TIER2_POSITIVE_CUES: tuple[str, ...] = (
     "monte carlo",
     "monte-carlo",
     "overfitting",
+    "overfit",
     "sensitivity",
     "noise test",
     "noise summary",
     "portfolio summary",
     "otf validation",
+    "otf-validation",
 )
+
+# Near-miss tokens that must not launder into single_metric / overview when the
+# full robustness cue is absent (``monte carlo`` / ``overfitting`` still own).
+_ROBUSTNESS_NEAR_MISS_TOKENS: tuple[str, ...] = ("monte", "carlo")
+
+# Phrases that must not count as bare RI-3 ``validation``.
+_OTF_VALIDATION_PHRASES: tuple[str, ...] = ("otf validation", "otf-validation")
 
 # Frozen RI §4.2 allowlist (include only when path exists on turn context).
 GRID_CLAIM_PATHS: tuple[str, ...] = (
@@ -416,6 +425,14 @@ def _grid_ranking_matches(normalized: str) -> bool:
     return False
 
 
+def _mask_otf_validation_phrases(normalized: str) -> str:
+    """Blank OTF phrases so remaining bare ``validation`` can still match WFA."""
+    masked = normalized
+    for phrase in _OTF_VALIDATION_PHRASES:
+        masked = masked.replace(phrase, " ")
+    return " ".join(masked.split())
+
+
 def _validation_wfa_matches(normalized: str) -> bool:
     # Non-``validation`` cues always land validation_wfa (even beside OTF talk).
     other_cues = tuple(cue for cue in _VALIDATION_WFA_POSITIVE_CUES if cue != "validation")
@@ -426,16 +443,22 @@ def _validation_wfa_matches(normalized: str) -> bool:
         _VALIDATION_PERMUTATION_COLLOCATES, normalized
     ):
         return True
-    # Bare ``validation`` — but not the RI-5 phrase ``otf validation``.
-    if _alias_matches("validation", normalized) and not _alias_matches(
-        "otf validation", normalized
-    ):
+    # Bare ``validation`` after masking RI-5 ``otf validation`` / ``otf-validation``
+    # so "validation and otf validation" can be mixed_ask (WFA + robustness).
+    if _alias_matches("validation", _mask_otf_validation_phrases(normalized)):
         return True
     return False
 
 
 def _robustness_tier2_matches(normalized: str) -> bool:
     return _any_cue_matches(_ROBUSTNESS_TIER2_POSITIVE_CUES, normalized)
+
+
+def _robustness_near_miss_matches(normalized: str) -> bool:
+    """True for bare ``monte`` / ``carlo`` without a full robustness cue."""
+    if _robustness_tier2_matches(normalized):
+        return False
+    return _any_cue_matches(_ROBUSTNESS_NEAR_MISS_TOKENS, normalized)
 
 
 def _mask_time_bare_idioms(normalized: str) -> str:
@@ -473,7 +496,7 @@ def _time_ranking_matches(normalized: str) -> bool:
 
 
 def _hard_residual_negative_matches(normalized: str) -> bool:
-    """Residual cues that block landed specialists (bare ranking after RI-5)."""
+    """Residual cues that block landed specialists (bare ranking / MC near-miss)."""
     if _any_cue_matches(
         tuple(cue for cue in _RESIDUAL_NEGATIVE_CUES if cue != "ranking"),
         normalized,
@@ -484,6 +507,9 @@ def _hard_residual_negative_matches(normalized: str) -> bool:
         _any_cue_matches(_GRID_CONTEXT_COLLOCATES, normalized)
         or _any_cue_matches(_TIME_CONTEXT_COLLOCATES, normalized)
     ):
+        return True
+    # Bare ``monte`` / ``carlo`` without full robustness cue — never IS metric.
+    if _robustness_near_miss_matches(normalized):
         return True
     return False
 
@@ -1114,12 +1140,15 @@ def build_prompt_path_catalog(
         catalog["robustness_allowlist"] = robustness_paths
         catalog["specialist_instruction"] = (
             "This is a tier-2 robustness ask (Monte Carlo / overfitting / "
-            "sensitivity / noise / portfolio / OTF). Prefer citing a subset of "
-            "robustness_allowlist / preferred_claim_paths (presence and frozen "
-            "scalars only). Do not dump undeclared nested battery paths. Do not "
-            "substitute results.trade_summary.* KPIs."
+            "sensitivity / noise / portfolio / OTF). Cite only paths from "
+            "robustness_allowlist / preferred_claim_paths / existing_paths "
+            "(presence and frozen scalars only). Do not dump undeclared nested "
+            "battery paths (methods.*, parameter arrays). Do not substitute "
+            "results.trade_summary.* KPIs."
         )
         catalog["preferred_claim_paths"] = robustness_paths
+        # §4.6: undeclared nested dumps must not appear in existing_paths.
+        catalog["existing_paths"] = list(robustness_paths)
     elif intent == INTENT_TIME_RANKING:
         # Ensure projected paths are listed when only time_grouped_summary exists.
         working = _ensure_time_rankings_context(evidence_context)
@@ -1448,6 +1477,10 @@ _OVERLAY_NEXT_STEP_ROBUSTNESS = (
     "Ask for the key metrics or a walk-forward summary if you want the baseline or OOS folds."
 )
 
+_OVERLAY_NEXT_STEP_ROBUSTNESS_OOS_ABSENT = (
+    "Ask for the key metrics or a summary of this run if you want the in-sample baseline."
+)
+
 _OVERLAY_OOS_ABSENT = (
     "Out-of-sample or walk-forward evidence is missing or failed on this packet; "
     "do not invent confirmation."
@@ -1632,6 +1665,8 @@ def _overlay_next_step_line(discuss_intent: str | None, *, oos_absent: bool) -> 
     if discuss_intent == INTENT_VALIDATION_WFA:
         return _OVERLAY_NEXT_STEP_VALIDATION
     if discuss_intent == INTENT_ROBUSTNESS_TIER2:
+        if oos_absent:
+            return _OVERLAY_NEXT_STEP_ROBUSTNESS_OOS_ABSENT
         return _OVERLAY_NEXT_STEP_ROBUSTNESS
     if discuss_intent == INTENT_TIME_RANKING:
         return _OVERLAY_NEXT_STEP_TIME
@@ -1808,8 +1843,11 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
         return (
             "Sample warning is true (thin bucket sample)." if value else "Sample warning is false."
         )
-    # RI-5: battery ``.available`` presence flags are allowlisted booleans.
-    if path.endswith("available") and isinstance(value, bool):
+    # RI-5: battery ``.available`` presence flags are allowlisted booleans only
+    # (reject int 0/1 / strings that would otherwise narrate as ``available is 1.``).
+    if path.endswith("available"):
+        if not isinstance(value, bool):
+            return None
         label = _robustness_available_label(path)
         return f"{label} is {'true' if value else 'false'}."
     if value is None or isinstance(value, bool):
@@ -2198,11 +2236,12 @@ def compose_deterministic_replies(
     if INTENT_TIME_RANKING in matched:
         working = dict(_ensure_time_rankings_context(working))
 
-    # KPI allowlist already covers §4.5 leaves — skip redundant single_metric.
+    # KPI allowlist covers overlapping §4.5 leaves — still build metric paths
+    # outside the KPI table (e.g. sharpe_like_r) when overview also matched.
     overview_in_matched = any(
         intent in matched for intent in (OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN)
     )
-    build_metric_slice = INTENT_SINGLE_METRIC in matched and not overview_in_matched
+    kpi_path_set = set(KPI_CLAIM_PATHS)
 
     summary_parts: list[str] = []
     claims: list[EvidenceClaim] = []
@@ -2265,11 +2304,13 @@ def compose_deterministic_replies(
             if _absorb(build_deterministic_robustness_reply(packet, working, apply_overlay=False)):
                 _mark(intent)
         elif intent == INTENT_SINGLE_METRIC:
-            if not build_metric_slice:
-                # Covered by overview allowlist; count as answered for followups.
-                _mark(intent)
-                continue
-            paths = metric_paths or ()
+            paths = tuple(metric_paths or ())
+            if overview_in_matched:
+                paths = tuple(path for path in paths if path not in kpi_path_set)
+                if not paths:
+                    # Fully covered by KPI allowlist; count as answered.
+                    _mark(intent)
+                    continue
             if not paths:
                 continue
             for path in paths:
@@ -2293,12 +2334,8 @@ def compose_deterministic_replies(
                 _mark(intent)
 
     # No partial topic-swap: every matched intent must contribute claims
-    # (except single_metric absorbed into overview).
-    required = [
-        intent
-        for intent in matched
-        if not (intent == INTENT_SINGLE_METRIC and not build_metric_slice)
-    ]
+    # (single_metric may be marked answered when fully covered by KPI).
+    required = list(matched)
     if not claims or any(intent not in answered for intent in required):
         return build_mixed_ask_remediation_reply(
             packet,
@@ -2368,6 +2405,7 @@ def build_missing_robustness_limitation_reply(
     packet: EvidencePacket,
     *,
     recovery_reason: str | None = REASON_MISSING_ROBUSTNESS,
+    evidence_context: Mapping[str, Any] | None = None,
 ):
     """Digit-free missing tier-2 robustness limitation (RI-5 short-circuit)."""
     from thesistester.assistant.results_qa import ResultsQAReply
@@ -2377,10 +2415,16 @@ def build_missing_robustness_limitation_reply(
         "or OTF robustness questions because those batteries are not present on "
         "this run."
     )
-    followups = (
+    followups_list = [
         "Ask for the key metrics or a summary of this run.",
-        "Ask whether walk-forward or validation diagnostics are present on this packet.",
-    )
+    ]
+    if _oos_evidence_absent(packet, evidence_context=evidence_context):
+        followups_list.append("Ask which evidence paths remain available on this packet.")
+    else:
+        followups_list.append(
+            "Ask whether walk-forward or validation diagnostics are present on this packet."
+        )
+    followups = tuple(followups_list)
     caveats = merge_mandatory_packet_caveats(
         packet,
         (
@@ -2685,6 +2729,7 @@ def build_deterministic_robustness_reply(
         return build_missing_robustness_limitation_reply(
             packet,
             recovery_reason=recovery_reason or REASON_MISSING_ROBUSTNESS,
+            evidence_context=evidence_context,
         )
 
     claims: list[EvidenceClaim] = []
@@ -2706,6 +2751,7 @@ def build_deterministic_robustness_reply(
         return build_missing_robustness_limitation_reply(
             packet,
             recovery_reason=recovery_reason or REASON_MISSING_ROBUSTNESS,
+            evidence_context=evidence_context,
         )
 
     summary = "Robustness batteries: " + "; ".join(summary_parts) + "."

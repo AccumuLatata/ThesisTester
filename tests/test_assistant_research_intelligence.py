@@ -205,8 +205,11 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     # RI-5: otf validation / Monte Carlo are landed robustness_tier2 (not RI-3).
     assert match_discuss_intent("otf validation") == INTENT_ROBUSTNESS_TIER2
     assert has_overview_negative_cue("otf validation") is True
+    assert match_discuss_intent("otf-validation") == INTENT_ROBUSTNESS_TIER2
+    assert has_overview_negative_cue("otf-validation") is True
     assert match_discuss_intent("monte carlo summary please") == INTENT_ROBUSTNESS_TIER2
     assert match_discuss_intent("overfitting diagnostics") == INTENT_ROBUSTNESS_TIER2
+    assert match_discuss_intent("overfit diagnostics") == INTENT_ROBUSTNESS_TIER2
     assert match_discuss_intent("sensitivity battery") == INTENT_ROBUSTNESS_TIER2
     assert match_discuss_intent("noise test results") == INTENT_ROBUSTNESS_TIER2
     assert match_discuss_intent("portfolio summary please") == INTENT_ROBUSTNESS_TIER2
@@ -214,6 +217,14 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert match_discuss_intent("walk-forward validation and otf notes") == INTENT_VALIDATION_WFA
     # WFA + otf validation phrase → mixed_ask (both specialists).
     assert match_discuss_intent("walk-forward and otf validation") == INTENT_MIXED_ASK
+    # Bare ``validation`` must survive beside OTF (not collapse to robustness-only).
+    assert match_discuss_intent("validation and otf validation") == INTENT_MIXED_ASK
+    assert match_discuss_intent("validation and otf-validation") == INTENT_MIXED_ASK
+    # Near-miss bare monte/carlo must not launder into single_metric.
+    assert match_discuss_intent("what is the monte expectancy?") is None
+    assert has_overview_negative_cue("what is the monte expectancy?") is True
+    assert match_discuss_intent("carlo summary") is None
+    assert has_overview_negative_cue("carlo summary") is True
     # Bare permutation without validation-sense collocates does not match.
     assert match_discuss_intent("a permutation of the thesis") is None
     assert match_discuss_intent("bootstrap permutation test") == INTENT_VALIDATION_WFA
@@ -1463,3 +1474,173 @@ def test_ri7_time_overlay_includes_meaning_line():
     assert any("research diagnostics" in c for c in reply.caveats)
     for caveat in reply.caveats:
         assert _ungrounded_number_tokens(caveat, allowed=set()) == []
+
+
+def test_ri5_non_bool_available_is_not_narrated():
+    from thesistester.assistant.results_overview import _format_scalar_for_claim
+
+    assert _format_scalar_for_claim("results.monte_carlo_summary.available", 1) is None
+    assert _format_scalar_for_claim("results.monte_carlo_summary.available", "true") is None
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri5_avail"},
+        assumptions={},
+        results={"monte_carlo_summary": {"available": 1, "trade_count": 12}},
+        warnings=(),
+        limitations=(),
+    )
+    # Int available must not count as evidence; trade_count still can.
+    paths = present_robustness_allowlist(packet.to_dict())
+    assert "results.monte_carlo_summary.available" not in paths
+    assert "results.monte_carlo_summary.trade_count" in paths
+    reply = build_deterministic_robustness_reply(packet, packet.to_dict())
+    assert "available is 1" not in reply.summary.lower()
+    assert not any(c.path.endswith(".available") for c in reply.claims)
+
+
+def test_ri5_missing_robustness_followups_respect_oos_absent():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri5_miss_oos"},
+        assumptions={},
+        results={"trade_summary": {"trade_count": 10}},
+        warnings=(),
+        limitations=("Walk-forward / OOS evidence is missing on this packet.",),
+        caveats=(
+            EvidenceCaveat(
+                code="missing_oos",
+                message="Out-of-sample evidence is missing.",
+                path="results.walk_forward_summary",
+            ),
+        ),
+    )
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What does the Monte Carlo battery say?",
+    )
+    assert client.calls == 0
+    assert reply.recovery_reason == REASON_MISSING_ROBUSTNESS
+    assert not any("whether walk-forward" in f.lower() for f in reply.followups)
+
+
+def test_ri5_llm_nested_dump_hard_rejects_to_deterministic():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri5_methods"},
+        assumptions={},
+        results={
+            "monte_carlo_summary": {
+                "available": True,
+                "trade_count": 40,
+                "methods": {"reshuffle": {"observed": {"final_r": 1.2}}},
+            }
+        },
+        warnings=(),
+        limitations=(),
+    )
+    client = _FailClient(
+        {
+            "summary": "Methods final_r is 1.2 under Monte Carlo.",
+            "caveats": ["Soft."],
+            "claims": [
+                {
+                    "text": "Final R is 1.2.",
+                    "path": "results.monte_carlo_summary.methods.reshuffle.observed.final_r",
+                }
+            ],
+            "followups": ["Deploy."],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="Summarize the Monte Carlo results",
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "results.monte_carlo_summary.available" in paths
+    assert "results.monte_carlo_summary.trade_count" in paths
+    assert not any("methods" in path for path in paths)
+    assert "1.2" not in reply.summary
+
+
+def test_ri5_robustness_catalog_existing_paths_is_allowlist_only():
+    from thesistester.assistant.results_overview import build_prompt_path_catalog
+
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri5_catalog"},
+        assumptions={},
+        results={
+            "trade_summary": {"trade_count": 42, "expectancy_r": 0.25},
+            "monte_carlo_summary": {
+                "available": True,
+                "trade_count": 40,
+                "methods": {"reshuffle": {"observed": {"final_r": 1.2}}},
+            },
+        },
+        warnings=(),
+        limitations=(),
+    )
+    catalog = build_prompt_path_catalog(packet.to_dict(), discuss_intent=INTENT_ROBUSTNESS_TIER2)
+    existing = set(catalog["existing_paths"])
+    assert existing
+    assert existing <= set(ROBUSTNESS_CLAIM_PATHS)
+    assert not any("methods" in path for path in existing)
+    assert not any("trade_summary" in path for path in existing)
+
+
+def test_ri5_robustness_overlay_oos_absent_skips_wfa_coaching():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri5_overlay_oos"},
+        assumptions={},
+        results={"monte_carlo_summary": {"available": True, "trade_count": 12}},
+        warnings=(),
+        limitations=("Walk-forward / OOS evidence is missing on this packet.",),
+        caveats=(
+            EvidenceCaveat(
+                code="missing_oos",
+                message="Out-of-sample evidence is missing.",
+                path="results.walk_forward_summary",
+            ),
+        ),
+    )
+    reply = build_deterministic_robustness_reply(packet, packet.to_dict())
+    assert not any("walk-forward summary" in c.lower() for c in reply.caveats)
+    assert not any("whether walk-forward" in f.lower() for f in reply.followups)
+    assert any("in-sample baseline" in c.lower() for c in reply.caveats)
+
+
+def test_ri8_compose_keeps_non_kpi_metric_with_overview():
+    """Overview + sharpe must not drop the non-KPI metric leaf (compose bug)."""
+    from thesistester.assistant.results_overview import REASON_MIXED_COMPOSE
+
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri8_sharpe"},
+        assumptions={},
+        results={
+            "trade_summary": {
+                "trade_count": 42,
+                "expectancy_r": 0.25,
+                "win_rate": 0.52,
+                "profit_factor": 1.4,
+                "max_drawdown_r": -2.0,
+                "total_r": 10.5,
+                "sharpe_like_r": 1.1,
+            }
+        },
+        warnings=(),
+        limitations=(),
+    )
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="key metrics and what is the sharpe?",
+    )
+    assert client.calls == 0
+    assert reply.recovery_reason == REASON_MIXED_COMPOSE
+    paths = {claim.path for claim in reply.claims}
+    assert "results.trade_summary.sharpe_like_r" in paths
+    assert any(path.startswith("results.trade_summary.") for path in paths)
