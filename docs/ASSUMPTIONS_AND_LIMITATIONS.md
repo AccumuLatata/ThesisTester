@@ -603,12 +603,16 @@ other than the last bar in the dataset.
   **RI-series (continuation):**
   `docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md` adds fail-open specialist /
   single-metric / meaning / mixed-ask slices while keeping the RQ auditor
-  identical. **RI-1 landed:** unified `match_discuss_intent` + residual DI
+  identical.   **RI-1 landed:** unified `match_discuss_intent` + residual DI
   veto; deterministic `grid_ranking` builder / missing-grid short-circuit;
   `deterministic_specialist_fallback` (default `true`). **RI-3 landed:**
   `validation_wfa` builder / missing-validation short-circuit; validation/WFA/OOS
   cues sunset from residual; never substitutes `trade_summary` as OOS proof;
   mixed asks (e.g. KPIs+validation) still narrow-remediate until RI-8.
+  **RI-2 landed:** deterministic `time_ranking` builder / missing-time
+  short-circuit; time/hour/bucket/clock/session-segment cues sunset from
+  residual; no invented clocks; projects from `time_grouped_summary` when
+  ephemeral `time_rankings` are absent (no new TIME.analyze).
   Incremental PRs keep DI residual negative-cue vetoes for not-yet-owned
   specialist topics (and DX veto≠unmatched) until each builder PR sunsets its
   cues; RI must not invent metrics, remap topics onto KPI overview, answer OOS

@@ -1068,6 +1068,9 @@ def test_rq5_clock_bucket_does_not_launder_component_digits():
             turn_context=context,
             repair_retry_enabled=False,
             deterministic_overview_fallback=False,
+            # RI-2 owns specialist recovery; disable it so this RQ-5 case still
+            # proves the auditor rejects clock-component digit laundering.
+            deterministic_specialist_fallback=False,
         )
 
 
