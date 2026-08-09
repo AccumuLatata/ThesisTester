@@ -45,6 +45,12 @@ cross-view: primarily `exact_combo × trigger_variant` (and optional
 combination?”. Ships **after** 5a–5d. Does not replace default combo/pair
 tables; no engine/3c semantics changes; 3c tested-level-only honesty preserved.
 
+**Phase 3 scope amendment (2026-08-09, completeness pass):** Unify availability
+vs calm-unavailable UX (non-null **and** non-empty `trigger_variant`); omit
+null/`""` before groupby; document Focus `_display_trades` vs standalone 3c
+full-`trades` mismatch; move Phase 3 into §10 scoped table; scrub stale §8
+top-N-in-PR3 wording; require ARCHITECTURE note in the implementation PR.
+
 ---
 
 ## 1. Purpose
@@ -548,11 +554,11 @@ tracked as a named research UX milestone; this plan is sufficient.
 | Nested sets `A\|B` vs `A\|B\|C` | Separate exact-combo rows; soft pairwise (PR 4) attributes shared pairs |
 | 3c tested-level-only names | Combo reflects signal `level_names` (often tested level); UI caption when any `trigger=="3c"` |
 | Focus subset empty | Info message; no tables |
-| Huge combo cardinality | Observed-only rows + default UI hide below `min_trades`; no hard truncation in MVP (optional top-N in PR 3) |
+| Huge combo cardinality | Observed-only rows + default UI hide below `min_trades`; no hard truncation in MVP (optional later top-N follow-up — **not** default PR 3) |
 | `r_multiple` null | Exclude from metric denominators |
 | `r_multiple == 0` | Included in `trade_count`; not a win |
 | Empty-name trade in membership | No membership rows emitted for that trade |
-| Direction / 3c-variant filter | Not auto-applied; optional PR-3 cross-view (`combo × trigger_variant`) |
+| Direction / 3c-variant | Not auto-applied as a filter; optional PR 3 opt-in cross-view (`exact_combo × trigger_variant`) after 5a–5d |
 
 ---
 
@@ -593,12 +599,13 @@ level remain in the selected set?”
 | Report export diagnostic combo section | **Scoped (Phase 5b)** | Omit when unavailable; on-export recompute |
 | Research-bundle optional combo JSON/parquet siblings | **Scoped (Phase 5c)** | On-export recompute; no `BUNDLE_SCHEMA_VERSION` bump |
 | Assistant **cite-bound** combo projections | **Scoped (Phase 5d)** | Bounded `results.projections.confluence_combo` leaves only |
+| Optional combo × 3c-variant cross-view | **Scoped (Phase 3 / after 5a–5d)** | Opt-in `exact_combo × trigger_variant` (+ optional pair×variant if cheap); not default always-on |
 
 ### Still deferred / out
 
 | Idea | Priority | Why deferred |
 |---|---|---|
-| Optional combo × 3c-variant cross-view | Medium — after 5a–5d | Opt-in `exact_combo × trigger_variant` (+ optional pair×variant); CSV/top-N remain follow-ups |
+| Direction × combo / CSV download / hard top-N polish | Medium — after first PR 3 ship if UX pain remains | Explicitly **out of default PR 3**; convenience only |
 | Pairwise **engine** emission (one zone per valid rule when min=1) | Low / likely never default | Changes trade counts / overlap / exposure; needs own golden-gated plan |
 | Stamping `setup_name` / `confluence_mode` onto trades | Low for single-run Backtest | Additive schema; captions use signal-run identity resolution |
 | Time Analysis **default primary** = `exact_combo_key` | Later | Distinct from 5a opt-in options; changing default primary is a separate UX decision |
@@ -814,14 +821,15 @@ and not a change to 3c / zone / fill semantics.
 | Default UI | Existing Exact / Membership / Level count / Pairs tabs unchanged and remain default |
 | Placement | One opt-in sub-tab **or** nested collapsed expander inside Confluence combo attribution, labeled **“Combo × 3c variant”** |
 | Universe | `_display_trades` only (Focus-aware) |
+| Focus honesty | Standalone “3c outcome summary by variant/source” today uses full session `trades`; PR 3 uses `_display_trades`. With Focus ON, counts **will not match** that block — caption must say so; do **not** change the standalone block’s universe in PR 3 |
 | Metrics | Same lean R metrics via private `_summarize_r` (`trade_count`, `win_rate`, `avg_r`, `median_r`, `total_r`, `sample_warning`) |
 | Filter ownership | Analytics returns **all** groups + `sample_warning`; UI owns hide-below-`min_trades` (**default ON**) |
-| Availability | Show only when combo attribution `available=True` **and** `trigger_variant` has ≥1 non-null among analyzable displayed trades |
-| Null / empty `trigger_variant` | **Omit** those trades from the cross-view denominator (no synthetic `(unknown)` bucket in PR 3) |
+| Availability (tables) | Render the cross-view **table** only when **all** hold on `_display_trades`: (1) combo attribution `available=True`; (2) `trigger_variant` column present; (3) ≥1 analyzable trade (non-null `r_multiple`) has a non-null **and** non-empty (`strip`) `trigger_variant`. Otherwise fail closed to calm info — **never** an empty matrix framed as a result |
+| Null / empty `trigger_variant` | **Omit** those trades from the cross-view denominator **before** groupby (no synthetic `(unknown)`). Empty string `""` is not a usable variant. Do **not** rely on `_summarize_r`’s `dropna=False` to hide null groups |
 | Sort | `total_r` desc, then `trade_count` desc |
 | 3c honesty | Mandatory caption: uses trade `level_names` / pair keys as recorded; for 3c these may be tested-level-only, not full zone membership |
 | Engine / 3c semantics | **None** — does not require anchor hit; does not alter arrival / zone / fill behavior |
-| Existing 3c summary block | Leave the standalone “3c outcome summary by variant/source” unchanged |
+| Existing 3c summary block | Leave the standalone “3c outcome summary by variant/source” unchanged (including its full-`trades` universe) |
 
 **Analytics API (narrow):**
 
@@ -834,7 +842,8 @@ def summarize_by_exact_combo_and_trigger_variant(
     """Group analyzable trades by exact_combo_key × trigger_variant.
 
     Returns all groups plus sample_warning. Does not drop thin samples.
-    Omits rows with null/empty trigger_variant from this cross-view.
+    Pre-filters null/empty (strip) trigger_variant before grouping.
+    Missing trigger_variant column → empty frame.
     """
 
 def summarize_by_pair_and_trigger_variant(
@@ -847,9 +856,17 @@ def summarize_by_pair_and_trigger_variant(
     """Optional same-PR: pair_key × trigger_variant (PR 4 pair-mode locks)."""
 ```
 
-Prefer dedicated helpers over bloating `confluence_attribution_summary`.
-If summary keys are added later, gate them behind an explicit opt-in flag and
-keep the default summary contract unchanged.
+Implementation notes:
+
+- Prefer dedicated helpers over bloating `confluence_attribution_summary`.
+  If summary keys are added later, gate them behind an explicit opt-in flag and
+  keep the default summary contract unchanged.
+- `_summarize_r` today is single-`group_col`; helpers may build a temporary
+  composite key / multi-column groupby, then return lean metric columns plus
+  both axis columns. Do not change `_summarize_r`’s existing callers’ contracts.
+- Pair×variant (if shipped) must reuse PR 4 mode path:
+  `resolve_signal_setup_for_attribution` → `resolve_confluence_mode` → pair keys;
+  pairwise double-count caption mandatory.
 
 **UI contract:**
 
@@ -860,8 +877,16 @@ keep the default summary contract unchanged.
    - diagnostic / selection-effects
    - 3c tested-level-only note when any displayed trade has `trigger == "3c"`
    - reminder that this is a cross-tab of observed trades, not a new signal model
-5. If `trigger_variant` absent (typical non-3c runs), show calm info only:
-   “Combo × 3c variant unavailable — no `trigger_variant` on displayed trades.”
+   - Focus reminder when Focus is active: universe is `_display_trades`, not the
+     standalone 3c variant block’s full `trades`
+5. Unavailable paths (calm info, no exception; never empty-matrix-as-success):
+   - combo attribution `available=False`, **or**
+   - `trigger_variant` column missing, **or**
+   - column present but no non-null/non-empty usable variant among analyzable
+     displayed trades (typical non-3c runs stamp `None` on every trade)
+   Suggested copy (may distinguish missing column vs no usable variants):
+   “Combo × 3c variant unavailable — no usable `trigger_variant` on displayed
+   trades.”
 
 **Files expected (implementation PR):**
 
@@ -870,17 +895,20 @@ keep the default summary contract unchanged.
 - `pages/7_Backtest.py` (opt-in surface only)
 - `docs/ASSUMPTIONS_AND_LIMITATIONS.md`
 - `docs/METRICS_GLOSSARY.md`
+- `docs/ARCHITECTURE.md` (brief Backtest expander note for the opt-in surface)
 - `docs/CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md` (status → implemented)
 
 **Explicitly out of scope:**
 
 - Changing 3c arrival semantics (e.g. require anchor hit in anchor mode)
 - Replacing / merging / relocating the existing 3c outcome-by-variant block
+- Changing that standalone block to use `_display_trades` (separate decision)
 - Membership × `trigger_variant` matrix
 - Time Analysis / report / bundle / assistant consumers for this cross-view
 - Engine / golden / trades-schema changes
 - Broad direction × combo × variant 3D matrices
 - Default always-on matrix in Backtest chrome
+- Hard top-N / CSV / direction×combo (follow-ups only)
 
 **Regression safety:**
 
@@ -895,11 +923,13 @@ keep the default summary contract unchanged.
 ```text
 exact_combo × trigger_variant:
   - groups by both axes; metrics match lean _summarize_r contract
-  - null/empty trigger_variant rows omitted from this view
+  - null AND empty-string trigger_variant rows omitted before groupby
   - sample_warning true when n < min_trades; rows not dropped by helper
-  - missing trigger_variant column → empty frame / calm unavailable path
+  - missing trigger_variant column → empty frame
+  - all-null trigger_variant (non-3c stamp pattern) → empty frame
 optional pair × trigger_variant (if shipped):
-  - same pair-mode locks as PR 4 (no first-token anchor guess)
+  - same pair-mode locks as PR 4 (resolve_* chain; no first-token anchor guess)
+  - pairwise double-count honesty still required
 ```
 
 **Acceptance checklist:**
@@ -907,11 +937,13 @@ optional pair × trigger_variant (if shipped):
 - [ ] Scheduled after 5a–5d unless explicitly re-prioritized
 - [ ] Default Exact / Membership / Level count / Pairs unchanged when unused
 - [ ] Cross-view uses `_display_trades`; hide-below-`min_trades` defaults ON
-- [ ] Analytics unfiltered (`sample_warning` only); null variants omitted
-- [ ] Missing `trigger_variant` → calm info, no exception
+- [ ] Tables only when `available=True` **and** ≥1 usable (non-null/non-empty) variant
+- [ ] Analytics unfiltered (`sample_warning` only); null/`""` variants omitted pre-groupby
+- [ ] Missing column / all-null variants → calm info (no empty-matrix success path)
+- [ ] Focus mismatch vs standalone 3c block captioned when Focus active
 - [ ] 3c tested-level-only honesty caption when applicable
-- [ ] Optional pair×variant (if present) follows PR 4 pair-mode locks
-- [ ] ASSUMPTIONS + METRICS_GLOSSARY updated
+- [ ] Optional pair×variant (if present) follows PR 4 pair-mode locks + double-count caption
+- [ ] ASSUMPTIONS + METRICS_GLOSSARY + ARCHITECTURE updated
 - [ ] No engine/golden/session-producer keys; full suite green
 
 **Priority / sequencing lock:**
@@ -1324,10 +1356,12 @@ stop and re-scope.
 | Nested sets hide pair edge (`A\|B` vs `A\|B\|C`) | Medium (research gap) | Elevate soft pairwise PR 4 after MVP |
 | Combo table explosion with min=1 global | Medium (UX) | Observed-only rows + default UI sample filter; PR 3 cross-view also hide-thin by default |
 | Combo × 3c-variant cardinality | Medium (UX/honesty) | Opt-in surface only; hide-thin default ON; do not replace default tabs |
+| Pair × variant double-count / cell explosion | Medium (honesty/UX) | Ship exact_combo×variant first; pair×variant only if cheap + mandatory pairwise caption |
+| Non-3c empty matrix misread as “no edge” | Medium (UX) | Fail closed to calm unavailable when no usable `trigger_variant` |
 | Analytics drops thin samples and breaks partition tests | Medium (correctness) | Filter is UI-only; summarize_* returns all groups |
 | 3c `level_names` semantics differ from full zone | Medium (interpretation) | Conditional UI caption + glossary |
 | Accidental engine “fix” for pairwise zones | High (regression) | Explicit non-goal; PR checklist forbids engine files |
-| Focus confusion (post-hoc subset) | Medium | Use `_display_trades`; keep Focus caveat |
+| Focus confusion (post-hoc subset) | Medium | Use `_display_trades`; caption Focus mismatch vs standalone 3c full-`trades` block |
 | Dual / third `summarize_by_group` APIs | Medium (drift) | Private lean `_summarize_r` only; do not reuse time_analysis |
 | Adding a 4th Breakdown tab alters legacy chrome | Medium (UI regression) | Collapsed expander only (locked) |
 | Performance on large trade frames | Low | Vectorized pandas explode; MVP datasets are research-scale |
@@ -1439,12 +1473,15 @@ PR 1 analytics helpers + tests
 - [ ] Default Exact / Membership / Level count / Pairs unchanged when unused
 - [ ] Opt-in `exact_combo × trigger_variant` surface only (not always-on)
 - [ ] Uses `_display_trades`; hide-below-min defaults ON; analytics unfiltered
-- [ ] Null/empty `trigger_variant` omitted from cross-view (no synthetic unknown)
-- [ ] Missing `trigger_variant` → calm info
+- [ ] Tables only when combo `available=True` **and** ≥1 usable variant
+- [ ] Null/`""` `trigger_variant` omitted **before** groupby (no synthetic unknown)
+- [ ] Missing column / all-null variants → calm info (no empty-matrix success)
+- [ ] Focus mismatch vs standalone 3c full-`trades` block captioned when Focus on
 - [ ] 3c tested-level-only honesty caption when applicable
-- [ ] Standalone 3c outcome-by-variant block left unchanged
+- [ ] Standalone 3c outcome-by-variant block left unchanged (universe included)
+- [ ] Optional pair×variant (if shipped) follows PR 4 resolve_* locks + double-count caption
 - [ ] No engine/3c-semantics changes; no golden / producer session keys
-- [ ] ASSUMPTIONS + METRICS_GLOSSARY updated; full suite green
+- [ ] ASSUMPTIONS + METRICS_GLOSSARY + ARCHITECTURE updated; full suite green
 
 ### PR 5a
 
@@ -1534,7 +1571,7 @@ No blocking open questions remain for PR 1–2.
 | Phase 5b | Report export diagnostic section | Not started (on-export recompute; omit-when-unavailable) |
 | Phase 5c | Bundle optional artifacts | Not started (on-export recompute; no producer session keys) |
 | Phase 5d | Assistant cite-bound projection | Not started (trades recompute; 5c not required) |
-| Phase 3 | Optional combo × trigger_variant cross-view | **Scoped** for after 5a–5d; implementation not started |
+| Phase 3 | Optional combo × trigger_variant cross-view | **Scoped** for after 5a–5d (2026-08-09 completeness amendment); implementation not started |
 
 ---
 
@@ -1631,6 +1668,11 @@ Before coding PR 1 / PR 2 / PR 4 / PR 5x / PR 3, confirm these locks:
 14. [ ] 5a does not add pairs/membership as Time Analysis group dims
 15. [ ] 5c does not bump `BUNDLE_SCHEMA_VERSION` for optional siblings
 16. [ ] PR 3 is opt-in `exact_combo × trigger_variant` after 5a–5d; not default always-on
-17. [ ] PR 3 omits null/empty `trigger_variant` from the cross-view; no synthetic unknown bucket
-18. [ ] PR 3 does not change 3c arrival / zone / fill semantics (no require-anchor-hit)
-19. [ ] PR 3 leaves the standalone 3c outcome-by-variant summary block unchanged
+17. [ ] PR 3 tables only when combo `available=True` **and** ≥1 usable
+      (non-null/non-empty) `trigger_variant`; otherwise calm unavailable
+18. [ ] PR 3 omits null/`""` `trigger_variant` **before** groupby; no synthetic unknown
+19. [ ] PR 3 does not change 3c arrival / zone / fill semantics (no require-anchor-hit)
+20. [ ] PR 3 leaves the standalone 3c outcome-by-variant summary block unchanged
+      (including its full-`trades` universe)
+21. [ ] PR 3 captions Focus mismatch when Focus is active
+22. [ ] PR 3 implementation updates ARCHITECTURE (+ ASSUMPTIONS / METRICS_GLOSSARY)
