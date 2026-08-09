@@ -17,8 +17,10 @@ from thesistester.assistant.llm_explainer import (
 )
 from thesistester.assistant.results_overview import (
     ASSUMPTIONS_CLAIM_PATHS,
+    CONFLUENCE_COMBO_CLAIM_PATHS,
     DEEP_TRADE_CLAIM_PATHS,
     INTENT_ASSUMPTIONS_COSTS,
+    INTENT_CONFLUENCE_COMBO,
     INTENT_DEEP_TRADE,
     deep_trade_topic_path_prefixes,
     INTENT_GRID_RANKING,
@@ -30,6 +32,7 @@ from thesistester.assistant.results_overview import (
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
     REASON_ASSUMPTIONS_FALLBACK,
+    REASON_CONFLUENCE_COMBO_FALLBACK,
     REASON_DEEP_TRADE_FALLBACK,
     REASON_GRID_FALLBACK,
     REASON_METRIC_FALLBACK,
@@ -41,6 +44,7 @@ from thesistester.assistant.results_overview import (
     _ensure_time_rankings_context,
     apply_expert_overlay,
     build_deterministic_assumptions_reply,
+    build_deterministic_confluence_combo_reply,
     build_deterministic_deep_trade_reply,
     build_deterministic_grid_ranking_reply,
     build_deterministic_kpi_reply,
@@ -49,6 +53,7 @@ from thesistester.assistant.results_overview import (
     build_deterministic_time_ranking_reply,
     build_deterministic_validation_wfa_reply,
     build_missing_assumptions_limitation_reply,
+    build_missing_confluence_combo_limitation_reply,
     build_missing_deep_trade_limitation_reply,
     build_missing_grid_limitation_reply,
     build_missing_metric_limitation_reply,
@@ -61,6 +66,7 @@ from thesistester.assistant.results_overview import (
     compose_deterministic_replies,
     failure_class_from_exception,
     has_assumptions_costs_evidence,
+    has_confluence_combo_evidence,
     has_deep_trade_evidence,
     has_grid_ranking_evidence,
     has_robustness_tier2_evidence,
@@ -250,6 +256,7 @@ def _decode_results_payload(
     robustness_allow = frozenset(ROBUSTNESS_CLAIM_PATHS)
     assumptions_allow = frozenset(ASSUMPTIONS_CLAIM_PATHS)
     deep_trade_allow = frozenset(DEEP_TRADE_CLAIM_PATHS)
+    confluence_combo_allow = frozenset(CONFLUENCE_COMBO_CLAIM_PATHS)
     claims: list[EvidenceClaim] = []
     for item in claims_raw:
         if (
@@ -277,6 +284,10 @@ def _decode_results_payload(
         if discuss_intent == INTENT_DEEP_TRADE and path not in deep_trade_allow:
             raise LLMEvidenceError(
                 f"Results Q&A claim path {path!r} is outside the deep_trade allowlist."
+            )
+        if discuss_intent == INTENT_CONFLUENCE_COMBO and path not in confluence_combo_allow:
+            raise LLMEvidenceError(
+                f"Results Q&A claim path {path!r} is outside the confluence_combo allowlist."
             )
         claims.append(
             EvidenceClaim(
@@ -420,6 +431,16 @@ def _recover_results_reply(
             user_message=user_message,
         )
     if (
+        discuss_intent == INTENT_CONFLUENCE_COMBO
+        and deterministic_specialist_fallback
+        and has_confluence_combo_evidence(evidence_context)
+    ):
+        return build_deterministic_confluence_combo_reply(
+            packet,
+            evidence_context,
+            recovery_reason=reason or REASON_CONFLUENCE_COMBO_FALLBACK,
+        )
+    if (
         discuss_intent == INTENT_TIME_RANKING
         and deterministic_specialist_fallback
         and has_time_ranking_evidence(evidence_context)
@@ -548,6 +569,12 @@ def propose_results_reply(
         evidence_context, user_message=user_message
     ):
         return build_missing_deep_trade_limitation_reply(packet, evidence_context=evidence_context)
+    if discuss_intent == INTENT_CONFLUENCE_COMBO and not has_confluence_combo_evidence(
+        evidence_context
+    ):
+        return build_missing_confluence_combo_limitation_reply(
+            packet, evidence_context=evidence_context
+        )
     if discuss_intent == INTENT_SINGLE_METRIC:
         metric_path = resolve_single_metric_path(user_message)
         if metric_path is None or not has_single_metric_evidence(evidence_context, metric_path):
@@ -565,6 +592,7 @@ def propose_results_reply(
             INTENT_ROBUSTNESS_TIER2,
             INTENT_ASSUMPTIONS_COSTS,
             INTENT_DEEP_TRADE,
+            INTENT_CONFLUENCE_COMBO,
             INTENT_SINGLE_METRIC,
         }:
             return reply
@@ -652,6 +680,15 @@ def propose_results_reply(
                 return build_deterministic_deep_trade_reply(
                     packet, evidence_context, user_message=user_message
                 )
+        if discuss_intent == INTENT_CONFLUENCE_COMBO:
+            allow = frozenset(CONFLUENCE_COMBO_CLAIM_PATHS)
+            ok = bool(reply.claims) and all(claim.path in allow for claim in reply.claims)
+            if (
+                not ok
+                and deterministic_specialist_fallback
+                and has_confluence_combo_evidence(evidence_context)
+            ):
+                return build_deterministic_confluence_combo_reply(packet, evidence_context)
         return _maybe_overlay(reply)
 
     try:
@@ -678,6 +715,7 @@ def propose_results_reply(
             INTENT_ROBUSTNESS_TIER2,
             INTENT_ASSUMPTIONS_COSTS,
             INTENT_DEEP_TRADE,
+            INTENT_CONFLUENCE_COMBO,
             INTENT_SINGLE_METRIC,
         }
         if (

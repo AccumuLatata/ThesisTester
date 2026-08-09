@@ -1,6 +1,6 @@
 # Regression-Safe Implementation Plan: Confluence Combo Attribution (Backtest)
 
-**Status:** Phase 1 + Phase 2 + Phase 4 + Phase 5a + Phase 5b + Phase 5c implemented; Phase 5d scoped (implementation not started); Phase 3 optional cross-view scoped for after 5a–5d
+**Status:** Phase 1 + Phase 2 + Phase 4 + Phase 5a + Phase 5b + Phase 5c + Phase 5d implemented; Phase 3 optional cross-view scoped for after 5a–5d
 **Document type:** Focused analytics / Backtest UX implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related docs:**  
@@ -598,7 +598,7 @@ level remain in the selected set?”
 | Time Analysis **opt-in** combo / parsed level-count group dims | **Implemented (Phase 5a)** | Appended only when `available=True`; count dim = `level_count_bucket`; default primary stays a time bucket |
 | Report export diagnostic combo section | **Implemented (Phase 5b)** | Omit when unavailable; on-export recompute |
 | Research-bundle optional combo JSON/parquet siblings | **Implemented (Phase 5c)** | On-export recompute; no `BUNDLE_SCHEMA_VERSION` bump |
-| Assistant **cite-bound** combo projections | **Scoped (Phase 5d)** | Bounded `results.projections.confluence_combo` leaves only |
+| Assistant **cite-bound** combo projections | **Implemented (Phase 5d)** | Bounded `results.projections.confluence_combo` leaves only |
 | Optional combo × 3c-variant cross-view | **Scoped (Phase 3 / after 5a–5d)** | Opt-in `exact_combo × trigger_variant` (+ optional pair×variant if cheap); not default always-on |
 
 ### Still deferred / out
@@ -1249,11 +1249,11 @@ but the preferred locked path is on-export recompute + optional siblings above.
 
 **Acceptance:**
 
-- [ ] Assistant can cite only real projection leaves.
-- [ ] Unavailable trades → no combo projection leaves / calm fallback.
-- [ ] No invented numeric claims outside allowlist.
-- [ ] Works from trades alone even when 5c siblings are absent.
-- [ ] Focused assistant tests + full suite green.
+- [x] Assistant can cite only real projection leaves.
+- [x] Unavailable trades → no combo projection leaves / calm fallback.
+- [x] No invented numeric claims outside allowlist.
+- [x] Works from trades alone even when 5c siblings are absent.
+- [x] Focused assistant tests + full suite green.
 
 ---
 
@@ -1514,11 +1514,11 @@ PR 1 analytics helpers + tests
 
 ### PR 5d
 
-- [ ] Bounded `results.projections.confluence_combo` leaves only
-- [ ] Recompute from bundle/session trades with same mode/anchor path; 5c not required
-- [ ] Frozen discuss allowlist; fail closed when unavailable
-- [ ] No free-form full-table dumps / setup auto-recommendations / edge claims
-- [ ] Focused assistant tests + full suite green
+- [x] Bounded `results.projections.confluence_combo` leaves only
+- [x] Recompute from bundle/session trades with same mode/anchor path; 5c not required
+- [x] Frozen discuss allowlist; fail closed when unavailable
+- [x] No free-form full-table dumps / setup auto-recommendations / edge claims
+- [x] Focused assistant tests + full suite green
 
 ---
 
@@ -1566,11 +1566,11 @@ No blocking open questions remain for PR 1–2.
 | Phase 1 | PR 1 analytics helpers | **Implemented** (`thesistester/analytics/confluence_attribution.py`, `tests/test_confluence_attribution.py`) |
 | Phase 2 | PR 2 Backtest expander UI + docs | **Implemented** (`pages/7_Backtest.py` expander; ASSUMPTIONS / METRICS_GLOSSARY / ARCHITECTURE) |
 | Phase 4 | PR 4 soft pairwise attribution | **Implemented** (`summarize_by_level_pairs` + Backtest **Pairs** tab) |
-| Phase 5 | PR 5a–5d downstream consumers | **5a–5c implemented**; 5d still scoped; precedes optional PR 3 |
+| Phase 5 | PR 5a–5d downstream consumers | **5a–5d implemented**; precedes optional PR 3 |
 | Phase 5a | Time Analysis opt-in combo/count groups | **Implemented** (`attach_level_count_bucket` + append `exact_combo_key` / `level_count_bucket` when available) |
 | Phase 5b | Report export diagnostic section | **Implemented** (`build_confluence_combo_report_block` + omit-when-unavailable markdown) |
 | Phase 5c | Bundle optional artifacts | **Implemented** (`confluence_combo_summary.json` + optional `confluence_by_*.parquet`) |
-| Phase 5d | Assistant cite-bound projection | Not started (trades recompute; 5c not required) |
+| Phase 5d | Assistant cite-bound projection | **Implemented** (`results.projections.confluence_combo`; trades recompute; 5c not required) |
 | Phase 3 | Optional combo × trigger_variant cross-view | **Scoped** for after 5a–5d (2026-08-09 completeness amendment); implementation not started |
 
 ---

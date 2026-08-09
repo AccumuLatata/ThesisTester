@@ -1,4 +1,4 @@
-"""RI Research Intelligence: specialist Discuss slices (grid→deep_trade)."""
+"""RI Research Intelligence: specialist Discuss slices (grid→deep_trade→combo)."""
 
 from __future__ import annotations
 
@@ -11,8 +11,10 @@ from thesistester.assistant.llm import load_results_qa_settings
 from thesistester.assistant.llm_explainer import LLMEvidenceError, _ungrounded_number_tokens
 from thesistester.assistant.results_overview import (
     ASSUMPTIONS_CLAIM_PATHS,
+    CONFLUENCE_COMBO_CLAIM_PATHS,
     DEEP_TRADE_CLAIM_PATHS,
     INTENT_ASSUMPTIONS_COSTS,
+    INTENT_CONFLUENCE_COMBO,
     INTENT_DEEP_TRADE,
     INTENT_GRID_RANKING,
     INTENT_MIXED_ASK,
@@ -23,6 +25,7 @@ from thesistester.assistant.results_overview import (
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
     REASON_MISSING_ASSUMPTIONS,
+    REASON_MISSING_CONFLUENCE_COMBO,
     REASON_MISSING_DEEP_TRADE,
     REASON_MISSING_GRID,
     REASON_MISSING_METRIC,
@@ -34,6 +37,7 @@ from thesistester.assistant.results_overview import (
     ROBUSTNESS_CLAIM_PATHS,
     _SINGLE_METRIC_NOUN_PATHS,
     build_deterministic_assumptions_reply,
+    build_deterministic_confluence_combo_reply,
     build_deterministic_deep_trade_reply,
     build_deterministic_discuss_reply,
     build_deterministic_grid_ranking_reply,
@@ -45,6 +49,7 @@ from thesistester.assistant.results_overview import (
     build_meaning_overlay,
     build_mixed_ask_remediation_reply,
     has_assumptions_costs_evidence,
+    has_confluence_combo_evidence,
     has_deep_trade_evidence,
     has_grid_ranking_evidence,
     has_overview_negative_cue,
@@ -57,6 +62,7 @@ from thesistester.assistant.results_overview import (
     match_discuss_intent,
     match_overview_intent,
     present_assumptions_allowlist,
+    present_confluence_combo_allowlist,
     present_deep_trade_allowlist,
     present_grid_allowlist,
     present_robustness_allowlist,
@@ -325,6 +331,17 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert has_overview_negative_cue("What were the exit reasons?") is True
     assert match_overview_intent("What were the exit reasons?") is None
     assert match_discuss_intent("KPIs and exit reasons") == INTENT_MIXED_ASK
+    # PR5d: confluence combo specialist (cite-bound projections only).
+    assert match_discuss_intent("What is the confluence combo attribution?") == (
+        INTENT_CONFLUENCE_COMBO
+    )
+    assert match_discuss_intent("exact combo ranking please") == INTENT_CONFLUENCE_COMBO
+    assert match_discuss_intent("which levels worked together?") == INTENT_CONFLUENCE_COMBO
+    assert match_discuss_intent("soft pairs on this run") == INTENT_CONFLUENCE_COMBO
+    assert match_discuss_intent("level combinations please") == INTENT_CONFLUENCE_COMBO
+    assert match_discuss_intent("KPIs and confluence combo") == INTENT_MIXED_ASK
+    assert has_overview_negative_cue("What is the confluence combo?") is True
+    assert match_overview_intent("What is the confluence combo?") is None
 
 
 def test_residual_veto_and_false_friends_for_overview_negative_export():
@@ -2642,3 +2659,176 @@ def test_r20_duplex_pure_overview_still_kpi_envelope(tmp_path):
     assert result["overview_intent"] == OVERVIEW_INTENT_RUN
     assert result["kpi_claims"]
     assert result["claims"] == result["kpi_claims"]
+
+
+# ---------------------------------------------------------------------------
+# PR 5d — cite-bound confluence combo projections
+# ---------------------------------------------------------------------------
+
+
+def _combo_trade_rows(*, n: int = 12) -> list[dict]:
+    """Digit-free level_names labels for auditor-safe combo claims."""
+    rows: list[dict] = []
+    for index in range(n):
+        label = "A|B" if index < 8 else "A"
+        rows.append(
+            {
+                "trade_id": index + 1,
+                "entry_timestamp": f"2024-01-02T09:{30 + (index % 30):02d}:00",
+                "r_multiple": 1.0 if index % 2 == 0 else -0.5,
+                "level_names": label,
+                "direction": "long",
+                "trigger": "touch",
+            }
+        )
+    return rows
+
+
+def test_pr5d_confluence_combo_projection_and_allowlist_from_trades():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_pr5d"},
+        assumptions={
+            "instrument": "NQ",
+            "setup_config": {
+                "confluence_mode": "global_cluster",
+                "selected_levels": ["A", "B"],
+            },
+        },
+        results={"trade_summary": {"trade_count": 12, "expectancy_r": 0.1}},
+        warnings=(),
+        limitations=(),
+    )
+    context = build_ephemeral_results_context(packet, trade_rows=_combo_trade_rows())
+    combo = context["results"]["projections"]["confluence_combo"]
+    assert combo["available"] is True
+    assert combo["nonempty_combo_trade_count"] == 12
+    assert combo["top_exact_combo"]
+    assert combo["top_level_count"]
+    assert "top_pair" in combo
+    assert "warning_flags" in combo
+    assert isinstance(combo.get("warnings"), list)
+    # No 5c siblings required / attached.
+    assert "confluence_combo_summary" not in context["results"]
+    assert "confluence_by_exact_combo" not in context["results"]
+
+    assert has_confluence_combo_evidence(context) is True
+    paths = present_confluence_combo_allowlist(context)
+    assert "results.projections.confluence_combo.trade_count" in paths
+    assert "results.projections.confluence_combo.best_exact_combo.display_combo" in paths
+    assert "results.projections.confluence_combo.top_exact_combo.0.display_combo" in paths
+    assert "results.projections.confluence_combo.selection_scope" in paths
+    # Frozen allowlist must not expose full by_* dumps or uncapped indices.
+    assert all(path in CONFLUENCE_COMBO_CLAIM_PATHS for path in paths)
+    assert not any("by_exact" in path for path in paths)
+    assert "results.projections.confluence_combo.top_exact_combo.15.display_combo" not in (
+        CONFLUENCE_COMBO_CLAIM_PATHS
+    )
+
+    reply = build_deterministic_confluence_combo_reply(packet, context)
+    claim_paths = {claim.path for claim in reply.claims}
+    assert "results.projections.confluence_combo.best_exact_combo.display_combo" in claim_paths
+    assert "results.projections.confluence_combo.selection_scope" in claim_paths
+    assert any(claim.value == "A|B" for claim in reply.claims)
+    assert "double-count" in " ".join(reply.caveats).lower()
+    assert "diagnostic" in " ".join(reply.caveats).lower()
+    # Builder already auditor-grounds; ensure no invented digits leaked in.
+    assert "99" not in reply.summary
+
+
+def test_pr5d_missing_confluence_combo_short_circuits_without_llm():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_pr5d_empty"},
+        assumptions={"instrument": "NQ"},
+        results={"trade_summary": {"trade_count": 10, "expectancy_r": 0.1}},
+        warnings=(),
+        limitations=(),
+    )
+    context = build_ephemeral_results_context(packet)
+    assert has_confluence_combo_evidence(context) is False
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What is the confluence combo attribution?",
+        turn_context=context,
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MISSING_CONFLUENCE_COMBO
+    assert "99" not in reply.summary
+    assert "confluence combo" in reply.summary.lower()
+
+
+def test_pr5d_uncited_llm_digits_fall_back_to_deterministic_combo():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_pr5d_fb"},
+        assumptions={
+            "instrument": "NQ",
+            "setup_config": {
+                "confluence_mode": "global_cluster",
+                "selected_levels": ["A", "B"],
+            },
+        },
+        results={"trade_summary": {"trade_count": 12}},
+        warnings=(),
+        limitations=(),
+    )
+    context = build_ephemeral_results_context(packet, trade_rows=_combo_trade_rows())
+    client = _FailClient(
+        {
+            "summary": "Best combo is SECRET99 with total R 77.",
+            "caveats": ["Invented combo."],
+            "claims": [
+                {
+                    "text": "Best combo is SECRET99.",
+                    "path": "results.trade_summary.trade_count",
+                }
+            ],
+            "followups": ["Drop this level from Setup Builder."],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What is the confluence combo attribution?",
+        turn_context=context,
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert paths
+    assert all(path in CONFLUENCE_COMBO_CLAIM_PATHS for path in paths)
+    assert "SECRET99" not in reply.summary
+    assert "77" not in reply.summary
+    assert client.calls == 1
+
+
+def test_pr5d_catalog_hard_restricts_to_combo_allowlist():
+    from thesistester.assistant.results_overview import build_prompt_path_catalog
+
+    packet = EvidencePacket(
+        provenance={"run_id": "run_pr5d_cat"},
+        assumptions={
+            "setup_config": {
+                "confluence_mode": "global_cluster",
+                "selected_levels": ["A", "B"],
+            }
+        },
+        results={"trade_summary": {"trade_count": 12, "win_rate": 0.5}},
+        warnings=(),
+        limitations=(),
+    )
+    context = build_ephemeral_results_context(packet, trade_rows=_combo_trade_rows())
+    catalog = build_prompt_path_catalog(
+        context,
+        discuss_intent=INTENT_CONFLUENCE_COMBO,
+    )
+    assert catalog["discuss_intent"] == INTENT_CONFLUENCE_COMBO
+    existing = set(catalog["existing_paths"])
+    preferred = set(catalog["preferred_claim_paths"])
+    assert existing == preferred
+    assert existing
+    assert existing <= set(CONFLUENCE_COMBO_CLAIM_PATHS)
+    assert "results.trade_summary.win_rate" not in existing
+    assert "results.projections.confluence_combo.best_exact_combo.display_combo" in existing

@@ -11,9 +11,11 @@ from thesistester.assistant import (
 )
 from thesistester.assistant.explainer import EvidencePacket
 from thesistester.assistant.results_projections import (
+    CONFLUENCE_COMBO_TOP_N,
     EXIT_REASON_TOP_N,
     EXTREME_TRADES_N,
     build_ephemeral_results_context,
+    project_confluence_combo,
     project_exit_reason_counts,
     project_extreme_trades,
     project_grid_rankings,
@@ -879,4 +881,83 @@ def test_build_ephemeral_context_attaches_deep_trade_projections():
     assert "streak_summary" in projections
     assert projections["exit_reason_counts"]["total_trades"] == 3
     # Raw trade frames must not be attached to the ephemeral packet.
+    assert "trades" not in context["results"]
+
+
+def _combo_rows(n: int = 12) -> list[dict]:
+    rows: list[dict] = []
+    for index in range(n):
+        rows.append(
+            {
+                "trade_id": index + 1,
+                "entry_timestamp": f"2024-01-02T09:{30 + (index % 30):02d}:00",
+                "r_multiple": 1.0 if index % 2 == 0 else -0.5,
+                "level_names": "A|B" if index < 8 else "A",
+            }
+        )
+    return rows
+
+
+def test_project_confluence_combo_from_trades_bounded_and_omit_unavailable():
+    packet = _packet()
+    packet = EvidencePacket(
+        provenance=packet.provenance,
+        assumptions={
+            **packet.assumptions,
+            "setup_config": {
+                "confluence_mode": "global_cluster",
+                "selected_levels": ["A", "B"],
+            },
+        },
+        results=packet.results,
+        warnings=packet.warnings,
+        limitations=packet.limitations,
+    )
+    projection = project_confluence_combo(_combo_rows(), packet_or_mapping=packet)
+    assert projection is not None
+    assert projection["available"] is True
+    assert projection["top_n"] == CONFLUENCE_COMBO_TOP_N
+    assert len(projection["top_exact_combo"]) <= CONFLUENCE_COMBO_TOP_N
+    assert len(projection["top_level_count"]) <= CONFLUENCE_COMBO_TOP_N
+    assert "top_pair" in projection
+    assert projection["selection_scope"] == "observed_traded_combos"
+    assert set(projection["warning_flags"]) >= {
+        "membership_double_count",
+        "pairwise_double_count",
+        "trigger_3c_level_names",
+    }
+    assert isinstance(projection["warnings"], list)
+    # Full by_* dumps must not ship in the projection leaf.
+    assert "by_exact_combo" not in projection
+    assert "tables" not in projection
+
+    assert project_confluence_combo(None) is None
+    assert project_confluence_combo([]) is None
+    assert project_confluence_combo([{"r_multiple": 1.0}]) is None
+    assert (
+        project_confluence_combo(
+            [{"r_multiple": 1.0, "level_names": ""}, {"r_multiple": -0.5, "level_names": "nan"}]
+        )
+        is None
+    )
+
+
+def test_build_ephemeral_context_attaches_confluence_combo_without_5c_siblings():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_combo"},
+        assumptions={
+            "setup_config": {
+                "confluence_mode": "global_cluster",
+                "selected_levels": ["A", "B"],
+            }
+        },
+        results={"trade_summary": {"trade_count": 12}},
+        warnings=(),
+        limitations=(),
+    )
+    context = build_ephemeral_results_context(packet, trade_rows=_combo_rows())
+    projections = context["results"]["projections"]
+    assert "confluence_combo" in projections
+    assert projections["confluence_combo"]["available"] is True
+    assert "confluence_combo_summary" not in context["results"]
     assert "trades" not in context["results"]

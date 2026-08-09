@@ -7,6 +7,7 @@ RI-6: ``assumptions_costs``; RI-9: ``deep_trade``), builds DI-2 first-pass path
 catalogs, builds auditor-safe replies when the LLM path fails, attaches
 DI-3/RI-7 digit-free meaning overlays after mandatory caveats, and exposes
 ``build_deterministic_discuss_reply`` for RI-10 duplex envelope projection.
+PR 5d adds cite-bound ``confluence_combo`` projections (trades recompute).
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ INTENT_VALIDATION_WFA = "validation_wfa"
 INTENT_ROBUSTNESS_TIER2 = "robustness_tier2"
 INTENT_ASSUMPTIONS_COSTS = "assumptions_costs"
 INTENT_DEEP_TRADE = "deep_trade"
+INTENT_CONFLUENCE_COMBO = "confluence_combo"
 INTENT_SINGLE_METRIC = "single_metric"
 INTENT_MIXED_ASK = "mixed_ask"
 
@@ -47,6 +49,7 @@ _LANDED_SPECIALIST_INTENTS = frozenset(
         INTENT_ROBUSTNESS_TIER2,
         INTENT_ASSUMPTIONS_COSTS,
         INTENT_DEEP_TRADE,
+        INTENT_CONFLUENCE_COMBO,
     }
 )
 # Intents that refuse overview/DX KPI envelopes (specialists + single-metric).
@@ -66,6 +69,7 @@ REASON_MISSING_VALIDATION = "validation_missing_evidence"
 REASON_MISSING_ROBUSTNESS = "robustness_missing_evidence"
 REASON_MISSING_ASSUMPTIONS = "assumptions_missing_evidence"
 REASON_MISSING_DEEP_TRADE = "deep_trade_missing_evidence"
+REASON_MISSING_CONFLUENCE_COMBO = "confluence_combo_missing_evidence"
 REASON_MISSING_METRIC = "metric_missing_leaf"
 REASON_MIXED_ASK = "mixed_ask_narrow"
 REASON_MIXED_COMPOSE = "mixed_ask_compose"
@@ -75,6 +79,7 @@ REASON_VALIDATION_FALLBACK = "validation_deterministic_fallback"
 REASON_ROBUSTNESS_FALLBACK = "robustness_deterministic_fallback"
 REASON_ASSUMPTIONS_FALLBACK = "assumptions_deterministic_fallback"
 REASON_DEEP_TRADE_FALLBACK = "deep_trade_deterministic_fallback"
+REASON_CONFLUENCE_COMBO_FALLBACK = "confluence_combo_deterministic_fallback"
 REASON_METRIC_FALLBACK = "metric_deterministic_fallback"
 
 # §4.1 composition / summary order (sole-intent tie-break + RI-8 compose order).
@@ -85,6 +90,7 @@ _COMPOSE_PRIORITY: tuple[str, ...] = (
     INTENT_ROBUSTNESS_TIER2,
     INTENT_ASSUMPTIONS_COSTS,
     INTENT_DEEP_TRADE,
+    INTENT_CONFLUENCE_COMBO,
     INTENT_SINGLE_METRIC,
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
@@ -478,6 +484,25 @@ _DEEP_TRADE_POSITIVE_CUES: tuple[str, ...] = (
     "consecutive losses",
 )
 
+# PR 5d: confluence combo attribution ask (cite-bound projections only).
+_CONFLUENCE_COMBO_POSITIVE_CUES: tuple[str, ...] = (
+    "confluence combo",
+    "confluence combos",
+    "combo attribution",
+    "level combination",
+    "level combinations",
+    "exact combo",
+    "exact combos",
+    "which levels worked",
+    "level membership",
+    "soft pairs",
+    "level pairs",
+    "confluence pair",
+    "confluence pairs",
+    "parsed level count",
+    "level count attribution",
+)
+
 # Exit-reason cues require ``exit_reason_counts`` (§6: tables absent → limitation).
 _DEEP_TRADE_EXIT_CUES: tuple[str, ...] = (
     "exit reason",
@@ -552,6 +577,76 @@ def _build_deep_trade_claim_paths() -> tuple[str, ...]:
 
 # Frozen RI §6 deep_trade allowlist (capped projections only; no raw trades).
 DEEP_TRADE_CLAIM_PATHS: tuple[str, ...] = _build_deep_trade_claim_paths()
+
+
+def _build_confluence_combo_claim_paths() -> tuple[str, ...]:
+    """Frozen PR5d confluence-combo allowlist (capped tops; no full by_* dumps)."""
+    from thesistester.assistant.results_projections import CONFLUENCE_COMBO_TOP_N
+
+    paths: list[str] = [
+        "results.projections.confluence_combo.available",
+        "results.projections.confluence_combo.trade_count",
+        "results.projections.confluence_combo.nonempty_combo_trade_count",
+        "results.projections.confluence_combo.pair_mode",
+        "results.projections.confluence_combo.confluence_mode",
+        "results.projections.confluence_combo.anchor_level",
+        "results.projections.confluence_combo.selection_scope",
+        "results.projections.confluence_combo.top_n",
+        "results.projections.confluence_combo.warning_flags.membership_double_count",
+        "results.projections.confluence_combo.warning_flags.pairwise_double_count",
+        "results.projections.confluence_combo.warning_flags.trigger_3c_level_names",
+        "results.projections.confluence_combo.best_exact_combo.display_combo",
+        "results.projections.confluence_combo.best_exact_combo.exact_combo_key",
+        "results.projections.confluence_combo.best_exact_combo.trade_count",
+        "results.projections.confluence_combo.best_exact_combo.win_rate",
+        "results.projections.confluence_combo.best_exact_combo.avg_r",
+        "results.projections.confluence_combo.best_exact_combo.median_r",
+        "results.projections.confluence_combo.best_exact_combo.total_r",
+        "results.projections.confluence_combo.best_exact_combo.sample_warning",
+    ]
+    for index in range(CONFLUENCE_COMBO_TOP_N):
+        exact_base = f"results.projections.confluence_combo.top_exact_combo.{index}"
+        paths.extend(
+            (
+                f"{exact_base}.display_combo",
+                f"{exact_base}.exact_combo_key",
+                f"{exact_base}.trade_count",
+                f"{exact_base}.win_rate",
+                f"{exact_base}.avg_r",
+                f"{exact_base}.median_r",
+                f"{exact_base}.total_r",
+                f"{exact_base}.sample_warning",
+            )
+        )
+        count_base = f"results.projections.confluence_combo.top_level_count.{index}"
+        paths.extend(
+            (
+                f"{count_base}.level_count_bucket",
+                f"{count_base}.trade_count",
+                f"{count_base}.win_rate",
+                f"{count_base}.avg_r",
+                f"{count_base}.median_r",
+                f"{count_base}.total_r",
+                f"{count_base}.sample_warning",
+            )
+        )
+        pair_base = f"results.projections.confluence_combo.top_pair.{index}"
+        paths.extend(
+            (
+                f"{pair_base}.pair_key",
+                f"{pair_base}.pair_mode",
+                f"{pair_base}.trade_count",
+                f"{pair_base}.win_rate",
+                f"{pair_base}.avg_r",
+                f"{pair_base}.median_r",
+                f"{pair_base}.total_r",
+                f"{pair_base}.sample_warning",
+            )
+        )
+    return tuple(paths)
+
+
+CONFLUENCE_COMBO_CLAIM_PATHS: tuple[str, ...] = _build_confluence_combo_claim_paths()
 
 
 def _normalize_message(text: str) -> str:
@@ -682,6 +777,10 @@ def _deep_trade_matches(normalized: str) -> bool:
     return _any_cue_matches(_DEEP_TRADE_POSITIVE_CUES, normalized) or (
         _deep_trade_exit_count_collocate(normalized)
     )
+
+
+def _confluence_combo_matches(normalized: str) -> bool:
+    return _any_cue_matches(_CONFLUENCE_COMBO_POSITIVE_CUES, normalized)
 
 
 def _deep_trade_exit_topic_matches(normalized: str) -> bool:
@@ -868,6 +967,7 @@ def _evaluate_discuss_match(message: str) -> dict[str, Any] | None:
     robustness = _robustness_tier2_matches(normalized)
     assumptions = _assumptions_costs_matches(normalized)
     deep_trade = _deep_trade_matches(normalized)
+    confluence_combo = _confluence_combo_matches(normalized)
     metric_paths = _matched_single_metric_paths(normalized)
     kpi = _any_cue_matches(_KPI_POSITIVE_CUES, normalized)
     run = _any_cue_matches(_RUN_OVERVIEW_POSITIVE_CUES, normalized)
@@ -885,6 +985,8 @@ def _evaluate_discuss_match(message: str) -> dict[str, Any] | None:
         specialists.append(INTENT_ASSUMPTIONS_COSTS)
     if deep_trade:
         specialists.append(INTENT_DEEP_TRADE)
+    if confluence_combo:
+        specialists.append(INTENT_CONFLUENCE_COMBO)
 
     hard_residual = _hard_residual_negative_matches(normalized)
     soft_residual = _soft_bare_grid_token_residual(normalized)
@@ -988,9 +1090,10 @@ def match_discuss_intent(message: str) -> str | None:
 
     Multi-eval (no first-match short-circuit): evaluate landed cue tables
     independently, then apply residual veto / mixed-ask rules.
-    Landed intents in RI-9+: ``grid_ranking``, ``time_ranking``,
+    Landed intents in RI-9+/PR5d: ``grid_ranking``, ``time_ranking``,
     ``validation_wfa``, ``robustness_tier2``, ``assumptions_costs``,
-    ``deep_trade``, ``single_metric``, ``kpi_summary``, ``run_overview``.
+    ``deep_trade``, ``confluence_combo``, ``single_metric``, ``kpi_summary``,
+    ``run_overview``.
     """
     state = _evaluate_discuss_match(message)
     if state is None:
@@ -1175,6 +1278,43 @@ def present_deep_trade_allowlist(
             continue
         out.append(path)
     return tuple(out)
+
+
+def present_confluence_combo_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return frozen PR5d confluence-combo claim paths with narratable scalars only."""
+    if not isinstance(evidence_context, Mapping):
+        return ()
+    out: list[str] = []
+    for path in CONFLUENCE_COMBO_CLAIM_PATHS:
+        if not _path_exists(evidence_context, path):
+            continue
+        value = _path_get(evidence_context, path)
+        if _format_scalar_for_claim(path, value) is None:
+            continue
+        out.append(path)
+    return tuple(out)
+
+
+def has_confluence_combo_evidence(evidence_context: Mapping[str, Any]) -> bool:
+    """True when a narratable confluence combo projection leaf exists."""
+    if not isinstance(evidence_context, Mapping):
+        return False
+    if not _path_exists(evidence_context, "results.projections.confluence_combo.available"):
+        return False
+    available = _path_get(evidence_context, "results.projections.confluence_combo.available")
+    if available is not True:
+        return False
+    # Prefer best exact combo; otherwise any nonempty-count scalar.
+    for path in (
+        "results.projections.confluence_combo.best_exact_combo.display_combo",
+        "results.projections.confluence_combo.nonempty_combo_trade_count",
+        "results.projections.confluence_combo.trade_count",
+    ):
+        if not _path_exists(evidence_context, path):
+            continue
+        if _format_scalar_for_claim(path, _path_get(evidence_context, path)) is not None:
+            return True
+    return False
 
 
 def _narratable_grid_scalar(evidence_context: Mapping[str, Any], path: str) -> bool:
@@ -1658,6 +1798,20 @@ def build_prompt_path_catalog(
         catalog["preferred_claim_paths"] = deep_trade_paths
         # §6: hard-restrict catalog to the topic-scoped deep-trade allowlist.
         catalog["existing_paths"] = list(deep_trade_paths)
+    elif intent == INTENT_CONFLUENCE_COMBO:
+        confluence_paths = list(present_confluence_combo_allowlist(evidence_context))
+        catalog["discuss_intent"] = INTENT_CONFLUENCE_COMBO
+        catalog["confluence_combo_allowlist"] = confluence_paths
+        catalog["specialist_instruction"] = (
+            "This is a confluence combo attribution ask. Cite only paths from "
+            "confluence_combo_allowlist / preferred_claim_paths / existing_paths. "
+            "Rows are observed traded combinations (diagnostic / selection effects), "
+            "not theoretical subsets. Mention membership/pairwise double-count or "
+            "3c tested-level-only warnings when warning_flags are present. Do not "
+            "dump full by_* frames, recommend Setup changes, or claim future edge."
+        )
+        catalog["preferred_claim_paths"] = confluence_paths
+        catalog["existing_paths"] = list(confluence_paths)
     elif intent == INTENT_TIME_RANKING:
         # Ensure projected paths are listed when only time_grouped_summary exists.
         working = _ensure_time_rankings_context(evidence_context)
@@ -2034,6 +2188,10 @@ _OVERLAY_NEXT_STEP_DEEP_TRADE = (
     "Ask for the key metrics or a summary of this run if you want the recorded performance figures."
 )
 
+_OVERLAY_NEXT_STEP_CONFLUENCE_COMBO = (
+    "Ask for the key metrics or a summary of this run if you want the recorded performance figures."
+)
+
 _OVERLAY_OOS_ABSENT = (
     "Out-of-sample or walk-forward evidence is missing or failed on this packet; "
     "do not invent confirmation."
@@ -2225,6 +2383,8 @@ def _overlay_next_step_line(discuss_intent: str | None, *, oos_absent: bool) -> 
         return _OVERLAY_NEXT_STEP_ASSUMPTIONS
     if discuss_intent == INTENT_DEEP_TRADE:
         return _OVERLAY_NEXT_STEP_DEEP_TRADE
+    if discuss_intent == INTENT_CONFLUENCE_COMBO:
+        return _OVERLAY_NEXT_STEP_CONFLUENCE_COMBO
     if discuss_intent == INTENT_TIME_RANKING:
         return _OVERLAY_NEXT_STEP_TIME
     # Overview / grid / single_metric: WFA-presence coaching unless already absent.
@@ -2390,6 +2550,8 @@ def _robustness_available_label(path: str) -> str:
         return "Portfolio summary available"
     if "otf_validation" in path:
         return "OTF validation available"
+    if "confluence_combo" in path:
+        return "Confluence combo available"
     return "Available"
 
 
@@ -2400,6 +2562,19 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
         return (
             "Sample warning is true (thin bucket sample)." if value else "Sample warning is false."
         )
+    # PR5d: cite-bound warning_flags booleans (membership / pairwise / 3c).
+    if path.startswith("results.projections.confluence_combo.warning_flags.") and isinstance(
+        value, bool
+    ):
+        leaf = path.rsplit(".", 1)[-1]
+        labels = {
+            "membership_double_count": "Membership double-count warning",
+            "pairwise_double_count": "Pairwise double-count warning",
+            # Digit-free label: ``3c`` would launder an ungrounded ``3`` token.
+            "trigger_3c_level_names": "Trigger three-c level-names warning",
+        }
+        label = labels.get(leaf, leaf.replace("_", " "))
+        return f"{label} is {'true' if value else 'false'}."
     # RI-5: battery ``.available`` presence flags are allowlisted booleans only
     # (reject int 0/1 / strings that would otherwise narrate as ``available is 1.``).
     if path.endswith("available"):
@@ -2503,6 +2678,9 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             return f"OTF train fraction is {display}."
         if path.endswith("oos_fraction"):
             return f"OTF OOS fraction is {display}."
+        # PR5d: longer combo count suffix before generic trade_count.
+        if path.endswith("nonempty_combo_trade_count"):
+            return f"Nonempty combo trade count is {display}."
         if path.endswith("trade_count"):
             return f"Trade count is {display}."
         if path.endswith("expectancy_r"):
@@ -2525,6 +2703,10 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             return f"Ulcer index R is {display}."
         if path.endswith("recovery_factor"):
             return f"Recovery factor is {display}."
+        if path.startswith("results.projections.confluence_combo.") and path.endswith(
+            "level_count_bucket"
+        ):
+            return f"Level count bucket is {display}."
         # Integer hour buckets must not fall through to generic "bucket is N."
         if path.endswith("best.bucket"):
             label = _time_bucket_display_label(value)
@@ -2545,6 +2727,25 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             if path.startswith("results.projections.extreme_trades."):
                 side = "Best" if ".best." in path else "Worst" if ".worst." in path else "Extreme"
                 return f"{side} trade exit reason is {text}."
+            return None
+        # PR5d: confluence combo string leaves (reject digit-bearing labels).
+        if path.startswith("results.projections.confluence_combo."):
+            if _ungrounded_number_tokens(text, allowed=set()):
+                return None
+            if path.endswith("display_combo") or path.endswith("exact_combo_key"):
+                return f"Exact combo is {text}."
+            if path.endswith("pair_key"):
+                return f"Top pair key is {text}."
+            if path.endswith("pair_mode"):
+                return f"Pair mode is {text}."
+            if path.endswith("confluence_mode"):
+                return f"Confluence mode is {text}."
+            if path.endswith("anchor_level"):
+                return f"Anchor level is {text}."
+            if path.endswith("level_count_bucket"):
+                return f"Level count bucket is {text}."
+            if path.endswith("selection_scope"):
+                return f"Selection scope is {text}."
             return None
         # Grid / validation / time honesty labels are narratable strings.
         if path.endswith("selection_scope"):
@@ -2800,6 +3001,10 @@ def _compose_followups_for_intents(
         suggestions.append(
             "Ask about exit reasons or extreme trades if trade tables were recorded."
         )
+    if INTENT_CONFLUENCE_COMBO not in matched_set:
+        suggestions.append(
+            "Ask about confluence combo attribution if trades recorded level_names."
+        )
     if not suggestions:
         suggestions.append("Ask which evidence paths remain available on this packet.")
     return tuple(suggestions[:3])
@@ -2981,6 +3186,15 @@ def compose_deterministic_replies(
                 )
             ):
                 _mark(intent)
+        elif intent == INTENT_CONFLUENCE_COMBO:
+            if not has_confluence_combo_evidence(working):
+                continue
+            if _absorb(
+                build_deterministic_confluence_combo_reply(
+                    packet, working, apply_overlay=False
+                )
+            ):
+                _mark(intent)
         elif intent == INTENT_SINGLE_METRIC:
             paths = tuple(metric_paths or ())
             if overview_in_matched:
@@ -3102,6 +3316,12 @@ def build_deterministic_discuss_reply(
         if not has_deep_trade_evidence(working, user_message=user_message):
             return build_missing_deep_trade_limitation_reply(packet, evidence_context=working)
         return build_deterministic_deep_trade_reply(packet, working, user_message=user_message)
+    if intent == INTENT_CONFLUENCE_COMBO:
+        if not has_confluence_combo_evidence(working):
+            return build_missing_confluence_combo_limitation_reply(
+                packet, evidence_context=working
+            )
+        return build_deterministic_confluence_combo_reply(packet, working)
     if intent == INTENT_SINGLE_METRIC:
         metric_path = resolve_single_metric_path(user_message)
         if metric_path is None or not has_single_metric_evidence(working, metric_path):
@@ -3177,6 +3397,53 @@ def build_missing_assumptions_limitation_reply(
         (
             "No cost or assumption figures were invented for this ask.",
             "In-sample trade summary KPIs are not a substitute for cost assumptions.",
+        ),
+    )
+    assert_llm_explanation_grounded(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+    )
+    return ResultsQAReply(
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+        recovery_reason=recovery_reason,
+    )
+
+
+def build_missing_confluence_combo_limitation_reply(
+    packet: EvidencePacket,
+    *,
+    recovery_reason: str | None = REASON_MISSING_CONFLUENCE_COMBO,
+    evidence_context: Mapping[str, Any] | None = None,
+):
+    """Digit-free missing confluence-combo limitation (PR5d short-circuit)."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    summary = (
+        "I cannot answer confluence combo attribution questions because bounded "
+        "combo projections are not available on this run (need trades with "
+        "non-empty level_names)."
+    )
+    followups_list = [
+        "Ask for the key metrics or a summary of this run.",
+    ]
+    if _oos_evidence_absent(packet, evidence_context=evidence_context):
+        followups_list.append("Ask which evidence paths remain available on this packet.")
+    else:
+        followups_list.append(
+            "Ask whether walk-forward or validation diagnostics are present on this packet."
+        )
+    followups = tuple(followups_list)
+    caveats = merge_mandatory_packet_caveats(
+        packet,
+        (
+            "No confluence combo figures were invented for this ask.",
+            "In-sample trade summary KPIs are not a substitute for combo attribution.",
         ),
     )
     assert_llm_explanation_grounded(
@@ -3691,6 +3958,95 @@ def build_deterministic_assumptions_reply(
         recovery_reason=recovery_reason,
         followups=followups,
         discuss_intent=INTENT_ASSUMPTIONS_COSTS,
+        evidence_context=evidence_context,
+    )
+
+
+def build_deterministic_confluence_combo_reply(
+    packet: EvidencePacket,
+    evidence_context: Mapping[str, Any],
+    *,
+    recovery_reason: str | None = None,
+    apply_overlay: bool = True,
+):
+    """Build an auditor-safe confluence-combo reply from the frozen PR5d allowlist."""
+    if not has_confluence_combo_evidence(evidence_context):
+        return build_missing_confluence_combo_limitation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MISSING_CONFLUENCE_COMBO,
+            evidence_context=evidence_context,
+        )
+
+    preferred_paths = (
+        "results.projections.confluence_combo.trade_count",
+        "results.projections.confluence_combo.nonempty_combo_trade_count",
+        "results.projections.confluence_combo.confluence_mode",
+        "results.projections.confluence_combo.selection_scope",
+        "results.projections.confluence_combo.best_exact_combo.display_combo",
+        "results.projections.confluence_combo.best_exact_combo.trade_count",
+        "results.projections.confluence_combo.best_exact_combo.total_r",
+        "results.projections.confluence_combo.best_exact_combo.avg_r",
+        "results.projections.confluence_combo.best_exact_combo.sample_warning",
+        "results.projections.confluence_combo.pair_mode",
+        "results.projections.confluence_combo.warning_flags.membership_double_count",
+        "results.projections.confluence_combo.warning_flags.pairwise_double_count",
+        "results.projections.confluence_combo.warning_flags.trigger_3c_level_names",
+        "results.projections.confluence_combo.top_level_count.0.level_count_bucket",
+        "results.projections.confluence_combo.top_level_count.0.trade_count",
+        "results.projections.confluence_combo.top_pair.0.pair_key",
+        "results.projections.confluence_combo.top_pair.0.trade_count",
+        "results.projections.confluence_combo.top_pair.0.total_r",
+    )
+    claims: list[EvidenceClaim] = []
+    summary_parts: list[str] = []
+    for path in preferred_paths:
+        if path not in CONFLUENCE_COMBO_CLAIM_PATHS:
+            continue
+        if not _path_exists(evidence_context, path):
+            continue
+        value = _path_get(evidence_context, path)
+        text = _format_scalar_for_claim(path, value)
+        if text is None:
+            continue
+        claims.append(EvidenceClaim(text=text, path=path, value=value))
+        summary_parts.append(text.rstrip("."))
+
+    if not claims:
+        return build_missing_confluence_combo_limitation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MISSING_CONFLUENCE_COMBO,
+            evidence_context=evidence_context,
+        )
+
+    summary = "Confluence combo attribution: " + "; ".join(summary_parts) + "."
+    caveat_seed = (
+        "These confluence combo figures are post-trade diagnostics from observed "
+        "traded level_names combinations, not theoretical subsets or proof of edge.",
+        "Membership and soft-pair tops can double-count the same trade; treat them "
+        "as research diagnostics, not additive PnL.",
+    )
+    grounded = tuple(claims)
+    caveats = merge_mandatory_packet_caveats(packet, caveat_seed)
+    followups = (
+        "Ask for the key metrics or a summary of this run.",
+        "Ask what costs or exposure assumptions were used on this run.",
+    )
+    if not apply_overlay:
+        return _reply_without_overlay(
+            summary=summary,
+            caveats=caveats,
+            claims=grounded,
+            followups=followups,
+            recovery_reason=recovery_reason,
+        )
+    return apply_expert_overlay(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=grounded,
+        recovery_reason=recovery_reason,
+        followups=followups,
+        discuss_intent=INTENT_CONFLUENCE_COMBO,
         evidence_context=evidence_context,
     )
 

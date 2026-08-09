@@ -502,6 +502,12 @@ Research Bundles may persist the same diagnostic as optional siblings
 `confluence_by_*.parquet` when non-empty). Import restores managed research keys
 only when `included["confluence_combo"]` is true.
 
+Discuss / Results Q&A may project a bounded cite-only leaf
+`results.projections.confluence_combo` (recomputed from trades; 5c siblings not
+required) with `available`, trade counts, capped `top_exact_combo` /
+`top_level_count`, optional `top_pair` + `pair_mode`, and `warning_flags` /
+`warnings`. Full `by_*` frames are not mounted into the path catalog.
+
 | Name | Definition |
 |---|---|
 | `exact_combo_key` | Canonical sorted `\|`-joined distinct tokens from trade `level_names`; empty/null/`nan` → `__empty__` |
