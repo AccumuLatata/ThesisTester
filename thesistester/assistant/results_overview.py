@@ -2,10 +2,10 @@
 
 Fail-closed numbers stay in ``llm_explainer``. This module selects frozen
 overview + specialist slices (RI-1: ``grid_ranking``; RI-2: ``time_ranking``;
-RI-3: ``validation_wfa``; RI-4: ``single_metric``; RI-5: ``robustness_tier2``),
-builds DI-2 first-pass path catalogs, builds auditor-safe replies when the LLM
-path fails, and attaches DI-3/RI-7 digit-free meaning overlays after mandatory
-caveats.
+RI-3: ``validation_wfa``; RI-4: ``single_metric``; RI-5: ``robustness_tier2``;
+RI-6: ``assumptions_costs``), builds DI-2 first-pass path catalogs, builds
+auditor-safe replies when the LLM path fails, and attaches DI-3/RI-7 digit-free
+meaning overlays after mandatory caveats.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ INTENT_GRID_RANKING = "grid_ranking"
 INTENT_TIME_RANKING = "time_ranking"
 INTENT_VALIDATION_WFA = "validation_wfa"
 INTENT_ROBUSTNESS_TIER2 = "robustness_tier2"
+INTENT_ASSUMPTIONS_COSTS = "assumptions_costs"
 INTENT_SINGLE_METRIC = "single_metric"
 INTENT_MIXED_ASK = "mixed_ask"
 
@@ -38,6 +39,7 @@ _LANDED_SPECIALIST_INTENTS = frozenset(
         INTENT_TIME_RANKING,
         INTENT_VALIDATION_WFA,
         INTENT_ROBUSTNESS_TIER2,
+        INTENT_ASSUMPTIONS_COSTS,
     }
 )
 # Intents that refuse overview/DX KPI envelopes (specialists + single-metric).
@@ -53,6 +55,7 @@ REASON_MISSING_GRID = "grid_missing_evidence"
 REASON_MISSING_TIME = "time_missing_evidence"
 REASON_MISSING_VALIDATION = "validation_missing_evidence"
 REASON_MISSING_ROBUSTNESS = "robustness_missing_evidence"
+REASON_MISSING_ASSUMPTIONS = "assumptions_missing_evidence"
 REASON_MISSING_METRIC = "metric_missing_leaf"
 REASON_MIXED_ASK = "mixed_ask_narrow"
 REASON_MIXED_COMPOSE = "mixed_ask_compose"
@@ -60,6 +63,7 @@ REASON_GRID_FALLBACK = "grid_deterministic_fallback"
 REASON_TIME_FALLBACK = "time_deterministic_fallback"
 REASON_VALIDATION_FALLBACK = "validation_deterministic_fallback"
 REASON_ROBUSTNESS_FALLBACK = "robustness_deterministic_fallback"
+REASON_ASSUMPTIONS_FALLBACK = "assumptions_deterministic_fallback"
 REASON_METRIC_FALLBACK = "metric_deterministic_fallback"
 
 # §4.1 composition / summary order (sole-intent tie-break + RI-8 compose order).
@@ -68,6 +72,7 @@ _COMPOSE_PRIORITY: tuple[str, ...] = (
     INTENT_TIME_RANKING,
     INTENT_VALIDATION_WFA,
     INTENT_ROBUSTNESS_TIER2,
+    INTENT_ASSUMPTIONS_COSTS,
     INTENT_SINGLE_METRIC,
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
@@ -300,6 +305,16 @@ _ROBUSTNESS_NEAR_MISS_TOKENS: tuple[str, ...] = ("monte", "carlo")
 # Phrases that must not count as bare RI-3 ``validation``.
 _OTF_VALIDATION_PHRASES: tuple[str, ...] = ("otf validation", "otf-validation")
 
+# RI-6 landed specialist cues (run-assumption / costs sense; Help how-to is out of channel).
+_ASSUMPTIONS_COSTS_POSITIVE_CUES: tuple[str, ...] = (
+    "commission",
+    "slippage",
+    "exposure policy",
+    "intrabar model",
+    "costs",
+    "assumptions",
+)
+
 # Frozen RI §4.2 allowlist (include only when path exists on turn context).
 GRID_CLAIM_PATHS: tuple[str, ...] = (
     "results.projections.grid_rankings.metric",
@@ -377,6 +392,19 @@ ROBUSTNESS_CLAIM_PATHS: tuple[str, ...] = (
     "results.otf_validation_summary.oos_fraction",
 )
 
+# Frozen RI §4.6 assumptions_costs allowlist (no performance KPIs).
+ASSUMPTIONS_CLAIM_PATHS: tuple[str, ...] = (
+    "assumptions.costs_exposure.commission_per_side",
+    "assumptions.costs_exposure.slippage_ticks",
+    "assumptions.costs_exposure.exposure_policy",
+    "assumptions.costs_exposure.intrabar_model",
+    "assumptions.costs_exposure.stop_loss_ticks",
+    "assumptions.costs_exposure.take_profit_ticks",
+    "assumptions.entry_window.focus.enabled",
+    "assumptions.instrument",
+    "assumptions.dataset.dataset_fingerprint",
+)
+
 
 def _normalize_message(text: str) -> str:
     # Map common curly/smart apostrophes so ``what's`` cues still match.
@@ -452,6 +480,10 @@ def _validation_wfa_matches(normalized: str) -> bool:
 
 def _robustness_tier2_matches(normalized: str) -> bool:
     return _any_cue_matches(_ROBUSTNESS_TIER2_POSITIVE_CUES, normalized)
+
+
+def _assumptions_costs_matches(normalized: str) -> bool:
+    return _any_cue_matches(_ASSUMPTIONS_COSTS_POSITIVE_CUES, normalized)
 
 
 def _robustness_near_miss_matches(normalized: str) -> bool:
@@ -601,6 +633,7 @@ def _evaluate_discuss_match(message: str) -> dict[str, Any] | None:
     time_bare_only = _bare_time_token_matches(normalized) and not time_strong
     validation = _validation_wfa_matches(normalized)
     robustness = _robustness_tier2_matches(normalized)
+    assumptions = _assumptions_costs_matches(normalized)
     metric_paths = _matched_single_metric_paths(normalized)
     kpi = _any_cue_matches(_KPI_POSITIVE_CUES, normalized)
     run = _any_cue_matches(_RUN_OVERVIEW_POSITIVE_CUES, normalized)
@@ -614,6 +647,8 @@ def _evaluate_discuss_match(message: str) -> dict[str, Any] | None:
         specialists.append(INTENT_VALIDATION_WFA)
     if robustness:
         specialists.append(INTENT_ROBUSTNESS_TIER2)
+    if assumptions:
+        specialists.append(INTENT_ASSUMPTIONS_COSTS)
 
     hard_residual = _hard_residual_negative_matches(normalized)
     soft_residual = _soft_bare_grid_token_residual(normalized)
@@ -693,9 +728,9 @@ def match_discuss_intent(message: str) -> str | None:
 
     Multi-eval (no first-match short-circuit): evaluate landed cue tables
     independently, then apply residual veto / mixed-ask rules.
-    Landed intents in RI-5+: ``grid_ranking``, ``time_ranking``,
-    ``validation_wfa``, ``robustness_tier2``, ``single_metric``,
-    ``kpi_summary``, ``run_overview``.
+    Landed intents in RI-6+: ``grid_ranking``, ``time_ranking``,
+    ``validation_wfa``, ``robustness_tier2``, ``assumptions_costs``,
+    ``single_metric``, ``kpi_summary``, ``run_overview``.
     """
     state = _evaluate_discuss_match(message)
     if state is None:
@@ -817,6 +852,21 @@ def present_robustness_allowlist(evidence_context: Mapping[str, Any]) -> tuple[s
     return tuple(out)
 
 
+def present_assumptions_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return frozen §4.6 assumptions/costs claim paths with narratable scalars only."""
+    if not isinstance(evidence_context, Mapping):
+        return ()
+    out: list[str] = []
+    for path in ASSUMPTIONS_CLAIM_PATHS:
+        if not _path_exists(evidence_context, path):
+            continue
+        value = _path_get(evidence_context, path)
+        if _format_scalar_for_claim(path, value) is None:
+            continue
+        out.append(path)
+    return tuple(out)
+
+
 def _narratable_grid_scalar(evidence_context: Mapping[str, Any], path: str) -> bool:
     """True when *path* exists and formats to a claimable scalar (nulls fail)."""
     if not _path_exists(evidence_context, path):
@@ -886,6 +936,19 @@ def has_robustness_tier2_evidence(evidence_context: Mapping[str, Any]) -> bool:
     if not isinstance(evidence_context, Mapping):
         return False
     for path in ROBUSTNESS_CLAIM_PATHS:
+        if not _path_exists(evidence_context, path):
+            continue
+        value = _path_get(evidence_context, path)
+        if _format_scalar_for_claim(path, value) is not None:
+            return True
+    return False
+
+
+def has_assumptions_costs_evidence(evidence_context: Mapping[str, Any]) -> bool:
+    """True when at least one narratable §4.6 assumptions/costs leaf exists."""
+    if not isinstance(evidence_context, Mapping):
+        return False
+    for path in ASSUMPTIONS_CLAIM_PATHS:
         if not _path_exists(evidence_context, path):
             continue
         value = _path_get(evidence_context, path)
@@ -1149,6 +1212,19 @@ def build_prompt_path_catalog(
         catalog["preferred_claim_paths"] = robustness_paths
         # §4.6: undeclared nested dumps must not appear in existing_paths.
         catalog["existing_paths"] = list(robustness_paths)
+    elif intent == INTENT_ASSUMPTIONS_COSTS:
+        assumptions_paths = list(present_assumptions_allowlist(evidence_context))
+        catalog["discuss_intent"] = INTENT_ASSUMPTIONS_COSTS
+        catalog["assumptions_allowlist"] = assumptions_paths
+        catalog["specialist_instruction"] = (
+            "This is a costs / assumptions ask. Cite only paths from "
+            "assumptions_allowlist / preferred_claim_paths / existing_paths. "
+            "Do not narrate results.trade_summary.* performance KPIs. Configured "
+            "stop/take-profit ticks are assumption leaves, not grid best ranks."
+        )
+        catalog["preferred_claim_paths"] = assumptions_paths
+        # §4.6: do not expose performance KPI paths on assumptions asks.
+        catalog["existing_paths"] = list(assumptions_paths)
     elif intent == INTENT_TIME_RANKING:
         # Ensure projected paths are listed when only time_grouped_summary exists.
         working = _ensure_time_rankings_context(evidence_context)
@@ -1456,6 +1532,26 @@ _OVERLAY_GLOSS_BY_PATH: tuple[tuple[str, str], ...] = (
         "results.otf_validation_summary.selected_oos_expectancy_r",
         "Selected OTF OOS expectancy is a one-shot train/test diagnostic, not stitched WFA OOS.",
     ),
+    (
+        "assumptions.costs_exposure.commission_per_side",
+        "Commission per side is an execution-cost assumption for this run, not a live brokerage quote.",
+    ),
+    (
+        "assumptions.costs_exposure.slippage_ticks",
+        "Slippage ticks are an assumed fill penalty used in research, not guaranteed live slippage.",
+    ),
+    (
+        "assumptions.costs_exposure.exposure_policy",
+        "Exposure policy frames how overlapping positions were modeled, not a portfolio mandate.",
+    ),
+    (
+        "assumptions.costs_exposure.intrabar_model",
+        "Intrabar model is an ordering assumption for same-bar exits, not a market microstructure claim.",
+    ),
+    (
+        "assumptions.instrument",
+        "Instrument identity labels the researched contract/symbol, not a trade recommendation.",
+    ),
 )
 
 _OVERLAY_ALWAYS = "These figures are research diagnostics, not trading advice."
@@ -1479,6 +1575,10 @@ _OVERLAY_NEXT_STEP_ROBUSTNESS = (
 
 _OVERLAY_NEXT_STEP_ROBUSTNESS_OOS_ABSENT = (
     "Ask for the key metrics or a summary of this run if you want the in-sample baseline."
+)
+
+_OVERLAY_NEXT_STEP_ASSUMPTIONS = (
+    "Ask for the key metrics or a summary of this run if you want the recorded performance figures."
 )
 
 _OVERLAY_OOS_ABSENT = (
@@ -1668,6 +1768,8 @@ def _overlay_next_step_line(discuss_intent: str | None, *, oos_absent: bool) -> 
         if oos_absent:
             return _OVERLAY_NEXT_STEP_ROBUSTNESS_OOS_ABSENT
         return _OVERLAY_NEXT_STEP_ROBUSTNESS
+    if discuss_intent == INTENT_ASSUMPTIONS_COSTS:
+        return _OVERLAY_NEXT_STEP_ASSUMPTIONS
     if discuss_intent == INTENT_TIME_RANKING:
         return _OVERLAY_NEXT_STEP_TIME
     # Overview / grid / single_metric: WFA-presence coaching unless already absent.
@@ -1850,6 +1952,13 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             return None
         label = _robustness_available_label(path)
         return f"{label} is {'true' if value else 'false'}."
+    # RI-6: focus enabled is an allowlisted boolean assumption flag.
+    if path.endswith("entry_window.focus.enabled") and isinstance(value, bool):
+        return (
+            "Entry-window focus enabled is true."
+            if value
+            else "Entry-window focus enabled is false."
+        )
     if value is None or isinstance(value, bool):
         return None
     if path.endswith("win_rate"):
@@ -1867,10 +1976,19 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
         else:
             display = value
         leaf = path.rsplit(".", 1)[-1]
+        # Configured assumption SL/TP (not grid best ranks).
+        if path.startswith("assumptions.costs_exposure.") and path.endswith("stop_loss_ticks"):
+            return f"Configured stop-loss ticks is {display}."
+        if path.startswith("assumptions.costs_exposure.") and path.endswith("take_profit_ticks"):
+            return f"Configured take-profit ticks is {display}."
         if path.endswith("stop_loss_ticks"):
             return f"Best stop-loss ticks is {display}."
         if path.endswith("take_profit_ticks"):
             return f"Best take-profit ticks is {display}."
+        if path.endswith("commission_per_side"):
+            return f"Commission per side is {display}."
+        if path.endswith("slippage_ticks"):
+            return f"Slippage ticks is {display}."
         if path.endswith("metric_value"):
             return f"Ranked metric value is {display}."
         if path.endswith("min_trades"):
@@ -1956,6 +2074,14 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             return f"Walk-forward status is {text}."
         if path.endswith("otf_validation_summary.status"):
             return f"OTF validation status is {text}."
+        if path.endswith("exposure_policy"):
+            return f"Exposure policy is {text}."
+        if path.endswith("intrabar_model"):
+            return f"Intrabar model is {text}."
+        if path == "assumptions.instrument" or path.endswith("assumptions.instrument"):
+            return f"Instrument is {text}."
+        if path.endswith("dataset.dataset_fingerprint"):
+            return f"Dataset fingerprint is {text}."
         if path.endswith("bucket_col"):
             return f"Time bucket column is {text}."
         if path.endswith("best.bucket"):
@@ -2172,6 +2298,8 @@ def _compose_followups_for_intents(
         suggestions.append(
             "Ask about Monte Carlo or other robustness batteries if they were recorded."
         )
+    if INTENT_ASSUMPTIONS_COSTS not in matched_set:
+        suggestions.append("Ask what costs or exposure assumptions were used on this run.")
     if not suggestions:
         suggestions.append("Ask which evidence paths remain available on this packet.")
     return tuple(suggestions[:3])
@@ -2303,6 +2431,11 @@ def compose_deterministic_replies(
                 continue
             if _absorb(build_deterministic_robustness_reply(packet, working, apply_overlay=False)):
                 _mark(intent)
+        elif intent == INTENT_ASSUMPTIONS_COSTS:
+            if not has_assumptions_costs_evidence(working):
+                continue
+            if _absorb(build_deterministic_assumptions_reply(packet, working, apply_overlay=False)):
+                _mark(intent)
         elif intent == INTENT_SINGLE_METRIC:
             paths = tuple(metric_paths or ())
             if overview_in_matched:
@@ -2383,6 +2516,45 @@ def build_missing_validation_limitation_reply(
         (
             "No out-of-sample or validation figures were invented for this ask.",
             "In-sample trade summary KPIs are not a substitute for WFA or OOS evidence.",
+        ),
+    )
+    assert_llm_explanation_grounded(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+    )
+    return ResultsQAReply(
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+        recovery_reason=recovery_reason,
+    )
+
+
+def build_missing_assumptions_limitation_reply(
+    packet: EvidencePacket,
+    *,
+    recovery_reason: str | None = REASON_MISSING_ASSUMPTIONS,
+):
+    """Digit-free missing assumptions/costs limitation (RI-6 short-circuit)."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    summary = (
+        "I cannot answer costs or run-assumption questions because those "
+        "assumption leaves are not present on this run."
+    )
+    followups = (
+        "Ask for the key metrics or a summary of this run.",
+        "Ask whether walk-forward or validation diagnostics are present on this packet.",
+    )
+    caveats = merge_mandatory_packet_caveats(
+        packet,
+        (
+            "No cost or assumption figures were invented for this ask.",
+            "In-sample trade summary KPIs are not a substitute for cost assumptions.",
         ),
     )
     assert_llm_explanation_grounded(
@@ -2782,6 +2954,73 @@ def build_deterministic_robustness_reply(
         recovery_reason=recovery_reason,
         followups=followups,
         discuss_intent=INTENT_ROBUSTNESS_TIER2,
+        evidence_context=evidence_context,
+    )
+
+
+def build_deterministic_assumptions_reply(
+    packet: EvidencePacket,
+    evidence_context: Mapping[str, Any],
+    *,
+    recovery_reason: str | None = None,
+    apply_overlay: bool = True,
+):
+    """Build an auditor-safe assumptions/costs reply from the frozen §4.6 allowlist."""
+    if not has_assumptions_costs_evidence(evidence_context):
+        return build_missing_assumptions_limitation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MISSING_ASSUMPTIONS,
+        )
+
+    claims: list[EvidenceClaim] = []
+    summary_parts: list[str] = []
+    for path in ASSUMPTIONS_CLAIM_PATHS:
+        if not _path_exists(evidence_context, path):
+            continue
+        value = _path_get(evidence_context, path)
+        text = _format_scalar_for_claim(path, value)
+        if text is None:
+            continue
+        # Hard rule: never emit trade_summary / performance KPI paths.
+        if "trade_summary" in path:
+            continue
+        claims.append(EvidenceClaim(text=text, path=path, value=value))
+        summary_parts.append(text.rstrip("."))
+
+    if not claims:
+        return build_missing_assumptions_limitation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MISSING_ASSUMPTIONS,
+        )
+
+    summary = "Run assumptions: " + "; ".join(summary_parts) + "."
+    caveat_seed = (
+        "These cost and assumption figures describe the recorded research setup, "
+        "not live brokerage conditions or deployable edge.",
+        "Do not treat in-sample trade summary KPIs as cost or assumption evidence.",
+    )
+    grounded = tuple(claims)
+    caveats = merge_mandatory_packet_caveats(packet, caveat_seed)
+    followups = (
+        "Ask for the key metrics or a summary of this run.",
+        "Ask about best stop and take profit ranking if a grid was recorded.",
+    )
+    if not apply_overlay:
+        return _reply_without_overlay(
+            summary=summary,
+            caveats=caveats,
+            claims=grounded,
+            followups=followups,
+            recovery_reason=recovery_reason,
+        )
+    return apply_expert_overlay(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=grounded,
+        recovery_reason=recovery_reason,
+        followups=followups,
+        discuss_intent=INTENT_ASSUMPTIONS_COSTS,
         evidence_context=evidence_context,
     )
 

@@ -1,7 +1,7 @@
 # Research Intelligence — Implementation Contract
 
 **Document type:** Implementation contract (RI-series) — **single source of truth**
-**Status:** 🚧 **RI-5 landed** (grid + time + validation/WFA + single-metric + meaning overlay + mixed-ask composition + tier-2 robustness); series not complete until RI-10
+**Status:** 🚧 **RI-6 landed** (grid + time + validation/WFA + single-metric + meaning overlay + mixed-ask composition + tier-2 robustness + assumptions/costs); series not complete until RI-10
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/results_overview.py` (intent matching /
 deterministic builders / overlays), `results_qa.py` (recovery wiring),
@@ -771,7 +771,7 @@ complete coverage; duplex last so text builders are stable.
 | RI-3 Validation + WFA/OOS slice | ✅ landed |
 | RI-4 Single-metric router | ✅ landed |
 | RI-5 Tier-2 robustness slices | ✅ landed |
-| RI-6 Assumptions & costs slice | ⬚ pending |
+| RI-6 Assumptions & costs slice | ✅ landed |
 | RI-7 Grounded meaning overlay v2 | ✅ landed |
 | RI-8 Mixed-ask composition | ✅ landed |
 | RI-9 Bounded deep-trade projections | ⬚ pending |

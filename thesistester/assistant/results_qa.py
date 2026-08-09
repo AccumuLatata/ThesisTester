@@ -16,6 +16,8 @@ from thesistester.assistant.llm_explainer import (
     merge_mandatory_packet_caveats,
 )
 from thesistester.assistant.results_overview import (
+    ASSUMPTIONS_CLAIM_PATHS,
+    INTENT_ASSUMPTIONS_COSTS,
     INTENT_GRID_RANKING,
     INTENT_MIXED_ASK,
     INTENT_ROBUSTNESS_TIER2,
@@ -24,6 +26,7 @@ from thesistester.assistant.results_overview import (
     INTENT_VALIDATION_WFA,
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
+    REASON_ASSUMPTIONS_FALLBACK,
     REASON_GRID_FALLBACK,
     REASON_METRIC_FALLBACK,
     REASON_ROBUSTNESS_FALLBACK,
@@ -33,12 +36,14 @@ from thesistester.assistant.results_overview import (
     _ensure_grid_rankings_context,
     _ensure_time_rankings_context,
     apply_expert_overlay,
+    build_deterministic_assumptions_reply,
     build_deterministic_grid_ranking_reply,
     build_deterministic_kpi_reply,
     build_deterministic_robustness_reply,
     build_deterministic_single_metric_reply,
     build_deterministic_time_ranking_reply,
     build_deterministic_validation_wfa_reply,
+    build_missing_assumptions_limitation_reply,
     build_missing_grid_limitation_reply,
     build_missing_metric_limitation_reply,
     build_missing_robustness_limitation_reply,
@@ -49,6 +54,7 @@ from thesistester.assistant.results_overview import (
     classify_recovery_reason,
     compose_deterministic_replies,
     failure_class_from_exception,
+    has_assumptions_costs_evidence,
     has_grid_ranking_evidence,
     has_robustness_tier2_evidence,
     has_single_metric_evidence,
@@ -233,8 +239,9 @@ def _decode_results_payload(
         raise LLMEvidenceError("Results Q&A caveats must be non-empty strings.")
     if any(not isinstance(followup, str) or not followup.strip() for followup in followups_raw):
         raise LLMEvidenceError("Results Q&A followups must be non-empty strings.")
-    # §4.6: hard-reject nested dumps / KPI substitutions on robustness_tier2.
+    # §4.6: hard-reject nested dumps / KPI substitutions on specialist allowlists.
     robustness_allow = frozenset(ROBUSTNESS_CLAIM_PATHS)
+    assumptions_allow = frozenset(ASSUMPTIONS_CLAIM_PATHS)
     claims: list[EvidenceClaim] = []
     for item in claims_raw:
         if (
@@ -254,6 +261,10 @@ def _decode_results_payload(
         if discuss_intent == INTENT_ROBUSTNESS_TIER2 and path not in robustness_allow:
             raise LLMEvidenceError(
                 f"Results Q&A claim path {path!r} is outside the robustness_tier2 allowlist."
+            )
+        if discuss_intent == INTENT_ASSUMPTIONS_COSTS and path not in assumptions_allow:
+            raise LLMEvidenceError(
+                f"Results Q&A claim path {path!r} is outside the assumptions_costs allowlist."
             )
         claims.append(
             EvidenceClaim(
@@ -375,6 +386,16 @@ def _recover_results_reply(
             recovery_reason=reason or REASON_ROBUSTNESS_FALLBACK,
         )
     if (
+        discuss_intent == INTENT_ASSUMPTIONS_COSTS
+        and deterministic_specialist_fallback
+        and has_assumptions_costs_evidence(evidence_context)
+    ):
+        return build_deterministic_assumptions_reply(
+            packet,
+            evidence_context,
+            recovery_reason=reason or REASON_ASSUMPTIONS_FALLBACK,
+        )
+    if (
         discuss_intent == INTENT_TIME_RANKING
         and deterministic_specialist_fallback
         and has_time_ranking_evidence(evidence_context)
@@ -432,12 +453,12 @@ def propose_results_reply(
     remediation. Both DI flags false restores pre-DI hard-fail raises (TLS wrap
     still applies in the transport).
 
-    RI-1/RI-2/RI-3/RI-4/RI-5/RI-8: unified Discuss matcher; ``grid_ranking`` /
+    RI-1/RI-2/RI-3/RI-4/RI-5/RI-6/RI-8: unified Discuss matcher; ``grid_ranking`` /
     ``time_ranking`` / ``validation_wfa`` / ``robustness_tier2`` /
-    ``single_metric`` missing-evidence short-circuits before LLM; deterministic
-    specialist fallback when ``deterministic_specialist_fallback`` is true;
-    ``mixed_ask`` composes up to three matched intents (narrow remediation when
-    over cap or no evidence).
+    ``assumptions_costs`` / ``single_metric`` missing-evidence short-circuits
+    before LLM; deterministic specialist fallback when
+    ``deterministic_specialist_fallback`` is true; ``mixed_ask`` composes up to
+    three matched intents (narrow remediation when over cap or no evidence).
 
     DI-2: first-pass user payload includes ``path_catalog`` (existing paths;
     plus ``kpi_allowlist`` / specialist preferred paths when matched).
@@ -495,6 +516,10 @@ def propose_results_reply(
         evidence_context
     ):
         return build_missing_robustness_limitation_reply(packet, evidence_context=evidence_context)
+    if discuss_intent == INTENT_ASSUMPTIONS_COSTS and not has_assumptions_costs_evidence(
+        evidence_context
+    ):
+        return build_missing_assumptions_limitation_reply(packet)
     if discuss_intent == INTENT_SINGLE_METRIC:
         metric_path = resolve_single_metric_path(user_message)
         if metric_path is None or not has_single_metric_evidence(evidence_context, metric_path):
@@ -510,6 +535,7 @@ def propose_results_reply(
             INTENT_TIME_RANKING,
             INTENT_VALIDATION_WFA,
             INTENT_ROBUSTNESS_TIER2,
+            INTENT_ASSUMPTIONS_COSTS,
             INTENT_SINGLE_METRIC,
         }:
             return reply
@@ -549,7 +575,7 @@ def propose_results_reply(
                     evidence_context,
                     path=metric_path,
                 )
-        # §4.6: robustness claims must stay inside the frozen allowlist.
+        # §4.6: robustness / assumptions claims must stay inside frozen allowlists.
         if discuss_intent == INTENT_ROBUSTNESS_TIER2:
             allow = frozenset(ROBUSTNESS_CLAIM_PATHS)
             ok = bool(reply.claims) and all(claim.path in allow for claim in reply.claims)
@@ -559,6 +585,15 @@ def propose_results_reply(
                 and has_robustness_tier2_evidence(evidence_context)
             ):
                 return build_deterministic_robustness_reply(packet, evidence_context)
+        if discuss_intent == INTENT_ASSUMPTIONS_COSTS:
+            allow = frozenset(ASSUMPTIONS_CLAIM_PATHS)
+            ok = bool(reply.claims) and all(claim.path in allow for claim in reply.claims)
+            if (
+                not ok
+                and deterministic_specialist_fallback
+                and has_assumptions_costs_evidence(evidence_context)
+            ):
+                return build_deterministic_assumptions_reply(packet, evidence_context)
         return _maybe_overlay(reply)
 
     try:
@@ -583,6 +618,7 @@ def propose_results_reply(
             INTENT_TIME_RANKING,
             INTENT_VALIDATION_WFA,
             INTENT_ROBUSTNESS_TIER2,
+            INTENT_ASSUMPTIONS_COSTS,
             INTENT_SINGLE_METRIC,
         }
         if (
