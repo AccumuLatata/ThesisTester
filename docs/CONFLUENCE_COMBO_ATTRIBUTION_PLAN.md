@@ -770,7 +770,7 @@ tests/fixtures/golden/**
 | Input | Pair definition |
 |---|---|
 | Generic / global / unknown | All unordered pairs among distinct tokens |
-| Anchor-aware | Only when session `setup_config.confluence_mode == "anchor_rules"` **and** `anchor_level` is known; emit `anchor\|Li` for each non-anchor token present. Otherwise fall back to generic pairs — **never** guess anchor from first token |
+| Anchor-aware | Only when signal-run identity resolves `confluence_mode == "anchor_rules"` **and** `anchor_level` is known (`resolve_signal_setup_for_attribution`); emit `anchor\|Li` for each non-anchor token present. Otherwise fall back to generic pairs — **never** guess anchor from first token |
 
 **Why reject first-token heuristic:** global price-sort puts cheapest level
 first, not an anchor. Guessing would mislead.

@@ -27,6 +27,7 @@ from thesistester.analytics.confluence_attribution import (
     exact_combo_key,
     format_display_combo,
     pair_keys_for_tokens,
+    pairs_empty_info_message,
     parse_level_names,
     prepare_exact_combo_display,
     resolve_confluence_mode,
@@ -547,3 +548,21 @@ def test_summary_includes_pairs_with_anchor_mode():
     assert not summary["by_pairs"].empty
     assert PAIRWISE_DOUBLE_COUNT_WARNING in summary["warnings"]
     assert "pdHigh|VWAP_rolling_1h" in set(summary["by_pairs"][PAIR_KEY_COL])
+
+
+def test_pairs_empty_info_message_distinguishes_filter_vs_missing_pairs():
+    """Hide-below-min must not be described as missing multi-level trades."""
+    raw = pd.DataFrame(
+        {
+            PAIR_KEY_COL: ["A|B", "A|C"],
+            "trade_count": [3, 2],
+            "sample_warning": [True, True],
+        }
+    )
+    filtered = apply_sample_warning_filter(raw, hide_below_min=True)
+    assert filtered.empty
+    assert pairs_empty_info_message(raw) == "No pair rows to display under the current filter."
+    assert "two distinct level names" not in pairs_empty_info_message(raw)
+
+    assert "two distinct level names" in pairs_empty_info_message(pd.DataFrame())
+    assert "two distinct level names" in pairs_empty_info_message(None)

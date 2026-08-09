@@ -56,6 +56,7 @@ from thesistester.analytics.confluence_attribution import (
     TRIGGER_3C_LEVEL_NAMES_WARNING,
     apply_sample_warning_filter,
     confluence_attribution_summary,
+    pairs_empty_info_message,
     prepare_exact_combo_display,
     resolve_confluence_mode,
     resolve_signal_setup_for_attribution,
@@ -1301,15 +1302,13 @@ if _display_has_trades:
                         "trade (`A|B` canonical). Anchor-partner mode requires "
                         "`anchor_rules` plus a known session/signal-run anchor level."
                     )
+                _pairs_raw = _cca_summary.get("by_pairs")
                 _pairs = apply_sample_warning_filter(
-                    _cca_summary.get("by_pairs"),
+                    _pairs_raw,
                     hide_below_min=bool(_cca_hide_thin),
                 )
                 if _pairs is None or (isinstance(_pairs, pd.DataFrame) and _pairs.empty):
-                    st.info(
-                        "No pair rows to display under the current filter "
-                        "(need trades with at least two distinct level names)."
-                    )
+                    st.info(pairs_empty_info_message(_pairs_raw))
                 else:
                     _pairs_view = _pairs.rename(
                         columns={PAIR_KEY_COL: "pair", PAIR_MODE_COL: "pair_mode"}

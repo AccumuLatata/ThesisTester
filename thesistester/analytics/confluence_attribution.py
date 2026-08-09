@@ -574,6 +574,17 @@ def apply_sample_warning_filter(
     return frame.loc[mask].copy()
 
 
+def pairs_empty_info_message(raw_pairs: pd.DataFrame | None) -> str:
+    """Honest empty-state copy for the Backtest Pairs tab.
+
+    When unfiltered ``by_pairs`` has rows, an empty display is from the
+    hide-below-min presentation filter — not from missing multi-level trades.
+    """
+    if isinstance(raw_pairs, pd.DataFrame) and not raw_pairs.empty:
+        return "No pair rows to display under the current filter."
+    return "No pair rows to display (need trades with at least two distinct level names)."
+
+
 def resolve_signal_setup_for_attribution(
     *,
     signal_settings: Any = None,
