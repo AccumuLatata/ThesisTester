@@ -87,7 +87,7 @@ VA-1 in this series is a **completed stub**. Do not open a parallel VA-1 PR.
 | Draft hydration | Results/help/voice messages must **omit** `choices` |
 | Grounding | Reuse C2-6 / RQ digit-token rules; spoken trusted UI / TTS text must pass the same numeric audit (digit tokens). Spoken-word number phrases (“twelve”) are out of v1 audit scope |
 | VA-4 path (**amended**) | Primary: STT → `handle_results_turn` or `handle_help_turn` → speak grounded reply via TTS. Secondary fallback (no OpenAI / unrecognized): deterministic VA-3 tool → template → TTS |
-| VA-5 path | Browser ↔ localhost FastAPI sidecar ↔ xAI realtime WS; custom function tools only (VA-3 schemas); component deferred |
+| VA-5 path | Browser ↔ localhost Starlette/ASGI sidecar (uvicorn) ↔ xAI realtime WS; custom function tools only (VA-3 schemas); component deferred |
 | Model / cost | Pin `grok-voice-think-fast-2.0`; budget ~$0.08/min S2S; no rolling `latest` in evals |
 | Default | `assistant.voice.enabled = false` through VA-6 |
 
@@ -637,7 +637,7 @@ allowlist-bound.
 #### In scope
 | Item | Detail |
 |---|---|
-| Transport topology | **Browser mic/speaker ↔ localhost FastAPI sidecar ↔ xAI Realtime WS.** Sidecar holds `XAI_API_KEY` (or mints ephemeral tokens server-side). Streamlit only starts/shows session controls and never opens the xAI socket. Custom component / browser-direct-to-xAI deferred |
+| Transport topology | **Browser mic/speaker ↔ localhost Starlette/ASGI sidecar (uvicorn) ↔ xAI Realtime WS.** Sidecar holds `XAI_API_KEY` (or mints ephemeral tokens server-side). Streamlit only starts/shows session controls and never opens the xAI socket. Custom component / browser-direct-to-xAI deferred |
 | Why sidecar | Streamlit’s rerun model cannot host a long-lived duplex tool bridge reliably |
 | Session | Sidecar `session.update` with voice, instructions from `VoiceSessionService`, `turn_detection: server_vad`, **custom function tools only** (VA-3 schemas); payload must omit `web_search`, `x_search`, `file_search`, `mcp` |
 | Tool bridge | On `function_call` → `execute_voice_tool` → `function_call_output` (same Python package; no duplicated business logic) |
@@ -828,7 +828,7 @@ docs/REALTIME_VOICE_AGENT_IMPLEMENTATION.md
 | 1 | VA-4 STT/TTS | xAI unary STT + TTS |
 | 2 | VA-4 primary answer path | STT → RQ `handle_results_turn` / `handle_help_turn` → grounded speak → TTS |
 | 3 | VA-4 fallback | Deterministic intent → VA-3 tool → template → TTS (results); Help remediates if no OpenAI |
-| 4 | VA-5 transport | Browser ↔ **localhost FastAPI sidecar** ↔ xAI (component deferred) |
+| 4 | VA-5 transport | Browser ↔ **localhost Starlette/ASGI sidecar** ↔ xAI (component deferred) |
 | 5 | Default voice id | `eve` |
 | 6 | `compare_two_runs` in v1 allowlist | **include** (pure `compare_evidence`; no persist) |
 | 7 | Model pin string | `grok-voice-think-fast-2.0` (not rolling `latest`) |

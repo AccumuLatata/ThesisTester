@@ -11,8 +11,8 @@
 
 Related documents:
 
-- `docs/research/THESISTESTER_ANALYSIS.md` — in-depth analysis of this repository.
-- `docs/ENGINEERING_PROPOSAL.md` — comparison + regression-safe roadmap built on both.
+- [THESISTESTER_ANALYSIS.md](THESISTESTER_ANALYSIS.md) — in-depth analysis of this repository.
+- [`../ENGINEERING_PROPOSAL.md`](../ENGINEERING_PROPOSAL.md) — comparison + regression-safe roadmap built on both.
 
 ---
 

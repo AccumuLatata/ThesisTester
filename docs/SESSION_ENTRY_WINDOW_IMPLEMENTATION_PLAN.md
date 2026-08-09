@@ -8,7 +8,8 @@
 **Related code:** `thesistester/analytics/time_analysis.py`, `thesistester/engine/backtest.py`, `thesistester/analytics/grid.py`, `thesistester/analytics/walk_forward.py`, `thesistester/analytics/overfitting.py`, `pages/7_Backtest.py`, `pages/8_Grid_Search.py`, `pages/9_Time_Analysis.py`, `pages/10_Validation.py`, `thesistester/api.py`  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4 (including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist)
 
-**Supersedes:** `docs/SESSION_ENTRY_WINDOW_PROPOSAL.md` (renamed).
+**Supersedes:** earlier draft proposal (renamed in-place to this plan; the old
+`SESSION_ENTRY_WINDOW_PROPOSAL.md` path no longer exists).
 
 ---
 
@@ -313,12 +314,14 @@ SW1 may land in parallel with SW2 design after SW0. SW3+ require SW2. **Do not s
 
 **Goal.** Lock this document; prove legacy golden green before engine work.
 
+> Series complete (see §13 Merged). Scope/acceptance boxes below are historical deliverables, now checked.
+
 **Scope.**
 
 - [x] Golden evidence: `pytest tests/test_golden_master.py tests/test_otf_golden.py` → 23 passed.
 - [x] Implementation plan + ENGINEERING_ROADMAP pointer.
 - [x] Pre-implementation audit + C1–C9 + SW2b split.
-- [ ] No production runtime behavior changes in the SW0 docs PR itself.
+- [x] No production runtime behavior changes in the SW0 docs PR itself.
 
 **Regression safety.** Docs-only for SW0 commit series prior to SW1 code.
 
@@ -330,16 +333,18 @@ SW1 may land in parallel with SW2 design after SW0. SW3+ require SW2. **Do not s
 
 **Goal.** Focus a Time Analysis bucket and see full Performance Summary / equity / trade list as a labeled post-hoc overlay.
 
+> Series complete (see §13 Merged). Scope/acceptance boxes below are historical deliverables, now checked.
+
 **Scope.**
 
-- [ ] Public `RTH_SEGMENT_LABELS` (+ bounds helper) from `time_analysis` (C1).
-- [ ] Pure helpers: normalize, `entry_window_from_bucket`, filter, `summarize_focused_trades`, provenance (`sample_warning`).
-- [ ] Unit tests: segments, clock_range, hour/30m mapping, empty trades, TZ law for segments (C5), C8 provenance flag.
-- [ ] `pages/9_Time_Analysis.py`: select bucket → Focus / Clear Focus; focused KPI section + banners.
-- [ ] `pages/7_Backtest.py`: if Focus set, overlay toggle for summary/equity/trades **without** destroying `trade_summary` / `equity_curve` / `trades`.
-- [ ] Honesty banners (Focus + C8).
-- [ ] Docs: USER_GUIDE, ARCHITECTURE keys, ASSUMPTIONS.
-- [ ] **Zero** `simulate_trades` changes.
+- [x] Public `RTH_SEGMENT_LABELS` (+ bounds helper) from `time_analysis` (C1).
+- [x] Pure helpers: normalize, `entry_window_from_bucket`, filter, `summarize_focused_trades`, provenance (`sample_warning`).
+- [x] Unit tests: segments, clock_range, hour/30m mapping, empty trades, TZ law for segments (C5), C8 provenance flag.
+- [x] `pages/9_Time_Analysis.py`: select bucket → Focus / Clear Focus; focused KPI section + banners.
+- [x] `pages/7_Backtest.py`: if Focus set, overlay toggle for summary/equity/trades **without** destroying `trade_summary` / `equity_curve` / `trades`.
+- [x] Honesty banners (Focus + C8).
+- [x] Docs: USER_GUIDE, ARCHITECTURE keys, ASSUMPTIONS.
+- [x] **Zero** `simulate_trades` changes.
 
 **Out of scope.** Engine admission; Promote (SW4); Grid/WFA; setup persistence.
 
@@ -349,10 +354,10 @@ SW1 may land in parallel with SW2 design after SW0. SW3+ require SW2. **Do not s
 
 **Acceptance.**
 
-- [ ] Focus `rth_open_30m` → full `summarize_trades` suite on subset.
-- [ ] Clear Focus restores full-run view without re-sim.
-- [ ] Banner + C8 equity caveat visible when Focus active.
-- [ ] CI green; §4.2.
+- [x] Focus `rth_open_30m` → full `summarize_trades` suite on subset.
+- [x] Clear Focus restores full-run view without re-sim.
+- [x] Banner + C8 equity caveat visible when Focus active.
+- [x] CI green; §4.2.
 
 **Suggested PR title:** `SW1: post-hoc time-bucket Focus summary (no re-sim)`
 
@@ -362,14 +367,16 @@ SW1 may land in parallel with SW2 design after SW0. SW3+ require SW2. **Do not s
 
 **Goal.** Opt-in admission with `outside_entry_window` skips; legacy trades golden-identical; C7 Focus≡Admit gate.
 
+> Series complete (see §13 Merged). Scope/acceptance boxes below are historical deliverables, now checked.
+
 **Scope.**
 
-- [ ] Shared normalize used by engine (import from analytics module or thin engine wrapper).
-- [ ] `simulate_trades(..., *, entry_window=None)`.
-- [ ] Skip rows when capture on.
-- [ ] Enabled-window golden family + legacy isolation.
-- [ ] C7 identity test (`allow_all`, cooldown 0).
-- [ ] Boundary tests (09:30 inclusive / 10:00 exclusive); signal-in-segment / entry-out-of-segment (next-bar-open, C2).
+- [x] Shared normalize used by engine (import from analytics module or thin engine wrapper).
+- [x] `simulate_trades(..., *, entry_window=None)`.
+- [x] Skip rows when capture on.
+- [x] Enabled-window golden family + legacy isolation.
+- [x] C7 identity test (`allow_all`, cooldown 0).
+- [x] Boundary tests (09:30 inclusive / 10:00 exclusive); signal-in-segment / entry-out-of-segment (next-bar-open, C2).
 
 **Out of scope.** `after_entry_cutoff` (SW2b); Streamlit Admit controls (SW3); changing RTH **bounds**.
 
