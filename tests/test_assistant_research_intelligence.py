@@ -963,6 +963,9 @@ def test_bare_time_token_plus_metric_is_mixed_ask():
     # Bare hour/clock with a metric value-ask → mixed_ask (not time slice alone).
     assert match_discuss_intent("show win rate by hour") == INTENT_MIXED_ASK
     assert match_discuss_intent("what is the win rate by bucket") == INTENT_MIXED_ASK
+    # Soft bare-grid residual must not promote bare time into lone time_ranking.
+    assert match_discuss_intent("show win rate by hour for my stop") == INTENT_MIXED_ASK
+    assert match_discuss_intent("how many trades by hour for tp") == INTENT_MIXED_ASK
     # Strong time cues still own the turn alone (§4.5 hard-refuse).
     assert match_discuss_intent("what is expectancy by hour bucket?") == INTENT_TIME_RANKING
     # Lone bare time remains time_ranking (RI-2).

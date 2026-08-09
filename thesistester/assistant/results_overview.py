@@ -542,13 +542,9 @@ def match_discuss_intent(message: str) -> str | None:
     # Bare time token + metric value-ask: do not serve the time slice alone
     # (e.g. ``show win rate by hour``). Narrow mixed_ask until RI-8. Idioms
     # like ``over time`` are already masked out of bare-time matching.
-    if (
-        time_bare_only
-        and metric_paths
-        and not specialists
-        and not soft_residual
-        and overview_count == 0
-    ):
+    # Soft bare-grid residual must not bypass this into lone time_ranking
+    # (e.g. ``show win rate by hour for my stop``).
+    if time_bare_only and metric_paths and not specialists and overview_count == 0:
         return INTENT_MIXED_ASK
 
     # Lone bare time (or bare time competing with other landed intents) counts
