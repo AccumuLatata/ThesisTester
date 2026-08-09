@@ -1198,12 +1198,12 @@ but the preferred locked path is on-export recompute + optional siblings above.
 
 **Acceptance:**
 
-- [ ] Old bundles without combo files still import.
-- [ ] Export recomputes from session trades (no dependency on a combo session
+- [x] Old bundles without combo files still import.
+- [x] Export recomputes from session trades (no dependency on a combo session
       producer key).
-- [ ] New bundles with combo section round-trip JSON + present parquets.
-- [ ] Missing optional parquet siblings do not fail load.
-- [ ] Full suite green; no golden/engine diffs.
+- [x] New bundles with combo section round-trip JSON + present parquets.
+- [x] Missing optional parquet siblings do not fail load.
+- [x] Full suite green; no golden/engine diffs.
 
 ---
 
@@ -1505,12 +1505,12 @@ PR 1 analytics helpers + tests
 
 ### PR 5c
 
-- [ ] On-export recompute from session trades (same mode/anchor path as 5b)
-- [ ] Optional JSON + parquet siblings; `included["confluence_combo"]` only when available
-- [ ] Old bundles still import; missing optional parquet siblings do not fail load
-- [ ] No `BUNDLE_SCHEMA_VERSION` bump; no `trades.parquet` schema mutation
-- [ ] No Backtest producer session keys required
-- [ ] Full suite green; no golden/engine diffs
+- [x] On-export recompute from session trades (same mode/anchor path as 5b)
+- [x] Optional JSON + parquet siblings; `included["confluence_combo"]` only when available
+- [x] Old bundles still import; missing optional parquet siblings do not fail load
+- [x] No `BUNDLE_SCHEMA_VERSION` bump; no `trades.parquet` schema mutation
+- [x] No Backtest producer session keys required
+- [x] Full suite green; no golden/engine diffs
 
 ### PR 5d
 

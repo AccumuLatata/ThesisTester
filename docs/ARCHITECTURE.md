@@ -1065,10 +1065,12 @@ and is omitted entirely when unavailable.
 
 Research Bundles (`pages/12_Research_Bundles.py`) may attach the same diagnostic as
 optional zip siblings via `build_confluence_combo_bundle_artifacts` (on-export
-recompute). `included["confluence_combo"]` is set only when available; old bundles
-without those files still import. Restored managed keys
+recompute). Combo siblings require the backtest section (`trades.parquet`) so they
+are never orphaned; `included["confluence_combo"]` is set only when available. Old
+bundles without those files still import. Restored managed keys
 (`confluence_combo_summary`, `confluence_by_*`) are cleared when the section is
-absent. `BUNDLE_SCHEMA_VERSION` stays at 1 for these optional siblings.
+absent; summary identity is reused on recompute when `signal_settings` is missing.
+`BUNDLE_SCHEMA_VERSION` stays at 1 for these optional siblings.
 
 Grid Search directional note: `pages/8_Grid_Search.py` shows aggregate KPIs by default.
 Enable **Advanced directional ranking** to rank by long/short or balanced weaker-side

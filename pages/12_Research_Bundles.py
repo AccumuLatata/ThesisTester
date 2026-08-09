@@ -96,7 +96,13 @@ def _will_include_portfolio() -> bool:
 
 
 def _will_include_confluence_combo() -> bool:
-    """True when on-export recompute would attach optional combo siblings."""
+    """True when export would attach combo siblings (needs backtest + available)."""
+    trades = st.session_state.get("trades")
+    equity = st.session_state.get("equity_curve")
+    if not isinstance(trades, pd.DataFrame) or trades.empty:
+        return False
+    if not isinstance(equity, pd.DataFrame) or equity.empty:
+        return False
     return build_confluence_combo_report_block(st.session_state) is not None
 
 
@@ -224,9 +230,7 @@ if uploaded is not None:
             },
             {
                 "Artifact": "Confluence combo attribution",
-                "Included in bundle": (
-                    "✅" if included.get("confluence_combo") else "❌"
-                ),
+                "Included in bundle": ("✅" if included.get("confluence_combo") else "❌"),
             },
         ]
 

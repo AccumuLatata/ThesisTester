@@ -577,6 +577,20 @@ def _compute_confluence_combo_export(
             if isinstance(raw_anchor, str) and raw_anchor.strip():
                 anchor = raw_anchor.strip()
 
+        # Bundle import restores confluence_combo_summary for reuse when Signals /
+        # signal_settings are absent. Prefer that baked export identity over
+        # silent unknown/generic drift on recompute.
+        if mode == "unknown":
+            restored = session_state.get("confluence_combo_summary")
+            if isinstance(restored, Mapping) and restored.get("available"):
+                restored_mode = str(restored.get("confluence_mode") or "").strip()
+                if restored_mode in {"anchor_rules", "global_cluster"}:
+                    mode = restored_mode
+                    if mode == "anchor_rules" and anchor is None:
+                        restored_anchor = restored.get("anchor_level")
+                        if isinstance(restored_anchor, str) and restored_anchor.strip():
+                            anchor = restored_anchor.strip()
+
         summary = confluence_attribution_summary(
             trades,
             min_trades=min_trades,
@@ -617,13 +631,9 @@ def _compute_confluence_combo_export(
             "warnings": list(summary.get("warnings") or []),
             "top_n": effective_top_n,
             "tables": {
-                "exact_combo": to_jsonable(
-                    _top_n_by_abs_total_r(exact_frame, effective_top_n)
-                ),
+                "exact_combo": to_jsonable(_top_n_by_abs_total_r(exact_frame, effective_top_n)),
                 "level_count": to_jsonable(level_count_frame),
-                "membership": to_jsonable(
-                    _top_n_by_abs_total_r(membership_frame, effective_top_n)
-                ),
+                "membership": to_jsonable(_top_n_by_abs_total_r(membership_frame, effective_top_n)),
                 "pairs": to_jsonable(_top_n_by_abs_total_r(pairs_frame, effective_top_n)),
             },
         }

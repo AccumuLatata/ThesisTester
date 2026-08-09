@@ -196,7 +196,9 @@ def test_dataset_only_import_clears_stale_downstream_artifacts():
         "sensitivity_config": {"perturbation_fraction": 0.2},
         "confluence_combo_summary": {"available": True, "trade_count": 3},
         "confluence_by_exact_combo": pd.DataFrame({"exact_combo_key": ["A|B"], "trade_count": [2]}),
-        "confluence_by_level_count": pd.DataFrame({"level_count_bucket": ["2"], "trade_count": [2]}),
+        "confluence_by_level_count": pd.DataFrame(
+            {"level_count_bucket": ["2"], "trade_count": [2]}
+        ),
         "confluence_by_membership": pd.DataFrame({"level_name": ["A"], "trade_count": [2]}),
         "confluence_by_pairs": pd.DataFrame({"pair_key": ["A|B"], "trade_count": [2]}),
     }
@@ -513,31 +515,38 @@ def test_portfolio_bundle_roundtrip_restores_portfolio_artifacts():
 
 
 def _confluence_combo_session_state() -> dict:
-    """Session trades with nonempty level_names for on-export combo recompute."""
+    """Session trades with nonempty level_names for on-export combo recompute.
+
+    Includes equity_curve so the backtest section is present — combo siblings
+    are gated on backtest inclusion (no orphan combo without trades.parquet).
+    """
+    trades = pd.DataFrame(
+        {
+            "trade_id": [1, 2, 3, 4, 5],
+            "entry_timestamp": pd.to_datetime(
+                [
+                    "2024-01-02 09:31",
+                    "2024-01-02 09:40",
+                    "2024-01-02 10:05",
+                    "2024-01-02 10:20",
+                    "2024-01-02 11:00",
+                ]
+            ),
+            "r_multiple": [1.0, -1.0, 0.5, None, 0.25],
+            "level_names": [
+                "pdHigh|VWAP_rolling_1h",
+                "VWAP_rolling_1h|pdHigh",
+                "pdHigh|VWAP_rolling_1h|pdPOC",
+                "",
+                "pdHigh",
+            ],
+            "trigger": ["touch", "touch", "touch", "touch", "3c"],
+        }
+    )
     return {
-        "trades": pd.DataFrame(
-            {
-                "trade_id": [1, 2, 3, 4, 5],
-                "entry_timestamp": pd.to_datetime(
-                    [
-                        "2024-01-02 09:31",
-                        "2024-01-02 09:40",
-                        "2024-01-02 10:05",
-                        "2024-01-02 10:20",
-                        "2024-01-02 11:00",
-                    ]
-                ),
-                "r_multiple": [1.0, -1.0, 0.5, None, 0.25],
-                "level_names": [
-                    "pdHigh|VWAP_rolling_1h",
-                    "VWAP_rolling_1h|pdHigh",
-                    "pdHigh|VWAP_rolling_1h|pdPOC",
-                    "",
-                    "pdHigh",
-                ],
-                "trigger": ["touch", "touch", "touch", "touch", "3c"],
-            }
-        ),
+        "trades": trades,
+        "equity_curve": pd.DataFrame({"trade_id": [1, 2, 3, 5], "cum_r": [1.0, 0.0, 0.5, 0.75]}),
+        "trade_summary": {"trade_count": 4},
         "signal_settings": {
             "confluence_mode": "anchor_rules",
             "anchor_level": "pdHigh",
@@ -631,23 +640,24 @@ def test_old_bundle_without_confluence_combo_still_imports():
 
 def test_confluence_combo_siblings_excluded_from_canonical_bundle_hash():
     """Derived combo siblings must not force a GOLDEN_REGEN bundle-hash bump."""
-    trades = _confluence_combo_session_state()["trades"]
-    equity = pd.DataFrame({"trade_id": [1], "cum_r": [1.0]})
-    base_state = {
-        "trades": trades,
-        "equity_curve": equity,
-        "trade_summary": {"trade_count": 4},
-        "signal_settings": {"confluence_mode": "anchor_rules", "anchor_level": "pdHigh"},
-    }
+    base_state = _confluence_combo_session_state()
     with_combo = build_research_bundle(base_state)
     assert _manifest(with_combo)["included"].get("confluence_combo") is True
     assert "confluence_combo_summary.json" in _bundle_names(with_combo)
 
     # Same logical backtest without optional combo files (rewrite zip).
+    # Only strip combo siblings — never confluence_zones.parquet.
+    combo_files = {
+        "confluence_combo_summary.json",
+        "confluence_by_exact_combo.parquet",
+        "confluence_by_level_count.parquet",
+        "confluence_by_membership.parquet",
+        "confluence_by_pairs.parquet",
+    }
     stripped = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(with_combo), "r") as src, zipfile.ZipFile(stripped, "w") as dst:
         for name in src.namelist():
-            if name.startswith("confluence_"):
+            if name in combo_files:
                 continue
             if name == "manifest.json":
                 manifest = json.loads(src.read(name).decode("utf-8"))
@@ -655,7 +665,14 @@ def test_confluence_combo_siblings_excluded_from_canonical_bundle_hash():
                 keys = [
                     key
                     for key in manifest.get("session_keys", [])
-                    if not str(key).startswith("confluence_")
+                    if key
+                    not in {
+                        "confluence_combo_summary",
+                        "confluence_by_exact_combo",
+                        "confluence_by_level_count",
+                        "confluence_by_membership",
+                        "confluence_by_pairs",
+                    }
                 ]
                 manifest["session_keys"] = keys
                 dst.writestr(name, json.dumps(manifest))
@@ -663,6 +680,60 @@ def test_confluence_combo_siblings_excluded_from_canonical_bundle_hash():
                 dst.writestr(name, src.read(name))
 
     assert canonical_bundle_hash(with_combo) == canonical_bundle_hash(stripped.getvalue())
+
+
+def test_confluence_combo_level_count_unknown_bucket_parquet_safe():
+    """Mixed int/(unknown) View-C buckets must not crash parquet export."""
+    state = _confluence_combo_session_state()
+    # Empty names with valid R → "(unknown)" alongside integer buckets.
+    state["trades"] = pd.DataFrame(
+        {
+            "trade_id": [1, 2, 3],
+            "entry_timestamp": pd.to_datetime(
+                ["2024-01-02 09:31", "2024-01-02 09:40", "2024-01-02 10:00"]
+            ),
+            "r_multiple": [1.0, -0.5, 0.25],
+            "level_names": ["A|B", "", "A"],
+            "trigger": ["touch", "touch", "3c"],
+        }
+    )
+    state["equity_curve"] = pd.DataFrame({"trade_id": [1, 2, 3], "cum_r": [1.0, 0.5, 0.75]})
+    bundle = build_research_bundle(state)
+    assert "confluence_by_level_count.parquet" in _bundle_names(bundle)
+    loaded = load_research_bundle(bundle)
+    buckets = set(loaded["session_values"]["confluence_by_level_count"]["level_count_bucket"])
+    assert "(unknown)" in buckets
+    assert "2" in buckets or 2 in buckets
+
+
+def test_confluence_combo_omitted_without_backtest_section():
+    """Trades without equity must not orphan combo siblings (no trades.parquet)."""
+    state = _confluence_combo_session_state()
+    del state["equity_curve"]
+    bundle = build_research_bundle(state)
+    names = _bundle_names(bundle)
+    assert "trades.parquet" not in names
+    assert "confluence_combo_summary.json" not in names
+    assert _manifest(bundle)["included"].get("confluence_combo") is not True
+
+
+def test_confluence_combo_restored_summary_preserves_mode_on_recompute():
+    """After import without signal_settings, recompute uses baked summary identity."""
+    from thesistester.reporting import build_confluence_combo_report_block
+
+    state = _confluence_combo_session_state()
+    bundle = build_research_bundle(state)
+    loaded = load_research_bundle(bundle)
+    restored: dict = {}
+    apply_research_bundle_to_session(loaded, restored)
+    # Simulate a session that kept trades but lost ephemeral signal_settings.
+    restored.pop("signal_settings", None)
+    restored.pop("setup_config", None)
+    block = build_confluence_combo_report_block(restored)
+    assert block is not None
+    assert block["confluence_mode"] == "anchor_rules"
+    assert block["anchor_level"] == "pdHigh"
+    assert block["pair_mode"] == "anchor_partner"
 
 
 def test_unknown_zip_files_are_ignored():

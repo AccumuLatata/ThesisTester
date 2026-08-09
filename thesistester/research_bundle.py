@@ -340,6 +340,40 @@ def _to_parquet_bytes(df: pd.DataFrame) -> bytes:
     return buffer.getvalue()
 
 
+def _parquet_safe_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a copy whose object columns are pyarrow-writable.
+
+    View-C ``level_count_bucket`` mixes ints with ``"(unknown)"``; pyarrow
+    rejects that object column. Stringify mixed / non-str object values so
+    optional confluence parquet siblings cannot take down bundle export.
+    """
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+    out = df.copy()
+    for col in out.columns:
+        series = out[col]
+        if series.dtype != object:
+            continue
+
+        def _is_null(value: Any) -> bool:
+            if value is None or value is pd.NA or value is pd.NaT:
+                return True
+            try:
+                result = pd.isna(value)
+            except (TypeError, ValueError):
+                return False
+            return bool(result) if isinstance(result, bool) else False
+
+        non_null_values = [value for value in series.tolist() if not _is_null(value)]
+        if not non_null_values:
+            continue
+        types = {type(value) for value in non_null_values}
+        if types <= {str}:
+            continue
+        out[col] = series.map(lambda value: value if _is_null(value) else str(value))
+    return out
+
+
 # Optional confluence combo siblings are deterministic projections of trades (+
 # signal-run identity). Exclude them from the canonical hash so legacy golden
 # bundle hashes stay stable without a GOLDEN_REGEN, while still shipping the
@@ -620,22 +654,25 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
         included_keys.update(_PORTFOLIO_META_KEYS)
 
     # PR 5c: confluence combo is Backtest on-the-fly only — recompute on export
-    # (no producer session key). Omit entirely when unavailable.
-    confluence_artifacts = build_confluence_combo_bundle_artifacts(session_state)
-    if isinstance(confluence_artifacts, dict):
-        summary_payload = confluence_artifacts.get("summary")
-        frames = confluence_artifacts.get("frames")
-        if isinstance(summary_payload, Mapping) and summary_payload.get("available"):
-            files["confluence_combo_summary.json"] = _to_json_bytes(summary_payload)
-            included_keys.add(_CONFLUENCE_COMBO_SUMMARY_KEY)
-            if isinstance(frames, Mapping):
-                for artifact_name, session_key in _CONFLUENCE_COMBO_FRAME_FROM_ARTIFACT.items():
-                    frame = frames.get(artifact_name)
-                    if _is_dataframe(frame) and not frame.empty:
-                        filename = _CONFLUENCE_COMBO_PARQUET_FILES[session_key]
-                        files[filename] = _to_parquet_bytes(frame)
-                        included_keys.add(session_key)
-            manifest["included"]["confluence_combo"] = True
+    # (no producer session key). Omit entirely when unavailable. Gate on the
+    # backtest section so combo siblings are never orphaned without trades.parquet
+    # (source of truth for later recompute).
+    if manifest["included"].get("backtest"):
+        confluence_artifacts = build_confluence_combo_bundle_artifacts(session_state)
+        if isinstance(confluence_artifacts, dict):
+            summary_payload = confluence_artifacts.get("summary")
+            frames = confluence_artifacts.get("frames")
+            if isinstance(summary_payload, Mapping) and summary_payload.get("available"):
+                files["confluence_combo_summary.json"] = _to_json_bytes(summary_payload)
+                included_keys.add(_CONFLUENCE_COMBO_SUMMARY_KEY)
+                if isinstance(frames, Mapping):
+                    for artifact_name, session_key in _CONFLUENCE_COMBO_FRAME_FROM_ARTIFACT.items():
+                        frame = frames.get(artifact_name)
+                        if _is_dataframe(frame) and not frame.empty:
+                            filename = _CONFLUENCE_COMBO_PARQUET_FILES[session_key]
+                            files[filename] = _to_parquet_bytes(_parquet_safe_frame(frame))
+                            included_keys.add(session_key)
+                manifest["included"]["confluence_combo"] = True
 
     identity_payload = _identity_payload_from_state(session_state)
     if identity_payload is not None:

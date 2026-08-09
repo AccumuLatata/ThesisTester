@@ -312,12 +312,16 @@ This engine is for **research screening**, not proof of a durable edge.
   so legacy reports stay unchanged. No Backtest producer session key is required.
 - Research Bundles may attach optional confluence combo siblings
   (`confluence_combo_summary.json` + optional `confluence_by_*.parquet`) via the
-  same on-export recompute. `included["confluence_combo"]` is set only when
-  available. Old bundles without those files still import; missing optional
-  parquet siblings do not fail load. Restored values use managed research keys
-  (`confluence_combo_summary`, `confluence_by_*`) cleared when the section is
-  absent. `BUNDLE_SCHEMA_VERSION` is not bumped for these optional siblings.
-  Canonical bundle hashes exclude these derived siblings (and the
+  same on-export recompute, and only when the backtest section is also included
+  (so siblings are never orphaned without `trades.parquet`).
+  `included["confluence_combo"]` is set only when available. Old bundles without
+  those files still import; missing optional parquet siblings do not fail load.
+  Restored values use managed research keys (`confluence_combo_summary`,
+  `confluence_by_*`) cleared when the section is absent; baked summary
+  mode/anchor is reused on recompute when ephemeral `signal_settings` are gone.
+  View-C mixed int/`(unknown)` count labels are stringified for parquet safety.
+  `BUNDLE_SCHEMA_VERSION` is not bumped for these optional siblings. Canonical
+  bundle hashes exclude these derived siblings (and the
   `included.confluence_combo` / related `session_keys` markers) so legacy golden
   hash locks stay stable without a `GOLDEN_REGEN`.
 - Rows are **observed traded combinations**, not the theoretical power set of
