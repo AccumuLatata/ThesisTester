@@ -1365,7 +1365,7 @@ No blocking open questions remain for PR 1–2.
 | Phase 2 | PR 2 Backtest expander UI + docs | **Implemented** (`pages/7_Backtest.py` expander; ASSUMPTIONS / METRICS_GLOSSARY / ARCHITECTURE) |
 | Phase 4 | PR 4 soft pairwise attribution | **Implemented** (`summarize_by_level_pairs` + Backtest **Pairs** tab) |
 | Phase 5 | PR 5a–5d downstream consumers | **Scoped** (detailed locks + 2026-08-09 completeness amendment); implementation not started; may precede PR 3 |
-| Phase 5a | Time Analysis opt-in combo/count groups | Not started |
+| Phase 5a | Time Analysis opt-in combo/count groups | Not started (`exact_combo_key` + `level_count_bucket`; append when `available`) |
 | Phase 5b | Report export diagnostic section | Not started (on-export recompute; omit-when-unavailable) |
 | Phase 5c | Bundle optional artifacts | Not started (on-export recompute; no producer session keys) |
 | Phase 5d | Assistant cite-bound projection | Not started (trades recompute; 5c not required) |
