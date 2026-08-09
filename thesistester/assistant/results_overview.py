@@ -1,9 +1,9 @@
 """DI/RI Discuss matching, path-catalog hints, and deterministic builders.
 
 Fail-closed numbers stay in ``llm_explainer``. This module selects frozen
-overview + specialist slices (RI-1: ``grid_ranking``; RI-3: ``validation_wfa``),
-builds DI-2 first-pass path catalogs, and builds auditor-safe replies when the
-LLM path fails.
+overview + specialist slices (RI-1: ``grid_ranking``; RI-2: ``time_ranking``;
+RI-3: ``validation_wfa``), builds DI-2 first-pass path catalogs, and builds
+auditor-safe replies when the LLM path fails.
 """
 
 from __future__ import annotations
@@ -24,19 +24,24 @@ from thesistester.assistant.llm_explainer import (
 OVERVIEW_INTENT_KPI = "kpi_summary"
 OVERVIEW_INTENT_RUN = "run_overview"
 INTENT_GRID_RANKING = "grid_ranking"
+INTENT_TIME_RANKING = "time_ranking"
 INTENT_VALIDATION_WFA = "validation_wfa"
 INTENT_MIXED_ASK = "mixed_ask"
 
-_LANDED_SPECIALIST_INTENTS = frozenset({INTENT_GRID_RANKING, INTENT_VALIDATION_WFA})
+_LANDED_SPECIALIST_INTENTS = frozenset(
+    {INTENT_GRID_RANKING, INTENT_TIME_RANKING, INTENT_VALIDATION_WFA}
+)
 
 REASON_PATH_MISS = "overview_path_miss"
 REASON_DIGIT_MISS = "overview_digit_miss"
 REASON_PROVIDER_EXHAUSTED = "overview_provider_exhausted"
 REASON_REPAIR_FAILED = "overview_repair_failed"
 REASON_MISSING_GRID = "grid_missing_evidence"
+REASON_MISSING_TIME = "time_missing_evidence"
 REASON_MISSING_VALIDATION = "validation_missing_evidence"
 REASON_MIXED_ASK = "mixed_ask_narrow"
 REASON_GRID_FALLBACK = "grid_deterministic_fallback"
+REASON_TIME_FALLBACK = "time_deterministic_fallback"
 REASON_VALIDATION_FALLBACK = "validation_deterministic_fallback"
 
 # Frozen §4.2 allowlist (include only when path exists on turn context).
@@ -161,19 +166,42 @@ _VALIDATION_PERMUTATION_COLLOCATES: tuple[str, ...] = (
     "test",
 )
 
+# RI-2 landed specialist cues (sunsets DI time/hour/bucket/clock/session negatives).
+_TIME_RANKING_POSITIVE_CUES: tuple[str, ...] = (
+    "best time",
+    "best entry",
+    "entry time",
+    "time bucket",
+    "session segment",
+    "hour bucket",
+)
+# Bare DI time negatives become owned after RI-2 sunset (boundary-safe vs runtime).
+_TIME_BARE_TOKEN_CUES: tuple[str, ...] = ("time", "hour", "bucket", "clock")
+# ``ranking`` / ``ranking metric`` count as time when a time collocate is present.
+_TIME_RANKING_CONTEXT_CUES: tuple[str, ...] = ("ranking", "ranking metric")
+_TIME_CONTEXT_COLLOCATES: tuple[str, ...] = (
+    "time",
+    "hour",
+    "bucket",
+    "clock",
+    "session",
+    "entry",
+    "best time",
+    "best entry",
+    "time bucket",
+    "hour bucket",
+    "session segment",
+)
+
 # DI §4.1 negatives not yet owned by a landed specialist builder (RI residual veto).
+# RI-2 sunsets time/hour/bucket/clock/session segment into ``time_ranking``.
 # RI-3 sunsets validation/wfa/oos/bootstrap into ``validation_wfa``.
 # ``otf validation`` stays residual until RI-5 (must not be owned by bare ``validation``).
 _RESIDUAL_NEGATIVE_CUES: tuple[str, ...] = (
     "monte carlo",
     "monte-carlo",
-    "time",
-    "hour",
-    "bucket",
-    "clock",
-    "session segment",
     "otf validation",
-    # Bare ranking stays residual until RI-2; grid-context ranking is handled above.
+    # Bare ranking without grid/time collocates stays residual (never overview).
     "ranking",
 )
 
@@ -205,6 +233,18 @@ _GRID_SL_PATHS: tuple[str, ...] = (
 _GRID_TP_PATHS: tuple[str, ...] = (
     "results.projections.grid_rankings.best.take_profit_ticks",
     "results.best_grid_result.take_profit_ticks",
+)
+
+# Frozen RI §4.3 allowlist (include only when path exists on turn context).
+TIME_CLAIM_PATHS: tuple[str, ...] = (
+    "results.projections.time_rankings.bucket_col",
+    "results.projections.time_rankings.metric",
+    "results.projections.time_rankings.min_trades",
+    "results.projections.time_rankings.selection_scope",
+    "results.projections.time_rankings.best.bucket",
+    "results.projections.time_rankings.best.trade_count",
+    "results.projections.time_rankings.best.metric_value",
+    "results.projections.time_rankings.best.sample_warning",
 )
 
 # Frozen RI §4.4 allowlist (include only when path exists on turn context).
@@ -283,16 +323,30 @@ def _validation_wfa_matches(normalized: str) -> bool:
     return False
 
 
+def _time_ranking_matches(normalized: str) -> bool:
+    if _any_cue_matches(_TIME_RANKING_POSITIVE_CUES, normalized):
+        return True
+    # Bare DI time negatives owned after RI-2 sunset (boundary vs runtime/stopwatch).
+    if _any_cue_matches(_TIME_BARE_TOKEN_CUES, normalized):
+        return True
+    if _any_cue_matches(_TIME_RANKING_CONTEXT_CUES, normalized) and _any_cue_matches(
+        _TIME_CONTEXT_COLLOCATES, normalized
+    ):
+        return True
+    return False
+
+
 def _hard_residual_negative_matches(normalized: str) -> bool:
-    """Residual cues that block landed specialists (time/MC/ranking/otf validation)."""
+    """Residual cues that block landed specialists (MC/ranking/otf validation)."""
     if _any_cue_matches(
         tuple(cue for cue in _RESIDUAL_NEGATIVE_CUES if cue != "ranking"),
         normalized,
     ):
         return True
-    # Bare ranking without grid collocates remains residual until RI-2.
-    if _alias_matches("ranking", normalized) and not _any_cue_matches(
-        _GRID_CONTEXT_COLLOCATES, normalized
+    # Bare ranking without grid or time collocates remains residual (never overview).
+    if _alias_matches("ranking", normalized) and not (
+        _any_cue_matches(_GRID_CONTEXT_COLLOCATES, normalized)
+        or _any_cue_matches(_TIME_CONTEXT_COLLOCATES, normalized)
     ):
         return True
     return False
@@ -345,13 +399,14 @@ def match_discuss_intent(message: str) -> str | None:
 
     Multi-eval (no first-match short-circuit): evaluate landed cue tables
     independently, then apply residual veto / mixed-ask rules.
-    Landed intents in RI-3: ``grid_ranking``, ``validation_wfa``, ``kpi_summary``,
-    ``run_overview``.
+    Landed intents in RI-2+: ``grid_ranking``, ``time_ranking``,
+    ``validation_wfa``, ``kpi_summary``, ``run_overview``.
     """
     if not isinstance(message, str) or not message.strip():
         return None
     normalized = _normalize_message(message)
     grid = _grid_ranking_matches(normalized)
+    time_ask = _time_ranking_matches(normalized)
     validation = _validation_wfa_matches(normalized)
     kpi = _any_cue_matches(_KPI_POSITIVE_CUES, normalized)
     run = _any_cue_matches(_RUN_OVERVIEW_POSITIVE_CUES, normalized)
@@ -359,13 +414,15 @@ def match_discuss_intent(message: str) -> str | None:
     specialists: list[str] = []
     if grid:
         specialists.append(INTENT_GRID_RANKING)
+    if time_ask:
+        specialists.append(INTENT_TIME_RANKING)
     if validation:
         specialists.append(INTENT_VALIDATION_WFA)
 
     hard_residual = _hard_residual_negative_matches(normalized)
     soft_residual = _soft_bare_grid_token_residual(normalized)
 
-    # §4.1 step 3: hard residual (time/MC/ranking/otf) blocks specialists → None.
+    # §4.1 step 3: hard residual (MC/bare-ranking/otf) blocks specialists → None.
     if hard_residual:
         return None
 
@@ -485,6 +542,178 @@ def has_validation_wfa_evidence(evidence_context: Mapping[str, Any]) -> bool:
     return False
 
 
+def _time_grouped_summary_from_context(
+    evidence_context: Mapping[str, Any],
+) -> Mapping[str, Any] | Sequence[Mapping[str, Any]] | None:
+    results = evidence_context.get("results")
+    if not isinstance(results, Mapping):
+        return None
+    summary = results.get("time_grouped_summary")
+    if isinstance(summary, Mapping) and summary:
+        return summary
+    if isinstance(summary, Sequence) and not isinstance(summary, (str, bytes)) and summary:
+        return summary
+    return None
+
+
+def _coerce_hour_bucket_label(value: Any) -> Any:
+    """Normalize integer hour buckets to ``HH:00`` clock labels for grounding.
+
+    String labels (``09:30``, ``rth_morning``) pass through. Hour-like ints/floats
+    in ``0..23`` become zero-padded clock strings so RQ clock-span grounding and
+    claim narration stay aligned.
+    """
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, (int, float)):
+        if isinstance(value, float) and (value != value or not value.is_integer()):
+            return value
+        hour = int(value)
+        if 0 <= hour <= 23:
+            return f"{hour:02d}:00"
+        return value
+    return value
+
+
+def _normalize_time_rankings_buckets(projected: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a shallow copy with hour-like ``bucket`` leaves coerced to clocks."""
+    out = dict(projected)
+    best = out.get("best")
+    if isinstance(best, Mapping):
+        best_copy = dict(best)
+        if "bucket" in best_copy:
+            best_copy["bucket"] = _coerce_hour_bucket_label(best_copy["bucket"])
+        out["best"] = best_copy
+    rows = out.get("rows")
+    if isinstance(rows, Sequence) and not isinstance(rows, (str, bytes)):
+        normalized_rows: list[Any] = []
+        for row in rows:
+            if isinstance(row, Mapping):
+                row_copy = dict(row)
+                if "bucket" in row_copy:
+                    row_copy["bucket"] = _coerce_hour_bucket_label(row_copy["bucket"])
+                normalized_rows.append(row_copy)
+            else:
+                normalized_rows.append(row)
+        out["rows"] = normalized_rows
+    by_rank = out.get("by_rank")
+    if isinstance(by_rank, Mapping):
+        normalized_rank: dict[str, Any] = {}
+        for key, row in by_rank.items():
+            if isinstance(row, Mapping):
+                row_copy = dict(row)
+                if "bucket" in row_copy:
+                    row_copy["bucket"] = _coerce_hour_bucket_label(row_copy["bucket"])
+                normalized_rank[str(key)] = row_copy
+            else:
+                normalized_rank[str(key)] = row
+        out["by_rank"] = normalized_rank
+    return out
+
+
+def _time_bucket_display_label(value: Any) -> str | None:
+    """Return a narratable time-bucket label, or None when empty/non-narratable."""
+    coerced = _coerce_hour_bucket_label(value)
+    if isinstance(coerced, bool) or coerced is None:
+        return None
+    if isinstance(coerced, str):
+        text = coerced.strip()
+        return text or None
+    if isinstance(coerced, (int, float)):
+        if isinstance(coerced, float) and coerced != coerced:
+            return None
+        if isinstance(coerced, float) and coerced.is_integer():
+            return str(int(coerced))
+        return format(coerced, ".12g") if isinstance(coerced, float) else str(coerced)
+    return None
+
+
+def _ensure_time_rankings_context(
+    evidence_context: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Return a context that includes ``results.projections.time_rankings`` when possible.
+
+    Prefers an existing projection with a narratable ``best.bucket``. When the
+    projection is absent or incomplete (null/empty best), projects from
+    ``results.time_grouped_summary`` via the RQ helper (no TIME.analyze).
+    Integer hour buckets are normalized to ``HH:00`` labels for RQ grounding.
+    """
+    if not isinstance(evidence_context, Mapping):
+        return {}
+
+    def _with_projection(projected: Mapping[str, Any]) -> dict[str, Any]:
+        merged = dict(evidence_context)
+        results = dict(merged.get("results") or {})
+        projections = dict(results.get("projections") or {})
+        projections["time_rankings"] = _normalize_time_rankings_buckets(projected)
+        results["projections"] = projections
+        merged["results"] = results
+        return merged
+
+    def _best_bucket_narratable(ctx: Mapping[str, Any]) -> bool:
+        path = "results.projections.time_rankings.best.bucket"
+        if not _path_exists(ctx, path):
+            return False
+        return _format_scalar_for_claim(path, _path_get(ctx, path)) is not None
+
+    existing: Mapping[str, Any] | None = None
+    if _path_exists(evidence_context, "results.projections.time_rankings"):
+        raw = _path_get(evidence_context, "results.projections.time_rankings")
+        if isinstance(raw, Mapping):
+            existing = raw
+
+    normalized_existing: dict[str, Any] | None = None
+    if existing is not None:
+        normalized_existing = _with_projection(existing)
+        if _best_bucket_narratable(normalized_existing):
+            return normalized_existing
+
+    summary = _time_grouped_summary_from_context(evidence_context)
+    if summary is None:
+        return normalized_existing if normalized_existing is not None else evidence_context
+    try:
+        from thesistester.assistant.results_projections import project_time_rankings
+
+        projected = project_time_rankings(summary)
+    except Exception:
+        return normalized_existing if normalized_existing is not None else evidence_context
+    if not isinstance(projected, Mapping) or not projected:
+        return normalized_existing if normalized_existing is not None else evidence_context
+    # Empty best → still attach projection meta so allowlist/catalog stay honest.
+    return _with_projection(projected)
+
+
+def present_time_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return frozen time-ranking claim paths with narratable scalars only."""
+    if not isinstance(evidence_context, Mapping):
+        return ()
+    working = _ensure_time_rankings_context(evidence_context)
+    out: list[str] = []
+    for path in TIME_CLAIM_PATHS:
+        if not _path_exists(working, path):
+            continue
+        value = _path_get(working, path)
+        if _format_scalar_for_claim(path, value) is None:
+            continue
+        out.append(path)
+    return tuple(out)
+
+
+def has_time_ranking_evidence(evidence_context: Mapping[str, Any]) -> bool:
+    """True when a narratable best time bucket exists (§4.3).
+
+    Meta-only projections without ``best.bucket`` do not count — that is a
+    missing-time limitation, not a clock invention opportunity.
+    """
+    if not isinstance(evidence_context, Mapping):
+        return False
+    working = _ensure_time_rankings_context(evidence_context)
+    path = "results.projections.time_rankings.best.bucket"
+    if not _path_exists(working, path):
+        return False
+    return _format_scalar_for_claim(path, _path_get(working, path)) is not None
+
+
 def build_prompt_path_catalog(
     evidence_context: Mapping[str, Any],
     *,
@@ -540,6 +769,22 @@ def build_prompt_path_catalog(
             "soften missing_oos / failed_oos caveats."
         )
         catalog["preferred_claim_paths"] = validation_paths
+    elif intent == INTENT_TIME_RANKING:
+        # Ensure projected paths are listed when only time_grouped_summary exists.
+        working = _ensure_time_rankings_context(evidence_context)
+        time_paths = list(present_time_allowlist(working))
+        catalog["discuss_intent"] = INTENT_TIME_RANKING
+        catalog["time_allowlist"] = time_paths
+        catalog["specialist_instruction"] = (
+            "This is a best-entry-time / session-bucket ask. Prefer citing a "
+            "subset of time_allowlist / preferred_claim_paths. Cite bucket, "
+            "metric, selection_scope, and sample_warning when present. Do not "
+            "invent clocks or buckets. Do not answer with trade_summary KPIs."
+        )
+        catalog["preferred_claim_paths"] = time_paths
+        # Prefer the working context's existing_paths when we projected locally.
+        if working is not evidence_context:
+            catalog["existing_paths"] = list(collect_existing_paths(working))
     return catalog
 
 
@@ -871,6 +1116,11 @@ def apply_expert_overlay(
 
 def _format_scalar_for_claim(path: str, value: Any) -> str | None:
     """Return claim text for an allowlisted scalar, or None when not narratable."""
+    # RI-2: sample_warning is an explicit allowlisted boolean honesty claim.
+    if path.endswith("sample_warning") and isinstance(value, bool):
+        return (
+            "Sample warning is true (thin bucket sample)." if value else "Sample warning is false."
+        )
     if value is None or isinstance(value, bool):
         return None
     if path.endswith("win_rate"):
@@ -894,6 +1144,8 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             return f"Best take-profit ticks is {display}."
         if path.endswith("metric_value"):
             return f"Ranked metric value is {display}."
+        if path.endswith("min_trades"):
+            return f"Minimum trades floor is {display}."
         if path.endswith("median_test_expectancy_r"):
             return f"Median OOS test expectancy R is {display}."
         if path.endswith("stitched_oos_total_r"):
@@ -909,10 +1161,18 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             return f"Bootstrap CI upper is {display}."
         if path.endswith("probability_positive"):
             return f"Bootstrap probability mean R is positive is {display}."
+        if path.endswith("trade_count"):
+            return f"Trade count is {display}."
+        # Integer hour buckets must not fall through to generic "bucket is N."
+        if path.endswith("best.bucket"):
+            label = _time_bucket_display_label(value)
+            if label:
+                return f"Best time bucket is {label}."
+            return None
         return f"{leaf} is {display}."
     if isinstance(value, str) and value.strip():
         text = value.strip()
-        # Grid / validation honesty labels are narratable strings.
+        # Grid / validation / time honesty labels are narratable strings.
         if path.endswith("selection_scope"):
             return f"Selection scope is {text}."
         if path.endswith("oos_status") or path.endswith("stitched_oos_status"):
@@ -925,6 +1185,10 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             return f"Grid overfit risk level is {text}."
         if path.endswith("walk_forward_summary.status"):
             return f"Walk-forward status is {text}."
+        if path.endswith("bucket_col"):
+            return f"Time bucket column is {text}."
+        if path.endswith("best.bucket"):
+            return f"Best time bucket is {text}."
         # KPI allowlist is numeric; skip other non-numeric strings.
         return None
     return None
@@ -1032,11 +1296,13 @@ def build_mixed_ask_remediation_reply(
 
     summary = (
         "That ask mixes more than one results topic. Ask about one topic at a time "
-        "(for example key metrics, best stop and take profit, or walk-forward)."
+        "(for example key metrics, best stop and take profit, best entry time, "
+        "or walk-forward)."
     )
     followups = (
         "Ask for the key metrics or a summary of this run.",
         "Ask about best stop and take profit ranking if a grid was recorded.",
+        "Ask about the best entry time or session bucket if time analysis was recorded.",
         "Ask whether walk-forward or validation diagnostics are present on this packet.",
     )
     caveats = merge_mandatory_packet_caveats(
@@ -1093,6 +1359,107 @@ def build_missing_validation_limitation_reply(
         summary=summary,
         caveats=caveats,
         claims=(),
+        followups=followups,
+        recovery_reason=recovery_reason,
+    )
+
+
+def build_missing_time_limitation_reply(
+    packet: EvidencePacket,
+    *,
+    recovery_reason: str | None = REASON_MISSING_TIME,
+):
+    """Digit-free missing-time limitation (RI-2 short-circuit; no invented clocks)."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    summary = (
+        "I cannot answer best entry time or session-bucket ranking because time "
+        "ranking evidence is not present on this run."
+    )
+    followups = (
+        "Ask for the key metrics or a summary of this run.",
+        "Ask whether a time or session analysis was recorded for this run.",
+    )
+    caveats = merge_mandatory_packet_caveats(
+        packet,
+        (
+            "No entry-time or session-bucket figures were invented for this ask.",
+            "Time rankings are in-sample bucket diagnostics, not out-of-sample proof.",
+        ),
+    )
+    assert_llm_explanation_grounded(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+    )
+    return ResultsQAReply(
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+        recovery_reason=recovery_reason,
+    )
+
+
+def build_deterministic_time_ranking_reply(
+    packet: EvidencePacket,
+    evidence_context: Mapping[str, Any],
+    *,
+    recovery_reason: str | None = None,
+):
+    """Build an auditor-safe best-entry-time reply from the frozen §4.3 allowlist."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    working = _ensure_time_rankings_context(evidence_context)
+    if not has_time_ranking_evidence(working):
+        return build_missing_time_limitation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MISSING_TIME,
+        )
+
+    claims: list[EvidenceClaim] = []
+    summary_parts: list[str] = []
+    for path in TIME_CLAIM_PATHS:
+        if not _path_exists(working, path):
+            continue
+        value = _path_get(working, path)
+        text = _format_scalar_for_claim(path, value)
+        if text is None:
+            continue
+        claims.append(EvidenceClaim(text=text, path=path, value=value))
+        summary_parts.append(text.rstrip("."))
+
+    claim_paths = {claim.path for claim in claims}
+    if not claims or "results.projections.time_rankings.best.bucket" not in claim_paths:
+        return build_missing_time_limitation_reply(
+            packet,
+            recovery_reason=recovery_reason or REASON_MISSING_TIME,
+        )
+
+    summary = "Best entry time / session bucket: " + "; ".join(summary_parts) + "."
+    caveat_seed = (
+        "Time rankings reflect in-sample bucket selection on the recorded sample, not a forecast.",
+        "Do not treat the selected bucket as out-of-sample confirmation unless OOS/WFA evidence says so.",
+    )
+    grounded = tuple(claims)
+    caveats = merge_mandatory_packet_caveats(packet, caveat_seed)
+    followups = (
+        "Ask about best stop and take profit ranking if a grid was recorded.",
+        "Ask for the key metrics or a summary of this run.",
+    )
+    assert_llm_explanation_grounded(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=grounded,
+        followups=followups,
+    )
+    return ResultsQAReply(
+        summary=summary,
+        caveats=caveats,
+        claims=grounded,
         followups=followups,
         recovery_reason=recovery_reason,
     )

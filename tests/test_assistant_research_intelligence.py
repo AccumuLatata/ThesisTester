@@ -1,6 +1,8 @@
-"""RI Research Intelligence: grid + validation/WFA slices, residual veto, short-circuits."""
+"""RI Research Intelligence: grid + time + validation/WFA slices, residual veto, short-circuits."""
 
 from __future__ import annotations
+
+import json
 
 import pytest
 
@@ -10,20 +12,25 @@ from thesistester.assistant.llm_explainer import LLMEvidenceError
 from thesistester.assistant.results_overview import (
     INTENT_GRID_RANKING,
     INTENT_MIXED_ASK,
+    INTENT_TIME_RANKING,
     INTENT_VALIDATION_WFA,
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
     REASON_MISSING_GRID,
+    REASON_MISSING_TIME,
     REASON_MISSING_VALIDATION,
     REASON_MIXED_ASK,
     REASON_PATH_MISS,
     build_deterministic_grid_ranking_reply,
+    build_deterministic_time_ranking_reply,
     has_grid_ranking_evidence,
     has_overview_negative_cue,
+    has_time_ranking_evidence,
     has_validation_wfa_evidence,
     match_discuss_intent,
     match_overview_intent,
     present_grid_allowlist,
+    present_time_allowlist,
     present_validation_allowlist,
 )
 from thesistester.assistant.results_projections import build_ephemeral_results_context
@@ -36,6 +43,7 @@ def _packet(
     projections: bool = False,
     walk_forward: bool = False,
     validation: bool = False,
+    time_summary: bool = False,
     missing_oos: bool = False,
 ) -> EvidencePacket:
     results: dict = {
@@ -74,6 +82,21 @@ def _packet(
             },
             "grid_overfit": {"risk_level": "medium"},
         }
+    if time_summary:
+        results["time_grouped_summary"] = [
+            {
+                "entry_30min_bucket": "09:30",
+                "trade_count": 24,
+                "avg_r": 0.45,
+                "sample_warning": False,
+            },
+            {
+                "entry_30min_bucket": "14:00",
+                "trade_count": 18,
+                "avg_r": 0.20,
+                "sample_warning": False,
+            },
+        ]
     caveats = ()
     if missing_oos:
         caveats = (
@@ -82,6 +105,9 @@ def _packet(
                 message="Out-of-sample / walk-forward evidence is missing.",
             ),
         )
+    limitations = ()
+    if not time_summary:
+        limitations = ("Time analysis is not present in this evidence packet.",)
     return EvidencePacket(
         provenance={"run_id": "run_ri"},
         assumptions={
@@ -91,7 +117,7 @@ def _packet(
         },
         results=results,
         warnings=(),
-        limitations=("Time analysis is not present in this evidence packet.",),
+        limitations=limitations,
         caveats=caveats,
     )
 
@@ -140,13 +166,22 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert match_discuss_intent("validation diagnostics please") == INTENT_VALIDATION_WFA
     assert match_discuss_intent("Give me KPIs and validation stats") == INTENT_MIXED_ASK
     assert match_discuss_intent("best SL and validation") == INTENT_MIXED_ASK
-    # Residual cue not owned yet (time) still blocks even with landed specialists.
-    assert match_discuss_intent("best SL and best time") is None
-    assert match_discuss_intent("walk-forward by hour bucket") is None
-    # Soft bare-grid residual must not veto lone validation_wfa.
+    # RI-2: time is a landed specialist; multi-specialist asks are mixed_ask.
+    assert match_discuss_intent("What is the best time?") == INTENT_TIME_RANKING
+    assert match_discuss_intent("best entry please") == INTENT_TIME_RANKING
+    assert match_discuss_intent("hour bucket ranking") == INTENT_TIME_RANKING
+    assert match_discuss_intent("session segment please") == INTENT_TIME_RANKING
+    assert match_discuss_intent("best SL and best time") == INTENT_MIXED_ASK
+    assert match_discuss_intent("walk-forward by hour bucket") == INTENT_MIXED_ASK
+    assert match_discuss_intent("KPIs and best entry time") == INTENT_MIXED_ASK
+    # Soft bare-grid residual must not veto lone validation_wfa or time_ranking.
     assert match_discuss_intent("tp and oos") == INTENT_VALIDATION_WFA
     assert match_discuss_intent("oos for my tp") == INTENT_VALIDATION_WFA
     assert match_discuss_intent("validation of my stop") == INTENT_VALIDATION_WFA
+    # Bare tp (no grid collocate) must not veto lone time_ranking.
+    assert match_discuss_intent("tp and hour bucket") == INTENT_TIME_RANKING
+    # "best" collocates bare tp → grid + time → mixed_ask.
+    assert match_discuss_intent("tp and best time") == INTENT_MIXED_ASK
     # Soft residual still refuses overview topic-swap (not kpi_summary).
     assert match_discuss_intent("Give me KPIs and what's my stop?") is None
     assert has_overview_negative_cue("Give me KPIs and what's my stop?") is True
@@ -168,6 +203,7 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert match_overview_intent("KPIs and best SL/TP") is None
     assert match_overview_intent("Give me KPIs and validation stats") is None
     assert match_overview_intent("Summarize the walk-forward results") is None
+    assert match_overview_intent("What is the best time?") is None
     assert match_overview_intent("summarize this run") == OVERVIEW_INTENT_RUN
 
 
@@ -175,12 +211,15 @@ def test_residual_veto_and_false_friends_for_overview_negative_export():
     assert has_overview_negative_cue("What is the best SL/TP?") is True
     assert has_overview_negative_cue("summarize the walk-forward results") is True
     assert has_overview_negative_cue("validation diagnostics please") is True
+    assert has_overview_negative_cue("What is the best time?") is True
     assert has_overview_negative_cue("KPIs and best SL/TP") is True
-    # Bare ranking (no grid collocate) stays residual — do not poison with "grid".
+    # Bare ranking (no grid/time collocate) stays residual — do not poison with "grid".
     assert match_discuss_intent("ranking alone") is None
     assert has_overview_negative_cue("ranking alone") is True
     assert match_discuss_intent("what is the ranking") is None
     assert has_overview_negative_cue("what is the ranking") is True
+    # Time-sense ranking collocates land time_ranking (no longer residual).
+    assert match_discuss_intent("time ranking") == INTENT_TIME_RANKING
     # Bare stop/target still refuse overview (DX), but are not grid_ranking.
     assert has_overview_negative_cue("What's my stop?") is True
     assert has_overview_negative_cue("full stop") is True
@@ -189,6 +228,9 @@ def test_residual_veto_and_false_friends_for_overview_negative_export():
     # oos false friends must not fire validation ownership.
     assert match_discuss_intent("boost the sample") is None
     assert match_discuss_intent("loose ends only") is None
+    # R18: time/grid false friends must not fire specialist ownership.
+    assert match_discuss_intent("runtime of this batch") is None
+    assert match_discuss_intent("stopwatch only") is None
     assert has_overview_negative_cue("runtime of this batch") is False
     assert has_overview_negative_cue("stopwatch only") is False
     assert has_overview_negative_cue("non-stop session") is False
@@ -231,6 +273,174 @@ def test_r2_missing_grid_short_circuits_without_llm():
     assert reply.recovery_reason == REASON_MISSING_GRID
     assert "grid" in reply.summary.lower()
     assert "99" not in reply.summary
+
+
+def test_r4_uncited_llm_digits_fall_back_to_deterministic_time():
+    packet = _packet(best_grid=True, time_summary=True)
+    context = build_ephemeral_results_context(packet)
+    assert has_time_ranking_evidence(context) is True
+    client = _FailClient(
+        {
+            "summary": "Best entry is 99:99 with secret clock 77.",
+            "caveats": ["Invented clocks."],
+            "claims": [
+                {
+                    "text": "Best bucket is 99:99.",
+                    "path": "results.trade_summary.trade_count",
+                }
+            ],
+            "followups": ["Deploy this now."],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What is the best time?",
+        turn_context=context,
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "results.projections.time_rankings.best.bucket" in paths
+    assert any(claim.value == "09:30" for claim in reply.claims)
+    assert "99:99" not in reply.summary
+    assert "77" not in reply.summary
+    assert client.calls == 1
+
+
+def test_r5_missing_time_short_circuits_without_llm():
+    packet = _packet(best_grid=True, time_summary=False)
+    assert has_time_ranking_evidence(packet.to_dict()) is False
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What is the best entry time?",
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MISSING_TIME
+    assert "time" in reply.summary.lower()
+    assert "99" not in reply.summary
+
+
+def test_time_allowlist_and_deterministic_builder_from_summary():
+    packet = _packet(time_summary=True)
+    # No ephemeral projections yet — builder/evidence must project from summary.
+    assert "projections" not in packet.to_dict()["results"]
+    assert has_time_ranking_evidence(packet.to_dict()) is True
+    paths = present_time_allowlist(packet.to_dict())
+    assert "results.projections.time_rankings.best.bucket" in paths
+    reply = build_deterministic_time_ranking_reply(packet, packet.to_dict())
+    claim_paths = {claim.path for claim in reply.claims}
+    assert "results.projections.time_rankings.best.bucket" in claim_paths
+    assert "results.projections.time_rankings.selection_scope" in claim_paths
+    assert any(claim.value == "09:30" for claim in reply.claims)
+    assert "99" not in reply.summary
+
+
+def test_time_summary_only_syncs_evidence_packet_with_catalog_paths():
+    """Catalog preferred paths must exist on evidence_packet for path audit."""
+    packet = _packet(time_summary=True)
+    assert "projections" not in packet.to_dict()["results"]
+
+    class _CatalogClient:
+        def __init__(self):
+            self.calls = 0
+            self.last_user: dict | None = None
+
+        def complete_structured(self, **kwargs):
+            self.calls += 1
+            self.last_user = json.loads(kwargs["user"])
+            return {
+                "summary": "Best entry bucket is 09:30 under avg_r.",
+                "caveats": ["In-sample time buckets only."],
+                "claims": [
+                    {
+                        "text": "Best bucket is 09:30.",
+                        "path": "results.projections.time_rankings.best.bucket",
+                    },
+                    {
+                        "text": "Trade count is 24.",
+                        "path": "results.projections.time_rankings.best.trade_count",
+                    },
+                ],
+                "followups": ["Ask about KPIs next."],
+            }
+
+    client = _CatalogClient()
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What is the best time?",
+        repair_retry_enabled=False,
+        deterministic_specialist_fallback=False,
+    )
+    assert client.calls == 1
+    assert client.last_user is not None
+    evidence = client.last_user["evidence_packet"]
+    catalog = client.last_user["path_catalog"]
+    bucket_path = "results.projections.time_rankings.best.bucket"
+    assert evidence["results"]["projections"]["time_rankings"]["best"]["bucket"] == "09:30"
+    assert bucket_path in catalog["existing_paths"]
+    assert bucket_path in catalog["preferred_claim_paths"]
+    assert reply.claims[0].value == "09:30"
+    assert "09:30" in reply.summary
+
+
+def test_incomplete_time_projection_reprojects_from_summary():
+    packet = _packet(time_summary=True)
+    context = packet.to_dict()
+    context["results"] = dict(context["results"])
+    context["results"]["projections"] = {
+        "time_rankings": {
+            "bucket_col": "entry_30min_bucket",
+            "metric": "avg_r",
+            "min_trades": 10,
+            "selection_scope": "in_sample_time_buckets",
+            "best": {"bucket": None, "trade_count": None, "metric_value": None},
+        }
+    }
+    assert has_time_ranking_evidence(context) is True
+    reply = build_deterministic_time_ranking_reply(packet, context)
+    assert any(claim.value == "09:30" for claim in reply.claims)
+    assert "results.projections.time_rankings.best.bucket" in {c.path for c in reply.claims}
+
+
+def test_numeric_hour_bucket_claim_label_and_grounding():
+    from thesistester.assistant.results_overview import _format_scalar_for_claim
+
+    assert (
+        _format_scalar_for_claim("results.projections.time_rankings.best.bucket", 9)
+        == "Best time bucket is 09:00."
+    )
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri2_hour"},
+        assumptions={},
+        results={
+            "projections": {
+                "time_rankings": {
+                    "bucket_col": "entry_hour_bucket",
+                    "metric": "avg_r",
+                    "min_trades": 10,
+                    "selection_scope": "in_sample_time_buckets",
+                    "best": {
+                        "bucket": 9,
+                        "trade_count": 20,
+                        "metric_value": 0.4,
+                        "sample_warning": False,
+                    },
+                }
+            }
+        },
+        warnings=(),
+        limitations=(),
+    )
+    reply = build_deterministic_time_ranking_reply(packet, packet.to_dict())
+    assert "Best time bucket is 09:00" in reply.summary
+    assert any(claim.value == "09:00" for claim in reply.claims)
 
 
 def test_r13_mixed_ask_narrow_remediation_without_llm():

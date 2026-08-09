@@ -609,6 +609,11 @@ other than the last bar in the dataset.
   `validation_wfa` builder / missing-validation short-circuit; validation/WFA/OOS
   cues sunset from residual; never substitutes `trade_summary` as OOS proof;
   mixed asks (e.g. KPIs+validation) still narrow-remediate until RI-8.
+  **RI-2 landed:** deterministic `time_ranking` builder / missing-time
+  short-circuit; time/hour/bucket/clock/session-segment cues sunset from
+  residual; no invented clocks; projects from `time_grouped_summary` when
+  ephemeral `time_rankings` are absent or incomplete, syncing into the turn
+  evidence packet before catalog/LLM audit (no new TIME.analyze).
   Incremental PRs keep DI residual negative-cue vetoes for not-yet-owned
   specialist topics (and DX veto≠unmatched) until each builder PR sunsets its
   cues; RI must not invent metrics, remap topics onto KPI overview, answer OOS
