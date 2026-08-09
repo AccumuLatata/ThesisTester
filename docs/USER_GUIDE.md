@@ -832,10 +832,12 @@ version
 5. Ask in the page chat box under **Discuss results**
    (placeholder: **Ask about this completed run**) — for example expectancy,
    best SL/TP, entry windows, KPIs / key metrics, costs/assumptions, exit reasons
-   / extreme trades / streaks (when trade tables were recorded), or a run summary.
-   Answers stay
-   grounded in hash-verified evidence for that run only (see **When to use Help
-   vs Discuss results** for DI overview vs specialist cues).
+   / extreme trades / streaks (when trade tables were recorded), validation /
+   walk-forward, Monte Carlo / robustness, or a run summary.
+   Answers stay grounded in hash-verified evidence for that run only (see
+   **When to use Help vs Discuss results** for overview vs specialist cues).
+   Opt-in realtime voice duplex uses the same grounded specialist envelopes
+   for those asks (voice remains default-off).
 
 Classic **Discuss this run** deep-links into the same **Discuss runs** mode with
 the run preselected for **Discuss results**. Discuss Q&A lives in that mode, not under Advanced.

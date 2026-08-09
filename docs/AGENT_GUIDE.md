@@ -379,18 +379,16 @@ parse as an `AssistantRequest`, then pass `validate_capability_request()`.
   single-metric, meaning overlays, mixed-ask composition, bounded trade
   projections, duplex specialist envelopes) has a **single** continuation
   contract: `docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md` (RI-series).
-  **RI-1/RI-2/RI-3/RI-4/RI-5/RI-6/RI-7/RI-8/RI-9 landed** (`grid_ranking`,
-  `time_ranking`, `validation_wfa`, `robustness_tier2`, `assumptions_costs`,
-  `deep_trade`, `single_metric` + residual veto matcher + digit-free meaning
-  overlay + `compose_deterministic_replies` for mixed asks ≤3 intents + capped
-  ephemeral deep-trade projections). Do not reopen DI/DX/RQ wholesale; stay
-  inside RI scope tables.
+  **RI-0…RI-10 complete** (`grid_ranking`, `time_ranking`, `validation_wfa`,
+  `robustness_tier2`, `assumptions_costs`, `deep_trade`, `single_metric` +
+  residual veto matcher + digit-free meaning overlay +
+  `compose_deterministic_replies` + capped deep-trade projections + duplex
+  specialist envelopes via shared `build_deterministic_discuss_reply`). Do not
+  reopen DI/DX/RQ wholesale; amend the RI contract for follow-ons.
   Keep the RQ auditor fail-closed; fail-open only via frozen intent→allowlist
-  builders.
-  Incremental RI PRs must preserve DI residual negative-cue vetoes (and DX
-  veto≠unmatched) until each specialist builder sunsets its cues; never answer
-  OOS/WFA asks with in-sample `single_metric` leaves. Keep RQ-5 / DI / DX banks
-  green; extend `tests/test_assistant_research_intelligence.py` as RI PRs land.
+  builders. Permanent residuals (bare stop/ranking/monte) keep DX veto ≠
+  unmatched. Never answer OOS/WFA asks with in-sample `single_metric` leaves.
+  Keep RQ-5 / DI / DX / RI banks green.
 
 ## Development environment (R9)
 - Editable install with tooling: `pip install -e ".[dev]"` (packaging metadata and pinned

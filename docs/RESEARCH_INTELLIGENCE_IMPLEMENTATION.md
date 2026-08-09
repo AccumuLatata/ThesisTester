@@ -1,7 +1,7 @@
 # Research Intelligence — Implementation Contract
 
 **Document type:** Implementation contract (RI-series) — **single source of truth**
-**Status:** 🚧 **RI-9 landed** (grid + time + validation/WFA + single-metric + meaning overlay + mixed-ask composition + tier-2 robustness + assumptions/costs + bounded deep-trade projections); series not complete until RI-10
+**Status:** ✅ **RI-0…RI-10 complete** (grid + time + validation/WFA + single-metric + meaning overlay + mixed-ask composition + tier-2 robustness + assumptions/costs + bounded deep-trade projections + duplex specialist envelopes)
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/results_overview.py` (intent matching /
 deterministic builders / overlays), `results_qa.py` (recovery wiring),
@@ -50,7 +50,7 @@ strictness with a chatty model.
 |---|---|---|
 | RQ | Channel, packet, projections, digit/path auditor | **Call / consume**; must not loosen `assert_llm_explanation_grounded` or invent packet fields |
 | DI | Overview intents `kpi_summary` / `run_overview`, overview recovery order, overview negative-cue veto, path catalog, digit-free overlay substrate | **Extend** matcher into a unified Discuss intent router (§4); keep DI overview behavior for pure overview asks; amend DI characterization tests only when a specialist intent now owns a former “veto→remediation” case |
-| DX | Duplex overview envelopes | RI-1…RI-9 text-first; **RI-10** projects new specialist builders into duplex tools without forking cue/path tables |
+| DX | Duplex overview envelopes | ✅ RI-10 projects specialist builders into duplex tools without forking cue/path tables; permanent residuals keep veto ≠ unmatched |
 | HC / Help | Product how-to | Must not answer run performance from Help; RI does not reopen Help |
 | VA | Spoken transport | Out of RI except RI-10 envelope parity; voice default stays off |
 | RI (this doc) | Specialist (+ single-metric + meaning + mixed-ask) fail-open slices on Discuss | Intent→allowlisted claims→deterministic builders→same auditor→digit-free meaning overlays; residual DI veto migration §4.1.1 until each builder sunsets its cues |
@@ -239,21 +239,22 @@ has_overview_negative_cue(text) ≡ overview_refused(text)
   Specialist duplex envelopes wait for RI-10 unless an earlier PR amends DX
   with an explicit relationship note.
 
-**DI §4.1 negative → owner sunset map** (amend when a cue moves):
+**DI §4.1 negative → owner sunset map** (RI-10: all specialist owners landed;
+remaining rows are **explicitly retired** permanent residuals — never overview):
 
 | Residual DI negative cue(s) | Owner PR that may sunset | Until sunset behavior |
 |---|---|---|
-| `grid`, `stop loss`, `take profit`, `sl/tp`, collocated `sl`/`tp`/`stop`/`target` (with best/pair/grid/ranking), grid-sense `ranking` | RI-1 (`grid_ranking`) | Veto overview + block `single_metric`; after RI-1, landed `grid_ranking` owns collocated/multi-word forms. Bare `sl`/`tp`/`stop`/`target` **without** those collocates stay residual overview-refusing (DX veto ≠ unmatched; avoids “full stop” false grid matches) |
+| `grid`, `stop loss`, `take profit`, `sl/tp`, collocated `sl`/`tp`/`stop`/`target` (with best/pair/grid/ranking), grid-sense `ranking` | RI-1 (`grid_ranking`) | ✅ sunsets in RI-1 — landed `grid_ranking` owns collocated/multi-word forms. Bare `sl`/`tp`/`stop`/`target` **without** those collocates → ✅ **explicitly retired** permanent residual (DX veto ≠ unmatched; avoids “full stop” false grid matches) |
 | `time`, `hour`, `bucket`, `clock`, `session segment`, time-sense ranking collocates | RI-2 (`time_ranking`) | ✅ sunsets in RI-2 — landed `time_ranking` owns them (boundary-safe vs `runtime` / `stopwatch`) |
 | `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap`, validation-sense `permutation` (with collocates) | RI-3 (`validation_wfa`) | ✅ sunsets in RI-3 — landed `validation_wfa` owns them. Bare `permutation` without collocates does not match. |
 | `otf validation`, `otf-validation` | RI-5 (`robustness_tier2`) | ✅ sunsets in RI-5 — landed `robustness_tier2` owns them (must **not** be owned by bare RI-3 `validation`; hyphen form also overview-vetoes) |
-| `monte carlo`, `monte-carlo`, `overfitting`, `overfit` | RI-5 (`robustness_tier2`) | ✅ sunsets in RI-5 — landed `robustness_tier2` owns them (block overview + `single_metric` via specialist match). Bare `monte` / `carlo` stay hard residual (veto ≠ unmatched; never `single_metric`). |
-| Bare `ranking` with no grid/time collocate | After RI-2: residual only when neither grid nor time collocates are present | Never overview |
+| `monte carlo`, `monte-carlo`, `overfitting`, `overfit` | RI-5 (`robustness_tier2`) | ✅ sunsets in RI-5 — landed `robustness_tier2` owns them. Bare `monte` / `carlo` → ✅ **explicitly retired** permanent residual (veto ≠ unmatched; never `single_metric`) |
+| Bare `ranking` with no grid/time collocate | After RI-2 | ✅ **explicitly retired** permanent residual — never overview |
 
-**Acceptance fixtures that must stay green across RI-1…RI-9 (unless the owning
-PR deliberately recharacterizes them):** DI T9 (WFA), DI
-`Give me KPIs and validation stats` veto, DX X4 (WFA veto ≠ unmatched), and
-false-friend T16/X equivalents.
+**Acceptance fixtures:** DI T9 / mixed KPIs+validation / DX X4–X5 are
+recharacterized by their owning RI PRs (WFA→`validation_wfa` envelope or
+limitation; mixed→compose). False-friend T16/X equivalents stay green.
+Permanent residuals (bare stop/ranking/monte) keep veto ≠ unmatched.
 
 ### 4.2 `grid_ranking` claim allowlist (RI-1)
 
@@ -784,4 +785,4 @@ complete coverage; duplex last so text builders are stable.
 | RI-7 Grounded meaning overlay v2 | ✅ landed |
 | RI-8 Mixed-ask composition | ✅ landed |
 | RI-9 Bounded deep-trade projections | ✅ landed |
-| RI-10 Duplex parity + eval freeze | ⬚ pending |
+| RI-10 Duplex parity + eval freeze | ✅ landed |

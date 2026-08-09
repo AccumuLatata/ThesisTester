@@ -2343,3 +2343,212 @@ def test_ri9_deep_trade_rejects_kpi_substitution_via_fallback():
     assert "results.projections.exit_reason_counts.total_trades" in paths
     assert not any("trade_summary" in path for path in paths)
     assert "0.25" not in reply.summary
+
+
+# ── RI-10 duplex parity (§10 R20) ─────────────────────────────────────────────
+
+
+def _ri10_voice_session(tmp_path, packet: EvidencePacket):
+    """Minimal results_qa realtime session bound to *packet* for duplex R20."""
+    from thesistester.assistant.repository import LocalThesisRepository
+    from thesistester.assistant.tools import AssistantTools
+    from thesistester.assistant.voice.session import VoiceSessionService
+    from thesistester.assistant.voice.settings import VoiceSettings, load_voice_settings
+    from thesistester.research_bundle import build_research_bundle, canonical_bundle_hash
+
+    run_spec = {
+        "dataset": {"path": "bars.csv", "instrument": "ES"},
+        "levels": {},
+        "setup": {
+            "name": "ri10",
+            "description": "",
+            "instrument": "ES",
+            "selected_levels": ["dVWAP_RTH"],
+            "tolerance_ticks": 0,
+            "min_confluences": 1,
+            "max_confluences": 1,
+            "naked_only": False,
+            "naked_requirement": "any",
+            "trigger": "touch",
+            "direction": "both",
+        },
+        "backtest": {
+            "commission_per_side": 0,
+            "slippage_ticks": 0,
+            "exposure_policy": "single_position",
+            "intrabar_model": "sl_first",
+            "flat_by_session_close": True,
+            "session_close_time": "16:00",
+            "session_timezone": "America/New_York",
+            "no_new_entries_after": "15:45",
+        },
+    }
+    repository = LocalThesisRepository(tmp_path / "assistant")
+    thesis = repository.create_thesis(name="ri10")
+    draft = repository.create_spec_version(
+        thesis.thesis_id,
+        normalized_run_spec=run_spec,
+        status="ready_for_confirmation",
+        compiler_version="runspec-2",
+    )
+    confirmed = repository.confirm_spec_version(
+        thesis.thesis_id, draft.version, confirmation_note="ok"
+    )
+    run = repository.start_run(
+        thesis.thesis_id, spec_version=confirmed.version, request={"request_id": "ri10"}
+    )
+    bundle_bytes = build_research_bundle({})
+    digest = canonical_bundle_hash(bundle_bytes)
+    bundle_path = tmp_path / "ri10.research.zip"
+    bundle_path.write_bytes(bundle_bytes)
+    completed = repository.complete_run(
+        thesis.thesis_id,
+        run.run_id,
+        expected_revision=run.revision,
+        provenance={
+            "bundle_path": str(bundle_path),
+            "canonical_bundle_hash": digest,
+        },
+    )
+    base = load_voice_settings()
+    settings = VoiceSettings(
+        enabled=True,
+        provider=base.provider,
+        model=base.model,
+        voice=base.voice,
+        mode=base.mode,
+        channels=base.channels,
+        max_session_minutes=base.max_session_minutes,
+        store_audio=base.store_audio,
+        allow_web_search=base.allow_web_search,
+        require_tool_for_numbers=base.require_tool_for_numbers,
+        ephemeral_token_ttl_seconds=base.ephemeral_token_ttl_seconds,
+        max_history_messages=base.max_history_messages,
+        max_retries=base.max_retries,
+    )
+    tools = AssistantTools(data_roots=(tmp_path,))
+    service = VoiceSessionService(repository, tools=tools, settings=settings)
+    record = service.create_session(
+        thesis.thesis_id,
+        completed.run_id,
+        expected_hash=digest,
+        mode="realtime",
+        channel="results_qa",
+    )
+    service._bound_packets[record.session_id] = packet
+    handle = service.tool_session(thesis.thesis_id, record.session_id)
+    return service, handle, thesis
+
+
+def test_r20_duplex_specialist_ask_returns_envelope_or_limitation(tmp_path):
+    """R20: duplex specialist ask → grounded specialist envelope/limitation; no KPI swap."""
+    from thesistester.assistant.voice.contracts import VoiceTranscriptTurn
+    from thesistester.assistant.voice.tools import execute_voice_tool
+
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri10"},
+        assumptions={"instrument": "NQ"},
+        results={
+            "trade_summary": {
+                "trade_count": 42,
+                "expectancy_r": 0.25,
+                "win_rate": 0.52,
+            },
+            "best_grid_result": {
+                "stop_loss_ticks": 8,
+                "take_profit_ticks": 16,
+                "trade_count": 40,
+            },
+        },
+        warnings=(),
+        limitations=(),
+    )
+    service, handle, thesis = _ri10_voice_session(tmp_path, packet)
+
+    # Grid specialist with evidence → grounded SL/TP claims, no kpi_claims field.
+    service.append_transcript_turn(
+        thesis.thesis_id,
+        handle.session_id,
+        VoiceTranscriptTurn(
+            role="user",
+            text="What is the best SL/TP?",
+            channel="results_qa",
+            path="stt",
+            created_at="2026-08-09T00:00:00+00:00",
+        ),
+    )
+    grid = execute_voice_tool("get_run_overview", {}, session=handle)["result"]
+    assert grid["overview_intent"] == INTENT_GRID_RANKING
+    assert grid["claims"]
+    assert "kpi_claims" not in grid or grid.get("kpi_claims") in (None, [])
+    grid_paths = {item["path"] for item in grid["claims"]}
+    assert any(path.endswith("stop_loss_ticks") for path in grid_paths)
+    assert any(path.endswith("take_profit_ticks") for path in grid_paths)
+    assert not any("trade_summary.expectancy" in path for path in grid_paths)
+
+    # WFA specialist without evidence → limitation (not KPI topic-swap).
+    service.append_transcript_turn(
+        thesis.thesis_id,
+        handle.session_id,
+        VoiceTranscriptTurn(
+            role="assistant",
+            text="Best stop is grounded.",
+            channel="results_qa",
+            path="tts",
+            created_at="2026-08-09T00:00:01+00:00",
+        ),
+    )
+    service.append_transcript_turn(
+        thesis.thesis_id,
+        handle.session_id,
+        VoiceTranscriptTurn(
+            role="user",
+            text="summarize the walk-forward results",
+            channel="results_qa",
+            path="stt",
+            created_at="2026-08-09T00:00:02+00:00",
+        ),
+    )
+    wfa = execute_voice_tool("get_run_overview", {}, session=handle)["result"]
+    assert wfa["overview_intent"] == INTENT_VALIDATION_WFA
+    assert wfa["claims"] == []
+    assert "kpi_claims" not in wfa or wfa.get("kpi_claims") in (None, [])
+    assert wfa.get("summary")
+    assert "0.25" not in wfa["summary"]
+    assert _ungrounded_number_tokens(wfa["summary"], allowed=set()) == []
+
+
+def test_r20_duplex_pure_overview_still_kpi_envelope(tmp_path):
+    """R20 regression: pure overview asks keep DI KPI envelope (kpi_claims)."""
+    from thesistester.assistant.voice.contracts import VoiceTranscriptTurn
+    from thesistester.assistant.voice.tools import execute_voice_tool
+
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri10_ov"},
+        assumptions={},
+        results={
+            "trade_summary": {
+                "trade_count": 42,
+                "expectancy_r": 0.25,
+                "win_rate": 0.52,
+            }
+        },
+        warnings=(),
+        limitations=(),
+    )
+    service, handle, thesis = _ri10_voice_session(tmp_path, packet)
+    service.append_transcript_turn(
+        thesis.thesis_id,
+        handle.session_id,
+        VoiceTranscriptTurn(
+            role="user",
+            text="summarize this run",
+            channel="results_qa",
+            path="stt",
+            created_at="2026-08-09T00:00:00+00:00",
+        ),
+    )
+    result = execute_voice_tool("get_run_overview", {}, session=handle)["result"]
+    assert result["overview_intent"] == OVERVIEW_INTENT_RUN
+    assert result["kpi_claims"]
+    assert result["claims"] == result["kpi_claims"]

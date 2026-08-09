@@ -34,7 +34,7 @@ rejected.
 | VA | Spoken transport (PTT + xAI realtime sidecar), tool allowlist names, session bind, digit audit | Call VA tools/session/sidecar; **must not** change provider, topology, TTL, search/mcp deny, or reopen VA broadly |
 | RQ | Discuss channel schema, digit/path honesty, projections | Call; **must not** amend `assert_llm_explanation_grounded` / path-existence rules |
 | HC / Help | Product how-to corpus | Out of DX v1 (Help duplex remains deferred) |
-| RI | Specialist Discuss slices (`docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md`) | Out of DX v1 for specialist envelopes. **RI-1…RI-9 regression gate:** `has_overview_negative_cue` must stay true for residual DI negatives not yet sunsets by a landed specialist builder (veto ≠ unmatched; no neutral `run_overview` topic-swap). **RI-10** may project RI builders into duplex envelopes and amend DX characterization only with an explicit relationship note; do not fork cue/path tables |
+| RI | Specialist Discuss slices (`docs/RESEARCH_INTELLIGENCE_IMPLEMENTATION.md`) | **RI-10 relationship note:** duplex `get_run_overview` projects shared RI builders (`build_deterministic_discuss_reply` / compose) into specialist envelopes when `match_discuss_intent` lands a specialist/`mixed_ask`/`single_metric` — no cue/path fork in `voice/`. Permanent residuals (bare stop/ranking/monte) still use veto ≠ unmatched. Pure overview asks keep DI KPI envelopes (`kpi_claims`). Do not reopen DX wholesale for specialist content |
 | DX (this doc) | **Content parity** for VA-5 full-duplex results talk with DI overview/KPI intelligence — via tool envelopes + session instructions | Tool/instruction substrate only; no live-PCM pre-gate; no provider swap |
 
 **Landing note:** DX-0 freezes this contract alone (plan PR). Do not treat the
@@ -157,10 +157,11 @@ strips — that VA limitation remains acknowledged, not “fixed” by DX.
 User speech (VA-5 duplex)
   → xAI realtime model (unchanged transport)
   → VA-3 function tools (enriched envelopes)
-        get_run_overview  → DI deterministic KPI/overview builder
+        get_run_overview  → DI KPI/overview builder OR RI specialist/mixed
+                            builders (shared helpers; no cue fork)
                             + digit-free expert overlay lines
                             + mandatory packet caveats / limitations
-                            (+ veto → remediation; legacy narrative stripped)
+                            (+ permanent residual veto → remediation)
         get_metric        → path descriptions / errors prefer DI paths
                             (trade_summary.*; do not document trade_count)
         list_caveats      → unchanged (packet caveats/warnings only)
@@ -176,15 +177,20 @@ User speech (VA-5 duplex)
 Duplex does **not** run the full DI recovery pipeline. It uses DI matching
 only to shape **tool outputs** (and DX-2 instruction hints).
 
-**Decision order when building `get_run_overview` (frozen):**
+**Decision order when building `get_run_overview` (frozen; RI-10 amends specialist branch):**
 
 ```text
 latest_user_text = last role=="user" transcript on session when it is still
                    the newest turn (or missing / stale → treat as no-text)
-if text available and has_overview_negative_cue(text):
-    → full veto remediation (+ legacy strip); overview_intent = null
-elif text available and match_overview_intent(text) in {kpi_summary, run_overview}:
+intent = match_discuss_intent(text) when text available else None
+if intent in specialist | single_metric | mixed_ask:
+    → RI specialist/mixed envelope via shared builders
+      (summary + claims; no kpi_claims; overview_intent = intent id;
+       missing evidence → limitation summary + empty claims)
+elif intent in {kpi_summary, run_overview}:
     → DI overview envelope (policy A) for that intent
+elif text available and has_overview_negative_cue(text):
+    → permanent residual veto remediation (+ legacy strip); overview_intent = null
 else:
     → neutral DI run_overview envelope
       (covers: no text / race / stale prior-turn text, unmatched vague asks,
@@ -193,10 +199,11 @@ else:
 
 | Case | Behavior |
 |---|---|
-| Latest user text matches `kpi_summary` / `run_overview` without negative veto | DI-shaped overview envelope (§4.2 policy A): `kpi_claims` + matching legacy `claims`, DI `summary`, `expert_overlay`, packet caveats; `overview_intent` = matched id |
-| `has_overview_negative_cue(text)` (DI §4.1 veto set) or mixed overview+specialist ask | Full veto: **no** KPI must-cite slice; **no** explainer multi-template `overview`/`claims`; digit-free `remediation` + packet `caveats`/`limitations`; `overview_intent = null` |
-| Unmatched text (no negative cue) — including vague / PTT unrecognized fallback | **Neutral** DI `run_overview` envelope (grounded KPI scalars + digit-free overlay). **Not** remediation. Overview tool does not redirect to `get_metric`. DX-2 §4.3 needles steer the model to prefer DI-shaped overview fields and avoid specialist topic-swap via overview — they do **not** add a single-metric→`get_metric` redirect instruction. Acceptable DX v1 limitation: a mistooled single-metric ask that still calls `get_run_overview` may receive the full neutral KPI slice. |
-| No user transcript text on session yet (race), **or** last user text is stale (an assistant turn already followed it) | Same neutral DI `run_overview` envelope. Stale prior-turn text must not false-veto a later overview call. Topic-swap defense for the pure race is DX-2 instructions + evals, not tool veto. |
+| Latest user text matches `kpi_summary` / `run_overview` | DI-shaped overview envelope (§4.2 policy A): `kpi_claims` + matching legacy `claims`, DI `summary`, `expert_overlay`, packet caveats; `overview_intent` = matched id |
+| Landed specialist / `single_metric` / `mixed_ask` (RI-10) | Specialist envelope from shared RI builders: `summary` + `claims` for that allowlist (or limitation); **no** `kpi_claims`; `overview_intent` = specialist/`mixed_ask` id. Never KPI topic-swap. |
+| Permanent residual (`has_overview_negative_cue` with no landed specialist owner — bare stop/ranking/monte) | Full veto: **no** KPI must-cite slice; digit-free `remediation` + packet `caveats`/`limitations`; `overview_intent = null` |
+| Unmatched text (no residual cue) — including vague / PTT unrecognized fallback | **Neutral** DI `run_overview` envelope (grounded KPI scalars + digit-free overlay). **Not** remediation. |
+| No user transcript text on session yet (race), **or** last user text is stale (an assistant turn already followed it) | Same neutral DI `run_overview` envelope. Stale prior-turn text must not false-route a later overview call. |
 
 **DX-1 freeze for request text:**
 
@@ -269,7 +276,7 @@ this subsection in the same PR):
 Duplex overview rules: prefer tool fields summary, kpi_claims, expert_overlay, and packet caveats.
 Cite only paths returned by tools; never invent results.trade_count, results.instrument, or results.validation.trade_count.
 When tools return fractional win rates, say them as percent / %.
-Do not answer walk-forward, validation, ranking, or time asks by reading get_run_overview as a substitute; call a specialist-appropriate tool or remediate.
+When get_run_overview returns specialist claims or a specialist overview_intent, prefer those fields; never substitute kpi_claims for walk-forward, validation, ranking, time, costs, robustness, or deep-trade asks.
 No trade advice; sample-size and OOS caveats still apply.
 ```
 
@@ -388,8 +395,8 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 | X1 | `get_run_overview` on packet with `trade_summary` (overview-match or neutral) | `kpi_claims` and legacy `claims` cite DI allowlist paths only and match each other |
 | X2 | Envelope / schema / intent guidance | Never suggests `results.trade_count` as baseline sample size; prefer `results.trade_summary.trade_count` |
 | X3 | Latest user text “KPIs of this run” | `overview_intent` in `{kpi_summary, run_overview}`; summary digits from claims |
-| X4 | Latest user text “summarize the walk-forward / validation results” | `has_overview_negative_cue` true; negative veto; **no** KPI must-cite slice; legacy `claims == []`; legacy `overview` is remediation/empty (not explainer narrative); remediation digit-free; `overview_intent is null` |
-| X5 | Mixed “KPIs and best SL/TP” | Full veto; no partial KPI slice; same legacy strip as X4. (Text Discuss may compose via RI-8; duplex overview envelope stays veto until RI-10 specialist envelopes.) |
+| X4 | Latest user text “summarize the walk-forward / validation results” | RI-10: `overview_intent == validation_wfa`; grounded WFA claims **or** missing-validation limitation; **no** `kpi_claims` / KPI topic-swap; digit-free when claims empty |
+| X5 | Mixed “KPIs and best SL/TP” | RI-10: `overview_intent == mixed_ask`; composed claims from both allowlists when evidence present; **no** `kpi_claims` field (specialist envelope shape) |
 | X4b | Latest user text unmatched / vague (“tell me about this”, bare “summary” without DI anchored overview cue) **without** negative cue | Neutral `run_overview` envelope (KPI claims when present); **not** remediation; `overview_intent == "run_overview"` |
 | X6 | `expert_overlay` lines | `_ungrounded_number_tokens(line, allowed=set()) == []`; not copied into legacy caveat dicts |
 | X7 | Missing `trade_summary` | Honest limitation / remediation; no fabricated scalars |

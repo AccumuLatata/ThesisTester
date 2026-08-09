@@ -4,8 +4,9 @@ Fail-closed numbers stay in ``llm_explainer``. This module selects frozen
 overview + specialist slices (RI-1: ``grid_ranking``; RI-2: ``time_ranking``;
 RI-3: ``validation_wfa``; RI-4: ``single_metric``; RI-5: ``robustness_tier2``;
 RI-6: ``assumptions_costs``; RI-9: ``deep_trade``), builds DI-2 first-pass path
-catalogs, builds auditor-safe replies when the LLM path fails, and attaches
-DI-3/RI-7 digit-free meaning overlays after mandatory caveats.
+catalogs, builds auditor-safe replies when the LLM path fails, attaches
+DI-3/RI-7 digit-free meaning overlays after mandatory caveats, and exposes
+``build_deterministic_discuss_reply`` for RI-10 duplex envelope projection.
 """
 
 from __future__ import annotations
@@ -52,6 +53,8 @@ _LANDED_SPECIALIST_INTENTS = frozenset(
 _OVERVIEW_REFUSING_INTENTS = frozenset(
     {*_LANDED_SPECIALIST_INTENTS, INTENT_SINGLE_METRIC, INTENT_MIXED_ASK}
 )
+# RI-10 duplex: project these intents via shared builders (not KPI topic-swap).
+DUPLEX_SPECIALIST_INTENTS = frozenset(_OVERVIEW_REFUSING_INTENTS)
 
 REASON_PATH_MISS = "overview_path_miss"
 REASON_DIGIT_MISS = "overview_digit_miss"
@@ -2973,6 +2976,83 @@ def compose_deterministic_replies(
         discuss_intent=INTENT_MIXED_ASK,
         evidence_context=working,
     )
+
+
+def build_deterministic_discuss_reply(
+    packet: EvidencePacket,
+    evidence_context: Mapping[str, Any],
+    *,
+    user_message: str,
+    discuss_intent: str | None = None,
+):
+    """Build a pure deterministic Discuss reply for a matched specialist intent.
+
+    Shared by text Discuss recovery short-circuits and RI-10 duplex envelope
+    projection. Does **not** call the LLM. Returns ``None`` when *discuss_intent*
+    is overview/unmatched (callers keep the KPI/neutral path). Hydrates grid/time
+    projections the same way as ``propose_results_reply``.
+    """
+    intent = (
+        discuss_intent
+        if discuss_intent is not None
+        else match_discuss_intent(user_message)
+    )
+    if intent not in DUPLEX_SPECIALIST_INTENTS:
+        return None
+
+    working = dict(evidence_context) if isinstance(evidence_context, Mapping) else {}
+    if intent in {INTENT_GRID_RANKING, INTENT_MIXED_ASK}:
+        working = dict(_ensure_grid_rankings_context(working))
+    if intent == INTENT_TIME_RANKING:
+        working = dict(_ensure_time_rankings_context(working))
+    if intent == INTENT_MIXED_ASK:
+        matched = list_matched_discuss_intents(user_message)
+        if INTENT_TIME_RANKING in matched:
+            working = dict(_ensure_time_rankings_context(working))
+        return compose_deterministic_replies(
+            packet,
+            working,
+            user_message=user_message,
+            intents=matched,
+        )
+    if intent == INTENT_GRID_RANKING:
+        if not has_grid_ranking_evidence(working):
+            return build_missing_grid_limitation_reply(packet)
+        return build_deterministic_grid_ranking_reply(packet, working)
+    if intent == INTENT_TIME_RANKING:
+        if not has_time_ranking_evidence(working):
+            return build_missing_time_limitation_reply(packet)
+        return build_deterministic_time_ranking_reply(packet, working)
+    if intent == INTENT_VALIDATION_WFA:
+        if not has_validation_wfa_evidence(working):
+            return build_missing_validation_limitation_reply(packet)
+        return build_deterministic_validation_wfa_reply(packet, working)
+    if intent == INTENT_ROBUSTNESS_TIER2:
+        if not has_robustness_tier2_evidence(working):
+            return build_missing_robustness_limitation_reply(
+                packet, evidence_context=working
+            )
+        return build_deterministic_robustness_reply(packet, working)
+    if intent == INTENT_ASSUMPTIONS_COSTS:
+        if not has_assumptions_costs_evidence(working):
+            return build_missing_assumptions_limitation_reply(
+                packet, evidence_context=working
+            )
+        return build_deterministic_assumptions_reply(packet, working)
+    if intent == INTENT_DEEP_TRADE:
+        if not has_deep_trade_evidence(working):
+            return build_missing_deep_trade_limitation_reply(
+                packet, evidence_context=working
+            )
+        return build_deterministic_deep_trade_reply(packet, working)
+    if intent == INTENT_SINGLE_METRIC:
+        metric_path = resolve_single_metric_path(user_message)
+        if metric_path is None or not has_single_metric_evidence(working, metric_path):
+            return build_missing_metric_limitation_reply(packet, path=metric_path)
+        return build_deterministic_single_metric_reply(
+            packet, working, path=metric_path
+        )
+    return None
 
 
 def build_missing_validation_limitation_reply(
