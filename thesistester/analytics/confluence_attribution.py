@@ -1,0 +1,413 @@
+"""Post-trade confluence combo attribution analytics.
+
+Pure helpers for Backtest research views:
+
+- exact combo (canonical sorted ``level_names`` sets)
+- level membership (double-counting participants)
+- parsed level-count buckets
+
+No zone / signal / fill engine changes. Summaries return **all** groups with
+``sample_warning``; UI owns hide-below-``min_trades`` presentation filtering.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+
+EMPTY_LEVEL_NAMES_KEY = "__empty__"
+EMPTY_LEVEL_NAMES_LABEL = "(no level names)"
+UNKNOWN_LEVEL_COUNT_LABEL = "(unknown)"
+
+EXACT_COMBO_KEY_COL = "exact_combo_key"
+EXAMPLE_RAW_COL = "example_raw_level_names"
+LEVEL_NAME_COL = "level_name"
+LEVEL_COUNT_BUCKET_COL = "level_count_bucket"
+LEVEL_TOKEN_COUNT_COL = "level_token_count"
+
+MEMBERSHIP_DOUBLE_COUNT_WARNING = (
+    "Membership attribution double-counts trades across levels. "
+    "Use it to find useful participants, not as an additive PnL decomposition."
+)
+TRIGGER_3C_LEVEL_NAMES_WARNING = (
+    "For 3c, level_names may be the tested level only, not full zone membership."
+)
+
+_GROUP_METRIC_COLS: list[str] = [
+    "trade_count",
+    "win_rate",
+    "avg_r",
+    "median_r",
+    "total_r",
+    "sample_warning",
+]
+
+_EXAMPLE_RAW_POSITION_COL = "__cca_example_raw_position__"
+
+
+def _is_nullish(value: Any) -> bool:
+    """True for None / NaN / NaT / pd.NA (scalar nulls only)."""
+    if value is None or value is pd.NA or value is pd.NaT:
+        return True
+    try:
+        result = pd.isna(value)
+    except (TypeError, ValueError):
+        return False
+    # Guard array-like results from non-scalars.
+    return bool(result) if isinstance(result, (bool, np.bool_)) else False
+
+
+def parse_level_names(raw: Any) -> list[str]:
+    """Normalize ``|`` / ``,`` delimiters, strip, drop empties, de-dupe in order."""
+    if _is_nullish(raw):
+        return []
+    if isinstance(raw, (list, tuple, set)):
+        tokens: list[str] = []
+        seen: set[str] = set()
+        for item in raw:
+            if _is_nullish(item):
+                continue
+            text = str(item).strip()
+            if not text or text.lower() == "nan":
+                continue
+            if text not in seen:
+                seen.add(text)
+                tokens.append(text)
+        return tokens
+
+    text = str(raw).strip()
+    if not text or text.lower() == "nan":
+        return []
+
+    parts = [part.strip() for part in text.replace(",", "|").split("|")]
+    tokens = []
+    seen = set()
+    for part in parts:
+        if not part:
+            continue
+        if part not in seen:
+            seen.add(part)
+            tokens.append(part)
+    return tokens
+
+
+def exact_combo_key(raw: Any) -> str:
+    """Canonical sorted combo key; ``EMPTY_LEVEL_NAMES_KEY`` when none."""
+    tokens = parse_level_names(raw)
+    if not tokens:
+        return EMPTY_LEVEL_NAMES_KEY
+    return "|".join(sorted(tokens))
+
+
+def format_display_combo(
+    tokens_or_key: Any,
+    *,
+    anchor_level: str | None = None,
+) -> str:
+    """UI display helper for combo labels.
+
+    If ``anchor_level`` is present in the token set, render
+    ``anchor|sorted(rest)``. Otherwise render the canonical sorted key.
+    Never invents an anchor from token order.
+    """
+    if _is_nullish(tokens_or_key):
+        return EMPTY_LEVEL_NAMES_LABEL
+
+    if isinstance(tokens_or_key, (list, tuple, set)):
+        tokens = parse_level_names(list(tokens_or_key))
+    else:
+        text = str(tokens_or_key).strip()
+        if not text or text.lower() == "nan" or text == EMPTY_LEVEL_NAMES_KEY:
+            return EMPTY_LEVEL_NAMES_LABEL
+        tokens = parse_level_names(text)
+
+    if not tokens:
+        return EMPTY_LEVEL_NAMES_LABEL
+
+    if anchor_level is not None:
+        anchor = str(anchor_level).strip()
+        if anchor and anchor in set(tokens):
+            rest = sorted(token for token in tokens if token != anchor)
+            return "|".join([anchor, *rest])
+
+    return "|".join(sorted(tokens))
+
+
+def attach_combo_columns(trades: pd.DataFrame) -> pd.DataFrame:
+    """Return a copy with ``exact_combo_key`` and parsed ``level_token_count``.
+
+    ``level_token_count`` is the distinct parsed-token count from
+    ``level_names`` (View C grain). Stored ``level_count`` is ignored.
+    """
+    if trades is None or not isinstance(trades, pd.DataFrame):
+        return pd.DataFrame(columns=[EXACT_COMBO_KEY_COL, LEVEL_TOKEN_COUNT_COL])
+
+    out = trades.copy()
+    if "level_names" not in out.columns:
+        out[EXACT_COMBO_KEY_COL] = EMPTY_LEVEL_NAMES_KEY
+        out[LEVEL_TOKEN_COUNT_COL] = 0
+        return out
+
+    parsed = out["level_names"].map(parse_level_names)
+    out[EXACT_COMBO_KEY_COL] = parsed.map(
+        lambda tokens: EMPTY_LEVEL_NAMES_KEY if not tokens else "|".join(sorted(tokens))
+    )
+    out[LEVEL_TOKEN_COUNT_COL] = parsed.map(len).astype("int64")
+    return out
+
+
+def _clamp_min_trades(min_trades: int) -> int:
+    try:
+        value = int(min_trades)
+    except (TypeError, ValueError):
+        value = 10
+    return max(value, 1)
+
+
+def _empty_group_frame(group_col: str, extra_cols: list[str] | None = None) -> pd.DataFrame:
+    cols = [group_col, *(extra_cols or []), *_GROUP_METRIC_COLS]
+    return pd.DataFrame(columns=cols)
+
+
+def _summarize_r(
+    trades: pd.DataFrame,
+    group_col: str,
+    min_trades: int,
+    *,
+    extra_cols: list[str] | None = None,
+) -> pd.DataFrame:
+    """Lean grouped R metrics with ``sample_warning``; never drops thin groups."""
+    empty = _empty_group_frame(group_col, extra_cols)
+    if trades is None or not isinstance(trades, pd.DataFrame) or trades.empty:
+        return empty
+    if group_col not in trades.columns or "r_multiple" not in trades.columns:
+        return empty
+
+    work = trades.dropna(subset=["r_multiple"]).copy()
+    if work.empty:
+        return empty
+
+    threshold = _clamp_min_trades(min_trades)
+    rows: list[dict[str, Any]] = []
+    for key, group in work.groupby(group_col, sort=False, dropna=False):
+        r = group["r_multiple"]
+        n = int(len(r))
+        if n == 0:
+            continue
+        row: dict[str, Any] = {
+            group_col: key,
+            "trade_count": n,
+            "win_rate": float((r > 0).mean()),
+            "avg_r": float(r.mean()),
+            "median_r": float(r.median()),
+            "total_r": float(r.sum()),
+            "sample_warning": bool(n < threshold),
+        }
+        if extra_cols:
+            for col in extra_cols:
+                if col in group.columns:
+                    row[col] = group[col].iloc[0]
+                else:
+                    row[col] = None
+        rows.append(row)
+
+    if not rows:
+        return empty
+
+    out = pd.DataFrame(rows)
+    out = out.sort_values(
+        ["total_r", "trade_count"],
+        ascending=[False, False],
+        kind="mergesort",
+    ).reset_index(drop=True)
+    ordered = [group_col, *(extra_cols or []), *_GROUP_METRIC_COLS]
+    return out[ordered]
+
+
+def _sort_for_example_raw(trades: pd.DataFrame) -> pd.DataFrame:
+    """Stable earliest-trade ordering for example raw ``level_names``.
+
+    Prefer ``entry_timestamp`` then ``trade_id``. When both are absent, use a
+    fresh positional column from ``reset_index(drop=True)`` — never sort a data
+    column named ``index`` or a MultiIndex level.
+    """
+    work = trades.copy()
+    sort_cols: list[str] = []
+    if "entry_timestamp" in work.columns:
+        sort_cols.append("entry_timestamp")
+    if "trade_id" in work.columns:
+        sort_cols.append("trade_id")
+    if sort_cols:
+        return work.sort_values(sort_cols, kind="mergesort", na_position="last")
+    work = work.reset_index(drop=True)
+    work[_EXAMPLE_RAW_POSITION_COL] = np.arange(len(work), dtype="int64")
+    return work.sort_values([_EXAMPLE_RAW_POSITION_COL], kind="mergesort")
+
+
+def summarize_by_exact_combo(
+    trades: pd.DataFrame,
+    *,
+    min_trades: int = 10,
+) -> pd.DataFrame:
+    """Group analyzable trades by canonical exact combo key.
+
+    Returns all groups plus ``sample_warning``. Does not drop thin samples.
+    Includes ``example_raw_level_names`` from the earliest trade in each group.
+    """
+    empty = _empty_group_frame(EXACT_COMBO_KEY_COL, [EXAMPLE_RAW_COL])
+    if trades is None or not isinstance(trades, pd.DataFrame):
+        return empty
+    if trades.empty or "level_names" not in trades.columns:
+        return empty
+    if "r_multiple" not in trades.columns:
+        return empty
+
+    attached = attach_combo_columns(trades)
+    analyzable = attached.dropna(subset=["r_multiple"]).copy()
+    if analyzable.empty:
+        return empty
+
+    ordered = _sort_for_example_raw(analyzable)
+    example_raw = (
+        ordered.groupby(EXACT_COMBO_KEY_COL, sort=False)["level_names"]
+        .first()
+        .rename(EXAMPLE_RAW_COL)
+        .reset_index()
+    )
+    summarized = _summarize_r(analyzable, EXACT_COMBO_KEY_COL, min_trades)
+    if summarized.empty:
+        return empty
+    merged = summarized.merge(example_raw, on=EXACT_COMBO_KEY_COL, how="left")
+    return merged[[EXACT_COMBO_KEY_COL, EXAMPLE_RAW_COL, *_GROUP_METRIC_COLS]]
+
+
+def summarize_by_level_membership(
+    trades: pd.DataFrame,
+    *,
+    min_trades: int = 10,
+) -> pd.DataFrame:
+    """Group by distinct level token membership (double-counts trades).
+
+    Empty-name trades contribute no membership rows.
+    """
+    empty = _empty_group_frame(LEVEL_NAME_COL)
+    if trades is None or not isinstance(trades, pd.DataFrame):
+        return empty
+    if trades.empty or "level_names" not in trades.columns:
+        return empty
+    if "r_multiple" not in trades.columns:
+        return empty
+
+    attached = attach_combo_columns(trades)
+    analyzable = attached.dropna(subset=["r_multiple"]).copy()
+    if analyzable.empty:
+        return empty
+
+    analyzable = analyzable.loc[analyzable[LEVEL_TOKEN_COUNT_COL] > 0].copy()
+    if analyzable.empty:
+        return empty
+
+    analyzable[LEVEL_NAME_COL] = analyzable["level_names"].map(parse_level_names)
+    exploded = analyzable.explode(LEVEL_NAME_COL, ignore_index=True)
+    exploded = exploded.dropna(subset=[LEVEL_NAME_COL])
+    if exploded.empty:
+        return empty
+    return _summarize_r(exploded, LEVEL_NAME_COL, min_trades)
+
+
+def summarize_by_level_count(
+    trades: pd.DataFrame,
+    *,
+    min_trades: int = 10,
+) -> pd.DataFrame:
+    """Group by parsed distinct token count (not stored ``level_count``)."""
+    empty = _empty_group_frame(LEVEL_COUNT_BUCKET_COL)
+    if trades is None or not isinstance(trades, pd.DataFrame):
+        return empty
+    if trades.empty or "level_names" not in trades.columns:
+        return empty
+    if "r_multiple" not in trades.columns:
+        return empty
+
+    attached = attach_combo_columns(trades)
+    analyzable = attached.dropna(subset=["r_multiple"]).copy()
+    if analyzable.empty:
+        return empty
+
+    analyzable[LEVEL_COUNT_BUCKET_COL] = analyzable[LEVEL_TOKEN_COUNT_COL].map(
+        lambda count: UNKNOWN_LEVEL_COUNT_LABEL if int(count) == 0 else int(count)
+    )
+    return _summarize_r(analyzable, LEVEL_COUNT_BUCKET_COL, min_trades)
+
+
+def _empty_summary(min_trades: int = 10) -> dict[str, Any]:
+    _ = min_trades  # kept for signature symmetry / future defaults
+    return {
+        "available": False,
+        "trade_count": 0,
+        "nonempty_combo_trade_count": 0,
+        "empty_level_names_count": 0,
+        "by_exact_combo": _empty_group_frame(EXACT_COMBO_KEY_COL, [EXAMPLE_RAW_COL]),
+        "by_membership": _empty_group_frame(LEVEL_NAME_COL),
+        "by_level_count": _empty_group_frame(LEVEL_COUNT_BUCKET_COL),
+        "warnings": [],
+    }
+
+
+def confluence_attribution_summary(
+    trades: pd.DataFrame,
+    *,
+    min_trades: int = 10,
+) -> dict[str, Any]:
+    """Bundle availability plus the three unfiltered attribution frames."""
+    result = _empty_summary(min_trades)
+    if trades is None or not isinstance(trades, pd.DataFrame):
+        return result
+    if "level_names" not in trades.columns:
+        return result
+    if "r_multiple" not in trades.columns:
+        return result
+
+    attached = attach_combo_columns(trades)
+    analyzable = attached.dropna(subset=["r_multiple"])
+    trade_count = int(len(analyzable))
+
+    def _displayed_trigger_warnings() -> list[str]:
+        # Plan §5.4: warn when any trade in the *displayed* set is 3c,
+        # independent of R analyzability / available.
+        if "trigger" not in attached.columns or attached.empty:
+            return []
+        trigger_series = attached["trigger"].astype(str)
+        if (trigger_series == "3c").any():
+            return [TRIGGER_3C_LEVEL_NAMES_WARNING]
+        return []
+
+    if trade_count == 0:
+        result["by_exact_combo"] = summarize_by_exact_combo(trades, min_trades=min_trades)
+        result["by_membership"] = summarize_by_level_membership(trades, min_trades=min_trades)
+        result["by_level_count"] = summarize_by_level_count(trades, min_trades=min_trades)
+        result["warnings"] = _displayed_trigger_warnings()
+        return result
+
+    empty_mask = analyzable[LEVEL_TOKEN_COUNT_COL] <= 0
+    empty_count = int(empty_mask.sum())
+    nonempty_count = int((~empty_mask).sum())
+
+    result["trade_count"] = trade_count
+    result["empty_level_names_count"] = empty_count
+    result["nonempty_combo_trade_count"] = nonempty_count
+    result["by_exact_combo"] = summarize_by_exact_combo(trades, min_trades=min_trades)
+    result["by_membership"] = summarize_by_level_membership(trades, min_trades=min_trades)
+    result["by_level_count"] = summarize_by_level_count(trades, min_trades=min_trades)
+
+    trigger_warnings = _displayed_trigger_warnings()
+    if nonempty_count <= 0:
+        result["warnings"] = trigger_warnings
+        return result
+
+    result["available"] = True
+    result["warnings"] = [MEMBERSHIP_DOUBLE_COUNT_WARNING, *trigger_warnings]
+    return result

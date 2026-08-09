@@ -1,0 +1,343 @@
+"""Confluence combo attribution analytics (plan PR 1)."""
+
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from thesistester.analytics.confluence_attribution import (
+    EMPTY_LEVEL_NAMES_KEY,
+    EMPTY_LEVEL_NAMES_LABEL,
+    EXACT_COMBO_KEY_COL,
+    EXAMPLE_RAW_COL,
+    LEVEL_COUNT_BUCKET_COL,
+    LEVEL_NAME_COL,
+    MEMBERSHIP_DOUBLE_COUNT_WARNING,
+    TRIGGER_3C_LEVEL_NAMES_WARNING,
+    UNKNOWN_LEVEL_COUNT_LABEL,
+    attach_combo_columns,
+    confluence_attribution_summary,
+    exact_combo_key,
+    format_display_combo,
+    parse_level_names,
+    summarize_by_exact_combo,
+    summarize_by_level_count,
+    summarize_by_level_membership,
+)
+
+
+def _plan_fixture_trades() -> pd.DataFrame:
+    """Appendix A fixture from the confluence combo attribution plan."""
+    return pd.DataFrame(
+        {
+            "trade_id": [1, 2, 3, 4, 5],
+            "entry_timestamp": pd.to_datetime(
+                [
+                    "2024-01-02 09:31",
+                    "2024-01-02 09:40",
+                    "2024-01-02 10:05",
+                    "2024-01-02 10:20",
+                    "2024-01-02 11:00",
+                ]
+            ),
+            "r_multiple": [1.0, -1.0, 0.5, None, 0.25],
+            "level_count": [2, 2, 3, 1, 3],  # trade 5 disagrees on purpose
+            "level_names": [
+                "pdHigh|VWAP_rolling_1h",
+                "VWAP_rolling_1h|pdHigh",
+                "pdHigh|VWAP_rolling_1h|pdPOC",
+                "",
+                "pdHigh",
+            ],
+            "direction": ["long", "long", "short", "long", "long"],
+            "trigger": ["touch", "touch", "touch", "touch", "3c"],
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# parse_level_names / exact_combo_key / format_display_combo
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (None, []),
+        (np.nan, []),
+        (pd.NA, []),
+        (pd.NaT, []),
+        ("", []),
+        ("nan", []),
+        ("NaN", []),
+        ("A|B", ["A", "B"]),
+        ("A, B", ["A", "B"]),
+        (" A|A|B ", ["A", "B"]),
+        ("A,,B|,C", ["A", "B", "C"]),
+        (["B", "A", "B"], ["B", "A"]),
+        ([pd.NA, "A", None, "B"], ["A", "B"]),
+    ],
+)
+def test_parse_level_names(raw, expected):
+    assert parse_level_names(raw) == expected
+
+
+def test_exact_combo_key_canonicalizes_and_empties():
+    assert exact_combo_key("B|A") == exact_combo_key("A|B") == "A|B"
+    assert exact_combo_key("") == EMPTY_LEVEL_NAMES_KEY
+    assert exact_combo_key(None) == EMPTY_LEVEL_NAMES_KEY
+    assert exact_combo_key(np.nan) == EMPTY_LEVEL_NAMES_KEY
+    assert exact_combo_key(pd.NA) == EMPTY_LEVEL_NAMES_KEY
+    assert exact_combo_key(pd.NaT) == EMPTY_LEVEL_NAMES_KEY
+
+
+def test_nullable_string_pd_na_does_not_invent_combo_key():
+    """dtype=string nulls must bucket __empty__, not a literal '<NA>' token."""
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -0.5],
+            "level_names": pd.Series([pd.NA, pd.NA], dtype="string"),
+        }
+    )
+    attached = attach_combo_columns(trades)
+    assert list(attached[EXACT_COMBO_KEY_COL]) == [EMPTY_LEVEL_NAMES_KEY, EMPTY_LEVEL_NAMES_KEY]
+    assert list(attached["level_token_count"]) == [0, 0]
+    summary = confluence_attribution_summary(trades, min_trades=1)
+    assert summary["available"] is False
+    assert summary["empty_level_names_count"] == 2
+    assert summary["nonempty_combo_trade_count"] == 0
+    assert summary["by_exact_combo"].iloc[0][EXACT_COMBO_KEY_COL] == EMPTY_LEVEL_NAMES_KEY
+    assert "<NA>" not in set(summary["by_exact_combo"][EXACT_COMBO_KEY_COL].astype(str))
+
+
+def test_format_display_combo_uses_explicit_anchor_only():
+    assert format_display_combo("VWAP|pdHigh", anchor_level="pdHigh") == "pdHigh|VWAP"
+    assert format_display_combo("VWAP|pdHigh", anchor_level="OR_High") == "VWAP|pdHigh"
+    assert format_display_combo("VWAP|pdHigh", anchor_level=None) == "VWAP|pdHigh"
+    assert format_display_combo(["pdPOC", "pdHigh"], anchor_level="pdHigh") == "pdHigh|pdPOC"
+    assert format_display_combo(EMPTY_LEVEL_NAMES_KEY) == EMPTY_LEVEL_NAMES_LABEL
+    assert format_display_combo("") == EMPTY_LEVEL_NAMES_LABEL
+    # Never invents an anchor from first/cheapest token.
+    assert format_display_combo("A|B", anchor_level="") == "A|B"
+
+
+# ---------------------------------------------------------------------------
+# attach + summarize helpers
+# ---------------------------------------------------------------------------
+
+
+def test_attach_combo_columns_uses_parsed_count_not_stored_level_count():
+    trades = _plan_fixture_trades()
+    attached = attach_combo_columns(trades)
+    assert attached.loc[4, "level_token_count"] == 1
+    assert attached.loc[4, "level_count"] == 3
+    assert attached.loc[0, EXACT_COMBO_KEY_COL] == "VWAP_rolling_1h|pdHigh"
+    assert attached.loc[1, EXACT_COMBO_KEY_COL] == "VWAP_rolling_1h|pdHigh"
+    assert attached.loc[3, EXACT_COMBO_KEY_COL] == EMPTY_LEVEL_NAMES_KEY
+
+
+def test_attach_combo_columns_missing_level_names_safe():
+    trades = pd.DataFrame({"r_multiple": [1.0]})
+    attached = attach_combo_columns(trades)
+    assert attached.loc[0, EXACT_COMBO_KEY_COL] == EMPTY_LEVEL_NAMES_KEY
+    assert attached.loc[0, "level_token_count"] == 0
+
+
+def test_summarize_by_exact_combo_merges_flipped_order_and_example_raw():
+    trades = _plan_fixture_trades()
+    summary = summarize_by_exact_combo(trades, min_trades=10)
+    merged = summary[summary[EXACT_COMBO_KEY_COL] == "VWAP_rolling_1h|pdHigh"].iloc[0]
+    assert merged["trade_count"] == 2
+    assert merged["avg_r"] == pytest.approx(0.0)
+    assert merged["total_r"] == pytest.approx(0.0)
+    assert merged["win_rate"] == pytest.approx(0.5)
+    assert bool(merged["sample_warning"]) is True
+    # Earliest entry_timestamp / trade_id wins for example raw.
+    assert merged[EXAMPLE_RAW_COL] == "pdHigh|VWAP_rolling_1h"
+
+
+def test_exact_combo_partition_identity_unfiltered():
+    trades = _plan_fixture_trades()
+    summary = summarize_by_exact_combo(trades, min_trades=10)
+    analyzable = trades.dropna(subset=["r_multiple"])
+    assert summary["trade_count"].sum() == len(analyzable) == 4
+    assert summary["total_r"].sum() == pytest.approx(float(analyzable["r_multiple"].sum()))
+    # Thin groups remain present (not dropped by analytics).
+    assert bool(summary["sample_warning"].all())
+
+
+def test_membership_double_count_and_empty_names_emit_no_rows():
+    trades = _plan_fixture_trades()
+    membership = summarize_by_level_membership(trades, min_trades=1)
+    by_level = membership.set_index(LEVEL_NAME_COL)["trade_count"].to_dict()
+    # Analyzable nonempty trades containing pdHigh: ids 1,2,3,5.
+    assert by_level["pdHigh"] == 4
+    assert by_level["VWAP_rolling_1h"] == 3
+    assert by_level["pdPOC"] == 1
+    assert EMPTY_LEVEL_NAMES_KEY not in by_level
+    assert "" not in by_level
+    # Double-count: membership total_r exceeds book total_r.
+    book_total = float(trades.dropna(subset=["r_multiple"])["r_multiple"].sum())
+    assert membership["total_r"].sum() > book_total
+
+
+def test_level_count_uses_parsed_token_count_when_stored_disagrees():
+    trades = _plan_fixture_trades()
+    by_count = summarize_by_level_count(trades, min_trades=1)
+    counts = by_count.set_index(LEVEL_COUNT_BUCKET_COL)["trade_count"].to_dict()
+    assert counts[2] == 2
+    assert counts[3] == 1
+    assert counts[1] == 1
+    # Trade 5 stored level_count=3 but parsed names count=1.
+    assert 3 in counts
+    assert counts[3] == 1
+    assert UNKNOWN_LEVEL_COUNT_LABEL not in counts  # null-R empty trade excluded
+
+
+def test_level_count_unknown_bucket_for_empty_names():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -0.5],
+            "level_names": ["", "nan"],
+            "level_count": [4, 4],
+        }
+    )
+    by_count = summarize_by_level_count(trades, min_trades=1)
+    assert list(by_count[LEVEL_COUNT_BUCKET_COL]) == [UNKNOWN_LEVEL_COUNT_LABEL]
+    assert by_count.iloc[0]["trade_count"] == 2
+
+
+def test_breakeven_counted_but_not_a_win():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [0.0, 1.0],
+            "level_names": ["A", "A"],
+        }
+    )
+    summary = summarize_by_exact_combo(trades, min_trades=1)
+    row = summary.iloc[0]
+    assert row["trade_count"] == 2
+    assert row["win_rate"] == pytest.approx(0.5)
+    assert row["total_r"] == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# confluence_attribution_summary availability contract
+# ---------------------------------------------------------------------------
+
+
+def test_summary_missing_column_unavailable():
+    trades = pd.DataFrame({"r_multiple": [1.0, 2.0]})
+    summary = confluence_attribution_summary(trades)
+    assert summary["available"] is False
+    assert summary["trade_count"] == 0
+    assert summary["by_exact_combo"].empty
+    assert summary["warnings"] == []
+
+
+def test_summary_none_and_empty_safe():
+    assert confluence_attribution_summary(None)["available"] is False  # type: ignore[arg-type]
+    assert confluence_attribution_summary(pd.DataFrame())["available"] is False
+
+
+def test_summary_only_empty_names_unavailable_but_counts_empty():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -1.0],
+            "level_names": ["", None],
+        }
+    )
+    summary = confluence_attribution_summary(trades, min_trades=1)
+    assert summary["available"] is False
+    assert summary["trade_count"] == 2
+    assert summary["empty_level_names_count"] == 2
+    assert summary["nonempty_combo_trade_count"] == 0
+    assert not summary["by_exact_combo"].empty
+    assert summary["by_exact_combo"].iloc[0][EXACT_COMBO_KEY_COL] == EMPTY_LEVEL_NAMES_KEY
+    assert summary["by_membership"].empty
+
+
+def test_summary_available_with_nonempty_and_warnings():
+    trades = _plan_fixture_trades()
+    summary = confluence_attribution_summary(trades, min_trades=10)
+    assert summary["available"] is True
+    assert summary["trade_count"] == 4
+    assert summary["nonempty_combo_trade_count"] == 4  # null-R empty excluded
+    assert summary["empty_level_names_count"] == 0
+    assert MEMBERSHIP_DOUBLE_COUNT_WARNING in summary["warnings"]
+    assert TRIGGER_3C_LEVEL_NAMES_WARNING in summary["warnings"]
+    assert not summary["by_exact_combo"].empty
+    assert not summary["by_membership"].empty
+    assert not summary["by_level_count"].empty
+
+
+def test_summary_3c_warning_scans_full_displayed_set():
+    """Plan §5.4: 3c honesty when any displayed trade is 3c (even null-R)."""
+    # 3c only on a null-R row; other nonempty R trades still make available=True.
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, None],
+            "level_names": ["A|B", "A"],
+            "trigger": ["touch", "3c"],
+        }
+    )
+    summary = confluence_attribution_summary(trades, min_trades=1)
+    assert summary["available"] is True
+    assert TRIGGER_3C_LEVEL_NAMES_WARNING in summary["warnings"]
+    assert MEMBERSHIP_DOUBLE_COUNT_WARNING in summary["warnings"]
+
+    # Also emit when attribution is unavailable (only empty names).
+    empty_only = pd.DataFrame(
+        {
+            "r_multiple": [1.0],
+            "level_names": [""],
+            "trigger": ["3c"],
+        }
+    )
+    empty_summary = confluence_attribution_summary(empty_only, min_trades=1)
+    assert empty_summary["available"] is False
+    assert empty_summary["warnings"] == [TRIGGER_3C_LEVEL_NAMES_WARNING]
+
+
+def test_example_raw_positional_fallback_ignores_index_named_column():
+    """Positional fallback must not sort a data column named ``index``."""
+    trades = pd.DataFrame(
+        {
+            "index": [99, 1],
+            "r_multiple": [1.0, 2.0],
+            "level_names": ["B|A", "A|B"],
+        }
+    )
+    summary = summarize_by_exact_combo(trades, min_trades=1)
+    # First row position wins (not the smaller ``index`` data value).
+    assert summary.iloc[0][EXAMPLE_RAW_COL] == "B|A"
+
+
+def test_summary_mixed_null_r_excluded_from_counts():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, None, 2.0],
+            "level_names": ["A|B", "A|B", "B|A"],
+        }
+    )
+    summary = confluence_attribution_summary(trades, min_trades=1)
+    assert summary["available"] is True
+    assert summary["trade_count"] == 2
+    assert summary["nonempty_combo_trade_count"] == 2
+    combo = summary["by_exact_combo"]
+    assert len(combo) == 1
+    assert combo.iloc[0]["trade_count"] == 2
+    assert combo.iloc[0]["total_r"] == pytest.approx(3.0)
+
+
+def test_example_raw_fallback_without_timestamps_uses_trade_id():
+    trades = pd.DataFrame(
+        {
+            "trade_id": [20, 10],
+            "r_multiple": [1.0, 2.0],
+            "level_names": ["B|A", "A|B"],
+        }
+    )
+    summary = summarize_by_exact_combo(trades, min_trades=1)
+    assert summary.iloc[0][EXAMPLE_RAW_COL] == "A|B"  # lower trade_id

@@ -1,6 +1,6 @@
 # Regression-Safe Implementation Plan: Confluence Combo Attribution (Backtest)
 
-**Status:** Proposal — review-amended; implementation not started  
+**Status:** Phase 1 implemented (analytics helpers + unit tests); UI not started  
 **Document type:** Focused analytics / Backtest UX implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related docs:**  
@@ -173,7 +173,8 @@ Canonicalization rules (locked):
 2. Strip whitespace; drop empty tokens.
 3. Deduplicate tokens while preserving first-seen order for parsing helpers.
 4. Build **exact_combo_key** = tokens sorted lexicographically, joined by `|`.
-5. Empty / null / `"nan"` → bucket `__empty__` (display label: `(no level names)`).
+5. Empty / null / `pd.NA` / `pd.NaT` / `"nan"` → bucket `__empty__`
+   (display label: `(no level names)`). Never invent a literal `"<NA>"` token.
 
 Why sort: global price-order can emit `A|B` and `B|A` for the same set across
 bars; unsorted grouping would falsely split identical sets.
@@ -422,7 +423,9 @@ Availability contract (mirror prev30m style; tightened):
   "by_exact_combo": DataFrame,
   "by_membership": DataFrame,
   "by_level_count": DataFrame,
-  "warnings": list[str],      # membership double-count; optional 3c note
+  "warnings": list[str],      # membership double-count when available;
+                              # 3c note whenever any *displayed* trade has
+                              # trigger=="3c" (independent of available / R)
 }
 ```
 
@@ -499,7 +502,7 @@ tracked as a named research UX milestone; this plan is sufficient.
 | Case | Required behavior |
 |---|---|
 | `level_names` missing column | `available=False`; no exception |
-| `level_names` null / `""` / `"nan"` | Bucket `__empty__`; does **not** alone make `available=True` |
+| `level_names` null / `pd.NA` / `pd.NaT` / `""` / `"nan"` | Bucket `__empty__`; does **not** alone make `available=True` |
 | Only empty names (all analyzable trades) | `available=False`; report `empty_level_names_count` |
 | Delimiters `,` and `\|` mixed | Normalize both |
 | Duplicate tokens `A\|A\|B` | Treat as `{A,B}` for combo key / membership / token count |
@@ -1001,8 +1004,8 @@ No blocking open questions remain for PR 1–2.
 
 | Phase | PR | Status |
 |---|---|---|
-| Phase 0 | This proposal (+ 2026-08-09 review locks + polish) | **Ready for PR 1** |
-| Phase 1 | PR 1 analytics helpers | Not started |
+| Phase 0 | This proposal (+ 2026-08-09 review locks + polish) | Complete |
+| Phase 1 | PR 1 analytics helpers | **Implemented** (`thesistester/analytics/confluence_attribution.py`, `tests/test_confluence_attribution.py`) |
 | Phase 2 | PR 2 Backtest expander UI + docs | Not started |
 | Phase 4 | PR 4 soft pairwise attribution (recommended next) | Not started |
 | Phase 3 | PR 3 cross-tab / polish (if UX pain) | Not started |
