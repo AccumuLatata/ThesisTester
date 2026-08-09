@@ -24,6 +24,7 @@ from thesistester.analytics.confluence_attribution import (
     parse_level_names,
     prepare_exact_combo_display,
     resolve_confluence_mode,
+    resolve_signal_setup_for_attribution,
     summarize_by_exact_combo,
     summarize_by_level_count,
     summarize_by_level_membership,
@@ -373,6 +374,51 @@ def test_resolve_confluence_mode_prefers_setup_config_then_trades():
     trades = pd.DataFrame({"level_source_mode": ["global_cluster", "global_cluster", "other"]})
     assert resolve_confluence_mode(None, trades) == "global_cluster"
     assert resolve_confluence_mode({"confluence_mode": "nope"}, None) == "unknown"
+
+
+def test_resolve_signal_setup_prefers_signal_settings_over_stale_setup_config():
+    """Stale Setup Builder config must not override the signal-run mode/anchor."""
+    stale_setup = {"confluence_mode": "anchor_rules", "anchor_level": "pdHigh"}
+    signal_settings = {"confluence_mode": "global_cluster", "anchor_level": None}
+    resolved = resolve_signal_setup_for_attribution(
+        signal_settings=signal_settings,
+        setup_config=stale_setup,
+    )
+    assert resolved["confluence_mode"] == "global_cluster"
+    assert "anchor_level" not in resolved
+    assert (
+        resolve_confluence_mode(resolved, pd.DataFrame({"level_source_mode": ["anchor_rules"]}))
+        == "global_cluster"
+    )
+
+    # Reverse: signal-run is anchor; stale setup_config is global.
+    resolved_anchor = resolve_signal_setup_for_attribution(
+        signal_settings={"confluence_mode": "anchor_rules", "anchor_level": "pdHigh"},
+        setup_config={"confluence_mode": "global_cluster", "anchor_level": "OR_High"},
+    )
+    assert resolved_anchor == {
+        "confluence_mode": "anchor_rules",
+        "anchor_level": "pdHigh",
+    }
+
+    # last_signal_setup wins over setup_config when signal_settings absent.
+    from_last = resolve_signal_setup_for_attribution(
+        last_signal_setup={"confluence_mode": "anchor_rules", "anchor_level": "pdPOC"},
+        setup_config={"confluence_mode": "global_cluster"},
+        signal_context={"confluence_mode": "global_cluster"},
+    )
+    assert from_last["confluence_mode"] == "anchor_rules"
+    assert from_last["anchor_level"] == "pdPOC"
+
+    # setup_snapshot can supply anchor when top-level signal_settings omits it.
+    from_snap = resolve_signal_setup_for_attribution(
+        signal_settings={
+            "confluence_mode": "anchor_rules",
+            "setup_snapshot": {"confluence_mode": "anchor_rules", "anchor_level": "pdHigh"},
+        },
+        setup_config={"confluence_mode": "global_cluster", "anchor_level": "OR_High"},
+    )
+    assert from_snap == {"confluence_mode": "anchor_rules", "anchor_level": "pdHigh"}
 
 
 def test_prepare_exact_combo_display_uses_anchor_only_in_anchor_mode():

@@ -12,7 +12,7 @@ No zone / signal / fill engine changes. Summaries return **all** groups with
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
@@ -430,11 +430,69 @@ def apply_sample_warning_filter(
     return frame.loc[mask].copy()
 
 
+def resolve_signal_setup_for_attribution(
+    *,
+    signal_settings: Any = None,
+    last_signal_setup: Any = None,
+    setup_config: Any = None,
+    signal_context: Any = None,
+) -> dict[str, Any]:
+    """Pick signal-run setup identity for captions / anchor display.
+
+    Prefer the settings that produced the current signals over a possibly stale
+    Setup Builder ``setup_config`` (same identity order as OTF/Validation):
+
+    1. ``signal_settings``
+    2. ``signal_settings["setup_snapshot"]``
+    3. ``last_signal_setup``
+    4. ``setup_config``
+    5. ``signal_context``
+
+    Returns a thin dict with ``confluence_mode`` and optional ``anchor_level``.
+    Empty when no source carries a known mode.
+    """
+    sources: list[Mapping[str, Any]] = []
+    if isinstance(signal_settings, dict) and signal_settings:
+        sources.append(signal_settings)
+        snapshot = signal_settings.get("setup_snapshot")
+        if isinstance(snapshot, dict) and snapshot:
+            sources.append(snapshot)
+    for candidate in (last_signal_setup, setup_config, signal_context):
+        if isinstance(candidate, dict) and candidate:
+            sources.append(candidate)
+
+    for source in sources:
+        mode = str(source.get("confluence_mode") or "").strip()
+        if mode not in {"anchor_rules", "global_cluster"}:
+            continue
+        result: dict[str, Any] = {"confluence_mode": mode}
+        anchor = source.get("anchor_level")
+        if isinstance(anchor, str) and anchor.strip():
+            result["anchor_level"] = anchor.strip()
+        elif mode == "anchor_rules":
+            # Borrow anchor from an identity-compatible source (never from a
+            # conflicting global_cluster snapshot).
+            for other in sources:
+                other_mode = str(other.get("confluence_mode") or "").strip()
+                if other_mode not in {"", "anchor_rules"}:
+                    continue
+                other_anchor = other.get("anchor_level")
+                if isinstance(other_anchor, str) and other_anchor.strip():
+                    result["anchor_level"] = other_anchor.strip()
+                    break
+        return result
+    return {}
+
+
 def resolve_confluence_mode(
     setup_config: Any = None,
     trades: pd.DataFrame | None = None,
 ) -> str:
-    """Best-effort mode label for captions: anchor_rules / global_cluster / unknown."""
+    """Best-effort mode label for captions: anchor_rules / global_cluster / unknown.
+
+    ``setup_config`` should be the signal-run identity dict from
+    ``resolve_signal_setup_for_attribution`` when called from Backtest.
+    """
     if isinstance(setup_config, dict):
         mode = str(setup_config.get("confluence_mode") or "").strip()
         if mode in {"anchor_rules", "global_cluster"}:

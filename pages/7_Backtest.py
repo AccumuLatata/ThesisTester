@@ -54,6 +54,7 @@ from thesistester.analytics.confluence_attribution import (
     confluence_attribution_summary,
     prepare_exact_combo_display,
     resolve_confluence_mode,
+    resolve_signal_setup_for_attribution,
 )
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
 from thesistester.analytics.prev30m_vwap_hit import prev30m_hit_r_summary
@@ -1084,12 +1085,16 @@ if _display_has_trades:
 # Confluence combo attribution (analytics-only; collapsed by default).
 if _display_has_trades:
     with st.expander("Confluence combo attribution", expanded=False):
-        _setup_config = st.session_state.get("setup_config")
-        if not isinstance(_setup_config, dict):
-            _signal_context = st.session_state.get("signal_context")
-            _setup_config = _signal_context if isinstance(_signal_context, dict) else {}
+        # Prefer signal-run identity over a possibly stale Setup Builder config
+        # (same order as OTF/Validation: signal_settings → last_signal_setup → …).
+        _setup_for_cca = resolve_signal_setup_for_attribution(
+            signal_settings=st.session_state.get("signal_settings"),
+            last_signal_setup=st.session_state.get("last_signal_setup"),
+            setup_config=st.session_state.get("setup_config"),
+            signal_context=st.session_state.get("signal_context"),
+        )
 
-        _confluence_mode = resolve_confluence_mode(_setup_config, _display_trades)
+        _confluence_mode = resolve_confluence_mode(_setup_for_cca, _display_trades)
         if _confluence_mode == "anchor_rules":
             st.caption(
                 "Combinations are anchor + currently valid confluence rules on the "
@@ -1102,9 +1107,7 @@ if _display_has_trades:
                 "Order is canonicalized; raw price-order strings may differ."
             )
         else:
-            st.caption(
-                "Combinations are derived from each trade's recorded `level_names`."
-            )
+            st.caption("Combinations are derived from each trade's recorded `level_names`.")
 
         st.caption(
             "Diagnostic only — rows are combinations that actually traded in this "
@@ -1165,7 +1168,7 @@ if _display_has_trades:
 
             _anchor_level = None
             if _confluence_mode == "anchor_rules":
-                _raw_anchor = _setup_config.get("anchor_level")
+                _raw_anchor = _setup_for_cca.get("anchor_level")
                 if isinstance(_raw_anchor, str) and _raw_anchor.strip():
                     _anchor_level = _raw_anchor.strip()
 

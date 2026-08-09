@@ -300,9 +300,17 @@ Do **not** invent new expectancy definitions; reuse existing R conventions from
 
 Mode detection for captions (best-effort, non-blocking):
 
-1. `st.session_state["setup_config"]["confluence_mode"]` when present.
+1. Signal-run setup identity via `resolve_signal_setup_for_attribution`
+   (priority: `signal_settings` → `signal_settings.setup_snapshot` →
+   `last_signal_setup` → `setup_config` → `signal_context`). Prefer the
+   settings that produced the current signals over a possibly stale Setup
+   Builder `setup_config`.
 2. Else `level_source_mode` dominance on displayed trades if present.
 3. Else neutral.
+
+Anchor display key uses the same signal-run identity dict’s `anchor_level`
+(only when mode resolves to `anchor_rules`). Never invent anchor from token
+order.
 
 Diagnostic framing (mandatory in UI caption):
 
