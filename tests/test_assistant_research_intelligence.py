@@ -1949,7 +1949,11 @@ def test_ri6_llm_kpi_substitution_hard_rejects_to_deterministic():
 
 
 def _trade_rows_for_deep_trade() -> list[dict]:
-    """Small trade table covering exit histogram, extremes, and streaks."""
+    """Small trade table covering exit histogram, extremes, and streaks.
+
+    Reason labels stay digit-free so auditor grounding cannot launder label
+    digits; timestamps may exist on rows but are not claimable (§6).
+    """
     rows: list[dict] = []
     # 8 TP, 5 SL, 2 TIME, 1 EOD — TP/SL dominate; extremes from R values.
     for _ in range(8):
@@ -1967,8 +1971,10 @@ def _trade_rows_for_deep_trade() -> list[dict]:
         }
     )
     # Extra unique reasons to exercise top-N + other (beyond EXIT_REASON_TOP_N).
+    # Letter-only labels (AA, AB, …) avoid digit tokens in claim text.
     for index in range(EXIT_REASON_TOP_N):
-        rows.append({"exit_reason": f"OTHER_{index}", "r_multiple": 0.05})
+        label = chr(ord("A") + (index // 26)) + chr(ord("A") + (index % 26))
+        rows.append({"exit_reason": label, "r_multiple": 0.05})
     return rows
 
 

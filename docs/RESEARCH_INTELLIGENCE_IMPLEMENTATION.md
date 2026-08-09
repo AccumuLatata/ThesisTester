@@ -524,7 +524,7 @@ Initial freeze (amend to expand):
 | Projection | Purpose | Caps |
 |---|---|---|
 | `results.projections.exit_reason_counts` | Exit-reason histogram | Top N reasons (N≤12) + other |
-| `results.projections.extreme_trades` | Worst/best R trades summary | N≤5 each; only R + exit_reason + timestamps if already present |
+| `results.projections.extreme_trades` | Worst/best R trades summary | N≤5 each; claim allowlist is R + exit_reason only (timestamps may exist on the projection object but are not claimable — ISO datetimes launder ungroundable digits) |
 | `results.projections.streak_summary` | Max consecutive wins/losses if not already in trade_summary | Scalars only |
 
 Intent cues + allowlists land in the same RI-9 PR. If tables absent →

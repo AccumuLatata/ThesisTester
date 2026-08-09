@@ -485,14 +485,9 @@ def _build_deep_trade_claim_paths() -> tuple[str, ...]:
     for side in ("best", "worst"):
         for index in range(EXTREME_TRADES_N):
             base = f"results.projections.extreme_trades.{side}.{index}"
-            paths.extend(
-                (
-                    f"{base}.r_multiple",
-                    f"{base}.exit_reason",
-                    f"{base}.entry_timestamp",
-                    f"{base}.exit_timestamp",
-                )
-            )
+            # Timestamps may exist on the projection object but are not claimable:
+            # ISO datetimes launder ungroundable year/day digits through the auditor.
+            paths.extend((f"{base}.r_multiple", f"{base}.exit_reason"))
     return tuple(paths)
 
 
@@ -2304,14 +2299,9 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             ".exit_reason"
         ):
             return f"Exit reason is {text}."
-        if path.startswith("results.projections.extreme_trades."):
+        if path.startswith("results.projections.extreme_trades.") and path.endswith(".exit_reason"):
             side = "Best" if ".best." in path else "Worst" if ".worst." in path else "Extreme"
-            if path.endswith(".exit_reason"):
-                return f"{side} trade exit reason is {text}."
-            if path.endswith(".entry_timestamp"):
-                return f"{side} trade entry timestamp is {text}."
-            if path.endswith(".exit_timestamp"):
-                return f"{side} trade exit timestamp is {text}."
+            return f"{side} trade exit reason is {text}."
         # Grid / validation / time honesty labels are narratable strings.
         if path.endswith("selection_scope"):
             return f"Selection scope is {text}."
