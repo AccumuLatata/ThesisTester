@@ -32,9 +32,11 @@ optional PR 3 polish.
 **Phase 5 scope amendment (2026-08-09, completeness pass):** Reconcile §10
 Deferred with scoped 5a–5d; lock 5b/5c on-export recompute (no Backtest
 producer session keys); clarify omit-when-unavailable vs interactive opt-in;
-align mode/anchor identity with `resolve_signal_setup_for_attribution`; fix
-5d order rationale (trades recompute; 5c artifacts optional); add §15
-acceptance checklists for 5a–5d.
+align mode/anchor with Backtest
+(`resolve_signal_setup_for_attribution` → `resolve_confluence_mode`); lock 5a
+append-only nonempty dims; fix 5d order rationale (trades recompute; 5c
+optional); add §15 acceptance checklists for 5a–5d; scrub stale
+`setup_config`-alone identity wording in §4.2 / PR 2 / Appendix C.
 
 ---
 
@@ -1220,8 +1222,9 @@ PR 1 analytics helpers + tests
 6. Render three tables; mode / membership / diagnostic / observed-only /
    conditional 3c captions.
 7. Use `format_display_combo` with signal-run identity
-   (`resolve_signal_setup_for_attribution` → `anchor_level`) when mode is
-   `anchor_rules` — not bare stale `setup_config` alone.
+   (`resolve_signal_setup_for_attribution` → `resolve_confluence_mode` →
+   `anchor_level`) when mode is `anchor_rules` — not bare stale
+   `setup_config` alone.
 8. Update honesty docs (incl. null-R vs sibling Breakdown note; observed-only).
 9. Manual matrix check (global + anchor + 3c if available).
 10. Full pytest.
