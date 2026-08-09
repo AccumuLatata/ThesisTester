@@ -1,7 +1,7 @@
 # Research Intelligence — Implementation Contract
 
 **Document type:** Implementation contract (RI-series) — **single source of truth**
-**Status:** 🚧 **RI-8 landed** (grid + time + validation/WFA + single-metric + meaning overlay + mixed-ask composition); series not complete until RI-10
+**Status:** 🚧 **RI-5 landed** (grid + time + validation/WFA + single-metric + meaning overlay + mixed-ask composition + tier-2 robustness); series not complete until RI-10
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/results_overview.py` (intent matching /
 deterministic builders / overlays), `results_qa.py` (recovery wiring),
@@ -178,7 +178,7 @@ the sole-intent tie-break when exactly one landed intent matches; they are
 | 1 | `grid_ranking` | RI-1 | `best sl`, `best tp`, `best sl/tp`, `best stop`, `best target`, `stop loss`, `take profit`, `sl/tp`, word-boundary `sl` / `tp` / `stop` / `target` when co-present with best/pair/grid/ranking cues as frozen in tests, bare `grid` (grid-ranking sense), `grid ranking`, `grid rank`, `ranking metric` + grid context per freeze |
 | 2 | `time_ranking` | RI-2 | `best time`, `best entry`, `entry time`, `time bucket`, `session segment`, `hour bucket`, word-boundary bare `time` / `hour` / `bucket` / `clock` (idioms `over time` / `through time` / `across time` excluded); ranking+time collocates per freeze; ✅ sunsets residual DI negatives — §4.1.1 |
 | 3 | `validation_wfa` | RI-3 | `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap`, `permutation` only with validation-sense collocates (`bootstrap`/`oos`/`wfa`/`walk-forward`/`validation`/`test`). **Not** `otf validation` (RI-5). |
-| 4 | `robustness_tier2` | RI-5 | `monte carlo`, `monte-carlo`, `overfitting`, `sensitivity`, `noise test`, `noise summary`, `portfolio summary`, `otf validation` |
+| 4 | `robustness_tier2` | RI-5 | `monte carlo`, `monte-carlo`, `overfitting`, `overfit`, `sensitivity`, `noise test`, `noise summary`, `portfolio summary`, `otf validation`, `otf-validation`. Near-miss bare `monte` / `carlo` (without a full cue) are hard residual — overview + `single_metric` refuse; never IS laundering. Bare `validation` after masking OTF phrases still lands RI-3 so `validation and otf validation` is `mixed_ask`. |
 | 5 | `assumptions_costs` | RI-6 | `commission`, `slippage`, `exposure policy`, `intrabar model`, `costs`, `assumptions` (run-assumption sense; not Help how-to) |
 | 6 | `single_metric` | RI-4 | Frozen metric-noun table (§4.5) with define/value collocates (`what is`, `what's`, `whats`, `show`, `give me`) — **not** bare nouns alone; hard-refuse when residual/specialist collocates present (§4.5) |
 | 7 | `kpi_summary` | DI (unchanged cues) | Existing DI KPI positive cues |
@@ -245,8 +245,8 @@ has_overview_negative_cue(text) ≡ overview_refused(text)
 | `grid`, `stop loss`, `take profit`, `sl/tp`, collocated `sl`/`tp`/`stop`/`target` (with best/pair/grid/ranking), grid-sense `ranking` | RI-1 (`grid_ranking`) | Veto overview + block `single_metric`; after RI-1, landed `grid_ranking` owns collocated/multi-word forms. Bare `sl`/`tp`/`stop`/`target` **without** those collocates stay residual overview-refusing (DX veto ≠ unmatched; avoids “full stop” false grid matches) |
 | `time`, `hour`, `bucket`, `clock`, `session segment`, time-sense ranking collocates | RI-2 (`time_ranking`) | ✅ sunsets in RI-2 — landed `time_ranking` owns them (boundary-safe vs `runtime` / `stopwatch`) |
 | `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap`, validation-sense `permutation` (with collocates) | RI-3 (`validation_wfa`) | ✅ sunsets in RI-3 — landed `validation_wfa` owns them. Bare `permutation` without collocates does not match. |
-| `otf validation` | RI-5 (`robustness_tier2`) | Residual veto until RI-5 — must **not** be owned by bare RI-3 `validation` |
-| `monte carlo`, `monte-carlo` | RI-5 (`robustness_tier2`) | Residual veto / block overview + `single_metric` |
+| `otf validation`, `otf-validation` | RI-5 (`robustness_tier2`) | ✅ sunsets in RI-5 — landed `robustness_tier2` owns them (must **not** be owned by bare RI-3 `validation`; hyphen form also overview-vetoes) |
+| `monte carlo`, `monte-carlo`, `overfitting`, `overfit` | RI-5 (`robustness_tier2`) | ✅ sunsets in RI-5 — landed `robustness_tier2` owns them (block overview + `single_metric` via specialist match). Bare `monte` / `carlo` stay hard residual (veto ≠ unmatched; never `single_metric`). |
 | Bare `ranking` with no grid/time collocate | After RI-2: residual only when neither grid nor time collocates are present | Never overview |
 
 **Acceptance fixtures that must stay green across RI-1…RI-9 (unless the owning
@@ -372,16 +372,37 @@ Rules:
 
 ### 4.6 `robustness_tier2` (RI-5) and `assumptions_costs` (RI-6)
 
-**RI-5 allowlist (presence-first):** for each battery, cite only existing
-`.available` / `.status` / a tiny frozen scalar set per battery
-(`monte_carlo_summary`, `overfitting_summary`, `sensitivity_summary`,
-`noise_summary`, `portfolio_summary`, `otf_validation_summary` /
-`otf_validation.available`). Prefer “which batteries exist + status” over deep
-nested dumps. Missing all → limitation.
+**RI-5 allowlist (presence-first):** cite only existing paths from the frozen
+table below. Prefer “which batteries exist + status/scalars” over deep nested
+dumps (no `methods.*` percentile trees, no parameter arrays). Missing all →
+limitation before LLM.
 
-**RI-5 scalar freeze rule:** the exact per-battery scalar paths are **not**
-frozen in RI-0. The RI-5 implementation PR **must amend this subsection** with
-an explicit path table before merge; no undeclared nested dumps.
+| Path | Role |
+|---|---|
+| `results.monte_carlo_summary.available` | MC battery presence |
+| `results.monte_carlo_summary.trade_count` | MC sample size |
+| `results.overfitting_summary.available` | Overfitting battery presence |
+| `results.overfitting_summary.pbo.pbo` | PBO scalar (when present) |
+| `results.overfitting_summary.deflated_sharpe.dsr` | Deflated Sharpe scalar |
+| `results.sensitivity_summary.available` | Sensitivity battery presence |
+| `results.sensitivity_summary.fragile_parameter_count` | Fragility count |
+| `results.noise_summary.available` | Noise battery presence |
+| `results.noise_summary.replicas.n_completed` | Completed noise replicas |
+| `results.portfolio_summary.available` | Portfolio battery presence |
+| `results.portfolio_summary.admission.admitted_trade_count` | Admitted trades |
+| `results.portfolio_summary.portfolio_metrics.total_r` | Portfolio total R |
+| `results.otf_validation.available` | OTF wrapper presence |
+| `results.otf_validation_summary.status` | OTF status label (when present) |
+| `results.otf_validation_summary.selected_oos_expectancy_r` | Selected OTF OOS expectancy |
+| `results.otf_validation_summary.train_fraction` | OTF train fraction |
+| `results.otf_validation_summary.oos_fraction` | OTF OOS fraction |
+
+No `results.trade_summary.*` paths in this builder. Undeclared nested dumps are
+**hard-rejected**: `path_catalog.existing_paths` for this intent is the present
+§4.6 allowlist only (not the full packet tree); decode raises
+`LLMEvidenceError` when a claim path is outside `ROBUSTNESS_CLAIM_PATHS`;
+finish falls back to the deterministic builder when claims violate the
+allowlist. Non-bool `.available` leaves are not narratable.
 
 **RI-6 allowlist:**
 
@@ -749,7 +770,7 @@ complete coverage; duplex last so text builders are stable.
 | RI-2 Time / session ranking slice | ✅ landed |
 | RI-3 Validation + WFA/OOS slice | ✅ landed |
 | RI-4 Single-metric router | ✅ landed |
-| RI-5 Tier-2 robustness slices | ⬚ pending |
+| RI-5 Tier-2 robustness slices | ✅ landed |
 | RI-6 Assumptions & costs slice | ⬚ pending |
 | RI-7 Grounded meaning overlay v2 | ✅ landed |
 | RI-8 Mixed-ask composition | ✅ landed |
