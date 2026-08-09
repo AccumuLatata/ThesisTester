@@ -666,6 +666,36 @@ def has_grid_ranking_evidence(evidence_context: Mapping[str, Any]) -> bool:
     return has_sl and has_tp
 
 
+def _ensure_grid_rankings_context(
+    evidence_context: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Attach ephemeral ``results.projections.grid_rankings`` when absent.
+
+    Ensures ``oos_status`` is available for RI-7 OOS-absent coaching even when
+    callers pass a bare packet dict without an orchestrator turn context.
+    """
+    if not isinstance(evidence_context, Mapping):
+        return {}
+    if _path_exists(evidence_context, "results.projections.grid_rankings"):
+        return evidence_context
+    try:
+        from thesistester.assistant.results_projections import build_ephemeral_results_context
+
+        hydrated = build_ephemeral_results_context(evidence_context)
+    except Exception:
+        return evidence_context
+    grid = ((hydrated.get("results") or {}).get("projections") or {}).get("grid_rankings")
+    if not isinstance(grid, Mapping) or not grid:
+        return evidence_context
+    merged = dict(evidence_context)
+    results = dict(merged.get("results") or {})
+    projections = dict(results.get("projections") or {})
+    projections["grid_rankings"] = dict(grid)
+    results["projections"] = projections
+    merged["results"] = results
+    return merged
+
+
 def has_validation_wfa_evidence(evidence_context: Mapping[str, Any]) -> bool:
     """True when at least one narratable §4.4 WFA/validation leaf exists."""
     if not isinstance(evidence_context, Mapping):
@@ -2074,7 +2104,8 @@ def build_deterministic_grid_ranking_reply(
     recovery_reason: str | None = None,
 ):
     """Build an auditor-safe best SL/TP reply from the frozen grid allowlist."""
-    if not has_grid_ranking_evidence(evidence_context):
+    working = _ensure_grid_rankings_context(evidence_context)
+    if not has_grid_ranking_evidence(working):
         return build_missing_grid_limitation_reply(
             packet,
             recovery_reason=recovery_reason or REASON_MISSING_GRID,
@@ -2086,7 +2117,7 @@ def build_deterministic_grid_ranking_reply(
     # Prefer projection best SL/TP paths when narratable; else recorded best.
     preferred_order = list(GRID_CLAIM_PATHS)
     for path in preferred_order:
-        if not _path_exists(evidence_context, path):
+        if not _path_exists(working, path):
             continue
         # Skip recorded best leaf only when the matching projection leaf was cited.
         if path.startswith("results.best_grid_result."):
@@ -2094,7 +2125,7 @@ def build_deterministic_grid_ranking_reply(
             projection_path = f"results.projections.grid_rankings.best.{leaf}"
             if projection_path in claimed_paths:
                 continue
-        value = _path_get(evidence_context, path)
+        value = _path_get(working, path)
         text = _format_scalar_for_claim(path, value)
         if text is None:
             continue
@@ -2130,7 +2161,7 @@ def build_deterministic_grid_ranking_reply(
         recovery_reason=recovery_reason,
         followups=followups,
         discuss_intent=INTENT_GRID_RANKING,
-        evidence_context=evidence_context,
+        evidence_context=working,
     )
 
 

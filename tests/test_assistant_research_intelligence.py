@@ -1107,6 +1107,17 @@ def test_ri7_cited_oos_status_missing_suppresses_wfa_presence_coaching():
     assert not any("whether walk-forward" in f.lower() for f in reply.followups)
 
 
+def test_ri7_bare_packet_grid_hydrates_oos_status_for_overlay():
+    """Deterministic grid on bare packet must still suppress WFA-presence asks."""
+    packet = _packet(best_grid=True, missing_oos=False)
+    bare = packet.to_dict()
+    assert "projections" not in bare["results"]
+    reply = build_deterministic_grid_ranking_reply(packet, bare)
+    assert any(c.path.endswith("oos_status") for c in reply.claims)
+    assert any("do not invent confirmation" in c.lower() for c in reply.caveats)
+    assert not any("whether walk-forward" in f.lower() for f in reply.followups)
+
+
 def test_ri7_llm_grid_without_oos_claim_still_suppresses_presence_coaching():
     """LLM drafts that omit oos_status still use turn-evidence status for RI-7."""
     packet = _packet(best_grid=True, missing_oos=False)
