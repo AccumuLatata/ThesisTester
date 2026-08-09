@@ -605,12 +605,15 @@ other than the last bar in the dataset.
   single-metric / meaning / mixed-ask slices while keeping the RQ auditor
   identical. **RI-1 landed:** unified `match_discuss_intent` + residual DI
   veto; deterministic `grid_ranking` builder / missing-grid short-circuit;
-  `deterministic_specialist_fallback` (default `true`); mixed asks still
-  narrow-remediate until RI-8. Incremental PRs keep DI residual negative-cue
-  vetoes for not-yet-owned specialist topics (and DX veto≠unmatched) until
-  each builder PR sunsets its cues; RI must not invent metrics, remap topics
-  onto KPI overview, answer OOS asks with in-sample single-metric leaves,
-  soften OOS/selection-bias caveats, or touch engine/golden paths.
+  `deterministic_specialist_fallback` (default `true`). **RI-3 landed:**
+  `validation_wfa` builder / missing-validation short-circuit; validation/WFA/OOS
+  cues sunset from residual; never substitutes `trade_summary` as OOS proof;
+  mixed asks (e.g. KPIs+validation) still narrow-remediate until RI-8.
+  Incremental PRs keep DI residual negative-cue vetoes for not-yet-owned
+  specialist topics (and DX veto≠unmatched) until each builder PR sunsets its
+  cues; RI must not invent metrics, remap topics onto KPI overview, answer OOS
+  asks with in-sample single-metric leaves, soften OOS/selection-bias caveats,
+  or touch engine/golden paths.
   **DX-series:** `docs/DUPLEX_INTELLIGENCE_IMPLEMENTATION.md` targets VA-5
   full-duplex **content** parity with DI overview/KPI intelligence by reusing
   DI builders inside VA-3 tool envelopes + realtime instructions. DX does not

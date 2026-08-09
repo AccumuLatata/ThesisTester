@@ -497,6 +497,11 @@ remain residual) redefine `has_overview_negative_cue` without a voice cue
 fork. Missing-grid and mixed-ask turns short-circuit before any LLM call.
 Flags-off restores pre-RI specialist remediation/hard-fail while overview DI
 flags stay independent.
+**RI-3 landed:** deterministic `validation_wfa` recovery over frozen
+walk-forward / bootstrap / grid-overfit leaves; validation/WFA/OOS/bootstrap
+cues sunset from residual; missing-validation short-circuit before LLM; never
+cites `results.trade_summary.*` as OOS proof; OOS anti-soften still gates
+deterministic replies.
 **DI-2 landed:** first-pass Results Q&A user payloads include
 `path_catalog.existing_paths` (bounded paths present on the turn context;
 KPI + projections/validation + honesty paths reserved before fat time tables

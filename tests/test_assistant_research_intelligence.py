@@ -1,32 +1,43 @@
-"""RI-1 Research Intelligence: grid ranking matcher, short-circuit, deterministic slice."""
+"""RI Research Intelligence: grid + validation/WFA slices, residual veto, short-circuits."""
 
 from __future__ import annotations
 
 import pytest
 
-from thesistester.assistant.explainer import EvidencePacket
+from thesistester.assistant.explainer import EvidenceCaveat, EvidencePacket
 from thesistester.assistant.llm import load_results_qa_settings
 from thesistester.assistant.llm_explainer import LLMEvidenceError
 from thesistester.assistant.results_overview import (
     INTENT_GRID_RANKING,
     INTENT_MIXED_ASK,
+    INTENT_VALIDATION_WFA,
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
     REASON_MISSING_GRID,
+    REASON_MISSING_VALIDATION,
     REASON_MIXED_ASK,
     REASON_PATH_MISS,
     build_deterministic_grid_ranking_reply,
     has_grid_ranking_evidence,
     has_overview_negative_cue,
+    has_validation_wfa_evidence,
     match_discuss_intent,
     match_overview_intent,
     present_grid_allowlist,
+    present_validation_allowlist,
 )
 from thesistester.assistant.results_projections import build_ephemeral_results_context
 from thesistester.assistant.results_qa import propose_results_reply
 
 
-def _packet(*, best_grid: bool = True, projections: bool = False) -> EvidencePacket:
+def _packet(
+    *,
+    best_grid: bool = True,
+    projections: bool = False,
+    walk_forward: bool = False,
+    validation: bool = False,
+    missing_oos: bool = False,
+) -> EvidencePacket:
     results: dict = {
         "trade_summary": {
             "trade_count": 42,
@@ -45,8 +56,34 @@ def _packet(*, best_grid: bool = True, projections: bool = False) -> EvidencePac
             "expectancy_r": 0.3,
             "ranking_metric": "expectancy_r",
         }
+    if walk_forward:
+        results["walk_forward_summary"] = {
+            "fold_count": 4,
+            "valid_fold_count": 3,
+            "median_test_expectancy_r": 0.12,
+            "stitched_oos_total_r": 1.5,
+            "stitched_oos_status": "ok",
+            "status": "completed",
+        }
+    if validation:
+        results["validation_summary"] = {
+            "bootstrap": {
+                "ci_lower": -0.1,
+                "ci_upper": 0.4,
+                "probability_positive": 0.72,
+            },
+            "grid_overfit": {"risk_level": "medium"},
+        }
+    caveats = ()
+    if missing_oos:
+        caveats = (
+            EvidenceCaveat(
+                code="missing_oos",
+                message="Out-of-sample / walk-forward evidence is missing.",
+            ),
+        )
     return EvidencePacket(
-        provenance={"run_id": "run_ri1"},
+        provenance={"run_id": "run_ri"},
         assumptions={
             "instrument": "NQ",
             "grid": {"ranking_metric": "expectancy_r"},
@@ -55,6 +92,7 @@ def _packet(*, best_grid: bool = True, projections: bool = False) -> EvidencePac
         results=results,
         warnings=(),
         limitations=("Time analysis is not present in this evidence packet.",),
+        caveats=caveats,
     )
 
 
@@ -97,10 +135,30 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert match_discuss_intent("KPIs and best SL/TP") == INTENT_MIXED_ASK
     # Dual overview intents → mixed_ask (§4.1 |M|>=2).
     assert match_discuss_intent("Give me the KPIs and summarize this run") == INTENT_MIXED_ASK
-    # Residual cue not owned by grid → None (not mixed_ask).
-    assert match_discuss_intent("best SL and validation") is None
-    assert match_discuss_intent("Summarize the walk-forward results") is None
-    assert match_discuss_intent("Give me KPIs and validation stats") is None
+    # RI-3: validation/WFA is a landed specialist (not residual).
+    assert match_discuss_intent("Summarize the walk-forward results") == INTENT_VALIDATION_WFA
+    assert match_discuss_intent("validation diagnostics please") == INTENT_VALIDATION_WFA
+    assert match_discuss_intent("Give me KPIs and validation stats") == INTENT_MIXED_ASK
+    assert match_discuss_intent("best SL and validation") == INTENT_MIXED_ASK
+    # Residual cue not owned yet (time) still blocks even with landed specialists.
+    assert match_discuss_intent("best SL and best time") is None
+    assert match_discuss_intent("walk-forward by hour bucket") is None
+    # Soft bare-grid residual must not veto lone validation_wfa.
+    assert match_discuss_intent("tp and oos") == INTENT_VALIDATION_WFA
+    assert match_discuss_intent("oos for my tp") == INTENT_VALIDATION_WFA
+    assert match_discuss_intent("validation of my stop") == INTENT_VALIDATION_WFA
+    # Soft residual still refuses overview topic-swap (not kpi_summary).
+    assert match_discuss_intent("Give me KPIs and what's my stop?") is None
+    assert has_overview_negative_cue("Give me KPIs and what's my stop?") is True
+    assert match_overview_intent("Give me KPIs and what's my stop?") is None
+    # otf validation is RI-5 residual — not owned by bare RI-3 validation.
+    assert match_discuss_intent("otf validation") is None
+    assert has_overview_negative_cue("otf validation") is True
+    # Other WFA cues still land even when OTF is mentioned in passing.
+    assert match_discuss_intent("walk-forward validation and otf notes") == INTENT_VALIDATION_WFA
+    # Bare permutation without validation-sense collocates does not match.
+    assert match_discuss_intent("a permutation of the thesis") is None
+    assert match_discuss_intent("bootstrap permutation test") == INTENT_VALIDATION_WFA
     # Bare short tokens without collocates are residual, not grid.
     assert match_discuss_intent("What's my stop?") is None
     assert match_discuss_intent("full stop") is None
@@ -109,6 +167,7 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert match_overview_intent("summary of best SL/TP") is None
     assert match_overview_intent("KPIs and best SL/TP") is None
     assert match_overview_intent("Give me KPIs and validation stats") is None
+    assert match_overview_intent("Summarize the walk-forward results") is None
     assert match_overview_intent("summarize this run") == OVERVIEW_INTENT_RUN
 
 
@@ -127,6 +186,9 @@ def test_residual_veto_and_false_friends_for_overview_negative_export():
     assert has_overview_negative_cue("full stop") is True
     # mixed_ask (incl. dual overview) refuses overview envelopes for DX.
     assert has_overview_negative_cue("Give me the KPIs and summarize this run") is True
+    # oos false friends must not fire validation ownership.
+    assert match_discuss_intent("boost the sample") is None
+    assert match_discuss_intent("loose ends only") is None
     assert has_overview_negative_cue("runtime of this batch") is False
     assert has_overview_negative_cue("stopwatch only") is False
     assert has_overview_negative_cue("non-stop session") is False
@@ -231,38 +293,11 @@ def test_r19_pure_overview_unchanged():
     assert any(c.path == "results.trade_summary.win_rate" for c in reply.claims)
 
 
-def test_r23_residual_validation_still_refuses_overview_slice():
-    packet = _packet(best_grid=True)
-    client = _FailClient(
-        {
-            "summary": "Trade count is 42.",
-            "caveats": ["Wrong topic."],
-            "claims": [
-                {
-                    "text": "Trade count is 42.",
-                    "path": "results.trade_summary.trade_count",
-                }
-            ],
-            "followups": ["Ask again."],
-        }
-    )
-    reply = propose_results_reply(
-        client,
-        packet=packet,
-        history=(),
-        user_message="Give me KPIs and validation stats",
-        repair_retry_enabled=False,
-    )
-    # Residual veto → LLM may succeed, but overview deterministic fallback must not
-    # rewrite a failed specialist/residual ask into KPI slice when LLM fails.
-    assert match_discuss_intent("Give me KPIs and validation stats") is None
+def test_r23_kpi_plus_validation_is_mixed_ask_not_kpi_slice():
+    packet = _packet(best_grid=True, walk_forward=True)
+    client = _FailClient(_uncited_digits_payload())
+    assert match_discuss_intent("Give me KPIs and validation stats") == INTENT_MIXED_ASK
     assert has_overview_negative_cue("Give me KPIs and validation stats") is True
-    # Force LLM failure path:
-    client = _FailClient(
-        LLMEvidenceError(
-            "Results Q&A claim path 'results.validation.trade_count' is missing from the evidence packet."
-        )
-    )
     reply = propose_results_reply(
         client,
         packet=packet,
@@ -270,7 +305,9 @@ def test_r23_residual_validation_still_refuses_overview_slice():
         user_message="Give me KPIs and validation stats",
         repair_retry_enabled=False,
     )
+    assert client.calls == 0
     assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MIXED_ASK
     assert not any("trade_summary" in c.path for c in reply.claims)
 
 
@@ -378,3 +415,203 @@ def test_di_flags_off_still_hard_fails_overview():
             deterministic_overview_fallback=False,
             deterministic_specialist_fallback=False,
         )
+
+
+def test_r6_uncited_llm_falls_back_to_deterministic_wfa():
+    packet = _packet(walk_forward=True)
+    client = _FailClient(
+        {
+            "summary": "OOS expectancy is 9.9 from trade summary.",
+            "caveats": ["Softened."],
+            "claims": [
+                {
+                    "text": "Expectancy is 0.25.",
+                    "path": "results.trade_summary.expectancy_r",
+                }
+            ],
+            "followups": ["Deploy now."],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="Summarize the walk-forward results",
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "results.walk_forward_summary.median_test_expectancy_r" in paths
+    assert "results.walk_forward_summary.fold_count" in paths
+    assert not any("trade_summary" in path for path in paths)
+    assert "9.9" not in reply.summary
+    assert client.calls == 1
+
+
+def test_r6_validation_ask_uses_validation_leaves():
+    packet = _packet(validation=True)
+    client = _FailClient(
+        {
+            "summary": "Win rate proves OOS edge at 99.",
+            "caveats": ["Soft."],
+            "claims": [
+                {
+                    "text": "Win rate is 52%.",
+                    "path": "results.trade_summary.win_rate",
+                }
+            ],
+            "followups": ["Ignore caveats."],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="Show me the validation bootstrap results",
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "results.validation_summary.bootstrap.ci_lower" in paths
+    assert "results.validation_summary.bootstrap.probability_positive" in paths
+    assert not any("trade_summary" in path for path in paths)
+
+
+def test_r7_missing_validation_short_circuits_without_llm():
+    packet = _packet(best_grid=True)
+    assert has_validation_wfa_evidence(packet.to_dict()) is False
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="Summarize the walk-forward results",
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MISSING_VALIDATION
+    assert "validation" in reply.summary.lower() or "walk-forward" in reply.summary.lower()
+    assert not any("trade_summary" in c.path for c in reply.claims)
+
+
+def test_r17_oos_anti_soften_on_deterministic_wfa():
+    packet = _packet(walk_forward=True, missing_oos=True)
+    # missing_oos on a packet that also has WFA is unusual but proves anti-soften
+    # still rejects softened narration on the deterministic path.
+    client = _FailClient(
+        {
+            "summary": "Out-of-sample is confirmed with expectancy 9.9.",
+            "caveats": [],
+            "claims": [
+                {
+                    "text": "Median OOS is 9.9.",
+                    "path": "results.walk_forward_summary.median_test_expectancy_r",
+                }
+            ],
+            "followups": ["OOS is confirmed."],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="Summarize walk-forward OOS",
+        repair_retry_enabled=False,
+    )
+    # Softened LLM path must not persist; deterministic rebuild keeps mandatory caveat.
+    assert any("missing" in c.lower() or "out-of-sample" in c.lower() for c in reply.caveats)
+    assert "confirmed" not in reply.summary.lower()
+    assert not any("trade_summary" in c.path for c in reply.claims)
+
+
+def test_validation_allowlist_paths_present():
+    packet = _packet(walk_forward=True, validation=True)
+    paths = present_validation_allowlist(packet.to_dict())
+    assert "results.walk_forward_summary.median_test_expectancy_r" in paths
+    assert "results.validation_summary.bootstrap.ci_lower" in paths
+    assert "results.validation_summary.grid_overfit.risk_level" in paths
+
+
+def test_valid_fold_count_claim_label_not_shadowed_by_fold_count():
+    from thesistester.assistant.results_overview import (
+        _format_scalar_for_claim,
+        build_deterministic_validation_wfa_reply,
+    )
+
+    assert (
+        _format_scalar_for_claim("results.walk_forward_summary.valid_fold_count", 3)
+        == "Valid walk-forward fold count is 3."
+    )
+    assert (
+        _format_scalar_for_claim("results.walk_forward_summary.fold_count", 4)
+        == "Walk-forward fold count is 4."
+    )
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri3_folds"},
+        assumptions={},
+        results={
+            "walk_forward_summary": {
+                "fold_count": 4,
+                "valid_fold_count": 3,
+                "status": "ok",
+            }
+        },
+        warnings=(),
+        limitations=(),
+    )
+    reply = build_deterministic_validation_wfa_reply(packet, packet.to_dict())
+    assert "Valid walk-forward fold count is 3" in reply.summary
+    assert "Walk-forward fold count is 4" in reply.summary
+
+
+def test_validation_allowlist_omits_null_leaves():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri3_null"},
+        assumptions={},
+        results={
+            "walk_forward_summary": {
+                "fold_count": None,
+                "status": None,
+                "median_test_expectancy_r": 0.12,
+            },
+            "validation_summary": {
+                "bootstrap": {"ci_lower": None, "ci_upper": 0.4, "probability_positive": 0.7}
+            },
+        },
+        warnings=(),
+        limitations=(),
+    )
+    paths = present_validation_allowlist(packet.to_dict())
+    assert "results.walk_forward_summary.median_test_expectancy_r" in paths
+    assert "results.validation_summary.bootstrap.ci_upper" in paths
+    assert "results.walk_forward_summary.fold_count" not in paths
+    assert "results.walk_forward_summary.status" not in paths
+    assert "results.validation_summary.bootstrap.ci_lower" not in paths
+
+
+def test_otf_only_packet_does_not_answer_via_validation_wfa():
+    """OTF ask must not remap to WFA missing-validation / WFA leaves."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri3_otf"},
+        assumptions={},
+        results={
+            "otf_validation_summary": {"status": "present", "pass_rate": 0.5},
+            "walk_forward_summary": {
+                "fold_count": 4,
+                "median_test_expectancy_r": 0.2,
+                "status": "ok",
+            },
+        },
+        warnings=(),
+        limitations=(),
+    )
+    assert match_discuss_intent("otf validation") is None
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="otf validation",
+        repair_retry_enabled=False,
+    )
+    # Not the validation_wfa short-circuit / deterministic WFA path.
+    assert reply.recovery_reason != REASON_MISSING_VALIDATION
+    assert not any("walk_forward_summary" in c.path for c in reply.claims)

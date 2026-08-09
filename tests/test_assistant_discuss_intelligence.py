@@ -206,6 +206,8 @@ def test_bare_percent_on_run_summary_recovers_via_deterministic_fallback():
 
 
 def test_specialist_ask_path_miss_does_not_topic_swap_to_kpi():
+    # RI-3 T9 recharacterization: missing WFA/validation → limitation before LLM
+    # (still never topic-swaps onto KPI trade_summary).
     client = _FailClient(_bad_path_payload("results.validation.trade_count"))
     reply = propose_results_reply(
         client,
@@ -214,9 +216,13 @@ def test_specialist_ask_path_miss_does_not_topic_swap_to_kpi():
         user_message="Summarize the walk-forward results",
         repair_retry_enabled=False,
     )
+    assert client.calls == 0
     assert reply.claims == ()
-    assert "could not ground" in reply.summary.lower()
-    assert not any("trade_count" in c.path for c in reply.claims)
+    assert reply.recovery_reason == "validation_missing_evidence"
+    assert not any("trade_summary" in c.path for c in reply.claims)
+    assert not any(
+        c.path.endswith("trade_count") and "trade_summary" in c.path for c in reply.claims
+    )
 
 
 def test_mixed_ask_full_veto_no_partial_kpi_slice():
@@ -478,6 +484,26 @@ def test_di2_non_overview_ask_gets_shared_catalog_without_kpi_must_cite():
 
 
 def test_di2_vetoed_specialist_ask_has_catalog_without_kpi_allowlist():
+    # RI-3: when WFA evidence exists, path catalog prefers validation allowlist
+    # (never kpi_allowlist) for walk-forward asks.
+    packet = _packet()
+    packet = EvidencePacket(
+        provenance=packet.provenance,
+        assumptions=packet.assumptions,
+        results={
+            **packet.results,
+            "walk_forward_summary": {
+                "fold_count": 4,
+                "valid_fold_count": 3,
+                "median_test_expectancy_r": 0.12,
+                "status": "completed",
+            },
+        },
+        warnings=packet.warnings,
+        limitations=packet.limitations,
+        caveats=packet.caveats,
+    )
+
     class Client:
         def __init__(self) -> None:
             self.calls: list[dict] = []
@@ -485,23 +511,33 @@ def test_di2_vetoed_specialist_ask_has_catalog_without_kpi_allowlist():
         def complete_structured(self, **kwargs):
             self.calls.append(kwargs)
             return {
-                "summary": "Walk-forward evidence is not answered from the KPI slice.",
-                "caveats": ["Ask using validation paths when present."],
-                "claims": [],
+                "summary": "Median OOS test expectancy R is 0.12.",
+                "caveats": ["Walk-forward is diagnostic only."],
+                "claims": [
+                    {
+                        "text": "Median OOS test expectancy R is 0.12.",
+                        "path": "results.walk_forward_summary.median_test_expectancy_r",
+                    }
+                ],
                 "followups": ["Ask about key metrics of this run."],
             }
 
     client = Client()
     propose_results_reply(
         client,
-        packet=_packet(),
+        packet=packet,
         history=(),
         user_message="Summarize the walk-forward results",
     )
+    assert len(client.calls) == 1
     payload = _user_payload_from_call(client.calls[0])
     catalog = payload["path_catalog"]
     assert "existing_paths" in catalog
     assert "kpi_allowlist" not in catalog
+    assert catalog.get("discuss_intent") == "validation_wfa"
+    assert "results.walk_forward_summary.median_test_expectancy_r" in catalog.get(
+        "preferred_claim_paths", []
+    )
 
 
 def test_di2_build_prompt_path_catalog_helper_overview_vs_none():
