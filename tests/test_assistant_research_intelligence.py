@@ -293,6 +293,11 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert resolve_single_metric_path("how many trades before exit") == (
         "results.trade_summary.trade_count"
     )
+    # Exit-verb paraphrases still land deep_trade (not trade_count topic-swap).
+    assert match_discuss_intent("how many trades have exited") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("how many trades that exited") == INTENT_DEEP_TRADE
+    assert match_discuss_intent("number of trades that exited") == INTENT_DEEP_TRADE
+    assert resolve_single_metric_path("how many trades have exited") is None
     # deep_trade × trade_count with ``and`` composes (same as win rate × exit).
     assert match_discuss_intent("exit reasons and how many trades") == INTENT_MIXED_ASK
     assert match_discuss_intent("how many trades and exit reasons") == INTENT_MIXED_ASK

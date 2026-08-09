@@ -511,11 +511,20 @@ _DEEP_TRADE_STREAK_CUES: tuple[str, ...] = (
     "consecutive losses",
 )
 
-# ``how many trades`` is a prefix of the deep_trade cue ``how many trades exited``.
-# Gate only that collision — bare ``exit``/``exited`` must not black-hole
-# incidental phrasing (``how many trades before exit``) or and-mixed asks
-# (``exit reasons and how many trades``).
-_SINGLE_METRIC_EXIT_FALSE_FRIENDS: tuple[str, ...] = ("how many trades exited",)
+# Trade-count phrasing that can collocate with exit-structure verbs.
+_TRADE_COUNT_EXIT_PHRASES: tuple[str, ...] = (
+    "how many trades",
+    "number of trades",
+    "trade count",
+)
+
+# Verb forms that mean exit-structure ownership (not bare noun ``exit`` —
+# preserves incidental phrasing like ``how many trades before exit``).
+_EXIT_COUNT_VERBS: tuple[str, ...] = (
+    "exited",
+    "exits",
+    "exiting",
+)
 
 
 def _build_deep_trade_claim_paths() -> tuple[str, ...]:
@@ -657,13 +666,29 @@ def _assumptions_costs_matches(normalized: str) -> bool:
     return False
 
 
+def _deep_trade_exit_count_collocate(normalized: str) -> bool:
+    """True for trade-count phrasing collocated with exit verbs.
+
+    Covers paraphrases (``how many trades have exited``) that are not exact
+    cue aliases. Bare noun ``exit`` alone does **not** qualify — that would
+    steal ``how many trades before exit`` onto deep_trade / drop trade_count.
+    """
+    if not _any_cue_matches(_TRADE_COUNT_EXIT_PHRASES, normalized):
+        return False
+    return _any_cue_matches(_EXIT_COUNT_VERBS, normalized)
+
+
 def _deep_trade_matches(normalized: str) -> bool:
-    return _any_cue_matches(_DEEP_TRADE_POSITIVE_CUES, normalized)
+    return _any_cue_matches(_DEEP_TRADE_POSITIVE_CUES, normalized) or (
+        _deep_trade_exit_count_collocate(normalized)
+    )
 
 
 def _deep_trade_exit_topic_matches(normalized: str) -> bool:
     """True when the ask needs exit-reason histogram projections."""
-    return _any_cue_matches(_DEEP_TRADE_EXIT_CUES, normalized)
+    return _any_cue_matches(_DEEP_TRADE_EXIT_CUES, normalized) or (
+        _deep_trade_exit_count_collocate(normalized)
+    )
 
 
 def _deep_trade_extreme_topic_matches(normalized: str) -> bool:
@@ -779,16 +804,22 @@ def _matched_single_metric_paths(normalized: str) -> list[str]:
         seen.add(path)
         paths.append(path)
 
-    # Only the deep_trade-owned collocate steals trade_count (not bare ``exit*``).
-    exit_owned_trade_count = _any_cue_matches(_SINGLE_METRIC_EXIT_FALSE_FRIENDS, normalized)
+    # Exit-verb collocates own trade-count phrasing (deep_trade); bare ``exit`` does not.
+    exit_owned_trade_count = _deep_trade_exit_count_collocate(normalized)
     for form, path in _SINGLE_METRIC_EXPLICIT_FORMS:
-        # ``how many trades exited`` belongs to deep_trade, not trade_count.
+        # ``how many trades [have] exited`` belongs to deep_trade, not trade_count.
         if form == "how many trades" and exit_owned_trade_count:
             continue
         if _alias_matches(form, normalized):
             _add(path)
     if _any_cue_matches(_SINGLE_METRIC_VALUE_COLLOCATES, normalized):
         for nouns, path in _SINGLE_METRIC_NOUN_PATHS:
+            if (
+                exit_owned_trade_count
+                and path == "results.trade_summary.trade_count"
+                and _any_cue_matches(nouns, normalized)
+            ):
+                continue
             if _any_cue_matches(nouns, normalized):
                 _add(path)
     return paths
