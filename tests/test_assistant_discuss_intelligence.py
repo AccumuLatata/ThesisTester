@@ -226,19 +226,26 @@ def test_specialist_ask_path_miss_does_not_topic_swap_to_kpi():
 
 
 def test_mixed_ask_full_veto_no_partial_kpi_slice():
-    # RI-1: mixed overview+grid → narrow remediation before LLM (until RI-8).
+    # RI-8 / DI T15: mixed overview+grid → composed grounded claims (not KPI-only).
+    from thesistester.assistant.results_projections import build_ephemeral_results_context
+
     client = _FailClient(_bad_path_payload())
+    packet = _packet()
     reply = propose_results_reply(
         client,
-        packet=_packet(),
+        packet=packet,
         history=(),
         user_message="KPIs and best SL/TP",
+        turn_context=build_ephemeral_results_context(packet),
         repair_retry_enabled=False,
     )
     assert client.calls == 0
-    assert reply.claims == ()
-    assert reply.recovery_reason == "mixed_ask_narrow"
-    assert not any("trade_summary" in c.path for c in reply.claims)
+    assert reply.recovery_reason == "mixed_ask_compose"
+    paths = {claim.path for claim in reply.claims}
+    assert any(path.startswith("results.trade_summary.") for path in paths)
+    assert any("stop_loss_ticks" in path for path in paths)
+    # Overview matcher still refuses mixed asks (DX veto ≠ unmatched).
+    assert match_overview_intent("KPIs and best SL/TP") is None
 
 
 def test_flags_off_hard_fail_still_raises():

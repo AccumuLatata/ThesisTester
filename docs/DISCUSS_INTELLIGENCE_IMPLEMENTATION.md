@@ -430,7 +430,7 @@ In addition to `ENGINEERING_PROPOSAL.md` §4.2 where applicable:
 | T12 | Deterministic fallback + packet `missing_oos` / `failed_oos` | OOS anti-soften still rejects softened text; mandatory caveats merged |
 | T13 | RQ-2 best SL/TP happy path | Unchanged grounded projection / `best_grid_result` answer when model cooperates |
 | T14 | Failed raw model draft | Never persisted; recovered / §5.3 reply may persist user+assistant |
-| T15 | Mixed ask “KPIs and best SL/TP” + bad path | Full negative veto; §5.3 remediation; no partial KPI slice |
+| T15 | Mixed ask “KPIs and best SL/TP” + bad path | **RI-8 recharacterization:** composed grounded claims from both allowlists (`mixed_ask_compose`); overview matcher still `None` (DX veto ≠ unmatched); no KPI-only partial slice; >3 intents still narrow-remediate |
 | T16 | Word-boundary false friends (`runtime` / `stopwatch` / `non-stop` / `off-grid`; multi-word `…runtime` / `runaway` / `passkey metrics`) | Must **not** veto or false-match overview via substring / hyphen-compound edges |
 | T17 | `URLError(reason=SSLError)` message | Contains `TLS error`; §5.3 class `provider_tls` |
 | T18 | Provider/TLS fault with `repair_retry_enabled=true` | Exactly one model call (no repair); overview → deterministic fallback |

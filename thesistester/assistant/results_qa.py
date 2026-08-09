@@ -39,15 +39,16 @@ from thesistester.assistant.results_overview import (
     build_missing_metric_limitation_reply,
     build_missing_time_limitation_reply,
     build_missing_validation_limitation_reply,
-    build_mixed_ask_remediation_reply,
     build_prompt_path_catalog,
     build_structured_remediation_reply,
     classify_recovery_reason,
+    compose_deterministic_replies,
     failure_class_from_exception,
     has_grid_ranking_evidence,
     has_single_metric_evidence,
     has_time_ranking_evidence,
     has_validation_wfa_evidence,
+    list_matched_discuss_intents,
     match_discuss_intent,
     resolve_single_metric_path,
 )
@@ -408,11 +409,11 @@ def propose_results_reply(
     remediation. Both DI flags false restores pre-DI hard-fail raises (TLS wrap
     still applies in the transport).
 
-    RI-1/RI-2/RI-3/RI-4: unified Discuss matcher; ``grid_ranking`` /
+    RI-1/RI-2/RI-3/RI-4/RI-8: unified Discuss matcher; ``grid_ranking`` /
     ``time_ranking`` / ``validation_wfa`` / ``single_metric`` missing-evidence
     short-circuits before LLM; deterministic specialist fallback when
-    ``deterministic_specialist_fallback`` is true; ``mixed_ask`` narrow
-    remediation until RI-8.
+    ``deterministic_specialist_fallback`` is true; ``mixed_ask`` composes up to
+    three matched intents (narrow remediation when over cap or no evidence).
 
     DI-2: first-pass user payload includes ``path_catalog`` (existing paths;
     plus ``kpi_allowlist`` / specialist preferred paths when matched).
@@ -446,10 +447,17 @@ def propose_results_reply(
         evidence_context = dict(_ensure_time_rankings_context(evidence_context))
 
     # RI short-circuits: mixed ask / missing specialist evidence before any LLM call.
+    # RI-8: compose_deterministic_replies (§4.7); >3 intents → narrow remediation.
     if discuss_intent == INTENT_MIXED_ASK:
-        return build_mixed_ask_remediation_reply(
+        matched = list_matched_discuss_intents(user_message)
+        # Also hydrate time when the mixed set includes it.
+        if INTENT_TIME_RANKING in matched:
+            evidence_context = dict(_ensure_time_rankings_context(evidence_context))
+        return compose_deterministic_replies(
             packet,
-            evidence_context=evidence_context,
+            evidence_context,
+            user_message=user_message,
+            intents=matched,
         )
     if discuss_intent == INTENT_GRID_RANKING and not has_grid_ranking_evidence(evidence_context):
         return build_missing_grid_limitation_reply(packet)
