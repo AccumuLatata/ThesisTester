@@ -1330,14 +1330,37 @@ def _packet_signals_oos_absent(packet: EvidencePacket) -> bool:
     return False
 
 
+def _context_signals_oos_absent(evidence_context: Mapping[str, Any] | None) -> bool:
+    """True when turn evidence already stores an absent OOS honesty status.
+
+    Covers successful LLM drafts that omit citing ``oos_status`` even though the
+    ephemeral projection / walk-forward summary already records missing/failed.
+    """
+    if not isinstance(evidence_context, Mapping):
+        return False
+    for path in (
+        "results.projections.grid_rankings.oos_status",
+        "results.walk_forward_summary.stitched_oos_status",
+    ):
+        if not _path_exists(evidence_context, path):
+            continue
+        token = _normalize_oos_status_token(_path_get(evidence_context, path))
+        if token in _OOS_ABSENT_STATUS_VALUES:
+            return True
+    return False
+
+
 def _oos_evidence_absent(
     packet: EvidencePacket,
     claims: Sequence[EvidenceClaim] | None = None,
+    evidence_context: Mapping[str, Any] | None = None,
 ) -> bool:
-    """Packet caveats/limitations **or** cited OOS honesty status (§5 / RI-7)."""
+    """Packet caveats/limitations, cited status, or turn-evidence status (§5)."""
     if _packet_signals_oos_absent(packet):
         return True
     if claims is not None and _claims_signal_oos_absent(claims):
+        return True
+    if _context_signals_oos_absent(evidence_context):
         return True
     return False
 
@@ -1385,6 +1408,7 @@ def build_expert_overlay(
     claims: Sequence[EvidenceClaim],
     *,
     discuss_intent: str | None = None,
+    evidence_context: Mapping[str, Any] | None = None,
 ) -> tuple[str, ...]:
     """Return overlay-authored caveat lines that are strictly digit-free.
 
@@ -1400,7 +1424,7 @@ def build_expert_overlay(
         if isinstance(getattr(claim, "path", None), str) and claim.path.strip()
     }
     codes = _packet_caveat_codes(packet)
-    oos_absent = _oos_evidence_absent(packet, claims)
+    oos_absent = _oos_evidence_absent(packet, claims, evidence_context)
 
     honesty_glosses: list[str] = []
     other_glosses: list[str] = []
@@ -1463,17 +1487,23 @@ def apply_expert_overlay(
     recovery_reason: str | None = None,
     followups: Sequence[str] | None = None,
     discuss_intent: str | None = None,
+    evidence_context: Mapping[str, Any] | None = None,
 ):
     """Append DI-3/RI-7 overlay lines; re-run the auditor.
 
     When ``followups`` is omitted, uses the overview followup bank (DI-3).
     Specialist / single-metric builders pass their own digit-free followups;
     WFA-presence asks are stripped when OOS/WFA is already known absent
-    (packet caveats/limitations **or** cited ``oos_status``).
+    (packet caveats/limitations, cited ``oos_status``, or turn-evidence status).
     """
     from thesistester.assistant.results_qa import ResultsQAReply
 
-    overlay = build_expert_overlay(packet, claims, discuss_intent=discuss_intent)
+    overlay = build_expert_overlay(
+        packet,
+        claims,
+        discuss_intent=discuss_intent,
+        evidence_context=evidence_context,
+    )
     # Keep mandatory/LLM caveats first; append only new overlay-authored lines.
     merged_caveats = list(caveats)
     seen = {item.strip() for item in merged_caveats if isinstance(item, str)}
@@ -1488,7 +1518,7 @@ def apply_expert_overlay(
             continue
         merged_caveats.append(line)
         seen.add(line)
-    oos_absent = _oos_evidence_absent(packet, claims)
+    oos_absent = _oos_evidence_absent(packet, claims, evidence_context)
     if followups is not None:
         final_followups = tuple(followups)
         if oos_absent:
@@ -1667,6 +1697,7 @@ def build_deterministic_kpi_reply(
         claims=grounded,
         recovery_reason=recovery_reason,
         discuss_intent=intent,
+        evidence_context=evidence_context,
     )
 
 
@@ -1919,6 +1950,7 @@ def build_deterministic_single_metric_reply(
         recovery_reason=recovery_reason,
         followups=followups,
         discuss_intent=INTENT_SINGLE_METRIC,
+        evidence_context=evidence_context,
     )
 
 
@@ -1974,6 +2006,7 @@ def build_deterministic_time_ranking_reply(
         recovery_reason=recovery_reason,
         followups=followups,
         discuss_intent=INTENT_TIME_RANKING,
+        evidence_context=working,
     )
 
 
@@ -2030,6 +2063,7 @@ def build_deterministic_validation_wfa_reply(
         recovery_reason=recovery_reason,
         followups=followups,
         discuss_intent=INTENT_VALIDATION_WFA,
+        evidence_context=evidence_context,
     )
 
 
@@ -2096,6 +2130,7 @@ def build_deterministic_grid_ranking_reply(
         recovery_reason=recovery_reason,
         followups=followups,
         discuss_intent=INTENT_GRID_RANKING,
+        evidence_context=evidence_context,
     )
 
 

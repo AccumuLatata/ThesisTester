@@ -474,6 +474,9 @@ def propose_results_reply(
             "claims": reply.claims,
             "recovery_reason": reply.recovery_reason,
             "discuss_intent": discuss_intent,
+            # Turn evidence may already record oos_status=missing even when the
+            # LLM draft omitted that honesty claim — still suppress presence asks.
+            "evidence_context": evidence_context,
         }
         # Overview keeps the DI-3 followup bank; specialists preserve reply followups
         # (apply_expert_overlay still strips WFA-presence asks when OOS is absent).

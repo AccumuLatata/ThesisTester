@@ -1107,6 +1107,46 @@ def test_ri7_cited_oos_status_missing_suppresses_wfa_presence_coaching():
     assert not any("whether walk-forward" in f.lower() for f in reply.followups)
 
 
+def test_ri7_llm_grid_without_oos_claim_still_suppresses_presence_coaching():
+    """LLM drafts that omit oos_status still use turn-evidence status for RI-7."""
+    packet = _packet(best_grid=True, missing_oos=False)
+    context = build_ephemeral_results_context(packet)
+    client = _FailClient(
+        {
+            "summary": "Best stop is 8 and take profit is 16.",
+            "caveats": ["In-sample grid only."],
+            "claims": [
+                {
+                    "text": "Best stop-loss ticks is 8.",
+                    "path": "results.projections.grid_rankings.best.stop_loss_ticks",
+                },
+                {
+                    "text": "Best take-profit ticks is 16.",
+                    "path": "results.projections.grid_rankings.best.take_profit_ticks",
+                },
+            ],
+            "followups": [
+                "Ask whether walk-forward or validation diagnostics are present on this packet.",
+                "Ask about expectancy next.",
+            ],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What is the best SL/TP?",
+        turn_context=context,
+        repair_retry_enabled=False,
+    )
+    assert client.calls == 1
+    assert not any(c.path.endswith("oos_status") for c in reply.claims)
+    assert any("do not invent confirmation" in c.lower() for c in reply.caveats)
+    assert not any("ask whether walk-forward" in c.lower() for c in reply.caveats)
+    assert not any("whether walk-forward" in f.lower() for f in reply.followups)
+    assert "Ask about expectancy next." in reply.followups
+
+
 def test_ri7_mixed_ask_followups_respect_missing_oos():
     packet = _packet(best_grid=True, missing_oos=True)
     reply = build_mixed_ask_remediation_reply(packet)
