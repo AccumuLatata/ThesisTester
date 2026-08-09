@@ -795,7 +795,7 @@ and not a change to 3c / zone / fill semantics.
 
 1. Analytics helper: `exact_combo_key × trigger_variant` groupby
 2. One opt-in Backtest surface inside Confluence combo attribution
-3. Unit tests + ASSUMPTIONS + METRICS_GLOSSARY honesty notes
+3. Unit tests + ASSUMPTIONS + METRICS_GLOSSARY + ARCHITECTURE honesty notes
 4. Plan status → Phase 3 implemented
 
 **Same-PR optional (only if cheap after #1 lands):**
