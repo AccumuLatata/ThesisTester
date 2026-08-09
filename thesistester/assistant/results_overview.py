@@ -1103,12 +1103,38 @@ def present_assumptions_allowlist(evidence_context: Mapping[str, Any]) -> tuple[
     return tuple(out)
 
 
-def present_deep_trade_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ...]:
-    """Return frozen §6 deep-trade claim paths with narratable scalars only."""
+def deep_trade_topic_path_prefixes(user_message: str | None) -> tuple[str, ...] | None:
+    """Return required projection prefixes for a deep-trade ask, or None if open."""
+    if not isinstance(user_message, str) or not user_message.strip():
+        return None
+    normalized = _normalize_message(user_message)
+    prefixes: list[str] = []
+    if _deep_trade_exit_topic_matches(normalized):
+        prefixes.append("results.projections.exit_reason_counts.")
+    if _deep_trade_extreme_topic_matches(normalized):
+        prefixes.append("results.projections.extreme_trades.")
+    if _deep_trade_streak_topic_matches(normalized):
+        prefixes.append("results.projections.streak_summary.")
+    return tuple(prefixes) if prefixes else None
+
+
+def present_deep_trade_allowlist(
+    evidence_context: Mapping[str, Any],
+    *,
+    user_message: str | None = None,
+) -> tuple[str, ...]:
+    """Return frozen §6 deep-trade claim paths with narratable scalars only.
+
+    When ``user_message`` selects exit/extreme/streak topics, only those
+    projection families are listed (LLM catalog + finish topic gate).
+    """
     if not isinstance(evidence_context, Mapping):
         return ()
+    prefixes = deep_trade_topic_path_prefixes(user_message)
     out: list[str] = []
     for path in DEEP_TRADE_CLAIM_PATHS:
+        if prefixes is not None and not any(path.startswith(prefix) for prefix in prefixes):
+            continue
         if not _path_exists(evidence_context, path):
             continue
         value = _path_get(evidence_context, path)
@@ -1471,6 +1497,7 @@ def build_prompt_path_catalog(
     overview_intent: str | None = None,
     discuss_intent: str | None = None,
     single_metric_path: str | None = None,
+    user_message: str | None = None,
 ) -> dict[str, Any]:
     """Build the DI-2 / RI first-pass path catalog for the Results Q&A user payload.
 
@@ -1550,18 +1577,21 @@ def build_prompt_path_catalog(
         # §4.6: do not expose performance KPI paths on assumptions asks.
         catalog["existing_paths"] = list(assumptions_paths)
     elif intent == INTENT_DEEP_TRADE:
-        deep_trade_paths = list(present_deep_trade_allowlist(evidence_context))
+        deep_trade_paths = list(
+            present_deep_trade_allowlist(evidence_context, user_message=user_message)
+        )
         catalog["discuss_intent"] = INTENT_DEEP_TRADE
         catalog["deep_trade_allowlist"] = deep_trade_paths
         catalog["specialist_instruction"] = (
             "This is a deep-trade / exit-structure ask. Cite only paths from "
             "deep_trade_allowlist / preferred_claim_paths / existing_paths "
-            "(capped exit-reason histogram, extreme trades, streak scalars). "
-            "Do not dump raw trade frames or invent exits. Do not substitute "
-            "results.trade_summary.* performance KPIs for exit-structure evidence."
+            "for the requested projection family (exit-reason histogram, "
+            "extreme trades, and/or streak scalars). Do not dump raw trade "
+            "frames or invent exits. Do not substitute results.trade_summary.* "
+            "performance KPIs for exit-structure evidence."
         )
         catalog["preferred_claim_paths"] = deep_trade_paths
-        # §6: hard-restrict catalog to present deep-trade allowlist only.
+        # §6: hard-restrict catalog to the topic-scoped deep-trade allowlist.
         catalog["existing_paths"] = list(deep_trade_paths)
     elif intent == INTENT_TIME_RANKING:
         # Ensure projected paths are listed when only time_grouped_summary exists.

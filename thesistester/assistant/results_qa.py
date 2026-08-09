@@ -20,6 +20,7 @@ from thesistester.assistant.results_overview import (
     DEEP_TRADE_CLAIM_PATHS,
     INTENT_ASSUMPTIONS_COSTS,
     INTENT_DEEP_TRADE,
+    deep_trade_topic_path_prefixes,
     INTENT_GRID_RANKING,
     INTENT_MIXED_ASK,
     INTENT_ROBUSTNESS_TIER2,
@@ -343,6 +344,7 @@ def _complete_results_structured(
             overview_intent=overview_intent,
             discuss_intent=discuss_intent,
             single_metric_path=metric_path,
+            user_message=user_message,
         )
     if repair is not None:
         user_payload["repair"] = dict(repair)
@@ -623,7 +625,18 @@ def propose_results_reply(
                 return build_deterministic_assumptions_reply(packet, evidence_context)
         if discuss_intent == INTENT_DEEP_TRADE:
             allow = frozenset(DEEP_TRADE_CLAIM_PATHS)
-            ok = bool(reply.claims) and all(claim.path in allow for claim in reply.claims)
+            prefixes = deep_trade_topic_path_prefixes(user_message)
+            topic_ok = True
+            if prefixes is not None:
+                topic_ok = bool(reply.claims) and all(
+                    any(claim.path.startswith(prefix) for prefix in prefixes)
+                    for claim in reply.claims
+                )
+            ok = (
+                bool(reply.claims)
+                and all(claim.path in allow for claim in reply.claims)
+                and topic_ok
+            )
             if (
                 not ok
                 and deterministic_specialist_fallback

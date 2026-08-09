@@ -2230,6 +2230,42 @@ def test_deep_trade_allowlist_rejects_kpi_and_undeclared_paths():
     assert not any("trade_summary" in path for path in claim_paths)
 
 
+def test_ri9_llm_wrong_family_falls_back_to_topic_scoped_deterministic():
+    """LLM citing extremes for an exit ask must fall back to exit histogram."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri9_wrong_family"},
+        assumptions={},
+        results={"trade_summary": {"trade_count": 12}},
+        warnings=(),
+        limitations=(),
+    )
+    context = build_ephemeral_results_context(packet, trade_rows=_trade_rows_for_deep_trade())
+    client = _FailClient(
+        {
+            "summary": "Best trade R-multiple is 3.5.",
+            "caveats": ["Soft."],
+            "claims": [
+                {
+                    "text": "Best trade R-multiple is 3.5.",
+                    "path": "results.projections.extreme_trades.best.0.r_multiple",
+                }
+            ],
+            "followups": ["Deploy."],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What were the exit reasons?",
+        turn_context=context,
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "results.projections.exit_reason_counts.total_trades" in paths
+    assert not any("extreme_trades" in path for path in paths)
+
+
 def test_ri9_deep_trade_rejects_kpi_substitution_via_fallback():
     packet = EvidencePacket(
         provenance={"run_id": "run_ri9_kpi"},
