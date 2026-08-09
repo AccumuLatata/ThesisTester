@@ -31,8 +31,10 @@ from thesistester.analytics.confluence_attribution import (
     confluence_attribution_summary,
     confluence_combo_grouping_available,
     exact_combo_key,
+    exact_combo_variant_empty_info_message,
     format_display_combo,
     has_usable_trigger_variant,
+    pair_variant_empty_info_message,
     level_count_bucket_label,
     pair_keys_for_tokens,
     pairs_empty_info_message,
@@ -822,3 +824,59 @@ def test_summarize_pair_x_trigger_variant_missing_column_empty():
         }
     )
     assert summarize_by_pair_and_trigger_variant(trades, min_trades=1).empty
+
+
+def test_summarize_exact_combo_x_trigger_variant_strips_and_merges_labels():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -0.5, 0.25],
+            "level_names": ["A|B", "A|B", "A|B"],
+            "trigger_variant": ["  3c_long", "3c_long  ", "3c_long"],
+        }
+    )
+    frame = summarize_by_exact_combo_and_trigger_variant(trades, min_trades=1)
+    assert len(frame) == 1
+    assert frame.iloc[0][TRIGGER_VARIANT_COL] == "3c_long"
+    assert int(frame.iloc[0]["trade_count"]) == 3
+
+
+def test_summarize_exact_combo_x_trigger_variant_rejects_stringified_null_labels():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -0.5, 0.25],
+            "level_names": ["A|B", "A|B", "A|B"],
+            "trigger_variant": ["nan", "None", "<NA>"],
+        }
+    )
+    assert summarize_by_exact_combo_and_trigger_variant(trades, min_trades=1).empty
+    assert has_usable_trigger_variant(trades) is False
+
+
+def test_summarize_exact_combo_x_trigger_variant_ignores_empty_name_only_variants():
+    """Usable variants on empty-name rows must not open/populate the cross-view."""
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, 0.5, -0.5],
+            "level_names": ["A|B", "A|B", ""],
+            "trigger_variant": [None, None, "3c_long"],
+        }
+    )
+    assert has_usable_trigger_variant(trades) is False
+    frame = summarize_by_exact_combo_and_trigger_variant(trades, min_trades=1)
+    assert frame.empty
+    assert EMPTY_LEVEL_NAMES_KEY not in set(frame.get(EXACT_COMBO_KEY_COL, []))
+
+
+def test_cross_view_empty_info_messages_distinguish_filter_vs_unavailable():
+    nonempty = pd.DataFrame(
+        {
+            EXACT_COMBO_KEY_COL: ["A|B"],
+            TRIGGER_VARIANT_COL: ["3c_long"],
+            "trade_count": [1],
+            "sample_warning": [True],
+        }
+    )
+    assert "current filter" in exact_combo_variant_empty_info_message(nonempty)
+    assert "usable trigger_variant" in exact_combo_variant_empty_info_message(pd.DataFrame())
+    assert "current filter" in pair_variant_empty_info_message(nonempty)
+    assert "two distinct level names" in pair_variant_empty_info_message(None)

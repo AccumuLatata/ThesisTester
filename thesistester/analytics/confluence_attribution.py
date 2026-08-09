@@ -299,24 +299,42 @@ def _empty_multi_group_frame(group_cols: list[str]) -> pd.DataFrame:
     return pd.DataFrame(columns=[*group_cols, *_GROUP_METRIC_COLS])
 
 
+_UNUSABLE_TRIGGER_VARIANT_LABELS = frozenset({"nan", "none", "<na>", "nat", "null"})
+
+
 def _is_usable_trigger_variant(value: Any) -> bool:
     """True for non-null, non-empty (strip) trigger_variant labels."""
     if _is_nullish(value):
         return False
     text = str(value).strip()
-    return bool(text) and text.lower() != "nan"
+    if not text:
+        return False
+    # Reject common stringified null tokens (parquet/CSV round-trips).
+    return text.lower() not in _UNUSABLE_TRIGGER_VARIANT_LABELS
 
 
 def has_usable_trigger_variant(trades: pd.DataFrame) -> bool:
-    """True when ≥1 analyzable trade has a usable ``trigger_variant`` label."""
+    """True when ≥1 analyzable nonempty-combo trade has a usable variant.
+
+    Cross-view availability requires the usable ``trigger_variant`` to sit on a
+    trade that also contributes a nonempty ``exact_combo_key``. Empty-name rows
+    alone must not open the Combo × 3c variant tables (they would otherwise
+    surface only ``(no level names) × variant`` while real combos lack variants).
+    """
     if trades is None or not isinstance(trades, pd.DataFrame) or trades.empty:
         return False
     if TRIGGER_VARIANT_COL not in trades.columns or "r_multiple" not in trades.columns:
         return False
+    if "level_names" not in trades.columns:
+        return False
     work = trades.dropna(subset=["r_multiple"])
     if work.empty:
         return False
-    return bool(work[TRIGGER_VARIANT_COL].map(_is_usable_trigger_variant).any())
+    attached = attach_combo_columns(work)
+    nonempty = attached.loc[attached[EXACT_COMBO_KEY_COL] != EMPTY_LEVEL_NAMES_KEY]
+    if nonempty.empty:
+        return False
+    return bool(nonempty[TRIGGER_VARIANT_COL].map(_is_usable_trigger_variant).any())
 
 
 def _filter_usable_trigger_variant(trades: pd.DataFrame) -> pd.DataFrame:
@@ -416,9 +434,7 @@ def _summarize_r_multi(
             key_values: tuple[Any, ...] = (key,)
         else:
             key_values = tuple(key)
-        row: dict[str, Any] = {
-            col: key_values[index] for index, col in enumerate(group_cols)
-        }
+        row: dict[str, Any] = {col: key_values[index] for index, col in enumerate(group_cols)}
         row.update(
             {
                 "trade_count": n,
@@ -692,6 +708,11 @@ def summarize_by_exact_combo_and_trigger_variant(
     usable = _filter_usable_trigger_variant(analyzable)
     if usable.empty:
         return empty
+    # Cross-view answers "which combination × variant"; empty-name sentinel rows
+    # are not combinations (they remain visible on the Exact combo tab).
+    usable = usable.loc[usable[EXACT_COMBO_KEY_COL] != EMPTY_LEVEL_NAMES_KEY].copy()
+    if usable.empty:
+        return empty
 
     return _summarize_r_multi(
         usable,
@@ -918,6 +939,26 @@ def pairs_empty_info_message(raw_pairs: pd.DataFrame | None) -> str:
     if isinstance(raw_pairs, pd.DataFrame) and not raw_pairs.empty:
         return "No pair rows to display under the current filter."
     return "No pair rows to display (need trades with at least two distinct level names)."
+
+
+def exact_combo_variant_empty_info_message(raw_frame: pd.DataFrame | None) -> str:
+    """Honest empty-state copy for exact_combo × trigger_variant."""
+    if isinstance(raw_frame, pd.DataFrame) and not raw_frame.empty:
+        return "No exact-combo × variant rows to display under the current filter."
+    return (
+        "No exact-combo × variant rows to display (need analyzable trades with "
+        "level_names and a usable trigger_variant)."
+    )
+
+
+def pair_variant_empty_info_message(raw_frame: pd.DataFrame | None) -> str:
+    """Honest empty-state copy for pair_key × trigger_variant."""
+    if isinstance(raw_frame, pd.DataFrame) and not raw_frame.empty:
+        return "No pair × variant rows to display under the current filter."
+    return (
+        "No pair × variant rows to display (need trades with usable "
+        "`trigger_variant` and at least two distinct level names)."
+    )
 
 
 def resolve_signal_setup_for_attribution(

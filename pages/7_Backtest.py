@@ -57,7 +57,9 @@ from thesistester.analytics.confluence_attribution import (
     TRIGGER_VARIANT_COL,
     apply_sample_warning_filter,
     confluence_attribution_summary,
+    exact_combo_variant_empty_info_message,
     has_usable_trigger_variant,
+    pair_variant_empty_info_message,
     pairs_empty_info_message,
     prepare_exact_combo_display,
     resolve_confluence_mode,
@@ -1377,20 +1379,9 @@ if _display_has_trades:
                     if _exact_x_view is None or (
                         isinstance(_exact_x_view, pd.DataFrame) and _exact_x_view.empty
                     ):
-                        if (
-                            isinstance(_exact_x_var, pd.DataFrame)
-                            and not _exact_x_var.empty
-                            and bool(_cca_hide_thin)
-                        ):
-                            st.info(
-                                "No exact-combo × variant rows to display under the "
-                                "current filter."
-                            )
-                        else:
-                            st.info(
-                                "Combo × 3c variant unavailable — no usable "
-                                "`trigger_variant` on displayed trades."
-                            )
+                        # Do not claim "no usable trigger_variant" here — the outer
+                        # gate already passed; empty display is filter or no rows.
+                        st.info(exact_combo_variant_empty_info_message(_exact_x_var))
                     else:
                         _exact_x_disp = prepare_exact_combo_display(
                             _exact_x_view,
@@ -1398,9 +1389,7 @@ if _display_has_trades:
                             confluence_mode=_confluence_mode,
                         )
                         if "display_combo" in _exact_x_disp.columns:
-                            _exact_x_disp = _exact_x_disp.rename(
-                                columns={"display_combo": "combo"}
-                            )
+                            _exact_x_disp = _exact_x_disp.rename(columns={"display_combo": "combo"})
                         _exact_x_cols = [
                             c
                             for c in [
@@ -1426,9 +1415,7 @@ if _display_has_trades:
                                 .astype(str)
                             ).all()
                         ):
-                            _exact_x_cols = [
-                                c for c in _exact_x_cols if c != EXACT_COMBO_KEY_COL
-                            ]
+                            _exact_x_cols = [c for c in _exact_x_cols if c != EXACT_COMBO_KEY_COL]
                         st.dataframe(
                             _exact_x_disp[_exact_x_cols],
                             width="stretch",
@@ -1471,21 +1458,7 @@ if _display_has_trades:
                     if _pair_x_view is None or (
                         isinstance(_pair_x_view, pd.DataFrame) and _pair_x_view.empty
                     ):
-                        if (
-                            isinstance(_pair_x_var, pd.DataFrame)
-                            and not _pair_x_var.empty
-                            and bool(_cca_hide_thin)
-                        ):
-                            st.info(
-                                "No pair × variant rows to display under the current "
-                                "filter."
-                            )
-                        else:
-                            st.info(
-                                "No pair × variant rows to display (need trades with "
-                                "usable `trigger_variant` and at least two distinct "
-                                "level names)."
-                            )
+                        st.info(pair_variant_empty_info_message(_pair_x_var))
                     else:
                         _pair_x_disp = _pair_x_view.rename(
                             columns={
