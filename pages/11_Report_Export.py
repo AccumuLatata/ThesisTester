@@ -334,6 +334,11 @@ for key, filename in csv_exports:
 # Optional confluence combo CSV tables from on-export recompute (PR 5b).
 if isinstance(_cca_block, dict) and _cca_block.get("available"):
     _cca_tables = _cca_block.get("tables") if isinstance(_cca_block.get("tables"), dict) else {}
+    _cca_top_n = _cca_block.get("top_n", 15)
+    st.caption(
+        f"Confluence CSV tables: exact / membership / pairs are top {_cca_top_n} "
+        "by |total_r|; level-count is the full small table."
+    )
     for _cca_name, _cca_filename in (
         ("exact_combo", "confluence_exact_combo.csv"),
         ("level_count", "confluence_level_count.csv"),

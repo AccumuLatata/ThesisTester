@@ -1136,13 +1136,13 @@ on the artifact JSON alone for identity. Embedding `signal_settings` into
 
 **Acceptance:**
 
-- [ ] Report with no `level_names` / unavailable summary omits the section.
-- [ ] Report with available summary includes diagnostic section + honesty text.
-- [ ] Existing sections unchanged when combo unavailable.
-- [ ] Mode/anchor uses `resolve_signal_setup_for_attribution` **and**
+- [x] Report with no `level_names` / unavailable summary omits the section.
+- [x] Report with available summary includes diagnostic section + honesty text.
+- [x] Existing sections unchanged when combo unavailable.
+- [x] Mode/anchor uses `resolve_signal_setup_for_attribution` **and**
       `resolve_confluence_mode` from session keys (incl. `signal_settings`
       when present), not artifact `setup_config` alone.
-- [ ] Focused reporting tests cover available/unavailable; full suite green.
+- [x] Focused reporting tests cover available/unavailable; full suite green.
 
 ---
 
@@ -1495,13 +1495,13 @@ PR 1 analytics helpers + tests
 
 ### PR 5b
 
-- [ ] On-export recompute via `confluence_attribution_summary` (no combo session producer key)
-- [ ] Mode/anchor via `resolve_signal_setup_for_attribution` **and**
+- [x] On-export recompute via `confluence_attribution_summary` (no combo session producer key)
+- [x] Mode/anchor via `resolve_signal_setup_for_attribution` **and**
       `resolve_confluence_mode` from session keys (incl. `signal_settings`)
-- [ ] Unavailable → markdown `""` / omit block; existing sections unchanged
-- [ ] Available → diagnostic section + honesty; top-N exact/count (+ optional membership/pairs)
-- [ ] Optional checklist row only; not a hard required export item
-- [ ] Focused reporting tests + full suite green
+- [x] Unavailable → markdown `""` / omit block; existing sections unchanged
+- [x] Available → diagnostic section + honesty; top-N exact/count (+ optional membership/pairs)
+- [x] Optional checklist row only; not a hard required export item
+- [x] Focused reporting tests + full suite green
 
 ### PR 5c
 

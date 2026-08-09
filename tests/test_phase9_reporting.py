@@ -963,3 +963,46 @@ def test_confluence_combo_markdown_helper_returns_empty_when_unavailable():
     assert _confluence_combo_markdown_section(None) == ""
     assert _confluence_combo_markdown_section({"available": False}) == ""
     assert _confluence_combo_markdown_section({}) == ""
+
+
+def test_confluence_combo_report_fail_closed_on_unexpected_errors(monkeypatch):
+    """Optional diagnostic must omit rather than take down artifact build."""
+    from thesistester import reporting as reporting_mod
+
+    state = _confluence_trades_session_state()
+
+    def _boom(*_args, **_kwargs):
+        raise AttributeError("simulated attribution failure")
+
+    monkeypatch.setattr(reporting_mod, "confluence_attribution_summary", _boom)
+    assert reporting_mod.build_confluence_combo_report_block(state) is None
+    artifact = build_research_artifact(state)
+    assert "confluence_combo" not in artifact
+    assert "## Confluence Combo Attribution" not in build_markdown_report(artifact)
+
+
+def test_confluence_combo_markdown_preserves_top_n_zero():
+    from thesistester.reporting import _confluence_combo_markdown_section
+
+    markdown = _confluence_combo_markdown_section(
+        {
+            "available": True,
+            "trade_count": 1,
+            "nonempty_combo_trade_count": 1,
+            "empty_level_names_count": 0,
+            "confluence_mode": "unknown",
+            "anchor_level": None,
+            "pair_mode": "generic",
+            "warnings": [],
+            "top_n": 0,
+            "tables": {
+                "exact_combo": [],
+                "level_count": [],
+                "membership": [],
+                "pairs": [],
+            },
+        }
+    )
+    assert "top 0 by |total_r|" in markdown
+    assert "top 15 by |total_r|" not in markdown
+    assert "Empty level_names (analyzable)" in markdown
