@@ -1,9 +1,10 @@
-"""Deterministic grid/time/deep-trade projections for results Q&A (RQ-2 / RI-9).
+"""Deterministic grid/time/deep-trade/combo projections for results Q&A.
 
 Projections are JSON-safe tables with stable paths under
 ``results.projections.*``. They must be merged only into an ephemeral turn
-context — never written back into research bundles. Deep-trade projections are
-built from already-loaded trade table rows (never full parquet to the model).
+context — never written back into research bundles. Deep-trade and confluence
+combo projections are built from already-loaded trade table rows (never full
+parquet / full ``by_*`` frames to the model).
 """
 
 from __future__ import annotations
@@ -23,6 +24,9 @@ DEFAULT_TIME_BUCKET_COL = "entry_rth_segment"
 # RI-9 §6 caps (freeze).
 EXIT_REASON_TOP_N = 12
 EXTREME_TRADES_N = 5
+# PR 5d: bounded confluence combo tops (matches report/bundle default 15).
+CONFLUENCE_COMBO_TOP_N = 15
+CONFLUENCE_COMBO_MIN_TRADES = 10
 
 # When the preferred bucket column is absent from exported time rows (common
 # when Time Analysis grouped by hour/30m), fall through in this order.
@@ -719,6 +723,232 @@ def project_extreme_trades(
     return {"best": best, "worst": worst, "n": cap}
 
 
+def _first_mapping(*candidates: Any) -> Mapping[str, Any] | None:
+    for candidate in candidates:
+        if isinstance(candidate, Mapping) and candidate:
+            return candidate
+    return None
+
+
+def _session_like_for_confluence_combo(
+    trades: Any,
+    packet_or_mapping: EvidencePacket | Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Build a session-like mapping for on-export confluence helpers.
+
+    Identity lookup mirrors Backtest / report order sources: prefer packet
+    ``assumptions`` (EvidencePacket), then top-level session keys, then artifact
+    ``configuration``, then bounded ``results.signals_summary.setup``. Optional
+    5c ``confluence_combo_summary`` remains a mode/anchor fallback only.
+    """
+    session_like: dict[str, Any] = {"trades": trades}
+    if packet_or_mapping is None:
+        return session_like
+    context = _as_packet_dict(packet_or_mapping)
+    assumptions = _as_mapping(context.get("assumptions")) or {}
+    results = _as_mapping(context.get("results")) or {}
+    configuration = _as_mapping(context.get("configuration")) or {}
+    signals_summary = _as_mapping(results.get("signals_summary")) or {}
+    signals_setup = _as_mapping(signals_summary.get("setup"))
+
+    setup_config = _first_mapping(
+        assumptions.get("setup_config"),
+        context.get("setup_config"),
+        configuration.get("setup_config"),
+    )
+    if setup_config is not None:
+        session_like["setup_config"] = setup_config
+
+    for key in ("signal_settings", "last_signal_setup", "signal_context"):
+        value = _first_mapping(
+            assumptions.get(key),
+            context.get(key),
+            configuration.get(key),
+        )
+        if value is not None:
+            session_like[key] = value
+    # Page-summary setup is a thin last-resort identity (mode, sometimes levels).
+    if "signal_context" not in session_like and signals_setup is not None:
+        session_like["signal_context"] = dict(signals_setup)
+
+    # 5c convenience: restored summary may carry mode/anchor when Signals
+    # identity is absent. Not required for projection availability.
+    for key in ("confluence_combo_summary", "confluence_combo"):
+        restored = _first_mapping(results.get(key), context.get(key))
+        if restored is not None and restored.get("available"):
+            session_like["confluence_combo_summary"] = restored
+            break
+    return session_like
+
+
+def _rank_projection_rows_by_abs_total_r(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Cap projection rows with report-style ``|total_r|`` then ``trade_count``."""
+    if limit <= 0:
+        return []
+    materialized = [dict(row) for row in rows if isinstance(row, Mapping)]
+    if len(materialized) <= limit:
+        return materialized
+
+    def _sort_key(row: Mapping[str, Any]) -> tuple[float, float]:
+        total = row.get("total_r")
+        try:
+            abs_total = abs(float(total)) if total is not None else float("-inf")
+        except (TypeError, ValueError):
+            abs_total = float("-inf")
+        count = row.get("trade_count")
+        try:
+            trade_count = float(count) if count is not None else float("-inf")
+        except (TypeError, ValueError):
+            trade_count = float("-inf")
+        return (abs_total, trade_count)
+
+    ranked = sorted(materialized, key=_sort_key, reverse=True)
+    return ranked[:limit]
+
+
+def _projection_rows_from_table(
+    rows: Any,
+    *,
+    key_fields: Sequence[str],
+    metric_fields: Sequence[str] = (
+        "trade_count",
+        "win_rate",
+        "avg_r",
+        "median_r",
+        "total_r",
+        "sample_warning",
+    ),
+) -> list[dict[str, Any]]:
+    if not isinstance(rows, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        item: dict[str, Any] = {}
+        for field in (*key_fields, *metric_fields):
+            if field in row:
+                item[field] = to_jsonable(row.get(field))
+        if item:
+            out.append(item)
+    return out
+
+
+def project_confluence_combo(
+    trade_rows: Sequence[Mapping[str, Any]] | None,
+    *,
+    packet_or_mapping: EvidencePacket | Mapping[str, Any] | None = None,
+    top_n: int = CONFLUENCE_COMBO_TOP_N,
+    min_trades: int = CONFLUENCE_COMBO_MIN_TRADES,
+) -> dict[str, Any] | None:
+    """Bounded confluence combo projection from trade rows (PR 5d).
+
+    Recomputes via the same Backtest / report resolution path. Returns ``None``
+    when unavailable (omit-when-unavailable). Does not dump full ``by_*`` frames.
+    """
+    rows = _trade_row_dicts(trade_rows)
+    if not rows:
+        return None
+    if not any("level_names" in row for row in rows):
+        return None
+
+    try:
+        import pandas as pd
+
+        from thesistester.analytics.confluence_attribution import (
+            MEMBERSHIP_DOUBLE_COUNT_WARNING,
+            PAIRWISE_DOUBLE_COUNT_WARNING,
+            TRIGGER_3C_LEVEL_NAMES_WARNING,
+        )
+        from thesistester.reporting import build_confluence_combo_report_block
+    except Exception:
+        return None
+
+    try:
+        trades = pd.DataFrame(rows)
+    except (TypeError, ValueError):
+        return None
+    if "level_names" not in trades.columns:
+        return None
+
+    cap = _capped_positive_int(top_n, default=CONFLUENCE_COMBO_TOP_N, cap=CONFLUENCE_COMBO_TOP_N)
+    try:
+        resolved_min = int(min_trades)
+    except (TypeError, ValueError):
+        resolved_min = CONFLUENCE_COMBO_MIN_TRADES
+    if resolved_min < 1:
+        resolved_min = CONFLUENCE_COMBO_MIN_TRADES
+
+    session_like = _session_like_for_confluence_combo(trades, packet_or_mapping)
+    block = build_confluence_combo_report_block(
+        session_like,
+        min_trades=resolved_min,
+        top_n=cap,
+    )
+    if not isinstance(block, Mapping) or not block.get("available"):
+        return None
+
+    tables = block.get("tables") if isinstance(block.get("tables"), Mapping) else {}
+    # Report already top-N truncates exact/pairs; level_count ships full (small)
+    # and must be capped here so frozen allowlist indices stay meaningful.
+    exact_rows = _rank_projection_rows_by_abs_total_r(
+        _projection_rows_from_table(
+            tables.get("exact_combo"),
+            key_fields=("display_combo", "exact_combo_key"),
+        ),
+        limit=cap,
+    )
+    level_count_rows = _rank_projection_rows_by_abs_total_r(
+        _projection_rows_from_table(
+            tables.get("level_count"),
+            key_fields=("level_count_bucket",),
+        ),
+        limit=cap,
+    )
+    pair_rows = _rank_projection_rows_by_abs_total_r(
+        _projection_rows_from_table(
+            tables.get("pairs"),
+            key_fields=("pair_key", "pair_mode"),
+        ),
+        limit=cap,
+    )
+
+    warnings = [str(item) for item in list(block.get("warnings") or []) if item]
+    warning_flags = {
+        "membership_double_count": MEMBERSHIP_DOUBLE_COUNT_WARNING in warnings,
+        "pairwise_double_count": PAIRWISE_DOUBLE_COUNT_WARNING in warnings,
+        "trigger_3c_level_names": TRIGGER_3C_LEVEL_NAMES_WARNING in warnings,
+    }
+
+    projection: dict[str, Any] = {
+        "available": True,
+        "trade_count": to_jsonable(block.get("trade_count")),
+        "nonempty_combo_trade_count": to_jsonable(block.get("nonempty_combo_trade_count")),
+        "pair_mode": to_jsonable(block.get("pair_mode")),
+        "confluence_mode": to_jsonable(block.get("confluence_mode")),
+        "selection_scope": "observed_traded_combos",
+        "top_n": cap,
+        "min_trades": resolved_min,
+        # Cite-bound booleans for discuss allowlist; raw strings stay advisory.
+        "warning_flags": warning_flags,
+        "warnings": warnings,
+        "top_exact_combo": exact_rows,
+        "top_level_count": level_count_rows,
+    }
+    if pair_rows:
+        projection["top_pair"] = pair_rows
+    if exact_rows:
+        projection["best_exact_combo"] = exact_rows[0]
+    anchor = block.get("anchor_level")
+    if isinstance(anchor, str) and anchor.strip():
+        projection["anchor_level"] = anchor.strip()
+    return projection
+
+
 def project_streak_summary(
     packet_or_mapping: EvidencePacket | Mapping[str, Any],
     trade_rows: Sequence[Mapping[str, Any]] | None = None,
@@ -872,6 +1102,14 @@ def build_ephemeral_results_context(
     streaks = project_streak_summary(context, usable_trades or None)
     if streaks is not None:
         projections["streak_summary"] = streaks
+
+    # PR 5d: bounded confluence combo projection from trades (5c siblings optional).
+    confluence = project_confluence_combo(
+        usable_trades,
+        packet_or_mapping=context,
+    )
+    if confluence is not None:
+        projections["confluence_combo"] = confluence
 
     results["projections"] = projections
     return context

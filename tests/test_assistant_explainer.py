@@ -323,6 +323,83 @@ def test_build_evidence_packet_omits_nested_fingerprint_when_provenance_missing(
     assert packet.assumptions["dataset"]["path"] == "bars.csv"
 
 
+def test_build_evidence_packet_carries_signal_run_identity_for_combo_recompute(
+    monkeypatch,
+):
+    """PR5d needs last_signal_setup/signal_settings on assumptions for mode/anchor."""
+    monkeypatch.setattr(
+        "thesistester.assistant.explainer.build_research_artifact",
+        lambda state: {
+            "configuration": {
+                "setup_config": {"confluence_mode": "global_cluster"},
+                "last_signal_setup": {
+                    "confluence_mode": "anchor_rules",
+                    "anchor_level": "PDH",
+                },
+                "instrument": "ES",
+            },
+            "intrabar": {"backtest_policy": {}},
+            "otf_filter": {},
+            "results": {"trade_summary": {"trade_count": 12}},
+        },
+    )
+    packet = build_evidence_packet(
+        {
+            "signal_settings": {
+                "confluence_mode": "anchor_rules",
+                "anchor_level": "PDH",
+            },
+            "signal_context": {"confluence_mode": "anchor_rules"},
+        },
+        provenance={},
+    )
+    assert packet.assumptions["last_signal_setup"]["confluence_mode"] == "anchor_rules"
+    assert packet.assumptions["last_signal_setup"]["anchor_level"] == "PDH"
+    assert packet.assumptions["signal_settings"]["anchor_level"] == "PDH"
+    assert packet.assumptions["signal_context"]["confluence_mode"] == "anchor_rules"
+
+
+def test_build_evidence_packet_mounts_confluence_combo_identity_without_tables(
+    monkeypatch,
+):
+    """5c/5b combo identity must land on results so Discuss can restore mode/anchor."""
+    monkeypatch.setattr(
+        "thesistester.assistant.explainer.build_research_artifact",
+        lambda state: {
+            "configuration": {"setup_config": {}, "instrument": "ES"},
+            "intrabar": {"backtest_policy": {}},
+            "otf_filter": {},
+            "results": {"trade_summary": {"trade_count": 12}},
+            "confluence_combo": {
+                "available": True,
+                "confluence_mode": "global_cluster",
+                "anchor_level": None,
+                "trade_count": 12,
+                "tables": {"exact_combo": [{"display_combo": "A|B"}]},
+            },
+        },
+    )
+    packet = build_evidence_packet(
+        {
+            "confluence_combo_summary": {
+                "available": True,
+                "kind": "confluence_combo_summary",
+                "confluence_mode": "anchor_rules",
+                "anchor_level": "PDH",
+                "trade_count": 12,
+                "tables": {"exact_combo": [{"display_combo": "SHOULD_NOT_COPY"}]},
+            }
+        },
+        provenance={},
+    )
+    summary = packet.results["confluence_combo_summary"]
+    assert summary["available"] is True
+    # Prefer baked 5c summary over artifact block.
+    assert summary["confluence_mode"] == "anchor_rules"
+    assert summary["anchor_level"] == "PDH"
+    assert "tables" not in summary
+
+
 def test_otf_template_does_not_claim_availability_on_empty_filter():
     packet = EvidencePacket.from_dict(
         {

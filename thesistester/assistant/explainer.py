@@ -452,6 +452,46 @@ def _otf_validation_from_artifact(
     }
 
 
+_CONFLUENCE_COMBO_IDENTITY_KEYS: tuple[str, ...] = (
+    "available",
+    "kind",
+    "schema_version",
+    "trade_count",
+    "nonempty_combo_trade_count",
+    "empty_level_names_count",
+    "pair_mode",
+    "confluence_mode",
+    "anchor_level",
+    "warnings",
+    "top_n",
+)
+
+
+def _confluence_combo_identity_for_packet(*candidates: Any) -> dict[str, Any] | None:
+    """Return a table-free combo identity leaf for Discuss mode/anchor fallback.
+
+    Prefer the first available mapping among *candidates* (typically baked 5c
+    ``confluence_combo_summary``, then artifact ``confluence_combo``). Nested
+    ``tables`` / frames are stripped so the packet stays cite-bound. Shape is
+    stable across session vs bundle-import builds (always includes ``kind`` /
+    ``schema_version``) so classic attach evidence round-trips compare equal.
+    """
+    for candidate in candidates:
+        if not isinstance(candidate, Mapping) or not candidate.get("available"):
+            continue
+        identity: dict[str, Any] = {
+            "available": True,
+            "kind": "confluence_combo_summary",
+            "schema_version": 1,
+        }
+        for key in _CONFLUENCE_COMBO_IDENTITY_KEYS:
+            if key in {"available", "kind", "schema_version"} or key not in candidate:
+                continue
+            identity[key] = to_jsonable(candidate.get(key))
+        return identity
+    return None
+
+
 def build_evidence_packet(
     state: Mapping[str, Any], *, provenance: Mapping[str, Any]
 ) -> EvidencePacket:
@@ -497,6 +537,16 @@ def build_evidence_packet(
         results["grid_summary"] = grid_summary
     if validation_page_summary.get("available"):
         results["validation_page_summary"] = validation_page_summary
+    # PR5d: mount combo identity for Discuss recompute fallback (same role as
+    # session confluence_combo_summary for 5c). Prefer baked bundle summary,
+    # else the artifact's on-build report block. Omit nested tables — cite path
+    # is results.projections.confluence_combo only.
+    combo_identity = _confluence_combo_identity_for_packet(
+        state.get("confluence_combo_summary"),
+        artifact.get("confluence_combo"),
+    )
+    if combo_identity is not None:
+        results["confluence_combo_summary"] = combo_identity
     # Nest fingerprint under assumptions.dataset so LLM claim paths like
     # assumptions.dataset.dataset_fingerprint resolve. Keep the top-level
     # assumptions.dataset_fingerprint sibling for compare_evidence and older
@@ -512,8 +562,16 @@ def build_evidence_packet(
     dataset_fingerprint = to_jsonable(provenance_data.get("dataset_fingerprint"))
     if dataset_fingerprint is not None:
         dataset_assumptions["dataset_fingerprint"] = dataset_fingerprint
+    # PR5d / confluence attribution: carry signal-run identity so Discuss
+    # recomputes use resolve_signal_setup_for_attribution order, not a stale
+    # Setup Builder setup_config alone (artifact embeds last_signal_setup;
+    # signal_settings stay on the session/bundle and are copied when present).
+    configuration = _as_mapping(artifact.get("configuration")) or {}
     assumptions = {
         "setup_config": artifact["configuration"]["setup_config"],
+        "last_signal_setup": to_jsonable(configuration.get("last_signal_setup")),
+        "signal_settings": to_jsonable(state.get("signal_settings")),
+        "signal_context": to_jsonable(state.get("signal_context")),
         "instrument": artifact["configuration"]["instrument"],
         "intrabar": artifact["intrabar"]["backtest_policy"],
         "otf_filter": artifact["otf_filter"],

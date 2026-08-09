@@ -324,6 +324,19 @@ This engine is for **research screening**, not proof of a durable edge.
   bundle hashes exclude these derived siblings (and the
   `included.confluence_combo` / related `session_keys` markers) so legacy golden
   hash locks stay stable without a `GOLDEN_REGEN`.
+- Discuss / Results Q&A may attach a **bounded** ephemeral projection
+  `results.projections.confluence_combo` (top exact combo / level-count / optional
+  pairs + warning flags) recomputed from loaded trade rows via the same mode/anchor
+  path.   Evidence packets copy `last_signal_setup` / `signal_settings` /
+  `signal_context` into assumptions when present so stale Setup Builder
+  `setup_config` alone cannot drift captions/anchor display. Packets also mount
+  a table-free `results.confluence_combo_summary` identity leaf (baked 5c summary
+  preferred, else artifact report block) so Discuss can reuse mode/anchor when
+  ephemeral `signal_settings` are gone — same fallback as report/bundle export.
+  5c bundle siblings are optional convenience, not required. The frozen discuss allowlist cites only
+  those leaves; unavailable trades → calm missing fallback (no free-form
+  full-table dumps, no Setup auto-recommendations, no future-edge claims).
+  Membership/pairwise double-count caveats apply when those tops are present.
 - Rows are **observed traded combinations**, not the theoretical power set of
   selected levels / confluence rules.
 - Exact-combo keys are canonicalized (sorted tokens) so `A|B` and `B|A` merge.

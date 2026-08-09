@@ -471,7 +471,11 @@ rankings prefer `entry_rth_segment` when it has a usable label, else fall
 back to `entry_30min_bucket` / `entry_hour_bucket` so Time Analysis
 clock-bucket exports still yield a non-null `best.bucket`. Cited `HH:MM`
 bucket labels ground matching clock spans as wholes without allowlisting
-component digits (hash/path strings do not launder digits). Results Q&A
+component digits (hash/path strings do not launder digits). **PR 5d landed:**
+bounded `results.projections.confluence_combo` is recomputed on-demand from
+loaded trade rows (same mode/anchor path as report/bundle export; 5c siblings
+optional) with a frozen discuss allowlist — fail closed when unavailable; no
+full `by_*` dumps or Setup auto-recommendations. Results Q&A
 strips stacked accidental `evidence_packet.` / `packet.` claim-path prefixes
 and resolves JSON array indices; fractional rates accept `%` (incl. spaced
 `60 %`) or word-form percent narration (`percent` / `pct` / `Prozent`), and
@@ -548,6 +552,10 @@ asks require table-derived projections (streak-only cannot answer them);
 digit-bearing exit labels are not narratable; extreme timestamps omitted from
 the model-facing projection; catalog + decode hard-reject undeclared /
 `trade_summary` KPI substitutions; raw trade frames never enter the model path.
+**PR 5d landed:** deterministic `confluence_combo` recovery over capped
+`results.projections.confluence_combo` (trades recompute; 5c optional); frozen
+allowlist + missing short-circuit; digit-bearing combo labels are not narratable;
+no full `by_*` dumps / Setup auto-recommendations / edge claims.
 **RI-10 landed (series complete):** duplex `get_run_overview` projects
 `build_deterministic_discuss_reply` / compose into specialist envelopes
 (`summary` + `claims`, no `kpi_claims`); pure overview keeps DI KPI envelopes;
@@ -1071,6 +1079,18 @@ bundles without those files still import. Restored managed keys
 (`confluence_combo_summary`, `confluence_by_*`) are cleared when the section is
 absent; summary identity is reused on recompute when `signal_settings` is missing.
 `BUNDLE_SCHEMA_VERSION` stays at 1 for these optional siblings.
+
+Discuss Results Q&A may also project bounded `results.projections.confluence_combo`
+leaves from loaded trades (cite-only allowlist; 5c siblings not required).
+`EvidencePacket.assumptions` carries `last_signal_setup` / `signal_settings` /
+`signal_context` when present so mode/anchor follows the same
+`resolve_signal_setup_for_attribution` order as Backtest/report rather than a
+stale Setup Builder `setup_config` alone. Packets also mount a table-free
+`results.confluence_combo_summary` identity leaf (5c summary preferred, else
+artifact `confluence_combo`) for the same restored-summary mode/anchor fallback
+used by report/bundle recompute. RI-10 duplex / packet-only Discuss hydrates a
+lean `results.projections.confluence_combo` from that identity leaf when trade
+rows are not loaded (full tops still require trades recompute).
 
 Grid Search directional note: `pages/8_Grid_Search.py` shows aggregate KPIs by default.
 Enable **Advanced directional ranking** to rank by long/short or balanced weaker-side
