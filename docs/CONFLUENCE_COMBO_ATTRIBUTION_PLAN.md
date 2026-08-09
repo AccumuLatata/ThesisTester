@@ -314,19 +314,22 @@ Do **not** invent new expectancy definitions; reuse existing R conventions from
 | Unknown / mixed | Neutral caption; still compute from `level_names`. |
 | Any run with `trigger == "3c"` trades in the displayed set | Extra honesty: “For 3c, `level_names` may be the tested level only, not full zone membership.” |
 
-Mode detection for captions (best-effort, non-blocking):
+Mode detection for captions (best-effort, non-blocking) — **locked helper
+chain** (matches landed Backtest):
 
 1. Signal-run setup identity via `resolve_signal_setup_for_attribution`
    (priority: `signal_settings` → `signal_settings.setup_snapshot` →
    `last_signal_setup` → `setup_config` → `signal_context`). Prefer the
    settings that produced the current signals over a possibly stale Setup
    Builder `setup_config`.
-2. Else `level_source_mode` dominance on displayed trades if present.
-3. Else neutral.
+2. Mode label via `resolve_confluence_mode(identity, trades)` — uses identity
+   `confluence_mode` when known, else trade `level_source_mode` dominance /
+   aliases, else `"unknown"`. Do **not** re-implement this ladder ad hoc.
+3. Pass `confluence_mode` + `anchor_level` (from identity, only when mode is
+   `anchor_rules`) into `confluence_attribution_summary` / display helpers.
 
-Anchor display key uses the same signal-run identity dict’s `anchor_level`
-(only when mode resolves to `anchor_rules`). Never invent anchor from token
-order.
+Anchor display key uses the identity dict’s `anchor_level` only when mode
+resolves to `anchor_rules`. Never invent anchor from token order.
 
 Diagnostic framing (mandatory in UI caption):
 
