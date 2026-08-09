@@ -1085,7 +1085,10 @@ leaves from loaded trades (cite-only allowlist; 5c siblings not required).
 `EvidencePacket.assumptions` carries `last_signal_setup` / `signal_settings` /
 `signal_context` when present so mode/anchor follows the same
 `resolve_signal_setup_for_attribution` order as Backtest/report rather than a
-stale Setup Builder `setup_config` alone.
+stale Setup Builder `setup_config` alone. Packets also mount a table-free
+`results.confluence_combo_summary` identity leaf (5c summary preferred, else
+artifact `confluence_combo`) for the same restored-summary mode/anchor fallback
+used by report/bundle recompute.
 
 Grid Search directional note: `pages/8_Grid_Search.py` shows aggregate KPIs by default.
 Enable **Advanced directional ranking** to rank by long/short or balanced weaker-side

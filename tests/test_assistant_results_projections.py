@@ -1018,3 +1018,34 @@ def test_project_confluence_combo_uses_signals_summary_setup_as_identity_fallbac
     projection = project_confluence_combo(rows, packet_or_mapping=packet)
     assert projection is not None
     assert projection["confluence_mode"] == "global_cluster"
+
+
+def test_project_confluence_combo_uses_mounted_summary_when_signal_identity_absent():
+    """Restored 5c summary on results must restore mode/anchor like report/bundle."""
+    rows = []
+    for index in range(12):
+        rows.append(
+            {
+                "trade_id": index + 1,
+                "r_multiple": 1.0 if index % 2 == 0 else -0.5,
+                "level_names": ["ANCHOR", "SUP"],
+            }
+        )
+    packet = EvidencePacket(
+        provenance={"run_id": "run_combo_mounted_summary"},
+        assumptions={"setup_config": {"selected_levels": ["A", "B"]}},
+        results={
+            "trade_summary": {"trade_count": 12},
+            "confluence_combo_summary": {
+                "available": True,
+                "confluence_mode": "anchor_rules",
+                "anchor_level": "ANCHOR",
+            },
+        },
+        warnings=(),
+        limitations=(),
+    )
+    projection = project_confluence_combo(rows, packet_or_mapping=packet)
+    assert projection is not None
+    assert projection["confluence_mode"] == "anchor_rules"
+    assert projection["anchor_level"] == "ANCHOR"
