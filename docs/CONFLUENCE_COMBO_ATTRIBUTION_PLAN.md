@@ -1667,12 +1667,12 @@ Before coding PR 1 / PR 2 / PR 4 / PR 5x / PR 3, confirm these locks:
       (5b/5c recompute on export; 5d recomputes from trades)
 14. [ ] 5a does not add pairs/membership as Time Analysis group dims
 15. [ ] 5c does not bump `BUNDLE_SCHEMA_VERSION` for optional siblings
-16. [ ] PR 3 is opt-in `exact_combo × trigger_variant` after 5a–5d; not default always-on
-17. [ ] PR 3 tables only when combo `available=True` **and** ≥1 usable
+16. [x] PR 3 is opt-in `exact_combo × trigger_variant` after 5a–5d; not default always-on
+17. [x] PR 3 tables only when combo `available=True` **and** ≥1 usable
       (non-null/non-empty) `trigger_variant`; otherwise calm unavailable
-18. [ ] PR 3 omits null/`""` `trigger_variant` **before** groupby; no synthetic unknown
-19. [ ] PR 3 does not change 3c arrival / zone / fill semantics (no require-anchor-hit)
-20. [ ] PR 3 leaves the standalone 3c outcome-by-variant summary block unchanged
+18. [x] PR 3 omits null/`""` `trigger_variant` **before** groupby; no synthetic unknown
+19. [x] PR 3 does not change 3c arrival / zone / fill semantics (no require-anchor-hit)
+20. [x] PR 3 leaves the standalone 3c outcome-by-variant summary block unchanged
       (including its full-`trades` universe)
-21. [ ] PR 3 captions Focus mismatch when Focus is active
-22. [ ] PR 3 implementation updates ARCHITECTURE (+ ASSUMPTIONS / METRICS_GLOSSARY)
+21. [x] PR 3 captions Focus mismatch when Focus is active
+22. [x] PR 3 implementation updates ARCHITECTURE (+ ASSUMPTIONS / METRICS_GLOSSARY)
