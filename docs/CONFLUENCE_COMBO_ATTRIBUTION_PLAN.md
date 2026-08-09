@@ -1,6 +1,6 @@
 # Regression-Safe Implementation Plan: Confluence Combo Attribution (Backtest)
 
-**Status:** Phase 1 + Phase 2 + Phase 4 implemented (MVP + soft pairwise attribution)  
+**Status:** Phase 1 + Phase 2 + Phase 4 implemented; Phase 5a–5d detailed scope locked (implementation not started)  
 **Document type:** Focused analytics / Backtest UX implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related docs:**  
@@ -22,6 +22,12 @@ UI-vs-analytics filter ownership (so partition identity stays valid), example-ra
 fallback when timestamps are missing, empty-name membership behavior, optional
 `__init__` export, and pure display helpers for anchor `display_combo`. Do
 **not** start PR 1 until §5 / §7 / §12 locks in this revision are followed.
+
+**Phase 5 scope lock (2026-08-09):** Slice identities 5a–5d remain unchanged
+(Time Analysis / Report / Bundles / Assistant). Detailed narrow scopes replace
+the prior one-liners, including careful pairs inclusion (Backtest/report/bundle/
+assistant only — not as a Time Analysis group dimension). PR 5 may precede
+optional PR 3 polish.
 
 ---
 
@@ -779,18 +785,228 @@ first, not an anchor. Guessing would mislead.
 
 ---
 
-### PR 5 — Downstream consumers (explicitly later)
+### PR 5 — Downstream consumers (slice identities locked)
 
-Only after PR 2 proves usefulness:
+**Slice identities do not change.** The four consumers remain:
 
-| PR | Scope |
-|---|---|
-| 5a | Time Analysis: optional primary/secondary group = combo key / level count |
-| 5b | Report export markdown section (diagnostic) |
-| 5c | Research bundle optional artifact `confluence_combo_summary.parquet` |
-| 5d | Assistant read-only summarization over combo tables |
+| Slice | Consumer | One-line intent (unchanged) |
+|---|---|---|
+| **5a** | Time Analysis | Optional grouping by combo / parsed level-count |
+| **5b** | Report export | Diagnostic markdown (+ optional CSV tables) |
+| **5c** | Research bundles | Optional persisted summary artifacts |
+| **5d** | Assistant | Read-only, cite-bound summarization |
 
-Each is independently shippable; none should block MVP.
+**Priority note:** PR 5 may ship before optional PR 3 polish. Each 5x PR is
+independently shippable. Soft pairs (Phase 4) are included **narrowly** per
+slice below (not as a Time Analysis group dimension).
+
+**Shared locks for all 5x PRs:**
+
+1. Analytics-only reuse of `thesistester.analytics.confluence_attribution`.
+2. No `thesistester/engine/**` changes; no golden regeneration.
+3. Observed traded combos only; selection-effects honesty preserved.
+4. Exact-combo / membership / pairs double-count caveats unchanged.
+5. View C remains **parsed** `level_token_count` (never stored zone `level_count`).
+6. Mode/anchor identity prefers signal-run resolution
+   (`resolve_signal_setup_for_attribution`) when available.
+7. Fail closed / omit section when `available=False` or columns missing.
+8. Default user-facing behavior unchanged until the user opts into the new
+   control/section.
+
+---
+
+#### PR 5a — Time Analysis optional group dimensions
+
+**Title:** `feat(time-analysis): optional confluence combo / level-count groups`
+
+**Files (expected):**
+- `pages/9_Time_Analysis.py`
+- optionally tiny helper reuse only from `confluence_attribution.py`
+- docs: ASSUMPTIONS / METRICS_GLOSSARY / this plan status
+- tests: focused Time Analysis helper/page-helper tests if extracted; else
+  unit tests around `attach_combo_columns` usage path
+
+**In scope (narrow):**
+
+1. After time buckets are attached, if trades contain `level_names`, call
+   `attach_combo_columns(trades)` so `exact_combo_key` and `level_token_count`
+   exist.
+2. Add those two columns to primary/secondary group option lists **only when
+   present**.
+3. Keep current default primary as the first existing **time** bucket
+   (`entry_rth_segment` when available). Selecting combo/count is opt-in.
+4. When primary or secondary is a combo/count dim, show a short diagnostic
+   caption (observed-only / selection-effects / 3c tested-level-only if any
+   `trigger=="3c"`).
+5. Continue using existing `summarize_by_group` for metrics (Time Analysis
+   richness is intentional here).
+
+**Explicitly out of scope:**
+
+- Soft **pairs** as a Time Analysis group dimension (pair explode is
+  many-to-many; breaks partition intuition). Keep pairs on Backtest.
+- Membership as a Time Analysis group dimension (same double-count issue at
+  group grain).
+- Adding combo/count dims to Focus/Promote (`FOCUSABLE_GROUP_COLS` unchanged).
+- Changing default primary/secondary selections.
+- Engine / Backtest expander refactors.
+
+**Acceptance:**
+
+- [ ] Default Time Analysis run looks identical when user leaves primary on a
+      time bucket.
+- [ ] User can opt into `exact_combo_key` and/or `level_token_count` grouping.
+- [ ] Focus/Promote controls still only appear for existing time dims.
+- [ ] No engine/golden files in diff; full suite green.
+
+---
+
+#### PR 5b — Report export diagnostic section
+
+**Title:** `feat(report): confluence combo attribution markdown section`
+
+**Files (expected):**
+- `thesistester/reporting.py`
+- `pages/11_Report_Export.py` (checklist/CSV wiring only if needed)
+- docs + focused reporting tests
+
+**In scope (narrow):**
+
+1. In `build_research_artifact`, if session trades have `level_names`,
+   recompute `confluence_attribution_summary(trades, …)` on the fly
+   (use signal-run identity for mode/anchor when present on the artifact /
+   session).
+2. When `available=True`, attach a top-level diagnostic block such as
+   `artifact["confluence_combo"]` with scalars + warnings + bounded tables
+   (or `tables["confluence_*"]` for CSV).
+3. Markdown helper returns `""` when unavailable (OTF-validation style), so
+   legacy reports stay byte/text-identical when combo data is absent.
+4. Markdown content (diagnostic banner required):
+   - exact combo top-N (default 15) by `|total_r|` then `trade_count`
+   - parsed level-count full small table (usually tiny)
+   - optional membership top-N **with double-count caption**
+   - optional pairs top-N **with pairwise double-count caption**
+5. Optional export checklist row (not a hard required item).
+
+**Explicitly out of scope:**
+
+- Changing existing report section order/text when combo unavailable.
+- Persisting new Backtest session keys.
+- Bundle zip format changes (that is 5c).
+- Assistant claim paths (that is 5d).
+
+**Acceptance:**
+
+- [ ] Report with no `level_names` / unavailable summary omits the section.
+- [ ] Report with available summary includes diagnostic section + honesty text.
+- [ ] Existing sections unchanged when combo unavailable.
+- [ ] Focused reporting tests cover available/unavailable; full suite green.
+
+---
+
+#### PR 5c — Research bundle optional artifacts
+
+**Title:** `feat(bundles): optional confluence combo summary artifacts`
+
+**Files (expected):**
+- `thesistester/research_bundle.py`
+- `pages/12_Research_Bundles.py` (preview checklist row)
+- docs + bundle round-trip tests
+
+**In scope (narrow):**
+
+1. Mirror the excursion optional-sibling pattern:
+   - required JSON when section included, e.g. `confluence_combo_summary.json`
+     (`available`, counts, warnings, `pair_mode`, schema/version note)
+   - optional parquet siblings only when non-empty:
+     `confluence_by_exact_combo.parquet`,
+     `confluence_by_level_count.parquet`,
+     optional `confluence_by_membership.parquet`,
+     optional `confluence_by_pairs.parquet`
+2. Set `included["confluence_combo"]=True` only when exporting and summary is
+   available; otherwise omit entirely.
+3. Load path: if section not included, ignore missing files (old bundles keep
+   loading). If included, require the JSON; load parquet siblings only when
+   present in the zip.
+4. Clear any new managed session keys on import via existing bundle key hygiene.
+5. **Do not bump** `BUNDLE_SCHEMA_VERSION` unless a mandatory load contract is
+   introduced (not needed for optional siblings).
+
+**Fallback allowed:** if bundle persistence proves awkward, 5c may ship as
+“recompute from `trades.parquet` on import/display only” with no new files —
+but the preferred locked path is optional excursion-style artifacts above.
+
+**Explicitly out of scope:**
+
+- Making combo artifacts mandatory for all bundles.
+- Schema version bump for optional files.
+- Mutating `trades.parquet` schema.
+- Engine changes.
+
+**Acceptance:**
+
+- [ ] Old bundles without combo files still import.
+- [ ] New bundles with combo section round-trip JSON + present parquets.
+- [ ] Missing optional parquet siblings do not fail load.
+- [ ] Full suite green; no golden/engine diffs.
+
+---
+
+#### PR 5d — Assistant read-only summarization
+
+**Title:** `feat(assistant): cite-bound confluence combo projections`
+
+**Files (expected):**
+- assistant evidence/projection modules (mirror time-rankings pattern)
+- discuss allowlists / path catalog wiring
+- docs honesty + focused assistant tests
+
+**In scope (narrow):**
+
+1. On-demand recompute from bundle/session trades via
+   `confluence_attribution_summary` (do not invent table rows from memory).
+2. Add a **bounded** projection leaf, e.g.
+   `results.projections.confluence_combo`, containing only:
+   - `available`, `trade_count`, `nonempty_combo_trade_count`
+   - `top_exact_combo` (fixed N, include metrics + `sample_warning`)
+   - `top_level_count` (small)
+   - optional `top_pair` (fixed N) + `pair_mode`
+   - `warnings` (membership / pairwise / 3c as applicable)
+3. Frozen discuss allowlist for those leaves only (presence-first / cite-only).
+4. Fail closed when unavailable; no free-form narration of full `by_*` frames.
+5. Limitations/caveats must mention diagnostic nature and double-counting when
+   pair/membership tops are present.
+
+**Explicitly out of scope:**
+
+- Dumping full combo/pair tables into default path catalog.
+- Auto-recommendations to change Setup Builder rules (“drop this level”).
+- Claiming future edge / best setup.
+- Changing KPI specialist topics or engine outputs.
+
+**Acceptance:**
+
+- [ ] Assistant can cite only real projection leaves.
+- [ ] Unavailable trades → no combo projection leaves / calm fallback.
+- [ ] No invented numeric claims outside allowlist.
+- [ ] Focused assistant tests + full suite green.
+
+---
+
+#### PR 5 implementation order (recommended)
+
+```text
+5a Time Analysis (opt-in group dims)
+  → 5b Report export diagnostic section
+    → 5c Bundle optional artifacts
+      → 5d Assistant cite-bound projection
+```
+
+Rationale: 5a validates the dims in an interactive research surface; 5b/5c make
+them portable; 5d consumes bounded projections only after tables exist in
+artifacts/bundles.
+
+PR 3 polish remains optional and independent of 5a–5d.
 
 ---
 
@@ -889,9 +1105,12 @@ stop and re-scope.
 ```text
 PR 1 analytics helpers + tests
   → PR 2 Backtest expander UI + docs   (= MVP)
-    → PR 4 soft pairwise attribution   (recommended next)
-      → PR 3 direction / CSV / top-N    (only if UX pain)
-        → PR 5a/b/c/d downstream consumers (optional)
+    → PR 4 soft pairwise attribution
+      → PR 5a Time Analysis opt-in dims
+        → PR 5b Report diagnostic section
+          → PR 5c Bundle optional artifacts
+            → PR 5d Assistant cite-bound projection
+              → PR 3 direction / CSV / top-N   (only if UX pain still remains)
 ```
 
 ### Suggested implementation steps inside PR 1
@@ -1016,8 +1235,12 @@ No blocking open questions remain for PR 1–2.
 | Phase 1 | PR 1 analytics helpers | **Implemented** (`thesistester/analytics/confluence_attribution.py`, `tests/test_confluence_attribution.py`) |
 | Phase 2 | PR 2 Backtest expander UI + docs | **Implemented** (`pages/7_Backtest.py` expander; ASSUMPTIONS / METRICS_GLOSSARY / ARCHITECTURE) |
 | Phase 4 | PR 4 soft pairwise attribution | **Implemented** (`summarize_by_level_pairs` + Backtest **Pairs** tab) |
-| Phase 3 | PR 3 cross-tab / polish (if UX pain) | Not started |
-| Phase 5 | Downstream consumers | Not started |
+| Phase 5 | PR 5a–5d downstream consumers | **Scoped** (implementation not started); may precede PR 3 |
+| Phase 5a | Time Analysis opt-in combo/count groups | Not started |
+| Phase 5b | Report export diagnostic section | Not started |
+| Phase 5c | Bundle optional artifacts | Not started |
+| Phase 5d | Assistant cite-bound projection | Not started |
+| Phase 3 | PR 3 cross-tab / polish (if UX pain) | Not started (optional; after or between 5x if needed) |
 
 ---
 
