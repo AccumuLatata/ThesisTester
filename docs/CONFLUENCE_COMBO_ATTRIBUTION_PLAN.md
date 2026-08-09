@@ -15,8 +15,13 @@
 **Plan review (2026-08-09):** Core seam and PR split are sound. Normative
 amendments below lock View C grain, `available`, expander UI, lean metrics,
 partition tests, default sample filters, anchor display keys, and elevates soft
-pairwise (PR 4) as the main post-MVP research unlock. Do **not** start PR 1
-until §5 / §7 / §12 locks in this revision are followed.
+pairwise (PR 4) as the main post-MVP research unlock.
+
+**Plan polish (2026-08-09, follow-up):** Clarified observed-only cardinality,
+UI-vs-analytics filter ownership (so partition identity stays valid), example-raw
+fallback when timestamps are missing, empty-name membership behavior, optional
+`__init__` export, and pure display helpers for anchor `display_combo`. Do
+**not** start PR 1 until §5 / §7 / §12 locks in this revision are followed.
 
 ---
 
@@ -65,6 +70,12 @@ The feature must be:
 `level_count`) from zones → signals → `simulate_trades`. No schema migration is
 required for MVP. Prefer `_display_trades` over raw `trades` so Focus overlays
 stay honest (improvement vs current prev30m wiring).
+
+**Cardinality note (locked):** tables enumerate **observed traded combinations**,
+not the theoretical power set of selected levels. With 5 levels, theory allows
+up to 31 non-empty subsets, but rows are bounded by combinations that actually
+became trades in the run. Engine load is unchanged; UX cardinality is managed by
+default sample hiding (and optional later top-N).
 
 ---
 
@@ -129,9 +140,9 @@ detect_confluence_zones / detect_anchor_confluence_zones
 | Field | Where it lives | MVP implication |
 |---|---|---|
 | `rule_results` / per-rule distances | Anchor zones / Signals diagnostics | Stay Signals-only |
-| `anchor_level`, `valid_confluence_count` | Zones | Inferable from `level_names` for many cases; do not require join |
+| `anchor_level`, `valid_confluence_count` | Zones | Do **not** infer from `level_names` token order; use session `setup_config` for captions / display only |
 | `setup_name` | Signals (often), not reliably on trades | Out of MVP cross-setup grouping |
-| `confluence_mode` | Setup / zones | Caption from session context if available; not required for core tables |
+| `confluence_mode` | Setup / zones | Caption / display from session `setup_config` when available; not required for core metric tables |
 
 ### 4.3 Existing grouping precedents
 
@@ -173,14 +184,17 @@ bars; unsorted grouping would falsely split identical sets.
 - Optional secondary **example raw** column: choose the raw `level_names` from
   the earliest trade in the group by `entry_timestamp` (then `trade_id`) —
   never “first row seen” (order-dependent).
+  Fallback when `entry_timestamp` is missing/unsortable: `trade_id` only; if
+  that is also missing, use a stable `reset_index()` position as last resort.
 - Optional **display_combo** column for UI: when
   `setup_config.confluence_mode == "anchor_rules"` and session `anchor_level`
   is known and present in the token set, render
   `anchor|sorted(remaining tokens)`; otherwise render the canonical sorted key.
   Never infer anchor from token order in global/unknown mode.
+  Implement as a pure helper (`format_display_combo(...)`) so the page stays thin.
 
 **Partition identity (locked):** exact-combo rows form a partition of the
-analyzable trade universe. Tests must assert:
+analyzable trade universe **before any UI sample filter**. Tests must assert:
 
 ```text
 sum(by_exact_combo.trade_count) == analyzable_trade_count
@@ -192,6 +206,8 @@ Membership deliberately does **not** partition (double-counts).
 #### View B — Level membership
 
 Explode each trade into one row per distinct level token, then group by level.
+Trades with empty parsed names contribute **no** membership rows (they only
+appear in Exact combo as `__empty__` and Level count as `(unknown)`).
 
 Honesty caveat (must appear in UI + docs):
 
@@ -240,8 +256,18 @@ Defaults (locked):
 
 - `min_trades = 10` for warning flag (configurable in UI; clamp ≥ 1).
 - Sort default: `total_r` descending, then `trade_count` descending.
-- **Hide below `min_trades` = ON by default** (honesty / anti-cherry-pick).
+- **Hide below `min_trades` = ON by default** in the UI (honesty / anti-cherry-pick).
 - Optional UI toggle: sort by `avg_r`; optional “show all samples”.
+
+**Filter ownership (locked):**
+
+- Analytics `summarize_*` / `confluence_attribution_summary` return **all**
+  groups and set `sample_warning`; they do **not** drop thin samples.
+- The Backtest UI applies the hide-below-`min_trades` filter as a presentation
+  step. This keeps exact-combo partition identity testable and avoids baking
+  selection into the analytics API.
+- Breakeven trades (`r_multiple == 0`) count in `trade_count` and are **not**
+  wins (`win_rate` uses `> 0` only).
 
 Null `r_multiple` rows are **excluded** from denominators (same convention as
 `summarize_trades` / prev30m hit R). Note intentionally differs from the
@@ -279,8 +305,10 @@ Mode detection for captions (best-effort, non-blocking):
 
 Diagnostic framing (mandatory in UI caption):
 
-> Diagnostic only — sorting many combinations by total R invites selection
-> effects; thin samples are filtered by default. Not proof of future edge.
+> Diagnostic only — rows are combinations that actually traded in this run,
+> not all possible subsets. Sorting many combinations by total R invites
+> selection effects; thin samples are hidden by default. Not proof of future
+> edge.
 
 ### 5.5 What this feature is not
 
@@ -329,12 +357,22 @@ Suggested public API:
 ```python
 EMPTY_LEVEL_NAMES_KEY = "__empty__"
 EMPTY_LEVEL_NAMES_LABEL = "(no level names)"
+UNKNOWN_LEVEL_COUNT_LABEL = "(unknown)"
 
 def parse_level_names(raw: Any) -> list[str]:
     """Normalize |/, strip, drop empties, de-dupe preserving order."""
 
 def exact_combo_key(raw: Any) -> str:
     """Canonical sorted key; EMPTY_LEVEL_NAMES_KEY when none."""
+
+def format_display_combo(
+    tokens_or_key: Any,
+    *,
+    anchor_level: str | None = None,
+) -> str:
+    """UI display helper. If anchor_level is in the token set, render
+    ``anchor|sorted(rest)``; else canonical sorted key. Never guesses anchor.
+    """
 
 def attach_combo_columns(trades: pd.DataFrame) -> pd.DataFrame:
     """Return copy with exact_combo_key, level_token_count, parsed helper cols.
@@ -347,13 +385,15 @@ def summarize_by_exact_combo(
     trades: pd.DataFrame,
     *,
     min_trades: int = 10,
-) -> pd.DataFrame: ...
+) -> pd.DataFrame:
+    """Return all groups + sample_warning. Do not drop thin samples here."""
 
 def summarize_by_level_membership(
     trades: pd.DataFrame,
     *,
     min_trades: int = 10,
-) -> pd.DataFrame: ...
+) -> pd.DataFrame:
+    """Return all groups + sample_warning. Empty-name trades contribute no rows."""
 
 def summarize_by_level_count(
     trades: pd.DataFrame,
@@ -367,7 +407,7 @@ def confluence_attribution_summary(
     *,
     min_trades: int = 10,
 ) -> dict[str, Any]:
-    """Bundle availability + the three frames + honesty flags."""
+    """Bundle availability + the three unfiltered frames + honesty flags."""
 ```
 
 Availability contract (mirror prev30m style; tightened):
@@ -390,13 +430,22 @@ Availability contract (mirror prev30m style; tightened):
 frame that mixes empty and non-empty names, but **`available` stays False**
 when every analyzable trade is empty-named (UI shows calm info, not tables).
 
+When `available=True`, UI may still render the `__empty__` exact-combo row if
+it survives the presentation filter; membership will simply omit those trades.
+
 ### 7.2 Package export
 
-Optional: export public helpers from `thesistester/analytics/__init__.py`
-(prev30m style). Pages may also import the submodule directly
-(`from thesistester.analytics.confluence_attribution import ...`), matching
-current Backtest prev30m wiring. Either is acceptable; prefer submodule import
-in the page if `__init__` churn is undesirable.
+**PR 1 default:** do **not** modify `thesistester/analytics/__init__.py`.
+Pages/tests import the submodule directly:
+
+```python
+from thesistester.analytics.confluence_attribution import (
+    confluence_attribution_summary,
+)
+```
+
+Optional later: re-export from `__init__.py` only if another consumer needs it.
+Avoid package-init churn in the foundation PR.
 
 ### 7.3 UI wiring (locked)
 
@@ -407,16 +456,20 @@ Update `pages/7_Backtest.py`:
 - Add a collapsed expander **“Confluence combo attribution”** immediately
   under/near the Breakdown block (same pattern as the prev30m hit-R expander).
 - Inside:
-  - Mode-aware caption + diagnostic / selection-effects caption
+  - Mode-aware caption + diagnostic / selection-effects / observed-only caption
   - Membership double-count honesty caption
   - Conditional 3c tested-level-only caption when any displayed trade has
     `trigger == "3c"`
   - `min_trades` number input (default 10)
   - “Hide samples below min_trades” checkbox (**default ON**)
+  - Presentation filter applied in the page after summary returns
   - Three sub-tabs or stacked tables: Exact combo / Membership / Level count
+  - Exact combo display may use `format_display_combo(..., anchor_level=...)`
+    when session setup is anchor_rules
 - Compute from `_display_trades`, not raw `trades`, when Focus is active.
 
-MVP recommendation: **keep logic in analytics module**; page only renders.
+MVP recommendation: **keep logic in analytics module**; page only renders and
+applies the sample-size presentation filter.
 
 ### 7.4 Tests
 
@@ -458,8 +511,10 @@ tracked as a named research UX milestone; this plan is sufficient.
 | Nested sets `A\|B` vs `A\|B\|C` | Separate exact-combo rows; soft pairwise (PR 4) attributes shared pairs |
 | 3c tested-level-only names | Combo reflects signal `level_names` (often tested level); UI caption when any `trigger=="3c"` |
 | Focus subset empty | Info message; no tables |
-| Huge combo cardinality | Default hide below `min_trades`; no hard truncation in MVP (optional top-N in PR 3) |
+| Huge combo cardinality | Observed-only rows + default UI hide below `min_trades`; no hard truncation in MVP (optional top-N in PR 3) |
 | `r_multiple` null | Exclude from metric denominators |
+| `r_multiple == 0` | Included in `trade_count`; not a win |
+| Empty-name trade in membership | No membership rows emitted for that trade |
 | Direction filter | Not auto-applied; optional PR-3 cross-tab |
 
 ---
@@ -519,6 +574,8 @@ For Anchor-like reading without changing the engine:
   for anchor mode specifically emit `anchor|Li` for each non-anchor Li present.
 - Metrics grouped by those pair keys.
 - Honesty: still double-counts; caption required.
+  A single trade with three tokens contributes to **three** generic pairs
+  (`AB`, `AC`, `BC`), so pair-view `total_r` can exceed book `total_r`.
 
 **Anchor source (locked):** prefer explicit session
 `setup_config.anchor_level` when `confluence_mode == "anchor_rules"`.
@@ -536,9 +593,9 @@ token order (global price-sort puts cheapest level first, not an anchor).
 **Scope:**
 
 - Add `thesistester/analytics/confluence_attribution.py`
-- Export from `thesistester/analytics/__init__.py`
 - Add `tests/test_confluence_attribution.py`
 - Update this plan status (Phase 1 complete)
+- Do **not** modify `analytics/__init__.py` unless a concrete import need appears
 
 **Must include tests for:**
 
@@ -548,19 +605,24 @@ token order (global price-sort puts cheapest level first, not an anchor).
 4. Dedup tokens
 5. Empty bucket
 6. Exact combo metrics correctness on a tiny fixture
-7. **Exact-combo partition identity** (`sum(trade_count)` / `sum(total_r)`)
+7. **Exact-combo partition identity** on the **unfiltered** summary
+   (`sum(trade_count)` / `sum(total_r)`)
 8. Membership double-count (one trade → two membership rows)
-9. Level count uses **parsed** token count even when stored `level_count` differs
-10. `min_trades` → `sample_warning`
-11. `available=False` when column missing **or** only empty names
-12. `available=True` only with ≥1 non-empty analyzable combo
-13. Null `r_multiple` excluded
+9. Empty-name trades emit no membership rows
+10. Level count uses **parsed** token count even when stored `level_count` differs
+11. `min_trades` → `sample_warning` (thin groups still returned)
+12. `available=False` when column missing **or** only empty names
+13. `available=True` only with ≥1 non-empty analyzable combo
+14. Null `r_multiple` excluded; `r_multiple == 0` counted but not a win
+15. `format_display_combo` uses explicit anchor only when present in tokens
 
 **Out of scope:**
 
 - Any page changes
 - Any engine/signal changes
+- `analytics/__init__.py` re-exports (optional later)
 - Docs beyond this plan status (glossary waits for UI PR)
+- Presentation filtering / hide-below-min logic (UI owns that in PR 2)
 
 **Regression safety:**
 
@@ -570,9 +632,18 @@ token order (global price-sort puts cheapest level first, not an anchor).
 
 **Acceptance:**
 
-- Unit tests pass (including partition identity)
-- Helpers importable from the new module
-- No Streamlit / session_state changes
+- Unit tests pass (including unfiltered partition identity)
+- Helpers importable from
+  `thesistester.analytics.confluence_attribution`
+- No Streamlit / session_state / `__init__.py` changes
+
+**Forbidden paths in PR 1 diff:**
+
+```text
+thesistester/engine/**
+pages/**
+tests/fixtures/golden/**
+```
 
 ---
 
@@ -586,10 +657,12 @@ token order (global price-sort puts cheapest level first, not an anchor).
 
 - Wire `confluence_attribution_summary(_display_trades, ...)` into
   `pages/7_Backtest.py` as a **collapsed expander** near Breakdown
-- Mode-aware caption + membership double-count warning + diagnostic caption
+- Mode-aware caption + membership double-count warning + diagnostic /
+  observed-only caption
 - Conditional 3c tested-level-only caption
 - Controls: `min_trades` (default 10), hide-small-samples (**default ON**)
-- Optional anchor-aware `display_combo` rendering from session `setup_config`
+- Page-level presentation filter for hide-below-min (analytics remains unfiltered)
+- Anchor-aware `display_combo` via `format_display_combo` + session `setup_config`
 - Docs:
   - `docs/ASSUMPTIONS_AND_LIMITATIONS.md`
   - `docs/METRICS_GLOSSARY.md`
@@ -604,7 +677,10 @@ token order (global price-sort puts cheapest level first, not an anchor).
 3. With Focus active, combo tables use focused trades.
 4. With no trades / missing columns / only empty names → calm info, no exceptions.
 5. Anchor and global runs both produce tables from `level_names`.
-6. Captions state diagnostic nature + selection-effects (not proof of edge).
+6. Captions state diagnostic nature + observed-only + selection-effects
+   (not proof of edge).
+7. With hide-below default ON, thin `sample_warning` rows are not shown; turning
+   it off reveals them without recomputing analytics semantics.
 
 **Out of scope:**
 
@@ -620,6 +696,13 @@ token order (global price-sort puts cheapest level first, not an anchor).
 - No engine/golden touch
 - Expander only; do not reorder/rename existing tabs
 - Avoid large page refactors in the same PR
+
+**Forbidden paths in PR 2 diff:**
+
+```text
+thesistester/engine/**
+tests/fixtures/golden/**
+```
 
 **Suggested manual check matrix:**
 
@@ -722,21 +805,29 @@ exact_combo_key:
 summarize_by_exact_combo:
   - two trades same set different raw order merge
   - metrics match hand-computed avg/total/win_rate
-  - partition identity: sum(trade_count)/sum(total_r) == analyzable universe
+  - unfiltered partition identity: sum(trade_count)/sum(total_r) == analyzable universe
+  - thin groups remain present with sample_warning=True
 
 summarize_by_level_membership:
   - one trade A|B increments both A and B trade_count
   - membership total_r may exceed overall total_r (double-count)
+  - empty-name trade contributes zero membership rows
 
 summarize_by_level_count:
   - uses parsed distinct token count
   - when stored level_count disagrees (e.g. 3 vs parsed 1), group by parsed
+
+format_display_combo:
+  - anchor present → anchor|sorted(rest)
+  - anchor absent / None → canonical sorted key
+  - never invents an anchor from first token
 
 confluence_attribution_summary:
   - missing column → available False
   - only empty names → available False (empty_level_names_count reported)
   - ≥1 non-empty analyzable combo → available True
   - mixed null r_multiple excluded from counts
+  - r_multiple == 0 counted, not a win
 ```
 
 ### 12.2 UI / integration (PR 2)
@@ -767,9 +858,10 @@ stop and re-scope.
 | Exact string grouping splits same sets (`A\|B` vs `B\|A`) | High (correctness) | Canonical sorted key (locked) |
 | View C uses stored `level_count` and disagrees with A/B on `3c` | High (correctness) | View C = parsed token count only (locked) |
 | Users treat membership rows as additive PnL | High (honesty) | Mandatory caption + ASSUMPTIONS entry |
-| Cherry-picking best `total_r` across many combos | High (honesty) | Hide below `min_trades` default ON + diagnostic caption |
+| Cherry-picking best `total_r` across many combos | High (honesty) | Hide below `min_trades` default ON + observed-only/diagnostic caption |
 | Nested sets hide pair edge (`A\|B` vs `A\|B\|C`) | Medium (research gap) | Elevate soft pairwise PR 4 after MVP |
-| Combo table explosion with min=1 global | Medium (UX) | Default sample filter + optional top-N in PR 3 |
+| Combo table explosion with min=1 global | Medium (UX) | Observed-only rows + default UI sample filter + optional top-N in PR 3 |
+| Analytics drops thin samples and breaks partition tests | Medium (correctness) | Filter is UI-only; summarize_* returns all groups |
 | 3c `level_names` semantics differ from full zone | Medium (interpretation) | Conditional UI caption + glossary |
 | Accidental engine “fix” for pairwise zones | High (regression) | Explicit non-goal; PR checklist forbids engine files |
 | Focus confusion (post-hoc subset) | Medium | Use `_display_trades`; keep Focus caveat |
@@ -794,26 +886,32 @@ PR 1 analytics helpers + tests
 ### Suggested implementation steps inside PR 1
 
 1. Create module skeleton with empty-frame helpers and constants.
-2. Implement `parse_level_names` + `exact_combo_key` + unit tests first.
+2. Implement `parse_level_names` + `exact_combo_key` + `format_display_combo`
+   + unit tests first.
 3. Implement `attach_combo_columns` (`level_token_count` = parsed distinct count).
 4. Implement private lean `_summarize_r` (prev30m-shaped metrics + `sample_warning`).
-5. Implement the three summarize functions on top of `_summarize_r`.
+5. Implement the three summarize functions on top of `_summarize_r`
+   (**return all groups**; do not drop thin samples).
 6. Implement `confluence_attribution_summary` with tightened `available` contract.
-7. Add partition-identity + stored-`level_count`-disagreement tests.
-8. Optional `__init__.py` export; page may import submodule directly.
+7. Add unfiltered partition-identity + stored-`level_count`-disagreement +
+   empty-membership tests.
+8. Leave `analytics/__init__.py` unchanged; import submodule directly.
 9. Run focused then full tests.
 
 ### Suggested implementation steps inside PR 2
 
-1. Import summary helper in `pages/7_Backtest.py` (submodule import OK).
+1. Import summary / display helpers in `pages/7_Backtest.py` (submodule import).
 2. Add **collapsed expander** near Breakdown; do not touch the three-tab call.
 3. Compute only when `_display_has_trades`; pass `_display_trades`.
 4. Controls: `min_trades=10`, hide-small **default ON**.
-5. Render three tables; mode / membership / diagnostic / conditional 3c captions.
-6. Optional anchor `display_combo` from `setup_config`.
-7. Update honesty docs (incl. null-R vs sibling Breakdown note).
-8. Manual matrix check (global + anchor + 3c if available).
-9. Full pytest.
+5. Apply presentation filter in the page after summary returns.
+6. Render three tables; mode / membership / diagnostic / observed-only /
+   conditional 3c captions.
+7. Use `format_display_combo` with session `setup_config.anchor_level` when
+   `confluence_mode == "anchor_rules"`.
+8. Update honesty docs (incl. null-R vs sibling Breakdown note; observed-only).
+9. Manual matrix check (global + anchor + 3c if available).
+10. Full pytest.
 
 ### Definition of done (MVP = PR 1 + PR 2)
 
@@ -831,13 +929,15 @@ PR 1 analytics helpers + tests
 
 ### PR 1
 
-- [ ] New analytics module only (+ optional exports/tests/plan status)
-- [ ] No page/engine/persistence changes
+- [ ] New analytics module + tests + plan status only
+- [ ] No page/engine/persistence/`analytics/__init__.py` changes
 - [ ] Empty/missing/delimiter/canonicalization tests included
 - [ ] View C groups by parsed token count (disagreement fixture included)
-- [ ] Exact-combo partition identity asserted
+- [ ] Exact-combo **unfiltered** partition identity asserted
+- [ ] Thin groups returned with `sample_warning` (not dropped in analytics)
 - [ ] `available` requires ≥1 non-empty analyzable combo
-- [ ] Membership double-count asserted
+- [ ] Membership double-count + empty-name non-emission asserted
+- [ ] `format_display_combo` tested (explicit anchor only)
 - [ ] Full suite green
 - [ ] Regression-safety paragraph in PR body
 
@@ -845,13 +945,13 @@ PR 1 analytics helpers + tests
 
 - [ ] Uses `_display_trades`
 - [ ] Collapsed expander only; three Breakdown tabs untouched in diff
-- [ ] Hide-below-`min_trades` defaults ON
+- [ ] Hide-below-`min_trades` defaults ON as a **page presentation filter**
 - [ ] Calm empty/missing/only-empty-names states
 - [ ] Mode-aware or neutral caption present
-- [ ] Membership + diagnostic/selection-effects captions present
+- [ ] Membership + diagnostic/observed-only/selection-effects captions present
 - [ ] Conditional 3c tested-level-only caption when applicable
 - [ ] ASSUMPTIONS + METRICS_GLOSSARY updated (incl. null-R note)
-- [ ] No engine files in diff
+- [ ] No engine / golden files in diff
 - [ ] Full suite green
 
 ### PR 3 / PR 4
@@ -859,6 +959,7 @@ PR 1 analytics helpers + tests
 - [ ] Additive views only
 - [ ] No anchor-guessing heuristic from token order
 - [ ] Anchor-aware pairs only via session `setup_config.anchor_level`
+- [ ] Pair/membership double-count honesty captions present
 - [ ] Docs/captions updated for any new double-count view
 - [ ] Full suite green
 
@@ -878,7 +979,9 @@ PR 1 analytics helpers + tests
 | View C: stored `level_count` or parsed names? | **Parsed distinct token count** (locked) |
 | Reuse `time_analysis.summarize_by_group`? | **No** — private lean `_summarize_r` |
 | When is `available=True`? | Column present **and** ≥1 non-empty analyzable combo |
-| Default hide thin samples? | **ON** |
+| Default hide thin samples? | **ON** (UI presentation filter; analytics unfiltered) |
+| Modify `analytics/__init__.py` in PR 1? | **No** — submodule import |
+| Rows = theoretical subsets? | **No** — observed traded combos only |
 
 No blocking open questions remain for PR 1–2.
 
@@ -898,7 +1001,7 @@ No blocking open questions remain for PR 1–2.
 
 | Phase | PR | Status |
 |---|---|---|
-| Phase 0 | This proposal (+ 2026-08-09 review locks) | **Drafted / review-amended** |
+| Phase 0 | This proposal (+ 2026-08-09 review locks + polish) | **Ready for PR 1** |
 | Phase 1 | PR 1 analytics helpers | Not started |
 | Phase 2 | PR 2 Backtest expander UI + docs | Not started |
 | Phase 4 | PR 4 soft pairwise attribution (recommended next) | Not started |
@@ -985,9 +1088,11 @@ Before coding PR 1 / PR 2, confirm these locks:
 2. [ ] `available=True` only with ≥1 non-empty analyzable combo
 3. [ ] UI = collapsed expander; three Breakdown tabs untouched
 4. [ ] Private lean `_summarize_r`; no `time_analysis.summarize_by_group`
-5. [ ] Exact-combo partition identity unit test
-6. [ ] Hide below `min_trades` defaults ON
-7. [ ] Example raw by earliest `entry_timestamp` / `trade_id`
+5. [ ] Exact-combo **unfiltered** partition identity unit test
+6. [ ] Hide below `min_trades` defaults ON in UI; analytics does not drop rows
+7. [ ] Example raw by earliest `entry_timestamp` / `trade_id` (with fallbacks)
 8. [ ] Anchor display key only from session `setup_config.anchor_level`
 9. [ ] No first-token-as-anchor heuristic
 10. [ ] Soft pairwise is the preferred post-MVP research follow-on
+11. [ ] Rows are observed traded combos, not theoretical subsets
+12. [ ] PR 1 leaves `analytics/__init__.py` unchanged (submodule import)
