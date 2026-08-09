@@ -36,6 +36,7 @@ from thesistester.analytics.entry_window import (
 from thesistester.analytics.time_analysis import (
     add_time_buckets,
     pivot_time_metric,
+    sort_dataframe_by_group_labels,
     summarize_by_group,
 )
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
@@ -666,11 +667,9 @@ st.divider()
 st.subheader("Trade count distribution")
 
 if primary_group in trades.columns:
-    counts = (
-        trades.groupby(primary_group, observed=True)
-        .size()
-        .reset_index(name="trade_count")
-        .sort_values(primary_group)
+    counts = sort_dataframe_by_group_labels(
+        trades.groupby(primary_group, observed=True).size().reset_index(name="trade_count"),
+        primary_group,
     )
     fig_counts = px.bar(
         counts,

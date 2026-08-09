@@ -319,7 +319,7 @@ This engine is for **research screening**, not proof of a durable edge.
 - Level-count view uses the **parsed distinct token count** from `level_names`,
   not stored zone `level_count` (important for `3c`, where names may be the
   tested level only). Empty parsed counts surface as `(unknown)`, not raw `0`;
-  nonzero counts use text labels (`"1"`, `"2"`, …) for stable grouping.
+  nonzero counts use integer labels (`1`, `2`, …) matching Backtest View C.
 - Thin samples are marked with `sample_warning` and hidden by default in the UI;
   analytics summaries themselves remain unfiltered.
 - Sorting many combinations by total R invites selection effects; treat the

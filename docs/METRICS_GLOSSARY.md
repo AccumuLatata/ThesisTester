@@ -499,7 +499,7 @@ contract (not the lean Backtest combo `_summarize_r` tables).
 | `example_raw_level_names` | Raw `level_names` from the earliest trade in the combo group (`entry_timestamp`, then `trade_id`) |
 | Membership (`level_name`) | One row per distinct token present on a trade; **double-counts** multi-level trades |
 | Parsed level count | Distinct parsed token count from `level_names` (not stored zone `level_count`) |
-| `level_count_bucket` | View-C count label for grouping: parsed count `0` → `(unknown)`, else the count as text (`"1"`, `"2"`, …) |
+| `level_count_bucket` | View-C count label for grouping: parsed count `0` → `(unknown)`, else the integer count (`1`, `2`, …) |
 | Soft pair (`pair_key`) | Generic unordered canonical `A\|B`, or anchor-partner `anchor\|support` when signal-run mode is `anchor_rules` with known `anchor_level` |
 | `pair_mode` | `generic` or `anchor_partner` label for the pair row / summary |
 | `trade_count` | Rows in group with non-null `r_multiple` |

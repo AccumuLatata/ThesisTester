@@ -362,11 +362,57 @@ def test_summarize_by_group_accepts_confluence_combo_dims():
     assert by_combo["total_r"].sum() == pytest.approx(2.0)
 
     by_count = summarize_by_group(bucketed, LEVEL_COUNT_BUCKET_COL, min_trades=1)
-    count_keys = set(by_count[LEVEL_COUNT_BUCKET_COL])
-    assert "2" in count_keys
-    assert UNKNOWN_LEVEL_COUNT_LABEL in count_keys
+    count_keys = list(by_count[LEVEL_COUNT_BUCKET_COL])
+    # Numeric order, then (unknown); ints not digit-strings; never raw 0.
+    assert count_keys == [2, UNKNOWN_LEVEL_COUNT_LABEL]
     assert 0 not in count_keys
     assert "0" not in count_keys
+    assert "2" not in count_keys
+
+
+def test_summarize_by_group_sorts_mixed_level_count_buckets_numerically():
+    """View-C buckets mix ints + '(unknown)'; must not TypeError or lex-sort."""
+    from thesistester.analytics.confluence_attribution import (
+        LEVEL_COUNT_BUCKET_COL,
+        UNKNOWN_LEVEL_COUNT_LABEL,
+        attach_level_count_bucket,
+    )
+
+    trades = _make_trades(
+        [
+            "2026-06-02 09:35",
+            "2026-06-02 09:50",
+            "2026-06-02 11:40",
+            "2026-06-02 12:10",
+            "2026-06-02 13:10",
+        ],
+        [1.0, -1.0, 2.0, 0.5, -0.5],
+    )
+    # counts: 2, unknown, 3, 1, 10 — lex string sort would put "10" before "2".
+    trades["level_names"] = [
+        "A|B",
+        "",
+        "A|B|C",
+        "X",
+        "A|B|C|D|E|F|G|H|I|J",
+    ]
+    bucketed = attach_level_count_bucket(add_time_buckets(trades))
+    by_count = summarize_by_group(bucketed, LEVEL_COUNT_BUCKET_COL, min_trades=1)
+    assert list(by_count[LEVEL_COUNT_BUCKET_COL]) == [
+        1,
+        2,
+        3,
+        10,
+        UNKNOWN_LEVEL_COUNT_LABEL,
+    ]
+
+    pivot = pivot_time_metric(
+        by_count.assign(trigger="all"),
+        index_col=LEVEL_COUNT_BUCKET_COL,
+        metric="avg_r",
+        column_col="trigger",
+    )
+    assert list(pivot.index) == [1, 2, 3, 10, UNKNOWN_LEVEL_COUNT_LABEL]
 
 
 # ---------------------------------------------------------------------------

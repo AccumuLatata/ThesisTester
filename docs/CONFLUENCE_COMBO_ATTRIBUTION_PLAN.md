@@ -894,14 +894,14 @@ slice below (not as a Time Analysis group dimension).
 
 **Acceptance:**
 
-- [ ] Default Time Analysis run looks identical when user leaves primary on a
+- [x] Default Time Analysis run looks identical when user leaves primary on a
       time bucket (`index=0` still a time dim).
-- [ ] Combo/count options appear only under the `available=True` nonempty
+- [x] Combo/count options appear only under the `available=True` nonempty
       analyzable-combo gate; they are appended after time options.
-- [ ] Count dim uses View-C-aligned `level_count_bucket` (not raw `0`).
-- [ ] User can opt into `exact_combo_key` and/or `level_count_bucket` grouping.
-- [ ] Focus/Promote controls still only appear for existing time dims.
-- [ ] No engine/golden files in diff; full suite green.
+- [x] Count dim uses View-C-aligned `level_count_bucket` (not raw `0`).
+- [x] User can opt into `exact_combo_key` and/or `level_count_bucket` grouping.
+- [x] Focus/Promote controls still only appear for existing time dims.
+- [x] No engine/golden files in diff; full suite green.
 
 ---
 
@@ -1290,13 +1290,13 @@ PR 1 analytics helpers + tests
 
 ### PR 5a
 
-- [ ] Default Time Analysis primary stays a time bucket (`index=0` unchanged)
-- [ ] `attach_combo_columns` + View-C-aligned `level_count_bucket` attached
-- [ ] Combo/count dims **appended** only when summary `available=True` gate holds
-- [ ] Pairs / membership are **not** Time Analysis group dimensions
-- [ ] `FOCUSABLE_GROUP_COLS` / Focus/Promote unchanged (time dims only)
-- [ ] Diagnostic caption when combo/count dim selected (observed-only / 3c)
-- [ ] No engine/golden files in diff; full suite green
+- [x] Default Time Analysis primary stays a time bucket (`index=0` unchanged)
+- [x] `attach_combo_columns` + View-C-aligned `level_count_bucket` attached
+- [x] Combo/count dims **appended** only when summary `available=True` gate holds
+- [x] Pairs / membership are **not** Time Analysis group dimensions
+- [x] `FOCUSABLE_GROUP_COLS` / Focus/Promote unchanged (time dims only)
+- [x] Diagnostic caption when combo/count dim selected (observed-only / 3c)
+- [x] No engine/golden files in diff; full suite green
 
 ### PR 5b
 

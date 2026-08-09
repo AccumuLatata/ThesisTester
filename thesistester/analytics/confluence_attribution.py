@@ -184,12 +184,13 @@ def attach_combo_columns(trades: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def level_count_bucket_label(token_count: Any) -> str:
-    """View-C level-count label: ``0 → "(unknown)"``, else the count as text.
+def level_count_bucket_label(token_count: Any) -> int | str:
+    """View-C level-count label: ``0 → "(unknown)"``, else the integer count.
 
-    Non-zero counts are stringified (``"1"``, ``"2"``, …) so Time Analysis
-    ``summarize_by_group`` can sort the dim without mixed int/str TypeErrors,
-    while still matching Backtest Level count semantics (no raw ``0`` bucket).
+    Matches Backtest Level count semantics (no raw ``0`` bucket). Time Analysis
+    sorting of the resulting mixed int/str dim is handled by
+    :func:`thesistester.analytics.time_analysis.summarize_by_group` / pivot
+    helpers (numeric-aware keys), not by stringifying counts.
     """
     try:
         count = int(token_count)
@@ -197,7 +198,7 @@ def level_count_bucket_label(token_count: Any) -> str:
         return UNKNOWN_LEVEL_COUNT_LABEL
     if count == 0:
         return UNKNOWN_LEVEL_COUNT_LABEL
-    return str(count)
+    return count
 
 
 def attach_level_count_bucket(trades: pd.DataFrame) -> pd.DataFrame:

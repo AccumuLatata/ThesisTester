@@ -206,12 +206,12 @@ def test_level_count_uses_parsed_token_count_when_stored_disagrees():
     trades = _plan_fixture_trades()
     by_count = summarize_by_level_count(trades, min_trades=1)
     counts = by_count.set_index(LEVEL_COUNT_BUCKET_COL)["trade_count"].to_dict()
-    assert counts["2"] == 2
-    assert counts["3"] == 1
-    assert counts["1"] == 1
+    assert counts[2] == 2
+    assert counts[3] == 1
+    assert counts[1] == 1
     # Trade 5 stored level_count=3 but parsed names count=1.
-    assert "3" in counts
-    assert counts["3"] == 1
+    assert 3 in counts
+    assert counts[3] == 1
     assert UNKNOWN_LEVEL_COUNT_LABEL not in counts  # null-R empty trade excluded
 
 
@@ -583,9 +583,9 @@ def test_pairs_empty_info_message_distinguishes_filter_vs_missing_pairs():
 
 def test_level_count_bucket_label_view_c_unknown():
     assert level_count_bucket_label(0) == UNKNOWN_LEVEL_COUNT_LABEL
-    assert level_count_bucket_label(1) == "1"
-    assert level_count_bucket_label(3) == "3"
-    assert level_count_bucket_label("2") == "2"
+    assert level_count_bucket_label(1) == 1
+    assert level_count_bucket_label(3) == 3
+    assert level_count_bucket_label("2") == 2
     assert level_count_bucket_label(None) == UNKNOWN_LEVEL_COUNT_LABEL
 
 
@@ -599,7 +599,7 @@ def test_attach_level_count_bucket_matches_view_c_labels():
     )
     attached = attach_level_count_bucket(trades)
     assert EXACT_COMBO_KEY_COL in attached.columns
-    assert list(attached[LEVEL_COUNT_BUCKET_COL]) == ["2", UNKNOWN_LEVEL_COUNT_LABEL, "3"]
+    assert list(attached[LEVEL_COUNT_BUCKET_COL]) == [2, UNKNOWN_LEVEL_COUNT_LABEL, 3]
     # Parsed grain, not stored level_count.
     assert list(attached["level_token_count"]) == [2, 0, 3]
 
@@ -609,18 +609,14 @@ def test_confluence_combo_grouping_available_matches_summary_gate():
     assert confluence_combo_grouping_available(nonempty) is True
     assert confluence_attribution_summary(nonempty, min_trades=1)["available"] is True
 
-    empty_only = pd.DataFrame(
-        {"r_multiple": [1.0, -0.5], "level_names": ["", "nan"]}
-    )
+    empty_only = pd.DataFrame({"r_multiple": [1.0, -0.5], "level_names": ["", "nan"]})
     assert confluence_combo_grouping_available(empty_only) is False
     assert confluence_attribution_summary(empty_only, min_trades=1)["available"] is False
 
     no_names = pd.DataFrame({"r_multiple": [1.0]})
     assert confluence_combo_grouping_available(no_names) is False
 
-    null_r_only = pd.DataFrame(
-        {"r_multiple": [np.nan], "level_names": ["A|B"]}
-    )
+    null_r_only = pd.DataFrame({"r_multiple": [np.nan], "level_names": ["A|B"]})
     assert confluence_combo_grouping_available(null_r_only) is False
 
 
@@ -636,14 +632,10 @@ def test_append_confluence_time_analysis_group_options_append_only_when_availabl
         "level_name",
     }
 
-    unavailable = append_confluence_time_analysis_group_options(
-        base, available=False, columns=cols
-    )
+    unavailable = append_confluence_time_analysis_group_options(base, available=False, columns=cols)
     assert unavailable == base
 
-    available = append_confluence_time_analysis_group_options(
-        base, available=True, columns=cols
-    )
+    available = append_confluence_time_analysis_group_options(base, available=True, columns=cols)
     assert available[:3] == base
     assert available[-2:] == list(COMBO_TIME_ANALYSIS_GROUP_COLS)
     # Pairs / membership must never become Time Analysis dims.
