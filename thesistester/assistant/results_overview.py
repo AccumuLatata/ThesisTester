@@ -1470,6 +1470,70 @@ def _ensure_deep_trade_context(
     return merged
 
 
+def _ensure_confluence_combo_context(
+    evidence_context: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Attach lean ``confluence_combo`` projection for duplex / packet-only callers.
+
+    Full tops still require trade-row recompute (text Discuss turn context). When
+    trades are absent, hydrate cite-bound scalars from the mounted
+    ``results.confluence_combo_summary`` identity leaf (5c / artifact) — same
+    role as streak hydration from ``trade_summary``.
+    """
+    if not isinstance(evidence_context, Mapping):
+        return {}
+    if _path_exists(evidence_context, "results.projections.confluence_combo.available"):
+        if _path_get(evidence_context, "results.projections.confluence_combo.available") is True:
+            return evidence_context
+
+    summary = None
+    if _path_exists(evidence_context, "results.confluence_combo_summary"):
+        summary = _path_get(evidence_context, "results.confluence_combo_summary")
+    if not isinstance(summary, Mapping) or summary.get("available") is not True:
+        return evidence_context
+
+    try:
+        from thesistester.analytics.confluence_attribution import (
+            MEMBERSHIP_DOUBLE_COUNT_WARNING,
+            PAIRWISE_DOUBLE_COUNT_WARNING,
+            TRIGGER_3C_LEVEL_NAMES_WARNING,
+        )
+    except Exception:
+        return evidence_context
+
+    warnings = [str(item) for item in list(summary.get("warnings") or []) if item]
+    projection: dict[str, Any] = {
+        "available": True,
+        "selection_scope": "observed_traded_combos",
+        "source": "confluence_combo_summary",
+        "warning_flags": {
+            "membership_double_count": MEMBERSHIP_DOUBLE_COUNT_WARNING in warnings,
+            "pairwise_double_count": PAIRWISE_DOUBLE_COUNT_WARNING in warnings,
+            "trigger_3c_level_names": TRIGGER_3C_LEVEL_NAMES_WARNING in warnings,
+        },
+        "warnings": warnings,
+    }
+    for key in (
+        "trade_count",
+        "nonempty_combo_trade_count",
+        "pair_mode",
+        "confluence_mode",
+        "anchor_level",
+        "top_n",
+        "min_trades",
+    ):
+        if key in summary and summary.get(key) is not None:
+            projection[key] = summary.get(key)
+
+    merged = dict(evidence_context)
+    results = dict(merged.get("results") or {})
+    projections = dict(results.get("projections") or {})
+    projections["confluence_combo"] = projection
+    results["projections"] = projections
+    merged["results"] = results
+    return merged
+
+
 def has_deep_trade_evidence(
     evidence_context: Mapping[str, Any],
     *,
@@ -2730,6 +2794,16 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             return None
         # PR5d: confluence combo string leaves (reject digit-bearing labels).
         if path.startswith("results.projections.confluence_combo."):
+            # View-C buckets may arrive as string numerals after parquet/JSON
+            # round-trips; coerce pure digits so allowlisted paths stay narratable.
+            if path.endswith("level_count_bucket"):
+                if text == "(unknown)":
+                    return "Level count bucket is (unknown)."
+                if text.isdigit():
+                    return f"Level count bucket is {int(text)}."
+                if _ungrounded_number_tokens(text, allowed=set()):
+                    return None
+                return f"Level count bucket is {text}."
             if _ungrounded_number_tokens(text, allowed=set()):
                 return None
             if path.endswith("display_combo") or path.endswith("exact_combo_key"):
@@ -2742,8 +2816,6 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
                 return f"Confluence mode is {text}."
             if path.endswith("anchor_level"):
                 return f"Anchor level is {text}."
-            if path.endswith("level_count_bucket"):
-                return f"Level count bucket is {text}."
             if path.endswith("selection_scope"):
                 return f"Selection scope is {text}."
             return None
@@ -3066,6 +3138,8 @@ def compose_deterministic_replies(
         working = dict(_ensure_grid_rankings_context(working))
     if INTENT_TIME_RANKING in matched:
         working = dict(_ensure_time_rankings_context(working))
+    if INTENT_CONFLUENCE_COMBO in matched:
+        working = dict(_ensure_confluence_combo_context(working))
 
     # KPI allowlist covers overlapping §4.5 leaves — still build metric paths
     # outside the KPI table (e.g. sharpe_like_r) when overview also matched.
@@ -3279,6 +3353,8 @@ def build_deterministic_discuss_reply(
             working = dict(_ensure_time_rankings_context(working))
         if INTENT_DEEP_TRADE in matched:
             working = dict(_ensure_deep_trade_context(working))
+        if INTENT_CONFLUENCE_COMBO in matched:
+            working = dict(_ensure_confluence_combo_context(working))
         return compose_deterministic_replies(
             packet,
             working,
@@ -3313,6 +3389,9 @@ def build_deterministic_discuss_reply(
             return build_missing_deep_trade_limitation_reply(packet, evidence_context=working)
         return build_deterministic_deep_trade_reply(packet, working, user_message=user_message)
     if intent == INTENT_CONFLUENCE_COMBO:
+        # Identity scalars may live on mounted confluence_combo_summary; hydrate
+        # before PR5d gates (duplex / packet-only parity with streak hydration).
+        working = dict(_ensure_confluence_combo_context(working))
         if not has_confluence_combo_evidence(working):
             return build_missing_confluence_combo_limitation_reply(packet, evidence_context=working)
         return build_deterministic_confluence_combo_reply(packet, working)

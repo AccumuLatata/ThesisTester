@@ -2191,6 +2191,52 @@ def test_ri10_shared_helper_hydrates_streak_from_trade_summary():
     assert "4" in reply.summary
 
 
+def test_ri10_shared_helper_hydrates_confluence_combo_from_mounted_summary():
+    """Packet-only duplex path hydrates lean combo projection from identity leaf."""
+    from thesistester.assistant.results_overview import _format_scalar_for_claim
+
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri10_combo_hydrate"},
+        assumptions={"setup_config": {}},
+        results={
+            "trade_summary": {"trade_count": 12},
+            "confluence_combo_summary": {
+                "available": True,
+                "confluence_mode": "anchor_rules",
+                "anchor_level": "PDH",
+                "trade_count": 12,
+                "nonempty_combo_trade_count": 10,
+                "warnings": [],
+            },
+        },
+        warnings=(),
+        limitations=(),
+    )
+    bare = packet.to_dict()
+    assert "confluence_combo" not in ((bare.get("results") or {}).get("projections") or {})
+    assert has_confluence_combo_evidence(bare) is False
+    reply = build_deterministic_discuss_reply(
+        packet,
+        bare,
+        user_message="What is the confluence combo attribution?",
+        discuss_intent=INTENT_CONFLUENCE_COMBO,
+    )
+    assert reply is not None
+    assert reply.claims
+    paths = {claim.path for claim in reply.claims}
+    assert "results.projections.confluence_combo.trade_count" in paths
+    assert "results.projections.confluence_combo.confluence_mode" in paths
+    assert "anchor_rules" in reply.summary
+    # String View-C buckets must remain narratable after parquet/JSON round-trips.
+    assert (
+        _format_scalar_for_claim(
+            "results.projections.confluence_combo.top_level_count.0.level_count_bucket",
+            "2",
+        )
+        == "Level count bucket is 2."
+    )
+
+
 def test_ri9_exit_ask_does_not_use_extreme_only_projections():
     """Extreme-trade leaves alone must not answer exit-reason asks."""
     packet = EvidencePacket(

@@ -1088,7 +1088,9 @@ leaves from loaded trades (cite-only allowlist; 5c siblings not required).
 stale Setup Builder `setup_config` alone. Packets also mount a table-free
 `results.confluence_combo_summary` identity leaf (5c summary preferred, else
 artifact `confluence_combo`) for the same restored-summary mode/anchor fallback
-used by report/bundle recompute.
+used by report/bundle recompute. RI-10 duplex / packet-only Discuss hydrates a
+lean `results.projections.confluence_combo` from that identity leaf when trade
+rows are not loaded (full tops still require trades recompute).
 
 Grid Search directional note: `pages/8_Grid_Search.py` shows aggregate KPIs by default.
 Enable **Advanced directional ranking** to rank by long/short or balanced weaker-side
