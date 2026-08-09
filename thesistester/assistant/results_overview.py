@@ -1025,9 +1025,7 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
     # RI-2: sample_warning is an explicit allowlisted boolean honesty claim.
     if path.endswith("sample_warning") and isinstance(value, bool):
         return (
-            "Sample warning is true (thin bucket sample)."
-            if value
-            else "Sample warning is false."
+            "Sample warning is true (thin bucket sample)." if value else "Sample warning is false."
         )
     if value is None or isinstance(value, bool):
         return None
@@ -1334,10 +1332,7 @@ def build_deterministic_time_ranking_reply(
         summary_parts.append(text.rstrip("."))
 
     claim_paths = {claim.path for claim in claims}
-    if (
-        not claims
-        or "results.projections.time_rankings.best.bucket" not in claim_paths
-    ):
+    if not claims or "results.projections.time_rankings.best.bucket" not in claim_paths:
         return build_missing_time_limitation_reply(
             packet,
             recovery_reason=recovery_reason or REASON_MISSING_TIME,

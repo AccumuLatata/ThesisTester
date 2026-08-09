@@ -1112,7 +1112,11 @@ def test_rq5_missing_time_rejects_invented_hour_and_allows_limitation():
     packet = _rq5_trade_packet(time_summary=False)
 
     class InventHour:
+        def __init__(self):
+            self.calls = 0
+
         def complete_structured(self, **kwargs):
+            self.calls += 1
             return {
                 "summary": "Best entry hour is 10.",
                 "caveats": ["Invented without time evidence."],
@@ -1120,18 +1124,27 @@ def test_rq5_missing_time_rejects_invented_hour_and_allows_limitation():
                 "followups": ["Ignore missing evidence."],
             }
 
-    with pytest.raises(LLMEvidenceError, match="Uncited numerical claim"):
-        propose_results_reply(
-            InventHour(),
-            packet=packet,
-            history=(),
-            user_message="What is the best entry time?",
-            repair_retry_enabled=False,
-            deterministic_overview_fallback=False,
-        )
+    # RI-2: missing-time short-circuit before LLM — no invented clocks, zero calls.
+    invent = InventHour()
+    reply = propose_results_reply(
+        invent,
+        packet=packet,
+        history=(),
+        user_message="What is the best entry time?",
+        repair_retry_enabled=False,
+        deterministic_overview_fallback=False,
+    )
+    assert invent.calls == 0
+    assert reply.claims == ()
+    assert "10" not in reply.summary
+    assert reply.recovery_reason == "time_missing_evidence"
 
     class LimitationOnly:
+        def __init__(self):
+            self.calls = 0
+
         def complete_structured(self, **kwargs):
+            self.calls += 1
             return {
                 "summary": "No time-grouped summary is present for this run.",
                 "caveats": ["Best entry-time ranking cannot be answered without time evidence."],
@@ -1139,14 +1152,16 @@ def test_rq5_missing_time_rejects_invented_hour_and_allows_limitation():
                 "followups": ["Ask about trade summary instead."],
             }
 
+    limitation_client = LimitationOnly()
     reply = propose_results_reply(
-        LimitationOnly(),
+        limitation_client,
         packet=packet,
         history=(),
         user_message="What is the best entry time?",
     )
+    assert limitation_client.calls == 0
     assert reply.claims == ()
-    assert "time" in reply.summary.lower() or "time" in reply.caveats[0].lower()
+    assert "time" in reply.summary.lower()
 
 
 def test_rq5_missing_grid_rejects_invented_sl_and_allows_limitation():

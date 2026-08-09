@@ -176,7 +176,10 @@ def test_match_discuss_intent_grid_overview_mixed_and_residual():
     assert match_discuss_intent("tp and oos") == INTENT_VALIDATION_WFA
     assert match_discuss_intent("oos for my tp") == INTENT_VALIDATION_WFA
     assert match_discuss_intent("validation of my stop") == INTENT_VALIDATION_WFA
-    assert match_discuss_intent("tp and best time") == INTENT_TIME_RANKING
+    # Bare tp (no grid collocate) must not veto lone time_ranking.
+    assert match_discuss_intent("tp and hour bucket") == INTENT_TIME_RANKING
+    # "best" collocates bare tp → grid + time → mixed_ask.
+    assert match_discuss_intent("tp and best time") == INTENT_MIXED_ASK
     # Soft residual still refuses overview topic-swap (not kpi_summary).
     assert match_discuss_intent("Give me KPIs and what's my stop?") is None
     assert has_overview_negative_cue("Give me KPIs and what's my stop?") is True
