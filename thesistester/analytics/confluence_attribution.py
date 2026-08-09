@@ -411,3 +411,75 @@ def confluence_attribution_summary(
     result["available"] = True
     result["warnings"] = [MEMBERSHIP_DOUBLE_COUNT_WARNING, *trigger_warnings]
     return result
+
+
+def apply_sample_warning_filter(
+    frame: pd.DataFrame,
+    *,
+    hide_below_min: bool,
+) -> pd.DataFrame:
+    """Presentation filter: optionally drop rows with ``sample_warning``.
+
+    Analytics summaries always return thin groups; Backtest UI owns hiding.
+    """
+    if frame is None or not isinstance(frame, pd.DataFrame):
+        return pd.DataFrame()
+    if frame.empty or not hide_below_min or "sample_warning" not in frame.columns:
+        return frame.copy()
+    mask = ~frame["sample_warning"].fillna(False).astype(bool)
+    return frame.loc[mask].copy()
+
+
+def resolve_confluence_mode(
+    setup_config: Any = None,
+    trades: pd.DataFrame | None = None,
+) -> str:
+    """Best-effort mode label for captions: anchor_rules / global_cluster / unknown."""
+    if isinstance(setup_config, dict):
+        mode = str(setup_config.get("confluence_mode") or "").strip()
+        if mode in {"anchor_rules", "global_cluster"}:
+            return mode
+
+    if isinstance(trades, pd.DataFrame) and not trades.empty:
+        if "level_source_mode" in trades.columns:
+            modes = (
+                trades["level_source_mode"]
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .replace("", pd.NA)
+                .dropna()
+            )
+            if not modes.empty:
+                dominant = str(modes.value_counts().index[0])
+                if dominant in {"anchor_rules", "global_cluster"}:
+                    return dominant
+                # Signals/backtest may stamp 3c source labels such as user_anchor.
+                if dominant in {"user_anchor", "anchor"}:
+                    return "anchor_rules"
+                if dominant in {"global_cluster", "cluster", "global"}:
+                    return "global_cluster"
+    return "unknown"
+
+
+def prepare_exact_combo_display(
+    frame: pd.DataFrame,
+    *,
+    anchor_level: str | None = None,
+    confluence_mode: str | None = None,
+) -> pd.DataFrame:
+    """Add ``display_combo`` for UI; anchor formatting only in anchor_rules mode."""
+    if frame is None or not isinstance(frame, pd.DataFrame):
+        return pd.DataFrame()
+    out = frame.copy()
+    if out.empty or EXACT_COMBO_KEY_COL not in out.columns:
+        return out
+
+    use_anchor = None
+    if confluence_mode == "anchor_rules" and anchor_level:
+        use_anchor = str(anchor_level).strip() or None
+
+    out["display_combo"] = out[EXACT_COMBO_KEY_COL].map(
+        lambda key: format_display_combo(key, anchor_level=use_anchor)
+    )
+    return out

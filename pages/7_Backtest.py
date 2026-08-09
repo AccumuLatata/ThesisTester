@@ -42,6 +42,19 @@ from thesistester.analytics.entry_window import (
     format_entry_window_label,
     partition_skip_counts,
 )
+from thesistester.analytics.confluence_attribution import (
+    EMPTY_LEVEL_NAMES_KEY,
+    EXACT_COMBO_KEY_COL,
+    EXAMPLE_RAW_COL,
+    LEVEL_COUNT_BUCKET_COL,
+    LEVEL_NAME_COL,
+    MEMBERSHIP_DOUBLE_COUNT_WARNING,
+    TRIGGER_3C_LEVEL_NAMES_WARNING,
+    apply_sample_warning_filter,
+    confluence_attribution_summary,
+    prepare_exact_combo_display,
+    resolve_confluence_mode,
+)
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
 from thesistester.analytics.prev30m_vwap_hit import prev30m_hit_r_summary
 from thesistester.levels.prev30m_vwap import COL_HIT_M1, COL_HIT_M5
@@ -1067,6 +1080,197 @@ if _display_has_trades:
                 width="stretch",
                 hide_index=True,
             )
+
+# Confluence combo attribution (analytics-only; collapsed by default).
+if _display_has_trades:
+    with st.expander("Confluence combo attribution", expanded=False):
+        _setup_config = st.session_state.get("setup_config")
+        if not isinstance(_setup_config, dict):
+            _signal_context = st.session_state.get("signal_context")
+            _setup_config = _signal_context if isinstance(_signal_context, dict) else {}
+
+        _confluence_mode = resolve_confluence_mode(_setup_config, _display_trades)
+        if _confluence_mode == "anchor_rules":
+            st.caption(
+                "Combinations are anchor + currently valid confluence rules on the "
+                "signal bar. Min valid confluences controls threshold, not pairwise "
+                "splitting."
+            )
+        elif _confluence_mode == "global_cluster":
+            st.caption(
+                "Combinations are unsupervised peer clusters within tolerance. "
+                "Order is canonicalized; raw price-order strings may differ."
+            )
+        else:
+            st.caption(
+                "Combinations are derived from each trade's recorded `level_names`."
+            )
+
+        st.caption(
+            "Diagnostic only — rows are combinations that actually traded in this "
+            "run, not all possible subsets. Sorting many combinations by total R "
+            "invites selection effects; thin samples are hidden by default. Not "
+            "proof of future edge."
+        )
+        st.caption(MEMBERSHIP_DOUBLE_COUNT_WARNING)
+
+        _cca_min_trades = st.number_input(
+            "Minimum trades for sample warning",
+            min_value=1,
+            max_value=10_000,
+            value=10,
+            step=1,
+            key="backtest_cca_min_trades",
+        )
+        _cca_hide_thin = st.checkbox(
+            "Hide samples below min trades",
+            value=True,
+            key="backtest_cca_hide_below_min",
+        )
+
+        try:
+            _cca_summary = confluence_attribution_summary(
+                _display_trades,
+                min_trades=int(_cca_min_trades),
+            )
+        except (TypeError, ValueError, KeyError):
+            _cca_summary = {"available": False, "trade_count": 0, "warnings": []}
+
+        if TRIGGER_3C_LEVEL_NAMES_WARNING in list(_cca_summary.get("warnings") or []):
+            st.caption(TRIGGER_3C_LEVEL_NAMES_WARNING)
+
+        if not _cca_summary.get("available"):
+            _empty_count = int(_cca_summary.get("empty_level_names_count") or 0)
+            if "level_names" not in _display_trades.columns:
+                st.info(
+                    "Confluence combo attribution unavailable: displayed trades have "
+                    "no `level_names` column."
+                )
+            elif _empty_count > 0 and int(_cca_summary.get("nonempty_combo_trade_count") or 0) == 0:
+                st.info(
+                    "Confluence combo attribution unavailable: analyzable trades only "
+                    f"have empty `level_names` ({_empty_count})."
+                )
+            else:
+                st.info(
+                    "Confluence combo attribution unavailable for the current displayed "
+                    "trades (need non-null `r_multiple` and at least one non-empty "
+                    "`level_names` combo)."
+                )
+        else:
+            st.caption(
+                f"Analyzable trades: {int(_cca_summary.get('trade_count') or 0)} · "
+                f"Non-empty combos: {int(_cca_summary.get('nonempty_combo_trade_count') or 0)}"
+            )
+
+            _anchor_level = None
+            if _confluence_mode == "anchor_rules":
+                _raw_anchor = _setup_config.get("anchor_level")
+                if isinstance(_raw_anchor, str) and _raw_anchor.strip():
+                    _anchor_level = _raw_anchor.strip()
+
+            _tab_exact, _tab_member, _tab_count = st.tabs(
+                ["Exact combo", "Membership", "Level count"]
+            )
+
+            with _tab_exact:
+                _exact = prepare_exact_combo_display(
+                    apply_sample_warning_filter(
+                        _cca_summary.get("by_exact_combo"),
+                        hide_below_min=bool(_cca_hide_thin),
+                    ),
+                    anchor_level=_anchor_level,
+                    confluence_mode=_confluence_mode,
+                )
+                if _exact.empty:
+                    st.info("No exact-combo rows to display under the current filter.")
+                else:
+                    _exact_view = _exact.copy()
+                    if "display_combo" in _exact_view.columns:
+                        _exact_view = _exact_view.rename(columns={"display_combo": "combo"})
+                    _exact_cols = [
+                        c
+                        for c in [
+                            "combo",
+                            EXACT_COMBO_KEY_COL,
+                            EXAMPLE_RAW_COL,
+                            "trade_count",
+                            "win_rate",
+                            "avg_r",
+                            "median_r",
+                            "total_r",
+                            "sample_warning",
+                        ]
+                        if c in _exact_view.columns
+                    ]
+                    # Prefer friendly combo label; keep canonical key only when it differs.
+                    if (
+                        "combo" in _exact_view.columns
+                        and EXACT_COMBO_KEY_COL in _exact_cols
+                        and (
+                            _exact_view["combo"].astype(str)
+                            == _exact_view[EXACT_COMBO_KEY_COL]
+                            .replace(EMPTY_LEVEL_NAMES_KEY, "(no level names)")
+                            .astype(str)
+                        ).all()
+                    ):
+                        _exact_cols = [c for c in _exact_cols if c != EXACT_COMBO_KEY_COL]
+                    st.dataframe(_exact_view[_exact_cols], width="stretch", hide_index=True)
+
+            with _tab_member:
+                st.caption(MEMBERSHIP_DOUBLE_COUNT_WARNING)
+                _member = apply_sample_warning_filter(
+                    _cca_summary.get("by_membership"),
+                    hide_below_min=bool(_cca_hide_thin),
+                )
+                if _member.empty:
+                    st.info("No membership rows to display under the current filter.")
+                else:
+                    _member_view = _member.rename(columns={LEVEL_NAME_COL: "level"})
+                    _member_cols = [
+                        c
+                        for c in [
+                            "level",
+                            "trade_count",
+                            "win_rate",
+                            "avg_r",
+                            "median_r",
+                            "total_r",
+                            "sample_warning",
+                        ]
+                        if c in _member_view.columns
+                    ]
+                    st.dataframe(_member_view[_member_cols], width="stretch", hide_index=True)
+
+            with _tab_count:
+                st.caption(
+                    "Level count uses the parsed distinct token count from "
+                    "`level_names` (not stored zone `level_count`)."
+                )
+                _counts = apply_sample_warning_filter(
+                    _cca_summary.get("by_level_count"),
+                    hide_below_min=bool(_cca_hide_thin),
+                )
+                if _counts.empty:
+                    st.info("No level-count rows to display under the current filter.")
+                else:
+                    _count_view = _counts.rename(
+                        columns={LEVEL_COUNT_BUCKET_COL: "parsed_level_count"}
+                    )
+                    _count_cols = [
+                        c
+                        for c in [
+                            "parsed_level_count",
+                            "trade_count",
+                            "win_rate",
+                            "avg_r",
+                            "median_r",
+                            "total_r",
+                            "sample_warning",
+                        ]
+                        if c in _count_view.columns
+                    ]
+                    st.dataframe(_count_view[_count_cols], width="stretch", hide_index=True)
 
 # Full trade table
 if _display_has_trades:

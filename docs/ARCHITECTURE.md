@@ -1041,6 +1041,12 @@ Flow basis in app workflow and phase pages: `app.py`, `pages/1_Data.py`,
 Backtest UI note: `pages/7_Backtest.py` shows both combined KPIs and a separate directional
 ("Long vs Short KPIs") section sourced from the same `trades` DataFrame.
 
+Backtest also exposes a collapsed diagnostic expander **Confluence combo attribution**
+near Breakdown. It recomputes on the fly from `_display_trades` via
+`thesistester.analytics.confluence_attribution` (exact combo / membership / parsed
+level-count). No new `st.session_state` keys are required beyond ordinary widget keys;
+zone/signal/fill engines are untouched.
+
 Grid Search directional note: `pages/8_Grid_Search.py` shows aggregate KPIs by default.
 Enable **Advanced directional ranking** to rank by long/short or balanced weaker-side
 metrics with per-side minimum trade-count gates.  Each grid row includes `long_*`,

@@ -1,6 +1,6 @@
 # Regression-Safe Implementation Plan: Confluence Combo Attribution (Backtest)
 
-**Status:** Phase 1 implemented (analytics helpers + unit tests); UI not started  
+**Status:** Phase 1 + Phase 2 implemented (analytics helpers + Backtest expander UI + honesty docs)  
 **Document type:** Focused analytics / Backtest UX implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related docs:**  
@@ -1006,7 +1006,7 @@ No blocking open questions remain for PR 1–2.
 |---|---|---|
 | Phase 0 | This proposal (+ 2026-08-09 review locks + polish) | Complete |
 | Phase 1 | PR 1 analytics helpers | **Implemented** (`thesistester/analytics/confluence_attribution.py`, `tests/test_confluence_attribution.py`) |
-| Phase 2 | PR 2 Backtest expander UI + docs | Not started |
+| Phase 2 | PR 2 Backtest expander UI + docs | **Implemented** (`pages/7_Backtest.py` expander; ASSUMPTIONS / METRICS_GLOSSARY / ARCHITECTURE) |
 | Phase 4 | PR 4 soft pairwise attribution (recommended next) | Not started |
 | Phase 3 | PR 3 cross-tab / polish (if UX pain) | Not started |
 | Phase 5 | Downstream consumers | Not started |
