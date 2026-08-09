@@ -2,8 +2,8 @@
 
 Fail-closed numbers stay in ``llm_explainer``. This module selects frozen
 overview + specialist slices (RI-1: ``grid_ranking``; RI-2: ``time_ranking``;
-RI-3: ``validation_wfa``), builds DI-2 first-pass path catalogs, and builds
-auditor-safe replies when the LLM path fails.
+RI-3: ``validation_wfa``; RI-4: ``single_metric``), builds DI-2 first-pass
+path catalogs, and builds auditor-safe replies when the LLM path fails.
 """
 
 from __future__ import annotations
@@ -26,10 +26,15 @@ OVERVIEW_INTENT_RUN = "run_overview"
 INTENT_GRID_RANKING = "grid_ranking"
 INTENT_TIME_RANKING = "time_ranking"
 INTENT_VALIDATION_WFA = "validation_wfa"
+INTENT_SINGLE_METRIC = "single_metric"
 INTENT_MIXED_ASK = "mixed_ask"
 
 _LANDED_SPECIALIST_INTENTS = frozenset(
     {INTENT_GRID_RANKING, INTENT_TIME_RANKING, INTENT_VALIDATION_WFA}
+)
+# Intents that refuse overview/DX KPI envelopes (specialists + single-metric).
+_OVERVIEW_REFUSING_INTENTS = frozenset(
+    {*_LANDED_SPECIALIST_INTENTS, INTENT_SINGLE_METRIC, INTENT_MIXED_ASK}
 )
 
 REASON_PATH_MISS = "overview_path_miss"
@@ -39,10 +44,47 @@ REASON_REPAIR_FAILED = "overview_repair_failed"
 REASON_MISSING_GRID = "grid_missing_evidence"
 REASON_MISSING_TIME = "time_missing_evidence"
 REASON_MISSING_VALIDATION = "validation_missing_evidence"
+REASON_MISSING_METRIC = "metric_missing_leaf"
 REASON_MIXED_ASK = "mixed_ask_narrow"
 REASON_GRID_FALLBACK = "grid_deterministic_fallback"
 REASON_TIME_FALLBACK = "time_deterministic_fallback"
 REASON_VALIDATION_FALLBACK = "validation_deterministic_fallback"
+REASON_METRIC_FALLBACK = "metric_deterministic_fallback"
+
+# Frozen RI §4.5 noun → path map (longer phrases first within each row).
+_SINGLE_METRIC_NOUN_PATHS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("win rate",), "results.trade_summary.win_rate"),
+    (("expectancy_r", "expectancy"), "results.trade_summary.expectancy_r"),
+    (("profit factor",), "results.trade_summary.profit_factor"),
+    (("max drawdown", "drawdown"), "results.trade_summary.max_drawdown_r"),
+    (("total r",), "results.trade_summary.total_r"),
+    (
+        ("number of trades", "trade count", "sample size"),
+        "results.trade_summary.trade_count",
+    ),
+    (("average r", "avg r"), "results.trade_summary.avg_r"),
+    (("median r",), "results.trade_summary.median_r"),
+    (("sharpe",), "results.trade_summary.sharpe_like_r"),
+    (("sortino",), "results.trade_summary.sortino_like_r"),
+    (("ulcer",), "results.trade_summary.ulcer_index_r"),
+    (("recovery factor",), "results.trade_summary.recovery_factor"),
+)
+
+# Value / define collocates required for single_metric (§4.5).
+# ``how many`` alone is not a general collocate — only the explicit form
+# ``how many trades`` below (avoids ``how many sharpe`` false matches).
+_SINGLE_METRIC_VALUE_COLLOCATES: tuple[str, ...] = (
+    "what is",
+    "what's",
+    "whats",
+    "show",
+    "give me",
+)
+
+# Explicit metric question forms that do not need a separate value collocate.
+_SINGLE_METRIC_EXPLICIT_FORMS: tuple[tuple[str, str], ...] = (
+    ("how many trades", "results.trade_summary.trade_count"),
+)
 
 # Frozen §4.2 allowlist (include only when path exists on turn context).
 KPI_CLAIM_PATHS: tuple[str, ...] = (
@@ -177,6 +219,12 @@ _TIME_RANKING_POSITIVE_CUES: tuple[str, ...] = (
 )
 # Bare DI time negatives become owned after RI-2 sunset (boundary-safe vs runtime).
 _TIME_BARE_TOKEN_CUES: tuple[str, ...] = ("time", "hour", "bucket", "clock")
+# English temporal idioms must not fire bare ``time`` (RI-4 metric asks).
+_TIME_BARE_IDIOM_PHRASES: tuple[str, ...] = (
+    "over time",
+    "through time",
+    "across time",
+)
 # ``ranking`` / ``ranking metric`` count as time when a time collocate is present.
 _TIME_RANKING_CONTEXT_CUES: tuple[str, ...] = ("ranking", "ranking metric")
 _TIME_CONTEXT_COLLOCATES: tuple[str, ...] = (
@@ -263,7 +311,11 @@ VALIDATION_CLAIM_PATHS: tuple[str, ...] = (
 
 
 def _normalize_message(text: str) -> str:
-    return " ".join(text.strip().lower().split())
+    # Map common curly/smart apostrophes so ``what's`` cues still match.
+    lowered = (
+        text.strip().lower().replace("\u2019", "'").replace("\u2018", "'").replace("\u00b4", "'")
+    )
+    return " ".join(lowered.split())
 
 
 def _alias_matches(alias: str, normalized: str) -> bool:
@@ -323,15 +375,36 @@ def _validation_wfa_matches(normalized: str) -> bool:
     return False
 
 
-def _time_ranking_matches(normalized: str) -> bool:
+def _mask_time_bare_idioms(normalized: str) -> str:
+    """Blank temporal idioms so bare ``time`` does not false-fire inside them."""
+    masked = normalized
+    for phrase in _TIME_BARE_IDIOM_PHRASES:
+        masked = masked.replace(phrase, " ")
+    return " ".join(masked.split())
+
+
+def _bare_time_token_matches(normalized: str) -> bool:
+    """True when a bare time token hits outside excluded temporal idioms."""
+    return _any_cue_matches(_TIME_BARE_TOKEN_CUES, _mask_time_bare_idioms(normalized))
+
+
+def _strong_time_ranking_matches(normalized: str) -> bool:
+    """Multi-word / collocated time asks (not bare token alone)."""
     if _any_cue_matches(_TIME_RANKING_POSITIVE_CUES, normalized):
-        return True
-    # Bare DI time negatives owned after RI-2 sunset (boundary vs runtime/stopwatch).
-    if _any_cue_matches(_TIME_BARE_TOKEN_CUES, normalized):
         return True
     if _any_cue_matches(_TIME_RANKING_CONTEXT_CUES, normalized) and _any_cue_matches(
         _TIME_CONTEXT_COLLOCATES, normalized
     ):
+        return True
+    return False
+
+
+def _time_ranking_matches(normalized: str) -> bool:
+    if _strong_time_ranking_matches(normalized):
+        return True
+    # Bare DI time negatives owned after RI-2 sunset (boundary vs runtime/stopwatch).
+    # Idioms like ``over time`` are masked so RI-4 metric asks are not hijacked.
+    if _bare_time_token_matches(normalized):
         return True
     return False
 
@@ -377,17 +450,52 @@ def _residual_negative_matches(normalized: str) -> bool:
     return _hard_residual_negative_matches(normalized) or _soft_bare_grid_token_residual(normalized)
 
 
+def _matched_single_metric_paths(normalized: str) -> list[str]:
+    """Return distinct §4.5 paths for value-collocate nouns or explicit forms."""
+    paths: list[str] = []
+    seen: set[str] = set()
+
+    def _add(path: str) -> None:
+        if path in seen:
+            return
+        seen.add(path)
+        paths.append(path)
+
+    for form, path in _SINGLE_METRIC_EXPLICIT_FORMS:
+        if _alias_matches(form, normalized):
+            _add(path)
+    if _any_cue_matches(_SINGLE_METRIC_VALUE_COLLOCATES, normalized):
+        for nouns, path in _SINGLE_METRIC_NOUN_PATHS:
+            if _any_cue_matches(nouns, normalized):
+                _add(path)
+    return paths
+
+
+def resolve_single_metric_path(message: str) -> str | None:
+    """Return the single §4.5 claim path for a lone metric ask, or None.
+
+    Does not apply hard-refuse / residual rules — callers that need the Discuss
+    intent should use ``match_discuss_intent`` first.
+    """
+    if not isinstance(message, str) or not message.strip():
+        return None
+    paths = _matched_single_metric_paths(_normalize_message(message))
+    if len(paths) != 1:
+        return None
+    return paths[0]
+
+
 def has_overview_negative_cue(message: str) -> bool:
     """Return True when overview matching must be refused (RI §4.1.1).
 
-    ``overview_refused = landed specialist OR mixed_ask OR residual DI negative``.
-    Duplex (DX) uses this to distinguish veto from unmatched — do not copy cue
-    tables into ``voice/``.
+    ``overview_refused = landed specialist OR single_metric OR mixed_ask OR
+    residual DI negative``. Duplex (DX) uses this to distinguish veto from
+    unmatched — do not copy cue tables into ``voice/``.
     """
     if not isinstance(message, str) or not message.strip():
         return False
     intent = match_discuss_intent(message)
-    if intent in _LANDED_SPECIALIST_INTENTS or intent == INTENT_MIXED_ASK:
+    if intent in _OVERVIEW_REFUSING_INTENTS:
         return True
     if intent is None:
         return _residual_negative_matches(_normalize_message(message))
@@ -399,22 +507,24 @@ def match_discuss_intent(message: str) -> str | None:
 
     Multi-eval (no first-match short-circuit): evaluate landed cue tables
     independently, then apply residual veto / mixed-ask rules.
-    Landed intents in RI-2+: ``grid_ranking``, ``time_ranking``,
-    ``validation_wfa``, ``kpi_summary``, ``run_overview``.
+    Landed intents in RI-4+: ``grid_ranking``, ``time_ranking``,
+    ``validation_wfa``, ``single_metric``, ``kpi_summary``, ``run_overview``.
     """
     if not isinstance(message, str) or not message.strip():
         return None
     normalized = _normalize_message(message)
     grid = _grid_ranking_matches(normalized)
-    time_ask = _time_ranking_matches(normalized)
+    time_strong = _strong_time_ranking_matches(normalized)
+    time_bare_only = _bare_time_token_matches(normalized) and not time_strong
     validation = _validation_wfa_matches(normalized)
+    metric_paths = _matched_single_metric_paths(normalized)
     kpi = _any_cue_matches(_KPI_POSITIVE_CUES, normalized)
     run = _any_cue_matches(_RUN_OVERVIEW_POSITIVE_CUES, normalized)
 
     specialists: list[str] = []
     if grid:
         specialists.append(INTENT_GRID_RANKING)
-    if time_ask:
+    if time_strong:
         specialists.append(INTENT_TIME_RANKING)
     if validation:
         specialists.append(INTENT_VALIDATION_WFA)
@@ -423,23 +533,49 @@ def match_discuss_intent(message: str) -> str | None:
     soft_residual = _soft_bare_grid_token_residual(normalized)
 
     # §4.1 step 3: hard residual (MC/bare-ranking/otf) blocks specialists → None.
+    # Also hard-refuses single_metric (§4.5) so IS leaves cannot launder residual asks.
     if hard_residual:
         return None
 
     overview_count = (1 if kpi else 0) + (1 if run else 0)
+
+    # Bare time token + metric value-ask: do not serve the time slice alone
+    # (e.g. ``show win rate by hour``). Narrow mixed_ask until RI-8. Idioms
+    # like ``over time`` are already masked out of bare-time matching.
+    # Soft bare-grid residual must not bypass this into lone time_ranking
+    # (e.g. ``show win rate by hour for my stop``).
+    if time_bare_only and metric_paths and not specialists and overview_count == 0:
+        return INTENT_MIXED_ASK
+
+    # Lone bare time (or bare time competing with other landed intents) counts
+    # as the landed time_ranking specialist.
+    if time_bare_only:
+        specialists.append(INTENT_TIME_RANKING)
+
+    # §4.5 hard-refuse: specialist or residual collocates → never emit single_metric.
+    metric_allowed = not specialists and not soft_residual
+    single_metric = metric_allowed and len(metric_paths) == 1
+    multi_metric = metric_allowed and len(metric_paths) >= 2
+
     if soft_residual:
         # Soft bare-grid residual refuses overview/DX topic-swap, but must not
         # veto a lone landed specialist ("tp and oos" / "validation of my stop").
+        # single_metric is hard-refused above (metric_allowed False).
         if len(specialists) >= 2 or (len(specialists) == 1 and overview_count >= 1):
             return INTENT_MIXED_ASK
         if len(specialists) == 1:
             return specialists[0]
         return None
 
-    if len(specialists) + overview_count >= 2:
+    metric_count = (1 if single_metric else 0) + (1 if multi_metric else 0)
+    if len(specialists) + overview_count + metric_count >= 2:
         return INTENT_MIXED_ASK
     if len(specialists) == 1:
         return specialists[0]
+    if multi_metric:
+        return INTENT_MIXED_ASK
+    if single_metric:
+        return INTENT_SINGLE_METRIC
     if kpi:
         return OVERVIEW_INTENT_KPI
     if run:
@@ -714,11 +850,24 @@ def has_time_ranking_evidence(evidence_context: Mapping[str, Any]) -> bool:
     return _format_scalar_for_claim(path, _path_get(working, path)) is not None
 
 
+def has_single_metric_evidence(
+    evidence_context: Mapping[str, Any],
+    path: str,
+) -> bool:
+    """True when the §4.5 leaf exists and formats to a narratable scalar."""
+    if not isinstance(evidence_context, Mapping) or not isinstance(path, str) or not path:
+        return False
+    if not _path_exists(evidence_context, path):
+        return False
+    return _format_scalar_for_claim(path, _path_get(evidence_context, path)) is not None
+
+
 def build_prompt_path_catalog(
     evidence_context: Mapping[str, Any],
     *,
     overview_intent: str | None = None,
     discuss_intent: str | None = None,
+    single_metric_path: str | None = None,
 ) -> dict[str, Any]:
     """Build the DI-2 / RI first-pass path catalog for the Results Q&A user payload.
 
@@ -785,6 +934,23 @@ def build_prompt_path_catalog(
         # Prefer the working context's existing_paths when we projected locally.
         if working is not evidence_context:
             catalog["existing_paths"] = list(collect_existing_paths(working))
+    elif intent == INTENT_SINGLE_METRIC:
+        metric_paths: list[str] = []
+        if (
+            isinstance(single_metric_path, str)
+            and single_metric_path.strip()
+            and has_single_metric_evidence(evidence_context, single_metric_path)
+        ):
+            metric_paths = [single_metric_path]
+        catalog["discuss_intent"] = INTENT_SINGLE_METRIC
+        catalog["metric_allowlist"] = metric_paths
+        catalog["specialist_instruction"] = (
+            "This is a single-metric ask. Cite exactly one preferred_claim_paths "
+            "leaf when present. Do not expand into a full KPI overview. Do not "
+            "substitute OOS/WFA/validation leaves for in-sample trade_summary "
+            "metrics (and never the reverse)."
+        )
+        catalog["preferred_claim_paths"] = metric_paths
     return catalog
 
 
@@ -1163,6 +1329,26 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             return f"Bootstrap probability mean R is positive is {display}."
         if path.endswith("trade_count"):
             return f"Trade count is {display}."
+        if path.endswith("expectancy_r"):
+            return f"Expectancy R is {display}."
+        if path.endswith("profit_factor"):
+            return f"Profit factor is {display}."
+        if path.endswith("max_drawdown_r"):
+            return f"Max drawdown R is {display}."
+        if path.endswith("total_r"):
+            return f"Total R is {display}."
+        if path.endswith("avg_r"):
+            return f"Average R is {display}."
+        if path.endswith("median_r"):
+            return f"Median R is {display}."
+        if path.endswith("sharpe_like_r"):
+            return f"Sharpe-like R is {display}."
+        if path.endswith("sortino_like_r"):
+            return f"Sortino-like R is {display}."
+        if path.endswith("ulcer_index_r"):
+            return f"Ulcer index R is {display}."
+        if path.endswith("recovery_factor"):
+            return f"Recovery factor is {display}."
         # Integer hour buckets must not fall through to generic "bucket is N."
         if path.endswith("best.bucket"):
             label = _time_bucket_display_label(value)
@@ -1296,10 +1482,11 @@ def build_mixed_ask_remediation_reply(
 
     summary = (
         "That ask mixes more than one results topic. Ask about one topic at a time "
-        "(for example key metrics, best stop and take profit, best entry time, "
-        "or walk-forward)."
+        "(for example one metric, key metrics, best stop and take profit, best "
+        "entry time, or walk-forward)."
     )
     followups = (
+        "Ask for one metric (for example win rate or expectancy).",
         "Ask for the key metrics or a summary of this run.",
         "Ask about best stop and take profit ranking if a grid was recorded.",
         "Ask about the best entry time or session bucket if time analysis was recorded.",
@@ -1398,6 +1585,102 @@ def build_missing_time_limitation_reply(
         summary=summary,
         caveats=caveats,
         claims=(),
+        followups=followups,
+        recovery_reason=recovery_reason,
+    )
+
+
+def build_missing_metric_limitation_reply(
+    packet: EvidencePacket,
+    *,
+    path: str | None = None,
+    recovery_reason: str | None = REASON_MISSING_METRIC,
+):
+    """Digit-free missing-leaf limitation (RI-4 short-circuit; no invented metrics)."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    summary = (
+        "I cannot answer that metric question because the requested trade-summary "
+        "leaf is not present on this run."
+    )
+    followups = (
+        "Ask for the key metrics or a summary of this run.",
+        "Ask about a different metric that was recorded on this packet.",
+    )
+    caveats = merge_mandatory_packet_caveats(
+        packet,
+        (
+            "No metric figures were invented for this ask.",
+            "In-sample trade summary leaves are not a substitute for OOS or WFA evidence.",
+        ),
+    )
+    assert_llm_explanation_grounded(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+    )
+    # path retained for callers/logging; not narrated (digit-/path-free limitation).
+    _ = path
+    return ResultsQAReply(
+        summary=summary,
+        caveats=caveats,
+        claims=(),
+        followups=followups,
+        recovery_reason=recovery_reason,
+    )
+
+
+def build_deterministic_single_metric_reply(
+    packet: EvidencePacket,
+    evidence_context: Mapping[str, Any],
+    *,
+    path: str,
+    recovery_reason: str | None = None,
+):
+    """Build an auditor-safe one-claim reply for a frozen §4.5 metric path."""
+    from thesistester.assistant.results_qa import ResultsQAReply
+
+    if not has_single_metric_evidence(evidence_context, path):
+        return build_missing_metric_limitation_reply(
+            packet,
+            path=path,
+            recovery_reason=recovery_reason or REASON_MISSING_METRIC,
+        )
+
+    value = _path_get(evidence_context, path)
+    text = _format_scalar_for_claim(path, value)
+    if text is None:
+        return build_missing_metric_limitation_reply(
+            packet,
+            path=path,
+            recovery_reason=recovery_reason or REASON_MISSING_METRIC,
+        )
+
+    claim = EvidenceClaim(text=text, path=path, value=value)
+    summary = text
+    caveat_seed = (
+        "This figure describes the recorded historical sample, not a forecast.",
+        "Do not treat an in-sample metric as out-of-sample confirmation.",
+    )
+    grounded = (claim,)
+    caveats = merge_mandatory_packet_caveats(packet, caveat_seed)
+    followups = (
+        "Ask for the key metrics or a summary of this run.",
+        "Ask whether walk-forward or validation diagnostics are present on this packet.",
+    )
+    assert_llm_explanation_grounded(
+        packet,
+        summary=summary,
+        caveats=caveats,
+        claims=grounded,
+        followups=followups,
+    )
+    return ResultsQAReply(
+        summary=summary,
+        caveats=caveats,
+        claims=grounded,
         followups=followups,
         recovery_reason=recovery_reason,
     )

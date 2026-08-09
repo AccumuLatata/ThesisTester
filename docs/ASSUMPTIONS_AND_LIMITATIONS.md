@@ -614,6 +614,10 @@ other than the last bar in the dataset.
   residual; no invented clocks; projects from `time_grouped_summary` when
   ephemeral `time_rankings` are absent or incomplete, syncing into the turn
   evidence packet before catalog/LLM audit (no new TIME.analyze).
+  **RI-4 landed:** deterministic `single_metric` one-claim router over frozen
+  §4.5 noun→path map; value-collocate required (bare nouns unmatched); hard-refuse
+  when specialist/residual collocates present (no OOS→IS laundering); missing-leaf
+  short-circuit before LLM.
   Incremental PRs keep DI residual negative-cue vetoes for not-yet-owned
   specialist topics (and DX veto≠unmatched) until each builder PR sunsets its
   cues; RI must not invent metrics, remap topics onto KPI overview, answer OOS

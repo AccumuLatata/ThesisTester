@@ -1,7 +1,7 @@
 # Research Intelligence — Implementation Contract
 
 **Document type:** Implementation contract (RI-series) — **single source of truth**
-**Status:** 🚧 **RI-2 landed** (grid + time + validation/WFA slices); series not complete until RI-10
+**Status:** 🚧 **RI-4 landed** (grid + time + validation/WFA + single-metric); series not complete until RI-10
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/results_overview.py` (intent matching /
 deterministic builders / overlays), `results_qa.py` (recovery wiring),
@@ -176,7 +176,7 @@ the sole-intent tie-break when exactly one landed intent matches; they are
 | Priority | Intent id | Owner PR | Positive cues (freeze exact tuples in code+tests; prefer anchored forms) |
 |---|---|---|---|
 | 1 | `grid_ranking` | RI-1 | `best sl`, `best tp`, `best sl/tp`, `best stop`, `best target`, `stop loss`, `take profit`, `sl/tp`, word-boundary `sl` / `tp` / `stop` / `target` when co-present with best/pair/grid/ranking cues as frozen in tests, bare `grid` (grid-ranking sense), `grid ranking`, `grid rank`, `ranking metric` + grid context per freeze |
-| 2 | `time_ranking` | RI-2 | `best time`, `best entry`, `entry time`, `time bucket`, `session segment`, `hour bucket`, word-boundary bare `time` / `hour` / `bucket` / `clock` / `session segment` (plus ranking/best/entry collocates per freeze); ✅ sunsets residual DI negatives — §4.1.1 |
+| 2 | `time_ranking` | RI-2 | `best time`, `best entry`, `entry time`, `time bucket`, `session segment`, `hour bucket`, word-boundary bare `time` / `hour` / `bucket` / `clock` (idioms `over time` / `through time` / `across time` excluded); ranking+time collocates per freeze; ✅ sunsets residual DI negatives — §4.1.1 |
 | 3 | `validation_wfa` | RI-3 | `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap`, `permutation` only with validation-sense collocates (`bootstrap`/`oos`/`wfa`/`walk-forward`/`validation`/`test`). **Not** `otf validation` (RI-5). |
 | 4 | `robustness_tier2` | RI-5 | `monte carlo`, `monte-carlo`, `overfitting`, `sensitivity`, `noise test`, `noise summary`, `portfolio summary`, `otf validation` |
 | 5 | `assumptions_costs` | RI-6 | `commission`, `slippage`, `exposure policy`, `intrabar model`, `costs`, `assumptions` (run-assumption sense; not Help how-to) |
@@ -349,8 +349,10 @@ Frozen noun → path map (initial set; amend table to grow):
 
 Rules:
 
-- Require a value collocate (`what is` / `what's` / `show` / `give me` / …)
-  **or** an explicit metric question form frozen in tests.
+- Require a value collocate (`what is` / `what's` / `whats` / `show` /
+  `give me`) **or** an explicit metric question form frozen in tests
+  (`how many trades` → `trade_count`). Bare `how many` is **not** a general
+  collocate.
 - One noun match → one claim path. If path missing/null → missing-leaf
   limitation.
 - Do **not** expand to full KPI overview unless overview cues also uniquely
@@ -363,6 +365,11 @@ Rules:
   specialist / mixed_ask / remediation handles the turn. Example blocked:
   “what is the OOS expectancy?” must never cite
   `results.trade_summary.expectancy_r`.
+- **Bare time × metric:** idioms `over time` / `through time` /
+  `across time` do not fire bare `time`. A bare time/hour/bucket/clock token
+  co-present with a metric value-ask (and no strong time / other specialist)
+  returns `mixed_ask` until RI-8 — never the time slice alone (e.g.
+  “show win rate by hour”).
 
 ### 4.6 `robustness_tier2` (RI-5) and `assumptions_costs` (RI-6)
 
@@ -732,7 +739,7 @@ complete coverage; duplex last so text builders are stable.
 | RI-1 Grid / best SL–TP slice | ✅ landed |
 | RI-2 Time / session ranking slice | ✅ landed |
 | RI-3 Validation + WFA/OOS slice | ✅ landed |
-| RI-4 Single-metric router | ⬚ pending |
+| RI-4 Single-metric router | ✅ landed |
 | RI-5 Tier-2 robustness slices | ⬚ pending |
 | RI-6 Assumptions & costs slice | ⬚ pending |
 | RI-7 Grounded meaning overlay v2 | ⬚ pending |

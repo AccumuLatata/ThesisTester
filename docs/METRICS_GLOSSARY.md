@@ -509,6 +509,15 @@ provenance). Overview/KPI asks also receive `path_catalog.kpi_allowlist` /
 or `results.validation.*` — use `assumptions.instrument` /
 `results.validation_summary` when present.
 
+**Single-metric Discuss router (RI-4):** one-noun asks with value collocates
+(`what is` / `what's` / `show` / `give me` / `how many`, plus explicit
+`how many trades`) map to exactly one frozen `results.trade_summary.*` leaf
+from the RI §4.5 table (including advanced leaves such as `sharpe_like_r`,
+`sortino_like_r`, `ulcer_index_r`, `recovery_factor` when present). Missing/null
+leaves → missing-metric limitation before LLM. Specialist/residual collocates
+(OOS/WFA/grid/time/MC/…) hard-refuse this router so in-sample leaves cannot
+launder those asks.
+
 Uncited numeric tokens in LLM narrative are rejected before render. Glossary
 formulas above remain the definitional source; packet paths are the citation
 addresses used by the assistant release gate.
