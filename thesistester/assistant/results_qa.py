@@ -628,10 +628,17 @@ def propose_results_reply(
             prefixes = deep_trade_topic_path_prefixes(user_message)
             topic_ok = True
             if prefixes is not None:
-                topic_ok = bool(reply.claims) and all(
+                # Every claim must be in-family, and every requested family must
+                # appear at least once (exit+streak cannot omit streaks).
+                claims_in_family = bool(reply.claims) and all(
                     any(claim.path.startswith(prefix) for prefix in prefixes)
                     for claim in reply.claims
                 )
+                families_covered = all(
+                    any(claim.path.startswith(prefix) for claim in reply.claims)
+                    for prefix in prefixes
+                )
+                topic_ok = claims_in_family and families_covered
             ok = (
                 bool(reply.claims)
                 and all(claim.path in allow for claim in reply.claims)

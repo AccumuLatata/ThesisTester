@@ -2266,6 +2266,48 @@ def test_ri9_llm_wrong_family_falls_back_to_topic_scoped_deterministic():
     assert not any("extreme_trades" in path for path in paths)
 
 
+def test_ri9_llm_partial_multi_family_falls_back_to_full_deterministic():
+    """Exit+streak ask with exit-only LLM claims must fall back to both families."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri9_partial_family"},
+        assumptions={},
+        results={
+            "trade_summary": {
+                "trade_count": 12,
+                "max_consecutive_wins": 3,
+                "max_consecutive_losses": 1,
+            }
+        },
+        warnings=(),
+        limitations=(),
+    )
+    context = build_ephemeral_results_context(packet, trade_rows=_trade_rows_for_deep_trade())
+    client = _FailClient(
+        {
+            "summary": "Exit-reason total trades is 12.",
+            "caveats": ["Soft."],
+            "claims": [
+                {
+                    "text": "Exit-reason total trades is 12.",
+                    "path": "results.projections.exit_reason_counts.total_trades",
+                }
+            ],
+            "followups": ["Ask for KPIs."],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="exit reasons and winning streak",
+        turn_context=context,
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "results.projections.exit_reason_counts.total_trades" in paths
+    assert "results.projections.streak_summary.max_consecutive_wins" in paths
+
+
 def test_ri9_deep_trade_rejects_kpi_substitution_via_fallback():
     packet = EvidencePacket(
         provenance={"run_id": "run_ri9_kpi"},
