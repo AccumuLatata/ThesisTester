@@ -1,6 +1,6 @@
 # Regression-Safe Implementation Plan: Confluence Combo Attribution (Backtest)
 
-**Status:** Phase 1 + Phase 2 + Phase 4 + Phase 5a + Phase 5b implemented; Phase 5c–5d scoped (implementation not started); Phase 3 optional cross-view scoped for after 5a–5d
+**Status:** Phase 1 + Phase 2 + Phase 4 + Phase 5a + Phase 5b + Phase 5c implemented; Phase 5d scoped (implementation not started); Phase 3 optional cross-view scoped for after 5a–5d
 **Document type:** Focused analytics / Backtest UX implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related docs:**  
@@ -597,7 +597,7 @@ level remain in the selected set?”
 | Soft pairwise **attribution** view | **Shipped (Phase 4)** | Analytics-only; Backtest **Pairs** tab |
 | Time Analysis **opt-in** combo / parsed level-count group dims | **Implemented (Phase 5a)** | Appended only when `available=True`; count dim = `level_count_bucket`; default primary stays a time bucket |
 | Report export diagnostic combo section | **Implemented (Phase 5b)** | Omit when unavailable; on-export recompute |
-| Research-bundle optional combo JSON/parquet siblings | **Scoped (Phase 5c)** | On-export recompute; no `BUNDLE_SCHEMA_VERSION` bump |
+| Research-bundle optional combo JSON/parquet siblings | **Implemented (Phase 5c)** | On-export recompute; no `BUNDLE_SCHEMA_VERSION` bump |
 | Assistant **cite-bound** combo projections | **Scoped (Phase 5d)** | Bounded `results.projections.confluence_combo` leaves only |
 | Optional combo × 3c-variant cross-view | **Scoped (Phase 3 / after 5a–5d)** | Opt-in `exact_combo × trigger_variant` (+ optional pair×variant if cheap); not default always-on |
 
@@ -1198,12 +1198,12 @@ but the preferred locked path is on-export recompute + optional siblings above.
 
 **Acceptance:**
 
-- [ ] Old bundles without combo files still import.
-- [ ] Export recomputes from session trades (no dependency on a combo session
+- [x] Old bundles without combo files still import.
+- [x] Export recomputes from session trades (no dependency on a combo session
       producer key).
-- [ ] New bundles with combo section round-trip JSON + present parquets.
-- [ ] Missing optional parquet siblings do not fail load.
-- [ ] Full suite green; no golden/engine diffs.
+- [x] New bundles with combo section round-trip JSON + present parquets.
+- [x] Missing optional parquet siblings do not fail load.
+- [x] Full suite green; no golden/engine diffs.
 
 ---
 
@@ -1505,12 +1505,12 @@ PR 1 analytics helpers + tests
 
 ### PR 5c
 
-- [ ] On-export recompute from session trades (same mode/anchor path as 5b)
-- [ ] Optional JSON + parquet siblings; `included["confluence_combo"]` only when available
-- [ ] Old bundles still import; missing optional parquet siblings do not fail load
-- [ ] No `BUNDLE_SCHEMA_VERSION` bump; no `trades.parquet` schema mutation
-- [ ] No Backtest producer session keys required
-- [ ] Full suite green; no golden/engine diffs
+- [x] On-export recompute from session trades (same mode/anchor path as 5b)
+- [x] Optional JSON + parquet siblings; `included["confluence_combo"]` only when available
+- [x] Old bundles still import; missing optional parquet siblings do not fail load
+- [x] No `BUNDLE_SCHEMA_VERSION` bump; no `trades.parquet` schema mutation
+- [x] No Backtest producer session keys required
+- [x] Full suite green; no golden/engine diffs
 
 ### PR 5d
 
@@ -1566,10 +1566,10 @@ No blocking open questions remain for PR 1–2.
 | Phase 1 | PR 1 analytics helpers | **Implemented** (`thesistester/analytics/confluence_attribution.py`, `tests/test_confluence_attribution.py`) |
 | Phase 2 | PR 2 Backtest expander UI + docs | **Implemented** (`pages/7_Backtest.py` expander; ASSUMPTIONS / METRICS_GLOSSARY / ARCHITECTURE) |
 | Phase 4 | PR 4 soft pairwise attribution | **Implemented** (`summarize_by_level_pairs` + Backtest **Pairs** tab) |
-| Phase 5 | PR 5a–5d downstream consumers | **5a + 5b implemented**; 5c–5d still scoped; precedes optional PR 3 |
+| Phase 5 | PR 5a–5d downstream consumers | **5a–5c implemented**; 5d still scoped; precedes optional PR 3 |
 | Phase 5a | Time Analysis opt-in combo/count groups | **Implemented** (`attach_level_count_bucket` + append `exact_combo_key` / `level_count_bucket` when available) |
 | Phase 5b | Report export diagnostic section | **Implemented** (`build_confluence_combo_report_block` + omit-when-unavailable markdown) |
-| Phase 5c | Bundle optional artifacts | Not started (on-export recompute; no producer session keys) |
+| Phase 5c | Bundle optional artifacts | **Implemented** (`confluence_combo_summary.json` + optional `confluence_by_*.parquet`) |
 | Phase 5d | Assistant cite-bound projection | Not started (trades recompute; 5c not required) |
 | Phase 3 | Optional combo × trigger_variant cross-view | **Scoped** for after 5a–5d (2026-08-09 completeness amendment); implementation not started |
 

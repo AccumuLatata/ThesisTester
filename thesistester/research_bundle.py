@@ -14,6 +14,7 @@ import pandas as pd
 
 from thesistester import __version__
 from thesistester.persistence.local_store import _hash_dataframe
+from thesistester.reporting import build_confluence_combo_bundle_artifacts
 from thesistester.research_identity import (
     DataIdentity,
     LevelsIdentity,
@@ -91,6 +92,28 @@ _NOISE_META_KEYS = ("noise_summary", "noise_config")
 _OVERFITTING_META_KEYS = ("overfitting_summary", "overfitting_config")
 _SENSITIVITY_META_KEYS = ("sensitivity_summary", "sensitivity_config")
 _PORTFOLIO_META_KEYS = ("portfolio_summary", "portfolio_config", "portfolio_setup_inputs")
+# Optional managed research keys for confluence combo (PR 5c). Restored on
+# import for preview/report reuse; cleared when the section is absent. These
+# are NOT Backtest producer keys — export recomputes from session trades.
+_CONFLUENCE_COMBO_SUMMARY_KEY = "confluence_combo_summary"
+_CONFLUENCE_COMBO_FRAME_KEYS = (
+    "confluence_by_exact_combo",
+    "confluence_by_level_count",
+    "confluence_by_membership",
+    "confluence_by_pairs",
+)
+_CONFLUENCE_COMBO_PARQUET_FILES = {
+    "confluence_by_exact_combo": "confluence_by_exact_combo.parquet",
+    "confluence_by_level_count": "confluence_by_level_count.parquet",
+    "confluence_by_membership": "confluence_by_membership.parquet",
+    "confluence_by_pairs": "confluence_by_pairs.parquet",
+}
+_CONFLUENCE_COMBO_FRAME_FROM_ARTIFACT = {
+    "exact_combo": "confluence_by_exact_combo",
+    "level_count": "confluence_by_level_count",
+    "membership": "confluence_by_membership",
+    "pairs": "confluence_by_pairs",
+}
 _MANAGED_RESEARCH_KEYS = {
     "data",
     "subtimeframe_data",
@@ -180,6 +203,9 @@ _MANAGED_RESEARCH_KEYS = {
     "execution_origin",
     # CAI-3 cache status is provenance-only and must not enter bundle hashes.
     "cache_provenance",
+    # PR 5c optional confluence combo siblings (on-export recompute).
+    _CONFLUENCE_COMBO_SUMMARY_KEY,
+    *_CONFLUENCE_COMBO_FRAME_KEYS,
 }
 
 _KNOWN_FILES = {
@@ -222,6 +248,11 @@ _KNOWN_FILES = {
     "portfolio_correlation.parquet",
     "portfolio_drawdown_correlation.parquet",
     "portfolio_marginal_contribution.parquet",
+    "confluence_combo_summary.json",
+    "confluence_by_exact_combo.parquet",
+    "confluence_by_level_count.parquet",
+    "confluence_by_membership.parquet",
+    "confluence_by_pairs.parquet",
 }
 
 _SECTION_REQUIRED_FILES = {
@@ -243,6 +274,7 @@ _SECTION_REQUIRED_FILES = {
     "overfitting": ("overfitting_summary.json",),
     "sensitivity": ("sensitivity_summary.json",),
     "portfolio": ("portfolio_summary.json", "portfolio_trades.parquet"),
+    "confluence_combo": ("confluence_combo_summary.json",),
 }
 
 
@@ -308,6 +340,53 @@ def _to_parquet_bytes(df: pd.DataFrame) -> bytes:
     return buffer.getvalue()
 
 
+def _parquet_safe_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a copy whose object columns are pyarrow-writable.
+
+    View-C ``level_count_bucket`` mixes ints with ``"(unknown)"``; pyarrow
+    rejects that object column. Stringify mixed / non-str object values so
+    optional confluence parquet siblings cannot take down bundle export.
+    """
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+    out = df.copy()
+    for col in out.columns:
+        series = out[col]
+        if series.dtype != object:
+            continue
+
+        def _is_null(value: Any) -> bool:
+            if value is None or value is pd.NA or value is pd.NaT:
+                return True
+            try:
+                result = pd.isna(value)
+            except (TypeError, ValueError):
+                return False
+            return bool(result) if isinstance(result, bool) else False
+
+        non_null_values = [value for value in series.tolist() if not _is_null(value)]
+        if not non_null_values:
+            continue
+        types = {type(value) for value in non_null_values}
+        if types <= {str}:
+            continue
+        out[col] = series.map(lambda value: value if _is_null(value) else str(value))
+    return out
+
+
+# Optional confluence combo siblings are deterministic projections of trades (+
+# signal-run identity). Exclude them from the canonical hash so legacy golden
+# bundle hashes stay stable without a GOLDEN_REGEN, while still shipping the
+# optional files for import/preview. Manifest ``included.confluence_combo`` is
+# also stripped from the hashed manifest projection for the same reason.
+_CANONICAL_HASH_EXCLUDED_FILES = frozenset(
+    {
+        "confluence_combo_summary.json",
+        *_CONFLUENCE_COMBO_PARQUET_FILES.values(),
+    }
+)
+
+
 def canonical_bundle_hash(bundle_bytes: bytes) -> str:
     """Hash logical bundle contents while excluding archive/time metadata.
 
@@ -318,6 +397,8 @@ def canonical_bundle_hash(bundle_bytes: bytes) -> str:
     member_hashes: dict[str, str] = {}
     with zipfile.ZipFile(io.BytesIO(bundle_bytes), "r") as archive:
         for name in sorted(archive.namelist()):
+            if name in _CANONICAL_HASH_EXCLUDED_FILES:
+                continue
             payload = archive.read(name)
             if name.endswith(".parquet"):
                 frame = pd.read_parquet(io.BytesIO(payload))
@@ -327,6 +408,19 @@ def canonical_bundle_hash(bundle_bytes: bytes) -> str:
                 if name == MANIFEST_FILENAME and isinstance(value, dict):
                     value = dict(value)
                     value.pop("created_at", None)
+                    included = value.get("included")
+                    if isinstance(included, dict) and "confluence_combo" in included:
+                        included = dict(included)
+                        included.pop("confluence_combo", None)
+                        value["included"] = included
+                    session_keys = value.get("session_keys")
+                    if isinstance(session_keys, list):
+                        value["session_keys"] = sorted(
+                            key
+                            for key in session_keys
+                            if key != _CONFLUENCE_COMBO_SUMMARY_KEY
+                            and key not in _CONFLUENCE_COMBO_FRAME_KEYS
+                        )
                 normalized = json.dumps(
                     value,
                     sort_keys=True,
@@ -558,6 +652,27 @@ def build_research_bundle(session_state: Mapping[str, Any]) -> bytes:
                 included_keys.add(key)
         manifest["included"]["portfolio"] = True
         included_keys.update(_PORTFOLIO_META_KEYS)
+
+    # PR 5c: confluence combo is Backtest on-the-fly only — recompute on export
+    # (no producer session key). Omit entirely when unavailable. Gate on the
+    # backtest section so combo siblings are never orphaned without trades.parquet
+    # (source of truth for later recompute).
+    if manifest["included"].get("backtest"):
+        confluence_artifacts = build_confluence_combo_bundle_artifacts(session_state)
+        if isinstance(confluence_artifacts, dict):
+            summary_payload = confluence_artifacts.get("summary")
+            frames = confluence_artifacts.get("frames")
+            if isinstance(summary_payload, Mapping) and summary_payload.get("available"):
+                files["confluence_combo_summary.json"] = _to_json_bytes(summary_payload)
+                included_keys.add(_CONFLUENCE_COMBO_SUMMARY_KEY)
+                if isinstance(frames, Mapping):
+                    for artifact_name, session_key in _CONFLUENCE_COMBO_FRAME_FROM_ARTIFACT.items():
+                        frame = frames.get(artifact_name)
+                        if _is_dataframe(frame) and not frame.empty:
+                            filename = _CONFLUENCE_COMBO_PARQUET_FILES[session_key]
+                            files[filename] = _to_parquet_bytes(_parquet_safe_frame(frame))
+                            included_keys.add(session_key)
+                manifest["included"]["confluence_combo"] = True
 
     identity_payload = _identity_payload_from_state(session_state)
     if identity_payload is not None:
@@ -881,6 +996,17 @@ def load_research_bundle(uploaded_file: Any) -> dict[str, Any]:
                 filename = f"{key}.parquet"
                 if filename in names:
                     session_values[key] = _read_parquet_from_zip(zf, filename)
+
+        # PR 5c: optional confluence combo siblings. Absent section → ignore
+        # missing files (old bundles keep loading). Included → require JSON;
+        # load parquet siblings only when present.
+        if included.get("confluence_combo"):
+            session_values[_CONFLUENCE_COMBO_SUMMARY_KEY] = _read_json_from_zip(
+                zf, "confluence_combo_summary.json"
+            )
+            for session_key, filename in _CONFLUENCE_COMBO_PARQUET_FILES.items():
+                if filename in names:
+                    session_values[session_key] = _read_parquet_from_zip(zf, filename)
 
     return {
         "manifest": manifest,

@@ -15,6 +15,7 @@ from thesistester.classic_context import (
 )
 from thesistester.classic_nav import render_discuss_this_run
 from thesistester.classic_record import render_record_and_discuss
+from thesistester.reporting import build_confluence_combo_report_block
 from thesistester.research_bundle import (
     apply_research_bundle_to_session,
     build_research_bundle,
@@ -94,6 +95,17 @@ def _will_include_portfolio() -> bool:
     return st.session_state.get("portfolio_summary") is not None
 
 
+def _will_include_confluence_combo() -> bool:
+    """True when export would attach combo siblings (needs backtest + available)."""
+    trades = st.session_state.get("trades")
+    equity = st.session_state.get("equity_curve")
+    if not isinstance(trades, pd.DataFrame) or trades.empty:
+        return False
+    if not isinstance(equity, pd.DataFrame) or equity.empty:
+        return False
+    return build_confluence_combo_report_block(st.session_state) is not None
+
+
 section_rows = [
     {"Artifact": "Dataset", "Will include": "✅" if _will_include_dataset() else "❌"},
     {
@@ -120,6 +132,10 @@ section_rows = [
         "Will include": "✅" if _will_include_sensitivity() else "❌",
     },
     {"Artifact": "Portfolio", "Will include": "✅" if _will_include_portfolio() else "❌"},
+    {
+        "Artifact": "Confluence combo attribution",
+        "Will include": "✅" if _will_include_confluence_combo() else "❌",
+    },
 ]
 has_meaningful_state = any(row["Will include"] == "✅" for row in section_rows)
 
@@ -211,6 +227,10 @@ if uploaded is not None:
             {
                 "Artifact": "Portfolio",
                 "Included in bundle": "✅" if included.get("portfolio") else "❌",
+            },
+            {
+                "Artifact": "Confluence combo attribution",
+                "Included in bundle": ("✅" if included.get("confluence_combo") else "❌"),
             },
         ]
 

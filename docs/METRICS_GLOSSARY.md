@@ -497,6 +497,11 @@ Report / Export may attach `artifact["confluence_combo"]` (and
 tables are bounded top-N (default 15) by `|total_r|` then `trade_count`; parsed
 level-count is the full small table. Markdown omits the section when unavailable.
 
+Research Bundles may persist the same diagnostic as optional siblings
+(`confluence_combo_summary.json` with bounded tables; full analytics frames in
+`confluence_by_*.parquet` when non-empty). Import restores managed research keys
+only when `included["confluence_combo"]` is true.
+
 | Name | Definition |
 |---|---|
 | `exact_combo_key` | Canonical sorted `\|`-joined distinct tokens from trade `level_names`; empty/null/`nan` → `__empty__` |
