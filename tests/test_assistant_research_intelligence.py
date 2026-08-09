@@ -6,9 +6,9 @@ import json
 
 import pytest
 
-from thesistester.assistant.explainer import EvidenceCaveat, EvidencePacket
+from thesistester.assistant.explainer import EvidenceCaveat, EvidenceClaim, EvidencePacket
 from thesistester.assistant.llm import load_results_qa_settings
-from thesistester.assistant.llm_explainer import LLMEvidenceError
+from thesistester.assistant.llm_explainer import LLMEvidenceError, _ungrounded_number_tokens
 from thesistester.assistant.results_overview import (
     INTENT_GRID_RANKING,
     INTENT_MIXED_ASK,
@@ -27,6 +27,9 @@ from thesistester.assistant.results_overview import (
     build_deterministic_grid_ranking_reply,
     build_deterministic_single_metric_reply,
     build_deterministic_time_ranking_reply,
+    build_deterministic_validation_wfa_reply,
+    build_expert_overlay,
+    build_meaning_overlay,
     has_grid_ranking_evidence,
     has_overview_negative_cue,
     has_single_metric_evidence,
@@ -1031,3 +1034,71 @@ def test_deterministic_single_metric_builder_one_claim():
     assert len(reply.claims) == 1
     assert reply.claims[0].path == "results.trade_summary.expectancy_r"
     assert reply.claims[0].value == 0.25
+
+
+def test_r12_overlay_lines_on_grid_and_kpi_are_digit_free():
+    packet = _packet(best_grid=True)
+    context = build_ephemeral_results_context(packet)
+    grid_reply = build_deterministic_grid_ranking_reply(packet, context)
+    assert any("research diagnostics" in c for c in grid_reply.caveats)
+    assert any("in-sample grid ranking" in c for c in grid_reply.caveats)
+    for caveat in grid_reply.caveats:
+        assert _ungrounded_number_tokens(caveat, allowed=set()) == []
+
+    metric_reply = build_deterministic_single_metric_reply(
+        packet,
+        packet.to_dict(),
+        path="results.trade_summary.win_rate",
+    )
+    assert any("Win rate is the share" in c for c in metric_reply.caveats)
+    assert any("research diagnostics" in c for c in metric_reply.caveats)
+    for caveat in metric_reply.caveats:
+        assert _ungrounded_number_tokens(caveat, allowed=set()) == []
+
+    # KPI/overview path still digit-free under RI-7 alias.
+    claims = (
+        EvidenceClaim(
+            text="Expectancy R is 0.25.",
+            path="results.trade_summary.expectancy_r",
+            value=0.25,
+        ),
+    )
+    assert build_meaning_overlay is build_expert_overlay
+    overlay = build_meaning_overlay(packet, claims, discuss_intent=OVERVIEW_INTENT_KPI)
+    assert any("Expectancy R is mean net R" in line for line in overlay)
+    for line in overlay:
+        assert _ungrounded_number_tokens(line, allowed=set()) == []
+
+
+def test_ri7_validation_overlay_skips_wfa_presence_coaching():
+    packet = _packet(walk_forward=True)
+    reply = build_deterministic_validation_wfa_reply(packet, packet.to_dict())
+    assert any(
+        "Median OOS test expectancy" in c or "walk-forward" in c.lower() for c in reply.caveats
+    )
+    assert not any("ask whether walk-forward" in c.lower() for c in reply.caveats)
+    for caveat in reply.caveats:
+        assert _ungrounded_number_tokens(caveat, allowed=set()) == []
+
+
+def test_ri7_oos_anti_soften_retained_on_grid_overlay():
+    packet = _packet(best_grid=True, missing_oos=True)
+    context = build_ephemeral_results_context(packet)
+    reply = build_deterministic_grid_ranking_reply(packet, context)
+    assert any("missing" in c.lower() or "out-of-sample" in c.lower() for c in reply.caveats)
+    assert any("do not invent confirmation" in c.lower() for c in reply.caveats)
+    assert not any("ask whether walk-forward" in c.lower() for c in reply.caveats)
+    for caveat in reply.caveats:
+        assert _ungrounded_number_tokens(caveat, allowed=set()) == []
+
+
+def test_ri7_time_overlay_includes_meaning_line():
+    packet = _packet(time_summary=True)
+    context = build_ephemeral_results_context(packet)
+    reply = build_deterministic_time_ranking_reply(packet, context)
+    assert any(
+        "in-sample session ranking" in c or "time bucket" in c.lower() for c in reply.caveats
+    )
+    assert any("research diagnostics" in c for c in reply.caveats)
+    for caveat in reply.caveats:
+        assert _ungrounded_number_tokens(caveat, allowed=set()) == []

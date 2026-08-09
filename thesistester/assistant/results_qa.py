@@ -416,8 +416,9 @@ def propose_results_reply(
     DI-2: first-pass user payload includes ``path_catalog`` (existing paths;
     plus ``kpi_allowlist`` / specialist preferred paths when matched).
 
-    DI-3: successful overview replies (and deterministic overview fallback)
-    append a strictly digit-free expert overlay after mandatory caveats.
+    DI-3 / RI-7: successful overview and specialist / single-metric replies
+    (and their deterministic fallbacks) append a strictly digit-free meaning
+    overlay after mandatory caveats.
     """
     if not isinstance(user_message, str) or not user_message.strip():
         raise LLMEvidenceError("Results Q&A user message must be a non-empty string.")
@@ -456,15 +457,28 @@ def propose_results_reply(
             return build_missing_metric_limitation_reply(packet, path=metric_path)
 
     def _maybe_overlay(reply: ResultsQAReply) -> ResultsQAReply:
-        if overview_intent is None:
+        # RI-7: meaning overlay for overview + landed specialist / single_metric.
+        # Deterministic builders already apply overlay; this covers successful LLM drafts.
+        if discuss_intent not in {
+            OVERVIEW_INTENT_KPI,
+            OVERVIEW_INTENT_RUN,
+            INTENT_GRID_RANKING,
+            INTENT_TIME_RANKING,
+            INTENT_VALIDATION_WFA,
+            INTENT_SINGLE_METRIC,
+        }:
             return reply
-        return apply_expert_overlay(
-            packet,
-            summary=reply.summary,
-            caveats=reply.caveats,
-            claims=reply.claims,
-            recovery_reason=reply.recovery_reason,
-        )
+        overlay_kwargs: dict[str, Any] = {
+            "summary": reply.summary,
+            "caveats": reply.caveats,
+            "claims": reply.claims,
+            "recovery_reason": reply.recovery_reason,
+            "discuss_intent": discuss_intent,
+        }
+        # Overview keeps the DI-3 followup bank; specialists preserve reply followups.
+        if overview_intent is None:
+            overlay_kwargs["followups"] = reply.followups
+        return apply_expert_overlay(packet, **overlay_kwargs)
 
     try:
         payload = _complete_results_structured(

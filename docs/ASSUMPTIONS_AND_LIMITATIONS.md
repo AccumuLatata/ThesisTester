@@ -618,6 +618,10 @@ other than the last bar in the dataset.
   §4.5 noun→path map; value-collocate required (bare nouns unmatched); hard-refuse
   when specialist/residual collocates present (no OOS→IS laundering); missing-leaf
   short-circuit before LLM.
+  **RI-7 landed:** digit-free meaning overlay v2 (`build_expert_overlay` /
+  `build_meaning_overlay`) for overview + grid/time/validation/single-metric
+  replies; glossary lines for cited paths only; OOS-absent coaching suppressed;
+  overlay audited with `allowed=set()`; no LLM paraphrase.
   Incremental PRs keep DI residual negative-cue vetoes for not-yet-owned
   specialist topics (and DX veto≠unmatched) until each builder PR sunsets its
   cues; RI must not invent metrics, remap topics onto KPI overview, answer OOS

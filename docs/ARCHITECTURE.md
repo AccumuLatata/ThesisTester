@@ -515,6 +515,12 @@ via explicit `how many trades`); hard-refuse when grid/time/validation/residual
 collocates are present (never cite IS expectancy for OOS asks); `over time`
 idioms do not fire bare time; bare time×metric → `mixed_ask`; missing-leaf
 short-circuit before LLM; win-rate `%` narration.
+**RI-7 landed:** extends DI-3 `build_expert_overlay` / `apply_expert_overlay`
+(alias `build_meaning_overlay`) with specialist + single-metric path glosses;
+intent-aware next-step coaching; missing-OOS honesty line when packet signals
+absence; wire order claims→mandatory caveats→overlay→auditor for overview and
+landed specialist / single-metric replies; overlay lines stay
+`_ungrounded_number_tokens(..., allowed=set()) == []`.
 **DI-2 landed:** first-pass Results Q&A user payloads include
 `path_catalog.existing_paths` (bounded paths present on the turn context;
 KPI + projections/validation + honesty paths reserved before fat time tables
