@@ -1,6 +1,6 @@
 # Regression-Safe Implementation Plan: Confluence Combo Attribution (Backtest)
 
-**Status:** Phase 1 + Phase 2 + Phase 4 implemented; Phase 5a–5d scoped; Phase 3 optional cross-view scoped for after 5a–5d (implementation not started)  
+**Status:** Phase 1 + Phase 2 + Phase 4 + Phase 5a implemented; Phase 5b–5d scoped (implementation not started); Phase 3 optional cross-view scoped for after 5a–5d
 **Document type:** Focused analytics / Backtest UX implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related docs:**  
@@ -595,7 +595,7 @@ level remain in the selected set?”
 | Idea | Status | Note |
 |---|---|---|
 | Soft pairwise **attribution** view | **Shipped (Phase 4)** | Analytics-only; Backtest **Pairs** tab |
-| Time Analysis **opt-in** combo / parsed level-count group dims | **Scoped (Phase 5a)** | Appended only when `available=True`; count dim = `level_count_bucket`; default primary stays a time bucket |
+| Time Analysis **opt-in** combo / parsed level-count group dims | **Implemented (Phase 5a)** | Appended only when `available=True`; count dim = `level_count_bucket`; default primary stays a time bucket |
 | Report export diagnostic combo section | **Scoped (Phase 5b)** | Omit when unavailable; on-export recompute |
 | Research-bundle optional combo JSON/parquet siblings | **Scoped (Phase 5c)** | On-export recompute; no `BUNDLE_SCHEMA_VERSION` bump |
 | Assistant **cite-bound** combo projections | **Scoped (Phase 5d)** | Bounded `results.projections.confluence_combo` leaves only |
@@ -1068,14 +1068,14 @@ slice below (not as a Time Analysis group dimension).
 
 **Acceptance:**
 
-- [ ] Default Time Analysis run looks identical when user leaves primary on a
+- [x] Default Time Analysis run looks identical when user leaves primary on a
       time bucket (`index=0` still a time dim).
-- [ ] Combo/count options appear only under the `available=True` nonempty
+- [x] Combo/count options appear only under the `available=True` nonempty
       analyzable-combo gate; they are appended after time options.
-- [ ] Count dim uses View-C-aligned `level_count_bucket` (not raw `0`).
-- [ ] User can opt into `exact_combo_key` and/or `level_count_bucket` grouping.
-- [ ] Focus/Promote controls still only appear for existing time dims.
-- [ ] No engine/golden files in diff; full suite green.
+- [x] Count dim uses View-C-aligned `level_count_bucket` (not raw `0`).
+- [x] User can opt into `exact_combo_key` and/or `level_count_bucket` grouping.
+- [x] Focus/Promote controls still only appear for existing time dims.
+- [x] No engine/golden files in diff; full suite green.
 
 ---
 
@@ -1485,13 +1485,13 @@ PR 1 analytics helpers + tests
 
 ### PR 5a
 
-- [ ] Default Time Analysis primary stays a time bucket (`index=0` unchanged)
-- [ ] `attach_combo_columns` + View-C-aligned `level_count_bucket` attached
-- [ ] Combo/count dims **appended** only when summary `available=True` gate holds
-- [ ] Pairs / membership are **not** Time Analysis group dimensions
-- [ ] `FOCUSABLE_GROUP_COLS` / Focus/Promote unchanged (time dims only)
-- [ ] Diagnostic caption when combo/count dim selected (observed-only / 3c)
-- [ ] No engine/golden files in diff; full suite green
+- [x] Default Time Analysis primary stays a time bucket (`index=0` unchanged)
+- [x] `attach_combo_columns` + View-C-aligned `level_count_bucket` attached
+- [x] Combo/count dims **appended** only when summary `available=True` gate holds
+- [x] Pairs / membership are **not** Time Analysis group dimensions
+- [x] `FOCUSABLE_GROUP_COLS` / Focus/Promote unchanged (time dims only)
+- [x] Diagnostic caption when combo/count dim selected (observed-only / 3c)
+- [x] No engine/golden files in diff; full suite green
 
 ### PR 5b
 
@@ -1566,8 +1566,8 @@ No blocking open questions remain for PR 1–2.
 | Phase 1 | PR 1 analytics helpers | **Implemented** (`thesistester/analytics/confluence_attribution.py`, `tests/test_confluence_attribution.py`) |
 | Phase 2 | PR 2 Backtest expander UI + docs | **Implemented** (`pages/7_Backtest.py` expander; ASSUMPTIONS / METRICS_GLOSSARY / ARCHITECTURE) |
 | Phase 4 | PR 4 soft pairwise attribution | **Implemented** (`summarize_by_level_pairs` + Backtest **Pairs** tab) |
-| Phase 5 | PR 5a–5d downstream consumers | **Scoped**; implementation not started; precedes PR 3 |
-| Phase 5a | Time Analysis opt-in combo/count groups | Not started (`exact_combo_key` + `level_count_bucket`; append when `available`) |
+| Phase 5 | PR 5a–5d downstream consumers | **5a implemented**; 5b–5d still scoped; precedes optional PR 3 |
+| Phase 5a | Time Analysis opt-in combo/count groups | **Implemented** (`attach_level_count_bucket` + append `exact_combo_key` / `level_count_bucket` when available) |
 | Phase 5b | Report export diagnostic section | Not started (on-export recompute; omit-when-unavailable) |
 | Phase 5c | Bundle optional artifacts | Not started (on-export recompute; no producer session keys) |
 | Phase 5d | Assistant cite-bound projection | Not started (trades recompute; 5c not required) |

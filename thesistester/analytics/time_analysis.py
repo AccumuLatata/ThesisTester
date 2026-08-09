@@ -27,6 +27,9 @@ RTH segment definitions (America/New_York):
 
 from __future__ import annotations
 
+from typing import Any, Hashable
+
+import numpy as np
 import pandas as pd
 
 # Explicit re-exports (C1 public vocabulary). Canonical bounds live in
@@ -46,6 +49,66 @@ from thesistester.entry_window_policy import (
 # label) tuples.  ``end_minute_of_day`` is exclusive.
 # Canonical source: ``thesistester.entry_window_policy`` (SW C1).
 _RTH_SEGMENTS: list[tuple[int, int, str]] = list(RTH_SEGMENTS)
+
+
+def group_label_sort_key(value: Any) -> tuple[int, float, str]:
+    """Stable sort key for group labels that may mix ints and text.
+
+    Used when View-C ``level_count_bucket`` mixes integer counts with
+    ``"(unknown)"``. Numeric labels (ints or digit-strings) sort numerically;
+    non-numeric labels sort after numbers, lexicographically. Nulls last.
+    """
+    if value is None or value is pd.NA or value is pd.NaT:
+        return (2, 0.0, "")
+    if isinstance(value, bool):
+        # bool is a subclass of int; keep labels like True/False textual.
+        return (1, 0.0, str(value))
+    if isinstance(value, (int, np.integer)):
+        return (0, float(value), "")
+    if isinstance(value, (float, np.floating)):
+        if np.isnan(value):
+            return (2, 0.0, "")
+        return (0, float(value), "")
+    try:
+        if pd.isna(value):
+            return (2, 0.0, "")
+    except (TypeError, ValueError):
+        pass
+    text = str(value).strip()
+    try:
+        return (0, float(int(text)), "")
+    except (TypeError, ValueError):
+        pass
+    try:
+        return (0, float(text), "")
+    except (TypeError, ValueError):
+        return (1, 0.0, text)
+
+
+def sort_dataframe_by_group_labels(
+    frame: pd.DataFrame,
+    cols: list[str] | str,
+) -> pd.DataFrame:
+    """``sort_values`` that tolerates mixed int/str group labels."""
+    if frame is None or not isinstance(frame, pd.DataFrame) or frame.empty:
+        return frame
+    if isinstance(cols, str):
+        cols = [cols]
+    present = [c for c in cols if c in frame.columns]
+    if not present:
+        return frame
+    return frame.sort_values(
+        present,
+        key=lambda series: series.map(group_label_sort_key),
+        kind="mergesort",
+    )
+
+
+def _ordered_axis_labels(labels: Any) -> list[Hashable]:
+    """Return axis labels ordered by :func:`group_label_sort_key`."""
+    uniq = list(labels)
+    return sorted(uniq, key=group_label_sort_key)
+
 
 # New columns added by add_time_buckets (used for empty-DataFrame guarantees)
 _TIME_BUCKET_COLS: list[str] = [
@@ -235,7 +298,9 @@ def summarize_by_group(
     has_exit_ts = "exit_timestamp" in trades.columns
 
     rows: list[dict] = []
-    for keys, group in trades.groupby(group_cols, sort=True, observed=True):
+    # sort=False: mixed int/str dims (View-C level_count_bucket) raise TypeError
+    # under pandas groupby(sort=True). Final ordering uses numeric-aware keys.
+    for keys, group in trades.groupby(group_cols, sort=False, observed=True):
         if has_exit_ts:
             group = group.sort_values("exit_timestamp")
 
@@ -286,7 +351,7 @@ def summarize_by_group(
     present_group_cols = [c for c in group_cols if c in result.columns]
     metric_cols = [c for c in _GROUP_SUMMARY_COLS if c in result.columns]
     result = result[present_group_cols + metric_cols]
-    return result.sort_values(group_cols).reset_index(drop=True)
+    return sort_dataframe_by_group_labels(result, group_cols).reset_index(drop=True)
 
 
 def pivot_time_metric(
@@ -322,12 +387,18 @@ def pivot_time_metric(
         return pd.DataFrame()
 
     if column_col is None:
-        result = grouped[[index_col, metric]].set_index(index_col).sort_index()
-        return result
+        result = grouped[[index_col, metric]].set_index(index_col)
+        if result.empty:
+            return result
+        return result.reindex(_ordered_axis_labels(result.index))
 
     if column_col not in grouped.columns:
         return pd.DataFrame()
 
     pivot = grouped.pivot(index=index_col, columns=column_col, values=metric)
-    pivot = pivot.sort_index().sort_index(axis=1)
-    return pivot
+    if pivot.empty:
+        return pivot
+    return pivot.reindex(
+        index=_ordered_axis_labels(pivot.index),
+        columns=_ordered_axis_labels(pivot.columns),
+    )

@@ -11,6 +11,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from thesistester.analytics import summarize_trades
+from thesistester.analytics.confluence_attribution import (
+    append_confluence_time_analysis_group_options,
+    attach_level_count_bucket,
+    confluence_combo_grouping_available,
+    time_analysis_combo_group_caption,
+)
 from thesistester.analytics.entry_window import (
     ADMIT_ARMED_STATUS_BADGE,
     FOCUSABLE_GROUP_COLS,
@@ -30,6 +36,7 @@ from thesistester.analytics.entry_window import (
 from thesistester.analytics.time_analysis import (
     add_time_buckets,
     pivot_time_metric,
+    sort_dataframe_by_group_labels,
     summarize_by_group,
 )
 from thesistester.config import INSTRUMENTS, TIMEZONE_OPTIONS
@@ -140,6 +147,14 @@ trades = add_time_buckets(
     bucket_tz=bucket_tz,
     session_tz=exchange_tz,
 )
+
+# PR 5a: attach combo/count columns when level_names exist; offer as opt-in
+# group dims only when attribution available=True (nonempty analyzable combos).
+_combo_group_available = False
+if "level_names" in trades.columns:
+    trades = attach_level_count_bucket(trades)
+    _combo_group_available = confluence_combo_grouping_available(trades)
+
 st.session_state["time_bucketed_trades"] = trades
 
 # ── Determine available grouping columns ─────────────────────────────────────
@@ -174,14 +189,27 @@ _METRIC_OPTIONS = [
 ]
 
 primary_options = [c for c in _PRIMARY_OPTIONS if c in trades.columns]
-secondary_options = ["None"] + [c for c in _SECONDARY_OPTIONS[1:] if c in trades.columns]
+primary_options = append_confluence_time_analysis_group_options(
+    primary_options,
+    available=_combo_group_available,
+    columns=trades.columns,
+)
+secondary_options = ["None"] + append_confluence_time_analysis_group_options(
+    [c for c in _SECONDARY_OPTIONS[1:] if c in trades.columns],
+    available=_combo_group_available,
+    columns=trades.columns,
+)
 
 with st.sidebar:
     primary_group = st.selectbox(
         "Primary grouping",
         options=primary_options,
         index=0 if primary_options else None,
-        help="Primary dimension for grouping trades.",
+        help=(
+            "Primary dimension for grouping trades. "
+            "exact_combo_key / level_count_bucket appear only when confluence "
+            "combo attribution is available; default remains a time bucket."
+        ),
     )
 
     secondary_group_raw = st.selectbox(
@@ -216,6 +244,10 @@ group_cols = (
 
 grouped = summarize_by_group(trades, group_cols=group_cols, min_trades=min_trades_warn)
 st.session_state["time_grouped_summary"] = grouped
+
+_combo_caption = time_analysis_combo_group_caption(trades, group_cols)
+if _combo_caption:
+    st.caption(_combo_caption)
 
 st.subheader("Grouped performance table")
 
@@ -635,11 +667,9 @@ st.divider()
 st.subheader("Trade count distribution")
 
 if primary_group in trades.columns:
-    counts = (
-        trades.groupby(primary_group, observed=True)
-        .size()
-        .reset_index(name="trade_count")
-        .sort_values(primary_group)
+    counts = sort_dataframe_by_group_labels(
+        trades.groupby(primary_group, observed=True).size().reset_index(name="trade_count"),
+        primary_group,
     )
     fig_counts = px.bar(
         counts,
