@@ -1,6 +1,6 @@
 # Regression-Safe Implementation Plan: Confluence Combo Attribution (Backtest)
 
-**Status:** Phase 1 + Phase 2 + Phase 4 implemented; Phase 5a–5d detailed scope locked (implementation not started)  
+**Status:** Phase 1 + Phase 2 + Phase 4 implemented; Phase 5a–5d scoped; Phase 3 optional cross-view scoped for after 5a–5d (implementation not started)  
 **Document type:** Focused analytics / Backtest UX implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related docs:**  
@@ -37,6 +37,13 @@ align mode/anchor with Backtest
 append-only nonempty dims; fix 5d order rationale (trades recompute; 5c
 optional); add §15 acceptance checklists for 5a–5d; scrub stale
 `setup_config`-alone identity wording in §4.2 / PR 2 / Appendix C.
+
+**Phase 3 scope lock (2026-08-09, post-5a–5d polish):** Replace the vague
+“direction × combo / CSV / top-N” stub with a focused optional Backtest
+cross-view: primarily `exact_combo × trigger_variant` (and optional
+`pair × trigger_variant`) to answer “which 3c entry type worked with which
+combination?”. Ships **after** 5a–5d. Does not replace default combo/pair
+tables; no engine/3c semantics changes; 3c tested-level-only honesty preserved.
 
 ---
 
@@ -76,8 +83,8 @@ The feature must be:
 | Signal / zone changes (MVP) | **None** |
 | Required trade columns | `level_names`, `r_multiple` (optional: `direction`, `trigger`, `level_source_mode`, `entry_timestamp`) |
 | Core views (MVP) | Exact combo · Level membership · Level count (parsed token count) |
-| Optional polish (PR 3) | Direction × combo cross-tab / CSV / top-N |
-| Post-MVP research unlock (PR 4) | Soft pairwise attribution (analytics-only) |
+| Optional polish (PR 3) | After 5a–5d: opt-in Backtest `exact_combo × trigger_variant` (+ optional pair×variant); not default always-on |
+| Post-MVP research unlock (PR 4) | Soft pairwise attribution (analytics-only) — **shipped** |
 | Closest precedent | `thesistester/analytics/prev30m_vwap_hit.py` (expander + availability dict) |
 | Golden-master impact | None (no engine touch) |
 
@@ -545,7 +552,7 @@ tracked as a named research UX milestone; this plan is sufficient.
 | `r_multiple` null | Exclude from metric denominators |
 | `r_multiple == 0` | Included in `trade_count`; not a win |
 | Empty-name trade in membership | No membership rows emitted for that trade |
-| Direction filter | Not auto-applied; optional PR-3 cross-tab |
+| Direction / 3c-variant filter | Not auto-applied; optional PR-3 cross-view (`combo × trigger_variant`) |
 
 ---
 
@@ -591,7 +598,7 @@ level remain in the selected set?”
 
 | Idea | Priority | Why deferred |
 |---|---|---|
-| Direction × combo / CSV / top-N polish | Medium — if cardinality or export pain appears | UX convenience (optional PR 3); not research-critical |
+| Optional combo × 3c-variant cross-view | Medium — after 5a–5d | Opt-in `exact_combo × trigger_variant` (+ optional pair×variant); CSV/top-N remain follow-ups |
 | Pairwise **engine** emission (one zone per valid rule when min=1) | Low / likely never default | Changes trade counts / overlap / exposure; needs own golden-gated plan |
 | Stamping `setup_name` / `confluence_mode` onto trades | Low for single-run Backtest | Additive schema; captions use signal-run identity resolution |
 | Time Analysis **default primary** = `exact_combo_key` | Later | Distinct from 5a opt-in options; changing default primary is a separate UX decision |
@@ -757,28 +764,163 @@ tests/fixtures/golden/**
 
 ---
 
-### PR 3 — Direction cross-tab + polish (optional; ship if pain appears)
+### PR 3 — Optional combo × trigger-variant cross-view (after 5a–5d)
 
-**Title:** `feat(backtest): confluence combo × direction summary`
+**Title:** `feat(backtest): confluence combo × trigger_variant cross-view`
 
-**Depends on:** PR 2
+**Depends on:** Phase 2 + Phase 4 shipped; **schedule after PR 5a–5d**
 
-**Scope:**
+**Why this exists:**
 
-- Add optional table: exact combo × direction metrics
-- Add download CSV buttons for the three MVP frames (optional)
-- Cap/display helpers: top N combos by `|total_r|` with “show all” toggle if
-  cardinality is high
-- Extra unit tests for cross-tab helper
-- Docs: glossary note for cross-tab
+Researchers already have:
+- combo / membership / level-count / pairs attribution, and
+- a separate 3c outcome summary by `trigger_variant`
 
-**Out of scope:**
+Those answer different questions. PR 3 optionally connects them:
 
-- Soft pairwise view (PR 4 — shipped)
-- Report export / bundles / assistant consumers (PR 5b–5d)
+> Which 3c entry type (`3c_long`, `3c_short`, muted/SFP variants, etc.)
+> worked with which observed confluence combination?
 
-**Regression safety:** Additive only; default view remains the three MVP tables.
-**Priority note:** Prefer PR 4 / PR 5 over PR 3 if research bandwidth is limited.
+This is diagnostic polish, not a replacement for the default combo/pair tables,
+and not a change to 3c / zone / fill semantics.
+
+**Narrow ship set (must):**
+
+1. Analytics helper: `exact_combo_key × trigger_variant` groupby
+2. One opt-in Backtest surface inside Confluence combo attribution
+3. Unit tests + ASSUMPTIONS + METRICS_GLOSSARY honesty notes
+4. Plan status → Phase 3 implemented
+
+**Same-PR optional (only if cheap after #1 lands):**
+
+- `pair_key × trigger_variant` using existing PR 4 pair-mode locks
+  (generic unordered pairs, or `anchor|support` only with known
+  signal-run `anchor_level` — never guess from token order)
+
+**Deferred follow-ups (not default PR 3 scope):**
+
+- Direction × combo cross-tab
+- CSV download buttons
+- Hard top-N truncation (hide-thin default ON is enough for first ship)
+- Membership × variant, Time Analysis / report / bundle / assistant consumers
+
+**Product locks:**
+
+| Item | Locked decision |
+|---|---|
+| Primary cross-view | `exact_combo_key × trigger_variant` |
+| Secondary cross-view | Optional same-PR only if cheap: `pair_key × trigger_variant` |
+| Direction × combo / CSV / top-N | **Out of default PR 3** (follow-ups only if UX pain remains) |
+| Default UI | Existing Exact / Membership / Level count / Pairs tabs unchanged and remain default |
+| Placement | One opt-in sub-tab **or** nested collapsed expander inside Confluence combo attribution, labeled **“Combo × 3c variant”** |
+| Universe | `_display_trades` only (Focus-aware) |
+| Metrics | Same lean R metrics via private `_summarize_r` (`trade_count`, `win_rate`, `avg_r`, `median_r`, `total_r`, `sample_warning`) |
+| Filter ownership | Analytics returns **all** groups + `sample_warning`; UI owns hide-below-`min_trades` (**default ON**) |
+| Availability | Show only when combo attribution `available=True` **and** `trigger_variant` has ≥1 non-null among analyzable displayed trades |
+| Null / empty `trigger_variant` | **Omit** those trades from the cross-view denominator (no synthetic `(unknown)` bucket in PR 3) |
+| Sort | `total_r` desc, then `trade_count` desc |
+| 3c honesty | Mandatory caption: uses trade `level_names` / pair keys as recorded; for 3c these may be tested-level-only, not full zone membership |
+| Engine / 3c semantics | **None** — does not require anchor hit; does not alter arrival / zone / fill behavior |
+| Existing 3c summary block | Leave the standalone “3c outcome summary by variant/source” unchanged |
+
+**Analytics API (narrow):**
+
+```python
+def summarize_by_exact_combo_and_trigger_variant(
+    trades: pd.DataFrame,
+    *,
+    min_trades: int = 10,
+) -> pd.DataFrame:
+    """Group analyzable trades by exact_combo_key × trigger_variant.
+
+    Returns all groups plus sample_warning. Does not drop thin samples.
+    Omits rows with null/empty trigger_variant from this cross-view.
+    """
+
+def summarize_by_pair_and_trigger_variant(
+    trades: pd.DataFrame,
+    *,
+    min_trades: int = 10,
+    anchor_level: str | None = None,
+    confluence_mode: str | None = None,
+) -> pd.DataFrame:
+    """Optional same-PR: pair_key × trigger_variant (PR 4 pair-mode locks)."""
+```
+
+Prefer dedicated helpers over bloating `confluence_attribution_summary`.
+If summary keys are added later, gate them behind an explicit opt-in flag and
+keep the default summary contract unchanged.
+
+**UI contract:**
+
+1. Do **not** alter Breakdown tabs `["By trigger", "By direction", "By exit reason"]`.
+2. Do **not** alter default Exact / Membership / Level count / Pairs rendering.
+3. Add exactly one opt-in surface inside the combo expander.
+4. Captions must include:
+   - diagnostic / selection-effects
+   - 3c tested-level-only note when any displayed trade has `trigger == "3c"`
+   - reminder that this is a cross-tab of observed trades, not a new signal model
+5. If `trigger_variant` absent (typical non-3c runs), show calm info only:
+   “Combo × 3c variant unavailable — no `trigger_variant` on displayed trades.”
+
+**Files expected (implementation PR):**
+
+- `thesistester/analytics/confluence_attribution.py` (helpers only)
+- `tests/test_confluence_attribution.py`
+- `pages/7_Backtest.py` (opt-in surface only)
+- `docs/ASSUMPTIONS_AND_LIMITATIONS.md`
+- `docs/METRICS_GLOSSARY.md`
+- `docs/CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md` (status → implemented)
+
+**Explicitly out of scope:**
+
+- Changing 3c arrival semantics (e.g. require anchor hit in anchor mode)
+- Replacing / merging / relocating the existing 3c outcome-by-variant block
+- Membership × `trigger_variant` matrix
+- Time Analysis / report / bundle / assistant consumers for this cross-view
+- Engine / golden / trades-schema changes
+- Broad direction × combo × variant 3D matrices
+- Default always-on matrix in Backtest chrome
+
+**Regression safety:**
+
+- Additive analytics + opt-in UI only
+- Default Backtest chrome and default combo tabs unchanged when cross-view unused
+- No files under `thesistester/engine/**` or `tests/fixtures/golden/**`
+- No new Backtest producer `st.session_state` keys for this summary
+- Full suite green; no golden regeneration
+
+**Minimum unit tests:**
+
+```text
+exact_combo × trigger_variant:
+  - groups by both axes; metrics match lean _summarize_r contract
+  - null/empty trigger_variant rows omitted from this view
+  - sample_warning true when n < min_trades; rows not dropped by helper
+  - missing trigger_variant column → empty frame / calm unavailable path
+optional pair × trigger_variant (if shipped):
+  - same pair-mode locks as PR 4 (no first-token anchor guess)
+```
+
+**Acceptance checklist:**
+
+- [ ] Scheduled after 5a–5d unless explicitly re-prioritized
+- [ ] Default Exact / Membership / Level count / Pairs unchanged when unused
+- [ ] Cross-view uses `_display_trades`; hide-below-`min_trades` defaults ON
+- [ ] Analytics unfiltered (`sample_warning` only); null variants omitted
+- [ ] Missing `trigger_variant` → calm info, no exception
+- [ ] 3c tested-level-only honesty caption when applicable
+- [ ] Optional pair×variant (if present) follows PR 4 pair-mode locks
+- [ ] ASSUMPTIONS + METRICS_GLOSSARY updated
+- [ ] No engine/golden/session-producer keys; full suite green
+
+**Priority / sequencing lock:**
+
+```text
+… → PR 5a → 5b → 5c → 5d → PR 3 (this cross-view)
+```
+
+Do not insert PR 3 ahead of 5a–5d unless a user explicitly prioritizes it.
 
 ---
 
@@ -1098,7 +1240,8 @@ projections from trades** (same analytics API); 5c artifacts are optional
 convenience, not a hard gate — so 5d may ship without 5c if needed, but the
 recommended order still prefers 5c first for research-bundle completeness.
 
-PR 3 polish remains optional and independent of 5a–5d.
+PR 3 optional combo × trigger-variant cross-view ships **after** 5a–5d
+(see detailed PR 3 locks above).
 
 ---
 
@@ -1179,7 +1322,8 @@ stop and re-scope.
 | Users treat membership rows as additive PnL | High (honesty) | Mandatory caption + ASSUMPTIONS entry |
 | Cherry-picking best `total_r` across many combos | High (honesty) | Hide below `min_trades` default ON + observed-only/diagnostic caption |
 | Nested sets hide pair edge (`A\|B` vs `A\|B\|C`) | Medium (research gap) | Elevate soft pairwise PR 4 after MVP |
-| Combo table explosion with min=1 global | Medium (UX) | Observed-only rows + default UI sample filter + optional top-N in PR 3 |
+| Combo table explosion with min=1 global | Medium (UX) | Observed-only rows + default UI sample filter; PR 3 cross-view also hide-thin by default |
+| Combo × 3c-variant cardinality | Medium (UX/honesty) | Opt-in surface only; hide-thin default ON; do not replace default tabs |
 | Analytics drops thin samples and breaks partition tests | Medium (correctness) | Filter is UI-only; summarize_* returns all groups |
 | 3c `level_names` semantics differ from full zone | Medium (interpretation) | Conditional UI caption + glossary |
 | Accidental engine “fix” for pairwise zones | High (regression) | Explicit non-goal; PR checklist forbids engine files |
@@ -1202,7 +1346,8 @@ PR 1 analytics helpers + tests
         → PR 5b Report diagnostic section
           → PR 5c Bundle optional artifacts
             → PR 5d Assistant cite-bound projection
-              → PR 3 direction / CSV / top-N   (only if UX pain still remains)
+              → PR 3 optional combo × trigger_variant cross-view
+                 (CSV / top-N / direction×combo only as later follow-ups)
 ```
 
 ### Suggested implementation steps inside PR 1
@@ -1278,7 +1423,7 @@ PR 1 analytics helpers + tests
 - [ ] No engine / golden files in diff
 - [ ] Full suite green
 
-### PR 3 / PR 4
+### PR 4
 
 - [ ] Additive views only
 - [ ] No anchor-guessing heuristic from token order
@@ -1287,6 +1432,19 @@ PR 1 analytics helpers + tests
 - [ ] Pair/membership double-count honesty captions present
 - [ ] Docs/captions updated for any new double-count view
 - [ ] Full suite green
+
+### PR 3
+
+- [ ] Scheduled after 5a–5d unless explicitly re-prioritized
+- [ ] Default Exact / Membership / Level count / Pairs unchanged when unused
+- [ ] Opt-in `exact_combo × trigger_variant` surface only (not always-on)
+- [ ] Uses `_display_trades`; hide-below-min defaults ON; analytics unfiltered
+- [ ] Null/empty `trigger_variant` omitted from cross-view (no synthetic unknown)
+- [ ] Missing `trigger_variant` → calm info
+- [ ] 3c tested-level-only honesty caption when applicable
+- [ ] Standalone 3c outcome-by-variant block left unchanged
+- [ ] No engine/3c-semantics changes; no golden / producer session keys
+- [ ] ASSUMPTIONS + METRICS_GLOSSARY updated; full suite green
 
 ### PR 5a
 
@@ -1344,6 +1502,10 @@ PR 1 analytics helpers + tests
 | Default hide thin samples? | **ON** (UI presentation filter; analytics unfiltered) |
 | Modify `analytics/__init__.py` in PR 1? | **No** — submodule import |
 | Rows = theoretical subsets? | **No** — observed traded combos only |
+| Connect 3c variant breakdown with combo attribution? | **Yes, optionally in PR 3** after 5a–5d: opt-in `exact_combo × trigger_variant` (optional pair×variant if cheap); keep default tables + standalone 3c variant summary separate |
+| Change 3c so anchor mode requires anchor hit? | **No in PR 3** — separate future engine proposal if desired |
+| Synthetic `(unknown)` variant bucket? | **No in PR 3** — omit null/empty `trigger_variant` from the cross-view |
+| CSV / top-N / direction×combo in PR 3? | **No by default** — follow-ups only if UX pain remains after first ship |
 
 No blocking open questions remain for PR 1–2.
 
@@ -1367,12 +1529,12 @@ No blocking open questions remain for PR 1–2.
 | Phase 1 | PR 1 analytics helpers | **Implemented** (`thesistester/analytics/confluence_attribution.py`, `tests/test_confluence_attribution.py`) |
 | Phase 2 | PR 2 Backtest expander UI + docs | **Implemented** (`pages/7_Backtest.py` expander; ASSUMPTIONS / METRICS_GLOSSARY / ARCHITECTURE) |
 | Phase 4 | PR 4 soft pairwise attribution | **Implemented** (`summarize_by_level_pairs` + Backtest **Pairs** tab) |
-| Phase 5 | PR 5a–5d downstream consumers | **Scoped** (detailed locks + 2026-08-09 completeness amendment); implementation not started; may precede PR 3 |
+| Phase 5 | PR 5a–5d downstream consumers | **Scoped**; implementation not started; precedes PR 3 |
 | Phase 5a | Time Analysis opt-in combo/count groups | Not started (`exact_combo_key` + `level_count_bucket`; append when `available`) |
 | Phase 5b | Report export diagnostic section | Not started (on-export recompute; omit-when-unavailable) |
 | Phase 5c | Bundle optional artifacts | Not started (on-export recompute; no producer session keys) |
 | Phase 5d | Assistant cite-bound projection | Not started (trades recompute; 5c not required) |
-| Phase 3 | PR 3 cross-tab / polish (if UX pain) | Not started (optional; after or between 5x if needed) |
+| Phase 3 | Optional combo × trigger_variant cross-view | **Scoped** for after 5a–5d; implementation not started |
 
 ---
 
@@ -1448,7 +1610,7 @@ Building at the analytics seam:
 
 ## 21. Appendix C — Review locks checklist (copy into implementation PRs)
 
-Before coding PR 1 / PR 2 / PR 4 / PR 5x, confirm these locks:
+Before coding PR 1 / PR 2 / PR 4 / PR 5x / PR 3, confirm these locks:
 
 1. [ ] View C = parsed distinct token count from `level_names` (not stored `level_count`)
 2. [ ] `available=True` only with ≥1 non-empty analyzable combo
@@ -1468,3 +1630,7 @@ Before coding PR 1 / PR 2 / PR 4 / PR 5x, confirm these locks:
       (5b/5c recompute on export; 5d recomputes from trades)
 14. [ ] 5a does not add pairs/membership as Time Analysis group dims
 15. [ ] 5c does not bump `BUNDLE_SCHEMA_VERSION` for optional siblings
+16. [ ] PR 3 is opt-in `exact_combo × trigger_variant` after 5a–5d; not default always-on
+17. [ ] PR 3 omits null/empty `trigger_variant` from the cross-view; no synthetic unknown bucket
+18. [ ] PR 3 does not change 3c arrival / zone / fill semantics (no require-anchor-hit)
+19. [ ] PR 3 leaves the standalone 3c outcome-by-variant summary block unchanged
