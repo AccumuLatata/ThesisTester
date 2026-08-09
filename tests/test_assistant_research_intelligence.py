@@ -1165,6 +1165,27 @@ def test_ri7_mixed_ask_followups_respect_missing_oos():
     assert any("evidence paths remain available" in f.lower() for f in reply.followups)
 
 
+def test_ri7_mixed_ask_followups_respect_turn_oos_status():
+    packet = _packet(best_grid=True, missing_oos=False)
+    context = build_ephemeral_results_context(packet)
+    assert context["results"]["projections"]["grid_rankings"]["oos_status"] == "missing"
+    reply = build_mixed_ask_remediation_reply(packet, evidence_context=context)
+    assert not any("whether walk-forward" in f.lower() for f in reply.followups)
+    assert any("evidence paths remain available" in f.lower() for f in reply.followups)
+    # End-to-end short-circuit also hydrates and suppresses.
+    client = _FailClient(_uncited_digits_payload())
+    e2e = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="KPIs and best SL/TP",
+        turn_context=context,
+    )
+    assert client.calls == 0
+    assert e2e.recovery_reason == REASON_MIXED_ASK
+    assert not any("whether walk-forward" in f.lower() for f in e2e.followups)
+
+
 def test_ri7_single_metric_llm_multi_claim_falls_back_to_one_leaf():
     packet = _packet()
     client = _FailClient(

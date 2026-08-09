@@ -438,14 +438,19 @@ def propose_results_reply(
     # RI-1/RI-2: sync ephemeral projections into the evidence packet before
     # catalog, short-circuit, LLM, and path/overlay audit so honesty leaves
     # (e.g. grid oos_status) and preferred paths cannot diverge from evidence.
-    if discuss_intent == INTENT_GRID_RANKING:
+    # Mixed asks also hydrate grid status so followups can suppress WFA-presence
+    # coaching when oos_status is already missing/failed on the turn.
+    if discuss_intent in {INTENT_GRID_RANKING, INTENT_MIXED_ASK}:
         evidence_context = dict(_ensure_grid_rankings_context(evidence_context))
     if discuss_intent == INTENT_TIME_RANKING:
         evidence_context = dict(_ensure_time_rankings_context(evidence_context))
 
     # RI short-circuits: mixed ask / missing specialist evidence before any LLM call.
     if discuss_intent == INTENT_MIXED_ASK:
-        return build_mixed_ask_remediation_reply(packet)
+        return build_mixed_ask_remediation_reply(
+            packet,
+            evidence_context=evidence_context,
+        )
     if discuss_intent == INTENT_GRID_RANKING and not has_grid_ranking_evidence(evidence_context):
         return build_missing_grid_limitation_reply(packet)
     if discuss_intent == INTENT_TIME_RANKING and not has_time_ranking_evidence(evidence_context):

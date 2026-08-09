@@ -1774,6 +1774,7 @@ def build_mixed_ask_remediation_reply(
     packet: EvidencePacket,
     *,
     recovery_reason: str | None = REASON_MIXED_ASK,
+    evidence_context: Mapping[str, Any] | None = None,
 ):
     """Narrow-ask remediation for mixed intents until RI-8 composition lands."""
     from thesistester.assistant.results_qa import ResultsQAReply
@@ -1789,7 +1790,7 @@ def build_mixed_ask_remediation_reply(
         "Ask about best stop and take profit ranking if a grid was recorded.",
         "Ask about the best entry time or session bucket if time analysis was recorded.",
     ]
-    if _packet_signals_oos_absent(packet):
+    if _oos_evidence_absent(packet, evidence_context=evidence_context):
         followups_list.append("Ask which evidence paths remain available on this packet.")
     else:
         followups_list.append(
