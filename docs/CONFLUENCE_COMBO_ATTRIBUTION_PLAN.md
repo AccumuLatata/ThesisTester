@@ -1462,7 +1462,7 @@ PR 1 analytics helpers + tests
 - [ ] Additive views only
 - [ ] No anchor-guessing heuristic from token order
 - [ ] Anchor-aware pairs only via `resolve_signal_setup_for_attribution`
-      identity (`anchor_rules` + known `anchor_level`)
+      → `resolve_confluence_mode` (`anchor_rules` + known `anchor_level`)
 - [ ] Pair/membership double-count honesty captions present
 - [ ] Docs/captions updated for any new double-count view
 - [ ] Full suite green
