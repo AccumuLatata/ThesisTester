@@ -16,11 +16,15 @@ from thesistester.analytics.confluence_attribution import (
     MEMBERSHIP_DOUBLE_COUNT_WARNING,
     TRIGGER_3C_LEVEL_NAMES_WARNING,
     UNKNOWN_LEVEL_COUNT_LABEL,
+    apply_sample_warning_filter,
     attach_combo_columns,
     confluence_attribution_summary,
     exact_combo_key,
     format_display_combo,
     parse_level_names,
+    prepare_exact_combo_display,
+    resolve_confluence_mode,
+    resolve_signal_setup_for_attribution,
     summarize_by_exact_combo,
     summarize_by_level_count,
     summarize_by_level_membership,
@@ -341,3 +345,99 @@ def test_example_raw_fallback_without_timestamps_uses_trade_id():
     )
     summary = summarize_by_exact_combo(trades, min_trades=1)
     assert summary.iloc[0][EXAMPLE_RAW_COL] == "A|B"  # lower trade_id
+
+
+# ---------------------------------------------------------------------------
+# PR 2 presentation helpers
+# ---------------------------------------------------------------------------
+
+
+def test_apply_sample_warning_filter_hides_thin_rows_only_when_requested():
+    frame = pd.DataFrame(
+        {
+            EXACT_COMBO_KEY_COL: ["A", "B"],
+            "trade_count": [12, 3],
+            "sample_warning": [False, True],
+        }
+    )
+    hidden = apply_sample_warning_filter(frame, hide_below_min=True)
+    assert list(hidden[EXACT_COMBO_KEY_COL]) == ["A"]
+    shown = apply_sample_warning_filter(frame, hide_below_min=False)
+    assert len(shown) == 2
+
+
+def test_resolve_confluence_mode_prefers_setup_config_then_trades():
+    assert (
+        resolve_confluence_mode({"confluence_mode": "anchor_rules"}, pd.DataFrame())
+        == "anchor_rules"
+    )
+    trades = pd.DataFrame({"level_source_mode": ["global_cluster", "global_cluster", "other"]})
+    assert resolve_confluence_mode(None, trades) == "global_cluster"
+    assert resolve_confluence_mode({"confluence_mode": "nope"}, None) == "unknown"
+
+
+def test_resolve_signal_setup_prefers_signal_settings_over_stale_setup_config():
+    """Stale Setup Builder config must not override the signal-run mode/anchor."""
+    stale_setup = {"confluence_mode": "anchor_rules", "anchor_level": "pdHigh"}
+    signal_settings = {"confluence_mode": "global_cluster", "anchor_level": None}
+    resolved = resolve_signal_setup_for_attribution(
+        signal_settings=signal_settings,
+        setup_config=stale_setup,
+    )
+    assert resolved["confluence_mode"] == "global_cluster"
+    assert "anchor_level" not in resolved
+    assert (
+        resolve_confluence_mode(resolved, pd.DataFrame({"level_source_mode": ["anchor_rules"]}))
+        == "global_cluster"
+    )
+
+    # Reverse: signal-run is anchor; stale setup_config is global.
+    resolved_anchor = resolve_signal_setup_for_attribution(
+        signal_settings={"confluence_mode": "anchor_rules", "anchor_level": "pdHigh"},
+        setup_config={"confluence_mode": "global_cluster", "anchor_level": "OR_High"},
+    )
+    assert resolved_anchor == {
+        "confluence_mode": "anchor_rules",
+        "anchor_level": "pdHigh",
+    }
+
+    # last_signal_setup wins over setup_config when signal_settings absent.
+    from_last = resolve_signal_setup_for_attribution(
+        last_signal_setup={"confluence_mode": "anchor_rules", "anchor_level": "pdPOC"},
+        setup_config={"confluence_mode": "global_cluster"},
+        signal_context={"confluence_mode": "global_cluster"},
+    )
+    assert from_last["confluence_mode"] == "anchor_rules"
+    assert from_last["anchor_level"] == "pdPOC"
+
+    # setup_snapshot can supply anchor when top-level signal_settings omits it.
+    from_snap = resolve_signal_setup_for_attribution(
+        signal_settings={
+            "confluence_mode": "anchor_rules",
+            "setup_snapshot": {"confluence_mode": "anchor_rules", "anchor_level": "pdHigh"},
+        },
+        setup_config={"confluence_mode": "global_cluster", "anchor_level": "OR_High"},
+    )
+    assert from_snap == {"confluence_mode": "anchor_rules", "anchor_level": "pdHigh"}
+
+
+def test_prepare_exact_combo_display_uses_anchor_only_in_anchor_mode():
+    frame = pd.DataFrame(
+        {
+            EXACT_COMBO_KEY_COL: ["VWAP|pdHigh", EMPTY_LEVEL_NAMES_KEY],
+            "trade_count": [2, 1],
+        }
+    )
+    anchored = prepare_exact_combo_display(
+        frame,
+        anchor_level="pdHigh",
+        confluence_mode="anchor_rules",
+    )
+    assert list(anchored["display_combo"]) == ["pdHigh|VWAP", EMPTY_LEVEL_NAMES_LABEL]
+
+    global_view = prepare_exact_combo_display(
+        frame,
+        anchor_level="pdHigh",
+        confluence_mode="global_cluster",
+    )
+    assert list(global_view["display_combo"]) == ["VWAP|pdHigh", EMPTY_LEVEL_NAMES_LABEL]

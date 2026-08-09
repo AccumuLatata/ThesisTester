@@ -1,6 +1,6 @@
 # Regression-Safe Implementation Plan: Confluence Combo Attribution (Backtest)
 
-**Status:** Phase 1 implemented (analytics helpers + unit tests); UI not started  
+**Status:** Phase 1 + Phase 2 implemented (analytics helpers + Backtest expander UI + honesty docs)  
 **Document type:** Focused analytics / Backtest UX implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related docs:**  
@@ -300,9 +300,17 @@ Do **not** invent new expectancy definitions; reuse existing R conventions from
 
 Mode detection for captions (best-effort, non-blocking):
 
-1. `st.session_state["setup_config"]["confluence_mode"]` when present.
+1. Signal-run setup identity via `resolve_signal_setup_for_attribution`
+   (priority: `signal_settings` → `signal_settings.setup_snapshot` →
+   `last_signal_setup` → `setup_config` → `signal_context`). Prefer the
+   settings that produced the current signals over a possibly stale Setup
+   Builder `setup_config`.
 2. Else `level_source_mode` dominance on displayed trades if present.
 3. Else neutral.
+
+Anchor display key uses the same signal-run identity dict’s `anchor_level`
+(only when mode resolves to `anchor_rules`). Never invent anchor from token
+order.
 
 Diagnostic framing (mandatory in UI caption):
 
@@ -918,13 +926,13 @@ PR 1 analytics helpers + tests
 
 ### Definition of done (MVP = PR 1 + PR 2)
 
-- [ ] Researchers can open Backtest expander and see exact combo / membership /
+- [x] Researchers can open Backtest expander and see exact combo / membership /
   parsed level-count R breakdowns
-- [ ] Works for both global cluster and anchor setups without mode-specific
+- [x] Works for both global cluster and anchor setups without mode-specific
       engine paths
-- [ ] Existing Breakdown tabs untouched; no engine/signal/fill changes
-- [ ] Honesty caveats visible in UI and docs (membership, 3c, selection effects)
-- [ ] Exact-combo partition tests green; full suite green; no golden diffs
+- [x] Existing Breakdown tabs untouched; no engine/signal/fill changes
+- [x] Honesty caveats visible in UI and docs (membership, 3c, selection effects)
+- [x] Exact-combo partition tests green; full suite green; no golden diffs
 
 ---
 
@@ -1006,7 +1014,7 @@ No blocking open questions remain for PR 1–2.
 |---|---|---|
 | Phase 0 | This proposal (+ 2026-08-09 review locks + polish) | Complete |
 | Phase 1 | PR 1 analytics helpers | **Implemented** (`thesistester/analytics/confluence_attribution.py`, `tests/test_confluence_attribution.py`) |
-| Phase 2 | PR 2 Backtest expander UI + docs | Not started |
+| Phase 2 | PR 2 Backtest expander UI + docs | **Implemented** (`pages/7_Backtest.py` expander; ASSUMPTIONS / METRICS_GLOSSARY / ARCHITECTURE) |
 | Phase 4 | PR 4 soft pairwise attribution (recommended next) | Not started |
 | Phase 3 | PR 3 cross-tab / polish (if UX pain) | Not started |
 | Phase 5 | Downstream consumers | Not started |

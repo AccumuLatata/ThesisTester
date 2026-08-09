@@ -481,6 +481,34 @@ Implementation: `thesistester/levels/session_vwap.py`.
 
 Implementation: levels in `thesistester/levels/prev30m_vwap.py`; Phase 2 R analytics in `thesistester/analytics/prev30m_vwap_hit.py` (`prev30m_hit_r_summary`, entry-bracket finalized flags). Available only when at least one finalized hit flag attaches; contingency shares the R-valid universe. No fill-engine changes.
 
+## Confluence combo attribution (Backtest diagnostic)
+
+Post-trade grouped R metrics from `thesistester/analytics/confluence_attribution.py`,
+shown in the Backtest expander **Confluence combo attribution**. Uses the Focus
+overlay trade universe (`_display_trades`) when Focus is active.
+
+| Name | Definition |
+|---|---|
+| `exact_combo_key` | Canonical sorted `\|`-joined distinct tokens from trade `level_names`; empty/null/`nan` → `__empty__` |
+| `display_combo` | UI label; in `anchor_rules` with known session `anchor_level`, renders `anchor\|sorted(rest)`, else the canonical key |
+| `example_raw_level_names` | Raw `level_names` from the earliest trade in the combo group (`entry_timestamp`, then `trade_id`) |
+| Membership (`level_name`) | One row per distinct token present on a trade; **double-counts** multi-level trades |
+| Parsed level count | Distinct parsed token count from `level_names` (not stored zone `level_count`) |
+| `trade_count` | Rows in group with non-null `r_multiple` |
+| `win_rate` | Share of `r_multiple > 0` among non-null `r_multiple` (breakeven `0` is not a win) |
+| `avg_r` / `median_r` / `total_r` | Mean / median / sum of non-null `r_multiple` |
+| `sample_warning` | `True` when `trade_count < min_trades` (default 10). Analytics keep these rows; UI may hide them |
+| `available` | `True` only when `level_names` exists and ≥1 analyzable trade has a non-empty parsed combo |
+
+**Partition vs double-count:** exact-combo rows partition the analyzable trade
+universe (`sum(trade_count)` / `sum(total_r)` match). Membership does not.
+
+**Null-R convention vs sibling Breakdown tabs:** combo attribution excludes null
+`r_multiple` from denominators (same family as `summarize_trades` / prev30m hit
+R). The existing Backtest Breakdown tabs (`By trigger` / `By direction` /
+`By exit reason`) still use inline `(x > 0).mean()`, which treats nulls as
+non-wins in the denominator. Do not assume the two win-rate styles are identical.
+
 ## Assistant evidence-claim paths
 
 Assistant explanations (deterministic and optional LLM) may display a metric only

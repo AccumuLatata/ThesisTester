@@ -12,7 +12,7 @@ No zone / signal / fill engine changes. Summaries return **all** groups with
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
@@ -411,3 +411,133 @@ def confluence_attribution_summary(
     result["available"] = True
     result["warnings"] = [MEMBERSHIP_DOUBLE_COUNT_WARNING, *trigger_warnings]
     return result
+
+
+def apply_sample_warning_filter(
+    frame: pd.DataFrame,
+    *,
+    hide_below_min: bool,
+) -> pd.DataFrame:
+    """Presentation filter: optionally drop rows with ``sample_warning``.
+
+    Analytics summaries always return thin groups; Backtest UI owns hiding.
+    """
+    if frame is None or not isinstance(frame, pd.DataFrame):
+        return pd.DataFrame()
+    if frame.empty or not hide_below_min or "sample_warning" not in frame.columns:
+        return frame.copy()
+    mask = ~frame["sample_warning"].fillna(False).astype(bool)
+    return frame.loc[mask].copy()
+
+
+def resolve_signal_setup_for_attribution(
+    *,
+    signal_settings: Any = None,
+    last_signal_setup: Any = None,
+    setup_config: Any = None,
+    signal_context: Any = None,
+) -> dict[str, Any]:
+    """Pick signal-run setup identity for captions / anchor display.
+
+    Prefer the settings that produced the current signals over a possibly stale
+    Setup Builder ``setup_config`` (same identity order as OTF/Validation):
+
+    1. ``signal_settings``
+    2. ``signal_settings["setup_snapshot"]``
+    3. ``last_signal_setup``
+    4. ``setup_config``
+    5. ``signal_context``
+
+    Returns a thin dict with ``confluence_mode`` and optional ``anchor_level``.
+    Empty when no source carries a known mode.
+    """
+    sources: list[Mapping[str, Any]] = []
+    if isinstance(signal_settings, dict) and signal_settings:
+        sources.append(signal_settings)
+        snapshot = signal_settings.get("setup_snapshot")
+        if isinstance(snapshot, dict) and snapshot:
+            sources.append(snapshot)
+    for candidate in (last_signal_setup, setup_config, signal_context):
+        if isinstance(candidate, dict) and candidate:
+            sources.append(candidate)
+
+    for source in sources:
+        mode = str(source.get("confluence_mode") or "").strip()
+        if mode not in {"anchor_rules", "global_cluster"}:
+            continue
+        result: dict[str, Any] = {"confluence_mode": mode}
+        anchor = source.get("anchor_level")
+        if isinstance(anchor, str) and anchor.strip():
+            result["anchor_level"] = anchor.strip()
+        elif mode == "anchor_rules":
+            # Borrow anchor from an identity-compatible source (never from a
+            # conflicting global_cluster snapshot).
+            for other in sources:
+                other_mode = str(other.get("confluence_mode") or "").strip()
+                if other_mode not in {"", "anchor_rules"}:
+                    continue
+                other_anchor = other.get("anchor_level")
+                if isinstance(other_anchor, str) and other_anchor.strip():
+                    result["anchor_level"] = other_anchor.strip()
+                    break
+        return result
+    return {}
+
+
+def resolve_confluence_mode(
+    setup_config: Any = None,
+    trades: pd.DataFrame | None = None,
+) -> str:
+    """Best-effort mode label for captions: anchor_rules / global_cluster / unknown.
+
+    ``setup_config`` should be the signal-run identity dict from
+    ``resolve_signal_setup_for_attribution`` when called from Backtest.
+    """
+    if isinstance(setup_config, dict):
+        mode = str(setup_config.get("confluence_mode") or "").strip()
+        if mode in {"anchor_rules", "global_cluster"}:
+            return mode
+
+    if isinstance(trades, pd.DataFrame) and not trades.empty:
+        if "level_source_mode" in trades.columns:
+            modes = (
+                trades["level_source_mode"]
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .replace("", pd.NA)
+                .dropna()
+            )
+            if not modes.empty:
+                dominant = str(modes.value_counts().index[0])
+                if dominant in {"anchor_rules", "global_cluster"}:
+                    return dominant
+                # Signals/backtest may stamp 3c source labels such as user_anchor.
+                if dominant in {"user_anchor", "anchor"}:
+                    return "anchor_rules"
+                if dominant in {"global_cluster", "cluster", "global"}:
+                    return "global_cluster"
+    return "unknown"
+
+
+def prepare_exact_combo_display(
+    frame: pd.DataFrame,
+    *,
+    anchor_level: str | None = None,
+    confluence_mode: str | None = None,
+) -> pd.DataFrame:
+    """Add ``display_combo`` for UI; anchor formatting only in anchor_rules mode."""
+    if frame is None or not isinstance(frame, pd.DataFrame):
+        return pd.DataFrame()
+    out = frame.copy()
+    if out.empty or EXACT_COMBO_KEY_COL not in out.columns:
+        return out
+
+    use_anchor = None
+    if confluence_mode == "anchor_rules" and anchor_level:
+        use_anchor = str(anchor_level).strip() or None
+
+    out["display_combo"] = out[EXACT_COMBO_KEY_COL].map(
+        lambda key: format_display_combo(key, anchor_level=use_anchor)
+    )
+    return out

@@ -292,6 +292,27 @@ This engine is for **research screening**, not proof of a durable edge.
 - `prev30m_vwap_enabled=False` is a true no-op: no validation, no new columns.
 - Phase 2 R analytics (`prev30m_hit_r_summary`) join **finalized** bracket hit flags onto trades by **entry** bracket (`entry_timestamp`); they do not change fills. When `level_names` is present, only trades referencing `prev30mVWAP` are scoped. `available` / `trade_count` require at least one finalized (non-null) hit flag; grouped R stats and contingency share the same universe (non-null flags and non-null `r_multiple`). Timezone-naive entry timestamps leave flags null instead of crashing the Backtest page.
 
+### 5e2) Confluence combo attribution is post-trade diagnostic only
+
+- Backtest expander **Confluence combo attribution** groups displayed trades by
+  recorded `level_names` (exact canonical combo, level membership, and parsed
+  token count). It does **not** change zones, signals, fills, or exposure.
+- Rows are **observed traded combinations**, not the theoretical power set of
+  selected levels / confluence rules.
+- Exact-combo keys are canonicalized (sorted tokens) so `A|B` and `B|A` merge.
+- Membership attribution **double-counts** trades across levels and is not an
+  additive PnL decomposition.
+- Nested sets such as `A|B` vs `A|B|C` remain separate exact-combo rows; soft
+  pairwise attribution is a later analytics follow-on, not engine pairwise zone
+  emission.
+- Level-count view uses the **parsed distinct token count** from `level_names`,
+  not stored zone `level_count` (important for `3c`, where names may be the
+  tested level only).
+- Thin samples are marked with `sample_warning` and hidden by default in the UI;
+  analytics summaries themselves remain unfiltered.
+- Sorting many combinations by total R invites selection effects; treat the
+  tables as research diagnostics, not proof of future edge.
+
 ### 5f) Stage 6 UI and Persistence — opt-in level controls (Levels page)
 
 - The Levels page (`pages/2_Levels.py`) exposes an **"Advanced opt-in levels"** expander below the existing profile settings.
