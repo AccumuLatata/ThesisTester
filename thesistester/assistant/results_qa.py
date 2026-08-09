@@ -519,7 +519,7 @@ def propose_results_reply(
     if discuss_intent == INTENT_ASSUMPTIONS_COSTS and not has_assumptions_costs_evidence(
         evidence_context
     ):
-        return build_missing_assumptions_limitation_reply(packet)
+        return build_missing_assumptions_limitation_reply(packet, evidence_context=evidence_context)
     if discuss_intent == INTENT_SINGLE_METRIC:
         metric_path = resolve_single_metric_path(user_message)
         if metric_path is None or not has_single_metric_evidence(evidence_context, metric_path):

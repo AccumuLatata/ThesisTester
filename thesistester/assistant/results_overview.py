@@ -306,13 +306,48 @@ _ROBUSTNESS_NEAR_MISS_TOKENS: tuple[str, ...] = ("monte", "carlo")
 _OTF_VALIDATION_PHRASES: tuple[str, ...] = ("otf validation", "otf-validation")
 
 # RI-6 landed specialist cues (run-assumption / costs sense; Help how-to is out of channel).
+# Longer plurals listed beside singulars; boundary match keeps ``costs`` ≠ ``cost``.
 _ASSUMPTIONS_COSTS_POSITIVE_CUES: tuple[str, ...] = (
     "commission",
     "slippage",
     "exposure policy",
     "intrabar model",
     "costs",
+    "cost",
     "assumptions",
+    "assumption",
+)
+
+# How-to / docs collocates — Discuss must not answer Help-shaped asks from run leaves.
+_ASSUMPTIONS_HOWTO_COLLOCATES: tuple[str, ...] = (
+    "how do i",
+    "how do you",
+    "how to",
+    "how can i",
+    "in the docs",
+    "documentation",
+    "user guide",
+)
+
+# Configured / assumed SL·TP language belongs to assumptions, not best-grid ranks.
+_ASSUMPTIONS_CONFIGURED_COLLOCATES: tuple[str, ...] = (
+    "configured",
+    "assumed",
+    "assumption",
+    "assumptions",
+)
+_ASSUMPTIONS_SL_TP_CUES: tuple[str, ...] = (
+    "stop loss",
+    "take profit",
+    "stop-loss",
+    "take-profit",
+)
+_GRID_OWNERSHIP_COLLOCATES: tuple[str, ...] = (
+    "best",
+    "grid",
+    "ranking",
+    "rank",
+    "pair",
 )
 
 # Frozen RI §4.2 allowlist (include only when path exists on turn context).
@@ -400,6 +435,7 @@ ASSUMPTIONS_CLAIM_PATHS: tuple[str, ...] = (
     "assumptions.costs_exposure.intrabar_model",
     "assumptions.costs_exposure.stop_loss_ticks",
     "assumptions.costs_exposure.take_profit_ticks",
+    "assumptions.intrabar.intrabar_model",
     "assumptions.entry_window.focus.enabled",
     "assumptions.instrument",
     "assumptions.dataset.dataset_fingerprint",
@@ -438,16 +474,30 @@ def _any_cue_matches(cues: Sequence[str], normalized: str) -> bool:
     return any(_alias_matches(cue, normalized) for cue in cues)
 
 
+def _mask_configured_sl_tp_phrases(normalized: str) -> str:
+    """Blank configured/assumed SL·TP phrases so they do not land ``grid_ranking``."""
+    masked = normalized
+    for phrase in _ASSUMPTIONS_SL_TP_CUES:
+        masked = masked.replace(phrase, " ")
+    return " ".join(masked.split())
+
+
 def _grid_ranking_matches(normalized: str) -> bool:
-    if _any_cue_matches(_GRID_RANKING_POSITIVE_CUES, normalized):
+    working = normalized
+    # Configured/assumed SL·TP without best/grid ownership → assumptions, not grid.
+    if _configured_sl_tp_assumptions_matches(normalized) and not _any_cue_matches(
+        _GRID_OWNERSHIP_COLLOCATES, normalized
+    ):
+        working = _mask_configured_sl_tp_phrases(normalized)
+    if _any_cue_matches(_GRID_RANKING_POSITIVE_CUES, working):
         return True
-    if _any_cue_matches(_GRID_RANKING_CONTEXT_CUES, normalized) and _any_cue_matches(
-        _GRID_CONTEXT_COLLOCATES, normalized
+    if _any_cue_matches(_GRID_RANKING_CONTEXT_CUES, working) and _any_cue_matches(
+        _GRID_CONTEXT_COLLOCATES, working
     ):
         return True
     # Bare sl/tp/stop/target only with best/pair/grid/ranking collocates (§4.1).
-    if _any_cue_matches(_GRID_BARE_TOKEN_CUES, normalized) and _any_cue_matches(
-        _GRID_BARE_TOKEN_COLLOCATES, normalized
+    if _any_cue_matches(_GRID_BARE_TOKEN_CUES, working) and _any_cue_matches(
+        _GRID_BARE_TOKEN_COLLOCATES, working
     ):
         return True
     return False
@@ -482,8 +532,26 @@ def _robustness_tier2_matches(normalized: str) -> bool:
     return _any_cue_matches(_ROBUSTNESS_TIER2_POSITIVE_CUES, normalized)
 
 
+def _assumptions_howto_false_friend(normalized: str) -> bool:
+    """True for Help-shaped how-to / docs asks (out of RI-6 run-assumption scope)."""
+    return _any_cue_matches(_ASSUMPTIONS_HOWTO_COLLOCATES, normalized)
+
+
+def _configured_sl_tp_assumptions_matches(normalized: str) -> bool:
+    """Configured/assumed stop-loss / take-profit language (not best-grid ranks)."""
+    if not _any_cue_matches(_ASSUMPTIONS_CONFIGURED_COLLOCATES, normalized):
+        return False
+    return _any_cue_matches(_ASSUMPTIONS_SL_TP_CUES, normalized)
+
+
 def _assumptions_costs_matches(normalized: str) -> bool:
-    return _any_cue_matches(_ASSUMPTIONS_COSTS_POSITIVE_CUES, normalized)
+    if _assumptions_howto_false_friend(normalized):
+        return False
+    if _any_cue_matches(_ASSUMPTIONS_COSTS_POSITIVE_CUES, normalized):
+        return True
+    if _configured_sl_tp_assumptions_matches(normalized):
+        return True
+    return False
 
 
 def _robustness_near_miss_matches(normalized: str) -> bool:
@@ -658,13 +726,21 @@ def _evaluate_discuss_match(message: str) -> dict[str, Any] | None:
     bare_time_metric_mixed = bool(
         time_bare_only and metric_paths and not specialists and overview_count == 0
     )
+    # Specialist × value-metric with explicit ``and`` is composable (e.g. win rate
+    # and costs). Sole metric with specialist collocates still hard-refuses
+    # (``what is the win rate on the grid?`` → grid only).
+    specialist_metric_mixed = bool(
+        specialists and metric_paths and _alias_matches("and", normalized) and not soft_residual
+    )
 
     if time_bare_only and not bare_time_metric_mixed:
         specialists.append(INTENT_TIME_RANKING)
 
     # §4.5 hard-refuse: specialist or residual collocates → never emit single_metric.
-    # Exception: bare-time×metric keeps metric paths for composition.
-    metric_allowed = (not specialists and not soft_residual) or bare_time_metric_mixed
+    # Exceptions keep metric paths for composition (bare-time×metric / and-mixed).
+    metric_allowed = (
+        (not specialists and not soft_residual) or bare_time_metric_mixed or specialist_metric_mixed
+    )
     if bare_time_metric_mixed:
         specialists.append(INTENT_TIME_RANKING)
 
@@ -693,6 +769,7 @@ def _evaluate_discuss_match(message: str) -> dict[str, Any] | None:
         "run": run,
         "overview_count": overview_count,
         "bare_time_metric_mixed": bare_time_metric_mixed,
+        "specialist_metric_mixed": specialist_metric_mixed,
         "intents": ordered,
     }
 
@@ -700,12 +777,16 @@ def _evaluate_discuss_match(message: str) -> dict[str, Any] | None:
 def list_matched_discuss_intents(message: str) -> tuple[str, ...]:
     """Return priority-ordered matched landed intents for RI-8 composition.
 
-    Empty when unmatched, hard-residual blocked, or soft residual with no
-    landed specialist owner. Does not return the ``mixed_ask`` sentinel.
+    Empty when unmatched, hard-residual with no specialist owner, or soft
+    residual with no landed specialist owner. Does not return the
+    ``mixed_ask`` sentinel.
     """
     state = _evaluate_discuss_match(message)
-    if state is None or state["hard_residual"]:
+    if state is None:
         return ()
+    if state["hard_residual"]:
+        # §4.1 step 3: keep landed specialists; residual still blocks overview/metric.
+        return tuple(intent for intent in state["intents"] if intent in _LANDED_SPECIALIST_INTENTS)
     if state["soft_residual"] and not state["specialists"] and not state["bare_time_metric_mixed"]:
         return ()
     # state["intents"] already includes metric when bare-time×metric mixed
@@ -718,7 +799,12 @@ def list_matched_metric_paths(message: str) -> tuple[str, ...]:
     state = _evaluate_discuss_match(message)
     if state is None or state["hard_residual"]:
         return ()
-    if not (state["single_metric"] or state["multi_metric"] or state["bare_time_metric_mixed"]):
+    if not (
+        state["single_metric"]
+        or state["multi_metric"]
+        or state["bare_time_metric_mixed"]
+        or state["specialist_metric_mixed"]
+    ):
         return ()
     return state["metric_paths"]
 
@@ -736,16 +822,21 @@ def match_discuss_intent(message: str) -> str | None:
     if state is None:
         return None
 
-    # §4.1 step 3: hard residual (bare ranking) blocks specialists → None.
-    # Also hard-refuses single_metric (§4.5) so IS leaves cannot launder residual asks.
-    if state["hard_residual"]:
-        return None
-
     specialists = list(state["specialists"])
     overview_count = state["overview_count"]
     soft_residual = state["soft_residual"]
     single_metric = state["single_metric"]
     multi_metric = state["multi_metric"]
+
+    # §4.1 step 3: hard residual blocks overview / single_metric. A landed
+    # specialist that does not own the residual cue may still answer
+    # (e.g. bare ``ranking`` + costs → assumptions_costs).
+    if state["hard_residual"]:
+        if len(specialists) >= 2:
+            return INTENT_MIXED_ASK
+        if len(specialists) == 1:
+            return specialists[0]
+        return None
 
     # Bare time × metric → mixed_ask (RI-8 composes time + metric).
     if state["bare_time_metric_mixed"]:
@@ -2088,6 +2179,15 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             return f"Best time bucket is {text}."
         # KPI allowlist is numeric; skip other non-numeric strings.
         return None
+    # Instrument may be a mapping with symbol/name in real packets.
+    if isinstance(value, Mapping) and (
+        path == "assumptions.instrument" or path.endswith("assumptions.instrument")
+    ):
+        for key in ("symbol", "name", "id", "instrument"):
+            item = value.get(key)
+            if isinstance(item, str) and item.strip():
+                return f"Instrument is {item.strip()}."
+        return None
     return None
 
 
@@ -2378,13 +2478,20 @@ def compose_deterministic_replies(
     seen_claim_paths: set[str] = set()
     answered: list[str] = []
 
+    assumptions_path_set = set(ASSUMPTIONS_CLAIM_PATHS)
+
     def _absorb(reply) -> bool:
         if reply is None or not getattr(reply, "claims", ()):
             return False
         new_claims = [claim for claim in reply.claims if claim.path not in seen_claim_paths]
         if not new_claims:
             return False
-        text = str(getattr(reply, "summary", "") or "").strip()
+        # Full-slice summary when nothing overlapped; otherwise narrate only new
+        # claims so shared grid×assumptions cost leaves are not restated.
+        if len(new_claims) == len(reply.claims):
+            text = str(getattr(reply, "summary", "") or "").strip()
+        else:
+            text = "; ".join(claim.text.rstrip(".") for claim in new_claims) + "."
         if text:
             summary_parts.append(text)
         for claim in new_claims:
@@ -2408,9 +2515,31 @@ def compose_deterministic_replies(
         if intent == INTENT_GRID_RANKING:
             if not has_grid_ranking_evidence(working):
                 continue
-            if _absorb(
-                build_deterministic_grid_ranking_reply(packet, working, apply_overlay=False)
+            grid_reply = build_deterministic_grid_ranking_reply(
+                packet, working, apply_overlay=False
+            )
+            # When costs are also asked, let assumptions own shared cost leaves.
+            if (
+                grid_reply is not None
+                and INTENT_ASSUMPTIONS_COSTS in matched
+                and getattr(grid_reply, "claims", ())
             ):
+                kept = tuple(
+                    claim for claim in grid_reply.claims if claim.path not in assumptions_path_set
+                )
+                if kept and len(kept) != len(grid_reply.claims):
+                    grid_reply = _reply_without_overlay(
+                        summary=(
+                            "Best SL/TP grid ranking: "
+                            + "; ".join(claim.text.rstrip(".") for claim in kept)
+                            + "."
+                        ),
+                        caveats=tuple(getattr(grid_reply, "caveats", ()) or ()),
+                        claims=kept,
+                        followups=tuple(getattr(grid_reply, "followups", ()) or ()),
+                        recovery_reason=getattr(grid_reply, "recovery_reason", None),
+                    )
+            if _absorb(grid_reply):
                 _mark(intent)
         elif intent == INTENT_TIME_RANKING:
             if not has_time_ranking_evidence(working):
@@ -2433,6 +2562,13 @@ def compose_deterministic_replies(
                 _mark(intent)
         elif intent == INTENT_ASSUMPTIONS_COSTS:
             if not has_assumptions_costs_evidence(working):
+                continue
+            present_assumption_paths = present_assumptions_allowlist(working)
+            if present_assumption_paths and all(
+                path in seen_claim_paths for path in present_assumption_paths
+            ):
+                # Fully covered by earlier grid cost honesty leaves.
+                _mark(intent)
                 continue
             if _absorb(build_deterministic_assumptions_reply(packet, working, apply_overlay=False)):
                 _mark(intent)
@@ -2467,7 +2603,7 @@ def compose_deterministic_replies(
                 _mark(intent)
 
     # No partial topic-swap: every matched intent must contribute claims
-    # (single_metric may be marked answered when fully covered by KPI).
+    # (single_metric may be KPI-covered; assumptions may be grid-cost-covered).
     required = list(matched)
     if not claims or any(intent not in answered for intent in required):
         return build_mixed_ask_remediation_reply(
@@ -2538,6 +2674,7 @@ def build_missing_assumptions_limitation_reply(
     packet: EvidencePacket,
     *,
     recovery_reason: str | None = REASON_MISSING_ASSUMPTIONS,
+    evidence_context: Mapping[str, Any] | None = None,
 ):
     """Digit-free missing assumptions/costs limitation (RI-6 short-circuit)."""
     from thesistester.assistant.results_qa import ResultsQAReply
@@ -2546,10 +2683,16 @@ def build_missing_assumptions_limitation_reply(
         "I cannot answer costs or run-assumption questions because those "
         "assumption leaves are not present on this run."
     )
-    followups = (
+    followups_list = [
         "Ask for the key metrics or a summary of this run.",
-        "Ask whether walk-forward or validation diagnostics are present on this packet.",
-    )
+    ]
+    if _oos_evidence_absent(packet, evidence_context=evidence_context):
+        followups_list.append("Ask which evidence paths remain available on this packet.")
+    else:
+        followups_list.append(
+            "Ask whether walk-forward or validation diagnostics are present on this packet."
+        )
+    followups = tuple(followups_list)
     caveats = merge_mandatory_packet_caveats(
         packet,
         (
@@ -2970,6 +3113,7 @@ def build_deterministic_assumptions_reply(
         return build_missing_assumptions_limitation_reply(
             packet,
             recovery_reason=recovery_reason or REASON_MISSING_ASSUMPTIONS,
+            evidence_context=evidence_context,
         )
 
     claims: list[EvidenceClaim] = []
@@ -2991,6 +3135,7 @@ def build_deterministic_assumptions_reply(
         return build_missing_assumptions_limitation_reply(
             packet,
             recovery_reason=recovery_reason or REASON_MISSING_ASSUMPTIONS,
+            evidence_context=evidence_context,
         )
 
     summary = "Run assumptions: " + "; ".join(summary_parts) + "."

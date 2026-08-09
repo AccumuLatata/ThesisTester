@@ -537,7 +537,8 @@ substitutions; never narrates non-bool `.available` as scalars.
 costs/exposure/intrabar/focus/instrument/dataset allowlist; missing-all
 short-circuit before LLM; catalog + decode hard-reject `trade_summary` KPI
 substitutions; configured SL/TP ticks narrate as assumption leaves (not grid
-best).
+best); how-to/docs false friends stay unmatched; grid×costs compose owns shared
+commission/slippage on the assumptions slice.
 **DI-2 landed:** first-pass Results Q&A user payloads include
 `path_catalog.existing_paths` (bounded paths present on the turn context;
 KPI + projections/validation + honesty paths reserved before fat time tables

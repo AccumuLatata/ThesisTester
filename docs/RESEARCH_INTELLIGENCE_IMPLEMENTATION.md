@@ -179,7 +179,7 @@ the sole-intent tie-break when exactly one landed intent matches; they are
 | 2 | `time_ranking` | RI-2 | `best time`, `best entry`, `entry time`, `time bucket`, `session segment`, `hour bucket`, word-boundary bare `time` / `hour` / `bucket` / `clock` (idioms `over time` / `through time` / `across time` excluded); ranking+time collocates per freeze; ✅ sunsets residual DI negatives — §4.1.1 |
 | 3 | `validation_wfa` | RI-3 | `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap`, `permutation` only with validation-sense collocates (`bootstrap`/`oos`/`wfa`/`walk-forward`/`validation`/`test`). **Not** `otf validation` (RI-5). |
 | 4 | `robustness_tier2` | RI-5 | `monte carlo`, `monte-carlo`, `overfitting`, `overfit`, `sensitivity`, `noise test`, `noise summary`, `portfolio summary`, `otf validation`, `otf-validation`. Near-miss bare `monte` / `carlo` (without a full cue) are hard residual — overview + `single_metric` refuse; never IS laundering. Bare `validation` after masking OTF phrases still lands RI-3 so `validation and otf validation` is `mixed_ask`. |
-| 5 | `assumptions_costs` | RI-6 | `commission`, `slippage`, `exposure policy`, `intrabar model`, `costs`, `assumptions` (run-assumption sense; not Help how-to) |
+| 5 | `assumptions_costs` | RI-6 | `commission`, `slippage`, `exposure policy`, `intrabar model`, `costs`/`cost`, `assumptions`/`assumption` (run-assumption sense). Configured/assumed `stop loss` / `take profit` land here (not best-grid) unless `best`/`grid`/`ranking` ownership collocates are also present. Help how-to / docs collocates (`how to`, `how do i`, `in the docs`, …) stay unmatched. |
 | 6 | `single_metric` | RI-4 | Frozen metric-noun table (§4.5) with define/value collocates (`what is`, `what's`, `whats`, `show`, `give me`) — **not** bare nouns alone; hard-refuse when residual/specialist collocates present (§4.5) |
 | 7 | `kpi_summary` | DI (unchanged cues) | Existing DI KPI positive cues |
 | 8 | `run_overview` | DI (unchanged cues) | Existing DI run-overview positive cues |
@@ -411,14 +411,19 @@ allowlist. Non-bool `.available` leaves are not narratable.
 | `assumptions.costs_exposure.commission_per_side` | Commission |
 | `assumptions.costs_exposure.slippage_ticks` | Slippage |
 | `assumptions.costs_exposure.exposure_policy` | Exposure |
-| `assumptions.costs_exposure.intrabar_model` | Intrabar |
+| `assumptions.costs_exposure.intrabar_model` | Intrabar (costs nest) |
+| `assumptions.intrabar.intrabar_model` | Intrabar (primary policy nest) |
 | `assumptions.costs_exposure.stop_loss_ticks` | Configured SL (not grid best) |
 | `assumptions.costs_exposure.take_profit_ticks` | Configured TP |
 | `assumptions.entry_window.focus.enabled` | Focus flag (if present) |
-| `assumptions.instrument` | Instrument identity |
+| `assumptions.instrument` | Instrument identity (string or `{symbol\|name\|id}`) |
 | `assumptions.dataset.dataset_fingerprint` | Dataset identity when present |
 
-No performance KPIs in this builder.
+No performance KPIs in this builder. Decode hard-rejects claim paths outside
+`ASSUMPTIONS_CLAIM_PATHS` (catalog `existing_paths` = present allowlist only).
+Missing-all followups suppress WFA-presence coaching when OOS is already
+absent. Compose: when `grid_ranking` + `assumptions_costs` both match, grid
+omits shared cost leaves so assumptions owns commission/slippage narration.
 
 ### 4.7 Mixed-ask composition (RI-8)
 
