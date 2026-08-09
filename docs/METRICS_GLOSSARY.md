@@ -494,6 +494,8 @@ overlay trade universe (`_display_trades`) when Focus is active.
 | `example_raw_level_names` | Raw `level_names` from the earliest trade in the combo group (`entry_timestamp`, then `trade_id`) |
 | Membership (`level_name`) | One row per distinct token present on a trade; **double-counts** multi-level trades |
 | Parsed level count | Distinct parsed token count from `level_names` (not stored zone `level_count`) |
+| Soft pair (`pair_key`) | Generic unordered canonical `A\|B`, or anchor-partner `anchor\|support` when signal-run mode is `anchor_rules` with known `anchor_level` |
+| `pair_mode` | `generic` or `anchor_partner` label for the pair row / summary |
 | `trade_count` | Rows in group with non-null `r_multiple` |
 | `win_rate` | Share of `r_multiple > 0` among non-null `r_multiple` (breakeven `0` is not a win) |
 | `avg_r` / `median_r` / `total_r` | Mean / median / sum of non-null `r_multiple` |
@@ -501,7 +503,8 @@ overlay trade universe (`_display_trades`) when Focus is active.
 | `available` | `True` only when `level_names` exists and ≥1 analyzable trade has a non-empty parsed combo |
 
 **Partition vs double-count:** exact-combo rows partition the analyzable trade
-universe (`sum(trade_count)` / `sum(total_r)` match). Membership does not.
+universe (`sum(trade_count)` / `sum(total_r)` match). Membership and soft pairs
+do not (a 3-level trade contributes three generic pairs).
 
 **Null-R convention vs sibling Breakdown tabs:** combo attribution excludes null
 `r_multiple` from denominators (same family as `summarize_trades` / prev30m hit

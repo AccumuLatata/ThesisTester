@@ -5,6 +5,7 @@ Pure helpers for Backtest research views:
 - exact combo (canonical sorted ``level_names`` sets)
 - level membership (double-counting participants)
 - parsed level-count buckets
+- soft pairwise attribution (generic pairs or anchor-partner pairs)
 
 No zone / signal / fill engine changes. Summaries return **all** groups with
 ``sample_warning``; UI owns hide-below-``min_trades`` presentation filtering.
@@ -12,6 +13,7 @@ No zone / signal / fill engine changes. Summaries return **all** groups with
 
 from __future__ import annotations
 
+from itertools import combinations
 from typing import Any, Mapping
 
 import numpy as np
@@ -27,10 +29,21 @@ EXAMPLE_RAW_COL = "example_raw_level_names"
 LEVEL_NAME_COL = "level_name"
 LEVEL_COUNT_BUCKET_COL = "level_count_bucket"
 LEVEL_TOKEN_COUNT_COL = "level_token_count"
+PAIR_KEY_COL = "pair_key"
+PAIR_MODE_COL = "pair_mode"
+
+PAIR_MODE_GENERIC = "generic"
+PAIR_MODE_ANCHOR_PARTNER = "anchor_partner"
 
 MEMBERSHIP_DOUBLE_COUNT_WARNING = (
     "Membership attribution double-counts trades across levels. "
     "Use it to find useful participants, not as an additive PnL decomposition."
+)
+PAIRWISE_DOUBLE_COUNT_WARNING = (
+    "Pairwise attribution double-counts trades across pairs. "
+    "A trade with three levels contributes to three generic pairs, so pair-view "
+    "total_r can exceed book total_r. Diagnostic only — not an additive PnL "
+    "decomposition."
 )
 TRIGGER_3C_LEVEL_NAMES_WARNING = (
     "For 3c, level_names may be the tested level only, not full zone membership."
@@ -343,6 +356,113 @@ def summarize_by_level_count(
     return _summarize_r(analyzable, LEVEL_COUNT_BUCKET_COL, min_trades)
 
 
+def pair_keys_for_tokens(
+    tokens: list[str] | tuple[str, ...] | set[str],
+    *,
+    anchor_level: str | None = None,
+) -> list[str]:
+    """Return soft pair keys for one trade's distinct level tokens.
+
+    If ``anchor_level`` is present in the token set, emit anchor-partner keys
+    ``anchor|support`` for each non-anchor support. Otherwise emit all unordered
+    generic pairs as canonical sorted ``A|B`` keys. Never guesses an anchor.
+    """
+    uniq = parse_level_names(list(tokens))
+    if len(uniq) < 2:
+        return []
+
+    anchor = str(anchor_level).strip() if anchor_level is not None else ""
+    if anchor and anchor in set(uniq):
+        partners = sorted(token for token in uniq if token != anchor)
+        return [f"{anchor}|{partner}" for partner in partners]
+
+    return ["|".join(pair) for pair in combinations(sorted(uniq), 2)]
+
+
+def summarize_by_level_pairs(
+    trades: pd.DataFrame,
+    *,
+    min_trades: int = 10,
+    anchor_level: str | None = None,
+    confluence_mode: str | None = None,
+) -> pd.DataFrame:
+    """Soft pairwise R attribution (double-counts across pairs).
+
+    Anchor-partner mode is used only when ``confluence_mode == "anchor_rules"``
+    and ``anchor_level`` is a non-empty string. For each trade, if that anchor is
+    present in the trade tokens, emit ``anchor|support`` pairs; otherwise fall
+    back to generic unordered pairs for that trade. Global / unknown mode always
+    uses generic pairs. Trades with fewer than two distinct tokens contribute no
+    pair rows.
+    """
+    empty = _empty_group_frame(PAIR_KEY_COL, [PAIR_MODE_COL])
+    if trades is None or not isinstance(trades, pd.DataFrame):
+        return empty
+    if trades.empty or "level_names" not in trades.columns:
+        return empty
+    if "r_multiple" not in trades.columns:
+        return empty
+
+    attached = attach_combo_columns(trades)
+    analyzable = attached.dropna(subset=["r_multiple"]).copy()
+    if analyzable.empty:
+        return empty
+
+    analyzable = analyzable.loc[analyzable[LEVEL_TOKEN_COUNT_COL] >= 2].copy()
+    if analyzable.empty:
+        return empty
+
+    use_anchor = None
+    if confluence_mode == "anchor_rules" and anchor_level is not None:
+        candidate = str(anchor_level).strip()
+        if candidate:
+            use_anchor = candidate
+
+    pair_rows: list[dict[str, Any]] = []
+    for _, row in analyzable.iterrows():
+        tokens = parse_level_names(row.get("level_names"))
+        if use_anchor and use_anchor in set(tokens):
+            keys = pair_keys_for_tokens(tokens, anchor_level=use_anchor)
+            mode = PAIR_MODE_ANCHOR_PARTNER
+        else:
+            keys = pair_keys_for_tokens(tokens, anchor_level=None)
+            mode = PAIR_MODE_GENERIC
+        if not keys:
+            continue
+        r_multiple = row.get("r_multiple")
+        for key in keys:
+            pair_rows.append(
+                {
+                    PAIR_KEY_COL: key,
+                    PAIR_MODE_COL: mode,
+                    "r_multiple": r_multiple,
+                }
+            )
+
+    if not pair_rows:
+        return empty
+
+    exploded = pd.DataFrame(pair_rows)
+    summarized = _summarize_r(exploded, PAIR_KEY_COL, min_trades)
+    if summarized.empty:
+        return empty
+
+    # pair_mode can mix if some trades lacked the anchor; prefer anchor_partner.
+    mode_by_key = (
+        exploded.groupby(PAIR_KEY_COL, sort=False)[PAIR_MODE_COL]
+        .agg(
+            lambda values: (
+                PAIR_MODE_ANCHOR_PARTNER
+                if PAIR_MODE_ANCHOR_PARTNER in set(values.astype(str))
+                else PAIR_MODE_GENERIC
+            )
+        )
+        .reset_index()
+    )
+    merged = summarized.merge(mode_by_key, on=PAIR_KEY_COL, how="left")
+    return merged[[PAIR_KEY_COL, PAIR_MODE_COL, *_GROUP_METRIC_COLS]]
+
+
 def _empty_summary(min_trades: int = 10) -> dict[str, Any]:
     _ = min_trades  # kept for signature symmetry / future defaults
     return {
@@ -353,6 +473,8 @@ def _empty_summary(min_trades: int = 10) -> dict[str, Any]:
         "by_exact_combo": _empty_group_frame(EXACT_COMBO_KEY_COL, [EXAMPLE_RAW_COL]),
         "by_membership": _empty_group_frame(LEVEL_NAME_COL),
         "by_level_count": _empty_group_frame(LEVEL_COUNT_BUCKET_COL),
+        "by_pairs": _empty_group_frame(PAIR_KEY_COL, [PAIR_MODE_COL]),
+        "pair_mode": PAIR_MODE_GENERIC,
         "warnings": [],
     }
 
@@ -361,9 +483,20 @@ def confluence_attribution_summary(
     trades: pd.DataFrame,
     *,
     min_trades: int = 10,
+    anchor_level: str | None = None,
+    confluence_mode: str | None = None,
 ) -> dict[str, Any]:
-    """Bundle availability plus the three unfiltered attribution frames."""
+    """Bundle availability plus unfiltered attribution frames (incl. pairs)."""
     result = _empty_summary(min_trades)
+    pair_mode = (
+        PAIR_MODE_ANCHOR_PARTNER
+        if confluence_mode == "anchor_rules"
+        and isinstance(anchor_level, str)
+        and bool(anchor_level.strip())
+        else PAIR_MODE_GENERIC
+    )
+    result["pair_mode"] = pair_mode
+
     if trades is None or not isinstance(trades, pd.DataFrame):
         return result
     if "level_names" not in trades.columns:
@@ -385,10 +518,19 @@ def confluence_attribution_summary(
             return [TRIGGER_3C_LEVEL_NAMES_WARNING]
         return []
 
+    def _pair_frame() -> pd.DataFrame:
+        return summarize_by_level_pairs(
+            trades,
+            min_trades=min_trades,
+            anchor_level=anchor_level,
+            confluence_mode=confluence_mode,
+        )
+
     if trade_count == 0:
         result["by_exact_combo"] = summarize_by_exact_combo(trades, min_trades=min_trades)
         result["by_membership"] = summarize_by_level_membership(trades, min_trades=min_trades)
         result["by_level_count"] = summarize_by_level_count(trades, min_trades=min_trades)
+        result["by_pairs"] = _pair_frame()
         result["warnings"] = _displayed_trigger_warnings()
         return result
 
@@ -402,6 +544,7 @@ def confluence_attribution_summary(
     result["by_exact_combo"] = summarize_by_exact_combo(trades, min_trades=min_trades)
     result["by_membership"] = summarize_by_level_membership(trades, min_trades=min_trades)
     result["by_level_count"] = summarize_by_level_count(trades, min_trades=min_trades)
+    result["by_pairs"] = _pair_frame()
 
     trigger_warnings = _displayed_trigger_warnings()
     if nonempty_count <= 0:
@@ -409,7 +552,8 @@ def confluence_attribution_summary(
         return result
 
     result["available"] = True
-    result["warnings"] = [MEMBERSHIP_DOUBLE_COUNT_WARNING, *trigger_warnings]
+    warnings = [MEMBERSHIP_DOUBLE_COUNT_WARNING, PAIRWISE_DOUBLE_COUNT_WARNING, *trigger_warnings]
+    result["warnings"] = warnings
     return result
 
 

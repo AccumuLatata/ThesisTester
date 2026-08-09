@@ -49,6 +49,10 @@ from thesistester.analytics.confluence_attribution import (
     LEVEL_COUNT_BUCKET_COL,
     LEVEL_NAME_COL,
     MEMBERSHIP_DOUBLE_COUNT_WARNING,
+    PAIR_KEY_COL,
+    PAIR_MODE_ANCHOR_PARTNER,
+    PAIR_MODE_COL,
+    PAIRWISE_DOUBLE_COUNT_WARNING,
     TRIGGER_3C_LEVEL_NAMES_WARNING,
     apply_sample_warning_filter,
     confluence_attribution_summary,
@@ -1116,6 +1120,7 @@ if _display_has_trades:
             "proof of future edge."
         )
         st.caption(MEMBERSHIP_DOUBLE_COUNT_WARNING)
+        st.caption(PAIRWISE_DOUBLE_COUNT_WARNING)
 
         _cca_min_trades = st.number_input(
             "Minimum trades for sample warning",
@@ -1131,10 +1136,18 @@ if _display_has_trades:
             key="backtest_cca_hide_below_min",
         )
 
+        _anchor_level = None
+        if _confluence_mode == "anchor_rules":
+            _raw_anchor = _setup_for_cca.get("anchor_level")
+            if isinstance(_raw_anchor, str) and _raw_anchor.strip():
+                _anchor_level = _raw_anchor.strip()
+
         try:
             _cca_summary = confluence_attribution_summary(
                 _display_trades,
                 min_trades=int(_cca_min_trades),
+                anchor_level=_anchor_level,
+                confluence_mode=_confluence_mode,
             )
         except (TypeError, ValueError, KeyError):
             _cca_summary = {"available": False, "trade_count": 0, "warnings": []}
@@ -1166,14 +1179,8 @@ if _display_has_trades:
                 f"Non-empty combos: {int(_cca_summary.get('nonempty_combo_trade_count') or 0)}"
             )
 
-            _anchor_level = None
-            if _confluence_mode == "anchor_rules":
-                _raw_anchor = _setup_for_cca.get("anchor_level")
-                if isinstance(_raw_anchor, str) and _raw_anchor.strip():
-                    _anchor_level = _raw_anchor.strip()
-
-            _tab_exact, _tab_member, _tab_count = st.tabs(
-                ["Exact combo", "Membership", "Level count"]
+            _tab_exact, _tab_member, _tab_count, _tab_pairs = st.tabs(
+                ["Exact combo", "Membership", "Level count", "Pairs"]
             )
 
             with _tab_exact:
@@ -1274,6 +1281,54 @@ if _display_has_trades:
                         if c in _count_view.columns
                     ]
                     st.dataframe(_count_view[_count_cols], width="stretch", hide_index=True)
+
+            with _tab_pairs:
+                st.caption(PAIRWISE_DOUBLE_COUNT_WARNING)
+                if (
+                    _confluence_mode == "anchor_rules"
+                    and _anchor_level
+                    and _cca_summary.get("pair_mode") == PAIR_MODE_ANCHOR_PARTNER
+                ):
+                    st.caption(
+                        f"Anchor-partner mode: pairs are `{_anchor_level}|support` for each "
+                        "support present with the anchor on a trade. Trades missing the "
+                        "anchor fall back to generic unordered pairs. Anchor is never "
+                        "guessed from token order."
+                    )
+                else:
+                    st.caption(
+                        "Generic pair mode: all unordered distinct level pairs on each "
+                        "trade (`A|B` canonical). Anchor-partner mode requires "
+                        "`anchor_rules` plus a known session/signal-run anchor level."
+                    )
+                _pairs = apply_sample_warning_filter(
+                    _cca_summary.get("by_pairs"),
+                    hide_below_min=bool(_cca_hide_thin),
+                )
+                if _pairs is None or (isinstance(_pairs, pd.DataFrame) and _pairs.empty):
+                    st.info(
+                        "No pair rows to display under the current filter "
+                        "(need trades with at least two distinct level names)."
+                    )
+                else:
+                    _pairs_view = _pairs.rename(
+                        columns={PAIR_KEY_COL: "pair", PAIR_MODE_COL: "pair_mode"}
+                    )
+                    _pair_cols = [
+                        c
+                        for c in [
+                            "pair",
+                            "pair_mode",
+                            "trade_count",
+                            "win_rate",
+                            "avg_r",
+                            "median_r",
+                            "total_r",
+                            "sample_warning",
+                        ]
+                        if c in _pairs_view.columns
+                    ]
+                    st.dataframe(_pairs_view[_pair_cols], width="stretch", hide_index=True)
 
 # Full trade table
 if _display_has_trades:

@@ -1,6 +1,6 @@
 # Regression-Safe Implementation Plan: Confluence Combo Attribution (Backtest)
 
-**Status:** Phase 1 + Phase 2 implemented (analytics helpers + Backtest expander UI + honesty docs)  
+**Status:** Phase 1 + Phase 2 + Phase 4 implemented (MVP + soft pairwise attribution)  
 **Document type:** Focused analytics / Backtest UX implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related docs:**  
@@ -562,7 +562,7 @@ level remain in the selected set?”
 
 | Idea | Priority after MVP | Why deferred |
 |---|---|---|
-| Soft pairwise **attribution** view | **High — ship soon after PR 2** | Main nested-set / “anchor partner quality” unlock; still analytics-only |
+| Soft pairwise **attribution** view | **Shipped (Phase 4)** | Main nested-set / “anchor partner quality” unlock; still analytics-only |
 | Direction × combo / CSV / top-N polish | Medium — if cardinality or export pain appears | UX convenience, not research-critical |
 | Pairwise **engine** emission (one zone per valid rule when min=1) | Low / likely never default | Changes trade counts / overlap / exposure; needs own golden-gated plan |
 | Stamping `setup_name` / `confluence_mode` onto trades | Low for single-run Backtest | Additive schema; captions already read session `setup_config` |
@@ -1015,7 +1015,7 @@ No blocking open questions remain for PR 1–2.
 | Phase 0 | This proposal (+ 2026-08-09 review locks + polish) | Complete |
 | Phase 1 | PR 1 analytics helpers | **Implemented** (`thesistester/analytics/confluence_attribution.py`, `tests/test_confluence_attribution.py`) |
 | Phase 2 | PR 2 Backtest expander UI + docs | **Implemented** (`pages/7_Backtest.py` expander; ASSUMPTIONS / METRICS_GLOSSARY / ARCHITECTURE) |
-| Phase 4 | PR 4 soft pairwise attribution (recommended next) | Not started |
+| Phase 4 | PR 4 soft pairwise attribution | **Implemented** (`summarize_by_level_pairs` + Backtest **Pairs** tab) |
 | Phase 3 | PR 3 cross-tab / polish (if UX pain) | Not started |
 | Phase 5 | Downstream consumers | Not started |
 
