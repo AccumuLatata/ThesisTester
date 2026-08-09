@@ -32,6 +32,18 @@ LEVEL_TOKEN_COUNT_COL = "level_token_count"
 PAIR_KEY_COL = "pair_key"
 PAIR_MODE_COL = "pair_mode"
 
+# Opt-in Time Analysis group dims (PR 5a). Append-only; never Focus/Promote dims.
+COMBO_TIME_ANALYSIS_GROUP_COLS: tuple[str, ...] = (
+    EXACT_COMBO_KEY_COL,
+    LEVEL_COUNT_BUCKET_COL,
+)
+
+TIME_ANALYSIS_COMBO_DIAGNOSTIC_CAPTION = (
+    "Combo / level-count grouping is post-trade diagnostic only: observed traded "
+    "combinations from recorded `level_names`, with selection effects. Not a new "
+    "signal model."
+)
+
 PAIR_MODE_GENERIC = "generic"
 PAIR_MODE_ANCHOR_PARTNER = "anchor_partner"
 
@@ -170,6 +182,101 @@ def attach_combo_columns(trades: pd.DataFrame) -> pd.DataFrame:
     )
     out[LEVEL_TOKEN_COUNT_COL] = parsed.map(len).astype("int64")
     return out
+
+
+def level_count_bucket_label(token_count: Any) -> str:
+    """View-C level-count label: ``0 → "(unknown)"``, else the count as text.
+
+    Non-zero counts are stringified (``"1"``, ``"2"``, …) so Time Analysis
+    ``summarize_by_group`` can sort the dim without mixed int/str TypeErrors,
+    while still matching Backtest Level count semantics (no raw ``0`` bucket).
+    """
+    try:
+        count = int(token_count)
+    except (TypeError, ValueError):
+        return UNKNOWN_LEVEL_COUNT_LABEL
+    if count == 0:
+        return UNKNOWN_LEVEL_COUNT_LABEL
+    return str(count)
+
+
+def attach_level_count_bucket(trades: pd.DataFrame) -> pd.DataFrame:
+    """Return a copy with combo columns plus View-C ``level_count_bucket``.
+
+    Used by Time Analysis opt-in count grouping so labels match Backtest
+    Level count (never a raw integer ``0`` dim).
+    """
+    out = attach_combo_columns(trades)
+    if out.empty and LEVEL_TOKEN_COUNT_COL not in out.columns:
+        out[LEVEL_COUNT_BUCKET_COL] = pd.Series(dtype="object")
+        return out
+    out[LEVEL_COUNT_BUCKET_COL] = out[LEVEL_TOKEN_COUNT_COL].map(level_count_bucket_label)
+    return out
+
+
+def confluence_combo_grouping_available(trades: pd.DataFrame) -> bool:
+    """True when Time Analysis may offer combo/count group dims.
+
+    Equivalent to ``confluence_attribution_summary(...).available``: needs
+    ``level_names``, non-null ``r_multiple``, and ≥1 nonempty parsed combo.
+    Column presence alone is not enough.
+    """
+    if trades is None or not isinstance(trades, pd.DataFrame):
+        return False
+    if "level_names" not in trades.columns or "r_multiple" not in trades.columns:
+        return False
+    attached = attach_combo_columns(trades)
+    analyzable = attached.dropna(subset=["r_multiple"])
+    if analyzable.empty:
+        return False
+    return bool((analyzable[LEVEL_TOKEN_COUNT_COL] > 0).any())
+
+
+def append_confluence_time_analysis_group_options(
+    options: list[str],
+    *,
+    available: bool,
+    columns: Any,
+) -> list[str]:
+    """Append combo/count dims after existing options when the available gate holds.
+
+    Never prepends (preserves Time Analysis ``index=0`` time-bucket default).
+    Does not add pairs or membership dims.
+    """
+    out = list(options)
+    if not available:
+        return out
+    present = set(columns) if columns is not None else set()
+    for col in COMBO_TIME_ANALYSIS_GROUP_COLS:
+        if col in present and col not in out:
+            out.append(col)
+    return out
+
+
+def time_analysis_combo_group_caption(
+    trades: pd.DataFrame,
+    selected_group_cols: list[str] | tuple[str, ...] | str | None,
+) -> str | None:
+    """Honesty caption when a combo/count Time Analysis dim is selected."""
+    if selected_group_cols is None:
+        return None
+    if isinstance(selected_group_cols, str):
+        selected = [selected_group_cols]
+    else:
+        selected = [str(col) for col in selected_group_cols if col]
+    if not any(col in COMBO_TIME_ANALYSIS_GROUP_COLS for col in selected):
+        return None
+
+    parts = [TIME_ANALYSIS_COMBO_DIAGNOSTIC_CAPTION]
+    if (
+        trades is not None
+        and isinstance(trades, pd.DataFrame)
+        and not trades.empty
+        and "trigger" in trades.columns
+        and (trades["trigger"].astype(str) == "3c").any()
+    ):
+        parts.append(TRIGGER_3C_LEVEL_NAMES_WARNING)
+    return " ".join(parts)
 
 
 def _clamp_min_trades(min_trades: int) -> int:
@@ -345,14 +452,11 @@ def summarize_by_level_count(
     if "r_multiple" not in trades.columns:
         return empty
 
-    attached = attach_combo_columns(trades)
+    attached = attach_level_count_bucket(trades)
     analyzable = attached.dropna(subset=["r_multiple"]).copy()
     if analyzable.empty:
         return empty
 
-    analyzable[LEVEL_COUNT_BUCKET_COL] = analyzable[LEVEL_TOKEN_COUNT_COL].map(
-        lambda count: UNKNOWN_LEVEL_COUNT_LABEL if int(count) == 0 else int(count)
-    )
     return _summarize_r(analyzable, LEVEL_COUNT_BUCKET_COL, min_trades)
 
 

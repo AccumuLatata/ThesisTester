@@ -1,6 +1,6 @@
 # Regression-Safe Implementation Plan: Confluence Combo Attribution (Backtest)
 
-**Status:** Phase 1 + Phase 2 + Phase 4 implemented; Phase 5a–5d detailed scope locked (implementation not started)  
+**Status:** Phase 1 + Phase 2 + Phase 4 + Phase 5a implemented; Phase 5b–5d scoped (implementation not started); optional PR 3 polish remains after 5a–5d
 **Document type:** Focused analytics / Backtest UX implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related docs:**  
@@ -582,7 +582,7 @@ level remain in the selected set?”
 | Idea | Status | Note |
 |---|---|---|
 | Soft pairwise **attribution** view | **Shipped (Phase 4)** | Analytics-only; Backtest **Pairs** tab |
-| Time Analysis **opt-in** combo / parsed level-count group dims | **Scoped (Phase 5a)** | Appended only when `available=True`; count dim = `level_count_bucket`; default primary stays a time bucket |
+| Time Analysis **opt-in** combo / parsed level-count group dims | **Implemented (Phase 5a)** | Appended only when `available=True`; count dim = `level_count_bucket`; default primary stays a time bucket |
 | Report export diagnostic combo section | **Scoped (Phase 5b)** | Omit when unavailable; on-export recompute |
 | Research-bundle optional combo JSON/parquet siblings | **Scoped (Phase 5c)** | On-export recompute; no `BUNDLE_SCHEMA_VERSION` bump |
 | Assistant **cite-bound** combo projections | **Scoped (Phase 5d)** | Bounded `results.projections.confluence_combo` leaves only |
@@ -1367,12 +1367,12 @@ No blocking open questions remain for PR 1–2.
 | Phase 1 | PR 1 analytics helpers | **Implemented** (`thesistester/analytics/confluence_attribution.py`, `tests/test_confluence_attribution.py`) |
 | Phase 2 | PR 2 Backtest expander UI + docs | **Implemented** (`pages/7_Backtest.py` expander; ASSUMPTIONS / METRICS_GLOSSARY / ARCHITECTURE) |
 | Phase 4 | PR 4 soft pairwise attribution | **Implemented** (`summarize_by_level_pairs` + Backtest **Pairs** tab) |
-| Phase 5 | PR 5a–5d downstream consumers | **Scoped** (detailed locks + 2026-08-09 completeness amendment); implementation not started; may precede PR 3 |
-| Phase 5a | Time Analysis opt-in combo/count groups | Not started (`exact_combo_key` + `level_count_bucket`; append when `available`) |
+| Phase 5 | PR 5a–5d downstream consumers | **5a implemented**; 5b–5d still scoped; may precede optional PR 3 |
+| Phase 5a | Time Analysis opt-in combo/count groups | **Implemented** (`attach_level_count_bucket` + append `exact_combo_key` / `level_count_bucket` when available) |
 | Phase 5b | Report export diagnostic section | Not started (on-export recompute; omit-when-unavailable) |
 | Phase 5c | Bundle optional artifacts | Not started (on-export recompute; no producer session keys) |
 | Phase 5d | Assistant cite-bound projection | Not started (trades recompute; 5c not required) |
-| Phase 3 | PR 3 cross-tab / polish (if UX pain) | Not started (optional; after or between 5x if needed) |
+| Phase 3 | PR 3 cross-tab / polish (if UX pain) | Not started (optional; after 5a–5d) |
 
 ---
 

@@ -487,6 +487,11 @@ Post-trade grouped R metrics from `thesistester/analytics/confluence_attribution
 shown in the Backtest expander **Confluence combo attribution**. Uses the Focus
 overlay trade universe (`_display_trades`) when Focus is active.
 
+Time Analysis may optionally select `exact_combo_key` or `level_count_bucket` as
+primary/secondary grouping dims when `available` would be true; defaults remain
+time buckets. Time Analysis metrics then use the richer `summarize_by_group`
+contract (not the lean Backtest combo `_summarize_r` tables).
+
 | Name | Definition |
 |---|---|
 | `exact_combo_key` | Canonical sorted `\|`-joined distinct tokens from trade `level_names`; empty/null/`nan` → `__empty__` |
@@ -494,6 +499,7 @@ overlay trade universe (`_display_trades`) when Focus is active.
 | `example_raw_level_names` | Raw `level_names` from the earliest trade in the combo group (`entry_timestamp`, then `trade_id`) |
 | Membership (`level_name`) | One row per distinct token present on a trade; **double-counts** multi-level trades |
 | Parsed level count | Distinct parsed token count from `level_names` (not stored zone `level_count`) |
+| `level_count_bucket` | View-C count label for grouping: parsed count `0` → `(unknown)`, else the count as text (`"1"`, `"2"`, …) |
 | Soft pair (`pair_key`) | Generic unordered canonical `A\|B`, or anchor-partner `anchor\|support` when signal-run mode is `anchor_rules` with known `anchor_level` |
 | `pair_mode` | `generic` or `anchor_partner` label for the pair row / summary |
 | `trade_count` | Rows in group with non-null `r_multiple` |

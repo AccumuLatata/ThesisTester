@@ -336,6 +336,39 @@ def test_summarize_by_group_empty_returns_expected_columns():
         assert col in result.columns, f"Missing column in empty result: {col}"
 
 
+def test_summarize_by_group_accepts_confluence_combo_dims():
+    """PR 5a: Time Analysis keeps using summarize_by_group for combo/count dims."""
+    from thesistester.analytics.confluence_attribution import (
+        EXACT_COMBO_KEY_COL,
+        LEVEL_COUNT_BUCKET_COL,
+        UNKNOWN_LEVEL_COUNT_LABEL,
+        attach_level_count_bucket,
+    )
+
+    trades = _make_trades(
+        [
+            "2026-06-02 09:35",
+            "2026-06-02 09:50",
+            "2026-06-02 11:40",
+        ],
+        [1.0, -1.0, 2.0],
+    )
+    trades["level_names"] = ["B|A", "A|B", ""]
+    bucketed = attach_level_count_bucket(add_time_buckets(trades))
+
+    by_combo = summarize_by_group(bucketed, EXACT_COMBO_KEY_COL, min_trades=1)
+    combo_counts = by_combo.set_index(EXACT_COMBO_KEY_COL)["trade_count"].to_dict()
+    assert combo_counts["A|B"] == 2
+    assert by_combo["total_r"].sum() == pytest.approx(2.0)
+
+    by_count = summarize_by_group(bucketed, LEVEL_COUNT_BUCKET_COL, min_trades=1)
+    count_keys = set(by_count[LEVEL_COUNT_BUCKET_COL])
+    assert "2" in count_keys
+    assert UNKNOWN_LEVEL_COUNT_LABEL in count_keys
+    assert 0 not in count_keys
+    assert "0" not in count_keys
+
+
 # ---------------------------------------------------------------------------
 # C. pivot_time_metric
 # ---------------------------------------------------------------------------

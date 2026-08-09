@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from thesistester.analytics.confluence_attribution import (
+    COMBO_TIME_ANALYSIS_GROUP_COLS,
     EMPTY_LEVEL_NAMES_KEY,
     EMPTY_LEVEL_NAMES_LABEL,
     EXACT_COMBO_KEY_COL,
@@ -19,13 +20,18 @@ from thesistester.analytics.confluence_attribution import (
     PAIR_MODE_COL,
     PAIR_MODE_GENERIC,
     PAIRWISE_DOUBLE_COUNT_WARNING,
+    TIME_ANALYSIS_COMBO_DIAGNOSTIC_CAPTION,
     TRIGGER_3C_LEVEL_NAMES_WARNING,
     UNKNOWN_LEVEL_COUNT_LABEL,
+    append_confluence_time_analysis_group_options,
     apply_sample_warning_filter,
     attach_combo_columns,
+    attach_level_count_bucket,
     confluence_attribution_summary,
+    confluence_combo_grouping_available,
     exact_combo_key,
     format_display_combo,
+    level_count_bucket_label,
     pair_keys_for_tokens,
     pairs_empty_info_message,
     parse_level_names,
@@ -36,7 +42,9 @@ from thesistester.analytics.confluence_attribution import (
     summarize_by_level_count,
     summarize_by_level_membership,
     summarize_by_level_pairs,
+    time_analysis_combo_group_caption,
 )
+from thesistester.analytics.entry_window import FOCUSABLE_GROUP_COLS
 
 
 def _plan_fixture_trades() -> pd.DataFrame:
@@ -198,12 +206,12 @@ def test_level_count_uses_parsed_token_count_when_stored_disagrees():
     trades = _plan_fixture_trades()
     by_count = summarize_by_level_count(trades, min_trades=1)
     counts = by_count.set_index(LEVEL_COUNT_BUCKET_COL)["trade_count"].to_dict()
-    assert counts[2] == 2
-    assert counts[3] == 1
-    assert counts[1] == 1
+    assert counts["2"] == 2
+    assert counts["3"] == 1
+    assert counts["1"] == 1
     # Trade 5 stored level_count=3 but parsed names count=1.
-    assert 3 in counts
-    assert counts[3] == 1
+    assert "3" in counts
+    assert counts["3"] == 1
     assert UNKNOWN_LEVEL_COUNT_LABEL not in counts  # null-R empty trade excluded
 
 
@@ -566,3 +574,105 @@ def test_pairs_empty_info_message_distinguishes_filter_vs_missing_pairs():
 
     assert "two distinct level names" in pairs_empty_info_message(pd.DataFrame())
     assert "two distinct level names" in pairs_empty_info_message(None)
+
+
+# ---------------------------------------------------------------------------
+# PR 5a — Time Analysis opt-in combo / level-count group helpers
+# ---------------------------------------------------------------------------
+
+
+def test_level_count_bucket_label_view_c_unknown():
+    assert level_count_bucket_label(0) == UNKNOWN_LEVEL_COUNT_LABEL
+    assert level_count_bucket_label(1) == "1"
+    assert level_count_bucket_label(3) == "3"
+    assert level_count_bucket_label("2") == "2"
+    assert level_count_bucket_label(None) == UNKNOWN_LEVEL_COUNT_LABEL
+
+
+def test_attach_level_count_bucket_matches_view_c_labels():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -0.5, 0.5],
+            "level_names": ["A|B", "", "B|A|C"],
+            "level_count": [9, 9, 9],
+        }
+    )
+    attached = attach_level_count_bucket(trades)
+    assert EXACT_COMBO_KEY_COL in attached.columns
+    assert list(attached[LEVEL_COUNT_BUCKET_COL]) == ["2", UNKNOWN_LEVEL_COUNT_LABEL, "3"]
+    # Parsed grain, not stored level_count.
+    assert list(attached["level_token_count"]) == [2, 0, 3]
+
+
+def test_confluence_combo_grouping_available_matches_summary_gate():
+    nonempty = _plan_fixture_trades()
+    assert confluence_combo_grouping_available(nonempty) is True
+    assert confluence_attribution_summary(nonempty, min_trades=1)["available"] is True
+
+    empty_only = pd.DataFrame(
+        {"r_multiple": [1.0, -0.5], "level_names": ["", "nan"]}
+    )
+    assert confluence_combo_grouping_available(empty_only) is False
+    assert confluence_attribution_summary(empty_only, min_trades=1)["available"] is False
+
+    no_names = pd.DataFrame({"r_multiple": [1.0]})
+    assert confluence_combo_grouping_available(no_names) is False
+
+    null_r_only = pd.DataFrame(
+        {"r_multiple": [np.nan], "level_names": ["A|B"]}
+    )
+    assert confluence_combo_grouping_available(null_r_only) is False
+
+
+def test_append_confluence_time_analysis_group_options_append_only_when_available():
+    base = ["entry_rth_segment", "entry_hour_bucket", "trigger"]
+    cols = {
+        "entry_rth_segment",
+        "entry_hour_bucket",
+        "trigger",
+        EXACT_COMBO_KEY_COL,
+        LEVEL_COUNT_BUCKET_COL,
+        "pair_key",
+        "level_name",
+    }
+
+    unavailable = append_confluence_time_analysis_group_options(
+        base, available=False, columns=cols
+    )
+    assert unavailable == base
+
+    available = append_confluence_time_analysis_group_options(
+        base, available=True, columns=cols
+    )
+    assert available[:3] == base
+    assert available[-2:] == list(COMBO_TIME_ANALYSIS_GROUP_COLS)
+    # Pairs / membership must never become Time Analysis dims.
+    assert "pair_key" not in available
+    assert "level_name" not in available
+    # Default primary remains first time bucket.
+    assert available[0] == "entry_rth_segment"
+
+
+def test_time_analysis_combo_group_caption_only_when_combo_dim_selected():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0],
+            "level_names": ["A|B"],
+            "trigger": ["3c"],
+        }
+    )
+    assert time_analysis_combo_group_caption(trades, ["entry_rth_segment"]) is None
+    caption = time_analysis_combo_group_caption(trades, [EXACT_COMBO_KEY_COL])
+    assert caption is not None
+    assert TIME_ANALYSIS_COMBO_DIAGNOSTIC_CAPTION in caption
+    assert TRIGGER_3C_LEVEL_NAMES_WARNING in caption
+
+    count_caption = time_analysis_combo_group_caption(
+        trades.drop(columns=["trigger"]), LEVEL_COUNT_BUCKET_COL
+    )
+    assert count_caption == TIME_ANALYSIS_COMBO_DIAGNOSTIC_CAPTION
+
+
+def test_combo_time_analysis_dims_are_not_focusable():
+    for col in COMBO_TIME_ANALYSIS_GROUP_COLS:
+        assert col not in FOCUSABLE_GROUP_COLS

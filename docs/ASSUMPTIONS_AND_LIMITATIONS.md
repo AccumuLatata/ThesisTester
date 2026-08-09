@@ -297,6 +297,13 @@ This engine is for **research screening**, not proof of a durable edge.
 - Backtest expander **Confluence combo attribution** groups displayed trades by
   recorded `level_names` (exact canonical combo, level membership, and parsed
   token count). It does **not** change zones, signals, fills, or exposure.
+- Time Analysis may optionally group by `exact_combo_key` or View-C
+  `level_count_bucket` when confluence attribution is available (≥1 analyzable
+  trade with a nonempty parsed combo). Those dims are **appended** after the
+  existing time/setup options so the default primary remains a time bucket.
+  Soft pairs and membership are **not** Time Analysis group dimensions (they
+  break partition intuition via double-count / many-to-many explode). Focus /
+  Promote stay limited to entry-time buckets.
 - Rows are **observed traded combinations**, not the theoretical power set of
   selected levels / confluence rules.
 - Exact-combo keys are canonicalized (sorted tokens) so `A|B` and `B|A` merge.
@@ -311,7 +318,8 @@ This engine is for **research screening**, not proof of a durable edge.
   token order.
 - Level-count view uses the **parsed distinct token count** from `level_names`,
   not stored zone `level_count` (important for `3c`, where names may be the
-  tested level only).
+  tested level only). Empty parsed counts surface as `(unknown)`, not raw `0`;
+  nonzero counts use text labels (`"1"`, `"2"`, …) for stable grouping.
 - Thin samples are marked with `sample_warning` and hidden by default in the UI;
   analytics summaries themselves remain unfiltered.
 - Sorting many combinations by total R invites selection effects; treat the
