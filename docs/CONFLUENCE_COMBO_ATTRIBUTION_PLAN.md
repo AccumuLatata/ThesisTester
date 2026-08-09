@@ -918,13 +918,13 @@ PR 1 analytics helpers + tests
 
 ### Definition of done (MVP = PR 1 + PR 2)
 
-- [ ] Researchers can open Backtest expander and see exact combo / membership /
+- [x] Researchers can open Backtest expander and see exact combo / membership /
   parsed level-count R breakdowns
-- [ ] Works for both global cluster and anchor setups without mode-specific
+- [x] Works for both global cluster and anchor setups without mode-specific
       engine paths
-- [ ] Existing Breakdown tabs untouched; no engine/signal/fill changes
-- [ ] Honesty caveats visible in UI and docs (membership, 3c, selection effects)
-- [ ] Exact-combo partition tests green; full suite green; no golden diffs
+- [x] Existing Breakdown tabs untouched; no engine/signal/fill changes
+- [x] Honesty caveats visible in UI and docs (membership, 3c, selection effects)
+- [x] Exact-combo partition tests green; full suite green; no golden diffs
 
 ---
 
