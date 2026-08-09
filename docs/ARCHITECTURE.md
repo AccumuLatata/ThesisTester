@@ -510,9 +510,11 @@ absent or incomplete (no TIME.analyze enablement), syncing the projection into
 the turn `evidence_packet` before catalog/LLM/path audit; integer hour buckets
 coerce to `HH:00`; no invented clocks.
 **RI-4 landed:** deterministic `single_metric` recovery over the frozen §4.5
-noun→`results.trade_summary.*` map; value collocates required; hard-refuse when
-grid/time/validation/residual collocates are present (never cite IS expectancy
-for OOS asks); missing-leaf short-circuit before LLM; win-rate `%` narration.
+noun→`results.trade_summary.*` map; value collocates required (`how many` only
+via explicit `how many trades`); hard-refuse when grid/time/validation/residual
+collocates are present (never cite IS expectancy for OOS asks); `over time`
+idioms do not fire bare time; bare time×metric → `mixed_ask`; missing-leaf
+short-circuit before LLM; win-rate `%` narration.
 **DI-2 landed:** first-pass Results Q&A user payloads include
 `path_catalog.existing_paths` (bounded paths present on the turn context;
 KPI + projections/validation + honesty paths reserved before fat time tables
