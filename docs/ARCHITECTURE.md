@@ -1044,7 +1044,7 @@ Backtest UI note: `pages/7_Backtest.py` shows both combined KPIs and a separate 
 Backtest also exposes a collapsed diagnostic expander **Confluence combo attribution**
 near Breakdown. It recomputes on the fly from `_display_trades` via
 `thesistester.analytics.confluence_attribution` (exact combo / membership / parsed
-level-count). Mode/anchor captions use signal-run identity
+level-count / soft pairs). Mode/anchor captions use signal-run identity
 (`signal_settings` → `last_signal_setup` → `setup_config` → `signal_context`), not a
 possibly stale Setup Builder config alone. No new `st.session_state` keys are required
 beyond ordinary widget keys; zone/signal/fill engines are untouched.

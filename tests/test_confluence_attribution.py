@@ -14,6 +14,11 @@ from thesistester.analytics.confluence_attribution import (
     LEVEL_COUNT_BUCKET_COL,
     LEVEL_NAME_COL,
     MEMBERSHIP_DOUBLE_COUNT_WARNING,
+    PAIR_KEY_COL,
+    PAIR_MODE_ANCHOR_PARTNER,
+    PAIR_MODE_COL,
+    PAIR_MODE_GENERIC,
+    PAIRWISE_DOUBLE_COUNT_WARNING,
     TRIGGER_3C_LEVEL_NAMES_WARNING,
     UNKNOWN_LEVEL_COUNT_LABEL,
     apply_sample_warning_filter,
@@ -21,6 +26,8 @@ from thesistester.analytics.confluence_attribution import (
     confluence_attribution_summary,
     exact_combo_key,
     format_display_combo,
+    pair_keys_for_tokens,
+    pairs_empty_info_message,
     parse_level_names,
     prepare_exact_combo_display,
     resolve_confluence_mode,
@@ -28,6 +35,7 @@ from thesistester.analytics.confluence_attribution import (
     summarize_by_exact_combo,
     summarize_by_level_count,
     summarize_by_level_membership,
+    summarize_by_level_pairs,
 )
 
 
@@ -270,10 +278,13 @@ def test_summary_available_with_nonempty_and_warnings():
     assert summary["nonempty_combo_trade_count"] == 4  # null-R empty excluded
     assert summary["empty_level_names_count"] == 0
     assert MEMBERSHIP_DOUBLE_COUNT_WARNING in summary["warnings"]
+    assert PAIRWISE_DOUBLE_COUNT_WARNING in summary["warnings"]
     assert TRIGGER_3C_LEVEL_NAMES_WARNING in summary["warnings"]
     assert not summary["by_exact_combo"].empty
     assert not summary["by_membership"].empty
     assert not summary["by_level_count"].empty
+    assert "by_pairs" in summary
+    assert summary["pair_mode"] == PAIR_MODE_GENERIC
 
 
 def test_summary_3c_warning_scans_full_displayed_set():
@@ -290,6 +301,7 @@ def test_summary_3c_warning_scans_full_displayed_set():
     assert summary["available"] is True
     assert TRIGGER_3C_LEVEL_NAMES_WARNING in summary["warnings"]
     assert MEMBERSHIP_DOUBLE_COUNT_WARNING in summary["warnings"]
+    assert PAIRWISE_DOUBLE_COUNT_WARNING in summary["warnings"]
 
     # Also emit when attribution is unavailable (only empty names).
     empty_only = pd.DataFrame(
@@ -441,3 +453,116 @@ def test_prepare_exact_combo_display_uses_anchor_only_in_anchor_mode():
         confluence_mode="global_cluster",
     )
     assert list(global_view["display_combo"]) == ["VWAP|pdHigh", EMPTY_LEVEL_NAMES_LABEL]
+
+
+# ---------------------------------------------------------------------------
+# PR 4 soft pairwise attribution
+# ---------------------------------------------------------------------------
+
+
+def test_pair_keys_generic_and_anchor_partner():
+    assert pair_keys_for_tokens(["B", "A"]) == ["A|B"]
+    assert pair_keys_for_tokens(["A", "B", "C"]) == ["A|B", "A|C", "B|C"]
+    assert pair_keys_for_tokens(["A"]) == []
+    assert pair_keys_for_tokens([]) == []
+    # Anchor present → partner keys only (anchor first, partners sorted).
+    assert pair_keys_for_tokens(
+        ["VWAP", "pdHigh", "pdPOC"],
+        anchor_level="pdHigh",
+    ) == ["pdHigh|VWAP", "pdHigh|pdPOC"]
+    # Anchor absent → generic fallback; never invents anchor.
+    assert pair_keys_for_tokens(["VWAP", "pdPOC"], anchor_level="pdHigh") == ["VWAP|pdPOC"]
+
+
+def test_summarize_by_level_pairs_generic_double_count():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -0.5],
+            "level_names": ["A|B|C", "A|B"],
+        }
+    )
+    pairs = summarize_by_level_pairs(trades, min_trades=1)
+    by_pair = pairs.set_index(PAIR_KEY_COL)
+    assert by_pair.loc["A|B", "trade_count"] == 2
+    assert by_pair.loc["A|C", "trade_count"] == 1
+    assert by_pair.loc["B|C", "trade_count"] == 1
+    assert set(by_pair[PAIR_MODE_COL]) == {PAIR_MODE_GENERIC}
+    # Double-count: pair total_r exceeds book total_r.
+    book_total = float(trades["r_multiple"].sum())
+    assert pairs["total_r"].sum() > book_total
+
+
+def test_summarize_by_level_pairs_anchor_partner_mode():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, 0.5, -1.0],
+            "level_names": [
+                "pdHigh|VWAP|pdPOC",
+                "VWAP|pdHigh",
+                "VWAP|pdPOC",  # missing anchor → generic fallback for this trade
+            ],
+        }
+    )
+    pairs = summarize_by_level_pairs(
+        trades,
+        min_trades=1,
+        anchor_level="pdHigh",
+        confluence_mode="anchor_rules",
+    )
+    by_pair = pairs.set_index(PAIR_KEY_COL)
+    assert by_pair.loc["pdHigh|VWAP", "trade_count"] == 2
+    assert by_pair.loc["pdHigh|pdPOC", "trade_count"] == 1
+    assert by_pair.loc["pdHigh|VWAP", PAIR_MODE_COL] == PAIR_MODE_ANCHOR_PARTNER
+    # Trade without anchor contributes generic pair.
+    assert by_pair.loc["VWAP|pdPOC", "trade_count"] == 1
+    assert by_pair.loc["VWAP|pdPOC", PAIR_MODE_COL] == PAIR_MODE_GENERIC
+
+
+def test_summarize_by_level_pairs_ignores_anchor_outside_anchor_mode():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0],
+            "level_names": ["pdHigh|VWAP"],
+        }
+    )
+    pairs = summarize_by_level_pairs(
+        trades,
+        min_trades=1,
+        anchor_level="pdHigh",
+        confluence_mode="global_cluster",
+    )
+    assert list(pairs[PAIR_KEY_COL]) == ["VWAP|pdHigh"]
+    assert list(pairs[PAIR_MODE_COL]) == [PAIR_MODE_GENERIC]
+
+
+def test_summary_includes_pairs_with_anchor_mode():
+    trades = _plan_fixture_trades()
+    summary = confluence_attribution_summary(
+        trades,
+        min_trades=1,
+        anchor_level="pdHigh",
+        confluence_mode="anchor_rules",
+    )
+    assert summary["available"] is True
+    assert summary["pair_mode"] == PAIR_MODE_ANCHOR_PARTNER
+    assert not summary["by_pairs"].empty
+    assert PAIRWISE_DOUBLE_COUNT_WARNING in summary["warnings"]
+    assert "pdHigh|VWAP_rolling_1h" in set(summary["by_pairs"][PAIR_KEY_COL])
+
+
+def test_pairs_empty_info_message_distinguishes_filter_vs_missing_pairs():
+    """Hide-below-min must not be described as missing multi-level trades."""
+    raw = pd.DataFrame(
+        {
+            PAIR_KEY_COL: ["A|B", "A|C"],
+            "trade_count": [3, 2],
+            "sample_warning": [True, True],
+        }
+    )
+    filtered = apply_sample_warning_filter(raw, hide_below_min=True)
+    assert filtered.empty
+    assert pairs_empty_info_message(raw) == "No pair rows to display under the current filter."
+    assert "two distinct level names" not in pairs_empty_info_message(raw)
+
+    assert "two distinct level names" in pairs_empty_info_message(pd.DataFrame())
+    assert "two distinct level names" in pairs_empty_info_message(None)

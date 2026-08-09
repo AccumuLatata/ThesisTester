@@ -302,9 +302,13 @@ This engine is for **research screening**, not proof of a durable edge.
 - Exact-combo keys are canonicalized (sorted tokens) so `A|B` and `B|A` merge.
 - Membership attribution **double-counts** trades across levels and is not an
   additive PnL decomposition.
-- Nested sets such as `A|B` vs `A|B|C` remain separate exact-combo rows; soft
-  pairwise attribution is a later analytics follow-on, not engine pairwise zone
-  emission.
+- Nested sets such as `A|B` vs `A|B|C` remain separate exact-combo rows. Soft
+  pairwise attribution (Pairs tab) credits shared pairs without engine pairwise
+  zone emission and **double-counts** trades across pairs.
+- Pair mode is **anchor-partner** only when the signal-run identity is
+  `anchor_rules` with a known `anchor_level` (`anchor|support` keys). Otherwise
+  pairs are generic unordered canonical `A|B` keys. Anchor is never guessed from
+  token order.
 - Level-count view uses the **parsed distinct token count** from `level_names`,
   not stored zone `level_count` (important for `3c`, where names may be the
   tested level only).
