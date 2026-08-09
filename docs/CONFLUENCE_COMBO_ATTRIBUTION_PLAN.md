@@ -1,6 +1,6 @@
 # Regression-Safe Implementation Plan: Confluence Combo Attribution (Backtest)
 
-**Status:** Phase 1 + Phase 2 + Phase 4 implemented (MVP + soft pairwise attribution)  
+**Status:** Phase 1 + Phase 2 + Phase 4 implemented; Phase 5a–5d detailed scope locked (implementation not started)  
 **Document type:** Focused analytics / Backtest UX implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related docs:**  
@@ -22,6 +22,21 @@ UI-vs-analytics filter ownership (so partition identity stays valid), example-ra
 fallback when timestamps are missing, empty-name membership behavior, optional
 `__init__` export, and pure display helpers for anchor `display_combo`. Do
 **not** start PR 1 until §5 / §7 / §12 locks in this revision are followed.
+
+**Phase 5 scope lock (2026-08-09):** Slice identities 5a–5d remain unchanged
+(Time Analysis / Report / Bundles / Assistant). Detailed narrow scopes replace
+the prior one-liners, including careful pairs inclusion (Backtest/report/bundle/
+assistant only — not as a Time Analysis group dimension). PR 5 may precede
+optional PR 3 polish.
+
+**Phase 5 scope amendment (2026-08-09, completeness pass):** Reconcile §10
+Deferred with scoped 5a–5d; lock 5b/5c on-export recompute (no Backtest
+producer session keys); clarify omit-when-unavailable vs interactive opt-in;
+align mode/anchor with Backtest
+(`resolve_signal_setup_for_attribution` → `resolve_confluence_mode`); lock 5a
+append-only nonempty dims; fix 5d order rationale (trades recompute; 5c
+optional); add §15 acceptance checklists for 5a–5d; scrub stale
+`setup_config`-alone identity wording in §4.2 / PR 2 / Appendix C.
 
 ---
 
@@ -140,9 +155,9 @@ detect_confluence_zones / detect_anchor_confluence_zones
 | Field | Where it lives | MVP implication |
 |---|---|---|
 | `rule_results` / per-rule distances | Anchor zones / Signals diagnostics | Stay Signals-only |
-| `anchor_level`, `valid_confluence_count` | Zones | Do **not** infer from `level_names` token order; use session `setup_config` for captions / display only |
+| `anchor_level`, `valid_confluence_count` | Zones | Do **not** infer from `level_names` token order; captions / display use signal-run identity (`resolve_signal_setup_for_attribution` + `resolve_confluence_mode`) |
 | `setup_name` | Signals (often), not reliably on trades | Out of MVP cross-setup grouping |
-| `confluence_mode` | Setup / zones | Caption / display from session `setup_config` when available; not required for core metric tables |
+| `confluence_mode` | Setup / zones | Caption / display from signal-run identity when available; not required for core metric tables |
 
 ### 4.3 Existing grouping precedents
 
@@ -187,12 +202,13 @@ bars; unsorted grouping would falsely split identical sets.
   never “first row seen” (order-dependent).
   Fallback when `entry_timestamp` is missing/unsortable: `trade_id` only; if
   that is also missing, use a stable `reset_index()` position as last resort.
-- Optional **display_combo** column for UI: when
-  `setup_config.confluence_mode == "anchor_rules"` and session `anchor_level`
-  is known and present in the token set, render
-  `anchor|sorted(remaining tokens)`; otherwise render the canonical sorted key.
-  Never infer anchor from token order in global/unknown mode.
-  Implement as a pure helper (`format_display_combo(...)`) so the page stays thin.
+- Optional **display_combo** column for UI: when signal-run identity resolves
+  to `anchor_rules` (`resolve_signal_setup_for_attribution` →
+  `resolve_confluence_mode`) and `anchor_level` is known and present in the
+  token set, render `anchor|sorted(remaining tokens)`; otherwise render the
+  canonical sorted key. Never infer anchor from token order in global/unknown
+  mode. Implement as a pure helper (`format_display_combo(...)`) so the page
+  stays thin.
 
 **Partition identity (locked):** exact-combo rows form a partition of the
 analyzable trade universe **before any UI sample filter**. Tests must assert:
@@ -298,19 +314,22 @@ Do **not** invent new expectancy definitions; reuse existing R conventions from
 | Unknown / mixed | Neutral caption; still compute from `level_names`. |
 | Any run with `trigger == "3c"` trades in the displayed set | Extra honesty: “For 3c, `level_names` may be the tested level only, not full zone membership.” |
 
-Mode detection for captions (best-effort, non-blocking):
+Mode detection for captions (best-effort, non-blocking) — **locked helper
+chain** (matches landed Backtest):
 
 1. Signal-run setup identity via `resolve_signal_setup_for_attribution`
    (priority: `signal_settings` → `signal_settings.setup_snapshot` →
    `last_signal_setup` → `setup_config` → `signal_context`). Prefer the
    settings that produced the current signals over a possibly stale Setup
    Builder `setup_config`.
-2. Else `level_source_mode` dominance on displayed trades if present.
-3. Else neutral.
+2. Mode label via `resolve_confluence_mode(identity, trades)` — uses identity
+   `confluence_mode` when known, else trade `level_source_mode` dominance /
+   aliases, else `"unknown"`. Do **not** re-implement this ladder ad hoc.
+3. Pass `confluence_mode` + `anchor_level` (from identity, only when mode is
+   `anchor_rules`) into `confluence_attribution_summary` / display helpers.
 
-Anchor display key uses the same signal-run identity dict’s `anchor_level`
-(only when mode resolves to `anchor_rules`). Never invent anchor from token
-order.
+Anchor display key uses the identity dict’s `anchor_level` only when mode
+resolves to `anchor_rules`. Never invent anchor from token order.
 
 Diagnostic framing (mandatory in UI caption):
 
@@ -325,7 +344,7 @@ Diagnostic framing (mandatory in UI caption):
 |---|---|
 | Pairwise zone splitting in the engine (`anchor+A`, `anchor+B` as separate zones) | Changes signal multiplicity / backtest economics; high regression risk |
 | Joining `rule_results` onto trades | Signals-only diagnostics; different grain |
-| Persisted combo summary artifacts | Not needed; on-the-fly is enough |
+| Persisted combo summary artifacts | Not needed for MVP; optional Phase 5c (on-export recompute, no Backtest producer keys) |
 | Changing `min_confluences` / `min_valid_confluences` semantics | Product confusion already exists; do not “fix” by changing engines |
 | Auto-promoting winning combos into Setup Builder | Workflow automation later; keep research-read-only |
 | Portfolio / multi-setup combo tables | Requires reliable setup tagging on trades |
@@ -558,21 +577,29 @@ level remain in the selected set?”
 
 ## 10. Explicit non-goals / deferred work
 
-### Deferred (post-MVP)
+### Shipped / scoped after MVP (do not re-open as “deferred”)
 
-| Idea | Priority after MVP | Why deferred |
+| Idea | Status | Note |
 |---|---|---|
-| Soft pairwise **attribution** view | **Shipped (Phase 4)** | Main nested-set / “anchor partner quality” unlock; still analytics-only |
-| Direction × combo / CSV / top-N polish | Medium — if cardinality or export pain appears | UX convenience, not research-critical |
+| Soft pairwise **attribution** view | **Shipped (Phase 4)** | Analytics-only; Backtest **Pairs** tab |
+| Time Analysis **opt-in** combo / parsed level-count group dims | **Scoped (Phase 5a)** | Appended only when `available=True`; count dim = `level_count_bucket`; default primary stays a time bucket |
+| Report export diagnostic combo section | **Scoped (Phase 5b)** | Omit when unavailable; on-export recompute |
+| Research-bundle optional combo JSON/parquet siblings | **Scoped (Phase 5c)** | On-export recompute; no `BUNDLE_SCHEMA_VERSION` bump |
+| Assistant **cite-bound** combo projections | **Scoped (Phase 5d)** | Bounded `results.projections.confluence_combo` leaves only |
+
+### Still deferred / out
+
+| Idea | Priority | Why deferred |
+|---|---|---|
+| Direction × combo / CSV / top-N polish | Medium — if cardinality or export pain appears | UX convenience (optional PR 3); not research-critical |
 | Pairwise **engine** emission (one zone per valid rule when min=1) | Low / likely never default | Changes trade counts / overlap / exposure; needs own golden-gated plan |
-| Stamping `setup_name` / `confluence_mode` onto trades | Low for single-run Backtest | Additive schema; captions already read session `setup_config` |
-| Research-bundle parquet export of combo summaries | Later | Follow prev30m/excursion pattern |
-| Time Analysis primary dimension = `exact_combo_key` | Later | Natural follow-on after Backtest proves usefulness |
-| Assistant narrative over combo tables | Later | Depends on stable analytics API |
+| Stamping `setup_name` / `confluence_mode` onto trades | Low for single-run Backtest | Additive schema; captions use signal-run identity resolution |
+| Time Analysis **default primary** = `exact_combo_key` | Later | Distinct from 5a opt-in options; changing default primary is a separate UX decision |
+| Free-form / uncapped assistant combo narration or setup-tightening advice | Explicitly out | 5d is cite-bound projections only; auto-recommendations remain out |
 | Auto-suggested setup tightening from winning combos | Explicitly out | High product risk / overfitting temptation |
 | Secondary View C by stored zone `level_count` | Later | Only after 3c name/zone grain is clarified in UI |
 
-### Soft pairwise attribution (recommended Phase 4, still analytics-only)
+### Soft pairwise attribution (Phase 4 — shipped; still analytics-only)
 
 **Why elevated:** Exact combo alone understates a productive pair when a third
 level often tags along (`A|B` vs `A|B|C`). Soft pairwise answers anchor
@@ -588,8 +615,8 @@ For Anchor-like reading without changing the engine:
   A single trade with three tokens contributes to **three** generic pairs
   (`AB`, `AC`, `BC`), so pair-view `total_r` can exceed book `total_r`.
 
-**Anchor source (locked):** prefer explicit session
-`setup_config.anchor_level` when `confluence_mode == "anchor_rules"`.
+**Anchor source (locked):** resolve via `resolve_signal_setup_for_attribution`
+(§5.4 identity order). Use `anchor_level` only when mode is `anchor_rules`.
 Otherwise show generic unordered pairs only — **do not guess** anchor from
 token order (global price-sort puts cheapest level first, not an anchor).
 
@@ -673,7 +700,9 @@ tests/fixtures/golden/**
 - Conditional 3c tested-level-only caption
 - Controls: `min_trades` (default 10), hide-small-samples (**default ON**)
 - Page-level presentation filter for hide-below-min (analytics remains unfiltered)
-- Anchor-aware `display_combo` via `format_display_combo` + session `setup_config`
+- Anchor-aware `display_combo` via `format_display_combo` + signal-run
+  identity (`resolve_signal_setup_for_attribution` →
+  `resolve_confluence_mode` → `anchor_level` when `anchor_rules`)
 - Docs:
   - `docs/ASSUMPTIONS_AND_LIMITATIONS.md`
   - `docs/METRICS_GLOSSARY.md`
@@ -695,7 +724,7 @@ tests/fixtures/golden/**
 
 **Out of scope:**
 
-- Soft pairwise view (PR 4 — next research priority)
+- Soft pairwise view (PR 4 — shipped)
 - Time Analysis integration
 - Persistence / report export sections
 - Setup Builder changes
@@ -745,11 +774,11 @@ tests/fixtures/golden/**
 
 **Out of scope:**
 
-- Soft pairwise view (PR 4)
-- Report export markdown section (can be PR 3b if desired)
+- Soft pairwise view (PR 4 — shipped)
+- Report export / bundles / assistant consumers (PR 5b–5d)
 
 **Regression safety:** Additive only; default view remains the three MVP tables.
-**Priority note:** Prefer PR 4 over PR 3 if research bandwidth is limited.
+**Priority note:** Prefer PR 4 / PR 5 over PR 3 if research bandwidth is limited.
 
 ---
 
@@ -770,7 +799,7 @@ tests/fixtures/golden/**
 | Input | Pair definition |
 |---|---|
 | Generic / global / unknown | All unordered pairs among distinct tokens |
-| Anchor-aware | Only when signal-run identity resolves `confluence_mode == "anchor_rules"` **and** `anchor_level` is known (`resolve_signal_setup_for_attribution`); emit `anchor\|Li` for each non-anchor token present. Otherwise fall back to generic pairs — **never** guess anchor from first token |
+| Anchor-aware | Only when `resolve_signal_setup_for_attribution` → `resolve_confluence_mode(identity, trades)` yields `anchor_rules` **and** `anchor_level` is known; emit `anchor\|Li` for each non-anchor token present. Otherwise fall back to generic pairs — **never** guess anchor from first token |
 
 **Why reject first-token heuristic:** global price-sort puts cheapest level
 first, not an anchor. Guessing would mislead.
@@ -779,18 +808,297 @@ first, not an anchor. Guessing would mislead.
 
 ---
 
-### PR 5 — Downstream consumers (explicitly later)
+### PR 5 — Downstream consumers (slice identities locked)
 
-Only after PR 2 proves usefulness:
+**Slice identities do not change.** The four consumers remain:
 
-| PR | Scope |
-|---|---|
-| 5a | Time Analysis: optional primary/secondary group = combo key / level count |
-| 5b | Report export markdown section (diagnostic) |
-| 5c | Research bundle optional artifact `confluence_combo_summary.parquet` |
-| 5d | Assistant read-only summarization over combo tables |
+| Slice | Consumer | One-line intent (unchanged) |
+|---|---|---|
+| **5a** | Time Analysis | Optional grouping by combo / parsed level-count |
+| **5b** | Report export | Diagnostic markdown (+ optional CSV tables) |
+| **5c** | Research bundles | Optional persisted summary artifacts |
+| **5d** | Assistant | Read-only, cite-bound summarization |
 
-Each is independently shippable; none should block MVP.
+**Priority note:** PR 5 may ship before optional PR 3 polish. Each 5x PR is
+independently shippable. Soft pairs (Phase 4) are included **narrowly** per
+slice below (not as a Time Analysis group dimension).
+
+**Shared locks for all 5x PRs:**
+
+1. Analytics-only reuse of `thesistester.analytics.confluence_attribution`.
+2. No `thesistester/engine/**` changes; no golden regeneration.
+3. Observed traded combos only; selection-effects honesty preserved.
+4. Exact-combo / membership / pairs double-count caveats unchanged.
+5. View C remains **parsed** `level_token_count` (never stored zone `level_count`).
+6. Mode/anchor identity matches landed Backtest:
+   `resolve_signal_setup_for_attribution(...)` then
+   `resolve_confluence_mode(identity, trades)` before calling
+   `confluence_attribution_summary(..., confluence_mode=..., anchor_level=...)`.
+   Never bare stale `setup_config` alone when signal-run keys exist; never
+   skip `resolve_confluence_mode` (it also reads trade `level_source_mode`
+   dominance when setup mode is missing).
+7. Fail closed / omit section when `available=False` or columns missing.
+8. **Defaults / opt-in contract (by surface):**
+   - **5a (interactive):** default primary/secondary stay time buckets;
+     combo/count dims are opt-in selections only.
+   - **5b / 5c / 5d (diagnostic consumers):** omit-when-unavailable /
+     fail-closed. Existing report text, old bundles, and assistant paths must
+     stay unchanged when combo data is absent. Optional checklist rows stay
+     optional. Do **not** require a new Backtest producer `st.session_state`
+     key for combo summaries (ARCHITECTURE: on-the-fly only).
+
+---
+
+#### PR 5a — Time Analysis optional group dimensions
+
+**Title:** `feat(time-analysis): optional confluence combo / level-count groups`
+
+**Files (expected):**
+- `pages/9_Time_Analysis.py`
+- optionally tiny helper reuse only from `confluence_attribution.py`
+- docs: ASSUMPTIONS / METRICS_GLOSSARY / this plan status
+- tests: focused Time Analysis helper/page-helper tests if extracted; else
+  unit tests around `attach_combo_columns` usage path
+
+**In scope (narrow):**
+
+1. After time buckets are attached, if trades contain `level_names`, call
+   `attach_combo_columns(trades)` so `exact_combo_key` and `level_token_count`
+   exist. Also attach a View-C-aligned **`level_count_bucket`** column
+   (`0 → "(unknown)"`, else the integer count) so Time Analysis count groups
+   match Backtest Level count labels (do not offer raw integer `0` as the
+   user-facing count dim).
+2. **Append** `exact_combo_key` and `level_count_bucket` to the end of
+   `_PRIMARY_OPTIONS` / `_SECONDARY_OPTIONS` (or the filtered option lists)
+   **only when** `confluence_attribution_summary(...).available` would be
+   True — i.e. ≥1 trade with non-null `r_multiple` and nonempty parsed
+   names. Column presence alone is not enough. Appending (not prepending)
+   keeps Time Analysis `index=0` default on the first existing **time** bucket.
+3. Keep current default primary as the first existing **time** bucket
+   (`entry_rth_segment` when available). Selecting combo/count is opt-in.
+4. When primary or secondary is a combo/count dim, show a short diagnostic
+   caption (observed-only / selection-effects / 3c tested-level-only if any
+   `trigger=="3c"`).
+5. Continue using existing `summarize_by_group` for metrics (Time Analysis
+   richness is intentional here).
+
+**Explicitly out of scope:**
+
+- Soft **pairs** as a Time Analysis group dimension (pair explode is
+  many-to-many; breaks partition intuition). Keep pairs on Backtest.
+- Membership as a Time Analysis group dimension (same double-count issue at
+  group grain).
+- Adding combo/count dims to Focus/Promote (`FOCUSABLE_GROUP_COLS` unchanged).
+- Changing default primary/secondary selections / reordering time dims.
+- Engine / Backtest expander refactors.
+
+**Acceptance:**
+
+- [ ] Default Time Analysis run looks identical when user leaves primary on a
+      time bucket (`index=0` still a time dim).
+- [ ] Combo/count options appear only under the `available=True` nonempty
+      analyzable-combo gate; they are appended after time options.
+- [ ] Count dim uses View-C-aligned `level_count_bucket` (not raw `0`).
+- [ ] User can opt into `exact_combo_key` and/or `level_count_bucket` grouping.
+- [ ] Focus/Promote controls still only appear for existing time dims.
+- [ ] No engine/golden files in diff; full suite green.
+
+---
+
+#### PR 5b — Report export diagnostic section
+
+**Title:** `feat(report): confluence combo attribution markdown section`
+
+**Files (expected):**
+- `thesistester/reporting.py`
+- `pages/11_Report_Export.py` (checklist/CSV wiring only if needed)
+- docs + focused reporting tests
+
+**In scope (narrow):**
+
+**Mode/anchor resolution (locked, matches Backtest):**
+
+```text
+identity = resolve_signal_setup_for_attribution(
+    signal_settings=…, last_signal_setup=…,
+    setup_config=…, signal_context=…,
+)
+mode = resolve_confluence_mode(identity, trades)
+anchor = identity.get("anchor_level") if mode == "anchor_rules" else None
+summary = confluence_attribution_summary(
+    trades, confluence_mode=mode, anchor_level=anchor, …
+)
+```
+
+Resolve at **build time from session keys**. Today `configuration` embeds
+`setup_config` + `last_signal_setup` but **not** `signal_settings`; do not rely
+on the artifact JSON alone for identity. Embedding `signal_settings` into
+`configuration` is an optional additive follow-on, not required for 5b.
+
+**In scope (narrow):**
+
+1. In `build_research_artifact`, if session trades have `level_names`,
+   **recompute** via the locked resolution path above (do not read a
+   non-existent combo session summary).
+2. When `available=True`, attach a top-level diagnostic block such as
+   `artifact["confluence_combo"]` with scalars + warnings + bounded tables
+   (or `tables["confluence_*"]` for CSV). When unavailable, omit the block
+   entirely (omit-when-unavailable; not a separate UI toggle).
+3. Markdown helper returns `""` when unavailable (OTF-validation style), so
+   legacy reports stay byte/text-identical when combo data is absent.
+4. Markdown content (diagnostic banner required):
+   - exact combo top-N (default 15) by `|total_r|` then `trade_count`
+   - parsed level-count full small table (usually tiny)
+   - optional membership top-N **with double-count caption**
+   - optional pairs top-N **with pairwise double-count caption**
+5. Optional export checklist row (not a hard required item).
+
+**Explicitly out of scope:**
+
+- Changing existing report section order/text when combo unavailable.
+- Persisting new Backtest producer session keys for combo summaries.
+- Bundle zip format changes (that is 5c).
+- Assistant claim paths (that is 5d).
+
+**Acceptance:**
+
+- [ ] Report with no `level_names` / unavailable summary omits the section.
+- [ ] Report with available summary includes diagnostic section + honesty text.
+- [ ] Existing sections unchanged when combo unavailable.
+- [ ] Mode/anchor uses `resolve_signal_setup_for_attribution` **and**
+      `resolve_confluence_mode` from session keys (incl. `signal_settings`
+      when present), not artifact `setup_config` alone.
+- [ ] Focused reporting tests cover available/unavailable; full suite green.
+
+---
+
+#### PR 5c — Research bundle optional artifacts
+
+**Title:** `feat(bundles): optional confluence combo summary artifacts`
+
+**Files (expected):**
+- `thesistester/research_bundle.py`
+- `pages/12_Research_Bundles.py` (preview checklist row)
+- docs + bundle round-trip tests
+
+**In scope (narrow):**
+
+Unlike excursion (Validation persists `excursion_summary` into session before
+export), confluence combo is **Backtest on-the-fly only** — there is no
+precomputed combo session key to copy. 5c therefore locks **on-export
+recompute**, then optional artifact siblings shaped like excursion files:
+
+1. **Export path (preferred / locked):**
+   - From session `trades` (DataFrame with `level_names`), recompute with the
+     same Backtest resolution path as 5b
+     (`resolve_signal_setup_for_attribution` → `resolve_confluence_mode` →
+     `confluence_attribution_summary`).
+   - When `available=True`, write:
+     - required JSON, e.g. `confluence_combo_summary.json`
+       (`available`, counts, warnings, `pair_mode`, schema/version note)
+     - optional parquet siblings only when non-empty:
+       `confluence_by_exact_combo.parquet`,
+       `confluence_by_level_count.parquet`,
+       optional `confluence_by_membership.parquet`,
+       optional `confluence_by_pairs.parquet`
+   - Set `included["confluence_combo"]=True` only then; otherwise omit entirely.
+2. **Import path:** if section not included, ignore missing files (old bundles
+   keep loading). If included, require the JSON; load parquet siblings only when
+   present in the zip. Restored values may land in optional **managed research
+   keys** for preview/report reuse; clear those keys via existing bundle key
+   hygiene when the section is absent. Do **not** invent Backtest producer keys.
+3. **Do not bump** `BUNDLE_SCHEMA_VERSION` unless a mandatory load contract is
+   introduced (not needed for optional siblings).
+
+**Fallback allowed:** if writing siblings proves awkward, 5c may ship as
+“recompute from `trades.parquet` on import/display only” with no new files —
+but the preferred locked path is on-export recompute + optional siblings above.
+
+**Explicitly out of scope:**
+
+- Making combo artifacts mandatory for all bundles.
+- Schema version bump for optional files.
+- Mutating `trades.parquet` schema.
+- Requiring Backtest to persist combo summaries into `st.session_state`.
+- Engine changes.
+
+**Acceptance:**
+
+- [ ] Old bundles without combo files still import.
+- [ ] Export recomputes from session trades (no dependency on a combo session
+      producer key).
+- [ ] New bundles with combo section round-trip JSON + present parquets.
+- [ ] Missing optional parquet siblings do not fail load.
+- [ ] Full suite green; no golden/engine diffs.
+
+---
+
+#### PR 5d — Assistant read-only summarization
+
+**Title:** `feat(assistant): cite-bound confluence combo projections`
+
+**Files (expected):**
+- assistant evidence/projection modules (recompute from trades like deep-trade
+  projections; allowlist/path-catalog shape like `time_rankings`)
+- discuss allowlists / path catalog wiring
+- docs honesty + focused assistant tests
+
+**In scope (narrow):**
+
+1. On-demand recompute from bundle/session **trades** via the same
+   Backtest resolution path as 5b
+   (`resolve_signal_setup_for_attribution` → `resolve_confluence_mode` →
+   `confluence_attribution_summary`; deep-trade style). Do not invent table
+   rows from memory. Prefer trades tables; optional 5c JSON/parquet siblings
+   are a convenience, **not** a hard dependency. Use best-available session /
+   artifact/bundle setup keys for identity (fail closed to generic /
+   unknown when absent).
+2. Add a **bounded** projection leaf, e.g.
+   `results.projections.confluence_combo`, containing only:
+   - `available`, `trade_count`, `nonempty_combo_trade_count`
+   - `top_exact_combo` (fixed N, include metrics + `sample_warning`)
+   - `top_level_count` (small)
+   - optional `top_pair` (fixed N) + `pair_mode`
+   - `warnings` (membership / pairwise / 3c as applicable)
+3. Frozen discuss allowlist for those leaves only (presence-first / cite-only).
+4. Fail closed when unavailable; no free-form narration of full `by_*` frames.
+5. Limitations/caveats must mention diagnostic nature and double-counting when
+   pair/membership tops are present.
+
+**Explicitly out of scope:**
+
+- Dumping full combo/pair tables into default path catalog.
+- Auto-recommendations to change Setup Builder rules (“drop this level”).
+- Claiming future edge / best setup.
+- Changing KPI specialist topics or engine outputs.
+- Requiring 5c bundle artifacts before 5d can ship.
+
+**Acceptance:**
+
+- [ ] Assistant can cite only real projection leaves.
+- [ ] Unavailable trades → no combo projection leaves / calm fallback.
+- [ ] No invented numeric claims outside allowlist.
+- [ ] Works from trades alone even when 5c siblings are absent.
+- [ ] Focused assistant tests + full suite green.
+
+---
+
+#### PR 5 implementation order (recommended)
+
+```text
+5a Time Analysis (opt-in group dims)
+  → 5b Report export diagnostic section
+    → 5c Bundle optional artifacts
+      → 5d Assistant cite-bound projection
+```
+
+Rationale: 5a validates the dims in an interactive research surface; 5b/5c make
+summaries portable for humans and round-trips. **5d recomputes bounded
+projections from trades** (same analytics API); 5c artifacts are optional
+convenience, not a hard gate — so 5d may ship without 5c if needed, but the
+recommended order still prefers 5c first for research-bundle completeness.
+
+PR 3 polish remains optional and independent of 5a–5d.
 
 ---
 
@@ -889,9 +1197,12 @@ stop and re-scope.
 ```text
 PR 1 analytics helpers + tests
   → PR 2 Backtest expander UI + docs   (= MVP)
-    → PR 4 soft pairwise attribution   (recommended next)
-      → PR 3 direction / CSV / top-N    (only if UX pain)
-        → PR 5a/b/c/d downstream consumers (optional)
+    → PR 4 soft pairwise attribution
+      → PR 5a Time Analysis opt-in dims
+        → PR 5b Report diagnostic section
+          → PR 5c Bundle optional artifacts
+            → PR 5d Assistant cite-bound projection
+              → PR 3 direction / CSV / top-N   (only if UX pain still remains)
 ```
 
 ### Suggested implementation steps inside PR 1
@@ -918,8 +1229,10 @@ PR 1 analytics helpers + tests
 5. Apply presentation filter in the page after summary returns.
 6. Render three tables; mode / membership / diagnostic / observed-only /
    conditional 3c captions.
-7. Use `format_display_combo` with session `setup_config.anchor_level` when
-   `confluence_mode == "anchor_rules"`.
+7. Use `format_display_combo` with signal-run identity
+   (`resolve_signal_setup_for_attribution` → `resolve_confluence_mode` →
+   `anchor_level`) when mode is `anchor_rules` — not bare stale
+   `setup_config` alone.
 8. Update honesty docs (incl. null-R vs sibling Breakdown note; observed-only).
 9. Manual matrix check (global + anchor + 3c if available).
 10. Full pytest.
@@ -969,10 +1282,48 @@ PR 1 analytics helpers + tests
 
 - [ ] Additive views only
 - [ ] No anchor-guessing heuristic from token order
-- [ ] Anchor-aware pairs only via session `setup_config.anchor_level`
+- [ ] Anchor-aware pairs only via `resolve_signal_setup_for_attribution`
+      identity (`anchor_rules` + known `anchor_level`)
 - [ ] Pair/membership double-count honesty captions present
 - [ ] Docs/captions updated for any new double-count view
 - [ ] Full suite green
+
+### PR 5a
+
+- [ ] Default Time Analysis primary stays a time bucket (`index=0` unchanged)
+- [ ] `attach_combo_columns` + View-C-aligned `level_count_bucket` attached
+- [ ] Combo/count dims **appended** only when summary `available=True` gate holds
+- [ ] Pairs / membership are **not** Time Analysis group dimensions
+- [ ] `FOCUSABLE_GROUP_COLS` / Focus/Promote unchanged (time dims only)
+- [ ] Diagnostic caption when combo/count dim selected (observed-only / 3c)
+- [ ] No engine/golden files in diff; full suite green
+
+### PR 5b
+
+- [ ] On-export recompute via `confluence_attribution_summary` (no combo session producer key)
+- [ ] Mode/anchor via `resolve_signal_setup_for_attribution` **and**
+      `resolve_confluence_mode` from session keys (incl. `signal_settings`)
+- [ ] Unavailable → markdown `""` / omit block; existing sections unchanged
+- [ ] Available → diagnostic section + honesty; top-N exact/count (+ optional membership/pairs)
+- [ ] Optional checklist row only; not a hard required export item
+- [ ] Focused reporting tests + full suite green
+
+### PR 5c
+
+- [ ] On-export recompute from session trades (same mode/anchor path as 5b)
+- [ ] Optional JSON + parquet siblings; `included["confluence_combo"]` only when available
+- [ ] Old bundles still import; missing optional parquet siblings do not fail load
+- [ ] No `BUNDLE_SCHEMA_VERSION` bump; no `trades.parquet` schema mutation
+- [ ] No Backtest producer session keys required
+- [ ] Full suite green; no golden/engine diffs
+
+### PR 5d
+
+- [ ] Bounded `results.projections.confluence_combo` leaves only
+- [ ] Recompute from bundle/session trades with same mode/anchor path; 5c not required
+- [ ] Frozen discuss allowlist; fail closed when unavailable
+- [ ] No free-form full-table dumps / setup auto-recommendations / edge claims
+- [ ] Focused assistant tests + full suite green
 
 ---
 
@@ -980,7 +1331,7 @@ PR 1 analytics helpers + tests
 
 | Question | Resolution |
 |---|---|
-| Persist summaries? | No for MVP |
+| Persist summaries? | No for MVP; optional Phase 5c on-export artifacts |
 | Change engines to emit pairwise zones? | No — deferred / likely never for default path |
 | Put view in Time Analysis first? | No — Backtest first (closest to R outcome review) |
 | Require `setup_name` on trades? | No for MVP |
@@ -1016,8 +1367,12 @@ No blocking open questions remain for PR 1–2.
 | Phase 1 | PR 1 analytics helpers | **Implemented** (`thesistester/analytics/confluence_attribution.py`, `tests/test_confluence_attribution.py`) |
 | Phase 2 | PR 2 Backtest expander UI + docs | **Implemented** (`pages/7_Backtest.py` expander; ASSUMPTIONS / METRICS_GLOSSARY / ARCHITECTURE) |
 | Phase 4 | PR 4 soft pairwise attribution | **Implemented** (`summarize_by_level_pairs` + Backtest **Pairs** tab) |
-| Phase 3 | PR 3 cross-tab / polish (if UX pain) | Not started |
-| Phase 5 | Downstream consumers | Not started |
+| Phase 5 | PR 5a–5d downstream consumers | **Scoped** (detailed locks + 2026-08-09 completeness amendment); implementation not started; may precede PR 3 |
+| Phase 5a | Time Analysis opt-in combo/count groups | Not started (`exact_combo_key` + `level_count_bucket`; append when `available`) |
+| Phase 5b | Report export diagnostic section | Not started (on-export recompute; omit-when-unavailable) |
+| Phase 5c | Bundle optional artifacts | Not started (on-export recompute; no producer session keys) |
+| Phase 5d | Assistant cite-bound projection | Not started (trades recompute; 5c not required) |
+| Phase 3 | PR 3 cross-tab / polish (if UX pain) | Not started (optional; after or between 5x if needed) |
 
 ---
 
@@ -1093,7 +1448,7 @@ Building at the analytics seam:
 
 ## 21. Appendix C — Review locks checklist (copy into implementation PRs)
 
-Before coding PR 1 / PR 2, confirm these locks:
+Before coding PR 1 / PR 2 / PR 4 / PR 5x, confirm these locks:
 
 1. [ ] View C = parsed distinct token count from `level_names` (not stored `level_count`)
 2. [ ] `available=True` only with ≥1 non-empty analyzable combo
@@ -1102,8 +1457,14 @@ Before coding PR 1 / PR 2, confirm these locks:
 5. [ ] Exact-combo **unfiltered** partition identity unit test
 6. [ ] Hide below `min_trades` defaults ON in UI; analytics does not drop rows
 7. [ ] Example raw by earliest `entry_timestamp` / `trade_id` (with fallbacks)
-8. [ ] Anchor display key only from session `setup_config.anchor_level`
+8. [ ] Anchor / mode identity via `resolve_signal_setup_for_attribution`
+      **then** `resolve_confluence_mode` (never first-token guess; never bare
+      stale `setup_config` alone when signal-run keys exist)
 9. [ ] No first-token-as-anchor heuristic
-10. [ ] Soft pairwise is the preferred post-MVP research follow-on
+10. [ ] Soft pairwise shipped (Phase 4); 5a–5d use shared locks in §11
 11. [ ] Rows are observed traded combos, not theoretical subsets
 12. [ ] PR 1 leaves `analytics/__init__.py` unchanged (submodule import)
+13. [ ] No Backtest producer `st.session_state` keys for combo summaries
+      (5b/5c recompute on export; 5d recomputes from trades)
+14. [ ] 5a does not add pairs/membership as Time Analysis group dims
+15. [ ] 5c does not bump `BUNDLE_SCHEMA_VERSION` for optional siblings
