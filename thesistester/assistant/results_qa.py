@@ -27,6 +27,7 @@ from thesistester.assistant.results_overview import (
     REASON_METRIC_FALLBACK,
     REASON_TIME_FALLBACK,
     REASON_VALIDATION_FALLBACK,
+    _ensure_grid_rankings_context,
     _ensure_time_rankings_context,
     apply_expert_overlay,
     build_deterministic_grid_ranking_reply,
@@ -416,8 +417,9 @@ def propose_results_reply(
     DI-2: first-pass user payload includes ``path_catalog`` (existing paths;
     plus ``kpi_allowlist`` / specialist preferred paths when matched).
 
-    DI-3: successful overview replies (and deterministic overview fallback)
-    append a strictly digit-free expert overlay after mandatory caveats.
+    DI-3 / RI-7: successful overview and specialist / single-metric replies
+    (and their deterministic fallbacks) append a strictly digit-free meaning
+    overlay after mandatory caveats.
     """
     if not isinstance(user_message, str) or not user_message.strip():
         raise LLMEvidenceError("Results Q&A user message must be a non-empty string.")
@@ -433,15 +435,22 @@ def propose_results_reply(
         discuss_intent if discuss_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN} else None
     )
 
-    # RI-2: sync projected time_rankings into the evidence packet before catalog,
-    # short-circuit, LLM, and path audit so preferred paths cannot diverge from
-    # evidence_packet when only time_grouped_summary is present.
+    # RI-1/RI-2: sync ephemeral projections into the evidence packet before
+    # catalog, short-circuit, LLM, and path/overlay audit so honesty leaves
+    # (e.g. grid oos_status) and preferred paths cannot diverge from evidence.
+    # Mixed asks also hydrate grid status so followups can suppress WFA-presence
+    # coaching when oos_status is already missing/failed on the turn.
+    if discuss_intent in {INTENT_GRID_RANKING, INTENT_MIXED_ASK}:
+        evidence_context = dict(_ensure_grid_rankings_context(evidence_context))
     if discuss_intent == INTENT_TIME_RANKING:
         evidence_context = dict(_ensure_time_rankings_context(evidence_context))
 
     # RI short-circuits: mixed ask / missing specialist evidence before any LLM call.
     if discuss_intent == INTENT_MIXED_ASK:
-        return build_mixed_ask_remediation_reply(packet)
+        return build_mixed_ask_remediation_reply(
+            packet,
+            evidence_context=evidence_context,
+        )
     if discuss_intent == INTENT_GRID_RANKING and not has_grid_ranking_evidence(evidence_context):
         return build_missing_grid_limitation_reply(packet)
     if discuss_intent == INTENT_TIME_RANKING and not has_time_ranking_evidence(evidence_context):
@@ -456,15 +465,54 @@ def propose_results_reply(
             return build_missing_metric_limitation_reply(packet, path=metric_path)
 
     def _maybe_overlay(reply: ResultsQAReply) -> ResultsQAReply:
-        if overview_intent is None:
+        # RI-7: meaning overlay for overview + landed specialist / single_metric.
+        # Deterministic builders already apply overlay; this covers successful LLM drafts.
+        if discuss_intent not in {
+            OVERVIEW_INTENT_KPI,
+            OVERVIEW_INTENT_RUN,
+            INTENT_GRID_RANKING,
+            INTENT_TIME_RANKING,
+            INTENT_VALIDATION_WFA,
+            INTENT_SINGLE_METRIC,
+        }:
             return reply
-        return apply_expert_overlay(
-            packet,
-            summary=reply.summary,
-            caveats=reply.caveats,
-            claims=reply.claims,
-            recovery_reason=reply.recovery_reason,
-        )
+        overlay_kwargs: dict[str, Any] = {
+            "summary": reply.summary,
+            "caveats": reply.caveats,
+            "claims": reply.claims,
+            "recovery_reason": reply.recovery_reason,
+            "discuss_intent": discuss_intent,
+            # Turn evidence may already record oos_status=missing even when the
+            # LLM draft omitted that honesty claim — still suppress presence asks.
+            "evidence_context": evidence_context,
+        }
+        # Overview keeps the DI-3 followup bank; specialists preserve reply followups
+        # (apply_expert_overlay still strips WFA-presence asks when OOS is absent).
+        if overview_intent is None:
+            overlay_kwargs["followups"] = reply.followups
+        return apply_expert_overlay(packet, **overlay_kwargs)
+
+    def _finish_llm_reply(reply: ResultsQAReply) -> ResultsQAReply:
+        # §4.5: single_metric must stay one claim on the resolved leaf.
+        if discuss_intent == INTENT_SINGLE_METRIC:
+            metric_path = resolve_single_metric_path(user_message)
+            ok = (
+                metric_path is not None
+                and len(reply.claims) == 1
+                and reply.claims[0].path == metric_path
+            )
+            if (
+                not ok
+                and deterministic_specialist_fallback
+                and metric_path is not None
+                and has_single_metric_evidence(evidence_context, metric_path)
+            ):
+                return build_deterministic_single_metric_reply(
+                    packet,
+                    evidence_context,
+                    path=metric_path,
+                )
+        return _maybe_overlay(reply)
 
     try:
         payload = _complete_results_structured(
@@ -474,7 +522,7 @@ def propose_results_reply(
             user_message=user_message,
             discuss_intent=discuss_intent,
         )
-        return _maybe_overlay(
+        return _finish_llm_reply(
             _decode_results_payload(payload, packet=packet, evidence_context=evidence_context)
         )
     except (LLMEvidenceError, LLMProviderError) as first_exc:
@@ -513,7 +561,7 @@ def propose_results_reply(
                     discuss_intent=discuss_intent,
                     repair=repair_payload,
                 )
-                return _maybe_overlay(
+                return _finish_llm_reply(
                     _decode_results_payload(
                         repaired, packet=packet, evidence_context=evidence_context
                     )

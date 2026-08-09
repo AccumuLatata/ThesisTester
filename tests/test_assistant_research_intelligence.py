@@ -6,9 +6,9 @@ import json
 
 import pytest
 
-from thesistester.assistant.explainer import EvidenceCaveat, EvidencePacket
+from thesistester.assistant.explainer import EvidenceCaveat, EvidenceClaim, EvidencePacket
 from thesistester.assistant.llm import load_results_qa_settings
-from thesistester.assistant.llm_explainer import LLMEvidenceError
+from thesistester.assistant.llm_explainer import LLMEvidenceError, _ungrounded_number_tokens
 from thesistester.assistant.results_overview import (
     INTENT_GRID_RANKING,
     INTENT_MIXED_ASK,
@@ -27,6 +27,10 @@ from thesistester.assistant.results_overview import (
     build_deterministic_grid_ranking_reply,
     build_deterministic_single_metric_reply,
     build_deterministic_time_ranking_reply,
+    build_deterministic_validation_wfa_reply,
+    build_expert_overlay,
+    build_meaning_overlay,
+    build_mixed_ask_remediation_reply,
     has_grid_ranking_evidence,
     has_overview_negative_cue,
     has_single_metric_evidence,
@@ -1031,3 +1035,196 @@ def test_deterministic_single_metric_builder_one_claim():
     assert len(reply.claims) == 1
     assert reply.claims[0].path == "results.trade_summary.expectancy_r"
     assert reply.claims[0].value == 0.25
+
+
+def test_r12_overlay_lines_on_grid_and_kpi_are_digit_free():
+    packet = _packet(best_grid=True)
+    context = build_ephemeral_results_context(packet)
+    grid_reply = build_deterministic_grid_ranking_reply(packet, context)
+    assert any("research diagnostics" in c for c in grid_reply.caveats)
+    assert any("in-sample grid ranking" in c for c in grid_reply.caveats)
+    for caveat in grid_reply.caveats:
+        assert _ungrounded_number_tokens(caveat, allowed=set()) == []
+
+    metric_reply = build_deterministic_single_metric_reply(
+        packet,
+        packet.to_dict(),
+        path="results.trade_summary.win_rate",
+    )
+    assert any("Win rate is the share" in c for c in metric_reply.caveats)
+    assert any("research diagnostics" in c for c in metric_reply.caveats)
+    for caveat in metric_reply.caveats:
+        assert _ungrounded_number_tokens(caveat, allowed=set()) == []
+
+    # KPI/overview path still digit-free under RI-7 alias.
+    claims = (
+        EvidenceClaim(
+            text="Expectancy R is 0.25.",
+            path="results.trade_summary.expectancy_r",
+            value=0.25,
+        ),
+    )
+    assert build_meaning_overlay is build_expert_overlay
+    overlay = build_meaning_overlay(packet, claims, discuss_intent=OVERVIEW_INTENT_KPI)
+    assert any("Expectancy R is mean net R" in line for line in overlay)
+    for line in overlay:
+        assert _ungrounded_number_tokens(line, allowed=set()) == []
+
+
+def test_ri7_validation_overlay_skips_wfa_presence_coaching():
+    packet = _packet(walk_forward=True)
+    reply = build_deterministic_validation_wfa_reply(packet, packet.to_dict())
+    assert any(
+        "Median OOS test expectancy" in c or "walk-forward" in c.lower() for c in reply.caveats
+    )
+    assert not any("ask whether walk-forward" in c.lower() for c in reply.caveats)
+    for caveat in reply.caveats:
+        assert _ungrounded_number_tokens(caveat, allowed=set()) == []
+
+
+def test_ri7_oos_anti_soften_retained_on_grid_overlay():
+    packet = _packet(best_grid=True, missing_oos=True)
+    context = build_ephemeral_results_context(packet)
+    reply = build_deterministic_grid_ranking_reply(packet, context)
+    assert any("missing" in c.lower() or "out-of-sample" in c.lower() for c in reply.caveats)
+    assert any("do not invent confirmation" in c.lower() for c in reply.caveats)
+    assert not any("ask whether walk-forward" in c.lower() for c in reply.caveats)
+    assert not any("whether walk-forward" in f.lower() for f in reply.followups)
+    for caveat in reply.caveats:
+        assert _ungrounded_number_tokens(caveat, allowed=set()) == []
+
+
+def test_ri7_cited_oos_status_missing_suppresses_wfa_presence_coaching():
+    """Typical grid projection cites oos_status=missing without a missing_oos caveat."""
+    packet = _packet(best_grid=True, missing_oos=False)
+    context = build_ephemeral_results_context(packet)
+    assert context["results"]["projections"]["grid_rankings"]["oos_status"] == "missing"
+    reply = build_deterministic_grid_ranking_reply(packet, context)
+    assert any(c.path.endswith("oos_status") for c in reply.claims)
+    assert any("Grid OOS status is an honesty signal" in c for c in reply.caveats)
+    assert any("do not invent confirmation" in c.lower() for c in reply.caveats)
+    assert not any("ask whether walk-forward" in c.lower() for c in reply.caveats)
+    assert not any("whether walk-forward" in f.lower() for f in reply.followups)
+
+
+def test_ri7_bare_packet_grid_hydrates_oos_status_for_overlay():
+    """Deterministic grid on bare packet must still suppress WFA-presence asks."""
+    packet = _packet(best_grid=True, missing_oos=False)
+    bare = packet.to_dict()
+    assert "projections" not in bare["results"]
+    reply = build_deterministic_grid_ranking_reply(packet, bare)
+    assert any(c.path.endswith("oos_status") for c in reply.claims)
+    assert any("do not invent confirmation" in c.lower() for c in reply.caveats)
+    assert not any("whether walk-forward" in f.lower() for f in reply.followups)
+
+
+def test_ri7_llm_grid_without_oos_claim_still_suppresses_presence_coaching():
+    """LLM drafts that omit oos_status still use turn-evidence status for RI-7."""
+    packet = _packet(best_grid=True, missing_oos=False)
+    context = build_ephemeral_results_context(packet)
+    client = _FailClient(
+        {
+            "summary": "Best stop is 8 and take profit is 16.",
+            "caveats": ["In-sample grid only."],
+            "claims": [
+                {
+                    "text": "Best stop-loss ticks is 8.",
+                    "path": "results.projections.grid_rankings.best.stop_loss_ticks",
+                },
+                {
+                    "text": "Best take-profit ticks is 16.",
+                    "path": "results.projections.grid_rankings.best.take_profit_ticks",
+                },
+            ],
+            "followups": [
+                "Ask whether walk-forward or validation diagnostics are present on this packet.",
+                "Ask about expectancy next.",
+            ],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What is the best SL/TP?",
+        turn_context=context,
+        repair_retry_enabled=False,
+    )
+    assert client.calls == 1
+    assert not any(c.path.endswith("oos_status") for c in reply.claims)
+    assert any("do not invent confirmation" in c.lower() for c in reply.caveats)
+    assert not any("ask whether walk-forward" in c.lower() for c in reply.caveats)
+    assert not any("whether walk-forward" in f.lower() for f in reply.followups)
+    assert "Ask about expectancy next." in reply.followups
+
+
+def test_ri7_mixed_ask_followups_respect_missing_oos():
+    packet = _packet(best_grid=True, missing_oos=True)
+    reply = build_mixed_ask_remediation_reply(packet)
+    assert not any("whether walk-forward" in f.lower() for f in reply.followups)
+    assert any("evidence paths remain available" in f.lower() for f in reply.followups)
+
+
+def test_ri7_mixed_ask_followups_respect_turn_oos_status():
+    packet = _packet(best_grid=True, missing_oos=False)
+    context = build_ephemeral_results_context(packet)
+    assert context["results"]["projections"]["grid_rankings"]["oos_status"] == "missing"
+    reply = build_mixed_ask_remediation_reply(packet, evidence_context=context)
+    assert not any("whether walk-forward" in f.lower() for f in reply.followups)
+    assert any("evidence paths remain available" in f.lower() for f in reply.followups)
+    # End-to-end short-circuit also hydrates and suppresses.
+    client = _FailClient(_uncited_digits_payload())
+    e2e = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="KPIs and best SL/TP",
+        turn_context=context,
+    )
+    assert client.calls == 0
+    assert e2e.recovery_reason == REASON_MIXED_ASK
+    assert not any("whether walk-forward" in f.lower() for f in e2e.followups)
+
+
+def test_ri7_single_metric_llm_multi_claim_falls_back_to_one_leaf():
+    packet = _packet()
+    client = _FailClient(
+        {
+            "summary": "Trade count is 42 and win rate is 52%.",
+            "caveats": ["In-sample only."],
+            "claims": [
+                {
+                    "text": "Trade count is 42.",
+                    "path": "results.trade_summary.trade_count",
+                },
+                {
+                    "text": "Win rate is 52%.",
+                    "path": "results.trade_summary.win_rate",
+                },
+            ],
+            "followups": ["Ask for KPIs."],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="How many trades?",
+        repair_retry_enabled=False,
+    )
+    assert client.calls == 1
+    assert len(reply.claims) == 1
+    assert reply.claims[0].path == "results.trade_summary.trade_count"
+    assert "52" not in reply.summary
+
+
+def test_ri7_time_overlay_includes_meaning_line():
+    packet = _packet(time_summary=True)
+    context = build_ephemeral_results_context(packet)
+    reply = build_deterministic_time_ranking_reply(packet, context)
+    assert any(
+        "in-sample session ranking" in c or "time bucket" in c.lower() for c in reply.caveats
+    )
+    assert any("research diagnostics" in c for c in reply.caveats)
+    for caveat in reply.caveats:
+        assert _ungrounded_number_tokens(caveat, allowed=set()) == []

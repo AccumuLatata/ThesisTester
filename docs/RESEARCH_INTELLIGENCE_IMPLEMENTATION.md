@@ -1,7 +1,7 @@
 # Research Intelligence — Implementation Contract
 
 **Document type:** Implementation contract (RI-series) — **single source of truth**
-**Status:** 🚧 **RI-4 landed** (grid + time + validation/WFA + single-metric); series not complete until RI-10
+**Status:** 🚧 **RI-7 landed** (grid + time + validation/WFA + single-metric + meaning overlay); series not complete until RI-10
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/results_overview.py` (intent matching /
 deterministic builders / overlays), `results_qa.py` (recovery wiring),
@@ -468,10 +468,13 @@ Extends DI-3; does not replace mandatory caveats.
 |---|---|
 | Digit-free glossary sentences for **cited** metric nouns | Any digit token in overlay-authored lines (`allowed=set()`) |
 | Packet caveat/limitation restatements already digit-audited | Derived ratios / “about half” / forecasts |
-| Selection-bias / in-sample / missing-OOS coaching tied to cited `oos_status` or caveat codes | Trade advice / “deploy this” |
-| Sample-size caution when cited `trade_count` exists (speak qualitatively: “sample size is cited in claims”) without re-printing digits in overlay | Contradicting `missing_oos` / `failed_oos` |
+| Selection-bias / in-sample / missing-OOS coaching tied to cited `oos_status` / `stitched_oos_status` **or** caveat/limitation codes | Trade advice / “deploy this” |
+| Sample-size caution when cited `trade_count` exists (speak qualitatively: “sample size is cited in claims”) without re-printing digits in overlay | Contradicting `missing_oos` / `failed_oos` / cited absent `oos_status` |
+| Honesty/scope glosses preferred when the cited-path gloss cap is tight | WFA-presence followup coaching after OOS is already known absent |
 
 Wire order unchanged: claims/summary → mandatory caveats → overlay → auditor.
+Followups (overview bank **and** specialist/mixed banks) must also suppress
+WFA-presence asks when OOS/WFA is already known absent.
 
 Optional LLM paraphrase of overlay remains **out of RI**.
 
@@ -742,7 +745,7 @@ complete coverage; duplex last so text builders are stable.
 | RI-4 Single-metric router | ✅ landed |
 | RI-5 Tier-2 robustness slices | ⬚ pending |
 | RI-6 Assumptions & costs slice | ⬚ pending |
-| RI-7 Grounded meaning overlay v2 | ⬚ pending |
+| RI-7 Grounded meaning overlay v2 | ✅ landed |
 | RI-8 Mixed-ask composition | ⬚ pending |
 | RI-9 Bounded deep-trade projections | ⬚ pending |
 | RI-10 Duplex parity + eval freeze | ⬚ pending |

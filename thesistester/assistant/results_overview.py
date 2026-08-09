@@ -3,7 +3,8 @@
 Fail-closed numbers stay in ``llm_explainer``. This module selects frozen
 overview + specialist slices (RI-1: ``grid_ranking``; RI-2: ``time_ranking``;
 RI-3: ``validation_wfa``; RI-4: ``single_metric``), builds DI-2 first-pass
-path catalogs, and builds auditor-safe replies when the LLM path fails.
+path catalogs, builds auditor-safe replies when the LLM path fails, and
+attaches DI-3/RI-7 digit-free meaning overlays after mandatory caveats.
 """
 
 from __future__ import annotations
@@ -665,6 +666,36 @@ def has_grid_ranking_evidence(evidence_context: Mapping[str, Any]) -> bool:
     return has_sl and has_tp
 
 
+def _ensure_grid_rankings_context(
+    evidence_context: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Attach ephemeral ``results.projections.grid_rankings`` when absent.
+
+    Ensures ``oos_status`` is available for RI-7 OOS-absent coaching even when
+    callers pass a bare packet dict without an orchestrator turn context.
+    """
+    if not isinstance(evidence_context, Mapping):
+        return {}
+    if _path_exists(evidence_context, "results.projections.grid_rankings"):
+        return evidence_context
+    try:
+        from thesistester.assistant.results_projections import build_ephemeral_results_context
+
+        hydrated = build_ephemeral_results_context(evidence_context)
+    except Exception:
+        return evidence_context
+    grid = ((hydrated.get("results") or {}).get("projections") or {}).get("grid_rankings")
+    if not isinstance(grid, Mapping) or not grid:
+        return evidence_context
+    merged = dict(evidence_context)
+    results = dict(merged.get("results") or {})
+    projections = dict(results.get("projections") or {})
+    projections["grid_rankings"] = dict(grid)
+    results["projections"] = projections
+    merged["results"] = results
+    return merged
+
+
 def has_validation_wfa_evidence(evidence_context: Mapping[str, Any]) -> bool:
     """True when at least one narratable §4.4 WFA/validation leaf exists."""
     if not isinstance(evidence_context, Mapping):
@@ -1070,7 +1101,7 @@ def _digit_free_lines(lines: Sequence[Any]) -> tuple[str, ...]:
     return tuple(out)
 
 
-# DI-3: strictly digit-free overlay glosses keyed by full claim paths
+# DI-3 / RI-7: strictly digit-free overlay glosses keyed by full claim paths
 # (leaf-only keys would mis-gloss results.best_grid_result.trade_count).
 _OVERLAY_GLOSS_BY_PATH: tuple[tuple[str, str], ...] = (
     (
@@ -1098,6 +1129,30 @@ _OVERLAY_GLOSS_BY_PATH: tuple[tuple[str, str], ...] = (
         "Total R is the sum of realized R multiples on the recorded sample, not a prediction.",
     ),
     (
+        "results.trade_summary.avg_r",
+        "Average R is the mean trade R on the recorded sample, not a forecast.",
+    ),
+    (
+        "results.trade_summary.median_r",
+        "Median R is the middle trade R on the recorded sample, not a forecast.",
+    ),
+    (
+        "results.trade_summary.sharpe_like_r",
+        "Sharpe-like R is a per-trade dispersion diagnostic on the recorded sample, not annualized Sharpe.",
+    ),
+    (
+        "results.trade_summary.sortino_like_r",
+        "Sortino-like R is a downside dispersion diagnostic on the recorded sample, not annualized Sortino.",
+    ),
+    (
+        "results.trade_summary.ulcer_index_r",
+        "Ulcer index R summarizes drawdown magnitude on the recorded equity path, not future pain bounds.",
+    ),
+    (
+        "results.trade_summary.recovery_factor",
+        "Recovery factor relates total R to drawdown on the recorded sample, not a deploy score.",
+    ),
+    (
         "results.best_grid_result.trade_count",
         "Best-grid trade count is the in-sample cell sample size when present, not proof of deployable edge.",
     ),
@@ -1109,6 +1164,70 @@ _OVERLAY_GLOSS_BY_PATH: tuple[tuple[str, str], ...] = (
         "results.best_grid_result.take_profit_ticks",
         "Best-grid take-profit ticks reflect in-sample grid selection when present, not out-of-sample confirmation.",
     ),
+    (
+        "results.projections.grid_rankings.best.stop_loss_ticks",
+        "Projected best stop ticks come from in-sample grid ranking, not out-of-sample confirmation.",
+    ),
+    (
+        "results.projections.grid_rankings.best.take_profit_ticks",
+        "Projected best take-profit ticks come from in-sample grid ranking, not out-of-sample confirmation.",
+    ),
+    (
+        "results.projections.grid_rankings.best.trade_count",
+        "Projected best-cell trade count is an in-sample sample-size signal, not proof of edge.",
+    ),
+    (
+        "results.projections.grid_rankings.selection_scope",
+        "Grid selection scope states which sample the ranking used; it is not a live-trading warrant.",
+    ),
+    (
+        "results.projections.grid_rankings.oos_status",
+        "Grid OOS status is an honesty signal about out-of-sample support, not a deploy recommendation.",
+    ),
+    (
+        "results.projections.grid_rankings.metric",
+        "The grid ranking metric is the frozen selection key for this projection, not a shoppable alternative.",
+    ),
+    (
+        "results.projections.time_rankings.best.bucket",
+        "Best time bucket is an in-sample session ranking on the recorded sample, not a clock forecast.",
+    ),
+    (
+        "results.projections.time_rankings.best.trade_count",
+        "Best-bucket trade count is an in-sample sample-size signal; treat thin buckets cautiously.",
+    ),
+    (
+        "results.projections.time_rankings.best.sample_warning",
+        "Sample warning flags thin time buckets; it is honesty framing, not a trading signal.",
+    ),
+    (
+        "results.projections.time_rankings.selection_scope",
+        "Time selection scope states which sample the bucket ranking used; it is not live-session advice.",
+    ),
+    (
+        "results.walk_forward_summary.median_test_expectancy_r",
+        "Median OOS test expectancy summarizes walk-forward folds; it is not in-sample expectancy.",
+    ),
+    (
+        "results.walk_forward_summary.fold_count",
+        "Walk-forward fold count describes the recorded validation design, not future fold outcomes.",
+    ),
+    (
+        "results.walk_forward_summary.valid_fold_count",
+        "Valid fold count is how many walk-forward folds produced usable tests on this packet.",
+    ),
+    (
+        "results.walk_forward_summary.stitched_oos_total_r",
+        "Stitched OOS total R aggregates recorded out-of-sample folds; it is not a live equity promise.",
+    ),
+    (
+        "results.validation_summary.bootstrap.probability_positive",
+        "Bootstrap probability positive is a resampling diagnostic on the recorded sample, not a guarantee.",
+    ),
+    (
+        "results.validation_summary.grid_overfit.risk_level",
+        "Grid overfit risk level is a research diagnostic about selection pressure, not a pass/fail trade gate.",
+    ),
 )
 
 _OVERLAY_ALWAYS = "These figures are research diagnostics, not trading advice."
@@ -1116,6 +1235,34 @@ _OVERLAY_ALWAYS = "These figures are research diagnostics, not trading advice."
 _OVERLAY_NEXT_STEP = (
     "If you care about robustness, ask whether walk-forward or validation "
     "diagnostics are present on this packet."
+)
+
+_OVERLAY_NEXT_STEP_VALIDATION = (
+    "Ask for the key metrics or a summary of this run if you want the in-sample baseline."
+)
+
+_OVERLAY_NEXT_STEP_TIME = (
+    "Ask about best stop and take profit ranking if a grid was recorded, or ask for key metrics."
+)
+
+_OVERLAY_OOS_ABSENT = (
+    "Out-of-sample or walk-forward evidence is missing or failed on this packet; "
+    "do not invent confirmation."
+)
+
+_OVERLAY_SAMPLE_SIZE_QUALITATIVE = (
+    "Sample size is cited in the claims; treat thin samples cautiously."
+)
+
+_OVERLAY_GLOSS_CAP = 3
+
+# Prefer honesty / scope glosses when the cited-path budget is tight (common
+# grid replies cite SL/TP/count before ``oos_status`` in claim-builder order).
+_OVERLAY_HONESTY_PATH_SUFFIXES: tuple[str, ...] = (
+    "oos_status",
+    "stitched_oos_status",
+    "selection_scope",
+    "sample_warning",
 )
 
 _OVERVIEW_FOLLOWUP_BANK: tuple[str, ...] = (
@@ -1131,6 +1278,20 @@ _OVERVIEW_FOLLOWUP_BANK_OOS_ABSENT: tuple[str, ...] = (
 
 _MISSING_KPI_OVERLAY = "Baseline trade summary KPIs were not available to interpret for this ask."
 
+# Cited / projected honesty statuses that mean OOS/WFA support is absent.
+_OOS_ABSENT_STATUS_VALUES: frozenset[str] = frozenset(
+    {
+        "missing",
+        "failed",
+        "absent",
+        "not_present",
+        "unavailable",
+        "not_available",
+    }
+)
+
+_WFA_PRESENCE_ASK_SNIPPET = "whether walk-forward or validation diagnostics are present"
+
 
 def _packet_caveat_codes(packet: EvidencePacket) -> set[str]:
     return {str(getattr(item, "code", "") or "") for item in getattr(packet, "caveats", ()) or ()}
@@ -1140,6 +1301,25 @@ def _is_diagnostic_honesty_line(text: str) -> bool:
     """True for diagnostic-only honesty lines (packet or overlay-authored)."""
     lowered = text.lower()
     return "diagnostic" in lowered and ("trading advice" in lowered or "proof of edge" in lowered)
+
+
+def _normalize_oos_status_token(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip().lower().replace("-", "_").replace(" ", "_")
+    return text or None
+
+
+def _claims_signal_oos_absent(claims: Sequence[EvidenceClaim]) -> bool:
+    """True when cited ``oos_status`` / ``stitched_oos_status`` is an absent value."""
+    for claim in claims:
+        path = getattr(claim, "path", None)
+        if not isinstance(path, str) or not path.endswith("oos_status"):
+            continue
+        token = _normalize_oos_status_token(getattr(claim, "value", None))
+        if token in _OOS_ABSENT_STATUS_VALUES:
+            return True
+    return False
 
 
 def _packet_signals_oos_absent(packet: EvidencePacket) -> bool:
@@ -1180,6 +1360,56 @@ def _packet_signals_oos_absent(packet: EvidencePacket) -> bool:
     return False
 
 
+def _context_signals_oos_absent(evidence_context: Mapping[str, Any] | None) -> bool:
+    """True when turn evidence already stores an absent OOS honesty status.
+
+    Covers successful LLM drafts that omit citing ``oos_status`` even though the
+    ephemeral projection / walk-forward summary already records missing/failed.
+    """
+    if not isinstance(evidence_context, Mapping):
+        return False
+    for path in (
+        "results.projections.grid_rankings.oos_status",
+        "results.walk_forward_summary.stitched_oos_status",
+    ):
+        if not _path_exists(evidence_context, path):
+            continue
+        token = _normalize_oos_status_token(_path_get(evidence_context, path))
+        if token in _OOS_ABSENT_STATUS_VALUES:
+            return True
+    return False
+
+
+def _oos_evidence_absent(
+    packet: EvidencePacket,
+    claims: Sequence[EvidenceClaim] | None = None,
+    evidence_context: Mapping[str, Any] | None = None,
+) -> bool:
+    """Packet caveats/limitations, cited status, or turn-evidence status (§5)."""
+    if _packet_signals_oos_absent(packet):
+        return True
+    if claims is not None and _claims_signal_oos_absent(claims):
+        return True
+    if _context_signals_oos_absent(evidence_context):
+        return True
+    return False
+
+
+def _followups_without_wfa_presence_ask(followups: Sequence[str]) -> tuple[str, ...]:
+    """Drop WFA/OOS presence-coaching followups when evidence is already absent."""
+    out: list[str] = []
+    for item in followups:
+        if not isinstance(item, str):
+            continue
+        lowered = item.lower()
+        if _WFA_PRESENCE_ASK_SNIPPET in lowered:
+            continue
+        if "ask whether walk-forward" in lowered or "ask whether walk forward" in lowered:
+            continue
+        out.append(item)
+    return tuple(out)
+
+
 def overview_followup_bank(packet: EvidencePacket | None = None) -> tuple[str, ...]:
     """Digit-free follow-up bank for overview / KPI replies (DI-3).
 
@@ -1191,14 +1421,30 @@ def overview_followup_bank(packet: EvidencePacket | None = None) -> tuple[str, .
     return _OVERVIEW_FOLLOWUP_BANK
 
 
+def _overlay_next_step_line(discuss_intent: str | None, *, oos_absent: bool) -> str | None:
+    """Return intent-aware next-step coaching, or None when suppressed."""
+    if discuss_intent == INTENT_VALIDATION_WFA:
+        return _OVERLAY_NEXT_STEP_VALIDATION
+    if discuss_intent == INTENT_TIME_RANKING:
+        return _OVERLAY_NEXT_STEP_TIME
+    # Overview / grid / single_metric: WFA-presence coaching unless already absent.
+    if oos_absent:
+        return None
+    return _OVERLAY_NEXT_STEP
+
+
 def build_expert_overlay(
     packet: EvidencePacket,
     claims: Sequence[EvidenceClaim],
+    *,
+    discuss_intent: str | None = None,
+    evidence_context: Mapping[str, Any] | None = None,
 ) -> tuple[str, ...]:
     """Return overlay-authored caveat lines that are strictly digit-free.
 
-    Mandatory packet caveats stay on ``merge_mandatory_packet_caveats`` and are
-    **not** returned here. Every line must pass
+    DI-3 overview + RI-7 specialist / single-metric meaning overlay. Mandatory
+    packet caveats stay on ``merge_mandatory_packet_caveats`` and are **not**
+    returned here. Every line must pass
     ``_ungrounded_number_tokens(line, allowed=set()) == []``.
     """
     lines: list[str] = []
@@ -1207,22 +1453,45 @@ def build_expert_overlay(
         for claim in claims
         if isinstance(getattr(claim, "path", None), str) and claim.path.strip()
     }
+    codes = _packet_caveat_codes(packet)
+    oos_absent = _oos_evidence_absent(packet, claims, evidence_context)
+
+    honesty_glosses: list[str] = []
+    other_glosses: list[str] = []
     for path, gloss in _OVERLAY_GLOSS_BY_PATH:
-        if path in cited_paths:
-            lines.append(gloss)
-        if len(lines) >= 3:
+        if path not in cited_paths:
+            continue
+        if any(path.endswith(suffix) for suffix in _OVERLAY_HONESTY_PATH_SUFFIXES):
+            honesty_glosses.append(gloss)
+        else:
+            other_glosses.append(gloss)
+    for gloss in honesty_glosses + other_glosses:
+        lines.append(gloss)
+        if len(lines) >= _OVERLAY_GLOSS_CAP:
             break
+
+    # Qualitative sample-size caution when a trade_count leaf was cited (no digits).
+    if any(path.endswith("trade_count") for path in cited_paths):
+        if _OVERLAY_SAMPLE_SIZE_QUALITATIVE not in lines:
+            lines.append(_OVERLAY_SAMPLE_SIZE_QUALITATIVE)
+
+    if oos_absent and _OVERLAY_OOS_ABSENT not in lines:
+        lines.append(_OVERLAY_OOS_ABSENT)
+
     if not cited_paths:
-        lines.append(_MISSING_KPI_OVERLAY)
+        # Missing-KPI honesty is overview-shaped; specialists use limitation builders.
+        if discuss_intent in {None, OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN}:
+            lines.append(_MISSING_KPI_OVERLAY)
     else:
         # Only when figures were cited — never "these figures" on empty KPI path.
         # Skip when packet already carries diagnostic_only (near-duplicate).
-        if "diagnostic_only" not in _packet_caveat_codes(packet):
+        if "diagnostic_only" not in codes:
             if _OVERLAY_ALWAYS not in lines:
                 lines.append(_OVERLAY_ALWAYS)
-    # Do not coach "ask whether WFA is present" when the packet already says no.
-    if not _packet_signals_oos_absent(packet) and _OVERLAY_NEXT_STEP not in lines:
-        lines.append(_OVERLAY_NEXT_STEP)
+
+    next_step = _overlay_next_step_line(discuss_intent, oos_absent=oos_absent)
+    if next_step is not None and next_step not in lines:
+        lines.append(next_step)
 
     audited: list[str] = []
     for line in lines:
@@ -1235,6 +1504,10 @@ def build_expert_overlay(
     return tuple(audited)
 
 
+# Contract alias (RI-7); same pure digit-free builder as DI-3.
+build_meaning_overlay = build_expert_overlay
+
+
 def apply_expert_overlay(
     packet: EvidencePacket,
     *,
@@ -1242,11 +1515,25 @@ def apply_expert_overlay(
     caveats: Sequence[str],
     claims: Sequence[EvidenceClaim],
     recovery_reason: str | None = None,
+    followups: Sequence[str] | None = None,
+    discuss_intent: str | None = None,
+    evidence_context: Mapping[str, Any] | None = None,
 ):
-    """Append DI-3 overlay lines and overview followups; re-run the auditor."""
+    """Append DI-3/RI-7 overlay lines; re-run the auditor.
+
+    When ``followups`` is omitted, uses the overview followup bank (DI-3).
+    Specialist / single-metric builders pass their own digit-free followups;
+    WFA-presence asks are stripped when OOS/WFA is already known absent
+    (packet caveats/limitations, cited ``oos_status``, or turn-evidence status).
+    """
     from thesistester.assistant.results_qa import ResultsQAReply
 
-    overlay = build_expert_overlay(packet, claims)
+    overlay = build_expert_overlay(
+        packet,
+        claims,
+        discuss_intent=discuss_intent,
+        evidence_context=evidence_context,
+    )
     # Keep mandatory/LLM caveats first; append only new overlay-authored lines.
     merged_caveats = list(caveats)
     seen = {item.strip() for item in merged_caveats if isinstance(item, str)}
@@ -1261,7 +1548,16 @@ def apply_expert_overlay(
             continue
         merged_caveats.append(line)
         seen.add(line)
-    followups = overview_followup_bank(packet)
+    oos_absent = _oos_evidence_absent(packet, claims, evidence_context)
+    if followups is not None:
+        final_followups = tuple(followups)
+        if oos_absent:
+            filtered = _followups_without_wfa_presence_ask(followups)
+            final_followups = filtered or _OVERVIEW_FOLLOWUP_BANK_OOS_ABSENT
+    else:
+        final_followups = (
+            _OVERVIEW_FOLLOWUP_BANK_OOS_ABSENT if oos_absent else _OVERVIEW_FOLLOWUP_BANK
+        )
     caveat_tuple = tuple(merged_caveats)
     claim_tuple = tuple(claims)
     assert_llm_explanation_grounded(
@@ -1269,13 +1565,13 @@ def apply_expert_overlay(
         summary=summary,
         caveats=caveat_tuple,
         claims=claim_tuple,
-        followups=followups,
+        followups=final_followups,
     )
     return ResultsQAReply(
         summary=summary,
         caveats=caveat_tuple,
         claims=claim_tuple,
-        followups=followups,
+        followups=final_followups,
         recovery_reason=recovery_reason,
     )
 
@@ -1422,7 +1718,7 @@ def build_deterministic_kpi_reply(
         )
 
     grounded = tuple(claims)
-    # Wire order (DI-3): claims/summary → mandatory caveats → overlay → auditor.
+    # Wire order (DI-3 / RI-7): claims/summary → mandatory caveats → overlay → auditor.
     caveats = merge_mandatory_packet_caveats(packet, caveat_seed)
     return apply_expert_overlay(
         packet,
@@ -1430,6 +1726,8 @@ def build_deterministic_kpi_reply(
         caveats=caveats,
         claims=grounded,
         recovery_reason=recovery_reason,
+        discuss_intent=intent,
+        evidence_context=evidence_context,
     )
 
 
@@ -1476,6 +1774,7 @@ def build_mixed_ask_remediation_reply(
     packet: EvidencePacket,
     *,
     recovery_reason: str | None = REASON_MIXED_ASK,
+    evidence_context: Mapping[str, Any] | None = None,
 ):
     """Narrow-ask remediation for mixed intents until RI-8 composition lands."""
     from thesistester.assistant.results_qa import ResultsQAReply
@@ -1485,13 +1784,19 @@ def build_mixed_ask_remediation_reply(
         "(for example one metric, key metrics, best stop and take profit, best "
         "entry time, or walk-forward)."
     )
-    followups = (
+    followups_list = [
         "Ask for one metric (for example win rate or expectancy).",
         "Ask for the key metrics or a summary of this run.",
         "Ask about best stop and take profit ranking if a grid was recorded.",
         "Ask about the best entry time or session bucket if time analysis was recorded.",
-        "Ask whether walk-forward or validation diagnostics are present on this packet.",
-    )
+    ]
+    if _oos_evidence_absent(packet, evidence_context=evidence_context):
+        followups_list.append("Ask which evidence paths remain available on this packet.")
+    else:
+        followups_list.append(
+            "Ask whether walk-forward or validation diagnostics are present on this packet."
+        )
+    followups = tuple(followups_list)
     caveats = merge_mandatory_packet_caveats(
         packet,
         ("No partial KPI or specialist slice was shown for a mixed ask.",),
@@ -1640,8 +1945,6 @@ def build_deterministic_single_metric_reply(
     recovery_reason: str | None = None,
 ):
     """Build an auditor-safe one-claim reply for a frozen §4.5 metric path."""
-    from thesistester.assistant.results_qa import ResultsQAReply
-
     if not has_single_metric_evidence(evidence_context, path):
         return build_missing_metric_limitation_reply(
             packet,
@@ -1670,19 +1973,15 @@ def build_deterministic_single_metric_reply(
         "Ask for the key metrics or a summary of this run.",
         "Ask whether walk-forward or validation diagnostics are present on this packet.",
     )
-    assert_llm_explanation_grounded(
+    return apply_expert_overlay(
         packet,
         summary=summary,
         caveats=caveats,
         claims=grounded,
-        followups=followups,
-    )
-    return ResultsQAReply(
-        summary=summary,
-        caveats=caveats,
-        claims=grounded,
-        followups=followups,
         recovery_reason=recovery_reason,
+        followups=followups,
+        discuss_intent=INTENT_SINGLE_METRIC,
+        evidence_context=evidence_context,
     )
 
 
@@ -1693,8 +1992,6 @@ def build_deterministic_time_ranking_reply(
     recovery_reason: str | None = None,
 ):
     """Build an auditor-safe best-entry-time reply from the frozen §4.3 allowlist."""
-    from thesistester.assistant.results_qa import ResultsQAReply
-
     working = _ensure_time_rankings_context(evidence_context)
     if not has_time_ranking_evidence(working):
         return build_missing_time_limitation_reply(
@@ -1732,19 +2029,15 @@ def build_deterministic_time_ranking_reply(
         "Ask about best stop and take profit ranking if a grid was recorded.",
         "Ask for the key metrics or a summary of this run.",
     )
-    assert_llm_explanation_grounded(
+    return apply_expert_overlay(
         packet,
         summary=summary,
         caveats=caveats,
         claims=grounded,
-        followups=followups,
-    )
-    return ResultsQAReply(
-        summary=summary,
-        caveats=caveats,
-        claims=grounded,
-        followups=followups,
         recovery_reason=recovery_reason,
+        followups=followups,
+        discuss_intent=INTENT_TIME_RANKING,
+        evidence_context=working,
     )
 
 
@@ -1755,8 +2048,6 @@ def build_deterministic_validation_wfa_reply(
     recovery_reason: str | None = None,
 ):
     """Build an auditor-safe validation/WFA reply from the frozen §4.4 allowlist."""
-    from thesistester.assistant.results_qa import ResultsQAReply
-
     if not has_validation_wfa_evidence(evidence_context):
         return build_missing_validation_limitation_reply(
             packet,
@@ -1795,19 +2086,15 @@ def build_deterministic_validation_wfa_reply(
         "Ask for the key metrics or a summary of this run.",
         "Ask about best stop and take profit ranking if a grid was recorded.",
     )
-    assert_llm_explanation_grounded(
+    return apply_expert_overlay(
         packet,
         summary=summary,
         caveats=caveats,
         claims=grounded,
-        followups=followups,
-    )
-    return ResultsQAReply(
-        summary=summary,
-        caveats=caveats,
-        claims=grounded,
-        followups=followups,
         recovery_reason=recovery_reason,
+        followups=followups,
+        discuss_intent=INTENT_VALIDATION_WFA,
+        evidence_context=evidence_context,
     )
 
 
@@ -1818,9 +2105,8 @@ def build_deterministic_grid_ranking_reply(
     recovery_reason: str | None = None,
 ):
     """Build an auditor-safe best SL/TP reply from the frozen grid allowlist."""
-    from thesistester.assistant.results_qa import ResultsQAReply
-
-    if not has_grid_ranking_evidence(evidence_context):
+    working = _ensure_grid_rankings_context(evidence_context)
+    if not has_grid_ranking_evidence(working):
         return build_missing_grid_limitation_reply(
             packet,
             recovery_reason=recovery_reason or REASON_MISSING_GRID,
@@ -1832,7 +2118,7 @@ def build_deterministic_grid_ranking_reply(
     # Prefer projection best SL/TP paths when narratable; else recorded best.
     preferred_order = list(GRID_CLAIM_PATHS)
     for path in preferred_order:
-        if not _path_exists(evidence_context, path):
+        if not _path_exists(working, path):
             continue
         # Skip recorded best leaf only when the matching projection leaf was cited.
         if path.startswith("results.best_grid_result."):
@@ -1840,7 +2126,7 @@ def build_deterministic_grid_ranking_reply(
             projection_path = f"results.projections.grid_rankings.best.{leaf}"
             if projection_path in claimed_paths:
                 continue
-        value = _path_get(evidence_context, path)
+        value = _path_get(working, path)
         text = _format_scalar_for_claim(path, value)
         if text is None:
             continue
@@ -1868,19 +2154,15 @@ def build_deterministic_grid_ranking_reply(
         "Ask whether walk-forward or validation diagnostics are present on this packet.",
         "Ask for the key metrics or a summary of this run.",
     )
-    assert_llm_explanation_grounded(
+    return apply_expert_overlay(
         packet,
         summary=summary,
         caveats=caveats,
         claims=grounded,
-        followups=followups,
-    )
-    return ResultsQAReply(
-        summary=summary,
-        caveats=caveats,
-        claims=grounded,
-        followups=followups,
         recovery_reason=recovery_reason,
+        followups=followups,
+        discuss_intent=INTENT_GRID_RANKING,
+        evidence_context=working,
     )
 
 

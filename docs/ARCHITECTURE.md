@@ -515,6 +515,12 @@ via explicit `how many trades`); hard-refuse when grid/time/validation/residual
 collocates are present (never cite IS expectancy for OOS asks); `over time`
 idioms do not fire bare time; bare time×metric → `mixed_ask`; missing-leaf
 short-circuit before LLM; win-rate `%` narration.
+**RI-7 landed:** extends DI-3 `build_expert_overlay` / `apply_expert_overlay`
+(alias `build_meaning_overlay`) with specialist + single-metric path glosses;
+intent-aware next-step coaching; missing-OOS honesty line when packet signals
+absence; wire order claims→mandatory caveats→overlay→auditor for overview and
+landed specialist / single-metric replies; overlay lines stay
+`_ungrounded_number_tokens(..., allowed=set()) == []`.
 **DI-2 landed:** first-pass Results Q&A user payloads include
 `path_catalog.existing_paths` (bounded paths present on the turn context;
 KPI + projections/validation + honesty paths reserved before fat time tables
@@ -529,7 +535,10 @@ audited with `_ungrounded_number_tokens(..., allowed=set())`. Overview
 followups use a digit-free bank (packet-aware: suppress WFA-presence coaching
 when `missing_oos` / WFA-absent limitations already apply). Empty-KPI overlays
 do not say “these figures,” and diagnostic honesty is near-deduped against
-`diagnostic_only`. Non-overview replies are unchanged.
+`diagnostic_only`. **RI-7** extends the same digit-free overlay to landed
+specialist / single-metric replies (intent-aware next-step; OOS-absent coaching
+suppressed from caveats **and** followups when packet signals or cited
+`oos_status` is missing/failed).
 **RQ-3 landed:** `thesistester/assistant/product_help.py` +
 `handle_help_turn`; Help / how it works mode on Research Assistant
 (page-level mode-scoped `st.chat_input`; RUX-3);

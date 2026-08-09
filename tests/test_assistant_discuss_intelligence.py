@@ -783,8 +783,45 @@ def test_di3_non_overview_success_skips_overlay_bank():
         client,
         packet=_packet(),
         history=(),
-        user_message="How many trades?",
+        # Unmatched ask (not overview / not RI-4 single_metric).
+        user_message="Tell me about this edge qualitatively.",
     )
-    # Non-overview keeps model followups; does not force overview bank/overlay.
+    # Unmatched keeps model followups; does not force overview bank/overlay.
     assert reply.followups == ("Ask about expectancy next.",)
     assert not any("research diagnostics" in caveat for caveat in reply.caveats)
+
+
+def test_ri7_single_metric_llm_success_gets_overlay_keeps_followups():
+    """RI-7: single_metric LLM success appends meaning overlay; keeps model followups."""
+
+    class _OneClaimClient:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def complete_structured(self, **kwargs):
+            self.calls.append(kwargs)
+            return {
+                "summary": "Trade count is 42.",
+                "caveats": ["Historical sample only."],
+                "claims": [
+                    {
+                        "text": "Trade count is 42.",
+                        "path": "results.trade_summary.trade_count",
+                    }
+                ],
+                "followups": ["Ask about expectancy next."],
+            }
+
+    client = _OneClaimClient()
+    reply = propose_results_reply(
+        client,
+        packet=_packet(),
+        history=(),
+        user_message="How many trades?",
+    )
+    assert len(client.calls) == 1
+    assert len(reply.claims) == 1
+    assert reply.claims[0].path == "results.trade_summary.trade_count"
+    assert reply.followups == ("Ask about expectancy next.",)
+    assert any("research diagnostics" in caveat for caveat in reply.caveats)
+    assert any("Trade count is the recorded sample size" in caveat for caveat in reply.caveats)
