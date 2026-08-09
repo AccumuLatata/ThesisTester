@@ -475,10 +475,33 @@ def propose_results_reply(
             "recovery_reason": reply.recovery_reason,
             "discuss_intent": discuss_intent,
         }
-        # Overview keeps the DI-3 followup bank; specialists preserve reply followups.
+        # Overview keeps the DI-3 followup bank; specialists preserve reply followups
+        # (apply_expert_overlay still strips WFA-presence asks when OOS is absent).
         if overview_intent is None:
             overlay_kwargs["followups"] = reply.followups
         return apply_expert_overlay(packet, **overlay_kwargs)
+
+    def _finish_llm_reply(reply: ResultsQAReply) -> ResultsQAReply:
+        # §4.5: single_metric must stay one claim on the resolved leaf.
+        if discuss_intent == INTENT_SINGLE_METRIC:
+            metric_path = resolve_single_metric_path(user_message)
+            ok = (
+                metric_path is not None
+                and len(reply.claims) == 1
+                and reply.claims[0].path == metric_path
+            )
+            if (
+                not ok
+                and deterministic_specialist_fallback
+                and metric_path is not None
+                and has_single_metric_evidence(evidence_context, metric_path)
+            ):
+                return build_deterministic_single_metric_reply(
+                    packet,
+                    evidence_context,
+                    path=metric_path,
+                )
+        return _maybe_overlay(reply)
 
     try:
         payload = _complete_results_structured(
@@ -488,7 +511,7 @@ def propose_results_reply(
             user_message=user_message,
             discuss_intent=discuss_intent,
         )
-        return _maybe_overlay(
+        return _finish_llm_reply(
             _decode_results_payload(payload, packet=packet, evidence_context=evidence_context)
         )
     except (LLMEvidenceError, LLMProviderError) as first_exc:
@@ -527,7 +550,7 @@ def propose_results_reply(
                     discuss_intent=discuss_intent,
                     repair=repair_payload,
                 )
-                return _maybe_overlay(
+                return _finish_llm_reply(
                     _decode_results_payload(
                         repaired, packet=packet, evidence_context=evidence_context
                     )

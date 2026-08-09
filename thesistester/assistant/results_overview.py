@@ -1226,6 +1226,15 @@ _OVERLAY_SAMPLE_SIZE_QUALITATIVE = (
 
 _OVERLAY_GLOSS_CAP = 3
 
+# Prefer honesty / scope glosses when the cited-path budget is tight (common
+# grid replies cite SL/TP/count before ``oos_status`` in claim-builder order).
+_OVERLAY_HONESTY_PATH_SUFFIXES: tuple[str, ...] = (
+    "oos_status",
+    "stitched_oos_status",
+    "selection_scope",
+    "sample_warning",
+)
+
 _OVERVIEW_FOLLOWUP_BANK: tuple[str, ...] = (
     "Ask whether walk-forward or validation diagnostics are present on this packet.",
     "Ask about best stop and take profit ranking if a grid was recorded.",
@@ -1239,6 +1248,20 @@ _OVERVIEW_FOLLOWUP_BANK_OOS_ABSENT: tuple[str, ...] = (
 
 _MISSING_KPI_OVERLAY = "Baseline trade summary KPIs were not available to interpret for this ask."
 
+# Cited / projected honesty statuses that mean OOS/WFA support is absent.
+_OOS_ABSENT_STATUS_VALUES: frozenset[str] = frozenset(
+    {
+        "missing",
+        "failed",
+        "absent",
+        "not_present",
+        "unavailable",
+        "not_available",
+    }
+)
+
+_WFA_PRESENCE_ASK_SNIPPET = "whether walk-forward or validation diagnostics are present"
+
 
 def _packet_caveat_codes(packet: EvidencePacket) -> set[str]:
     return {str(getattr(item, "code", "") or "") for item in getattr(packet, "caveats", ()) or ()}
@@ -1248,6 +1271,25 @@ def _is_diagnostic_honesty_line(text: str) -> bool:
     """True for diagnostic-only honesty lines (packet or overlay-authored)."""
     lowered = text.lower()
     return "diagnostic" in lowered and ("trading advice" in lowered or "proof of edge" in lowered)
+
+
+def _normalize_oos_status_token(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip().lower().replace("-", "_").replace(" ", "_")
+    return text or None
+
+
+def _claims_signal_oos_absent(claims: Sequence[EvidenceClaim]) -> bool:
+    """True when cited ``oos_status`` / ``stitched_oos_status`` is an absent value."""
+    for claim in claims:
+        path = getattr(claim, "path", None)
+        if not isinstance(path, str) or not path.endswith("oos_status"):
+            continue
+        token = _normalize_oos_status_token(getattr(claim, "value", None))
+        if token in _OOS_ABSENT_STATUS_VALUES:
+            return True
+    return False
 
 
 def _packet_signals_oos_absent(packet: EvidencePacket) -> bool:
@@ -1286,6 +1328,33 @@ def _packet_signals_oos_absent(packet: EvidencePacket) -> bool:
         if mentions_oos and absent:
             return True
     return False
+
+
+def _oos_evidence_absent(
+    packet: EvidencePacket,
+    claims: Sequence[EvidenceClaim] | None = None,
+) -> bool:
+    """Packet caveats/limitations **or** cited OOS honesty status (§5 / RI-7)."""
+    if _packet_signals_oos_absent(packet):
+        return True
+    if claims is not None and _claims_signal_oos_absent(claims):
+        return True
+    return False
+
+
+def _followups_without_wfa_presence_ask(followups: Sequence[str]) -> tuple[str, ...]:
+    """Drop WFA/OOS presence-coaching followups when evidence is already absent."""
+    out: list[str] = []
+    for item in followups:
+        if not isinstance(item, str):
+            continue
+        lowered = item.lower()
+        if _WFA_PRESENCE_ASK_SNIPPET in lowered:
+            continue
+        if "ask whether walk-forward" in lowered or "ask whether walk forward" in lowered:
+            continue
+        out.append(item)
+    return tuple(out)
 
 
 def overview_followup_bank(packet: EvidencePacket | None = None) -> tuple[str, ...]:
@@ -1331,11 +1400,19 @@ def build_expert_overlay(
         if isinstance(getattr(claim, "path", None), str) and claim.path.strip()
     }
     codes = _packet_caveat_codes(packet)
-    oos_absent = _packet_signals_oos_absent(packet)
+    oos_absent = _oos_evidence_absent(packet, claims)
 
+    honesty_glosses: list[str] = []
+    other_glosses: list[str] = []
     for path, gloss in _OVERLAY_GLOSS_BY_PATH:
-        if path in cited_paths:
-            lines.append(gloss)
+        if path not in cited_paths:
+            continue
+        if any(path.endswith(suffix) for suffix in _OVERLAY_HONESTY_PATH_SUFFIXES):
+            honesty_glosses.append(gloss)
+        else:
+            other_glosses.append(gloss)
+    for gloss in honesty_glosses + other_glosses:
+        lines.append(gloss)
         if len(lines) >= _OVERLAY_GLOSS_CAP:
             break
 
@@ -1390,7 +1467,9 @@ def apply_expert_overlay(
     """Append DI-3/RI-7 overlay lines; re-run the auditor.
 
     When ``followups`` is omitted, uses the overview followup bank (DI-3).
-    Specialist / single-metric builders pass their own digit-free followups.
+    Specialist / single-metric builders pass their own digit-free followups;
+    WFA-presence asks are stripped when OOS/WFA is already known absent
+    (packet caveats/limitations **or** cited ``oos_status``).
     """
     from thesistester.assistant.results_qa import ResultsQAReply
 
@@ -1409,7 +1488,16 @@ def apply_expert_overlay(
             continue
         merged_caveats.append(line)
         seen.add(line)
-    final_followups = tuple(followups) if followups is not None else overview_followup_bank(packet)
+    oos_absent = _oos_evidence_absent(packet, claims)
+    if followups is not None:
+        final_followups = tuple(followups)
+        if oos_absent:
+            filtered = _followups_without_wfa_presence_ask(followups)
+            final_followups = filtered or _OVERVIEW_FOLLOWUP_BANK_OOS_ABSENT
+    else:
+        final_followups = (
+            _OVERVIEW_FOLLOWUP_BANK_OOS_ABSENT if oos_absent else _OVERVIEW_FOLLOWUP_BANK
+        )
     caveat_tuple = tuple(merged_caveats)
     claim_tuple = tuple(claims)
     assert_llm_explanation_grounded(
@@ -1634,13 +1722,19 @@ def build_mixed_ask_remediation_reply(
         "(for example one metric, key metrics, best stop and take profit, best "
         "entry time, or walk-forward)."
     )
-    followups = (
+    followups_list = [
         "Ask for one metric (for example win rate or expectancy).",
         "Ask for the key metrics or a summary of this run.",
         "Ask about best stop and take profit ranking if a grid was recorded.",
         "Ask about the best entry time or session bucket if time analysis was recorded.",
-        "Ask whether walk-forward or validation diagnostics are present on this packet.",
-    )
+    ]
+    if _packet_signals_oos_absent(packet):
+        followups_list.append("Ask which evidence paths remain available on this packet.")
+    else:
+        followups_list.append(
+            "Ask whether walk-forward or validation diagnostics are present on this packet."
+        )
+    followups = tuple(followups_list)
     caveats = merge_mandatory_packet_caveats(
         packet,
         ("No partial KPI or specialist slice was shown for a mixed ask.",),

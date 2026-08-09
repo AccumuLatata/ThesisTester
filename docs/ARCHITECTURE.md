@@ -535,7 +535,10 @@ audited with `_ungrounded_number_tokens(..., allowed=set())`. Overview
 followups use a digit-free bank (packet-aware: suppress WFA-presence coaching
 when `missing_oos` / WFA-absent limitations already apply). Empty-KPI overlays
 do not say “these figures,” and diagnostic honesty is near-deduped against
-`diagnostic_only`. Non-overview replies are unchanged.
+`diagnostic_only`. **RI-7** extends the same digit-free overlay to landed
+specialist / single-metric replies (intent-aware next-step; OOS-absent coaching
+suppressed from caveats **and** followups when packet signals or cited
+`oos_status` is missing/failed).
 **RQ-3 landed:** `thesistester/assistant/product_help.py` +
 `handle_help_turn`; Help / how it works mode on Research Assistant
 (page-level mode-scoped `st.chat_input`; RUX-3);

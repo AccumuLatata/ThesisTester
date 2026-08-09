@@ -30,6 +30,7 @@ from thesistester.assistant.results_overview import (
     build_deterministic_validation_wfa_reply,
     build_expert_overlay,
     build_meaning_overlay,
+    build_mixed_ask_remediation_reply,
     has_grid_ranking_evidence,
     has_overview_negative_cue,
     has_single_metric_evidence,
@@ -1088,8 +1089,61 @@ def test_ri7_oos_anti_soften_retained_on_grid_overlay():
     assert any("missing" in c.lower() or "out-of-sample" in c.lower() for c in reply.caveats)
     assert any("do not invent confirmation" in c.lower() for c in reply.caveats)
     assert not any("ask whether walk-forward" in c.lower() for c in reply.caveats)
+    assert not any("whether walk-forward" in f.lower() for f in reply.followups)
     for caveat in reply.caveats:
         assert _ungrounded_number_tokens(caveat, allowed=set()) == []
+
+
+def test_ri7_cited_oos_status_missing_suppresses_wfa_presence_coaching():
+    """Typical grid projection cites oos_status=missing without a missing_oos caveat."""
+    packet = _packet(best_grid=True, missing_oos=False)
+    context = build_ephemeral_results_context(packet)
+    assert context["results"]["projections"]["grid_rankings"]["oos_status"] == "missing"
+    reply = build_deterministic_grid_ranking_reply(packet, context)
+    assert any(c.path.endswith("oos_status") for c in reply.claims)
+    assert any("Grid OOS status is an honesty signal" in c for c in reply.caveats)
+    assert any("do not invent confirmation" in c.lower() for c in reply.caveats)
+    assert not any("ask whether walk-forward" in c.lower() for c in reply.caveats)
+    assert not any("whether walk-forward" in f.lower() for f in reply.followups)
+
+
+def test_ri7_mixed_ask_followups_respect_missing_oos():
+    packet = _packet(best_grid=True, missing_oos=True)
+    reply = build_mixed_ask_remediation_reply(packet)
+    assert not any("whether walk-forward" in f.lower() for f in reply.followups)
+    assert any("evidence paths remain available" in f.lower() for f in reply.followups)
+
+
+def test_ri7_single_metric_llm_multi_claim_falls_back_to_one_leaf():
+    packet = _packet()
+    client = _FailClient(
+        {
+            "summary": "Trade count is 42 and win rate is 52%.",
+            "caveats": ["In-sample only."],
+            "claims": [
+                {
+                    "text": "Trade count is 42.",
+                    "path": "results.trade_summary.trade_count",
+                },
+                {
+                    "text": "Win rate is 52%.",
+                    "path": "results.trade_summary.win_rate",
+                },
+            ],
+            "followups": ["Ask for KPIs."],
+        }
+    )
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="How many trades?",
+        repair_retry_enabled=False,
+    )
+    assert client.calls == 1
+    assert len(reply.claims) == 1
+    assert reply.claims[0].path == "results.trade_summary.trade_count"
+    assert "52" not in reply.summary
 
 
 def test_ri7_time_overlay_includes_meaning_line():

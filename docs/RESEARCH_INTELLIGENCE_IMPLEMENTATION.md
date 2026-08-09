@@ -468,10 +468,13 @@ Extends DI-3; does not replace mandatory caveats.
 |---|---|
 | Digit-free glossary sentences for **cited** metric nouns | Any digit token in overlay-authored lines (`allowed=set()`) |
 | Packet caveat/limitation restatements already digit-audited | Derived ratios / “about half” / forecasts |
-| Selection-bias / in-sample / missing-OOS coaching tied to cited `oos_status` or caveat codes | Trade advice / “deploy this” |
-| Sample-size caution when cited `trade_count` exists (speak qualitatively: “sample size is cited in claims”) without re-printing digits in overlay | Contradicting `missing_oos` / `failed_oos` |
+| Selection-bias / in-sample / missing-OOS coaching tied to cited `oos_status` / `stitched_oos_status` **or** caveat/limitation codes | Trade advice / “deploy this” |
+| Sample-size caution when cited `trade_count` exists (speak qualitatively: “sample size is cited in claims”) without re-printing digits in overlay | Contradicting `missing_oos` / `failed_oos` / cited absent `oos_status` |
+| Honesty/scope glosses preferred when the cited-path gloss cap is tight | WFA-presence followup coaching after OOS is already known absent |
 
 Wire order unchanged: claims/summary → mandatory caveats → overlay → auditor.
+Followups (overview bank **and** specialist/mixed banks) must also suppress
+WFA-presence asks when OOS/WFA is already known absent.
 
 Optional LLM paraphrase of overlay remains **out of RI**.
 
