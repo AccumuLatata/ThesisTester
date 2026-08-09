@@ -176,7 +176,7 @@ the sole-intent tie-break when exactly one landed intent matches; they are
 | Priority | Intent id | Owner PR | Positive cues (freeze exact tuples in code+tests; prefer anchored forms) |
 |---|---|---|---|
 | 1 | `grid_ranking` | RI-1 | `best sl`, `best tp`, `best sl/tp`, `best stop`, `best target`, `stop loss`, `take profit`, `sl/tp`, word-boundary `sl` / `tp` / `stop` / `target` when co-present with best/pair/grid/ranking cues as frozen in tests, bare `grid` (grid-ranking sense), `grid ranking`, `grid rank`, `ranking metric` + grid context per freeze |
-| 2 | `time_ranking` | RI-2 | `best time`, `best entry`, `entry time`, `time bucket`, `session segment`, `hour bucket`, word-boundary `time` / `hour` / `bucket` / `clock` with ranking/best/entry collocates per freeze (bare DI negatives `time`/`hour`/`bucket`/`clock`/`session segment` stay residual until RI-2 sunsets them — §4.1.1) |
+| 2 | `time_ranking` | RI-2 | `best time`, `best entry`, `entry time`, `time bucket`, `session segment`, `hour bucket`, word-boundary bare `time` / `hour` / `bucket` / `clock` / `session segment` (plus ranking/best/entry collocates per freeze); ✅ sunsets residual DI negatives — §4.1.1 |
 | 3 | `validation_wfa` | RI-3 | `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap`, `permutation` only with validation-sense collocates (`bootstrap`/`oos`/`wfa`/`walk-forward`/`validation`/`test`). **Not** `otf validation` (RI-5). |
 | 4 | `robustness_tier2` | RI-5 | `monte carlo`, `monte-carlo`, `overfitting`, `sensitivity`, `noise test`, `noise summary`, `portfolio summary`, `otf validation` |
 | 5 | `assumptions_costs` | RI-6 | `commission`, `slippage`, `exposure policy`, `intrabar model`, `costs`, `assumptions` (run-assumption sense; not Help how-to) |
@@ -301,6 +301,12 @@ otherwise.
 
 If projection absent and no usable `results.time_grouped_summary` rows →
 missing-time limitation (RQ §6.3). Do not invent clocks.
+
+When only `time_grouped_summary` is present (or an incomplete projection lacks a
+narratable `best.bucket`), RI-2 projects into `results.projections.time_rankings`
+on the turn evidence context before path catalog / LLM / path audit so
+`evidence_packet` and `path_catalog.existing_paths` cannot diverge. Integer
+hour buckets coerce to `HH:00` labels for RQ clock-span grounding.
 
 ### 4.4 `validation_wfa` claim allowlist (RI-3)
 

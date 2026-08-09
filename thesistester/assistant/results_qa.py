@@ -25,6 +25,7 @@ from thesistester.assistant.results_overview import (
     REASON_GRID_FALLBACK,
     REASON_TIME_FALLBACK,
     REASON_VALIDATION_FALLBACK,
+    _ensure_time_rankings_context,
     apply_expert_overlay,
     build_deterministic_grid_ranking_reply,
     build_deterministic_kpi_reply,
@@ -409,6 +410,12 @@ def propose_results_reply(
     overview_intent = (
         discuss_intent if discuss_intent in {OVERVIEW_INTENT_KPI, OVERVIEW_INTENT_RUN} else None
     )
+
+    # RI-2: sync projected time_rankings into the evidence packet before catalog,
+    # short-circuit, LLM, and path audit so preferred paths cannot diverge from
+    # evidence_packet when only time_grouped_summary is present.
+    if discuss_intent == INTENT_TIME_RANKING:
+        evidence_context = dict(_ensure_time_rankings_context(evidence_context))
 
     # RI short-circuits: mixed ask / missing specialist evidence before any LLM call.
     if discuss_intent == INTENT_MIXED_ASK:

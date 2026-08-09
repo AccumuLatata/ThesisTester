@@ -556,37 +556,131 @@ def _time_grouped_summary_from_context(
     return None
 
 
+def _coerce_hour_bucket_label(value: Any) -> Any:
+    """Normalize integer hour buckets to ``HH:00`` clock labels for grounding.
+
+    String labels (``09:30``, ``rth_morning``) pass through. Hour-like ints/floats
+    in ``0..23`` become zero-padded clock strings so RQ clock-span grounding and
+    claim narration stay aligned.
+    """
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, (int, float)):
+        if isinstance(value, float) and (value != value or not value.is_integer()):
+            return value
+        hour = int(value)
+        if 0 <= hour <= 23:
+            return f"{hour:02d}:00"
+        return value
+    return value
+
+
+def _normalize_time_rankings_buckets(projected: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a shallow copy with hour-like ``bucket`` leaves coerced to clocks."""
+    out = dict(projected)
+    best = out.get("best")
+    if isinstance(best, Mapping):
+        best_copy = dict(best)
+        if "bucket" in best_copy:
+            best_copy["bucket"] = _coerce_hour_bucket_label(best_copy["bucket"])
+        out["best"] = best_copy
+    rows = out.get("rows")
+    if isinstance(rows, Sequence) and not isinstance(rows, (str, bytes)):
+        normalized_rows: list[Any] = []
+        for row in rows:
+            if isinstance(row, Mapping):
+                row_copy = dict(row)
+                if "bucket" in row_copy:
+                    row_copy["bucket"] = _coerce_hour_bucket_label(row_copy["bucket"])
+                normalized_rows.append(row_copy)
+            else:
+                normalized_rows.append(row)
+        out["rows"] = normalized_rows
+    by_rank = out.get("by_rank")
+    if isinstance(by_rank, Mapping):
+        normalized_rank: dict[str, Any] = {}
+        for key, row in by_rank.items():
+            if isinstance(row, Mapping):
+                row_copy = dict(row)
+                if "bucket" in row_copy:
+                    row_copy["bucket"] = _coerce_hour_bucket_label(row_copy["bucket"])
+                normalized_rank[str(key)] = row_copy
+            else:
+                normalized_rank[str(key)] = row
+        out["by_rank"] = normalized_rank
+    return out
+
+
+def _time_bucket_display_label(value: Any) -> str | None:
+    """Return a narratable time-bucket label, or None when empty/non-narratable."""
+    coerced = _coerce_hour_bucket_label(value)
+    if isinstance(coerced, bool) or coerced is None:
+        return None
+    if isinstance(coerced, str):
+        text = coerced.strip()
+        return text or None
+    if isinstance(coerced, (int, float)):
+        if isinstance(coerced, float) and coerced != coerced:
+            return None
+        if isinstance(coerced, float) and coerced.is_integer():
+            return str(int(coerced))
+        return format(coerced, ".12g") if isinstance(coerced, float) else str(coerced)
+    return None
+
+
 def _ensure_time_rankings_context(
     evidence_context: Mapping[str, Any],
 ) -> Mapping[str, Any]:
     """Return a context that includes ``results.projections.time_rankings`` when possible.
 
-    Prefers an existing projection. When absent, projects from
+    Prefers an existing projection with a narratable ``best.bucket``. When the
+    projection is absent or incomplete (null/empty best), projects from
     ``results.time_grouped_summary`` via the RQ helper (no TIME.analyze).
+    Integer hour buckets are normalized to ``HH:00`` labels for RQ grounding.
     """
     if not isinstance(evidence_context, Mapping):
         return {}
+
+    def _with_projection(projected: Mapping[str, Any]) -> dict[str, Any]:
+        merged = dict(evidence_context)
+        results = dict(merged.get("results") or {})
+        projections = dict(results.get("projections") or {})
+        projections["time_rankings"] = _normalize_time_rankings_buckets(projected)
+        results["projections"] = projections
+        merged["results"] = results
+        return merged
+
+    def _best_bucket_narratable(ctx: Mapping[str, Any]) -> bool:
+        path = "results.projections.time_rankings.best.bucket"
+        if not _path_exists(ctx, path):
+            return False
+        return _format_scalar_for_claim(path, _path_get(ctx, path)) is not None
+
+    existing: Mapping[str, Any] | None = None
     if _path_exists(evidence_context, "results.projections.time_rankings"):
-        return evidence_context
+        raw = _path_get(evidence_context, "results.projections.time_rankings")
+        if isinstance(raw, Mapping):
+            existing = raw
+
+    normalized_existing: dict[str, Any] | None = None
+    if existing is not None:
+        normalized_existing = _with_projection(existing)
+        if _best_bucket_narratable(normalized_existing):
+            return normalized_existing
+
     summary = _time_grouped_summary_from_context(evidence_context)
     if summary is None:
-        return evidence_context
+        return normalized_existing if normalized_existing is not None else evidence_context
     try:
         from thesistester.assistant.results_projections import project_time_rankings
 
         projected = project_time_rankings(summary)
     except Exception:
-        return evidence_context
+        return normalized_existing if normalized_existing is not None else evidence_context
     if not isinstance(projected, Mapping) or not projected:
-        return evidence_context
+        return normalized_existing if normalized_existing is not None else evidence_context
     # Empty best → still attach projection meta so allowlist/catalog stay honest.
-    merged = dict(evidence_context)
-    results = dict(merged.get("results") or {})
-    projections = dict(results.get("projections") or {})
-    projections["time_rankings"] = dict(projected)
-    results["projections"] = projections
-    merged["results"] = results
-    return merged
+    return _with_projection(projected)
 
 
 def present_time_allowlist(evidence_context: Mapping[str, Any]) -> tuple[str, ...]:
@@ -1069,6 +1163,12 @@ def _format_scalar_for_claim(path: str, value: Any) -> str | None:
             return f"Bootstrap probability mean R is positive is {display}."
         if path.endswith("trade_count"):
             return f"Trade count is {display}."
+        # Integer hour buckets must not fall through to generic "bucket is N."
+        if path.endswith("best.bucket"):
+            label = _time_bucket_display_label(value)
+            if label:
+                return f"Best time bucket is {label}."
+            return None
         return f"{leaf} is {display}."
     if isinstance(value, str) and value.strip():
         text = value.strip()

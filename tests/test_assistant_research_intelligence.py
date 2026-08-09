@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from thesistester.assistant.explainer import EvidenceCaveat, EvidencePacket
@@ -336,6 +338,109 @@ def test_time_allowlist_and_deterministic_builder_from_summary():
     assert "results.projections.time_rankings.selection_scope" in claim_paths
     assert any(claim.value == "09:30" for claim in reply.claims)
     assert "99" not in reply.summary
+
+
+def test_time_summary_only_syncs_evidence_packet_with_catalog_paths():
+    """Catalog preferred paths must exist on evidence_packet for path audit."""
+    packet = _packet(time_summary=True)
+    assert "projections" not in packet.to_dict()["results"]
+
+    class _CatalogClient:
+        def __init__(self):
+            self.calls = 0
+            self.last_user: dict | None = None
+
+        def complete_structured(self, **kwargs):
+            self.calls += 1
+            self.last_user = json.loads(kwargs["user"])
+            return {
+                "summary": "Best entry bucket is 09:30 under avg_r.",
+                "caveats": ["In-sample time buckets only."],
+                "claims": [
+                    {
+                        "text": "Best bucket is 09:30.",
+                        "path": "results.projections.time_rankings.best.bucket",
+                    },
+                    {
+                        "text": "Trade count is 24.",
+                        "path": "results.projections.time_rankings.best.trade_count",
+                    },
+                ],
+                "followups": ["Ask about KPIs next."],
+            }
+
+    client = _CatalogClient()
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="What is the best time?",
+        repair_retry_enabled=False,
+        deterministic_specialist_fallback=False,
+    )
+    assert client.calls == 1
+    assert client.last_user is not None
+    evidence = client.last_user["evidence_packet"]
+    catalog = client.last_user["path_catalog"]
+    bucket_path = "results.projections.time_rankings.best.bucket"
+    assert evidence["results"]["projections"]["time_rankings"]["best"]["bucket"] == "09:30"
+    assert bucket_path in catalog["existing_paths"]
+    assert bucket_path in catalog["preferred_claim_paths"]
+    assert reply.claims[0].value == "09:30"
+    assert "09:30" in reply.summary
+
+
+def test_incomplete_time_projection_reprojects_from_summary():
+    packet = _packet(time_summary=True)
+    context = packet.to_dict()
+    context["results"] = dict(context["results"])
+    context["results"]["projections"] = {
+        "time_rankings": {
+            "bucket_col": "entry_30min_bucket",
+            "metric": "avg_r",
+            "min_trades": 10,
+            "selection_scope": "in_sample_time_buckets",
+            "best": {"bucket": None, "trade_count": None, "metric_value": None},
+        }
+    }
+    assert has_time_ranking_evidence(context) is True
+    reply = build_deterministic_time_ranking_reply(packet, context)
+    assert any(claim.value == "09:30" for claim in reply.claims)
+    assert "results.projections.time_rankings.best.bucket" in {c.path for c in reply.claims}
+
+
+def test_numeric_hour_bucket_claim_label_and_grounding():
+    from thesistester.assistant.results_overview import _format_scalar_for_claim
+
+    assert (
+        _format_scalar_for_claim("results.projections.time_rankings.best.bucket", 9)
+        == "Best time bucket is 09:00."
+    )
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri2_hour"},
+        assumptions={},
+        results={
+            "projections": {
+                "time_rankings": {
+                    "bucket_col": "entry_hour_bucket",
+                    "metric": "avg_r",
+                    "min_trades": 10,
+                    "selection_scope": "in_sample_time_buckets",
+                    "best": {
+                        "bucket": 9,
+                        "trade_count": 20,
+                        "metric_value": 0.4,
+                        "sample_warning": False,
+                    },
+                }
+            }
+        },
+        warnings=(),
+        limitations=(),
+    )
+    reply = build_deterministic_time_ranking_reply(packet, packet.to_dict())
+    assert "Best time bucket is 09:00" in reply.summary
+    assert any(claim.value == "09:00" for claim in reply.claims)
 
 
 def test_r13_mixed_ask_narrow_remediation_without_llm():

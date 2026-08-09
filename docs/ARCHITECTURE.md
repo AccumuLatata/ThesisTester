@@ -504,9 +504,11 @@ cites `results.trade_summary.*` as OOS proof; OOS anti-soften still gates
 deterministic replies.
 **RI-2 landed:** deterministic `time_ranking` recovery over frozen
 `results.projections.time_rankings.*` (§4.3); time/hour/bucket/clock/session
-cues sunset from residual; missing-time short-circuit before LLM; may project
-from `results.time_grouped_summary` when the ephemeral projection is absent
-(no TIME.analyze enablement); no invented clocks.
+segment cues sunset from residual; missing-time short-circuit before LLM; may
+project from `results.time_grouped_summary` when the ephemeral projection is
+absent or incomplete (no TIME.analyze enablement), syncing the projection into
+the turn `evidence_packet` before catalog/LLM/path audit; integer hour buckets
+coerce to `HH:00`; no invented clocks.
 **DI-2 landed:** first-pass Results Q&A user payloads include
 `path_catalog.existing_paths` (bounded paths present on the turn context;
 KPI + projections/validation + honesty paths reserved before fat time tables
