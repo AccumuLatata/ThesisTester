@@ -831,7 +831,9 @@ version
 4. Select the completed run in the run picker.
 5. Ask in the page chat box under **Discuss results**
    (placeholder: **Ask about this completed run**) — for example expectancy,
-   best SL/TP, entry windows, KPIs / key metrics, or a run summary. Answers stay
+   best SL/TP, entry windows, KPIs / key metrics, costs/assumptions, exit reasons
+   / extreme trades / streaks (when trade tables were recorded), or a run summary.
+   Answers stay
    grounded in hash-verified evidence for that run only (see **When to use Help
    vs Discuss results** for DI overview vs specialist cues).
 

@@ -421,29 +421,36 @@ class AssistantOrchestrator:
         *,
         bundle_path: str,
         expected_hash: str,
-    ) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None, str | None]:
-        """Hash-verify a bound bundle and return grid/time table records if present.
+    ) -> tuple[
+        list[dict[str, Any]] | None,
+        list[dict[str, Any]] | None,
+        list[dict[str, Any]] | None,
+        str | None,
+    ]:
+        """Hash-verify a bound bundle and return grid/time/trade table records.
 
-        Returns ``(grid_rows, time_rows, load_error)``. Empty tables become
-        ``None`` (fall back to packet fields). Artifact/hash/I/O failures set
-        ``load_error`` so callers can warn instead of silently mimicking an
-        empty grid table.
+        Returns ``(grid_rows, time_rows, trade_rows, load_error)``. Empty tables
+        become ``None`` (fall back to packet fields). Artifact/hash/I/O failures
+        set ``load_error`` so callers can warn instead of silently mimicking an
+        empty grid table. Trade rows feed RI-9 deep-trade projections only
+        (never sent raw to the model).
         """
         if not isinstance(self.tools, AssistantTools):
-            return None, None, "Time/grid table load requires AssistantTools."
+            return None, None, None, "Time/grid/trade table load requires AssistantTools."
         try:
             artifact = self.tools.build_bundle_research_artifact(
                 bundle_path, expected_hash=expected_hash
             )
         except (AssistantToolError, ValueError, TypeError, OSError) as exc:
-            return None, None, str(exc)
+            return None, None, None, str(exc)
         if not isinstance(artifact, Mapping):
-            return None, None, "Research artifact payload was not a mapping."
+            return None, None, None, "Research artifact payload was not a mapping."
         tables = artifact.get("tables")
         if not isinstance(tables, Mapping):
-            return None, None, None
+            return None, None, None, None
         grid_rows = tables.get("grid_results")
         time_rows = tables.get("time_grouped_summary")
+        trade_rows = tables.get("trades")
         # Empty lists mean "no table rows" — treat as absent so ephemeral
         # projections can fall back to packet ``best_grid_result`` / packet time.
         grid_list = (
@@ -460,7 +467,14 @@ class AssistantOrchestrator:
         )
         if time_list is not None and not time_list:
             time_list = None
-        return grid_list, time_list, None
+        trade_list = (
+            [dict(row) for row in trade_rows if isinstance(row, Mapping)]
+            if isinstance(trade_rows, list)
+            else None
+        )
+        if trade_list is not None and not trade_list:
+            trade_list = None
+        return grid_list, time_list, trade_list, None
 
     def _enrich_time_summary_for_results(
         self,
@@ -568,10 +582,16 @@ class AssistantOrchestrator:
 
         grid_rows: list[dict[str, Any]] | None = None
         time_summary: list[dict[str, Any]] | None = None
+        trade_rows: list[dict[str, Any]] | None = None
         grid_table_status: str | None = None
         grid_table_warning: str | None = None
         if bundle_path is not None and expected_hash is not None:
-            grid_rows, time_summary, table_load_error = self._load_bundle_tables_for_results(
+            (
+                grid_rows,
+                time_summary,
+                trade_rows,
+                table_load_error,
+            ) = self._load_bundle_tables_for_results(
                 bundle_path=bundle_path,
                 expected_hash=expected_hash,
             )
@@ -632,6 +652,7 @@ class AssistantOrchestrator:
             packet,
             grid_rows=grid_rows,
             time_grouped_summary=time_summary,
+            trade_rows=trade_rows,
             grid_table_status=grid_table_status,
             grid_table_warning=grid_table_warning,
         )

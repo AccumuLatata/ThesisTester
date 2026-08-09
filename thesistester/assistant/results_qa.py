@@ -17,7 +17,10 @@ from thesistester.assistant.llm_explainer import (
 )
 from thesistester.assistant.results_overview import (
     ASSUMPTIONS_CLAIM_PATHS,
+    DEEP_TRADE_CLAIM_PATHS,
     INTENT_ASSUMPTIONS_COSTS,
+    INTENT_DEEP_TRADE,
+    deep_trade_topic_path_prefixes,
     INTENT_GRID_RANKING,
     INTENT_MIXED_ASK,
     INTENT_ROBUSTNESS_TIER2,
@@ -27,6 +30,7 @@ from thesistester.assistant.results_overview import (
     OVERVIEW_INTENT_KPI,
     OVERVIEW_INTENT_RUN,
     REASON_ASSUMPTIONS_FALLBACK,
+    REASON_DEEP_TRADE_FALLBACK,
     REASON_GRID_FALLBACK,
     REASON_METRIC_FALLBACK,
     REASON_ROBUSTNESS_FALLBACK,
@@ -37,6 +41,7 @@ from thesistester.assistant.results_overview import (
     _ensure_time_rankings_context,
     apply_expert_overlay,
     build_deterministic_assumptions_reply,
+    build_deterministic_deep_trade_reply,
     build_deterministic_grid_ranking_reply,
     build_deterministic_kpi_reply,
     build_deterministic_robustness_reply,
@@ -44,6 +49,7 @@ from thesistester.assistant.results_overview import (
     build_deterministic_time_ranking_reply,
     build_deterministic_validation_wfa_reply,
     build_missing_assumptions_limitation_reply,
+    build_missing_deep_trade_limitation_reply,
     build_missing_grid_limitation_reply,
     build_missing_metric_limitation_reply,
     build_missing_robustness_limitation_reply,
@@ -55,6 +61,7 @@ from thesistester.assistant.results_overview import (
     compose_deterministic_replies,
     failure_class_from_exception,
     has_assumptions_costs_evidence,
+    has_deep_trade_evidence,
     has_grid_ranking_evidence,
     has_robustness_tier2_evidence,
     has_single_metric_evidence,
@@ -239,9 +246,10 @@ def _decode_results_payload(
         raise LLMEvidenceError("Results Q&A caveats must be non-empty strings.")
     if any(not isinstance(followup, str) or not followup.strip() for followup in followups_raw):
         raise LLMEvidenceError("Results Q&A followups must be non-empty strings.")
-    # §4.6: hard-reject nested dumps / KPI substitutions on specialist allowlists.
+    # §4.6/§6: hard-reject nested dumps / KPI substitutions on specialist allowlists.
     robustness_allow = frozenset(ROBUSTNESS_CLAIM_PATHS)
     assumptions_allow = frozenset(ASSUMPTIONS_CLAIM_PATHS)
+    deep_trade_allow = frozenset(DEEP_TRADE_CLAIM_PATHS)
     claims: list[EvidenceClaim] = []
     for item in claims_raw:
         if (
@@ -265,6 +273,10 @@ def _decode_results_payload(
         if discuss_intent == INTENT_ASSUMPTIONS_COSTS and path not in assumptions_allow:
             raise LLMEvidenceError(
                 f"Results Q&A claim path {path!r} is outside the assumptions_costs allowlist."
+            )
+        if discuss_intent == INTENT_DEEP_TRADE and path not in deep_trade_allow:
+            raise LLMEvidenceError(
+                f"Results Q&A claim path {path!r} is outside the deep_trade allowlist."
             )
         claims.append(
             EvidenceClaim(
@@ -332,6 +344,7 @@ def _complete_results_structured(
             overview_intent=overview_intent,
             discuss_intent=discuss_intent,
             single_metric_path=metric_path,
+            user_message=user_message,
         )
     if repair is not None:
         user_payload["repair"] = dict(repair)
@@ -396,6 +409,17 @@ def _recover_results_reply(
             recovery_reason=reason or REASON_ASSUMPTIONS_FALLBACK,
         )
     if (
+        discuss_intent == INTENT_DEEP_TRADE
+        and deterministic_specialist_fallback
+        and has_deep_trade_evidence(evidence_context, user_message=user_message)
+    ):
+        return build_deterministic_deep_trade_reply(
+            packet,
+            evidence_context,
+            recovery_reason=reason or REASON_DEEP_TRADE_FALLBACK,
+            user_message=user_message,
+        )
+    if (
         discuss_intent == INTENT_TIME_RANKING
         and deterministic_specialist_fallback
         and has_time_ranking_evidence(evidence_context)
@@ -453,10 +477,10 @@ def propose_results_reply(
     remediation. Both DI flags false restores pre-DI hard-fail raises (TLS wrap
     still applies in the transport).
 
-    RI-1/RI-2/RI-3/RI-4/RI-5/RI-6/RI-8: unified Discuss matcher; ``grid_ranking`` /
-    ``time_ranking`` / ``validation_wfa`` / ``robustness_tier2`` /
-    ``assumptions_costs`` / ``single_metric`` missing-evidence short-circuits
-    before LLM; deterministic specialist fallback when
+    RI-1/RI-2/RI-3/RI-4/RI-5/RI-6/RI-8/RI-9: unified Discuss matcher;
+    ``grid_ranking`` / ``time_ranking`` / ``validation_wfa`` / ``robustness_tier2`` /
+    ``assumptions_costs`` / ``deep_trade`` / ``single_metric`` missing-evidence
+    short-circuits before LLM; deterministic specialist fallback when
     ``deterministic_specialist_fallback`` is true; ``mixed_ask`` composes up to
     three matched intents (narrow remediation when over cap or no evidence).
 
@@ -520,6 +544,10 @@ def propose_results_reply(
         evidence_context
     ):
         return build_missing_assumptions_limitation_reply(packet, evidence_context=evidence_context)
+    if discuss_intent == INTENT_DEEP_TRADE and not has_deep_trade_evidence(
+        evidence_context, user_message=user_message
+    ):
+        return build_missing_deep_trade_limitation_reply(packet, evidence_context=evidence_context)
     if discuss_intent == INTENT_SINGLE_METRIC:
         metric_path = resolve_single_metric_path(user_message)
         if metric_path is None or not has_single_metric_evidence(evidence_context, metric_path):
@@ -536,6 +564,7 @@ def propose_results_reply(
             INTENT_VALIDATION_WFA,
             INTENT_ROBUSTNESS_TIER2,
             INTENT_ASSUMPTIONS_COSTS,
+            INTENT_DEEP_TRADE,
             INTENT_SINGLE_METRIC,
         }:
             return reply
@@ -594,6 +623,35 @@ def propose_results_reply(
                 and has_assumptions_costs_evidence(evidence_context)
             ):
                 return build_deterministic_assumptions_reply(packet, evidence_context)
+        if discuss_intent == INTENT_DEEP_TRADE:
+            allow = frozenset(DEEP_TRADE_CLAIM_PATHS)
+            prefixes = deep_trade_topic_path_prefixes(user_message)
+            topic_ok = True
+            if prefixes is not None:
+                # Every claim must be in-family, and every requested family must
+                # appear at least once (exit+streak cannot omit streaks).
+                claims_in_family = bool(reply.claims) and all(
+                    any(claim.path.startswith(prefix) for prefix in prefixes)
+                    for claim in reply.claims
+                )
+                families_covered = all(
+                    any(claim.path.startswith(prefix) for claim in reply.claims)
+                    for prefix in prefixes
+                )
+                topic_ok = claims_in_family and families_covered
+            ok = (
+                bool(reply.claims)
+                and all(claim.path in allow for claim in reply.claims)
+                and topic_ok
+            )
+            if (
+                not ok
+                and deterministic_specialist_fallback
+                and has_deep_trade_evidence(evidence_context, user_message=user_message)
+            ):
+                return build_deterministic_deep_trade_reply(
+                    packet, evidence_context, user_message=user_message
+                )
         return _maybe_overlay(reply)
 
     try:
@@ -619,6 +677,7 @@ def propose_results_reply(
             INTENT_VALIDATION_WFA,
             INTENT_ROBUSTNESS_TIER2,
             INTENT_ASSUMPTIONS_COSTS,
+            INTENT_DEEP_TRADE,
             INTENT_SINGLE_METRIC,
         }
         if (

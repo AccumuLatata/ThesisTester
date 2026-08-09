@@ -1,7 +1,7 @@
 # Research Intelligence — Implementation Contract
 
 **Document type:** Implementation contract (RI-series) — **single source of truth**
-**Status:** 🚧 **RI-6 landed** (grid + time + validation/WFA + single-metric + meaning overlay + mixed-ask composition + tier-2 robustness + assumptions/costs); series not complete until RI-10
+**Status:** 🚧 **RI-9 landed** (grid + time + validation/WFA + single-metric + meaning overlay + mixed-ask composition + tier-2 robustness + assumptions/costs + bounded deep-trade projections); series not complete until RI-10
 **Date:** 2026-08-08
 **Owner surface:** `thesistester/assistant/results_overview.py` (intent matching /
 deterministic builders / overlays), `results_qa.py` (recovery wiring),
@@ -180,16 +180,17 @@ the sole-intent tie-break when exactly one landed intent matches; they are
 | 3 | `validation_wfa` | RI-3 | `validation`, `wfa`, `walk-forward`, `walk forward`, `oos`, `out of sample`, `out-of-sample`, `bootstrap`, `permutation` only with validation-sense collocates (`bootstrap`/`oos`/`wfa`/`walk-forward`/`validation`/`test`). **Not** `otf validation` (RI-5). |
 | 4 | `robustness_tier2` | RI-5 | `monte carlo`, `monte-carlo`, `overfitting`, `overfit`, `sensitivity`, `noise test`, `noise summary`, `portfolio summary`, `otf validation`, `otf-validation`. Near-miss bare `monte` / `carlo` (without a full cue) are hard residual — overview + `single_metric` refuse; never IS laundering. Bare `validation` after masking OTF phrases still lands RI-3 so `validation and otf validation` is `mixed_ask`. |
 | 5 | `assumptions_costs` | RI-6 | `commission`, `slippage`, `exposure policy`, `intrabar model`, `costs`/`cost`, `assumptions`/`assumption` (run-assumption sense). Configured/assumed `stop loss` / `take profit` land here (not best-grid) unless `best`/`grid`/`ranking` ownership collocates are also present. Help how-to / docs collocates (`how to`, `how do i`, `in the docs`, …) stay unmatched. |
-| 6 | `single_metric` | RI-4 | Frozen metric-noun table (§4.5) with define/value collocates (`what is`, `what's`, `whats`, `show`, `give me`) — **not** bare nouns alone; hard-refuse when residual/specialist collocates present (§4.5) |
-| 7 | `kpi_summary` | DI (unchanged cues) | Existing DI KPI positive cues |
-| 8 | `run_overview` | DI (unchanged cues) | Existing DI run-overview positive cues |
+| 6 | `deep_trade` | RI-9 | `exit reason`/`exit reasons`/`exit-reason(s)`, `why/how did trades exit`, `how many trades exited` / `trades exited`, `worst trade(s)` / `best trade(s)` / `extreme trades`, `win/loss streak(s)` / `winning/losing streak`, `consecutive wins/losses`. Answers only from capped ephemeral §6 projections — never raw trade frames. ``how many trades exited`` must not land `single_metric`/`trade_count`. Exit/extreme cues require table-derived projections; streak cues may use `trade_summary` streak scalars. |
+| 7 | `single_metric` | RI-4 | Frozen metric-noun table (§4.5) with define/value collocates (`what is`, `what's`, `whats`, `show`, `give me`) — **not** bare nouns alone; hard-refuse when residual/specialist collocates present (§4.5) |
+| 8 | `kpi_summary` | DI (unchanged cues) | Existing DI KPI positive cues |
+| 9 | `run_overview` | DI (unchanged cues) | Existing DI run-overview positive cues |
 
 **Matcher algorithm (frozen — do not short-circuit on first cue hit):**
 
 ```text
 1) Evaluate every landed intent cue table independently
    (plus residual DI negatives per §4.1.1 — not intents, veto flags).
-2) Let M = set of matched landed intents from priorities 1–8.
+2) Let M = set of matched landed intents from priorities 1–9.
 3) If residual veto applies and no landed specialist in M owns that cue
    → return None for overview purposes; Discuss uses LLM + repair + §5.3
      remediation (or specialist limitation only if a landed specialist matched).
@@ -522,12 +523,15 @@ Initial freeze (amend to expand):
 
 | Projection | Purpose | Caps |
 |---|---|---|
-| `results.projections.exit_reason_counts` | Exit-reason histogram | Top N reasons (N≤12) + other |
-| `results.projections.extreme_trades` | Worst/best R trades summary | N≤5 each; only R + exit_reason + timestamps if already present |
+| `results.projections.exit_reason_counts` | Exit-reason histogram | Top N reasons (N≤12) + other; caller `top_n` hard-clamped |
+| `results.projections.extreme_trades` | Worst/best R trades summary | N≤5 each (caller `n` hard-clamped); claim allowlist is R + exit_reason only; timestamps are **omitted** from the model-facing projection object (ISO digits launder through the auditor) |
 | `results.projections.streak_summary` | Max consecutive wins/losses if not already in trade_summary | Scalars only |
 
-Intent cues + allowlists land in the same RI-9 PR. If tables absent →
-limitation. No engine re-sim.
+Intent cues + allowlists land in the same RI-9 PR. Exit-reason asks require
+`exit_reason_counts`; extreme-trade asks require `extreme_trades`; either with
+no matching table projection → limitation **before LLM** (streak scalars or the
+other table family must not answer the wrong topic). Digit-bearing exit-reason
+labels are not narratable claim leaves. No engine re-sim.
 
 ---
 
@@ -779,5 +783,5 @@ complete coverage; duplex last so text builders are stable.
 | RI-6 Assumptions & costs slice | ✅ landed |
 | RI-7 Grounded meaning overlay v2 | ✅ landed |
 | RI-8 Mixed-ask composition | ✅ landed |
-| RI-9 Bounded deep-trade projections | ⬚ pending |
+| RI-9 Bounded deep-trade projections | ✅ landed |
 | RI-10 Duplex parity + eval freeze | ⬚ pending |

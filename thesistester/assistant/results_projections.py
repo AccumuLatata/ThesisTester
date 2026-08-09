@@ -1,8 +1,9 @@
-"""Deterministic grid/time ranking projections for results Q&A (RQ-2).
+"""Deterministic grid/time/deep-trade projections for results Q&A (RQ-2 / RI-9).
 
 Projections are JSON-safe tables with stable paths under
 ``results.projections.*``. They must be merged only into an ephemeral turn
-context — never written back into research bundles.
+context — never written back into research bundles. Deep-trade projections are
+built from already-loaded trade table rows (never full parquet to the model).
 """
 
 from __future__ import annotations
@@ -19,6 +20,9 @@ DEFAULT_TOP_N = 5
 DEFAULT_GRID_MIN_TRADES = 1
 DEFAULT_TIME_MIN_TRADES = 10
 DEFAULT_TIME_BUCKET_COL = "entry_rth_segment"
+# RI-9 §6 caps (freeze).
+EXIT_REASON_TOP_N = 12
+EXTREME_TRADES_N = 5
 
 # When the preferred bucket column is absent from exported time rows (common
 # when Time Analysis grouped by hour/30m), fall through in this order.
@@ -142,6 +146,46 @@ def _positive_int(value: Any, *, default: int) -> int:
     except (TypeError, ValueError):
         return default
     return parsed if parsed > 0 else default
+
+
+def _capped_positive_int(value: Any, *, default: int, cap: int) -> int:
+    """Parse a positive int and clamp to the frozen §6 upper bound."""
+    return min(_positive_int(value, default=default), cap)
+
+
+_EXIT_REASON_KEYS: tuple[str, ...] = (
+    "exit_reason",
+    "ExitReason",
+    "exitReason",
+    "reason",
+)
+_R_MULTIPLE_KEYS: tuple[str, ...] = (
+    "r_multiple",
+    "r_mult",
+    "R",
+    "r",
+)
+
+
+def _row_exit_reason_label(row: Mapping[str, Any]) -> str | None:
+    """Return a string exit-reason label, or None when absent/non-string."""
+    for key in _EXIT_REASON_KEYS:
+        reason = row.get(key)
+        if isinstance(reason, str) and reason.strip():
+            return reason.strip()
+    return None
+
+
+def _row_r_multiple(row: Mapping[str, Any]) -> float | None:
+    for key in _R_MULTIPLE_KEYS:
+        raw_r = row.get(key)
+        if raw_r is None:
+            continue
+        try:
+            return float(raw_r)
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def _optional_positive_int(value: Any) -> int | None:
@@ -601,16 +645,143 @@ def _sync_ephemeral_ranking_metric_source(
     results["best_grid_result"] = best_copy
 
 
+def _trade_row_dicts(
+    trade_rows: Sequence[Mapping[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    if trade_rows is None:
+        return []
+    return [dict(item) for item in trade_rows if isinstance(item, Mapping)]
+
+
+def project_exit_reason_counts(
+    trade_rows: Sequence[Mapping[str, Any]] | None,
+    *,
+    top_n: int = EXIT_REASON_TOP_N,
+) -> dict[str, Any] | None:
+    """Bounded exit-reason histogram (RI-9 §6). Top N reasons + other."""
+    rows = _trade_row_dicts(trade_rows)
+    if not rows:
+        return None
+    cap = _capped_positive_int(top_n, default=EXIT_REASON_TOP_N, cap=EXIT_REASON_TOP_N)
+    counts: dict[str, int] = {}
+    resolved_labels = 0
+    for row in rows:
+        label = _row_exit_reason_label(row)
+        if label is None:
+            label = "unknown"
+        else:
+            resolved_labels += 1
+        counts[label] = counts.get(label, 0) + 1
+    # No resolvable string labels → not usable exit-structure evidence.
+    if resolved_labels == 0:
+        return None
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    top = ranked[:cap]
+    other = ranked[cap:]
+    return {
+        "total_trades": int(sum(counts.values())),
+        "unique_reason_count": int(len(counts)),
+        "top_n": cap,
+        "reasons": [{"exit_reason": reason, "count": int(count)} for reason, count in top],
+        "other_count": int(sum(count for _, count in other)),
+        "other_unique_count": int(len(other)),
+    }
+
+
+def project_extreme_trades(
+    trade_rows: Sequence[Mapping[str, Any]] | None,
+    *,
+    n: int = EXTREME_TRADES_N,
+) -> dict[str, Any] | None:
+    """Worst/best R trades summary (RI-9 §6). N≤5 each; R + exit_reason only.
+
+    Timestamps are intentionally omitted from the model-facing projection object
+    (ISO datetimes launder ungroundable year/day digits through the auditor).
+    """
+    rows = _trade_row_dicts(trade_rows)
+    if not rows:
+        return None
+    cap = _capped_positive_int(n, default=EXTREME_TRADES_N, cap=EXTREME_TRADES_N)
+    usable: list[dict[str, Any]] = []
+    for row in rows:
+        r_value = _row_r_multiple(row)
+        if r_value is None:
+            continue
+        item: dict[str, Any] = {"r_multiple": r_value}
+        reason = _row_exit_reason_label(row)
+        if reason is not None:
+            item["exit_reason"] = reason
+        usable.append(item)
+    if not usable:
+        return None
+    best = sorted(usable, key=lambda item: item["r_multiple"], reverse=True)[:cap]
+    worst = sorted(usable, key=lambda item: item["r_multiple"])[:cap]
+    return {"best": best, "worst": worst, "n": cap}
+
+
+def project_streak_summary(
+    packet_or_mapping: EvidencePacket | Mapping[str, Any],
+    trade_rows: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    """Max consecutive wins/losses (RI-9 §6). Prefer trade_summary; else compute."""
+    context = _as_packet_dict(packet_or_mapping)
+    results = context.get("results")
+    summary = _as_mapping(results.get("trade_summary")) if isinstance(results, Mapping) else None
+    if summary is not None:
+        wins = summary.get("max_consecutive_wins")
+        losses = summary.get("max_consecutive_losses")
+        out: dict[str, Any] = {"source": "trade_summary"}
+        if isinstance(wins, (int, float)) and not isinstance(wins, bool):
+            out["max_consecutive_wins"] = int(wins)
+        if isinstance(losses, (int, float)) and not isinstance(losses, bool):
+            out["max_consecutive_losses"] = int(losses)
+        if "max_consecutive_wins" in out or "max_consecutive_losses" in out:
+            return out
+
+    rows = _trade_row_dicts(trade_rows)
+    if not rows:
+        return None
+    max_wins = 0
+    max_losses = 0
+    cur_wins = 0
+    cur_losses = 0
+    for row in rows:
+        r_value = _row_r_multiple(row)
+        if r_value is None:
+            cur_wins = 0
+            cur_losses = 0
+            continue
+        if r_value > 0:
+            cur_wins += 1
+            cur_losses = 0
+            max_wins = max(max_wins, cur_wins)
+        elif r_value < 0:
+            cur_losses += 1
+            cur_wins = 0
+            max_losses = max(max_losses, cur_losses)
+        else:
+            cur_wins = 0
+            cur_losses = 0
+    return {
+        "source": "trades",
+        "max_consecutive_wins": int(max_wins),
+        "max_consecutive_losses": int(max_losses),
+    }
+
+
 def build_ephemeral_results_context(
     packet: EvidencePacket | Mapping[str, Any],
     *,
     grid_rows: Sequence[Mapping[str, Any]] | None = None,
     time_grouped_summary: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
+    trade_rows: Sequence[Mapping[str, Any]] | None = None,
     grid_top_n: int = DEFAULT_TOP_N,
     time_top_n: int = DEFAULT_TOP_N,
     time_bucket_col: str = DEFAULT_TIME_BUCKET_COL,
     time_metric: str = DEFAULT_TIME_METRIC,
     time_min_trades: int = DEFAULT_TIME_MIN_TRADES,
+    exit_reason_top_n: int = EXIT_REASON_TOP_N,
+    extreme_trades_n: int = EXTREME_TRADES_N,
     grid_table_status: str | None = None,
     grid_table_warning: str | None = None,
 ) -> dict[str, Any]:
@@ -689,6 +860,18 @@ def build_ephemeral_results_context(
             min_trades=time_min_trades,
             top_n=time_top_n,
         )
+
+    # RI-9: bounded deep-trade projections from loaded trade rows / packet streaks.
+    usable_trades = _trade_row_dicts(trade_rows)
+    exit_counts = project_exit_reason_counts(usable_trades, top_n=exit_reason_top_n)
+    if exit_counts is not None:
+        projections["exit_reason_counts"] = exit_counts
+    extremes = project_extreme_trades(usable_trades, n=extreme_trades_n)
+    if extremes is not None:
+        projections["extreme_trades"] = extremes
+    streaks = project_streak_summary(context, usable_trades or None)
+    if streaks is not None:
+        projections["streak_summary"] = streaks
 
     results["projections"] = projections
     return context

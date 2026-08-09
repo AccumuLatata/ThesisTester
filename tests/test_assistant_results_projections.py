@@ -11,8 +11,13 @@ from thesistester.assistant import (
 )
 from thesistester.assistant.explainer import EvidencePacket
 from thesistester.assistant.results_projections import (
+    EXIT_REASON_TOP_N,
+    EXTREME_TRADES_N,
     build_ephemeral_results_context,
+    project_exit_reason_counts,
+    project_extreme_trades,
     project_grid_rankings,
+    project_streak_summary,
     project_time_rankings,
     resolve_grid_ranking_defaults,
 )
@@ -552,7 +557,7 @@ def test_handle_results_turn_enrichment_flag_off_skips_time_analyze(tmp_path, mo
     monkeypatch.setattr(
         orchestrator,
         "_load_bundle_tables_for_results",
-        MagicMock(return_value=(None, None, None)),
+        MagicMock(return_value=(None, None, None, None)),
     )
     enrich = MagicMock()
     monkeypatch.setattr(orchestrator, "_enrich_time_summary_for_results", enrich)
@@ -623,7 +628,7 @@ def test_handle_results_turn_enrichment_on_calls_time_analyze_once(tmp_path, mon
     monkeypatch.setattr(
         orchestrator,
         "_load_bundle_tables_for_results",
-        MagicMock(return_value=(None, None, None)),
+        MagicMock(return_value=(None, None, None, None)),
     )
     monkeypatch.setattr(
         orchestrator,
@@ -725,7 +730,14 @@ def test_handle_results_turn_surfaces_grid_table_load_failure(tmp_path, monkeypa
     monkeypatch.setattr(
         orchestrator,
         "_load_bundle_tables_for_results",
-        MagicMock(return_value=(None, None, "Bundle hash does not match recorded run provenance.")),
+        MagicMock(
+            return_value=(
+                None,
+                None,
+                None,
+                "Bundle hash does not match recorded run provenance.",
+            )
+        ),
     )
     monkeypatch.setattr(
         "thesistester.assistant.orchestrator.load_results_qa_settings",
@@ -794,3 +806,77 @@ def test_enrich_time_summary_fails_closed_on_hash_mismatch(tmp_path, monkeypatch
     assert result.status == "failed"
     assert "does not match" in result.payload["error"]["message"]
     dispatch.assert_not_called()
+
+
+def test_project_exit_reason_counts_caps_top_n_plus_other():
+    rows = [{"exit_reason": f"R{i}", "r_multiple": 0.1} for i in range(EXIT_REASON_TOP_N + 3)]
+    # Duplicate first reason so ordering is stable by count then label.
+    rows.extend({"exit_reason": "R0", "r_multiple": 0.1} for _ in range(2))
+    projection = project_exit_reason_counts(rows, top_n=EXIT_REASON_TOP_N)
+    assert projection is not None
+    assert projection["top_n"] == EXIT_REASON_TOP_N
+    assert len(projection["reasons"]) == EXIT_REASON_TOP_N
+    assert projection["other_unique_count"] == 3
+    assert projection["other_count"] == 3
+    assert projection["reasons"][0]["exit_reason"] == "R0"
+    assert projection["reasons"][0]["count"] == 3
+
+
+def test_project_extreme_trades_caps_best_and_worst():
+    rows = [
+        {"exit_reason": "TP", "r_multiple": float(i), "entry_timestamp": f"t{i}"}
+        for i in range(EXTREME_TRADES_N + 2)
+    ]
+    projection = project_extreme_trades(rows, n=EXTREME_TRADES_N)
+    assert projection is not None
+    assert len(projection["best"]) == EXTREME_TRADES_N
+    assert len(projection["worst"]) == EXTREME_TRADES_N
+    assert projection["best"][0]["r_multiple"] == float(EXTREME_TRADES_N + 1)
+    assert projection["worst"][0]["r_multiple"] == 0.0
+    # Timestamps stay off the model-facing projection (digit-laundering risk).
+    assert set(projection["best"][0]) <= {"r_multiple", "exit_reason"}
+    assert "entry_timestamp" not in projection["best"][0]
+
+
+def test_project_extreme_trades_hard_caps_oversized_n():
+    rows = [{"exit_reason": "TP", "r_multiple": float(i)} for i in range(20)]
+    projection = project_extreme_trades(rows, n=9)
+    assert projection is not None
+    assert len(projection["best"]) == EXTREME_TRADES_N
+    assert len(projection["worst"]) == EXTREME_TRADES_N
+    assert projection["n"] == EXTREME_TRADES_N
+
+
+def test_project_streak_summary_prefers_trade_summary():
+    packet = _packet(
+        results={
+            "trade_summary": {
+                "trade_count": 10,
+                "max_consecutive_wins": 4,
+                "max_consecutive_losses": 2,
+            }
+        }
+    )
+    projection = project_streak_summary(packet, trade_rows=[{"r_multiple": 1.0}] * 10)
+    assert projection == {
+        "source": "trade_summary",
+        "max_consecutive_wins": 4,
+        "max_consecutive_losses": 2,
+    }
+
+
+def test_build_ephemeral_context_attaches_deep_trade_projections():
+    packet = _packet()
+    rows = [
+        {"exit_reason": "TP", "r_multiple": 1.2},
+        {"exit_reason": "SL", "r_multiple": -1.0},
+        {"exit_reason": "TP", "r_multiple": 0.5},
+    ]
+    context = build_ephemeral_results_context(packet, trade_rows=rows)
+    projections = context["results"]["projections"]
+    assert "exit_reason_counts" in projections
+    assert "extreme_trades" in projections
+    assert "streak_summary" in projections
+    assert projections["exit_reason_counts"]["total_trades"] == 3
+    # Raw trade frames must not be attached to the ephemeral packet.
+    assert "trades" not in context["results"]
