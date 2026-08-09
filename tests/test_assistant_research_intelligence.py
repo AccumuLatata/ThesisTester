@@ -935,6 +935,55 @@ def test_single_metric_hard_refuse_grid_time_validation_and_residual():
     assert has_overview_negative_cue("what is expectancy for my stop?") is True
 
 
+def test_metric_over_time_idiom_is_single_metric_not_time_slice():
+    """``over time`` must not hijack §4.5 metric asks onto time_ranking."""
+    assert match_discuss_intent("what is the win rate over time?") == INTENT_SINGLE_METRIC
+    assert resolve_single_metric_path("what is the win rate over time?") == (
+        "results.trade_summary.win_rate"
+    )
+    assert match_discuss_intent("how many trades over time") == INTENT_SINGLE_METRIC
+    packet = _packet(time_summary=True)
+    context = build_ephemeral_results_context(packet)
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="what is the win rate over time?",
+        turn_context=context,
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "results.trade_summary.win_rate" in paths
+    assert not any("time_rankings" in path for path in paths)
+    assert "99" not in reply.summary
+
+
+def test_bare_time_token_plus_metric_is_mixed_ask():
+    # Bare hour/clock with a metric value-ask → mixed_ask (not time slice alone).
+    assert match_discuss_intent("show win rate by hour") == INTENT_MIXED_ASK
+    assert match_discuss_intent("what is the win rate by bucket") == INTENT_MIXED_ASK
+    # Strong time cues still own the turn alone (§4.5 hard-refuse).
+    assert match_discuss_intent("what is expectancy by hour bucket?") == INTENT_TIME_RANKING
+    # Lone bare time remains time_ranking (RI-2).
+    assert match_discuss_intent("What is the time?") == INTENT_TIME_RANKING
+
+
+def test_how_many_is_not_a_general_metric_collocate():
+    assert match_discuss_intent("how many sharpe") is None
+    assert match_discuss_intent("how many expectancy") is None
+    assert match_discuss_intent("how many win rate") is None
+    assert match_discuss_intent("how many trades") == INTENT_SINGLE_METRIC
+    assert resolve_single_metric_path("how many trades") == "results.trade_summary.trade_count"
+
+
+def test_curly_apostrophe_whats_matches_single_metric():
+    assert match_discuss_intent("what\u2019s the win rate?") == INTENT_SINGLE_METRIC
+    assert resolve_single_metric_path("what\u2019s the win rate?") == (
+        "results.trade_summary.win_rate"
+    )
+
+
 def test_single_metric_noun_table_resolves_each_frozen_path():
     cases = (
         ("What is the win rate?", "results.trade_summary.win_rate"),

@@ -71,13 +71,14 @@ _SINGLE_METRIC_NOUN_PATHS: tuple[tuple[tuple[str, ...], str], ...] = (
 )
 
 # Value / define collocates required for single_metric (§4.5).
+# ``how many`` alone is not a general collocate — only the explicit form
+# ``how many trades`` below (avoids ``how many sharpe`` false matches).
 _SINGLE_METRIC_VALUE_COLLOCATES: tuple[str, ...] = (
     "what is",
     "what's",
     "whats",
     "show",
     "give me",
-    "how many",
 )
 
 # Explicit metric question forms that do not need a separate value collocate.
@@ -218,6 +219,12 @@ _TIME_RANKING_POSITIVE_CUES: tuple[str, ...] = (
 )
 # Bare DI time negatives become owned after RI-2 sunset (boundary-safe vs runtime).
 _TIME_BARE_TOKEN_CUES: tuple[str, ...] = ("time", "hour", "bucket", "clock")
+# English temporal idioms must not fire bare ``time`` (RI-4 metric asks).
+_TIME_BARE_IDIOM_PHRASES: tuple[str, ...] = (
+    "over time",
+    "through time",
+    "across time",
+)
 # ``ranking`` / ``ranking metric`` count as time when a time collocate is present.
 _TIME_RANKING_CONTEXT_CUES: tuple[str, ...] = ("ranking", "ranking metric")
 _TIME_CONTEXT_COLLOCATES: tuple[str, ...] = (
@@ -304,7 +311,11 @@ VALIDATION_CLAIM_PATHS: tuple[str, ...] = (
 
 
 def _normalize_message(text: str) -> str:
-    return " ".join(text.strip().lower().split())
+    # Map common curly/smart apostrophes so ``what's`` cues still match.
+    lowered = (
+        text.strip().lower().replace("\u2019", "'").replace("\u2018", "'").replace("\u00b4", "'")
+    )
+    return " ".join(lowered.split())
 
 
 def _alias_matches(alias: str, normalized: str) -> bool:
@@ -364,15 +375,36 @@ def _validation_wfa_matches(normalized: str) -> bool:
     return False
 
 
-def _time_ranking_matches(normalized: str) -> bool:
+def _mask_time_bare_idioms(normalized: str) -> str:
+    """Blank temporal idioms so bare ``time`` does not false-fire inside them."""
+    masked = normalized
+    for phrase in _TIME_BARE_IDIOM_PHRASES:
+        masked = masked.replace(phrase, " ")
+    return " ".join(masked.split())
+
+
+def _bare_time_token_matches(normalized: str) -> bool:
+    """True when a bare time token hits outside excluded temporal idioms."""
+    return _any_cue_matches(_TIME_BARE_TOKEN_CUES, _mask_time_bare_idioms(normalized))
+
+
+def _strong_time_ranking_matches(normalized: str) -> bool:
+    """Multi-word / collocated time asks (not bare token alone)."""
     if _any_cue_matches(_TIME_RANKING_POSITIVE_CUES, normalized):
-        return True
-    # Bare DI time negatives owned after RI-2 sunset (boundary vs runtime/stopwatch).
-    if _any_cue_matches(_TIME_BARE_TOKEN_CUES, normalized):
         return True
     if _any_cue_matches(_TIME_RANKING_CONTEXT_CUES, normalized) and _any_cue_matches(
         _TIME_CONTEXT_COLLOCATES, normalized
     ):
+        return True
+    return False
+
+
+def _time_ranking_matches(normalized: str) -> bool:
+    if _strong_time_ranking_matches(normalized):
+        return True
+    # Bare DI time negatives owned after RI-2 sunset (boundary vs runtime/stopwatch).
+    # Idioms like ``over time`` are masked so RI-4 metric asks are not hijacked.
+    if _bare_time_token_matches(normalized):
         return True
     return False
 
@@ -482,7 +514,8 @@ def match_discuss_intent(message: str) -> str | None:
         return None
     normalized = _normalize_message(message)
     grid = _grid_ranking_matches(normalized)
-    time_ask = _time_ranking_matches(normalized)
+    time_strong = _strong_time_ranking_matches(normalized)
+    time_bare_only = _bare_time_token_matches(normalized) and not time_strong
     validation = _validation_wfa_matches(normalized)
     metric_paths = _matched_single_metric_paths(normalized)
     kpi = _any_cue_matches(_KPI_POSITIVE_CUES, normalized)
@@ -491,7 +524,7 @@ def match_discuss_intent(message: str) -> str | None:
     specialists: list[str] = []
     if grid:
         specialists.append(INTENT_GRID_RANKING)
-    if time_ask:
+    if time_strong:
         specialists.append(INTENT_TIME_RANKING)
     if validation:
         specialists.append(INTENT_VALIDATION_WFA)
@@ -505,6 +538,24 @@ def match_discuss_intent(message: str) -> str | None:
         return None
 
     overview_count = (1 if kpi else 0) + (1 if run else 0)
+
+    # Bare time token + metric value-ask: do not serve the time slice alone
+    # (e.g. ``show win rate by hour``). Narrow mixed_ask until RI-8. Idioms
+    # like ``over time`` are already masked out of bare-time matching.
+    if (
+        time_bare_only
+        and metric_paths
+        and not specialists
+        and not soft_residual
+        and overview_count == 0
+    ):
+        return INTENT_MIXED_ASK
+
+    # Lone bare time (or bare time competing with other landed intents) counts
+    # as the landed time_ranking specialist.
+    if time_bare_only:
+        specialists.append(INTENT_TIME_RANKING)
+
     # §4.5 hard-refuse: specialist or residual collocates → never emit single_metric.
     metric_allowed = not specialists and not soft_residual
     single_metric = metric_allowed and len(metric_paths) == 1
