@@ -2113,6 +2113,71 @@ def test_ri9_exit_ask_does_not_use_extreme_only_projections():
     assert reply.recovery_reason == REASON_MISSING_DEEP_TRADE
 
 
+def test_ri9_streak_ask_does_not_use_exit_only_projections():
+    """Exit-reason leaves alone must not answer streak asks."""
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri9_exit_only"},
+        assumptions={},
+        results={"trade_summary": {"trade_count": 3}},
+        warnings=(),
+        limitations=(),
+    )
+    rows = [
+        {"exit_reason": "TP", "r_multiple": 0.0},
+        {"exit_reason": "SL", "r_multiple": 0.0},
+        {"exit_reason": "TP", "r_multiple": 0.0},
+    ]
+    context = build_ephemeral_results_context(packet, trade_rows=rows)
+    assert "exit_reason_counts" in context["results"]["projections"]
+    # Force exit-only evidence: streak asks must not pass on histogram alone.
+    context["results"]["projections"].pop("streak_summary", None)
+    assert has_deep_trade_evidence(context, user_message="exit reasons") is True
+    assert has_deep_trade_evidence(context, user_message="win streak") is False
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message="win streak please",
+        turn_context=context,
+    )
+    assert client.calls == 0
+    assert reply.claims == ()
+    assert reply.recovery_reason == REASON_MISSING_DEEP_TRADE
+
+
+def test_ri9_exit_and_streak_ask_includes_both_families():
+    packet = EvidencePacket(
+        provenance={"run_id": "run_ri9_exit_streak"},
+        assumptions={},
+        results={
+            "trade_summary": {
+                "trade_count": 5,
+                "max_consecutive_wins": 3,
+                "max_consecutive_losses": 1,
+            }
+        },
+        warnings=(),
+        limitations=(),
+    )
+    context = build_ephemeral_results_context(packet, trade_rows=_trade_rows_for_deep_trade())
+    message = "exit reasons and winning streak"
+    assert match_discuss_intent(message) == INTENT_DEEP_TRADE
+    assert has_deep_trade_evidence(context, user_message=message) is True
+    client = _FailClient(_uncited_digits_payload())
+    reply = propose_results_reply(
+        client,
+        packet=packet,
+        history=(),
+        user_message=message,
+        turn_context=context,
+        repair_retry_enabled=False,
+    )
+    paths = {claim.path for claim in reply.claims}
+    assert "results.projections.exit_reason_counts.total_trades" in paths
+    assert "results.projections.streak_summary.max_consecutive_wins" in paths
+
+
 def test_ri9_digit_bearing_exit_labels_do_not_crash_builder():
     packet = EvidencePacket(
         provenance={"run_id": "run_ri9_digit_labels"},

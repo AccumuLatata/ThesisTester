@@ -1266,16 +1266,18 @@ def has_deep_trade_evidence(
     needs_exit = _deep_trade_exit_topic_matches(normalized)
     needs_extreme = _deep_trade_extreme_topic_matches(normalized)
     needs_streak = _deep_trade_streak_topic_matches(normalized)
-    if needs_exit or needs_extreme:
-        # Topic-precise table gates: exit cannot be answered by extremes alone.
+    if needs_exit or needs_extreme or needs_streak:
+        # Topic-precise gates: each requested family must be present.
+        # Exit cannot be answered by extremes; streaks cannot be answered by
+        # exit/extreme projections (and vice versa).
         ok = True
         if needs_exit:
             ok = ok and exit_ok
         if needs_extreme:
             ok = ok and extreme_ok
+        if needs_streak:
+            ok = ok and streak_ok
         return ok
-    if needs_streak:
-        return streak_ok or exit_ok or extreme_ok
     return exit_ok or extreme_ok or streak_ok
 
 
@@ -3557,7 +3559,7 @@ def build_deterministic_deep_trade_reply(
             prefixes.append("results.projections.exit_reason_counts.")
         if needs_extreme:
             prefixes.append("results.projections.extreme_trades.")
-        if needs_streak and not needs_exit and not needs_extreme:
+        if needs_streak:
             prefixes.append("results.projections.streak_summary.")
         if prefixes:
             path_prefixes = tuple(prefixes)
