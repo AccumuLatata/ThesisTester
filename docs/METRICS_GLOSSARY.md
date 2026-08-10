@@ -527,8 +527,11 @@ directions before groupby; UI availability is a same-trade joint gate (usable
 | `sample_warning` | `True` when `trade_count < min_trades` (default 10). Analytics keep rows; UI may hide |
 | `available` | `True` only when `level_names` exists and ≥1 analyzable trade has a non-empty parsed combo |
 
-**Partition vs double-count:** exact-combo rows partition analyzable trades
-(`sum(trade_count)` / `sum(total_r)` match). Membership and soft pairs do not.
+**Partition vs double-count:** undirected exact-combo rows partition analyzable
+trades (`sum(trade_count)` / `sum(total_r)` match). Backtest Exact
+(`exact_combo_key × direction`) partitions only the usable-`direction` subset
+(unusable directions are omitted before groupby). Membership and soft pairs do
+not partition.
 
 **Null-R vs Breakdown tabs:** combo attribution excludes null `r_multiple`
 (same family as `summarize_trades` / prev30m). Breakdown tabs

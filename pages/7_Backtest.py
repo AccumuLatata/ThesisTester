@@ -1210,6 +1210,7 @@ if _display_has_trades:
                         "`direction` (`long` / `short`) on displayed trades."
                     )
                 else:
+                    _exact_summarize_failed = False
                     try:
                         _exact_raw = summarize_by_exact_combo_and_direction(
                             _display_trades,
@@ -1217,6 +1218,7 @@ if _display_has_trades:
                         )
                     except (TypeError, ValueError, KeyError):
                         _exact_raw = pd.DataFrame()
+                        _exact_summarize_failed = True
                     _exact = prepare_exact_combo_display(
                         apply_sample_warning_filter(
                             _exact_raw,
@@ -1226,7 +1228,13 @@ if _display_has_trades:
                         confluence_mode=_confluence_mode,
                     )
                     if _exact.empty:
-                        st.info(exact_combo_direction_empty_info_message(_exact_raw))
+                        if _exact_summarize_failed:
+                            st.info(
+                                "Exact combo × direction unavailable — "
+                                "summarization failed on displayed trades."
+                            )
+                        else:
+                            st.info(exact_combo_direction_empty_info_message(_exact_raw))
                     else:
                         _exact_view = _exact.copy()
                         if "display_combo" in _exact_view.columns:
@@ -1410,6 +1418,7 @@ if _display_has_trades:
                             "`trigger_variant` on a nonempty exact combo."
                         )
                 else:
+                    _exact_x_summarize_failed = False
                     try:
                         _exact_x_var = summarize_by_exact_combo_and_trigger_variant(
                             _display_trades,
@@ -1417,6 +1426,7 @@ if _display_has_trades:
                         )
                     except (TypeError, ValueError, KeyError):
                         _exact_x_var = pd.DataFrame()
+                        _exact_x_summarize_failed = True
 
                     st.markdown("**Exact combo × direction × trigger variant**")
                     _exact_x_view = apply_sample_warning_filter(
@@ -1426,9 +1436,14 @@ if _display_has_trades:
                     if _exact_x_view is None or (
                         isinstance(_exact_x_view, pd.DataFrame) and _exact_x_view.empty
                     ):
-                        # Do not claim "no usable trigger_variant" here — the outer
-                        # gate already passed; empty display is filter or no rows.
-                        st.info(exact_combo_variant_empty_info_message(_exact_x_var))
+                        if _exact_x_summarize_failed:
+                            st.info(
+                                "Exact combo × variant unavailable — "
+                                "summarization failed on displayed trades."
+                            )
+                        else:
+                            # Outer joint gate passed; empty display is filter or no rows.
+                            st.info(exact_combo_variant_empty_info_message(_exact_x_var))
                     else:
                         _exact_x_disp = prepare_exact_combo_display(
                             _exact_x_view,
@@ -1488,6 +1503,7 @@ if _display_has_trades:
                             "pairs (`A|B` canonical) unless signal-run mode is "
                             "`anchor_rules` with a known anchor."
                         )
+                    _pair_x_summarize_failed = False
                     try:
                         _pair_x_var = summarize_by_pair_and_trigger_variant(
                             _display_trades,
@@ -1497,6 +1513,7 @@ if _display_has_trades:
                         )
                     except (TypeError, ValueError, KeyError):
                         _pair_x_var = pd.DataFrame()
+                        _pair_x_summarize_failed = True
 
                     st.markdown("**Pair × direction × trigger variant**")
                     _pair_x_view = apply_sample_warning_filter(
@@ -1506,7 +1523,13 @@ if _display_has_trades:
                     if _pair_x_view is None or (
                         isinstance(_pair_x_view, pd.DataFrame) and _pair_x_view.empty
                     ):
-                        st.info(pair_variant_empty_info_message(_pair_x_var))
+                        if _pair_x_summarize_failed:
+                            st.info(
+                                "Pair × variant unavailable — "
+                                "summarization failed on displayed trades."
+                            )
+                        else:
+                            st.info(pair_variant_empty_info_message(_pair_x_var))
                     else:
                         _pair_x_disp = _pair_x_view.rename(
                             columns={
