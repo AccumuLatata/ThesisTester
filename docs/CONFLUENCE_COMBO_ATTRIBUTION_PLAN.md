@@ -1186,8 +1186,8 @@ pair × direction × trigger_variant (must ship with exact×variant):
 - [x] Breakdown tabs + standalone 3c block untouched
 - [x] No engine/golden/session-producer keys; no `side` rename
 - [x] ASSUMPTIONS + METRICS_GLOSSARY + ARCHITECTURE updated
-- [ ] Focused + full suite green
-- [ ] Regression-safety paragraph in PR body
+- [x] Focused + full suite green
+- [x] Regression-safety paragraph in PR body
 
 **Priority / sequencing lock:**
 
@@ -1741,8 +1741,8 @@ PR 1 analytics helpers + tests
 - [x] Breakdown tabs + standalone 3c block untouched
 - [x] No engine/golden/session-producer keys; no `side` rename
 - [x] ASSUMPTIONS + METRICS_GLOSSARY + ARCHITECTURE updated
-- [ ] Focused + full suite green
-- [ ] Regression-safety paragraph in PR body
+- [x] Focused + full suite green
+- [x] Regression-safety paragraph in PR body
 
 ### PR 5a
 
