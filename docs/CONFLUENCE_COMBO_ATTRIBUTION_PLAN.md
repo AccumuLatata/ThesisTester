@@ -1096,10 +1096,12 @@ Implementation notes:
 2. **Combo × 3c variant** expander:
    - Exact × variant and Pair × variant tables show `direction` after `combo` /
      `pair` (before `trigger_variant`; `pair_mode` after `trigger_variant`).
-   - Availability: existing variant usability **and** ≥1 analyzable displayed
-     trade with usable `direction`. Otherwise calm unavailable (do not show a
-     variant matrix missing side). Keep `has_usable_trigger_variant` semantics
-     unchanged; AND a usable-direction check in UI (or thin `has_usable_direction`).
+   - Availability: **joint** same-trade check — ≥1 analyzable nonempty-combo
+     displayed trade with usable `direction` **and** usable `trigger_variant`
+     (`has_usable_direction_and_trigger_variant`). Independent
+     `has_usable_trigger_variant` / `has_usable_direction` remain for cascade
+     messaging but must not alone open the tables (split axes → empty 3-key).
+     Calm unavailable otherwise (do not show a variant matrix missing side).
    - Keep Focus / 3c tested-level-only captions from PR 3.
 3. Do **not** alter Membership / Level count / Pairs default tabs.
 4. Do **not** alter Breakdown tabs or the standalone 3c outcome-by-variant block.

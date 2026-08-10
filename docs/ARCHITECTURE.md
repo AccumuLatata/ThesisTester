@@ -1063,10 +1063,11 @@ beyond ordinary widget keys; zone/signal/fill engines are untouched.
 An opt-in nested expander **Combo × 3c variant** (PR 3 + PR 6) may show
 `exact_combo_key × direction × trigger_variant` and
 `pair_key × direction × trigger_variant` lean tables on `_display_trades` when combo
-attribution is available and ≥1 usable variant **and** usable `direction` exist.
-Membership / Level count / Pairs tabs stay undirected. The standalone
-“3c outcome summary by variant/source” block still uses full session `trades`
-(Focus mismatch is captioned).
+attribution is available and ≥1 analyzable nonempty-combo trade has **both** a
+usable `trigger_variant` and usable `direction` (joint gate; independent checks
+are insufficient). Membership / Level count / Pairs tabs stay undirected. The
+standalone “3c outcome summary by variant/source” block still uses full session
+`trades` (Focus mismatch is captioned).
 
 Time Analysis (`pages/9_Time_Analysis.py`) may optionally group by `exact_combo_key`
 or View-C `level_count_bucket` when confluence attribution is available; those dims

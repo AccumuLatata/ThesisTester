@@ -61,6 +61,7 @@ from thesistester.analytics.confluence_attribution import (
     exact_combo_direction_empty_info_message,
     exact_combo_variant_empty_info_message,
     has_usable_direction,
+    has_usable_direction_and_trigger_variant,
     has_usable_trigger_variant,
     pair_variant_empty_info_message,
     pairs_empty_info_message,
@@ -1228,9 +1229,7 @@ if _display_has_trades:
                     else:
                         _exact_view = _exact.copy()
                         if "display_combo" in _exact_view.columns:
-                            _exact_view = _exact_view.rename(
-                                columns={"display_combo": "combo"}
-                            )
+                            _exact_view = _exact_view.rename(columns={"display_combo": "combo"})
                         _exact_cols = [
                             c
                             for c in [
@@ -1258,9 +1257,7 @@ if _display_has_trades:
                                 .astype(str)
                             ).all()
                         ):
-                            _exact_cols = [
-                                c for c in _exact_cols if c != EXACT_COMBO_KEY_COL
-                            ]
+                            _exact_cols = [c for c in _exact_cols if c != EXACT_COMBO_KEY_COL]
                         st.dataframe(
                             _exact_view[_exact_cols],
                             width="stretch",
@@ -1393,16 +1390,24 @@ if _display_has_trades:
                 ):
                     st.caption(TRIGGER_3C_LEVEL_NAMES_WARNING)
 
-                if not has_usable_trigger_variant(_display_trades):
-                    st.info(
-                        "Combo × 3c variant unavailable — no usable "
-                        "`trigger_variant` on displayed trades."
-                    )
-                elif not has_usable_direction(_display_trades):
-                    st.info(
-                        "Combo × 3c variant unavailable — no usable "
-                        "`direction` (`long` / `short`) on displayed trades."
-                    )
+                if not has_usable_direction_and_trigger_variant(_display_trades):
+                    # Cascade: missing axis first, then same-trade intersection.
+                    if not has_usable_trigger_variant(_display_trades):
+                        st.info(
+                            "Combo × 3c variant unavailable — no usable "
+                            "`trigger_variant` on displayed trades."
+                        )
+                    elif not has_usable_direction(_display_trades):
+                        st.info(
+                            "Combo × 3c variant unavailable — no usable "
+                            "`direction` (`long` / `short`) on displayed trades."
+                        )
+                    else:
+                        st.info(
+                            "Combo × 3c variant unavailable — no displayed trade "
+                            "has both usable `direction` and usable "
+                            "`trigger_variant` on a nonempty exact combo."
+                        )
                 else:
                     try:
                         _exact_x_var = summarize_by_exact_combo_and_trigger_variant(

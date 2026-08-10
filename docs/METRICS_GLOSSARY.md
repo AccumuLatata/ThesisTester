@@ -502,7 +502,9 @@ Backtest **Exact combo** always groups by `exact_combo_key × direction`
 report/bundle/assistant. Opt-in **Combo × 3c variant** uses
 `exact_combo_key × direction × trigger_variant` and
 `pair_key × direction × trigger_variant`; omit null/empty variants and unusable
-directions before groupby; hide-below-`min_trades` defaults ON.
+directions before groupby; UI availability is a same-trade joint gate (usable
+`direction` + usable `trigger_variant` on a nonempty combo); hide-below-
+`min_trades` defaults ON.
 
 | Name | Definition |
 |---|---|

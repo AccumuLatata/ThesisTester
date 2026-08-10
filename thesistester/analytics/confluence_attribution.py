@@ -385,6 +385,32 @@ def has_usable_direction(trades: pd.DataFrame) -> bool:
     return bool(work[DIRECTION_COL].map(_is_usable_direction).any())
 
 
+def has_usable_direction_and_trigger_variant(trades: pd.DataFrame) -> bool:
+    """True when ≥1 analyzable nonempty-combo trade has usable direction AND variant.
+
+    ``has_usable_direction`` and ``has_usable_trigger_variant`` are independent:
+    both can be True while no single trade carries both axes. The Combo × 3c
+    variant expander must use this joint check so gates match the 3-key helpers.
+    """
+    if trades is None or not isinstance(trades, pd.DataFrame) or trades.empty:
+        return False
+    if TRIGGER_VARIANT_COL not in trades.columns or DIRECTION_COL not in trades.columns:
+        return False
+    if "r_multiple" not in trades.columns or "level_names" not in trades.columns:
+        return False
+    work = trades.dropna(subset=["r_multiple"])
+    if work.empty:
+        return False
+    attached = attach_combo_columns(work)
+    nonempty = attached.loc[attached[EXACT_COMBO_KEY_COL] != EMPTY_LEVEL_NAMES_KEY]
+    if nonempty.empty:
+        return False
+    mask = nonempty[TRIGGER_VARIANT_COL].map(_is_usable_trigger_variant) & nonempty[
+        DIRECTION_COL
+    ].map(_is_usable_direction)
+    return bool(mask.any())
+
+
 def _filter_usable_direction(trades: pd.DataFrame) -> pd.DataFrame:
     """Omit unusable ``direction`` rows and normalize to ``long`` / ``short``."""
     if trades is None or not isinstance(trades, pd.DataFrame) or trades.empty:
@@ -796,9 +822,7 @@ def summarize_by_exact_combo_and_trigger_variant(
     before grouping. Missing ``trigger_variant`` or ``direction`` column → empty
     frame.
     """
-    empty = _empty_multi_group_frame(
-        [EXACT_COMBO_KEY_COL, DIRECTION_COL, TRIGGER_VARIANT_COL]
-    )
+    empty = _empty_multi_group_frame([EXACT_COMBO_KEY_COL, DIRECTION_COL, TRIGGER_VARIANT_COL])
     if trades is None or not isinstance(trades, pd.DataFrame):
         return empty
     if trades.empty or "level_names" not in trades.columns:

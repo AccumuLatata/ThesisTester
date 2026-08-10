@@ -36,6 +36,7 @@ from thesistester.analytics.confluence_attribution import (
     exact_combo_variant_empty_info_message,
     format_display_combo,
     has_usable_direction,
+    has_usable_direction_and_trigger_variant,
     has_usable_trigger_variant,
     pair_variant_empty_info_message,
     level_count_bucket_label,
@@ -826,10 +827,7 @@ def test_summarize_pair_x_trigger_variant_generic_and_anchor():
         == PAIR_MODE_ANCHOR_PARTNER
     )
     # Missing anchor → generic pair under its variant.
-    assert (
-        by_anchor.loc[("VWAP|pdPOC", "short", "3c_short"), PAIR_MODE_COL]
-        == PAIR_MODE_GENERIC
-    )
+    assert by_anchor.loc[("VWAP|pdPOC", "short", "3c_short"), PAIR_MODE_COL] == PAIR_MODE_GENERIC
 
 
 def test_summarize_pair_x_trigger_variant_missing_column_empty():
@@ -899,6 +897,7 @@ def test_summarize_exact_combo_x_trigger_variant_omits_unusable_direction():
     )
     assert has_usable_trigger_variant(trades) is True
     assert has_usable_direction(trades) is False
+    assert has_usable_direction_and_trigger_variant(trades) is False
     assert summarize_by_exact_combo_and_trigger_variant(trades, min_trades=1).empty
 
 
@@ -912,7 +911,38 @@ def test_summarize_exact_combo_x_trigger_variant_missing_direction_column_empty(
     )
     assert has_usable_trigger_variant(trades) is True
     assert has_usable_direction(trades) is False
+    assert has_usable_direction_and_trigger_variant(trades) is False
     assert summarize_by_exact_combo_and_trigger_variant(trades, min_trades=1).empty
+
+
+def test_has_usable_direction_and_trigger_variant_requires_same_trade():
+    """Independent direction/variant gates can both pass with empty 3-key tables."""
+    split = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -0.5],
+            "level_names": ["A|B", "A|B"],
+            "direction": ["long", None],
+            "trigger_variant": [None, "3c_long"],
+        }
+    )
+    assert has_usable_direction(split) is True
+    assert has_usable_trigger_variant(split) is True
+    assert has_usable_direction_and_trigger_variant(split) is False
+    assert summarize_by_exact_combo_and_trigger_variant(split, min_trades=1).empty
+    assert summarize_by_pair_and_trigger_variant(split, min_trades=1).empty
+
+    joint = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -0.5],
+            "level_names": ["A|B", "A|B"],
+            "direction": ["long", None],
+            "trigger_variant": ["3c_long", None],
+        }
+    )
+    assert has_usable_direction_and_trigger_variant(joint) is True
+    frame = summarize_by_exact_combo_and_trigger_variant(joint, min_trades=1)
+    assert len(frame) == 1
+    assert int(frame.iloc[0]["trade_count"]) == 1
 
 
 def test_cross_view_empty_info_messages_distinguish_filter_vs_unavailable():
@@ -1012,9 +1042,7 @@ def test_summarize_exact_combo_and_direction_example_raw_per_group():
     trades = pd.DataFrame(
         {
             "trade_id": [2, 1],
-            "entry_timestamp": pd.to_datetime(
-                ["2024-01-02 09:40", "2024-01-02 09:31"]
-            ),
+            "entry_timestamp": pd.to_datetime(["2024-01-02 09:40", "2024-01-02 09:31"]),
             "r_multiple": [1.0, -0.5],
             "level_names": ["B|A", "A|B"],
             "direction": ["long", "long"],

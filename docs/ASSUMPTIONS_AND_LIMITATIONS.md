@@ -351,7 +351,10 @@ This engine is for **research screening**, not proof of a durable edge.
   is only `long` / `short` from the trade column — never parsed from
   `trigger_variant`). Empty-`level_names` trades are also omitted from the
   cross-view (they are not combinations); usable variants must sit on a nonempty
-  exact combo. When Focus is ON, counts will not match the standalone “3c outcome
+  exact combo. Availability requires ≥1 analyzable displayed trade that has
+  **both** usable `direction` and usable `trigger_variant` on the same nonempty
+  combo (independent axis checks alone can both pass while the 3-key tables stay
+  empty). When Focus is ON, counts will not match the standalone “3c outcome
   summary by variant/source” block (that block still uses full session `trades`).
   Not a new signal model; does not change 3c arrival / zone / fill semantics.
 - Rows are **observed traded combinations**, not the theoretical power set of
