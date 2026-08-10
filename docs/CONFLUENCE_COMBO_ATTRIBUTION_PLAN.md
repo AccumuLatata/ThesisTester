@@ -95,7 +95,7 @@ The feature must be:
 | Persistence (MVP) | None — recompute on the fly (like Time Analysis / prev30m hit R) |
 | Engine changes (MVP) | **None** |
 | Signal / zone changes (MVP) | **None** |
-| Required trade columns | `level_names`, `r_multiple` (optional: `direction`, `trigger`, `level_source_mode`, `entry_timestamp`) |
+| Required trade columns | `level_names`, `r_multiple` (optional: `direction`, `trigger`, `level_source_mode`, `entry_timestamp`; PR 6 directed views require usable `direction`) |
 | Core views (MVP) | Exact combo · Level membership · Level count (parsed token count) |
 | Optional polish (PR 3) | After 5a–5d: opt-in Backtest `exact_combo × trigger_variant` (+ optional pair×variant); not default always-on — **shipped** |
 | Direction polish (PR 6) | After PR 3: Backtest Exact + Combo × variant show `direction` (`long`/`short`); undirected summary contract unchanged |
