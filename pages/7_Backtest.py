@@ -54,12 +54,18 @@ from thesistester.analytics.confluence_attribution import (
     PAIR_MODE_COL,
     PAIRWISE_DOUBLE_COUNT_WARNING,
     TRIGGER_3C_LEVEL_NAMES_WARNING,
+    TRIGGER_VARIANT_COL,
     apply_sample_warning_filter,
     confluence_attribution_summary,
+    exact_combo_variant_empty_info_message,
+    has_usable_trigger_variant,
+    pair_variant_empty_info_message,
     pairs_empty_info_message,
     prepare_exact_combo_display,
     resolve_confluence_mode,
     resolve_signal_setup_for_attribution,
+    summarize_by_exact_combo_and_trigger_variant,
+    summarize_by_pair_and_trigger_variant,
 )
 from thesistester.analytics.metrics import summarize_by_group as summarize_trade_groups
 from thesistester.analytics.prev30m_vwap_hit import prev30m_hit_r_summary
@@ -1328,6 +1334,162 @@ if _display_has_trades:
                         if c in _pairs_view.columns
                     ]
                     st.dataframe(_pairs_view[_pair_cols], width="stretch", hide_index=True)
+
+            # PR 3: opt-in Combo × 3c variant cross-view (default Exact/…/Pairs unchanged).
+            with st.expander("Combo × 3c variant", expanded=False):
+                st.caption(
+                    "Diagnostic cross-tab of observed traded combinations × "
+                    "`trigger_variant` (selection effects). Not a new signal model "
+                    "and not a replacement for the Exact / Membership / Level count / "
+                    "Pairs tabs above."
+                )
+                # Only warn when the overlay actually swapped in focused trades.
+                # Toggle-on with missing/invalid focused_trades still uses full
+                # session trades — same universe as the standalone 3c block.
+                if _show_focused and isinstance(_focus_trades, pd.DataFrame):
+                    st.caption(
+                        "Focus is active: this cross-view uses the focused displayed "
+                        "trades. Counts will not match the standalone “3c outcome "
+                        "summary by variant/source” block, which still uses the full "
+                        "session trade table."
+                    )
+                if (
+                    isinstance(_display_trades, pd.DataFrame)
+                    and "trigger" in _display_trades.columns
+                    and (_display_trades["trigger"].astype(str) == "3c").any()
+                ):
+                    st.caption(TRIGGER_3C_LEVEL_NAMES_WARNING)
+
+                if not has_usable_trigger_variant(_display_trades):
+                    st.info(
+                        "Combo × 3c variant unavailable — no usable "
+                        "`trigger_variant` on displayed trades."
+                    )
+                else:
+                    try:
+                        _exact_x_var = summarize_by_exact_combo_and_trigger_variant(
+                            _display_trades,
+                            min_trades=int(_cca_min_trades),
+                        )
+                    except (TypeError, ValueError, KeyError):
+                        _exact_x_var = pd.DataFrame()
+
+                    st.markdown("**Exact combo × trigger variant**")
+                    _exact_x_view = apply_sample_warning_filter(
+                        _exact_x_var,
+                        hide_below_min=bool(_cca_hide_thin),
+                    )
+                    if _exact_x_view is None or (
+                        isinstance(_exact_x_view, pd.DataFrame) and _exact_x_view.empty
+                    ):
+                        # Do not claim "no usable trigger_variant" here — the outer
+                        # gate already passed; empty display is filter or no rows.
+                        st.info(exact_combo_variant_empty_info_message(_exact_x_var))
+                    else:
+                        _exact_x_disp = prepare_exact_combo_display(
+                            _exact_x_view,
+                            anchor_level=_anchor_level,
+                            confluence_mode=_confluence_mode,
+                        )
+                        if "display_combo" in _exact_x_disp.columns:
+                            _exact_x_disp = _exact_x_disp.rename(columns={"display_combo": "combo"})
+                        _exact_x_cols = [
+                            c
+                            for c in [
+                                "combo",
+                                EXACT_COMBO_KEY_COL,
+                                TRIGGER_VARIANT_COL,
+                                "trade_count",
+                                "win_rate",
+                                "avg_r",
+                                "median_r",
+                                "total_r",
+                                "sample_warning",
+                            ]
+                            if c in _exact_x_disp.columns
+                        ]
+                        if (
+                            "combo" in _exact_x_disp.columns
+                            and EXACT_COMBO_KEY_COL in _exact_x_cols
+                            and (
+                                _exact_x_disp["combo"].astype(str)
+                                == _exact_x_disp[EXACT_COMBO_KEY_COL]
+                                .replace(EMPTY_LEVEL_NAMES_KEY, "(no level names)")
+                                .astype(str)
+                            ).all()
+                        ):
+                            _exact_x_cols = [c for c in _exact_x_cols if c != EXACT_COMBO_KEY_COL]
+                        st.dataframe(
+                            _exact_x_disp[_exact_x_cols],
+                            width="stretch",
+                            hide_index=True,
+                        )
+
+                    st.caption(PAIRWISE_DOUBLE_COUNT_WARNING)
+                    if (
+                        _confluence_mode == "anchor_rules"
+                        and _anchor_level
+                        and _cca_summary.get("pair_mode") == PAIR_MODE_ANCHOR_PARTNER
+                    ):
+                        st.caption(
+                            f"Pair × variant uses anchor-partner keys "
+                            f"`{_anchor_level}|support` when the anchor is present; "
+                            "otherwise generic unordered pairs. Anchor is never "
+                            "guessed from token order."
+                        )
+                    else:
+                        st.caption(
+                            "Pair × variant uses generic unordered distinct level "
+                            "pairs (`A|B` canonical) unless signal-run mode is "
+                            "`anchor_rules` with a known anchor."
+                        )
+                    try:
+                        _pair_x_var = summarize_by_pair_and_trigger_variant(
+                            _display_trades,
+                            min_trades=int(_cca_min_trades),
+                            anchor_level=_anchor_level,
+                            confluence_mode=_confluence_mode,
+                        )
+                    except (TypeError, ValueError, KeyError):
+                        _pair_x_var = pd.DataFrame()
+
+                    st.markdown("**Pair × trigger variant**")
+                    _pair_x_view = apply_sample_warning_filter(
+                        _pair_x_var,
+                        hide_below_min=bool(_cca_hide_thin),
+                    )
+                    if _pair_x_view is None or (
+                        isinstance(_pair_x_view, pd.DataFrame) and _pair_x_view.empty
+                    ):
+                        st.info(pair_variant_empty_info_message(_pair_x_var))
+                    else:
+                        _pair_x_disp = _pair_x_view.rename(
+                            columns={
+                                PAIR_KEY_COL: "pair",
+                                TRIGGER_VARIANT_COL: "trigger_variant",
+                                PAIR_MODE_COL: "pair_mode",
+                            }
+                        )
+                        _pair_x_cols = [
+                            c
+                            for c in [
+                                "pair",
+                                "trigger_variant",
+                                "pair_mode",
+                                "trade_count",
+                                "win_rate",
+                                "avg_r",
+                                "median_r",
+                                "total_r",
+                                "sample_warning",
+                            ]
+                            if c in _pair_x_disp.columns
+                        ]
+                        st.dataframe(
+                            _pair_x_disp[_pair_x_cols],
+                            width="stretch",
+                            hide_index=True,
+                        )
 
 # Full trade table
 if _display_has_trades:

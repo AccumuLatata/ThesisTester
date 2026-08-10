@@ -1,6 +1,6 @@
 # Regression-Safe Implementation Plan: Confluence Combo Attribution (Backtest)
 
-**Status:** Phase 1 + Phase 2 + Phase 4 + Phase 5a + Phase 5b + Phase 5c + Phase 5d implemented; Phase 3 optional cross-view scoped for after 5a–5d
+**Status:** Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5a + Phase 5b + Phase 5c + Phase 5d implemented
 **Document type:** Focused analytics / Backtest UX implementation plan  
 **Regression framework:** `docs/ENGINEERING_PROPOSAL.md` §4, §4.1, §4.2  
 **Related docs:**  
@@ -599,7 +599,7 @@ level remain in the selected set?”
 | Report export diagnostic combo section | **Implemented (Phase 5b)** | Omit when unavailable; on-export recompute |
 | Research-bundle optional combo JSON/parquet siblings | **Implemented (Phase 5c)** | On-export recompute; no `BUNDLE_SCHEMA_VERSION` bump |
 | Assistant **cite-bound** combo projections | **Implemented (Phase 5d)** | Bounded `results.projections.confluence_combo` leaves only |
-| Optional combo × 3c-variant cross-view | **Scoped (Phase 3 / after 5a–5d)** | Opt-in `exact_combo × trigger_variant` (+ optional pair×variant if cheap); not default always-on |
+| Optional combo × 3c-variant cross-view | **Implemented (Phase 3)** | Opt-in `exact_combo × trigger_variant` + `pair × trigger_variant`; not default always-on |
 
 ### Still deferred / out
 
@@ -934,17 +934,17 @@ optional pair × trigger_variant (if shipped):
 
 **Acceptance checklist:**
 
-- [ ] Scheduled after 5a–5d unless explicitly re-prioritized
-- [ ] Default Exact / Membership / Level count / Pairs unchanged when unused
-- [ ] Cross-view uses `_display_trades`; hide-below-`min_trades` defaults ON
-- [ ] Tables only when `available=True` **and** ≥1 usable (non-null/non-empty) variant
-- [ ] Analytics unfiltered (`sample_warning` only); null/`""` variants omitted pre-groupby
-- [ ] Missing column / all-null variants → calm info (no empty-matrix success path)
-- [ ] Focus mismatch vs standalone 3c block captioned when Focus active
-- [ ] 3c tested-level-only honesty caption when applicable
-- [ ] Optional pair×variant (if present) follows PR 4 pair-mode locks + double-count caption
-- [ ] ASSUMPTIONS + METRICS_GLOSSARY + ARCHITECTURE updated
-- [ ] No engine/golden/session-producer keys; full suite green
+- [x] Scheduled after 5a–5d unless explicitly re-prioritized
+- [x] Default Exact / Membership / Level count / Pairs unchanged when unused
+- [x] Cross-view uses `_display_trades`; hide-below-`min_trades` defaults ON
+- [x] Tables only when `available=True` **and** ≥1 usable (non-null/non-empty) variant
+- [x] Analytics unfiltered (`sample_warning` only); null/`""` variants omitted pre-groupby
+- [x] Missing column / all-null variants → calm info (no empty-matrix success path)
+- [x] Focus mismatch vs standalone 3c block captioned when Focus active
+- [x] 3c tested-level-only honesty caption when applicable
+- [x] Optional pair×variant (if present) follows PR 4 pair-mode locks + double-count caption
+- [x] ASSUMPTIONS + METRICS_GLOSSARY + ARCHITECTURE updated
+- [x] No engine/golden/session-producer keys; full suite green
 
 **Priority / sequencing lock:**
 
@@ -1469,19 +1469,19 @@ PR 1 analytics helpers + tests
 
 ### PR 3
 
-- [ ] Scheduled after 5a–5d unless explicitly re-prioritized
-- [ ] Default Exact / Membership / Level count / Pairs unchanged when unused
-- [ ] Opt-in `exact_combo × trigger_variant` surface only (not always-on)
-- [ ] Uses `_display_trades`; hide-below-min defaults ON; analytics unfiltered
-- [ ] Tables only when combo `available=True` **and** ≥1 usable variant
-- [ ] Null/`""` `trigger_variant` omitted **before** groupby (no synthetic unknown)
-- [ ] Missing column / all-null variants → calm info (no empty-matrix success)
-- [ ] Focus mismatch vs standalone 3c full-`trades` block captioned when Focus on
-- [ ] 3c tested-level-only honesty caption when applicable
-- [ ] Standalone 3c outcome-by-variant block left unchanged (universe included)
-- [ ] Optional pair×variant (if shipped) follows PR 4 resolve_* locks + double-count caption
-- [ ] No engine/3c-semantics changes; no golden / producer session keys
-- [ ] ASSUMPTIONS + METRICS_GLOSSARY + ARCHITECTURE updated; full suite green
+- [x] Scheduled after 5a–5d unless explicitly re-prioritized
+- [x] Default Exact / Membership / Level count / Pairs unchanged when unused
+- [x] Opt-in `exact_combo × trigger_variant` surface only (not always-on)
+- [x] Uses `_display_trades`; hide-below-min defaults ON; analytics unfiltered
+- [x] Tables only when combo `available=True` **and** ≥1 usable variant
+- [x] Null/`""` `trigger_variant` omitted **before** groupby (no synthetic unknown)
+- [x] Missing column / all-null variants → calm info (no empty-matrix success)
+- [x] Focus mismatch vs standalone 3c full-`trades` block captioned when Focus on
+- [x] 3c tested-level-only honesty caption when applicable
+- [x] Standalone 3c outcome-by-variant block left unchanged (universe included)
+- [x] Optional pair×variant (if shipped) follows PR 4 resolve_* locks + double-count caption
+- [x] No engine/3c-semantics changes; no golden / producer session keys
+- [x] ASSUMPTIONS + METRICS_GLOSSARY + ARCHITECTURE updated; full suite green
 
 ### PR 5a
 
@@ -1566,12 +1566,12 @@ No blocking open questions remain for PR 1–2.
 | Phase 1 | PR 1 analytics helpers | **Implemented** (`thesistester/analytics/confluence_attribution.py`, `tests/test_confluence_attribution.py`) |
 | Phase 2 | PR 2 Backtest expander UI + docs | **Implemented** (`pages/7_Backtest.py` expander; ASSUMPTIONS / METRICS_GLOSSARY / ARCHITECTURE) |
 | Phase 4 | PR 4 soft pairwise attribution | **Implemented** (`summarize_by_level_pairs` + Backtest **Pairs** tab) |
-| Phase 5 | PR 5a–5d downstream consumers | **5a–5d implemented**; precedes optional PR 3 |
+| Phase 5 | PR 5a–5d downstream consumers | **5a–5d implemented** |
 | Phase 5a | Time Analysis opt-in combo/count groups | **Implemented** (`attach_level_count_bucket` + append `exact_combo_key` / `level_count_bucket` when available) |
 | Phase 5b | Report export diagnostic section | **Implemented** (`build_confluence_combo_report_block` + omit-when-unavailable markdown) |
 | Phase 5c | Bundle optional artifacts | **Implemented** (`confluence_combo_summary.json` + optional `confluence_by_*.parquet`) |
 | Phase 5d | Assistant cite-bound projection | **Implemented** (`results.projections.confluence_combo`; trades recompute; 5c not required) |
-| Phase 3 | Optional combo × trigger_variant cross-view | **Scoped** for after 5a–5d (2026-08-09 completeness amendment); implementation not started |
+| Phase 3 | Optional combo × trigger_variant cross-view | **Implemented** (opt-in Backtest expander; exact×variant + pair×variant) |
 
 ---
 
@@ -1667,12 +1667,12 @@ Before coding PR 1 / PR 2 / PR 4 / PR 5x / PR 3, confirm these locks:
       (5b/5c recompute on export; 5d recomputes from trades)
 14. [ ] 5a does not add pairs/membership as Time Analysis group dims
 15. [ ] 5c does not bump `BUNDLE_SCHEMA_VERSION` for optional siblings
-16. [ ] PR 3 is opt-in `exact_combo × trigger_variant` after 5a–5d; not default always-on
-17. [ ] PR 3 tables only when combo `available=True` **and** ≥1 usable
+16. [x] PR 3 is opt-in `exact_combo × trigger_variant` after 5a–5d; not default always-on
+17. [x] PR 3 tables only when combo `available=True` **and** ≥1 usable
       (non-null/non-empty) `trigger_variant`; otherwise calm unavailable
-18. [ ] PR 3 omits null/`""` `trigger_variant` **before** groupby; no synthetic unknown
-19. [ ] PR 3 does not change 3c arrival / zone / fill semantics (no require-anchor-hit)
-20. [ ] PR 3 leaves the standalone 3c outcome-by-variant summary block unchanged
+18. [x] PR 3 omits null/`""` `trigger_variant` **before** groupby; no synthetic unknown
+19. [x] PR 3 does not change 3c arrival / zone / fill semantics (no require-anchor-hit)
+20. [x] PR 3 leaves the standalone 3c outcome-by-variant summary block unchanged
       (including its full-`trades` universe)
-21. [ ] PR 3 captions Focus mismatch when Focus is active
-22. [ ] PR 3 implementation updates ARCHITECTURE (+ ASSUMPTIONS / METRICS_GLOSSARY)
+21. [x] PR 3 captions Focus mismatch when Focus is active
+22. [x] PR 3 implementation updates ARCHITECTURE (+ ASSUMPTIONS / METRICS_GLOSSARY)

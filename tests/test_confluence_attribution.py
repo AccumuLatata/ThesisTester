@@ -22,6 +22,7 @@ from thesistester.analytics.confluence_attribution import (
     PAIRWISE_DOUBLE_COUNT_WARNING,
     TIME_ANALYSIS_COMBO_DIAGNOSTIC_CAPTION,
     TRIGGER_3C_LEVEL_NAMES_WARNING,
+    TRIGGER_VARIANT_COL,
     UNKNOWN_LEVEL_COUNT_LABEL,
     append_confluence_time_analysis_group_options,
     apply_sample_warning_filter,
@@ -30,7 +31,10 @@ from thesistester.analytics.confluence_attribution import (
     confluence_attribution_summary,
     confluence_combo_grouping_available,
     exact_combo_key,
+    exact_combo_variant_empty_info_message,
     format_display_combo,
+    has_usable_trigger_variant,
+    pair_variant_empty_info_message,
     level_count_bucket_label,
     pair_keys_for_tokens,
     pairs_empty_info_message,
@@ -39,9 +43,11 @@ from thesistester.analytics.confluence_attribution import (
     resolve_confluence_mode,
     resolve_signal_setup_for_attribution,
     summarize_by_exact_combo,
+    summarize_by_exact_combo_and_trigger_variant,
     summarize_by_level_count,
     summarize_by_level_membership,
     summarize_by_level_pairs,
+    summarize_by_pair_and_trigger_variant,
     time_analysis_combo_group_caption,
 )
 from thesistester.analytics.entry_window import FOCUSABLE_GROUP_COLS
@@ -668,3 +674,209 @@ def test_time_analysis_combo_group_caption_only_when_combo_dim_selected():
 def test_combo_time_analysis_dims_are_not_focusable():
     for col in COMBO_TIME_ANALYSIS_GROUP_COLS:
         assert col not in FOCUSABLE_GROUP_COLS
+
+
+# ---------------------------------------------------------------------------
+# PR 3 — exact_combo / pair × trigger_variant cross-views
+# ---------------------------------------------------------------------------
+
+
+def _variant_cross_trades() -> pd.DataFrame:
+    """Exact-combo × variant fixture with null/empty variants to omit."""
+    return pd.DataFrame(
+        {
+            "trade_id": [1, 2, 3, 4, 5, 6],
+            "entry_timestamp": pd.to_datetime(
+                [
+                    "2024-01-02 09:31",
+                    "2024-01-02 09:40",
+                    "2024-01-02 10:05",
+                    "2024-01-02 10:20",
+                    "2024-01-02 11:00",
+                    "2024-01-02 11:15",
+                ]
+            ),
+            "r_multiple": [1.0, -0.5, 0.5, 0.25, None, 0.75],
+            "level_names": ["A|B", "A|B", "A", "A|B", "A|B", "A|B"],
+            "trigger": ["3c", "3c", "3c", "3c", "3c", "touch"],
+            "trigger_variant": [
+                "3c_long",
+                "3c_long",
+                "3c_short",
+                "",  # empty → omit
+                "3c_long",  # null R → omit from analyzable
+                None,  # null variant → omit
+            ],
+        }
+    )
+
+
+def test_summarize_exact_combo_x_trigger_variant_groups_and_metrics():
+    trades = _variant_cross_trades()
+    frame = summarize_by_exact_combo_and_trigger_variant(trades, min_trades=10)
+    assert list(frame.columns) == [
+        EXACT_COMBO_KEY_COL,
+        TRIGGER_VARIANT_COL,
+        "trade_count",
+        "win_rate",
+        "avg_r",
+        "median_r",
+        "total_r",
+        "sample_warning",
+    ]
+    # Usable: (A|B, 3c_long)×2 and (A, 3c_short)×1 — empty/null variants omitted.
+    assert len(frame) == 2
+    by_key = frame.set_index([EXACT_COMBO_KEY_COL, TRIGGER_VARIANT_COL])
+    assert by_key.loc[("A|B", "3c_long"), "trade_count"] == 2
+    assert by_key.loc[("A|B", "3c_long"), "total_r"] == pytest.approx(0.5)
+    assert by_key.loc[("A", "3c_short"), "trade_count"] == 1
+    assert bool(by_key.loc[("A|B", "3c_long"), "sample_warning"]) is True
+    # Sort: total_r desc then trade_count desc → A|B/3c_long first (0.5) then A (0.5)
+    # tie-break by trade_count: A|B has 2 > A has 1.
+    assert list(frame[EXACT_COMBO_KEY_COL]) == ["A|B", "A"]
+    # Thin rows kept by helper (UI owns hide-thin).
+    assert frame["sample_warning"].all()
+
+
+def test_summarize_exact_combo_x_trigger_variant_omits_null_and_empty():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -1.0, 0.5],
+            "level_names": ["A|B", "A|B", "A|B"],
+            "trigger_variant": [None, "", "  "],
+        }
+    )
+    frame = summarize_by_exact_combo_and_trigger_variant(trades, min_trades=1)
+    assert frame.empty
+    assert has_usable_trigger_variant(trades) is False
+
+
+def test_summarize_exact_combo_x_trigger_variant_missing_column_empty():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -0.5],
+            "level_names": ["A|B", "A"],
+        }
+    )
+    frame = summarize_by_exact_combo_and_trigger_variant(trades, min_trades=1)
+    assert frame.empty
+    assert has_usable_trigger_variant(trades) is False
+
+
+def test_summarize_exact_combo_x_trigger_variant_all_null_non_3c_pattern():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -0.5, 0.25],
+            "level_names": ["A|B", "A|B", "A"],
+            "trigger": ["touch", "touch", "touch"],
+            "trigger_variant": [None, None, None],
+        }
+    )
+    frame = summarize_by_exact_combo_and_trigger_variant(trades, min_trades=1)
+    assert frame.empty
+    assert has_usable_trigger_variant(trades) is False
+
+
+def test_summarize_pair_x_trigger_variant_generic_and_anchor():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -0.5, 0.25],
+            "level_names": ["A|B|C", "A|B", "A|B"],
+            "trigger_variant": ["3c_long", "3c_long", ""],
+        }
+    )
+    generic = summarize_by_pair_and_trigger_variant(trades, min_trades=1)
+    by_pair = generic.set_index([PAIR_KEY_COL, TRIGGER_VARIANT_COL])
+    # Trade 1 (A|B|C, 3c_long) → A|B, A|C, B|C; trade 2 (A|B, 3c_long) → A|B.
+    # Empty variant trade omitted.
+    assert by_pair.loc[("A|B", "3c_long"), "trade_count"] == 2
+    assert by_pair.loc[("A|C", "3c_long"), "trade_count"] == 1
+    assert set(generic[PAIR_MODE_COL]) == {PAIR_MODE_GENERIC}
+    # Double-count still applies across pairs within a variant.
+    assert float(generic["total_r"].sum()) > float(
+        trades.loc[trades["trigger_variant"] == "3c_long", "r_multiple"].sum()
+    )
+
+    anchor = summarize_by_pair_and_trigger_variant(
+        pd.DataFrame(
+            {
+                "r_multiple": [1.0, 0.5],
+                "level_names": ["pdHigh|VWAP|pdPOC", "VWAP|pdPOC"],
+                "trigger_variant": ["3c_long", "3c_short"],
+            }
+        ),
+        min_trades=1,
+        anchor_level="pdHigh",
+        confluence_mode="anchor_rules",
+    )
+    by_anchor = anchor.set_index([PAIR_KEY_COL, TRIGGER_VARIANT_COL])
+    assert by_anchor.loc[("pdHigh|VWAP", "3c_long"), "trade_count"] == 1
+    assert by_anchor.loc[("pdHigh|pdPOC", "3c_long"), PAIR_MODE_COL] == PAIR_MODE_ANCHOR_PARTNER
+    # Missing anchor → generic pair under its variant.
+    assert by_anchor.loc[("VWAP|pdPOC", "3c_short"), PAIR_MODE_COL] == PAIR_MODE_GENERIC
+
+
+def test_summarize_pair_x_trigger_variant_missing_column_empty():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0],
+            "level_names": ["A|B"],
+        }
+    )
+    assert summarize_by_pair_and_trigger_variant(trades, min_trades=1).empty
+
+
+def test_summarize_exact_combo_x_trigger_variant_strips_and_merges_labels():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -0.5, 0.25],
+            "level_names": ["A|B", "A|B", "A|B"],
+            "trigger_variant": ["  3c_long", "3c_long  ", "3c_long"],
+        }
+    )
+    frame = summarize_by_exact_combo_and_trigger_variant(trades, min_trades=1)
+    assert len(frame) == 1
+    assert frame.iloc[0][TRIGGER_VARIANT_COL] == "3c_long"
+    assert int(frame.iloc[0]["trade_count"]) == 3
+
+
+def test_summarize_exact_combo_x_trigger_variant_rejects_stringified_null_labels():
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -0.5, 0.25],
+            "level_names": ["A|B", "A|B", "A|B"],
+            "trigger_variant": ["nan", "None", "<NA>"],
+        }
+    )
+    assert summarize_by_exact_combo_and_trigger_variant(trades, min_trades=1).empty
+    assert has_usable_trigger_variant(trades) is False
+
+
+def test_summarize_exact_combo_x_trigger_variant_ignores_empty_name_only_variants():
+    """Usable variants on empty-name rows must not open/populate the cross-view."""
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, 0.5, -0.5],
+            "level_names": ["A|B", "A|B", ""],
+            "trigger_variant": [None, None, "3c_long"],
+        }
+    )
+    assert has_usable_trigger_variant(trades) is False
+    frame = summarize_by_exact_combo_and_trigger_variant(trades, min_trades=1)
+    assert frame.empty
+    assert EMPTY_LEVEL_NAMES_KEY not in set(frame.get(EXACT_COMBO_KEY_COL, []))
+
+
+def test_cross_view_empty_info_messages_distinguish_filter_vs_unavailable():
+    nonempty = pd.DataFrame(
+        {
+            EXACT_COMBO_KEY_COL: ["A|B"],
+            TRIGGER_VARIANT_COL: ["3c_long"],
+            "trade_count": [1],
+            "sample_warning": [True],
+        }
+    )
+    assert "current filter" in exact_combo_variant_empty_info_message(nonempty)
+    assert "usable trigger_variant" in exact_combo_variant_empty_info_message(pd.DataFrame())
+    assert "current filter" in pair_variant_empty_info_message(nonempty)
+    assert "two distinct level names" in pair_variant_empty_info_message(None)
