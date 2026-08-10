@@ -7,6 +7,7 @@ Pure helpers for Backtest research views:
 - parsed level-count buckets
 - soft pairwise attribution (generic pairs or anchor-partner pairs)
 - optional exact-combo / pair × ``trigger_variant`` cross-views (PR 3)
+- Backtest directed Exact + directed PR 3 cross-views (PR 6: trade ``direction``)
 
 No zone / signal / fill engine changes. Summaries return **all** groups with
 ``sample_warning``; UI owns hide-below-``min_trades`` presentation filtering.
@@ -33,6 +34,8 @@ LEVEL_TOKEN_COUNT_COL = "level_token_count"
 PAIR_KEY_COL = "pair_key"
 PAIR_MODE_COL = "pair_mode"
 TRIGGER_VARIANT_COL = "trigger_variant"
+DIRECTION_COL = "direction"
+USABLE_DIRECTIONS = frozenset({"long", "short"})
 
 # Opt-in Time Analysis group dims (PR 5a). Append-only; never Focus/Promote dims.
 COMBO_TIME_ANALYSIS_GROUP_COLS: tuple[str, ...] = (
@@ -350,6 +353,53 @@ def _filter_usable_trigger_variant(trades: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+_UNUSABLE_DIRECTION_LABELS = frozenset({"nan", "none", "<na>", "nat", "null"})
+
+
+def _normalize_direction(value: Any) -> str | None:
+    """Return ``long`` / ``short`` or ``None`` when unusable."""
+    if _is_nullish(value):
+        return None
+    text = str(value).strip().lower()
+    if not text or text in _UNUSABLE_DIRECTION_LABELS:
+        return None
+    if text in USABLE_DIRECTIONS:
+        return text
+    return None
+
+
+def _is_usable_direction(value: Any) -> bool:
+    """True for usable trade direction labels (``long`` / ``short``)."""
+    return _normalize_direction(value) is not None
+
+
+def has_usable_direction(trades: pd.DataFrame) -> bool:
+    """True when ≥1 analyzable trade has usable ``direction`` in {long, short}."""
+    if trades is None or not isinstance(trades, pd.DataFrame) or trades.empty:
+        return False
+    if DIRECTION_COL not in trades.columns or "r_multiple" not in trades.columns:
+        return False
+    work = trades.dropna(subset=["r_multiple"])
+    if work.empty:
+        return False
+    return bool(work[DIRECTION_COL].map(_is_usable_direction).any())
+
+
+def _filter_usable_direction(trades: pd.DataFrame) -> pd.DataFrame:
+    """Omit unusable ``direction`` rows and normalize to ``long`` / ``short``."""
+    if trades is None or not isinstance(trades, pd.DataFrame) or trades.empty:
+        return pd.DataFrame()
+    if DIRECTION_COL not in trades.columns:
+        return pd.DataFrame()
+    normalized = trades[DIRECTION_COL].map(_normalize_direction)
+    mask = normalized.notna()
+    out = trades.loc[mask].copy()
+    if out.empty:
+        return out
+    out[DIRECTION_COL] = normalized.loc[mask].astype(str)
+    return out
+
+
 def _summarize_r(
     trades: pd.DataFrame,
     group_col: str,
@@ -514,6 +564,61 @@ def summarize_by_exact_combo(
         return empty
     merged = summarized.merge(example_raw, on=EXACT_COMBO_KEY_COL, how="left")
     return merged[[EXACT_COMBO_KEY_COL, EXAMPLE_RAW_COL, *_GROUP_METRIC_COLS]]
+
+
+def summarize_by_exact_combo_and_direction(
+    trades: pd.DataFrame,
+    *,
+    min_trades: int = 10,
+) -> pd.DataFrame:
+    """Group analyzable trades by ``exact_combo_key × direction``.
+
+    Returns all groups plus ``sample_warning`` and ``example_raw_level_names``.
+    Does not drop thin samples. Pre-filters to usable ``direction`` in
+    ``{long, short}`` before grouping. Missing ``direction`` column → empty frame.
+    Empty-name sentinel rows are kept (same as undirected Exact).
+    """
+    empty = pd.DataFrame(
+        columns=[EXACT_COMBO_KEY_COL, DIRECTION_COL, EXAMPLE_RAW_COL, *_GROUP_METRIC_COLS]
+    )
+    if trades is None or not isinstance(trades, pd.DataFrame):
+        return empty
+    if trades.empty or "level_names" not in trades.columns:
+        return empty
+    if "r_multiple" not in trades.columns:
+        return empty
+    if DIRECTION_COL not in trades.columns:
+        return empty
+
+    attached = attach_combo_columns(trades)
+    analyzable = attached.dropna(subset=["r_multiple"]).copy()
+    if analyzable.empty:
+        return empty
+
+    usable = _filter_usable_direction(analyzable)
+    if usable.empty:
+        return empty
+
+    ordered = _sort_for_example_raw(usable)
+    example_raw = (
+        ordered.groupby([EXACT_COMBO_KEY_COL, DIRECTION_COL], sort=False)["level_names"]
+        .first()
+        .rename(EXAMPLE_RAW_COL)
+        .reset_index()
+    )
+    summarized = _summarize_r_multi(
+        usable,
+        [EXACT_COMBO_KEY_COL, DIRECTION_COL],
+        min_trades,
+    )
+    if summarized.empty:
+        return empty
+    merged = summarized.merge(
+        example_raw,
+        on=[EXACT_COMBO_KEY_COL, DIRECTION_COL],
+        how="left",
+    )
+    return merged[[EXACT_COMBO_KEY_COL, DIRECTION_COL, EXAMPLE_RAW_COL, *_GROUP_METRIC_COLS]]
 
 
 def summarize_by_level_membership(
@@ -684,13 +789,16 @@ def summarize_by_exact_combo_and_trigger_variant(
     *,
     min_trades: int = 10,
 ) -> pd.DataFrame:
-    """Group analyzable trades by ``exact_combo_key × trigger_variant``.
+    """Group analyzable trades by ``exact_combo_key × direction × trigger_variant``.
 
     Returns all groups plus ``sample_warning``. Does not drop thin samples.
-    Pre-filters null/empty (strip) ``trigger_variant`` before grouping.
-    Missing ``trigger_variant`` column → empty frame.
+    Pre-filters null/empty (strip) ``trigger_variant`` and unusable ``direction``
+    before grouping. Missing ``trigger_variant`` or ``direction`` column → empty
+    frame.
     """
-    empty = _empty_multi_group_frame([EXACT_COMBO_KEY_COL, TRIGGER_VARIANT_COL])
+    empty = _empty_multi_group_frame(
+        [EXACT_COMBO_KEY_COL, DIRECTION_COL, TRIGGER_VARIANT_COL]
+    )
     if trades is None or not isinstance(trades, pd.DataFrame):
         return empty
     if trades.empty or "level_names" not in trades.columns:
@@ -698,6 +806,8 @@ def summarize_by_exact_combo_and_trigger_variant(
     if "r_multiple" not in trades.columns:
         return empty
     if TRIGGER_VARIANT_COL not in trades.columns:
+        return empty
+    if DIRECTION_COL not in trades.columns:
         return empty
 
     attached = attach_combo_columns(trades)
@@ -708,6 +818,9 @@ def summarize_by_exact_combo_and_trigger_variant(
     usable = _filter_usable_trigger_variant(analyzable)
     if usable.empty:
         return empty
+    usable = _filter_usable_direction(usable)
+    if usable.empty:
+        return empty
     # Cross-view answers "which combination × variant"; empty-name sentinel rows
     # are not combinations (they remain visible on the Exact combo tab).
     usable = usable.loc[usable[EXACT_COMBO_KEY_COL] != EMPTY_LEVEL_NAMES_KEY].copy()
@@ -716,7 +829,7 @@ def summarize_by_exact_combo_and_trigger_variant(
 
     return _summarize_r_multi(
         usable,
-        [EXACT_COMBO_KEY_COL, TRIGGER_VARIANT_COL],
+        [EXACT_COMBO_KEY_COL, DIRECTION_COL, TRIGGER_VARIANT_COL],
         min_trades,
     )
 
@@ -728,14 +841,21 @@ def summarize_by_pair_and_trigger_variant(
     anchor_level: str | None = None,
     confluence_mode: str | None = None,
 ) -> pd.DataFrame:
-    """Soft pair_key × trigger_variant attribution (PR 4 pair-mode locks).
+    """Soft pair_key × direction × trigger_variant attribution (PR 4 locks).
 
     Anchor-partner mode only when ``confluence_mode == "anchor_rules"`` with a
-    known non-empty ``anchor_level``. Pre-filters null/empty variants before
-    explode/groupby. Missing ``trigger_variant`` column → empty frame.
+    known non-empty ``anchor_level``. Pre-filters null/empty variants and
+    unusable ``direction`` before explode/groupby. Missing ``trigger_variant``
+    or ``direction`` column → empty frame.
     """
     empty = pd.DataFrame(
-        columns=[PAIR_KEY_COL, TRIGGER_VARIANT_COL, PAIR_MODE_COL, *_GROUP_METRIC_COLS]
+        columns=[
+            PAIR_KEY_COL,
+            DIRECTION_COL,
+            TRIGGER_VARIANT_COL,
+            PAIR_MODE_COL,
+            *_GROUP_METRIC_COLS,
+        ]
     )
     if trades is None or not isinstance(trades, pd.DataFrame):
         return empty
@@ -745,6 +865,8 @@ def summarize_by_pair_and_trigger_variant(
         return empty
     if TRIGGER_VARIANT_COL not in trades.columns:
         return empty
+    if DIRECTION_COL not in trades.columns:
+        return empty
 
     attached = attach_combo_columns(trades)
     analyzable = attached.dropna(subset=["r_multiple"]).copy()
@@ -752,6 +874,9 @@ def summarize_by_pair_and_trigger_variant(
         return empty
 
     usable = _filter_usable_trigger_variant(analyzable)
+    if usable.empty:
+        return empty
+    usable = _filter_usable_direction(usable)
     if usable.empty:
         return empty
 
@@ -777,11 +902,13 @@ def summarize_by_pair_and_trigger_variant(
         if not keys:
             continue
         variant = str(row.get(TRIGGER_VARIANT_COL)).strip()
+        direction = str(row.get(DIRECTION_COL)).strip().lower()
         r_multiple = row.get("r_multiple")
         for key in keys:
             pair_rows.append(
                 {
                     PAIR_KEY_COL: key,
+                    DIRECTION_COL: direction,
                     TRIGGER_VARIANT_COL: variant,
                     PAIR_MODE_COL: mode,
                     "r_multiple": r_multiple,
@@ -794,14 +921,17 @@ def summarize_by_pair_and_trigger_variant(
     exploded = pd.DataFrame(pair_rows)
     summarized = _summarize_r_multi(
         exploded,
-        [PAIR_KEY_COL, TRIGGER_VARIANT_COL],
+        [PAIR_KEY_COL, DIRECTION_COL, TRIGGER_VARIANT_COL],
         min_trades,
     )
     if summarized.empty:
         return empty
 
     mode_by_key = (
-        exploded.groupby([PAIR_KEY_COL, TRIGGER_VARIANT_COL], sort=False)[PAIR_MODE_COL]
+        exploded.groupby(
+            [PAIR_KEY_COL, DIRECTION_COL, TRIGGER_VARIANT_COL],
+            sort=False,
+        )[PAIR_MODE_COL]
         .agg(
             lambda values: (
                 PAIR_MODE_ANCHOR_PARTNER
@@ -813,10 +943,12 @@ def summarize_by_pair_and_trigger_variant(
     )
     merged = summarized.merge(
         mode_by_key,
-        on=[PAIR_KEY_COL, TRIGGER_VARIANT_COL],
+        on=[PAIR_KEY_COL, DIRECTION_COL, TRIGGER_VARIANT_COL],
         how="left",
     )
-    return merged[[PAIR_KEY_COL, TRIGGER_VARIANT_COL, PAIR_MODE_COL, *_GROUP_METRIC_COLS]]
+    return merged[
+        [PAIR_KEY_COL, DIRECTION_COL, TRIGGER_VARIANT_COL, PAIR_MODE_COL, *_GROUP_METRIC_COLS]
+    ]
 
 
 def _empty_summary(min_trades: int = 10) -> dict[str, Any]:
@@ -941,23 +1073,33 @@ def pairs_empty_info_message(raw_pairs: pd.DataFrame | None) -> str:
     return "No pair rows to display (need trades with at least two distinct level names)."
 
 
+def exact_combo_direction_empty_info_message(raw_frame: pd.DataFrame | None) -> str:
+    """Honest empty-state copy for exact_combo × direction (Backtest Exact)."""
+    if isinstance(raw_frame, pd.DataFrame) and not raw_frame.empty:
+        return "No exact-combo × direction rows to display under the current filter."
+    return (
+        "No exact-combo × direction rows to display (need analyzable trades with "
+        "usable `direction` in {long, short})."
+    )
+
+
 def exact_combo_variant_empty_info_message(raw_frame: pd.DataFrame | None) -> str:
-    """Honest empty-state copy for exact_combo × trigger_variant."""
+    """Honest empty-state copy for exact_combo × direction × trigger_variant."""
     if isinstance(raw_frame, pd.DataFrame) and not raw_frame.empty:
         return "No exact-combo × variant rows to display under the current filter."
     return (
         "No exact-combo × variant rows to display (need analyzable trades with "
-        "level_names and a usable trigger_variant)."
+        "level_names, usable `direction`, and a usable trigger_variant)."
     )
 
 
 def pair_variant_empty_info_message(raw_frame: pd.DataFrame | None) -> str:
-    """Honest empty-state copy for pair_key × trigger_variant."""
+    """Honest empty-state copy for pair_key × direction × trigger_variant."""
     if isinstance(raw_frame, pd.DataFrame) and not raw_frame.empty:
         return "No pair × variant rows to display under the current filter."
     return (
         "No pair × variant rows to display (need trades with usable "
-        "`trigger_variant` and at least two distinct level names)."
+        "`direction`, usable `trigger_variant`, and at least two distinct level names)."
     )
 
 

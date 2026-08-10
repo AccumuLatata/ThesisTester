@@ -296,7 +296,12 @@ This engine is for **research screening**, not proof of a durable edge.
 
 - Backtest expander **Confluence combo attribution** groups displayed trades by
   recorded `level_names` (exact canonical combo, level membership, and parsed
-  token count). It does **not** change zones, signals, fills, or exposure.
+  token count). The Backtest **Exact combo** tab always splits by trade
+  `direction` (`long` / `short`) — grain is `exact_combo_key × direction`.
+  Undirected exact summaries remain for report / bundle / assistant only.
+  Splitting by direction can push more Exact (and Combo × variant) groups under
+  the existing hide-below-`min_trades` filter; the default threshold is not
+  retuned. It does **not** change zones, signals, fills, or exposure.
 - Time Analysis may optionally group by `exact_combo_key` or View-C
   `level_count_bucket` when confluence attribution is available (≥1 analyzable
   trade with a nonempty parsed combo). Those dims are **appended** after the
@@ -338,15 +343,17 @@ This engine is for **research screening**, not proof of a durable edge.
   full-table dumps, no Setup auto-recommendations, no future-edge claims).
   Membership/pairwise double-count caveats apply when those tops are present.
 - Backtest may show an **opt-in** nested expander **Combo × 3c variant** inside
-  Confluence combo attribution. It cross-tabs `exact_combo_key × trigger_variant`
-  (and optionally `pair_key × trigger_variant`) on `_display_trades` only. Default
-  Exact / Membership / Level count / Pairs tabs stay unchanged. Null/empty
-  `trigger_variant` rows are omitted (no synthetic unknown). Empty-`level_names`
-  trades are also omitted from the cross-view (they are not combinations); usable
-  variants must sit on a nonempty exact combo. When Focus is ON, counts will not
-  match the standalone “3c outcome summary by variant/source” block (that block
-  still uses full session `trades`). Not a new signal model; does not change 3c
-  arrival / zone / fill semantics.
+  Confluence combo attribution. It cross-tabs
+  `exact_combo_key × direction × trigger_variant` (and
+  `pair_key × direction × trigger_variant`) on `_display_trades` only. Membership /
+  Level count / Pairs tabs stay undirected. Null/empty `trigger_variant` and
+  unusable `direction` rows are omitted (no synthetic unknown; usable direction
+  is only `long` / `short` from the trade column — never parsed from
+  `trigger_variant`). Empty-`level_names` trades are also omitted from the
+  cross-view (they are not combinations); usable variants must sit on a nonempty
+  exact combo. When Focus is ON, counts will not match the standalone “3c outcome
+  summary by variant/source” block (that block still uses full session `trades`).
+  Not a new signal model; does not change 3c arrival / zone / fill semantics.
 - Rows are **observed traded combinations**, not the theoretical power set of
   selected levels / confluence rules.
 - Exact-combo keys are canonicalized (sorted tokens) so `A|B` and `B|A` merge.

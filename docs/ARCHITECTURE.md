@@ -1052,15 +1052,19 @@ Backtest UI note: `pages/7_Backtest.py` shows both combined KPIs and a separate 
 Backtest also exposes a collapsed diagnostic expander **Confluence combo attribution**
 near Breakdown. It recomputes on the fly from `_display_trades` via
 `thesistester.analytics.confluence_attribution` (exact combo / membership / parsed
-level-count / soft pairs). Mode/anchor captions use signal-run identity
+level-count / soft pairs). The Backtest Exact tab always renders
+`exact_combo_key × direction` (PR 6); undirected `by_exact_combo` in
+`confluence_attribution_summary` stays unchanged for report / bundle / assistant.
+Mode/anchor captions use signal-run identity
 (`signal_settings` → `last_signal_setup` → `setup_config` → `signal_context`), not a
 possibly stale Setup Builder config alone. No new `st.session_state` keys are required
 beyond ordinary widget keys; zone/signal/fill engines are untouched.
 
-An opt-in nested expander **Combo × 3c variant** (PR 3) may show
-`exact_combo_key × trigger_variant` and `pair_key × trigger_variant` lean tables on
-`_display_trades` when combo attribution is available and ≥1 usable variant exists.
-Default Exact / Membership / Level count / Pairs tabs stay unchanged. The standalone
+An opt-in nested expander **Combo × 3c variant** (PR 3 + PR 6) may show
+`exact_combo_key × direction × trigger_variant` and
+`pair_key × direction × trigger_variant` lean tables on `_display_trades` when combo
+attribution is available and ≥1 usable variant **and** usable `direction` exist.
+Membership / Level count / Pairs tabs stay undirected. The standalone
 “3c outcome summary by variant/source” block still uses full session `trades`
 (Focus mismatch is captioned).
 

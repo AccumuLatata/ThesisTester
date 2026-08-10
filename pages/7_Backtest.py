@@ -47,6 +47,7 @@ from thesistester.analytics.confluence_attribution import (
     EXACT_COMBO_KEY_COL,
     EXAMPLE_RAW_COL,
     LEVEL_COUNT_BUCKET_COL,
+    DIRECTION_COL,
     LEVEL_NAME_COL,
     MEMBERSHIP_DOUBLE_COUNT_WARNING,
     PAIR_KEY_COL,
@@ -57,13 +58,16 @@ from thesistester.analytics.confluence_attribution import (
     TRIGGER_VARIANT_COL,
     apply_sample_warning_filter,
     confluence_attribution_summary,
+    exact_combo_direction_empty_info_message,
     exact_combo_variant_empty_info_message,
+    has_usable_direction,
     has_usable_trigger_variant,
     pair_variant_empty_info_message,
     pairs_empty_info_message,
     prepare_exact_combo_display,
     resolve_confluence_mode,
     resolve_signal_setup_for_attribution,
+    summarize_by_exact_combo_and_direction,
     summarize_by_exact_combo_and_trigger_variant,
     summarize_by_pair_and_trigger_variant,
 )
@@ -1191,48 +1195,77 @@ if _display_has_trades:
             )
 
             with _tab_exact:
-                _exact = prepare_exact_combo_display(
-                    apply_sample_warning_filter(
-                        _cca_summary.get("by_exact_combo"),
-                        hide_below_min=bool(_cca_hide_thin),
-                    ),
-                    anchor_level=_anchor_level,
-                    confluence_mode=_confluence_mode,
+                # PR 6: Exact Backtest grain is always exact_combo × direction.
+                # Undirected by_exact_combo remains in the summary for exports.
+                st.caption(
+                    "Rows are **exact combo × direction** (long/short). "
+                    "Hide-below-min may hide more rows than undirected Exact "
+                    "because each side is its own sample."
                 )
-                if _exact.empty:
-                    st.info("No exact-combo rows to display under the current filter.")
+                if not has_usable_direction(_display_trades):
+                    st.info(
+                        "Exact combo × direction unavailable — no usable "
+                        "`direction` (`long` / `short`) on displayed trades."
+                    )
                 else:
-                    _exact_view = _exact.copy()
-                    if "display_combo" in _exact_view.columns:
-                        _exact_view = _exact_view.rename(columns={"display_combo": "combo"})
-                    _exact_cols = [
-                        c
-                        for c in [
-                            "combo",
-                            EXACT_COMBO_KEY_COL,
-                            EXAMPLE_RAW_COL,
-                            "trade_count",
-                            "win_rate",
-                            "avg_r",
-                            "median_r",
-                            "total_r",
-                            "sample_warning",
+                    try:
+                        _exact_raw = summarize_by_exact_combo_and_direction(
+                            _display_trades,
+                            min_trades=int(_cca_min_trades),
+                        )
+                    except (TypeError, ValueError, KeyError):
+                        _exact_raw = pd.DataFrame()
+                    _exact = prepare_exact_combo_display(
+                        apply_sample_warning_filter(
+                            _exact_raw,
+                            hide_below_min=bool(_cca_hide_thin),
+                        ),
+                        anchor_level=_anchor_level,
+                        confluence_mode=_confluence_mode,
+                    )
+                    if _exact.empty:
+                        st.info(exact_combo_direction_empty_info_message(_exact_raw))
+                    else:
+                        _exact_view = _exact.copy()
+                        if "display_combo" in _exact_view.columns:
+                            _exact_view = _exact_view.rename(
+                                columns={"display_combo": "combo"}
+                            )
+                        _exact_cols = [
+                            c
+                            for c in [
+                                "combo",
+                                EXACT_COMBO_KEY_COL,
+                                DIRECTION_COL,
+                                EXAMPLE_RAW_COL,
+                                "trade_count",
+                                "win_rate",
+                                "avg_r",
+                                "median_r",
+                                "total_r",
+                                "sample_warning",
+                            ]
+                            if c in _exact_view.columns
                         ]
-                        if c in _exact_view.columns
-                    ]
-                    # Prefer friendly combo label; keep canonical key only when it differs.
-                    if (
-                        "combo" in _exact_view.columns
-                        and EXACT_COMBO_KEY_COL in _exact_cols
-                        and (
-                            _exact_view["combo"].astype(str)
-                            == _exact_view[EXACT_COMBO_KEY_COL]
-                            .replace(EMPTY_LEVEL_NAMES_KEY, "(no level names)")
-                            .astype(str)
-                        ).all()
-                    ):
-                        _exact_cols = [c for c in _exact_cols if c != EXACT_COMBO_KEY_COL]
-                    st.dataframe(_exact_view[_exact_cols], width="stretch", hide_index=True)
+                        # Prefer friendly combo label; keep canonical key only when it differs.
+                        if (
+                            "combo" in _exact_view.columns
+                            and EXACT_COMBO_KEY_COL in _exact_cols
+                            and (
+                                _exact_view["combo"].astype(str)
+                                == _exact_view[EXACT_COMBO_KEY_COL]
+                                .replace(EMPTY_LEVEL_NAMES_KEY, "(no level names)")
+                                .astype(str)
+                            ).all()
+                        ):
+                            _exact_cols = [
+                                c for c in _exact_cols if c != EXACT_COMBO_KEY_COL
+                            ]
+                        st.dataframe(
+                            _exact_view[_exact_cols],
+                            width="stretch",
+                            hide_index=True,
+                        )
 
             with _tab_member:
                 st.caption(MEMBERSHIP_DOUBLE_COUNT_WARNING)
@@ -1335,13 +1368,13 @@ if _display_has_trades:
                     ]
                     st.dataframe(_pairs_view[_pair_cols], width="stretch", hide_index=True)
 
-            # PR 3: opt-in Combo × 3c variant cross-view (default Exact/…/Pairs unchanged).
+            # PR 3 + PR 6: opt-in Combo × 3c variant (3-key with direction).
             with st.expander("Combo × 3c variant", expanded=False):
                 st.caption(
                     "Diagnostic cross-tab of observed traded combinations × "
-                    "`trigger_variant` (selection effects). Not a new signal model "
-                    "and not a replacement for the Exact / Membership / Level count / "
-                    "Pairs tabs above."
+                    "`direction` × `trigger_variant` (selection effects). Not a new "
+                    "signal model and not a replacement for the Exact / Membership / "
+                    "Level count / Pairs tabs above."
                 )
                 # Only warn when the overlay actually swapped in focused trades.
                 # Toggle-on with missing/invalid focused_trades still uses full
@@ -1364,6 +1397,11 @@ if _display_has_trades:
                     st.info(
                         "Combo × 3c variant unavailable — no usable "
                         "`trigger_variant` on displayed trades."
+                    )
+                elif not has_usable_direction(_display_trades):
+                    st.info(
+                        "Combo × 3c variant unavailable — no usable "
+                        "`direction` (`long` / `short`) on displayed trades."
                     )
                 else:
                     try:
@@ -1398,6 +1436,7 @@ if _display_has_trades:
                             for c in [
                                 "combo",
                                 EXACT_COMBO_KEY_COL,
+                                DIRECTION_COL,
                                 TRIGGER_VARIANT_COL,
                                 "trade_count",
                                 "win_rate",
@@ -1466,6 +1505,7 @@ if _display_has_trades:
                         _pair_x_disp = _pair_x_view.rename(
                             columns={
                                 PAIR_KEY_COL: "pair",
+                                DIRECTION_COL: "direction",
                                 TRIGGER_VARIANT_COL: "trigger_variant",
                                 PAIR_MODE_COL: "pair_mode",
                             }
@@ -1474,6 +1514,7 @@ if _display_has_trades:
                             c
                             for c in [
                                 "pair",
+                                "direction",
                                 "trigger_variant",
                                 "pair_mode",
                                 "trade_count",
