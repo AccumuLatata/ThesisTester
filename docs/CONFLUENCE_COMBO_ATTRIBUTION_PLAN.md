@@ -55,6 +55,8 @@ top-N-in-PR3 wording; require ARCHITECTURE note in the implementation PR.
 follow-up into a focused **PR 6** after PR 3 ship. Backtest Exact combo and
 Combo × 3c variant tables gain an explicit `direction` (`long` / `short`)
 axis from the existing trade column — no engine / schema / golden changes.
+Exact Backtest grain is always `exact_combo_key × direction` (no undirected
+toggle); variant cross-tables become 3-key (`… × direction × trigger_variant`).
 Undirected `summarize_by_exact_combo` and `confluence_attribution_summary`
 contracts stay intact for report / bundle / assistant. CSV / hard top-N /
 Membership·Pairs·Level-count × direction remain deferred. See §11 PR 6.
@@ -98,7 +100,7 @@ The feature must be:
 | Required trade columns | `level_names`, `r_multiple` (optional: `direction`, `trigger`, `level_source_mode`, `entry_timestamp`; PR 6 directed views require usable `direction`) |
 | Core views (MVP) | Exact combo · Level membership · Level count (parsed token count) |
 | Optional polish (PR 3) | After 5a–5d: opt-in Backtest `exact_combo × trigger_variant` (+ optional pair×variant); not default always-on — **shipped** |
-| Direction polish (PR 6) | After PR 3: Backtest Exact + Combo × variant show `direction` (`long`/`short`); undirected summary contract unchanged |
+| Direction polish (PR 6) | After PR 3: Backtest Exact always `combo × direction`; Combo × variant becomes 3-key with `direction`; undirected summary contract unchanged |
 | Post-MVP research unlock (PR 4) | Soft pairwise attribution (analytics-only) — **shipped** |
 | Closest precedent | `thesistester/analytics/prev30m_vwap_hit.py` (expander + availability dict) |
 | Golden-master impact | None (no engine touch) |
@@ -918,7 +920,7 @@ Implementation notes:
 - Membership × `trigger_variant` matrix
 - Time Analysis / report / bundle / assistant consumers for this cross-view
 - Engine / golden / trades-schema changes
-- Broad direction × combo × variant 3D matrices (**PR 6 is 2-axis directed Exact + directed PR3 cross-view, not a free 3D explorer**)
+- Broad direction × combo × variant 3D matrices (**PR 6 is not a free 3D explorer**: Exact = `exact_combo_key × direction` (2-key); PR 3 cross-tables become `… × direction × trigger_variant` (3-key group), still inside the existing opt-in expander)
 - Default always-on matrix in Backtest chrome
 - Hard top-N / CSV (follow-ups only); direction×combo → **PR 6**
 
@@ -1003,7 +1005,8 @@ Trade frames already carry `direction` (`"long"` / `"short"`) from
    explicit group/display column (same lean metrics)
 4. Same-PR: **Pair × trigger variant** also includes `direction` (same expander;
    keeps the two cross-tables aligned)
-5. Unit tests + ASSUMPTIONS + METRICS_GLOSSARY + ARCHITECTURE honesty notes
+5. Unit tests (including **migration of existing PR 3 fixtures/assertions**) +
+   ASSUMPTIONS (hide-thin cardinality) + METRICS_GLOSSARY + ARCHITECTURE notes
 6. Plan status → Phase 6 implemented
 
 **Product locks:**
@@ -1011,16 +1014,19 @@ Trade frames already carry `direction` (`"long"` / `"short"`) from
 | Item | Locked decision |
 |---|---|
 | Column name | **`direction`** (not a new `side` field). Values: `long` / `short` after `str.strip().lower()`. UI header = `direction`; captions may say “side (long/short)” |
-| Exact combo Backtest grain | **`exact_combo_key × direction`** via new helper — replaces undirected Exact **table rendering only** |
+| Exact combo Backtest grain | **`exact_combo_key × direction`** (2-key) via new helper — replaces undirected Exact **table rendering only** |
+| Exact always directed (accepted UX) | **No undirected Exact toggle in PR 6.** Once the Confluence combo expander is open, Exact always shows combo × direction. Undirected exact remains only in `summarize_by_exact_combo` / summary dict / report·bundle·assistant. UI toggle = follow-up only if pain remains |
 | Undirected exact contract | **`summarize_by_exact_combo`** and `confluence_attribution_summary["by_exact_combo"]` **unchanged** (report / bundle / assistant / partition tests stay undirected) |
-| Combo × variant grain | Group by `[exact_combo_key, direction, trigger_variant]` (and pairs: `[pair_key, direction, trigger_variant]`) |
-| Variant helper consumers | Only Backtest + unit tests today — updating PR 3 helpers to require usable `direction` in the cross-view is allowed; keep lean metric columns identical |
-| Usable `direction` | Non-null and non-empty after strip; must be exactly `long` or `short`. Omit others **before** groupby (no synthetic `(unknown)`) |
+| Combo × variant grain | **3-key** group by `[exact_combo_key, direction, trigger_variant]` (and pairs: `[pair_key, direction, trigger_variant]`) — not a free 3D explorer; same opt-in expander |
+| Variant helper consumers | Only Backtest + unit tests today — updating PR 3 helpers to require usable `direction` in the cross-view is allowed; keep lean metric columns identical. **Migrate existing PR 3 fixtures/column assertions** in the same impl PR (they currently lack `direction` and will fail closed) |
+| Usable `direction` | Non-null and non-empty after strip; must be exactly `long` or `short`. Omit others **before** groupby (no synthetic `(unknown)`). Prefer a private shared usable-direction helper (reject stringified nulls like PR 3 variants); optional public `has_usable_direction` if it keeps UI/tests clear |
 | Missing `direction` column | Directed Exact helper → empty frame; Exact tab calm info. Cross-view: if variants usable but no usable direction → calm info (never empty-matrix-as-success) |
 | Universe | `_display_trades` only (Focus-aware), same as combo expander |
 | Metrics | Same lean R metrics via `_summarize_r` / `_summarize_r_multi` |
 | Filter ownership | Analytics returns **all** groups + `sample_warning`; UI owns hide-below-`min_trades` (**default ON**, existing checkbox) |
+| Hide-thin cardinality | Splitting Exact (and variant tables) by `direction` can push more groups under `min_trades` vs undirected Exact — document in ASSUMPTIONS + Exact caption that hide-thin still owns presentation; do not retune the default threshold in PR 6 |
 | Sort | `total_r` desc, then `trade_count` desc (unchanged) |
+| Column order (variant tables) | `combo`/`pair`, then `direction`, then `trigger_variant`, then `pair_mode` (pairs only), then lean metrics |
 | Redundancy with `trigger_variant` | Expected: well-formed 3c rows already encode side in the variant label. Explicit `direction` is still required for scanability and for non-string consumers; do **not** parse side out of `trigger_variant` — always use trade `direction` |
 | Membership / Level count / Pairs tabs | **Unchanged** (undirected) |
 | Breakdown tabs / standalone 3c block | **Unchanged** |
@@ -1028,7 +1034,7 @@ Trade frames already carry `direction` (`"long"` / `"short"`) from
 | Session producer keys | **None** |
 | Report / bundle / assistant | **Out of PR 6** — keep undirected exact frames |
 | CSV / hard top-N | **Out of PR 6** |
-| Toggle to restore undirected Exact | **Out of PR 6** (undirected remains in summary dict / exports; add UI toggle only if pain remains) |
+| Toggle to restore undirected Exact | **Out of PR 6** (accepted; undirected remains in summary dict / exports) |
 
 **Analytics API (narrow):**
 
@@ -1077,22 +1083,24 @@ Implementation notes:
 
 **UI contract:**
 
-1. **Exact combo** tab:
+1. **Exact combo** tab (**always directed** — no undirected fallback toggle):
    - Call `summarize_by_exact_combo_and_direction(_display_trades, …)`
    - Column order: `combo`, optional `exact_combo_key`, `direction`,
      `example_raw_level_names`, lean metrics…
-   - Caption: rows are **exact combo × direction**; thin samples still gated by
-     the existing min-trades control.
+   - Caption: rows are **exact combo × direction**; note that hide-below-min
+     may hide more rows than undirected Exact because each side is its own
+     sample; thin samples still gated by the existing min-trades control.
    - Calm info when directed frame empty (missing/unusable `direction`, or
      hide-thin emptied the view) — distinguish “no usable direction” from
      “hidden by min trades” when cheap (follow Pairs empty-info pattern if
      already easy).
 2. **Combo × 3c variant** expander:
    - Exact × variant and Pair × variant tables show `direction` after `combo` /
-     `pair` (before `trigger_variant`).
+     `pair` (before `trigger_variant`; `pair_mode` after `trigger_variant`).
    - Availability: existing variant usability **and** ≥1 analyzable displayed
      trade with usable `direction`. Otherwise calm unavailable (do not show a
-     variant matrix missing side).
+     variant matrix missing side). Keep `has_usable_trigger_variant` semantics
+     unchanged; AND a usable-direction check in UI (or thin `has_usable_direction`).
    - Keep Focus / 3c tested-level-only captions from PR 3.
 3. Do **not** alter Membership / Level count / Pairs default tabs.
 4. Do **not** alter Breakdown tabs or the standalone 3c outcome-by-variant block.
@@ -1125,7 +1133,13 @@ Implementation notes:
 
 - Additive analytics helpers + Backtest display wiring only
 - Undirected exact summary contract preserved for downstream consumers
+- Exact tab display change is intentional and accepted (always directed inside
+  the existing Confluence combo expander; no new default-off flag / toggle in
+  PR 6). Document hide-thin cardinality effect so researchers do not read
+  fewer Exact rows as a metric regression
 - Default Membership / Level count / Pairs tabs unchanged
+- In-place PR 3 helper grain change is a **test-contract** break only (Backtest
+  + unit tests); migrate fixtures/assertions in the same PR
 - No files under `thesistester/engine/**` or `tests/fixtures/golden/**`
 - No new Backtest producer `st.session_state` keys
 - Full suite green; no golden regeneration
@@ -1137,7 +1151,8 @@ Implementation notes:
 ```text
 exact_combo × direction:
   - groups by both axes; long/short split metrics match lean contract
-  - null / "" / whitespace / unknown direction omitted before groupby
+  - null / "" / whitespace / unknown / stringified-null direction omitted
+    before groupby
   - missing direction column → empty frame
   - sample_warning true when n < min_trades; rows not dropped by helper
   - example_raw_level_names still earliest-trade rule within each
@@ -1145,23 +1160,28 @@ exact_combo × direction:
   - partition: sum(trade_count)/sum(total_r) over directed rows matches
     analyzable∩usable-direction universe
   - undirected summarize_by_exact_combo unchanged on same fixture
+migrate existing PR 3 tests (required, same PR):
+  - add usable `direction` to `_variant_cross_trades` and other PR 3 fixtures
+  - update column-list / group-key assertions to include `direction`
+  - keep prior variant omit / empty-name / strip / pair-mode cases green
 exact_combo × direction × trigger_variant:
-  - direction column present; group keys include direction
+  - direction column present; group keys include direction (3-key)
   - unusable direction omitted even when trigger_variant usable
   - well-formed 3c fixture: direction agrees with variant side; row count
     matches prior undirected-by-variant grouping when sides are consistent
 pair × direction × trigger_variant (must ship with exact×variant):
-  - same pair-mode locks as PR 4; direction column present
+  - same pair-mode locks as PR 4; direction column present (3-key)
 ```
 
 **Acceptance checklist:**
 
 - [ ] Depends on PR 3 shipped
-- [ ] Exact tab shows `direction`; grain is combo × direction
-- [ ] Combo × variant (+ pair × variant) show `direction` column
-- [ ] Uses `_display_trades`; hide-below-`min_trades` defaults ON
+- [ ] Exact tab always shows `direction` (no undirected toggle); grain is combo × direction
+- [ ] Combo × variant (+ pair × variant) show `direction` column (3-key groups)
+- [ ] Uses `_display_trades`; hide-below-`min_trades` defaults ON (cardinality note in ASSUMPTIONS + Exact caption)
 - [ ] Usable direction = `{long, short}` only; omit others pre-groupby
 - [ ] Missing / all-unusable direction → calm info (no empty-matrix success)
+- [ ] Existing PR 3 fixtures/assertions migrated to include `direction`
 - [ ] `summarize_by_exact_combo` + summary `by_exact_combo` grain unchanged
 - [ ] Membership / Level count / Pairs tabs unchanged in diff intent
 - [ ] Breakdown tabs + standalone 3c block untouched
@@ -1711,11 +1731,12 @@ PR 1 analytics helpers + tests
 ### PR 6
 
 - [ ] Depends on PR 3 shipped
-- [ ] Exact tab shows `direction`; grain is combo × direction
-- [ ] Combo × variant (+ pair × variant) show `direction` column
-- [ ] Uses `_display_trades`; hide-below-`min_trades` defaults ON
+- [ ] Exact tab always shows `direction` (no undirected toggle); grain is combo × direction
+- [ ] Combo × variant (+ pair × variant) show `direction` column (3-key groups)
+- [ ] Uses `_display_trades`; hide-below-`min_trades` defaults ON (cardinality note in ASSUMPTIONS + Exact caption)
 - [ ] Usable direction = `{long, short}` only; omit others pre-groupby
 - [ ] Missing / all-unusable direction → calm info (no empty-matrix success)
+- [ ] Existing PR 3 fixtures/assertions migrated to include `direction`
 - [ ] `summarize_by_exact_combo` + summary `by_exact_combo` grain unchanged
 - [ ] Membership / Level count / Pairs tabs unchanged in diff intent
 - [ ] Breakdown tabs + standalone 3c block untouched
@@ -1786,6 +1807,9 @@ PR 1 analytics helpers + tests
 | CSV / top-N / direction×combo in PR 3? | **No by default** — direction promoted to **PR 6**; CSV / top-N still deferred |
 | Direction column name `side` vs `direction`? | **`direction`** — match trade column + Breakdown / Long-Short KPIs |
 | Change undirected exact summary for report/assistant? | **No in PR 6** — Backtest Exact rendering only |
+| Exact tab always directed (no undirected toggle) in PR 6? | **Yes — accepted UX lock.** Undirected exact stays in summary/exports only |
+| Document hide-thin cardinality after direction split? | **Yes** — ASSUMPTIONS + Exact caption; do not retune default `min_trades` |
+| Migrate existing PR 3 fixtures for `direction`? | **Yes — required** in the implementation PR (test-contract break) |
 | Split Membership / Pairs by direction too? | **No in PR 6** |
 | Parse side from `trigger_variant`? | **No** — always use trade `direction` |
 
@@ -1924,9 +1948,11 @@ Before coding PR 1 / PR 2 / PR 4 / PR 5x / PR 3 / PR 6, confirm these locks:
 21. [x] PR 3 captions Focus mismatch when Focus is active
 22. [x] PR 3 implementation updates ARCHITECTURE (+ ASSUMPTIONS / METRICS_GLOSSARY)
 23. [ ] PR 6 uses trade `direction` (`long`/`short`) — never invents `side`, never parses `trigger_variant`
-24. [ ] PR 6 Exact Backtest grain = `exact_combo_key × direction`; undirected `summarize_by_exact_combo` / summary dict unchanged
-25. [ ] PR 6 updates exact×variant + pair×variant to include `direction` in group keys
+24. [ ] PR 6 Exact Backtest grain = `exact_combo_key × direction` (always directed; no undirected toggle); undirected `summarize_by_exact_combo` / summary dict unchanged
+25. [ ] PR 6 updates exact×variant + pair×variant to **3-key** groups including `direction` (not a free 3D explorer)
 26. [ ] PR 6 omits unusable direction before groupby; calm unavailable when none usable
-27. [ ] PR 6 leaves Membership / Level count / Pairs tabs + Breakdown + standalone 3c block unchanged
-28. [ ] PR 6 is Backtest-only (no report / bundle / assistant directed frames; no CSV / top-N)
-29. [ ] PR 6 updates ASSUMPTIONS + METRICS_GLOSSARY + ARCHITECTURE; no engine/golden/session-producer keys
+27. [ ] PR 6 migrates existing PR 3 fixtures/column assertions to include `direction`
+28. [ ] PR 6 documents hide-thin cardinality effect (ASSUMPTIONS + Exact caption); default `min_trades` unchanged
+29. [ ] PR 6 leaves Membership / Level count / Pairs tabs + Breakdown + standalone 3c block unchanged
+30. [ ] PR 6 is Backtest-only (no report / bundle / assistant directed frames; no CSV / top-N)
+31. [ ] PR 6 updates ASSUMPTIONS + METRICS_GLOSSARY + ARCHITECTURE; no engine/golden/session-producer keys
