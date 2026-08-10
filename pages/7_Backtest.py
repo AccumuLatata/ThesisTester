@@ -1200,6 +1200,7 @@ if _display_has_trades:
                 # Undirected by_exact_combo remains in the summary for exports.
                 st.caption(
                     "Rows are **exact combo × direction** (long/short). "
+                    "Trades without usable `direction` are omitted. "
                     "Hide-below-min may hide more rows than undirected Exact "
                     "because each side is its own sample."
                 )
@@ -1417,7 +1418,7 @@ if _display_has_trades:
                     except (TypeError, ValueError, KeyError):
                         _exact_x_var = pd.DataFrame()
 
-                    st.markdown("**Exact combo × trigger variant**")
+                    st.markdown("**Exact combo × direction × trigger variant**")
                     _exact_x_view = apply_sample_warning_filter(
                         _exact_x_var,
                         hide_below_min=bool(_cca_hide_thin),
@@ -1497,7 +1498,7 @@ if _display_has_trades:
                     except (TypeError, ValueError, KeyError):
                         _pair_x_var = pd.DataFrame()
 
-                    st.markdown("**Pair × trigger variant**")
+                    st.markdown("**Pair × direction × trigger variant**")
                     _pair_x_view = apply_sample_warning_filter(
                         _pair_x_var,
                         hide_below_min=bool(_cca_hide_thin),

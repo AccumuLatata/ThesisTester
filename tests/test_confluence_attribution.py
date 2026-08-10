@@ -1052,3 +1052,29 @@ def test_summarize_exact_combo_and_direction_example_raw_per_group():
     assert len(frame) == 1
     # Earliest timestamp wins example raw within (combo, direction).
     assert frame.iloc[0][EXAMPLE_RAW_COL] == "A|B"
+
+
+def test_summarize_exact_combo_and_direction_keeps_empty_name_sentinel():
+    """Directed Exact keeps empty-name rows; Exact×variant still drops them."""
+    trades = pd.DataFrame(
+        {
+            "r_multiple": [1.0, -0.5],
+            "level_names": ["", "A|B"],
+            "direction": ["long", "short"],
+            "trigger_variant": ["3c_long", "3c_short"],
+        }
+    )
+    directed = summarize_by_exact_combo_and_direction(trades, min_trades=1)
+    assert EMPTY_LEVEL_NAMES_KEY in set(directed[EXACT_COMBO_KEY_COL])
+    assert (
+        int(
+            directed.loc[
+                directed[EXACT_COMBO_KEY_COL] == EMPTY_LEVEL_NAMES_KEY, "trade_count"
+            ].iloc[0]
+        )
+        == 1
+    )
+    cross = summarize_by_exact_combo_and_trigger_variant(trades, min_trades=1)
+    assert EMPTY_LEVEL_NAMES_KEY not in set(cross[EXACT_COMBO_KEY_COL])
+    assert len(cross) == 1
+    assert cross.iloc[0][EXACT_COMBO_KEY_COL] == "A|B"
