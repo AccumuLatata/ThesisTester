@@ -483,71 +483,55 @@ Implementation: levels in `thesistester/levels/prev30m_vwap.py`; Phase 2 R analy
 
 ## Confluence combo attribution (Backtest diagnostic)
 
-Post-trade grouped R metrics from `thesistester/analytics/confluence_attribution.py`,
-shown in the Backtest expander **Confluence combo attribution**. Uses the Focus
-overlay trade universe (`_display_trades`) when Focus is active.
+Post-trade grouped R from `thesistester/analytics/confluence_attribution.py`
+(Backtest expander **Confluence combo attribution**; `_display_trades` when Focus
+is on).
 
-Time Analysis may optionally select `exact_combo_key` or `level_count_bucket` as
-primary/secondary grouping dims when `available` would be true; defaults remain
-time buckets. Time Analysis metrics then use the richer `summarize_by_group`
-contract (not the lean Backtest combo `_summarize_r` tables).
-
-Report / Export may attach `artifact["confluence_combo"]` (and
-`tables["confluence_*"]`) when available. Exact-combo / membership / pairs
-tables are bounded top-N (default 15) by `|total_r|` then `trade_count`; parsed
-level-count is the full small table. Markdown omits the section when unavailable.
-
-Research Bundles may persist the same diagnostic as optional siblings
-(`confluence_combo_summary.json` with bounded tables; full analytics frames in
-`confluence_by_*.parquet` when non-empty). Import restores managed research keys
-only when `included["confluence_combo"]` is true.
-
-Discuss / Results Q&A may project a bounded cite-only leaf
-`results.projections.confluence_combo` (recomputed from trades; 5c siblings not
-required) with `available`, trade counts, capped `top_exact_combo` /
-`top_level_count`, optional `top_pair` + `pair_mode`, and `warning_flags` /
-`warnings`. Full `by_*` frames are not mounted into the path catalog.
+Time Analysis may opt into `exact_combo_key` / `level_count_bucket` when
+`available` (defaults stay time buckets; richer `summarize_by_group`, not lean
+`_summarize_r`). Report may attach `artifact["confluence_combo"]` + bounded
+`tables["confluence_*"]` (top-N 15 by `|total_r|` then `trade_count`; omit when
+unavailable). Bundles may store optional siblings
+(`confluence_combo_summary.json`, `confluence_by_*.parquet`); import restores
+managed keys only when `included["confluence_combo"]` is true. Discuss may
+project bounded `results.projections.confluence_combo` (trades recompute; no full
+`by_*` frames in the path catalog).
 
 Backtest **Exact combo** always groups by `exact_combo_key × direction`
-(`long` / `short`). Undirected exact frames remain in
-`confluence_attribution_summary` for report / bundle / assistant.
-
-Backtest may optionally open **Combo × 3c variant** (nested expander) for
+(`long`/`short`). Undirected exact stays in `confluence_attribution_summary` for
+report/bundle/assistant. Opt-in **Combo × 3c variant** uses
 `exact_combo_key × direction × trigger_variant` and
-`pair_key × direction × trigger_variant` lean R tables on displayed trades.
-Null/empty variants and unusable directions are omitted before groupby;
-hide-below-`min_trades` defaults ON (same checkbox as the combo expander).
+`pair_key × direction × trigger_variant`; omit null/empty variants and unusable
+directions before groupby; hide-below-`min_trades` defaults ON.
 
 | Name | Definition |
 |---|---|
 | `exact_combo_key` | Canonical sorted `\|`-joined distinct tokens from trade `level_names`; empty/null/`nan` → `__empty__` |
-| `display_combo` | UI label; in `anchor_rules` with known session `anchor_level`, renders `anchor\|sorted(rest)`, else the canonical key |
-| `example_raw_level_names` | Raw `level_names` from the earliest trade in the combo group (`entry_timestamp`, then `trade_id`) |
-| `direction` (combo views) | Trade side `long` / `short` (strip/lower). Backtest Exact and Combo × variant require a usable direction; other/empty/stringified-null values are omitted before groupby |
-| Membership (`level_name`) | One row per distinct token present on a trade; **double-counts** multi-level trades |
+| `display_combo` | UI label; in `anchor_rules` with known `anchor_level`, `anchor\|sorted(rest)`, else canonical key |
+| `example_raw_level_names` | Raw `level_names` from the earliest trade in the group (`entry_timestamp`, then `trade_id`) |
+| `direction` (combo views) | Trade `long`/`short` (strip/lower). Exact + Combo × variant omit other/empty/stringified-null before groupby |
+| Membership (`level_name`) | One row per distinct token on a trade; **double-counts** multi-level trades |
 | Parsed level count | Distinct parsed token count from `level_names` (not stored zone `level_count`) |
-| `level_count_bucket` | View-C count label for grouping: parsed count `0` → `(unknown)`, else the integer count (`1`, `2`, …) |
-| Soft pair (`pair_key`) | Generic unordered canonical `A\|B`, or anchor-partner `anchor\|support` when signal-run mode is `anchor_rules` with known `anchor_level` |
-| `pair_mode` | `generic` or `anchor_partner` label for the pair row / summary |
-| `trigger_variant` (cross-view) | 3c entry-type label on trades (`3c_long`, muted/SFP variants, …). Combo × variant tables omit null/empty labels; non-3c runs typically have no usable variants |
-| Exact combo × direction | Lean R metrics grouped by `exact_combo_key` and usable `direction` (Backtest Exact tab) |
-| Exact combo × variant | Lean R metrics grouped by `exact_combo_key`, usable `direction`, and usable `trigger_variant` |
-| Pair × variant | Lean R metrics grouped by soft `pair_key`, usable `direction`, and usable `trigger_variant` (same pair-mode locks; still double-counts) |
+| `level_count_bucket` | View-C count label: parsed `0` → `(unknown)`, else integer count |
+| Soft pair (`pair_key`) | Generic unordered `A\|B`, or `anchor\|support` when mode is `anchor_rules` with known `anchor_level` |
+| `pair_mode` | `generic` or `anchor_partner` |
+| `trigger_variant` (cross-view) | 3c entry-type label (`3c_long`, muted/SFP, …). Null/empty omitted; non-3c usually has none |
+| Exact combo × direction | Lean R by `exact_combo_key` × usable `direction` (Backtest Exact) |
+| Exact combo × variant | Lean R by `exact_combo_key` × `direction` × usable `trigger_variant` |
+| Pair × variant | Lean R by `pair_key` × `direction` × usable `trigger_variant` (pair-mode locks; double-counts) |
 | `trade_count` | Rows in group with non-null `r_multiple` |
-| `win_rate` | Share of `r_multiple > 0` among non-null `r_multiple` (breakeven `0` is not a win) |
+| `win_rate` | Share of `r_multiple > 0` among non-null R (breakeven `0` is not a win) |
 | `avg_r` / `median_r` / `total_r` | Mean / median / sum of non-null `r_multiple` |
-| `sample_warning` | `True` when `trade_count < min_trades` (default 10). Analytics keep these rows; UI may hide them |
+| `sample_warning` | `True` when `trade_count < min_trades` (default 10). Analytics keep rows; UI may hide |
 | `available` | `True` only when `level_names` exists and ≥1 analyzable trade has a non-empty parsed combo |
 
-**Partition vs double-count:** exact-combo rows partition the analyzable trade
-universe (`sum(trade_count)` / `sum(total_r)` match). Membership and soft pairs
-do not (a 3-level trade contributes three generic pairs).
+**Partition vs double-count:** exact-combo rows partition analyzable trades
+(`sum(trade_count)` / `sum(total_r)` match). Membership and soft pairs do not.
 
-**Null-R convention vs sibling Breakdown tabs:** combo attribution excludes null
-`r_multiple` from denominators (same family as `summarize_trades` / prev30m hit
-R). The existing Backtest Breakdown tabs (`By trigger` / `By direction` /
-`By exit reason`) still use inline `(x > 0).mean()`, which treats nulls as
-non-wins in the denominator. Do not assume the two win-rate styles are identical.
+**Null-R vs Breakdown tabs:** combo attribution excludes null `r_multiple`
+(same family as `summarize_trades` / prev30m). Breakdown tabs
+(`By trigger` / `By direction` / `By exit reason`) still use inline
+`(x > 0).mean()` (nulls as non-wins). Do not assume identical win-rate styles.
 
 ## Assistant evidence-claim paths
 
