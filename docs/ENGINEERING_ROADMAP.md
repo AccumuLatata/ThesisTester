@@ -17,6 +17,7 @@ Assistant-related contracts:
 | Thesis draft / explain loop | `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2) | ✅ Implemented (through PR6) |
 | AIA Research Assistant foundations | `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` (AIA) | ✅ Implemented — do not open new results/help PRs from AIA text |
 | Session entry window research loop | `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` (SW); evidence `docs/archive/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md` | ✅ **Engineering-signed (SW0–SW7 + SW2b)** — Focus → Admit → Grid/WFA inherit; cutoff skip audit; C1–C9; default-off; golden-gated per `ENGINEERING_PROPOSAL.md` §4 |
+| Research Study Runner | `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (RS) | 📝 **Plan-locked (RS0)** — additive StudySpec → R18 expand/run/report; no engine/pages in RS1–RS5; optional RS6 agent tools |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1167,3 +1168,29 @@ Summary looks poor. SW2b cutoff skip audit shipped as follow-up (#299).
 **Regression posture:** additive, default-off; legacy `trades_legacy` golden
 must stay value-identical; Focus and Admit must never be conflated in UI copy;
 C7 identity required when engine-touched.
+
+---
+
+## Research Study Runner (RS0–RS6) 📝 Plan-locked
+
+Additive headless **StudySpec → R18 expand/run/report** series so researchers
+(or external agents) can run closed multi-factor confluence studies without
+touching engine/pages. Classic Streamlit research remains undisturbed through
+RS5.
+
+**Canonical spec:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`
+
+| Milestone | Intent |
+|---|---|
+| RS0 | Plan lock + roadmap/docs index ✅ |
+| RS1 | StudySpec schema + fail-closed validation ☐ |
+| RS2 | Deterministic expander → `experiment.yaml` + factor map ☐ |
+| RS3 | CLI `study expand|run` + ledger + confirm gate ☐ |
+| RS4 | Overview aggregator (CSV/MD, OTF Δ, honesty) ☐ |
+| RS5 | Staging/promote drafts + examples + USER_GUIDE recipe ☐ |
+| RS6 | Optional default-off assistant/MCP tools ☐ (after RS5) |
+
+**Regression posture:** no `engine/` or `pages/` edits in RS1–RS5; no golden
+regeneration; `python -m thesistester run` behavior identical; StudySpec
+unknown keys fail closed; combinatorial fishing mitigated by confirm gates,
+staging, and multiple-testing honesty (not by claiming validated edge).
