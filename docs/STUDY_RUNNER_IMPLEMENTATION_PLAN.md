@@ -1,7 +1,7 @@
 # Research Study Runner — Implementation Plan (RS)
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
-**Date:** 2026-08-11 (amended 2026-08-11: R18 contract review)  
+**Date:** 2026-08-11 (amended 2026-08-11: R18 contract review; MVP completeness pass)  
 **Status:** Plan-locked (RS0) — implementation not started  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
@@ -10,6 +10,8 @@
 **Depends on (already shipped):** R18 headless API + batch CLI (`thesistester/api.py`, `thesistester/cli.py`), RunSpec validation, research bundles, `results_index.csv`
 
 **Supersedes:** conversational design notes about an autonomous research bot / Grok Bot coworker (those remain usage patterns; this plan is the product contract).
+
+**Completeness posture:** RS1–RS5 is the **holistic MVP** (author → expand → confirm → execute with ledger/resume → report). RS6 and RS-D\* are post-MVP. This document is the implementation contract for that MVP — not an alpha sketch.
 
 ---
 
@@ -40,8 +42,24 @@ The runner must remain **independent of Streamlit day-to-day use**: no engine, f
 | NL / LLM compiler | Explicitly deferred (RS-D1); closed YAML StudySpec is the contract |
 | External Grok Bot | Out of repo scope; consumes CLI/MCP after RS5/RS6 |
 | Strategy generation | **Non-goal** (aligns with `ENGINEERING_PROPOSAL.md` §2.2) |
+| MVP completeness bar | RS1–RS5 must be usable end-to-end without Streamlit, NL, or MCP |
 
 **Feasibility:** High. R18 already runs independent RunSpecs and writes bundles + `results_index.csv`. The missing product surface is **study expansion + study-owned execution ledger + aggregation**, not new simulation semantics.
+
+### 2.1 MVP in-scope vs explicitly deferred
+
+| In MVP (RS1–RS5) | Deferred (not required for MVP done) |
+|---|---|
+| Closed StudySpec YAML + fail-closed validate | NL → StudySpec (RS-D1) |
+| Deterministic expand + golden fixtures | Streamlit Studies viewer (RS-D2) |
+| Confirm gate + cost hints | Changing `run_batch` abort semantics (RS-D3) |
+| Study-owned execute + per-cell ledger | Study-level WFA/PBO rollup (RS-D4) |
+| Continue-on-failure **at study layer** | Grok Bot routine pack (RS-D5) |
+| Soft resume (skip ledger `ok` cells) | Tolerance / multi-partner factor types (RS-D6) |
+| Workers for independent cells | Additive R18 index PF columns (RS-D7; PF via bundles in MVP) |
+| Overview CSV/MD + OTF Δ + honesty | Assistant/MCP tools (RS6) |
+| Stage filter + promote → `explicit_cells` draft | Auto-run promotion / scheduled studies |
+| Stage-first example (40) + documented full (800) | UI factor builder / templates marketplace |
 
 ---
 
@@ -168,7 +186,18 @@ examples/studies/      # stage-first example YAML (RS5; may land earlier as fixt
 4. **Study-owned execution (locked):** `study run` loops cells using the same composition as `cli._execute_run` (`run_experiment` → `build_research_bundle` → index row), writing bundles/index incrementally and updating the ledger per cell. Still emit `experiment.yaml` so `python -m thesistester run experiment.yaml` can replay. **Do not** call `run_batch` for ledgered study runs — `run_batch` validates all, executes all into memory, then writes artifacts once; any exception yields **no** partial bundles/index (all-or-nothing). Changing that is RS-D3, not RS3.
 5. **Factor tags travel with every cell** in `study.expansion.json` / ledger only — never stuff `study_factors` into RunSpec (run-level unknown keys fail) or depend on setup passthrough (stripped).
 6. **Default-off integration:** no assistant/page wiring until RS6.
-7. **Enabled flags are load-bearing:** when emitting `grid` / `validation` / `walk_forward` mappings, always set `enabled: false` unless the StudySpec explicitly enables them. Present mapping with omitted `enabled` defaults to **True** in `run_experiment` and silently arms SL/TP grids / batteries.
+7. **Enabled flags are load-bearing:** when emitting `grid` / `validation` / `walk_forward` mappings, always set `enabled: false` unless the StudySpec explicitly enables them. Footgun is a **present mapping with omitted `enabled`** (defaults **True** in `run_experiment` and arms batteries). Omitting the section entirely is execution-safe; expander still **emits** explicit `{enabled: false}` so replay YAML cannot accidentally gain bare `{}` later.
+8. **Execute provenance (locked for RS3):**
+   - `cache_policy="read_write"` (same as CLI `_execute_run`).
+   - `execution_origin="study"` — requires an **additive** membership of `"study"` in `EXECUTION_ORIGINS` (`research_identity.py`). This is the only intentional non-`study/` code touch in RS1–RS5 besides CLI subparser wiring. Do **not** invent other origins; do **not** use `"cli"` while claiming study provenance.
+   - `base_directory` = parent of the StudySpec path (dataset paths resolve like R18 YAML-relative).
+9. **Workers (locked for RS3):** `workers: N` runs independent cells via spawn `ProcessPoolExecutor` (same isolation spirit as `run_batch`), but each task must **return** `{ok|failed}` payloads rather than raising past the pool boundary, so continue-on-failure and incremental ledger/index writes remain correct. `workers: 1` is the deterministic default for tests.
+10. **Output dir / soft resume (locked for RS3 MVP):**
+    - Same `output_dir` + same study identity hash + existing ledger `ok` cell → **skip** re-execution (soft resume).
+    - Ledger `failed` / `pending` / missing → run.
+    - Spec/expansion identity mismatch vs prior `study.spec.yaml` / hash → refuse unless `--force`.
+    - `--force` re-runs all cells (overwrites bundles/index rows for those names).
+    - Soft resume is MVP (unattended correctness); full job-queue/cancel UX remains deferred.
 
 ---
 
@@ -294,10 +323,11 @@ study:
 6. Level column names for multi-TF MAs follow product naming: `SMA_{len}_{tf}`, `EMA_{len}_{tf}` with TF ∈ `{1min, 5min, 30min}`.
 7. Partner / core level tokens must be ⊆ closed set: known static/session/profile names (e.g. `pdPOC`, `ONH`, …) ∪ MA/EMA columns implied by `levels.*` lengths×timeframes. Unknown tokens fail at StudySpec validate (RS1) or expand (RS2) with actionable errors.
 8. Unknown StudySpec keys → validation error. Pass-through blocks (`dataset`, `levels`, run sections) are validated by existing `validate_run_spec` **after** expansion (each run).
-9. **Global mode:** `selected_levels = [core] + partners`; expander sets `min_confluences = max_confluences = len(selected_levels)`; reject `len > 5`.
-10. **Anchor mode:** `selected_levels = []`; `anchor_level = core`; one required `confluence_rules` entry per partner at `constants.tolerance_ticks`; `min_valid_confluences` from constants (≤ rule count).
-11. **Enabled emission:** every expanded run includes `grid: {enabled: false}`, `validation: {enabled: false}`, `walk_forward: {enabled: false}` unless StudySpec constants explicitly enable them. Never omit the mapping or emit bare `{}`.
+9. **Global mode (study emission rule):** `selected_levels = [core] + partners`; expander sets `min_confluences = max_confluences = len(selected_levels)`; reject if that length `> 5`. R18 itself enforces `max_confluences ≤ 5` and non-empty `selected_levels`, **not** `min=max=len` — the equality rule is Study Runner’s confluence-geometry contract.
+10. **Anchor mode (study emission rule):** always emit `selected_levels: []`; `anchor_level = core`; one required `confluence_rules` entry per partner at `constants.tolerance_ticks`; `min_valid_confluences` from constants must be `≥ 1` and `≤ len(rules)`. R18 does **not** hard-fail non-empty `selected_levels` in anchor mode (signals ignore them for zones); Study Runner still emits `[]` for honesty/UI parity.
+11. **Enabled emission:** every expanded run includes `grid: {enabled: false}`, `validation: {enabled: false}`, `walk_forward: {enabled: false}` unless StudySpec constants explicitly enable them. Never emit bare `{}`. Prefer explicit false over omitting the section (see §5.3.7).
 12. Optional backtest honesty knobs (`commission_per_side`, `slippage_ticks`, session exits, `intrabar_model`, `entry_window`) pass through when present; defaults match R18/`_BACKTEST_DEFAULTS` if omitted.
+13. **Index-row parity:** study execute builds the same metric keys as `cli._execute_run` (plus study `status`). Prefer a local helper in `study/execute.py` with a parity test against CLI keys — **do not** refactor `cli._execute_run` in MVP unless a tiny shared pure helper is extracted with zero behavior change and existing CLI tests stay green.
 
 ### 6.3 Staging (v1 support, recommended default practice)
 
@@ -309,12 +339,36 @@ stage:
     trigger_timeframe: [base]
 ```
 
+`explicit_cells` shape (normative — RS1 accepts; RS2/RS5 expand/promote):
+
+```yaml
+stage:
+  mode: explicit_cells
+  cells:
+    - core_level: pdPOC
+      partner_levels: [SMA_50_1min]
+      confluence_mode: global_cluster
+      trigger: touch
+      trigger_timeframe: base
+      otf: { enabled: false }
+    - core_level: pdPOC
+      partner_levels: [EMA_21_5min]
+      confluence_mode: anchor_rules
+      trigger: 3c
+      trigger_timeframe: 5min
+      otf:
+        enabled: true
+        timeframes: [30m]
+        alignment_mode: all
+        minimum_consecutive_bars: 3
+```
+
 | Mode | When | Behavior |
 |---|---|---|
-| `filter` | RS1 schema + RS2 expand | Subset listed factor axes before cartesian product |
-| `explicit_cells` | RS1 schema accept; promote writer in RS5 | Exact list of factor tuples (survivors); no accidental re-expansion of open axes |
+| `filter` | RS1 schema + RS2 expand | Subset listed factor axes before cartesian product; `include` keys must be subset of `factors` |
+| `explicit_cells` | RS1 schema accept; expand in RS2; promote writer in RS5 | Each `cells[]` entry must supply **every** factor axis key used by the study (no silent defaults from open axes). Cartesian product is skipped. |
 
-RS5: `study promote` reads prior overview → draft StudySpec with `stage.mode: explicit_cells` (or equivalent survivor list). Human edit/confirm still required before `study run`.
+RS5: `study promote` reads prior overview → draft StudySpec with `stage.mode: explicit_cells` + `cells: [...]`. Human edit/confirm still required before `study run`.
 
 Optional later additive field (RS5 / RS5.1 if needed): `from_report: { study_dir, top_n, metric }` — only if fail-closed tests pass; otherwise keep promote as a draft-file helper without schema creep.
 
@@ -362,7 +416,8 @@ Canonical study identity hash (RS2): hash normalized StudySpec bytes (stable key
 python -m thesistester study expand path/to/study.yaml --output-dir out/study1
 
 # Execute (study-owned cell loop; emits/uses experiment.yaml; does not alter run_batch)
-python -m thesistester study run path/to/study.yaml --output-dir out/study1 [--workers N] [--confirm]
+python -m thesistester study run path/to/study.yaml --output-dir out/study1 \
+  [--workers N] [--confirm] [--force]
 
 # Aggregate after runs (or re-run report)
 python -m thesistester study report out/study1
@@ -370,6 +425,12 @@ python -m thesistester study report out/study1
 # Optional (RS5): draft survivor StudySpec — does not execute
 python -m thesistester study promote out/study1 --output path/to/draft_study.yaml
 ```
+
+| Flag | Behavior |
+|---|---|
+| `--workers N` | Overrides StudySpec `workers` for execute pool |
+| `--confirm` | Required when `run_count >= confirm_above_runs` |
+| `--force` | Ignore soft-resume skips; re-run all cells (see §5.3.10) |
 
 Wiring: extend `thesistester/cli.py` / `__main__.py` with a `study` subparser **without** changing `run` argparse defaults or help text semantics. Today `main` asserts `command == "run"` — extend dispatch carefully; existing `tests/test_cli.py` subprocess parity must stay green.
 
@@ -422,7 +483,9 @@ Every RS PR must satisfy `ENGINEERING_PROPOSAL.md` §4.2:
 
 **Forbidden in RS1–RS5:** edits under `thesistester/engine/`, `thesistester/levels/` (except read-only imports of validators/constants if needed), `pages/`, fill/signal semantics; changing `run_batch` abort/write behavior.
 
-Allowed read-only imports: `setup` validators/constants, `normalize_otf_filter_config`, `api.run_experiment` / `validate_run_spec` / `build_setup`, `reporting.build_research_bundle` (or current bundle builder symbol), CLI helpers only if imported without altering `run` defaults.
+Allowed read-only imports: `setup` validators/constants, `normalize_otf_filter_config`, `api.run_experiment` / `validate_run_spec` / `build_setup`, `research_bundle.build_research_bundle` / `canonical_bundle_hash`, CLI helpers only if imported without altering `run` defaults.
+
+**Allowed additive non-`study/` touch (RS3 only):** append `"study"` to `EXECUTION_ORIGINS` in `research_identity.py` (+ targeted tests). No other identity/schema churn.
 
 ---
 
@@ -445,7 +508,7 @@ Allowed read-only imports: `setup` validators/constants, `normalize_otf_filter_c
 | | |
 |---|---|
 | **Scope** | `thesistester/study/schema.py` (+ `__init__.py`); `docs/STUDY_RUNNER.md` (schema section); `tests/study/test_study_schema.py` |
-| **Behavior** | Load YAML → normalize → validate; reject unknown keys; validate factor domains against known trigger/OTF/confluence enums; validate partner/core tokens against closed level set implied by `levels` + known static names; validate `confirm_above_runs >= 1`; study/run names match `_RUN_NAME_RE`; accept `stage.mode` ∈ `{filter, explicit_cells}` (expand may implement filter only until RS2/RS5); require explicit `enabled` on grid/validation/walk_forward when those mappings are present |
+| **Behavior** | Load YAML → normalize → validate; reject unknown keys; validate factor domains against known trigger/OTF/confluence enums; validate partner/core tokens against closed level set implied by `levels` + known static names (`SUGGESTED_DEFAULT_LEVELS` ∪ implied MA/EMA columns ∪ other product static names as documented in `STUDY_RUNNER.md`); validate `confirm_above_runs >= 1`; study/run names match `_RUN_NAME_RE`; accept `stage.mode` ∈ `{filter, explicit_cells}` with `include` / `cells` shapes per §6.3; require explicit `enabled` on grid/validation/walk_forward when those mappings are present |
 | **Out of scope** | Expansion to runs; CLI; engine; pages |
 | **Regression** | No existing module behavior change |
 | **Acceptance checklist** | |
@@ -453,7 +516,7 @@ Allowed read-only imports: `setup` validators/constants, `normalize_otf_filter_c
 | | ☐ Unknown top-level / factor keys fail closed |
 | | ☐ Invalid trigger / trigger_timeframe / otf / partner tokens rejected with actionable errors |
 | | ☐ `direction` in constants allowed; listing unsupported factor axes errors clearly |
-| | ☐ `stage.mode: explicit_cells` accepted by schema (even if expander promote lands RS5) |
+| | ☐ `stage.mode: filter` requires `include`; `explicit_cells` requires non-empty `cells` with all factor keys |
 | | ☐ Docs describe schema_version: 1 |
 | | ☐ `pytest -q tests/study/test_study_schema.py` green; full suite green |
 
@@ -463,7 +526,7 @@ Allowed read-only imports: `setup` validators/constants, `normalize_otf_filter_c
 Implement RS1 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §11 RS1.
 Add thesistester/study/schema.py (+ package init) and docs/STUDY_RUNNER.md schema section.
 Fail-closed unknown StudySpec keys. Validate against existing trigger/OTF/confluence enums
-and closed partner/core level tokens. Accept stage filter|explicit_cells.
+and closed partner/core level tokens. Accept stage filter|explicit_cells with §6.3 shapes.
 Require enabled flags on grid/validation/walk_forward mappings when present.
 No engine/pages/cli execution. Tests under tests/study/. Update roadmap status RS1.
 Follow ENGINEERING_PROPOSAL.md §4.2. Keep classic UI undisturbed.
@@ -477,7 +540,7 @@ Do not merge with confluence-combo attribution.
 | | |
 |---|---|
 | **Scope** | `expand.py`, `naming.py`; expand golden fixtures; extend `STUDY_RUNNER.md` |
-| **Behavior** | `expand_study(normalized) -> ExpansionResult{experiment, factor_map, run_count}`; map global/anchor mode_rules per §6.2; inject setup name/instrument/description; canonicalize OTF in factor_map; call `build_setup` or produce dicts that pass `validate_run_spec` for each cell; emit `enabled: false` for grid/validation/walk_forward unless explicitly enabled; write helpers for `study.spec.yaml`, `study.expansion.json`, `experiment.yaml` |
+| **Behavior** | `expand_study(normalized) -> ExpansionResult{experiment, factor_map, run_count}`; map global/anchor mode_rules per §6.2; inject setup name/instrument/description; canonicalize OTF in factor_map; call `build_setup` or produce dicts that pass `validate_run_spec` for each cell; emit `enabled: false` for grid/validation/walk_forward unless explicitly enabled; implement `stage.filter` and `stage.explicit_cells` (§6.3); write helpers for `study.spec.yaml`, `study.expansion.json`, `experiment.yaml` |
 | **Out of scope** | Running backtests; report; confirm enforcement (print count only) |
 | **Regression** | Pure functions; no CLI default changes; no `run_batch` edits |
 | **Acceptance checklist** | |
@@ -487,6 +550,7 @@ Do not merge with confluence-combo attribution.
 | | ☐ Global cells set `selected_levels=[core]+partners` with min=max=len and len≤5 |
 | | ☐ Run names unique and match `_RUN_NAME_RE` |
 | | ☐ Stage `filter` reduces cartesian product correctly (example: 800 → 40) |
+| | ☐ Stage `explicit_cells` expands exactly the listed cells (no cartesian leakage) |
 | | ☐ No bare `grid`/`validation`/`walk_forward` `{}`; enabled false by default |
 | | ☐ Full suite green; no golden-master regeneration |
 
@@ -495,8 +559,8 @@ Do not merge with confluence-combo attribution.
 ```text
 Implement RS2 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §11 RS2.
 Add expand.py + naming.py. Deterministic StudySpec→R18 experiment expansion with factor_map.
-Follow §6.2 (anchor selected_levels=[], global min=max=len≤5, setup injects, OTF canonicalize,
-enabled:false emission). Golden-test expansion. Every run must pass validate_run_spec.
+Follow §6.2–§6.3 (anchor selected_levels=[], global min=max=len≤5, setup injects, OTF canonicalize,
+enabled:false emission, filter + explicit_cells). Golden-test expansion. Every run must pass validate_run_spec.
 No backtest execution. No engine/pages/run_batch changes. Docs + roadmap. §4.2.
 ```
 
@@ -506,15 +570,18 @@ No backtest execution. No engine/pages/run_batch changes. Docs + roadmap. §4.2.
 
 | | |
 |---|---|
-| **Scope** | `cli_study.py`; wire `study` subcommands in `cli.py`/`__main__.py`; `execute.py`; `ledger.py`; tests for confirm gate + ledger + partial failure |
-| **Behavior** | `expand` writes artifacts + cost hints; `run` expands (if needed), enforces confirm policy, **study-owned cell loop** (`run_experiment` + `build_research_bundle` + incremental index/ledger), preserves R18 bundle layout under study `output_dir`, keeps emitting `experiment.yaml` for replay; failed cell recorded in ledger and skipped for remaining cells (continue-on-failure at **study** layer only) |
-| **Out of scope** | Changing `run_batch` semantics; overview Markdown intelligence; assistant tools |
-| **Regression** | `python -m thesistester run` path must remain behavior-identical (additive subparser only; `run_batch` untouched) |
+| **Scope** | `cli_study.py`; wire `study` subcommands in `cli.py`/`__main__.py`; `execute.py`; `ledger.py`; additive `"study"` in `EXECUTION_ORIGINS`; tests for confirm gate + ledger + partial failure + soft resume + workers=1/N |
+| **Behavior** | `expand` writes artifacts + cost hints; `run` expands (if needed), enforces confirm policy, **study-owned cell loop** (`run_experiment` + `build_research_bundle` + incremental index/ledger) with §5.3.8–§5.3.10 provenance/workers/resume locks; preserves R18 bundle layout under study `output_dir`; keeps emitting `experiment.yaml` for replay; failed cell recorded in ledger; remaining cells continue |
+| **Out of scope** | Changing `run_batch` semantics; overview Markdown intelligence; assistant tools; job cancel UX |
+| **Regression** | `python -m thesistester run` path must remain behavior-identical (additive subparser only; `run_batch` untouched); `EXECUTION_ORIGINS` change is additive membership only |
 | **Acceptance checklist** | |
 | | ☐ `study expand` writes the three artifacts and prints run_count (+ cost hints) |
 | | ☐ `study run` without `--confirm` fails when run_count ≥ confirm_above_runs |
-| | ☐ `study run --confirm` executes; ledger marks ok/failed per cell |
+| | ☐ `study run --confirm` executes; ledger marks ok/failed per cell; `execution_origin=study` |
 | | ☐ One failing cell leaves prior ok bundles/index rows intact; failure surfaced in ledger |
+| | ☐ Soft resume skips ledger `ok` cells; `--force` re-runs; identity mismatch refuses without `--force` |
+| | ☐ `workers>1` continues on per-cell failure (return payloads, not pool-wide raise) |
+| | ☐ Index columns parity-tested vs `cli._execute_run` (+ study `status`) |
 | | ☐ `run_batch` / `thesistester run` tests unchanged and green |
 | | ☐ Warn when any cell enables grid/validation/walk_forward |
 | | ☐ AGENT_GUIDE headless section gains Study Runner pointer; ARCHITECTURE boundary note |
@@ -525,12 +592,13 @@ No backtest execution. No engine/pages/run_batch changes. Docs + roadmap. §4.2.
 **Copy-ready agent prompt:**
 
 ```text
-Implement RS3 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §11 RS3.
+Implement RS3 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §11 RS3 and §5.3.8–§5.3.10.
 Wire `python -m thesistester study expand|run`. Implement study-owned execute loop
 (reuse run_experiment + build_research_bundle composition like cli._execute_run).
 Do NOT call run_batch for ledgered runs; do NOT change run_batch defaults/semantics.
-Enforce confirm_above_runs + cost hints. Write study ledger with per-cell ok/failed.
-Update AGENT_GUIDE + STUDY_RUNNER.md + ARCHITECTURE + roadmap.
+Add "study" to EXECUTION_ORIGINS only (additive). Enforce confirm_above_runs + cost hints.
+Ledger with per-cell ok/failed; soft resume + --force; workers return ok/failed payloads.
+Index-row key parity vs cli._execute_run. Update AGENT_GUIDE + STUDY_RUNNER.md + ARCHITECTURE + roadmap.
 No engine/pages. §4.2 checklist. Keep `thesistester run` identical.
 ```
 
@@ -681,23 +749,31 @@ Recommended human workflow after RS5:
 | Accidental engine edits in agent PRs | PR allow-list in prompts; CI golden gate |
 | Factor tags stuffed into RunSpec/setup | External factor_map only; run-level unknown keys fail; setup strips unknowns |
 | Assuming `run_batch` supports per-cell failure | Study-owned execute loop; `run_batch` left all-or-nothing (RS-D3) |
-| Silent default-on grid/validation | Expander always emits `enabled: false` unless StudySpec enables |
+| Silent default-on grid/validation | Expander always emits `enabled: false` unless StudySpec enables; never bare `{}` |
 | PF/status missing from R18 index | Study ledger status; PF from bundle or RS-D7 |
 | OTF alias forks in Δ grouping | Canonicalize to `5m`/`15m`/`30m` in factor_map |
+| Worker pool aborts entire study on one raise | Tasks return ok/failed payloads; ledger continues |
+| Re-run destroys completed work / identity drift | Soft resume + study identity hash + `--force` |
+| `execution_origin=study` → `unknown` | Additive `EXECUTION_ORIGINS` membership in RS3 |
+| Index column drift vs CLI | Parity test vs `_execute_run` keys |
 | Help corpus drift | HC allowlist PR when USER_GUIDE changes |
 | Naming collisions / invalid run names | `_RUN_NAME_RE` + output_dir isolation |
 | Merging study factorial with combo attribution | Explicit §3.4 boundary; separate docs |
+| Treating study emission rules as R18 validator law | Docs call out study-only rules (`min=max=len`, anchor `selected_levels=[]`) |
 
 ---
 
 ## 16. Definition of done (core series RS1–RS5)
 
-1. Researcher can author a closed StudySpec and run `study expand|run|report` without opening Streamlit.  
-2. Expansion is deterministic and golden-tested; example stage path is 40 cells, full example cartesian is 800.  
+Holistic MVP is done when **all** of the following hold:
+
+1. Researcher can author a closed StudySpec and run `study expand|run|report` (+ `promote`) without opening Streamlit.  
+2. Expansion is deterministic and golden-tested; stage filter and `explicit_cells` both work; example stage path is 40 cells, full example cartesian is 800.  
 3. Large studies require `--confirm`; cost hints warn on enabled batteries.  
-4. Overview joins factors to metrics with OTF Δ and honesty caveats; PF sourced per §9.2.  
-5. Classic UI, assistant defaults, engine goldens, and `thesistester run` / `run_batch` remain undisturbed.  
-6. External bot (e.g. Grok Bot) can operate by shelling the CLI; first-class MCP/assistant tools optional in RS6.
+4. Study execute continues after cell failure, supports soft resume/`--force`, uses `execution_origin=study`, and does not alter `run_batch`.  
+5. Overview joins factors to metrics with OTF Δ and honesty caveats; PF sourced per §9.2.  
+6. Classic UI, assistant defaults, engine goldens, and `thesistester run` / `run_batch` remain undisturbed.  
+7. External bot (e.g. Grok Bot) can operate by shelling the CLI; first-class MCP/assistant tools remain optional RS6.
 
 ---
 
@@ -717,15 +793,26 @@ Recommended human workflow after RS5:
 
 ## 18. RS0 review amendments (changelog)
 
-Locked corrections from plan review against HEAD R18 APIs:
+### 18.1 R18 contract accuracy (prior amendment)
 
 1. Example cartesian count **800** (stage-first **40**), not “1–2k”.
 2. Study execution is a **study-owned loop** over `run_experiment` + bundle write; `run_batch` remains all-or-nothing and unchanged.
 3. `results_index` does not currently include `profit_factor` / `status` — report/ledger sources specified; optional RS-D7.
-4. `grid`/`validation`/`walk_forward` emission must set `enabled: false` explicitly (default-on trap).
-5. Anchor cells require `selected_levels: []`; global cells force `min=max=len(selected_levels)` with hard cap 5.
+4. `grid`/`validation`/`walk_forward` emission must set `enabled: false` explicitly (default-on trap is bare `{}` / omitted `enabled`; omit-section is safe but expander still emits false).
+5. Anchor cells emit `selected_levels: []` (study rule; R18 does not hard-fail otherwise); global cells force `min=max=len(selected_levels)` with hard cap 5 (study rule on top of R18 `max≤5`).
 6. Expander injects `setup.name` / `instrument` / `description` every cell.
 7. Setup unknown-key behavior is strip-not-fail; factor tags stay in study artifacts only.
 8. Canonical OTF tokens in factor_map; partner/core closed-set validation; `_RUN_NAME_RE` naming.
 9. Constants surface documents day-trading pass-throughs (costs, session exits, entry_window, intrabar).
-10. `explicit_cells` accepted in schema; stage-first examples; confirm cost hints; combo-attribution boundary.
+10. Stage-first examples; confirm cost hints; combo-attribution boundary.
+
+### 18.2 MVP completeness pass (this amendment)
+
+11. §2.1 MVP in/out table — RS1–RS5 = holistic MVP; RS6/RS-D\* post-MVP.
+12. Soft resume + `--force` + study identity mismatch refuse locked in §5.3.10 (MVP, not deferred ops).
+13. Workers return ok/failed payloads; incremental ledger under pool (§5.3.9).
+14. `execution_origin="study"` + additive `EXECUTION_ORIGINS` membership (§5.3.8); `cache_policy=read_write`.
+15. Normative `explicit_cells.cells[]` shape (§6.3); RS2 expands it; RS1 validates it.
+16. Index-row parity vs `cli._execute_run` without forcing a risky CLI refactor (§6.2.13).
+17. Definition of done / risks / RS3 acceptance updated for resume, workers, provenance.
+18. Clarified study emission rules vs R18 validator law (anchor `[]`, `min=max=len`).
