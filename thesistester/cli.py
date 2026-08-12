@@ -178,12 +178,20 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="Output directory (default: YAML output_dir or ./thesistester_results)",
     )
+    # Additive Study Runner surface (RS3). Does not alter ``run`` defaults.
+    from thesistester.study.cli_study import add_study_subparser
+
+    add_study_subparser(subparsers)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point."""
     args = _parser().parse_args(argv)
+    if args.command == "study":
+        from thesistester.study.cli_study import dispatch_study
+
+        return dispatch_study(args)
     if args.command != "run":
         raise AssertionError(f"Unhandled command: {args.command}")
     experiment_path = args.experiment.resolve()

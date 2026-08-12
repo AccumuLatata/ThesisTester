@@ -1,6 +1,6 @@
 # Research Study Runner
 
-**Status:** RS1–RS2 landed (schema + deterministic expand). Run / report land in RS3–RS5.  
+**Status:** RS1–RS3 landed (schema + expand + study-owned execute/ledger). Report lands in RS4–RS5.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`  
 **Package:** `thesistester.study`
 
@@ -178,4 +178,48 @@ Encoded from study name, cell index, key factors, and a short content fingerprin
 
 ### Out of scope for RS2
 
-CLI wiring, study-owned execute/ledger, confirm gates, overview report (RS3–RS5).
+Overview report (RS4) and promote/examples (RS5).
+
+---
+
+## RS3 — CLI expand / run + study-owned ledger
+
+### Commands
+
+```bash
+python -m thesistester study expand path/to/study.yaml --output-dir out/study1
+python -m thesistester study run path/to/study.yaml --output-dir out/study1 \
+  [--workers N] [--confirm] [--force]
+```
+
+`python -m thesistester run experiment.yaml` is unchanged (`run_batch` semantics
+untouched). Study runs do **not** call `run_batch`; they loop
+`run_experiment` → `build_research_bundle` with `execution_origin="study"` and
+`cache_policy="read_write"`.
+
+### Confirm / resume / force
+
+| Flag / rule | Behavior |
+|---|---|
+| `confirm_above_runs` | `study run` refuses when `run_count >= N` unless `--confirm` |
+| Soft resume | Ledger `ok` cells are skipped on re-run |
+| `--force` | Re-run all cells; also required if StudySpec identity hash mismatches an existing ledger |
+| Workers | `workers>1` uses spawn pool; cell tasks **return** ok/failed payloads (continue-on-failure) |
+
+### Artifacts (under output_dir)
+
+| File | Role |
+|---|---|
+| `study.spec.yaml` / `study.expansion.json` / `experiment.yaml` | From expand |
+| `study.ledger.json` | Per-cell status (`pending`/`running`/`ok`/`failed`) + confirm record |
+| `*.research.zip` | Per-ok-cell bundles |
+| `results_index.csv` | R18 metric columns + `bundle_path` + study `status` |
+
+### Cost hints
+
+Expand/run print `run_count`, `workers`, and warn when any cell has
+`grid`/`validation`/`walk_forward` enabled.
+
+### Out of scope for RS3
+
+Overview aggregator (`study report`), promote drafts, assistant/MCP tools.
