@@ -274,17 +274,43 @@ class AssistantOrchestrator:
             return result
 
         if self._requires_confirmation(capability.confirmation, request) and not confirmed:
+            payload: dict[str, Any] = {
+                "error": structured_error(
+                    category="confirmation",
+                    retryable=True,
+                    remediation=(
+                        "Confirm the action explicitly, then retry the request."
+                        if request.capability_id != "STUDY.run"
+                        else (
+                            "Retry STUDY.run with confirmed=True and payload.approval bound to "
+                            "(study_identity_hash, run_count, output_dir)."
+                        )
+                    ),
+                    message="Confirmation is required before this action.",
+                ).to_dict()
+            }
+            # RS6: surface the bound approval triple for STUDY.run over threshold.
+            if request.capability_id == "STUDY.run":
+                try:
+                    from thesistester.study.tools import (
+                        APPROVAL_PAYLOAD_KEY,
+                        study_run_approval_preview,
+                    )
+
+                    preview = study_run_approval_preview(request.payload)
+                    payload[APPROVAL_PAYLOAD_KEY] = {
+                        "study_identity_hash": preview["study_identity_hash"],
+                        "run_count": preview["run_count"],
+                        "output_dir": preview["output_dir"],
+                    }
+                    payload["confirm_above_runs"] = preview["confirm_above_runs"]
+                    payload["cost_hints"] = preview["cost_hints"]
+                except Exception as exc:  # noqa: BLE001 — still return APPROVAL_REQUIRED
+                    payload["approval_preview_error"] = f"{type(exc).__name__}: {exc}"
             result = OrchestrationResult(
                 status=OrchestrationStatus.APPROVAL_REQUIRED.value,
                 capability_id=request.capability_id,
-                payload={
-                    "error": structured_error(
-                        category="confirmation",
-                        retryable=True,
-                        remediation="Confirm the action explicitly, then retry the request.",
-                        message="Confirmation is required before this action.",
-                    ).to_dict()
-                },
+                payload=payload,
             )
             self._record_audit(
                 result,
@@ -1994,6 +2020,13 @@ class AssistantOrchestrator:
         action = request.payload.get("action")
         if isinstance(action, str) and action in _READ_ONLY_ACTIONS:
             return False
+        # RS6: STUDY.run uses EXPLICIT_CONFIRMATION only when over confirm_above_runs
+        # (CLI parity). Below threshold, dispatch proceeds without APPROVAL_REQUIRED;
+        # over threshold, confirmed=True still requires bound payload.approval in the handler.
+        if request.capability_id == "STUDY.run":
+            from thesistester.study.tools import study_run_needs_confirm
+
+            return study_run_needs_confirm(request.payload)
         return level in {
             ConfirmationLevel.USER_REQUEST,
             ConfirmationLevel.EXPLICIT_CONFIRMATION,

@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts + code-audit hardening)  
-**Status:** **RS1–RS5 + RS-D7 complete**. Post-MVP remaining: **RS6 → RS-D2 → RS-D4 → RS-D5**; parked: RS-D1 / RS-D3 / RS-D6  
+**Status:** **RS1–RS5 + RS-D7 + RS6 complete**. Post-MVP remaining: **RS-D2 → RS-D4 → RS-D5**; parked: RS-D1 / RS-D3 / RS-D6  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`, `docs/USER_GUIDE.md`, `docs/STUDY_RUNNER.md`  
@@ -794,7 +794,7 @@ primary_metric. §4.2. Update STUDY_RUNNER + glossary + report.py docstring.
 
 ---
 
-### 12.3 RS6 — Default-off `STUDY.*` assistant capabilities
+### 12.3 RS6 — Default-off `STUDY.*` assistant capabilities — ✅
 
 | | |
 |---|---|
@@ -965,7 +965,7 @@ Still **non-goals:** auto-promote to live thesis without human confirm; schedule
 
 ### 12.8 First implementable PR (kickoff)
 
-**RS-D7 ✅ shipped.** Next code PR = **RS6 only** (§12.3). Do not combine with D2/D4.
+**RS-D7 ✅ and RS6 ✅ shipped.** Next code PR = **RS-D2 only** (§12.4). Do not combine with D4/D5.
 
 Historical D7 implementer notes (kept for audit):
 
@@ -1101,8 +1101,8 @@ Recommended workflow after post-MVP sequence (§12):
 | RS5 Staging/promote + examples | ✅ |
 | **Post-MVP sequence lock** | ✅ This amendment (§12) |
 | RS-D7 Additive index PF + win_rate | ✅ |
-| RS6 Default-off `STUDY.*` assistant capabilities | ☐ **Next** |
-| RS-D2 Studies viewer (read-only) | ☐ After RS-D7 |
+| RS6 Default-off `STUDY.*` assistant capabilities | ✅ |
+| RS-D2 Studies viewer (read-only) | ☐ **Next** |
 | RS-D4 Per-cell diagnostic rollup | ☐ After survivors-in-use |
 | RS-D5 Grok Bot routine pack | ☐ After RS6 |
 | RS-D1 / RS-D3 / RS-D6 | Parked (§12.7) |

@@ -77,6 +77,30 @@ def _handle_validate_run_spec(request: AssistantRequest, context: HandlerContext
     return context.tools.validate_experiment(run_spec)
 
 
+def _handle_study_expand(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
+    from thesistester.study.tools import expand_study_capability
+
+    return expand_study_capability(request.payload)
+
+
+def _handle_study_run(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
+    from thesistester.study.tools import run_study_capability
+
+    return run_study_capability(request.payload)
+
+
+def _handle_study_report(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
+    from thesistester.study.tools import report_study_capability
+
+    return report_study_capability(request.payload)
+
+
+def _handle_study_promote(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
+    from thesistester.study.tools import promote_study_capability
+
+    return promote_study_capability(request.payload)
+
+
 def _handle_run_experiment(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
     run_spec = _require_mapping(request.payload.get("run_spec"), field="run_spec")
     output_path = request.payload.get("output_path")
@@ -460,6 +484,10 @@ HANDLER_REGISTRY: dict[str, CapabilityHandler] = {
     "PORTFOLIO.analyze": _handle_portfolio_analyze,
     "PIPELINE.validate_run_spec": _handle_validate_run_spec,
     "PIPELINE.run_experiment": _handle_run_experiment,
+    "STUDY.expand": _handle_study_expand,
+    "STUDY.run": _handle_study_run,
+    "STUDY.report": _handle_study_report,
+    "STUDY.promote": _handle_study_promote,
 }
 
 

@@ -38,6 +38,11 @@ max_corpus_chars = 24000
 # "discuss" | "help" | "draft". Missing/unknown → discuss.
 default_mode = "discuss"
 
+[assistant.study_tools]
+# RS6: default-off STUDY.* assistant capabilities (expand/run/report/promote).
+# Missing/unknown values fail closed to disabled. CLI study commands stay available.
+enabled = false
+
 [assistant.voice]
 # Spoken Discuss/Help transport (VA-series). Default remains false through VA-6.
 enabled = false

@@ -1,6 +1,6 @@
 # Research Study Runner
 
-**Status:** RS1–RS5 MVP + **RS-D7** landed. Post-MVP remaining: **RS6 → RS-D2 → RS-D4 → RS-D5**.  
+**Status:** RS1–RS5 MVP + **RS-D7** + **RS6** landed. Post-MVP remaining: **RS-D2 → RS-D4 → RS-D5**.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (§12)  
 **Package:** `thesistester.study`
 
@@ -340,20 +340,62 @@ CI/golden miniatures remain under `tests/fixtures/study/` (2×2×2). Do not run 
 
 ### Out of scope for RS5
 
-Auto-run promotion, assistant NL compiler, Studies UI, RS6 `STUDY.*` assistant tools.
+Auto-run promotion, assistant NL compiler, Studies UI (RS-D2).
+
+---
+
+## RS6 — Default-off `STUDY.*` assistant capabilities
+
+Opt-in assistant wrappers over the same CLI study APIs. **No MCP server.**
+Voice/realtime keep MCP/search denied.
+
+### Enable flag
+
+```toml
+# config/assistant.toml
+[assistant.study_tools]
+enabled = false   # default; missing/unknown → disabled (fail-closed)
+```
+
+Set `enabled = true` to opt in. When off, `STUDY.*` handlers refuse with a clear
+error; Help/Discuss defaults stay unchanged. CLI `python -m thesistester study …`
+always works regardless of this flag.
+
+### Capabilities
+
+| ID | Mode | Confirm |
+|---|---|---|
+| `STUDY.expand` | `EXECUTABLE` | none |
+| `STUDY.run` | `EXECUTABLE` | `EXPLICIT_CONFIRMATION` when `run_count >= confirm_above_runs` |
+| `STUDY.report` | `EXECUTABLE` | none |
+| `STUDY.promote` | `EXECUTABLE` | none |
+
+### Minimal confirm recipe (over threshold)
+
+1. Dispatch `STUDY.run` → `OrchestrationStatus.APPROVAL_REQUIRED` with
+   `payload.approval = {study_identity_hash, run_count, output_dir}`.
+2. Retry the **same** request with `confirmed=True` **and** echo
+   `payload.approval` unchanged.
+3. `confirmed=True` alone is **not** sufficient over threshold.
+
+Below `confirm_above_runs`, `STUDY.run` proceeds without that gate (CLI parity).
+Inputs: `study_path` **or** validated `study_spec` dict; plus `output_dir` /
+`workers` / `force` as on the CLI. Tools never call `run_batch`.
+
+Full multi-step external Grok routine pack is **RS-D5** (extends this recipe).
 
 ---
 
 ## Post-MVP (plan-locked)
 
 See `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12. Do not reorder without amending that plan.
-**Next code PR = RS6 only** (§12.3).
+**Next code PR = RS-D2 only** (§12.4).
 
 | Order | ID | Intent |
 |---|---|---|
 | 1 | **RS-D7** ✅ | Additive `results_index` `profit_factor` + `win_rate` (soft-resume PF/WR backfill; ordered CLI↔study key parity) |
-| 2 | **RS6** (**next**) | Default-off `STUDY.*` assistant capabilities + minimal CLI/confirm docs (two-step confirm; no MCP server) |
-| 3 | **RS-D2** | Streamlit Studies **viewer** (artifacts-only; no in-app run) |
+| 2 | **RS6** ✅ | Default-off `STUDY.*` assistant capabilities + minimal CLI/confirm docs (two-step confirm; no MCP server) |
+| 3 | **RS-D2** (**next**) | Streamlit Studies **viewer** (artifacts-only; no in-app run) |
 | 4 | **RS-D4** | Per-cell WFA/validation/overfitting diagnostic rollup (compose-only; no cross-cell PBO) |
 | 5 | **RS-D5** | External Grok Bot routine pack |
 
