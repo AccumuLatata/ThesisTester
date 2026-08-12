@@ -29,10 +29,12 @@ from thesistester.setup import (
 STUDY_SCHEMA_VERSION = 1
 RUN_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
+
 # Static / session / profile names accepted without being implied by ``levels``.
 # Documented in docs/STUDY_RUNNER.md; keep in sync with product catalogs.
-STUDY_STATIC_LEVEL_NAMES: frozenset[str] = frozenset(
-    {
+def _static_catalog_names() -> frozenset[str]:
+    """Session/profile names; rolling VWAP/POC come only from levels windows."""
+    names = {
         *SUGGESTED_DEFAULT_LEVELS,
         "ONH",
         "ONL",
@@ -76,6 +78,23 @@ STUDY_STATIC_LEVEL_NAMES: frozenset[str] = frozenset(
         # prev30mVWAP* and Pivot_* are admitted only when the matching
         # study.levels enable flags are on (see closed_level_token_set).
     }
+    # SUGGESTED_DEFAULT_LEVELS may include VWAP_rolling_1h which is not implied
+    # by DEFAULT_LEVELS_SETTINGS windows (30min/4h) — do not admit statically.
+    return frozenset(
+        name
+        for name in names
+        if not str(name).startswith("VWAP_rolling_") and not str(name).startswith("POC_rolling_")
+    )
+
+
+STUDY_STATIC_LEVEL_NAMES: frozenset[str] = _static_catalog_names()
+
+_DEFAULT_REPORT_GROUP_BY = (
+    "partner_levels",
+    "confluence_mode",
+    "trigger",
+    "trigger_timeframe",
+    "otf",
 )
 
 _TOP_LEVEL_KEYS = frozenset({"schema_version", "study"})
@@ -302,6 +321,9 @@ def normalize_study_spec(raw: Mapping[str, Any]) -> dict[str, Any]:
         if "name" in study_dict and "output_dir" not in study_dict:
             study_dict["output_dir"] = f"results/studies/{study_dict['name']}"
         report = study_dict.get("report")
+        factors = study_dict.get("factors")
+        factor_keys = set(factors) if isinstance(factors, Mapping) else set()
+        default_group_by = [key for key in _DEFAULT_REPORT_GROUP_BY if key in factor_keys]
         if report is None:
             study_dict["report"] = {
                 "primary_metric": "expectancy_r",
@@ -312,13 +334,7 @@ def normalize_study_spec(raw: Mapping[str, Any]) -> dict[str, Any]:
                     "total_r",
                 ],
                 "min_trades": 30,
-                "group_by": [
-                    "partner_levels",
-                    "confluence_mode",
-                    "trigger",
-                    "trigger_timeframe",
-                    "otf",
-                ],
+                "group_by": default_group_by,
                 "otf_baseline": {"enabled": False},
                 "multiple_testing": "warn",
             }
@@ -332,6 +348,8 @@ def normalize_study_spec(raw: Mapping[str, Any]) -> dict[str, Any]:
             report_dict.setdefault("min_trades", 30)
             report_dict.setdefault("multiple_testing", "warn")
             report_dict.setdefault("otf_baseline", {"enabled": False})
+            if "group_by" not in report_dict:
+                report_dict["group_by"] = default_group_by
             study_dict["report"] = report_dict
         payload["study"] = study_dict
     return payload
