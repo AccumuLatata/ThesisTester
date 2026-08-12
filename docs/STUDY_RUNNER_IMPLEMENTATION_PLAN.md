@@ -1,7 +1,7 @@
 # Research Study Runner — Implementation Plan (RS)
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
-**Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts)  
+**Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts + code-audit hardening)  
 **Status:** **RS1–RS5 complete** (holistic MVP). Post-MVP track plan-locked: **RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5**; parked: RS-D1 / RS-D3 / RS-D6  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
@@ -414,9 +414,10 @@ For a study written to `output_dir`:
 
 Canonical study identity hash (RS2): hash normalized StudySpec bytes (stable key order) — used in ledger, not for bundle equality.
 
-**Note on `results_index.csv` columns (current R18 `_execute_run`):**  
-`run_name`, `bundle_hash`, `dataset_id`, `instrument`, `execution_origin`, `cache_outcome`, `trade_count`, `expectancy_r`, `total_r`, `max_drawdown_r`, `best_grid_*`, `validation_trade_count_status`, `wfa_*`, `bundle_path`.  
-**Not present today:** `profit_factor`, `status`, `win_rate`. Study execute may add a study-local `status` column when writing the study index; PF is handled per §9.2.
+**Note on `results_index.csv` columns (current writers):**  
+R18/`cli._execute_run` + study `R18_INDEX_METRIC_KEYS`: `run_name`, `bundle_hash`, `dataset_id`, `instrument`, `execution_origin`, `cache_outcome`, `trade_count`, `expectancy_r`, `total_r`, `max_drawdown_r`, `best_grid_*`, `validation_trade_count_status`, `wfa_*` (+ CLI/study `bundle_path`).  
+Study-authored index also appends **`status`** (`ok`/`failed`/`pending`).  
+**Not present until RS-D7:** `profit_factor`, `win_rate` (MVP report resolves both from bundle `trade_summary` per §9.2).
 
 ---
 
@@ -747,39 +748,48 @@ RS-D7  →  RS6  →  RS-D2  →  RS-D4  →  RS-D5
 |---|---|
 | **Depends on** | RS1–RS5 ✅ |
 | **Scope** | Additive **`profit_factor` and `win_rate`** columns on study-authored and CLI `results_index.csv` writers; report prefers index when present (already implemented in `report._resolve_bundle_metrics`) |
-| **Likely files** | `thesistester/study/execute.py` (`R18_INDEX_METRIC_KEYS` / `STUDY_INDEX_KEYS` / `build_index_row_from_state` / `_index_row_from_existing_bundle`); `thesistester/cli.py` `_execute_run` index row (parity); index parity tests; `docs/METRICS_GLOSSARY.md` / `STUDY_RUNNER.md` |
-| **Column order (locked)** | Insert both keys on `R18_INDEX_METRIC_KEYS` **immediately after** `max_drawdown_r` (with the other trade-summary metrics), before grid/validation/WFA keys. Keep study `bundle_path` + `status` as the only study-only suffixes on `STUDY_INDEX_KEYS`. |
+| **Likely files** | `thesistester/study/execute.py` (`R18_INDEX_METRIC_KEYS` / `STUDY_INDEX_KEYS` / `build_index_row_from_state` / `_index_row_from_existing_bundle` / final soft-resume repair loop); `thesistester/cli.py` `_execute_run` index row (parity); `tests/study/test_study_execute.py` parity + focused PF/WR tests; `docs/METRICS_GLOSSARY.md` / `STUDY_RUNNER.md`; module docstring on `study/report.py` (drop “RS-D7 optional” wording once green) |
+| **Column order (locked)** | Insert both keys on `R18_INDEX_METRIC_KEYS` **immediately after** `max_drawdown_r` (with the other trade-summary metrics), before grid/validation/WFA keys: `…, max_drawdown_r, profit_factor, win_rate, best_grid_stop_loss_ticks, …`. Keep study `bundle_path` + `status` as the only study-only suffixes on `STUDY_INDEX_KEYS`. |
 | **Behavior** | |
 | | For **ok** cells, write both columns from `trade_summary` at index-write time (`build_index_row_from_state` + CLI `_execute_run`) |
 | | Failed/pending rows: leave `profit_factor` / `win_rate` **null** (never fabricate) |
-| | **Soft-resume rehydration:** `_index_row_from_existing_bundle` must also copy `profit_factor` + `win_rate` from bundle `trade_summary` (today it only rehydrates trade_count/expectancy/total/max_dd) — otherwise resumed ok rows stay PF-null and report falls back to zip scrape |
-| | CSV serialization: finite floats as usual; `±inf` PF as `"inf"` / `"-inf"` strings (report already coerces these) |
-| | **Default-compatible:** older indexes / readers without the columns still work; report keeps bundle fallback |
+| | **NaN → null:** if `trade_summary` yields non-finite NaN for PF/WR, store **null** (same honesty as report `_coerce_float`) |
+| | **Soft-resume full rehydrate:** `_index_row_from_existing_bundle` must also copy `profit_factor` + `win_rate` from bundle `trade_summary` (today it only rehydrates trade_count/expectancy/total/max_dd) |
+| | **Soft-resume field backfill (locked hole):** today’s final repair only rehydrates when **both** `trade_count` and `expectancy_r` are missing. Pre-D7 ok rows often already have those metrics but **lack** PF/WR columns. After D7, when `status=ok` + bundle path and either PF or WR is missing/null/NaN, **backfill only the missing PF/WR fields** from bundle `trade_summary` without wiping other index columns. Without this, soft-resume keeps zip-scrape forever for otherwise-healthy rows |
+| | **CSV / `±inf`:** store Python `float("inf")` / `float("-inf")` in the row dict; `DataFrame.to_csv` emits `inf` / `-inf` (report already coerces those strings). Do **not** invent a custom string serializer unless a test proves pandas diverges |
+| | **Default-compatible:** older indexes / readers without the columns still work; `_write_results_index` / `_load_existing_index_rows` already tolerate additive columns; report keeps bundle fallback |
 | | Do **not** bump Experiment `schema_version` solely for this; document as additive index column set |
-| | Parity: study execute keys and CLI `_execute_run` keys stay aligned (extend parity test); do not change `run_batch` write timing |
-| **Out of scope** | Engine metric formula changes; silent removal of bundle PF path; Studies UI; assistant tools; inventing `win_rate_source` column (report may keep PF-only source tracking) |
+| | Do **not** add `win_rate` to StudySpec `_INDEX_PRIMARY_METRICS` / ranking allow-list (schema stays expectancy/total/max_dd/trade_count/profit_factor) |
+| | **Ordered parity (locked):** CLI `_execute_run` dict keys and `R18_INDEX_METRIC_KEYS` must match **as ordered tuples**, not merely as sets. Strengthen `test_index_columns_parity_vs_cli_execute_run` accordingly. Do not change `run_batch` write timing / abort semantics |
+| **Out of scope** | Engine metric formula changes; silent removal of bundle PF path; Studies UI; assistant tools; inventing `win_rate_source` column (report keeps PF-only source tracking); making `win_rate` a StudySpec primary_metric |
 | **Regression** | Existing CLI/study index consumers tolerate new columns; no golden engine regen |
 | **Acceptance checklist** | |
-| | ☐ New ok cells write both `profit_factor` and `win_rate` on `results_index.csv` |
+| | ☐ New ok cells write both `profit_factor` and `win_rate` on `results_index.csv` (column order after `max_drawdown_r`) |
 | | ☐ Failed/pending rows keep null PF/WR |
-| | ☐ Soft-resume rehydration populates PF/WR from existing bundles |
+| | ☐ Soft-resume full rehydrate populates PF/WR from existing bundles |
+| | ☐ Soft-resume field backfill fills PF/WR on pre-D7 ok rows that already have trade_count/expectancy |
+| | ☐ NaN PF/WR from trade_summary become null on the index |
+| | ☐ `±inf` PF round-trips via CSV to report (`profit_factor_source=index`) |
 | | ☐ Report `profit_factor_source=index` when column present and finite/coercible |
 | | ☐ Bundle fallback still works when column absent/null |
-| | ☐ CLI ↔ study index key parity test updated and green (`R18_INDEX_METRIC_KEYS` extended after `max_drawdown_r`) |
-| | ☐ Docs note additive columns + `inf` CSV behavior; no claim of R18 schema break |
+| | ☐ Ordered CLI ↔ study `R18_INDEX_METRIC_KEYS` parity test green |
+| | ☐ Docs note additive columns + `inf` CSV behavior; `report.py` docstring no longer calls D7 optional; no claim of R18 Experiment schema break |
 | | ☐ Full suite green |
 
 **Copy-ready agent prompt:**
 
 ```text
-Implement RS-D7 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §12.2.
+Implement RS-D7 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §12.2 + §12.8.
 Add additive profit_factor AND win_rate to study and CLI results_index writers
 from trade_summary (insert on R18_INDEX_METRIC_KEYS immediately after
-max_drawdown_r). Null on failed/pending. Soft-resume rehydration
-(_index_row_from_existing_bundle) must also copy PF/WR. Serialize ±inf as
-inf/-inf strings. Keep report bundle fallback. Extend index parity tests.
-No engine/pages. No run_batch semantic/timing change. §4.2.
-Update STUDY_RUNNER + glossary.
+max_drawdown_r). Null on failed/pending. NaN → null. Soft-resume:
+(_index_row_from_existing_bundle) must copy PF/WR, AND final repair must
+field-backfill missing PF/WR on ok+bundle rows even when trade_count/
+expectancy already present. Store ±inf as float inf; rely on pandas CSV
+inf/-inf (no custom serializer). Keep report bundle fallback. Strengthen
+ordered CLI↔study key parity test + focused PF/WR tests. No engine/pages.
+No run_batch semantic/timing change. Do not add win_rate as StudySpec
+primary_metric. §4.2. Update STUDY_RUNNER + glossary + report.py docstring.
 ```
 
 ---
@@ -790,46 +800,51 @@ Update STUDY_RUNNER + glossary.
 |---|---|
 | **Depends on** | RS1–RS5 ✅; **RS-D7** (so tool/index consumers see PF/WR without zip scrape) |
 | **Scope** | Thin adapters over existing `thesistester.study` APIs registered in `FEATURE_PARITY_REGISTRY` behind default-off **`[assistant.study_tools] enabled=false`** (fail-closed coerce, same pattern as `[assistant.voice]`); minimal operator docs for external Grok Bot CLI/confirm recipe |
-| **Likely files** | `thesistester/study/tools.py`; `thesistester/assistant/registry.py` (+ typed handlers / orchestrator wiring); `config/assistant.toml` `[assistant.study_tools]`; settings loader with fail-closed coerce; `docs/STUDY_RUNNER.md` agent section; `docs/AGENT_GUIDE.md`; `tests/study/` + assistant parity fixtures |
+| **Likely files** | `thesistester/study/tools.py` (+ small settings loader mirroring `assistant/voice/settings.py` `_coerce_enabled_flag`); `thesistester/assistant/registry.py` (+ typed handlers / orchestrator wiring); `config/assistant.toml` `[assistant.study_tools]`; `docs/STUDY_RUNNER.md` agent section; `docs/AGENT_GUIDE.md`; `tests/study/` + assistant parity / registry-audit fixtures |
 | **Primary surface (locked)** | Assistant capabilities (mirror `PIPELINE.run_experiment` pattern), **not** a greenfield MCP server. Optional: document-only MCP-shaped descriptor appendix for external hosts — **no in-repo MCP runtime** in RS6. Voice/realtime must continue to deny MCP/search. |
 | **Capabilities (IDs locked)** | `STUDY.expand`, `STUDY.run`, `STUDY.report`, `STUDY.promote` |
-| **Capability modes (locked)** | `expand` / `report` → `EXECUTABLE` or `INSPECT_ONLY` as appropriate for side effects; `run` / `promote` → `EXECUTABLE`. Do **not** invent a new `ConfirmationLevel` enum member. |
-| **Confirm nomenclature (locked)** | `STUDY.run` uses `ConfirmationLevel.EXPLICIT_CONFIRMATION`. First gated dispatch returns orchestrator status **`OrchestrationStatus.APPROVAL_REQUIRED`** (existing enum — not a ConfirmationLevel). Retry only after explicit `confirmed=True` (or equivalent UI confirm boundary) with a bound approval payload. |
+| **Capability modes (locked)** | All four → `CapabilityMode.EXECUTABLE` (each writes artifacts: expansion / cells / overview / draft YAML). Do **not** invent a new `ConfirmationLevel` enum member. |
+| **Confirmation levels (locked)** | `expand` / `report` / `promote` → `ConfirmationLevel.NONE`. `run` → `ConfirmationLevel.EXPLICIT_CONFIRMATION`. |
+| **Confirm nomenclature (locked)** | First gated `STUDY.run` dispatch returns orchestrator status **`OrchestrationStatus.APPROVAL_REQUIRED`** (existing enum — **not** a ConfirmationLevel). Orchestrator `confirmed=True` alone is **not** sufficient over threshold. |
+| **Approval payload (locked)** | Bound object on `AssistantRequest.payload` (exact key name may be `approval` or `study_approval`, but must be documented once and tested), shape at minimum: `{study_identity_hash, run_count, output_dir}` using the same `study_identity_hash` helper as expand/ledger. Confirmed retry must refuse if the bound triple does not match the current expansion/target. |
+| **Flag / registry posture (locked)** | **Register** `STUDY.*` in `FEATURE_PARITY_REGISTRY` when the code ships (keeps registry-audit deterministic), but every handler **refuses first** with a clear “study tools disabled” error when `enabled` is false / missing / non-boolean. Missing `[assistant.study_tools]` section → disabled. Do not leave a second “unregister when off” path that drifts audit counts. |
 | **Behavior** | |
 | | Inputs: StudySpec path **or** structured dict that must pass `validate_study_spec` before any side effect; `output_dir`; `workers`; promote `top_n` / `metric` / overwrite `force`; run `force` (identity/resume parity with CLI) |
 | | Soft resume / identity mismatch / `--force` semantics **must** match `run_study` CLI — tools must not invent weaker gates |
 | | Promote overwrite gate matches CLI (`force` required to replace existing draft) |
-| | **Confirm parity (two-step):** when `run_count >= confirm_above_runs`, `STUDY.run` must **not** treat a bare habitual boolean as sufficient. Gate with `EXPLICIT_CONFIRMATION` → `APPROVAL_REQUIRED`, then confirmed retry. Approval payload **must** bind `(study_identity_hash, run_count, output_dir)` and `STUDY.run` must refuse if the bound triple does not match the current expansion/target. Below threshold, run may proceed without that gate (CLI parity). Expand/report/promote never require confirm. |
+| | **Confirm parity (two-step):** when `run_count >= confirm_above_runs`, gate with `EXPLICIT_CONFIRMATION` → `APPROVAL_REQUIRED`, then confirmed retry **with** the bound approval payload. Below threshold, run may proceed without that gate (CLI parity). Expand/report/promote never require confirm. |
 | | Optional helper capability `STUDY.confirm` is allowed only if it mints/records that bound approval — it must not execute cells. |
 | | Return structured payloads: `run_count`, cost hints, artifact paths, ledger summary, honesty flags — not free-form “winner” claims |
-| | When flag is off: capabilities unregistered **or** every STUDY.* handler refuses with clear “disabled” error; default assistant path identical to pre-RS6 (parity fixtures) |
 | | Tools call `expand_study` / `run_study` / `report_study` / `promote_study` — **never** `run_batch` |
 | **Docs split** | RS6 lands a **minimal** “CLI + confirm recipe” section. Full multi-step Grok routine pack is **RS-D5** only — do not duplicate divergent long recipes here. |
-| **Out of scope** | NL StudySpec compilation (RS-D1); Streamlit Studies page (RS-D2); embedding Grok/RabbitMQ; inventing setups; enabling tools by default; shipping a live MCP server; new ConfirmationLevel values |
-| **Regression** | Assistant parity fixtures green with flag off; Help/Discuss unchanged; engine/pages untouched; CLI study commands unchanged |
+| **Out of scope** | NL StudySpec compilation (RS-D1); Streamlit Studies page (RS-D2); embedding Grok/RabbitMQ; inventing setups; enabling tools by default; shipping a live MCP server; new ConfirmationLevel values; INSPECT_ONLY STUDY.* modes |
+| **Regression** | Assistant parity fixtures green with flag off; Help/Discuss unchanged; engine/pages untouched; CLI study commands unchanged; registry-audit expects STUDY.* ids present but disabled-by-default |
 | **Acceptance checklist** | |
-| | ☐ `[assistant.study_tools] enabled` defaults to **false** (fail-closed coerce) |
-| | ☐ With flag off, assistant surfaces behave as before RS6 (parity fixtures) |
+| | ☐ `[assistant.study_tools] enabled` defaults to **false** (fail-closed coerce; missing section → disabled) |
+| | ☐ With flag off, STUDY.* handlers refuse; other assistant surfaces behave as before RS6 (parity fixtures) |
 | | ☐ With flag on, expand/report/promote work without confirm; run uses two-step `EXPLICIT_CONFIRMATION` → `APPROVAL_REQUIRED` when over threshold |
-| | ☐ Bound approval triple enforced; lone boolean cannot bypass |
+| | ☐ Bound approval triple enforced; `confirmed=True` alone cannot bypass |
 | | ☐ Structured-dict inputs validate via `validate_study_spec` before writes/execute |
 | | ☐ `force` / workers / soft-resume / identity mismatch match CLI `run_study` / `promote` |
 | | ☐ Tools do not call `run_batch` |
+| | ☐ All four capabilities are `EXECUTABLE` with confirmation levels as locked above |
 | | ☐ Minimal CLI/confirm recipe docs (RS-D5 owns the full routine pack) |
-| | ☐ Full suite + assistant parity green |
+| | ☐ Full suite + assistant parity + registry-audit green |
 
 **Copy-ready agent prompt:**
 
 ```text
 Implement RS6 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §12.3.
-Add default-off [assistant.study_tools] + STUDY.* FEATURE_PARITY_REGISTRY
-capabilities wrapping expand/run/report/promote. STUDY.run uses
-ConfirmationLevel.EXPLICIT_CONFIRMATION; gated calls return
-OrchestrationStatus.APPROVAL_REQUIRED; confirmed retry requires approval bound to
-(study_identity_hash, run_count, output_dir). No new ConfirmationLevel members.
-No MCP server runtime. Match CLI force/workers/resume/promote overwrite.
-No engine/pages/run_batch changes. Keep assistant parity fixtures green when flag
-off. §4.2. Update STUDY_RUNNER.md (minimal agent recipe) + roadmap.
+Add default-off [assistant.study_tools] (fail-closed coerce like voice) +
+STUDY.{expand,run,report,promote} FEATURE_PARITY_REGISTRY capabilities
+(EXECUTABLE). Register always; handlers refuse when disabled. Confirmation:
+expand/report/promote NONE; run EXPLICIT_CONFIRMATION. Gated run returns
+OrchestrationStatus.APPROVAL_REQUIRED; confirmed retry requires payload
+approval bound to (study_identity_hash, run_count, output_dir) — confirmed=True
+alone is insufficient. No new ConfirmationLevel members. No MCP server.
+Match CLI force/workers/resume/promote overwrite. No engine/pages/run_batch.
+Keep assistant parity fixtures green when flag off. §4.2.
+Update STUDY_RUNNER.md (minimal agent recipe) + roadmap.
 ```
 
 ---
@@ -955,11 +970,12 @@ Still **non-goals:** auto-promote to live thesis without human confirm; schedule
 Use the §12.2 copy-ready prompt verbatim. Extra implementer notes:
 
 1. Touch `build_index_row_from_state`, CLI `_execute_run`, **and** `_index_row_from_existing_bundle`.  
-2. Extend parity test that compares study keys to CLI `_execute_run` keys.  
-3. Add a focused test: ok cell → PF/WR present; failed cell → null; soft-resume rehydrate → PF/WR present without re-run.  
-4. Leave `report.py` preference path alone unless a bug is proven — it already prefers index.  
-5. Update glossary + `STUDY_RUNNER.md` RS4 PF source note to “RS-D7 landed” only after green.  
-6. Mark roadmap RS-D7 ✅ in the same PR; do **not** start RS6 in that PR.
+2. **Also** extend the final soft-resume repair loop in `run_study` so ok+bundle rows with present trade_count/expectancy but missing PF/WR get **field-level** PF/WR backfill (see §12.2 hole).  
+3. Strengthen parity test to **ordered** CLI `_execute_run` keys ↔ `R18_INDEX_METRIC_KEYS` (not set equality / `co_consts` smoke alone).  
+4. Focused tests: ok → PF/WR present (order after `max_drawdown_r`); failed/pending → null; soft-resume full rehydrate → PF/WR; soft-resume field backfill on pre-D7-shaped ok rows; NaN → null; `inf` CSV → report `profit_factor_source=index`.  
+5. Leave `report._resolve_bundle_metrics` preference path alone unless a bug is proven — it already prefers index. Update the `report.py` module docstring that still says “RS-D7 remains optional.”  
+6. Update glossary + `STUDY_RUNNER.md` RS4 PF source note to “RS-D7 landed” only after green.  
+7. Mark roadmap RS-D7 ✅ in the same PR; do **not** start RS6 in that PR.
 
 ---
 
@@ -1036,8 +1052,9 @@ Recommended workflow after post-MVP sequence (§12):
 | Naming collisions / invalid run names | `_RUN_NAME_RE` + output_dir isolation |
 | Merging study factorial with combo attribution | Explicit §3.4 boundary; separate docs |
 | Treating study emission rules as R18 validator law | Docs call out study-only rules (`min=max=len`, anchor `selected_levels=[]`) |
-| Agent tools silently enable large runs | **RS6 default-off**; two-step `EXPLICIT_CONFIRMATION`; parity fixtures |
-| Bare `confirm=true` habitually set by LLMs | Approval bound to `(study_identity_hash, run_count, output_dir)` |
+| Agent tools silently enable large runs | **RS6 default-off** (handlers refuse); two-step `EXPLICIT_CONFIRMATION`; parity fixtures |
+| Bare `confirmed=True` / habitual boolean set by LLMs | Approval payload bound to `(study_identity_hash, run_count, output_dir)` — orchestrator flag alone insufficient |
+| Soft-resume leaves PF/WR null on healthy pre-D7 rows | RS-D7 field-level backfill when ok+bundle and PF/WR missing |
 | Greenfield MCP runtime / voice MCP bleed | RS6 = registry capabilities only; voice keeps MCP denied |
 | Studies UI becomes a second runner | **RS-D2 read-only** — no in-app expand/run/promote; no session mutation |
 | Grok invents setups / bypasses confirm | **RS-D5** hard rules + RS6 minimal recipe; closed StudySpec only |
@@ -1061,8 +1078,8 @@ Recommended workflow after post-MVP sequence (§12):
 
 ### 16.2 Post-MVP track — done when §12 sequenced milestones pass their checklists
 
-1. **RS-D7:** additive index `profit_factor` + `win_rate`; report prefers index; CLI↔study parity; `inf` CSV documented.  
-2. **RS6:** default-off `STUDY.*` capabilities; two-step confirm; minimal CLI recipe; assistant defaults unchanged when off; no MCP server.  
+1. **RS-D7:** additive index `profit_factor` + `win_rate`; soft-resume full rehydrate + field backfill; ordered CLI↔study parity; NaN→null; `inf` CSV documented; report prefers index.  
+2. **RS6:** registered-but-disabled-by-default `STUDY.*` capabilities; two-step bound approval; minimal CLI recipe; assistant defaults unchanged when off; no MCP server.  
 3. **RS-D2:** read-only Studies viewer over artifacts; honesty visible; no session mutation; HC allowlist if USER_GUIDE grows.  
 4. **RS-D4:** per-cell compose-only diagnostic rollup; no cross-cell PBO; null/`not_run` when batteries absent.  
 5. **RS-D5:** external routine pack documented; no product host embedding.  
@@ -1137,10 +1154,19 @@ Recommended workflow after post-MVP sequence (§12):
 32. RS6 vs RS-D5 docs split (minimal recipe vs full routine pack).  
 33. §5.1/§5.2 updated for shipped MVP + post-MVP `tools.py` / `rollup.py` / Studies page.  
 
-### 18.5 Implementability polish (this amendment)
+### 18.5 Implementability polish (prior amendment)
 
 34. §3.2 marked historical pre-MVP; living status is §17 / roadmap.  
 35. §10 regression table extended with post-MVP allow-list (cli index / assistant registry / one Studies page).  
 36. RS-D7: column order after `max_drawdown_r`; soft-resume `_index_row_from_existing_bundle` must rehydrate PF/WR; §12.8 first-PR kickoff.  
 37. RS6: `[assistant.study_tools]` config pattern; clarify `ConfirmationLevel.EXPLICIT_CONFIRMATION` vs `OrchestrationStatus.APPROVAL_REQUIRED`; bound approval triple; no new ConfirmationLevel members.  
-38. RS-D2: prefer `pages/15_Studies.py` as next free nav slot.  
+38. RS-D2: prefer `pages/15_Studies.py` as next free nav slot.
+
+### 18.6 Code-audit hardening for next-wave perfection (this amendment)
+
+39. §7 artifacts note corrected: study index already has `status`; PF/WR remain the RS-D7 gap (not “status missing”).  
+40. **RS-D7 soft-resume field backfill:** pre-D7 ok rows with trade_count/expectancy but missing PF/WR must get PF/WR from the bundle without requiring a full rehydrate (today’s repair only fires when both core metrics are missing).  
+41. RS-D7: NaN → null; `±inf` via native float + pandas CSV (no custom serializer); **ordered** CLI↔study key parity; do not add `win_rate` as StudySpec primary_metric; update `report.py` docstring in the D7 PR.  
+42. **RS6 registry posture:** always register `STUDY.*`, handlers refuse when `[assistant.study_tools] enabled` is false/missing (deterministic registry-audit).  
+43. RS6: all four capabilities `EXECUTABLE`; confirm levels `NONE`/`NONE`/`EXPLICIT`/`NONE` for expand/report/run/promote; approval object on `AssistantRequest.payload`; `confirmed=True` alone insufficient over threshold.  
+44. §12.8 kickoff expanded with field-backfill + ordered-parity + focused test matrix.  

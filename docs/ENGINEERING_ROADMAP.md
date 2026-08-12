@@ -1190,8 +1190,8 @@ remains undisturbed through RS5. Distinct from confluence-combo attribution
 | RS4 | Overview aggregator (CSV/MD, OTF Δ, honesty; PF from bundles) ✅ |
 | RS5 | Staging/promote drafts + stage-first examples + USER_GUIDE recipe ✅ |
 | **Post-MVP sequence** | **RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5** (do not reorder without plan amend) |
-| RS-D7 | Additive `results_index` `profit_factor` + `win_rate` ☐ **next** |
-| RS6 | Default-off `STUDY.*` assistant capabilities + minimal CLI/confirm docs ☐ |
+| RS-D7 | Additive `results_index` `profit_factor` + `win_rate` (soft-resume field backfill + ordered key parity) ☐ **next** |
+| RS6 | Default-off registered `STUDY.*` capabilities (handlers refuse when off) + minimal CLI/confirm docs ☐ |
 | RS-D2 | Streamlit Studies **viewer** (artifacts-only; no in-app run) ☐ |
 | RS-D4 | Per-cell WFA/validation/overfitting diagnostic rollup (compose-only) ☐ |
 | RS-D5 | External Grok Bot routine pack (after RS6) ☐ |

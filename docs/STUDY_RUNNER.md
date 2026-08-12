@@ -339,10 +339,11 @@ Auto-run promotion, assistant NL compiler, Studies UI, RS6 `STUDY.*` assistant t
 ## Post-MVP (plan-locked)
 
 See `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12. Do not reorder without amending that plan.
+**Next code PR = RS-D7 only** (§12.8).
 
 | Order | ID | Intent |
 |---|---|---|
-| 1 | **RS-D7** | Additive `results_index` `profit_factor` + `win_rate` |
+| 1 | **RS-D7** (**next**) | Additive `results_index` `profit_factor` + `win_rate` (incl. soft-resume PF/WR backfill; ordered CLI↔study key parity) |
 | 2 | **RS6** | Default-off `STUDY.*` assistant capabilities + minimal CLI/confirm docs (two-step confirm; no MCP server) |
 | 3 | **RS-D2** | Streamlit Studies **viewer** (artifacts-only; no in-app run) |
 | 4 | **RS-D4** | Per-cell WFA/validation/overfitting diagnostic rollup (compose-only; no cross-cell PBO) |
