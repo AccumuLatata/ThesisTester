@@ -5,6 +5,8 @@ from __future__ import annotations
 import io
 import json
 import math
+import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -18,6 +20,7 @@ from thesistester.research_identity import normalize_execution_origin
 from thesistester.study.execute import (
     R18_INDEX_METRIC_KEYS,
     STUDY_INDEX_KEYS,
+    _study_dir_lock,
     build_index_row_from_state,
     execute_study_cell,
     prepare_study_expansion,
@@ -654,3 +657,141 @@ def test_soft_resume_field_backfills_pre_d7_ok_rows(tmp_path: Path):
     assert repaired["win_rate"].notna().all()
     assert float(repaired["profit_factor"].iloc[0]) == pytest.approx(1.5)
     assert float(repaired["win_rate"].iloc[0]) == pytest.approx(0.6)
+
+
+def test_study_dir_lock_fail_closed_when_held(tmp_path: Path):
+    with _study_dir_lock(tmp_path):
+        with pytest.raises(StudySpecError, match="holds the lock"):
+            with _study_dir_lock(tmp_path):
+                pass
+
+
+def test_study_dir_lock_released_after_context(tmp_path: Path):
+    with _study_dir_lock(tmp_path):
+        pass
+    with _study_dir_lock(tmp_path):
+        pass
+
+
+def test_study_dir_lock_msvcrt_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import thesistester.study.execute as execute
+
+    class FakeMsvcrt:
+        LK_NBLCK = 1
+        LK_UNLCK = 2
+
+        def __init__(self) -> None:
+            self.calls: list[tuple[int, int]] = []
+
+        def locking(self, _fd: int, mode: int, nbytes: int) -> None:
+            self.calls.append((mode, nbytes))
+
+    fake = FakeMsvcrt()
+    monkeypatch.setattr(execute, "fcntl", None)
+    monkeypatch.setattr(execute, "msvcrt", fake)
+    with execute._study_dir_lock(tmp_path):
+        assert fake.calls == [(fake.LK_NBLCK, 1)]
+    assert fake.calls == [(fake.LK_NBLCK, 1), (fake.LK_UNLCK, 1)]
+
+
+def test_study_dir_lock_msvcrt_contention_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import errno
+
+    import thesistester.study.execute as execute
+
+    class FakeMsvcrt:
+        LK_NBLCK = 1
+        LK_UNLCK = 2
+
+        def locking(self, _fd: int, mode: int, _nbytes: int) -> None:
+            if mode == self.LK_NBLCK:
+                raise OSError(errno.EACCES, "Permission denied")
+
+    monkeypatch.setattr(execute, "fcntl", None)
+    monkeypatch.setattr(execute, "msvcrt", FakeMsvcrt())
+    with pytest.raises(StudySpecError, match="holds the lock"):
+        with execute._study_dir_lock(tmp_path):
+            pass
+
+
+def test_study_dir_lock_non_contention_oserror_is_not_phantom_holder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import errno
+
+    import thesistester.study.execute as execute
+
+    class FakeFcntl:
+        LOCK_EX = 1
+        LOCK_NB = 2
+        LOCK_UN = 8
+
+        def flock(self, _fd: int, _flags: int) -> None:
+            raise OSError(errno.ENOSYS, "Function not implemented")
+
+    monkeypatch.setattr(execute, "fcntl", FakeFcntl())
+    monkeypatch.setattr(execute, "msvcrt", None)
+    with pytest.raises(StudySpecError, match="Unable to acquire exclusive study lock"):
+        with execute._study_dir_lock(tmp_path):
+            pass
+
+
+def test_study_dir_lock_msvcrt_non_contention_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import errno
+
+    import thesistester.study.execute as execute
+
+    class FakeMsvcrt:
+        LK_NBLCK = 1
+        LK_UNLCK = 2
+
+        def locking(self, _fd: int, mode: int, _nbytes: int) -> None:
+            if mode == self.LK_NBLCK:
+                raise OSError(errno.EINVAL, "Invalid argument")
+
+    monkeypatch.setattr(execute, "fcntl", None)
+    monkeypatch.setattr(execute, "msvcrt", FakeMsvcrt())
+    with pytest.raises(StudySpecError, match="Unable to acquire exclusive study lock"):
+        with execute._study_dir_lock(tmp_path):
+            pass
+
+
+def test_study_dir_lock_unavailable_without_backend(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import thesistester.study.execute as execute
+
+    monkeypatch.setattr(execute, "fcntl", None)
+    monkeypatch.setattr(execute, "msvcrt", None)
+    with pytest.raises(StudySpecError, match="unavailable"):
+        with execute._study_dir_lock(tmp_path):
+            pass
+
+
+def test_study_package_imports_when_fcntl_missing():
+    """Windows CPython has no fcntl; Studies page imports viewer via package init."""
+    script = (
+        "import builtins, sys\n"
+        "_real = builtins.__import__\n"
+        "def _import(name, globals=None, locals=None, fromlist=(), level=0):\n"
+        "    if name == 'fcntl':\n"
+        "        raise ImportError(\"No module named 'fcntl'\")\n"
+        "    return _real(name, globals, locals, fromlist, level)\n"
+        "builtins.__import__ = _import\n"
+        "sys.modules.pop('fcntl', None)\n"
+        "from thesistester.study.viewer import load_study_view, StudyViewerError\n"
+        "from thesistester.study.execute import run_study\n"
+        "print('import-ok')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "import-ok" in result.stdout

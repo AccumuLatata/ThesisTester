@@ -905,6 +905,14 @@ other than the last bar in the dataset.
   bars, or WFO history policy makes OTF-enabled runs incomparable without
   explicit re-baselining.
 
+## Research Study Runner execution lock (RS3)
+
+- Concurrent `study run` processes on the same `output_dir` fail closed on
+  `.study.lock` (POSIX `fcntl.flock` or Windows `msvcrt.locking`). The lock is
+  advisory and released when the process exits; a crashed run does not leave a
+  stale lock file that blocks later runs. Opening the Studies viewer does not
+  acquire the lock.
+
 ## Research Study Runner ranking (RS4)
 
 - Study overview ranking (`study.overview.md` / ranked CSV rows) is a
