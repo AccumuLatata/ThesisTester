@@ -7,6 +7,7 @@ failures. Does **not** call ``run_batch``.
 
 from __future__ import annotations
 
+import errno
 import json
 import math
 import multiprocessing
@@ -42,6 +43,16 @@ from thesistester.study.ledger import (
     save_ledger,
 )
 from thesistester.study.schema import StudySpecError, load_study_spec
+
+# Windows CRT lock contention + portable non-blocking "busy" codes.
+_LOCK_CONTENTION_ERRNOS = frozenset(
+    {
+        errno.EACCES,
+        errno.EAGAIN,
+        getattr(errno, "EWOULDBLOCK", errno.EAGAIN),
+        getattr(errno, "EDEADLK", errno.EACCES),
+    }
+)
 
 # Metric keys produced by cli._execute_run (without bundle_path).
 # RS-D7: profit_factor + win_rate sit with other trade-summary metrics.
@@ -402,6 +413,10 @@ def _lock_held_error(output_dir: Path) -> StudySpecError:
     )
 
 
+def _lock_acquire_error(output_dir: Path, exc: BaseException) -> StudySpecError:
+    return StudySpecError(f"Unable to acquire exclusive study lock on {output_dir}: {exc}")
+
+
 def _prepare_lock_region(handle: IO[bytes]) -> None:
     """Ensure a lockable byte exists (required by Windows ``msvcrt.locking``)."""
     handle.seek(0, os.SEEK_END)
@@ -411,19 +426,42 @@ def _prepare_lock_region(handle: IO[bytes]) -> None:
     handle.seek(0)
 
 
+def _is_lock_contention(exc: BaseException) -> bool:
+    """True only for non-blocking 'already held' failures (not ENOSYS/EINVAL/…)."""
+    if isinstance(exc, BlockingIOError):
+        return True
+    if isinstance(exc, OSError):
+        return int(getattr(exc, "errno", -1) or -1) in _LOCK_CONTENTION_ERRNOS
+    return False
+
+
 def _acquire_exclusive_lock(handle: IO[bytes], *, output_dir: Path) -> None:
-    """Non-blocking exclusive lock via POSIX ``fcntl`` or Windows ``msvcrt``."""
+    """Non-blocking exclusive lock via POSIX ``fcntl`` or Windows ``msvcrt``.
+
+    Contention → ``Another study run holds the lock…``. Other OS failures
+    (unsupported flock, bad handle, I/O) keep a distinct error so operators
+    are not told a phantom concurrent run exists.
+    """
     _prepare_lock_region(handle)
     fd = handle.fileno()
-    try:
-        if fcntl is not None:
+    if fcntl is not None:
+        try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             return
-        if msvcrt is not None:
+        except OSError as exc:
+            if _is_lock_contention(exc):
+                raise _lock_held_error(output_dir) from exc
+            raise _lock_acquire_error(output_dir, exc) from exc
+    if msvcrt is not None:
+        try:
+            # ``msvcrt.locking`` locks from the current file position.
+            handle.seek(0)
             msvcrt.locking(fd, msvcrt.LK_NBLCK, _LOCK_REGION_BYTES)
             return
-    except OSError as exc:
-        raise _lock_held_error(output_dir) from exc
+        except OSError as exc:
+            if _is_lock_contention(exc):
+                raise _lock_held_error(output_dir) from exc
+            raise _lock_acquire_error(output_dir, exc) from exc
     raise StudySpecError(
         "Exclusive study directory lock is unavailable on this Python runtime "
         "(need POSIX fcntl or Windows msvcrt)"
@@ -432,11 +470,12 @@ def _acquire_exclusive_lock(handle: IO[bytes], *, output_dir: Path) -> None:
 
 def _release_exclusive_lock(handle: IO[bytes]) -> None:
     fd = handle.fileno()
-    handle.seek(0)
     if fcntl is not None:
         fcntl.flock(fd, fcntl.LOCK_UN)
         return
     if msvcrt is not None:
+        # Unlock the same byte region that acquire locked (position-sensitive).
+        handle.seek(0)
         msvcrt.locking(fd, msvcrt.LK_UNLCK, _LOCK_REGION_BYTES)
 
 

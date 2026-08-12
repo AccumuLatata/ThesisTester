@@ -697,6 +697,8 @@ def test_study_dir_lock_msvcrt_backend(tmp_path: Path, monkeypatch: pytest.Monke
 def test_study_dir_lock_msvcrt_contention_fail_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
+    import errno
+
     import thesistester.study.execute as execute
 
     class FakeMsvcrt:
@@ -705,11 +707,55 @@ def test_study_dir_lock_msvcrt_contention_fail_closed(
 
         def locking(self, _fd: int, mode: int, _nbytes: int) -> None:
             if mode == self.LK_NBLCK:
-                raise OSError(13, "Permission denied")
+                raise OSError(errno.EACCES, "Permission denied")
 
     monkeypatch.setattr(execute, "fcntl", None)
     monkeypatch.setattr(execute, "msvcrt", FakeMsvcrt())
     with pytest.raises(StudySpecError, match="holds the lock"):
+        with execute._study_dir_lock(tmp_path):
+            pass
+
+
+def test_study_dir_lock_non_contention_oserror_is_not_phantom_holder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import errno
+
+    import thesistester.study.execute as execute
+
+    class FakeFcntl:
+        LOCK_EX = 1
+        LOCK_NB = 2
+        LOCK_UN = 8
+
+        def flock(self, _fd: int, _flags: int) -> None:
+            raise OSError(errno.ENOSYS, "Function not implemented")
+
+    monkeypatch.setattr(execute, "fcntl", FakeFcntl())
+    monkeypatch.setattr(execute, "msvcrt", None)
+    with pytest.raises(StudySpecError, match="Unable to acquire exclusive study lock"):
+        with execute._study_dir_lock(tmp_path):
+            pass
+
+
+def test_study_dir_lock_msvcrt_non_contention_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import errno
+
+    import thesistester.study.execute as execute
+
+    class FakeMsvcrt:
+        LK_NBLCK = 1
+        LK_UNLCK = 2
+
+        def locking(self, _fd: int, mode: int, _nbytes: int) -> None:
+            if mode == self.LK_NBLCK:
+                raise OSError(errno.EINVAL, "Invalid argument")
+
+    monkeypatch.setattr(execute, "fcntl", None)
+    monkeypatch.setattr(execute, "msvcrt", FakeMsvcrt())
+    with pytest.raises(StudySpecError, match="Unable to acquire exclusive study lock"):
         with execute._study_dir_lock(tmp_path):
             pass
 
