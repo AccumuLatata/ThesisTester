@@ -1,0 +1,158 @@
+{
+  "factor_map": {
+    "pdPOC_golden_c0000_global_cluster_touch_base_SMA_50_1min_otfOff_0050ce98e2": {
+      "confluence_mode": "global_cluster",
+      "core_level": "pdPOC",
+      "otf": {
+        "alignment_mode": "all",
+        "directional": true,
+        "enabled": false,
+        "minimum_consecutive_bars": 3,
+        "session_reset": "session",
+        "timeframes": [],
+        "use_completed_bars_only": true
+      },
+      "partner_levels": [
+        "SMA_50_1min"
+      ],
+      "trigger": "touch",
+      "trigger_timeframe": "base"
+    },
+    "pdPOC_golden_c0001_global_cluster_touch_base_SMA_50_1min_otf_5m_7961ddac83": {
+      "confluence_mode": "global_cluster",
+      "core_level": "pdPOC",
+      "otf": {
+        "alignment_mode": "all",
+        "directional": true,
+        "enabled": true,
+        "minimum_consecutive_bars": 3,
+        "session_reset": "session",
+        "timeframes": [
+          "5m"
+        ],
+        "use_completed_bars_only": true
+      },
+      "partner_levels": [
+        "SMA_50_1min"
+      ],
+      "trigger": "touch",
+      "trigger_timeframe": "base"
+    },
+    "pdPOC_golden_c0002_anchor_rules_touch_base_SMA_50_1min_otfOff_7ec728a9b5": {
+      "confluence_mode": "anchor_rules",
+      "core_level": "pdPOC",
+      "otf": {
+        "alignment_mode": "all",
+        "directional": true,
+        "enabled": false,
+        "minimum_consecutive_bars": 3,
+        "session_reset": "session",
+        "timeframes": [],
+        "use_completed_bars_only": true
+      },
+      "partner_levels": [
+        "SMA_50_1min"
+      ],
+      "trigger": "touch",
+      "trigger_timeframe": "base"
+    },
+    "pdPOC_golden_c0003_anchor_rules_touch_base_SMA_50_1min_otf_5m_409f923f05": {
+      "confluence_mode": "anchor_rules",
+      "core_level": "pdPOC",
+      "otf": {
+        "alignment_mode": "all",
+        "directional": true,
+        "enabled": true,
+        "minimum_consecutive_bars": 3,
+        "session_reset": "session",
+        "timeframes": [
+          "5m"
+        ],
+        "use_completed_bars_only": true
+      },
+      "partner_levels": [
+        "SMA_50_1min"
+      ],
+      "trigger": "touch",
+      "trigger_timeframe": "base"
+    },
+    "pdPOC_golden_c0004_global_cluster_touch_base_EMA_21_5min_otfOff_e0b08219ca": {
+      "confluence_mode": "global_cluster",
+      "core_level": "pdPOC",
+      "otf": {
+        "alignment_mode": "all",
+        "directional": true,
+        "enabled": false,
+        "minimum_consecutive_bars": 3,
+        "session_reset": "session",
+        "timeframes": [],
+        "use_completed_bars_only": true
+      },
+      "partner_levels": [
+        "EMA_21_5min"
+      ],
+      "trigger": "touch",
+      "trigger_timeframe": "base"
+    },
+    "pdPOC_golden_c0005_global_cluster_touch_base_EMA_21_5min_otf_5m_d511313aca": {
+      "confluence_mode": "global_cluster",
+      "core_level": "pdPOC",
+      "otf": {
+        "alignment_mode": "all",
+        "directional": true,
+        "enabled": true,
+        "minimum_consecutive_bars": 3,
+        "session_reset": "session",
+        "timeframes": [
+          "5m"
+        ],
+        "use_completed_bars_only": true
+      },
+      "partner_levels": [
+        "EMA_21_5min"
+      ],
+      "trigger": "touch",
+      "trigger_timeframe": "base"
+    },
+    "pdPOC_golden_c0006_anchor_rules_touch_base_EMA_21_5min_otfOff_fe7b9c4b10": {
+      "confluence_mode": "anchor_rules",
+      "core_level": "pdPOC",
+      "otf": {
+        "alignment_mode": "all",
+        "directional": true,
+        "enabled": false,
+        "minimum_consecutive_bars": 3,
+        "session_reset": "session",
+        "timeframes": [],
+        "use_completed_bars_only": true
+      },
+      "partner_levels": [
+        "EMA_21_5min"
+      ],
+      "trigger": "touch",
+      "trigger_timeframe": "base"
+    },
+    "pdPOC_golden_c0007_anchor_rules_touch_base_EMA_21_5min_otf_5m_652a58bfa5": {
+      "confluence_mode": "anchor_rules",
+      "core_level": "pdPOC",
+      "otf": {
+        "alignment_mode": "all",
+        "directional": true,
+        "enabled": true,
+        "minimum_consecutive_bars": 3,
+        "session_reset": "session",
+        "timeframes": [
+          "5m"
+        ],
+        "use_completed_bars_only": true
+      },
+      "partner_levels": [
+        "EMA_21_5min"
+      ],
+      "trigger": "touch",
+      "trigger_timeframe": "base"
+    }
+  },
+  "run_count": 8,
+  "study_identity_hash": "a61be51116fe715ee29f371cace73d2f2fecbfd5509bc33f6384e7dd2e608c6e"
+}

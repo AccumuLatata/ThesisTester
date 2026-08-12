@@ -1,0 +1,484 @@
+schema_version: 1
+output_dir: results/studies/pdPOC_golden
+workers: 1
+runs:
+- name: pdPOC_golden_c0000_global_cluster_touch_base_SMA_50_1min_otfOff_0050ce98e2
+  dataset:
+    path: data/es_1m.csv
+    instrument: ES
+    source_timezone: America/New_York
+  levels:
+    sma_lengths:
+    - 50
+    ema_lengths:
+    - 21
+    sma_timeframes:
+    - 1min
+    ema_timeframes:
+    - 5min
+  setup:
+    name: pdPOC_golden_c0000_global_cluster_touch_base_SMA_50_1min_otfOff_0050ce98e2
+    description: RS2 golden expansion fixture
+    instrument: ES
+    selected_levels:
+    - pdPOC
+    - SMA_50_1min
+    tolerance_ticks: 0.0
+    min_confluences: 2
+    max_confluences: 2
+    naked_only: false
+    naked_requirement: any
+    trigger: touch
+    trigger_timeframe: base
+    direction: both
+    confluence_mode: global_cluster
+    anchor_level: null
+    confluence_rules: []
+    min_valid_confluences: 1
+    trigger_params: {}
+    otf_filter:
+      enabled: false
+      timeframes: []
+      alignment_mode: all
+      minimum_consecutive_bars: 3
+      directional: true
+      use_completed_bars_only: true
+      session_reset: session
+    entry_window:
+      enabled: false
+      mode: rth_segments
+      rth_segments: []
+      start_time: null
+      end_time: null
+      timezone: America/New_York
+  backtest:
+    stop_loss_ticks: 8
+    take_profit_ticks: 16
+    exposure_policy: single_position
+  grid:
+    enabled: false
+  validation:
+    enabled: false
+  walk_forward:
+    enabled: false
+- name: pdPOC_golden_c0001_global_cluster_touch_base_SMA_50_1min_otf_5m_7961ddac83
+  dataset:
+    path: data/es_1m.csv
+    instrument: ES
+    source_timezone: America/New_York
+  levels:
+    sma_lengths:
+    - 50
+    ema_lengths:
+    - 21
+    sma_timeframes:
+    - 1min
+    ema_timeframes:
+    - 5min
+  setup:
+    name: pdPOC_golden_c0001_global_cluster_touch_base_SMA_50_1min_otf_5m_7961ddac83
+    description: RS2 golden expansion fixture
+    instrument: ES
+    selected_levels:
+    - pdPOC
+    - SMA_50_1min
+    tolerance_ticks: 0.0
+    min_confluences: 2
+    max_confluences: 2
+    naked_only: false
+    naked_requirement: any
+    trigger: touch
+    trigger_timeframe: base
+    direction: both
+    confluence_mode: global_cluster
+    anchor_level: null
+    confluence_rules: []
+    min_valid_confluences: 1
+    trigger_params: {}
+    otf_filter:
+      enabled: true
+      timeframes:
+      - 5m
+      alignment_mode: all
+      minimum_consecutive_bars: 3
+      directional: true
+      use_completed_bars_only: true
+      session_reset: session
+    entry_window:
+      enabled: false
+      mode: rth_segments
+      rth_segments: []
+      start_time: null
+      end_time: null
+      timezone: America/New_York
+  backtest:
+    stop_loss_ticks: 8
+    take_profit_ticks: 16
+    exposure_policy: single_position
+  grid:
+    enabled: false
+  validation:
+    enabled: false
+  walk_forward:
+    enabled: false
+- name: pdPOC_golden_c0002_anchor_rules_touch_base_SMA_50_1min_otfOff_7ec728a9b5
+  dataset:
+    path: data/es_1m.csv
+    instrument: ES
+    source_timezone: America/New_York
+  levels:
+    sma_lengths:
+    - 50
+    ema_lengths:
+    - 21
+    sma_timeframes:
+    - 1min
+    ema_timeframes:
+    - 5min
+  setup:
+    name: pdPOC_golden_c0002_anchor_rules_touch_base_SMA_50_1min_otfOff_7ec728a9b5
+    description: RS2 golden expansion fixture
+    instrument: ES
+    selected_levels: []
+    tolerance_ticks: 0.0
+    min_confluences: 1
+    max_confluences: 1
+    naked_only: false
+    naked_requirement: any
+    trigger: touch
+    trigger_timeframe: base
+    direction: both
+    confluence_mode: anchor_rules
+    anchor_level: pdPOC
+    confluence_rules:
+    - level: SMA_50_1min
+      tolerance_ticks: 0.0
+      required: true
+    min_valid_confluences: 1
+    trigger_params: {}
+    otf_filter:
+      enabled: false
+      timeframes: []
+      alignment_mode: all
+      minimum_consecutive_bars: 3
+      directional: true
+      use_completed_bars_only: true
+      session_reset: session
+    entry_window:
+      enabled: false
+      mode: rth_segments
+      rth_segments: []
+      start_time: null
+      end_time: null
+      timezone: America/New_York
+  backtest:
+    stop_loss_ticks: 8
+    take_profit_ticks: 16
+    exposure_policy: single_position
+  grid:
+    enabled: false
+  validation:
+    enabled: false
+  walk_forward:
+    enabled: false
+- name: pdPOC_golden_c0003_anchor_rules_touch_base_SMA_50_1min_otf_5m_409f923f05
+  dataset:
+    path: data/es_1m.csv
+    instrument: ES
+    source_timezone: America/New_York
+  levels:
+    sma_lengths:
+    - 50
+    ema_lengths:
+    - 21
+    sma_timeframes:
+    - 1min
+    ema_timeframes:
+    - 5min
+  setup:
+    name: pdPOC_golden_c0003_anchor_rules_touch_base_SMA_50_1min_otf_5m_409f923f05
+    description: RS2 golden expansion fixture
+    instrument: ES
+    selected_levels: []
+    tolerance_ticks: 0.0
+    min_confluences: 1
+    max_confluences: 1
+    naked_only: false
+    naked_requirement: any
+    trigger: touch
+    trigger_timeframe: base
+    direction: both
+    confluence_mode: anchor_rules
+    anchor_level: pdPOC
+    confluence_rules:
+    - level: SMA_50_1min
+      tolerance_ticks: 0.0
+      required: true
+    min_valid_confluences: 1
+    trigger_params: {}
+    otf_filter:
+      enabled: true
+      timeframes:
+      - 5m
+      alignment_mode: all
+      minimum_consecutive_bars: 3
+      directional: true
+      use_completed_bars_only: true
+      session_reset: session
+    entry_window:
+      enabled: false
+      mode: rth_segments
+      rth_segments: []
+      start_time: null
+      end_time: null
+      timezone: America/New_York
+  backtest:
+    stop_loss_ticks: 8
+    take_profit_ticks: 16
+    exposure_policy: single_position
+  grid:
+    enabled: false
+  validation:
+    enabled: false
+  walk_forward:
+    enabled: false
+- name: pdPOC_golden_c0004_global_cluster_touch_base_EMA_21_5min_otfOff_e0b08219ca
+  dataset:
+    path: data/es_1m.csv
+    instrument: ES
+    source_timezone: America/New_York
+  levels:
+    sma_lengths:
+    - 50
+    ema_lengths:
+    - 21
+    sma_timeframes:
+    - 1min
+    ema_timeframes:
+    - 5min
+  setup:
+    name: pdPOC_golden_c0004_global_cluster_touch_base_EMA_21_5min_otfOff_e0b08219ca
+    description: RS2 golden expansion fixture
+    instrument: ES
+    selected_levels:
+    - pdPOC
+    - EMA_21_5min
+    tolerance_ticks: 0.0
+    min_confluences: 2
+    max_confluences: 2
+    naked_only: false
+    naked_requirement: any
+    trigger: touch
+    trigger_timeframe: base
+    direction: both
+    confluence_mode: global_cluster
+    anchor_level: null
+    confluence_rules: []
+    min_valid_confluences: 1
+    trigger_params: {}
+    otf_filter:
+      enabled: false
+      timeframes: []
+      alignment_mode: all
+      minimum_consecutive_bars: 3
+      directional: true
+      use_completed_bars_only: true
+      session_reset: session
+    entry_window:
+      enabled: false
+      mode: rth_segments
+      rth_segments: []
+      start_time: null
+      end_time: null
+      timezone: America/New_York
+  backtest:
+    stop_loss_ticks: 8
+    take_profit_ticks: 16
+    exposure_policy: single_position
+  grid:
+    enabled: false
+  validation:
+    enabled: false
+  walk_forward:
+    enabled: false
+- name: pdPOC_golden_c0005_global_cluster_touch_base_EMA_21_5min_otf_5m_d511313aca
+  dataset:
+    path: data/es_1m.csv
+    instrument: ES
+    source_timezone: America/New_York
+  levels:
+    sma_lengths:
+    - 50
+    ema_lengths:
+    - 21
+    sma_timeframes:
+    - 1min
+    ema_timeframes:
+    - 5min
+  setup:
+    name: pdPOC_golden_c0005_global_cluster_touch_base_EMA_21_5min_otf_5m_d511313aca
+    description: RS2 golden expansion fixture
+    instrument: ES
+    selected_levels:
+    - pdPOC
+    - EMA_21_5min
+    tolerance_ticks: 0.0
+    min_confluences: 2
+    max_confluences: 2
+    naked_only: false
+    naked_requirement: any
+    trigger: touch
+    trigger_timeframe: base
+    direction: both
+    confluence_mode: global_cluster
+    anchor_level: null
+    confluence_rules: []
+    min_valid_confluences: 1
+    trigger_params: {}
+    otf_filter:
+      enabled: true
+      timeframes:
+      - 5m
+      alignment_mode: all
+      minimum_consecutive_bars: 3
+      directional: true
+      use_completed_bars_only: true
+      session_reset: session
+    entry_window:
+      enabled: false
+      mode: rth_segments
+      rth_segments: []
+      start_time: null
+      end_time: null
+      timezone: America/New_York
+  backtest:
+    stop_loss_ticks: 8
+    take_profit_ticks: 16
+    exposure_policy: single_position
+  grid:
+    enabled: false
+  validation:
+    enabled: false
+  walk_forward:
+    enabled: false
+- name: pdPOC_golden_c0006_anchor_rules_touch_base_EMA_21_5min_otfOff_fe7b9c4b10
+  dataset:
+    path: data/es_1m.csv
+    instrument: ES
+    source_timezone: America/New_York
+  levels:
+    sma_lengths:
+    - 50
+    ema_lengths:
+    - 21
+    sma_timeframes:
+    - 1min
+    ema_timeframes:
+    - 5min
+  setup:
+    name: pdPOC_golden_c0006_anchor_rules_touch_base_EMA_21_5min_otfOff_fe7b9c4b10
+    description: RS2 golden expansion fixture
+    instrument: ES
+    selected_levels: []
+    tolerance_ticks: 0.0
+    min_confluences: 1
+    max_confluences: 1
+    naked_only: false
+    naked_requirement: any
+    trigger: touch
+    trigger_timeframe: base
+    direction: both
+    confluence_mode: anchor_rules
+    anchor_level: pdPOC
+    confluence_rules:
+    - level: EMA_21_5min
+      tolerance_ticks: 0.0
+      required: true
+    min_valid_confluences: 1
+    trigger_params: {}
+    otf_filter:
+      enabled: false
+      timeframes: []
+      alignment_mode: all
+      minimum_consecutive_bars: 3
+      directional: true
+      use_completed_bars_only: true
+      session_reset: session
+    entry_window:
+      enabled: false
+      mode: rth_segments
+      rth_segments: []
+      start_time: null
+      end_time: null
+      timezone: America/New_York
+  backtest:
+    stop_loss_ticks: 8
+    take_profit_ticks: 16
+    exposure_policy: single_position
+  grid:
+    enabled: false
+  validation:
+    enabled: false
+  walk_forward:
+    enabled: false
+- name: pdPOC_golden_c0007_anchor_rules_touch_base_EMA_21_5min_otf_5m_652a58bfa5
+  dataset:
+    path: data/es_1m.csv
+    instrument: ES
+    source_timezone: America/New_York
+  levels:
+    sma_lengths:
+    - 50
+    ema_lengths:
+    - 21
+    sma_timeframes:
+    - 1min
+    ema_timeframes:
+    - 5min
+  setup:
+    name: pdPOC_golden_c0007_anchor_rules_touch_base_EMA_21_5min_otf_5m_652a58bfa5
+    description: RS2 golden expansion fixture
+    instrument: ES
+    selected_levels: []
+    tolerance_ticks: 0.0
+    min_confluences: 1
+    max_confluences: 1
+    naked_only: false
+    naked_requirement: any
+    trigger: touch
+    trigger_timeframe: base
+    direction: both
+    confluence_mode: anchor_rules
+    anchor_level: pdPOC
+    confluence_rules:
+    - level: EMA_21_5min
+      tolerance_ticks: 0.0
+      required: true
+    min_valid_confluences: 1
+    trigger_params: {}
+    otf_filter:
+      enabled: true
+      timeframes:
+      - 5m
+      alignment_mode: all
+      minimum_consecutive_bars: 3
+      directional: true
+      use_completed_bars_only: true
+      session_reset: session
+    entry_window:
+      enabled: false
+      mode: rth_segments
+      rth_segments: []
+      start_time: null
+      end_time: null
+      timezone: America/New_York
+  backtest:
+    stop_loss_ticks: 8
+    take_profit_ticks: 16
+    exposure_policy: single_position
+  grid:
+    enabled: false
+  validation:
+    enabled: false
+  walk_forward:
+    enabled: false

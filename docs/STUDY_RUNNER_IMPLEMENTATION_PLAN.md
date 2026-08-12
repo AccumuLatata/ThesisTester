@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-11 (amended 2026-08-11: R18 contract review; MVP completeness pass)  
-**Status:** RS1 landed (schema + validation); RS2–RS5 not started  
+**Status:** RS1–RS2 landed (schema + expansion); RS3–RS5 not started  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`  
@@ -545,15 +545,16 @@ Do not merge with confluence-combo attribution.
 | **Out of scope** | Running backtests; report; confirm enforcement (print count only) |
 | **Regression** | Pure functions; no CLI default changes; no `run_batch` edits |
 | **Acceptance checklist** | |
-| | ☐ Golden expansion fixture: byte-stable experiment YAML + factor_map JSON |
-| | ☐ Every expanded run passes `validate_run_spec` |
-| | ☐ Anchor cells set `selected_levels=[]`, `anchor_level=core`, required partner rules |
-| | ☐ Global cells set `selected_levels=[core]+partners` with min=max=len and len≤5 |
-| | ☐ Run names unique and match `_RUN_NAME_RE` |
-| | ☐ Stage `filter` reduces cartesian product correctly (example: 800 → 40) |
-| | ☐ Stage `explicit_cells` expands exactly the listed cells (no cartesian leakage) |
-| | ☐ No bare `grid`/`validation`/`walk_forward` `{}`; enabled false by default |
-| | ☐ Full suite green; no golden-master regeneration |
+| | ✅ Golden expansion fixture: byte-stable experiment YAML + factor_map JSON |
+| | ✅ Every expanded run passes `validate_run_spec` |
+| | ✅ Anchor cells set `selected_levels=[]`, `anchor_level=core`, required partner rules |
+| | ✅ Global cells set `selected_levels=[core]+partners` with min=max=len and len≤5 |
+| | ✅ Run names unique and match `_RUN_NAME_RE` |
+| | ✅ Stage `filter` reduces cartesian product correctly (example: 800 → 40) |
+| | ✅ Stage `explicit_cells` expands exactly the listed cells (no cartesian leakage) |
+| | ✅ No bare `grid`/`validation`/`walk_forward` `{}`; enabled false by default |
+| | ✅ `tests/study/` green; no engine golden-master regeneration |
+| | ✅ OTF alias/canonical duplicates, partner dupes/core-overlap, missing cell axes / backtest fail closed |
 
 **Copy-ready agent prompt:**
 
@@ -784,7 +785,7 @@ Holistic MVP is done when **all** of the following hold:
 |---|---|
 | RS0 Plan lock | ✅ This document (amended for R18 contract accuracy) |
 | RS1 Schema | ✅ |
-| RS2 Expander | ☐ |
+| RS2 Expander | ✅ |
 | RS3 CLI expand/run + study-owned ledger | ☐ |
 | RS4 Report | ☐ |
 | RS5 Staging/promote + examples | ☐ |

@@ -94,10 +94,39 @@ def test_minimal_study_normalizes_stably():
     assert validated["study"]["confirm_above_runs"] == 200
     assert validated["study"]["output_dir"] == "results/studies/pdPOC_mini"
     assert validated["study"]["report"]["primary_metric"] == "expectancy_r"
+    # Default group_by only includes axes present on this study's factors.
+    assert "trigger" in validated["study"]["report"]["group_by"]
     # stable re-normalize
     again = validate_study_spec(normalize_study_spec(validated))
     assert again["study"]["output_dir"] == validated["study"]["output_dir"]
     assert again["study"]["report"]["multiple_testing"] == "warn"
+
+
+def test_default_report_group_by_intersects_factors():
+    raw = _minimal_study()
+    del raw["study"]["report"]
+    del raw["study"]["stage"]
+    del raw["study"]["factors"]["trigger"]
+    del raw["study"]["factors"]["trigger_timeframe"]
+    validated = validate_study_spec(normalize_study_spec(raw))
+    group_by = validated["study"]["report"]["group_by"]
+    assert "trigger" not in group_by
+    assert "trigger_timeframe" not in group_by
+    assert "partner_levels" in group_by
+
+
+def test_static_catalog_excludes_suggested_rolling_vwap():
+    tokens = closed_level_token_set(
+        {
+            "vwap_windows": [],
+            "poc_windows": [],
+            "pivots_enabled": False,
+            "prev30m_vwap_enabled": False,
+        }
+    )
+    assert "VWAP_rolling_1h" not in tokens
+    tokens_with_window = closed_level_token_set({"vwap_windows": ["1h"]})
+    assert "VWAP_rolling_1h" in tokens_with_window
 
 
 def test_load_study_spec_from_yaml(tmp_path: Path):
@@ -310,6 +339,40 @@ def test_schema_version_rejected():
     raw = _minimal_study()
     raw["schema_version"] = 99
     with pytest.raises(StudySpecError, match="Unsupported StudySpec schema_version"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_dataset_instrument_required():
+    raw = _minimal_study()
+    del raw["study"]["dataset"]["instrument"]
+    with pytest.raises(StudySpecError, match="dataset.instrument is required"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_otf_canonical_duplicates_rejected():
+    raw = _minimal_study()
+    raw["study"]["factors"]["otf"] = [
+        {
+            "enabled": True,
+            "timeframes": ["5m"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 3,
+        },
+        {
+            "enabled": True,
+            "timeframes": ["5min"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 3,
+        },
+    ]
+    with pytest.raises(StudySpecError, match="duplicates a prior OTF config"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_duplicate_partner_tokens_rejected():
+    raw = _minimal_study()
+    raw["study"]["factors"]["partner_levels"] = [["ONH", "ONH"]]
+    with pytest.raises(StudySpecError, match="Duplicate partner level token"):
         validate_study_spec(normalize_study_spec(raw))
 
 

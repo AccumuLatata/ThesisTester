@@ -29,10 +29,12 @@ from thesistester.setup import (
 STUDY_SCHEMA_VERSION = 1
 RUN_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
+
 # Static / session / profile names accepted without being implied by ``levels``.
 # Documented in docs/STUDY_RUNNER.md; keep in sync with product catalogs.
-STUDY_STATIC_LEVEL_NAMES: frozenset[str] = frozenset(
-    {
+def _static_catalog_names() -> frozenset[str]:
+    """Session/profile names; rolling VWAP/POC come only from levels windows."""
+    names = {
         *SUGGESTED_DEFAULT_LEVELS,
         "ONH",
         "ONL",
@@ -76,6 +78,23 @@ STUDY_STATIC_LEVEL_NAMES: frozenset[str] = frozenset(
         # prev30mVWAP* and Pivot_* are admitted only when the matching
         # study.levels enable flags are on (see closed_level_token_set).
     }
+    # SUGGESTED_DEFAULT_LEVELS may include VWAP_rolling_1h which is not implied
+    # by DEFAULT_LEVELS_SETTINGS windows (30min/4h) — do not admit statically.
+    return frozenset(
+        name
+        for name in names
+        if not str(name).startswith("VWAP_rolling_") and not str(name).startswith("POC_rolling_")
+    )
+
+
+STUDY_STATIC_LEVEL_NAMES: frozenset[str] = _static_catalog_names()
+
+_DEFAULT_REPORT_GROUP_BY = (
+    "partner_levels",
+    "confluence_mode",
+    "trigger",
+    "trigger_timeframe",
+    "otf",
 )
 
 _TOP_LEVEL_KEYS = frozenset({"schema_version", "study"})
@@ -302,6 +321,9 @@ def normalize_study_spec(raw: Mapping[str, Any]) -> dict[str, Any]:
         if "name" in study_dict and "output_dir" not in study_dict:
             study_dict["output_dir"] = f"results/studies/{study_dict['name']}"
         report = study_dict.get("report")
+        factors = study_dict.get("factors")
+        factor_keys = set(factors) if isinstance(factors, Mapping) else set()
+        default_group_by = [key for key in _DEFAULT_REPORT_GROUP_BY if key in factor_keys]
         if report is None:
             study_dict["report"] = {
                 "primary_metric": "expectancy_r",
@@ -312,13 +334,7 @@ def normalize_study_spec(raw: Mapping[str, Any]) -> dict[str, Any]:
                     "total_r",
                 ],
                 "min_trades": 30,
-                "group_by": [
-                    "partner_levels",
-                    "confluence_mode",
-                    "trigger",
-                    "trigger_timeframe",
-                    "otf",
-                ],
+                "group_by": default_group_by,
                 "otf_baseline": {"enabled": False},
                 "multiple_testing": "warn",
             }
@@ -332,6 +348,8 @@ def normalize_study_spec(raw: Mapping[str, Any]) -> dict[str, Any]:
             report_dict.setdefault("min_trades", 30)
             report_dict.setdefault("multiple_testing", "warn")
             report_dict.setdefault("otf_baseline", {"enabled": False})
+            if "group_by" not in report_dict:
+                report_dict["group_by"] = default_group_by
             study_dict["report"] = report_dict
         payload["study"] = study_dict
     return payload
@@ -376,8 +394,12 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
         raise StudySpecError("study.dataset.path is required")
     if not isinstance(dataset["path"], (str, Path)):
         raise StudySpecError("study.dataset.path must be a path string")
-    if "instrument" in dataset and not isinstance(dataset["instrument"], str):
-        raise StudySpecError("study.dataset.instrument must be a string when present")
+    instrument = dataset.get("instrument")
+    if not isinstance(instrument, str) or not instrument.strip():
+        raise StudySpecError(
+            "study.dataset.instrument is required (non-empty string; "
+            "injected into every expanded setup)"
+        )
 
     levels = study.get("levels")
     if levels is None:
@@ -503,6 +525,7 @@ def _validate_factors(
             raise StudySpecError(
                 f"factors.partner_levels[{index}] too large: core+partners would exceed 5 levels"
             )
+        seen_partners: set[str] = set()
         for token_index, token in enumerate(partner_set):
             if not isinstance(token, str) or not token:
                 raise StudySpecError(
@@ -513,6 +536,11 @@ def _validate_factors(
                     f"Unknown partner level token {token!r}; not in closed level "
                     f"set implied by study.levels + static catalog"
                 )
+            if token in seen_partners:
+                raise StudySpecError(
+                    f"Duplicate partner level token {token!r} in factors.partner_levels[{index}]"
+                )
+            seen_partners.add(token)
 
     if "confluence_mode" in factors:
         modes = factors["confluence_mode"]
@@ -563,8 +591,15 @@ def _validate_factors(
         otf_values = factors["otf"]
         if not isinstance(otf_values, list) or not otf_values:
             raise StudySpecError("factors.otf must be a non-empty list")
+        seen_otf: list[dict[str, Any]] = []
         for index, entry in enumerate(otf_values):
-            _normalize_otf_factor_entry(entry, path=f"factors.otf[{index}]")
+            normalized = _normalize_otf_factor_entry(entry, path=f"factors.otf[{index}]")
+            if normalized in seen_otf:
+                raise StudySpecError(
+                    f"factors.otf[{index}] duplicates a prior OTF config after "
+                    f"normalization (alias forks are not distinct factor levels)"
+                )
+            seen_otf.append(normalized)
 
 
 def _validate_mode_rules(mode_rules: Mapping[str, Any], *, factors: Mapping[str, Any]) -> None:
