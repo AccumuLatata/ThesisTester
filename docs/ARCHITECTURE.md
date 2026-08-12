@@ -54,7 +54,8 @@ RS5 adds `study promote` (draft `explicit_cells` survivors; no auto-run) plus
 stage-first examples under `examples/studies/`. RS-D7 adds additive index
 `profit_factor` / `win_rate`; RS6 adds default-off `STUDY.*` assistant
 capabilities. **RS-D2** adds a **read-only** Streamlit Studies viewer
-(`pages/15_Studies.py`) over completed study artifacts via `report_study` /
+(`pages/15_Studies.py`) over completed study artifacts via
+`report_study(..., write_artifacts=False)` /
 ledger loaders — no in-app expand/run/promote and no classic research
 `st.session_state` mutation. Study execution sets `execution_origin="study"`
 (member of `EXECUTION_ORIGINS`) and does **not** call `run_batch` — R18 CLI

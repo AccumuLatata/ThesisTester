@@ -865,13 +865,13 @@ Update STUDY_RUNNER.md (minimal agent recipe) + roadmap.
 | **Out of scope** | Factor builder UI; templates marketplace; auto-run; assistant NL; changing headless CLI; portfolio of studies cloud sync |
 | **Regression** | Classic pages unchanged in behavior; no engine edits; Help allowlist updated if USER_GUIDE gains H2; nav addition must not break existing page tests |
 | **Acceptance checklist** | |
-| | ☐ Can load a completed fixture study dir and show ranked/low-N/ledger without running backtests |
-| | ☐ Reuses study report/ledger loaders (no divergent ranking logic) |
-| | ☐ Honesty caveats visible |
-| | ☐ No execute/promote/expand controls that mutate study or research session state |
-| | ☐ USER_GUIDE (+ HC §7.1.4 if Help-readable) updated same PR |
-| | ☐ Existing Streamlit/assistant tests green; engine goldens untouched |
-| | ☐ Full suite green |
+| | ☑ Can load a completed fixture study dir and show ranked/low-N/ledger without running backtests |
+| | ☑ Reuses study report/ledger loaders (no divergent ranking logic) |
+| | ☑ Honesty caveats visible |
+| | ☑ No execute/promote/expand controls that mutate study or research session state |
+| | ☑ USER_GUIDE (+ HC §7.1.4 if Help-readable) updated same PR |
+| | ☑ Existing Streamlit/assistant tests green; engine goldens untouched |
+| | ☑ Full suite green |
 
 **Copy-ready agent prompt:**
 

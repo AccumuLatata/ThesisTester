@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import streamlit as st
 
 from thesistester.study.viewer import (
+    STUDIES_VIEWER_DIR_KEY,
     StudyViewerError,
     default_study_viewer_roots,
     load_study_view,
@@ -25,9 +24,15 @@ st.info(
     "and is not a deep-link target from this page."
 )
 
+# Prefill the path widget from the last successfully loaded Studies dir.
+if "studies_viewer_path_input" not in st.session_state and isinstance(
+    st.session_state.get(STUDIES_VIEWER_DIR_KEY), str
+):
+    st.session_state["studies_viewer_path_input"] = st.session_state[STUDIES_VIEWER_DIR_KEY]
+
 raw_dir = st.text_input(
     "Study output directory",
-    value="",
+    key="studies_viewer_path_input",
     help=(
         "Absolute or repo-relative path to a completed study dir "
         "(must contain study.spec.yaml / results_index.csv). "
@@ -38,15 +43,21 @@ raw_dir = st.text_input(
 
 load = st.button("Load study artifacts", type="primary")
 
-if not load:
-    st.stop()
+if load:
+    if not str(raw_dir).strip():
+        st.error("Enter a study output directory path.")
+        st.stop()
+    # Persist only the Studies-scoped path key so reruns (download / expander)
+    # keep the view; never touch classic research session_state keys.
+    st.session_state[STUDIES_VIEWER_DIR_KEY] = str(raw_dir).strip()
 
-if not str(raw_dir).strip():
-    st.error("Enter a study output directory path.")
+active_dir = st.session_state.get(STUDIES_VIEWER_DIR_KEY)
+if not isinstance(active_dir, str) or not active_dir.strip():
+    st.caption("Enter a completed study directory, then load artifacts.")
     st.stop()
 
 try:
-    model = load_study_view(raw_dir, roots=default_study_viewer_roots())
+    model = load_study_view(active_dir, roots=default_study_viewer_roots())
 except StudyViewerError as exc:
     st.error(str(exc))
     st.stop()
@@ -108,19 +119,17 @@ else:
     st.dataframe(model.otf_delta_display, hide_index=True, width="stretch")
 
 st.markdown("### Overview markdown")
-overview_path = model.report.paths.get("study.overview.md")
-if isinstance(overview_path, Path) and overview_path.is_file():
-    st.download_button(
-        "Download study.overview.md",
-        data=overview_path.read_text(encoding="utf-8"),
-        file_name="study.overview.md",
-        mime="text/markdown",
-    )
-csv_path = model.report.paths.get("study.overview.csv")
-if isinstance(csv_path, Path) and csv_path.is_file():
+# Serve in-memory artifacts so the page stays read-only on disk.
+st.download_button(
+    "Download study.overview.md",
+    data=model.overview_md if model.overview_md.endswith("\n") else model.overview_md + "\n",
+    file_name="study.overview.md",
+    mime="text/markdown",
+)
+if model.overview_csv_text:
     st.download_button(
         "Download study.overview.csv",
-        data=csv_path.read_text(encoding="utf-8"),
+        data=model.overview_csv_text,
         file_name="study.overview.csv",
         mime="text/csv",
     )

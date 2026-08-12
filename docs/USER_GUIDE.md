@@ -966,7 +966,7 @@ ranked cells, low-N, OTF delta, bundle_path, Research Study Runner
 | Control | Meaning | Common pitfall |
 |---|---|---|
 | Study output directory | Path to a completed study dir under the repo cwd or local store | Paths outside those trusted roots are refused |
-| Load study artifacts | Reads ledger + regenerates overview via `report_study` | Does **not** run backtests or write StudySpecs |
+| Load study artifacts | Reads ledger + in-memory overview via `report_study(..., write_artifacts=False)` | Does **not** run backtests or rewrite overview files / StudySpecs |
 
 **How to use.**
 
@@ -979,7 +979,8 @@ ranked cells, low-N, OTF delta, bundle_path, Research Study Runner
 **What it is not.**
 
 - Not a StudySpec editor and not an in-app expand / run / promote runner.
-- Does not mutate classic research session state (levels / signals / trades).
+- Does not mutate classic research session state (levels / signals / trades);
+  only Studies-scoped path keys are persisted across Streamlit reruns.
 - Does not deep-link into Research Bundles by path (that page is upload/import
   oriented); `bundle_path` is listed for orientation only.
 - Ranking remains descriptive screening, not a validated edge.

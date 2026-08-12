@@ -1,7 +1,8 @@
 """RS-D2 read-only Studies viewer helpers.
 
 Loads completed study artifacts via ``report_study`` / ``load_ledger``. Does not
-execute cells, promote drafts, or mutate classic research session state.
+execute cells, promote drafts, rewrite overview artifacts, or mutate classic
+research session state.
 """
 
 from __future__ import annotations
@@ -35,6 +36,9 @@ CLASSIC_RESEARCH_SESSION_KEYS = frozenset(
         "walk_forward_summary",
     }
 )
+
+# Studies page may persist only this key (not classic research keys).
+STUDIES_VIEWER_DIR_KEY = "studies_viewer_study_dir"
 
 
 class StudyViewerError(ValueError):
@@ -140,12 +144,20 @@ class StudyViewerModel:
     unresolved_display: pd.DataFrame
     otf_delta_display: pd.DataFrame
     overview_md: str
+    overview_csv_text: str
 
 
 def _display_columns(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     if frame is None or frame.empty:
-        return pd.DataFrame(columns=columns)
-    present = [col for col in columns if col in frame.columns]
+        # Preserve caller order but drop duplicates (primary may equal a fixed col).
+        ordered = list(dict.fromkeys(columns))
+        return pd.DataFrame(columns=ordered)
+    present: list[str] = []
+    seen: set[str] = set()
+    for col in columns:
+        if col in frame.columns and col not in seen:
+            present.append(col)
+            seen.add(col)
     return frame.loc[:, present].copy()
 
 
@@ -154,10 +166,11 @@ def load_study_view(
     *,
     roots: Sequence[Path] | None = None,
 ) -> StudyViewerModel:
-    """Load ledger + report for a completed study directory (no backtests)."""
+    """Load ledger + report for a completed study directory (no writes/backtests)."""
     root = resolve_study_dir(study_dir, roots=roots)
     try:
-        report = report_study(root)
+        # Viewer must not rewrite overview artifacts on a completed study dir.
+        report = report_study(root, write_artifacts=False)
     except StudyReportError as exc:
         raise StudyViewerError(str(exc)) from exc
 
@@ -182,6 +195,7 @@ def load_study_view(
         "bundle_path",
         "profit_factor_source",
     ]
+    overview_csv_text = report.overview.to_csv(index=False) if not report.overview.empty else ""
     return StudyViewerModel(
         study_dir=root,
         study_name=study_name,
@@ -197,8 +211,15 @@ def load_study_view(
         ),
         unresolved_display=_display_columns(
             report.unresolved,
-            ["run_name", "trade_count", report.primary_metric, "profit_factor_source", "bundle_path"],
+            [
+                "run_name",
+                "trade_count",
+                report.primary_metric,
+                "profit_factor_source",
+                "bundle_path",
+            ],
         ),
         otf_delta_display=report.otf_delta.copy() if not report.otf_delta.empty else pd.DataFrame(),
         overview_md=report.markdown,
+        overview_csv_text=overview_csv_text,
     )

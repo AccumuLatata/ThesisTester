@@ -162,6 +162,16 @@ def _load_results_index(study_dir: Path) -> pd.DataFrame:
     return frame
 
 
+def _bundle_path_within_study(study_dir: Path, bundle_rel: str) -> Path | None:
+    """Resolve ``bundle_path`` and refuse absolute / ``..`` escapes outside study_dir."""
+    raw = Path(bundle_rel)
+    candidate = raw.expanduser().resolve() if raw.is_absolute() else (study_dir / raw).resolve()
+    root = study_dir.resolve()
+    if not candidate.is_relative_to(root):
+        return None
+    return candidate
+
+
 def _read_bundle_trade_summary(bundle_path: Path) -> dict[str, Any] | None:
     """Return ``trade_summary`` dict from a research zip, or None if unavailable."""
     if not bundle_path.is_file():
@@ -236,7 +246,9 @@ def _resolve_bundle_metrics(
     if index_pf is None or index_wr is None:
         bundle_rel = row.get("bundle_path")
         if isinstance(bundle_rel, str) and bundle_rel.strip():
-            summary = _read_bundle_trade_summary(study_dir / bundle_rel)
+            bundle_path = _bundle_path_within_study(study_dir, bundle_rel)
+            if bundle_path is not None:
+                summary = _read_bundle_trade_summary(bundle_path)
 
     if index_pf is not None:
         pf, source = index_pf, "index"
@@ -773,8 +785,16 @@ def render_overview_markdown(
     return "\n".join(lines)
 
 
-def report_study(study_dir: str | Path) -> StudyReportResult:
-    """Aggregate a completed study directory into overview CSV/MD (+ OTF Δ)."""
+def report_study(
+    study_dir: str | Path,
+    *,
+    write_artifacts: bool = True,
+) -> StudyReportResult:
+    """Aggregate a completed study directory into overview CSV/MD (+ OTF Δ).
+
+    When ``write_artifacts`` is false (RS-D2 viewer), compute the same in-memory
+    result without rewriting ``study.overview.*`` / ``study.otf_delta.csv``.
+    """
     root = Path(study_dir)
     if not root.is_dir():
         raise StudyReportError(f"Study directory does not exist: {root}")
@@ -826,9 +846,13 @@ def report_study(study_dir: str | Path) -> StudyReportResult:
     md_path = root / OVERVIEW_MD
     otf_path = root / OTF_DELTA_CSV
 
-    overview.to_csv(overview_path, index=False)
-    md_path.write_text(markdown if markdown.endswith("\n") else markdown + "\n", encoding="utf-8")
-    otf_delta.to_csv(otf_path, index=False)
+    if write_artifacts:
+        overview.to_csv(overview_path, index=False)
+        md_path.write_text(
+            markdown if markdown.endswith("\n") else markdown + "\n",
+            encoding="utf-8",
+        )
+        otf_delta.to_csv(otf_path, index=False)
 
     return StudyReportResult(
         overview=overview,

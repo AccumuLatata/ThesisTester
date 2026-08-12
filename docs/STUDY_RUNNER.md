@@ -398,10 +398,14 @@ Full multi-step external Grok routine pack is **RS-D5** (extends this recipe).
 Streamlit page: **Studies** (`pages/15_Studies.py`).
 
 - Paste a completed study `output_dir` (must stay under repo cwd or local store).
-- Loads ledger + overview via `load_ledger` / `report_study` (no backtests).
+- Loads ledger + overview via `load_ledger` / `report_study(..., write_artifacts=False)`
+  (no backtests; does **not** rewrite `study.overview.*` on disk).
 - Shows identity, ledger counts, ranked / low-N / unresolved, OTF Δ, `bundle_path`.
-- Honesty banner required; no expand / run / promote controls; no classic research
-  `session_state` mutation; no Research-Bundles deep-link.
+- Overview MD/CSV downloads are served from the in-memory aggregate.
+- Honesty banner required; no expand / run / promote controls; only the
+  Studies-scoped `studies_viewer_study_dir` session key is written (never classic
+  research keys); no Research-Bundles deep-link.
+- Report bundle reads refuse `bundle_path` values that escape the study directory.
 
 ---
 
