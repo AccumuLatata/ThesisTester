@@ -7,10 +7,13 @@ failures. Does **not** call ``run_batch``.
 
 from __future__ import annotations
 
+import fcntl
 import multiprocessing
+import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 import pandas as pd
 
@@ -143,15 +146,18 @@ def cost_hint_lines(
         preview = ", ".join(armed[:12])
         suffix = " ..." if len(armed) > 12 else ""
         lines.append(
-            "WARNING: enabled grid/validation/walk_forward dominates runtime: "
-            f"{preview}{suffix}"
+            f"WARNING: enabled grid/validation/walk_forward dominates runtime: {preview}{suffix}"
         )
     else:
         lines.append("batteries: grid/validation/walk_forward disabled on all cells")
     return lines
 
 
-def _write_results_index(output_dir: Path, rows_by_name: Mapping[str, Mapping[str, Any]], run_names: list[str]) -> Path:
+def _write_results_index(
+    output_dir: Path,
+    rows_by_name: Mapping[str, Mapping[str, Any]],
+    run_names: list[str],
+) -> Path:
     ordered: list[dict[str, Any]] = []
     for name in run_names:
         if name in rows_by_name:
@@ -164,7 +170,9 @@ def _write_results_index(output_dir: Path, rows_by_name: Mapping[str, Mapping[st
             frame[key] = None
     frame = frame.loc[:, list(STUDY_INDEX_KEYS)]
     path = output_dir / "results_index.csv"
-    frame.to_csv(path, index=False)
+    tmp = path.with_name(".results_index.csv.tmp")
+    frame.to_csv(tmp, index=False)
+    os.replace(tmp, path)
     return path
 
 
@@ -183,14 +191,11 @@ def _load_existing_index_rows(output_dir: Path) -> dict[str, dict[str, Any]]:
     return rows
 
 
-def prepare_study_expansion(
-    study_path: str | Path,
-    *,
-    output_dir: str | Path | None = None,
-) -> tuple[dict[str, Any], ExpansionResult, Path, Path]:
-    """Load StudySpec, expand, write artifacts. Returns spec, expansion, out, base."""
-    study_path = Path(study_path).resolve()
-    spec = load_study_spec(study_path)
+def _resolve_study_output_dir(
+    study_path: Path,
+    spec: Mapping[str, Any],
+    output_dir: str | Path | None,
+) -> Path:
     study = spec["study"]
     configured = output_dir or study.get("output_dir") or f"results/studies/{study['name']}"
     out = Path(configured)
@@ -198,8 +203,47 @@ def prepare_study_expansion(
         out = (study_path.parent / out).resolve()
     else:
         out = out.resolve()
+    return out
+
+
+@contextmanager
+def _study_dir_lock(output_dir: Path) -> Iterator[None]:
+    """Fail-closed exclusive lock so concurrent study runs cannot clobber ledgers."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = output_dir / ".study.lock"
+    fh = open(lock_path, "a+", encoding="utf-8")
+    try:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise StudySpecError(
+                f"Another study run holds the lock on {output_dir}; "
+                f"wait or use a different --output-dir"
+            ) from exc
+        yield
+    finally:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            fh.close()
+
+
+def prepare_study_expansion(
+    study_path: str | Path,
+    *,
+    output_dir: str | Path | None = None,
+    write_artifacts: bool = True,
+) -> tuple[dict[str, Any], ExpansionResult, Path, Path]:
+    """Load StudySpec, expand, optionally write artifacts.
+
+    Returns ``(spec, expansion, output_dir, base_directory)``.
+    """
+    study_path = Path(study_path).resolve()
+    spec = load_study_spec(study_path)
+    out = _resolve_study_output_dir(study_path, spec, output_dir)
     expansion = expand_study(spec)
-    write_expansion_artifacts(out, normalized_spec=spec, expansion=expansion)
+    if write_artifacts:
+        write_expansion_artifacts(out, normalized_spec=spec, expansion=expansion)
     return spec, expansion, out, study_path.parent
 
 
@@ -226,6 +270,7 @@ def _apply_cell_result(
                 name,
                 status="failed",
                 error="ok payload missing bundle bytes",
+                bundle_path=None,
                 finished=True,
             )
             row = dict(payload.get("index_row") or _failed_index_row(name))
@@ -247,6 +292,13 @@ def _apply_cell_result(
             row["status"] = "ok"
             index_by_name[name] = row
     else:
+        # Drop stale zip from a prior ok if this cell is being re-run after force.
+        stale = output_dir / bundle_name
+        if stale.is_file():
+            try:
+                stale.unlink()
+            except OSError:
+                pass
         ledger = mark_cell(
             ledger,
             name,
@@ -265,6 +317,41 @@ def _apply_cell_result(
     return ledger
 
 
+def _finalize_running_cells(
+    output_dir: Path,
+    *,
+    todo: list[str],
+    run_names: list[str],
+    index_by_name: dict[str, dict[str, Any]],
+    error: str,
+) -> None:
+    """Mark any cells still ``running`` as failed (pool death / interrupt)."""
+    ledger = load_ledger(output_dir)
+    if ledger is None:
+        return
+    cells = ledger.get("cells") or {}
+    dirty = False
+    for name in todo:
+        cell = cells.get(name) or {}
+        if cell.get("status") == "running":
+            ledger = mark_cell(
+                ledger,
+                name,
+                status="failed",
+                error=error,
+                bundle_path=None,
+                finished=True,
+            )
+            row = _failed_index_row(name)
+            row["status"] = "failed"
+            row["bundle_path"] = None
+            index_by_name[name] = row
+            dirty = True
+    if dirty:
+        save_ledger(output_dir, ledger)
+        _write_results_index(output_dir, index_by_name, run_names)
+
+
 def run_study(
     study_path: str | Path,
     *,
@@ -274,9 +361,16 @@ def run_study(
     force: bool = False,
     cell_executor: Callable[[tuple[dict[str, Any], str]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Expand, enforce confirm, execute cells with ledger/resume."""
+    """Expand, enforce confirm/identity gates, then execute cells with ledger/resume.
+
+    Gates run **before** writing expansion artifacts so refuse paths cannot drift
+    on-disk ``study.spec.yaml`` / factor maps relative to an existing ledger.
+    """
+    # Expand in memory first — no artifact writes until gates pass.
     spec, expansion, out, base_directory = prepare_study_expansion(
-        study_path, output_dir=output_dir
+        study_path,
+        output_dir=output_dir,
+        write_artifacts=False,
     )
     study = spec["study"]
     workers_n = int(workers if workers is not None else study.get("workers", 1))
@@ -292,32 +386,44 @@ def run_study(
 
     run_names = [str(run["name"]) for run in expansion.experiment["runs"]]
     existing = load_ledger(out)
+    prior_hash = existing.get("study_identity_hash") if existing is not None else None
     if existing is not None:
-        prior_hash = existing.get("study_identity_hash")
         if prior_hash != expansion.study_identity_hash and not force:
             raise StudySpecError(
                 "Existing study.ledger.json identity hash does not match this "
                 "StudySpec expansion; pass --force to re-run, or use a new output_dir"
             )
-        ledger = dict(existing)
-        ledger["study_identity_hash"] = expansion.study_identity_hash
-        cells = dict(ledger.get("cells") or {})
-        for name in run_names:
-            cells.setdefault(
-                name,
-                {
-                    "status": "pending",
-                    "started_at": None,
-                    "finished_at": None,
-                    "error": None,
-                    "bundle_path": None,
-                },
+
+    with _study_dir_lock(out):
+        # Re-check identity under the lock (another process may have written).
+        existing = load_ledger(out)
+        prior_hash = existing.get("study_identity_hash") if existing is not None else None
+        if existing is not None:
+            if prior_hash != expansion.study_identity_hash and not force:
+                raise StudySpecError(
+                    "Existing study.ledger.json identity hash does not match this "
+                    "StudySpec expansion; pass --force to re-run, or use a new output_dir"
+                )
+
+        # Gates passed — now persist expansion artifacts.
+        write_expansion_artifacts(out, normalized_spec=spec, expansion=expansion)
+
+        identity_changed = existing is not None and prior_hash != expansion.study_identity_hash
+        if existing is None or (force and identity_changed):
+            # Fresh ledger, or forced identity swap → drop orphan cells.
+            ledger = empty_ledger(
+                study_identity_hash=expansion.study_identity_hash,
+                run_names=run_names,
             )
-        if force:
+        else:
+            ledger = dict(existing)
+            ledger["study_identity_hash"] = expansion.study_identity_hash
+            prior_cells = dict(ledger.get("cells") or {})
+            cells: dict[str, Any] = {}
             for name in run_names:
-                cell = dict(cells.get(name) or {})
-                cell.update(
-                    {
+                cell = dict(
+                    prior_cells.get(name)
+                    or {
                         "status": "pending",
                         "started_at": None,
                         "finished_at": None,
@@ -325,97 +431,132 @@ def run_study(
                         "bundle_path": None,
                     }
                 )
+                if force:
+                    cell.update(
+                        {
+                            "status": "pending",
+                            "started_at": None,
+                            "finished_at": None,
+                            "error": None,
+                            "bundle_path": None,
+                        }
+                    )
                 cells[name] = cell
-        ledger["cells"] = cells
-    else:
-        ledger = empty_ledger(
-            study_identity_hash=expansion.study_identity_hash,
-            run_names=run_names,
+            ledger["cells"] = cells
+
+        if confirm:
+            ledger = record_confirmation(ledger, run_count=expansion.run_count)
+        save_ledger(out, ledger)
+
+        index_by_name = _load_existing_index_rows(out)
+        # Scope index to current expansion names only (drop orphans).
+        index_by_name = {name: row for name, row in index_by_name.items() if name in set(run_names)}
+        if force:
+            for name in run_names:
+                index_by_name.pop(name, None)
+
+        todo = cells_to_run(
+            load_ledger(out) or ledger,
+            run_names,
+            force=force,
+            output_dir=out,
         )
+        runs_by_name = {str(run["name"]): dict(run) for run in expansion.experiment["runs"]}
+        executor_fn = cell_executor or execute_study_cell
+        tasks = [(runs_by_name[name], str(base_directory)) for name in todo]
 
-    if confirm:
-        ledger = record_confirmation(ledger, run_count=expansion.run_count)
-    save_ledger(out, ledger)
+        # Mark running before dispatch.
+        ledger = load_ledger(out) or ledger
+        for name in todo:
+            ledger = mark_cell(ledger, name, status="running", started=True)
+        save_ledger(out, ledger)
 
-    index_by_name = _load_existing_index_rows(out)
-    if force:
-        for name in run_names:
-            index_by_name.pop(name, None)
-
-    todo = cells_to_run(load_ledger(out) or ledger, run_names, force=force)
-    runs_by_name = {str(run["name"]): dict(run) for run in expansion.experiment["runs"]}
-    executor_fn = cell_executor or execute_study_cell
-    tasks = [(runs_by_name[name], str(base_directory)) for name in todo]
-
-    # Mark running before dispatch.
-    ledger = load_ledger(out) or ledger
-    for name in todo:
-        ledger = mark_cell(ledger, name, status="running", started=True)
-    save_ledger(out, ledger)
-
-    # Pool only the picklable module-level default executor. Injected
-    # cell_executor callables (tests) always run in-process.
-    use_pool = (
-        workers_n > 1
-        and len(tasks) > 1
-        and cell_executor is None
-        and executor_fn is execute_study_cell
-    )
-    if not use_pool:
-        for task in tasks:
-            payload = executor_fn(task)
-            _apply_cell_result(
+        # Pool only the picklable module-level default executor. Injected
+        # cell_executor callables (tests) always run in-process.
+        use_pool = (
+            workers_n > 1
+            and len(tasks) > 1
+            and cell_executor is None
+            and executor_fn is execute_study_cell
+        )
+        try:
+            if not use_pool:
+                for task in tasks:
+                    payload = executor_fn(task)
+                    _apply_cell_result(
+                        out,
+                        run_names=run_names,
+                        index_by_name=index_by_name,
+                        payload=payload,
+                    )
+            else:
+                with ProcessPoolExecutor(
+                    max_workers=min(workers_n, len(tasks)),
+                    mp_context=multiprocessing.get_context("spawn"),
+                ) as pool:
+                    future_to_name = {
+                        pool.submit(execute_study_cell, task): todo[index]
+                        for index, task in enumerate(tasks)
+                    }
+                    for future in as_completed(future_to_name):
+                        name = future_to_name[future]
+                        try:
+                            payload = future.result()
+                        except Exception as exc:  # noqa: BLE001 — keep study loop alive
+                            payload = {
+                                "status": "failed",
+                                "name": name,
+                                "bundle": None,
+                                "index_row": _failed_index_row(name),
+                                "error": f"{type(exc).__name__}: {exc}",
+                            }
+                        _apply_cell_result(
+                            out,
+                            run_names=run_names,
+                            index_by_name=index_by_name,
+                            payload=payload,
+                        )
+        finally:
+            _finalize_running_cells(
                 out,
+                todo=todo,
                 run_names=run_names,
                 index_by_name=index_by_name,
-                payload=payload,
+                error="WorkerInterrupted: cell left running after study loop exit",
             )
-    else:
-        with ProcessPoolExecutor(
-            max_workers=min(workers_n, len(tasks)),
-            mp_context=multiprocessing.get_context("spawn"),
-        ) as pool:
-            futures = [pool.submit(execute_study_cell, task) for task in tasks]
-            for future in as_completed(futures):
-                payload = future.result()
-                _apply_cell_result(
-                    out,
-                    run_names=run_names,
-                    index_by_name=index_by_name,
-                    payload=payload,
+
+        # Final ordered index (includes soft-resumed ok rows).
+        ledger = load_ledger(out) or ledger
+        cells = ledger.get("cells") or {}
+        for name in run_names:
+            if name not in index_by_name:
+                cell = cells.get(name) or {}
+                if cell.get("status") == "ok" and cell.get("bundle_path"):
+                    row = _failed_index_row(name)
+                    row["status"] = "ok"
+                    row["bundle_path"] = cell.get("bundle_path")
+                    index_by_name[name] = row
+                else:
+                    row = _failed_index_row(name)
+                    row["status"] = cell.get("status", "pending")
+                    row["bundle_path"] = cell.get("bundle_path")
+                    index_by_name[name] = row
+            else:
+                index_by_name[name]["status"] = cells.get(name, {}).get(
+                    "status", index_by_name[name].get("status")
                 )
 
-    # Final ordered index (includes soft-resumed ok rows).
-    ledger = load_ledger(out) or ledger
-    cells = ledger.get("cells") or {}
-    for name in run_names:
-        if name not in index_by_name:
-            cell = cells.get(name) or {}
-            if cell.get("status") == "ok" and cell.get("bundle_path"):
-                # Should have been loaded; synthesize minimal ok row if missing.
-                row = _failed_index_row(name)
-                row["status"] = "ok"
-                row["bundle_path"] = cell.get("bundle_path")
-                index_by_name[name] = row
-            else:
-                row = _failed_index_row(name)
-                row["status"] = cell.get("status", "pending")
-                row["bundle_path"] = cell.get("bundle_path")
-                index_by_name[name] = row
-        else:
-            index_by_name[name]["status"] = cells.get(name, {}).get(
-                "status", index_by_name[name].get("status")
-            )
-
-    index_path = _write_results_index(out, index_by_name, run_names)
-    return {
-        "output_dir": str(out),
-        "run_count": expansion.run_count,
-        "executed": len(todo),
-        "workers": workers_n,
-        "ledger_path": str(out / "study.ledger.json"),
-        "results_index_path": str(index_path),
-        "study_identity_hash": expansion.study_identity_hash,
-        "ledger": load_ledger(out),
-        "cost_hints": cost_hint_lines(expansion, workers=workers_n),
-    }
+        index_path = _write_results_index(out, index_by_name, run_names)
+        final_ledger = load_ledger(out)
+        return {
+            "output_dir": str(out),
+            "run_count": expansion.run_count,
+            "executed": len(todo),
+            "workers": workers_n,
+            "ledger_path": str(out / "study.ledger.json"),
+            "results_index_path": str(index_path),
+            "study_identity_hash": expansion.study_identity_hash,
+            "ledger": final_ledger,
+            "run_names": list(run_names),
+            "cost_hints": cost_hint_lines(expansion, workers=workers_n),
+        }

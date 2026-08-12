@@ -148,9 +148,7 @@ def _fake_executor_factory(fail_names: set[str] | None = None):
 def test_study_expand_cli_writes_artifacts_and_cost_hints(tmp_path: Path, capsys):
     study = _mini_study_yaml(tmp_path / "study.yaml")
     out = tmp_path / "out"
-    code = cli_main(
-        ["study", "expand", str(study), "--output-dir", str(out)]
-    )
+    code = cli_main(["study", "expand", str(study), "--output-dir", str(out)])
     assert code == 0
     assert (out / "study.spec.yaml").is_file()
     assert (out / "study.expansion.json").is_file()
@@ -248,9 +246,11 @@ def test_identity_mismatch_refuses_without_force(tmp_path: Path):
     study_a = _mini_study_yaml(tmp_path / "a.yaml", name="studyA", confirm_above_runs=100)
     out = tmp_path / "out"
     run_study(study_a, output_dir=out, cell_executor=_fake_executor_factory())
+    prior_spec = (out / "study.spec.yaml").read_text(encoding="utf-8")
     study_b = _mini_study_yaml(tmp_path / "b.yaml", name="studyB", confirm_above_runs=100)
     with pytest.raises(StudySpecError, match="identity hash"):
         run_study(study_b, output_dir=out, cell_executor=_fake_executor_factory())
+    assert (out / "study.spec.yaml").read_text(encoding="utf-8") == prior_spec
     # Force allows overwrite path.
     result = run_study(
         study_b,
@@ -259,6 +259,7 @@ def test_identity_mismatch_refuses_without_force(tmp_path: Path):
         cell_executor=_fake_executor_factory(),
     )
     assert result["executed"] == 4
+    assert "studyB" in (out / "study.spec.yaml").read_text(encoding="utf-8")
 
 
 def test_workers_continue_on_per_cell_failure(tmp_path: Path):
@@ -332,9 +333,7 @@ def test_cli_study_run_confirm_exit_codes(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(execute_mod, "execute_study_cell", _fake_executor_factory())
 
-    code_no_confirm = cli_main(
-        ["study", "run", str(study), "--output-dir", str(out)]
-    )
+    code_no_confirm = cli_main(["study", "run", str(study), "--output-dir", str(out)])
     assert code_no_confirm == 2
 
     code_ok = cli_main(
@@ -351,3 +350,77 @@ def test_cli_study_run_confirm_exit_codes(tmp_path: Path, monkeypatch):
     assert (out / "study.ledger.json").is_file()
     ledger = json.loads((out / "study.ledger.json").read_text(encoding="utf-8"))
     assert ledger["confirm"]["run_count"] == 4
+
+
+def test_confirm_refuse_does_not_overwrite_expansion_artifacts(tmp_path: Path):
+    study_a = _mini_study_yaml(tmp_path / "a.yaml", name="studyA", confirm_above_runs=100)
+    out = tmp_path / "out"
+    run_study(study_a, output_dir=out, cell_executor=_fake_executor_factory())
+    prior_spec = (out / "study.spec.yaml").read_text(encoding="utf-8")
+    study_big = _mini_study_yaml(tmp_path / "big.yaml", name="studyBig", confirm_above_runs=2)
+    with pytest.raises(StudySpecError, match="confirm_above_runs"):
+        run_study(
+            study_big,
+            output_dir=out,
+            confirm=False,
+            cell_executor=_fake_executor_factory(),
+        )
+    # Refuse path must not rewrite expansion artifacts over the prior study.
+    assert (out / "study.spec.yaml").read_text(encoding="utf-8") == prior_spec
+
+
+def test_force_identity_swap_prunes_orphan_cells(tmp_path: Path):
+    study_a = _mini_study_yaml(tmp_path / "a.yaml", name="studyA", confirm_above_runs=100)
+    out = tmp_path / "out"
+    # Force one failure on A so an orphan failed cell would poison exit codes.
+    _spec, expansion, _o, _b = prepare_study_expansion(study_a, output_dir=out)
+    names_a = [run["name"] for run in expansion.experiment["runs"]]
+    run_study(
+        study_a,
+        output_dir=out,
+        cell_executor=_fake_executor_factory(fail_names={names_a[0]}),
+    )
+    study_b = _mini_study_yaml(tmp_path / "b.yaml", name="studyB", confirm_above_runs=100)
+    result = run_study(
+        study_b,
+        output_dir=out,
+        force=True,
+        cell_executor=_fake_executor_factory(),
+    )
+    ledger = load_ledger(out)
+    assert ledger is not None
+    assert set(ledger["cells"]) == set(result["run_names"])
+    assert all(cell["status"] == "ok" for cell in ledger["cells"].values())
+    # CLI exit aggregation scoped to current names → success.
+
+    # Smoke: failed count among current names is 0.
+    cells = ledger["cells"]
+    failed = sum(
+        1 for name in result["run_names"] if (cells.get(name) or {}).get("status") == "failed"
+    )
+    assert failed == 0
+
+
+def test_soft_resume_requeues_missing_bundle(tmp_path: Path):
+    study = _mini_study_yaml(tmp_path / "study.yaml", confirm_above_runs=100)
+    out = tmp_path / "out"
+    first = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    assert first["executed"] == 4
+    # Delete one ok zip — soft resume must re-queue that cell.
+    name = first["run_names"][0]
+    zip_path = out / f"{name}.research.zip"
+    assert zip_path.is_file()
+    zip_path.unlink()
+    second = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    assert second["executed"] == 1
+    assert zip_path.is_file()
+
+
+def test_mark_cell_can_clear_bundle_path():
+    from thesistester.study.ledger import empty_ledger, mark_cell
+
+    ledger = empty_ledger(study_identity_hash="h", run_names=["c1"])
+    ledger = mark_cell(ledger, "c1", status="ok", bundle_path="c1.research.zip", finished=True)
+    assert ledger["cells"]["c1"]["bundle_path"] == "c1.research.zip"
+    ledger = mark_cell(ledger, "c1", status="failed", error="x", bundle_path=None, finished=True)
+    assert ledger["cells"]["c1"]["bundle_path"] is None

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
 LEDGER_FILENAME = "study.ledger.json"
 LEDGER_STATUSES = frozenset({"pending", "running", "ok", "failed", "skipped"})
+_UNSET: Any = object()
 
 
 def _utc_now() -> str:
@@ -48,12 +50,15 @@ def load_ledger(output_dir: str | Path) -> dict[str, Any] | None:
 
 
 def save_ledger(output_dir: str | Path, ledger: Mapping[str, Any]) -> Path:
+    """Atomically write the ledger (temp file + replace)."""
     path = ledger_path(output_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(
         json.dumps(dict(ledger), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    os.replace(tmp, path)
     return path
 
 
@@ -77,7 +82,7 @@ def mark_cell(
     *,
     status: str,
     error: str | None = None,
-    bundle_path: str | None = None,
+    bundle_path: Any = _UNSET,
     started: bool = False,
     finished: bool = False,
 ) -> dict[str, Any]:
@@ -95,8 +100,11 @@ def mark_cell(
         cell["error"] = error
     elif status == "ok":
         cell["error"] = None
-    if bundle_path is not None:
+    if bundle_path is not _UNSET:
         cell["bundle_path"] = bundle_path
+    elif status in {"failed", "pending"}:
+        # Terminal failure / reset should not keep a stale zip pointer.
+        cell["bundle_path"] = None
     cells[run_name] = cell
     ledger["cells"] = cells
     return ledger
@@ -107,9 +115,15 @@ def cells_to_run(
     run_names: list[str],
     *,
     force: bool,
+    output_dir: str | Path | None = None,
 ) -> list[str]:
-    """Return run names that still need execution."""
+    """Return run names that still need execution.
+
+    Soft-resume skips ``ok`` only when the ledger bundle path still exists on
+    disk (missing zips are re-queued).
+    """
     cells = ledger.get("cells") or {}
+    root = Path(output_dir) if output_dir is not None else None
     selected: list[str] = []
     for name in run_names:
         if force:
@@ -117,6 +131,14 @@ def cells_to_run(
             continue
         cell = cells.get(name) or {}
         if cell.get("status") == "ok":
-            continue
+            bundle = cell.get("bundle_path")
+            if (
+                root is not None
+                and isinstance(bundle, str)
+                and bundle
+                and (root / bundle).is_file()
+            ):
+                continue
+            # ok without a present bundle → re-run
         selected.append(name)
     return selected

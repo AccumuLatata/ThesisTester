@@ -201,10 +201,11 @@ untouched). Study runs do **not** call `run_batch`; they loop
 
 | Flag / rule | Behavior |
 |---|---|
-| `confirm_above_runs` | `study run` refuses when `run_count >= N` unless `--confirm` |
-| Soft resume | Ledger `ok` cells are skipped on re-run |
-| `--force` | Re-run all cells; also required if StudySpec identity hash mismatches an existing ledger |
-| Workers | `workers>1` uses spawn pool; cell tasks **return** ok/failed payloads (continue-on-failure) |
+| `confirm_above_runs` | `study run` refuses when `run_count >= N` unless `--confirm` (**before** rewriting expansion artifacts) |
+| Soft resume | Ledger `ok` cells are skipped only when their `bundle_path` zip still exists |
+| `--force` | Re-run all cells; on identity mismatch replaces the ledger (no orphan cells from the prior StudySpec) |
+| Workers | `workers>1` uses spawn pool; cell tasks **return** ok/failed payloads (continue-on-failure); pool deaths mark the cell failed |
+| Lock | Exclusive `.study.lock` on `output_dir` (fail-closed if another study run holds it) |
 
 ### Artifacts (under output_dir)
 

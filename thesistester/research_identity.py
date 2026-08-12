@@ -38,9 +38,7 @@ _LEVELS_SORT_KEYS = (
     "pivot_timeframes",
 )
 
-EXECUTION_ORIGINS = frozenset(
-    {"api", "assistant", "cli", "classic", "study", "unknown"}
-)
+EXECUTION_ORIGINS = frozenset({"api", "assistant", "cli", "classic", "study", "unknown"})
 
 _IDENTITY_META_FILENAME = "research_identity.json"
 

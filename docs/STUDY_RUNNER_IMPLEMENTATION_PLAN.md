@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-11 (amended 2026-08-11: R18 contract review; MVP completeness pass)  
-**Status:** RS1–RS2 landed (schema + expansion); RS3–RS5 not started  
+**Status:** RS1–RS3 landed (schema + expansion + study-owned execute); RS4–RS5 not started  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`  
@@ -581,8 +581,10 @@ No backtest execution. No engine/pages/run_batch changes. Docs + roadmap. §4.2.
 | | ✅ `study run` without `--confirm` fails when run_count ≥ confirm_above_runs |
 | | ✅ `study run --confirm` executes; ledger marks ok/failed per cell; `execution_origin=study` |
 | | ✅ One failing cell leaves prior ok bundles/index rows intact; failure surfaced in ledger |
-| | ✅ Soft resume skips ledger `ok` cells; `--force` re-runs; identity mismatch refuses without `--force` |
-| | ✅ `workers>1` continues on per-cell failure (return payloads, not pool-wide raise) |
+| | ✅ Soft resume skips ledger `ok` cells only when bundle zip exists; `--force` re-runs; identity mismatch refuses without `--force` |
+| | ✅ Confirm/identity gates refuse **before** rewriting expansion artifacts |
+| | ✅ `--force` identity swap replaces ledger (no orphan cells / exit-code poison) |
+| | ✅ `workers>1` continues on per-cell failure (return payloads, not pool-wide raise); pool death → cell `failed` |
 | | ✅ Index columns parity-tested vs `cli._execute_run` (+ study `status`) |
 | | ✅ `run_batch` / `thesistester run` tests unchanged and green |
 | | ✅ Warn when any cell enables grid/validation/walk_forward |

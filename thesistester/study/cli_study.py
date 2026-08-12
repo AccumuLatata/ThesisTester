@@ -6,8 +6,6 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import Any, Sequence
-
 from thesistester.study.execute import (
     cost_hint_lines,
     prepare_study_expansion,
@@ -115,7 +113,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
     print(f"Results index: {result['results_index_path']}")
     ledger = result.get("ledger") or {}
     cells = ledger.get("cells") or {}
-    ok = sum(1 for cell in cells.values() if cell.get("status") == "ok")
-    failed = sum(1 for cell in cells.values() if cell.get("status") == "failed")
+    # Scope exit-code aggregation to this expansion's run names only (orphans
+    # from a prior identity must not poison a successful --force re-run).
+    run_names = list(result.get("run_names") or cells.keys())
+    ok = sum(1 for name in run_names if (cells.get(name) or {}).get("status") == "ok")
+    failed = sum(1 for name in run_names if (cells.get(name) or {}).get("status") == "failed")
     print(f"Cell status: ok={ok} failed={failed}")
     return os.EX_OK if failed == 0 else 1
