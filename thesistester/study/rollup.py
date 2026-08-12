@@ -301,7 +301,10 @@ def render_rollup_markdown(
         "",
         "R15 `overfitting_summary` / `cscv_pbo` require **grid cell trade sequences**. "
         "After promote, opt into survivor-stage batteries with explicit `enabled: true` "
-        "flags (never bare `{}`) before expecting dense overfitting columns.",
+        "flags (never bare `{}`): `grid.enabled: true` **and** "
+        "`validation.enabled: true` **and** `validation.overfitting.enabled: true` "
+        "(parent `validation.enabled` must be on or overfitting is skipped) before "
+        "expecting dense overfitting columns.",
         "",
         "## Battery coverage",
         "",

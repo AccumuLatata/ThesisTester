@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts + code-audit hardening)  
-**Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 + RS-D4 complete**. Post-MVP remaining: **RS-D5**; parked: RS-D1 / RS-D3 / RS-D6  
+**Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 complete**. Post-MVP §12 sequence done; parked: RS-D1 / RS-D3 / RS-D6  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`, `docs/USER_GUIDE.md`, `docs/STUDY_RUNNER.md`  
@@ -926,23 +926,24 @@ Update STUDY_RUNNER + assumptions (incl. grid requirement for overfitting).
 
 ---
 
-### 12.6 RS-D5 — Grok Bot routine pack (external)
+### 12.6 RS-D5 — Grok Bot routine pack (external) — ✅
 
 | | |
 |---|---|
 | **Depends on** | **RS6** (minimal CLI/confirm docs + optional STUDY.* tools); benefits from RS-D7 index PF |
 | **Scope** | **Documentation + example agent routines** for an external coworker (Grok Bot). Prefer living outside the product runtime; in-repo only as docs/examples under `docs/` or `examples/studies/agents/` |
 | **Docs split** | Owns the **full** multi-step routine pack. Must not contradict RS6’s minimal recipe; extend it. |
+| **Shipped** | `docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md` + `examples/studies/agents/` (SYSTEM + stage-first / confirm-bound / survivor-diagnostics prompts); operator pointer in `STUDY_RUNNER.md` §RS-D5 |
 | **Behavior** | |
 | | Recipe: stage-first expand → two-step confirm when required → run → report → promote draft → human edit → second pass (optionally enable WFA/grid on survivors before RS-D4 rollup) |
 | | Hard rules: never invent factor axes; never bypass confirm; never auto-run promote drafts; always surface honesty / min_trades / multiple-testing |
 | | May shell CLI even if `assistant.study_tools.enabled` is off |
 | **Out of scope** | Embedding Grok in ThesisTester; RabbitMQ; multi-agent host; product UI for bot orchestration; shipping MCP server |
 | **Acceptance checklist** | |
-| | ☐ Documented routine pack with copy-ready prompts/commands |
-| | ☐ Explicit non-goals: no setup invention, no confirm bypass, no auto-promote execute |
-| | ☐ Points at RS6 default-off flag + CLI fallback; references RS-D7 index PF |
-| | ☐ No runtime default changes |
+| | ☑ Documented routine pack with copy-ready prompts/commands |
+| | ☑ Explicit non-goals: no setup invention, no confirm bypass, no auto-promote execute |
+| | ☑ Points at RS6 default-off flag + CLI fallback; references RS-D7 index PF |
+| | ☑ No runtime default changes |
 
 **Copy-ready agent prompt:**
 
@@ -969,7 +970,7 @@ Still **non-goals:** auto-promote to live thesis without human confirm; schedule
 
 ### 12.8 First implementable PR (kickoff)
 
-**RS-D7 ✅, RS6 ✅, RS-D2 ✅, and RS-D4 ✅ shipped.** Next code PR = **RS-D5 only** (§12.6).
+**RS-D7 ✅, RS6 ✅, RS-D2 ✅, RS-D4 ✅, and RS-D5 ✅ shipped.** Sequenced post-MVP track complete; parked items (§12.7) stay out unless this plan is amended.
 
 Historical D7 implementer notes (kept for audit):
 
@@ -1034,7 +1035,7 @@ Recommended workflow after post-MVP sequence (§12):
 | `METRICS_GLOSSARY.md` | RS4 ✅; RS-D7 | Overview / index PF + WR columns |
 | `USER_GUIDE.md` | RS5 ✅; RS-D2 | Studies viewer how-to (HC allowlist) |
 | `README.md` (root) | RS5 ✅ | One-liner pointer |
-| Grok docs | RS6 minimal recipe; **RS-D5** full pack | External agent recipes (no divergent forks) |
+| Grok docs | RS6 minimal recipe; **RS-D5** ✅ full pack (`STUDY_RUNNER_GROK_ROUTINE_PACK.md` + `examples/studies/agents/`) | External agent recipes (no divergent forks) |
 | `CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md` | RS0 pointer only | Keep separate; no edits required for RS |
 
 ---
@@ -1108,7 +1109,7 @@ Recommended workflow after post-MVP sequence (§12):
 | RS6 Default-off `STUDY.*` assistant capabilities | ✅ |
 | RS-D2 Studies viewer (read-only) | ✅ |
 | RS-D4 Per-cell diagnostic rollup | ✅ |
-| RS-D5 Grok Bot routine pack | ☐ **Next** |
+| RS-D5 Grok Bot routine pack | ✅ |
 | RS-D1 / RS-D3 / RS-D6 | Parked (§12.7) |
 
 ---
@@ -1176,3 +1177,13 @@ Recommended workflow after post-MVP sequence (§12):
 42. **RS6 registry posture:** always register `STUDY.*`, handlers refuse when `[assistant.study_tools] enabled` is false/missing (deterministic registry-audit).  
 43. RS6: all four capabilities `EXECUTABLE`; confirm levels `NONE`/`NONE`/`EXPLICIT`/`NONE` for expand/report/run/promote; approval object on `AssistantRequest.payload`; `confirmed=True` alone insufficient over threshold.  
 44. §12.8 kickoff expanded with field-backfill + ordered-parity + focused test matrix.  
+
+### 18.7 RS-D5 ship
+
+45. External Grok routine pack landed as docs/examples only:
+   `docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md` + `examples/studies/agents/`
+   (SYSTEM + stage-first / confirm-bound / survivor-diagnostics prompts).  
+46. Extends RS6 minimal confirm recipe (bound approval / CLI `--confirm`); no
+   product host, RabbitMQ, or MCP server; `assistant.study_tools` remains
+   default-off.  
+47. §12 sequenced post-MVP track marked complete; parked D1/D3/D6 unchanged.  

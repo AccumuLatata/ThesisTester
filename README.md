@@ -65,8 +65,9 @@ python -m thesistester run experiment.yaml --workers 4
 ```
 
 For closed multi-factor confluence studies, use the additive Study Runner
-(`study expand|run|report|promote`) — see [`docs/STUDY_RUNNER.md`](docs/STUDY_RUNNER.md)
-and `examples/studies/`.
+(`study expand|run|report|promote|rollup`) — see [`docs/STUDY_RUNNER.md`](docs/STUDY_RUNNER.md),
+`examples/studies/`, and the external coworker pack
+[`docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md`](docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md).
 
 Dataset paths are relative to the YAML file. Parallelism is across independent
 runs only; each run remains single-threaded and deterministic. See
