@@ -279,3 +279,111 @@ def test_schema_version_rejected():
     raw["schema_version"] = 99
     with pytest.raises(StudySpecError, match="Unsupported StudySpec schema_version"):
         validate_study_spec(normalize_study_spec(raw))
+
+
+def test_schema_version_rejects_bool_and_float():
+    raw = _minimal_study()
+    raw["schema_version"] = True
+    with pytest.raises(StudySpecError, match="Unsupported StudySpec schema_version"):
+        validate_study_spec(normalize_study_spec(raw))
+    raw["schema_version"] = 1.0
+    with pytest.raises(StudySpecError, match="Unsupported StudySpec schema_version"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_levels_list_fields_reject_strings_and_bad_lengths():
+    raw = _minimal_study()
+    raw["study"]["levels"]["sma_lengths"] = "50"
+    with pytest.raises(StudySpecError, match="sma_lengths must be a list"):
+        validate_study_spec(normalize_study_spec(raw))
+
+    raw = _minimal_study()
+    raw["study"]["levels"]["sma_lengths"] = ["nope"]
+    with pytest.raises(StudySpecError, match="sma_lengths\\[0\\] must be an integer"):
+        validate_study_spec(normalize_study_spec(raw))
+
+    raw = _minimal_study()
+    raw["study"]["levels"]["sma_lengths"] = [True]
+    with pytest.raises(StudySpecError, match="sma_lengths\\[0\\] must be an integer"):
+        validate_study_spec(normalize_study_spec(raw))
+
+    raw = _minimal_study()
+    raw["study"]["levels"]["vwap_windows"] = "30min"
+    with pytest.raises(StudySpecError, match="vwap_windows must be a list"):
+        validate_study_spec(normalize_study_spec(raw))
+
+    with pytest.raises(StudySpecError, match="sma_lengths must be a list"):
+        closed_level_token_set({"sma_lengths": "50"})
+
+
+def test_group_by_must_be_study_factor_axis():
+    raw = _minimal_study()
+    raw["study"]["report"]["group_by"] = ["direction"]
+    with pytest.raises(StudySpecError, match="group_by\\[0\\] must be a factor axis"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_stage_include_values_must_be_in_factor_domain():
+    raw = _minimal_study()
+    raw["study"]["stage"] = {
+        "mode": "filter",
+        "include": {"trigger": ["3c"]},  # factors.trigger is [touch] only
+    }
+    with pytest.raises(StudySpecError, match="not one of factors.trigger"):
+        validate_study_spec(normalize_study_spec(raw))
+
+    raw = _minimal_study()
+    raw["study"]["stage"] = {
+        "mode": "filter",
+        "include": {"trigger_timeframe": ["30min"]},
+    }
+    with pytest.raises(StudySpecError, match="not one of factors.trigger_timeframe"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_stage_explicit_cells_reject_out_of_domain_values():
+    raw = _minimal_study()
+    cell = {
+        "core_level": "pdPOC",
+        "partner_levels": ["SMA_50_1min"],
+        "confluence_mode": "global_cluster",
+        "trigger": "teleport",
+        "trigger_timeframe": "base",
+        "otf": {"enabled": False},
+    }
+    raw["study"]["stage"] = {"mode": "explicit_cells", "cells": [cell]}
+    with pytest.raises(StudySpecError, match="not one of factors.trigger"):
+        validate_study_spec(normalize_study_spec(raw))
+
+    cell = {
+        "core_level": "ONH",  # not in factors.core_level
+        "partner_levels": ["SMA_50_1min"],
+        "confluence_mode": "global_cluster",
+        "trigger": "touch",
+        "trigger_timeframe": "base",
+        "otf": {"enabled": False},
+    }
+    raw["study"]["stage"] = {"mode": "explicit_cells", "cells": [cell]}
+    with pytest.raises(StudySpecError, match="not one of factors.core_level"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_global_cluster_selected_levels_must_be_nonempty_list():
+    raw = _minimal_study()
+    raw["study"]["mode_rules"]["global_cluster"]["selected_levels"] = []
+    with pytest.raises(StudySpecError, match="selected_levels must be a non-empty list"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_mode_rules_without_confluence_mode_factor_rejected():
+    raw = _minimal_study()
+    del raw["study"]["factors"]["confluence_mode"]
+    with pytest.raises(StudySpecError, match="mode_rules requires factors.confluence_mode"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_anchor_level_must_be_nonempty_string():
+    raw = _minimal_study()
+    raw["study"]["mode_rules"]["anchor_rules"]["anchor_level"] = ""
+    with pytest.raises(StudySpecError, match="anchor_level must be a non-empty string"):
+        validate_study_spec(normalize_study_spec(raw))

@@ -518,7 +518,8 @@ Allowed read-only imports: `setup` validators/constants, `normalize_otf_filter_c
 | | ✅ `direction` in constants allowed; listing unsupported factor axes errors clearly |
 | | ✅ `stage.mode: filter` requires `include`; `explicit_cells` requires non-empty `cells` with all factor keys |
 | | ✅ Docs describe schema_version: 1 |
-| | ✅ `pytest -q tests/study/test_study_schema.py` green (22 passed); no engine/pages/cli execution surface added |
+| | ✅ `pytest -q tests/study/test_study_schema.py` green (30 passed); no engine/pages/cli execution surface added |
+| | ✅ Stage include/explicit_cells values ⊆ factor domains; levels list shapes fail closed as StudySpecError |
 
 **Copy-ready agent prompt:**
 

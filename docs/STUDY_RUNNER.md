@@ -81,24 +81,35 @@ Unknown tokens fail at validate time with an actionable error.
 - When `grid` / `validation` / `walk_forward` mappings are present, they **must**
   include explicit `enabled: true|false`. Bare `{}` is rejected (R18 default-on trap).
 - `max_confluences` ≤ 5 when provided.
-- `dataset` / `levels` / `backtest` are structural pass-throughs; deep RunSpec
-  validation happens after expansion (RS2).
+- `dataset` / `backtest` are structural pass-throughs; deep RunSpec validation
+  happens after expansion (RS2).
+- `levels` keys ⊆ `DEFAULT_LEVELS_SETTINGS`. List fields (`sma_lengths`,
+  `ema_lengths`, `*_timeframes`, `vwap_windows`, `poc_windows`,
+  `pivot_timeframes`) must be real lists (not strings); lengths must be
+  positive ints (not bools). Invalid shapes fail closed as `StudySpecError`.
+
+### Report rules (RS1)
+
+- `schema_version` must be the integer `1` (reject `true` / `1.0`).
+- `group_by` keys must be axes present on **this** study’s `factors` (not merely
+  any supported axis name).
 
 ### Mode rules
 
-Required when `factors.confluence_mode` is present.
+Required when `factors.confluence_mode` is present (and forbidden otherwise).
 
-- `global_cluster.selected_levels` required (template string list for RS2).
+- `global_cluster.selected_levels` must be a **non-empty** list (template strings
+  for RS2).
 - `anchor_rules.selected_levels` must be `[]`.
-- `anchor_rules.anchor_level` required.
+- `anchor_rules.anchor_level` must be a non-empty string.
 - `anchor_rules.confluence_rules.from_partners` ∈ `{required, optional}`.
 
 ### Stage
 
 | Mode | Requirements |
 |---|---|
-| `filter` | non-empty `include`; keys ⊆ factor axes; no `cells` |
-| `explicit_cells` | non-empty `cells`; each cell supplies **every** factor axis; no `include` |
+| `filter` | non-empty `include`; keys ⊆ factor axes; each include value ∈ that factor’s domain; no `cells` |
+| `explicit_cells` | non-empty `cells`; each cell supplies **every** factor axis with a value ∈ that factor’s domain; no `include` |
 
 ### Out of scope for RS1
 

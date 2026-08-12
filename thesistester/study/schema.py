@@ -174,13 +174,76 @@ def _positive_int(value: Any, *, field: str) -> int:
     return value
 
 
+def _require_list(value: Any, *, field: str) -> list[Any]:
+    """Require a real list (reject str/bytes which are iterable character-wise)."""
+    if isinstance(value, (str, bytes)) or not isinstance(value, list):
+        raise StudySpecError(f"{field} must be a list")
+    return value
+
+
+def _require_positive_int_list(value: Any, *, field: str) -> list[int]:
+    values = _require_list(value, field=field)
+    out: list[int] = []
+    for index, item in enumerate(values):
+        if isinstance(item, bool) or not isinstance(item, int):
+            raise StudySpecError(f"{field}[{index}] must be an integer")
+        if item < 1:
+            raise StudySpecError(f"{field}[{index}] must be >= 1")
+        out.append(item)
+    return out
+
+
+def _require_nonempty_str_list(value: Any, *, field: str) -> list[str]:
+    values = _require_list(value, field=field)
+    out: list[str] = []
+    for index, item in enumerate(values):
+        if not isinstance(item, str) or not item.strip():
+            raise StudySpecError(f"{field}[{index}] must be a non-empty string")
+        out.append(item.strip())
+    return out
+
+
+def _validate_levels_map(levels_map: Mapping[str, Any]) -> None:
+    """Fail closed on levels shapes that would crash or invent junk tokens."""
+    for key in ("sma_lengths", "ema_lengths"):
+        if key not in levels_map or levels_map[key] is None:
+            continue
+        _require_positive_int_list(levels_map[key], field=f"study.levels.{key}")
+
+    for key in ("sma_timeframes", "ema_timeframes"):
+        values = levels_map.get(key)
+        if values is None:
+            continue
+        parsed = _require_list(values, field=f"study.levels.{key}")
+        invalid = sorted({str(v) for v in parsed if str(v) not in SUPPORTED_INDICATOR_TIMEFRAMES})
+        if invalid:
+            raise StudySpecError(
+                f"Unsupported study.levels.{key} value(s): {invalid}; "
+                f"choose from {list(SUPPORTED_INDICATOR_TIMEFRAMES)}"
+            )
+
+    for key in ("vwap_windows", "poc_windows", "pivot_timeframes"):
+        if key not in levels_map or levels_map[key] is None:
+            continue
+        _require_nonempty_str_list(levels_map[key], field=f"study.levels.{key}")
+
+    if "prev30m_vwap_validity_periods" in levels_map:
+        _positive_int(
+            levels_map.get("prev30m_vwap_validity_periods"),
+            field="study.levels.prev30m_vwap_validity_periods",
+        )
+
+
 def closed_level_token_set(levels: Mapping[str, Any] | None) -> frozenset[str]:
     """Return the closed set of level tokens valid for core/partner factors."""
-    settings = {**DEFAULT_LEVELS_SETTINGS, **dict(levels or {})}
+    levels_map = dict(levels or {})
+    # Public helper: validate shapes so callers never see raw int()/iterate crashes.
+    _validate_levels_map(levels_map)
+    settings = {**DEFAULT_LEVELS_SETTINGS, **levels_map}
     tokens: set[str] = set(STUDY_STATIC_LEVEL_NAMES)
 
-    sma_lengths = settings.get("sma_lengths") or ()
-    ema_lengths = settings.get("ema_lengths") or ()
+    sma_lengths = settings.get("sma_lengths") or []
+    ema_lengths = settings.get("ema_lengths") or []
     sma_timeframes = settings.get("sma_timeframes")
     ema_timeframes = settings.get("ema_timeframes")
 
@@ -200,9 +263,9 @@ def closed_level_token_set(levels: Mapping[str, Any] | None) -> frozenset[str]:
         for length in ema_lengths:
             tokens.add(f"EMA_{int(length)}")
 
-    for window in settings.get("vwap_windows") or ():
+    for window in settings.get("vwap_windows") or []:
         tokens.add(f"VWAP_rolling_{normalized_window_label(str(window))}")
-    for window in settings.get("poc_windows") or ():
+    for window in settings.get("poc_windows") or []:
         tokens.add(f"POC_rolling_{normalized_window_label(str(window))}")
 
     if bool(settings.get("prev30m_vwap_enabled", False)):
@@ -210,7 +273,7 @@ def closed_level_token_set(levels: Mapping[str, Any] | None) -> frozenset[str]:
         tokens.update(prev30m_price_column_names(max(validity, 1)))
 
     if bool(settings.get("pivots_enabled", False)):
-        for timeframe in settings.get("pivot_timeframes") or ():
+        for timeframe in settings.get("pivot_timeframes") or []:
             label = str(timeframe).strip()
             if label:
                 tokens.add(f"Pivot_{label}_High")
@@ -284,7 +347,11 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
     _unknown_keys(payload, _TOP_LEVEL_KEYS, section="StudySpec")
 
     schema_version = payload.get("schema_version")
-    if schema_version != STUDY_SCHEMA_VERSION:
+    if (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version != STUDY_SCHEMA_VERSION
+    ):
         raise StudySpecError(
             f"Unsupported StudySpec schema_version: {schema_version!r}; "
             f"expected {STUDY_SCHEMA_VERSION}"
@@ -295,9 +362,7 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
 
     name = study.get("name")
     if not isinstance(name, str) or not RUN_NAME_RE.fullmatch(name):
-        raise StudySpecError(
-            f"study.name must match {RUN_NAME_RE.pattern!r}; got {name!r}"
-        )
+        raise StudySpecError(f"study.name must match {RUN_NAME_RE.pattern!r}; got {name!r}")
 
     description = study.get("description", "")
     if description is not None and not isinstance(description, str):
@@ -327,20 +392,7 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
     unknown_levels = sorted(set(levels_map) - set(DEFAULT_LEVELS_SETTINGS))
     if unknown_levels:
         raise StudySpecError(f"Unknown study.levels keys: {unknown_levels}")
-    for key in ("sma_timeframes", "ema_timeframes"):
-        values = levels_map.get(key)
-        if values is None:
-            continue
-        if not isinstance(values, list):
-            raise StudySpecError(f"study.levels.{key} must be a list")
-        invalid = sorted(
-            {str(v) for v in values if str(v) not in SUPPORTED_INDICATOR_TIMEFRAMES}
-        )
-        if invalid:
-            raise StudySpecError(
-                f"Unsupported study.levels.{key} value(s): {invalid}; "
-                f"choose from {list(SUPPORTED_INDICATOR_TIMEFRAMES)}"
-            )
+    _validate_levels_map(levels_map)
 
     closed_tokens = closed_level_token_set(levels_map)
 
@@ -353,9 +405,9 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
 
     mode_rules = study.get("mode_rules")
     if "confluence_mode" in factors and mode_rules is None:
-        raise StudySpecError(
-            "study.mode_rules is required when factors.confluence_mode is present"
-        )
+        raise StudySpecError("study.mode_rules is required when factors.confluence_mode is present")
+    if mode_rules is not None and "confluence_mode" not in factors:
+        raise StudySpecError("study.mode_rules requires factors.confluence_mode")
     if mode_rules is not None:
         mode_map = _require_mapping(mode_rules, section="study.mode_rules")
         _unknown_keys(mode_map, _MODE_RULE_TOP_KEYS, section="study.mode_rules")
@@ -369,7 +421,7 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
     if stage is not None:
         stage_map = _require_mapping(stage, section="study.stage")
         _unknown_keys(stage_map, _STAGE_KEYS, section="study.stage")
-        _validate_stage(stage_map, factor_keys=set(factors))
+        _validate_stage(stage_map, factors=factors)
 
     return dict(payload)
 
@@ -408,18 +460,14 @@ def _validate_constants(constants: Mapping[str, Any]) -> None:
     for section in _ENABLED_SECTIONS:
         if section not in constants:
             continue
-        mapping = _require_mapping(
-            constants.get(section), section=f"study.constants.{section}"
-        )
+        mapping = _require_mapping(constants.get(section), section=f"study.constants.{section}")
         if "enabled" not in mapping:
             raise StudySpecError(
                 f"study.constants.{section} must include explicit enabled "
                 f"(true/false); bare mappings default-on in run_experiment"
             )
         if not isinstance(mapping["enabled"], bool):
-            raise StudySpecError(
-                f"study.constants.{section}.enabled must be a boolean"
-            )
+            raise StudySpecError(f"study.constants.{section}.enabled must be a boolean")
 
 
 def _validate_factors(
@@ -430,8 +478,7 @@ def _validate_factors(
     unknown = sorted(set(factors) - _SUPPORTED_FACTOR_AXES)
     if unknown:
         raise StudySpecError(
-            f"Unsupported factor axes: {unknown}; "
-            f"supported axes: {sorted(_SUPPORTED_FACTOR_AXES)}"
+            f"Unsupported factor axes: {unknown}; supported axes: {sorted(_SUPPORTED_FACTOR_AXES)}"
         )
     missing = sorted(_REQUIRED_FACTOR_AXES - set(factors))
     if missing:
@@ -442,9 +489,7 @@ def _validate_factors(
         raise StudySpecError("factors.core_level must be a non-empty list")
     for index, token in enumerate(core):
         if not isinstance(token, str) or not token:
-            raise StudySpecError(
-                f"factors.core_level[{index}] must be a non-empty string"
-            )
+            raise StudySpecError(f"factors.core_level[{index}] must be a non-empty string")
         if token not in closed_tokens:
             raise StudySpecError(
                 f"Unknown core_level token {token!r}; not in closed level set "
@@ -453,25 +498,19 @@ def _validate_factors(
 
     partners = factors.get("partner_levels")
     if not isinstance(partners, list) or not partners:
-        raise StudySpecError(
-            "factors.partner_levels must be a non-empty list of partner-sets"
-        )
+        raise StudySpecError("factors.partner_levels must be a non-empty list of partner-sets")
     for index, partner_set in enumerate(partners):
         if not isinstance(partner_set, list) or not partner_set:
-            raise StudySpecError(
-                f"factors.partner_levels[{index}] must be a non-empty list"
-            )
+            raise StudySpecError(f"factors.partner_levels[{index}] must be a non-empty list")
         if len(partner_set) + 1 > 5:
             # core + partners length cap for global_cluster study emission rule
             raise StudySpecError(
-                f"factors.partner_levels[{index}] too large: "
-                f"core+partners would exceed 5 levels"
+                f"factors.partner_levels[{index}] too large: core+partners would exceed 5 levels"
             )
         for token_index, token in enumerate(partner_set):
             if not isinstance(token, str) or not token:
                 raise StudySpecError(
-                    f"factors.partner_levels[{index}][{token_index}] "
-                    f"must be a non-empty string"
+                    f"factors.partner_levels[{index}][{token_index}] must be a non-empty string"
                 )
             if token not in closed_tokens:
                 raise StudySpecError(
@@ -533,28 +572,26 @@ def _validate_factors(
 
 
 def _validate_mode_rules(mode_rules: Mapping[str, Any], *, factors: Mapping[str, Any]) -> None:
-    modes = factors.get("confluence_mode") or ["global_cluster", "anchor_rules"]
-    if not isinstance(modes, list):
-        modes = ["global_cluster", "anchor_rules"]
+    modes = factors.get("confluence_mode")
+    if not isinstance(modes, list) or not modes:
+        raise StudySpecError("study.mode_rules requires a non-empty factors.confluence_mode list")
     for mode in modes:
         if mode not in mode_rules:
-            raise StudySpecError(
-                f"study.mode_rules missing entry for confluence mode {mode!r}"
-            )
+            raise StudySpecError(f"study.mode_rules missing entry for confluence mode {mode!r}")
         entry = _require_mapping(mode_rules.get(mode), section=f"study.mode_rules.{mode}")
         if mode == "global_cluster":
-            if "selected_levels" not in entry:
+            selected = entry.get("selected_levels")
+            if not isinstance(selected, list) or not selected:
                 raise StudySpecError(
-                    "study.mode_rules.global_cluster.selected_levels is required"
+                    "study.mode_rules.global_cluster.selected_levels must be a non-empty list"
                 )
         if mode == "anchor_rules":
             if "selected_levels" not in entry or entry.get("selected_levels") != []:
+                raise StudySpecError("study.mode_rules.anchor_rules.selected_levels must be []")
+            anchor = entry.get("anchor_level")
+            if not isinstance(anchor, str) or not anchor.strip():
                 raise StudySpecError(
-                    "study.mode_rules.anchor_rules.selected_levels must be []"
-                )
-            if "anchor_level" not in entry:
-                raise StudySpecError(
-                    "study.mode_rules.anchor_rules.anchor_level is required"
+                    "study.mode_rules.anchor_rules.anchor_level must be a non-empty string"
                 )
             rules = entry.get("confluence_rules")
             if not isinstance(rules, Mapping):
@@ -587,9 +624,10 @@ def _validate_report(report: Mapping[str, Any], *, factor_keys: set[str]) -> Non
         if not isinstance(group_by, list):
             raise StudySpecError("study.report.group_by must be a list")
         for index, key in enumerate(group_by):
-            if key not in factor_keys and key not in _SUPPORTED_FACTOR_AXES:
+            if key not in factor_keys:
                 raise StudySpecError(
-                    f"study.report.group_by[{index}] unknown factor key {key!r}"
+                    f"study.report.group_by[{index}] must be a factor axis on "
+                    f"this study; got {key!r}"
                 )
 
     multiple_testing = report.get("multiple_testing")
@@ -603,19 +641,42 @@ def _validate_report(report: Mapping[str, Any], *, factor_keys: set[str]) -> Non
     if baseline is not None:
         baseline_map = _require_mapping(baseline, section="study.report.otf_baseline")
         if "enabled" not in baseline_map:
-            raise StudySpecError(
-                "study.report.otf_baseline must include explicit enabled"
-            )
+            raise StudySpecError("study.report.otf_baseline must include explicit enabled")
         if not isinstance(baseline_map["enabled"], bool):
             raise StudySpecError("study.report.otf_baseline.enabled must be a boolean")
 
 
-def _validate_stage(stage: Mapping[str, Any], *, factor_keys: set[str]) -> None:
+def _factor_axis_allows_value(
+    axis: str,
+    value: Any,
+    factors: Mapping[str, Any],
+    *,
+    path: str,
+) -> None:
+    """Require ``value`` to be a member of ``factors[axis]`` (OTF via normalize)."""
+    domain = factors[axis]
+    if axis == "partner_levels":
+        if not isinstance(value, list) or not value:
+            raise StudySpecError(f"{path} must be a non-empty list")
+        if not any(list(value) == list(partner_set) for partner_set in domain):
+            raise StudySpecError(f"{path} value {value!r} is not one of factors.partner_levels")
+        return
+    if axis == "otf":
+        normalized = _normalize_otf_factor_entry(value, path=path)
+        for index, entry in enumerate(domain):
+            candidate = _normalize_otf_factor_entry(entry, path=f"factors.otf[{index}]")
+            if candidate == normalized:
+                return
+        raise StudySpecError(f"{path} OTF config is not one of factors.otf")
+    if value not in domain:
+        raise StudySpecError(f"{path} value {value!r} is not one of factors.{axis}")
+
+
+def _validate_stage(stage: Mapping[str, Any], *, factors: Mapping[str, Any]) -> None:
+    factor_keys = set(factors)
     mode = stage.get("mode")
     if mode not in {"filter", "explicit_cells"}:
-        raise StudySpecError(
-            f"study.stage.mode must be 'filter' or 'explicit_cells'; got {mode!r}"
-        )
+        raise StudySpecError(f"study.stage.mode must be 'filter' or 'explicit_cells'; got {mode!r}")
 
     if mode == "filter":
         if "include" not in stage:
@@ -629,53 +690,40 @@ def _validate_stage(stage: Mapping[str, Any], *, factor_keys: set[str]) -> None:
         if not include:
             raise StudySpecError("study.stage.include must be a non-empty mapping")
         for key, values in include.items():
-            if not isinstance(values, list) or not values:
-                raise StudySpecError(
-                    f"study.stage.include.{key} must be a non-empty list"
+            parsed = _require_list(values, field=f"study.stage.include.{key}")
+            if not parsed:
+                raise StudySpecError(f"study.stage.include.{key} must be a non-empty list")
+            for index, value in enumerate(parsed):
+                _factor_axis_allows_value(
+                    key,
+                    value,
+                    factors,
+                    path=f"study.stage.include.{key}[{index}]",
                 )
         if "cells" in stage:
-            raise StudySpecError(
-                "study.stage.mode=filter must not include stage.cells"
-            )
+            raise StudySpecError("study.stage.mode=filter must not include stage.cells")
         return
 
     # explicit_cells
     if "include" in stage:
-        raise StudySpecError(
-            "study.stage.mode=explicit_cells must not include stage.include"
-        )
+        raise StudySpecError("study.stage.mode=explicit_cells must not include stage.include")
     cells = stage.get("cells")
     if not isinstance(cells, list) or not cells:
-        raise StudySpecError(
-            "study.stage.mode=explicit_cells requires non-empty stage.cells"
-        )
+        raise StudySpecError("study.stage.mode=explicit_cells requires non-empty stage.cells")
     for index, cell in enumerate(cells):
         cell_map = _require_mapping(cell, section=f"study.stage.cells[{index}]")
         missing = sorted(factor_keys - set(cell_map))
         if missing:
-            raise StudySpecError(
-                f"study.stage.cells[{index}] missing factor keys: {missing}"
-            )
+            raise StudySpecError(f"study.stage.cells[{index}] missing factor keys: {missing}")
         extra = sorted(set(cell_map) - factor_keys)
         if extra:
-            raise StudySpecError(
-                f"study.stage.cells[{index}] unknown factor keys: {extra}"
-            )
-        # Shape checks for level-like axes (values are scalars / lists per cell).
-        if "core_level" in cell_map and not isinstance(cell_map["core_level"], str):
-            raise StudySpecError(
-                f"study.stage.cells[{index}].core_level must be a string"
-            )
-        if "partner_levels" in cell_map:
-            partners = cell_map["partner_levels"]
-            if not isinstance(partners, list) or not partners:
-                raise StudySpecError(
-                    f"study.stage.cells[{index}].partner_levels must be a "
-                    f"non-empty list"
-                )
-        if "otf" in cell_map:
-            _normalize_otf_factor_entry(
-                cell_map["otf"], path=f"study.stage.cells[{index}].otf"
+            raise StudySpecError(f"study.stage.cells[{index}] unknown factor keys: {extra}")
+        for axis in sorted(factor_keys):
+            _factor_axis_allows_value(
+                axis,
+                cell_map[axis],
+                factors,
+                path=f"study.stage.cells[{index}].{axis}",
             )
 
 
