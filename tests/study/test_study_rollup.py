@@ -61,6 +61,8 @@ def test_composes_index_wfa_and_bundle_overfitting(tmp_path: Path):
     index.loc[index["run_name"] == name, "wfa_fold_count"] = 3
     index.loc[index["run_name"] == name, "wfa_valid_fold_count"] = 2
     index.loc[index["run_name"] == name, "wfa_median_test_expectancy_r"] = 0.12
+    # Column may be float64 when all-null from CSV; allow string status.
+    index["validation_trade_count_status"] = index["validation_trade_count_status"].astype(object)
     index.loc[index["run_name"] == name, "validation_trade_count_status"] = "reasonable"
     index.to_csv(study_dir / "results_index.csv", index=False)
 
