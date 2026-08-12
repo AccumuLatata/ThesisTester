@@ -50,6 +50,8 @@ def test_default_fixture_batteries_are_not_run(tmp_path: Path):
     assert result.frame["overfitting_dsr"].isna().all()
     assert "compose" in result.markdown.lower() or "composes" in result.markdown.lower()
     assert "cross-cell" in result.markdown.lower()
+    assert "validation.enabled: true" in result.markdown
+    assert "validation.overfitting.enabled: true" in result.markdown
     assert (study_dir / "study.rollup.csv").is_file()
     assert (study_dir / "study.rollup.md").is_file()
 

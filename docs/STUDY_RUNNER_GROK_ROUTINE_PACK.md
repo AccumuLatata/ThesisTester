@@ -116,11 +116,14 @@ Optional human inspect: Streamlit **Studies** page (read-only) on the same
 python -m thesistester study promote out/pdPOC_stage40 \
   --output drafts/pdPOC_survivors_draft.yaml \
   --top-n 10
+# Existing draft path → add --force only after explicit human approval
 ```
 
 Stop. Tell the human: draft only; edit constants/dataset/stage; confirm before
 any second execute. Refuse to chain `study run` on the draft in the same
-unattended turn unless the human explicitly confirmed that draft.
+unattended turn unless the human explicitly confirmed that draft. Refuse silent
+overwrite of an existing draft (CLI `--force` / promote `force=true` only when
+asked).
 
 ### 5) Human edit → second pass
 
@@ -179,13 +182,18 @@ Copy into the external agent’s system prompt (also in
 1. Closed StudySpec only — never invent factor axes, triggers, or level tokens.
 2. Prefer CLI; RS6 tools are default-off and refuse when disabled.
 3. Never bypass confirm (`--confirm` / bound `payload.approval`).
-4. Never auto-run promote drafts; human edit + confirm first.
+4. Never auto-run promote drafts; human edit + confirm first; draft overwrite
+   needs `--force` / `force=true` only when the human asks.
 5. Always mention honesty, `min_trades`, and multiple-testing when ranking.
 6. Prefer RS-D7 index `profit_factor` / `win_rate` when present.
-7. Do not enable batteries with bare `{}`; do not invent cross-cell PBO.
+7. Do not enable batteries with bare `{}`; dense overfitting needs
+   `grid.enabled: true` + parent `validation.enabled: true` +
+   `validation.overfitting.enabled: true`; do not invent cross-cell PBO.
+   `study rollup` is CLI-only (no `STUDY.rollup`).
 8. No MCP server / no product-host embedding assumptions.
 9. Studies viewer is read-only inspection only.
-10. Soft-resume by default; `--force` only on explicit human request.
+10. Soft-resume by default; run `--force` wipe only on explicit human request
+    (distinct from promote overwrite `--force`).
 
 ---
 

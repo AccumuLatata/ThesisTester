@@ -18,4 +18,6 @@ Study Runner CLI or optionally uses default-off RS6 `STUDY.*` tools.
 
 - No in-product Grok host, RabbitMQ, or MCP server
 - No setup invention; no confirm bypass; no auto-run of promote drafts
+- No silent promote overwrite (existing draft paths need `--force` / `force=true`)
 - No runtime default changes (`assistant.study_tools` stays default-off)
+- No `STUDY.rollup` tool — rollup stays CLI-only

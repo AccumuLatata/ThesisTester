@@ -10,8 +10,9 @@ Follow docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md and SYSTEM.md hard rules.
 Preconditions (ask human if unclear):
 - Draft path (e.g. drafts/pdPOC_survivors_draft.yaml) already human-edited
 - Human explicitly confirmed the second execute
-- Optional: human asked to enable walk_forward and/or grid+validation.overfitting
-  with explicit enabled: true flags (parent validation.enabled must be true)
+- Optional: human asked to enable walk_forward and/or dense overfitting diagnostics
+  with explicit enabled: true flags — for overfitting that means grid.enabled,
+  parent validation.enabled, and validation.overfitting.enabled (never bare {})
 
 Steps:
 1. Expand draft → out/pdPOC_survivors

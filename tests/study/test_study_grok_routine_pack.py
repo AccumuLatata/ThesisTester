@@ -58,6 +58,26 @@ def test_system_prompt_forbids_auto_promote_execute():
     assert "never invent" in lower
     assert "never bypass confirm" in lower
     assert "no" in lower and "mcp" in lower
+    # Survivor overfitting gate + promote overwrite (docs drift locks).
+    assert "validation.enabled" in system
+    assert "validation.overfitting.enabled" in system
+    assert "--force" in system or "force=true" in lower
+    assert "no `STUDY.rollup`" in system or "no STUDY.rollup" in system
+
+
+def test_stage_first_mentions_promote_force_gate():
+    text = (AGENTS / "ROUTINE_STAGE_FIRST.md").read_text(encoding="utf-8")
+    assert "--force" in text
+    assert "do not auto-run the draft" in text.lower()
+
+
+def test_pack_documents_validation_parent_gate_and_cli_rollup():
+    text = PACK.read_text(encoding="utf-8")
+    assert "validation.enabled: true" in text
+    assert "validation.overfitting.enabled: true" in text
+    assert "STUDY.rollup" in text  # explicitly "no STUDY.rollup"
+    assert "no `STUDY.rollup`" in text or "no STUDY.rollup" in text
+    assert "--force" in text
 
 
 def test_operator_contract_points_at_pack():
@@ -75,3 +95,5 @@ def test_confirm_bound_extends_rs6_not_fork():
     assert "confirmed=true" in lower or "confirmed=True" in text
     assert "extends" in lower
     assert "insufficient" in lower or "alone" in lower
+    assert "study rollup" in lower
+    assert "force" in lower

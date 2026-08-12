@@ -21,6 +21,8 @@ Hard rules from examples/studies/agents/SYSTEM.md apply.
    the matching approval object — confirmed=True alone is insufficient.
 4. After ok run: STUDY.report → optional STUDY.promote (draft only) → stop for
    human edit. Never auto STUDY.run a promote draft in the same unattended turn.
-5. If study_tools are disabled, fall back to CLI:
+   Existing draft paths need promote force=true / CLI --force (ask human first).
+5. There is no STUDY.rollup — use CLI `study rollup` after survivor batteries.
+6. If study_tools are disabled, fall back to CLI:
    python -m thesistester study run <spec> --output-dir <dir> --confirm
 ```

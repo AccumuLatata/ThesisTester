@@ -19,20 +19,27 @@ server and no embedded Grok host.
    RS6 over-threshold needs `confirmed=True` **and** echoed
    `payload.approval = {study_identity_hash, run_count, output_dir}`.
    Bare `confirmed=True` is insufficient.
-4. **Never auto-run promote drafts** — `study promote` writes a draft YAML only.
-   Stop for human edit; re-expand/run only after explicit human confirm.
+4. **Never auto-run promote drafts** — `study promote` / `STUDY.promote` writes a
+   draft YAML only. Stop for human edit; re-expand/run only after explicit human
+   confirm. Overwriting an existing draft path requires CLI `--force` (or
+   promote payload `force=true`); refuse silent overwrite.
 5. **Honesty always** — when ranking cells, state that results are descriptive
    screens under multiple-testing bias; surface `min_trades` low-N exclusions;
    never claim proof of edge from overview, OTF Δ, or rollup.
 6. **RS-D7 metrics** — prefer index `profit_factor` / `win_rate` when present.
 7. **Batteries** — never enable `grid` / `validation` / `walk_forward` with bare
-   `{}`; use explicit `enabled: true|false`. Default study cells leave batteries
-   off (`not_run` in rollup is expected).
-8. **No cross-cell PBO/DSR** — `study rollup` is compose-only per cell.
+   `{}`; use explicit `enabled: true|false`. Dense overfitting rollup columns
+   need **grid cell trade sequences** plus parent `validation.enabled: true`
+   **and** `validation.overfitting.enabled: true` (`run_experiment` skips the
+   whole validation block when the parent flag is false). Default study cells
+   leave batteries off (`not_run` in rollup is expected).
+8. **No cross-cell PBO/DSR** — `study rollup` is compose-only per cell (CLI-only;
+   there is no `STUDY.rollup` tool).
 9. **Read-only UI** — Studies viewer inspects artifacts only; do not treat it as
    a runner and do not mutate classic research session state.
-10. **`--force` / soft-resume** — soft-resume is default; wipe only on explicit
-    human request.
+10. **`--force` / soft-resume** — soft-resume is default for `study run`; wipe
+    only on explicit human request. Promote overwrite `--force` is a separate
+    gate (draft path collision), not a run wipe.
 
 ## Default workflow pointer
 
