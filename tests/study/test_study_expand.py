@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
 from thesistester.api import validate_run_spec
@@ -16,6 +17,7 @@ from thesistester.study.expand import (
 )
 from thesistester.study.schema import (
     STUDY_SCHEMA_VERSION,
+    StudySpecError,
     normalize_study_spec,
     validate_study_spec,
 )
@@ -160,9 +162,7 @@ def test_global_and_anchor_emission_rules():
         setup = run["setup"]
         assert setup["selected_levels"][0] == "pdPOC"
         assert len(setup["selected_levels"]) >= 2
-        assert setup["min_confluences"] == setup["max_confluences"] == len(
-            setup["selected_levels"]
-        )
+        assert setup["min_confluences"] == setup["max_confluences"] == len(setup["selected_levels"])
         assert len(setup["selected_levels"]) <= 5
     for run in anchors:
         setup = run["setup"]
@@ -297,3 +297,122 @@ def test_setup_injects_name_instrument_description():
         assert setup["name"] == run["name"]
         assert setup["instrument"] == "ES"
         assert setup["description"] == "RS2 golden expansion fixture"
+
+
+def test_otf_alias_duplicates_fail_closed():
+    raw = _base_study(
+        factors={
+            "core_level": ["pdPOC"],
+            "partner_levels": [["SMA_50_1min"]],
+            "confluence_mode": ["global_cluster"],
+            "trigger": ["touch"],
+            "trigger_timeframe": ["base"],
+            "otf": [
+                {
+                    "enabled": True,
+                    "timeframes": ["5m"],
+                    "alignment_mode": "all",
+                    "minimum_consecutive_bars": 3,
+                },
+                {
+                    "enabled": True,
+                    "timeframes": ["5min"],
+                    "alignment_mode": "all",
+                    "minimum_consecutive_bars": 3,
+                },
+            ],
+        },
+        mode_rules={
+            "global_cluster": {
+                "selected_levels": ["${core_level}", "${partner_levels...}"],
+            }
+        },
+    )
+    raw["study"]["report"]["group_by"] = ["otf"]
+    with pytest.raises(StudySpecError, match="duplicates a prior OTF config"):
+        expand_study(raw)
+
+
+def test_duplicate_or_core_overlapping_partners_fail_closed():
+    raw = _base_study(
+        factors={
+            "core_level": ["pdPOC"],
+            "partner_levels": [["ONH", "ONH"]],
+            "confluence_mode": ["global_cluster"],
+            "trigger": ["touch"],
+            "trigger_timeframe": ["base"],
+            "otf": [{"enabled": False}],
+        },
+        mode_rules={
+            "global_cluster": {
+                "selected_levels": ["${core_level}", "${partner_levels...}"],
+            }
+        },
+    )
+    raw["study"]["report"]["group_by"] = ["partner_levels"]
+    with pytest.raises(StudySpecError, match="Duplicate partner level token"):
+        expand_study(raw)
+
+    raw = _base_study(
+        factors={
+            "core_level": ["pdPOC"],
+            "partner_levels": [["pdPOC"]],
+            "confluence_mode": ["global_cluster"],
+            "trigger": ["touch"],
+            "trigger_timeframe": ["base"],
+            "otf": [{"enabled": False}],
+        },
+        mode_rules={
+            "global_cluster": {
+                "selected_levels": ["${core_level}", "${partner_levels...}"],
+            }
+        },
+    )
+    raw["study"]["report"]["group_by"] = ["partner_levels"]
+    with pytest.raises(StudySpecError, match="must not include core_level"):
+        expand_study(raw)
+
+
+def test_missing_required_cell_axes_fail_closed():
+    raw = _base_study()
+    del raw["study"]["factors"]["confluence_mode"]
+    del raw["study"]["mode_rules"]
+    raw["study"]["report"]["group_by"] = ["partner_levels", "otf"]
+    with pytest.raises(StudySpecError, match="missing 'confluence_mode'"):
+        expand_study(raw)
+
+
+def test_missing_backtest_fails_closed():
+    raw = _base_study()
+    del raw["study"]["constants"]["backtest"]
+    with pytest.raises(StudySpecError, match="backtest is required for expansion"):
+        expand_study(raw)
+
+
+def test_anchor_emits_placeholder_min_max_confluences():
+    expansion = expand_study(
+        yaml.safe_load((FIXTURES / "golden_study.yaml").read_text(encoding="utf-8"))
+    )
+    for run in expansion.experiment["runs"]:
+        if run["setup"]["confluence_mode"] == "anchor_rules":
+            assert run["setup"]["min_confluences"] == 1
+            assert run["setup"]["max_confluences"] == 1
+
+
+def test_run_name_respects_max_length():
+    from thesistester.study.naming import _MAX_RUN_NAME_LEN, build_run_name
+
+    long_name = "A" * 100
+    name = build_run_name(
+        long_name,
+        index=0,
+        factors={
+            "confluence_mode": "global_cluster",
+            "trigger": "touch",
+            "trigger_timeframe": "base",
+            "partner_levels": ["SMA_50_1min"],
+            "otf": {"enabled": False},
+        },
+    )
+    assert len(name) <= _MAX_RUN_NAME_LEN
+    assert _RUN_NAME_RE.fullmatch(name)

@@ -376,8 +376,12 @@ def validate_study_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
         raise StudySpecError("study.dataset.path is required")
     if not isinstance(dataset["path"], (str, Path)):
         raise StudySpecError("study.dataset.path must be a path string")
-    if "instrument" in dataset and not isinstance(dataset["instrument"], str):
-        raise StudySpecError("study.dataset.instrument must be a string when present")
+    instrument = dataset.get("instrument")
+    if not isinstance(instrument, str) or not instrument.strip():
+        raise StudySpecError(
+            "study.dataset.instrument is required (non-empty string; "
+            "injected into every expanded setup)"
+        )
 
     levels = study.get("levels")
     if levels is None:
@@ -503,6 +507,7 @@ def _validate_factors(
             raise StudySpecError(
                 f"factors.partner_levels[{index}] too large: core+partners would exceed 5 levels"
             )
+        seen_partners: set[str] = set()
         for token_index, token in enumerate(partner_set):
             if not isinstance(token, str) or not token:
                 raise StudySpecError(
@@ -513,6 +518,11 @@ def _validate_factors(
                     f"Unknown partner level token {token!r}; not in closed level "
                     f"set implied by study.levels + static catalog"
                 )
+            if token in seen_partners:
+                raise StudySpecError(
+                    f"Duplicate partner level token {token!r} in factors.partner_levels[{index}]"
+                )
+            seen_partners.add(token)
 
     if "confluence_mode" in factors:
         modes = factors["confluence_mode"]
@@ -563,8 +573,15 @@ def _validate_factors(
         otf_values = factors["otf"]
         if not isinstance(otf_values, list) or not otf_values:
             raise StudySpecError("factors.otf must be a non-empty list")
+        seen_otf: list[dict[str, Any]] = []
         for index, entry in enumerate(otf_values):
-            _normalize_otf_factor_entry(entry, path=f"factors.otf[{index}]")
+            normalized = _normalize_otf_factor_entry(entry, path=f"factors.otf[{index}]")
+            if normalized in seen_otf:
+                raise StudySpecError(
+                    f"factors.otf[{index}] duplicates a prior OTF config after "
+                    f"normalization (alias forks are not distinct factor levels)"
+                )
+            seen_otf.append(normalized)
 
 
 def _validate_mode_rules(mode_rules: Mapping[str, Any], *, factors: Mapping[str, Any]) -> None:

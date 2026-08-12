@@ -13,15 +13,20 @@ from typing import Any, Mapping
 import yaml
 
 from thesistester.api import build_setup, validate_run_spec
+from thesistester.cli import EXPERIMENT_SCHEMA_VERSION
 from thesistester.setup import normalize_otf_filter_config
 from thesistester.study.naming import build_run_name
 from thesistester.study.schema import (
     RUN_NAME_RE,
-    STUDY_SCHEMA_VERSION,
     StudySpecError,
     normalize_study_spec,
     validate_study_spec,
 )
+
+# Axes that must appear on every expansion cell (factors or explicit_cells).
+# Omitting them previously invented silent defaults (touch / base / global_cluster).
+_REQUIRED_CELL_AXES = ("confluence_mode", "trigger", "trigger_timeframe")
+
 
 @dataclass(frozen=True)
 class ExpansionResult:
@@ -65,9 +70,7 @@ def _apply_stage_filter(
             allowed_set = set(allowed)
             kept = [value for value in axis_values if value in allowed_set]
         if not kept:
-            raise StudySpecError(
-                f"stage.filter include.{key} matched zero factor values"
-            )
+            raise StudySpecError(f"stage.filter include.{key} matched zero factor values")
         filtered[key] = kept
     return filtered
 
@@ -84,9 +87,7 @@ def _explicit_cells(
         assignment: dict[str, Any] = {}
         for key in axis_keys:
             if key not in cell:
-                raise StudySpecError(
-                    f"stage.cells[{index}] missing factor key {key!r}"
-                )
+                raise StudySpecError(f"stage.cells[{index}] missing factor key {key!r}")
             value = cell[key]
             if key == "otf":
                 assignment[key] = _canonical_otf(value)
@@ -125,9 +126,7 @@ def _enabled_section(constants: Mapping[str, Any], section: str) -> dict[str, An
     if isinstance(raw, Mapping):
         out = dict(raw)
         if "enabled" not in out:
-            raise StudySpecError(
-                f"constants.{section} missing enabled (should be caught by RS1)"
-            )
+            raise StudySpecError(f"constants.{section} missing enabled (should be caught by RS1)")
         return out
     return {"enabled": False}
 
@@ -149,19 +148,27 @@ def _build_setup_for_cell(
     instrument = dataset.get("instrument")
     if not isinstance(instrument, str) or not instrument.strip():
         raise StudySpecError(
-            "study.dataset.instrument is required for expansion "
-            "(setup.instrument must match)"
+            "study.dataset.instrument is required for expansion (setup.instrument must match)"
         )
+
+    for axis in _REQUIRED_CELL_AXES:
+        if axis not in cell:
+            raise StudySpecError(
+                f"Expansion cell missing {axis!r}; declare it under factors "
+                f"(or stage.explicit_cells) — expand does not invent silent defaults"
+            )
 
     core = str(cell["core_level"])
     partners = [str(token) for token in cell["partner_levels"]]
-    mode = str(cell.get("confluence_mode") or "global_cluster")
-    trigger = str(cell.get("trigger") or "touch")
-    trigger_timeframe = str(cell.get("trigger_timeframe") or "base")
+    if len(partners) != len(set(partners)):
+        raise StudySpecError(f"partner_levels for {run_name} contain duplicate tokens: {partners}")
+    if core in partners:
+        raise StudySpecError(f"partner_levels for {run_name} must not include core_level {core!r}")
+    mode = str(cell["confluence_mode"])
+    trigger = str(cell["trigger"])
+    trigger_timeframe = str(cell["trigger_timeframe"])
     direction = str(
-        cell.get("direction")
-        if "direction" in cell
-        else constants.get("direction", "both")
+        cell.get("direction") if "direction" in cell else constants.get("direction", "both")
     )
     tolerance = float(constants.get("tolerance_ticks", 0))
     naked_only = bool(constants.get("naked_only", False))
@@ -169,7 +176,8 @@ def _build_setup_for_cell(
     trigger_params = dict(constants.get("trigger_params") or {})
     entry_window = constants.get("entry_window")
     min_valid = int(constants.get("min_valid_confluences", 1))
-    otf_filter = _canonical_otf(cell.get("otf") or {"enabled": False})
+    # OTF axis is optional; omit → disabled filter (not a silent trigger/mode invent).
+    otf_filter = _canonical_otf(cell["otf"] if "otf" in cell else {"enabled": False})
 
     if mode == "global_cluster":
         selected_levels = [core, *partners]
@@ -214,15 +222,16 @@ def _build_setup_for_cell(
                 f"min_valid_confluences={min_valid} incompatible with "
                 f"{len(confluence_rules)} partner rule(s)"
             )
-        # Anchor still needs placeholder min/max for build_setup_config kwargs.
+        # Anchor zones ignore selected_levels; emit honest 1/1 placeholders rather
+        # than stamping dual-mode global confluence knobs onto anchor setups.
         setup_kwargs = {
             "name": run_name,
             "description": str(study.get("description") or ""),
             "instrument": instrument,
             "selected_levels": [],
             "tolerance_ticks": tolerance,
-            "min_confluences": int(constants.get("min_confluences", 1)),
-            "max_confluences": int(constants.get("max_confluences", 1)),
+            "min_confluences": 1,
+            "max_confluences": 1,
             "naked_only": naked_only,
             "naked_requirement": naked_requirement,
             "trigger": trigger,
@@ -264,6 +273,11 @@ def expand_study(spec: Mapping[str, Any]) -> ExpansionResult:
     Input may be raw or normalized; it is normalized and validated first.
     """
     normalized = validate_study_spec(normalize_study_spec(spec))
+    return _expand_validated(normalized)
+
+
+def _expand_validated(normalized: Mapping[str, Any]) -> ExpansionResult:
+    """Expand an already normalized+validated StudySpec."""
     study = normalized["study"]
     cells = _iter_factor_cells(study)
     if not cells:
@@ -272,7 +286,16 @@ def expand_study(spec: Mapping[str, Any]) -> ExpansionResult:
     constants = dict(study.get("constants") or {})
     dataset = dict(study["dataset"])
     levels = dict(study.get("levels") or {})
-    backtest = dict(constants.get("backtest") or {})
+    raw_backtest = constants.get("backtest")
+    if not isinstance(raw_backtest, Mapping) or not raw_backtest:
+        raise StudySpecError(
+            "study.constants.backtest is required for expansion "
+            "(non-empty mapping; never emit bare {})"
+        )
+    backtest = dict(raw_backtest)
+    for key in ("stop_loss_ticks", "take_profit_ticks"):
+        if key not in backtest:
+            raise StudySpecError(f"study.constants.backtest.{key} is required for expansion")
     grid = _enabled_section(constants, "grid")
     validation = _enabled_section(constants, "validation")
     walk_forward = _enabled_section(constants, "walk_forward")
@@ -310,7 +333,7 @@ def expand_study(spec: Mapping[str, Any]) -> ExpansionResult:
         factor_map[run_name] = _factor_map_entry(cell)
 
     experiment = {
-        "schema_version": STUDY_SCHEMA_VERSION,
+        "schema_version": EXPERIMENT_SCHEMA_VERSION,
         "output_dir": study.get("output_dir"),
         "workers": int(study.get("workers", 1)),
         "runs": runs,
@@ -370,7 +393,7 @@ def expand_study_to_directory(
 ) -> ExpansionResult:
     """Validate, expand, and write the three RS2 artifacts."""
     normalized = validate_study_spec(normalize_study_spec(spec))
-    expansion = expand_study(normalized)
+    expansion = _expand_validated(normalized)
     write_expansion_artifacts(
         output_dir,
         normalized_spec=normalized,

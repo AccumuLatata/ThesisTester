@@ -60,15 +60,26 @@ def build_run_name(
     ]
     name = "_".join(parts)
     name = _UNSAFE_RE.sub("_", name)
+    digest = factor_cell_fingerprint(factors)
     if len(name) > _MAX_RUN_NAME_LEN:
-        digest = factor_cell_fingerprint(factors)
+        # Always fit under the cap: prefer study + index + digest when the
+        # readable mid section cannot.
         prefix = f"{study_name}_c{index:04d}_"
         budget = _MAX_RUN_NAME_LEN - len(prefix) - 1 - len(digest)
-        mid = _slug_token(factors.get("partner_levels", []))[: max(budget, 1)]
-        name = f"{prefix}{mid}_{digest}"
-    if not RUN_NAME_RE.fullmatch(name):
-        # Last-resort safe name.
-        name = f"{study_name}_c{index:04d}_{factor_cell_fingerprint(factors)}"
-    if not RUN_NAME_RE.fullmatch(name):
+        if budget < 1:
+            # Long study names: keep a truncated study slug + index + digest.
+            index_part = f"_c{index:04d}_"
+            study_budget = _MAX_RUN_NAME_LEN - len(index_part) - len(digest)
+            study_slug = _slug_token(study_name)[: max(study_budget, 1)]
+            name = f"{study_slug}{index_part}{digest}"
+        else:
+            mid = _slug_token(factors.get("partner_levels", []))[:budget]
+            name = f"{prefix}{mid}_{digest}"
+    if not RUN_NAME_RE.fullmatch(name) or len(name) > _MAX_RUN_NAME_LEN:
+        index_part = f"_c{index:04d}_"
+        study_budget = _MAX_RUN_NAME_LEN - len(index_part) - len(digest)
+        study_slug = _slug_token(study_name)[: max(study_budget, 1)]
+        name = f"{study_slug}{index_part}{digest}"
+    if not RUN_NAME_RE.fullmatch(name) or len(name) > _MAX_RUN_NAME_LEN:
         raise ValueError(f"Failed to build valid run name for cell {index}: {name!r}")
     return name

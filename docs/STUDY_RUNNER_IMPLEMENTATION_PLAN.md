@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-11 (amended 2026-08-11: R18 contract review; MVP completeness pass)  
-**Status:** RS1 landed (schema + validation); RS2–RS5 not started  
+**Status:** RS1–RS2 landed (schema + expansion); RS3–RS5 not started  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`  
@@ -554,6 +554,7 @@ Do not merge with confluence-combo attribution.
 | | ✅ Stage `explicit_cells` expands exactly the listed cells (no cartesian leakage) |
 | | ✅ No bare `grid`/`validation`/`walk_forward` `{}`; enabled false by default |
 | | ✅ `tests/study/` green; no engine golden-master regeneration |
+| | ✅ OTF alias/canonical duplicates, partner dupes/core-overlap, missing cell axes / backtest fail closed |
 
 **Copy-ready agent prompt:**
 

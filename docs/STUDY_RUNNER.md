@@ -35,7 +35,7 @@ study:
   output_dir: results/studies/pdPOC_mini
   workers: 1
   confirm_above_runs: 200
-  dataset: { path: data/es_1m.csv, instrument: ES }
+  dataset: { path: data/es_1m.csv, instrument: ES }   # instrument required
   levels: { ... }                     # keys ⊆ DEFAULT_LEVELS_SETTINGS
   constants: { ... }                  # setup + backtest/grid/validation/walk_forward
   factors: { ... }                    # closed axes only
@@ -57,10 +57,10 @@ block (`primary_metric: expectancy_r`, `multiple_testing: warn`, …).
 | `confluence_mode` | `global_cluster`, `anchor_rules` |
 | `trigger` | `touch`, `reject`, `break`, `reclaim`, `3c` |
 | `trigger_timeframe` | `base`, `1min`, `5min`, `15min` (**not** `30min`) |
-| `otf` | list of OTF configs (`normalize_otf_filter_config`) |
+| `otf` | list of OTF configs (`normalize_otf_filter_config`); canonical duplicates / aliases fail closed |
 | `direction` | optional factor; `long` / `short` / `both` |
 
-Unsupported axes (e.g. `sl_ticks`) fail closed.
+Unsupported axes (e.g. `sl_ticks`) fail closed. Partner-sets reject duplicate tokens.
 
 ### Closed level token set
 
@@ -144,13 +144,17 @@ No backtests are executed. Every expanded run passes `validate_run_spec`.
 | Mode | Setup fields |
 |---|---|
 | `global_cluster` | `selected_levels=[core]+partners`; `min_confluences=max_confluences=len`; reject `len>5` |
-| `anchor_rules` | `selected_levels=[]`; `anchor_level=core`; one rule per partner (`from_partners` required/optional) |
+| `anchor_rules` | `selected_levels=[]`; `anchor_level=core`; one rule per partner (`from_partners` required/optional); placeholder `min/max_confluences=1` |
 
 Also every cell:
 
 - Injects `setup.name` (= run name), `setup.instrument` (= `dataset.instrument`), `setup.description`
 - Emits `grid` / `validation` / `walk_forward` with explicit `enabled` (default `{enabled: false}`; never bare `{}`)
 - Stores **normalized** OTF (`5m`/`15m`/`30m`) in both setup and factor_map
+- Requires `confluence_mode`, `trigger`, and `trigger_timeframe` on every cell (no silent invent)
+- Requires non-empty `constants.backtest` with `stop_loss_ticks` / `take_profit_ticks`
+- Rejects duplicate partner tokens, partner==core, and OTF alias/canonical duplicates
+- Experiment `schema_version` follows R18 `EXPERIMENT_SCHEMA_VERSION` (not StudySpec)
 
 ### Staging
 

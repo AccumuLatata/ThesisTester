@@ -141,8 +141,8 @@ runs:
     instrument: ES
     selected_levels: []
     tolerance_ticks: 0.0
-    min_confluences: 2
-    max_confluences: 2
+    min_confluences: 1
+    max_confluences: 1
     naked_only: false
     naked_requirement: any
     trigger: touch
@@ -201,8 +201,8 @@ runs:
     instrument: ES
     selected_levels: []
     tolerance_ticks: 0.0
-    min_confluences: 2
-    max_confluences: 2
+    min_confluences: 1
+    max_confluences: 1
     naked_only: false
     naked_requirement: any
     trigger: touch
@@ -381,8 +381,8 @@ runs:
     instrument: ES
     selected_levels: []
     tolerance_ticks: 0.0
-    min_confluences: 2
-    max_confluences: 2
+    min_confluences: 1
+    max_confluences: 1
     naked_only: false
     naked_requirement: any
     trigger: touch
@@ -441,8 +441,8 @@ runs:
     instrument: ES
     selected_levels: []
     tolerance_ticks: 0.0
-    min_confluences: 2
-    max_confluences: 2
+    min_confluences: 1
+    max_confluences: 1
     naked_only: false
     naked_requirement: any
     trigger: touch

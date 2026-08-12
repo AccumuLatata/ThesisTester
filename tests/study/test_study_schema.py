@@ -313,6 +313,40 @@ def test_schema_version_rejected():
         validate_study_spec(normalize_study_spec(raw))
 
 
+def test_dataset_instrument_required():
+    raw = _minimal_study()
+    del raw["study"]["dataset"]["instrument"]
+    with pytest.raises(StudySpecError, match="dataset.instrument is required"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_otf_canonical_duplicates_rejected():
+    raw = _minimal_study()
+    raw["study"]["factors"]["otf"] = [
+        {
+            "enabled": True,
+            "timeframes": ["5m"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 3,
+        },
+        {
+            "enabled": True,
+            "timeframes": ["5min"],
+            "alignment_mode": "all",
+            "minimum_consecutive_bars": 3,
+        },
+    ]
+    with pytest.raises(StudySpecError, match="duplicates a prior OTF config"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
+def test_duplicate_partner_tokens_rejected():
+    raw = _minimal_study()
+    raw["study"]["factors"]["partner_levels"] = [["ONH", "ONH"]]
+    with pytest.raises(StudySpecError, match="Duplicate partner level token"):
+        validate_study_spec(normalize_study_spec(raw))
+
+
 def test_schema_version_rejects_bool_and_float():
     raw = _minimal_study()
     raw["schema_version"] = True
