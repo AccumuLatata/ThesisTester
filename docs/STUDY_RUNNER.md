@@ -1,12 +1,13 @@
 # Research Study Runner
 
-**Status:** RS1–RS5 MVP + **RS-D7** + **RS6** + **RS-D2** + **RS-D4** landed. Post-MVP remaining: **RS-D5**.  
+**Status:** RS1–RS5 MVP + **RS-D7** + **RS6** + **RS-D2** + **RS-D4** + **RS-D5** landed. Post-MVP §12 sequence complete; parked: RS-D1 / RS-D3 / RS-D6.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (§12)  
 **Package:** `thesistester.study`
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
-RS-D2 adds a **read-only** Studies viewer; RS-D4 adds compose-only diagnostic rollup.
+RS-D2 adds a **read-only** Studies viewer; RS-D4 adds compose-only diagnostic
+rollup; RS-D5 is the external Grok routine pack (docs/examples only).
 
 This surface answers: *across many closed setups, which factor combinations look
 promising?* It is **not** confluence-combo attribution (within-trade membership).
@@ -389,7 +390,26 @@ Assistant dispatch sandboxes `study_path` / `study_dir` / `output_dir` /
 tools). Dict `study_spec` relative paths resolve against `base_directory` or cwd
 (not the ephemeral temp materialization directory).
 
-Full multi-step external Grok routine pack is **RS-D5** (extends this recipe).
+Full multi-step external Grok routine pack is **RS-D5** (extends this recipe —
+see below). Do not duplicate a divergent long recipe here.
+
+---
+
+## RS-D5 — External Grok Bot routine pack
+
+Normative pack: [`STUDY_RUNNER_GROK_ROUTINE_PACK.md`](STUDY_RUNNER_GROK_ROUTINE_PACK.md)  
+Copy-ready prompts: [`examples/studies/agents/`](../examples/studies/agents/)
+
+Extends the RS6 minimal confirm recipe (does not fork it). External coworkers
+shell the CLI even when `[assistant.study_tools] enabled=false`.
+
+| Rule | Behavior |
+|---|---|
+| Surfaces | CLI always; optional RS6 `STUDY.*` when enabled; RS-D2 viewer read-only; RS-D4 rollup opt-in |
+| Recipe | stage-first expand → confirm+run → report → promote **draft** → human edit → second pass → optional rollup |
+| Hard stops | no axis invention; no confirm bypass; no auto-run of promote drafts |
+| Honesty | always surface multiple-testing / `min_trades`; prefer RS-D7 index PF/WR |
+| Non-goals | no embedded Grok host; no RabbitMQ; no MCP server; no runtime default-on tools |
 
 ---
 
@@ -437,8 +457,9 @@ skipped) before expecting dense rollup columns. See
 
 ## Post-MVP (plan-locked)
 
-See `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12. Do not reorder without amending that plan.
-**Next code PR = RS-D5 only** (§12.6).
+See `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12. Sequenced milestones
+**RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5** are complete. Parked items stay out of
+the critical path unless that plan is amended.
 
 | Order | ID | Intent |
 |---|---|---|
@@ -446,6 +467,6 @@ See `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12. Do not reorder without amen
 | 2 | **RS6** ✅ | Default-off `STUDY.*` assistant capabilities + minimal CLI/confirm docs (two-step confirm; no MCP server) |
 | 3 | **RS-D2** ✅ | Streamlit Studies **viewer** (artifacts-only; no in-app run) |
 | 4 | **RS-D4** ✅ | Per-cell WFA/validation/overfitting diagnostic rollup (compose-only; no cross-cell PBO) |
-| 5 | **RS-D5** (**next**) | External Grok Bot routine pack |
+| 5 | **RS-D5** ✅ | External Grok Bot routine pack (`STUDY_RUNNER_GROK_ROUTINE_PACK.md` + `examples/studies/agents/`) |
 
 Parked: RS-D1 (NL compiler), RS-D3 (`run_batch` continue), RS-D6 (new factor types).

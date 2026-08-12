@@ -17,7 +17,7 @@ runner for independent batches:
 python -m thesistester run experiment.yaml --workers 4
 ```
 
-### Research Study Runner (RS1–RS5 + RS-D7 + RS6)
+### Research Study Runner (RS1–RS5 + post-MVP through RS-D5)
 
 For closed multi-factor confluence studies, use the additive Study Runner (see
 `docs/STUDY_RUNNER.md`). It expands a StudySpec to an R18 experiment, then
@@ -41,7 +41,11 @@ registered but **default-off** via `[assistant.study_tools] enabled=false` in
 requires a two-step confirm: first dispatch returns `APPROVAL_REQUIRED` with a
 bound `payload.approval` triple `(study_identity_hash, run_count, output_dir)`;
 retry with `confirmed=True` **and** that approval echoed. No MCP server. Prefer
-the CLI when the flag is off. Full Grok routine pack is RS-D5.
+the CLI when the flag is off.
+
+**RS-D5** external coworker pack (extends the RS6 minimal recipe; no product
+host): `docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md` + copy-ready prompts under
+`examples/studies/agents/`.
 
 The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
 `dict` values:
