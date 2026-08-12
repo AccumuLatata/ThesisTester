@@ -45,7 +45,9 @@ def _otf_off() -> dict:
     return normalize_otf_filter_config({"enabled": False})
 
 
-def _write_report_fixture(tmp_path: Path, *, min_trades: int = 30, multiple_testing: str = "warn") -> Path:
+def _write_report_fixture(
+    tmp_path: Path, *, min_trades: int = 30, multiple_testing: str = "warn"
+) -> Path:
     """Synthetic completed study dir: 4 cells (2 partners × 2 OTF)."""
     study_dir = tmp_path / "study_out"
     study_dir.mkdir()
@@ -157,9 +159,7 @@ def _write_report_fixture(tmp_path: Path, *, min_trades: int = 30, multiple_test
                 "status": "ok",
             }
         )
-    pd.DataFrame(rows).sort_values("run_name").to_csv(
-        study_dir / "results_index.csv", index=False
-    )
+    pd.DataFrame(rows).sort_values("run_name").to_csv(study_dir / "results_index.csv", index=False)
     return study_dir
 
 
@@ -206,9 +206,7 @@ def test_otf_delta_vs_baseline_alias_stable(tmp_path: Path):
     # EMA partner's OTF-on is low-N but still emits a delta row.
     assert len(result.otf_delta) == 2
     sma_rows = [
-        row
-        for _, row in result.otf_delta.iterrows()
-        if "SMA_50_1min" in row["non_otf_key"]
+        row for _, row in result.otf_delta.iterrows() if "SMA_50_1min" in row["non_otf_key"]
     ]
     assert len(sma_rows) == 1
     assert sma_rows[0]["delta_expectancy_r"] == pytest.approx(0.15)
@@ -263,6 +261,76 @@ def test_profit_factor_prefers_index_when_present(tmp_path: Path):
     result = report_study(study_dir)
     assert result.overview["profit_factor_source"].eq("index").all()
     assert all(pf == pytest.approx(9.9) for pf in result.overview["profit_factor"])
+
+
+def test_index_pf_still_fills_win_rate_from_bundle(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path)
+    index = pd.read_csv(study_dir / "results_index.csv")
+    index["profit_factor"] = 9.9
+    # No win_rate column on the index — must still resolve from bundle.
+    index.to_csv(study_dir / "results_index.csv", index=False)
+    result = report_study(study_dir)
+    assert result.overview["profit_factor_source"].eq("index").all()
+    assert all(pf == pytest.approx(9.9) for pf in result.overview["profit_factor"])
+    assert all(wr == pytest.approx(0.5) for wr in result.overview["win_rate"])
+
+
+def test_orphan_index_rows_not_ranked_or_crowned(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path)
+    index = pd.read_csv(study_dir / "results_index.csv")
+    orphan = {
+        "run_name": "orphan_not_in_expansion",
+        "bundle_hash": "xyz",
+        "dataset_id": "ds",
+        "instrument": "ES",
+        "execution_origin": "study",
+        "cache_outcome": "miss",
+        "trade_count": 999,
+        "expectancy_r": 99.0,
+        "total_r": 990.0,
+        "max_drawdown_r": 0.01,
+        "best_grid_stop_loss_ticks": None,
+        "best_grid_take_profit_ticks": None,
+        "validation_trade_count_status": None,
+        "wfa_fold_count": None,
+        "wfa_valid_fold_count": None,
+        "wfa_median_test_expectancy_r": None,
+        "wfa_stitched_oos_total_r": None,
+        "bundle_path": None,
+        "status": "ok",
+    }
+    index = pd.concat([index, pd.DataFrame([orphan])], ignore_index=True)
+    index.to_csv(study_dir / "results_index.csv", index=False)
+    result = report_study(study_dir)
+    assert "orphan_not_in_expansion" in set(result.overview["run_name"])
+    orphan_row = result.overview.loc[result.overview["run_name"] == "orphan_not_in_expansion"].iloc[
+        0
+    ]
+    assert bool(orphan_row["factors_joined"]) is False
+    assert "orphan_not_in_expansion" not in set(result.ranked["run_name"])
+    assert "orphan_not_in_expansion" not in set(result.low_n["run_name"])
+    assert "orphan_not_in_expansion" not in result.markdown
+    assert result.ranked.iloc[0]["run_name"] != "orphan_not_in_expansion"
+
+
+def test_duplicate_run_name_fails_closed(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path)
+    index = pd.read_csv(study_dir / "results_index.csv")
+    index = pd.concat([index, index.iloc[[0]]], ignore_index=True)
+    index.to_csv(study_dir / "results_index.csv", index=False)
+    with pytest.raises(StudyReportError, match="duplicate run_name"):
+        report_study(study_dir)
+
+
+def test_coerce_float_accepts_numpy_scalars():
+    import numpy as np
+
+    from thesistester.study.report import _coerce_float
+
+    assert _coerce_float(np.float64(1.25)) == pytest.approx(1.25)
+    assert _coerce_float(np.int64(3)) == pytest.approx(3.0)
+    assert _coerce_float(np.nan) is None
+    assert _coerce_float(True) is None
 
 
 def test_group_summaries_present(tmp_path: Path):

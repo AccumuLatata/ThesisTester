@@ -8,8 +8,10 @@ failures. Does **not** call ``run_batch``.
 from __future__ import annotations
 
 import fcntl
+import json
 import multiprocessing
 import os
+import zipfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from contextlib import contextmanager
 from pathlib import Path
@@ -91,6 +93,56 @@ def _failed_index_row(name: str) -> dict[str, Any]:
     row = {key: None for key in R18_INDEX_METRIC_KEYS}
     row["run_name"] = name
     row["execution_origin"] = "study"
+    return row
+
+
+def _read_bundle_trade_summary(bundle_path: Path) -> dict[str, Any] | None:
+    """Best-effort ``trade_summary`` dict from a research zip (nested or flat)."""
+    if not bundle_path.is_file():
+        return None
+    try:
+        with zipfile.ZipFile(bundle_path, "r") as archive:
+            if "trade_summary.json" not in archive.namelist():
+                return None
+            raw = json.loads(archive.read("trade_summary.json").decode("utf-8"))
+    except (OSError, zipfile.BadZipFile, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, Mapping):
+        return None
+    nested = raw.get("trade_summary")
+    if isinstance(nested, Mapping):
+        return dict(nested)
+    # Flat summary dict (tests / older shapes).
+    if any(key in raw for key in ("trade_count", "expectancy_r", "profit_factor")):
+        return dict(raw)
+    return None
+
+
+def _index_row_from_existing_bundle(
+    name: str,
+    *,
+    output_dir: Path,
+    bundle_rel: str,
+) -> dict[str, Any]:
+    """Rebuild an ok index row from a soft-resumed bundle (metrics + hash).
+
+    Soft resume previously synthesized ``status=ok`` via ``_failed_index_row``,
+    leaving R18 metrics null forever when ``results_index.csv`` lost the row.
+    Rehydrate core trade metrics from ``trade_summary.json`` so report ranking
+    stays honest without re-running the cell.
+    """
+    row = _failed_index_row(name)
+    row["status"] = "ok"
+    row["bundle_path"] = bundle_rel
+    bundle_path = output_dir / bundle_rel
+    try:
+        row["bundle_hash"] = canonical_bundle_hash(bundle_path.read_bytes())
+    except OSError:
+        row["bundle_hash"] = None
+    summary = _read_bundle_trade_summary(bundle_path) or {}
+    for key in ("trade_count", "expectancy_r", "total_r", "max_drawdown_r"):
+        if key in summary:
+            row[key] = summary.get(key)
     return row
 
 
@@ -528,23 +580,46 @@ def run_study(
         # Final ordered index (includes soft-resumed ok rows).
         ledger = load_ledger(out) or ledger
         cells = ledger.get("cells") or {}
+
+        def _metric_missing(value: Any) -> bool:
+            if value is None:
+                return True
+            try:
+                return bool(pd.isna(value))
+            except (TypeError, ValueError):
+                return False
+
         for name in run_names:
+            cell = cells.get(name) or {}
             if name not in index_by_name:
-                cell = cells.get(name) or {}
-                if cell.get("status") == "ok" and cell.get("bundle_path"):
-                    row = _failed_index_row(name)
-                    row["status"] = "ok"
-                    row["bundle_path"] = cell.get("bundle_path")
-                    index_by_name[name] = row
+                bundle_rel = cell.get("bundle_path")
+                if cell.get("status") == "ok" and isinstance(bundle_rel, str) and bundle_rel:
+                    index_by_name[name] = _index_row_from_existing_bundle(
+                        name, output_dir=out, bundle_rel=bundle_rel
+                    )
                 else:
                     row = _failed_index_row(name)
                     row["status"] = cell.get("status", "pending")
-                    row["bundle_path"] = cell.get("bundle_path")
+                    row["bundle_path"] = bundle_rel
                     index_by_name[name] = row
-            else:
-                index_by_name[name]["status"] = cells.get(name, {}).get(
-                    "status", index_by_name[name].get("status")
+                continue
+
+            row = dict(index_by_name[name])
+            row["status"] = cell.get("status", row.get("status"))
+            bundle_rel = cell.get("bundle_path") or row.get("bundle_path")
+            # Repair historically poisoned soft-resume rows (ok + zip, null metrics).
+            if (
+                cell.get("status") == "ok"
+                and isinstance(bundle_rel, str)
+                and bundle_rel
+                and _metric_missing(row.get("trade_count"))
+                and _metric_missing(row.get("expectancy_r"))
+            ):
+                index_by_name[name] = _index_row_from_existing_bundle(
+                    name, output_dir=out, bundle_rel=bundle_rel
                 )
+            else:
+                index_by_name[name] = row
 
         index_path = _write_results_index(out, index_by_name, run_names)
         final_ledger = load_ledger(out)

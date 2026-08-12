@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+import numbers
 import zipfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -30,9 +31,7 @@ EXPANSION_JSON = "study.expansion.json"
 SPEC_YAML = "study.spec.yaml"
 RESULTS_INDEX = "results_index.csv"
 
-_HIGHER_IS_BETTER = frozenset(
-    {"expectancy_r", "total_r", "profit_factor", "trade_count"}
-)
+_HIGHER_IS_BETTER = frozenset({"expectancy_r", "total_r", "profit_factor", "trade_count"})
 _LOWER_IS_BETTER = frozenset({"max_drawdown_r"})
 
 _HONESTY_PARAGRAPH = (
@@ -148,6 +147,15 @@ def _load_results_index(study_dir: Path) -> pd.DataFrame:
         raise StudyReportError(f"Unable to read {path}: {exc}") from exc
     if "run_name" not in frame.columns:
         raise StudyReportError(f"{RESULTS_INDEX} must include a run_name column")
+    if frame["run_name"].duplicated().any():
+        dupes = sorted(
+            {str(name) for name in frame.loc[frame["run_name"].duplicated(), "run_name"]}
+        )
+        preview = ", ".join(dupes[:8])
+        suffix = " ..." if len(dupes) > 8 else ""
+        raise StudyReportError(
+            f"{RESULTS_INDEX} contains duplicate run_name values: {preview}{suffix}"
+        )
     return frame
 
 
@@ -174,17 +182,19 @@ def _read_bundle_trade_summary(bundle_path: Path) -> dict[str, Any] | None:
 
 
 def _coerce_float(value: Any) -> float | None:
-    if value is None:
+    """Coerce scalars (incl. NumPy / pandas) to float; drop bool/NaN."""
+    if value is None or isinstance(value, bool):
         return None
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-            # Preserve +inf PF (all-wins) as math.inf; drop NaN.
-            if math.isinf(value):
-                return float(value)
+    try:
+        if value is pd.NA or pd.isna(value):
             return None
-        return float(value)
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, numbers.Real):
+        number = float(value)
+        if math.isnan(number):
+            return None
+        return number
     if isinstance(value, str):
         text = value.strip()
         if not text or text.lower() in {"nan", "none", "null"}:
@@ -197,6 +207,12 @@ def _coerce_float(value: Any) -> float | None:
             return float(text)
         except ValueError:
             return None
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return _coerce_float(item())
+        except (ValueError, TypeError, OverflowError, RecursionError):
+            return None
     return None
 
 
@@ -204,23 +220,37 @@ def _resolve_bundle_metrics(
     study_dir: Path,
     row: Mapping[str, Any],
 ) -> tuple[float | None, float | None, str]:
-    """Return (profit_factor, win_rate, source)."""
+    """Return (profit_factor, win_rate, profit_factor_source).
+
+    PF and win_rate resolve independently: index value wins per field; bundle
+    ``trade_summary`` fills only the missing field(s). ``profit_factor_source``
+    tracks PF provenance only.
+    """
     index_pf = _coerce_float(row.get("profit_factor"))
     index_wr = _coerce_float(row.get("win_rate"))
-    if index_pf is not None:
-        return index_pf, index_wr, "index"
 
-    bundle_rel = row.get("bundle_path")
-    if not isinstance(bundle_rel, str) or not bundle_rel.strip():
-        return None, index_wr, "missing"
-    summary = _read_bundle_trade_summary(study_dir / bundle_rel)
-    if summary is None:
-        return None, index_wr, "missing"
-    pf = _coerce_float(summary.get("profit_factor"))
-    wr = index_wr if index_wr is not None else _coerce_float(summary.get("win_rate"))
-    if pf is None and wr is None:
-        return None, index_wr, "missing"
-    return pf, wr, "bundle"
+    summary: dict[str, Any] | None = None
+    if index_pf is None or index_wr is None:
+        bundle_rel = row.get("bundle_path")
+        if isinstance(bundle_rel, str) and bundle_rel.strip():
+            summary = _read_bundle_trade_summary(study_dir / bundle_rel)
+
+    if index_pf is not None:
+        pf, source = index_pf, "index"
+    elif summary is not None:
+        pf = _coerce_float(summary.get("profit_factor"))
+        source = "bundle" if pf is not None else "missing"
+    else:
+        pf, source = None, "missing"
+
+    if index_wr is not None:
+        wr = index_wr
+    elif summary is not None:
+        wr = _coerce_float(summary.get("win_rate"))
+    else:
+        wr = None
+
+    return pf, wr, source
 
 
 def _flatten_factors(factors: Mapping[str, Any]) -> dict[str, Any]:
@@ -232,9 +262,9 @@ def _flatten_factors(factors: Mapping[str, Any]) -> dict[str, Any]:
         elif key == "otf":
             flat[col] = otf_canonical_key(value)
             flat["factor_otf_enabled"] = bool(
-                normalize_otf_filter_config(dict(value) if isinstance(value, Mapping) else value).get(
-                    "enabled", False
-                )
+                normalize_otf_filter_config(
+                    dict(value) if isinstance(value, Mapping) else value
+                ).get("enabled", False)
             )
         else:
             flat[col] = value
@@ -310,7 +340,38 @@ def build_overview_frame(
 def _metric_sort_ascending(primary_metric: str) -> bool:
     if primary_metric in _LOWER_IS_BETTER:
         return True
+    # Unknown primaries default to higher-is-better (same as expectancy/total_r).
+    if primary_metric in _HIGHER_IS_BETTER:
+        return False
     return False
+
+
+def _factors_joined_mask(work: pd.DataFrame) -> pd.Series:
+    """True for expansion-joined cells only (orphans stay in overview CSV)."""
+    if "factors_joined" not in work.columns:
+        return pd.Series(True, index=work.index)
+    joined = work["factors_joined"]
+    if pd.api.types.is_bool_dtype(joined):
+        return joined.fillna(False)
+
+    # Tolerate object/CSV round-trips without treating "False" as truthy.
+    def _as_bool(value: Any) -> bool:
+        if value is True:
+            return True
+        if value is False or value is None:
+            return False
+        try:
+            if pd.isna(value):
+                return False
+        except (TypeError, ValueError):
+            pass
+        if isinstance(value, numbers.Integral) and not isinstance(value, bool):
+            return int(value) == 1
+        if isinstance(value, str):
+            return value.strip().lower() in {"true", "1", "yes"}
+        return False
+
+    return joined.map(_as_bool)
 
 
 def split_ranked_and_low_n(
@@ -329,10 +390,13 @@ def split_ranked_and_low_n(
     work[primary_metric] = pd.to_numeric(work.get(primary_metric), errors="coerce")
 
     eligible_status = work["status"].astype(str).eq("ok") if "status" in work.columns else True
+    joined = _factors_joined_mask(work)
     has_n = work["trade_count"].fillna(-1) >= float(min_trades)
     has_metric = work[primary_metric].notna()
-    ranked_mask = eligible_status & has_n & has_metric
-    low_mask = eligible_status & ~has_n
+    # Index-only orphans (factors_joined=False) remain in overview CSV but must
+    # not enter ranked/low-N or be crowned as top descriptive cells.
+    ranked_mask = eligible_status & joined & has_n & has_metric
+    low_mask = eligible_status & joined & ~has_n
 
     ascending = _metric_sort_ascending(primary_metric)
     ranked = (
@@ -344,11 +408,7 @@ def split_ranked_and_low_n(
         )
         .reset_index(drop=True)
     )
-    low_n = (
-        work.loc[low_mask]
-        .sort_values("run_name", kind="mergesort")
-        .reset_index(drop=True)
-    )
+    low_n = work.loc[low_mask].sort_values("run_name", kind="mergesort").reset_index(drop=True)
     return ranked, low_n
 
 
@@ -367,6 +427,7 @@ def build_group_summaries(
     work = overview.copy()
     if "status" in work.columns:
         work = work.loc[work["status"].astype(str).eq("ok")].copy()
+    work = work.loc[_factors_joined_mask(work)].copy()
     work["trade_count"] = pd.to_numeric(work.get("trade_count"), errors="coerce")
     work[primary_metric] = pd.to_numeric(work.get(primary_metric), errors="coerce")
     work = work.loc[work["trade_count"].fillna(-1) >= float(min_trades)].copy()
@@ -529,11 +590,18 @@ def _md_table(frame: pd.DataFrame, columns: list[str], *, limit: int = 50) -> li
         cells: list[str] = []
         for col in cols:
             val = row[col]
-            if col.endswith("_r") or col in {
-                "profit_factor",
-                "win_rate",
-                "trade_count",
-            } or col.startswith("mean_") or col.startswith("median_") or col.startswith("delta_"):
+            if (
+                col.endswith("_r")
+                or col
+                in {
+                    "profit_factor",
+                    "win_rate",
+                    "trade_count",
+                }
+                or col.startswith("mean_")
+                or col.startswith("median_")
+                or col.startswith("delta_")
+            ):
                 cells.append(_fmt_num(val))
             else:
                 text = "—" if pd.isna(val) else str(val)
@@ -604,9 +672,7 @@ def render_overview_markdown(
     lines.extend(_md_table(ranked, rank_cols))
 
     lines.extend(["## Low-N cells", ""])
-    lines.append(
-        f"Cells with `trade_count < {min_trades}` (excluded from ranked winners)."
-    )
+    lines.append(f"Cells with `trade_count < {min_trades}` (excluded from ranked winners).")
     lines.append("")
     lines.extend(_md_table(low_n, ["run_name", "trade_count", primary, "profit_factor"]))
 
@@ -665,9 +731,11 @@ def render_overview_markdown(
             "",
             "- Index columns: `trade_count`, `expectancy_r`, `total_r`, `max_drawdown_r`, "
             "`bundle_hash`, `bundle_path`, `status`.",
-            "- `profit_factor` / `win_rate`: prefer study index when present (RS-D7); "
-            "otherwise read from bundle `trade_summary.json` "
-            "(`profit_factor_source` = `index` | `bundle` | `missing`).",
+            "- `profit_factor` / `win_rate`: each field prefers the study index when "
+            "present (RS-D7), else bundle `trade_summary.json` "
+            "(`profit_factor_source` tracks PF only: `index` | `bundle` | `missing`).",
+            "- Ranked / low-N / group summaries require `factors_joined=True` "
+            "(index-only orphans stay in the overview CSV).",
             "",
         ]
     )
@@ -693,9 +761,7 @@ def report_study(study_dir: str | Path) -> StudyReportResult:
     factor_map = _load_factor_map(root)
     index = _load_results_index(root)
     overview = build_overview_frame(study_dir=root, index=index, factor_map=factor_map)
-    ranked, low_n = split_ranked_and_low_n(
-        overview, primary_metric=primary, min_trades=min_trades
-    )
+    ranked, low_n = split_ranked_and_low_n(overview, primary_metric=primary, min_trades=min_trades)
     group_summaries = build_group_summaries(
         overview,
         group_by=group_by,

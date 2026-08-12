@@ -202,7 +202,7 @@ untouched). Study runs do **not** call `run_batch`; they loop
 | Flag / rule | Behavior |
 |---|---|
 | `confirm_above_runs` | `study run` refuses when `run_count >= N` unless `--confirm` (**before** rewriting expansion artifacts) |
-| Soft resume | Ledger `ok` cells are skipped only when their `bundle_path` zip still exists |
+| Soft resume | Ledger `ok` cells are skipped only when their `bundle_path` zip still exists; missing/null index metrics are rehydrated from bundle `trade_summary.json` |
 | `--force` | Re-run all cells; on identity mismatch replaces the ledger (no orphan cells from the prior StudySpec) |
 | Workers | `workers>1` uses spawn pool; cell tasks **return** ok/failed payloads (continue-on-failure); pool deaths mark the cell failed |
 | Lock | Exclusive `.study.lock` on `output_dir` (fail-closed if another study run holds it) |
@@ -248,8 +248,9 @@ Reads a completed study directory (does not re-run backtests).
 ### Join / ranking
 
 - Factor tags flatten to `factor_*` columns (`partner_levels` as `A+B`; `otf` as canonical JSON key).
-- Ranked section: `status=ok`, `trade_count >= min_trades`, non-null `primary_metric`.
-- Low-N section: ok cells below `min_trades` (excluded from ranked winners).
+- Ranked section: `status=ok`, `factors_joined=True`, `trade_count >= min_trades`, non-null `primary_metric`.
+- Low-N section: expansion-joined ok cells below `min_trades` (excluded from ranked winners).
+- Index-only orphan rows (`factors_joined=False`) stay in `study.overview.csv` but are excluded from ranked / low-N / group summaries / crowning.
 - Sort: higher-is-better for `expectancy_r` / `total_r` / `profit_factor` / `trade_count`; lower-is-better for `max_drawdown_r`.
 - `multiple_testing: error` suppresses best-cell crowning in Markdown (ranked table still emitted as descriptive).
 
@@ -261,7 +262,7 @@ R18 study index does **not** add PF columns in MVP (RS-D7 deferred). Report reso
 2. Else bundle `trade_summary.json` → `profit_factor_source=bundle`
 3. Else `missing`
 
-Optional `win_rate` follows the same path. Documented in `METRICS_GLOSSARY.md`.
+Optional `win_rate` resolves **per field** the same way (index then bundle), including when PF came from the index but `win_rate` did not. Documented in `METRICS_GLOSSARY.md`.
 
 ### OTF Δ
 
