@@ -1,6 +1,6 @@
 # Research Study Runner
 
-**Status:** RS1 landed (schema + validation). Expand / run / report land in RS2–RS5.  
+**Status:** RS1–RS2 landed (schema + deterministic expand). Run / report land in RS3–RS5.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`  
 **Package:** `thesistester.study`
 
@@ -116,5 +116,60 @@ Required when `factors.confluence_mode` is present (and forbidden otherwise).
 
 ### Out of scope for RS1
 
-Expansion to `experiment.yaml`, CLI `study` commands, execution ledger, and
-overview reporting — see RS2–RS5 in the implementation plan.
+CLI `study` commands, execution ledger, and overview reporting — see RS3–RS5.
+
+---
+
+## RS2 — Deterministic expansion
+
+### API
+
+```python
+from thesistester.study import expand_study, expand_study_to_directory
+
+result = expand_study(spec)  # ExpansionResult
+# result.experiment  → R18 experiment mapping (schema_version 1)
+# result.factor_map  → {run_name: factors} with canonical OTF
+# result.run_count
+# result.study_identity_hash
+
+expand_study_to_directory(spec, "out/study1")
+# writes study.spec.yaml, study.expansion.json, experiment.yaml
+```
+
+No backtests are executed. Every expanded run passes `validate_run_spec`.
+
+### Emission rules
+
+| Mode | Setup fields |
+|---|---|
+| `global_cluster` | `selected_levels=[core]+partners`; `min_confluences=max_confluences=len`; reject `len>5` |
+| `anchor_rules` | `selected_levels=[]`; `anchor_level=core`; one rule per partner (`from_partners` required/optional) |
+
+Also every cell:
+
+- Injects `setup.name` (= run name), `setup.instrument` (= `dataset.instrument`), `setup.description`
+- Emits `grid` / `validation` / `walk_forward` with explicit `enabled` (default `{enabled: false}`; never bare `{}`)
+- Stores **normalized** OTF (`5m`/`15m`/`30m`) in both setup and factor_map
+
+### Staging
+
+| Mode | Expansion |
+|---|---|
+| omitted / none | Full cartesian product over factor axes (YAML key order) |
+| `filter` | Subset listed axes, then cartesian (plan example: 800 → 40 for `touch`+`base`) |
+| `explicit_cells` | Exactly the listed cells; no cartesian leakage |
+
+### Run names
+
+Deterministic, unique, match `^[A-Za-z0-9][A-Za-z0-9_-]*$` (same as R18 CLI).
+Encoded from study name, cell index, key factors, and a short content fingerprint.
+
+### Golden fixture
+
+`tests/fixtures/study/golden_study.yaml` + `tests/fixtures/study/golden/*` — byte-stable
+`experiment.yaml` / `study.expansion.json` / `study.spec.yaml` for an 8-cell mini study.
+
+### Out of scope for RS2
+
+CLI wiring, study-owned execute/ledger, confirm gates, overview report (RS3–RS5).

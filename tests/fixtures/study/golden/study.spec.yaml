@@ -1,0 +1,82 @@
+schema_version: 1
+study:
+  name: pdPOC_golden
+  description: RS2 golden expansion fixture
+  dataset:
+    path: data/es_1m.csv
+    instrument: ES
+    source_timezone: America/New_York
+  levels:
+    sma_lengths:
+    - 50
+    ema_lengths:
+    - 21
+    sma_timeframes:
+    - 1min
+    ema_timeframes:
+    - 5min
+  constants:
+    direction: both
+    tolerance_ticks: 0
+    min_confluences: 2
+    max_confluences: 2
+    min_valid_confluences: 1
+    naked_only: false
+    naked_requirement: any
+    trigger_params: {}
+    backtest:
+      stop_loss_ticks: 8
+      take_profit_ticks: 16
+      exposure_policy: single_position
+    grid:
+      enabled: false
+    validation:
+      enabled: false
+    walk_forward:
+      enabled: false
+  factors:
+    core_level:
+    - pdPOC
+    partner_levels:
+    - - SMA_50_1min
+    - - EMA_21_5min
+    confluence_mode:
+    - global_cluster
+    - anchor_rules
+    trigger:
+    - touch
+    trigger_timeframe:
+    - base
+    otf:
+    - enabled: false
+    - enabled: true
+      timeframes:
+      - 5m
+      alignment_mode: all
+      minimum_consecutive_bars: 3
+  mode_rules:
+    global_cluster:
+      selected_levels:
+      - ${core_level}
+      - ${partner_levels...}
+    anchor_rules:
+      selected_levels: []
+      anchor_level: ${core_level}
+      confluence_rules:
+        from_partners: required
+  report:
+    primary_metric: expectancy_r
+    secondary_metrics:
+    - profit_factor
+    - trade_count
+    min_trades: 30
+    group_by:
+    - partner_levels
+    - confluence_mode
+    - otf
+    otf_baseline:
+      enabled: false
+    multiple_testing: warn
+  workers: 1
+  confirm_above_runs: 200
+  output_dir: results/studies/pdPOC_golden
