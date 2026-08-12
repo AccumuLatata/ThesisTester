@@ -927,7 +927,25 @@ other than the last bar in the dataset.
   walk-forward evaluation, and non-zero `commission_per_side` /
   `slippage_ticks` before trusting expectancy ranks.
 - Study execute does not change R18 `run_batch` semantics; overview join does
-  not invent new inference (no automatic WFA/PBO rollup in RS4).
+  not invent new inference.
+
+## Research Study Runner diagnostic rollup (RS-D4)
+
+- `study rollup` writes `study.rollup.csv` / `study.rollup.md` by **composing**
+  existing per-cell index WFA columns and bundle members
+  (`walk_forward_meta.json`, `validation_summary.json`,
+  `overfitting_summary.json`). It does **not** compute cross-cell / pooled PBO,
+  DSR, or CSCV, and it does not auto-enable batteries.
+- Default study emission keeps `grid` / `validation` / `walk_forward`
+  `enabled: false`, so most MVP cells show battery status `not_run` with null
+  diagnostic columns — that is expected, not a bug.
+- R15 `overfitting_summary` / `cscv_pbo` require **grid cell trade sequences**.
+  After promote, humans may opt into survivor-stage constants with explicit
+  `enabled: true` flags (never bare `{}`), for example:
+  - `walk_forward.enabled: true` (with fold sizes), and/or
+  - `grid.enabled: true` plus `validation.overfitting.enabled: true`
+  before expecting dense overfitting columns in the rollup.
+- Rollup markdown is descriptive only: present diagnostics ≠ validated edge.
 
 ## Practical interpretation
 - With default settings, expectancy remains equivalent to prior gross outputs.

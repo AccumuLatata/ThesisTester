@@ -1,12 +1,12 @@
 # Research Study Runner
 
-**Status:** RS1–RS5 MVP + **RS-D7** + **RS6** + **RS-D2** landed. Post-MVP remaining: **RS-D4 → RS-D5**.  
+**Status:** RS1–RS5 MVP + **RS-D7** + **RS6** + **RS-D2** + **RS-D4** landed. Post-MVP remaining: **RS-D5**.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (§12)  
 **Package:** `thesistester.study`
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
-RS-D2 adds a **read-only** Studies viewer page over completed study dirs.
+RS-D2 adds a **read-only** Studies viewer; RS-D4 adds compose-only diagnostic rollup.
 
 This surface answers: *across many closed setups, which factor combinations look
 promising?* It is **not** confluence-combo attribution (within-trade membership).
@@ -409,17 +409,41 @@ Streamlit page: **Studies** (`pages/15_Studies.py`).
 
 ---
 
+## RS-D4 — Per-cell diagnostic rollup
+
+```bash
+python -m thesistester study rollup out/study1
+```
+
+Writes `study.rollup.csv` + `study.rollup.md` by composing existing per-cell
+index WFA columns and bundle members (`walk_forward_meta.json`,
+`validation_summary.json`, `overfitting_summary.json`).
+
+| Rule | Behavior |
+|---|---|
+| Compose-only | No cross-cell / pooled PBO, DSR, or CSCV |
+| Missing batteries | `*_battery=not_run` and null metrics (default study emission) |
+| Overfitting density | Needs grid cell trade sequences + explicit `validation.overfitting.enabled: true` |
+| Honesty | Descriptive rollup ≠ validated edge |
+
+**Survivor-stage opt-in (docs only; not auto-applied):** after promote, set
+explicit `walk_forward.enabled: true` and/or `grid.enabled: true` +
+`validation.overfitting.enabled: true` (never bare `{}`) before expecting dense
+rollup columns. See `ASSUMPTIONS_AND_LIMITATIONS.md`.
+
+---
+
 ## Post-MVP (plan-locked)
 
 See `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12. Do not reorder without amending that plan.
-**Next code PR = RS-D4 only** (§12.5).
+**Next code PR = RS-D5 only** (§12.6).
 
 | Order | ID | Intent |
 |---|---|---|
 | 1 | **RS-D7** ✅ | Additive `results_index` `profit_factor` + `win_rate` (soft-resume PF/WR backfill; ordered CLI↔study key parity) |
 | 2 | **RS6** ✅ | Default-off `STUDY.*` assistant capabilities + minimal CLI/confirm docs (two-step confirm; no MCP server) |
 | 3 | **RS-D2** ✅ | Streamlit Studies **viewer** (artifacts-only; no in-app run) |
-| 4 | **RS-D4** (**next**) | Per-cell WFA/validation/overfitting diagnostic rollup (compose-only; no cross-cell PBO) |
-| 5 | **RS-D5** | External Grok Bot routine pack |
+| 4 | **RS-D4** ✅ | Per-cell WFA/validation/overfitting diagnostic rollup (compose-only; no cross-cell PBO) |
+| 5 | **RS-D5** (**next**) | External Grok Bot routine pack |
 
 Parked: RS-D1 (NL compiler), RS-D3 (`run_batch` continue), RS-D6 (new factor types).

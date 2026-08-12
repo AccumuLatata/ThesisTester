@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts + code-audit hardening)  
-**Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 complete**. Post-MVP remaining: **RS-D4 → RS-D5**; parked: RS-D1 / RS-D3 / RS-D6  
+**Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 + RS-D4 complete**. Post-MVP remaining: **RS-D5**; parked: RS-D1 / RS-D3 / RS-D6  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`, `docs/USER_GUIDE.md`, `docs/STUDY_RUNNER.md`  
@@ -34,7 +34,7 @@ The runner must remain **independent of Streamlit day-to-day research**: no engi
 |---|---|
 | Feature name | Research Study Runner |
 | Package home | `thesistester/study/` (additive module; not a separate repo) |
-| Primary surface | CLI: `python -m thesistester study {expand,run,report,promote}` |
+| Primary surface | CLI: `python -m thesistester study {expand,run,report,promote,rollup}` |
 | Compute core | Existing `run_experiment` + `build_research_bundle` (same path as CLI `_execute_run`); emit `experiment.yaml` for R18 replay |
 | Engine / golden impact | **None** for RS1–RS5; RS-D7 may touch CLI index writers only (versioned, default-compatible) — still **no** `engine/` edits |
 | Streamlit / pages impact | **None** for RS1–RS5 / RS-D7 / RS6; **RS-D2 only** adds a thin Studies viewer page |
@@ -181,8 +181,9 @@ thesistester/study/
   report.py            # aggregate overview from index + factor map ✅
   promote.py           # survivor draft StudySpec writer ✅
   cli_study.py         # argparse handlers (wired from __main__/cli) ✅
-  tools.py             # RS6: thin STUDY.* capability adapters (default-off)
-  rollup.py            # RS-D4: per-cell diagnostic rollup (compose-only)
+  tools.py             # RS6: thin STUDY.* capability adapters (default-off) ✅
+  rollup.py            # RS-D4: per-cell diagnostic rollup (compose-only) ✅
+  viewer.py            # RS-D2: read-only Studies viewer helpers ✅
 docs/STUDY_RUNNER.md   # living operator contract ✅
 tests/study/           # unit + golden expand fixtures ✅
 examples/studies/      # stage-first example YAML ✅
@@ -435,6 +436,9 @@ python -m thesistester study report out/study1
 
 # Optional (RS5): draft survivor StudySpec — does not execute
 python -m thesistester study promote out/study1 --output path/to/draft_study.yaml
+
+# Optional (RS-D4): compose per-cell WFA/validation/overfitting diagnostics
+python -m thesistester study rollup out/study1
 ```
 
 | Flag | Behavior |
@@ -885,7 +889,7 @@ deep-link. HC allowlist if USER_GUIDE H2 added. No engine edits. §4.2.
 
 ---
 
-### 12.5 RS-D4 — Per-cell diagnostic rollup (WFA / validation / overfitting)
+### 12.5 RS-D4 — Per-cell diagnostic rollup (WFA / validation / overfitting) — ✅
 
 | | |
 |---|---|
@@ -965,7 +969,7 @@ Still **non-goals:** auto-promote to live thesis without human confirm; schedule
 
 ### 12.8 First implementable PR (kickoff)
 
-**RS-D7 ✅, RS6 ✅, and RS-D2 ✅ shipped.** Next code PR = **RS-D4 only** (§12.5). Do not combine with D5.
+**RS-D7 ✅, RS6 ✅, RS-D2 ✅, and RS-D4 ✅ shipped.** Next code PR = **RS-D5 only** (§12.6).
 
 Historical D7 implementer notes (kept for audit):
 
@@ -1103,8 +1107,8 @@ Recommended workflow after post-MVP sequence (§12):
 | RS-D7 Additive index PF + win_rate | ✅ |
 | RS6 Default-off `STUDY.*` assistant capabilities | ✅ |
 | RS-D2 Studies viewer (read-only) | ✅ |
-| RS-D4 Per-cell diagnostic rollup | ☐ **Next** |
-| RS-D5 Grok Bot routine pack | ☐ After RS6 |
+| RS-D4 Per-cell diagnostic rollup | ✅ |
+| RS-D5 Grok Bot routine pack | ☐ **Next** |
 | RS-D1 / RS-D3 / RS-D6 | Parked (§12.7) |
 
 ---
