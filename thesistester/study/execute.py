@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import fcntl
 import json
+import math
 import multiprocessing
+import numbers
 import os
 import zipfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -33,6 +35,7 @@ from thesistester.study.ledger import (
 from thesistester.study.schema import StudySpecError, load_study_spec
 
 # Metric keys produced by cli._execute_run (without bundle_path).
+# RS-D7: profit_factor + win_rate sit with other trade-summary metrics.
 R18_INDEX_METRIC_KEYS: tuple[str, ...] = (
     "run_name",
     "bundle_hash",
@@ -44,6 +47,8 @@ R18_INDEX_METRIC_KEYS: tuple[str, ...] = (
     "expectancy_r",
     "total_r",
     "max_drawdown_r",
+    "profit_factor",
+    "win_rate",
     "best_grid_stop_loss_ticks",
     "best_grid_take_profit_ticks",
     "validation_trade_count_status",
@@ -54,6 +59,53 @@ R18_INDEX_METRIC_KEYS: tuple[str, ...] = (
 )
 
 STUDY_INDEX_KEYS: tuple[str, ...] = R18_INDEX_METRIC_KEYS + ("bundle_path", "status")
+
+
+def _coerce_index_float(value: Any) -> float | None:
+    """Coerce trade-summary floats for index write; NaN → null; keep ±inf."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        if value is pd.NA or pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, numbers.Real):
+        number = float(value)
+        if math.isnan(number):
+            return None
+        return number
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text.lower() in {"nan", "none", "null"}:
+            return None
+        if text.lower() in {"inf", "+inf", "infinity"}:
+            return float("inf")
+        if text.lower() in {"-inf", "-infinity"}:
+            return float("-inf")
+        try:
+            number = float(text)
+        except ValueError:
+            return None
+        if math.isnan(number):
+            return None
+        return number
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return _coerce_index_float(item())
+        except (ValueError, TypeError, OverflowError, RecursionError):
+            return None
+    return None
+
+
+def _metric_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
 
 
 def build_index_row_from_state(
@@ -79,6 +131,8 @@ def build_index_row_from_state(
         "expectancy_r": summary.get("expectancy_r"),
         "total_r": summary.get("total_r"),
         "max_drawdown_r": summary.get("max_drawdown_r"),
+        "profit_factor": _coerce_index_float(summary.get("profit_factor")),
+        "win_rate": _coerce_index_float(summary.get("win_rate")),
         "best_grid_stop_loss_ticks": best.get("stop_loss_ticks"),
         "best_grid_take_profit_ticks": best.get("take_profit_ticks"),
         "validation_trade_count_status": (validation.get("trade_count") or {}).get("status"),
@@ -143,7 +197,29 @@ def _index_row_from_existing_bundle(
     for key in ("trade_count", "expectancy_r", "total_r", "max_drawdown_r"):
         if key in summary:
             row[key] = summary.get(key)
+    row["profit_factor"] = _coerce_index_float(summary.get("profit_factor"))
+    row["win_rate"] = _coerce_index_float(summary.get("win_rate"))
     return row
+
+
+def _backfill_pf_wr_from_bundle(
+    row: Mapping[str, Any],
+    *,
+    output_dir: Path,
+    bundle_rel: str,
+) -> dict[str, Any]:
+    """Fill missing PF/WR on an ok row from bundle without wiping other columns."""
+    out = dict(row)
+    need_pf = _metric_missing(out.get("profit_factor"))
+    need_wr = _metric_missing(out.get("win_rate"))
+    if not need_pf and not need_wr:
+        return out
+    summary = _read_bundle_trade_summary(output_dir / bundle_rel) or {}
+    if need_pf:
+        out["profit_factor"] = _coerce_index_float(summary.get("profit_factor"))
+    if need_wr:
+        out["win_rate"] = _coerce_index_float(summary.get("win_rate"))
+    return out
 
 
 def execute_study_cell(
@@ -581,14 +657,6 @@ def run_study(
         ledger = load_ledger(out) or ledger
         cells = ledger.get("cells") or {}
 
-        def _metric_missing(value: Any) -> bool:
-            if value is None:
-                return True
-            try:
-                return bool(pd.isna(value))
-            except (TypeError, ValueError):
-                return False
-
         for name in run_names:
             cell = cells.get(name) or {}
             if name not in index_by_name:
@@ -617,6 +685,19 @@ def run_study(
             ):
                 index_by_name[name] = _index_row_from_existing_bundle(
                     name, output_dir=out, bundle_rel=bundle_rel
+                )
+            elif (
+                cell.get("status") == "ok"
+                and isinstance(bundle_rel, str)
+                and bundle_rel
+                and (
+                    _metric_missing(row.get("profit_factor"))
+                    or _metric_missing(row.get("win_rate"))
+                )
+            ):
+                # Pre-D7 ok rows often have trade metrics but lack PF/WR columns.
+                index_by_name[name] = _backfill_pf_wr_from_bundle(
+                    row, output_dir=out, bundle_rel=bundle_rel
                 )
             else:
                 index_by_name[name] = row

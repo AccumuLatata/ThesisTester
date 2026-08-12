@@ -473,8 +473,8 @@ Emitted by `python -m thesistester study report <study_dir>` into
 | **group summary** | Per `report.group_by` axis: cell count, mean/median primary metric, mean trade count (same ranked-eligible gate: joined + min_trades + non-null primary). |
 | **OTF Δ / `delta_<metric>`** | For each non-OTF factor tuple: `metric(OTF variant) − metric(otf_baseline)` using canonical OTF keys (`normalize_otf_filter_config`; `5min` ≡ `5m`). |
 | **otf_baseline** | StudySpec `report.otf_baseline` (default `{enabled: false}`). Baseline cell must exist in the expansion for Δ rows to emit. |
-| **profit_factor (overview)** | Prefer index column when present (optional RS-D7); else read bundle `trade_summary.json`. Tracked as `profit_factor_source` ∈ `{index, bundle, missing}`. |
-| **win_rate (overview)** | Resolves independently of PF: prefer index `win_rate` when present, else bundle `trade_summary.json` (even when PF came from the index). |
+| **profit_factor (overview)** | Prefer index column when present (RS-D7 writers add it on ok cells); else read bundle `trade_summary.json`. Tracked as `profit_factor_source` ∈ `{index, bundle, missing}`. CSV may carry `inf`/`-inf` for infinite PF. |
+| **win_rate (overview)** | Resolves independently of PF: prefer index `win_rate` when present (RS-D7), else bundle `trade_summary.json` (even when PF came from the index). |
 | **multiple_testing** | `warn` (default): Markdown may name a top descriptive cell with caveats. `error`: best-cell crowning suppressed. |
 
 ## Developing session VWAPs (`dVWAP_RTH`, `dVWAP`)

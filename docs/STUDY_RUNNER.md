@@ -1,6 +1,6 @@
 # Research Study Runner
 
-**Status:** RS1–RS5 landed (holistic MVP). Post-MVP sequenced in the plan: **RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5**.  
+**Status:** RS1–RS5 MVP + **RS-D7** landed. Post-MVP remaining: **RS6 → RS-D2 → RS-D4 → RS-D5**.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (§12)  
 **Package:** `thesistester.study`
 
@@ -255,15 +255,23 @@ Reads a completed study directory (does not re-run backtests).
 - Sort: higher-is-better for `expectancy_r` / `total_r` / `profit_factor` / `trade_count`; lower-is-better for `max_drawdown_r`.
 - `multiple_testing: error` suppresses best-cell crowning in Markdown (ranked table still emitted as descriptive).
 
-### Profit factor source
+### Profit factor / win_rate source (RS-D7)
 
-R18 study index does **not** add PF columns in MVP (RS-D7 deferred). Report resolves:
+Study + CLI `results_index.csv` writers include additive **`profit_factor`** and
+**`win_rate`** columns (immediately after `max_drawdown_r`). Failed/pending rows
+leave both null. Soft resume rehydrates/backfills PF/WR from bundle
+`trade_summary` when missing. `±inf` PF is stored as float inf; pandas CSV emits
+`inf`/`-inf` (report coerces). No Experiment `schema_version` bump.
 
-1. Index `profit_factor` when present → `profit_factor_source=index`
+Report resolves **per field**:
+
+1. Index value when present → for PF, `profit_factor_source=index`
 2. Else bundle `trade_summary.json` → `profit_factor_source=bundle`
 3. Else `missing`
 
-Optional `win_rate` resolves **per field** the same way (index then bundle), including when PF came from the index but `win_rate` did not. Documented in `METRICS_GLOSSARY.md`.
+`win_rate` resolves independently the same way (index then bundle), including
+when PF came from the index but `win_rate` did not. Documented in
+`METRICS_GLOSSARY.md`.
 
 ### OTF Δ
 
@@ -339,12 +347,12 @@ Auto-run promotion, assistant NL compiler, Studies UI, RS6 `STUDY.*` assistant t
 ## Post-MVP (plan-locked)
 
 See `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12. Do not reorder without amending that plan.
-**Next code PR = RS-D7 only** (§12.8).
+**Next code PR = RS6 only** (§12.3).
 
 | Order | ID | Intent |
 |---|---|---|
-| 1 | **RS-D7** (**next**) | Additive `results_index` `profit_factor` + `win_rate` (incl. soft-resume PF/WR backfill; ordered CLI↔study key parity) |
-| 2 | **RS6** | Default-off `STUDY.*` assistant capabilities + minimal CLI/confirm docs (two-step confirm; no MCP server) |
+| 1 | **RS-D7** ✅ | Additive `results_index` `profit_factor` + `win_rate` (soft-resume PF/WR backfill; ordered CLI↔study key parity) |
+| 2 | **RS6** (**next**) | Default-off `STUDY.*` assistant capabilities + minimal CLI/confirm docs (two-step confirm; no MCP server) |
 | 3 | **RS-D2** | Streamlit Studies **viewer** (artifacts-only; no in-app run) |
 | 4 | **RS-D4** | Per-cell WFA/validation/overfitting diagnostic rollup (compose-only; no cross-cell PBO) |
 | 5 | **RS-D5** | External Grok Bot routine pack |

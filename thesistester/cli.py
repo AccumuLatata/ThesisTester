@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import math
 import multiprocessing
+import numbers
 import os
 import re
 from concurrent.futures import ProcessPoolExecutor
@@ -70,6 +72,48 @@ def load_experiment_file(path: str | Path) -> dict[str, Any]:
     return payload
 
 
+def _coerce_index_float(value: Any) -> float | None:
+    """Coerce trade-summary floats for index write; NaN → null; keep ±inf.
+
+    Kept local (not imported from ``study.execute``) to avoid cli↔study cycles.
+    Must stay behavior-aligned with ``thesistester.study.execute._coerce_index_float``.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        if value is pd.NA or pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, numbers.Real):
+        number = float(value)
+        if math.isnan(number):
+            return None
+        return number
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text.lower() in {"nan", "none", "null"}:
+            return None
+        if text.lower() in {"inf", "+inf", "infinity"}:
+            return float("inf")
+        if text.lower() in {"-inf", "-infinity"}:
+            return float("-inf")
+        try:
+            number = float(text)
+        except ValueError:
+            return None
+        if math.isnan(number):
+            return None
+        return number
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return _coerce_index_float(item())
+        except (ValueError, TypeError, OverflowError, RecursionError):
+            return None
+    return None
+
+
 def _execute_run(
     task: tuple[dict[str, Any], str],
 ) -> tuple[str, bytes, dict[str, Any]]:
@@ -87,6 +131,7 @@ def _execute_run(
     validation = state.get("validation_summary") or {}
     walk_forward = state.get("walk_forward_summary") or {}
     cache_provenance = state.get("cache_provenance") or {}
+    # Key order must match study.R18_INDEX_METRIC_KEYS (RS-D7 ordered parity).
     index_row = {
         "run_name": name,
         "bundle_hash": canonical_bundle_hash(bundle),
@@ -98,6 +143,8 @@ def _execute_run(
         "expectancy_r": summary.get("expectancy_r"),
         "total_r": summary.get("total_r"),
         "max_drawdown_r": summary.get("max_drawdown_r"),
+        "profit_factor": _coerce_index_float(summary.get("profit_factor")),
+        "win_rate": _coerce_index_float(summary.get("win_rate")),
         "best_grid_stop_loss_ticks": best.get("stop_loss_ticks"),
         "best_grid_take_profit_ticks": best.get("take_profit_ticks"),
         "validation_trade_count_status": (validation.get("trade_count") or {}).get("status"),
