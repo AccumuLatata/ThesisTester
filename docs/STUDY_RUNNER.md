@@ -1,13 +1,14 @@
 # Research Study Runner
 
-**Status:** RS1–RS5 MVP + **RS-D7** + **RS6** + **RS-D2** + **RS-D4** + **RS-D5** landed. Post-MVP §12 sequence complete; parked: RS-D1 / RS-D3 / RS-D6.  
+**Status:** RS1–RS5 MVP + **RS-D7** + **RS6** + **RS-D2** + **RS-D4** + **RS-D5** landed. Next sequenced: **RS-D8** (Studies authoring preview). Parked: RS-D1 / RS-D3 / RS-D6.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (§12)  
 **Package:** `thesistester.study`
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
 RS-D2 adds a **read-only** Studies viewer; RS-D4 adds compose-only diagnostic
-rollup; RS-D5 is the external Grok routine pack (docs/examples only).
+rollup; RS-D5 is the external Grok routine pack (docs/examples only). RS-D8
+(planned) extends the Studies page with a **preview-only** YAML pane.
 
 This surface answers: *across many closed setups, which factor combinations look
 promising?* It is **not** confluence-combo attribution (within-trade membership).
@@ -428,6 +429,7 @@ Streamlit page: **Studies** (`pages/15_Studies.py`).
 - Report bundle reads refuse `bundle_path` values that escape the study directory.
 - Package import is Windows-safe: `study.execute` binds `fcntl` / `msvcrt`
   optionally so opening this page cannot raise `ModuleNotFoundError: fcntl`.
+- **RS-D8** (planned) adds a preview pane on this same page — still no in-app execute.
 
 ---
 
@@ -457,11 +459,26 @@ skipped) before expecting dense rollup columns. See
 
 ---
 
+## RS-D8 — Studies authoring preview (planned)
+
+Contract: `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12.9. Not shipped until
+that milestone’s PR.
+
+| Rule | Behavior |
+|---|---|
+| YAML | Canonical `schema_version: 1` StudySpec only (fail-closed). No NL / shorthand compiler |
+| Preview | In-memory validate + `expand_study`; show `run_count`, full cartesian, `needs_confirm`, identity, cost hints |
+| Cap | Skip in-memory expand above `PREVIEW_EXPAND_CAP` (20_000); still show axis-size estimate |
+| Progress | Refresh existing study-dir ledger counts; do not start `study run` from the page |
+| Execute | Remains CLI (`study run --confirm`) / optional RS6 tools |
+| Page | Same `pages/15_Studies.py` slot — no new nav item |
+
+---
+
 ## Post-MVP (plan-locked)
 
-See `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12. Sequenced milestones
-**RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5** are complete. Parked items stay out of
-the critical path unless that plan is amended.
+See `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12. Do not reorder without amending that plan.
+**Next code PR = RS-D8 only** (§12.9).
 
 | Order | ID | Intent |
 |---|---|---|
@@ -470,5 +487,6 @@ the critical path unless that plan is amended.
 | 3 | **RS-D2** ✅ | Streamlit Studies **viewer** (artifacts-only; no in-app run) |
 | 4 | **RS-D4** ✅ | Per-cell WFA/validation/overfitting diagnostic rollup (compose-only; no cross-cell PBO) |
 | 5 | **RS-D5** ✅ | External Grok Bot routine pack (`STUDY_RUNNER_GROK_ROUTINE_PACK.md` + `examples/studies/agents/`) |
+| 6 | **RS-D8** (**next**) | Studies authoring preview (canonical YAML validate + in-memory expand; cell count / confirm gate; ledger watch; **no** in-app execute) |
 
 Parked: RS-D1 (NL compiler), RS-D3 (`run_batch` continue), RS-D6 (new factor types).

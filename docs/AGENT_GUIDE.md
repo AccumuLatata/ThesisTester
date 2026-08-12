@@ -47,6 +47,9 @@ the CLI when the flag is off.
 host): `docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md` + copy-ready prompts under
 `examples/studies/agents/`.
 
+**RS-D8** (planned): Studies page authoring preview — canonical StudySpec YAML
+validate + in-memory expand (cell count / confirm gate). Execute stays CLI.
+
 The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
 `dict` values:
 
