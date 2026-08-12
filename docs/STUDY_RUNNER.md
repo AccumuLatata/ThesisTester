@@ -46,7 +46,9 @@ study:
 
 Normalization defaults (when omitted): `workers=1`, `confirm_above_runs=200`,
 `description=""`, `output_dir=results/studies/<name>`, and a standard `report`
-block (`primary_metric: expectancy_r`, `multiple_testing: warn`, …).
+block (`primary_metric: expectancy_r`, `multiple_testing: warn`, …). Default
+`group_by` is the intersection of the preferred axes with this study’s
+`factors` (never invents axes the study does not declare).
 
 ### Supported factor axes
 
