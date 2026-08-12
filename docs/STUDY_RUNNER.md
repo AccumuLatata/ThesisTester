@@ -1,6 +1,6 @@
 # Research Study Runner
 
-**Status:** RS1–RS4 landed (schema + expand + execute/ledger + overview report). Promote/examples in RS5.  
+**Status:** RS1–RS5 landed (holistic MVP: schema → expand → execute → report → promote/examples). Optional RS6 deferred.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`  
 **Package:** `thesistester.study`
 
@@ -272,3 +272,61 @@ Baseline = normalized `study.report.otf_baseline` (default `{enabled: false}`). 
 ### Out of scope for RS4
 
 LLM narrative, Studies UI page, silent R18 index schema change, promote/examples (RS5).
+
+---
+
+## RS5 — Promote + stage-first examples
+
+### End-to-end recipe
+
+```bash
+# 1) Stage-first expand (example → 40 cells)
+python -m thesistester study expand \
+  examples/studies/pdPOC_ma_confluence_battery.yaml --output-dir out/pdPOC_stage40
+
+# 2) Execute (confirm required when run_count >= confirm_above_runs)
+python -m thesistester study run \
+  examples/studies/pdPOC_ma_confluence_battery.yaml --output-dir out/pdPOC_stage40 --confirm
+
+# 3) Overview
+python -m thesistester study report out/pdPOC_stage40
+
+# 4) Draft survivors (does NOT execute)
+python -m thesistester study promote out/pdPOC_stage40 \
+  --output drafts/pdPOC_survivors.yaml --top-n 10
+
+# 5) Human edit draft, then expand/run again after confirm
+python -m thesistester study expand drafts/pdPOC_survivors.yaml --output-dir out/pdPOC_survivors
+```
+
+### `study promote`
+
+| Flag | Behavior |
+|---|---|
+| `study_dir` | Completed study output (spec + expansion + index/bundles) |
+| `--output` | Draft StudySpec path (required) |
+| `--top-n` | Ranked survivors to include (default 10) |
+| `--metric` | Optional ranking override (default `report.primary_metric`) |
+
+Draft rules:
+
+- `stage.mode: explicit_cells` with one cell per survivor (every factor axis present)
+- Factor domains narrowed to survivor values (cartesian skipped by explicit_cells)
+- Header comments mark **DRAFT**; description notes source study_dir
+- Validates as StudySpec before write; **never** calls execute / `run_batch`
+
+### Example
+
+`examples/studies/pdPOC_ma_confluence_battery.yaml`
+
+| Expansion | Cells |
+|---|---|
+| Active `stage.filter` (`touch` + `base`) | **40** |
+| Full cartesian (phase-2; remove/widen stage) | **800** |
+
+CI/golden miniatures remain under `tests/fixtures/study/` (2×2×2). Do not run the
+800-cell grid in CI.
+
+### Out of scope for RS5
+
+Auto-run promotion, assistant NL compiler, Studies UI, RS6 MCP/assistant tools.

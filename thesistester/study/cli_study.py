@@ -1,4 +1,4 @@
-"""CLI handlers for ``python -m thesistester study …`` (RS3–RS4)."""
+"""CLI handlers for ``python -m thesistester study …`` (RS3–RS5)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from thesistester.study.execute import (
     prepare_study_expansion,
     run_study,
 )
+from thesistester.study.promote import StudyPromoteError, promote_study
 from thesistester.study.report import StudyReportError, report_study
 from thesistester.study.schema import StudySpecError
 
@@ -20,7 +21,7 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
     """Register the ``study`` command group on the root CLI parser."""
     study_parser = subparsers.add_parser(
         "study",
-        help="Research Study Runner (expand / run / report closed StudySpecs)",
+        help="Research Study Runner (expand / run / report / promote)",
     )
     study_sub = study_parser.add_subparsers(dest="study_command", required=True)
 
@@ -74,9 +75,37 @@ def add_study_subparser(subparsers: argparse._SubParsersAction) -> None:
         help="Completed study output directory (contains expansion + results_index)",
     )
 
+    promote_parser = study_sub.add_parser(
+        "promote",
+        help="Draft survivor StudySpec (explicit_cells); does not execute",
+    )
+    promote_parser.add_argument(
+        "study_dir",
+        type=Path,
+        help="Completed study output directory (overview / expansion / spec)",
+    )
+    promote_parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="Path for the draft StudySpec YAML",
+    )
+    promote_parser.add_argument(
+        "--top-n",
+        type=int,
+        default=10,
+        help="Number of ranked survivor cells to include (default: 10)",
+    )
+    promote_parser.add_argument(
+        "--metric",
+        type=str,
+        default=None,
+        help="Ranking metric override (default: study.report.primary_metric)",
+    )
+
 
 def dispatch_study(args: argparse.Namespace) -> int:
-    """Dispatch ``study expand|run|report``; return process exit code."""
+    """Dispatch ``study expand|run|report|promote``; return process exit code."""
     try:
         if args.study_command == "expand":
             return _cmd_expand(args)
@@ -84,11 +113,16 @@ def dispatch_study(args: argparse.Namespace) -> int:
             return _cmd_run(args)
         if args.study_command == "report":
             return _cmd_report(args)
+        if args.study_command == "promote":
+            return _cmd_promote(args)
     except StudySpecError as exc:
         print(f"StudySpec error: {exc}", file=sys.stderr)
         return 2
     except StudyReportError as exc:
         print(f"Study report error: {exc}", file=sys.stderr)
+        return 2
+    except StudyPromoteError as exc:
+        print(f"Study promote error: {exc}", file=sys.stderr)
         return 2
     except ValueError as exc:
         print(f"Study error: {exc}", file=sys.stderr)
@@ -152,4 +186,20 @@ def _cmd_report(args: argparse.Namespace) -> int:
     print(f"Artifacts: {result.paths['study.overview.csv']}")
     print(f"           {result.paths['study.overview.md']}")
     print(f"           {result.paths['study.otf_delta.csv']}")
+    return os.EX_OK
+
+
+def _cmd_promote(args: argparse.Namespace) -> int:
+    result = promote_study(
+        args.study_dir,
+        output=args.output,
+        top_n=int(args.top_n),
+        metric=args.metric,
+    )
+    print(
+        f"Draft StudySpec written: {result.output_path} "
+        f"({result.cell_count} survivor cell(s) by {result.primary_metric})"
+    )
+    print("This is a DRAFT — edit and confirm before `study run` (no auto-execution).")
+    print(f"Expand preview: python -m thesistester study expand {result.output_path}")
     return os.EX_OK

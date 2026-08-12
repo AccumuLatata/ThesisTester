@@ -22,6 +22,11 @@ from thesistester.study.expand import (
     write_expansion_artifacts,
 )
 from thesistester.study.naming import build_run_name, factor_cell_fingerprint
+from thesistester.study.promote import (
+    StudyPromoteError,
+    StudyPromoteResult,
+    promote_study,
+)
 from thesistester.study.report import (
     StudyReportError,
     StudyReportResult,
@@ -44,6 +49,8 @@ __all__ = [
     "RUN_NAME_RE",
     "STUDY_INDEX_KEYS",
     "STUDY_SCHEMA_VERSION",
+    "StudyPromoteError",
+    "StudyPromoteResult",
     "StudyReportError",
     "StudyReportResult",
     "StudySpecError",
@@ -58,6 +65,7 @@ __all__ = [
     "normalize_study_spec",
     "otf_canonical_key",
     "prepare_study_expansion",
+    "promote_study",
     "report_study",
     "run_study",
     "study_identity_hash",

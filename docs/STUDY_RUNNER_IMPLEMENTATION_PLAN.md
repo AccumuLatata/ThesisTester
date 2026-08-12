@@ -644,12 +644,12 @@ Deterministic fixtures. §4.2.
 | **Behavior** | From a completed study dir, generate a **draft** StudySpec containing only selected survivor factor tuples, still requiring human edit/confirm before run |
 | **Out of scope** | Auto-run promotion; assistant NL |
 | **Acceptance checklist** | |
-| | ☐ Promote writes draft StudySpec; does not execute |
-| | ☐ Example YAML expands to 40 cells with stage filter; full 800 documented as phase-2 |
-| | ☐ Tiny CI subset fixture still used for unit/golden (2×2×2) |
-| | ☐ USER_GUIDE / STUDY_RUNNER end-to-end recipe |
-| | ☐ Core series RS1–RS5 marked implemented on roadmap after green CI |
-| | ☐ Full suite green |
+| | ✅ Promote writes draft StudySpec; does not execute |
+| | ✅ Example YAML expands to 40 cells with stage filter; full 800 documented as phase-2 |
+| | ✅ Tiny CI subset fixture still used for unit/golden (2×2×2) |
+| | ✅ USER_GUIDE / STUDY_RUNNER end-to-end recipe |
+| | ✅ Core series RS1–RS5 marked implemented on roadmap after green CI |
+| | ✅ Full suite green |
 
 **Copy-ready agent prompt:**
 
@@ -790,7 +790,7 @@ Holistic MVP is done when **all** of the following hold:
 | RS2 Expander | ✅ |
 | RS3 CLI expand/run + study-owned ledger | ✅ |
 | RS4 Report | ✅ |
-| RS5 Staging/promote + examples | ☐ |
+| RS5 Staging/promote + examples | ✅ |
 | RS6 Optional agent tools | ☐ Deferred until after RS5 |
 
 ---

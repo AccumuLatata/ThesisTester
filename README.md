@@ -64,6 +64,10 @@ Run a versioned YAML batch with one research bundle per run and a summary CSV:
 python -m thesistester run experiment.yaml --workers 4
 ```
 
+For closed multi-factor confluence studies, use the additive Study Runner
+(`study expand|run|report|promote`) — see [`docs/STUDY_RUNNER.md`](docs/STUDY_RUNNER.md)
+and `examples/studies/`.
+
 Dataset paths are relative to the YAML file. Parallelism is across independent
 runs only; each run remains single-threaded and deterministic. See
 [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) for the full schema, typed handoffs,

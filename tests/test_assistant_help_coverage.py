@@ -528,6 +528,7 @@ _HC4_USER_GUIDE_H2_FREEZE = (
     "Portfolio",
     "Research Assistant (draft, Discuss, Help)",
     "Research mode on classic pages",
+    "Research Study Runner (headless)",
     "When to use Help vs Discuss results",
 )
 
