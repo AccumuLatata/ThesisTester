@@ -1,7 +1,7 @@
 # Research Study Runner — External Grok Bot routine pack (RS-D5)
 
 **Status:** RS-D5 ✅  
-**Depends on:** RS1–RS5 MVP, **RS-D7** (index `profit_factor` / `win_rate`), **RS6** (default-off `STUDY.*` + minimal confirm recipe), benefits from RS-D2 viewer + RS-D4 rollup + RS-D8 preview. RS-D9 (sequenced) may spawn the same CLI from Studies — not a second contract.  
+**Depends on:** RS1–RS5 MVP, **RS-D7** (index `profit_factor` / `win_rate`), **RS6** (default-off `STUDY.*` + minimal confirm recipe), benefits from RS-D2 viewer + RS-D4 rollup + RS-D8 preview. RS-D9 may spawn the same CLI from Studies — not a second contract.  
 **Operator contract:** [`STUDY_RUNNER.md`](STUDY_RUNNER.md)  
 **Plan:** [`STUDY_RUNNER_IMPLEMENTATION_PLAN.md`](STUDY_RUNNER_IMPLEMENTATION_PLAN.md) §12.6  
 **Copy-ready prompts:** [`examples/studies/agents/`](../examples/studies/agents/)
@@ -37,7 +37,7 @@ server for this surface.
 | CLI `python -m thesistester study …` | **Always preferred** | Works with `assistant.study_tools.enabled=false` |
 | RS6 `STUDY.expand\|run\|report\|promote` | Opt-in only | Same APIs; handlers refuse when flag off |
 | Studies viewer (RS-D2 / RS-D8) | Human inspect + preview | Artifacts-only inspect; YAML preview; no in-process execute |
-| Studies CLI-launch (RS-D9, sequenced) | Human convenience | Spawns the same `study run` argv; not a second runner; two-step confirm over threshold |
+| Studies CLI-launch (RS-D9) | Human convenience | Spawns the same `study run` argv; not a second runner; two-step confirm over threshold |
 | `study rollup` (RS-D4) | After survivor batteries | Compose-only; `not_run` when batteries off |
 
 RS6 confirm (over `confirm_above_runs`) remains:
@@ -192,7 +192,7 @@ Copy into the external agent’s system prompt (also in
    `validation.overfitting.enabled: true`; do not invent cross-cell PBO.
    `study rollup` is CLI-only (no `STUDY.rollup`).
 8. No MCP server / no product-host embedding assumptions.
-9. Studies inspect is read-only; RS-D9 (when shipped) may spawn CLI `study run`
+9. Studies inspect is read-only; RS-D9 may spawn CLI `study run`
    from Preview — same argv / confirm contract, not a second runner. Agents
    still prefer typing the CLI.
 10. Soft-resume by default; run `--force` wipe only on explicit human request

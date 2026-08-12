@@ -9,6 +9,10 @@ import pytest
 import yaml
 
 from thesistester.study.expand import expand_study
+from thesistester.study.launch import (
+    STUDIES_LAUNCH_APPROVAL_KEY,
+    STUDIES_LAUNCH_OUTPUT_DIR_KEY,
+)
 from thesistester.study.preview import (
     PREVIEW_EXPAND_CAP,
     STUDIES_PREVIEW_CACHED_KEY,
@@ -174,10 +178,18 @@ def test_pages_studies_preview_has_no_execute_controls():
                 and slice_node.id == "STUDIES_PREVIEW_CACHED_YAML_KEY"
             ):
                 written_keys.add(STUDIES_PREVIEW_CACHED_YAML_KEY)
+            elif isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_LAUNCH_OUTPUT_DIR_KEY":
+                written_keys.add(STUDIES_LAUNCH_OUTPUT_DIR_KEY)
+            elif isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_LAUNCH_APPROVAL_KEY":
+                written_keys.add(STUDIES_LAUNCH_APPROVAL_KEY)
             elif isinstance(slice_node, ast.Constant) and isinstance(slice_node.value, str):
                 written_keys.add(slice_node.value)
             else:
                 written_keys.add("<dynamic>")
+    assert "spawn_launch" in page
+    assert "Run via CLI" in page
+    assert "Confirm and run" in page
+    assert "Bind confirm" in page
     assert written_keys <= {
         STUDIES_VIEWER_DIR_KEY,
         "studies_viewer_path_input",
@@ -186,9 +198,13 @@ def test_pages_studies_preview_has_no_execute_controls():
         STUDIES_PREVIEW_YAML_KEY,
         STUDIES_PREVIEW_CACHED_KEY,
         STUDIES_PREVIEW_CACHED_YAML_KEY,
+        STUDIES_LAUNCH_OUTPUT_DIR_KEY,
+        STUDIES_LAUNCH_APPROVAL_KEY,
     }
     assert STUDIES_VIEWER_CACHED_MODEL_KEY in written_keys
     assert STUDIES_PREVIEW_CACHED_KEY in written_keys
+    assert STUDIES_LAUNCH_OUTPUT_DIR_KEY in written_keys
+    assert STUDIES_LAUNCH_APPROVAL_KEY in written_keys
     assert not (written_keys & CLASSIC_RESEARCH_SESSION_KEYS)
 
 

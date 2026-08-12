@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts + code-audit hardening + RS-D8 authoring-preview sequence + **RS-D9 CLI-launch sequence**)  
-**Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 + RS-D8 complete**. **Next: RS-D9** (Studies CLI-launch button). Parked: RS-D1 / RS-D3 / RS-D6  
+**Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 + RS-D8 + RS-D9 complete**. Parked: RS-D1 / RS-D3 / RS-D6  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`, `docs/USER_GUIDE.md`, `docs/STUDY_RUNNER.md`  
@@ -190,7 +190,7 @@ thesistester/study/
   rollup.py            # RS-D4: per-cell diagnostic rollup (compose-only) ✅
   viewer.py            # RS-D2: read-only Studies viewer helpers ✅
   preview.py           # RS-D8: validate + expand dry-run preview (no execute)
-  launch.py            # RS-D9: argv builder + detached `study run` spawn (no execute import)
+  launch.py            # RS-D9: argv builder + detached `study run` spawn (no execute import) ✅
 docs/STUDY_RUNNER.md   # living operator contract ✅
 tests/study/           # unit + golden expand fixtures ✅
 examples/studies/      # stage-first example YAML ✅
@@ -985,7 +985,7 @@ Still **non-goals:** auto-promote to live thesis without human confirm; schedule
 
 ### 12.8 First implementable PR (kickoff)
 
-**RS-D7 ✅, RS6 ✅, RS-D2 ✅, RS-D4 ✅, RS-D5 ✅, and RS-D8 ✅ shipped.** Next implementable PR is **RS-D9 only** (§12.10). Parked items (§12.7) stay out unless this plan is amended.
+**RS-D7 ✅, RS6 ✅, RS-D2 ✅, RS-D4 ✅, RS-D5 ✅, RS-D8 ✅, and RS-D9 ✅ shipped.** Sequenced post-MVP track complete; parked items (§12.7) stay out unless this plan is amended.
 
 Historical D7 implementer notes (kept for audit):
 
@@ -1078,7 +1078,7 @@ added. §4.2.
 
 ---
 
-### 12.10 RS-D9 — Studies CLI-launch button (spawn existing `study run`) — ☐ Next
+### 12.10 RS-D9 — Studies CLI-launch button (spawn existing `study run`) — ✅
 
 | | |
 |---|---|
@@ -1353,7 +1353,7 @@ Recommended workflow after post-MVP sequence (§12):
 | RS-D4 Per-cell diagnostic rollup | ✅ |
 | RS-D5 Grok Bot routine pack | ✅ |
 | RS-D8 Studies authoring preview | ✅ |
-| RS-D9 Studies CLI-launch button | ☐ Next (§12.10) |
+| RS-D9 Studies CLI-launch button | ✅ |
 | RS-D1 / RS-D3 / RS-D6 | Parked (§12.7) |
 
 ---
@@ -1460,4 +1460,10 @@ Recommended workflow after post-MVP sequence (§12):
 65. Pin relative `dataset.path` (search-roots-then-cwd) so a YAML written under `output_dir` cannot reinterpret `data/es_1m.csv`. Never write `study.spec.yaml` from the page; never default output_dir to the Inspect dir.  
 66. Detached spawn is **not** a job queue: no retry/watchdog/kill UI; progress remains Inspect **Refresh**. Streamlit reruns must not respawn (button-click only; no sticky `should_launch`).  
 67. USER_GUIDE: prefer extending H2 `Studies viewer (read-only)`; HC §7.1.4 allowlist only if a new H2 is added.  
-68. §12.0 / §12.1 / status tracker / risks / §16.2 / docs plan updated; next code PR = **RS-D9 only**. Parked D1/D3/D6 unchanged.  
+68. §12.0 / §12.1 / status tracker / risks / §16.2 / docs plan updated; next code PR = **RS-D9 only**. Parked D1/D3/D6 unchanged.
+
+### 18.11 RS-D9 ship
+
+69. `thesistester/study/launch.py` + Studies **Run via CLI** / **Bind confirm** / **Confirm and run** on the Preview pane; detached `Popen`; `study.launch.yaml` (not `study.spec.yaml`).  
+70. USER_GUIDE H2 `Studies viewer (read-only)` extended (no new H2 / no HC allowlist change).  
+71. Sequenced post-MVP track through RS-D9 marked complete; parked D1/D3/D6 unchanged.  

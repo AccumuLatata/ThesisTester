@@ -1,9 +1,24 @@
-"""RS-D2/RS-D8 — Studies inspect viewer + authoring preview (no in-app execute)."""
+"""RS-D2/RS-D8/RS-D9 — Studies inspect, preview, and CLI-spawn (no in-process execute)."""
 
 from __future__ import annotations
 
 import streamlit as st
 
+from thesistester.study.launch import (
+    STUDIES_LAUNCH_APPROVAL_KEY,
+    STUDIES_LAUNCH_OUTPUT_DIR_KEY,
+    LaunchPlan,
+    StudyLaunchError,
+    approval_matches,
+    approval_payload,
+    build_launch_plan,
+    default_output_dir_from_yaml,
+    format_argv,
+    plan_with_confirm,
+    planned_argv,
+    read_launch_pid_status,
+    spawn_launch,
+)
 from thesistester.study.preview import (
     STUDIES_PREVIEW_CACHED_KEY,
     STUDIES_PREVIEW_CACHED_YAML_KEY,
@@ -26,7 +41,8 @@ from thesistester.study.viewer import (
 st.title("Studies")
 st.caption(
     "Inspect a completed study output directory, or preview a canonical StudySpec "
-    "YAML (cell count / confirm gate). Expand, run, and promote stay on the CLI "
+    "YAML (cell count / confirm gate). Run via CLI spawns the existing "
+    "`python -m thesistester study run` process. Promote stays on the CLI "
     "(or optional STUDY.* assistant tools)."
 )
 
@@ -191,10 +207,136 @@ def _copy_spec_from_loaded_dir() -> bool:
         st.error(f"No study.spec.yaml under {root}")
         return False
     st.session_state[STUDIES_PREVIEW_YAML_KEY] = spec_path.read_text(encoding="utf-8")
+    _clear_launch_session()
     return True
 
 
-def _render_preview_result(preview: StudyPreview) -> None:
+def _clear_launch_session() -> None:
+    st.session_state.pop(STUDIES_LAUNCH_APPROVAL_KEY, None)
+    st.session_state.pop(STUDIES_LAUNCH_OUTPUT_DIR_KEY, None)
+
+
+def _spawn_or_error(plan: LaunchPlan) -> None:
+    try:
+        result = spawn_launch(plan)
+    except StudyLaunchError as exc:
+        st.error(str(exc))
+        return
+    st.success(
+        f"Started CLI pid `{result.pid}`. Watch **Inspect → Refresh** / ledger. "
+        f"Log: `{result.log_path}`."
+    )
+
+
+def _render_launch_controls(preview: StudyPreview, yaml_text: str) -> None:
+    st.markdown("### Run via CLI")
+    st.caption(
+        "Starts the same `python -m thesistester study run` process as the terminal. "
+        "Cells do not execute inside this page."
+    )
+    if STUDIES_LAUNCH_OUTPUT_DIR_KEY not in st.session_state:
+        st.session_state[STUDIES_LAUNCH_OUTPUT_DIR_KEY] = default_output_dir_from_yaml(yaml_text)
+
+    output_raw = st.text_input(
+        "CLI output directory",
+        key=STUDIES_LAUNCH_OUTPUT_DIR_KEY,
+        help=(
+            "Must stay under the repo working directory or the local ThesisTester store. "
+            "Does not default to the Inspect directory. Dataset paths are pinned absolute "
+            "in study.launch.yaml — prefer a new output_dir for UI launches."
+        ),
+        placeholder="results/studies/my_study",
+    )
+    override = st.checkbox("Override workers", value=False, key="studies_launch_override_workers")
+    workers = None
+    if override:
+        workers = int(
+            st.number_input(
+                "Workers",
+                min_value=1,
+                value=max(int(preview.workers), 1),
+                step=1,
+                key="studies_launch_workers",
+            )
+        )
+    force = st.checkbox(
+        "Pass --force (re-run all cells / ignore identity mismatch)",
+        value=False,
+        key="studies_launch_force",
+    )
+    st.info(
+        "**Honesty.** Combinatorial `run_count` is a screening size, not independent "
+        "statistical tests. Large factorials need the two-step confirm. Launching the "
+        "CLI does not validate an edge. The child is the same `study run` as the terminal."
+    )
+    if not preview.expanded:
+        st.warning(
+            "Over preview cap — launch from this page is refused. Shrink the study "
+            "or use the CLI after `study expand`."
+        )
+        return
+
+    cached_yaml = st.session_state.get(STUDIES_PREVIEW_CACHED_YAML_KEY)
+    try:
+        plan = build_launch_plan(
+            yaml_text,
+            cached_yaml=cached_yaml if isinstance(cached_yaml, str) else None,
+            expanded=preview.expanded,
+            run_count=preview.run_count,
+            output_dir_raw=str(output_raw or ""),
+            force=bool(force),
+            workers=workers,
+        )
+    except StudyLaunchError as exc:
+        st.caption(str(exc))
+        plan = None
+
+    stored = st.session_state.get(STUDIES_LAUNCH_APPROVAL_KEY)
+    if plan is not None and stored is not None and not approval_matches(stored, plan):
+        st.session_state.pop(STUDIES_LAUNCH_APPROVAL_KEY, None)
+        stored = None
+
+    if plan is not None:
+        st.code(format_argv(planned_argv(plan)), language="text")
+        status = read_launch_pid_status(plan.output_dir)
+        if status is not None:
+            state = "alive" if status.alive else "not alive"
+            st.caption(f"Last launch pid `{status.pid}` ({state}).")
+
+    if plan is not None and not plan.needs_confirm:
+        if st.button("Run via CLI", type="primary"):
+            _spawn_or_error(plan)
+        return
+
+    bind_col, run_col = st.columns(2)
+    do_bind = bind_col.button("Bind confirm")
+    do_confirm_run = run_col.button("Confirm and run", type="primary")
+    if stored is not None:
+        st.caption("Confirm is bound for this hash / run_count / output_dir.")
+    if do_bind:
+        if plan is None:
+            st.error("Fix output directory / preview before binding confirm.")
+            return
+        st.session_state[STUDIES_LAUNCH_APPROVAL_KEY] = approval_payload(plan)
+        st.success(
+            "Confirm bound to "
+            f"hash=`{plan.study_identity_hash}` · run_count={plan.run_count} · "
+            f"output_dir=`{plan.output_dir}`."
+        )
+        return
+    if do_confirm_run:
+        if plan is None:
+            st.error("Fix output directory / preview before Confirm and run.")
+            return
+        try:
+            confirmed = plan_with_confirm(plan, st.session_state.get(STUDIES_LAUNCH_APPROVAL_KEY))
+        except StudyLaunchError as exc:
+            st.error(str(exc))
+            return
+        _spawn_or_error(confirmed)
+
+
+def _render_preview_result(preview: StudyPreview, yaml_text: str) -> None:
     st.success(f"Preview `{preview.study_name}`")
     cols = st.columns(4)
     shown_count = preview.run_count if preview.expanded else preview.effective_run_count_estimate
@@ -223,10 +365,11 @@ def _render_preview_result(preview: StudyPreview) -> None:
             st.caption(line)
     st.info(
         "**Honesty.** Combinatorial `run_count` is a screening size, not independent "
-        "statistical tests. Large factorials need `--confirm` on the CLI. Descriptive "
-        "ranking after a run is not a validated edge. Execute remains "
-        "`python -m thesistester study run …`."
+        "statistical tests. Large factorials need `--confirm` (two-step Bind confirm "
+        "then Confirm and run). Descriptive ranking after a run is not a validated edge. "
+        "The child process is `python -m thesistester study run …`."
     )
+    _render_launch_controls(preview, yaml_text)
 
 
 def _render_preview() -> None:
@@ -253,12 +396,14 @@ def _render_preview() -> None:
         st.session_state[STUDIES_PREVIEW_YAML_KEY] = path.read_text(encoding="utf-8")
         st.session_state.pop(STUDIES_PREVIEW_CACHED_KEY, None)
         st.session_state.pop(STUDIES_PREVIEW_CACHED_YAML_KEY, None)
+        _clear_launch_session()
         st.rerun()
 
     if copy_loaded:
         if _copy_spec_from_loaded_dir():
             st.session_state.pop(STUDIES_PREVIEW_CACHED_KEY, None)
             st.session_state.pop(STUDIES_PREVIEW_CACHED_YAML_KEY, None)
+            _clear_launch_session()
             st.rerun()
         return
 
@@ -270,11 +415,12 @@ def _render_preview() -> None:
         except (StudySpecError, ValueError) as exc:
             st.session_state.pop(STUDIES_PREVIEW_CACHED_KEY, None)
             st.session_state.pop(STUDIES_PREVIEW_CACHED_YAML_KEY, None)
+            _clear_launch_session()
             st.error(str(exc))
             return
         st.session_state[STUDIES_PREVIEW_CACHED_KEY] = preview
         st.session_state[STUDIES_PREVIEW_CACHED_YAML_KEY] = raw
-        _render_preview_result(preview)
+        _render_preview_result(preview, raw)
         return
 
     # Button clicks are ephemeral; keep the last successful preview while the
@@ -282,10 +428,10 @@ def _render_preview() -> None:
     cached = st.session_state.get(STUDIES_PREVIEW_CACHED_KEY)
     cached_yaml = st.session_state.get(STUDIES_PREVIEW_CACHED_YAML_KEY)
     if isinstance(cached, StudyPreview) and isinstance(cached_yaml, str) and cached_yaml == raw:
-        _render_preview_result(cached)
+        _render_preview_result(cached, raw)
         return
 
-    st.caption("Paste YAML, then Validate / Preview. Execute stays on the CLI.")
+    st.caption("Paste YAML, then Validate / Preview. Run via CLI appears after a successful preview.")
 
 
 with inspect_tab:
