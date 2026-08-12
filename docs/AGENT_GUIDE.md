@@ -17,18 +17,20 @@ runner for independent batches:
 python -m thesistester run experiment.yaml --workers 4
 ```
 
-### Research Study Runner (RS1–RS4)
+### Research Study Runner (RS1–RS5)
 
 For closed multi-factor confluence studies, use the additive Study Runner (see
 `docs/STUDY_RUNNER.md`). It expands a StudySpec to an R18 experiment, then
 executes cells via a **study-owned** `run_experiment` loop (ledger + soft resume),
-then aggregates an honest overview. It does **not** change `run_batch` abort
-semantics.
+aggregates an honest overview, and can draft survivor StudySpecs. It does **not**
+change `run_batch` abort semantics. Stage-first example:
+`examples/studies/pdPOC_ma_confluence_battery.yaml` (40 cells; full 800 is phase-2).
 
 ```bash
 python -m thesistester study expand study.yaml --output-dir out/study1
 python -m thesistester study run study.yaml --output-dir out/study1 --confirm
 python -m thesistester study report out/study1
+python -m thesistester study promote out/study1 --output draft.yaml --top-n 10
 # optional replay of the emitted experiment via the unchanged R18 path:
 python -m thesistester run out/study1/experiment.yaml
 ```

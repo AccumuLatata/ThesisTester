@@ -896,6 +896,52 @@ policy, manual record, all executions, exit research mode, identity badge
 **Related pages.** Research Assistant (Discuss); Research Bundles (export +
 record/discuss entry).
 
+## Research Study Runner (headless)
+
+**What it is.** A CLI-only workflow for closed multi-factor confluence studies:
+declare a StudySpec, expand to an R18 experiment, run cells with a study-owned
+ledger, then report an honest overview. Distinct from in-trade confluence-combo
+attribution on Backtest.
+
+**When to use it.** When you want a stage-first factorial screen (e.g. pdPOC ×
+MA partners × modes × OTF) without opening Streamlit, then promote survivors
+into a draft StudySpec for a second pass.
+
+**Related terms.** StudySpec, study expand, study run, study report, study
+promote draft, stage filter, explicit cells, multi-factor study, overview
+ranking, OTF delta, Research Study Runner
+
+**Key settings.**
+
+| Control | Meaning | Common pitfall |
+|---|---|---|
+| `stage.mode: filter` | Subset factor axes before cartesian product | Prefer stage-first on large studies (example: 800 → 40) |
+| `confirm_above_runs` | `study run` refuses large expansions without `--confirm` | Confirm is required before rewriting expansion artifacts |
+| `report.min_trades` | Ranked overview excludes low-N cells | Meeting N is not statistical significance |
+| `study promote` | Writes a **draft** `explicit_cells` StudySpec | Never auto-runs; human edit/confirm still required |
+
+**How to use.**
+
+1. Author or copy a StudySpec (see `examples/studies/pdPOC_ma_confluence_battery.yaml`
+   for a stage-first 40-cell path; full 800 is phase-2).
+2. `python -m thesistester study expand study.yaml --output-dir out/study1`
+3. `python -m thesistester study run study.yaml --output-dir out/study1 --confirm`
+4. `python -m thesistester study report out/study1`
+5. Optionally `python -m thesistester study promote out/study1 --output drafts/draft.yaml --top-n 10`
+   (refuses overwrite without `--force`), then edit the draft before any further `study run`.
+   Phase-2 full cartesian (example: 800) means restoring/opening axes on the unpromoted
+   StudySpec — not dropping `stage` from a narrowed promote draft.
+
+**What it is not.**
+
+- Not a Streamlit page and not confluence-combo attribution.
+- Overview ranking is descriptive screening, not a validated edge (multiple-testing
+  bias). Prefer non-zero commission/slippage and held-out / walk-forward checks.
+- `study promote` does not execute cells and does not replace human confirmation.
+
+**Related pages.** Operator contract `docs/STUDY_RUNNER.md`; Research Bundles
+(per-cell zips); Validation and robustness (honest next steps after screening).
+
 ## When to use Help vs Discuss results
 
 **What it is.** A trust-boundary guide for choosing the right Assistant surface.

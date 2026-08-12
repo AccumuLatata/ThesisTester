@@ -644,12 +644,12 @@ Deterministic fixtures. §4.2.
 | **Behavior** | From a completed study dir, generate a **draft** StudySpec containing only selected survivor factor tuples, still requiring human edit/confirm before run |
 | **Out of scope** | Auto-run promotion; assistant NL |
 | **Acceptance checklist** | |
-| | ☐ Promote writes draft StudySpec; does not execute |
-| | ☐ Example YAML expands to 40 cells with stage filter; full 800 documented as phase-2 |
-| | ☐ Tiny CI subset fixture still used for unit/golden (2×2×2) |
-| | ☐ USER_GUIDE / STUDY_RUNNER end-to-end recipe |
-| | ☐ Core series RS1–RS5 marked implemented on roadmap after green CI |
-| | ☐ Full suite green |
+| | ✅ Promote writes draft StudySpec; does not execute |
+| | ✅ Example YAML expands to 40 cells with stage filter; full 800 documented as phase-2 |
+| | ✅ Tiny CI subset fixture still used for unit/golden (2×2×2) |
+| | ✅ USER_GUIDE / STUDY_RUNNER end-to-end recipe |
+| | ✅ Core series RS1–RS5 marked implemented on roadmap after green CI |
+| | ✅ Full suite green |
 
 **Copy-ready agent prompt:**
 
@@ -714,15 +714,16 @@ stage:
   include:
     trigger: [touch]
     trigger_timeframe: [base]
-# Phase 2: remove/widen stage after promote, or open trigger/trigger_timeframe axes
-# on survivor partners only. Full cartesian for §6.1 factors = 800 cells.
+# Phase 2: remove/widen stage on this unpromoted example (full factor domains).
+# Do not drop stage from a study-promote draft and expect 800 — promote narrows
+# factors to survivor values. Full cartesian for §6.1 factors = 800 cells.
 ```
 
 Recommended human workflow after RS5:
 
 1. Stage filter expand/run/report (40 cells).  
 2. Promote survivors (`explicit_cells` draft).  
-3. Open triggers/TFs/3c on the reduced set.  
+3. Optionally restore/open selected axes on the draft (or on the unpromoted example for full 800).  
 4. Interpret OTF Δ with multiple-testing caution.  
 5. Prefer non-zero `commission_per_side` / `slippage_ticks` before trusting expectancy ranks.
 
@@ -790,7 +791,7 @@ Holistic MVP is done when **all** of the following hold:
 | RS2 Expander | ✅ |
 | RS3 CLI expand/run + study-owned ledger | ✅ |
 | RS4 Report | ✅ |
-| RS5 Staging/promote + examples | ☐ |
+| RS5 Staging/promote + examples | ✅ |
 | RS6 Optional agent tools | ☐ Deferred until after RS5 |
 
 ---
