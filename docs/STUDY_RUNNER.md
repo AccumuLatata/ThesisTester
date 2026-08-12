@@ -250,7 +250,8 @@ Reads a completed study directory (does not re-run backtests).
 - Factor tags flatten to `factor_*` columns (`partner_levels` as `A+B`; `otf` as canonical JSON key).
 - Ranked section: `status=ok`, `factors_joined=True`, `trade_count >= min_trades`, non-null `primary_metric`.
 - Low-N section: expansion-joined ok cells below `min_trades` (excluded from ranked winners).
-- Index-only orphan rows (`factors_joined=False`) stay in `study.overview.csv` but are excluded from ranked / low-N / group summaries / crowning.
+- Unresolved section: expansion-joined ok cells meeting `min_trades` but with a null `primary_metric` (e.g. missing PF).
+- Index-only orphan rows (`factors_joined=False`) stay in `study.overview.csv` but are excluded from ranked / low-N / unresolved / group summaries / crowning.
 - Sort: higher-is-better for `expectancy_r` / `total_r` / `profit_factor` / `trade_count`; lower-is-better for `max_drawdown_r`.
 - `multiple_testing: error` suppresses best-cell crowning in Markdown (ranked table still emitted as descriptive).
 

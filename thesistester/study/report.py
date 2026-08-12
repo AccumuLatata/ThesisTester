@@ -52,6 +52,7 @@ class StudyReportResult:
     overview: pd.DataFrame
     ranked: pd.DataFrame
     low_n: pd.DataFrame
+    unresolved: pd.DataFrame
     group_summaries: dict[str, pd.DataFrame]
     otf_delta: pd.DataFrame
     markdown: str
@@ -379,11 +380,11 @@ def split_ranked_and_low_n(
     *,
     primary_metric: str,
     min_trades: int,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Partition overview into ranked (>= min_trades) and low-N sections."""
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Partition overview into ranked, low-N, and unresolved-primary sections."""
     if overview.empty:
         empty = overview.copy()
-        return empty, empty
+        return empty, empty, empty
 
     work = overview.copy()
     work["trade_count"] = pd.to_numeric(work.get("trade_count"), errors="coerce")
@@ -394,9 +395,11 @@ def split_ranked_and_low_n(
     has_n = work["trade_count"].fillna(-1) >= float(min_trades)
     has_metric = work[primary_metric].notna()
     # Index-only orphans (factors_joined=False) remain in overview CSV but must
-    # not enter ranked/low-N or be crowned as top descriptive cells.
+    # not enter ranked/low-N/unresolved or be crowned as top descriptive cells.
     ranked_mask = eligible_status & joined & has_n & has_metric
     low_mask = eligible_status & joined & ~has_n
+    # High-N ok cells with a null primary (e.g. PF missing) must not vanish from MD.
+    unresolved_mask = eligible_status & joined & has_n & ~has_metric
 
     ascending = _metric_sort_ascending(primary_metric)
     ranked = (
@@ -409,7 +412,10 @@ def split_ranked_and_low_n(
         .reset_index(drop=True)
     )
     low_n = work.loc[low_mask].sort_values("run_name", kind="mergesort").reset_index(drop=True)
-    return ranked, low_n
+    unresolved = (
+        work.loc[unresolved_mask].sort_values("run_name", kind="mergesort").reset_index(drop=True)
+    )
+    return ranked, low_n, unresolved
 
 
 def build_group_summaries(
@@ -430,7 +436,10 @@ def build_group_summaries(
     work = work.loc[_factors_joined_mask(work)].copy()
     work["trade_count"] = pd.to_numeric(work.get("trade_count"), errors="coerce")
     work[primary_metric] = pd.to_numeric(work.get(primary_metric), errors="coerce")
-    work = work.loc[work["trade_count"].fillna(-1) >= float(min_trades)].copy()
+    # Match ranked-eligible contract: N gate + non-null primary (counts == averages).
+    work = work.loc[
+        (work["trade_count"].fillna(-1) >= float(min_trades)) & work[primary_metric].notna()
+    ].copy()
 
     for axis in group_by:
         col = f"factor_{axis}"
@@ -620,6 +629,7 @@ def render_overview_markdown(
     overview: pd.DataFrame,
     ranked: pd.DataFrame,
     low_n: pd.DataFrame,
+    unresolved: pd.DataFrame,
     group_summaries: Mapping[str, pd.DataFrame],
     otf_delta: pd.DataFrame,
     best_cell_suppressed: bool,
@@ -637,7 +647,10 @@ def render_overview_markdown(
         "",
         f"- `min_trades` filter: **{min_trades}**",
         f"- `multiple_testing` mode: **{multiple_testing}**",
-        f"- Cells in overview: **{len(overview)}**; ranked: **{len(ranked)}**; low-N: **{len(low_n)}**",
+        (
+            f"- Cells in overview: **{len(overview)}**; ranked: **{len(ranked)}**; "
+            f"low-N: **{len(low_n)}**; unresolved primary: **{len(unresolved)}**"
+        ),
         "",
     ]
 
@@ -675,6 +688,19 @@ def render_overview_markdown(
     lines.append(f"Cells with `trade_count < {min_trades}` (excluded from ranked winners).")
     lines.append("")
     lines.extend(_md_table(low_n, ["run_name", "trade_count", primary, "profit_factor"]))
+
+    lines.extend(["## Unresolved primary metric", ""])
+    lines.append(
+        f"Ok cells with `trade_count >= {min_trades}` but null `{primary}` "
+        "(e.g. missing profit factor); excluded from ranked and group summaries."
+    )
+    lines.append("")
+    lines.extend(
+        _md_table(
+            unresolved,
+            ["run_name", "trade_count", primary, "profit_factor", "profit_factor_source"],
+        )
+    )
 
     lines.extend(["## Group summaries", ""])
     if not group_summaries:
@@ -734,8 +760,10 @@ def render_overview_markdown(
             "- `profit_factor` / `win_rate`: each field prefers the study index when "
             "present (RS-D7), else bundle `trade_summary.json` "
             "(`profit_factor_source` tracks PF only: `index` | `bundle` | `missing`).",
-            "- Ranked / low-N / group summaries require `factors_joined=True` "
+            "- Ranked / low-N / unresolved / group summaries require `factors_joined=True` "
             "(index-only orphans stay in the overview CSV).",
+            "- Group summaries use the same ranked-eligible gate (min_trades + "
+            "non-null primary) so `cell_count` matches the mean/median population.",
             "",
         ]
     )
@@ -761,7 +789,9 @@ def report_study(study_dir: str | Path) -> StudyReportResult:
     factor_map = _load_factor_map(root)
     index = _load_results_index(root)
     overview = build_overview_frame(study_dir=root, index=index, factor_map=factor_map)
-    ranked, low_n = split_ranked_and_low_n(overview, primary_metric=primary, min_trades=min_trades)
+    ranked, low_n, unresolved = split_ranked_and_low_n(
+        overview, primary_metric=primary, min_trades=min_trades
+    )
     group_summaries = build_group_summaries(
         overview,
         group_by=group_by,
@@ -783,6 +813,7 @@ def report_study(study_dir: str | Path) -> StudyReportResult:
         overview=overview,
         ranked=ranked,
         low_n=low_n,
+        unresolved=unresolved,
         group_summaries=group_summaries,
         otf_delta=otf_delta,
         best_cell_suppressed=best_cell_suppressed,
@@ -800,6 +831,7 @@ def report_study(study_dir: str | Path) -> StudyReportResult:
         overview=overview,
         ranked=ranked,
         low_n=low_n,
+        unresolved=unresolved,
         group_summaries=group_summaries,
         otf_delta=otf_delta,
         markdown=markdown,

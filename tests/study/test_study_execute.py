@@ -467,6 +467,36 @@ def test_soft_resume_repairs_poisoned_null_metric_ok_row(tmp_path: Path):
     assert float(row["expectancy_r"]) == pytest.approx(0.25)
 
 
+def test_soft_resume_rehydrates_pending_stub_after_ledger_ok_interrupt(tmp_path: Path):
+    """Ledger ok + zip, index still pending null stub (mid-loop interrupt)."""
+    study = _mini_study_yaml(tmp_path / "study.yaml", confirm_above_runs=100)
+    out = tmp_path / "out"
+    first = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    name = first["run_names"][1]
+    assert (out / f"{name}.research.zip").is_file()
+    index = pd.read_csv(out / "results_index.csv")
+    # Plant the interrupt shape: pending stub with null metrics, no bundle_path on index.
+    for col in (
+        "trade_count",
+        "expectancy_r",
+        "total_r",
+        "max_drawdown_r",
+        "bundle_hash",
+        "bundle_path",
+    ):
+        index.loc[index["run_name"] == name, col] = None
+    index.loc[index["run_name"] == name, "status"] = "pending"
+    index.to_csv(out / "results_index.csv", index=False)
+    second = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    assert second["executed"] == 0
+    repaired = pd.read_csv(out / "results_index.csv")
+    row = repaired.loc[repaired["run_name"] == name].iloc[0]
+    assert row["status"] == "ok"
+    assert row["bundle_path"] == f"{name}.research.zip"
+    assert int(row["trade_count"]) == 3
+    assert float(row["expectancy_r"]) == pytest.approx(0.25)
+
+
 def test_mark_cell_can_clear_bundle_path():
     from thesistester.study.ledger import empty_ledger, mark_cell
 

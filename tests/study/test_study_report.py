@@ -191,12 +191,40 @@ def test_min_trades_splits_ranked_and_low_n(tmp_path: Path):
     result = report_study(study_dir)
     assert len(result.ranked) == 3
     assert len(result.low_n) == 1
+    assert len(result.unresolved) == 0
     assert int(result.low_n.iloc[0]["trade_count"]) == 5
     # Ranked ordered by expectancy_r descending
     expectancies = list(result.ranked["expectancy_r"])
     assert expectancies == sorted(expectancies, reverse=True)
     # Low-N cell must not appear in ranked
     assert result.low_n.iloc[0]["run_name"] not in set(result.ranked["run_name"])
+
+
+def test_null_primary_high_n_listed_as_unresolved(tmp_path: Path):
+    study_dir = _write_report_fixture(tmp_path, min_trades=30)
+    # Force profit_factor primary with one cell missing PF (no bundle + null index).
+    spec_text = (study_dir / "study.spec.yaml").read_text(encoding="utf-8")
+    import yaml
+
+    payload = yaml.safe_load(spec_text)
+    payload["study"]["report"]["primary_metric"] = "profit_factor"
+    (study_dir / "study.spec.yaml").write_text(
+        yaml.safe_dump(payload, sort_keys=False), encoding="utf-8"
+    )
+    index = pd.read_csv(study_dir / "results_index.csv")
+    # Wipe bundles and leave no index PF → all PF missing; N still high for 3 cells.
+    for bundle in study_dir.glob("*.research.zip"):
+        bundle.unlink()
+    index["bundle_path"] = None
+    index.to_csv(study_dir / "results_index.csv", index=False)
+    result = report_study(study_dir)
+    assert len(result.ranked) == 0
+    assert len(result.unresolved) == 3
+    assert "Unresolved primary metric" in result.markdown
+    assert "unresolved primary: **3**" in result.markdown
+    # Group summaries must not count null-primary cells.
+    for summary in result.group_summaries.values():
+        assert int(summary["cell_count"].sum()) == 0
 
 
 def test_otf_delta_vs_baseline_alias_stable(tmp_path: Path):

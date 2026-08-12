@@ -913,8 +913,9 @@ other than the last bar in the dataset.
   extreme under the study design, not independent confirmation.
 - Cells with `trade_count < study.report.min_trades` are listed under low-N
   and excluded from the ranked section. Meeting `min_trades` is a sample-size
-  filter only — not statistical significance. Index-only orphans
-  (`factors_joined=False`) are never ranked or crowned.
+  filter only — not statistical significance. Ok cells that meet `min_trades`
+  but lack a resolvable primary metric are listed under unresolved primary.
+  Index-only orphans (`factors_joined=False`) are never ranked or crowned.
 - OTF Δ rows (`study.otf_delta.csv`) compare metric(OTF variant) −
   metric(`report.otf_baseline`) for matched non-OTF factor tuples. They inherit
   the same multiple-testing caveats; a positive Δ is not proof that OTF adds
