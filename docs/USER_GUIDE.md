@@ -976,9 +976,9 @@ preview, run_count, confirm_above_runs
 |---|---|---|
 | Study output directory | Path to a completed study dir under the repo cwd or local store | Paths outside those trusted roots are refused |
 | Load study artifacts | Reads ledger + in-memory overview via `report_study(..., write_artifacts=False)` | Does **not** run backtests or rewrite overview files / StudySpecs |
-| Refresh | Reloads ledger/overview for the loaded dir (watch a CLI `study run`) | Does not start or resume execution |
+| Refresh | Reloads ledger/overview for the loaded dir (watch a CLI `study run`) | Inspect is cached across Preview-tab reruns; Refresh/Load force a reload |
 | Canonical StudySpec YAML | Paste `schema_version: 1` StudySpec text | Shorthand keys (`core` vs `core_level`) and English prompts fail closed |
-| Validate / Preview | In-memory validate + expand (cap 2_000 cells) | Does **not** write `experiment.yaml` or run cells |
+| Validate / Preview | In-memory validate + expand (cap 2_000 cells) | Result is cached until the YAML changes; does **not** write `experiment.yaml` or run cells |
 | Load example | Fills the textarea from `examples/studies/pdPOC_ma_confluence_battery.yaml` | Example dataset CSV need not exist for preview |
 | Copy spec from loaded dir | Copies `study.spec.yaml` from the Inspect dir into the textarea | Load a study dir first |
 
@@ -1000,7 +1000,9 @@ preview, run_count, confirm_above_runs
 - Not an in-app expand / run / promote runner. Preview is validate + dry expand
   only (canonical YAML; not an NL compiler).
 - Does not mutate classic research session state (levels / signals / trades);
-  only Studies-scoped path / preview-YAML keys are persisted across Streamlit reruns.
+  only Studies-scoped path / preview-YAML / inspect-and-preview cache keys are
+  persisted across Streamlit reruns (so Preview actions do not re-load Inspect,
+  and preview metrics survive tab switches until the YAML changes).
 - Does not deep-link into Research Bundles by path (that page is upload/import
   oriented); `bundle_path` is listed for orientation only.
 - Ranking remains descriptive screening, not a validated edge. Preview

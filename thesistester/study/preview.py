@@ -19,6 +19,9 @@ from thesistester.study.schema import StudySpecError, normalize_study_spec, vali
 PREVIEW_EXPAND_CAP = 2_000
 EXAMPLE_STUDY_RELATIVE = Path("examples/studies/pdPOC_ma_confluence_battery.yaml")
 STUDIES_PREVIEW_YAML_KEY = "studies_preview_yaml"
+# Cached StudyPreview so results survive Streamlit reruns until YAML changes.
+STUDIES_PREVIEW_CACHED_KEY = "studies_preview_cached"
+STUDIES_PREVIEW_CACHED_YAML_KEY = "studies_preview_cached_yaml"
 
 _BATTERY_SECTIONS = ("grid", "validation", "walk_forward")
 

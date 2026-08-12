@@ -11,13 +11,20 @@ import yaml
 from thesistester.study.expand import expand_study
 from thesistester.study.preview import (
     PREVIEW_EXPAND_CAP,
+    STUDIES_PREVIEW_CACHED_KEY,
+    STUDIES_PREVIEW_CACHED_YAML_KEY,
     STUDIES_PREVIEW_YAML_KEY,
     example_study_spec_path,
     preview_study_spec,
     preview_study_yaml,
 )
 from thesistester.study.schema import StudySpecError
-from thesistester.study.viewer import CLASSIC_RESEARCH_SESSION_KEYS, STUDIES_VIEWER_DIR_KEY
+from thesistester.study.viewer import (
+    CLASSIC_RESEARCH_SESSION_KEYS,
+    STUDIES_VIEWER_CACHED_MODEL_DIR_KEY,
+    STUDIES_VIEWER_CACHED_MODEL_KEY,
+    STUDIES_VIEWER_DIR_KEY,
+)
 
 
 def _example_spec() -> dict:
@@ -150,6 +157,23 @@ def test_pages_studies_preview_has_no_execute_controls():
                 written_keys.add(STUDIES_VIEWER_DIR_KEY)
             elif isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_PREVIEW_YAML_KEY":
                 written_keys.add(STUDIES_PREVIEW_YAML_KEY)
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_VIEWER_CACHED_MODEL_KEY"
+            ):
+                written_keys.add(STUDIES_VIEWER_CACHED_MODEL_KEY)
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_VIEWER_CACHED_MODEL_DIR_KEY"
+            ):
+                written_keys.add(STUDIES_VIEWER_CACHED_MODEL_DIR_KEY)
+            elif isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_PREVIEW_CACHED_KEY":
+                written_keys.add(STUDIES_PREVIEW_CACHED_KEY)
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_PREVIEW_CACHED_YAML_KEY"
+            ):
+                written_keys.add(STUDIES_PREVIEW_CACHED_YAML_KEY)
             elif isinstance(slice_node, ast.Constant) and isinstance(slice_node.value, str):
                 written_keys.add(slice_node.value)
             else:
@@ -157,8 +181,14 @@ def test_pages_studies_preview_has_no_execute_controls():
     assert written_keys <= {
         STUDIES_VIEWER_DIR_KEY,
         "studies_viewer_path_input",
+        STUDIES_VIEWER_CACHED_MODEL_KEY,
+        STUDIES_VIEWER_CACHED_MODEL_DIR_KEY,
         STUDIES_PREVIEW_YAML_KEY,
+        STUDIES_PREVIEW_CACHED_KEY,
+        STUDIES_PREVIEW_CACHED_YAML_KEY,
     }
+    assert STUDIES_VIEWER_CACHED_MODEL_KEY in written_keys
+    assert STUDIES_PREVIEW_CACHED_KEY in written_keys
     assert not (written_keys & CLASSIC_RESEARCH_SESSION_KEYS)
 
 

@@ -15,6 +15,8 @@ from thesistester.study.ledger import empty_ledger, save_ledger
 from thesistester.study.report import OVERVIEW_CSV, OVERVIEW_MD, OTF_DELTA_CSV, report_study
 from thesistester.study.viewer import (
     CLASSIC_RESEARCH_SESSION_KEYS,
+    STUDIES_VIEWER_CACHED_MODEL_DIR_KEY,
+    STUDIES_VIEWER_CACHED_MODEL_KEY,
     STUDIES_VIEWER_DIR_KEY,
     StudyViewerError,
     load_study_view,
@@ -160,15 +162,37 @@ def test_pages_studies_is_read_only_source():
                 written_keys.add(STUDIES_VIEWER_DIR_KEY)
             elif isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_PREVIEW_YAML_KEY":
                 written_keys.add("studies_preview_yaml")
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_VIEWER_CACHED_MODEL_KEY"
+            ):
+                written_keys.add(STUDIES_VIEWER_CACHED_MODEL_KEY)
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_VIEWER_CACHED_MODEL_DIR_KEY"
+            ):
+                written_keys.add(STUDIES_VIEWER_CACHED_MODEL_DIR_KEY)
+            elif isinstance(slice_node, ast.Name) and slice_node.id == "STUDIES_PREVIEW_CACHED_KEY":
+                written_keys.add("studies_preview_cached")
+            elif (
+                isinstance(slice_node, ast.Name)
+                and slice_node.id == "STUDIES_PREVIEW_CACHED_YAML_KEY"
+            ):
+                written_keys.add("studies_preview_cached_yaml")
             elif isinstance(slice_node, ast.Constant) and isinstance(slice_node.value, str):
                 written_keys.add(slice_node.value)
             else:
                 written_keys.add("<dynamic>")
     assert STUDIES_VIEWER_DIR_KEY in written_keys
+    assert STUDIES_VIEWER_CACHED_MODEL_KEY in written_keys
     assert written_keys <= {
         STUDIES_VIEWER_DIR_KEY,
         "studies_viewer_path_input",
+        STUDIES_VIEWER_CACHED_MODEL_KEY,
+        STUDIES_VIEWER_CACHED_MODEL_DIR_KEY,
         "studies_preview_yaml",
+        "studies_preview_cached",
+        "studies_preview_cached_yaml",
     }
     assert not (written_keys & CLASSIC_RESEARCH_SESSION_KEYS)
 

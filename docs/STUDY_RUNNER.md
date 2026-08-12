@@ -423,9 +423,11 @@ Streamlit page: **Studies** (`pages/15_Studies.py`).
   (no backtests; does **not** rewrite `study.overview.*` on disk).
 - Shows identity, ledger counts, ranked / low-N / unresolved, OTF Δ, `bundle_path`.
 - Overview MD/CSV downloads are served from the in-memory aggregate.
-- Honesty banner required; no expand / run / promote controls; only the
-  Studies-scoped `studies_viewer_study_dir` session key is written (never classic
-  research keys); no Research-Bundles deep-link.
+- Honesty banner required; no expand / run / promote controls; only
+  Studies-scoped session keys are written (`studies_viewer_study_dir` plus
+  inspect-model / preview-result caches so Streamlit tab reruns do not
+  re-aggregate or drop results — never classic research keys); no
+  Research-Bundles deep-link.
 - Report bundle reads refuse `bundle_path` values that escape the study directory.
 - Package import is Windows-safe: `study.execute` binds `fcntl` / `msvcrt`
   optionally so opening this page cannot raise `ModuleNotFoundError: fcntl`.
@@ -474,6 +476,7 @@ yaml.safe_load → normalize_study_spec → validate_study_spec → in-memory ex
 | Cap | Skip in-memory expand above `PREVIEW_EXPAND_CAP` (2_000); still show matched estimate |
 | Imports | `preview.py` does not import `thesistester.study.execute` |
 | Progress | Explicit **Refresh** of an existing study-dir ledger; does not start `study run` |
+| Streamlit caches | Inspect model + last preview result are Studies-scoped session caches (tab reruns must not re-aggregate or drop metrics) |
 | Execute | Remains CLI (`study run --confirm`) / optional RS6 tools |
 
 Stage-first example preview: **40** cells vs full cartesian **800**. Dataset CSV need not exist for preview.

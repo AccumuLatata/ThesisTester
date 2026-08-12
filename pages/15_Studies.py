@@ -5,6 +5,8 @@ from __future__ import annotations
 import streamlit as st
 
 from thesistester.study.preview import (
+    STUDIES_PREVIEW_CACHED_KEY,
+    STUDIES_PREVIEW_CACHED_YAML_KEY,
     STUDIES_PREVIEW_YAML_KEY,
     StudyPreview,
     example_study_spec_path,
@@ -12,6 +14,8 @@ from thesistester.study.preview import (
 )
 from thesistester.study.schema import StudySpecError
 from thesistester.study.viewer import (
+    STUDIES_VIEWER_CACHED_MODEL_DIR_KEY,
+    STUDIES_VIEWER_CACHED_MODEL_KEY,
     STUDIES_VIEWER_DIR_KEY,
     StudyViewerError,
     default_study_viewer_roots,
@@ -72,14 +76,31 @@ def _render_inspect() -> None:
         st.error("Load a study output directory before refreshing.")
         return
     if not isinstance(active_dir, str) or not active_dir.strip():
+        st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_KEY, None)
+        st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_DIR_KEY, None)
         st.caption("Enter a completed study directory, then load artifacts.")
         return
 
-    try:
-        model = load_study_view(active_dir, roots=default_study_viewer_roots())
-    except StudyViewerError as exc:
-        st.error(str(exc))
-        return
+    # Streamlit executes every tab body on each script rerun. Cache the viewer
+    # model so Preview-tab Validate/Preview (and download/expander clicks) do
+    # not re-aggregate a large study_dir. Reload only on Load / Refresh, or
+    # when the cached path no longer matches the selected directory.
+    need_reload = bool(load or refresh) or (
+        st.session_state.get(STUDIES_VIEWER_CACHED_MODEL_DIR_KEY) != active_dir
+        or st.session_state.get(STUDIES_VIEWER_CACHED_MODEL_KEY) is None
+    )
+    if need_reload:
+        try:
+            model = load_study_view(active_dir, roots=default_study_viewer_roots())
+        except StudyViewerError as exc:
+            st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_KEY, None)
+            st.session_state.pop(STUDIES_VIEWER_CACHED_MODEL_DIR_KEY, None)
+            st.error(str(exc))
+            return
+        st.session_state[STUDIES_VIEWER_CACHED_MODEL_KEY] = model
+        st.session_state[STUDIES_VIEWER_CACHED_MODEL_DIR_KEY] = active_dir
+    else:
+        model = st.session_state[STUDIES_VIEWER_CACHED_MODEL_KEY]
 
     st.subheader(model.study_name)
     meta_cols = st.columns(4)
@@ -230,25 +251,41 @@ def _render_preview() -> None:
             st.error(str(exc))
             return
         st.session_state[STUDIES_PREVIEW_YAML_KEY] = path.read_text(encoding="utf-8")
+        st.session_state.pop(STUDIES_PREVIEW_CACHED_KEY, None)
+        st.session_state.pop(STUDIES_PREVIEW_CACHED_YAML_KEY, None)
         st.rerun()
 
     if copy_loaded:
         if _copy_spec_from_loaded_dir():
+            st.session_state.pop(STUDIES_PREVIEW_CACHED_KEY, None)
+            st.session_state.pop(STUDIES_PREVIEW_CACHED_YAML_KEY, None)
             st.rerun()
         return
 
-    if not do_preview:
-        st.caption("Paste YAML, then Validate / Preview. Execute stays on the CLI.")
+    raw = str(st.session_state.get(STUDIES_PREVIEW_YAML_KEY, ""))
+    if do_preview:
+        try:
+            with st.spinner("Expanding StudySpec…"):
+                preview = preview_study_yaml(raw)
+        except (StudySpecError, ValueError) as exc:
+            st.session_state.pop(STUDIES_PREVIEW_CACHED_KEY, None)
+            st.session_state.pop(STUDIES_PREVIEW_CACHED_YAML_KEY, None)
+            st.error(str(exc))
+            return
+        st.session_state[STUDIES_PREVIEW_CACHED_KEY] = preview
+        st.session_state[STUDIES_PREVIEW_CACHED_YAML_KEY] = raw
+        _render_preview_result(preview)
         return
 
-    raw = st.session_state.get(STUDIES_PREVIEW_YAML_KEY, "")
-    try:
-        with st.spinner("Expanding StudySpec…"):
-            preview = preview_study_yaml(str(raw))
-    except (StudySpecError, ValueError) as exc:
-        st.error(str(exc))
+    # Button clicks are ephemeral; keep the last successful preview while the
+    # YAML textarea is unchanged (Inspect downloads / tab switches rerun the app).
+    cached = st.session_state.get(STUDIES_PREVIEW_CACHED_KEY)
+    cached_yaml = st.session_state.get(STUDIES_PREVIEW_CACHED_YAML_KEY)
+    if isinstance(cached, StudyPreview) and isinstance(cached_yaml, str) and cached_yaml == raw:
+        _render_preview_result(cached)
         return
-    _render_preview_result(preview)
+
+    st.caption("Paste YAML, then Validate / Preview. Execute stays on the CLI.")
 
 
 with inspect_tab:
