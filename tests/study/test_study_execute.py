@@ -514,9 +514,7 @@ def test_soft_resume_rehydrate_preserves_identity_from_prior_and_bundle(tmp_path
     assert float(row["profit_factor"]) == pytest.approx(1.5)
 
     # No prior row → fall back to dataset_meta.json inside the zip.
-    row2 = _index_row_from_existing_bundle(
-        name, output_dir=tmp_path, bundle_rel=bundle_name
-    )
+    row2 = _index_row_from_existing_bundle(name, output_dir=tmp_path, bundle_rel=bundle_name)
     assert row2["dataset_id"] == "ds-test"
     assert row2["instrument"] == "ES"
 
