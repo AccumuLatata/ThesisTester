@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-11 (amended 2026-08-11: R18 contract review; MVP completeness pass)  
-**Status:** Plan-locked (RS0) — implementation not started  
+**Status:** RS1 landed (schema + validation); RS2–RS5 not started  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`  
@@ -512,13 +512,14 @@ Allowed read-only imports: `setup` validators/constants, `normalize_otf_filter_c
 | **Out of scope** | Expansion to runs; CLI; engine; pages |
 | **Regression** | No existing module behavior change |
 | **Acceptance checklist** | |
-| | ☐ Valid minimal StudySpec fixture normalizes stably |
-| | ☐ Unknown top-level / factor keys fail closed |
-| | ☐ Invalid trigger / trigger_timeframe / otf / partner tokens rejected with actionable errors |
-| | ☐ `direction` in constants allowed; listing unsupported factor axes errors clearly |
-| | ☐ `stage.mode: filter` requires `include`; `explicit_cells` requires non-empty `cells` with all factor keys |
-| | ☐ Docs describe schema_version: 1 |
-| | ☐ `pytest -q tests/study/test_study_schema.py` green; full suite green |
+| | ✅ Valid minimal StudySpec fixture normalizes stably |
+| | ✅ Unknown top-level / factor keys fail closed |
+| | ✅ Invalid trigger / trigger_timeframe / otf / partner tokens rejected with actionable errors |
+| | ✅ `direction` in constants allowed; listing unsupported factor axes errors clearly |
+| | ✅ `stage.mode: filter` requires `include`; `explicit_cells` requires non-empty `cells` with all factor keys |
+| | ✅ Docs describe schema_version: 1 |
+| | ✅ `pytest -q tests/study/test_study_schema.py` green (32 passed); no engine/pages/cli execution surface added |
+| | ✅ Stage include/explicit_cells values ⊆ factor domains; levels list shapes fail closed as StudySpecError |
 
 **Copy-ready agent prompt:**
 
@@ -782,7 +783,7 @@ Holistic MVP is done when **all** of the following hold:
 | Milestone | Status |
 |---|---|
 | RS0 Plan lock | ✅ This document (amended for R18 contract accuracy) |
-| RS1 Schema | ☐ |
+| RS1 Schema | ✅ |
 | RS2 Expander | ☐ |
 | RS3 CLI expand/run + study-owned ledger | ☐ |
 | RS4 Report | ☐ |
