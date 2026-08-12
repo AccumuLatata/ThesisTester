@@ -943,7 +943,10 @@ other than the last bar in the dataset.
   After promote, humans may opt into survivor-stage constants with explicit
   `enabled: true` flags (never bare `{}`), for example:
   - `walk_forward.enabled: true` (with fold sizes), and/or
-  - `grid.enabled: true` plus `validation.overfitting.enabled: true`
+  - `grid.enabled: true` **and** `validation.enabled: true` **and**
+    `validation.overfitting.enabled: true`
+    (`run_experiment` skips the whole validation block — including overfitting —
+    when the parent `validation.enabled` flag is false)
   before expecting dense overfitting columns in the rollup.
 - Rollup markdown is descriptive only: present diagnostics ≠ validated edge.
 

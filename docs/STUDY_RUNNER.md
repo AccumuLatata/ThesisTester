@@ -423,13 +423,15 @@ index WFA columns and bundle members (`walk_forward_meta.json`,
 |---|---|
 | Compose-only | No cross-cell / pooled PBO, DSR, or CSCV |
 | Missing batteries | `*_battery=not_run` and null metrics (default study emission) |
-| Overfitting density | Needs grid cell trade sequences + explicit `validation.overfitting.enabled: true` |
+| Overfitting density | Needs grid cell trade sequences + `validation.enabled: true` + `validation.overfitting.enabled: true` |
 | Honesty | Descriptive rollup ≠ validated edge |
 
 **Survivor-stage opt-in (docs only; not auto-applied):** after promote, set
-explicit `walk_forward.enabled: true` and/or `grid.enabled: true` +
-`validation.overfitting.enabled: true` (never bare `{}`) before expecting dense
-rollup columns. See `ASSUMPTIONS_AND_LIMITATIONS.md`.
+explicit `walk_forward.enabled: true` and/or `grid.enabled: true` **with**
+`validation.enabled: true` **and** `validation.overfitting.enabled: true`
+(never bare `{}`; parent `validation.enabled` must be on or overfitting is
+skipped) before expecting dense rollup columns. See
+`ASSUMPTIONS_AND_LIMITATIONS.md`.
 
 ---
 

@@ -902,7 +902,7 @@ deep-link. HC allowlist if USER_GUIDE H2 added. No engine edits. §4.2.
 | | R15 `overfitting_summary` / `cscv_pbo` require **grid cell trade sequences**. Default study emission keeps `grid`/`validation`/`walk_forward` `enabled: false`, so most MVP cells are `not_run` for these fields — that is expected |
 | | Missing batteries → explicit `not_run` / null columns; **never** silently enable grid/validation/walk_forward |
 | | Explicit honesty: descriptive rollup ≠ validated edge; refuse “proof of edge” language |
-| **Recommended survivor-stage constants** (docs + examples only; not auto-applied): after promote, humans may opt into `walk_forward.enabled: true` and/or `grid.enabled: true` + `validation.overfitting` **with explicit `enabled` flags** (never bare `{}`) before expecting rollup density |
+| **Recommended survivor-stage constants** (docs + examples only; not auto-applied): after promote, humans may opt into `walk_forward.enabled: true` and/or `grid.enabled: true` + `validation.enabled: true` + `validation.overfitting.enabled: true` (**explicit `enabled` flags**; never bare `{}`; parent validation gate required) before expecting rollup density |
 | **Out of scope** | New PBO/DSR algorithm; study-level pooled PBO across factorial cells; auto-enabling batteries on promote/report; changing analytics formulas; engine changes |
 | **Regression** | Enabling rollup never changes cell backtest results; classic validation pages unchanged |
 | **Acceptance checklist** | |
