@@ -1,7 +1,7 @@
 # Research Study Runner
 
-**Status:** RS1–RS5 landed (holistic MVP: schema → expand → execute → report → promote/examples). Optional RS6 deferred.  
-**Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md`  
+**Status:** RS1–RS5 landed (holistic MVP). Post-MVP sequenced in the plan: **RS6 → RS-D7 → RS-D2 → RS-D4 → RS-D5**.  
+**Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (§12)  
 **Package:** `thesistester.study`
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic

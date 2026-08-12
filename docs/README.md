@@ -45,7 +45,7 @@ Engine / data contracts:
 - [SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md](SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md) (SW C1–C9)
 - [15s_primary_derived_1m_implementation_plan.md](15s_primary_derived_1m_implementation_plan.md)
 - [PREV30M_VWAP_IMPLEMENTATION_PLAN.md](PREV30M_VWAP_IMPLEMENTATION_PLAN.md)
-- [STUDY_RUNNER_IMPLEMENTATION_PLAN.md](STUDY_RUNNER_IMPLEMENTATION_PLAN.md) (RS — Research Study Runner; plan-locked holistic MVP RS1–RS5)
+- [STUDY_RUNNER_IMPLEMENTATION_PLAN.md](STUDY_RUNNER_IMPLEMENTATION_PLAN.md) (RS — MVP RS1–RS5 ✅; post-MVP §12: RS6→D7→D2→D4→D5)
 - [STUDY_RUNNER.md](STUDY_RUNNER.md) (RS operator contract; RS1–RS5 MVP complete)
 
 ## Research (demoted snapshots)
