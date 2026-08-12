@@ -37,8 +37,11 @@ CLASSIC_RESEARCH_SESSION_KEYS = frozenset(
     }
 )
 
-# Studies page may persist only this key (not classic research keys).
+# Studies page may persist only these keys (not classic research keys).
 STUDIES_VIEWER_DIR_KEY = "studies_viewer_study_dir"
+# Cached StudyViewerModel so Streamlit tab/widget reruns do not re-aggregate.
+STUDIES_VIEWER_CACHED_MODEL_KEY = "studies_viewer_cached_model"
+STUDIES_VIEWER_CACHED_MODEL_DIR_KEY = "studies_viewer_cached_model_dir"
 
 
 class StudyViewerError(ValueError):

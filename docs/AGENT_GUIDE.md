@@ -17,7 +17,7 @@ runner for independent batches:
 python -m thesistester run experiment.yaml --workers 4
 ```
 
-### Research Study Runner (RS1–RS5 + post-MVP through RS-D5)
+### Research Study Runner (RS1–RS5 + post-MVP through RS-D8 plan)
 
 For closed multi-factor confluence studies, use the additive Study Runner (see
 `docs/STUDY_RUNNER.md`). It expands a StudySpec to an R18 experiment, then
@@ -46,6 +46,10 @@ the CLI when the flag is off.
 **RS-D5** external coworker pack (extends the RS6 minimal recipe; no product
 host): `docs/STUDY_RUNNER_GROK_ROUTINE_PACK.md` + copy-ready prompts under
 `examples/studies/agents/`.
+
+**RS-D8:** Studies page authoring preview — canonical StudySpec YAML
+validate + in-memory expand (cell count / confirm gate). `preview.py` must not
+import `thesistester.study.execute`. Execute stays CLI.
 
 The API handoffs are typed but intentionally remain plain `pandas.DataFrame` /
 `dict` values:

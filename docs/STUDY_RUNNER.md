@@ -1,13 +1,14 @@
 # Research Study Runner
 
-**Status:** RS1–RS5 MVP + **RS-D7** + **RS6** + **RS-D2** + **RS-D4** + **RS-D5** landed. Post-MVP §12 sequence complete; parked: RS-D1 / RS-D3 / RS-D6.  
+**Status:** RS1–RS5 MVP + **RS-D7** + **RS6** + **RS-D2** + **RS-D4** + **RS-D5** + **RS-D8** landed. Parked: RS-D1 / RS-D3 / RS-D6.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (§12)  
 **Package:** `thesistester.study`
 
 Headless, additive tooling for closed multi-factor confluence studies. Classic
 Streamlit research mutate paths and `python -m thesistester run` are unchanged.
 RS-D2 adds a **read-only** Studies viewer; RS-D4 adds compose-only diagnostic
-rollup; RS-D5 is the external Grok routine pack (docs/examples only).
+rollup; RS-D5 is the external Grok routine pack (docs/examples only). RS-D8
+extends the Studies page with a **preview-only** YAML pane.
 
 This surface answers: *across many closed setups, which factor combinations look
 promising?* It is **not** confluence-combo attribution (within-trade membership).
@@ -422,12 +423,15 @@ Streamlit page: **Studies** (`pages/15_Studies.py`).
   (no backtests; does **not** rewrite `study.overview.*` on disk).
 - Shows identity, ledger counts, ranked / low-N / unresolved, OTF Δ, `bundle_path`.
 - Overview MD/CSV downloads are served from the in-memory aggregate.
-- Honesty banner required; no expand / run / promote controls; only the
-  Studies-scoped `studies_viewer_study_dir` session key is written (never classic
-  research keys); no Research-Bundles deep-link.
+- Honesty banner required; no expand / run / promote controls; only
+  Studies-scoped session keys are written (`studies_viewer_study_dir` plus
+  inspect-model / preview-result caches so Streamlit tab reruns do not
+  re-aggregate or drop results — never classic research keys); no
+  Research-Bundles deep-link.
 - Report bundle reads refuse `bundle_path` values that escape the study directory.
 - Package import is Windows-safe: `study.execute` binds `fcntl` / `msvcrt`
   optionally so opening this page cannot raise `ModuleNotFoundError: fcntl`.
+- **RS-D8** adds a preview pane on this same page — still no in-app execute.
 
 ---
 
@@ -457,11 +461,33 @@ skipped) before expecting dense rollup columns. See
 
 ---
 
+## RS-D8 — Studies authoring preview
+
+Same Streamlit page (`pages/15_Studies.py`), **Preview StudySpec** pane.
+
+```text
+yaml.safe_load → normalize_study_spec → validate_study_spec → in-memory expand_study
+```
+
+| Rule | Behavior |
+|---|---|
+| YAML | Canonical `schema_version: 1` only (fail-closed). No NL / shorthand compiler |
+| Preview | Show `run_count`, full cartesian, matched stage estimate, `needs_confirm`, `workers`, identity, constants battery hints |
+| Cap | Skip in-memory expand above `PREVIEW_EXPAND_CAP` (2_000); still show matched estimate |
+| Imports | `preview.py` does not import `thesistester.study.execute` |
+| Progress | Explicit **Refresh** of an existing study-dir ledger; does not start `study run` |
+| Streamlit caches | Inspect model + last preview result are Studies-scoped session caches (tab reruns must not re-aggregate or drop metrics) |
+| Execute | Remains CLI (`study run --confirm`) / optional RS6 tools |
+
+Stage-first example preview: **40** cells vs full cartesian **800**. Dataset CSV need not exist for preview.
+
+---
+
 ## Post-MVP (plan-locked)
 
 See `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12. Sequenced milestones
-**RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5** are complete. Parked items stay out of
-the critical path unless that plan is amended.
+**RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5 → RS-D8** are complete. Parked items stay
+out of the critical path unless that plan is amended.
 
 | Order | ID | Intent |
 |---|---|---|
@@ -470,5 +496,6 @@ the critical path unless that plan is amended.
 | 3 | **RS-D2** ✅ | Streamlit Studies **viewer** (artifacts-only; no in-app run) |
 | 4 | **RS-D4** ✅ | Per-cell WFA/validation/overfitting diagnostic rollup (compose-only; no cross-cell PBO) |
 | 5 | **RS-D5** ✅ | External Grok Bot routine pack (`STUDY_RUNNER_GROK_ROUTINE_PACK.md` + `examples/studies/agents/`) |
+| 6 | **RS-D8** ✅ | Studies authoring preview (canonical YAML validate + in-memory expand; cell count / confirm gate; ledger watch; **no** in-app execute) |
 
 Parked: RS-D1 (NL compiler), RS-D3 (`run_batch` continue), RS-D6 (new factor types).
