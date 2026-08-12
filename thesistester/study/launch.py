@@ -161,11 +161,19 @@ def build_study_run_argv(
 
 
 def pid_is_alive(pid: int) -> bool:
-    """True when ``pid`` still exists on this host (stdlib only)."""
-    if int(pid) <= 0:
+    """True when ``pid`` still exists on this host (stdlib only).
+
+    POSIX uses ``os.kill(pid, 0)``. Windows does not treat signal ``0`` as an
+    existence probe (``os.kill`` maps to ``TerminateProcess``), so use
+    ``OpenProcess`` via ``ctypes`` instead.
+    """
+    pid_n = int(pid)
+    if pid_n <= 0:
         return False
+    if os.name == "nt":
+        return _pid_is_alive_windows(pid_n)
     try:
-        os.kill(int(pid), 0)
+        os.kill(pid_n, 0)
     except ProcessLookupError:
         return False
     except PermissionError:
@@ -173,6 +181,39 @@ def pid_is_alive(pid: int) -> bool:
     except OSError:
         return False
     return True
+
+
+def _pid_is_alive_windows(pid: int) -> bool:
+    import ctypes
+
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    process_query_limited_information = 0x1000
+    error_access_denied = 5
+    handle = kernel32.OpenProcess(process_query_limited_information, 0, int(pid))
+    if handle:
+        kernel32.CloseHandle(handle)
+        return True
+    # Access denied still means the PID exists on this host.
+    return int(kernel32.GetLastError()) == error_access_denied
+
+
+def reset_launch_session_for_preview(
+    session_state: Any,
+    *,
+    prev_cached_yaml: str | None,
+    new_yaml: str,
+) -> None:
+    """Clear armed confirm; reseed CLI output_dir when preview YAML changed.
+
+    Streamlit keeps widget keys across Validate / Preview. Without this, a second
+    preview of a different StudySpec can spawn into the previous study's
+    ``output_dir`` (and reuse a stale bound-confirm triple's directory).
+    """
+    session_state.pop(STUDIES_LAUNCH_APPROVAL_KEY, None)
+    if prev_cached_yaml != new_yaml:
+        # Assign (do not rely on pop alone): widget-backed keys persist across
+        # reruns; overwrite with the new YAML default before the text_input runs.
+        session_state[STUDIES_LAUNCH_OUTPUT_DIR_KEY] = default_output_dir_from_yaml(new_yaml)
 
 
 def read_launch_pid_status(output_dir: str | Path) -> LaunchPidStatus | None:
@@ -296,8 +337,7 @@ def plan_with_confirm(plan: LaunchPlan, approval: Mapping[str, Any] | None) -> L
     """Attach ``--confirm`` only when the bound triple matches this plan."""
     if not plan.needs_confirm:
         raise StudyLaunchError(
-            "This expansion is under confirm_above_runs; use Run via CLI "
-            "(do not pass --confirm)."
+            "This expansion is under confirm_above_runs; use Run via CLI (do not pass --confirm)."
         )
     if not approval_matches(approval, plan):
         raise StudyLaunchError(

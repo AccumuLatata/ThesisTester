@@ -14,13 +14,18 @@ from thesistester.study.launch import (
     LAUNCH_LOG_NAME,
     LAUNCH_PID_NAME,
     LAUNCH_YAML_NAME,
+    STUDIES_LAUNCH_APPROVAL_KEY,
+    STUDIES_LAUNCH_OUTPUT_DIR_KEY,
     LaunchPlan,
     StudyLaunchError,
     approval_payload,
     build_launch_plan,
     build_study_run_argv,
+    default_output_dir_from_yaml,
+    pid_is_alive,
     plan_with_confirm,
     planned_argv,
+    reset_launch_session_for_preview,
     spawn_launch,
 )
 from thesistester.study.preview import example_study_spec_path, preview_study_yaml
@@ -285,3 +290,83 @@ def test_invalid_yaml_is_launch_error(tmp_path: Path):
             output_dir_raw=str(tmp_path / "out"),
             roots=(tmp_path,),
         )
+
+
+def test_reset_launch_session_reseeds_output_dir_when_yaml_changes():
+    old_yaml = "schema_version: 1\nstudy:\n  name: a\n  output_dir: out/old\n"
+    new_yaml = "schema_version: 1\nstudy:\n  name: b\n  output_dir: out/new\n"
+    state = {
+        STUDIES_LAUNCH_OUTPUT_DIR_KEY: "out/old",
+        STUDIES_LAUNCH_APPROVAL_KEY: {"run_count": 40},
+    }
+    reset_launch_session_for_preview(state, prev_cached_yaml=old_yaml, new_yaml=new_yaml)
+    assert STUDIES_LAUNCH_APPROVAL_KEY not in state
+    assert state[STUDIES_LAUNCH_OUTPUT_DIR_KEY] == "out/new"
+    assert default_output_dir_from_yaml(new_yaml) == "out/new"
+
+    # Same YAML re-preview: keep operator-edited output_dir, still clear approval.
+    state[STUDIES_LAUNCH_OUTPUT_DIR_KEY] = "out/custom"
+    state[STUDIES_LAUNCH_APPROVAL_KEY] = {"run_count": 40}
+    reset_launch_session_for_preview(state, prev_cached_yaml=new_yaml, new_yaml=new_yaml)
+    assert STUDIES_LAUNCH_APPROVAL_KEY not in state
+    assert state[STUDIES_LAUNCH_OUTPUT_DIR_KEY] == "out/custom"
+
+
+def test_pid_is_alive_self_and_missing():
+    assert pid_is_alive(os.getpid()) is True
+    assert pid_is_alive(0) is False
+    assert pid_is_alive(-1) is False
+    assert pid_is_alive(2**30) is False
+
+
+def test_pid_is_alive_dispatches_windows_helper(monkeypatch: pytest.MonkeyPatch):
+    import thesistester.study.launch as launch_mod
+
+    seen: list[int] = []
+
+    def fake_windows(pid: int) -> bool:
+        seen.append(pid)
+        return pid == 42
+
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(launch_mod, "_pid_is_alive_windows", fake_windows)
+    assert launch_mod.pid_is_alive(42) is True
+    assert launch_mod.pid_is_alive(7) is False
+    assert seen == [42, 7]
+
+
+def test_pid_is_alive_windows_openprocess(monkeypatch: pytest.MonkeyPatch):
+    import thesistester.study.launch as launch_mod
+
+    class _Kernel:
+        def __init__(self) -> None:
+            self.closed = False
+            self._err = 0
+
+        def OpenProcess(self, access, inherit, pid):  # noqa: N802
+            if pid == 7:
+                return 1234
+            if pid == 8:
+                self._err = 5  # ERROR_ACCESS_DENIED
+                return 0
+            self._err = 87
+            return 0
+
+        def CloseHandle(self, handle):  # noqa: N802
+            self.closed = handle == 1234
+            return 1
+
+        def GetLastError(self):  # noqa: N802
+            return self._err
+
+    kernel = _Kernel()
+
+    class _Ctypes:
+        class windll:
+            kernel32 = kernel
+
+    monkeypatch.setitem(__import__("sys").modules, "ctypes", _Ctypes())
+    assert launch_mod._pid_is_alive_windows(7) is True
+    assert kernel.closed is True
+    assert launch_mod._pid_is_alive_windows(8) is True
+    assert launch_mod._pid_is_alive_windows(9) is False

@@ -976,10 +976,10 @@ confirm_above_runs, study.launch.yaml
 | Control | Meaning | Common pitfall |
 |---|---|---|
 | Study output directory | Completed study dir under cwd or local store | Extra-root paths are refused |
-| Load / Refresh | In-memory overview; Refresh watches a CLI run | Does not rewrite overview files or run cells |
-| Canonical YAML / Preview | `schema_version: 1` validate + expand (cap 2_000) | Shorthand keys fail closed; does not write `experiment.yaml` |
+| Load / Refresh | In-memory overview; Refresh watches a CLI run | Refresh uses the current path field (not only the last Load). Does not rewrite overview files or run cells |
+| Canonical YAML / Preview | `schema_version: 1` validate + expand (cap 2_000) | Shorthand keys fail closed; does not write `experiment.yaml`. Re-previewing a **changed** YAML reseeds CLI output dir |
 | Load example / Copy spec | Example YAML, or `study.spec.yaml` from Inspect | Copy needs a loaded Inspect dir |
-| CLI output directory | Spawn target for `study run` | Not the Inspect dir; stay under cwd/store |
+| CLI output directory | Spawn target for `study run` | Not the Inspect dir; stay under cwd/store; do not reuse another study’s dir after switching YAML |
 | Run via CLI | Spawn without `--confirm` when under threshold | Not in-process execute; watch Inspect → Refresh |
 | Bind confirm / Confirm and run | Two-step `{hash, run_count, output_dir}` then `--confirm` | One click cannot bind and spawn |
 | Override workers / `--force` | Optional `--workers N`; `--force` default off | Force ≠ promote `--force` |

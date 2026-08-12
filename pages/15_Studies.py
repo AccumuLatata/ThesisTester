@@ -17,6 +17,7 @@ from thesistester.study.launch import (
     plan_with_confirm,
     planned_argv,
     read_launch_pid_status,
+    reset_launch_session_for_preview,
     spawn_launch,
 )
 from thesistester.study.preview import (
@@ -79,13 +80,19 @@ def _render_inspect() -> None:
     load = load_col.button("Load study artifacts", type="primary")
     refresh = refresh_col.button("Refresh")
 
+    path_stripped = str(raw_dir).strip()
     if load:
-        if not str(raw_dir).strip():
+        if not path_stripped:
             st.error("Enter a study output directory path.")
             return
         # Persist only the Studies-scoped path key so reruns (download / expander)
         # keep the view; never touch classic research session_state keys.
-        st.session_state[STUDIES_VIEWER_DIR_KEY] = str(raw_dir).strip()
+        st.session_state[STUDIES_VIEWER_DIR_KEY] = path_stripped
+    elif refresh and path_stripped:
+        # Refresh must honor the current path widget. Operators often edit the
+        # text field and hit Refresh without Load; ignoring the widget would
+        # re-aggregate a stale STUDIES_VIEWER_DIR_KEY while the UI shows another path.
+        st.session_state[STUDIES_VIEWER_DIR_KEY] = path_stripped
 
     active_dir = st.session_state.get(STUDIES_VIEWER_DIR_KEY)
     if refresh and (not isinstance(active_dir, str) or not active_dir.strip()):
@@ -418,8 +425,16 @@ def _render_preview() -> None:
             _clear_launch_session()
             st.error(str(exc))
             return
+        prev_cached_yaml = st.session_state.get(STUDIES_PREVIEW_CACHED_YAML_KEY)
         st.session_state[STUDIES_PREVIEW_CACHED_KEY] = preview
         st.session_state[STUDIES_PREVIEW_CACHED_YAML_KEY] = raw
+        # Drop armed confirm always; reseed CLI output_dir when the YAML changed
+        # so a new StudySpec cannot inherit the previous study's launch directory.
+        reset_launch_session_for_preview(
+            st.session_state,
+            prev_cached_yaml=prev_cached_yaml if isinstance(prev_cached_yaml, str) else None,
+            new_yaml=raw,
+        )
         _render_preview_result(preview, raw)
         return
 
@@ -431,7 +446,9 @@ def _render_preview() -> None:
         _render_preview_result(cached, raw)
         return
 
-    st.caption("Paste YAML, then Validate / Preview. Run via CLI appears after a successful preview.")
+    st.caption(
+        "Paste YAML, then Validate / Preview. Run via CLI appears after a successful preview."
+    )
 
 
 with inspect_tab:
