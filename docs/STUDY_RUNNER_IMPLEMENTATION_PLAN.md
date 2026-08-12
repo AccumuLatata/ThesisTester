@@ -763,17 +763,18 @@ RS-D7  →  RS6  →  RS-D2  →  RS-D4  →  RS-D5
 | **Out of scope** | Engine metric formula changes; silent removal of bundle PF path; Studies UI; assistant tools; inventing `win_rate_source` column (report keeps PF-only source tracking); making `win_rate` a StudySpec primary_metric |
 | **Regression** | Existing CLI/study index consumers tolerate new columns; no golden engine regen |
 | **Acceptance checklist** | |
-| | ☐ New ok cells write both `profit_factor` and `win_rate` on `results_index.csv` (column order after `max_drawdown_r`) |
-| | ☐ Failed/pending rows keep null PF/WR |
-| | ☐ Soft-resume full rehydrate populates PF/WR from existing bundles |
-| | ☐ Soft-resume field backfill fills PF/WR on pre-D7 ok rows that already have trade_count/expectancy |
-| | ☐ NaN PF/WR from trade_summary become null on the index |
-| | ☐ `±inf` PF round-trips via CSV to report (`profit_factor_source=index`) |
-| | ☐ Report `profit_factor_source=index` when column present and finite/coercible |
-| | ☐ Bundle fallback still works when column absent/null |
-| | ☐ Ordered CLI ↔ study `R18_INDEX_METRIC_KEYS` parity test green |
-| | ☐ Docs note additive columns + `inf` CSV behavior; `report.py` docstring no longer calls D7 optional; no claim of R18 Experiment schema break |
-| | ☐ Full suite green |
+| | ☑ New ok cells write both `profit_factor` and `win_rate` on `results_index.csv` (column order after `max_drawdown_r`) |
+| | ☑ Failed/pending rows keep null PF/WR |
+| | ☑ Soft-resume full rehydrate populates PF/WR from existing bundles |
+| | ☑ Soft-resume field backfill fills PF/WR on pre-D7 ok rows that already have trade_count/expectancy |
+| | ☑ NaN PF/WR from trade_summary become null on the index |
+| | ☑ `±inf` PF round-trips via CSV to report (`profit_factor_source=index`) |
+| | ☑ Report `profit_factor_source=index` when column present and coercible (incl. `±inf`) |
+| | ☑ Bundle fallback still works when column absent/null |
+| | ☑ Ordered CLI ↔ study `R18_INDEX_METRIC_KEYS` parity test green |
+| | ☑ Docs note additive columns + `inf` CSV behavior; `report.py` docstring no longer calls D7 optional; no claim of R18 Experiment schema break |
+| | ☑ Soft-resume rehydrate preserves identity (`dataset_id` / `instrument`) via prior row or `dataset_meta.json` |
+| | ☑ Full suite green |
 
 **Copy-ready agent prompt:**
 

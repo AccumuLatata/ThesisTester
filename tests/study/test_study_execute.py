@@ -45,6 +45,10 @@ def _fake_bundle_bytes(
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("manifest.json", json.dumps({"run_name": name}))
         archive.writestr(
+            "dataset_meta.json",
+            json.dumps({"dataset_id": "ds-test", "instrument": "ES"}),
+        )
+        archive.writestr(
             "trade_summary.json",
             json.dumps({"trade_summary": summary}),
         )
@@ -476,7 +480,45 @@ def test_soft_resume_rehydrates_metrics_when_index_row_missing(tmp_path: Path):
     assert float(row["total_r"]) == pytest.approx(0.75)
     assert float(row["profit_factor"]) == pytest.approx(1.5)
     assert float(row["win_rate"]) == pytest.approx(0.6)
+    assert row["dataset_id"] == "ds-test"
+    assert row["instrument"] == "ES"
     assert pd.notna(row["bundle_hash"])
+
+
+def test_soft_resume_rehydrate_preserves_identity_from_prior_and_bundle(tmp_path: Path):
+    from thesistester.study.execute import _index_row_from_existing_bundle
+
+    name = "cell_id"
+    bundle_name = f"{name}.research.zip"
+    (tmp_path / bundle_name).write_bytes(_fake_bundle_bytes(name))
+    prior = {
+        "run_name": name,
+        "dataset_id": "prior-ds",
+        "instrument": "NQ",
+        "execution_origin": "study",
+        "cache_outcome": "hit",
+        "trade_count": None,
+        "expectancy_r": None,
+        "profit_factor": None,
+        "win_rate": None,
+    }
+    row = _index_row_from_existing_bundle(
+        name,
+        output_dir=tmp_path,
+        bundle_rel=bundle_name,
+        prior_row=prior,
+    )
+    assert row["dataset_id"] == "prior-ds"
+    assert row["instrument"] == "NQ"
+    assert row["cache_outcome"] == "hit"
+    assert float(row["profit_factor"]) == pytest.approx(1.5)
+
+    # No prior row → fall back to dataset_meta.json inside the zip.
+    row2 = _index_row_from_existing_bundle(
+        name, output_dir=tmp_path, bundle_rel=bundle_name
+    )
+    assert row2["dataset_id"] == "ds-test"
+    assert row2["instrument"] == "ES"
 
 
 def test_soft_resume_repairs_poisoned_null_metric_ok_row(tmp_path: Path):
