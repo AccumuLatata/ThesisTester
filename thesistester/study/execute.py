@@ -398,8 +398,7 @@ _LOCK_REGION_BYTES = 1
 
 def _lock_held_error(output_dir: Path) -> StudySpecError:
     return StudySpecError(
-        f"Another study run holds the lock on {output_dir}; "
-        f"wait or use a different --output-dir"
+        f"Another study run holds the lock on {output_dir}; wait or use a different --output-dir"
     )
 
 
