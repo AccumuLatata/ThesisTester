@@ -1,8 +1,8 @@
 # Research Study Runner — Implementation Plan (RS)
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
-**Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock)  
-**Status:** **RS1–RS5 complete** (holistic MVP). Post-MVP track plan-locked: **RS6 → RS-D7 → RS-D2 → RS-D4 → RS-D5**; parked: RS-D1 / RS-D3 / RS-D6  
+**Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts)  
+**Status:** **RS1–RS5 complete** (holistic MVP). Post-MVP track plan-locked: **RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5**; parked: RS-D1 / RS-D3 / RS-D6  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`, `docs/USER_GUIDE.md`, `docs/STUDY_RUNNER.md`  
@@ -11,7 +11,7 @@
 
 **Supersedes:** conversational design notes about an autonomous research bot / Grok Bot coworker (those remain usage patterns; this plan is the product contract).
 
-**Completeness posture:** RS1–RS5 is the **holistic MVP** (author → expand → confirm → execute with ledger/resume → report → promote). **§12** locks the post-MVP expansion sequence (agent tools → index PF → Studies viewer → WFA/PBO rollup → Grok routine pack). Parked items stay out of the critical path.
+**Completeness posture:** RS1–RS5 is the **holistic MVP** (author → expand → confirm → execute with ledger/resume → report → promote). **§12** locks the post-MVP expansion sequence (index PF → default-off assistant capabilities → Studies viewer → per-cell diagnostic rollup → Grok routine pack). Parked items stay out of the critical path.
 
 ---
 
@@ -37,26 +37,26 @@ The runner must remain **independent of Streamlit day-to-day use**: no engine, f
 | Primary surface | CLI: `python -m thesistester study {expand,run,report,promote}` |
 | Compute core | Existing `run_experiment` + `build_research_bundle` (same path as CLI `_execute_run`); emit `experiment.yaml` for R18 replay |
 | Engine / golden impact | **None** for RS1–RS5; RS-D7 may touch CLI index writers only (versioned, default-compatible) — still **no** `engine/` edits |
-| Streamlit / pages impact | **None** for RS1–RS5 / RS6 / RS-D7; **RS-D2 only** adds a thin Studies viewer page |
-| Assistant / MCP impact | Optional RS6 only; default-off tools |
+| Streamlit / pages impact | **None** for RS1–RS5 / RS-D7 / RS6; **RS-D2 only** adds a thin Studies viewer page |
+| Assistant impact | Optional **RS6** only: default-off `FEATURE_PARITY_REGISTRY` capabilities (`STUDY.*`); no greenfield MCP server |
 | NL / LLM compiler | Parked (RS-D1); closed YAML StudySpec remains the contract |
-| External Grok Bot | Out of repo product core; **RS6** documents CLI/MCP contract; **RS-D5** is the external routine pack |
+| External Grok Bot | Out of repo product core; **RS6** documents minimal CLI/confirm recipe; **RS-D5** is the full external routine pack |
 | Strategy generation | **Non-goal** (aligns with `ENGINEERING_PROPOSAL.md` §2.2) |
-| MVP completeness bar | RS1–RS5 usable end-to-end without Streamlit, NL, or MCP ✅ |
-| Post-MVP sequence | **RS6 → RS-D7 → RS-D2 → RS-D4 → RS-D5** (locked in §12); do not reorder without amending this plan |
+| MVP completeness bar | RS1–RS5 usable end-to-end without Streamlit, NL, or assistant study tools ✅ |
+| Post-MVP sequence | **RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5** (locked in §12); do not reorder without amending this plan |
 
-**Feasibility:** High. R18 already runs independent RunSpecs and writes bundles + `results_index.csv`. The missing product surface is **study expansion + study-owned execution ledger + aggregation**, not new simulation semantics.
+**Feasibility:** High. R18 already runs independent RunSpecs and writes bundles + `results_index.csv`. MVP shipped study expansion + study-owned execution ledger + aggregation; post-MVP deepens agent/UI/rollup surfaces without new simulation semantics.
 
 ### 2.1 MVP in-scope vs explicitly deferred
 
 | In MVP (RS1–RS5) ✅ | Post-MVP sequenced (§12) | Parked (not sequenced) |
 |---|---|---|
-| Closed StudySpec YAML + fail-closed validate | **RS6** default-off assistant/MCP tools | **RS-D1** NL → StudySpec compiler |
-| Deterministic expand + golden fixtures | **RS-D7** additive index `profit_factor` / `win_rate` | **RS-D3** `run_batch` continue-on-failure |
+| Closed StudySpec YAML + fail-closed validate | **RS-D7** additive index `profit_factor` + `win_rate` | **RS-D1** NL → StudySpec compiler |
+| Deterministic expand + golden fixtures | **RS6** default-off `STUDY.*` assistant capabilities | **RS-D3** `run_batch` continue-on-failure |
 | Confirm gate + cost hints | **RS-D2** Streamlit Studies **viewer** (artifacts-only) | **RS-D6** multi-partner / tolerance factor types |
-| Study-owned execute + per-cell ledger | **RS-D4** study-aware WFA/PBO rollup | Auto-run promotion / scheduled studies |
+| Study-owned execute + per-cell ledger | **RS-D4** per-cell WFA/validation/overfitting diagnostic rollup | Auto-run promotion / scheduled studies |
 | Soft resume + workers + continue-on-failure (study layer) | **RS-D5** Grok Bot routine pack (external; after RS6) | UI factor builder / templates marketplace |
-| Overview CSV/MD + OTF Δ + honesty | | Embedding Grok host / RabbitMQ / job queue |
+| Overview CSV/MD + OTF Δ + honesty | | Embedding Grok host / RabbitMQ / job queue / live MCP server |
 | Stage filter + promote → `explicit_cells` draft | | |
 | Stage-first example (40) + documented full (800) | | |
 
@@ -136,27 +136,30 @@ Keep docs, schemas, and agent prompts separate. Do not fold combo attribution in
 ```text
                     ┌─────────────────────────────┐
                     │  External coworker (opt.)   │
-                    │  Grok Bot / human / MCP     │
+                    │  Grok Bot / human / RS6     │
                     └──────────────┬──────────────┘
-                                   │ study.yaml + CLI
+                                   │ study.yaml + CLI (+ STUDY.* tools)
                                    ▼
 ┌──────────────────────────────────────────────────────────┐
-│ thesistester/study/          NEW (RS1–RS5)               │
-│  schema → expand → execute(ledger) → report              │
+│ thesistester/study/          SHIPPED (RS1–RS5)           │
+│  schema → expand → execute(ledger) → report → promote    │
+│  + tools.py (RS6) + rollup.py (RS-D4)                    │
 │  emits experiment.yaml for R18 replay                    │
 └──────────────────────────────┬───────────────────────────┘
                                │ per cell: run_experiment
                                │           + build_research_bundle
                                ▼
 ┌──────────────────────────────────────────────────────────┐
-│ thesistester/{api,cli}.py    EXISTING (untouched logic)  │
+│ thesistester/{api,cli}.py    EXISTING                    │
 │  run_experiment / _execute_run path; run_batch unchanged │
+│  RS-D7: additive index columns on writers only           │
 └──────────────────────────────┬───────────────────────────┘
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────┐
-│ engine / levels / signals / pages                        │
-│  NO CHANGES in RS1–RS5                                   │
+│ engine / levels / signals                                │
+│  NO CHANGES in this series                               │
+│ pages/: RS-D2 Studies viewer only (read-only)            │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -165,16 +168,20 @@ Keep docs, schemas, and agent prompts separate. Do not fold combo attribution in
 ```text
 thesistester/study/
   __init__.py          # public exports only
-  schema.py            # StudySpec load/validate/normalize (fail-closed)
-  expand.py            # StudySpec → experiment dict + factor map
-  naming.py            # deterministic filesystem-safe run names
-  execute.py           # study-owned cell loop (run_experiment + bundle + index)
-  ledger.py            # study manifest + cell registry
-  report.py            # aggregate overview from index + factor map
-  cli_study.py         # argparse handlers (wired from __main__/cli)
-docs/STUDY_RUNNER.md   # user/agent contract (lands RS1, grows each PR)
-tests/study/           # unit + golden expand fixtures
-examples/studies/      # stage-first example YAML (RS5; may land earlier as fixture)
+  schema.py            # StudySpec load/validate/normalize (fail-closed) ✅
+  expand.py            # StudySpec → experiment dict + factor map ✅
+  naming.py            # deterministic filesystem-safe run names ✅
+  execute.py           # study-owned cell loop (run_experiment + bundle + index) ✅
+  ledger.py            # study manifest + cell registry ✅
+  report.py            # aggregate overview from index + factor map ✅
+  promote.py           # survivor draft StudySpec writer ✅
+  cli_study.py         # argparse handlers (wired from __main__/cli) ✅
+  tools.py             # RS6: thin STUDY.* capability adapters (default-off)
+  rollup.py            # RS-D4: per-cell diagnostic rollup (compose-only)
+docs/STUDY_RUNNER.md   # living operator contract ✅
+tests/study/           # unit + golden expand fixtures ✅
+examples/studies/      # stage-first example YAML ✅
+pages/15_Studies.py    # RS-D2: read-only artifact viewer (name may follow nav)
 ```
 
 ### 5.3 Design principles
@@ -447,7 +454,7 @@ Wiring: extend `thesistester/cli.py` / `__main__.py` with a `study` subparser **
 |---|---|
 | `trade_count`, `expectancy_r`, `total_r`, `max_drawdown_r`, `bundle_hash`, `bundle_path` | Study/R18 index columns |
 | `status` | Study ledger / study-authored index column (not R18 `run_batch` index) |
-| `profit_factor` (and optional `win_rate`) | **Preferred:** read from bundle `trade_summary` during report (or during study execute when writing index). **Optional precursor (RS-D7):** additive R18 index columns — versioned, tested, default-compatible; do not silently change R18 index schema inside RS4 without that precursor. |
+| `profit_factor` / `win_rate` | **MVP:** resolve from bundle `trade_summary` during report (index wins per field when present). **RS-D7:** write both columns on study + CLI `results_index` at ok-cell write time (default-compatible; report already prefers index). |
 | Ranking primary | Must be index-available (`expectancy_r` default). If `primary_metric: profit_factor`, report must resolve PF via bundle/index extension before ranking. |
 
 ### 9.3 Derived views
@@ -662,16 +669,16 @@ No auto-execution. No engine/pages. HC allowlist update if USER_GUIDE gains Help
 
 ---
 
-### RS6 — Optional agent tools (MCP / assistant) — **opt-in, after MVP**
+### RS6 — Optional assistant study capabilities — **opt-in, after RS-D7**
 
-Full contract: **§12.2**. Brief scope retained here for §11 continuity.
+Full contract: **§12.3**. Brief scope retained here for §11 continuity.
 
 | | |
 |---|---|
-| **Scope** | Thin tools wrapping `expand` / `run` / `report` / `promote` for Research Assistant and/or MCP descriptors; default **disabled** |
-| **Out of scope** | Free-form study invention; Grok Bot product host; Streamlit Studies page (RS-D2); index schema (RS-D7) |
+| **Scope** | Default-off `STUDY.*` `FEATURE_PARITY_REGISTRY` capabilities wrapping expand/run/report/promote; minimal CLI/confirm recipe docs |
+| **Out of scope** | Greenfield MCP server; free-form study invention; Grok Bot product host; Streamlit Studies page (RS-D2) |
 
-**Copy-ready agent prompt:** see §12.2.
+**Copy-ready agent prompt:** see §12.3.
 
 ---
 
@@ -679,32 +686,33 @@ Full contract: **§12.2**. Brief scope retained here for §11 continuity.
 
 ### 12.0 Sequencing rules (normative)
 
-Post-MVP work **must** follow this order unless this plan is amended in the same PR that reorders:
+Post-MVP work **must** follow this order unless this plan is amended in the same PR that reorders. **No escape hatches** that silently reorder milestones.
 
 ```text
-RS6  →  RS-D7  →  RS-D2  →  RS-D4  →  RS-D5
- │        │         │         │         └─ external Grok routine pack (docs + recipes)
- │        │         │         └─ study-aware WFA/PBO rollup (compose existing batteries)
- │        │         └─ Streamlit Studies viewer (artifacts-only; no in-app execute)
- │        └─ additive results_index PF/win_rate (default-compatible)
- └─ default-off assistant/MCP tools + Grok CLI/MCP contract docs
+RS-D7  →  RS6  →  RS-D2  →  RS-D4  →  RS-D5
+  │         │        │         │         └─ external Grok routine pack (docs + recipes)
+  │         │        │         └─ per-cell diagnostic rollup (compose existing artifacts only)
+  │         │        └─ Streamlit Studies viewer (artifacts-only; no in-app execute)
+  │         └─ default-off STUDY.* assistant capabilities + minimal CLI/confirm docs
+  └─ additive results_index profit_factor + win_rate (default-compatible)
 ```
 
 | Rule | Rationale |
 |---|---|
-| **RS6 before Grok/UI depth** | Agents and humans share one confirm-gated headless contract; avoid a second runner |
-| **RS-D7 before RS-D2** | Viewer + agents should read PF from index without zip scrape; small additive schema win first |
+| **RS-D7 first** | Tiny additive index win; unblocks PF/WR for agents + viewer without zip scrape; report already prefers index |
+| **RS6 after D7** | Assistant wrappers then see a PF-complete index; still one confirm-gated headless contract (no second runner) |
 | **RS-D2 viewer-only** | Classic Streamlit stays undisturbed; no StudySpec builder / in-app `study run` in D2 |
-| **RS-D4 after real survivor use** | Rollup honesty matters once promote workflows exist; do not invent new inference |
-| **RS-D5 after RS6** | External coworker consumes frozen CLI/MCP; not an embedded host |
+| **RS-D4 after survivors-in-use** | Rollup honesty matters once promote workflows exist; compose-only; most MVP cells have batteries off |
+| **RS-D5 after RS6** | External coworker consumes frozen CLI + optional STUDY.* tools; not an embedded host |
 | **Parked ≠ cancelled** | RS-D1 / RS-D3 / RS-D6 stay available when a concrete need appears; not on the critical path |
 
 **Global regression posture (every post-MVP PR):**
 
 - Satisfy `ENGINEERING_PROPOSAL.md` §4.2.
-- **No** `thesistester/engine/` edits; **no** fill/signal/confluence-math changes; **no** golden-master regeneration unless an explicit engine milestone (none in this series).
+- **No** `thesistester/engine/` edits; **no** fill/signal/confluence-math changes; **no** golden-master regeneration (none in this series).
 - Classic `python -m thesistester run` / `run_batch` abort+write semantics unchanged (study layer remains continue-capable).
-- Assistant Help/Discuss defaults unchanged unless a milestone explicitly amends them (RS6 tools default-off).
+- Allow-list non-`study/` touches: RS-D7 may extend `cli.py` `_execute_run` index keys; RS6 may register default-off assistant capabilities/config; RS-D2 may add one read-only page + HC allowlist.
+- Assistant Help/Discuss defaults unchanged when RS6 flag is off.
 - Docs + tests land in the same PR as code; roadmap/status rows updated same PR.
 - Prefer additive modules under `thesistester/study/` (and thin page/assistant wrappers only where listed).
 
@@ -712,81 +720,93 @@ RS6  →  RS-D7  →  RS-D2  →  RS-D4  →  RS-D5
 
 | Order | ID | One-line intent | Pages? | Engine? | Default |
 |---|---|---|---|---|---|
-| 1 | RS6 | Default-off assistant/MCP wrappers + Grok CLI/MCP docs | No | No | **Off** |
-| 2 | RS-D7 | Additive index `profit_factor` / `win_rate` | No | No | Additive columns |
+| 1 | RS-D7 | Additive index `profit_factor` + `win_rate` | No | No | Additive columns |
+| 2 | RS6 | Default-off `STUDY.*` assistant capabilities + minimal CLI/confirm docs | No | No | **Off** |
 | 3 | RS-D2 | Studies viewer over artifacts | **Yes (viewer only)** | No | Read-only page |
-| 4 | RS-D4 | Compose existing WFA/PBO into study rollup | No | No | Opt-in CLI/report |
+| 4 | RS-D4 | Per-cell WFA/validation/overfitting diagnostic rollup | No | No | Opt-in CLI/report |
 | 5 | RS-D5 | External Grok routine pack | No | No | External docs |
 | — | D1/D3/D6 | Parked | — | — | — |
 
 ---
 
-### 12.2 RS6 — Default-off assistant / MCP study tools
+### 12.2 RS-D7 — Additive index columns (`profit_factor`, `win_rate`)
 
 | | |
 |---|---|
 | **Depends on** | RS1–RS5 ✅ |
-| **Scope** | Thin tool wrappers over existing `thesistester.study` APIs + CLI parity; MCP tool descriptors (or assistant tool registration) behind a **default-off** flag; operator docs for external Grok Bot |
-| **Likely files** | `thesistester/study/tools.py` (or `assistant` study tool module); config flag (e.g. `assistant.study_tools.enabled=false` / env); MCP descriptor JSON or documented schema; `docs/STUDY_RUNNER.md` agent section; `docs/AGENT_GUIDE.md`; targeted tests under `tests/study/` + assistant parity |
+| **Scope** | Additive **`profit_factor` and `win_rate`** columns on study-authored and CLI `results_index.csv` writers; report prefers index when present (already implemented in `report._resolve_bundle_metrics`) |
+| **Likely files** | `thesistester/study/execute.py` (`R18_INDEX_METRIC_KEYS` / `STUDY_INDEX_KEYS` / `build_index_row_from_state`); `thesistester/cli.py` `_execute_run` index row (parity); index parity tests; `docs/METRICS_GLOSSARY.md` / `STUDY_RUNNER.md` |
 | **Behavior** | |
-| | Tools: `study_expand`, `study_run`, `study_report`, `study_promote` (names may mirror CLI) |
-| | Inputs: StudySpec path and/or already-validated structured dict; output_dir; workers; top_n for promote |
-| | **Confirm parity:** any tool path that would execute cells when `run_count >= confirm_above_runs` **must** require an explicit prior/confirm tool call or `confirm=true` argument that mirrors CLI `--confirm`. No silent bypass. |
-| | Expand/report/promote never require confirm; run does. |
-| | Return structured payloads: `run_count`, cost hints, artifact paths, ledger summary, honesty flags — not free-form “winner” claims |
-| | When flag is off: tools unregistered / refuse with clear “disabled” error; default assistant path identical to pre-RS6 |
-| **Out of scope** | NL StudySpec compilation (RS-D1); Streamlit Studies page (RS-D2); changing index schema (RS-D7); embedding Grok/RabbitMQ; inventing setups; enabling tools by default |
-| **Regression** | Assistant parity fixtures green; Help/Discuss unchanged; engine/pages untouched; CLI study commands unchanged |
+| | For **ok** cells, write both columns from `trade_summary` at index-write time |
+| | Failed/pending rows: leave `profit_factor` / `win_rate` **null** (never fabricate) |
+| | CSV serialization: finite floats as usual; `±inf` PF as `"inf"` / `"-inf"` strings (report already coerces these) |
+| | **Default-compatible:** older indexes / readers without the columns still work; report keeps bundle fallback |
+| | Do **not** bump Experiment `schema_version` solely for this; document as additive index column set |
+| | Parity: study execute keys and CLI `_execute_run` keys stay aligned (extend parity test); do not change `run_batch` write timing |
+| **Out of scope** | Engine metric formula changes; silent removal of bundle PF path; Studies UI; assistant tools |
+| **Regression** | Existing CLI/study index consumers tolerate new columns; no golden engine regen |
 | **Acceptance checklist** | |
-| | ☐ Config/flag defaults to **disabled** |
-| | ☐ With flag off, assistant/MCP surfaces behave as before RS6 (parity fixtures) |
-| | ☐ With flag on, expand/report/promote work without confirm; run respects `confirm_above_runs` |
-| | ☐ Enabled tools **cannot** bypass confirm threshold |
-| | ☐ Tools do not call `run_batch`; reuse study-owned execute / report / promote |
-| | ☐ Docs: “How Grok Bot / external agents should call CLI or MCP” (+ confirm recipe) |
-| | ☐ Full suite + assistant parity green |
-
-**Copy-ready agent prompt:**
-
-```text
-Implement RS6 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §12.2.
-Add default-off assistant/MCP tools wrapping study expand/run/report/promote
-with CLI confirm parity (no bypass). Document external Grok Bot CLI/MCP recipe.
-Do not change engine, classic pages, run_batch, or assistant defaults when flag off.
-Keep assistant parity fixtures green. §4.2. Update STUDY_RUNNER.md + roadmap.
-```
-
----
-
-### 12.3 RS-D7 — Additive index columns (`profit_factor`, optional `win_rate`)
-
-| | |
-|---|---|
-| **Depends on** | RS1–RS5 ✅; ideally after RS6 so agents benefit immediately, but **may** land before RS6 if RS6 is blocked — prefer sequence above |
-| **Scope** | Additive columns on study-authored and CLI `results_index.csv` writers; report prefers index when present (already implemented path) |
-| **Likely files** | `thesistester/study/execute.py` index row builder; `thesistester/cli.py` `_execute_run` index row (parity); tests for column presence + backward-compatible readers; `docs/METRICS_GLOSSARY.md` / `STUDY_RUNNER.md` |
-| **Behavior** | |
-| | Add `profit_factor` and optional `win_rate` to index rows from `trade_summary` at write time |
-| | **Default-compatible:** older overview CSVs / readers without the columns still work; report keeps bundle fallback |
-| | Do **not** bump Experiment schema solely for this; document as index column additive set |
-| | Parity: study execute keys and CLI `_execute_run` keys stay aligned (extend parity test) |
-| **Out of scope** | Engine metric formula changes; silent removal of bundle PF path; Studies UI; MCP tools |
-| **Regression** | Existing CLI/study index consumers tolerate new columns; no golden engine regen; `run_batch` write timing unchanged |
-| **Acceptance checklist** | |
-| | ☐ New ok cells write `profit_factor` (and `win_rate` if in scope) on `results_index.csv` |
-| | ☐ Report `profit_factor_source=index` when column present |
+| | ☐ New ok cells write both `profit_factor` and `win_rate` on `results_index.csv` |
+| | ☐ Failed/pending rows keep null PF/WR |
+| | ☐ Report `profit_factor_source=index` when column present and finite/coercible |
 | | ☐ Bundle fallback still works when column absent/null |
-| | ☐ CLI ↔ study index key parity test updated and green |
-| | ☐ Docs note additive columns; no claim of R18 schema break |
+| | ☐ CLI ↔ study index key parity test updated and green (`R18_INDEX_METRIC_KEYS` extended) |
+| | ☐ Docs note additive columns + `inf` CSV behavior; no claim of R18 schema break |
 | | ☐ Full suite green |
 
 **Copy-ready agent prompt:**
 
 ```text
-Implement RS-D7 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §12.3.
-Add additive profit_factor (+ optional win_rate) to study and CLI results_index
-writers from trade_summary. Keep report bundle fallback. Extend index parity tests.
-No engine/pages. No run_batch semantic change. §4.2. Update STUDY_RUNNER + glossary.
+Implement RS-D7 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §12.2.
+Add additive profit_factor AND win_rate to study and CLI results_index writers
+from trade_summary. Null on failed/pending. Serialize ±inf as inf/-inf strings.
+Keep report bundle fallback. Extend R18_INDEX_METRIC_KEYS + index parity tests.
+No engine/pages. No run_batch semantic/timing change. §4.2. Update STUDY_RUNNER + glossary.
+```
+
+---
+
+### 12.3 RS6 — Default-off `STUDY.*` assistant capabilities
+
+| | |
+|---|---|
+| **Depends on** | RS1–RS5 ✅; **RS-D7** (so tool/index consumers see PF/WR without zip scrape) |
+| **Scope** | Thin adapters over existing `thesistester.study` APIs registered in `FEATURE_PARITY_REGISTRY` behind **`assistant.study_tools.enabled=false`** (fail-closed coerce); minimal operator docs for external Grok Bot CLI/confirm recipe |
+| **Likely files** | `thesistester/study/tools.py`; `thesistester/assistant/registry.py` (+ contracts/orchestrator wiring as needed); `config/assistant.toml` default-off flag; `docs/STUDY_RUNNER.md` agent section; `docs/AGENT_GUIDE.md`; `tests/study/` + assistant parity fixtures |
+| **Primary surface (locked)** | Assistant capabilities (mirror `PIPELINE.run_experiment` pattern), **not** a greenfield MCP server. Optional: document-only MCP-shaped descriptor appendix for external hosts — **no in-repo MCP runtime** in RS6. Voice/realtime must continue to deny MCP/search. |
+| **Capabilities** | `STUDY.expand`, `STUDY.run`, `STUDY.report`, `STUDY.promote` (+ optional `STUDY.confirm` approval helper) |
+| **Behavior** | |
+| | Inputs: StudySpec path **or** structured dict that must pass `validate_study_spec` before any side effect; `output_dir`; `workers`; promote `top_n` / `metric` / overwrite `force`; run `force` (identity/resume parity with CLI) |
+| | Soft resume / identity mismatch / `--force` semantics **must** match `run_study` CLI — tools must not invent weaker gates |
+| | Promote overwrite gate matches CLI (`force` required to replace existing draft) |
+| | **Confirm parity (two-step):** when `run_count >= confirm_above_runs`, `STUDY.run` must **not** accept a bare habitual `confirm=true` as sufficient by itself. Require `ConfirmationLevel.EXPLICIT_CONFIRMATION` / `APPROVAL_REQUIRED` flow: a prior approval bound to `(study_identity_hash, run_count, output_dir)` (e.g. `STUDY.confirm` or orchestrator approval token), then `STUDY.run` with that approval. Expand/report/promote never require confirm. |
+| | Return structured payloads: `run_count`, cost hints, artifact paths, ledger summary, honesty flags — not free-form “winner” claims |
+| | When flag is off: capabilities unregistered or refuse with clear “disabled” error; default assistant path identical to pre-RS6 |
+| | Tools call `expand_study` / `run_study` / `report_study` / `promote_study` — **never** `run_batch` |
+| **Docs split** | RS6 lands a **minimal** “CLI + confirm recipe” section. Full multi-step Grok routine pack is **RS-D5** only — do not duplicate divergent long recipes here. |
+| **Out of scope** | NL StudySpec compilation (RS-D1); Streamlit Studies page (RS-D2); embedding Grok/RabbitMQ; inventing setups; enabling tools by default; shipping a live MCP server |
+| **Regression** | Assistant parity fixtures green with flag off; Help/Discuss unchanged; engine/pages untouched; CLI study commands unchanged |
+| **Acceptance checklist** | |
+| | ☐ `assistant.study_tools.enabled` defaults to **false** (fail-closed) |
+| | ☐ With flag off, assistant surfaces behave as before RS6 (parity fixtures) |
+| | ☐ With flag on, expand/report/promote work without confirm; run uses two-step approval when over threshold |
+| | ☐ Enabled tools **cannot** bypass confirm threshold via a lone boolean |
+| | ☐ Structured-dict inputs validate via `validate_study_spec` before writes/execute |
+| | ☐ `force` / workers / soft-resume / identity mismatch match CLI `run_study` / `promote` |
+| | ☐ Tools do not call `run_batch` |
+| | ☐ Minimal CLI/confirm recipe docs (RS-D5 owns the full routine pack) |
+| | ☐ Full suite + assistant parity green |
+
+**Copy-ready agent prompt:**
+
+```text
+Implement RS6 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §12.3.
+Add default-off STUDY.* FEATURE_PARITY_REGISTRY capabilities wrapping
+expand/run/report/promote. Use EXPLICIT_CONFIRMATION / two-step approval bound to
+study identity + run_count (no bare confirm=true bypass). Match CLI force/workers/
+resume/promote overwrite semantics. No MCP server runtime. No engine/pages/run_batch
+changes. Keep assistant parity fixtures green when flag off. §4.2.
+Update STUDY_RUNNER.md (minimal agent recipe) + roadmap.
 ```
 
 ---
@@ -795,21 +815,22 @@ No engine/pages. No run_batch semantic change. §4.2. Update STUDY_RUNNER + glos
 
 | | |
 |---|---|
-| **Depends on** | RS1–RS5 ✅; **RS-D7 preferred** (PF columns on index); RS6 optional |
-| **Scope** | One new Streamlit page (or thin multipage entry) that **reads** an existing study output directory and displays ledger + overview artifacts |
-| **Likely files** | `pages/*Studies*.py` (name TBD to match nav conventions); thin helpers reusing `thesistester.study.report` / ledger loaders; `docs/USER_GUIDE.md` H2 + HC allowlist amend; `ARCHITECTURE.md` boundary note |
+| **Depends on** | RS1–RS5 ✅; **RS-D7** (PF/WR on index); RS6 optional |
+| **Scope** | One new Streamlit page that **reads** an existing study output directory and displays ledger + overview artifacts |
+| **Likely files** | `pages/15_Studies.py` (or next free nav slot matching repo convention); thin helpers reusing `report_study` / ledger loaders — **do not reimplement** join/rank; `docs/USER_GUIDE.md` H2 + HC §7.1.4 allowlist amend; `ARCHITECTURE.md` boundary note |
 | **Behavior** | |
-| | User selects / pastes a study `output_dir` |
-| | Show: study identity, run_count, ledger ok/failed/pending, ranked table, low-N, OTF Δ summary, links/paths to bundles |
+| | User selects / pastes a study `output_dir` (sandbox/path-validate; refuse arbitrary filesystem traversal outside intended roots if the app already has a path policy — otherwise document trusted-local-path assumption) |
+| | Show: study identity, run_count, ledger ok/failed/pending, ranked table, low-N, unresolved, OTF Δ summary, `bundle_path` strings |
 | | Honesty banner: descriptive ranking ≠ validated edge; multiple-testing; min_trades |
-| | Optional: open/download `study.overview.md` / CSV; deep-link to bundle if product already supports bundle open |
-| | **Read-only:** no StudySpec editor, no in-app `study run` / expand / promote execution in D2 |
+| | Optional: download / show `study.overview.md` / CSV text. **Do not** promise Research-Bundles deep-link-by-path (that page is upload/import oriented); listing `bundle_path` is enough |
+| | **Read-only:** no StudySpec editor; no in-app expand / run / promote; must **not** mutate classic research `st.session_state` keys (levels/signals/trades/etc.) |
 | **Out of scope** | Factor builder UI; templates marketplace; auto-run; assistant NL; changing headless CLI; portfolio of studies cloud sync |
 | **Regression** | Classic pages unchanged in behavior; no engine edits; Help allowlist updated if USER_GUIDE gains H2; nav addition must not break existing page tests |
 | **Acceptance checklist** | |
 | | ☐ Can load a completed fixture study dir and show ranked/low-N/ledger without running backtests |
+| | ☐ Reuses study report/ledger loaders (no divergent ranking logic) |
 | | ☐ Honesty caveats visible |
-| | ☐ No execute/promote/expand controls that mutate study state (view-only) |
+| | ☐ No execute/promote/expand controls that mutate study or research session state |
 | | ☐ USER_GUIDE (+ HC §7.1.4 if Help-readable) updated same PR |
 | | ☐ Existing Streamlit/assistant tests green; engine goldens untouched |
 | | ☐ Full suite green |
@@ -819,30 +840,35 @@ No engine/pages. No run_batch semantic change. §4.2. Update STUDY_RUNNER + glos
 ```text
 Implement RS-D2 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §12.4.
 Add a thin Streamlit Studies viewer over existing study artifacts (ledger + overview).
-Read-only: no in-app expand/run/promote. Honesty banner required. HC allowlist if
-USER_GUIDE H2 added. No engine edits. Prefer RS-D7 index PF if already merged. §4.2.
+Reuse report_study/ledger loaders. Read-only: no in-app expand/run/promote; do not
+mutate research session_state. Honesty banner required. Show bundle_path; no false
+deep-link. HC allowlist if USER_GUIDE H2 added. No engine edits. §4.2.
 ```
 
 ---
 
-### 12.5 RS-D4 — Study-aware WFA / PBO rollup
+### 12.5 RS-D4 — Per-cell diagnostic rollup (WFA / validation / overfitting)
 
 | | |
 |---|---|
 | **Depends on** | RS1–RS5 ✅; meaningful after survivors exist (promote workflow); RS-D2 optional |
-| **Scope** | Aggregate **existing** per-cell validation / walk-forward / overfitting diagnostics into study-level summary tables — compose, do not invent new statistical claims |
-| **Likely files** | `thesistester/study/rollup.py` (name TBD); CLI `study rollup` or report subsection; read bundles / validation summaries already produced when cells enabled batteries; honesty docs |
-| **Behavior** | |
-| | Input: completed study dir where some/all cells have validation/WFA artifacts |
-| | Output: e.g. `study.rollup.csv` / MD section: per-cell OOS expectancy, fold counts, PBO/DSR fields **only if already present** on cell artifacts |
-| | Explicitly label descriptive rollup; refuse “validated edge” language |
-| | Cells without batteries appear as `not_run` / null — do not silently enable grid/validation |
-| **Out of scope** | New PBO algorithm; auto-enabling validation on promote; changing analytics formulas; engine changes |
+| **Scope** | Aggregate **existing** per-cell walk-forward / validation / overfitting diagnostics into study-level summary tables — **compose, do not invent** |
+| **Likely files** | `thesistester/study/rollup.py`; CLI `study rollup` and/or report subsection; honesty docs in `ASSUMPTIONS_AND_LIMITATIONS.md` + `STUDY_RUNNER.md` |
+| **Semantics (locked)** | |
+| | Rollup is a **per-cell table** of fields already present on cell bundles/index — **not** a new cross-study / cross-cell PBO, DSR, or CSCV |
+| | Read bundle members such as `walk_forward_summary` / WFA fields already on study index, and `overfitting_summary.json` when present |
+| | R15 `overfitting_summary` / `cscv_pbo` require **grid cell trade sequences**. Default study emission keeps `grid`/`validation`/`walk_forward` `enabled: false`, so most MVP cells are `not_run` for these fields — that is expected |
+| | Missing batteries → explicit `not_run` / null columns; **never** silently enable grid/validation/walk_forward |
+| | Explicit honesty: descriptive rollup ≠ validated edge; refuse “proof of edge” language |
+| **Recommended survivor-stage constants** (docs + examples only; not auto-applied): after promote, humans may opt into `walk_forward.enabled: true` and/or `grid.enabled: true` + `validation.overfitting` **with explicit `enabled` flags** (never bare `{}`) before expecting rollup density |
+| **Out of scope** | New PBO/DSR algorithm; study-level pooled PBO across factorial cells; auto-enabling batteries on promote/report; changing analytics formulas; engine changes |
 | **Regression** | Enabling rollup never changes cell backtest results; classic validation pages unchanged |
 | **Acceptance checklist** | |
-| | ☐ Rollup reads existing cell artifacts only |
+| | ☐ Rollup reads existing cell artifacts / index WFA columns only |
 | | ☐ Missing batteries → explicit null/not_run, not invented scores |
+| | ☐ No cross-cell PBO/DSR computation |
 | | ☐ Honesty block in MD |
+| | ☐ Docs state grid requirement for overfitting fields + survivor opt-in recipe |
 | | ☐ No engine/pages golden drift |
 | | ☐ Full suite green |
 
@@ -850,9 +876,10 @@ USER_GUIDE H2 added. No engine edits. Prefer RS-D7 index PF if already merged. �
 
 ```text
 Implement RS-D4 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §12.5.
-Add study-level rollup that composes existing per-cell WFA/validation/PBO artifacts.
-Do not invent new inference or auto-enable batteries. Honesty required. No engine
-golden changes. §4.2. Update STUDY_RUNNER + assumptions.
+Add study-level per-cell diagnostic rollup composing existing WFA/validation/
+overfitting bundle/index fields. Do NOT invent cross-cell PBO/DSR or auto-enable
+batteries. Missing → not_run/null. Honesty required. No engine golden changes. §4.2.
+Update STUDY_RUNNER + assumptions (incl. grid requirement for overfitting).
 ```
 
 ---
@@ -861,25 +888,27 @@ golden changes. §4.2. Update STUDY_RUNNER + assumptions.
 
 | | |
 |---|---|
-| **Depends on** | **RS6** (CLI/MCP contract docs + optional tools) |
+| **Depends on** | **RS6** (minimal CLI/confirm docs + optional STUDY.* tools); benefits from RS-D7 index PF |
 | **Scope** | **Documentation + example agent routines** for an external coworker (Grok Bot). Prefer living outside the product runtime; in-repo only as docs/examples under `docs/` or `examples/studies/agents/` |
+| **Docs split** | Owns the **full** multi-step routine pack. Must not contradict RS6’s minimal recipe; extend it. |
 | **Behavior** | |
-| | Recipe: stage-first expand → confirm → run → report → promote draft → human edit → second pass |
-| | Hard rules for the bot: never invent factor axes; never bypass confirm; never auto-run promote drafts; always surface honesty / min_trades / multiple-testing |
-| | May shell CLI even if MCP flag off |
-| **Out of scope** | Embedding Grok in ThesisTester; RabbitMQ; multi-agent host; product UI for bot orchestration |
+| | Recipe: stage-first expand → two-step confirm when required → run → report → promote draft → human edit → second pass (optionally enable WFA/grid on survivors before RS-D4 rollup) |
+| | Hard rules: never invent factor axes; never bypass confirm; never auto-run promote drafts; always surface honesty / min_trades / multiple-testing |
+| | May shell CLI even if `assistant.study_tools.enabled` is off |
+| **Out of scope** | Embedding Grok in ThesisTester; RabbitMQ; multi-agent host; product UI for bot orchestration; shipping MCP server |
 | **Acceptance checklist** | |
 | | ☐ Documented routine pack with copy-ready prompts/commands |
 | | ☐ Explicit non-goals: no setup invention, no confirm bypass, no auto-promote execute |
-| | ☐ Points at RS6 MCP flag and CLI fallback |
+| | ☐ Points at RS6 default-off flag + CLI fallback; references RS-D7 index PF |
 | | ☐ No runtime default changes |
 
 **Copy-ready agent prompt:**
 
 ```text
 Implement RS-D5 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §12.6.
-Add external Grok Bot routine-pack documentation/examples consuming study CLI/MCP.
-No product host embedding. No engine/pages. No default-on tools. §4.2.
+Add external Grok Bot routine-pack documentation/examples consuming study CLI
+and optional STUDY.* tools. Extend (do not fork) RS6 minimal recipe.
+No product host embedding. No MCP server. No engine/pages. No default-on tools. §4.2.
 ```
 
 ---
@@ -892,7 +921,7 @@ No product host embedding. No engine/pages. No default-on tools. §4.2.
 | **RS-D3** | `run_batch` continue-on-failure | Only if R18 replay parity with study ledger is required | Additive flag; default abort/write semantics stay identical |
 | **RS-D6** | Multi-partner clusters / tolerance sweeps | When a concrete study needs new factor types | `schema_version` bump; golden expand fixtures; no engine changes |
 
-Still **non-goals:** auto-promote to live thesis without human confirm; scheduled study daemon; UI factor marketplace; merging with confluence-combo attribution.
+Still **non-goals:** auto-promote to live thesis without human confirm; scheduled study daemon; UI factor marketplace; merging with confluence-combo attribution; greenfield in-product MCP server.
 
 ---
 
@@ -924,10 +953,10 @@ Recommended human workflow (MVP — available now):
 
 Recommended workflow after post-MVP sequence (§12):
 
-6. (RS6) Optional agent/MCP tools for the same CLI contract — still confirm-gated.  
-7. (RS-D7) Prefer index PF when present.  
+6. (RS-D7) Prefer index `profit_factor` / `win_rate` when present.  
+7. (RS6) Optional default-off `STUDY.*` tools for the same CLI contract — two-step confirm when over threshold.  
 8. (RS-D2) Inspect study dirs in the Studies viewer (read-only).  
-9. (RS-D4) Roll up WFA/PBO only for cells that actually ran batteries.  
+9. (RS-D4) Roll up per-cell WFA/validation/overfitting diagnostics only where batteries actually ran (opt-in on survivor stage).  
 10. (RS-D5) External Grok Bot follows the documented routine pack — never invents axes.
 
 ---
@@ -939,13 +968,13 @@ Recommended workflow after post-MVP sequence (§12):
 | `STUDY_RUNNER_IMPLEMENTATION_PLAN.md` | RS0 / post-MVP lock | This plan; status updates per PR |
 | `STUDY_RUNNER.md` | RS1–RS5 ✅; each post-MVP PR | Living operator contract |
 | `ENGINEERING_ROADMAP.md` | each PR | RS status row + post-MVP sequence |
-| `AGENT_GUIDE.md` | RS3 ✅; RS6 | Headless study commands + agent tool flag |
+| `AGENT_GUIDE.md` | RS3 ✅; RS6 | Headless study commands + `study_tools` flag |
 | `ARCHITECTURE.md` | RS3 ✅; RS-D2 | Boundary notes (study module; Studies viewer) |
 | `ASSUMPTIONS_AND_LIMITATIONS.md` | RS4 ✅; RS-D4 | Study ranking / rollup honesty |
-| `METRICS_GLOSSARY.md` | RS4 ✅; RS-D7 | Overview / index PF columns |
+| `METRICS_GLOSSARY.md` | RS4 ✅; RS-D7 | Overview / index PF + WR columns |
 | `USER_GUIDE.md` | RS5 ✅; RS-D2 | Studies viewer how-to (HC allowlist) |
 | `README.md` (root) | RS5 ✅ | One-liner pointer |
-| Grok routine docs | RS6 / RS-D5 | External agent recipe |
+| Grok docs | RS6 minimal recipe; **RS-D5** full pack | External agent recipes (no divergent forks) |
 | `CONFLUENCE_COMBO_ATTRIBUTION_PLAN.md` | RS0 pointer only | Keep separate; no edits required for RS |
 
 ---
@@ -959,7 +988,7 @@ Recommended workflow after post-MVP sequence (§12):
 | Factor tags stuffed into RunSpec/setup | External factor_map only; run-level unknown keys fail; setup strips unknowns |
 | Assuming `run_batch` supports per-cell failure | Study-owned execute loop; `run_batch` left all-or-nothing (RS-D3 parked) |
 | Silent default-on grid/validation | Expander always emits `enabled: false` unless StudySpec enables; never bare `{}` |
-| PF/status missing from R18 index | Study ledger status; PF from bundle; **RS-D7** additive index columns |
+| PF/WR missing from R18 index | Study ledger status; PF from bundle; **RS-D7** additive index columns (both required) |
 | OTF alias forks in Δ grouping | Canonicalize to `5m`/`15m`/`30m` in factor_map |
 | Worker pool aborts entire study on one raise | Tasks return ok/failed payloads; ledger continues |
 | Re-run destroys completed work / identity drift | Soft resume + study identity hash + `--force` |
@@ -969,11 +998,14 @@ Recommended workflow after post-MVP sequence (§12):
 | Naming collisions / invalid run names | `_RUN_NAME_RE` + output_dir isolation |
 | Merging study factorial with combo attribution | Explicit §3.4 boundary; separate docs |
 | Treating study emission rules as R18 validator law | Docs call out study-only rules (`min=max=len`, anchor `selected_levels=[]`) |
-| Agent tools silently enable large runs | **RS6 default-off**; confirm parity mandatory; parity fixtures |
-| Studies UI becomes a second runner | **RS-D2 read-only** — no in-app expand/run/promote |
-| Grok invents setups / bypasses confirm | **RS-D5** hard rules + RS6 docs; closed StudySpec only |
-| Rollup invents statistical proof | **RS-D4** compose-only; honesty block; null when batteries absent |
-| Post-MVP scope creep / reordering | §12.0 sequence lock; parked table for D1/D3/D6 |
+| Agent tools silently enable large runs | **RS6 default-off**; two-step `EXPLICIT_CONFIRMATION`; parity fixtures |
+| Bare `confirm=true` habitually set by LLMs | Approval bound to `(study_identity_hash, run_count, output_dir)` |
+| Greenfield MCP runtime / voice MCP bleed | RS6 = registry capabilities only; voice keeps MCP denied |
+| Studies UI becomes a second runner | **RS-D2 read-only** — no in-app expand/run/promote; no session mutation |
+| Grok invents setups / bypasses confirm | **RS-D5** hard rules + RS6 minimal recipe; closed StudySpec only |
+| Rollup invents cross-cell PBO / statistical proof | **RS-D4** per-cell compose-only; null/`not_run` when batteries absent |
+| Expecting PBO on default study cells | Docs: overfitting needs grid sequences; survivor opt-in |
+| Post-MVP scope creep / reordering | §12.0 sequence lock (no escape hatches); parked D1/D3/D6 |
 
 ---
 
@@ -987,14 +1019,14 @@ Recommended workflow after post-MVP sequence (§12):
 4. Study execute continues after cell failure, supports soft resume/`--force`, uses `execution_origin=study`, and does not alter `run_batch`.  
 5. Overview joins factors to metrics with OTF Δ and honesty caveats; PF sourced per §9.2.  
 6. Classic UI, assistant defaults, engine goldens, and `thesistester run` / `run_batch` remain undisturbed.  
-7. External bot can operate by shelling the CLI; first-class MCP/assistant tools remain optional RS6.
+7. External bot can operate by shelling the CLI; first-class `STUDY.*` assistant capabilities remain optional RS6 (after RS-D7).
 
 ### 16.2 Post-MVP track — done when §12 sequenced milestones pass their checklists
 
-1. **RS6:** default-off tools; confirm parity; Grok CLI/MCP docs; assistant defaults unchanged when off.  
-2. **RS-D7:** additive index PF/win_rate; report prefers index; CLI↔study parity.  
-3. **RS-D2:** read-only Studies viewer over artifacts; honesty visible; HC allowlist if USER_GUIDE grows.  
-4. **RS-D4:** compose-only WFA/PBO rollup; no new inference; null when batteries absent.  
+1. **RS-D7:** additive index `profit_factor` + `win_rate`; report prefers index; CLI↔study parity; `inf` CSV documented.  
+2. **RS6:** default-off `STUDY.*` capabilities; two-step confirm; minimal CLI recipe; assistant defaults unchanged when off; no MCP server.  
+3. **RS-D2:** read-only Studies viewer over artifacts; honesty visible; no session mutation; HC allowlist if USER_GUIDE grows.  
+4. **RS-D4:** per-cell compose-only diagnostic rollup; no cross-cell PBO; null/`not_run` when batteries absent.  
 5. **RS-D5:** external routine pack documented; no product host embedding.  
 6. Parked items (D1/D3/D6) remain out of critical path unless this plan is amended.
 
@@ -1011,10 +1043,10 @@ Recommended workflow after post-MVP sequence (§12):
 | RS4 Report | ✅ |
 | RS5 Staging/promote + examples | ✅ |
 | **Post-MVP sequence lock** | ✅ This amendment (§12) |
-| RS6 Default-off assistant/MCP tools | ☐ Next |
-| RS-D7 Additive index PF / win_rate | ☐ After RS6 (preferred) |
-| RS-D2 Studies viewer (read-only) | ☐ After RS-D7 (preferred) |
-| RS-D4 Study WFA/PBO rollup | ☐ After survivors-in-use |
+| RS-D7 Additive index PF + win_rate | ☐ **Next** |
+| RS6 Default-off `STUDY.*` assistant capabilities | ☐ After RS-D7 |
+| RS-D2 Studies viewer (read-only) | ☐ After RS-D7 |
+| RS-D4 Per-cell diagnostic rollup | ☐ After survivors-in-use |
 | RS-D5 Grok Bot routine pack | ☐ After RS6 |
 | RS-D1 / RS-D3 / RS-D6 | Parked (§12.7) |
 
@@ -1046,11 +1078,23 @@ Recommended workflow after post-MVP sequence (§12):
 17. Definition of done / risks / RS3 acceptance updated for resume, workers, provenance.
 18. Clarified study emission rules vs R18 validator law (anchor `[]`, `min=max=len`).
 
-### 18.3 Post-MVP sequence lock (this amendment)
+### 18.3 Post-MVP sequence lock (prior amendment)
 
 19. Header/status: RS1–RS5 complete; post-MVP track plan-locked.  
 20. §2.1 rewritten: sequenced vs parked columns.  
-21. §12 replaced thin deferred table with full milestone contracts: **RS6 → RS-D7 → RS-D2 → RS-D4 → RS-D5** + §12.7 parked (D1/D3/D6).  
+21. §12 replaced thin deferred table with full milestone contracts + §12.7 parked (D1/D3/D6).  
 22. Each sequenced milestone has scope, likely files, behavior locks, out-of-scope, regression gates, acceptance checklist, copy-ready agent prompt.  
-23. RS-D2 locked **read-only** (no in-app runner). RS6 locked **default-off** + confirm parity. RS-D4 locked **compose-only**. RS-D5 locked **external** (no product host).  
-24. Docs plan, risks, definition of done (§16.2), and status tracker updated for the post-MVP track.  
+23. RS-D2 locked **read-only** (no in-app runner). RS6 locked **default-off**. RS-D4 locked **compose-only**. RS-D5 locked **external**.  
+24. Docs plan, risks, definition of done (§16.2), and status tracker updated for the post-MVP track.
+
+### 18.4 Post-MVP review contracts (this amendment)
+
+25. Sequence swapped to **RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5**; removed “D7 may land before RS6” escape hatch.  
+26. RS6 = `FEATURE_PARITY_REGISTRY` `STUDY.*` capabilities + default-off flag; **no greenfield MCP server** (docs-only descriptor appendix at most; voice MCP stays denied).  
+27. RS6 confirm = two-step `EXPLICIT_CONFIRMATION` / approval bound to `(study_identity_hash, run_count, output_dir)` — not bare `confirm=true`.  
+28. RS6 tool parity: `force` / workers / soft-resume / identity mismatch / promote overwrite; structured dicts must `validate_study_spec` first.  
+29. RS-D7 locks **both** `profit_factor` and `win_rate`; null on failed/pending; `±inf` CSV strings; extends `R18_INDEX_METRIC_KEYS`.  
+30. RS-D2: reuse report/ledger loaders; no research `session_state` mutation; `bundle_path` listing not false Research-Bundles deep-link; path sandbox note.  
+31. RS-D4 renamed/clarified as **per-cell diagnostic rollup** — no cross-cell PBO/DSR; overfitting fields require grid sequences; survivor opt-in recipe documented.  
+32. RS6 vs RS-D5 docs split (minimal recipe vs full routine pack).  
+33. §5.1/§5.2 updated for shipped MVP + post-MVP `tools.py` / `rollup.py` / Studies page.  

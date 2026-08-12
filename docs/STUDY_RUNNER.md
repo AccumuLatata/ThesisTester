@@ -1,6 +1,6 @@
 # Research Study Runner
 
-**Status:** RS1–RS5 landed (holistic MVP). Post-MVP sequenced in the plan: **RS6 → RS-D7 → RS-D2 → RS-D4 → RS-D5**.  
+**Status:** RS1–RS5 landed (holistic MVP). Post-MVP sequenced in the plan: **RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5**.  
 **Plan:** `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (§12)  
 **Package:** `thesistester.study`
 
@@ -223,7 +223,7 @@ Expand/run print `run_count`, `workers`, and warn when any cell has
 
 ### Out of scope for RS3
 
-Overview aggregator (`study report`), promote drafts, assistant/MCP tools.
+Overview aggregator (`study report`), promote drafts, assistant `STUDY.*` tools.
 
 ---
 
@@ -332,7 +332,7 @@ CI/golden miniatures remain under `tests/fixtures/study/` (2×2×2). Do not run 
 
 ### Out of scope for RS5
 
-Auto-run promotion, assistant NL compiler, Studies UI, RS6 MCP/assistant tools.
+Auto-run promotion, assistant NL compiler, Studies UI, RS6 `STUDY.*` assistant tools.
 
 ---
 
@@ -342,10 +342,10 @@ See `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` §12. Do not reorder without amen
 
 | Order | ID | Intent |
 |---|---|---|
-| 1 | **RS6** | Default-off assistant/MCP tools + Grok CLI/MCP docs (confirm parity) |
-| 2 | **RS-D7** | Additive `results_index` `profit_factor` / `win_rate` |
+| 1 | **RS-D7** | Additive `results_index` `profit_factor` + `win_rate` |
+| 2 | **RS6** | Default-off `STUDY.*` assistant capabilities + minimal CLI/confirm docs (two-step confirm; no MCP server) |
 | 3 | **RS-D2** | Streamlit Studies **viewer** (artifacts-only; no in-app run) |
-| 4 | **RS-D4** | Study WFA/PBO rollup (compose existing batteries) |
+| 4 | **RS-D4** | Per-cell WFA/validation/overfitting diagnostic rollup (compose-only; no cross-cell PBO) |
 | 5 | **RS-D5** | External Grok Bot routine pack |
 
 Parked: RS-D1 (NL compiler), RS-D3 (`run_batch` continue), RS-D6 (new factor types).
