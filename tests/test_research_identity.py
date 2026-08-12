@@ -203,6 +203,7 @@ def test_old_identity_payloads_load_as_none_when_incomplete():
 def test_normalize_execution_origin():
     assert normalize_execution_origin("assistant") == "assistant"
     assert normalize_execution_origin("CLI") == "cli"
+    assert normalize_execution_origin("study") == "study"
     assert normalize_execution_origin(None) == "unknown"
     assert normalize_execution_origin("web") == "unknown"
 
