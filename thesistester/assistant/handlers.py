@@ -80,25 +80,25 @@ def _handle_validate_run_spec(request: AssistantRequest, context: HandlerContext
 def _handle_study_expand(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
     from thesistester.study.tools import expand_study_capability
 
-    return expand_study_capability(request.payload)
+    return expand_study_capability(request.payload, data_roots=context.tools.data_roots)
 
 
 def _handle_study_run(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
     from thesistester.study.tools import run_study_capability
 
-    return run_study_capability(request.payload)
+    return run_study_capability(request.payload, data_roots=context.tools.data_roots)
 
 
 def _handle_study_report(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
     from thesistester.study.tools import report_study_capability
 
-    return report_study_capability(request.payload)
+    return report_study_capability(request.payload, data_roots=context.tools.data_roots)
 
 
 def _handle_study_promote(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:
     from thesistester.study.tools import promote_study_capability
 
-    return promote_study_capability(request.payload)
+    return promote_study_capability(request.payload, data_roots=context.tools.data_roots)
 
 
 def _handle_run_experiment(request: AssistantRequest, context: HandlerContext) -> dict[str, Any]:

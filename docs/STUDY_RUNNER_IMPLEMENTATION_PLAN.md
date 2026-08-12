@@ -820,16 +820,16 @@ primary_metric. §4.2. Update STUDY_RUNNER + glossary + report.py docstring.
 | **Out of scope** | NL StudySpec compilation (RS-D1); Streamlit Studies page (RS-D2); embedding Grok/RabbitMQ; inventing setups; enabling tools by default; shipping a live MCP server; new ConfirmationLevel values; INSPECT_ONLY STUDY.* modes |
 | **Regression** | Assistant parity fixtures green with flag off; Help/Discuss unchanged; engine/pages untouched; CLI study commands unchanged; registry-audit expects STUDY.* ids present but disabled-by-default |
 | **Acceptance checklist** | |
-| | ☐ `[assistant.study_tools] enabled` defaults to **false** (fail-closed coerce; missing section → disabled) |
-| | ☐ With flag off, STUDY.* handlers refuse; other assistant surfaces behave as before RS6 (parity fixtures) |
-| | ☐ With flag on, expand/report/promote work without confirm; run uses two-step `EXPLICIT_CONFIRMATION` → `APPROVAL_REQUIRED` when over threshold |
-| | ☐ Bound approval triple enforced; `confirmed=True` alone cannot bypass |
-| | ☐ Structured-dict inputs validate via `validate_study_spec` before writes/execute |
-| | ☐ `force` / workers / soft-resume / identity mismatch match CLI `run_study` / `promote` |
-| | ☐ Tools do not call `run_batch` |
-| | ☐ All four capabilities are `EXECUTABLE` with confirmation levels as locked above |
-| | ☐ Minimal CLI/confirm recipe docs (RS-D5 owns the full routine pack) |
-| | ☐ Full suite + assistant parity + registry-audit green |
+| | ☑ `[assistant.study_tools] enabled` defaults to **false** (fail-closed coerce; missing section → disabled) |
+| | ☑ With flag off, STUDY.* handlers refuse; other assistant surfaces behave as before RS6 (parity fixtures) |
+| | ☑ With flag on, expand/report/promote work without confirm; run uses two-step `EXPLICIT_CONFIRMATION` → `APPROVAL_REQUIRED` when over threshold |
+| | ☑ Bound approval triple enforced; `confirmed=True` alone cannot bypass |
+| | ☑ Structured-dict inputs validate via `validate_study_spec` before writes/execute |
+| | ☑ `force` / workers / soft-resume / identity mismatch match CLI `run_study` / `promote` |
+| | ☑ Tools do not call `run_batch` |
+| | ☑ All four capabilities are `EXECUTABLE` with confirmation levels as locked above |
+| | ☑ Minimal CLI/confirm recipe docs (RS-D5 owns the full routine pack) |
+| | ☑ Full suite + assistant parity + registry-audit green |
 
 **Copy-ready agent prompt:**
 

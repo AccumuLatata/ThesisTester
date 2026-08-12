@@ -379,8 +379,14 @@ always works regardless of this flag.
 3. `confirmed=True` alone is **not** sufficient over threshold.
 
 Below `confirm_above_runs`, `STUDY.run` proceeds without that gate (CLI parity).
-Inputs: `study_path` **or** validated `study_spec` dict; plus `output_dir` /
+Inputs: `study_path` **or** validated `study_spec` dict; plus required `output_dir` /
 `workers` / `force` as on the CLI. Tools never call `run_batch`.
+
+Assistant dispatch sandboxes `study_path` / `study_dir` / `output_dir` /
+`output` and Spec-embedded `dataset.path` / `dataset.subtimeframe_path` /
+`study.output_dir` under configured `data_roots` (same posture as other write
+tools). Dict `study_spec` relative paths resolve against `base_directory` or cwd
+(not the ephemeral temp materialization directory).
 
 Full multi-step external Grok routine pack is **RS-D5** (extends this recipe).
 

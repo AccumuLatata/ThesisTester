@@ -297,7 +297,10 @@ class AssistantOrchestrator:
                         study_run_approval_preview,
                     )
 
-                    preview = study_run_approval_preview(request.payload)
+                    preview = study_run_approval_preview(
+                        request.payload,
+                        data_roots=self.tools.data_roots,
+                    )
                     payload[APPROVAL_PAYLOAD_KEY] = {
                         "study_identity_hash": preview["study_identity_hash"],
                         "run_count": preview["run_count"],
@@ -2026,7 +2029,10 @@ class AssistantOrchestrator:
         if request.capability_id == "STUDY.run":
             from thesistester.study.tools import study_run_needs_confirm
 
-            return study_run_needs_confirm(request.payload)
+            return study_run_needs_confirm(
+                request.payload,
+                data_roots=self.tools.data_roots,
+            )
         return level in {
             ConfirmationLevel.USER_REQUEST,
             ConfirmationLevel.EXPLICIT_CONFIRMATION,

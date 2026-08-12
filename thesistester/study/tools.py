@@ -7,10 +7,15 @@ Registered always via ``FEATURE_PARITY_REGISTRY``; every entrypoint refuses when
 from __future__ import annotations
 
 import tempfile
-import tomllib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 compatibility
+    import tomli as tomllib
 
 import yaml
 
@@ -120,7 +125,108 @@ def _optional_positive_int(value: Any, *, field: str) -> int | None:
     return value
 
 
-def _resolve_output_dir(payload: Mapping[str, Any], *, required: bool = True) -> Path | None:
+def _ensure_within_roots(
+    path: str | Path,
+    roots: Sequence[Path] | None,
+) -> Path:
+    """Resolve ``path``; when roots are provided, refuse paths outside them."""
+    candidate = Path(path).expanduser().resolve()
+    if roots is None:
+        return candidate
+    resolved_roots = tuple(Path(root).resolve() for root in roots)
+    if not resolved_roots:
+        raise AssistantToolError("At least one allowed local data root is required.")
+    if not any(candidate.is_relative_to(root) for root in resolved_roots):
+        raise AssistantToolError("Path is outside the configured local data roots.")
+    return candidate
+
+
+def _resolve_against(base_dir: Path, raw: str | Path) -> Path:
+    path = Path(raw).expanduser()
+    if path.is_absolute():
+        return path.resolve()
+    return (base_dir / path).resolve()
+
+
+def _default_base_directory(
+    payload: Mapping[str, Any],
+    *,
+    data_roots: Sequence[Path] | None,
+) -> Path:
+    """Base for resolving relative StudySpec dataset/output paths (dict inputs)."""
+    raw = payload.get("base_directory")
+    if isinstance(raw, str) and raw.strip():
+        return _ensure_within_roots(raw, data_roots)
+    cwd = Path.cwd().resolve()
+    if data_roots:
+        resolved_roots = tuple(Path(root).resolve() for root in data_roots)
+        if any(cwd.is_relative_to(root) for root in resolved_roots):
+            return cwd
+        return resolved_roots[0]
+    return cwd
+
+
+def _absolutize_study_relative_paths(
+    spec: Mapping[str, Any],
+    *,
+    base_dir: Path,
+) -> dict[str, Any]:
+    """Pin relative dataset/output paths so temp StudySpec materialization is safe.
+
+    ``run_study`` resolves relative ``dataset.path`` against the StudySpec parent.
+    Dict inputs are written under a TemporaryDirectory; without absolutizing,
+    bars/output would resolve against that ephemeral temp tree.
+    """
+    out = dict(spec)
+    study = dict(out.get("study") or {})
+    dataset = dict(study.get("dataset") or {})
+    for key in ("path", "subtimeframe_path"):
+        raw = dataset.get(key)
+        if not isinstance(raw, (str, Path)):
+            continue
+        dataset[key] = str(_resolve_against(base_dir, raw))
+    study["dataset"] = dataset
+    output_dir = study.get("output_dir")
+    if isinstance(output_dir, (str, Path)):
+        study["output_dir"] = str(_resolve_against(base_dir, output_dir))
+    out["study"] = study
+    return out
+
+
+def _ensure_study_spec_paths_within_roots(
+    spec: Mapping[str, Any],
+    roots: Sequence[Path] | None,
+    *,
+    relative_base: Path,
+) -> None:
+    """Refuse Spec-embedded dataset/output paths outside ``data_roots``.
+
+    Mirrors ``AssistantTools._normalize_dataset_paths`` for the study surface:
+    absolute paths and ``..`` traversal must not bypass the sandbox.
+    """
+    if roots is None:
+        return
+    study = spec.get("study")
+    if not isinstance(study, Mapping):
+        return
+    dataset = study.get("dataset")
+    if isinstance(dataset, Mapping):
+        for key in ("path", "subtimeframe_path"):
+            raw = dataset.get(key)
+            if raw is None or not isinstance(raw, (str, Path)):
+                continue
+            _ensure_within_roots(_resolve_against(relative_base, raw), roots)
+    output_dir = study.get("output_dir")
+    if isinstance(output_dir, (str, Path)) and str(output_dir).strip():
+        _ensure_within_roots(_resolve_against(relative_base, output_dir), roots)
+
+
+def _resolve_output_dir(
+    payload: Mapping[str, Any],
+    *,
+    required: bool = True,
+    data_roots: Sequence[Path] | None = None,
+) -> Path | None:
     raw = payload.get("output_dir")
     if raw is None:
         if required:
@@ -128,10 +234,14 @@ def _resolve_output_dir(payload: Mapping[str, Any], *, required: bool = True) ->
         return None
     if not isinstance(raw, str) or not raw.strip():
         raise ValueError("output_dir must be a non-empty string.")
-    return Path(raw).expanduser().resolve()
+    return _ensure_within_roots(raw, data_roots)
 
 
-def _normalized_spec_from_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+def _normalized_spec_from_payload(
+    payload: Mapping[str, Any],
+    *,
+    base_dir: Path | None = None,
+) -> dict[str, Any]:
     """Return a validated StudySpec from ``study_path`` or ``study_spec``."""
     study_path = payload.get("study_path")
     study_spec = payload.get("study_spec")
@@ -142,16 +252,37 @@ def _normalized_spec_from_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(study_spec, Mapping):
         normalized = normalize_study_spec(dict(study_spec))
         validate_study_spec(normalized)
+        if base_dir is not None:
+            normalized = _absolutize_study_relative_paths(normalized, base_dir=base_dir)
+            # Re-validate after path rewrites (still a StudySpec mapping).
+            validate_study_spec(normalized)
         return normalized
     raise ValueError("study_path or study_spec is required.")
 
 
-def _materialize_study_path(payload: Mapping[str, Any]) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
+def _materialize_study_path(
+    payload: Mapping[str, Any],
+    *,
+    data_roots: Sequence[Path] | None = None,
+) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
     """Return a filesystem StudySpec path; materialize dict inputs to a temp YAML."""
     study_path = payload.get("study_path")
     if isinstance(study_path, str) and study_path.strip():
-        return Path(study_path).expanduser().resolve(), None
-    normalized = _normalized_spec_from_payload(payload)
+        path = _ensure_within_roots(study_path, data_roots)
+        spec = load_study_spec(path)
+        _ensure_study_spec_paths_within_roots(
+            spec,
+            data_roots,
+            relative_base=path.parent,
+        )
+        return path, None
+    base_dir = _default_base_directory(payload, data_roots=data_roots)
+    normalized = _normalized_spec_from_payload(payload, base_dir=base_dir)
+    _ensure_study_spec_paths_within_roots(
+        normalized,
+        data_roots,
+        relative_base=base_dir,
+    )
     tmp = tempfile.TemporaryDirectory(prefix="study_tools_")
     path = Path(tmp.name) / "study.yaml"
     path.write_text(
@@ -161,16 +292,26 @@ def _materialize_study_path(payload: Mapping[str, Any]) -> tuple[Path, tempfile.
     return path, tmp
 
 
-def study_run_approval_preview(payload: Mapping[str, Any]) -> dict[str, Any]:
-    """In-memory expand preview for confirm gating (no artifact writes)."""
-    study_path, tmp = _materialize_study_path(payload)
+def study_run_approval_preview(
+    payload: Mapping[str, Any],
+    *,
+    data_roots: Sequence[Path] | None = None,
+) -> dict[str, Any]:
+    """In-memory expand preview for confirm gating (no artifact writes).
+
+    ``output_dir`` is required so dict-materialized Specs cannot fall back to a
+    relative ``study.output_dir`` resolved against the ephemeral temp parent.
+    """
+    study_path, tmp = _materialize_study_path(payload, data_roots=data_roots)
     try:
-        output_dir = _resolve_output_dir(payload, required=False)
+        output_dir = _resolve_output_dir(payload, required=True, data_roots=data_roots)
+        assert output_dir is not None
         _spec, expansion, out, _base = prepare_study_expansion(
             study_path,
             output_dir=output_dir,
             write_artifacts=False,
         )
+        out = _ensure_within_roots(out, data_roots)
         confirm_above = int(_spec["study"].get("confirm_above_runs", 200))
         return {
             "study_identity_hash": expansion.study_identity_hash,
@@ -185,13 +326,17 @@ def study_run_approval_preview(payload: Mapping[str, Any]) -> dict[str, Any]:
             tmp.cleanup()
 
 
-def study_run_needs_confirm(payload: Mapping[str, Any]) -> bool:
+def study_run_needs_confirm(
+    payload: Mapping[str, Any],
+    *,
+    data_roots: Sequence[Path] | None = None,
+) -> bool:
     """True when STUDY.run must take the orchestrator APPROVAL_REQUIRED path."""
     if not load_study_tools_settings().enabled:
         return False
     try:
-        preview = study_run_approval_preview(payload)
-    except (OSError, ValueError, TypeError, StudySpecError, KeyError):
+        preview = study_run_approval_preview(payload, data_roots=data_roots)
+    except (OSError, ValueError, TypeError, StudySpecError, KeyError, AssistantToolError):
         # Fail closed: require confirm when the preview cannot be computed.
         return True
     return bool(preview["needs_confirm"])
@@ -234,11 +379,31 @@ def _validate_approval(
         )
 
 
-def expand_study_capability(payload: Mapping[str, Any]) -> dict[str, Any]:
+def expand_study_capability(
+    payload: Mapping[str, Any],
+    *,
+    data_roots: Sequence[Path] | None = None,
+) -> dict[str, Any]:
     ensure_study_tools_enabled()
-    output_dir = _resolve_output_dir(payload, required=True)
+    output_dir = _resolve_output_dir(payload, required=True, data_roots=data_roots)
     assert output_dir is not None
-    normalized = _normalized_spec_from_payload(payload)
+    base_dir = _default_base_directory(payload, data_roots=data_roots)
+    study_path = payload.get("study_path")
+    if isinstance(study_path, str) and study_path.strip():
+        path = _ensure_within_roots(study_path, data_roots)
+        normalized = _normalized_spec_from_payload(payload)
+        _ensure_study_spec_paths_within_roots(
+            normalized,
+            data_roots,
+            relative_base=path.parent,
+        )
+    else:
+        normalized = _normalized_spec_from_payload(payload, base_dir=base_dir)
+        _ensure_study_spec_paths_within_roots(
+            normalized,
+            data_roots,
+            relative_base=base_dir,
+        )
     expansion = expand_study_to_directory(normalized, output_dir)
     workers = int(normalized["study"].get("workers", 1))
     return {
@@ -258,14 +423,18 @@ def expand_study_capability(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def run_study_capability(payload: Mapping[str, Any]) -> dict[str, Any]:
+def run_study_capability(
+    payload: Mapping[str, Any],
+    *,
+    data_roots: Sequence[Path] | None = None,
+) -> dict[str, Any]:
     ensure_study_tools_enabled()
-    preview = study_run_approval_preview(payload)
+    preview = study_run_approval_preview(payload, data_roots=data_roots)
     if preview["needs_confirm"]:
         _validate_approval(payload, expected=preview)
     force = _optional_bool(payload.get("force"), field="force", default=False)
     workers = _optional_positive_int(payload.get("workers"), field="workers")
-    study_path, tmp = _materialize_study_path(payload)
+    study_path, tmp = _materialize_study_path(payload, data_roots=data_roots)
     try:
         result = run_study(
             study_path,
@@ -304,12 +473,16 @@ def run_study_capability(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def report_study_capability(payload: Mapping[str, Any]) -> dict[str, Any]:
+def report_study_capability(
+    payload: Mapping[str, Any],
+    *,
+    data_roots: Sequence[Path] | None = None,
+) -> dict[str, Any]:
     ensure_study_tools_enabled()
     study_dir = payload.get("study_dir")
     if not isinstance(study_dir, str) or not study_dir.strip():
         raise ValueError("study_dir is required.")
-    root = Path(study_dir).expanduser().resolve()
+    root = _ensure_within_roots(study_dir, data_roots)
     try:
         result = report_study(root)
     except Exception as exc:  # StudyReportError is ValueError subclass
@@ -332,7 +505,11 @@ def report_study_capability(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def promote_study_capability(payload: Mapping[str, Any]) -> dict[str, Any]:
+def promote_study_capability(
+    payload: Mapping[str, Any],
+    *,
+    data_roots: Sequence[Path] | None = None,
+) -> dict[str, Any]:
     ensure_study_tools_enabled()
     study_dir = payload.get("study_dir")
     output = payload.get("output")
@@ -349,8 +526,8 @@ def promote_study_capability(payload: Mapping[str, Any]) -> dict[str, Any]:
     force = _optional_bool(payload.get("force"), field="force", default=False)
     try:
         result = promote_study(
-            Path(study_dir).expanduser().resolve(),
-            output=Path(output).expanduser().resolve(),
+            _ensure_within_roots(study_dir, data_roots),
+            output=_ensure_within_roots(output, data_roots),
             top_n=top_n,
             metric=metric,
             force=force,

@@ -21,13 +21,14 @@ from thesistester.assistant.registry_audit import capability_audit_summary
 from thesistester.assistant.repository import LocalThesisRepository
 from thesistester.study.execute import run_study
 from thesistester.study.schema import STUDY_SCHEMA_VERSION
+from thesistester.assistant.tools import AssistantToolError
 from thesistester.study.tools import (
     APPROVAL_PAYLOAD_KEY,
     StudyToolsDisabledError,
     ensure_study_tools_enabled,
     expand_study_capability,
     load_study_tools_settings,
-    run_study_capability,
+    study_run_approval_preview,
     study_run_needs_confirm,
 )
 
@@ -187,14 +188,14 @@ def test_study_tools_default_disabled():
 
 def test_study_tools_missing_section_disabled(tmp_path: Path, monkeypatch):
     cfg = tmp_path / "assistant.toml"
-    cfg.write_text("[assistant]\nprovider = \"openai\"\n", encoding="utf-8")
+    cfg.write_text('[assistant]\nprovider = "openai"\n', encoding="utf-8")
     monkeypatch.setattr("thesistester.study.tools.DEFAULT_ASSISTANT_TOML", cfg)
     assert load_study_tools_settings().enabled is False
 
 
 def test_study_tools_non_boolean_fails_closed(tmp_path: Path, monkeypatch):
     cfg = tmp_path / "assistant.toml"
-    cfg.write_text("[assistant.study_tools]\nenabled = \"maybe\"\n", encoding="utf-8")
+    cfg.write_text('[assistant.study_tools]\nenabled = "maybe"\n', encoding="utf-8")
     monkeypatch.setattr("thesistester.study.tools.DEFAULT_ASSISTANT_TOML", cfg)
     assert load_study_tools_settings().enabled is False
 
@@ -242,9 +243,7 @@ def test_disabled_handlers_refuse_via_orchestrator(tmp_path: Path):
         assert "disabled" in result.payload["error"]["message"].lower()
 
 
-def test_expand_and_run_below_threshold_without_approval(
-    tmp_path: Path, monkeypatch
-):
+def test_expand_and_run_below_threshold_without_approval(tmp_path: Path, monkeypatch):
     _enable_study_tools(monkeypatch, tmp_path)
     study = _mini_study_yaml(tmp_path / "study.yaml", confirm_above_runs=100)
     out = tmp_path / "out"
@@ -272,9 +271,7 @@ def test_expand_and_run_below_threshold_without_approval(
     assert expand.payload["run_count"] == 4
     assert (out / "experiment.yaml").is_file()
 
-    assert study_run_needs_confirm(
-        {"study_path": str(study), "output_dir": str(out)}
-    ) is False
+    assert study_run_needs_confirm({"study_path": str(study), "output_dir": str(out)}) is False
 
     run = orch.dispatch(
         AssistantRequest(
@@ -404,3 +401,63 @@ def test_run_study_capability_does_not_call_run_batch():
     assert "run_batch(" not in source
     assert "from thesistester.cli import" not in source
     assert "import thesistester.cli" not in source
+
+
+def test_dict_study_spec_relative_dataset_path_uses_base_not_temp(tmp_path: Path, monkeypatch):
+    """Dict materialization must not resolve bars against the TemporaryDirectory."""
+    _enable_study_tools(monkeypatch, tmp_path)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "bars.csv").write_text("ts,open,high,low,close,volume\n", encoding="utf-8")
+    study = _mini_study_yaml(tmp_path / "study.yaml")
+    raw = yaml.safe_load(study.read_text(encoding="utf-8"))
+    # Keep relative dataset.path; expand should still succeed under tmp_path roots.
+    assert raw["study"]["dataset"]["path"] == "bars.csv"
+    out = tmp_path / "out"
+    result = expand_study_capability(
+        {"study_spec": raw, "output_dir": str(out)},
+        data_roots=(tmp_path.resolve(),),
+    )
+    assert result["run_count"] == 4
+    written = yaml.safe_load((out / "study.spec.yaml").read_text(encoding="utf-8"))
+    dataset_path = Path(written["study"]["dataset"]["path"])
+    assert dataset_path.is_absolute()
+    assert dataset_path == (tmp_path / "bars.csv").resolve()
+    assert "study_tools_" not in str(dataset_path)
+
+
+def test_study_paths_outside_data_roots_are_refused(tmp_path: Path, monkeypatch):
+    _enable_study_tools(monkeypatch, tmp_path)
+    root = tmp_path / "sandbox"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    study = _mini_study_yaml(outside / "study.yaml")
+    out = root / "out"
+
+    with pytest.raises(AssistantToolError, match="outside the configured local data roots"):
+        expand_study_capability(
+            {"study_path": str(study), "output_dir": str(out)},
+            data_roots=(root.resolve(),),
+        )
+
+    # Spec-embedded absolute dataset path must not bypass the sandbox.
+    raw = yaml.safe_load(study.read_text(encoding="utf-8"))
+    raw["study"]["dataset"]["path"] = str(outside / "secret_bars.csv")
+    with pytest.raises(AssistantToolError, match="outside the configured local data roots"):
+        expand_study_capability(
+            {
+                "study_spec": raw,
+                "output_dir": str(out),
+                "base_directory": str(root),
+            },
+            data_roots=(root.resolve(),),
+        )
+
+    with pytest.raises(AssistantToolError, match="outside the configured local data roots"):
+        study_run_approval_preview(
+            {
+                "study_path": str(_mini_study_yaml(root / "ok.yaml")),
+                "output_dir": str(outside / "escaped"),
+            },
+            data_roots=(root.resolve(),),
+        )
