@@ -2020,12 +2020,8 @@ class AssistantOrchestrator:
     def _requires_confirmation(self, level: ConfirmationLevel, request: AssistantRequest) -> bool:
         if level is ConfirmationLevel.NONE:
             return False
-        action = request.payload.get("action")
-        if isinstance(action, str) and action in _READ_ONLY_ACTIONS:
-            return False
-        # RS6: STUDY.run uses EXPLICIT_CONFIRMATION only when over confirm_above_runs
-        # (CLI parity). Below threshold, dispatch proceeds without APPROVAL_REQUIRED;
-        # over threshold, confirmed=True still requires bound payload.approval in the handler.
+        # RS6: STUDY.run ignores payload.action — a forged read-only action must not
+        # skip APPROVAL_REQUIRED. Threshold gating owns confirm for this capability.
         if request.capability_id == "STUDY.run":
             from thesistester.study.tools import study_run_needs_confirm
 
@@ -2033,6 +2029,9 @@ class AssistantOrchestrator:
                 request.payload,
                 data_roots=self.tools.data_roots,
             )
+        action = request.payload.get("action")
+        if isinstance(action, str) and action in _READ_ONLY_ACTIONS:
+            return False
         return level in {
             ConfirmationLevel.USER_REQUEST,
             ConfirmationLevel.EXPLICIT_CONFIRMATION,

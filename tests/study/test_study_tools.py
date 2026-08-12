@@ -301,6 +301,15 @@ def test_run_over_threshold_requires_bound_approval(tmp_path: Path, monkeypatch)
     assert approval["run_count"] == 4
     assert "study_identity_hash" in approval
 
+    # Forged read-only action must not skip the STUDY.run confirm gate.
+    spoofed = orch.dispatch(
+        AssistantRequest(
+            capability_id="STUDY.run",
+            payload={**payload, "action": "list", APPROVAL_PAYLOAD_KEY: approval},
+        )
+    )
+    assert spoofed.status == OrchestrationStatus.APPROVAL_REQUIRED.value
+
     # confirmed=True alone must not bypass the bound approval.
     bare = orch.dispatch(
         AssistantRequest(capability_id="STUDY.run", payload=payload),
