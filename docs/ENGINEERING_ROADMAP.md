@@ -17,7 +17,7 @@ Assistant-related contracts:
 | Thesis draft / explain loop | `docs/AI_CHAT_2_ENGINEERING_ROADMAP.md` (C2) | ✅ Implemented (through PR6) |
 | AIA Research Assistant foundations | `docs/AI_RESEARCH_ASSISTANT_ROADMAP.md` (AIA) | ✅ Implemented — do not open new results/help PRs from AIA text |
 | Session entry window research loop | `docs/SESSION_ENTRY_WINDOW_IMPLEMENTATION_PLAN.md` (SW); evidence `docs/archive/SESSION_ENTRY_WINDOW_RELEASE_EVIDENCE.md` | ✅ **Engineering-signed (SW0–SW7 + SW2b)** — Focus → Admit → Grid/WFA inherit; cutoff skip audit; C1–C9; default-off; golden-gated per `ENGINEERING_PROPOSAL.md` §4 |
-| Research Study Runner | `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (RS); operator `docs/STUDY_RUNNER.md` | ✅ **RS1–RS5 MVP complete**; post-MVP sequenced **RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5** (plan-locked) |
+| Research Study Runner | `docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md` (RS); operator `docs/STUDY_RUNNER.md` | ✅ **RS1–RS5 MVP + RS-D7**; post-MVP remaining **RS6 → RS-D2 → RS-D4 → RS-D5** (plan-locked) |
 | Research Assistant page layout / prominence | `docs/RESEARCH_ASSISTANT_UX_REFOCUS_PLAN.md` (RUX); evidence `docs/archive/RESEARCH_ASSISTANT_UX_REFOCUS_EVIDENCE.md` | ✅ **Complete** — RUX-0…RUX-5 ([#305](https://github.com/AccumuLatata/ThesisTester/pull/305): discuss-first modes + mode-scoped chat_input + Help re-anchor + evidence). Presentation-only: do not reopen for layout changes; amend the RUX contract instead |
 
 Completed AIA/C2/CAI roadmaps remain the source of truth for what they shipped;
@@ -1190,8 +1190,8 @@ remains undisturbed through RS5. Distinct from confluence-combo attribution
 | RS4 | Overview aggregator (CSV/MD, OTF Δ, honesty; PF from bundles) ✅ |
 | RS5 | Staging/promote drafts + stage-first examples + USER_GUIDE recipe ✅ |
 | **Post-MVP sequence** | **RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5** (do not reorder without plan amend) |
-| RS-D7 | Additive `results_index` `profit_factor` + `win_rate` (soft-resume field backfill + ordered key parity) ☐ **next** |
-| RS6 | Default-off registered `STUDY.*` capabilities (handlers refuse when off) + minimal CLI/confirm docs ☐ |
+| RS-D7 | Additive `results_index` `profit_factor` + `win_rate` (soft-resume field backfill + ordered key parity) ✅ |
+| RS6 | Default-off registered `STUDY.*` capabilities (handlers refuse when off) + minimal CLI/confirm docs ☐ **next** |
 | RS-D2 | Streamlit Studies **viewer** (artifacts-only; no in-app run) ☐ |
 | RS-D4 | Per-cell WFA/validation/overfitting diagnostic rollup (compose-only) ☐ |
 | RS-D5 | External Grok Bot routine pack (after RS6) ☐ |

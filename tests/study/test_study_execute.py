@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import math
 import zipfile
 from pathlib import Path
 
@@ -26,22 +27,30 @@ from thesistester.study.ledger import load_ledger
 from thesistester.study.schema import STUDY_SCHEMA_VERSION, StudySpecError
 
 
-def _fake_bundle_bytes(name: str) -> bytes:
+def _fake_bundle_bytes(
+    name: str,
+    *,
+    profit_factor: float | None = 1.5,
+    win_rate: float | None = 0.6,
+) -> bytes:
     buffer = io.BytesIO()
+    summary = {
+        "trade_count": 3,
+        "expectancy_r": 0.25,
+        "total_r": 0.75,
+        "max_drawdown_r": -0.5,
+        "profit_factor": profit_factor,
+        "win_rate": win_rate,
+    }
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("manifest.json", json.dumps({"run_name": name}))
         archive.writestr(
+            "dataset_meta.json",
+            json.dumps({"dataset_id": "ds-test", "instrument": "ES"}),
+        )
+        archive.writestr(
             "trade_summary.json",
-            json.dumps(
-                {
-                    "trade_summary": {
-                        "trade_count": 3,
-                        "expectancy_r": 0.25,
-                        "total_r": 0.75,
-                        "max_drawdown_r": -0.5,
-                    }
-                }
-            ),
+            json.dumps({"trade_summary": summary}),
         )
     return buffer.getvalue()
 
@@ -139,6 +148,8 @@ def _fake_executor_factory(fail_names: set[str] | None = None):
                 "expectancy_r": 0.25,
                 "total_r": 0.75,
                 "max_drawdown_r": -0.5,
+                "profit_factor": 1.5,
+                "win_rate": 0.6,
             },
             "best_grid_result": {},
             "validation_summary": {},
@@ -197,9 +208,11 @@ def test_study_run_confirm_executes_with_study_origin(tmp_path: Path):
     assert ledger["confirm"]["confirmed"] is True
     assert all(cell["status"] == "ok" for cell in ledger["cells"].values())
     index = pd.read_csv(out / "results_index.csv")
-    assert set(index.columns) == set(STUDY_INDEX_KEYS)
+    assert list(index.columns) == list(STUDY_INDEX_KEYS)
     assert set(index["execution_origin"].unique()) == {"study"}
     assert normalize_execution_origin("study") == "study"
+    assert index["profit_factor"].notna().all()
+    assert index["win_rate"].notna().all()
     for name in index["run_name"]:
         assert (out / f"{name}.research.zip").is_file()
 
@@ -228,6 +241,12 @@ def test_one_failing_cell_leaves_prior_ok_intact(tmp_path: Path):
     assert len(index) == 4
     assert (index["status"] == "ok").sum() == 3
     assert (index["status"] == "failed").sum() == 1
+    failed_row = index.loc[index["run_name"] == names[1]].iloc[0]
+    assert pd.isna(failed_row["profit_factor"])
+    assert pd.isna(failed_row["win_rate"])
+    ok_row = index.loc[index["run_name"] == names[0]].iloc[0]
+    assert float(ok_row["profit_factor"]) == pytest.approx(1.5)
+    assert float(ok_row["win_rate"]) == pytest.approx(0.6)
 
 
 def test_soft_resume_skips_ok_force_reruns(tmp_path: Path):
@@ -304,36 +323,49 @@ def test_execute_study_cell_returns_failed_payload_not_raise(monkeypatch):
     assert payload["index_row"]["run_name"] == "cell_x"
 
 
-def test_index_columns_parity_vs_cli_execute_run():
-    # Documented parity with cli._execute_run metric keys.
+def test_index_columns_parity_vs_cli_execute_run(monkeypatch):
+    """Ordered CLI ↔ study R18_INDEX_METRIC_KEYS parity (RS-D7)."""
     from thesistester import cli as cli_mod
 
-    source = cli_mod._execute_run.__code__.co_consts
-    # Structural parity: study keys equal the known R18 set (+ status/bundle_path).
-    assert "run_name" in R18_INDEX_METRIC_KEYS
-    assert "expectancy_r" in R18_INDEX_METRIC_KEYS
     assert "status" in STUDY_INDEX_KEYS
     assert "bundle_path" in STUDY_INDEX_KEYS
-    assert set(R18_INDEX_METRIC_KEYS).isdisjoint({"status"})
-    # Smoke: build_index_row_from_state keys match R18 set exactly.
+    assert set(R18_INDEX_METRIC_KEYS).isdisjoint({"status", "bundle_path"})
+    dd_idx = R18_INDEX_METRIC_KEYS.index("max_drawdown_r")
+    assert R18_INDEX_METRIC_KEYS[dd_idx + 1] == "profit_factor"
+    assert R18_INDEX_METRIC_KEYS[dd_idx + 2] == "win_rate"
+
     bundle = _fake_bundle_bytes("parity")
-    row = build_index_row_from_state(
-        name="cell",
-        state={
-            "dataset_id": "x",
-            "instrument": "ES",
-            "execution_origin": "study",
-            "cache_provenance": {},
-            "trade_summary": {},
-            "best_grid_result": {},
-            "validation_summary": {},
-            "walk_forward_summary": {},
+    state = {
+        "dataset_id": "x",
+        "instrument": "ES",
+        "execution_origin": "cli",
+        "cache_provenance": {"outcome": "miss"},
+        "trade_summary": {
+            "trade_count": 3,
+            "expectancy_r": 0.25,
+            "total_r": 0.75,
+            "max_drawdown_r": -0.5,
+            "profit_factor": 1.5,
+            "win_rate": 0.6,
         },
+        "best_grid_result": {},
+        "validation_summary": {},
+        "walk_forward_summary": {},
+    }
+    monkeypatch.setattr(cli_mod, "run_experiment", lambda *_a, **_k: state)
+    monkeypatch.setattr(cli_mod, "build_research_bundle", lambda _state: bundle)
+    _name, _bundle_out, cli_row = cli_mod._execute_run(({"name": "cell"}, "."))
+    assert tuple(cli_row.keys()) == R18_INDEX_METRIC_KEYS
+
+    study_row = build_index_row_from_state(
+        name="cell",
+        state={**state, "execution_origin": "study"},
         bundle=bundle,
     )
-    assert set(row) == set(R18_INDEX_METRIC_KEYS)
-    assert row["bundle_hash"] == canonical_bundle_hash(bundle)
-    assert source  # keep import used / module loaded
+    assert tuple(study_row.keys()) == R18_INDEX_METRIC_KEYS
+    assert study_row["bundle_hash"] == canonical_bundle_hash(bundle)
+    assert study_row["profit_factor"] == pytest.approx(1.5)
+    assert study_row["win_rate"] == pytest.approx(0.6)
 
 
 def test_cli_study_run_confirm_exit_codes(tmp_path: Path, monkeypatch):
@@ -446,7 +478,45 @@ def test_soft_resume_rehydrates_metrics_when_index_row_missing(tmp_path: Path):
     assert int(row["trade_count"]) == 3
     assert float(row["expectancy_r"]) == pytest.approx(0.25)
     assert float(row["total_r"]) == pytest.approx(0.75)
+    assert float(row["profit_factor"]) == pytest.approx(1.5)
+    assert float(row["win_rate"]) == pytest.approx(0.6)
+    assert row["dataset_id"] == "ds-test"
+    assert row["instrument"] == "ES"
     assert pd.notna(row["bundle_hash"])
+
+
+def test_soft_resume_rehydrate_preserves_identity_from_prior_and_bundle(tmp_path: Path):
+    from thesistester.study.execute import _index_row_from_existing_bundle
+
+    name = "cell_id"
+    bundle_name = f"{name}.research.zip"
+    (tmp_path / bundle_name).write_bytes(_fake_bundle_bytes(name))
+    prior = {
+        "run_name": name,
+        "dataset_id": "prior-ds",
+        "instrument": "NQ",
+        "execution_origin": "study",
+        "cache_outcome": "hit",
+        "trade_count": None,
+        "expectancy_r": None,
+        "profit_factor": None,
+        "win_rate": None,
+    }
+    row = _index_row_from_existing_bundle(
+        name,
+        output_dir=tmp_path,
+        bundle_rel=bundle_name,
+        prior_row=prior,
+    )
+    assert row["dataset_id"] == "prior-ds"
+    assert row["instrument"] == "NQ"
+    assert row["cache_outcome"] == "hit"
+    assert float(row["profit_factor"]) == pytest.approx(1.5)
+
+    # No prior row → fall back to dataset_meta.json inside the zip.
+    row2 = _index_row_from_existing_bundle(name, output_dir=tmp_path, bundle_rel=bundle_name)
+    assert row2["dataset_id"] == "ds-test"
+    assert row2["instrument"] == "ES"
 
 
 def test_soft_resume_repairs_poisoned_null_metric_ok_row(tmp_path: Path):
@@ -456,7 +526,15 @@ def test_soft_resume_repairs_poisoned_null_metric_ok_row(tmp_path: Path):
     name = first["run_names"][0]
     index = pd.read_csv(out / "results_index.csv")
     # Simulate historically poisoned soft-resume synthesis.
-    for col in ("trade_count", "expectancy_r", "total_r", "max_drawdown_r", "bundle_hash"):
+    for col in (
+        "trade_count",
+        "expectancy_r",
+        "total_r",
+        "max_drawdown_r",
+        "profit_factor",
+        "win_rate",
+        "bundle_hash",
+    ):
         index.loc[index["run_name"] == name, col] = None
     index.to_csv(out / "results_index.csv", index=False)
     second = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
@@ -465,6 +543,8 @@ def test_soft_resume_repairs_poisoned_null_metric_ok_row(tmp_path: Path):
     row = repaired.loc[repaired["run_name"] == name].iloc[0]
     assert int(row["trade_count"]) == 3
     assert float(row["expectancy_r"]) == pytest.approx(0.25)
+    assert float(row["profit_factor"]) == pytest.approx(1.5)
+    assert float(row["win_rate"]) == pytest.approx(0.6)
 
 
 def test_soft_resume_rehydrates_pending_stub_after_ledger_ok_interrupt(tmp_path: Path):
@@ -481,6 +561,8 @@ def test_soft_resume_rehydrates_pending_stub_after_ledger_ok_interrupt(tmp_path:
         "expectancy_r",
         "total_r",
         "max_drawdown_r",
+        "profit_factor",
+        "win_rate",
         "bundle_hash",
         "bundle_path",
     ):
@@ -495,6 +577,8 @@ def test_soft_resume_rehydrates_pending_stub_after_ledger_ok_interrupt(tmp_path:
     assert row["bundle_path"] == f"{name}.research.zip"
     assert int(row["trade_count"]) == 3
     assert float(row["expectancy_r"]) == pytest.approx(0.25)
+    assert float(row["profit_factor"]) == pytest.approx(1.5)
+    assert float(row["win_rate"]) == pytest.approx(0.6)
 
 
 def test_mark_cell_can_clear_bundle_path():
@@ -505,3 +589,68 @@ def test_mark_cell_can_clear_bundle_path():
     assert ledger["cells"]["c1"]["bundle_path"] == "c1.research.zip"
     ledger = mark_cell(ledger, "c1", status="failed", error="x", bundle_path=None, finished=True)
     assert ledger["cells"]["c1"]["bundle_path"] is None
+
+
+def test_index_nan_pf_wr_become_null():
+    bundle = _fake_bundle_bytes("nan_cell")
+    row = build_index_row_from_state(
+        name="nan_cell",
+        state={
+            "dataset_id": "x",
+            "instrument": "ES",
+            "execution_origin": "study",
+            "cache_provenance": {},
+            "trade_summary": {
+                "trade_count": 2,
+                "expectancy_r": 0.1,
+                "total_r": 0.2,
+                "max_drawdown_r": -0.1,
+                "profit_factor": float("nan"),
+                "win_rate": float("nan"),
+            },
+            "best_grid_result": {},
+            "validation_summary": {},
+            "walk_forward_summary": {},
+        },
+        bundle=bundle,
+    )
+    assert row["profit_factor"] is None
+    assert row["win_rate"] is None
+
+
+def test_index_inf_pf_round_trips_csv_and_report(tmp_path: Path):
+    from thesistester.study.report import report_study
+
+    study = _mini_study_yaml(tmp_path / "study.yaml", confirm_above_runs=100)
+    out = tmp_path / "out"
+    run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    index = pd.read_csv(out / "results_index.csv")
+    index["profit_factor"] = float("inf")
+    index.to_csv(out / "results_index.csv", index=False)
+    # pandas emits inf/-inf; reload and report must prefer index.
+    reloaded = pd.read_csv(out / "results_index.csv")
+    assert all(math.isinf(float(v)) for v in reloaded["profit_factor"])
+    result = report_study(out)
+    assert result.overview["profit_factor_source"].eq("index").all()
+    assert all(math.isinf(float(v)) for v in result.overview["profit_factor"])
+
+
+def test_soft_resume_field_backfills_pre_d7_ok_rows(tmp_path: Path):
+    """Pre-D7 ok rows have trade metrics but lack PF/WR — backfill without re-run."""
+    study = _mini_study_yaml(tmp_path / "study.yaml", confirm_above_runs=100)
+    out = tmp_path / "out"
+    first = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    assert first["executed"] == 4
+    index = pd.read_csv(out / "results_index.csv")
+    # Drop PF/WR columns entirely (pre-D7 shape) while keeping core metrics.
+    index = index.drop(columns=["profit_factor", "win_rate"])
+    index.to_csv(out / "results_index.csv", index=False)
+    second = run_study(study, output_dir=out, cell_executor=_fake_executor_factory())
+    assert second["executed"] == 0
+    repaired = pd.read_csv(out / "results_index.csv")
+    assert "profit_factor" in repaired.columns
+    assert "win_rate" in repaired.columns
+    assert repaired["profit_factor"].notna().all()
+    assert repaired["win_rate"].notna().all()
+    assert float(repaired["profit_factor"].iloc[0]) == pytest.approx(1.5)
+    assert float(repaired["win_rate"].iloc[0]) == pytest.approx(0.6)

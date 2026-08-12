@@ -2,7 +2,7 @@
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
 **Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts + code-audit hardening)  
-**Status:** **RS1–RS5 complete** (holistic MVP). Post-MVP track plan-locked: **RS-D7 → RS6 → RS-D2 → RS-D4 → RS-D5**; parked: RS-D1 / RS-D3 / RS-D6  
+**Status:** **RS1–RS5 + RS-D7 complete**. Post-MVP remaining: **RS6 → RS-D2 → RS-D4 → RS-D5**; parked: RS-D1 / RS-D3 / RS-D6  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
 **Related living docs:** `docs/AGENT_GUIDE.md`, `docs/ARCHITECTURE.md`, `docs/ASSUMPTIONS_AND_LIMITATIONS.md`, `docs/ENGINEERING_ROADMAP.md`, `docs/ANCHOR_CONFLUENCE.md`, `docs/otf-filter.md`, `docs/USER_GUIDE.md`, `docs/STUDY_RUNNER.md`  
@@ -414,10 +414,9 @@ For a study written to `output_dir`:
 
 Canonical study identity hash (RS2): hash normalized StudySpec bytes (stable key order) — used in ledger, not for bundle equality.
 
-**Note on `results_index.csv` columns (current writers):**  
-R18/`cli._execute_run` + study `R18_INDEX_METRIC_KEYS`: `run_name`, `bundle_hash`, `dataset_id`, `instrument`, `execution_origin`, `cache_outcome`, `trade_count`, `expectancy_r`, `total_r`, `max_drawdown_r`, `best_grid_*`, `validation_trade_count_status`, `wfa_*` (+ CLI/study `bundle_path`).  
-Study-authored index also appends **`status`** (`ok`/`failed`/`pending`).  
-**Not present until RS-D7:** `profit_factor`, `win_rate` (MVP report resolves both from bundle `trade_summary` per §9.2).
+**Note on `results_index.csv` columns (current writers, RS-D7):**  
+R18/`cli._execute_run` + study `R18_INDEX_METRIC_KEYS`: `run_name`, `bundle_hash`, `dataset_id`, `instrument`, `execution_origin`, `cache_outcome`, `trade_count`, `expectancy_r`, `total_r`, `max_drawdown_r`, **`profit_factor`**, **`win_rate`**, `best_grid_*`, `validation_trade_count_status`, `wfa_*` (+ CLI/study `bundle_path`).  
+Study-authored index also appends **`status`** (`ok`/`failed`/`pending`). Report still falls back to bundle `trade_summary` when PF/WR are absent/null (older indexes).
 
 ---
 
@@ -460,7 +459,7 @@ Wiring: extend `thesistester/cli.py` / `__main__.py` with a `study` subparser **
 |---|---|
 | `trade_count`, `expectancy_r`, `total_r`, `max_drawdown_r`, `bundle_hash`, `bundle_path` | Study/R18 index columns |
 | `status` | Study ledger / study-authored index column (not R18 `run_batch` index) |
-| `profit_factor` / `win_rate` | **MVP:** resolve from bundle `trade_summary` during report (index wins per field when present). **RS-D7:** write both columns on study + CLI `results_index` at ok-cell write time (default-compatible; report already prefers index). |
+| `profit_factor` / `win_rate` | **RS-D7 ✅:** written on study + CLI `results_index` at ok-cell write time (after `max_drawdown_r`; null on failed/pending; soft-resume rehydrate + field backfill). Report prefers index per field; bundle fallback for older/null rows. |
 | Ranking primary | Must be index-available (`expectancy_r` default). If `primary_metric: profit_factor`, report must resolve PF via bundle/index extension before ranking. |
 
 ### 9.3 Derived views
@@ -742,7 +741,7 @@ RS-D7  →  RS6  →  RS-D2  →  RS-D4  →  RS-D5
 
 ---
 
-### 12.2 RS-D7 — Additive index columns (`profit_factor`, `win_rate`) — **NEXT**
+### 12.2 RS-D7 — Additive index columns (`profit_factor`, `win_rate`) — ✅
 
 | | |
 |---|---|
@@ -764,17 +763,18 @@ RS-D7  →  RS6  →  RS-D2  →  RS-D4  →  RS-D5
 | **Out of scope** | Engine metric formula changes; silent removal of bundle PF path; Studies UI; assistant tools; inventing `win_rate_source` column (report keeps PF-only source tracking); making `win_rate` a StudySpec primary_metric |
 | **Regression** | Existing CLI/study index consumers tolerate new columns; no golden engine regen |
 | **Acceptance checklist** | |
-| | ☐ New ok cells write both `profit_factor` and `win_rate` on `results_index.csv` (column order after `max_drawdown_r`) |
-| | ☐ Failed/pending rows keep null PF/WR |
-| | ☐ Soft-resume full rehydrate populates PF/WR from existing bundles |
-| | ☐ Soft-resume field backfill fills PF/WR on pre-D7 ok rows that already have trade_count/expectancy |
-| | ☐ NaN PF/WR from trade_summary become null on the index |
-| | ☐ `±inf` PF round-trips via CSV to report (`profit_factor_source=index`) |
-| | ☐ Report `profit_factor_source=index` when column present and finite/coercible |
-| | ☐ Bundle fallback still works when column absent/null |
-| | ☐ Ordered CLI ↔ study `R18_INDEX_METRIC_KEYS` parity test green |
-| | ☐ Docs note additive columns + `inf` CSV behavior; `report.py` docstring no longer calls D7 optional; no claim of R18 Experiment schema break |
-| | ☐ Full suite green |
+| | ☑ New ok cells write both `profit_factor` and `win_rate` on `results_index.csv` (column order after `max_drawdown_r`) |
+| | ☑ Failed/pending rows keep null PF/WR |
+| | ☑ Soft-resume full rehydrate populates PF/WR from existing bundles |
+| | ☑ Soft-resume field backfill fills PF/WR on pre-D7 ok rows that already have trade_count/expectancy |
+| | ☑ NaN PF/WR from trade_summary become null on the index |
+| | ☑ `±inf` PF round-trips via CSV to report (`profit_factor_source=index`) |
+| | ☑ Report `profit_factor_source=index` when column present and coercible (incl. `±inf`) |
+| | ☑ Bundle fallback still works when column absent/null |
+| | ☑ Ordered CLI ↔ study `R18_INDEX_METRIC_KEYS` parity test green |
+| | ☑ Docs note additive columns + `inf` CSV behavior; `report.py` docstring no longer calls D7 optional; no claim of R18 Experiment schema break |
+| | ☑ Soft-resume rehydrate preserves identity (`dataset_id` / `instrument`) via prior row or `dataset_meta.json` |
+| | ☑ Full suite green |
 
 **Copy-ready agent prompt:**
 
@@ -965,7 +965,9 @@ Still **non-goals:** auto-promote to live thesis without human confirm; schedule
 
 ### 12.8 First implementable PR (kickoff)
 
-**Next code PR = RS-D7 only.** Do not combine with RS6/D2/D4.
+**RS-D7 ✅ shipped.** Next code PR = **RS6 only** (§12.3). Do not combine with D2/D4.
+
+Historical D7 implementer notes (kept for audit):
 
 Use the §12.2 copy-ready prompt verbatim. Extra implementer notes:
 
@@ -1098,8 +1100,8 @@ Recommended workflow after post-MVP sequence (§12):
 | RS4 Report | ✅ |
 | RS5 Staging/promote + examples | ✅ |
 | **Post-MVP sequence lock** | ✅ This amendment (§12) |
-| RS-D7 Additive index PF + win_rate | ☐ **Next** |
-| RS6 Default-off `STUDY.*` assistant capabilities | ☐ After RS-D7 |
+| RS-D7 Additive index PF + win_rate | ✅ |
+| RS6 Default-off `STUDY.*` assistant capabilities | ☐ **Next** |
 | RS-D2 Studies viewer (read-only) | ☐ After RS-D7 |
 | RS-D4 Per-cell diagnostic rollup | ☐ After survivors-in-use |
 | RS-D5 Grok Bot routine pack | ☐ After RS6 |

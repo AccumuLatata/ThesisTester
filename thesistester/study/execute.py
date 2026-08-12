@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import fcntl
 import json
+import math
 import multiprocessing
+import numbers
 import os
 import zipfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -33,6 +35,7 @@ from thesistester.study.ledger import (
 from thesistester.study.schema import StudySpecError, load_study_spec
 
 # Metric keys produced by cli._execute_run (without bundle_path).
+# RS-D7: profit_factor + win_rate sit with other trade-summary metrics.
 R18_INDEX_METRIC_KEYS: tuple[str, ...] = (
     "run_name",
     "bundle_hash",
@@ -44,6 +47,8 @@ R18_INDEX_METRIC_KEYS: tuple[str, ...] = (
     "expectancy_r",
     "total_r",
     "max_drawdown_r",
+    "profit_factor",
+    "win_rate",
     "best_grid_stop_loss_ticks",
     "best_grid_take_profit_ticks",
     "validation_trade_count_status",
@@ -54,6 +59,70 @@ R18_INDEX_METRIC_KEYS: tuple[str, ...] = (
 )
 
 STUDY_INDEX_KEYS: tuple[str, ...] = R18_INDEX_METRIC_KEYS + ("bundle_path", "status")
+
+
+def _coerce_index_float(value: Any) -> float | None:
+    """Coerce trade-summary floats for index write; NaN → null; keep ±inf."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        if value is pd.NA or pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, numbers.Real):
+        number = float(value)
+        if math.isnan(number):
+            return None
+        return number
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text.lower() in {"nan", "none", "null"}:
+            return None
+        if text.lower() in {"inf", "+inf", "infinity"}:
+            return float("inf")
+        if text.lower() in {"-inf", "-infinity"}:
+            return float("-inf")
+        try:
+            number = float(text)
+        except ValueError:
+            return None
+        if math.isnan(number):
+            return None
+        return number
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return _coerce_index_float(item())
+        except (ValueError, TypeError, OverflowError, RecursionError):
+            return None
+    return None
+
+
+def _metric_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str) and not value.strip():
+        return True
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
+
+
+_INDEX_IDENTITY_KEYS: tuple[str, ...] = (
+    "dataset_id",
+    "instrument",
+    "execution_origin",
+    "cache_outcome",
+    "best_grid_stop_loss_ticks",
+    "best_grid_take_profit_ticks",
+    "validation_trade_count_status",
+    "wfa_fold_count",
+    "wfa_valid_fold_count",
+    "wfa_median_test_expectancy_r",
+    "wfa_stitched_oos_total_r",
+)
 
 
 def build_index_row_from_state(
@@ -79,6 +148,8 @@ def build_index_row_from_state(
         "expectancy_r": summary.get("expectancy_r"),
         "total_r": summary.get("total_r"),
         "max_drawdown_r": summary.get("max_drawdown_r"),
+        "profit_factor": _coerce_index_float(summary.get("profit_factor")),
+        "win_rate": _coerce_index_float(summary.get("win_rate")),
         "best_grid_stop_loss_ticks": best.get("stop_loss_ticks"),
         "best_grid_take_profit_ticks": best.get("take_profit_ticks"),
         "validation_trade_count_status": (validation.get("trade_count") or {}).get("status"),
@@ -118,20 +189,49 @@ def _read_bundle_trade_summary(bundle_path: Path) -> dict[str, Any] | None:
     return None
 
 
+def _read_bundle_dataset_identity(bundle_path: Path) -> dict[str, Any]:
+    """Best-effort ``dataset_id`` / ``instrument`` from bundle ``dataset_meta.json``."""
+    if not bundle_path.is_file():
+        return {}
+    try:
+        with zipfile.ZipFile(bundle_path, "r") as archive:
+            if "dataset_meta.json" not in archive.namelist():
+                return {}
+            raw = json.loads(archive.read("dataset_meta.json").decode("utf-8"))
+    except (OSError, zipfile.BadZipFile, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(raw, Mapping):
+        return {}
+    out: dict[str, Any] = {}
+    for key in ("dataset_id", "instrument"):
+        value = raw.get(key)
+        if not _metric_missing(value):
+            out[key] = value
+    return out
+
+
 def _index_row_from_existing_bundle(
     name: str,
     *,
     output_dir: Path,
     bundle_rel: str,
+    prior_row: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Rebuild an ok index row from a soft-resumed bundle (metrics + hash).
 
     Soft resume previously synthesized ``status=ok`` via ``_failed_index_row``,
     leaving R18 metrics null forever when ``results_index.csv`` lost the row.
     Rehydrate core trade metrics from ``trade_summary.json`` so report ranking
-    stays honest without re-running the cell.
+    stays honest without re-running the cell. Preserve non-null identity fields
+    from ``prior_row`` / ``dataset_meta.json`` so soft-resume does not wipe
+    ``dataset_id`` / ``instrument``.
     """
     row = _failed_index_row(name)
+    if prior_row is not None:
+        for key in _INDEX_IDENTITY_KEYS:
+            value = prior_row.get(key)
+            if not _metric_missing(value):
+                row[key] = value
     row["status"] = "ok"
     row["bundle_path"] = bundle_rel
     bundle_path = output_dir / bundle_rel
@@ -139,11 +239,37 @@ def _index_row_from_existing_bundle(
         row["bundle_hash"] = canonical_bundle_hash(bundle_path.read_bytes())
     except OSError:
         row["bundle_hash"] = None
+    identity = _read_bundle_dataset_identity(bundle_path)
+    for key, value in identity.items():
+        if _metric_missing(row.get(key)):
+            row[key] = value
     summary = _read_bundle_trade_summary(bundle_path) or {}
     for key in ("trade_count", "expectancy_r", "total_r", "max_drawdown_r"):
         if key in summary:
             row[key] = summary.get(key)
+    row["profit_factor"] = _coerce_index_float(summary.get("profit_factor"))
+    row["win_rate"] = _coerce_index_float(summary.get("win_rate"))
     return row
+
+
+def _backfill_pf_wr_from_bundle(
+    row: Mapping[str, Any],
+    *,
+    output_dir: Path,
+    bundle_rel: str,
+) -> dict[str, Any]:
+    """Fill missing PF/WR on an ok row from bundle without wiping other columns."""
+    out = dict(row)
+    need_pf = _metric_missing(out.get("profit_factor"))
+    need_wr = _metric_missing(out.get("win_rate"))
+    if not need_pf and not need_wr:
+        return out
+    summary = _read_bundle_trade_summary(output_dir / bundle_rel) or {}
+    if need_pf:
+        out["profit_factor"] = _coerce_index_float(summary.get("profit_factor"))
+    if need_wr:
+        out["win_rate"] = _coerce_index_float(summary.get("win_rate"))
+    return out
 
 
 def execute_study_cell(
@@ -581,44 +707,54 @@ def run_study(
         ledger = load_ledger(out) or ledger
         cells = ledger.get("cells") or {}
 
-        def _metric_missing(value: Any) -> bool:
-            if value is None:
-                return True
-            try:
-                return bool(pd.isna(value))
-            except (TypeError, ValueError):
-                return False
-
         for name in run_names:
             cell = cells.get(name) or {}
+            status = cell.get("status", "pending")
+            bundle_rel = cell.get("bundle_path")
             if name not in index_by_name:
-                bundle_rel = cell.get("bundle_path")
-                if cell.get("status") == "ok" and isinstance(bundle_rel, str) and bundle_rel:
+                if status == "ok" and isinstance(bundle_rel, str) and bundle_rel:
                     index_by_name[name] = _index_row_from_existing_bundle(
                         name, output_dir=out, bundle_rel=bundle_rel
                     )
                 else:
                     row = _failed_index_row(name)
-                    row["status"] = cell.get("status", "pending")
+                    row["status"] = status
                     row["bundle_path"] = bundle_rel
+                    # Failed/pending must never carry PF/WR (RS-D7).
+                    row["profit_factor"] = None
+                    row["win_rate"] = None
                     index_by_name[name] = row
                 continue
 
             row = dict(index_by_name[name])
-            row["status"] = cell.get("status", row.get("status"))
+            row["status"] = status
             bundle_rel = cell.get("bundle_path") or row.get("bundle_path")
-            # Repair historically poisoned soft-resume rows (ok + zip, null metrics).
-            if (
-                cell.get("status") == "ok"
-                and isinstance(bundle_rel, str)
-                and bundle_rel
-                and _metric_missing(row.get("trade_count"))
-                and _metric_missing(row.get("expectancy_r"))
-            ):
-                index_by_name[name] = _index_row_from_existing_bundle(
-                    name, output_dir=out, bundle_rel=bundle_rel
-                )
+            if status == "ok" and isinstance(bundle_rel, str) and bundle_rel:
+                # Repair historically poisoned soft-resume rows (ok + zip, null metrics).
+                if _metric_missing(row.get("trade_count")) and _metric_missing(
+                    row.get("expectancy_r")
+                ):
+                    index_by_name[name] = _index_row_from_existing_bundle(
+                        name,
+                        output_dir=out,
+                        bundle_rel=bundle_rel,
+                        prior_row=row,
+                    )
+                elif _metric_missing(row.get("profit_factor")) or _metric_missing(
+                    row.get("win_rate")
+                ):
+                    # Pre-D7 ok rows often have trade metrics but lack PF/WR columns.
+                    index_by_name[name] = _backfill_pf_wr_from_bundle(
+                        row, output_dir=out, bundle_rel=bundle_rel
+                    )
+                else:
+                    index_by_name[name] = row
             else:
+                # Status sync to failed/pending must not retain stale ok PF/WR.
+                row["profit_factor"] = None
+                row["win_rate"] = None
+                if "bundle_path" in cell:
+                    row["bundle_path"] = cell.get("bundle_path")
                 index_by_name[name] = row
 
         index_path = _write_results_index(out, index_by_name, run_names)

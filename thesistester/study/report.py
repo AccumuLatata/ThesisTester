@@ -4,7 +4,9 @@ Joins ``results_index.csv`` ⟕ ``study.expansion.json`` on ``run_name``, resolv
 ``profit_factor`` / ``win_rate`` from bundle ``trade_summary`` when absent from
 the index, and emits ranked / low-N / group / OTF-Δ views with honesty text.
 
-Does not alter R18 ``results_index`` schema (RS-D7 remains optional).
+RS-D7 writers add additive index ``profit_factor`` / ``win_rate`` columns; this
+module prefers those when present and keeps the bundle fallback for older
+indexes. It does not change Experiment ``schema_version``.
 """
 
 from __future__ import annotations
@@ -756,9 +758,10 @@ def render_overview_markdown(
             "## Metric sources",
             "",
             "- Index columns: `trade_count`, `expectancy_r`, `total_r`, `max_drawdown_r`, "
-            "`bundle_hash`, `bundle_path`, `status`.",
+            "`profit_factor`, `win_rate`, `bundle_hash`, `bundle_path`, `status` "
+            "(PF/WR additive since RS-D7; older indexes may omit them).",
             "- `profit_factor` / `win_rate`: each field prefers the study index when "
-            "present (RS-D7), else bundle `trade_summary.json` "
+            "present, else bundle `trade_summary.json` "
             "(`profit_factor_source` tracks PF only: `index` | `bundle` | `missing`).",
             "- Ranked / low-N / unresolved / group summaries require `factors_joined=True` "
             "(index-only orphans stay in the overview CSV).",
