@@ -466,10 +466,12 @@ that milestone’s PR.
 
 | Rule | Behavior |
 |---|---|
-| YAML | Canonical `schema_version: 1` StudySpec only (fail-closed). No NL / shorthand compiler |
-| Preview | In-memory validate + `expand_study`; show `run_count`, full cartesian, `needs_confirm`, identity, cost hints |
-| Cap | Skip in-memory expand above `PREVIEW_EXPAND_CAP` (20_000); still show axis-size estimate |
-| Progress | Refresh existing study-dir ledger counts; do not start `study run` from the page |
+| YAML | Canonical `schema_version: 1` StudySpec only (fail-closed). `yaml.safe_load` → normalize/validate. No NL / shorthand compiler |
+| Preview | In-memory validate + `expand_study`; show `run_count`, full cartesian, **matched** stage estimate, `needs_confirm`, `workers`, identity, constants battery hints |
+| Cap | Skip in-memory expand above `PREVIEW_EXPAND_CAP` (2_000); still show matched axis-size estimate |
+| Imports | `preview.py` must not import `thesistester.study.execute` |
+| Progress | Explicit Refresh of existing study-dir ledger counts; do not start `study run` from the page |
+| Save YAML | Optional; never default to inspect dir `study.spec.yaml` |
 | Execute | Remains CLI (`study run --confirm`) / optional RS6 tools |
 | Page | Same `pages/15_Studies.py` slot — no new nav item |
 

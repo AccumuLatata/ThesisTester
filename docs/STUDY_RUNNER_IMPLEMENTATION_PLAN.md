@@ -997,33 +997,37 @@ Use the §12.2 copy-ready prompt verbatim. Extra implementer notes:
 
 | | |
 |---|---|
-| **Depends on** | RS1–RS5 ✅ (schema + pure `expand_study`); **RS-D2** ✅ (same Studies page / path sandbox / honesty banner); RS-D5 optional (CLI recipe unchanged) |
+| **Depends on** | RS1–RS5 ✅ (schema + pure `expand_study`); **RS-D2** ✅ (same Studies page / path sandbox / honesty banner); RS-D5 optional (CLI recipe unchanged — one operator sentence is enough; do not rewrite the Grok pack) |
 | **Scope** | Let a researcher **paste or edit canonical StudySpec YAML** on the existing Studies page, **validate + expand in memory**, and see **how many cells** would run and whether `--confirm` is required — then go run it on the CLI. Optionally **watch** an in-flight CLI study via ledger refresh. **Compose existing APIs; do not invent a second runner.** |
-| **Likely files** | `thesistester/study/preview.py` (pure helper); `pages/15_Studies.py` (second pane/tab on the **same** nav slot); `thesistester/study/viewer.py` only if ledger-refresh needs a thin wrapper; `tests/study/test_study_preview.py` (+ existing `test_study_viewer.py` regression); `docs/STUDY_RUNNER.md` §RS-D8; `docs/USER_GUIDE.md` (prefer **extend** H2 `Studies viewer (read-only)` — no new H2 unless Help retrieval requires it); `docs/ARCHITECTURE.md` boundary sentence; roadmap/status |
+| **Likely files** | `thesistester/study/preview.py` (pure helper); `pages/15_Studies.py` (second pane/tab on the **same** nav slot); `thesistester/study/viewer.py` only if ledger-refresh needs a thin wrapper; `tests/study/test_study_preview.py` (+ existing `test_study_viewer.py` regression); `docs/STUDY_RUNNER.md` §RS-D8; `docs/USER_GUIDE.md` (prefer **extend** H2 `Studies viewer (read-only)` — no new H2 unless Help retrieval requires it); `docs/ARCHITECTURE.md` boundary sentence; `docs/AGENT_GUIDE.md` heading/pointer; roadmap/status |
+| **Import allow-list (locked)** | `preview.py` may import `thesistester.study.schema` (`StudySpecError`, `normalize_study_spec`, `validate_study_spec`) and `thesistester.study.expand` (`expand_study`, `_apply_stage_filter` / public equivalent, `study_identity_hash`). **Must not import** `thesistester.study.execute` (that module pulls `run_experiment` / process pools / locks), `thesistester.cli.run_batch`, `promote`, or assistant `STUDY.*` handlers. Battery hints are computed from **constants** in `preview.py` (all expanded cells share `grid`/`validation`/`walk_forward`); do **not** call `execute.cost_hint_lines`. Optional: a tiny hint helper may live in `expand.py` or `preview.py` — not in `execute.py`. |
+| **YAML load path (locked)** | Textarea / file bytes → `yaml.safe_load` → must be a mapping → `normalize_study_spec` → `validate_study_spec`. Invalid YAML / non-mapping → `StudySpecError`, **no** expand. `load_study_spec` remains path-only; do not require a temp file for paste. Dataset `path` is a string at validate time (`validate_run_spec` does not require the CSV to exist) — example preview must work without `data/es_1m.csv`. |
 | **YAML contract (locked)** | |
 | | Accept **only** `schema_version: 1` StudySpec YAML (same keys as `load_study_spec` / `validate_study_spec`) |
 | | **No** NL → YAML compiler (that remains parked **RS-D1**) |
 | | **No** shorthand dialect (`core` vs `core_level`, `partners` vs `partner_levels`, `report.primary` vs `report.primary_metric`, `min_trades` under `constants`, omitted `mode_rules`) — unknown/wrong keys fail closed with the existing `StudySpecError` text |
-| | Optional **Load example** reads `examples/studies/pdPOC_ma_confluence_battery.yaml` from the repo (read-only). Optional **Copy spec from loaded study dir** reads `study.spec.yaml` already sandboxed by RS-D2 |
+| | Optional **Load example** reads `examples/studies/pdPOC_ma_confluence_battery.yaml` resolved from the **repo root** (cwd / documented project root). Clear error if missing. Optional **Copy spec from loaded study dir** reads `study.spec.yaml` already sandboxed by RS-D2 |
 | **Preview semantics (locked)** | |
-| | Helper `preview_study_spec(spec) -> StudyPreview` (name may vary; keep it in `preview.py`) must: (1) `normalize_study_spec` + `validate_study_spec`; (2) report per-axis domain sizes from `study.factors`; (3) report `cartesian_product` = product of those sizes (1 if no factor axes); (4) report `effective_run_count_estimate` honoring `stage` — `explicit_cells` → `len(cells)`; `filter` → product of include-list lengths for filtered axes × full domain length for unfiltered axes; no stage → `cartesian_product`; (5) if `effective_run_count_estimate <= PREVIEW_EXPAND_CAP` (**20_000**, constant in `preview.py`), call **in-memory** `expand_study` and surface exact `run_count`, `study_identity_hash`, and `cost_hint_lines`; (6) if over cap, **do not** call `expand_study` — return the estimate, `expanded=False`, and a clear warning |
-| | `needs_confirm = run_count >= confirm_above_runs` (use exact count when expanded, else the estimate) |
-| | Battery flags from **constants** (`grid` / `validation` / `walk_forward` `enabled`), not by executing cells. Surface CLI-equivalent cost-hint warnings when any battery is enabled |
+| | Helper `preview_study_spec(spec) -> StudyPreview` (name may vary; keep it in `preview.py`) must: (1) normalize + validate; (2) report per-axis domain sizes from `study.factors` (`partner_levels` size = number of partner-sets); (3) `cartesian_product` = product of those sizes (1 if no factor axes); (4) `effective_run_count_estimate` honoring `stage` using the **same intersection semantics as** `expand._apply_stage_filter` — **not** raw include-list lengths. `explicit_cells` → `len(cells)`; `filter` → product of **matched** domain sizes after include∩factor-domain (OTF canonicalized; partner-sets list-equal); unmatched include tokens do not inflate the estimate; empty match → `StudySpecError` (same as expand); no stage → `cartesian_product`; (5) if `effective_run_count_estimate <= PREVIEW_EXPAND_CAP` (**2_000**, constant in `preview.py`), call **in-memory** `expand_study` and surface exact `run_count`, `study_identity_hash`, `workers`, and constants-based battery hints; (6) if over cap, **do not** call `expand_study` — return the matched estimate, `expanded=False`, axis sizes, battery flags from constants, and a clear warning |
+| | **Cap rationale:** `expand_study` runs `build_setup` + `validate_run_spec` per cell. 40 (stage-first) and 800 (full example cartesian) stay under 2_000. 20_000 would freeze Streamlit; 2_000 is a hard UI ceiling, not a target. Show a spinner while expanding. |
+| | `needs_confirm = count >= confirm_above_runs` with `>=` matching `run_study` (use exact `run_count` when expanded, else the matched estimate). Confirm is run-count-only; still **display** `study.workers`. |
+| | Battery flags from **constants** (`grid` / `validation` / `walk_forward` `enabled`), not by executing cells. Warn when any is true (CLI-equivalent meaning; do not iterate 2_000 run dicts). |
+| | Error split: schema/`StudySpecError` vs expand/`validate_run_spec` failures both surface as preview failures; neither implies execute started. |
 | | Default filesystem side effects: **none**. Do **not** call `expand_study_to_directory`, `run_study`, `run_experiment`, `run_batch`, `report_study` (write path), `promote_study`, or assistant `STUDY.*` handlers |
-| | Optional **Save YAML** (not required for MVP of D8, but if shipped): write the **validated** YAML text to a path under the **same** RS-D2 sandbox (repo cwd or local ThesisTester store). Refuse overwrite unless an explicit force control. Saving must **not** expand-to-disk or execute |
+| | Optional **Save YAML** (not required for D8 MVP, but if shipped): write the **validated** YAML text to an **operator-chosen new path** under the RS-D2 sandbox (repo cwd or local store). Refuse overwrite unless an explicit force control. **Never** default the save path to the inspect dir’s `study.spec.yaml` (that would clobber a completed study). Saving must **not** expand-to-disk or execute |
 | **UI (locked)** | |
 | | Same page `pages/15_Studies.py` — add a clearly labeled pane/tab (e.g. **Preview StudySpec** vs **Inspect output dir**). **Do not** add a new sidebar page / numeric slot |
-| | Controls allowed: YAML textarea; Validate / Preview; Load example; Copy spec from loaded dir; Refresh ledger (viewer pane); optional Save YAML as above |
+| | Controls allowed: YAML textarea; Validate / Preview; Load example; Copy spec from loaded dir; **Refresh** ledger (inspect pane); optional Save YAML as above |
 | | Controls **forbidden**: Run study, Confirm-and-run, Promote, Enable batteries, Dispatch `STUDY.run`, any widget that calls execute |
-| | Display: study name; axis sizes; `cartesian_product`; staged vs unstaged counts when `stage` is present (effective estimate vs full cartesian); exact `run_count` when expanded; `confirm_above_runs` + `needs_confirm`; identity hash; battery enabled flags; cost-hint lines; `StudySpecError` on failure |
+| | Display: study name; `workers`; axis sizes; `cartesian_product`; staged vs unstaged (matched estimate vs full cartesian) when `stage` is present; exact `run_count` when expanded; `confirm_above_runs` + `needs_confirm`; identity hash; battery enabled flags; constants-based hint lines; `StudySpecError` on failure |
 | | Honesty (required, visible with every successful preview): combinatorial `run_count` is a **screening size**, not independent statistical tests; large factorials need `--confirm` on CLI; descriptive ranking after a run ≠ validated edge; execute remains `python -m thesistester study run …` |
-| | Session state: Studies-scoped keys only (e.g. `studies_preview_yaml`). **Must not** mutate classic research `st.session_state` keys (levels / signals / trades / setups / assistant chat). Preserve RS-D2 `studies_viewer_study_dir` behavior |
+| | Session state: Studies-scoped keys only. New key e.g. `studies_preview_yaml`. **Must not** collide with existing `studies_viewer_path_input` / `STUDIES_VIEWER_DIR_KEY`. **Must not** mutate classic research `st.session_state` keys (`CLASSIC_RESEARCH_SESSION_KEYS`). Preserve RS-D2 inspect-dir behavior |
 | **Ledger watch / progress (locked)** | |
 | | Progress means **read-only refresh** of an existing study `output_dir` ledger (`pending` / `running` / `ok` / `failed` counts already defined). The page does **not** start or resume execution |
-| | **Required:** a Refresh control on the inspect pane that reloads via existing `load_study_view` / `load_ledger` with `report_study(..., write_artifacts=False)` |
-| | **Optional:** auto-refresh, **default off**, only while `pending+running > 0`, interval ≥ 10s. If Streamlit version makes safe auto-refresh awkward, **button-only is acceptable** — document that the operator re-clicks Refresh while a CLI `study run` is in flight |
+| | **Required:** an explicit **Refresh** control on the inspect pane (Load already reloads on Streamlit rerun; Refresh makes in-flight CLI runs obvious) that reloads via existing `load_study_view` / `load_ledger` with `report_study(..., write_artifacts=False)` |
+| | **Optional:** auto-refresh, **default off**. Button-only is the expected Streamlit path; if auto-refresh is added it must stay off by default, only while `pending+running > 0`, interval ≥ 10s |
 | | Do not spawn subprocesses, workers, or `study run` from the page to “help” progress |
-| **Out of scope** | NL compiler (RS-D1); shorthand/alias StudySpec dialect; form-based factor builder / templates marketplace; in-app expand-to-disk as a substitute for CLI `study expand`; in-app execute / promote; auto-enabling `grid`/`validation`/`walk_forward`; new ConfirmationLevel values; MCP server; new nav page; engine / classic research page edits; golden regeneration |
+| **Out of scope** | NL compiler (RS-D1); shorthand/alias StudySpec dialect; form-based factor builder / templates marketplace; in-app expand-to-disk as a substitute for CLI `study expand`; in-app execute / promote; auto-enabling `grid`/`validation`/`walk_forward`; new ConfirmationLevel values; MCP server; new nav page; engine / classic research page edits; golden regeneration; rewriting the RS-D5 Grok pack |
 | **Regression** | |
 | | RS-D2 inspect path keeps working (load completed fixture dir → ranked/low-N/ledger, no writes) |
 | | `expand_study` golden fixtures unchanged (preview **calls** expand, does not change it) |
@@ -1032,14 +1036,16 @@ Use the §12.2 copy-ready prompt verbatim. Extra implementer notes:
 | | USER_GUIDE: prefer extending the existing H2 `Studies viewer (read-only)`. **If** a new H2 is added, amend RQ §7.1.4 + `_USER_GUIDE_SECTIONS` + freeze tests **in the same PR** |
 | **Acceptance checklist** | |
 | | ☐ `preview_study_spec` on the stage-first example → exact `run_count=40`, `cartesian_product=800` (1×4×2×5×4×5), `needs_confirm` false at default `confirm_above_runs=200` |
-| | ☐ Invalid / shorthand YAML (e.g. `factors.core`) → `StudySpecError`, no expand, no execute |
+| | ☐ Filter estimate uses matched `_apply_stage_filter` sizes: include tokens absent from the factor domain do **not** inflate the estimate (fixture: extra include value → same count as expand) |
+| | ☐ Invalid YAML / non-mapping / shorthand (`factors.core`) → `StudySpecError`, no expand, no execute |
 | | ☐ Missing `mode_rules` when `confluence_mode` present → fail closed (existing schema) |
-| | ☐ Over-cap estimate skips `expand_study` and still shows axis sizes + warning |
-| | ☐ AST/import guard: `preview.py` must not call `run_study` / `run_experiment` / `run_batch` / `expand_study_to_directory` / `promote_study` |
-| | ☐ Page has no Run / Promote execute controls; classic research session keys untouched |
+| | ☐ Over-cap estimate skips `expand_study` and still shows matched axis sizes + warning |
+| | ☐ Import/AST guard: `preview.py` must **not import** `thesistester.study.execute` / `run_experiment` / `run_batch` / `expand_study_to_directory` / `promote_study` |
+| | ☐ Page has no Run / Promote execute controls; classic research session keys untouched; no collision with `studies_viewer_path_input` |
 | | ☐ Viewer Refresh reloads ledger counts without rewriting `study.overview.*` |
+| | ☐ Optional Save YAML (if shipped) refuses defaulting to inspect `study.spec.yaml` |
 | | ☐ Honesty visible on successful preview |
-| | ☐ Docs: `STUDY_RUNNER.md` §RS-D8 + USER_GUIDE extend + ARCHITECTURE one-liner + roadmap status; HC allowlist **only** if a new H2 lands |
+| | ☐ Docs: `STUDY_RUNNER.md` §RS-D8 + USER_GUIDE extend + ARCHITECTURE one-liner + AGENT_GUIDE pointer + roadmap status; HC allowlist **only** if a new H2 lands |
 | | ☐ Existing `tests/study/` + Streamlit/assistant tests green; engine goldens untouched |
 | | ☐ Full suite green |
 
@@ -1048,14 +1054,18 @@ Use the §12.2 copy-ready prompt verbatim. Extra implementer notes:
 ```text
 Implement RS-D8 only from docs/STUDY_RUNNER_IMPLEMENTATION_PLAN.md §12.9.
 Add a Studies authoring preview on the existing pages/15_Studies.py (no new nav
-slot): paste canonical schema_version:1 StudySpec YAML, validate + in-memory
-expand_study, show run_count / cartesian_product / needs_confirm / identity /
-cost hints. No NL or shorthand compiler. No in-app study run/promote/expand-to-disk.
-Ledger progress = read-only refresh of an existing output_dir (do not spawn run).
-Reuse validate_study_spec / expand_study / cost_hint_lines / load_study_view.
-PREVIEW_EXPAND_CAP=20000. Honesty required. Studies-scoped session keys only.
-No engine/pages golden drift. Prefer extend USER_GUIDE H2; HC allowlist only if
-a new H2 is added. §4.2.
+slot): paste canonical schema_version:1 StudySpec YAML, yaml.safe_load →
+normalize/validate → in-memory expand_study, show run_count / cartesian_product /
+matched stage estimate / needs_confirm / workers / identity / constants battery
+hints. Filter estimate MUST use expand._apply_stage_filter matched sizes (not
+raw include-list lengths). PREVIEW_EXPAND_CAP=2000. preview.py must NOT import
+thesistester.study.execute or call cost_hint_lines. No NL/shorthand compiler.
+No in-app study run/promote/expand-to-disk. Save YAML (if any) must not default
+to the inspect dir study.spec.yaml. Ledger progress = read-only Refresh of an
+existing output_dir (write_artifacts=False). Honesty required. Studies-scoped
+session keys only (do not collide with studies_viewer_path_input). No engine
+golden drift. Prefer extend USER_GUIDE H2; HC allowlist only if a new H2 is
+added. §4.2.
 ```
 
 ---
@@ -1140,8 +1150,11 @@ Recommended workflow after post-MVP sequence (§12):
 | Greenfield MCP runtime / voice MCP bleed | RS6 = registry capabilities only; voice keeps MCP denied |
 | Studies UI becomes a second runner | **RS-D2 read-only inspect** + **RS-D8 preview-only** — no in-app expand-to-disk / run / promote; no classic session mutation; execute stays CLI/RS6 |
 | Shorthand/NL paste silently “fixed” into a study | RS-D8 fail-closed on canonical schema only; NL compiler stays parked RS-D1 |
-| Preview expand of huge factorials hangs the app | `PREVIEW_EXPAND_CAP=20000`; over-cap returns estimate without `expand_study` |
-| Preview writes experiment.yaml / starts cells | `preview.py` forbids `expand_study_to_directory` / `run_study` / `run_experiment` / `run_batch`; AST guard |
+| Preview expand of huge factorials hangs the app | `PREVIEW_EXPAND_CAP=2000`; over-cap returns **matched** estimate without `expand_study`; spinner while expanding |
+| Filter estimate overcounts vs expand | Estimate uses `_apply_stage_filter` intersection, not raw include-list lengths |
+| Preview imports the runner (`execute.py`) | Import allow-list: schema + expand only; battery hints from constants |
+| Save YAML clobbers a completed study | Never default to inspect dir `study.spec.yaml`; sandbox + overwrite force |
+| Preview writes experiment.yaml / starts cells | `preview.py` forbids importing `execute` / `run_experiment` / `run_batch` and calling `expand_study_to_directory`; AST+import guard |
 | Grok invents setups / bypasses confirm | **RS-D5** hard rules + RS6 minimal recipe; closed StudySpec only |
 | Rollup invents cross-cell PBO / statistical proof | **RS-D4** per-cell compose-only; null/`not_run` when batteries absent |
 | Expecting PBO on default study cells | Docs: overfitting needs grid sequences; survivor opt-in |
@@ -1168,7 +1181,7 @@ Recommended workflow after post-MVP sequence (§12):
 3. **RS-D2:** read-only Studies viewer over artifacts; honesty visible; no session mutation; HC allowlist if USER_GUIDE grows.  
 4. **RS-D4:** per-cell compose-only diagnostic rollup; no cross-cell PBO; null/`not_run` when batteries absent.  
 5. **RS-D5:** external routine pack documented; no product host embedding.  
-6. **RS-D8:** Studies page preview pane validates canonical YAML + in-memory expand; shows run_count / cartesian / confirm gate; ledger watch is read-only refresh; no in-app execute.  
+6. **RS-D8:** Studies page preview pane validates canonical YAML + in-memory expand under cap 2000; matched stage estimate; constants battery hints; no `execute.py` import; ledger watch is read-only Refresh; no in-app execute.  
 7. Parked items (D1/D3/D6) remain out of critical path unless this plan is amended.
 
 ---
@@ -1272,9 +1285,10 @@ Recommended workflow after post-MVP sequence (§12):
 
 48. Sequenced **RS-D8** after RS-D5: Studies **authoring preview** on the existing `pages/15_Studies.py` (no new nav slot).  
 49. Canonical `schema_version: 1` YAML only — **not** RS-D1 NL compiler, **not** a shorthand dialect, **not** a form-based factor builder (that remains parked marketplace/non-goal).  
-50. Preview = `validate_study_spec` + in-memory `expand_study` under `PREVIEW_EXPAND_CAP=20000`; show `run_count`, `cartesian_product`, staged vs unstaged, `needs_confirm`, identity hash, battery flags, `cost_hint_lines`.  
-51. **No** in-app `study run` / promote / expand-to-disk; execute remains CLI/RS6. Optional Save YAML is text-only under the RS-D2 path sandbox.  
-52. Progress = read-only ledger refresh of an existing `output_dir` (Refresh required; auto-refresh optional default-off). Do not spawn execution from the page.  
-53. Honesty required on every successful preview; Studies-scoped session keys only; AST guard against execute APIs in `preview.py`.  
-54. USER_GUIDE: prefer extending H2 `Studies viewer (read-only)`; HC §7.1.4 allowlist only if a new H2 is added.  
-55. §12.0 / §12.1 / status tracker / risks / §16.2 / docs plan updated; next code PR = RS-D8 only.  
+50. Preview = `yaml.safe_load` → normalize/validate → in-memory `expand_study` under `PREVIEW_EXPAND_CAP=2000`; show `run_count`, `cartesian_product`, matched staged vs unstaged, `needs_confirm`, `workers`, identity hash, constants battery flags.  
+51. **No** in-app `study run` / promote / expand-to-disk; execute remains CLI/RS6. Optional Save YAML is text-only under the RS-D2 path sandbox and **must not** default to inspect `study.spec.yaml`.  
+52. Progress = read-only ledger **Refresh** of an existing `output_dir` (auto-refresh optional default-off; button-only expected). Do not spawn execution from the page.  
+53. Honesty required on every successful preview; Studies-scoped session keys only (no collision with `studies_viewer_path_input`); import+AST guard — `preview.py` must not import `execute.py`.  
+54. Filter estimate uses `_apply_stage_filter` **intersection**, not raw include-list lengths.  
+55. USER_GUIDE: prefer extending H2 `Studies viewer (read-only)`; HC §7.1.4 allowlist only if a new H2 is added.  
+56. §12.0 / §12.1 / status tracker / risks / §16.2 / docs plan updated; next code PR = RS-D8 only.  
