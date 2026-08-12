@@ -501,10 +501,13 @@ python -m thesistester study run study.launch.yaml --output-dir <dir> [--confirm
 | Rule | Behavior |
 |---|---|
 | Single runner | Child is CLI `study run` → `run_study`. The page must **not** call `run_study()` in-process or dispatch `STUDY.run` |
-| Confirm | `run_count >= confirm_above_runs` → two-step bound triple `{study_identity_hash, run_count, output_dir}` then `--confirm`. Under threshold: no `--confirm` |
-| YAML | Write `{output_dir}/study.launch.yaml` (pinned dataset paths). Never clobber inspect `study.spec.yaml` |
-| Detach | `Popen` so Streamlit does not block; progress = Inspect **Refresh** + `study.launch.log` |
+| Confirm | `run_count >= confirm_above_runs` → two-step bound triple `{pinned_study_identity_hash, run_count, resolved_output_dir}` then `--confirm`. Hash is recomputed **after pin** — never `StudyPreview.study_identity_hash`. Under threshold: no `--confirm` |
+| YAML | Write `{output_dir}/study.launch.yaml`. Pin **both** `dataset.path` and `dataset.subtimeframe_path` (viewer roots then cwd). Never clobber inspect `study.spec.yaml`. Refuse if a pinned CSV is missing |
+| Identity | Prefer a **new** `output_dir`. Launching into an existing CLI dir with a different identity refuses without `--force` |
+| Detach | `Popen` (`shell=False`; POSIX new session + `close_fds`; Windows `CREATE_NEW_PROCESS_GROUP` + `DETACHED_PROCESS`). Exclusive pid claim before spawn. Progress = Inspect **Refresh** + `study.launch.log` |
 | Not a queue | No scheduler / retry / kill UI |
+
+Preview does not require the dataset CSV to exist; **launch does** (pinned path must be a file). Start Streamlit from the repo root.
 
 ---
 

@@ -1206,6 +1206,7 @@ columns; RS6 tools **default-off** with two-step confirm (no MCP server); RS-D2
 **read-only** viewer; RS-D4 per-cell compose-only (no cross-cell PBO); RS-D5
 external docs/examples only (no product host / MCP); RS-D8 preview on the
 same Studies page; RS-D9 (sequenced) may spawn the existing CLI `study run`
-from that page (no in-process `run_study`; two-step confirm; not a job queue);
+from that page (no in-process `run_study`; two-step confirm on the **pinned**
+hash; pin both dataset path keys; exclusive pid claim; not a job queue);
 combinatorial fishing mitigated by confirm gates, stage-first examples
 (40 vs 800), and multiple-testing honesty.

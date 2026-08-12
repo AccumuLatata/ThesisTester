@@ -1,7 +1,7 @@
 # Research Study Runner — Implementation Plan (RS)
 
 **Document type:** Focused implementation plan (fully scoped PRs)  
-**Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts + code-audit hardening + RS-D8 authoring-preview sequence + **RS-D9 CLI-launch sequence**)  
+**Date:** 2026-08-11 (amended 2026-08-12: post-MVP sequence lock + review contracts + code-audit hardening + RS-D8 authoring-preview sequence + **RS-D9 CLI-launch sequence** + **RS-D9 review contracts**: pin both dataset keys, pinned-hash confirm, exclusive/portable pid)  
 **Status:** **RS1–RS5 + RS-D7 + RS6 + RS-D2 + RS-D4 + RS-D5 + RS-D8 complete**. **Next: RS-D9** (Studies CLI-launch button). Parked: RS-D1 / RS-D3 / RS-D6  
 **Series code:** **RS** (Research Study Runner)  
 **Regression framework:** Mandatory compliance with `docs/ENGINEERING_PROPOSAL.md` §4, including §4.1 golden-master operational spec and §4.2 per-milestone PR acceptance checklist  
@@ -1091,10 +1091,11 @@ added. §4.2.
 | | 4. Detached `Popen` is **not** a job queue, scheduler, or daemon (those remain non-goals). |
 | **Likely files** | `thesistester/study/launch.py` (**new**; argv + path pin + spawn + pid/log); `pages/15_Studies.py` (controls on the **Preview** pane after a successful cached preview); `tests/study/test_study_launch.py` (new); `tests/study/test_study_preview.py` (extend page AST / session-key allow-list; **keep** `preview.py` import guard); `docs/STUDY_RUNNER.md` §RS-D9; `docs/USER_GUIDE.md` (prefer **extend** H2 `Studies viewer (read-only)` — no new H2 unless Help retrieval requires it); `docs/ARCHITECTURE.md` boundary sentence; `docs/AGENT_GUIDE.md` heading/pointer; roadmap/status; optional **one-liner** in `STUDY_RUNNER_GROK_ROUTINE_PACK.md` (do **not** rewrite the pack) |
 | **Import allow-list (locked)** | |
-| | `launch.py` may import: `thesistester.study.schema` (`StudySpecError`, `normalize_study_spec`, `validate_study_spec`); `thesistester.study.expand.study_identity_hash` (hash the **pinned** spec the child will load — do **not** call `expand_study` at spawn); `thesistester.study.viewer.default_study_viewer_roots` (sandbox roots); `yaml` / `subprocess` / `sys` / `os` / `json` / `pathlib`. Optional: a tiny `resolve_launch_output_dir` helper in `launch.py` (output dir may **not** exist yet — do **not** reuse `resolve_study_dir` as-is; that helper requires an existing directory). |
+| | `launch.py` may import: `thesistester.study.schema` (`StudySpecError`, `normalize_study_spec`, `validate_study_spec`); `thesistester.study.expand.study_identity_hash` (hash the **pinned** spec the child will load — do **not** call `expand_study` at spawn); `thesistester.study.viewer.default_study_viewer_roots` (sandbox roots); `yaml` / `subprocess` / `sys` / `os` / `json` / `pathlib` / `ctypes` (Windows pid-alive query only). Optional: a tiny `resolve_launch_output_dir` helper in `launch.py` (output dir may **not** exist yet — do **not** reuse `resolve_study_dir` as-is; that helper requires an existing directory). |
 | | `launch.py` **must not import** `thesistester.study.execute`, `thesistester.cli`, `run_batch`, `promote`, `tools.py` / `STUDY.*` handlers, or assistant modules. Do **not** acquire `.study.lock` in the Streamlit process (Windows-safe; lock stays the CLI child’s job). |
 | | `preview.py` import allow-list is **unchanged** (still no `execute`). Do **not** put spawn helpers in `preview.py`. |
 | | `pages/15_Studies.py` may import `thesistester.study.launch` plus existing preview/viewer/schema. **Must not** import `run_study` / `promote_study` / `expand_study_to_directory` / assistant handlers. Import the `launch` **submodule** directly — do **not** add `launch.py` to `thesistester.study.__init__` (that module already pulls `execute`). |
+| | **Package-init honesty:** `from thesistester.study.launch import …` still runs `study/__init__.py`, which already imports `execute` (D8 `preview` import does the same). D9’s load-bearing invariant is **do not call** `run_study()` and **do not take** `.study.lock` in the UI process — not “execute is never imported.” AST-guard `launch.py` itself. Lazy `__init__` is **out of D9 scope**. |
 | **CLI argv (locked — no parser change)** | Existing `cli_study.py` `study run` shape is sufficient. D9 **must not** add flags or change `_cmd_run`. Built argv: |
 
 ```text
@@ -1106,48 +1107,54 @@ added. §4.2.
 
 | | |
 |---|---|
-| | Child `cwd` = `Path.cwd()` (same as a human at repo root). Inherit `os.environ`. |
-| | Do **not** invoke `python -m thesistester run` (R18 replay) or `study expand` as a substitute for `study run`. |
-| | Show the planned argv in the UI (honesty). Tests assert argv **parity** with what a human would type for the same spec/dir/flags. |
+| | Child `cwd` = `Path.cwd()` (same as a human at repo root). Inherit `os.environ`. Document: start Streamlit from the repo root so `-m thesistester` and relative `data/…` resolve like a terminal CLI. |
+| | Argv is a **list** (`shell=False`). Do **not** invoke `python -m thesistester run` (R18 replay) or `study expand` as a substitute for `study run`. |
+| | Show the planned argv in the UI (honesty). Tests assert argv **parity** with what a human would type for the same spec/dir/flags, and that `--output-dir` is the resolved **absolute** path. |
 | **Launch YAML (locked)** | |
 | | Canonical `schema_version: 1` from the preview textarea (the snapshot bound to the last successful preview). |
 | | Write `{output_dir}/study.launch.yaml` — **never** `study.spec.yaml`. `run_study` still writes `study.spec.yaml` **after** gates pass. |
 | | **Never** default the launch path (or output_dir) to the Inspect dir’s `study.spec.yaml`. |
-| | **Pin dataset paths** before write, using the same search-roots-then-cwd rule as `promote._rewrite_dataset_paths_for_draft` (prefer an existing file under RS-D2 roots / cwd; else absolutize against `Path.cwd()`). Implement a **local** helper in `launch.py` — do **not** import `promote.py` or `tools.py`. Rationale: CLI `base_directory` is `study_path.parent`; a YAML sitting under `output_dir` would otherwise reinterpret relative `data/es_1m.csv` as `{output_dir}/data/es_1m.csv`. |
-| | Refuse dataset/output paths outside RS-D2 roots (cwd + local store), including `..` traversal and absolute escapes (same spirit as RS6 `_ensure_study_spec_paths_within_roots`). |
+| | **Pipeline order (locked):** `yaml.safe_load` → `normalize_study_spec` / `validate_study_spec` → **pin** → **sandbox** → **hash** → write launch YAML. Do not write or spawn if any step refuses. |
+| | **Pin both dataset keys** — local helper in `launch.py` iterates `("path", "subtimeframe_path")` with the same search-roots-then-cwd rule as `promote._rewrite_dataset_paths_for_draft`. Do **not** import `promote.py` or `tools.py`. Search roots = `default_study_viewer_roots()` then `Path.cwd()` (authoring YAML is session text, not a file on disk). Prefer an existing file under those roots; else absolutize against `Path.cwd()`. Rationale: CLI `base_directory` is `study_path.parent`; a YAML sitting under `output_dir` would otherwise reinterpret relative `data/es_1m.csv` (and R12 `subtimeframe_path`) as `{output_dir}/data/…`. |
+| | **Refuse spawn** if a pinned dataset path is **not an existing file** (fail closed; do not launch a doomed child). Preview may still succeed without the CSV; launch must not. |
+| | **Do not rewrite** `study.output_dir` inside `study.launch.yaml`. The child uses absolute `--output-dir`. Extra rewrite of YAML `output_dir` would change the identity hash unless it is included in the hashed dict — leave it as-authored. |
+| | Refuse dataset/output paths outside RS-D2 roots (cwd + local store) **after pin**, including `..` traversal and absolute escapes (same spirit as RS6 `_ensure_study_spec_paths_within_roots`: both dataset keys **and** the resolved launch `output_dir`). |
 | | `output_dir` may not exist yet: resolve against cwd, sandbox, `mkdir(parents=True)`. Always pass `--output-dir` as that resolved absolute path. |
 | | Overwrite of launch metadata in the chosen `output_dir` (`study.launch.yaml` / `.log` / `.pid` / `.json`) is allowed. D9 must **not** rewrite a completed study’s `study.spec.yaml`. |
-| | **Identity note:** pinning dataset paths changes `study_identity_hash` vs a CLI run of the same relative YAML whose parent is `examples/studies/`. Bind the confirm triple to the **pinned** spec (what the child will hash). Prefer a **new** `output_dir` for UI launches; resuming a CLI dir that used a different StudySpec parent requires `--force` or matching paths. Document this in USER_GUIDE / STUDY_RUNNER. |
+| | **Identity (locked):** pinning dataset paths **changes** `study_identity_hash` vs `StudyPreview.study_identity_hash` (unpinned textarea) and vs a CLI run of the same relative YAML whose parent is `examples/studies/`. Bind the confirm triple to the **pinned** spec (what the child will hash after load+normalize). **Never** store or echo `StudyPreview.study_identity_hash` as the launch triple hash — that would refuse every over-threshold spawn. Display the **pinned** hash on the launch pane (preview hash may be secondary). Prefer a **new** `output_dir` for UI launches; launching into an existing CLI dir whose `study.spec.yaml` identity ≠ pinned launch spec makes the child refuse without `--force`. `--force` is not a resume shortcut. Document in USER_GUIDE / STUDY_RUNNER. |
+| | **Round-trip test:** dump `study.launch.yaml` → `load` + normalize + `study_identity_hash` equals the triple’s pinned hash. |
 | **Confirm (CLI parity, `>=`) (locked)** | |
 | | Use exact `StudyPreview.run_count` and `confirm_above_runs` (`needs_confirm = run_count >= confirm_above_runs`, matching `run_study`). |
 | | **Under threshold:** one control **Run via CLI**. Do **not** pass `--confirm`. |
-| | **Over threshold:** **two-step**. (1) First control stores bound triple `{study_identity_hash, run_count, output_dir}` in Studies-scoped session state — same triple as RS6. Does **not** spawn. Does **not** stash a sticky `--confirm` that a later rerun can fire. (2) Second control **Confirm and run** must echo that triple against the **current** pinned hash + current `run_count` + current resolved `output_dir`. Only then spawn with `--confirm`. |
+| | **Over threshold:** **two-step**. (1) First control stores bound triple `{pinned_study_identity_hash, run_count, resolved_output_dir}` in Studies-scoped session state — RS6 *shape*, but the hash is **recomputed after pin**, not copied from `StudyPreview`. Does **not** spawn. Does **not** stash a sticky `--confirm` that a later rerun can fire. (2) Second control **Confirm and run** must echo that triple against the **current** pinned hash + current `run_count` + current resolved `output_dir`. Only then spawn with `--confirm`. |
 | | One widget click must not both arm confirm and spawn. A lone checkbox / `confirmed=True` is insufficient. |
-| | Extra UI gate (in addition to the triple): textarea must equal the cached preview YAML (`STUDIES_PREVIEW_CACHED_YAML_KEY`). If the operator edited YAML, they must **Validate / Preview** again. Clear any armed approval on YAML / hash / run_count / output_dir change. |
+| | Extra UI gate (in addition to the triple): textarea must equal the cached preview YAML (`STUDIES_PREVIEW_CACHED_YAML_KEY`). If the operator edited YAML, they must **Validate / Preview** again. Clear any armed approval on YAML / pinned hash / run_count / output_dir change. |
 | | If `preview.expanded is False` (over `PREVIEW_EXPAND_CAP=2000`): **refuse spawn**. Exact `run_count` / child identity cannot be bound honestly. Operator must shrink the study or use CLI after `study expand`. |
 | | Do **not** call `expand_study` again on the Streamlit request at spawn (would freeze the app on ~1800 cells). Re-`yaml.safe_load` + normalize/validate + pin + `study_identity_hash` only. |
 | | `--force` is a **separate** optional checkbox, **default off**, **not** implied by confirm, **not** implied by soft-resume. Distinct from promote `--force`. |
 | **Anti-double-start / Streamlit reruns (locked)** | |
 | | Spawn **only** on an explicit `st.button(...)` (or equivalent) **true** branch. Tab switches, Inspect Refresh, Validate/Preview, download clicks, and widget-default reruns must **not** respawn. Do **not** store `should_launch=True` in `st.session_state` that fires on every subsequent rerun. |
-| | Before spawn, refuse if `study.launch.pid` exists **and** that PID is still alive on this host (stdlib only: `os.kill(pid, 0)` or equivalent; **no** new `psutil` dependency). |
+| | **Exclusive pid claim before `Popen`:** if `study.launch.pid` exists and `launch_pid_is_alive(pid)` → refuse. If the pid is dead or the file is empty/invalid → unlink (stale). Then exclusive-create the pid file (`os.O_CREAT` + `os.O_EXCL` + `os.O_WRONLY`) to claim the slot **before** `Popen`. Write the real pid after spawn. If `Popen` fails, unlink the claim. A second tab that loses `O_EXCL` must refuse (no TOCTOU double-spawn). |
+| | **`launch_pid_is_alive(pid)` (stdlib only; no `psutil`):** POSIX: `os.kill(pid, 0)` — `ProcessLookupError` → dead, `PermissionError` → alive. **Windows: never `os.kill`** (not an existence probe; can signal/terminate). Use `ctypes` `OpenProcess` query (e.g. `PROCESS_QUERY_LIMITED_INFORMATION` / `SYNCHRONIZE`) + `CloseHandle`. `pid <= 0` → not alive. PID reuse after a finished study is an accepted local-single-user limitation; document it. |
 | | The child CLI still takes `.study.lock`; a concurrent human CLI on the same dir fails closed there. D9 must not probe/hold that lock in the Streamlit process. |
 | | No auto-retry, no queue, no watchdog that restarts a dead child. |
 | **Detach / progress (locked)** | |
-| | `subprocess.Popen` — **not** `run` / `check_call` / `wait` / `communicate` on the Streamlit request. |
-| | POSIX: `start_new_session=True` so Streamlit exit/SIGHUP does not kill the study. Windows: new process group / detached flag so the child outlives the request. |
-| | Redirect child stdout+stderr to `{output_dir}/study.launch.log`. **Truncate** that log on each new successful spawn so the file matches this launch. |
-| | Write `{output_dir}/study.launch.pid` and `{output_dir}/study.launch.json` (`pid`, `argv`, pinned `study_identity_hash`, `run_count`, `output_dir`, `confirm`, `force`, `started_at`, log path, launch yaml path). |
-| | Return immediately with pid + “watch **Inspect → Refresh** / ledger; log at `study.launch.log`”. |
+| | `subprocess.Popen` — **not** `run` / `check_call` / `wait` / `communicate` on the Streamlit request. `shell=False`; argv is a sequence. |
+| | POSIX: `start_new_session=True` so Streamlit exit/SIGHUP does not kill the study; `close_fds=True` so the child does not inherit Streamlit sockets. |
+| | Windows: `creationflags` = `subprocess.CREATE_NEW_PROCESS_GROUP` combined with `subprocess.DETACHED_PROCESS` (optional `CREATE_NO_WINDOW` to avoid a console flash). Do not use `CREATE_NEW_CONSOLE`. |
+| | Redirect child stdout+stderr to `{output_dir}/study.launch.log`. **Truncate** that log on each new **successful** spawn (open `'w'` at `Popen` time) so the file matches this launch. Do not truncate when spawn is refused. |
+| | Write `{output_dir}/study.launch.pid` and `{output_dir}/study.launch.json` (`pid`, `argv`, **pinned** `study_identity_hash`, `run_count`, `output_dir`, `confirm`, `force`, `started_at`, log path, launch yaml path). |
+| | Return immediately with pid + “watch **Inspect → Refresh** / ledger; log at `study.launch.log`”. Showing last N lines of that log on the launch pane is allowed (not a job queue). |
 | | Progress UX remains RS-D8: Inspect **Refresh** (`report_study(..., write_artifacts=False)`). Optional auto-refresh stays **default off**. |
 | | **No** cancel/kill/promote control in D9 (operator stops the OS process if needed). Showing “PID alive / not alive” from the pid file is allowed. |
 | **Workers (locked)** | Display `StudyPreview.workers`. Optional override number input; default = unset (omit `--workers` so the CLI uses the StudySpec). Override must be `int >= 1`; invalid → refuse spawn. Do not silently pass `--workers 1`. |
 | **UI (locked)** | |
 | | Same page `pages/15_Studies.py`, **Preview StudySpec** pane, **after** a successful cached preview. **Do not** add a new sidebar page / numeric slot. |
-| | Controls allowed: `output_dir` text field (default from YAML `study.output_dir` if present, else empty — **never** default to the Inspect dir); optional workers override; optional `--force` checkbox default off; **Run via CLI** / **Confirm and run** as specified; planned argv display; pid/alive status. |
+| | Controls allowed: `output_dir` text field (default from YAML `study.output_dir` if present, else empty — **never** default to the Inspect dir); optional workers override; optional `--force` checkbox default off; **Run via CLI** / **Confirm and run** as specified; planned argv display; **pinned** identity hash (required); pid/alive status; path to `study.launch.log` (optional last N lines). |
 | | Controls **still forbidden**: Promote; Enable batteries; Dispatch `STUDY.run`; in-process `run_study`; expand-to-disk; new nav page; classic research session mutation. |
-| | Honesty (required, visible with launch controls): combinatorial `run_count` is a **screening size**, not independent tests; large factorials need the two-step confirm; launching the CLI does not validate an edge; the child is the same `study run` as the terminal. |
-| **Session state (locked)** | Studies-scoped keys only. New keys e.g. `studies_launch_output_dir`, `studies_launch_approval` (bound triple). Must **not** collide with `studies_viewer_path_input` / `STUDIES_VIEWER_*` / `STUDIES_PREVIEW_*`. Must **not** mutate `CLASSIC_RESEARCH_SESSION_KEYS`. Armed approval clears when YAML, identity hash, run_count, or output_dir changes. |
-| **Out of scope** | NL compiler (RS-D1); shorthand/alias dialect; form-based factor builder; in-process execute; promote from the page; job queue / scheduler / kill UI; new CLI flags; `execute.py` / `cli_study.py` edits; `run_batch` continue (RS-D3); new factor types (RS-D6); MCP; engine / classic research pages; golden regeneration; rewriting the RS-D5 Grok pack; enabling `assistant.study_tools`; changing `PREVIEW_EXPAND_CAP` or `preview.py` import allow-list; writing `experiment.yaml` from the page |
+| | Honesty (required, visible with launch controls): combinatorial `run_count` is a **screening size**, not independent tests; large factorials need the two-step confirm; launching the CLI does not validate an edge; the child is the same `study run` as the terminal; prefer a **new** `output_dir` (existing CLI dir with a different identity refuses without `--force`); start Streamlit from the repo root. |
+| **Session state (locked)** | Studies-scoped keys only. New keys e.g. `studies_launch_output_dir`, `studies_launch_approval` (bound triple of **pinned** hash + run_count + resolved output_dir). Must **not** collide with `studies_viewer_path_input` / `STUDIES_VIEWER_*` / `STUDIES_PREVIEW_*`. Must **not** mutate `CLASSIC_RESEARCH_SESSION_KEYS`. Armed approval clears when YAML, **pinned** hash, run_count, or output_dir changes. |
+| **Out of scope** | NL compiler (RS-D1); shorthand/alias dialect; form-based factor builder; in-process execute; promote from the page; job queue / scheduler / kill UI; new CLI flags; `execute.py` / `cli_study.py` edits; `run_batch` continue (RS-D3); new factor types (RS-D6); MCP; engine / classic research pages; golden regeneration; rewriting the RS-D5 Grok pack; enabling `assistant.study_tools`; changing `PREVIEW_EXPAND_CAP` or `preview.py` import allow-list; writing `experiment.yaml` from the page; lazy `study/__init__.py` (optional hardening, not D9) |
 | **Regression** | |
 | | RS-D8 preview behavior unchanged (cap, matched stage estimate, no `execute` import). |
 | | RS-D2 inspect + Refresh unchanged. |
@@ -1161,11 +1168,17 @@ added. §4.2.
 | | ☑ Stale textarea (≠ cached preview YAML) → refuse spawn; armed approval cleared |
 | | ☑ Bound-triple mismatch (hash / run_count / output_dir) → refuse spawn |
 | | ☑ `preview.expanded is False` → refuse spawn |
-| | ☑ Path sandbox: `../` and extra-root absolute paths refused; launch YAML not written |
-| | ☑ Dataset path pinned in written `study.launch.yaml` (relative `data/…` does not stay relative to `output_dir`) |
+| | ☑ Path sandbox: `../` and extra-root absolute paths refused **after pin**; launch YAML not written |
+| | ☑ Both `dataset.path` and `dataset.subtimeframe_path` pinned in written `study.launch.yaml` (relative `data/…` does not stay relative to `output_dir`) |
+| | ☑ Pinned dataset path that is not an existing file → refuse spawn |
+| | ☑ Confirm triple uses **pinned** hash; using `StudyPreview.study_identity_hash` must fail the test |
+| | ☑ YAML round-trip: load(`study.launch.yaml`) + normalize + hash equals the triple hash |
+| | ☑ `study.output_dir` inside launch YAML is not rewritten; `--output-dir` argv is absolute |
 | | ☑ Launch file is `study.launch.yaml`, **not** `study.spec.yaml` |
-| | ☑ Spawn helper uses `Popen` (not `wait`); tests **mock** `Popen` — do not execute cells |
+| | ☑ Spawn helper uses `Popen` (not `wait`); argv is a list; `shell=False`; tests **mock** `Popen` — do not execute cells |
+| | ☑ Exclusive pid claim before `Popen` (mocked `O_EXCL` race → second spawn refused) |
 | | ☑ Second spawn refused while launch pid is alive (mocked) |
+| | ☑ `launch_pid_is_alive` on Windows does not call `os.kill` (AST or monkeypatch guard) |
 | | ☑ Streamlit rerun without a new button click does not call spawn (no sticky `should_launch`) |
 | | ☑ `preview.py` still must **not** import `thesistester.study.execute` / `run_study` / `run_batch` (existing AST guard stays green) |
 | | ☑ `launch.py` AST/import guard: no `thesistester.study.execute` / `run_study` / `run_batch` / `promote_study` / `STUDY.run` |
@@ -1185,29 +1198,44 @@ Add a Studies CLI-launch button on the existing pages/15_Studies.py Preview pane
 detached subprocess — do NOT call run_study() in-process, do NOT dispatch STUDY.run,
 do NOT call run_batch, do NOT change cli_study.py argv or execute.py.
 
-Argv (sys.executable -m thesistester):
-  study run {output_dir}/study.launch.yaml --output-dir {output_dir}
+Argv is a list (shell=False; sys.executable -m thesistester):
+  study run {output_dir}/study.launch.yaml --output-dir {absolute_output_dir}
   [--workers N] [--confirm] [--force]
 Pass --confirm ONLY when run_count >= confirm_above_runs AND a second Confirm-and-run
-step echoes the bound triple {study_identity_hash, run_count, output_dir} (RS6 shape;
+step echoes the bound triple {pinned_study_identity_hash, run_count, resolved_output_dir}
+(RS6 shape; hash recomputed AFTER pin — never StudyPreview.study_identity_hash;
 >= matching run_study). One click must not arm confirm and spawn. --force is a separate
 checkbox, default off. Omit --workers unless the optional override is set (>= 1).
 
-New module thesistester/study/launch.py: build argv, pin dataset paths (promote-style
-search-roots-then-cwd; do not import promote.py or tools.py), write study.launch.yaml
-(NOT study.spec.yaml), Popen detached (POSIX start_new_session; Windows new process
-group), log to study.launch.log (truncate on new spawn), pid + study.launch.json.
+New module thesistester/study/launch.py. Pipeline: safe_load → normalize/validate →
+pin → sandbox → hash → write. Pin BOTH dataset.path and dataset.subtimeframe_path
+(promote-style search-roots-then-cwd; search roots = default_study_viewer_roots() then
+cwd; do not import promote.py or tools.py). Refuse if a pinned dataset path is not an
+existing file. Do not rewrite study.output_dir inside the launch YAML. Write
+study.launch.yaml (NOT study.spec.yaml). Display the pinned hash on the pane.
+
+Popen detached: POSIX start_new_session=True and close_fds=True; Windows
+CREATE_NEW_PROCESS_GROUP + DETACHED_PROCESS (optional CREATE_NO_WINDOW; never
+CREATE_NEW_CONSOLE). Log to study.launch.log (truncate only on successful spawn).
+Exclusive-create study.launch.pid (O_EXCL) BEFORE Popen; stale dead-pid files may be
+unlinked. launch_pid_is_alive: POSIX os.kill(pid, 0); Windows ctypes OpenProcess —
+NEVER os.kill on Windows. No psutil. pid + study.launch.json.
+
 launch.py and preview.py must NOT import thesistester.study.execute. Do not add launch
-to study/__init__.py. Do not acquire .study.lock in the Streamlit process.
+to study/__init__.py. Do not acquire .study.lock in the Streamlit process. Package init
+already imports execute (D8); D9 invariant is do not CALL run_study.
 
 Refuse spawn when: textarea != cached preview YAML; bound triple mismatch;
 preview.expanded is False (over PREVIEW_EXPAND_CAP); output_dir / dataset path outside
-RS-D2 roots; launch pid still alive. Do not re-expand at spawn. Do not store
-should_launch=True in session_state. Studies-scoped keys only (no collision with
-studies_viewer_path_input / STUDIES_PREVIEW_*). No Promote / enable-batteries.
-Progress = existing Inspect Refresh. Honesty required. Prefer extend USER_GUIDE H2
-Studies viewer (read-only); HC allowlist only if a new H2 is added. Mock Popen in
-tests — do not run cells. §4.2.
+RS-D2 roots (after pin); pinned CSV missing; launch pid still alive or O_EXCL lost.
+Do not re-expand at spawn. Do not store should_launch=True in session_state.
+Studies-scoped keys only (no collision with studies_viewer_path_input / STUDIES_PREVIEW_*).
+No Promote / enable-batteries. Progress = existing Inspect Refresh. Honesty required
+(prefer new output_dir; identity mismatch needs --force; start Streamlit from repo root).
+Prefer extend USER_GUIDE H2 Studies viewer (read-only); HC allowlist only if a new H2
+is added. Tests: mock Popen (do not run cells); subtimeframe pin; pinned-hash triple
+(not preview hash); YAML round-trip hash; O_EXCL race; Windows pid helper must not
+call os.kill; argv list with absolute --output-dir. §4.2.
 ```
 
 ---
@@ -1292,12 +1320,15 @@ Recommended workflow after post-MVP sequence (§12):
 | Soft-resume leaves PF/WR null on healthy pre-D7 rows | RS-D7 field-level backfill when ok+bundle and PF/WR missing |
 | Greenfield MCP runtime / voice MCP bleed | RS6 = registry capabilities only; voice keeps MCP denied |
 | Studies UI becomes a second runner | **RS-D2 inspect** + **RS-D8 preview** stay non-execute; **RS-D9** may only spawn the existing CLI argv (no in-process `run_study` / `STUDY.run`); two-step bound confirm; button-click spawn only; `preview.py` / `launch.py` must not import `execute.py` |
-| Streamlit rerun respawns a study | Spawn only in `st.button` true branch; refuse if `study.launch.pid` is still alive; no sticky `should_launch` session flag |
-| Confirm collapsed to one click / `--confirm` leaked under threshold | Two-step when `run_count >= confirm_above_runs`; bound triple `{hash, run_count, output_dir}`; `--confirm` omitted otherwise |
-| Launch YAML reinterprets relative `dataset.path` | Pin paths (search-roots-then-cwd) into `study.launch.yaml`; never write `study.spec.yaml` from the page; sandbox RS-D2 roots |
+| Streamlit rerun respawns a study | Spawn only in `st.button` true branch; exclusive-create `study.launch.pid` before `Popen`; refuse if pid alive or `O_EXCL` lost; no sticky `should_launch` session flag |
+| Confirm collapsed to one click / `--confirm` leaked under threshold | Two-step when `run_count >= confirm_above_runs`; bound triple `{pinned_hash, run_count, resolved_output_dir}` (never `StudyPreview.study_identity_hash`); `--confirm` omitted otherwise |
+| Launch YAML reinterprets relative dataset paths | Pin **both** `dataset.path` and `dataset.subtimeframe_path` (search-roots-then-cwd) into `study.launch.yaml`; never write `study.spec.yaml` from the page; sandbox RS-D2 roots **after pin**; refuse missing CSV |
+| Confirm triple uses preview hash after pin | Recompute hash on the pinned spec; YAML round-trip test; show pinned hash on the pane |
+| `os.kill(pid, 0)` on Windows | Portable `launch_pid_is_alive`: POSIX `os.kill`; Windows `OpenProcess` — never `os.kill` on NT |
+| Two tabs double-spawn | `O_EXCL` pid claim before `Popen`; stale dead-pid unlink then claim |
+| UI launch identity ≠ prior CLI ledger | Bind confirm to **pinned** spec hash; prefer a new `output_dir`; `--force` remains explicit (not a resume shortcut) |
 | Page blocks on large factorials at spawn | Detached `Popen`; do not re-`expand_study` at spawn; over-cap (`expanded=False`) refuse |
 | Job-queue scope creep | No scheduler / retry / kill UI; detached spawn is not a daemon |
-| UI launch identity ≠ prior CLI ledger | Bind confirm to **pinned** spec hash; prefer a new `output_dir`; `--force` remains explicit |
 | Shorthand/NL paste silently “fixed” into a study | RS-D8 fail-closed on canonical schema only; NL compiler stays parked RS-D1 |
 | Preview expand of huge factorials hangs the app | `PREVIEW_EXPAND_CAP=2000`; over-cap returns **matched** estimate without `expand_study`; spinner while expanding |
 | Filter estimate overcounts vs expand | Estimate uses `_apply_stage_filter` intersection, not raw include-list lengths |
@@ -1331,7 +1362,7 @@ Recommended workflow after post-MVP sequence (§12):
 4. **RS-D4:** per-cell compose-only diagnostic rollup; no cross-cell PBO; null/`not_run` when batteries absent.  
 5. **RS-D5:** external routine pack documented; no product host embedding.  
 6. **RS-D8:** Studies page preview pane validates canonical YAML + in-memory expand under cap 2000; matched stage estimate; constants battery hints; no `execute.py` import; ledger watch is read-only Refresh.  
-7. **RS-D9:** Studies page spawns the existing `study run` CLI (detached); two-step bound confirm over threshold; `study.launch.yaml` + pid/log; no in-process `run_study`; no CLI/execute edits; no job queue.  
+7. **RS-D9:** Studies page spawns the existing `study run` CLI (detached); two-step bound confirm over threshold using the **pinned** identity hash; pin both dataset path keys; exclusive pid claim + portable pid-alive; `study.launch.yaml` + pid/log; no in-process `run_study`; no CLI/execute edits; no job queue.  
 8. Parked items (D1/D3/D6) remain out of critical path unless this plan is amended.
 
 ---
@@ -1455,9 +1486,18 @@ Recommended workflow after post-MVP sequence (§12):
 60. Sequenced **RS-D9** after RS-D8: Studies **CLI-launch button** on the existing `pages/15_Studies.py` Preview pane (no new nav slot).  
 61. **Single CLI execute path preserved:** the child is `sys.executable -m thesistester study run` → `cli_study._cmd_run` → `run_study`. The page must **not** call `run_study()` in-process, must **not** dispatch `STUDY.run`, must **not** call `run_batch`, and must **not** change `cli_study.py` argv or `execute.py`.  
 62. New module `thesistester/study/launch.py`: argv builder + dataset-path pin + detached `Popen` + `study.launch.yaml` / `.log` / `.pid` / `.json`. **Must not import** `execute.py`. Do not add `launch` to `study/__init__.py`. `preview.py` import allow-list unchanged.  
-63. Confirm = CLI parity (`run_count >= confirm_above_runs`): under threshold → **Run via CLI** without `--confirm`; over threshold → two-step bound triple `{study_identity_hash, run_count, output_dir}` (RS6 shape) then **Confirm and run** with `--confirm`. One click must not arm and spawn. `--force` is a separate default-off checkbox.  
-64. Refuse spawn when textarea ≠ cached preview YAML, bound triple mismatches, `preview.expanded is False` (over cap 2000), paths escape RS-D2 roots, or launch pid is still alive. Do not re-`expand_study` at spawn.  
-65. Pin relative `dataset.path` (search-roots-then-cwd) so a YAML written under `output_dir` cannot reinterpret `data/es_1m.csv`. Never write `study.spec.yaml` from the page; never default output_dir to the Inspect dir.  
+63. Confirm = CLI parity (`run_count >= confirm_above_runs`): under threshold → **Run via CLI** without `--confirm`; over threshold → two-step bound triple `{pinned_study_identity_hash, run_count, resolved_output_dir}` (RS6 shape; hash after pin) then **Confirm and run** with `--confirm`. One click must not arm and spawn. `--force` is a separate default-off checkbox.  
+64. Refuse spawn when textarea ≠ cached preview YAML, bound triple mismatches, `preview.expanded is False` (over cap 2000), paths escape RS-D2 roots, pinned CSV missing, or launch pid is still alive / `O_EXCL` lost. Do not re-`expand_study` at spawn.  
+65. Pin relative `dataset.path` **and** `dataset.subtimeframe_path` (search-roots-then-cwd; roots = viewer roots then cwd) so a YAML written under `output_dir` cannot reinterpret `data/es_1m.csv`. Refuse spawn if a pinned path is not an existing file. Never write `study.spec.yaml` from the page; never default output_dir to the Inspect dir; do not rewrite `study.output_dir` inside the launch YAML.  
 66. Detached spawn is **not** a job queue: no retry/watchdog/kill UI; progress remains Inspect **Refresh**. Streamlit reruns must not respawn (button-click only; no sticky `should_launch`).  
 67. USER_GUIDE: prefer extending H2 `Studies viewer (read-only)`; HC §7.1.4 allowlist only if a new H2 is added.  
-68. §12.0 / §12.1 / status tracker / risks / §16.2 / docs plan updated; next code PR = **RS-D9 only**. Parked D1/D3/D6 unchanged.  
+68. §12.0 / §12.1 / status tracker / risks / §16.2 / docs plan updated; next code PR = **RS-D9 only**. Parked D1/D3/D6 unchanged.
+
+### 18.11 RS-D9 review-contract amend (this amendment)
+
+69. Confirm triple hash is the **pinned** spec (`pinned_study_identity_hash`); **never** `StudyPreview.study_identity_hash`. YAML round-trip hash test. Show pinned hash on the launch pane.  
+70. Pin helper iterates `("path", "subtimeframe_path")`. Pipeline: normalize → pin → sandbox → hash → write.  
+71. Exclusive-create `study.launch.pid` (`O_EXCL`) **before** `Popen`; stale dead-pid unlink. Portable `launch_pid_is_alive`: POSIX `os.kill(pid, 0)`; **Windows never `os.kill`** (`ctypes` `OpenProcess`). No `psutil`. PID reuse accepted (local single-user).  
+72. Detach flags named: POSIX `start_new_session=True` + `close_fds=True`; Windows `CREATE_NEW_PROCESS_GROUP` + `DETACHED_PROCESS` (optional `CREATE_NO_WINDOW`). Argv is a list; `shell=False`.  
+73. Package `__init__.py` already imports `execute` (D8); D9 invariant is do not **call** `run_study` / do not take `.study.lock` in the UI. Lazy `__init__` out of D9 scope.  
+74. Prefer new `output_dir` for UI launches; existing CLI dir identity mismatch refuses without `--force`. Start Streamlit from repo root. Copy-ready prompt + risks + `STUDY_RUNNER.md` §RS-D9 updated.  
